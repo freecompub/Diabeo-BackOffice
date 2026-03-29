@@ -30,18 +30,44 @@ model User {
   name          String
   passwordHash  String
   role          Role      @default(VIEWER)
+  mfaSecret     String?
+  mfaEnabled    Boolean   @default(false)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   patients          Patient[]
+  createdConfigs    InsulinConfig[] @relation("CreatedBy")
   validatedConfigs  InsulinConfig[] @relation("ValidatedBy")
   auditLogs         AuditLog[]
   sessions          Session[]
+  accounts          Account[]
 
   @@map("users")
 }
 
-// ─── Session (NextAuth) ──────────────────────────────────
+// ─── Account (NextAuth v5 — OAuth) ──────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// ─── Session (NextAuth v5) ──────────────────────────────
 
 model Session {
   id           String   @id @default(cuid())
@@ -52,6 +78,17 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
+}
+
+// ─── VerificationToken (NextAuth v5) ────────────────────
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 // ─── Patient ─────────────────────────────────────────────
@@ -69,7 +106,7 @@ model Patient {
   doctor         User            @relation(fields: [doctorId], references: [id])
   insulinConfigs InsulinConfig[]
 
-  @@index([doctorId])
+  @@index([doctorId, deletedAt])
   @@index([deletedAt])
   @@map("patients")
 }
@@ -79,10 +116,12 @@ model Patient {
 model InsulinConfig {
   id                String    @id @default(cuid())
   patientId         String
+  createdById       String
   sensitivityRatios Json
   carbRatios        Json
   basalRates        Json
   targetGlucose     Json
+  maxBolus          Float     @default(25)
   isActive          Boolean   @default(false)
   validatedById     String?
   validatedAt       DateTime?
@@ -90,9 +129,10 @@ model InsulinConfig {
   updatedAt         DateTime  @updatedAt
 
   patient     Patient @relation(fields: [patientId], references: [id])
+  createdBy   User    @relation("CreatedBy", fields: [createdById], references: [id])
   validatedBy User?   @relation("ValidatedBy", fields: [validatedById], references: [id])
 
-  @@index([patientId])
+  @@index([patientId, isActive])
   @@index([isActive])
   @@map("insulin_configs")
 }

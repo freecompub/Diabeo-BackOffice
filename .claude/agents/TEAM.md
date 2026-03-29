@@ -53,6 +53,13 @@ iOS alignment       → swift-expert + typescript-pro + architect-reviewer
 Chaque PR           → code-reviewer + accessibility-tester
 ```
 
+### Répartition code-reviewer / healthcare-security-auditor
+
+- **code-reviewer** : qualité de code, patterns, OWASP générique, TypeScript, tests
+- **healthcare-security-auditor** : tout ce qui touche aux données de santé — chiffrement AES-256-GCM, audit HDS, RGPD Article 9, clés, MFA, traçabilité
+
+En cas de doute sur la sécurité des données patients, c'est le `healthcare-security-auditor` qui fait autorité.
+
 ## Workflow type pour une feature
 
 ```

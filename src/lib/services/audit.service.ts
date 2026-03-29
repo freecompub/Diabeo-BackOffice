@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db/client"
+import type { PrismaClient } from "@prisma/client"
 
+type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
 type AuditAction = "CREATE" | "READ" | "UPDATE" | "DELETE"
 type AuditResource = "PATIENT" | "INSULIN_CONFIG" | "USER"
 
@@ -11,16 +13,27 @@ interface AuditLogEntry {
   metadata?: Record<string, string>
 }
 
+function createAuditData(entry: AuditLogEntry) {
+  return {
+    userId: entry.userId,
+    action: entry.action,
+    resource: entry.resource,
+    resourceId: entry.resourceId,
+    metadata: entry.metadata ?? {},
+  }
+}
+
 export const auditService = {
   async log(entry: AuditLogEntry) {
     return prisma.auditLog.create({
-      data: {
-        userId: entry.userId,
-        action: entry.action,
-        resource: entry.resource,
-        resourceId: entry.resourceId,
-        metadata: entry.metadata ?? {},
-      },
+      data: createAuditData(entry),
+    })
+  },
+
+  /** Log within an existing transaction — ensures atomicity */
+  async logWithTx(tx: TransactionClient, entry: AuditLogEntry) {
+    return tx.auditLog.create({
+      data: createAuditData(entry),
     })
   },
 
