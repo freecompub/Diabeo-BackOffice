@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────
+
+enum Role {
+  ADMIN
+  DOCTOR
+  NURSE
+  VIEWER
+}
+
+enum DiabetesType {
+  TYPE1
+  TYPE2
+  GESTATIONAL
+  OTHER
+}
+
+// ─── User ────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          Role      @default(VIEWER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  patients          Patient[]
+  validatedConfigs  InsulinConfig[] @relation("ValidatedBy")
+  auditLogs         AuditLog[]
+  sessions          Session[]
+
+  @@map("users")
+}
+
+// ─── Session (NextAuth) ──────────────────────────────────
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+// ─── Patient ─────────────────────────────────────────────
+
+model Patient {
+  id            String       @id @default(cuid())
+  pseudonymId   String       @unique
+  encryptedData Bytes
+  diabetesType  DiabetesType
+  doctorId      String
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  doctor         User            @relation(fields: [doctorId], references: [id])
+  insulinConfigs InsulinConfig[]
+
+  @@index([doctorId])
+  @@index([deletedAt])
+  @@map("patients")
+}
+
+// ─── InsulinConfig ───────────────────────────────────────
+
+model InsulinConfig {
+  id                String    @id @default(cuid())
+  patientId         String
+  sensitivityRatios Json
+  carbRatios        Json
+  basalRates        Json
+  targetGlucose     Json
+  isActive          Boolean   @default(false)
+  validatedById     String?
+  validatedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  patient     Patient @relation(fields: [patientId], references: [id])
+  validatedBy User?   @relation("ValidatedBy", fields: [validatedById], references: [id])
+
+  @@index([patientId])
+  @@index([isActive])
+  @@map("insulin_configs")
+}
+
+// ─── AuditLog (immuable) ─────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String
+  resource   String
+  resourceId String
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([resource, resourceId, createdAt])
+  @@map("audit_logs")
+}
