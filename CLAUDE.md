@@ -4,7 +4,8 @@ Fichier de contexte persistant pour Claude Code.
 Mis à jour à chaque décision architecturale majeure.
 
 ---
-
+@.claude/TEAM.md
+---
 ## 🏥 Projet
 
 **Diabeo** est une application de gestion de l'insulinothérapie pour les patients diabétiques.
