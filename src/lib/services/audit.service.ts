@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db/client"
+import { Prisma } from "@prisma/client"
 import type { PrismaClient } from "@prisma/client"
 
 type TransactionClient = Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
@@ -33,24 +34,24 @@ export interface AuditLogEntry {
   action: AuditAction
   resource: AuditResource
   resourceId?: string
-  oldValue?: Record<string, unknown>
-  newValue?: Record<string, unknown>
+  oldValue?: Prisma.InputJsonValue
+  newValue?: Prisma.InputJsonValue
   ipAddress?: string
   userAgent?: string
   metadata?: Record<string, unknown>
 }
 
-function createAuditData(entry: AuditLogEntry) {
+function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateInput {
   return {
     userId: entry.userId,
     action: entry.action,
     resource: entry.resource,
     resourceId: entry.resourceId ?? null,
-    oldValue: entry.oldValue ?? undefined,
-    newValue: entry.newValue ?? undefined,
+    oldValue: entry.oldValue ?? Prisma.JsonNull,
+    newValue: entry.newValue ?? Prisma.JsonNull,
     ipAddress: entry.ipAddress ?? null,
     userAgent: entry.userAgent ?? null,
-    metadata: entry.metadata ?? {},
+    metadata: (entry.metadata as Prisma.InputJsonValue) ?? {},
   }
 }
 

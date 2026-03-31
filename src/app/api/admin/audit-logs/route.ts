@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { getServerSession } from "next-auth"
+import { auth } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import type { AuditAction, AuditResource } from "@/lib/services/audit.service"
 
@@ -16,7 +16,7 @@ const VALID_RESOURCES: AuditResource[] = [
 ]
 
 export async function GET(req: Request) {
-  const session = await getServerSession()
+  const session = await auth()
 
   if (!session?.user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
