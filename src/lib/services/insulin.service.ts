@@ -1,6 +1,5 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
-import type { InsulinDeliveryMethod } from "@prisma/client"
 
 /** Clinical safety bounds */
 const CLINICAL_BOUNDS = {
@@ -56,6 +55,7 @@ export const insulinService = {
   /**
    * Calculate bolus — returns a suggestion, never a prescription.
    * Logs the calculation for medical traceability.
+   * Both the BolusCalculationLog and audit entry are in the same transaction.
    */
   async calculateBolus(input: BolusInput, auditUserId: number): Promise<BolusResult> {
     const settings = await this.getSettings(input.patientId)
@@ -63,19 +63,17 @@ export const insulinService = {
 
     const hour = new Date().getHours()
 
-    // Find applicable ISF for current hour
     const isf = findSlotForHour(settings.sensitivityFactors, hour)
     if (!isf) throw new Error("No ISF slot found for current hour")
 
-    // Find applicable ICR for current hour
     const icr = findSlotForHour(settings.carbRatios, hour)
     if (!icr) throw new Error("No ICR slot found for current hour")
 
-    // Active glucose target
     const target = settings.glucoseTargets[0]
     if (!target) throw new Error("No active glucose target found")
 
     const isfGl = Number(isf.sensitivityFactorGl)
+    const isfMgdl = Number(isf.sensitivityFactorMgdl)
     const icrValue = Number(icr.gramsPerUnit)
     const targetMgdl = Number(target.targetGlucose)
     const currentMgdl = input.currentGlucoseGl * 100 // g/L -> mg/dL
@@ -84,19 +82,19 @@ export const insulinService = {
     const mealBolus = input.carbsGrams / icrValue
 
     // Correction dose
-    const rawCorrectionDose = (currentMgdl - targetMgdl) / Number(isf.sensitivityFactorMgdl)
+    const rawCorrectionDose = (currentMgdl - targetMgdl) / isfMgdl
 
     // IOB adjustment
     let iobAdjustment = 0
-    const iob = settings.iobSettings
-    if (iob?.considerIob) {
-      // IOB value would come from recent bolus history — placeholder for now
+    if (settings.iobSettings?.considerIob) {
+      // IOB value would come from recent bolus history — placeholder
       iobAdjustment = 0
     }
 
     const correctionDose = Math.max(0, rawCorrectionDose - iobAdjustment)
     const rawTotal = mealBolus + correctionDose
-    const recommendedDose = Math.round(Math.min(rawTotal, CLINICAL_BOUNDS.MAX_SINGLE_BOLUS) * 10) / 10
+    // Arrondi a 0.1U conformement a la spec
+    const recommendedDose = roundToTenths(Math.min(rawTotal, CLINICAL_BOUNDS.MAX_SINGLE_BOLUS))
     const wasCapped = rawTotal > CLINICAL_BOUNDS.MAX_SINGLE_BOLUS
 
     // Warnings
@@ -107,40 +105,49 @@ export const insulinService = {
     if (input.currentGlucoseGl > 4.00) warnings.push("criticalHighGlucose")
     if (wasCapped) warnings.push("exceedsMaximumBolus")
 
-    // Log the calculation for medical traceability
-    await prisma.bolusCalculationLog.create({
-      data: {
-        patientId: input.patientId,
-        inputGlucoseGl: input.currentGlucoseGl,
-        inputCarbsGrams: input.carbsGrams,
-        targetGlucoseMgdl: targetMgdl,
-        isfUsedGl: isfGl,
-        icrUsed: icrValue,
-        mealBolus: round2(mealBolus),
-        rawCorrectionDose: round2(rawCorrectionDose),
-        iobValue: 0,
-        iobAdjustment: round2(iobAdjustment),
-        correctionDose: round2(correctionDose),
-        recommendedDose,
-        wasCapped,
-        warnings,
-        deliveryMethod: settings.deliveryMethod,
-      },
-    })
+    // Transaction: bolus log + audit in one atomic write
+    await prisma.$transaction(async (tx) => {
+      await tx.bolusCalculationLog.create({
+        data: {
+          patientId: input.patientId,
+          inputGlucoseGl: input.currentGlucoseGl,
+          inputCarbsGrams: input.carbsGrams,
+          targetGlucoseMgdl: targetMgdl,
+          isfUsedGl: isfGl,
+          icrUsed: icrValue,
+          mealBolus: roundToHundredths(mealBolus),
+          rawCorrectionDose: roundToHundredths(rawCorrectionDose),
+          iobValue: 0,
+          iobAdjustment: roundToHundredths(iobAdjustment),
+          correctionDose: roundToHundredths(correctionDose),
+          recommendedDose,
+          wasCapped,
+          warnings,
+          deliveryMethod: settings.deliveryMethod,
+        },
+      })
 
-    await auditService.log({
-      userId: auditUserId,
-      action: "BOLUS_CALCULATED",
-      resource: "BOLUS_LOG",
-      resourceId: String(input.patientId),
-      metadata: { recommendedDose, warnings },
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "BOLUS_CALCULATED",
+        resource: "BOLUS_LOG",
+        resourceId: String(input.patientId),
+        metadata: {
+          inputGlucoseGl: input.currentGlucoseGl,
+          inputCarbsGrams: input.carbsGrams,
+          isfUsedGl: isfGl,
+          icrUsed: icrValue,
+          recommendedDose,
+          warnings,
+        },
+      })
     })
 
     return {
-      mealBolus: round2(mealBolus),
-      rawCorrectionDose: round2(rawCorrectionDose),
-      iobAdjustment: round2(iobAdjustment),
-      correctionDose: round2(correctionDose),
+      mealBolus: roundToHundredths(mealBolus),
+      rawCorrectionDose: roundToHundredths(rawCorrectionDose),
+      iobAdjustment: roundToHundredths(iobAdjustment),
+      correctionDose: roundToHundredths(correctionDose),
       recommendedDose,
       wasCapped,
       warnings,
@@ -148,28 +155,17 @@ export const insulinService = {
     }
   },
 
-  /** Only a DOCTOR can validate — role must be checked by the caller */
-  async validateSettings(patientId: number, doctorUserId: number) {
-    const settings = await prisma.insulinTherapySettings.findUnique({
-      where: { patientId },
-    })
-
-    if (!settings) throw new Error("No insulin therapy settings found")
-
-    const updated = await prisma.insulinTherapySettings.update({
-      where: { patientId },
-      data: { lastModified: new Date() },
-    })
-
-    await auditService.log({
-      userId: doctorUserId,
-      action: "UPDATE",
-      resource: "INSULIN_THERAPY",
-      resourceId: String(settings.id),
-      metadata: { action: "validate" },
-    })
-
-    return updated
+  /**
+   * Validate insulin therapy settings — only a DOCTOR can validate.
+   * Role must be checked by the caller.
+   * TODO(Phase 4 — US-400): implement full validation with isActive flag
+   * when InsulinTherapySettings gets validatedById/validatedAt fields.
+   */
+  async validateSettings(_patientId: number, _doctorUserId: number): Promise<never> {
+    throw new Error(
+      "Not implemented — insulin therapy validation requires Phase 4 (US-400). " +
+      "The schema needs validatedById/validatedAt fields on InsulinTherapySettings."
+    )
   },
 }
 
@@ -187,6 +183,12 @@ function findSlotForHour<T extends { startHour: number; endHour: number }>(
   })
 }
 
-function round2(n: number): number {
+/** Round to 0.1U (spec: arrondi a 0.1U) */
+function roundToTenths(n: number): number {
+  return Math.round(n * 10) / 10
+}
+
+/** Round to 0.01 for intermediate values */
+function roundToHundredths(n: number): number {
   return Math.round(n * 100) / 100
 }

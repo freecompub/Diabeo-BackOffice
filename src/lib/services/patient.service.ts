@@ -17,15 +17,24 @@ interface CreatePatientInput {
   userId: number
 }
 
+/** Encrypt a string field to base64 for storage in String columns */
+function encryptField(value: string): string {
+  return Buffer.from(encrypt(value)).toString("base64")
+}
+
+/** Decrypt a base64-encoded encrypted field */
+function decryptField(value: string): string {
+  return decrypt(new Uint8Array(Buffer.from(value, "base64")))
+}
+
 export const patientService = {
   async create(input: CreatePatientInput, auditUserId: number) {
     return prisma.$transaction(async (tx) => {
-      // Encrypt personal data into user record fields
-      const user = await tx.user.update({
+      await tx.user.update({
         where: { id: input.userId },
         data: {
-          firstname: encrypt(input.personalData.firstName).toString(),
-          lastname: encrypt(input.personalData.lastName).toString(),
+          firstname: encryptField(input.personalData.firstName),
+          lastname: encryptField(input.personalData.lastName),
         },
       })
 
@@ -49,7 +58,7 @@ export const patientService = {
 
   async getById(id: number, auditUserId: number) {
     const patient = await prisma.patient.findFirst({
-      where: { id, deletedAt: null },
+      where: { id },
       include: {
         user: { select: { id: true, firstname: true, lastname: true, email: true, sex: true, birthday: true } },
         medicalData: true,
@@ -67,13 +76,22 @@ export const patientService = {
       resourceId: String(patient.id),
     })
 
-    return patient
+    // Decrypt PII fields if they are encrypted (base64-encoded)
+    const decryptedUser = {
+      ...patient.user,
+      firstname: patient.user.firstname ? safeDecrypt(patient.user.firstname) : null,
+      lastname: patient.user.lastname ? safeDecrypt(patient.user.lastname) : null,
+    }
+
+    return { ...patient, user: decryptedUser }
   },
 
   async listByDoctor(doctorUserId: number, auditUserId: number) {
-    // Find patients where the doctor is the referent
+    // Find patients where the doctor's HealthcareMember is the referent
     const referents = await prisma.patientReferent.findMany({
-      where: { pro: { service: { members: { some: { id: doctorUserId } } } } },
+      where: {
+        pro: { userId: doctorUserId },
+      },
       include: {
         patient: {
           include: {
@@ -91,14 +109,18 @@ export const patientService = {
       metadata: { action: "list", count: referents.length },
     })
 
-    return referents
-      .map((r) => r.patient)
-      .filter((p) => p.deletedAt === null)
+    return referents.map((r) => r.patient)
   },
 
   /** Soft delete — anonymise les donnees (RGPD) */
   async delete(id: number, auditUserId: number) {
     return prisma.$transaction(async (tx) => {
+      // Guard: check not already deleted
+      const existing = await tx.patient.findUnique({ where: { id } })
+      if (!existing || existing.deletedAt) {
+        throw new Error("Patient not found or already deleted")
+      }
+
       const patient = await tx.patient.update({
         where: { id },
         data: { deletedAt: new Date() },
@@ -111,6 +133,7 @@ export const patientService = {
           firstname: "SUPPRIME",
           lastname: "SUPPRIME",
           email: `deleted-${patient.userId}@anonymized.local`,
+          emailHmac: `deleted-${patient.userId}`,
           phone: null,
           address1: null,
           address2: null,
@@ -131,4 +154,13 @@ export const patientService = {
       return { id: patient.id, deletedAt: patient.deletedAt }
     })
   },
+}
+
+/** Try to decrypt, return raw value if decryption fails (e.g. seed plaintext data) */
+function safeDecrypt(value: string): string {
+  try {
+    return decryptField(value)
+  } catch {
+    return value
+  }
 }

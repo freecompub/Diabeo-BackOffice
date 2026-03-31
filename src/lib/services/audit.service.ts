@@ -38,7 +38,7 @@ export interface AuditLogEntry {
   newValue?: Prisma.InputJsonValue
   ipAddress?: string
   userAgent?: string
-  metadata?: Record<string, unknown>
+  metadata?: Prisma.InputJsonValue
 }
 
 function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateInput {
@@ -51,7 +51,7 @@ function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateIn
     newValue: entry.newValue ?? Prisma.JsonNull,
     ipAddress: entry.ipAddress ?? null,
     userAgent: entry.userAgent ?? null,
-    metadata: (entry.metadata as Prisma.InputJsonValue) ?? {},
+    metadata: entry.metadata ?? {},
   }
 }
 
@@ -69,6 +69,8 @@ export function extractRequestContext(req: Request): {
   return { ipAddress, userAgent }
 }
 
+const MAX_QUERY_LIMIT = 500
+
 export const auditService = {
   async log(entry: AuditLogEntry) {
     return prisma.auditLog.create({
@@ -83,10 +85,11 @@ export const auditService = {
     })
   },
 
-  async getByResource(resource: AuditResource, resourceId: string) {
+  async getByResource(resource: AuditResource, resourceId: string, limit = 50) {
     return prisma.auditLog.findMany({
       where: { resource, resourceId },
       orderBy: { createdAt: "desc" },
+      take: Math.min(limit, MAX_QUERY_LIMIT),
     })
   },
 
@@ -94,7 +97,7 @@ export const auditService = {
     return prisma.auditLog.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      take: limit,
+      take: Math.min(limit, MAX_QUERY_LIMIT),
     })
   },
 
@@ -112,7 +115,7 @@ export const auditService = {
     const limit = Math.min(filters.limit ?? 50, 200)
     const skip = (page - 1) * limit
 
-    const where: Record<string, unknown> = {}
+    const where: Prisma.AuditLogWhereInput = {}
     if (filters.userId) where.userId = filters.userId
     if (filters.resource) where.resource = filters.resource
     if (filters.action) where.action = filters.action
@@ -129,7 +132,11 @@ export const auditService = {
         orderBy: { createdAt: "desc" },
         skip,
         take: limit,
-        include: { user: { select: { id: true, email: true, firstname: true, lastname: true, role: true } } },
+        include: {
+          user: {
+            select: { id: true, emailHmac: true, firstname: true, lastname: true, role: true },
+          },
+        },
       }),
       prisma.auditLog.count({ where }),
     ])

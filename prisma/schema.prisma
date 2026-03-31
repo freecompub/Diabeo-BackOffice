@@ -8,6 +8,8 @@ datasource db {
   extensions = [pgcrypto]
 }
 
+// NOTE: La connection URL est configuree dans prisma/prisma.config.ts (Prisma 7+)
+
 // ═══════════════════════════════════════════════════════════════
 // ENUMS
 // ═══════════════════════════════════════════════════════════════
@@ -144,8 +146,16 @@ enum ScheduleType {
 enum IosInterruptionLevel {
   passive
   active
-  time_sensitive @map("time-sensitive")
+  time_sensitive
   critical
+}
+
+enum DiabetesEventType {
+  glycemia
+  insulinMeal
+  physicalActivity
+  context
+  occasional
 }
 
 enum AndroidPriority {
@@ -159,7 +169,8 @@ enum AndroidPriority {
 
 model User {
   id                       Int       @id @default(autoincrement())
-  email                    String    @unique // chiffre AES-256-GCM
+  email                    String    // chiffre AES-256-GCM en production
+  emailHmac                String    @unique @map("email_hmac") // HMAC-SHA256 pour lookup unique
   passwordHash             String    @map("password_hash")
   title                    String?   // 'M.' | 'Mme' | 'Dr' | 'Prof'
   firstname                String?   // chiffre
@@ -220,7 +231,6 @@ model User {
   auditLogs            AuditLog[]
   reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
 
-  @@index([email])
   @@index([createdAt])
   @@map("users")
 }
@@ -324,6 +334,7 @@ model UserDayMoment {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@unique([userId, type])
   @@map("user_day_moments")
 }
 
@@ -651,8 +662,8 @@ model BasalConfiguration {
 model PumpBasalSlot {
   id              String   @id @default(uuid())
   basalConfigId   Int      @map("basal_config_id")
-  startTime       DateTime @map("start_time") @db.Timestamptz()
-  endTime         DateTime @map("end_time") @db.Timestamptz()
+  startTime       DateTime @map("start_time") @db.Time()
+  endTime         DateTime @map("end_time") @db.Time()
   rate            Decimal  @db.Decimal(5, 3) // U/h
   durationHours   Decimal? @map("duration_hours") @db.Decimal(5, 2)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -750,6 +761,8 @@ model GlycemiaEntry {
   date            DateTime @db.Date
   time            DateTime? @db.Time()
   isProfessional  Boolean  @default(false) @map("is_professional")
+  glycemiaGl      Decimal? @map("glycemia_gl") @db.Decimal(6, 4) // g/L
+  glycemiaMgdl    Decimal? @map("glycemia_mgdl") @db.Decimal(6, 2) // mg/dL
   weight          Decimal? @db.Decimal(5, 2)
   hba1c           Decimal? @db.Decimal(5, 2)
   ketones         Decimal? @db.Decimal(5, 2)
@@ -767,7 +780,7 @@ model GlycemiaEntry {
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
-  @@index([patientId, date])
+  @@index([patientId, date, time])
   @@map("glycemia_entries")
 }
 
@@ -775,7 +788,7 @@ model DiabetesEvent {
   id                String   @id @default(uuid())
   patientId         Int      @map("patient_id")
   eventDate         DateTime @map("event_date") @db.Timestamptz()
-  eventTypes        String[] @map("event_types") // glycemia, insulinMeal, physicalActivity, context, occasional
+  eventTypes        DiabetesEventType[] @map("event_types")
   glycemiaValue     Decimal? @map("glycemia_value") @db.Decimal(6, 2)
   carbohydrates     Decimal? @db.Decimal(6, 2)
   bolusDose         Decimal? @map("bolus_dose") @db.Decimal(5, 2)
@@ -854,6 +867,7 @@ model AverageData {
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
+  @@unique([patientId, periodType, mealType])
   @@map("average_data")
 }
 
@@ -910,11 +924,13 @@ model HealthcareService {
   patientServices PatientService[]
   referents       PatientReferent[]
 
+  @@unique([name, establishment])
   @@map("healthcare_services")
 }
 
 model HealthcareMember {
   id        Int    @id @default(autoincrement())
+  userId    Int?   @unique @map("user_id") // lien vers User si le membre est aussi utilisateur du backoffice
   name      String @db.VarChar(255)
   serviceId Int?   @map("service_id")
 
@@ -923,6 +939,7 @@ model HealthcareMember {
   referents       PatientReferent[]
   documents       MedicalDocument[]
 
+  @@unique([name, serviceId])
   @@map("healthcare_members")
 }
 
@@ -1191,7 +1208,7 @@ model AuditLog {
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([resource, resourceId, createdAt])
