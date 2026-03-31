@@ -1,190 +1,192 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
-import type { Prisma } from "@prisma/client"
+import type { InsulinDeliveryMethod } from "@prisma/client"
 
-interface HourlyValue {
-  hour: number
-  value: number
-}
-
-interface GlucoseTarget {
-  hour: number
-  min: number
-  max: number
-}
-
-interface CreateInsulinConfigInput {
-  patientId: string
-  sensitivityRatios: HourlyValue[]
-  carbRatios: HourlyValue[]
-  basalRates: HourlyValue[]
-  targetGlucose: GlucoseTarget[]
-  maxBolus?: number
-}
-
-/** Bornes cliniques de sécurité */
+/** Clinical safety bounds */
 const CLINICAL_BOUNDS = {
-  ISF_MIN: 10,
-  ISF_MAX: 100,
-  ICR_MIN: 3,
-  ICR_MAX: 30,
-  BASAL_MIN: 0.05,
-  BASAL_MAX: 5.0,
-  TARGET_MIN: 60,
-  TARGET_MAX: 250,
-  DEFAULT_MAX_BOLUS: 25,
+  ISF_GL_MIN: 0.20,    // g/L/U
+  ISF_GL_MAX: 1.00,    // g/L/U
+  ISF_MGDL_MIN: 20,    // mg/dL/U
+  ISF_MGDL_MAX: 100,   // mg/dL/U
+  ICR_MIN: 5.0,        // g/U
+  ICR_MAX: 20.0,       // g/U
+  BASAL_MIN: 0.05,     // U/h
+  BASAL_MAX: 10.0,     // U/h
+  TARGET_MIN_MGDL: 60,
+  TARGET_MAX_MGDL: 250,
+  MAX_SINGLE_BOLUS: 25.0, // U
+  INSULIN_ACTION_MIN: 3.5,
+  INSULIN_ACTION_MAX: 5.0,
+  PUMP_BASAL_INCREMENT: 0.05, // U/h
 } as const
 
-/** Sélectionne le ratio applicable pour une heure donnée */
-function getRatioForHour(ratios: HourlyValue[], hour: number): number {
-  if (ratios.length === 0) {
-    throw new Error("Ratio array must not be empty")
-  }
-  const sorted = [...ratios].sort((a, b) => b.hour - a.hour)
-  const match = sorted.find((r) => r.hour <= hour)
-  return match?.value ?? sorted[sorted.length - 1].value
+interface BolusInput {
+  currentGlucoseGl: number   // g/L
+  carbsGrams: number
+  patientId: number
 }
 
-function getTargetForHour(targets: GlucoseTarget[], hour: number): GlucoseTarget {
-  if (targets.length === 0) {
-    throw new Error("Target glucose array must not be empty")
-  }
-  const sorted = [...targets].sort((a, b) => b.hour - a.hour)
-  const match = sorted.find((t) => t.hour <= hour)
-  return match ?? sorted[sorted.length - 1]
-}
-
-/** Valide les bornes cliniques d'une config insuline */
-function validateClinicalBounds(input: CreateInsulinConfigInput): void {
-  for (const r of input.sensitivityRatios) {
-    if (r.value < CLINICAL_BOUNDS.ISF_MIN || r.value > CLINICAL_BOUNDS.ISF_MAX) {
-      throw new Error(
-        `ISF ${r.value} at hour ${r.hour} is outside clinical bounds [${CLINICAL_BOUNDS.ISF_MIN}-${CLINICAL_BOUNDS.ISF_MAX}]`
-      )
-    }
-  }
-  for (const r of input.carbRatios) {
-    if (r.value < CLINICAL_BOUNDS.ICR_MIN || r.value > CLINICAL_BOUNDS.ICR_MAX) {
-      throw new Error(
-        `ICR ${r.value} at hour ${r.hour} is outside clinical bounds [${CLINICAL_BOUNDS.ICR_MIN}-${CLINICAL_BOUNDS.ICR_MAX}]`
-      )
-    }
-  }
-  for (const r of input.basalRates) {
-    if (r.value < CLINICAL_BOUNDS.BASAL_MIN || r.value > CLINICAL_BOUNDS.BASAL_MAX) {
-      throw new Error(
-        `Basal rate ${r.value} at hour ${r.hour} is outside clinical bounds [${CLINICAL_BOUNDS.BASAL_MIN}-${CLINICAL_BOUNDS.BASAL_MAX}]`
-      )
-    }
-  }
-  for (const t of input.targetGlucose) {
-    if (t.min < CLINICAL_BOUNDS.TARGET_MIN) {
-      throw new Error(`Target min ${t.min} at hour ${t.hour} is below ${CLINICAL_BOUNDS.TARGET_MIN} mg/dL`)
-    }
-    if (t.max > CLINICAL_BOUNDS.TARGET_MAX) {
-      throw new Error(`Target max ${t.max} at hour ${t.hour} is above ${CLINICAL_BOUNDS.TARGET_MAX} mg/dL`)
-    }
-    if (t.min >= t.max) {
-      throw new Error(`Target min (${t.min}) must be less than max (${t.max}) at hour ${t.hour}`)
-    }
-  }
+interface BolusResult {
+  mealBolus: number
+  rawCorrectionDose: number
+  iobAdjustment: number
+  correctionDose: number
+  recommendedDose: number
+  wasCapped: boolean
+  warnings: string[]
+  deliveryMethod: string
 }
 
 export const insulinService = {
-  async createConfig(input: CreateInsulinConfigInput, userId: string) {
-    validateClinicalBounds(input)
-
-    return prisma.$transaction(async (tx) => {
-      const config = await tx.insulinConfig.create({
-        data: {
-          patientId: input.patientId,
-          createdById: userId,
-          sensitivityRatios: input.sensitivityRatios as unknown as Prisma.JsonArray,
-          carbRatios: input.carbRatios as unknown as Prisma.JsonArray,
-          basalRates: input.basalRates as unknown as Prisma.JsonArray,
-          targetGlucose: input.targetGlucose as unknown as Prisma.JsonArray,
-          maxBolus: input.maxBolus ?? CLINICAL_BOUNDS.DEFAULT_MAX_BOLUS,
-          isActive: false,
-        },
-      })
-
-      await auditService.logWithTx(tx, {
-        userId,
-        action: "CREATE",
-        resource: "INSULIN_CONFIG",
-        resourceId: config.id,
-      })
-
-      return config
+  /** Retrieve full insulin therapy settings for a patient */
+  async getSettings(patientId: number) {
+    return prisma.insulinTherapySettings.findUnique({
+      where: { patientId },
+      include: {
+        glucoseTargets: { where: { isActive: true } },
+        iobSettings: true,
+        extendedBolusSettings: true,
+        sensitivityFactors: { orderBy: { startHour: "asc" } },
+        carbRatios: { orderBy: { startHour: "asc" } },
+        basalConfiguration: { include: { pumpSlots: { orderBy: { startTime: "asc" } } } },
+      },
     })
   },
 
-  /** Seul un DOCTOR peut valider une config — le rôle doit être vérifié par l'appelant */
-  async validateConfig(configId: string, doctorId: string) {
-    return prisma.$transaction(async (tx) => {
-      const config = await tx.insulinConfig.findUniqueOrThrow({
-        where: { id: configId },
-      })
+  /**
+   * Calculate bolus — returns a suggestion, never a prescription.
+   * Logs the calculation for medical traceability.
+   */
+  async calculateBolus(input: BolusInput, auditUserId: number): Promise<BolusResult> {
+    const settings = await this.getSettings(input.patientId)
+    if (!settings) throw new Error("No insulin therapy settings found for patient")
 
-      // Désactiver toutes les configs actives du patient
-      await tx.insulinConfig.updateMany({
-        where: { patientId: config.patientId, isActive: true },
-        data: { isActive: false },
-      })
+    const hour = new Date().getHours()
 
-      const validated = await tx.insulinConfig.update({
-        where: { id: configId },
-        data: {
-          isActive: true,
-          validatedById: doctorId,
-          validatedAt: new Date(),
-        },
-      })
+    // Find applicable ISF for current hour
+    const isf = findSlotForHour(settings.sensitivityFactors, hour)
+    if (!isf) throw new Error("No ISF slot found for current hour")
 
-      await auditService.logWithTx(tx, {
-        userId: doctorId,
-        action: "UPDATE",
-        resource: "INSULIN_CONFIG",
-        resourceId: configId,
-        metadata: { action: "validate" },
-      })
+    // Find applicable ICR for current hour
+    const icr = findSlotForHour(settings.carbRatios, hour)
+    if (!icr) throw new Error("No ICR slot found for current hour")
 
-      return validated
-    })
-  },
+    // Active glucose target
+    const target = settings.glucoseTargets[0]
+    if (!target) throw new Error("No active glucose target found")
 
-  /** Calcul du bolus — retourne une suggestion, jamais une prescription */
-  calculateBolus(
-    carbsGrams: number,
-    currentGlucose: number,
-    config: {
-      carbRatios: HourlyValue[]
-      sensitivityRatios: HourlyValue[]
-      targetGlucose: GlucoseTarget[]
-      maxBolus?: number
-    },
-    hour: number
-  ) {
-    const carbRatio = getRatioForHour(config.carbRatios, hour)
-    const sensitivityRatio = getRatioForHour(config.sensitivityRatios, hour)
-    const target = getTargetForHour(config.targetGlucose, hour)
+    const isfGl = Number(isf.sensitivityFactorGl)
+    const icrValue = Number(icr.gramsPerUnit)
+    const targetMgdl = Number(target.targetGlucose)
+    const currentMgdl = input.currentGlucoseGl * 100 // g/L -> mg/dL
 
-    if (carbRatio <= 0 || sensitivityRatio <= 0) {
-      throw new Error("carbRatio and sensitivityRatio must be positive non-zero values")
+    // Meal bolus
+    const mealBolus = input.carbsGrams / icrValue
+
+    // Correction dose
+    const rawCorrectionDose = (currentMgdl - targetMgdl) / Number(isf.sensitivityFactorMgdl)
+
+    // IOB adjustment
+    let iobAdjustment = 0
+    const iob = settings.iobSettings
+    if (iob?.considerIob) {
+      // IOB value would come from recent bolus history — placeholder for now
+      iobAdjustment = 0
     }
 
-    const targetMid = (target.min + target.max) / 2
-    const mealBolus = carbsGrams / carbRatio
-    const correctionBolus = Math.max(
-      0,
-      (currentGlucose - targetMid) / sensitivityRatio
-    )
+    const correctionDose = Math.max(0, rawCorrectionDose - iobAdjustment)
+    const rawTotal = mealBolus + correctionDose
+    const recommendedDose = Math.round(Math.min(rawTotal, CLINICAL_BOUNDS.MAX_SINGLE_BOLUS) * 10) / 10
+    const wasCapped = rawTotal > CLINICAL_BOUNDS.MAX_SINGLE_BOLUS
 
-    const rawTotal = mealBolus + correctionBolus
-    const maxBolus = config.maxBolus ?? CLINICAL_BOUNDS.DEFAULT_MAX_BOLUS
-    const total = Math.round(Math.min(rawTotal, maxBolus) * 10) / 10
-    const capped = rawTotal > maxBolus
+    // Warnings
+    const warnings: string[] = []
+    if (input.currentGlucoseGl < 0.54) warnings.push("severeHypoglycemia")
+    else if (input.currentGlucoseGl < 0.70) warnings.push("hypoglycemia")
+    if (input.currentGlucoseGl > 2.50) warnings.push("severeHyperglycemia")
+    if (input.currentGlucoseGl > 4.00) warnings.push("criticalHighGlucose")
+    if (wasCapped) warnings.push("exceedsMaximumBolus")
 
-    return { mealBolus, correctionBolus, total, capped, maxBolus }
+    // Log the calculation for medical traceability
+    await prisma.bolusCalculationLog.create({
+      data: {
+        patientId: input.patientId,
+        inputGlucoseGl: input.currentGlucoseGl,
+        inputCarbsGrams: input.carbsGrams,
+        targetGlucoseMgdl: targetMgdl,
+        isfUsedGl: isfGl,
+        icrUsed: icrValue,
+        mealBolus: round2(mealBolus),
+        rawCorrectionDose: round2(rawCorrectionDose),
+        iobValue: 0,
+        iobAdjustment: round2(iobAdjustment),
+        correctionDose: round2(correctionDose),
+        recommendedDose,
+        wasCapped,
+        warnings,
+        deliveryMethod: settings.deliveryMethod,
+      },
+    })
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "BOLUS_CALCULATED",
+      resource: "BOLUS_LOG",
+      resourceId: String(input.patientId),
+      metadata: { recommendedDose, warnings },
+    })
+
+    return {
+      mealBolus: round2(mealBolus),
+      rawCorrectionDose: round2(rawCorrectionDose),
+      iobAdjustment: round2(iobAdjustment),
+      correctionDose: round2(correctionDose),
+      recommendedDose,
+      wasCapped,
+      warnings,
+      deliveryMethod: settings.deliveryMethod,
+    }
   },
+
+  /** Only a DOCTOR can validate — role must be checked by the caller */
+  async validateSettings(patientId: number, doctorUserId: number) {
+    const settings = await prisma.insulinTherapySettings.findUnique({
+      where: { patientId },
+    })
+
+    if (!settings) throw new Error("No insulin therapy settings found")
+
+    const updated = await prisma.insulinTherapySettings.update({
+      where: { patientId },
+      data: { lastModified: new Date() },
+    })
+
+    await auditService.log({
+      userId: doctorUserId,
+      action: "UPDATE",
+      resource: "INSULIN_THERAPY",
+      resourceId: String(settings.id),
+      metadata: { action: "validate" },
+    })
+
+    return updated
+  },
+}
+
+/** Find the time slot applicable for a given hour (supports midnight crossing) */
+function findSlotForHour<T extends { startHour: number; endHour: number }>(
+  slots: T[],
+  hour: number,
+): T | undefined {
+  return slots.find((s) => {
+    if (s.startHour <= s.endHour) {
+      return hour >= s.startHour && hour < s.endHour
+    }
+    // Midnight crossing (e.g., 22h -> 6h)
+    return hour >= s.startHour || hour < s.endHour
+  })
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100
 }

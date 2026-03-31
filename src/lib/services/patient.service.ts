@@ -1,8 +1,7 @@
-import { randomBytes } from "crypto"
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { auditService } from "./audit.service"
-import type { DiabetesType } from "@prisma/client"
+import type { Pathology } from "@prisma/client"
 
 interface PersonalData {
   firstName: string
@@ -13,114 +12,123 @@ interface PersonalData {
 }
 
 interface CreatePatientInput {
-  diabetesType: DiabetesType
+  pathology: Pathology
   personalData: PersonalData
-  doctorId: string
-}
-
-function generatePseudonymId(): string {
-  const year = new Date().getFullYear()
-  const random = randomBytes(4).toString("hex").toUpperCase()
-  return `PAT-${year}-${random}`
+  userId: number
 }
 
 export const patientService = {
-  async create(input: CreatePatientInput, userId: string) {
-    const encryptedData = encrypt(JSON.stringify(input.personalData))
-
+  async create(input: CreatePatientInput, auditUserId: number) {
     return prisma.$transaction(async (tx) => {
+      // Encrypt personal data into user record fields
+      const user = await tx.user.update({
+        where: { id: input.userId },
+        data: {
+          firstname: encrypt(input.personalData.firstName).toString(),
+          lastname: encrypt(input.personalData.lastName).toString(),
+        },
+      })
+
       const patient = await tx.patient.create({
         data: {
-          pseudonymId: generatePseudonymId(),
-          encryptedData,
-          diabetesType: input.diabetesType,
-          doctorId: input.doctorId,
+          userId: input.userId,
+          pathology: input.pathology,
         },
       })
 
       await auditService.logWithTx(tx, {
-        userId,
+        userId: auditUserId,
         action: "CREATE",
         resource: "PATIENT",
-        resourceId: patient.id,
+        resourceId: String(patient.id),
       })
 
-      return { id: patient.id, pseudonymId: patient.pseudonymId, diabetesType: patient.diabetesType }
+      return { id: patient.id, pathology: patient.pathology }
     })
   },
 
-  async getById(id: string, userId: string) {
+  async getById(id: number, auditUserId: number) {
     const patient = await prisma.patient.findFirst({
       where: { id, deletedAt: null },
+      include: {
+        user: { select: { id: true, firstname: true, lastname: true, email: true, sex: true, birthday: true } },
+        medicalData: true,
+        cgmObjectives: true,
+        annexObjectives: true,
+      },
     })
 
     if (!patient) return null
 
     await auditService.log({
-      userId,
+      userId: auditUserId,
       action: "READ",
       resource: "PATIENT",
-      resourceId: patient.id,
+      resourceId: String(patient.id),
     })
 
-    const personalData: PersonalData = JSON.parse(
-      decrypt(patient.encryptedData)
-    )
-
-    const { encryptedData: _, ...safe } = patient
-    return { ...safe, personalData }
+    return patient
   },
 
-  async list(doctorId: string, userId: string) {
-    const patients = await prisma.patient.findMany({
-      where: { doctorId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
+  async listByDoctor(doctorUserId: number, auditUserId: number) {
+    // Find patients where the doctor is the referent
+    const referents = await prisma.patientReferent.findMany({
+      where: { pro: { service: { members: { some: { id: doctorUserId } } } } },
+      include: {
+        patient: {
+          include: {
+            user: { select: { id: true, firstname: true, lastname: true, email: true } },
+          },
+        },
+      },
     })
 
     await auditService.log({
-      userId,
+      userId: auditUserId,
       action: "READ",
       resource: "PATIENT",
-      resourceId: `doctor:${doctorId}`,
-      metadata: { action: "list", count: String(patients.length) },
+      resourceId: `doctor:${doctorUserId}`,
+      metadata: { action: "list", count: referents.length },
     })
 
-    return patients.map((patient) => {
-      const personalData: PersonalData = JSON.parse(
-        decrypt(patient.encryptedData)
-      )
-      const { encryptedData: _, ...safe } = patient
-      return { ...safe, personalData }
-    })
+    return referents
+      .map((r) => r.patient)
+      .filter((p) => p.deletedAt === null)
   },
 
-  /** Soft delete — anonymise les données chiffrées (RGPD) */
-  async delete(id: string, userId: string) {
-    const anonymized = encrypt(
-      JSON.stringify({
-        firstName: "SUPPRIMÉ",
-        lastName: "SUPPRIMÉ",
-        birthDate: "0000-00-00",
-      })
-    )
-
+  /** Soft delete — anonymise les donnees (RGPD) */
+  async delete(id: number, auditUserId: number) {
     return prisma.$transaction(async (tx) => {
       const patient = await tx.patient.update({
         where: { id },
+        data: { deletedAt: new Date() },
+      })
+
+      // Anonymize user data
+      await tx.user.update({
+        where: { id: patient.userId },
         data: {
-          encryptedData: anonymized,
-          deletedAt: new Date(),
+          firstname: "SUPPRIME",
+          lastname: "SUPPRIME",
+          email: `deleted-${patient.userId}@anonymized.local`,
+          phone: null,
+          address1: null,
+          address2: null,
+          cp: null,
+          city: null,
+          nirpp: null,
+          ins: null,
         },
       })
 
       await auditService.logWithTx(tx, {
-        userId,
+        userId: auditUserId,
         action: "DELETE",
         resource: "PATIENT",
-        resourceId: id,
+        resourceId: String(id),
       })
 
-      return { id: patient.id, pseudonymId: patient.pseudonymId, deletedAt: patient.deletedAt }
+      return { id: patient.id, deletedAt: patient.deletedAt }
     })
   },
 }

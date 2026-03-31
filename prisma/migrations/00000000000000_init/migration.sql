@@ -1,0 +1,6 @@
+-- This is a placeholder for the initial Prisma migration.
+-- Run `pnpm prisma migrate dev --name init` to generate the actual SQL
+-- from schema.prisma, then replace this file with the generated output.
+--
+-- The cgm_entries table will be replaced by the partitioned version
+-- in migration 20260331120000_cgm_partitioning.
