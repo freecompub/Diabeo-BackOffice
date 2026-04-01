@@ -49,11 +49,12 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set("x-user-role", String(payload.role))
 
     return NextResponse.next({ request: { headers: requestHeaders } })
-  } catch {
-    return NextResponse.json(
-      { error: "tokenExpired" },
-      { status: 401 },
-    )
+  } catch (error) {
+    const code = error instanceof Error && "code" in error
+      ? (error as Error & { code: string }).code
+      : undefined
+    const errorKey = code === "ERR_JWT_EXPIRED" ? "tokenExpired" : "tokenInvalid"
+    return NextResponse.json({ error: errorKey }, { status: 401 })
   }
 }
 
