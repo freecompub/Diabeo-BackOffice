@@ -535,6 +535,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - Créer des migrations destructives (DROP COLUMN, DROP TABLE) sans confirmation explicite
 - Désactiver les middlewares d'authentification pour "tester plus vite"
 - Exposer des stack traces ou messages d'erreur internes dans les API responses
+- Merger une pull request sans le consentement explicite de l'utilisateur
 
 ---
 
@@ -545,7 +546,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - [ ] `auditService.log()` appelé pour chaque accès à une donnée de santé
 - [ ] Validation Zod sur tous les inputs des API Routes
 - [ ] Pas de `console.log` avec des données patients
-- [ ] Tests unitaires pour la logique métier ajoutée
+- [ ] Tests unitaires pour la logique métier ajoutée (couverture ≥ 80%)
 - [ ] Types TypeScript stricts (pas de `any`)
 - [ ] Composants accessibles (ARIA labels)
 
