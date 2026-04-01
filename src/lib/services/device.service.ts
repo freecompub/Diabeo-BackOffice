@@ -62,16 +62,14 @@ export const deviceService = {
     })
   },
 
-  async getSyncStatus(userId: number, auditUserId?: number, ctx?: AuditContext) {
+  async getSyncStatus(userId: number, auditUserId: number, ctx?: AuditContext) {
     const syncs = await prisma.deviceDataSync.findMany({ where: { userId } })
 
-    if (auditUserId) {
-      await auditService.log({
-        userId: auditUserId, action: "READ", resource: "PATIENT",
-        resourceId: `${userId}:syncStatus`,
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
-      })
-    }
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "PATIENT",
+      resourceId: `${userId}:syncStatus`,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+    })
 
     return syncs
   },

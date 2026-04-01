@@ -26,7 +26,7 @@ describe("deviceService", () => {
       expect(result.id).toBe(4)
     })
 
-    it("allows creation at count 8 (under max)", async () => {
+    it("allows creation at count 8 (8 existing + 1 new = 9 = limit)", async () => {
       prismaMock.patientDevice.count.mockResolvedValue(8)
       const mockTx = {
         patientDevice: { create: vi.fn().mockResolvedValue({ id: 9, brand: "Libre" }) },
@@ -66,10 +66,13 @@ describe("deviceService", () => {
   })
 
   describe("getSyncStatus", () => {
-    it("returns sync entries", async () => {
+    it("returns sync entries and audits the access", async () => {
       prismaMock.deviceDataSync.findMany.mockResolvedValue([])
-      const result = await deviceService.getSyncStatus(1)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await deviceService.getSyncStatus(1, 1)
       expect(result).toEqual([])
+      expect(prismaMock.auditLog.create).toHaveBeenCalled()
     })
   })
 })

@@ -37,16 +37,26 @@ describe("pushService", () => {
   })
 
   describe("unregister", () => {
-    it("deactivates a registration", async () => {
-      prismaMock.pushDeviceRegistration.findFirst.mockResolvedValue({ id: "r1", userId: 1 } as any)
-      prismaMock.pushDeviceRegistration.update.mockResolvedValue({} as any)
+    it("deactivates a registration in transaction with audit", async () => {
+      const mockTx = {
+        pushDeviceRegistration: {
+          findFirst: vi.fn().mockResolvedValue({ id: "r1", userId: 1 }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await pushService.unregister("r1", 1)
       expect(result.unregistered).toBe(true)
+      expect(mockTx.auditLog.create).toHaveBeenCalled()
     })
 
     it("throws for non-existent registration", async () => {
-      prismaMock.pushDeviceRegistration.findFirst.mockResolvedValue(null)
+      const mockTx = {
+        pushDeviceRegistration: { findFirst: vi.fn().mockResolvedValue(null) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
       await expect(pushService.unregister("bad", 1)).rejects.toThrow("registrationNotFound")
     })
   })
@@ -76,38 +86,57 @@ describe("pushService", () => {
   })
 
   describe("pauseScheduled", () => {
-    it("pauses a scheduled notification", async () => {
-      prismaMock.pushScheduledNotification.findFirst.mockResolvedValue({ id: "s1", userId: 1 } as any)
-      prismaMock.pushScheduledNotification.update.mockResolvedValue({ id: "s1", isActive: false } as any)
-      prismaMock.auditLog.create.mockResolvedValue({} as any)
+    it("pauses a scheduled notification in transaction with audit", async () => {
+      const mockTx = {
+        pushScheduledNotification: {
+          findFirst: vi.fn().mockResolvedValue({ id: "s1", userId: 1, isActive: true }),
+          update: vi.fn().mockResolvedValue({ id: "s1", isActive: false }),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
       const result = await pushService.pauseScheduled("s1", 1)
       expect(result.isActive).toBe(false)
+      expect(mockTx.auditLog.create).toHaveBeenCalled()
     })
 
     it("throws for non-existent schedule", async () => {
-      prismaMock.pushScheduledNotification.findFirst.mockResolvedValue(null)
+      const mockTx = {
+        pushScheduledNotification: { findFirst: vi.fn().mockResolvedValue(null) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
       await expect(pushService.pauseScheduled("bad", 1)).rejects.toThrow("scheduleNotFound")
     })
   })
 
   describe("resumeScheduled", () => {
-    it("resumes a paused schedule", async () => {
-      prismaMock.pushScheduledNotification.findFirst.mockResolvedValue({ id: "s1", userId: 1, isActive: false } as any)
-      prismaMock.pushScheduledNotification.update.mockResolvedValue({ id: "s1", isActive: true } as any)
-      prismaMock.auditLog.create.mockResolvedValue({} as any)
+    it("resumes a paused schedule in transaction with audit", async () => {
+      const mockTx = {
+        pushScheduledNotification: {
+          findFirst: vi.fn().mockResolvedValue({ id: "s1", userId: 1, isActive: false }),
+          update: vi.fn().mockResolvedValue({ id: "s1", isActive: true }),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await pushService.resumeScheduled("s1", 1)
       expect(result.isActive).toBe(true)
+      expect(mockTx.auditLog.create).toHaveBeenCalled()
     })
 
     it("throws for non-existent schedule", async () => {
-      prismaMock.pushScheduledNotification.findFirst.mockResolvedValue(null)
+      const mockTx = {
+        pushScheduledNotification: { findFirst: vi.fn().mockResolvedValue(null) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
       await expect(pushService.resumeScheduled("bad", 1)).rejects.toThrow("scheduleNotFound")
     })
   })
 
   describe("createScheduled", () => {
-    it("creates scheduled notification with audit", async () => {
+    it("creates scheduled notification and audits", async () => {
       prismaMock.pushScheduledNotification.create.mockResolvedValue({
         id: "sched-1", userId: 1, templateId: "glycemia_reminder", scheduleType: "daily",
       } as any)
@@ -119,6 +148,7 @@ describe("pushService", () => {
         cronExpression: "0 8 * * *",
       })
       expect(result.id).toBe("sched-1")
+      expect(prismaMock.auditLog.create).toHaveBeenCalled()
     })
   })
 

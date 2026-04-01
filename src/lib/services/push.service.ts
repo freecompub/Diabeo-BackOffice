@@ -63,23 +63,25 @@ export const pushService = {
   },
 
   async unregister(registrationId: string, userId: number, ctx?: AuditContext) {
-    const reg = await prisma.pushDeviceRegistration.findFirst({
-      where: { id: registrationId, userId },
-    })
-    if (!reg) throw new Error("registrationNotFound")
+    return prisma.$transaction(async (tx) => {
+      const reg = await tx.pushDeviceRegistration.findFirst({
+        where: { id: registrationId, userId },
+      })
+      if (!reg) throw new Error("registrationNotFound")
 
-    await prisma.pushDeviceRegistration.update({
-      where: { id: registrationId },
-      data: { isActive: false, unregisteredAt: new Date() },
-    })
+      await tx.pushDeviceRegistration.update({
+        where: { id: registrationId },
+        data: { isActive: false, unregisteredAt: new Date() },
+      })
 
-    await auditService.log({
-      userId, action: "DELETE", resource: "SESSION",
-      resourceId: `push-reg:${registrationId}`,
-      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
-    })
+      await auditService.logWithTx(tx, {
+        userId, action: "DELETE", resource: "SESSION",
+        resourceId: `push-reg:${registrationId}`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      })
 
-    return { unregistered: true }
+      return { unregistered: true }
+    })
   },
 
   async unregisterAll(userId: number, ctx?: AuditContext) {
@@ -148,32 +150,36 @@ export const pushService = {
   },
 
   async pauseScheduled(scheduleId: string, userId: number, ctx?: AuditContext) {
-    const sched = await prisma.pushScheduledNotification.findFirst({ where: { id: scheduleId, userId } })
-    if (!sched) throw new Error("scheduleNotFound")
+    return prisma.$transaction(async (tx) => {
+      const sched = await tx.pushScheduledNotification.findFirst({ where: { id: scheduleId, userId } })
+      if (!sched) throw new Error("scheduleNotFound")
 
-    const updated = await prisma.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: false } })
+      const updated = await tx.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: false } })
 
-    await auditService.log({
-      userId, action: "UPDATE", resource: "SESSION",
-      resourceId: `push-sched:${scheduleId}:pause`,
-      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      await auditService.logWithTx(tx, {
+        userId, action: "UPDATE", resource: "SESSION",
+        resourceId: `push-sched:${scheduleId}:pause`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      })
+
+      return updated
     })
-
-    return updated
   },
 
   async resumeScheduled(scheduleId: string, userId: number, ctx?: AuditContext) {
-    const sched = await prisma.pushScheduledNotification.findFirst({ where: { id: scheduleId, userId } })
-    if (!sched) throw new Error("scheduleNotFound")
+    return prisma.$transaction(async (tx) => {
+      const sched = await tx.pushScheduledNotification.findFirst({ where: { id: scheduleId, userId } })
+      if (!sched) throw new Error("scheduleNotFound")
 
-    const updated = await prisma.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: true } })
+      const updated = await tx.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: true } })
 
-    await auditService.log({
-      userId, action: "UPDATE", resource: "SESSION",
-      resourceId: `push-sched:${scheduleId}:resume`,
-      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      await auditService.logWithTx(tx, {
+        userId, action: "UPDATE", resource: "SESSION",
+        resourceId: `push-sched:${scheduleId}:resume`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      })
+
+      return updated
     })
-
-    return updated
   },
 }
