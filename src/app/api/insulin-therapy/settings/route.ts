@@ -27,6 +27,7 @@ export async function GET(req: NextRequest) {
 
     const ctx = extractRequestContext(req)
     const settings = await insulinTherapyService.getSettings(patientId, user.id, ctx)
+    if (!settings) return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
     return NextResponse.json(settings)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
