@@ -1,16 +1,16 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 
-/** Clinical safety bounds */
+/** Clinical safety bounds (validated by medical-domain-validator) */
 const CLINICAL_BOUNDS = {
-  ISF_GL_MIN: 0.20,    // g/L/U
+  ISF_GL_MIN: 0.10,    // g/L/U (widened for insulin-resistant T2D)
   ISF_GL_MAX: 1.00,    // g/L/U
-  ISF_MGDL_MIN: 20,    // mg/dL/U
+  ISF_MGDL_MIN: 10,    // mg/dL/U (widened for insulin-resistant T2D)
   ISF_MGDL_MAX: 100,   // mg/dL/U
-  ICR_MIN: 5.0,        // g/U
-  ICR_MAX: 20.0,       // g/U
+  ICR_MIN: 3.0,        // g/U (widened for pediatric + resistant)
+  ICR_MAX: 30.0,       // g/U (widened for insulin-sensitive T1D)
   BASAL_MIN: 0.05,     // U/h
-  BASAL_MAX: 10.0,     // U/h
+  BASAL_MAX: 5.0,      // U/h (lowered from 10 — 10 U/h = 240 U/day, dangerous)
   TARGET_MIN_MGDL: 60,
   TARGET_MAX_MGDL: 250,
   MAX_SINGLE_BOLUS: 25.0, // U
@@ -33,6 +33,7 @@ interface BolusResult {
   recommendedDose: number
   wasCapped: boolean
   warnings: string[]
+  requiresHypoTreatmentFirst: boolean
   deliveryMethod: string
 }
 
@@ -78,6 +79,10 @@ export const insulinService = {
     const targetMgdl = Number(target.targetGlucose)
     const currentMgdl = input.currentGlucoseGl * 100 // g/L -> mg/dL
 
+    // Division-by-zero safety guards
+    if (isfMgdl <= 0) throw new Error("ISF value is zero or negative — cannot calculate bolus")
+    if (icrValue <= 0) throw new Error("ICR value is zero or negative — cannot calculate bolus")
+
     // Meal bolus
     const mealBolus = input.carbsGrams / icrValue
 
@@ -93,12 +98,14 @@ export const insulinService = {
 
     const correctionDose = Math.max(0, rawCorrectionDose - iobAdjustment)
     const rawTotal = mealBolus + correctionDose
-    // Arrondi a 0.1U conformement a la spec
-    const recommendedDose = roundToTenths(Math.min(rawTotal, CLINICAL_BOUNDS.MAX_SINGLE_BOLUS))
+    // Device-aware rounding: 0.05 U for pump, 0.5 U for pen
+    const capped = Math.min(rawTotal, CLINICAL_BOUNDS.MAX_SINGLE_BOLUS)
+    const recommendedDose = roundForDevice(capped, settings.deliveryMethod)
     const wasCapped = rawTotal > CLINICAL_BOUNDS.MAX_SINGLE_BOLUS
 
-    // Warnings
+    // Warnings + hypo treatment flag
     const warnings: string[] = []
+    const requiresHypoTreatmentFirst = input.currentGlucoseGl < 0.70
     if (input.currentGlucoseGl < 0.54) warnings.push("severeHypoglycemia")
     else if (input.currentGlucoseGl < 0.70) warnings.push("hypoglycemia")
     if (input.currentGlucoseGl > 2.50) warnings.push("severeHyperglycemia")
@@ -151,6 +158,7 @@ export const insulinService = {
       recommendedDose,
       wasCapped,
       warnings,
+      requiresHypoTreatmentFirst,
       deliveryMethod: settings.deliveryMethod,
     }
   },
@@ -183,9 +191,10 @@ function findSlotForHour<T extends { startHour: number; endHour: number }>(
   })
 }
 
-/** Round to 0.1U (spec: arrondi a 0.1U) */
-function roundToTenths(n: number): number {
-  return Math.round(n * 10) / 10
+/** Device-aware rounding: 0.05 U for pump, 0.5 U for pen */
+function roundForDevice(dose: number, method: string): number {
+  if (method === "pump") return Math.round(dose * 20) / 20   // 0.05 U increments
+  return Math.round(dose * 2) / 2                             // 0.5 U increments (pen)
 }
 
 /** Round to 0.01 for intermediate values */

@@ -5,16 +5,16 @@ import type { InsulinDeliveryMethod, Prisma } from "@prisma/client"
 
 /** Clinical bounds for insulin therapy parameters */
 export const INSULIN_BOUNDS = {
-  ISF_GL_MIN: 0.20,
+  ISF_GL_MIN: 0.10,    // widened for insulin-resistant T2D
   ISF_GL_MAX: 1.00,
-  ISF_MGDL_MIN: 20,
+  ISF_MGDL_MIN: 10,    // widened for insulin-resistant T2D
   ISF_MGDL_MAX: 100,
-  ICR_MIN: 5.0,
-  ICR_MAX: 20.0,
+  ICR_MIN: 3.0,        // widened for pediatric + resistant
+  ICR_MAX: 30.0,       // widened for insulin-sensitive T1D
   BASAL_MIN: 0.05,
-  BASAL_MAX: 10.0,
-  ACTION_DURATION_MIN: 2.0,
-  ACTION_DURATION_MAX: 8.0,
+  BASAL_MAX: 5.0,      // lowered from 10 (10 U/h = 240 U/day, dangerous)
+  ACTION_DURATION_MIN: 3.5,
+  ACTION_DURATION_MAX: 5.0,
   MAX_SINGLE_BOLUS: 25.0,
 } as const
 
