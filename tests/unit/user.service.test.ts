@@ -67,7 +67,7 @@ describe("userService", () => {
         user: { update: vi.fn().mockResolvedValue({ id: 1, updatedAt: new Date() }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
-      prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await userService.updateProfile(1, { firstname: "Marie", city: "Paris" }, 1)
 
@@ -87,7 +87,7 @@ describe("userService", () => {
         user: { update: vi.fn().mockResolvedValue({}) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
-      prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       await userService.acceptTerms(1)
 
@@ -105,7 +105,7 @@ describe("userService", () => {
         user: { update: vi.fn().mockResolvedValue({}) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
-      prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       await userService.acceptDataPolicy(1)
 
@@ -136,7 +136,7 @@ describe("userService", () => {
         },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
-      prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await userService.updateDayMoments(1, [
         { type: "morning", startTime: "07:00", endTime: "12:00" },
