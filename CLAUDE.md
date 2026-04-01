@@ -536,6 +536,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - Désactiver les middlewares d'authentification pour "tester plus vite"
 - Exposer des stack traces ou messages d'erreur internes dans les API responses
 - Merger une pull request sans le consentement explicite de l'utilisateur
+- Merger une pull request si la CI (pipeline) a des erreurs
 
 ---
 
