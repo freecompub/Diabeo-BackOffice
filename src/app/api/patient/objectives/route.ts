@@ -4,7 +4,6 @@ import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { getOwnPatientId, canAccessPatient } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { objectivesService } from "@/lib/services/objectives.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
 
 /** GET /api/patient/objectives — read own objectives (all 3 types) */
 export async function GET(req: NextRequest) {

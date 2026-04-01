@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
-import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+import { encryptField } from "@/lib/crypto/fields"
 import { auditService, extractRequestContext } from "./audit.service"
 import type { Pathology, Prisma, PatientMedicalData } from "@prisma/client"
 
