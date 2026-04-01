@@ -411,3 +411,104 @@ describe("patientService.delete (soft delete)", () => {
     )
   })
 })
+
+describe("patientService.getByUserId", () => {
+  it("returns null when no patient for user", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null)
+    const result = await patientService.getByUserId(999, 1)
+    expect(result).toBeNull()
+  })
+})
+
+describe("patientService.updateProfile", () => {
+  it("throws for soft-deleted patient", async () => {
+    prismaMock.$transaction.mockImplementation(async (fn: any) => {
+      const txMock = {
+        patient: {
+          findFirst: vi.fn().mockResolvedValue(null),
+          update: vi.fn(),
+        },
+        auditLog: { create: vi.fn() },
+      }
+      return fn(txMock)
+    })
+
+    await expect(patientService.updateProfile(1, { pathology: "DT2" }, 1))
+      .rejects.toThrow("Patient not found or deleted")
+  })
+
+  it("updates pathology in transaction", async () => {
+    const mockTx = {
+      patient: {
+        findFirst: vi.fn().mockResolvedValue({ id: 1, deletedAt: null }),
+        update: vi.fn().mockResolvedValue({ id: 1, pathology: "DT2" }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    }
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(mockTx))
+
+    const result = await patientService.updateProfile(1, { pathology: "DT2" }, 1)
+    expect(result.pathology).toBe("DT2")
+  })
+})
+
+describe("patientService.getMedicalData", () => {
+  it("returns null when no medical data", async () => {
+    prismaMock.patientMedicalData.findUnique.mockResolvedValue(null)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const result = await patientService.getMedicalData(1, 1)
+    expect(result).toBeNull()
+  })
+
+  it("decrypts encrypted fields in medical data", async () => {
+    const { encrypt } = await import("@/lib/crypto/health-data")
+    const encHistory = Buffer.from(encrypt("Diabète depuis 2010")).toString("base64")
+
+    prismaMock.patientMedicalData.findUnique.mockResolvedValue({
+      id: 1,
+      patientId: 1,
+      historyMedical: encHistory,
+      historyChirurgical: null,
+      historyFamily: null,
+      historyAllergy: null,
+      historyVaccine: null,
+      historyLife: null,
+      diabetDiscovery: null,
+      dt1: true,
+      riskWeight: false,
+    } as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const result = await patientService.getMedicalData(1, 1)
+
+    expect(result).not.toBeNull()
+    expect(result!.historyMedical).toBe("Diabète depuis 2010")
+    expect(result!.dt1).toBe(true)
+  })
+})
+
+describe("patientService.updateMedicalData", () => {
+  it("encrypts fields and upserts in transaction", async () => {
+    const mockTx = {
+      patientMedicalData: {
+        upsert: vi.fn().mockResolvedValue({ patientId: 1 }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    }
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(mockTx))
+
+    const result = await patientService.updateMedicalData(
+      1,
+      { historyMedical: "Updated history", riskWeight: true },
+      1,
+    )
+
+    expect(result).toEqual({ patientId: 1, updated: true })
+    // Verify encrypted field is not plaintext
+    const upsertCall = mockTx.patientMedicalData.upsert.mock.calls[0][0]
+    expect(upsertCall.update.historyMedical).not.toBe("Updated history")
+    // Verify non-encrypted field is passed through
+    expect(upsertCall.update.riskWeight).toBe(true)
+  })
+})
