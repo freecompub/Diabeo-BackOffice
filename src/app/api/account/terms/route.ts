@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { userService } from "@/lib/services/user.service"
@@ -7,7 +7,7 @@ const termsSchema = z.object({
   accepted: z.literal(true),
 })
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
@@ -15,7 +15,7 @@ export async function PUT(req: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -26,7 +26,8 @@ export async function PUT(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/terms PUT]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/terms PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

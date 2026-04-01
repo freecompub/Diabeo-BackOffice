@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { compare } from "bcryptjs"
 import { prisma } from "@/lib/db/client"
@@ -11,14 +11,14 @@ const loginSchema = z.object({
   password: z.string().min(1),
 })
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const parsed = loginSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -37,17 +37,23 @@ export async function POST(req: Request) {
     }
 
     // Find user by emailHmac
-    const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
+    const user = await prisma.user.findUnique({
+      where: { emailHmac: emailHash },
+      select: {
+        id: true, passwordHash: true, role: true,
+        mfaEnabled: true,
+      },
+    })
 
     if (!user) {
       recordFailedAttempt(emailHash)
       await auditService.log({
-        userId: 0,
+        userId: 1,
         action: "UNAUTHORIZED",
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
-        metadata: { reason: "invalidCredentials", emailHmac: emailHash },
+        metadata: { reason: "invalidCredentials" },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
     }
@@ -66,6 +72,14 @@ export async function POST(req: Request) {
         metadata: { reason: "invalidCredentials" },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
+    }
+
+    // MFA check — block login if MFA is enabled until MFA flow is implemented
+    if (user.mfaEnabled) {
+      return NextResponse.json(
+        { error: "mfaRequired", message: "MFA verification required" },
+        { status: 403 },
+      )
     }
 
     // Success — clear rate limit, create session, sign JWT
@@ -91,11 +105,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       token,
-      userId: user.id,
       expiresAt: session.expires.toISOString(),
     })
   } catch (error) {
-    console.error("[auth/login]", error)
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[auth/login]", msg)
     return NextResponse.json({ error: "serverUnavailable" }, { status: 503 })
   }
 }

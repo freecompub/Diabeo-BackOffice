@@ -1,4 +1,9 @@
-/** Glucose conversion helpers — all data stored in g/L in database */
+/**
+ * Glucose conversion helpers — all data stored in g/L in database.
+ *
+ * Reference: 1 g/L = 100 mg/dL = 5.5506 mmol/L
+ * (Molar mass glucose = 180.156 g/mol → 1 g/L = 1000/180.156 ≈ 5.5506 mmol/L)
+ */
 export const GLUCOSE_CONVERSIONS = {
   "g/L": {
     from: (v: number) => v,
@@ -9,8 +14,8 @@ export const GLUCOSE_CONVERSIONS = {
     to: (v: number) => v * 100,
   },
   "mmol/L": {
-    from: (v: number) => v / 55.5,
-    to: (v: number) => v * 55.5,
+    from: (v: number) => v / 5.5506,
+    to: (v: number) => v * 5.5506,
   },
 } as const
 

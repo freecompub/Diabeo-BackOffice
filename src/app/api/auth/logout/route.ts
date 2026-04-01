@@ -1,17 +1,17 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import {
   extractBearerToken,
   verifyJwt,
   invalidateSession,
+  revokeSession,
 } from "@/lib/auth"
-import { revokeSession } from "@/middleware"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const token = extractBearerToken(req)
     if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 })
     }
 
     const payload = await verifyJwt(token)
@@ -31,6 +31,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true })
   } catch {
-    return NextResponse.json({ error: "Invalid token" }, { status: 401 })
+    return NextResponse.json({ error: "tokenExpired" }, { status: 401 })
   }
 }

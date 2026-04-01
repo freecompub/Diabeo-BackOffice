@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { auditService } from "./audit.service"
+import type { Prisma } from "@prisma/client"
 import type { AccountUser, UpdateAccountInput } from "@/types/user"
 import { ENCRYPTED_USER_FIELDS, type EncryptedUserField } from "@/types/user"
 
@@ -9,13 +10,12 @@ function encryptField(value: string): string {
   return Buffer.from(encrypt(value)).toString("base64")
 }
 
-/** Decrypt a base64-encoded encrypted field, return raw value on failure */
+/** Decrypt a base64-encoded encrypted field — never return ciphertext */
 function safeDecryptField(value: string | null): string | null {
   if (!value) return null
   try {
     return decrypt(new Uint8Array(Buffer.from(value, "base64")))
   } catch {
-    // Never return ciphertext — return null on decryption failure
     return null
   }
 }
@@ -44,7 +44,8 @@ export const userService = {
       title: user.title,
       firstname: safeDecryptField(user.firstname),
       lastname: safeDecryptField(user.lastname),
-      birthday: safeDecryptField(user.birthday as unknown as string | null),
+      // birthday is DateTime in schema — format as ISO date string
+      birthday: user.birthday ? user.birthday.toISOString().split("T")[0] : null,
       sex: user.sex,
       timezone: user.timezone,
       phone: safeDecryptField(user.phone),
@@ -68,69 +69,71 @@ export const userService = {
     userId: number,
     input: UpdateAccountInput,
     auditUserId: number,
-  ) {
-    // Encrypt fields that need encryption
-    const data: Record<string, unknown> = {}
+  ): Promise<{ id: number; updatedAt: string }> {
+    // Build typed update data — encrypt fields that need encryption
+    const data: Prisma.UserUpdateInput = {}
     for (const [key, value] of Object.entries(input)) {
       if (value === undefined) continue
-      if (isEncryptedField(key)) {
-        data[key] = encryptField(String(value))
+      if (key === "birthday") {
+        // birthday is DateTime in schema — parse the ISO string
+        data.birthday = new Date(value as string)
+      } else if (isEncryptedField(key)) {
+        ;(data as Record<string, unknown>)[key] = encryptField(String(value))
       } else {
-        data[key] = value
+        ;(data as Record<string, unknown>)[key] = value
       }
     }
 
-    // Check if profile is now complete
-    if (data.firstname && data.lastname) {
-      data.profileComplete = true
-    }
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: userId },
+        data,
+      })
 
-    const user = await prisma.user.update({
-      where: { id: userId },
-      data,
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "USER",
+        resourceId: String(userId),
+        metadata: { updatedFields: Object.keys(input) },
+      })
+
+      return { id: user.id, updatedAt: user.updatedAt.toISOString() }
     })
-
-    await auditService.log({
-      userId: auditUserId,
-      action: "UPDATE",
-      resource: "USER",
-      resourceId: String(userId),
-      metadata: { updatedFields: Object.keys(input) },
-    })
-
-    return { id: user.id, updatedAt: user.updatedAt.toISOString() }
   },
 
   async acceptTerms(userId: number) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { hasSignedTerms: true },
-    })
-
-    await auditService.log({
-      userId,
-      action: "UPDATE",
-      resource: "USER",
-      resourceId: String(userId),
-      metadata: { field: "hasSignedTerms", value: true },
+    return prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: { hasSignedTerms: true },
+      })
+      await auditService.logWithTx(tx, {
+        userId,
+        action: "UPDATE",
+        resource: "USER",
+        resourceId: String(userId),
+        metadata: { field: "hasSignedTerms", value: true },
+      })
     })
   },
 
   async acceptDataPolicy(userId: number) {
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        needDataPolicyUpdate: false,
-        dataPolicyUpdate: new Date(),
-      },
-    })
-
-    await auditService.log({
-      userId,
-      action: "UPDATE",
-      resource: "USER",
-      resourceId: String(userId),
-      metadata: { field: "dataPolicyUpdate" },
+    return prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          needDataPolicyUpdate: false,
+          dataPolicyUpdate: new Date(),
+        },
+      })
+      await auditService.logWithTx(tx, {
+        userId,
+        action: "UPDATE",
+        resource: "USER",
+        resourceId: String(userId),
+        metadata: { field: "dataPolicyUpdate" },
+      })
     })
   },
 

@@ -1,48 +1,52 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "@/lib/services/audit.service"
 
-const unitCodes = z.number().int().min(1).max(15)
-
 const updateUnitsSchema = z.object({
-  unitGlycemia: unitCodes.optional(),
-  unitWeight: unitCodes.optional(),
-  unitSize: unitCodes.optional(),
-  unitCarb: unitCodes.optional(),
-  unitHba1c: unitCodes.optional(),
-  unitCarbExchangeNb: unitCodes.optional(),
-  unitKetones: unitCodes.optional(),
-  unitBloodPressure: unitCodes.optional(),
+  unitGlycemia: z.union([z.literal(3), z.literal(4), z.literal(5)]).optional(),
+  unitWeight: z.union([z.literal(6), z.literal(7)]).optional(),
+  unitSize: z.union([z.literal(8), z.literal(9)]).optional(),
+  unitCarb: z.union([z.literal(1), z.literal(2)]).optional(),
+  unitHba1c: z.union([z.literal(10), z.literal(11)]).optional(),
+  unitCarbExchangeNb: z.literal(15).optional(),
+  unitKetones: z.union([z.literal(12), z.literal(13)]).optional(),
+  unitBloodPressure: z.literal(14).optional(),
 })
 
-export async function GET(req: Request) {
+const UNIT_DEFAULTS = {
+  unitGlycemia: 5,
+  unitWeight: 6,
+  unitSize: 8,
+  unitCarb: 2,
+  unitHba1c: 10,
+  unitCarbExchangeNb: 15,
+  unitKetones: 12,
+  unitBloodPressure: 14,
+} as const
+
+export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
 
-    let prefs = await prisma.userUnitPreferences.findUnique({
+    const prefs = await prisma.userUnitPreferences.findUnique({
       where: { userId: user.id },
     })
 
-    // Create defaults if not exists
-    if (!prefs) {
-      prefs = await prisma.userUnitPreferences.create({
-        data: { userId: user.id },
-      })
-    }
-
-    return NextResponse.json(prefs)
+    // Return defaults without persisting if no record exists (idempotent GET)
+    return NextResponse.json(prefs ?? { userId: user.id, ...UNIT_DEFAULTS })
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/units GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/units GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
@@ -50,7 +54,7 @@ export async function PUT(req: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -74,7 +78,8 @@ export async function PUT(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/units PUT]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/units PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

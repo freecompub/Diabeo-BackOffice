@@ -1,21 +1,22 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
+import { checkRateLimit, recordFailedAttempt } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 const resetSchema = z.object({
   email: z.string().email(),
 })
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const parsed = resetSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -24,12 +25,21 @@ export async function POST(req: Request) {
     const emailHash = hmacEmail(email)
     const ctx = extractRequestContext(req)
 
+    // Rate limit to prevent email flooding
+    const rateCheck = checkRateLimit(`reset:${emailHash}`)
+    if (rateCheck.blocked) {
+      return NextResponse.json(
+        { error: "tooManyAttempts", retryAfter: rateCheck.retryAfterSeconds },
+        { status: 429 },
+      )
+    }
+
+    recordFailedAttempt(`reset:${emailHash}`)
+
     const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
 
     if (user) {
       // TODO: Send reset email via email service
-      // For now, log the request and return success
-      // (always return success to prevent email enumeration)
       await auditService.log({
         userId: user.id,
         action: "UPDATE",
@@ -46,7 +56,8 @@ export async function POST(req: Request) {
       message: "If an account exists with this email, a reset link has been sent.",
     })
   } catch (error) {
-    console.error("[auth/reset-password]", error)
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[auth/reset-password]", msg)
     return NextResponse.json({ error: "serverUnavailable" }, { status: 503 })
   }
 }

@@ -81,7 +81,9 @@ export async function deleteUserAccount(
       await tx.glycemiaEntry.deleteMany({ where: { patientId } })
       await tx.diabetesEvent.deleteMany({ where: { patientId } })
       await tx.insulinFlowEntry.deleteMany({ where: { patientId } })
+      await tx.insulinFlowDeviceData.deleteMany({ where: { patientId } })
       await tx.pumpEvent.deleteMany({ where: { patientId } })
+      await tx.averageData.deleteMany({ where: { patientId } })
 
       // Insulin therapy settings cascade
       const settings = await tx.insulinTherapySettings.findUnique({
@@ -122,6 +124,12 @@ export async function deleteUserAccount(
         data: { deletedAt: new Date() },
       })
     }
+
+    // Nullify healthcare member link (userId is optional FK)
+    await tx.healthcareMember.updateMany({
+      where: { userId },
+      data: { userId: null },
+    })
 
     // Anonymize user — keep the row for audit log FK integrity
     await tx.user.update({

@@ -226,7 +226,7 @@ describe("Glucose Conversions", () => {
   })
 
   it("g/L → mmol/L conversion", () => {
-    expect(convertGlucoseFromGl(1.0, "mmol/L")).toBeCloseTo(55.5)
+    expect(convertGlucoseFromGl(1.0, "mmol/L")).toBeCloseTo(5.5506)
   })
 
   it("g/L identity", () => {

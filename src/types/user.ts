@@ -1,6 +1,10 @@
-import type { Sex, Language } from "@prisma/client"
+import type { Sex, Language, Role } from "@prisma/client"
 
-/** Fields encrypted with AES-256-GCM in the database */
+/**
+ * Fields encrypted with AES-256-GCM in the database.
+ * Note: birthday is DateTime in schema (not encrypted) — handled separately.
+ * Note: email is encrypted but NOT updatable (M9).
+ */
 export const ENCRYPTED_USER_FIELDS = [
   "email",
   "firstname",
@@ -13,7 +17,6 @@ export const ENCRYPTED_USER_FIELDS = [
   "address2",
   "cp",
   "city",
-  "birthday",
   "nirpp",
   "nirppPolicyholder",
   "ins",
@@ -49,7 +52,7 @@ export interface AccountUser {
   country: string | null
   pic: string | null
   language: Language | null
-  role: string
+  role: Role
   hasSignedTerms: boolean
   profileComplete: boolean
   needOnboarding: boolean
@@ -57,7 +60,7 @@ export interface AccountUser {
   createdAt: string
 }
 
-/** Fields allowed for update via PUT /api/account */
+/** Fields allowed for update via PUT /api/account (email NOT updatable) */
 export interface UpdateAccountInput {
   title?: string
   firstname?: string

@@ -83,14 +83,14 @@ describe("GET /api/admin/audit-logs", () => {
       const res = await GET(makeRequest())
       expect(res.status).toBe(401)
       const body = await res.json()
-      expect(body.error).toBe("Unauthorized")
+      expect(body.error).toBe("unauthorized")
     })
 
     it("returns 403 for non-ADMIN role", async () => {
       const res = await GET(makeRequest({}, doctor))
       expect(res.status).toBe(403)
       const body = await res.json()
-      expect(body.error).toBe("Forbidden")
+      expect(body.error).toBe("forbidden")
     })
   })
 
@@ -219,7 +219,7 @@ describe("GET /api/admin/audit-logs", () => {
 
       expect(res.status).toBe(500)
       const body = await res.json()
-      expect(body.error).toBe("Internal server error")
+      expect(body.error).toBe("serverError")
     })
   })
 })

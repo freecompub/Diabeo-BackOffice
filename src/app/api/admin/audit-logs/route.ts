@@ -70,7 +70,8 @@ export async function GET(req: NextRequest) {
       const authErr = error as Error & { status: number }
       return NextResponse.json({ error: error.message }, { status: authErr.status })
     }
-    console.error("[audit-logs GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[audit-logs GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
@@ -11,31 +11,35 @@ const updatePrivacySchema = z.object({
   gdprConsent: z.boolean().optional(),
 })
 
-export async function GET(req: Request) {
+const PRIVACY_DEFAULTS = {
+  shareWithResearchers: false,
+  shareWithProviders: true,
+  analyticsEnabled: true,
+  gdprConsent: false,
+  consentDate: null,
+} as const
+
+export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
 
-    let settings = await prisma.userPrivacySettings.findUnique({
+    const settings = await prisma.userPrivacySettings.findUnique({
       where: { userId: user.id },
     })
 
-    if (!settings) {
-      settings = await prisma.userPrivacySettings.create({
-        data: { userId: user.id },
-      })
-    }
-
-    return NextResponse.json(settings)
+    // Return defaults without persisting (idempotent GET)
+    return NextResponse.json(settings ?? { userId: user.id, ...PRIVACY_DEFAULTS })
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/privacy GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/privacy GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
@@ -43,7 +47,7 @@ export async function PUT(req: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -76,7 +80,8 @@ export async function PUT(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/privacy PUT]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/privacy PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

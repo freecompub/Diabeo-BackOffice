@@ -15,6 +15,9 @@ export {
   recordFailedAttempt,
   clearAttempts,
 } from "./rate-limit"
+export { revokeSession } from "./revocation"
+
+const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 
 export interface AuthUser {
   id: number
@@ -26,13 +29,18 @@ export function getAuthUser(req: Request): AuthUser | null {
   const userId = req.headers.get("x-user-id")
   const userRole = req.headers.get("x-user-role")
   if (!userId || !userRole) return null
-  return { id: Number(userId), role: userRole as Role }
+
+  const id = parseInt(userId, 10)
+  if (!Number.isInteger(id) || id <= 0) return null
+  if (!VALID_ROLES.has(userRole)) return null
+
+  return { id, role: userRole as Role }
 }
 
 export function requireAuth(req: Request): AuthUser {
   const user = getAuthUser(req)
   if (!user) {
-    throw new AuthError("Unauthorized", 401)
+    throw new AuthError("unauthorized", 401)
   }
   return user
 }
@@ -40,7 +48,7 @@ export function requireAuth(req: Request): AuthUser {
 export function requireRole(req: Request, minRole: Role): AuthUser {
   const user = requireAuth(req)
   if (!hasMinRole(user.role, minRole)) {
-    throw new AuthError("Forbidden", 403)
+    throw new AuthError("forbidden", 403)
   }
   return user
 }

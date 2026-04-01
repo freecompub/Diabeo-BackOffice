@@ -6,9 +6,24 @@ function safeDecrypt(value: string | null): string | null {
   try {
     return decrypt(new Uint8Array(Buffer.from(value, "base64")))
   } catch {
-    // Never return ciphertext — return null on decryption failure
     return null
   }
+}
+
+/** Decrypt encrypted fields in PatientMedicalData */
+function decryptMedicalData(data: Record<string, unknown> | null) {
+  if (!data) return null
+  const encryptedMedicalFields = [
+    "historyMedical", "historyChirurgical", "historyFamily",
+    "historyAllergy", "historyVaccine", "historyLife",
+  ]
+  const result = { ...data }
+  for (const field of encryptedMedicalFields) {
+    if (typeof result[field] === "string") {
+      result[field] = safeDecrypt(result[field] as string)
+    }
+  }
+  return result
 }
 
 /**
@@ -16,7 +31,6 @@ function safeDecrypt(value: string | null): string | null {
  * Decrypts all encrypted fields for the user's own export.
  */
 export async function generateUserExport(userId: number) {
-  // Separate queries to avoid Prisma 7 deep-include type inference issues
   const user = await prisma.user.findUnique({ where: { id: userId } })
   if (!user) return null
 
@@ -28,9 +42,7 @@ export async function generateUserExport(userId: number) {
       prisma.userDayMoment.findMany({ where: { userId } }),
     ])
 
-  const patient = await prisma.patient.findUnique({
-    where: { userId },
-  })
+  const patient = await prisma.patient.findUnique({ where: { userId } })
 
   let patientData = null
   if (patient) {
@@ -78,7 +90,7 @@ export async function generateUserExport(userId: number) {
 
     patientData = {
       pathology: patient.pathology,
-      medicalData,
+      medicalData: decryptMedicalData(medicalData as unknown as Record<string, unknown>),
       objectives: { glycemia: glycemiaObjectives, cgm: cgmObjective, annex: annexObjective },
       treatments,
       insulinTherapy: insulinTherapySettings,
@@ -105,7 +117,7 @@ export async function generateUserExport(userId: number) {
       email: safeDecrypt(user.email),
       firstname: safeDecrypt(user.firstname),
       lastname: safeDecrypt(user.lastname),
-      birthday: safeDecrypt(user.birthday as unknown as string | null),
+      birthday: user.birthday ? user.birthday.toISOString().split("T")[0] : null,
       sex: user.sex,
       phone: safeDecrypt(user.phone),
       address1: safeDecrypt(user.address1),

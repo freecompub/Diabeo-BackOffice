@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { compare } from "bcryptjs"
+import { Sex, Language } from "@prisma/client"
 import { requireAuth, AuthError, invalidateAllUserSessions } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
 import { userService } from "@/lib/services/user.service"
@@ -15,7 +16,7 @@ const updateSchema = z.object({
   lastname: z.string().min(1).max(100).optional(),
   usedLastname: z.string().max(100).optional(),
   birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  sex: z.enum(["M", "F", "X"]).optional(),
+  sex: z.nativeEnum(Sex).optional(),
   timezone: z.string().max(50).optional(),
   phone: z.string().max(20).optional(),
   address1: z.string().max(200).optional(),
@@ -23,16 +24,16 @@ const updateSchema = z.object({
   cp: z.string().max(10).optional(),
   city: z.string().max(100).optional(),
   country: z.string().length(2).optional(),
-  language: z.enum(["fr", "en", "ar"]).optional(),
+  language: z.nativeEnum(Language).optional(),
 })
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const profile = await userService.getProfile(user.id, user.id)
 
     if (!profile) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+      return NextResponse.json({ error: "userNotFound" }, { status: 404 })
     }
 
     return NextResponse.json(profile)
@@ -40,12 +41,13 @@ export async function GET(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
@@ -53,7 +55,7 @@ export async function PUT(req: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -64,8 +66,9 @@ export async function PUT(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account PUT]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
 
@@ -74,7 +77,7 @@ const deleteSchema = z.object({
 })
 
 /** GDPR Art. 17 — Right to erasure. Requires password confirmation. */
-export async function DELETE(req: Request) {
+export async function DELETE(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
@@ -82,32 +85,27 @@ export async function DELETE(req: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Password confirmation required" },
+        { error: "passwordRequired" },
         { status: 400 },
       )
     }
 
-    // Verify password before irreversible deletion
     const dbUser = await prisma.user.findUnique({
       where: { id: user.id },
       select: { passwordHash: true },
     })
 
     if (!dbUser) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+      return NextResponse.json({ error: "userNotFound" }, { status: 404 })
     }
 
     const valid = await compare(parsed.data.password, dbUser.passwordHash)
     if (!valid) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 })
+      return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
     }
 
     const ctx = extractRequestContext(req)
-
-    // Invalidate all sessions first
     await invalidateAllUserSessions(user.id)
-
-    // Cascade delete
     await deleteUserAccount(user.id, ctx.ipAddress, ctx.userAgent)
 
     return NextResponse.json({ deleted: true })
@@ -115,7 +113,8 @@ export async function DELETE(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account DELETE]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account DELETE]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

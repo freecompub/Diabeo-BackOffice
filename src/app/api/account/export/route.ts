@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { generateUserExport } from "@/lib/services/export.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
-export async function GET(req: Request) {
+export const runtime = "nodejs"
+
+export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const ctx = extractRequestContext(req)
@@ -11,7 +13,7 @@ export async function GET(req: Request) {
     const exportData = await generateUserExport(user.id)
 
     if (!exportData) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 })
+      return NextResponse.json({ error: "userNotFound" }, { status: 404 })
     }
 
     const json = JSON.stringify(exportData, null, 2)
@@ -27,8 +29,6 @@ export async function GET(req: Request) {
       metadata: { format: "json", sizeBytes },
     })
 
-    // TODO: Upload to OVH S3 and return a signed URL valid 24h
-    // For now, return the JSON directly
     return new NextResponse(json, {
       status: 200,
       headers: {
@@ -40,7 +40,8 @@ export async function GET(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/export GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/export GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

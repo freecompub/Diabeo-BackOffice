@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server"
+import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "@/lib/services/audit.service"
 
-const timePattern = /^\d{2}:\d{2}$/
+const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/
 
 const updateNotifSchema = z.object({
   notifMessageMail: z.boolean().optional(),
@@ -18,31 +18,39 @@ const updateNotifSchema = z.object({
   autoExportFrequency: z.number().int().min(1).max(365).optional(),
 })
 
-export async function GET(req: Request) {
+const NOTIF_DEFAULTS = {
+  notifMessageMail: true,
+  notifDocumentMail: true,
+  glycemiaReminders: false,
+  glycemiaReminderTimes: null,
+  insulinReminders: false,
+  insulinReminderTimes: null,
+  medicalAppointments: true,
+  autoExport: false,
+  autoExportFrequency: null,
+} as const
+
+export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
 
-    let prefs = await prisma.userNotifPreferences.findUnique({
+    const prefs = await prisma.userNotifPreferences.findUnique({
       where: { userId: user.id },
     })
 
-    if (!prefs) {
-      prefs = await prisma.userNotifPreferences.create({
-        data: { userId: user.id },
-      })
-    }
-
-    return NextResponse.json(prefs)
+    // Return defaults without persisting (idempotent GET)
+    return NextResponse.json(prefs ?? { userId: user.id, ...NOTIF_DEFAULTS })
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/notifications GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/notifications GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
 
-export async function PUT(req: Request) {
+export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
@@ -50,7 +58,7 @@ export async function PUT(req: Request) {
 
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Validation failed", details: parsed.error.flatten().fieldErrors },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
@@ -74,7 +82,8 @@ export async function PUT(req: Request) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    console.error("[account/notifications PUT]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[account/notifications PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

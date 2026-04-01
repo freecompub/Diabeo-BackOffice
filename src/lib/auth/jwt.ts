@@ -12,7 +12,7 @@ export interface JWTPayload {
   sub: number
   role: Role
   platform: "hc"
-  sid: string // session ID for per-session logout
+  sid: string
 }
 
 let cachedPrivateKey: CryptoKey | null = null
@@ -49,12 +49,13 @@ function validatePayload(payload: Record<string, unknown>): JWTPayload {
   if (!VALID_ROLES.has(role)) {
     throw new Error("Invalid token role")
   }
-  return {
-    sub,
-    role: role as Role,
-    platform: payload.platform as "hc",
-    sid: payload.sid as string,
+  if (payload.platform !== "hc") {
+    throw new Error("Invalid token platform")
   }
+  if (typeof payload.sid !== "string" || !payload.sid) {
+    throw new Error("Missing token session ID")
+  }
+  return { sub, role: role as Role, platform: "hc", sid: payload.sid }
 }
 
 export async function signJwt(payload: JWTPayload): Promise<string> {
@@ -91,7 +92,7 @@ export async function verifyJwtAllowExpired(token: string): Promise<JWTPayload> 
       algorithms: [ALG],
       issuer: ISSUER,
       audience: AUDIENCE,
-      clockTolerance: 3600, // 1h grace for refresh
+      clockTolerance: 3600,
     })
     return validatePayload(payload)
   } catch {
