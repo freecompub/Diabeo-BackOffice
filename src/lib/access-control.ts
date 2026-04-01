@@ -56,3 +56,26 @@ export async function getOwnPatientId(userId: number): Promise<number | null> {
   })
   return patient?.id ?? null
 }
+
+/**
+ * Resolve patient ID from request: either own patient (VIEWER) or explicit patientId param (pro).
+ * For VIEWER: returns own patient ID.
+ * For DOCTOR/NURSE/ADMIN: requires patientId param and validates access.
+ * Returns null if access denied or patient not found.
+ */
+export async function resolvePatientId(
+  userId: number,
+  role: Role,
+  patientIdParam?: number,
+): Promise<number | null> {
+  // VIEWER — always own patient, ignore patientId param
+  if (role === "VIEWER") {
+    return getOwnPatientId(userId)
+  }
+
+  // Pro roles — require explicit patientId
+  if (!patientIdParam) return null
+
+  const allowed = await canAccessPatient(userId, role, patientIdParam)
+  return allowed ? patientIdParam : null
+}

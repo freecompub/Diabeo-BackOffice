@@ -1,7 +1,22 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import { INSULIN_BOUNDS } from "./insulin-therapy.service"
 import type { AuditContext } from "./patient.service"
 import type { ProposalStatus, Prisma } from "@prisma/client"
+
+/** Validate proposed value is within clinical bounds before applying */
+function validateProposedValue(parameterType: string, value: number): boolean {
+  switch (parameterType) {
+    case "insulinSensitivityFactor":
+      return value >= INSULIN_BOUNDS.ISF_GL_MIN && value <= INSULIN_BOUNDS.ISF_GL_MAX
+    case "insulinToCarbRatio":
+      return value >= INSULIN_BOUNDS.ICR_MIN && value <= INSULIN_BOUNDS.ICR_MAX
+    case "basalRate":
+      return value >= INSULIN_BOUNDS.BASAL_MIN && value <= INSULIN_BOUNDS.BASAL_MAX
+    default:
+      return false
+  }
+}
 
 export const adjustmentService = {
   /** List proposals with filters */
@@ -98,9 +113,13 @@ export const adjustmentService = {
         },
       })
 
-      // Apply the change if requested
+      // Apply the change if requested — validate bounds first
       if (applyImmediately) {
         const proposed = Number(proposal.proposedValue)
+
+        if (!validateProposedValue(proposal.parameterType, proposed)) {
+          throw new Error("valueOutOfBounds")
+        }
 
         if (proposal.parameterType === "insulinSensitivityFactor" && proposal.timeSlotStartHour != null) {
           await tx.insulinSensitivityFactor.updateMany({
