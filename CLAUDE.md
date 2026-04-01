@@ -25,7 +25,7 @@ alignés entre les deux dépôts.
 | UI             | shadcn/ui + Tailwind CSS           | latest   |
 | ORM            | Prisma                             | 5.x      |
 | Base de données| PostgreSQL                         | 16       |
-| Auth           | NextAuth.js                        | v5       |
+| Auth           | JWT RS256 custom (jose + bcryptjs) | —        |
 | Chiffrement    | AES-256-GCM (Node.js crypto natif) | —        |
 | Cache          | Upstash Redis                      | POC      |
 | Fichiers       | OVH Object Storage (S3-compatible) | —        |
@@ -45,19 +45,45 @@ diabeo-backoffice/
 │   │   │   ├── users/              # Module utilisateurs
 │   │   │   └── audit/              # Module audit HDS
 │   │   └── api/                    # API Routes Next.js
-│   │       ├── auth/[...nextauth]/ # NextAuth v5 endpoints
+│   │       ├── auth/               # Auth routes (JWT RS256)
+│   │       │   ├── login/          # POST — connexion
+│   │       │   ├── logout/         # POST — déconnexion
+│   │       │   ├── refresh/        # POST — renouvellement JWT
+│   │       │   └── reset-password/ # POST — reset MDP
+│   │       ├── account/            # Gestion compte utilisateur
+│   │       │   ├── route.ts        # GET/PUT/DELETE profil
+│   │       │   ├── photo/          # PUT — upload photo
+│   │       │   ├── terms/          # PUT — acceptation CGU
+│   │       │   ├── data-policy/    # PUT — politique données
+│   │       │   ├── day-moments/    # GET/PUT — périodes journalières
+│   │       │   ├── units/          # GET/PUT — préférences unités
+│   │       │   ├── privacy/        # GET/PUT — confidentialité RGPD
+│   │       │   ├── notifications/  # GET/PUT — préférences notifs
+│   │       │   └── export/         # GET — export RGPD
+│   │       ├── units/              # GET — référentiel unités
 │   │       ├── admin/              # Admin-only endpoints (audit-logs)
-│   │       └── patients/           # CRUD patients (à implémenter)
+│   │       └── patients/           # CRUD patients (Phase 2)
 │   ├── lib/
 │   │   ├── db/
 │   │   │   └── client.ts           # Singleton Prisma (Prisma 7+)
 │   │   ├── crypto/
-│   │   │   └── health-data.ts      # Chiffrement AES-256-GCM (IV+TAG+CIPHERTEXT)
-│   │   ├── auth.ts                 # NextAuth v5 configuration
+│   │   │   ├── health-data.ts      # Chiffrement AES-256-GCM (IV+TAG+CIPHERTEXT)
+│   │   │   └── hmac.ts             # HMAC-SHA256 pour email lookup
+│   │   ├── auth/                   # Authentification JWT RS256
+│   │   │   ├── index.ts            # Exports: getAuthUser, requireAuth, requireRole
+│   │   │   ├── jwt.ts              # Sign/verify JWT RS256 (jose)
+│   │   │   ├── rbac.ts             # Hiérarchie rôles ADMIN>DOCTOR>NURSE>VIEWER
+│   │   │   ├── rate-limit.ts       # Backoff exponentiel login (in-memory)
+│   │   │   └── session.ts          # CRUD sessions en base
+│   │   ├── conversions.ts          # Helpers conversion glucose g/L↔mg/dL↔mmol/L
+│   │   ├── gdpr.ts                 # Vérification consentement RGPD
 │   │   └── services/               # Logique métier (découplée du framework)
 │   │       ├── patient.service.ts  # CRUD patients + encrypt/decrypt base64
 │   │       ├── insulin.service.ts  # Bolus calc (transaction), ISF/ICR par slot horaire
-│   │       └── audit.service.ts    # AuditLog + IP/UA tracking + query filters
+│   │       ├── audit.service.ts    # AuditLog + IP/UA tracking + query filters
+│   │       ├── user.service.ts     # Profil utilisateur + chiffrement champs
+│   │       ├── export.service.ts   # Export RGPD complet (Art. 20)
+│   │       └── deletion.service.ts # Suppression cascade RGPD (Art. 17)
 │   ├── types/
 │   │   └── next-auth.d.ts          # Module augmentation NextAuth (User.role, JWT.role)
 │   └── components/                 # Composants React réutilisables
@@ -172,28 +198,32 @@ await auditService.log({
 // Pattern : BolusCalculationLog → AdjustmentProposal (status=pending) → review DOCTOR → accept/reject
 ```
 
-### API Routes (NextAuth v5)
+### API Routes (JWT RS256 + RBAC)
 
 ```typescript
-// ✅ Toute route doit vérifier auth + rôle
-import { auth } from "@/lib/auth"
+// ✅ Toute route doit vérifier auth + rôle via helpers
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { NextResponse } from "next/server"
 
 export async function GET(req: Request) {
-  const session = await auth()
+  try {
+    // Le middleware JWT injecte x-user-id et x-user-role dans les headers
+    const user = requireRole(req, "ADMIN") // throws AuthError si non autorisé
 
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    // user.id et user.role sont disponibles
+    // ...
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
   }
-
-  if (session.user.role !== "ADMIN") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-  }
-
-  // ...
 }
 
-// NextAuth v5 : await auth() instead of getServerSession()
+// Helpers disponibles :
+// getAuthUser(req)    → AuthUser | null  (lecture sans throw)
+// requireAuth(req)    → AuthUser         (throw 401)
+// requireRole(req, R) → AuthUser         (throw 401 ou 403)
 ```
 
 ### Validation des inputs avec Zod
@@ -445,9 +475,12 @@ const findSlotForHour = (
 ### Services avec transactions Prisma 7
 
 ```typescript
-// patient.service.ts : create, getById, listByDoctor, deletePatient
-// insulin.service.ts : getSettings, calculateBolus
-// audit.service.ts : log, logWithTx, query
+// patient.service.ts  : create, getById, listByDoctor, deletePatient
+// insulin.service.ts  : getSettings, calculateBolus
+// audit.service.ts    : log, logWithTx, query
+// user.service.ts     : getProfile, updateProfile, acceptTerms, acceptDataPolicy, dayMoments
+// export.service.ts   : generateUserExport (RGPD Art. 20)
+// deletion.service.ts : deleteUserAccount (RGPD Art. 17, cascade 48 tables)
 
 // Chaque service découplé de Next.js — réutilisable dans API routes ou edge functions
 // Types Prisma importés depuis @prisma/client
@@ -469,9 +502,11 @@ pnpm prisma studio                     # Interface graphique BDD (localhost:5555
 pnpm prisma db seed                    # Injecter données de test (5 users, 2 patients, 30j CGM)
 pnpm prisma generate                   # Régénérer client @prisma/client (auto avec migrate)
 
-# Chiffrement — configuration requise
+# Chiffrement & Auth — configuration requise
 export HEALTH_DATA_ENCRYPTION_KEY="..."  # 32 bytes en hex (64 caractères)
 export HMAC_SECRET="..."                 # 32+ bytes pour emailHmac
+export JWT_PRIVATE_KEY="..."             # RSA privée PEM (RS256)
+export JWT_PUBLIC_KEY="..."              # RSA publique PEM (RS256)
 
 # Tests
 pnpm test                              # Jest sur src/lib/services
@@ -522,7 +557,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 |---|----------|--------|
 | 1 | Monolithe Next.js (pas microservices) | POC 50k patients — complexité inutile |
 | 2 | Chiffrement applicatif AES-256-GCM | Données sensibles protégées même si la BDD est compromise |
-| 3 | Sessions NextAuth en PostgreSQL | App stateless = scalable horizontalement |
+| 3 | JWT RS256 + Sessions en PostgreSQL | Auth stateless avec invalidation server-side |
 | 4 | Soft delete patients | Conformité RGPD + auditabilité |
 | 5 | OVH Object Storage dès le POC | Évite de bloquer le scaling futur |
 | 6 | Upstash Redis pour le cache | Serverless = zéro config pour le POC |
@@ -535,6 +570,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 | 13 | BolusCalculationLog + AdjustmentProposal | Suggestion explicite jamais exécutée sans acceptation patient |
 | 14 | 48 tables × 11 domaines | Modèle riche HDS : utilisateurs, patients, insuline, appareils, équipe, audit |
 | 15 | Transaction Prisma pour bolus | Calcul + log atomique — consistance garantie |
+| 16 | JWT RS256 custom (pas NextAuth) | Compatibilité API iOS existante, contrôle total payload/session |
 
 ---
 
@@ -579,4 +615,49 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-03-31 — Phase 0 implémentée — Branche feat/phase-0-schema-audit*
+## ✅ Phase 1 implémentée (US-100 à US-104)
+
+### US-100 — Authentification JWT RS256
+- ✅ `POST /api/auth/login` — bcrypt + JWT RS256 + Session DB
+- ✅ `POST /api/auth/logout` — invalidation session par sid
+- ✅ `POST /api/auth/refresh` — renouvellement JWT si session valide
+- ✅ `POST /api/auth/reset-password` — placeholder (anti-enumération)
+- ✅ Middleware JWT global (`src/middleware.ts`) — vérifie JWT sur `/api/**` sauf `/api/auth/*`
+- ✅ RBAC hiérarchique : ADMIN > DOCTOR > NURSE > VIEWER
+- ✅ Rate limiting applicatif (3 échecs → lockout 5/15/60min)
+- ✅ HMAC-SHA256 pour lookup email sécurisé
+
+### US-101 — Gestion du compte utilisateur
+- ✅ `GET /api/account` — profil déchiffré (sans champs internes)
+- ✅ `PUT /api/account` — mise à jour partielle avec chiffrement auto
+- ✅ `PUT /api/account/photo` — upload (TODO: OVH S3)
+- ✅ `PUT /api/account/terms` — acceptation CGU
+- ✅ `PUT /api/account/data-policy` — acceptation politique données
+- ✅ `GET/PUT /api/account/day-moments` — périodes journalières
+- ✅ userService avec chiffrement AES-256-GCM + base64
+
+### US-102 — Préférences d'unités de mesure
+- ✅ `GET/PUT /api/account/units` — préférences d'unités (codes 1-15)
+- ✅ `GET /api/units` — référentiel des 15 unités
+- ✅ Helpers de conversion glucose (g/L ↔ mg/dL ↔ mmol/L)
+- ✅ Règle : données toujours stockées en g/L, converties à l'affichage
+
+### US-103 — Paramètres de confidentialité & RGPD
+- ✅ `GET/PUT /api/account/privacy` — consentement GDPR, partage soignants/chercheurs
+- ✅ `GET/PUT /api/account/notifications` — préférences email, rappels glycémie/insuline
+- ✅ Auto-set `consentDate` quand `gdprConsent = true`
+- ✅ Helper `requireGdprConsent()` pour routes données médicales
+
+### US-104 — Export & suppression RGPD
+- ✅ `GET /api/account/export` — export JSON complet (profil + patient + CGM + événements)
+- ✅ `DELETE /api/account` — suppression cascade (confirmation par mot de passe)
+- ✅ Anonymisation user après suppression (FK audit log préservée)
+- ✅ Ordre de suppression respectant les FK (48 tables)
+
+### Infrastructure Phase 1
+- ✅ 142 tests Vitest (auth, RBAC, rate-limit, HMAC, conversions, audit-logs)
+- ✅ ADR #16 : JWT RS256 custom au lieu de NextAuth (compatibilité iOS)
+
+---
+
+*Dernière mise à jour : 2026-04-01 — Phase 1 implémentée — Branche feat/phase-1-auth-accounts*

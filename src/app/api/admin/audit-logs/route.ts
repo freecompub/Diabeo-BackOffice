@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { auth } from "@/lib/auth"
+import { requireRole } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 const VALID_ACTIONS = [
@@ -27,26 +27,8 @@ const querySchema = z.object({
 
 export async function GET(req: NextRequest) {
   try {
-    const session = await auth()
-
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
+    const user = requireRole(req, "ADMIN")
     const ctx = extractRequestContext(req)
-
-    // Admin-only access
-    if (session.user.role !== "ADMIN") {
-      await auditService.log({
-        userId: Number(session.user.id),
-        action: "UNAUTHORIZED",
-        resource: "SESSION",
-        resourceId: "audit-logs",
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-      })
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
 
     // Validate query parameters with Zod
     const rawParams = Object.fromEntries(req.nextUrl.searchParams.entries())
@@ -63,7 +45,7 @@ export async function GET(req: NextRequest) {
 
     // Audit of the audit — log every read of audit logs
     await auditService.log({
-      userId: Number(session.user.id),
+      userId: user.id,
       action: "READ",
       resource: "SESSION",
       resourceId: "audit-logs",
@@ -84,7 +66,12 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(result)
   } catch (error) {
-    console.error("[audit-logs GET]", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    if (error instanceof Error && error.name === "AuthError") {
+      const authErr = error as Error & { status: number }
+      return NextResponse.json({ error: error.message }, { status: authErr.status })
+    }
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[audit-logs GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
