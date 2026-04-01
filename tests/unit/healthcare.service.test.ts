@@ -10,7 +10,8 @@ describe("healthcareService", () => {
         { id: 1, name: "CHU Lyon", _count: { members: 5, patientServices: 20 } },
       ] as any)
 
-      const result = await healthcareService.listServices()
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      const result = await healthcareService.listServices(1)
       expect(result).toHaveLength(1)
     })
   })
