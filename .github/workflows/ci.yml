@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main, feat/*]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "10"
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Unit + Integration tests (no DB required)
+  # ──────────────────────────────────────────────────────────────
+  test-unit:
+    name: Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm prisma generate --no-hints
+
+      - name: Run unit & integration tests
+        run: pnpm test
+        env:
+          HEALTH_DATA_ENCRYPTION_KEY: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+          NODE_ENV: test
+
+      - name: Check coverage thresholds
+        run: pnpm test:coverage
+        env:
+          HEALTH_DATA_ENCRYPTION_KEY: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+          NODE_ENV: test
+
+  # ──────────────────────────────────────────────────────────────
+  # E2E tests (PostgreSQL + Playwright)
+  # ──────────────────────────────────────────────────────────────
+  test-e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: diabeo
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: diabeo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U diabeo"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm prisma generate --no-hints
+
+      - name: Apply migrations
+        run: pnpm prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://diabeo:password@localhost:5432/diabeo?schema=public
+
+      - name: Seed test data
+        run: pnpm prisma db seed
+        env:
+          DATABASE_URL: postgresql://diabeo:password@localhost:5432/diabeo?schema=public
+          HEALTH_DATA_ENCRYPTION_KEY: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+          HMAC_SECRET: "e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2"
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: pnpm test:e2e
+        env:
+          DATABASE_URL: postgresql://diabeo:password@localhost:5432/diabeo?schema=public
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: ci-test-secret-not-for-production-use
+          AUTH_SECRET: ci-test-secret-not-for-production-use
+          HEALTH_DATA_ENCRYPTION_KEY: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
+          HMAC_SECRET: "e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2"
+          NODE_ENV: test
+          CI: true
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────────
+  # Lint + Type check
+  # ──────────────────────────────────────────────────────────────
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm prisma generate --no-hints
+
+      - name: ESLint
+        run: pnpm lint
+
+      - name: TypeScript type check
+        run: pnpm exec tsc --noEmit
