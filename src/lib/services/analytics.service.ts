@@ -1,3 +1,13 @@
+/**
+ * @module analytics.service
+ * @description Glycemic analytics — Time In Range (TIR), GMI, CV, AGP, hypoglycemia detection.
+ * Calculates metrics from CGM data per ADA/EASD consensus standards.
+ * Supports up to 90-day periods. Warns if CGM capture rate < 70%.
+ * @see CLAUDE.md#analytics — Metrics and thresholds
+ * @see src/lib/statistics — Pure calculation functions (TIR, GMI, AGP, hypo detection)
+ * @see https://diabetes.org/about-us/statistics/statistics-about-diabetes — ADA consensus
+ */
+
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import {
@@ -8,9 +18,18 @@ import {
 } from "@/lib/statistics"
 import type { AuditContext } from "./patient.service"
 
+/** Warn if CGM capture rate below this % */
 const MIN_CAPTURE_RATE = 70 // percent
+/** Max query period for analytics (performance limit) */
 const MAX_PERIOD_DAYS = 90
 
+/**
+ * Parse period string (e.g., "14d" → 14 days).
+ * @private
+ * @param {string} period - Period format "Nd" (e.g., "14d", "30d")
+ * @returns {number} Days as integer
+ * @throws {Error} If format invalid or days out of range [1, 90]
+ */
 function parsePeriod(period: string): number {
   const match = period.match(/^(\d+)d$/)
   if (!match) throw new Error("Invalid period format, use Nd (e.g. 14d)")
@@ -21,6 +40,13 @@ function parsePeriod(period: string): number {
   return days
 }
 
+/**
+ * Fetch CGM values for N days (from now going back).
+ * @private
+ * @param {number} patientId - Patient ID
+ * @param {number} days - Number of days to retrieve
+ * @returns {Promise<{values: number[], withTimestamp: Array, from: Date, to: Date, entryCount: number, days: number}>} CGM data
+ */
 async function getPatientCgmValues(patientId: number, days: number) {
   const to = new Date()
   const from = new Date(to.getTime() - days * 24 * 3600_000)
@@ -44,6 +70,12 @@ async function getPatientCgmValues(patientId: number, days: number) {
   return { values, withTimestamp, from, to, entryCount: entries.length, days }
 }
 
+/**
+ * Get CGM thresholds for a patient (from objectives or defaults).
+ * @private
+ * @param {number} patientId - Patient ID
+ * @returns {Promise<CgmThresholds>} Thresholds (veryLow, low, ok, high) in g/L
+ */
 async function getPatientThresholds(patientId: number): Promise<CgmThresholds> {
   const cgm = await prisma.cgmObjective.findUnique({ where: { patientId } })
   return {
@@ -54,7 +86,22 @@ async function getPatientThresholds(patientId: number): Promise<CgmThresholds> {
   }
 }
 
+/**
+ * Analytics service — glycemic metrics and trends.
+ * @namespace analyticsService
+ */
 export const analyticsService = {
+  /**
+   * Compute full glycemic profile — TIR, GMI, CV, AGP.
+   * Warnings if CGM capture rate < 70%.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {string} period - Period (e.g., "14d", "30d") — max 90d
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Object>} Profile with metrics, TIR, captureRate, warnings
+   * @throws {Error} If period format invalid or exceeds 90 days
+   */
   async glycemicProfile(
     patientId: number,
     period: string,
@@ -98,6 +145,15 @@ export const analyticsService = {
     }
   },
 
+  /**
+   * Compute Time In Range (TIR) — percentage in target, high, low, severe low zones.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {string} period - Period (e.g., "14d", "30d")
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<{tir: TirResult, quality: TirQuality, thresholds, readingCount, captureRate}>} TIR result with quality assessment
+   */
   async timeInRange(
     patientId: number,
     period: string,
@@ -130,6 +186,16 @@ export const analyticsService = {
     }
   },
 
+  /**
+   * Compute Ambulatory Glucose Profile (AGP) — percentiles per 15-min time slot.
+   * 96 slots over 24 hours (p10, p25, p50, p75, p90).
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {string} period - Period (e.g., "14d", "30d")
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Array<AgpSlot>>} 96 slots with percentiles and timeMinutes
+   */
   async agp(
     patientId: number,
     period: string,
@@ -151,6 +217,16 @@ export const analyticsService = {
     return computeAgp(withTimestamp)
   },
 
+  /**
+   * Detect hypoglycemia episodes — 3+ consecutive readings below threshold, max 30-min gap.
+   * Classifies as level1 (low) or level2 (severe low) based on nadir.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {string} period - Period (e.g., "14d", "30d")
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<{episodeCount, episodes: HypoEpisode[], level1Count, level2Count}>} Episodes with severity
+   */
   async hypoglycemia(
     patientId: number,
     period: string,
@@ -183,6 +259,17 @@ export const analyticsService = {
     }
   },
 
+  /**
+   * Summarize insulin administration over a period.
+   * Computes total units, daily average, pump events.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {Date} from - Start date
+   * @param {Date} to - End date
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<{totalUnits, avgDailyUnits, dayCount, flow, pumpEvents}>} Insulin summary
+   */
   async insulinSummary(
     patientId: number,
     from: Date,

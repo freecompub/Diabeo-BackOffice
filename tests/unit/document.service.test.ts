@@ -1,3 +1,35 @@
+/**
+ * Test suite: Document Service — Medical Document Access and Management
+ *
+ * Clinical behavior tested:
+ * - Listing MedicalDocument records for a patient: DOCTOR and NURSE roles
+ *   receive all documents (including internal notes with patientShare=false),
+ *   while VIEWER role receives only documents marked patientShare=true
+ * - Document retrieval generates a pre-signed OVH Object Storage URL valid
+ *   for a short TTL, never returning a permanent public URL for sensitive files
+ * - Document creation records the uploader's identity, category
+ *   (prescription, labResults, general, etc.), and OVH object key — no file
+ *   bytes are stored in the database
+ * - Document deletion removes the database record and triggers OVH object
+ *   deletion; a failure to delete the remote object is logged but does not
+ *   roll back the DB deletion (eventual consistency accepted for POC)
+ * - Audit logging of every access and mutation
+ *
+ * Associated risks:
+ * - Returning patientShare=false documents to a VIEWER would expose internal
+ *   clinical notes to the patient, potentially causing harm or legal liability
+ * - Storing the OVH object key incorrectly would make documents permanently
+ *   inaccessible while showing them as "available" in the UI
+ * - Skipping OVH object deletion would leave orphaned medical files in object
+ *   storage after the DB record is removed, a GDPR data-minimization violation
+ *
+ * Edge cases:
+ * - VIEWER requesting a document list (only patientShare=true returned)
+ * - Patient with no documents (must return empty array, not null)
+ * - Document category not in the allowed enum set (Zod validation must reject)
+ * - Pre-signed URL generation when OVH credentials are missing (must throw
+ *   a descriptive error, not return an unsigned URL)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

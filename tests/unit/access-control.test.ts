@@ -1,5 +1,27 @@
 /**
- * Unit tests for access control and objectives service.
+ * Test suite: Access Control and CGM Objectives Service
+ *
+ * Clinical behavior tested:
+ * - Role-based access enforcement ensuring DOCTOR, NURSE, and VIEWER roles
+ *   can only read or mutate patient data within their authorized scope
+ * - CGM threshold evaluation: mapping glycemia values to low/normal/high/critical
+ *   categories used to trigger clinical alerts
+ * - Objectives service CRUD: creating and updating glycemia and CGM objectives
+ *   per patient with pathology-specific defaults
+ *
+ * Associated risks:
+ * - Unauthorized access to patient data by an under-privileged role would
+ *   constitute a RGPD Article 9 and HDS compliance breach
+ * - Incorrect CGM threshold classification could suppress critical hypoglycemia
+ *   alerts or generate false alarms, endangering patient safety
+ * - Mutation of objectives without proper role guard could allow a VIEWER to
+ *   alter clinical targets silently
+ *
+ * Edge cases:
+ * - VIEWER attempting write operations (must be rejected)
+ * - Glucose value exactly on a threshold boundary (low=0.70 g/L, high=1.80 g/L)
+ * - Patient with no existing objective record (first creation)
+ * - Objectives update with partial fields (only provided fields change)
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { mockDeep, mockReset } from "vitest-mock-extended"

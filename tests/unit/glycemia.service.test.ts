@@ -1,3 +1,32 @@
+/**
+ * Test suite: Glycemia Service — CGM and Punctual Glucose Data Access
+ *
+ * Clinical behavior tested:
+ * - Retrieval of CGM entries (continuous glucose monitor readings) for a patient
+ *   within a caller-specified date range, used to populate trend graphs and
+ *   compute TIR statistics
+ * - Enforcement of a 30-day maximum window per request to prevent excessive
+ *   data loads that could degrade performance for the partitioned CgmEntry table
+ * - Access to punctual glycemia measurements (capillary finger-stick readings)
+ *   alongside CGM data to give a complete glucose picture
+ * - Every data-read operation produces an audit log entry recording the
+ *   requesting user, patient ID, and time window queried
+ *
+ * Associated risks:
+ * - A missing date-range guard allowing unbounded queries could trigger a full
+ *   partition scan on the CGM table, causing denial-of-service for other users
+ * - Returning CGM entries for a patient the requesting user is not authorized
+ *   to access would constitute a cross-patient data breach
+ * - A missing audit log on CGM reads would break HDS traceability requirements
+ *   for access to sensitive health data
+ *
+ * Edge cases:
+ * - Date range of exactly 30 days (boundary — must be accepted)
+ * - Date range of 30 days + 1 second (must be rejected with a clear error)
+ * - Patient with no CGM entries in the requested window (must return empty array)
+ * - from > to (invalid range — must be rejected)
+ * - BigInt primary keys on CgmEntry serialized correctly in the response
+ */
 import { describe, it, expect } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

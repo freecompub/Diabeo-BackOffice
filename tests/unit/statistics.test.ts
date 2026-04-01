@@ -1,3 +1,39 @@
+/**
+ * Test suite: Statistics Library — TIR, CV, GMI, AGP, and Hypo Detection
+ *
+ * Clinical behavior tested:
+ * - Time-In-Range (TIR) computation: percentage of CGM readings within the
+ *   patient's configured glycemic target band (typically 0.70–1.80 g/L for DT1)
+ * - Coefficient of Variation (CV): stddev / mean expressed as a percentage;
+ *   CV > 36% indicates glycemic variability warranting clinical attention
+ * - Glucose Management Indicator (GMI): HbA1c surrogate derived from mean
+ *   glucose using the formula GMI(%) = 3.31 + 0.02392 * mean(mg/dL)
+ * - Ambulatory Glucose Profile (AGP): percentile curves (5th, 25th, 50th, 75th,
+ *   95th) computed over a rolling period for physician review
+ * - Hypoglycemic episode detection: consecutive readings below the low threshold
+ *   (< 0.70 g/L) lasting at least 15 minutes constitute a reportable episode
+ * - CGM capture rate: fraction of expected 5-minute readings actually present
+ *   over the analysis window, used to assess data completeness
+ *
+ * Associated risks:
+ * - Incorrect TIR values would mislead physicians about glycemic control and
+ *   could result in inappropriate insulin dose adjustments
+ * - A GMI calculation error would produce a false HbA1c estimate, potentially
+ *   concealing poor control from both physician and patient
+ * - Missed hypoglycemic episode detection could prevent timely clinical
+ *   intervention, posing a direct patient safety risk
+ * - Wrong CV threshold assessment could trigger unnecessary adjustment
+ *   proposals, increasing patient anxiety and insulin over-correction
+ *
+ * Edge cases:
+ * - Empty glucose array (all functions must return 0 or null, not throw)
+ * - Single-element array for stddev (Bessel-corrected result is NaN/0 — handled)
+ * - All readings identical (CV = 0, no variability)
+ * - Readings exactly on TIR boundary values (inclusive vs. exclusive)
+ * - g/L to mg/dL conversion precision (glToMgdl: multiply by 1000/18 = 55.56)
+ * - Hypoglycemia episode spanning midnight (timestamp boundary)
+ * - CGM capture rate with a gap of exactly 15 minutes (one missed reading)
+ */
 import { describe, it, expect } from "vitest"
 import {
   mean, stddev, coefficientOfVariation, percentile,

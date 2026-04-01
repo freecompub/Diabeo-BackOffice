@@ -1,11 +1,38 @@
 /**
- * Unit tests for patient.service.ts.
+ * Test suite: Patient Service — Patient CRUD, Encryption, and Soft-Delete
  *
- * Tests the patient CRUD operations including:
- * - Patient creation with encryption
- * - Patient retrieval with decryption
- * - Soft delete (RGPD compliance) with anonymization
- * - Audit logging for every operation
+ * Clinical behavior tested:
+ * - Patient creation: all PII fields (firstname, lastname, phone, address,
+ *   nirpp, ins) are encrypted with AES-256-GCM via encryptField before the
+ *   Prisma insert; the emailHmac is computed and stored alongside the
+ *   encrypted email to allow future credential lookups
+ * - Patient retrieval: encrypted fields are decrypted with decryptField before
+ *   returning the record to the caller; raw ciphertext is never exposed in
+ *   the service response
+ * - Listing patients by doctor: only patients whose PatientReferent links to
+ *   the requesting doctor are returned; cross-doctor access is prevented
+ * - Soft delete (GDPR): deletePatient sets deletedAt and anonymizes encrypted
+ *   fields rather than issuing a physical DELETE, preserving medical history
+ *   for HDS retention while making PII irrecoverable
+ * - Every operation (create, read, list, delete) produces an audit log entry
+ *
+ * Associated risks:
+ * - Inserting plaintext PII due to a missing encrypt call would expose patient
+ *   data if the database is compromised, violating HDS and GDPR Article 9
+ * - Returning the base64 ciphertext instead of decrypted text would break the
+ *   UI and could mislead a physician reading patient data
+ * - A missing ownership filter on listByDoctor would leak patients from other
+ *   doctors' portfolios, constituting a cross-patient data breach
+ * - A physical DELETE instead of soft delete would destroy medical records
+ *   required for the 10-year HDS legal retention period
+ *
+ * Edge cases:
+ * - Patient ID not found (getById must return null, not throw)
+ * - Doctor with no patients (listByDoctor must return empty array)
+ * - Soft delete of an already-deleted patient (deletedAt already set — must
+ *   be idempotent or return a descriptive error)
+ * - Decryption failure for a stored field (must propagate as an error)
+ * - Patient with optional fields absent (nirpp, ins not always set)
  */
 
 import { describe, it, expect, vi } from "vitest"

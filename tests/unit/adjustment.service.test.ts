@@ -1,3 +1,40 @@
+/**
+ * Test suite: Adjustment Service — Proposal Accept / Reject Workflow
+ *
+ * Clinical behavior tested:
+ * - Summary query: counts of AdjustmentProposal records by status (pending,
+ *   accepted, rejected, expired) for a patient, giving a physician a quick
+ *   overview of outstanding recommendations
+ * - Accept workflow: a DOCTOR transitions a proposal from "pending" to
+ *   "accepted", records their user ID in reviewedBy, timestamps the review,
+ *   and triggers the corresponding InsulinTherapySettings mutation in a single
+ *   Prisma transaction — ensuring the accepted value is applied atomically
+ * - Reject workflow: a DOCTOR transitions a proposal to "rejected" with an
+ *   optional rejection comment; the underlying settings are NOT modified
+ * - Authorization enforcement: only a user with the DOCTOR role may accept or
+ *   reject proposals; NURSE and VIEWER calls must be rejected with 403
+ * - Audit logging of accept and reject decisions with the reviewing doctor's
+ *   identity
+ *
+ * Associated risks:
+ * - Accepting a proposal without applying it to InsulinTherapySettings would
+ *   display "accepted" in the UI while the actual parameter remains unchanged,
+ *   creating a silent clinical discrepancy
+ * - A non-atomic accept (proposal update succeeds, settings update fails)
+ *   would leave the system in an inconsistent state
+ * - A NURSE or VIEWER successfully accepting a proposal bypasses the mandatory
+ *   physician validation step required by the medical device workflow (ADR #13)
+ * - Missing audit on accept/reject removes the evidence trail required for
+ *   HDS inspection and liability purposes
+ *
+ * Edge cases:
+ * - Proposal already in "accepted" status being accepted again (idempotency or
+ *   error depending on business rule)
+ * - Proposal in "expired" status being acted on (must be rejected by the service)
+ * - Accept with a proposed value exactly at a CLINICAL_BOUNDS limit
+ * - Summary for a patient with zero proposals (all counts must be 0, total = 0)
+ * - Reject without a comment (optional field — must not fail validation)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

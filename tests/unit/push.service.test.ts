@@ -1,3 +1,38 @@
+/**
+ * Test suite: Push Service — Push Notification Delivery and Registration
+ *
+ * Clinical behavior tested:
+ * - Device registration (upsert): registering an FCM push token for a user
+ *   and platform (iOS, Android, web); if another user previously held the
+ *   same token, their registration is deactivated to prevent cross-user
+ *   notification delivery
+ * - Listing registrations for a user returns masked FCM tokens (only prefix
+ *   and suffix visible) so tokens are never fully exposed in API responses
+ * - Sending a notification: template variable interpolation, FCM dispatch,
+ *   and PushNotificationLog creation are executed atomically — no log entry
+ *   is written for a notification that failed to reach FCM
+ * - Scheduled notification creation: stores a PushScheduledNotification row
+ *   with a future sendAt timestamp for the cron dispatcher to pick up
+ *
+ * Associated risks:
+ * - Failing to deactivate a token reassigned to a different user would cause
+ *   health alerts (hypoglycemia warnings, appointment reminders) to be
+ *   delivered to the wrong person, breaching patient confidentiality
+ * - Exposing full FCM tokens in the listing API would allow an attacker with
+ *   API access to send arbitrary push notifications to any patient's device
+ * - Logging a notification as "sent" before confirming FCM acceptance would
+ *   produce misleading delivery records that mask actual delivery failures
+ *
+ * Edge cases:
+ * - Token already registered to the same user and platform (idempotent upsert
+ *   — must update timestamp, not create a duplicate row)
+ * - Token registered to a different user (prior registration must be
+ *   deactivated before the new one is created)
+ * - User with no registered devices (listRegistrations returns empty array)
+ * - Notification template with missing variable substitution (must fail with
+ *   a descriptive error before FCM dispatch)
+ * - FCM dispatch failure (network error) — log must not be created
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

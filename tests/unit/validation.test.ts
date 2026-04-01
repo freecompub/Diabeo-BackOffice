@@ -1,9 +1,42 @@
 /**
- * Unit tests for Zod validation schemas.
+ * Test suite: Input Validation — Zod Schemas for API Query Parameters
  *
- * Tests the query parameter validation schema used by the audit-logs API route.
- * We recreate the schema here to test it in isolation from the HTTP layer.
- * If the schema in the route changes, these tests must be updated to match.
+ * Clinical behavior tested:
+ * - Validation of the query parameter schema consumed by the audit-logs API
+ *   route: userId (positive integer), resource (free string), action (enum
+ *   constrained to the known AuditLog action set), from/to (ISO date strings
+ *   coerced to Date), and page/pageSize (positive integers with a maximum
+ *   cap to prevent oversized result sets)
+ * - Rejection of unknown action values that are not part of the defined
+ *   AuditLog action enum, preventing garbage data from polluting audit queries
+ * - Coercion of date strings to Date objects so the service layer receives
+ *   typed Date values rather than raw strings
+ * - Default value injection: page defaults to 1 and pageSize defaults to 50
+ *   when not supplied by the caller
+ *
+ * Associated risks:
+ * - Accepting an arbitrary string for the action filter would allow injection
+ *   of values that bypass Prisma's type safety and could produce unexpected
+ *   query results in the audit log viewer
+ * - A missing pageSize cap would allow a caller to request an unbounded
+ *   number of audit records, causing a denial-of-service on the admin page
+ * - Failing to coerce from/to strings to Date objects would cause Prisma's
+ *   date comparison operators to receive strings, producing incorrect results
+ *   or a runtime type error
+ *
+ * Edge cases:
+ * - All optional fields omitted (only defaults applied — must be valid)
+ * - page = 0 or pageSize = 0 (must be rejected as non-positive integers)
+ * - pageSize at the allowed maximum (boundary — must be accepted)
+ * - pageSize one above the maximum (must be rejected)
+ * - action not in the allowed enum list (must fail with a descriptive error)
+ * - from date after to date (logical inversion — validation layer or service
+ *   must handle this)
+ * - userId as a float (1.5) — must be rejected as non-integer
+ *
+ * Note: The schema is recreated inline in this test file to isolate it from
+ * the HTTP layer. If the schema in the API route changes, this file must be
+ * updated to match.
  */
 
 import { describe, it, expect } from "vitest"

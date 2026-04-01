@@ -1,11 +1,40 @@
 /**
- * Unit tests for audit.service.ts.
+ * Test suite: Audit Service — HDS Immutable Audit Trail
  *
- * The audit service is central to HDS compliance — every access to patient data
- * must be logged immutably. These tests verify:
- * - Log creation with all fields
- * - Query with filters and pagination
- * - extractRequestContext correctly extracts IP and User-Agent
+ * Clinical behavior tested:
+ * - Log creation: auditService.log writes an AuditLog entry with all required
+ *   fields (userId, action, resource, resourceId, ipAddress, userAgent,
+ *   metadata) to satisfy HDS traceability requirements for every access to
+ *   sensitive health data
+ * - Transactional log creation: auditService.logWithTx accepts a Prisma
+ *   transaction client so the audit entry is committed atomically with the
+ *   parent operation — no health-data mutation can succeed without a
+ *   co-committed audit record
+ * - Query with filters: auditService.query supports filtering by userId,
+ *   resource, action, and date range, plus cursor-based pagination, enabling
+ *   the admin audit-logs UI and compliance exports
+ * - IP and User-Agent extraction: extractRequestContext parses the
+ *   X-Forwarded-For header (trusting the first hop) and User-Agent string
+ *   from an incoming Next.js Request object
+ *
+ * Associated risks:
+ * - A swallowed error in log creation would silently omit audit entries,
+ *   producing gaps in the HDS audit trail that regulators could interpret
+ *   as evidence of tampering or non-compliance
+ * - Using log instead of logWithTx in a transactional service method would
+ *   allow the health-data write to succeed while the audit write fails,
+ *   creating untraced records
+ * - Incorrect IP extraction (logging proxy IP instead of client IP) would
+ *   make IP-based intrusion detection unreliable
+ *
+ * Edge cases:
+ * - Request with no X-Forwarded-For header (must fall back to a placeholder
+ *   rather than crashing)
+ * - Query with no filters (must return all records up to page size)
+ * - Query with all filters combined (userId + resource + action + date range)
+ * - Pagination: cursor pointing to the last record (next page must be empty)
+ * - metadata field containing nested JSON (must round-trip correctly through
+ *   Prisma JsonValue)
  */
 
 import { describe, it, expect, vi } from "vitest"

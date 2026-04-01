@@ -1,3 +1,28 @@
+/**
+ * Test suite: User Service — Profile Encryption
+ *
+ * Clinical behavior tested:
+ * - Retrieval of a user profile transparently decrypts PII fields (firstname,
+ *   lastname, email, phone, address) stored as AES-256-GCM base64 ciphertext
+ * - Profile updates re-encrypt every mutated PII field before persistence,
+ *   ensuring no plaintext is written to the database
+ * - HMAC recalculation on email change keeps the emailHmac index consistent
+ *   for future login lookups
+ *
+ * Associated risks:
+ * - A decryption failure surfaced to the API response would expose the raw
+ *   base64 ciphertext, violating HDS confidentiality requirements
+ * - Skipping re-encryption on update would silently store plaintext PII,
+ *   breaking the double-layer encryption architecture (ADR #2)
+ * - A stale emailHmac after an email update would make the account unreachable
+ *   via credential lookup, effectively locking out the user
+ *
+ * Edge cases:
+ * - Non-existent user ID (service must return null, not throw)
+ * - Fields left undefined in an update payload (unchanged fields must not be
+ *   overwritten with empty ciphertext)
+ * - Decryption error for a single field (should propagate, not swallow)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

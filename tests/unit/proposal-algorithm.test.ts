@@ -1,3 +1,44 @@
+/**
+ * Test suite: Proposal Algorithm — Insulin Adjustment Proposal Generation
+ *
+ * Clinical behavior tested:
+ * - Confidence level assignment based on the number of qualifying glucose
+ *   events: 3–5 events = "low", 6–10 = "medium", >10 = "high"; proposals
+ *   below "low" confidence are not generated (insufficient data)
+ * - Change percent clamping: ISF and ICR adjustments are capped at ±20% per
+ *   proposal cycle to prevent overcorrection; basal rate adjustments are
+ *   capped at ±15% to stay within CLINICAL_BOUNDS
+ * - Proposed value computation: applies the clamped percentage change to the
+ *   current parameter value and rounds to the appropriate clinical precision
+ *   (ISF: 0.01 g/L/U; ICR: 0.5 g/U; basal: 0.05 U/h)
+ * - ISF slot analysis: compares post-meal correction outcomes within a time
+ *   slot against the glucose target to infer whether the sensitivity factor
+ *   should increase or decrease
+ * - ICR slot analysis: evaluates post-prandial glucose rise relative to
+ *   reported carb intake to assess whether the carb ratio is appropriate
+ * - Basal trend analysis: detects fasting glucose drift across overnight and
+ *   inter-meal windows to flag basal rate under- or over-delivery
+ *
+ * Associated risks:
+ * - An unclamped adjustment could propose an ISF or ICR change exceeding safe
+ *   clinical limits, leading to hypoglycemia or hyperglycemia if accepted
+ * - Generating a "high confidence" proposal from only 3 events would produce
+ *   an unreliable suggestion that a physician might accept without scrutiny
+ * - A sign inversion bug in analyzeIsfSlot (proposing to raise ISF when it
+ *   should decrease) would systematically under-correct hyperglycemia
+ * - Precision errors in computeProposedValue could push a value outside
+ *   CLINICAL_BOUNDS after rounding
+ *
+ * Edge cases:
+ * - Exactly 3 events (minimum for "low" confidence)
+ * - Exactly 11 events (minimum for "high" confidence)
+ * - Change percent of 0% (no proposal should be emitted)
+ * - Current value at CLINICAL_BOUNDS minimum with a proposed decrease (must
+ *   clamp to minimum, not go below)
+ * - Current value at CLINICAL_BOUNDS maximum with a proposed increase (must
+ *   clamp to maximum)
+ * - Empty events array passed to analyzeIsfSlot or analyzeIcrSlot
+ */
 import { describe, it, expect } from "vitest"
 import {
   getConfidenceLevel, clampChangePercent, computeProposedValue,

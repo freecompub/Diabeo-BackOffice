@@ -1,3 +1,34 @@
+/**
+ * Test suite: Events Service — Diabetes Events CRUD
+ *
+ * Clinical behavior tested:
+ * - Creation of DiabetesEvent records within a Prisma transaction: the event
+ *   row and its audit log entry are committed atomically so no event is
+ *   persisted without a corresponding audit trace
+ * - Free-text comment fields are encrypted with AES-256-GCM before insertion
+ *   to protect any incidental PII the patient may include in their notes
+ * - Listing events for a patient decrypts comment fields transparently and
+ *   returns them in chronological order for display in the timeline UI
+ * - Deletion is a soft-delete (deletedAt timestamp) preserving the record for
+ *   clinical history while hiding it from active queries
+ * - Access to another patient's events by a mismatched userId is rejected
+ *
+ * Associated risks:
+ * - A failed audit log write not rolling back the event create would leave
+ *   an untraced record, violating HDS audit completeness requirements
+ * - Storing comment plaintext in the database would expose patient-authored
+ *   free-text (which may contain diagnoses, drug names, or identifiers)
+ * - Returning events for the wrong patient due to a missing ownership filter
+ *   would constitute a cross-patient data-breach
+ *
+ * Edge cases:
+ * - Event with no comment field (encryption path must be skipped, not encrypt
+ *   null/undefined)
+ * - Multi-type event array (e.g. ["insulinMeal", "physicalActivity"]) stored
+ *   and retrieved correctly as a Prisma enum array
+ * - Event listing when patient has zero events (must return empty array)
+ * - Decryption error during list (should propagate, not silently omit events)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

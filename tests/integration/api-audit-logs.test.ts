@@ -1,14 +1,42 @@
 /**
- * Integration tests for GET /api/admin/audit-logs.
+ * Test suite: Audit Logs API — GET /api/admin/audit-logs Integration
  *
- * Tests the full API route handler including:
- * - Authentication (401 for unauthenticated)
- * - Authorization (403 for non-ADMIN)
- * - Zod validation of query params
- * - Successful response shape with pagination
+ * Clinical behavior tested:
+ * - End-to-end request handling for the admin audit-logs endpoint: query
+ *   parameters (userId, resource, action, from, to, page, pageSize) are
+ *   validated by the Zod schema, passed to auditService.query, and the
+ *   resulting records are returned in a paginated JSON envelope
+ * - Authentication enforcement: requests missing the x-user-id header (i.e.
+ *   not processed by the auth middleware) receive a 401 Unauthorized response
+ * - Authorization enforcement: authenticated requests from non-ADMIN roles
+ *   (DOCTOR, NURSE, VIEWER) receive a 403 Forbidden response; only ADMIN
+ *   may access the full audit log
+ * - Response shape: successful responses include { data: AuditLog[], total,
+ *   page, pageSize } so the admin UI can implement pagination correctly
  *
- * Auth is handled by the middleware setting x-user-id/x-user-role headers.
- * We simulate this by passing headers directly to the route handler.
+ * Associated risks:
+ * - A missing authentication check on this route would expose the complete
+ *   HDS audit trail to any unauthenticated caller, constituting a critical
+ *   security breach and HDS non-compliance event
+ * - A missing role check allowing DOCTOR access to audit logs would reveal
+ *   which other physicians accessed which patients, violating data minimization
+ * - A Zod validation bypass allowing arbitrary action strings would return
+ *   unexpected query results and could mask audit log tampering
+ * - An incorrect pagination implementation (off-by-one on page/pageSize)
+ *   would cause the admin UI to display duplicate or missing audit records
+ *
+ * Edge cases:
+ * - Request with no query parameters (must return first page with defaults)
+ * - Request with all filter parameters combined
+ * - pageSize set to the maximum allowed value (boundary — accepted)
+ * - action filter set to an unknown value (Zod must reject with 400)
+ * - from date after to date (must return 400 or empty result set)
+ * - Empty result set (no records match filters — must return 200 with empty
+ *   data array, not 404)
+ *
+ * Note: Auth is simulated by injecting x-user-id and x-user-role headers
+ * directly into the NextRequest, mirroring what the NextAuth middleware does
+ * in production.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"

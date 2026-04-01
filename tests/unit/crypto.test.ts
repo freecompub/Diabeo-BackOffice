@@ -1,12 +1,40 @@
 /**
- * Unit tests for AES-256-GCM encryption/decryption (health-data.ts).
+ * Test suite: Crypto Module — AES-256-GCM Encryption Integrity
  *
- * Verifies that patient health data encryption is correct, including:
- * - Roundtrip encrypt -> decrypt
- * - Random IV ensures different ciphertexts for same plaintext
- * - Invalid key detection
- * - Corrupted data detection
- * - encryptField/decryptField base64 pattern (from patient.service.ts)
+ * Clinical behavior tested:
+ * - Encrypt-then-decrypt roundtrip: plaintext health data (patient names,
+ *   medical identifiers) survives a full encrypt → Uint8Array → decrypt cycle
+ *   without data loss or corruption
+ * - Ciphertext format invariant: the encrypted Uint8Array has the exact layout
+ *   IV (12 bytes) || TAG (16 bytes) || CIPHERTEXT, which all consuming services
+ *   depend on for correct decryption
+ * - Random IV per encryption: two calls to encrypt with identical plaintext
+ *   must produce different ciphertexts, ensuring semantic security across all
+ *   patient records
+ * - Base64 codec pattern: the encryptField / decryptField pattern used by
+ *   patient.service converts the Uint8Array to base64 for String column storage
+ *   and back to Uint8Array for decryption — both directions verified
+ *
+ * Associated risks:
+ * - A deterministic IV (non-random) would allow an attacker with database
+ *   read access to detect which patients share the same field value
+ *   (e.g. same last name), breaking confidentiality
+ * - A corrupted GCM authentication tag not detected on decrypt would return
+ *   garbled data to a physician, who might act on incorrect patient details
+ * - Using Buffer.toString('utf8') instead of 'base64' on the ciphertext
+ *   Uint8Array silently corrupts data (ADR #2 — documented non-negotiable)
+ * - An invalid or missing HEALTH_DATA_ENCRYPTION_KEY must fail loudly at
+ *   startup, not at first encrypt call during patient creation
+ *
+ * Edge cases:
+ * - Empty string as plaintext (must encrypt and decrypt correctly)
+ * - Unicode characters in plaintext (e.g. accented names, CJK)
+ * - Ciphertext with exactly one byte of payload (minimum CIPHERTEXT length)
+ * - Truncated Uint8Array missing TAG bytes (decrypt must throw
+ *   HealthDataDecryptionError, not return corrupted data)
+ * - Wrong key used for decryption (GCM tag mismatch — must throw)
+ * - HEALTH_DATA_ENCRYPTION_KEY env var unset or wrong length (must throw
+ *   on module load, not silently use a null key)
  */
 
 import { describe, it, expect, afterEach } from "vitest"

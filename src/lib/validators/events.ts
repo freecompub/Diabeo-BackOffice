@@ -1,9 +1,31 @@
+/**
+ * @module validators/events
+ * @description Zod schema for diabetes event validation.
+ * Implements cross-field validation: certain eventTypes require specific fields (glycemia, carbs, activity details, context type).
+ * Events can have multiple eventTypes (array).
+ * @see CLAUDE.md#validators — Zod patterns and error handling
+ */
+
 import { z } from "zod"
 import { DiabetesEventType } from "@prisma/client"
 
-/** Derive event types from Prisma enum — no duplication */
+/**
+ * Derive all event types from Prisma enum — avoids duplication.
+ * Ensures schema stays in sync with database.
+ * @constant
+ */
 const EVENT_TYPES = Object.values(DiabetesEventType) as [DiabetesEventType, ...DiabetesEventType[]]
 
+/**
+ * Zod schema for diabetes event creation/update.
+ * Uses superRefine() for cross-field validation based on eventTypes.
+ * - glycemia in eventTypes → glycemiaValue required
+ * - insulinMeal in eventTypes → carbohydrates required
+ * - physicalActivity in eventTypes → activityType AND activityDuration required
+ * - context in eventTypes → contextType required
+ * @constant
+ * @type {z.ZodSchema}
+ */
 export const diabetesEventSchema = z.object({
   eventDate: z.string().datetime(),
   eventTypes: z.array(z.enum(EVENT_TYPES)).min(1),
@@ -66,4 +88,9 @@ export const diabetesEventSchema = z.object({
   }
 })
 
+/**
+ * Type-safe diabetes event input — inferred from schema.
+ * Used in eventsService.create(), eventsService.update() parameters.
+ * @typedef {z.infer<typeof diabetesEventSchema>} DiabetesEventInput
+ */
 export type DiabetesEventInput = z.infer<typeof diabetesEventSchema>

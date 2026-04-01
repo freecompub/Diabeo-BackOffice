@@ -1,8 +1,26 @@
+/**
+ * @module objectives.service
+ * @description Glycemia and CGM objectives (goals and thresholds).
+ * Supports pathology-aware defaults (tighter thresholds for gestational diabetes).
+ * All objectives are patient-specific and used for analytics (TIR assessment).
+ * @see CLAUDE.md#objectives — Glycemia/CGM objective domains
+ */
+
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { Pathology, Prisma } from "@prisma/client"
 
-/** CGM threshold shape — compatible with CgmObjective Decimal fields (as numbers for defaults) */
+/**
+ * CGM threshold shape — compatible with CgmObjective Decimal fields.
+ * Values in g/L (0.54 = 54 mg/dL).
+ * @typedef {Object} CgmThresholds
+ * @property {number} veryLow - Severe hypoglycemia threshold (< 54 mg/dL)
+ * @property {number} low - Hypoglycemia threshold (< 70 mg/dL)
+ * @property {number} ok - Upper normal threshold (≤ 180 mg/dL)
+ * @property {number} high - Hyperglycemia threshold (> 180 mg/dL)
+ * @property {number} titrLow - TITR target lower bound
+ * @property {number} titrHigh - TITR target upper bound
+ */
 interface CgmThresholds {
   veryLow: number
   low: number
@@ -12,7 +30,11 @@ interface CgmThresholds {
   titrHigh: number
 }
 
-/** CGM defaults per ADA/EASD consensus — DT1/DT2 */
+/**
+ * CGM defaults per ADA/EASD consensus — Type 1 & Type 2 diabetes.
+ * @constant
+ * @see https://diabetes.org/about-us/statistics/statistics-about-diabetes — ADA guidelines
+ */
 const CGM_DEFAULTS: CgmThresholds = {
   veryLow: 0.54,
   low: 0.70,
@@ -22,7 +44,12 @@ const CGM_DEFAULTS: CgmThresholds = {
   titrHigh: 1.80,
 }
 
-/** Tighter CGM defaults for gestational diabetes (ADA/ACOG) */
+/**
+ * Tighter CGM defaults for gestational diabetes (ADA/ACOG consensus).
+ * GD requires stricter control to prevent fetal complications.
+ * @constant
+ * @see https://www.acog.org/ — ACOG gestational diabetes guidelines
+ */
 const CGM_DEFAULTS_GD: CgmThresholds = {
   veryLow: 0.54,
   low: 0.63,
@@ -32,12 +59,30 @@ const CGM_DEFAULTS_GD: CgmThresholds = {
   titrHigh: 1.40,
 }
 
-/** Get pathology-aware CGM defaults */
+/**
+ * Get pathology-aware CGM defaults.
+ * Returns tighter thresholds for gestational diabetes, standard for T1D/T2D.
+ * @export
+ * @param {Pathology} [pathology] - Patient pathology (DT1, DT2, or GD)
+ * @returns {CgmThresholds} Appropriate thresholds
+ */
 export function getCgmDefaults(pathology?: Pathology): CgmThresholds {
   return pathology === "GD" ? CGM_DEFAULTS_GD : CGM_DEFAULTS
 }
 
+/**
+ * Objectives service — glycemia, CGM, annex objectives (CRUD).
+ * @namespace objectivesService
+ */
 export const objectivesService = {
+  /**
+   * Get all objectives for a patient.
+   * Returns defaults if not yet set.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @returns {Promise<{glycemia, cgm, annex}>} All objective types
+   */
   async getAll(patientId: number, auditUserId: number) {
     const [glycemia, cgm, annex, patient] = await Promise.all([
       prisma.glycemiaObjective.findMany({

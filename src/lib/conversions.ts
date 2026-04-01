@@ -1,8 +1,15 @@
 /**
- * Glucose conversion helpers — all data stored in g/L in database.
- *
+ * @module conversions
+ * @description Glucose unit conversions — all data stored in g/L internally.
  * Reference: 1 g/L = 100 mg/dL = 5.5506 mmol/L
- * (Molar mass glucose = 180.156 g/mol → 1 g/L = 1000/180.156 ≈ 5.5506 mmol/L)
+ * Molar mass glucose = 180.156 g/mol → 1000/180.156 ≈ 5.5506 mmol/L
+ * Used in UI display and user input conversion (from/to g/L).
+ */
+
+/**
+ * Glucose unit conversion table — maps units to from/to g/L converters.
+ * @constant
+ * @type {Object<string, {from: Function, to: Function}>}
  */
 export const GLUCOSE_CONVERSIONS = {
   "g/L": {
@@ -19,19 +26,46 @@ export const GLUCOSE_CONVERSIONS = {
   },
 } as const
 
+/**
+ * Glucose unit type — union of supported units.
+ * @typedef {("g/L" | "mg/dL" | "mmol/L")} GlucoseUnit
+ */
 export type GlucoseUnit = keyof typeof GLUCOSE_CONVERSIONS
 
-/** Convert glucose value from g/L to the target unit */
+/**
+ * Convert glucose value from g/L (internal) to target unit.
+ * Used in API response formatting (user-preferred units).
+ * @param {number} value - Glucose in g/L
+ * @param {GlucoseUnit} targetUnit - Target unit (g/L, mg/dL, or mmol/L)
+ * @returns {number} Converted value
+ * @example
+ * convertGlucoseFromGl(1.50, "mg/dL") // Returns 150
+ * convertGlucoseFromGl(1.50, "mmol/L") // Returns 8.33
+ */
 export function convertGlucoseFromGl(value: number, targetUnit: GlucoseUnit): number {
   return GLUCOSE_CONVERSIONS[targetUnit].to(value)
 }
 
-/** Convert glucose value from a source unit to g/L */
+/**
+ * Convert glucose value from source unit to g/L (internal storage).
+ * Used in API request parsing (user-provided units → g/L).
+ * @param {number} value - Glucose in source unit
+ * @param {GlucoseUnit} sourceUnit - Source unit (g/L, mg/dL, or mmol/L)
+ * @returns {number} Glucose in g/L
+ * @example
+ * convertGlucoseToGl(150, "mg/dL") // Returns 1.50
+ * convertGlucoseToGl(8.33, "mmol/L") // Returns 1.50
+ */
 export function convertGlucoseToGl(value: number, sourceUnit: GlucoseUnit): number {
   return GLUCOSE_CONVERSIONS[sourceUnit].from(value)
 }
 
-/** Unit definitions reference table (matches seed data) */
+/**
+ * Unit definitions reference table — matches database seed data.
+ * Used to populate unit selection dropdowns and for formatting.
+ * @constant
+ * @type {Array<{code: number, name: string, category: string, label: string}>}
+ */
 export const UNIT_DEFINITIONS = [
   { code: 1, name: "CP", category: "carb", label: "Portions" },
   { code: 2, name: "g", category: "carb", label: "Grammes" },
