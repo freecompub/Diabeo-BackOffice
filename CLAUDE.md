@@ -728,6 +728,14 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 - [ ] **Photo upload** — implémenter OVH Object Storage (actuellement 501 Not Implemented)
 - [ ] **MFA flow complet** — login bloqué si `mfaEnabled=true`, implémenter le flow TOTP
 
+### Design System (à planifier)
+- [ ] **Création du design system complet** — tokens (couleurs, typographie, espacements, ombres), composants de base shadcn/ui configurés avec la palette "Sérénité Active"
+- [ ] **Composants métier Diabeo** — GlycemiaChart, BolusCalculator, PatientCard, AlertBanner, TirDonut, AgpGraph
+- [ ] **Storybook** — stories pour chaque composant avec variations d'état (normal, erreur, alerte clinique, données sensibles)
+- [ ] **Tokens design** — fichier Tailwind CSS avec les variables de la palette (teal, corail, glycémie normale/haute/critique)
+- [ ] **Accessibilité WCAG 2.1** — contrastes 4.5:1, navigation clavier, ARIA labels, screen reader support
+- [ ] **Responsive** — mobile-first, optimisé desktop pour le backoffice médical
+
 ### Documentation (à planifier)
 - [ ] **Mise à jour CLAUDE.md** — Phases 3 à 7 manquantes, CLINICAL_BOUNDS obsolètes, structure projet incomplète
 - [ ] **Documentation API** — Swagger/OpenAPI pour toutes les routes (auth, patient, CGM, analytics, insulin, devices, push, announcements)
