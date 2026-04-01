@@ -6,7 +6,7 @@ import { extractRequestContext } from "@/lib/services/audit.service"
 
 const createAnnouncementSchema = z.object({
   title: z.string().min(1).max(255),
-  content: z.string().min(1),
+  content: z.string().min(1).max(10000),
   callBackDelay: z.number().int().min(0).optional(),
   displayShowButton: z.boolean().optional(),
 })

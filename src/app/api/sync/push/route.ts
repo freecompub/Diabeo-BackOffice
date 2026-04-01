@@ -1,17 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { syncService } from "@/lib/services/sync.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 const pushSchema = z.object({
   deviceUid: z.string().min(1).max(100),
-  sequenceNum: z.number().int().min(0),
+  sequenceNum: z.string().regex(/^\d+$/, "Must be a non-negative integer string"),
 })
 
 export async function POST(req: NextRequest) {
   try {
     const user = requireAuth(req)
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
     const body = await req.json()
     const parsed = pushSchema.safeParse(body)
     if (!parsed.success) {

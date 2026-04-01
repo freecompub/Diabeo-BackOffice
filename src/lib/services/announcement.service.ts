@@ -3,15 +3,14 @@ import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 
 export const announcementService = {
-  /** List active announcements */
   async list() {
     return prisma.announcement.findMany({
       where: { displayAnnouncement: true },
       orderBy: { createdAt: "desc" },
+      take: 50,
     })
   },
 
-  /** Create an announcement (ADMIN only) */
   async create(
     input: { title: string; content: string; callBackDelay?: number; displayShowButton?: boolean },
     auditUserId: number, ctx?: AuditContext,
@@ -20,7 +19,7 @@ export const announcementService = {
       const announcement = await tx.announcement.create({ data: input })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "SESSION",
+        userId: auditUserId, action: "CREATE", resource: "USER",
         resourceId: `announcement:${announcement.id}`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })
@@ -29,22 +28,30 @@ export const announcementService = {
     })
   },
 
-  /** Update an announcement (ADMIN only) */
   async update(
     id: number,
     input: { title?: string; content?: string; callBackDelay?: number; displayAnnouncement?: boolean; displayShowButton?: boolean },
-    auditUserId: number,
+    auditUserId: number, ctx?: AuditContext,
   ) {
-    return prisma.announcement.update({ where: { id }, data: input })
+    return prisma.$transaction(async (tx) => {
+      const announcement = await tx.announcement.update({ where: { id }, data: input })
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId, action: "UPDATE", resource: "USER",
+        resourceId: `announcement:${id}`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      })
+
+      return announcement
+    })
   },
 
-  /** Delete an announcement (ADMIN only) */
   async delete(id: number, auditUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
       await tx.announcement.delete({ where: { id } })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "DELETE", resource: "SESSION",
+        userId: auditUserId, action: "DELETE", resource: "USER",
         resourceId: `announcement:${id}`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })

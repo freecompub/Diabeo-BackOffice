@@ -3,7 +3,6 @@ import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 
 export const syncService = {
-  /** Pull data since a given sequence number */
   async pull(userId: number, deviceUid: string, clientSeqNum: bigint, auditUserId: number, ctx?: AuditContext) {
     const sync = await prisma.deviceDataSync.findUnique({
       where: { userId_deviceUid: { userId, deviceUid } },
@@ -11,13 +10,12 @@ export const syncService = {
 
     if (!sync) throw new Error("syncNotFound")
 
-    // Conflict detection: client is behind
     if (clientSeqNum < sync.sequenceNum) {
       return { conflict: true, serverSeqNum: String(sync.sequenceNum), clientSeqNum: String(clientSeqNum) }
     }
 
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "SESSION",
+      userId: auditUserId, action: "READ", resource: "PATIENT",
       resourceId: `sync:${deviceUid}`,
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
     })
@@ -25,8 +23,7 @@ export const syncService = {
     return { conflict: false, sequenceNum: String(sync.sequenceNum), lastSyncDate: sync.lastSyncDate }
   },
 
-  /** Push new data and increment sequence number */
-  async push(userId: number, deviceUid: string, clientSeqNum: bigint, auditUserId: number, ctx?: AuditContext) {
+  async push(userId: number, deviceUid: string, _clientSeqNum: bigint, auditUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
       const sync = await tx.deviceDataSync.upsert({
         where: { userId_deviceUid: { userId, deviceUid } },
@@ -35,12 +32,12 @@ export const syncService = {
           lastSyncDate: new Date(),
         },
         create: {
-          userId, deviceUid, sequenceNum: clientSeqNum + BigInt(1), lastSyncDate: new Date(),
+          userId, deviceUid, sequenceNum: BigInt(1), lastSyncDate: new Date(),
         },
       })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "UPDATE", resource: "SESSION",
+        userId: auditUserId, action: "UPDATE", resource: "PATIENT",
         resourceId: `sync:${deviceUid}`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })

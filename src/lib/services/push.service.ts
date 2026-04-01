@@ -1,16 +1,14 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
-import type { PushPlatform, ScheduleType, Prisma } from "@prisma/client"
+import type { PushPlatform, ScheduleType } from "@prisma/client"
 
-/** Mask push token for API responses */
 function maskToken(token: string): string {
   if (token.length <= 10) return "***"
   return `${token.slice(0, 6)}...${token.slice(-4)}`
 }
 
 export const pushService = {
-  // --- Registration ---
   async listRegistrations(userId: number) {
     const regs = await prisma.pushDeviceRegistration.findMany({
       where: { userId, isActive: true },
@@ -29,7 +27,6 @@ export const pushService = {
     ctx?: AuditContext,
   ) {
     return prisma.$transaction(async (tx) => {
-      // Deactivate if token already registered by another user
       await tx.pushDeviceRegistration.updateMany({
         where: { pushToken: input.pushToken, userId: { not: userId } },
         data: { isActive: false, unregisteredAt: new Date() },
@@ -37,15 +34,35 @@ export const pushService = {
 
       const reg = await tx.pushDeviceRegistration.upsert({
         where: { pushToken: input.pushToken },
-        update: { ...input, userId, isActive: true, lastUsedAt: new Date(), unregisteredAt: null },
+        update: {
+          platform: input.platform,
+          deviceName: input.deviceName,
+          deviceModel: input.deviceModel,
+          osVersion: input.osVersion,
+          appVersion: input.appVersion,
+          appBundleId: input.appBundleId,
+          locale: input.locale,
+          pushTimezone: input.pushTimezone,
+          isSandbox: input.isSandbox,
+          userId,
+          isActive: true,
+          lastUsedAt: new Date(),
+          unregisteredAt: null,
+        },
         create: { ...input, userId },
+      })
+
+      await auditService.logWithTx(tx, {
+        userId, action: "CREATE", resource: "SESSION",
+        resourceId: `push-reg:${reg.id}`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })
 
       return { ...reg, pushToken: maskToken(reg.pushToken) }
     })
   },
 
-  async unregister(registrationId: string, userId: number) {
+  async unregister(registrationId: string, userId: number, ctx?: AuditContext) {
     const reg = await prisma.pushDeviceRegistration.findFirst({
       where: { id: registrationId, userId },
     })
@@ -56,18 +73,30 @@ export const pushService = {
       data: { isActive: false, unregisteredAt: new Date() },
     })
 
+    await auditService.log({
+      userId, action: "DELETE", resource: "SESSION",
+      resourceId: `push-reg:${registrationId}`,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+    })
+
     return { unregistered: true }
   },
 
-  async unregisterAll(userId: number) {
+  async unregisterAll(userId: number, ctx?: AuditContext) {
     await prisma.pushDeviceRegistration.updateMany({
       where: { userId, isActive: true },
       data: { isActive: false, unregisteredAt: new Date() },
     })
+
+    await auditService.log({
+      userId, action: "DELETE", resource: "SESSION",
+      resourceId: `push-reg:all:${userId}`,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+    })
+
     return { unregisteredAll: true }
   },
 
-  // --- Templates ---
   async listTemplates() {
     return prisma.pushNotificationTemplate.findMany({
       where: { isActive: true },
@@ -79,7 +108,6 @@ export const pushService = {
     return prisma.pushNotificationTemplate.findUnique({ where: { id: templateId } })
   },
 
-  // --- Scheduled ---
   async listScheduled(userId: number) {
     return prisma.pushScheduledNotification.findMany({
       where: { userId },
@@ -92,45 +120,42 @@ export const pushService = {
     input: {
       templateId: string; scheduleType: ScheduleType
       scheduledAt?: Date; cronExpression?: string; cronTimezone?: string
-      templateVariables?: Record<string, unknown>
+      templateVariables?: Record<string, string>
       maxOccurrences?: number
     },
+    ctx?: AuditContext,
   ) {
-    return prisma.pushScheduledNotification.create({
+    const sched = await prisma.pushScheduledNotification.create({
       data: {
         user: { connect: { id: userId } },
         template: { connect: { id: input.templateId } },
         scheduleType: input.scheduleType,
         scheduledAt: input.scheduledAt,
         cronExpression: input.cronExpression,
-        cronTimezone: input.cronTimezone,
-        templateVariables: input.templateVariables ? JSON.parse(JSON.stringify(input.templateVariables)) : undefined,
+        cronTimezone: input.cronTimezone ?? "Europe/Paris",
+        templateVariables: input.templateVariables ?? undefined,
         maxOccurrences: input.maxOccurrences,
       },
     })
+
+    await auditService.log({
+      userId, action: "CREATE", resource: "SESSION",
+      resourceId: `push-sched:${sched.id}`,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+    })
+
+    return sched
   },
 
   async pauseScheduled(scheduleId: string, userId: number) {
-    const sched = await prisma.pushScheduledNotification.findFirst({
-      where: { id: scheduleId, userId },
-    })
+    const sched = await prisma.pushScheduledNotification.findFirst({ where: { id: scheduleId, userId } })
     if (!sched) throw new Error("scheduleNotFound")
-
-    return prisma.pushScheduledNotification.update({
-      where: { id: scheduleId },
-      data: { isActive: false },
-    })
+    return prisma.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: false } })
   },
 
   async resumeScheduled(scheduleId: string, userId: number) {
-    const sched = await prisma.pushScheduledNotification.findFirst({
-      where: { id: scheduleId, userId },
-    })
+    const sched = await prisma.pushScheduledNotification.findFirst({ where: { id: scheduleId, userId } })
     if (!sched) throw new Error("scheduleNotFound")
-
-    return prisma.pushScheduledNotification.update({
-      where: { id: scheduleId },
-      data: { isActive: true },
-    })
+    return prisma.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: true } })
   },
 }

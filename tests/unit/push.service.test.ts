@@ -25,6 +25,7 @@ describe("pushService", () => {
             id: "r1", pushToken: "token123456789abcdef", userId: 1, isActive: true,
           }),
         },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 

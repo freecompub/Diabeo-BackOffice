@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { requireAuth, requireRole, AuthError } from "@/lib/auth"
+import { requireRole, AuthError } from "@/lib/auth"
 import { pushService } from "@/lib/services/push.service"
 
-/** GET /api/push/templates — list notification templates */
+/** GET /api/push/templates — list notification templates (NURSE+ only) */
 export async function GET(req: NextRequest) {
   try {
-    requireAuth(req)
+    requireRole(req, "NURSE")
     const templates = await pushService.listTemplates()
     return NextResponse.json(templates)
   } catch (error) {

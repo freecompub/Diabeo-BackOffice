@@ -28,10 +28,16 @@ describe("announcementService", () => {
   })
 
   describe("update", () => {
-    it("updates announcement", async () => {
-      prismaMock.announcement.update.mockResolvedValue({ id: 1, title: "Updated" } as any)
+    it("updates announcement with audit in transaction", async () => {
+      const mockTx = {
+        announcement: { update: vi.fn().mockResolvedValue({ id: 1, title: "Updated" }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
       const result = await announcementService.update(1, { title: "Updated" }, 1)
       expect(result.title).toBe("Updated")
+      expect(mockTx.auditLog.create).toHaveBeenCalled()
     })
   })
 
