@@ -5,6 +5,7 @@ Mis à jour à chaque décision architecturale majeure.
 
 ---
 @.claude/TEAM.md
+@.claude/Documentation.md
 ---
 ## 🏥 Projet
 
@@ -727,6 +728,14 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 - [ ] **Photo upload** — implémenter OVH Object Storage (actuellement 501 Not Implemented)
 - [ ] **MFA flow complet** — login bloqué si `mfaEnabled=true`, implémenter le flow TOTP
 
+### Documentation (à planifier)
+- [ ] **Mise à jour CLAUDE.md** — Phases 3 à 7 manquantes, CLINICAL_BOUNDS obsolètes, structure projet incomplète
+- [ ] **Documentation API** — Swagger/OpenAPI pour toutes les routes (auth, patient, CGM, analytics, insulin, devices, push, announcements)
+- [ ] **Runbook opérationnel** — procédures déploiement, rollback, backup, monitoring
+- [ ] **Guide développeur** — onboarding, conventions code, workflow PR/review, architecture services
+- [ ] **Documentation HDS/RGPD** — cartographie des données de santé, flux de chiffrement, politique d'audit, procédures RGPD (export/suppression)
+- [ ] **Changelog** — historique des phases livrées avec PRs et findings corrigés
+
 ---
 
-*Dernière mise à jour : 2026-04-01 — Phase 4 implémentée — Branche feat/phase-4-insulinotherapie*
+*Dernière mise à jour : 2026-04-01 — Phase 7 implémentée*
