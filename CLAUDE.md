@@ -660,4 +660,39 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-04-01 — Phase 1 implémentée — Branche feat/phase-1-auth-accounts*
+## ✅ Phase 2 implémentée (US-200 à US-203)
+
+### US-200 — Profil patient + contrôle d'accès
+- ✅ `GET /api/patient` — propre profil patient (déchiffré)
+- ✅ `PUT /api/patient` — mise à jour pathologie
+- ✅ `GET /api/patients/:id` — accès pro (NURSE+) avec contrôle service
+- ✅ `PUT /api/patients/:id` — mise à jour pro avec contrôle service
+- ✅ `canAccessPatient()` — ADMIN: tout, VIEWER: propre, DOCTOR/NURSE: via PatientService
+- ✅ `getOwnPatientId()` — résolution userId → patientId
+
+### US-201 — Données médicales & antécédents
+- ✅ `GET /api/patient/medical-data` — données déchiffrées
+- ✅ `PUT /api/patient/medical-data` — mise à jour avec chiffrement history_*
+- ✅ Champs chiffrés : historyMedical, historyChirurgical, historyFamily, historyAllergy, historyVaccine, historyLife
+- ✅ Validation yearDiag : [1900, année courante]
+
+### US-202 — Objectifs glycémiques & CGM
+- ✅ `GET /api/patient/objectives` — 3 types (glycemia, cgm, annex)
+- ✅ `PUT /api/patient/objectives` — CGM update (DOCTOR only)
+- ✅ Validation : veryLow < low < ok < high, titrLow < titrHigh
+- ✅ Defaults ADA : 54/70/180/250 mg/dL
+- ✅ objectivesService avec transactions
+
+### US-203 — Suivi de grossesse
+- ✅ `GET /api/patient/pregnancy` — grossesse active
+- ✅ `POST /api/patient/pregnancy` — nouvelle grossesse (désactive la précédente)
+- ✅ `PUT /api/patient/pregnancy/:id` — mise à jour DPA, âge gestationnel
+- ✅ Validation gestationalAge : [0, 45] semaines
+
+### Infrastructure Phase 2
+- ✅ 149 tests Vitest (+ access control, CGM thresholds)
+- ✅ patientService étendu (getByUserId, getMedicalData, updateMedicalData)
+
+---
+
+*Dernière mise à jour : 2026-04-01 — Phase 2 implémentée — Branche feat/phase-2-dossier-patient*

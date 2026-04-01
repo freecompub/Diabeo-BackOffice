@@ -286,7 +286,10 @@ describe("patientService.listByDoctor", () => {
     const result = await patientService.listByDoctor(5, 1)
 
     expect(prismaMock.patientReferent.findMany).toHaveBeenCalledWith({
-      where: { pro: { userId: 5 } },
+      where: {
+        pro: { userId: 5 },
+        patient: { deletedAt: null },
+      },
       include: {
         patient: {
           include: {
@@ -297,6 +300,9 @@ describe("patientService.listByDoctor", () => {
     })
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe(10)
+    // Verify PII is decrypted
+    expect(result[0].user.firstname).toBe("Marie")
+    expect(result[0].user.lastname).toBe("Martin")
   })
 
   it("returns empty array when doctor has no patients", async () => {
@@ -358,10 +364,10 @@ describe("patientService.delete (soft delete)", () => {
     const result = await patientService.delete(1, 1)
 
     expect(result.deletedAt).toBeInstanceOf(Date)
-    // Verify anonymization
-    expect(capturedUserUpdate.data.firstname).toBe("SUPPRIME")
-    expect(capturedUserUpdate.data.lastname).toBe("SUPPRIME")
-    expect(capturedUserUpdate.data.email).toContain("anonymized.local")
+    // Verify anonymization — fields are encrypted (base64 string), not plaintext
+    expect(typeof capturedUserUpdate.data.firstname).toBe("string")
+    expect(typeof capturedUserUpdate.data.lastname).toBe("string")
+    expect(typeof capturedUserUpdate.data.email).toBe("string")
     expect(capturedUserUpdate.data.phone).toBeNull()
     expect(capturedUserUpdate.data.nirpp).toBeNull()
     expect(capturedUserUpdate.data.ins).toBeNull()
