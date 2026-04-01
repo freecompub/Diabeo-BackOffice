@@ -1,15 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
-import { getOwnPatientId } from "@/lib/access-control"
+import { getOwnPatientId, canAccessPatient } from "@/lib/access-control"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { objectivesService } from "@/lib/services/objectives.service"
 
 /** GET /api/patient/objectives — read own objectives (all 3 types) */
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
-    const patientId = await getOwnPatientId(user.id)
 
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
+    const patientId = await getOwnPatientId(user.id)
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
@@ -25,8 +31,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
-
-// --- CGM objectives update (DOCTOR only) ---
 
 const cgmSchema = z.object({
   patientId: z.number().int().positive(),
@@ -55,7 +59,7 @@ const annexSchema = z.object({
   return true
 }, { message: "objectiveMinWeight must be <= objectiveMaxWeight" })
 
-/** PUT /api/patient/objectives — update CGM objectives (DOCTOR only) */
+/** PUT /api/patient/objectives — update CGM objectives (DOCTOR only + access control) */
 export async function PUT(req: NextRequest) {
   try {
     const user = requireRole(req, "DOCTOR")
@@ -70,6 +74,13 @@ export async function PUT(req: NextRequest) {
     }
 
     const { patientId, ...cgmInput } = parsed.data
+
+    // Access control: doctor must have access to this patient
+    const allowed = await canAccessPatient(user.id, user.role, patientId)
+    if (!allowed) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
     const result = await objectivesService.updateCgm(patientId, cgmInput, user.id)
     return NextResponse.json(result)
   } catch (error) {
@@ -82,7 +93,7 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-/** PATCH /api/patient/objectives — update annex objectives (DOCTOR only) */
+/** PATCH /api/patient/objectives — update annex objectives (DOCTOR only + access control) */
 export async function PATCH(req: NextRequest) {
   try {
     const user = requireRole(req, "DOCTOR")
@@ -97,6 +108,12 @@ export async function PATCH(req: NextRequest) {
     }
 
     const { patientId, ...annexInput } = parsed.data
+
+    const allowed = await canAccessPatient(user.id, user.role, patientId)
+    if (!allowed) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
     const result = await objectivesService.updateAnnex(patientId, annexInput, user.id)
     return NextResponse.json(result)
   } catch (error) {

@@ -2,16 +2,15 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
-
-const currentYear = new Date().getFullYear()
 
 const updateMedicalSchema = z.object({
   dt1: z.boolean().optional(),
   size: z.number().min(30).max(250).optional(),
-  yearDiag: z.number().int().min(1900).max(currentYear).optional(),
+  yearDiag: z.number().int().min(1900).max(new Date().getFullYear()).optional(),
   insulin: z.boolean().optional(),
-  insulinYear: z.number().int().min(1900).max(currentYear).optional(),
+  insulinYear: z.number().int().min(1900).max(new Date().getFullYear()).optional(),
   insulinPump: z.boolean().optional(),
   pathology: z.string().max(500).optional(),
   diabetDiscovery: z.string().max(500).optional(),
@@ -35,8 +34,13 @@ const updateMedicalSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
-    const patientId = await getOwnPatientId(user.id)
 
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
+    const patientId = await getOwnPatientId(user.id)
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }

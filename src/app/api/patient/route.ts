@@ -3,6 +3,7 @@ import { z } from "zod"
 import { Pathology } from "@prisma/client"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
 
 const updateSchema = z.object({
@@ -13,8 +14,13 @@ const updateSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
-    const patientId = await getOwnPatientId(user.id)
 
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
+    const patientId = await getOwnPatientId(user.id)
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }

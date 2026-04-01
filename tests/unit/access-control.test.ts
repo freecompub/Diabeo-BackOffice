@@ -39,7 +39,7 @@ describe("canAccessPatient", () => {
   })
 
   it("VIEWER can access own patient record", async () => {
-    prismaMock.patient.findUnique.mockResolvedValue({
+    prismaMock.patient.findFirst.mockResolvedValue({
       id: 5, userId: 42, pathology: "DT1", createdAt: new Date(), deletedAt: null,
     })
     const result = await canAccessPatient(42, "VIEWER", 5)
@@ -47,9 +47,8 @@ describe("canAccessPatient", () => {
   })
 
   it("VIEWER cannot access other patient record", async () => {
-    prismaMock.patient.findUnique.mockResolvedValue({
-      id: 5, userId: 99, pathology: "DT1", createdAt: new Date(), deletedAt: null,
-    })
+    // findFirst with userId=42 + patientId=5 returns null (no match)
+    prismaMock.patient.findFirst.mockResolvedValue(null)
     const result = await canAccessPatient(42, "VIEWER", 5)
     expect(result).toBe(false)
   })

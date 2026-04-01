@@ -3,7 +3,21 @@ import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
+import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { auditService } from "@/lib/services/audit.service"
+
+function encryptField(value: string): string {
+  return Buffer.from(encrypt(value)).toString("base64")
+}
+
+function safeDecryptField(value: string | null): string | null {
+  if (!value) return null
+  try {
+    return decrypt(new Uint8Array(Buffer.from(value, "base64")))
+  } catch {
+    return null
+  }
+}
 
 const updatePregnancySchema = z.object({
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -50,13 +64,14 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "pregnancyNotFound" }, { status: 404 })
     }
 
-    return prisma.$transaction(async (tx) => {
-      const data: Record<string, unknown> = { ...parsed.data }
-      if (parsed.data.dueDate) {
-        data.dueDate = new Date(parsed.data.dueDate)
-      }
+    const pregnancy = await prisma.$transaction(async (tx) => {
+      const data: Record<string, unknown> = {}
+      if (parsed.data.dueDate !== undefined) data.dueDate = new Date(parsed.data.dueDate)
+      if (parsed.data.gestationalAge !== undefined) data.gestationalAge = parsed.data.gestationalAge
+      if (parsed.data.active !== undefined) data.active = parsed.data.active
+      if (parsed.data.notes !== undefined) data.notes = encryptField(parsed.data.notes)
 
-      const pregnancy = await tx.patientPregnancy.update({
+      const updated = await tx.patientPregnancy.update({
         where: { id: pregnancyId },
         data,
       })
@@ -69,7 +84,12 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         metadata: { updatedFields: Object.keys(parsed.data) },
       })
 
-      return NextResponse.json(pregnancy)
+      return updated
+    })
+
+    return NextResponse.json({
+      ...pregnancy,
+      notes: safeDecryptField(pregnancy.notes),
     })
   } catch (error) {
     if (error instanceof AuthError) {

@@ -141,8 +141,8 @@ export const patientService = {
   },
 
   async getByUserId(userId: number, auditUserId: number) {
-    const patient = await prisma.patient.findUnique({
-      where: { userId },
+    const patient = await prisma.patient.findFirst({
+      where: { userId, deletedAt: null },
       select: { id: true },
     })
     if (!patient) return null
@@ -155,6 +155,12 @@ export const patientService = {
     auditUserId: number,
   ) {
     return prisma.$transaction(async (tx) => {
+      // Guard: verify patient exists and is not soft-deleted
+      const existing = await tx.patient.findFirst({
+        where: { id: patientId, deletedAt: null },
+      })
+      if (!existing) throw new Error("Patient not found or deleted")
+
       const patient = await tx.patient.update({
         where: { id: patientId },
         data: input,
@@ -216,7 +222,10 @@ export const patientService = {
 
   async listByDoctor(doctorUserId: number, auditUserId: number) {
     const referents = await prisma.patientReferent.findMany({
-      where: { pro: { userId: doctorUserId } },
+      where: {
+        pro: { userId: doctorUserId },
+        patient: { deletedAt: null },
+      },
       include: {
         patient: {
           include: {
@@ -234,7 +243,15 @@ export const patientService = {
       metadata: { action: "list", count: referents.length },
     })
 
-    return referents.map((r) => r.patient)
+    // Decrypt PII fields before returning
+    return referents.map((r) => ({
+      ...r.patient,
+      user: {
+        ...r.patient.user,
+        firstname: safeDecrypt(r.patient.user.firstname),
+        lastname: safeDecrypt(r.patient.user.lastname),
+      },
+    }))
   },
 
   /** Soft delete — anonymise les données (RGPD) */

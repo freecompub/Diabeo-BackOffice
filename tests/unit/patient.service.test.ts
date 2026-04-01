@@ -286,7 +286,10 @@ describe("patientService.listByDoctor", () => {
     const result = await patientService.listByDoctor(5, 1)
 
     expect(prismaMock.patientReferent.findMany).toHaveBeenCalledWith({
-      where: { pro: { userId: 5 } },
+      where: {
+        pro: { userId: 5 },
+        patient: { deletedAt: null },
+      },
       include: {
         patient: {
           include: {
@@ -297,6 +300,9 @@ describe("patientService.listByDoctor", () => {
     })
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe(10)
+    // Verify PII is decrypted
+    expect(result[0].user.firstname).toBe("Marie")
+    expect(result[0].user.lastname).toBe("Martin")
   })
 
   it("returns empty array when doctor has no patients", async () => {
