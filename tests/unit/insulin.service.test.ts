@@ -1,16 +1,42 @@
 /**
- * Unit tests for insulin.service.ts — CRITICAL MEDICAL LOGIC
+ * Test suite: Insulin Service — Bolus Calculation and Clinical Safety
  *
- * These tests verify the bolus calculation engine used to suggest
- * insulin doses for diabetic patients. Correctness is a patient safety issue.
+ * Clinical behavior tested:
+ * - Meal bolus calculation: mealBolus = carbsGrams / ICR(hour), where ICR is
+ *   selected from the patient's time-of-day CarbRatio slot
+ * - Correction bolus calculation: correctionDose = max(0, (currentMgdl -
+ *   targetMgdl) / ISF(hour) - IOB), where IOB is subtracted to avoid
+ *   stacking insulin on board
+ * - Final recommended dose: min(mealBolus + correctionDose, MAX_SINGLE_BOLUS=25 U)
+ *   rounded to 0.1 U — never exceeds the hard clinical cap
+ * - Time-of-day slot resolution: the correct ISF and ICR slot is selected
+ *   based on startHour <= current hour, falling back to the last slot at
+ *   midnight (00:00) when no earlier slot matches
+ * - g/L to mg/dL unit conversion: currentGlucoseGl * 100 = currentMgdl
+ *   applied consistently before all arithmetic
+ * - The entire bolus calculation and its BolusCalculationLog are committed
+ *   atomically in a Prisma transaction alongside an audit log entry
  *
- * Formulas under test:
- *   mealBolus       = carbsGrams / ICR(hour)
- *   correctionDose  = max(0, (currentMgdl - targetMgdl) / ISF(hour) - IOB)
- *   recommendedDose = min(mealBolus + correctionDose, MAX_SINGLE_BOLUS=25U)
- *   recommendedDose is rounded to 0.1U
+ * Associated risks:
+ * - An incorrect ICR or ISF slot selection (off-by-one hour boundary) would
+ *   produce a systematically wrong dose recommendation at slot transition
+ *   times, potentially causing under- or over-correction
+ * - Missing the MAX_SINGLE_BOLUS cap would allow the formula to recommend
+ *   a lethal dose for a patient who inputs extreme carb counts
+ * - A failed transaction leaving a BolusCalculationLog without an audit entry
+ *   would produce an untraced dose suggestion, violating HDS requirements
+ * - IOB not subtracted from correction dose would cause double-dosing on
+ *   closely spaced corrections, risking severe hypoglycemia
  *
- * Conversion: currentGlucoseGl (g/L) * 100 = currentMgdl (mg/dL)
+ * Edge cases:
+ * - Current glucose exactly at target (correctionDose = 0, only meal bolus)
+ * - Current glucose below target (correctionDose clamped to 0 via max(0, ...))
+ * - Carbs = 0 (correction-only bolus)
+ * - IOB exceeding the correction dose (total correction clamped to 0)
+ * - Recommended dose exactly at 25 U (boundary — not capped further)
+ * - Recommended dose of 25.05 U (must be capped to 25.0 U)
+ * - No matching ISF/ICR slot for the current hour (fallback to 00:00 slot)
+ * - Patient with a single all-day slot covering all 24 hours
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"

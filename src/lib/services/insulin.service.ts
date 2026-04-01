@@ -1,7 +1,39 @@
+/**
+ * @module insulin.service
+ * @description Bolus calculation engine with clinical safety bounds.
+ * Implements insulin-to-carb ratio (ICR), insulin sensitivity factor (ISF),
+ * and Insulin-On-Board (IOB) adjustment per ADA/EASD consensus.
+ * All suggestions are immutable logs — never auto-injected without patient acceptance.
+ * @see CLAUDE.md#insulin-logic — Bolus calculation formula and clinical bounds
+ * @see CLAUDE.md#insulin-validation — Medical domain validation
+ * @see Prisma schema — InsulinTherapySettings, BolusCalculationLog models
+ * @see https://diabetes.org/about-us/statistics/statistics-about-diabetes — ADA guidelines
+ */
+
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 
-/** Clinical safety bounds (validated by medical-domain-validator) */
+/**
+ * Clinical safety bounds for insulin therapy parameters.
+ * Validated by medical-domain-validator based on ADA/EASD consensus.
+ * ISF widened for insulin-resistant T2D patients; ICR widened for pediatric/resistant cases.
+ * @constant
+ * @type {Object}
+ * @property {number} ISF_GL_MIN=0.10 - Min insulin sensitivity (g/L/U) — widened for resistant T2D
+ * @property {number} ISF_GL_MAX=1.00 - Max insulin sensitivity (g/L/U)
+ * @property {number} ISF_MGDL_MIN=10 - Min insulin sensitivity (mg/dL/U)
+ * @property {number} ISF_MGDL_MAX=100 - Max insulin sensitivity (mg/dL/U)
+ * @property {number} ICR_MIN=3.0 - Min carb ratio (g/U) — widened for pediatric/resistant
+ * @property {number} ICR_MAX=30.0 - Max carb ratio (g/U) — widened for insulin-sensitive T1D
+ * @property {number} BASAL_MIN=0.05 - Min basal rate (U/h)
+ * @property {number} BASAL_MAX=5.0 - Max basal rate (U/h) — lowered from 10 (10 U/h = 240 U/day dangerous)
+ * @property {number} TARGET_MIN_MGDL=60 - Min glucose target (mg/dL)
+ * @property {number} TARGET_MAX_MGDL=250 - Max glucose target (mg/dL)
+ * @property {number} MAX_SINGLE_BOLUS=25.0 - Hard cap on recommended dose (U)
+ * @property {number} INSULIN_ACTION_MIN=3.5 - Min insulin action duration (hours)
+ * @property {number} INSULIN_ACTION_MAX=5.0 - Max insulin action duration (hours)
+ * @property {number} PUMP_BASAL_INCREMENT=0.05 - Pump precision (U/h)
+ */
 const CLINICAL_BOUNDS = {
   ISF_GL_MIN: 0.10,    // g/L/U (widened for insulin-resistant T2D)
   ISF_GL_MAX: 1.00,    // g/L/U
@@ -19,12 +51,32 @@ const CLINICAL_BOUNDS = {
   PUMP_BASAL_INCREMENT: 0.05, // U/h
 } as const
 
+/**
+ * Input parameters for bolus calculation.
+ * @typedef {Object} BolusInput
+ * @property {number} currentGlucoseGl - Current glucose in g/L (0.40-5.00 valid range)
+ * @property {number} carbsGrams - Meal carbohydrate content (≥0)
+ * @property {number} patientId - Patient ID for settings lookup
+ */
 interface BolusInput {
   currentGlucoseGl: number   // g/L
   carbsGrams: number
   patientId: number
 }
 
+/**
+ * Bolus calculation result — a suggestion that requires explicit patient acceptance.
+ * @typedef {Object} BolusResult
+ * @property {number} mealBolus - Insulin units for carbs (carbs / ICR)
+ * @property {number} rawCorrectionDose - Uncapped correction dose (before IOB adjustment)
+ * @property {number} iobAdjustment - Insulin-On-Board adjustment (currently 0)
+ * @property {number} correctionDose - Final correction (max(0, raw - IOB))
+ * @property {number} recommendedDose - Total (meal + correction), capped, device-rounded
+ * @property {boolean} wasCapped - True if recommendedDose hit MAX_SINGLE_BOLUS cap
+ * @property {Array<string>} warnings - Clinical warnings (hypoglycemia, hyperglycemia, capped)
+ * @property {boolean} requiresHypoTreatmentFirst - True if glucose < 70 mg/dL (0.70 g/L)
+ * @property {string} deliveryMethod - Pump vs pen (affects rounding precision)
+ */
 interface BolusResult {
   mealBolus: number
   rawCorrectionDose: number
@@ -37,8 +89,24 @@ interface BolusResult {
   deliveryMethod: string
 }
 
+/**
+ * Insulin therapy service — bolus calculations and settings management.
+ * @namespace insulinService
+ */
 export const insulinService = {
-  /** Retrieve full insulin therapy settings for a patient */
+  /**
+   * Retrieve full insulin therapy settings for a patient.
+   * Includes: glucose targets, ISF/ICR by hour, basal config with pump slots, IOB settings.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @returns {Promise<Object | null>} InsulinTherapySettings with all relations, or null if not configured
+   * @example
+   * const settings = await insulinService.getSettings(patientId)
+   * if (settings) {
+   *   const isf = settings.sensitivityFactors[0]  // Sorted by startHour
+   *   const icr = settings.carbRatios[0]
+   * }
+   */
   async getSettings(patientId: number) {
     return prisma.insulinTherapySettings.findUnique({
       where: { patientId },
@@ -54,9 +122,28 @@ export const insulinService = {
   },
 
   /**
-   * Calculate bolus — returns a suggestion, never a prescription.
-   * Logs the calculation for medical traceability.
-   * Both the BolusCalculationLog and audit entry are in the same transaction.
+   * Calculate bolus recommendation based on current glucose and meal carbs.
+   * Returns a SUGGESTION only — never auto-injected. Patient must accept explicitly.
+   * Formula: mealBolus = carbs / ICR; correctionDose = (glucose - target) / ISF; total = meal + correction.
+   * Device-aware rounding: 0.05 U for pump, 0.5 U for pen.
+   * All bounds checked per CLINICAL_BOUNDS. Warnings emitted for hypo/hyper conditions.
+   * BolusCalculationLog + AuditLog written atomically in one transaction.
+   * @async
+   * @param {BolusInput} input - Current glucose (g/L), carbs (g), patientId
+   * @param {number} auditUserId - User ID performing calculation (audit trail)
+   * @returns {Promise<BolusResult>} Recommendation object with warnings and flags
+   * @throws {Error} If patient has no insulin settings, ISF/ICR/target not found, or zero ISF/ICR
+   * @see CLAUDE.md#insulin-logic — Full formula and rationale
+   * @see clinicalBounds — Safety limits
+   * @example
+   * const result = await insulinService.calculateBolus({
+   *   currentGlucoseGl: 1.50,  // 150 mg/dL
+   *   carbsGrams: 45,
+   *   patientId: 123
+   * }, auditUserId)
+   * // result.recommendedDose = capped, device-rounded suggestion
+   * // result.warnings = ['...'] if any flags
+   * // Create AdjustmentProposal with status='pending' for patient acceptance
    */
   async calculateBolus(input: BolusInput, auditUserId: number): Promise<BolusResult> {
     const settings = await this.getSettings(input.patientId)
@@ -164,10 +251,14 @@ export const insulinService = {
   },
 
   /**
-   * Validate insulin therapy settings — only a DOCTOR can validate.
-   * Role must be checked by the caller.
-   * TODO(Phase 4 — US-400): implement full validation with isActive flag
-   * when InsulinTherapySettings gets validatedById/validatedAt fields.
+   * Validate insulin therapy settings — DOCTOR-only action.
+   * Marks settings as medically validated before they become active.
+   * TODO(Phase 4 — US-400): Implement with validatedById/validatedAt on InsulinTherapySettings.
+   * @async
+   * @param {number} _patientId - Patient ID (unused, reserved for Phase 4)
+   * @param {number} _doctorUserId - Doctor ID (unused, reserved for Phase 4)
+   * @returns {Promise<never>} Throws error (not yet implemented)
+   * @throws {Error} Always throws — Phase 4 feature
    */
   async validateSettings(_patientId: number, _doctorUserId: number): Promise<never> {
     throw new Error(
@@ -177,7 +268,16 @@ export const insulinService = {
   },
 }
 
-/** Find the time slot applicable for a given hour (supports midnight crossing) */
+/**
+ * Find the active time slot for a given hour, supporting midnight crossing.
+ * If slot.startHour > slot.endHour (e.g., 22:00 → 06:00), wraps around midnight.
+ * Used by ISF/ICR slot selection — called at bolus calculation time.
+ * @private
+ * @template T - Slot type with startHour and endHour
+ * @param {Array<T>} slots - Sorted slots by startHour
+ * @param {number} hour - Hour of day (0-23)
+ * @returns {T | undefined} Matching slot or undefined if no match
+ */
 function findSlotForHour<T extends { startHour: number; endHour: number }>(
   slots: T[],
   hour: number,
@@ -191,13 +291,26 @@ function findSlotForHour<T extends { startHour: number; endHour: number }>(
   })
 }
 
-/** Device-aware rounding: 0.05 U for pump, 0.5 U for pen */
+/**
+ * Device-aware dose rounding per delivery precision.
+ * Pumps typically support 0.05 U increments; pens 0.5 U increments.
+ * @private
+ * @param {number} dose - Unrounded dose (units)
+ * @param {string} method - Delivery method: "pump" or "pen"
+ * @returns {number} Rounded dose for delivery device
+ */
 function roundForDevice(dose: number, method: string): number {
   if (method === "pump") return Math.round(dose * 20) / 20   // 0.05 U increments
   return Math.round(dose * 2) / 2                             // 0.5 U increments (pen)
 }
 
-/** Round to 0.01 for intermediate values */
+/**
+ * Round to 0.01 precision (hundredths) for intermediate calculations.
+ * Used in BolusCalculationLog storage and audit metadata.
+ * @private
+ * @param {number} n - Value to round
+ * @returns {number} Rounded to 2 decimal places
+ */
 function roundToHundredths(n: number): number {
   return Math.round(n * 100) / 100
 }

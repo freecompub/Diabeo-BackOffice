@@ -1,3 +1,32 @@
+/**
+ * Test suite: Objectives Service — CGM Objectives and GD Defaults
+ *
+ * Clinical behavior tested:
+ * - Pathology-specific CGM threshold defaults: DT1 and DT2 patients share
+ *   standard TIR targets (very-low <0.54 g/L, low <0.70 g/L, high >1.80 g/L,
+ *   very-high >2.50 g/L) while GD (gestational diabetes) patients receive
+ *   tighter thresholds mandated by obstetric guidelines
+ * - Creating CGM objectives for a patient stores the chosen thresholds and
+ *   links them to the patient record, enabling downstream TIR calculation
+ * - Updating existing objectives replaces only the provided fields; clinical
+ *   thresholds not included in the patch are preserved
+ * - Every read and write is accompanied by an audit log entry
+ *
+ * Associated risks:
+ * - Applying DT1/DT2 defaults to a GD patient would set thresholds that are
+ *   too permissive, missing hyperglycemic episodes harmful to the foetus
+ * - Missing audit log on objective creation or update breaks HDS traceability
+ *   of who changed clinical targets and when
+ * - Returning stale objectives after an update (cache issue) could lead a
+ *   physician to make decisions based on outdated thresholds
+ *
+ * Edge cases:
+ * - getCgmDefaults called with each pathology value (DT1, DT2, GD)
+ * - Patient with no existing objectives record (first-time creation)
+ * - Partial update with only one threshold field provided
+ * - getCgmDefaults called with an unknown pathology string (must fall back
+ *   gracefully or throw a descriptive error)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

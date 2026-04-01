@@ -1,3 +1,38 @@
+/**
+ * Test suite: Insulin Therapy Service — Insulin Therapy Settings Management
+ *
+ * Clinical behavior tested:
+ * - Retrieval of a patient's complete InsulinTherapySettings including all
+ *   related records: ISF slots, ICR slots, basal configuration, pump basal
+ *   slots, glucose targets, and IOB settings — ensuring the bolus calculator
+ *   has all required parameters before computing a dose
+ * - Creation and update of InsulinTherapySettings validated against
+ *   CLINICAL_BOUNDS before persistence; out-of-range values are rejected with
+ *   a descriptive error rather than stored silently
+ * - Validation status tracking: newly created settings start as unvalidated
+ *   and must be explicitly approved by a DOCTOR (validatedBy field) before
+ *   they are used in bolus calculations
+ * - Audit logging of every read and mutation of therapy settings
+ *
+ * Associated risks:
+ * - Returning settings with missing ISF or ICR slots would cause the bolus
+ *   calculator to fall back to null, producing a zero-dose recommendation and
+ *   leaving a meal bolus undelivered
+ * - Persisting out-of-bounds ISF (< 0.20 g/L/U) or ICR (< 5 g/U) values
+ *   would produce dangerously large bolus recommendations
+ * - Using unvalidated settings in dose calculation bypasses the mandatory
+ *   physician review step, violating ADR #13 (explicit acceptance workflow)
+ * - Missing audit on settings read prevents tracing who accessed sensitive
+ *   therapy parameters and when
+ *
+ * Edge cases:
+ * - Patient with no InsulinTherapySettings record (service must return null)
+ * - Settings with an empty ISF slots array (no time-of-day factors configured)
+ * - Settings at CLINICAL_BOUNDS exact limits (should be accepted)
+ * - Settings one unit outside CLINICAL_BOUNDS (should be rejected)
+ * - Concurrent update: two requests updating the same settings simultaneously
+ *   (last-write-wins with optimistic concurrency or transaction isolation)
+ */
 import { describe, it, expect } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

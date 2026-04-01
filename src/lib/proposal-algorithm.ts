@@ -1,9 +1,29 @@
 /**
- * Adjustment proposal algorithm — pure functions.
- * Analyzes CGM + insulin data to generate ISF/ICR/basal adjustment proposals.
+ * @module proposal-algorithm
+ * @description Adjustment proposal algorithm — pure functions for ISF/ICR/basal analysis.
+ * Analyzes post-correction/meal glucose to detect systematic over/under-correction.
+ * Proposes changes with confidence level based on event count.
+ * All changes clamped to ±20% to prevent dangerous adjustments.
+ * @see CLAUDE.md#adjustment-proposals — Proposal generation algorithm
  */
+
 import type { AdjustableParameter, AdjustmentReason, ConfidenceLevel } from "@prisma/client"
 
+/**
+ * Adjustment proposal candidate — suggested parameter change with confidence.
+ * @typedef {Object} ProposalCandidate
+ * @property {AdjustableParameter} parameterType - Parameter to adjust (ISF, ICR, or basal)
+ * @property {AdjustmentReason} reason - Why this adjustment (too low/high/etc.)
+ * @property {number} currentValue - Current parameter value
+ * @property {number} proposedValue - Suggested new value
+ * @property {number} changePercent - Change magnitude (%-20 to +20)
+ * @property {ConfidenceLevel} confidence - Evidence strength (low/medium/high)
+ * @property {number} supportingEvents - Number of events supporting this proposal
+ * @property {number} totalEventsConsidered - Total events analyzed
+ * @property {number} [timeSlotStartHour] - Hour slot (for ISF/ICR proposals)
+ * @property {number} [timeSlotEndHour] - Hour slot end
+ * @property {number} [averageObservedValue] - Average post-correction glucose (for analysis)
+ */
 export interface ProposalCandidate {
   parameterType: AdjustableParameter
   reason: AdjustmentReason
@@ -18,29 +38,50 @@ export interface ProposalCandidate {
   averageObservedValue?: number
 }
 
-const MAX_CHANGE_PERCENT = 20 // ±20% cap
+/** Max change magnitude per proposal — safety cap */
+const MAX_CHANGE_PERCENT = 20 // ±20%
 
-/** Determine confidence level from event count */
+/**
+ * Determine confidence level from supporting event count.
+ * Higher event count = more confidence in the recommendation.
+ * @param {number} eventCount - Number of supporting events
+ * @returns {("low" | "medium" | "high")} Confidence level
+ */
 export function getConfidenceLevel(eventCount: number): ConfidenceLevel {
   if (eventCount > 10) return "high"
   if (eventCount >= 6) return "medium"
   return "low"
 }
 
-/** Clamp change percentage to ±20% */
+/**
+ * Clamp change percentage to ±20% safety limit.
+ * Prevents overly aggressive adjustments that could harm patient.
+ * @param {number} percent - Proposed change percentage
+ * @returns {number} Clamped percentage in range [-20, +20]
+ */
 export function clampChangePercent(percent: number): number {
   return Math.max(-MAX_CHANGE_PERCENT, Math.min(MAX_CHANGE_PERCENT, percent))
 }
 
-/** Apply clamped percentage to current value */
+/**
+ * Compute proposed parameter value — apply clamped percentage to current value.
+ * Formula: newValue = currentValue * (1 + changePercent/100), rounded to 4 decimals.
+ * @param {number} currentValue - Current parameter value
+ * @param {number} changePercent - Proposed change percentage (will be clamped)
+ * @returns {number} Proposed value (4 decimal places)
+ */
 export function computeProposedValue(currentValue: number, changePercent: number): number {
   const clamped = clampChangePercent(changePercent)
   return Math.round(currentValue * (1 + clamped / 100) * 10000) / 10000
 }
 
 /**
- * Analyze ISF effectiveness — compare post-correction glucose vs target.
- * Returns a proposal if systematic over/under-correction detected.
+ * Analyze ISF (insulin sensitivity factor) effectiveness for a time slot.
+ * Detects systematic over/under-correction from post-correction glucose patterns.
+ * Only proposes if 3+ events AND change is meaningful (> 2%).
+ * @param {Object} slot - ISF slot configuration (startHour, endHour, sensitivityFactorGl)
+ * @param {Array<{postGlucoseGl: number, targetGl: number}>} corrections - Post-correction readings and targets
+ * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeIsfSlot(
   slot: { startHour: number; endHour: number; sensitivityFactorGl: number },
@@ -79,7 +120,12 @@ export function analyzeIsfSlot(
 }
 
 /**
- * Analyze ICR effectiveness — compare post-meal glucose vs target.
+ * Analyze ICR (insulin-to-carb ratio) effectiveness for a time slot.
+ * Detects systematic post-meal glucose over/under-coverage from carb ratio.
+ * Only proposes if 3+ meals AND change is meaningful (> 2%).
+ * @param {Object} slot - ICR slot configuration (startHour, endHour, gramsPerUnit)
+ * @param {Array<{postGlucoseGl: number, targetGl: number}>} meals - Post-meal readings and targets
+ * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeIcrSlot(
   slot: { startHour: number; endHour: number; gramsPerUnit: number },
@@ -117,7 +163,13 @@ export function analyzeIcrSlot(
 }
 
 /**
- * Analyze basal rate — fasting glucose trends.
+ * Analyze basal rate effectiveness from fasting glucose trends.
+ * Detects systematic overnight drift (rising = too low, falling = too high).
+ * Only proposes if 3+ fasting values AND change is meaningful (> 2%).
+ * @param {number[]} fastingValues - Pre-breakfast glucose readings (g/L)
+ * @param {number} targetGl - Fasting glucose target (g/L)
+ * @param {number} currentRate - Current basal rate (U/h)
+ * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeBasalTrend(
   fastingValues: number[],

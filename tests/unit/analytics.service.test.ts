@@ -1,3 +1,37 @@
+/**
+ * Test suite: Analytics Service — Glycemic Profile Analytics
+ *
+ * Clinical behavior tested:
+ * - Generation of a full glycemic profile report for a patient over a given
+ *   period, aggregating CGM readings into TIR bands, mean glucose, GMI, CV,
+ *   AGP percentile curves, and hypoglycemic episode count
+ * - Application of patient-specific CGM objectives when available, falling
+ *   back to pathology defaults (DT1/DT2/GD) when no custom thresholds are set
+ * - Clinical warning generation: CV > 36% ("high variability"), TIR < 70%
+ *   ("target not met"), or CGM capture rate < 70% ("insufficient data")
+ *   are surfaced as structured warnings alongside the metrics
+ * - Audit logging of the profile generation event with the querying user's
+ *   identity and the analysis window dates
+ *
+ * Associated risks:
+ * - Incorrect TIR or GMI values presented in the physician dashboard could
+ *   lead to inappropriate adjustments of insulin therapy
+ * - Applying DT1 thresholds to a GD patient would produce misleading TIR
+ *   percentages against the wrong clinical targets
+ * - Missing CV warning for a highly variable patient could mask a dangerous
+ *   glycemic instability requiring urgent review
+ * - A missing audit entry for profile access would break HDS compliance for
+ *   secondary use of health data in analytics
+ *
+ * Edge cases:
+ * - Fewer than 200 readings in the window (low capture rate warning expected)
+ * - All readings within range (TIR = 100%, no warnings)
+ * - All readings below low threshold (TIR = 0%, hypo episodes spanning entire
+ *   window)
+ * - Patient with custom CGM objectives overriding pathology defaults
+ * - Random CGM values around the mean (non-deterministic — test uses count-
+ *   based thresholds, not exact values)
+ */
 import { describe, it, expect } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

@@ -1,10 +1,24 @@
+/**
+ * @module adjustment.service
+ * @description Adjustment proposals — suggestions for ISF/ICR/basal changes based on data analysis.
+ * Proposals are immutable once created and require doctor review (DOCTOR-only accept/reject).
+ * Clinical bounds enforced before application.
+ * @see CLAUDE.md#adjustment-proposals — Proposal workflow and clinical bounds
+ */
+
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
 import type { AuditContext } from "./patient.service"
 import type { ProposalStatus, Prisma } from "@prisma/client"
 
-/** Validate proposed value is within clinical bounds before applying */
+/**
+ * Validate proposed parameter value against clinical bounds.
+ * @private
+ * @param {string} parameterType - Parameter type (insulinSensitivityFactor, insulinToCarbRatio, basalRate)
+ * @param {number} value - Proposed value
+ * @returns {boolean} True if value is within bounds
+ */
 function validateProposedValue(parameterType: string, value: number): boolean {
   switch (parameterType) {
     case "insulinSensitivityFactor":
@@ -18,8 +32,20 @@ function validateProposedValue(parameterType: string, value: number): boolean {
   }
 }
 
+/**
+ * Adjustment proposal service — CRUD and review workflow.
+ * @namespace adjustmentService
+ */
 export const adjustmentService = {
-  /** List proposals with filters */
+  /**
+   * List adjustment proposals for a patient with optional filters.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {Object} filters - Query filters (status, parameterType, date range)
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Array<Object>>} Proposals matching filters, newest first
+   */
   async list(
     patientId: number,
     filters: {

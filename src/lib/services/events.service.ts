@@ -1,10 +1,33 @@
+/**
+ * @module events.service
+ * @description Diabetes event CRUD — patient-reported events (meals, activities, context, readings).
+ * Events can have multiple eventTypes (e.g., insulinMeal + physicalActivity).
+ * Comment field is encrypted. All creates/updates/deletes logged for audit.
+ * @see CLAUDE.md#events — Event model and cross-validation
+ * @see src/lib/validators/events — DiabetesEventInput schema with superRefine validation
+ */
+
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import type { DiabetesEventInput } from "@/lib/validators/events"
 import type { AuditContext } from "./patient.service"
 
+/**
+ * Diabetes event service — CRUD operations with encryption and audit.
+ * @namespace eventsService
+ */
 export const eventsService = {
+  /**
+   * Create a diabetes event (meal, activity, glycemia reading, context).
+   * Encrypts comment field. Can have multiple eventTypes.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {DiabetesEventInput} input - Event data (from Zod-validated schema)
+   * @param {number} auditUserId - User performing creation (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Object>} Created event with decrypted comment
+   */
   async create(
     patientId: number,
     input: DiabetesEventInput,
@@ -46,6 +69,18 @@ export const eventsService = {
     })
   },
 
+  /**
+   * Update an existing diabetes event.
+   * Encrypts comment field if provided. Validates ownership (patientId match).
+   * @async
+   * @param {string} eventId - Event ID to update
+   * @param {number} patientId - Patient ID (for ownership check)
+   * @param {Object} input - Partial update (any fields)
+   * @param {number} auditUserId - User performing update (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Object>} Updated event with decrypted comment
+   * @throws {Error} If event not found or patient mismatch
+   */
   async update(
     eventId: string,
     patientId: number,
@@ -95,6 +130,17 @@ export const eventsService = {
     })
   },
 
+  /**
+   * Delete a diabetes event.
+   * Validates ownership (patientId match). Logs DELETE audit entry.
+   * @async
+   * @param {string} eventId - Event ID to delete
+   * @param {number} patientId - Patient ID (for ownership check)
+   * @param {number} auditUserId - User performing deletion (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<{deleted: boolean}>} Deletion confirmation
+   * @throws {Error} If event not found or patient mismatch
+   */
   async delete(eventId: string, patientId: number, auditUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
       const existing = await tx.diabetesEvent.findFirst({

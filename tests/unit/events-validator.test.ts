@@ -1,3 +1,35 @@
+/**
+ * Test suite: Events Validator — Diabetes Event Cross-Field Validation
+ *
+ * Clinical behavior tested:
+ * - Cross-field validation of DiabetesEvent payloads: when eventTypes includes
+ *   "glycemia", glycemiaValue is required; when it includes "insulinMeal",
+ *   both carbsGrams and insulinUnits are required; when it includes
+ *   "physicalActivity", activityDurationMin is required
+ * - eventTypes is a non-empty array of the DiabetesEventType enum (multi-category
+ *   events such as ["insulinMeal", "physicalActivity"] are valid — ADR #12)
+ * - Numeric clinical bounds are enforced at the validation layer:
+ *   glycemiaValue ∈ [0.20, 5.00] g/L; insulinUnits ∈ [0, 100] U;
+ *   carbsGrams ∈ [0, 500] g; activityDurationMin ∈ [1, 600] min
+ * - eventDate must be a parseable ISO-8601 timestamp and must not be in the
+ *   future beyond a tolerance window
+ *
+ * Associated risks:
+ * - Accepting an event without glycemiaValue when type is "glycemia" would
+ *   create a record with a null glucose value, silently corrupting CGM history
+ * - Bypassing clinical bounds on insulinUnits could allow logging an
+ *   implausible dose (e.g. 999 U), poisoning bolus calculation history
+ * - An empty eventTypes array passing validation would produce a record with
+ *   no clinical meaning, breaking downstream analytics filters
+ *
+ * Edge cases:
+ * - eventTypes array with a single valid type (minimum valid cardinality)
+ * - eventTypes array with all known types simultaneously (maximum cardinality)
+ * - glycemiaValue exactly at bounds: 0.20 g/L (min) and 5.00 g/L (max)
+ * - insulinMeal event with carbsGrams = 0 (valid: correction-only bolus)
+ * - eventDate as a string requiring coercion to Date (z.coerce.date())
+ * - Unknown eventType string in array (must fail with descriptive error)
+ */
 import { describe, it, expect } from "vitest"
 import { diabetesEventSchema } from "@/lib/validators/events"
 

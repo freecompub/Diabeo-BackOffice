@@ -1,0 +1,24 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "src/lib/services/*.ts",
+    "src/lib/statistics.ts",
+    "src/lib/proposal-algorithm.ts",
+    "src/lib/conversions.ts",
+    "src/lib/crypto/*.ts",
+    "src/lib/access-control.ts",
+    "src/lib/gdpr.ts",
+    "src/lib/auth/index.ts",
+    "src/lib/validators/*.ts"
+  ],
+  "out": "docs/generated",
+  "plugin": ["typedoc-plugin-markdown"],
+  "theme": "markdown",
+  "readme": "none",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "includeVersion": true,
+  "categorizeByGroup": true,
+  "sort": ["source-order"],
+  "name": "Diabeo BackOffice — API Reference"
+}

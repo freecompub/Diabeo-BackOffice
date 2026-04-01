@@ -1,9 +1,22 @@
+/**
+ * @module insulin-therapy.service
+ * @description Insulin therapy settings CRUD — ISF/ICR/basal configuration by time slots.
+ * Supports both pump and multiple daily injection (MDI) delivery methods.
+ * All settings validated within clinical bounds before storage.
+ * @see CLAUDE.md#insulin-therapy — Configuration domains and validation
+ */
+
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import type { InsulinDeliveryMethod, Prisma } from "@prisma/client"
 
-/** Clinical bounds for insulin therapy parameters */
+/**
+ * Clinical bounds for insulin therapy parameters.
+ * Validated before storage — prevents unsafe configurations.
+ * @constant
+ * @export
+ */
 export const INSULIN_BOUNDS = {
   ISF_GL_MIN: 0.10,    // widened for insulin-resistant T2D
   ISF_GL_MAX: 1.00,
@@ -18,8 +31,20 @@ export const INSULIN_BOUNDS = {
   MAX_SINGLE_BOLUS: 25.0,
 } as const
 
+/**
+ * Insulin therapy service — settings, ISF/ICR, basal configuration, bolus logs.
+ * @namespace insulinTherapyService
+ */
 export const insulinTherapyService = {
-  /** Get full insulin therapy settings with all relations */
+  /**
+   * Get full insulin therapy settings with all relations.
+   * Includes active glucose targets, ISF/ICR slots, basal config with pump slots.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {number} auditUserId - User performing read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Object | null>} InsulinTherapySettings with all relations or null
+   */
   async getSettings(patientId: number, auditUserId: number, ctx?: AuditContext) {
     const settings = await prisma.insulinTherapySettings.findUnique({
       where: { patientId },
@@ -45,7 +70,16 @@ export const insulinTherapyService = {
     return settings
   },
 
-  /** Create or update insulin therapy settings */
+  /**
+   * Create or update insulin therapy root settings.
+   * Sets insulin brands, action duration, delivery method.
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {Object} input - Settings (bolusInsulinBrand, basalInsulinBrand, insulinActionDuration, deliveryMethod)
+   * @param {number} auditUserId - User performing update (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Object>} Updated InsulinTherapySettings
+   */
   async upsertSettings(
     patientId: number,
     input: {

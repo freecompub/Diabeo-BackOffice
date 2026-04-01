@@ -1,0 +1,352 @@
+openapi: 3.1.0
+info:
+  title: Diabeo BackOffice API
+  description: |
+    API REST pour la gestion de l'insulinotherapie — backoffice destine aux
+    medecins, infirmieres et administrateurs. Conforme HDS et RGPD.
+  version: 1.0.0
+  contact:
+    name: Equipe Diabeo
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:3000
+    description: Developpement local
+  - url: https://api.diabeo.fr
+    description: Production (OVHcloud HDS)
+
+tags:
+  - name: Auth
+    description: Authentification JWT RS256
+  - name: Account
+    description: Gestion du compte utilisateur
+  - name: Patient
+    description: Dossier patient (propre)
+  - name: Patients
+    description: Acces professionnel aux patients
+  - name: CGM
+    description: Donnees capteur continu
+  - name: Analytics
+    description: Profil glycemique, TIR, AGP
+  - name: InsulinTherapy
+    description: Parametres d'insulinotherapie
+  - name: AdjustmentProposals
+    description: Propositions d'ajustement
+  - name: Events
+    description: Evenements diabete
+  - name: Documents
+    description: Documents medicaux
+  - name: Appointments
+    description: Rendez-vous
+  - name: Devices
+    description: Appareils connectes
+  - name: Sync
+    description: Synchronisation differentielle
+  - name: Push
+    description: Notifications push
+  - name: Announcements
+    description: Annonces systeme
+  - name: Admin
+    description: Administration
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT RS256 token obtenu via POST /api/auth/login
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          example: validationFailed
+        details:
+          type: object
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 1
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+          description: JWT RS256 token (24h expiry)
+        expiresAt:
+          type: string
+          format: date-time
+
+    BolusRequest:
+      type: object
+      required: [currentGlucoseGl, carbsGrams]
+      properties:
+        currentGlucoseGl:
+          type: number
+          minimum: 0.20
+          maximum: 6.00
+          description: Glycemie actuelle en g/L
+        carbsGrams:
+          type: number
+          minimum: 0
+          maximum: 500
+          description: Glucides du repas en grammes
+        patientId:
+          type: integer
+          description: ID patient (optionnel pour les pros)
+
+    BolusResponse:
+      type: object
+      properties:
+        mealBolus:
+          type: number
+          description: Bolus repas (U)
+        correctionDose:
+          type: number
+          description: Dose de correction (U)
+        recommendedDose:
+          type: number
+          description: Dose recommandee arrondie (U)
+        wasCapped:
+          type: boolean
+          description: Dose plafonnee a 25U
+        requiresHypoTreatmentFirst:
+          type: boolean
+          description: Patient en hypoglycemie — traiter avant bolus
+        warnings:
+          type: array
+          items:
+            type: string
+            enum: [hypoglycemia, severeHypoglycemia, severeHyperglycemia, criticalHighGlucose, exceedsMaximumBolus]
+        deliveryMethod:
+          type: string
+          enum: [pump, manual]
+
+    GlycemicProfile:
+      type: object
+      properties:
+        period:
+          type: object
+          properties:
+            from:
+              type: string
+              format: date-time
+            to:
+              type: string
+              format: date-time
+            days:
+              type: integer
+        captureRate:
+          type: number
+          description: Pourcentage de capture CGM
+        warning:
+          type: string
+          enum: [insufficientCgmCapture]
+        metrics:
+          type: object
+          properties:
+            averageGlucoseGl:
+              type: number
+            averageGlucoseMgdl:
+              type: number
+            gmi:
+              type: number
+              description: Glucose Management Indicator (%)
+            coefficientOfVariation:
+              type: number
+              description: CV (%)
+            quality:
+              type: string
+              enum: [excellent, good, needsImprovement, concerningHypo, concerningHyper]
+        tir:
+          type: object
+          properties:
+            severeHypo:
+              type: number
+            hypo:
+              type: number
+            inRange:
+              type: number
+            elevated:
+              type: number
+            hyper:
+              type: number
+
+paths:
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Token JWT
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          description: Identifiants invalides
+        '403':
+          description: MFA requis
+        '429':
+          description: Trop de tentatives
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Deconnexion
+      responses:
+        '200':
+          description: Session invalidee
+
+  /api/insulin-therapy/calculate-bolus:
+    post:
+      tags: [InsulinTherapy]
+      summary: Calculer un bolus
+      description: |
+        Calcule une suggestion de bolus basee sur la glycemie actuelle et les glucides.
+        Le resultat est logue dans bolus_calculation_logs (immutable).
+        La dose est arrondie selon le type d'appareil (0.05U pompe, 0.5U stylo).
+        Plafonnement a 25U maximum.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BolusRequest'
+      responses:
+        '201':
+          description: Bolus calcule et logue
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BolusResponse'
+        '403':
+          description: Consentement GDPR requis
+        '404':
+          description: Patient non trouve
+
+  /api/analytics/glycemic-profile:
+    get:
+      tags: [Analytics]
+      summary: Profil glycemique
+      description: |
+        Retourne GMI, CV, TIR 5 zones, qualite. Necessite >= 70% capture CGM.
+        Formule GMI : 3.31 + 0.02392 x moyenneGlucose(mg/dL).
+        Reference : consensus international 2019 (Battelino et al.)
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            pattern: '^\d+d$'
+            default: '14d'
+          description: Periode d'analyse (max 90d)
+      responses:
+        '200':
+          description: Profil glycemique
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlycemicProfile'
+
+  /api/analytics/time-in-range:
+    get:
+      tags: [Analytics]
+      summary: Time In Range (5 zones)
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            default: '7d'
+      responses:
+        '200':
+          description: TIR avec qualite
+
+  /api/analytics/agp:
+    get:
+      tags: [Analytics]
+      summary: Ambulatory Glucose Profile
+      description: 96 slots de 15 minutes avec percentiles p10/p25/p50/p75/p90
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            default: '14d'
+      responses:
+        '200':
+          description: Profil AGP
+
+  /api/analytics/hypoglycemia:
+    get:
+      tags: [Analytics]
+      summary: Episodes hypoglycemiques
+      description: Detection 3+ lectures consecutives < seuil (15 min minimum)
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            default: '30d'
+      responses:
+        '200':
+          description: Episodes detectes avec severite
+
+  /api/account/export:
+    get:
+      tags: [Account]
+      summary: Export RGPD (Article 20)
+      description: Export JSON complet de toutes les donnees personnelles (dechiffrees)
+      responses:
+        '200':
+          description: Fichier JSON en telechargement
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /api/account:
+    delete:
+      tags: [Account]
+      summary: Suppression RGPD (Article 17)
+      description: Suppression cascade de toutes les donnees. Necessite confirmation mot de passe.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Compte supprime
+        '401':
+          description: Mot de passe invalide

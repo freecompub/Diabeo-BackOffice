@@ -1,3 +1,31 @@
+/**
+ * Test suite: Export Service — GDPR Data Portability Export
+ *
+ * Clinical behavior tested:
+ * - Generation of a complete, human-readable data export for a patient user
+ *   in fulfilment of GDPR Article 20 (right to data portability)
+ * - All encrypted PII fields (firstname, lastname, email, phone, address) are
+ *   decrypted before inclusion in the export payload so the subject receives
+ *   their data in plain text
+ * - Medical data (CGM entries, bolus logs, insulin settings) are included with
+ *   proper structure and no raw ciphertext exposed to the export consumer
+ * - An audit event is recorded each time an export is generated
+ *
+ * Associated risks:
+ * - Returning base64 ciphertext in the export instead of plaintext would make
+ *   the export unintelligible to the data subject, breaching GDPR Article 20
+ * - Including another patient's data due to a missing ownership check would
+ *   constitute a serious data-breach under GDPR Article 33
+ * - A missing audit entry for export generation removes the traceability
+ *   required by HDS certification
+ *
+ * Edge cases:
+ * - Non-existent user ID (must return null, not throw)
+ * - User with no patient record (export must contain only account data)
+ * - Decryption failure for a single field (must propagate as error, not expose
+ *   raw ciphertext)
+ * - User with empty CGM history (export must return empty arrays, not omit keys)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

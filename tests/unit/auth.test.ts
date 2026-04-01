@@ -1,9 +1,47 @@
 /**
- * Unit tests for Phase 1 — Authentication & Account modules.
- * Tests: RBAC, rate limiting, HMAC, conversions, auth helpers.
+ * Test suite: Auth Module — RBAC, Rate Limiting, HMAC, and Unit Conversions
  *
- * Note: Auth helpers import from @/lib/auth which cascades to session.ts → Prisma.
- * We mock Prisma to avoid connection issues in unit tests.
+ * Clinical behavior tested:
+ * - RBAC hasMinRole: enforces the role hierarchy ADMIN > DOCTOR > NURSE >
+ *   VIEWER; a user may only perform an action if their role is equal to or
+ *   above the required minimum, preventing under-privileged access to
+ *   patient data and insulin configuration
+ * - Rate limiting: successive failed login attempts from the same IP are
+ *   counted; once the threshold is exceeded, further attempts are rejected
+ *   with a 429 status to mitigate brute-force credential attacks
+ * - HMAC-SHA256 email lookup: hmacEmail produces a deterministic hex digest
+ *   from the email and HMAC_SECRET, used as the emailHmac index for
+ *   credential lookups without storing plaintext or encrypted email in an
+ *   indexed column (ADR #9)
+ * - g/L to mg/dL conversion helpers: used throughout bolus calculation and
+ *   CGM threshold comparisons to normalize glucose values from iOS input
+ *   (g/L) to the mg/dL unit required by ISF formulas
+ *
+ * Associated risks:
+ * - An off-by-one error in the role hierarchy would allow a NURSE to perform
+ *   DOCTOR-only actions such as validating insulin settings or accepting
+ *   adjustment proposals
+ * - A rate limiter that resets on every request (instead of per time window)
+ *   would provide no protection against rapid sequential login attacks
+ * - A non-deterministic HMAC implementation would make existing users
+ *   unlookupable after a server restart, locking everyone out
+ * - An incorrect g/L to mg/dL multiplier would systematically skew all
+ *   bolus corrections derived from iOS-sourced glucose readings
+ *
+ * Edge cases:
+ * - hasMinRole with matching role (boundary — must return true)
+ * - hasMinRole with the role one step below minimum (boundary — must return
+ *   false)
+ * - Rate limiter at exactly the threshold (attempt N = threshold — blocked or
+ *   allowed depending on inclusive/exclusive boundary)
+ * - hmacEmail with the same input and same key on two separate calls (must
+ *   produce identical digests)
+ * - hmacEmail with HMAC_SECRET env var unset (must throw, not return a digest
+ *   based on an empty key)
+ * - g/L value of 0 (must convert to 0 mg/dL without NaN)
+ *
+ * Note: Auth helpers import from @/lib/auth which cascades to session.ts and
+ * Prisma. Prisma is mocked to avoid database connections in unit tests.
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from "vitest"

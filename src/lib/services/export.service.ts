@@ -1,6 +1,22 @@
+/**
+ * @module export.service
+ * @description GDPR Article 20 — Data portability export.
+ * Generates a complete JSON export of all personal data (user + patient data).
+ * All encrypted fields are decrypted for the user's own export.
+ * @see CLAUDE.md#gdpr — GDPR compliance requirements
+ * @see https://eur-lex.europa.eu/eli/reg/2016/679/oj — GDPR Article 20
+ */
+
 import { prisma } from "@/lib/db/client"
 import { decrypt } from "@/lib/crypto/health-data"
 
+/**
+ * Safe decryption — returns null on error instead of throwing.
+ * Used in export to handle corrupted data gracefully.
+ * @private
+ * @param {string | null} value - Base64-encoded ciphertext or null
+ * @returns {string | null} Decrypted plaintext or null if decryption fails
+ */
 function safeDecrypt(value: string | null): string | null {
   if (!value) return null
   try {
@@ -10,7 +26,12 @@ function safeDecrypt(value: string | null): string | null {
   }
 }
 
-/** Decrypt encrypted fields in PatientMedicalData */
+/**
+ * Decrypt all encrypted medical fields in an object.
+ * @private
+ * @param {Object | null} data - Medical data record or null
+ * @returns {Object | null} Same structure with decrypted fields
+ */
 function decryptMedicalData(data: Record<string, unknown> | null) {
   if (!data) return null
   const encryptedMedicalFields = [
@@ -27,8 +48,22 @@ function decryptMedicalData(data: Record<string, unknown> | null) {
 }
 
 /**
- * Generate a complete GDPR export of all user data.
- * Decrypts all encrypted fields for the user's own export.
+ * Generate a complete GDPR Article 20 export of all personal data.
+ * Decrypts all encrypted PII and medical data for the requesting user.
+ * Includes: profile, preferences, patient data, CGM entries, events, insulin logs, documents, appointments.
+ * @async
+ * @param {number} userId - User ID requesting export (must be the owner)
+ * @returns {Promise<Object | null>} Complete export structure with decrypted fields, or null if user not found
+ * @returns {Object.exportDate} ISO timestamp of export generation
+ * @returns {Object.userId} User ID
+ * @returns {Object.profile} Decrypted user profile (email, name, address, etc.)
+ * @returns {Object.preferences} User preferences and day moments
+ * @returns {Object.patient} Patient data (if user is a patient): medical history, insulin therapy, health data
+ * @throws {Error} If patient data is corrupted
+ * @see CLAUDE.md#gdpr — Data portability rights
+ * @example
+ * const export = await generateUserExport(userId)
+ * // Return to user as JSON file
  */
 export async function generateUserExport(userId: number) {
   const user = await prisma.user.findUnique({ where: { id: userId } })

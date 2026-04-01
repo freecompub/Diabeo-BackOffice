@@ -1,3 +1,37 @@
+/**
+ * Test suite: Healthcare Service — Healthcare Team and Structure Management
+ *
+ * Clinical behavior tested:
+ * - Listing all HealthcareService structures (hospitals, clinics, private
+ *   practices) available to an authenticated user, with member and patient
+ *   counts for dashboard display
+ * - Retrieval of a single HealthcareService with its full member roster,
+ *   used to populate the team management view and determine referral options
+ * - Adding a HealthcareMember (linking a User with a role to a service),
+ *   enforcing that the user exists and is not already a member of the same
+ *   service
+ * - Removing a HealthcareMember while verifying no active patient referrals
+ *   depend on that member before allowing deletion
+ * - Listing PatientService assignments: which patients belong to which
+ *   healthcare structure, respecting the requesting user's portfolio scope
+ * - Audit logging of every read and write operation on team data
+ *
+ * Associated risks:
+ * - Adding a member without checking for duplicates would create redundant
+ *   HealthcareMember rows, corrupting role-based access for that user within
+ *   the service
+ * - Removing a member who is a PatientReferent without reassignment would
+ *   leave patients without a designated physician, violating care continuity
+ * - Listing services without scope filtering would expose other services'
+ *   patient lists to an unauthorized user
+ *
+ * Edge cases:
+ * - Service with zero members (listServices must include it with count = 0)
+ * - Attempt to add a user already in the service (must be idempotent or return
+ *   an error, not create a duplicate row)
+ * - Removing the last DOCTOR from a service that has active patients
+ * - getService for a non-existent service ID (must return null)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

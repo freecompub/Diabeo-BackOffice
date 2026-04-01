@@ -1,3 +1,12 @@
+/**
+ * @module user.service
+ * @description User profile management — handles encrypted PII (email, name, phone, address).
+ * All personally identifiable information is encrypted with AES-256-GCM before storage.
+ * Decryption happens at read time only, never in logs.
+ * @see CLAUDE.md#security-rules — Field encryption patterns
+ * @see src/types/user — ENCRYPTED_USER_FIELDS list
+ */
+
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { auditService } from "./audit.service"
@@ -5,12 +14,25 @@ import type { Prisma } from "@prisma/client"
 import type { AccountUser, UpdateAccountInput } from "@/types/user"
 import { ENCRYPTED_USER_FIELDS, type EncryptedUserField } from "@/types/user"
 
-/** Encrypt a string field to base64 for storage */
+/**
+ * Encrypt a string field to base64 for storage in String columns.
+ * Format: base64(IV + TAG + CIPHERTEXT) where IV=12 bytes, TAG=16 bytes.
+ * @private
+ * @param {string} value - Plaintext to encrypt
+ * @returns {string} Base64-encoded ciphertext (IV+TAG+CIPHERTEXT)
+ */
 function encryptField(value: string): string {
   return Buffer.from(encrypt(value)).toString("base64")
 }
 
-/** Decrypt a base64-encoded encrypted field — never return ciphertext */
+/**
+ * Safe decryption — returns null on error instead of throwing.
+ * Used in read operations to handle corrupted or missing data gracefully.
+ * Never leaks ciphertext in error cases.
+ * @private
+ * @param {string | null} value - Base64-encoded ciphertext or null
+ * @returns {string | null} Decrypted plaintext or null if decryption fails
+ */
 function safeDecryptField(value: string | null): string | null {
   if (!value) return null
   try {
@@ -20,13 +42,35 @@ function safeDecryptField(value: string | null): string | null {
   }
 }
 
+/** Fast O(1) lookup for encrypted field names */
 const ENCRYPTED_SET = new Set<string>(ENCRYPTED_USER_FIELDS)
 
+/**
+ * Type guard — check if a field name is in the encrypted set.
+ * @private
+ * @param {string} field - Field name to check
+ * @returns {field is EncryptedUserField} True if field should be encrypted
+ */
 function isEncryptedField(field: string): field is EncryptedUserField {
   return ENCRYPTED_SET.has(field)
 }
 
+/**
+ * User profile service — encryption/decryption of PII fields.
+ * @namespace userService
+ */
 export const userService = {
+  /**
+   * Get user profile with all encrypted fields decrypted.
+   * Logs READ audit entry.
+   * @async
+   * @param {number} userId - User ID to retrieve
+   * @param {number} auditUserId - User ID performing the read (audit trail)
+   * @returns {Promise<AccountUser | null>} User profile (decrypted) or null if not found
+   * @example
+   * const profile = await userService.getProfile(userId, auditUserId)
+   * if (profile) console.log(profile.firstname) // Decrypted plaintext
+   */
   async getProfile(userId: number, auditUserId: number): Promise<AccountUser | null> {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) return null
@@ -65,6 +109,23 @@ export const userService = {
     }
   },
 
+  /**
+   * Update user profile with selective field encryption.
+   * Encrypted fields are encrypted before storage; others stored as-is.
+   * Logs UPDATE audit entry with modified field names.
+   * @async
+   * @param {number} userId - User ID to update
+   * @param {UpdateAccountInput} input - Partial profile update (from Zod schema)
+   * @param {number} auditUserId - User ID performing the update (audit trail)
+   * @returns {Promise<{id: number, updatedAt: string}>} Update confirmation with timestamp
+   * @example
+   * await userService.updateProfile(userId, {
+   *   firstname: 'John',
+   *   email: 'john@example.com',
+   *   phone: '+33612345678',
+   *   timezone: 'Europe/Paris'
+   * }, auditUserId)
+   */
   async updateProfile(
     userId: number,
     input: UpdateAccountInput,
@@ -102,6 +163,13 @@ export const userService = {
     })
   },
 
+  /**
+   * Mark terms of service as accepted by user.
+   * Sets hasSignedTerms = true and logs audit entry.
+   * @async
+   * @param {number} userId - User ID
+   * @returns {Promise<void>}
+   */
   async acceptTerms(userId: number) {
     return prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -118,6 +186,13 @@ export const userService = {
     })
   },
 
+  /**
+   * Mark data policy as accepted and set update timestamp.
+   * Called when user acknowledges updated privacy policy.
+   * @async
+   * @param {number} userId - User ID
+   * @returns {Promise<void>}
+   */
   async acceptDataPolicy(userId: number) {
     return prisma.$transaction(async (tx) => {
       await tx.user.update({
@@ -137,6 +212,13 @@ export const userService = {
     })
   },
 
+  /**
+   * Get user's custom day moments (meal times, etc.).
+   * Ordered by start time.
+   * @async
+   * @param {number} userId - User ID
+   * @returns {Promise<Array<Object>>} UserDayMoment records sorted by startTime
+   */
   async getDayMoments(userId: number) {
     return prisma.userDayMoment.findMany({
       where: { userId },
@@ -144,6 +226,19 @@ export const userService = {
     })
   },
 
+  /**
+   * Replace all day moments for a user.
+   * Deletes old records and creates new ones in one transaction.
+   * @async
+   * @param {number} userId - User ID
+   * @param {Array<Object>} moments - New moments (type, startTime, endTime in HH:MM format)
+   * @returns {Promise<Array<Object>>} Created UserDayMoment records
+   * @example
+   * await userService.updateDayMoments(userId, [
+   *   { type: 'morning', startTime: '06:00', endTime: '12:00' },
+   *   { type: 'noon', startTime: '12:00', endTime: '18:00' }
+   * ])
+   */
   async updateDayMoments(
     userId: number,
     moments: { type: string; startTime: string; endTime: string }[],

@@ -1,3 +1,30 @@
+/**
+ * Test suite: Deletion Service — GDPR Cascade Account Deletion
+ *
+ * Clinical behavior tested:
+ * - Full cascade deletion of a user account in compliance with GDPR right-to-
+ *   erasure: sessions, push registrations, audit entries scoped to the user,
+ *   and the user record itself are removed in a single atomic transaction
+ * - When the user has an associated patient record, the patient row is soft-
+ *   deleted (deletedAt set) rather than physically removed, preserving medical
+ *   history for legal retention periods
+ * - An audit entry is written before deletion so the erasure action itself is
+ *   traceable in the immutable audit log
+ *
+ * Associated risks:
+ * - Partial deletion (transaction rollback) would leave orphaned PII in the
+ *   database, causing a GDPR non-compliance incident
+ * - Hard-deleting a patient row (instead of soft-delete) would destroy medical
+ *   data required for HDS retention obligations (10 years minimum)
+ * - Missing audit entry for the deletion event would prevent demonstrating
+ *   GDPR compliance to a supervisory authority
+ *
+ * Edge cases:
+ * - User ID not found in the database (must throw, not silently no-op)
+ * - User with no associated patient (deletion path must not attempt patient
+ *   soft-delete and must still succeed)
+ * - User with multiple active sessions (all must be invalidated)
+ */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 

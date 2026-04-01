@@ -1,11 +1,33 @@
+/**
+ * @module deletion.service
+ * @description GDPR Article 17 — Right to erasure (full account deletion).
+ * Cascade deletes all user data in correct foreign key order.
+ * Creates immutable audit log entry BEFORE deletion (sole survivor).
+ * Patient soft-deleted; all User PII anonymized (never hard-deleted due to FK constraints).
+ * @see CLAUDE.md#soft-delete — GDPR-compliant deletion approach
+ * @see https://eur-lex.europa.eu/eli/reg/2016/679/oj — GDPR Article 17
+ */
+
 import { prisma } from "@/lib/db/client"
 import { createHash } from "crypto"
 import { auditService } from "./audit.service"
 
 /**
- * GDPR Article 17 — Right to erasure.
- * Cascade delete all user data in correct FK order.
- * An audit log entry is created BEFORE deletion (the only log that survives).
+ * GDPR Article 17 — Right to erasure (complete account deletion).
+ * Cascade deletes all user data in correct FK order.
+ * Creates audit log entry BEFORE deletion (the only log that survives).
+ * Patient is soft-deleted (deletedAt set); User is anonymized (not hard-deleted due to FK).
+ * @async
+ * @param {number} userId - User ID to delete
+ * @param {string} ipAddress - Client IP from request (for audit trail)
+ * @param {string} userAgent - User-Agent from request (for audit trail)
+ * @returns {Promise<{deleted: boolean, userId: number}>} Deletion confirmation
+ * @throws {Error} If user not found
+ * @see deleteUserAccount — Full deletion process documentation
+ * @example
+ * // In API route (POST /api/account/delete)
+ * await deleteUserAccount(userId, ipAddress, userAgent)
+ * // Returns { deleted: true, userId: 42 }
  */
 export async function deleteUserAccount(
   userId: number,
