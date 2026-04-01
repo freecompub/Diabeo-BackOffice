@@ -211,7 +211,8 @@ export const analyticsService = {
     })
 
     const totalUnits = flow.reduce((sum, f) => sum + (f.flow ? Number(f.flow) : 0), 0)
-    const avgDaily = flow.length > 0 ? totalUnits / flow.length : 0
+    const distinctDays = new Set(flow.map((f) => f.date.toISOString().split("T")[0])).size
+    const avgDaily = distinctDays > 0 ? totalUnits / distinctDays : 0
 
     return {
       totalUnits: Math.round(totalUnits * 100) / 100,

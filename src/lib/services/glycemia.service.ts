@@ -6,27 +6,25 @@ const MAX_PERIOD_DAYS = 30
 const CGM_MIN_GL = 0.40  // 40 mg/dL — no CGM reports below this
 const CGM_MAX_GL = 5.00  // 500 mg/dL — max CGM sensor range
 
+function enforceMaxPeriod(from: Date, to: Date) {
+  if (to < from) throw new Error("'from' must be before 'to'")
+  const diffDays = (to.getTime() - from.getTime()) / (1000 * 60 * 60 * 24)
+  if (diffDays > MAX_PERIOD_DAYS) {
+    throw new Error(`Period cannot exceed ${MAX_PERIOD_DAYS} days`)
+  }
+}
+
 export const glycemiaService = {
-  /** Get CGM entries for a patient within a date range */
   async getCgmEntries(
-    patientId: number,
-    from: Date,
-    to: Date,
-    auditUserId: number,
-    ctx?: AuditContext,
+    patientId: number, from: Date, to: Date,
+    auditUserId: number, ctx?: AuditContext,
   ) {
-    // Enforce max 30 days
-    const diffMs = to.getTime() - from.getTime()
-    const diffDays = diffMs / (1000 * 60 * 60 * 24)
-    if (diffDays > MAX_PERIOD_DAYS) {
-      throw new Error(`Period cannot exceed ${MAX_PERIOD_DAYS} days`)
-    }
+    enforceMaxPeriod(from, to)
 
     const entries = await prisma.cgmEntry.findMany({
       where: {
         patientId,
         timestamp: { gte: from, lte: to },
-        // Filter out-of-range values
         valueGl: { gte: CGM_MIN_GL, lte: CGM_MAX_GL },
       },
       orderBy: { timestamp: "asc" },
@@ -45,19 +43,14 @@ export const glycemiaService = {
     return entries
   },
 
-  /** Get glycemia entries (manual readings) for a patient */
   async getGlycemiaEntries(
-    patientId: number,
-    from: Date,
-    to: Date,
-    auditUserId: number,
-    ctx?: AuditContext,
+    patientId: number, from: Date, to: Date,
+    auditUserId: number, ctx?: AuditContext,
   ) {
+    enforceMaxPeriod(from, to)
+
     const entries = await prisma.glycemiaEntry.findMany({
-      where: {
-        patientId,
-        date: { gte: from, lte: to },
-      },
+      where: { patientId, date: { gte: from, lte: to } },
       orderBy: [{ date: "asc" }, { time: "asc" }],
     })
 
@@ -74,10 +67,18 @@ export const glycemiaService = {
     return entries
   },
 
-  /** Get average data (current, 7d, 30d) for a patient */
-  async getAverageData(patientId: number) {
+  async getAverageData(patientId: number, auditUserId: number, ctx?: AuditContext) {
     const averages = await prisma.averageData.findMany({
       where: { patientId },
+    })
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "CGM_ENTRY",
+      resourceId: `${patientId}:averages`,
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
     })
 
     const grouped: Record<string, typeof averages> = {}
@@ -94,25 +95,37 @@ export const glycemiaService = {
     }
   },
 
-  /** Get insulin flow entries for a date range */
-  async getInsulinFlow(patientId: number, from: Date, to: Date) {
-    return prisma.insulinFlowEntry.findMany({
+  async getInsulinFlow(
+    patientId: number, from: Date, to: Date,
+    auditUserId: number, ctx?: AuditContext,
+  ) {
+    enforceMaxPeriod(from, to)
+
+    const entries = await prisma.insulinFlowEntry.findMany({
       where: { patientId, date: { gte: from, lte: to } },
       orderBy: { date: "asc" },
     })
-  },
 
-  /** Get insulin flow device data for a date range */
-  async getInsulinFlowDeviceData(patientId: number, from: Date, to: Date) {
-    return prisma.insulinFlowDeviceData.findMany({
-      where: { patientId, date: { gte: from, lte: to } },
-      orderBy: { date: "asc" },
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "INSULIN_THERAPY",
+      resourceId: `${patientId}:insulinFlow`,
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
     })
+
+    return entries
   },
 
-  /** Get pump events for a date range */
-  async getPumpEvents(patientId: number, from: Date, to: Date, eventType?: string) {
-    return prisma.pumpEvent.findMany({
+  async getPumpEvents(
+    patientId: number, from: Date, to: Date,
+    auditUserId: number, ctx?: AuditContext,
+    eventType?: string,
+  ) {
+    enforceMaxPeriod(from, to)
+
+    const entries = await prisma.pumpEvent.findMany({
       where: {
         patientId,
         timestamp: { gte: from, lte: to },
@@ -120,5 +133,16 @@ export const glycemiaService = {
       },
       orderBy: { timestamp: "asc" },
     })
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "INSULIN_THERAPY",
+      resourceId: `${patientId}:pumpEvents`,
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+    })
+
+    return entries
   },
 }

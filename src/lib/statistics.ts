@@ -164,7 +164,7 @@ export function detectHypoEpisodes(
           current.timestamps.push(entry.timestamp)
         } else {
           // Gap too large — close current and start new
-          if (current.values.length >= 2) {
+          if (current.values.length >= 3) {
             episodes.push(buildEpisode(current, thresholds.veryLow))
           }
           current = { start: entry.timestamp, values: [entry.valueGl], timestamps: [entry.timestamp] }

@@ -9,6 +9,8 @@ import { extractRequestContext } from "@/lib/services/audit.service"
 const querySchema = z.object({
   datefirst: z.coerce.date(),
   datelast: z.coerce.date(),
+}).refine((d) => d.datefirst < d.datelast, {
+  message: "datefirst must be before datelast",
 })
 
 /** GET /api/userdata?datefirst=&datelast= — combined health data */
@@ -39,28 +41,19 @@ export async function GET(req: NextRequest) {
     const { datefirst, datelast } = parsed.data
     const ctx = extractRequestContext(req)
 
-    // Fetch all data types in parallel
     const [cgm, glycemia, averages, insulinflow, pumpevents] = await Promise.all([
       glycemiaService.getCgmEntries(patientId, datefirst, datelast, user.id, ctx),
       glycemiaService.getGlycemiaEntries(patientId, datefirst, datelast, user.id, ctx),
-      glycemiaService.getAverageData(patientId),
-      glycemiaService.getInsulinFlow(patientId, datefirst, datelast),
-      glycemiaService.getPumpEvents(patientId, datefirst, datelast),
+      glycemiaService.getAverageData(patientId, user.id, ctx),
+      glycemiaService.getInsulinFlow(patientId, datefirst, datelast, user.id, ctx),
+      glycemiaService.getPumpEvents(patientId, datefirst, datelast, user.id, ctx),
     ])
 
     return NextResponse.json({
       success: true,
       datefirst: datefirst.toISOString(),
       datelast: datelast.toISOString(),
-      data: {
-        cgm,
-        glycemia,
-        avgdata: averages.current,
-        avgdata7: averages.avg7d,
-        avgdata30: averages.avg30d,
-        insulinflow,
-        pumpevents,
-      },
+      data: { cgm, glycemia, avgdata: averages.current, avgdata7: averages.avg7d, avgdata30: averages.avg30d, insulinflow, pumpevents },
     })
   } catch (error) {
     if (error instanceof AuthError) {

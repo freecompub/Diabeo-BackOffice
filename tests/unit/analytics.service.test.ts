@@ -86,8 +86,8 @@ describe("analyticsService", () => {
   describe("insulinSummary", () => {
     it("returns insulin flow summary", async () => {
       prismaMock.insulinFlowEntry.findMany.mockResolvedValue([
-        { id: 1, patientId: 1, date: new Date(), flow: 42.5 },
-        { id: 2, patientId: 1, date: new Date(), flow: 38.0 },
+        { id: 1, patientId: 1, date: new Date("2026-03-10"), flow: 42.5 },
+        { id: 2, patientId: 1, date: new Date("2026-03-11"), flow: 38.0 },
       ] as any)
       prismaMock.pumpEvent.findMany.mockResolvedValue([])
       prismaMock.auditLog.create.mockResolvedValue({} as any)
@@ -97,6 +97,7 @@ describe("analyticsService", () => {
       )
 
       expect(result.totalUnits).toBeCloseTo(80.5)
+      // avgDailyUnits = totalUnits / distinct days (2 distinct dates)
       expect(result.avgDailyUnits).toBeCloseTo(40.25)
       expect(result.dayCount).toBe(2)
     })

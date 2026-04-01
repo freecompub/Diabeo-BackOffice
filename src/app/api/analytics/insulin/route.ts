@@ -9,7 +9,7 @@ import { extractRequestContext } from "@/lib/services/audit.service"
 const querySchema = z.object({
   from: z.coerce.date(),
   to: z.coerce.date(),
-})
+}).refine((d) => d.from < d.to, { message: "from must be before to" })
 
 export async function GET(req: NextRequest) {
   try {
