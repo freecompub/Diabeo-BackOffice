@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { Prisma } from "@prisma/client"
 
-/** CGM defaults per ADA guidelines */
+/** CGM defaults per ADA/EASD consensus — DT1/DT2 */
 const CGM_DEFAULTS = {
   veryLow: 0.54,
   low: 0.70,
@@ -12,15 +12,30 @@ const CGM_DEFAULTS = {
   titrHigh: 1.80,
 } as const
 
+/** Tighter CGM defaults for gestational diabetes (ADA/ACOG) */
+const CGM_DEFAULTS_GD = {
+  veryLow: 0.54,
+  low: 0.63,
+  ok: 1.40,
+  high: 2.00,
+  titrLow: 0.63,
+  titrHigh: 1.40,
+} as const
+
+export function getCgmDefaults(pathology?: string) {
+  return pathology === "GD" ? CGM_DEFAULTS_GD : CGM_DEFAULTS
+}
+
 export const objectivesService = {
   /** Get all 3 types of objectives for a patient */
   async getAll(patientId: number, auditUserId: number) {
-    const [glycemia, cgm, annex] = await Promise.all([
+    const [glycemia, cgm, annex, patient] = await Promise.all([
       prisma.glycemiaObjective.findMany({
         where: { patientId, isCurrent: true },
       }),
       prisma.cgmObjective.findUnique({ where: { patientId } }),
       prisma.annexObjective.findUnique({ where: { patientId } }),
+      prisma.patient.findUnique({ where: { id: patientId }, select: { pathology: true } }),
     ])
 
     await auditService.log({
@@ -32,7 +47,7 @@ export const objectivesService = {
 
     return {
       glycemia,
-      cgm: cgm ?? CGM_DEFAULTS,
+      cgm: cgm ?? getCgmDefaults(patient?.pathology),
       annex,
     }
   },

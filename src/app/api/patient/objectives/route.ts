@@ -37,10 +37,23 @@ const cgmSchema = z.object({
   titrLow: z.number().min(0.40).max(1.50),
   titrHigh: z.number().min(1.00).max(3.00),
 }).refine((d) => d.veryLow < d.low && d.low < d.ok && d.ok < d.high, {
-  message: "Thresholds must be ordered: veryLow < low < ok < high",
+  message: "Thresholds must be strictly ordered: veryLow < low < ok < high",
 }).refine((d) => d.titrLow < d.titrHigh, {
   message: "TIR thresholds must be ordered: titrLow < titrHigh",
 })
+
+const annexSchema = z.object({
+  patientId: z.number().int().positive(),
+  objectiveHba1c: z.number().min(4.0).max(14.0).optional(),
+  objectiveMinWeight: z.number().min(20).max(300).optional(),
+  objectiveMaxWeight: z.number().min(20).max(300).optional(),
+  objectiveWalk: z.number().int().min(0).max(600).optional(),
+}).refine((d) => {
+  if (d.objectiveMinWeight && d.objectiveMaxWeight) {
+    return d.objectiveMinWeight <= d.objectiveMaxWeight
+  }
+  return true
+}, { message: "objectiveMinWeight must be <= objectiveMaxWeight" })
 
 /** PUT /api/patient/objectives — update CGM objectives (DOCTOR only) */
 export async function PUT(req: NextRequest) {
@@ -65,6 +78,33 @@ export async function PUT(req: NextRequest) {
     }
     const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[patient/objectives PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
+  }
+}
+
+/** PATCH /api/patient/objectives — update annex objectives (DOCTOR only) */
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = requireRole(req, "DOCTOR")
+    const body = await req.json()
+    const parsed = annexSchema.safeParse(body)
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 },
+      )
+    }
+
+    const { patientId, ...annexInput } = parsed.data
+    const result = await objectivesService.updateAnnex(patientId, annexInput, user.id)
+    return NextResponse.json(result)
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return NextResponse.json({ error: error.message }, { status: error.status })
+    }
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[patient/objectives PATCH]", msg)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

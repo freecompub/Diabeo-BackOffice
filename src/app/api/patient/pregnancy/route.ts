@@ -7,7 +7,7 @@ import { auditService } from "@/lib/services/audit.service"
 
 const createPregnancySchema = z.object({
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  gestationalAge: z.number().int().min(0).max(45).optional(),
+  gestationalAge: z.number().int().min(0).max(43).optional(),
   notes: z.string().max(1000).optional(),
 })
 
