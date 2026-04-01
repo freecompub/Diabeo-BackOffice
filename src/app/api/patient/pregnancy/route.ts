@@ -4,26 +4,13 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { prisma } from "@/lib/db/client"
-import { encrypt, decrypt } from "@/lib/crypto/health-data"
+import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService } from "@/lib/services/audit.service"
-
-function encryptField(value: string): string {
-  return Buffer.from(encrypt(value)).toString("base64")
-}
-
-function safeDecryptField(value: string | null): string | null {
-  if (!value) return null
-  try {
-    return decrypt(new Uint8Array(Buffer.from(value, "base64")))
-  } catch {
-    return null
-  }
-}
 
 const createPregnancySchema = z.object({
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   gestationalAge: z.number().int().min(0).max(43).optional(),
-  notes: z.string().max(1000).optional(),
+  notes: z.string().min(1).max(1000).optional(),
 })
 
 /** GET /api/patient/pregnancy — active pregnancy or null */
@@ -72,8 +59,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = requireAuth(req)
-    const patientId = await getOwnPatientId(user.id)
 
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
+    const patientId = await getOwnPatientId(user.id)
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
@@ -89,7 +81,6 @@ export async function POST(req: NextRequest) {
     }
 
     const pregnancy = await prisma.$transaction(async (tx) => {
-      // Deactivate any existing active pregnancy
       await tx.patientPregnancy.updateMany({
         where: { patientId, active: true },
         data: { active: false },

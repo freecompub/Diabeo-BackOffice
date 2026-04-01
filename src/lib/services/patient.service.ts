@@ -128,11 +128,12 @@ export const patientService = {
       userAgent: ctx?.userAgent,
     })
 
-    // Decrypt PII fields
+    // Decrypt PII fields — never expose ciphertext
     const decryptedUser = {
       ...patient.user,
       firstname: safeDecrypt(patient.user.firstname),
       lastname: safeDecrypt(patient.user.lastname),
+      email: safeDecrypt(patient.user.email),
     }
 
     // Decrypt medical data if present

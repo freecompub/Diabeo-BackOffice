@@ -8,6 +8,7 @@ import type { Role } from "@prisma/client"
  * - VIEWER: own patient record only (via userId match)
  *
  * Always filters out soft-deleted patients.
+ * Uses loose equality (!=) to handle both null and undefined from Prisma.
  */
 export async function canAccessPatient(
   userId: number,
@@ -19,7 +20,7 @@ export async function canAccessPatient(
       where: { id: patientId, deletedAt: null },
       select: { id: true },
     })
-    return patient !== null
+    return !!patient
   }
 
   // VIEWER (patient role) — can only access own record
@@ -28,7 +29,7 @@ export async function canAccessPatient(
       where: { id: patientId, userId, deletedAt: null },
       select: { id: true },
     })
-    return patient !== null
+    return !!patient
   }
 
   // DOCTOR / NURSE — check via PatientService → HealthcareService → HealthcareMember
@@ -41,7 +42,7 @@ export async function canAccessPatient(
       },
     },
   })
-  return link !== null
+  return !!link
 }
 
 /**

@@ -17,16 +17,16 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const user = requireRole(req, "NURSE")
     const { id } = await params
-    const patientId = parseInt(id, 10)
 
-    if (!Number.isInteger(patientId) || patientId <= 0) {
+    if (!/^\d+$/.test(id)) {
       return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     }
+    const patientId = parseInt(id, 10)
 
     // Access control: only patients from the pro's service
+    const ctx = extractRequestContext(req)
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
-      const ctx = extractRequestContext(req)
       await auditService.log({
         userId: user.id,
         action: "UNAUTHORIZED",
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const patient = await patientService.getById(patientId, user.id)
+    const patient = await patientService.getById(patientId, user.id, ctx)
 
     if (!patient) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
@@ -60,11 +60,11 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
     const user = requireRole(req, "NURSE")
     const { id } = await params
-    const patientId = parseInt(id, 10)
 
-    if (!Number.isInteger(patientId) || patientId <= 0) {
+    if (!/^\d+$/.test(id)) {
       return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     }
+    const patientId = parseInt(id, 10)
 
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {

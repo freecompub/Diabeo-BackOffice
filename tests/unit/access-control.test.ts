@@ -33,9 +33,18 @@ describe("canAccessPatient", () => {
     canAccessPatient = mod.canAccessPatient
   })
 
-  it("ADMIN can access any patient", async () => {
+  it("ADMIN can access any non-deleted patient", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 99, userId: 50, pathology: "DT1", createdAt: new Date(), deletedAt: null,
+    })
     const result = await canAccessPatient(1, "ADMIN", 99)
     expect(result).toBe(true)
+  })
+
+  it("ADMIN cannot access soft-deleted patient", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null)
+    const result = await canAccessPatient(1, "ADMIN", 99)
+    expect(result).toBe(false)
   })
 
   it("VIEWER can access own patient record", async () => {
