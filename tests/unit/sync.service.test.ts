@@ -16,13 +16,16 @@ describe("syncService", () => {
       expect(result.sequenceNum).toBe("100")
     })
 
-    it("returns conflict when client is behind", async () => {
+    it("returns conflict when client is behind and audits it", async () => {
       prismaMock.deviceDataSync.findUnique.mockResolvedValue({
         id: 1, userId: 1, deviceUid: "dev-1", sequenceNum: BigInt(200), lastSyncDate: new Date(),
       } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
 
       const result = await syncService.pull(1, "dev-1", BigInt(100), 1)
       expect(result.conflict).toBe(true)
+      // Conflict path should still audit
+      expect(prismaMock.auditLog.create).toHaveBeenCalled()
     })
 
     it("throws when sync not found", async () => {

@@ -26,9 +26,21 @@ describe("deviceService", () => {
       expect(result.id).toBe(4)
     })
 
-    it("throws when max devices reached", async () => {
+    it("allows creation at count 8 (under max)", async () => {
+      prismaMock.patientDevice.count.mockResolvedValue(8)
+      const mockTx = {
+        patientDevice: { create: vi.fn().mockResolvedValue({ id: 9, brand: "Libre" }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      const result = await deviceService.create(1, { brand: "Libre", category: "cgm" as any }, 1)
+      expect(result.id).toBe(9)
+    })
+
+    it("throws when max devices reached (count = 9)", async () => {
       prismaMock.patientDevice.count.mockResolvedValue(9)
-      await expect(deviceService.create(1, {}, 1)).rejects.toThrow("maxDevicesReached")
+      await expect(deviceService.create(1, { category: "cgm" as any }, 1)).rejects.toThrow("maxDevicesReached")
     })
   })
 

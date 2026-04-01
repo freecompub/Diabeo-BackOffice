@@ -1,12 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { deviceService } from "@/lib/services/device.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
 
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
-    const syncs = await deviceService.getSyncStatus(user.id)
-    // Serialize BigInt sequenceNum
+    const ctx = extractRequestContext(req)
+    const syncs = await deviceService.getSyncStatus(user.id, user.id, ctx)
     return NextResponse.json(syncs.map((s) => ({ ...s, sequenceNum: String(s.sequenceNum) })))
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

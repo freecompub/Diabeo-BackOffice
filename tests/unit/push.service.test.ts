@@ -79,6 +79,7 @@ describe("pushService", () => {
     it("pauses a scheduled notification", async () => {
       prismaMock.pushScheduledNotification.findFirst.mockResolvedValue({ id: "s1", userId: 1 } as any)
       prismaMock.pushScheduledNotification.update.mockResolvedValue({ id: "s1", isActive: false } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
       const result = await pushService.pauseScheduled("s1", 1)
       expect(result.isActive).toBe(false)
     })
@@ -86,6 +87,54 @@ describe("pushService", () => {
     it("throws for non-existent schedule", async () => {
       prismaMock.pushScheduledNotification.findFirst.mockResolvedValue(null)
       await expect(pushService.pauseScheduled("bad", 1)).rejects.toThrow("scheduleNotFound")
+    })
+  })
+
+  describe("resumeScheduled", () => {
+    it("resumes a paused schedule", async () => {
+      prismaMock.pushScheduledNotification.findFirst.mockResolvedValue({ id: "s1", userId: 1, isActive: false } as any)
+      prismaMock.pushScheduledNotification.update.mockResolvedValue({ id: "s1", isActive: true } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await pushService.resumeScheduled("s1", 1)
+      expect(result.isActive).toBe(true)
+    })
+
+    it("throws for non-existent schedule", async () => {
+      prismaMock.pushScheduledNotification.findFirst.mockResolvedValue(null)
+      await expect(pushService.resumeScheduled("bad", 1)).rejects.toThrow("scheduleNotFound")
+    })
+  })
+
+  describe("createScheduled", () => {
+    it("creates scheduled notification with audit", async () => {
+      prismaMock.pushScheduledNotification.create.mockResolvedValue({
+        id: "sched-1", userId: 1, templateId: "glycemia_reminder", scheduleType: "daily",
+      } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await pushService.createScheduled(1, {
+        templateId: "glycemia_reminder",
+        scheduleType: "daily" as any,
+        cronExpression: "0 8 * * *",
+      })
+      expect(result.id).toBe("sched-1")
+    })
+  })
+
+  describe("getTemplate", () => {
+    it("returns a template by id", async () => {
+      prismaMock.pushNotificationTemplate.findUnique.mockResolvedValue({
+        id: "hypo_alert", category: "alert",
+      } as any)
+      const result = await pushService.getTemplate("hypo_alert")
+      expect(result!.id).toBe("hypo_alert")
+    })
+
+    it("returns null for non-existent template", async () => {
+      prismaMock.pushNotificationTemplate.findUnique.mockResolvedValue(null)
+      const result = await pushService.getTemplate("bad")
+      expect(result).toBeNull()
     })
   })
 })

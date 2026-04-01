@@ -11,6 +11,12 @@ export const syncService = {
     if (!sync) throw new Error("syncNotFound")
 
     if (clientSeqNum < sync.sequenceNum) {
+      await auditService.log({
+        userId: auditUserId, action: "READ", resource: "PATIENT",
+        resourceId: `sync:${deviceUid}:conflict`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { conflict: true, serverSeqNum: String(sync.sequenceNum), clientSeqNum: String(clientSeqNum) },
+      })
       return { conflict: true, serverSeqNum: String(sync.sequenceNum), clientSeqNum: String(clientSeqNum) }
     }
 
