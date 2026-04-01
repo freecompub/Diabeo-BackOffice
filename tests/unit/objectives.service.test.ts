@@ -76,7 +76,7 @@ describe("objectivesService", () => {
         cgmObjective: { upsert: vi.fn().mockResolvedValue({ id: 1, patientId: 1, ...input }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
-      prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await objectivesService.updateCgm(1, input, 1)
 
@@ -92,7 +92,7 @@ describe("objectivesService", () => {
         annexObjective: { upsert: vi.fn().mockResolvedValue({ id: 1, patientId: 1, ...input }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
-      prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await objectivesService.updateAnnex(1, input, 1)
 

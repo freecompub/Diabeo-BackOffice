@@ -35,7 +35,7 @@ describe("deleteUserAccount", () => {
       user: { update: vi.fn().mockResolvedValue({}) },
     }
 
-    prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
     const result = await deleteUserAccount(1, "127.0.0.1", "vitest")
 
@@ -100,7 +100,7 @@ describe("deleteUserAccount", () => {
       user: { update: vi.fn().mockResolvedValue({}) },
     }
 
-    prismaMock.$transaction.mockImplementation(async (cb: (tx: typeof mockTx) => Promise<unknown>) => cb(mockTx))
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
     const result = await deleteUserAccount(1, "127.0.0.1", "vitest")
 
