@@ -4,6 +4,7 @@ import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { diabetesEventSchema } from "@/lib/validators/events"
 import { eventsService } from "@/lib/services/events.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
 
 /** POST /api/events — create a diabetes event */
 export async function POST(req: NextRequest) {
@@ -30,7 +31,8 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const event = await eventsService.create(patientId, parsed.data, user.id)
+    const ctx = extractRequestContext(req)
+    const event = await eventsService.create(patientId, parsed.data, user.id, ctx)
     return NextResponse.json(event, { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) {

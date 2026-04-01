@@ -1,10 +1,12 @@
 import { z } from "zod"
+import { DiabetesEventType } from "@prisma/client"
+
+/** Derive event types from Prisma enum — no duplication */
+const EVENT_TYPES = Object.values(DiabetesEventType) as [DiabetesEventType, ...DiabetesEventType[]]
 
 export const diabetesEventSchema = z.object({
   eventDate: z.string().datetime(),
-  eventTypes: z.array(z.enum([
-    "glycemia", "insulinMeal", "physicalActivity", "context", "occasional",
-  ])).min(1),
+  eventTypes: z.array(z.enum(EVENT_TYPES)).min(1),
   glycemiaValue: z.number().min(20).max(600).optional(),
   carbohydrates: z.number().min(0).optional(),
   bolusDose: z.number().min(0).max(25).optional(),
@@ -23,23 +25,23 @@ export const diabetesEventSchema = z.object({
   ketones: z.number().min(0).max(20).optional(),
   systolicPressure: z.number().int().min(50).max(300).optional(),
   diastolicPressure: z.number().int().min(20).max(200).optional(),
-  comment: z.string().max(1000).optional(),
+  comment: z.string().min(1).max(1000).optional(),
 }).superRefine((data, ctx) => {
-  if (data.eventTypes.includes("glycemia") && data.glycemiaValue === undefined) {
+  if (data.eventTypes.includes("glycemia" as DiabetesEventType) && data.glycemiaValue === undefined) {
     ctx.addIssue({
       code: "custom",
       path: ["glycemiaValue"],
       message: "glycemiaValue required when eventTypes includes glycemia",
     })
   }
-  if (data.eventTypes.includes("insulinMeal") && data.carbohydrates === undefined) {
+  if (data.eventTypes.includes("insulinMeal" as DiabetesEventType) && data.carbohydrates === undefined) {
     ctx.addIssue({
       code: "custom",
       path: ["carbohydrates"],
       message: "carbohydrates required when eventTypes includes insulinMeal",
     })
   }
-  if (data.eventTypes.includes("physicalActivity")) {
+  if (data.eventTypes.includes("physicalActivity" as DiabetesEventType)) {
     if (!data.activityType) {
       ctx.addIssue({
         code: "custom",
@@ -55,7 +57,7 @@ export const diabetesEventSchema = z.object({
       })
     }
   }
-  if (data.eventTypes.includes("context") && !data.contextType) {
+  if (data.eventTypes.includes("context" as DiabetesEventType) && !data.contextType) {
     ctx.addIssue({
       code: "custom",
       path: ["contextType"],

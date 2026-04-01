@@ -3,8 +3,8 @@ import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
-import { diabetesEventSchema } from "@/lib/validators/events"
 import { eventsService } from "@/lib/services/events.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -50,7 +50,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const event = await eventsService.update(id, patientId, parsed.data, user.id)
+    const ctx = extractRequestContext(req)
+    const event = await eventsService.update(id, patientId, parsed.data, user.id, ctx)
     return NextResponse.json(event)
   } catch (error) {
     if (error instanceof AuthError) {
@@ -81,7 +82,8 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     }
 
     const { id } = await params
-    await eventsService.delete(id, patientId, user.id)
+    const ctx = extractRequestContext(req)
+    await eventsService.delete(id, patientId, user.id, ctx)
     return NextResponse.json({ deleted: true })
   } catch (error) {
     if (error instanceof AuthError) {

@@ -7,7 +7,7 @@ import { analyticsService } from "@/lib/services/analytics.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 const querySchema = z.object({
-  period: z.string().regex(/^\d+d$/).default("14d"),
+  period: z.string().regex(/^[1-9]\d{0,1}d$/).refine((s) => parseInt(s, 10) <= 90, { message: "Period max 90 days" }).default("14d"),
 })
 
 export async function GET(req: NextRequest) {

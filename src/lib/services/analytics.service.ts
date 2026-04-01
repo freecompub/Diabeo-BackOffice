@@ -4,7 +4,7 @@ import {
   mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation,
   computeTir, assessTirQuality, computeAgp, detectHypoEpisodes,
   cgmCaptureRate,
-  type CgmThresholds, type TirResult, type TirQuality,
+  type CgmThresholds,
 } from "@/lib/statistics"
 import type { AuditContext } from "./patient.service"
 
@@ -214,11 +214,19 @@ export const analyticsService = {
     const distinctDays = new Set(flow.map((f) => f.date.toISOString().split("T")[0])).size
     const avgDaily = distinctDays > 0 ? totalUnits / distinctDays : 0
 
+    // Convert Decimal fields to numbers for JSON serialization
+    const flowData = flow.map((f) => ({
+      id: f.id,
+      patientId: f.patientId,
+      date: f.date,
+      flow: f.flow ? Number(f.flow) : null,
+    }))
+
     return {
       totalUnits: Math.round(totalUnits * 100) / 100,
       avgDailyUnits: Math.round(avgDaily * 100) / 100,
-      dayCount: flow.length,
-      flow,
+      dayCount: distinctDays,
+      flow: flowData,
       pumpEvents,
     }
   },
