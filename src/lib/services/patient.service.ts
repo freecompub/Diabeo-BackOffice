@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { auditService } from "./audit.service"
-import type { Pathology } from "@prisma/client"
+import type { Pathology, Prisma } from "@prisma/client"
 
 interface PersonalData {
   firstName: string
@@ -25,6 +25,45 @@ function encryptField(value: string): string {
 /** Decrypt a base64-encoded encrypted field */
 function decryptField(value: string): string {
   return decrypt(new Uint8Array(Buffer.from(value, "base64")))
+}
+
+/** Try to decrypt, return null if decryption fails — never leak ciphertext */
+function safeDecrypt(value: string | null): string | null {
+  if (!value) return null
+  try {
+    return decryptField(value)
+  } catch {
+    return null
+  }
+}
+
+/** Fields in PatientMedicalData that are encrypted */
+const ENCRYPTED_MEDICAL_FIELDS = new Set([
+  "historyMedical", "historyChirurgical", "historyFamily",
+  "historyAllergy", "historyVaccine", "historyLife",
+  "pathology", "diabetDiscovery",
+])
+
+/** Decrypt encrypted fields in a medical data record */
+function decryptMedicalData(data: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...data }
+  for (const field of ENCRYPTED_MEDICAL_FIELDS) {
+    if (typeof result[field] === "string") {
+      result[field] = safeDecrypt(result[field] as string)
+    }
+  }
+  return result
+}
+
+/** Encrypt fields in a medical data update input */
+function encryptMedicalInput(input: Record<string, unknown>): Record<string, unknown> {
+  const result = { ...input }
+  for (const [key, value] of Object.entries(result)) {
+    if (ENCRYPTED_MEDICAL_FIELDS.has(key) && typeof value === "string") {
+      result[key] = encryptField(value)
+    }
+  }
+  return result
 }
 
 export const patientService = {
@@ -58,12 +97,18 @@ export const patientService = {
 
   async getById(id: number, auditUserId: number) {
     const patient = await prisma.patient.findFirst({
-      where: { id },
+      where: { id, deletedAt: null },
       include: {
         user: { select: { id: true, firstname: true, lastname: true, email: true, sex: true, birthday: true } },
         medicalData: true,
+        administrative: true,
+        glycemiaObjectives: { where: { isCurrent: true } },
         cgmObjectives: true,
         annexObjectives: true,
+        treatments: true,
+        referent: { include: { pro: { select: { id: true, name: true } } } },
+        patientServices: { include: { service: { select: { id: true, name: true } } } },
+        devices: true,
       },
     })
 
@@ -76,22 +121,102 @@ export const patientService = {
       resourceId: String(patient.id),
     })
 
-    // Decrypt PII fields if they are encrypted (base64-encoded)
+    // Decrypt PII fields
     const decryptedUser = {
       ...patient.user,
-      firstname: patient.user.firstname ? safeDecrypt(patient.user.firstname) : null,
-      lastname: patient.user.lastname ? safeDecrypt(patient.user.lastname) : null,
+      firstname: safeDecrypt(patient.user.firstname),
+      lastname: safeDecrypt(patient.user.lastname),
     }
 
-    return { ...patient, user: decryptedUser }
+    // Decrypt medical data if present
+    const decryptedMedical = patient.medicalData
+      ? decryptMedicalData(patient.medicalData as unknown as Record<string, unknown>)
+      : null
+
+    return {
+      ...patient,
+      user: decryptedUser,
+      medicalData: decryptedMedical,
+    }
+  },
+
+  async getByUserId(userId: number, auditUserId: number) {
+    const patient = await prisma.patient.findUnique({
+      where: { userId },
+      select: { id: true },
+    })
+    if (!patient) return null
+    return this.getById(patient.id, auditUserId)
+  },
+
+  async updateProfile(
+    patientId: number,
+    input: { pathology?: Pathology },
+    auditUserId: number,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const patient = await tx.patient.update({
+        where: { id: patientId },
+        data: input,
+      })
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "PATIENT",
+        resourceId: String(patientId),
+        metadata: { updatedFields: Object.keys(input) },
+      })
+
+      return { id: patient.id, pathology: patient.pathology }
+    })
+  },
+
+  async getMedicalData(patientId: number, auditUserId: number) {
+    const data = await prisma.patientMedicalData.findUnique({
+      where: { patientId },
+    })
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "PATIENT",
+      resourceId: `${patientId}:medicalData`,
+    })
+
+    if (!data) return null
+    return decryptMedicalData(data as unknown as Record<string, unknown>)
+  },
+
+  async updateMedicalData(
+    patientId: number,
+    input: Record<string, unknown>,
+    auditUserId: number,
+  ) {
+    const encrypted = encryptMedicalInput(input)
+
+    return prisma.$transaction(async (tx) => {
+      const data = await tx.patientMedicalData.upsert({
+        where: { patientId },
+        update: encrypted as Prisma.PatientMedicalDataUpdateInput,
+        create: { patientId, ...encrypted } as Prisma.PatientMedicalDataUncheckedCreateInput,
+      })
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "PATIENT",
+        resourceId: `${patientId}:medicalData`,
+        metadata: { updatedFields: Object.keys(input) },
+      })
+
+      return decryptMedicalData(data as unknown as Record<string, unknown>)
+    })
   },
 
   async listByDoctor(doctorUserId: number, auditUserId: number) {
-    // Find patients where the doctor's HealthcareMember is the referent
     const referents = await prisma.patientReferent.findMany({
-      where: {
-        pro: { userId: doctorUserId },
-      },
+      where: { pro: { userId: doctorUserId } },
       include: {
         patient: {
           include: {
@@ -112,10 +237,9 @@ export const patientService = {
     return referents.map((r) => r.patient)
   },
 
-  /** Soft delete — anonymise les donnees (RGPD) */
+  /** Soft delete — anonymise les données (RGPD) */
   async delete(id: number, auditUserId: number) {
     return prisma.$transaction(async (tx) => {
-      // Guard: check not already deleted
       const existing = await tx.patient.findUnique({ where: { id } })
       if (!existing || existing.deletedAt) {
         throw new Error("Patient not found or already deleted")
@@ -126,7 +250,6 @@ export const patientService = {
         data: { deletedAt: new Date() },
       })
 
-      // Anonymize user data
       await tx.user.update({
         where: { id: patient.userId },
         data: {
@@ -154,13 +277,4 @@ export const patientService = {
       return { id: patient.id, deletedAt: patient.deletedAt }
     })
   },
-}
-
-/** Try to decrypt, return null if decryption fails — never leak ciphertext */
-function safeDecrypt(value: string): string | null {
-  try {
-    return decryptField(value)
-  } catch {
-    return null
-  }
 }
