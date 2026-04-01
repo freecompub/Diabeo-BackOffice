@@ -134,7 +134,7 @@ export const auditService = {
         take: limit,
         include: {
           user: {
-            select: { id: true, emailHmac: true, firstname: true, lastname: true, role: true },
+            select: { id: true, role: true },
           },
         },
       }),

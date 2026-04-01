@@ -15,7 +15,8 @@ function safeDecryptField(value: string | null): string | null {
   try {
     return decrypt(new Uint8Array(Buffer.from(value, "base64")))
   } catch {
-    return value
+    // Never return ciphertext — return null on decryption failure
+    return null
   }
 }
 

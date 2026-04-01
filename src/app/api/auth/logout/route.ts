@@ -4,6 +4,7 @@ import {
   verifyJwt,
   invalidateSession,
 } from "@/lib/auth"
+import { revokeSession } from "@/middleware"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 export async function POST(req: Request) {
@@ -17,6 +18,7 @@ export async function POST(req: Request) {
     const ctx = extractRequestContext(req)
 
     await invalidateSession(payload.sid)
+    revokeSession(payload.sid)
 
     await auditService.log({
       userId: payload.sub,

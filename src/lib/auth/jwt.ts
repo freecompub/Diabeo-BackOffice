@@ -3,6 +3,10 @@ import type { Role } from "@prisma/client"
 
 const ALG = "RS256"
 const TOKEN_EXPIRY = "24h"
+const ISSUER = "diabeo-backoffice"
+const AUDIENCE = "diabeo-hc"
+
+const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 
 export interface JWTPayload {
   sub: number
@@ -36,6 +40,23 @@ async function getPublicKey(): Promise<CryptoKey> {
   return cachedPublicKey
 }
 
+function validatePayload(payload: Record<string, unknown>): JWTPayload {
+  const sub = Number(payload.sub)
+  if (!Number.isInteger(sub) || sub <= 0) {
+    throw new Error("Invalid token subject")
+  }
+  const role = String(payload.role)
+  if (!VALID_ROLES.has(role)) {
+    throw new Error("Invalid token role")
+  }
+  return {
+    sub,
+    role: role as Role,
+    platform: payload.platform as "hc",
+    sid: payload.sid as string,
+  }
+}
+
 export async function signJwt(payload: JWTPayload): Promise<string> {
   const key = await getPrivateKey()
   return new SignJWT({
@@ -45,6 +66,8 @@ export async function signJwt(payload: JWTPayload): Promise<string> {
   })
     .setProtectedHeader({ alg: ALG })
     .setSubject(String(payload.sub))
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE)
     .setIssuedAt()
     .setExpirationTime(TOKEN_EXPIRY)
     .sign(key)
@@ -52,29 +75,25 @@ export async function signJwt(payload: JWTPayload): Promise<string> {
 
 export async function verifyJwt(token: string): Promise<JWTPayload> {
   const key = await getPublicKey()
-  const { payload } = await jwtVerify(token, key, { algorithms: [ALG] })
-  return {
-    sub: Number(payload.sub),
-    role: payload.role as Role,
-    platform: payload.platform as "hc",
-    sid: payload.sid as string,
-  }
+  const { payload } = await jwtVerify(token, key, {
+    algorithms: [ALG],
+    issuer: ISSUER,
+    audience: AUDIENCE,
+  })
+  return validatePayload(payload)
 }
 
-/** Verify JWT but allow expired tokens (for refresh flow) */
+/** Verify JWT but allow recently expired tokens (for refresh flow, 1h grace) */
 export async function verifyJwtAllowExpired(token: string): Promise<JWTPayload> {
   const key = await getPublicKey()
   try {
     const { payload } = await jwtVerify(token, key, {
       algorithms: [ALG],
-      clockTolerance: 3600, // Allow 1h grace for refresh
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      clockTolerance: 3600, // 1h grace for refresh
     })
-    return {
-      sub: Number(payload.sub),
-      role: payload.role as Role,
-      platform: payload.platform as "hc",
-      sid: payload.sid as string,
-    }
+    return validatePayload(payload)
   } catch {
     throw new Error("Invalid token")
   }

@@ -116,8 +116,11 @@ export async function deleteUserAccount(
       await tx.patientAdministrative.deleteMany({ where: { patientId } })
       await tx.patientPregnancy.deleteMany({ where: { patientId } })
 
-      // Patient record
-      await tx.patient.delete({ where: { id: patientId } })
+      // Soft delete patient — never hard delete (RGPD + audit trail)
+      await tx.patient.update({
+        where: { id: patientId },
+        data: { deletedAt: new Date() },
+      })
     }
 
     // Anonymize user — keep the row for audit log FK integrity

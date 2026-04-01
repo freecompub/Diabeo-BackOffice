@@ -156,11 +156,11 @@ export const patientService = {
   },
 }
 
-/** Try to decrypt, return raw value if decryption fails (e.g. seed plaintext data) */
-function safeDecrypt(value: string): string {
+/** Try to decrypt, return null if decryption fails — never leak ciphertext */
+function safeDecrypt(value: string): string | null {
   try {
     return decryptField(value)
   } catch {
-    return value
+    return null
   }
 }

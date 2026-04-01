@@ -50,9 +50,11 @@ export async function PUT(req: Request) {
 
     const data: Record<string, unknown> = { ...parsed.data }
 
-    // Auto-set consentDate when gdprConsent becomes true
+    // Auto-manage consentDate based on gdprConsent state
     if (parsed.data.gdprConsent === true) {
       data.consentDate = new Date()
+    } else if (parsed.data.gdprConsent === false) {
+      data.consentDate = null
     }
 
     const settings = await prisma.userPrivacySettings.upsert({

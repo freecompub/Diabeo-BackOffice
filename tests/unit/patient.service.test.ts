@@ -222,9 +222,9 @@ describe("patientService.getById", () => {
 
     const result = await patientService.getById(1, 1)
 
-    // safeDecrypt returns the raw value when decryption fails
-    expect(result!.user.firstname).toBe("PlainTextName")
-    expect(result!.user.lastname).toBe("PlainTextLast")
+    // safeDecrypt returns null on decryption failure — never leaks ciphertext
+    expect(result!.user.firstname).toBeNull()
+    expect(result!.user.lastname).toBeNull()
   })
 
   it("logs audit READ entry", async () => {
