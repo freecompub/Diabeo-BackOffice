@@ -1,12 +1,18 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [pgcrypto]
 }
 
-// ─── Enums ───────────────────────────────────────────────
+// NOTE: La connection URL est configuree dans prisma/prisma.config.ts (Prisma 7+)
+
+// ═══════════════════════════════════════════════════════════════
+// ENUMS
+// ═══════════════════════════════════════════════════════════════
 
 enum Role {
   ADMIN
@@ -15,51 +21,233 @@ enum Role {
   VIEWER
 }
 
-enum DiabetesType {
-  TYPE1
-  TYPE2
-  GESTATIONAL
-  OTHER
+enum Pathology {
+  DT1
+  DT2
+  GD
 }
 
-// ─── User ────────────────────────────────────────────────
+enum Sex {
+  M
+  F
+  X
+}
+
+enum Language {
+  fr
+  en
+  ar
+}
+
+enum DayMomentType {
+  morning
+  noon
+  evening
+  night
+  custom
+}
+
+enum InsulinDeliveryMethod {
+  pump
+  manual
+}
+
+enum TreatmentType {
+  fgm
+  pump
+  insulin_pump
+  glp1
+}
+
+enum BasalConfigType {
+  pump
+  single_injection
+  split_injection
+}
+
+enum GlucoseTargetPreset {
+  standard
+  tight
+  pediatric
+  elderly
+  custom
+}
+
+enum AdjustableParameter {
+  basalRate
+  insulinSensitivityFactor
+  insulinToCarbRatio
+}
+
+enum AdjustmentReason {
+  basalTooLow
+  basalTooHigh
+  basalCorrect
+  isfTooLow
+  isfTooHigh
+  isfCorrect
+  icrTooLow
+  icrTooHigh
+  icrCorrect
+  insufficientData
+}
+
+enum ConfidenceLevel {
+  low
+  medium
+  high
+}
+
+enum ProposalStatus {
+  pending
+  accepted
+  rejected
+  expired
+}
+
+enum DeviceCategory {
+  glucometer
+  cgm
+  insulinPump
+  insulinPen
+  healthApp
+}
+
+enum DocumentCategory {
+  general
+  forDoctor
+  personal
+  prescription
+  labResults
+  other
+}
+
+enum PushPlatform {
+  ios
+  android
+  web
+}
+
+enum PushNotifStatus {
+  pending
+  sent
+  delivered
+  failed
+  expired
+}
+
+enum ScheduleType {
+  once
+  daily
+  weekly
+  custom_cron
+}
+
+enum IosInterruptionLevel {
+  passive
+  active
+  time_sensitive
+  critical
+}
+
+enum DiabetesEventType {
+  glycemia
+  insulinMeal
+  physicalActivity
+  context
+  occasional
+}
+
+enum AndroidPriority {
+  normal
+  high
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 1. DOMAINE UTILISATEUR & AUTHENTIFICATION (7 tables)
+// ═══════════════════════════════════════════════════════════════
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  name          String
-  passwordHash  String
-  role          Role      @default(VIEWER)
-  mfaSecret     String?
-  mfaEnabled    Boolean   @default(false)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id                       Int       @id @default(autoincrement())
+  email                    String    // chiffre AES-256-GCM en production
+  emailHmac                String    @unique @map("email_hmac") // HMAC-SHA256 pour lookup unique
+  passwordHash             String    @map("password_hash")
+  title                    String?   // 'M.' | 'Mme' | 'Dr' | 'Prof'
+  firstname                String?   // chiffre
+  firstnames               String?   // chiffre
+  usedFirstname            String?   @map("used_firstname") // chiffre
+  lastname                 String?   // chiffre
+  usedLastname             String?   @map("used_lastname") // chiffre
+  birthday                 DateTime? @db.Date // chiffre
+  sex                      Sex?
+  codeBirthPlace           String?   @map("code_birth_place") // chiffre
+  timezone                 String?   @default("Europe/Paris")
+  phone                    String?   // chiffre
+  address1                 String?   // chiffre
+  address2                 String?   // chiffre
+  cp                       String?   // chiffre
+  city                     String?   // chiffre
+  country                  String?   @db.Char(2)
+  pic                      String?
+  language                 Language? @default(fr)
+  role                     Role      @default(VIEWER)
+  mfaSecret                String?   @map("mfa_secret")
+  mfaEnabled               Boolean   @default(false) @map("mfa_enabled")
+  hasSignedTerms           Boolean   @default(false) @map("has_signed_terms")
+  profileComplete          Boolean   @default(false) @map("profile_complete")
+  needDataPolicyUpdate     Boolean   @default(false) @map("need_data_policy_update")
+  dataPolicyUpdate         DateTime? @map("data_policy_update")
+  needPasswordUpdate       Boolean   @default(false) @map("need_password_update")
+  needOnboarding           Boolean   @default(false) @map("need_onboarding")
+  debug                    Boolean   @default(false)
+  nirpp                    String?   // chiffre — TRES SENSIBLE
+  nirppType                String?   @map("nirpp_type") // 'nir' | 'nia' | 'nir_key'
+  nirppPolicyholder        String?   @map("nirpp_policyholder") // chiffre
+  nirppPolicyholderType    String?   @map("nirpp_policyholder_type")
+  oid                      String?   // interne — jamais expose
+  ins                      String?   // Identite Nationale de Sante, chiffre
+  intercomHash             String?   @map("intercom_hash") // interne — jamais expose
+  deploymentKey            String?   @map("deployment_key") // interne — jamais expose
+  pro                      String?   // interne
+  displayModalTlsMutual    Boolean   @default(false) @map("display_modal_tls_mutual")
+  displayModalTlsMandatory Boolean   @default(false) @map("display_modal_tls_mandatory")
+  createdAt                DateTime  @default(now()) @map("created_at")
+  updatedAt                DateTime  @updatedAt @map("updated_at")
 
-  patients          Patient[]
-  createdConfigs    InsulinConfig[] @relation("CreatedBy")
-  validatedConfigs  InsulinConfig[] @relation("ValidatedBy")
-  auditLogs         AuditLog[]
-  sessions          Session[]
-  accounts          Account[]
+  // Relations
+  patient              Patient?
+  unitPreferences      UserUnitPreferences?
+  notifPreferences     UserNotifPreferences?
+  privacySettings      UserPrivacySettings?
+  dayMoments           UserDayMoment[]
+  uiStates             UiStateSave[]
+  sessions             Session[]
+  accounts             Account[]
+  deviceSyncs          DeviceDataSync[]
+  dashboardConfig      DashboardConfiguration?
+  pushRegistrations    PushDeviceRegistration[]
+  pushNotifLogs        PushNotificationLog[]
+  pushScheduled        PushScheduledNotification[]
+  auditLogs            AuditLog[]
+  reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
 
+  @@index([createdAt])
   @@map("users")
 }
 
-// ─── Account (NextAuth v5 — OAuth) ──────────────────────
-
 model Account {
   id                String  @id @default(cuid())
-  userId            String
+  userId            Int     @map("user_id")
   type              String
   provider          String
-  providerAccountId String
-  refresh_token     String?
-  access_token      String?
-  expires_at        Int?
-  token_type        String?
+  providerAccountId String  @map("provider_account_id")
+  refreshToken      String? @map("refresh_token")
+  accessToken       String? @map("access_token")
+  expiresAt         Int?    @map("expires_at")
+  tokenType         String? @map("token_type")
   scope             String?
-  id_token          String?
-  session_state     String?
+  idToken           String? @map("id_token")
+  sessionState      String? @map("session_state")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -67,20 +255,16 @@ model Account {
   @@map("accounts")
 }
 
-// ─── Session (NextAuth v5) ──────────────────────────────
-
 model Session {
   id           String   @id @default(cuid())
-  sessionToken String   @unique
-  userId       String
+  sessionToken String   @unique @map("session_token")
+  userId       Int      @map("user_id")
   expires      DateTime
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("sessions")
 }
-
-// ─── VerificationToken (NextAuth v5) ────────────────────
 
 model VerificationToken {
   identifier String
@@ -91,66 +275,943 @@ model VerificationToken {
   @@map("verification_tokens")
 }
 
-// ─── Patient ─────────────────────────────────────────────
+model UserUnitPreferences {
+  id                Int  @id @default(autoincrement())
+  userId            Int  @unique @map("user_id")
+  unitGlycemia      Int  @default(5) @map("unit_glycemia") // 3:g/L 4:mg/dL 5:mmol/L
+  unitWeight        Int  @default(6) @map("unit_weight") // 6:kg 7:lbs
+  unitSize          Int  @default(8) @map("unit_size") // 8:cm 9:ft
+  unitCarb          Int  @default(2) @map("unit_carb") // 1:CP 2:g
+  unitHba1c         Int  @default(10) @map("unit_hba1c") // 10:% 11:mmol/mol
+  unitCarbExchangeNb Int @default(15) @map("unit_carb_exchange_nb")
+  unitKetones       Int  @default(12) @map("unit_ketones") // 12:mmol/L 13:mg/dL
+  unitBloodPressure Int  @default(14) @map("unit_blood_pressure") // 14:mmHg
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_unit_preferences")
+}
+
+model UserNotifPreferences {
+  id                    Int      @id @default(autoincrement())
+  userId                Int      @unique @map("user_id")
+  notifMessageMail      Boolean  @default(true) @map("notif_message_mail")
+  notifDocumentMail     Boolean  @default(true) @map("notif_document_mail")
+  glycemiaReminders     Boolean  @default(false) @map("glycemia_reminders")
+  glycemiaReminderTimes Json?    @map("glycemia_reminder_times") // string[]
+  insulinReminders      Boolean  @default(false) @map("insulin_reminders")
+  insulinReminderTimes  Json?    @map("insulin_reminder_times") // string[]
+  medicalAppointments   Boolean  @default(true) @map("medical_appointments")
+  autoExport            Boolean  @default(false) @map("auto_export")
+  autoExportFrequency   Int?     @map("auto_export_frequency") // jours
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_notification_preferences")
+}
+
+model UserPrivacySettings {
+  id                   Int       @id @default(autoincrement())
+  userId               Int       @unique @map("user_id")
+  shareWithResearchers Boolean   @default(false) @map("share_with_researchers")
+  shareWithProviders   Boolean   @default(true) @map("share_with_providers")
+  analyticsEnabled     Boolean   @default(true) @map("analytics_enabled")
+  gdprConsent          Boolean   @default(false) @map("gdpr_consent")
+  consentDate          DateTime? @map("consent_date")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_privacy_settings")
+}
+
+model UserDayMoment {
+  id        String        @id @default(uuid())
+  userId    Int           @map("user_id")
+  type      DayMomentType
+  startTime DateTime      @map("start_time") @db.Time()
+  endTime   DateTime      @map("end_time") @db.Time()
+  isCustom  Boolean       @default(false) @map("is_custom")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("user_day_moments")
+}
+
+model UiStateSave {
+  id     Int     @id @default(autoincrement())
+  userId Int     @map("user_id")
+  key    String  @db.VarChar(100)
+  value  String? @db.VarChar(255)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@map("ui_state_save")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 2. DOMAINE PATIENT (4 tables)
+// ═══════════════════════════════════════════════════════════════
 
 model Patient {
-  id            String       @id @default(cuid())
-  pseudonymId   String       @unique
-  encryptedData Bytes
-  diabetesType  DiabetesType
-  doctorId      String
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  deletedAt     DateTime?
+  id        Int       @id @default(autoincrement())
+  userId    Int       @unique @map("user_id")
+  pathology Pathology
+  createdAt DateTime  @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  doctor         User            @relation(fields: [doctorId], references: [id])
-  insulinConfigs InsulinConfig[]
+  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  medicalData           PatientMedicalData?
+  administrative        PatientAdministrative?
+  pregnancies           PatientPregnancy[]
+  glycemiaObjectives    GlycemiaObjective[]
+  cgmObjectives         CgmObjective?
+  annexObjectives       AnnexObjective?
+  treatments            Treatment[]
+  insulinTherapySettings InsulinTherapySettings?
+  bolusCalculationLogs  BolusCalculationLog[]
+  adjustmentProposals   AdjustmentProposal[]
+  cgmEntries            CgmEntry[]
+  glycemiaEntries       GlycemiaEntry[]
+  diabetesEvents        DiabetesEvent[]
+  insulinFlowEntries    InsulinFlowEntry[]
+  insulinFlowDeviceData InsulinFlowDeviceData[]
+  pumpEvents            PumpEvent[]
+  averageData           AverageData[]
+  devices               PatientDevice[]
+  patientServices       PatientService[]
+  referent              PatientReferent?
+  documents             MedicalDocument[]
+  appointments          Appointment[]
 
-  @@index([doctorId, deletedAt])
   @@index([deletedAt])
   @@map("patients")
 }
 
-// ─── InsulinConfig ───────────────────────────────────────
+model PatientMedicalData {
+  id                  Int      @id @default(autoincrement())
+  patientId           Int      @unique @map("patient_id")
+  dt1                 Boolean?
+  size                Decimal? @db.Decimal(5, 2)
+  yearDiag            Int?     @map("year_diag")
+  insulin             Boolean?
+  insulinYear         Int?     @map("insulin_year")
+  insulinPump         Boolean? @map("insulin_pump")
+  pathology           String?  @db.VarChar(100)
+  diabetDiscovery     String?  @map("diabet_discovery")
+  tabac               Boolean?
+  alcool              Boolean?
+  historyMedical      String?  @map("history_medical") // chiffre
+  historyChirurgical  String?  @map("history_chirurgical") // chiffre
+  historyFamily       String?  @map("history_family") // chiffre
+  historyAllergy      String?  @map("history_allergy") // chiffre
+  historyVaccine      String?  @map("history_vaccine") // chiffre
+  historyLife         String?  @map("history_life") // chiffre
+  riskWeight          Boolean  @default(false) @map("risk_weight")
+  riskTension         Boolean  @default(false) @map("risk_tension")
+  riskSedent          Boolean  @default(false) @map("risk_sedent")
+  riskCholesterol     Boolean  @default(false) @map("risk_cholesterol")
+  riskAge             Boolean  @default(false) @map("risk_age")
+  riskHeredit         Boolean  @default(false) @map("risk_heredit")
+  riskCardio          Boolean  @default(false) @map("risk_cardio")
+  riskHypothyroidism  Boolean  @default(false) @map("risk_hypothyroidism")
+  riskCeliac          Boolean  @default(false) @map("risk_celiac")
+  riskOtherAutoimmune Boolean  @default(false) @map("risk_other_autoimmune")
+  vitaleAttest        String?  @map("vitale_attest")
 
-model InsulinConfig {
-  id                String    @id @default(cuid())
-  patientId         String
-  createdById       String
-  sensitivityRatios Json
-  carbRatios        Json
-  basalRates        Json
-  targetGlucose     Json
-  maxBolus          Float     @default(25)
-  isActive          Boolean   @default(false)
-  validatedById     String?
-  validatedAt       DateTime?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
-  patient     Patient @relation(fields: [patientId], references: [id])
-  createdBy   User    @relation("CreatedBy", fields: [createdById], references: [id])
-  validatedBy User?   @relation("ValidatedBy", fields: [validatedById], references: [id])
-
-  @@index([patientId, isActive])
-  @@index([isActive])
-  @@map("insulin_configs")
+  @@map("patient_medical_data")
 }
 
-// ─── AuditLog (immuable) ─────────────────────────────────
+model PatientAdministrative {
+  id                 Int       @id @default(autoincrement())
+  patientId          Int       @unique @map("patient_id")
+  regimeAld          Boolean   @default(false) @map("regime_ald")
+  dateStartMaternite DateTime? @map("date_start_maternite") @db.Date
+  hasMutual          Boolean   @default(false) @map("has_mutual")
+  mutualFileRecto    String?   @map("mutual_file_recto") @db.VarChar(500)
+  mutualFileVerso    String?   @map("mutual_file_verso") @db.VarChar(500)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("patient_administrative")
+}
+
+model PatientPregnancy {
+  id              Int       @id @default(autoincrement())
+  patientId       Int       @map("patient_id")
+  active          Boolean   @default(true)
+  dueDate         DateTime? @map("due_date") @db.Date
+  gestationalAge  Int?      @map("gestational_age") // semaines
+  notes           String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("patient_pregnancy")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 3. DOMAINE OBJECTIFS MEDICAUX (3 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model GlycemiaObjective {
+  id             Int      @id @default(autoincrement())
+  patientId      Int      @map("patient_id")
+  isDefault      Boolean  @default(false) @map("is_default")
+  isCurrent      Boolean  @default(true) @map("is_current")
+  // Seuils blanc/vert/orange par moment repas (g/L)
+  limitEmWhite   Decimal? @map("limit_em_white") @db.Decimal(4, 2)
+  limitEmGreen   Decimal? @map("limit_em_green") @db.Decimal(4, 2)
+  limitEmOrange  Decimal? @map("limit_em_orange") @db.Decimal(4, 2)
+  limitBmWhite   Decimal? @map("limit_bm_white") @db.Decimal(4, 2)
+  limitBmGreen   Decimal? @map("limit_bm_green") @db.Decimal(4, 2)
+  limitBmOrange  Decimal? @map("limit_bm_orange") @db.Decimal(4, 2)
+  limitAmWhite   Decimal? @map("limit_am_white") @db.Decimal(4, 2)
+  limitAmGreen   Decimal? @map("limit_am_green") @db.Decimal(4, 2)
+  limitAmOrange  Decimal? @map("limit_am_orange") @db.Decimal(4, 2)
+  limitAm1hWhite Decimal? @map("limit_am1h_white") @db.Decimal(4, 2)
+  limitAm1hGreen Decimal? @map("limit_am1h_green") @db.Decimal(4, 2)
+  limitAm1hOrange Decimal? @map("limit_am1h_orange") @db.Decimal(4, 2)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("glycemia_objectives")
+}
+
+model CgmObjective {
+  id        Int     @id @default(autoincrement())
+  patientId Int     @unique @map("patient_id")
+  veryLow   Decimal @default(0.54) @map("very_low") @db.Decimal(4, 2) // 54 mg/dL
+  low       Decimal @default(0.70) @db.Decimal(4, 2) // 70 mg/dL
+  ok        Decimal @default(1.80) @db.Decimal(4, 2) // 180 mg/dL
+  high      Decimal @default(2.50) @db.Decimal(4, 2) // 250 mg/dL
+  titrLow   Decimal @default(0.70) @map("titr_low") @db.Decimal(4, 2)
+  titrHigh  Decimal @default(1.80) @map("titr_high") @db.Decimal(4, 2)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("cgm_objectives")
+}
+
+model AnnexObjective {
+  id                Int      @id @default(autoincrement())
+  patientId         Int      @unique @map("patient_id")
+  objectiveHba1c    Decimal? @map("objective_hba1c") @db.Decimal(4, 2)
+  objectiveMinWeight Decimal? @map("objective_min_weight") @db.Decimal(5, 2)
+  objectiveMaxWeight Decimal? @map("objective_max_weight") @db.Decimal(5, 2)
+  objectiveWalk     Int?     @map("objective_walk") // min/jour
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("annex_objectives")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 4. DOMAINE TRAITEMENTS (2 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model Treatment {
+  id            Int           @id @default(autoincrement())
+  patientId     Int           @map("patient_id")
+  type          TreatmentType
+  name          String?       @db.VarChar(100)
+  other         String?
+  posology      String?
+  posologyData  Json?         @map("posology_data")
+  treatmentId   Int?          @map("treatment_id") // ID traitement externe
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  patient            Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  basalFlowSchedules BasalFlowSchedule[]
+
+  @@map("treatments")
+}
+
+model BasalFlowSchedule {
+  id            Int     @id @default(autoincrement())
+  treatmentId   Int     @map("treatment_id")
+  label         String? @db.VarChar(50)
+  scheduleStart DateTime @map("schedule_start") @db.Time()
+  scheduleRate  Decimal @map("schedule_rate") @db.Decimal(5, 3)
+
+  treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@map("basal_flow_schedules")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 5. DOMAINE INSULINOTHERAPIE (10 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model InsulinTherapySettings {
+  id                    Int                   @id @default(autoincrement())
+  patientId             Int                   @unique @map("patient_id")
+  bolusInsulinBrand     String                @map("bolus_insulin_brand") @db.VarChar(50)
+  basalInsulinBrand     String?               @map("basal_insulin_brand") @db.VarChar(50)
+  insulinActionDuration Decimal               @default(4.0) @map("insulin_action_duration") @db.Decimal(4, 2)
+  deliveryMethod        InsulinDeliveryMethod @map("delivery_method")
+  lastModified          DateTime              @default(now()) @map("last_modified") @db.Timestamptz()
+  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient              Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  glucoseTargets       GlucoseTarget[]
+  iobSettings          IobSettings?
+  extendedBolusSettings ExtendedBolusSettings?
+  sensitivityFactors   InsulinSensitivityFactor[]
+  carbRatios           CarbRatio[]
+  basalConfiguration   BasalConfiguration?
+
+  @@map("insulin_therapy_settings")
+}
+
+model GlucoseTarget {
+  id               String              @id @default(uuid())
+  settingsId       Int                 @map("settings_id")
+  targetGlucose    Decimal             @map("target_glucose") @db.Decimal(6, 2) // mg/dL
+  targetRangeLower Decimal             @default(0.70) @map("target_range_lower") @db.Decimal(4, 2) // g/L
+  targetRangeUpper Decimal             @default(1.80) @map("target_range_upper") @db.Decimal(4, 2) // g/L
+  preset           GlucoseTargetPreset?
+  isActive         Boolean             @default(true) @map("is_active")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+
+  settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@map("glucose_targets")
+}
+
+model IobSettings {
+  id                  Int     @id @default(autoincrement())
+  settingsId          Int     @unique @map("settings_id")
+  considerIob         Boolean @default(true) @map("consider_iob")
+  actionDurationHours Decimal @default(4.0) @map("action_duration_hours") @db.Decimal(4, 2)
+
+  settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@map("iob_settings")
+}
+
+model ExtendedBolusSettings {
+  id                    Int      @id @default(autoincrement())
+  settingsId            Int      @unique @map("settings_id")
+  enabled               Boolean  @default(false)
+  immediatePercentage   Decimal  @default(100.0) @map("immediate_percentage") @db.Decimal(5, 2)
+  extendedDurationHours Decimal? @map("extended_duration_hours") @db.Decimal(4, 2)
+
+  settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@map("extended_bolus_settings")
+}
+
+model InsulinSensitivityFactor {
+  id                   String   @id @default(uuid())
+  settingsId           Int      @map("settings_id")
+  startHour            Int      @map("start_hour") @db.SmallInt
+  endHour              Int      @map("end_hour") @db.SmallInt
+  startTime            DateTime @map("start_time") @db.Time()
+  endTime              DateTime @map("end_time") @db.Time()
+  sensitivityFactorGl  Decimal  @map("sensitivity_factor_gl") @db.Decimal(6, 4)
+  sensitivityFactorMgdl Decimal @map("sensitivity_factor_mgdl") @db.Decimal(6, 2)
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@index([settingsId, startHour])
+  @@map("insulin_sensitivity_factors")
+}
+
+model CarbRatio {
+  id           String   @id @default(uuid())
+  settingsId   Int      @map("settings_id")
+  startHour    Int      @map("start_hour") @db.SmallInt
+  endHour      Int      @map("end_hour") @db.SmallInt
+  startTime    DateTime @map("start_time") @db.Time()
+  endTime      DateTime @map("end_time") @db.Time()
+  gramsPerUnit Decimal  @map("grams_per_unit") @db.Decimal(5, 2)
+  mealLabel    String?  @map("meal_label") @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+
+  @@index([settingsId, startHour])
+  @@map("carb_ratios")
+}
+
+model BasalConfiguration {
+  id             Int             @id @default(autoincrement())
+  settingsId     Int             @unique @map("settings_id")
+  configType     BasalConfigType @map("config_type")
+  insulinBrand   String          @map("insulin_brand") @db.VarChar(50)
+  totalDailyDose Decimal?        @map("total_daily_dose") @db.Decimal(6, 2)
+  morningDose    Decimal?        @map("morning_dose") @db.Decimal(5, 2)
+  eveningDose    Decimal?        @map("evening_dose") @db.Decimal(5, 2)
+  dailyDose      Decimal?        @map("daily_dose") @db.Decimal(5, 2)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  settings  InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
+  pumpSlots PumpBasalSlot[]
+
+  @@map("basal_configurations")
+}
+
+model PumpBasalSlot {
+  id              String   @id @default(uuid())
+  basalConfigId   Int      @map("basal_config_id")
+  startTime       DateTime @map("start_time") @db.Time()
+  endTime         DateTime @map("end_time") @db.Time()
+  rate            Decimal  @db.Decimal(5, 3) // U/h
+  durationHours   Decimal? @map("duration_hours") @db.Decimal(5, 2)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  basalConfig          BasalConfiguration   @relation(fields: [basalConfigId], references: [id], onDelete: Cascade)
+  adjustmentProposals  AdjustmentProposal[]
+
+  @@map("pump_basal_slots")
+}
+
+model BolusCalculationLog {
+  id                      String    @id @default(uuid())
+  patientId               Int       @map("patient_id")
+  calculatedAt            DateTime  @default(now()) @map("calculated_at") @db.Timestamptz()
+  inputGlucoseGl          Decimal?  @map("input_glucose_gl") @db.Decimal(6, 4)
+  inputCarbsGrams         Decimal?  @map("input_carbs_grams") @db.Decimal(6, 2)
+  targetGlucoseMgdl       Decimal   @map("target_glucose_mgdl") @db.Decimal(6, 2)
+  isfUsedGl               Decimal   @map("isf_used_gl") @db.Decimal(6, 4)
+  icrUsed                 Decimal   @map("icr_used") @db.Decimal(5, 2)
+  mealBolus               Decimal   @default(0) @map("meal_bolus") @db.Decimal(5, 2)
+  rawCorrectionDose       Decimal   @default(0) @map("raw_correction_dose") @db.Decimal(5, 2)
+  iobValue                Decimal   @default(0) @map("iob_value") @db.Decimal(5, 2)
+  iobAdjustment           Decimal   @default(0) @map("iob_adjustment") @db.Decimal(5, 2)
+  correctionDose          Decimal   @default(0) @map("correction_dose") @db.Decimal(5, 2)
+  recommendedDose         Decimal   @map("recommended_dose") @db.Decimal(5, 2)
+  wasCapped               Boolean   @default(false) @map("was_capped")
+  warnings                String[]
+  deliveryMethod          String    @map("delivery_method") @db.VarChar(20)
+  extendedImmediatePct    Decimal?  @map("extended_immediate_pct") @db.Decimal(5, 2)
+  extendedDurationHours   Decimal?  @map("extended_duration_hours") @db.Decimal(4, 2)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, calculatedAt])
+  @@map("bolus_calculation_logs")
+}
+
+model AdjustmentProposal {
+  id                     String              @id @default(uuid())
+  patientId              Int                 @map("patient_id")
+  parameterType          AdjustableParameter @map("parameter_type")
+  currentValue           Decimal             @map("current_value") @db.Decimal(8, 4)
+  proposedValue          Decimal             @map("proposed_value") @db.Decimal(8, 4)
+  changePercent          Decimal             @map("change_percent") @db.Decimal(5, 2)
+  confidence             ConfidenceLevel
+  reason                 AdjustmentReason
+  supportingEvents       Int                 @map("supporting_events")
+  totalEventsConsidered  Int?                @map("total_events_considered")
+  excludedEvents         Int?                @map("excluded_events")
+  averageObservedValue   Decimal?            @map("average_observed_value") @db.Decimal(8, 4)
+  timeSlotStartHour      Int?                @map("time_slot_start_hour") @db.SmallInt
+  timeSlotEndHour        Int?                @map("time_slot_end_hour") @db.SmallInt
+  carbRatioSlotStart     Int?                @map("carb_ratio_slot_start") @db.SmallInt
+  carbRatioSlotEnd       Int?                @map("carb_ratio_slot_end") @db.SmallInt
+  pumpBasalSlotId        String?             @map("pump_basal_slot_id")
+  analysisPeriod         String?             @map("analysis_period") @db.VarChar(10)
+  dataQuality            String?             @map("data_quality") @db.VarChar(20)
+  status                 ProposalStatus      @default(pending)
+  reviewedAt             DateTime?           @map("reviewed_at") @db.Timestamptz()
+  reviewedBy             Int?                @map("reviewed_by")
+  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  reviewer      User?          @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  pumpBasalSlot PumpBasalSlot? @relation(fields: [pumpBasalSlotId], references: [id])
+
+  @@index([patientId, status, createdAt])
+  @@map("adjustment_proposals")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 6. DOMAINE DONNEES DE SANTE (7 tables)
+// ═══════════════════════════════════════════════════════════════
+
+/// Table a fort volume (~105K/an/patient). Partitionnee par mois via SQL raw.
+model CgmEntry {
+  id        BigInt   @id @default(autoincrement())
+  patientId Int      @map("patient_id")
+  valueGl   Decimal  @map("value_gl") @db.Decimal(6, 4)
+  timestamp DateTime @db.Timestamptz()
+  isManual  Boolean  @default(false) @map("is_manual")
+  deviceId  String?  @map("device_id") @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, timestamp])
+  @@index([timestamp])
+  @@map("cgm_entries")
+}
+
+model GlycemiaEntry {
+  id              Int      @id @default(autoincrement())
+  patientId       Int      @map("patient_id")
+  date            DateTime @db.Date
+  time            DateTime? @db.Time()
+  isProfessional  Boolean  @default(false) @map("is_professional")
+  glycemiaGl      Decimal? @map("glycemia_gl") @db.Decimal(6, 4) // g/L
+  glycemiaMgdl    Decimal? @map("glycemia_mgdl") @db.Decimal(6, 2) // mg/dL
+  weight          Decimal? @db.Decimal(5, 2)
+  hba1c           Decimal? @db.Decimal(5, 2)
+  ketones         Decimal? @db.Decimal(5, 2)
+  bpSystolic      Int?     @map("bp_systolic") @db.SmallInt
+  bpDiastolic     Int?     @map("bp_diastolic") @db.SmallInt
+  bolus           Decimal? @db.Decimal(5, 2)
+  bolusCorr       Decimal? @map("bolus_corr") @db.Decimal(5, 2)
+  basal           Decimal? @db.Decimal(5, 2)
+  insulinDevice   Int?     @map("insulin_device")
+  carb            Int?     // grammes
+  mealDescription String?  @map("meal_description")
+  mealFullStarchy Boolean? @map("meal_full_starchy")
+  mealProtein     Boolean? @map("meal_protein")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, date, time])
+  @@map("glycemia_entries")
+}
+
+model DiabetesEvent {
+  id                String   @id @default(uuid())
+  patientId         Int      @map("patient_id")
+  eventDate         DateTime @map("event_date") @db.Timestamptz()
+  eventTypes        DiabetesEventType[] @map("event_types")
+  glycemiaValue     Decimal? @map("glycemia_value") @db.Decimal(6, 2)
+  carbohydrates     Decimal? @db.Decimal(6, 2)
+  bolusDose         Decimal? @map("bolus_dose") @db.Decimal(5, 2)
+  basalDose         Decimal? @map("basal_dose") @db.Decimal(5, 2)
+  activityType      String?  @map("activity_type") @db.VarChar(20)
+  activityDuration  Int?     @map("activity_duration") // minutes
+  contextType       String?  @map("context_type") @db.VarChar(20)
+  weight            Decimal? @db.Decimal(5, 2)
+  hba1c             Decimal? @db.Decimal(5, 2)
+  ketones           Decimal? @db.Decimal(5, 2)
+  systolicPressure  Int?     @map("systolic_pressure") @db.SmallInt
+  diastolicPressure Int?     @map("diastolic_pressure") @db.SmallInt
+  comment           String?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, eventDate])
+  @@map("diabetes_events")
+}
+
+model InsulinFlowEntry {
+  id        Int      @id @default(autoincrement())
+  patientId Int      @map("patient_id")
+  date      DateTime @db.Date
+  flow      Decimal? @db.Decimal(6, 2) // U total journalier
+  hour      Json?    // tableau de 24 valeurs
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, date])
+  @@map("insulin_flow_entries")
+}
+
+model InsulinFlowDeviceData {
+  id        Int      @id @default(autoincrement())
+  patientId Int      @map("patient_id")
+  deviceId  String   @map("device_id") @db.VarChar(50)
+  date      DateTime @db.Date
+  flow      Decimal? @db.Decimal(6, 2)
+  hour      Json?
+  events    Json?    // [{start, end, rate, temp, datas}]
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("insulin_flow_device_data")
+}
+
+model PumpEvent {
+  id        Int      @id @default(autoincrement())
+  patientId Int      @map("patient_id")
+  timestamp DateTime @db.Timestamptz()
+  eventType String   @map("event_type") @db.VarChar(50)
+  data      Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, timestamp])
+  @@map("pump_events")
+}
+
+model AverageData {
+  id          Int      @id @default(autoincrement())
+  patientId   Int      @map("patient_id")
+  periodType  String   @map("period_type") @db.VarChar(10) // 'current' | '7d' | '30d'
+  mealType    String   @map("meal_type") @db.VarChar(20)
+  glycemia    Decimal? @db.Decimal(4, 2) // g/L
+  color       String?  @db.VarChar(10)
+  glycemia1h  Decimal? @map("glycemia_1h") @db.Decimal(4, 2)
+  color1h     String?  @map("color_1h") @db.VarChar(10)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, periodType, mealType])
+  @@map("average_data")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 7. DOMAINE APPAREILS MEDICAUX (2 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model PatientDevice {
+  id              Int             @id @default(autoincrement())
+  patientId       Int             @map("patient_id")
+  brand           String?         @db.VarChar(100)
+  name            String?         @db.VarChar(100)
+  model           String?         @db.VarChar(100)
+  sn              String?         @db.VarChar(100)
+  date            DateTime?       @db.Timestamptz()
+  type            String?         @db.VarChar(50)
+  category        DeviceCategory?
+  connectionTypes String[]        @map("connection_types")
+  modelIdentifier String?         @map("model_identifier") @db.VarChar(100)
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("patient_devices")
+}
+
+model DeviceDataSync {
+  id           Int       @id @default(autoincrement())
+  userId       Int       @map("user_id")
+  deviceUid    String    @map("device_uid") @db.VarChar(100)
+  sequenceNum  BigInt    @default(0) @map("sequence_num")
+  lastSyncDate DateTime? @map("last_sync_date") @db.Timestamptz()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceUid])
+  @@map("device_data_sync")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 8. DOMAINE EQUIPE SOIGNANTE (4 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model HealthcareService {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(255)
+  establishment String?  @db.VarChar(255)
+  city          String?  @db.VarChar(100)
+  country       String?  @db.Char(2)
+  noVideos      Boolean  @default(false) @map("no_videos")
+  noFood        Boolean  @default(false) @map("no_food")
+  logo          String?  @db.VarChar(500)
+
+  members         HealthcareMember[]
+  patientServices PatientService[]
+  referents       PatientReferent[]
+
+  @@unique([name, establishment])
+  @@map("healthcare_services")
+}
+
+model HealthcareMember {
+  id        Int    @id @default(autoincrement())
+  userId    Int?   @unique @map("user_id") // lien vers User si le membre est aussi utilisateur du backoffice
+  name      String @db.VarChar(255)
+  serviceId Int?   @map("service_id")
+
+  service         HealthcareService? @relation(fields: [serviceId], references: [id])
+  patientServices PatientService[]
+  referents       PatientReferent[]
+  documents       MedicalDocument[]
+
+  @@unique([name, serviceId])
+  @@map("healthcare_members")
+}
+
+model PatientService {
+  id        Int      @id @default(autoincrement())
+  patientId Int      @map("patient_id")
+  serviceId Int      @map("service_id")
+  memberId  Int?     @map("member_id")
+  wait      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  service HealthcareService @relation(fields: [serviceId], references: [id])
+  member  HealthcareMember? @relation(fields: [memberId], references: [id])
+
+  @@unique([patientId, serviceId])
+  @@map("patient_services")
+}
+
+model PatientReferent {
+  id        Int  @id @default(autoincrement())
+  patientId Int  @unique @map("patient_id")
+  proId     Int? @map("pro_id")
+  serviceId Int? @map("service_id")
+
+  patient Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  pro     HealthcareMember?  @relation(fields: [proId], references: [id])
+  service HealthcareService? @relation(fields: [serviceId], references: [id])
+
+  @@map("patient_referent")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 9. DOMAINE DOCUMENTS & RENDEZ-VOUS (2 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model MedicalDocument {
+  id              Int               @id @default(autoincrement())
+  patientId       Int               @map("patient_id")
+  title           String            @db.VarChar(255)
+  date            DateTime          @db.Timestamptz()
+  memberId        Int?              @map("member_id")
+  patientShare    Boolean           @default(true) @map("patient_share")
+  isAuthorPsad    Boolean           @default(false) @map("is_author_psad")
+  shareWithPsad   Boolean           @default(false) @map("share_with_psad")
+  category        DocumentCategory?
+  mimeType        String            @default("application/pdf") @map("mime_type") @db.VarChar(100)
+  fileUrl         String?           @map("file_url") @db.VarChar(500)
+  fileSize        BigInt?           @map("file_size")
+  isDownloaded    Boolean           @default(false) @map("is_downloaded")
+  isRead          Boolean           @default(false) @map("is_read")
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  member  HealthcareMember? @relation(fields: [memberId], references: [id])
+
+  @@map("medical_documents")
+}
+
+model Appointment {
+  id        Int       @id @default(autoincrement())
+  patientId Int       @map("patient_id")
+  type      String?   @db.VarChar(50) // ide, diabeto, hdj...
+  date      DateTime  @db.Date
+  hour      DateTime? @db.Time()
+  comment   String?
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("appointments")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 10. DOMAINE SYSTEME (4 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model Announcement {
+  id                     Int      @id @default(autoincrement())
+  title                  String   @db.VarChar(255)
+  content                String   // HTML
+  callBackDelay          Int?     @map("call_back_delay")
+  displayAnnouncement    Boolean  @default(true) @map("display_announcement")
+  displayShowButton      Boolean  @default(true) @map("display_show_button")
+  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@map("announcements")
+}
+
+model DashboardConfiguration {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @unique @map("user_id")
+  version     Int      @default(1)
+  columnCount Int      @default(4) @map("column_count")
+  name        String?  @db.VarChar(100)
+  lastModified DateTime @default(now()) @map("last_modified") @db.Timestamptz()
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  widgets DashboardWidget[]
+
+  @@map("dashboard_configurations")
+}
+
+model DashboardWidget {
+  id             String  @id @default(uuid())
+  configId       Int     @map("config_id")
+  type           String  @db.VarChar(30) // WidgetType enum
+  positionRow    Int     @map("position_row")
+  positionColumn Int     @map("position_column")
+  spanColumns    Int     @default(1) @map("span_columns")
+  spanRows       Int     @default(1) @map("span_rows")
+  isVisible      Boolean @default(true) @map("is_visible")
+  customTitle    String? @map("custom_title") @db.VarChar(100)
+
+  config DashboardConfiguration @relation(fields: [configId], references: [id], onDelete: Cascade)
+
+  @@map("dashboard_widgets")
+}
+
+model UnitDefinition {
+  id         Int      @id @default(autoincrement())
+  category   String   @db.VarChar(30)
+  unitCode   Int      @unique @map("unit_code")
+  unit       String   @db.VarChar(20)
+  title      String   @db.VarChar(50)
+  factor     Decimal? @db.Decimal(10, 6)
+  factorBase Decimal? @map("factor_base") @db.Decimal(10, 6)
+  precision  Int?
+
+  @@map("unit_definitions")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 11. DOMAINE PUSH NOTIFICATIONS (4 tables)
+// ═══════════════════════════════════════════════════════════════
+
+model PushDeviceRegistration {
+  id              String       @id @default(uuid())
+  userId          Int          @map("user_id")
+  platform        PushPlatform
+  pushToken       String       @unique @map("push_token") @db.VarChar(500)
+  deviceName      String?      @map("device_name") @db.VarChar(100)
+  deviceModel     String?      @map("device_model") @db.VarChar(50)
+  osVersion       String?      @map("os_version") @db.VarChar(20)
+  appVersion      String?      @map("app_version") @db.VarChar(20)
+  appBundleId     String?      @map("app_bundle_id") @db.VarChar(100)
+  endpointArn     String?      @map("endpoint_arn") @db.VarChar(500)
+  locale          String?      @default("fr") @db.VarChar(10)
+  pushTimezone    String?      @map("push_timezone") @db.VarChar(50)
+  isActive        Boolean      @default(true) @map("is_active")
+  isSandbox       Boolean      @default(false) @map("is_sandbox")
+  lastUsedAt      DateTime?    @map("last_used_at") @db.Timestamptz()
+  registeredAt    DateTime     @default(now()) @map("registered_at") @db.Timestamptz()
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+  unregisteredAt  DateTime?    @map("unregistered_at") @db.Timestamptz()
+
+  user User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  logs PushNotificationLog[]
+
+  @@index([userId, isActive])
+  @@index([platform, isActive])
+  @@map("push_device_registrations")
+}
+
+model PushNotificationTemplate {
+  id                   String               @id @db.VarChar(50)
+  category             String               @db.VarChar(30)
+  titleFr              String               @map("title_fr") @db.VarChar(200)
+  titleEn              String               @map("title_en") @db.VarChar(200)
+  titleAr              String               @map("title_ar") @db.VarChar(200)
+  bodyFr               String               @map("body_fr")
+  bodyEn               String               @map("body_en")
+  bodyAr               String               @map("body_ar")
+  iosSound             String?              @default("default") @map("ios_sound") @db.VarChar(50)
+  iosBadgeIncrement    Int?                 @default(1) @map("ios_badge_increment")
+  iosCategory          String?              @map("ios_category") @db.VarChar(50)
+  iosInterruptionLevel IosInterruptionLevel? @default(active) @map("ios_interruption_level")
+  androidChannelId     String?              @map("android_channel_id") @db.VarChar(50)
+  androidPriority      AndroidPriority?     @default(high) @map("android_priority")
+  androidIcon          String?              @map("android_icon") @db.VarChar(50)
+  dataPayload          Json?                @map("data_payload")
+  ttlSeconds           Int?                 @default(86400) @map("ttl_seconds")
+  isActive             Boolean              @default(true) @map("is_active")
+  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz()
+
+  logs      PushNotificationLog[]
+  scheduled PushScheduledNotification[]
+
+  @@index([category])
+  @@map("push_notification_templates")
+}
+
+model PushNotificationLog {
+  id                String          @id @default(uuid())
+  userId            Int             @map("user_id")
+  registrationId    String?         @map("registration_id")
+  templateId        String?         @map("template_id") @db.VarChar(50)
+  platform          PushPlatform
+  title             String          @db.VarChar(200)
+  body              String
+  dataPayload       Json?           @map("data_payload")
+  status            PushNotifStatus @default(pending)
+  providerMessageId String?         @map("provider_message_id") @db.VarChar(200)
+  errorCode         String?         @map("error_code") @db.VarChar(50)
+  errorMessage      String?         @map("error_message")
+  sentAt            DateTime?       @map("sent_at") @db.Timestamptz()
+  deliveredAt       DateTime?       @map("delivered_at") @db.Timestamptz()
+  openedAt          DateTime?       @map("opened_at") @db.Timestamptz()
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+
+  user         User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  registration PushDeviceRegistration?   @relation(fields: [registrationId], references: [id])
+  template     PushNotificationTemplate? @relation(fields: [templateId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([templateId, status])
+  @@map("push_notifications_log")
+}
+
+model PushScheduledNotification {
+  id                 String       @id @default(uuid())
+  userId             Int          @map("user_id")
+  templateId         String       @map("template_id") @db.VarChar(50)
+  scheduleType       ScheduleType @map("schedule_type")
+  scheduledAt        DateTime?    @map("scheduled_at") @db.Timestamptz()
+  cronExpression     String?      @map("cron_expression") @db.VarChar(50)
+  cronTimezone       String       @default("Europe/Paris") @map("cron_timezone") @db.VarChar(50)
+  templateVariables  Json?        @map("template_variables")
+  platforms          PushPlatform[] @default([ios, android, web])
+  isActive           Boolean      @default(true) @map("is_active")
+  lastTriggeredAt    DateTime?    @map("last_triggered_at") @db.Timestamptz()
+  nextTriggerAt      DateTime?    @map("next_trigger_at") @db.Timestamptz()
+  maxOccurrences     Int?         @map("max_occurrences")
+  occurrencesCount   Int          @default(0) @map("occurrences_count")
+  expiresAt          DateTime?    @map("expires_at") @db.Timestamptz()
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  template PushNotificationTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([userId])
+  @@index([nextTriggerAt, isActive])
+  @@map("push_scheduled_notifications")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 12. AUDIT LOG (immuable — HDS)
+// ═══════════════════════════════════════════════════════════════
 
 model AuditLog {
-  id         String   @id @default(cuid())
-  userId     String
-  action     String
-  resource   String
-  resourceId String
+  id         String   @id @default(uuid())
+  userId     Int      @map("user_id")
+  action     String   @db.VarChar(30)
+  resource   String   @db.VarChar(30)
+  resourceId String?  @map("resource_id")
+  oldValue   Json?    @map("old_value")
+  newValue   Json?    @map("new_value")
+  ipAddress  String?  @map("ip_address") @db.VarChar(45)
+  userAgent  String?  @map("user_agent") @db.VarChar(500)
   metadata   Json     @default("{}")
-  createdAt  DateTime @default(now())
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  user User @relation(fields: [userId], references: [id])
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([resource, resourceId, createdAt])
+  @@index([createdAt])
   @@map("audit_logs")
 }
