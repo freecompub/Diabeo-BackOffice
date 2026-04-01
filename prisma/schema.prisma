@@ -5,10 +5,9 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
+  url        = env("DATABASE_URL")
   extensions = [pgcrypto]
 }
-
-// NOTE: La connection URL est configuree dans prisma/prisma.config.ts (Prisma 7+)
 
 // ═══════════════════════════════════════════════════════════════
 // ENUMS
