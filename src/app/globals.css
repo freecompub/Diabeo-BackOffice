@@ -1,10 +1,12 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "../styles/tokens.css";
 
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  /* --- shadcn/ui semantic mappings --- */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-sans);
@@ -46,31 +48,107 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* --- Diabeo Design System: Teal primary scale --- */
+  --color-teal-50: var(--diabeo-primary-50);
+  --color-teal-100: var(--diabeo-primary-100);
+  --color-teal-200: var(--diabeo-primary-200);
+  --color-teal-300: var(--diabeo-primary-300);
+  --color-teal-400: var(--diabeo-primary-400);
+  --color-teal-500: var(--diabeo-primary-500);
+  --color-teal-600: var(--diabeo-primary-600);
+  --color-teal-700: var(--diabeo-primary-700);
+  --color-teal-800: var(--diabeo-primary-800);
+  --color-teal-900: var(--diabeo-primary-900);
+  --color-teal-950: var(--diabeo-primary-950);
+
+  /* --- Diabeo Design System: Coral secondary scale --- */
+  --color-coral-50: var(--diabeo-secondary-50);
+  --color-coral-100: var(--diabeo-secondary-100);
+  --color-coral-200: var(--diabeo-secondary-200);
+  --color-coral-300: var(--diabeo-secondary-300);
+  --color-coral-400: var(--diabeo-secondary-400);
+  --color-coral-500: var(--diabeo-secondary-500);
+  --color-coral-600: var(--diabeo-secondary-600);
+  --color-coral-700: var(--diabeo-secondary-700);
+  --color-coral-800: var(--diabeo-secondary-800);
+  --color-coral-900: var(--diabeo-secondary-900);
+  --color-coral-950: var(--diabeo-secondary-950);
+
+  /* --- Diabeo Design System: Glycemia clinical colors --- */
+  --color-glycemia-very-low: var(--diabeo-glycemia-very-low);
+  --color-glycemia-very-low-bg: var(--diabeo-glycemia-very-low-bg);
+  --color-glycemia-low: var(--diabeo-glycemia-low);
+  --color-glycemia-low-bg: var(--diabeo-glycemia-low-bg);
+  --color-glycemia-normal: var(--diabeo-glycemia-normal);
+  --color-glycemia-normal-bg: var(--diabeo-glycemia-normal-bg);
+  --color-glycemia-high: var(--diabeo-glycemia-high);
+  --color-glycemia-high-bg: var(--diabeo-glycemia-high-bg);
+  --color-glycemia-very-high: var(--diabeo-glycemia-very-high);
+  --color-glycemia-very-high-bg: var(--diabeo-glycemia-very-high-bg);
+  --color-glycemia-critical: var(--diabeo-glycemia-critical);
+  --color-glycemia-critical-bg: var(--diabeo-glycemia-critical-bg);
+
+  /* --- Diabeo Design System: TIR zone colors --- */
+  --color-tir-very-low: var(--diabeo-tir-very-low);
+  --color-tir-low: var(--diabeo-tir-low);
+  --color-tir-in-range: var(--diabeo-tir-in-range);
+  --color-tir-high: var(--diabeo-tir-high);
+  --color-tir-very-high: var(--diabeo-tir-very-high);
+
+  /* --- Diabeo Design System: Pathology colors --- */
+  --color-pathology-dt1: var(--diabeo-dt1);
+  --color-pathology-dt1-bg: var(--diabeo-dt1-bg);
+  --color-pathology-dt2: var(--diabeo-dt2);
+  --color-pathology-dt2-bg: var(--diabeo-dt2-bg);
+  --color-pathology-gd: var(--diabeo-gd);
+  --color-pathology-gd-bg: var(--diabeo-gd-bg);
+
+  /* --- Diabeo Design System: Semantic feedback --- */
+  --color-feedback-success: var(--diabeo-success);
+  --color-feedback-success-bg: var(--diabeo-success-bg);
+  --color-feedback-warning: var(--diabeo-warning);
+  --color-feedback-warning-bg: var(--diabeo-warning-bg);
+  --color-feedback-error: var(--diabeo-error);
+  --color-feedback-error-bg: var(--diabeo-error-bg);
+  --color-feedback-info: var(--diabeo-info);
+  --color-feedback-info-bg: var(--diabeo-info-bg);
+
+  /* --- Diabeo Design System: Shadows --- */
+  --shadow-diabeo-xs: var(--diabeo-shadow-xs);
+  --shadow-diabeo-sm: var(--diabeo-shadow-sm);
+  --shadow-diabeo-md: var(--diabeo-shadow-md);
+  --shadow-diabeo-lg: var(--diabeo-shadow-lg);
+  --shadow-diabeo-xl: var(--diabeo-shadow-xl);
+  --shadow-diabeo-critical: var(--diabeo-shadow-critical);
+  --shadow-diabeo-warning: var(--diabeo-shadow-warning);
+  --shadow-diabeo-success: var(--diabeo-shadow-success);
+  --shadow-diabeo-primary: var(--diabeo-shadow-primary);
 }
 
 :root {
-  /* Palette "Sérénité Active" — Diabeo */
+  /* Palette "Serenite Active" -- Diabeo */
   --background: #FAFAFA;
   --foreground: #1F2937;
   --card: #FFFFFF;
   --card-foreground: #1F2937;
   --popover: #FFFFFF;
   --popover-foreground: #1F2937;
-  --primary: #0D9488;           /* teal — actions principales */
+  --primary: #0D9488;           /* teal -- actions principales */
   --primary-foreground: #FFFFFF;
   --secondary: #F3F4F6;
   --secondary-foreground: #1F2937;
   --muted: #F3F4F6;
   --muted-foreground: #6B7280;
-  --accent: #F97316;            /* corail — alertes, actions secondaires */
+  --accent: #F97316;            /* corail -- alertes, actions secondaires */
   --accent-foreground: #FFFFFF;
-  --destructive: #EF4444;       /* glycémie critique */
+  --destructive: #EF4444;       /* glycemie critique */
   --border: #E5E7EB;
   --input: #E5E7EB;
   --ring: #0D9488;
-  --chart-1: #10B981;           /* glycémie normale — vert émeraude */
-  --chart-2: #F59E0B;           /* glycémie haute — orange ambre */
-  --chart-3: #EF4444;           /* glycémie critique — rouge */
+  --chart-1: #10B981;           /* glycemie normale -- vert emeraude */
+  --chart-2: #F59E0B;           /* glycemie haute -- orange ambre */
+  --chart-3: #EF4444;           /* glycemie critique -- rouge */
   --chart-4: #0D9488;           /* teal primaire */
   --chart-5: #F97316;           /* corail secondaire */
   --radius: 0.625rem;
@@ -124,8 +202,63 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-size: var(--diabeo-text-base);
+    line-height: var(--diabeo-leading-normal);
   }
   html {
     @apply font-sans;
+  }
+
+  /* Medical-grade focus ring — must be visible for accessibility */
+  :focus-visible {
+    outline: 2px solid var(--diabeo-primary-600);
+    outline-offset: 2px;
+  }
+}
+
+/* ----------------------------------------------------------------
+ * Utility classes for Diabeo-specific patterns
+ * ---------------------------------------------------------------- */
+
+@layer utilities {
+  /* Glycemia value color classes — use with data attributes */
+  .glycemia-very-low {
+    color: var(--diabeo-glycemia-very-low);
+  }
+  .glycemia-low {
+    color: var(--diabeo-glycemia-low);
+  }
+  .glycemia-normal {
+    color: var(--diabeo-glycemia-normal);
+  }
+  .glycemia-high {
+    color: var(--diabeo-glycemia-high);
+  }
+  .glycemia-very-high {
+    color: var(--diabeo-glycemia-very-high);
+  }
+  .glycemia-critical {
+    color: var(--diabeo-glycemia-critical);
+  }
+
+  /* Clinical alert pulse animation */
+  @keyframes clinical-pulse {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.7;
+    }
+  }
+
+  .animate-clinical-pulse {
+    animation: clinical-pulse 2s ease-in-out infinite;
+  }
+
+  /* Reduced motion: disable all non-essential animations */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-clinical-pulse {
+      animation: none;
+    }
   }
 }
