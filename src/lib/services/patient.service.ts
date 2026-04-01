@@ -3,6 +3,11 @@ import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { auditService } from "./audit.service"
 import type { Pathology, Prisma } from "@prisma/client"
 
+export interface AuditContext {
+  ipAddress?: string
+  userAgent?: string
+}
+
 interface PersonalData {
   firstName: string
   lastName: string
@@ -95,7 +100,7 @@ export const patientService = {
     })
   },
 
-  async getById(id: number, auditUserId: number) {
+  async getById(id: number, auditUserId: number, ctx?: AuditContext) {
     const patient = await prisma.patient.findFirst({
       where: { id, deletedAt: null },
       include: {
@@ -119,6 +124,8 @@ export const patientService = {
       action: "READ",
       resource: "PATIENT",
       resourceId: String(patient.id),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
     })
 
     // Decrypt PII fields
@@ -140,13 +147,13 @@ export const patientService = {
     }
   },
 
-  async getByUserId(userId: number, auditUserId: number) {
+  async getByUserId(userId: number, auditUserId: number, ctx?: AuditContext) {
     const patient = await prisma.patient.findFirst({
       where: { userId, deletedAt: null },
       select: { id: true },
     })
     if (!patient) return null
-    return this.getById(patient.id, auditUserId)
+    return this.getById(patient.id, auditUserId, ctx)
   },
 
   async updateProfile(
@@ -178,7 +185,7 @@ export const patientService = {
     })
   },
 
-  async getMedicalData(patientId: number, auditUserId: number) {
+  async getMedicalData(patientId: number, auditUserId: number, ctx?: AuditContext) {
     const data = await prisma.patientMedicalData.findUnique({
       where: { patientId },
     })
@@ -188,6 +195,8 @@ export const patientService = {
       action: "READ",
       resource: "PATIENT",
       resourceId: `${patientId}:medicalData`,
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
     })
 
     if (!data) return null
@@ -243,13 +252,14 @@ export const patientService = {
       metadata: { action: "list", count: referents.length },
     })
 
-    // Decrypt PII fields before returning
+    // Decrypt PII fields before returning — never expose ciphertext
     return referents.map((r) => ({
       ...r.patient,
       user: {
         ...r.patient.user,
         firstname: safeDecrypt(r.patient.user.firstname),
         lastname: safeDecrypt(r.patient.user.lastname),
+        email: safeDecrypt(r.patient.user.email),
       },
     }))
   },
@@ -270,9 +280,9 @@ export const patientService = {
       await tx.user.update({
         where: { id: patient.userId },
         data: {
-          firstname: "SUPPRIME",
-          lastname: "SUPPRIME",
-          email: `deleted-${patient.userId}@anonymized.local`,
+          firstname: encryptField("ANONYMISE"),
+          lastname: encryptField("ANONYMISE"),
+          email: encryptField(`deleted-${patient.userId}@anonymized.local`),
           emailHmac: `deleted-${patient.userId}`,
           phone: null,
           address1: null,

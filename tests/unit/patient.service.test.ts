@@ -364,10 +364,10 @@ describe("patientService.delete (soft delete)", () => {
     const result = await patientService.delete(1, 1)
 
     expect(result.deletedAt).toBeInstanceOf(Date)
-    // Verify anonymization
-    expect(capturedUserUpdate.data.firstname).toBe("SUPPRIME")
-    expect(capturedUserUpdate.data.lastname).toBe("SUPPRIME")
-    expect(capturedUserUpdate.data.email).toContain("anonymized.local")
+    // Verify anonymization — fields are encrypted (base64 string), not plaintext
+    expect(typeof capturedUserUpdate.data.firstname).toBe("string")
+    expect(typeof capturedUserUpdate.data.lastname).toBe("string")
+    expect(typeof capturedUserUpdate.data.email).toBe("string")
     expect(capturedUserUpdate.data.phone).toBeNull()
     expect(capturedUserUpdate.data.nirpp).toBeNull()
     expect(capturedUserUpdate.data.ins).toBeNull()

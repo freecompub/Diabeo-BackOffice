@@ -5,6 +5,7 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
 
 const updateSchema = z.object({
   pathology: z.nativeEnum(Pathology).optional(),
@@ -25,7 +26,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
 
-    const patient = await patientService.getById(patientId, user.id)
+    const ctx = extractRequestContext(req)
+    const patient = await patientService.getById(patientId, user.id, ctx)
     return NextResponse.json(patient)
   } catch (error) {
     if (error instanceof AuthError) {

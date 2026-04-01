@@ -4,6 +4,7 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
 
 const updateMedicalSchema = z.object({
   dt1: z.boolean().optional(),
@@ -45,7 +46,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
 
-    const data = await patientService.getMedicalData(patientId, user.id)
+    const ctx = extractRequestContext(req)
+    const data = await patientService.getMedicalData(patientId, user.id, ctx)
     return NextResponse.json(data)
   } catch (error) {
     if (error instanceof AuthError) {
