@@ -15,6 +15,7 @@ export default defineConfig({
         "src/lib/crypto/**",
         "src/lib/statistics.ts",
         "src/lib/validators/**",
+        "src/lib/proposal-algorithm.ts",
       ],
       exclude: [
         "node_modules",

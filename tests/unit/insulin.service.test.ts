@@ -129,7 +129,7 @@ describe("insulinService.calculateBolus", () => {
       )
 
       expect(result.mealBolus).toBe(3.75) // hundredths for intermediate
-      expect(result.recommendedDose).toBe(3.8) // tenths for final dose
+      expect(result.recommendedDose).toBe(4.0) // pen rounds to 0.5U (manual delivery)
     })
 
     it("returns 0 for zero carbs and glucose at target", async () => {
@@ -196,7 +196,7 @@ describe("insulinService.calculateBolus", () => {
       )
 
       expect(result.rawCorrectionDose).toBe(6.67)
-      expect(result.recommendedDose).toBe(6.7)
+      expect(result.recommendedDose).toBe(6.5) // pen rounds to 0.5U (manual delivery)
     })
   })
 
@@ -610,7 +610,7 @@ describe("insulinService.calculateBolus", () => {
       )
 
       expect(result.mealBolus).toBe(0.1)
-      expect(result.recommendedDose).toBe(0.1)
+      expect(result.recommendedDose).toBe(0) // pen rounds 0.1 to 0 (below 0.5U increment)
     })
 
     it("handles glucose exactly at target", async () => {

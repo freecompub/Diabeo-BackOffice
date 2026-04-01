@@ -697,4 +697,36 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-04-01 — Phase 2 implémentée — Branche feat/phase-2-dossier-patient*
+---
+
+## 📋 Backlog technique (findings non corrigés à planifier)
+
+Les items suivants ont été identifiés lors des reviews mais reportés pour ne pas bloquer les phases en cours.
+
+### Priorité haute (avant mise en production)
+- [ ] **Unifier CLINICAL_BOUNDS et INSULIN_BOUNDS** — deux constantes identiques dans `insulin.service.ts` et `insulin-therapy.service.ts`, risque de divergence
+- [ ] **Slot overlap detection ISF/ICR** — `createIsf`/`createIcr` n'empêchent pas les chevauchements horaires, risque de bolus calculé avec le mauvais ratio
+- [ ] **IOB (Insulin On Board) implémentation** — actuellement placeholder (`iobAdjustment = 0`), risque d'empilement insuline
+- [ ] **Session revocation via Redis** — le store in-memory ne fonctionne pas en multi-instance (Edge vs Node.js)
+- [ ] **Rate limiting sur endpoints analytics et export** — calculs coûteux sans protection DoS
+- [ ] **Routes Phase 3 (CGM/events/analytics) : accès pro** — actuellement patient-only via `getOwnPatientId`, les soignants ne peuvent pas accéder aux données via ces routes
+
+### Priorité moyenne (amélioration continue)
+- [ ] **`Number(Decimal)` → `.toNumber()`** — utiliser l'API explicite Prisma Decimal au lieu de `Number()` pour prévenir NaN sur champs nullable
+- [ ] **`deliveryMethod: string` → `InsulinDeliveryMethod`** — typer strictement dans `BolusResult` et `roundForDevice`
+- [ ] **Audit `resourceId` convention** — harmoniser le format (`basal:42` vs `isf-uuid` vs `patientId`)
+- [ ] **`upsertBasalConfig` input type** — remplacer `Prisma.BasalConfigurationUncheckedCreateInput` par un type domaine strict
+- [ ] **Tests : couvrir les write paths Phase 4** — `upsertSettings`, `createIsf`, `createIcr`, `createPumpSlot` (25% coverage service)
+- [ ] **Tests : `requiresHypoTreatmentFirst` flag** — assertion manquante sur ce champ critique
+- [ ] **Tests : division-by-zero guards ISF/ICR** — guards présents mais jamais testés
+
+### Priorité basse (dette technique)
+- [ ] **`console.error(msg)` → structured logging** — remplacer par un logger structuré avec correlation ID
+- [ ] **`requireGdprConsent` cache** — requête DB à chaque appel, mettre en cache Redis (5min TTL)
+- [ ] **`periodType` enum** — `AverageData.periodType` est un string libre, devrait être un enum Prisma
+- [ ] **Photo upload** — implémenter OVH Object Storage (actuellement 501 Not Implemented)
+- [ ] **MFA flow complet** — login bloqué si `mfaEnabled=true`, implémenter le flow TOTP
+
+---
+
+*Dernière mise à jour : 2026-04-01 — Phase 4 implémentée — Branche feat/phase-4-insulinotherapie*
