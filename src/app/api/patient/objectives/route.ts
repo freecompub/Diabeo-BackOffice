@@ -53,7 +53,7 @@ const annexSchema = z.object({
   objectiveMaxWeight: z.number().min(20).max(300).optional(),
   objectiveWalk: z.number().int().min(0).max(600).optional(),
 }).refine((d) => {
-  if (d.objectiveMinWeight && d.objectiveMaxWeight) {
+  if (d.objectiveMinWeight !== undefined && d.objectiveMaxWeight !== undefined) {
     return d.objectiveMinWeight <= d.objectiveMaxWeight
   }
   return true
@@ -75,7 +75,6 @@ export async function PUT(req: NextRequest) {
 
     const { patientId, ...cgmInput } = parsed.data
 
-    // Access control: doctor must have access to this patient
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })

@@ -1,33 +1,43 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
-import type { Prisma } from "@prisma/client"
+import type { Pathology, Prisma } from "@prisma/client"
+
+/** CGM threshold shape — compatible with CgmObjective Decimal fields (as numbers for defaults) */
+interface CgmThresholds {
+  veryLow: number
+  low: number
+  ok: number
+  high: number
+  titrLow: number
+  titrHigh: number
+}
 
 /** CGM defaults per ADA/EASD consensus — DT1/DT2 */
-const CGM_DEFAULTS = {
+const CGM_DEFAULTS: CgmThresholds = {
   veryLow: 0.54,
   low: 0.70,
   ok: 1.80,
   high: 2.50,
   titrLow: 0.70,
   titrHigh: 1.80,
-} as const
+}
 
 /** Tighter CGM defaults for gestational diabetes (ADA/ACOG) */
-const CGM_DEFAULTS_GD = {
+const CGM_DEFAULTS_GD: CgmThresholds = {
   veryLow: 0.54,
   low: 0.63,
   ok: 1.40,
   high: 2.00,
   titrLow: 0.63,
   titrHigh: 1.40,
-} as const
+}
 
-export function getCgmDefaults(pathology?: string) {
+/** Get pathology-aware CGM defaults */
+export function getCgmDefaults(pathology?: Pathology): CgmThresholds {
   return pathology === "GD" ? CGM_DEFAULTS_GD : CGM_DEFAULTS
 }
 
 export const objectivesService = {
-  /** Get all 3 types of objectives for a patient */
   async getAll(patientId: number, auditUserId: number) {
     const [glycemia, cgm, annex, patient] = await Promise.all([
       prisma.glycemiaObjective.findMany({
@@ -58,13 +68,11 @@ export const objectivesService = {
     auditUserId: number,
   ) {
     return prisma.$transaction(async (tx) => {
-      // Mark old objectives as not current
       await tx.glycemiaObjective.updateMany({
         where: { patientId, isCurrent: true },
         data: { isCurrent: false },
       })
 
-      // Create new current objectives
       const created = await Promise.all(
         input.map((obj) =>
           tx.glycemiaObjective.create({
@@ -87,14 +95,7 @@ export const objectivesService = {
 
   async updateCgm(
     patientId: number,
-    input: {
-      veryLow: number
-      low: number
-      ok: number
-      high: number
-      titrLow: number
-      titrHigh: number
-    },
+    input: CgmThresholds,
     auditUserId: number,
   ) {
     return prisma.$transaction(async (tx) => {

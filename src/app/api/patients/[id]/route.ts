@@ -55,10 +55,10 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-/** PUT /api/patients/:id — healthcare pro update patient */
+/** PUT /api/patients/:id — healthcare pro update patient (DOCTOR+ only) */
 export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
-    const user = requireRole(req, "NURSE")
+    const user = requireRole(req, "DOCTOR")
     const { id } = await params
 
     if (!/^\d+$/.test(id)) {

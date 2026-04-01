@@ -1,12 +1,11 @@
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
-import { auditService } from "./audit.service"
-import type { Pathology, Prisma } from "@prisma/client"
+import { encryptField } from "@/lib/crypto/fields"
+import { auditService, extractRequestContext } from "./audit.service"
+import type { Pathology, Prisma, PatientMedicalData } from "@prisma/client"
 
-export interface AuditContext {
-  ipAddress?: string
-  userAgent?: string
-}
+/** Reusable audit context type — matches extractRequestContext return */
+export type AuditContext = ReturnType<typeof extractRequestContext>
 
 interface PersonalData {
   firstName: string
@@ -22,53 +21,90 @@ interface CreatePatientInput {
   userId: number
 }
 
-/** Encrypt a string field to base64 for storage in String columns */
-function encryptField(value: string): string {
+/** Encrypt a string field to base64 (local shorthand for legacy code) */
+function localEncryptField(value: string): string {
   return Buffer.from(encrypt(value)).toString("base64")
 }
 
-/** Decrypt a base64-encoded encrypted field */
-function decryptField(value: string): string {
+function localDecryptField(value: string): string {
   return decrypt(new Uint8Array(Buffer.from(value, "base64")))
 }
 
-/** Try to decrypt, return null if decryption fails — never leak ciphertext */
 function safeDecrypt(value: string | null): string | null {
   if (!value) return null
   try {
-    return decryptField(value)
+    return localDecryptField(value)
   } catch {
     return null
   }
 }
 
-/** Fields in PatientMedicalData that are encrypted */
-const ENCRYPTED_MEDICAL_FIELDS = new Set([
+/** Encrypted fields in PatientMedicalData — typed to actual model keys */
+type MedicalEncryptedField =
+  | "historyMedical" | "historyChirurgical" | "historyFamily"
+  | "historyAllergy" | "historyVaccine" | "historyLife"
+  | "diabetDiscovery"
+
+const ENCRYPTED_MEDICAL_FIELDS: readonly MedicalEncryptedField[] = [
   "historyMedical", "historyChirurgical", "historyFamily",
   "historyAllergy", "historyVaccine", "historyLife",
-  "pathology", "diabetDiscovery",
-])
+  "diabetDiscovery",
+]
 
-/** Decrypt encrypted fields in a medical data record */
-function decryptMedicalData(data: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...data }
-  for (const field of ENCRYPTED_MEDICAL_FIELDS) {
-    if (typeof result[field] === "string") {
-      result[field] = safeDecrypt(result[field] as string)
-    }
+const ENCRYPTED_MEDICAL_SET = new Set<string>(ENCRYPTED_MEDICAL_FIELDS)
+
+/** Decrypt encrypted fields in PatientMedicalData — type-safe, no Record cast */
+function decryptMedicalData(data: PatientMedicalData) {
+  return {
+    ...data,
+    historyMedical: safeDecrypt(data.historyMedical),
+    historyChirurgical: safeDecrypt(data.historyChirurgical),
+    historyFamily: safeDecrypt(data.historyFamily),
+    historyAllergy: safeDecrypt(data.historyAllergy),
+    historyVaccine: safeDecrypt(data.historyVaccine),
+    historyLife: safeDecrypt(data.historyLife),
+    diabetDiscovery: safeDecrypt(data.diabetDiscovery),
   }
-  return result
 }
 
-/** Encrypt fields in a medical data update input */
-function encryptMedicalInput(input: Record<string, unknown>): Record<string, unknown> {
-  const result = { ...input }
-  for (const [key, value] of Object.entries(result)) {
-    if (ENCRYPTED_MEDICAL_FIELDS.has(key) && typeof value === "string") {
-      result[key] = encryptField(value)
+/** Medical data update input — typed from Zod schema in route */
+export interface MedicalDataUpdateInput {
+  dt1?: boolean
+  size?: number
+  yearDiag?: number
+  insulin?: boolean
+  insulinYear?: number
+  insulinPump?: boolean
+  pathology?: string
+  diabetDiscovery?: string
+  tabac?: boolean
+  alcool?: boolean
+  historyMedical?: string
+  historyChirurgical?: string
+  historyFamily?: string
+  historyAllergy?: string
+  historyVaccine?: string
+  historyLife?: string
+  riskWeight?: boolean
+  riskTension?: boolean
+  riskSedent?: boolean
+  riskCholesterol?: boolean
+  riskAge?: boolean
+  riskHeredit?: boolean
+}
+
+/** Encrypt medical fields in an update input */
+function encryptMedicalInput(input: MedicalDataUpdateInput): Prisma.PatientMedicalDataUpdateInput {
+  const result: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(input)) {
+    if (value === undefined) continue
+    if (ENCRYPTED_MEDICAL_SET.has(key) && typeof value === "string") {
+      result[key] = localEncryptField(value)
+    } else {
+      result[key] = value
     }
   }
-  return result
+  return result as Prisma.PatientMedicalDataUpdateInput
 }
 
 export const patientService = {
@@ -77,8 +113,8 @@ export const patientService = {
       await tx.user.update({
         where: { id: input.userId },
         data: {
-          firstname: encryptField(input.personalData.firstName),
-          lastname: encryptField(input.personalData.lastName),
+          firstname: localEncryptField(input.personalData.firstName),
+          lastname: localEncryptField(input.personalData.lastName),
         },
       })
 
@@ -128,23 +164,15 @@ export const patientService = {
       userAgent: ctx?.userAgent,
     })
 
-    // Decrypt PII fields — never expose ciphertext
-    const decryptedUser = {
-      ...patient.user,
-      firstname: safeDecrypt(patient.user.firstname),
-      lastname: safeDecrypt(patient.user.lastname),
-      email: safeDecrypt(patient.user.email),
-    }
-
-    // Decrypt medical data if present
-    const decryptedMedical = patient.medicalData
-      ? decryptMedicalData(patient.medicalData as unknown as Record<string, unknown>)
-      : null
-
     return {
       ...patient,
-      user: decryptedUser,
-      medicalData: decryptedMedical,
+      user: {
+        ...patient.user,
+        firstname: safeDecrypt(patient.user.firstname),
+        lastname: safeDecrypt(patient.user.lastname),
+        email: safeDecrypt(patient.user.email),
+      },
+      medicalData: patient.medicalData ? decryptMedicalData(patient.medicalData) : null,
     }
   },
 
@@ -163,7 +191,6 @@ export const patientService = {
     auditUserId: number,
   ) {
     return prisma.$transaction(async (tx) => {
-      // Guard: verify patient exists and is not soft-deleted
       const existing = await tx.patient.findFirst({
         where: { id: patientId, deletedAt: null },
       })
@@ -201,12 +228,12 @@ export const patientService = {
     })
 
     if (!data) return null
-    return decryptMedicalData(data as unknown as Record<string, unknown>)
+    return decryptMedicalData(data)
   },
 
   async updateMedicalData(
     patientId: number,
-    input: Record<string, unknown>,
+    input: MedicalDataUpdateInput,
     auditUserId: number,
   ) {
     const encrypted = encryptMedicalInput(input)
@@ -214,7 +241,7 @@ export const patientService = {
     return prisma.$transaction(async (tx) => {
       const data = await tx.patientMedicalData.upsert({
         where: { patientId },
-        update: encrypted as Prisma.PatientMedicalDataUpdateInput,
+        update: encrypted,
         create: { patientId, ...encrypted } as Prisma.PatientMedicalDataUncheckedCreateInput,
       })
 
@@ -226,7 +253,7 @@ export const patientService = {
         metadata: { updatedFields: Object.keys(input) },
       })
 
-      return decryptMedicalData(data as unknown as Record<string, unknown>)
+      return { patientId: data.patientId, updated: true }
     })
   },
 
@@ -253,7 +280,6 @@ export const patientService = {
       metadata: { action: "list", count: referents.length },
     })
 
-    // Decrypt PII fields before returning — never expose ciphertext
     return referents.map((r) => ({
       ...r.patient,
       user: {
@@ -265,7 +291,6 @@ export const patientService = {
     }))
   },
 
-  /** Soft delete — anonymise les données (RGPD) */
   async delete(id: number, auditUserId: number) {
     return prisma.$transaction(async (tx) => {
       const existing = await tx.patient.findUnique({ where: { id } })
