@@ -1,14 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireRole, AuthError } from "@/lib/auth"
 import { patientService } from "@/lib/services/patient.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
 
 /** GET /api/patients — list patients for the connected healthcare pro */
 export async function GET(req: NextRequest) {
   try {
     const user = requireRole(req, "NURSE")
-    const ctx = extractRequestContext(req)
-
     const patients = await patientService.listByDoctor(user.id, user.id)
     return NextResponse.json(patients)
   } catch (error) {

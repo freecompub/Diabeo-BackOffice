@@ -85,10 +85,18 @@ describe("documentService", () => {
   })
 
   describe("markRead", () => {
-    it("marks document as read", async () => {
+    it("marks document as read with ownership check", async () => {
+      prismaMock.medicalDocument.findFirst.mockResolvedValue({ id: 1, patientId: 1 } as any)
       prismaMock.medicalDocument.update.mockResolvedValue({ id: 1, isRead: true } as any)
-      const result = await documentService.markRead(1, 1)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await documentService.markRead(1, 1, 1)
       expect(result.isRead).toBe(true)
+    })
+
+    it("throws for non-existent document", async () => {
+      prismaMock.medicalDocument.findFirst.mockResolvedValue(null)
+      await expect(documentService.markRead(999, 1, 1)).rejects.toThrow("documentNotFound")
     })
   })
 })

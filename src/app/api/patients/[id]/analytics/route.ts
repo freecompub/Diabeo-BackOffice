@@ -2,8 +2,9 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
+import { prisma } from "@/lib/db/client"
 import { analyticsService } from "@/lib/services/analytics.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -19,13 +20,29 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
 
-    const ctx = extractRequestContext(req)
-    const allowed = await canAccessPatient(user.id, user.role, patientId)
-    if (!allowed) return NextResponse.json({ error: "forbidden" }, { status: 403 })
-
+    // Validate query params BEFORE access check (no timing oracle)
     const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries())
     const parsed = querySchema.safeParse(queryParams)
-    if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+    if (!parsed.success) return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
+
+    const ctx = extractRequestContext(req)
+    const allowed = await canAccessPatient(user.id, user.role, patientId)
+    if (!allowed) {
+      await auditService.log({
+        userId: user.id, action: "UNAUTHORIZED", resource: "CGM_ENTRY",
+        resourceId: String(patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent,
+      })
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
+    // Check shareWithProviders
+    const patient = await prisma.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { userId: true } })
+    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    const privacy = await prisma.userPrivacySettings.findUnique({ where: { userId: patient.userId } })
+    if (privacy && !privacy.shareWithProviders) {
+      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
+    }
 
     const result = await analyticsService.glycemicProfile(patientId, parsed.data.period, user.id, ctx)
     return NextResponse.json(result)

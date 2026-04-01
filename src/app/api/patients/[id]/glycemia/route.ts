@@ -3,6 +3,7 @@ import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
+import { encryptField } from "@/lib/crypto/fields"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 type RouteParams = { params: Promise<{ id: string }> }
@@ -23,6 +24,18 @@ const glycemiaSchema = z.object({
   comment: z.string().max(500).optional(),
 })
 
+/** Serialize Decimal fields for JSON */
+function serializeEntry(entry: Record<string, unknown>) {
+  const decimals = ["glycemiaGl", "glycemiaMgdl", "weight", "hba1c", "ketones", "bolus", "bolusCorr", "basal"]
+  const result = { ...entry }
+  for (const key of decimals) {
+    if (result[key] != null && typeof result[key] === "object") {
+      result[key] = Number(result[key])
+    }
+  }
+  return result
+}
+
 /** POST /api/patients/:id/glycemia — professional glycemia entry */
 export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
@@ -33,7 +46,22 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
     const ctx = extractRequestContext(req)
     const allowed = await canAccessPatient(user.id, user.role, patientId)
-    if (!allowed) return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    if (!allowed) {
+      await auditService.log({
+        userId: user.id, action: "UNAUTHORIZED", resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent,
+      })
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
+    // Check shareWithProviders
+    const patient = await prisma.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { userId: true } })
+    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    const privacy = await prisma.userPrivacySettings.findUnique({ where: { userId: patient.userId } })
+    if (privacy && !privacy.shareWithProviders) {
+      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
+    }
 
     const body = await req.json()
     const parsed = glycemiaSchema.safeParse(body)
@@ -58,6 +86,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           bolus: parsed.data.bolus,
           basal: parsed.data.basal,
           carb: parsed.data.carb,
+          mealDescription: parsed.data.comment ? encryptField(parsed.data.comment) : null,
         },
       })
 
@@ -74,7 +103,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return created
     })
 
-    return NextResponse.json(entry, { status: 201 })
+    return NextResponse.json(serializeEntry(entry as unknown as Record<string, unknown>), { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"

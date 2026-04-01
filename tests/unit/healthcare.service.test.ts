@@ -35,6 +35,7 @@ describe("healthcareService", () => {
   describe("enrollPatient", () => {
     it("creates patient-service link in transaction", async () => {
       const mockTx = {
+        healthcareService: { findUnique: vi.fn().mockResolvedValue({ id: 2, name: "CHU" }) },
         patientService: { create: vi.fn().mockResolvedValue({ id: 1, patientId: 1, serviceId: 2, wait: true }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
@@ -48,6 +49,7 @@ describe("healthcareService", () => {
   describe("setReferent", () => {
     it("upserts referent in transaction", async () => {
       const mockTx = {
+        healthcareMember: { findFirst: vi.fn().mockResolvedValue({ id: 5, name: "Dr Martin", serviceId: 2 }) },
         patientReferent: { upsert: vi.fn().mockResolvedValue({ id: 1, patientId: 1, proId: 5, serviceId: 2 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }

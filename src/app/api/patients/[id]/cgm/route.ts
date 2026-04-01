@@ -21,15 +21,12 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
 
-    // Check share_with_providers
-    const patient = await prisma.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { userId: true } })
-    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    // Validate query params FIRST (no timing oracle)
+    const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries())
+    const parsed = querySchema.safeParse(queryParams)
+    if (!parsed.success) return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
 
-    const privacy = await prisma.userPrivacySettings.findUnique({ where: { userId: patient.userId } })
-    if (privacy && !privacy.shareWithProviders) {
-      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
-    }
-
+    // Access control BEFORE privacy check (no info leak)
     const ctx = extractRequestContext(req)
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
@@ -40,12 +37,25 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const queryParams = Object.fromEntries(req.nextUrl.searchParams.entries())
-    const parsed = querySchema.safeParse(queryParams)
-    if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+    // Privacy check (shareWithProviders)
+    const patient = await prisma.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { userId: true } })
+    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    const privacy = await prisma.userPrivacySettings.findUnique({ where: { userId: patient.userId } })
+    if (privacy && !privacy.shareWithProviders) {
+      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
+    }
 
     const entries = await glycemiaService.getCgmEntries(patientId, parsed.data.from, parsed.data.to, user.id, ctx)
-    return NextResponse.json(entries)
+
+    // Serialize BigInt id + Decimal valueGl for JSON
+    const serialized = entries.map((e) => ({
+      ...e,
+      id: String(e.id),
+      valueGl: Number(e.valueGl),
+    }))
+
+    return NextResponse.json(serialized)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"

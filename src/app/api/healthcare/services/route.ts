@@ -1,12 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { requireAuth, AuthError } from "@/lib/auth"
+import { requireRole, AuthError } from "@/lib/auth"
 import { healthcareService } from "@/lib/services/healthcare.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
 
-/** GET /api/healthcare/services — list all healthcare services */
+/** GET /api/healthcare/services — list all services (NURSE+ only) */
 export async function GET(req: NextRequest) {
   try {
-    requireAuth(req)
-    const services = await healthcareService.listServices()
+    const user = requireRole(req, "NURSE")
+    const ctx = extractRequestContext(req)
+    const services = await healthcareService.listServices(user.id, ctx)
     return NextResponse.json(services)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
