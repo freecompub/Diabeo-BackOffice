@@ -1,0 +1,258 @@
+/*
+ * Diabeo Design System — Design Tokens
+ * Palette: "Serenite Active"
+ *
+ * These CSS custom properties define the foundational design tokens
+ * for the Diabeo BackOffice healthcare application. They are consumed
+ * by Tailwind CSS via the @theme directive in globals.css.
+ *
+ * IMPORTANT: Do not use these tokens directly in components.
+ * Use Tailwind utility classes that reference them instead.
+ */
+
+:root {
+  /* ----------------------------------------------------------------
+   * 1. COLOR TOKENS — Brand
+   * ---------------------------------------------------------------- */
+
+  /* Primary — Teal (actions, links, headings) */
+  --diabeo-primary-50: #F0FDFA;
+  --diabeo-primary-100: #CCFBF1;
+  --diabeo-primary-200: #99F6E4;
+  --diabeo-primary-300: #5EEAD4;
+  --diabeo-primary-400: #2DD4BF;
+  --diabeo-primary-500: #14B8A6;
+  --diabeo-primary-600: #0D9488;
+  --diabeo-primary-700: #0F766E;
+  --diabeo-primary-800: #115E59;
+  --diabeo-primary-900: #134E4A;
+  --diabeo-primary-950: #042F2E;
+
+  /* Secondary — Coral (alerts, secondary actions) */
+  --diabeo-secondary-50: #FFF7ED;
+  --diabeo-secondary-100: #FFEDD5;
+  --diabeo-secondary-200: #FED7AA;
+  --diabeo-secondary-300: #FDBA74;
+  --diabeo-secondary-400: #FB923C;
+  --diabeo-secondary-500: #F97316;
+  --diabeo-secondary-600: #EA580C;
+  --diabeo-secondary-700: #C2410C;
+  --diabeo-secondary-800: #9A3412;
+  --diabeo-secondary-900: #7C2D12;
+  --diabeo-secondary-950: #431407;
+
+  /* Neutral — Gray (text, borders, backgrounds) */
+  --diabeo-neutral-50: #FAFAFA;
+  --diabeo-neutral-100: #F3F4F6;
+  --diabeo-neutral-200: #E5E7EB;
+  --diabeo-neutral-300: #D1D5DB;
+  --diabeo-neutral-400: #9CA3AF;
+  --diabeo-neutral-500: #6B7280;
+  --diabeo-neutral-600: #4B5563;
+  --diabeo-neutral-700: #374151;
+  --diabeo-neutral-800: #1F2937;
+  --diabeo-neutral-900: #111827;
+  --diabeo-neutral-950: #030712;
+
+  /* ----------------------------------------------------------------
+   * 2. COLOR TOKENS — Glycemia (clinical)
+   * ---------------------------------------------------------------- */
+
+  /* Very Low — Severe hypoglycemia (<54 mg/dL) */
+  --diabeo-glycemia-very-low: #991B1B;
+  --diabeo-glycemia-very-low-bg: #FEF2F2;
+  --diabeo-glycemia-very-low-border: #FECACA;
+
+  /* Low — Hypoglycemia (54-69 mg/dL) */
+  --diabeo-glycemia-low: #EF4444;
+  --diabeo-glycemia-low-bg: #FEF2F2;
+  --diabeo-glycemia-low-border: #FCA5A5;
+
+  /* Normal — In Range (70-180 mg/dL) */
+  --diabeo-glycemia-normal: #10B981;
+  --diabeo-glycemia-normal-bg: #ECFDF5;
+  --diabeo-glycemia-normal-border: #A7F3D0;
+
+  /* High — Hyperglycemia (181-250 mg/dL) */
+  --diabeo-glycemia-high: #F59E0B;
+  --diabeo-glycemia-high-bg: #FFFBEB;
+  --diabeo-glycemia-high-border: #FDE68A;
+
+  /* Very High — Severe hyperglycemia (>250 mg/dL) */
+  --diabeo-glycemia-very-high: #EF4444;
+  --diabeo-glycemia-very-high-bg: #FEF2F2;
+  --diabeo-glycemia-very-high-border: #FECACA;
+
+  /* Critical — Immediate danger (<40 or >400 mg/dL) */
+  --diabeo-glycemia-critical: #DC2626;
+  --diabeo-glycemia-critical-bg: #FEE2E2;
+  --diabeo-glycemia-critical-border: #F87171;
+
+  /* ----------------------------------------------------------------
+   * 3. COLOR TOKENS — TIR Zones (Time In Range)
+   * ---------------------------------------------------------------- */
+
+  /* 5-zone model per international consensus */
+  --diabeo-tir-very-low: #991B1B;    /* <54 mg/dL — dark red */
+  --diabeo-tir-low: #EF4444;         /* 54-69 mg/dL — red */
+  --diabeo-tir-in-range: #10B981;    /* 70-180 mg/dL — green */
+  --diabeo-tir-high: #F59E0B;        /* 181-250 mg/dL — amber */
+  --diabeo-tir-very-high: #F97316;   /* >250 mg/dL — orange */
+
+  /* ----------------------------------------------------------------
+   * 4. COLOR TOKENS — Semantic (status, feedback)
+   * ---------------------------------------------------------------- */
+
+  --diabeo-success: #10B981;
+  --diabeo-success-bg: #ECFDF5;
+  --diabeo-success-border: #A7F3D0;
+
+  --diabeo-warning: #F59E0B;
+  --diabeo-warning-bg: #FFFBEB;
+  --diabeo-warning-border: #FDE68A;
+
+  --diabeo-error: #EF4444;
+  --diabeo-error-bg: #FEF2F2;
+  --diabeo-error-border: #FCA5A5;
+
+  --diabeo-info: #3B82F6;
+  --diabeo-info-bg: #EFF6FF;
+  --diabeo-info-border: #BFDBFE;
+
+  /* ----------------------------------------------------------------
+   * 5. COLOR TOKENS — Pathology badges
+   * ---------------------------------------------------------------- */
+
+  --diabeo-dt1: #7C3AED;             /* Violet — Diabetes Type 1 */
+  --diabeo-dt1-bg: #F5F3FF;
+  --diabeo-dt2: #2563EB;             /* Blue — Diabetes Type 2 */
+  --diabeo-dt2-bg: #EFF6FF;
+  --diabeo-gd: #EC4899;              /* Pink — Gestational Diabetes */
+  --diabeo-gd-bg: #FDF2F8;
+
+  /* ----------------------------------------------------------------
+   * 6. TYPOGRAPHY TOKENS
+   * ---------------------------------------------------------------- */
+
+  --diabeo-font-sans: var(--font-geist-sans, "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif);
+  --diabeo-font-mono: var(--font-geist-mono, "Geist Mono", ui-monospace, "Cascadia Code", monospace);
+
+  /* Font sizes — rem scale */
+  --diabeo-text-xs: 0.75rem;         /* 12px */
+  --diabeo-text-sm: 0.8125rem;       /* 13px */
+  --diabeo-text-base: 0.875rem;      /* 14px — default body */
+  --diabeo-text-md: 1rem;            /* 16px */
+  --diabeo-text-lg: 1.125rem;        /* 18px */
+  --diabeo-text-xl: 1.25rem;         /* 20px */
+  --diabeo-text-2xl: 1.5rem;         /* 24px */
+  --diabeo-text-3xl: 1.875rem;       /* 30px */
+  --diabeo-text-4xl: 2.25rem;        /* 36px */
+
+  /* Line heights */
+  --diabeo-leading-tight: 1.25;
+  --diabeo-leading-snug: 1.375;
+  --diabeo-leading-normal: 1.5;
+  --diabeo-leading-relaxed: 1.625;
+
+  /* Font weights */
+  --diabeo-font-normal: 400;
+  --diabeo-font-medium: 500;
+  --diabeo-font-semibold: 600;
+  --diabeo-font-bold: 700;
+
+  /* Letter spacing */
+  --diabeo-tracking-tight: -0.025em;
+  --diabeo-tracking-normal: 0em;
+  --diabeo-tracking-wide: 0.025em;
+
+  /* ----------------------------------------------------------------
+   * 7. SPACING TOKENS
+   * ---------------------------------------------------------------- */
+
+  --diabeo-space-0: 0;
+  --diabeo-space-px: 1px;
+  --diabeo-space-0-5: 0.125rem;      /* 2px */
+  --diabeo-space-1: 0.25rem;         /* 4px */
+  --diabeo-space-1-5: 0.375rem;      /* 6px */
+  --diabeo-space-2: 0.5rem;          /* 8px */
+  --diabeo-space-2-5: 0.625rem;      /* 10px */
+  --diabeo-space-3: 0.75rem;         /* 12px */
+  --diabeo-space-4: 1rem;            /* 16px */
+  --diabeo-space-5: 1.25rem;         /* 20px */
+  --diabeo-space-6: 1.5rem;          /* 24px */
+  --diabeo-space-8: 2rem;            /* 32px */
+  --diabeo-space-10: 2.5rem;         /* 40px */
+  --diabeo-space-12: 3rem;           /* 48px */
+  --diabeo-space-16: 4rem;           /* 64px */
+  --diabeo-space-20: 5rem;           /* 80px */
+  --diabeo-space-24: 6rem;           /* 96px */
+
+  /* ----------------------------------------------------------------
+   * 8. BORDER RADIUS TOKENS
+   * ---------------------------------------------------------------- */
+
+  --diabeo-radius-none: 0;
+  --diabeo-radius-sm: 0.25rem;       /* 4px — small elements */
+  --diabeo-radius-md: 0.5rem;        /* 8px — buttons, inputs */
+  --diabeo-radius-lg: 0.625rem;      /* 10px — cards */
+  --diabeo-radius-xl: 0.75rem;       /* 12px — modals */
+  --diabeo-radius-2xl: 1rem;         /* 16px — large cards */
+  --diabeo-radius-full: 9999px;      /* pills, avatars */
+
+  /* ----------------------------------------------------------------
+   * 9. SHADOW TOKENS
+   * ---------------------------------------------------------------- */
+
+  --diabeo-shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --diabeo-shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --diabeo-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --diabeo-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --diabeo-shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+
+  /* Colored shadows for elevated clinical alerts */
+  --diabeo-shadow-critical: 0 4px 14px -2px rgb(239 68 68 / 0.25);
+  --diabeo-shadow-warning: 0 4px 14px -2px rgb(245 158 11 / 0.25);
+  --diabeo-shadow-success: 0 4px 14px -2px rgb(16 185 129 / 0.25);
+  --diabeo-shadow-primary: 0 4px 14px -2px rgb(13 148 136 / 0.25);
+
+  /* ----------------------------------------------------------------
+   * 10. TRANSITION TOKENS
+   * ---------------------------------------------------------------- */
+
+  --diabeo-duration-fast: 100ms;
+  --diabeo-duration-normal: 200ms;
+  --diabeo-duration-slow: 300ms;
+  --diabeo-duration-slower: 500ms;
+
+  --diabeo-ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+  --diabeo-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --diabeo-ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --diabeo-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --diabeo-ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ----------------------------------------------------------------
+   * 11. Z-INDEX TOKENS
+   * ---------------------------------------------------------------- */
+
+  --diabeo-z-base: 0;
+  --diabeo-z-dropdown: 10;
+  --diabeo-z-sticky: 20;
+  --diabeo-z-header: 30;
+  --diabeo-z-overlay: 40;
+  --diabeo-z-modal: 50;
+  --diabeo-z-popover: 60;
+  --diabeo-z-toast: 70;
+  --diabeo-z-critical-alert: 100;
+
+  /* ----------------------------------------------------------------
+   * 12. CLINICAL THRESHOLDS (reference — used by components)
+   * ---------------------------------------------------------------- */
+
+  /* These are informational. Actual thresholds come from patient config. */
+  --diabeo-glucose-very-low: 54;     /* mg/dL */
+  --diabeo-glucose-low: 70;          /* mg/dL */
+  --diabeo-glucose-target-min: 70;   /* mg/dL */
+  --diabeo-glucose-target-max: 180;  /* mg/dL */
+  --diabeo-glucose-high: 250;        /* mg/dL */
+  --diabeo-glucose-very-high: 400;   /* mg/dL */
+}

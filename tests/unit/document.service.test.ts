@@ -54,7 +54,7 @@ describe("documentService", () => {
       ] as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 
-      const result = await documentService.list(1, "VIEWER", 1)
+      await documentService.list(1, "VIEWER", 1)
       expect(prismaMock.medicalDocument.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
           where: expect.objectContaining({ patientShare: true }),
