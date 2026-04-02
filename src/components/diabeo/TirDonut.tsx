@@ -144,8 +144,7 @@ export function TirDonut({
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         role="img"
-        aria-label={`Temps dans la cible: ${data.inRange.toFixed(1)}%`}
-        aria-description={ariaDescription}
+        aria-label={`Temps dans la cible: ${data.inRange.toFixed(1)}%. ${ariaDescription}`}
         className="transform -rotate-90"
       >
         {/* Background circle */}
