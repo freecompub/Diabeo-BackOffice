@@ -28,7 +28,7 @@ ORM: Prisma 5+
 
 ## Aperçu global
 
-Le schéma Diabeo contient **48 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
+Le schéma Diabeo contient **49 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
 
 ### Principles architecturaux
 
@@ -45,7 +45,7 @@ Le schéma Diabeo contient **48 tables** réparties en **11 domaines métier**, 
 |---|---------|--------|------|
 | 1 | Utilisateur & Authentification | 7 | User, Account, Session, VerificationToken, UserUnitPreferences, UserNotifPreferences, UserPrivacySettings |
 | 2 | Patient & Données Médicales | 4 | Patient, PatientMedicalData, PatientAdministrative, PatientPregnancy |
-| 3 | Configuration Insulinothérapie | 8 | InsulinTherapySettings, GlucoseTarget, IobSettings, ExtendedBolusSettings, InsulinSensitivityFactor, CarbRatio, BasalConfiguration, PumpBasalSlot |
+| 3 | Configuration Insulinothérapie | 9 | InsulinCatalog, InsulinTherapySettings, GlucoseTarget, IobSettings, ExtendedBolusSettings, InsulinSensitivityFactor, CarbRatio, BasalConfiguration, PumpBasalSlot |
 | 4 | Données de Glycémie & CGM | 7 | CgmEntry, GlycemiaEntry, DiabetesEvent, InsulinFlowEntry, InsulinFlowDeviceData, PumpEvent, AverageData |
 | 5 | Événements & Activités | 0 | Couvert par DiabetesEvent (domaine 4) |
 | 6 | Propositions d'Ajustement | 1 | AdjustmentProposal |
@@ -829,7 +829,71 @@ Suivi des grossesses (pour patient pathology=GD ou DT1/DT2 enceinte).
 
 ## Domaine 3 — Configuration Insulinothérapie
 
-Gère les paramètres d'insulinothérapie: ratios ISF/ICR horaires, configurations basales, cibles glycémiques.
+Gère les paramètres d'insulinothérapie: catalogue des insulines, ratios ISF/ICR horaires, configurations basales, cibles glycémiques.
+
+### Table: InsulinCatalog
+
+Catalogue de référence des insulines commerciales avec leurs propriétés pharmacocinétiques.
+
+**SQL name**: `insulin_catalog`
+
+**Description**: Table en lecture seule préremplie par seed. Contient les 17 insulines commerciales disponibles avec leurs données pharmacocinétiques validées (sources FDA/EMA). Utilisée pour la sélection de l'insuline bolus/basale dans InsulinTherapySettings et pour informer les calculs de durée d'action (IOB).
+
+**Relations**: Aucune relation directe. Table de référence consultée par l'application.
+
+| Colonne | SQL name | Type PostgreSQL | Nullable | Default | Chiffré | Description |
+|---------|----------|-----------------|----------|---------|---------|-------------|
+| id | id | SERIAL | Non | autoincrement | Non | Identifiant unique |
+| displayName | display_name | VARCHAR(100) | Non | — | Non | Nom commercial (ex: "Humalog", "Lantus"). Contrainte UNIQUE. |
+| genericName | generic_name | VARCHAR(100) | Non | — | Non | Dénomination Commune Internationale / DCI (ex: "insulin lispro", "insulin glargine U-100") |
+| typicalOnsetMinutes | typical_onset_minutes | INT | Non | — | Non | Début d'action typique en minutes après injection. Ultra-rapide: 3-5 min, rapide: 15 min, régulière: 30 min, longue: 60-360 min. Source: FDA prescribing information. |
+| typicalPeakMinutes | typical_peak_minutes | INT | Oui | — | Non | Pic d'action en minutes. NULL pour les insulines basales sans pic (glargine, degludec). Levemir a un pic modeste à ~480 min. |
+| typicalDurationHours | typical_duration_hours | DECIMAL(4,1) | Non | — | Non | Durée d'action totale en heures. Rapide: 4-5h, régulière: 8h, NPH: 16h, longue: 20-42h. Paramètre clé pour le calcul IOB. |
+| isFasterActing | is_faster_acting | BOOLEAN | Non | false | Non | Ultra-rapide (Fiasp, Lyumjev). Onset < 10 min grâce à des excipients accélérateurs (niacinamide, tréprostinil). |
+| isTraditionalRapidActing | is_traditional_rapid_acting | BOOLEAN | Non | false | Non | Rapide classique (Humalog, NovoRapid, Apidra). Onset ~15 min, durée ~5h. Utilisé pour le bolus repas et correction. |
+| isLongActing | is_long_acting | BOOLEAN | Non | false | Non | Insuline basale longue durée (Lantus, Levemir, Tresiba, Toujeo, Basaglar). Ne doit PAS apparaître dans le calculateur de bolus. |
+| approvalYear | approval_year | INT | Oui | — | Non | Année de première approbation FDA ou EMA. Référence historique. |
+| manufacturer | manufacturer | VARCHAR(100) | Oui | — | Non | Fabricant pharmaceutique (Eli Lilly, Novo Nordisk, Sanofi). |
+| isActive | is_active | BOOLEAN | Non | true | Non | Permet de désactiver une insuline du catalogue sans suppression physique. |
+| createdAt | created_at | TIMESTAMPTZ | Non | now() | Non | Date de création de l'entrée. |
+
+**Contraintes et index**:
+- `display_name` : UNIQUE — une seule entrée par nom commercial.
+
+**Données préremplies (seed)** — 17 insulines réparties en 7 catégories :
+
+| Catégorie | Insulines | Onset (PD) | Pic (PD) | Durée | Règle |
+|-----------|-----------|-----------|----------|-------|-------|
+| Ultra-rapide | Fiasp, Lyumjev | 15-16 min | 91-120 min | 4.6-5.0h | Courte |
+| Rapide | Humalog, NovoRapid, Apidra | 15 min | 60-90 min | 3.0h | Courte |
+| Régulière | Humulin R, Actrapid | 30 min | 150 min | 5.0h | Courte |
+| Intermédiaire (NPH) | Humulin N, Insulatard | 90 min | 420 min | 24.0h | Longue |
+| Longue durée | Lantus, Basaglar | 90 min | sans pic | 24.0h | Longue |
+| Longue durée | Toujeo (U-300) | 360 min | sans pic | 36.0h | Longue |
+| Longue durée | Levemir | 180 min | 420 min | 24.0h | Longue |
+| Ultra-longue | Tresiba | 60 min | sans pic | 42.0h | Longue |
+| Pré-mélangée | Humalog Mix 25, NovoMix 30 | 15 min | 120 min | 22-24h | Longue |
+| Concentrée | Humulin R U-500 | 30 min | 240 min | 24.0h | Longue |
+
+**Règles métier**:
+- Table en lecture seule — les utilisateurs ne peuvent pas ajouter d'insulines via l'API.
+- Seules les insulines `isActive = true` sont proposées dans les sélecteurs.
+- Les insulines `isLongActing = true` ne doivent JAMAIS apparaître dans le calculateur de bolus.
+- `typicalDurationHours` alimente le calcul IOB (Insulin On Board) dans `insulin.service.ts`.
+- Pour les insulines sans pic (`typicalPeakMinutes = NULL`), le modèle IOB doit utiliser une courbe de décroissance plate.
+
+**Convention durées** :
+- Insulines rapides/ultra-rapides : durée la plus **courte** de la plage documentée (sécurité IOB — éviter sous-estimation de l'insuline restante)
+- Insulines basales/longue durée : durée la plus **longue** de la plage documentée (couverture maximale)
+- Toutes les valeurs sont **pharmacodynamiques** (effet glycémique), pas pharmacocinétiques (concentration sérique)
+
+**Sources cliniques vérifiées** :
+- [Fiasp FDA DailyMed (NDA 208751)](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=834e7efc-393f-4c55-9125-628562a8a5cf) — onset PD 16-20min, peak PD 91-133min, duration 5-7h
+- [Lyumjev FDA DailyMed (NDA 761109)](https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=c5a056e2-b568-4ca6-9ed8-79c010942d00) — onset PD 15-17min, peak PD 120-174min, duration 4.6-7.3h
+- [Tresiba FDA DailyMed (NDA 203314)](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=456c5e87-3dfd-46fa-8ac0-c6128d4c97c6) — duration ≥42h, half-life 25h
+- [Toujeo FDA DailyMed](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=c9561d96-124d-48ca-982f-0aa1575bff36) — onset 6h, serum detectable beyond 36h
+- [Endotext Table 3 — Insulin Pharmacology (NCBI NBK278938)](https://www.ncbi.nlm.nih.gov/books/NBK278938/) — tableau comparatif toutes insulines
+- [Vidal — Fiasp](https://www.vidal.fr/actualites/22513-diabete-de-l-adulte-fiasp-insuline-asparte-nouvelle-insuline-d-action-rapide.html) — onset 5-15min, pic 1-3h, durée 3-5h
 
 ### Table: InsulinTherapySettings
 
@@ -2284,5 +2348,5 @@ await auditService.log({
 ---
 
 **Document généré**: 2026-04-01 — Phase 0 implémentée  
-**Statut**: ✅ Schéma complet (48 tables, 21 enums)  
+**Statut**: ✅ Schéma complet (49 tables, 21 enums)  
 **Prochaine mise à jour**: Après phases 3-7 (API CRUD complète)

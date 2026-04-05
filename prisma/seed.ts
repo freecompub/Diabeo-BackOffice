@@ -37,6 +37,58 @@ const t = (h: number, m: number) =>
 async function main() {
   console.log("Seeding database...")
 
+  // ─── 0. Insulin Catalog (17 insulines) ────────────────────
+  // Reference data — pharmacokinetic properties from FDA/EMA labeling.
+  // Sources: Heise et al. (Diabetes Obes Metab 2017), FDA prescribing information.
+
+  // All values are PHARMACODYNAMIC (glucose-lowering effect), not pharmacokinetic (serum levels).
+  // Rapides/ultra-rapides : durée la plus COURTE de la plage documentée (sécurité IOB).
+  // Basales/longue durée : durée la plus LONGUE de la plage documentée (couverture maximale).
+  // Sources : FDA DailyMed (NDA labels), Endotext Table 3 (NCBI NBK278938), Vidal.
+  const insulinCatalog = [
+    // Ultra-rapide — Fiasp FDA NDA 208751: PD onset 16-20min, PD peak 91-133min, duration 5-7h
+    //                Lyumjev FDA NDA 761109: PD onset 15-17min, PD peak 120-174min, duration 4.6-7.3h
+    { displayName: "Fiasp", genericName: "insulin aspart (with niacinamide)", typicalOnsetMinutes: 16, typicalPeakMinutes: 91, typicalDurationHours: 5.0, isFasterActing: true, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 2017, manufacturer: "Novo Nordisk" },
+    { displayName: "Lyumjev", genericName: "insulin lispro-aabc", typicalOnsetMinutes: 15, typicalPeakMinutes: 120, typicalDurationHours: 4.6, isFasterActing: true, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 2020, manufacturer: "Eli Lilly" },
+    // Rapide — Endotext Table 3: lispro onset 23-27min peak 1-2h duration ~5h,
+    //          aspart onset 21min peak 1-3h duration ~5h, glulisine onset 15-30min peak 0.5-1h duration ~4h
+    //          Vidal: onset 5-15min, pic 1-3h, durée 3-5h
+    { displayName: "Humalog", genericName: "insulin lispro", typicalOnsetMinutes: 15, typicalPeakMinutes: 90, typicalDurationHours: 3.0, isFasterActing: false, isTraditionalRapidActing: true, isLongActing: false, approvalYear: 1996, manufacturer: "Eli Lilly" },
+    { displayName: "NovoRapid", genericName: "insulin aspart", typicalOnsetMinutes: 15, typicalPeakMinutes: 90, typicalDurationHours: 3.0, isFasterActing: false, isTraditionalRapidActing: true, isLongActing: false, approvalYear: 2000, manufacturer: "Novo Nordisk" },
+    { displayName: "Apidra", genericName: "insulin glulisine", typicalOnsetMinutes: 15, typicalPeakMinutes: 60, typicalDurationHours: 3.0, isFasterActing: false, isTraditionalRapidActing: true, isLongActing: false, approvalYear: 2004, manufacturer: "Sanofi" },
+    // Régulière — Endotext Table 3: onset ~1h, peak 2-4h, duration 5-8h
+    { displayName: "Humulin R", genericName: "regular human insulin", typicalOnsetMinutes: 30, typicalPeakMinutes: 150, typicalDurationHours: 5.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 1982, manufacturer: "Eli Lilly" },
+    { displayName: "Actrapid", genericName: "regular human insulin", typicalOnsetMinutes: 30, typicalPeakMinutes: 150, typicalDurationHours: 5.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 1991, manufacturer: "Novo Nordisk" },
+    // Intermédiaire (NPH) — Endotext Table 3: onset 1-2h, peak 4-10h, duration 14h+
+    //                        Basales → durée la plus longue → 24h
+    { displayName: "Humulin N", genericName: "NPH human insulin (isophane)", typicalOnsetMinutes: 90, typicalPeakMinutes: 420, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 1982, manufacturer: "Eli Lilly" },
+    { displayName: "Insulatard", genericName: "NPH human insulin (isophane)", typicalOnsetMinutes: 90, typicalPeakMinutes: 420, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 1991, manufacturer: "Novo Nordisk" },
+    // Longue durée — Lantus FDA: onset 1.5h, peakless, duration ~24h
+    { displayName: "Lantus", genericName: "insulin glargine U-100", typicalOnsetMinutes: 90, typicalPeakMinutes: null, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: true, approvalYear: 2000, manufacturer: "Sanofi" },
+    // Toujeo FDA: onset 6h, peakless, serum detectable beyond 36h → durée longue 36h
+    { displayName: "Toujeo", genericName: "insulin glargine U-300", typicalOnsetMinutes: 360, typicalPeakMinutes: null, typicalDurationHours: 36.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: true, approvalYear: 2015, manufacturer: "Sanofi" },
+    // Levemir — Endotext: onset 3-4h, peak 6-8h, duration up to 20-24h → longue 24h
+    { displayName: "Levemir", genericName: "insulin detemir", typicalOnsetMinutes: 180, typicalPeakMinutes: 420, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: true, approvalYear: 2004, manufacturer: "Novo Nordisk" },
+    // Tresiba FDA NDA 203314: onset 1h, peakless (GIRmax median 12h), duration ≥42h
+    { displayName: "Tresiba", genericName: "insulin degludec", typicalOnsetMinutes: 60, typicalPeakMinutes: null, typicalDurationHours: 42.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: true, approvalYear: 2013, manufacturer: "Novo Nordisk" },
+    // Basaglar — biosimilaire Lantus, PK/PD identique
+    { displayName: "Basaglar", genericName: "insulin glargine U-100 (biosimilar)", typicalOnsetMinutes: 90, typicalPeakMinutes: null, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: true, approvalYear: 2015, manufacturer: "Eli Lilly" },
+    // Pré-mélangées — profil biphasique, durée longue (composante protamine) → 22-24h
+    { displayName: "Humalog Mix 25", genericName: "insulin lispro 25% / lispro protamine 75%", typicalOnsetMinutes: 15, typicalPeakMinutes: 120, typicalDurationHours: 22.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 1999, manufacturer: "Eli Lilly" },
+    { displayName: "NovoMix 30", genericName: "insulin aspart 30% / aspart protamine 70%", typicalOnsetMinutes: 15, typicalPeakMinutes: 120, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 2000, manufacturer: "Novo Nordisk" },
+    // Concentrée — durée longue (effet dépôt) → 24h
+    { displayName: "Humulin R U-500", genericName: "regular human insulin concentrated", typicalOnsetMinutes: 30, typicalPeakMinutes: 240, typicalDurationHours: 24.0, isFasterActing: false, isTraditionalRapidActing: false, isLongActing: false, approvalYear: 1994, manufacturer: "Eli Lilly" },
+  ]
+
+  for (const insulin of insulinCatalog) {
+    await prisma.insulinCatalog.upsert({
+      where: { displayName: insulin.displayName },
+      update: insulin,
+      create: insulin,
+    })
+  }
+  console.log(`  ✓ ${insulinCatalog.length} insulins seeded`)
+
   // ─── 1. Users (5) ─────────────────────────────────────────
   // NOTE: In production, firstname/lastname/email must be encrypted.
   // Seeds use plaintext for readability — this is dev-only data.
