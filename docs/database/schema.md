@@ -862,16 +862,18 @@ Catalogue de référence des insulines commerciales avec leurs propriétés phar
 
 **Données préremplies (seed)** — 17 insulines réparties en 7 catégories :
 
-| Catégorie | Insulines | Onset | Pic | Durée |
-|-----------|-----------|-------|-----|-------|
-| Ultra-rapide | Fiasp, Lyumjev | 3-5 min | 57-63 min | 5h |
-| Rapide | Humalog, NovoRapid, Apidra | 15 min | 60-75 min | 4-5h |
-| Régulière | Humulin R, Actrapid | 30 min | 150 min | 8h |
-| Intermédiaire (NPH) | Humulin N, Insulatard | 90 min | 360 min | 16h |
-| Longue durée | Lantus, Toujeo, Tresiba, Basaglar | 60-360 min | sans pic | 24-42h |
-| Longue durée (avec pic) | Levemir | 90 min | 480 min | 20h |
-| Pré-mélangée | Humalog Mix 25, NovoMix 30 | 15 min | 120 min | 22-24h |
-| Concentrée | Humulin R U-500 | 30 min | 240 min | 21h |
+| Catégorie | Insulines | Onset (PD) | Pic (PD) | Durée | Règle |
+|-----------|-----------|-----------|----------|-------|-------|
+| Ultra-rapide | Fiasp, Lyumjev | 15-16 min | 91-120 min | 4.6-5.0h | Courte |
+| Rapide | Humalog, NovoRapid, Apidra | 15 min | 60-90 min | 3.0h | Courte |
+| Régulière | Humulin R, Actrapid | 30 min | 150 min | 5.0h | Courte |
+| Intermédiaire (NPH) | Humulin N, Insulatard | 90 min | 420 min | 24.0h | Longue |
+| Longue durée | Lantus, Basaglar | 90 min | sans pic | 24.0h | Longue |
+| Longue durée | Toujeo (U-300) | 360 min | sans pic | 36.0h | Longue |
+| Longue durée | Levemir | 180 min | 420 min | 24.0h | Longue |
+| Ultra-longue | Tresiba | 60 min | sans pic | 42.0h | Longue |
+| Pré-mélangée | Humalog Mix 25, NovoMix 30 | 15 min | 120 min | 22-24h | Longue |
+| Concentrée | Humulin R U-500 | 30 min | 240 min | 24.0h | Longue |
 
 **Règles métier**:
 - Table en lecture seule — les utilisateurs ne peuvent pas ajouter d'insulines via l'API.
@@ -880,10 +882,18 @@ Catalogue de référence des insulines commerciales avec leurs propriétés phar
 - `typicalDurationHours` alimente le calcul IOB (Insulin On Board) dans `insulin.service.ts`.
 - Pour les insulines sans pic (`typicalPeakMinutes = NULL`), le modèle IOB doit utiliser une courbe de décroissance plate.
 
-**Sources cliniques**:
-- FDA prescribing information (labels officiels)
-- Heise et al., Diabetes Obes Metab 2017 (données Fiasp)
-- EMA EPAR (European Medicines Agency)
+**Convention durées** :
+- Insulines rapides/ultra-rapides : durée la plus **courte** de la plage documentée (sécurité IOB — éviter sous-estimation de l'insuline restante)
+- Insulines basales/longue durée : durée la plus **longue** de la plage documentée (couverture maximale)
+- Toutes les valeurs sont **pharmacodynamiques** (effet glycémique), pas pharmacocinétiques (concentration sérique)
+
+**Sources cliniques vérifiées** :
+- [Fiasp FDA DailyMed (NDA 208751)](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=834e7efc-393f-4c55-9125-628562a8a5cf) — onset PD 16-20min, peak PD 91-133min, duration 5-7h
+- [Lyumjev FDA DailyMed (NDA 761109)](https://dailymed.nlm.nih.gov/dailymed/fda/fdaDrugXsl.cfm?setid=c5a056e2-b568-4ca6-9ed8-79c010942d00) — onset PD 15-17min, peak PD 120-174min, duration 4.6-7.3h
+- [Tresiba FDA DailyMed (NDA 203314)](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=456c5e87-3dfd-46fa-8ac0-c6128d4c97c6) — duration ≥42h, half-life 25h
+- [Toujeo FDA DailyMed](https://dailymed.nlm.nih.gov/dailymed/drugInfo.cfm?setid=c9561d96-124d-48ca-982f-0aa1575bff36) — onset 6h, serum detectable beyond 36h
+- [Endotext Table 3 — Insulin Pharmacology (NCBI NBK278938)](https://www.ncbi.nlm.nih.gov/books/NBK278938/) — tableau comparatif toutes insulines
+- [Vidal — Fiasp](https://www.vidal.fr/actualites/22513-diabete-de-l-adulte-fiasp-insuline-asparte-nouvelle-insuline-d-action-rapide.html) — onset 5-15min, pic 1-3h, durée 3-5h
 
 ### Table: InsulinTherapySettings
 
