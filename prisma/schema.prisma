@@ -542,8 +542,29 @@ model BasalFlowSchedule {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 5. DOMAINE INSULINOTHERAPIE (10 tables)
+// 5. DOMAINE INSULINOTHERAPIE (11 tables)
 // ═══════════════════════════════════════════════════════════════
+
+/// Catalogue de reference des insulines commerciales et leurs proprietes pharmacocinetiques.
+/// Table en lecture seule peuplee par seed — utilisee pour selectionner l'insuline bolus/basale
+/// dans InsulinTherapySettings et pour informer les calculs de duree d'action.
+model InsulinCatalog {
+  id                       Int      @id @default(autoincrement())
+  displayName              String   @unique @map("display_name") @db.VarChar(100) // Nom commercial (ex: "Humalog", "Lantus")
+  genericName              String   @map("generic_name") @db.VarChar(100)          // DCI (ex: "insulin lispro", "insulin glargine")
+  typicalOnsetMinutes      Int      @map("typical_onset_minutes")                  // Debut d'action en minutes (ex: 15 pour rapide, 60 pour lente)
+  typicalPeakMinutes       Int?     @map("typical_peak_minutes")                   // Pic d'action en minutes (null pour basales sans pic — ex: Tresiba)
+  typicalDurationHours     Decimal  @map("typical_duration_hours") @db.Decimal(4, 1) // Duree d'action en heures (ex: 4.0 pour rapide, 24.0 pour lente)
+  isFasterActing           Boolean  @default(false) @map("is_faster_acting")       // Ultra-rapide (Fiasp, Lyumjev) — onset < 10 min
+  isTraditionalRapidActing Boolean  @default(false) @map("is_traditional_rapid_acting") // Rapide classique (Humalog, NovoRapid, Apidra)
+  isLongActing             Boolean  @default(false) @map("is_long_acting")         // Basale longue duree (Lantus, Levemir, Tresiba)
+  approvalYear             Int?     @map("approval_year")                          // Annee d'approbation FDA/EMA (reference)
+  manufacturer             String?  @db.VarChar(100)                               // Fabricant (Eli Lilly, Novo Nordisk, Sanofi...)
+  isActive                 Boolean  @default(true) @map("is_active")               // Actif dans le catalogue (desactivable sans suppression)
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("insulin_catalog")
+}
 
 model InsulinTherapySettings {
   id                    Int                   @id @default(autoincrement())
