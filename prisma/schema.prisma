@@ -235,6 +235,7 @@ model User {
   auditLogs            AuditLog[]
   reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
   prescribedInsulins   PatientInsulin[]     @relation("PrescribedInsulins")
+  mydiabbyCredential   MyDiabbyCredential?
 
   @@index([createdAt])
   @@map("users")
@@ -1277,4 +1278,52 @@ model AuditLog {
   @@index([resource, resourceId, createdAt])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 13. MYDIABBY SYNC (recette uniquement — jamais en production)
+// ═══════════════════════════════════════════════════════════════
+
+/// Identifiants MyDiabby stockés pour la synchronisation automatique.
+/// Table utilisée UNIQUEMENT en environnement de recette (staging).
+/// Les identifiants (email, password) sont chiffrés AES-256-GCM.
+model MyDiabbyCredential {
+  id              Int       @id @default(autoincrement())
+  userId          Int       @unique @map("user_id")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mydiabbyUid     Int       @map("mydiabby_uid")
+  email           String                                    // Chiffré AES-256-GCM
+  password        String                                    // Chiffré AES-256-GCM
+  token           String?   @db.Text                        // JWT MyDiabby courant
+  refreshToken    String?   @map("refresh_token") @db.Text  // Refresh token MyDiabby
+  tokenExpiresAt  DateTime? @map("token_expires_at") @db.Timestamptz()
+  lastSyncAt      DateTime? @map("last_sync_at") @db.Timestamptz()
+  lastSequenceNum String?   @map("last_sequence_num")       // Pour sync différentielle
+  consecutiveErrors Int     @default(0) @map("consecutive_errors")
+  isActive        Boolean   @default(true) @map("is_active")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  syncLogs MyDiabbySyncLog[]
+
+  @@map("mydiabby_credentials")
+}
+
+/// Journal de chaque exécution de synchronisation MyDiabby.
+/// Permet le suivi et le diagnostic des imports.
+model MyDiabbySyncLog {
+  id              Int      @id @default(autoincrement())
+  credentialId    Int      @map("credential_id")
+  credential      MyDiabbyCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  status          String   @db.VarChar(20)                  // "success" | "error" | "partial"
+  cgmCount        Int      @default(0) @map("cgm_count")
+  glycemiaCount   Int      @default(0) @map("glycemia_count")
+  eventCount      Int      @default(0) @map("event_count")
+  profileUpdated  Boolean  @default(false) @map("profile_updated")
+  errorMessage    String?  @map("error_message") @db.Text
+  durationMs      Int      @map("duration_ms")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([credentialId, createdAt])
+  @@map("mydiabby_sync_logs")
 }
