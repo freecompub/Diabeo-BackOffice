@@ -1,8 +1,6 @@
-"use client"
-
 /**
- * Dashboard layout — sidebar + header + content area.
- * All pages under (dashboard) require authentication.
+ * Dashboard layout — sidebar + content area.
+ * Server component — Sidebar is a client component rendered within.
  */
 
 import { Sidebar } from "@/components/diabeo/Sidebar"

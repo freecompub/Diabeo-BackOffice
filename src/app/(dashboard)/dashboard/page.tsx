@@ -8,6 +8,7 @@
  * StatCard, AlertBanner, TirDonut, PatientCard.
  */
 
+import { useState } from "react"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import {
   StatCard,
@@ -15,6 +16,7 @@ import {
   AlertBanner,
   PatientCard,
 } from "@/components/diabeo"
+import { useRouter } from "next/navigation"
 import { Users, Activity, AlertTriangle, TrendingUp } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -40,10 +42,11 @@ const DEMO_ALERTS = [
   { id: 3, patient: "Patient DT1-007", type: "warning" as const, message: "TIR en baisse — 45% cette semaine" },
 ]
 
+// DEMO DATA — synthetic, no real PII
 const DEMO_PATIENTS = [
   {
     id: 1,
-    name: "Alice Dupont",
+    name: "Patient DT1-001",
     pathology: "DT1" as const,
     age: 34,
     lastGlucose: 127,
@@ -53,7 +56,7 @@ const DEMO_PATIENTS = [
   },
   {
     id: 2,
-    name: "Bob Martin",
+    name: "Patient DT2-002",
     pathology: "DT2" as const,
     age: 58,
     lastGlucose: 195,
@@ -63,7 +66,7 @@ const DEMO_PATIENTS = [
   },
   {
     id: 3,
-    name: "Claire Leroy",
+    name: "Patient DT1-003",
     pathology: "DT1" as const,
     age: 27,
     lastGlucose: 98,
@@ -74,6 +77,9 @@ const DEMO_PATIENTS = [
 ]
 
 export default function DashboardPage() {
+  const router = useRouter()
+  const [dismissedAlerts, setDismissedAlerts] = useState<Set<number>>(new Set())
+
   return (
     <>
       <DashboardHeader
@@ -122,12 +128,13 @@ export default function DashboardPage() {
                 <CardTitle className="text-base">Alertes recentes</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                {DEMO_ALERTS.map((alert) => (
+                {DEMO_ALERTS.filter((a) => !dismissedAlerts.has(a.id)).map((alert) => (
                   <AlertBanner
                     key={alert.id}
                     severity={alert.type === "hypo" ? "hypo" : alert.type === "hyper" ? "hyper" : "warning"}
                     title={`${alert.patient} — ${alert.message}`}
                     dismissible
+                    onDismiss={() => setDismissedAlerts((prev) => new Set(prev).add(alert.id))}
                   />
                 ))}
               </CardContent>
@@ -150,9 +157,7 @@ export default function DashboardPage() {
                       tirPercentage={patient.tir}
                       lastSync={patient.lastSync}
                       isActive={patient.isActive}
-                      onClick={() => {
-                        window.location.href = `/patients/${patient.id}`
-                      }}
+                      onClick={() => router.push(`/patients/${patient.id}`)}
                     />
                   ))}
                 </div>

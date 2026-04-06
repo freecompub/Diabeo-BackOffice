@@ -96,7 +96,7 @@ export function CgmChart({
           />
 
           <YAxis
-            domain={[40, 350]}
+            domain={[40, 400]}
             tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--color-border)" }}
@@ -110,7 +110,7 @@ export function CgmChart({
               const point = payload[0].payload as CgmDataPoint
               const color = getGlucoseColor(point.glucose, targetLow, targetHigh)
               return (
-                <div className="rounded-lg border border-[var(--color-border)] bg-white px-3 py-2 shadow-md">
+                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card,white)] px-3 py-2 shadow-md">
                   <p className="text-xs text-[var(--color-muted-foreground)]">{point.time}</p>
                   <p className="text-sm font-semibold" style={{ color }}>
                     {point.glucose} mg/dL
@@ -139,15 +139,43 @@ export function CgmChart({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-high)]" />
-          Eleve (&gt;{targetHigh})
+          Élevé (&gt;{targetHigh})
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-low)]" />
           Bas (&lt;{targetLow})
         </span>
       </div>
+
+      {/* Accessible data table for screen readers (sr-only) */}
+      <table className="sr-only" aria-label="Données glycémiques détaillées">
+        <thead>
+          <tr>
+            <th scope="col">Heure</th>
+            <th scope="col">Glycémie (mg/dL)</th>
+            <th scope="col">Zone</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.filter((_, i) => i % 6 === 0).map((point) => (
+            <tr key={point.time}>
+              <td>{point.time}</td>
+              <td>{point.glucose}</td>
+              <td>{getZoneLabel(point.glucose, targetLow, targetHigh)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
+}
+
+function getZoneLabel(value: number, low: number, high: number): string {
+  if (value < 54) return "Hypo sévère"
+  if (value < low) return "Hypo"
+  if (value <= high) return "Normal"
+  if (value <= 250) return "Élevé"
+  return "Hyper sévère"
 }
 
 function getGlucoseColor(value: number, low: number, high: number): string {

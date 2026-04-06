@@ -13,7 +13,6 @@
  */
 
 import { useState } from "react"
-import { useParams } from "next/navigation"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import {
   GlycemiaValue,
@@ -37,17 +36,15 @@ import {
 } from "lucide-react"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 
-// Demo patient data
+// DEMO DATA — synthetic, no real PII
 const DEMO_PATIENT = {
   id: 1,
-  name: "Alice Dupont",
+  name: "Patient DT1-001",
   age: 34,
   sex: "F",
   pathology: "DT1" as const,
   diagYear: 2015,
-  email: "alice.dupont@email.com",
-  phone: "06 12 34 56 78",
-  referent: "Dr Devemy — CH Lens",
+  referent: "Service diabétologie — CH Demo",
   lastGlucoseMgdl: 127,
   gmi: 7.1,
   cv: 34.2,
@@ -81,7 +78,6 @@ const DEMO_CGM = Array.from({ length: 288 }, (_, i) => {
 })
 
 export default function PatientDetailPage() {
-  const params = useParams()
   const [activeTab, setActiveTab] = useState("overview")
   const patient = DEMO_PATIENT
 
@@ -151,7 +147,7 @@ export default function PatientDetailPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Diagnostique</span>
+                      <span className="text-[var(--color-muted-foreground)]">Diagnostic</span>
                       <p className="mt-1 font-medium">{patient.diagYear}</p>
                     </div>
                     <div>

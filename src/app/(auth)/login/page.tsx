@@ -73,6 +73,11 @@ export default function LoginPage() {
     if (result.retryAfterSeconds) {
       setLockoutSeconds(result.retryAfterSeconds)
     }
+
+    // Focus first field on error for accessibility (WCAG 3.3.1)
+    if (!result.success) {
+      emailRef.current?.focus()
+    }
   }
 
   function formatLockoutTime(seconds: number): string {
@@ -163,7 +168,6 @@ export default function LoginPage() {
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
                   aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-                  tabIndex={-1}
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" aria-hidden="true" />

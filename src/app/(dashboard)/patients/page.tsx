@@ -27,6 +27,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, ChevronRight } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 interface PatientRow {
   id: number
@@ -39,15 +40,16 @@ interface PatientRow {
   isActive: boolean
 }
 
+// DEMO DATA — synthetic, no real PII
 const DEMO_PATIENTS: PatientRow[] = [
-  { id: 1, name: "Alice Dupont", pathology: "DT1", age: 34, lastGlucoseMgdl: 127, tirPercent: 75, lastSync: "2h", isActive: true },
-  { id: 2, name: "Bob Martin", pathology: "DT2", age: 58, lastGlucoseMgdl: 195, tirPercent: 52, lastSync: "30min", isActive: true },
-  { id: 3, name: "Claire Leroy", pathology: "DT1", age: 27, lastGlucoseMgdl: 98, tirPercent: 82, lastSync: "15min", isActive: true },
-  { id: 4, name: "David Moreau", pathology: "DT1", age: 41, lastGlucoseMgdl: 256, tirPercent: 38, lastSync: "1h", isActive: true },
-  { id: 5, name: "Emma Bernard", pathology: "GD", age: 32, lastGlucoseMgdl: 112, tirPercent: 71, lastSync: "45min", isActive: true },
-  { id: 6, name: "Fabien Petit", pathology: "DT2", age: 63, lastGlucoseMgdl: 68, tirPercent: 55, lastSync: "3h", isActive: true },
-  { id: 7, name: "Gaelle Robert", pathology: "DT1", age: 19, lastGlucoseMgdl: 145, tirPercent: 67, lastSync: "20min", isActive: true },
-  { id: 8, name: "Hugo Richard", pathology: "DT2", age: 55, lastGlucoseMgdl: null, tirPercent: null, lastSync: "7j", isActive: false },
+  { id: 1, name: "Patient DT1-001", pathology: "DT1", age: 34, lastGlucoseMgdl: 127, tirPercent: 75, lastSync: "2h", isActive: true },
+  { id: 2, name: "Patient DT2-002", pathology: "DT2", age: 58, lastGlucoseMgdl: 195, tirPercent: 52, lastSync: "30min", isActive: true },
+  { id: 3, name: "Patient DT1-003", pathology: "DT1", age: 27, lastGlucoseMgdl: 98, tirPercent: 82, lastSync: "15min", isActive: true },
+  { id: 4, name: "Patient DT1-004", pathology: "DT1", age: 41, lastGlucoseMgdl: 256, tirPercent: 38, lastSync: "1h", isActive: true },
+  { id: 5, name: "Patient GD-005", pathology: "GD", age: 32, lastGlucoseMgdl: 112, tirPercent: 71, lastSync: "45min", isActive: true },
+  { id: 6, name: "Patient DT2-006", pathology: "DT2", age: 63, lastGlucoseMgdl: 68, tirPercent: 55, lastSync: "3h", isActive: true },
+  { id: 7, name: "Patient DT1-007", pathology: "DT1", age: 19, lastGlucoseMgdl: 145, tirPercent: 67, lastSync: "20min", isActive: true },
+  { id: 8, name: "Patient DT2-008", pathology: "DT2", age: 55, lastGlucoseMgdl: null, tirPercent: null, lastSync: "7j", isActive: false },
 ]
 
 const PATHOLOGY_FILTERS = [
@@ -66,6 +68,7 @@ function getTirQuality(tir: number | null): "excellent" | "good" | "moderate" | 
 }
 
 export default function PatientsPage() {
+  const router = useRouter()
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
 
@@ -136,7 +139,17 @@ export default function PatientsPage() {
                 {filtered.map((patient) => (
                   <TableRow
                     key={patient.id}
-                    className="cursor-pointer hover:bg-[var(--color-muted)]"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/patients/${patient.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        router.push(`/patients/${patient.id}`)
+                      }
+                    }}
+                    className="cursor-pointer hover:bg-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    aria-label={`Voir le dossier de ${patient.name}`}
                   >
                     <TableCell>
                       <Link
@@ -192,8 +205,13 @@ export default function PatientsPage() {
                 ))}
                 {filtered.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-[var(--color-muted-foreground)]">
-                      Aucun patient trouve
+                    <TableCell
+                      colSpan={7}
+                      className="py-8 text-center text-[var(--color-muted-foreground)]"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      Aucun patient trouvé{search ? ` pour « ${search} »` : ""}
                     </TableCell>
                   </TableRow>
                 )}

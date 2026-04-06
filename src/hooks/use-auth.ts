@@ -3,17 +3,16 @@
 /**
  * Client-side authentication hook.
  *
- * Manages login/logout flow, JWT storage in httpOnly cookie (via API),
- * auto-refresh, and session timeout warning.
+ * JWT is stored server-side in an httpOnly cookie (set by the login API route).
+ * The client never sees or handles the token directly — this prevents XSS
+ * token exfiltration (CLAUDE.md: "JAMAIS localStorage ou cookies non-httpOnly").
+ *
+ * The browser automatically sends the cookie with every request via
+ * credentials: "include". The middleware reads the cookie and validates the JWT.
  */
 
 import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
-
-interface AuthUser {
-  id: number
-  role: string
-}
 
 interface LoginResult {
   success: boolean
@@ -53,11 +52,7 @@ export function useAuth() {
           }
         }
 
-        // Store token for API calls
-        if (data.token) {
-          sessionStorage.setItem("diabeo_token", data.token)
-        }
-
+        // JWT is set as httpOnly cookie by the server — no client-side storage
         router.push("/dashboard")
         return { success: true }
       } catch {
@@ -73,18 +68,13 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     try {
-      const token = sessionStorage.getItem("diabeo_token")
       await fetch("/api/auth/logout", {
         method: "POST",
-        headers: token
-          ? { Authorization: `Bearer ${token}` }
-          : {},
         credentials: "include",
       })
     } catch {
       // Logout even if API fails
     } finally {
-      sessionStorage.removeItem("diabeo_token")
       router.push("/login")
     }
   }, [router])
