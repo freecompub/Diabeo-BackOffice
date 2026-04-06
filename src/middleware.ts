@@ -86,6 +86,7 @@ export const config = {
     "/patients/:path*",
     "/analytics/:path*",
     "/documents/:path*",
+    "/medications/:path*",
     "/settings/:path*",
     "/import/:path*",
   ],

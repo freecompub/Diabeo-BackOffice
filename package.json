@@ -20,6 +20,7 @@
     "@prisma/client": "^7.6.0",
     "@upstash/redis": "^1.37.0",
     "bcryptjs": "^3.0.3",
+    "clamscan": "^2.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "jose": "^6.2.2",

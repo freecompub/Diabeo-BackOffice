@@ -1327,3 +1327,105 @@ model MyDiabbySyncLog {
   @@index([credentialId, createdAt])
   @@map("mydiabby_sync_logs")
 }
+
+// ═══════════════════════════════════════════════════════════════
+// 14. BDPM — Base de Données Publique des Médicaments (ANSM)
+// ═══════════════════════════════════════════════════════════════
+
+/// Spécialité pharmaceutique (médicament).
+/// Source : fichier CIS_bdpm.txt (~14 000 entrées).
+/// Licence Ouverte 2.0 — attribution ANSM/BDPM requise.
+model BdpmSpecialty {
+  id            Int      @id @default(autoincrement())
+  codeCIS       String   @unique @map("code_cis") @db.VarChar(8)
+  denomination  String   @db.Text
+  formePharma   String   @map("forme_pharma") @db.VarChar(200)
+  voiesAdmin    String   @map("voies_admin") @db.VarChar(500)
+  statutAMM     String   @map("statut_amm") @db.VarChar(100)
+  procedureAMM  String?  @map("procedure_amm") @db.VarChar(100)
+  etatComm      String?  @map("etat_comm") @db.VarChar(100)
+  dateAMM       DateTime? @map("date_amm") @db.Date
+  titulaires    String?  @db.Text
+  surveillance  Boolean  @default(false)
+  atcCode       String?  @map("atc_code") @db.VarChar(10)
+
+  presentations BdpmPresentation[]
+  compositions  BdpmComposition[]
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@index([denomination(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@index([atcCode])
+  @@index([statutAMM])
+  @@map("bdpm_specialties")
+}
+
+/// Présentation d'un médicament (boîte, conditionnement).
+/// Source : fichier CIS_CIP_bdpm.txt (~20 000 entrées).
+model BdpmPresentation {
+  id            Int      @id @default(autoincrement())
+  codeCIS       String   @map("code_cis") @db.VarChar(8)
+  codeCIP7      String?  @map("code_cip7") @db.VarChar(7)
+  codeCIP13     String   @unique @map("code_cip13") @db.VarChar(13)
+  libelle       String   @db.Text
+  statutAdmin   String?  @map("statut_admin") @db.VarChar(100)
+  etatComm      String?  @map("etat_comm") @db.VarChar(100)
+  tauxRemb      String?  @map("taux_remb") @db.VarChar(20)
+  prix          Decimal? @db.Decimal(10, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  specialty     BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
+
+  @@index([codeCIS])
+  @@map("bdpm_presentations")
+}
+
+/// Composition d'un médicament (substances actives).
+/// Source : fichier CIS_COMPO_bdpm.txt.
+model BdpmComposition {
+  id            Int      @id @default(autoincrement())
+  codeCIS       String   @map("code_cis") @db.VarChar(8)
+  substance     String   @db.VarChar(500)
+  codeSubstance String?  @map("code_substance") @db.VarChar(20)
+  dosage        String?  @db.VarChar(200)
+  reference     String?  @db.VarChar(200)
+  nature        String   @db.VarChar(5) // "SA" (substance active) ou "ST" (fraction thérapeutique)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  specialty     BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
+
+  @@index([codeCIS])
+  @@index([substance(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("bdpm_compositions")
+}
+
+/// Classification ATC (Anatomique Thérapeutique Chimique).
+/// Source : WHO / open-source GitHub scrape.
+model AtcClassification {
+  code       String   @id @db.VarChar(10)
+  level      Int      @db.SmallInt // 1-5
+  labelFr    String   @map("label_fr") @db.VarChar(300)
+  labelEn    String?  @map("label_en") @db.VarChar(300)
+  parentCode String?  @map("parent_code") @db.VarChar(10)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([parentCode])
+  @@index([labelFr(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("atc_classifications")
+}
+
+/// Journal d'import BDPM — traçabilité des mises à jour.
+model BdpmImportLog {
+  id               Int      @id @default(autoincrement())
+  version          String   @db.VarChar(50) // Date du fichier BDPM
+  specialtyCount   Int      @map("specialty_count")
+  presentCount     Int      @map("present_count")
+  compositionCount Int      @map("composition_count")
+  status           String   @db.VarChar(20) // "success" | "error"
+  errorMessage     String?  @map("error_message") @db.Text
+  durationMs       Int      @map("duration_ms")
+  antivirusPassed  Boolean  @default(false) @map("antivirus_passed")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@map("bdpm_import_logs")
+}

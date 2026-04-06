@@ -14,6 +14,7 @@ import {
   FileText,
   LogOut,
   Activity,
+  Pill,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
@@ -21,6 +22,7 @@ import { useAuth } from "@/hooks/use-auth"
 const navItems = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/patients", label: "Patients", icon: Users },
+  { href: "/medications", label: "Médicaments", icon: Pill },
   { href: "/analytics", label: "Analytics", icon: Activity },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/settings", label: "Paramètres", icon: Settings },
