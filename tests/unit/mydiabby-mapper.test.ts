@@ -59,6 +59,41 @@ describe("MyDiabby mapper", () => {
       expect(result.language).toBe("fr")
     })
 
+    it("maps sex F and languages en/ar correctly", () => {
+      const user = {
+        email: "test@example.com",
+        firstname: "Marie",
+        lastname: "Martin",
+        birthday: null,
+        sex: "F",
+        phone: null,
+        language: "en",
+        timezone: "Europe/London",
+        hasSignedTermsOfUse: false,
+        nirpp: "299099935248760",
+        nirpp_type: "nir",
+      } as unknown as MyDiabbyUser
+
+      const result = mapUser(user)
+
+      expect(result.sex).toBe("F")
+      expect(result.language).toBe("en")
+      expect(result.hasSignedTerms).toBe(false)
+      expect(result.nirpp).toBe("299099935248760")
+      expect(result.nirppType).toBe("nir")
+    })
+
+    it("maps Arabic language", () => {
+      const user = {
+        email: "test@example.com",
+        language: "ar",
+      } as unknown as MyDiabbyUser
+
+      const result = mapUser(user)
+
+      expect(result.language).toBe("ar")
+    })
+
     it("handles null/missing fields gracefully", () => {
       const user = {
         email: "test@example.com",
@@ -144,6 +179,28 @@ describe("MyDiabby mapper", () => {
       const result = mapCgmEntries(entries)
 
       expect(result[0].isManual).toBe(true)
+    })
+
+    it("accepts boundary value at exactly 20 mg/dL (0.20 g/L)", () => {
+      const entries: MyDiabbyCgmEntry[] = [
+        { date: "2024-12-05T10:00:00+01:00", value: "0.20" },
+      ]
+
+      const result = mapCgmEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].glucoseValue).toBeCloseTo(20)
+    })
+
+    it("accepts boundary value at exactly 600 mg/dL (6.00 g/L)", () => {
+      const entries: MyDiabbyCgmEntry[] = [
+        { date: "2024-12-05T10:00:00+01:00", value: "6.00" },
+      ]
+
+      const result = mapCgmEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].glucoseValue).toBeCloseTo(600)
     })
 
     it("filters out NaN values from corrupted data (M1 clinical safety)", () => {
@@ -298,6 +355,8 @@ describe("MyDiabby mapper", () => {
       expect(result.low).toBeCloseTo(69)
       expect(result.ok).toBeCloseTo(180)
       expect(result.high).toBeCloseTo(250)
+      expect(result.titrLow).toBeCloseTo(70)
+      expect(result.titrHigh).toBeCloseTo(140)
     })
   })
 
@@ -387,6 +446,40 @@ describe("MyDiabby mapper", () => {
       const result = mapSnackEntries(entries)
 
       expect(result).toHaveLength(0)
+    })
+
+    it("filters out NaN carb entries", () => {
+      const entries = [
+        { date: "2024-12-05T12:30:00+01:00", value: "invalid" },
+        { date: "2024-12-05T13:00:00+01:00", value: "30" },
+      ]
+
+      const result = mapSnackEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].carbsGrams).toBe(30)
+    })
+  })
+
+  describe("empty arrays", () => {
+    it("returns empty array for empty CGM input", () => {
+      expect(mapCgmEntries([])).toEqual([])
+    })
+
+    it("returns empty array for empty glycemia input", () => {
+      expect(mapGlycemiaEntries([])).toEqual([])
+    })
+
+    it("returns empty array for empty insulin flow input", () => {
+      expect(mapInsulinFlowEntries([])).toEqual([])
+    })
+
+    it("returns empty array for empty snack input", () => {
+      expect(mapSnackEntries([])).toEqual([])
+    })
+
+    it("returns empty array for empty basal schedule", () => {
+      expect(mapBasalSchedule([])).toEqual([])
     })
   })
 })
