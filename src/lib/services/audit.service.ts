@@ -47,6 +47,7 @@ export type AuditAction =
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"
+  | "IMPORT"
 
 /**
  * Audit resource type — describes what was acted upon.
@@ -64,6 +65,7 @@ export type AuditResource =
   | "ADJUSTMENT_PROPOSAL"
   | "MEDICAL_DOCUMENT"
   | "SESSION"
+  | "MYDIABBY_CREDENTIAL"
 
 /**
  * Audit log entry — parameters for logging an action.
