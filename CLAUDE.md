@@ -709,7 +709,7 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 - [ ] **Unifier CLINICAL_BOUNDS et INSULIN_BOUNDS** — deux constantes identiques dans `insulin.service.ts` et `insulin-therapy.service.ts`, risque de divergence
 - [ ] **Slot overlap detection ISF/ICR** — `createIsf`/`createIcr` n'empêchent pas les chevauchements horaires, risque de bolus calculé avec le mauvais ratio
 - [ ] **IOB (Insulin On Board) implémentation** — actuellement placeholder (`iobAdjustment = 0`), risque d'empilement insuline
-- [x] **Session revocation via Upstash Redis** — ~~le store in-memory ne fonctionne pas en multi-instance (Edge vs Node.js)~~ Corrigé : revocation.ts utilise Upstash Redis (HTTP/fetch, compatible Edge)
+- [x] **Session revocation via Upstash Redis** — ~~le store in-memory ne fonctionne pas en multi-instance (Edge vs Node.js)~~ Corrigé : revocation.ts utilise Upstash Redis (HTTP/fetch, compatible Edge). Fail-closed (HDS), bulk revocation, refresh endpoint protégé. Voir `docs/security/session-revocation.md`
 - [ ] **JWT court-lived (15min) + refresh token** — Réduire `TOKEN_EXPIRY` de 24h à 15min dans jwt.ts, defense-in-depth contre les pannes Redis. Nécessite coordination avec l'app iOS pour le flow refresh
 - [ ] **Rate limiting sur endpoints analytics et export** — calculs coûteux sans protection DoS
 - [ ] **Routes Phase 3 (CGM/events/analytics) : accès pro** — actuellement patient-only via `getOwnPatientId`, les soignants ne peuvent pas accéder aux données via ces routes
