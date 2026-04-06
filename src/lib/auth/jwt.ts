@@ -13,6 +13,8 @@ export interface JWTPayload {
   role: Role
   platform: "hc"
   sid: string
+  /** Set by jose on sign, extracted on verify — used for revocation TTL */
+  exp?: number
 }
 
 let cachedPrivateKey: CryptoKey | null = null
@@ -55,7 +57,11 @@ function validatePayload(payload: Record<string, unknown>): JWTPayload {
   if (typeof payload.sid !== "string" || !payload.sid) {
     throw new Error("Missing token session ID")
   }
-  return { sub, role: role as Role, platform: "hc", sid: payload.sid }
+  const exp = Number(payload.exp)
+  if (!Number.isFinite(exp) || exp <= 0) {
+    throw new Error("Missing token expiration")
+  }
+  return { sub, role: role as Role, platform: "hc", sid: payload.sid, exp }
 }
 
 export async function signJwt(payload: JWTPayload): Promise<string> {

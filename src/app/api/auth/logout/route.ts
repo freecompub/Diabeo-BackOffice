@@ -3,8 +3,8 @@ import {
   extractBearerToken,
   verifyJwt,
   invalidateSession,
-  revokeSession,
 } from "@/lib/auth"
+import { revokeSession } from "@/lib/auth/revocation"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 export async function POST(req: NextRequest) {
@@ -18,7 +18,10 @@ export async function POST(req: NextRequest) {
     const ctx = extractRequestContext(req)
 
     await invalidateSession(payload.sid)
-    revokeSession(payload.sid)
+    const ttlSeconds = payload.exp
+      ? payload.exp - Math.floor(Date.now() / 1000)
+      : 24 * 3600
+    await revokeSession(payload.sid, ttlSeconds)
 
     await auditService.log({
       userId: payload.sub,

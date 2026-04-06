@@ -15,7 +15,7 @@ export {
   recordFailedAttempt,
   clearAttempts,
 } from "./rate-limit"
-export { revokeSession } from "./revocation"
+export { revokeSession, isSessionRevoked } from "./revocation"
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 
