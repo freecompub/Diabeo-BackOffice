@@ -117,6 +117,31 @@ describe("Session revocation (Upstash Redis)", () => {
       process.env.UPSTASH_REDIS_REST_URL = savedUrl
       process.env.UPSTASH_REDIS_REST_TOKEN = savedToken
     })
+
+    it("clamps zero TTL to minimum 60 seconds", async () => {
+      mockSet.mockResolvedValue("OK")
+
+      await revokeSession("zero-ttl-sid", 0)
+
+      expect(mockSet).toHaveBeenCalledWith(
+        "diabeo:prod:revoked:zero-ttl-sid",
+        "1",
+        { ex: 60 },
+      )
+    })
+
+    it("handles very large TTL without overflow", async () => {
+      mockSet.mockResolvedValue("OK")
+
+      const result = await revokeSession("large-ttl-sid", 999999)
+
+      expect(result).toBe(true)
+      expect(mockSet).toHaveBeenCalledWith(
+        "diabeo:prod:revoked:large-ttl-sid",
+        "1",
+        { ex: 999999 },
+      )
+    })
   })
 
   describe("isSessionRevoked", () => {
@@ -144,6 +169,14 @@ describe("Session revocation (Upstash Redis)", () => {
 
       // Fail-closed: treat session as revoked when Redis is unavailable
       // This prevents revoked sessions from being accepted during outages
+      expect(result).toBe(true)
+    })
+
+    it("returns true for any non-null stored value (defensive)", async () => {
+      mockGet.mockResolvedValue("unexpected-value")
+
+      const result = await isSessionRevoked("any-sid")
+
       expect(result).toBe(true)
     })
 

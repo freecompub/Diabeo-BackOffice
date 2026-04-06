@@ -13,9 +13,12 @@ export default defineConfig({
       include: [
         "src/lib/services/**",
         "src/lib/crypto/**",
+        "src/lib/auth/**",
         "src/lib/statistics.ts",
         "src/lib/validators/**",
         "src/lib/proposal-algorithm.ts",
+        "src/lib/conversions.ts",
+        "src/lib/gdpr.ts",
       ],
       exclude: [
         "node_modules",
