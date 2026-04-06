@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   if (!isStagingEnv()) return stagingOnlyResponse()
 
   try {
-    requireRole(req, "DOCTOR")
+    const user = requireRole(req, "DOCTOR")
     const body = await req.json()
     const parsed = schema.safeParse(body)
 
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       )
     }
 
-    const result = await syncCredential(parsed.data.credentialId)
+    const result = await syncCredential(parsed.data.credentialId, user.id)
 
     return NextResponse.json({ success: true, result })
   } catch (error) {

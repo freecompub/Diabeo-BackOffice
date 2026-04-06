@@ -146,6 +146,20 @@ describe("MyDiabby mapper", () => {
       expect(result[0].isManual).toBe(true)
     })
 
+    it("filters out NaN values from corrupted data (M1 clinical safety)", () => {
+      const entries: MyDiabbyCgmEntry[] = [
+        { date: "2024-12-05T10:00:00+01:00", value: "N/A" },
+        { date: "2024-12-05T10:05:00+01:00", value: "" },
+        { date: "2024-12-05T10:10:00+01:00", value: "abc" },
+        { date: "2024-12-05T10:15:00+01:00", value: "1.20" }, // valid
+      ]
+
+      const result = mapCgmEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].glucoseValue).toBe(120)
+    })
+
     it("handles large batches", () => {
       const entries: MyDiabbyCgmEntry[] = Array.from({ length: 5000 }, (_, i) => ({
         date: `2024-12-05T${String(Math.floor(i / 60) % 24).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}:00+01:00`,
@@ -155,6 +169,67 @@ describe("MyDiabby mapper", () => {
       const result = mapCgmEntries(entries)
 
       expect(result).toHaveLength(5000)
+    })
+  })
+
+  describe("mapGlycemiaEntries", () => {
+    it("converts g/L to mg/dL", () => {
+      const entries = [
+        { date: "2024-12-05T08:00:00+01:00", value: "0.95" },
+      ]
+
+      const result = mapGlycemiaEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].glucoseValue).toBeCloseTo(95)
+    })
+
+    it("filters out NaN values", () => {
+      const entries = [
+        { date: "2024-12-05T08:00:00+01:00", value: "invalid" },
+        { date: "2024-12-05T09:00:00+01:00", value: "1.10" },
+      ]
+
+      const result = mapGlycemiaEntries(entries)
+
+      expect(result).toHaveLength(1)
+    })
+
+    it("filters values outside clinical bounds", () => {
+      const entries = [
+        { date: "2024-12-05T08:00:00+01:00", value: "0.05" }, // 5 mg/dL — too low
+        { date: "2024-12-05T09:00:00+01:00", value: "7.00" }, // 700 mg/dL — too high
+      ]
+
+      const result = mapGlycemiaEntries(entries)
+
+      expect(result).toHaveLength(0)
+    })
+  })
+
+  describe("mapInsulinFlowEntries", () => {
+    it("maps insulin flow entries", () => {
+      const entries = [
+        { date: "2024-12-05T12:00:00+01:00", value: "3.5", type: "bolus" },
+      ]
+
+      const result = mapInsulinFlowEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].value).toBe(3.5)
+      expect(result[0].type).toBe("bolus")
+    })
+
+    it("filters out NaN values", () => {
+      const entries = [
+        { date: "2024-12-05T12:00:00+01:00", value: "invalid" },
+        { date: "2024-12-05T13:00:00+01:00", value: "2.0" },
+      ]
+
+      const result = mapInsulinFlowEntries(entries)
+
+      expect(result).toHaveLength(1)
+      expect(result[0].value).toBe(2.0)
     })
   })
 

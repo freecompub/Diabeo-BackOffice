@@ -25,8 +25,8 @@ const PLATFORM = "dt0"
 const REQUEST_TIMEOUT_MS = 30_000
 
 function assertStagingEnv(): void {
-  if (process.env.APP_ENV === "production") {
-    throw new Error("[mydiabby-client] MyDiabby sync is disabled in production")
+  if (process.env.APP_ENV !== "staging") {
+    throw new Error("[mydiabby-client] MyDiabby sync is only available in staging")
   }
 }
 

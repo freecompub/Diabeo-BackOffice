@@ -38,9 +38,6 @@ export interface MappedUser {
   birthday: Date | null
   sex: Sex | null
   phone: string | null
-  address1: string | null
-  cp: string | null
-  city: string | null
   country: string | null
   language: Language
   timezone: string
@@ -57,9 +54,6 @@ export function mapUser(u: MyDiabbyUser): MappedUser {
     birthday: u.birthday ? new Date(u.birthday) : null,
     sex: mapSex(u.sex),
     phone: u.phone || null,
-    address1: u.address1 || null,
-    cp: u.cp || null,
-    city: u.city || null,
     country: u.country || null,
     language: mapLanguage(u.language),
     timezone: u.timezone || "Europe/Paris",
@@ -199,7 +193,7 @@ export function mapCgmEntries(entries: MyDiabbyCgmEntry[]): MappedCgmEntry[] {
 
   for (const entry of entries) {
     const mgdl = glToMgdl(entry.value)
-    if (mgdl < GLUCOSE_MIN_MGDL || mgdl > GLUCOSE_MAX_MGDL) continue
+    if (!Number.isFinite(mgdl) || mgdl < GLUCOSE_MIN_MGDL || mgdl > GLUCOSE_MAX_MGDL) continue
 
     mapped.push({
       timestamp: new Date(entry.date),
@@ -227,7 +221,7 @@ export function mapGlycemiaEntries(
 
   for (const entry of entries) {
     const mgdl = glToMgdl(entry.value)
-    if (mgdl < GLUCOSE_MIN_MGDL || mgdl > GLUCOSE_MAX_MGDL) continue
+    if (!Number.isFinite(mgdl) || mgdl < GLUCOSE_MIN_MGDL || mgdl > GLUCOSE_MAX_MGDL) continue
 
     mapped.push({
       timestamp: new Date(entry.date),
@@ -251,12 +245,14 @@ export interface MappedInsulinFlowEntry {
 export function mapInsulinFlowEntries(
   entries: MyDiabbyInsulinFlowEntry[],
 ): MappedInsulinFlowEntry[] {
-  return entries.map((e) => ({
-    timestamp: new Date(e.date),
-    value: parseFloat(e.value),
-    type: e.type || null,
-    subtype: e.subtype || null,
-  }))
+  return entries
+    .filter((e) => Number.isFinite(parseFloat(e.value)))
+    .map((e) => ({
+      timestamp: new Date(e.date),
+      value: safeParseFloat(e.value),
+      type: e.type || null,
+      subtype: e.subtype || null,
+    }))
 }
 
 // ── Snack/meal events mapping ──────────────────────────────
@@ -271,10 +267,10 @@ export function mapSnackEntries(
   entries: MyDiabbySnackEntry[],
 ): MappedMealEvent[] {
   return entries
-    .filter((e) => parseFloat(e.value) > 0)
+    .filter((e) => { const v = parseFloat(e.value); return Number.isFinite(v) && v > 0 })
     .map((e) => ({
       timestamp: new Date(e.date),
-      carbsGrams: parseFloat(e.value),
+      carbsGrams: safeParseFloat(e.value),
       period: e.period || null,
     }))
 }
@@ -291,7 +287,7 @@ export function mapBasalSchedule(
 ): MappedBasalSlot[] {
   return schedule.map((s) => ({
     startHour: Math.floor(parseInt(s.start, 10) / 3_600_000),
-    rate: parseFloat(s.rate),
+    rate: safeParseFloat(s.rate),
   }))
 }
 
@@ -307,7 +303,7 @@ export function mapIcrSchedule(
 ): MappedIcrSlot[] {
   return schedule.map((s) => ({
     startHour: Math.floor(parseInt(s.start, 10) / 3_600_000),
-    gramsPerUnit: parseFloat(s.rate),
+    gramsPerUnit: safeParseFloat(s.rate),
   }))
 }
 
@@ -323,7 +319,7 @@ export function mapIsfSchedule(
   schedule: Array<{ start: string; rate: string }>,
 ): MappedIsfSlot[] {
   return schedule.map((s) => {
-    const factorGl = parseFloat(s.rate)
+    const factorGl = safeParseFloat(s.rate)
     return {
       startHour: Math.floor(parseInt(s.start, 10) / 3_600_000),
       sensitivityFactorGl: factorGl,
@@ -335,5 +331,11 @@ export function mapIsfSchedule(
 // ── Helpers ────────────────────────────────────────────────
 
 function glToMgdl(glValue: string): number {
-  return parseFloat(glValue) * GL_TO_MGDL
+  const result = parseFloat(glValue) * GL_TO_MGDL
+  return Number.isFinite(result) ? result : NaN
+}
+
+function safeParseFloat(value: string): number {
+  const result = parseFloat(value)
+  return Number.isFinite(result) ? result : 0
 }

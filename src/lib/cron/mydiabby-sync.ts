@@ -2,10 +2,12 @@
  * MyDiabby hourly sync cron — staging only.
  *
  * Registers a setInterval that triggers syncAllAccounts() every hour.
- * The cron refuses to start if APP_ENV is "production".
+ * The cron only starts if APP_ENV === "staging" (explicit opt-in).
  *
- * This module should be imported once at app startup (e.g., in instrumentation.ts
- * or a custom server entry point) to register the interval.
+ * Limitations (acceptable for staging):
+ * - setInterval does not survive process restarts
+ * - No distributed lock (single-instance only)
+ * - For production-grade scheduling, use pg-boss or OS cron
  *
  * @see US-900 — Synchronisation des données depuis MyDiabby
  */
@@ -15,13 +17,14 @@ import { syncAllAccounts } from "@/lib/services/mydiabby-sync.service"
 const SYNC_INTERVAL_MS = 60 * 60 * 1000 // 1 hour
 
 let intervalId: ReturnType<typeof setInterval> | null = null
+let isRunning = false // Mutex to prevent overlapping runs
 
 /**
- * Start the hourly sync cron. No-op if already started or if in production.
+ * Start the hourly sync cron. No-op if already started or if not in staging.
  */
 export function startMyDiabbySyncCron(): void {
-  if (process.env.APP_ENV === "production") {
-    console.log("[mydiabby-cron] Disabled in production")
+  if (process.env.APP_ENV !== "staging") {
+    console.log("[mydiabby-cron] Disabled — only runs in staging (APP_ENV=staging)")
     return
   }
 
@@ -31,9 +34,6 @@ export function startMyDiabbySyncCron(): void {
   }
 
   console.log("[mydiabby-cron] Starting hourly sync")
-
-  // Run immediately on start, then every hour
-  runSync()
   intervalId = setInterval(runSync, SYNC_INTERVAL_MS)
 }
 
@@ -49,6 +49,13 @@ export function stopMyDiabbySyncCron(): void {
 }
 
 async function runSync(): Promise<void> {
+  // Mutex — skip if previous run is still active
+  if (isRunning) {
+    console.log("[mydiabby-cron] Skipping — previous sync still running")
+    return
+  }
+
+  isRunning = true
   try {
     const results = await syncAllAccounts()
     const successCount = results.filter((r) => r.status === "success").length
@@ -62,5 +69,7 @@ async function runSync(): Promise<void> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
     console.error("[mydiabby-cron] Sync failed:", msg)
+  } finally {
+    isRunning = false
   }
 }

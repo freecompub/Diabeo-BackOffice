@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 import { requireRole, AuthError } from "@/lib/auth"
 import { isStagingEnv, stagingOnlyResponse } from "@/lib/staging-guard"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { connectAccount } from "@/lib/services/mydiabby-sync.service"
 import { z } from "zod"
 
@@ -14,6 +15,13 @@ export async function POST(req: Request) {
 
   try {
     const user = requireRole(req, "DOCTOR")
+
+    // RGPD consent required before importing health data (M5 fix)
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
     const body = await req.json()
     const parsed = schema.safeParse(body)
 

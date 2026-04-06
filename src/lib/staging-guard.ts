@@ -6,7 +6,7 @@
 import { NextResponse } from "next/server"
 
 export function isStagingEnv(): boolean {
-  return process.env.APP_ENV !== "production"
+  return process.env.APP_ENV === "staging"
 }
 
 export function stagingOnlyResponse(): NextResponse {

@@ -42,6 +42,15 @@ import {
 import { auditService } from "./audit.service"
 
 const BATCH_SIZE = 1000
+const CRON_AUDIT_CONTEXT = {
+  ipAddress: "system:cron",
+  userAgent: "diabeo-cron/mydiabby-sync",
+}
+
+export interface AuditContext {
+  ipAddress?: string
+  userAgent?: string
+}
 
 export interface SyncResult {
   credentialId: number
@@ -55,8 +64,8 @@ export interface SyncResult {
 }
 
 function assertStagingEnv(): void {
-  if (process.env.APP_ENV === "production") {
-    throw new Error("[mydiabby-sync] Sync is disabled in production")
+  if (process.env.APP_ENV !== "staging") {
+    throw new Error("[mydiabby-sync] Sync is only available in staging")
   }
 }
 
@@ -70,6 +79,7 @@ export async function connectAccount(
   userId: number,
   email: string,
   password: string,
+  auditCtx: AuditContext = {},
 ): Promise<SyncResult> {
   assertStagingEnv()
 
@@ -88,8 +98,8 @@ export async function connectAccount(
       mydiabbyUid: authResult.data.uid,
       email: encryptField(email),
       password: encryptField(password),
-      token: authResult.token,
-      refreshToken: authResult.refresh_token,
+      token: encryptField(authResult.token),
+      refreshToken: encryptField(authResult.refresh_token),
       tokenExpiresAt: new Date(Date.now() + 24 * 3600_000), // 24h
       isActive: true,
     },
@@ -97,8 +107,8 @@ export async function connectAccount(
       mydiabbyUid: authResult.data.uid,
       email: encryptField(email),
       password: encryptField(password),
-      token: authResult.token,
-      refreshToken: authResult.refresh_token,
+      token: encryptField(authResult.token),
+      refreshToken: encryptField(authResult.refresh_token),
       tokenExpiresAt: new Date(Date.now() + 24 * 3600_000),
       isActive: true,
       consecutiveErrors: 0,
@@ -110,6 +120,7 @@ export async function connectAccount(
     action: "CREATE",
     resource: "MYDIABBY_CREDENTIAL",
     resourceId: String(credential.id),
+    ...auditCtx,
   })
 
   // Run initial sync
@@ -124,6 +135,7 @@ export async function connectAccount(
  */
 export async function syncCredential(
   credentialId: number,
+  userId?: number,
 ): Promise<SyncResult> {
   assertStagingEnv()
   const start = Date.now()
@@ -133,6 +145,28 @@ export async function syncCredential(
   })
   if (!credential || !credential.isActive) {
     throw new Error(`Credential ${credentialId} not found or inactive`)
+  }
+  // Ownership check — prevent IDOR
+  if (userId !== undefined && credential.userId !== userId) {
+    throw new Error("Credential does not belong to this user")
+  }
+
+  // Circuit breaker — deactivate after 5 consecutive failures (M6 fix)
+  if (credential.consecutiveErrors >= 5) {
+    await prisma.myDiabbyCredential.update({
+      where: { id: credentialId },
+      data: { isActive: false },
+    })
+    return {
+      credentialId,
+      status: "error",
+      cgmCount: 0,
+      glycemiaCount: 0,
+      eventCount: 0,
+      profileUpdated: false,
+      errorMessage: "Circuit breaker: deactivated after 5 consecutive failures",
+      durationMs: Date.now() - start,
+    }
   }
 
   try {
@@ -148,10 +182,11 @@ export async function syncCredential(
     // Sync profile
     const profileUpdated = await syncProfile(credential.userId, accountResp.user)
 
-    // Sync health data
+    // Sync health data — filter by lastSyncAt to avoid duplicates
     const healthResult = await syncHealthData(
       credential.userId,
       dataResp,
+      credential.lastSyncAt,
     )
 
     // Update credential state
@@ -233,9 +268,12 @@ export async function disconnectAccount(
 ): Promise<void> {
   assertStagingEnv()
 
-  await prisma.myDiabbyCredential.delete({
-    where: { id: credentialId },
+  const deleted = await prisma.myDiabbyCredential.deleteMany({
+    where: { id: credentialId, userId },
   })
+  if (deleted.count === 0) {
+    throw new Error("Credential not found or not owned by user")
+  }
 
   await auditService.log({
     userId,
@@ -290,29 +328,33 @@ async function ensureValidToken(
     password: string
   },
 ): Promise<string> {
-  // Token still valid (with 5min margin)
+  // Token still valid (with 5min margin) — decrypt from DB
   if (
     credential.token &&
     credential.tokenExpiresAt &&
     credential.tokenExpiresAt > new Date(Date.now() + 5 * 60_000)
   ) {
-    return credential.token
+    const decryptedToken = safeDecryptField(credential.token)
+    if (decryptedToken) return decryptedToken
   }
 
-  // Try refresh
+  // Try refresh with decrypted token
   if (credential.token) {
-    try {
-      const newToken = await refreshMyDiabbyToken(credential.token)
-      await prisma.myDiabbyCredential.update({
-        where: { id: credential.id },
-        data: {
-          token: newToken,
-          tokenExpiresAt: new Date(Date.now() + 24 * 3600_000),
-        },
-      })
-      return newToken
-    } catch {
-      // Refresh failed, try re-auth
+    const currentToken = safeDecryptField(credential.token)
+    if (currentToken) {
+      try {
+        const newToken = await refreshMyDiabbyToken(currentToken)
+        await prisma.myDiabbyCredential.update({
+          where: { id: credential.id },
+          data: {
+            token: encryptField(newToken),
+            tokenExpiresAt: new Date(Date.now() + 24 * 3600_000),
+          },
+        })
+        return newToken
+      } catch {
+        // Refresh failed, try re-auth
+      }
     }
   }
 
@@ -327,8 +369,8 @@ async function ensureValidToken(
   await prisma.myDiabbyCredential.update({
     where: { id: credential.id },
     data: {
-      token: authResult.token,
-      refreshToken: authResult.refresh_token,
+      token: encryptField(authResult.token),
+      refreshToken: encryptField(authResult.refresh_token),
       tokenExpiresAt: new Date(Date.now() + 24 * 3600_000),
     },
   })
@@ -342,11 +384,10 @@ async function syncProfile(
 ): Promise<boolean> {
   const mapped = mapUser(mydiabbyUser)
 
+  // Never overwrite email/emailHmac — this is the authentication identity (M2 fix)
   await prisma.user.update({
     where: { id: userId },
     data: {
-      email: encryptField(mapped.email),
-      emailHmac: hmacEmail(mapped.email),
       firstname: mapped.firstname ? encryptField(mapped.firstname) : null,
       lastname: mapped.lastname ? encryptField(mapped.lastname) : null,
       birthday: mapped.birthday,
@@ -422,6 +463,7 @@ async function syncProfile(
     resource: "USER",
     resourceId: String(userId),
     metadata: { source: "mydiabby", type: "profile_sync" },
+    ...CRON_AUDIT_CONTEXT,
   })
 
   return true
@@ -430,6 +472,7 @@ async function syncProfile(
 async function syncHealthData(
   userId: number,
   dataResp: import("@/types/mydiabby").MyDiabbyDataResponse,
+  lastSyncAt: Date | null,
 ): Promise<{ cgmCount: number; glycemiaCount: number; eventCount: number }> {
   const patient = await prisma.patient.findUnique({ where: { userId } })
   if (!patient) return { cgmCount: 0, glycemiaCount: 0, eventCount: 0 }
@@ -438,8 +481,12 @@ async function syncHealthData(
   let glycemiaCount = 0
   let eventCount = 0
 
-  // CGM entries
+  // Filter entries newer than lastSyncAt to avoid duplicates (C2 fix)
+  const cutoff = lastSyncAt ?? new Date(0)
+
+  // CGM entries — only new ones since last sync
   const cgmEntries = mapCgmEntries(dataResp.data.cgm)
+    .filter((e) => e.timestamp > cutoff)
   for (let i = 0; i < cgmEntries.length; i += BATCH_SIZE) {
     const batch = cgmEntries.slice(i, i + BATCH_SIZE)
     const result = await prisma.cgmEntry.createMany({
@@ -449,44 +496,50 @@ async function syncHealthData(
         timestamp: e.timestamp,
         isManual: e.isManual,
       })),
-      skipDuplicates: true,
     })
     cgmCount += result.count
   }
 
-  // Glycemia entries
+  // Glycemia entries — split DateTime into date + time (M3 fix)
   const glycEntries = mapGlycemiaEntries(dataResp.data.glycemia)
+    .filter((e) => e.timestamp > cutoff)
   for (let i = 0; i < glycEntries.length; i += BATCH_SIZE) {
     const batch = glycEntries.slice(i, i + BATCH_SIZE)
     const result = await prisma.glycemiaEntry.createMany({
       data: batch.map((e) => ({
         patientId: patient.id,
-        date: e.timestamp,
+        date: new Date(e.timestamp.toISOString().split("T")[0]), // date-only
+        time: e.timestamp, // time component
         glycemiaGl: e.glucoseValue / 100.0, // mg/dL → g/L
         glycemiaMgdl: e.glucoseValue,
       })),
-      skipDuplicates: true,
     })
     glycemiaCount += result.count
   }
 
-  // Insulin flow entries
+  // Insulin flow entries — aggregate by day (M4 fix)
   const flowEntries = mapInsulinFlowEntries(dataResp.data.insulinflow)
-  for (let i = 0; i < flowEntries.length; i += BATCH_SIZE) {
-    const batch = flowEntries.slice(i, i + BATCH_SIZE)
-    await prisma.insulinFlowEntry.createMany({
-      data: batch.map((e) => ({
+    .filter((e) => e.timestamp > cutoff)
+  // Group by date for daily totals
+  const flowByDay = new Map<string, number>()
+  for (const e of flowEntries) {
+    const dateKey = e.timestamp.toISOString().split("T")[0]
+    flowByDay.set(dateKey, (flowByDay.get(dateKey) ?? 0) + e.value)
+  }
+  for (const [dateKey, totalFlow] of flowByDay) {
+    await prisma.insulinFlowEntry.create({
+      data: {
         patientId: patient.id,
-        date: e.timestamp,
-        flow: e.value,
-      })),
-      skipDuplicates: true,
+        date: new Date(dateKey),
+        flow: totalFlow,
+      },
     })
-    eventCount += batch.length
+    eventCount++
   }
 
-  // Meal/snack events
+  // Meal/snack events — only new ones
   const mealEvents = mapSnackEntries(dataResp.data.snack)
+    .filter((e) => e.timestamp > cutoff)
   for (let i = 0; i < mealEvents.length; i += BATCH_SIZE) {
     const batch = mealEvents.slice(i, i + BATCH_SIZE)
     await prisma.diabetesEvent.createMany({
@@ -496,7 +549,6 @@ async function syncHealthData(
         eventDate: e.timestamp,
         carbohydrates: e.carbsGrams,
       })),
-      skipDuplicates: true,
     })
     eventCount += batch.length
   }
@@ -507,6 +559,7 @@ async function syncHealthData(
     resource: "CGM_ENTRY",
     resourceId: String(patient.id),
     metadata: { source: "mydiabby", cgmCount, glycemiaCount, eventCount },
+    ...CRON_AUDIT_CONTEXT,
   })
 
   return { cgmCount, glycemiaCount, eventCount }
