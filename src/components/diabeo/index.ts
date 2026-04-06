@@ -27,6 +27,12 @@ export type { PatientCardProps } from "./PatientCard"
 export { StatCard } from "./StatCard"
 export type { StatCardProps, TrendDirection } from "./StatCard"
 
+export { CgmChart } from "./CgmChart"
+
+export { Sidebar } from "./Sidebar"
+
+export { DashboardHeader } from "./DashboardHeader"
+
 export { ClinicalBadge } from "./ClinicalBadge"
 export type {
   ClinicalBadgeProps,

@@ -15,20 +15,35 @@ async function getPublicKey(): Promise<CryptoKey> {
 }
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
   // Skip auth routes — strip spoofed headers to prevent impersonation
-  if (request.nextUrl.pathname.startsWith("/api/auth/")) {
+  if (pathname.startsWith("/api/auth/")) {
     const headers = new Headers(request.headers)
     headers.delete("x-user-id")
     headers.delete("x-user-role")
     return NextResponse.next({ request: { headers } })
   }
 
-  const authHeader = request.headers.get("authorization")
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+  // Skip login page (public)
+  if (pathname === "/login" || pathname === "/reset-password") {
+    return NextResponse.next()
   }
 
-  const token = authHeader.slice(7)
+  // Extract token from Authorization header (API) or cookie (browser pages)
+  const authHeader = request.headers.get("authorization")
+  const cookieToken = request.cookies.get("diabeo_token")?.value
+  const token = authHeader?.startsWith("Bearer ")
+    ? authHeader.slice(7)
+    : cookieToken
+
+  if (!token) {
+    // API routes → 401 JSON; pages → redirect to login
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+    }
+    return NextResponse.redirect(new URL("/login", request.url))
+  }
 
   try {
     const key = await getPublicKey()
@@ -41,7 +56,10 @@ export async function middleware(request: NextRequest) {
     // Check session revocation via Upstash Redis
     const sid = typeof payload.sid === "string" ? payload.sid : undefined
     if (sid && await isSessionRevoked(sid)) {
-      return NextResponse.json({ error: "sessionRevoked" }, { status: 401 })
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json({ error: "sessionRevoked" }, { status: 401 })
+      }
+      return NextResponse.redirect(new URL("/login", request.url))
     }
 
     const requestHeaders = new Headers(request.headers)
@@ -54,10 +72,21 @@ export async function middleware(request: NextRequest) {
       ? (error as Error & { code: string }).code
       : undefined
     const errorKey = code === "ERR_JWT_EXPIRED" ? "tokenExpired" : "tokenInvalid"
-    return NextResponse.json({ error: errorKey }, { status: 401 })
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ error: errorKey }, { status: 401 })
+    }
+    return NextResponse.redirect(new URL("/login", request.url))
   }
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: [
+    "/api/:path*",
+    "/dashboard/:path*",
+    "/patients/:path*",
+    "/analytics/:path*",
+    "/documents/:path*",
+    "/settings/:path*",
+    "/import/:path*",
+  ],
 }
