@@ -60,7 +60,11 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
   const clam = await getClamAV()
 
   if (!clam) {
-    console.warn(`[antivirus] Skipping scan for ${filePath} — ClamAV not available`)
+    // Fail-closed in production — refuse to process without antivirus
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(`[antivirus] ClamAV unavailable in production — refusing to process ${filePath}`)
+    }
+    console.warn(`[antivirus] Skipping scan for ${filePath} — ClamAV not available (non-prod)`)
     return { scanned: false, clean: true, viruses: [] }
   }
 

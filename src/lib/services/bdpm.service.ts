@@ -20,6 +20,7 @@
 import { prisma } from "@/lib/db/client"
 import { scanFile } from "./antivirus.service"
 import { auditService } from "./audit.service"
+import { parseTsv, parseDate, parsePrice } from "./bdpm-parsers"
 import { writeFile, mkdir, unlink } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
@@ -55,6 +56,7 @@ export async function importBdpm(
   auditUserId: number,
 ): Promise<BdpmImportResult> {
   const start = Date.now()
+  const files: Record<string, string> = {}
 
   try {
     // Ensure download directory exists
@@ -63,7 +65,6 @@ export async function importBdpm(
     }
 
     // Download all files
-    const files: Record<string, string> = {}
     for (const [key, filename] of Object.entries(BDPM_FILES)) {
       const filePath = path.join(DOWNLOAD_DIR, filename)
       await downloadFile(filename, filePath)
@@ -71,14 +72,12 @@ export async function importBdpm(
     }
 
     // Antivirus scan all downloaded files
-    let allClean = true
+    let allScanned = true
     for (const filePath of Object.values(files)) {
       const scanResult = await scanFile(filePath)
+      if (!scanResult.scanned) allScanned = false
       if (!scanResult.clean) {
-        allClean = false
-        // Delete infected file immediately
-        await unlink(filePath).catch(() => {})
-        throw new Error(`Antivirus: fichier infecté détecté — ${filePath}: ${scanResult.viruses.join(", ")}`)
+        throw new Error("Antivirus: fichier suspect détecté — import annulé")
       }
     }
 
@@ -87,13 +86,12 @@ export async function importBdpm(
     const presentCount = await importPresentations(files.presentations)
     const compositionCount = await importCompositions(files.compositions)
 
-    // Log import
     const result: BdpmImportResult = {
       status: "success",
       specialtyCount,
       presentCount,
       compositionCount,
-      antivirusPassed: allClean,
+      antivirusPassed: allScanned,
       durationMs: Date.now() - start,
     }
 
@@ -102,18 +100,15 @@ export async function importBdpm(
     await auditService.log({
       userId: auditUserId,
       action: "IMPORT",
-      resource: "PATIENT", // Using existing type — BDPM import
+      resource: "MEDICATION",
       metadata: {
         source: "bdpm-ansm",
         specialtyCount,
         presentCount,
         compositionCount,
-        antivirusPassed: allClean,
+        antivirusPassed: allScanned,
       },
     })
-
-    // Cleanup downloaded files
-    await cleanupFiles(files)
 
     return result
   } catch (err) {
@@ -129,6 +124,9 @@ export async function importBdpm(
     }
     await logImport(result)
     return result
+  } finally {
+    // Always cleanup downloaded files (M6 fix)
+    await cleanupFiles(files)
   }
 }
 
@@ -153,26 +151,10 @@ async function downloadFile(filename: string, destPath: string): Promise<void> {
 
 // ── Parse TSV ──────────────────────────────────────────────
 
-function parseTsv(content: string): string[][] {
-  return content
-    .split("\n")
-    .filter((line) => line.trim().length > 0)
-    .map((line) => line.split("\t").map((field) => field.trim()))
-}
-
 async function readAndParse(filePath: string): Promise<string[][]> {
   const { readFile } = await import("fs/promises")
-  // BDPM files are typically latin-1 or UTF-8
-  let content: string
-  try {
-    content = await readFile(filePath, "utf-8")
-    // Check for encoding issues (common with latin-1 files)
-    if (content.includes("�")) {
-      content = await readFile(filePath, "latin1")
-    }
-  } catch {
-    content = await readFile(filePath, "latin1")
-  }
+  // BDPM files from ANSM are latin-1 (Windows-1252) encoded
+  const content = await readFile(filePath, "latin1")
   return parseTsv(content)
 }
 
@@ -253,64 +235,45 @@ async function importPresentations(filePath: string): Promise<number> {
 async function importCompositions(filePath: string): Promise<number> {
   const rows = await readAndParse(filePath)
 
-  // Delete existing compositions and re-insert (no unique key for upsert)
-  await prisma.bdpmComposition.deleteMany()
+  // Prepare all data first
+  const allData = rows
+    .filter((cols) => cols.length >= 4 && cols[0] && cols[3])
+    .map((cols) => ({
+      codeCIS: cols[0],
+      substance: cols[3] || "",
+      codeSubstance: cols[2] || null,
+      dosage: cols[4] || null,
+      reference: cols[5] || null,
+      nature: cols[1] || "SA",
+    }))
 
-  let count = 0
-  for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-    const batch = rows.slice(i, i + BATCH_SIZE)
-    const data = batch
-      .filter((cols) => cols.length >= 4 && cols[0] && cols[3])
-      .map((cols) => ({
-        codeCIS: cols[0],
-        substance: cols[3] || "",
-        codeSubstance: cols[2] || null,
-        dosage: cols[4] || null,
-        reference: cols[5] || null,
-        nature: cols[1] || "SA",
-      }))
+  // Get all valid specialty codes
+  const validCodes = new Set(
+    (await prisma.bdpmSpecialty.findMany({
+      select: { codeCIS: true },
+    })).map((s) => s.codeCIS),
+  )
 
-    // Filter out compositions referencing non-existent specialties
-    const validCodes = new Set(
-      (await prisma.bdpmSpecialty.findMany({
-        where: { codeCIS: { in: data.map((d) => d.codeCIS) } },
-        select: { codeCIS: true },
-      })).map((s) => s.codeCIS)
-    )
+  const validData = allData.filter((d) => validCodes.has(d.codeCIS))
 
-    const validData = data.filter((d) => validCodes.has(d.codeCIS))
+  // Atomic delete + insert in a single transaction (C2 fix)
+  return prisma.$transaction(async (tx) => {
+    await tx.bdpmComposition.deleteMany()
 
-    if (validData.length > 0) {
-      await prisma.bdpmComposition.createMany({ data: validData })
-      count += validData.length
+    let count = 0
+    for (let i = 0; i < validData.length; i += BATCH_SIZE) {
+      const batch = validData.slice(i, i + BATCH_SIZE)
+      await tx.bdpmComposition.createMany({ data: batch })
+      count += batch.length
     }
-  }
 
-  return count
+    return count
+  }, { timeout: 120_000 }) // 2min timeout for large datasets
 }
 
 // ── Helpers ────────────────────────────────────────────────
 
-function parseDate(dateStr: string | undefined): Date | null {
-  if (!dateStr) return null
-  // BDPM dates can be DD/MM/YYYY or YYYY-MM-DD
-  const parts = dateStr.split("/")
-  if (parts.length === 3) {
-    const [day, month, year] = parts
-    const d = new Date(`${year}-${month}-${day}`)
-    return isNaN(d.getTime()) ? null : d
-  }
-  const d = new Date(dateStr)
-  return isNaN(d.getTime()) ? null : d
-}
-
-function parsePrice(priceStr: string | undefined): number | null {
-  if (!priceStr) return null
-  // French format: "12,50" or "12.50"
-  const cleaned = priceStr.replace(",", ".").replace(/[^\d.]/g, "")
-  const price = parseFloat(cleaned)
-  return Number.isFinite(price) ? price : null
-}
+// parseDate, parsePrice, parseTsv are in bdpm-parsers.ts
 
 async function cleanupFiles(files: Record<string, string>): Promise<void> {
   for (const filePath of Object.values(files)) {

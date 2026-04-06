@@ -8,7 +8,7 @@
  * No medical advice or posology.
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -38,6 +38,7 @@ export default function MedicationsPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [lastImportDate, setLastImportDate] = useState<string | null>(null)
   const [hasSearched, setHasSearched] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const search = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -69,12 +70,12 @@ export default function MedicationsPage() {
     }
   }, [])
 
-  // Debounced search
+  // Debounced search — properly cancels previous timer
   const handleSearch = useCallback(
     (value: string) => {
       setQuery(value)
-      const timer = setTimeout(() => search(value), 300)
-      return () => clearTimeout(timer)
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => search(value), 300)
     },
     [search],
   )

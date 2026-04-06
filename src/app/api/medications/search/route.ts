@@ -1,24 +1,34 @@
 import { NextResponse } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { searchMedications, getLatestImportLog } from "@/lib/services/bdpm.service"
+import { z } from "zod"
+
+const searchSchema = z.object({
+  q: z.string().min(2).max(200),
+  atc: z.string().regex(/^[A-Z]\d{0,2}[A-Z]{0,2}\d{0,2}$/).optional(),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+})
 
 export async function GET(req: Request) {
   try {
     requireAuth(req)
 
     const url = new URL(req.url)
-    const query = url.searchParams.get("q") ?? ""
-    const atcCode = url.searchParams.get("atc") ?? undefined
-    const limit = Math.min(parseInt(url.searchParams.get("limit") ?? "20", 10), 50)
+    const parsed = searchSchema.safeParse({
+      q: url.searchParams.get("q") ?? "",
+      atc: url.searchParams.get("atc") || undefined,
+      limit: url.searchParams.get("limit") ?? "20",
+    })
 
-    if (query.length < 2 && !atcCode) {
+    if (!parsed.success) {
       return NextResponse.json(
-        { error: "validationFailed", details: { q: "Minimum 2 caractères" } },
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
         { status: 400 },
       )
     }
 
-    const results = await searchMedications(query, { atcCode, limit })
+    const { q, atc, limit } = parsed.data
+    const results = await searchMedications(q, { atcCode: atc, limit })
     const lastImport = await getLatestImportLog()
 
     return NextResponse.json({

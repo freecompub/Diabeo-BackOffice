@@ -66,6 +66,7 @@ export type AuditResource =
   | "MEDICAL_DOCUMENT"
   | "SESSION"
   | "MYDIABBY_CREDENTIAL"
+  | "MEDICATION"
 
 /**
  * Audit log entry — parameters for logging an action.
