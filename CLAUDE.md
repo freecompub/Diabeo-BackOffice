@@ -40,11 +40,19 @@ alignés entre les deux dépôts.
 diabeo-backoffice/
 ├── src/
 │   ├── app/                        # Next.js App Router
-│   │   ├── (auth)/                 # Pages auth (login, MFA)
-│   │   ├── (dashboard)/            # Pages protégées
-│   │   │   ├── patients/           # Module patients
-│   │   │   ├── users/              # Module utilisateurs
-│   │   │   └── audit/              # Module audit HDS
+│   │   ├── (auth)/                 # Layout auth (pages — login, reset, MFA)
+│   │   │   ├── login/
+│   │   │   │   └── page.tsx        # LoginForm (email/password, rate-limit visual)
+│   │   │   └── layout.tsx          # Centré, pas de sidebar
+│   │   ├── (dashboard)/            # Layout protégé (sidebar + main content)
+│   │   │   ├── page.tsx            # Dashboard principal (KPI, alertes, TIR)
+│   │   │   ├── patients/
+│   │   │   │   ├── page.tsx        # Patient list (search, filter pathology)
+│   │   │   │   └── [id]/
+│   │   │   │       └── page.tsx    # Patient detail (4 tabs: overview, glycemia, traitements, docs)
+│   │   │   ├── users/              # Module utilisateurs (Phase 3+)
+│   │   │   ├── audit/              # Module audit HDS (Phase 3+)
+│   │   │   └── layout.tsx          # Sidebar + DashboardHeader
 │   │   └── api/                    # API Routes Next.js
 │   │       ├── auth/               # Auth routes (JWT RS256)
 │   │       │   ├── login/          # POST — connexion
@@ -87,9 +95,14 @@ diabeo-backoffice/
 │   │       └── deletion.service.ts # Suppression cascade RGPD (Art. 17)
 │   ├── types/
 │   │   └── next-auth.d.ts          # Module augmentation NextAuth (User.role, JWT.role)
+│   ├── hooks/                      # Hooks React (Phase 8)
+│   │   └── useAuth.ts              # useAuth() — login/logout via httpOnly cookie
 │   └── components/                 # Composants React réutilisables
 │       ├── ui/                     # shadcn/ui (NE PAS MODIFIER)
-│       └── diabeo/                 # Composants métier Diabeo
+│       └── diabeo/                 # Composants métier Diabeo (Phase 8)
+│           ├── Sidebar.tsx         # Navigation sidebar (5 items + logout)
+│           ├── DashboardHeader.tsx # Page title + notifications + settings
+│           └── CgmChart.tsx        # Graphique CGM (recharts, target range, sr-only data)
 ├── prisma/
 │   ├── schema.prisma               # 48 tables × 11 domaines, 21 enums
 │   ├── migrations/                 # Migrations versionnées
@@ -696,6 +709,53 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 ### Infrastructure Phase 2
 - ✅ 149 tests Vitest (+ access control, CGM thresholds)
 - ✅ patientService étendu (getByUserId, getMedicalData, updateMedicalData)
+
+---
+
+## ✅ Phase 8 implémentée (Full UI — Pages & Composants)
+
+### Pages implémentées
+- ✅ `(auth)/login/page.tsx` — LoginForm (email/password, rate limiting visible, MFA prep, password toggle)
+- ✅ `(dashboard)/page.tsx` — Dashboard (4 KPI cards: patients total, actifs 24h, alerte grave, TIR moyen; alertes récentes, TIR donut, patients récents)
+- ✅ `(dashboard)/patients/page.tsx` — Patient list (search bar, filter by pathology DT1/DT2/GD, table avec glycemia color-coded verte/orange/rouge)
+- ✅ `(dashboard)/patients/[id]/page.tsx` — Patient detail (4 tabs: overview, glycémie CGM, traitements, documents médicaux)
+
+### Layouts & Navigation
+- ✅ `(auth)/layout.tsx` — Layout auth (centré, pas de sidebar, fond principal)
+- ✅ `(dashboard)/layout.tsx` — Layout protégé (Sidebar à gauche, DashboardHeader, main content responsive)
+- ✅ `Sidebar.tsx` — Navigation sidebar (5 items: Dashboard, Patients, Users, Audit, Logout) avec collapse mobile
+- ✅ `DashboardHeader.tsx` — Page header (title + notification bell + settings icon)
+
+### Composants métier (Phase 8)
+- ✅ `CgmChart.tsx` — Graphique CGM recharts (line chart, target range bande verte, seuils hypo/hyper, sr-only data table)
+- ✅ `GlycemiaValue.tsx` — Affichage glycémie (valeur + unité, couleur dynamique: green/orange/red)
+- ✅ `TirDonut.tsx` — Donut chart TIR (% en range / hypo / hyper, couleurs métier)
+- ✅ `ClinicalBadge.tsx` — Badge alerte (hypo, hyper, info, etc.)
+- ✅ `PatientRow.tsx` — Ligne table patients (pathology icon, glycemia, last CGM update)
+
+### Hooks (Phase 8)
+- ✅ `useAuth.ts` — Login/logout via httpOnly cookie (pas sessionStorage), redirect si token expiré
+- ✅ Cookie-based auth pour navigateur + Bearer header pour API
+- ✅ Token JWT stocké en httpOnly, secure, sameSite=Strict (XSS prevention)
+
+### Sécurité & Auth (Phase 8)
+- ✅ Middleware étendu — protège `/api/**` AND pages `/dashboard/**` (redirect /login si non auth)
+- ✅ httpOnly cookie JWT — XSS prevention, accès interdit au JavaScript client
+- ✅ Démo data synthétique (Patient DT1-001, etc.) — jamais de PII réelle
+- ✅ Rate limiting visible login — feedback utilisateur après 3 tentatives
+
+### UI Components (shadcn/ui installés)
+- ✅ Button, Card, Table, Input, Select, Badge, Dialog, DropdownMenu, AlertDialog, Tabs, Avatar, Tooltip (14 composants)
+- ✅ Design system "Sérénité Active" appliqué (teal #0D9488, corail #F97316, glycemia colors)
+- ✅ Tailwind CSS dark mode disabled (backoffice medical = light mode obligatoire)
+- ✅ Responsive mobile-first (priorité desktop pour backoffice médical)
+
+### Infrastructure Phase 8
+- ✅ 29 tests composants (GlycemiaValue, TirDonut, ClinicalBadge, Sidebar, CgmChart)
+- ✅ 7 tests E2E (Playwright) login flow
+- ✅ 412 tests au total (143 Phase 0 + 142 Phase 1 + 149 Phase 2 + 29 Phase 8)
+- ✅ recharts installed pour graphiques
+- ✅ @testing-library/react + jsdom pour tests composants
 
 ---
 

@@ -11,16 +11,16 @@
 
 ### Authentification
 
-| Code | HTTP | Description |
-|------|------|-------------|
-| invalidCredentials | 401 | Email ou mot de passe incorrect |
-| tokenExpired | 401 | JWT expire |
-| tokenInvalid | 401 | JWT invalide (signature, format) |
-| sessionRevoked | 401 | Session revoquee (logout) |
-| unauthorized | 401 | Pas de token fourni |
-| forbidden | 403 | Role insuffisant |
-| mfaRequired | 403 | MFA active mais pas verifie |
-| tooManyAttempts | 429 | Rate limit depasse |
+| Code | HTTP | Description | UI/Frontend handling |
+|------|------|-------------|---------------------|
+| invalidCredentials | 401 | Email ou mot de passe incorrect | LoginForm shows error badge, clears password, focus email |
+| tokenExpired | 401 | JWT expire | useAuth() initiates logout, redirect /login |
+| tokenInvalid | 401 | JWT invalide (signature, format) | useAuth() treats as sessionRevoked, force logout |
+| sessionRevoked | 401 | Session revoquee (logout) | useAuth() redirect /login, clear httpOnly cookie (browser) |
+| unauthorized | 401 | Pas de token fourni | useAuth() redirect /login, middleware intercepts dashboard pages |
+| forbidden | 403 | Role insuffisant | ClinicalBadge shows "Access Denied" red alert |
+| mfaRequired | 403 | MFA active mais pas verifie | LoginForm shows MFA input form (Phase 9) |
+| tooManyAttempts | 429 | Rate limit depasse (3 echecs) | LoginForm shows lockout timer (5/15/60min backoff), disabled submit |
 
 ### RGPD
 
@@ -62,6 +62,93 @@
 |------|------|-------------|
 | serverError | 500 | Erreur interne (details jamais exposes) |
 | serverUnavailable | 503 | Service temporairement indisponible |
+
+## Middleware Page Protection (Phase 8)
+
+### Comportement middleware étendu
+
+Depuis Phase 8, le middleware protège **à la fois** les API routes et les pages dashboard.
+
+**Matrice de protection:**
+
+| Path | JWT requis | Action si manquant | Redirect |
+|------|------------|--------------------|----------|
+| `/api/**` (sauf `/api/auth/*`) | Oui | NextResponse 401 | N/A (API) |
+| `/dashboard/**` | Oui | Redirect response | `/login?from=/dashboard/patients` |
+| `/(auth)/**` | Non | Accès direct | N/A |
+| `/login` | Non (logique interne) | Accès direct | N/A |
+
+**Code middleware:**
+```typescript
+// src/middleware.ts
+import { jwtVerify } from '@jose/jwt'
+
+const secretKey = new TextEncoder().encode(process.env.JWT_PUBLIC_KEY!)
+
+export async function middleware(req: Request) {
+  const token = req.cookies.get('authToken')?.value || 
+                req.headers.get('authorization')?.replace('Bearer ', '')
+
+  // Protège /dashboard/**
+  if (req.nextUrl.pathname.startsWith('/dashboard')) {
+    if (!token) {
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
+    try {
+      await jwtVerify(token, secretKey)
+    } catch {
+      return NextResponse.redirect(new URL('/login', req.url))
+    }
+  }
+
+  // Protège /api/** (sauf /api/auth/*)
+  if (req.nextUrl.pathname.startsWith('/api') && 
+      !req.nextUrl.pathname.startsWith('/api/auth')) {
+    if (!token) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    }
+    try {
+      await jwtVerify(token, secretKey)
+    } catch {
+      return NextResponse.json({ error: 'tokenInvalid' }, { status: 401 })
+    }
+  }
+
+  return NextResponse.next()
+}
+
+export const config = {
+  matcher: ['/dashboard/:path*', '/api/:path*']
+}
+```
+
+### httpOnly Cookie auth
+
+Token JWT stocké en httpOnly cookie (XSS protection):
+- Name: `authToken`
+- HttpOnly: `true` (JavaScript ne peut pas accéder)
+- Secure: `true` (HTTPS only)
+- SameSite: `Strict` (CSRF protection)
+- MaxAge: 86400s (24h, Phase 9: réduire à 900s + refresh token)
+
+**Login response (Set-Cookie header):**
+```
+Set-Cookie: authToken=eyJhbGc...; HttpOnly; Secure; SameSite=Strict; Max-Age=86400; Path=/
+```
+
+### useAuth Hook — Integration
+
+```typescript
+// Hook automatiquement gère les redirects
+const { user, isAuthenticated } = useAuth()
+
+if (!isAuthenticated) {
+  // Middleware aura déjà redirigé, mais hook peut être utilisé pour pre-render fallback
+  return <LoadingSpinner />
+}
+
+return <Dashboard user={user} />
+```
 
 ## Pattern d'erreur dans les routes
 
