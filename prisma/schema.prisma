@@ -564,6 +564,7 @@ model InsulinCatalog {
   manufacturer             String?  @db.VarChar(100)                               // Fabricant (Eli Lilly, Novo Nordisk, Sanofi...)
   isActive                 Boolean  @default(true) @map("is_active")               // Actif dans le catalogue (desactivable sans suppression)
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz()  // Audit: date correction donnees PK
 
   patientInsulins PatientInsulin[]
 
@@ -706,7 +707,7 @@ model BasalConfiguration {
   id             Int             @id @default(autoincrement())
   settingsId     Int             @unique @map("settings_id")
   configType     BasalConfigType @map("config_type")
-  insulinBrand   String          @map("insulin_brand") @db.VarChar(50)
+  // insulinBrand supprimé — l'insuline basale est maintenant dans InsulinTherapySettings.basalInsulinId → PatientInsulin → InsulinCatalog
   totalDailyDose Decimal?        @map("total_daily_dose") @db.Decimal(6, 2)
   morningDose    Decimal?        @map("morning_dose") @db.Decimal(5, 2)
   eveningDose    Decimal?        @map("evening_dose") @db.Decimal(5, 2)

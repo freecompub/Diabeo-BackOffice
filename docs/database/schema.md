@@ -404,6 +404,7 @@ Profil utilisateur avec authentification, rôle, et données personnelles chiffr
 - 1:N → `PushScheduledNotification`
 - 1:N → `AuditLog`
 - 1:N → `AdjustmentProposal` (via `reviewedBy`)
+- 1:N → `PatientInsulin` (via `prescribedBy` — insulines prescrites par ce médecin)
 
 | Colonne | Type | Nullable | Default | Chiffré | Description |
 |---------|------|----------|---------|---------|-------------|
@@ -721,6 +722,7 @@ Profil patient diabétique.
 - 1:1 → `PatientReferent`
 - 1:N → `MedicalDocument`
 - 1:N → `Appointment`
+- 1:N → `PatientInsulin` — insulines utilisées par le patient (avec historique)
 
 | Colonne | Type | Nullable | Default | Description |
 |---------|------|----------|---------|-------------|
@@ -850,7 +852,8 @@ Catalogue de référence des insulines commerciales avec leurs propriétés phar
 
 **Description**: Table en lecture seule préremplie par seed. Contient les 17 insulines commerciales disponibles avec leurs données pharmacocinétiques validées (sources FDA/EMA). Utilisée pour la sélection de l'insuline bolus/basale dans InsulinTherapySettings et pour informer les calculs de durée d'action (IOB).
 
-**Relations**: Aucune relation directe. Table de référence consultée par l'application.
+**Relations**:
+- 1:N → `PatientInsulin` — chaque insuline du catalogue peut être utilisée par plusieurs patients
 
 | Colonne | SQL name | Type PostgreSQL | Nullable | Default | Chiffré | Description |
 |---------|----------|-----------------|----------|---------|---------|-------------|
@@ -918,7 +921,8 @@ Insulines utilisées par un patient avec durée d'action personnalisable et hist
 - N:1 → `Patient`
 - N:1 → `InsulinCatalog` (référence pharmacocinétique)
 - N:1 → `User` (médecin prescripteur, optionnel)
-- 1:N → `InsulinTherapySettings` (comme bolus ou basal)
+- 0:1 → `InsulinTherapySettings` (comme `bolusInsulinId` — au plus 1 settings par patient)
+- 0:1 → `InsulinTherapySettings` (comme `basalInsulinId` — au plus 1 settings par patient)
 
 | Colonne | SQL name | Type PostgreSQL | Nullable | Default | Chiffré | Description |
 |---------|----------|-----------------|----------|---------|---------|-------------|
@@ -954,6 +958,19 @@ Insulines utilisées par un patient avec durée d'action personnalisable et hist
 const durationHours = patientInsulin.customDurationHours
   ?? patientInsulin.insulinCatalog.typicalDurationHours
 ```
+
+**Contraintes SQL** (voir `prisma/sql/patient_insulin_constraints.sql`) :
+- `patient_insulin_active_unique` — index unique partiel : `(patient_id, insulin_catalog_id, usage) WHERE is_active = true`
+- `patient_insulin_duration_check` — `customDurationHours` entre 0.5 et 48.0h
+- `patient_insulin_onset_check` — `customOnsetMinutes` entre 1 et 720 min
+- `trg_insulin_therapy_patient_match` — trigger vérifiant que `bolusInsulinId`/`basalInsulinId` appartiennent au même patient
+
+**Intégrité référentielle** :
+- `PatientInsulin → InsulinCatalog` : `onDelete: Restrict` (implicite) — une insuline du catalogue ne peut pas être supprimée si des patients l'utilisent. Utiliser `isActive = false` pour désactiver.
+- `PatientInsulin → Patient` : `onDelete: Cascade` — si le patient est supprimé, ses insulines le sont aussi.
+
+**Décision sécurité — champ `dosage`** :
+Le champ `dosage` contient des informations de posologie (ex: "18U le soir") qui sont des données cliniques. Décision : **non chiffré** car c'est une donnée de configuration (pas un identifiant personnel) et elle doit être lisible pour l'affichage direct dans l'interface. Le champ `notes` en revanche est chiffré car il peut contenir du texte libre avec des informations sensibles.
 
 ---
 
@@ -1151,7 +1168,7 @@ Configuration générale de l'insuline basale.
 | id | Int | N | autoincrement | Identifiant unique |
 | settingsId | Int | N | — | FK → `InsulinTherapySettings.id` (UNIQUE 1:1) |
 | configType | BasalConfigType | N | — | Type: pump, single_injection, split_injection |
-| insulinBrand | VarChar(50) | N | — | Marque insuline basale (ex: "Lantus", "Omnipod") |
+| ~~insulinBrand~~ | — | — | — | **Supprimé** — l'insuline basale est maintenant dans `InsulinTherapySettings.basalInsulinId → PatientInsulin → InsulinCatalog` |
 | totalDailyDose | Decimal(6,2) | Y | — | Dose basale quotidienne totale (U, ex: 15.5) |
 | morningDose | Decimal(5,2) | Y | — | Dose matin si split_injection (U, ex: 8.0) |
 | eveningDose | Decimal(5,2) | Y | — | Dose soir si split_injection (U, ex: 7.5) |
