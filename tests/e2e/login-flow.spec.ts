@@ -9,8 +9,8 @@ test.describe("Login page", () => {
   test("login page loads and contains form elements", async ({ page }) => {
     await page.goto("/login")
 
-    // Title
-    await expect(page.locator("text=Diabeo Backoffice")).toBeVisible()
+    // Title (use h1 to avoid matching <title> metadata)
+    await expect(page.locator("h1")).toContainText("Diabeo Backoffice")
 
     // Email input exists
     const emailInput = page.locator("#email")
