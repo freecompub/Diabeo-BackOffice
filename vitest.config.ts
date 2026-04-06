@@ -27,6 +27,8 @@ export default defineConfig({
         "src/components",
         "src/lib/services/mydiabby-client.service.ts",
         "src/lib/services/mydiabby-sync.service.ts",
+        "src/lib/services/bdpm.service.ts",
+        "src/lib/services/antivirus.service.ts",
         "src/lib/cron/**",
       ],
       thresholds: {
