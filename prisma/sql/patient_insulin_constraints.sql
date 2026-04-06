@@ -49,3 +49,26 @@ CREATE OR REPLACE TRIGGER trg_insulin_therapy_patient_match
 BEFORE INSERT OR UPDATE ON insulin_therapy_settings
 FOR EACH ROW
 EXECUTE FUNCTION check_insulin_therapy_patient_match();
+
+-- Trigger inverse : si patient_insulins.patient_id est modifié,
+-- vérifier que les insulin_therapy_settings liés sont toujours cohérents.
+CREATE OR REPLACE FUNCTION check_patient_insulin_patient_match()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF OLD.patient_id != NEW.patient_id THEN
+    IF EXISTS (
+      SELECT 1 FROM insulin_therapy_settings
+      WHERE (bolus_insulin_id = NEW.id OR basal_insulin_id = NEW.id)
+        AND patient_id != NEW.patient_id
+    ) THEN
+      RAISE EXCEPTION 'Cannot change patient_id on PatientInsulin (%) — still referenced by insulin_therapy_settings for patient %', NEW.id, OLD.patient_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE TRIGGER trg_patient_insulin_patient_match
+BEFORE UPDATE ON patient_insulins
+FOR EACH ROW
+EXECUTE FUNCTION check_patient_insulin_patient_match();

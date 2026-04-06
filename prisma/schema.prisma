@@ -161,6 +161,12 @@ enum AndroidPriority {
   high
 }
 
+enum InsulinUsage {
+  bolus
+  basal
+  both  // Pour les pré-mélangées (NovoMix, Humalog Mix)
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 1. DOMAINE UTILISATEUR & AUTHENTIFICATION (7 tables)
 // ═══════════════════════════════════════════════════════════════
@@ -568,6 +574,7 @@ model InsulinCatalog {
 
   patientInsulins PatientInsulin[]
 
+  @@index([isActive])
   @@map("insulin_catalog")
 }
 
@@ -592,19 +599,14 @@ model PatientInsulin {
 
   patient        Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
   insulinCatalog InsulinCatalog @relation(fields: [insulinCatalogId], references: [id])
-  prescriber     User?          @relation("PrescribedInsulins", fields: [prescribedBy], references: [id])
+  prescriber     User?          @relation("PrescribedInsulins", fields: [prescribedBy], references: [id], onDelete: SetNull)
   bolusSettings  InsulinTherapySettings[] @relation("BolusInsulinSettings")
   basalSettings  InsulinTherapySettings[] @relation("BasalInsulinSettings")
 
   @@index([patientId, isActive])
   @@index([patientId, insulinCatalogId])
+  @@index([patientId, startDate])
   @@map("patient_insulins")
-}
-
-enum InsulinUsage {
-  bolus
-  basal
-  both  // Pour les pré-mélangées (NovoMix, Humalog Mix)
 }
 
 model InsulinTherapySettings {
@@ -617,8 +619,8 @@ model InsulinTherapySettings {
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz()
 
   patient              Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  bolusInsulin         PatientInsulin?          @relation("BolusInsulinSettings", fields: [bolusInsulinId], references: [id])
-  basalInsulin         PatientInsulin?          @relation("BasalInsulinSettings", fields: [basalInsulinId], references: [id])
+  bolusInsulin         PatientInsulin?          @relation("BolusInsulinSettings", fields: [bolusInsulinId], references: [id], onDelete: SetNull)
+  basalInsulin         PatientInsulin?          @relation("BasalInsulinSettings", fields: [basalInsulinId], references: [id], onDelete: SetNull)
   glucoseTargets       GlucoseTarget[]
   iobSettings          IobSettings?
   extendedBolusSettings ExtendedBolusSettings?
