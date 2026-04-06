@@ -228,6 +228,7 @@ model User {
   pushScheduled        PushScheduledNotification[]
   auditLogs            AuditLog[]
   reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
+  prescribedInsulins   PatientInsulin[]     @relation("PrescribedInsulins")
 
   @@index([createdAt])
   @@map("users")
@@ -382,6 +383,7 @@ model Patient {
   referent              PatientReferent?
   documents             MedicalDocument[]
   appointments          Appointment[]
+  patientInsulins       PatientInsulin[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -563,20 +565,59 @@ model InsulinCatalog {
   isActive                 Boolean  @default(true) @map("is_active")               // Actif dans le catalogue (desactivable sans suppression)
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
+  patientInsulins PatientInsulin[]
+
   @@map("insulin_catalog")
+}
+
+/// Insulines utilisees par un patient avec duree d'action personnalisable.
+/// Historique conserve via startDate/endDate — un patient peut avoir plusieurs insulines actives.
+/// La duree d'action personnalisee (customDurationHours) override la duree du catalogue pour le calcul IOB.
+model PatientInsulin {
+  id                    Int       @id @default(autoincrement())
+  patientId             Int       @map("patient_id")
+  insulinCatalogId      Int       @map("insulin_catalog_id")
+  usage                 InsulinUsage                           // bolus, basal, ou both (pré-mélangées)
+  customDurationHours   Decimal?  @map("custom_duration_hours") @db.Decimal(4, 1) // Durée d'action personnalisée (override catalogue). Si null, utiliser catalogue.
+  customOnsetMinutes    Int?      @map("custom_onset_minutes") // Onset personnalisé (override catalogue). Si null, utiliser catalogue.
+  dosage                String?   @db.VarChar(100)             // Posologie libre (ex: "18U le soir", "6-8U avant repas")
+  isActive              Boolean   @default(true) @map("is_active")  // Actif dans le traitement actuel
+  startDate             DateTime  @default(now()) @map("start_date") @db.Date // Date de début d'utilisation
+  endDate               DateTime? @map("end_date") @db.Date         // Date de fin (null = en cours). Rempli quand on arrête une insuline.
+  prescribedBy          Int?      @map("prescribed_by")             // ID du médecin prescripteur (User.id, rôle DOCTOR)
+  notes                 String?                                     // Notes cliniques (chiffrées AES-256-GCM)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient        Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  insulinCatalog InsulinCatalog @relation(fields: [insulinCatalogId], references: [id])
+  prescriber     User?          @relation("PrescribedInsulins", fields: [prescribedBy], references: [id])
+  bolusSettings  InsulinTherapySettings[] @relation("BolusInsulinSettings")
+  basalSettings  InsulinTherapySettings[] @relation("BasalInsulinSettings")
+
+  @@index([patientId, isActive])
+  @@index([patientId, insulinCatalogId])
+  @@map("patient_insulins")
+}
+
+enum InsulinUsage {
+  bolus
+  basal
+  both  // Pour les pré-mélangées (NovoMix, Humalog Mix)
 }
 
 model InsulinTherapySettings {
   id                    Int                   @id @default(autoincrement())
   patientId             Int                   @unique @map("patient_id")
-  bolusInsulinBrand     String                @map("bolus_insulin_brand") @db.VarChar(50)
-  basalInsulinBrand     String?               @map("basal_insulin_brand") @db.VarChar(50)
-  insulinActionDuration Decimal               @default(4.0) @map("insulin_action_duration") @db.Decimal(4, 2)
+  bolusInsulinId        Int?                  @map("bolus_insulin_id")    // FK → PatientInsulin (insuline bolus active)
+  basalInsulinId        Int?                  @map("basal_insulin_id")    // FK → PatientInsulin (insuline basale active)
   deliveryMethod        InsulinDeliveryMethod @map("delivery_method")
   lastModified          DateTime              @default(now()) @map("last_modified") @db.Timestamptz()
   createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz()
 
   patient              Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  bolusInsulin         PatientInsulin?          @relation("BolusInsulinSettings", fields: [bolusInsulinId], references: [id])
+  basalInsulin         PatientInsulin?          @relation("BasalInsulinSettings", fields: [basalInsulinId], references: [id])
   glucoseTargets       GlucoseTarget[]
   iobSettings          IobSettings?
   extendedBolusSettings ExtendedBolusSettings?
