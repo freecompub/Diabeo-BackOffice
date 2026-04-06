@@ -44,7 +44,7 @@ describe("insulinTherapyService", () => {
       prismaMock.insulinTherapySettings.findUnique.mockResolvedValue({
         id: 1,
         patientId: 1,
-        bolusInsulinBrand: "humalog",
+        bolusInsulinId: 1,
         deliveryMethod: "pump",
         sensitivityFactors: [],
         carbRatios: [],
@@ -53,7 +53,7 @@ describe("insulinTherapyService", () => {
 
       const result = await insulinTherapyService.getSettings(1, 1)
       expect(result).not.toBeNull()
-      expect(result!.bolusInsulinBrand).toBe("humalog")
+      expect(result!.bolusInsulinId).toBe(1)
     })
 
     it("returns null when no settings", async () => {

@@ -28,7 +28,7 @@ ORM: Prisma 5+
 
 ## Aperçu global
 
-Le schéma Diabeo contient **49 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
+Le schéma Diabeo contient **50 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
 
 ### Principles architecturaux
 
@@ -45,7 +45,7 @@ Le schéma Diabeo contient **49 tables** réparties en **11 domaines métier**, 
 |---|---------|--------|------|
 | 1 | Utilisateur & Authentification | 7 | User, Account, Session, VerificationToken, UserUnitPreferences, UserNotifPreferences, UserPrivacySettings |
 | 2 | Patient & Données Médicales | 4 | Patient, PatientMedicalData, PatientAdministrative, PatientPregnancy |
-| 3 | Configuration Insulinothérapie | 9 | InsulinCatalog, InsulinTherapySettings, GlucoseTarget, IobSettings, ExtendedBolusSettings, InsulinSensitivityFactor, CarbRatio, BasalConfiguration, PumpBasalSlot |
+| 3 | Configuration Insulinothérapie | 10 | InsulinCatalog, PatientInsulin, InsulinTherapySettings, GlucoseTarget, IobSettings, ExtendedBolusSettings, InsulinSensitivityFactor, CarbRatio, BasalConfiguration, PumpBasalSlot |
 | 4 | Données de Glycémie & CGM | 7 | CgmEntry, GlycemiaEntry, DiabetesEvent, InsulinFlowEntry, InsulinFlowDeviceData, PumpEvent, AverageData |
 | 5 | Événements & Activités | 0 | Couvert par DiabetesEvent (domaine 4) |
 | 6 | Propositions d'Ajustement | 1 | AdjustmentProposal |
@@ -140,6 +140,17 @@ Usage: Mode d'administration de l'insuline (affecte la formule de calcul bolus).
 | manual | Injection manuelle | Bolus simple, pas d'extended bolus |
 
 **Stored in**: `InsulinTherapySettings.deliveryMethod`, `BolusCalculationLog.deliveryMethod`
+
+### InsulinUsage
+Usage: Rôle d'une insuline dans le traitement d'un patient.
+
+| Valeur | Signification | Exemple |
+|--------|---------------|---------|
+| bolus | Insuline pour bolus repas/correction | Humalog, NovoRapid, Fiasp |
+| basal | Insuline basale (couverture continue) | Lantus, Levemir, Tresiba |
+| both | Les deux (pré-mélangées) | NovoMix 30, Humalog Mix 25 |
+
+**Stored in**: `PatientInsulin.usage`
 
 ---
 
@@ -393,6 +404,7 @@ Profil utilisateur avec authentification, rôle, et données personnelles chiffr
 - 1:N → `PushScheduledNotification`
 - 1:N → `AuditLog`
 - 1:N → `AdjustmentProposal` (via `reviewedBy`)
+- 1:N → `PatientInsulin` (via `prescribedBy` — insulines prescrites par ce médecin)
 
 | Colonne | Type | Nullable | Default | Chiffré | Description |
 |---------|------|----------|---------|---------|-------------|
@@ -710,6 +722,7 @@ Profil patient diabétique.
 - 1:1 → `PatientReferent`
 - 1:N → `MedicalDocument`
 - 1:N → `Appointment`
+- 1:N → `PatientInsulin` — insulines utilisées par le patient (avec historique)
 
 | Colonne | Type | Nullable | Default | Description |
 |---------|------|----------|---------|-------------|
@@ -839,7 +852,8 @@ Catalogue de référence des insulines commerciales avec leurs propriétés phar
 
 **Description**: Table en lecture seule préremplie par seed. Contient les 17 insulines commerciales disponibles avec leurs données pharmacocinétiques validées (sources FDA/EMA). Utilisée pour la sélection de l'insuline bolus/basale dans InsulinTherapySettings et pour informer les calculs de durée d'action (IOB).
 
-**Relations**: Aucune relation directe. Table de référence consultée par l'application.
+**Relations**:
+- 1:N → `PatientInsulin` — chaque insuline du catalogue peut être utilisée par plusieurs patients
 
 | Colonne | SQL name | Type PostgreSQL | Nullable | Default | Chiffré | Description |
 |---------|----------|-----------------|----------|---------|---------|-------------|
@@ -895,16 +909,83 @@ Catalogue de référence des insulines commerciales avec leurs propriétés phar
 - [Endotext Table 3 — Insulin Pharmacology (NCBI NBK278938)](https://www.ncbi.nlm.nih.gov/books/NBK278938/) — tableau comparatif toutes insulines
 - [Vidal — Fiasp](https://www.vidal.fr/actualites/22513-diabete-de-l-adulte-fiasp-insuline-asparte-nouvelle-insuline-d-action-rapide.html) — onset 5-15min, pic 1-3h, durée 3-5h
 
+### Table: PatientInsulin
+
+Insulines utilisées par un patient avec durée d'action personnalisable et historique.
+
+**SQL name**: `patient_insulins`
+
+**Description**: Lie un patient à ses insulines du catalogue. Chaque patient peut avoir plusieurs insulines actives simultanément (typiquement une rapide + une basale). La durée d'action peut être personnalisée par le médecin pour ce patient spécifique (override du catalogue). L'historique est conservé via `startDate`/`endDate` — quand on change d'insuline, l'ancienne est désactivée (pas supprimée).
+
+**Relations**:
+- N:1 → `Patient`
+- N:1 → `InsulinCatalog` (référence pharmacocinétique)
+- N:1 → `User` (médecin prescripteur, optionnel)
+- 0:1 → `InsulinTherapySettings` (comme `bolusInsulinId` — au plus 1 settings par patient)
+- 0:1 → `InsulinTherapySettings` (comme `basalInsulinId` — au plus 1 settings par patient)
+
+| Colonne | SQL name | Type PostgreSQL | Nullable | Default | Chiffré | Description |
+|---------|----------|-----------------|----------|---------|---------|-------------|
+| id | id | SERIAL | Non | autoincrement | Non | Identifiant unique |
+| patientId | patient_id | INT | Non | — | Non | FK → `Patient.id` |
+| insulinCatalogId | insulin_catalog_id | INT | Non | — | Non | FK → `InsulinCatalog.id` — référence pharmacocinétique |
+| usage | usage | InsulinUsage | Non | — | Non | Rôle de l'insuline : `bolus`, `basal`, ou `both` (pré-mélangées) |
+| customDurationHours | custom_duration_hours | DECIMAL(4,1) | Oui | — | Non | Durée d'action personnalisée en heures. Si NULL, utiliser `InsulinCatalog.typicalDurationHours`. C'est cette valeur qui alimente le calcul IOB. |
+| customOnsetMinutes | custom_onset_minutes | INT | Oui | — | Non | Onset personnalisé en minutes. Si NULL, utiliser `InsulinCatalog.typicalOnsetMinutes`. |
+| dosage | dosage | VARCHAR(100) | Oui | — | Non | Posologie libre (ex: "18U le soir", "6-8U avant repas") |
+| isActive | is_active | BOOLEAN | Non | true | Non | Insuline active dans le traitement actuel. `false` = arrêtée. |
+| startDate | start_date | DATE | Non | now() | Non | Date de début d'utilisation |
+| endDate | end_date | DATE | Oui | — | Non | Date de fin d'utilisation. NULL = en cours. Rempli quand on arrête l'insuline. |
+| prescribedBy | prescribed_by | INT | Oui | — | Non | FK → `User.id` (rôle DOCTOR). Médecin ayant prescrit cette insuline. |
+| notes | notes | TEXT | Oui | — | **Oui** | Notes cliniques sur cette insuline pour ce patient. Chiffré AES-256-GCM. |
+| createdAt | created_at | TIMESTAMPTZ | Non | now() | Non | Date de création |
+| updatedAt | updated_at | TIMESTAMPTZ | Non | auto | Non | Date de dernière modification |
+
+**Contraintes et index**:
+- `(patient_id, is_active)` — index pour requête rapide des insulines actives d'un patient
+- `(patient_id, insulin_catalog_id)` — index pour vérification doublons
+
+**Règles métier**:
+- Un patient peut avoir plusieurs insulines actives simultanément (pas de maximum)
+- Quand on arrête une insuline, on met `isActive = false` et `endDate = today` (pas de suppression physique)
+- `customDurationHours` est prioritaire sur `InsulinCatalog.typicalDurationHours` pour le calcul IOB
+- Le patient ET le médecin peuvent modifier `customDurationHours`
+- `notes` est chiffré AES-256-GCM car peut contenir des informations cliniques sensibles
+
+**Calcul IOB** :
+```typescript
+// Résolution de la durée d'action pour un patient
+const durationHours = patientInsulin.customDurationHours
+  ?? patientInsulin.insulinCatalog.typicalDurationHours
+```
+
+**Contraintes SQL** (voir `prisma/sql/patient_insulin_constraints.sql`) :
+- `patient_insulin_active_unique` — index unique partiel : `(patient_id, insulin_catalog_id, usage) WHERE is_active = true`
+- `patient_insulin_duration_check` — `customDurationHours` entre 0.5 et 48.0h
+- `patient_insulin_onset_check` — `customOnsetMinutes` entre 1 et 720 min
+- `trg_insulin_therapy_patient_match` — trigger vérifiant que `bolusInsulinId`/`basalInsulinId` appartiennent au même patient
+
+**Intégrité référentielle** :
+- `PatientInsulin → InsulinCatalog` : `onDelete: Restrict` (implicite) — une insuline du catalogue ne peut pas être supprimée si des patients l'utilisent. Utiliser `isActive = false` pour désactiver.
+- `PatientInsulin → Patient` : `onDelete: Cascade` — si le patient est supprimé, ses insulines le sont aussi.
+
+**Décision sécurité — champ `dosage`** :
+Le champ `dosage` contient des informations de posologie (ex: "18U le soir") qui sont des données cliniques. Décision : **non chiffré** car c'est une donnée de configuration (pas un identifiant personnel) et elle doit être lisible pour l'affichage direct dans l'interface. Le champ `notes` en revanche est chiffré car il peut contenir du texte libre avec des informations sensibles.
+
+---
+
 ### Table: InsulinTherapySettings
 
-Configuration racine de l'insulinothérapie (marques insuline, type livraison, durée action).
+Configuration racine de l'insulinothérapie (insulines actives, type livraison).
 
 **SQL name**: `insulin_therapy_settings`
 
-**Description**: Configuration centrale pour chaque patient. Référence les marques d'insuline, le mode de livraison (pompe vs manual), et la durée d'action (IOB).
+**Description**: Configuration centrale par patient. Pointe vers les insulines bolus et basale actives du patient (via `PatientInsulin`), et définit le mode de livraison (pompe ou injection manuelle).
 
 **Relations**:
 - 1:1 → `Patient`
+- N:1 → `PatientInsulin` (insuline bolus active)
+- N:1 → `PatientInsulin` (insuline basale active)
 - 1:1 → `IobSettings`
 - 1:1 → `ExtendedBolusSettings`
 - 1:1 → `BasalConfiguration`
@@ -916,12 +997,13 @@ Configuration racine de l'insulinothérapie (marques insuline, type livraison, d
 |---------|------|----------|---------|-------------|
 | id | Int | N | autoincrement | Identifiant unique |
 | patientId | Int | N | — | FK → `Patient.id` (UNIQUE 1:1) |
-| bolusInsulinBrand | VarChar(50) | N | — | Marque insuline bolus (ex: "NovoLog", "Apidra", "Humalog") |
-| basalInsulinBrand | VarChar(50) | Y | — | Marque insuline basale si injection (ex: "Lantus", "Levemir") |
-| insulinActionDuration | Decimal(4,2) | N | 4.0 | Durée d'action insuline en heures (IOB, ex: 4.0 ou 6.0) |
+| bolusInsulinId | Int | Y | — | FK → `PatientInsulin.id` — insuline bolus active du patient |
+| basalInsulinId | Int | Y | — | FK → `PatientInsulin.id` — insuline basale active du patient |
 | deliveryMethod | InsulinDeliveryMethod | N | — | Méthode livraison: pump, manual |
 | lastModified | Timestamptz | N | now() | Date dernière modification config (audit) |
 | createdAt | Timestamptz | N | now() | Date création config |
+
+**Note** : `insulinActionDuration` a été supprimé — la durée d'action est maintenant dans `PatientInsulin.customDurationHours` (personnalisable par patient) avec fallback sur `InsulinCatalog.typicalDurationHours`.
 
 **Indexes**:
 - `PK: id`
@@ -1086,7 +1168,7 @@ Configuration générale de l'insuline basale.
 | id | Int | N | autoincrement | Identifiant unique |
 | settingsId | Int | N | — | FK → `InsulinTherapySettings.id` (UNIQUE 1:1) |
 | configType | BasalConfigType | N | — | Type: pump, single_injection, split_injection |
-| insulinBrand | VarChar(50) | N | — | Marque insuline basale (ex: "Lantus", "Omnipod") |
+| ~~insulinBrand~~ | — | — | — | **Supprimé** — l'insuline basale est maintenant dans `InsulinTherapySettings.basalInsulinId → PatientInsulin → InsulinCatalog` |
 | totalDailyDose | Decimal(6,2) | Y | — | Dose basale quotidienne totale (U, ex: 15.5) |
 | morningDose | Decimal(5,2) | Y | — | Dose matin si split_injection (U, ex: 8.0) |
 | eveningDose | Decimal(5,2) | Y | — | Dose soir si split_injection (U, ex: 7.5) |
@@ -2348,5 +2430,5 @@ await auditService.log({
 ---
 
 **Document généré**: 2026-04-01 — Phase 0 implémentée  
-**Statut**: ✅ Schéma complet (49 tables, 21 enums)  
+**Statut**: ✅ Schéma complet (50 tables, 22 enums)  
 **Prochaine mise à jour**: Après phases 3-7 (API CRUD complète)

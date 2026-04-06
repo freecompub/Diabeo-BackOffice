@@ -517,6 +517,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 # psql $DATABASE_URL < prisma/sql/audit_immutability.sql
 # psql $DATABASE_URL < prisma/sql/cgm_partitioning.sql
 # psql $DATABASE_URL < prisma/sql/basal_config_check.sql
+# psql $DATABASE_URL < prisma/sql/patient_insulin_constraints.sql
 
 # Déploiement OVHcloud
 ./deploy.sh update                     # Pull + migrate + restart services

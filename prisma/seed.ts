@@ -83,7 +83,7 @@ async function main() {
   for (const insulin of insulinCatalog) {
     await prisma.insulinCatalog.upsert({
       where: { displayName: insulin.displayName },
-      update: insulin,
+      update: {},  // Ne pas écraser les données PK en prod — reference data immuable
       create: insulin,
     })
   }
@@ -263,15 +263,30 @@ async function main() {
     })
   }
 
-  // ─── 7. Insulin therapy settings (DT1 — pump) ────────────
+  // ─── 7. Patient insulins + therapy settings (DT1 — pump) ──
+
+  // Create PatientInsulin entries first, then reference in settings
+  const novorapidCatalog = await prisma.insulinCatalog.findUnique({ where: { displayName: "NovoRapid" } })
+  const humalogCatalog = await prisma.insulinCatalog.findUnique({ where: { displayName: "Humalog" } })
+  const lantusCatalog = await prisma.insulinCatalog.findUnique({ where: { displayName: "Lantus" } })
+
+  const piDT1Bolus = await prisma.patientInsulin.upsert({
+    where: { id: -1 }, // force create
+    update: {},
+    create: {
+      patientId: patientDT1.id,
+      insulinCatalogId: novorapidCatalog!.id,
+      usage: "bolus",
+      customDurationHours: 4.0,
+    },
+  })
 
   const settingsDT1 = await prisma.insulinTherapySettings.upsert({
     where: { patientId: patientDT1.id },
     update: {},
     create: {
       patientId: patientDT1.id,
-      bolusInsulinBrand: "novorapid",
-      insulinActionDuration: 4.0,
+      bolusInsulinId: piDT1Bolus.id,
       deliveryMethod: InsulinDeliveryMethod.pump,
     },
   })
@@ -324,7 +339,7 @@ async function main() {
     update: {},
     create: {
       settingsId: settingsDT1.id, configType: BasalConfigType.pump,
-      insulinBrand: "novorapid", totalDailyDose: 18.6,
+      totalDailyDose: 18.6,
     },
   })
 
@@ -340,12 +355,34 @@ async function main() {
 
   // ─── 8. Insulin therapy settings (DT2 — manual) ──────────
 
+  const piDT2Bolus = await prisma.patientInsulin.upsert({
+    where: { id: -1 },
+    update: {},
+    create: {
+      patientId: patientDT2.id,
+      insulinCatalogId: humalogCatalog!.id,
+      usage: "bolus",
+      customDurationHours: 4.0,
+    },
+  })
+
+  const piDT2Basal = await prisma.patientInsulin.upsert({
+    where: { id: -1 },
+    update: {},
+    create: {
+      patientId: patientDT2.id,
+      insulinCatalogId: lantusCatalog!.id,
+      usage: "basal",
+    },
+  })
+
   const settingsDT2 = await prisma.insulinTherapySettings.upsert({
     where: { patientId: patientDT2.id },
     update: {},
     create: {
-      patientId: patientDT2.id, bolusInsulinBrand: "humalog",
-      basalInsulinBrand: "lantus", insulinActionDuration: 4.0,
+      patientId: patientDT2.id,
+      bolusInsulinId: piDT2Bolus.id,
+      basalInsulinId: piDT2Basal.id,
       deliveryMethod: InsulinDeliveryMethod.manual,
     },
   })
@@ -366,7 +403,7 @@ async function main() {
     update: {},
     create: {
       settingsId: settingsDT2.id, configType: BasalConfigType.single_injection,
-      insulinBrand: "lantus", dailyDose: 22,
+      dailyDose: 22,
     },
   })
 
