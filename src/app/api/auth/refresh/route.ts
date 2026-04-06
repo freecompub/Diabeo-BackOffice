@@ -5,6 +5,7 @@ import {
   getSession,
   signJwt,
 } from "@/lib/auth"
+import { isSessionRevoked } from "@/lib/auth/revocation"
 import { prisma } from "@/lib/db/client"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
@@ -16,6 +17,11 @@ export async function POST(req: NextRequest) {
     }
 
     const payload = await verifyJwtAllowExpired(token)
+
+    // Check Redis revocation before allowing refresh (defense-in-depth)
+    if (await isSessionRevoked(payload.sid)) {
+      return NextResponse.json({ error: "sessionRevoked" }, { status: 401 })
+    }
 
     // Check session is still valid in DB
     const session = await getSession(payload.sid)

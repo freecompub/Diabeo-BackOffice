@@ -3,8 +3,8 @@ import {
   extractBearerToken,
   verifyJwt,
   invalidateSession,
-  revokeSession,
 } from "@/lib/auth"
+import { revokeSession } from "@/lib/auth/revocation"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 export async function POST(req: NextRequest) {
@@ -18,7 +18,8 @@ export async function POST(req: NextRequest) {
     const ctx = extractRequestContext(req)
 
     await invalidateSession(payload.sid)
-    revokeSession(payload.sid)
+    const ttlSeconds = payload.exp - Math.floor(Date.now() / 1000)
+    const revoked = await revokeSession(payload.sid, ttlSeconds)
 
     await auditService.log({
       userId: payload.sub,
@@ -27,10 +28,16 @@ export async function POST(req: NextRequest) {
       resourceId: payload.sid,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
+      metadata: { revocationStatus: revoked ? "ok" : "failed" },
     })
 
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "tokenExpired" }, { status: 401 })
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("token")) {
+      return NextResponse.json({ error: "tokenExpired" }, { status: 401 })
+    }
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[auth/logout]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

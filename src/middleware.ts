@@ -38,9 +38,9 @@ export async function middleware(request: NextRequest) {
       audience: "diabeo-hc",
     })
 
-    // Validate sid before checking revocation
+    // Check session revocation via Upstash Redis
     const sid = typeof payload.sid === "string" ? payload.sid : undefined
-    if (sid && isSessionRevoked(sid)) {
+    if (sid && await isSessionRevoked(sid)) {
       return NextResponse.json({ error: "sessionRevoked" }, { status: 401 })
     }
 

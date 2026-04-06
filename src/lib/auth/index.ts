@@ -2,7 +2,7 @@ import type { Role } from "@prisma/client"
 import { hasMinRole } from "./rbac"
 
 export { signJwt, verifyJwt, verifyJwtAllowExpired } from "./jwt"
-export type { JWTPayload } from "./jwt"
+export type { JWTPayload, JWTSignPayload } from "./jwt"
 export { hasMinRole } from "./rbac"
 export {
   createSession,
@@ -15,7 +15,7 @@ export {
   recordFailedAttempt,
   clearAttempts,
 } from "./rate-limit"
-export { revokeSession } from "./revocation"
+export { revokeSession, isSessionRevoked } from "./revocation"
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 

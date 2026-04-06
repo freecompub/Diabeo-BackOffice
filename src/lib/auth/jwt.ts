@@ -8,11 +8,18 @@ const AUDIENCE = "diabeo-hc"
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 
-export interface JWTPayload {
+/** Payload fields set by the application when signing a JWT */
+export interface JWTSignPayload {
   sub: number
   role: Role
   platform: "hc"
   sid: string
+}
+
+/** Full payload returned after verifying a JWT (includes jose-set fields) */
+export interface JWTPayload extends JWTSignPayload {
+  /** Expiration timestamp (seconds since epoch) — set by jose, extracted on verify */
+  exp: number
 }
 
 let cachedPrivateKey: CryptoKey | null = null
@@ -55,10 +62,14 @@ function validatePayload(payload: Record<string, unknown>): JWTPayload {
   if (typeof payload.sid !== "string" || !payload.sid) {
     throw new Error("Missing token session ID")
   }
-  return { sub, role: role as Role, platform: "hc", sid: payload.sid }
+  const exp = Number(payload.exp)
+  if (!Number.isFinite(exp) || exp <= 0) {
+    throw new Error("Missing token expiration")
+  }
+  return { sub, role: role as Role, platform: "hc", sid: payload.sid, exp }
 }
 
-export async function signJwt(payload: JWTPayload): Promise<string> {
+export async function signJwt(payload: JWTSignPayload): Promise<string> {
   const key = await getPrivateKey()
   return new SignJWT({
     role: payload.role,
