@@ -1,0 +1,207 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Une erreur est survenue",
+    "retry": "Reessayer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "add": "Ajouter",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "search": "Rechercher",
+    "noResults": "Aucun resultat",
+    "noData": "Aucune donnee disponible",
+    "insufficientData": "Donnees insuffisantes",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Precedent",
+    "refresh": "Actualiser",
+    "export": "Exporter",
+    "logout": "Deconnexion",
+    "justNow": "A l'instant",
+    "ago": "Il y a {value}",
+    "yesterday": "Hier",
+    "minuteShort": "{count}min",
+    "hourShort": "{count}h",
+    "dayShort": "{count}j",
+    "noEvent": "aucun evenement",
+    "eventCount": "{count} evenement(s)"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "patients": "Patients",
+    "users": "Utilisateurs",
+    "audit": "Audit",
+    "settings": "Parametres",
+    "profile": "Mon profil",
+    "breadcrumb": "Fil d'Ariane",
+    "medications": "Medicaments",
+    "analytics": "Analytics",
+    "documents": "Documents",
+    "expandSidebar": "Agrandir la barre laterale",
+    "collapseSidebar": "Reduire la barre laterale",
+    "openNavigation": "Ouvrir la navigation",
+    "navigation": "Navigation",
+    "notifications": "Notifications"
+  },
+  "auth": {
+    "login": "Connexion",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublie ?",
+    "loginButton": "Se connecter",
+    "loginError": "Identifiants incorrects",
+    "rateLimited": "Trop de tentatives. Reessayez dans {minutes} min.",
+    "sessionExpired": "Votre session a expire. Veuillez vous reconnecter."
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "totalPatients": "Patients total",
+    "activePatients": "Actifs 24h",
+    "criticalAlerts": "Alertes graves",
+    "averageTir": "TIR moyen",
+    "recentAlerts": "Alertes recentes",
+    "recentPatients": "Patients recents",
+    "newEvent": "Nouvel evenement"
+  },
+  "patients": {
+    "title": "Patients",
+    "searchPlaceholder": "Rechercher un patient...",
+    "filterPathology": "Filtrer par pathologie",
+    "allPathologies": "Toutes les pathologies",
+    "dt1": "Diabete Type 1",
+    "dt2": "Diabete Type 2",
+    "gd": "Diabete gestationnel",
+    "lastReading": "Derniere mesure",
+    "noPatients": "Aucun patient trouve"
+  },
+  "patient": {
+    "overview": "Vue d'ensemble",
+    "glycemia": "Glycemie",
+    "treatments": "Traitements",
+    "documents": "Documents"
+  },
+  "glycemia": {
+    "veryLow": "Tres basse",
+    "low": "Basse",
+    "inRange": "Dans la cible",
+    "high": "Haute",
+    "veryHigh": "Tres haute",
+    "critical": "Critique",
+    "unit": {
+      "gl": "g/L",
+      "mgdl": "mg/dL",
+      "mmoll": "mmol/L"
+    },
+    "trend": {
+      "risingFast": "Glycemie en hausse rapide",
+      "rising": "Glycemie en hausse",
+      "stable": "Glycemie stable",
+      "falling": "Glycemie en baisse",
+      "fallingFast": "Glycemie en baisse rapide",
+      "unknown": "Tendance inconnue"
+    },
+    "zone": {
+      "veryLow": "hypoglycemie severe",
+      "low": "hypoglycemie",
+      "normal": "glycemie normale",
+      "high": "hyperglycemie",
+      "veryHigh": "hyperglycemie severe",
+      "critical": "glycemie critique, intervention requise"
+    }
+  },
+  "chart": {
+    "glucoseEvolution": "Evolution de la glycemie",
+    "readings": "Mesures",
+    "average": "Moyenne",
+    "doses": "Doses",
+    "showInsulin": "Afficher l'insuline",
+    "showEvents": "Afficher les evenements",
+    "showThresholds": "Afficher les seuils",
+    "hypoCount": "Hypoglycemies",
+    "lastHypo": "Derniere hypo",
+    "noHypo": "Aucune hypoglycemie",
+    "hour": "Heure",
+    "glucoseMgdl": "Glycemie (mg/dL)",
+    "zoneLabel": "Zone"
+  },
+  "tir": {
+    "title": "Temps dans la cible",
+    "inRange": "Dans la cible",
+    "belowRange": "Sous la cible",
+    "aboveRange": "Au-dessus de la cible",
+    "veryLow": "Tres bas",
+    "low": "Bas",
+    "high": "Haut",
+    "veryHigh": "Tres haut"
+  },
+  "insulin": {
+    "basal": "Basale",
+    "bolus": "Bolus",
+    "total": "Total insuline",
+    "ratio": "Ratio basal/bolus"
+  },
+  "period": {
+    "oneWeek": "1S",
+    "twoWeeks": "2S",
+    "oneMonth": "1M",
+    "threeMonths": "3M"
+  },
+  "metrics": {
+    "averageGlucose": "Glycemie moyenne",
+    "hba1c": "HbA1c estimee",
+    "hypoEvents": "Evenements hypo",
+    "timeInRange": "Temps dans la cible",
+    "cv": "Coefficient de variation",
+    "standardDeviation": "Ecart-type",
+    "dataCapture": "Capture des donnees",
+    "estimated": "estime",
+    "readings": "lectures",
+    "resumeMetrics": "Resume des metriques glycemiques",
+    "trendUp": "En hausse de {value}",
+    "trendDown": "En baisse de {value}",
+    "trendStable": "Stable",
+    "loadingMetric": "Chargement de la metrique",
+    "stability": {
+      "stable": "Stable",
+      "moderate": "Modere",
+      "unstable": "Instable"
+    },
+    "tir": {
+      "veryLow": "Tres bas",
+      "low": "Bas",
+      "inRange": "Dans la cible",
+      "high": "Haut",
+      "veryHigh": "Tres haut",
+      "distribution": "Distribution TIR"
+    }
+  },
+  "education": {
+    "averageGlucose": "La glycemie moyenne est calculee sur la periode selectionnee. Elle aide a evaluer le controle glycemique global.",
+    "hba1c": "L'HbA1c estimee est calculee a partir des donnees CGM. Elle donne une indication du controle glycemique sur les 3 derniers mois.",
+    "hypoEvents": "Nombre d'episodes hypoglycemiques detectes. Un episode est defini par une glycemie inferieure a {threshold} mg/dL.",
+    "timeInRange": "Le temps dans la cible (TIR) represente le pourcentage de temps passe entre {targetMin} et {targetMax} mg/dL. L'objectif recommande est >= 70%.",
+    "cv": "Le coefficient de variation mesure la variabilite glycemique. Un CV < 36% est considere comme stable.",
+    "standardDeviation": "L'ecart-type mesure la dispersion des valeurs glycemiques autour de la moyenne."
+  },
+  "emptyState": {
+    "noData": "Pas encore de donnees",
+    "noDataMessage": "Les donnees apparaitront ici une fois disponibles.",
+    "noSearchResults": "Aucun resultat",
+    "noSearchResultsMessage": "Essayez de modifier vos criteres de recherche.",
+    "error": "Erreur de chargement",
+    "errorMessage": "Impossible de charger les donnees. Veuillez reessayer.",
+    "insufficientData": "Donnees insuffisantes",
+    "insufficientDataMessage": "Au moins {threshold}% de capture est necessaire pour afficher ce rapport."
+  },
+  "alerts": {
+    "severeHypo": "Hypoglycemie severe",
+    "hypo": "Hypoglycemie",
+    "hyper": "Hyperglycemie",
+    "severeHyper": "Hyperglycemie severe",
+    "deviceDisconnected": "Appareil deconnecte",
+    "lowBattery": "Batterie faible"
+  }
+}

@@ -1,0 +1,207 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "confirm": "Confirm",
+    "search": "Search",
+    "noResults": "No results",
+    "noData": "No data available",
+    "insufficientData": "Insufficient data",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "refresh": "Refresh",
+    "export": "Export",
+    "logout": "Logout",
+    "justNow": "Just now",
+    "ago": "{value} ago",
+    "yesterday": "Yesterday",
+    "minuteShort": "{count}min",
+    "hourShort": "{count}h",
+    "dayShort": "{count}d",
+    "noEvent": "no event",
+    "eventCount": "{count} event(s)"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "patients": "Patients",
+    "users": "Users",
+    "audit": "Audit",
+    "settings": "Settings",
+    "profile": "My profile",
+    "breadcrumb": "Breadcrumb",
+    "medications": "Medications",
+    "analytics": "Analytics",
+    "documents": "Documents",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "openNavigation": "Open navigation",
+    "navigation": "Navigation",
+    "notifications": "Notifications"
+  },
+  "auth": {
+    "login": "Login",
+    "email": "Email address",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "loginButton": "Sign in",
+    "loginError": "Invalid credentials",
+    "rateLimited": "Too many attempts. Try again in {minutes} min.",
+    "sessionExpired": "Your session has expired. Please log in again."
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalPatients": "Total patients",
+    "activePatients": "Active 24h",
+    "criticalAlerts": "Critical alerts",
+    "averageTir": "Average TIR",
+    "recentAlerts": "Recent alerts",
+    "recentPatients": "Recent patients",
+    "newEvent": "New event"
+  },
+  "patients": {
+    "title": "Patients",
+    "searchPlaceholder": "Search for a patient...",
+    "filterPathology": "Filter by pathology",
+    "allPathologies": "All pathologies",
+    "dt1": "Type 1 Diabetes",
+    "dt2": "Type 2 Diabetes",
+    "gd": "Gestational Diabetes",
+    "lastReading": "Last reading",
+    "noPatients": "No patients found"
+  },
+  "patient": {
+    "overview": "Overview",
+    "glycemia": "Glycemia",
+    "treatments": "Treatments",
+    "documents": "Documents"
+  },
+  "glycemia": {
+    "veryLow": "Very low",
+    "low": "Low",
+    "inRange": "In range",
+    "high": "High",
+    "veryHigh": "Very high",
+    "critical": "Critical",
+    "unit": {
+      "gl": "g/L",
+      "mgdl": "mg/dL",
+      "mmoll": "mmol/L"
+    },
+    "trend": {
+      "risingFast": "Glucose rising fast",
+      "rising": "Glucose rising",
+      "stable": "Glucose stable",
+      "falling": "Glucose falling",
+      "fallingFast": "Glucose falling fast",
+      "unknown": "Unknown trend"
+    },
+    "zone": {
+      "veryLow": "severe hypoglycemia",
+      "low": "hypoglycemia",
+      "normal": "normal glucose",
+      "high": "hyperglycemia",
+      "veryHigh": "severe hyperglycemia",
+      "critical": "critical glucose, intervention required"
+    }
+  },
+  "chart": {
+    "glucoseEvolution": "Glucose evolution",
+    "readings": "Readings",
+    "average": "Average",
+    "doses": "Doses",
+    "showInsulin": "Show insulin",
+    "showEvents": "Show events",
+    "showThresholds": "Show thresholds",
+    "hypoCount": "Hypoglycemia events",
+    "lastHypo": "Last hypo",
+    "noHypo": "No hypoglycemia events",
+    "hour": "Hour",
+    "glucoseMgdl": "Glucose (mg/dL)",
+    "zoneLabel": "Zone"
+  },
+  "tir": {
+    "title": "Time in Range",
+    "inRange": "In range",
+    "belowRange": "Below range",
+    "aboveRange": "Above range",
+    "veryLow": "Very low",
+    "low": "Low",
+    "high": "High",
+    "veryHigh": "Very high"
+  },
+  "insulin": {
+    "basal": "Basal",
+    "bolus": "Bolus",
+    "total": "Total insulin",
+    "ratio": "Basal/bolus ratio"
+  },
+  "period": {
+    "oneWeek": "1W",
+    "twoWeeks": "2W",
+    "oneMonth": "1M",
+    "threeMonths": "3M"
+  },
+  "metrics": {
+    "averageGlucose": "Average glucose",
+    "hba1c": "Estimated HbA1c",
+    "hypoEvents": "Hypo events",
+    "timeInRange": "Time in range",
+    "cv": "Coefficient of variation",
+    "standardDeviation": "Standard deviation",
+    "dataCapture": "Data capture",
+    "estimated": "estimated",
+    "readings": "readings",
+    "resumeMetrics": "Glycemic metrics summary",
+    "trendUp": "Up {value}",
+    "trendDown": "Down {value}",
+    "trendStable": "Stable",
+    "loadingMetric": "Loading metric",
+    "stability": {
+      "stable": "Stable",
+      "moderate": "Moderate",
+      "unstable": "Unstable"
+    },
+    "tir": {
+      "veryLow": "Very low",
+      "low": "Low",
+      "inRange": "In range",
+      "high": "High",
+      "veryHigh": "Very high",
+      "distribution": "TIR distribution"
+    }
+  },
+  "education": {
+    "averageGlucose": "Average glucose is calculated over the selected period. It helps assess overall glycemic control.",
+    "hba1c": "Estimated HbA1c is calculated from CGM data. It gives an indication of glycemic control over the past 3 months.",
+    "hypoEvents": "Number of detected hypoglycemic episodes. An episode is defined as a glucose reading below {threshold} mg/dL.",
+    "timeInRange": "Time in Range (TIR) represents the percentage of time spent between {targetMin} and {targetMax} mg/dL. The recommended target is >= 70%.",
+    "cv": "The coefficient of variation measures glycemic variability. A CV < 36% is considered stable.",
+    "standardDeviation": "Standard deviation measures the dispersion of glucose values around the mean."
+  },
+  "emptyState": {
+    "noData": "No data yet",
+    "noDataMessage": "Data will appear here once available.",
+    "noSearchResults": "No results",
+    "noSearchResultsMessage": "Try adjusting your search criteria.",
+    "error": "Loading error",
+    "errorMessage": "Unable to load data. Please try again.",
+    "insufficientData": "Insufficient data",
+    "insufficientDataMessage": "At least {threshold}% data capture is required to display this report."
+  },
+  "alerts": {
+    "severeHypo": "Severe hypoglycemia",
+    "hypo": "Hypoglycemia",
+    "hyper": "Hyperglycemia",
+    "severeHyper": "Severe hyperglycemia",
+    "deviceDisconnected": "Device disconnected",
+    "lowBattery": "Low battery"
+  }
+}

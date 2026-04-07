@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 
 /**
  * Glycemia zone classification based on international consensus.
@@ -57,22 +58,18 @@ const DEFAULT_THRESHOLDS: Required<GlycemiaThresholds> = {
   critical: 400,
 }
 
-const ZONE_LABELS: Record<GlycemiaZone, string> = {
-  "very-low": "Hypo severe",
-  "low": "Hypo",
-  "normal": "Normal",
-  "high": "Hyper",
-  "very-high": "Hyper severe",
-  "critical": "Critique",
-}
-
-const ZONE_ARIA_LABELS: Record<GlycemiaZone, string> = {
-  "very-low": "Hypoglycemie severe",
-  "low": "Hypoglycemie",
-  "normal": "Glycemie normale",
-  "high": "Hyperglycemie",
-  "very-high": "Hyperglycemie severe",
-  "critical": "Glycemie critique, intervention requise",
+/**
+ * Maps GlycemiaZone to glycemia.zone i18n key suffixes.
+ * Short display labels for the zone badge (e.g., "Hypo", "Normal").
+ * Reuses the zone aria-label keys which carry the full clinical description.
+ */
+const ZONE_LABEL_KEYS: Record<GlycemiaZone, string> = {
+  "very-low": "veryLow",
+  "low": "low",
+  "normal": "normal",
+  "high": "high",
+  "very-high": "veryHigh",
+  "critical": "critical",
 }
 
 export function getGlycemiaZone(
@@ -151,9 +148,12 @@ export function GlycemiaValue({
   showBackground = false,
   className,
 }: GlycemiaValueProps) {
+  const tZone = useTranslations("glycemia.zone")
+
   const zone = getGlycemiaZone(value, thresholds)
   const displayValue = convertValue(value, unit)
-  const ariaLabel = `${displayValue} ${unit}, ${ZONE_ARIA_LABELS[zone]}`
+  const zoneAriaLabel = tZone(ZONE_LABEL_KEYS[zone])
+  const ariaLabel = `${displayValue} ${unit}, ${zoneAriaLabel}`
   const isCritical = zone === "critical" || zone === "very-low"
 
   return (
@@ -184,11 +184,11 @@ export function GlycemiaValue({
       {showZoneLabel && (
         <span
           className={cn(
-            "ml-1 text-xs font-medium",
+            "ms-1 text-xs font-medium",
             zoneColorClasses[zone]
           )}
         >
-          {ZONE_LABELS[zone]}
+          {tZone(ZONE_LABEL_KEYS[zone])}
         </span>
       )}
     </span>
