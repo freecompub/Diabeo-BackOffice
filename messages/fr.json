@@ -31,7 +31,12 @@
     "breadcrumb": "Fil d'Ariane",
     "medications": "Medicaments",
     "analytics": "Analytics",
-    "documents": "Documents"
+    "documents": "Documents",
+    "expandSidebar": "Agrandir la barre laterale",
+    "collapseSidebar": "Reduire la barre laterale",
+    "openNavigation": "Ouvrir la navigation",
+    "navigation": "Navigation",
+    "notifications": "Notifications"
   },
   "auth": {
     "login": "Connexion",
@@ -81,6 +86,22 @@
       "gl": "g/L",
       "mgdl": "mg/dL",
       "mmoll": "mmol/L"
+    },
+    "trend": {
+      "risingFast": "Glycemie en hausse rapide",
+      "rising": "Glycemie en hausse",
+      "stable": "Glycemie stable",
+      "falling": "Glycemie en baisse",
+      "fallingFast": "Glycemie en baisse rapide",
+      "unknown": "Tendance inconnue"
+    },
+    "zone": {
+      "veryLow": "hypoglycemie severe",
+      "low": "hypoglycemie",
+      "normal": "glycemie normale",
+      "high": "hyperglycemie",
+      "veryHigh": "hyperglycemie severe",
+      "critical": "glycemie critique, intervention requise"
     }
   },
   "chart": {
@@ -93,7 +114,10 @@
     "showThresholds": "Afficher les seuils",
     "hypoCount": "Hypoglycemies",
     "lastHypo": "Derniere hypo",
-    "noHypo": "Aucune hypoglycemie"
+    "noHypo": "Aucune hypoglycemie",
+    "hour": "Heure",
+    "glucoseMgdl": "Glycemie (mg/dL)",
+    "zoneLabel": "Zone"
   },
   "tir": {
     "title": "Temps dans la cible",
@@ -124,13 +148,29 @@
     "timeInRange": "Temps dans la cible",
     "cv": "Coefficient de variation",
     "standardDeviation": "Ecart-type",
-    "dataCapture": "Capture des donnees"
+    "dataCapture": "Capture des donnees",
+    "estimated": "estime",
+    "readings": "lectures",
+    "resumeMetrics": "Resume des metriques glycemiques",
+    "stability": {
+      "stable": "Stable",
+      "moderate": "Modere",
+      "unstable": "Instable"
+    },
+    "tir": {
+      "veryLow": "Tres bas",
+      "low": "Bas",
+      "inRange": "Dans la cible",
+      "high": "Haut",
+      "veryHigh": "Tres haut",
+      "distribution": "Distribution TIR"
+    }
   },
   "education": {
     "averageGlucose": "La glycemie moyenne est calculee sur la periode selectionnee. Elle aide a evaluer le controle glycemique global.",
     "hba1c": "L'HbA1c estimee est calculee a partir des donnees CGM. Elle donne une indication du controle glycemique sur les 3 derniers mois.",
-    "hypoEvents": "Nombre d'episodes hypoglycemiques detectes. Un episode est defini par une glycemie inferieure a 70 mg/dL.",
-    "timeInRange": "Le temps dans la cible (TIR) represente le pourcentage de temps passe entre 70 et 180 mg/dL. L'objectif recommande est >= 70%.",
+    "hypoEvents": "Nombre d'episodes hypoglycemiques detectes. Un episode est defini par une glycemie inferieure a {threshold} mg/dL.",
+    "timeInRange": "Le temps dans la cible (TIR) represente le pourcentage de temps passe entre {targetMin} et {targetMax} mg/dL. L'objectif recommande est >= 70%.",
     "cv": "Le coefficient de variation mesure la variabilite glycemique. Un CV < 36% est considere comme stable.",
     "standardDeviation": "L'ecart-type mesure la dispersion des valeurs glycemiques autour de la moyenne."
   },

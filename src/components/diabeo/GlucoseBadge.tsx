@@ -1,4 +1,7 @@
+"use client"
+
 import { forwardRef, type HTMLAttributes } from "react"
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import {
   getGlycemiaZone,
@@ -16,7 +19,7 @@ import {
  * The input `value` must always be in mg/dL. Display is converted per `unit`.
  *
  * Accessibility:
- * - `aria-label` announces value, unit, and clinical zone name in French
+ * - `aria-label` announces value, unit, and clinical zone name via i18n
  * - Critical zones (very-low, critical) use `role="alert"` for immediate
  *   announcement by screen readers — matches clinical urgency.
  *
@@ -60,13 +63,14 @@ const ZONE_BG: Record<GlycemiaZone, string> = {
   "critical": "bg-glycemia-critical-bg text-glycemia-critical border border-glycemia-critical/30 animate-clinical-pulse",
 }
 
-const ZONE_ARIA_LABEL: Record<GlycemiaZone, string> = {
-  "very-low": "hypoglycemie severe",
-  "low":      "hypoglycemie",
-  "normal":   "glycemie normale",
-  "high":     "hyperglycemie",
-  "very-high":"hyperglycemie severe",
-  "critical": "glycemie critique, intervention requise",
+/** Maps GlycemiaZone values to i18n keys under glycemia.zone namespace */
+const ZONE_I18N_KEY: Record<GlycemiaZone, string> = {
+  "very-low": "veryLow",
+  "low":      "low",
+  "normal":   "normal",
+  "high":     "high",
+  "very-high":"veryHigh",
+  "critical": "critical",
 }
 
 // ---------------------------------------------------------------------------
@@ -94,10 +98,12 @@ export const GlucoseBadge = forwardRef<HTMLSpanElement, GlucoseBadgeProps>(
     { value, unit = "mg/dL", thresholds, className, ...props },
     ref
   ) {
+    const tZone = useTranslations("glycemia.zone")
     const zone = getGlycemiaZone(value, thresholds)
     const displayValue = convertValue(value, unit)
     const isCritical = zone === "critical" || zone === "very-low"
-    const label = `${displayValue} ${unit}, ${ZONE_ARIA_LABEL[zone]}`
+    const zoneLabel = tZone(ZONE_I18N_KEY[zone] as Parameters<typeof tZone>[0])
+    const label = `${displayValue} ${unit}, ${zoneLabel}`
 
     return (
       <span
@@ -117,7 +123,7 @@ export const GlucoseBadge = forwardRef<HTMLSpanElement, GlucoseBadgeProps>(
       >
         <span aria-hidden="true">
           {displayValue}
-          <span className="ml-0.5 font-normal opacity-75">{unit}</span>
+          <span className="ms-0.5 font-normal opacity-75">{unit}</span>
         </span>
       </span>
     )

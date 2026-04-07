@@ -161,12 +161,12 @@ describe("TimeInRangeWidget", () => {
 
   it("shows reading count when provided", () => {
     render(<TimeInRangeWidget {...defaultProps} readingCount={2880} />)
-    expect(screen.getByText("2880 lectures")).toBeTruthy()
+    expect(screen.getByText(/2880/)).toBeTruthy()
   })
 
   it("does not show reading count when not provided", () => {
     render(<TimeInRangeWidget {...defaultProps} />)
-    expect(screen.queryByText(/lectures/)).toBeNull()
+    expect(screen.queryByText(/metrics\.readings/)).toBeNull()
   })
 
   it("renders the stacked bar chart", () => {
@@ -179,7 +179,7 @@ describe("TimeInRangeWidget", () => {
   it("stacked bar has accessible label with all zone percentages", () => {
     const { container } = render(<TimeInRangeWidget {...defaultProps} />)
     const bar = container.querySelector("[role='img']")
-    expect(bar?.getAttribute("aria-label")).toContain("dans la cible 72%")
+    expect(bar?.getAttribute("aria-label")).toContain("72%")
   })
 
   it("shows loading skeleton when loading is true", () => {
@@ -201,9 +201,10 @@ describe("HbA1cWidget", () => {
     expect(screen.getByText("%")).toBeTruthy()
   })
 
-  it("renders 'estime' label", () => {
+  it("renders 'estimated' label (i18n key)", () => {
     render(<HbA1cWidget value={7.2} />)
-    expect(screen.getByText("estimé")).toBeTruthy()
+    // i18n mock returns the key: metrics.estimated
+    expect(screen.getByText("metrics.estimated")).toBeTruthy()
   })
 
   it("has aria-label with value", () => {
@@ -290,7 +291,7 @@ describe("DataSummaryGrid", () => {
   it("has accessible region label", () => {
     render(<DataSummaryGrid data={fullData} />)
     expect(
-      screen.getByLabelText("Résumé des métriques glycémiques")
+      screen.getByLabelText("metrics.resumeMetrics")
     ).toBeTruthy()
   })
 

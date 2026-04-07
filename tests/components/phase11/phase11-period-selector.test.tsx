@@ -157,11 +157,13 @@ describe("PeriodSelector", () => {
     expect(tablist.classList.contains("my-custom")).toBe(true)
   })
 
-  it("all tabs are focusable (tabIndex=0)", () => {
+  it("selected tab has tabIndex=0, others have tabIndex=-1", () => {
     render(<PeriodSelector {...defaultProps} />)
     const tabs = screen.getAllByRole("tab")
-    tabs.forEach((tab) => {
-      expect(tab.getAttribute("tabindex")).toBe("0")
-    })
+    // OneMonth (index 2) is selected
+    expect(tabs[0].getAttribute("tabindex")).toBe("-1")
+    expect(tabs[1].getAttribute("tabindex")).toBe("-1")
+    expect(tabs[2].getAttribute("tabindex")).toBe("0")
+    expect(tabs[3].getAttribute("tabindex")).toBe("-1")
   })
 })

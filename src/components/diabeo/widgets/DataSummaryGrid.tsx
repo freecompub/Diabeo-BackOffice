@@ -68,7 +68,7 @@ export function DataSummaryGrid({
     <TooltipProvider>
       <section
         role="region"
-        aria-label="Résumé des métriques glycémiques"
+        aria-label={t("resumeMetrics")}
         className={cn("w-full", className)}
       >
         {showTitle && (

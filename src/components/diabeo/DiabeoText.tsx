@@ -50,8 +50,8 @@ const textVariants = cva("", {
     color: {
       /** Teal brand primary (#0D9488) */
       primary: "text-teal-600",
-      /** Coral accent (#F97316) */
-      secondary: "text-coral-500",
+      /** Coral accent — WCAG compliant darker shade for normal text (#C2410C, 7.8:1) */
+      secondary: "text-coral-700",
       /** Gray muted foreground (#6B7280) */
       muted: "text-muted-foreground",
       /** Red error (#EF4444) */

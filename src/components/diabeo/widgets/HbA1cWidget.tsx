@@ -74,7 +74,7 @@ export function HbA1cWidget({
         {value.toFixed(1)}
         <span className="text-sm font-medium ml-0.5">%</span>
       </p>
-      <p className="text-xs text-gray-400 mt-0.5">estimé</p>
+      <p className="text-xs text-gray-400 mt-0.5">{t("estimated")}</p>
     </div>
   )
 }

@@ -31,7 +31,12 @@
     "breadcrumb": "Breadcrumb",
     "medications": "Medications",
     "analytics": "Analytics",
-    "documents": "Documents"
+    "documents": "Documents",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar",
+    "openNavigation": "Open navigation",
+    "navigation": "Navigation",
+    "notifications": "Notifications"
   },
   "auth": {
     "login": "Login",
@@ -81,6 +86,22 @@
       "gl": "g/L",
       "mgdl": "mg/dL",
       "mmoll": "mmol/L"
+    },
+    "trend": {
+      "risingFast": "Glucose rising fast",
+      "rising": "Glucose rising",
+      "stable": "Glucose stable",
+      "falling": "Glucose falling",
+      "fallingFast": "Glucose falling fast",
+      "unknown": "Unknown trend"
+    },
+    "zone": {
+      "veryLow": "severe hypoglycemia",
+      "low": "hypoglycemia",
+      "normal": "normal glucose",
+      "high": "hyperglycemia",
+      "veryHigh": "severe hyperglycemia",
+      "critical": "critical glucose, intervention required"
     }
   },
   "chart": {
@@ -93,7 +114,10 @@
     "showThresholds": "Show thresholds",
     "hypoCount": "Hypoglycemia events",
     "lastHypo": "Last hypo",
-    "noHypo": "No hypoglycemia events"
+    "noHypo": "No hypoglycemia events",
+    "hour": "Hour",
+    "glucoseMgdl": "Glucose (mg/dL)",
+    "zoneLabel": "Zone"
   },
   "tir": {
     "title": "Time in Range",
@@ -124,13 +148,29 @@
     "timeInRange": "Time in range",
     "cv": "Coefficient of variation",
     "standardDeviation": "Standard deviation",
-    "dataCapture": "Data capture"
+    "dataCapture": "Data capture",
+    "estimated": "estimated",
+    "readings": "readings",
+    "resumeMetrics": "Glycemic metrics summary",
+    "stability": {
+      "stable": "Stable",
+      "moderate": "Moderate",
+      "unstable": "Unstable"
+    },
+    "tir": {
+      "veryLow": "Very low",
+      "low": "Low",
+      "inRange": "In range",
+      "high": "High",
+      "veryHigh": "Very high",
+      "distribution": "TIR distribution"
+    }
   },
   "education": {
     "averageGlucose": "Average glucose is calculated over the selected period. It helps assess overall glycemic control.",
     "hba1c": "Estimated HbA1c is calculated from CGM data. It gives an indication of glycemic control over the past 3 months.",
-    "hypoEvents": "Number of detected hypoglycemic episodes. An episode is defined as a glucose reading below 70 mg/dL.",
-    "timeInRange": "Time in Range (TIR) represents the percentage of time spent between 70 and 180 mg/dL. The recommended target is >= 70%.",
+    "hypoEvents": "Number of detected hypoglycemic episodes. An episode is defined as a glucose reading below {threshold} mg/dL.",
+    "timeInRange": "Time in Range (TIR) represents the percentage of time spent between {targetMin} and {targetMax} mg/dL. The recommended target is >= 70%.",
     "cv": "The coefficient of variation measures glycemic variability. A CV < 36% is considered stable.",
     "standardDeviation": "Standard deviation measures the dispersion of glucose values around the mean."
   },

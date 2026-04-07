@@ -1,4 +1,7 @@
+"use client"
+
 import { forwardRef, type HTMLAttributes } from "react"
+import { useTranslations } from "next-intl"
 import {
   ArrowUp,
   ArrowUpRight,
@@ -24,14 +27,14 @@ import { cn } from "@/lib/utils"
  *   unknown      — sensor gap, calibration — muted gray
  *
  * Accessibility:
- * - Provides a descriptive `aria-label` in French for screen readers.
+ * - Provides a descriptive `aria-label` via i18n for screen readers.
  * - The SVG icon itself is aria-hidden; the wrapper carries the label.
  *
  * RTL support: the icon rotates to convey direction, not side. No flip needed.
  *
  * @example
  * <TrendIndicator trend="rising_fast" />
- * <TrendIndicator trend="stable" className="ml-1" />
+ * <TrendIndicator trend="stable" className="ms-1" />
  */
 
 // ---------------------------------------------------------------------------
@@ -51,40 +54,40 @@ interface TrendConfig {
   icon: React.ElementType
   /** Tailwind color class */
   colorClass: string
-  /** French aria-label */
-  ariaLabel: string
+  /** i18n key under glycemia.trend namespace */
+  trendKey: string
 }
 
 const TREND_CONFIG: Record<GlucoseTrend, TrendConfig> = {
   rising_fast: {
     icon: ArrowUp,
     colorClass: "text-feedback-error",
-    ariaLabel: "Glycemie en hausse rapide",
+    trendKey: "risingFast",
   },
   rising: {
     icon: ArrowUpRight,
     colorClass: "text-feedback-warning",
-    ariaLabel: "Glycemie en hausse",
+    trendKey: "rising",
   },
   stable: {
     icon: ArrowRight,
     colorClass: "text-feedback-success",
-    ariaLabel: "Glycemie stable",
+    trendKey: "stable",
   },
   falling: {
     icon: ArrowDownRight,
     colorClass: "text-feedback-warning",
-    ariaLabel: "Glycemie en baisse",
+    trendKey: "falling",
   },
   falling_fast: {
     icon: ArrowDown,
     colorClass: "text-feedback-error",
-    ariaLabel: "Glycemie en baisse rapide",
+    trendKey: "fallingFast",
   },
   unknown: {
     icon: Minus,
     colorClass: "text-muted-foreground",
-    ariaLabel: "Tendance inconnue",
+    trendKey: "unknown",
   },
 }
 
@@ -120,9 +123,11 @@ export interface TrendIndicatorProps
 
 export const TrendIndicator = forwardRef<HTMLSpanElement, TrendIndicatorProps>(
   function TrendIndicator({ trend, size = "md", className, ...props }, ref) {
-    const { icon: Icon, colorClass, ariaLabel } = TREND_CONFIG[trend]
+    const tTrend = useTranslations("glycemia.trend")
+    const { icon: Icon, colorClass, trendKey } = TREND_CONFIG[trend]
     const px = SIZE_PX[size]
     const isCritical = trend === "rising_fast" || trend === "falling_fast"
+    const ariaLabel = tTrend(trendKey as Parameters<typeof tTrend>[0])
 
     return (
       <span

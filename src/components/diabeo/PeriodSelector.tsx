@@ -1,4 +1,4 @@
-"use client";
+"use client"
 
 /**
  * PeriodSelector — US-WEB-102
@@ -30,12 +30,14 @@ import { cn } from "@/lib/utils";
 // Enum
 // ---------------------------------------------------------------------------
 
-export enum TimePeriod {
-  OneWeek = "1W",
-  TwoWeeks = "2W",
-  OneMonth = "1M",
-  ThreeMonths = "3M",
-}
+export const TimePeriod = {
+  OneWeek: "1W",
+  TwoWeeks: "2W",
+  OneMonth: "1M",
+  ThreeMonths: "3M",
+} as const
+
+export type TimePeriod = (typeof TimePeriod)[keyof typeof TimePeriod]
 
 // ---------------------------------------------------------------------------
 // Types
@@ -87,7 +89,7 @@ export function PeriodSelector({
   return (
     <div
       role="tablist"
-      aria-label={t("oneWeek") /* outermost label — aria-label on tablist */}
+      aria-label="Period selection"
       className={cn(
         // Horizontal scroll container — prevents overflow on small screens
         "flex flex-row gap-1 overflow-x-auto",
@@ -105,8 +107,7 @@ export function PeriodSelector({
             type="button"
             role="tab"
             aria-selected={isSelected}
-            // tabIndex 0 on all tabs so the user can Tab through each one
-            tabIndex={0}
+            tabIndex={isSelected ? 0 : -1}
             onClick={() => onPeriodSelected(value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {

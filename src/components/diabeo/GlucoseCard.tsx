@@ -184,11 +184,11 @@ export function GlucoseCard({
     >
       {/* Zone color accent strip on the left edge */}
       <div
-        className={cn("absolute inset-y-0 left-0 w-1", zoneBgClasses[zone])}
+        className={cn("absolute inset-y-0 start-0 w-1", zoneBgClasses[zone])}
         aria-hidden="true"
       />
 
-      <div className="pl-3">
+      <div className="ps-3">
         {/* Zone label */}
         <p className="text-xs font-medium text-muted-foreground mb-1">
           {zoneLabelFr[zone]}
@@ -208,7 +208,7 @@ export function GlucoseCard({
             {unit}
           </span>
           {trend && trend !== "unknown" && (
-            <span className="ml-1 self-center">
+            <span className="ms-1 self-center">
               <TrendArrow trend={trend} />
             </span>
           )}
@@ -226,7 +226,7 @@ export function GlucoseCard({
               </time>
             )}
             {source && (
-              <span className="ml-auto text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
+              <span className="ms-auto text-xs font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
                 {source}
               </span>
             )}

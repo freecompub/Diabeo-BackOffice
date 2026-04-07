@@ -41,7 +41,6 @@ import type {
   GlycemiaThresholds,
   ChartDisplayOptions,
   ChartSummaryData,
-  DEFAULT_THRESHOLDS,
 } from "./types"
 import { getGlucoseZone, ZONE_COLORS } from "./types"
 
@@ -79,6 +78,7 @@ export function GlycemiaEvolutionChart({
 }: GlycemiaEvolutionChartProps) {
   const t = useTranslations("chart")
   const tGlycemia = useTranslations("glycemia")
+  const tInsulin = useTranslations("insulin")
 
   const [displayOptions, setDisplayOptions] = useState<ChartDisplayOptions>({
     showInsulin: true,
@@ -263,12 +263,12 @@ export function GlycemiaEvolutionChart({
                     )}
                     {point.bolusAmount != null && (
                       <p className="text-coral-600">
-                        Bolus: {point.bolusAmount.toFixed(1)}U
+                        {tInsulin("bolus")}: {point.bolusAmount.toFixed(1)}U
                       </p>
                     )}
                     {point.basalAmount != null && (
                       <p className="text-teal-600">
-                        Basal: {point.basalAmount.toFixed(2)}U/h
+                        {tInsulin("basal")}: {point.basalAmount.toFixed(2)}U/h
                       </p>
                     )}
                     {point.eventLabel && (
@@ -350,7 +350,7 @@ export function GlycemiaEvolutionChart({
         {displayOptions.showInsulin && insulinDoses.length > 0 && (
           <span className="flex items-center gap-1.5">
             <span className="inline-block h-2.5 w-2.5 rounded-full bg-coral-400" />
-            Bolus
+            {tInsulin("bolus")}
           </span>
         )}
       </div>
@@ -359,9 +359,9 @@ export function GlycemiaEvolutionChart({
       <table className="sr-only" aria-label={t("glucoseEvolution")}>
         <thead>
           <tr>
-            <th scope="col">Heure</th>
-            <th scope="col">Glycemie (mg/dL)</th>
-            <th scope="col">Zone</th>
+            <th scope="col">{t("hour")}</th>
+            <th scope="col">{t("glucoseMgdl")}</th>
+            <th scope="col">{t("zoneLabel")}</th>
           </tr>
         </thead>
         <tbody>

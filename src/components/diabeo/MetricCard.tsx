@@ -58,10 +58,10 @@ export interface MetricCardProps {
 // ─── Status → left border color mapping ──────────────────────────────────────
 
 const statusBorderClasses: Record<MetricStatus, string> = {
-  normal: "border-l-glycemia-normal",
-  warning: "border-l-glycemia-high",
-  critical: "border-l-glycemia-critical",
-  info: "border-l-feedback-info",
+  normal: "border-s-glycemia-normal",
+  warning: "border-s-glycemia-high",
+  critical: "border-s-glycemia-critical",
+  info: "border-s-feedback-info",
 }
 
 // ─── Trend sub-component ──────────────────────────────────────────────────────
@@ -165,8 +165,8 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
         clickable={isClickable}
         onClick={onClick}
         className={cn(
-          // Left border accent when status is set
-          status && "border-l-4",
+          // Inline-start border accent when status is set
+          status && "border-s-4",
           status && statusBorderClasses[status],
           className
         )}

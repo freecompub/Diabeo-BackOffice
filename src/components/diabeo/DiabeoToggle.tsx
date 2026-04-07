@@ -182,8 +182,8 @@ function DiabeoToggle({
             "pointer-events-none inline-block size-5 rounded-full bg-white",
             // Shadow for depth
             "shadow-sm",
-            // Slide animation
-            "transition-transform duration-200 ease-in-out",
+            // Slide animation (respects prefers-reduced-motion)
+            "transition-transform duration-200 ease-in-out motion-reduce:transition-none",
             checked ? "translate-x-5" : "translate-x-0"
           )}
         />

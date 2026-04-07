@@ -33,13 +33,10 @@ function getStability(cv: number): StabilityLevel {
   return "unstable"
 }
 
-const STABILITY_CONFIG: Record<
-  StabilityLevel,
-  { colorClass: string; label: string }
-> = {
-  stable: { colorClass: "text-glycemia-normal", label: "Stable" },
-  moderate: { colorClass: "text-glycemia-high", label: "Modéré" },
-  unstable: { colorClass: "text-glycemia-low", label: "Instable" },
+const STABILITY_COLOR: Record<StabilityLevel, string> = {
+  stable: "text-glycemia-normal",
+  moderate: "text-glycemia-high",
+  unstable: "text-glycemia-low",
 }
 
 export function GlycemicVariabilityWidget({
@@ -55,7 +52,8 @@ export function GlycemicVariabilityWidget({
   }
 
   const stability = getStability(value)
-  const { colorClass, label: stabilityLabel } = STABILITY_CONFIG[stability]
+  const colorClass = STABILITY_COLOR[stability]
+  const stabilityLabel = t(`stability.${stability}` as Parameters<typeof t>[0])
   const metricLabel = t("cv")
 
   return (
@@ -83,7 +81,7 @@ export function GlycemicVariabilityWidget({
       <p className="text-xs text-gray-500 mb-1 font-medium truncate">{metricLabel}</p>
       <p className={cn("text-2xl font-bold leading-tight", colorClass)}>
         {value.toFixed(1)}
-        <span className="text-sm font-medium ml-0.5">%</span>
+        <span className="text-sm font-medium ms-0.5">%</span>
       </p>
       <p className={cn("text-xs mt-0.5 font-medium", colorClass)}>
         {stabilityLabel}

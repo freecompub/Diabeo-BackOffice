@@ -228,25 +228,26 @@ describe("GlucoseBadge", () => {
 
   it("applies normal zone for in-range value (120 mg/dL)", () => {
     render(<GlucoseBadge value={120} />)
-    const badge = screen.getByLabelText(/glycemie normale/)
+    // i18n mock returns key path: glycemia.zone.normal
+    const badge = screen.getByLabelText(/glycemia\.zone\.normal/)
     expect(badge).toBeTruthy()
   })
 
   it("applies very-low zone for value below 54 mg/dL", () => {
     render(<GlucoseBadge value={40} />)
-    const badge = screen.getByLabelText(/hypoglycemie severe/)
+    const badge = screen.getByLabelText(/glycemia\.zone\.veryLow/)
     expect(badge).toBeTruthy()
   })
 
   it("applies high zone for value above 180 mg/dL", () => {
     render(<GlucoseBadge value={200} />)
-    const badge = screen.getByLabelText(/hyperglycemie$/)
+    const badge = screen.getByLabelText(/glycemia\.zone\.high/)
     expect(badge).toBeTruthy()
   })
 
   it("applies critical zone for value above 400 mg/dL", () => {
     render(<GlucoseBadge value={450} />)
-    const badge = screen.getByLabelText(/critique/)
+    const badge = screen.getByLabelText(/glycemia\.zone\.critical/)
     expect(badge).toBeTruthy()
   })
 
@@ -273,32 +274,33 @@ describe("GlucoseBadge", () => {
 describe("TrendIndicator", () => {
   it("renders with aria-label for stable trend", () => {
     render(<TrendIndicator trend="stable" />)
-    expect(screen.getByLabelText("Glycemie stable")).toBeTruthy()
+    // i18n mock returns key path: glycemia.trend.stable
+    expect(screen.getByLabelText("glycemia.trend.stable")).toBeTruthy()
   })
 
   it("renders with aria-label for rising trend", () => {
     render(<TrendIndicator trend="rising" />)
-    expect(screen.getByLabelText("Glycemie en hausse")).toBeTruthy()
+    expect(screen.getByLabelText("glycemia.trend.rising")).toBeTruthy()
   })
 
   it("renders with aria-label for rising_fast trend", () => {
     render(<TrendIndicator trend="rising_fast" />)
-    expect(screen.getByLabelText("Glycemie en hausse rapide")).toBeTruthy()
+    expect(screen.getByLabelText("glycemia.trend.risingFast")).toBeTruthy()
   })
 
   it("renders with aria-label for falling trend", () => {
     render(<TrendIndicator trend="falling" />)
-    expect(screen.getByLabelText("Glycemie en baisse")).toBeTruthy()
+    expect(screen.getByLabelText("glycemia.trend.falling")).toBeTruthy()
   })
 
   it("renders with aria-label for falling_fast trend", () => {
     render(<TrendIndicator trend="falling_fast" />)
-    expect(screen.getByLabelText("Glycemie en baisse rapide")).toBeTruthy()
+    expect(screen.getByLabelText("glycemia.trend.fallingFast")).toBeTruthy()
   })
 
   it("renders with aria-label for unknown trend", () => {
     render(<TrendIndicator trend="unknown" />)
-    expect(screen.getByLabelText("Tendance inconnue")).toBeTruthy()
+    expect(screen.getByLabelText("glycemia.trend.unknown")).toBeTruthy()
   })
 
   it("has role=alert for rising_fast (critical)", () => {

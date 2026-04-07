@@ -145,7 +145,7 @@ const DiabeoTextField = React.forwardRef<
           {label}
           {required && (
             <span
-              className="ml-0.5 text-feedback-error"
+              className="ms-0.5 text-feedback-error"
               aria-hidden="true"
             >
               *
@@ -161,7 +161,7 @@ const DiabeoTextField = React.forwardRef<
           {icon && (
             <span
               className={cn(
-                "pointer-events-none absolute inset-y-0 left-2.5",
+                "pointer-events-none absolute inset-y-0 start-2.5",
                 "flex items-center text-muted-foreground",
                 "[&_svg]:size-4"
               )}
@@ -180,10 +180,10 @@ const DiabeoTextField = React.forwardRef<
             aria-invalid={hasError || undefined}
             aria-describedby={describedBy}
             className={cn(
-              // Left padding bump when icon is present
-              icon && "pl-9",
-              // Right padding bump for password toggle
-              isPassword && "pr-9",
+              // Inline-start padding bump when icon is present
+              icon && "ps-9",
+              // Inline-end padding bump for password toggle
+              isPassword && "pe-9",
               // Error state overrides default ring
               hasError && [
                 "border-feedback-error",
@@ -205,7 +205,7 @@ const DiabeoTextField = React.forwardRef<
                   : "Afficher le mot de passe"
               }
               className={cn(
-                "absolute inset-y-0 right-2.5 flex items-center",
+                "absolute inset-y-0 end-2.5 flex items-center",
                 "text-muted-foreground transition-colors",
                 "hover:text-foreground",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",

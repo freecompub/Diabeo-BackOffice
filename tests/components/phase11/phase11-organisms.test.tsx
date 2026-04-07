@@ -107,35 +107,35 @@ describe("DiabeoEmptyState", () => {
 
   it("renders default title for noData variant (from i18n mock)", () => {
     render(<DiabeoEmptyState variant="noData" />)
-    // The mock returns the translation key: emptyState.noData.title
-    expect(screen.getByText("emptyState.noData.title")).toBeTruthy()
+    // The mock returns the flat key: emptyState.noData
+    expect(screen.getByText("emptyState.noData")).toBeTruthy()
   })
 
   it("renders default message for noData variant", () => {
     render(<DiabeoEmptyState variant="noData" />)
-    expect(screen.getByText("emptyState.noData.message")).toBeTruthy()
+    expect(screen.getByText("emptyState.noDataMessage")).toBeTruthy()
   })
 
   it("renders default title for noSearchResults variant", () => {
     render(<DiabeoEmptyState variant="noSearchResults" />)
-    expect(screen.getByText("emptyState.noSearchResults.title")).toBeTruthy()
+    expect(screen.getByText("emptyState.noSearchResults")).toBeTruthy()
   })
 
   it("renders default title for error variant", () => {
     render(<DiabeoEmptyState variant="error" />)
-    expect(screen.getByText("emptyState.error.title")).toBeTruthy()
+    expect(screen.getByText("emptyState.error")).toBeTruthy()
   })
 
   it("renders default title for insufficientData variant", () => {
     render(<DiabeoEmptyState variant="insufficientData" />)
-    expect(screen.getByText("emptyState.insufficientData.title")).toBeTruthy()
+    expect(screen.getByText("emptyState.insufficientData")).toBeTruthy()
   })
 
   it("renders threshold in message for insufficientData variant", () => {
     render(<DiabeoEmptyState variant="insufficientData" threshold={45} />)
     // The mock replaces {threshold} with the value
     expect(
-      screen.getByText("emptyState.insufficientData.messageWithThreshold")
+      screen.getByText("emptyState.insufficientDataMessage")
     ).toBeTruthy()
   })
 
@@ -144,7 +144,7 @@ describe("DiabeoEmptyState", () => {
       <DiabeoEmptyState variant="noData" title="Aucun patient" />
     )
     expect(screen.getByText("Aucun patient")).toBeTruthy()
-    expect(screen.queryByText("emptyState.noData.title")).toBeNull()
+    expect(screen.queryByText("emptyState.noData")).toBeNull()
   })
 
   it("overrides message when provided via prop", () => {

@@ -99,11 +99,11 @@ export function DiabeoEmptyState({
   const t = useTranslations("emptyState")
 
   // Resolve defaults from i18n, falling back to a safe string if key is missing
-  const defaultTitle: string = t(`${variant}.title`)
+  const defaultTitle: string = t(variant as Parameters<typeof t>[0])
   const defaultMessage: string =
     variant === "insufficientData" && threshold !== undefined
-      ? t(`${variant}.messageWithThreshold`, { threshold: Math.round(threshold) })
-      : t(`${variant}.message`)
+      ? t("insufficientDataMessage" as Parameters<typeof t>[0], { threshold: Math.round(threshold) })
+      : t(`${variant}Message` as Parameters<typeof t>[0])
 
   const title = titleProp ?? defaultTitle
   const message = messageProp ?? defaultMessage

@@ -76,6 +76,32 @@ export { PeriodSelector } from "./PeriodSelector"
 export { NavigationShell } from "./NavigationShell"
 export type { NavigationShellProps, BreadcrumbItem, UserRole } from "./NavigationShell"
 
+// --- Phase 11 — Charts (US-WEB-101) ---
+
+export {
+  GlycemiaEvolutionChart,
+  ChartSummary,
+  ChartDisplayOptionsMenu,
+  HypoglycemiaCounter,
+  InsulinSummary,
+  TimeInRangeChart,
+  DEFAULT_THRESHOLDS,
+  getGlucoseZone as getChartGlucoseZone,
+  ZONE_COLORS,
+} from "./charts"
+export type {
+  GlucoseDataPoint,
+  InsulinDose,
+  DiabetesEventMarker,
+  GlycemiaThresholds as ChartGlycemiaThresholds,
+  ChartDisplayOptions,
+  ChartSummaryData,
+  HypoglycemiaData,
+  InsulinSummaryData,
+  TimeInRangeData,
+  GlucoseZone as ChartGlucoseZone,
+} from "./charts"
+
 // --- Phase 11 — DataSummaryGrid (US-WEB-103) ---
 
 export {

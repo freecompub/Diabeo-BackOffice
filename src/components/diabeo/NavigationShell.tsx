@@ -123,7 +123,7 @@ function SidebarNav({
   const t = useTranslations("nav")
 
   return (
-    <nav className="flex-1 space-y-1 px-3 py-4" aria-label={t("breadcrumb")}>
+    <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Menu principal">
       {items.map((item) => {
         const isActive =
           pathname === item.href || pathname.startsWith(`${item.href}/`)
@@ -221,6 +221,7 @@ export function NavigationShell({
   onRefresh,
 }: NavigationShellProps) {
   const t = useTranslations()
+  const tNav = useTranslations("nav")
   const pathname = usePathname()
   const { logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
@@ -250,7 +251,7 @@ export function NavigationShell({
             "hidden md:flex h-screen flex-col border-e border-gray-200 bg-white transition-all duration-300",
             collapsed ? "w-16" : "w-64"
           )}
-          aria-label={t("nav.breadcrumb")}
+          aria-label="Navigation principale"
         >
           {/* Logo */}
           <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-4">
@@ -275,7 +276,7 @@ export function NavigationShell({
             <button
               onClick={() => setCollapsed((c) => !c)}
               className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
             >
               {collapsed ? (
                 <ChevronRight className="h-5 w-5 rtl:rotate-180" />
@@ -304,7 +305,7 @@ export function NavigationShell({
         {/* Mobile sidebar (Sheet overlay) */}
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="w-64 p-0" showCloseButton={false}>
-            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            <SheetTitle className="sr-only">{tNav("navigation")}</SheetTitle>
             <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-6">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600">
                 <span className="text-sm font-bold text-white">D</span>
@@ -344,7 +345,7 @@ export function NavigationShell({
               <button
                 onClick={() => setMobileOpen(true)}
                 className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 md:hidden"
-                aria-label="Open navigation"
+                aria-label={tNav("openNavigation")}
                 aria-expanded={mobileOpen}
               >
                 <Menu className="h-5 w-5" />
@@ -375,7 +376,7 @@ export function NavigationShell({
               {/* Notifications */}
               <button
                 className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
-                aria-label="Notifications"
+                aria-label={tNav("notifications")}
               >
                 <Bell className="h-5 w-5" />
               </button>

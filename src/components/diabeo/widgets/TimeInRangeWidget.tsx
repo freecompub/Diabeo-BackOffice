@@ -56,37 +56,42 @@ function TirStackedBar({
   inRange,
   high,
   veryHigh,
+  tZoneLabel,
+  distributionLabel,
 }: {
   veryLow: number
   low: number
   inRange: number
   high: number
   veryHigh: number
+  tZoneLabel: (key: string, pct: number) => string
+  distributionLabel: string
 }) {
-  const segments: Array<{ pct: number; bgClass: string; label: string }> = [
-    { pct: veryLow, bgClass: "bg-tir-very-low", label: `Très bas: ${veryLow}%` },
-    { pct: low, bgClass: "bg-tir-low", label: `Bas: ${low}%` },
-    { pct: inRange, bgClass: "bg-tir-in-range", label: `Dans la cible: ${inRange}%` },
-    { pct: high, bgClass: "bg-tir-high", label: `Haut: ${high}%` },
-    { pct: veryHigh, bgClass: "bg-tir-very-high", label: `Très haut: ${veryHigh}%` },
+  const segments: Array<{ pct: number; bgClass: string; zoneKey: string }> = [
+    { pct: veryLow, bgClass: "bg-tir-very-low", zoneKey: "veryLow" },
+    { pct: low, bgClass: "bg-tir-low", zoneKey: "low" },
+    { pct: inRange, bgClass: "bg-tir-in-range", zoneKey: "inRange" },
+    { pct: high, bgClass: "bg-tir-high", zoneKey: "high" },
+    { pct: veryHigh, bgClass: "bg-tir-very-high", zoneKey: "veryHigh" },
   ]
 
   return (
     <div
       className="flex rounded overflow-hidden h-1.5 mt-2 w-full"
       role="img"
-      aria-label={`Distribution TIR: très bas ${veryLow}%, bas ${low}%, dans la cible ${inRange}%, haut ${high}%, très haut ${veryHigh}%`}
+      aria-label={distributionLabel}
     >
-      {segments.map(({ pct, bgClass, label }) =>
-        pct > 0 ? (
+      {segments.map(({ pct, bgClass, zoneKey }) => {
+        const segmentLabel = tZoneLabel(zoneKey, pct)
+        return pct > 0 ? (
           <div
-            key={label}
+            key={zoneKey}
             className={cn(bgClass, "h-full")}
             style={{ width: `${pct}%` }}
-            title={label}
+            title={segmentLabel}
           />
         ) : null
-      )}
+      })}
     </div>
   )
 }
@@ -111,6 +116,11 @@ export function TimeInRangeWidget({
   const colorClass = getTirColorClass(inRange)
   const label = t("timeInRange")
 
+  const tZoneLabel = (key: string, pct: number): string =>
+    `${t(`tir.${key}` as Parameters<typeof t>[0])}: ${pct}%`
+
+  const distributionLabel = `${t("tir.distribution")}: ${t("tir.veryLow")} ${veryLow}%, ${t("tir.low")} ${low}%, ${t("tir.inRange")} ${inRange}%, ${t("tir.high")} ${high}%, ${t("tir.veryHigh")} ${veryHigh}%`
+
   return (
     <div
       role={onClick ? "button" : undefined}
@@ -131,16 +141,16 @@ export function TimeInRangeWidget({
         onClick && "cursor-pointer hover:shadow-md transition-shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-600",
         className
       )}
-      aria-label={`${label}: ${inRange}%${readingCount !== undefined ? `, ${readingCount} lectures` : ""}`}
+      aria-label={`${label}: ${inRange}%${readingCount !== undefined ? `, ${readingCount} ${t("readings")}` : ""}`}
     >
       <p className="text-xs text-gray-500 mb-1 font-medium truncate">{label}</p>
       <p className={cn("text-2xl font-bold leading-tight", colorClass)}>
         {inRange}
-        <span className="text-sm font-medium ml-0.5">%</span>
+        <span className="text-sm font-medium ms-0.5">%</span>
       </p>
       {readingCount !== undefined && (
         <p className="text-xs text-gray-400 mt-0.5">
-          {readingCount} lectures
+          {readingCount} {t("readings")}
         </p>
       )}
       <TirStackedBar
@@ -149,6 +159,8 @@ export function TimeInRangeWidget({
         inRange={inRange}
         high={high}
         veryHigh={veryHigh}
+        tZoneLabel={tZoneLabel}
+        distributionLabel={distributionLabel}
       />
     </div>
   )
