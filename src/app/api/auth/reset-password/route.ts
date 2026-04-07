@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     const ctx = extractRequestContext(req)
 
     // Rate limit to prevent email flooding
-    const rateCheck = checkRateLimit(`reset:${emailHash}`)
+    const rateCheck = await checkRateLimit(`reset:${emailHash}`)
     if (rateCheck.blocked) {
       return NextResponse.json(
         { error: "tooManyAttempts", retryAfter: rateCheck.retryAfterSeconds },
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    recordFailedAttempt(`reset:${emailHash}`)
+    await recordFailedAttempt(`reset:${emailHash}`)
 
     const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
 

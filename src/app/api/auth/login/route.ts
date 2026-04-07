@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     const ctx = extractRequestContext(req)
 
     // Rate limit check
-    const rateCheck = checkRateLimit(emailHash)
+    const rateCheck = await checkRateLimit(emailHash)
     if (rateCheck.blocked) {
       return NextResponse.json(
         { error: "tooManyAttempts", retryAfter: rateCheck.retryAfterSeconds },
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!user) {
-      recordFailedAttempt(emailHash)
+      await recordFailedAttempt(emailHash)
       await auditService.log({
         userId: 1,
         action: "UNAUTHORIZED",
@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
     const valid = await compare(password, user.passwordHash)
 
     if (!valid) {
-      recordFailedAttempt(emailHash)
+      await recordFailedAttempt(emailHash)
       await auditService.log({
         userId: user.id,
         action: "UNAUTHORIZED",
@@ -83,7 +83,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Success — clear rate limit, create session, sign JWT
-    clearAttempts(emailHash)
+    await clearAttempts(emailHash)
 
     const session = await createSession(user.id)
 

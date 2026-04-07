@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify, importPKCS8, importSPKI } from "jose"
 import type { Role } from "@prisma/client"
 
 const ALG = "RS256"
-const TOKEN_EXPIRY = "24h"
+const TOKEN_EXPIRY = "15m" // Short-lived JWT — defense-in-depth against token theft (HR-4)
 const ISSUER = "diabeo-backoffice"
 const AUDIENCE = "diabeo-hc"
 

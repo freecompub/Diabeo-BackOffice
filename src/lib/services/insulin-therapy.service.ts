@@ -10,26 +10,10 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import type { InsulinDeliveryMethod, Prisma } from "@prisma/client"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 
-/**
- * Clinical bounds for insulin therapy parameters.
- * Validated before storage — prevents unsafe configurations.
- * @constant
- * @export
- */
-export const INSULIN_BOUNDS = {
-  ISF_GL_MIN: 0.10,    // widened for insulin-resistant T2D
-  ISF_GL_MAX: 1.00,
-  ISF_MGDL_MIN: 10,    // widened for insulin-resistant T2D
-  ISF_MGDL_MAX: 100,
-  ICR_MIN: 3.0,        // widened for pediatric + resistant
-  ICR_MAX: 30.0,       // widened for insulin-sensitive T1D
-  BASAL_MIN: 0.05,
-  BASAL_MAX: 5.0,      // lowered from 10 (10 U/h = 240 U/day, dangerous)
-  ACTION_DURATION_MIN: 3.5,
-  ACTION_DURATION_MAX: 5.0,
-  MAX_SINGLE_BOLUS: 25.0,
-} as const
+/** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
+export const INSULIN_BOUNDS = CLINICAL_BOUNDS
 
 /**
  * Insulin therapy service — settings, ISF/ICR, basal configuration, bolus logs.
@@ -144,6 +128,15 @@ export const insulinTherapyService = {
   ) {
     const sensitivityFactorMgdl = input.sensitivityFactorGl * 100
     return prisma.$transaction(async (tx) => {
+      // Check for overlapping ISF slots (HR-2 — clinical safety)
+      const existing = await tx.insulinSensitivityFactor.findMany({
+        where: { settingsId },
+        select: { startHour: true, endHour: true },
+      })
+      if (hasTimeSlotOverlap(existing, input.startHour, input.endHour)) {
+        throw new Error("ISF slot overlaps with an existing slot — risk of incorrect bolus calculation")
+      }
+
       const isf = await tx.insulinSensitivityFactor.create({
         data: {
           settingsId,
@@ -185,6 +178,15 @@ export const insulinTherapyService = {
     auditUserId: number,
   ) {
     return prisma.$transaction(async (tx) => {
+      // Check for overlapping ICR slots (HR-2 — clinical safety)
+      const existing = await tx.carbRatio.findMany({
+        where: { settingsId },
+        select: { startHour: true, endHour: true },
+      })
+      if (hasTimeSlotOverlap(existing, input.startHour, input.endHour)) {
+        throw new Error("ICR slot overlaps with an existing slot — risk of incorrect bolus calculation")
+      }
+
       const icr = await tx.carbRatio.create({
         data: {
           settingsId,
@@ -325,4 +327,51 @@ export const insulinTherapyService = {
 
     return log
   },
+}
+
+/**
+ * Check if a new time slot overlaps with any existing slots.
+ * Supports midnight crossing (e.g., 22h → 6h).
+ *
+ * Clinical safety: overlapping ISF/ICR slots could cause the bolus
+ * calculator to pick the wrong ratio, leading to incorrect dosing.
+ *
+ * @param existing - Array of existing slots with startHour/endHour
+ * @param newStart - New slot start hour (0-23)
+ * @param newEnd - New slot end hour (0-23)
+ * @returns true if there is any overlap
+ */
+export function hasTimeSlotOverlap(
+  existing: Array<{ startHour: number; endHour: number }>,
+  newStart: number,
+  newEnd: number,
+): boolean {
+  for (const slot of existing) {
+    if (hoursOverlap(slot.startHour, slot.endHour, newStart, newEnd)) {
+      return true
+    }
+  }
+  return false
+}
+
+function hoursOverlap(
+  aStart: number, aEnd: number,
+  bStart: number, bEnd: number,
+): boolean {
+  // Expand to sets of covered hours for each slot
+  const setA = expandHours(aStart, aEnd)
+  const setB = expandHours(bStart, bEnd)
+  return setA.some((h) => setB.includes(h))
+}
+
+function expandHours(start: number, end: number): number[] {
+  const hours: number[] = []
+  if (start <= end) {
+    for (let h = start; h < end; h++) hours.push(h)
+  } else {
+    // Midnight crossing: 22→6 = [22,23,0,1,2,3,4,5]
+    for (let h = start; h < 24; h++) hours.push(h)
+    for (let h = 0; h < end; h++) hours.push(h)
+  }
+  return hours
 }

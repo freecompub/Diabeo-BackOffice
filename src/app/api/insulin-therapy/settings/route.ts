@@ -11,7 +11,7 @@ const updateSchema = z.object({
   patientId: z.number().int().positive().optional(),
   bolusInsulinBrand: z.enum(["humalog", "novorapid", "apidra", "fiasp", "other"]),
   basalInsulinBrand: z.enum(["lantus", "levemir", "tresiba", "other"]).optional(),
-  insulinActionDuration: z.number().min(INSULIN_BOUNDS.ACTION_DURATION_MIN).max(INSULIN_BOUNDS.ACTION_DURATION_MAX),
+  insulinActionDuration: z.number().min(INSULIN_BOUNDS.INSULIN_ACTION_MIN).max(INSULIN_BOUNDS.INSULIN_ACTION_MAX),
   deliveryMethod: z.nativeEnum(InsulinDeliveryMethod),
 })
 

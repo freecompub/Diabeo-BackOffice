@@ -12,44 +12,9 @@
 
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 
-/**
- * Clinical safety bounds for insulin therapy parameters.
- * Validated by medical-domain-validator based on ADA/EASD consensus.
- * ISF widened for insulin-resistant T2D patients; ICR widened for pediatric/resistant cases.
- * @constant
- * @type {Object}
- * @property {number} ISF_GL_MIN=0.10 - Min insulin sensitivity (g/L/U) — widened for resistant T2D
- * @property {number} ISF_GL_MAX=1.00 - Max insulin sensitivity (g/L/U)
- * @property {number} ISF_MGDL_MIN=10 - Min insulin sensitivity (mg/dL/U)
- * @property {number} ISF_MGDL_MAX=100 - Max insulin sensitivity (mg/dL/U)
- * @property {number} ICR_MIN=3.0 - Min carb ratio (g/U) — widened for pediatric/resistant
- * @property {number} ICR_MAX=30.0 - Max carb ratio (g/U) — widened for insulin-sensitive T1D
- * @property {number} BASAL_MIN=0.05 - Min basal rate (U/h)
- * @property {number} BASAL_MAX=5.0 - Max basal rate (U/h) — lowered from 10 (10 U/h = 240 U/day dangerous)
- * @property {number} TARGET_MIN_MGDL=60 - Min glucose target (mg/dL)
- * @property {number} TARGET_MAX_MGDL=250 - Max glucose target (mg/dL)
- * @property {number} MAX_SINGLE_BOLUS=25.0 - Hard cap on recommended dose (U)
- * @property {number} INSULIN_ACTION_MIN=3.5 - Min insulin action duration (hours)
- * @property {number} INSULIN_ACTION_MAX=5.0 - Max insulin action duration (hours)
- * @property {number} PUMP_BASAL_INCREMENT=0.05 - Pump precision (U/h)
- */
-const CLINICAL_BOUNDS = {
-  ISF_GL_MIN: 0.10,    // g/L/U (widened for insulin-resistant T2D)
-  ISF_GL_MAX: 1.00,    // g/L/U
-  ISF_MGDL_MIN: 10,    // mg/dL/U (widened for insulin-resistant T2D)
-  ISF_MGDL_MAX: 100,   // mg/dL/U
-  ICR_MIN: 3.0,        // g/U (widened for pediatric + resistant)
-  ICR_MAX: 30.0,       // g/U (widened for insulin-sensitive T1D)
-  BASAL_MIN: 0.05,     // U/h
-  BASAL_MAX: 5.0,      // U/h (lowered from 10 — 10 U/h = 240 U/day, dangerous)
-  TARGET_MIN_MGDL: 60,
-  TARGET_MAX_MGDL: 250,
-  MAX_SINGLE_BOLUS: 25.0, // U
-  INSULIN_ACTION_MIN: 3.5,
-  INSULIN_ACTION_MAX: 5.0,
-  PUMP_BASAL_INCREMENT: 0.05, // U/h
-} as const
+// CLINICAL_BOUNDS imported from @/lib/clinical-bounds (single source of truth)
 
 /**
  * Input parameters for bolus calculation.
@@ -177,10 +142,14 @@ export const insulinService = {
     const rawCorrectionDose = (currentMgdl - targetMgdl) / isfMgdl
 
     // IOB adjustment
+    // IOB (Insulin On Board) — deduct active insulin from recent boluses (HR-1)
+    let iobValue = 0
     let iobAdjustment = 0
     if (settings.iobSettings?.considerIob) {
-      // IOB value would come from recent bolus history — placeholder
-      iobAdjustment = 0
+      const actionDuration = Number(settings.iobSettings.actionDurationHours) || 4.0
+      iobValue = await calculateIob(input.patientId, actionDuration)
+      // IOB only reduces correction dose, never meal bolus
+      iobAdjustment = Math.min(iobValue, Math.max(0, rawCorrectionDose))
     }
 
     const correctionDose = Math.max(0, rawCorrectionDose - iobAdjustment)
@@ -211,7 +180,7 @@ export const insulinService = {
           icrUsed: icrValue,
           mealBolus: roundToHundredths(mealBolus),
           rawCorrectionDose: roundToHundredths(rawCorrectionDose),
-          iobValue: 0,
+          iobValue: roundToHundredths(iobValue),
           iobAdjustment: roundToHundredths(iobAdjustment),
           correctionDose: roundToHundredths(correctionDose),
           recommendedDose,
@@ -313,4 +282,48 @@ function roundForDevice(dose: number, method: string): number {
  */
 function roundToHundredths(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+/**
+ * Calculate Insulin On Board (IOB) from recent bolus logs.
+ *
+ * Uses a linear decay model:
+ *   remaining = max(0, 1 - elapsedHours / actionDuration)
+ *   IOB = sum(recommendedDose * remaining) for each recent bolus
+ *
+ * Only considers boluses within the action duration window.
+ * Clinical reference: rapid-acting insulin pharmacokinetics (3.5-5h).
+ *
+ * @param patientId - Patient ID
+ * @param actionDurationHours - Insulin action duration (typically 3.5-5h)
+ * @returns Total IOB in units
+ */
+async function calculateIob(
+  patientId: number,
+  actionDurationHours: number,
+): Promise<number> {
+  const cutoff = new Date(Date.now() - actionDurationHours * 3600_000)
+
+  const recentBoluses = await prisma.bolusCalculationLog.findMany({
+    where: {
+      patientId,
+      calculatedAt: { gte: cutoff },
+    },
+    select: {
+      recommendedDose: true,
+      calculatedAt: true,
+    },
+    orderBy: { calculatedAt: "desc" },
+  })
+
+  let totalIob = 0
+  const now = Date.now()
+
+  for (const bolus of recentBoluses) {
+    const elapsedHours = (now - bolus.calculatedAt.getTime()) / 3600_000
+    const remaining = Math.max(0, 1 - elapsedHours / actionDurationHours)
+    totalIob += Number(bolus.recommendedDose) * remaining
+  }
+
+  return roundToHundredths(totalIob)
 }
