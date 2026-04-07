@@ -67,7 +67,7 @@ export default function LoginPage() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
-    if (isLocked || isLoading) return
+    if (isLocked || isLoading || !email || !password) return
 
     const result = await login(email, password)
 
@@ -102,7 +102,7 @@ export default function LoginPage() {
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-foreground">
-            Diabeo Backoffice
+            {t("welcome")}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {t("welcomeSubtitle")}
@@ -151,7 +151,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading || isLocked}
               required
-              aria-describedby={error ? "login-error" : undefined}
+              error={error || undefined}
             />
 
             {/* Password — DiabeoTextField type="password" has built-in toggle */}
@@ -219,19 +219,18 @@ export default function LoginPage() {
       {/* Footer — Create account */}
       <div className="mt-6 flex flex-col items-center gap-2">
         <p className="text-sm text-muted-foreground">{t("noAccount")}</p>
-        <DiabeoButton
+        <Link
           data-testid="create-account-button"
-          variant="diabeoTertiary"
-          size="sm"
-          onClick={() => { window.location.href = "/register" }}
+          href="/register"
+          className="text-sm font-medium text-teal-600 hover:text-teal-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 rounded-sm"
         >
           {t("createAccount")}
-        </DiabeoButton>
+        </Link>
       </div>
 
       {/* HDS footer */}
       <p className="mt-4 text-center text-xs text-muted-foreground">
-        Diabeo Backoffice &mdash; {t("hostedHds")}
+        {t("welcome")} &mdash; {t("hostedHds")}
       </p>
     </div>
   )

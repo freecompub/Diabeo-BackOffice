@@ -1,5 +1,7 @@
 "use client"
 
+import { useTranslations } from "next-intl"
+
 /**
  * DiabeoTextField — Accessible text input with label, error, hint, and icon support.
  *
@@ -117,6 +119,11 @@ const DiabeoTextField = React.forwardRef<
     ref
   ) => {
     // -----------------------------------------------------------------------
+    // i18n for password toggle aria-label
+    // -----------------------------------------------------------------------
+    const tAuth = useTranslations("auth")
+
+    // -----------------------------------------------------------------------
     // Password visibility toggle
     // -----------------------------------------------------------------------
     const [showPassword, setShowPassword] = React.useState(false)
@@ -201,8 +208,8 @@ const DiabeoTextField = React.forwardRef<
               onClick={() => setShowPassword((v) => !v)}
               aria-label={
                 showPassword
-                  ? "Masquer le mot de passe"
-                  : "Afficher le mot de passe"
+                  ? tAuth("hidePassword")
+                  : tAuth("showPassword")
               }
               className={cn(
                 "absolute inset-y-0 end-2.5 flex items-center",

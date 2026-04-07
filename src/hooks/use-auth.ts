@@ -97,10 +97,13 @@ export function useAuth() {
 
         if (!res.ok) {
           const key = mapErrorToMessage(data.error ?? "", res.status)
-          // next-intl's `t()` accepts a literal union of known keys; we cast
-          // through `Parameters<typeof t>[0]` to satisfy the type checker
-          // while keeping the dynamic mapping above.
-          const errorMsg = t(key as Parameters<typeof t>[0])
+          // Interpolate params for keys that need them
+          const retryMinutes = data.retryAfterSeconds
+            ? Math.ceil(data.retryAfterSeconds / 60)
+            : undefined
+          const errorMsg = key === "rateLimited" && retryMinutes
+            ? t("rateLimited" as Parameters<typeof t>[0], { minutes: retryMinutes })
+            : t(key as Parameters<typeof t>[0])
           setError(errorMsg)
           return {
             success: false,

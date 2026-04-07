@@ -175,7 +175,7 @@ export default function ResetPasswordPage() {
 
       {/* HDS footer */}
       <p className="mt-4 text-center text-xs text-muted-foreground">
-        Diabeo Backoffice &mdash; {t("hostedHds")}
+        {t("welcome")} &mdash; {t("hostedHds")}
       </p>
     </div>
   )

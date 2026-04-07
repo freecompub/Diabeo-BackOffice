@@ -106,9 +106,18 @@ export function useSessionTimeout(): SessionTimeoutState {
         return
       }
 
+      if (remaining <= 0) {
+        // Session expired — redirect to login
+        setSessionWarning(false)
+        setMinutesRemaining(0)
+        sessionStorage.removeItem(LOGIN_TIMESTAMP_KEY)
+        window.location.href = "/login?reason=expired"
+        return
+      }
+
       const minutes = Math.max(0, Math.floor(remaining / 60_000))
       setMinutesRemaining(minutes)
-      setSessionWarning(remaining > 0 && remaining <= WARNING_THRESHOLD_MS)
+      setSessionWarning(remaining <= WARNING_THRESHOLD_MS)
     }
 
     // Run immediately so state is populated before the first interval fires.

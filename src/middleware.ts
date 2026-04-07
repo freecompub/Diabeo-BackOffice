@@ -66,6 +66,19 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set("x-user-id", String(payload.sub))
     requestHeaders.set("x-user-role", String(payload.role))
 
+    // C4: CSRF protection — state-changing requests must include custom header.
+    // This header cannot be set by cross-origin form submissions (CORS blocks custom headers).
+    // Auth routes are exempt because login uses a form submission pattern (no token yet).
+    const method = request.method
+    if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+      if (!pathname.startsWith("/api/auth/")) {
+        const xRequestedWith = requestHeaders.get("x-requested-with")
+        if (xRequestedWith !== "XMLHttpRequest") {
+          return NextResponse.json({ error: "csrfMissing" }, { status: 403 })
+        }
+      }
+    }
+
     return NextResponse.next({ request: { headers: requestHeaders } })
   } catch (error) {
     const code = error instanceof Error && "code" in error
