@@ -2,48 +2,48 @@ import { test, expect } from "@playwright/test"
 
 /**
  * E2E tests for the login page flow.
- * Robust tests that work in headless CI environments.
+ * Uses data-testid and semantic locators for resilience against i18n changes.
  */
 
 test.describe("Login page", () => {
   test("login page loads and contains form elements", async ({ page }) => {
     await page.goto("/login")
 
-    // Title (use h1 to avoid matching <title> metadata)
-    await expect(page.locator("h1")).toContainText("Diabeo Backoffice")
+    // Title heading exists
+    await expect(page.locator("h1")).toBeVisible()
 
-    // Email input exists
-    const emailInput = page.locator("#email")
+    // Email input exists (DiabeoTextField uses id="login-email")
+    const emailInput = page.locator("#login-email")
     await expect(emailInput).toBeVisible()
 
     // Password input exists
-    const passwordInput = page.locator("#password")
+    const passwordInput = page.locator("#login-password")
     await expect(passwordInput).toBeVisible()
 
     // Submit button exists
-    await expect(page.locator("button[type='submit']")).toBeVisible()
+    await expect(page.getByTestId("login-button")).toBeVisible()
   })
 
   test("submit button is disabled when fields are empty", async ({ page }) => {
     await page.goto("/login")
-    const submitBtn = page.locator("button[type='submit']")
+    const submitBtn = page.getByTestId("login-button")
     await expect(submitBtn).toBeDisabled()
   })
 
   test("submit button enables when both fields are filled", async ({ page }) => {
     await page.goto("/login")
-    await page.locator("#email").fill("test@example.com")
-    await page.locator("#password").fill("password123")
+    await page.locator("#login-email").fill("test@example.com")
+    await page.locator("#login-password").fill("password123")
 
-    const submitBtn = page.locator("button[type='submit']")
+    const submitBtn = page.getByTestId("login-button")
     await expect(submitBtn).toBeEnabled()
   })
 
   test("shows error after submitting invalid credentials", async ({ page }) => {
     await page.goto("/login")
-    await page.locator("#email").fill("invalid@example.com")
-    await page.locator("#password").fill("wrongpassword")
-    await page.locator("button[type='submit']").click()
+    await page.locator("#login-email").fill("invalid@example.com")
+    await page.locator("#login-password").fill("wrongpassword")
+    await page.getByTestId("login-button").click()
 
     // Wait for error to appear (API response or timeout)
     await page.waitForTimeout(2000)
@@ -54,20 +54,23 @@ test.describe("Login page", () => {
       pageContent?.includes("incorrect") ||
       pageContent?.includes("indisponible") ||
       pageContent?.includes("erreur") ||
-      pageContent?.includes("Erreur"),
+      pageContent?.includes("Erreur") ||
+      pageContent?.includes("Invalid") ||
+      pageContent?.includes("error"),
     ).toBeTruthy()
   })
 
   test("password toggle switches input type", async ({ page }) => {
     await page.goto("/login")
-    const passwordInput = page.locator("#password")
+    const passwordInput = page.locator("#login-password")
     await passwordInput.fill("secret123")
 
     // Initially password type
     await expect(passwordInput).toHaveAttribute("type", "password")
 
-    // Click toggle
-    const toggleBtn = page.locator("button[aria-label*='mot de passe' i]").first()
+    // Click toggle — find the eye button inside the password field container
+    const passwordContainer = page.locator("#login-password").locator("..")
+    const toggleBtn = passwordContainer.locator("button")
     await toggleBtn.click()
     await expect(passwordInput).toHaveAttribute("type", "text")
 
@@ -85,5 +88,15 @@ test.describe("Login page", () => {
     await page.goto("/")
     await page.waitForURL("**/login")
     expect(page.url()).toContain("/login")
+  })
+
+  test("forgot password link exists", async ({ page }) => {
+    await page.goto("/login")
+    await expect(page.getByTestId("forgot-password-button")).toBeVisible()
+  })
+
+  test("create account link exists", async ({ page }) => {
+    await page.goto("/login")
+    await expect(page.getByTestId("create-account-button")).toBeVisible()
   })
 })

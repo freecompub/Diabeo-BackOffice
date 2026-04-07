@@ -6,6 +6,10 @@ import { hmacEmail } from "@/lib/crypto/hmac"
 import { signJwt, createSession, checkRateLimit, recordFailedAttempt, clearAttempts } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
+// Pre-computed hash for timing-safe comparison when user is not found.
+// Prevents timing oracle attacks that would allow enumeration of valid emails.
+const DUMMY_HASH = "$2a$12$LJ3m4ys3Lk0TSwMBiGKfxO5PaRxBVg1VQ/5.AkQYiAELlN0G5.3Pu"
+
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -31,7 +35,7 @@ export async function POST(req: NextRequest) {
     const rateCheck = await checkRateLimit(emailHash)
     if (rateCheck.blocked) {
       return NextResponse.json(
-        { error: "tooManyAttempts", retryAfter: rateCheck.retryAfterSeconds },
+        { error: "tooManyAttempts", retryAfterSeconds: rateCheck.retryAfterSeconds },
         { status: 429 },
       )
     }
@@ -46,9 +50,12 @@ export async function POST(req: NextRequest) {
     })
 
     if (!user) {
+      // Timing-safe: always run bcrypt compare even when user not found to prevent timing oracle
+      await compare(password, DUMMY_HASH)
       await recordFailedAttempt(emailHash)
       await auditService.log({
-        userId: 1,
+        // userId 0 is a sentinel value for unauthenticated events (unknown email, no FK user exists)
+        userId: 0,
         action: "UNAUTHORIZED",
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
@@ -103,10 +110,18 @@ export async function POST(req: NextRequest) {
       userAgent: ctx.userAgent,
     })
 
-    return NextResponse.json({
-      token,
+    // C3: JWT is set as httpOnly cookie — never returned in JSON body to prevent XSS token theft
+    const response = NextResponse.json({
       expiresAt: session.expires.toISOString(),
     })
+    response.cookies.set("diabeo_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 24 * 60 * 60,
+    })
+    return response
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[auth/login]", msg)
