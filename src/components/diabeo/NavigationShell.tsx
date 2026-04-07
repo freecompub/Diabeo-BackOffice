@@ -32,6 +32,7 @@ import {
   Bell,
   RefreshCw,
   User,
+  Download,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -97,6 +98,7 @@ const navItems: NavItem[] = [
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
   { href: "/documents", labelKey: "documents", icon: FileText },
+  { href: "/import", labelKey: "import", icon: Download, minRole: "DOCTOR" },
   { href: "/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
   { href: "/audit", labelKey: "audit", icon: FileText, minRole: "ADMIN" },
   { href: "/settings", labelKey: "settings", icon: Settings },
