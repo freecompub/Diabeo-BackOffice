@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify, importPKCS8, importSPKI } from "jose"
 import type { Role } from "@prisma/client"
 
 const ALG = "RS256"
-const TOKEN_EXPIRY = "24h"
+const TOKEN_EXPIRY = "15m" // Short-lived JWT — defense-in-depth against token theft (HR-4)
 const ISSUER = "diabeo-backoffice"
 const AUDIENCE = "diabeo-hc"
 
@@ -95,7 +95,7 @@ export async function verifyJwt(token: string): Promise<JWTPayload> {
   return validatePayload(payload)
 }
 
-/** Verify JWT but allow recently expired tokens (for refresh flow, 1h grace) */
+/** Verify JWT but allow recently expired tokens (for refresh flow, 15min grace matching TOKEN_EXPIRY) */
 export async function verifyJwtAllowExpired(token: string): Promise<JWTPayload> {
   const key = await getPublicKey()
   try {
@@ -103,7 +103,7 @@ export async function verifyJwtAllowExpired(token: string): Promise<JWTPayload> 
       algorithms: [ALG],
       issuer: ISSUER,
       audience: AUDIENCE,
-      clockTolerance: 3600,
+      clockTolerance: 900, // 15min grace — matches TOKEN_EXPIRY
     })
     return validatePayload(payload)
   } catch {

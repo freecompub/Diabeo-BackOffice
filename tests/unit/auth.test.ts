@@ -108,43 +108,43 @@ describe("Rate Limiting", () => {
     clearAttempts = mod.clearAttempts
   })
 
-  it("allows first attempt", () => {
-    const result = checkRateLimit("user@test.com")
+  it("allows first attempt", async () => {
+    const result = await checkRateLimit("user@test.com")
     expect(result.blocked).toBe(false)
   })
 
-  it("allows 2 failed attempts without lockout", () => {
-    recordFailedAttempt("user@test.com")
-    recordFailedAttempt("user@test.com")
-    const result = checkRateLimit("user@test.com")
+  it("allows 2 failed attempts without lockout", async () => {
+    await recordFailedAttempt("user@test.com")
+    await recordFailedAttempt("user@test.com")
+    const result = await checkRateLimit("user@test.com")
     expect(result.blocked).toBe(false)
   })
 
-  it("blocks after 3 failed attempts", () => {
-    recordFailedAttempt("user@test.com")
-    recordFailedAttempt("user@test.com")
-    recordFailedAttempt("user@test.com")
-    const result = checkRateLimit("user@test.com")
+  it("blocks after 3 failed attempts", async () => {
+    await recordFailedAttempt("user@test.com")
+    await recordFailedAttempt("user@test.com")
+    await recordFailedAttempt("user@test.com")
+    const result = await checkRateLimit("user@test.com")
     expect(result.blocked).toBe(true)
     expect(result.retryAfterSeconds).toBeGreaterThan(0)
     expect(result.retryAfterSeconds).toBeLessThanOrEqual(300)
   })
 
-  it("clearAttempts resets the counter", () => {
-    recordFailedAttempt("user@test.com")
-    recordFailedAttempt("user@test.com")
-    recordFailedAttempt("user@test.com")
-    clearAttempts("user@test.com")
-    const result = checkRateLimit("user@test.com")
+  it("clearAttempts resets the counter", async () => {
+    await recordFailedAttempt("user@test.com")
+    await recordFailedAttempt("user@test.com")
+    await recordFailedAttempt("user@test.com")
+    await clearAttempts("user@test.com")
+    const result = await checkRateLimit("user@test.com")
     expect(result.blocked).toBe(false)
   })
 
-  it("isolates different identifiers", () => {
-    recordFailedAttempt("user1@test.com")
-    recordFailedAttempt("user1@test.com")
-    recordFailedAttempt("user1@test.com")
-    expect(checkRateLimit("user1@test.com").blocked).toBe(true)
-    expect(checkRateLimit("user2@test.com").blocked).toBe(false)
+  it("isolates different identifiers", async () => {
+    await recordFailedAttempt("user1@test.com")
+    await recordFailedAttempt("user1@test.com")
+    await recordFailedAttempt("user1@test.com")
+    expect((await checkRateLimit("user1@test.com")).blocked).toBe(true)
+    expect((await checkRateLimit("user2@test.com")).blocked).toBe(false)
   })
 })
 

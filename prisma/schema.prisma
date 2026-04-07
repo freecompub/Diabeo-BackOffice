@@ -756,6 +756,7 @@ model BolusCalculationLog {
   wasCapped               Boolean   @default(false) @map("was_capped")
   warnings                String[]
   deliveryMethod          String    @map("delivery_method") @db.VarChar(20)
+  wasDelivered            Boolean   @default(false) @map("was_delivered")
   extendedImmediatePct    Decimal?  @map("extended_immediate_pct") @db.Decimal(5, 2)
   extendedDurationHours   Decimal?  @map("extended_duration_hours") @db.Decimal(4, 2)
 

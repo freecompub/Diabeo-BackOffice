@@ -10,26 +10,11 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import type { InsulinDeliveryMethod, Prisma } from "@prisma/client"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { hasTimeSlotOverlap } from "./time-slot-utils"
 
-/**
- * Clinical bounds for insulin therapy parameters.
- * Validated before storage — prevents unsafe configurations.
- * @constant
- * @export
- */
-export const INSULIN_BOUNDS = {
-  ISF_GL_MIN: 0.10,    // widened for insulin-resistant T2D
-  ISF_GL_MAX: 1.00,
-  ISF_MGDL_MIN: 10,    // widened for insulin-resistant T2D
-  ISF_MGDL_MAX: 100,
-  ICR_MIN: 3.0,        // widened for pediatric + resistant
-  ICR_MAX: 30.0,       // widened for insulin-sensitive T1D
-  BASAL_MIN: 0.05,
-  BASAL_MAX: 5.0,      // lowered from 10 (10 U/h = 240 U/day, dangerous)
-  ACTION_DURATION_MIN: 3.5,
-  ACTION_DURATION_MAX: 5.0,
-  MAX_SINGLE_BOLUS: 25.0,
-} as const
+/** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
+export const INSULIN_BOUNDS = CLINICAL_BOUNDS
 
 /**
  * Insulin therapy service — settings, ISF/ICR, basal configuration, bolus logs.
@@ -143,7 +128,20 @@ export const insulinTherapyService = {
     auditUserId: number,
   ) {
     const sensitivityFactorMgdl = input.sensitivityFactorGl * 100
+    if (input.startHour === input.endHour) {
+      throw new Error("startHour and endHour must be different — a zero-duration slot is invalid")
+    }
+
     return prisma.$transaction(async (tx) => {
+      // Check for overlapping ISF slots (HR-2 — clinical safety)
+      const existing = await tx.insulinSensitivityFactor.findMany({
+        where: { settingsId },
+        select: { startHour: true, endHour: true },
+      })
+      if (hasTimeSlotOverlap(existing, input.startHour, input.endHour)) {
+        throw new Error("ISF slot overlaps with an existing slot — risk of incorrect bolus calculation")
+      }
+
       const isf = await tx.insulinSensitivityFactor.create({
         data: {
           settingsId,
@@ -184,7 +182,20 @@ export const insulinTherapyService = {
     input: { startHour: number; endHour: number; gramsPerUnit: number; mealLabel?: string },
     auditUserId: number,
   ) {
+    if (input.startHour === input.endHour) {
+      throw new Error("startHour and endHour must be different — a zero-duration slot is invalid")
+    }
+
     return prisma.$transaction(async (tx) => {
+      // Check for overlapping ICR slots (HR-2 — clinical safety)
+      const existing = await tx.carbRatio.findMany({
+        where: { settingsId },
+        select: { startHour: true, endHour: true },
+      })
+      if (hasTimeSlotOverlap(existing, input.startHour, input.endHour)) {
+        throw new Error("ICR slot overlaps with an existing slot — risk of incorrect bolus calculation")
+      }
+
       const icr = await tx.carbRatio.create({
         data: {
           settingsId,
@@ -326,3 +337,5 @@ export const insulinTherapyService = {
     return log
   },
 }
+
+// hasTimeSlotOverlap, expandHours are in time-slot-utils.ts
