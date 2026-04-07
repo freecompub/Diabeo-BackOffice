@@ -9,9 +9,18 @@ import { auditService, extractRequestContext } from "@/lib/services/audit.servic
 
 export async function POST(req: NextRequest) {
   try {
-    const token = extractBearerToken(req)
+    const token = extractBearerToken(req) ?? req.cookies.get("diabeo_token")?.value ?? null
     if (!token) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 })
+      // Even without a valid token, clear the cookie to ensure logout
+      const response = NextResponse.json({ error: "unauthorized" }, { status: 401 })
+      response.cookies.set("diabeo_token", "", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/",
+        maxAge: 0,
+      })
+      return response
     }
 
     const payload = await verifyJwt(token)
@@ -31,7 +40,15 @@ export async function POST(req: NextRequest) {
       metadata: { revocationStatus: revoked ? "ok" : "failed" },
     })
 
-    return NextResponse.json({ success: true })
+    const response = NextResponse.json({ success: true })
+    response.cookies.set("diabeo_token", "", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
+      maxAge: 0,
+    })
+    return response
   } catch (error) {
     if (error instanceof Error && error.message.includes("token")) {
       return NextResponse.json({ error: "tokenExpired" }, { status: 401 })
