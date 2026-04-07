@@ -24,21 +24,29 @@ export interface DiabetesEventMarker {
 }
 
 export interface GlycemiaThresholds {
+  /** Below this: critical (immediate danger). Default: 40 mg/dL */
+  criticalLow: number
+  /** Below this: very-low (severe hypoglycemia). Default: 54 mg/dL */
   veryLow: number
+  /** Below this: low (hypoglycemia). Default: 70 mg/dL */
   low: number
   targetMin: number
   targetMax: number
   high: number
+  /** Above this: critical (immediate danger). Default: 400 mg/dL */
+  criticalHigh: number
   veryHigh: number
 }
 
 export const DEFAULT_THRESHOLDS: GlycemiaThresholds = {
+  criticalLow: 40,
   veryLow: 54,
   low: 70,
   targetMin: 70,
   targetMax: 180,
   high: 250,
   veryHigh: 400,
+  criticalHigh: 400,
 }
 
 export interface ChartDisplayOptions {
@@ -89,7 +97,7 @@ export function getGlucoseZone(
   value: number,
   thresholds: GlycemiaThresholds = DEFAULT_THRESHOLDS
 ): GlucoseZone {
-  if (value < 40 || value > 400) return "critical"
+  if (value < thresholds.criticalLow || value > thresholds.criticalHigh) return "critical"
   if (value < thresholds.veryLow) return "veryLow"
   if (value < thresholds.low) return "low"
   if (value <= thresholds.targetMax) return "inRange"

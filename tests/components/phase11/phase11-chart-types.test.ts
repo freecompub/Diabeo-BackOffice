@@ -133,12 +133,14 @@ describe("getGlucoseZone", () => {
   describe("DEFAULT_THRESHOLDS constant", () => {
     it("has expected ADA consensus values", () => {
       expect(DEFAULT_THRESHOLDS).toEqual({
+        criticalLow: 40,
         veryLow: 54,
         low: 70,
         targetMin: 70,
         targetMax: 180,
         high: 250,
         veryHigh: 400,
+        criticalHigh: 400,
       })
     })
   })

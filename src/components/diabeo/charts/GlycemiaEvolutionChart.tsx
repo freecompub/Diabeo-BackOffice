@@ -43,7 +43,7 @@ import type {
   ChartDisplayOptions,
   ChartSummaryData,
 } from "./types"
-import { getGlucoseZone, ZONE_COLORS } from "./types"
+import { getGlucoseZone, ZONE_COLORS, DEFAULT_THRESHOLDS } from "./types"
 
 interface GlycemiaEvolutionChartProps {
   glucoseData: GlucoseDataPoint[]
@@ -66,14 +66,7 @@ export function GlycemiaEvolutionChart({
   glucoseData,
   insulinDoses = [],
   events = [],
-  thresholds = {
-    veryLow: 54,
-    low: 70,
-    targetMin: 70,
-    targetMax: 180,
-    high: 250,
-    veryHigh: 400,
-  },
+  thresholds = DEFAULT_THRESHOLDS,
   height = 360,
   className,
 }: GlycemiaEvolutionChartProps) {
