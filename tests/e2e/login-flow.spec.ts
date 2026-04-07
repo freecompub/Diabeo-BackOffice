@@ -68,8 +68,9 @@ test.describe("Login page", () => {
     // Initially password type
     await expect(passwordInput).toHaveAttribute("type", "password")
 
-    // Click toggle (aria-label comes from i18n — match any language)
-    const toggleBtn = page.locator("button[aria-label]").filter({ has: page.locator("svg") }).last()
+    // Click toggle — find the eye button inside the password field container
+    const passwordContainer = page.locator("#login-password").locator("..")
+    const toggleBtn = passwordContainer.locator("button")
     await toggleBtn.click()
     await expect(passwordInput).toHaveAttribute("type", "text")
 
