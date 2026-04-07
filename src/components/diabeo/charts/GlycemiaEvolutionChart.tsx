@@ -67,7 +67,7 @@ export function GlycemiaEvolutionChart({
   insulinDoses = [],
   events = [],
   thresholds = DEFAULT_THRESHOLDS,
-  height = 360,
+  height: _height = 360,
   className,
 }: GlycemiaEvolutionChartProps) {
   const t = useTranslations("chart")

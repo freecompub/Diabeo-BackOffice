@@ -140,7 +140,7 @@ export const DiabeoIcon = forwardRef<SVGSVGElement, DiabeoIconProps>(
       size = "md",
       className,
       "aria-label": ariaLabel,
-      "aria-hidden": ariaHidden,
+      "aria-hidden": _ariaHidden,
       ...props
     },
     ref
