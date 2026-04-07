@@ -82,16 +82,20 @@ function maskEmail(email: string): string {
  * Formats a date as a relative human-readable string or absolute date.
  * Uses the browser locale for formatting.
  */
-function formatSyncDate(dateStr: string | null, neverLabel: string): string {
+function formatSyncDate(
+  dateStr: string | null,
+  neverLabel: string,
+  tCommon: (key: string, params?: Record<string, unknown>) => string
+): string {
   if (!dateStr) return neverLabel
   const date = new Date(dateStr)
   const diffMs = Date.now() - date.getTime()
   const diffMin = Math.floor(diffMs / 60_000)
 
-  if (diffMin < 1) return "< 1 min"
-  if (diffMin < 60) return `${diffMin} min`
+  if (diffMin < 1) return tCommon("justNow")
+  if (diffMin < 60) return tCommon("ago", { value: tCommon("minuteShort", { count: diffMin }) })
   const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `${diffH}h`
+  if (diffH < 24) return tCommon("ago", { value: tCommon("hourShort", { count: diffH }) })
   return new Intl.DateTimeFormat(undefined, {
     day: "2-digit",
     month: "2-digit",
@@ -114,10 +118,11 @@ async function apiFetch<T>(
   url: string,
   options?: RequestInit
 ): Promise<{ data: T | null; status: number; ok: boolean }> {
+  const { headers: customHeaders, ...rest } = options ?? {}
   const res = await fetch(url, {
     credentials: "include",
-    headers: { ...API_HEADERS, ...(options?.headers ?? {}) },
-    ...options,
+    ...rest,
+    headers: { ...API_HEADERS, ...(customHeaders as Record<string, string> ?? {}) },
   })
   const data = res.ok ? ((await res.json()) as T) : null
   return { data, status: res.status, ok: res.ok }
@@ -148,6 +153,7 @@ function ConnectForm({ onSuccess }: ConnectFormProps) {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
+      if (!email.trim() || !password) return
       setError(null)
       setLoading(true)
 
@@ -170,6 +176,8 @@ function ConnectForm({ onSuccess }: ConnectFormProps) {
         }
 
         if (data?.success) {
+          setEmail("")
+          setPassword("")
           onSuccess()
         } else {
           setError(t("connectError"))
@@ -310,12 +318,16 @@ function AccountCard({ account, onDisconnect }: AccountCardProps) {
         }
       )
 
-      setDisconnectOpen(false)
       if (ok) {
+        setDisconnectOpen(false)
         onDisconnect(account.id)
+      } else {
+        setDisconnectOpen(false)
+        setSyncResult({ credentialId: account.id, count: null, error: t("syncError") })
       }
     } catch {
       setDisconnectOpen(false)
+      setSyncResult({ credentialId: account.id, count: null, error: t("syncError") })
     } finally {
       setDisconnecting(false)
     }
@@ -354,7 +366,7 @@ function AccountCard({ account, onDisconnect }: AccountCardProps) {
                 dateTime={account.lastSyncAt ?? undefined}
                 className="font-medium"
               >
-                {formatSyncDate(account.lastSyncAt, neverLabel)}
+                {formatSyncDate(account.lastSyncAt, neverLabel, tCommon as (key: string, params?: Record<string, unknown>) => string)}
               </time>
             </p>
           </div>
@@ -387,7 +399,7 @@ function AccountCard({ account, onDisconnect }: AccountCardProps) {
 
         {/* Sync feedback */}
         {syncResult !== null && (
-          <div className="mt-3">
+          <div className="mt-3" role="status" aria-live="polite">
             {syncResult.error !== null ? (
               <AlertBanner severity="warning" title={syncResult.error} />
             ) : (
@@ -501,7 +513,7 @@ export default function MyDiabbyPage() {
         if (cancelled) return
 
         if (!ok) {
-          setPageState(status === 403 ? "stagingOnly" : "noAccounts")
+          setPageState(status === 403 || status === 404 ? "stagingOnly" : "noAccounts")
           if (status !== 403) setAccounts([])
           return
         }
