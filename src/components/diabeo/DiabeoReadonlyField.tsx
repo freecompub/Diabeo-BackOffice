@@ -181,7 +181,7 @@ function DiabeoReadonlyField({
       {isCopyable && (
         <span
           className={cn(
-            "ml-auto shrink-0 mt-0.5 text-muted-foreground transition-colors",
+            "ms-auto shrink-0 mt-0.5 text-muted-foreground transition-colors",
             copied && "text-feedback-success",
             "[&_svg]:size-3.5"
           )}

@@ -138,7 +138,7 @@ function SidebarNav({
               collapsed && "justify-center px-2",
               isActive
                 ? "bg-teal-50 text-teal-600"
-                : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+                : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
             aria-current={isActive ? "page" : undefined}
           >
@@ -173,7 +173,7 @@ function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
 
   return (
     <nav aria-label={t("breadcrumb")} className="mb-2">
-      <ol className="flex items-center gap-1.5 text-sm text-gray-500">
+      <ol className="flex items-center gap-1.5 text-sm text-muted-foreground">
         {items.map((item, index) => {
           const isLast = index === items.length - 1
           return (
@@ -187,7 +187,7 @@ function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
               {isLast || !item.href ? (
                 <span
                   className={cn(
-                    isLast ? "font-medium text-gray-900" : "text-gray-500"
+                    isLast ? "font-medium text-foreground" : "text-muted-foreground"
                   )}
                   aria-current={isLast ? "page" : undefined}
                 >
@@ -248,18 +248,18 @@ export function NavigationShell({
         {/* Desktop sidebar */}
         <aside
           className={cn(
-            "hidden md:flex h-screen flex-col border-e border-gray-200 bg-white transition-all duration-300",
+            "hidden md:flex h-screen flex-col border-e border-border bg-card transition-all duration-300",
             collapsed ? "w-16" : "w-64"
           )}
           aria-label="Navigation principale"
         >
           {/* Logo */}
-          <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-4">
+          <div className="flex h-16 items-center gap-3 border-b border-border px-4">
             <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-600">
               <span className="text-sm font-bold text-white">D</span>
             </div>
             {!collapsed && (
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-lg font-semibold text-foreground">
                 Diabeo
               </span>
             )}
@@ -272,10 +272,10 @@ export function NavigationShell({
           />
 
           {/* Collapse toggle */}
-          <div className="border-t border-gray-200 p-2">
+          <div className="border-t border-border p-2">
             <button
               onClick={() => setCollapsed((c) => !c)}
-              className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+              className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-muted hover:text-gray-600 transition-colors"
               aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
             >
               {collapsed ? (
@@ -287,11 +287,11 @@ export function NavigationShell({
           </div>
 
           {/* Logout */}
-          <div className="border-t border-gray-200 p-3">
+          <div className="border-t border-border p-3">
             <button
               onClick={logout}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600",
                 collapsed && "justify-center px-2"
               )}
               aria-label={t("common.logout")}
@@ -306,11 +306,11 @@ export function NavigationShell({
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="w-64 p-0" showCloseButton={false}>
             <SheetTitle className="sr-only">{tNav("navigation")}</SheetTitle>
-            <div className="flex h-16 items-center gap-3 border-b border-gray-200 px-6">
+            <div className="flex h-16 items-center gap-3 border-b border-border px-6">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600">
                 <span className="text-sm font-bold text-white">D</span>
               </div>
-              <span className="text-lg font-semibold text-gray-900">
+              <span className="text-lg font-semibold text-foreground">
                 Diabeo
               </span>
             </div>
@@ -320,13 +320,13 @@ export function NavigationShell({
               collapsed={false}
               onItemClick={closeMobile}
             />
-            <div className="border-t border-gray-200 p-3">
+            <div className="border-t border-border p-3">
               <button
                 onClick={() => {
                   closeMobile()
                   logout()
                 }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-500 hover:bg-red-50 hover:text-red-600"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-red-50 hover:text-red-600"
                 aria-label={t("common.logout")}
               >
                 <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
@@ -339,12 +339,12 @@ export function NavigationShell({
         {/* Main content area */}
         <div className="flex flex-1 flex-col overflow-hidden">
           {/* Header */}
-          <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 md:px-6">
+          <header className="flex h-16 items-center justify-between border-b border-border bg-card px-4 md:px-6">
             <div className="flex items-center gap-3">
               {/* Mobile hamburger */}
               <button
                 onClick={() => setMobileOpen(true)}
-                className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 md:hidden"
+                className="rounded-lg p-2 text-muted-foreground hover:bg-muted md:hidden"
                 aria-label={tNav("openNavigation")}
                 aria-expanded={mobileOpen}
               >
@@ -352,11 +352,11 @@ export function NavigationShell({
               </button>
 
               <div>
-                <h1 className="text-lg font-semibold text-gray-900">
+                <h1 className="text-lg font-semibold text-foreground">
                   {pageTitle}
                 </h1>
                 {pageSubtitle && (
-                  <p className="text-sm text-gray-500">{pageSubtitle}</p>
+                  <p className="text-sm text-muted-foreground">{pageSubtitle}</p>
                 )}
               </div>
             </div>
@@ -366,7 +366,7 @@ export function NavigationShell({
               {onRefresh && (
                 <button
                   onClick={onRefresh}
-                  className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                  className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   aria-label={t("common.refresh")}
                 >
                   <RefreshCw className="h-5 w-5" />
@@ -375,7 +375,7 @@ export function NavigationShell({
 
               {/* Notifications */}
               <button
-                className="relative rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900 transition-colors"
+                className="relative rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                 aria-label={tNav("notifications")}
               >
                 <Bell className="h-5 w-5" />
@@ -384,7 +384,7 @@ export function NavigationShell({
               {/* User menu */}
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-gray-100 transition-colors"
+                  className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-muted transition-colors"
                   aria-label={t("nav.profile")}
                 >
                   <Avatar className="h-8 w-8">
@@ -396,7 +396,7 @@ export function NavigationShell({
                 <DropdownMenuContent align="end" className="w-48">
                   {userName && (
                     <>
-                      <div className="px-2 py-1.5 text-sm font-medium text-gray-900">
+                      <div className="px-2 py-1.5 text-sm font-medium text-foreground">
                         {userName}
                       </div>
                       <DropdownMenuSeparator />

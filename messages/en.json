@@ -19,7 +19,15 @@
     "previous": "Previous",
     "refresh": "Refresh",
     "export": "Export",
-    "logout": "Logout"
+    "logout": "Logout",
+    "justNow": "Just now",
+    "ago": "{value} ago",
+    "yesterday": "Yesterday",
+    "minuteShort": "{count}min",
+    "hourShort": "{count}h",
+    "dayShort": "{count}d",
+    "noEvent": "no event",
+    "eventCount": "{count} event(s)"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -152,6 +160,10 @@
     "estimated": "estimated",
     "readings": "readings",
     "resumeMetrics": "Glycemic metrics summary",
+    "trendUp": "Up {value}",
+    "trendDown": "Down {value}",
+    "trendStable": "Stable",
+    "loadingMetric": "Loading metric",
     "stability": {
       "stable": "Stable",
       "moderate": "Moderate",

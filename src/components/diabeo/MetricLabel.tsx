@@ -51,19 +51,19 @@ const SIZE_CONFIG: Record<MetricLabelSize, SizeConfig> = {
   sm: {
     label: "text-xs font-normal",
     value: "text-base font-bold tabular-nums",
-    unit:  "text-xs font-normal ml-0.5",
+    unit:  "text-xs font-normal ms-0.5",
     gap:   "gap-0",
   },
   md: {
     label: "text-sm font-normal",
     value: "text-xl font-bold tabular-nums",
-    unit:  "text-sm font-normal ml-1",
+    unit:  "text-sm font-normal ms-1",
     gap:   "gap-0.5",
   },
   lg: {
     label: "text-base font-normal",
     value: "text-2xl font-bold tabular-nums",
-    unit:  "text-base font-normal ml-1",
+    unit:  "text-base font-normal ms-1",
     gap:   "gap-1",
   },
 }

@@ -74,19 +74,21 @@ describe("GlycemiaValue", () => {
 
     it("renders zone label when showZoneLabel is true", () => {
       render(<GlycemiaValue value={50} showZoneLabel />)
-      expect(screen.getByText("Hypo severe")).toBeTruthy()
+      // i18n mock returns key path: glycemia.zone.veryLow
+      expect(screen.getByText(/glycemia\.zone\.veryLow/)).toBeTruthy()
     })
 
     it("has correct ARIA label for hypo", () => {
       const { container } = render(<GlycemiaValue value={60} />)
       const el = container.querySelector("[aria-label]")
-      expect(el?.getAttribute("aria-label")).toContain("Hypoglycemie")
+      // i18n mock returns key: glycemia.zone.low
+      expect(el?.getAttribute("aria-label")).toContain("glycemia.zone.low")
     })
 
     it("has correct ARIA label for critical", () => {
       const { container } = render(<GlycemiaValue value={450} />)
       const el = container.querySelector("[aria-label]")
-      expect(el?.getAttribute("aria-label")).toContain("critique")
+      expect(el?.getAttribute("aria-label")).toContain("glycemia.zone.critical")
     })
   })
 })

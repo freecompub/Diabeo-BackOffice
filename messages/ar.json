@@ -19,7 +19,15 @@
     "previous": "\u0627\u0644\u0633\u0627\u0628\u0642",
     "refresh": "\u062a\u062d\u062f\u064a\u062b",
     "export": "\u062a\u0635\u062f\u064a\u0631",
-    "logout": "\u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062e\u0631\u0648\u062c"
+    "logout": "\u062a\u0633\u062c\u064a\u0644 \u0627\u0644\u062e\u0631\u0648\u062c",
+    "justNow": "\u0627\u0644\u0622\u0646",
+    "ago": "\u0645\u0646\u0630 {value}",
+    "yesterday": "\u0623\u0645\u0633",
+    "minuteShort": "{count}\u062f",
+    "hourShort": "{count}\u0633",
+    "dayShort": "{count}\u064a",
+    "noEvent": "\u0644\u0627 \u062a\u0648\u062c\u062f \u0623\u062d\u062f\u0627\u062b",
+    "eventCount": "{count} \u062d\u062f\u062b(\u0623\u062d\u062f\u0627\u062b)"
   },
   "nav": {
     "dashboard": "\u0644\u0648\u062d\u0629 \u0627\u0644\u0642\u064a\u0627\u062f\u0629",
@@ -152,6 +160,10 @@
     "estimated": "\u0645\u0642\u062f\u0631",
     "readings": "\u0642\u0631\u0627\u0621\u0627\u062a",
     "resumeMetrics": "\u0645\u0644\u062e\u0635 \u0645\u0642\u0627\u064a\u064a\u0633 \u0633\u0643\u0631 \u0627\u0644\u062f\u0645",
+    "trendUp": "\u0627\u0631\u062a\u0641\u0627\u0639 {value}",
+    "trendDown": "\u0627\u0646\u062e\u0641\u0627\u0636 {value}",
+    "trendStable": "\u0645\u0633\u062a\u0642\u0631",
+    "loadingMetric": "\u062c\u0627\u0631\u064a \u062a\u062d\u0645\u064a\u0644 \u0627\u0644\u0645\u0642\u064a\u0627\u0633",
     "stability": {
       "stable": "\u0645\u0633\u062a\u0642\u0631",
       "moderate": "\u0645\u062a\u0648\u0633\u0637",

@@ -220,7 +220,7 @@ describe("MetricCard", () => {
   it("shows loading skeleton when loading is true", () => {
     render(<MetricCard title="TIR" value={72} loading />)
     // The skeleton container has aria-busy
-    expect(screen.getByLabelText("Chargement...")).toBeTruthy()
+    expect(screen.getByLabelText("metrics.loadingMetric")).toBeTruthy()
   })
 
   it("does not show value when loading", () => {
@@ -248,7 +248,7 @@ describe("MetricCard", () => {
         trend={{ direction: "up", value: "+3%" }}
       />
     )
-    expect(screen.getByLabelText(/En hausse de \+3%/)).toBeTruthy()
+    expect(screen.getAllByLabelText(/metrics\.trendUp/).length).toBeGreaterThan(0)
   })
 
   it("trend has accessible label for down direction", () => {
@@ -259,7 +259,7 @@ describe("MetricCard", () => {
         trend={{ direction: "down", value: "-2%" }}
       />
     )
-    expect(screen.getByLabelText(/En baisse de -2%/)).toBeTruthy()
+    expect(screen.getAllByLabelText(/metrics\.trendDown/).length).toBeGreaterThan(0)
   })
 
   it("has role=button when onClick is provided", () => {

@@ -19,7 +19,15 @@
     "previous": "Precedent",
     "refresh": "Actualiser",
     "export": "Exporter",
-    "logout": "Deconnexion"
+    "logout": "Deconnexion",
+    "justNow": "A l'instant",
+    "ago": "Il y a {value}",
+    "yesterday": "Hier",
+    "minuteShort": "{count}min",
+    "hourShort": "{count}h",
+    "dayShort": "{count}j",
+    "noEvent": "aucun evenement",
+    "eventCount": "{count} evenement(s)"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -152,6 +160,10 @@
     "estimated": "estime",
     "readings": "lectures",
     "resumeMetrics": "Resume des metriques glycemiques",
+    "trendUp": "En hausse de {value}",
+    "trendDown": "En baisse de {value}",
+    "trendStable": "Stable",
+    "loadingMetric": "Chargement de la metrique",
     "stability": {
       "stable": "Stable",
       "moderate": "Modere",

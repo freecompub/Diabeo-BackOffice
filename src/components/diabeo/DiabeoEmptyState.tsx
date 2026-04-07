@@ -9,6 +9,7 @@ import {
   BarChart3,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { DiabeoButton } from "./DiabeoButton"
 
 /**
  * DiabeoEmptyState — Empty state display for data areas in the Diabeo backoffice.
@@ -135,19 +136,13 @@ export function DiabeoEmptyState({
 
       {/* CTA */}
       {action && (
-        <button
-          type="button"
+        <DiabeoButton
+          variant="diabeoPrimary"
           onClick={action.onClick}
-          className={cn(
-            "mt-2 inline-flex items-center gap-2 rounded-md px-4 py-2",
-            "text-sm font-medium text-white",
-            "bg-teal-600 hover:bg-teal-700",
-            "transition-colors duration-200 ease-out",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
-          )}
+          className="mt-2"
         >
           {action.label}
-        </button>
+        </DiabeoButton>
       )}
     </div>
   )

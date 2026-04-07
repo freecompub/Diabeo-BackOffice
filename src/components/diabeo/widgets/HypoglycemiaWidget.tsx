@@ -28,24 +28,6 @@ export interface HypoglycemiaWidgetProps extends WidgetProps {
   lastEvent?: Date
 }
 
-/**
- * Returns a human-readable relative time string for the last event.
- * Intentionally kept simple — no external date library required.
- */
-function formatRelativeTime(date: Date): string {
-  const diffMs = Date.now() - date.getTime()
-  const diffMin = Math.floor(diffMs / 60_000)
-
-  if (diffMin < 1) return "à l'instant"
-  if (diffMin < 60) return `il y a ${diffMin} min`
-
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `il y a ${diffH} h`
-
-  const diffD = Math.floor(diffH / 24)
-  return `il y a ${diffD} j`
-}
-
 export function HypoglycemiaWidget({
   count,
   lastEvent,
@@ -54,9 +36,28 @@ export function HypoglycemiaWidget({
   className,
 }: HypoglycemiaWidgetProps) {
   const t = useTranslations("metrics")
+  const tCommon = useTranslations("common")
 
   if (loading) {
     return <WidgetSkeleton className={className} />
+  }
+
+  /**
+   * Returns a human-readable relative time string for the last event.
+   * Intentionally kept simple — no external date library required.
+   */
+  function formatRelativeTime(date: Date): string {
+    const diffMs = Date.now() - date.getTime()
+    const diffMin = Math.floor(diffMs / 60_000)
+
+    if (diffMin < 1) return tCommon("justNow")
+    if (diffMin < 60) return tCommon("ago", { value: tCommon("minuteShort", { count: diffMin }) })
+
+    const diffH = Math.floor(diffMin / 60)
+    if (diffH < 24) return tCommon("ago", { value: tCommon("hourShort", { count: diffH }) })
+
+    const diffD = Math.floor(diffH / 24)
+    return tCommon("ago", { value: tCommon("dayShort", { count: diffD }) })
   }
 
   const hasEvents = count > 0
@@ -64,8 +65,8 @@ export function HypoglycemiaWidget({
   const label = t("hypoEvents")
   const ariaLabel =
     count === 0
-      ? `${label}: aucun événement`
-      : `${label}: ${count} événement${count > 1 ? "s" : ""}${lastEvent ? `, dernier ${formatRelativeTime(lastEvent)}` : ""}`
+      ? `${label}: ${tCommon("noEvent")}`
+      : `${label}: ${tCommon("eventCount", { count })}${lastEvent ? `, dernier ${formatRelativeTime(lastEvent)}` : ""}`
 
   return (
     <div
@@ -94,7 +95,7 @@ export function HypoglycemiaWidget({
         {count}
       </p>
       <p className="text-xs text-gray-400 mt-0.5">
-        {hasEvents && lastEvent ? formatRelativeTime(lastEvent) : "aucun événement"}
+        {hasEvents && lastEvent ? formatRelativeTime(lastEvent) : tCommon("noEvent")}
       </p>
     </div>
   )

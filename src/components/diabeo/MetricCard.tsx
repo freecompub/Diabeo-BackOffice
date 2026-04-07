@@ -3,6 +3,7 @@
 import { forwardRef, type ReactNode } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 import { DiabeoCard } from "./DiabeoCard"
 
 /**
@@ -80,13 +81,15 @@ const trendIconPaths: Record<MetricTrend["direction"], string> = {
 }
 
 function TrendIndicator({ trend }: { trend: MetricTrend }) {
+  const t = useTranslations("metrics")
   const colorClass = trendDirectionClasses[trend.direction]
+
   const ariaLabel =
     trend.direction === "up"
-      ? `En hausse de ${trend.value}`
+      ? t("trendUp", { value: trend.value })
       : trend.direction === "down"
-        ? `En baisse de ${trend.value}`
-        : `Stable, ${trend.value}`
+        ? t("trendDown", { value: trend.value })
+        : t("trendStable")
 
   return (
     <div
@@ -115,8 +118,9 @@ function TrendIndicator({ trend }: { trend: MetricTrend }) {
 // ─── Loading skeleton ─────────────────────────────────────────────────────────
 
 function MetricCardSkeleton() {
+  const t = useTranslations("common")
   return (
-    <div className="space-y-2" aria-busy="true" aria-label="Chargement...">
+    <div className="space-y-2" aria-busy="true" aria-label={t("loading")}>
       <Skeleton className="h-3.5 w-24" />
       <Skeleton className="h-8 w-16" />
       <Skeleton className="h-3 w-12" />
@@ -155,6 +159,7 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
     },
     ref
   ) {
+    const t = useTranslations("metrics")
     const isClickable = !!onClick
 
     return (
@@ -184,8 +189,8 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
         }
         aria-label={
           loading
-            ? "Chargement de la metrique"
-            : `${title}: ${value}${unit ? ` ${unit}` : ""}${trend ? `, ${trend.direction === "up" ? "en hausse" : trend.direction === "down" ? "en baisse" : "stable"} ${trend.value}` : ""}`
+            ? t("loadingMetric")
+            : `${title}: ${value}${unit ? ` ${unit}` : ""}${trend ? `, ${trend.direction === "up" ? t("trendUp", { value: trend.value }) : trend.direction === "down" ? t("trendDown", { value: trend.value }) : t("trendStable")}` : ""}`
         }
       >
         {loading ? (

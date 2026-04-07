@@ -75,12 +75,21 @@ export interface TimeInRangeData {
   veryHigh: number
 }
 
-export type GlucoseZone = "veryLow" | "low" | "inRange" | "high" | "veryHigh"
+export type GlucoseZone = "veryLow" | "low" | "inRange" | "high" | "veryHigh" | "critical"
 
+/**
+ * Classify a glucose value into a clinical zone.
+ * Includes "critical" zone for values <40 or >400 mg/dL (immediate danger).
+ *
+ * Note: GlycemiaValue.tsx uses kebab-case zones ("very-low").
+ * Chart components use camelCase zones ("veryLow").
+ * Both follow the same clinical thresholds.
+ */
 export function getGlucoseZone(
   value: number,
   thresholds: GlycemiaThresholds = DEFAULT_THRESHOLDS
 ): GlucoseZone {
+  if (value < 40 || value > 400) return "critical"
   if (value < thresholds.veryLow) return "veryLow"
   if (value < thresholds.low) return "low"
   if (value <= thresholds.targetMax) return "inRange"
@@ -94,4 +103,5 @@ export const ZONE_COLORS: Record<GlucoseZone, string> = {
   inRange: "var(--color-glycemia-normal)",
   high: "var(--color-glycemia-high)",
   veryHigh: "var(--color-glycemia-very-high)",
+  critical: "var(--color-glycemia-critical)",
 }

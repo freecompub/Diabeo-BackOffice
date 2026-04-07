@@ -65,7 +65,7 @@ export function HypoglycemiaCounter({
             <BarChart data={data.dailyCounts}>
               <XAxis
                 dataKey="date"
-                tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                tick={{ fontSize: 10, fill: "var(--diabeo-neutral-400)" }}
                 tickLine={false}
                 axisLine={false}
               />

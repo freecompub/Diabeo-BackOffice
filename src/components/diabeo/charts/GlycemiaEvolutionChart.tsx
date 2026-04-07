@@ -18,6 +18,7 @@
 
 import { useState, useMemo } from "react"
 import { useTranslations } from "next-intl"
+import { DiabeoEmptyState } from "../DiabeoEmptyState"
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -137,6 +138,17 @@ export function GlycemiaEvolutionChart({
     return tGlycemia(zone)
   }
 
+  if (glucoseData.length === 0) {
+    return (
+      <div className={cn("space-y-3", className)}>
+        <h3 className="text-sm font-semibold text-gray-900">
+          {t("glucoseEvolution")}
+        </h3>
+        <DiabeoEmptyState variant="noData" />
+      </div>
+    )
+  }
+
   return (
     <div className={cn("space-y-3", className)}>
       {/* Header */}
@@ -157,8 +169,9 @@ export function GlycemiaEvolutionChart({
       <div
         role="img"
         aria-label={`${t("glucoseEvolution")} — ${glucoseData.length} ${t("readings")}`}
+        className="h-[240px] sm:h-[300px] md:h-[360px]"
       >
-        <ResponsiveContainer width="100%" height={height}>
+        <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
             data={mergedData}
             margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
@@ -207,7 +220,7 @@ export function GlycemiaEvolutionChart({
 
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 11, fill: "#9CA3AF" }}
+              tick={{ fontSize: 11, fill: "var(--diabeo-neutral-400)" }}
               tickLine={false}
               axisLine={{ stroke: "var(--color-border)" }}
               interval={Math.max(1, Math.floor(mergedData.length / 8))}
@@ -216,7 +229,7 @@ export function GlycemiaEvolutionChart({
             <YAxis
               yAxisId="glucose"
               domain={[40, Math.min(450, Math.max(300, ...glucoseData.map(d => d.glucose)))]}
-              tick={{ fontSize: 11, fill: "#9CA3AF" }}
+              tick={{ fontSize: 11, fill: "var(--diabeo-neutral-400)" }}
               tickLine={false}
               axisLine={{ stroke: "var(--color-border)" }}
               width={40}
@@ -228,7 +241,7 @@ export function GlycemiaEvolutionChart({
                 yAxisId="insulin"
                 orientation="right"
                 domain={[0, "auto"]}
-                tick={{ fontSize: 10, fill: "#9CA3AF" }}
+                tick={{ fontSize: 10, fill: "var(--diabeo-neutral-400)" }}
                 tickLine={false}
                 axisLine={false}
                 width={30}

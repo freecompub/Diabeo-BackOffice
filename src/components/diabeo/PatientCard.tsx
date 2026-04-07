@@ -183,7 +183,7 @@ export function PatientCard({
 
       {/* Active status indicator */}
       {!isActive && (
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 end-2">
           <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             Inactif
           </span>

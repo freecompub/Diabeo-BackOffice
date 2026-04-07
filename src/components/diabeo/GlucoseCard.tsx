@@ -1,6 +1,7 @@
 "use client"
 
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 import { DiabeoCard } from "./DiabeoCard"
 import { getGlycemiaZone, type GlycemiaZone } from "./GlycemiaValue"
 
@@ -64,28 +65,41 @@ const zoneBgClasses: Record<GlycemiaZone, string> = {
   "critical": "bg-glycemia-critical-bg",
 }
 
-const zoneLabelFr: Record<GlycemiaZone, string> = {
-  "very-low": "Hypo severe",
-  "low": "Hypoglycemie",
-  "normal": "En cible",
-  "high": "Hyperglycemie",
-  "very-high": "Hyper severe",
-  "critical": "Critique",
+/**
+ * Maps GlycemiaZone to glycemia.zone i18n keys.
+ * Keys already exist in all locale files.
+ */
+const zoneI18nKeys: Record<GlycemiaZone, string> = {
+  "very-low": "veryLow",
+  "low": "low",
+  "normal": "normal",
+  "high": "high",
+  "very-high": "veryHigh",
+  "critical": "critical",
+}
+
+/**
+ * Maps GlucoseTrend to glycemia.trend i18n keys.
+ * Keys already exist in all locale files.
+ */
+const trendI18nKeys: Record<GlucoseTrend, string> = {
+  rising_fast: "risingFast",
+  rising: "rising",
+  stable: "stable",
+  falling: "falling",
+  falling_fast: "fallingFast",
+  unknown: "unknown",
 }
 
 // ─── Trend arrow component ────────────────────────────────────────────────────
 
-/** Aria labels for CGM trend directions — announced to screen readers */
-const trendAriaLabels: Record<GlucoseTrend, string> = {
-  rising_fast: "Montee rapide",
-  rising: "En hausse",
-  stable: "Stable",
-  falling: "En baisse",
-  falling_fast: "Descente rapide",
-  unknown: "Tendance inconnue",
-}
-
-function TrendArrow({ trend }: { trend: GlucoseTrend }) {
+function TrendArrow({
+  trend,
+  ariaLabel,
+}: {
+  trend: GlucoseTrend
+  ariaLabel: string
+}) {
   const arrows: Record<GlucoseTrend, string> = {
     rising_fast: "↑↑",
     rising: "↗",
@@ -106,7 +120,7 @@ function TrendArrow({ trend }: { trend: GlucoseTrend }) {
 
   return (
     <span
-      aria-label={trendAriaLabels[trend]}
+      aria-label={ariaLabel}
       className={cn("text-2xl font-bold leading-none", colorClasses[trend])}
     >
       {arrows[trend]}
@@ -126,21 +140,6 @@ function convertGlucose(mgdl: number, unit: GlucoseUnit): string {
     default:
       return Math.round(mgdl).toString()
   }
-}
-
-// ─── Relative time formatting ─────────────────────────────────────────────────
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-
-  if (diffMins < 1) return "A l'instant"
-  if (diffMins < 60) return `Il y a ${diffMins} min`
-  const diffHours = Math.floor(diffMins / 60)
-  if (diffHours < 24) return `Il y a ${diffHours}h`
-  const diffDays = Math.floor(diffHours / 24)
-  return diffDays === 1 ? "Hier" : `Il y a ${diffDays}j`
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -166,9 +165,33 @@ export function GlucoseCard({
   source,
   className,
 }: GlucoseCardProps) {
+  const tZone = useTranslations("glycemia.zone")
+  const tTrend = useTranslations("glycemia.trend")
+  const tCommon = useTranslations("common")
+
   const zone = getGlycemiaZone(value)
   const displayValue = convertGlucose(value, unit)
   const isCritical = zone === "critical" || zone === "very-low"
+
+  const zoneLabel = tZone(zoneI18nKeys[zone])
+  const trendLabel = trend ? tTrend(trendI18nKeys[trend]) : undefined
+
+  /** Formats a date as a localized relative time string */
+  function formatRelativeTime(date: Date): string {
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffMins = Math.floor(diffMs / 60000)
+
+    if (diffMins < 1) return tCommon("justNow")
+    if (diffMins < 60) return tCommon("ago", { value: tCommon("minuteShort", { count: diffMins }) })
+    const diffHours = Math.floor(diffMins / 60)
+    if (diffHours < 24) return tCommon("ago", { value: tCommon("hourShort", { count: diffHours }) })
+    const diffDays = Math.floor(diffHours / 24)
+    if (diffDays === 1) return tCommon("yesterday")
+    return tCommon("ago", { value: tCommon("dayShort", { count: diffDays }) })
+  }
+
+  const relativeTime = timestamp ? formatRelativeTime(timestamp) : undefined
 
   return (
     <DiabeoCard
@@ -180,7 +203,7 @@ export function GlucoseCard({
         className
       )}
       role={isCritical ? "alert" : "region"}
-      aria-label={`Glycemie ${displayValue} ${unit}, ${zoneLabelFr[zone]}${trend ? `, ${trendAriaLabels[trend]}` : ""}${timestamp ? `, mesure ${formatRelativeTime(timestamp)}` : ""}`}
+      aria-label={`Glycemie ${displayValue} ${unit}, ${zoneLabel}${trendLabel ? `, ${trendLabel}` : ""}${relativeTime ? `, mesure ${relativeTime}` : ""}`}
     >
       {/* Zone color accent strip on the left edge */}
       <div
@@ -191,7 +214,7 @@ export function GlucoseCard({
       <div className="ps-3">
         {/* Zone label */}
         <p className="text-xs font-medium text-muted-foreground mb-1">
-          {zoneLabelFr[zone]}
+          {zoneLabel}
         </p>
 
         {/* Primary value row: value + trend arrow */}
@@ -207,9 +230,9 @@ export function GlucoseCard({
           <span className="text-sm font-normal text-muted-foreground">
             {unit}
           </span>
-          {trend && trend !== "unknown" && (
+          {trend && trend !== "unknown" && trendLabel && (
             <span className="ms-1 self-center">
-              <TrendArrow trend={trend} />
+              <TrendArrow trend={trend} ariaLabel={trendLabel} />
             </span>
           )}
         </div>
@@ -217,12 +240,12 @@ export function GlucoseCard({
         {/* Footer row: timestamp left, source badge right */}
         {(timestamp || source) && (
           <div className="flex items-center justify-between mt-2 gap-2">
-            {timestamp && (
+            {timestamp && relativeTime && (
               <time
                 dateTime={timestamp.toISOString()}
                 className="text-xs text-muted-foreground"
               >
-                {formatRelativeTime(timestamp)}
+                {relativeTime}
               </time>
             )}
             {source && (
