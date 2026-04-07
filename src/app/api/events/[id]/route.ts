@@ -34,7 +34,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const pidParam = req instanceof Request ? new URL(req.url).searchParams.get("patientId") : null
+    const pidParam = new URL(req.url).searchParams.get("patientId")
     const patientId = await resolvePatientId(user.id, user.role, pidParam ? parseInt(pidParam, 10) : undefined)
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
@@ -77,7 +77,7 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const pidParam = req instanceof Request ? new URL(req.url).searchParams.get("patientId") : null
+    const pidParam = new URL(req.url).searchParams.get("patientId")
     const patientId = await resolvePatientId(user.id, user.role, pidParam ? parseInt(pidParam, 10) : undefined)
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })

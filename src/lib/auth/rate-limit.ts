@@ -51,7 +51,8 @@ export async function checkRateLimit(identifier: string): Promise<{
         }
       }
       return { blocked: false }
-    } catch {
+    } catch (err) {
+      console.error("[rate-limit] Redis error in checkRateLimit, falling back to memory:", err instanceof Error ? err.message : err)
       return { blocked: false }
     }
   }
@@ -82,8 +83,8 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
 
       await client.set(key, { count, lockedUntil }, { ex: ATTEMPT_TTL_SECONDS })
       return
-    } catch {
-      // Fall through to memory
+    } catch (err) {
+      console.error("[rate-limit] Redis error in recordFailedAttempt, falling back to memory:", err instanceof Error ? err.message : err)
     }
   }
 
@@ -105,8 +106,8 @@ export async function clearAttempts(identifier: string): Promise<void> {
     try {
       await client.del(redisKey(identifier))
       return
-    } catch {
-      // Fall through to memory
+    } catch (err) {
+      console.error("[rate-limit] Redis error in clearAttempts, falling back to memory:", err instanceof Error ? err.message : err)
     }
   }
 

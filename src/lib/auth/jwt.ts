@@ -95,7 +95,7 @@ export async function verifyJwt(token: string): Promise<JWTPayload> {
   return validatePayload(payload)
 }
 
-/** Verify JWT but allow recently expired tokens (for refresh flow, 1h grace) */
+/** Verify JWT but allow recently expired tokens (for refresh flow, 15min grace matching TOKEN_EXPIRY) */
 export async function verifyJwtAllowExpired(token: string): Promise<JWTPayload> {
   const key = await getPublicKey()
   try {
@@ -103,7 +103,7 @@ export async function verifyJwtAllowExpired(token: string): Promise<JWTPayload> 
       algorithms: [ALG],
       issuer: ISSUER,
       audience: AUDIENCE,
-      clockTolerance: 3600,
+      clockTolerance: 900, // 15min grace — matches TOKEN_EXPIRY
     })
     return validatePayload(payload)
   } catch {

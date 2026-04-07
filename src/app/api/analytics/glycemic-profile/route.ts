@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const pidParam = req instanceof Request ? new URL(req.url).searchParams.get("patientId") : null
+    const pidParam = new URL(req.url).searchParams.get("patientId")
     const patientId = await resolvePatientId(user.id, user.role, pidParam ? parseInt(pidParam, 10) : undefined)
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 

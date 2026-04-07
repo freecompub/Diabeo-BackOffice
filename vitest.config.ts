@@ -11,6 +11,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "text-summary", "lcov", "html"],
       include: [
+        "src/lib/clinical-bounds.ts",
         "src/lib/services/**",
         "src/lib/crypto/**",
         "src/lib/auth/**",

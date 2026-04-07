@@ -302,12 +302,20 @@ async function calculateIob(
   patientId: number,
   actionDurationHours: number,
 ): Promise<number> {
+  // Guard against division by zero (C2 fix)
+  if (actionDurationHours <= 0) {
+    throw new Error("actionDurationHours must be positive — cannot calculate IOB")
+  }
+
   const cutoff = new Date(Date.now() - actionDurationHours * 3600_000)
 
+  // Only count DELIVERED boluses — suggestions not yet accepted must not
+  // contribute to IOB, otherwise we under-dose hyperglycemic patients (C1 fix)
   const recentBoluses = await prisma.bolusCalculationLog.findMany({
     where: {
       patientId,
       calculatedAt: { gte: cutoff },
+      wasDelivered: true,
     },
     select: {
       recommendedDose: true,
@@ -322,7 +330,7 @@ async function calculateIob(
   for (const bolus of recentBoluses) {
     const elapsedHours = (now - bolus.calculatedAt.getTime()) / 3600_000
     const remaining = Math.max(0, 1 - elapsedHours / actionDurationHours)
-    totalIob += Number(bolus.recommendedDose) * remaining
+    totalIob += bolus.recommendedDose.toNumber() * remaining
   }
 
   return roundToHundredths(totalIob)
