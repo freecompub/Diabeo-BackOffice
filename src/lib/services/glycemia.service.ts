@@ -267,6 +267,22 @@ export const glycemiaService = {
   },
 
   /**
+   * Verify that a pump event belongs to a specific patient.
+   * Used for ownership check before delete operations.
+   * @async
+   * @param {number} eventId - PumpEvent ID
+   * @param {number} patientId - Expected patient ID
+   * @returns {Promise<boolean>} True if event belongs to patient
+   */
+  async verifyPumpEventOwnership(eventId: number, patientId: number): Promise<boolean> {
+    const event = await prisma.pumpEvent.findFirst({
+      where: { id: eventId, patientId },
+      select: { id: true },
+    })
+    return !!event
+  },
+
+  /**
    * Delete a pump event by ID.
    * @async
    * @param {number} id - PumpEvent ID

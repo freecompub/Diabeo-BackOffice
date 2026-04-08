@@ -80,6 +80,26 @@ describe("glycemiaService — pump events", () => {
     })
   })
 
+  describe("verifyPumpEventOwnership", () => {
+    it("returns true when event belongs to patient", async () => {
+      prismaMock.pumpEvent.findFirst.mockResolvedValue({ id: 1 } as any)
+
+      const result = await glycemiaService.verifyPumpEventOwnership(1, 10)
+      expect(result).toBe(true)
+      expect(prismaMock.pumpEvent.findFirst).toHaveBeenCalledWith({
+        where: { id: 1, patientId: 10 },
+        select: { id: true },
+      })
+    })
+
+    it("returns false when event does not belong to patient", async () => {
+      prismaMock.pumpEvent.findFirst.mockResolvedValue(null)
+
+      const result = await glycemiaService.verifyPumpEventOwnership(1, 99)
+      expect(result).toBe(false)
+    })
+  })
+
   describe("deletePumpEvent", () => {
     it("deletes a pump event with audit log", async () => {
       const txMock = {

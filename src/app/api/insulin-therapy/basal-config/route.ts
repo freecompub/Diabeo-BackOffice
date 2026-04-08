@@ -9,7 +9,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { BasalConfigType } from "@prisma/client"
-import { requireAuth, AuthError } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
@@ -52,7 +52,10 @@ export async function GET(req: NextRequest) {
     }
 
     const config = await insulinTherapyService.getBasalConfig(settings.id)
-    return NextResponse.json(config ?? { message: "noBasalConfig" })
+    if (!config) {
+      return NextResponse.json({ error: "basalConfigNotFound" }, { status: 404 })
+    }
+    return NextResponse.json(config)
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
@@ -69,7 +72,7 @@ export async function GET(req: NextRequest) {
  */
 export async function PUT(req: NextRequest) {
   try {
-    const user = requireAuth(req)
+    const user = requireRole(req, "NURSE")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

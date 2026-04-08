@@ -8,7 +8,7 @@
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireAuth, AuthError } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
@@ -21,6 +21,9 @@ const createSlotSchema = z.object({
   startTime: z.string().regex(timeRegex, "Format HH:MM required"),
   endTime: z.string().regex(timeRegex, "Format HH:MM required"),
   rate: z.number().min(INSULIN_BOUNDS.BASAL_MIN).max(INSULIN_BOUNDS.BASAL_MAX),
+}).refine((d) => d.startTime !== d.endTime, {
+  message: "startTime and endTime must be different — a zero-duration slot is invalid",
+  path: ["endTime"],
 })
 
 const deleteSlotSchema = z.object({
@@ -68,11 +71,11 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/insulin-therapy/basal-config/pump-slots
- * Create a new pump basal slot.
+ * Create a new pump basal slot. Requires NURSE+ role.
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = requireAuth(req)
+    const user = requireRole(req, "NURSE")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
@@ -120,11 +123,11 @@ export async function POST(req: NextRequest) {
 
 /**
  * DELETE /api/insulin-therapy/basal-config/pump-slots?id=
- * Delete a pump basal slot by UUID.
+ * Delete a pump basal slot by UUID. Requires NURSE+ role.
  */
 export async function DELETE(req: NextRequest) {
   try {
-    const user = requireAuth(req)
+    const user = requireRole(req, "NURSE")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

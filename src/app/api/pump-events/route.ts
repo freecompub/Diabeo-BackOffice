@@ -30,7 +30,8 @@ const createSchema = z.object({
 })
 
 const deleteSchema = z.object({
-  id: z.number().int().positive(),
+  id: z.coerce.number().int().positive(),
+  patientId: z.coerce.number().int().positive().optional(),
 })
 
 /**
@@ -147,7 +148,22 @@ export async function DELETE(req: NextRequest) {
       )
     }
 
+    // S1 fix: verify the pump event belongs to the caller's patient
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) {
+      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    }
+
     const ctx = extractRequestContext(req)
+
+    // Verify event ownership before deleting
+    const ownershipOk = await glycemiaService.verifyPumpEventOwnership(
+      parsed.data.id, patientId,
+    )
+    if (!ownershipOk) {
+      return NextResponse.json({ error: "pumpEventNotFound" }, { status: 404 })
+    }
+
     const result = await glycemiaService.deletePumpEvent(
       parsed.data.id, user.id, ctx,
     )
