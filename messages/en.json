@@ -45,7 +45,8 @@
     "collapseSidebar": "Collapse sidebar",
     "openNavigation": "Open navigation",
     "navigation": "Navigation",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "weekly": "Weekly"
   },
   "auth": {
     "welcome": "Welcome to Diabeo",
@@ -101,11 +102,26 @@
     "searchPlaceholder": "Search for a patient...",
     "filterPathology": "Filter by pathology",
     "allPathologies": "All pathologies",
+    "filterAll": "All",
     "dt1": "Type 1 Diabetes",
     "dt2": "Type 2 Diabetes",
     "gd": "Gestational Diabetes",
     "lastReading": "Last reading",
-    "noPatients": "No patients found"
+    "noPatients": "No patients found",
+    "noPatientsFor": "No patients found for « {search} »",
+    "colPatient": "Patient",
+    "colPathology": "Pathology",
+    "colAge": "Age",
+    "colLastGlucose": "Last glucose",
+    "colTir": "TIR",
+    "colLastSync": "Last sync",
+    "colActions": "Actions",
+    "years": "{age} yrs",
+    "inactive": "Inactive",
+    "viewRecord": "View record for {name}",
+    "patientCount": "{count} patient",
+    "patientsCount": "{count} patients",
+    "fileTooLarge": "File exceeds the maximum allowed size (50 MB)"
   },
   "patient": {
     "overview": "Overview",
@@ -380,7 +396,8 @@
       "unauthorized": "Your session has expired. Please log in again.",
       "gdprConsentRequired": "GDPR consent is required to record events.",
       "patientNotFound": "Patient not found.",
-      "networkError": "Network error. Check your connection and try again."
+      "networkError": "Network error. Check your connection and try again.",
+      "carbohydratesMax": "Carbohydrate amount cannot exceed 500 g"
     }
   },
   "insulinTherapy": {
@@ -452,7 +469,9 @@
     "resetToDefaults": "Reset to defaults",
     "resetConfirmTitle": "Reset settings?",
     "resetConfirmDescription": "All ISF and ICR slots will be deleted. This action cannot be undone.",
-    "resetConfirm": "Yes, reset"
+    "resetConfirm": "Yes, reset",
+    "hourCovered": "covered",
+    "hourNotCovered": "not covered"
   },
   "radar": {
     "title": "Radar Chart",
@@ -569,6 +588,8 @@
     "searchPlaceholder": "Search a document...",
     "importButton": "Import",
     "uploadError": "Error uploading file",
+    "fileTooLarge": "File exceeds the maximum allowed size (50 MB)",
+    "invalidFileType": "Invalid file type. Accepted formats: PDF, PNG, JPG",
     "previewDocument": "Preview document: {title}",
     "downloadDocument": "Download: {title}",
     "previewUnavailable": "Preview unavailable for this file",
@@ -625,7 +646,9 @@
       "ins": "INS",
       "oid": "OID",
       "notProvided": "Not provided",
-      "readonlyNotice": "These fields are managed by your healthcare institution and cannot be edited here."
+      "readonlyNotice": "These fields are managed by your healthcare institution and cannot be edited here.",
+      "reveal": "Reveal",
+      "hide": "Hide"
     },
     "contact": {
       "title": "Contact details",

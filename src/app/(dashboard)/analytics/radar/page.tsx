@@ -194,6 +194,11 @@ function RadarChartSVG({
             onMouseLeave={() => setHoveredIndex(null)}
             onFocus={() => setHoveredIndex(i)}
             onBlur={() => setHoveredIndex(null)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setHoveredIndex(null)
+              }
+            }}
             tabIndex={0}
             role="button"
             aria-label={`${dayLabels[i]}: ${p.value.toFixed(1)}`}

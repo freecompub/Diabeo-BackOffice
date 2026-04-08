@@ -331,6 +331,8 @@ export default function NewEventPage() {
         next.carbohydrates = t("errors.carbohydratesRequired")
       } else if (carbs < 0) {
         next.carbohydrates = t("errors.carbohydratesMin")
+      } else if (carbs > 500) {
+        next.carbohydrates = t("errors.carbohydratesMax")
       }
       const bolus = parseOptionalFloat(form.bolusDose)
       if (bolus !== undefined && (bolus < 0 || bolus > 25)) {
@@ -455,7 +457,15 @@ export default function NewEventPage() {
       })
     )
 
-    if (!validate()) return
+    if (!validate()) {
+      // Focus the first invalid field for accessibility
+      const firstErrorField = Object.keys(errors)[0]
+      if (firstErrorField) {
+        const el = document.getElementById(`event-${firstErrorField}`)
+        el?.focus()
+      }
+      return
+    }
 
     setIsSubmitting(true)
 
@@ -662,6 +672,7 @@ export default function NewEventPage() {
                   description={t("sections.glycemiaHint")}
                 >
                   <DiabeoTextField
+                    id="event-glycemiaValue"
                     label={t("fields.glycemiaValue")}
                     type="number"
                     inputMode="decimal"
@@ -691,10 +702,12 @@ export default function NewEventPage() {
                   description={t("sections.insulinMealHint")}
                 >
                   <DiabeoTextField
+                    id="event-carbohydrates"
                     label={t("fields.carbohydrates")}
                     type="number"
                     inputMode="decimal"
                     min={0}
+                    max={500}
                     step="1"
                     required
                     placeholder="60"
@@ -705,6 +718,7 @@ export default function NewEventPage() {
                   />
                   <div className="grid grid-cols-2 gap-4">
                     <DiabeoTextField
+                      id="event-bolusDose"
                       label={t("fields.bolusDose")}
                       type="number"
                       inputMode="decimal"
@@ -718,6 +732,7 @@ export default function NewEventPage() {
                       hint={t("hints.bolusDose")}
                     />
                     <DiabeoTextField
+                      id="event-basalDose"
                       label={t("fields.basalDose")}
                       type="number"
                       inputMode="decimal"
@@ -755,12 +770,12 @@ export default function NewEventPage() {
                       </span>
                     </Label>
                     <select
-                      id="activity-type"
+                      id="event-activityType"
                       required
                       aria-required="true"
                       aria-invalid={errors.activityType ? true : undefined}
                       aria-describedby={
-                        errors.activityType ? "activity-type-error" : undefined
+                        errors.activityType ? "event-activityType-error" : undefined
                       }
                       value={form.activityType}
                       onChange={(e) =>
@@ -786,7 +801,7 @@ export default function NewEventPage() {
                     </select>
                     {errors.activityType && (
                       <p
-                        id="activity-type-error"
+                        id="event-activityType-error"
                         role="alert"
                         className="text-xs font-medium text-feedback-error"
                       >
@@ -796,6 +811,7 @@ export default function NewEventPage() {
                   </div>
 
                   <DiabeoTextField
+                    id="event-activityDuration"
                     label={t("fields.activityDuration")}
                     type="number"
                     inputMode="numeric"
@@ -832,12 +848,12 @@ export default function NewEventPage() {
                       </span>
                     </Label>
                     <select
-                      id="context-type"
+                      id="event-contextType"
                       required
                       aria-required="true"
                       aria-invalid={errors.contextType ? true : undefined}
                       aria-describedby={
-                        errors.contextType ? "context-type-error" : undefined
+                        errors.contextType ? "event-contextType-error" : undefined
                       }
                       value={form.contextType}
                       onChange={(e) =>
@@ -863,7 +879,7 @@ export default function NewEventPage() {
                     </select>
                     {errors.contextType && (
                       <p
-                        id="context-type-error"
+                        id="event-contextType-error"
                         role="alert"
                         className="text-xs font-medium text-feedback-error"
                       >
@@ -888,6 +904,7 @@ export default function NewEventPage() {
                 >
                   <div className="grid grid-cols-2 gap-4">
                     <DiabeoTextField
+                      id="event-weight"
                       label={t("fields.weight")}
                       type="number"
                       inputMode="decimal"
@@ -901,6 +918,7 @@ export default function NewEventPage() {
                       hint={t("hints.weight")}
                     />
                     <DiabeoTextField
+                      id="event-hba1c"
                       label={t("fields.hba1c")}
                       type="number"
                       inputMode="decimal"
@@ -915,6 +933,7 @@ export default function NewEventPage() {
                     />
                   </div>
                   <DiabeoTextField
+                    id="event-ketones"
                     label={t("fields.ketones")}
                     type="number"
                     inputMode="decimal"
@@ -930,6 +949,7 @@ export default function NewEventPage() {
                   {/* Blood pressure — systolic + diastolic */}
                   <div className="grid grid-cols-2 gap-4">
                     <DiabeoTextField
+                      id="event-systolicPressure"
                       label={t("fields.systolicPressure")}
                       type="number"
                       inputMode="numeric"
@@ -943,6 +963,7 @@ export default function NewEventPage() {
                       hint={t("hints.systolicPressure")}
                     />
                     <DiabeoTextField
+                      id="event-diastolicPressure"
                       label={t("fields.diastolicPressure")}
                       type="number"
                       inputMode="numeric"

@@ -45,7 +45,8 @@
     "collapseSidebar": "Reduire la barre laterale",
     "openNavigation": "Ouvrir la navigation",
     "navigation": "Navigation",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "weekly": "Semainier"
   },
   "auth": {
     "welcome": "Bienvenue sur Diabeo",
@@ -101,11 +102,26 @@
     "searchPlaceholder": "Rechercher un patient...",
     "filterPathology": "Filtrer par pathologie",
     "allPathologies": "Toutes les pathologies",
+    "filterAll": "Tous",
     "dt1": "Diabete Type 1",
     "dt2": "Diabete Type 2",
     "gd": "Diabete gestationnel",
     "lastReading": "Derniere mesure",
-    "noPatients": "Aucun patient trouve"
+    "noPatients": "Aucun patient trouve",
+    "noPatientsFor": "Aucun patient trouve pour « {search} »",
+    "colPatient": "Patient",
+    "colPathology": "Pathologie",
+    "colAge": "Age",
+    "colLastGlucose": "Derniere glycemie",
+    "colTir": "TIR",
+    "colLastSync": "Derniere sync",
+    "colActions": "Actions",
+    "years": "{age} ans",
+    "inactive": "Inactif",
+    "viewRecord": "Voir le dossier de {name}",
+    "patientCount": "{count} patient",
+    "patientsCount": "{count} patients",
+    "fileTooLarge": "Le fichier depasse la taille maximale autorisee (50 Mo)"
   },
   "patient": {
     "overview": "Vue d'ensemble",
@@ -380,7 +396,8 @@
       "unauthorized": "Votre session a expire. Veuillez vous reconnecter.",
       "gdprConsentRequired": "Le consentement RGPD est requis pour enregistrer des evenements.",
       "patientNotFound": "Patient introuvable.",
-      "networkError": "Erreur reseau. Verifiez votre connexion et reessayez."
+      "networkError": "Erreur reseau. Verifiez votre connexion et reessayez.",
+      "carbohydratesMax": "La quantite de glucides ne peut pas depasser 500 g"
     }
   },
   "insulinTherapy": {
@@ -452,7 +469,9 @@
     "resetToDefaults": "Reinitialiser aux valeurs par defaut",
     "resetConfirmTitle": "Reinitialiser les parametres ?",
     "resetConfirmDescription": "Toutes les plages FSI et RIG seront supprimees. Cette action ne peut pas etre annulee.",
-    "resetConfirm": "Oui, reinitialiser"
+    "resetConfirm": "Oui, reinitialiser",
+    "hourCovered": "couvert",
+    "hourNotCovered": "non couvert"
   },
   "radar": {
     "title": "Graphique radar",
@@ -569,6 +588,8 @@
     "searchPlaceholder": "Rechercher un document...",
     "importButton": "Importer",
     "uploadError": "Erreur lors de l'envoi du fichier",
+    "fileTooLarge": "Le fichier depasse la taille maximale autorisee (50 Mo)",
+    "invalidFileType": "Type de fichier non autorise. Formats acceptes : PDF, PNG, JPG",
     "previewDocument": "Apercu du document : {title}",
     "downloadDocument": "Telecharger : {title}",
     "previewUnavailable": "Apercu indisponible pour ce fichier",
@@ -625,7 +646,9 @@
       "ins": "INS",
       "oid": "OID",
       "notProvided": "Non renseigne",
-      "readonlyNotice": "Ces donnees sont gerees par votre etablissement de sante et ne peuvent pas etre modifiees ici."
+      "readonlyNotice": "Ces donnees sont gerees par votre etablissement de sante et ne peuvent pas etre modifiees ici.",
+      "reveal": "Afficher",
+      "hide": "Masquer"
     },
     "contact": {
       "title": "Coordonnees",

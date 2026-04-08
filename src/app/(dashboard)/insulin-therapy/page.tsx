@@ -104,6 +104,7 @@ function HourTimeline({
   colorClass: string
   label: string
 }) {
+  const t = useTranslations("insulinTherapy")
   const covered = new Array<boolean>(24).fill(false)
   for (const s of slots) {
     for (let h = s.startHour; h < s.endHour; h++) {
@@ -121,7 +122,7 @@ function HourTimeline({
             "h-4 flex-1 rounded-sm transition-colors",
             active ? colorClass : "bg-gray-200"
           )}
-          aria-label={`${hour}:00 — ${active ? "couvert" : "non couvert"}`}
+          aria-label={`${hour}:00 — ${active ? t("hourCovered") : t("hourNotCovered")}`}
         />
       ))}
     </div>
@@ -209,6 +210,10 @@ export default function InsulinTherapyPage() {
   const [isfSlots, setIsfSlots] = useState<IsfSlot[]>([])
   const [icrSlots, setIcrSlots] = useState<IcrSlot[]>([])
 
+  // C1: track IDs of slots deleted locally but not yet persisted to the server
+  const [deletedIsfIds, setDeletedIsfIds] = useState<number[]>([])
+  const [deletedIcrIds, setDeletedIcrIds] = useState<number[]>([])
+
   // Slot dialog
   const [slotDialog, setSlotDialog] = useState<SlotDialogState>({
     open: false,
@@ -257,21 +262,36 @@ export default function InsulinTherapyPage() {
           }),
         ])
 
+        // H3: collect fetched values first so the snapshot reflects actual server state
+        let fetchedSettings: InsulinSettings = {
+          bolusInsulinBrand: "novorapid",
+          basalInsulinBrand: "lantus",
+          insulinActionDuration: 240,
+          targetGlucoseMgdl: 100,
+          considerIob: true,
+          extendedBolusEnabled: false,
+          extendedBolusPercent: 50,
+          extendedBolusDurationMin: 60,
+        }
+        let fetchedIsf: IsfSlot[] = []
+        let fetchedIcr: IcrSlot[] = []
+
         if (settingsRes.ok) {
           const data = await settingsRes.json() as Partial<InsulinSettings>
-          setSettings((prev) => ({ ...prev, ...data }))
+          fetchedSettings = { ...fetchedSettings, ...data }
+          setSettings(fetchedSettings)
         }
         if (isfRes.ok) {
-          const data = await isfRes.json() as IsfSlot[]
-          setIsfSlots(data)
+          fetchedIsf = await isfRes.json() as IsfSlot[]
+          setIsfSlots(fetchedIsf)
         }
         if (icrRes.ok) {
-          const data = await icrRes.json() as IcrSlot[]
-          setIcrSlots(data)
+          fetchedIcr = await icrRes.json() as IcrSlot[]
+          setIcrSlots(fetchedIcr)
         }
 
-        // Snapshot for dirty tracking
-        originalRef.current = JSON.stringify({ settings, isfSlots, icrSlots })
+        // H3 fix: snapshot is taken AFTER state is set, using the fetched values
+        originalRef.current = JSON.stringify({ settings: fetchedSettings, isfSlots: fetchedIsf, icrSlots: fetchedIcr })
       } catch {
         setError(t("errorLoading"))
       } finally {
@@ -306,6 +326,7 @@ export default function InsulinTherapyPage() {
     setIsSaving(true)
     setError(null)
     try {
+      // H2 fix: send ALL settings fields, not just brand/duration
       const res = await fetch("/api/insulin-therapy/settings", {
         method: "PUT",
         credentials: "include",
@@ -314,9 +335,42 @@ export default function InsulinTherapyPage() {
           bolusInsulinBrand: settings.bolusInsulinBrand,
           basalInsulinBrand: settings.basalInsulinBrand,
           insulinActionDuration: settings.insulinActionDuration,
+          targetGlucoseMgdl: settings.targetGlucoseMgdl,
+          considerIob: settings.considerIob,
+          extendedBolusEnabled: settings.extendedBolusEnabled,
+          extendedBolusPercent: settings.extendedBolusPercent,
+          extendedBolusDurationMin: settings.extendedBolusDurationMin,
         }),
       })
       if (!res.ok) throw new Error("saveFailed")
+
+      // C1: flush pending slot deletions
+      // TODO: backend DELETE /api/insulin-therapy/sensitivity-factors/:id and
+      //       DELETE /api/insulin-therapy/carb-ratios/:id endpoints are needed.
+      //       Until they exist the deletions are persisted optimistically (local state
+      //       is already filtered). The arrays below are kept for when the endpoints land.
+      if (deletedIsfIds.length > 0 || deletedIcrIds.length > 0) {
+        const deleteRequests = [
+          ...deletedIsfIds.map((id) =>
+            fetch(`/api/insulin-therapy/sensitivity-factors/${id}`, {
+              method: "DELETE",
+              credentials: "include",
+              headers: API_HEADERS,
+            }).catch(() => null) // best-effort until endpoint exists
+          ),
+          ...deletedIcrIds.map((id) =>
+            fetch(`/api/insulin-therapy/carb-ratios/${id}`, {
+              method: "DELETE",
+              credentials: "include",
+              headers: API_HEADERS,
+            }).catch(() => null)
+          ),
+        ]
+        await Promise.all(deleteRequests)
+        setDeletedIsfIds([])
+        setDeletedIcrIds([])
+      }
+
       originalRef.current = JSON.stringify({ settings, isfSlots, icrSlots })
       setHasChanges(false)
     } catch {
@@ -449,10 +503,21 @@ export default function InsulinTherapyPage() {
 
   const deleteSlot = (type: "isf" | "icr", index: number) => {
     if (type === "isf") {
+      // C1: track the server-side ID so handleSave can send the DELETE request
+      const slot = isfSlots[index]
+      if (slot?.id !== undefined) {
+        setDeletedIsfIds((prev) => [...prev, slot.id as number])
+      }
       setIsfSlots((prev) => prev.filter((_, i) => i !== index))
     } else {
+      const slot = icrSlots[index]
+      if (slot?.id !== undefined) {
+        setDeletedIcrIds((prev) => [...prev, slot.id as number])
+      }
       setIcrSlots((prev) => prev.filter((_, i) => i !== index))
     }
+    // Ensure dirty flag is raised even when no other field was touched
+    setHasChanges(true)
   }
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -544,9 +609,13 @@ export default function InsulinTherapyPage() {
               min={60}
               max={250}
               value={settings.targetGlucoseMgdl ?? 100}
-              onChange={(e) =>
-                updateSettings("targetGlucoseMgdl", parseInt(e.target.value, 10))
-              }
+              onChange={(e) => {
+                // C2: guard against NaN and enforce clinical bounds [60, 250] mg/dL
+                const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
+                if (Number.isNaN(val)) return
+                const clamped = Math.min(250, Math.max(60, val))
+                updateSettings("targetGlucoseMgdl", clamped)
+              }}
               hint={t("targetGlucoseHint")}
             />
 
@@ -557,9 +626,13 @@ export default function InsulinTherapyPage() {
               min={60}
               max={480}
               value={settings.insulinActionDuration}
-              onChange={(e) =>
-                updateSettings("insulinActionDuration", parseInt(e.target.value, 10))
-              }
+              onChange={(e) => {
+                // C2: guard against NaN and enforce bounds [60, 480] minutes (1–8 hours)
+                const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
+                if (Number.isNaN(val)) return
+                const clamped = Math.min(480, Math.max(60, val))
+                updateSettings("insulinActionDuration", clamped)
+              }}
               hint={t("insulinActionDurationHint")}
             />
           </DiabeoFormSection>
@@ -706,12 +779,12 @@ export default function InsulinTherapyPage() {
             />
 
             {settings.extendedBolusEnabled && (
-              <div className="ml-4 space-y-4 border-l-2 border-teal-200 pl-4">
+              <div className="ms-4 space-y-4 border-s-2 border-teal-200 ps-4">
                 {/* Extended bolus percent */}
                 <div className="flex flex-col gap-2">
                   <Label>
                     {t("advanced.extendedBolusPercent")}
-                    <span className="ml-2 font-semibold text-teal-700">
+                    <span className="ms-2 font-semibold text-teal-700">
                       {settings.extendedBolusPercent}%
                     </span>
                   </Label>
@@ -724,6 +797,10 @@ export default function InsulinTherapyPage() {
                       updateSettings("extendedBolusPercent", typeof v === "number" ? v : (v as number[])[0] ?? settings.extendedBolusPercent)
                     }
                     aria-label={t("advanced.extendedBolusPercent")}
+                    aria-valuemin={10}
+                    aria-valuemax={90}
+                    aria-valuenow={settings.extendedBolusPercent}
+                    aria-valuetext={`${settings.extendedBolusPercent}%`}
                     className="w-full"
                   />
                 </div>

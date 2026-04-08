@@ -44,6 +44,8 @@ import {
   Loader2,
   Check,
   AlertTriangle,
+  Eye,
+  EyeOff,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import {
@@ -421,8 +423,60 @@ function MedicalDataSection({
 // AdministrativeSection
 // ---------------------------------------------------------------------------
 
+/**
+ * Masks a sensitive identifier, showing only the last 2 characters.
+ * Format: "* ** ** ** *** *** XX" where XX are the last 2 digits.
+ * Returns null when the value is absent.
+ *
+ * Clinical safety: NIRPP and INS are sensitive administrative identifiers.
+ * They must not be displayed in plain text without explicit user action.
+ */
+function maskIdentifier(value: string | null | undefined): string | null {
+  if (!value || value.length < 2) return value ?? null
+  const last2 = value.slice(-2)
+  return `* ** ** ** *** *** ${last2}`
+}
+
 function AdministrativeSection({ profile }: { profile: ProfileData | null }) {
   const t = useTranslations("profile")
+  const [nirppRevealed, setNirppRevealed] = React.useState(false)
+  const [insRevealed, setInsRevealed] = React.useState(false)
+
+  const handleRevealNirpp = () => {
+    const next = !nirppRevealed
+    setNirppRevealed(next)
+    if (next) {
+      window.dispatchEvent(
+        new CustomEvent("diabeo_analytics", {
+          detail: { event: "administrative_field_revealed", field: "nirpp" },
+        })
+      )
+    }
+  }
+
+  const handleRevealIns = () => {
+    const next = !insRevealed
+    setInsRevealed(next)
+    if (next) {
+      window.dispatchEvent(
+        new CustomEvent("diabeo_analytics", {
+          detail: { event: "administrative_field_revealed", field: "ins" },
+        })
+      )
+    }
+  }
+
+  const nirppDisplay = profile?.nirpp
+    ? nirppRevealed
+      ? profile.nirpp
+      : (maskIdentifier(profile.nirpp) ?? t("administrative.notProvided"))
+    : t("administrative.notProvided")
+
+  const insDisplay = profile?.ins
+    ? insRevealed
+      ? profile.ins
+      : (maskIdentifier(profile.ins) ?? t("administrative.notProvided"))
+    : t("administrative.notProvided")
 
   return (
     <DiabeoFormSection
@@ -430,16 +484,70 @@ function AdministrativeSection({ profile }: { profile: ProfileData | null }) {
       description={t("administrative.description")}
     >
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <DiabeoReadonlyField
-          label={t("administrative.nirpp")}
-          value={profile?.nirpp ?? t("administrative.notProvided")}
-          copyable={!!profile?.nirpp}
-        />
-        <DiabeoReadonlyField
-          label={t("administrative.ins")}
-          value={profile?.ins ?? t("administrative.notProvided")}
-          copyable={!!profile?.ins}
-        />
+        {/* NIRPP — masked by default with reveal toggle */}
+        <div className="flex flex-col gap-1">
+          <DiabeoReadonlyField
+            label={t("administrative.nirpp")}
+            value={nirppDisplay}
+            copyable={!!profile?.nirpp && nirppRevealed}
+          />
+          {profile?.nirpp && (
+            <button
+              type="button"
+              onClick={handleRevealNirpp}
+              className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-muted-foreground hover:text-teal-600 focus-visible:outline-2 focus-visible:outline-teal-600 transition-colors"
+              aria-label={
+                nirppRevealed
+                  ? `${t("administrative.hide")} NIRPP`
+                  : `${t("administrative.reveal")} NIRPP`
+              }
+            >
+              {nirppRevealed ? (
+                <EyeOff className="size-3.5" aria-hidden="true" />
+              ) : (
+                <Eye className="size-3.5" aria-hidden="true" />
+              )}
+              <span>
+                {nirppRevealed
+                  ? t("administrative.hide")
+                  : t("administrative.reveal")}
+              </span>
+            </button>
+          )}
+        </div>
+
+        {/* INS — masked by default with reveal toggle */}
+        <div className="flex flex-col gap-1">
+          <DiabeoReadonlyField
+            label={t("administrative.ins")}
+            value={insDisplay}
+            copyable={!!profile?.ins && insRevealed}
+          />
+          {profile?.ins && (
+            <button
+              type="button"
+              onClick={handleRevealIns}
+              className="flex items-center gap-1 self-start rounded px-1 py-0.5 text-xs text-muted-foreground hover:text-teal-600 focus-visible:outline-2 focus-visible:outline-teal-600 transition-colors"
+              aria-label={
+                insRevealed
+                  ? `${t("administrative.hide")} INS`
+                  : `${t("administrative.reveal")} INS`
+              }
+            >
+              {insRevealed ? (
+                <EyeOff className="size-3.5" aria-hidden="true" />
+              ) : (
+                <Eye className="size-3.5" aria-hidden="true" />
+              )}
+              <span>
+                {insRevealed
+                  ? t("administrative.hide")
+                  : t("administrative.reveal")}
+              </span>
+            </button>
+          )}
+        </div>
+
         <DiabeoReadonlyField
           label={t("administrative.oid")}
           value={profile?.oid ?? t("administrative.notProvided")}

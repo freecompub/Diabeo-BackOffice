@@ -351,6 +351,8 @@ export default function DocumentsPage() {
   // -------------------------------------------------------------------------
   // Upload
   // -------------------------------------------------------------------------
+  const ALLOWED_MIME_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const
+
   const handleFileChange = React.useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0]
@@ -358,6 +360,18 @@ export default function DocumentsPage() {
 
       // Reset input so the same file can be re-selected
       if (fileInputRef.current) fileInputRef.current.value = ""
+
+      // Client-side file size validation (50 MB)
+      if (file.size > 50 * 1024 * 1024) {
+        setUploadError(tDocs("fileTooLarge"))
+        return
+      }
+
+      // Client-side MIME type validation
+      if (!ALLOWED_MIME_TYPES.includes(file.type as typeof ALLOWED_MIME_TYPES[number])) {
+        setUploadError(tDocs("invalidFileType"))
+        return
+      }
 
       setUploadError(null)
       setUploading(true)
