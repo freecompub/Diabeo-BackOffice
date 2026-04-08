@@ -8,6 +8,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
+import type { Prisma } from "@prisma/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 
@@ -217,12 +218,96 @@ export const glycemiaService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "INSULIN_THERAPY",
-      resourceId: `${patientId}:pumpEvents`,
+      resource: "PUMP_EVENT",
+      resourceId: `${patientId}:list`,
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
     })
 
     return entries
+  },
+
+  /**
+   * Create a new pump event (alarm, suspend, reset, bolus delivery, etc.).
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {Object} input - Event data (timestamp, eventType, data)
+   * @param {number} auditUserId - User performing create (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<Object>} Created PumpEvent
+   */
+  async createPumpEvent(
+    patientId: number,
+    input: { timestamp: Date; eventType: string; data?: Prisma.InputJsonValue },
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const event = await tx.pumpEvent.create({
+        data: {
+          patientId,
+          timestamp: input.timestamp,
+          eventType: input.eventType,
+          data: input.data ?? undefined,
+        },
+      })
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "CREATE",
+        resource: "PUMP_EVENT",
+        resourceId: String(event.id),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { eventType: input.eventType },
+      })
+
+      return event
+    })
+  },
+
+  /**
+   * Verify that a pump event belongs to a specific patient.
+   * Used for ownership check before delete operations.
+   * @async
+   * @param {number} eventId - PumpEvent ID
+   * @param {number} patientId - Expected patient ID
+   * @returns {Promise<boolean>} True if event belongs to patient
+   */
+  async verifyPumpEventOwnership(eventId: number, patientId: number): Promise<boolean> {
+    const event = await prisma.pumpEvent.findFirst({
+      where: { id: eventId, patientId },
+      select: { id: true },
+    })
+    return !!event
+  },
+
+  /**
+   * Delete a pump event by ID.
+   * @async
+   * @param {number} id - PumpEvent ID
+   * @param {number} auditUserId - User performing delete (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<{deleted: true}>}
+   */
+  async deletePumpEvent(
+    id: number,
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      await tx.pumpEvent.delete({ where: { id } })
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "DELETE",
+        resource: "PUMP_EVENT",
+        resourceId: String(id),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+      })
+
+      return { deleted: true }
+    })
   },
 }
