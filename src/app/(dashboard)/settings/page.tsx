@@ -1101,7 +1101,7 @@ function AccordionSection({
         aria-expanded={open}
         aria-controls={`accordion-content-${id}`}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-teal-600"
+        className="flex w-full items-center gap-3 px-4 py-3 text-start text-sm font-medium text-foreground hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-teal-600"
       >
         <span className="shrink-0 text-teal-600" aria-hidden="true">
           {icon}
@@ -1346,7 +1346,7 @@ export default function SettingsPage() {
                 onClick={() => setActiveSection(id)}
                 aria-current={activeSection === id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-medium transition-colors",
                   activeSection === id
                     ? "bg-teal-50 text-teal-700"
                     : "text-foreground hover:bg-gray-100"

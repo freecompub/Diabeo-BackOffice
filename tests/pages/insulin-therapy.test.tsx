@@ -69,15 +69,15 @@ vi.mock("@/components/ui/select", () => ({
 
 // Mock Slider to render a simple range input
 vi.mock("@/components/ui/slider", () => ({
-  Slider: (props: { value: number; onValueChange?: (v: number) => void; min?: number; max?: number; "aria-label"?: string }) => (
+  Slider: (props: { value: number[]; onValueChange?: (v: number[]) => void; min?: number; max?: number; "aria-label"?: string }) => (
     <input
       type="range"
       role="slider"
       aria-label={props["aria-label"]}
       min={props.min}
       max={props.max}
-      value={props.value}
-      onChange={(e) => props.onValueChange?.(parseInt(e.target.value, 10))}
+      value={Array.isArray(props.value) ? props.value[0] : props.value}
+      onChange={(e) => props.onValueChange?.([parseInt(e.target.value, 10)])}
     />
   ),
 }))
