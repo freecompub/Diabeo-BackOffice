@@ -33,6 +33,7 @@ import {
   RefreshCw,
   User,
   Download,
+  CalendarDays,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -97,6 +98,7 @@ const navItems: NavItem[] = [
   { href: "/patients", labelKey: "patients", icon: Users },
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
+  { href: "/weekly", labelKey: "weekly", icon: CalendarDays },
   { href: "/documents", labelKey: "documents", icon: FileText },
   { href: "/import", labelKey: "import", icon: Download, minRole: "DOCTOR" },
   { href: "/users", labelKey: "users", icon: Users, minRole: "ADMIN" },

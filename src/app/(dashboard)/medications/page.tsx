@@ -53,7 +53,10 @@ export default function MedicationsPage() {
     try {
       const res = await fetch(
         `/api/medications/search?q=${encodeURIComponent(q)}&limit=20`,
-        { credentials: "include" },
+        {
+          credentials: "include",
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        },
       )
 
       if (res.ok) {

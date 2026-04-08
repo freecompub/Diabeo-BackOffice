@@ -12,6 +12,7 @@
  */
 
 import { useState, useMemo } from "react"
+import { useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { GlycemiaValue, ClinicalBadge } from "@/components/diabeo"
 import { Input } from "@/components/ui/input"
@@ -52,12 +53,7 @@ const DEMO_PATIENTS: PatientRow[] = [
   { id: 8, name: "Patient DT2-008", pathology: "DT2", age: 55, lastGlucoseMgdl: null, tirPercent: null, lastSync: "7j", isActive: false },
 ]
 
-const PATHOLOGY_FILTERS = [
-  { value: "all", label: "Tous" },
-  { value: "DT1", label: "DT1" },
-  { value: "DT2", label: "DT2" },
-  { value: "GD", label: "GD" },
-]
+const PATHOLOGY_FILTER_VALUES = ["all", "DT1", "DT2", "GD"] as const
 
 function getTirQuality(tir: number | null): "excellent" | "good" | "moderate" | "poor" | null {
   if (tir === null) return null
@@ -69,6 +65,7 @@ function getTirQuality(tir: number | null): "excellent" | "good" | "moderate" | 
 
 export default function PatientsPage() {
   const router = useRouter()
+  const t = useTranslations("patients")
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
 
@@ -80,11 +77,23 @@ export default function PatientsPage() {
     })
   }, [search, pathologyFilter])
 
+  const patientCountLabel =
+    filtered.length === 1
+      ? t("patientCount", { count: filtered.length })
+      : t("patientsCount", { count: filtered.length })
+
+  const pathologyFilterLabels: Record<typeof PATHOLOGY_FILTER_VALUES[number], string> = {
+    all: t("filterAll"),
+    DT1: "DT1",
+    DT2: "DT2",
+    GD: "GD",
+  }
+
   return (
     <>
       <DashboardHeader
-        title="Patients"
-        subtitle={`${filtered.length} patient${filtered.length > 1 ? "s" : ""}`}
+        title={t("title")}
+        subtitle={patientCountLabel}
       />
 
       <div className="space-y-4 p-6">
@@ -93,26 +102,26 @@ export default function PatientsPage() {
           <div className="relative flex-1 sm:max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
             <Input
-              placeholder="Rechercher un patient..."
+              placeholder={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10"
-              aria-label="Rechercher un patient"
+              aria-label={t("searchPlaceholder")}
             />
           </div>
-          <div className="flex gap-1.5" role="group" aria-label="Filtrer par pathologie">
-            {PATHOLOGY_FILTERS.map((f) => (
+          <div className="flex gap-1.5" role="group" aria-label={t("filterPathology")}>
+            {PATHOLOGY_FILTER_VALUES.map((value) => (
               <button
-                key={f.value}
-                onClick={() => setPathologyFilter(f.value)}
+                key={value}
+                onClick={() => setPathologyFilter(value)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                  pathologyFilter === f.value
+                  pathologyFilter === value
                     ? "bg-[var(--color-primary)] text-white"
                     : "bg-[var(--color-muted)] text-[var(--color-muted-foreground)] hover:bg-[var(--color-primary-100)]"
                 }`}
-                aria-pressed={pathologyFilter === f.value}
+                aria-pressed={pathologyFilter === value}
               >
-                {f.label}
+                {pathologyFilterLabels[value]}
               </button>
             ))}
           </div>
@@ -124,14 +133,14 @@ export default function PatientsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Patient</TableHead>
-                  <TableHead>Pathologie</TableHead>
-                  <TableHead>Age</TableHead>
-                  <TableHead>Derniere glycemie</TableHead>
-                  <TableHead>TIR</TableHead>
-                  <TableHead>Derniere sync</TableHead>
+                  <TableHead>{t("colPatient")}</TableHead>
+                  <TableHead>{t("colPathology")}</TableHead>
+                  <TableHead>{t("colAge")}</TableHead>
+                  <TableHead>{t("colLastGlucose")}</TableHead>
+                  <TableHead>{t("colTir")}</TableHead>
+                  <TableHead>{t("colLastSync")}</TableHead>
                   <TableHead className="w-10">
-                    <span className="sr-only">Actions</span>
+                    <span className="sr-only">{t("colActions")}</span>
                   </TableHead>
                 </TableRow>
               </TableHeader>
@@ -149,7 +158,7 @@ export default function PatientsPage() {
                       }
                     }}
                     className="cursor-pointer hover:bg-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
-                    aria-label={`Voir le dossier de ${patient.name}`}
+                    aria-label={t("viewRecord", { name: patient.name })}
                   >
                     <TableCell>
                       <Link
@@ -160,7 +169,7 @@ export default function PatientsPage() {
                       </Link>
                       {!patient.isActive && (
                         <Badge variant="secondary" className="ml-2 text-xs">
-                          Inactif
+                          {t("inactive")}
                         </Badge>
                       )}
                     </TableCell>
@@ -168,7 +177,7 @@ export default function PatientsPage() {
                       <ClinicalBadge type="pathology" value={patient.pathology} />
                     </TableCell>
                     <TableCell className="text-[var(--color-muted-foreground)]">
-                      {patient.age} ans
+                      {t("years", { age: patient.age })}
                     </TableCell>
                     <TableCell>
                       {patient.lastGlucoseMgdl !== null ? (
@@ -196,7 +205,7 @@ export default function PatientsPage() {
                     <TableCell>
                       <Link
                         href={`/patients/${patient.id}`}
-                        aria-label={`Voir le dossier de ${patient.name}`}
+                        aria-label={t("viewRecord", { name: patient.name })}
                       >
                         <ChevronRight className="h-4 w-4 text-[var(--color-muted-foreground)]" />
                       </Link>
@@ -211,7 +220,7 @@ export default function PatientsPage() {
                       role="status"
                       aria-live="polite"
                     >
-                      Aucun patient trouvé{search ? ` pour « ${search} »` : ""}
+                      {search ? t("noPatientsFor", { search }) : t("noPatients")}
                     </TableCell>
                   </TableRow>
                 )}
