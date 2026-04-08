@@ -46,7 +46,9 @@
     "openNavigation": "Ouvrir la navigation",
     "navigation": "Navigation",
     "notifications": "Notifications",
-    "weekly": "Semainier"
+    "weekly": "Semainier",
+    "insulinTherapy": "Insulinotherapie",
+    "devices": "Appareils"
   },
   "auth": {
     "welcome": "Bienvenue sur Diabeo",

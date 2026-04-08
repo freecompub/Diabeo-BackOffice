@@ -389,7 +389,7 @@ export default function RadarPage() {
                 {t(`metric.${metric}` as Parameters<typeof t>[0])}
               </span>
               {data && (
-                <span className="ml-auto text-sm text-muted-foreground">
+                <span className="ms-auto text-sm text-muted-foreground">
                   {t("average")}: <strong>{data.average.toFixed(1)}{data.unit}</strong>
                 </span>
               )}

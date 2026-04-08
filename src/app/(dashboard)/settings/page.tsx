@@ -339,7 +339,22 @@ function MedicalDataSection({
 }) {
   const t = useTranslations("profile")
   const tCommon = useTranslations("common")
-  const { state, save } = useSectionSave<Record<string, unknown>>("/api/account")
+  // pathology belongs to the patient profile — PUT /api/patient
+  const { state: patientState, save: savePatient } =
+    useSectionSave<{ pathology?: string }>("/api/patient")
+  // yearDiag and heightCm belong to medical data — PUT /api/patient/medical-data
+  const { state: medicalState, save: saveMedical } =
+    useSectionSave<{ yearDiag?: number; heightCm?: number }>("/api/patient/medical-data")
+
+  // Derived combined state for the single save indicator
+  const state: SaveState =
+    patientState === "saving" || medicalState === "saving"
+      ? "saving"
+      : patientState === "error" || medicalState === "error"
+        ? "error"
+        : patientState === "saved" || medicalState === "saved"
+          ? "saved"
+          : "idle"
 
   const [pathology, setPathology] = React.useState(patient?.pathology ?? "")
   const [yearDiag, setYearDiag] = React.useState(
@@ -351,11 +366,14 @@ function MedicalDataSection({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await save({
-      pathology: pathology || undefined,
-      yearDiag: yearDiag ? parseInt(yearDiag, 10) : undefined,
-      heightCm: heightCm ? parseFloat(heightCm) : undefined,
-    })
+    // Run both saves in parallel; each targets the correct endpoint
+    await Promise.all([
+      savePatient({ pathology: pathology || undefined }),
+      saveMedical({
+        yearDiag: yearDiag ? parseInt(yearDiag, 10) : undefined,
+        heightCm: heightCm ? parseFloat(heightCm) : undefined,
+      }),
+    ])
   }
 
   return (
@@ -1083,7 +1101,7 @@ function AccordionSection({
         aria-expanded={open}
         aria-controls={`accordion-content-${id}`}
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-teal-600"
+        className="flex w-full items-center gap-3 px-4 py-3 text-start text-sm font-medium text-foreground hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-teal-600"
       >
         <span className="shrink-0 text-teal-600" aria-hidden="true">
           {icon}
@@ -1328,7 +1346,7 @@ export default function SettingsPage() {
                 onClick={() => setActiveSection(id)}
                 aria-current={activeSection === id ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium transition-colors",
+                  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-start text-sm font-medium transition-colors",
                   activeSection === id
                     ? "bg-teal-50 text-teal-700"
                     : "text-foreground hover:bg-gray-100"
