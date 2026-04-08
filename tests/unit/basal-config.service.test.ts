@@ -92,7 +92,10 @@ describe("insulinTherapyService — basal config", () => {
       }
 
       const txMock = {
-        pumpBasalSlot: { create: vi.fn().mockResolvedValue(mockSlot) },
+        pumpBasalSlot: {
+          findMany: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue(mockSlot),
+        },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
@@ -104,12 +107,32 @@ describe("insulinTherapyService — basal config", () => {
       )
 
       expect(result.rate).toBe(0.95)
+      expect(txMock.pumpBasalSlot.findMany).toHaveBeenCalled()
       expect(txMock.pumpBasalSlot.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           basalConfigId: 1,
           rate: 0.95,
         }),
       })
+    })
+
+    it("rejects overlapping pump slots", async () => {
+      const existingSlot = {
+        startTime: new Date("1970-01-01T06:00:00Z"),
+        endTime: new Date("1970-01-01T12:00:00Z"),
+      }
+
+      const txMock = {
+        pumpBasalSlot: {
+          findMany: vi.fn().mockResolvedValue([existingSlot]),
+        },
+        auditLog: { create: vi.fn() },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      await expect(
+        insulinTherapyService.createPumpSlot(1, { startTime: "08:00", endTime: "14:00", rate: 0.8 }, 1),
+      ).rejects.toThrow("overlaps")
     })
   })
 

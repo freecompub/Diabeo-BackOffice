@@ -28,6 +28,7 @@ const createSlotSchema = z.object({
 
 const deleteSlotSchema = z.object({
   id: z.string().uuid(),
+  patientId: z.coerce.number().int().positive().optional(),
 })
 
 /**
@@ -57,8 +58,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
     }
 
-    const config = await insulinTherapyService.getBasalConfig(settings.id)
-    return NextResponse.json(config?.pumpSlots ?? [])
+    // M3 fix: getSettings already includes basalConfiguration.pumpSlots — no second query
+    return NextResponse.json(settings.basalConfiguration?.pumpSlots ?? [])
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
@@ -96,18 +97,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
 
-    const settings = await insulinTherapyService.getSettings(patientId, user.id)
+    const ctx = extractRequestContext(req)
+    const settings = await insulinTherapyService.getSettings(patientId, user.id, ctx)
     if (!settings) {
       return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
     }
 
-    const config = await insulinTherapyService.getBasalConfig(settings.id)
+    // M3 fix: reuse basalConfiguration from getSettings (already included)
+    const config = settings.basalConfiguration
     if (!config) {
       return NextResponse.json({ error: "basalConfigNotFound" }, { status: 404 })
     }
 
     const slot = await insulinTherapyService.createPumpSlot(
-      config.id, slotInput, user.id,
+      config.id, slotInput, user.id, ctx,
     )
 
     return NextResponse.json(slot, { status: 201 })
@@ -142,8 +145,27 @@ export async function DELETE(req: NextRequest) {
       )
     }
 
+    // B1 fix: verify slot belongs to caller's patient before deleting
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) {
+      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    }
+
+    const ctx = extractRequestContext(req)
+    const settings = await insulinTherapyService.getSettings(patientId, user.id, ctx)
+    if (!settings?.basalConfiguration) {
+      return NextResponse.json({ error: "basalConfigNotFound" }, { status: 404 })
+    }
+
+    const slotBelongs = settings.basalConfiguration.pumpSlots.some(
+      (s) => s.id === parsed.data.id,
+    )
+    if (!slotBelongs) {
+      return NextResponse.json({ error: "slotNotFound" }, { status: 404 })
+    }
+
     const result = await insulinTherapyService.deletePumpSlot(
-      parsed.data.id, user.id,
+      parsed.data.id, user.id, ctx,
     )
 
     return NextResponse.json(result)

@@ -9,24 +9,33 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import type { Prisma } from "@prisma/client"
-import { requireAuth, AuthError } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
+/** Allowed pump event types — aligns with device data standards */
+const PUMP_EVENT_TYPES = [
+  "alarm", "suspend", "resume", "prime", "rewind",
+  "bolusDelivery", "basalChange", "cartridgeChange", "cannulaChange",
+] as const
+
 const querySchema = z.object({
   patientId: z.coerce.number().int().positive().optional(),
   from: z.coerce.date(),
   to: z.coerce.date(),
-  eventType: z.string().max(50).optional(),
+  eventType: z.enum(PUMP_EVENT_TYPES).optional(),
 })
 
 const createSchema = z.object({
   patientId: z.number().int().positive().optional(),
   timestamp: z.coerce.date(),
-  eventType: z.string().min(1).max(50),
-  data: z.record(z.string(), z.unknown()).optional(),
+  eventType: z.enum(PUMP_EVENT_TYPES),
+  data: z.record(z.string(), z.unknown()).optional().refine(
+    (d) => !d || JSON.stringify(d).length <= 4096,
+    { message: "data payload must be under 4KB" },
+  ),
 })
 
 const deleteSchema = z.object({
@@ -82,11 +91,11 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/pump-events
- * Create a new pump event for a patient.
+ * Create a new pump event for a patient. Requires NURSE+ role.
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = requireAuth(req)
+    const user = requireRole(req, "NURSE")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
@@ -128,12 +137,12 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * DELETE /api/pump-events?id=
- * Delete a pump event by ID.
+ * DELETE /api/pump-events?id=&patientId=
+ * Delete a pump event by ID. Requires NURSE+ role.
  */
 export async function DELETE(req: NextRequest) {
   try {
-    const user = requireAuth(req)
+    const user = requireRole(req, "NURSE")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

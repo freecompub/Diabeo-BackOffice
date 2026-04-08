@@ -218,8 +218,8 @@ export const glycemiaService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "INSULIN_THERAPY",
-      resourceId: `${patientId}:pumpEvents`,
+      resource: "PUMP_EVENT",
+      resourceId: `${patientId}:list`,
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
     })

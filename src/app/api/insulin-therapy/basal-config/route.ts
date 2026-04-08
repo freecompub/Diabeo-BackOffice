@@ -93,7 +93,8 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
 
-    const settings = await insulinTherapyService.getSettings(patientId, user.id)
+    const ctx = extractRequestContext(req)
+    const settings = await insulinTherapyService.getSettings(patientId, user.id, ctx)
     if (!settings) {
       return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
     }
@@ -102,6 +103,7 @@ export async function PUT(req: NextRequest) {
       settings.id,
       { ...configInput, settingsId: settings.id },
       user.id,
+      ctx,
     )
 
     return NextResponse.json(result)

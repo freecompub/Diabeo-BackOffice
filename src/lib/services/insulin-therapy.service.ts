@@ -242,6 +242,7 @@ export const insulinTherapyService = {
     settingsId: number,
     input: Prisma.BasalConfigurationUncheckedCreateInput,
     auditUserId: number,
+    ctx?: AuditContext,
   ) {
     return prisma.$transaction(async (tx) => {
       const config = await tx.basalConfiguration.upsert({
@@ -254,6 +255,8 @@ export const insulinTherapyService = {
         action: "UPDATE",
         resource: "INSULIN_THERAPY",
         resourceId: `basal:${config.id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
       })
       return config
     })
@@ -264,8 +267,29 @@ export const insulinTherapyService = {
     basalConfigId: number,
     input: { startTime: string; endTime: string; rate: number },
     auditUserId: number,
+    ctx?: AuditContext,
   ) {
+    const startHour = parseInt(input.startTime.split(":")[0], 10)
+    const endHour = parseInt(input.endTime.split(":")[0], 10)
+
+    if (startHour === endHour && input.startTime === input.endTime) {
+      throw new Error("startTime and endTime must be different — a zero-duration slot is invalid")
+    }
+
     return prisma.$transaction(async (tx) => {
+      // B2 fix: overlap detection — prevents double basal delivery (patient safety)
+      const existing = await tx.pumpBasalSlot.findMany({
+        where: { basalConfigId },
+        select: { startTime: true, endTime: true },
+      })
+      const existingHours = existing.map((s) => ({
+        startHour: s.startTime.getUTCHours(),
+        endHour: s.endTime.getUTCHours(),
+      }))
+      if (hasTimeSlotOverlap(existingHours, startHour, endHour)) {
+        throw new Error("Pump basal slot overlaps with an existing slot — risk of double insulin delivery")
+      }
+
       const slot = await tx.pumpBasalSlot.create({
         data: {
           basalConfigId,
@@ -279,12 +303,14 @@ export const insulinTherapyService = {
         action: "CREATE",
         resource: "INSULIN_THERAPY",
         resourceId: slot.id,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
       })
       return slot
     })
   },
 
-  async deletePumpSlot(id: string, auditUserId: number) {
+  async deletePumpSlot(id: string, auditUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
       await tx.pumpBasalSlot.delete({ where: { id } })
       await auditService.logWithTx(tx, {
@@ -292,6 +318,8 @@ export const insulinTherapyService = {
         action: "DELETE",
         resource: "INSULIN_THERAPY",
         resourceId: id,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
       })
       return { deleted: true }
     })
