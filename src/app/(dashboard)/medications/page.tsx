@@ -94,19 +94,19 @@ export default function MedicationsPage() {
         {/* Search bar */}
         <div className="relative max-w-xl">
           <Search
-            className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]"
+            className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]"
             aria-hidden="true"
           />
           <Input
             placeholder="Rechercher par nom, DCI ou code CIP..."
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
-            className="pl-10"
+            className="ps-10"
             aria-label="Rechercher un médicament"
           />
           {isLoading && (
             <Loader2
-              className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[var(--color-muted-foreground)]"
+              className="absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[var(--color-muted-foreground)]"
               aria-hidden="true"
             />
           )}

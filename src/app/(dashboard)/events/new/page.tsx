@@ -305,8 +305,8 @@ export default function NewEventPage() {
   // Client-side validation — mirrors Zod schema ranges
   // -------------------------------------------------------------------------
 
-  const validate = (): boolean => {
-    const next: FormErrors = {}
+  const validate = (): Record<string, string> | null => {
+    const next: Record<string, string> = {}
 
     if (!form.eventDate) {
       next.eventDate = t("errors.eventDateRequired")
@@ -391,7 +391,7 @@ export default function NewEventPage() {
     }
 
     setErrors(next)
-    return Object.keys(next).length === 0
+    return Object.keys(next).length > 0 ? next : null
   }
 
   // -------------------------------------------------------------------------
@@ -457,12 +457,13 @@ export default function NewEventPage() {
       })
     )
 
-    if (!validate()) {
-      // Focus the first invalid field for accessibility
-      const firstErrorField = Object.keys(errors)[0]
-      if (firstErrorField) {
-        const el = document.getElementById(`event-${firstErrorField}`)
-        el?.focus()
+    const validationErrors = validate()
+    if (validationErrors) {
+      // Focus the first invalid field for accessibility — use the freshly returned
+      // errors object rather than the stale `errors` state snapshot.
+      const firstField = Object.keys(validationErrors)[0]
+      if (firstField) {
+        document.getElementById(`event-${firstField}`)?.focus()
       }
       return
     }

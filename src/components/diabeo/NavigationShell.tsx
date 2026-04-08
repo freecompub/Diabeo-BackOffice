@@ -34,6 +34,8 @@ import {
   User,
   Download,
   CalendarDays,
+  Syringe,
+  Smartphone,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -99,6 +101,8 @@ const navItems: NavItem[] = [
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
   { href: "/weekly", labelKey: "weekly", icon: CalendarDays },
+  { href: "/insulin-therapy", labelKey: "insulinTherapy", icon: Syringe, minRole: "NURSE" },
+  { href: "/devices", labelKey: "devices", icon: Smartphone },
   { href: "/documents", labelKey: "documents", icon: FileText },
   { href: "/import", labelKey: "import", icon: Download, minRole: "DOCTOR" },
   { href: "/users", labelKey: "users", icon: Users, minRole: "ADMIN" },

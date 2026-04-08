@@ -100,12 +100,12 @@ export default function PatientsPage() {
         {/* Search & Filters */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 sm:max-w-sm">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
+            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
             <Input
               placeholder={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
+              className="ps-10"
               aria-label={t("searchPlaceholder")}
             />
           </div>
@@ -168,7 +168,7 @@ export default function PatientsPage() {
                         {patient.name}
                       </Link>
                       {!patient.isActive && (
-                        <Badge variant="secondary" className="ml-2 text-xs">
+                        <Badge variant="secondary" className="ms-2 text-xs">
                           {t("inactive")}
                         </Badge>
                       )}

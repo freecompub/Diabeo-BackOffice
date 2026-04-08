@@ -339,7 +339,22 @@ function MedicalDataSection({
 }) {
   const t = useTranslations("profile")
   const tCommon = useTranslations("common")
-  const { state, save } = useSectionSave<Record<string, unknown>>("/api/account")
+  // pathology belongs to the patient profile — PUT /api/patient
+  const { state: patientState, save: savePatient } =
+    useSectionSave<{ pathology?: string }>("/api/patient")
+  // yearDiag and heightCm belong to medical data — PUT /api/patient/medical-data
+  const { state: medicalState, save: saveMedical } =
+    useSectionSave<{ yearDiag?: number; heightCm?: number }>("/api/patient/medical-data")
+
+  // Derived combined state for the single save indicator
+  const state: SaveState =
+    patientState === "saving" || medicalState === "saving"
+      ? "saving"
+      : patientState === "error" || medicalState === "error"
+        ? "error"
+        : patientState === "saved" || medicalState === "saved"
+          ? "saved"
+          : "idle"
 
   const [pathology, setPathology] = React.useState(patient?.pathology ?? "")
   const [yearDiag, setYearDiag] = React.useState(
@@ -351,11 +366,14 @@ function MedicalDataSection({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    await save({
-      pathology: pathology || undefined,
-      yearDiag: yearDiag ? parseInt(yearDiag, 10) : undefined,
-      heightCm: heightCm ? parseFloat(heightCm) : undefined,
-    })
+    // Run both saves in parallel; each targets the correct endpoint
+    await Promise.all([
+      savePatient({ pathology: pathology || undefined }),
+      saveMedical({
+        yearDiag: yearDiag ? parseInt(yearDiag, 10) : undefined,
+        heightCm: heightCm ? parseFloat(heightCm) : undefined,
+      }),
+    ])
   }
 
   return (

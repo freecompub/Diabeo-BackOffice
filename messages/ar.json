@@ -46,7 +46,9 @@
     "openNavigation": "فتح التنقل",
     "navigation": "التنقل",
     "notifications": "الإشعارات",
-    "weekly": "الجدول الأسبوعي"
+    "weekly": "الجدول الأسبوعي",
+    "insulinTherapy": "العلاج بالأنسولين",
+    "devices": "الأجهزة"
   },
   "auth": {
     "welcome": "مرحبا بك في Diabeo",

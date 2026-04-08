@@ -46,7 +46,9 @@
     "openNavigation": "Open navigation",
     "navigation": "Navigation",
     "notifications": "Notifications",
-    "weekly": "Weekly"
+    "weekly": "Weekly",
+    "insulinTherapy": "Insulin Therapy",
+    "devices": "Devices"
   },
   "auth": {
     "welcome": "Welcome to Diabeo",

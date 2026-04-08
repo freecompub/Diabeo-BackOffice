@@ -792,10 +792,11 @@ export default function InsulinTherapyPage() {
                     min={10}
                     max={90}
                     step={5}
-                    value={settings.extendedBolusPercent}
-                    onValueChange={(v) =>
-                      updateSettings("extendedBolusPercent", typeof v === "number" ? v : (v as number[])[0] ?? settings.extendedBolusPercent)
-                    }
+                    value={[settings.extendedBolusPercent]}
+                    onValueChange={(vals: number | readonly number[]) => {
+                      const v = Array.isArray(vals) ? (vals as readonly number[])[0] : (vals as number)
+                      updateSettings("extendedBolusPercent", v ?? settings.extendedBolusPercent)
+                    }}
                     aria-label={t("advanced.extendedBolusPercent")}
                     aria-valuemin={10}
                     aria-valuemax={90}
@@ -812,12 +813,13 @@ export default function InsulinTherapyPage() {
                   min={15}
                   max={480}
                   value={settings.extendedBolusDurationMin}
-                  onChange={(e) =>
-                    updateSettings(
-                      "extendedBolusDurationMin",
-                      parseInt(e.target.value, 10)
-                    )
-                  }
+                  onChange={(e) => {
+                    // Guard against NaN and enforce clinical bounds [15, 480] minutes
+                    const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
+                    if (Number.isNaN(val)) return
+                    const clamped = Math.max(15, Math.min(480, val))
+                    updateSettings("extendedBolusDurationMin", clamped)
+                  }}
                   hint={t("advanced.extendedBolusDurationHint")}
                 />
               </div>
