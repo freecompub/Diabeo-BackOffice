@@ -44,6 +44,7 @@ export type AuditAction =
   | "DELETE"
   | "EXPORT"
   | "UNAUTHORIZED"
+  | "RATE_LIMITED"
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"

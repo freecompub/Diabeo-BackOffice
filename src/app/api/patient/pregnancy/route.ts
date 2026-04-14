@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
-import { getOwnPatientId } from "@/lib/access-control"
+import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { prisma } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
@@ -23,10 +23,14 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const patientId = await getOwnPatientId(user.id)
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json(
+        { error: res.error },
+        { status: res.error === "invalidPatientId" ? 400 : 404 },
+      )
     }
+    const patientId = res.patientId
 
     const pregnancy = await prisma.patientPregnancy.findFirst({
       where: { patientId, active: true },
@@ -65,10 +69,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const patientId = await getOwnPatientId(user.id)
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json(
+        { error: res.error },
+        { status: res.error === "invalidPatientId" ? 400 : 404 },
+      )
     }
+    const patientId = res.patientId
 
     const body = await req.json()
     const parsed = createPregnancySchema.safeParse(body)

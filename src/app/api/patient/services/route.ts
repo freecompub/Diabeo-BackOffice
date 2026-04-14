@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
-import { getOwnPatientId } from "@/lib/access-control"
+import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { healthcareService } from "@/lib/services/healthcare.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
@@ -17,8 +17,14 @@ export async function POST(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const patientId = await getOwnPatientId(user.id)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json(
+        { error: res.error },
+        { status: res.error === "invalidPatientId" ? 400 : 404 },
+      )
+    }
+    const patientId = res.patientId
 
     const body = await req.json()
     const parsed = enrollSchema.safeParse(body)

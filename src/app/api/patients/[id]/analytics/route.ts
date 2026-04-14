@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { canAccessPatient } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
 import { analyticsService } from "@/lib/services/analytics.service"
@@ -16,6 +17,15 @@ const querySchema = z.object({
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const user = requireRole(req, "NURSE")
+
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.analytics)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rateLimitExceeded" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      )
+    }
+
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)

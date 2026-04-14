@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Pathology } from "@prisma/client"
 import { requireAuth, AuthError } from "@/lib/auth"
-import { getOwnPatientId } from "@/lib/access-control"
+import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
@@ -11,7 +11,9 @@ const updateSchema = z.object({
   pathology: z.nativeEnum(Pathology).optional(),
 })
 
-/** GET /api/patient — own patient profile */
+const STATUS_FOR = { invalidPatientId: 400, patientNotFound: 404 } as const
+
+/** GET /api/patient — own patient (VIEWER) or via ?patientId=N (pro + canAccessPatient) */
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
@@ -21,13 +23,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const patientId = await getOwnPatientId(user.id)
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json({ error: res.error }, { status: STATUS_FOR[res.error] })
     }
 
     const ctx = extractRequestContext(req)
-    const patient = await patientService.getById(patientId, user.id, ctx)
+    const patient = await patientService.getById(res.patientId, user.id, ctx)
     return NextResponse.json(patient)
   } catch (error) {
     if (error instanceof AuthError) {
@@ -39,7 +41,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** PUT /api/patient — update own patient profile */
+/** PUT /api/patient — update profile (own or pro via ?patientId=) */
 export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
@@ -49,10 +51,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const patientId = await getOwnPatientId(user.id)
-
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json({ error: res.error }, { status: STATUS_FOR[res.error] })
     }
 
     const body = await req.json()
@@ -65,7 +66,7 @@ export async function PUT(req: NextRequest) {
       )
     }
 
-    const result = await patientService.updateProfile(patientId, parsed.data, user.id)
+    const result = await patientService.updateProfile(res.patientId, parsed.data, user.id)
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AuthError) {
