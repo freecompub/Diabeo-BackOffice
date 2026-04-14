@@ -168,18 +168,35 @@ export const insulinService = {
       if (actionDuration <= 0) {
         // HDS §IV.3: a corrupted therapy config is a clinically significant
         // event — audit BEFORE throwing so traceability survives the rejection.
-        await auditService.log({
-          userId: auditUserId,
-          action: "UNAUTHORIZED",
-          resource: "INSULIN_THERAPY",
-          resourceId: `settings:${settings.id}`,
-          metadata: {
-            reason: "invalidTherapyConfig",
-            field: "iobSettings.actionDurationHours",
-            value: actionDuration,
-            patientId: input.patientId,
-          },
-        })
+        //
+        // Use CONFIG_ERROR (dedicated action) — NOT UNAUTHORIZED — to keep
+        // SIEM / breach-notification (RGPD Art. 33) triage clean: this is a
+        // data-integrity incident, not an access-control violation.
+        //
+        // Wrap the audit write in try/catch so an audit-subsystem failure
+        // (disk full, immutability trigger failure) does NOT mask the clinical
+        // rejection. The throw must be fail-closed regardless of audit state,
+        // otherwise the clinician sees a generic 500 and may retry instead of
+        // being informed that the stored config is corrupt.
+        try {
+          await auditService.log({
+            userId: auditUserId,
+            action: "CONFIG_ERROR",
+            resource: "INSULIN_THERAPY",
+            resourceId: `settings:${settings.id}`,
+            metadata: {
+              reason: "invalidTherapyConfig",
+              field: "iobSettings.actionDurationHours",
+              value: actionDuration,
+              patientId: input.patientId,
+            },
+          })
+        } catch (auditErr) {
+          console.error(
+            "[insulin.calculateBolus] audit-failure during CONFIG_ERROR emission",
+            auditErr instanceof Error ? auditErr.message : auditErr,
+          )
+        }
         throw new InvalidTherapyConfigError(
           "IOB actionDurationHours is zero or negative — invalid insulin therapy config",
         )

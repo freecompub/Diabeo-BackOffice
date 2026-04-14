@@ -688,16 +688,37 @@ describe("insulinService.calculateBolus", () => {
         ),
       ).rejects.toThrow(/actionDurationHours/)
 
-      // Audit was emitted with UNAUTHORIZED action + invalidTherapyConfig reason
+      // Audit was emitted with CONFIG_ERROR (dedicated action — not UNAUTHORIZED,
+      // which is reserved for access-control events and must stay clean for SIEM)
       expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            action: "UNAUTHORIZED",
+            action: "CONFIG_ERROR",
             resource: "INSULIN_THERAPY",
             resourceId: expect.stringMatching(/^settings:/),
           }),
         }),
       )
+    })
+
+    it("still throws InvalidTherapyConfigError when the audit write fails (fail-closed)", async () => {
+      // HDS resilience: if auditService.log rejects (disk full, immutability
+      // trigger failure), the clinical rejection must not be silently downgraded
+      // to a generic 500 — the clinician must see 422 invalidTherapyConfig.
+      mockHour(12)
+      const settings = buildSettings({ considerIob: true })
+      settings.iobSettings = { considerIob: true, actionDurationHours: d(0) } as any
+      prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
+      prismaMock.auditLog.create.mockRejectedValue(new Error("disk_full"))
+      mockTransaction()
+
+      const { InvalidTherapyConfigError } = await import("@/lib/services/insulin.service")
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.50, carbsGrams: 60, patientId: 1 },
+          1,
+        ),
+      ).rejects.toBeInstanceOf(InvalidTherapyConfigError)
     })
 
     it("falls back to 4h default when actionDurationHours is null (no config stored)", async () => {
