@@ -12,6 +12,13 @@
 
 BEGIN;
 
+-- Fail fast instead of stalling the app: an ALTER COLUMN TYPE on a large
+-- average_data table could queue writes behind an ACCESS EXCLUSIVE lock.
+-- Operators should retry off-peak if this trips; do not paper over with a
+-- longer timeout in CI without explicit review.
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '60s';
+
 -- 1. Create the enum type if it doesn't already exist
 DO $$
 BEGIN

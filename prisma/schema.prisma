@@ -1278,6 +1278,9 @@ model AuditLog {
   newValue   Json?    @map("new_value")
   ipAddress  String?  @map("ip_address") @db.VarChar(45)
   userAgent  String?  @map("user_agent") @db.VarChar(500)
+  /// Correlation ID (HDS §IV.3) joining this audit row to stderr log lines.
+  /// Assigned by middleware; nullable for events emitted outside the HTTP path.
+  requestId  String?  @map("request_id") @db.VarChar(64)
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -1286,6 +1289,7 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([resource, resourceId, createdAt])
   @@index([createdAt])
+  @@index([requestId])
   @@map("audit_logs")
 }
 

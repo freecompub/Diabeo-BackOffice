@@ -10,7 +10,16 @@ import { prisma } from "@/lib/db/client"
 import { cacheGet, cacheSet, cacheDelete } from "@/lib/cache/redis-cache"
 
 const CACHE_BUCKET = "gdpr-consent"
-const CACHE_TTL_SEC = 300 // 5 minutes — balances DB load vs. consent-revocation latency
+/**
+ * Differentiated TTLs — RGPD Art. 7(3) requires revocation to be quasi-immediate.
+ * - Positive consent cached for 60s only: if the user revokes and the
+ *   invalidation hook fails (crashed Node process between DB commit and
+ *   cacheDelete), the stale `true` window is bounded to 1 minute.
+ * - Negative / missing consent cached for 5 minutes: no privacy risk in
+ *   over-caching a "no" state; keeps DB load low for anonymous-like traffic.
+ */
+const CACHE_TTL_POSITIVE_SEC = 60
+const CACHE_TTL_NEGATIVE_SEC = 300
 
 /**
  * Check if a user has given GDPR consent for medical data processing.
@@ -38,7 +47,8 @@ export async function requireGdprConsent(userId: number): Promise<boolean> {
   })
 
   const hasConsent = settings?.gdprConsent === true
-  await cacheSet(CACHE_BUCKET, String(userId), hasConsent, CACHE_TTL_SEC)
+  const ttl = hasConsent ? CACHE_TTL_POSITIVE_SEC : CACHE_TTL_NEGATIVE_SEC
+  await cacheSet(CACHE_BUCKET, String(userId), hasConsent, ttl)
   return hasConsent
 }
 

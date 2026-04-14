@@ -7,8 +7,13 @@
  * to the source of truth (PostgreSQL). A cache outage must never block user
  * operations. Each error is console.error'd so it surfaces in observability.
  *
- * Serialization: values are stored as JSON. `null` is a legitimate cached
- * value; a missing key is distinguished by `get` returning `undefined`.
+ * Serialization: values are stored as JSON via Upstash's built-in encoder.
+ *
+ * **`null` vs. cache MISS**: this helper collapses both into `undefined`.
+ * Callers that need to cache a legitimate `null` value (e.g. "no patient
+ * referent exists") must wrap it in a sentinel object before calling
+ * `cacheSet` (e.g. `{ value: null }`) — otherwise every read would hit the DB
+ * (thundering-herd). For booleans and scalars this collapse is harmless.
  */
 
 import { Redis } from "@upstash/redis"
@@ -33,8 +38,9 @@ function nsKey(bucket: string, key: string): string {
 }
 
 /**
- * Read a value from cache. Returns `undefined` for cache miss, the cached
- * value otherwise (including `null` if the source legitimately produced null).
+ * Read a value from cache. Returns `undefined` for a cache miss OR for a
+ * cached `null` value (see module-level note — callers that need to cache
+ * `null` must wrap it in a sentinel).
  */
 export async function cacheGet<T>(bucket: string, key: string): Promise<T | undefined> {
   const client = getRedis()
