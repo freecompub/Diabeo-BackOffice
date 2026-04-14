@@ -3,8 +3,10 @@ import type { Role } from "@prisma/client"
 
 const ALG = "RS256"
 const TOKEN_EXPIRY = "15m" // Short-lived JWT — defense-in-depth against token theft (HR-4)
+const MFA_PENDING_EXPIRY = "5m" // MFA challenge window — user must complete OTP quickly
 const ISSUER = "diabeo-backoffice"
 const AUDIENCE = "diabeo-hc"
+const AUDIENCE_MFA = "diabeo-mfa-pending"
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 
@@ -93,6 +95,50 @@ export async function verifyJwt(token: string): Promise<JWTPayload> {
     audience: AUDIENCE,
   })
   return validatePayload(payload)
+}
+
+/**
+ * Payload for an MFA-pending token issued after successful password auth.
+ * Short-lived (5 min). The client must exchange it at /api/auth/mfa/challenge
+ * with a valid TOTP code to obtain a full-access JWT.
+ *
+ * Uses a distinct audience ("diabeo-mfa-pending") so this token is REJECTED
+ * by verifyJwt() — it cannot be used to access protected routes even if stolen.
+ */
+export interface MfaPendingPayload {
+  sub: number
+  /** Discriminator field (beyond audience) — belt-and-suspenders typing. */
+  type: "mfa_pending"
+}
+
+/** Sign a short-lived MFA-pending token. */
+export async function signMfaPendingToken(sub: number): Promise<string> {
+  const key = await getPrivateKey()
+  return new SignJWT({ type: "mfa_pending" })
+    .setProtectedHeader({ alg: ALG })
+    .setSubject(String(sub))
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE_MFA)
+    .setIssuedAt()
+    .setExpirationTime(MFA_PENDING_EXPIRY)
+    .sign(key)
+}
+
+/**
+ * Verify an MFA-pending token. Fails if audience or `type` do not match —
+ * prevents using a full JWT (or a stolen mfa token) as if it were the other.
+ */
+export async function verifyMfaPendingToken(token: string): Promise<MfaPendingPayload> {
+  const key = await getPublicKey()
+  const { payload } = await jwtVerify(token, key, {
+    algorithms: [ALG],
+    issuer: ISSUER,
+    audience: AUDIENCE_MFA,
+  })
+  const sub = Number(payload.sub)
+  if (!Number.isInteger(sub) || sub <= 0) throw new Error("Invalid MFA token subject")
+  if (payload.type !== "mfa_pending") throw new Error("Invalid MFA token type")
+  return { sub, type: "mfa_pending" }
 }
 
 /** Verify JWT but allow recently expired tokens (for refresh flow, 15min grace matching TOKEN_EXPIRY) */

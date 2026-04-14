@@ -788,7 +788,7 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 - [x] **`requireGdprConsent` cache** — `src/lib/cache/redis-cache.ts` (Upstash Redis + fallback memory, fail-open) + TTL 5min. Invalidation sur PUT /api/account/privacy et suppression compte RGPD Art. 17. Cache la valeur `false` et `null` (missing row) pour éviter re-queries.
 - [x] **`periodType` enum** — `PeriodType { current, d7 @map("7d"), d30 @map("30d") }` dans schema.prisma. `@map` préserve les valeurs DB existantes (`current`, `7d`, `30d`). Migration SQL prod : `prisma/sql/period_type_enum.sql` (à appliquer manuellement avant `prisma db push`).
 - [ ] **Photo upload** — implémenter OVH Object Storage (actuellement 501 Not Implemented)
-- [ ] **MFA flow complet** — login bloqué si `mfaEnabled=true`, implémenter le flow TOTP
+- [x] **MFA flow complet (TOTP)** — enrollment 2-step (setup → verify), login via mfa-pending token (audience séparée) → /challenge, disable password+OTP, 3 audit actions, rate limit par bucket. Secret AES-256-GCM at rest. Docs: `docs/security/mfa-flow.md`
 
 ### Design System (à planifier)
 - [ ] **Création du design system complet** — tokens (couleurs, typographie, espacements, ombres), composants de base shadcn/ui configurés avec la palette "Sérénité Active"
