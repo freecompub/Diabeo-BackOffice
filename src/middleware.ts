@@ -14,15 +14,30 @@ async function getPublicKey(): Promise<CryptoKey> {
   return cachedPublicKey
 }
 
+/**
+ * Generate a short correlation ID (8 hex chars — enough to de-dup within a minute).
+ * Avoids crypto.randomUUID() which would be 36 chars and overkill for log grep.
+ */
+function generateRequestId(): string {
+  return Math.random().toString(16).slice(2, 10) + Math.random().toString(16).slice(2, 10)
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Assign a correlation ID for every request. If the client provided one
+  // (trusted gateway, mobile app retry), echo it back; otherwise generate.
+  const requestId = request.headers.get("x-request-id") ?? generateRequestId()
 
   // Skip auth routes — strip spoofed headers to prevent impersonation
   if (pathname.startsWith("/api/auth/")) {
     const headers = new Headers(request.headers)
     headers.delete("x-user-id")
     headers.delete("x-user-role")
-    return NextResponse.next({ request: { headers } })
+    headers.set("x-request-id", requestId)
+    const res = NextResponse.next({ request: { headers } })
+    res.headers.set("x-request-id", requestId)
+    return res
   }
 
   // Skip login page (public)
@@ -65,6 +80,7 @@ export async function middleware(request: NextRequest) {
     const requestHeaders = new Headers(request.headers)
     requestHeaders.set("x-user-id", String(payload.sub))
     requestHeaders.set("x-user-role", String(payload.role))
+    requestHeaders.set("x-request-id", requestId)
 
     // C4: CSRF protection — state-changing requests must include custom header.
     // This header cannot be set by cross-origin form submissions (CORS blocks custom headers).
@@ -79,7 +95,9 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    return NextResponse.next({ request: { headers: requestHeaders } })
+    const res = NextResponse.next({ request: { headers: requestHeaders } })
+    res.headers.set("x-request-id", requestId)
+    return res
   } catch (error) {
     const code = error instanceof Error && "code" in error
       ? (error as Error & { code: string }).code

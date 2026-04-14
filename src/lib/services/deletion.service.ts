@@ -10,6 +10,7 @@
 
 import { prisma } from "@/lib/db/client"
 import { createHash } from "crypto"
+import { invalidateGdprConsentCache } from "@/lib/gdpr"
 import { auditService } from "./audit.service"
 
 /**
@@ -183,5 +184,10 @@ export async function deleteUserAccount(
     })
 
     return { deleted: true, userId }
+  }).then(async (result) => {
+    // Clear any cached consent state for the deleted user (RGPD Art. 17).
+    // Outside the transaction because Redis is not part of the DB atomic unit.
+    await invalidateGdprConsentCache(userId)
+    return result
   })
 }

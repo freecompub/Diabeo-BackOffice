@@ -5,6 +5,7 @@ import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
 import { signJwt, createSession, checkRateLimit, recordFailedAttempt, clearAttempts } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 // Pre-computed hash for timing-safe comparison when user is not found.
 // Prevents timing oracle attacks that would allow enumeration of valid emails.
@@ -123,8 +124,8 @@ export async function POST(req: NextRequest) {
     })
     return response
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[auth/login]", msg)
+    const ctx = extractRequestContext(req)
+    logger.error("auth/login", "login handler failed", { requestId: ctx.requestId }, error)
     return NextResponse.json({ error: "serverUnavailable" }, { status: 503 })
   }
 }

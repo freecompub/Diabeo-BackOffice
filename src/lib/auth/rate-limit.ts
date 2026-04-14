@@ -11,6 +11,7 @@
  */
 
 import { Redis } from "@upstash/redis"
+import { logger } from "@/lib/logger"
 
 const RATE_LIMIT_PREFIX = process.env.REDIS_KEY_PREFIX ?? "diabeo:prod:"
 const LOCKOUT_SECONDS = [0, 0, 0, 300, 900, 3600] as const
@@ -52,7 +53,7 @@ export async function checkRateLimit(identifier: string): Promise<{
       }
       return { blocked: false }
     } catch (err) {
-      console.error("[rate-limit] Redis error in checkRateLimit, falling back to memory:", err instanceof Error ? err.message : err)
+      logger.error("auth/rate-limit", "Redis error in checkRateLimit, falling back to memory", {}, err)
       return { blocked: false }
     }
   }
@@ -84,7 +85,7 @@ export async function recordFailedAttempt(identifier: string): Promise<void> {
       await client.set(key, { count, lockedUntil }, { ex: ATTEMPT_TTL_SECONDS })
       return
     } catch (err) {
-      console.error("[rate-limit] Redis error in recordFailedAttempt, falling back to memory:", err instanceof Error ? err.message : err)
+      logger.error("auth/rate-limit", "Redis error in recordFailedAttempt, falling back to memory", {}, err)
     }
   }
 
@@ -107,7 +108,7 @@ export async function clearAttempts(identifier: string): Promise<void> {
       await client.del(redisKey(identifier))
       return
     } catch (err) {
-      console.error("[rate-limit] Redis error in clearAttempts, falling back to memory:", err instanceof Error ? err.message : err)
+      logger.error("auth/rate-limit", "Redis error in clearAttempts, falling back to memory", {}, err)
     }
   }
 

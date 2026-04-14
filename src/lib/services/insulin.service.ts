@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { assertNever } from "@/lib/utils/assert-never"
+import { logger } from "@/lib/logger"
 
 /**
  * Stable error code for "insulin therapy config is malformed in the database".
@@ -192,9 +193,11 @@ export const insulinService = {
             },
           })
         } catch (auditErr) {
-          console.error(
-            "[insulin.calculateBolus] audit-failure during CONFIG_ERROR emission",
-            auditErr instanceof Error ? auditErr.message : auditErr,
+          logger.error(
+            "insulin/calculateBolus",
+            "audit-failure during CONFIG_ERROR emission — throw still propagates",
+            { patientId: input.patientId, settingsId: settings.id },
+            auditErr,
           )
         }
         throw new InvalidTherapyConfigError(

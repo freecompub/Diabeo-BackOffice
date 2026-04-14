@@ -784,9 +784,9 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 - [x] **Tests : division-by-zero guards ISF/ICR** — 3 tests (ISF=0, ICR=0, ISF négatif)
 
 ### Priorité basse (dette technique)
-- [ ] **`console.error(msg)` → structured logging** — remplacer par un logger structuré avec correlation ID
-- [ ] **`requireGdprConsent` cache** — requête DB à chaque appel, mettre en cache Redis (5min TTL)
-- [ ] **`periodType` enum** — `AverageData.periodType` est un string libre, devrait être un enum Prisma
+- [x] **Structured logger** — `src/lib/logger.ts` (JSON prod / texte dev, suppression niveaux non-error en test) + middleware propage `x-request-id` (correlation ID auto-généré ou passthrough), exposé via `extractRequestContext(req).requestId`. Migration partielle (auth/login, calculate-bolus, rate-limit, api-rate-limit, redis-cache, insulin.service) — reste ~110 console.error à migrer progressivement
+- [x] **`requireGdprConsent` cache** — `src/lib/cache/redis-cache.ts` (Upstash Redis + fallback memory, fail-open) + TTL 5min. Invalidation sur PUT /api/account/privacy et suppression compte RGPD Art. 17. Cache la valeur `false` et `null` (missing row) pour éviter re-queries.
+- [x] **`periodType` enum** — `PeriodType { current, d7 @map("7d"), d30 @map("30d") }` dans schema.prisma. `@map` préserve les valeurs DB existantes (`current`, `7d`, `30d`). Migration SQL prod : `prisma/sql/period_type_enum.sql` (à appliquer manuellement avant `prisma db push`).
 - [ ] **Photo upload** — implémenter OVH Object Storage (actuellement 501 Not Implemented)
 - [ ] **MFA flow complet** — login bloqué si `mfaEnabled=true`, implémenter le flow TOTP
 
@@ -808,4 +808,4 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 
 ---
 
-*Dernière mise à jour : 2026-04-14 — Backlog priorité moyenne résorbé (typing strict + tests Phase 4, 848 tests)*
+*Dernière mise à jour : 2026-04-14 — Backlog priorité basse (logger, GDPR cache, PeriodType enum) ; 865 tests*

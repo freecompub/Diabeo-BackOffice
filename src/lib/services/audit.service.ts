@@ -130,6 +130,7 @@ function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateIn
 export function extractRequestContext(req: Request): {
   ipAddress: string
   userAgent: string
+  requestId: string
 } {
   const headers = req.headers
   const ipAddress =
@@ -137,7 +138,10 @@ export function extractRequestContext(req: Request): {
     headers.get("x-real-ip") ??
     "unknown"
   const userAgent = headers.get("user-agent") ?? "unknown"
-  return { ipAddress, userAgent }
+  // Correlation ID assigned by middleware. Falls back to "no-request-id" if
+  // the route is invoked outside middleware scope (tests, server actions).
+  const requestId = headers.get("x-request-id") ?? "no-request-id"
+  return { ipAddress, userAgent, requestId }
 }
 
 /** Maximum query limit for audit log pagination */
