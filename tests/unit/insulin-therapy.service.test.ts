@@ -161,6 +161,12 @@ describe("insulinTherapyService", () => {
           sensitivityFactorMgdl: 50, // mgdl = gl * 100
         }),
       })
+      // Audit resourceId uses "isf:<id>" prefix (type-disambiguated format)
+      expect(txMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ resourceId: "isf:isf-uuid-1" }),
+        }),
+      )
     })
 
     it("rejects a zero-duration ISF slot (startHour == endHour)", async () => {
@@ -217,6 +223,12 @@ describe("insulinTherapyService", () => {
           mealLabel: "breakfast",
         }),
       })
+      // Audit resourceId uses "icr:<id>" prefix (type-disambiguated format)
+      expect(txMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ resourceId: "icr:icr-uuid-1" }),
+        }),
+      )
     })
 
     it("rejects an overlapping ICR slot", async () => {
@@ -250,7 +262,11 @@ describe("insulinTherapyService", () => {
       })
       expect(txMock.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: expect.objectContaining({ action: "DELETE", resource: "INSULIN_THERAPY" }),
+          data: expect.objectContaining({
+            action: "DELETE",
+            resource: "INSULIN_THERAPY",
+            resourceId: "isf:isf-uuid-1",
+          }),
         }),
       )
     })
@@ -268,6 +284,11 @@ describe("insulinTherapyService", () => {
       expect(txMock.carbRatio.delete).toHaveBeenCalledWith({
         where: { id: "icr-uuid-1" },
       })
+      expect(txMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ resourceId: "icr:icr-uuid-1" }),
+        }),
+      )
     })
   })
 })

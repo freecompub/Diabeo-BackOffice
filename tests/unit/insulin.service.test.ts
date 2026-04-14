@@ -648,6 +648,41 @@ describe("insulinService.calculateBolus", () => {
         ),
       ).rejects.toThrow(/ISF value is zero or negative/)
     })
+
+    it("throws when IOB actionDurationHours is zero — does NOT silently default to 4h", async () => {
+      // Regression: previous `|| 4.0` would mask a stored 0 as default 4h,
+      // disabling IOB subtraction and risking insulin stacking. Must throw.
+      mockHour(12)
+      const settings = buildSettings({ considerIob: true })
+      settings.iobSettings = { considerIob: true, actionDurationHours: d(0) } as any
+      prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
+      mockTransaction()
+
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.50, carbsGrams: 60, patientId: 1 },
+          1,
+        ),
+      ).rejects.toThrow(/actionDurationHours is zero or negative/)
+    })
+
+    it("falls back to 4h default when actionDurationHours is null (no config stored)", async () => {
+      // null → nullish → default. Distinct from 0 which must throw.
+      mockHour(12)
+      prismaMock.insulinFlowDeviceData.findMany.mockResolvedValue([] as any)
+      prismaMock.bolusCalculationLog.findMany.mockResolvedValue([] as any)
+      const settings = buildSettings({ considerIob: true })
+      settings.iobSettings = { considerIob: true, actionDurationHours: null } as any
+      prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
+      mockTransaction()
+
+      const result = await insulinService.calculateBolus(
+        { currentGlucoseGl: 1.00, carbsGrams: 60, patientId: 1 },
+        1,
+      )
+      // Computes normally with default 4h duration (no throw)
+      expect(result.recommendedDose).toBeGreaterThan(0)
+    })
   })
 
   // =========================================================================

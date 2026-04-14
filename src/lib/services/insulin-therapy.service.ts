@@ -171,7 +171,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "CREATE",
         resource: "INSULIN_THERAPY",
-        resourceId: isf.id,
+        resourceId: `isf:${isf.id}`,
       })
       return isf
     })
@@ -184,7 +184,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
-        resourceId: id,
+        resourceId: `isf:${id}`,
       })
       return { deleted: true }
     })
@@ -225,7 +225,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "CREATE",
         resource: "INSULIN_THERAPY",
-        resourceId: icr.id,
+        resourceId: `icr:${icr.id}`,
       })
       return icr
     })
@@ -238,7 +238,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
-        resourceId: id,
+        resourceId: `icr:${id}`,
       })
       return { deleted: true }
     })

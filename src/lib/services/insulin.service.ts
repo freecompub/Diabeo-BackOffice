@@ -147,7 +147,15 @@ export const insulinService = {
     let iobValue = 0
     let iobAdjustment = 0
     if (settings.iobSettings?.considerIob) {
-      const actionDuration = settings.iobSettings.actionDurationHours?.toNumber() || 4.0
+      // Use ?? (nullish) not || — a stored Decimal of 0 is a CORRUPT config,
+      // not "use default". Masking 0 with 4h disables IOB subtraction silently
+      // → insulin stacking risk. Reject explicitly so the config bug surfaces.
+      const actionDuration = settings.iobSettings.actionDurationHours?.toNumber() ?? 4.0
+      if (actionDuration <= 0) {
+        throw new Error(
+          "IOB actionDurationHours is zero or negative — invalid insulin therapy config",
+        )
+      }
       iobValue = await calculateIob(input.patientId, actionDuration)
       // IOB only reduces correction dose, never meal bolus
       iobAdjustment = Math.min(iobValue, Math.max(0, rawCorrectionDose))
@@ -268,10 +276,23 @@ function findSlotForHour<T extends { startHour: number; endHour: number }>(
  * @param {number} dose - Unrounded dose (units)
  * @param {InsulinDeliveryMethod} method - "pump" (0.05 U increments) or "manual" (0.5 U)
  * @returns {number} Rounded dose for delivery device
+ *
+ * NOTE: Exhaustive switch + `never` check — adding a new variant to the enum
+ * (e.g. pen, inhaled/Afrezza with 4/8/12 U cartridges) will fail at compile time
+ * rather than silently default to 0.5 U increments. Medical devices require an
+ * explicit rounding policy per delivery method.
  */
 function roundForDevice(dose: number, method: InsulinDeliveryMethod): number {
-  if (method === "pump") return Math.round(dose * 20) / 20   // 0.05 U increments
-  return Math.round(dose * 2) / 2                             // 0.5 U increments (pen/manual)
+  switch (method) {
+    case "pump":
+      return Math.round(dose * 20) / 20  // 0.05 U increments
+    case "manual":
+      return Math.round(dose * 2) / 2    // 0.5 U increments (pen/manual)
+    default: {
+      const _exhaustive: never = method
+      throw new Error(`Unsupported InsulinDeliveryMethod: ${_exhaustive}`)
+    }
+  }
 }
 
 /**
