@@ -184,6 +184,8 @@ export async function deleteUserAccount(
         codeBirthPlace: null,
         pic: null,
         mfaSecret: null,
+        mfaEnabled: false,        // Reset the flag alongside the secret — the
+        mfaLastUsedStep: null,    // anonymized row must be self-consistent.
         intercomHash: null,
         deploymentKey: null,
       },

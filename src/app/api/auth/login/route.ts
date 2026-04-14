@@ -3,7 +3,14 @@ import { z } from "zod"
 import { compare } from "bcryptjs"
 import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
-import { signJwt, createSession, checkRateLimit, recordFailedAttempt, clearAttempts } from "@/lib/auth"
+import {
+  signJwt,
+  signMfaPendingToken,
+  createSession,
+  checkRateLimit,
+  recordFailedAttempt,
+  clearAttempts,
+} from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
 
@@ -87,7 +94,6 @@ export async function POST(req: NextRequest) {
     // together with a valid OTP. Short-lived (5 min), different audience,
     // unusable against any protected endpoint.
     if (user.mfaEnabled) {
-      const { signMfaPendingToken } = await import("@/lib/auth/jwt")
       const mfaToken = await signMfaPendingToken(user.id)
       await clearAttempts(emailHash) // password-step succeeded — reset counter
       return NextResponse.json({ mfaRequired: true, mfaToken }, { status: 200 })

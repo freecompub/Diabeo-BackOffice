@@ -92,8 +92,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Success: issue full JWT + session, mirroring /auth/login response shape.
+    // Tag the session as MFA-verified so HDS forensics can tell second-factor
+    // sessions apart from password-only ones.
     await clearAttempts(rateLimitKey)
-    const session = await createSession(user.id)
+    const session = await createSession(user.id, { mfaVerified: true })
     const token = await signJwt({
       sub: user.id,
       role: user.role,

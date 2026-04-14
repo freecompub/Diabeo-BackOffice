@@ -20,6 +20,15 @@
  */
 
 import { generateSecret, generateURI, verifySync } from "otplib"
+
+/**
+ * TOTP-specific verify result shape. The functional `verifySync` returns a
+ * union of HOTP|TOTP variants and loses `timeStep` in TS. We always pass
+ * `strategy: "totp"`, so this is the only runtime shape.
+ */
+type TotpVerifyResult =
+  | { readonly valid: true; readonly delta: number; readonly timeStep: number; readonly epoch: number }
+  | { readonly valid: false }
 import QRCode from "qrcode"
 import { prisma } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
@@ -61,7 +70,7 @@ export const mfaService = {
 
     await prisma.user.update({
       where: { id: userId },
-      data: { mfaSecret: encrypted, mfaEnabled: false },
+      data: { mfaSecret: encrypted, mfaEnabled: false, mfaLastUsedStep: null },
     })
 
     // accountLabel is shown in the authenticator app. Use a stable but
@@ -81,49 +90,98 @@ export const mfaService = {
   },
 
   /**
-   * Verify a TOTP code against the stored secret.
-   * Returns true if the code is valid within the ±1 step window.
+   * Verify a TOTP code against the stored secret AND consume it — a valid code
+   * is rejected on any subsequent call (replay protection per RFC 6238 §5.2).
+   *
+   * Implementation:
+   * 1. Read `mfaSecret` + `mfaLastUsedStep` in a transaction.
+   * 2. `verifySync` with `afterTimeStep = mfaLastUsedStep` — otplib rejects
+   *    codes whose timeStep is not strictly greater than the last used.
+   * 3. On success, atomically update `mfaLastUsedStep` using an optimistic
+   *    compare-and-set (`where: { id, mfaLastUsedStep: previous }`) — two
+   *    concurrent verify requests cannot both succeed with the same step.
+   *
+   * Returns true only when the OTP matched AND was not a replay AND the
+   * compare-and-set committed.
    */
   async verifyOtp(userId: number, otp: string): Promise<boolean> {
     if (!/^\d{6}$/.test(otp)) return false
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { mfaSecret: true },
+      select: { mfaSecret: true, mfaLastUsedStep: true },
     })
     if (!user?.mfaSecret) return false
 
     const secret = safeDecryptField(user.mfaSecret)
     if (!secret) return false
 
+    let result: TotpVerifyResult
     try {
-      const result = verifySync({
+      // Cast: the functional `verify` union widens to HOTP|TOTP and loses
+      // `timeStep`. We always pass `strategy: "totp"`, so the TOTP variant
+      // is the only possible runtime shape.
+      result = verifySync({
         strategy: "totp",
         secret,
         token: otp,
         digits: TOTP_DIGITS,
         period: TOTP_PERIOD,
         epochTolerance: TOTP_EPOCH_TOLERANCE,
-      })
-      return result.valid === true
+        // Reject codes whose timeStep <= last accepted step. otplib compares
+        // with strict `<=` internally, so a code from the current step cannot
+        // be replayed even if the window still covers it.
+        afterTimeStep: user.mfaLastUsedStep ?? undefined,
+      }) as TotpVerifyResult
     } catch {
       return false
     }
+
+    if (!result.valid) return false
+
+    // Compare-and-set on mfaLastUsedStep. If another concurrent verify just
+    // consumed the same or a later step, this update returns count=0 and we
+    // treat the verification as failed (anti-replay via optimistic locking).
+    const acceptedStep = result.timeStep
+    const updated = await prisma.user.updateMany({
+      where: {
+        id: userId,
+        OR: [
+          { mfaLastUsedStep: null },
+          { mfaLastUsedStep: { lt: acceptedStep } },
+        ],
+      },
+      data: { mfaLastUsedStep: acceptedStep },
+    })
+    return updated.count === 1
   },
 
   /**
    * Confirm the first OTP after setup and enable MFA.
    * This is the ONLY path that flips `mfaEnabled` to true.
+   *
+   * Atomicity: `verifyOtp` already committed the `mfaLastUsedStep` advance.
+   * If a concurrent `generateSecret` rotated the secret between our read and
+   * this update, the optimistic guard `mfaSecret: <observed>` ensures we do
+   * not enable MFA bound to a never-confirmed secret.
    */
   async verifyAndEnable(userId: number, otp: string): Promise<boolean> {
+    // Observe the secret BEFORE verifying so we can guard the update
+    // against a concurrent rotation.
+    const before = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { mfaSecret: true },
+    })
+    if (!before?.mfaSecret) return false
+
     const ok = await this.verifyOtp(userId, otp)
     if (!ok) return false
 
-    await prisma.user.update({
-      where: { id: userId },
+    const updated = await prisma.user.updateMany({
+      where: { id: userId, mfaSecret: before.mfaSecret },
       data: { mfaEnabled: true },
     })
-    return true
+    return updated.count === 1
   },
 
   /**
@@ -134,7 +192,7 @@ export const mfaService = {
   async disable(userId: number): Promise<void> {
     await prisma.user.update({
       where: { id: userId },
-      data: { mfaSecret: null, mfaEnabled: false },
+      data: { mfaSecret: null, mfaEnabled: false, mfaLastUsedStep: null },
     })
   },
 }
