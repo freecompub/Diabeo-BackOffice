@@ -10,9 +10,24 @@
  * @see https://diabetes.org/about-us/statistics/statistics-about-diabetes — ADA guidelines
  */
 
+import type { InsulinDeliveryMethod } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { assertNever } from "@/lib/utils/assert-never"
+
+/**
+ * Stable error code for "insulin therapy config is malformed in the database".
+ * Thrown from `calculateBolus` when a critical setting is zero/negative.
+ * Routes should map this to HTTP 422 (unprocessable entity) + `invalidTherapyConfig`.
+ */
+export class InvalidTherapyConfigError extends Error {
+  readonly code = "invalidTherapyConfig" as const
+  constructor(message: string) {
+    super(message)
+    this.name = "InvalidTherapyConfigError"
+  }
+}
 
 // CLINICAL_BOUNDS imported from @/lib/clinical-bounds (single source of truth)
 
@@ -40,7 +55,7 @@ interface BolusInput {
  * @property {boolean} wasCapped - True if recommendedDose hit MAX_SINGLE_BOLUS cap
  * @property {Array<string>} warnings - Clinical warnings (hypoglycemia, hyperglycemia, capped)
  * @property {boolean} requiresHypoTreatmentFirst - True if glucose < 70 mg/dL (0.70 g/L)
- * @property {string} deliveryMethod - Pump vs pen (affects rounding precision)
+ * @property {InsulinDeliveryMethod} deliveryMethod - pump or manual (affects rounding precision)
  */
 interface BolusResult {
   mealBolus: number
@@ -51,7 +66,7 @@ interface BolusResult {
   wasCapped: boolean
   warnings: string[]
   requiresHypoTreatmentFirst: boolean
-  deliveryMethod: string
+  deliveryMethod: InsulinDeliveryMethod
 }
 
 /**
@@ -125,10 +140,10 @@ export const insulinService = {
     const target = settings.glucoseTargets[0]
     if (!target) throw new Error("No active glucose target found")
 
-    const isfGl = Number(isf.sensitivityFactorGl)
-    const isfMgdl = Number(isf.sensitivityFactorMgdl)
-    const icrValue = Number(icr.gramsPerUnit)
-    const targetMgdl = Number(target.targetGlucose)
+    const isfGl = isf.sensitivityFactorGl.toNumber()
+    const isfMgdl = isf.sensitivityFactorMgdl.toNumber()
+    const icrValue = icr.gramsPerUnit.toNumber()
+    const targetMgdl = target.targetGlucose.toNumber()
     const currentMgdl = input.currentGlucoseGl * 100 // g/L -> mg/dL
 
     // Division-by-zero safety guards
@@ -146,7 +161,46 @@ export const insulinService = {
     let iobValue = 0
     let iobAdjustment = 0
     if (settings.iobSettings?.considerIob) {
-      const actionDuration = Number(settings.iobSettings.actionDurationHours) || 4.0
+      // Use ?? (nullish) not || — a stored Decimal of 0 is a CORRUPT config,
+      // not "use default". Masking 0 with 4h disables IOB subtraction silently
+      // → insulin stacking risk. Reject explicitly so the config bug surfaces.
+      const actionDuration = settings.iobSettings.actionDurationHours?.toNumber() ?? 4.0
+      if (actionDuration <= 0) {
+        // HDS §IV.3: a corrupted therapy config is a clinically significant
+        // event — audit BEFORE throwing so traceability survives the rejection.
+        //
+        // Use CONFIG_ERROR (dedicated action) — NOT UNAUTHORIZED — to keep
+        // SIEM / breach-notification (RGPD Art. 33) triage clean: this is a
+        // data-integrity incident, not an access-control violation.
+        //
+        // Wrap the audit write in try/catch so an audit-subsystem failure
+        // (disk full, immutability trigger failure) does NOT mask the clinical
+        // rejection. The throw must be fail-closed regardless of audit state,
+        // otherwise the clinician sees a generic 500 and may retry instead of
+        // being informed that the stored config is corrupt.
+        try {
+          await auditService.log({
+            userId: auditUserId,
+            action: "CONFIG_ERROR",
+            resource: "INSULIN_THERAPY",
+            resourceId: `settings:${settings.id}`,
+            metadata: {
+              reason: "invalidTherapyConfig",
+              field: "iobSettings.actionDurationHours",
+              value: actionDuration,
+              patientId: input.patientId,
+            },
+          })
+        } catch (auditErr) {
+          console.error(
+            "[insulin.calculateBolus] audit-failure during CONFIG_ERROR emission",
+            auditErr instanceof Error ? auditErr.message : auditErr,
+          )
+        }
+        throw new InvalidTherapyConfigError(
+          "IOB actionDurationHours is zero or negative — invalid insulin therapy config",
+        )
+      }
       iobValue = await calculateIob(input.patientId, actionDuration)
       // IOB only reduces correction dose, never meal bolus
       iobAdjustment = Math.min(iobValue, Math.max(0, rawCorrectionDose))
@@ -265,12 +319,23 @@ function findSlotForHour<T extends { startHour: number; endHour: number }>(
  * Pumps typically support 0.05 U increments; pens 0.5 U increments.
  * @private
  * @param {number} dose - Unrounded dose (units)
- * @param {string} method - Delivery method: "pump" or "pen"
+ * @param {InsulinDeliveryMethod} method - "pump" (0.05 U increments) or "manual" (0.5 U)
  * @returns {number} Rounded dose for delivery device
+ *
+ * NOTE: Exhaustive switch + `never` check — adding a new variant to the enum
+ * (e.g. pen, inhaled/Afrezza with 4/8/12 U cartridges) will fail at compile time
+ * rather than silently default to 0.5 U increments. Medical devices require an
+ * explicit rounding policy per delivery method.
  */
-function roundForDevice(dose: number, method: string): number {
-  if (method === "pump") return Math.round(dose * 20) / 20   // 0.05 U increments
-  return Math.round(dose * 2) / 2                             // 0.5 U increments (pen)
+function roundForDevice(dose: number, method: InsulinDeliveryMethod): number {
+  switch (method) {
+    case "pump":
+      return Math.round(dose * 20) / 20  // 0.05 U increments
+    case "manual":
+      return Math.round(dose * 2) / 2    // 0.5 U increments (pen/manual)
+    default:
+      return assertNever(method, `Unsupported InsulinDeliveryMethod: ${method as string}`)
+  }
 }
 
 /**

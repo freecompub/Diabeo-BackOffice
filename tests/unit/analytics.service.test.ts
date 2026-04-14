@@ -34,6 +34,7 @@
  */
 import { describe, it, expect } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
+import { d } from "../helpers/decimal"
 
 import { analyticsService } from "@/lib/services/analytics.service"
 
@@ -120,8 +121,8 @@ describe("analyticsService", () => {
   describe("insulinSummary", () => {
     it("returns insulin flow summary", async () => {
       prismaMock.insulinFlowEntry.findMany.mockResolvedValue([
-        { id: 1, patientId: 1, date: new Date("2026-03-10"), flow: 42.5 },
-        { id: 2, patientId: 1, date: new Date("2026-03-11"), flow: 38.0 },
+        { id: 1, patientId: 1, date: new Date("2026-03-10"), flow: d(42.5) },
+        { id: 2, patientId: 1, date: new Date("2026-03-11"), flow: d(38.0) },
       ] as any)
       prismaMock.pumpEvent.findMany.mockResolvedValue([])
       prismaMock.auditLog.create.mockResolvedValue({} as any)
@@ -134,6 +135,24 @@ describe("analyticsService", () => {
       // avgDailyUnits = totalUnits / distinct days (2 distinct dates)
       expect(result.avgDailyUnits).toBeCloseTo(40.25)
       expect(result.dayCount).toBe(2)
+    })
+
+    it("handles InsulinFlowEntry with null flow (treats as 0 via ?? fallback)", async () => {
+      // Regression: after switching Number(f.flow) → f.flow?.toNumber() ?? 0,
+      // null flow rows must no longer crash and must contribute 0 units.
+      prismaMock.insulinFlowEntry.findMany.mockResolvedValue([
+        { id: 1, patientId: 1, date: new Date("2026-03-10"), flow: d(20) },
+        { id: 2, patientId: 1, date: new Date("2026-03-11"), flow: null },
+      ] as any)
+      prismaMock.pumpEvent.findMany.mockResolvedValue([])
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await analyticsService.insulinSummary(
+        1, new Date("2026-03-01"), new Date("2026-03-31"), 1,
+      )
+
+      expect(result.totalUnits).toBeCloseTo(20)  // 20 + 0 (null)
+      expect(result.dayCount).toBe(2)             // 2 distinct days still counted
     })
   })
 })

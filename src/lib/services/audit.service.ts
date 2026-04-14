@@ -45,6 +45,7 @@ export type AuditAction =
   | "EXPORT"
   | "UNAUTHORIZED"
   | "RATE_LIMITED"
+  | "CONFIG_ERROR"
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"

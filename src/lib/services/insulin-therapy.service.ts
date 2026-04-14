@@ -9,12 +9,26 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
-import type { InsulinDeliveryMethod, Prisma } from "@prisma/client"
+import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
 
 /** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
 export const INSULIN_BOUNDS = CLINICAL_BOUNDS
+
+/**
+ * Domain input for upserting a basal configuration.
+ * Excludes FK + audit fields owned by the service layer (settingsId, id, createdAt).
+ * Using a strict shape instead of Prisma.*UncheckedCreateInput prevents callers
+ * from bypassing RBAC or injecting relation IDs.
+ */
+export interface BasalConfigInput {
+  configType: BasalConfigType
+  totalDailyDose?: Prisma.Decimal | null
+  morningDose?: Prisma.Decimal | null
+  eveningDose?: Prisma.Decimal | null
+  dailyDose?: Prisma.Decimal | null
+}
 
 /**
  * Insulin therapy service — settings, ISF/ICR, basal configuration, bolus logs.
@@ -157,7 +171,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "CREATE",
         resource: "INSULIN_THERAPY",
-        resourceId: isf.id,
+        resourceId: `isf:${isf.id}`,
       })
       return isf
     })
@@ -170,7 +184,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
-        resourceId: id,
+        resourceId: `isf:${id}`,
       })
       return { deleted: true }
     })
@@ -211,7 +225,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "CREATE",
         resource: "INSULIN_THERAPY",
-        resourceId: icr.id,
+        resourceId: `icr:${icr.id}`,
       })
       return icr
     })
@@ -224,7 +238,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
-        resourceId: id,
+        resourceId: `icr:${id}`,
       })
       return { deleted: true }
     })
@@ -240,7 +254,7 @@ export const insulinTherapyService = {
 
   async upsertBasalConfig(
     settingsId: number,
-    input: Prisma.BasalConfigurationUncheckedCreateInput,
+    input: BasalConfigInput,
     auditUserId: number,
     ctx?: AuditContext,
   ) {
@@ -302,7 +316,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "CREATE",
         resource: "INSULIN_THERAPY",
-        resourceId: slot.id,
+        resourceId: `pump:${slot.id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
       })
@@ -317,7 +331,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
-        resourceId: id,
+        resourceId: `pump:${id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
       })

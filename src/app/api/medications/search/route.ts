@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url)
     const parsed = searchSchema.safeParse({
       q: url.searchParams.get("q") ?? "",
-      atc: url.searchParams.get("atc") || undefined,
+      atc: url.searchParams.get("atc") ?? undefined,
       limit: url.searchParams.get("limit") ?? "20",
     })
 

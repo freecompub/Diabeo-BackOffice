@@ -79,6 +79,33 @@ describe("insulinTherapyService — basal config", () => {
       expect(txMock.basalConfiguration.upsert).toHaveBeenCalled()
       expect(txMock.auditLog.create).toHaveBeenCalled()
     })
+
+    it("injects settingsId server-side on CREATE — caller cannot override FK", async () => {
+      // Regression guard: BasalConfigInput omits settingsId. The service must
+      // always splat it from its own argument, even if a caller somehow passed
+      // a different value (RBAC bypass attempt via FK injection).
+      const createArg = vi.fn().mockResolvedValue({ id: 1, settingsId: 10 })
+      const txMock = {
+        basalConfiguration: {
+          upsert: vi.fn().mockImplementation((args: any) => {
+            createArg(args)
+            return { id: 1, settingsId: 10, configType: "pump" }
+          }),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      await insulinTherapyService.upsertBasalConfig(
+        10,
+        { configType: "pump" },
+        1,
+      )
+
+      const call = createArg.mock.calls[0][0]
+      expect(call.where).toEqual({ settingsId: 10 })
+      expect(call.create.settingsId).toBe(10)  // server injected
+    })
   })
 
   describe("createPumpSlot", () => {
@@ -114,6 +141,12 @@ describe("insulinTherapyService — basal config", () => {
           rate: 0.95,
         }),
       })
+      // Audit resourceId uses "pump:<uuid>" prefix (matches isf:/icr:/basal: convention)
+      expect(txMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ resourceId: "pump:uuid-new" }),
+        }),
+      )
     })
 
     it("rejects overlapping pump slots", async () => {

@@ -238,7 +238,7 @@ export function GlucoseCard({
         </div>
 
         {/* Footer row: timestamp left, source badge right */}
-        {(timestamp || source) && (
+        {(timestamp != null || source != null) && (
           <div className="flex items-center justify-between mt-2 gap-2">
             {timestamp && relativeTime && (
               <time
