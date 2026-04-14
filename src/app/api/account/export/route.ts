@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { generateUserExport } from "@/lib/services/export.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
@@ -8,6 +9,15 @@ export const runtime = "nodejs"
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
+
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.export)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rateLimitExceeded" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      )
+    }
+
     const ctx = extractRequestContext(req)
 
     const exportData = await generateUserExport(user.id)

@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { analyticsService } from "@/lib/services/analytics.service"
@@ -13,6 +14,15 @@ const querySchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
+
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.analytics)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rateLimitExceeded" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      )
+    }
+
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 

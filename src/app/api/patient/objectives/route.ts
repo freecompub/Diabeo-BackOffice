@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
-import { getOwnPatientId, canAccessPatient } from "@/lib/access-control"
+import { resolvePatientId, canAccessPatient } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { objectivesService } from "@/lib/services/objectives.service"
 
@@ -15,7 +15,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const patientId = await getOwnPatientId(user.id)
+    const pidParam = new URL(req.url).searchParams.get("patientId")
+    const patientId = await resolvePatientId(
+      user.id,
+      user.role,
+      pidParam ? parseInt(pidParam, 10) : undefined,
+    )
     if (!patientId) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }

@@ -766,13 +766,13 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 Les items suivants ont été identifiés lors des reviews mais reportés pour ne pas bloquer les phases en cours.
 
 ### Priorité haute (avant mise en production)
-- [ ] **Unifier CLINICAL_BOUNDS et INSULIN_BOUNDS** — deux constantes identiques dans `insulin.service.ts` et `insulin-therapy.service.ts`, risque de divergence
-- [ ] **Slot overlap detection ISF/ICR** — `createIsf`/`createIcr` n'empêchent pas les chevauchements horaires, risque de bolus calculé avec le mauvais ratio
-- [ ] **IOB (Insulin On Board) implémentation** — actuellement placeholder (`iobAdjustment = 0`), risque d'empilement insuline
-- [x] **Session revocation via Upstash Redis** — ~~le store in-memory ne fonctionne pas en multi-instance (Edge vs Node.js)~~ Corrigé : revocation.ts utilise Upstash Redis (HTTP/fetch, compatible Edge). Fail-closed (HDS), bulk revocation, refresh endpoint protégé. Voir `docs/security/session-revocation.md`
-- [ ] **JWT court-lived (15min) + refresh token** — Réduire `TOKEN_EXPIRY` de 24h à 15min dans jwt.ts, defense-in-depth contre les pannes Redis. Nécessite coordination avec l'app iOS pour le flow refresh
-- [ ] **Rate limiting sur endpoints analytics et export** — calculs coûteux sans protection DoS
-- [ ] **Routes Phase 3 (CGM/events/analytics) : accès pro** — actuellement patient-only via `getOwnPatientId`, les soignants ne peuvent pas accéder aux données via ces routes
+- [x] **Unifier CLINICAL_BOUNDS et INSULIN_BOUNDS** — source unique dans `src/lib/clinical-bounds.ts`, alias `INSULIN_BOUNDS` déprécié dans `insulin-therapy.service.ts`
+- [x] **Slot overlap detection ISF/ICR** — `createIsf`/`createIcr` utilisent `hasTimeSlotOverlap` (`src/lib/services/time-slot-utils.ts`) avec support du passage minuit
+- [x] **IOB (Insulin On Board) implémentation** — decay linéaire dans `insulin.service.ts:301-337`, `IobSettings.actionDurationHours` configurable, filtre `wasDelivered=true`
+- [x] **Session revocation via Upstash Redis** — revocation.ts utilise Upstash Redis (HTTP/fetch, compatible Edge). Fail-closed (HDS), bulk revocation, refresh endpoint protégé. Voir `docs/security/session-revocation.md`
+- [x] **JWT court-lived (15min) + refresh token** — `TOKEN_EXPIRY = "15m"` dans `src/lib/auth/jwt.ts:5`, endpoint `/api/auth/refresh` avec `clockTolerance: 900` pour le grace window
+- [x] **Rate limiting sur endpoints analytics et export** — `src/lib/auth/api-rate-limit.ts` (sliding-window Upstash + fallback memory, fail-open). Appliqué sur 5 routes analytics + export RGPD (3/h)
+- [x] **Routes Phase 3 — accès pro** — `resolvePatientId` (VIEWER own / PRO explicit `?patientId=N` + `canAccessPatient`) appliqué sur 8 routes patient/userdata/healthcare/pregnancy/services/objectives
 
 ### Priorité moyenne (amélioration continue)
 - [ ] **`Number(Decimal)` → `.toNumber()`** — utiliser l'API explicite Prisma Decimal au lieu de `Number()` pour prévenir NaN sur champs nullable
@@ -808,4 +808,4 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 
 ---
 
-*Dernière mise à jour : 2026-04-01 — Phase 7 implémentée*
+*Dernière mise à jour : 2026-04-14 — Backlog priorité haute résorbé (rate-limit API + accès pro Phase 3)*
