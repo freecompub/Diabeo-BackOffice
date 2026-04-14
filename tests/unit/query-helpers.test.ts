@@ -1,5 +1,5 @@
 /**
- * Test suite: Pro access via resolvePatientIdFromQuery
+ * Test suite: resolvePatientIdFromQuery (unit — helper + RBAC forwarding)
  *
  * Clinical behavior tested:
  * - VIEWER (the patient): `?patientId=` query param is ignored; their own

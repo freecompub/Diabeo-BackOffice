@@ -14,7 +14,7 @@
  * - A wrong Retry-After header would cause infinite retry loops from the UI
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
 // Force in-memory rate-limit fallback.
@@ -59,6 +59,10 @@ function req(patientId?: string): NextRequest {
 describe("GET /api/analytics/time-in-range — rate limiting", () => {
   beforeEach(() => {
     vi.clearAllMocks()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it("allows the first 30 requests and blocks the 31st with 429 + Retry-After", async () => {

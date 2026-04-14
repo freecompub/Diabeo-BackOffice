@@ -92,12 +92,15 @@ export async function checkApiRateLimit(
 
   if (client) {
     try {
-      const result = (await client.eval(
-        RATE_LIMIT_SCRIPT,
-        [key],
-        [String(windowSec)],
-      )) as [number, number]
-      const [count, ttlRaw] = result
+      const raw = await client.eval(RATE_LIMIT_SCRIPT, [key], [String(windowSec)])
+      if (
+        !Array.isArray(raw) ||
+        typeof raw[0] !== "number" ||
+        typeof raw[1] !== "number"
+      ) {
+        throw new Error(`Unexpected Lua result: ${JSON.stringify(raw)}`)
+      }
+      const [count, ttlRaw] = raw as [number, number]
       const ttl = ttlRaw > 0 ? ttlRaw : windowSec
       if (count > max) {
         return { allowed: false, remaining: 0, retryAfterSec: ttl }

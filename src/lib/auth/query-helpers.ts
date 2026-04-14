@@ -6,6 +6,7 @@
  */
 
 import { z } from "zod"
+import type { NextRequest } from "next/server"
 import { resolvePatientId } from "@/lib/access-control"
 import type { Role } from "@prisma/client"
 
@@ -21,14 +22,14 @@ const patientIdSchema = z.coerce.number().int().positive().optional()
  * - `{ error: "patientNotFound" }` when access is denied or no patient exists (404)
  */
 export async function resolvePatientIdFromQuery(
-  req: Request,
+  req: NextRequest,
   userId: number,
   role: Role,
 ): Promise<
   | { patientId: number; error?: undefined }
   | { error: "invalidPatientId" | "patientNotFound"; patientId?: undefined }
 > {
-  const raw = new URL(req.url).searchParams.get("patientId")
+  const raw = req.nextUrl.searchParams.get("patientId")
   const parsed = patientIdSchema.safeParse(raw ?? undefined)
   if (!parsed.success) {
     return { error: "invalidPatientId" }
