@@ -4,6 +4,8 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinService, InvalidTherapyConfigError } from "@/lib/services/insulin.service"
+import { extractRequestContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 const bolusSchema = z.object({
   patientId: z.number().int().positive().optional(),
@@ -40,8 +42,8 @@ export async function POST(req: NextRequest) {
       // user-input issue. Opaque error code, no message leak.
       return NextResponse.json({ error: error.code }, { status: 422 })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[calculate-bolus POST]", msg)
+    const ctx = extractRequestContext(req)
+    logger.error("insulin/calculate-bolus", "bolus handler failed", { requestId: ctx.requestId }, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

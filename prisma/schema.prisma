@@ -919,16 +919,24 @@ model PumpEvent {
   @@map("pump_events")
 }
 
+/// Glycemia averaging window. DB values preserved via @map so existing
+/// rows (varchar 'current' | '7d' | '30d') remain valid after enum migration.
+enum PeriodType {
+  current
+  d7  @map("7d")
+  d30 @map("30d")
+}
+
 model AverageData {
-  id          Int      @id @default(autoincrement())
-  patientId   Int      @map("patient_id")
-  periodType  String   @map("period_type") @db.VarChar(10) // 'current' | '7d' | '30d'
-  mealType    String   @map("meal_type") @db.VarChar(20)
-  glycemia    Decimal? @db.Decimal(4, 2) // g/L
-  color       String?  @db.VarChar(10)
-  glycemia1h  Decimal? @map("glycemia_1h") @db.Decimal(4, 2)
-  color1h     String?  @map("color_1h") @db.VarChar(10)
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  id          Int        @id @default(autoincrement())
+  patientId   Int        @map("patient_id")
+  periodType  PeriodType @map("period_type")
+  mealType    String     @map("meal_type") @db.VarChar(20)
+  glycemia    Decimal?   @db.Decimal(4, 2) // g/L
+  color       String?    @db.VarChar(10)
+  glycemia1h  Decimal?   @map("glycemia_1h") @db.Decimal(4, 2)
+  color1h     String?    @map("color_1h") @db.VarChar(10)
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -1270,6 +1278,9 @@ model AuditLog {
   newValue   Json?    @map("new_value")
   ipAddress  String?  @map("ip_address") @db.VarChar(45)
   userAgent  String?  @map("user_agent") @db.VarChar(500)
+  /// Correlation ID (HDS §IV.3) joining this audit row to stderr log lines.
+  /// Assigned by middleware; nullable for events emitted outside the HTTP path.
+  requestId  String?  @map("request_id") @db.VarChar(64)
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -1278,6 +1289,7 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([resource, resourceId, createdAt])
   @@index([createdAt])
+  @@index([requestId])
   @@map("audit_logs")
 }
 

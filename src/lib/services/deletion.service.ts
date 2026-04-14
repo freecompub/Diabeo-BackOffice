@@ -10,6 +10,7 @@
 
 import { prisma } from "@/lib/db/client"
 import { createHash } from "crypto"
+import { invalidateGdprConsentCache } from "@/lib/gdpr"
 import { auditService } from "./audit.service"
 
 /**
@@ -44,6 +45,12 @@ export async function deleteUserAccount(
   const emailHash = createHash("sha256")
     .update(`deleted-${userId}-${Date.now()}`)
     .digest("hex")
+
+  // RGPD Art. 17: invalidate the consent cache BEFORE starting the deletion
+  // transaction. If the process crashes during TX, the cache miss on the next
+  // request forces a re-read from the DB (where the account may still exist
+  // partially) — safer than a stale `true` surviving up to the TTL window.
+  await invalidateGdprConsentCache(userId)
 
   return prisma.$transaction(async (tx) => {
     // Audit BEFORE deletion — this log survives
@@ -183,5 +190,11 @@ export async function deleteUserAccount(
     })
 
     return { deleted: true, userId }
+  }).then(async (result) => {
+    // Second invalidation after commit — guarantees the cache is clear even
+    // if another request populated it (DB-read returning lingering `true`)
+    // between the pre-TX invalidate and the row deletion.
+    await invalidateGdprConsentCache(userId)
+    return result
   })
 }

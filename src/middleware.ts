@@ -14,15 +14,51 @@ async function getPublicKey(): Promise<CryptoKey> {
   return cachedPublicKey
 }
 
+/**
+ * Allow-list pattern for client-provided `x-request-id` (OWASP A09 —
+ * Security Logging Failures). Rejects newlines, control chars, and oversized
+ * values that would enable log injection / smuggling against grep/awk/SIEM.
+ */
+const REQUEST_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/
+
+/**
+ * Generate a cryptographically seeded correlation ID (16 hex chars, 64 bits).
+ * Uses Web Crypto (Edge-compatible) instead of Math.random which is not
+ * crypto-seeded and is consistent with the rest of the codebase's `crypto.*` usage.
+ */
+function generateRequestId(): string {
+  const buf = new Uint8Array(8)
+  crypto.getRandomValues(buf)
+  return Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("")
+}
+
+/**
+ * Accept the client-supplied `x-request-id` only when it matches the strict
+ * allow-list. Otherwise generate a fresh one. Prevents log injection via
+ * header smuggling and caps correlation-ID length.
+ */
+function resolveRequestId(incoming: string | null): string {
+  if (incoming && REQUEST_ID_PATTERN.test(incoming)) return incoming
+  return generateRequestId()
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
+
+  // Assign a correlation ID for every request. Client-supplied IDs are
+  // accepted only when they match the strict allow-list (no newlines, no
+  // control chars, ≤64 chars) — otherwise a fresh server-generated ID is used.
+  const requestId = resolveRequestId(request.headers.get("x-request-id"))
 
   // Skip auth routes — strip spoofed headers to prevent impersonation
   if (pathname.startsWith("/api/auth/")) {
     const headers = new Headers(request.headers)
     headers.delete("x-user-id")
     headers.delete("x-user-role")
-    return NextResponse.next({ request: { headers } })
+    headers.set("x-request-id", requestId)
+    const res = NextResponse.next({ request: { headers } })
+    res.headers.set("x-request-id", requestId)
+    return res
   }
 
   // Skip login page (public)
@@ -65,6 +101,7 @@ export async function middleware(request: NextRequest) {
     const requestHeaders = new Headers(request.headers)
     requestHeaders.set("x-user-id", String(payload.sub))
     requestHeaders.set("x-user-role", String(payload.role))
+    requestHeaders.set("x-request-id", requestId)
 
     // C4: CSRF protection — state-changing requests must include custom header.
     // This header cannot be set by cross-origin form submissions (CORS blocks custom headers).
@@ -79,7 +116,9 @@ export async function middleware(request: NextRequest) {
       }
     }
 
-    return NextResponse.next({ request: { headers: requestHeaders } })
+    const res = NextResponse.next({ request: { headers: requestHeaders } })
+    res.headers.set("x-request-id", requestId)
+    return res
   } catch (error) {
     const code = error instanceof Error && "code" in error
       ? (error as Error & { code: string }).code

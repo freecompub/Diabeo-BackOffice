@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
+import { invalidateGdprConsentCache } from "@/lib/gdpr"
 import { auditService } from "@/lib/services/audit.service"
 
 const updatePrivacySchema = z.object({
@@ -66,6 +67,12 @@ export async function PUT(req: NextRequest) {
       update: data,
       create: { userId: user.id, ...data },
     })
+
+    // RGPD Art. 7(3): withdrawal must be as easy as giving consent. Clear the
+    // 5-minute cache so revocation takes effect immediately, not after TTL.
+    if (parsed.data.gdprConsent !== undefined) {
+      await invalidateGdprConsentCache(user.id)
+    }
 
     await auditService.log({
       userId: user.id,

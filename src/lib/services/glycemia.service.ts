@@ -8,7 +8,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
-import type { Prisma } from "@prisma/client"
+import { PeriodType, type Prisma } from "@prisma/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 
@@ -138,17 +138,17 @@ export const glycemiaService = {
       userAgent: ctx?.userAgent,
     })
 
-    const grouped: Record<string, typeof averages> = {}
+    const grouped = new Map<PeriodType, typeof averages>()
     for (const avg of averages) {
-      const key = avg.periodType
-      if (!grouped[key]) grouped[key] = []
-      grouped[key].push(avg)
+      const list = grouped.get(avg.periodType) ?? []
+      list.push(avg)
+      grouped.set(avg.periodType, list)
     }
 
     return {
-      current: grouped["current"] ?? [],
-      avg7d: grouped["7d"] ?? [],
-      avg30d: grouped["30d"] ?? [],
+      current: grouped.get(PeriodType.current) ?? [],
+      avg7d: grouped.get(PeriodType.d7) ?? [],
+      avg30d: grouped.get(PeriodType.d30) ?? [],
     }
   },
 

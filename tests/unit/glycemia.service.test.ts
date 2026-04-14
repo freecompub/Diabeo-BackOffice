@@ -77,9 +77,11 @@ describe("glycemiaService", () => {
 
   describe("getAverageData", () => {
     it("groups averages by period type", async () => {
+      // Prisma enum with @map: TS-side values are `current`, `d7`, `d30`;
+      // the @map target (`7d`/`30d`) is only the DB column content.
       prismaMock.averageData.findMany.mockResolvedValue([
         { id: 1, patientId: 1, periodType: "current", mealType: "breakfast" },
-        { id: 2, patientId: 1, periodType: "7d", mealType: "breakfast" },
+        { id: 2, patientId: 1, periodType: "d7", mealType: "breakfast" },
       ] as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 

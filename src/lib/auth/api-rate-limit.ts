@@ -17,6 +17,7 @@
  */
 
 import { Redis } from "@upstash/redis"
+import { logger } from "@/lib/logger"
 
 const RATE_LIMIT_PREFIX = process.env.REDIS_KEY_PREFIX ?? "diabeo:prod:"
 
@@ -107,9 +108,11 @@ export async function checkApiRateLimit(
       }
       return { allowed: true, remaining: Math.max(0, max - count), retryAfterSec: ttl }
     } catch (err) {
-      console.error(
-        `[api-rate-limit] Redis error on bucket=${bucket} failMode=${failMode}:`,
-        err instanceof Error ? err.message : err,
+      logger.error(
+        "auth/api-rate-limit",
+        `Redis error on bucket=${bucket} failMode=${failMode}`,
+        { bucket, failMode },
+        err,
       )
       if (failMode === "closed") {
         return { allowed: false, remaining: 0, retryAfterSec: windowSec, degraded: true }

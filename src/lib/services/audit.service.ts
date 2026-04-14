@@ -94,6 +94,8 @@ export interface AuditLogEntry {
   newValue?: Prisma.InputJsonValue
   ipAddress?: string
   userAgent?: string
+  /** Correlation ID (HDS §IV.3) to join this audit row with stderr log lines. */
+  requestId?: string
   metadata?: Prisma.InputJsonValue
 }
 
@@ -113,6 +115,7 @@ function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateIn
     newValue: entry.newValue ?? Prisma.JsonNull,
     ipAddress: entry.ipAddress ?? null,
     userAgent: entry.userAgent ?? null,
+    requestId: entry.requestId ?? null,
     metadata: entry.metadata ?? {},
   }
 }
@@ -130,6 +133,7 @@ function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateIn
 export function extractRequestContext(req: Request): {
   ipAddress: string
   userAgent: string
+  requestId: string
 } {
   const headers = req.headers
   const ipAddress =
@@ -137,7 +141,10 @@ export function extractRequestContext(req: Request): {
     headers.get("x-real-ip") ??
     "unknown"
   const userAgent = headers.get("user-agent") ?? "unknown"
-  return { ipAddress, userAgent }
+  // Correlation ID assigned by middleware. Falls back to "no-request-id" if
+  // the route is invoked outside middleware scope (tests, server actions).
+  const requestId = headers.get("x-request-id") ?? "no-request-id"
+  return { ipAddress, userAgent, requestId }
 }
 
 /** Maximum query limit for audit log pagination */
