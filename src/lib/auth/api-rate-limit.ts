@@ -1,8 +1,18 @@
 /**
  * @module api-rate-limit
- * @description Generic sliding-window rate limiter for API routes.
- * Protects expensive endpoints (analytics, exports) from DoS and abuse.
- * Uses Upstash Redis with in-memory fallback for dev/test.
+ * @description Fixed-window per-identifier rate limiter for API routes.
+ * Protects expensive endpoints (analytics, RGPD exports) from DoS and abuse.
+ *
+ * Uses a server-side Lua script via Upstash Redis `eval` to make INCR+EXPIRE
+ * atomic (prevents orphan-key lockouts on partial failures). Falls back to an
+ * in-memory Map for dev/test environments without Upstash credentials.
+ *
+ * **Fail modes** — `failMode: "open" | "closed"`:
+ * - `open` (default): when Redis is unreachable, allow the request. Appropriate
+ *   for analytics where availability is more important than strict limits.
+ * - `closed`: when Redis is unreachable, reject. Required for RGPD export or
+ *   any endpoint where an unbounded rate would amplify data-exfiltration risk.
+ *
  * @see CLAUDE.md — Backlog: rate limiting on analytics/export
  */
 
@@ -21,16 +31,36 @@ function getRedis(): Redis | null {
   return redis
 }
 
-// In-memory fallback store: bucket → { windowStart, count }
+// In-memory fallback: bucket → { windowStart, count }. Dev/test only.
 const memoryFallback = new Map<string, { windowStart: number; count: number }>()
 
+/**
+ * Atomic Lua script — INCR + EXPIRE + TTL in one server round-trip.
+ * Also re-issues EXPIRE if the key exists without TTL (defense against a prior
+ * failed EXPIRE that left an orphan key).
+ */
+const RATE_LIMIT_SCRIPT = `
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+  redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+local ttl = redis.call("TTL", KEYS[1])
+if ttl < 0 then
+  redis.call("EXPIRE", KEYS[1], ARGV[1])
+  ttl = tonumber(ARGV[1])
+end
+return { count, ttl }
+`
+
 export interface ApiRateLimitConfig {
-  /** Bucket name (e.g. "analytics", "export"). Scopes counters per endpoint family. */
+  /** Bucket name (e.g. "analytics", "export"). Scopes counters per endpoint. */
   bucket: string
   /** Window size in seconds. */
   windowSec: number
   /** Max requests allowed per window per identifier. */
   max: number
+  /** Behavior on Redis outage. Default "open". */
+  failMode?: "open" | "closed"
 }
 
 export interface ApiRateLimitResult {
@@ -39,6 +69,8 @@ export interface ApiRateLimitResult {
   remaining: number
   /** Seconds until the current window expires (Retry-After header value). */
   retryAfterSec: number
+  /** True if Redis was unavailable and the result comes from the fail policy. */
+  degraded?: boolean
 }
 
 function redisKey(bucket: string, identifier: string): string {
@@ -46,44 +78,45 @@ function redisKey(bucket: string, identifier: string): string {
 }
 
 /**
- * Check and consume one slot of the rate limit budget for an identifier.
- * Fail-open on Redis errors (logs and allows) — protects user availability.
- * @param identifier Usually `user.id` (number stringified) or IP for unauthenticated.
- * @param config Bucket + window + max.
- * @returns Allowed flag, remaining budget, retry-after seconds.
+ * Check and consume one slot of the rate-limit budget for an identifier.
+ * @param identifier Stable key (e.g. `user.id` stringified, or `ip:1.2.3.4`).
+ * @param config Bucket + window + max + optional failMode.
  */
 export async function checkApiRateLimit(
   identifier: string,
   config: ApiRateLimitConfig,
 ): Promise<ApiRateLimitResult> {
-  const { bucket, windowSec, max } = config
+  const { bucket, windowSec, max, failMode = "open" } = config
   const key = redisKey(bucket, identifier)
-  const now = Math.floor(Date.now() / 1000)
   const client = getRedis()
 
   if (client) {
     try {
-      // Fixed-window counter: INCR + set TTL on first hit.
-      const count = await client.incr(key)
-      if (count === 1) {
-        await client.expire(key, windowSec)
-      }
-      const ttl = await client.ttl(key)
-      const retryAfter = ttl > 0 ? ttl : windowSec
+      const result = (await client.eval(
+        RATE_LIMIT_SCRIPT,
+        [key],
+        [String(windowSec)],
+      )) as [number, number]
+      const [count, ttlRaw] = result
+      const ttl = ttlRaw > 0 ? ttlRaw : windowSec
       if (count > max) {
-        return { allowed: false, remaining: 0, retryAfterSec: retryAfter }
+        return { allowed: false, remaining: 0, retryAfterSec: ttl }
       }
-      return { allowed: true, remaining: Math.max(0, max - count), retryAfterSec: retryAfter }
+      return { allowed: true, remaining: Math.max(0, max - count), retryAfterSec: ttl }
     } catch (err) {
       console.error(
-        "[api-rate-limit] Redis error, failing open:",
+        `[api-rate-limit] Redis error on bucket=${bucket} failMode=${failMode}:`,
         err instanceof Error ? err.message : err,
       )
-      return { allowed: true, remaining: max, retryAfterSec: windowSec }
+      if (failMode === "closed") {
+        return { allowed: false, remaining: 0, retryAfterSec: windowSec, degraded: true }
+      }
+      return { allowed: true, remaining: max, retryAfterSec: windowSec, degraded: true }
     }
   }
 
-  // Fallback in-memory (dev/test only)
+  // In-memory fallback (dev/test). Behaves consistently regardless of failMode.
+  const now = Math.floor(Date.now() / 1000)
   const entry = memoryFallback.get(key)
   if (!entry || now - entry.windowStart >= windowSec) {
     memoryFallback.set(key, { windowStart: now, count: 1 })
@@ -99,8 +132,25 @@ export async function checkApiRateLimit(
 
 /** Preset configurations for common endpoint families. */
 export const RATE_LIMITS = {
-  /** Analytics: 30 requests per 60s per user. */
-  analytics: { bucket: "analytics", windowSec: 60, max: 30 } satisfies ApiRateLimitConfig,
-  /** Export RGPD: 3 requests per hour per user. */
-  export: { bucket: "export", windowSec: 3600, max: 3 } satisfies ApiRateLimitConfig,
+  /** Analytics: 30 req/60 s/user. Fail-open — availability first. */
+  analytics: {
+    bucket: "analytics",
+    windowSec: 60,
+    max: 30,
+    failMode: "open",
+  } satisfies ApiRateLimitConfig,
+  /** Export RGPD per user: 3 req/h. Fail-closed — HDS data-exfiltration guard. */
+  exportUser: {
+    bucket: "export",
+    windowSec: 3600,
+    max: 3,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
+  /** Export RGPD per IP: 10 req/h. Fail-closed — defense against token theft. */
+  exportIp: {
+    bucket: "export-ip",
+    windowSec: 3600,
+    max: 10,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
 } as const

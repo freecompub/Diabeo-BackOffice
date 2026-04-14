@@ -108,7 +108,13 @@ describe("checkApiRateLimit (in-memory fallback)", () => {
   it("exposes sensible presets for analytics and export", () => {
     expect(RATE_LIMITS.analytics.max).toBeGreaterThan(0)
     expect(RATE_LIMITS.analytics.windowSec).toBeLessThanOrEqual(300)
-    expect(RATE_LIMITS.export.max).toBeLessThanOrEqual(5)
-    expect(RATE_LIMITS.export.windowSec).toBeGreaterThanOrEqual(3600)
+    expect(RATE_LIMITS.analytics.failMode).toBe("open")
+
+    expect(RATE_LIMITS.exportUser.max).toBeLessThanOrEqual(5)
+    expect(RATE_LIMITS.exportUser.windowSec).toBeGreaterThanOrEqual(3600)
+    expect(RATE_LIMITS.exportUser.failMode).toBe("closed")
+
+    expect(RATE_LIMITS.exportIp.max).toBeGreaterThanOrEqual(RATE_LIMITS.exportUser.max)
+    expect(RATE_LIMITS.exportIp.failMode).toBe("closed")
   })
 })

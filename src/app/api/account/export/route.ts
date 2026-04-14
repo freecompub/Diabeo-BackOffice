@@ -9,16 +9,35 @@ export const runtime = "nodejs"
 export async function GET(req: NextRequest) {
   try {
     const user = requireAuth(req)
+    const ctx = extractRequestContext(req)
 
-    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.export)
-    if (!rl.allowed) {
+    // Fail-closed: an RGPD export exfiltrates the full health dataset (Art. 20).
+    // Redis outage + permissive policy would turn this into an unbounded channel.
+    const [rlUser, rlIp] = await Promise.all([
+      checkApiRateLimit(String(user.id), RATE_LIMITS.exportUser),
+      checkApiRateLimit(`ip:${ctx.ipAddress ?? "unknown"}`, RATE_LIMITS.exportIp),
+    ])
+    const blocked = !rlUser.allowed ? rlUser : !rlIp.allowed ? rlIp : null
+    if (blocked) {
+      await auditService.log({
+        userId: user.id,
+        action: "UNAUTHORIZED",
+        resource: "USER",
+        resourceId: String(user.id),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        metadata: {
+          reason: "rateLimitExceeded",
+          endpoint: "account/export",
+          bucket: !rlUser.allowed ? "user" : "ip",
+          degraded: blocked.degraded ?? false,
+        },
+      })
       return NextResponse.json(
         { error: "rateLimitExceeded" },
-        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+        { status: 429, headers: { "Retry-After": String(blocked.retryAfterSec) } },
       )
     }
-
-    const ctx = extractRequestContext(req)
 
     const exportData = await generateUserExport(user.id)
 

@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
-import { resolvePatientId, canAccessPatient } from "@/lib/access-control"
+import { canAccessPatient } from "@/lib/access-control"
+import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { objectivesService } from "@/lib/services/objectives.service"
 
@@ -15,17 +16,15 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const pidParam = new URL(req.url).searchParams.get("patientId")
-    const patientId = await resolvePatientId(
-      user.id,
-      user.role,
-      pidParam ? parseInt(pidParam, 10) : undefined,
-    )
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json(
+        { error: res.error },
+        { status: res.error === "invalidPatientId" ? 400 : 404 },
+      )
     }
 
-    const objectives = await objectivesService.getAll(patientId, user.id)
+    const objectives = await objectivesService.getAll(res.patientId, user.id)
     return NextResponse.json(objectives)
   } catch (error) {
     if (error instanceof AuthError) {
