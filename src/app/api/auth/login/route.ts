@@ -3,7 +3,14 @@ import { z } from "zod"
 import { compare } from "bcryptjs"
 import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
-import { signJwt, createSession, checkRateLimit, recordFailedAttempt, clearAttempts } from "@/lib/auth"
+import {
+  signJwt,
+  signMfaPendingToken,
+  createSession,
+  checkRateLimit,
+  recordFailedAttempt,
+  clearAttempts,
+} from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
 
@@ -82,12 +89,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
     }
 
-    // MFA check — block login if MFA is enabled until MFA flow is implemented
+    // MFA: password OK. If enabled, do NOT issue the full JWT — return an
+    // MFA-pending token the client must exchange at /api/auth/mfa/challenge
+    // together with a valid OTP. Short-lived (5 min), different audience,
+    // unusable against any protected endpoint.
     if (user.mfaEnabled) {
-      return NextResponse.json(
-        { error: "mfaRequired", message: "MFA verification required" },
-        { status: 403 },
-      )
+      const mfaToken = await signMfaPendingToken(user.id)
+      await clearAttempts(emailHash) // password-step succeeded — reset counter
+      return NextResponse.json({ mfaRequired: true, mfaToken }, { status: 200 })
     }
 
     // Success — clear rate limit, create session, sign JWT

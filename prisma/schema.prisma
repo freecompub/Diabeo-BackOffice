@@ -197,6 +197,9 @@ model User {
   role                     Role      @default(VIEWER)
   mfaSecret                String?   @map("mfa_secret")
   mfaEnabled               Boolean   @default(false) @map("mfa_enabled")
+  /// Last accepted TOTP time step (RFC 6238 T counter). Prevents replay of
+  /// a code within its ±1 step window. Set atomically on successful verify.
+  mfaLastUsedStep          Int?      @map("mfa_last_used_step")
   hasSignedTerms           Boolean   @default(false) @map("has_signed_terms")
   profileComplete          Boolean   @default(false) @map("profile_complete")
   needDataPolicyUpdate     Boolean   @default(false) @map("need_data_policy_update")
@@ -266,6 +269,9 @@ model Session {
   sessionToken String   @unique @map("session_token")
   userId       Int      @map("user_id")
   expires      DateTime
+  /// True if this session was created via MFA challenge. HDS forensics:
+  /// "which live sessions were second-factor-verified vs password-only".
+  mfaVerified  Boolean  @default(false) @map("mfa_verified")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

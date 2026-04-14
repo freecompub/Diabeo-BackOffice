@@ -4,12 +4,26 @@ import { revokeSession } from "./revocation"
 
 const SESSION_DURATION_HOURS = 24
 
-export async function createSession(userId: number) {
+/**
+ * Create a session row.
+ * @param userId  User the session belongs to.
+ * @param opts.mfaVerified  True if the session was minted via /api/auth/mfa/challenge
+ *   (HDS forensics — distinguishes second-factor sessions from password-only).
+ */
+export async function createSession(
+  userId: number,
+  opts: { mfaVerified?: boolean } = {},
+) {
   const sessionToken = randomBytes(32).toString("hex")
   const expires = new Date(Date.now() + SESSION_DURATION_HOURS * 3600_000)
 
   return prisma.session.create({
-    data: { sessionToken, userId, expires },
+    data: {
+      sessionToken,
+      userId,
+      expires,
+      mfaVerified: opts.mfaVerified ?? false,
+    },
   })
 }
 

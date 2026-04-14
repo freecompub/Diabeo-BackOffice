@@ -1,8 +1,8 @@
 import type { Role } from "@prisma/client"
 import { hasMinRole } from "./rbac"
 
-export { signJwt, verifyJwt, verifyJwtAllowExpired } from "./jwt"
-export type { JWTPayload, JWTSignPayload } from "./jwt"
+export { signJwt, verifyJwt, verifyJwtAllowExpired, signMfaPendingToken, verifyMfaPendingToken } from "./jwt"
+export type { JWTPayload, JWTSignPayload, MfaPendingPayload } from "./jwt"
 export { hasMinRole } from "./rbac"
 export {
   createSession,
