@@ -32,6 +32,9 @@ import { logger } from "@/lib/logger"
 
 const bodySchema = z.object({
   mfaToken: z.string().min(1),
+  // Currently TOTP-only (6 digits). When backup codes ship (see
+  // docs/security/mfa-flow.md "out of scope"), this schema must branch on a
+  // discriminator (`{ otp: "123456" } | { backupCode: "ABCD-EFGH-IJKL" }`).
   otp: z.string().regex(/^\d{6}$/),
 })
 

@@ -34,12 +34,16 @@ beforeAll(async () => {
 let signJwt: typeof import("@/lib/auth/jwt").signJwt
 let verifyJwt: typeof import("@/lib/auth/jwt").verifyJwt
 let verifyJwtAllowExpired: typeof import("@/lib/auth/jwt").verifyJwtAllowExpired
+let signMfaPendingToken: typeof import("@/lib/auth/jwt").signMfaPendingToken
+let verifyMfaPendingToken: typeof import("@/lib/auth/jwt").verifyMfaPendingToken
 
 beforeAll(async () => {
   const mod = await import("@/lib/auth/jwt")
   signJwt = mod.signJwt
   verifyJwt = mod.verifyJwt
   verifyJwtAllowExpired = mod.verifyJwtAllowExpired
+  signMfaPendingToken = mod.signMfaPendingToken
+  verifyMfaPendingToken = mod.verifyMfaPendingToken
 })
 
 describe("JWT signing and verification", () => {
@@ -130,6 +134,31 @@ describe("JWT signing and verification", () => {
         const verified = await verifyJwt(token)
         expect(verified.role).toBe(role)
       }
+    })
+  })
+
+  /**
+   * Cross-confusion attack tests: a full-access JWT must NEVER be accepted as
+   * an mfa-pending token, and vice versa. Both checks rely on jose's audience
+   * verification; the dedicated tests below harden the contract against any
+   * future refactor that might forget to thread the audience constants.
+   */
+  describe("audience cross-confusion (defense in depth)", () => {
+    it("verifyMfaPendingToken REJECTS a full-access JWT (audience mismatch)", async () => {
+      const fullToken = await signJwt(validPayload)
+      await expect(verifyMfaPendingToken(fullToken)).rejects.toThrow()
+    })
+
+    it("verifyJwt REJECTS an mfa-pending token (audience mismatch)", async () => {
+      const pendingToken = await signMfaPendingToken(42)
+      await expect(verifyJwt(pendingToken)).rejects.toThrow()
+    })
+
+    it("verifyMfaPendingToken accepts a properly-minted mfa-pending token", async () => {
+      const pendingToken = await signMfaPendingToken(42)
+      const verified = await verifyMfaPendingToken(pendingToken)
+      expect(verified.sub).toBe(42)
+      expect(verified.type).toBe("mfa_pending")
     })
   })
 })
