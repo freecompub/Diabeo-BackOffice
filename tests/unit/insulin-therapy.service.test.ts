@@ -33,7 +33,7 @@
  * - Concurrent update: two requests updating the same settings simultaneously
  *   (last-write-wins with optimistic concurrency or transaction isolation)
  */
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
@@ -95,6 +95,179 @@ describe("insulinTherapyService", () => {
 
       const result = await insulinTherapyService.getBolusLogById("bad-id", 1)
       expect(result).toBeNull()
+    })
+  })
+
+  // =========================================================================
+  // WRITE PATHS — Phase 4 coverage (previously missing)
+  // =========================================================================
+  describe("upsertSettings", () => {
+    it("upserts settings and emits an audit log", async () => {
+      const mockSettings = { id: 5, patientId: 7, deliveryMethod: "pump" }
+      const txMock = {
+        insulinTherapySettings: { upsert: vi.fn().mockResolvedValue(mockSettings) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      const result = await insulinTherapyService.upsertSettings(
+        7,
+        {
+          bolusInsulinBrand: "Humalog",
+          insulinActionDuration: 4,
+          deliveryMethod: "pump",
+        },
+        42,
+      )
+
+      expect(result).toEqual(mockSettings)
+      expect(txMock.insulinTherapySettings.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { patientId: 7 } }),
+      )
+      expect(txMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: "UPDATE",
+            resource: "INSULIN_THERAPY",
+            resourceId: "7",
+          }),
+        }),
+      )
+    })
+  })
+
+  describe("createIsf", () => {
+    it("creates an ISF slot when there is no overlap", async () => {
+      const txMock = {
+        insulinSensitivityFactor: {
+          findMany: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue({ id: "isf-uuid-1" }),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      const result = await insulinTherapyService.createIsf(
+        3,
+        { startHour: 6, endHour: 12, sensitivityFactorGl: 0.5 },
+        42,
+      )
+
+      expect(result.id).toBe("isf-uuid-1")
+      expect(txMock.insulinSensitivityFactor.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          settingsId: 3,
+          sensitivityFactorGl: 0.5,
+          sensitivityFactorMgdl: 50, // mgdl = gl * 100
+        }),
+      })
+    })
+
+    it("rejects a zero-duration ISF slot (startHour == endHour)", async () => {
+      await expect(
+        insulinTherapyService.createIsf(
+          3,
+          { startHour: 8, endHour: 8, sensitivityFactorGl: 0.5 },
+          42,
+        ),
+      ).rejects.toThrow(/zero-duration/)
+    })
+
+    it("rejects an overlapping ISF slot", async () => {
+      const txMock = {
+        insulinSensitivityFactor: {
+          findMany: vi.fn().mockResolvedValue([{ startHour: 6, endHour: 12 }]),
+        },
+        auditLog: { create: vi.fn() },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      await expect(
+        insulinTherapyService.createIsf(
+          3,
+          { startHour: 10, endHour: 14, sensitivityFactorGl: 0.5 },
+          42,
+        ),
+      ).rejects.toThrow(/overlaps/)
+    })
+  })
+
+  describe("createIcr", () => {
+    it("creates an ICR slot when there is no overlap", async () => {
+      const txMock = {
+        carbRatio: {
+          findMany: vi.fn().mockResolvedValue([]),
+          create: vi.fn().mockResolvedValue({ id: "icr-uuid-1" }),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      const result = await insulinTherapyService.createIcr(
+        3,
+        { startHour: 7, endHour: 11, gramsPerUnit: 10, mealLabel: "breakfast" },
+        42,
+      )
+
+      expect(result.id).toBe("icr-uuid-1")
+      expect(txMock.carbRatio.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          settingsId: 3,
+          gramsPerUnit: 10,
+          mealLabel: "breakfast",
+        }),
+      })
+    })
+
+    it("rejects an overlapping ICR slot", async () => {
+      const txMock = {
+        carbRatio: {
+          findMany: vi.fn().mockResolvedValue([{ startHour: 7, endHour: 11 }]),
+        },
+        auditLog: { create: vi.fn() },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      await expect(
+        insulinTherapyService.createIcr(3, { startHour: 9, endHour: 13, gramsPerUnit: 10 }, 42),
+      ).rejects.toThrow(/overlaps/)
+    })
+  })
+
+  describe("deleteIsf / deleteIcr", () => {
+    it("deleteIsf emits a DELETE audit log", async () => {
+      const txMock = {
+        insulinSensitivityFactor: { delete: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      const result = await insulinTherapyService.deleteIsf("isf-uuid-1", 42)
+
+      expect(result).toEqual({ deleted: true })
+      expect(txMock.insulinSensitivityFactor.delete).toHaveBeenCalledWith({
+        where: { id: "isf-uuid-1" },
+      })
+      expect(txMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ action: "DELETE", resource: "INSULIN_THERAPY" }),
+        }),
+      )
+    })
+
+    it("deleteIcr emits a DELETE audit log", async () => {
+      const txMock = {
+        carbRatio: { delete: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+
+      const result = await insulinTherapyService.deleteIcr("icr-uuid-1", 42)
+
+      expect(result).toEqual({ deleted: true })
+      expect(txMock.carbRatio.delete).toHaveBeenCalledWith({
+        where: { id: "icr-uuid-1" },
+      })
     })
   })
 })

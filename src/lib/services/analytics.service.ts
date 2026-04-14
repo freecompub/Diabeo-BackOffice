@@ -297,7 +297,7 @@ export const analyticsService = {
       userAgent: ctx?.userAgent,
     })
 
-    const totalUnits = flow.reduce((sum, f) => sum + (f.flow ? Number(f.flow) : 0), 0)
+    const totalUnits = flow.reduce((sum, f) => sum + (f.flow?.toNumber() ?? 0), 0)
     const distinctDays = new Set(flow.map((f) => f.date.toISOString().split("T")[0])).size
     const avgDaily = distinctDays > 0 ? totalUnits / distinctDays : 0
 
@@ -306,7 +306,7 @@ export const analyticsService = {
       id: f.id,
       patientId: f.patientId,
       date: f.date,
-      flow: f.flow ? Number(f.flow) : null,
+      flow: f.flow?.toNumber() ?? null,
     }))
 
     return {

@@ -33,6 +33,7 @@
  *   based thresholds, not exact values)
  */
 import { describe, it, expect } from "vitest"
+import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 
 import { analyticsService } from "@/lib/services/analytics.service"
@@ -120,8 +121,8 @@ describe("analyticsService", () => {
   describe("insulinSummary", () => {
     it("returns insulin flow summary", async () => {
       prismaMock.insulinFlowEntry.findMany.mockResolvedValue([
-        { id: 1, patientId: 1, date: new Date("2026-03-10"), flow: 42.5 },
-        { id: 2, patientId: 1, date: new Date("2026-03-11"), flow: 38.0 },
+        { id: 1, patientId: 1, date: new Date("2026-03-10"), flow: new Prisma.Decimal(42.5) },
+        { id: 2, patientId: 1, date: new Date("2026-03-11"), flow: new Prisma.Decimal(38.0) },
       ] as any)
       prismaMock.pumpEvent.findMany.mockResolvedValue([])
       prismaMock.auditLog.create.mockResolvedValue({} as any)

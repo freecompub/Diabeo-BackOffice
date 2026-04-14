@@ -10,6 +10,7 @@
  * @see https://diabetes.org/about-us/statistics/statistics-about-diabetes — ADA guidelines
  */
 
+import type { InsulinDeliveryMethod } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
@@ -40,7 +41,7 @@ interface BolusInput {
  * @property {boolean} wasCapped - True if recommendedDose hit MAX_SINGLE_BOLUS cap
  * @property {Array<string>} warnings - Clinical warnings (hypoglycemia, hyperglycemia, capped)
  * @property {boolean} requiresHypoTreatmentFirst - True if glucose < 70 mg/dL (0.70 g/L)
- * @property {string} deliveryMethod - Pump vs pen (affects rounding precision)
+ * @property {InsulinDeliveryMethod} deliveryMethod - pump or manual (affects rounding precision)
  */
 interface BolusResult {
   mealBolus: number
@@ -51,7 +52,7 @@ interface BolusResult {
   wasCapped: boolean
   warnings: string[]
   requiresHypoTreatmentFirst: boolean
-  deliveryMethod: string
+  deliveryMethod: InsulinDeliveryMethod
 }
 
 /**
@@ -125,10 +126,10 @@ export const insulinService = {
     const target = settings.glucoseTargets[0]
     if (!target) throw new Error("No active glucose target found")
 
-    const isfGl = Number(isf.sensitivityFactorGl)
-    const isfMgdl = Number(isf.sensitivityFactorMgdl)
-    const icrValue = Number(icr.gramsPerUnit)
-    const targetMgdl = Number(target.targetGlucose)
+    const isfGl = isf.sensitivityFactorGl.toNumber()
+    const isfMgdl = isf.sensitivityFactorMgdl.toNumber()
+    const icrValue = icr.gramsPerUnit.toNumber()
+    const targetMgdl = target.targetGlucose.toNumber()
     const currentMgdl = input.currentGlucoseGl * 100 // g/L -> mg/dL
 
     // Division-by-zero safety guards
@@ -146,7 +147,7 @@ export const insulinService = {
     let iobValue = 0
     let iobAdjustment = 0
     if (settings.iobSettings?.considerIob) {
-      const actionDuration = Number(settings.iobSettings.actionDurationHours) || 4.0
+      const actionDuration = settings.iobSettings.actionDurationHours?.toNumber() || 4.0
       iobValue = await calculateIob(input.patientId, actionDuration)
       // IOB only reduces correction dose, never meal bolus
       iobAdjustment = Math.min(iobValue, Math.max(0, rawCorrectionDose))
@@ -265,12 +266,12 @@ function findSlotForHour<T extends { startHour: number; endHour: number }>(
  * Pumps typically support 0.05 U increments; pens 0.5 U increments.
  * @private
  * @param {number} dose - Unrounded dose (units)
- * @param {string} method - Delivery method: "pump" or "pen"
+ * @param {InsulinDeliveryMethod} method - "pump" (0.05 U increments) or "manual" (0.5 U)
  * @returns {number} Rounded dose for delivery device
  */
-function roundForDevice(dose: number, method: string): number {
+function roundForDevice(dose: number, method: InsulinDeliveryMethod): number {
   if (method === "pump") return Math.round(dose * 20) / 20   // 0.05 U increments
-  return Math.round(dose * 2) / 2                             // 0.5 U increments (pen)
+  return Math.round(dose * 2) / 2                             // 0.5 U increments (pen/manual)
 }
 
 /**

@@ -9,12 +9,26 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
-import type { InsulinDeliveryMethod, Prisma } from "@prisma/client"
+import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
 
 /** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
 export const INSULIN_BOUNDS = CLINICAL_BOUNDS
+
+/**
+ * Domain input for upserting a basal configuration.
+ * Excludes FK + audit fields owned by the service layer (settingsId, id, createdAt).
+ * Using a strict shape instead of Prisma.*UncheckedCreateInput prevents callers
+ * from bypassing RBAC or injecting relation IDs.
+ */
+export interface BasalConfigInput {
+  configType: BasalConfigType
+  totalDailyDose?: Prisma.Decimal | number | null
+  morningDose?: Prisma.Decimal | number | null
+  eveningDose?: Prisma.Decimal | number | null
+  dailyDose?: Prisma.Decimal | number | null
+}
 
 /**
  * Insulin therapy service — settings, ISF/ICR, basal configuration, bolus logs.
@@ -240,7 +254,7 @@ export const insulinTherapyService = {
 
   async upsertBasalConfig(
     settingsId: number,
-    input: Prisma.BasalConfigurationUncheckedCreateInput,
+    input: BasalConfigInput,
     auditUserId: number,
     ctx?: AuditContext,
   ) {

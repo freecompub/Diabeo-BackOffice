@@ -775,13 +775,13 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 - [x] **Routes Phase 3 — accès pro** — `resolvePatientId` (VIEWER own / PRO explicit `?patientId=N` + `canAccessPatient`) appliqué sur 8 routes patient/userdata/healthcare/pregnancy/services/objectives
 
 ### Priorité moyenne (amélioration continue)
-- [ ] **`Number(Decimal)` → `.toNumber()`** — utiliser l'API explicite Prisma Decimal au lieu de `Number()` pour prévenir NaN sur champs nullable
-- [ ] **`deliveryMethod: string` → `InsulinDeliveryMethod`** — typer strictement dans `BolusResult` et `roundForDevice`
-- [ ] **Audit `resourceId` convention** — harmoniser le format (`basal:42` vs `isf-uuid` vs `patientId`)
-- [ ] **`upsertBasalConfig` input type** — remplacer `Prisma.BasalConfigurationUncheckedCreateInput` par un type domaine strict
-- [ ] **Tests : couvrir les write paths Phase 4** — `upsertSettings`, `createIsf`, `createIcr`, `createPumpSlot` (25% coverage service)
-- [ ] **Tests : `requiresHypoTreatmentFirst` flag** — assertion manquante sur ce champ critique
-- [ ] **Tests : division-by-zero guards ISF/ICR** — guards présents mais jamais testés
+- [x] **`Number(Decimal)` → `.toNumber()`** — appliqué dans `insulin.service.ts` (isf/icr/target/iob) et `analytics.service.ts` (flow). Fixtures tests migrent vers `new Prisma.Decimal(n)`
+- [x] **`deliveryMethod: string` → `InsulinDeliveryMethod`** — `BolusResult` et `roundForDevice` typés sur l'enum Prisma (`pump | manual`)
+- [ ] **Audit `resourceId` convention** — 12 patterns distincts dans ~67 call sites (`basal:42`, `isf-uuid`, `${patientId}:averages`, etc.). Harmonisation = gros refactor faible valeur — défère en v2 avec helper `auditResourceId(type, id)` à concevoir
+- [x] **`upsertBasalConfig` input type** — `Prisma.BasalConfigurationUncheckedCreateInput` remplacé par `BasalConfigInput` domain type (omit `settingsId`, `id`, `createdAt`)
+- [x] **Tests : write paths Phase 4** — `upsertSettings`, `createIsf` (overlap + zero-duration), `createIcr` (overlap), `deleteIsf`, `deleteIcr` — 9 nouveaux tests
+- [x] **Tests : `requiresHypoTreatmentFirst` flag** — 5 tests (< 0.70 true, boundary 0.69/0.70, normal, severe hypo)
+- [x] **Tests : division-by-zero guards ISF/ICR** — 3 tests (ISF=0, ICR=0, ISF négatif)
 
 ### Priorité basse (dette technique)
 - [ ] **`console.error(msg)` → structured logging** — remplacer par un logger structuré avec correlation ID
@@ -808,4 +808,4 @@ Les items suivants ont été identifiés lors des reviews mais reportés pour ne
 
 ---
 
-*Dernière mise à jour : 2026-04-14 — Backlog priorité haute résorbé (rate-limit API + accès pro Phase 3)*
+*Dernière mise à jour : 2026-04-14 — Backlog priorité moyenne résorbé (typing strict + tests Phase 4, 848 tests)*

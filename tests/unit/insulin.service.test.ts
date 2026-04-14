@@ -40,10 +40,14 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 
 // Import the service AFTER the mock is set up
 import { insulinService } from "@/lib/services/insulin.service"
+
+/** Wrap a number in Prisma.Decimal — mirrors production fetches from PostgreSQL */
+const d = (n: number) => new Prisma.Decimal(n)
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -72,17 +76,17 @@ function buildSettings(overrides: {
     patientId: 1,
     deliveryMethod: overrides.deliveryMethod ?? "manual",
     sensitivityFactors: [
-      { id: 1, startHour, endHour, sensitivityFactorGl: isfGl, sensitivityFactorMgdl: isfMgdl },
+      { id: 1, startHour, endHour, sensitivityFactorGl: d(isfGl), sensitivityFactorMgdl: d(isfMgdl) },
     ],
     carbRatios: [
-      { id: 1, startHour, endHour, gramsPerUnit: icrGrams },
+      { id: 1, startHour, endHour, gramsPerUnit: d(icrGrams) },
     ],
     glucoseTargets: [
-      { id: 1, isActive: true, targetGlucose: targetMgdl },
+      { id: 1, isActive: true, targetGlucose: d(targetMgdl) },
     ],
     iobSettings: overrides.considerIob
-      ? { considerIob: true }
-      : { considerIob: false },
+      ? { considerIob: true, actionDurationHours: d(4.0) }
+      : { considerIob: false, actionDurationHours: d(4.0) },
     basalConfiguration: null,
     extendedBolusSettings: null,
   }
@@ -434,14 +438,14 @@ describe("insulinService.calculateBolus", () => {
       const settings = buildSettings()
       // Override with multiple slots
       settings.sensitivityFactors = [
-        { id: 1, startHour: 6, endHour: 12, sensitivityFactorGl: 0.40, sensitivityFactorMgdl: 40 },
-        { id: 2, startHour: 12, endHour: 22, sensitivityFactorGl: 0.50, sensitivityFactorMgdl: 50 },
-        { id: 3, startHour: 22, endHour: 6, sensitivityFactorGl: 0.60, sensitivityFactorMgdl: 60 },
+        { id: 1, startHour: 6, endHour: 12, sensitivityFactorGl: d(0.40), sensitivityFactorMgdl: d(40) },
+        { id: 2, startHour: 12, endHour: 22, sensitivityFactorGl: d(0.50), sensitivityFactorMgdl: d(50) },
+        { id: 3, startHour: 22, endHour: 6, sensitivityFactorGl: d(0.60), sensitivityFactorMgdl: d(60) },
       ] as any
       settings.carbRatios = [
-        { id: 1, startHour: 6, endHour: 12, gramsPerUnit: 8 },
-        { id: 2, startHour: 12, endHour: 22, gramsPerUnit: 12 },
-        { id: 3, startHour: 22, endHour: 6, gramsPerUnit: 10 },
+        { id: 1, startHour: 6, endHour: 12, gramsPerUnit: d(8) },
+        { id: 2, startHour: 12, endHour: 22, gramsPerUnit: d(12) },
+        { id: 3, startHour: 22, endHour: 6, gramsPerUnit: d(10) },
       ] as any
 
       prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
@@ -463,14 +467,14 @@ describe("insulinService.calculateBolus", () => {
       mockHour(15)
       const settings = buildSettings()
       settings.sensitivityFactors = [
-        { id: 1, startHour: 6, endHour: 12, sensitivityFactorGl: 0.40, sensitivityFactorMgdl: 40 },
-        { id: 2, startHour: 12, endHour: 22, sensitivityFactorGl: 0.50, sensitivityFactorMgdl: 50 },
-        { id: 3, startHour: 22, endHour: 6, sensitivityFactorGl: 0.60, sensitivityFactorMgdl: 60 },
+        { id: 1, startHour: 6, endHour: 12, sensitivityFactorGl: d(0.40), sensitivityFactorMgdl: d(40) },
+        { id: 2, startHour: 12, endHour: 22, sensitivityFactorGl: d(0.50), sensitivityFactorMgdl: d(50) },
+        { id: 3, startHour: 22, endHour: 6, sensitivityFactorGl: d(0.60), sensitivityFactorMgdl: d(60) },
       ] as any
       settings.carbRatios = [
-        { id: 1, startHour: 6, endHour: 12, gramsPerUnit: 8 },
-        { id: 2, startHour: 12, endHour: 22, gramsPerUnit: 12 },
-        { id: 3, startHour: 22, endHour: 6, gramsPerUnit: 10 },
+        { id: 1, startHour: 6, endHour: 12, gramsPerUnit: d(8) },
+        { id: 2, startHour: 12, endHour: 22, gramsPerUnit: d(12) },
+        { id: 3, startHour: 22, endHour: 6, gramsPerUnit: d(10) },
       ] as any
 
       prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
@@ -490,14 +494,14 @@ describe("insulinService.calculateBolus", () => {
       mockHour(2) // 2 AM — should match 22-6 slot
       const settings = buildSettings()
       settings.sensitivityFactors = [
-        { id: 1, startHour: 6, endHour: 12, sensitivityFactorGl: 0.40, sensitivityFactorMgdl: 40 },
-        { id: 2, startHour: 12, endHour: 22, sensitivityFactorGl: 0.50, sensitivityFactorMgdl: 50 },
-        { id: 3, startHour: 22, endHour: 6, sensitivityFactorGl: 0.60, sensitivityFactorMgdl: 60 },
+        { id: 1, startHour: 6, endHour: 12, sensitivityFactorGl: d(0.40), sensitivityFactorMgdl: d(40) },
+        { id: 2, startHour: 12, endHour: 22, sensitivityFactorGl: d(0.50), sensitivityFactorMgdl: d(50) },
+        { id: 3, startHour: 22, endHour: 6, sensitivityFactorGl: d(0.60), sensitivityFactorMgdl: d(60) },
       ] as any
       settings.carbRatios = [
-        { id: 1, startHour: 6, endHour: 12, gramsPerUnit: 8 },
-        { id: 2, startHour: 12, endHour: 22, gramsPerUnit: 12 },
-        { id: 3, startHour: 22, endHour: 6, gramsPerUnit: 10 },
+        { id: 1, startHour: 6, endHour: 12, gramsPerUnit: d(8) },
+        { id: 2, startHour: 12, endHour: 22, gramsPerUnit: d(12) },
+        { id: 3, startHour: 22, endHour: 6, gramsPerUnit: d(10) },
       ] as any
 
       prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
@@ -519,12 +523,12 @@ describe("insulinService.calculateBolus", () => {
       mockHour(23)
       const settings = buildSettings()
       settings.sensitivityFactors = [
-        { id: 1, startHour: 6, endHour: 22, sensitivityFactorGl: 0.50, sensitivityFactorMgdl: 50 },
-        { id: 2, startHour: 22, endHour: 6, sensitivityFactorGl: 0.60, sensitivityFactorMgdl: 60 },
+        { id: 1, startHour: 6, endHour: 22, sensitivityFactorGl: d(0.50), sensitivityFactorMgdl: d(50) },
+        { id: 2, startHour: 22, endHour: 6, sensitivityFactorGl: d(0.60), sensitivityFactorMgdl: d(60) },
       ] as any
       settings.carbRatios = [
-        { id: 1, startHour: 6, endHour: 22, gramsPerUnit: 10 },
-        { id: 2, startHour: 22, endHour: 6, gramsPerUnit: 15 },
+        { id: 1, startHour: 6, endHour: 22, gramsPerUnit: d(10) },
+        { id: 2, startHour: 22, endHour: 6, gramsPerUnit: d(15) },
       ] as any
 
       prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
@@ -601,6 +605,117 @@ describe("insulinService.calculateBolus", () => {
           1,
         ),
       ).rejects.toThrow("No active glucose target found")
+    })
+
+    // -----------------------------------------------------------------------
+    // Division-by-zero guards (HR-2 safety): an ISF or ICR of 0 would
+    // produce Infinity in the bolus formula (carbs / 0 or Δgluc / 0) and a
+    // life-threatening recommendation. These guards must throw, never silently
+    // clamp, so corrupted settings surface as a visible error.
+    // -----------------------------------------------------------------------
+    it("throws when ISF is zero (prevents Infinity correction dose)", async () => {
+      mockHour(12)
+      setupMocks({ isfGl: 0, isfMgdl: 0 })
+
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.80, carbsGrams: 60, patientId: 1 },
+          1,
+        ),
+      ).rejects.toThrow(/ISF value is zero or negative/)
+    })
+
+    it("throws when ICR is zero (prevents Infinity meal bolus)", async () => {
+      mockHour(12)
+      setupMocks({ icrGrams: 0 })
+
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.00, carbsGrams: 60, patientId: 1 },
+          1,
+        ),
+      ).rejects.toThrow(/ICR value is zero or negative/)
+    })
+
+    it("throws when ISF is negative (corrupted settings)", async () => {
+      mockHour(12)
+      setupMocks({ isfGl: -0.5, isfMgdl: -50 })
+
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.80, carbsGrams: 0, patientId: 1 },
+          1,
+        ),
+      ).rejects.toThrow(/ISF value is zero or negative/)
+    })
+  })
+
+  // =========================================================================
+  // REQUIRES HYPO TREATMENT FIRST FLAG
+  // The UI uses this flag to halt the bolus flow and prompt the patient to
+  // correct hypoglycemia before injecting. Any drift in the 0.70 g/L threshold
+  // could expose patients to severe hypoglycemia events.
+  // =========================================================================
+  describe("requiresHypoTreatmentFirst flag", () => {
+    it("is true when glucose < 0.70 g/L (mild hypoglycemia)", async () => {
+      mockHour(12)
+      setupMocks()
+
+      const result = await insulinService.calculateBolus(
+        { currentGlucoseGl: 0.65, carbsGrams: 60, patientId: 1 },
+        1,
+      )
+
+      expect(result.requiresHypoTreatmentFirst).toBe(true)
+    })
+
+    it("is true at the boundary just below 0.70 (0.69)", async () => {
+      mockHour(12)
+      setupMocks()
+
+      const result = await insulinService.calculateBolus(
+        { currentGlucoseGl: 0.69, carbsGrams: 60, patientId: 1 },
+        1,
+      )
+
+      expect(result.requiresHypoTreatmentFirst).toBe(true)
+    })
+
+    it("is false exactly at 0.70 g/L (threshold exclusive)", async () => {
+      mockHour(12)
+      setupMocks()
+
+      const result = await insulinService.calculateBolus(
+        { currentGlucoseGl: 0.70, carbsGrams: 60, patientId: 1 },
+        1,
+      )
+
+      expect(result.requiresHypoTreatmentFirst).toBe(false)
+    })
+
+    it("is false for normal glucose (1.00 g/L)", async () => {
+      mockHour(12)
+      setupMocks()
+
+      const result = await insulinService.calculateBolus(
+        { currentGlucoseGl: 1.00, carbsGrams: 60, patientId: 1 },
+        1,
+      )
+
+      expect(result.requiresHypoTreatmentFirst).toBe(false)
+    })
+
+    it("is true even for severe hypoglycemia (glucose < 0.54)", async () => {
+      mockHour(12)
+      setupMocks()
+
+      const result = await insulinService.calculateBolus(
+        { currentGlucoseGl: 0.45, carbsGrams: 0, patientId: 1 },
+        1,
+      )
+
+      expect(result.requiresHypoTreatmentFirst).toBe(true)
+      expect(result.warnings).toContain("severeHypoglycemia")
     })
   })
 

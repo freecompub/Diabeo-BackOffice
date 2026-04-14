@@ -101,7 +101,7 @@ export async function PUT(req: NextRequest) {
 
     const result = await insulinTherapyService.upsertBasalConfig(
       settings.id,
-      { ...configInput, settingsId: settings.id },
+      configInput,
       user.id,
       ctx,
     )
