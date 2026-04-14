@@ -58,12 +58,13 @@ vi.mock("bcryptjs", () => ({ compare: (...a: unknown[]) => compareMock(...a) }))
 const verifyOtpMock = vi.fn()
 const disableMfaMock = vi.fn()
 const verifyAndEnableMock = vi.fn()
+const generateSecretMock = vi.fn()
 vi.mock("@/lib/services/mfa.service", () => ({
   mfaService: {
     verifyOtp: (...a: unknown[]) => verifyOtpMock(...a),
     verifyAndEnable: (...a: unknown[]) => verifyAndEnableMock(...a),
     disable: (...a: unknown[]) => disableMfaMock(...a),
-    generateSecret: vi.fn(),
+    generateSecret: (...a: unknown[]) => generateSecretMock(...a),
   },
 }))
 
@@ -80,6 +81,7 @@ const { POST: loginPost } = await import("@/app/api/auth/login/route")
 const { POST: challengePost } = await import("@/app/api/auth/mfa/challenge/route")
 const { POST: disablePost } = await import("@/app/api/auth/mfa/disable/route")
 const { POST: verifyPost } = await import("@/app/api/auth/mfa/verify/route")
+const { POST: setupPost } = await import("@/app/api/auth/mfa/setup/route")
 
 function jsonRequest(url: string, body: unknown, headers: Record<string, string> = {}): NextRequest {
   return new NextRequest(new URL(url), {
@@ -120,11 +122,16 @@ describe("/api/auth/login — MFA branch", () => {
 })
 
 describe("/api/auth/mfa/challenge", () => {
+  // Per-test unique userId so the in-memory rate-limit fallback (keyed on sub)
+  // does not leak counters across tests in this describe block.
+  let userId = 100
+
   beforeEach(() => {
     vi.clearAllMocks()
-    verifyMfaPendingTokenMock.mockResolvedValue({ sub: 7, type: "mfa_pending" })
+    userId++
+    verifyMfaPendingTokenMock.mockResolvedValue({ sub: userId, type: "mfa_pending" })
     prismaMock.user.findUnique.mockResolvedValue({
-      id: 7, role: "VIEWER", mfaEnabled: true,
+      id: userId, role: "VIEWER", mfaEnabled: true,
     } as any)
     createSessionMock.mockResolvedValue({
       id: "session-1", expires: new Date(Date.now() + 86_400_000),
@@ -144,7 +151,7 @@ describe("/api/auth/mfa/challenge", () => {
     expect(setCookie).toMatch(/diabeo_token=full-jwt/)
     expect(setCookie).toMatch(/HttpOnly/i)
     // Session was created with mfaVerified=true (HDS forensics)
-    expect(createSessionMock).toHaveBeenCalledWith(7, { mfaVerified: true })
+    expect(createSessionMock).toHaveBeenCalledWith(userId, { mfaVerified: true })
     // LOGIN audit (not MFA_CHALLENGE_FAILED)
     const audit = auditLogMock.mock.calls[0][0]
     expect(audit.action).toBe("LOGIN")
@@ -179,6 +186,22 @@ describe("/api/auth/mfa/challenge", () => {
     expect(res.status).toBe(401)
     expect((await res.json()).error).toBe("invalidMfaToken")
     expect(verifyOtpMock).not.toHaveBeenCalled()
+  })
+
+  it("rate-limits after repeated failed OTPs (4th call → 429)", async () => {
+    // 3 failed OTPs trigger the lockout; the 4th must return 429 not 401.
+    verifyOtpMock.mockResolvedValue(false)
+
+    let last: Response | undefined
+    for (let i = 0; i < 4; i++) {
+      last = await challengePost(jsonRequest(
+        "http://localhost:3000/api/auth/mfa/challenge",
+        { mfaToken: "mfa-pending-jwt", otp: "000000" },
+      ))
+    }
+
+    expect(last?.status).toBe(429)
+    expect(last?.headers.get("Retry-After")).toMatch(/^\d+$/)
   })
 
   it("rejects when user disabled MFA between login and challenge", async () => {
@@ -249,6 +272,45 @@ describe("/api/auth/mfa/disable — uniform 401 (no factor oracle)", () => {
     expect(disableMfaMock).toHaveBeenCalledWith(7)
     const audit = auditLogMock.mock.calls.find((c: any) => c[0].action === "MFA_DISABLED")
     expect(audit).toBeDefined()
+  })
+})
+
+describe("/api/auth/mfa/setup — audit + refusal", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it("emits MFA_SETUP_INITIATED audit on success (HDS §IV.3 traceability)", async () => {
+    generateSecretMock.mockResolvedValue({
+      otpauthUri: "otpauth://totp/Diabeo:user-7?secret=ABC&issuer=Diabeo",
+      qrCodeDataUri: "data:image/png;base64,FAKE",
+    })
+
+    const res = await setupPost(jsonRequest(
+      "http://localhost:3000/api/auth/mfa/setup",
+      {},
+      { "x-user-id": "7", "x-user-role": "VIEWER" },
+    ))
+
+    expect(res.status).toBe(200)
+    const audit = auditLogMock.mock.calls.find((c: any) => c[0].action === "MFA_SETUP_INITIATED")
+    expect(audit).toBeDefined()
+    expect(audit?.[0].resourceId).toBe("7")
+  })
+
+  it("returns 409 when MFA is already enabled — does NOT emit setup audit", async () => {
+    generateSecretMock.mockRejectedValue(new Error("mfaAlreadyEnabled"))
+
+    const res = await setupPost(jsonRequest(
+      "http://localhost:3000/api/auth/mfa/setup",
+      {},
+      { "x-user-id": "7", "x-user-role": "VIEWER" },
+    ))
+
+    expect(res.status).toBe(409)
+    expect((await res.json()).error).toBe("mfaAlreadyEnabled")
+    const setupAudit = auditLogMock.mock.calls.find((c: any) => c[0].action === "MFA_SETUP_INITIATED")
+    expect(setupAudit).toBeUndefined()
   })
 })
 

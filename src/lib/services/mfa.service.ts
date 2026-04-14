@@ -174,7 +174,10 @@ export const mfaService = {
     })
     if (!before?.mfaSecret) return false
 
-    const ok = await this.verifyOtp(userId, otp)
+    // Use module reference (not `this`) — mfaService is a plain object literal.
+    // A caller that destructures the method (`const { verifyAndEnable } = mfaService`)
+    // would lose `this` and crash at runtime.
+    const ok = await mfaService.verifyOtp(userId, otp)
     if (!ok) return false
 
     const updated = await prisma.user.updateMany({

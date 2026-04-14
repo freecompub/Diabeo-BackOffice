@@ -13,16 +13,30 @@ import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { mfaService } from "@/lib/services/mfa.service"
 import { logger } from "@/lib/logger"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 export async function POST(req: NextRequest) {
   try {
     const user = requireAuth(req)
+    const ctx = extractRequestContext(req)
 
     // Use a stable, non-PII account label. The otpauth URI is embedded in a
     // QR code the user may photograph; don't leak their email there.
     const label = `user-${user.id}`
     const result = await mfaService.generateSecret(user.id, label)
+
+    // HDS §IV.3 traceability: secret-generation is a sensitive credential
+    // operation. Audit the initiation; MFA_ENABLED will follow on /verify.
+    await auditService.log({
+      userId: user.id,
+      action: "MFA_SETUP_INITIATED",
+      resource: "USER",
+      resourceId: String(user.id),
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      requestId: ctx.requestId,
+    })
+
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AuthError) {

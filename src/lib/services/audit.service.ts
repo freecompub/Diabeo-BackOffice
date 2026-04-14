@@ -46,6 +46,7 @@ export type AuditAction =
   | "UNAUTHORIZED"
   | "RATE_LIMITED"
   | "CONFIG_ERROR"
+  | "MFA_SETUP_INITIATED"
   | "MFA_ENABLED"
   | "MFA_DISABLED"
   | "MFA_CHALLENGE_FAILED"

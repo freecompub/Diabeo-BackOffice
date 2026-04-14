@@ -230,6 +230,31 @@ describe("mfaService", () => {
     })
   })
 
+  describe("concurrency / replay (CAS guard)", () => {
+    it("two parallel verifyOtp calls of the same code: only one wins", async () => {
+      // Simulates a real race — both calls observe the same prior state, then
+      // both attempt the CAS. Prisma's optimistic CAS lets exactly one succeed.
+      const secret = generateSecret()
+      prismaMock.user.findUnique.mockResolvedValue({
+        mfaSecret: `ENCRYPTED[${secret}]`,
+        mfaLastUsedStep: null,
+      } as any)
+      // First updateMany wins (count=1), second loses the race (count=0).
+      prismaMock.user.updateMany
+        .mockResolvedValueOnce({ count: 1 } as any)
+        .mockResolvedValueOnce({ count: 0 } as any)
+
+      const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
+      const [a, b] = await Promise.all([
+        mfaService.verifyOtp(1, code),
+        mfaService.verifyOtp(1, code),
+      ])
+
+      expect([a, b].filter(Boolean)).toHaveLength(1)
+      expect(prismaMock.user.updateMany).toHaveBeenCalledTimes(2)
+    })
+  })
+
   describe("disable", () => {
     it("clears both secret and enabled flag", async () => {
       prismaMock.user.update.mockResolvedValue({} as any)

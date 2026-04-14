@@ -76,6 +76,10 @@ describe("deleteUserAccount", () => {
     expect(updateData.passwordHash).toBe("DELETED")
     expect(updateData.phone).toBeNull()
     expect(updateData.nirpp).toBeNull()
+    // MFA fully reset (regression guard — previously mfaEnabled was left set)
+    expect(updateData.mfaSecret).toBeNull()
+    expect(updateData.mfaEnabled).toBe(false)
+    expect(updateData.mfaLastUsedStep).toBeNull()
   })
 
   it("performs cascade deletion for user with patient", async () => {
