@@ -24,10 +24,10 @@ export const INSULIN_BOUNDS = CLINICAL_BOUNDS
  */
 export interface BasalConfigInput {
   configType: BasalConfigType
-  totalDailyDose?: Prisma.Decimal | number | null
-  morningDose?: Prisma.Decimal | number | null
-  eveningDose?: Prisma.Decimal | number | null
-  dailyDose?: Prisma.Decimal | number | null
+  totalDailyDose?: Prisma.Decimal | null
+  morningDose?: Prisma.Decimal | null
+  eveningDose?: Prisma.Decimal | null
+  dailyDose?: Prisma.Decimal | null
 }
 
 /**
@@ -316,7 +316,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "CREATE",
         resource: "INSULIN_THERAPY",
-        resourceId: slot.id,
+        resourceId: `pump:${slot.id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
       })
@@ -331,7 +331,7 @@ export const insulinTherapyService = {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
-        resourceId: id,
+        resourceId: `pump:${id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
       })

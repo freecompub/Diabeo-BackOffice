@@ -8,7 +8,7 @@
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { BasalConfigType } from "@prisma/client"
+import { BasalConfigType, Prisma } from "@prisma/client"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
@@ -99,9 +99,20 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
     }
 
+    // Coerce Zod numbers to Prisma.Decimal at the boundary — keeps the
+    // service layer strict and single-typed. Service BasalConfigInput only
+    // accepts Prisma.Decimal | null (no implicit number widening).
+    const toDec = (n: number | undefined) =>
+      n != null ? new Prisma.Decimal(n) : null
     const result = await insulinTherapyService.upsertBasalConfig(
       settings.id,
-      configInput,
+      {
+        configType: configInput.configType,
+        totalDailyDose: toDec(configInput.totalDailyDose),
+        morningDose: toDec(configInput.morningDose),
+        eveningDose: toDec(configInput.eveningDose),
+        dailyDose: toDec(configInput.dailyDose),
+      },
       user.id,
       ctx,
     )

@@ -40,14 +40,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
+import { d } from "../helpers/decimal"
 
 // Import the service AFTER the mock is set up
 import { insulinService } from "@/lib/services/insulin.service"
-
-/** Wrap a number in Prisma.Decimal — mirrors production fetches from PostgreSQL */
-const d = (n: number) => new Prisma.Decimal(n)
 
 // ---------------------------------------------------------------------------
 // Test fixtures
@@ -666,6 +663,43 @@ describe("insulinService.calculateBolus", () => {
       ).rejects.toThrow(/actionDurationHours is zero or negative/)
     })
 
+    it("route responsibility: InvalidTherapyConfigError has stable `code` field for 422 mapping", async () => {
+      // Import the error class through the service module to verify identity
+      const mod = await import("@/lib/services/insulin.service")
+      const err = new mod.InvalidTherapyConfigError("test")
+      expect(err.code).toBe("invalidTherapyConfig")
+      expect(err).toBeInstanceOf(Error)
+      expect(err).toBeInstanceOf(mod.InvalidTherapyConfigError)
+    })
+
+    it("audits the corrupt-config event BEFORE throwing (HDS §IV.3 traceability)", async () => {
+      mockHour(12)
+      const settings = buildSettings({ considerIob: true })
+      settings.iobSettings = { considerIob: true, actionDurationHours: d(0) } as any
+      prismaMock.insulinTherapySettings.findUnique.mockResolvedValue(settings as any)
+      // Capture audit writes (outside transaction, direct auditService.log call)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      mockTransaction()
+
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.50, carbsGrams: 60, patientId: 1 },
+          1,
+        ),
+      ).rejects.toThrow(/actionDurationHours/)
+
+      // Audit was emitted with UNAUTHORIZED action + invalidTherapyConfig reason
+      expect(prismaMock.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: "UNAUTHORIZED",
+            resource: "INSULIN_THERAPY",
+            resourceId: expect.stringMatching(/^settings:/),
+          }),
+        }),
+      )
+    })
+
     it("falls back to 4h default when actionDurationHours is null (no config stored)", async () => {
       // null → nullish → default. Distinct from 0 which must throw.
       mockHour(12)
@@ -768,6 +802,21 @@ describe("insulinService.calculateBolus", () => {
       )
 
       expect(result.deliveryMethod).toBe("pump")
+    })
+
+    it("throws assertNever when delivery method is an unknown enum variant (runtime safety)", async () => {
+      // roundForDevice is exhaustive on the enum at compile time, but if the
+      // DB returns a value that escapes the type (future variant, corrupted
+      // row) the runtime must throw — not silently fall through to 0.5U.
+      mockHour(12)
+      setupMocks({ deliveryMethod: "inhaled" as any, targetMgdl: 100 })
+
+      await expect(
+        insulinService.calculateBolus(
+          { currentGlucoseGl: 1.50, carbsGrams: 60, patientId: 1 },
+          1,
+        ),
+      ).rejects.toThrow(/Unsupported InsulinDeliveryMethod/)
     })
   })
 

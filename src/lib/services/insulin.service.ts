@@ -14,6 +14,20 @@ import type { InsulinDeliveryMethod } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { assertNever } from "@/lib/utils/assert-never"
+
+/**
+ * Stable error code for "insulin therapy config is malformed in the database".
+ * Thrown from `calculateBolus` when a critical setting is zero/negative.
+ * Routes should map this to HTTP 422 (unprocessable entity) + `invalidTherapyConfig`.
+ */
+export class InvalidTherapyConfigError extends Error {
+  readonly code = "invalidTherapyConfig" as const
+  constructor(message: string) {
+    super(message)
+    this.name = "InvalidTherapyConfigError"
+  }
+}
 
 // CLINICAL_BOUNDS imported from @/lib/clinical-bounds (single source of truth)
 
@@ -152,7 +166,21 @@ export const insulinService = {
       // → insulin stacking risk. Reject explicitly so the config bug surfaces.
       const actionDuration = settings.iobSettings.actionDurationHours?.toNumber() ?? 4.0
       if (actionDuration <= 0) {
-        throw new Error(
+        // HDS §IV.3: a corrupted therapy config is a clinically significant
+        // event — audit BEFORE throwing so traceability survives the rejection.
+        await auditService.log({
+          userId: auditUserId,
+          action: "UNAUTHORIZED",
+          resource: "INSULIN_THERAPY",
+          resourceId: `settings:${settings.id}`,
+          metadata: {
+            reason: "invalidTherapyConfig",
+            field: "iobSettings.actionDurationHours",
+            value: actionDuration,
+            patientId: input.patientId,
+          },
+        })
+        throw new InvalidTherapyConfigError(
           "IOB actionDurationHours is zero or negative — invalid insulin therapy config",
         )
       }
@@ -288,10 +316,8 @@ function roundForDevice(dose: number, method: InsulinDeliveryMethod): number {
       return Math.round(dose * 20) / 20  // 0.05 U increments
     case "manual":
       return Math.round(dose * 2) / 2    // 0.5 U increments (pen/manual)
-    default: {
-      const _exhaustive: never = method
-      throw new Error(`Unsupported InsulinDeliveryMethod: ${_exhaustive}`)
-    }
+    default:
+      return assertNever(method, `Unsupported InsulinDeliveryMethod: ${method as string}`)
   }
 }
 

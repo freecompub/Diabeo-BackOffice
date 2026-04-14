@@ -151,7 +151,7 @@ export default function LoginPage() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading || isLocked}
               required
-              error={error || undefined}
+              error={error ?? undefined}
             />
 
             {/* Password — DiabeoTextField type="password" has built-in toggle */}

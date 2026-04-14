@@ -3,7 +3,7 @@ import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
-import { insulinService } from "@/lib/services/insulin.service"
+import { insulinService, InvalidTherapyConfigError } from "@/lib/services/insulin.service"
 
 const bolusSchema = z.object({
   patientId: z.number().int().positive().optional(),
@@ -35,6 +35,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
+    if (error instanceof InvalidTherapyConfigError) {
+      // 422 Unprocessable Entity — config is malformed (data-integrity), not a
+      // user-input issue. Opaque error code, no message leak.
+      return NextResponse.json({ error: error.code }, { status: 422 })
+    }
     const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[calculate-bolus POST]", msg)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
