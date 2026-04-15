@@ -4,10 +4,14 @@
 
 | Methode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| POST | /api/auth/login | Non | Connexion email + password |
+| POST | /api/auth/login | Non | Connexion email + password. Si `mfaEnabled=true` → 200 `{ mfaRequired, mfaToken }` (pas de cookie JWT). Sinon → cookie httpOnly |
 | POST | /api/auth/logout | JWT | Deconnexion + invalidation session |
-| POST | /api/auth/refresh | JWT (expire) | Renouvellement token |
-| POST | /api/auth/reset-password | Non | Demande reset (anti-enumeration) |
+| POST | /api/auth/refresh | JWT (expire) | Renouvellement token (clockTolerance 15min) |
+| POST | /api/auth/reset-password | Non | Demande reset (anti-enumeration, stub) |
+| POST | /api/auth/mfa/setup | JWT | Génère secret TOTP (refuse 409 si `mfaEnabled=true`), retourne QR code — audit `MFA_SETUP_INITIATED` |
+| POST | /api/auth/mfa/verify | JWT | Confirmation 1ère fois, flip `mfaEnabled=true` sur OTP valide — audit `MFA_ENABLED`/`MFA_CHALLENGE_FAILED`. Rate-limited. |
+| POST | /api/auth/mfa/challenge | mfa-pending token | Exchange `{ mfaToken, otp }` → cookie JWT final. Session `mfaVerified=true`. Rate-limited. |
+| POST | /api/auth/mfa/disable | JWT | Requires `{ password, otp }`. 401 uniforme `invalidCredentials`. Audit `MFA_DISABLED`. Rate-limited. |
 
 ## Compte utilisateur (Phase 1)
 
@@ -20,10 +24,10 @@
 | PUT | /api/account/terms | JWT | Acceptation CGU |
 | PUT | /api/account/data-policy | JWT | Politique donnees |
 | GET/PUT | /api/account/units | JWT | Preferences d'unites |
-| GET/PUT | /api/account/privacy | JWT | Parametres confidentialite |
+| GET/PUT | /api/account/privacy | JWT | Parametres confidentialite. PUT invalide le cache GDPR (RGPD Art. 7(3)) |
 | GET/PUT | /api/account/notifications | JWT | Preferences notifications |
 | GET/PUT | /api/account/day-moments | JWT | Periodes journalieres |
-| GET | /api/account/export | JWT | Export RGPD (JSON) |
+| GET | /api/account/export | JWT + RL(user 3/h + IP 10/h, fail-closed) | Export RGPD (JSON). Double bucket séquentiel. Audit `RATE_LIMITED` sur blocage (sauf si `degraded`) |
 
 ## Dossier patient (Phase 2)
 
@@ -55,11 +59,16 @@
 
 | Methode | Route | Auth | Description |
 |---------|-------|------|-------------|
-| GET | /api/analytics/glycemic-profile | JWT + GDPR | Profil glycemique (GMI, CV, TIR) |
-| GET | /api/analytics/time-in-range | JWT + GDPR | TIR 5 zones |
-| GET | /api/analytics/agp | JWT + GDPR | Profil AGP (96 slots) |
-| GET | /api/analytics/hypoglycemia | JWT + GDPR | Episodes hypoglycemiques |
-| GET | /api/analytics/insulin | JWT + GDPR | Resume insuline |
+| GET | /api/analytics/glycemic-profile | JWT + GDPR + RL(30/min) | Profil glycemique (GMI, CV, TIR) |
+| GET | /api/analytics/time-in-range | JWT + GDPR + RL(30/min) | TIR 5 zones |
+| GET | /api/analytics/agp | JWT + GDPR + RL(30/min) | Profil AGP (96 slots) |
+| GET | /api/analytics/hypoglycemia | JWT + GDPR + RL(30/min) | Episodes hypoglycemiques |
+| GET | /api/analytics/insulin | JWT + GDPR + RL(30/min) | Resume insuline |
+| GET | /api/patients/[id]/analytics | NURSE+ + canAccessPatient + RL(30/min) | Profil glycémique accès pro |
+
+**RL(30/min)** = rate limit 30 requêtes / 60s / user (fail-open sur panne Redis).
+Toutes les routes analytics + patient/userdata/events/cgm acceptent `?patientId=N`
+pour un accès pro (DOCTOR/NURSE → `canAccessPatient`) ou lecture propre (VIEWER).
 
 ## Insulinotherapie (Phase 4)
 
@@ -128,3 +137,9 @@
 |---------|-------|------|-------------|
 | GET | /api/admin/audit-logs | ADMIN | Logs d'audit avec filtres |
 | GET | /api/units | JWT | Referentiel unites |
+
+## Monitoring / Infra
+
+| Methode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| GET | /api/health | Non | Probe DB + Redis. 200 `ok` / 503 `degraded` (Redis down) / 503 `down` (DB down). Utilise par OVH Monitoring + pipeline deploy |
