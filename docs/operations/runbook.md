@@ -301,6 +301,22 @@ Semantics:
 Implementation: `src/app/api/health/route.ts`. Version comes from the
 `GIT_COMMIT_SHA` env var set during the Docker build.
 
+**Liveness caveat** — the DB probe is `SELECT 1` through the Prisma
+connection pool. A successful response means "a pool connection is live",
+not "the primary is writable". During a managed-DB failover the pool may
+reuse a read-only replica; `db: ok` would still be reported while writes
+would fail. If write health matters for a specific procedure, run a
+dedicated scratch-table write from the on-call box. Tracked in
+[scripts-index.md](./scripts-index.md) as a TODO.
+
+**Redis signals**:
+
+- `redis: ok` — Upstash reachable, probe returned within 1 s.
+- `redis: down` — Upstash env set but probe failed or timed out.
+- `redis: disabled` — `UPSTASH_REDIS_REST_URL` or `TOKEN` missing. Indicates
+  a mis-provisioned deployment; the in-memory fallback is still active but
+  rate-limit / session-revocation behave as single-pod.
+
 Watchers — **[TODO — not yet configured]**:
 
 - **OVH Cloud Monitoring** should ping `/api/health` every 30 s and alert

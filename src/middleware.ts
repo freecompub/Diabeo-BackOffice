@@ -52,7 +52,10 @@ export async function middleware(request: NextRequest) {
 
   // Public health endpoint — must be reachable without a JWT so external
   // monitoring (OVH, uptime probes) and deployment smoke tests can alert.
-  if (pathname === "/api/health") {
+  // Normalize: strip trailing slash + lowercase so misconfigured monitors
+  // (`/api/health/`, `/API/health`) don't fall through to JWT enforcement.
+  const normalized = pathname.toLowerCase().replace(/\/+$/, "")
+  if (normalized === "/api/health") {
     const res = NextResponse.next({ request: { headers: request.headers } })
     res.headers.set("x-request-id", requestId)
     return res

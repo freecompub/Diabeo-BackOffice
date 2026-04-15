@@ -20,8 +20,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
-vi.stubEnv("UPSTASH_REDIS_REST_URL", "")
-vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "")
+// Fake Upstash env so probeRedis doesn't short-circuit to "disabled".
+// The actual network call is prevented by mocking `cacheGet` below.
+vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake.upstash.io")
+vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "fake-token")
 
 const dbProbeMock = vi.fn()
 vi.mock("@/lib/db/client", () => ({
@@ -103,5 +105,29 @@ describe("GET /api/health", () => {
     const body = await (await GET()).json()
     // Monitoring alert rules depend on these exact key names; guard rename.
     expect(Object.keys(body).sort()).toEqual(["db", "redis", "status", "version"])
+    // Enum values also contract-tested: breaking them breaks alert rules.
+    expect(["ok", "degraded", "down"]).toContain(body.status)
+    expect(["ok", "down", "disabled"]).toContain(body.redis)
+    expect(["ok", "down"]).toContain(body.db)
+  })
+
+  it("reports redis=disabled and status=degraded when Upstash env is missing", async () => {
+    // Regression guard: in-memory fallback returns fast and the previous
+    // implementation reported redis=ok, hiding a mis-provisioned deployment.
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "")
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "")
+    dbProbeMock.mockResolvedValue([{ "?column?": 1 }])
+    // cacheGet mock is irrelevant here — probeRedis short-circuits on env.
+
+    const res = await GET()
+    const body = await res.json()
+
+    expect(res.status).toBe(503)
+    expect(body.status).toBe("degraded")
+    expect(body.redis).toBe("disabled")
+
+    // Restore for the rest of the suite
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://fake.upstash.io")
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "fake-token")
   })
 })
