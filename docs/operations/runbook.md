@@ -406,15 +406,31 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
 
 ### `scripts/backup-postgres.sh` prerequisites
 
-- [ ] Create bucket in the OVH console: `diabeo-backups-prod` (region GRA)
-- [ ] Generate S3 credentials for the bucket — note access key + secret
-- [ ] Configure bucket lifecycle rule: objects under `postgres/` → Glacier
-      (Cold Archive) after 7 days; delete after 365 days
-- [ ] Install dependencies on the VPS:
+- [ ] **Dedicated system user** (principle of least privilege — PGPASSWORD in
+      the env is only readable by this user):
       ```sh
-      apt-get install -y postgresql-client awscli
+      sudo adduser --system --no-create-home --group diabeo-backup
       ```
-- [ ] Create env file (owned by the cron user, mode 0600):
+- [ ] Create bucket in the OVH console: `diabeo-backups-prod` (region GRA)
+- [ ] Generate S3 credentials scoped to this bucket only — note access key + secret
+- [ ] **Enable bucket versioning + Object Lock in Compliance mode** on the
+      bucket (console) — tamper-evident storage required by HDS (ISO 27001
+      A.12). Retention window on Object Lock must match your backup policy.
+- [ ] **Lifecycle rule** on prefix `postgres/` (console):
+      - Glacier (Cold Archive) after 7 days
+      - Delete after the period documented in `docs/compliance/hds-rgpd.md`.
+        Note: HDS does NOT mandate a specific minimum retention for
+        backups — the legal obligation (20 years for medical records,
+        Art. R.1112-7 CSP) applies to the SOURCE DB, which is the
+        authoritative copy. A 365-day backup lifecycle is defensible as
+        long as the source DB itself covers the 20-year horizon and the
+        policy is documented.
+- [ ] Install dependencies:
+      ```sh
+      apt-get install -y postgresql-client awscli coreutils
+      ```
+      `coreutils` provides `sha256sum` used by the integrity manifest.
+- [ ] Create env file (owned by the backup user, mode 0600):
       ```sh
       sudo mkdir -p /etc/diabeo
       sudo tee /etc/diabeo/backup.env > /dev/null <<'EOF'
@@ -428,17 +444,39 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
       OVH_S3_SECRET_KEY=<from OVH>
       OVH_S3_BUCKET=diabeo-backups-prod
       EOF
+      sudo chown diabeo-backup:diabeo-backup /etc/diabeo/backup.env
       sudo chmod 0600 /etc/diabeo/backup.env
       ```
-- [ ] Create backup directory: `sudo mkdir -p /var/backups/diabeo`
-- [ ] Dry-run: `sudo -E /opt/diabeo/backoffice/scripts/backup-postgres.sh`
-      (verifies env + dump + upload + rotation end-to-end)
-- [ ] Register cron entry (for the same user that ran the dry-run):
-      ```cron
+      **HDS hardening (recommended)**: prefer a `~/.pgpass` (chmod 0600)
+      in the backup user home over `PGPASSWORD` in env. Eliminates the
+      `ps auxe` env-exposure window during `pg_dump` execution.
+- [ ] Create backup directory owned by the backup user:
+      ```sh
+      sudo mkdir -p /var/backups/diabeo
+      sudo chown diabeo-backup:diabeo-backup /var/backups/diabeo
+      ```
+- [ ] **Install logrotate config** (prevents /var/log fill-up):
+      ```sh
+      sudo cp /opt/diabeo/backoffice/scripts/logrotate.d/diabeo-backup \
+        /etc/logrotate.d/diabeo-backup
+      sudo chmod 0644 /etc/logrotate.d/diabeo-backup
+      sudo touch /var/log/diabeo-backup.log /var/log/diabeo-deploy.log
+      sudo chown diabeo-backup:diabeo-backup /var/log/diabeo-backup.log
+      sudo logrotate -d /etc/logrotate.d/diabeo-backup    # dry-run
+      ```
+- [ ] Dry-run as the backup user:
+      ```sh
+      sudo -u diabeo-backup /opt/diabeo/backoffice/scripts/backup-postgres.sh
+      ```
+      Exercises the full path: env + dump + sha256 manifest + SSE
+      AES256 upload + rotation.
+- [ ] Register cron **as the backup user, NOT root**:
+      ```sh
+      sudo crontab -u diabeo-backup -e
+      # Add:
       0 2 * * * /opt/diabeo/backoffice/scripts/backup-postgres.sh \
         >> /var/log/diabeo-backup.log 2>&1
       ```
-- [ ] Verify logrotate catches `/var/log/diabeo-backup.log`
 
 ### `scripts/decrypt-smoke.ts` prerequisites
 

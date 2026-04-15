@@ -31,7 +31,11 @@
 import { PrismaClient } from "@prisma/client"
 import { safeDecryptField } from "@/lib/crypto/fields"
 
-const SAMPLE_SIZE = 5
+// Deterministic dual-cohort sampling: 10 oldest + 10 newest users. Catches
+// key-rotation mismatches where only one cohort (typically the oldest set
+// encrypted with a retired key) would silently fail a naive `take: 5`.
+const SAMPLE_NEWEST = 10
+const SAMPLE_OLDEST = 10
 const FIELDS_TO_CHECK = ["firstname", "lastname", "phone", "address1", "city"] as const
 type EncryptedField = typeof FIELDS_TO_CHECK[number]
 
@@ -57,19 +61,22 @@ async function main(): Promise<void> {
   const prisma = new PrismaClient()
 
   try {
-    log(`Sampling ${SAMPLE_SIZE} non-anonymized users…`)
-    const users = await prisma.user.findMany({
-      where: { passwordHash: { not: "DELETED" } },
-      take: SAMPLE_SIZE,
-      select: {
-        id: true,
-        firstname: true,
-        lastname: true,
-        phone: true,
-        address1: true,
-        city: true,
-      },
-    })
+    log(`Sampling ${SAMPLE_NEWEST} newest + ${SAMPLE_OLDEST} oldest non-anonymized users…`)
+    const select = {
+      id: true,
+      firstname: true,
+      lastname: true,
+      phone: true,
+      address1: true,
+      city: true,
+    }
+    const whereClause = { passwordHash: { not: "DELETED" } }
+    const [newest, oldest] = await Promise.all([
+      prisma.user.findMany({ where: whereClause, orderBy: { createdAt: "desc" }, take: SAMPLE_NEWEST, select }),
+      prisma.user.findMany({ where: whereClause, orderBy: { createdAt: "asc" }, take: SAMPLE_OLDEST, select }),
+    ])
+    // Deduplicate — on a small DB the two cohorts can overlap.
+    const users = Array.from(new Map([...newest, ...oldest].map((u) => [u.id, u])).values())
 
     if (users.length === 0) {
       log("No non-anonymized users in the DB — nothing to check.")
@@ -79,7 +86,7 @@ async function main(): Promise<void> {
 
     log(`Checking ${users.length} rows × ${FIELDS_TO_CHECK.length} fields…`)
 
-    const failures: Array<{ userId: number; field: EncryptedField; error: string }> = []
+    const failures: Array<{ userId: number; field: EncryptedField; errorName: string }> = []
 
     for (const user of users) {
       for (const field of FIELDS_TO_CHECK) {
@@ -88,13 +95,16 @@ async function main(): Promise<void> {
         try {
           const plaintext = safeDecryptField(ciphertext)
           if (plaintext == null) {
-            failures.push({ userId: user.id, field, error: "safeDecryptField returned null" })
+            // Whitelist: only the failure mode label leaves this script.
+            // err.message from GCM can echo ciphertext bytes or key-derivation
+            // context — never print verbatim to stdout/stderr (HDS §III.2).
+            failures.push({ userId: user.id, field, errorName: "decrypt_returned_null" })
           }
         } catch (err) {
           failures.push({
             userId: user.id,
             field,
-            error: err instanceof Error ? err.message : String(err),
+            errorName: err instanceof Error ? err.name : "unknown",
           })
         }
       }
@@ -103,12 +113,15 @@ async function main(): Promise<void> {
     if (failures.length > 0) {
       console.error(`[decrypt-smoke][FAILED] ${failures.length} decrypt errors`)
       for (const f of failures) {
-        console.error(`  user=${f.userId} field=${f.field} error=${f.error}`)
+        // Strict, whitelisted fields only. Never emit plaintext, ciphertext,
+        // or verbose err.message — investigators access plaintext via the
+        // secured drill workstation, not via this CLI output.
+        console.error(`  user=${f.userId} field=${f.field} errorName=${f.errorName}`)
       }
-      fail("Encryption key does NOT match the data. Aborting drill — investigate.")
+      fail("Encryption key does NOT match the data. Aborting drill — investigate on the HDS-scoped workstation.")
     }
 
-    log(`✓ All ${users.length * FIELDS_TO_CHECK.length} (user × field) samples decrypted cleanly.`)
+    log(`✓ ${users.length} users × ${FIELDS_TO_CHECK.length} fields = up to ${users.length * FIELDS_TO_CHECK.length} samples decrypted cleanly.`)
   } catch (err) {
     console.error("[decrypt-smoke][ERROR] Unexpected error:", err)
     process.exit(1)

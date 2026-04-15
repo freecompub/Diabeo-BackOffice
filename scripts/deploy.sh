@@ -37,9 +37,15 @@ HEALTH_TIMEOUT_SEC=30
 # Helpers
 # ----------------------------------------------------------------------------
 
-log()  { printf '\033[1;34m[deploy]\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m[warn]\033[0m %s\n' "$*" >&2; }
-err()  { printf '\033[1;31m[error]\033[0m %s\n' "$*" >&2; }
+ACTOR="${SUDO_USER:-${USER:-$(whoami)}}"
+HOST="$(hostname -s 2>/dev/null || echo unknown)"
+
+# All log lines carry actor + host so downstream syslog aggregation
+# (HDS §IV.3 operator-action trail — ISO 27001 A.12.4) can attribute
+# every deploy event to a human.
+log()  { printf '\033[1;34m[deploy]\033[0m [host=%s actor=%s] %s\n' "$HOST" "$ACTOR" "$*"; }
+warn() { printf '\033[1;33m[warn]\033[0m   [host=%s actor=%s] %s\n' "$HOST" "$ACTOR" "$*" >&2; }
+err()  { printf '\033[1;31m[error]\033[0m  [host=%s actor=%s] %s\n' "$HOST" "$ACTOR" "$*" >&2; }
 
 require_env() {
   local name=$1
@@ -121,9 +127,14 @@ cmd_update() {
   log "Applying safe (additive) schema changes via db push…"
   pnpm prisma db push --accept-data-loss=false
 
-  log "Running typecheck + tests (hard gate)…"
+  # TypeCheck is cheap and catches `prisma generate` drift locally. Tests
+  # are NOT re-run here — CI owns the test gate on the merge commit SHA
+  # (GitHub Actions "Unit & Integration Tests" must pass to merge). Running
+  # `pnpm test` on the prod VPS would risk hitting the prod DB if any test
+  # forgets a dedicated test DATABASE_URL — HDS data-minimization / PII
+  # exposure concern flagged in the 2026-04-15 audit.
+  log "Running typecheck (hard gate)…"
   pnpm tsc --noEmit
-  pnpm test
 
   log "Building Next.js production bundle…"
   pnpm build

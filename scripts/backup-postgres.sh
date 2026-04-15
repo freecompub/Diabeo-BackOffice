@@ -41,8 +41,11 @@ BACKUP_DIR="${DIABEO_BACKUP_DIR:-/var/backups/diabeo}"
 LOCAL_RETENTION_DAYS="${DIABEO_LOCAL_RETENTION_DAYS:-14}"
 TIMESTAMP="$(date -u +%Y%m%d-%H%M%S)"
 
-log()  { printf '[%s][backup] %s\n' "$(date -u +%FT%TZ)" "$*"; }
-err()  { printf '[%s][backup][ERROR] %s\n' "$(date -u +%FT%TZ)" "$*" >&2; }
+ACTOR="${USER:-$(whoami)}"
+HOST="$(hostname -s 2>/dev/null || echo unknown)"
+
+log()  { printf '[%s][backup][host=%s actor=%s] %s\n' "$(date -u +%FT%TZ)" "$HOST" "$ACTOR" "$*"; }
+err()  { printf '[%s][backup][host=%s actor=%s][ERROR] %s\n' "$(date -u +%FT%TZ)" "$HOST" "$ACTOR" "$*" >&2; }
 
 # ----------------------------------------------------------------------------
 # Prerequisites
@@ -56,7 +59,7 @@ fi
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 
-for cmd in pg_dump aws; do
+for cmd in pg_dump aws sha256sum; do
   if ! command -v "$cmd" > /dev/null 2>&1; then
     err "Required command not found: $cmd"
     exit 1
@@ -98,16 +101,33 @@ log "Dump OK ($local_size)"
 # 2. Upload to OVH Object Storage
 # ----------------------------------------------------------------------------
 
+# Integrity manifest — sidecar sha256 uploaded alongside the dump so a
+# restore drill can verify the object hasn't been silently rewritten.
+SHA_FILE="${DUMP_FILE}.sha256"
+( cd "$BACKUP_DIR" && sha256sum "$(basename "$DUMP_FILE")" > "$SHA_FILE" )
+log "SHA256 manifest generated: $(cat "$SHA_FILE")"
+
 S3_KEY="postgres/$(date -u +%Y)/$(date -u +%m)/$(basename "$DUMP_FILE")"
 S3_URI="s3://$OVH_S3_BUCKET/$S3_KEY"
+S3_SHA_URI="s3://$OVH_S3_BUCKET/${S3_KEY}.sha256"
 
-log "Uploading to $S3_URI"
+# HDS at-rest (ISO 27018 A.10): dump contains passwordHash, mfaSecret, emailHmac,
+# session tokens, full audit_logs. Field-level AES-GCM protects PII columns but
+# not the dump envelope. --sse AES256 enables OVH server-side encryption;
+# client-side age/gpg encryption is planned for a follow-up (runbook §Future).
+log "Uploading (SSE AES256) to $S3_URI"
 if ! aws --endpoint-url="$OVH_S3_ENDPOINT" s3 cp "$DUMP_FILE" "$S3_URI" \
-  --only-show-errors; then
+  --sse AES256 --only-show-errors; then
   err "S3 upload failed — local dump kept at $DUMP_FILE"
   exit 3
 fi
-log "Upload OK"
+log "Uploading sha256 manifest to $S3_SHA_URI"
+if ! aws --endpoint-url="$OVH_S3_ENDPOINT" s3 cp "$SHA_FILE" "$S3_SHA_URI" \
+  --sse AES256 --only-show-errors; then
+  err "S3 manifest upload failed — backup is still in S3 but without integrity sidecar"
+  exit 3
+fi
+log "Upload OK (dump + manifest, both SSE AES256)"
 
 # ----------------------------------------------------------------------------
 # 3. Rotate local dumps (OVH bucket has its own lifecycle rule)
