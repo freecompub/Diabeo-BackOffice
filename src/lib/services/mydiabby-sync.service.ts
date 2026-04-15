@@ -421,7 +421,10 @@ async function syncProfile(
     // Sync medical data
     if (mydiabbyUser.patient.medicaldata) {
       const medData = mapMedicalData(mydiabbyUser.patient.medicaldata)
-      const patient = await prisma.patient.findUnique({ where: { userId } })
+      // US-SEC-002: skip soft-deleted patients silently.
+      const patient = await prisma.patient.findFirst({
+        where: { userId, deletedAt: null },
+      })
       if (patient) {
         await prisma.patientMedicalData.upsert({
           where: { patientId: patient.id },
@@ -474,7 +477,11 @@ async function syncHealthData(
   dataResp: import("@/types/mydiabby").MyDiabbyDataResponse,
   lastSyncAt: Date | null,
 ): Promise<{ cgmCount: number; glycemiaCount: number; eventCount: number }> {
-  const patient = await prisma.patient.findUnique({ where: { userId } })
+  // US-SEC-002: skip soft-deleted patients silently — RGPD Art. 17 must not
+  // resurface PHI even if the upstream MyDiabby account is still active.
+  const patient = await prisma.patient.findFirst({
+    where: { userId, deletedAt: null },
+  })
   if (!patient) return { cgmCount: 0, glycemiaCount: 0, eventCount: 0 }
 
   let cgmCount = 0

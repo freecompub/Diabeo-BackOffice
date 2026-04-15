@@ -75,7 +75,7 @@ describe("objectivesService", () => {
       prismaMock.glycemiaObjective.findMany.mockResolvedValue([])
       prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
       prismaMock.annexObjective.findUnique.mockResolvedValue(null)
-      prismaMock.patient.findUnique.mockResolvedValue({ pathology: "DT1" } as never)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as never)
       prismaMock.auditLog.create.mockResolvedValue({} as never)
 
       const result = await objectivesService.getAll(1, 1)
@@ -90,11 +90,27 @@ describe("objectivesService", () => {
       prismaMock.glycemiaObjective.findMany.mockResolvedValue([])
       prismaMock.cgmObjective.findUnique.mockResolvedValue(cgmRecord as never)
       prismaMock.annexObjective.findUnique.mockResolvedValue(null)
-      prismaMock.patient.findUnique.mockResolvedValue({ pathology: "DT1" } as never)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as never)
       prismaMock.auditLog.create.mockResolvedValue({} as never)
 
       const result = await objectivesService.getAll(1, 1)
       expect(result.cgm).toEqual(cgmRecord)
+    })
+
+    it("US-SEC-002: queries patient with deletedAt:null filter (soft-delete guard)", async () => {
+      // Regression guard: a service-layer query without the soft-delete
+      // filter would resurface PHI of patients who exercised RGPD Art. 17.
+      const findFirstSpy = vi.spyOn(prismaMock.patient, "findFirst")
+      prismaMock.glycemiaObjective.findMany.mockResolvedValue([])
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.annexObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as never)
+      prismaMock.auditLog.create.mockResolvedValue({} as never)
+
+      await objectivesService.getAll(42, 1)
+
+      const call = findFirstSpy.mock.calls.at(-1)?.[0] as { where?: { deletedAt?: null } }
+      expect(call?.where?.deletedAt).toBeNull()
     })
   })
 

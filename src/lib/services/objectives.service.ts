@@ -90,7 +90,12 @@ export const objectivesService = {
       }),
       prisma.cgmObjective.findUnique({ where: { patientId } }),
       prisma.annexObjective.findUnique({ where: { patientId } }),
-      prisma.patient.findUnique({ where: { id: patientId }, select: { pathology: true } }),
+      // US-SEC-002: enforce soft-delete at service layer (defense in depth
+      // against a future route invoking this without canAccessPatient).
+      prisma.patient.findFirst({
+        where: { id: patientId, deletedAt: null },
+        select: { pathology: true },
+      }),
     ])
 
     await auditService.log({

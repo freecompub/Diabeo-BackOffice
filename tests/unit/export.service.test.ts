@@ -72,7 +72,7 @@ describe("generateUserExport", () => {
     prismaMock.userNotifPreferences.findUnique.mockResolvedValue(null)
     prismaMock.userPrivacySettings.findUnique.mockResolvedValue(null)
     prismaMock.userDayMoment.findMany.mockResolvedValue([])
-    prismaMock.patient.findUnique.mockResolvedValue(null)
+    prismaMock.patient.findFirst.mockResolvedValue(null)
 
     const result = await generateUserExport(1)
 
@@ -97,7 +97,7 @@ describe("generateUserExport", () => {
     prismaMock.userPrivacySettings.findUnique.mockResolvedValue(null)
     prismaMock.userDayMoment.findMany.mockResolvedValue([])
 
-    prismaMock.patient.findUnique.mockResolvedValue({ id: 10, pathology: "DT1" } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 10, pathology: "DT1" } as never)
     prismaMock.patientMedicalData.findUnique.mockResolvedValue(null)
     prismaMock.glycemiaObjective.findMany.mockResolvedValue([])
     prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
