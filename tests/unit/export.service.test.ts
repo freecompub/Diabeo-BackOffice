@@ -97,6 +97,7 @@ describe("generateUserExport", () => {
     prismaMock.userPrivacySettings.findUnique.mockResolvedValue(null)
     prismaMock.userDayMoment.findMany.mockResolvedValue([])
 
+    const findFirstSpy = vi.spyOn(prismaMock.patient, "findFirst")
     prismaMock.patient.findFirst.mockResolvedValue({ id: 10, pathology: "DT1" } as never)
     prismaMock.patientMedicalData.findUnique.mockResolvedValue(null)
     prismaMock.glycemiaObjective.findMany.mockResolvedValue([])
@@ -118,5 +119,10 @@ describe("generateUserExport", () => {
     expect(result!.patient).not.toBeNull()
     expect(result!.patient!.pathology).toBe("DT1")
     expect(result!.patient!.cgmEntries).toEqual([])
+    // US-SEC-002 regression guard: the soft-delete filter must be applied
+    // at the service layer. A revert to findUnique without the predicate
+    // would resurface PHI for patients who exercised RGPD Art. 17.
+    const call = findFirstSpy.mock.calls.at(-1)?.[0] as { where?: { deletedAt?: null } }
+    expect(call?.where?.deletedAt).toBeNull()
   })
 })

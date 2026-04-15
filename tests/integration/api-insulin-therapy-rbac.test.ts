@@ -26,6 +26,16 @@ vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: vi.fn().mockResolvedValue(tru
 vi.mock("@/lib/access-control", () => ({
   resolvePatientId: vi.fn().mockResolvedValue(42),
 }))
+vi.mock("@/lib/services/insulin.service", () => ({
+  insulinService: {
+    calculateBolus: vi.fn().mockResolvedValue({
+      mealBolus: 5, rawCorrectionDose: 0, iobAdjustment: 0, correctionDose: 0,
+      recommendedDose: 5, wasCapped: false, warnings: [],
+      requiresHypoTreatmentFirst: false, deliveryMethod: "pump",
+    }),
+  },
+  InvalidTherapyConfigError: class extends Error { code = "invalidTherapyConfig" as const },
+}))
 vi.mock("@/lib/services/insulin-therapy.service", () => ({
   insulinTherapyService: {
     upsertSettings: vi.fn().mockResolvedValue({ id: 1 }),
@@ -55,6 +65,7 @@ const { PUT: settingsPut, DELETE: settingsDelete } = await import("@/app/api/ins
 const { POST: isfPost } = await import("@/app/api/insulin-therapy/sensitivity-factors/route")
 const { POST: icrPost } = await import("@/app/api/insulin-therapy/carb-ratios/route")
 const { POST: pumpSlotPost, DELETE: pumpSlotDelete } = await import("@/app/api/insulin-therapy/basal-config/pump-slots/route")
+const { POST: bolusPost } = await import("@/app/api/insulin-therapy/calculate-bolus/route")
 
 function req(url: string, body: unknown, role: string): NextRequest {
   return new NextRequest(new URL(url), {
@@ -68,7 +79,12 @@ function req(url: string, body: unknown, role: string): NextRequest {
   })
 }
 
-function reqMethod(url: string, method: "DELETE" | "PUT", role: string, body?: unknown): NextRequest {
+function reqMethod(
+  url: string,
+  method: "DELETE" | "PUT",
+  role: string,
+  body?: Record<string, unknown>,
+): NextRequest {
   return new NextRequest(new URL(url), {
     method,
     headers: {
@@ -183,6 +199,24 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       // because mock chain doesn't surface a matching slot. Goal here is
       // only to assert the role guard does NOT reject NURSE.
       expect([200, 404]).toContain(res.status)
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Contract test: VIEWER (the patient) IS allowed to call /calculate-bolus.
+  // Documents the ADR #13 carve-out (read-model simulation, never auto-
+  // injected). Prevents an over-eager future hardening from breaking the
+  // patient-facing flow by requiring NURSE+ here too.
+  // ─────────────────────────────────────────────────────────────────────
+  describe("POST /api/insulin-therapy/calculate-bolus (VIEWER allowed by design)", () => {
+    const validBolusBody = { currentGlucoseGl: 1.5, carbsGrams: 60 }
+
+    it("ALLOWS VIEWER (the patient) — documented ADR #13 carve-out", async () => {
+      const res = await bolusPost(req("http://localhost/api/insulin-therapy/calculate-bolus", validBolusBody, "VIEWER"))
+      // Crucially NOT 403 — the patient must be able to simulate their own
+      // bolus (suggestion, never auto-injected per ADR #13).
+      expect(res.status).not.toBe(403)
+      expect([200, 201]).toContain(res.status)
     })
   })
 })
