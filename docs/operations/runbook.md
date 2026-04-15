@@ -427,9 +427,41 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
         policy is documented.
 - [ ] Install dependencies:
       ```sh
-      apt-get install -y postgresql-client awscli coreutils
+      apt-get install -y postgresql-client awscli coreutils age
       ```
-      `coreutils` provides `sha256sum` used by the integrity manifest.
+      `coreutils` provides `sha256sum`; `age` provides client-side
+      encryption (see next step).
+- [ ] **Generate the client-side encryption keypair** (offline, on an
+      HDS-scoped trusted workstation — NOT on the prod VPS):
+      ```sh
+      age-keygen -o diabeo-backup.age-key
+      # Output contains "# public key: age1…" — note it.
+      ```
+      - **Private key** (`diabeo-backup.age-key`): store in HashiCorp
+        Vault / OVH Secret Manager / offline HSM accessible by 2+ trusted
+        operators. NEVER on the prod VPS. Only way to decrypt during
+        restore drill.
+      - **Public key** (`age1…`): goes into the backup env file below.
+      - Losing the private key = losing every backup. Record in two
+        independent locations + document in the DPO breach-recovery plan.
+- [ ] **Give the `diabeo-backup` user a HOME directory** (required for `.pgpass`):
+      ```sh
+      sudo mkdir -p /var/lib/diabeo-backup
+      sudo chown diabeo-backup:diabeo-backup /var/lib/diabeo-backup
+      sudo usermod -d /var/lib/diabeo-backup diabeo-backup
+      ```
+- [ ] **MANDATORY `~/.pgpass`** — the script refuses `PGPASSWORD` in env:
+      ```sh
+      sudo -u diabeo-backup bash -c '
+        umask 077
+        printf "%s:5432:%s:%s:%s\n" \
+          "<OVH-DB-host>" "<DB>" "<user>" "<password>" \
+          > /var/lib/diabeo-backup/.pgpass
+      '
+      sudo chmod 0600 /var/lib/diabeo-backup/.pgpass
+      ```
+      The mode MUST be 0600 (Postgres silently ignores any other mode;
+      the script rejects the dump if the mode is wrong).
 - [ ] Create env file (owned by the backup user, mode 0600):
       ```sh
       sudo mkdir -p /etc/diabeo
@@ -438,18 +470,16 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
       PG_PORT=5432
       PG_USER=<DB user>
       PG_DB=diabeo
-      PGPASSWORD=<DB password>
       OVH_S3_ENDPOINT=https://s3.gra.io.cloud.ovh.net
       OVH_S3_ACCESS_KEY=<from OVH>
       OVH_S3_SECRET_KEY=<from OVH>
       OVH_S3_BUCKET=diabeo-backups-prod
+      AGE_RECIPIENT_PUBLIC_KEY=<age1…the public key from the keypair step>
       EOF
       sudo chown diabeo-backup:diabeo-backup /etc/diabeo/backup.env
       sudo chmod 0600 /etc/diabeo/backup.env
       ```
-      **HDS hardening (recommended)**: prefer a `~/.pgpass` (chmod 0600)
-      in the backup user home over `PGPASSWORD` in env. Eliminates the
-      `ps auxe` env-exposure window during `pg_dump` execution.
+      **No `PGPASSWORD` entry** — the script rejects it.
 - [ ] Create backup directory owned by the backup user:
       ```sh
       sudo mkdir -p /var/backups/diabeo
@@ -480,14 +510,75 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
 
 ### `scripts/decrypt-smoke.ts` prerequisites
 
-Run only during the quarterly restore drill, against the restored DB:
+Run only during the quarterly restore drill, on an **HDS-scoped trusted
+workstation** — NEVER on the prod VPS (plaintext PHI is briefly in
+memory).
 
-- [ ] Restore the dump into a throwaway DB (see §Backups — Restore drill)
+#### Drill host hardening (one-time)
+
+- [ ] Disable core dumps: `ulimit -c 0` in the drill user's shell profile
+- [ ] Disable swap on the drill host: `sudo swapoff -a` + comment the
+      swap entry in `/etc/fstab`. Prevents plaintext residency on disk
+      if the drill runs longer than expected.
+- [ ] Full-disk encryption (LUKS) required per HDS for any host that
+      holds PHI plaintext even transiently.
+
+#### Drill steps (quarterly)
+
+- [ ] **Retrieve the age private key** from Vault/HSM — NOT from the
+      prod VPS. Store in `~/diabeo-backup.age-key` on the drill host
+      with `chmod 0600`.
+- [ ] **Download** the latest backup envelope + manifest from the OVH
+      bucket:
+      ```sh
+      aws --endpoint-url=$OVH_S3 s3 cp \
+        s3://diabeo-backups-prod/postgres/$(date +%Y)/$(date +%m)/diabeo-<ts>.dump.age \
+        /tmp/
+      aws --endpoint-url=$OVH_S3 s3 cp \
+        s3://diabeo-backups-prod/postgres/$(date +%Y)/$(date +%m)/diabeo-<ts>.dump.age.sha256 \
+        /tmp/
+      ```
+- [ ] **Verify integrity** against the manifest:
+      ```sh
+      cd /tmp && sha256sum -c diabeo-<ts>.dump.age.sha256
+      # Must print: diabeo-<ts>.dump.age: OK
+      ```
+- [ ] **Decrypt** the envelope with the age private key:
+      ```sh
+      age -d -i ~/diabeo-backup.age-key \
+        -o /tmp/diabeo-<ts>.dump \
+        /tmp/diabeo-<ts>.dump.age
+      ```
+- [ ] Restore into a throwaway DB: `pg_restore --dbname=diabeo_restore /tmp/diabeo-<ts>.dump`
 - [ ] Export `DATABASE_URL` pointing at the restored DB
 - [ ] Export `HEALTH_DATA_ENCRYPTION_KEY` (same key that was active when
       the backup was taken — mismatch is exactly what this smoke catches)
 - [ ] Export `HMAC_SECRET` (any non-empty string; only required by the
       crypto module loader)
 - [ ] Run: `pnpm tsx scripts/decrypt-smoke.ts`
-- [ ] Exit code 0 + "All samples decrypted cleanly" = drill success
+- [ ] Exit code 0 + "samples decrypted cleanly" = drill success
+- [ ] **Securely wipe** the plaintext dump + restored DB when done:
+      `shred -u /tmp/diabeo-<ts>.dump && dropdb diabeo_restore`
 - [ ] Record outcome in `docs/operations/drill-log.md`
+
+### Centralized log forwarding (HDS traceability, 5-year retention)
+
+Local `/var/log/diabeo-*.log` files are destroyed on VPS failure. HDS
+§IV.3 requires operator-action logs retained on an independent trusted
+system for the legal duration.
+
+- [ ] Install `rsyslog` (default on Debian/Ubuntu) and configure
+      forwarding to OVH Logs Data Platform:
+      ```
+      # /etc/rsyslog.d/50-diabeo-ldp.conf
+      module(load="imfile" PollingInterval="10")
+      input(type="imfile" File="/var/log/diabeo-deploy.log" Tag="diabeo-deploy:")
+      input(type="imfile" File="/var/log/diabeo-backup.log" Tag="diabeo-backup:")
+      *.* @@<OVH LDP endpoint>:6514;RSYSLOG_SyslogProtocol23Format
+      ```
+- [ ] LDP ingestion key stored in `/etc/rsyslog.d/.ldp-key` (chmod 0600).
+- [ ] OVH LDP retention set to 5 years on the `diabeo-ops` stream.
+- [ ] Enable `pgaudit` on the managed OVH PostgreSQL (console → config
+      → `shared_preload_libraries += pgaudit`, `pgaudit.log = 'all'`).
+      Restrict `$PG_USER` to `pg_read_all_data` + explicit GRANTs on
+      the backup tables only — reduces blast radius on credential leak.
