@@ -15,6 +15,13 @@ const bolusSchema = z.object({
 
 export async function POST(req: NextRequest) {
   try {
+    // RBAC decision (US-SEC-001 audit follow-up): VIEWER (the patient
+    // themselves) is INTENTIONALLY allowed to call this route. Bolus
+    // calculation is a pure read-model simulation — it produces a
+    // recommendation that ADR #13 forbids from being auto-injected;
+    // the patient must explicitly accept before any insulin delivery.
+    // The dose-driving parameters (ISF/ICR/settings) are NURSE+ guarded
+    // separately in /sensitivity-factors, /carb-ratios, /settings.
     const user = requireAuth(req)
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

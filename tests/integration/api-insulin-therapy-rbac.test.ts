@@ -32,6 +32,9 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
     getSettings: vi.fn().mockResolvedValue({ id: 1 }),
     createIsf: vi.fn().mockResolvedValue({ id: "isf-1" }),
     createIcr: vi.fn().mockResolvedValue({ id: "icr-1" }),
+    deleteSettings: vi.fn().mockResolvedValue({ deleted: true }),
+    createPumpSlot: vi.fn().mockResolvedValue({ id: "slot-1" }),
+    deletePumpSlot: vi.fn().mockResolvedValue({ deleted: true }),
   },
   INSULIN_BOUNDS: {
     INSULIN_ACTION_MIN: 2,
@@ -40,15 +43,18 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
     ISF_GL_MAX: 1.00,
     ICR_MIN: 5.0,
     ICR_MAX: 20.0,
+    BASAL_MIN: 0.05,
+    BASAL_MAX: 10.0,
   },
 }))
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: () => ({ ipAddress: "1.2.3.4", userAgent: "vitest", requestId: "r" }),
 }))
 
-const { PUT: settingsPut } = await import("@/app/api/insulin-therapy/settings/route")
+const { PUT: settingsPut, DELETE: settingsDelete } = await import("@/app/api/insulin-therapy/settings/route")
 const { POST: isfPost } = await import("@/app/api/insulin-therapy/sensitivity-factors/route")
 const { POST: icrPost } = await import("@/app/api/insulin-therapy/carb-ratios/route")
+const { POST: pumpSlotPost, DELETE: pumpSlotDelete } = await import("@/app/api/insulin-therapy/basal-config/pump-slots/route")
 
 function req(url: string, body: unknown, role: string): NextRequest {
   return new NextRequest(new URL(url), {
@@ -59,6 +65,18 @@ function req(url: string, body: unknown, role: string): NextRequest {
       "x-user-role": role,
     },
     body: JSON.stringify(body),
+  })
+}
+
+function reqMethod(url: string, method: "DELETE" | "PUT", role: string, body?: unknown): NextRequest {
+  return new NextRequest(new URL(url), {
+    method,
+    headers: {
+      "content-type": "application/json",
+      "x-user-id": "7",
+      "x-user-role": role,
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
   })
 }
 
@@ -109,6 +127,62 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
     it("accepts NURSE", async () => {
       const res = await icrPost(req("http://localhost/api/insulin-therapy/carb-ratios", validIcrBody, "NURSE"))
       expect(res.status).toBe(201)
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Symmetry coverage on pre-existing role-guarded routes (DOCTOR/NURSE).
+  // Not part of the audit fix itself — guards that the existing posture
+  // doesn't silently regress alongside future changes.
+  // ─────────────────────────────────────────────────────────────────────
+
+  describe("DELETE /api/insulin-therapy/settings (DOCTOR only)", () => {
+    it("REJECTS NURSE with 403", async () => {
+      const url = "http://localhost/api/insulin-therapy/settings?patientId=42"
+      const res = await settingsDelete(reqMethod(url, "DELETE", "NURSE"))
+      expect(res.status).toBe(403)
+    })
+
+    it("REJECTS VIEWER with 403", async () => {
+      const url = "http://localhost/api/insulin-therapy/settings?patientId=42"
+      const res = await settingsDelete(reqMethod(url, "DELETE", "VIEWER"))
+      expect(res.status).toBe(403)
+    })
+
+    it("accepts DOCTOR", async () => {
+      const url = "http://localhost/api/insulin-therapy/settings?patientId=42"
+      const res = await settingsDelete(reqMethod(url, "DELETE", "DOCTOR"))
+      expect(res.status).toBe(200)
+    })
+  })
+
+  describe("POST + DELETE /api/insulin-therapy/basal-config/pump-slots (NURSE+)", () => {
+    const validSlot = { startTime: "06:00", endTime: "12:00", rate: 0.95 }
+
+    it("POST REJECTS VIEWER with 403", async () => {
+      const res = await pumpSlotPost(req("http://localhost/api/insulin-therapy/basal-config/pump-slots", validSlot, "VIEWER"))
+      expect(res.status).toBe(403)
+    })
+
+    it("POST accepts NURSE", async () => {
+      const res = await pumpSlotPost(req("http://localhost/api/insulin-therapy/basal-config/pump-slots", validSlot, "NURSE"))
+      // 201 (created) or 404 (no settings configured for patientId 42 in mock chain) — either way NOT 403
+      expect([201, 404]).toContain(res.status)
+    })
+
+    it("DELETE REJECTS VIEWER with 403", async () => {
+      const url = "http://localhost/api/insulin-therapy/basal-config/pump-slots?id=123e4567-e89b-42d3-a456-426614174000&patientId=42"
+      const res = await pumpSlotDelete(reqMethod(url, "DELETE", "VIEWER"))
+      expect(res.status).toBe(403)
+    })
+
+    it("DELETE accepts NURSE", async () => {
+      const url = "http://localhost/api/insulin-therapy/basal-config/pump-slots?id=123e4567-e89b-42d3-a456-426614174000&patientId=42"
+      const res = await pumpSlotDelete(reqMethod(url, "DELETE", "NURSE"))
+      // Not 403 — the role guard let the request through. 404 acceptable
+      // because mock chain doesn't surface a matching slot. Goal here is
+      // only to assert the role guard does NOT reject NURSE.
+      expect([200, 404]).toContain(res.status)
     })
   })
 })
