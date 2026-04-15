@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diabeo — Design System & Mockups par rôle</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          sans: ['Figtree', 'system-ui', 'sans-serif'],
+          mono: ['JetBrains Mono', 'monospace'],
+        },
+        colors: {
+          teal: {
+            50:'#F0FDFA',100:'#CCFBF1',200:'#99F6E4',300:'#5EEAD4',400:'#2DD4BF',
+            500:'#14B8A6',600:'#0D9488',700:'#0F766E',800:'#115E59',900:'#134E4A',950:'#042F2E'
+          },
+          coral: {
+            50:'#FFF7ED',100:'#FFEDD5',200:'#FED7AA',300:'#FDBA74',400:'#FB923C',
+            500:'#F97316',600:'#EA580C',700:'#C2410C',800:'#9A3412',900:'#7C2D12',950:'#431407'
+          },
+          ink: { 900:'#1F2937', 700:'#374151', 500:'#6B7280', 300:'#D1D5DB', 100:'#F3F4F6' },
+          gly: {
+            vlow:'#DC2626', low:'#F59E0B', ok:'#10B981', high:'#F59E0B', vhigh:'#DC2626', crit:'#B91C1C'
+          }
+        },
+        boxShadow: {
+          card: '0 1px 3px 0 rgb(0 0 0 / 0.04), 0 1px 2px -1px rgb(0 0 0 / 0.04)',
+          lift: '0 4px 16px -4px rgb(13 148 136 / 0.12), 0 2px 6px -2px rgb(0 0 0 / 0.05)',
+          critical: '0 0 0 3px rgb(220 38 38 / 0.12), 0 4px 12px -2px rgb(220 38 38 / 0.15)',
+        }
+      }
+    }
+  }
+</script>
+<style>
+  html { scroll-behavior: smooth; }
+  body { font-family: 'Figtree', system-ui, sans-serif; background: #FAFAFA; color:#1F2937; }
+  .chip { display:inline-flex; align-items:center; gap:.375rem; padding:.125rem .5rem; border-radius:9999px; font-size:.75rem; font-weight:500; }
+  .swatch { border-radius:10px; height:56px; display:flex; align-items:flex-end; padding:.5rem .625rem; font-size:.7rem; color:#fff; font-weight:600; box-shadow: inset 0 0 0 1px rgba(0,0,0,.05); }
+  .dot-legend { width:.625rem; height:.625rem; border-radius:9999px; display:inline-block; }
+  .kbd { font-family:'JetBrains Mono',monospace; font-size:.7rem; padding:.15rem .4rem; border:1px solid #E5E7EB; border-bottom-width:2px; border-radius:6px; background:#fff; color:#374151; }
+  .section-gutter { padding: 3.5rem 1.5rem; }
+  .tag-role { font-weight:700; letter-spacing:.06em; font-size:.65rem; text-transform:uppercase; }
+  .grid-bg { background-image: linear-gradient(#EEF2F7 1px, transparent 1px), linear-gradient(90deg, #EEF2F7 1px, transparent 1px); background-size: 24px 24px; }
+  /* Glycemia chart sparkline */
+  .spark path { fill: none; stroke: #0D9488; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .spark .area { fill: rgba(13,148,136,.08); stroke: none; }
+  /* focus ring demo */
+  .demo-focus:focus-visible { outline: 2px solid #0D9488; outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body class="antialiased">
+
+<!-- ============ TOP BAR ============ -->
+<header class="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-ink-100">
+  <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-teal-600 text-white grid place-items-center font-bold">D</div>
+      <div>
+        <div class="text-sm font-semibold">Diabeo · Design System</div>
+        <div class="text-xs text-ink-500">Sérénité Active — v1.0 · 2026-04-15</div>
+      </div>
+    </div>
+    <nav class="hidden md:flex items-center gap-1 text-sm">
+      <a href="#tokens" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Tokens</a>
+      <a href="#components" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Composants</a>
+      <a href="#admin" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Admin</a>
+      <a href="#doctor" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Médecin</a>
+      <a href="#nurse" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Infirmier·e</a>
+      <a href="#viewer" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Viewer</a>
+    </nav>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<section class="section-gutter border-b border-ink-100">
+  <div class="max-w-7xl mx-auto">
+    <div class="inline-flex items-center gap-2 chip bg-teal-50 text-teal-700 mb-5">
+      <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+      HDS · RGPD Art. 9 · WCAG 2.1 AA
+    </div>
+    <h1 class="text-4xl md:text-5xl font-extrabold tracking-tight text-ink-900 max-w-3xl">Un design system médical, calme et précis.</h1>
+    <p class="mt-4 text-lg text-ink-500 max-w-2xl">Quatre interfaces adaptées à chaque rôle clinique — couleurs cliniques normalisées, typographie accessible, densité d'information ajustée au flux de travail.</p>
+    <div class="mt-8 grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl">
+      <a href="#admin" class="group cursor-pointer rounded-xl border border-ink-100 bg-white p-4 hover:shadow-lift hover:border-teal-200 transition">
+        <div class="flex items-center justify-between"><span class="tag-role text-teal-700">Admin</span><i data-lucide="arrow-up-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i></div>
+        <div class="mt-2 text-sm font-medium">Audit & Utilisateurs</div>
+      </a>
+      <a href="#doctor" class="group cursor-pointer rounded-xl border border-ink-100 bg-white p-4 hover:shadow-lift hover:border-teal-200 transition">
+        <div class="flex items-center justify-between"><span class="tag-role text-teal-700">Médecin</span><i data-lucide="arrow-up-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i></div>
+        <div class="mt-2 text-sm font-medium">Portefeuille + Bolus</div>
+      </a>
+      <a href="#nurse" class="group cursor-pointer rounded-xl border border-ink-100 bg-white p-4 hover:shadow-lift hover:border-teal-200 transition">
+        <div class="flex items-center justify-between"><span class="tag-role text-teal-700">Infirmier·e</span><i data-lucide="arrow-up-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i></div>
+        <div class="mt-2 text-sm font-medium">Config insuline</div>
+      </a>
+      <a href="#viewer" class="group cursor-pointer rounded-xl border border-ink-100 bg-white p-4 hover:shadow-lift hover:border-teal-200 transition">
+        <div class="flex items-center justify-between"><span class="tag-role text-teal-700">Viewer</span><i data-lucide="arrow-up-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i></div>
+        <div class="mt-2 text-sm font-medium">Lecture seule</div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DESIGN TOKENS ============ -->
+<section id="tokens" class="section-gutter border-b border-ink-100 bg-white">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-8">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">01 — Tokens</div>
+        <h2 class="text-3xl font-bold mt-1">Fondations visuelles</h2>
+        <p class="text-ink-500 mt-2 max-w-2xl">Palette, typographie, espacements, ombres. Déjà présents dans <code class="font-mono text-xs bg-ink-100 px-1.5 py-0.5 rounded">src/styles/tokens.css</code>.</p>
+      </div>
+    </div>
+
+    <!-- Colors -->
+    <div class="grid md:grid-cols-2 gap-8">
+      <div>
+        <h3 class="text-sm font-semibold mb-3 flex items-center gap-2"><i data-lucide="droplet" class="w-4 h-4 text-teal-600"></i> Teal — Primaire</h3>
+        <div class="grid grid-cols-11 gap-1">
+          <div class="swatch" style="background:#F0FDFA;color:#134E4A">50</div>
+          <div class="swatch" style="background:#CCFBF1;color:#134E4A">100</div>
+          <div class="swatch" style="background:#99F6E4;color:#134E4A">200</div>
+          <div class="swatch" style="background:#5EEAD4;color:#134E4A">300</div>
+          <div class="swatch" style="background:#2DD4BF">400</div>
+          <div class="swatch" style="background:#14B8A6">500</div>
+          <div class="swatch ring-2 ring-teal-600 ring-offset-1" style="background:#0D9488">600</div>
+          <div class="swatch" style="background:#0F766E">700</div>
+          <div class="swatch" style="background:#115E59">800</div>
+          <div class="swatch" style="background:#134E4A">900</div>
+          <div class="swatch" style="background:#042F2E">950</div>
+        </div>
+        <p class="text-xs text-ink-500 mt-2"><strong>teal-600</strong> = couleur principale (CTA, liens, titres clés). Contraste 6.5:1 sur fond blanc.</p>
+      </div>
+      <div>
+        <h3 class="text-sm font-semibold mb-3 flex items-center gap-2"><i data-lucide="flame" class="w-4 h-4 text-coral-500"></i> Corail — Secondaire</h3>
+        <div class="grid grid-cols-11 gap-1">
+          <div class="swatch" style="background:#FFF7ED;color:#7C2D12">50</div>
+          <div class="swatch" style="background:#FFEDD5;color:#7C2D12">100</div>
+          <div class="swatch" style="background:#FED7AA;color:#7C2D12">200</div>
+          <div class="swatch" style="background:#FDBA74;color:#7C2D12">300</div>
+          <div class="swatch" style="background:#FB923C">400</div>
+          <div class="swatch ring-2 ring-coral-500 ring-offset-1" style="background:#F97316">500</div>
+          <div class="swatch" style="background:#EA580C">600</div>
+          <div class="swatch" style="background:#C2410C">700</div>
+          <div class="swatch" style="background:#9A3412">800</div>
+          <div class="swatch" style="background:#7C2D12">900</div>
+          <div class="swatch" style="background:#431407">950</div>
+        </div>
+        <p class="text-xs text-ink-500 mt-2"><strong>coral-500</strong> = actions secondaires, attention. Jamais seul pour signaler danger (→ rouge).</p>
+      </div>
+    </div>
+
+    <!-- Clinical -->
+    <div class="mt-10">
+      <h3 class="text-sm font-semibold mb-3 flex items-center gap-2"><i data-lucide="activity" class="w-4 h-4 text-teal-600"></i> Échelle glycémique clinique</h3>
+      <div class="grid grid-cols-6 gap-2">
+        <div class="rounded-lg border border-ink-100 bg-white p-3">
+          <div class="h-10 rounded-md" style="background:#7F1D1D"></div>
+          <div class="mt-2 text-xs font-semibold">Très basse</div>
+          <div class="text-xs text-ink-500 font-mono">&lt; 54 mg/dL</div>
+        </div>
+        <div class="rounded-lg border border-ink-100 bg-white p-3">
+          <div class="h-10 rounded-md" style="background:#DC2626"></div>
+          <div class="mt-2 text-xs font-semibold">Basse</div>
+          <div class="text-xs text-ink-500 font-mono">54–69</div>
+        </div>
+        <div class="rounded-lg border-2 border-emerald-500 bg-white p-3">
+          <div class="h-10 rounded-md" style="background:#10B981"></div>
+          <div class="mt-2 text-xs font-semibold">Normale · TIR</div>
+          <div class="text-xs text-ink-500 font-mono">70–180</div>
+        </div>
+        <div class="rounded-lg border border-ink-100 bg-white p-3">
+          <div class="h-10 rounded-md" style="background:#F59E0B"></div>
+          <div class="mt-2 text-xs font-semibold">Haute</div>
+          <div class="text-xs text-ink-500 font-mono">181–250</div>
+        </div>
+        <div class="rounded-lg border border-ink-100 bg-white p-3">
+          <div class="h-10 rounded-md" style="background:#EA580C"></div>
+          <div class="mt-2 text-xs font-semibold">Très haute</div>
+          <div class="text-xs text-ink-500 font-mono">251–300</div>
+        </div>
+        <div class="rounded-lg border border-ink-100 bg-white p-3">
+          <div class="h-10 rounded-md" style="background:#B91C1C"></div>
+          <div class="mt-2 text-xs font-semibold">Critique</div>
+          <div class="text-xs text-ink-500 font-mono">&gt; 300</div>
+        </div>
+      </div>
+      <p class="text-xs text-ink-500 mt-2">Couleurs accompagnées de <strong>texte + icône</strong> — jamais couleur seule (daltonisme, WCAG 1.4.1).</p>
+    </div>
+
+    <!-- Pathology -->
+    <div class="mt-10">
+      <h3 class="text-sm font-semibold mb-3 flex items-center gap-2"><i data-lucide="stethoscope" class="w-4 h-4 text-teal-600"></i> Pathologies</h3>
+      <div class="flex flex-wrap gap-3">
+        <span class="chip bg-[#DBEAFE] text-[#1E40AF]"><span class="dot-legend" style="background:#3B82F6"></span>DT1 — Type 1</span>
+        <span class="chip bg-[#FCE7F3] text-[#9D174D]"><span class="dot-legend" style="background:#DB2777"></span>DT2 — Type 2</span>
+        <span class="chip bg-[#F3E8FF] text-[#6B21A8]"><span class="dot-legend" style="background:#A855F7"></span>GD — Gestationnel</span>
+      </div>
+    </div>
+
+    <!-- Typography + spacing + shadows -->
+    <div class="mt-10 grid md:grid-cols-3 gap-6">
+      <div class="rounded-xl border border-ink-100 p-5 bg-white">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-3">Typographie</div>
+        <div class="font-sans">
+          <div class="text-4xl font-extrabold">Figtree 800</div>
+          <div class="text-2xl font-semibold mt-2">Heading 600</div>
+          <div class="text-base mt-2">Body 400 — 16px / 1.6</div>
+          <div class="text-sm text-ink-500 mt-1">Caption — 14px</div>
+          <div class="mt-3 text-xs font-mono">0123456789 · mg/dL · U/h · g/L</div>
+        </div>
+      </div>
+      <div class="rounded-xl border border-ink-100 p-5 bg-white">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-3">Espacement · 4pt</div>
+        <div class="space-y-1">
+          <div class="flex items-center gap-2 text-xs"><span class="bg-teal-600 h-2" style="width:4px"></span>1 · 4px</div>
+          <div class="flex items-center gap-2 text-xs"><span class="bg-teal-600 h-2" style="width:8px"></span>2 · 8px</div>
+          <div class="flex items-center gap-2 text-xs"><span class="bg-teal-600 h-2" style="width:16px"></span>4 · 16px</div>
+          <div class="flex items-center gap-2 text-xs"><span class="bg-teal-600 h-2" style="width:24px"></span>6 · 24px</div>
+          <div class="flex items-center gap-2 text-xs"><span class="bg-teal-600 h-2" style="width:32px"></span>8 · 32px</div>
+          <div class="flex items-center gap-2 text-xs"><span class="bg-teal-600 h-2" style="width:48px"></span>12 · 48px</div>
+        </div>
+        <div class="mt-4 text-xs text-ink-500">Radius : 6 / 10 / 14 / 20 · touch 44×44</div>
+      </div>
+      <div class="rounded-xl border border-ink-100 p-5 bg-white">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-3">Ombres & focus</div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="h-14 rounded-lg bg-white shadow-card grid place-items-center text-xs">card</div>
+          <div class="h-14 rounded-lg bg-white shadow-lift grid place-items-center text-xs">lift</div>
+          <div class="h-14 rounded-lg bg-white shadow-critical grid place-items-center text-xs text-red-700 font-semibold">critical</div>
+          <button class="demo-focus h-14 rounded-lg border border-ink-100 grid place-items-center text-xs cursor-pointer">focus-visible</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ COMPONENTS ============ -->
+<section id="components" class="section-gutter border-b border-ink-100">
+  <div class="max-w-7xl mx-auto">
+    <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">02 — Composants</div>
+    <h2 class="text-3xl font-bold mt-1 mb-8">Blocs de base</h2>
+
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- Buttons -->
+      <div class="rounded-xl border border-ink-100 bg-white p-5">
+        <div class="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">Boutons</div>
+        <div class="flex flex-wrap gap-2">
+          <button class="cursor-pointer px-4 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium hover:bg-teal-700 transition-colors">Valider</button>
+          <button class="cursor-pointer px-4 py-2 rounded-lg bg-white border border-ink-100 text-ink-700 text-sm font-medium hover:bg-ink-100 transition-colors">Secondaire</button>
+          <button class="cursor-pointer px-4 py-2 rounded-lg bg-coral-500 text-white text-sm font-medium hover:bg-coral-600 transition-colors">Alerte</button>
+          <button class="cursor-pointer px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">Danger</button>
+          <button disabled class="px-4 py-2 rounded-lg bg-ink-100 text-ink-300 text-sm font-medium cursor-not-allowed">Disabled</button>
+        </div>
+      </div>
+      <!-- Badges -->
+      <div class="rounded-xl border border-ink-100 bg-white p-5">
+        <div class="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">Badges cliniques</div>
+        <div class="flex flex-wrap gap-2">
+          <span class="chip bg-emerald-50 text-emerald-700"><i data-lucide="check-circle-2" class="w-3 h-3"></i>En cible</span>
+          <span class="chip bg-amber-50 text-amber-700"><i data-lucide="alert-triangle" class="w-3 h-3"></i>Hyper</span>
+          <span class="chip bg-red-50 text-red-700"><i data-lucide="alert-octagon" class="w-3 h-3"></i>Hypo</span>
+          <span class="chip bg-teal-50 text-teal-700"><i data-lucide="sparkles" class="w-3 h-3"></i>Nouveau</span>
+          <span class="chip bg-ink-100 text-ink-700"><i data-lucide="clock" class="w-3 h-3"></i>En attente</span>
+        </div>
+      </div>
+      <!-- Input -->
+      <div class="rounded-xl border border-ink-100 bg-white p-5">
+        <div class="text-xs font-semibold text-ink-500 uppercase tracking-wider mb-3">Champ saisie</div>
+        <label class="text-xs text-ink-700 font-medium">Glycémie actuelle</label>
+        <div class="mt-1.5 relative">
+          <input class="demo-focus w-full px-3 py-2.5 pr-16 rounded-lg border border-ink-300 text-sm" value="142" />
+          <span class="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-500 font-mono">mg/dL</span>
+        </div>
+        <p class="mt-1.5 text-xs text-emerald-600 flex items-center gap-1"><i data-lucide="check" class="w-3 h-3"></i>Dans la cible (70–180)</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ ADMIN ============ -->
+<section id="admin" class="section-gutter border-b border-ink-100 bg-white">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-6">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">03 — Interface</div>
+        <h2 class="text-3xl font-bold mt-1">ADMIN — Audit & Utilisateurs</h2>
+        <p class="text-ink-500 mt-2">Densité haute · priorité : traçabilité HDS, gestion RBAC, santé système.</p>
+      </div>
+      <span class="tag-role chip bg-teal-600 text-white">ADMIN</span>
+    </div>
+
+    <!-- Mockup frame -->
+    <div class="rounded-2xl border border-ink-100 overflow-hidden shadow-lift bg-[#FAFAFA]">
+      <!-- App top bar -->
+      <div class="h-12 bg-white border-b border-ink-100 flex items-center px-4 gap-3">
+        <div class="flex gap-1.5"><span class="w-3 h-3 rounded-full bg-red-400"></span><span class="w-3 h-3 rounded-full bg-amber-400"></span><span class="w-3 h-3 rounded-full bg-emerald-400"></span></div>
+        <div class="ml-4 text-xs font-mono text-ink-500">app.diabeo.fr/admin</div>
+      </div>
+      <div class="flex">
+        <!-- Sidebar -->
+        <aside class="w-56 bg-white border-r border-ink-100 py-4">
+          <div class="px-4 mb-4 flex items-center gap-2">
+            <div class="w-7 h-7 rounded-md bg-teal-600 text-white grid place-items-center text-sm font-bold">D</div>
+            <div class="text-sm font-semibold">Diabeo</div>
+          </div>
+          <nav class="text-sm">
+            <a class="flex items-center gap-2 px-4 py-2 text-ink-700 hover:bg-ink-100 cursor-pointer"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard</a>
+            <a class="flex items-center gap-2 px-4 py-2 text-ink-700 hover:bg-ink-100 cursor-pointer"><i data-lucide="users" class="w-4 h-4"></i>Patients</a>
+            <a class="flex items-center gap-2 px-4 py-2 bg-teal-50 text-teal-700 border-l-2 border-teal-600 cursor-pointer"><i data-lucide="shield" class="w-4 h-4"></i>Utilisateurs</a>
+            <a class="flex items-center gap-2 px-4 py-2 text-ink-700 hover:bg-ink-100 cursor-pointer"><i data-lucide="file-text" class="w-4 h-4"></i>Audit HDS</a>
+            <a class="flex items-center gap-2 px-4 py-2 text-ink-700 hover:bg-ink-100 cursor-pointer"><i data-lucide="settings" class="w-4 h-4"></i>Système</a>
+          </nav>
+          <div class="mt-8 mx-4 p-3 rounded-lg bg-emerald-50 border border-emerald-100">
+            <div class="flex items-center gap-2 text-xs font-semibold text-emerald-700"><i data-lucide="shield-check" class="w-3.5 h-3.5"></i>HDS actif</div>
+            <div class="text-xs text-emerald-700/80 mt-1">Chiffrement AES-256-GCM<br/>Audit : 100%</div>
+          </div>
+        </aside>
+
+        <!-- Content -->
+        <div class="flex-1 p-6">
+          <!-- KPI row -->
+          <div class="grid grid-cols-4 gap-4">
+            <div class="rounded-xl bg-white border border-ink-100 p-4">
+              <div class="flex items-center gap-2 text-xs text-ink-500"><i data-lucide="users" class="w-3.5 h-3.5"></i>Utilisateurs actifs</div>
+              <div class="mt-1 text-2xl font-bold">247</div>
+              <div class="text-xs text-emerald-600 mt-1">+12 cette semaine</div>
+            </div>
+            <div class="rounded-xl bg-white border border-ink-100 p-4">
+              <div class="flex items-center gap-2 text-xs text-ink-500"><i data-lucide="user-check" class="w-3.5 h-3.5"></i>MFA activée</div>
+              <div class="mt-1 text-2xl font-bold">94<span class="text-sm text-ink-500">%</span></div>
+              <div class="h-1.5 mt-2 bg-ink-100 rounded-full overflow-hidden"><div class="h-full bg-teal-600" style="width:94%"></div></div>
+            </div>
+            <div class="rounded-xl bg-white border border-ink-100 p-4">
+              <div class="flex items-center gap-2 text-xs text-ink-500"><i data-lucide="file-text" class="w-3.5 h-3.5"></i>Audit log (24h)</div>
+              <div class="mt-1 text-2xl font-bold">1 847</div>
+              <div class="text-xs text-ink-500 mt-1">Immuable · trigger DB</div>
+            </div>
+            <div class="rounded-xl bg-white border border-red-200 p-4 shadow-critical">
+              <div class="flex items-center gap-2 text-xs text-red-700 font-semibold"><i data-lucide="alert-octagon" class="w-3.5 h-3.5"></i>Incidents sécurité</div>
+              <div class="mt-1 text-2xl font-bold text-red-700">2</div>
+              <div class="text-xs text-red-600 mt-1">Rate-limit × 2 (login)</div>
+            </div>
+          </div>
+
+          <!-- Audit log table -->
+          <div class="mt-6 rounded-xl bg-white border border-ink-100 overflow-hidden">
+            <div class="px-4 py-3 border-b border-ink-100 flex items-center justify-between">
+              <div>
+                <div class="text-sm font-semibold">Journal d'audit HDS</div>
+                <div class="text-xs text-ink-500">Dernières 24h · 1 847 entrées · immuables</div>
+              </div>
+              <div class="flex items-center gap-2">
+                <div class="relative">
+                  <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500"></i>
+                  <input class="pl-8 pr-3 py-1.5 text-xs rounded-md border border-ink-100 w-48" placeholder="Filtrer par user, ressource…" />
+                </div>
+                <button class="cursor-pointer text-xs px-3 py-1.5 rounded-md bg-teal-600 text-white font-medium">Exporter CSV</button>
+              </div>
+            </div>
+            <table class="w-full text-sm">
+              <thead class="bg-ink-100/60 text-xs text-ink-500 uppercase tracking-wider">
+                <tr><th class="text-left px-4 py-2 font-medium">Horodatage</th><th class="text-left px-4 py-2 font-medium">Acteur</th><th class="text-left px-4 py-2 font-medium">Action</th><th class="text-left px-4 py-2 font-medium">Ressource</th><th class="text-left px-4 py-2 font-medium">IP</th><th class="text-left px-4 py-2 font-medium">Statut</th></tr>
+              </thead>
+              <tbody>
+                <tr class="border-t border-ink-100">
+                  <td class="px-4 py-2.5 font-mono text-xs">14:32:07</td>
+                  <td class="px-4 py-2.5">Dr. Martin</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-teal-50 text-teal-700">READ</span></td>
+                  <td class="px-4 py-2.5 font-mono text-xs">PATIENT:DT1-042</td>
+                  <td class="px-4 py-2.5 font-mono text-xs">82.65.*.*</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-emerald-50 text-emerald-700">OK</span></td>
+                </tr>
+                <tr class="border-t border-ink-100 bg-amber-50/40">
+                  <td class="px-4 py-2.5 font-mono text-xs">14:30:12</td>
+                  <td class="px-4 py-2.5">Inf. Dubois</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-amber-50 text-amber-700">UPDATE</span></td>
+                  <td class="px-4 py-2.5 font-mono text-xs">INSULIN_CONFIG:89</td>
+                  <td class="px-4 py-2.5 font-mono text-xs">10.0.*.*</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-amber-50 text-amber-700">EN ATTENTE VALID.</span></td>
+                </tr>
+                <tr class="border-t border-ink-100 bg-red-50/40">
+                  <td class="px-4 py-2.5 font-mono text-xs">14:28:55</td>
+                  <td class="px-4 py-2.5 text-red-700 font-medium">—</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-red-50 text-red-700">LOGIN_FAIL</span></td>
+                  <td class="px-4 py-2.5 font-mono text-xs">email: j***n@d***.fr</td>
+                  <td class="px-4 py-2.5 font-mono text-xs">185.22.*.*</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-red-50 text-red-700">Lockout 15min</span></td>
+                </tr>
+                <tr class="border-t border-ink-100">
+                  <td class="px-4 py-2.5 font-mono text-xs">14:25:40</td>
+                  <td class="px-4 py-2.5">Dr. Laurent</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-teal-50 text-teal-700">CREATE</span></td>
+                  <td class="px-4 py-2.5 font-mono text-xs">BOLUS_LOG:1209</td>
+                  <td class="px-4 py-2.5 font-mono text-xs">82.65.*.*</td>
+                  <td class="px-4 py-2.5"><span class="chip bg-emerald-50 text-emerald-700">OK</span></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DOCTOR ============ -->
+<section id="doctor" class="section-gutter border-b border-ink-100">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-6">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">04 — Interface</div>
+        <h2 class="text-3xl font-bold mt-1">MÉDECIN — Portefeuille & validation bolus</h2>
+        <p class="text-ink-500 mt-2">Densité moyenne · priorité : décision clinique, validation des suggestions, suivi TIR.</p>
+      </div>
+      <span class="tag-role chip bg-teal-600 text-white">DOCTOR</span>
+    </div>
+
+    <div class="rounded-2xl border border-ink-100 overflow-hidden shadow-lift bg-[#FAFAFA]">
+      <div class="h-12 bg-white border-b border-ink-100 flex items-center px-4 gap-3">
+        <div class="flex gap-1.5"><span class="w-3 h-3 rounded-full bg-red-400"></span><span class="w-3 h-3 rounded-full bg-amber-400"></span><span class="w-3 h-3 rounded-full bg-emerald-400"></span></div>
+        <div class="ml-4 text-xs font-mono text-ink-500">app.diabeo.fr/patients/DT1-042</div>
+        <div class="ml-auto flex items-center gap-3">
+          <div class="chip bg-teal-50 text-teal-700"><i data-lucide="user-check" class="w-3 h-3"></i>Dr. Martin</div>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <!-- Patient header -->
+        <div class="rounded-2xl bg-white border border-ink-100 p-5 flex items-center gap-6">
+          <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 grid place-items-center text-white text-xl font-bold">EL</div>
+          <div class="flex-1">
+            <div class="flex items-center gap-3">
+              <h3 class="text-xl font-bold">Émilie Laurent</h3>
+              <span class="chip bg-blue-50 text-blue-700"><span class="dot-legend" style="background:#3B82F6"></span>DT1</span>
+              <span class="chip bg-ink-100 text-ink-700">38 ans · F</span>
+              <span class="chip bg-teal-50 text-teal-700"><i data-lucide="activity" class="w-3 h-3"></i>Pompe + CGM Dexcom G7</span>
+            </div>
+            <div class="text-xs text-ink-500 mt-1 font-mono">ID: DT1-042 · Diabète depuis 2009 · Dernière consultation 12 mars</div>
+          </div>
+          <div class="flex gap-2">
+            <button class="cursor-pointer px-3 py-2 rounded-lg border border-ink-100 hover:bg-ink-100 text-sm"><i data-lucide="file-plus" class="w-4 h-4 inline mr-1"></i>Note</button>
+            <button class="cursor-pointer px-3 py-2 rounded-lg bg-teal-600 text-white text-sm"><i data-lucide="calendar-plus" class="w-4 h-4 inline mr-1"></i>RDV</button>
+          </div>
+        </div>
+
+        <!-- KPI clinical -->
+        <div class="grid grid-cols-5 gap-4">
+          <div class="rounded-xl bg-white border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">Glycémie actuelle</div>
+            <div class="mt-1 text-3xl font-bold text-emerald-600">142<span class="text-sm text-ink-500 ml-1 font-normal">mg/dL</span></div>
+            <div class="text-xs text-emerald-600 mt-1 flex items-center gap-1"><i data-lucide="trending-down" class="w-3 h-3"></i>-3 mg/dL · 5min</div>
+          </div>
+          <div class="rounded-xl bg-white border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">TIR (14j)</div>
+            <div class="mt-1 text-3xl font-bold">78<span class="text-sm text-ink-500 ml-1 font-normal">%</span></div>
+            <div class="flex h-1.5 mt-2 rounded-full overflow-hidden">
+              <div style="width:2%;background:#7F1D1D"></div>
+              <div style="width:4%;background:#DC2626"></div>
+              <div style="width:78%;background:#10B981"></div>
+              <div style="width:13%;background:#F59E0B"></div>
+              <div style="width:3%;background:#EA580C"></div>
+            </div>
+          </div>
+          <div class="rounded-xl bg-white border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">HbA1c estimée</div>
+            <div class="mt-1 text-3xl font-bold">6.9<span class="text-sm text-ink-500 ml-1 font-normal">%</span></div>
+            <div class="text-xs text-emerald-600 mt-1">Cible atteinte</div>
+          </div>
+          <div class="rounded-xl bg-white border border-amber-200 p-4">
+            <div class="text-xs text-amber-700 font-medium flex items-center gap-1"><i data-lucide="alert-triangle" class="w-3 h-3"></i>Hypo (14j)</div>
+            <div class="mt-1 text-3xl font-bold text-amber-700">4</div>
+            <div class="text-xs text-amber-600 mt-1">1 nocturne</div>
+          </div>
+          <div class="rounded-xl bg-white border border-coral-300 p-4">
+            <div class="text-xs text-coral-700 font-medium flex items-center gap-1"><i data-lucide="inbox" class="w-3 h-3"></i>À valider</div>
+            <div class="mt-1 text-3xl font-bold text-coral-700">3</div>
+            <div class="text-xs text-coral-700 mt-1">Propositions bolus</div>
+          </div>
+        </div>
+
+        <!-- CGM chart + bolus queue -->
+        <div class="grid grid-cols-3 gap-4">
+          <!-- CGM chart -->
+          <div class="col-span-2 rounded-xl bg-white border border-ink-100 p-5">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <div class="text-sm font-semibold">CGM — Dernières 24h</div>
+                <div class="text-xs text-ink-500">Cible 70–180 mg/dL · bande verte</div>
+              </div>
+              <div class="flex gap-1 text-xs">
+                <button class="px-2 py-1 rounded border border-teal-600 bg-teal-50 text-teal-700 cursor-pointer font-medium">24h</button>
+                <button class="px-2 py-1 rounded border border-ink-100 text-ink-500 hover:bg-ink-100 cursor-pointer">7j</button>
+                <button class="px-2 py-1 rounded border border-ink-100 text-ink-500 hover:bg-ink-100 cursor-pointer">30j</button>
+              </div>
+            </div>
+            <svg viewBox="0 0 600 220" class="w-full h-56 spark" role="img" aria-label="Courbe glycémique 24h">
+              <!-- target band -->
+              <rect x="0" y="90" width="600" height="70" fill="rgba(16,185,129,.08)"/>
+              <line x1="0" y1="90" x2="600" y2="90" stroke="#10B981" stroke-width="1" stroke-dasharray="2 3"/>
+              <line x1="0" y1="160" x2="600" y2="160" stroke="#10B981" stroke-width="1" stroke-dasharray="2 3"/>
+              <!-- critical band -->
+              <rect x="0" y="0" width="600" height="40" fill="rgba(220,38,38,.04)"/>
+              <rect x="0" y="190" width="600" height="30" fill="rgba(220,38,38,.05)"/>
+              <!-- grid -->
+              <g stroke="#F3F4F6" stroke-width="1">
+                <line x1="0" y1="40" x2="600" y2="40"/><line x1="0" y1="130" x2="600" y2="130"/>
+                <line x1="100" y1="0" x2="100" y2="220"/><line x1="200" y1="0" x2="200" y2="220"/>
+                <line x1="300" y1="0" x2="300" y2="220"/><line x1="400" y1="0" x2="400" y2="220"/>
+                <line x1="500" y1="0" x2="500" y2="220"/>
+              </g>
+              <!-- area -->
+              <path class="area" d="M0,120 L40,110 L80,95 L120,80 L160,70 L200,100 L240,130 L280,150 L320,160 L360,145 L400,125 L440,110 L480,100 L520,115 L560,125 L600,120 L600,220 L0,220 Z"/>
+              <!-- line -->
+              <path d="M0,120 L40,110 L80,95 L120,80 L160,70 L200,100 L240,130 L280,150 L320,160 L360,145 L400,125 L440,110 L480,100 L520,115 L560,125 L600,120"/>
+              <!-- event markers -->
+              <circle cx="160" cy="70" r="5" fill="#EA580C" stroke="#fff" stroke-width="2"/>
+              <circle cx="320" cy="160" r="5" fill="#F59E0B" stroke="#fff" stroke-width="2"/>
+              <circle cx="480" cy="100" r="5" fill="#0D9488" stroke="#fff" stroke-width="2"/>
+              <!-- labels -->
+              <g font-size="10" fill="#6B7280" font-family="JetBrains Mono">
+                <text x="5" y="15">300</text><text x="5" y="95">180</text><text x="5" y="165">70</text><text x="5" y="215">40</text>
+                <text x="95" y="215">00:00</text><text x="195" y="215">06:00</text><text x="295" y="215">12:00</text><text x="395" y="215">18:00</text><text x="495" y="215">24:00</text>
+              </g>
+            </svg>
+            <div class="flex gap-4 text-xs mt-3 text-ink-500">
+              <div class="flex items-center gap-1"><span class="dot-legend" style="background:#0D9488"></span>CGM</div>
+              <div class="flex items-center gap-1"><span class="dot-legend" style="background:#EA580C"></span>Repas</div>
+              <div class="flex items-center gap-1"><span class="dot-legend" style="background:#F59E0B"></span>Bolus</div>
+              <div class="flex items-center gap-1"><span class="dot-legend" style="background:rgba(16,185,129,.3)"></span>Zone cible</div>
+            </div>
+          </div>
+
+          <!-- Bolus validation queue -->
+          <div class="rounded-xl bg-white border border-ink-100 p-5">
+            <div class="flex items-center justify-between mb-3">
+              <div>
+                <div class="text-sm font-semibold flex items-center gap-2"><i data-lucide="clipboard-check" class="w-4 h-4 text-coral-500"></i>File de validation</div>
+                <div class="text-xs text-ink-500">3 propositions · calcul auto</div>
+              </div>
+            </div>
+            <div class="space-y-3">
+              <div class="rounded-lg border border-coral-200 bg-coral-50/40 p-3">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs font-semibold text-ink-700">Bolus repas · 12:15</div>
+                  <span class="chip bg-white border border-coral-300 text-coral-700 text-[0.65rem]">En attente</span>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <div><div class="text-ink-500">Glucides</div><div class="font-mono font-semibold">55 g</div></div>
+                  <div><div class="text-ink-500">ICR</div><div class="font-mono font-semibold">10 g/U</div></div>
+                  <div><div class="text-ink-500">Dose</div><div class="font-mono font-bold text-teal-700">5.5 U</div></div>
+                </div>
+                <div class="mt-2 flex gap-2">
+                  <button class="flex-1 text-xs py-1.5 rounded bg-teal-600 text-white font-medium cursor-pointer hover:bg-teal-700">Valider</button>
+                  <button class="flex-1 text-xs py-1.5 rounded border border-ink-100 cursor-pointer hover:bg-ink-100">Ajuster</button>
+                </div>
+              </div>
+              <div class="rounded-lg border border-ink-100 p-3">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs font-semibold">Correction · 09:42</div>
+                  <span class="chip bg-emerald-50 text-emerald-700 text-[0.65rem]">Auto-validé</span>
+                </div>
+                <div class="mt-2 grid grid-cols-3 gap-2 text-xs">
+                  <div><div class="text-ink-500">Gly cible</div><div class="font-mono">110</div></div>
+                  <div><div class="text-ink-500">ISF</div><div class="font-mono">50 mg/dL/U</div></div>
+                  <div><div class="text-ink-500">Dose</div><div class="font-mono font-semibold text-emerald-700">1.2 U</div></div>
+                </div>
+              </div>
+              <div class="rounded-lg border border-amber-200 bg-amber-50/40 p-3">
+                <div class="flex items-center justify-between">
+                  <div class="text-xs font-semibold">⚠ IOB élevé</div>
+                  <span class="chip bg-amber-100 text-amber-700 text-[0.65rem]">Révision</span>
+                </div>
+                <p class="text-xs text-ink-500 mt-1">2.4U insuline active · attendre 45 min avant prochain bolus correctif.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ NURSE ============ -->
+<section id="nurse" class="section-gutter border-b border-ink-100 bg-white">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-6">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">05 — Interface</div>
+        <h2 class="text-3xl font-bold mt-1">INFIRMIER·E — Liste patients & config</h2>
+        <p class="text-ink-500 mt-2">Densité moyenne · priorité : triage rapide, création InsulinConfig (sans validation finale).</p>
+      </div>
+      <span class="tag-role chip bg-teal-600 text-white">NURSE</span>
+    </div>
+
+    <div class="rounded-2xl border border-ink-100 overflow-hidden shadow-lift bg-[#FAFAFA]">
+      <div class="h-12 bg-white border-b border-ink-100 flex items-center px-4 gap-3">
+        <div class="flex gap-1.5"><span class="w-3 h-3 rounded-full bg-red-400"></span><span class="w-3 h-3 rounded-full bg-amber-400"></span><span class="w-3 h-3 rounded-full bg-emerald-400"></span></div>
+        <div class="ml-4 text-xs font-mono text-ink-500">app.diabeo.fr/patients</div>
+      </div>
+      <div class="p-6 grid grid-cols-3 gap-6">
+        <!-- Patient list -->
+        <div class="col-span-2 rounded-xl bg-white border border-ink-100 overflow-hidden">
+          <div class="px-4 py-3 border-b border-ink-100 flex items-center justify-between">
+            <div class="text-sm font-semibold">Patients de l'unité — 24 actifs</div>
+            <div class="flex items-center gap-2">
+              <div class="relative">
+                <i data-lucide="search" class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-500"></i>
+                <input class="pl-8 pr-3 py-1.5 text-xs rounded-md border border-ink-100 w-48" placeholder="Rechercher…" />
+              </div>
+              <div class="flex gap-1 text-xs">
+                <button class="px-2 py-1 rounded-md bg-teal-600 text-white cursor-pointer">Tous</button>
+                <button class="px-2 py-1 rounded-md border border-ink-100 hover:bg-ink-100 cursor-pointer">DT1</button>
+                <button class="px-2 py-1 rounded-md border border-ink-100 hover:bg-ink-100 cursor-pointer">DT2</button>
+                <button class="px-2 py-1 rounded-md border border-ink-100 hover:bg-ink-100 cursor-pointer">GD</button>
+              </div>
+            </div>
+          </div>
+          <div class="divide-y divide-ink-100">
+            <!-- Patient row template -->
+            <div class="px-4 py-3 flex items-center gap-4 hover:bg-ink-100/50 cursor-pointer group">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 grid place-items-center text-white text-sm font-semibold">EL</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="text-sm font-semibold">Émilie Laurent</div>
+                  <span class="chip bg-blue-50 text-blue-700 text-[0.65rem]">DT1</span>
+                </div>
+                <div class="text-xs text-ink-500 font-mono">DT1-042 · 38 ans · Pompe</div>
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-bold text-emerald-600 font-mono">142<span class="text-xs text-ink-500 ml-1 font-normal">mg/dL</span></div>
+                <div class="text-xs text-ink-500">il y a 5min</div>
+              </div>
+              <div class="w-20">
+                <div class="flex items-center gap-1.5 text-xs"><span class="dot-legend" style="background:#10B981"></span>TIR 78%</div>
+                <div class="h-1 mt-1 rounded-full bg-ink-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:78%"></div></div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i>
+            </div>
+            <div class="px-4 py-3 flex items-center gap-4 hover:bg-ink-100/50 cursor-pointer group">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 grid place-items-center text-white text-sm font-semibold">JT</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="text-sm font-semibold">Jean Tremblay</div>
+                  <span class="chip bg-pink-50 text-pink-700 text-[0.65rem]">DT2</span>
+                </div>
+                <div class="text-xs text-ink-500 font-mono">DT2-017 · 62 ans · GLP-1</div>
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-bold text-amber-600 font-mono">218<span class="text-xs text-ink-500 ml-1 font-normal">mg/dL</span></div>
+                <div class="text-xs text-ink-500">il y a 2min</div>
+              </div>
+              <div class="w-20">
+                <div class="flex items-center gap-1.5 text-xs"><span class="dot-legend" style="background:#F59E0B"></span>TIR 54%</div>
+                <div class="h-1 mt-1 rounded-full bg-ink-100 overflow-hidden"><div class="h-full bg-amber-500" style="width:54%"></div></div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i>
+            </div>
+            <div class="px-4 py-3 flex items-center gap-4 bg-red-50/40 hover:bg-red-50 cursor-pointer group">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-red-400 to-red-600 grid place-items-center text-white text-sm font-semibold">SM</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="text-sm font-semibold">Sofia Martínez</div>
+                  <span class="chip bg-purple-50 text-purple-700 text-[0.65rem]">GD</span>
+                  <span class="chip bg-red-100 text-red-700 text-[0.65rem]"><i data-lucide="alert-octagon" class="w-2.5 h-2.5"></i>Alerte</span>
+                </div>
+                <div class="text-xs text-ink-500 font-mono">GD-003 · 31 ans · 26 SA</div>
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-bold text-red-700 font-mono">58<span class="text-xs text-ink-500 ml-1 font-normal">mg/dL</span></div>
+                <div class="text-xs text-red-600">Hypo · il y a 1min</div>
+              </div>
+              <div class="w-20">
+                <div class="flex items-center gap-1.5 text-xs"><span class="dot-legend" style="background:#DC2626"></span>TIR 41%</div>
+                <div class="h-1 mt-1 rounded-full bg-ink-100 overflow-hidden"><div class="h-full bg-red-500" style="width:41%"></div></div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-red-400 group-hover:text-red-700"></i>
+            </div>
+            <div class="px-4 py-3 flex items-center gap-4 hover:bg-ink-100/50 cursor-pointer group">
+              <div class="w-10 h-10 rounded-full bg-gradient-to-br from-teal-400 to-teal-600 grid place-items-center text-white text-sm font-semibold">PD</div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2">
+                  <div class="text-sm font-semibold">Paul Dubois</div>
+                  <span class="chip bg-blue-50 text-blue-700 text-[0.65rem]">DT1</span>
+                </div>
+                <div class="text-xs text-ink-500 font-mono">DT1-119 · 24 ans · Pompe+CGM</div>
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-bold text-emerald-600 font-mono">98<span class="text-xs text-ink-500 ml-1 font-normal">mg/dL</span></div>
+                <div class="text-xs text-ink-500">il y a 3min</div>
+              </div>
+              <div class="w-20">
+                <div class="flex items-center gap-1.5 text-xs"><span class="dot-legend" style="background:#10B981"></span>TIR 85%</div>
+                <div class="h-1 mt-1 rounded-full bg-ink-100 overflow-hidden"><div class="h-full bg-emerald-500" style="width:85%"></div></div>
+              </div>
+              <i data-lucide="chevron-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insulin config form -->
+        <div class="rounded-xl bg-white border border-ink-100 p-5">
+          <div class="flex items-center gap-2 mb-4">
+            <i data-lucide="settings-2" class="w-4 h-4 text-teal-600"></i>
+            <div class="text-sm font-semibold">Nouvelle config insuline</div>
+          </div>
+          <div class="space-y-4">
+            <div>
+              <label class="text-xs font-medium text-ink-700">Patient</label>
+              <div class="mt-1 rounded-lg border border-ink-100 p-2 flex items-center gap-2 bg-ink-100/40">
+                <div class="w-7 h-7 rounded-full bg-teal-600 text-white grid place-items-center text-xs font-semibold">EL</div>
+                <div class="text-sm">Émilie Laurent · DT1-042</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="text-xs font-medium text-ink-700">ISF (mg/dL/U)</label>
+                <input class="mt-1 w-full px-3 py-2 rounded-lg border border-ink-300 text-sm" value="50"/>
+                <div class="text-[0.65rem] text-ink-500 mt-1">Bornes 20–100</div>
+              </div>
+              <div>
+                <label class="text-xs font-medium text-ink-700">ICR (g/U)</label>
+                <input class="mt-1 w-full px-3 py-2 rounded-lg border border-ink-300 text-sm" value="10"/>
+                <div class="text-[0.65rem] text-ink-500 mt-1">Bornes 5–20</div>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-medium text-ink-700">Cible glycémique (mg/dL)</label>
+              <div class="mt-2 relative h-10 rounded-lg bg-gradient-to-r from-red-200 via-emerald-200 to-red-200">
+                <div class="absolute top-0 bottom-0 bg-emerald-500/30 border-x-2 border-emerald-600" style="left:20%;right:30%"></div>
+                <div class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-teal-600 cursor-pointer" style="left:calc(20% - 8px)"></div>
+                <div class="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-white border-2 border-teal-600 cursor-pointer" style="right:calc(30% - 8px)"></div>
+              </div>
+              <div class="flex justify-between text-[0.65rem] text-ink-500 mt-1 font-mono"><span>40</span><span>70</span><span>180</span><span>300</span></div>
+            </div>
+            <div class="rounded-lg border border-amber-200 bg-amber-50 p-3 flex gap-2">
+              <i data-lucide="info" class="w-4 h-4 text-amber-600 flex-shrink-0"></i>
+              <p class="text-xs text-amber-800"><strong>Validation requise :</strong> cette configuration sera activée après revue du médecin référent.</p>
+            </div>
+            <div class="flex gap-2 pt-2">
+              <button class="flex-1 py-2 rounded-lg bg-teal-600 text-white text-sm font-medium cursor-pointer hover:bg-teal-700">Soumettre</button>
+              <button class="px-3 py-2 rounded-lg border border-ink-100 text-sm cursor-pointer hover:bg-ink-100">Annuler</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ VIEWER ============ -->
+<section id="viewer" class="section-gutter border-b border-ink-100">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-6">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">06 — Interface</div>
+        <h2 class="text-3xl font-bold mt-1">VIEWER — Lecture seule</h2>
+        <p class="text-ink-500 mt-2">Densité basse · priorité : consultation sans risque d'altération. Actions d'écriture désactivées.</p>
+      </div>
+      <span class="tag-role chip bg-ink-700 text-white">VIEWER</span>
+    </div>
+
+    <div class="rounded-2xl border border-ink-100 overflow-hidden shadow-lift bg-[#FAFAFA]">
+      <div class="h-12 bg-white border-b border-ink-100 flex items-center px-4 gap-3">
+        <div class="flex gap-1.5"><span class="w-3 h-3 rounded-full bg-red-400"></span><span class="w-3 h-3 rounded-full bg-amber-400"></span><span class="w-3 h-3 rounded-full bg-emerald-400"></span></div>
+        <div class="ml-4 text-xs font-mono text-ink-500">app.diabeo.fr/patients/DT1-042 · READ-ONLY</div>
+        <div class="ml-auto chip bg-ink-100 text-ink-700"><i data-lucide="eye" class="w-3 h-3"></i>Lecture seule</div>
+      </div>
+      <div class="p-6 space-y-5">
+        <!-- Notice -->
+        <div class="rounded-lg bg-ink-100/70 border border-ink-100 p-3 flex items-center gap-2">
+          <i data-lucide="lock" class="w-4 h-4 text-ink-500"></i>
+          <p class="text-xs text-ink-700">Votre rôle <strong>VIEWER</strong> ne permet pas de modifier les données. Vos consultations sont enregistrées dans l'audit HDS.</p>
+        </div>
+
+        <!-- Patient header -->
+        <div class="rounded-2xl bg-white border border-ink-100 p-5 flex items-center gap-6">
+          <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 to-teal-700 grid place-items-center text-white text-lg font-bold">EL</div>
+          <div class="flex-1">
+            <div class="flex items-center gap-3">
+              <h3 class="text-lg font-bold">Émilie Laurent</h3>
+              <span class="chip bg-blue-50 text-blue-700">DT1</span>
+            </div>
+            <div class="text-xs text-ink-500 font-mono">ID: DT1-042 · 38 ans</div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-4 gap-4">
+          <div class="rounded-xl bg-white border border-ink-100 p-4 opacity-95">
+            <div class="text-xs text-ink-500">Glycémie actuelle</div>
+            <div class="mt-1 text-2xl font-bold text-emerald-600">142 <span class="text-xs text-ink-500 font-normal">mg/dL</span></div>
+          </div>
+          <div class="rounded-xl bg-white border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">TIR 14 jours</div>
+            <div class="mt-1 text-2xl font-bold">78<span class="text-xs text-ink-500 ml-1 font-normal">%</span></div>
+          </div>
+          <div class="rounded-xl bg-white border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">HbA1c</div>
+            <div class="mt-1 text-2xl font-bold">6.9<span class="text-xs text-ink-500 ml-1 font-normal">%</span></div>
+          </div>
+          <div class="rounded-xl bg-white border border-ink-100 p-4">
+            <div class="text-xs text-ink-500">Hypos (14j)</div>
+            <div class="mt-1 text-2xl font-bold text-amber-600">4</div>
+          </div>
+        </div>
+
+        <!-- Disabled actions -->
+        <div class="rounded-xl bg-white border border-ink-100 p-5">
+          <div class="text-sm font-semibold mb-3">Actions</div>
+          <div class="flex flex-wrap gap-2">
+            <button disabled class="px-3 py-2 rounded-lg bg-ink-100 text-ink-300 text-sm cursor-not-allowed flex items-center gap-2"><i data-lucide="edit" class="w-3.5 h-3.5"></i>Modifier</button>
+            <button disabled class="px-3 py-2 rounded-lg bg-ink-100 text-ink-300 text-sm cursor-not-allowed flex items-center gap-2"><i data-lucide="file-plus" class="w-3.5 h-3.5"></i>Ajouter note</button>
+            <button disabled class="px-3 py-2 rounded-lg bg-ink-100 text-ink-300 text-sm cursor-not-allowed flex items-center gap-2"><i data-lucide="settings-2" class="w-3.5 h-3.5"></i>Config insuline</button>
+            <button class="px-3 py-2 rounded-lg border border-ink-100 text-ink-700 text-sm cursor-pointer hover:bg-ink-100 flex items-center gap-2"><i data-lucide="download" class="w-3.5 h-3.5"></i>Exporter PDF</button>
+          </div>
+          <p class="text-xs text-ink-500 mt-3">Les actions grisées sont indisponibles pour votre rôle. Demandez un upgrade à votre administrateur si nécessaire.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FOOTER ============ -->
+<footer class="section-gutter bg-ink-900 text-white">
+  <div class="max-w-7xl mx-auto grid md:grid-cols-3 gap-8">
+    <div>
+      <div class="flex items-center gap-2"><div class="w-7 h-7 rounded-md bg-teal-500 text-white grid place-items-center font-bold">D</div><span class="font-semibold">Diabeo Design System</span></div>
+      <p class="text-sm text-ink-300 mt-3">Conçu pour l'insulinothérapie — calme, précis, auditable. Inspiré des guidelines NN/g, Material Health, Epic & Apple HIG Healthcare.</p>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-widest text-ink-300 font-semibold mb-3">Principes</div>
+      <ul class="text-sm space-y-1.5">
+        <li class="flex items-center gap-2"><i data-lucide="check" class="w-3.5 h-3.5 text-teal-400"></i>Couleur + texte + icône (jamais couleur seule)</li>
+        <li class="flex items-center gap-2"><i data-lucide="check" class="w-3.5 h-3.5 text-teal-400"></i>Contraste 4.5:1 min · focus visible</li>
+        <li class="flex items-center gap-2"><i data-lucide="check" class="w-3.5 h-3.5 text-teal-400"></i>Touch target 44×44</li>
+        <li class="flex items-center gap-2"><i data-lucide="check" class="w-3.5 h-3.5 text-teal-400"></i>Reduced motion respecté</li>
+        <li class="flex items-center gap-2"><i data-lucide="check" class="w-3.5 h-3.5 text-teal-400"></i>Densité adaptée au rôle clinique</li>
+      </ul>
+    </div>
+    <div>
+      <div class="text-xs uppercase tracking-widest text-ink-300 font-semibold mb-3">Conformité</div>
+      <div class="flex flex-wrap gap-2">
+        <span class="chip bg-ink-700 text-ink-100">HDS</span>
+        <span class="chip bg-ink-700 text-ink-100">RGPD Art. 9</span>
+        <span class="chip bg-ink-700 text-ink-100">ANSSI</span>
+        <span class="chip bg-ink-700 text-ink-100">WCAG 2.1 AA</span>
+        <span class="chip bg-ink-700 text-ink-100">ISO 13485</span>
+      </div>
+      <p class="text-xs text-ink-300 mt-4">v1.0 · Dernière mise à jour 2026-04-15</p>
+    </div>
+  </div>
+</footer>
+
+<script>lucide.createIcons();</script>
+</body>
+</html>
