@@ -7,14 +7,30 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
-### Security backlog (from 2026-04-15 audit — see docs/security/audit-2026-04-15.md)
+## 2026-04-15 — Audit findings shipped (US-SEC-001 + US-SEC-002)
 
-- **US-SEC-001 (HIGH)** — Restrict insulin-therapy mutations to NURSE+
-  (currently VIEWER can self-mutate their ISF/ICR/settings consumed by
-  calculateBolus). Fix planned in a follow-up PR.
-- **US-SEC-002 (MEDIUM)** — Add `deletedAt: null` filter at the service
-  layer for `objectives` / `export` / `mydiabby-sync` patient queries
-  (defense-in-depth on RGPD Art. 17 soft-delete).
+### Security
+
+- **US-SEC-001 (HIGH) — Insulin-therapy mutations now require NURSE+**.
+  PUT /api/insulin-therapy/settings, POST sensitivity-factors, POST
+  carb-ratios switched from `requireAuth` to `requireRole(NURSE)`. A
+  patient (VIEWER) can no longer self-mutate the parameters consumed by
+  `calculateBolus` to bias their own dose suggestions. Adjacent
+  basal-config / pump-slots routes already used this pattern — the
+  inconsistency is now resolved.
+- **US-SEC-002 (MEDIUM) — Soft-delete filter at the service layer**.
+  Added `deletedAt: null` to `objectives.service.ts`, `export.service.ts`,
+  and `mydiabby-sync.service.ts` (×2 sites). RGPD Art. 17 protection
+  no longer relies solely on the route-layer `canAccessPatient` check.
+  Long-term Prisma `$extends` query hook for transparent enforcement
+  remains a backlog item.
+
+### Tests (+8)
+
+- 7 integration tests asserting VIEWER → 403, NURSE/DOCTOR → 2xx on the
+  three insulin-therapy routes (regression guard).
+- 1 service test asserting `objectives.getAll` issues `findFirst` with
+  `deletedAt: null` in the where clause.
 
 ## 2026-04-15 — OpenAPI 3.1 spec (starter coverage)
 

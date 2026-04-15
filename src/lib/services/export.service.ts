@@ -77,7 +77,11 @@ export async function generateUserExport(userId: number) {
       prisma.userDayMoment.findMany({ where: { userId } }),
     ])
 
-  const patient = await prisma.patient.findUnique({ where: { userId } })
+  // US-SEC-002: a soft-deleted patient must not export — RGPD Art. 17 +
+  // service-layer defense in depth (route-level guard could regress).
+  const patient = await prisma.patient.findFirst({
+    where: { userId, deletedAt: null },
+  })
 
   let patientData = null
   if (patient) {

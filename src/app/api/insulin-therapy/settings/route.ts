@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    const user = requireAuth(req)
+    // US-SEC-001 (HIGH): NURSE+ required. VIEWER (the patient themselves)
+    // must NOT mutate parameters consumed by calculateBolus — see CLAUDE.md
+    // RBAC table and docs/security/audit-2026-04-15.md.
+    const user = requireRole(req, "NURSE")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 

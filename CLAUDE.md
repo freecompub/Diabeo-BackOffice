@@ -766,8 +766,8 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 Les items suivants ont été identifiés lors des reviews mais reportés pour ne pas bloquer les phases en cours.
 
 ### Priorité haute (avant mise en production)
-- [ ] **US-SEC-001 — RBAC sur insulin-therapy mutations (HIGH)** — VIEWER (patient) peut muter ses propres ISF/ICR/settings consommés par calculateBolus → biais auto-induit. Fix: `requireRole(NURSE)` sur `settings` PUT, `sensitivity-factors` POST, `carb-ratios` POST. Voir `docs/security/audit-2026-04-15.md`
-- [ ] **US-SEC-002 — Soft-delete au service layer (MEDIUM)** — `objectives.service.ts:93`, `export.service.ts:80`, `mydiabby-sync.service.ts:424,477` queryent patient sans `deletedAt:null`. Defense-in-depth ADR #4. Quick fix + Prisma `$extends` hook futur. Voir `docs/security/audit-2026-04-15.md`
+- [x] **US-SEC-001 — RBAC sur insulin-therapy mutations (HIGH)** — `requireRole(NURSE)` appliqué sur `settings` PUT, `sensitivity-factors` POST, `carb-ratios` POST. 7 tests intégration matrix VIEWER/NURSE/DOCTOR
+- [x] **US-SEC-002 — Soft-delete au service layer (MEDIUM)** — `deletedAt:null` ajouté sur `objectives.service.ts`, `export.service.ts`, `mydiabby-sync.service.ts` (×2). Test régression sur `objectives.getAll`. Prisma `$extends` hook reste à faire en suivi.
 - [x] **Unifier CLINICAL_BOUNDS et INSULIN_BOUNDS** — source unique dans `src/lib/clinical-bounds.ts`, alias `INSULIN_BOUNDS` déprécié dans `insulin-therapy.service.ts`
 - [x] **Slot overlap detection ISF/ICR** — `createIsf`/`createIcr` utilisent `hasTimeSlotOverlap` (`src/lib/services/time-slot-utils.ts`) avec support du passage minuit
 - [x] **IOB (Insulin On Board) implémentation** — decay linéaire dans `insulin.service.ts:301-337`, `IobSettings.actionDurationHours` configurable, filtre `wasDelivered=true`
