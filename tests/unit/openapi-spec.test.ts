@@ -90,7 +90,7 @@ describe("buildOpenApiDocument", () => {
     )
   })
 
-  it("MFA challenge is documented as public + body carries the mfaToken", () => {
+  it("MFA challenge is documented as public + body REQUIRES mfaToken + otp", () => {
     // Regression guard: the mfa-pending token must be a body parameter, not
     // a header/cookie security scheme. A 'simplification' that flips
     // /mfa/challenge to use bearerJwt would let a full-access JWT bypass the
@@ -98,9 +98,13 @@ describe("buildOpenApiDocument", () => {
     const challenge = doc.paths["/api/auth/mfa/challenge"].post
     expect(challenge.security).toBeUndefined()
     const bodySchema = challenge.requestBody?.content["application/json"]
-      .schema as { properties?: Record<string, unknown> }
+      .schema as { properties?: Record<string, unknown>; required?: string[] }
     expect(bodySchema.properties).toHaveProperty("mfaToken")
     expect(bodySchema.properties).toHaveProperty("otp")
+    // CRITICAL: both fields MUST be required. A schema flipping mfaToken
+    // to .optional() would allow bypassing the second-factor check by
+    // simply omitting the field.
+    expect(bodySchema.required).toEqual(expect.arrayContaining(["mfaToken", "otp"]))
   })
 
   // MINOR fix: contract guard — every registered schema must convert to

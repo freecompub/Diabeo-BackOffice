@@ -87,6 +87,21 @@ export function zodToOpenApiSchema(schema: ZodType): unknown {
   return z.toJSONSchema(schema, { target: "draft-2020-12" })
 }
 
+/** Minimal shape we narrow to when we know the input was a `z.object`. */
+interface ObjectJsonSchema {
+  properties?: Record<string, unknown>
+  required?: string[]
+}
+
+/**
+ * Convert + narrow a Zod object schema to its property/required surface.
+ * Use only when the source schema is known to be a `z.object` (body / query
+ * / pathParams), so we can iterate `properties` to emit OpenAPI parameters.
+ */
+function zodToObjectJsonSchema(schema: ZodType): ObjectJsonSchema {
+  return zodToOpenApiSchema(schema) as ObjectJsonSchema
+}
+
 /**
  * Build the OpenAPI document from a route registry.
  * Pure function — callers pass the registry, the builder assembles the doc.
@@ -110,10 +125,7 @@ export function buildOpenApiDocument(routes: RouteDefinition[]): OpenApiDocument
 
     const parameters: OpenApiParameter[] = []
     if (route.query) {
-      const jsonSchema = zodToOpenApiSchema(route.query) as {
-        properties?: Record<string, unknown>
-        required?: string[]
-      }
+      const jsonSchema = zodToObjectJsonSchema(route.query)
       for (const [name, schema] of Object.entries(jsonSchema.properties ?? {})) {
         parameters.push({
           name,
@@ -124,10 +136,7 @@ export function buildOpenApiDocument(routes: RouteDefinition[]): OpenApiDocument
       }
     }
     if (route.pathParams) {
-      const jsonSchema = zodToOpenApiSchema(route.pathParams) as {
-        properties?: Record<string, unknown>
-        required?: string[]
-      }
+      const jsonSchema = zodToObjectJsonSchema(route.pathParams)
       for (const [name, schema] of Object.entries(jsonSchema.properties ?? {})) {
         parameters.push({
           name,

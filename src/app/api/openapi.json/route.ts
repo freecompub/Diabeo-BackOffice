@@ -13,6 +13,17 @@ import { NextResponse } from "next/server"
 import { buildOpenApiDocument } from "@/lib/openapi/spec"
 import { OPENAPI_ROUTES } from "@/lib/openapi/routes"
 
+// Defensive: pin the runtime to Node.js. The builder works in Edge today
+// but `@/lib/schemas/account` imports Prisma-generated enums (Sex, Language,
+// Pathology) that are Node-only, so an accidental `runtime = "edge"` would
+// fail at request time, not build time.
+export const runtime = "nodejs"
+
+// Opt out of Next.js Full Route Cache. The handler is synchronous and could
+// otherwise be statically rendered + cached at build time; we want the spec
+// to reflect the running code, not a cached snapshot.
+export const dynamic = "force-dynamic"
+
 export function GET() {
   const doc = buildOpenApiDocument(OPENAPI_ROUTES)
   return NextResponse.json(doc, {

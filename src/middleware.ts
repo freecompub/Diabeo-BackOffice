@@ -22,6 +22,15 @@ async function getPublicKey(): Promise<CryptoKey> {
 const REQUEST_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/
 
 /**
+ * Public endpoints — reachable without a JWT. Hoisted to module scope so the
+ * Set is allocated once per process, not per request.
+ */
+const PUBLIC_ENDPOINTS = new Set([
+  "/api/health",       // OVH monitoring + deployment smoke tests
+  "/api/openapi.json", // OpenAPI spec for swagger-ui-cli / Postman
+])
+
+/**
  * Generate a cryptographically seeded correlation ID (16 hex chars, 64 bits).
  * Uses Web Crypto (Edge-compatible) instead of Math.random which is not
  * crypto-seeded and is consistent with the rest of the codebase's `crypto.*` usage.
@@ -50,14 +59,10 @@ export async function middleware(request: NextRequest) {
   // control chars, ≤64 chars) — otherwise a fresh server-generated ID is used.
   const requestId = resolveRequestId(request.headers.get("x-request-id"))
 
-  // Public endpoints — reachable without a JWT. Normalized against
+  // Public endpoints (see module-level PUBLIC_ENDPOINTS). Normalize against
   // trailing slash + case so a misconfigured monitor URL doesn't fall
   // through to JWT enforcement (returning 401 as if it were an outage).
   const normalized = pathname.toLowerCase().replace(/\/+$/, "")
-  const PUBLIC_ENDPOINTS = new Set([
-    "/api/health",       // OVH monitoring + deployment smoke tests
-    "/api/openapi.json", // OpenAPI spec for swagger-ui-cli / Postman
-  ])
   if (PUBLIC_ENDPOINTS.has(normalized)) {
     const res = NextResponse.next({ request: { headers: request.headers } })
     res.headers.set("x-request-id", requestId)

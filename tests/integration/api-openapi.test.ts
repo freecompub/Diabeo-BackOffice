@@ -14,6 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest"
+import SwaggerParser from "@apidevtools/swagger-parser"
 
 const { GET } = await import("@/app/api/openapi.json/route")
 
@@ -30,5 +31,14 @@ describe("GET /api/openapi.json", () => {
     // Spec includes at least the starter route set
     expect(body.paths["/api/auth/login"]).toBeDefined()
     expect(body.paths["/api/health"]).toBeDefined()
+  })
+
+  it("validates as a structurally correct OpenAPI 3.1 document", async () => {
+    // Catches malformed requestBody / responses / refs BEFORE iOS codegen
+    // breaks. SwaggerParser handles 3.0 + 3.1.
+    const body = await (GET()).json()
+    // SwaggerParser mutates its input (resolves refs); clone first.
+    const cloned = JSON.parse(JSON.stringify(body))
+    await expect(SwaggerParser.validate(cloned)).resolves.toBeDefined()
   })
 })
