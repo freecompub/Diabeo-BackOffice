@@ -23,12 +23,14 @@ const REQUEST_ID_PATTERN = /^[A-Za-z0-9-]{1,64}$/
 
 /**
  * Public endpoints — reachable without a JWT. Hoisted to module scope so the
- * Set is allocated once per process, not per request.
+ * Set is allocated once per process. Frozen so a test or future contributor
+ * can't widen the public surface accidentally; new entries require a code
+ * change visible in code review.
  */
-const PUBLIC_ENDPOINTS = new Set([
+const PUBLIC_ENDPOINTS: ReadonlySet<string> = Object.freeze(new Set([
   "/api/health",       // OVH monitoring + deployment smoke tests
   "/api/openapi.json", // OpenAPI spec for swagger-ui-cli / Postman
-])
+]))
 
 /**
  * Generate a cryptographically seeded correlation ID (16 hex chars, 64 bits).

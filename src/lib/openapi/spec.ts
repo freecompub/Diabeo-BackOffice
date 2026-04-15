@@ -97,8 +97,18 @@ interface ObjectJsonSchema {
  * Convert + narrow a Zod object schema to its property/required surface.
  * Use only when the source schema is known to be a `z.object` (body / query
  * / pathParams), so we can iterate `properties` to emit OpenAPI parameters.
+ *
+ * Throws at registration time if the source is not a ZodObject — prevents
+ * the silent footgun of registering a `z.union` / `z.array` as `query`
+ * which would emit zero OpenAPI parameters with no warning.
  */
 function zodToObjectJsonSchema(schema: ZodType): ObjectJsonSchema {
+  if (!(schema instanceof z.ZodObject)) {
+    throw new Error(
+      `OpenAPI builder: query / pathParams must be a z.object, got ${schema.constructor.name}. ` +
+      `Use z.object({...}) so each field can be emitted as a separate parameter.`,
+    )
+  }
   return zodToOpenApiSchema(schema) as ObjectJsonSchema
 }
 
