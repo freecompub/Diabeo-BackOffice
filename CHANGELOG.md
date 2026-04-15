@@ -7,6 +7,38 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+## 2026-04-15 — Ops docs + health endpoint
+
+### Added
+
+- **`GET /api/health`** (`src/app/api/health/route.ts`) — public health
+  probe used by OVH Cloud Monitoring and deployment smoke tests. Returns
+  `{ status, db, redis, version }` with 200 on `ok`, 503 on `degraded` /
+  `down`. 1 s timeout per subsystem probe; stalled DB is reported down
+  instead of hanging the endpoint. Middleware explicitly skips this route
+  so monitoring stays reachable during auth outages.
+- **Operations documentation** (PR #107):
+  - `docs/operations/runbook.md` — deploy/rollback, migrations, backups,
+    secret rotation, monitoring, maintenance cadence.
+  - `docs/operations/incident-response.md` — 8 HDS/RGPD playbooks
+    (Redis outage, DB compromise, MFA bypass, rate-limit storm, key
+    compromise, stolen cookie, third-party CVE) + incident-log template.
+  - `docs/operations/scripts-index.md` — inventory of operational
+    scripts / alerts with implementation status (✓ / ✗ TODO).
+  - `CHANGELOG.md` (this file) — retroactive coverage of PRs #103-#106.
+
+### Changed
+
+- `docs/api/routes-summary.md` — added MFA routes, rate-limit flags on
+  analytics, pro-access `?patientId=` note, dual-bucket export, and the
+  new `/api/health` row.
+- `docs/compliance/hds-rgpd.md` — grouped `AuditAction` union
+  (access/export/security/mfa/business), documented `AuditLog.requestId`
+  correlation, GDPR cache TTL strategy, Art. 17 delete sequence with
+  MFA reset + cache invalidation, and a new **Authentification forte —
+  MFA TOTP** section (HDS guarantees, JWT audience split, disable
+  double-factor requirement).
+
 ## 2026-04-14 — Backlog cleanup wave
 
 ### Added

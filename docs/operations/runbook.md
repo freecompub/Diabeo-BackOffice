@@ -5,6 +5,12 @@ Day-to-day operations playbook for the Diabeo Backoffice on OVHcloud GRA
 
 > **Audience**: on-call engineers. Assumes SSH access to the VPS, `gh` CLI
 > authentication, and access to the shared 1Password vault for secrets.
+>
+> **Status markers**: sections tagged **[TODO — not yet implemented]** describe
+> target procedures; the referenced scripts / endpoints do NOT exist yet.
+> See [scripts-index.md](./scripts-index.md) for implementation status.
+> Operators: do NOT rely on those sections in an incident — fall back to
+> manual `git pull` + `pnpm build` until the scripts are shipped.
 
 - [Environments](#environments)
 - [Deployment](#deployment)
@@ -43,7 +49,12 @@ Each env has its own:
   reviewed with SQL-pro and medical-domain-validator agents.
 - ChangeLog updated for the release.
 
-### Standard deploy (prod)
+### Standard deploy (prod) — **[TODO — not yet implemented]**
+
+The target procedure below assumes `scripts/deploy.sh` and
+`docker-compose.prod.yml` exist. **Neither ships yet** (see
+[scripts-index.md](./scripts-index.md)). Until they do, follow the
+**manual fallback** at the bottom of this section.
 
 ```sh
 ssh diabeo@app.diabeo.fr
@@ -57,13 +68,13 @@ git log HEAD..origin/main --oneline   # review incoming commits
 psql $DATABASE_URL < prisma/sql/<new_migration>.sql
 
 # Pull + build + swap containers
-./scripts/deploy.sh update
+./scripts/deploy.sh update     # [TODO]
 
-# Health check
+# Health check (endpoint exists — implemented in PR #107)
 curl -sf https://app.diabeo.fr/api/health || echo "DEPLOY FAILED"
 ```
 
-The `scripts/deploy.sh update` helper:
+The target `scripts/deploy.sh update` helper will run:
 
 1. `git pull --ff-only origin main`
 2. `pnpm install --frozen-lockfile`
@@ -71,7 +82,23 @@ The `scripts/deploy.sh update` helper:
 4. `pnpm prisma db push --accept-data-loss=false`
 5. `pnpm build`
 6. `docker compose -f docker-compose.prod.yml up -d --build api`
-7. Waits for healthcheck to report green for 30 s before yielding the tty.
+7. Wait for `/api/health` to report `status: "ok"` for 30 s.
+
+### Manual fallback (until deploy.sh ships)
+
+```sh
+ssh diabeo@app.diabeo.fr
+cd /opt/diabeo/backoffice
+git pull --ff-only origin main
+# Apply any new prisma/sql/*.sql first
+psql $DATABASE_URL < prisma/sql/<new_migration>.sql
+pnpm install --frozen-lockfile
+pnpm prisma generate
+pnpm prisma db push
+pnpm build
+pm2 restart diabeo-api  # or equivalent process-manager reload
+curl -sf https://app.diabeo.fr/api/health
+```
 
 ### Emergency hotfix (skipping CI)
 
@@ -158,7 +185,7 @@ psql $DATABASE_URL < prisma/sql/mfa_hardening.sql
 ### PostgreSQL
 
 - **Automatic**: OVH managed DB takes daily snapshots retained for 30 days.
-- **Application-level** (belt and suspenders):
+- **Application-level** (belt and suspenders) — **[TODO — not yet implemented]**:
 
 ```sh
 # Full dump with COPY format — fastest restore
@@ -169,7 +196,9 @@ pg_dump \
   $PG_DB
 ```
 
-Cron on the VPS: `0 2 * * * /opt/diabeo/scripts/backup-postgres.sh`.
+Target cron: `0 2 * * * /opt/diabeo/scripts/backup-postgres.sh`
+(script not yet shipped — see [scripts-index.md](./scripts-index.md)).
+Until then, the OVH managed snapshot is the only backup layer.
 
 Backups are rsync'd to OVH Object Storage bucket `diabeo-backups-prod`
 with 7-day lifecycle to Glacier tier.
@@ -207,11 +236,12 @@ pg_restore --dbname=diabeo_restore --jobs=4 /tmp/diabeo-*.dump
 psql diabeo_restore -c "SELECT COUNT(*) FROM audit_logs;"
 psql diabeo_restore -c "SELECT COUNT(*) FROM users;"
 
-# Validate encryption keys still decrypt fields
+# Validate encryption keys still decrypt fields — [TODO: scripts/decrypt-smoke.ts not yet shipped]
 node scripts/decrypt-smoke.ts diabeo_restore
 ```
 
-Document the drill outcome in `docs/operations/drill-log.md`.
+Document the drill outcome in `docs/operations/drill-log.md` (log file to
+be created on first drill).
 
 ---
 
@@ -250,22 +280,35 @@ migrate encrypted columns one batch at a time.
 
 ### Health endpoint
 
-`GET /api/health` returns:
+`GET /api/health` (public, no auth — middleware skips it) returns:
 
 ```json
 {
-  "status": "ok" | "degraded",
+  "status": "ok" | "degraded" | "down",
   "db": "ok" | "down",
   "redis": "ok" | "down",
   "version": "a675b99"
 }
 ```
 
-Watchers:
+Semantics:
 
-- **OVH Cloud Monitoring** pings `/api/health` every 30 s. Alerts on non-200
-  or `status != "ok"` for 3 consecutive checks.
-- **Upstash Dashboard**: alerts on eval error rate > 1 %.
+- **`ok`** (HTTP 200) — DB + Redis both reachable within 1 s each.
+- **`degraded`** (HTTP 503) — DB OK, Redis probe failed. App continues but
+  rate-limit falls back to in-memory and session revocation is fail-closed.
+- **`down`** (HTTP 503) — DB probe failed. Nothing works; alert loudly.
+
+Implementation: `src/app/api/health/route.ts`. Version comes from the
+`GIT_COMMIT_SHA` env var set during the Docker build.
+
+Watchers — **[TODO — not yet configured]**:
+
+- **OVH Cloud Monitoring** should ping `/api/health` every 30 s and alert
+  on non-200 for 3 consecutive checks.
+- **Upstash Dashboard** should alert on eval error rate > 1 %.
+
+Neither alert rule has been provisioned yet — tracked in
+[scripts-index.md](./scripts-index.md).
 
 ### Logs
 

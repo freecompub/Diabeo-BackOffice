@@ -137,3 +137,9 @@ pour un accès pro (DOCTOR/NURSE → `canAccessPatient`) ou lecture propre (VIEW
 |---------|-------|------|-------------|
 | GET | /api/admin/audit-logs | ADMIN | Logs d'audit avec filtres |
 | GET | /api/units | JWT | Referentiel unites |
+
+## Monitoring / Infra
+
+| Methode | Route | Auth | Description |
+|---------|-------|------|-------------|
+| GET | /api/health | Non | Probe DB + Redis. 200 `ok` / 503 `degraded` (Redis down) / 503 `down` (DB down). Utilise par OVH Monitoring + pipeline deploy |
