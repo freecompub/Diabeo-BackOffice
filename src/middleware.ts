@@ -50,12 +50,15 @@ export async function middleware(request: NextRequest) {
   // control chars, ≤64 chars) — otherwise a fresh server-generated ID is used.
   const requestId = resolveRequestId(request.headers.get("x-request-id"))
 
-  // Public health endpoint — must be reachable without a JWT so external
-  // monitoring (OVH, uptime probes) and deployment smoke tests can alert.
-  // Normalize: strip trailing slash + lowercase so misconfigured monitors
-  // (`/api/health/`, `/API/health`) don't fall through to JWT enforcement.
+  // Public endpoints — reachable without a JWT. Normalized against
+  // trailing slash + case so a misconfigured monitor URL doesn't fall
+  // through to JWT enforcement (returning 401 as if it were an outage).
   const normalized = pathname.toLowerCase().replace(/\/+$/, "")
-  if (normalized === "/api/health") {
+  const PUBLIC_ENDPOINTS = new Set([
+    "/api/health",       // OVH monitoring + deployment smoke tests
+    "/api/openapi.json", // OpenAPI spec for swagger-ui-cli / Postman
+  ])
+  if (PUBLIC_ENDPOINTS.has(normalized)) {
     const res = NextResponse.next({ request: { headers: request.headers } })
     res.headers.set("x-request-id", requestId)
     return res
