@@ -38,7 +38,7 @@ describe("buildOpenApiDocument", () => {
     expect(urls).toContain("http://localhost:3000")
   })
 
-  it("declares the three security schemes (bearer, cookie, mfa-pending)", () => {
+  it("declares the two transport security schemes (bearer + cookie)", () => {
     expect(doc.components.securitySchemes.bearerJwt).toMatchObject({
       type: "http",
       scheme: "bearer",
@@ -49,10 +49,8 @@ describe("buildOpenApiDocument", () => {
       in: "cookie",
       name: "diabeo_token",
     })
-    expect(doc.components.securitySchemes.mfaPending).toMatchObject({
-      type: "http",
-      scheme: "bearer",
-    })
+    // The mfa-pending token is a body parameter, NOT a transport scheme.
+    expect(doc.components.securitySchemes.mfaPending).toBeUndefined()
   })
 
   it("includes every route from the registry", () => {
@@ -92,13 +90,31 @@ describe("buildOpenApiDocument", () => {
     )
   })
 
-  it("MFA challenge uses the mfa-pending security scheme (NOT full JWT)", () => {
-    // Regression guard: if someone 'simplifies' the auth model, the mfa
-    // challenge must not accept a full access JWT. The spec must reflect this.
+  it("MFA challenge is documented as public + body carries the mfaToken", () => {
+    // Regression guard: the mfa-pending token must be a body parameter, not
+    // a header/cookie security scheme. A 'simplification' that flips
+    // /mfa/challenge to use bearerJwt would let a full-access JWT bypass the
+    // second-factor check entirely.
     const challenge = doc.paths["/api/auth/mfa/challenge"].post
-    const schemes = (challenge.security ?? []).flatMap((s) => Object.keys(s))
-    expect(schemes).toContain("mfaPending")
-    expect(schemes).not.toContain("bearerJwt")
-    expect(schemes).not.toContain("cookieJwt")
+    expect(challenge.security).toBeUndefined()
+    const bodySchema = challenge.requestBody?.content["application/json"]
+      .schema as { properties?: Record<string, unknown> }
+    expect(bodySchema.properties).toHaveProperty("mfaToken")
+    expect(bodySchema.properties).toHaveProperty("otp")
+  })
+
+  // MINOR fix: contract guard — every registered schema must convert to
+  // a valid JSON Schema without throwing. Catches future additions of
+  // unsupported Zod features (brands, transforms, pipes).
+  it("converts every registered Zod schema to JSON Schema without throwing", async () => {
+    const { zodToOpenApiSchema } = await import("@/lib/openapi/spec")
+    for (const route of OPENAPI_ROUTES) {
+      if (route.body) expect(() => zodToOpenApiSchema(route.body!)).not.toThrow()
+      if (route.query) expect(() => zodToOpenApiSchema(route.query!)).not.toThrow()
+      if (route.pathParams) expect(() => zodToOpenApiSchema(route.pathParams!)).not.toThrow()
+      for (const resp of Object.values(route.responses)) {
+        if (resp.schema) expect(() => zodToOpenApiSchema(resp.schema!)).not.toThrow()
+      }
+    }
   })
 })

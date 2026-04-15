@@ -11,15 +11,11 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { requireAuth, AuthError, checkRateLimit, recordFailedAttempt, clearAttempts } from "@/lib/auth"
 import { mfaService } from "@/lib/services/mfa.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
-
-const bodySchema = z.object({
-  otp: z.string().regex(/^\d{6}$/, "OTP must be a 6-digit code"),
-})
+import { mfaVerifyBodySchema } from "@/lib/schemas/auth"
 
 export async function POST(req: NextRequest) {
   try {
@@ -36,7 +32,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const parsed = bodySchema.safeParse(body)
+    const parsed = mfaVerifyBodySchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "validationFailed", details: parsed.error.flatten().fieldErrors },

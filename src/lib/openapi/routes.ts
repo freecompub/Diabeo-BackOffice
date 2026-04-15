@@ -15,8 +15,19 @@
  */
 
 import { z, type ZodType } from "zod"
-import { Pathology } from "@prisma/client"
 import type { SecuritySchemeId } from "./spec"
+import {
+  loginBodySchema,
+  resetPasswordBodySchema,
+  mfaVerifyBodySchema,
+  mfaChallengeBodySchema,
+  mfaDisableBodySchema,
+} from "@/lib/schemas/auth"
+import {
+  userProfilePatchSchema,
+  privacySettingsSchema,
+  privacySettingsPatchSchema,
+} from "@/lib/schemas/account"
 
 export interface RouteResponse {
   description: string
@@ -58,18 +69,16 @@ const ValidationError = z.object({
 
 const authTags = ["Auth"]
 
-const loginBody = z.object({
-  email: z.email(),
-  password: z.string().min(1),
-})
+// Body schema is imported from src/lib/schemas/auth (single source of
+// truth shared with the route handler — prevents spec drift).
 
 const loginOkResponse = z.object({
-  expiresAt: z.string().describe("ISO 8601 session expiry"),
+  expiresAt: z.string(),
 })
 
 const loginMfaPendingResponse = z.object({
   mfaRequired: z.literal(true),
-  mfaToken: z.string().describe("Short-lived (5 min) JWT — see /api/auth/mfa/challenge"),
+  mfaToken: z.string(),
 })
 
 const authRoutes: RouteDefinition[] = [
@@ -78,29 +87,26 @@ const authRoutes: RouteDefinition[] = [
     path: "/api/auth/login",
     summary: "Authenticate with email + password",
     description:
-      "Sets an httpOnly cookie on success. If MFA is enabled on the account, " +
-      "the response does NOT contain a full JWT — it returns an mfaToken that " +
-      "must be exchanged at /api/auth/mfa/challenge.",
+      "On success, sets an httpOnly session cookie. When MFA is enabled, " +
+      "the response body contains a short-lived token to exchange at " +
+      "/api/auth/mfa/challenge.",
     tags: authTags,
-    body: loginBody,
+    body: loginBodySchema,
     responses: {
       "200": {
-        description:
-          "Either full auth success (cookie set) OR MFA is required (body " +
-          "contains `mfaRequired: true, mfaToken`).",
+        description: "Auth success (cookie set) OR MFA is required",
         schema: z.union([loginOkResponse, loginMfaPendingResponse]),
       },
       "400": { description: "Validation failed", schema: ValidationError },
       "401": { description: "Invalid credentials", schema: ErrorResponse },
-      "429": { description: "Rate-limited (too many failed attempts)", schema: ErrorResponse },
-      "503": { description: "Server error during login", schema: ErrorResponse },
+      "429": { description: "Rate-limited", schema: ErrorResponse },
+      "503": { description: "Server error", schema: ErrorResponse },
     },
   },
   {
     method: "POST",
     path: "/api/auth/logout",
     summary: "Invalidate current session",
-    description: "Revokes the session via Redis + deletes the row. Clears the cookie.",
     tags: authTags,
     auth: ["bearerJwt", "cookieJwt"],
     responses: {
@@ -114,10 +120,8 @@ const authRoutes: RouteDefinition[] = [
   {
     method: "POST",
     path: "/api/auth/refresh",
-    summary: "Renew JWT (15 min clock tolerance)",
-    description:
-      "Accepts an expired JWT up to 15 min old. Returns a fresh token if the " +
-      "session is still valid and has not been revoked.",
+    summary: "Renew session token",
+    description: "Accepts a recently expired token and issues a fresh one.",
     tags: authTags,
     auth: ["bearerJwt", "cookieJwt"],
     responses: {
@@ -128,15 +132,14 @@ const authRoutes: RouteDefinition[] = [
   {
     method: "POST",
     path: "/api/auth/reset-password",
-    summary: "Request password reset (anti-enumeration)",
+    summary: "Request password reset",
     description:
-      "Always returns 200 regardless of whether the email matches a user — " +
-      "prevents account-enumeration via this endpoint. Actual email sending " +
-      "is a TODO (currently a stub).",
+      "Always returns 200 regardless of whether the email matches a user " +
+      "(anti-enumeration).",
     tags: authTags,
-    body: z.object({ email: z.email() }),
+    body: resetPasswordBodySchema,
     responses: {
-      "200": { description: "Request accepted (mock)", schema: z.object({ success: z.literal(true) }) },
+      "200": { description: "Request accepted", schema: z.object({ success: z.literal(true) }) },
       "400": { description: "Validation failed", schema: ValidationError },
     },
   },
@@ -152,19 +155,18 @@ const mfaRoutes: RouteDefinition[] = [
   {
     method: "POST",
     path: "/api/auth/mfa/setup",
-    summary: "Initiate MFA enrollment — returns QR code",
+    summary: "Initiate MFA enrollment",
     description:
-      "Generates a TOTP secret (encrypted at rest), returns an otpauth URI " +
-      "and a base64 PNG data URI for QR rendering. `mfaEnabled` stays FALSE " +
-      "until the first OTP is confirmed via /api/auth/mfa/verify.",
+      "Returns an otpauth URI + QR code PNG. MFA is NOT enabled until a " +
+      "first OTP is confirmed via /api/auth/mfa/verify.",
     tags: mfaTags,
     auth: ["bearerJwt", "cookieJwt"],
     responses: {
       "200": {
         description: "Secret generated — display the QR",
         schema: z.object({
-          otpauthUri: z.string().describe("Standard otpauth:// URI for authenticator apps"),
-          qrCodeDataUri: z.string().describe("data:image/png;base64,..."),
+          otpauthUri: z.string(),
+          qrCodeDataUri: z.string(),
         }),
       },
       "401": { description: "Not authenticated", schema: ErrorResponse },
@@ -174,17 +176,14 @@ const mfaRoutes: RouteDefinition[] = [
   {
     method: "POST",
     path: "/api/auth/mfa/verify",
-    summary: "Confirm the first OTP — enables MFA",
-    description:
-      "Only path that flips `mfaEnabled=true`. Rate-limited (3 attempts then " +
-      "exponential lockout). Emits MFA_ENABLED audit on success, " +
-      "MFA_CHALLENGE_FAILED on failure.",
+    summary: "Confirm the first OTP and enable MFA",
+    description: "Rate-limited. Only path that enables MFA.",
     tags: mfaTags,
     auth: ["bearerJwt", "cookieJwt"],
-    body: z.object({ otp: z.string().regex(/^\d{6}$/) }),
+    body: mfaVerifyBodySchema,
     responses: {
       "200": {
-        description: "MFA now enabled on the account",
+        description: "MFA enabled",
         schema: z.object({ mfaEnabled: z.literal(true) }),
       },
       "400": { description: "Validation failed", schema: ValidationError },
@@ -195,20 +194,20 @@ const mfaRoutes: RouteDefinition[] = [
   {
     method: "POST",
     path: "/api/auth/mfa/challenge",
-    summary: "Exchange mfa-pending token + OTP for a full JWT",
+    summary: "Exchange login mfaToken + OTP for a session",
     description:
-      "Second leg of the login flow when MFA is enabled. Sets the httpOnly " +
-      "cookie (`diabeo_token`). Session is tagged `mfaVerified=true`.",
+      "Second leg of the login flow when MFA is enabled. The `mfaToken` " +
+      "received from /api/auth/login is posted in the request body along " +
+      "with the current OTP. On success, the session cookie is set.",
     tags: mfaTags,
-    auth: ["mfaPending"],
-    body: z.object({
-      mfaToken: z.string().min(1),
-      otp: z.string().regex(/^\d{6}$/),
-    }),
+    // Public endpoint: the short-lived token is transported in the request
+    // body (NOT as an Authorization header), so no OpenAPI security scheme
+    // applies. The `mfaToken` field is documented in the request body below.
+    body: mfaChallengeBodySchema,
     responses: {
-      "200": { description: "Full JWT issued", schema: z.object({ expiresAt: z.string() }) },
+      "200": { description: "Session issued", schema: z.object({ expiresAt: z.string() }) },
       "400": { description: "Validation failed", schema: ValidationError },
-      "401": { description: "Invalid mfa-pending token or invalid OTP", schema: ErrorResponse },
+      "401": { description: "Invalid mfaToken or invalid OTP", schema: ErrorResponse },
       "429": { description: "Rate-limited", schema: ErrorResponse },
       "503": { description: "Server error", schema: ErrorResponse },
     },
@@ -216,23 +215,20 @@ const mfaRoutes: RouteDefinition[] = [
   {
     method: "POST",
     path: "/api/auth/mfa/disable",
-    summary: "Disable MFA — requires password + OTP (double factor)",
+    summary: "Disable MFA — requires password + OTP",
     description:
-      "Uniform 401 `invalidCredentials` on failure (no oracle on which factor " +
-      "failed). Clears both the secret and the enabled flag on success.",
+      "Both factors are required. Uniform error on failure (no oracle on " +
+      "which factor was wrong).",
     tags: mfaTags,
     auth: ["bearerJwt", "cookieJwt"],
-    body: z.object({
-      password: z.string().min(1),
-      otp: z.string().regex(/^\d{6}$/),
-    }),
+    body: mfaDisableBodySchema,
     responses: {
       "200": {
         description: "MFA disabled",
         schema: z.object({ mfaEnabled: z.literal(false) }),
       },
       "400": { description: "MFA is not enabled on this account", schema: ErrorResponse },
-      "401": { description: "Invalid password or OTP (uniform)", schema: ErrorResponse },
+      "401": { description: "Invalid password or OTP", schema: ErrorResponse },
       "429": { description: "Rate-limited", schema: ErrorResponse },
     },
   },
@@ -255,23 +251,11 @@ const accountProfileResponse = z.object({
   profileComplete: z.boolean(),
 })
 
-const patientProfilePatch = z.object({
-  pathology: z.enum(Pathology).optional(),
-})
-
-const privacySettings = z.object({
-  gdprConsent: z.boolean(),
-  shareWithProviders: z.boolean(),
-  shareWithResearchers: z.boolean(),
-  analyticsEnabled: z.boolean(),
-})
-
 const accountRoutes: RouteDefinition[] = [
   {
     method: "GET",
     path: "/api/account",
     summary: "Get own account profile",
-    description: "Returns the authenticated user's decrypted profile.",
     tags: accountTags,
     auth: ["bearerJwt", "cookieJwt"],
     responses: {
@@ -285,7 +269,7 @@ const accountRoutes: RouteDefinition[] = [
     summary: "Update own profile",
     tags: accountTags,
     auth: ["bearerJwt", "cookieJwt"],
-    body: patientProfilePatch,
+    body: userProfilePatchSchema,
     responses: {
       "200": { description: "Profile updated", schema: accountProfileResponse },
       "400": { description: "Validation failed", schema: ValidationError },
@@ -295,26 +279,23 @@ const accountRoutes: RouteDefinition[] = [
   {
     method: "GET",
     path: "/api/account/privacy",
-    summary: "Get GDPR / sharing preferences",
+    summary: "Get privacy / sharing preferences",
     tags: accountTags,
     auth: ["bearerJwt", "cookieJwt"],
     responses: {
-      "200": { description: "Privacy settings", schema: privacySettings },
+      "200": { description: "Privacy settings", schema: privacySettingsSchema },
       "401": { description: "Not authenticated", schema: ErrorResponse },
     },
   },
   {
     method: "PUT",
     path: "/api/account/privacy",
-    summary: "Update GDPR / sharing preferences",
-    description:
-      "PUT invalidates the 60-second GDPR consent cache (RGPD Art. 7(3) — " +
-      "withdrawal must be as easy as giving consent).",
+    summary: "Update privacy / sharing preferences",
     tags: accountTags,
     auth: ["bearerJwt", "cookieJwt"],
-    body: privacySettings.partial(),
+    body: privacySettingsPatchSchema,
     responses: {
-      "200": { description: "Privacy settings updated", schema: privacySettings },
+      "200": { description: "Privacy settings updated", schema: privacySettingsSchema },
       "400": { description: "Validation failed", schema: ValidationError },
       "401": { description: "Not authenticated", schema: ErrorResponse },
     },

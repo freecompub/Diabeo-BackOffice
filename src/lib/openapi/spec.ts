@@ -18,11 +18,17 @@ import type { RouteDefinition } from "./routes"
 /** Project version — surfaced in the spec's `info.version`. */
 const API_VERSION = "0.1.0"
 
-/** OpenAPI security-scheme IDs referenced by `RouteDefinition.auth`. */
+/**
+ * OpenAPI security-scheme IDs referenced by `RouteDefinition.auth`.
+ *
+ * Note: the mfa-pending token used by /api/auth/mfa/challenge is NOT a
+ * security scheme — it's a body parameter (`mfaToken`) documented as
+ * part of the request body. OpenAPI security schemes model transport
+ * concerns (header, cookie, query), not business-level fields.
+ */
 export const SECURITY_SCHEMES = {
   bearerJwt: "bearerJwt",
   cookieJwt: "cookieJwt",
-  mfaPending: "mfaPending",
 } as const
 
 export type SecuritySchemeId = keyof typeof SECURITY_SCHEMES
@@ -159,11 +165,7 @@ export function buildOpenApiDocument(routes: RouteDefinition[]): OpenApiDocument
     info: {
       title: "Diabeo Backoffice API",
       version: API_VERSION,
-      description:
-        "HDS-compliant API for insulin-therapy management. Patient health data " +
-        "is encrypted at rest (AES-256-GCM). All reads of medical data are " +
-        "audited (see AuditLog). See docs/compliance/hds-rgpd.md for the full " +
-        "regulatory surface and docs/security/mfa-flow.md for the auth flow.",
+      description: "HDS-compliant API for insulin-therapy management.",
     },
     servers: [
       { url: "https://app.diabeo.fr", description: "Production" },
@@ -177,26 +179,15 @@ export function buildOpenApiDocument(routes: RouteDefinition[]): OpenApiDocument
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
-          description:
-            "Full-access JWT (RS256, 15 min TTL, audience `diabeo-hc`). Issued " +
-            "by /api/auth/login when MFA is off, or by /api/auth/mfa/challenge.",
+          description: "Session token sent as a Bearer Authorization header.",
         },
         [SECURITY_SCHEMES.cookieJwt]: {
+          // Keep the cookie name stable (clients need to know which cookie
+          // to forward) but do NOT document internal token claims.
           type: "apiKey",
           in: "cookie",
           name: "diabeo_token",
-          description:
-            "Same JWT as `bearerJwt`, delivered via an httpOnly cookie for " +
-            "browser clients. XSS-hardened (see CLAUDE.md C3).",
-        },
-        [SECURITY_SCHEMES.mfaPending]: {
-          type: "http",
-          scheme: "bearer",
-          bearerFormat: "JWT",
-          description:
-            "Short-lived (5 min) token with audience `diabeo-mfa-pending`. " +
-            "ONLY accepted by /api/auth/mfa/challenge. Rejected on every " +
-            "protected route.",
+          description: "Session token delivered as an httpOnly cookie.",
         },
       },
       // Reserved for shared response components in a future PR (errors,
