@@ -7,6 +7,15 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+### Security backlog (from 2026-04-15 audit — see docs/security/audit-2026-04-15.md)
+
+- **US-SEC-001 (HIGH)** — Restrict insulin-therapy mutations to NURSE+
+  (currently VIEWER can self-mutate their ISF/ICR/settings consumed by
+  calculateBolus). Fix planned in a follow-up PR.
+- **US-SEC-002 (MEDIUM)** — Add `deletedAt: null` filter at the service
+  layer for `objectives` / `export` / `mydiabby-sync` patient queries
+  (defense-in-depth on RGPD Art. 17 soft-delete).
+
 ## 2026-04-15 — OpenAPI 3.1 spec (starter coverage)
 
 ### Added
