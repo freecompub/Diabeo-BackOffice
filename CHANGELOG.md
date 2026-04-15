@@ -7,6 +7,36 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+## 2026-04-15 — Ops scripts (deploy, backup, decrypt-smoke)
+
+### Added
+
+- **`scripts/deploy.sh`** — production deployment wrapper (git fetch +
+  SQL migration warning + pnpm + prisma db push + typecheck + test +
+  build + pm2 restart + `/api/health` probe). Sub-commands: `update`,
+  `status`, `health`. Dedicated exit codes (0 / 1 / 2 / 3) for incident
+  triage.
+- **`scripts/backup-postgres.sh`** — nightly PostgreSQL dump (custom
+  format, parallel, compression 9) + upload to OVH Object Storage under
+  `postgres/YYYY/MM/diabeo-<ts>.dump`. Local 14-day rotation; S3
+  lifecycle rule (OVH console) moves to Glacier at 7 days.
+- **`scripts/decrypt-smoke.ts`** — post-restore encryption validation:
+  samples 5 users × 5 encrypted fields, confirms the current
+  `HEALTH_DATA_ENCRYPTION_KEY` decrypts cleanly. Catches key-rotation
+  mismatches during quarterly restore drills.
+- **`docs/operations/runbook.md` — Manual setup checklist** — step-by-step
+  one-time operator actions required before each script can run on a
+  fresh VPS (pm2 install, OVH bucket + credentials, cron wiring, env
+  file placement). Removes the `[TODO — not yet implemented]` markers
+  the documentation engineer flagged on PR #107 for these 3 items.
+
+### Changed
+
+- `docs/operations/scripts-index.md`: 3 items flipped from ✗ to ✓.
+  Remaining TODOs: `docker-compose.prod.yml` (depends on Phase 13
+  US-1107/US-1108), OVH + Upstash alert rules (console config), DPO
+  breach-notification playbook.
+
 ## 2026-04-15 — Audit findings shipped (US-SEC-001 + US-SEC-002)
 
 ### Security

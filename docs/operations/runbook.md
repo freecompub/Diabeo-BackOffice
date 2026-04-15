@@ -20,6 +20,7 @@ Day-to-day operations playbook for the Diabeo Backoffice on OVHcloud GRA
 - [Secrets](#secrets)
 - [Monitoring](#monitoring)
 - [Routine maintenance](#routine-maintenance)
+- [Manual setup checklist](#manual-setup-checklist)
 
 ---
 
@@ -49,12 +50,10 @@ Each env has its own:
   reviewed with SQL-pro and medical-domain-validator agents.
 - ChangeLog updated for the release.
 
-### Standard deploy (prod) — **[TODO — not yet implemented]**
+### Standard deploy (prod)
 
-The target procedure below assumes `scripts/deploy.sh` and
-`docker-compose.prod.yml` exist. **Neither ships yet** (see
-[scripts-index.md](./scripts-index.md)). Until they do, follow the
-**manual fallback** at the bottom of this section.
+`scripts/deploy.sh` ships in-repo. Complete the [Manual setup
+checklist](#manual-setup-checklist) once per host before the first run.
 
 ```sh
 ssh diabeo@app.diabeo.fr
@@ -74,31 +73,21 @@ psql $DATABASE_URL < prisma/sql/<new_migration>.sql
 curl -sf https://app.diabeo.fr/api/health || echo "DEPLOY FAILED"
 ```
 
-The target `scripts/deploy.sh update` helper will run:
+`scripts/deploy.sh update` runs, in order:
 
-1. `git pull --ff-only origin main`
-2. `pnpm install --frozen-lockfile`
-3. `pnpm prisma generate`
-4. `pnpm prisma db push --accept-data-loss=false`
-5. `pnpm build`
-6. `docker compose -f docker-compose.prod.yml up -d --build api`
-7. Wait for `/api/health` to report `status: "ok"` for 30 s.
+1. `git fetch origin main` + warns on any new `prisma/sql/*.sql` (operator
+   must apply those with `psql` BEFORE acknowledging via `APPLIED_SQL=1`)
+2. `git pull --ff-only origin main`
+3. `pnpm install --frozen-lockfile`
+4. `pnpm prisma generate`
+5. `pnpm prisma db push --accept-data-loss=false`
+6. `pnpm tsc --noEmit` + `pnpm test` (hard gate)
+7. `pnpm build`
+8. `pm2 restart $PM2_PROCESS --update-env`
+9. Health probe on `/api/health` with up to 30 s retry window
 
-### Manual fallback (until deploy.sh ships)
-
-```sh
-ssh diabeo@app.diabeo.fr
-cd /opt/diabeo/backoffice
-git pull --ff-only origin main
-# Apply any new prisma/sql/*.sql first
-psql $DATABASE_URL < prisma/sql/<new_migration>.sql
-pnpm install --frozen-lockfile
-pnpm prisma generate
-pnpm prisma db push
-pnpm build
-pm2 restart diabeo-api  # or equivalent process-manager reload
-curl -sf https://app.diabeo.fr/api/health
-```
+Exit code 3 means the health probe failed — manual rollback required
+(see [Rollback](#rollback)).
 
 ### Emergency hotfix (skipping CI)
 
@@ -185,7 +174,7 @@ psql $DATABASE_URL < prisma/sql/mfa_hardening.sql
 ### PostgreSQL
 
 - **Automatic**: OVH managed DB takes daily snapshots retained for 30 days.
-- **Application-level** (belt and suspenders) — **[TODO — not yet implemented]**:
+- **Application-level** (belt and suspenders):
 
 ```sh
 # Full dump with COPY format — fastest restore
@@ -196,9 +185,8 @@ pg_dump \
   $PG_DB
 ```
 
-Target cron: `0 2 * * * /opt/diabeo/scripts/backup-postgres.sh`
-(script not yet shipped — see [scripts-index.md](./scripts-index.md)).
-Until then, the OVH managed snapshot is the only backup layer.
+Cron: `0 2 * * * /opt/diabeo/backoffice/scripts/backup-postgres.sh >> /var/log/diabeo-backup.log 2>&1`.
+Setup steps in [Manual setup checklist](#manual-setup-checklist).
 
 Backups are rsync'd to OVH Object Storage bucket `diabeo-backups-prod`
 with 7-day lifecycle to Glacier tier.
@@ -236,8 +224,11 @@ pg_restore --dbname=diabeo_restore --jobs=4 /tmp/diabeo-*.dump
 psql diabeo_restore -c "SELECT COUNT(*) FROM audit_logs;"
 psql diabeo_restore -c "SELECT COUNT(*) FROM users;"
 
-# Validate encryption keys still decrypt fields — [TODO: scripts/decrypt-smoke.ts not yet shipped]
-node scripts/decrypt-smoke.ts diabeo_restore
+# Validate encryption keys still decrypt fields — see §Manual setup checklist
+DATABASE_URL=postgres://...diabeo_restore \
+HEALTH_DATA_ENCRYPTION_KEY=<hex32> \
+HMAC_SECRET=smoke \
+pnpm tsx scripts/decrypt-smoke.ts
 ```
 
 Document the drill outcome in `docs/operations/drill-log.md` (log file to
@@ -382,3 +373,83 @@ SELECT * FROM audit_logs WHERE request_id = 'abc12345';
 - JWT keypair rotation.
 - Security audit pass (external penetration test for HDS renewal).
 - Reevaluate Docker base image vulnerabilities (`trivy` scan).
+
+---
+
+## Manual setup checklist
+
+One-time operator actions required before the automation scripts
+(`scripts/deploy.sh`, `scripts/backup-postgres.sh`, `scripts/decrypt-smoke.ts`)
+can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
+
+### Initial VPS bootstrap (per host)
+
+- [ ] SSH access hardened per Phase 13 US-1109 (keys only, no root login)
+- [ ] Node 22+ and pnpm 10+ in PATH (via Corepack or `curl -fsSL`)
+- [ ] `pm2` installed globally: `npm install -g pm2`
+- [ ] First-run app registration:
+      ```sh
+      cd /opt/diabeo/backoffice
+      pm2 start npm --name diabeo-api -- start
+      pm2 save
+      pm2 startup systemd    # follow the printed command
+      ```
+- [ ] Verify: `pm2 describe diabeo-api` shows "online"
+- [ ] All env vars from `.env.example` exported (validated by the app boot)
+
+### `scripts/deploy.sh` prerequisites
+
+- [ ] Bootstrap above complete
+- [ ] `DATABASE_URL` exported in the deploying operator's shell
+- [ ] `scripts/deploy.sh` is executable (`chmod +x`) — handled by git, verify after first pull
+- [ ] Smoke-test: `./scripts/deploy.sh status` — returns without error
+
+### `scripts/backup-postgres.sh` prerequisites
+
+- [ ] Create bucket in the OVH console: `diabeo-backups-prod` (region GRA)
+- [ ] Generate S3 credentials for the bucket — note access key + secret
+- [ ] Configure bucket lifecycle rule: objects under `postgres/` → Glacier
+      (Cold Archive) after 7 days; delete after 365 days
+- [ ] Install dependencies on the VPS:
+      ```sh
+      apt-get install -y postgresql-client awscli
+      ```
+- [ ] Create env file (owned by the cron user, mode 0600):
+      ```sh
+      sudo mkdir -p /etc/diabeo
+      sudo tee /etc/diabeo/backup.env > /dev/null <<'EOF'
+      PG_HOST=<OVH managed DB host>
+      PG_PORT=5432
+      PG_USER=<DB user>
+      PG_DB=diabeo
+      PGPASSWORD=<DB password>
+      OVH_S3_ENDPOINT=https://s3.gra.io.cloud.ovh.net
+      OVH_S3_ACCESS_KEY=<from OVH>
+      OVH_S3_SECRET_KEY=<from OVH>
+      OVH_S3_BUCKET=diabeo-backups-prod
+      EOF
+      sudo chmod 0600 /etc/diabeo/backup.env
+      ```
+- [ ] Create backup directory: `sudo mkdir -p /var/backups/diabeo`
+- [ ] Dry-run: `sudo -E /opt/diabeo/backoffice/scripts/backup-postgres.sh`
+      (verifies env + dump + upload + rotation end-to-end)
+- [ ] Register cron entry (for the same user that ran the dry-run):
+      ```cron
+      0 2 * * * /opt/diabeo/backoffice/scripts/backup-postgres.sh \
+        >> /var/log/diabeo-backup.log 2>&1
+      ```
+- [ ] Verify logrotate catches `/var/log/diabeo-backup.log`
+
+### `scripts/decrypt-smoke.ts` prerequisites
+
+Run only during the quarterly restore drill, against the restored DB:
+
+- [ ] Restore the dump into a throwaway DB (see §Backups — Restore drill)
+- [ ] Export `DATABASE_URL` pointing at the restored DB
+- [ ] Export `HEALTH_DATA_ENCRYPTION_KEY` (same key that was active when
+      the backup was taken — mismatch is exactly what this smoke catches)
+- [ ] Export `HMAC_SECRET` (any non-empty string; only required by the
+      crypto module loader)
+- [ ] Run: `pnpm tsx scripts/decrypt-smoke.ts`
+- [ ] Exit code 0 + "All samples decrypted cleanly" = drill success
+- [ ] Record outcome in `docs/operations/drill-log.md`
