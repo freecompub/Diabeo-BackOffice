@@ -37,6 +37,24 @@
 
 set -euo pipefail
 
+# All files this script creates (encrypted envelope, sha256 manifest) must be
+# owner-readable only. The diabeo-backup user is dedicated, but defense in
+# depth on a HDS host (CIS Benchmark Linux 5.4.4): a compromised process
+# running as another local user must not be able to read backup metadata.
+umask 077
+
+# Cleanup partial files on Ctrl-C / SIGTERM / unexpected error. Without this,
+# an interrupted pg_dump | age leaves a fresh-mtime file that the
+# `find -mtime +N -delete` rotation would never remove.
+ENC_FILE=""
+SHA_FILE=""
+cleanup_partial() {
+  local rc=$?
+  [[ -n "$ENC_FILE" && -f "$ENC_FILE" && $rc -ne 0 ]] && rm -f "$ENC_FILE"
+  [[ -n "$SHA_FILE" && -f "$SHA_FILE" && $rc -ne 0 ]] && rm -f "$SHA_FILE"
+}
+trap cleanup_partial ERR INT TERM
+
 # ----------------------------------------------------------------------------
 # Configuration
 # ----------------------------------------------------------------------------
@@ -93,9 +111,12 @@ if [[ ! -f "$PGPASSFILE" ]]; then
   exit 1
 fi
 # Postgres silently ignores a .pgpass that isn't 0600 → refuse to run.
-pgpass_mode=$(stat -c '%a' "$PGPASSFILE" 2>/dev/null || stat -f '%Lp' "$PGPASSFILE")
+# GNU stat returns "600" (3 digits), BSD `%Lp` may return "0600" (zero-
+# padded). Normalize to last 3 chars so the check is portable.
+pgpass_mode_raw=$(stat -c '%a' "$PGPASSFILE" 2>/dev/null || stat -f '%Lp' "$PGPASSFILE")
+pgpass_mode="${pgpass_mode_raw: -3}"
 if [[ "$pgpass_mode" != "600" ]]; then
-  err "$PGPASSFILE must be mode 0600 (current: $pgpass_mode)"
+  err "$PGPASSFILE must be mode 0600 (current: $pgpass_mode_raw)"
   exit 1
 fi
 export PGPASSFILE
@@ -103,6 +124,7 @@ export PGPASSFILE
 mkdir -p "$BACKUP_DIR"
 
 ENC_BASENAME="diabeo-${TIMESTAMP}.dump.age"
+# Re-assigned (previously declared as empty for the trap cleanup hook).
 ENC_FILE="$BACKUP_DIR/$ENC_BASENAME"
 SHA_FILE="$BACKUP_DIR/${ENC_BASENAME}.sha256"
 
@@ -115,10 +137,22 @@ AWS_S3_FLAGS=(--endpoint-url="$OVH_S3_ENDPOINT")
 # ----------------------------------------------------------------------------
 
 log "Verifying bucket Object Lock configuration…"
-lock_config=$(aws "${AWS_S3_FLAGS[@]}" s3api get-object-lock-configuration \
-  --bucket "$OVH_S3_BUCKET" 2>/dev/null || echo "")
-if ! printf '%s' "$lock_config" | grep -q '"Mode"[[:space:]]*:[[:space:]]*"COMPLIANCE"'; then
-  err "Bucket $OVH_S3_BUCKET is NOT in Object Lock Compliance mode."
+# Force --output json so the parser is immune to the operator's
+# AWS_DEFAULT_OUTPUT (yaml/text would silently bypass a regex check).
+# Use python3 (always present on Debian/Ubuntu) for robust JSON parsing.
+lock_config=$(AWS_DEFAULT_OUTPUT=json aws "${AWS_S3_FLAGS[@]}" \
+  s3api get-object-lock-configuration --output json \
+  --bucket "$OVH_S3_BUCKET" 2>/dev/null || echo "null")
+lock_mode=$(printf '%s' "$lock_config" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin) or {}
+    print(d.get('ObjectLockConfiguration', {}).get('Rule', {}).get('DefaultRetention', {}).get('Mode', 'NONE'))
+except Exception:
+    print('PARSE_ERROR')
+" 2>/dev/null || echo "PARSE_ERROR")
+if [[ "$lock_mode" != "COMPLIANCE" ]]; then
+  err "Bucket $OVH_S3_BUCKET Object Lock mode is '$lock_mode', expected COMPLIANCE."
   err "HDS requires tamper-evident storage (ISO 27001 A.12.3)."
   err "Enable: OVH console → bucket → Object Lock → Compliance mode."
   exit 1
@@ -146,7 +180,13 @@ log "Encrypted envelope OK ($enc_size) — plaintext never hit disk"
 # 3. Integrity manifest over the envelope (what S3 will actually hold)
 # ----------------------------------------------------------------------------
 
-( cd "$BACKUP_DIR" && sha256sum "$ENC_BASENAME" > "$SHA_FILE" )
+# Compute hash on the encrypted envelope, write the manifest with the
+# basename only so `sha256sum -c` works against the file as downloaded
+# during a restore drill (without the local path prefix).
+# Building the manifest line manually avoids a `( cd && sha256sum )` subshell
+# whose `&&` could silently skip the manifest if `cd` failed.
+enc_hash=$(sha256sum "$ENC_FILE" | awk '{print $1}')
+printf '%s  %s\n' "$enc_hash" "$ENC_BASENAME" > "$SHA_FILE"
 log "SHA256 manifest: $(cat "$SHA_FILE")"
 
 # ----------------------------------------------------------------------------

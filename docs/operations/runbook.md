@@ -567,18 +567,63 @@ Local `/var/log/diabeo-*.log` files are destroyed on VPS failure. HDS
 §IV.3 requires operator-action logs retained on an independent trusted
 system for the legal duration.
 
-- [ ] Install `rsyslog` (default on Debian/Ubuntu) and configure
-      forwarding to OVH Logs Data Platform:
+- [ ] Install `rsyslog` + GnuTLS module (Debian/Ubuntu):
+      ```sh
+      sudo apt-get install -y rsyslog rsyslog-gnutls
+      ```
+- [ ] Store the OVH LDP token in `/etc/rsyslog.d/.ldp-key` (chmod 0600,
+      owned by root). The token is obtained from the OVH LDP console
+      under the `diabeo-ops` stream.
+- [ ] Configure rsyslog to forward via TCP+TLS on port 6514 with the
+      OVH `X-OVH-TOKEN` structured-data field for authentication.
+      OVH LDP uses **token auth** (NOT mTLS) on this port, so
+      `StreamDriverAuthMode anon` is correct — the secret is the token
+      injected into every message, not a client certificate.
       ```
       # /etc/rsyslog.d/50-diabeo-ldp.conf
+      $DefaultNetstreamDriver gtls
+      $ActionSendStreamDriverMode 1
+      $ActionSendStreamDriverAuthMode anon
+
       module(load="imfile" PollingInterval="10")
       input(type="imfile" File="/var/log/diabeo-deploy.log" Tag="diabeo-deploy:")
       input(type="imfile" File="/var/log/diabeo-backup.log" Tag="diabeo-backup:")
-      *.* @@<OVH LDP endpoint>:6514;RSYSLOG_SyslogProtocol23Format
+
+      template(name="OvhLdp" type="string"
+        string="<%pri%>1 %timestamp:::date-rfc3339% %hostname% %app-name% %procid% %msgid% [X-OVH-TOKEN@32473 token=\"%$!token%\"] %msg%\n")
+
+      set $!token = $cat("/etc/rsyslog.d/.ldp-key");
+      *.* action(type="omfwd" target="<OVH LDP endpoint>" port="6514"
+                 protocol="tcp" template="OvhLdp" StreamDriver="gtls"
+                 StreamDriverMode="1" StreamDriverAuthMode="anon")
       ```
-- [ ] LDP ingestion key stored in `/etc/rsyslog.d/.ldp-key` (chmod 0600).
-- [ ] OVH LDP retention set to 5 years on the `diabeo-ops` stream.
-- [ ] Enable `pgaudit` on the managed OVH PostgreSQL (console → config
-      → `shared_preload_libraries += pgaudit`, `pgaudit.log = 'all'`).
-      Restrict `$PG_USER` to `pg_read_all_data` + explicit GRANTs on
-      the backup tables only — reduces blast radius on credential leak.
+- [ ] OVH LDP retention set to **5 years** on the `diabeo-ops` stream
+      (HDS Art. IV.3 minimum for operator-action logs).
+
+### DB-level audit on OVH Managed PostgreSQL
+
+OVH Public Cloud Databases does NOT expose `shared_preload_libraries`
+to tenants — `pgaudit` cannot be enabled. The HDS audit trail is
+provided by **two complementary layers**:
+
+1. **Application-level `audit_logs` table** (already implemented):
+   immutable PostgreSQL trigger (`prisma/sql/audit_immutability.sql`)
+   makes UPDATE/DELETE forbidden. Every authenticated mutation goes
+   through `auditService.log()` with action, resource, resourceId,
+   userId, ipAddress, userAgent, requestId. This captures **WHO did
+   WHAT**, which is stronger than `pgaudit`'s SQL-level trace.
+
+2. **OVH managed query logs** — enable via the OVH API:
+   ```sh
+   openstack dbaas instance update <service-id> --configuration logsLevel=queries
+   ```
+   Logs forward automatically to OVH LDP. Captures DDL + role events
+   the application layer can't see (e.g. an operator running raw SQL
+   via the console).
+
+- [ ] Restrict `$PG_USER` (the backup credential) to read-only:
+      ```sql
+      GRANT pg_read_all_data TO <PG_USER>;
+      REVOKE INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public FROM <PG_USER>;
+      ```
+      Reduces blast radius on credential leak; pg_dump only needs SELECT.
