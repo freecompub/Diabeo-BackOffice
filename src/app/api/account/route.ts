@@ -1,31 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { compare } from "bcryptjs"
-import { Sex, Language } from "@prisma/client"
 import { requireAuth, AuthError, invalidateAllUserSessions } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
 import { userService } from "@/lib/services/user.service"
 import { deleteUserAccount } from "@/lib/services/deletion.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
-
-const updateSchema = z.object({
-  title: z.string().max(10).optional(),
-  firstname: z.string().min(1).max(100).optional(),
-  firstnames: z.string().max(200).optional(),
-  usedFirstname: z.string().max(100).optional(),
-  lastname: z.string().min(1).max(100).optional(),
-  usedLastname: z.string().max(100).optional(),
-  birthday: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  sex: z.nativeEnum(Sex).optional(),
-  timezone: z.string().max(50).optional(),
-  phone: z.string().max(20).optional(),
-  address1: z.string().max(200).optional(),
-  address2: z.string().max(200).optional(),
-  cp: z.string().max(10).optional(),
-  city: z.string().max(100).optional(),
-  country: z.string().length(2).optional(),
-  language: z.nativeEnum(Language).optional(),
-})
+import { z } from "zod"
+import { userProfilePatchSchema } from "@/lib/schemas/account"
 
 export async function GET(req: NextRequest) {
   try {
@@ -51,7 +32,7 @@ export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
-    const parsed = updateSchema.safeParse(body)
+    const parsed = userProfilePatchSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(

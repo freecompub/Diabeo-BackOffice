@@ -12,7 +12,6 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { compare } from "bcryptjs"
 import {
   requireAuth,
@@ -25,11 +24,7 @@ import { prisma } from "@/lib/db/client"
 import { mfaService } from "@/lib/services/mfa.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
-
-const bodySchema = z.object({
-  password: z.string().min(1),
-  otp: z.string().regex(/^\d{6}$/),
-})
+import { mfaDisableBodySchema } from "@/lib/schemas/auth"
 
 export async function POST(req: NextRequest) {
   try {
@@ -46,7 +41,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const parsed = bodySchema.safeParse(body)
+    const parsed = mfaDisableBodySchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "validationFailed", details: parsed.error.flatten().fieldErrors },

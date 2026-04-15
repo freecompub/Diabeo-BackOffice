@@ -1,5 +1,4 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { compare } from "bcryptjs"
 import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
@@ -13,20 +12,16 @@ import {
 } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
+import { loginBodySchema } from "@/lib/schemas/auth"
 
 // Pre-computed hash for timing-safe comparison when user is not found.
 // Prevents timing oracle attacks that would allow enumeration of valid emails.
 const DUMMY_HASH = "$2a$12$LJ3m4ys3Lk0TSwMBiGKfxO5PaRxBVg1VQ/5.AkQYiAELlN0G5.3Pu"
 
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string().min(1),
-})
-
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const parsed = loginSchema.safeParse(body)
+    const parsed = loginBodySchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(

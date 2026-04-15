@@ -16,7 +16,6 @@
  */
 
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { prisma } from "@/lib/db/client"
 import {
   signJwt,
@@ -29,20 +28,13 @@ import {
 import { mfaService } from "@/lib/services/mfa.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
-
-const bodySchema = z.object({
-  mfaToken: z.string().min(1),
-  // Currently TOTP-only (6 digits). When backup codes ship (see
-  // docs/security/mfa-flow.md "out of scope"), this schema must branch on a
-  // discriminator (`{ otp: "123456" } | { backupCode: "ABCD-EFGH-IJKL" }`).
-  otp: z.string().regex(/^\d{6}$/),
-})
+import { mfaChallengeBodySchema } from "@/lib/schemas/auth"
 
 export async function POST(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
     const body = await req.json().catch(() => ({}))
-    const parsed = bodySchema.safeParse(body)
+    const parsed = mfaChallengeBodySchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "validationFailed", details: parsed.error.flatten().fieldErrors },

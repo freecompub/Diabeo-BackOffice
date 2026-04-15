@@ -1,16 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
 import { invalidateGdprConsentCache } from "@/lib/gdpr"
 import { auditService } from "@/lib/services/audit.service"
-
-const updatePrivacySchema = z.object({
-  shareWithResearchers: z.boolean().optional(),
-  shareWithProviders: z.boolean().optional(),
-  analyticsEnabled: z.boolean().optional(),
-  gdprConsent: z.boolean().optional(),
-})
+import { privacySettingsPatchSchema } from "@/lib/schemas/account"
 
 const PRIVACY_DEFAULTS = {
   shareWithResearchers: false,
@@ -44,7 +37,7 @@ export async function PUT(req: NextRequest) {
   try {
     const user = requireAuth(req)
     const body = await req.json()
-    const parsed = updatePrivacySchema.safeParse(body)
+    const parsed = privacySettingsPatchSchema.safeParse(body)
 
     if (!parsed.success) {
       return NextResponse.json(

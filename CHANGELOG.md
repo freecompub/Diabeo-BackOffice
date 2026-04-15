@@ -7,6 +7,27 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+## 2026-04-15 — OpenAPI 3.1 spec (starter coverage)
+
+### Added
+
+- **`GET /api/openapi.json`** (public, no auth) — OpenAPI 3.1 document
+  built on-demand from the Zod schemas via Zod 4's native
+  `z.toJSONSchema()`. No third-party converter dependency.
+- `src/lib/openapi/spec.ts` — document builder with three security
+  schemes (`bearerJwt`, `cookieJwt`, `mfaPending`).
+- `src/lib/openapi/routes.ts` — declarative registry, 15 starter routes
+  covering auth, MFA, account profile/privacy, and `/api/health`.
+- `docs/api/openapi.md` — how to view the spec (swagger-ui-cli, Postman,
+  Redocly) and how to register additional routes.
+- Middleware `PUBLIC_ENDPOINTS` set: `/api/health` + `/api/openapi.json`.
+
+### Changed
+
+- Middleware public-endpoint check refactored from per-path `if` into a
+  `Set` lookup — easier to add future public routes (e.g. a hosted
+  Swagger UI page) without touching the JWT enforcement branch.
+
 ## 2026-04-15 — Ops docs + health endpoint
 
 ### Added
