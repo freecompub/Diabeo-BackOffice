@@ -14,10 +14,10 @@ issue so the script can be productionized.
 |---------------------------------------------|--------|-------|-------|
 | `GET /api/health`                           | ✓ | backend | Implemented in PR #107 — `src/app/api/health/route.ts` |
 | `scripts/test-e2e.sh`                       | ✓ | QA | Existing, boots Playwright fixture stack |
-| `scripts/deploy.sh update`                  | ✗ | devops | Manual fallback documented in runbook §Deployment |
-| `docker-compose.prod.yml`                   | ✗ | devops | Prod currently runs `next start` under pm2 directly |
-| `scripts/backup-postgres.sh` (cron 02:00)   | ✗ | devops | OVH managed snapshots are the only backup layer today |
-| `scripts/decrypt-smoke.ts`                  | ✗ | backend | Restore drill currently runs the smoke manually via `pnpm prisma studio` |
+| `scripts/deploy.sh update`                  | ✓ | devops | Wraps manual fallback: git pull + pnpm + migrate + build + pm2 restart + health probe. Manual steps (pm2 setup) in runbook §Manual setup |
+| `docker-compose.prod.yml`                   | ✗ | devops | Prod currently runs `next start` under pm2 directly. Dépend de US-1108 Nginx + US-1107 TLS |
+| `scripts/backup-postgres.sh` (cron 02:00)   | ✓ | devops | pg_dump custom + aws s3 cp + rotation locale 14 jours. Requires one-time OVH bucket + cron + `/etc/diabeo/backup.env` setup (runbook §Manual setup) |
+| `scripts/decrypt-smoke.ts`                  | ✓ | backend | Post-restore validation: samples 5 users × 5 encrypted fields via `safeDecryptField`. Run manually during the quarterly restore drill |
 | `docs/operations/drill-log.md`              | ✗ | on-call | Created on first drill — template in incident-response.md |
 | OVH Cloud Monitoring alert on `/api/health` | ✗ | devops | Endpoint ready; monitor rule not provisioned |
 | Upstash eval-error-rate alert > 1 %         | ✗ | devops | Dashboard accessible, alert webhook not wired |

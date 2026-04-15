@@ -7,6 +7,47 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+## 2026-04-15 — Ops scripts (deploy, backup, decrypt-smoke) — HDS-hardened
+
+### Added
+
+- **`scripts/deploy.sh`** — production deployment wrapper (git fetch +
+  SQL migration warning + pnpm + prisma db push + typecheck +
+  build + pm2 restart + `/api/health` probe). Sub-commands: `update`,
+  `status`, `health`. Dedicated exit codes (0 / 1 / 2 / 3) for incident
+  triage. Tests are NOT re-run on the VPS — CI owns that gate (removal
+  flagged in the 2026-04-15 HDS audit: prod DB exposure risk).
+- **`scripts/backup-postgres.sh`** — nightly HDS-hardened PostgreSQL backup:
+  - `pg_dump | age -r <recipient>` — client-side encryption with a key
+    held OUTSIDE OVH; cloud provider cannot decrypt under legal
+    compulsion (ISO 27018 A.10, RGPD Art. 32).
+  - Plaintext dump NEVER touches disk — single pipeline into `age`.
+  - SSE AES256 on both envelope + sha256 manifest (belt-and-suspenders).
+  - SHA256 manifest sidecar over the envelope — verifiable on restore.
+  - Pre-flight check: refuses to run if the bucket is not in Object Lock
+    Compliance mode (tamper-evidence required by ISO 27001 A.12.3).
+  - `.pgpass` authentication ONLY — script rejects `PGPASSWORD` in env
+    to prevent the `ps auxe` exposure window.
+  - Local 14-day rotation; OVH bucket lifecycle (console) → Glacier 7d.
+- **`scripts/decrypt-smoke.ts`** — post-restore encryption validation:
+  samples 5 users × 5 encrypted fields, confirms the current
+  `HEALTH_DATA_ENCRYPTION_KEY` decrypts cleanly. Catches key-rotation
+  mismatches during quarterly restore drills.
+- **`docs/operations/runbook.md` — Manual setup checklist** — step-by-step
+  one-time operator actions covering: dedicated `diabeo-backup` system
+  user (no-login), age keypair generation + key custody (Vault/HSM,
+  NEVER on prod), mandatory `~/.pgpass` (0600), bucket versioning +
+  Object Lock Compliance mode, SSE-capable aws-cli, `pgaudit` + OVH
+  LDP log forwarding with 5-year retention, drill-host hardening
+  (`ulimit -c 0`, swap off, LUKS), secure wipe after restore drill.
+
+### Changed
+
+- `docs/operations/scripts-index.md`: 3 items flipped from ✗ to ✓.
+  Remaining TODOs: `docker-compose.prod.yml` (depends on Phase 13
+  US-1107/US-1108), OVH + Upstash alert rules (console config), DPO
+  breach-notification playbook.
+
 ## 2026-04-15 — Audit findings shipped (US-SEC-001 + US-SEC-002)
 
 ### Security
