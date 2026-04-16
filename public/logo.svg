@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Diabeo">
+  <title>Diabeo</title>
+  <defs>
+    <linearGradient id="d" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0D9488"/>
+      <stop offset="100%" stop-color="#0F766E"/>
+    </linearGradient>
+  </defs>
+  <g transform="rotate(-6 24 24)">
+    <path d="M24 3 C 33 14, 40 22, 40 29 A 16 16 0 1 1 8 29 C 8 22, 15 14, 24 3 Z" fill="url(#d)"/>
+    <path d="M11 30 C 14 24, 18 24, 21 30 C 24 36, 28 36, 31 30 C 33 26, 35 26, 37 28" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="37" cy="28" r="2.4" fill="#F97316" stroke="#FFFFFF" stroke-width="1"/>
+  </g>
+</svg>

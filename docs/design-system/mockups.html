@@ -78,7 +78,39 @@
   /* focus ring demo */
   .demo-focus:focus-visible { outline: 2px solid #0D9488; outline-offset: 2px; }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+  /* ===== Brand logo reusable SVG block ===== */
 </style>
+<!-- Inline SVG symbol for reuse -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="diabeo-drop-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0D9488"/>
+      <stop offset="100%" stop-color="#0F766E"/>
+    </linearGradient>
+    <symbol id="diabeo-mark" viewBox="0 0 48 48">
+      <g transform="rotate(-6 24 24)">
+        <path d="M24 3 C 33 14, 40 22, 40 29 A 16 16 0 1 1 8 29 C 8 22, 15 14, 24 3 Z" fill="url(#diabeo-drop-grad)"/>
+        <path d="M11 30 C 14 24, 18 24, 21 30 C 24 36, 28 36, 31 30 C 33 26, 35 26, 37 28" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="37" cy="28" r="2.4" fill="#F97316" stroke="#FFFFFF" stroke-width="1"/>
+      </g>
+    </symbol>
+    <symbol id="diabeo-mark-mono" viewBox="0 0 48 48">
+      <g transform="rotate(-6 24 24)" fill="currentColor">
+        <path d="M24 3 C 33 14, 40 22, 40 29 A 16 16 0 1 1 8 29 C 8 22, 15 14, 24 3 Z"/>
+        <path d="M11 30 C 14 24, 18 24, 21 30 C 24 36, 28 36, 31 30 C 33 26, 35 26, 37 28" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="37" cy="28" r="2.4" fill="#FFFFFF"/>
+      </g>
+    </symbol>
+    <symbol id="diabeo-mark-inverse" viewBox="0 0 48 48">
+      <g transform="rotate(-6 24 24)">
+        <path d="M24 3 C 33 14, 40 22, 40 29 A 16 16 0 1 1 8 29 C 8 22, 15 14, 24 3 Z" fill="#FFFFFF"/>
+        <path d="M11 30 C 14 24, 18 24, 21 30 C 24 36, 28 36, 31 30 C 33 26, 35 26, 37 28" fill="none" stroke="#0D9488" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="37" cy="28" r="2.4" fill="#F97316" stroke="#0D9488" stroke-width="1"/>
+      </g>
+    </symbol>
+  </defs>
+</svg>
 </head>
 <body class="antialiased">
 
@@ -86,13 +118,14 @@
 <header class="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-ink-100">
   <div class="max-w-7xl mx-auto px-6 h-14 flex items-center justify-between">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded-lg bg-teal-600 text-white grid place-items-center font-bold">D</div>
+      <svg class="w-9 h-9"><use href="#diabeo-mark"/></svg>
       <div>
-        <div class="text-sm font-semibold">Diabeo · Design System</div>
-        <div class="text-xs text-ink-500">Sérénité Active — v1.0 · 2026-04-15</div>
+        <div class="text-sm font-extrabold tracking-tight">diabeo<span class="text-ink-500 font-medium"> · Design System</span></div>
+        <div class="text-xs text-ink-500">Sérénité Active — v1.1 · 2026-04-16</div>
       </div>
     </div>
     <nav class="hidden md:flex items-center gap-1 text-sm">
+      <a href="#brand" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Marque</a>
       <a href="#tokens" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Tokens</a>
       <a href="#components" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Composants</a>
       <a href="#admin" class="px-3 py-1.5 rounded-md hover:bg-ink-100 cursor-pointer">Admin</a>
@@ -131,6 +164,229 @@
         <div class="flex items-center justify-between"><span class="tag-role text-teal-700">Viewer</span><i data-lucide="arrow-up-right" class="w-4 h-4 text-ink-300 group-hover:text-teal-600"></i></div>
         <div class="mt-2 text-sm font-medium">Lecture seule</div>
       </a>
+    </div>
+  </div>
+</section>
+
+<!-- ============ BRAND / LOGO ============ -->
+<section id="brand" class="section-gutter border-b border-ink-100 bg-gradient-to-b from-white to-teal-50/40">
+  <div class="max-w-7xl mx-auto">
+    <div class="flex items-end justify-between mb-8">
+      <div>
+        <div class="text-xs uppercase tracking-widest text-teal-700 font-bold">00 — Marque</div>
+        <h2 class="text-3xl font-bold mt-1">Identité & logotype</h2>
+        <p class="text-ink-500 mt-2 max-w-2xl">Un signe qui porte les quatre axes du produit : <strong class="text-ink-900">diabète · santé · supervision · technologie</strong>.</p>
+      </div>
+      <div class="flex gap-2 text-xs">
+        <span class="chip bg-teal-50 text-teal-700"><i data-lucide="file-code-2" class="w-3 h-3"></i>/public/logo.svg</span>
+        <span class="chip bg-teal-50 text-teal-700"><i data-lucide="component" class="w-3 h-3"></i>&lt;Logo /&gt;</span>
+      </div>
+    </div>
+
+    <!-- Hero logo -->
+    <div class="rounded-3xl bg-white border border-ink-100 p-10 shadow-lift relative overflow-hidden">
+      <div class="grid-bg absolute inset-0 opacity-40"></div>
+      <div class="relative flex flex-col md:flex-row items-center gap-10">
+        <!-- Big mark -->
+        <div class="flex-shrink-0">
+          <svg class="w-48 h-48 drop-shadow-[0_8px_24px_rgba(13,148,136,0.25)]"><use href="#diabeo-mark"/></svg>
+        </div>
+        <!-- Wordmark + concept -->
+        <div class="flex-1">
+          <div class="flex items-center gap-3">
+            <svg class="w-14 h-14"><use href="#diabeo-mark"/></svg>
+            <span class="text-6xl font-extrabold tracking-tight text-ink-900 leading-none">diabeo</span>
+          </div>
+          <p class="mt-5 text-ink-700 max-w-md">Une goutte — pour la <strong>glycémie</strong> — traversée par une courbe CGM — la <strong>supervision en continu</strong> — qui se termine sur un point de donnée corail — la <strong>technologie temps réel</strong>.</p>
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="chip bg-teal-50 text-teal-700"><i data-lucide="droplet" class="w-3 h-3"></i>Diabète</span>
+            <span class="chip bg-emerald-50 text-emerald-700"><i data-lucide="heart-pulse" class="w-3 h-3"></i>Santé</span>
+            <span class="chip bg-blue-50 text-blue-700"><i data-lucide="eye" class="w-3 h-3"></i>Supervision</span>
+            <span class="chip bg-coral-50 text-coral-700"><i data-lucide="cpu" class="w-3 h-3"></i>Technologie</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Variants -->
+    <div class="mt-8">
+      <h3 class="text-sm font-semibold mb-4 flex items-center gap-2"><i data-lucide="layers" class="w-4 h-4 text-teal-600"></i>Variantes</h3>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <!-- Full -->
+        <div class="rounded-xl border border-ink-100 bg-white p-6 flex flex-col items-center gap-3">
+          <div class="h-24 flex items-center gap-2">
+            <svg class="w-10 h-10"><use href="#diabeo-mark"/></svg>
+            <span class="text-3xl font-extrabold tracking-tight text-ink-900 leading-none">diabeo</span>
+          </div>
+          <div class="text-xs font-mono text-ink-500">variant="full"</div>
+          <div class="text-[0.65rem] text-ink-500 text-center">Usage principal — nav, headers, emails</div>
+        </div>
+        <!-- Mark only -->
+        <div class="rounded-xl border border-ink-100 bg-white p-6 flex flex-col items-center gap-3">
+          <div class="h-24 flex items-center">
+            <svg class="w-20 h-20"><use href="#diabeo-mark"/></svg>
+          </div>
+          <div class="text-xs font-mono text-ink-500">variant="mark"</div>
+          <div class="text-[0.65rem] text-ink-500 text-center">Favicon · app icon · compact</div>
+        </div>
+        <!-- Mono -->
+        <div class="rounded-xl border border-ink-100 bg-white p-6 flex flex-col items-center gap-3 text-ink-900">
+          <div class="h-24 flex items-center gap-2">
+            <svg class="w-10 h-10"><use href="#diabeo-mark-mono"/></svg>
+            <span class="text-3xl font-extrabold tracking-tight leading-none">diabeo</span>
+          </div>
+          <div class="text-xs font-mono text-ink-500">variant="mono"</div>
+          <div class="text-[0.65rem] text-ink-500 text-center">Impression N&amp;B · documents</div>
+        </div>
+        <!-- Inverse -->
+        <div class="rounded-xl bg-teal-700 p-6 flex flex-col items-center gap-3">
+          <div class="h-24 flex items-center gap-2">
+            <svg class="w-10 h-10"><use href="#diabeo-mark-inverse"/></svg>
+            <span class="text-3xl font-extrabold tracking-tight text-white leading-none">diabeo</span>
+          </div>
+          <div class="text-xs font-mono text-teal-100">variant="inverse"</div>
+          <div class="text-[0.65rem] text-teal-100 text-center">Fonds teal · sombres</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Construction + spacing -->
+    <div class="mt-8 grid md:grid-cols-2 gap-6">
+      <div class="rounded-2xl bg-white border border-ink-100 p-6">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-4">Construction</div>
+        <div class="grid-bg rounded-lg p-8 flex justify-center">
+          <svg viewBox="0 0 48 48" class="w-56 h-56">
+            <!-- Guides -->
+            <g stroke="#0D9488" stroke-width="0.2" stroke-dasharray="0.8 0.8" opacity="0.5">
+              <line x1="24" y1="0" x2="24" y2="48"/>
+              <line x1="0" y1="24" x2="48" y2="24"/>
+              <circle cx="24" cy="24" r="20" fill="none"/>
+            </g>
+            <!-- Mark -->
+            <g transform="rotate(-6 24 24)">
+              <path d="M24 3 C 33 14, 40 22, 40 29 A 16 16 0 1 1 8 29 C 8 22, 15 14, 24 3 Z" fill="url(#diabeo-drop-grad)"/>
+              <path d="M11 30 C 14 24, 18 24, 21 30 C 24 36, 28 36, 31 30 C 33 26, 35 26, 37 28" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="37" cy="28" r="2.4" fill="#F97316" stroke="#FFFFFF" stroke-width="1"/>
+            </g>
+            <!-- Annotations -->
+            <g font-size="2" font-family="JetBrains Mono" fill="#6B7280">
+              <text x="2" y="2">48×48</text>
+              <text x="36" y="2">rot -6°</text>
+            </g>
+          </svg>
+        </div>
+        <p class="mt-3 text-xs text-ink-500">Grille 48×48 · rotation -6° (dynamisme, courbe montante) · goutte ratio 2:3</p>
+      </div>
+      <div class="rounded-2xl bg-white border border-ink-100 p-6">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-4">Zone de protection</div>
+        <div class="rounded-lg bg-teal-50/50 border-2 border-dashed border-teal-300 p-8 flex justify-center">
+          <div class="relative">
+            <div class="absolute -inset-6 border border-dashed border-teal-400 rounded-lg"></div>
+            <div class="flex items-center gap-2">
+              <svg class="w-14 h-14"><use href="#diabeo-mark"/></svg>
+              <span class="text-4xl font-extrabold tracking-tight text-ink-900 leading-none">diabeo</span>
+            </div>
+            <div class="absolute -top-4 left-1/2 -translate-x-1/2 text-[0.6rem] font-mono text-teal-700 bg-white px-1">x</div>
+            <div class="absolute -left-4 top-1/2 -translate-y-1/2 text-[0.6rem] font-mono text-teal-700 bg-white px-1 rotate-90">x</div>
+          </div>
+        </div>
+        <p class="mt-3 text-xs text-ink-500">Zone minimale = <code class="font-mono text-xs bg-ink-100 px-1 rounded">x = hauteur du mark / 3</code> de chaque côté. Jamais d'élément concurrent dans cette zone.</p>
+      </div>
+    </div>
+
+    <!-- Sizes + favicon -->
+    <div class="mt-8 grid md:grid-cols-2 gap-6">
+      <div class="rounded-2xl bg-white border border-ink-100 p-6">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-4">Tailles minimales</div>
+        <div class="flex items-end gap-6 flex-wrap">
+          <div class="flex flex-col items-center gap-1">
+            <svg class="w-4 h-4"><use href="#diabeo-mark"/></svg>
+            <div class="text-[0.6rem] font-mono text-ink-500">16px favicon</div>
+          </div>
+          <div class="flex flex-col items-center gap-1">
+            <svg class="w-6 h-6"><use href="#diabeo-mark"/></svg>
+            <div class="text-[0.6rem] font-mono text-ink-500">24px</div>
+          </div>
+          <div class="flex flex-col items-center gap-1">
+            <svg class="w-8 h-8"><use href="#diabeo-mark"/></svg>
+            <div class="text-[0.6rem] font-mono text-ink-500">32px nav</div>
+          </div>
+          <div class="flex flex-col items-center gap-1">
+            <svg class="w-12 h-12"><use href="#diabeo-mark"/></svg>
+            <div class="text-[0.6rem] font-mono text-ink-500">48px</div>
+          </div>
+          <div class="flex flex-col items-center gap-1">
+            <svg class="w-16 h-16"><use href="#diabeo-mark"/></svg>
+            <div class="text-[0.6rem] font-mono text-ink-500">64px app icon</div>
+          </div>
+        </div>
+        <p class="mt-4 text-xs text-ink-500">En dessous de 16px, utiliser uniquement la goutte sans courbe CGM (lisibilité).</p>
+      </div>
+      <div class="rounded-2xl bg-white border border-ink-100 p-6">
+        <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-4">Couleurs autorisées</div>
+        <div class="grid grid-cols-3 gap-3">
+          <div class="text-center">
+            <div class="h-16 rounded-lg bg-white border border-ink-100 grid place-items-center"><svg class="w-10 h-10"><use href="#diabeo-mark"/></svg></div>
+            <div class="mt-1 text-[0.65rem] text-ink-500">Sur fond clair</div>
+          </div>
+          <div class="text-center">
+            <div class="h-16 rounded-lg bg-ink-100 grid place-items-center"><svg class="w-10 h-10"><use href="#diabeo-mark"/></svg></div>
+            <div class="mt-1 text-[0.65rem] text-ink-500">Sur gris doux</div>
+          </div>
+          <div class="text-center">
+            <div class="h-16 rounded-lg bg-teal-700 grid place-items-center"><svg class="w-10 h-10"><use href="#diabeo-mark-inverse"/></svg></div>
+            <div class="mt-1 text-[0.65rem] text-ink-500">Sur teal</div>
+          </div>
+          <div class="text-center">
+            <div class="h-16 rounded-lg bg-ink-900 grid place-items-center"><svg class="w-10 h-10"><use href="#diabeo-mark-inverse"/></svg></div>
+            <div class="mt-1 text-[0.65rem] text-ink-500">Sur foncé</div>
+          </div>
+          <div class="text-center">
+            <div class="h-16 rounded-lg bg-white border border-ink-100 grid place-items-center text-ink-900"><svg class="w-10 h-10"><use href="#diabeo-mark-mono"/></svg></div>
+            <div class="mt-1 text-[0.65rem] text-ink-500">N&amp;B</div>
+          </div>
+          <div class="text-center relative">
+            <div class="h-16 rounded-lg bg-gradient-to-br from-coral-400 to-coral-600 grid place-items-center opacity-60"><svg class="w-10 h-10"><use href="#diabeo-mark"/></svg></div>
+            <div class="absolute inset-0 top-0 h-16 grid place-items-center"><i data-lucide="ban" class="w-8 h-8 text-red-700"></i></div>
+            <div class="mt-1 text-[0.65rem] text-red-600 font-semibold">Interdit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Usage rules -->
+    <div class="mt-8 rounded-2xl bg-white border border-ink-100 p-6">
+      <div class="text-xs uppercase tracking-widest text-ink-500 font-semibold mb-4">Règles d'usage</div>
+      <div class="grid md:grid-cols-2 gap-6 text-sm">
+        <div>
+          <div class="font-semibold text-emerald-700 flex items-center gap-2 mb-2"><i data-lucide="check-circle-2" class="w-4 h-4"></i>À faire</div>
+          <ul class="space-y-1.5 text-ink-700">
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5"></i>Utiliser <code class="font-mono text-xs bg-ink-100 px-1 rounded">/public/logo.svg</code> ou le composant <code class="font-mono text-xs bg-ink-100 px-1 rounded">&lt;Logo /&gt;</code></li>
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5"></i>Respecter la zone de protection</li>
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5"></i>Minuscules uniquement pour le wordmark « diabeo »</li>
+            <li class="flex gap-2"><i data-lucide="check" class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5"></i>Taille mini 16px (mark), 24px (wordmark)</li>
+          </ul>
+        </div>
+        <div>
+          <div class="font-semibold text-red-700 flex items-center gap-2 mb-2"><i data-lucide="x-circle" class="w-4 h-4"></i>À éviter</div>
+          <ul class="space-y-1.5 text-ink-700">
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"></i>Déformer, réorienter, ou recolorer la goutte</li>
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"></i>Placer sur un fond saturé non prévu</li>
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"></i>Ajouter une ombre portée extérieure</li>
+            <li class="flex gap-2"><i data-lucide="x" class="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"></i>Majuscule « Diabeo » dans le wordmark graphique</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- Code -->
+    <div class="mt-6 rounded-xl bg-ink-900 text-ink-100 p-5 font-mono text-xs overflow-x-auto">
+<pre>import { Logo } from "@/components/diabeo/brand"
+
+&lt;Logo variant="full" size={32} /&gt;      {/* mark + wordmark */}
+&lt;Logo variant="mark" size={48} /&gt;       {/* favicon / app icon */}
+&lt;Logo variant="mono" size={24} /&gt;       {/* print N&amp;B */}
+&lt;Logo variant="inverse" size={32} /&gt;    {/* dark / teal backgrounds */}</pre>
     </div>
   </div>
 </section>
@@ -335,8 +591,8 @@
         <!-- Sidebar -->
         <aside class="w-56 bg-white border-r border-ink-100 py-4">
           <div class="px-4 mb-4 flex items-center gap-2">
-            <div class="w-7 h-7 rounded-md bg-teal-600 text-white grid place-items-center text-sm font-bold">D</div>
-            <div class="text-sm font-semibold">Diabeo</div>
+            <svg class="w-7 h-7"><use href="#diabeo-mark"/></svg>
+            <div class="text-sm font-extrabold tracking-tight">diabeo</div>
           </div>
           <nav class="text-sm">
             <a class="flex items-center gap-2 px-4 py-2 text-ink-700 hover:bg-ink-100 cursor-pointer"><i data-lucide="layout-dashboard" class="w-4 h-4"></i>Dashboard</a>
@@ -1747,7 +2003,7 @@
 <footer class="section-gutter bg-ink-900 text-white">
   <div class="max-w-7xl mx-auto grid md:grid-cols-3 gap-8">
     <div>
-      <div class="flex items-center gap-2"><div class="w-7 h-7 rounded-md bg-teal-500 text-white grid place-items-center font-bold">D</div><span class="font-semibold">Diabeo Design System</span></div>
+      <div class="flex items-center gap-2"><svg class="w-8 h-8"><use href="#diabeo-mark-inverse"/></svg><span class="font-extrabold tracking-tight text-lg">diabeo</span><span class="text-ink-300 ml-1 font-medium">Design System</span></div>
       <p class="text-sm text-ink-300 mt-3">Conçu pour l'insulinothérapie — calme, précis, auditable. Inspiré des guidelines NN/g, Material Health, Epic & Apple HIG Healthcare.</p>
     </div>
     <div>
