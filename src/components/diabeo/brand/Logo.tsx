@@ -106,7 +106,7 @@ function LogoWordmark({
         className="font-extrabold tracking-tight leading-none"
         style={{ color: text, fontSize: size * 0.78 }}
       >
-        diabeo
+        Diabeo
       </span>
     </span>
   )

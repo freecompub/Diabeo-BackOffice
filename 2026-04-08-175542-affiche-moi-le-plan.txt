@@ -1,0 +1,83 @@
+ ▐▛███▜▌   Claude Code v2.1.92
+▝▜█████▛▘  Opus 4.6 (1M context) · Claude Max
+  ▘▘ ▝▝    ~/Projets/Diabeo-BackOffice
+
+  ↑ Opus now defaults to 1M context · 5x more room, same pricing
+
+✻ Conversation compacted (ctrl+o for history)
+
+
+❯ /compact                                                                      
+  ⎿  Compacted (ctrl+o to see full summary)
+  ⎿  Read tests/pages/insulin-therapy.test.tsx (336 lines)
+  ⎿  Referenced file src/app/(dashboard)/settings/page.tsx
+  ⎿  Referenced file src/app/(dashboard)/weekly/page.tsx
+  ⎿  Referenced file src/app/(dashboard)/analytics/page.tsx
+  ⎿  Read ../DiabeoDoc/Backoffice/diabeo-plan/user-stories/US-1113-docker-compos
+     e-multi-env.md (88 lines)
+  ⎿  Skills restored (review)
+
+❯ /context                                                                      
+  ⎿  Context Usage
+     ⛁ ⛁ ⛁ ⛀ ⛁ ⛁ ⛁ ⛀ ⛁ ⛁ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Opus 4.6 (1M context)
+                                               claude-opus-4-6[1m]
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   43.7k/1m tokens (4%)
+
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   Estimated usage by category
+                                               ⛁ System prompt: 6.4k tokens 
+     (0.6%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ System tools: 9.5k tokens 
+     (0.9%)
+                                               ⛁ Custom agents: 813 tokens 
+     (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ Memory files: 15.8k tokens 
+     (1.6%)
+                                               ⛁ Skills: 705 tokens (0.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛁ Messages: 10.5k tokens (1.0%)
+                                               ⛶ Free space: 935.3k (93.5%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶   ⛝ Autocompact buffer: 21k tokens 
+                                                                     (2.1%)
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ 
+
+     ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛶ ⛝ ⛝ ⛝ ⛝ 
+
+     MCP tools · /mcp (loaded on-demand)
+
+     Available
+     └ mcp__claude_ai_Gmail__authenticate
+     └ mcp__claude_ai_Google_Calendar__authenticate
+
+     Custom agents · /agents
+
+     Project
+     └ nextjs-developer: 79 tokens
+     └ prisma-specialist: 77 tokens
+     └ healthcare-security-auditor: 75 tokens
+     └ medical-domain-validator: 69 tokens
+     └ ui-ux-designer: 67 tokens
+     └ devops-engineer: 65 tokens
+     └ swift-expert: 59 tokens
+     └ sql-pro: 55 tokens
+     └ test-automator: 55 tokens
+     └ code-reviewer: 51 tokens
+     └ documentation-engineer: 48 tokens
+     └ typescript-pro: 45 tokens
+     └ accessibility-tester: 35 tokens
+     └ architect-reviewer: 33 tokens
+
+     Memory files · /memory
+     └ CLAUDE.md: 13k tokens
+     └ .claude/TEAM.md: 1.2k tokens
+     └ .claude/Documentation.md: 1.5k tokens
+     └ ~/.claude/projects/-home-diabeo-Projets-Diabeo-BackOffice/memory/MEM122 
+     tokens
+     RY.md:
+
+     Skills · /skills
+
+     Project
+     └ prisma-cli: 79 tokens
+     └ prisma-client-api: 75 tokens
+     └ prisma-upgrade-v7: 75 tokens
