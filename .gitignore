@@ -59,3 +59,11 @@ prisma/migrations/*.sql.bak
 
 # OS
 Thumbs.db
+
+# Local Claude Code artifacts
+.claude/settings.json
+.claude/skills/
+*.pyc
+__pycache__/
+figma-export-script.js
+2026-*-*.txt
