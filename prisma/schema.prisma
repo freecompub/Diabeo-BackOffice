@@ -178,9 +178,11 @@ model User {
   passwordHash             String    @map("password_hash")
   title                    String?   // 'M.' | 'Mme' | 'Dr' | 'Prof'
   firstname                String?   // chiffre
+  firstnameHmac            String?   @map("firstname_hmac") // HMAC-SHA256 pour recherche
   firstnames               String?   // chiffre
   usedFirstname            String?   @map("used_firstname") // chiffre
   lastname                 String?   // chiffre
+  lastnameHmac             String?   @map("lastname_hmac") // HMAC-SHA256 pour recherche
   usedLastname             String?   @map("used_lastname") // chiffre
   birthday                 DateTime? @db.Date // chiffre
   sex                      Sex?
@@ -242,6 +244,7 @@ model User {
   mydiabbyCredential   MyDiabbyCredential?
 
   @@index([createdAt])
+  @@index([firstnameHmac, lastnameHmac])
   @@map("users")
 }
 

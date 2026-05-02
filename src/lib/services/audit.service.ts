@@ -54,6 +54,7 @@ export type AuditAction =
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"
   | "IMPORT"
+  | "ANONYMIZE"
 
 /**
  * Audit resource type — describes what was acted upon.
@@ -76,6 +77,7 @@ export type AuditResource =
   | "PUMP_EVENT"
   | "PUSH_NOTIFICATION"
   | "PUSH_REGISTRATION"
+  | "AUDIT_LOG"
 
 /**
  * Audit log entry — parameters for logging an action.

@@ -22,7 +22,11 @@ import { createHmac } from "crypto"
  * // Use in: User.emailHmac for UNIQUE index + fast lookups
  */
 export function hmacEmail(email: string): string {
+  return hmacField(email)
+}
+
+export function hmacField(value: string): string {
   const key = process.env.HMAC_SECRET
   if (!key) throw new Error("HMAC_SECRET is not set")
-  return createHmac("sha256", key).update(email.toLowerCase().trim()).digest("hex")
+  return createHmac("sha256", key).update(value.toLowerCase().trim()).digest("hex")
 }
