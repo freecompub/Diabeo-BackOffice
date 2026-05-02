@@ -4,6 +4,10 @@ import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
 import { checkRateLimit, recordFailedAttempt } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { emailService } from "@/lib/services/email.service"
+import { decrypt } from "@/lib/crypto/health-data"
+import { randomUUID } from "crypto"
+import { logger } from "@/lib/logger"
 
 const resetSchema = z.object({
   email: z.string().email(),
@@ -39,7 +43,24 @@ export async function POST(req: NextRequest) {
     const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
 
     if (user) {
-      // TODO: Send reset email via email service
+      const resetToken = randomUUID()
+      await prisma.verificationToken.create({
+        data: {
+          identifier: emailHash,
+          token: resetToken,
+          expires: new Date(Date.now() + 3600_000),
+        },
+      })
+
+      try {
+        const decryptedEmail = decrypt(new Uint8Array(Buffer.from(user.email, "base64")))
+        emailService.sendPasswordReset(decryptedEmail, resetToken).catch((err) => {
+          logger.error("auth/reset-password", "Email send failed", { userId: user.id }, err)
+        })
+      } catch {
+        logger.error("auth/reset-password", "Email decrypt failed", { userId: user.id })
+      }
+
       await auditService.log({
         userId: user.id,
         action: "UPDATE",

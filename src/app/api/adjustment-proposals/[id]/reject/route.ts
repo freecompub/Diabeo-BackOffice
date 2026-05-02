@@ -29,6 +29,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     const ctx = extractRequestContext(req)
     const result = await adjustmentService.reject(id, user.id, ctx)
+    adjustmentService.notifyPatient(result.patientId, user.id, "rejected", ctx)
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
