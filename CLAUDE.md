@@ -763,53 +763,103 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-## 📋 Backlog technique (findings non corrigés à planifier)
+## 📊 Roadmap User Stories intégrées
 
-Les items suivants ont été identifiés lors des reviews mais reportés pour ne pas bloquer les phases en cours.
+> Détail complet : [`docs/ROADMAP.md`](docs/ROADMAP.md)
+> Source : `docs/UserStory/pro-user-stories/` (213 US) + `docs/UserStory/user-stories-patient-management/` (51 US)
 
-### Priorité haute (avant mise en production)
-- [x] **US-SEC-001 — RBAC sur insulin-therapy mutations (HIGH)** — `requireRole(NURSE)` appliqué sur `settings` PUT, `sensitivity-factors` POST, `carb-ratios` POST. 7 tests intégration matrix VIEWER/NURSE/DOCTOR
-- [x] **US-SEC-002 — Soft-delete au service layer (MEDIUM)** — `deletedAt:null` ajouté sur `objectives.service.ts`, `export.service.ts`, `mydiabby-sync.service.ts` (×2). Test régression sur `objectives.getAll`. Prisma `$extends` hook reste à faire en suivi.
-- [x] **Unifier CLINICAL_BOUNDS et INSULIN_BOUNDS** — source unique dans `src/lib/clinical-bounds.ts`, alias `INSULIN_BOUNDS` déprécié dans `insulin-therapy.service.ts`
-- [x] **Slot overlap detection ISF/ICR** — `createIsf`/`createIcr` utilisent `hasTimeSlotOverlap` (`src/lib/services/time-slot-utils.ts`) avec support du passage minuit
-- [x] **IOB (Insulin On Board) implémentation** — decay linéaire dans `insulin.service.ts:301-337`, `IobSettings.actionDurationHours` configurable, filtre `wasDelivered=true`
-- [x] **Session revocation via Upstash Redis** — revocation.ts utilise Upstash Redis (HTTP/fetch, compatible Edge). Fail-closed (HDS), bulk revocation, refresh endpoint protégé. Voir `docs/security/session-revocation.md`
-- [x] **JWT court-lived (15min) + refresh token** — `TOKEN_EXPIRY = "15m"` dans `src/lib/auth/jwt.ts:5`, endpoint `/api/auth/refresh` avec `clockTolerance: 900` pour le grace window
-- [x] **Rate limiting sur endpoints analytics et export** — `src/lib/auth/api-rate-limit.ts` (sliding-window Upstash + fallback memory, fail-open). Appliqué sur 5 routes analytics + export RGPD (3/h)
-- [x] **Routes Phase 3 — accès pro** — `resolvePatientId` (VIEWER own / PRO explicit `?patientId=N` + `canAccessPatient`) appliqué sur 8 routes patient/userdata/healthcare/pregnancy/services/objectives
+### Taux de réalisation (2026-05-02)
 
-### Priorité moyenne (amélioration continue)
-- [x] **`Number(Decimal)` → `.toNumber()`** — appliqué dans `insulin.service.ts` (isf/icr/target/iob) et `analytics.service.ts` (flow). Fixtures tests migrent vers `new Prisma.Decimal(n)`
-- [x] **`deliveryMethod: string` → `InsulinDeliveryMethod`** — `BolusResult` et `roundForDevice` typés sur l'enum Prisma (`pump | manual`)
-- [ ] **Audit `resourceId` convention** — 12 patterns distincts dans ~67 call sites (`basal:42`, `isf-uuid`, `${patientId}:averages`, etc.). Harmonisation = gros refactor faible valeur — défère en v2 avec helper `auditResourceId(type, id)` à concevoir
-- [x] **`upsertBasalConfig` input type** — `Prisma.BasalConfigurationUncheckedCreateInput` remplacé par `BasalConfigInput` domain type (omit `settingsId`, `id`, `createdAt`)
-- [x] **Tests : write paths Phase 4** — `upsertSettings`, `createIsf` (overlap + zero-duration), `createIcr` (overlap), `deleteIsf`, `deleteIcr` — 9 nouveaux tests
-- [x] **Tests : `requiresHypoTreatmentFirst` flag** — 5 tests (< 0.70 true, boundary 0.69/0.70, normal, severe hypo)
-- [x] **Tests : division-by-zero guards ISF/ICR** — 3 tests (ISF=0, ICR=0, ISF négatif)
+| Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
+|----------|-------|------|---------|-------------|--------|
+| **MVP**  | 63    | 31   | 13      | 19          | **49%** |
+| **V1**   | 120   | 0    | 7       | 113         | **0%**  |
+| **V2**   | 58    | 0    | 0       | 58          | **0%**  |
+| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
+| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
+| **TOTAL**| **264** | **31** | **20** | **213**   | **12%** |
 
-### Priorité basse (dette technique)
-- [x] **Structured logger** — `src/lib/logger.ts` (JSON prod / texte dev, suppression niveaux non-error en test) + middleware propage `x-request-id` (correlation ID auto-généré ou passthrough), exposé via `extractRequestContext(req).requestId`. Migration partielle (auth/login, calculate-bolus, rate-limit, api-rate-limit, redis-cache, insulin.service) — reste ~110 console.error à migrer progressivement
-- [x] **`requireGdprConsent` cache** — `src/lib/cache/redis-cache.ts` (Upstash Redis + fallback memory, fail-open) + TTL 5min. Invalidation sur PUT /api/account/privacy et suppression compte RGPD Art. 17. Cache la valeur `false` et `null` (missing row) pour éviter re-queries.
-- [x] **`periodType` enum** — `PeriodType { current, d7 @map("7d"), d30 @map("30d") }` dans schema.prisma. `@map` préserve les valeurs DB existantes (`current`, `7d`, `30d`). Migration SQL prod : `prisma/sql/period_type_enum.sql` (à appliquer manuellement avant `prisma db push`).
-- [ ] **Photo upload** — implémenter OVH Object Storage (actuellement 501 Not Implemented)
-- [x] **MFA flow complet (TOTP)** — enrollment 2-step (setup → verify), login via mfa-pending token (audience séparée) → /challenge, disable password+OTP, 3 audit actions, rate limit par bucket. Secret AES-256-GCM at rest. Docs: `docs/security/mfa-flow.md`
+### MVP — Effort restant (~98 SP)
 
-### Design System (à planifier)
-- [ ] **Création du design system complet** — tokens (couleurs, typographie, espacements, ombres), composants de base shadcn/ui configurés avec la palette "Sérénité Active"
-- [ ] **Composants métier Diabeo** — GlycemiaChart, BolusCalculator, PatientCard, AlertBanner, TirDonut, AgpGraph
-- [ ] **Storybook** — stories pour chaque composant avec variations d'état (normal, erreur, alerte clinique, données sensibles)
-- [ ] **Tokens design** — fichier Tailwind CSS avec les variables de la palette (teal, corail, glycémie normale/haute/critique)
-- [ ] **Accessibilité WCAG 2.1** — contrastes 4.5:1, navigation clavier, ARIA labels, screen reader support
-- [ ] **Responsive** — mobile-first, optimisé desktop pour le backoffice médical
+**Batch A — Compléter les PARTIAL (13 US)**
+- US-2017 (wizard patient), US-2047 (UI validation médecin), US-2064 (push→proposals),
+  US-2073 (envoi FCM), US-2074 (service email), US-2089 (UI pairing device),
+  US-2112/US-2115 (i18n next-intl), US-2117 (modèle cabinet), US-2133 (cron rétention),
+  US-2136 (HMAC prénom/nom)
 
-### Documentation (à planifier)
-- [ ] **Mise à jour CLAUDE.md** — Phases 3 à 7 manquantes, CLINICAL_BOUNDS obsolètes, structure projet incomplète
-- [ ] **Documentation API** — Swagger/OpenAPI pour toutes les routes (auth, patient, CGM, analytics, insulin, devices, push, announcements)
-- [ ] **Runbook opérationnel** — procédures déploiement, rollback, backup, monitoring
-- [ ] **Guide développeur** — onboarding, conventions code, workflow PR/review, architecture services
-- [ ] **Documentation HDS/RGPD** — cartographie des données de santé, flux de chiffrement, politique d'audit, procédures RGPD (export/suppression)
-- [ ] **Changelog** — historique des phases livrées avec PRs et findings corrigés
+**Batch B — Nouvelles US (9 US)**
+- US-2025 (QR invite mobile), US-2118 (praticien libéral), US-2140 (OVH S3 upload),
+  US-2148 (admin users UI), US-2151 (backup management)
+
+**Batch C — Mirror MVP (9 US)**
+- US-2214–2217 (config seuils glycémiques/cétones/resucrage),
+  US-2224–2226/2230 (urgences inbox + timeline + workflow + push),
+  US-2232 (mode grossesse toggle)
+
+### Décisions architecturales
+
+| Sujet | Décision |
+|-------|----------|
+| CGM Ingestion MVP | MyDiabby seul (Dexcom/Abbott en V1) |
+| Push Notifications | Firebase FCM |
+| Prescriptions (45 US) | Reportées en V2+ (seul US-2171 BDPM en MVP, déjà POC) |
+| Upload Documents | OVH S3 immédiat |
+
+### Fusions (redondances détectées)
+
+- US-2132 → alias US-2011 (audit log, DONE)
+- US-2026 ↔ US-2126 (INS : modèle patient / API INSi, liés)
+- US-2077 ↔ US-2125 (MSSanté : UX / backend, liés)
+- US-2008 ↔ US-2127 (PSC : login / intégration, liés)
+- US-2148 ↔ US-2012 (RBAC : backend DONE / UI admin restante)
+- US-2024 ↔ US-2011 (historique = UI consultation audit log)
 
 ---
 
-*Dernière mise à jour : 2026-04-15 — Audit sécurité full-project (US-SEC-001 HIGH + US-SEC-002 MEDIUM)*
+## 📋 Backlog technique (items historiques mappés)
+
+### Items résolus (mappés vers US)
+- [x] US-SEC-001 → US-2012 + US-2048 (RBAC + bornes cliniques)
+- [x] US-SEC-002 → US-2020 (soft-delete service layer)
+- [x] Unifier CLINICAL_BOUNDS → US-2048
+- [x] Slot overlap ISF/ICR → US-2044 + US-2045
+- [x] IOB implémentation → US-2049
+- [x] Session revocation Redis → US-2001
+- [x] JWT 15min + refresh → US-2001
+- [x] Rate limiting analytics/export → US-2005
+- [x] Routes Phase 3 accès pro → US-2016 + US-2018
+- [x] Number(Decimal) → .toNumber() → US-2042
+- [x] deliveryMethod typing → US-2042
+- [x] upsertBasalConfig input type → US-2046
+- [x] Tests write paths Phase 4 → US-2044/2045
+- [x] Tests requiresHypoTreatmentFirst → US-2037
+- [x] Tests division-by-zero ISF/ICR → US-2048
+- [x] Structured logger → transversal
+- [x] requireGdprConsent cache → US-2013
+- [x] periodType enum → US-2033
+- [x] MFA flow TOTP → US-2002
+
+### Items restants
+- [ ] **Audit `resourceId` convention** — reporté V2, faible valeur (67 call sites, helper `auditResourceId` à concevoir)
+- [ ] **Photo upload OVH** → **US-2140 MVP** (OVH S3, priorité immédiate)
+
+### Design System (transversal, hors US)
+- [x] Tokens (couleurs, typo, espacements, ombres) — `src/styles/tokens.css` (258 lignes)
+- [x] Composants métier — 44 composants dans `src/components/diabeo/`
+- [x] Logo Diabeo — `public/logo.svg` + `src/components/diabeo/brand/Logo.tsx`
+- [x] Loaders médicaux — `src/components/diabeo/loaders/` (chart/page/upload)
+- [ ] Storybook — stories par composant
+- [ ] Accessibilité WCAG 2.1 — audit contrastes + clavier
+- [ ] Responsive — validation mobile
+
+### Documentation (transversal, hors US)
+- [x] Roadmap US intégrées — `docs/ROADMAP.md`
+- [ ] Documentation API Swagger/OpenAPI
+- [ ] Runbook opérationnel
+- [ ] Guide développeur
+- [ ] Documentation HDS/RGPD
+- [ ] Changelog
+
+---
+
+*Dernière mise à jour : 2026-05-02 — Intégration 264 US (pro + mirror), mapping backlog, taux réalisation MVP 49%*
