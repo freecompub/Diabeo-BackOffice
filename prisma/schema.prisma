@@ -216,6 +216,7 @@ model User {
   intercomHash             String?   @map("intercom_hash") // interne — jamais expose
   deploymentKey            String?   @map("deployment_key") // interne — jamais expose
   pro                      String?   // interne
+  photoUrl                 String?   @map("photo_url") @db.VarChar(500)
   displayModalTlsMutual    Boolean   @default(false) @map("display_modal_tls_mutual")
   displayModalTlsMandatory Boolean   @default(false) @map("display_modal_tls_mandatory")
   createdAt                DateTime  @default(now()) @map("created_at")

@@ -1,18 +1,8 @@
-/**
- * Antivirus scanning service using ClamAV.
- *
- * All files downloaded from external sources MUST be scanned before
- * processing. This is a security requirement for HDS compliance.
- *
- * ClamAV must be installed on the server:
- *   apt install clamav clamav-daemon
- *   systemctl start clamav-daemon
- *
- * In development/CI without ClamAV, the scan is skipped with a warning.
- */
-
 import NodeClam from "clamscan"
 import { existsSync } from "fs"
+import { writeFile, rm, mkdtemp } from "fs/promises"
+import { join } from "path"
+import { tmpdir } from "os"
 
 let clamInstance: NodeClam | null = null
 
@@ -47,24 +37,17 @@ export interface ScanResult {
   viruses: string[]
 }
 
-/**
- * Scan a file for viruses using ClamAV.
- * Returns { scanned: false } if ClamAV is not available (dev/CI).
- * Returns { scanned: true, clean: true/false } after scan.
- */
 export async function scanFile(filePath: string): Promise<ScanResult> {
   if (!existsSync(filePath)) {
-    throw new Error(`File not found: ${filePath}`)
+    throw new Error("File not found for scan")
   }
 
   const clam = await getClamAV()
 
   if (!clam) {
-    // Fail-closed in production — refuse to process without antivirus
     if (process.env.NODE_ENV === "production") {
-      throw new Error(`[antivirus] ClamAV unavailable in production — refusing to process ${filePath}`)
+      throw new Error("[antivirus] ClamAV unavailable in production — refusing to process file")
     }
-    console.warn(`[antivirus] Skipping scan for ${filePath} — ClamAV not available (non-prod)`)
     return { scanned: false, clean: true, viruses: [] }
   }
 
@@ -73,7 +56,7 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
     const isClean = result.isInfected === false
 
     if (!isClean) {
-      console.error(`[antivirus] INFECTED: ${filePath} — ${result.viruses?.join(", ")}`)
+      console.error("[antivirus] INFECTED file detected:", result.viruses?.join(", "))
     }
 
     return {
@@ -83,8 +66,18 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    console.error(`[antivirus] Scan failed for ${filePath}:`, msg)
-    // Fail-closed: treat as infected if scan fails
+    console.error("[antivirus] Scan failed:", msg)
     return { scanned: false, clean: false, viruses: ["SCAN_ERROR"] }
+  }
+}
+
+export async function scanBuffer(buffer: Buffer, safeFileName: string): Promise<ScanResult> {
+  const tmpDir = await mkdtemp(join(tmpdir(), "diabeo-scan-"))
+  const tmpPath = join(tmpDir, safeFileName.replace(/[^a-zA-Z0-9._-]/g, "_"))
+  try {
+    await writeFile(tmpPath, buffer)
+    return await scanFile(tmpPath)
+  } finally {
+    await rm(tmpDir, { recursive: true }).catch(() => {})
   }
 }

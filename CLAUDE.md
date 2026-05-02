@@ -61,7 +61,7 @@ diabeo-backoffice/
 │   │       │   └── reset-password/ # POST — reset MDP
 │   │       ├── account/            # Gestion compte utilisateur
 │   │       │   ├── route.ts        # GET/PUT/DELETE profil
-│   │       │   ├── photo/          # PUT — upload photo
+│   │       │   ├── photo/          # PUT — upload avatar S3 (jpeg/png/webp, 5MB, ClamAV)
 │   │       │   ├── terms/          # PUT — acceptation CGU
 │   │       │   ├── data-policy/    # PUT — politique données
 │   │       │   ├── day-moments/    # GET/PUT — périodes journalières
@@ -70,6 +70,10 @@ diabeo-backoffice/
 │   │       │   ├── notifications/  # GET/PUT — préférences notifs
 │   │       │   └── export/         # GET — export RGPD
 │   │       ├── units/              # GET — référentiel unités
+│   │       ├── documents/           # Documents médicaux
+│   │       │   ├── route.ts        # GET/POST — liste & création metadata
+│   │       │   ├── upload/         # POST — multipart upload S3 (NURSE+, ClamAV, 50MB)
+│   │       │   └── [id]/download/  # GET — stream fichier S3 (RBAC + audit)
 │   │       ├── admin/              # Admin-only endpoints (audit-logs)
 │   │       └── patients/           # CRUD patients (Phase 2)
 │   ├── lib/
@@ -84,6 +88,8 @@ diabeo-backoffice/
 │   │   │   ├── rbac.ts             # Hiérarchie rôles ADMIN>DOCTOR>NURSE>VIEWER
 │   │   │   ├── rate-limit.ts       # Backoff exponentiel login (in-memory)
 │   │   │   └── session.ts          # CRUD sessions en base
+│   │   ├── storage/
+│   │   │   └── s3.ts               # Client S3 OVH/MinIO (upload/download/delete, SSE-S3)
 │   │   ├── conversions.ts          # Helpers conversion glucose g/L↔mg/dL↔mmol/L
 │   │   ├── gdpr.ts                 # Vérification consentement RGPD
 │   │   └── services/               # Logique métier (découplée du framework)
@@ -92,7 +98,9 @@ diabeo-backoffice/
 │   │       ├── audit.service.ts    # AuditLog + IP/UA tracking + query filters
 │   │       ├── user.service.ts     # Profil utilisateur + chiffrement champs
 │   │       ├── export.service.ts   # Export RGPD complet (Art. 20)
-│   │       └── deletion.service.ts # Suppression cascade RGPD (Art. 17)
+│   │       ├── deletion.service.ts # Suppression cascade RGPD (Art. 17)
+│   │       ├── document.service.ts # Upload/download S3 + antivirus + audit
+│   │       └── antivirus.service.ts # ClamAV scan (scanFile + scanBuffer helper)
 │   ├── types/
 │   │   └── next-auth.d.ts          # Module augmentation NextAuth (User.role, JWT.role)
 │   ├── hooks/                      # Hooks React (Phase 8)
@@ -649,7 +657,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 ### US-101 — Gestion du compte utilisateur
 - ✅ `GET /api/account` — profil déchiffré (sans champs internes)
 - ✅ `PUT /api/account` — mise à jour partielle avec chiffrement auto
-- ✅ `PUT /api/account/photo` — upload (TODO: OVH S3)
+- ✅ `PUT /api/account/photo` — upload avatar via OVH S3 (jpeg/png/webp, 5MB, antivirus ClamAV, SSE-S3)
 - ✅ `PUT /api/account/terms` — acceptation CGU
 - ✅ `PUT /api/account/data-policy` — acceptation politique données
 - ✅ `GET/PUT /api/account/day-moments` — périodes journalières

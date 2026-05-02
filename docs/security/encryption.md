@@ -43,6 +43,25 @@ L'email etant chiffre, un lookup direct est impossible. Un HMAC-SHA256 determini
 hmacEmail(email) = HMAC-SHA256(email.toLowerCase().trim(), HMAC_SECRET)
 ```
 
+### Chiffrement des fichiers (OVH Object Storage)
+
+Les documents medicaux et photos de profil stockes sur OVH Object Storage (S3-compatible) sont proteges par :
+
+1. **SSE-S3 (Server-Side Encryption)** — `ServerSideEncryption: "AES256"` sur chaque `PutObjectCommand`. OVH chiffre at-rest avec des cles gerees par l'infrastructure.
+
+2. **TLS 1.3 en transit** — le endpoint OVH (`s3.gra.perf.cloud.ovh.net`) impose HTTPS.
+
+3. **Pas de presigned URLs** — tous les acces S3 passent par le backend Next.js avec verification JWT + RBAC + audit. Le client ne recoit jamais de lien direct vers S3.
+
+4. **Scan antivirus** — chaque fichier est ecrit en temp, scanne par ClamAV (`scanBuffer`), puis uploade. Fail-closed en production (refuse sans ClamAV).
+
+| Type | Prefix S3 | Taille max | MIME autorises | RBAC |
+|------|-----------|------------|----------------|------|
+| Documents medicaux | `documents/` | 50 MB | PDF, JPEG, PNG, WebP, DOCX | NURSE+ |
+| Avatar profil | `avatars/` | 5 MB | JPEG, PNG, WebP | Auth (tous) |
+
+Les cles d'objet sont des UUID : `{prefix}/{uuid}.{ext}` — pas de nom de fichier utilisateur dans le path S3.
+
 ### Cles de chiffrement
 
 | Variable | Usage | Format |
@@ -51,6 +70,11 @@ hmacEmail(email) = HMAC-SHA256(email.toLowerCase().trim(), HMAC_SECRET)
 | HMAC_SECRET | Email lookup | 32+ bytes |
 | JWT_PRIVATE_KEY | Signature JWT RS256 | PEM RSA privee |
 | JWT_PUBLIC_KEY | Verification JWT RS256 | PEM RSA publique |
+| OVH_S3_ACCESS_KEY | Object Storage S3 | Credential OVH |
+| OVH_S3_SECRET_KEY | Object Storage S3 | Credential OVH |
+| OVH_S3_ENDPOINT | Object Storage URL | URL (prod: s3.gra.perf.cloud.ovh.net) |
+| OVH_S3_BUCKET | Nom du bucket | String |
+| OVH_S3_REGION | Region OVH | String (ex: gra) |
 
 ## Authentification JWT RS256
 
