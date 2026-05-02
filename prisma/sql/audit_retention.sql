@@ -1,6 +1,6 @@
 -- Audit log retention function (HDS 6-year compliance)
 -- Anonymizes PII fields on old audit records while preserving the trail structure.
--- Uses SECURITY DEFINER + advisory lock + error-safe trigger management.
+-- Uses SECURITY DEFINER + advisory lock + SET LOCAL (crash-safe).
 --
 -- Usage: SELECT audit_log_apply_retention(6);
 --
@@ -22,25 +22,21 @@ BEGIN
 
   cutoff := NOW() - (retention_years || ' years')::INTERVAL;
 
-  ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_immutable;
+  -- SET LOCAL is transaction-scoped: auto-reverts on commit, rollback, or crash
+  SET LOCAL session_replication_role = 'replica';
 
-  BEGIN
-    UPDATE audit_logs SET
-      ip_address = NULL,
-      user_agent = NULL,
-      old_value = NULL,
-      new_value = NULL,
-      metadata = jsonb_build_object('anonymized', true, 'retentionAppliedAt', NOW()::TEXT)
-    WHERE created_at < cutoff
-      AND (metadata->>'anonymized')::TEXT IS DISTINCT FROM 'true';
+  UPDATE audit_logs SET
+    ip_address = NULL,
+    user_agent = NULL,
+    old_value = NULL,
+    new_value = NULL,
+    metadata = jsonb_build_object('anonymized', true, 'retentionAppliedAt', NOW()::TEXT)
+  WHERE created_at < cutoff
+    AND (metadata->>'anonymized')::TEXT IS DISTINCT FROM 'true';
 
-    GET DIAGNOSTICS affected = ROW_COUNT;
-  EXCEPTION WHEN OTHERS THEN
-    ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_immutable;
-    RAISE;
-  END;
+  GET DIAGNOSTICS affected = ROW_COUNT;
 
-  ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_immutable;
+  RESET session_replication_role;
 
   RETURN QUERY SELECT affected;
 END;
