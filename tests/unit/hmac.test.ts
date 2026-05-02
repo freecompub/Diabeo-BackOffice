@@ -38,3 +38,15 @@ describe("hmacEmail", () => {
     expect(hmacEmail("Test@Example.COM")).toBe(hmacField("test@example.com"))
   })
 })
+
+describe("hmacField — missing secret", () => {
+  it("throws when HMAC_SECRET is not set", () => {
+    const original = process.env.HMAC_SECRET
+    delete process.env.HMAC_SECRET
+    try {
+      expect(() => hmacField("test")).toThrow("HMAC_SECRET is not set")
+    } finally {
+      process.env.HMAC_SECRET = original
+    }
+  })
+})
