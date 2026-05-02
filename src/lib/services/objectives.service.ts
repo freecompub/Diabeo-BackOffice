@@ -45,13 +45,17 @@ const CGM_DEFAULTS: CgmThresholds = {
 }
 
 /**
- * Tighter CGM defaults for gestational diabetes (ADA/ACOG consensus).
+ * Tighter CGM defaults for gestational diabetes (ADA/ACOG/Battelino 2019 consensus).
  * GD requires stricter control to prevent fetal complications.
+ *  - veryLow=0.60 g/L (60 mg/dL): earlier critical alert in pregnancy where
+ *    < 63 mg/dL is already considered hypoglycemia (Battelino 2019 *Diabetes Care*).
+ *  - high=2.00 g/L (200 mg/dL): clinically significant hyperglycemia in pregnancy.
  * @constant
  * @see https://www.acog.org/ — ACOG gestational diabetes guidelines
+ * @see Battelino T. et al., *Diabetes Care* 2019 — Time in Range targets in pregnancy
  */
 const CGM_DEFAULTS_GD: CgmThresholds = {
-  veryLow: 0.54,
+  veryLow: 0.60,
   low: 0.63,
   ok: 1.40,
   high: 2.00,

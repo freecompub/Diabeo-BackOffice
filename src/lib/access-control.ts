@@ -104,3 +104,39 @@ export async function resolvePatientId(
   const allowed = await canAccessPatient(userId, role, patientIdParam)
   return allowed ? patientIdParam : null
 }
+
+/**
+ * Resolve the list of patient IDs the caller can access (RBAC scoping for
+ * cross-patient queries like inboxes/dashboards).
+ *
+ * - ADMIN → returns null (caller may query without restriction).
+ * - VIEWER → returns [own patient id] or [] if none.
+ * - DOCTOR/NURSE → returns the patient IDs of every PatientService where
+ *   the caller is a member, excluding soft-deleted patients.
+ *
+ * The caller MUST treat `null` as "no restriction" and an array as a hard
+ * IN-list filter (empty array → no rows).
+ */
+export async function getAccessiblePatientIds(
+  userId: number,
+  role: Role,
+): Promise<number[] | null> {
+  if (role === "ADMIN") return null
+
+  if (role === "VIEWER") {
+    const own = await getOwnPatientId(userId)
+    return own ? [own] : []
+  }
+
+  const links = await prisma.patientService.findMany({
+    where: {
+      patient: { deletedAt: null },
+      service: {
+        members: { some: { userId } },
+      },
+    },
+    select: { patientId: true },
+    distinct: ["patientId"],
+  })
+  return links.map((l) => l.patientId)
+}
