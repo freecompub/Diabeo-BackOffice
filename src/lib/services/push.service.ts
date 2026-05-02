@@ -53,7 +53,7 @@ export const pushService = {
       })
 
       await auditService.logWithTx(tx, {
-        userId, action: "CREATE", resource: "SESSION",
+        userId, action: "CREATE", resource: "PUSH_REGISTRATION",
         resourceId: `push-reg:${reg.id}`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })
@@ -75,7 +75,7 @@ export const pushService = {
       })
 
       await auditService.logWithTx(tx, {
-        userId, action: "DELETE", resource: "SESSION",
+        userId, action: "DELETE", resource: "PUSH_REGISTRATION",
         resourceId: `push-reg:${registrationId}`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })
@@ -91,7 +91,7 @@ export const pushService = {
     })
 
     await auditService.log({
-      userId, action: "DELETE", resource: "SESSION",
+      userId, action: "DELETE", resource: "PUSH_REGISTRATION",
       resourceId: `push-reg:all:${userId}`,
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
     })
@@ -141,7 +141,7 @@ export const pushService = {
     })
 
     await auditService.log({
-      userId, action: "CREATE", resource: "SESSION",
+      userId, action: "CREATE", resource: "PUSH_REGISTRATION",
       resourceId: `push-sched:${sched.id}`,
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
     })
@@ -157,7 +157,7 @@ export const pushService = {
       const updated = await tx.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: false } })
 
       await auditService.logWithTx(tx, {
-        userId, action: "UPDATE", resource: "SESSION",
+        userId, action: "UPDATE", resource: "PUSH_REGISTRATION",
         resourceId: `push-sched:${scheduleId}:pause`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })
@@ -174,7 +174,7 @@ export const pushService = {
       const updated = await tx.pushScheduledNotification.update({ where: { id: scheduleId }, data: { isActive: true } })
 
       await auditService.logWithTx(tx, {
-        userId, action: "UPDATE", resource: "SESSION",
+        userId, action: "UPDATE", resource: "PUSH_REGISTRATION",
         resourceId: `push-sched:${scheduleId}:resume`,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
       })

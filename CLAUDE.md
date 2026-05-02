@@ -74,6 +74,11 @@ diabeo-backoffice/
 │   │       │   ├── route.ts        # GET/POST — liste & création metadata
 │   │       │   ├── upload/         # POST — multipart upload S3 (NURSE+, ClamAV, 50MB)
 │   │       │   └── [id]/download/  # GET — stream fichier S3 (RBAC + audit)
+│   │       ├── push/                # Notifications push
+│   │       │   ├── register/       # GET/POST/DELETE — device registration
+│   │       │   ├── send/           # POST — envoi FCM (NURSE+, RBAC target, rate limit)
+│   │       │   ├── templates/      # GET — templates notification
+│   │       │   └── scheduled/      # GET/POST — notifications programmées
 │   │       ├── admin/              # Admin-only endpoints (audit-logs)
 │   │       └── patients/           # CRUD patients (Phase 2)
 │   ├── lib/
@@ -90,6 +95,8 @@ diabeo-backoffice/
 │   │   │   └── session.ts          # CRUD sessions en base
 │   │   ├── storage/
 │   │   │   └── s3.ts               # Client S3 OVH/MinIO (upload/download/delete, SSE-S3)
+│   │   ├── firebase/
+│   │   │   └── admin.ts            # Singleton Firebase Admin SDK (FCM)
 │   │   ├── conversions.ts          # Helpers conversion glucose g/L↔mg/dL↔mmol/L
 │   │   ├── gdpr.ts                 # Vérification consentement RGPD
 │   │   └── services/               # Logique métier (découplée du framework)
@@ -100,7 +107,9 @@ diabeo-backoffice/
 │   │       ├── export.service.ts   # Export RGPD complet (Art. 20)
 │   │       ├── deletion.service.ts # Suppression cascade RGPD (Art. 17)
 │   │       ├── document.service.ts # Upload/download S3 + antivirus + audit
-│   │       └── antivirus.service.ts # ClamAV scan (scanFile + scanBuffer helper)
+│   │       ├── antivirus.service.ts # ClamAV scan (scanFile + scanBuffer helper)
+│   │       ├── fcm.service.ts     # Envoi FCM (sendToUser, sendFromTemplate, batch)
+│   │       └── push.service.ts    # Registration devices, templates, scheduled
 │   ├── types/
 │   │   └── next-auth.d.ts          # Module augmentation NextAuth (User.role, JWT.role)
 │   ├── hooks/                      # Hooks React (Phase 8)
