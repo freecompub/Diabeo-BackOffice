@@ -207,6 +207,44 @@ fail-open on analytics) until keys repopulate from DB reads.
 Bucket versioning enabled with 30-day retention. Object lock on the
 `immutable/` prefix (used for backups + archived audit export bundles).
 
+#### Document storage bucket (US-2140)
+
+Medical documents and avatar photos are stored in `diabeo-prod-documents`.
+Objects are SSE-S3 encrypted (AES-256 managed by OVH).
+
+**One-time production setup:**
+
+```sh
+# Create the documents bucket
+aws --endpoint-url=$OVH_S3_ENDPOINT \
+  s3 mb s3://diabeo-prod-documents --region $OVH_S3_REGION
+
+# Enable versioning (HDS 5-year retention)
+aws --endpoint-url=$OVH_S3_ENDPOINT \
+  s3api put-bucket-versioning \
+  --bucket diabeo-prod-documents \
+  --versioning-configuration Status=Enabled \
+  --region $OVH_S3_REGION
+
+# Set lifecycle rule: transition to Glacier after 1 year, expire after 5 years
+aws --endpoint-url=$OVH_S3_ENDPOINT \
+  s3api put-bucket-lifecycle-configuration \
+  --bucket diabeo-prod-documents \
+  --region $OVH_S3_REGION \
+  --lifecycle-configuration '{
+    "Rules": [{
+      "ID": "hds-retention-5y",
+      "Status": "Enabled",
+      "Filter": {},
+      "Transitions": [{"Days": 365, "StorageClass": "GLACIER"}],
+      "Expiration": {"Days": 1825}
+    }]
+  }'
+```
+
+**Required env vars** (checked by `deploy.sh`):
+`OVH_S3_ENDPOINT`, `OVH_S3_BUCKET`, `OVH_S3_ACCESS_KEY`, `OVH_S3_SECRET_KEY`, `OVH_S3_REGION`
+
 ### Restore drill
 
 **Run quarterly.** On the recette env:
