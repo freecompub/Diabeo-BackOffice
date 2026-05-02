@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
 > Dernière mise à jour : 2026-05-02
-> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **51%**
+> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **52%**
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done | % Started |
 |----------|-------|------|---------|-------------|--------|-----------|
-| **MVP**  | 63    | 32   | 12      | 19          | **51%** | **70%**  |
+| **MVP**  | 63    | 33   | 11      | 19          | **52%** | **70%**  |
 | **V1**   | 120   | 0    | 7       | 113         | **0%**  | **6%**   |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  | **0%**   |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  | **0%**   |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  | **0%**   |
-| **TOTAL**| **264** | **32** | **19** | **213**   | **12%** | **19%**  |
+| **TOTAL**| **264** | **33** | **18** | **213**   | **13%** | **19%**  |
 
 ---
 
@@ -106,7 +106,7 @@
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
-| US-2073 | Push notifications mobile | PARTIAL | Infrastructure OK, envoi FCM à implémenter |
+| US-2073 | Push notifications mobile (FCM) | DONE | `src/lib/firebase/admin.ts`, `src/lib/services/fcm.service.ts`, `src/app/api/push/send/route.ts`. Firebase Admin SDK, retry retriable-only, canAccessPatient authz, rate limit fail-closed 50/h, no cleartext in logs, locale-aware templates, 20 tests. PR #340. |
 | US-2074 | Email transactionnel | PARTIAL | Skeleton, pas de service email (Resend/SendGrid) |
 | US-2079 | Préférences notifications | DONE | `UserNotifPreferences`, `/api/account/notifications/` |
 
@@ -386,12 +386,13 @@
 
 | Batch | Description | Story Points |
 |-------|-------------|-------------|
-| A | Compléter 12 US PARTIAL | ~25 SP |
+| A | Compléter 11 US PARTIAL | ~22 SP |
 | B | 7 nouvelles US backoffice | ~22 SP |
 | C | 9 US Mirror MVP | ~42 SP |
-| **Total** | **28 US restantes** | **~89 SP** |
+| **Total** | **27 US restantes** | **~86 SP** |
 
 ### US MVP récemment terminées
+- [x] US-2073 — Push notifications FCM (PR #340, 2026-05-02)
 - [x] US-2140 — Upload documents OVH S3 (PR #339, 2026-05-02)
 
 ---
@@ -399,7 +400,7 @@
 ## Dépendances API pour l'app patient (US-3xxx)
 
 ### Contrats API satisfaits
-Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives, Push registration, Sync pull/push, Devices CRUD, Documents (upload multipart + download stream), Events, Medications, Appointments, Healthcare team, Photo avatar.
+Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives, Push (registration + envoi FCM + templates + scheduled), Sync pull/push, Devices CRUD, Documents (upload multipart + download stream), Events, Medications, Appointments, Healthcare team, Photo avatar.
 
 ### Contrats API manquants (MVP patient)
 - Self-registration patient (onboarding)
