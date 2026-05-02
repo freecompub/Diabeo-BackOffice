@@ -9,6 +9,7 @@
 
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
+import { hmacField } from "@/lib/crypto/hmac"
 import { auditService } from "./audit.service"
 import type { Prisma } from "@prisma/client"
 import type { AccountUser, UpdateAccountInput } from "@/types/user"
@@ -143,6 +144,13 @@ export const userService = {
       } else {
         ;(data as Record<string, unknown>)[key] = value
       }
+    }
+
+    if ("firstname" in input && input.firstname) {
+      (data as Record<string, unknown>).firstnameHmac = hmacField(String(input.firstname))
+    }
+    if ("lastname" in input && input.lastname) {
+      (data as Record<string, unknown>).lastnameHmac = hmacField(String(input.lastname))
     }
 
     return prisma.$transaction(async (tx) => {

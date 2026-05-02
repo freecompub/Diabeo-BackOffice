@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
 > Dernière mise à jour : 2026-05-02
-> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **57%**
+> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **60%**
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done | % Started |
 |----------|-------|------|---------|-------------|--------|-----------|
-| **MVP**  | 63    | 36   | 8       | 19          | **57%** | **70%**  |
+| **MVP**  | 63    | 38   | 6       | 19          | **60%** | **70%**  |
 | **V1**   | 120   | 0    | 7       | 113         | **0%**  | **6%**   |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  | **0%**   |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  | **0%**   |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  | **0%**   |
-| **TOTAL**| **264** | **36** | **15** | **213**   | **14%** | **19%**  |
+| **TOTAL**| **264** | **38** | **13** | **213**   | **14%** | **19%**  |
 
 ---
 
@@ -143,10 +143,10 @@
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2132 | Audit log (alias US-2011) | DONE | Alias |
-| US-2133 | Rétention 6 ans | PARTIAL | AuditLog persiste, cron rétention manquant |
+| US-2133 | Rétention 6 ans audit logs | DONE | `retention.service.ts`, SQL function SECURITY DEFINER, `POST /api/admin/retention` (ADMIN). Anonymise PII sans supprimer les rows. PR #342. |
 | US-2134 | Export RGPD Art.15 | DONE | `export.service.ts` |
 | US-2135 | Suppression RGPD Art.17 | DONE | `deletion.service.ts` |
-| US-2136 | Pseudonymisation | PARTIAL | HMAC email OK, extension firstname/lastname manquante |
+| US-2136 | Pseudonymisation HMAC | DONE | `hmacField()` générique, `firstnameHmac`/`lastnameHmac` dans User, index composite, user.service auto-compute. PR #342. |
 | US-2138 | Hébergement HDS | DONE | OVHcloud GRA (décision archi) |
 | US-2141 | Catégorisation documents | DONE | `DocumentCategory` enum |
 
@@ -386,12 +386,14 @@
 
 | Batch | Description | Story Points |
 |-------|-------------|-------------|
-| A | Compléter 8 US PARTIAL | ~15 SP |
+| A | Compléter 6 US PARTIAL | ~12 SP |
 | B | 7 nouvelles US backoffice | ~22 SP |
 | C | 9 US Mirror MVP | ~42 SP |
-| **Total** | **24 US restantes** | **~79 SP** |
+| **Total** | **22 US restantes** | **~76 SP** |
 
 ### US MVP récemment terminées
+- [x] US-2133 — Rétention 6 ans audit logs (PR #342, 2026-05-02)
+- [x] US-2136 — Pseudonymisation HMAC firstname/lastname (PR #342, 2026-05-02)
 - [x] US-2017 — Patient onboarding wizard (PR #341, 2026-05-02)
 - [x] US-2064 — Notification patient propositions (PR #341, 2026-05-02)
 - [x] US-2074 — Email transactionnel Resend (PR #341, 2026-05-02)
