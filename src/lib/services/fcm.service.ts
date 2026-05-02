@@ -7,6 +7,7 @@ import type { AuditContext } from "./patient.service"
 
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 1000
+const BATCH_CONCURRENCY = 10
 
 interface SendInput {
   userId: number
@@ -24,6 +25,12 @@ interface SendResult {
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{(\w+)\}\}/g, (_, key) => vars[key] ?? `{{${key}}}`)
+}
+
+function pickLocaleField<T extends Record<string, unknown>>(obj: T, field: string, locale: string): string {
+  const suffix = locale === "ar" ? "Ar" : locale === "en" ? "En" : "Fr"
+  const key = `${field}${suffix}` as keyof T
+  return (obj[key] as string) ?? (obj[`${field}Fr` as keyof T] as string) ?? ""
 }
 
 async function sendWithRetry(token: string, payload: { title: string; body: string; data?: Record<string, string> }, platform: PushPlatform): Promise<{ messageId?: string; error?: string }> {
@@ -156,9 +163,15 @@ export const fcmService = {
     if (!template) throw new Error("templateNotFound")
     if (!template.isActive) throw new Error("templateInactive")
 
+    const registrations = await prisma.pushDeviceRegistration.findMany({
+      where: { userId, isActive: true },
+      select: { locale: true },
+    })
+    const locale = registrations[0]?.locale ?? "fr"
+
     const vars = variables ?? {}
-    const title = renderTemplate(template.titleFr, vars)
-    const body = renderTemplate(template.bodyFr, vars)
+    const title = renderTemplate(pickLocaleField(template, "title", locale), vars)
+    const body = renderTemplate(pickLocaleField(template, "body", locale), vars)
     const data = template.dataPayload
       ? { ...(template.dataPayload as Record<string, string>), templateId }
       : { templateId }
@@ -174,13 +187,20 @@ export const fcmService = {
     let totalSent = 0
     let totalFailed = 0
 
-    for (const userId of userIds) {
-      const result = await this.sendToUser(
-        { userId, ...input },
-        ctx,
+    for (let i = 0; i < userIds.length; i += BATCH_CONCURRENCY) {
+      const batch = userIds.slice(i, i + BATCH_CONCURRENCY)
+      const results = await Promise.allSettled(
+        batch.map((userId) => this.sendToUser({ userId, ...input }, ctx)),
       )
-      totalSent += result.sent
-      totalFailed += result.failed
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          totalSent += r.value.sent
+          totalFailed += r.value.failed
+        } else {
+          totalFailed++
+          logger.error("fcm", "Batch send error", {}, r.reason)
+        }
+      }
     }
 
     return { total: userIds.length, sent: totalSent, failed: totalFailed }

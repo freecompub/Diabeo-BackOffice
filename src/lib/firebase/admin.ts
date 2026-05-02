@@ -16,13 +16,16 @@ function getFirebaseApp(): App {
     throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY not configured")
   }
 
-  const serviceAccount = JSON.parse(
-    Buffer.from(encodedKey, "base64").toString("utf-8"),
-  )
+  let serviceAccount: Record<string, unknown>
+  try {
+    serviceAccount = JSON.parse(Buffer.from(encodedKey, "base64").toString("utf-8"))
+  } catch {
+    throw new Error("FIREBASE_SERVICE_ACCOUNT_KEY contains invalid base64 or JSON")
+  }
 
   _app = initializeApp({
     credential: cert(serviceAccount),
-    projectId: process.env.FIREBASE_PROJECT_ID ?? serviceAccount.project_id,
+    projectId: process.env.FIREBASE_PROJECT_ID ?? (serviceAccount.project_id as string),
   })
 
   return _app

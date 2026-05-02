@@ -3,6 +3,7 @@ import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { fcmService } from "@/lib/services/fcm.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { checkApiRateLimit } from "@/lib/auth/api-rate-limit"
 import { logger } from "@/lib/logger"
 
 const sendSchema = z.object({
@@ -23,8 +24,14 @@ const sendFromTemplateSchema = z.object({
 export async function POST(req: NextRequest) {
   try {
     const user = requireRole(req, "NURSE")
-    const body = await req.json()
 
+    const rl = await checkApiRateLimit(`push-send:${user.id}`, {
+      bucket: "push-send", windowSec: 3600, max: 50,
+    })
+    if (!rl.allowed)
+      return NextResponse.json({ error: "rateLimited", retryAfter: rl.retryAfterSec }, { status: 429 })
+
+    const body = await req.json()
     const ctx = extractRequestContext(req)
 
     if (body.templateId && !body.title) {
