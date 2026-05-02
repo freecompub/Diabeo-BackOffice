@@ -552,6 +552,8 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - Exposer des stack traces ou messages d'erreur internes dans les API responses
 - Merger une pull request sans le consentement explicite de l'utilisateur
 - Merger une pull request si la CI (pipeline) a des erreurs
+- supprimer une feature sans le consentement explicite de l'utilisateur
+- on ne developpe pas les applications android et ios
 
 ---
 

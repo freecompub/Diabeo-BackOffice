@@ -1,0 +1,466 @@
+# US-3067 — Alerte capteur expiré
+
+> 📌 **4. Glycémie & CGM** · Priorité **V1** · Plateforme **📱**
+
+---
+
+## 📊 Métadonnées
+
+| Champ | Valeur |
+|---|---|
+| **ID** | `US-3067` |
+| **Référence inventaire** | `FNP-067` |
+| **Domaine** | 4. Glycémie & CGM |
+| **Priorité** | **V1** |
+| **Plateforme cible** | 📱 |
+| **Intégration externe** | Non |
+| **Service / Standard** | Interne |
+| **Modèle économique** | Interne |
+| **Coût estimé** | — |
+| **Faisabilité France** | Direct |
+| **Faisabilité Algérie** | Direct |
+| **Story points (3 plateformes)** | iOS 3 · Android 3 · Web 1 |
+| **Statut** | 🆕 À démarrer |
+| **Dépendances** | US-3001 (Inscription / login), US-3026 (Profil patient — données démographiques) |
+| **Sprint cible** | À définir |
+
+---
+
+## 📋 Contexte métier
+
+### Pourquoi cette fonctionnalité ?
+
+Fin de vie 14j FSL, 10j Dexcom
+
+Cette fonctionnalité s'inscrit dans le domaine **4. Glycémie & CGM** de l'application patient Diabeo, plateforme de gestion personnelle du diabète insulino-traité. Elle est utilisée par les patients (et leurs aidants pour la pédiatrie / dépendance) au quotidien dans leur parcours de soins, et complète le travail de l'équipe soignante côté backoffice.
+
+### Persona principal
+
+Un patient adulte ou adolescent atteint de diabète (Type 1, Type 2 sous insuline, gestationnel ou MODY), suivi par un cabinet de diabétologie utilisant Diabeo BackOffice, équipé d'un smartphone (iOS ou Android) et/ou d'un ordinateur (Web), avec un dispositif CGM le plus souvent (FreeStyle Libre ou Dexcom).
+
+### Valeur produit
+
+- **Pour le patient** : autonomie, sécurité, gain de temps, meilleur équilibre glycémique
+- **Pour l'équipe soignante** : meilleures données pour ajustement, prévention des urgences
+- **Pour le système de santé** : réduction des hospitalisations (hypos sévères, DKA)
+
+### Faisabilité par pays
+
+Faisabilité **directe** dans les deux pays cibles.
+
+---
+
+## 📱 Spécificités iOS
+
+### Stack technique
+- **SDK minimum** : iOS 16.0 (raison : Lock Screen widgets, Live Activities, App Intents)
+- **Langage** : Swift 5.9+
+- **Frameworks** : `SwiftUI`, `Combine`, `CoreBluetooth`, `UserNotifications`
+- **Architecture** : MVVM + Coordinator, dépendances injectées via Swinject ou similaire
+
+### APIs et capacités spécifiques
+- APIs UIKit/SwiftUI standard
+
+### Permissions à déclarer (`Info.plist`)
+- `NSBluetoothAlwaysUsageDescription` — communication avec les dispositifs médicaux (CGM, lecteur, pompe)
+- Notifications (gérées par `UNUserNotificationCenter`)
+
+### Comportement utilisateur
+La fonctionnalité « Alerte capteur expiré » est exposée selon les conventions iOS :
+- Navigation via `NavigationStack` (iOS 16+) ou pile UIKit pour compatibilité
+- Haptic feedback via `UIImpactFeedbackGenerator` aux actions importantes
+- Animations system-default (60 fps minimum, 120 fps si ProMotion)
+- Support **Dark Mode** automatique via `Color.primary` / `.systemBackground`
+
+### Tests automatisés iOS
+- **Unitaires** : `XCTest` — couverture cible ≥ 80% sur la logique métier
+- **UI** : `XCUITest` — au moins un scénario nominal end-to-end
+- **Snapshot** : `swift-snapshot-testing` pour les vues complexes
+- **Accessibility** : Accessibility Inspector + scripts XCUITest avec `accessibilityElements`
+
+### Distribution & contraintes App Store
+- Catégorie **Medical** dans App Store Connect (si applicable au flow)
+- Mention **Dispositif Médical CE classe IIa** si la fonctionnalité touche au calcul de dose
+- Pré-recette via **TestFlight** (interne ≤ 100, externe ≤ 10 000)
+- Privacy Manifest (`PrivacyInfo.xcprivacy`) — déclaration des données collectées requise depuis 2024
+
+### Effort estimé
+**3 story points** (Fibonacci) sur la plateforme iOS
+
+---
+
+## 🤖 Spécificités Android
+
+### Stack technique
+- **API minimum** : 26 (Android 8.0) pour BLE stable
+- **API target** : 34 (Android 14) — exigence Play Store 2024
+- **Langage** : Kotlin 1.9+
+- **Dépendances** : `Jetpack Compose`, `Coroutines + Flow`, `Nordic BLE Library (recommandé) ou Android BluetoothLE`, `Firebase Cloud Messaging (FCM)`
+- **Architecture** : MVVM + Hilt (DI) + Repository pattern
+
+### APIs et capacités spécifiques
+- APIs Compose / AndroidX standard
+
+### Permissions à déclarer (`AndroidManifest.xml`)
+- `android.permission.BLUETOOTH_SCAN` (API 31+)
+- `android.permission.BLUETOOTH_CONNECT` (API 31+)
+- `android.permission.ACCESS_FINE_LOCATION` (BLE scan exige géoloc < API 31)
+- `android.permission.POST_NOTIFICATIONS` (API 33+)
+
+### Comportement utilisateur
+La fonctionnalité « Alerte capteur expiré » suit les Material Design 3 guidelines :
+- Navigation via `NavHost` Compose
+- Haptic feedback via `HapticFeedbackConstants.CONTEXT_CLICK`
+- Animations Material Motion (durations standard 250ms / 350ms)
+- Support **Dynamic Color** (Material You, Android 12+) avec fallback palette Diabeo
+- Support automatique du **Dark Theme**
+
+### Tests automatisés Android
+- **Unitaires** : `JUnit 5` + `MockK` — couverture cible ≥ 80%
+- **UI** : `Compose UI Test` (`composeRule.onNodeWithText(...)`)
+- **Instrumented** : `AndroidJUnitRunner` pour tests sur émulateur/device
+- **Firebase Test Lab** : recette multi-devices (au moins 5 références)
+- **Accessibility Scanner** Google + `accessibility-test-framework`
+
+### Distribution & contraintes Google Play
+- Catégorie **Medical** dans Play Console
+- **Data Safety form** : déclaration explicite collecte données de santé
+- **Health Apps Policy** : conformité requise pour apps médicales
+- Recette interne via **Internal Testing track**
+- Si fonctionnalité = Dispositif Médical : marquage CE + déclaration
+
+### Effort estimé
+**3 story points** (Fibonacci) sur la plateforme Android
+
+---
+
+## 🌐 Spécificités Web
+
+### Stack technique
+- **Framework** : Next.js 16 (App Router) + React 19 + TypeScript strict
+- **UI** : Tailwind CSS + shadcn/ui (cohérence avec backoffice pro)
+- **State** : Zustand ou TanStack Query selon contexte
+- **Auth** : JWT RS256 (cohérent backend) + WebAuthn pour biométrie
+
+### Navigateurs supportés
+- **Desktop** : Chrome, Firefox, Safari, Edge (2 dernières versions majeures)
+- **Mobile (responsive)** : Safari iOS 16+, Chrome Android — mais redirection vers app mobile recommandée si < 768px
+
+### APIs web utilisées
+- **Web Push API** + Service Worker — support partiel : Safari iOS 16.4+ requis
+- Conformité **WCAG 2.1 AA** + **RGAA 4.1** (obligation légale FR pour services en santé)
+
+### Capacités non disponibles en web ou dégradées
+- **Pas de pairing Bluetooth** : la Web Bluetooth API n'est supportée que par Chrome/Edge, pas Safari/Firefox
+- Pas de **Critical Alerts** équivalent web — les alertes vitales doivent passer par mobile
+
+### Stratégies de fallback
+- Lecture seule des données déjà ingérées par l'app mobile (sync via backend)
+
+### Comportement utilisateur
+La version web de « Alerte capteur expiré » est optimisée pour :
+- Écran ≥ 1024px (desktop / tablette paysage)
+- Layout responsive ≥ 768px avec adaptation mobile
+- En dessous de 768px : suggestion d'ouverture de l'app mobile via deeplink store
+
+### Tests automatisés Web
+- **Unitaires** : `Vitest` — couverture cible ≥ 85%
+- **E2E** : `Playwright` sur Chromium + Firefox + WebKit (équivalent Safari)
+- **Performance** : `Lighthouse CI` — LCP < 2.5s, INP < 200ms, CLS < 0.1
+- **Accessibility** : `axe-core` automatisé en CI + audit manuel
+- **Visual regression** : `Percy` ou `Chromatic` (optionnel)
+
+### Distribution & contraintes
+- Hébergement OVHcloud GRA (HDS-certifié) — cohérent backoffice
+- HTTPS obligatoire (TLS 1.3, HSTS, certificate pinning impossible mais Expect-CT)
+- CSP stricte, X-Frame-Options DENY, X-Content-Type-Options nosniff
+- Conformité **RGAA 4.1** auditée (obligation FR services publics santé)
+- PWA optionnelle (manifest + Service Worker pour mode dégradé hors-ligne)
+
+### Effort estimé
+**1 story points** (Fibonacci) sur la plateforme Web
+
+---
+
+## 🔄 Modes contextuels
+
+Cette fonctionnalité doit adapter son comportement selon les modes activés sur le profil patient.
+
+### 👶 Mode pédiatrique
+- **Cibles glycémiques adaptées** à la tranche d'âge (plus larges chez le très jeune enfant 0-6 ans)
+- **Multi-aidants** : la fonctionnalité doit être utilisable et configurable par le parent administrateur, l'autre parent, l'école (PAI), et la nounou avec niveaux de droits granulaires
+- **Notifications doublées** : toute alerte critique (Alerte capteur expiré) est envoyée simultanément au parent administrateur ET au parent secondaire
+- **Mode école** : pendant les heures scolaires (paramétrables), comportement adapté + notification de l'infirmière scolaire
+- **Transition adulte** : à 16-18 ans, bascule progressive vers le compte autonome (US-3138)
+- **Validation parentale obligatoire** pour toute action de configuration sensible
+
+### 🤰 Mode grossesse
+- **Cibles glycémiques strictes** (< 95 mg/dL à jeun, < 120 mg/dL post-prandial à 2h selon recommandations SFD/SFDG)
+- **Suivi par semaine d'aménorrhée (SA)** intégré à la fonctionnalité quand pertinent
+- **Adaptation au trimestre** : sensibilité insulinique varie ; les seuils, recommandations et calculs doivent en tenir compte
+- **Bascule post-partum** : retour aux cibles standards à J+1 mois ou selon validation médicale
+- **Mode allaitement** : risque d'hypo accru — alertes plus précoces
+- **Validation médecin obstétricien** ou diabétologue sur tout changement
+
+### 🌙 Mode Ramadan
+- **Périodes de jeûne** (Sahur → Iftar) prises en compte dans le comportement de la fonctionnalité
+- **Recommandations adaptées** au jeûne intermittent : seuils d'alerte hypo plus prudents, cibles ajustées
+- **Calcul bolus** adapté : pas de bolus repas pendant la journée, dose lente parfois fractionnée
+- **Conseils contextuels** : dattes pour resucrage rapide à l'Iftar, hydratation Sahur
+- **Validation médicale annuelle** avant le Ramadan : tout patient T1 ou T2 sous insuline doit avoir un protocole personnel signé
+- **Coordination équipe soignante** : le médecin référent doit être informé des choix patient pour le Ramadan (consentement éclairé)
+- ⚠️ **Cas particulier T1 mal équilibré** : déconseillé médicalement de jeûner — l'app doit afficher un avertissement clair
+
+
+---
+
+## ✅ Critères d'acceptation
+
+### AC-1 — Accès autorisé respecté
+
+```gherkin
+Étant donné Un patient authentifié sur l'app
+Quand il accède à la fonctionnalité « Alerte capteur expiré »
+Alors l'action est autorisée et l'AuditLog patient enregistre l'accès
+```
+
+### AC-2 — Comportement multiplate-formes cohérent
+
+```gherkin
+Étant donné Le patient utilise la même fonctionnalité sur 2 appareils différents (ex: iPhone + Web)
+Quand il effectue une action sur l'un puis consulte l'autre
+Alors les données sont synchronisées en moins de 5 secondes (online) ou à reconnexion (offline)
+```
+
+### AC-3 — Mode pédiatrique : double notification
+
+```gherkin
+Étant donné Un patient mineur a deux parents administrateurs
+Quand un événement Alerte capteur expiré se produit
+Alors les deux parents reçoivent la notification (push + email selon préférences) avec accusé de lecture
+```
+
+### AC-4 — Mode grossesse : cibles strictes appliquées
+
+```gherkin
+Étant donné Une patiente est en mode grossesse activé
+Quand elle utilise « Alerte capteur expiré »
+Alors les seuils glycémiques utilisés sont les cibles strictes obstétriques (< 95 mg/dL à jeun, < 120 mg/dL post-prandial)
+```
+
+### AC-5 — Mode Ramadan : adaptation aux périodes de jeûne
+
+```gherkin
+Étant donné Le mode Ramadan est activé avec horaires Sahur/Iftar configurés
+Quand « Alerte capteur expiré » s'exécute pendant la journée de jeûne
+Alors le comportement est adapté (seuils prudents, pas de bolus repas, conseils Iftar/Sahur contextuels)
+```
+
+### AC-6 — Données chiffrées en local et en transit
+
+```gherkin
+Étant donné Une donnée de santé est manipulée par la fonctionnalité
+Quand elle est stockée localement et envoyée au backend
+Alors elle est chiffrée AES-256-GCM en local (SQLCipher / encrypted CoreData) et TLS 1.3 en transit
+```
+
+
+---
+
+## 📐 Règles métier
+
+- **RM-1 : Toute action sur cette fonctionnalité est journalisée dans AuditLog patient (action, resource, resourceId, ipAddress, deviceInfo).**
+- **RM-2 : Le patient ne peut accéder qu'à ses propres données (vérification systématique du `patientId` du token JWT vs ressource).**
+- **RM-3 : Tous les inputs sont validés par schéma Zod (web/Next.js) ou équivalent type-safe (Swift/Kotlin).**
+- **RM-4 : Toute donnée de santé en base est chiffrée AES-256-GCM (cohérent backend).**
+- **RM-5 : Le cache local mobile est chiffré (SQLCipher pour Room, encrypted CoreData pour iOS).**
+
+---
+
+## 🗄️ Modèle de données
+
+### Cohérence avec le backoffice
+Cette fonctionnalité **réutilise les modèles Prisma** définis côté backoffice Diabeo (48 tables existantes). Voir `docs/architecture/data-model.md`. Aucun nouveau modèle n'est créé côté patient — l'app patient est cliente du même backend.
+
+### Cache local mobile
+Les données nécessaires au fonctionnement hors-ligne sont mises en cache localement :
+- **iOS** : CoreData encrypted store (clé dérivée du keychain)
+- **Android** : Room + SQLCipher (clé dérivée du Android Keystore)
+- **Web** : IndexedDB chiffré via Web Crypto API
+
+Le schéma local est aligné sur le schéma serveur, avec en plus :
+- Une table `SyncQueue` (opérations en attente de push)
+- Une table `LastSyncCursor` (dernier point de sync par ressource)
+
+---
+
+## 🔌 API & contrats
+
+### Endpoint principal côté backend Diabeo
+La fonctionnalité consomme l'API REST du backoffice. Endpoint typique :
+```
+GET  /api/patient/4/...
+POST /api/patient/4/...
+```
+
+### Authentification
+- JWT RS256 avec scope `patient:*`
+- Header `Authorization: Bearer <token>`
+- Refresh automatique côté client si 401
+
+### Format payload
+- Content-Type : `application/json`
+- Validation : Zod côté serveur, types TypeScript / Swift / Kotlin partagés via génération à partir d'OpenAPI
+
+---
+
+## ⚠️ Scénarios d'erreur
+
+| HTTP | Code applicatif | Message patient (UX-friendly) | Comportement |
+|------|-----------------|-------------------------------|--------------|
+| 400 | `VALIDATION_ERROR` | « Une information saisie est incorrecte » | Afficher quel champ + explication |
+| 401 | `UNAUTHENTICATED` | « Veuillez vous reconnecter » | Refresh token, sinon login |
+| 403 | `FORBIDDEN` | « Action non autorisée » | Message générique |
+| 404 | `NOT_FOUND` | « Information introuvable » | Sans détail révélateur |
+| 409 | `CONFLICT` | « Modification déjà effectuée ailleurs » | Resync auto |
+| 422 | `BUSINESS_RULE_VIOLATED` | Message contextuel | Détail métier |
+| 429 | `RATE_LIMITED` | « Trop de requêtes, réessayez bientôt » | Retry-After |
+| 500 | `INTERNAL_ERROR` | « Une erreur est survenue, l'équipe a été notifiée » | Sentry + ID |
+| 503 | `SERVICE_UNAVAILABLE` | « Service temporairement indisponible » | Retry auto |
+
+### Scénario hors-ligne
+En l'absence de réseau, la fonctionnalité **fonctionne en mode dégradé** sur les capacités vitales (consultation, saisie urgences, calculs). Une bannière non-bloquante indique l'état "Hors ligne — synchronisation en attente".
+
+---
+
+## 🔒 Sécurité & conformité HDS
+
+### Authentification utilisateur
+- Login email/mdp + biométrie sur mobile (Face ID / Touch ID / BiometricPrompt)
+- WebAuthn sur web pour biométrie cross-platform
+- Code PIN local 6 chiffres en fallback
+
+### Stockage local sécurisé
+- iOS : encrypted CoreData + Keychain pour clé maître
+- Android : Room + SQLCipher + Android Keystore
+- Web : IndexedDB + Web Crypto API (chiffrement AES-GCM)
+
+### Transmission
+- TLS 1.3 obligatoire (refus TLS < 1.2)
+- Certificate pinning sur mobile (URLSession `serverTrust` / OkHttp `CertificatePinner`)
+- HSTS strict côté web
+
+### Audit log patient
+Chaque action sensible déclenche un appel `auditService.log(...)` côté backend. Le client mobile ajoute un champ `deviceInfo` (modèle, OS version, app version) pour traçabilité.
+
+### RGPD côté patient
+- Export RGPD Art. 15 disponible depuis l'app (US-3265)
+- Effacement Art. 17 disponible depuis l'app (US-3266)
+- Consentements granulaires (US-3263)
+
+---
+
+## 🧪 Plan de test 3 niveaux × 3 plateformes
+
+### Tests unitaires
+- **iOS** : XCTest sur la logique métier, mocks via protocoles
+- **Android** : JUnit 5 + MockK
+- **Web** : Vitest + Testing Library
+- **Couverture cible** : ≥ 80% sur les services métier des 3 plateformes
+
+### Tests d'intégration
+- **iOS** : XCTest avec instances réelles de CoreData / réseau mocké
+- **Android** : tests instrumentés avec Room en mémoire
+- **Web** : Vitest + msw (Mock Service Worker) pour API mockées
+- **Backend** : tests d'intégration côté backoffice (cf US-2xxx correspondante)
+
+### Tests E2E
+- **iOS** : XCUITest sur scénarios nominaux + edge cases
+- **Android** : Espresso + UI Automator
+- **Web** : Playwright (Chromium + Firefox + WebKit)
+- **Cross-device** : test manuel de cohérence iPhone ↔ Web ↔ Android
+
+### Tests de sécurité
+- **OWASP MASVS** (Mobile) — Niveau L2 minimum (apps santé)
+- **OWASP ASVS** (Web) — Niveau 2 minimum
+- Tests d'injection, XSS, CSRF (web)
+- Tests de jailbreak/root detection (mobile)
+- Tests de leak data dans logs / crash reports
+
+### Tests de conformité réglementaire
+- AuditLog correctement enregistré pour chaque action
+- Données chiffrées en local et en transit (vérifié par capture mémoire et trafic)
+- Export RGPD inclut bien les données de cette fonctionnalité
+- Effacement RGPD supprime / anonymise correctement
+- Si Dispositif Médical (calcul dose) : conformité ISO 14971 (gestion risque) + IEC 62304 (cycle vie logiciel)
+
+### Tests d'accessibilité
+- iOS : VoiceOver complet, Dynamic Type jusqu'à xxxLarge
+- Android : TalkBack complet, scaling 200%
+- Web : axe-core green + audit manuel RGAA 4.1
+
+---
+
+## 📦 Définition de Done (par plateforme)
+
+### Code & qualité (commun)
+- [ ] Code review approuvée (2 reviewers dont 1 senior plateforme)
+- [ ] Tests unitaires verts ≥ 80% couverture
+- [ ] Tests d'intégration verts
+- [ ] Tests E2E verts sur la plateforme concernée
+- [ ] Aucun warning compilateur / lint
+- [ ] CHANGELOG.md mis à jour
+
+### iOS-spécifique
+- [ ] Tests sur 3 devices (iPhone SE, iPhone 15, iPad)
+- [ ] Validation TestFlight interne (≥ 5 testeurs)
+- [ ] Privacy Manifest à jour
+- [ ] Screenshots App Store si UI nouvelle
+- [ ] Pas de warning Xcode
+
+### Android-spécifique
+- [ ] Tests sur Firebase Test Lab ≥ 5 références
+- [ ] Validation Internal Testing track
+- [ ] Data Safety form à jour
+- [ ] Pas de warning Lint Android
+
+### Web-spécifique
+- [ ] Lighthouse score ≥ 90 sur Performance, Accessibility, Best Practices, SEO
+- [ ] axe-core 0 violation critique
+- [ ] Validation cross-browser (Chrome, Firefox, Safari, Edge)
+- [ ] Pas de warning ESLint
+
+### Sécurité & conformité (commun)
+- [ ] AuditLog implémenté
+- [ ] Données chiffrées (local + transit) vérifiées
+- [ ] OWASP MASVS L2 (mobile) / ASVS L2 (web) vérifié
+- [ ] Pas de secret en dur (gitleaks vert)
+- [ ] Validation healthcare-security-auditor
+
+### UX & accessibilité (commun)
+- [ ] WCAG 2.1 AA / RGAA 4.1 conforme
+- [ ] Support FR + AR (RTL) testé
+- [ ] Loading / error / empty states définis
+- [ ] Validation produit / PO
+
+---
+
+## 📚 Ressources
+
+- Documentation interne projet : `docs/architecture/`
+- Référentiel HDS ANS : https://esante.gouv.fr/produits-services/hds
+- OWASP MASVS : https://mas.owasp.org/MASVS/
+- Apple HIG (Health & Fitness) : https://developer.apple.com/design/human-interface-guidelines/
+- Material Design 3 : https://m3.material.io/
+- WCAG 2.1 AA : https://www.w3.org/WAI/WCAG21/quickref/
+- RGAA 4.1 : https://accessibilite.numerique.gouv.fr/
+
+---
+
+## 🔗 US liées
+
+- Référence inventaire : `FNP-067`
+- Inventaire complet : `Diabeo_App_Patient_Inventaire.xlsx`
+- US miroir backoffice (à venir) : domaine `23-patient-management/`
+
+*Auto-généré depuis l'inventaire fonctionnel — affiner manuellement les sections selon la conception détaillée du sprint.*
