@@ -2,11 +2,11 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
-import { checkRateLimit, recordFailedAttempt } from "@/lib/auth"
+import { checkRateLimit } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { emailService } from "@/lib/services/email.service"
 import { decrypt } from "@/lib/crypto/health-data"
-import { randomUUID } from "crypto"
+import { randomUUID, randomInt } from "crypto"
 import { logger } from "@/lib/logger"
 
 const resetSchema = z.object({
@@ -29,7 +29,6 @@ export async function POST(req: NextRequest) {
     const emailHash = hmacEmail(email)
     const ctx = extractRequestContext(req)
 
-    // Rate limit to prevent email flooding
     const rateCheck = await checkRateLimit(`reset:${emailHash}`)
     if (rateCheck.blocked) {
       return NextResponse.json(
@@ -38,18 +37,20 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    await recordFailedAttempt(`reset:${emailHash}`)
-
     const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
 
     if (user) {
       const resetToken = randomUUID()
-      await prisma.verificationToken.create({
-        data: {
-          identifier: emailHash,
-          token: resetToken,
-          expires: new Date(Date.now() + 3600_000),
-        },
+
+      await prisma.$transaction(async (tx) => {
+        await tx.verificationToken.deleteMany({ where: { identifier: emailHash } })
+        await tx.verificationToken.create({
+          data: {
+            identifier: emailHash,
+            token: resetToken,
+            expires: new Date(Date.now() + 3600_000),
+          },
+        })
       })
 
       try {
@@ -70,15 +71,15 @@ export async function POST(req: NextRequest) {
         userAgent: ctx.userAgent,
         metadata: { type: "password_reset_requested" },
       })
+    } else {
+      await new Promise((r) => setTimeout(r, randomInt(100, 400)))
     }
 
-    // Always return success to prevent email enumeration
     return NextResponse.json({
       message: "If an account exists with this email, a reset link has been sent.",
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[auth/reset-password]", msg)
+    logger.error("auth/reset-password", "Unexpected error", {}, error)
     return NextResponse.json({ error: "serverUnavailable" }, { status: 503 })
   }
 }

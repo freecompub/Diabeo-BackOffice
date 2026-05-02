@@ -1,6 +1,10 @@
 import { Resend } from "resend"
 import { logger } from "@/lib/logger"
 
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
 let _client: Resend | null = null
 
 function getClient(): Resend {
@@ -71,7 +75,7 @@ export const emailService = {
             Cliquez sur le bouton ci-dessous pour définir un nouveau mot de passe.
           </p>
           <div style="text-align: center; margin: 32px 0;">
-            <a href="${resetUrl}" style="background: #0D9488; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+            <a href="${escapeHtml(resetUrl)}" style="background: #0D9488; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
               Réinitialiser mon mot de passe
             </a>
           </div>
@@ -89,13 +93,13 @@ export const emailService = {
     })
   },
 
-  async sendWelcome(email: string, firstName: string): Promise<EmailResult> {
+  async sendWelcome(email: string): Promise<EmailResult> {
     return this.send({
       to: email,
       subject: "Bienvenue sur Diabeo",
       html: `
         <div style="font-family: 'Figtree', system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
-          <h1 style="color: #0D9488; font-size: 24px;">Bienvenue sur Diabeo, ${firstName} !</h1>
+          <h1 style="color: #0D9488; font-size: 24px;">Bienvenue sur Diabeo !</h1>
           <p style="color: #6B7280; line-height: 1.6;">
             Votre compte a été créé avec succès. Vous pouvez maintenant accéder à votre espace de supervision de l'insulinothérapie.
           </p>
@@ -104,7 +108,7 @@ export const emailService = {
           </p>
         </div>
       `,
-      text: `Bienvenue sur Diabeo, ${firstName} !\n\nVotre compte a été créé avec succès.`,
+      text: "Bienvenue sur Diabeo !\n\nVotre compte a été créé avec succès.",
     })
   },
 

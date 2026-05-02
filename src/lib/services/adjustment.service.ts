@@ -222,12 +222,12 @@ export const adjustmentService = {
     return result
   },
 
-  async notifyPatient(patientId: number, senderId: number, action: "accepted" | "rejected", ctx?: AuditContext) {
-    const patient = await prisma.patient.findUnique({
-      where: { id: patientId },
+  async notifyPatient(patientId: number, senderId: number, action: "accepted" | "rejected", ctx?: AuditContext): Promise<{ notified: boolean }> {
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null },
       select: { userId: true },
     })
-    if (!patient) return
+    if (!patient) return { notified: false }
 
     const titles: Record<string, string> = {
       accepted: "Proposition acceptée",
@@ -238,14 +238,18 @@ export const adjustmentService = {
       rejected: "Votre médecin a refusé une proposition d'ajustement.",
     }
 
-    fcmService.sendToUser({
-      userId: patient.userId,
-      senderId,
-      title: titles[action],
-      body: bodies[action],
-      data: { type: "proposal_update", action },
-    }, ctx).catch((err) => {
-      logger.warn("adjustment", `Push notification failed for patient ${patientId}`)
-    })
+    try {
+      const result = await fcmService.sendToUser({
+        userId: patient.userId,
+        senderId,
+        title: titles[action],
+        body: bodies[action],
+        data: { type: "proposal_update", action },
+      }, ctx)
+      return { notified: result.sent > 0 }
+    } catch (err) {
+      logger.error("adjustment", "Push notification failed", { patientId }, err)
+      return { notified: false }
+    }
   },
 }

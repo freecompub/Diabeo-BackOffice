@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { DiabeoTextField } from "@/components/diabeo/DiabeoTextField"
 import { DiabeoFormSection } from "@/components/diabeo/DiabeoFormSection"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
@@ -17,8 +18,19 @@ const PATHOLOGIES: { value: Pathology; label: string; description: string }[] = 
   { value: "GD", label: "Diabète Gestationnel", description: "Lié à la grossesse" },
 ]
 
+const ERROR_MESSAGES: Record<string, string> = {
+  validationFailed: "Champs invalides. Vérifiez les données saisies.",
+  emailExists: "Un compte avec cet email existe déjà.",
+  forbidden: "Vous n'avez pas les droits pour créer un patient.",
+  csrfMissing: "Session expirée. Rechargez la page.",
+  serverError: "Erreur serveur. Réessayez.",
+}
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 export default function NewPatientPage() {
   const router = useRouter()
+  const t = useTranslations("patients")
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -32,6 +44,11 @@ export default function NewPatientPage() {
   const [pathology, setPathology] = useState<Pathology>("DT1")
   const [yearDiag, setYearDiag] = useState("")
 
+  const isStep1Valid = EMAIL_REGEX.test(email) && firstName.trim().length > 0 && lastName.trim().length > 0
+  const currentYear = new Date().getFullYear()
+  const yearDiagNum = yearDiag ? parseInt(yearDiag, 10) : null
+  const isYearDiagValid = !yearDiag || (yearDiagNum !== null && yearDiagNum >= 1900 && yearDiagNum <= currentYear)
+
   async function handleSubmit() {
     setLoading(true)
     setError(null)
@@ -39,28 +56,32 @@ export default function NewPatientPage() {
     try {
       const res = await fetch("/api/patients", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
         body: JSON.stringify({
           email,
-          firstName,
-          lastName,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
           sex,
           birthday: birthday || undefined,
           pathology,
-          yearDiag: yearDiag ? parseInt(yearDiag, 10) : undefined,
+          yearDiag: yearDiagNum ?? undefined,
         }),
       })
 
       if (!res.ok) {
         const data = await res.json()
-        setError(data.error ?? "Erreur lors de la création")
+        const code = data.error ?? "serverError"
+        setError(ERROR_MESSAGES[code] ?? ERROR_MESSAGES.serverError)
         return
       }
 
       const patient = await res.json()
       router.push(`/patients/${patient.id}`)
     } catch {
-      setError("Erreur réseau. Réessayez.")
+      setError(ERROR_MESSAGES.serverError)
     } finally {
       setLoading(false)
     }
@@ -69,11 +90,18 @@ export default function NewPatientPage() {
   return (
     <div className="max-w-2xl mx-auto py-8 px-4">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-ink-900">Nouveau patient</h1>
+        <h1 className="text-2xl font-bold text-ink-900">{t("newPatient")}</h1>
         <p className="text-sm text-ink-500 mt-1">
-          Étape {step} sur 2 — {step === 1 ? "Identité" : "Pathologie"}
+          {t("step")} {step} {t("of")} 2 — {step === 1 ? t("identity") : t("pathology")}
         </p>
-        <div className="flex gap-2 mt-3">
+        <div
+          className="flex gap-2 mt-3"
+          role="progressbar"
+          aria-valuenow={step}
+          aria-valuemin={1}
+          aria-valuemax={2}
+          aria-label={`${t("step")} ${step} ${t("of")} 2`}
+        >
           <div className={`h-1 flex-1 rounded-full ${step >= 1 ? "bg-teal-600" : "bg-ink-100"}`} />
           <div className={`h-1 flex-1 rounded-full ${step >= 2 ? "bg-teal-600" : "bg-ink-100"}`} />
         </div>
@@ -85,25 +113,26 @@ export default function NewPatientPage() {
 
       {step === 1 && (
         <DiabeoCard>
-          <DiabeoFormSection title="Identité du patient" description="Ces informations sont chiffrées (AES-256-GCM).">
+          <DiabeoFormSection title={t("identity")} description={t("identityEncrypted")}>
             <DiabeoTextField
               label="Email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              error={email.length > 0 && !EMAIL_REGEX.test(email) ? "Format email invalide" : undefined}
               id="patient-email"
             />
             <div className="grid grid-cols-2 gap-4">
               <DiabeoTextField
-                label="Prénom"
+                label={t("firstName")}
                 required
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
                 id="patient-firstname"
               />
               <DiabeoTextField
-                label="Nom"
+                label={t("lastName")}
                 required
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
@@ -113,21 +142,22 @@ export default function NewPatientPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label htmlFor="patient-sex" className="block text-sm font-medium text-ink-700 mb-1.5">
-                  Sexe
+                  {t("sex")}
                 </label>
                 <select
                   id="patient-sex"
                   value={sex}
                   onChange={(e) => setSex(e.target.value as Sex)}
                   className="w-full rounded-lg border border-ink-300 px-3 py-2.5 text-sm"
+                  aria-label={t("sex")}
                 >
-                  <option value="M">Masculin</option>
-                  <option value="F">Féminin</option>
-                  <option value="X">Autre</option>
+                  <option value="M">{t("male")}</option>
+                  <option value="F">{t("female")}</option>
+                  <option value="X">{t("other")}</option>
                 </select>
               </div>
               <DiabeoTextField
-                label="Date de naissance"
+                label={t("birthDate")}
                 type="date"
                 value={birthday}
                 onChange={(e) => setBirthday(e.target.value)}
@@ -141,13 +171,13 @@ export default function NewPatientPage() {
               variant="diabeoSecondary"
               onClick={() => router.push("/patients")}
             >
-              Annuler
+              {t("cancel")}
             </DiabeoButton>
             <DiabeoButton
               onClick={() => setStep(2)}
-              disabled={!email || !firstName || !lastName}
+              disabled={!isStep1Valid}
             >
-              Suivant
+              {t("next")}
             </DiabeoButton>
           </div>
         </DiabeoCard>
@@ -155,8 +185,8 @@ export default function NewPatientPage() {
 
       {step === 2 && (
         <DiabeoCard>
-          <DiabeoFormSection title="Pathologie" description="Type de diabète et année de diagnostic.">
-            <div className="space-y-3">
+          <DiabeoFormSection title={t("pathology")} description={t("pathologyDescription")}>
+            <div className="space-y-3" role="radiogroup" aria-label={t("pathology")}>
               {PATHOLOGIES.map((p) => (
                 <label
                   key={p.value}
@@ -183,24 +213,25 @@ export default function NewPatientPage() {
             </div>
 
             <DiabeoTextField
-              label="Année de diagnostic"
+              label={t("yearOfDiagnosis")}
               type="number"
               value={yearDiag}
               onChange={(e) => setYearDiag(e.target.value)}
-              hint={`Entre 1900 et ${new Date().getFullYear()}`}
+              hint={`Entre 1900 et ${currentYear}`}
+              error={!isYearDiagValid ? `Année entre 1900 et ${currentYear}` : undefined}
               id="patient-yeardiag"
             />
           </DiabeoFormSection>
 
           <div className="flex justify-between mt-6">
             <DiabeoButton variant="diabeoSecondary" onClick={() => setStep(1)}>
-              Retour
+              {t("back")}
             </DiabeoButton>
             <DiabeoButton
               onClick={handleSubmit}
-              disabled={loading}
+              disabled={loading || !isYearDiagValid}
             >
-              {loading ? "Création en cours…" : "Créer le patient"}
+              {loading ? t("creating") : t("createPatient")}
             </DiabeoButton>
           </div>
         </DiabeoCard>

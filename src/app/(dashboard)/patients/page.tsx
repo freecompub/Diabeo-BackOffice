@@ -129,7 +129,7 @@ export default function PatientsPage() {
           <Link href="/patients/new">
             <Button className="gap-2 bg-teal-600 hover:bg-teal-700">
               <UserPlus className="h-4 w-4" />
-              Nouveau patient
+              {t("newPatient")}
             </Button>
           </Link>
         </div>
