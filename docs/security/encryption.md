@@ -75,6 +75,26 @@ Les cles d'objet sont des UUID : `{prefix}/{uuid}.{ext}` — pas de nom de fichi
 | OVH_S3_ENDPOINT | Object Storage URL | URL (prod: s3.gra.perf.cloud.ovh.net) |
 | OVH_S3_BUCKET | Nom du bucket | String |
 | OVH_S3_REGION | Region OVH | String (ex: gra) |
+| FIREBASE_SERVICE_ACCOUNT_KEY | FCM push notifications | Base64(JSON service account) |
+| FIREBASE_PROJECT_ID | Firebase project ID | String (optionnel si dans la cle) |
+
+### Push notifications (Firebase Cloud Messaging)
+
+Les notifications push transitent par Google FCM. Mesures de protection :
+
+1. **Pas de donnees de sante dans le payload FCM** — le champ `notification` global n'est pas utilise. Le contenu est envoye via les canaux specifiques plateforme (APNs/Android/WebPush). Les templates ne doivent contenir que des codes generiques (`alertType=hypo`, pas `glucoseValue=0.45`).
+
+2. **PushNotificationLog ne stocke pas le contenu en clair** — seul le templateId et un idempotency key sont enregistres. Le titre et le body sont remplaces par des references (`[push:{templateId}]`).
+
+3. **Autorisation cible** — `canAccessPatient()` verifie que l'envoyeur a une relation de soin avec le destinataire. Les non-patients ne peuvent etre notifies que par un ADMIN.
+
+4. **Rate limiting fail-closed** — 50 envois/heure par utilisateur. Si Redis est indisponible, les envois sont bloques (pas fail-open).
+
+5. **Retry limite** — seuls les codes retriable FCM (`internal-error`, `server-unavailable`, `unavailable`) declenchent un retry. Un idempotency key est inclus dans le payload data pour la deduplication cote client.
+
+6. **Variables templates sanitisees** — tronquees a 200 caracteres, valeurs data limitees a 500 caracteres via Zod.
+
+7. **Cle Firebase** — stockee en base64 dans env var, validee au demarrage par schema Zod (type, project_id, private_key, client_email).
 
 ## Authentification JWT RS256
 
