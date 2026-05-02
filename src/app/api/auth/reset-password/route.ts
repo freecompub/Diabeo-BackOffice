@@ -2,8 +2,12 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { prisma } from "@/lib/db/client"
 import { hmacEmail } from "@/lib/crypto/hmac"
-import { checkRateLimit, recordFailedAttempt } from "@/lib/auth"
+import { checkRateLimit } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { emailService } from "@/lib/services/email.service"
+import { decrypt } from "@/lib/crypto/health-data"
+import { randomUUID, randomInt } from "crypto"
+import { logger } from "@/lib/logger"
 
 const resetSchema = z.object({
   email: z.string().email(),
@@ -25,7 +29,6 @@ export async function POST(req: NextRequest) {
     const emailHash = hmacEmail(email)
     const ctx = extractRequestContext(req)
 
-    // Rate limit to prevent email flooding
     const rateCheck = await checkRateLimit(`reset:${emailHash}`)
     if (rateCheck.blocked) {
       return NextResponse.json(
@@ -34,12 +37,32 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    await recordFailedAttempt(`reset:${emailHash}`)
-
+    const start = Date.now()
     const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
 
     if (user) {
-      // TODO: Send reset email via email service
+      const resetToken = randomUUID()
+
+      await prisma.$transaction(async (tx) => {
+        await tx.verificationToken.deleteMany({ where: { identifier: emailHash } })
+        await tx.verificationToken.create({
+          data: {
+            identifier: emailHash,
+            token: resetToken,
+            expires: new Date(Date.now() + 3600_000),
+          },
+        })
+      })
+
+      try {
+        const decryptedEmail = decrypt(new Uint8Array(Buffer.from(user.email, "base64")))
+        emailService.sendPasswordReset(decryptedEmail, resetToken).catch((err) => {
+          logger.error("auth/reset-password", "Email send failed", { userId: user.id }, err)
+        })
+      } catch {
+        logger.error("auth/reset-password", "Email decrypt failed", { userId: user.id })
+      }
+
       await auditService.log({
         userId: user.id,
         action: "UPDATE",
@@ -51,13 +74,17 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // Always return success to prevent email enumeration
+    const elapsed = Date.now() - start
+    const minDuration = 500 + randomInt(0, 300)
+    if (elapsed < minDuration) {
+      await new Promise((r) => setTimeout(r, minDuration - elapsed))
+    }
+
     return NextResponse.json({
       message: "If an account exists with this email, a reset link has been sent.",
     })
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[auth/reset-password]", msg)
+    logger.error("auth/reset-password", "Unexpected error", {}, error)
     return NextResponse.json({ error: "serverUnavailable" }, { status: 503 })
   }
 }

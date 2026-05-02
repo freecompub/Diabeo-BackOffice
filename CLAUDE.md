@@ -109,7 +109,8 @@ diabeo-backoffice/
 │   │       ├── document.service.ts # Upload/download S3 + antivirus + audit
 │   │       ├── antivirus.service.ts # ClamAV scan (scanFile + scanBuffer helper)
 │   │       ├── fcm.service.ts     # Envoi FCM (sendToUser, sendFromTemplate, batch)
-│   │       └── push.service.ts    # Registration devices, templates, scheduled
+│   │       ├── push.service.ts    # Registration devices, templates, scheduled
+│   │       └── email.service.ts   # Email transactionnel (Resend: reset pwd, welcome, proposals)
 │   ├── types/
 │   │   └── next-auth.d.ts          # Module augmentation NextAuth (User.role, JWT.role)
 │   ├── hooks/                      # Hooks React (Phase 8)

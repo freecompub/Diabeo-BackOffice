@@ -4,6 +4,7 @@ import { canAccessPatient } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -29,14 +30,14 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     const ctx = extractRequestContext(req)
     const result = await adjustmentService.reject(id, user.id, ctx)
-    return NextResponse.json(result)
+    const { notified } = await adjustmentService.notifyPatient(result.patientId, user.id, "rejected", ctx)
+    return NextResponse.json({ ...result, notified })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof Error && error.message === "proposalNotFound") {
       return NextResponse.json({ error: "proposalNotFound" }, { status: 404 })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[proposals/:id/reject PATCH]", msg)
+    logger.error("proposals/reject", "Reject failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

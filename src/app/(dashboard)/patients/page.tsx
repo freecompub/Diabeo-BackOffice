@@ -26,9 +26,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
-import { Search, ChevronRight } from "lucide-react"
+import { Search, ChevronRight, UserPlus } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
 
 interface PatientRow {
   id: number
@@ -97,7 +98,7 @@ export default function PatientsPage() {
       />
 
       <div className="space-y-4 p-6">
-        {/* Search & Filters */}
+        {/* Search, Filters & New Patient */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 sm:max-w-sm">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
@@ -125,6 +126,12 @@ export default function PatientsPage() {
               </button>
             ))}
           </div>
+          <Link href="/patients/new">
+            <Button className="gap-2 bg-teal-600 hover:bg-teal-700">
+              <UserPlus className="h-4 w-4" />
+              {t("newPatient")}
+            </Button>
+          </Link>
         </div>
 
         {/* Patient Table */}

@@ -8,6 +8,8 @@
 
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import { fcmService } from "./fcm.service"
+import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
 import type { AuditContext } from "./patient.service"
 import type { ProposalStatus, Prisma } from "@prisma/client"
@@ -184,13 +186,13 @@ export const adjustmentService = {
         metadata: { applyImmediately, patientId: proposal.patientId },
       })
 
-      return { accepted: true, applied: applyImmediately }
+      return { accepted: true, applied: applyImmediately, patientId: proposal.patientId }
     })
   },
 
   /** Reject a proposal */
   async reject(proposalId: string, reviewerId: number, ctx?: AuditContext) {
-    return prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       const proposal = await tx.adjustmentProposal.findUnique({ where: { id: proposalId } })
       if (!proposal || proposal.status !== "pending") {
         throw new Error("proposalNotFound")
@@ -214,7 +216,40 @@ export const adjustmentService = {
         userAgent: ctx?.userAgent,
       })
 
-      return { rejected: true }
+      return { rejected: true, patientId: proposal.patientId }
     })
+
+    return result
+  },
+
+  async notifyPatient(patientId: number, senderId: number, action: "accepted" | "rejected", ctx?: AuditContext): Promise<{ notified: boolean }> {
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null },
+      select: { userId: true },
+    })
+    if (!patient) return { notified: false }
+
+    const titles: Record<string, string> = {
+      accepted: "Proposition acceptée",
+      rejected: "Proposition refusée",
+    }
+    const bodies: Record<string, string> = {
+      accepted: "Votre médecin a accepté une proposition d'ajustement de traitement.",
+      rejected: "Votre médecin a refusé une proposition d'ajustement.",
+    }
+
+    try {
+      const result = await fcmService.sendToUser({
+        userId: patient.userId,
+        senderId,
+        title: titles[action],
+        body: bodies[action],
+        data: { type: "proposal_update", action },
+      }, ctx)
+      return { notified: result.sent > 0 }
+    } catch (err) {
+      logger.error("adjustment", "Push notification failed", { patientId }, err)
+      return { notified: false }
+    }
   },
 }

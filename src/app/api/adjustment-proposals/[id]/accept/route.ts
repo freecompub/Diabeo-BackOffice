@@ -5,6 +5,7 @@ import { canAccessPatient } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -40,7 +41,8 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     const ctx = extractRequestContext(req)
     const result = await adjustmentService.accept(id, user.id, parsed.data.applyImmediately, ctx)
-    return NextResponse.json(result)
+    const { notified } = await adjustmentService.notifyPatient(result.patientId, user.id, "accepted", ctx)
+    return NextResponse.json({ ...result, notified })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     if (error instanceof Error && error.message === "proposalNotFound") {
@@ -49,8 +51,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     if (error instanceof Error && error.message === "valueOutOfBounds") {
       return NextResponse.json({ error: "valueOutOfBounds" }, { status: 400 })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[proposals/:id/accept PATCH]", msg)
+    logger.error("proposals/accept", "Accept failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
