@@ -82,6 +82,10 @@ probe_health() {
 
 cmd_update() {
   require_env DATABASE_URL
+  require_env OVH_S3_ENDPOINT
+  require_env OVH_S3_BUCKET
+  require_env OVH_S3_ACCESS_KEY
+  require_env OVH_S3_SECRET_KEY
   require_cmd git
   require_cmd pnpm
   require_cmd pm2
