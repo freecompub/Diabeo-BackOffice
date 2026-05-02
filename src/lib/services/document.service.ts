@@ -1,5 +1,10 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import { uploadFile, deleteFile, downloadFile, generateObjectKey } from "@/lib/storage/s3"
+import { scanFile } from "./antivirus.service"
+import { writeFile, unlink, mkdtemp } from "fs/promises"
+import { join } from "path"
+import { tmpdir } from "os"
 import type { AuditContext } from "./patient.service"
 import type { DocumentCategory, Role, Prisma } from "@prisma/client"
 
@@ -11,7 +16,6 @@ const ALLOWED_MIME_TYPES = new Set([
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024
 
-/** Serialize BigInt fields for JSON response */
 function serializeDoc<T extends { fileSize: bigint | null }>(doc: T) {
   return { ...doc, fileSize: doc.fileSize !== null ? Number(doc.fileSize) : null }
 }
@@ -29,6 +33,62 @@ export const documentService = {
     })
 
     return docs.map(serializeDoc)
+  },
+
+  async upload(
+    patientId: number,
+    file: { buffer: Buffer; originalName: string; mimeType: string },
+    meta: { title: string; category?: DocumentCategory; patientShare?: boolean; memberId?: number },
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    if (!ALLOWED_MIME_TYPES.has(file.mimeType)) throw new Error("invalidMimeType")
+    if (file.buffer.length > MAX_FILE_SIZE) throw new Error("fileTooLarge")
+
+    const tmpDir = await mkdtemp(join(tmpdir(), "diabeo-scan-"))
+    const tmpPath = join(tmpDir, file.originalName.replace(/[^a-zA-Z0-9._-]/g, "_"))
+
+    try {
+      await writeFile(tmpPath, file.buffer)
+      const scan = await scanFile(tmpPath)
+
+      if (!scan.clean) {
+        throw new Error("virusDetected")
+      }
+
+      const key = generateObjectKey("documents", file.originalName)
+      await uploadFile(key, file.buffer, file.mimeType)
+
+      return prisma.$transaction(async (tx) => {
+        const doc = await tx.medicalDocument.create({
+          data: {
+            patientId,
+            title: meta.title,
+            date: new Date(),
+            category: meta.category,
+            patientShare: meta.patientShare ?? true,
+            mimeType: file.mimeType,
+            fileSize: BigInt(file.buffer.length),
+            memberId: meta.memberId,
+            fileUrl: key,
+          },
+        })
+
+        await auditService.logWithTx(tx, {
+          userId: auditUserId,
+          action: "CREATE",
+          resource: "MEDICAL_DOCUMENT",
+          resourceId: String(doc.id),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { fileName: file.originalName, mimeType: file.mimeType, size: file.buffer.length },
+        })
+
+        return serializeDoc(doc)
+      })
+    } finally {
+      await unlink(tmpPath).catch(() => {})
+    }
   },
 
   async create(
@@ -57,10 +117,28 @@ export const documentService = {
     })
   },
 
+  async download(docId: number, patientId: number, auditUserId: number, ctx?: AuditContext) {
+    const doc = await prisma.medicalDocument.findFirst({ where: { id: docId, patientId } })
+    if (!doc) throw new Error("documentNotFound")
+    if (!doc.fileUrl) throw new Error("noFileAttached")
+
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "MEDICAL_DOCUMENT",
+      resourceId: String(docId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: { operation: "download" },
+    })
+
+    return downloadFile(doc.fileUrl)
+  },
+
   async delete(docId: number, patientId: number, auditUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
       const doc = await tx.medicalDocument.findFirst({ where: { id: docId, patientId } })
       if (!doc) throw new Error("documentNotFound")
+
+      if (doc.fileUrl) {
+        await deleteFile(doc.fileUrl).catch(() => {})
+      }
 
       await tx.medicalDocument.delete({ where: { id: docId } })
 
