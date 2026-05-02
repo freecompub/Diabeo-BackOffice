@@ -6,6 +6,10 @@ import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { documentService } from "@/lib/services/document.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { checkApiRateLimit } from "@/lib/auth/api-rate-limit"
+import { logger } from "@/lib/logger"
+
+const MAX_FILE_SIZE = 50 * 1024 * 1024
 
 const metaSchema = z.object({
   title: z.string().min(1).max(255),
@@ -28,6 +32,17 @@ export async function POST(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent)
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
+    const rl = await checkApiRateLimit(`doc-upload:${user.id}`, {
+      bucket: "doc-upload", windowSec: 3600, max: 20,
+    })
+    if (!rl.allowed)
+      return NextResponse.json({ error: "rateLimited", retryAfter: rl.retryAfterSec }, { status: 429 })
+
+    const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10)
+    if (contentLength > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "fileTooLarge" }, { status: 413 })
+    }
 
     const formData = await req.formData()
     const file = formData.get("file")
@@ -84,6 +99,8 @@ export async function POST(req: NextRequest) {
     if (error instanceof Error) {
       if (error.message === "invalidMimeType")
         return NextResponse.json({ error: "invalidMimeType" }, { status: 400 })
+      if (error.message === "emptyFile")
+        return NextResponse.json({ error: "emptyFile" }, { status: 400 })
       if (error.message === "fileTooLarge")
         return NextResponse.json({ error: "fileTooLarge" }, { status: 400 })
       if (error.message === "virusDetected")
@@ -91,8 +108,7 @@ export async function POST(req: NextRequest) {
       if (error.message.startsWith("OVH S3 not configured"))
         return NextResponse.json({ error: "storageNotConfigured" }, { status: 503 })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[documents/upload POST]", msg)
+    logger.error("documents/upload", "Upload failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

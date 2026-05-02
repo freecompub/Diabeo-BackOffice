@@ -86,6 +86,7 @@ cmd_update() {
   require_env OVH_S3_BUCKET
   require_env OVH_S3_ACCESS_KEY
   require_env OVH_S3_SECRET_KEY
+  require_env OVH_S3_REGION
   require_cmd git
   require_cmd pnpm
   require_cmd pm2
