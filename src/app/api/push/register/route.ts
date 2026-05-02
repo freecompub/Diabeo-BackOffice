@@ -4,6 +4,8 @@ import { PushPlatform } from "@prisma/client"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { pushService } from "@/lib/services/push.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { checkApiRateLimit } from "@/lib/auth/api-rate-limit"
+import { logger } from "@/lib/logger"
 
 const registerSchema = z.object({
   platform: z.nativeEnum(PushPlatform),
@@ -25,8 +27,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(registrations)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[push/register GET]", msg)
+    logger.error("push/register", "List registrations failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
@@ -34,6 +35,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = requireAuth(req)
+
+    const rl = await checkApiRateLimit(`push-reg:${user.id}`, {
+      bucket: "push-register", windowSec: 3600, max: 10,
+    })
+    if (!rl.allowed)
+      return NextResponse.json({ error: "rateLimited", retryAfter: rl.retryAfterSec }, { status: 429 })
+
     const body = await req.json()
     const parsed = registerSchema.safeParse(body)
     if (!parsed.success) {
@@ -45,8 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(reg, { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[push/register POST]", msg)
+    logger.error("push/register", "Registration failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
@@ -58,8 +65,7 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[push/register DELETE]", msg)
+    logger.error("push/register", "Unregister failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

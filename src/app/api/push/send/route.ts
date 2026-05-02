@@ -1,24 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
+import { canAccessPatient } from "@/lib/access-control"
 import { fcmService } from "@/lib/services/fcm.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { checkApiRateLimit } from "@/lib/auth/api-rate-limit"
+import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 
-const sendSchema = z.object({
+const directSchema = z.object({
+  mode: z.literal("direct"),
   userId: z.number().int().positive(),
   title: z.string().min(1).max(200),
   body: z.string().min(1).max(2000),
-  templateId: z.string().max(50).optional(),
-  data: z.record(z.string(), z.string()).optional(),
+  data: z.record(z.string(), z.string().max(500)).optional(),
 })
 
-const sendFromTemplateSchema = z.object({
+const templateSchema = z.object({
+  mode: z.literal("template"),
   userId: z.number().int().positive(),
   templateId: z.string().min(1).max(50),
-  variables: z.record(z.string(), z.string()).optional(),
+  variables: z.record(z.string(), z.string().max(200)).optional(),
 })
+
+const pushSchema = z.discriminatedUnion("mode", [directSchema, templateSchema])
 
 /** POST /api/push/send — send push notification to user (NURSE+) */
 export async function POST(req: NextRequest) {
@@ -26,33 +31,13 @@ export async function POST(req: NextRequest) {
     const user = requireRole(req, "NURSE")
 
     const rl = await checkApiRateLimit(`push-send:${user.id}`, {
-      bucket: "push-send", windowSec: 3600, max: 50,
+      bucket: "push-send", windowSec: 3600, max: 50, failMode: "closed",
     })
     if (!rl.allowed)
       return NextResponse.json({ error: "rateLimited", retryAfter: rl.retryAfterSec }, { status: 429 })
 
     const body = await req.json()
-    const ctx = extractRequestContext(req)
-
-    if (body.templateId && !body.title) {
-      const parsed = sendFromTemplateSchema.safeParse(body)
-      if (!parsed.success) {
-        return NextResponse.json(
-          { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
-          { status: 400 },
-        )
-      }
-
-      const result = await fcmService.sendFromTemplate(
-        parsed.data.userId,
-        parsed.data.templateId,
-        parsed.data.variables,
-        ctx,
-      )
-      return NextResponse.json(result)
-    }
-
-    const parsed = sendSchema.safeParse(body)
+    const parsed = pushSchema.safeParse(body)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
@@ -60,7 +45,45 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const result = await fcmService.sendToUser(parsed.data, ctx)
+    const targetUserId = parsed.data.userId
+
+    const targetPatient = await prisma.patient.findFirst({
+      where: { userId: targetUserId, deletedAt: null },
+      select: { id: true },
+    })
+    if (targetPatient) {
+      const allowed = await canAccessPatient(user.id, user.role, targetPatient.id)
+      if (!allowed) {
+        return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      }
+    } else if (user.role !== "ADMIN") {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
+    const ctx = extractRequestContext(req)
+
+    if (parsed.data.mode === "template") {
+      const result = await fcmService.sendFromTemplate(
+        targetUserId,
+        user.id,
+        parsed.data.templateId,
+        parsed.data.variables,
+        ctx,
+      )
+      return NextResponse.json(result)
+    }
+
+    const result = await fcmService.sendToUser(
+      {
+        userId: targetUserId,
+        senderId: user.id,
+        title: parsed.data.title,
+        body: parsed.data.body,
+        data: parsed.data.data,
+        templateId: undefined,
+      },
+      ctx,
+    )
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AuthError)

@@ -87,6 +87,11 @@ cmd_update() {
   require_env OVH_S3_ACCESS_KEY
   require_env OVH_S3_SECRET_KEY
   require_env OVH_S3_REGION
+  # Firebase FCM is optional — push notifications degrade gracefully (503 on send)
+  # Set FIREBASE_SERVICE_ACCOUNT_KEY + FIREBASE_PROJECT_ID to enable push
+  if [[ -z "${FIREBASE_SERVICE_ACCOUNT_KEY-}" ]]; then
+    warn "FIREBASE_SERVICE_ACCOUNT_KEY not set — push notifications will be disabled (503 on /api/push/send)"
+  fi
   require_cmd git
   require_cmd pnpm
   require_cmd pm2

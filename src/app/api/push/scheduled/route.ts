@@ -4,6 +4,8 @@ import { ScheduleType } from "@prisma/client"
 import { requireRole, AuthError } from "@/lib/auth"
 import { pushService } from "@/lib/services/push.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { checkApiRateLimit } from "@/lib/auth/api-rate-limit"
+import { logger } from "@/lib/logger"
 
 const createScheduledSchema = z.object({
   templateId: z.string().min(1).max(50),
@@ -28,8 +30,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(scheduled)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[push/scheduled GET]", msg)
+    logger.error("push/scheduled", "List scheduled failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
@@ -38,6 +39,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = requireRole(req, "NURSE")
+
+    const rl = await checkApiRateLimit(`push-sched:${user.id}`, {
+      bucket: "push-scheduled", windowSec: 3600, max: 20,
+    })
+    if (!rl.allowed)
+      return NextResponse.json({ error: "rateLimited", retryAfter: rl.retryAfterSec }, { status: 429 })
+
     const body = await req.json()
     const parsed = createScheduledSchema.safeParse(body)
     if (!parsed.success) {
@@ -49,8 +57,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(result, { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[push/scheduled POST]", msg)
+    logger.error("push/scheduled", "Create scheduled failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
