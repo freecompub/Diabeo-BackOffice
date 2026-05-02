@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
 > Dernière mise à jour : 2026-05-02
-> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **44%**
+> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **51%**
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done | % Started |
 |----------|-------|------|---------|-------------|--------|-----------|
-| **MVP**  | 63    | 31   | 13      | 19          | **49%** | **70%**  |
+| **MVP**  | 63    | 32   | 12      | 19          | **51%** | **70%**  |
 | **V1**   | 120   | 0    | 7       | 113         | **0%**  | **6%**   |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  | **0%**   |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  | **0%**   |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  | **0%**   |
-| **TOTAL**| **264** | **31** | **20** | **213**   | **12%** | **19%**  |
+| **TOTAL**| **264** | **32** | **19** | **213**   | **12%** | **19%**  |
 
 ---
 
@@ -154,7 +154,7 @@
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
-| US-2140 | Upload S3 documents | NOT STARTED | `document.service.ts` existe, OVH S3 pas branché (501) |
+| US-2140 | Upload S3 documents | DONE | `src/lib/storage/s3.ts`, `src/app/api/documents/upload/route.ts`, `src/app/api/documents/[id]/download/route.ts`, `src/app/api/account/photo/route.ts`. SSE-S3, ClamAV, rate limit, RBAC, audit. PR #339. |
 
 ### Domaine 13 — Administration (2 US)
 
@@ -386,17 +386,20 @@
 
 | Batch | Description | Story Points |
 |-------|-------------|-------------|
-| A | Compléter 13 US PARTIAL | ~30 SP |
-| B | 9 nouvelles US backoffice | ~26 SP |
+| A | Compléter 12 US PARTIAL | ~25 SP |
+| B | 7 nouvelles US backoffice | ~22 SP |
 | C | 9 US Mirror MVP | ~42 SP |
-| **Total** | **31 US restantes** | **~98 SP** |
+| **Total** | **28 US restantes** | **~89 SP** |
+
+### US MVP récemment terminées
+- [x] US-2140 — Upload documents OVH S3 (PR #339, 2026-05-02)
 
 ---
 
 ## Dépendances API pour l'app patient (US-3xxx)
 
 ### Contrats API satisfaits
-Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives, Push registration, Sync pull/push, Devices CRUD, Documents, Events, Medications, Appointments, Healthcare team.
+Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives, Push registration, Sync pull/push, Devices CRUD, Documents (upload multipart + download stream), Events, Medications, Appointments, Healthcare team, Photo avatar.
 
 ### Contrats API manquants (MVP patient)
 - Self-registration patient (onboarding)
@@ -408,4 +411,4 @@ Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives,
 
 ---
 
-*Document généré le 2026-05-02 — source : `docs/UserStory/pro-user-stories/`, `docs/UserStory/user-stories-patient-management/`*
+*Dernière mise à jour : 2026-05-02 — US-2140 DONE (PR #339) · source : `docs/UserStory/pro-user-stories/`, `docs/UserStory/user-stories-patient-management/`*
