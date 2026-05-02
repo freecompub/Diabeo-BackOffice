@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    const start = Date.now()
     const user = await prisma.user.findUnique({ where: { emailHmac: emailHash } })
 
     if (user) {
@@ -71,8 +72,12 @@ export async function POST(req: NextRequest) {
         userAgent: ctx.userAgent,
         metadata: { type: "password_reset_requested" },
       })
-    } else {
-      await new Promise((r) => setTimeout(r, randomInt(100, 400)))
+    }
+
+    const elapsed = Date.now() - start
+    const minDuration = 500 + randomInt(0, 300)
+    if (elapsed < minDuration) {
+      await new Promise((r) => setTimeout(r, minDuration - elapsed))
     }
 
     return NextResponse.json({
