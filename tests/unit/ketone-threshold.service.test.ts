@@ -55,24 +55,23 @@ describe("ketoneThresholdService", () => {
       ).toBe("light_must_be_less_than_moderate")
     })
 
-    it("rejects moderate > DKA (would suppress DKA emergency alerts)", () => {
+    it("rejects moderate >= DKA (would create degenerate config)", () => {
+      // Strict ordering — moderate==DKA is now rejected since the classifier
+      // refuses to downgrade ≥DKA readings to "warning" (clinical safety).
       expect(
         validateKetoneThresholds({
           lightThreshold: 1.0,
           moderateThreshold: 4.0,
           dkaThreshold: 3.0,
         }),
-      ).toBe("moderate_must_be_lte_dka")
-    })
-
-    it("allows moderate equal to DKA (warning + critical share boundary)", () => {
+      ).toBe("moderate_must_be_less_than_dka")
       expect(
         validateKetoneThresholds({
           lightThreshold: 1.5,
           moderateThreshold: 3.0,
           dkaThreshold: 3.0,
         }),
-      ).toBeNull()
+      ).toBe("moderate_must_be_less_than_dka")
     })
 
     it("rejects values below physiological minimum", () => {

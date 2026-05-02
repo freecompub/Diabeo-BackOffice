@@ -1,14 +1,16 @@
 /**
  * US-2224 — Emergency alerts inbox (list + manual create).
  *
- * GET   → DOCTOR/NURSE/ADMIN — list alerts with filters & pagination.
- *         **RBAC scoping**: non-ADMIN callers are restricted to their
- *         accessible patient portfolio via getAccessiblePatientIds.
- * POST  → NURSE+ — create a manual alert (cooldown applies; rate limited).
+ * GET   → all authenticated roles. RBAC scoping:
+ *         - ADMIN: unrestricted
+ *         - DOCTOR/NURSE: portfolio (PatientService membership)
+ *         - VIEWER (patient): own alerts only (RGPD Art. 15 right of access)
+ * POST  → NURSE+ — create a manual alert (cooldown applies). Severity
+ *         "critical" requires DOCTOR/ADMIN role + non-empty notes.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient, getAccessiblePatientIds } from "@/lib/access-control"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { emergencyService } from "@/lib/services/emergency.service"
@@ -26,24 +28,25 @@ const alertTypeEnum = z.enum([
   "manual",
 ])
 
+type EnumListResult<T> = { ok: true; value: T[] | undefined } | { ok: false }
+
 function parseEnumList<T extends string>(
   value: string | null,
   schema: z.ZodType<T>,
-): T[] | undefined {
-  if (!value) return undefined
+): EnumListResult<T> {
+  if (!value) return { ok: true, value: undefined }
   const arr = value.split(",").map((v) => v.trim()).filter(Boolean)
-  if (arr.length === 0) return undefined
+  if (arr.length === 0) return { ok: true, value: undefined }
   const parsed = z.array(schema).safeParse(arr)
-  if (!parsed.success) return undefined
-  return parsed.data
+  if (!parsed.success) return { ok: false }
+  return { ok: true, value: parsed.data }
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const user = requireRole(req, "NURSE")
+    const user = requireAuth(req)
     const sp = req.nextUrl.searchParams
 
-    // Validate scalar query params via Zod for consistent 400 errors.
     const intSchema = z.coerce.number().int().positive().optional()
     const dateSchema = z.coerce.date().optional()
 
@@ -63,25 +66,31 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
 
+    const statusList = parseEnumList(sp.get("status"), statusEnum)
+    const severityList = parseEnumList(sp.get("severity"), severityEnum)
+    const alertTypeList = parseEnumList(sp.get("alertType"), alertTypeEnum)
+    if (!statusList.ok || !severityList.ok || !alertTypeList.ok) {
+      return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+    }
+
     const patientId = patientIdParsed.data
     let scopePatientIds: number[] | null | undefined
 
     if (patientId !== undefined) {
-      // Explicit patient filter — verify access individually.
       const allowed = await canAccessPatient(user.id, user.role, patientId)
       if (!allowed) {
         return NextResponse.json({ error: "forbidden" }, { status: 403 })
       }
-      scopePatientIds = undefined // patientId already constrains the query
+      scopePatientIds = undefined
     } else {
-      // No explicit filter — restrict to caller's portfolio.
+      // No explicit filter — RBAC scope applies to every role except ADMIN.
       scopePatientIds = await getAccessiblePatientIds(user.id, user.role)
     }
 
     const filter = {
-      status: parseEnumList(sp.get("status"), statusEnum),
-      severity: parseEnumList(sp.get("severity"), severityEnum),
-      alertType: parseEnumList(sp.get("alertType"), alertTypeEnum),
+      status: statusList.value,
+      severity: severityList.value,
+      alertType: alertTypeList.value,
       from: fromParsed.data,
       to: toParsed.data,
       patientId,
@@ -108,9 +117,11 @@ const postSchema = z.object({
   notes: z.string().max(2000).optional(),
 })
 
-const POST_USER_ERROR_CODES = new Set([
-  "patient_not_found",
-  "manual_alert_cooldown",
+const POST_USER_ERROR_CODES = new Map<string, number>([
+  ["patient_not_found", 404],
+  ["manual_alert_cooldown", 429],
+  ["critical_manual_requires_doctor", 403],
+  ["critical_manual_requires_notes", 400],
 ])
 
 export async function POST(req: NextRequest) {
@@ -134,21 +145,16 @@ export async function POST(req: NextRequest) {
     const ctx = extractRequestContext(req)
     try {
       const alert = await emergencyService.createManual(
-        { patientId, severity, notes },
+        { patientId, severity, notes, callerRole: user.role },
         user.id,
         ctx,
       )
       return NextResponse.json(alert, { status: 201 })
     } catch (e) {
       const msg = e instanceof Error ? e.message : "serverError"
-      if (msg === "patient_not_found") {
-        return NextResponse.json({ error: msg }, { status: 404 })
-      }
-      if (msg === "manual_alert_cooldown") {
-        return NextResponse.json({ error: msg }, { status: 429 })
-      }
-      if (POST_USER_ERROR_CODES.has(msg)) {
-        return NextResponse.json({ error: msg }, { status: 400 })
+      const status = POST_USER_ERROR_CODES.get(msg)
+      if (status) {
+        return NextResponse.json({ error: msg }, { status })
       }
       throw e
     }

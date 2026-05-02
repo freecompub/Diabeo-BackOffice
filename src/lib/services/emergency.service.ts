@@ -42,6 +42,8 @@ import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService } from "./audit.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
+import { ALERT_THRESHOLD_DEFAULTS } from "./alert-threshold.service"
+import { getCgmDefaults } from "./objectives.service"
 import type { AuditContext } from "./patient.service"
 import type {
   EmergencyAlertType,
@@ -65,6 +67,21 @@ const GL_TO_MGDL = 100
 /** Severity-aware cooldown ceiling (minutes). Critical never silenced > 15 min. */
 const CRITICAL_COOLDOWN_CEILING = 15
 
+/**
+ * Sanity bounds on alert trigger values — sensor errors above these ranges
+ * should never be persisted. Mirrors CGM ingestion validation.
+ */
+const GLUCOSE_BOUNDS = { MIN: 40, MAX: 600 } as const
+const KETONE_BOUNDS = { MIN: 0.1, MAX: 10 } as const
+
+/**
+ * Name of the partial unique index on (patient_id, alert_type) WHERE
+ * status IN ('open','acknowledged'). See prisma/sql/emergency_alerts_constraints.sql.
+ * Used to narrow P2002 catching to *this* invariant — any other future
+ * unique-constraint violation must propagate.
+ */
+const LIVE_ALERT_UNIQUE_INDEX = "emergency_alerts_one_live_per_type"
+
 interface DetectFromCgmInput {
   patientId: number
   glucoseValueMgdl: number
@@ -81,6 +98,8 @@ interface CreateManualAlertInput {
   patientId: number
   severity: EmergencyAlertSeverity
   notes?: string
+  /** Caller's role — required to gate critical-severity manual alerts. */
+  callerRole: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 }
 
 export interface EmergencyAlertListFilter {
@@ -149,8 +168,14 @@ function classifyKetoneAlert(
     alertOnDka: boolean
   },
 ): { type: EmergencyAlertType; severity: EmergencyAlertSeverity } | null {
-  if (ketoneMmol >= thresholds.dkaThreshold && thresholds.alertOnDka) {
-    return { type: "ketone_dka", severity: "critical" }
+  // Clinical safety: a ≥DKA reading is *always* an emergency. We never
+  // downgrade it to "moderate" just because alertOnDka is off — that would
+  // hide a true DKA episode. If alertOnDka is off, suppress the alert
+  // entirely; clinician opted out of DKA notifications (e.g. inpatient).
+  if (ketoneMmol >= thresholds.dkaThreshold) {
+    return thresholds.alertOnDka
+      ? { type: "ketone_dka", severity: "critical" }
+      : null
   }
   if (ketoneMmol >= thresholds.moderateThreshold && thresholds.alertOnModerate) {
     return { type: "ketone_moderate", severity: "warning" }
@@ -185,13 +210,23 @@ async function captureContextSnapshot(
 function decryptSnapshot(encrypted: string | null): CgmSnapshotPoint[] {
   if (!encrypted) return []
   const plaintext = safeDecryptField(encrypted)
-  if (!plaintext) return []
+  if (!plaintext) {
+    // Decryption failure → likely key rotation gone wrong or DB tamper.
+    // Alert ops without leaking ciphertext (HDS / ANSSI RGS).
+    logger.error("emergency", "context_snapshot_decryption_failed")
+    return []
+  }
   try {
     const parsed = JSON.parse(plaintext) as unknown
     if (!Array.isArray(parsed)) return []
     return parsed.filter(
       (p): p is CgmSnapshotPoint =>
-        typeof p === "object" && p !== null && "ts" in p && "mgdl" in p,
+        typeof p === "object" &&
+        p !== null &&
+        "ts" in p &&
+        "mgdl" in p &&
+        typeof (p as { ts: unknown }).ts === "string" &&
+        typeof (p as { mgdl: unknown }).mgdl === "number",
     )
   } catch {
     return []
@@ -298,22 +333,36 @@ async function notifyCriticalAlert(
   }
 }
 
-/** Insert helper that traps the unique-constraint collision (TOCTOU race). */
+/**
+ * Insert helper that traps *only* the live-alert partial-unique-index
+ * collision (TOCTOU race). Any other constraint violation is rethrown to
+ * surface the real bug, never masked behind a "cooldown blocked" no-op.
+ */
 async function safeCreateAlert<T>(
   fn: () => Promise<T>,
 ): Promise<T | null> {
   try {
     return await fn()
   } catch (err) {
-    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
-      return null
+    if (
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002"
+    ) {
+      const target = err.meta?.target
+      const targetStr = Array.isArray(target) ? target.join(",") : String(target ?? "")
+      if (targetStr.includes(LIVE_ALERT_UNIQUE_INDEX)) {
+        return null
+      }
     }
     throw err
   }
 }
 
 /**
- * Decrypt user-facing fields on an alert read.
+ * Decrypt user-facing fields on an alert read AND strip the encrypted
+ * `contextSnapshot` ciphertext from the API-bound payload (per project rule
+ * "JAMAIS exposer le Buffer/base64 chiffré dans les API responses" — CLAUDE.md).
+ * Returns a derived `contextSnapshotPoints: CgmSnapshotPoint[]` instead.
  */
 function decryptAlertFields<
   T extends {
@@ -321,16 +370,17 @@ function decryptAlertFields<
     resolutionNotes?: string | null
     contextSnapshot?: string | null
   },
->(alert: T): T & {
+>(alert: T): Omit<T, "contextSnapshot"> & {
   notes: string | null
   resolutionNotes: string | null
   contextSnapshotPoints: CgmSnapshotPoint[]
 } {
+  const { contextSnapshot, ...rest } = alert
   return {
-    ...alert,
+    ...rest,
     notes: safeDecryptField(alert.notes ?? null),
     resolutionNotes: safeDecryptField(alert.resolutionNotes ?? null),
-    contextSnapshotPoints: decryptSnapshot(alert.contextSnapshot ?? null),
+    contextSnapshotPoints: decryptSnapshot(contextSnapshot ?? null),
   }
 }
 
@@ -344,6 +394,14 @@ export const emergencyService = {
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<{ id: number; alertType: EmergencyAlertType } | null> {
+    // Reject sensor-error values upstream — never persist out-of-range readings.
+    if (
+      input.glucoseValueMgdl < GLUCOSE_BOUNDS.MIN ||
+      input.glucoseValueMgdl > GLUCOSE_BOUNDS.MAX ||
+      !Number.isFinite(input.glucoseValueMgdl)
+    ) {
+      return null
+    }
     const triggeredAt = input.triggeredAt ?? new Date()
     const [cgmObjective, alertConfig, patient] = await Promise.all([
       prisma.cgmObjective.findUnique({ where: { patientId: input.patientId } }),
@@ -358,26 +416,27 @@ export const emergencyService = {
     if (!patient) return null
 
     const isStrict = patient.pregnancyMode || patient.pathology === "GD"
-    const thresholds = cgmObjective
-      ? {
+    // Fallback uses the same getCgmDefaults() as the rest of the system —
+    // single source of truth (objectives.service.ts: ADA / Battelino 2019).
+    const thresholds = (() => {
+      if (cgmObjective) {
+        return {
           veryLowMgdl: cgmObjective.veryLow.toNumber() * GL_TO_MGDL,
           lowMgdl: cgmObjective.low.toNumber() * GL_TO_MGDL,
           okMgdl: cgmObjective.ok.toNumber() * GL_TO_MGDL,
           highMgdl: cgmObjective.high.toNumber() * GL_TO_MGDL,
         }
-      : isStrict
-        ? { veryLowMgdl: 60, lowMgdl: 63, okMgdl: 140, highMgdl: 200 }
-        : { veryLowMgdl: 54, lowMgdl: 70, okMgdl: 180, highMgdl: 250 }
+      }
+      const d = getCgmDefaults(isStrict ? "GD" : patient.pathology)
+      return {
+        veryLowMgdl: d.veryLow * GL_TO_MGDL,
+        lowMgdl: d.low * GL_TO_MGDL,
+        okMgdl: d.ok * GL_TO_MGDL,
+        highMgdl: d.high * GL_TO_MGDL,
+      }
+    })()
 
-    const rules = alertConfig ?? {
-      alertOnHypo: true,
-      alertOnSevereHypo: true,
-      alertOnHyper: false,
-      alertOnSevereHyper: true,
-      notifyDoctorPush: true,
-      notifyDoctorEmail: false,
-      cooldownMinutes: 30,
-    }
+    const rules = alertConfig ?? ALERT_THRESHOLD_DEFAULTS
 
     const classified = classifyCgmAlert(input.glucoseValueMgdl, thresholds, rules)
     if (!classified) return null
@@ -447,6 +506,13 @@ export const emergencyService = {
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<{ id: number; alertType: EmergencyAlertType } | null> {
+    if (
+      input.ketoneValueMmol < KETONE_BOUNDS.MIN ||
+      input.ketoneValueMmol > KETONE_BOUNDS.MAX ||
+      !Number.isFinite(input.ketoneValueMmol)
+    ) {
+      return null
+    }
     const triggeredAt = input.triggeredAt ?? new Date()
     const [config, alertConfig, patient] = await Promise.all([
       prisma.ketoneThreshold.findUnique({ where: { patientId: input.patientId } }),
@@ -537,6 +603,18 @@ export const emergencyService = {
     auditUserId: number,
     ctx?: AuditContext,
   ) {
+    // Critical-severity manual alerts bypass threshold detection — gate them
+    // on DOCTOR+ role and require justification text to prevent inbox flood
+    // from a NURSE marking everything as "critical".
+    if (input.severity === "critical") {
+      if (input.callerRole !== "ADMIN" && input.callerRole !== "DOCTOR") {
+        throw new Error("critical_manual_requires_doctor")
+      }
+      if (!input.notes?.trim()) {
+        throw new Error("critical_manual_requires_notes")
+      }
+    }
+
     const patient = await prisma.patient.findFirst({
       where: { id: input.patientId, deletedAt: null },
       select: { id: true },
@@ -549,7 +627,7 @@ export const emergencyService = {
       select: { cooldownMinutes: true, notifyDoctorPush: true },
     })
     const cooldown = effectiveCooldown(
-      alertConfig?.cooldownMinutes ?? 30,
+      alertConfig?.cooldownMinutes ?? ALERT_THRESHOLD_DEFAULTS.cooldownMinutes,
       input.severity,
     )
     const blocker = await findCooldownBlocker(
@@ -685,27 +763,21 @@ export const emergencyService = {
   async loadForAccessCheck(alertId: number) {
     return prisma.emergencyAlert.findUnique({
       where: { id: alertId },
-      select: { id: true, patientId: true, status: true, patient: { select: { deletedAt: true } } },
+      select: { id: true, patientId: true, patient: { select: { deletedAt: true } } },
     })
   },
 
   /**
    * Detail view incl. timeline (CGM context window) — US-2225.
    * Caller must have already authorized the alert via loadForAccessCheck.
+   * Single query: filters out soft-deleted patients via the relation.
    */
   async getDetail(alertId: number, auditUserId: number, ctx?: AuditContext) {
-    const alert = await prisma.emergencyAlert.findUnique({
-      where: { id: alertId },
-      include: {
-        actions: { orderBy: { createdAt: "asc" } },
-      },
+    const alert = await prisma.emergencyAlert.findFirst({
+      where: { id: alertId, patient: { deletedAt: null } },
+      include: { actions: { orderBy: { createdAt: "asc" } } },
     })
     if (!alert) return null
-    const softDeleted = await prisma.patient.findFirst({
-      where: { id: alert.patientId, deletedAt: { not: null } },
-      select: { id: true },
-    })
-    if (softDeleted) return null
 
     await auditService.log({
       userId: auditUserId,
@@ -745,14 +817,24 @@ export const emergencyService = {
       if (existing.patient.deletedAt) throw new Error("patient_deleted")
       if (existing.status !== "open") throw new Error("alert_not_open")
 
-      const updated = await tx.emergencyAlert.update({
-        where: { id: alertId },
-        data: {
-          status: "acknowledged",
-          acknowledgedBy: userId,
-          acknowledgedAt: new Date(),
-        },
-      })
+      // Race-safe update: a concurrent acknowledge by another doctor will
+      // throw P2025 (record not found), which we map to alert_not_open.
+      let updated
+      try {
+        updated = await tx.emergencyAlert.update({
+          where: { id: alertId, status: "open" },
+          data: {
+            status: "acknowledged",
+            acknowledgedBy: userId,
+            acknowledgedAt: new Date(),
+          },
+        })
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+          throw new Error("alert_not_open")
+        }
+        throw e
+      }
 
       const encryptedNotes = notes?.trim() ? encryptField(notes.trim()) : null
       await tx.emergencyAlertAction.create({
@@ -804,15 +886,24 @@ export const emergencyService = {
         ? encryptField(resolutionNotes.trim())
         : null
 
-      const updated = await tx.emergencyAlert.update({
-        where: { id: alertId },
-        data: {
-          status: "resolved",
-          resolvedBy: userId,
-          resolvedAt: new Date(),
-          resolutionNotes: encryptedNotes,
-        },
-      })
+      // Race-safe update: only transition from {open, acknowledged}.
+      let updated
+      try {
+        updated = await tx.emergencyAlert.update({
+          where: { id: alertId, status: { in: ["open", "acknowledged"] } },
+          data: {
+            status: "resolved",
+            resolvedBy: userId,
+            resolvedAt: new Date(),
+            resolutionNotes: encryptedNotes,
+          },
+        })
+      } catch (e) {
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+          throw new Error("alert_already_closed")
+        }
+        throw e
+      }
 
       await tx.emergencyAlertAction.create({
         data: {

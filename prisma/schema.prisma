@@ -288,6 +288,9 @@ model User {
   reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
   prescribedInsulins   PatientInsulin[]     @relation("PrescribedInsulins")
   mydiabbyCredential   MyDiabbyCredential?
+  acknowledgedAlerts   EmergencyAlert[]      @relation("AlertAcknowledger")
+  resolvedAlerts       EmergencyAlert[]      @relation("AlertResolver")
+  emergencyActions     EmergencyAlertAction[] @relation("EmergencyActionPerformer")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -694,11 +697,14 @@ model EmergencyAlert {
   createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt         DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
 
-  patient Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  actions EmergencyAlertAction[]
+  patient            Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  acknowledgedByUser User?   @relation("AlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: Restrict)
+  resolvedByUser     User?   @relation("AlertResolver", fields: [resolvedBy], references: [id], onDelete: Restrict)
+  actions            EmergencyAlertAction[]
 
   @@index([patientId, status, triggeredAt])
   @@index([patientId, alertType, status])
+  @@index([patientId, severity, triggeredAt])
   @@index([status, severity, triggeredAt])
   @@index([alertType, triggeredAt])
   @@map("emergency_alerts")
@@ -718,7 +724,8 @@ model EmergencyAlertAction {
   metadata     Json                      @default("{}")
   createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
 
-  alert EmergencyAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  alert            EmergencyAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  performedByUser  User           @relation("EmergencyActionPerformer", fields: [performedBy], references: [id], onDelete: Restrict)
 
   @@index([alertId, createdAt])
   @@index([performedBy, createdAt])

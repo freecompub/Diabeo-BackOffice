@@ -17,6 +17,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
+import { encryptField } from "@/lib/crypto/fields"
 import { getCgmDefaults } from "./objectives.service"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
@@ -24,6 +25,11 @@ import type { AuditContext } from "./patient.service"
 interface SetModeOptions {
   /** Bypass the active-pregnancy guard when disabling. Audit-tagged. */
   forceOverride?: boolean
+  /**
+   * Required justification when forceOverride=true. Encrypted at rest in
+   * audit metadata. Min 20 chars to force a real medical reason.
+   */
+  forceOverrideReason?: string
 }
 
 export const pregnancyModeService = {
@@ -55,30 +61,50 @@ export const pregnancyModeService = {
       }
     }
 
+    // forceOverride requires a meaningful reason — pure boolean would let
+    // a careless click loosen fetal-protection thresholds without trace.
+    if (options?.forceOverride) {
+      const reason = options.forceOverrideReason?.trim() ?? ""
+      if (reason.length < 20) {
+        throw new Error("force_override_reason_required")
+      }
+    }
+
+    // Compute target defaults once, *outside* the transaction, so we know
+    // up-front whether thresholds will actually change. A toggle-OFF on a
+    // GD-pathology patient is a no-op for thresholds — audit must reflect this.
+    const targetPathology =
+      enabled || patient.pathology === "GD" ? "GD" : patient.pathology
+    const defaults = getCgmDefaults(targetPathology)
+    const currentCgm = await prisma.cgmObjective.findUnique({
+      where: { patientId },
+      select: {
+        veryLow: true, low: true, ok: true, high: true,
+        titrLow: true, titrHigh: true,
+      },
+    })
+    const thresholdsActuallyChange =
+      !currentCgm ||
+      currentCgm.veryLow.toNumber() !== defaults.veryLow ||
+      currentCgm.low.toNumber() !== defaults.low ||
+      currentCgm.ok.toNumber() !== defaults.ok ||
+      currentCgm.high.toNumber() !== defaults.high ||
+      currentCgm.titrLow.toNumber() !== defaults.titrLow ||
+      currentCgm.titrHigh.toNumber() !== defaults.titrHigh
+
     return prisma.$transaction(async (tx) => {
       await tx.patient.update({
         where: { id: patientId },
         data: { pregnancyMode: enabled },
       })
 
-      const defaults = getCgmDefaults(
-        enabled || patient.pathology === "GD" ? "GD" : patient.pathology,
-      )
-
-      const cgmData = {
-        veryLow: defaults.veryLow,
-        low: defaults.low,
-        ok: defaults.ok,
-        high: defaults.high,
-        titrLow: defaults.titrLow,
-        titrHigh: defaults.titrHigh,
+      if (thresholdsActuallyChange) {
+        await tx.cgmObjective.upsert({
+          where: { patientId },
+          update: defaults,
+          create: { patientId, ...defaults },
+        })
       }
-
-      await tx.cgmObjective.upsert({
-        where: { patientId },
-        update: cgmData,
-        create: { patientId, ...cgmData },
-      })
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -90,12 +116,23 @@ export const pregnancyModeService = {
         oldValue: { pregnancyMode: patient.pregnancyMode },
         newValue: { pregnancyMode: enabled },
         metadata: {
-          thresholdsAdapted: true,
-          ...(options?.forceOverride && { forceOverride: true }),
+          thresholdsAdapted: thresholdsActuallyChange,
+          pinnedTo: targetPathology,
+          ...(options?.forceOverride && {
+            forceOverride: true,
+            // Encrypt the medical reason — PHI / clinical justification.
+            forceOverrideReason: encryptField(
+              options.forceOverrideReason!.trim(),
+            ),
+          }),
         },
       })
 
-      return { patientId, pregnancyMode: enabled, thresholdsAdapted: true }
+      return {
+        patientId,
+        pregnancyMode: enabled,
+        thresholdsAdapted: thresholdsActuallyChange,
+      }
     })
   },
 }

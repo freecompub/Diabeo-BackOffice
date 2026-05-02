@@ -9,7 +9,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { emergencyService } from "@/lib/services/emergency.service"
@@ -26,7 +26,9 @@ function parseId(raw: string): number | null {
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
-    const user = requireRole(req, "NURSE")
+    // RGPD Art. 15 — VIEWER (patient role) can read their own alerts.
+    // Workflow ops (PATCH) remain NURSE+ via canAccessPatient gate below.
+    const user = requireAuth(req)
     const { id: rawId } = await params
     const id = parseId(rawId)
     if (id === null) {

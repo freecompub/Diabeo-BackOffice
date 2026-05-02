@@ -15,15 +15,22 @@ import { extractRequestContext } from "@/lib/services/audit.service"
 import { pregnancyModeService } from "@/lib/services/pregnancy-mode.service"
 import { logger } from "@/lib/logger"
 
-const putSchema = z.object({
-  patientId: z.number().int().positive(),
-  enabled: z.boolean(),
-  forceOverride: z.boolean().optional(),
-})
+const putSchema = z
+  .object({
+    patientId: z.number().int().positive(),
+    enabled: z.boolean(),
+    forceOverride: z.boolean().optional(),
+    forceOverrideReason: z.string().min(20).max(500).optional(),
+  })
+  .refine(
+    (d) => !d.forceOverride || (d.forceOverrideReason?.trim().length ?? 0) >= 20,
+    { message: "forceOverrideReason required (≥ 20 chars) when forceOverride=true" },
+  )
 
 const USER_ERROR_CODES = new Map<string, number>([
   ["patient_not_found", 404],
   ["active_pregnancy_blocks_toggle_off", 409],
+  ["force_override_reason_required", 400],
 ])
 
 export async function PUT(req: NextRequest) {
@@ -38,7 +45,7 @@ export async function PUT(req: NextRequest) {
       )
     }
 
-    const { patientId, enabled, forceOverride } = parsed.data
+    const { patientId, enabled, forceOverride, forceOverrideReason } = parsed.data
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
@@ -51,7 +58,7 @@ export async function PUT(req: NextRequest) {
         enabled,
         user.id,
         ctx,
-        { forceOverride },
+        { forceOverride, forceOverrideReason },
       )
       return NextResponse.json(result)
     } catch (e) {

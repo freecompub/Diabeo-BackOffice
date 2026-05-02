@@ -73,8 +73,12 @@ export function validateKetoneThresholds(input: {
   if (lightThreshold >= moderateThreshold) {
     return "light_must_be_less_than_moderate"
   }
-  if (moderateThreshold > dkaThreshold) {
-    return "moderate_must_be_lte_dka"
+  // Strict ordering aligns with ISPAD distinct moderate/severe bands and
+  // prevents a degenerate config where a clinician sets moderate==dka and
+  // then expects to "downgrade" by toggling alertOnDka — which the classifier
+  // refuses (see emergency.service classifyKetoneAlert clinical safety note).
+  if (moderateThreshold >= dkaThreshold) {
+    return "moderate_must_be_less_than_dka"
   }
   return null
 }
