@@ -38,9 +38,9 @@ export async function POST(req: NextRequest) {
 
     const meta = metaSchema.safeParse({
       title: formData.get("title") ?? file.name,
-      category: formData.get("category"),
-      patientShare: formData.get("patientShare"),
-      patientId: formData.get("patientId"),
+      category: formData.get("category") ?? undefined,
+      patientShare: formData.get("patientShare") ?? undefined,
+      patientId: formData.get("patientId") ?? undefined,
     })
 
     if (!meta.success) {

@@ -30,15 +30,19 @@ export async function GET(req: NextRequest, { params }: Params) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     const ctx = extractRequestContext(req)
-    const { body, contentType } = await documentService.download(docId, patientId, user.id, ctx)
+    const { body, contentType, contentLength, fileName } = await documentService.download(docId, patientId, user.id, ctx)
 
-    return new NextResponse(body, {
-      headers: {
-        "Content-Type": contentType,
-        "Cache-Control": "no-store",
-        "X-Content-Type-Options": "nosniff",
-      },
-    })
+    const headers: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    }
+    if (contentLength != null) {
+      headers["Content-Length"] = String(contentLength)
+    }
+
+    return new NextResponse(body, { headers })
   } catch (error) {
     if (error instanceof AuthError)
       return NextResponse.json({ error: error.message }, { status: error.status })

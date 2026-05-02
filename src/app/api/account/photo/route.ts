@@ -4,7 +4,7 @@ import { uploadFile, deleteFile, generateObjectKey } from "@/lib/storage/s3"
 import { scanFile } from "@/lib/services/antivirus.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { prisma } from "@/lib/db/client"
-import { writeFile, unlink, mkdtemp } from "fs/promises"
+import { writeFile, rm, mkdtemp } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
 
@@ -41,37 +41,43 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ error: "virusDetected" }, { status: 422 })
       }
     } finally {
-      await unlink(tmpPath).catch(() => {})
-    }
-
-    const currentUser = await prisma.user.findUnique({
-      where: { id: user.id },
-      select: { photoUrl: true },
-    })
-    if (currentUser?.photoUrl) {
-      await deleteFile(currentUser.photoUrl).catch(() => {})
+      await rm(tmpDir, { recursive: true }).catch(() => {})
     }
 
     const key = generateObjectKey("avatars", file.name)
     await uploadFile(key, buffer, file.type)
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { photoUrl: key },
-    })
+    try {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { photoUrl: true },
+      })
 
-    const ctx = extractRequestContext(req)
-    await auditService.log({
-      userId: user.id,
-      action: "UPDATE",
-      resource: "USER",
-      resourceId: String(user.id),
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      metadata: { field: "photo", mimeType: file.type, size: buffer.length },
-    })
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { photoUrl: key },
+      })
 
-    return NextResponse.json({ photoUrl: key })
+      if (currentUser?.photoUrl) {
+        await deleteFile(currentUser.photoUrl).catch(() => {})
+      }
+
+      const ctx = extractRequestContext(req)
+      await auditService.log({
+        userId: user.id,
+        action: "UPDATE",
+        resource: "USER",
+        resourceId: String(user.id),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        metadata: { field: "photo", mimeType: file.type, size: buffer.length },
+      })
+
+      return NextResponse.json({ photoUrl: key })
+    } catch (dbError) {
+      await deleteFile(key).catch(() => {})
+      throw dbError
+    }
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

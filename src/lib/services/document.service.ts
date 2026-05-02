@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { uploadFile, deleteFile, downloadFile, generateObjectKey } from "@/lib/storage/s3"
 import { scanFile } from "./antivirus.service"
-import { writeFile, unlink, mkdtemp } from "fs/promises"
+import { writeFile, rm, mkdtemp } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
 import type { AuditContext } from "./patient.service"
@@ -87,7 +87,7 @@ export const documentService = {
         return serializeDoc(doc)
       })
     } finally {
-      await unlink(tmpPath).catch(() => {})
+      await rm(tmpDir, { recursive: true }).catch(() => {})
     }
   },
 
@@ -128,7 +128,8 @@ export const documentService = {
       metadata: { operation: "download" },
     })
 
-    return downloadFile(doc.fileUrl)
+    const s3Result = await downloadFile(doc.fileUrl)
+    return { ...s3Result, fileName: doc.title }
   },
 
   async delete(docId: number, patientId: number, auditUserId: number, ctx?: AuditContext) {

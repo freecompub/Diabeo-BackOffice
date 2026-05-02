@@ -13,16 +13,20 @@ const accessKeyId = process.env.OVH_S3_ACCESS_KEY
 const secretAccessKey = process.env.OVH_S3_SECRET_KEY
 const region = process.env.OVH_S3_REGION ?? "gra"
 
+let _client: S3Client | null = null
+
 function getClient(): S3Client {
+  if (_client) return _client
   if (!endpoint || !accessKeyId || !secretAccessKey) {
     throw new Error("OVH S3 not configured — set OVH_S3_ENDPOINT, OVH_S3_ACCESS_KEY, OVH_S3_SECRET_KEY")
   }
-  return new S3Client({
+  _client = new S3Client({
     endpoint,
     region,
     credentials: { accessKeyId, secretAccessKey },
     forcePathStyle: true,
   })
+  return _client
 }
 
 function getBucket(): string {
@@ -52,7 +56,7 @@ export async function uploadFile(
   return { key, size: body.length }
 }
 
-export async function downloadFile(key: string): Promise<{ body: ReadableStream; contentType: string }> {
+export async function downloadFile(key: string): Promise<{ body: ReadableStream; contentType: string; contentLength?: number }> {
   const client = getClient()
   const res = await client.send(
     new GetObjectCommand({ Bucket: getBucket(), Key: key }),
@@ -61,6 +65,7 @@ export async function downloadFile(key: string): Promise<{ body: ReadableStream;
   return {
     body: res.Body.transformToWebStream(),
     contentType: res.ContentType ?? "application/octet-stream",
+    contentLength: res.ContentLength,
   }
 }
 
