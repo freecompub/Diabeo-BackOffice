@@ -174,8 +174,8 @@ function UploadStages({ status }: { status: UploadStatus }) {
     { key: "encrypting", label: "Chiffrement" },
     { key: "done", label: "Archivé" },
   ]
-  const order = ["pending", "uploading", "scanning", "encrypting", "done"] as const
-  const currentIdx = order.indexOf(status as (typeof order)[number])
+  const order = ["pending", "uploading", "scanning", "encrypting", "done", "error"] as const
+  const currentIdx = order.indexOf(status)
 
   return (
     <div className="mt-3 flex items-center gap-1.5" aria-hidden>
