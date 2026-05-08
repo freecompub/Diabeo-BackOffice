@@ -285,12 +285,9 @@ export default function DevicePairingWizardPage() {
                 />
               </div>
               {/* `<fieldset>` + `<legend>` = sémantique correcte pour un groupe
-                  de boutons toggle multi-sélection. Plus accessible qu'un Label
-                  décoratif. */}
-              <fieldset
-                className="space-y-2"
-                aria-label={tWiz("field.connectionGroupAria")}
-              >
+                  de boutons toggle multi-sélection. Le `<legend>` étiquette
+                  déjà le groupe — pas besoin d'`aria-label` redondant. */}
+              <fieldset className="space-y-2">
                 <legend className="text-sm font-medium leading-none">
                   {tWiz("field.connectionType")}
                 </legend>

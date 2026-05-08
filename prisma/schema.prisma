@@ -1301,6 +1301,11 @@ model HealthcareService {
   @@unique([name, establishment])
   @@index([type])
   @@index([managerId])
+  /// US-2117 — GIN index sur l'array `specialties` : permet
+  /// `where: { specialties: { has: "diabetologie" } }` en O(log n) au lieu
+  /// d'un sequential scan. Préventif : à 1000+ services, le scan devient
+  /// notable lors de la recherche par spécialité.
+  @@index([specialties], type: Gin)
   @@map("healthcare_services")
 }
 

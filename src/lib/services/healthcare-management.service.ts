@@ -11,6 +11,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
+import { z } from "zod"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./audit.service"
 import { Prisma } from "@prisma/client"
@@ -23,6 +24,19 @@ const MAX_LIST_LIMIT = 200
  * routes Zod afin d'éviter trois copies divergentes.
  */
 export const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** US-2117 — Schemas Zod partagés pour les routes (évite duplication route ↔ [id]). */
+export const timeSchema = z.string().regex(TIME_REGEX, "time_format_invalid")
+export const daySchema = z.array(z.tuple([timeSchema, timeSchema])).max(4)
+export const openingHoursSchema = z.object({
+  mon: daySchema.optional(),
+  tue: daySchema.optional(),
+  wed: daySchema.optional(),
+  thu: daySchema.optional(),
+  fri: daySchema.optional(),
+  sat: daySchema.optional(),
+  sun: daySchema.optional(),
+})
 
 interface ListFilter {
   /** Filtre type structure. */

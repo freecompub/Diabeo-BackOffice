@@ -94,18 +94,18 @@ export default function AdjustmentProposalsPage() {
       return next
     })
     try {
+      // Backend routes export PATCH only (REST verb pour update partiel).
+      // Accept attend `{ applyImmediately: boolean }` (default false) ; Reject
+      // ignore le body. On envoie le strict minimum exigé par le schéma Zod.
       const res = await fetch(
         `/api/adjustment-proposals/${proposal.id}/${action}`,
         {
-          method: "POST",
+          method: "PATCH",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            comment:
-              action === "accept"
-                ? tAdj("acceptedComment")
-                : tAdj("rejectedComment"),
-          }),
+          body: JSON.stringify(
+            action === "accept" ? { applyImmediately: false } : {},
+          ),
         },
       )
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -203,9 +203,13 @@ export default function AdjustmentProposalsPage() {
                         </Badge>
                       </div>
                       <p className="text-sm text-[var(--color-foreground)]">
-                        {tAdj("patientReason", {
+                        {/* `t.rich` permet d'injecter `<bdi>` autour du
+                            patient ID — préserve la lecture LTR du nombre
+                            même quand la phrase entière est rendue en RTL. */}
+                        {tAdj.rich("patientReason", {
                           id: p.patientId,
                           reason: p.reason,
+                          num: (chunks) => <bdi>{chunks}</bdi>,
                         })}
                       </p>
                       <p className="text-sm text-[var(--color-muted-foreground)]">

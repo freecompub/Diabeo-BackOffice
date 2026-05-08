@@ -11,7 +11,7 @@ import { requireRole, AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import {
   healthcareManagementService,
-  TIME_REGEX,
+  openingHoursSchema,
 } from "@/lib/services/healthcare-management.service"
 import { logger } from "@/lib/logger"
 
@@ -48,18 +48,6 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-const timeSchema = z.string().regex(TIME_REGEX, "time_format_invalid")
-const daySchema = z.array(z.tuple([timeSchema, timeSchema])).max(4)
-const openingHoursSchema = z.object({
-  mon: daySchema.optional(),
-  tue: daySchema.optional(),
-  wed: daySchema.optional(),
-  thu: daySchema.optional(),
-  fri: daySchema.optional(),
-  sat: daySchema.optional(),
-  sun: daySchema.optional(),
-})
-
 const patchSchema = z.object({
   name: z.string().trim().min(2).max(255).optional(),
   type: z.nativeEnum(ServiceType).optional(),
@@ -90,7 +78,8 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["opening_hours_invalid_time_format", 400],
   ["opening_hours_close_before_open", 400],
   ["opening_hours_ranges_overlap", 400],
-  ["manager_not_found", 400],
+  // 404 = ressource référencée absente (cohérent avec `service_not_found`).
+  ["manager_not_found", 404],
   ["manager_role_invalid", 400],
   ["manager_inactive", 400],
 ])

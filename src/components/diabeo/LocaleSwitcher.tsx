@@ -22,8 +22,15 @@ import { locales, defaultLocale, type Locale } from "@/i18n/config"
 /**
  * Sentinel sessionStorage : marque qu'un reload locale-switch est en cours
  * pour restaurer le focus sur le `<select>` après reload (WCAG 2.4.3).
+ *
+ * On stocke un timestamp et on n'honore le sentinel que s'il est récent
+ * (< 5s). Ça évite un focus parasite si :
+ *  - le reload a été bloqué par une extension/popup blocker
+ *  - l'utilisateur a navigué ailleurs avant la fin du reload
+ *  - sessionStorage persistait d'une session précédente
  */
 const FOCUS_SENTINEL = "diabeo:locale-switch-focus"
+const FOCUS_SENTINEL_TTL_MS = 5_000
 const SELECT_ID = "locale-select"
 
 interface LocaleOption {
@@ -59,13 +66,17 @@ export function LocaleSwitcher({ variant = "full" }: Props) {
   // (sinon le focus retombe sur <body> — WCAG 2.4.3 violation).
   useEffect(() => {
     if (typeof window === "undefined") return
-    if (window.sessionStorage.getItem(FOCUS_SENTINEL) === "1") {
-      window.sessionStorage.removeItem(FOCUS_SENTINEL)
-      // Délai 0 : laisse React monter le DOM avant de focus.
-      setTimeout(() => {
-        document.getElementById(SELECT_ID)?.focus()
-      }, 0)
-    }
+    const raw = window.sessionStorage.getItem(FOCUS_SENTINEL)
+    if (!raw) return
+    // On consomme le sentinel dans tous les cas (TTL expiré OU honoré) pour
+    // éviter qu'il persiste et déclenche un focus parasite plus tard.
+    window.sessionStorage.removeItem(FOCUS_SENTINEL)
+    const ts = Number(raw)
+    if (!Number.isFinite(ts) || Date.now() - ts > FOCUS_SENTINEL_TTL_MS) return
+    // Délai 0 : laisse React monter le DOM avant de focus.
+    setTimeout(() => {
+      document.getElementById(SELECT_ID)?.focus()
+    }, 0)
   }, [])
 
   const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -84,7 +95,8 @@ export function LocaleSwitcher({ variant = "full" }: Props) {
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       // Mark intent BEFORE reload so the post-reload effect can restore focus.
-      window.sessionStorage.setItem(FOCUS_SENTINEL, "1")
+      // Timestamp permet au useEffect post-reload d'ignorer un sentinel stale.
+      window.sessionStorage.setItem(FOCUS_SENTINEL, String(Date.now()))
       // Force reload to let server-side i18n re-evaluate (`getLocale()` reads
       // the cookie). React state alone won't switch <html dir> or messages.
       window.location.reload()

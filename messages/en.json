@@ -617,7 +617,7 @@
     "title": "Adjustment proposals",
     "pendingTitle": "Pending proposals",
     "refreshList": "Refresh list",
-    "patientReason": "Patient #{id} — Reason: {reason}",
+    "patientReason": "Patient #<num>{id}</num> — Reason: {reason}",
     "accept": "Accept",
     "reject": "Reject",
     "acceptAria": "Accept proposal for patient {id}",

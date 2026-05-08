@@ -59,6 +59,7 @@ describe("deleteUserAccount", () => {
       userNotifPreferences: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       userPrivacySettings: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       healthcareMember: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       user: { update: vi.fn().mockResolvedValue({}) },
     }
 
@@ -80,6 +81,13 @@ describe("deleteUserAccount", () => {
     expect(updateData.mfaSecret).toBeNull()
     expect(updateData.mfaEnabled).toBe(false)
     expect(updateData.mfaLastUsedStep).toBeNull()
+    // US-2117 regression guard : managerId cleared + status archived avant
+    // anonymisation, sinon `assertManagerEligible` accepterait un ghost manager.
+    expect(mockTx.healthcareService.updateMany).toHaveBeenCalledWith({
+      where: { managerId: 1 },
+      data: { managerId: null },
+    })
+    expect(updateData.status).toBe("archived")
   })
 
   it("performs cascade deletion for user with patient", async () => {
@@ -128,6 +136,7 @@ describe("deleteUserAccount", () => {
       patientPregnancy: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       patient: { update: vi.fn().mockResolvedValue({ id: 10, deletedAt: new Date() }) },
       healthcareMember: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       user: { update: vi.fn().mockResolvedValue({}) },
     }
 

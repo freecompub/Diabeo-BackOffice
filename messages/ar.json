@@ -617,7 +617,7 @@
     "title": "اقتراحات التعديل",
     "pendingTitle": "اقتراحات قيد الانتظار",
     "refreshList": "تحديث القائمة",
-    "patientReason": "المريض #{id} — السبب: {reason}",
+    "patientReason": "المريض #<num>{id}</num> — السبب: {reason}",
     "accept": "قبول",
     "reject": "رفض",
     "acceptAria": "قبول الاقتراح للمريض {id}",

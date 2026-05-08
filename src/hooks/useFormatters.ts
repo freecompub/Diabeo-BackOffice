@@ -27,7 +27,7 @@ import {
   type NumberFormatOptions,
   type GlucoseUnit,
 } from "@/lib/intl/formatters"
-import { locales, type Locale } from "@/i18n/config"
+import { locales, defaultLocale, type Locale } from "@/i18n/config"
 
 // Source unique : si `locales` évolue dans `@/i18n/config`, le set se met à
 // jour automatiquement (pas de hardcode parallèle à maintenir).
@@ -35,7 +35,7 @@ const KNOWN_LOCALES = new Set<string>(locales)
 
 export function useFormatters() {
   const rawLocale = useLocale()
-  const locale = (KNOWN_LOCALES.has(rawLocale) ? rawLocale : "fr") as Locale
+  const locale = (KNOWN_LOCALES.has(rawLocale) ? rawLocale : defaultLocale) as Locale
 
   return useMemo(
     () => ({
