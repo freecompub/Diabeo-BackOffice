@@ -1,20 +1,22 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-02
-> Total : **264 US** (213 pro + 51 mirror) · MVP completion : **60%**
+> Dernière mise à jour : 2026-05-08 — Mirror MVP en revue (PR #343), 4 follow-ups ajoutés (PR #348)
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **75%** (47/63 DONE / IN REVIEW)
 
 ---
 
 ## Taux de réalisation
 
-| Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done | % Started |
-|----------|-------|------|---------|-------------|--------|-----------|
-| **MVP**  | 63    | 38   | 6       | 19          | **60%** | **70%**  |
-| **V1**   | 120   | 0    | 7       | 113         | **0%**  | **6%**   |
-| **V2**   | 58    | 0    | 0       | 58          | **0%**  | **0%**   |
-| **V3**   | 8     | 0    | 0       | 8           | **0%**  | **0%**   |
-| **V4**   | 15    | 0    | 0       | 15          | **0%**  | **0%**   |
-| **TOTAL**| **264** | **38** | **13** | **213**   | **14%** | **19%**  |
+| Priorité | Total | DONE | IN REVIEW | PARTIAL | NOT STARTED | % Done+Review |
+|----------|-------|------|-----------|---------|-------------|---------------|
+| **MVP**  | 66    | 38   | 9         | 6       | 13          | **71%** |
+| **V1**   | 121   | 0    | 0         | 7       | 114         | **0%**  |
+| **V2**   | 58    | 0    | 0         | 0       | 58          | **0%**  |
+| **V3**   | 8     | 0    | 0         | 0       | 8           | **0%**  |
+| **V4**   | 15    | 0    | 0         | 0       | 15          | **0%**  |
+| **TOTAL**| **268** | **38** | **9**   | **13**  | **208**     | **18%** |
+
+> **Note** : `IN REVIEW` = code complet, PR ouverte, CI verte, en attente de merge. Compte pour 100 % à la merge — pas avant. Suivi via les PR GitHub (#343 Mirror MVP, #348 follow-ups).
 
 ---
 
@@ -102,13 +104,14 @@
 | US-2063 | Proposition ajustement | DONE | (voir Domaine 04) |
 | US-2064 | Notification patient proposition | DONE | `adjustment.service.ts:notifyPatient()` FCM push on accept/reject, returns `{ notified }`. PR #341. |
 
-### Domaine 06 — Messagerie & Notifications (3 US)
+### Domaine 06 — Messagerie & Notifications (4 US — 1 follow-up Mirror MVP)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2073 | Push notifications mobile (FCM) | DONE | `src/lib/firebase/admin.ts`, `src/lib/services/fcm.service.ts`, `src/app/api/push/send/route.ts`. Firebase Admin SDK, retry retriable-only, canAccessPatient authz, rate limit fail-closed 50/h, no cleartext in logs, locale-aware templates, 20 tests. PR #340. |
 | US-2074 | Email transactionnel (Resend) | DONE | `src/lib/services/email.service.ts`. Reset password, welcome, proposal notification. HTML escaping, no PII. PR #341. |
 | US-2079 | Préférences notifications | DONE | `UserNotifPreferences`, `/api/account/notifications/` |
+| US-2266 | Email médecin sur alerte critique | NOT STARTED | Follow-up PR #343 — 3 SP. Issue [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345). Câbler `notifyDoctorEmail` (PHI-safe) sur emergency.service. |
 
 ### Domaine 07 — Équipe & Cabinet (2 US)
 
@@ -138,7 +141,7 @@
 | US-2117 | Cabinets médicaux | PARTIAL | `HealthcareService` couvre partiellement |
 | US-2118 | Praticiens libéraux | NOT STARTED | — |
 
-### Domaine 11 — Conformité & RGPD (7 US)
+### Domaine 11 — Conformité & RGPD (9 US — 2 follow-ups Mirror MVP)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
@@ -149,6 +152,8 @@
 | US-2136 | Pseudonymisation HMAC | DONE | `hmacField()` générique, `firstnameHmac`/`lastnameHmac` dans User, index composite, user.service auto-compute. PR #342. |
 | US-2138 | Hébergement HDS | DONE | OVHcloud GRA (décision archi) |
 | US-2141 | Catégorisation documents | DONE | `DocumentCategory` enum |
+| US-2265 | Événements `ACCESS_DENIED` audit | NOT STARTED | Follow-up PR #343 — 2 SP. Issue [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344). Origine : healthcare-security-auditor L-A. |
+| US-2268 | Convention `auditLog.resourceId` normalisée | NOT STARTED | Follow-up PR #343 — 8 SP — **V1**. Issue [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347). Cross-cutting refacto ~30 call sites. |
 
 ### Domaine 12 — Documents (1 US)
 
@@ -156,12 +161,13 @@
 |----|-------|--------|---------------|
 | US-2140 | Upload S3 documents | DONE | `src/lib/storage/s3.ts`, `src/app/api/documents/upload/route.ts`, `src/app/api/documents/[id]/download/route.ts`, `src/app/api/account/photo/route.ts`. SSE-S3, ClamAV, rate limit, RBAC, audit. PR #339. |
 
-### Domaine 13 — Administration (2 US)
+### Domaine 13 — Administration (3 US — 1 follow-up Mirror MVP)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2148 | Admin gestion utilisateurs UI | NOT STARTED | Backend RBAC OK, page admin manquante |
 | US-2151 | Backup management | NOT STARTED | — |
+| US-2267 | Migrations Prisma versionnées | NOT STARTED | Follow-up PR #343 — 5 SP. Issue [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346). Bloquant audit HDS — `prisma migrate deploy` actuellement vide. |
 
 ### Domaine 14 — Prescriptions (1 US)
 
@@ -169,19 +175,32 @@
 |----|-------|--------|---------------|
 | US-2171 | Base médicamenteuse BDPM | DONE | `bdpm.service.ts`, `atc.service.ts`, modèles Prisma |
 
-### Mirror MVP (9 US)
+### Mirror MVP (9 US — IN REVIEW PR #343)
 
 | US | Titre | Statut | Domaine |
 |----|-------|--------|---------|
-| US-2214 | Config cibles glycémiques par patient | PARTIAL | Config seuils |
-| US-2215 | Config seuils hypo/hyper alertes | PARTIAL | Config seuils |
-| US-2216 | Seuils cétones | NOT STARTED | Config seuils |
-| US-2217 | Protocole resucrage | NOT STARTED | Config seuils |
-| US-2224 | Inbox alertes urgence | NOT STARTED | Urgences |
-| US-2225 | Timeline urgence | NOT STARTED | Urgences |
-| US-2226 | Workflow réaction médecin | NOT STARTED | Urgences |
-| US-2230 | Push temps réel urgence | NOT STARTED | Urgences |
-| US-2232 | Toggle mode grossesse | PARTIAL | Modes contextuels |
+| US-2214 | Config cibles glycémiques par patient | IN REVIEW | Config seuils |
+| US-2215 | Config seuils hypo/hyper alertes | IN REVIEW | Config seuils — `AlertThresholdConfig`, cooldown sévérité-aware capé à 15 min sur critique |
+| US-2216 | Seuils cétones | IN REVIEW | Config seuils — `KetoneThreshold`, defaults ISPAD 0.6/1.5/3.0 mmol/L, validateur strict |
+| US-2217 | Protocole resucrage | IN REVIEW | Config seuils — `HypoTreatmentProtocol`, rule of 15/15, allergies/instructions chiffrées |
+| US-2224 | Inbox alertes urgence | IN REVIEW | Urgences — `EmergencyAlert` + RBAC `getAccessiblePatientIds` |
+| US-2225 | Timeline urgence | IN REVIEW | Urgences — snapshot CGM 30 min chiffré base64+AES-256-GCM |
+| US-2226 | Workflow réaction médecin | IN REVIEW | Urgences — `EmergencyAlertAction` append-only, transitions ack/resolve race-safe |
+| US-2230 | Push temps réel urgence | IN REVIEW | Urgences — FCM data-only payload, pas de PHI lockscreen |
+| US-2232 | Toggle mode grossesse | IN REVIEW | Modes contextuels — `Patient.pregnancyMode` + auto-adapt CGM defaults GD, garde active-pregnancy + forceOverride chiffré |
+
+**PR #343** — 1093 tests verts · branch coverage 78% · CI green · 5 critical + 10 high fixés en re-review (5 agents). En attente de merge avec autorisation utilisateur.
+
+### Follow-ups Mirror MVP (4 US — IN REVIEW PR #348 docs)
+
+| US | Titre | Priorité | SP | Issue | Domaine roadmap |
+|----|-------|----------|----|-------|------------------|
+| US-2265 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | Domaine 11 (Conformité) |
+| US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | Domaine 06 (Messagerie) |
+| US-2267 | Migrations Prisma versionnées | MVP | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | Domaine 13 (Administration) |
+| US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | Domaine 11 (Conformité) |
+
+**PR #348** — Spec markdown + issues GitHub + items board #2 en Backlog. Effort total : 18 SP (10 MVP + 8 V1).
 
 ---
 
@@ -314,8 +333,8 @@
 | US-2233 | Activation mode pédiatrique | NOT STARTED |
 | US-2234 | Activation mode Ramadan | NOT STARTED |
 | US-2235 | Activation mode voyage | NOT STARTED |
-| US-2238 | Audit partages temporaires | NOT STARTED |
-| US-2239 | Validation médicale aidants | NOT STARTED |
+| US-2239 | Audit partages temporaires | NOT STARTED |
+| US-2240 | Validation médicale aidants | NOT STARTED |
 | US-2242 | Statut sync temps réel | NOT STARTED |
 | US-2248 | Vue journal alimentaire patient | NOT STARTED |
 | US-2250 | Bibliothèque ETP | NOT STARTED |
@@ -384,14 +403,19 @@
 
 ## Effort restant MVP
 
-| Batch | Description | Story Points |
-|-------|-------------|-------------|
-| A | Compléter 6 US PARTIAL | ~12 SP |
-| B | 7 nouvelles US backoffice | ~22 SP |
-| C | 9 US Mirror MVP | ~42 SP |
-| **Total** | **22 US restantes** | **~76 SP** |
+| Batch | Description | Story Points | Statut |
+|-------|-------------|--------------|--------|
+| A | Compléter 6 US PARTIAL | ~12 SP | À faire |
+| B | 7 nouvelles US backoffice | ~22 SP | À faire |
+| C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ IN REVIEW (PR #343) |
+| D | **3 follow-ups MVP Mirror** (US-2265/2266/2267) | **10 SP** | 🆕 À faire |
+| **Total** | **16 US restantes (post-merge #343)** | **~44 SP** | |
 
-### US MVP récemment terminées
+> Hypothèse : à la merge de #343, le compteur MVP passe à **47/63 = 75%**. Avec batch D (3 follow-ups) → **63/66 = 95%** à viser sprint suivant.
+
+### US MVP récemment livrées (en revue ou mergées)
+
+- 🟡 **Mirror MVP batch (9 US)** — US-2214/2215/2216/2217/2224/2225/2226/2230/2232 (PR #343, **IN REVIEW** 2026-05-08, 1093 tests, coverage 78%)
 - [x] US-2133 — Rétention 6 ans audit logs (PR #342, 2026-05-02)
 - [x] US-2136 — Pseudonymisation HMAC firstname/lastname (PR #342, 2026-05-02)
 - [x] US-2017 — Patient onboarding wizard (PR #341, 2026-05-02)
