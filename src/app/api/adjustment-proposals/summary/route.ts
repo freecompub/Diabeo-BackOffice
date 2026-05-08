@@ -21,10 +21,12 @@ export async function GET(req: NextRequest) {
     await auditService.log({
       userId: user.id,
       action: "READ",
+      // US-2268 — summary agrégé par patient (pas un specific proposal).
       resource: "ADJUSTMENT_PROPOSAL",
-      resourceId: `${patientId}:summary`,
+      resourceId: String(patientId),
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
+      metadata: { patientId, kind: "summary" },
     })
 
     const summary = await adjustmentService.summary(patientId)

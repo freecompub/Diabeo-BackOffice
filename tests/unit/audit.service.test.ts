@@ -207,6 +207,38 @@ describe("auditService.getByUser", () => {
   })
 })
 
+/**
+ * US-2268 — `getByPatient` retrouve TOUS les events d'un patient via le pivot
+ * `metadata.patientId`, indépendamment du `resource`/`resourceId`.
+ *
+ * Risque mitigé : forensics CNIL/ANS ("qui a accédé aux données du patient X")
+ * impossibles à servir si on filtre uniquement sur `resourceId === String(patientId)`
+ * — on raterait tous les events liés à des sous-entités (objectifs, alerts,
+ * thresholds, pregnancy, etc.).
+ */
+describe("auditService.getByPatient", () => {
+  it("queries metadata.patientId via JSONB path equals", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValue([])
+
+    await auditService.getByPatient(42)
+
+    expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith({
+      where: { metadata: { path: ["patientId"], equals: 42 } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    })
+  })
+
+  it("caps limit at MAX_QUERY_LIMIT", async () => {
+    prismaMock.auditLog.findMany.mockResolvedValue([])
+
+    await auditService.getByPatient(42, 10_000)
+
+    const call = prismaMock.auditLog.findMany.mock.calls.at(-1)?.[0]
+    expect(call?.take).toBe(500) // MAX_QUERY_LIMIT
+  })
+})
+
 describe("auditService.query", () => {
   it("returns paginated results with correct metadata", async () => {
     const logs = [buildAuditLogRecord()]

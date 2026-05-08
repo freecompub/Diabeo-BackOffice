@@ -11,8 +11,11 @@ export const appointmentService = {
     const appointments = await prisma.appointment.findMany({ where: { patientId }, orderBy: { date: "desc" } })
 
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "PATIENT",
-      resourceId: `${patientId}:appointments`, ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      // US-2268 — list appointments par patient.
+      userId: auditUserId, action: "READ", resource: "APPOINTMENT",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return appointments.map((a) => ({ ...a, comment: safeDecryptField(a.comment) }))
@@ -33,9 +36,11 @@ export const appointmentService = {
       })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "PATIENT",
-        resourceId: `appointment:${appointment.id}`,
+        // US-2268 — resourceId = appointment.id, patientId pivot.
+        userId: auditUserId, action: "CREATE", resource: "APPOINTMENT",
+        resourceId: String(appointment.id),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return { ...appointment, comment: safeDecryptField(appointment.comment) }
@@ -60,9 +65,11 @@ export const appointmentService = {
       const updated = await tx.appointment.update({ where: { id: appointmentId }, data })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "UPDATE", resource: "PATIENT",
-        resourceId: `appointment:${appointmentId}`,
+        // US-2268 — patientId pivot via metadata.
+        userId: auditUserId, action: "UPDATE", resource: "APPOINTMENT",
+        resourceId: String(appointmentId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return { ...updated, comment: safeDecryptField(updated.comment) }
@@ -77,9 +84,11 @@ export const appointmentService = {
       await tx.appointment.delete({ where: { id: appointmentId } })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "DELETE", resource: "PATIENT",
-        resourceId: `appointment:${appointmentId}`,
+        // US-2268 — patientId pivot via metadata.
+        userId: auditUserId, action: "DELETE", resource: "APPOINTMENT",
+        resourceId: String(appointmentId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return { deleted: true }

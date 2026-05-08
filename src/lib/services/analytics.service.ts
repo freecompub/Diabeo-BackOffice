@@ -123,10 +123,13 @@ export const analyticsService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "CGM_ENTRY",
-      resourceId: `${patientId}:analytics:profile`,
+      // US-2268 — vue analytique agrégée par patient → resourceId = patientId,
+      // metadata.kind discrimine la sous-vue.
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "profile" },
     })
 
     return {
@@ -171,10 +174,12 @@ export const analyticsService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "CGM_ENTRY",
-      resourceId: `${patientId}:analytics:tir`,
+      // US-2268 — vue analytique agrégée par patient.
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "tir" },
     })
 
     return {
@@ -208,10 +213,12 @@ export const analyticsService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "CGM_ENTRY",
-      resourceId: `${patientId}:analytics:agp`,
+      // US-2268 — vue analytique agrégée par patient.
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "agp" },
     })
 
     return computeAgp(withTimestamp)
@@ -245,10 +252,12 @@ export const analyticsService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "CGM_ENTRY",
-      resourceId: `${patientId}:analytics:hypo`,
+      // US-2268 — vue analytique agrégée par patient.
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "hypo" },
     })
 
     return {
@@ -291,10 +300,12 @@ export const analyticsService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "INSULIN_THERAPY",
-      resourceId: `${patientId}:analytics:insulin`,
+      // US-2268 — vue analytique agrégée par patient.
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "insulin" },
     })
 
     const totalUnits = flow.reduce((sum, f) => sum + (f.flow?.toNumber() ?? 0), 0)

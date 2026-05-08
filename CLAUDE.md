@@ -433,7 +433,28 @@ function hmacEmail(email: string): string {
 - Immuable par trigger PostgreSQL (voir `audit_immutability.sql`)
 - Contient : `action`, `resource`, `resourceId`, `oldValue`, `newValue`, `ipAddress`, `userAgent`, `metadata`
 - Ne contient JAMAIS de données de santé en clair
-- Indexés sur `(userId, createdAt)`, `(resource, resourceId, createdAt)`
+- Indexés sur `(userId, createdAt)`, `(resource, resourceId, createdAt)`, GIN partiel sur `metadata->'patientId'` (US-2268)
+
+#### Convention `resourceId` (US-2268)
+
+```typescript
+// ✅ Canonique : resourceId = ID natif, metadata.patientId = pivot
+await auditService.log({
+  userId,
+  action: "UPDATE",
+  resource: "OBJECTIVE",            // jamais "PATIENT" générique pour sub-entité
+  resourceId: String(objective.id), // UUID/Int natif
+  metadata: { patientId, kind: "cgm" },  // patientId TOUJOURS présent pour events patient-scoped
+})
+
+// ❌ Anti-pattern : composite (impossible à requêter par patient)
+resourceId: `${patientId}:objectives:cgm`
+
+// Forensics CNIL/ANS — "qui a accédé aux données du patient X" :
+const events = await auditService.getByPatient(42)
+// Retrouve TOUS les events (CGM, alerts, objectives, thresholds, pregnancy, etc.)
+// via le GIN partiel sur metadata.patientId
+```
 
 ---
 
@@ -619,6 +640,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 | 15 | Transaction Prisma pour bolus | Calcul + log atomique — consistance garantie |
 | 16 | JWT RS256 custom (pas NextAuth) | Compatibilité API iOS existante, contrôle total payload/session |
 | 17 | Migrations Prisma versionnées (US-2267) | Audit HDS exigeable, rollback formel, CI drift gate. `db push` interdit en prod. Voir `docs/runbook/migrations.md`. |
+| 18 | `auditLog.resourceId` plat + `metadata.patientId` pivot (US-2268) | Forensics CNIL/ANS impossible avec composite. GIN index partiel garantit < 100ms à 10M logs. Helper `getByPatient` retrouve tous les events patient-scoped. |
 
 ---
 

@@ -40,10 +40,12 @@ export const healthcareService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:members`,
+      // US-2268 — équipe soignante d'un patient.
+      resource: "HEALTHCARE_SERVICE",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "members" },
     })
 
     return links.flatMap((l) => l.service.members)
@@ -58,9 +60,11 @@ export const healthcareService = {
       const link = await tx.patientService.create({ data: { patientId, serviceId, wait } })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "PATIENT",
-        resourceId: `${patientId}:service:${serviceId}`,
+        // US-2268 — resourceId = link.id, patientId + serviceId pivots.
+        userId: auditUserId, action: "CREATE", resource: "PATIENT_SERVICE_LINK",
+        resourceId: String(link.id),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId, serviceId },
       })
 
       return link
@@ -76,9 +80,11 @@ export const healthcareService = {
       await tx.patientService.delete({ where: { id: linkId } })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "DELETE", resource: "PATIENT",
-        resourceId: `service-link:${linkId}`,
+        // US-2268 — resourceId = link.id, patientId pivot via metadata.
+        userId: auditUserId, action: "DELETE", resource: "PATIENT_SERVICE_LINK",
+        resourceId: String(linkId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId: link.patientId, serviceId: link.serviceId },
       })
 
       return { deleted: true }
@@ -98,9 +104,11 @@ export const healthcareService = {
       })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "UPDATE", resource: "PATIENT",
-        resourceId: `${patientId}:referent`,
+        // US-2268 — referent = singleton par patient.
+        userId: auditUserId, action: "UPDATE", resource: "REFERENT",
+        resourceId: String(patientId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId, proId, serviceId },
       })
 
       return referent

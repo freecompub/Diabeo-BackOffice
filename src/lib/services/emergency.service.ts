@@ -603,11 +603,13 @@ export const emergencyService = {
         await auditService.logWithTx(tx, {
           userId: auditUserId,
           action: "CREATE",
-          resource: "PATIENT",
-          resourceId: `${input.patientId}:emergency-alert:${created.id}`,
+          // US-2268 — resourceId = ID natif (alert.id), patientId en metadata pivot.
+          resource: "EMERGENCY_ALERT",
+          resourceId: String(created.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           metadata: {
+            patientId: input.patientId,
             alertType: classified.type,
             severity: classified.severity,
             glucoseValueMgdl: input.glucoseValueMgdl,
@@ -700,11 +702,13 @@ export const emergencyService = {
         await auditService.logWithTx(tx, {
           userId: auditUserId,
           action: "CREATE",
-          resource: "PATIENT",
-          resourceId: `${input.patientId}:emergency-alert:${created.id}`,
+          // US-2268 — resourceId = ID natif (alert.id), patientId en metadata pivot.
+          resource: "EMERGENCY_ALERT",
+          resourceId: String(created.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           metadata: {
+            patientId: input.patientId,
             alertType: classified.type,
             severity: classified.severity,
             ketoneValueMmol: input.ketoneValueMmol,
@@ -799,11 +803,12 @@ export const emergencyService = {
         await auditService.logWithTx(tx, {
           userId: auditUserId,
           action: "CREATE",
-          resource: "PATIENT",
-          resourceId: `${input.patientId}:emergency-alert:${created.id}`,
+          // US-2268 — resourceId = ID natif (alert.id), patientId en metadata pivot.
+          resource: "EMERGENCY_ALERT",
+          resourceId: String(created.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
-          metadata: { alertType: "manual", severity: input.severity },
+          metadata: { patientId: input.patientId, alertType: "manual", severity: input.severity },
         })
         return created
       }),
@@ -924,10 +929,12 @@ export const emergencyService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${alert.patientId}:emergency-alert:${alertId}`,
+      // US-2268 — resourceId = alert.id, patientId pivot via metadata.
+      resource: "EMERGENCY_ALERT",
+      resourceId: String(alertId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId: alert.patientId },
     })
 
     return {
@@ -991,11 +998,12 @@ export const emergencyService = {
       await auditService.logWithTx(tx, {
         userId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${existing.patientId}:emergency-alert:${alertId}`,
+        // US-2268 — resourceId = alert.id, patientId pivot via metadata.
+        resource: "EMERGENCY_ALERT",
+        resourceId: String(alertId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
-        metadata: { transition: "open->acknowledged" },
+        metadata: { patientId: existing.patientId, transition: "open->acknowledged" },
       })
 
       return decryptAlertFields(updated)
@@ -1059,11 +1067,12 @@ export const emergencyService = {
       await auditService.logWithTx(tx, {
         userId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${existing.patientId}:emergency-alert:${alertId}`,
+        // US-2268 — resourceId = alert.id, patientId pivot via metadata.
+        resource: "EMERGENCY_ALERT",
+        resourceId: String(alertId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
-        metadata: { transition: `${existing.status}->resolved` },
+        metadata: { patientId: existing.patientId, transition: `${existing.status}->resolved` },
       })
 
       return decryptAlertFields(updated)
@@ -1110,11 +1119,16 @@ export const emergencyService = {
       await auditService.logWithTx(tx, {
         userId: input.performedBy,
         action: "CREATE",
-        resource: "PATIENT",
-        resourceId: `${alert.patientId}:emergency-alert:${input.alertId}:action`,
+        // US-2268 — resourceId = action.id, patientId + alertId pivots via metadata.
+        resource: "EMERGENCY_ALERT_ACTION",
+        resourceId: String(action.id),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
-        metadata: { actionType: input.actionType },
+        metadata: {
+          patientId: alert.patientId,
+          alertId: input.alertId,
+          actionType: input.actionType,
+        },
       })
 
       return {

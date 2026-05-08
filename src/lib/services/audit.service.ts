@@ -90,6 +90,7 @@ export type AuditResource =
   | "AUDIT_LOG"
   /** US-2265 — emergency alerts / Mirror MVP resources. */
   | "EMERGENCY_ALERT"
+  | "EMERGENCY_ALERT_ACTION"
   | "ALERT_THRESHOLD_CONFIG"
   | "KETONE_THRESHOLD"
   | "HYPO_TREATMENT_PROTOCOL"
@@ -98,6 +99,20 @@ export type AuditResource =
   | "HEALTHCARE_SERVICE"
   | "BACKUP"
   | "MOBILE_INVITATION"
+  /** US-2268 — patient-scoped resources (resourceId = native ID, metadata.patientId pivot). */
+  | "MEDICAL_DATA"
+  | "OBJECTIVE"
+  | "PATIENT_PREGNANCY"
+  | "ANALYTICS"
+  | "DEVICE"
+  | "APPOINTMENT"
+  | "ANNOUNCEMENT"
+  | "INSULIN_FLOW"
+  | "AVERAGE_DATA"
+  | "REFERENT"
+  | "PATIENT_SERVICE_LINK"
+  | "DEVICE_SYNC"
+  | "RETENTION"
 
 /**
  * Audit log entry — parameters for logging an action.
@@ -356,6 +371,30 @@ export const auditService = {
   async getByResource(resource: AuditResource, resourceId: string, limit = 50) {
     return prisma.auditLog.findMany({
       where: { resource, resourceId },
+      orderBy: { createdAt: "desc" },
+      take: Math.min(limit, MAX_QUERY_LIMIT),
+    })
+  },
+
+  /**
+   * US-2268 — Get audit logs for a specific patient via `metadata.patientId` pivot.
+   *
+   * Convention `resourceId` = ID natif de la ressource (UUID alert, Int objective, etc.)
+   * + `metadata.patientId` = pivot patient. Cette requête retrouve TOUS les events
+   * patient-scoped (CGM, glycemia, emergency-alert, objectifs, seuils, etc.) en une
+   * seule passe — impossible avec `getByResource("PATIENT", String(patientId))` qui
+   * ne voyait que les events où `resourceId === String(patientId)`.
+   *
+   * Performance : index GIN partiel sur `metadata->'patientId'` (migration
+   * `<ts>_audit_metadata_patientid_gin`) — < 100ms à 10M logs.
+   */
+  async getByPatient(patientId: number, limit = 50) {
+    return prisma.auditLog.findMany({
+      where: {
+        // `metadata->'patientId'` matche le JSONB pour la valeur exacte
+        // (Prisma génère l'opérateur `@>` qui exploite le GIN index).
+        metadata: { path: ["patientId"], equals: patientId },
+      },
       orderBy: { createdAt: "desc" },
       take: Math.min(limit, MAX_QUERY_LIMIT),
     })

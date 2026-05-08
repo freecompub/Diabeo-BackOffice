@@ -39,8 +39,10 @@ export async function GET(req: NextRequest) {
     await auditService.log({
       userId: user.id,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:pregnancy`,
+      // US-2268 — pregnancy = vue active par patient.
+      resource: "PATIENT_PREGNANCY",
+      resourceId: String(patientId),
+      metadata: { patientId, kind: "active" },
     })
 
     if (!pregnancy) return NextResponse.json(null)
@@ -107,8 +109,10 @@ export async function POST(req: NextRequest) {
       await auditService.logWithTx(tx, {
         userId: user.id,
         action: "CREATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:pregnancy:${created.id}`,
+        // US-2268 — resourceId = pregnancy.id, patientId pivot.
+        resource: "PATIENT_PREGNANCY",
+        resourceId: String(created.id),
+        metadata: { patientId },
       })
 
       return created

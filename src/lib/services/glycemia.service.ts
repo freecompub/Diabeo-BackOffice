@@ -132,10 +132,12 @@ export const glycemiaService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "CGM_ENTRY",
-      resourceId: `${patientId}:averages`,
+      // US-2268 — averages = vue agrégée par patient.
+      resource: "AVERAGE_DATA",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     const grouped = new Map<PeriodType, typeof averages>()
@@ -177,10 +179,12 @@ export const glycemiaService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "INSULIN_THERAPY",
-      resourceId: `${patientId}:insulinFlow`,
+      // US-2268 — insulinFlow = vue agrégée par patient.
+      resource: "INSULIN_FLOW",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return entries
@@ -218,10 +222,12 @@ export const glycemiaService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
+      // US-2268 — pump event list par patient.
       resource: "PUMP_EVENT",
-      resourceId: `${patientId}:list`,
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return entries
