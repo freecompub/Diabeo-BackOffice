@@ -1,4 +1,4 @@
-# US-2238 — Événements `ACCESS_DENIED` dans l'audit log
+# US-2265 — Événements `ACCESS_DENIED` dans l'audit log
 
 > 📌 **16. Conformité & RGPD** · Priorité **MVP** · Pays **Universel**
 >
@@ -10,7 +10,7 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2238` |
+| **ID** | `US-2265` |
 | **Domaine** | 16. Conformité & RGPD |
 | **Priorité** | **MVP** |
 | **Pays cible** | Universel |
@@ -124,5 +124,5 @@ Modifications à apporter (≤ 1 jour de travail) :
 ## 🔗 US liées
 
 - US-2011 (audit log immuable)
-- US-2238 ↔ PR #343 (Mirror MVP — origine du finding)
+- US-2265 ↔ PR #343 (Mirror MVP — origine du finding)
 - US-2153 (logs applicatifs centralisés — destination des burst events)

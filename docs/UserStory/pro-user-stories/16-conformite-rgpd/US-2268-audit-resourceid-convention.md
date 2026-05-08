@@ -1,4 +1,4 @@
-# US-2241 — Convention `auditLog.resourceId` normalisée
+# US-2268 — Convention `auditLog.resourceId` normalisée
 
 > 📌 **16. Conformité & RGPD** · Priorité **V1** (non bloquant MVP) · Pays **Universel**
 >
@@ -10,7 +10,7 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2241` |
+| **ID** | `US-2268` |
 | **Domaine** | 16. Conformité & RGPD |
 | **Priorité** | **V1** (technical debt — non bloquant pour MVP, bloquant pour audit HDS prochaine certification) |
 | **Pays cible** | Universel |
@@ -176,5 +176,5 @@ Recherche grep `:emergency-alert\|:objectives\|:hypo-treatment\|:ketone-threshol
 ## 🔗 US liées
 
 - US-2011 (audit log immuable) — base
-- US-2238 (ACCESS_DENIED forensic) — bénéficie de la convention
-- US-2238–2240 — toutes les follow-ups Mirror MVP
+- US-2265 (ACCESS_DENIED forensic) — bénéficie de la convention
+- US-2265–2267 — toutes les follow-ups Mirror MVP

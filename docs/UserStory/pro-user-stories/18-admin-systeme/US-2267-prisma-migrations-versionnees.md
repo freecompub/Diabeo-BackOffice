@@ -1,4 +1,4 @@
-# US-2240 — Mise en place des migrations Prisma versionnées
+# US-2267 — Mise en place des migrations Prisma versionnées
 
 > 📌 **18. Administration système** · Priorité **MVP** · Pays **Universel**
 >
@@ -10,7 +10,7 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2240` |
+| **ID** | `US-2267` |
 | **Domaine** | 18. Administration système |
 | **Priorité** | **MVP** (bloquant audit HDS prochaine certification) |
 | **Pays cible** | Universel |

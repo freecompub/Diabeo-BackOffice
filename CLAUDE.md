@@ -817,10 +817,10 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - 5 critical + 10 high fixés en re-review (5 agents)
 
 **Batch D — Follow-ups Mirror MVP (3 US MVP + 1 V1) — 🆕 PR #348 docs**
-- 🆕 **US-2238** — Événements `ACCESS_DENIED` audit (2 SP, MVP) · Issue #344
-- 🆕 **US-2239** — Email médecin sur alerte critique (3 SP, MVP) · Issue #345
-- 🆕 **US-2240** — Migrations Prisma versionnées (5 SP, MVP, bloquant audit HDS) · Issue #346
-- 🆕 **US-2241** — Convention `auditLog.resourceId` normalisée (8 SP, V1) · Issue #347
+- 🆕 **US-2265** — Événements `ACCESS_DENIED` audit (2 SP, MVP) · Issue #344
+- 🆕 **US-2266** — Email médecin sur alerte critique (3 SP, MVP) · Issue #345
+- 🆕 **US-2267** — Migrations Prisma versionnées (5 SP, MVP, bloquant audit HDS) · Issue #346
+- 🆕 **US-2268** — Convention `auditLog.resourceId` normalisée (8 SP, V1) · Issue #347
 
 ### Décisions architecturales
 
@@ -888,4 +888,4 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-05-08 — Mirror MVP en revue (PR #343, 9 US), 4 follow-ups ajoutés (PR #348, US-2238–US-2241). Total 268 US (217 pro + 51 mirror), MVP 71% (review-incluse) → 75% à la merge de #343, 95% post-Batch D.*
+*Dernière mise à jour : 2026-05-08 — Mirror MVP en revue (PR #343, 9 US), 4 follow-ups ajoutés (PR #348, US-2265–US-2268). Total 268 US (217 pro + 51 mirror), MVP 71% (review-incluse) → 75% à la merge de #343, 95% post-Batch D.*

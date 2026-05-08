@@ -111,7 +111,7 @@
 | US-2073 | Push notifications mobile (FCM) | DONE | `src/lib/firebase/admin.ts`, `src/lib/services/fcm.service.ts`, `src/app/api/push/send/route.ts`. Firebase Admin SDK, retry retriable-only, canAccessPatient authz, rate limit fail-closed 50/h, no cleartext in logs, locale-aware templates, 20 tests. PR #340. |
 | US-2074 | Email transactionnel (Resend) | DONE | `src/lib/services/email.service.ts`. Reset password, welcome, proposal notification. HTML escaping, no PII. PR #341. |
 | US-2079 | Préférences notifications | DONE | `UserNotifPreferences`, `/api/account/notifications/` |
-| US-2239 | Email médecin sur alerte critique | NOT STARTED | Follow-up PR #343 — 3 SP. Issue [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345). Câbler `notifyDoctorEmail` (PHI-safe) sur emergency.service. |
+| US-2266 | Email médecin sur alerte critique | NOT STARTED | Follow-up PR #343 — 3 SP. Issue [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345). Câbler `notifyDoctorEmail` (PHI-safe) sur emergency.service. |
 
 ### Domaine 07 — Équipe & Cabinet (2 US)
 
@@ -152,8 +152,8 @@
 | US-2136 | Pseudonymisation HMAC | DONE | `hmacField()` générique, `firstnameHmac`/`lastnameHmac` dans User, index composite, user.service auto-compute. PR #342. |
 | US-2138 | Hébergement HDS | DONE | OVHcloud GRA (décision archi) |
 | US-2141 | Catégorisation documents | DONE | `DocumentCategory` enum |
-| US-2238 | Événements `ACCESS_DENIED` audit | NOT STARTED | Follow-up PR #343 — 2 SP. Issue [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344). Origine : healthcare-security-auditor L-A. |
-| US-2241 | Convention `auditLog.resourceId` normalisée | NOT STARTED | Follow-up PR #343 — 8 SP — **V1**. Issue [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347). Cross-cutting refacto ~30 call sites. |
+| US-2265 | Événements `ACCESS_DENIED` audit | NOT STARTED | Follow-up PR #343 — 2 SP. Issue [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344). Origine : healthcare-security-auditor L-A. |
+| US-2268 | Convention `auditLog.resourceId` normalisée | NOT STARTED | Follow-up PR #343 — 8 SP — **V1**. Issue [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347). Cross-cutting refacto ~30 call sites. |
 
 ### Domaine 12 — Documents (1 US)
 
@@ -167,7 +167,7 @@
 |----|-------|--------|---------------|
 | US-2148 | Admin gestion utilisateurs UI | NOT STARTED | Backend RBAC OK, page admin manquante |
 | US-2151 | Backup management | NOT STARTED | — |
-| US-2240 | Migrations Prisma versionnées | NOT STARTED | Follow-up PR #343 — 5 SP. Issue [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346). Bloquant audit HDS — `prisma migrate deploy` actuellement vide. |
+| US-2267 | Migrations Prisma versionnées | NOT STARTED | Follow-up PR #343 — 5 SP. Issue [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346). Bloquant audit HDS — `prisma migrate deploy` actuellement vide. |
 
 ### Domaine 14 — Prescriptions (1 US)
 
@@ -195,10 +195,10 @@
 
 | US | Titre | Priorité | SP | Issue | Domaine roadmap |
 |----|-------|----------|----|-------|------------------|
-| US-2238 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | Domaine 11 (Conformité) |
-| US-2239 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | Domaine 06 (Messagerie) |
-| US-2240 | Migrations Prisma versionnées | MVP | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | Domaine 13 (Administration) |
-| US-2241 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | Domaine 11 (Conformité) |
+| US-2265 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | Domaine 11 (Conformité) |
+| US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | Domaine 06 (Messagerie) |
+| US-2267 | Migrations Prisma versionnées | MVP | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | Domaine 13 (Administration) |
+| US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | Domaine 11 (Conformité) |
 
 **PR #348** — Spec markdown + issues GitHub + items board #2 en Backlog. Effort total : 18 SP (10 MVP + 8 V1).
 
@@ -333,8 +333,8 @@
 | US-2233 | Activation mode pédiatrique | NOT STARTED |
 | US-2234 | Activation mode Ramadan | NOT STARTED |
 | US-2235 | Activation mode voyage | NOT STARTED |
-| US-2238 | Audit partages temporaires | NOT STARTED |
-| US-2239 | Validation médicale aidants | NOT STARTED |
+| US-2239 | Audit partages temporaires | NOT STARTED |
+| US-2240 | Validation médicale aidants | NOT STARTED |
 | US-2242 | Statut sync temps réel | NOT STARTED |
 | US-2248 | Vue journal alimentaire patient | NOT STARTED |
 | US-2250 | Bibliothèque ETP | NOT STARTED |
@@ -408,7 +408,7 @@
 | A | Compléter 6 US PARTIAL | ~12 SP | À faire |
 | B | 7 nouvelles US backoffice | ~22 SP | À faire |
 | C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ IN REVIEW (PR #343) |
-| D | **3 follow-ups MVP Mirror** (US-2238/2239/2240) | **10 SP** | 🆕 À faire |
+| D | **3 follow-ups MVP Mirror** (US-2265/2266/2267) | **10 SP** | 🆕 À faire |
 | **Total** | **16 US restantes (post-merge #343)** | **~44 SP** | |
 
 > Hypothèse : à la merge de #343, le compteur MVP passe à **47/63 = 75%**. Avec batch D (3 follow-ups) → **63/66 = 95%** à viser sprint suivant.

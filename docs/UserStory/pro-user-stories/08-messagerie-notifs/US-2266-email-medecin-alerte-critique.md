@@ -1,4 +1,4 @@
-# US-2239 — Email médecin sur alerte critique (notifyDoctorEmail)
+# US-2266 — Email médecin sur alerte critique (notifyDoctorEmail)
 
 > 📌 **8. Messagerie & notifications** · Priorité **MVP** · Pays **Universel**
 >
@@ -10,7 +10,7 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2239` |
+| **ID** | `US-2266` |
 | **Domaine** | 8. Messagerie & notifications |
 | **Priorité** | **MVP** |
 | **Pays cible** | Universel |
