@@ -94,8 +94,12 @@ pnpm prisma migrate resolve --rolled-back <timestamp>_<feature>
 ### Cas 2 — Restauration depuis dump (data corruption ou rollback massif)
 
 ```bash
-# 1. Restaurer le dernier dump nightly OVH (S3 ou local)
-./deploy.sh restore-from-dump <date>
+# 1. Restaurer le dernier dump nightly OVH (procédure manuelle).
+#    Le dump nightly est sur OVH Object Storage (bucket diabeo-backups-prod,
+#    cron systemd unit pg-dump-nightly). `./deploy.sh restore-from-dump` n'est
+#    PAS encore implémenté — utiliser psql en direct :
+aws s3 cp s3://diabeo-backups-prod/<YYYY/MM/DD>/diabeo-backup-<HH>.sql.gz - \
+  --endpoint-url=https://s3.gra.io.cloud.ovh.net | gunzip | psql $DATABASE_URL
 
 # 2. Vérifier l'état des migrations restaurées
 pnpm prisma migrate status
@@ -152,18 +156,59 @@ qu'ils introduisaient sont maintenant dans `schema.prisma`) :
 
 Pour une DB qui tourne déjà avec `db push` (ex: recette pré-US-2267) :
 
+### 7.1 — Vérifier l'état du schéma AVANT de marquer comme appliqué
+
+⚠️ **Étape critique HDS** : `migrate resolve --applied` ne ré-applique PAS le SQL —
+il marque juste la migration comme passée. Si la DB existante n'a pas tous les
+objets DDL du `post_deploy_sql` (trigger d'immuabilité audit, fonction de
+rétention, CHECK constraints), les marquer comme appliquées va silencieusement
+priver l'app de garanties HDS-required.
+
+Vérifier la présence des objets clés AVANT le step 7.2 :
+
 ```bash
-# 1. Marquer la baseline comme déjà appliquée (sans la rejouer)
+psql $DATABASE_URL <<'EOF'
+-- Trigger immuabilité audit (HDS NON négociable)
+SELECT tgname FROM pg_trigger WHERE tgname = 'audit_logs_immutable';
+-- Fonction rétention 6 ans
+SELECT proname FROM pg_proc WHERE proname = 'audit_log_apply_retention';
+-- CHECK constraint basal
+SELECT conname FROM pg_constraint WHERE conname = 'chk_basal_config_type_fields';
+-- Index unique partiel emergency
+SELECT indexname FROM pg_indexes WHERE indexname = 'emergency_alerts_one_live_per_type';
+EOF
+```
+
+Si **un seul** objet manque : NE PAS faire 7.2 — appliquer manuellement
+`prisma/migrations/20260508140000_post_deploy_sql/migration.sql` via psql
+d'abord (le script est idempotent : DROP-IF-EXISTS partout).
+
+### 7.2 — Marquer baseline + post_deploy comme appliquées
+
+```bash
+# Une fois 7.1 OK :
 pnpm prisma migrate resolve --applied 20260508135636_baseline_v1
 pnpm prisma migrate resolve --applied 20260508140000_post_deploy_sql
 
-# 2. Vérifier
+# Vérifier
 pnpm prisma migrate status
 # → "Database schema is up to date"
 
-# 3. Continuer avec le workflow standard `migrate dev` / `migrate deploy`
+# Continuer avec le workflow standard `migrate dev` / `migrate deploy`
 ```
 
 ⚠️ **À faire UNE seule fois par DB existante**, idéalement pendant une fenêtre
 de maintenance, pour éviter qu'un déploiement concurrent fasse `migrate deploy`
 qui chercherait à appliquer la baseline.
+
+### 7.3 — Checklist 1er deploy prod (US-2267 `blocker-pre-prod`)
+
+Avant le go-live :
+- [ ] Backup vérifié et restorable (test sur staging)
+- [ ] §7.1 vérification objets DDL passe sur la DB cible
+- [ ] §7.2 `migrate resolve --applied` exécuté pour les 2 migrations
+- [ ] `migrate status` confirme "Database schema is up to date"
+- [ ] `./deploy.sh update` lancé avec `MIGRATION_BOOTSTRAPPED=` (NON set) pour passer le pre-flight check
+- [ ] Health endpoint `/api/health` répond 200 post-deploy
+- [ ] Tests E2E smoke (login + un READ patient) verts en prod
+- [ ] Rollback testé (sur dump récent staging) : voir §5

@@ -9,9 +9,10 @@
 # Prerequisites (one-time setup, see docs/operations/runbook.md §Manual setup):
 # - pm2 installed globally and `diabeo-api` process registered
 # - Node 22+, pnpm 10+ available in PATH (or via corepack)
+# - psql client available in PATH (used for migration baseline pre-flight check)
 # - `$DATABASE_URL` exported in the shell that invokes the script
-# - Any pending raw SQL migration in prisma/sql/ must be applied BEFORE
-#   running this script (see section "Apply SQL migration" below)
+# - DB switched to versioned migrations (US-2267) — see docs/runbook/migrations.md §7
+#   On a fresh DB, set MIGRATION_BOOTSTRAPPED=1 the first time only.
 #
 # Usage:
 #   ./scripts/deploy.sh update         # Standard deploy
@@ -96,6 +97,7 @@ cmd_update() {
   require_cmd pnpm
   require_cmd pm2
   require_cmd curl
+  require_cmd psql
 
   cd "$REPO_DIR"
 
@@ -112,17 +114,31 @@ cmd_update() {
   log "Incoming commits:"
   git log --oneline HEAD..origin/main | sed 's/^/  /'
 
-  # Warn operator about pending raw SQL that needs to be applied BEFORE pull.
-  # Prisma db push will fail on column-type conversions otherwise.
-  local pending_sql
-  pending_sql=$(git diff --name-only HEAD..origin/main -- prisma/sql/ | wc -l | tr -d ' ')
-  if [[ "$pending_sql" != "0" ]]; then
-    warn "New SQL migration files detected in prisma/sql/ — apply them with psql BEFORE continuing:"
-    git diff --name-only HEAD..origin/main -- prisma/sql/ | sed 's/^/  /'
-    warn "Abort and apply manually, then re-run this script, OR set APPLIED_SQL=1 to acknowledge."
-    if [[ "${APPLIED_SQL:-0}" != "1" ]]; then
+  # US-2267 — Pre-flight : la DB doit avoir été switchée du legacy `db push` au
+  # workflow `migrate` AVANT le 1er deploy versionné. Sinon `migrate deploy`
+  # essaie de rejouer la baseline_v1 sur un schéma déjà rempli (DROP/CREATE
+  # destructifs ou échecs sur duplicate). Le switch manuel est documenté dans
+  # docs/runbook/migrations.md §7 : `migrate resolve --applied <baseline>`.
+  #
+  # On vérifie la présence de la table `_prisma_migrations` ET au moins une
+  # entry baseline marquée comme appliquée. L'opérateur peut bypass via
+  # MIGRATION_BOOTSTRAPPED=1 lorsqu'il sait que la DB est neuve (1er deploy
+  # sur prod vierge).
+  log "Pre-flight : verifying versioned migrations baseline state…"
+  local baseline_applied
+  baseline_applied=$(psql "$DATABASE_URL" -tAc \
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_name = '_prisma_migrations';" \
+    2>/dev/null | tr -d ' ')
+  if [[ "$baseline_applied" == "0" ]]; then
+    if [[ "${MIGRATION_BOOTSTRAPPED:-0}" != "1" ]]; then
+      err "_prisma_migrations table not found. This DB has never run \`prisma migrate\`."
+      err "BEFORE this script: switch the DB to versioned migrations (one-time)."
+      err "  → Either: \`pnpm prisma migrate resolve --applied <baseline>\` for each migration"
+      err "  → Or:     run on a freshly-provisioned DB and set MIGRATION_BOOTSTRAPPED=1"
+      err "Reference: docs/runbook/migrations.md §7"
       exit 1
     fi
+    warn "MIGRATION_BOOTSTRAPPED=1 set — assuming fresh DB ; \`migrate deploy\` will apply baseline."
   fi
 
   log "Pulling…"
