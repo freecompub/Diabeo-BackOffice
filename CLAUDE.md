@@ -785,35 +785,42 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 ## 📊 Roadmap User Stories intégrées
 
 > Détail complet : [`docs/ROADMAP.md`](docs/ROADMAP.md)
-> Source : `docs/UserStory/pro-user-stories/` (213 US) + `docs/UserStory/user-stories-patient-management/` (51 US)
+> Source : `docs/UserStory/pro-user-stories/` (217 US) + `docs/UserStory/user-stories-patient-management/` (51 US)
 
-### Taux de réalisation (2026-05-02)
+### Taux de réalisation (2026-05-08)
 
-| Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
-|----------|-------|------|---------|-------------|--------|
-| **MVP**  | 63    | 31   | 13      | 19          | **49%** |
-| **V1**   | 120   | 0    | 7       | 113         | **0%**  |
-| **V2**   | 58    | 0    | 0       | 58          | **0%**  |
-| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
-| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **264** | **31** | **20** | **213**   | **12%** |
+| Priorité | Total | DONE | IN REVIEW | PARTIAL | NOT STARTED | % Done+Review |
+|----------|-------|------|-----------|---------|-------------|---------------|
+| **MVP**  | 66    | 38   | 9         | 6       | 13          | **71%** |
+| **V1**   | 121   | 0    | 0         | 7       | 114         | **0%**  |
+| **V2**   | 58    | 0    | 0         | 0       | 58          | **0%**  |
+| **V3**   | 8     | 0    | 0         | 0       | 8           | **0%**  |
+| **V4**   | 15    | 0    | 0         | 0       | 15          | **0%**  |
+| **TOTAL**| **268** | **38** | **9**   | **13**  | **208**     | **18%** |
 
-### MVP — Effort restant (~98 SP)
+> `IN REVIEW` = code complet, PR ouverte, CI verte, en attente de merge — compte 100 % à la merge.
 
-**Batch A — Compléter les PARTIAL (13 US)**
-- US-2017 (wizard patient), US-2047 (UI validation médecin), US-2064 (push→proposals),
-  US-2073 (envoi FCM), US-2074 (service email), US-2089 (UI pairing device),
-  US-2112/US-2115 (i18n next-intl), US-2117 (modèle cabinet), US-2133 (cron rétention),
-  US-2136 (HMAC prénom/nom)
+### MVP — Effort restant (~44 SP post-merge #343)
 
-**Batch B — Nouvelles US (9 US)**
-- US-2025 (QR invite mobile), US-2118 (praticien libéral), US-2140 (OVH S3 upload),
-  US-2148 (admin users UI), US-2151 (backup management)
+**Batch A — Compléter les PARTIAL (6 US)**
+- US-2047 (UI validation médecin), US-2089 (UI pairing device),
+  US-2112/US-2115 (i18n next-intl), US-2117 (modèle cabinet), US-2118 (praticien libéral)
 
-**Batch C — Mirror MVP (9 US)**
+**Batch B — Nouvelles US backoffice (7 US)**
+- US-2025 (QR invite mobile), US-2148 (admin users UI), US-2151 (backup management)
+
+**Batch C — Mirror MVP (9 US) — ✅ IN REVIEW PR #343**
 - US-2214–2217 (config seuils glycémiques/cétones/resucrage),
   US-2224–2226/2230 (urgences inbox + timeline + workflow + push),
   US-2232 (mode grossesse toggle)
+- 1093 tests verts · branch coverage 78% · CI green
+- 5 critical + 10 high fixés en re-review (5 agents)
+
+**Batch D — Follow-ups Mirror MVP (3 US MVP + 1 V1) — 🆕 PR #348 docs**
+- 🆕 **US-2238** — Événements `ACCESS_DENIED` audit (2 SP, MVP) · Issue #344
+- 🆕 **US-2239** — Email médecin sur alerte critique (3 SP, MVP) · Issue #345
+- 🆕 **US-2240** — Migrations Prisma versionnées (5 SP, MVP, bloquant audit HDS) · Issue #346
+- 🆕 **US-2241** — Convention `auditLog.resourceId` normalisée (8 SP, V1) · Issue #347
 
 ### Décisions architecturales
 
@@ -881,4 +888,4 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-05-02 — Intégration 264 US (pro + mirror), mapping backlog, taux réalisation MVP 49%*
+*Dernière mise à jour : 2026-05-08 — Mirror MVP en revue (PR #343, 9 US), 4 follow-ups ajoutés (PR #348, US-2238–US-2241). Total 268 US (217 pro + 51 mirror), MVP 71% (review-incluse) → 75% à la merge de #343, 95% post-Batch D.*
