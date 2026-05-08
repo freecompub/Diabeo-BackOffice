@@ -94,6 +94,10 @@ export type AuditResource =
   | "KETONE_THRESHOLD"
   | "HYPO_TREATMENT_PROTOCOL"
   | "PREGNANCY_MODE"
+  /** Batch B — admin & infra resources (US-2118, US-2151, US-2025). */
+  | "HEALTHCARE_SERVICE"
+  | "BACKUP"
+  | "MOBILE_INVITATION"
 
 /**
  * Audit log entry — parameters for logging an action.
@@ -110,7 +114,13 @@ export type AuditResource =
  * @property {Object} [metadata] - Additional context (event count, warnings, etc.)
  */
 export interface AuditLogEntry {
-  userId: number
+  /**
+   * User performing the action. **Nullable** : événements anonymes
+   * (login email inconnu, redeem patient invite côté iOS) et événements
+   * système (cron, worker) émettent `userId: null`. Évite la sentinelle
+   * `userId: 0` qui violait la FK vers `users.id`.
+   */
+  userId: number | null
   action: AuditAction
   resource: AuditResource
   resourceId?: string
@@ -128,7 +138,14 @@ export interface AuditLogEntry {
  * `UNAUTHORIZED` internally — callers cannot override it. Exported as a named
  * type so route-helpers and tests share a single, stable contract.
  */
-export type AccessDeniedInput = Omit<AuditLogEntry, "action">
+/**
+ * `accessDenied` est par construction émis pour un user authentifié (path
+ * RBAC-fail). `userId` est donc non-nullable, contrairement au cas général
+ * `AuditLogEntry.userId` (nullable pour événements anonymes / système).
+ */
+export type AccessDeniedInput = Omit<AuditLogEntry, "action" | "userId"> & {
+  userId: number
+}
 
 /**
  * Request context extracted from the HTTP layer. Same shape as the return
@@ -149,7 +166,7 @@ export interface AuditContext {
  */
 function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateInput {
   return {
-    userId: entry.userId,
+    userId: entry.userId ?? null,
     action: entry.action,
     resource: entry.resource,
     resourceId: entry.resourceId ?? null,
