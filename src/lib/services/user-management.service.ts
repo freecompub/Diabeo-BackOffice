@@ -225,6 +225,12 @@ export const userManagementService = {
     auditUserId: number,
     ctx?: AuditContext,
   ) {
+    // Anti-self-demote : un ADMIN ne peut pas se rétrograder lui-même
+    // (symétrique à `cannot_change_own_status`). Évite le scénario où un
+    // ADMIN unique se rétrograde et lock le cabinet.
+    if (targetUserId === auditUserId && newRole !== "ADMIN") {
+      throw new Error("cannot_demote_self")
+    }
     // Serializable isolation prevents the anti-lockout count from being
     // racy under concurrent admin actions (two admins demoting the two
     // last admins simultaneously could both pass `count === 0` check).
@@ -337,11 +343,15 @@ export const userManagementService = {
         if (newStatus !== "active") {
           // Capture session IDs BEFORE deleting so we can revoke their JWTs
           // outside the transaction (Redis call — must not be in tx).
+          // We MUST select `id` (the cuid used as JWT `sid` claim) — the
+          // middleware's `isSessionRevoked(payload.sid)` keys on this value.
+          // (`sessionToken` is a different cuid used as session lookup key
+          // and not what the JWT carries.)
           const sids = await tx.session.findMany({
             where: { userId: targetUserId },
-            select: { sessionToken: true },
+            select: { id: true },
           })
-          revokedSids = sids.map((s) => s.sessionToken)
+          revokedSids = sids.map((s) => s.id)
           await tx.session.deleteMany({ where: { userId: targetUserId } })
         }
 

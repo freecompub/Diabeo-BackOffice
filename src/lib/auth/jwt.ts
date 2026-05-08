@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify, importPKCS8, importSPKI } from "jose"
+import { randomUUID } from "node:crypto"
 import type { Role } from "@prisma/client"
 
 const ALG = "RS256"
@@ -11,9 +12,12 @@ const MFA_PENDING_EXPIRY = "5m" // MFA challenge window — user must complete O
  * patient ne flashe pas immédiatement, limitant la fenêtre d'attaque.
  * Quand l'endpoint /api/auth/patient-invite/redeem sera livré (V1+), on
  * pourra remonter la TTL à 24h en s'appuyant sur le `jti`-tracking.
+ *
+ * Source unique : `PATIENT_INVITE_EXPIRY_MS`. Le format string `"15m"`
+ * exigé par jose `setExpirationTime` est dérivé pour éviter le drift.
  */
-const PATIENT_INVITE_EXPIRY = "15m"
 const PATIENT_INVITE_EXPIRY_MS = 15 * 60_000
+const PATIENT_INVITE_EXPIRY = `${PATIENT_INVITE_EXPIRY_MS / 60_000}m`
 const ISSUER = "diabeo-backoffice"
 const AUDIENCE = "diabeo-hc"
 const AUDIENCE_MFA = "diabeo-mfa-pending"
@@ -154,11 +158,20 @@ export async function verifyMfaPendingToken(token: string): Promise<MfaPendingPa
 
 /**
  * Payload for a patient-invite token (US-2025) — single-use mobile QR.
- * Distinct audience prevents this token from being accepted on /api/* routes.
  *
- * Single-use enforcement is the responsibility of the consumer endpoint
- * (e.g. /api/auth/patient-invite/redeem) — typically by recording redemption
- * in a separate table or using a dedicated session record.
+ * **Sub semantics** : `sub` carries the **PatientId** (not a User id). This
+ * differs from regular auth JWTs (`sub = userId`). The redeem endpoint
+ * (V1+, `/api/auth/patient-invite/redeem`) must:
+ *   1. resolve the User row that owns this Patient (`Patient.userId`),
+ *   2. authenticate as THAT user (mint a regular JWT with `sub = userId`),
+ *   3. **never** trust this invite token as a session credential directly.
+ *
+ * Distinct audience (`diabeo-patient-invite`) prevents the token from being
+ * accepted on `/api/*` protected routes (audience check fails).
+ *
+ * **Single-use enforcement** is OUT-OF-SCOPE for the issuer side. The redeem
+ * endpoint MUST track consumed `jti`s in a dedicated table to prevent replay
+ * within the 15-min TTL window. Tracker : US-2XXX (V1).
  */
 export interface PatientInvitePayload {
   /** Patient ID being invited (the patient.id, NOT user.id). */
@@ -185,7 +198,6 @@ export async function signPatientInviteToken(input: {
 }): Promise<{ token: string; jti: string; expiresAt: Date }> {
   const key = await getPrivateKey()
   // Random JTI for future single-use tracking; jose's setJti accepts any string.
-  const { randomUUID } = await import("node:crypto")
   const jti = randomUUID()
   const expiresAt = new Date(Date.now() + PATIENT_INVITE_EXPIRY_MS)
   const token = await new SignJWT({

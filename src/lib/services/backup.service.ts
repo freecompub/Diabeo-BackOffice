@@ -19,35 +19,12 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { logger } from "@/lib/logger"
+import { bigIntToJson, sanitizeErrorMessage } from "@/lib/util/json-safe"
 import type { AuditContext } from "./audit.service"
 import type { BackupStatus, Prisma } from "@prisma/client"
 import { randomUUID } from "node:crypto"
 
 const MAX_LIST_LIMIT = 100
-
-/**
- * Convert a Prisma BigInt to a JSON-safe representation.
- * Returns `number` if it fits within `Number.MAX_SAFE_INTEGER` (2^53-1),
- * otherwise `string` to avoid silent precision loss on petabyte-scale dumps.
- */
-function bigIntToJson(value: bigint | null): number | string | null {
-  if (value === null) return null
-  return value <= BigInt(Number.MAX_SAFE_INTEGER)
-    ? Number(value)
-    : value.toString()
-}
-
-/**
- * Strip Prisma error messages from quoted values that can carry PHI (e.g.
- * "Unique constraint failed on (email = \"x@y.fr\")"). Returns at most
- * 500 chars (DB column cap).
- */
-function sanitizeErrorMessage(message: string): string {
-  // Strip everything inside double quotes — Prisma error messages embed
-  // column values in `="..."` form.
-  const stripped = message.replace(/"[^"]*"/g, "?")
-  return stripped.slice(0, 500)
-}
 
 interface ListFilter {
   status?: BackupStatus[]
@@ -75,7 +52,11 @@ export const backupService = {
 
     const items = await prisma.backupLog.findMany({
       where,
-      orderBy: { startedAt: "desc" },
+      // Order by id desc : id auto-increment + cursor on id = pagination
+      // déterministe, même si plusieurs backups partagent une `startedAt`
+      // dans la même milliseconde (cas test fixtures, manual triggers en
+      // boucle). startedAt orderBy + cursor id donneraient des duplicates.
+      orderBy: { id: "desc" },
       take: limit + 1,
       ...(filter.cursor && { cursor: { id: filter.cursor }, skip: 1 }),
     })
@@ -190,16 +171,23 @@ export const backupService = {
    *  - running → completed, failed
    *  - completed/failed → terminal (rejet)
    */
+  /**
+   * Worker-side : mise à jour d'un backup en cours (transitions de statut +
+   * métadonnées). Le worker n'a pas de session HTTP donc `workerUserId` est
+   * **nullable** — l'audit log enregistre `userId: null` pour les événements
+   * système (cf. `audit_logs.user_id` nullable).
+   */
   async updateStatus(
     backupRef: string,
     update: {
       status: BackupStatus
       location?: string
-      sizeBytes?: number
+      /** Accepte `bigint` pour les dumps > 2^53 octets sans précision perdue. */
+      sizeBytes?: number | bigint
       durationMs?: number
       errorMessage?: string
     },
-    workerUserId: number,
+    workerUserId: number | null,
     ctx?: AuditContext,
   ) {
     return prisma.$transaction(async (tx) => {
@@ -214,7 +202,14 @@ export const backupService = {
         data: {
           status: update.status,
           ...(update.location !== undefined && { location: update.location }),
-          ...(update.sizeBytes !== undefined && { sizeBytes: BigInt(update.sizeBytes) }),
+          ...(update.sizeBytes !== undefined && {
+            // Accepte number (small dumps) ou bigint (PB-scale) sans
+            // perte de précision via `Number()` intermédiaire.
+            sizeBytes:
+              typeof update.sizeBytes === "bigint"
+                ? update.sizeBytes
+                : BigInt(update.sizeBytes),
+          }),
           ...(update.durationMs !== undefined && { durationMs: update.durationMs }),
           ...(update.errorMessage !== undefined && {
             // Sanitize before persistence — Prisma errors can embed column values

@@ -75,7 +75,7 @@ describe("mobileInvitationService.createInvite", () => {
     expect(result.expiresAt).toBeInstanceOf(Date)
   })
 
-  it("audit metadata captures jti + expiresAt, NOT the token in clear", async () => {
+  it("audit emits MOBILE_INVITATION resource with jti as resourceId, NO token in clear", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 5 } as never)
     mockCanAccess.mockResolvedValue(true)
 
@@ -83,13 +83,14 @@ describe("mobileInvitationService.createInvite", () => {
       patientId: 5, invitedBy: 99, invitedByRole: "DOCTOR",
     })
     const auditCall = prismaMock.auditLog.create.mock.calls.at(-1)?.[0] as {
-      data?: { metadata?: Record<string, unknown>; resourceId?: string }
+      data?: { resource?: string; resourceId?: string; metadata?: Record<string, unknown> }
     }
-    expect(auditCall?.data?.resourceId).toContain("jti-123")
+    expect(auditCall?.data?.resource).toBe("MOBILE_INVITATION")
+    expect(auditCall?.data?.resourceId).toBe("jti-123")
     expect(auditCall?.data?.metadata).toEqual(
-      expect.objectContaining({ jti: "jti-123" }),
+      expect.objectContaining({ patientId: 5 }),
     )
-    // No "token" field in metadata
-    expect(JSON.stringify(auditCall?.data?.metadata)).not.toContain("TEST_TOKEN_OPAQUE")
+    // No token in clear anywhere in the audit row
+    expect(JSON.stringify(auditCall?.data)).not.toContain("TEST_TOKEN_OPAQUE")
   })
 })

@@ -57,8 +57,8 @@ export async function POST(req: NextRequest) {
       await compare(password, DUMMY_HASH)
       await recordFailedAttempt(emailHash)
       await auditService.log({
-        // userId 0 is a sentinel value for unauthenticated events (unknown email, no FK user exists)
-        userId: 0,
+        // userId null = événement anonyme (email inconnu, pas de FK valide).
+        userId: null,
         action: "UNAUTHORIZED",
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
@@ -85,14 +85,19 @@ export async function POST(req: NextRequest) {
     }
 
     // US-2148 — Block suspended/archived accounts after password validation.
-    // Returns generic 401 with the SAME response body and rate-limit pressure
-    // as `invalidCredentials` to prevent attackers from distinguishing
-    // (a) wrong password, (b) suspended account, (c) unknown account.
-    // Timing : bcrypt has already run on a real hash; the suspended branch
-    // and the wrong-password branch both run `recordFailedAttempt` so the
-    // lockout escalation curve is identical from the outside.
+    // Returns generic 401 with the SAME response body as `invalidCredentials`
+    // to prevent attackers from distinguishing (a) wrong password, (b)
+    // suspended account, (c) unknown account.
+    //
+    // **DoS mitigation** : we do NOT call `recordFailedAttempt` here.
+    // Otherwise an attacker who knows a suspended user's email could keep
+    // the rate-limit lockout extended forever, blocking legitimate
+    // re-activation. The trade-off is a slight timing-oracle differential
+    // (suspended path skips the rate-limit Redis call) — acceptable since
+    // the password DID match (so the suspended user already passes auth).
+    // We DO clear prior failed attempts (the password is correct).
     if (user.status !== "active") {
-      await recordFailedAttempt(emailHash)
+      await clearAttempts(emailHash)
       await auditService.log({
         userId: user.id,
         action: "UNAUTHORIZED",

@@ -65,6 +65,7 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["last_admin_cannot_be_demoted", 409],
   ["last_active_admin_cannot_be_suspended", 409],
   ["cannot_change_own_status", 403],
+  ["cannot_demote_self", 403],
 ])
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {
@@ -87,10 +88,17 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
 
     const ctx = extractRequestContext(req)
     try {
-      const result =
-        parsed.data.role !== undefined
-          ? await userManagementService.updateRole(id, parsed.data.role, user.id, ctx)
-          : await userManagementService.setStatus(id, parsed.data.status!, user.id, ctx)
+      // Type guard explicite : la `.refine` garantit qu'exactement UN champ
+      // est défini, mais TS ne narrow pas. Branche switch lisible et sans `!`.
+      let result
+      if (parsed.data.role !== undefined) {
+        result = await userManagementService.updateRole(id, parsed.data.role, user.id, ctx)
+      } else if (parsed.data.status !== undefined) {
+        result = await userManagementService.setStatus(id, parsed.data.status, user.id, ctx)
+      } else {
+        // Unreachable per Zod refine, but defensively explicit.
+        return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+      }
       return NextResponse.json(result)
     } catch (e) {
       const msg = e instanceof Error ? e.message : "serverError"

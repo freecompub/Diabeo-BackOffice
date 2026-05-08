@@ -134,6 +134,30 @@ describe("userManagementService", () => {
       )
     })
 
+    it("refuses anti-self-demote (admin can't demote own role)", async () => {
+      // Anti-lockout : un admin unique qui se rétrograde locke le cabinet.
+      // La règle est symétrique à `cannot_change_own_status`.
+      await expect(
+        userManagementService.updateRole(42, "DOCTOR", 42),
+      ).rejects.toThrow("cannot_demote_self")
+    })
+
+    it("allows self-promotion (no-op or admin → admin) — only demote blocked", async () => {
+      const mockTx = {
+        user: {
+          findUnique: vi.fn().mockResolvedValue({ role: "ADMIN", status: "active" }),
+          update: vi.fn(),
+          count: vi.fn(),
+        },
+        auditLog: { create: vi.fn() },
+      }
+      prismaMock.$transaction.mockImplementation(
+        (async (cb: any, _opts?: unknown) => cb(mockTx)) as never,
+      )
+      const r = await userManagementService.updateRole(42, "ADMIN", 42)
+      expect(r.changed).toBe(false)
+    })
+
     it("allows demotion when other active ADMINs exist", async () => {
       const mockTx = {
         user: {
@@ -185,11 +209,13 @@ describe("userManagementService", () => {
       )
     })
 
-    it("invalidates sessions on suspend (DB delete + Redis revoke)", async () => {
+    it("invalidates sessions on suspend — selects session.id (cuid) for revocation", async () => {
       const deleteManySpy = vi.fn().mockResolvedValue({ count: 3 })
+      // Critical: must select `id`, not `sessionToken`. The JWT carries
+      // `sid: session.id` and middleware revocation checks against that.
       const findManySpy = vi.fn().mockResolvedValue([
-        { sessionToken: "sid-1" },
-        { sessionToken: "sid-2" },
+        { id: "cuid-1" },
+        { id: "cuid-2" },
       ])
       const mockTx = {
         user: {
@@ -208,7 +234,7 @@ describe("userManagementService", () => {
       await userManagementService.setStatus(1, "suspended", 99)
       expect(findManySpy).toHaveBeenCalledWith({
         where: { userId: 1 },
-        select: { sessionToken: true },
+        select: { id: true },
       })
       expect(deleteManySpy).toHaveBeenCalledWith({ where: { userId: 1 } })
     })

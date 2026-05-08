@@ -42,6 +42,24 @@ describe("backupService.list", () => {
     expect(typeof result.items[0]?.sizeBytes).toBe("number")
   })
 
+  it("returns sizeBytes as string when value exceeds Number.MAX_SAFE_INTEGER", async () => {
+    // PB-scale dump (>= 2^53 bytes ~= 9 PB) — Number conversion would lose
+    // precision. Service falls back to string representation.
+    const huge = BigInt(Number.MAX_SAFE_INTEGER) + 1n
+    prismaMock.backupLog.findMany.mockResolvedValue([
+      {
+        id: 1, backupRef: "huge", status: "completed",
+        location: "s3://x", sizeBytes: huge, durationMs: 100,
+        triggeredBy: 1, errorMessage: null,
+        startedAt: new Date(), completedAt: new Date(),
+      },
+    ] as never)
+
+    const result = await backupService.list({}, 99)
+    expect(typeof result.items[0]?.sizeBytes).toBe("string")
+    expect(result.items[0]?.sizeBytes).toBe(huge.toString())
+  })
+
   it("filters by status", async () => {
     prismaMock.backupLog.findMany.mockResolvedValue([] as never)
     await backupService.list({ status: ["pending", "running"] }, 99)

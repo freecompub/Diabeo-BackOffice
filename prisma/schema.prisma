@@ -277,6 +277,9 @@ model User {
   /// US-2148 — Date de suspension/archivage. Set au moment de la transition.
   statusChangedAt          DateTime? @map("status_changed_at") @db.Timestamptz()
   /// US-2148 — User-ID de l'admin ayant effectué la transition (audit + rollback).
+  /// FK Restrict : empêche la suppression DELETE d'un admin qui a effectué des
+  /// transitions. RGPD Art. 17 utilise l'anonymisation (non-DELETE) — la trace
+  /// reste en colonne, le user est anonymisé via `deletion.service`.
   statusChangedBy          Int?      @map("status_changed_by")
   mfaSecret                String?   @map("mfa_secret")
   mfaEnabled               Boolean   @default(false) @map("mfa_enabled")
@@ -326,9 +329,15 @@ model User {
   acknowledgedAlerts   EmergencyAlert[]      @relation("AlertAcknowledger")
   resolvedAlerts       EmergencyAlert[]      @relation("AlertResolver")
   emergencyActions     EmergencyAlertAction[] @relation("EmergencyActionPerformer")
+  statusTransitionsBy  User[]                @relation("UserStatusChangedBy")
+  statusTransitionedBy User?                 @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
+  triggeredBackups     BackupLog[]           @relation("BackupTriggeredBy")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
+  /// US-2148 — supporte le count anti-lockout `count(active ADMIN)` et le
+  /// filtre admin de la liste users.
+  @@index([status, role])
   @@map("users")
 }
 
@@ -1247,9 +1256,14 @@ model HealthcareService {
   type          ServiceType  @default(clinic)
   /// US-2118 — Numéro RPPS (11 digits) / ADELI (9 digits) pour praticiens
   /// libéraux. Validation Luhn + format côté service. Optionnel pour
-  /// cabinets / hôpitaux. Unique pour empêcher deux services revendiquant
-  /// le même identifiant praticien (intégrité référentielle métier).
-  licenseNumber String?      @unique @map("license_number") @db.VarChar(20)
+  /// cabinets / hôpitaux.
+  ///
+  /// **Pas d'unique constraint inline** : un médecin peut légitimement
+  /// changer de cabinet (RPPS suit le praticien, pas la structure). Une
+  /// contrainte unique inline rejetterait la création du nouveau cabinet
+  /// avant suppression de l'ancien. La validation business (warning
+  /// "RPPS déjà utilisé") est appliquée au service layer si besoin futur.
+  licenseNumber String?      @map("license_number") @db.VarChar(11)
 
   members         HealthcareMember[]
   patientServices PatientService[]
@@ -1529,7 +1543,10 @@ model PushScheduledNotification {
 
 model AuditLog {
   id         String   @id @default(uuid())
-  userId     Int      @map("user_id")
+  /// Nullable pour les événements anonymes (login email inconnu) et les
+  /// événements système (cron, worker). FK Restrict empêche la suppression
+  /// d'un user qui a des audit logs (RGPD Art. 17 → anonymisation, pas DELETE).
+  userId     Int?     @map("user_id")
   action     String   @db.VarChar(30)
   resource   String   @db.VarChar(30)
   resourceId String?  @map("resource_id")
@@ -1543,7 +1560,7 @@ model AuditLog {
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([resource, resourceId, createdAt])
@@ -1725,12 +1742,12 @@ model BackupLog {
   durationMs    Int?         @map("duration_ms")
   /// User-ID de l'admin ayant déclenché le backup (NULL si cron auto).
   triggeredBy   Int?         @map("triggered_by")
+  triggerer     User?        @relation("BackupTriggeredBy", fields: [triggeredBy], references: [id], onDelete: Restrict)
   /// Brève description erreur (non-PII). Stack traces dans les logs serveur.
   errorMessage  String?      @map("error_message") @db.VarChar(500)
   startedAt     DateTime     @default(now()) @map("started_at") @db.Timestamptz()
   completedAt   DateTime?    @map("completed_at") @db.Timestamptz()
 
   @@index([status, startedAt])
-  @@index([triggeredBy, startedAt])
   @@map("backup_logs")
 }
