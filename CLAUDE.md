@@ -529,11 +529,20 @@ pnpm dev                               # Next.js sur localhost:3000
 docker compose --profile local up      # PostgreSQL 16 local uniquement
 
 # Prisma 7+ (générateur client, extensions PostgreSQL)
-pnpm prisma migrate dev --name name    # Créer et appliquer migration localement
-pnpm prisma migrate deploy             # Appliquer migrations en prod
+# US-2267 — Migrations versionnées : `db push` interdit en prod, voir docs/runbook/migrations.md
+pnpm prisma migrate dev --name name    # Créer migration locale + apply (commit le dossier généré)
+pnpm prisma migrate deploy             # Appliquer migrations en prod (idempotent, sans shadow DB)
+pnpm prisma migrate status             # État des migrations (pending / applied)
+pnpm prisma migrate resolve --applied <ts>_<name>  # Marquer applied sans rejouer (DB existante)
 pnpm prisma studio                     # Interface graphique BDD (localhost:5555)
 pnpm prisma db seed                    # Injecter données de test (5 users, 2 patients, 30j CGM)
 pnpm prisma generate                   # Régénérer client @prisma/client (auto avec migrate)
+
+# Vérification cohérence schema ↔ migrations (CI gate, US-2267)
+# SHADOW_DATABASE_URL requis — DB séparée que Prisma utilise pour appliquer les migrations
+# en isolation. Exit 0 = no drift, Exit 2 = drift détecté → CI échoue.
+pnpm prisma migrate diff --from-migrations prisma/migrations \
+  --to-schema prisma/schema.prisma --exit-code
 
 # Chiffrement & Auth — configuration requise
 export HEALTH_DATA_ENCRYPTION_KEY="..."  # 32 bytes en hex (64 caractères)
@@ -609,6 +618,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 | 14 | 48 tables × 11 domaines | Modèle riche HDS : utilisateurs, patients, insuline, appareils, équipe, audit |
 | 15 | Transaction Prisma pour bolus | Calcul + log atomique — consistance garantie |
 | 16 | JWT RS256 custom (pas NextAuth) | Compatibilité API iOS existante, contrôle total payload/session |
+| 17 | Migrations Prisma versionnées (US-2267) | Audit HDS exigeable, rollback formel, CI drift gate. `db push` interdit en prod. Voir `docs/runbook/migrations.md`. |
 
 ---
 

@@ -134,8 +134,11 @@ cmd_update() {
   log "Regenerating Prisma client…"
   pnpm prisma generate
 
-  log "Applying safe (additive) schema changes via db push…"
-  pnpm prisma db push --accept-data-loss=false
+  log "Applying versioned migrations (US-2267)…"
+  # `migrate deploy` est idempotent — ne ré-applique pas les migrations déjà
+  # passées. Voir docs/runbook/migrations.md pour le workflow complet (incluant
+  # le switch d'une DB pré-US-2267 via `migrate resolve --applied`).
+  pnpm prisma migrate deploy
 
   # TypeCheck is cheap and catches `prisma generate` drift locally. Tests
   # are NOT re-run here — CI owns the test gate on the merge commit SHA

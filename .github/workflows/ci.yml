@@ -118,6 +118,67 @@ jobs:
           retention-days: 7
 
   # ──────────────────────────────────────────────────────────────
+  # US-2267 — Schema drift check
+  # Échoue si quelqu'un modifie schema.prisma sans créer la migration.
+  # ──────────────────────────────────────────────────────────────
+  migrations-check:
+    name: Migrations Drift Check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: diabeo
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: diabeo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U diabeo"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm prisma generate --no-hints
+
+      - name: Create shadow DB
+        run: |
+          PGPASSWORD=password psql -h localhost -U diabeo -d postgres \
+            -c "CREATE DATABASE diabeo_shadow;"
+
+      # Vérifie que prisma/migrations + schema.prisma sont cohérents.
+      # Exit codes : 0 = no drift, 2 = drift detected (fail), 1 = error.
+      - name: Check schema drift (migrations ↔ schema.prisma)
+        run: |
+          pnpm prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma \
+            --exit-code
+        env:
+          DATABASE_URL: postgresql://diabeo:password@localhost:5432/diabeo?schema=public
+          SHADOW_DATABASE_URL: postgresql://diabeo:password@localhost:5432/diabeo_shadow?schema=public
+
+      # Sanity check : la baseline + post_deploy s'appliquent sur DB neuve.
+      - name: Apply migrations on fresh DB
+        run: pnpm prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://diabeo:password@localhost:5432/diabeo?schema=public
+
+  # ──────────────────────────────────────────────────────────────
   # Lint + Type check
   # ──────────────────────────────────────────────────────────────
   lint:
