@@ -6,9 +6,13 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
+import { ServiceType } from "@prisma/client"
 import { requireRole, AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { healthcareManagementService } from "@/lib/services/healthcare-management.service"
+import {
+  healthcareManagementService,
+  TIME_REGEX,
+} from "@/lib/services/healthcare-management.service"
 import { logger } from "@/lib/logger"
 
 interface RouteParams {
@@ -44,7 +48,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   }
 }
 
-const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time_format_invalid")
+const timeSchema = z.string().regex(TIME_REGEX, "time_format_invalid")
 const daySchema = z.array(z.tuple([timeSchema, timeSchema])).max(4)
 const openingHoursSchema = z.object({
   mon: daySchema.optional(),
@@ -58,11 +62,11 @@ const openingHoursSchema = z.object({
 
 const patchSchema = z.object({
   name: z.string().trim().min(2).max(255).optional(),
-  type: z.enum(["clinic", "hospital", "freelance"]).optional(),
+  type: z.nativeEnum(ServiceType).optional(),
   establishment: z.string().trim().max(255).nullable().optional(),
   addressLine1: z.string().trim().max(255).nullable().optional(),
   addressLine2: z.string().trim().max(255).nullable().optional(),
-  postalCode: z.string().trim().max(20).nullable().optional(),
+  postalCode: z.string().trim().max(10).nullable().optional(),
   city: z.string().trim().max(100).nullable().optional(),
   country: z.string().trim().length(2).nullable().optional(),
   phone: z.string().trim().max(30).nullable().optional(),
@@ -86,6 +90,9 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["opening_hours_invalid_time_format", 400],
   ["opening_hours_close_before_open", 400],
   ["opening_hours_ranges_overlap", 400],
+  ["manager_not_found", 400],
+  ["manager_role_invalid", 400],
+  ["manager_inactive", 400],
 ])
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {

@@ -35,7 +35,7 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex h-screen w-64 flex-col border-r border-[var(--color-border)] bg-white"
+      className="flex h-screen w-64 flex-col border-e border-[var(--color-border)] bg-white"
       aria-label="Navigation principale"
     >
       {/* Logo */}

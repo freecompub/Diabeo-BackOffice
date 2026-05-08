@@ -613,6 +613,75 @@
       "other": "Autres"
     }
   },
+  "adjustments": {
+    "title": "Propositions d'ajustement",
+    "pendingTitle": "Propositions en attente",
+    "refreshList": "Rafraichir la liste",
+    "patientReason": "Patient #{id} — Raison : {reason}",
+    "accept": "Accepter",
+    "reject": "Rejeter",
+    "acceptAria": "Accepter la proposition pour le patient {id}",
+    "rejectAria": "Rejeter la proposition pour le patient {id}",
+    "acceptedComment": "Valide",
+    "rejectedComment": "Refuse",
+    "listAria": "Liste des propositions en attente",
+    "valueChanged": "Valeur changee de {from} a {to}",
+    "loadingMore": "Chargement en cours",
+    "rowError": "Echec de l'action sur cette proposition. Reessayer.",
+    "parameter": {
+      "insulinSensitivityFactor": "Facteur de sensibilite (FSI)",
+      "insulinToCarbRatio": "Ratio I/G (RIG)",
+      "basalRate": "Debit basal"
+    }
+  },
+  "devicePairing": {
+    "title": "Appairage appareil",
+    "noPatient": "Aucun patient selectionne.",
+    "stepXofY": "Etape {current} sur {total}",
+    "progressAria": "Progression de l'appairage",
+    "stepProgressAnnounce": "Etape {current} sur {total} : {label}",
+    "previousStepAria": "Etape precedente",
+    "nextStepAria": "Etape suivante",
+    "stepLabel": {
+      "typeModel": "Type & Modele",
+      "serialConnection": "Serie & Connexion",
+      "confirmation": "Confirmation"
+    },
+    "field": {
+      "category": "Categorie",
+      "categoryPlaceholder": "Selectionner...",
+      "brand": "Marque",
+      "brandPlaceholder": "Ex : Dexcom, Abbott, Medtronic",
+      "model": "Modele",
+      "modelPlaceholder": "Ex : G7, FreeStyle Libre 3",
+      "sn": "Numero de serie",
+      "snPlaceholder": "Imprime sur l'appareil",
+      "connectionType": "Type de connexion",
+      "connectionGroupAria": "Choix du type de connexion (multi-selection)"
+    },
+    "category": {
+      "glucometer": "Glucometre",
+      "cgm": "Capteur CGM",
+      "insulinPump": "Pompe a insuline",
+      "insulinPen": "Stylo connecte",
+      "healthApp": "Application sante"
+    },
+    "connection": {
+      "bluetooth": "Bluetooth",
+      "usb": "USB",
+      "api": "API cloud"
+    },
+    "summary": {
+      "category": "Categorie",
+      "brandModel": "Marque / Modele",
+      "sn": "N° serie",
+      "connection": "Connexion"
+    },
+    "submitError": "Echec de l'enregistrement de l'appareil. Reessayer."
+  },
+  "localeSwitcher": {
+    "switchedAnnounce": "Langue changee. La page va se recharger."
+  },
   "profile": {
     "loading": "Chargement du profil...",
     "subtitle": "Gestion de votre compte et preferences",

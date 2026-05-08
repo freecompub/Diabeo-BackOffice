@@ -8,9 +8,14 @@
  * **Patient context** : `?patientId=X` est requis dans l'URL. La page valide
  * via l'API (404 si inaccessible).
  *
- * **Accessibilité** : étape courante annoncée via `aria-current="step"`,
- * progression via `<ol>` + `aria-label`. Boutons "Précédent / Suivant /
- * Confirmer" avec libellés explicites.
+ * **i18n** : tous les libellés via `next-intl` (FR/EN/AR), incluant la
+ * direction RTL pour AR (la racine `<html dir="rtl">` est gérée au layout).
+ *
+ * **Accessibilité** :
+ *  - étape courante annoncée via `aria-current="step"` + live region polite
+ *  - groupes de boutons toggle = `<fieldset>` + `<legend>`
+ *  - inputs requis = `aria-required="true"` (en plus du gating `canGoNext`)
+ *  - marges logiques (`me-`, `ms-`) au lieu de physiques pour bon rendu RTL
  */
 
 "use client"
@@ -43,26 +48,32 @@ interface FormData {
   connectionTypes: ConnectionType[]
 }
 
-const CATEGORY_LABELS: Record<DeviceCategory, string> = {
-  glucometer: "Glucomètre",
-  cgm: "Capteur CGM",
-  insulinPump: "Pompe à insuline",
-  insulinPen: "Stylo connecté",
-  healthApp: "Application santé",
-}
+const CATEGORIES: readonly DeviceCategory[] = [
+  "glucometer",
+  "cgm",
+  "insulinPump",
+  "insulinPen",
+  "healthApp",
+] as const
 
-const CONNECTION_LABELS: Record<ConnectionType, string> = {
-  bluetooth: "Bluetooth",
-  usb: "USB",
-  api: "API cloud",
-}
+const CONNECTION_TYPES: readonly ConnectionType[] = [
+  "bluetooth",
+  "usb",
+  "api",
+] as const
 
-const STEPS = ["Type & Modèle", "Série & Connexion", "Confirmation"] as const
+const STEP_LABEL_KEYS = [
+  "typeModel",
+  "serialConnection",
+  "confirmation",
+] as const
 
 export default function DevicePairingWizardPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const t = useTranslations("common")
+  const tCommon = useTranslations("common")
+  const tWiz = useTranslations("devicePairing")
+
   const patientIdParam = searchParams.get("patientId")
   const patientId = patientIdParam ? Number.parseInt(patientIdParam, 10) : null
 
@@ -80,18 +91,18 @@ export default function DevicePairingWizardPage() {
   if (!patientId || patientId <= 0) {
     return (
       <div className="space-y-6">
-        <DashboardHeader title="Appairage appareil" />
+        <DashboardHeader title={tWiz("title")} />
         <Card>
           <CardContent className="py-8 text-center">
             <p className="text-sm text-[var(--color-muted-foreground)]">
-              Aucun patient sélectionné.
+              {tWiz("noPatient")}
             </p>
             <Button
               variant="outline"
               className="mt-4"
               onClick={() => router.push("/patients")}
             >
-              Retour
+              {tCommon("back")}
             </Button>
           </CardContent>
         </Card>
@@ -124,9 +135,13 @@ export default function DevicePairingWizardPage() {
         }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      // Reset submitting AVANT navigation : si la transition client-side
+      // est lente (slow 3G, hydratation), le bouton ne reste pas bloqué
+      // pendant la navigation. router.push est non-bloquant.
+      setSubmitting(false)
       router.push(`/patients/${patientId}?tab=devices`)
     } catch {
-      setError(t("error"))
+      setError(tWiz("submitError"))
       setSubmitting(false)
     }
   }
@@ -140,22 +155,45 @@ export default function DevicePairingWizardPage() {
     }))
   }
 
+  const currentStepLabel = tWiz(
+    `stepLabel.${STEP_LABEL_KEYS[step] ?? STEP_LABEL_KEYS[0]}`,
+  )
+
   return (
     <div className="space-y-6">
-      <DashboardHeader title="Appairage appareil" />
+      <DashboardHeader title={tWiz("title")} />
+
+      {/* Live region — annonce le changement d'étape aux lecteurs d'écran. */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        role="status"
+        className="sr-only"
+      >
+        {tWiz("stepProgressAnnounce", {
+          current: step + 1,
+          total: STEP_LABEL_KEYS.length,
+          label: currentStepLabel,
+        })}
+      </p>
 
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">
-            Patient #{patientId} — Étape {step + 1} sur {STEPS.length}
+            <bdi>{`#${patientId}`}</bdi>
+            {" — "}
+            {tWiz("stepXofY", {
+              current: step + 1,
+              total: STEP_LABEL_KEYS.length,
+            })}
           </CardTitle>
           <ol
             className="mt-3 flex gap-2 text-xs"
-            aria-label="Progression de l'appairage"
+            aria-label={tWiz("progressAria")}
           >
-            {STEPS.map((label, i) => (
+            {STEP_LABEL_KEYS.map((labelKey, i) => (
               <li
-                key={label}
+                key={labelKey}
                 aria-current={i === step ? "step" : undefined}
                 className="flex items-center gap-1"
               >
@@ -169,7 +207,7 @@ export default function DevicePairingWizardPage() {
                     i === step ? "font-medium" : "text-[var(--color-muted-foreground)]"
                   }
                 >
-                  {label}
+                  {tWiz(`stepLabel.${labelKey}`)}
                 </span>
               </li>
             ))}
@@ -178,7 +216,10 @@ export default function DevicePairingWizardPage() {
 
         <CardContent className="space-y-4">
           {error && (
-            <p role="alert" className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+            <p
+              role="alert"
+              className="rounded-md bg-red-50 p-3 text-sm text-red-700"
+            >
               {error}
             </p>
           )}
@@ -186,41 +227,45 @@ export default function DevicePairingWizardPage() {
           {step === 0 && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="category">Catégorie</Label>
+                <Label htmlFor="category">{tWiz("field.category")}</Label>
                 <Select
                   value={data.category}
                   onValueChange={(v) =>
                     setData((d) => ({ ...d, category: v as DeviceCategory }))
                   }
                 >
-                  <SelectTrigger id="category">
-                    <SelectValue placeholder="Sélectionner..." />
+                  <SelectTrigger id="category" aria-required="true">
+                    <SelectValue placeholder={tWiz("field.categoryPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(CATEGORY_LABELS) as DeviceCategory[]).map((c) => (
+                    {CATEGORIES.map((c) => (
                       <SelectItem key={c} value={c}>
-                        {CATEGORY_LABELS[c]}
+                        {tWiz(`category.${c}`)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="brand">Marque</Label>
+                <Label htmlFor="brand">{tWiz("field.brand")}</Label>
                 <Input
                   id="brand"
+                  required
+                  aria-required="true"
                   value={data.brand}
                   onChange={(e) => setData((d) => ({ ...d, brand: e.target.value }))}
-                  placeholder="Ex: Dexcom, Abbott, Medtronic"
+                  placeholder={tWiz("field.brandPlaceholder")}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="model">Modèle</Label>
+                <Label htmlFor="model">{tWiz("field.model")}</Label>
                 <Input
                   id="model"
+                  required
+                  aria-required="true"
                   value={data.model}
                   onChange={(e) => setData((d) => ({ ...d, model: e.target.value }))}
-                  placeholder="Ex: G7, FreeStyle Libre 3"
+                  placeholder={tWiz("field.modelPlaceholder")}
                 />
               </div>
             </>
@@ -229,18 +274,28 @@ export default function DevicePairingWizardPage() {
           {step === 1 && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="sn">Numéro de série</Label>
+                <Label htmlFor="sn">{tWiz("field.sn")}</Label>
                 <Input
                   id="sn"
+                  required
+                  aria-required="true"
                   value={data.sn}
                   onChange={(e) => setData((d) => ({ ...d, sn: e.target.value }))}
-                  placeholder="Imprimé sur l'appareil"
+                  placeholder={tWiz("field.snPlaceholder")}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Type de connexion</Label>
+              {/* `<fieldset>` + `<legend>` = sémantique correcte pour un groupe
+                  de boutons toggle multi-sélection. Plus accessible qu'un Label
+                  décoratif. */}
+              <fieldset
+                className="space-y-2"
+                aria-label={tWiz("field.connectionGroupAria")}
+              >
+                <legend className="text-sm font-medium leading-none">
+                  {tWiz("field.connectionType")}
+                </legend>
                 <div className="flex flex-wrap gap-2">
-                  {(Object.keys(CONNECTION_LABELS) as ConnectionType[]).map((c) => (
+                  {CONNECTION_TYPES.map((c) => (
                     <Button
                       key={c}
                       type="button"
@@ -249,37 +304,47 @@ export default function DevicePairingWizardPage() {
                       onClick={() => toggleConnection(c)}
                       aria-pressed={data.connectionTypes.includes(c)}
                     >
-                      {CONNECTION_LABELS[c]}
+                      {tWiz(`connection.${c}`)}
                     </Button>
                   ))}
                 </div>
-              </div>
+              </fieldset>
             </>
           )}
 
           {step === 2 && (
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">Catégorie</dt>
+                <dt className="text-[var(--color-muted-foreground)]">
+                  {tWiz("summary.category")}
+                </dt>
                 <dd className="font-medium">
-                  {data.category && CATEGORY_LABELS[data.category]}
+                  {data.category && tWiz(`category.${data.category}`)}
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">Marque / Modèle</dt>
+                <dt className="text-[var(--color-muted-foreground)]">
+                  {tWiz("summary.brandModel")}
+                </dt>
                 <dd className="font-medium">
-                  {data.brand} {data.model}
+                  <bdi>{`${data.brand} ${data.model}`}</bdi>
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">N° série</dt>
-                <dd className="font-mono text-xs">{data.sn}</dd>
+                <dt className="text-[var(--color-muted-foreground)]">
+                  {tWiz("summary.sn")}
+                </dt>
+                <dd className="font-mono text-xs">
+                  <bdi>{data.sn}</bdi>
+                </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">Connexion</dt>
+                <dt className="text-[var(--color-muted-foreground)]">
+                  {tWiz("summary.connection")}
+                </dt>
                 <dd className="font-medium">
                   {data.connectionTypes
-                    .map((c) => CONNECTION_LABELS[c])
+                    .map((c) => tWiz(`connection.${c}`))
                     .join(", ")}
                 </dd>
               </div>
@@ -291,21 +356,21 @@ export default function DevicePairingWizardPage() {
               variant="outline"
               onClick={() => setStep((s) => Math.max(0, s - 1))}
               disabled={step === 0 || submitting}
-              aria-label="Étape précédente"
+              aria-label={tWiz("previousStepAria")}
             >
-              {t("previous")}
+              {tCommon("previous")}
             </Button>
-            {step < STEPS.length - 1 ? (
+            {step < STEP_LABEL_KEYS.length - 1 ? (
               <Button
                 onClick={() => setStep((s) => s + 1)}
                 disabled={!canGoNext}
-                aria-label="Étape suivante"
+                aria-label={tWiz("nextStepAria")}
               >
-                {t("next")}
+                {tCommon("next")}
               </Button>
             ) : (
               <Button onClick={() => void submit()} disabled={submitting}>
-                {submitting ? t("loading") : t("confirm")}
+                {submitting ? tCommon("loading") : tCommon("confirm")}
               </Button>
             )}
           </div>

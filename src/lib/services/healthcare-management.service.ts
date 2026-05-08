@@ -18,6 +18,12 @@ import type { ServiceType } from "@prisma/client"
 
 const MAX_LIST_LIMIT = 200
 
+/**
+ * Source unique du regex HH:MM (00:00 – 23:59) — ré-exporté pour les
+ * routes Zod afin d'éviter trois copies divergentes.
+ */
+export const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
+
 interface ListFilter {
   /** Filtre type structure. */
   type?: ServiceType
@@ -43,8 +49,6 @@ export interface OpeningHours {
   sat?: DaySchedule
   sun?: DaySchedule
 }
-
-const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
 
 /**
  * Validate `OpeningHours`. Returns null when valid, error code otherwise.
@@ -159,6 +163,28 @@ export function validateLicenseNumber(value: string): string | null {
   return null
 }
 
+/**
+ * Vérifie qu'un `managerId` proposé pointe sur un User actif au rôle compatible
+ * (DOCTOR ou ADMIN). Empêche un caller d'assigner n'importe quel ID arbitraire
+ * comme manager d'un cabinet (escalade implicite ou pollution référentielle).
+ *
+ * Throw : `manager_not_found` | `manager_role_invalid` | `manager_inactive`.
+ */
+async function assertManagerEligible(
+  tx: Prisma.TransactionClient,
+  managerId: number,
+): Promise<void> {
+  const u = await tx.user.findUnique({
+    where: { id: managerId },
+    select: { id: true, role: true, status: true },
+  })
+  if (!u) throw new Error("manager_not_found")
+  if (u.role !== "DOCTOR" && u.role !== "ADMIN") {
+    throw new Error("manager_role_invalid")
+  }
+  if (u.status !== "active") throw new Error("manager_inactive")
+}
+
 export const healthcareManagementService = {
   async list(filter: ListFilter, auditUserId: number, ctx?: AuditContext) {
     const limit = Math.min(filter.limit ?? 50, MAX_LIST_LIMIT)
@@ -211,6 +237,10 @@ export const healthcareManagementService = {
     }
 
     return prisma.$transaction(async (tx) => {
+      if (input.managerId != null) {
+        await assertManagerEligible(tx, input.managerId)
+      }
+
       const created = await tx.healthcareService.create({
         data: {
           name: input.name.trim(),
@@ -240,7 +270,7 @@ export const healthcareManagementService = {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
-        metadata: { type: input.type },
+        metadata: { type: input.type, managerId: created.managerId },
       })
 
       return created
@@ -274,6 +304,12 @@ export const healthcareManagementService = {
       const targetLicense = input.licenseNumber ?? current.licenseNumber
       if (targetType === "freelance" && !targetLicense?.trim()) {
         throw new Error("license_number_required_for_freelance")
+      }
+
+      // Si le caller (re)assigne un manager non null, valider son éligibilité.
+      // Un explicite `null` (désassignation) n'a pas besoin de validation.
+      if (input.managerId != null) {
+        await assertManagerEligible(tx, input.managerId)
       }
 
       const updated = await tx.healthcareService.update({
@@ -322,8 +358,11 @@ export const healthcareManagementService = {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
-        oldValue: { type: current.type, name: current.name },
-        newValue: { type: updated.type, name: updated.name },
+        // `managerId` capture explicite : changement de manager = event de
+        // contrôle d'accès (le manager voit tous les patients du service via
+        // PatientService) — doit apparaître dans la trace d'audit.
+        oldValue: { type: current.type, name: current.name, managerId: current.managerId },
+        newValue: { type: updated.type, name: updated.name, managerId: updated.managerId },
       })
 
       return updated

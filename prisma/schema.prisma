@@ -1253,7 +1253,7 @@ model HealthcareService {
   /// envoi documents postaux, etc.
   addressLine1  String?      @map("address_line1") @db.VarChar(255)
   addressLine2  String?      @map("address_line2") @db.VarChar(255)
-  postalCode    String?      @map("postal_code") @db.VarChar(20)
+  postalCode    String?      @map("postal_code") @db.VarChar(10)
   city          String?      @db.VarChar(100)
   country       String?      @db.Char(2)
   /// US-2117 — Coordonnées de contact (publiques cabinet).
@@ -1273,7 +1273,11 @@ model HealthcareService {
   /// patient (qui est par patient). Le manager voit tous les patients du
   /// service via PatientService (relation existante).
   managerId     Int?         @map("manager_id")
-  manager       User?        @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: SetNull)
+  /// `Restrict` cohérent avec le reste du schéma (statusChangedBy, BackupLog.triggeredBy) :
+  /// la suppression d'un User manager d'un service échoue côté DB, forçant un
+  /// admin à réassigner explicitement avant deletion. Évite l'orphelinage silencieux
+  /// d'une structure dont le manager a été supprimé.
+  manager       User?        @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: Restrict)
   noVideos      Boolean      @default(false) @map("no_videos")
   noFood        Boolean      @default(false) @map("no_food")
   logo          String?      @db.VarChar(500)

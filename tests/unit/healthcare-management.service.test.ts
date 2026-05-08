@@ -184,6 +184,112 @@ describe("healthcareManagementService.update", () => {
  *  - close > open par plage
  *  - pas de chevauchement entre plages d'un même jour
  */
+/**
+ * US-2117 — Validation `managerId` lors d'un create / update :
+ *  - L'utilisateur référencé doit exister (sinon `manager_not_found`)
+ *  - Son rôle doit être DOCTOR ou ADMIN (sinon `manager_role_invalid`)
+ *  - Son statut doit être `active` (sinon `manager_inactive`)
+ *
+ * Risque maitigé : assignation arbitraire d'un manager à un cabinet via un
+ * `managerId` non vérifié, qui donnerait visibilité à tous les patients du
+ * service via `PatientService` sans contrôle.
+ */
+describe("healthcareManagementService — managerId eligibility", () => {
+  it("rejects unknown managerId on create", async () => {
+    const mockTx = {
+      user: { findUnique: vi.fn().mockResolvedValue(null) },
+      healthcareService: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+    }
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as never)
+
+    await expect(
+      healthcareManagementService.create(
+        { name: "CHU Test", type: "clinic", managerId: 999 },
+        99,
+      ),
+    ).rejects.toThrow("manager_not_found")
+    expect(mockTx.healthcareService.create).not.toHaveBeenCalled()
+  })
+
+  it("rejects manager with VIEWER role on create", async () => {
+    const mockTx = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: 7, role: "VIEWER", status: "active" }),
+      },
+      healthcareService: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+    }
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as never)
+
+    await expect(
+      healthcareManagementService.create(
+        { name: "CHU Test", type: "clinic", managerId: 7 },
+        99,
+      ),
+    ).rejects.toThrow("manager_role_invalid")
+  })
+
+  it("rejects suspended manager on create", async () => {
+    const mockTx = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: 7, role: "DOCTOR", status: "suspended" }),
+      },
+      healthcareService: { create: vi.fn() },
+      auditLog: { create: vi.fn() },
+    }
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as never)
+
+    await expect(
+      healthcareManagementService.create(
+        { name: "CHU Test", type: "clinic", managerId: 7 },
+        99,
+      ),
+    ).rejects.toThrow("manager_inactive")
+  })
+
+  it("accepts manager with DOCTOR role + active on create", async () => {
+    const mockTx = {
+      user: {
+        findUnique: vi.fn().mockResolvedValue({ id: 7, role: "DOCTOR", status: "active" }),
+      },
+      healthcareService: {
+        create: vi.fn().mockResolvedValue({
+          id: 1, name: "CHU Test", type: "clinic", managerId: 7,
+        }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    }
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as never)
+
+    const result = await healthcareManagementService.create(
+      { name: "CHU Test", type: "clinic", managerId: 7 },
+      99,
+    )
+    expect(result.managerId).toBe(7)
+  })
+
+  it("validates managerId only when reassigning (null is allowed)", async () => {
+    const mockTx = {
+      user: { findUnique: vi.fn() },
+      healthcareService: {
+        findUnique: vi.fn().mockResolvedValue({
+          id: 1, name: "X", type: "clinic", licenseNumber: null, managerId: 7,
+        }),
+        update: vi.fn().mockResolvedValue({
+          id: 1, name: "X", type: "clinic", managerId: null,
+        }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    }
+    prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as never)
+
+    // Assigning null = unassign → no eligibility check needed.
+    await healthcareManagementService.update(1, { managerId: null }, 99)
+    expect(mockTx.user.findUnique).not.toHaveBeenCalled()
+  })
+})
+
 describe("validateOpeningHours", () => {
   it("accepts a valid weekly schedule with lunch break", () => {
     const ok = validateOpeningHours({

@@ -2,15 +2,19 @@
  * US-2047 — Page médecin de validation des propositions d'ajustement.
  *
  * Affiche la liste des `AdjustmentProposal` en statut `pending` avec :
- *  - filtre patientId / parameterType
- *  - boutons accepter / rejeter
+ *  - boutons accepter / rejeter (par ligne, erreur scopée)
  *  - lien vers fiche patient
+ *  - i18n FR / EN / AR (incluant RTL via dir="rtl" sur <html>)
  *
  * **RBAC** : DOCTOR (validation finale = engagement de prise en charge).
  * Le backend `adjustment.service` enforce déjà cette règle.
  *
- * **Accessibilité** : tableau ARIA, boutons avec `aria-label`, focus management
- * sur les actions destructrices.
+ * **Accessibilité** :
+ *  - liste sémantique avec `aria-label`
+ *  - boutons avec `aria-label` contextuel patient
+ *  - région `aria-live="polite"` pour annoncer accept/reject aux SR
+ *  - `aria-busy` sur le bouton refresh + `role="status"` sur spinner
+ *  - valeurs numériques wrappées en `<bdi>` pour le rendu RTL correct
  */
 
 "use client"
@@ -23,40 +27,47 @@ import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react"
 import { useFormatters } from "@/hooks/useFormatters"
 import { useTranslations } from "next-intl"
+import type { AdjustableParameter, ProposalStatus } from "@prisma/client"
 
-type ProposalStatus = "pending" | "accepted" | "rejected" | "expired"
-type ParameterType = "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate"
-
+/**
+ * Aligné sur `model AdjustmentProposal` (prisma/schema.prisma:1030) :
+ *  - `id` : UUID String (pas number — c'était un bug rendant le spinner inactif)
+ *  - `parameterType` : enum Prisma `AdjustableParameter`
+ *  - `currentValue` / `proposedValue` : Decimal sérialisé en string par Prisma JSON
+ *
+ * Les Decimal arrivent en string (sérialisation JSON Prisma) — on parse côté
+ * affichage uniquement (pas de calcul ici).
+ */
 interface Proposal {
-  id: number
+  id: string
   patientId: number
-  parameter: ParameterType
+  parameterType: AdjustableParameter
   reason: string
-  oldValue: number | null
-  newValue: number | null
+  currentValue: string
+  proposedValue: string
   status: ProposalStatus
   createdAt: string
   reviewedBy: number | null
   reviewedAt: string | null
 }
 
-const PARAMETER_LABELS: Record<ParameterType, string> = {
-  insulinSensitivityFactor: "Facteur de sensibilité (ISF)",
-  insulinToCarbRatio: "Ratio I/G (ICR)",
-  basalRate: "Débit basal",
-}
-
 export default function AdjustmentProposalsPage() {
   const fmt = useFormatters()
-  const t = useTranslations("common")
+  const tCommon = useTranslations("common")
+  const tAdj = useTranslations("adjustments")
+
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [actionPending, setActionPending] = useState<number | null>(null)
+  const [globalError, setGlobalError] = useState<string | null>(null)
+  /** Erreur scopée par ligne — l'échec d'une accept/reject ne masque pas les autres. */
+  const [rowErrors, setRowErrors] = useState<Map<string, string>>(new Map())
+  const [actionPending, setActionPending] = useState<string | null>(null)
+  /** Message d'annonce SR (live region) après accept/reject réussi. */
+  const [liveAnnouncement, setLiveAnnouncement] = useState<string>("")
 
   const fetchProposals = useCallback(async () => {
     setLoading(true)
-    setError(null)
+    setGlobalError(null)
     try {
       const res = await fetch("/api/adjustment-proposals?status=pending", {
         credentials: "include",
@@ -65,30 +76,52 @@ export default function AdjustmentProposalsPage() {
       const data = (await res.json()) as Proposal[]
       setProposals(Array.isArray(data) ? data : [])
     } catch {
-      setError(t("error"))
+      setGlobalError(tCommon("error"))
     } finally {
       setLoading(false)
     }
-  }, [t])
+  }, [tCommon])
 
   useEffect(() => {
     void fetchProposals()
   }, [fetchProposals])
 
-  const review = async (id: number, action: "accept" | "reject") => {
-    setActionPending(id)
+  const review = async (proposal: Proposal, action: "accept" | "reject") => {
+    setActionPending(proposal.id)
+    setRowErrors((prev) => {
+      const next = new Map(prev)
+      next.delete(proposal.id)
+      return next
+    })
     try {
-      const res = await fetch(`/api/adjustment-proposals/${id}/${action}`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ comment: action === "accept" ? "Validé" : "Refusé" }),
-      })
+      const res = await fetch(
+        `/api/adjustment-proposals/${proposal.id}/${action}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            comment:
+              action === "accept"
+                ? tAdj("acceptedComment")
+                : tAdj("rejectedComment"),
+          }),
+        },
+      )
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      // Optimistic remove from list
-      setProposals((prev) => prev.filter((p) => p.id !== id))
+      // SR announcement avant retrait visuel.
+      setLiveAnnouncement(
+        action === "accept"
+          ? tAdj("acceptAria", { id: proposal.patientId })
+          : tAdj("rejectAria", { id: proposal.patientId }),
+      )
+      setProposals((prev) => prev.filter((p) => p.id !== proposal.id))
     } catch {
-      setError(t("error"))
+      setRowErrors((prev) => {
+        const next = new Map(prev)
+        next.set(proposal.id, tAdj("rowError"))
+        return next
+      })
     } finally {
       setActionPending(null)
     }
@@ -96,82 +129,136 @@ export default function AdjustmentProposalsPage() {
 
   return (
     <div className="space-y-6">
-      <DashboardHeader title="Propositions d'ajustement" />
+      <DashboardHeader title={tAdj("title")} />
+
+      {/* Live region — annonce non-visuelle accept/reject aux lecteurs d'écran. */}
+      <p
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+        role="status"
+      >
+        {liveAnnouncement}
+      </p>
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-lg">Propositions en attente</CardTitle>
+          <CardTitle className="text-lg">{tAdj("pendingTitle")}</CardTitle>
           <Button
             variant="outline"
             size="sm"
             onClick={() => void fetchProposals()}
             disabled={loading}
-            aria-label="Rafraîchir la liste"
+            aria-label={tAdj("refreshList")}
+            aria-busy={loading}
           >
-            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            {t("refresh")}
+            <RefreshCw
+              className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"}
+              aria-hidden="true"
+            />
+            <span className="ms-1">{tCommon("refresh")}</span>
           </Button>
         </CardHeader>
         <CardContent>
-          {error && (
-            <p role="alert" className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
-              {error}
+          {globalError && (
+            <p
+              role="alert"
+              className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700"
+            >
+              {globalError}
             </p>
           )}
 
           {loading && proposals.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[var(--color-muted-foreground)]">
-              {t("loading")}
+            <p
+              role="status"
+              aria-live="polite"
+              className="py-8 text-center text-sm text-[var(--color-muted-foreground)]"
+            >
+              {tCommon("loading")}
             </p>
           ) : proposals.length === 0 ? (
             <p className="py-8 text-center text-sm text-[var(--color-muted-foreground)]">
-              {t("noResults")}
+              {tCommon("noResults")}
             </p>
           ) : (
-            <ul className="divide-y divide-[var(--color-border)]" aria-label="Liste des propositions">
-              {proposals.map((p) => (
-                <li key={p.id} className="flex items-start justify-between gap-4 py-4">
-                  <div className="flex-1 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary">{PARAMETER_LABELS[p.parameter]}</Badge>
-                      <Badge variant="outline" className="text-xs">
-                        <Clock className="mr-1 h-3 w-3" aria-hidden="true" />
-                        {fmt.relativeTime(p.createdAt)}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-[var(--color-foreground)]">
-                      Patient #{p.patientId} — Raison : {p.reason}
-                    </p>
-                    {p.oldValue !== null && p.newValue !== null && (
-                      <p className="text-sm text-[var(--color-muted-foreground)]">
-                        {fmt.number(p.oldValue, { decimals: 2 })} →{" "}
-                        <strong>{fmt.number(p.newValue, { decimals: 2 })}</strong>
+            <ul
+              className="divide-y divide-[var(--color-border)]"
+              aria-label={tAdj("listAria")}
+            >
+              {proposals.map((p) => {
+                const rowError = rowErrors.get(p.id)
+                const parameterLabel = tAdj(`parameter.${p.parameterType}`)
+                return (
+                  <li
+                    key={p.id}
+                    className="flex items-start justify-between gap-4 py-4"
+                  >
+                    <div className="flex-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary">{parameterLabel}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          <Clock className="me-1 h-3 w-3" aria-hidden="true" />
+                          {fmt.relativeTime(p.createdAt)}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-[var(--color-foreground)]">
+                        {tAdj("patientReason", {
+                          id: p.patientId,
+                          reason: p.reason,
+                        })}
                       </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 gap-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={actionPending === p.id}
-                      onClick={() => void review(p.id, "reject")}
-                      aria-label={`Rejeter la proposition ${p.id}`}
-                    >
-                      <XCircle className="mr-1 h-4 w-4" aria-hidden="true" />
-                      Rejeter
-                    </Button>
-                    <Button
-                      size="sm"
-                      disabled={actionPending === p.id}
-                      onClick={() => void review(p.id, "accept")}
-                      aria-label={`Accepter la proposition ${p.id}`}
-                    >
-                      <CheckCircle2 className="mr-1 h-4 w-4" aria-hidden="true" />
-                      Accepter
-                    </Button>
-                  </div>
-                </li>
-              ))}
+                      <p className="text-sm text-[var(--color-muted-foreground)]">
+                        {/* `<bdi>` isole les nombres (latn) en contexte RTL : "1.27 → 1.45"
+                            doit rester lu LTR même en arabe pour éviter toute
+                            inversion clinique trompeuse. */}
+                        <bdi>{fmt.number(Number(p.currentValue), { decimals: 2 })}</bdi>
+                        {" → "}
+                        <strong>
+                          <bdi>
+                            {fmt.number(Number(p.proposedValue), { decimals: 2 })}
+                          </bdi>
+                        </strong>
+                      </p>
+                      {rowError && (
+                        <p
+                          role="alert"
+                          className="mt-1 text-xs text-red-700"
+                        >
+                          {rowError}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={actionPending === p.id}
+                        onClick={() => void review(p, "reject")}
+                        aria-label={tAdj("rejectAria", { id: p.patientId })}
+                      >
+                        <XCircle
+                          className="me-1 h-4 w-4"
+                          aria-hidden="true"
+                        />
+                        {tAdj("reject")}
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={actionPending === p.id}
+                        onClick={() => void review(p, "accept")}
+                        aria-label={tAdj("acceptAria", { id: p.patientId })}
+                      >
+                        <CheckCircle2
+                          className="me-1 h-4 w-4"
+                          aria-hidden="true"
+                        />
+                        {tAdj("accept")}
+                      </Button>
+                    </div>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </CardContent>

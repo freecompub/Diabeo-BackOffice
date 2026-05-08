@@ -7,12 +7,18 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
+import { ServiceType } from "@prisma/client"
 import { requireRole, AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { healthcareManagementService } from "@/lib/services/healthcare-management.service"
+import {
+  healthcareManagementService,
+  TIME_REGEX,
+} from "@/lib/services/healthcare-management.service"
 import { logger } from "@/lib/logger"
 
-const typeEnum = z.enum(["clinic", "hospital", "freelance"])
+// Dérivé du Prisma enum : ajout d'une valeur côté schema → route alignée
+// automatiquement, plus de littéraux dupliqués à maintenir en parallèle.
+const typeEnum = z.nativeEnum(ServiceType)
 
 export async function GET(req: NextRequest) {
   try {
@@ -55,7 +61,7 @@ export async function GET(req: NextRequest) {
 }
 
 /** US-2117 — DaySchedule = list of [open, close] HH:MM ranges. */
-const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time_format_invalid")
+const timeSchema = z.string().regex(TIME_REGEX, "time_format_invalid")
 const daySchema = z.array(z.tuple([timeSchema, timeSchema])).max(4)
 const openingHoursSchema = z.object({
   mon: daySchema.optional(),
@@ -73,7 +79,7 @@ const createSchema = z.object({
   establishment: z.string().trim().max(255).optional().nullable(),
   addressLine1: z.string().trim().max(255).optional().nullable(),
   addressLine2: z.string().trim().max(255).optional().nullable(),
-  postalCode: z.string().trim().max(20).optional().nullable(),
+  postalCode: z.string().trim().max(10).optional().nullable(),
   city: z.string().trim().max(100).optional().nullable(),
   country: z.string().trim().length(2).optional().nullable(),
   phone: z.string().trim().max(30).optional().nullable(),
@@ -96,6 +102,9 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["opening_hours_invalid_time_format", 400],
   ["opening_hours_close_before_open", 400],
   ["opening_hours_ranges_overlap", 400],
+  ["manager_not_found", 400],
+  ["manager_role_invalid", 400],
+  ["manager_inactive", 400],
 ])
 
 export async function POST(req: NextRequest) {
