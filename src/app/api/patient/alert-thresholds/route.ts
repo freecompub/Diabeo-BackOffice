@@ -10,6 +10,7 @@ import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditForbiddenInRoute } from "@/lib/audit/route-helpers"
 import {
   alertThresholdService,
   COOLDOWN_BOUNDS,
@@ -69,11 +70,17 @@ export async function PUT(req: NextRequest) {
 
     const { patientId, ...input } = parsed.data
     const allowed = await canAccessPatient(user.id, user.role, patientId)
+    const ctx = extractRequestContext(req)
     if (!allowed) {
+      await auditForbiddenInRoute({
+        user, ctx,
+        resource: "ALERT_THRESHOLD_CONFIG",
+        resourceId: String(patientId),
+        metadata: { method: "PUT" },
+      })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const ctx = extractRequestContext(req)
     try {
       const result = await alertThresholdService.upsert(patientId, input, user.id, ctx)
       return NextResponse.json(result)

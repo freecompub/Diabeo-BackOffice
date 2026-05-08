@@ -12,6 +12,7 @@ import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditForbiddenInRoute } from "@/lib/audit/route-helpers"
 import { emergencyService } from "@/lib/services/emergency.service"
 import { logger } from "@/lib/logger"
 
@@ -35,17 +36,24 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "invalidAlertId" }, { status: 400 })
     }
 
-    // Authorization first — no audit on forbidden / not-found probing.
+    // Authorization first — no audit on probing for non-existent IDs (anti-oracle).
     const ref = await emergencyService.loadForAccessCheck(id)
     if (!ref || ref.patient.deletedAt) {
       return NextResponse.json({ error: "alertNotFound" }, { status: 404 })
     }
     const allowed = await canAccessPatient(user.id, user.role, ref.patientId)
+    const ctx = extractRequestContext(req)
     if (!allowed) {
+      // US-2265 — record forbidden access on a real existing resource.
+      await auditForbiddenInRoute({
+        user, ctx,
+        resource: "EMERGENCY_ALERT",
+        resourceId: String(id),
+        metadata: { method: "GET", patientId: ref.patientId },
+      })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const ctx = extractRequestContext(req)
     const alert = await emergencyService.getDetail(id, user.id, ctx)
     if (!alert) {
       return NextResponse.json({ error: "alertNotFound" }, { status: 404 })
@@ -96,11 +104,17 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "alertNotFound" }, { status: 404 })
     }
     const allowed = await canAccessPatient(user.id, user.role, ref.patientId)
+    const ctx = extractRequestContext(req)
     if (!allowed) {
+      await auditForbiddenInRoute({
+        user, ctx,
+        resource: "EMERGENCY_ALERT",
+        resourceId: String(id),
+        metadata: { method: "PATCH", patientId: ref.patientId, action: parsed.data.action },
+      })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const ctx = extractRequestContext(req)
     try {
       const updated =
         parsed.data.action === "acknowledge"

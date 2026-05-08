@@ -55,6 +55,10 @@ export type AuditAction =
   | "PROPOSAL_REJECTED"
   | "IMPORT"
   | "ANONYMIZE"
+  /** US-2265 — RBAC-breach burst signal (50+ UNAUTHORIZED in 60s by same userId). */
+  | "RBAC_BREACH_BURST"
+  /** US-2266 — email envoyé suite à une alerte critique. */
+  | "EMAIL_SENT"
 
 /**
  * Audit resource type — describes what was acted upon.
@@ -78,6 +82,12 @@ export type AuditResource =
   | "PUSH_NOTIFICATION"
   | "PUSH_REGISTRATION"
   | "AUDIT_LOG"
+  /** US-2265 — emergency alerts / Mirror MVP resources. */
+  | "EMERGENCY_ALERT"
+  | "ALERT_THRESHOLD_CONFIG"
+  | "KETONE_THRESHOLD"
+  | "HYPO_TREATMENT_PROTOCOL"
+  | "PREGNANCY_MODE"
 
 /**
  * Audit log entry — parameters for logging an action.
@@ -157,6 +167,98 @@ export function extractRequestContext(req: Request): {
 
 /** Maximum query limit for audit log pagination */
 const MAX_QUERY_LIMIT = 500
+
+/** US-2265 — RBAC breach burst detection (in-memory, best-effort).
+ *
+ *  When a single userId triggers >= BURST_THRESHOLD UNAUTHORIZED events
+ *  within BURST_WINDOW_MS, a single RBAC_BREACH_BURST event is emitted
+ *  per cooldown window — so the SOC sees the spike without log flood.
+ *
+ *  ⚠️ Edge runtimes warning: this Map relies on shared process memory.
+ *  Do not import this service from edge routes (Vercel Edge / Cloudflare
+ *  Workers) where each request runs in an isolated V8 sandbox; counters
+ *  would always be empty. The project deploys on OVH Docker (Node runtime),
+ *  so this is fine today.
+ */
+const BURST_WINDOW_MS = 60_000
+const BURST_THRESHOLD = 50
+const BURST_COOLDOWN_MS = 60_000
+const BURST_MAP_HARD_CAP = 10_000
+
+interface BurstEntry {
+  /** Sliding-window timestamps of recent UNAUTHORIZED events. */
+  timestamps: number[]
+  /** When the last RBAC_BREACH_BURST event was emitted (ms epoch). */
+  lastBurstAt: number | null
+  /** Last activity time — used as LRU pivot when evicting under cap pressure. */
+  lastSeenAt: number
+}
+const burstMap = new Map<number, BurstEntry>()
+
+/**
+ * Bound memory under attack: when over the hard cap, evict the
+ * least-recently-active entries (LRU on `lastSeenAt`). Combined with the
+ * sliding-window cleanup that runs naturally on each call, this keeps the
+ * Map bounded even when an attacker rotates through many compromised
+ * accounts that each remain "warm".
+ */
+function evictLruIfOverCap(): void {
+  if (burstMap.size <= BURST_MAP_HARD_CAP) return
+  const sorted = Array.from(burstMap.entries()).sort(
+    (a, b) => a[1].lastSeenAt - b[1].lastSeenAt,
+  )
+  const evictCount = burstMap.size - BURST_MAP_HARD_CAP
+  for (let i = 0; i < evictCount; i++) {
+    burstMap.delete(sorted[i]![0])
+  }
+}
+
+/**
+ * Record an UNAUTHORIZED event for a user; return the count of in-window
+ * events if a fresh burst threshold was just crossed (caller emits a
+ * RBAC_BREACH_BURST audit row), otherwise null.
+ *
+ * Cooldown semantics: once a burst row was emitted, repeat calls return
+ * null until BURST_COOLDOWN_MS has elapsed.
+ *
+ * Best-effort, in-memory: a process restart loses the counter; OK because
+ * the underlying UNAUTHORIZED events are already persisted in audit_logs
+ * (the burst event is just an aggregated SOC signal).
+ *
+ * **The caller must commit `lastBurstAt = now` only after the burst audit
+ * row was successfully persisted** — see {@link auditService.accessDenied}
+ * for the atomicity contract.
+ */
+function recordAndCheckBurst(userId: number, now: number): number | null {
+  const entry = burstMap.get(userId) ?? {
+    timestamps: [],
+    lastBurstAt: null,
+    lastSeenAt: now,
+  }
+  // Slide the window: keep only timestamps within BURST_WINDOW_MS.
+  entry.timestamps = entry.timestamps.filter((t) => now - t < BURST_WINDOW_MS)
+  entry.timestamps.push(now)
+  entry.lastSeenAt = now
+
+  const inCooldown =
+    entry.lastBurstAt !== null && now - entry.lastBurstAt < BURST_COOLDOWN_MS
+  const crossed = entry.timestamps.length >= BURST_THRESHOLD && !inCooldown
+
+  burstMap.set(userId, entry)
+  evictLruIfOverCap()
+  return crossed ? entry.timestamps.length : null
+}
+
+/** Mark a successful burst-row insert — only call after Prisma persistence. */
+function markBurstEmitted(userId: number, now: number): void {
+  const entry = burstMap.get(userId)
+  if (entry) entry.lastBurstAt = now
+}
+
+/** Test-only — clears the burst-detection state. */
+export function __resetAuditBurstState(): void {
+  burstMap.clear()
+}
 
 /**
  * Audit service — immutable logging for HDS compliance.
@@ -303,5 +405,62 @@ export const auditService = {
         totalPages: Math.ceil(total / limit),
       },
     }
+  },
+
+  /**
+   * US-2265 — Log a forbidden-access event (UNAUTHORIZED) with optional
+   * burst-detection signal.
+   *
+   * Use this in routes whenever an *authenticated* user fails a RBAC check
+   * (e.g. `canAccessPatient` returns false on a real existing resource).
+   * Do NOT call it for unknown/non-existent resources — that would create
+   * an existence oracle.
+   *
+   * When the same userId crosses {@link BURST_THRESHOLD} UNAUTHORIZED
+   * events within a {@link BURST_WINDOW_MS} sliding window, a single
+   * `RBAC_BREACH_BURST` event is emitted in addition (cooldown-rate-limited
+   * to avoid log flooding while still raising a clear SOC alert).
+   *
+   * @returns Created UNAUTHORIZED audit row, plus optional burst row.
+   */
+  async accessDenied(entry: Omit<AuditLogEntry, "action">) {
+    const now = Date.now()
+    const eventsInWindow = recordAndCheckBurst(entry.userId, now)
+
+    if (eventsInWindow === null) {
+      // Common case: no burst threshold crossed — single UNAUTHORIZED row.
+      const unauthorizedRow = await prisma.auditLog.create({
+        data: createAuditData({ ...entry, action: "UNAUTHORIZED" }),
+      })
+      return { unauthorizedRow, burstRow: null }
+    }
+
+    // Burst threshold crossed: emit both rows atomically. Cooldown is only
+    // committed after a successful insert — if the transaction fails, the
+    // next call will try the burst again rather than silently entering
+    // cooldown on a row that never landed in the audit log.
+    const [unauthorizedRow, burstRow] = await prisma.$transaction([
+      prisma.auditLog.create({
+        data: createAuditData({ ...entry, action: "UNAUTHORIZED" }),
+      }),
+      prisma.auditLog.create({
+        data: createAuditData({
+          userId: entry.userId,
+          action: "RBAC_BREACH_BURST",
+          resource: entry.resource,
+          resourceId: entry.resourceId,
+          ipAddress: entry.ipAddress,
+          userAgent: entry.userAgent,
+          requestId: entry.requestId,
+          metadata: {
+            windowMs: BURST_WINDOW_MS,
+            threshold: BURST_THRESHOLD,
+            eventsInWindow,
+          },
+        }),
+      }),
+    ])
+    markBurstEmitted(entry.userId, now)
+    return { unauthorizedRow, burstRow }
   },
 }

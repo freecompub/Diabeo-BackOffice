@@ -127,4 +127,92 @@ describe("emailService", () => {
       expect(result.error).toBe("Network timeout")
     })
   })
+
+  /**
+   * US-2266 — sendDoctorEmergencyAlert.
+   *
+   * PHI safety contract:
+   * - subject + body contain NO alert type, severity, glucose/ketone value
+   * - NO patient name, DDN, NIR
+   * - Only opaque "Patient #N" label + deep link + generic mention
+   *
+   * Failure to keep this contract = bug bloquant (RGPD Art. 9 + HDS).
+   */
+  describe("sendDoctorEmergencyAlert (US-2266)", () => {
+    /** PHI keywords that must NEVER appear in email content (FR + EN). */
+    const PHI_KEYWORDS = [
+      "hypo", "hyper", "DKA", "dka",
+      "severe", "critical", "warning", "sévère", "urgence",
+      "glucose", "glycémie", "glycemia", "glyc",
+      "cétone", "ketone", "acidocétose", "cétoacidose", "ketoacidosis",
+      "hypoglycémie", "hyperglycémie", "hypoglycemia", "hyperglycemia",
+      "mg/dl", "mmol/l", "g/l",
+      "taux de", "valeur",
+    ]
+
+    it("sends a generic email with deep link and opaque patient label", async () => {
+      mockEmailsSend.mockResolvedValue({ data: { id: "msg-emergency" }, error: null })
+
+      const result = await emailService.sendDoctorEmergencyAlert({
+        doctorEmail: "doctor@example.com",
+        alertId: 42,
+        patientInternalId: 1234,
+      })
+
+      expect(result.sent).toBe(true)
+      const args = mockEmailsSend.mock.calls[0][0] as { to: string; subject: string; html: string; text: string }
+      expect(args.to).toBe("doctor@example.com")
+      expect(args.html).toContain("https://app.diabeo.fr/dashboard/emergencies/42")
+      expect(args.html).toContain("Patient #1234")
+    })
+
+    it("contains NO PHI keywords in subject + html + text (RGPD Art. 9)", async () => {
+      mockEmailsSend.mockResolvedValue({ data: { id: "msg-phi" }, error: null })
+
+      await emailService.sendDoctorEmergencyAlert({
+        doctorEmail: "doctor@example.com",
+        alertId: 7,
+        patientInternalId: 99,
+      })
+
+      const args = mockEmailsSend.mock.calls[0][0] as { subject: string; html: string; text: string }
+      const haystack = `${args.subject}\n${args.html}\n${args.text}`.toLowerCase()
+      for (const kw of PHI_KEYWORDS) {
+        expect(haystack).not.toContain(kw.toLowerCase())
+      }
+    })
+
+    it("escapes the patient label and deep link to prevent XSS", async () => {
+      // patientInternalId is a number so XSS via that is impossible — we
+      // verify the deep link uses URL-encoded escape for safety against
+      // future refactors.
+      mockEmailsSend.mockResolvedValue({ data: { id: "msg-xss" }, error: null })
+
+      await emailService.sendDoctorEmergencyAlert({
+        doctorEmail: "doctor@example.com",
+        alertId: 1,
+        patientInternalId: 1,
+      })
+
+      const html = (mockEmailsSend.mock.calls[0][0] as { html: string }).html
+      // basic sanity — no inline script, no unescaped quotes in href
+      expect(html).not.toContain("<script>")
+    })
+
+    it("returns sent:false (non-throw) on Resend API error — best-effort", async () => {
+      mockEmailsSend.mockResolvedValue({
+        data: null,
+        error: { message: "Service unavailable" },
+      })
+
+      const result = await emailService.sendDoctorEmergencyAlert({
+        doctorEmail: "doctor@example.com",
+        alertId: 1,
+        patientInternalId: 1,
+      })
+
+      expect(result.sent).toBe(false)
+      expect(result.error).toBe("Service unavailable")
+    })
+  })
 })

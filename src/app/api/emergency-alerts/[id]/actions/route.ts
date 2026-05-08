@@ -11,6 +11,7 @@ import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditForbiddenInRoute } from "@/lib/audit/route-helpers"
 import { emergencyService } from "@/lib/services/emergency.service"
 import { logger } from "@/lib/logger"
 
@@ -67,11 +68,16 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "alertNotFound" }, { status: 404 })
     }
     const allowed = await canAccessPatient(user.id, user.role, ref.patientId)
+    const ctx = extractRequestContext(req)
     if (!allowed) {
+      await auditForbiddenInRoute({
+        user, ctx,
+        resource: "EMERGENCY_ALERT",
+        resourceId: String(id),
+        metadata: { method: "POST", patientId: ref.patientId, actionType: parsed.data.actionType },
+      })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
-
-    const ctx = extractRequestContext(req)
     try {
       const action = await emergencyService.addAction(
         {

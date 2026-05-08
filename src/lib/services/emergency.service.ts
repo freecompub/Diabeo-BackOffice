@@ -41,6 +41,7 @@ import { prisma } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService } from "./audit.service"
 import { fcmService } from "./fcm.service"
+import { emailService } from "./email.service"
 import { logger } from "@/lib/logger"
 import { ALERT_THRESHOLD_DEFAULTS } from "./alert-threshold.service"
 import { getCgmDefaults } from "./objectives.service"
@@ -275,10 +276,19 @@ async function findCooldownBlocker(
 }
 
 /**
- * Notify the patient's doctor referent of a critical alert (US-2230).
- * **Lockscreen privacy**: title/body are intentionally generic; the alert
- * type & severity are placed in `data` only (not displayed without unlock).
- * Best-effort: failures are logged but never break the trigger transaction.
+ * Notify the patient's doctor referent of a critical alert (US-2230 / US-2266).
+ *
+ * **Lockscreen privacy** (push): title/body are intentionally generic; the
+ * alert type & severity are placed in `data` only (not displayed without unlock).
+ *
+ * **PHI safety** (email): the email body is generic — see
+ * `emailService.sendDoctorEmergencyAlert`. No alert type, severity, glucose
+ * or ketone value, no patient name. Only an opaque `Patient #N` label and
+ * an authenticated deep link.
+ *
+ * Best-effort: push and email run in parallel; failures are logged but never
+ * break the trigger transaction. If either channel is requested but no
+ * referent is configured, we no-op silently.
  */
 async function notifyCriticalAlert(
   alert: {
@@ -288,33 +298,29 @@ async function notifyCriticalAlert(
     severity: EmergencyAlertSeverity
   },
   notifyPush: boolean,
+  notifyEmail: boolean,
   senderId: number,
 ): Promise<void> {
-  if (!notifyPush) return
+  if (!notifyPush && !notifyEmail) return
 
   try {
     const referent = await prisma.patientReferent.findUnique({
       where: { patientId: alert.patientId },
       select: { pro: { select: { userId: true } } },
     })
-
-    const recipients = new Set<number>()
     const referentUserId = referent?.pro?.userId
-    if (referentUserId) recipients.add(referentUserId)
+    if (!referentUserId) return
 
-    if (recipients.size === 0) return
+    const tasks: Array<Promise<unknown>> = []
 
-    // Generic lockscreen title/body — alert type only in data payload.
-    const title = "Diabeo — Alerte"
-    const body = "Connectez-vous pour voir les détails."
-
-    await Promise.all(
-      Array.from(recipients).map((userId) =>
+    if (notifyPush) {
+      // Generic lockscreen title/body — alert type only in data payload.
+      tasks.push(
         fcmService.sendToUser({
-          userId,
+          userId: referentUserId,
           senderId,
-          title,
-          body,
+          title: "Diabeo — Alerte",
+          body: "Connectez-vous pour voir les détails.",
           data: {
             kind: "emergency_alert",
             alertId: String(alert.id),
@@ -323,12 +329,91 @@ async function notifyCriticalAlert(
             severity: alert.severity,
             deepLink: `/dashboard/emergencies/${alert.id}`,
           },
+        }).catch((err) => {
+          logger.error("emergency", "FCM dispatch failed for critical alert", {
+            patientId: alert.patientId,
+          }, err)
         }),
-      ),
-    )
+      )
+    }
+
+    if (notifyEmail) {
+      tasks.push(dispatchDoctorEmail({ referentUserId, alert, senderId }))
+    }
+
+    // allSettled — one channel's hard failure must never short-circuit the
+    // other (push & email are independent best-effort dispatches).
+    await Promise.allSettled(tasks)
   } catch (err) {
-    logger.error("emergency", "FCM dispatch failed for critical alert", {
+    logger.error("emergency", "Critical-alert dispatch failed", {
       patientId: alert.patientId,
+    }, err)
+  }
+}
+
+/**
+ * Email path of US-2266 — fetches the doctor's encrypted email, decrypts in
+ * memory only (never logged), sends generic email via Resend, audits as
+ * EMAIL_SENT. Failures are isolated so they cannot break push or alert.
+ *
+ * Catches narrowly: only Resend / decryption / audit-log issues are
+ * absorbed. A `Prisma.PrismaClientInitializationError` (DB unreachable)
+ * is rethrown so the surrounding `notifyCriticalAlert` outer try can
+ * surface a clear ops signal.
+ */
+async function dispatchDoctorEmail(input: {
+  referentUserId: number
+  alert: { id: number; patientId: number }
+  senderId: number
+}): Promise<void> {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: input.referentUserId },
+      select: { email: true },
+    })
+    const decryptedEmail = user?.email ? safeDecryptField(user.email) : null
+    if (!decryptedEmail) {
+      logger.warn("emergency", "Doctor email unavailable — skipping email dispatch", {
+        userId: input.referentUserId,
+      })
+      return
+    }
+
+    const result = await emailService.sendDoctorEmergencyAlert({
+      doctorEmail: decryptedEmail,
+      alertId: input.alert.id,
+      patientInternalId: input.alert.patientId,
+    })
+
+    if (result.sent) {
+      // Audit log records the *fact* of sending — no PHI, no email content.
+      await auditService.log({
+        userId: input.senderId,
+        action: "EMAIL_SENT",
+        resource: "EMERGENCY_ALERT",
+        resourceId: String(input.alert.id),
+        metadata: {
+          recipientUserId: input.referentUserId,
+          channel: "email",
+          ...(result.id && { providerMessageId: result.id }),
+        },
+      })
+    } else {
+      logger.warn("emergency", "Email send returned non-sent result", {
+        userId: input.referentUserId,
+      })
+    }
+  } catch (err) {
+    // Surface infrastructure-level Prisma errors (DB down, init failure) —
+    // those need ops attention, not silent log entries.
+    if (
+      err instanceof Prisma.PrismaClientInitializationError ||
+      err instanceof Prisma.PrismaClientRustPanicError
+    ) {
+      throw err
+    }
+    logger.error("emergency", "Email dispatch failed for critical alert", {
+      patientId: input.alert.patientId,
     }, err)
   }
 }
@@ -484,6 +569,7 @@ export const emergencyService = {
 
     if (!alert) return null
 
+    const isCritical = classified.severity === "critical"
     await notifyCriticalAlert(
       {
         id: alert.id,
@@ -491,7 +577,8 @@ export const emergencyService = {
         alertType: alert.alertType,
         severity: alert.severity,
       },
-      rules.notifyDoctorPush && classified.severity === "critical",
+      rules.notifyDoctorPush && isCritical,
+      rules.notifyDoctorEmail && isCritical,
       auditUserId,
     )
 
@@ -579,7 +666,9 @@ export const emergencyService = {
 
     if (!alert) return null
 
-    const notifyPush = (alertConfig?.notifyDoctorPush ?? true) && classified.severity === "critical"
+    const isCritical = classified.severity === "critical"
+    const notifyPush = (alertConfig?.notifyDoctorPush ?? ALERT_THRESHOLD_DEFAULTS.notifyDoctorPush) && isCritical
+    const notifyEmail = (alertConfig?.notifyDoctorEmail ?? ALERT_THRESHOLD_DEFAULTS.notifyDoctorEmail) && isCritical
     await notifyCriticalAlert(
       {
         id: alert.id,
@@ -588,6 +677,7 @@ export const emergencyService = {
         severity: alert.severity,
       },
       notifyPush,
+      notifyEmail,
       auditUserId,
     )
 
@@ -624,7 +714,7 @@ export const emergencyService = {
     const triggeredAt = new Date()
     const alertConfig = await prisma.alertThresholdConfig.findUnique({
       where: { patientId: input.patientId },
-      select: { cooldownMinutes: true, notifyDoctorPush: true },
+      select: { cooldownMinutes: true, notifyDoctorPush: true, notifyDoctorEmail: true },
     })
     const cooldown = effectiveCooldown(
       alertConfig?.cooldownMinutes ?? ALERT_THRESHOLD_DEFAULTS.cooldownMinutes,
@@ -671,6 +761,7 @@ export const emergencyService = {
 
     if (!alert) throw new Error("manual_alert_cooldown")
 
+    const isCritical = input.severity === "critical"
     await notifyCriticalAlert(
       {
         id: alert.id,
@@ -678,7 +769,8 @@ export const emergencyService = {
         alertType: alert.alertType,
         severity: alert.severity,
       },
-      (alertConfig?.notifyDoctorPush ?? true) && input.severity === "critical",
+      (alertConfig?.notifyDoctorPush ?? ALERT_THRESHOLD_DEFAULTS.notifyDoctorPush) && isCritical,
+      (alertConfig?.notifyDoctorEmail ?? ALERT_THRESHOLD_DEFAULTS.notifyDoctorEmail) && isCritical,
       auditUserId,
     )
 

@@ -13,6 +13,7 @@ import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient, getAccessiblePatientIds } from "@/lib/access-control"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditForbiddenInRoute } from "@/lib/audit/route-helpers"
 import { emergencyService } from "@/lib/services/emergency.service"
 import { logger } from "@/lib/logger"
 
@@ -76,9 +77,16 @@ export async function GET(req: NextRequest) {
     const patientId = patientIdParsed.data
     let scopePatientIds: number[] | null | undefined
 
+    const ctx = extractRequestContext(req)
     if (patientId !== undefined) {
       const allowed = await canAccessPatient(user.id, user.role, patientId)
       if (!allowed) {
+        await auditForbiddenInRoute({
+          user, ctx,
+          resource: "PATIENT",
+          resourceId: String(patientId),
+          metadata: { method: "GET", endpoint: "emergency-alerts:list" },
+        })
         return NextResponse.json({ error: "forbidden" }, { status: 403 })
       }
       scopePatientIds = undefined
@@ -99,7 +107,6 @@ export async function GET(req: NextRequest) {
       cursor: cursorParsed.data,
     }
 
-    const ctx = extractRequestContext(req)
     const result = await emergencyService.list(filter, user.id, ctx)
     return NextResponse.json(result)
   } catch (error) {
@@ -138,11 +145,17 @@ export async function POST(req: NextRequest) {
 
     const { patientId, severity, notes } = parsed.data
     const allowed = await canAccessPatient(user.id, user.role, patientId)
+    const ctx = extractRequestContext(req)
     if (!allowed) {
+      await auditForbiddenInRoute({
+        user, ctx,
+        resource: "PATIENT",
+        resourceId: String(patientId),
+        metadata: { method: "POST", endpoint: "emergency-alerts:create-manual", severity },
+      })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const ctx = extractRequestContext(req)
     try {
       const alert = await emergencyService.createManual(
         { patientId, severity, notes, callerRole: user.role },
