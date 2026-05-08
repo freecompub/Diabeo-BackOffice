@@ -63,6 +63,8 @@ export const eventsService = {
         resourceId: event.id,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        // US-2268 — patientId pivot pour forensics getByPatient.
+        metadata: { patientId },
       })
 
       return { ...event, comment: safeDecryptField(event.comment) }
@@ -124,6 +126,8 @@ export const eventsService = {
         resourceId: eventId,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        // US-2268 — patientId pivot pour forensics getByPatient.
+        metadata: { patientId },
       })
 
       return { ...event, comment: safeDecryptField(event.comment) }
@@ -157,6 +161,8 @@ export const eventsService = {
         resourceId: eventId,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        // US-2268 — patientId pivot pour forensics getByPatient.
+        metadata: { patientId },
       })
 
       return { deleted: true }

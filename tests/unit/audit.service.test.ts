@@ -209,33 +209,38 @@ describe("auditService.getByUser", () => {
 
 /**
  * US-2268 — `getByPatient` retrouve TOUS les events d'un patient via le pivot
- * `metadata.patientId`, indépendamment du `resource`/`resourceId`.
+ * `metadata.patientId`. Implémentation `$queryRaw` qui force l'utilisation
+ * de l'index GIN partiel `jsonb_path_ops` (le partial index requiert que la
+ * query implique son prédicat `metadata ? 'patientId'` — Prisma `path equals`
+ * ne l'émet pas, d'où le raw).
  *
- * Risque mitigé : forensics CNIL/ANS ("qui a accédé aux données du patient X")
- * impossibles à servir si on filtre uniquement sur `resourceId === String(patientId)`
- * — on raterait tous les events liés à des sous-entités (objectifs, alerts,
- * thresholds, pregnancy, etc.).
+ * Vérifié empiriquement (EXPLAIN ANALYZE 200k rows) : seq scan ~45ms sans
+ * `?`, bitmap index scan via GIN ~16ms avec `?`.
  */
 describe("auditService.getByPatient", () => {
-  it("queries metadata.patientId via JSONB path equals", async () => {
-    prismaMock.auditLog.findMany.mockResolvedValue([])
+  it("uses $queryRaw with @> + ? operators (matches GIN partial index)", async () => {
+    prismaMock.$queryRaw.mockResolvedValue([] as never)
 
     await auditService.getByPatient(42)
 
-    expect(prismaMock.auditLog.findMany).toHaveBeenCalledWith({
-      where: { metadata: { path: ["patientId"], equals: 42 } },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    })
+    expect(prismaMock.$queryRaw).toHaveBeenCalled()
+    const call = prismaMock.$queryRaw.mock.calls.at(-1)
+    // Tagged template : first arg is the strings array.
+    const sqlJoined = ((call?.[0] ?? []) as readonly string[]).join(" ")
+    expect(sqlJoined).toContain("metadata ? 'patientId'")
+    expect(sqlJoined).toContain("@>")
+    expect(sqlJoined).toContain("ORDER BY created_at DESC")
+    // Params : patientId, then capped limit.
+    expect(call?.slice(1)).toEqual([42, 50])
   })
 
   it("caps limit at MAX_QUERY_LIMIT", async () => {
-    prismaMock.auditLog.findMany.mockResolvedValue([])
+    prismaMock.$queryRaw.mockResolvedValue([] as never)
 
     await auditService.getByPatient(42, 10_000)
 
-    const call = prismaMock.auditLog.findMany.mock.calls.at(-1)?.[0]
-    expect(call?.take).toBe(500) // MAX_QUERY_LIMIT
+    const call = prismaMock.$queryRaw.mock.calls.at(-1)
+    expect(call?.slice(1)).toEqual([42, 500]) // MAX_QUERY_LIMIT
   })
 })
 

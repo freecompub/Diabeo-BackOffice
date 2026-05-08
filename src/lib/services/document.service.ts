@@ -30,8 +30,10 @@ export const documentService = {
     const docs = await prisma.medicalDocument.findMany({ where, orderBy: { createdAt: "desc" } })
 
     await auditService.log({
+      // US-2268 — list par patient.
       userId: auditUserId, action: "READ", resource: "MEDICAL_DOCUMENT",
       resourceId: String(patientId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return docs.map(serializeDoc)
@@ -77,7 +79,7 @@ export const documentService = {
           resourceId: String(doc.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
-          metadata: { mimeType: file.mimeType, size: file.buffer.length, objectKey: key },
+          metadata: { patientId, mimeType: file.mimeType, size: file.buffer.length, objectKey: key },
         })
 
         return serializeDoc(doc)
@@ -109,6 +111,7 @@ export const documentService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId, action: "CREATE", resource: "MEDICAL_DOCUMENT",
         resourceId: String(doc.id), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return serializeDoc(doc)
@@ -124,9 +127,10 @@ export const documentService = {
     if (role === "VIEWER" && !doc.patientShare) throw new Error("documentNotFound")
 
     await auditService.log({
+      // US-2268 — download d'un document médical = accès PHI haute sensibilité.
       userId: auditUserId, action: "READ", resource: "MEDICAL_DOCUMENT",
       resourceId: String(docId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
-      metadata: { operation: "download" },
+      metadata: { patientId, operation: "download" },
     })
 
     const s3Result = await downloadFile(doc.fileUrl)
@@ -145,6 +149,7 @@ export const documentService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId, action: "DELETE", resource: "MEDICAL_DOCUMENT",
         resourceId: String(docId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return { fileUrl: doc.fileUrl }
@@ -169,6 +174,7 @@ export const documentService = {
 
     await auditService.log({
       userId: auditUserId, action: "UPDATE", resource: "MEDICAL_DOCUMENT", resourceId: String(docId),
+      metadata: { patientId, operation: "markRead" },
     })
 
     return { id: docId, isRead: true }
