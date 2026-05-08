@@ -12,6 +12,7 @@ import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditForbiddenInRoute } from "@/lib/audit/route-helpers"
 import { pregnancyModeService } from "@/lib/services/pregnancy-mode.service"
 import { logger } from "@/lib/logger"
 
@@ -47,11 +48,17 @@ export async function PUT(req: NextRequest) {
 
     const { patientId, enabled, forceOverride, forceOverrideReason } = parsed.data
     const allowed = await canAccessPatient(user.id, user.role, patientId)
+    const ctx = extractRequestContext(req)
     if (!allowed) {
+      await auditForbiddenInRoute({
+        user, ctx,
+        resource: "PREGNANCY_MODE",
+        resourceId: String(patientId),
+        metadata: { method: "PUT", attemptedAction: enabled ? "enable" : "disable" },
+      })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const ctx = extractRequestContext(req)
     try {
       const result = await pregnancyModeService.setMode(
         patientId,

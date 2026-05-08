@@ -132,4 +132,65 @@ export const emailService = {
       text: `Proposition d'ajustement ${actionFr}\n\nConnectez-vous à Diabeo pour consulter les détails.`,
     })
   },
+
+  /**
+   * US-2266 — Doctor email on a critical emergency alert.
+   *
+   * **PHI safety contract — strictly enforced**:
+   * - NO alert type, severity, glucose/ketone value in subject or body.
+   * - NO patient name, DDN, NIR, or other identifying field.
+   * - Only: an opaque internal patient identifier (`Patient #N`), a deep
+   *   link requiring auth, and a generic "alerte critique" mention.
+   *
+   * The email is best-effort: failures must NOT block the underlying alert
+   * persistence or FCM push (handled by caller). Sends only if RESEND_API_KEY
+   * is configured — returns a sent:false result otherwise.
+   *
+   * @param input.doctorEmail   Decrypted clinician email (caller responsibility)
+   * @param input.alertId       Numeric internal alert id (used to build deep link)
+   * @param input.patientInternalId  Numeric internal patient id (NEVER nominative)
+   */
+  async sendDoctorEmergencyAlert(input: {
+    doctorEmail: string
+    alertId: number
+    patientInternalId: number
+  }): Promise<EmailResult> {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.diabeo.fr"
+    const deepLink = `${baseUrl}/dashboard/emergencies/${input.alertId}`
+    const safePatientLabel = `Patient #${input.patientInternalId}`
+
+    return this.send({
+      to: input.doctorEmail,
+      // Generic subject — no alert type, no severity, no glucose/ketone value.
+      subject: "Diabeo — Alerte patient en attente",
+      html: `
+        <div style="font-family: 'Figtree', system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #0D9488; font-size: 24px; margin: 0;">Diabeo</h1>
+          </div>
+          <h2 style="color: #1F2937; font-size: 18px;">Alerte clinique en attente</h2>
+          <p style="color: #6B7280; line-height: 1.6;">
+            Une alerte clinique nécessite votre attention pour
+            <strong>${escapeHtml(safePatientLabel)}</strong>.
+            Connectez-vous au backoffice pour consulter les détails.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${escapeHtml(deepLink)}" style="background: #0D9488; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              Voir l'alerte
+            </a>
+          </div>
+          <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">
+            Cet email ne contient aucune donnée médicale.
+            Toutes les informations cliniques restent dans l'espace authentifié.
+          </p>
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+          <p style="color: #9CA3AF; font-size: 12px; text-align: center;">
+            Diabeo — Supervision de l'insulinothérapie<br/>
+            Hébergement HDS certifié — OVHcloud GRA
+          </p>
+        </div>
+      `,
+      text: `Alerte patient Diabeo\n\n${safePatientLabel} — une alerte clinique nécessite votre attention.\n\nConnectez-vous : ${deepLink}\n\nCet email ne contient aucune donnée médicale.`,
+    })
+  },
 }

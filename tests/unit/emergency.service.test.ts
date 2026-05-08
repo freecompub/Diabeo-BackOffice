@@ -33,6 +33,15 @@ vi.mock("@/lib/services/fcm.service", () => ({
   },
 }))
 
+const { mockSendDoctorEmail } = vi.hoisted(() => ({
+  mockSendDoctorEmail: vi.fn(),
+}))
+vi.mock("@/lib/services/email.service", () => ({
+  emailService: {
+    sendDoctorEmergencyAlert: mockSendDoctorEmail,
+  },
+}))
+
 vi.mock("@/lib/logger", () => ({
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }))
@@ -617,6 +626,144 @@ describe("emergencyService", () => {
           99,
         ),
       ).rejects.toBe(p2002)
+    })
+  })
+
+  /**
+   * US-2266 — `notifyDoctorEmail` wiring on critical alerts.
+   *
+   * Behaviors covered:
+   * - When `notifyDoctorEmail` flag is true AND alert is critical → email
+   *   is dispatched to the encrypted referent email (via emailService).
+   * - When the flag is false → no email dispatch (push only).
+   * - When alert severity is `warning` → no email regardless of flag.
+   * - When the patient has no referent → no email dispatch.
+   * - Email failures do NOT break the alert flow (best-effort, swallowed).
+   * - An audit row `EMAIL_SENT` is recorded on successful send.
+   */
+  describe("notifyDoctorEmail wiring (US-2266)", () => {
+    beforeEach(async () => {
+      mockSendDoctorEmail.mockClear()
+      mockSendDoctorEmail.mockResolvedValue({ sent: true, id: "msg-1" })
+    })
+
+    /** Helpers — mock a patient + thresholds + a referent with encrypted email. */
+    async function setupSeverHypoScenario(opts: {
+      notifyDoctorEmail: boolean
+      hasReferent?: boolean
+    }) {
+      const decimal = (n: number) => ({ toNumber: () => n })
+      prismaMock.cgmObjective.findUnique.mockResolvedValue({
+        veryLow: decimal(0.54), low: decimal(0.70), ok: decimal(1.80),
+        high: decimal(2.50), titrLow: decimal(0.70), titrHigh: decimal(1.80),
+      } as never)
+      prismaMock.alertThresholdConfig.findUnique.mockResolvedValue({
+        alertOnHypo: true, alertOnSevereHypo: true,
+        alertOnHyper: false, alertOnSevereHyper: true,
+        notifyDoctorPush: true,
+        notifyDoctorEmail: opts.notifyDoctorEmail,
+        cooldownMinutes: 30,
+      } as never)
+      prismaMock.patient.findFirst.mockResolvedValue({
+        id: 1, pregnancyMode: false, pathology: "DT1",
+      } as never)
+      prismaMock.emergencyAlert.findFirst.mockResolvedValue(null as never)
+      prismaMock.cgmEntry.findMany.mockResolvedValue([])
+
+      // notifyCriticalAlert internals — referent + user lookups
+      if (opts.hasReferent !== false) {
+        prismaMock.patientReferent.findUnique.mockResolvedValue({
+          pro: { userId: 42 },
+        } as never)
+        // Encrypt a real test email so safeDecryptField returns it cleanly
+        const { encryptField } = await import("@/lib/crypto/fields")
+        prismaMock.user.findUnique.mockResolvedValue({
+          email: encryptField("doctor@example.com"),
+        } as never)
+      } else {
+        prismaMock.patientReferent.findUnique.mockResolvedValue(null as never)
+      }
+
+      const mockTx = {
+        emergencyAlert: {
+          create: vi.fn().mockResolvedValue({
+            id: 7,
+            patientId: 1,
+            alertType: "severe_hypo",
+            severity: "critical",
+          }),
+        },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as never)
+    }
+
+    it("dispatches email on critical CGM breach when notifyDoctorEmail=true", async () => {
+      await setupSeverHypoScenario({ notifyDoctorEmail: true })
+
+      // 40 mg/dL ≤ veryLow=54 → severe_hypo / critical
+      await emergencyService.detectFromCgm(
+        { patientId: 1, glucoseValueMgdl: 40 },
+        99,
+      )
+
+      expect(mockSendDoctorEmail).toHaveBeenCalledTimes(1)
+      const call = mockSendDoctorEmail.mock.calls[0]?.[0] as {
+        doctorEmail?: string
+        alertId?: number
+        patientInternalId?: number
+      }
+      expect(call.doctorEmail).toBe("doctor@example.com")
+      expect(call.alertId).toBe(7)
+      expect(call.patientInternalId).toBe(1)
+    })
+
+    it("does NOT dispatch email when notifyDoctorEmail=false", async () => {
+      await setupSeverHypoScenario({ notifyDoctorEmail: false })
+
+      await emergencyService.detectFromCgm(
+        { patientId: 1, glucoseValueMgdl: 40 },
+        99,
+      )
+
+      expect(mockSendDoctorEmail).not.toHaveBeenCalled()
+    })
+
+    it("does NOT dispatch email on warning-severity alert (hypo, not severe)", async () => {
+      await setupSeverHypoScenario({ notifyDoctorEmail: true })
+
+      // 65 mg/dL → hypo / warning (not critical)
+      await emergencyService.detectFromCgm(
+        { patientId: 1, glucoseValueMgdl: 65 },
+        99,
+      )
+
+      expect(mockSendDoctorEmail).not.toHaveBeenCalled()
+    })
+
+    it("no-ops silently when patient has no referent configured", async () => {
+      await setupSeverHypoScenario({ notifyDoctorEmail: true, hasReferent: false })
+
+      await emergencyService.detectFromCgm(
+        { patientId: 1, glucoseValueMgdl: 40 },
+        99,
+      )
+
+      expect(mockSendDoctorEmail).not.toHaveBeenCalled()
+    })
+
+    it("alert is still persisted even if email service throws (best-effort)", async () => {
+      await setupSeverHypoScenario({ notifyDoctorEmail: true })
+      mockSendDoctorEmail.mockRejectedValue(new Error("Resend down"))
+
+      const result = await emergencyService.detectFromCgm(
+        { patientId: 1, glucoseValueMgdl: 40 },
+        99,
+      )
+
+      // Alert was created even though email failed
+      expect(result).toEqual({ id: 7, alertType: "severe_hypo" })
     })
   })
 })

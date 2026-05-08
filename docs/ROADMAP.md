@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Mirror MVP livré (9 US, PR #343), 4 follow-ups Batch D ouverts (PR #348)
-> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **71%** (47/66 DONE)
+> Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), Batch D1 livré (PR #349 : US-2265 + US-2266), US-2267 reclassée V1 + blocker-pre-prod (Diabeo pas en prod)
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **78%** (49/63 DONE — scope original)
 
 ---
 
@@ -9,14 +9,14 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 66    | 47   | 6       | 13          | **71%** |
-| **V1**   | 121   | 0    | 7       | 114         | **0%**  |
+| **MVP**  | 65    | 49   | 6       | 10          | **75%** |
+| **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **47** | **13**  | **208**     | **22%** |
+| **TOTAL**| **268** | **49** | **13**  | **206**     | **23%** |
 
-> MVP scope original (63 US) → 47 DONE = **75%**. Avec ajout de 3 follow-ups MVP du Batch D → 66 US, 71%. Les 3 follow-ups MVP (US-2265/2266/2267) sont à traiter dans le sprint suivant.
+> MVP scope original (63 US) → 49 DONE = **78%**. Avec US-2265+US-2266 ajoutés au scope MVP (Batch D1 livré) → **49/65 = 75%**. US-2267 (Migrations Prisma) reclassée **V1 + blocker-pre-prod** : reste sûr avec `db push` tant que Diabeo n'est pas en prod, mais doit être livré avant le 1er go-live. US-2268 reste V1.
 
 ---
 
@@ -111,7 +111,7 @@
 | US-2073 | Push notifications mobile (FCM) | DONE | `src/lib/firebase/admin.ts`, `src/lib/services/fcm.service.ts`, `src/app/api/push/send/route.ts`. Firebase Admin SDK, retry retriable-only, canAccessPatient authz, rate limit fail-closed 50/h, no cleartext in logs, locale-aware templates, 20 tests. PR #340. |
 | US-2074 | Email transactionnel (Resend) | DONE | `src/lib/services/email.service.ts`. Reset password, welcome, proposal notification. HTML escaping, no PII. PR #341. |
 | US-2079 | Préférences notifications | DONE | `UserNotifPreferences`, `/api/account/notifications/` |
-| US-2266 | Email médecin sur alerte critique | NOT STARTED | Follow-up PR #343 — 3 SP. Issue [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345). Câbler `notifyDoctorEmail` (PHI-safe) sur emergency.service. |
+| US-2266 | Email médecin sur alerte critique | DONE | 3 SP — PR #349. `emailService.sendDoctorEmergencyAlert` (PHI-safe, deep link), `notifyCriticalAlert` parallèle push+email avec timeout 5s, audit `EMAIL_SUBMITTED` (HDS-truthful), `CONFIG_ERROR` sur déchiffrement échoué. |
 
 ### Domaine 07 — Équipe & Cabinet (2 US)
 
@@ -152,7 +152,7 @@
 | US-2136 | Pseudonymisation HMAC | DONE | `hmacField()` générique, `firstnameHmac`/`lastnameHmac` dans User, index composite, user.service auto-compute. PR #342. |
 | US-2138 | Hébergement HDS | DONE | OVHcloud GRA (décision archi) |
 | US-2141 | Catégorisation documents | DONE | `DocumentCategory` enum |
-| US-2265 | Événements `ACCESS_DENIED` audit | NOT STARTED | Follow-up PR #343 — 2 SP. Issue [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344). Origine : healthcare-security-auditor L-A. |
+| US-2265 | Événements `ACCESS_DENIED` audit | DONE | 2 SP — PR #349. `auditService.accessDenied` + burst RBAC (50/60s, cooldown, atomic transaction, LRU cap), helper `auditForbiddenInRoute` (jamais 403→500), wired sur 7 routes Mirror MVP. |
 | US-2268 | Convention `auditLog.resourceId` normalisée | NOT STARTED | Follow-up PR #343 — 8 SP — **V1**. Issue [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347). Cross-cutting refacto ~30 call sites. |
 
 ### Domaine 12 — Documents (1 US)
@@ -161,13 +161,12 @@
 |----|-------|--------|---------------|
 | US-2140 | Upload S3 documents | DONE | `src/lib/storage/s3.ts`, `src/app/api/documents/upload/route.ts`, `src/app/api/documents/[id]/download/route.ts`, `src/app/api/account/photo/route.ts`. SSE-S3, ClamAV, rate limit, RBAC, audit. PR #339. |
 
-### Domaine 13 — Administration (3 US — 1 follow-up Mirror MVP)
+### Domaine 13 — Administration (2 US)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2148 | Admin gestion utilisateurs UI | NOT STARTED | Backend RBAC OK, page admin manquante |
 | US-2151 | Backup management | NOT STARTED | — |
-| US-2267 | Migrations Prisma versionnées | NOT STARTED | Follow-up PR #343 — 5 SP. Issue [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346). Bloquant audit HDS — `prisma migrate deploy` actuellement vide. |
 
 ### Domaine 14 — Prescriptions (1 US)
 
@@ -191,16 +190,19 @@
 
 **PR #343** — 1093 tests verts · branch coverage 78% · CI green · 5 critical + 10 high fixés en re-review (5 agents).
 
-### Follow-ups Mirror MVP (4 US — PR #348 mergée)
+### Follow-ups Mirror MVP (4 US — Batch D)
 
-| US | Titre | Priorité | SP | Issue | Domaine roadmap |
-|----|-------|----------|----|-------|------------------|
-| US-2265 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | Domaine 11 (Conformité) |
-| US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | Domaine 06 (Messagerie) |
-| US-2267 | Migrations Prisma versionnées | MVP | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | Domaine 13 (Administration) |
-| US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | Domaine 11 (Conformité) |
+| US | Titre | Priorité | SP | Issue | Statut |
+|----|-------|----------|----|-------|--------|
+| US-2265 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | ✅ DONE PR #349 |
+| US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | ✅ DONE PR #349 |
+| US-2267 | Migrations Prisma versionnées | **V1** + `blocker-pre-prod` | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | ⏸️ NOT STARTED — à livrer AVANT 1er go-live prod |
+| US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | NOT STARTED |
 
-**PR #348** — Spec markdown + issues GitHub + items board #2 en Backlog. Effort total : 18 SP (10 MVP + 8 V1).
+**PR #349** — US-2265 + US-2266 livrés (5 SP MVP). 1102 tests verts, branch coverage maintenue, 3 agents re-review (READY/FIX-MEDIUM tous résolus avant merge).
+**PR #348** mergée — Spec markdown des 4 US + issues GitHub + items board #2.
+
+**Batch D MVP** : ✅ 100 % livré (5/5 SP). Reste US-2267 (V1 blocker-pre-prod) + US-2268 (V1) = **13 SP V1**.
 
 ---
 
@@ -408,13 +410,16 @@
 | A | Compléter 6 US PARTIAL | ~12 SP | À faire |
 | B | 7 nouvelles US backoffice | ~22 SP | À faire |
 | C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ DONE (PR #343) |
-| D | **3 follow-ups MVP Mirror** (US-2265/2266/2267) | **10 SP** | 🆕 À faire |
-| **Total** | **16 US restantes (post-merge #343)** | **~44 SP** | |
+| D1 | ~~US-2265 + US-2266~~ | ~~5 SP~~ | ✅ DONE (PR #349) |
+| **Total restant** | **13 US restantes** | **~34 SP MVP** | |
 
-> Compteurs post-merge : **47/63 = 75%** sur le MVP scope original. Batch D (3 follow-ups MVP US-2265/2266/2267) → cible **50/63 = 79%** au sprint suivant. Reste US-2268 (V1, 8 SP).
+**Pre-prod blocker** (V1 prioritaire) : **US-2267** Migrations Prisma versionnées (5 SP) — à livrer avant le 1er go-live prod, label `blocker-pre-prod`.
+
+> Compteurs : **49/63 = 78%** sur le MVP scope original. US-2267 reclassée V1 (Diabeo n'est pas encore en prod, `db push` reste sûr en dev/recette).
 
 ### US MVP récemment livrées
 
+- [x] **US-2265 + US-2266** (Batch D1) — Audit `ACCESS_DENIED` + email médecin alerte critique (PR #349, 2026-05-08, 1102 tests, 5 SP, 3 agents review)
 - [x] **Mirror MVP batch (9 US)** — US-2214/2215/2216/2217/2224/2225/2226/2230/2232 (PR #343, 2026-05-08, 1093 tests, coverage 78%)
 - [x] US-2133 — Rétention 6 ans audit logs (PR #342, 2026-05-02)
 - [x] US-2136 — Pseudonymisation HMAC firstname/lastname (PR #342, 2026-05-02)
