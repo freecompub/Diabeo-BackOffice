@@ -791,23 +791,26 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 49   | 6       | 10          | **75%** |
+| **MVP**  | 65    | 53   | 6       | 6           | **82%** |
 | **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **49** | **13**  | **206**     | **23%** |
+| **TOTAL**| **268** | **53** | **13**  | **202**     | **25%** |
 
-> MVP : **49/65 = 75%** (49/63 = 78% sur scope original). US-2267 reclassée **V1 + blocker-pre-prod** (Diabeo pas en prod, `db push` reste sûr en dev/recette ; à livrer avant 1er go-live).
+> MVP : **53/65 = 82%** (53/63 = 84% sur scope original). US-2267 reclassée **V1 + blocker-pre-prod** (Diabeo pas en prod, `db push` reste sûr en dev/recette ; à livrer avant 1er go-live).
 
-### MVP — Effort restant (~34 SP)
+### MVP — Effort restant (~12 SP)
 
 **Batch A — Compléter les PARTIAL (6 US)**
 - US-2047 (UI validation médecin), US-2089 (UI pairing device),
   US-2112/US-2115 (i18n next-intl), US-2117 (modèle cabinet), US-2118 (praticien libéral)
 
-**Batch B — Nouvelles US backoffice (7 US)**
-- US-2025 (QR invite mobile), US-2148 (admin users UI), US-2151 (backup management)
+**Batch B — Nouvelles US backoffice (4 US) — ✅ DONE PR #350**
+- ✅ US-2025 (QR invite mobile, JWT 15min audience dédiée)
+- ✅ US-2118 (praticiens libéraux, RPPS/ADELI Luhn, unique constraint)
+- ✅ US-2148 (admin users UI, anti-lockout Serializable, JWT revocation atomique)
+- ✅ US-2151 (backup management, BigInt-safe DTO, concurrency guard, errorMessage sanitization)
 
 **Batch C — Mirror MVP (9 US) — ✅ DONE PR #343**
 - US-2214–2217 (config seuils glycémiques/cétones/resucrage),

@@ -94,6 +94,10 @@ export type AuditResource =
   | "KETONE_THRESHOLD"
   | "HYPO_TREATMENT_PROTOCOL"
   | "PREGNANCY_MODE"
+  /** Batch B — admin & infra resources (US-2118, US-2151, US-2025). */
+  | "HEALTHCARE_SERVICE"
+  | "BACKUP"
+  | "MOBILE_INVITATION"
 
 /**
  * Audit log entry — parameters for logging an action.

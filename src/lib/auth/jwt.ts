@@ -4,9 +4,20 @@ import type { Role } from "@prisma/client"
 const ALG = "RS256"
 const TOKEN_EXPIRY = "15m" // Short-lived JWT — defense-in-depth against token theft (HR-4)
 const MFA_PENDING_EXPIRY = "5m" // MFA challenge window — user must complete OTP quickly
+/**
+ * US-2025 — QR invite TTL 15 min. Court par dessein : sans table de
+ * consumption (single-use redeem), un attaquant qui capture le token peut
+ * le rejouer durant la fenêtre TTL. 15 min force le pro à régénérer si le
+ * patient ne flashe pas immédiatement, limitant la fenêtre d'attaque.
+ * Quand l'endpoint /api/auth/patient-invite/redeem sera livré (V1+), on
+ * pourra remonter la TTL à 24h en s'appuyant sur le `jti`-tracking.
+ */
+const PATIENT_INVITE_EXPIRY = "15m"
+const PATIENT_INVITE_EXPIRY_MS = 15 * 60_000
 const ISSUER = "diabeo-backoffice"
 const AUDIENCE = "diabeo-hc"
 const AUDIENCE_MFA = "diabeo-mfa-pending"
+const AUDIENCE_PATIENT_INVITE = "diabeo-patient-invite"
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 
@@ -139,6 +150,80 @@ export async function verifyMfaPendingToken(token: string): Promise<MfaPendingPa
   if (!Number.isInteger(sub) || sub <= 0) throw new Error("Invalid MFA token subject")
   if (payload.type !== "mfa_pending") throw new Error("Invalid MFA token type")
   return { sub, type: "mfa_pending" }
+}
+
+/**
+ * Payload for a patient-invite token (US-2025) — single-use mobile QR.
+ * Distinct audience prevents this token from being accepted on /api/* routes.
+ *
+ * Single-use enforcement is the responsibility of the consumer endpoint
+ * (e.g. /api/auth/patient-invite/redeem) — typically by recording redemption
+ * in a separate table or using a dedicated session record.
+ */
+export interface PatientInvitePayload {
+  /** Patient ID being invited (the patient.id, NOT user.id). */
+  sub: number
+  /** Type discriminator (belt-and-suspenders against audience confusion). */
+  type: "patient_invite"
+  /** User-ID of the practitioner who created the invite (audit trail). */
+  invitedBy: number
+  /** Token JTI (jose-set) — used as single-use idempotency key. */
+  jti: string
+  /** Expiration timestamp (seconds since epoch). */
+  exp: number
+}
+
+/**
+ * Sign a short-lived single-use patient-invite token for QR code generation
+ * (US-2025). The patient scans the QR on their mobile, the iOS app exchanges
+ * the token at a future `/api/auth/patient-invite/redeem` endpoint to obtain
+ * a regular JWT.
+ */
+export async function signPatientInviteToken(input: {
+  patientId: number
+  invitedBy: number
+}): Promise<{ token: string; jti: string; expiresAt: Date }> {
+  const key = await getPrivateKey()
+  // Random JTI for future single-use tracking; jose's setJti accepts any string.
+  const { randomUUID } = await import("node:crypto")
+  const jti = randomUUID()
+  const expiresAt = new Date(Date.now() + PATIENT_INVITE_EXPIRY_MS)
+  const token = await new SignJWT({
+    type: "patient_invite",
+    invitedBy: input.invitedBy,
+  })
+    .setProtectedHeader({ alg: ALG })
+    .setSubject(String(input.patientId))
+    .setIssuer(ISSUER)
+    .setAudience(AUDIENCE_PATIENT_INVITE)
+    .setIssuedAt()
+    .setJti(jti)
+    .setExpirationTime(PATIENT_INVITE_EXPIRY)
+    .sign(key)
+  return { token, jti, expiresAt }
+}
+
+/**
+ * Verify a patient-invite token. Fails if audience or `type` do not match —
+ * cannot be confused with a full JWT.
+ */
+export async function verifyPatientInviteToken(token: string): Promise<PatientInvitePayload> {
+  const key = await getPublicKey()
+  const { payload } = await jwtVerify(token, key, {
+    algorithms: [ALG],
+    issuer: ISSUER,
+    audience: AUDIENCE_PATIENT_INVITE,
+  })
+  const sub = Number(payload.sub)
+  if (!Number.isInteger(sub) || sub <= 0) throw new Error("Invalid invite token subject")
+  if (payload.type !== "patient_invite") throw new Error("Invalid invite token type")
+  const invitedBy = Number(payload.invitedBy)
+  if (!Number.isInteger(invitedBy) || invitedBy <= 0) throw new Error("Invalid invite token issuer")
+  const jti = String(payload.jti ?? "")
+  if (!jti) throw new Error("Missing invite token jti")
+  const exp = Number(payload.exp)
+  if (!Number.isFinite(exp) || exp <= 0) throw new Error("Missing invite token expiration")
+  return { sub, type: "patient_invite", invitedBy, jti, exp }
 }
 
 /** Verify JWT but allow recently expired tokens (for refresh flow, 15min grace matching TOKEN_EXPIRY) */

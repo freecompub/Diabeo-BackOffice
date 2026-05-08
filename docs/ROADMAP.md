@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), Batch D1 livré (PR #349 : US-2265 + US-2266), US-2267 reclassée V1 + blocker-pre-prod (Diabeo pas en prod)
-> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **78%** (49/63 DONE — scope original)
+> Dernière mise à jour : 2026-05-08 — Batch B livré (PR #350 : US-2025 + US-2118 + US-2148 + US-2151)
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **84%** (53/63 DONE — scope original)
 
 ---
 
@@ -9,12 +9,12 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 49   | 6       | 10          | **75%** |
+| **MVP**  | 65    | 53   | 6       | 6           | **82%** |
 | **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **49** | **13**  | **206**     | **23%** |
+| **TOTAL**| **268** | **53** | **13**  | **202**     | **25%** |
 
 > MVP scope original (63 US) → 49 DONE = **78%**. Avec US-2265+US-2266 ajoutés au scope MVP (Batch D1 livré) → **49/65 = 75%**. US-2267 (Migrations Prisma) reclassée **V1 + blocker-pre-prod** : reste sûr avec `db push` tant que Diabeo n'est pas en prod, mais doit être livré avant le 1er go-live. US-2268 reste V1.
 
@@ -68,7 +68,7 @@
 | US-2018 | Fiche patient complète | DONE | `src/app/(dashboard)/patients/[id]/page.tsx` (4 tabs) |
 | US-2020 | Archivage / soft delete | DONE | `deletion.service.ts`, trigger PostgreSQL |
 | US-2023 | Notes cliniques | DONE | Intégré dans patient service |
-| US-2025 | Invitation mobile QR code | NOT STARTED | — |
+| US-2025 | Invitation mobile QR code | DONE | PR #350 — JWT court 15min, audience dédiée, deep link diabeo:// + fallback HTTPS |
 | US-2082 | Affectation soignant référent | DONE | `PatientReferent` modèle, `/api/patient/referent/` |
 
 ### Domaine 03 — Glycémie & CGM (7 US)
@@ -139,7 +139,7 @@
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2117 | Cabinets médicaux | PARTIAL | `HealthcareService` couvre partiellement |
-| US-2118 | Praticiens libéraux | NOT STARTED | — |
+| US-2118 | Praticiens libéraux | DONE | PR #350 — `ServiceType` enum + RPPS/ADELI Luhn validation + unique constraint |
 
 ### Domaine 11 — Conformité & RGPD (9 US — 2 follow-ups Mirror MVP)
 
@@ -165,8 +165,8 @@
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
-| US-2148 | Admin gestion utilisateurs UI | NOT STARTED | Backend RBAC OK, page admin manquante |
-| US-2151 | Backup management | NOT STARTED | — |
+| US-2148 | Admin gestion utilisateurs UI | DONE | PR #350 — `userManagementService` (list/getById/updateRole/setStatus), anti-lockout Serializable, session+JWT revocation atomique |
+| US-2151 | Backup management | DONE | PR #350 — `BackupLog` model + `backupService` (list/trigger/updateStatus), concurrency guard, BigInt-safe DTO, errorMessage sanitization |
 
 ### Domaine 14 — Prescriptions (1 US)
 
@@ -408,17 +408,18 @@
 | Batch | Description | Story Points | Statut |
 |-------|-------------|--------------|--------|
 | A | Compléter 6 US PARTIAL | ~12 SP | À faire |
-| B | 7 nouvelles US backoffice | ~22 SP | À faire |
+| B | ~~4 nouvelles US backoffice~~ | ~~18 SP~~ | ✅ DONE (PR #350) |
 | C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ DONE (PR #343) |
 | D1 | ~~US-2265 + US-2266~~ | ~~5 SP~~ | ✅ DONE (PR #349) |
-| **Total restant** | **13 US restantes** | **~34 SP MVP** | |
+| **Total restant** | **6 US PARTIAL** | **~12 SP MVP** | |
 
 **Pre-prod blocker** (V1 prioritaire) : **US-2267** Migrations Prisma versionnées (5 SP) — à livrer avant le 1er go-live prod, label `blocker-pre-prod`.
 
-> Compteurs : **49/63 = 78%** sur le MVP scope original. US-2267 reclassée V1 (Diabeo n'est pas encore en prod, `db push` reste sûr en dev/recette).
+> Compteurs : **53/63 = 84%** sur le MVP scope original. US-2267 reclassée V1 (Diabeo n'est pas encore en prod, `db push` reste sûr en dev/recette). Reste Batch A (PARTIAL → completion) et US-2267 V1 pre-prod.
 
 ### US MVP récemment livrées
 
+- [x] **Batch B (4 US)** — US-2025 (QR invite mobile), US-2118 (praticiens libéraux + RPPS Luhn), US-2148 (admin users + anti-lockout), US-2151 (backup management) (PR #350, 2026-05-08, 1141 tests, 18 SP, 3 agents review)
 - [x] **US-2265 + US-2266** (Batch D1) — Audit `ACCESS_DENIED` + email médecin alerte critique (PR #349, 2026-05-08, 1102 tests, 5 SP, 3 agents review)
 - [x] **Mirror MVP batch (9 US)** — US-2214/2215/2216/2217/2224/2225/2226/2230/2232 (PR #343, 2026-05-08, 1093 tests, coverage 78%)
 - [x] US-2133 — Rétention 6 ans audit logs (PR #342, 2026-05-02)

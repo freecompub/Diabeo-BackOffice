@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
       where: { emailHmac: emailHash },
       select: {
         id: true, passwordHash: true, role: true,
-        mfaEnabled: true,
+        mfaEnabled: true, status: true,
       },
     })
 
@@ -80,6 +80,26 @@ export async function POST(req: NextRequest) {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         metadata: { reason: "invalidCredentials" },
+      })
+      return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
+    }
+
+    // US-2148 — Block suspended/archived accounts after password validation.
+    // Returns generic 401 with the SAME response body and rate-limit pressure
+    // as `invalidCredentials` to prevent attackers from distinguishing
+    // (a) wrong password, (b) suspended account, (c) unknown account.
+    // Timing : bcrypt has already run on a real hash; the suspended branch
+    // and the wrong-password branch both run `recordFailedAttempt` so the
+    // lockout escalation curve is identical from the outside.
+    if (user.status !== "active") {
+      await recordFailedAttempt(emailHash)
+      await auditService.log({
+        userId: user.id,
+        action: "UNAUTHORIZED",
+        resource: "SESSION",
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        metadata: { reason: "accountSuspended", status: user.status },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
     }

@@ -102,7 +102,7 @@ describe("/api/auth/login — MFA branch", () => {
 
   it("returns 200 { mfaRequired, mfaToken } when mfaEnabled — no cookie set", async () => {
     prismaMock.user.findUnique.mockResolvedValue({
-      id: 7, role: "VIEWER", passwordHash: "h", mfaEnabled: true,
+      id: 7, role: "VIEWER", passwordHash: "h", mfaEnabled: true, status: "active",
     } as any)
     compareMock.mockResolvedValue(true)
 

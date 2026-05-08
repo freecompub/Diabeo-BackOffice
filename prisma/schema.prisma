@@ -167,6 +167,34 @@ enum InsulinUsage {
   both  // Pour les pré-mélangées (NovoMix, Humalog Mix)
 }
 
+/// US-2148 — Statut compte utilisateur (suspension / archivage admin).
+/// - active : compte fonctionnel (peut se connecter)
+/// - suspended : suspendu par ADMIN (login bloqué, réactivable)
+/// - archived : pré-anonymisation RGPD Art. 17 (deletion.service finalise)
+enum UserStatus {
+  active
+  suspended
+  archived
+}
+
+/// US-2118 — Type de structure de soin.
+/// - clinic : cabinet médical multi-praticiens
+/// - hospital : centre hospitalier (CHU, clinique privée, etc.)
+/// - freelance : praticien libéral indépendant (pas de cabinet attaché)
+enum ServiceType {
+  clinic
+  hospital
+  freelance
+}
+
+/// US-2151 — Statut d'un job de backup PostgreSQL.
+enum BackupStatus {
+  pending
+  running
+  completed
+  failed
+}
+
 /// Type d'alerte d'urgence générée par seuils CGM/cétones ou saisie manuelle.
 enum EmergencyAlertType {
   severe_hypo      // CGM < seuil veryLow (par défaut 54 mg/dL)
@@ -243,6 +271,13 @@ model User {
   pic                      String?
   language                 Language? @default(fr)
   role                     Role      @default(VIEWER)
+  /// US-2148 — Statut compte (active/suspended/archived). Suspension bloque
+  /// le login dans /api/auth/login (vérification post-bcrypt).
+  status                   UserStatus @default(active)
+  /// US-2148 — Date de suspension/archivage. Set au moment de la transition.
+  statusChangedAt          DateTime? @map("status_changed_at") @db.Timestamptz()
+  /// US-2148 — User-ID de l'admin ayant effectué la transition (audit + rollback).
+  statusChangedBy          Int?      @map("status_changed_by")
   mfaSecret                String?   @map("mfa_secret")
   mfaEnabled               Boolean   @default(false) @map("mfa_enabled")
   /// Last accepted TOTP time step (RFC 6238 T counter). Prevents replay of
@@ -1200,20 +1235,28 @@ model DeviceDataSync {
 // ═══════════════════════════════════════════════════════════════
 
 model HealthcareService {
-  id            Int      @id @default(autoincrement())
-  name          String   @db.VarChar(255)
-  establishment String?  @db.VarChar(255)
-  city          String?  @db.VarChar(100)
-  country       String?  @db.Char(2)
-  noVideos      Boolean  @default(false) @map("no_videos")
-  noFood        Boolean  @default(false) @map("no_food")
-  logo          String?  @db.VarChar(500)
+  id            Int          @id @default(autoincrement())
+  name          String       @db.VarChar(255)
+  establishment String?      @db.VarChar(255)
+  city          String?      @db.VarChar(100)
+  country       String?      @db.Char(2)
+  noVideos      Boolean      @default(false) @map("no_videos")
+  noFood        Boolean      @default(false) @map("no_food")
+  logo          String?      @db.VarChar(500)
+  /// US-2118 — Type de structure (cabinet, hôpital, praticien libéral).
+  type          ServiceType  @default(clinic)
+  /// US-2118 — Numéro RPPS (11 digits) / ADELI (9 digits) pour praticiens
+  /// libéraux. Validation Luhn + format côté service. Optionnel pour
+  /// cabinets / hôpitaux. Unique pour empêcher deux services revendiquant
+  /// le même identifiant praticien (intégrité référentielle métier).
+  licenseNumber String?      @unique @map("license_number") @db.VarChar(20)
 
   members         HealthcareMember[]
   patientServices PatientService[]
   referents       PatientReferent[]
 
   @@unique([name, establishment])
+  @@index([type])
   @@map("healthcare_services")
 }
 
@@ -1657,4 +1700,37 @@ model BdpmImportLog {
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   @@map("bdpm_import_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 15. BACKUPS — Gestion des sauvegardes PostgreSQL (US-2151)
+// ═══════════════════════════════════════════════════════════════
+
+/// Journal d'un backup PostgreSQL (manuel ou planifié).
+/// Le backup proprement dit est exécuté hors-process via deploy.sh ou un
+/// worker (pg_dump → OVH S3). Ce modèle stocke uniquement les méta-données
+/// pour traçabilité ADMIN + UI de supervision.
+///
+/// **HDS** : aucune donnée patient en clair n'est stockée ici. La location
+/// (URI S3) est une référence, pas le payload chiffré du dump lui-même.
+model BackupLog {
+  id            Int          @id @default(autoincrement())
+  /// Identifiant opaque retourné par le worker (UUID). Unique pour idempotence.
+  backupRef     String       @unique @map("backup_ref") @db.VarChar(64)
+  status        BackupStatus @default(pending)
+  /// URI S3 où le dump est stocké (s3://bucket/path/dump.sql.gz). Nullable
+  /// jusqu'à completion. Jamais loggué en clair (ANSSI RGS).
+  location      String?      @db.VarChar(500)
+  sizeBytes     BigInt?      @map("size_bytes")
+  durationMs    Int?         @map("duration_ms")
+  /// User-ID de l'admin ayant déclenché le backup (NULL si cron auto).
+  triggeredBy   Int?         @map("triggered_by")
+  /// Brève description erreur (non-PII). Stack traces dans les logs serveur.
+  errorMessage  String?      @map("error_message") @db.VarChar(500)
+  startedAt     DateTime     @default(now()) @map("started_at") @db.Timestamptz()
+  completedAt   DateTime?    @map("completed_at") @db.Timestamptz()
+
+  @@index([status, startedAt])
+  @@index([triggeredBy, startedAt])
+  @@map("backup_logs")
 }
