@@ -14,17 +14,45 @@
 -- ─────────────────────────────────────────────────────────────────────────────
 --
 -- Pattern reconnu : `^(\d+):` au début du resourceId (ex: "42:emergency-alert:abc",
--- "42:objectives:cgm", "42:medicalData"). Si le row a déjà `metadata.patientId`,
--- on ne touche pas (idempotent).
+-- "42:objectives:cgm", "42:medicalData").
+--
+-- Idempotence :
+--  - skip si row a déjà `metadata.patientId` du BON type ET de la BONNE valeur
+--    (matche le préfixe). Si type incorrect (string "42" au lieu d'int 42),
+--    le row est ré-écrit avec l'int → corrige aussi les écritures buggy passées.
+--
+-- ⚠️ Le trigger `audit_logs_immutable` (post_deploy_sql) bloque TOUT UPDATE.
+-- On bypass via `SET LOCAL session_replication_role = 'replica'` (pattern déjà
+-- utilisé par audit_log_apply_retention). Transaction-scoped → re-armé au
+-- COMMIT. Le DO $$ block hérite de la transaction Prisma.
 
-UPDATE audit_logs
-SET metadata = jsonb_set(
-  COALESCE(metadata, '{}'::jsonb),
-  '{patientId}',
-  to_jsonb((substring(resource_id FROM '^(\d+):'))::int)
-)
-WHERE resource_id ~ '^\d+:'
-  AND (metadata IS NULL OR NOT (metadata ? 'patientId'));
+DO $$
+DECLARE
+  affected BIGINT;
+BEGIN
+  SET LOCAL session_replication_role = 'replica';
+
+  WITH backfill AS (
+    UPDATE audit_logs
+    SET metadata = jsonb_set(
+      COALESCE(metadata, '{}'::jsonb),
+      '{patientId}',
+      to_jsonb((substring(resource_id FROM '^(\d+):'))::int)
+    )
+    WHERE resource_id ~ '^\d+:'
+      AND (
+        metadata IS NULL
+        OR NOT (metadata ? 'patientId')
+        OR jsonb_typeof(metadata->'patientId') <> 'number'
+        OR (metadata->>'patientId')::int <>
+           (substring(resource_id FROM '^(\d+):'))::int
+      )
+    RETURNING 1
+  )
+  SELECT COUNT(*) INTO affected FROM backfill;
+
+  RAISE NOTICE 'audit_logs backfill: % rows updated with metadata.patientId', affected;
+END $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- 2. Index GIN partiel — uniquement les rows où `patientId` existe
@@ -32,7 +60,7 @@ WHERE resource_id ~ '^\d+:'
 -- ─────────────────────────────────────────────────────────────────────────────
 --
 -- `jsonb_path_ops` est plus compact (~50% smaller) qu'un GIN par défaut sur jsonb,
--- mais ne supporte que l'opérateur `@>`. Prisma utilise `@>` pour
+-- mais ne supporte que l'opérateur `@>`. Prisma 7 émet `@>` pour
 -- `metadata: { path: [...], equals: ... }` → match parfait.
 --
 -- IF NOT EXISTS pour idempotence (re-run sur DB pré-existante avec ce script

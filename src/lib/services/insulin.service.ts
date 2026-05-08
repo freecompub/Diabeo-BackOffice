@@ -252,11 +252,11 @@ export const insulinService = {
         action: "BOLUS_CALCULATED",
         resource: "BOLUS_LOG",
         resourceId: String(input.patientId),
+        // US-2268 — patientId pivot pour forensics getByPatient.
+        // PHI clinique (inputGlucose, inputCarbs, isf, icr, recommendedDose) :
+        // déjà sur la row BolusCalculationLog → on minimise dans metadata.
         metadata: {
-          inputGlucoseGl: input.currentGlucoseGl,
-          inputCarbsGrams: input.carbsGrams,
-          isfUsedGl: isfGl,
-          icrUsed: icrValue,
+          patientId: input.patientId,
           recommendedDose,
           warnings,
         },

@@ -608,11 +608,14 @@ export const emergencyService = {
           resourceId: String(created.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
+          // US-2268 (re-review B7) — pas de valeur clinique brute en metadata.
+          // `severity` (categorical) suffit pour forensics ; les valeurs détaillées
+          // sont sur la row EmergencyAlert (sécurisée par RBAC + chiffrement
+          // des champs PHI).
           metadata: {
             patientId: input.patientId,
             alertType: classified.type,
             severity: classified.severity,
-            glucoseValueMgdl: input.glucoseValueMgdl,
           },
         })
         return created
@@ -707,11 +710,12 @@ export const emergencyService = {
           resourceId: String(created.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
+          // US-2268 (re-review B7) — severity categorical seul ; valeur clinique
+          // brute reste sur la row.
           metadata: {
             patientId: input.patientId,
             alertType: classified.type,
             severity: classified.severity,
-            ketoneValueMmol: input.ketoneValueMmol,
           },
         })
         return created
@@ -887,8 +891,11 @@ export const emergencyService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: "emergency-alerts:list",
+      // US-2268 — list inbox (pas patient-scoped, vue agrégée multi-patients).
+      // Pas de metadata.patientId : forensics par patient ne s'applique pas
+      // à un listing globalement filtré (RBAC scope déjà restreint au caller).
+      resource: "EMERGENCY_ALERT",
+      resourceId: "list",
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
       metadata: {

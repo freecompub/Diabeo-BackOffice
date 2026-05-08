@@ -352,8 +352,9 @@ describe("patientService.listByDoctor", () => {
         userId: 2,
         action: "READ",
         resource: "PATIENT",
-        resourceId: "doctor:5",
-        metadata: { action: "list", count: 0 },
+        // US-2268 — listing global = resourceId "list", doctorUserId pivot via metadata.
+        resourceId: "list",
+        metadata: { doctorUserId: 5, count: 0 },
       }),
     })
   })

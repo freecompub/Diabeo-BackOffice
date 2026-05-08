@@ -29,8 +29,9 @@ export const retentionService = {
       await auditService.log({
         userId: triggeredBy,
         action: "ANONYMIZE",
-        resource: "AUDIT_LOG",
-        resourceId: `retention-${retentionYears}y`,
+        // US-2268 — RETENTION resource enum (was AUDIT_LOG which is too broad).
+        resource: "RETENTION",
+        resourceId: `${retentionYears}y`,
         metadata: { anonymizedCount, retentionYears },
       })
 

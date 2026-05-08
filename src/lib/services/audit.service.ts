@@ -385,19 +385,27 @@ export const auditService = {
    * seule passe — impossible avec `getByResource("PATIENT", String(patientId))` qui
    * ne voyait que les events où `resourceId === String(patientId)`.
    *
-   * Performance : index GIN partiel sur `metadata->'patientId'` (migration
-   * `<ts>_audit_metadata_patientid_gin`) — < 100ms à 10M logs.
+   * Performance : index GIN partiel `audit_logs_metadata_patient_id_idx` sur
+   * `(metadata) jsonb_path_ops WHERE metadata ? 'patientId'`. Pour que le
+   * planner l'utilise, la query DOIT contenir BOTH `metadata @> ...` ET
+   * `metadata ? 'patientId'` (le partial index requiert que la query implique
+   * son prédicat). Prisma 7 `path: [...] equals: ...` n'émet pas `?` →
+   * on passe par `$queryRaw` pour garantir l'utilisation de l'index. Vérifié
+   * empiriquement avec EXPLAIN ANALYZE : seq scan ~45ms à 200k rows sans le
+   * `?`, bitmap index scan ~16ms avec le `?`.
    */
   async getByPatient(patientId: number, limit = 50) {
-    return prisma.auditLog.findMany({
-      where: {
-        // `metadata->'patientId'` matche le JSONB pour la valeur exacte
-        // (Prisma génère l'opérateur `@>` qui exploite le GIN index).
-        metadata: { path: ["patientId"], equals: patientId },
-      },
-      orderBy: { createdAt: "desc" },
-      take: Math.min(limit, MAX_QUERY_LIMIT),
-    })
+    const cap = Math.min(limit, MAX_QUERY_LIMIT)
+    // jsonb_build_object évite injection SQL via le pattern `@>` typé.
+    const rows = await prisma.$queryRaw<Array<AuditLogRow>>`
+      SELECT *
+      FROM audit_logs
+      WHERE metadata ? 'patientId'
+        AND metadata @> jsonb_build_object('patientId', ${patientId}::int)
+      ORDER BY created_at DESC
+      LIMIT ${cap}
+    `
+    return rows
   },
 
   /**

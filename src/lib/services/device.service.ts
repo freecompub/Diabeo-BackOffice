@@ -69,15 +69,21 @@ export const deviceService = {
   },
 
   async getSyncStatus(userId: number, auditUserId: number, ctx?: AuditContext) {
-    const syncs = await prisma.deviceDataSync.findMany({ where: { userId } })
+    const [syncs, patient] = await Promise.all([
+      prisma.deviceDataSync.findMany({ where: { userId } }),
+      // US-2268 (re-review B6) — résolution userId → patientId pour pivot
+      // forensics. Si l'user est un patient, getByPatient retrouvera ce sync.
+      // Fallback sur targetUserId pour les users non-patients (admin/staff).
+      prisma.patient.findFirst({ where: { userId, deletedAt: null }, select: { id: true } }),
+    ])
 
     await auditService.log({
-      // US-2268 — sync status par user (souvent = patient.user). Note : la pivot
-      // ici est userId, pas patientId — getByPatient ne couvrira pas ce cas.
       userId: auditUserId, action: "READ", resource: "DEVICE_SYNC",
       resourceId: String(userId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
-      metadata: { targetUserId: userId },
+      metadata: patient
+        ? { patientId: patient.id, targetUserId: userId }
+        : { targetUserId: userId },
     })
 
     return syncs

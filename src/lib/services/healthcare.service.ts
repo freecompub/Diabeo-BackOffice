@@ -13,8 +13,9 @@ export const healthcareService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "SESSION",
-      resourceId: "healthcare-services",
+      // US-2268 — listing global, pas SESSION.
+      resource: "HEALTHCARE_SERVICE",
+      resourceId: "list",
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
     })
