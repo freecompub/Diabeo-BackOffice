@@ -789,18 +789,18 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ### Taux de réalisation (2026-05-08)
 
-| Priorité | Total | DONE | IN REVIEW | PARTIAL | NOT STARTED | % Done+Review |
-|----------|-------|------|-----------|---------|-------------|---------------|
-| **MVP**  | 66    | 38   | 9         | 6       | 13          | **71%** |
-| **V1**   | 121   | 0    | 0         | 7       | 114         | **0%**  |
-| **V2**   | 58    | 0    | 0         | 0       | 58          | **0%**  |
-| **V3**   | 8     | 0    | 0         | 0       | 8           | **0%**  |
-| **V4**   | 15    | 0    | 0         | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **38** | **9**   | **13**  | **208**     | **18%** |
+| Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
+|----------|-------|------|---------|-------------|--------|
+| **MVP**  | 66    | 47   | 6       | 13          | **71%** |
+| **V1**   | 121   | 0    | 7       | 114         | **0%**  |
+| **V2**   | 58    | 0    | 0       | 58          | **0%**  |
+| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
+| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
+| **TOTAL**| **268** | **47** | **13**  | **208**     | **22%** |
 
-> `IN REVIEW` = code complet, PR ouverte, CI verte, en attente de merge — compte 100 % à la merge.
+> MVP scope original (63 US) → 47 DONE = **75%**. Avec 3 follow-ups MVP du Batch D ajoutés au scope → 66 US → 71%. À la livraison de Batch D : 50/63 = 79% sur scope original.
 
-### MVP — Effort restant (~44 SP post-merge #343)
+### MVP — Effort restant (~44 SP)
 
 **Batch A — Compléter les PARTIAL (6 US)**
 - US-2047 (UI validation médecin), US-2089 (UI pairing device),
@@ -809,14 +809,14 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 **Batch B — Nouvelles US backoffice (7 US)**
 - US-2025 (QR invite mobile), US-2148 (admin users UI), US-2151 (backup management)
 
-**Batch C — Mirror MVP (9 US) — ✅ IN REVIEW PR #343**
+**Batch C — Mirror MVP (9 US) — ✅ DONE PR #343**
 - US-2214–2217 (config seuils glycémiques/cétones/resucrage),
   US-2224–2226/2230 (urgences inbox + timeline + workflow + push),
   US-2232 (mode grossesse toggle)
 - 1093 tests verts · branch coverage 78% · CI green
 - 5 critical + 10 high fixés en re-review (5 agents)
 
-**Batch D — Follow-ups Mirror MVP (3 US MVP + 1 V1) — 🆕 PR #348 docs**
+**Batch D — Follow-ups Mirror MVP (3 US MVP + 1 V1) — 🆕 PR #348 mergée**
 - 🆕 **US-2265** — Événements `ACCESS_DENIED` audit (2 SP, MVP) · Issue #344
 - 🆕 **US-2266** — Email médecin sur alerte critique (3 SP, MVP) · Issue #345
 - 🆕 **US-2267** — Migrations Prisma versionnées (5 SP, MVP, bloquant audit HDS) · Issue #346
@@ -888,4 +888,4 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-05-08 — Mirror MVP en revue (PR #343, 9 US), 4 follow-ups ajoutés (PR #348, US-2265–US-2268). Total 268 US (217 pro + 51 mirror), MVP 71% (review-incluse) → 75% à la merge de #343, 95% post-Batch D.*
+*Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343, 9 US DONE), 4 follow-ups Batch D ouverts (PR #348, US-2265–US-2268). Total 268 US (217 pro + 51 mirror). MVP 47/66 = 71% (75% sur scope original 63).*

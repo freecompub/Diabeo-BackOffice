@@ -1,22 +1,22 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Mirror MVP en revue (PR #343), 4 follow-ups ajoutés (PR #348)
-> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **75%** (47/63 DONE / IN REVIEW)
+> Dernière mise à jour : 2026-05-08 — Mirror MVP livré (9 US, PR #343), 4 follow-ups Batch D ouverts (PR #348)
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **71%** (47/66 DONE)
 
 ---
 
 ## Taux de réalisation
 
-| Priorité | Total | DONE | IN REVIEW | PARTIAL | NOT STARTED | % Done+Review |
-|----------|-------|------|-----------|---------|-------------|---------------|
-| **MVP**  | 66    | 38   | 9         | 6       | 13          | **71%** |
-| **V1**   | 121   | 0    | 0         | 7       | 114         | **0%**  |
-| **V2**   | 58    | 0    | 0         | 0       | 58          | **0%**  |
-| **V3**   | 8     | 0    | 0         | 0       | 8           | **0%**  |
-| **V4**   | 15    | 0    | 0         | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **38** | **9**   | **13**  | **208**     | **18%** |
+| Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
+|----------|-------|------|---------|-------------|--------|
+| **MVP**  | 66    | 47   | 6       | 13          | **71%** |
+| **V1**   | 121   | 0    | 7       | 114         | **0%**  |
+| **V2**   | 58    | 0    | 0       | 58          | **0%**  |
+| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
+| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
+| **TOTAL**| **268** | **47** | **13**  | **208**     | **22%** |
 
-> **Note** : `IN REVIEW` = code complet, PR ouverte, CI verte, en attente de merge. Compte pour 100 % à la merge — pas avant. Suivi via les PR GitHub (#343 Mirror MVP, #348 follow-ups).
+> MVP scope original (63 US) → 47 DONE = **75%**. Avec ajout de 3 follow-ups MVP du Batch D → 66 US, 71%. Les 3 follow-ups MVP (US-2265/2266/2267) sont à traiter dans le sprint suivant.
 
 ---
 
@@ -175,23 +175,23 @@
 |----|-------|--------|---------------|
 | US-2171 | Base médicamenteuse BDPM | DONE | `bdpm.service.ts`, `atc.service.ts`, modèles Prisma |
 
-### Mirror MVP (9 US — IN REVIEW PR #343)
+### Mirror MVP (9 US — DONE PR #343)
 
 | US | Titre | Statut | Domaine |
 |----|-------|--------|---------|
-| US-2214 | Config cibles glycémiques par patient | IN REVIEW | Config seuils |
-| US-2215 | Config seuils hypo/hyper alertes | IN REVIEW | Config seuils — `AlertThresholdConfig`, cooldown sévérité-aware capé à 15 min sur critique |
-| US-2216 | Seuils cétones | IN REVIEW | Config seuils — `KetoneThreshold`, defaults ISPAD 0.6/1.5/3.0 mmol/L, validateur strict |
-| US-2217 | Protocole resucrage | IN REVIEW | Config seuils — `HypoTreatmentProtocol`, rule of 15/15, allergies/instructions chiffrées |
-| US-2224 | Inbox alertes urgence | IN REVIEW | Urgences — `EmergencyAlert` + RBAC `getAccessiblePatientIds` |
-| US-2225 | Timeline urgence | IN REVIEW | Urgences — snapshot CGM 30 min chiffré base64+AES-256-GCM |
-| US-2226 | Workflow réaction médecin | IN REVIEW | Urgences — `EmergencyAlertAction` append-only, transitions ack/resolve race-safe |
-| US-2230 | Push temps réel urgence | IN REVIEW | Urgences — FCM data-only payload, pas de PHI lockscreen |
-| US-2232 | Toggle mode grossesse | IN REVIEW | Modes contextuels — `Patient.pregnancyMode` + auto-adapt CGM defaults GD, garde active-pregnancy + forceOverride chiffré |
+| US-2214 | Config cibles glycémiques par patient | DONE | Config seuils |
+| US-2215 | Config seuils hypo/hyper alertes | DONE | Config seuils — `AlertThresholdConfig`, cooldown sévérité-aware capé à 15 min sur critique |
+| US-2216 | Seuils cétones | DONE | Config seuils — `KetoneThreshold`, defaults ISPAD 0.6/1.5/3.0 mmol/L, validateur strict |
+| US-2217 | Protocole resucrage | DONE | Config seuils — `HypoTreatmentProtocol`, rule of 15/15, allergies/instructions chiffrées |
+| US-2224 | Inbox alertes urgence | DONE | Urgences — `EmergencyAlert` + RBAC `getAccessiblePatientIds` |
+| US-2225 | Timeline urgence | DONE | Urgences — snapshot CGM 30 min chiffré base64+AES-256-GCM |
+| US-2226 | Workflow réaction médecin | DONE | Urgences — `EmergencyAlertAction` append-only, transitions ack/resolve race-safe |
+| US-2230 | Push temps réel urgence | DONE | Urgences — FCM data-only payload, pas de PHI lockscreen |
+| US-2232 | Toggle mode grossesse | DONE | Modes contextuels — `Patient.pregnancyMode` + auto-adapt CGM defaults GD, garde active-pregnancy + forceOverride chiffré |
 
-**PR #343** — 1093 tests verts · branch coverage 78% · CI green · 5 critical + 10 high fixés en re-review (5 agents). En attente de merge avec autorisation utilisateur.
+**PR #343** — 1093 tests verts · branch coverage 78% · CI green · 5 critical + 10 high fixés en re-review (5 agents).
 
-### Follow-ups Mirror MVP (4 US — IN REVIEW PR #348 docs)
+### Follow-ups Mirror MVP (4 US — PR #348 mergée)
 
 | US | Titre | Priorité | SP | Issue | Domaine roadmap |
 |----|-------|----------|----|-------|------------------|
@@ -407,15 +407,15 @@
 |-------|-------------|--------------|--------|
 | A | Compléter 6 US PARTIAL | ~12 SP | À faire |
 | B | 7 nouvelles US backoffice | ~22 SP | À faire |
-| C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ IN REVIEW (PR #343) |
+| C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ DONE (PR #343) |
 | D | **3 follow-ups MVP Mirror** (US-2265/2266/2267) | **10 SP** | 🆕 À faire |
 | **Total** | **16 US restantes (post-merge #343)** | **~44 SP** | |
 
-> Hypothèse : à la merge de #343, le compteur MVP passe à **47/63 = 75%**. Avec batch D (3 follow-ups) → **63/66 = 95%** à viser sprint suivant.
+> Compteurs post-merge : **47/63 = 75%** sur le MVP scope original. Batch D (3 follow-ups MVP US-2265/2266/2267) → cible **50/63 = 79%** au sprint suivant. Reste US-2268 (V1, 8 SP).
 
-### US MVP récemment livrées (en revue ou mergées)
+### US MVP récemment livrées
 
-- 🟡 **Mirror MVP batch (9 US)** — US-2214/2215/2216/2217/2224/2225/2226/2230/2232 (PR #343, **IN REVIEW** 2026-05-08, 1093 tests, coverage 78%)
+- [x] **Mirror MVP batch (9 US)** — US-2214/2215/2216/2217/2224/2225/2226/2230/2232 (PR #343, 2026-05-08, 1093 tests, coverage 78%)
 - [x] US-2133 — Rétention 6 ans audit logs (PR #342, 2026-05-02)
 - [x] US-2136 — Pseudonymisation HMAC firstname/lastname (PR #342, 2026-05-02)
 - [x] US-2017 — Patient onboarding wizard (PR #341, 2026-05-02)

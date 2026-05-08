@@ -167,6 +167,52 @@ enum InsulinUsage {
   both  // Pour les pré-mélangées (NovoMix, Humalog Mix)
 }
 
+/// Type d'alerte d'urgence générée par seuils CGM/cétones ou saisie manuelle.
+enum EmergencyAlertType {
+  severe_hypo      // CGM < seuil veryLow (par défaut 54 mg/dL)
+  hypo             // CGM < seuil low (par défaut 70 mg/dL)
+  severe_hyper     // CGM > seuil high (par défaut 250 mg/dL)
+  hyper            // CGM > seuil ok (par défaut 180 mg/dL)
+  ketone_dka       // Cétones > seuil DKA (par défaut 3.0 mmol/L)
+  ketone_moderate  // Cétones entre seuils modérés (par défaut 1.5–3.0 mmol/L)
+  manual           // Alerte créée manuellement (patient ou pro)
+}
+
+/// Sévérité clinique d'une alerte — pilote prioritisation push & UI.
+enum EmergencyAlertSeverity {
+  info
+  warning
+  critical
+}
+
+/// Statut workflow alerte urgence.
+enum EmergencyAlertStatus {
+  open
+  acknowledged
+  resolved
+  expired
+}
+
+/// Type de glucide rapide pour protocole resucrage.
+enum HypoSugarType {
+  glucose_tabs
+  juice
+  candy
+  honey
+  sugar_packets
+  other
+}
+
+/// Type d'action prise par un soignant face à une alerte.
+enum EmergencyAlertActionType {
+  acknowledge
+  call_patient
+  adjust_treatment
+  send_message
+  resolve
+  escalate
+}
+
 // ═══════════════════════════════════════════════════════════════
 // 1. DOMAINE UTILISATEUR & AUTHENTIFICATION (7 tables)
 // ═══════════════════════════════════════════════════════════════
@@ -242,6 +288,9 @@ model User {
   reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
   prescribedInsulins   PatientInsulin[]     @relation("PrescribedInsulins")
   mydiabbyCredential   MyDiabbyCredential?
+  acknowledgedAlerts   EmergencyAlert[]      @relation("AlertAcknowledger")
+  resolvedAlerts       EmergencyAlert[]      @relation("AlertResolver")
+  emergencyActions     EmergencyAlertAction[] @relation("EmergencyActionPerformer")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -371,11 +420,16 @@ model UiStateSave {
 // ═══════════════════════════════════════════════════════════════
 
 model Patient {
-  id        Int       @id @default(autoincrement())
-  userId    Int       @unique @map("user_id")
-  pathology Pathology
-  createdAt DateTime  @default(now()) @map("created_at")
-  deletedAt DateTime? @map("deleted_at")
+  id             Int       @id @default(autoincrement())
+  userId         Int       @unique @map("user_id")
+  pathology      Pathology
+  /// Mode grossesse (US-2232) — bascule cibles glycémiques sur defaults GD
+  /// (plus stricts — cf. ACOG/ADA). Indépendant de PatientPregnancy.active
+  /// pour permettre activation rapide sans saisir DPA, puis synchronisation
+  /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
+  pregnancyMode  Boolean   @default(false) @map("pregnancy_mode")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   medicalData           PatientMedicalData?
@@ -384,6 +438,10 @@ model Patient {
   glycemiaObjectives    GlycemiaObjective[]
   cgmObjectives         CgmObjective?
   annexObjectives       AnnexObjective?
+  ketoneThreshold       KetoneThreshold?
+  hypoTreatmentProtocol HypoTreatmentProtocol?
+  alertThreshold        AlertThresholdConfig?
+  emergencyAlerts       EmergencyAlert[]
   treatments            Treatment[]
   insulinTherapySettings InsulinTherapySettings?
   bolusCalculationLogs  BolusCalculationLog[]
@@ -524,6 +582,154 @@ model AnnexObjective {
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   @@map("annex_objectives")
+}
+
+/// US-2215 — Configuration des seuils d'alerte (déclenchement émission EmergencyAlert).
+/// Par défaut, le déclenchement utilise les seuils CGM de CgmObjective. Ce modèle
+/// permet de configurer un comportement différent (ex: alertes sur veryLow/high
+/// uniquement, pas sur low/ok), notification push, email médecin référent, etc.
+model AlertThresholdConfig {
+  id                    Int      @id @default(autoincrement())
+  patientId             Int      @unique @map("patient_id")
+  /// Émettre alertes hypo (CGM < low). Par défaut true.
+  alertOnHypo           Boolean  @default(true) @map("alert_on_hypo")
+  /// Émettre alertes hypo sévère (CGM < veryLow). Par défaut true.
+  alertOnSevereHypo     Boolean  @default(true) @map("alert_on_severe_hypo")
+  /// Émettre alertes hyper (CGM > ok). Par défaut false (trop bruyant).
+  alertOnHyper          Boolean  @default(false) @map("alert_on_hyper")
+  /// Émettre alertes hyper sévère (CGM > high). Par défaut true.
+  alertOnSevereHyper    Boolean  @default(true) @map("alert_on_severe_hyper")
+  /// Notifier médecin référent par push pour alertes critiques.
+  notifyDoctorPush      Boolean  @default(true) @map("notify_doctor_push")
+  /// Notifier médecin référent par email (si critique uniquement).
+  notifyDoctorEmail     Boolean  @default(true) @map("notify_doctor_email")
+  /// Délai en minutes avant ré-alerte sur même type (anti-spam). Min 5, max 1440.
+  cooldownMinutes       Int      @default(30) @map("cooldown_minutes")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("alert_threshold_configs")
+}
+
+/// US-2216 — Seuils cétones par patient.
+/// Référence clinique : ISPAD 2022 + IDF + ADA Diabetes Care 2024.
+/// Cétones légères : 0.6–1.5 mmol/L → surveillance, hydratation.
+/// Cétones modérées : 1.5–3.0 mmol/L → action rapide (insuline + glucides).
+/// Cétones DKA : ≥ 3.0 mmol/L → critère diagnostique DKA (ISPAD 2022).
+model KetoneThreshold {
+  id                    Int      @id @default(autoincrement())
+  patientId             Int      @unique @map("patient_id")
+  /// Limite supérieure cétones « légères » (mmol/L). Par défaut 0.6.
+  lightThreshold        Decimal  @default(0.6) @map("light_threshold") @db.Decimal(3, 1)
+  /// Limite supérieure cétones « modérées » (mmol/L). Par défaut 1.5.
+  moderateThreshold     Decimal  @default(1.5) @map("moderate_threshold") @db.Decimal(3, 1)
+  /// À ce seuil ou au-dessus → DKA (urgence). Par défaut 3.0 (ISPAD 2022).
+  dkaThreshold          Decimal  @default(3.0) @map("dka_threshold") @db.Decimal(3, 1)
+  /// Émettre alerte sur cétones modérées.
+  alertOnModerate       Boolean  @default(true) @map("alert_on_moderate")
+  /// Émettre alerte critique sur DKA.
+  alertOnDka            Boolean  @default(true) @map("alert_on_dka")
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("ketone_thresholds")
+}
+
+/// US-2217 — Protocole resucrage configurable par patient.
+/// Référence clinique : ADA — règle des 15/15 (15 g glucides rapides → réévaluation 15 min).
+/// Type de glucide adapté aux préférences/allergies. Quantité standard 15 g pour adulte,
+/// modifiable selon poids/âge/médecin.
+model HypoTreatmentProtocol {
+  id                    Int           @id @default(autoincrement())
+  patientId             Int           @unique @map("patient_id")
+  sugarType             HypoSugarType @default(glucose_tabs) @map("sugar_type")
+  /// Description libre si sugarType = other (ex: "miel + biscotte").
+  sugarTypeOther        String?       @map("sugar_type_other") @db.VarChar(200)
+  /// Grammes de glucides rapides à ingérer. Par défaut 15 g.
+  fastCarbsGrams        Int           @default(15) @map("fast_carbs_grams")
+  /// Délai (minutes) avant re-mesure glycémie. Par défaut 15 min.
+  retestMinutes         Int           @default(15) @map("retest_minutes")
+  /// Allergies à éviter (chiffré AES-256-GCM si non vide).
+  allergies             String?       // chiffré
+  /// Instructions complémentaires destinées au patient (chiffré).
+  instructions          String?       // chiffré
+  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@map("hypo_treatment_protocols")
+}
+
+/// US-2224/2225/2226 — Alerte d'urgence (hypo, hyper, DKA, etc.).
+/// Workflow : open → acknowledged (par soignant) → resolved.
+/// Push critique envoyé via FCM (US-2230) avec deep link vers timeline.
+///
+/// **Champs chiffrés AES-256-GCM (PHI soignant — RGPD Art. 9 / HDS) :**
+///  - `notes`, `resolutionNotes` (texte libre clinicien),
+///  - `contextSnapshot` (timeline CGM 30 min — données de santé).
+model EmergencyAlert {
+  id                Int                     @id @default(autoincrement())
+  patientId         Int                     @map("patient_id")
+  alertType         EmergencyAlertType      @map("alert_type")
+  severity          EmergencyAlertSeverity  @default(warning)
+  status            EmergencyAlertStatus    @default(open)
+  triggeredAt       DateTime                @default(now()) @map("triggered_at") @db.Timestamptz()
+  /// Valeur glycémie déclencheuse (mg/dL). NULL si manuelle ou cétone.
+  glucoseValueMgdl  Decimal?                @map("glucose_value_mgdl") @db.Decimal(6, 2)
+  /// Valeur cétones déclencheuse (mmol/L). NULL si manuelle ou glycémie.
+  ketoneValueMmol   Decimal?                @map("ketone_value_mmol") @db.Decimal(4, 2)
+  /// Timeline CGM 30 min avant trigger — chiffré base64(AES-256-GCM)
+  /// d'un JSON `[{ts, mgdl}]`. Texte vide / NULL si non renseigné.
+  contextSnapshot   String?                 @map("context_snapshot") @db.Text
+  /// Texte libre clinicien — chiffré AES-256-GCM si non vide.
+  notes             String?                 @db.Text
+  acknowledgedBy    Int?                    @map("acknowledged_by")
+  acknowledgedAt    DateTime?               @map("acknowledged_at") @db.Timestamptz()
+  resolvedBy        Int?                    @map("resolved_by")
+  resolvedAt        DateTime?               @map("resolved_at") @db.Timestamptz()
+  /// Notes de résolution clinicien — chiffré AES-256-GCM si non vide.
+  resolutionNotes   String?                 @map("resolution_notes") @db.Text
+  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient            Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  acknowledgedByUser User?   @relation("AlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: Restrict)
+  resolvedByUser     User?   @relation("AlertResolver", fields: [resolvedBy], references: [id], onDelete: Restrict)
+  actions            EmergencyAlertAction[]
+
+  @@index([patientId, status, triggeredAt])
+  @@index([patientId, alertType, status])
+  @@index([patientId, severity, triggeredAt])
+  @@index([status, severity, triggeredAt])
+  @@index([alertType, triggeredAt])
+  @@map("emergency_alerts")
+}
+
+/// US-2226 — Actions effectuées par un soignant face à une alerte (audit + workflow).
+/// Append-only ; jamais supprimé pour traçabilité HDS.
+model EmergencyAlertAction {
+  id           Int                       @id @default(autoincrement())
+  alertId      Int                       @map("alert_id")
+  performedBy  Int                       @map("performed_by")
+  actionType   EmergencyAlertActionType  @map("action_type")
+  /// Notes libres clinicien — chiffré AES-256-GCM si non vide.
+  notes        String?                   @db.Text
+  /// Métadonnées strictement bornées (durée, résultat). Aucune PHI/PII.
+  /// Schéma applicatif : { durationSec?: number, outcome?: string }.
+  metadata     Json                      @default("{}")
+  createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+
+  alert            EmergencyAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  performedByUser  User           @relation("EmergencyActionPerformer", fields: [performedBy], references: [id], onDelete: Restrict)
+
+  @@index([alertId, createdAt])
+  @@index([performedBy, createdAt])
+  @@map("emergency_alert_actions")
 }
 
 // ═══════════════════════════════════════════════════════════════
