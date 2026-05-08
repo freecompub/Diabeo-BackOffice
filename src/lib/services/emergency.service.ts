@@ -69,6 +69,22 @@ const GL_TO_MGDL = 100
 const CRITICAL_COOLDOWN_CEILING = 15
 
 /**
+ * Hard timeout per dispatch channel (FCM / email). A slow provider must not
+ * inflate API request latency on the CGM-ingestion critical path.
+ * 5 s is a safe upper bound: Resend p95 is < 1 s, FCM p95 < 500 ms.
+ */
+const DISPATCH_TIMEOUT_MS = 5_000
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race<T>([
+    p,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label}_timeout`)), ms),
+    ),
+  ])
+}
+
+/**
  * Sanity bounds on alert trigger values — sensor errors above these ranges
  * should never be persisted. Mirrors CGM ingestion validation.
  */
@@ -316,20 +332,24 @@ async function notifyCriticalAlert(
     if (notifyPush) {
       // Generic lockscreen title/body — alert type only in data payload.
       tasks.push(
-        fcmService.sendToUser({
-          userId: referentUserId,
-          senderId,
-          title: "Diabeo — Alerte",
-          body: "Connectez-vous pour voir les détails.",
-          data: {
-            kind: "emergency_alert",
-            alertId: String(alert.id),
-            patientId: String(alert.patientId),
-            alertType: alert.alertType,
-            severity: alert.severity,
-            deepLink: `/dashboard/emergencies/${alert.id}`,
-          },
-        }).catch((err) => {
+        withTimeout(
+          fcmService.sendToUser({
+            userId: referentUserId,
+            senderId,
+            title: "Diabeo — Alerte",
+            body: "Connectez-vous pour voir les détails.",
+            data: {
+              kind: "emergency_alert",
+              alertId: String(alert.id),
+              patientId: String(alert.patientId),
+              alertType: alert.alertType,
+              severity: alert.severity,
+              deepLink: `/dashboard/emergencies/${alert.id}`,
+            },
+          }),
+          DISPATCH_TIMEOUT_MS,
+          "fcm_dispatch",
+        ).catch((err) => {
           logger.error("emergency", "FCM dispatch failed for critical alert", {
             patientId: alert.patientId,
           }, err)
@@ -338,7 +358,17 @@ async function notifyCriticalAlert(
     }
 
     if (notifyEmail) {
-      tasks.push(dispatchDoctorEmail({ referentUserId, alert, senderId }))
+      tasks.push(
+        withTimeout(
+          dispatchDoctorEmail({ referentUserId, alert, senderId }),
+          DISPATCH_TIMEOUT_MS,
+          "email_dispatch",
+        ).catch((err) => {
+          logger.error("emergency", "Email dispatch timeout/failure", {
+            patientId: alert.patientId,
+          }, err)
+        }),
+      )
     }
 
     // allSettled — one channel's hard failure must never short-circuit the
@@ -376,6 +406,23 @@ async function dispatchDoctorEmail(input: {
       logger.warn("emergency", "Doctor email unavailable — skipping email dispatch", {
         userId: input.referentUserId,
       })
+      // Record a CONFIG_ERROR in the audit log so a key-rotation drift or a
+      // missing referent.email cannot silently disable critical-alert delivery
+      // without a forensic trace (HDS §IV.3 + ANSSI RGS).
+      await auditService.log({
+        userId: input.senderId,
+        action: "CONFIG_ERROR",
+        resource: "USER",
+        resourceId: String(input.referentUserId),
+        metadata: {
+          reason: "email_decryption_failed_or_missing",
+          alertId: input.alert.id,
+        },
+      }).catch((err) => {
+        logger.error("emergency", "Failed to audit CONFIG_ERROR", {
+          userId: input.referentUserId,
+        }, err)
+      })
       return
     }
 
@@ -386,10 +433,13 @@ async function dispatchDoctorEmail(input: {
     })
 
     if (result.sent) {
-      // Audit log records the *fact* of sending — no PHI, no email content.
+      // Audit log records the *fact* of provider acceptance — no PHI, no
+      // email content. Action is `EMAIL_SUBMITTED` (not "SENT") because Resend
+      // confirms submission to MTA, not delivery to the doctor's mailbox —
+      // HDS forensic accuracy. Delivery webhooks (V1+) emit a follow-up row.
       await auditService.log({
         userId: input.senderId,
-        action: "EMAIL_SENT",
+        action: "EMAIL_SUBMITTED",
         resource: "EMERGENCY_ALERT",
         resourceId: String(input.alert.id),
         metadata: {

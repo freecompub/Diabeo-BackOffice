@@ -10,8 +10,7 @@
  */
 
 import { auditService } from "@/lib/services/audit.service"
-import type { AuditContext } from "@/lib/services/patient.service"
-import type { AuditResource } from "@/lib/services/audit.service"
+import type { AuditContext, AuditResource } from "@/lib/services/audit.service"
 import type { AuthUser } from "@/lib/auth"
 import type { Prisma } from "@prisma/client"
 import { logger } from "@/lib/logger"

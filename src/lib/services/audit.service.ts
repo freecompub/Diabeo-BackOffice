@@ -57,8 +57,14 @@ export type AuditAction =
   | "ANONYMIZE"
   /** US-2265 — RBAC-breach burst signal (50+ UNAUTHORIZED in 60s by same userId). */
   | "RBAC_BREACH_BURST"
-  /** US-2266 — email envoyé suite à une alerte critique. */
-  | "EMAIL_SENT"
+  /**
+   * US-2266 — Email accepté par le provider transactionnel (Resend).
+   * **Sémantique HDS** : "submitted to MTA", PAS "delivered to recipient".
+   * Une livraison réelle se trace via webhook provider en V1+ (EMAIL_DELIVERED
+   * / EMAIL_BOUNCED). Le naming explicite "submitted" prévient toute lecture
+   * forensique faussée ("le médecin a-t-il reçu l'alerte ?" → réponse honnête).
+   */
+  | "EMAIL_SUBMITTED"
 
 /**
  * Audit resource type — describes what was acted upon.
@@ -115,6 +121,24 @@ export interface AuditLogEntry {
   /** Correlation ID (HDS §IV.3) to join this audit row with stderr log lines. */
   requestId?: string
   metadata?: Prisma.InputJsonValue
+}
+
+/**
+ * Input shape for {@link auditService.accessDenied}. The action is fixed to
+ * `UNAUTHORIZED` internally — callers cannot override it. Exported as a named
+ * type so route-helpers and tests share a single, stable contract.
+ */
+export type AccessDeniedInput = Omit<AuditLogEntry, "action">
+
+/**
+ * Request context extracted from the HTTP layer. Same shape as the return
+ * value of {@link extractRequestContext}; defined here so audit-related
+ * helpers don't need to import it from `patient.service.ts`.
+ */
+export interface AuditContext {
+  ipAddress: string
+  userAgent: string
+  requestId: string
 }
 
 /**
@@ -423,7 +447,9 @@ export const auditService = {
    *
    * @returns Created UNAUTHORIZED audit row, plus optional burst row.
    */
-  async accessDenied(entry: Omit<AuditLogEntry, "action">) {
+  async accessDenied(
+    entry: AccessDeniedInput,
+  ): Promise<AccessDeniedResult> {
     const now = Date.now()
     const eventsInWindow = recordAndCheckBurst(entry.userId, now)
 
@@ -439,7 +465,11 @@ export const auditService = {
     // committed after a successful insert — if the transaction fails, the
     // next call will try the burst again rather than silently entering
     // cooldown on a row that never landed in the audit log.
-    const [unauthorizedRow, burstRow] = await prisma.$transaction([
+    //
+    // Prisma's $transaction([...]) array form returns AuditLog[] (homogeneous).
+    // We cast to a tuple to preserve the asymmetric AccessDeniedResult shape
+    // (`burstRow` may be null on the non-burst branch above).
+    const txRows = (await prisma.$transaction([
       prisma.auditLog.create({
         data: createAuditData({ ...entry, action: "UNAUTHORIZED" }),
       }),
@@ -459,8 +489,14 @@ export const auditService = {
           },
         }),
       }),
-    ])
+    ])) as [AuditLogRow, AuditLogRow]
     markBurstEmitted(entry.userId, now)
-    return { unauthorizedRow, burstRow }
+    return { unauthorizedRow: txRows[0], burstRow: txRows[1] }
   },
+}
+
+type AuditLogRow = Prisma.AuditLogGetPayload<Record<string, never>>
+export interface AccessDeniedResult {
+  unauthorizedRow: AuditLogRow
+  burstRow: AuditLogRow | null
 }
