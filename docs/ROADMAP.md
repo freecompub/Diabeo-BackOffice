@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Batch A livré (US-2047 + US-2089 + US-2112 + US-2115 + US-2117) → MVP scope original 100% (hors US-2267 V1).
-> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **92%** (58/63 DONE — scope original)
+> Dernière mise à jour : 2026-05-08 — Batch A livré + US-2267 (PR #352) + US-2268 (PR #353) → MVP scope original 100% + V1 pre-prod blocker LEVÉ.
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
 
@@ -9,14 +9,16 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 58   | 1       | 6           | **89%** |
-| **V1**   | 122   | 0    | 7       | 115         | **0%**  |
+| **MVP**  | 65    | 65   | 0       | 0           | **100%** |
+| **V1**   | 120   | 2    | 7       | 111         | **2%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **53** | **13**  | **202**     | **25%** |
+| **TOTAL**| **266** | **67** | **7**   | **192**     | **25%** |
 
-> MVP scope original (63 US) → 49 DONE = **78%**. Avec US-2265+US-2266 ajoutés au scope MVP (Batch D1 livré) → **49/65 = 75%**. US-2267 (Migrations Prisma) reclassée **V1 + blocker-pre-prod** : reste sûr avec `db push` tant que Diabeo n'est pas en prod, mais doit être livré avant le 1er go-live. US-2268 reste V1.
+> MVP scope original (63 US) → **63/63 = 100%** ✅. Avec Batch D1 (US-2265+US-2266) → **65/65**.
+> US-2267 (Migrations Prisma versionnées) ✅ DONE PR #352 — pre-prod blocker levé.
+> US-2268 (auditLog.resourceId convention) ✅ DONE PR #353 — forensics CNIL/ANS opérationnel.
 
 ---
 
@@ -153,7 +155,7 @@
 | US-2138 | Hébergement HDS | DONE | OVHcloud GRA (décision archi) |
 | US-2141 | Catégorisation documents | DONE | `DocumentCategory` enum |
 | US-2265 | Événements `ACCESS_DENIED` audit | DONE | 2 SP — PR #349. `auditService.accessDenied` + burst RBAC (50/60s, cooldown, atomic transaction, LRU cap), helper `auditForbiddenInRoute` (jamais 403→500), wired sur 7 routes Mirror MVP. |
-| US-2268 | Convention `auditLog.resourceId` normalisée | NOT STARTED | Follow-up PR #343 — 8 SP — **V1**. Issue [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347). Cross-cutting refacto ~30 call sites. |
+| US-2268 | Convention `auditLog.resourceId` normalisée | DONE | PR #353 — 8 SP — V1. Helper `getByPatient` via `$queryRaw` + GIN partial index `jsonb_path_ops` (vérifié EXPLAIN ANALYZE 200k rows : 0.28ms vs 45ms seq scan). 26 sites refactorés + 15 sites missing pivots ajoutés (documents, events, patient CRUD, bolus, mydiabby). Backfill idempotent bypass trigger via `session_replication_role = 'replica'`. RETENTION enum wiring + audit_log_apply_retention preserves patientId post-anonymisation. |
 
 ### Domaine 12 — Documents (1 US)
 
@@ -196,13 +198,13 @@
 |----|-------|----------|----|-------|--------|
 | US-2265 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | ✅ DONE PR #349 |
 | US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | ✅ DONE PR #349 |
-| US-2267 | Migrations Prisma versionnées | **V1** + `blocker-pre-prod` | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | ⏸️ NOT STARTED — à livrer AVANT 1er go-live prod |
-| US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | NOT STARTED |
+| US-2267 | Migrations Prisma versionnées | V1 + `blocker-pre-prod` | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | ✅ DONE PR #352 — pre-prod blocker LEVÉ |
+| US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | ✅ DONE PR #353 |
 
 **PR #349** — US-2265 + US-2266 livrés (5 SP MVP). 1102 tests verts, branch coverage maintenue, 3 agents re-review (READY/FIX-MEDIUM tous résolus avant merge).
 **PR #348** mergée — Spec markdown des 4 US + issues GitHub + items board #2.
 
-**Batch D MVP** : ✅ 100 % livré (5/5 SP). Reste US-2267 (V1 blocker-pre-prod) + US-2268 (V1) = **13 SP V1**.
+**Batch D MVP** : ✅ 100 % livré (5/5 SP). US-2267 + US-2268 V1 livrés (PR #352 + #353) = **13 SP V1**.
 
 ---
 
@@ -411,14 +413,16 @@
 | B | ~~4 nouvelles US backoffice~~ | ~~18 SP~~ | ✅ DONE (PR #350) |
 | C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ DONE (PR #343) |
 | D1 | ~~US-2265 + US-2266~~ | ~~5 SP~~ | ✅ DONE (PR #349) |
-| **Total restant** | **MVP scope original 100% (hors US-2267 V1 pre-prod)** | **0 SP** | |
+| **Total restant** | **MVP 100% + V1 pre-prod blocker LEVÉ — go-live ready** | **0 SP** | |
 
-**Pre-prod blocker** (V1 prioritaire) : **US-2267** Migrations Prisma versionnées (5 SP) — à livrer avant le 1er go-live prod, label `blocker-pre-prod`.
+**Pre-prod blocker** : ✅ LEVÉ. US-2267 (Migrations Prisma versionnées) livré PR #352. Voir checklist 1er deploy prod : `docs/runbook/migrations.md` §7.3.
 
-> Compteurs : **53/63 = 84%** sur le MVP scope original. US-2267 reclassée V1 (Diabeo n'est pas encore en prod, `db push` reste sûr en dev/recette). Reste Batch A (PARTIAL → completion) et US-2267 V1 pre-prod.
+> Compteurs : **63/63 = 100%** scope original, **65/65 = 100%** scope étendu (avec Batch D1). Plus US-2267 + US-2268 V1 livrés. Le backoffice est techniquement go-live ready.
 
-### US MVP récemment livrées
+### US MVP / V1 récemment livrées
 
+- [x] **US-2268** (V1) — `auditLog.resourceId` plat + `metadata.patientId` pivot pour forensics CNIL/ANS. Helper `getByPatient` via `$queryRaw` + GIN partial index `jsonb_path_ops` (vérifié EXPLAIN 200k rows : 0.28ms vs 45ms seq scan). 26 sites refactorés + 15 sites missing pivots ajoutés (documents, events, patient CRUD, bolus, mydiabby). PR #353, 2026-05-08, 1184 tests, 8 SP. Re-review 5 agents (1 critical + 5 high + 4 medium fixés).
+- [x] **US-2267** (V1 `blocker-pre-prod` LEVÉ) — Migrations Prisma versionnées remplaçant `db push`. Baseline (1723 lignes) + post_deploy (DDL non-modélisables : trigger immutability HDS, fonction rétention 6y SECURITY DEFINER, CHECK constraints) + drift gate CI. deploy.sh preflight `_prisma_migrations`. Runbook complet (§7.3 checklist 1er deploy prod). PR #352, 2026-05-08, 1182 tests, 5 SP. Re-review 5 agents (5 critical + 5 high fixés).
 - [x] **Batch A (5 US)** — US-2047 (UI workflow ajustement), US-2089 (UI wizard pairing device), US-2112 (i18n FR/EN/AR + RTL switcher), US-2115 (formatters Intl complet), US-2117 (cabinet enrichi adresse/contact/openingHours/specialties/manager) (PR #351, 2026-05-08, 1177 tests, 15 SP)
 - [x] **Batch B (4 US)** — US-2025 (QR invite mobile), US-2118 (praticiens libéraux + RPPS Luhn), US-2148 (admin users + anti-lockout), US-2151 (backup management) (PR #350, 2026-05-08, 1141 tests, 18 SP, 3 agents review)
 - [x] **US-2265 + US-2266** (Batch D1) — Audit `ACCESS_DENIED` + email médecin alerte critique (PR #349, 2026-05-08, 1102 tests, 5 SP, 3 agents review)
