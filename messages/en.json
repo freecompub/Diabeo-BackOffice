@@ -1,6 +1,7 @@
 {
   "common": {
     "loading": "Loading...",
+    "changeLanguage": "Change language",
     "error": "An error occurred",
     "retry": "Retry",
     "save": "Save",
@@ -611,6 +612,75 @@
       "labResults": "Lab results",
       "other": "Other"
     }
+  },
+  "adjustments": {
+    "title": "Adjustment proposals",
+    "pendingTitle": "Pending proposals",
+    "refreshList": "Refresh list",
+    "patientReason": "Patient #<num>{id}</num> — Reason: {reason}",
+    "accept": "Accept",
+    "reject": "Reject",
+    "acceptAria": "Accept proposal for patient {id}",
+    "rejectAria": "Reject proposal for patient {id}",
+    "acceptedComment": "Validated",
+    "rejectedComment": "Rejected",
+    "listAria": "List of pending proposals",
+    "valueChanged": "Value changed from {from} to {to}",
+    "loadingMore": "Loading",
+    "rowError": "Action failed on this proposal. Please retry.",
+    "parameter": {
+      "insulinSensitivityFactor": "Insulin sensitivity factor (ISF)",
+      "insulinToCarbRatio": "Insulin-to-carb ratio (ICR)",
+      "basalRate": "Basal rate"
+    }
+  },
+  "devicePairing": {
+    "title": "Device pairing",
+    "noPatient": "No patient selected.",
+    "stepXofY": "Step {current} of {total}",
+    "progressAria": "Pairing progress",
+    "stepProgressAnnounce": "Step {current} of {total}: {label}",
+    "previousStepAria": "Previous step",
+    "nextStepAria": "Next step",
+    "stepLabel": {
+      "typeModel": "Type & Model",
+      "serialConnection": "Serial & Connection",
+      "confirmation": "Confirmation"
+    },
+    "field": {
+      "category": "Category",
+      "categoryPlaceholder": "Select...",
+      "brand": "Brand",
+      "brandPlaceholder": "E.g.: Dexcom, Abbott, Medtronic",
+      "model": "Model",
+      "modelPlaceholder": "E.g.: G7, FreeStyle Libre 3",
+      "sn": "Serial number",
+      "snPlaceholder": "Printed on the device",
+      "connectionType": "Connection type",
+      "connectionGroupAria": "Choose connection type (multi-select)"
+    },
+    "category": {
+      "glucometer": "Glucometer",
+      "cgm": "CGM sensor",
+      "insulinPump": "Insulin pump",
+      "insulinPen": "Connected pen",
+      "healthApp": "Health app"
+    },
+    "connection": {
+      "bluetooth": "Bluetooth",
+      "usb": "USB",
+      "api": "Cloud API"
+    },
+    "summary": {
+      "category": "Category",
+      "brandModel": "Brand / Model",
+      "sn": "Serial #",
+      "connection": "Connection"
+    },
+    "submitError": "Failed to save the device. Please retry."
+  },
+  "localeSwitcher": {
+    "switchedAnnounce": "Language changed. The page will reload."
   },
   "profile": {
     "loading": "Loading profile...",

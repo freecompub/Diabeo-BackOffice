@@ -1,6 +1,7 @@
 {
   "common": {
     "loading": "جاري التحميل...",
+    "changeLanguage": "تغيير اللغة",
     "error": "حدث خطأ",
     "retry": "إعادة المحاولة",
     "save": "حفظ",
@@ -611,6 +612,75 @@
     },
     "fileTooLarge": "حجم الملف يتجاوز الحد الأقصى المسموح به (50 ميغابايت)",
     "invalidFileType": "نوع الملف غير مسموح. الأنواع المقبولة: PDF، PNG، JPG"
+  },
+  "adjustments": {
+    "title": "اقتراحات التعديل",
+    "pendingTitle": "اقتراحات قيد الانتظار",
+    "refreshList": "تحديث القائمة",
+    "patientReason": "المريض #<num>{id}</num> — السبب: {reason}",
+    "accept": "قبول",
+    "reject": "رفض",
+    "acceptAria": "قبول الاقتراح للمريض {id}",
+    "rejectAria": "رفض الاقتراح للمريض {id}",
+    "acceptedComment": "مُصدَّق",
+    "rejectedComment": "مرفوض",
+    "listAria": "قائمة الاقتراحات قيد الانتظار",
+    "valueChanged": "تغيرت القيمة من {from} إلى {to}",
+    "loadingMore": "جاري التحميل",
+    "rowError": "فشل تنفيذ الإجراء على هذا الاقتراح. حاول مرة أخرى.",
+    "parameter": {
+      "insulinSensitivityFactor": "عامل الحساسية للأنسولين (ISF)",
+      "insulinToCarbRatio": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
+      "basalRate": "المعدل القاعدي"
+    }
+  },
+  "devicePairing": {
+    "title": "إقران الجهاز",
+    "noPatient": "لم يتم تحديد مريض.",
+    "stepXofY": "الخطوة {current} من {total}",
+    "progressAria": "تقدم الإقران",
+    "stepProgressAnnounce": "الخطوة {current} من {total}: {label}",
+    "previousStepAria": "الخطوة السابقة",
+    "nextStepAria": "الخطوة التالية",
+    "stepLabel": {
+      "typeModel": "النوع والطراز",
+      "serialConnection": "الرقم التسلسلي والاتصال",
+      "confirmation": "تأكيد"
+    },
+    "field": {
+      "category": "الفئة",
+      "categoryPlaceholder": "اختر...",
+      "brand": "العلامة التجارية",
+      "brandPlaceholder": "مثال: Dexcom، Abbott، Medtronic",
+      "model": "الطراز",
+      "modelPlaceholder": "مثال: G7، FreeStyle Libre 3",
+      "sn": "الرقم التسلسلي",
+      "snPlaceholder": "مطبوع على الجهاز",
+      "connectionType": "نوع الاتصال",
+      "connectionGroupAria": "اختر نوع الاتصال (اختيار متعدد)"
+    },
+    "category": {
+      "glucometer": "جهاز قياس الجلوكوز",
+      "cgm": "جهاز CGM",
+      "insulinPump": "مضخة الأنسولين",
+      "insulinPen": "قلم متصل",
+      "healthApp": "تطبيق صحي"
+    },
+    "connection": {
+      "bluetooth": "Bluetooth",
+      "usb": "USB",
+      "api": "API سحابي"
+    },
+    "summary": {
+      "category": "الفئة",
+      "brandModel": "العلامة / الطراز",
+      "sn": "الرقم التسلسلي",
+      "connection": "الاتصال"
+    },
+    "submitError": "فشل حفظ الجهاز. حاول مرة أخرى."
+  },
+  "localeSwitcher": {
+    "switchedAnnounce": "تم تغيير اللغة. ستتم إعادة تحميل الصفحة."
   },
   "profile": {
     "loading": "جاري تحميل الملف الشخصي...",

@@ -332,6 +332,7 @@ model User {
   statusTransitionsBy  User[]                @relation("UserStatusChangedBy")
   statusTransitionedBy User?                 @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
   triggeredBackups     BackupLog[]           @relation("BackupTriggeredBy")
+  managedServices      HealthcareService[]   @relation("HealthcareServiceManager")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -1247,8 +1248,36 @@ model HealthcareService {
   id            Int          @id @default(autoincrement())
   name          String       @db.VarChar(255)
   establishment String?      @db.VarChar(255)
+  /// US-2117 — Adresse complète (chiffrée AES-256-GCM si contient des PII
+  /// identifiables ; ici champ de rue donc plain). Utile pour annuaire,
+  /// envoi documents postaux, etc.
+  addressLine1  String?      @map("address_line1") @db.VarChar(255)
+  addressLine2  String?      @map("address_line2") @db.VarChar(255)
+  postalCode    String?      @map("postal_code") @db.VarChar(10)
   city          String?      @db.VarChar(100)
   country       String?      @db.Char(2)
+  /// US-2117 — Coordonnées de contact (publiques cabinet).
+  phone         String?      @db.VarChar(30)
+  email         String?      @db.VarChar(255)
+  website       String?      @db.VarChar(500)
+  /// US-2117 — Horaires d'ouverture format JSON :
+  /// { mon: [["09:00","12:00"],["14:00","18:00"]], tue: [...], ..., sun: [] }
+  /// Tableau vide = fermé. Validation côté service (Zod).
+  openingHours  Json?        @map("opening_hours")
+  /// US-2117 — Spécialités cliniques (libellés libres ou codes CIM).
+  /// Ex: ["diabetologie", "endocrinologie", "pediatrie"]. Cardinalité 0-N.
+  specialties   String[]     @default([])
+  /// US-2117 — Capacité (lits / box / postes consultation). Optionnel.
+  capacity      Int?
+  /// US-2117 — Manager responsable (User backoffice). Différent du référent
+  /// patient (qui est par patient). Le manager voit tous les patients du
+  /// service via PatientService (relation existante).
+  managerId     Int?         @map("manager_id")
+  /// `Restrict` cohérent avec le reste du schéma (statusChangedBy, BackupLog.triggeredBy) :
+  /// la suppression d'un User manager d'un service échoue côté DB, forçant un
+  /// admin à réassigner explicitement avant deletion. Évite l'orphelinage silencieux
+  /// d'une structure dont le manager a été supprimé.
+  manager       User?        @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: Restrict)
   noVideos      Boolean      @default(false) @map("no_videos")
   noFood        Boolean      @default(false) @map("no_food")
   logo          String?      @db.VarChar(500)
@@ -1271,6 +1300,12 @@ model HealthcareService {
 
   @@unique([name, establishment])
   @@index([type])
+  @@index([managerId])
+  /// US-2117 — GIN index sur l'array `specialties` : permet
+  /// `where: { specialties: { has: "diabetologie" } }` en O(log n) au lieu
+  /// d'un sequential scan. Préventif : à 1000+ services, le scan devient
+  /// notable lors de la recherche par spécialité.
+  @@index([specialties], type: Gin)
   @@map("healthcare_services")
 }
 

@@ -160,10 +160,26 @@ export async function deleteUserAccount(
       data: { userId: null },
     })
 
+    // US-2117 — `HealthcareService.managerId` est en `onDelete: Restrict`
+    // (cohérent avec le reste du schéma). Ici on n'EFFACE pas le User (anonymisation
+    // par UPDATE), donc le FK n'est pas déclenché — mais sans nettoyage, le service
+    // pointerait sur un User archivé dont `assertManagerEligible` ne devrait plus
+    // accepter la réassignation. On clear avant l'anonymisation pour garder
+    // l'invariant : un service avec managerId ≠ null pointe toujours sur un
+    // User actif éligible.
+    await tx.healthcareService.updateMany({
+      where: { managerId: userId },
+      data: { managerId: null },
+    })
+
     // Anonymize user — keep the row for audit log FK integrity
     await tx.user.update({
       where: { id: userId },
       data: {
+        // `archived` = état terminal post-RGPD : la row reste pour l'audit log
+        // mais aucune authentification ni assignation n'est plus possible.
+        // `assertManagerEligible` rejette désormais ce User (status !== "active").
+        status: "archived",
         email: `deleted_${emailHash}`,
         emailHmac: `deleted_${emailHash}`,
         passwordHash: "DELETED",

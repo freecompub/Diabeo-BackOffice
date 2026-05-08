@@ -11,11 +11,32 @@
  */
 
 import { prisma } from "@/lib/db/client"
+import { z } from "zod"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./audit.service"
-import type { ServiceType, Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
+import type { ServiceType } from "@prisma/client"
 
 const MAX_LIST_LIMIT = 200
+
+/**
+ * Source unique du regex HH:MM (00:00 – 23:59) — ré-exporté pour les
+ * routes Zod afin d'éviter trois copies divergentes.
+ */
+export const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** US-2117 — Schemas Zod partagés pour les routes (évite duplication route ↔ [id]). */
+export const timeSchema = z.string().regex(TIME_REGEX, "time_format_invalid")
+export const daySchema = z.array(z.tuple([timeSchema, timeSchema])).max(4)
+export const openingHoursSchema = z.object({
+  mon: daySchema.optional(),
+  tue: daySchema.optional(),
+  wed: daySchema.optional(),
+  thu: daySchema.optional(),
+  fri: daySchema.optional(),
+  sat: daySchema.optional(),
+  sun: daySchema.optional(),
+})
 
 interface ListFilter {
   /** Filtre type structure. */
@@ -26,12 +47,72 @@ interface ListFilter {
   cursor?: number
 }
 
+/**
+ * US-2117 — Format des horaires d'ouverture, jour par jour.
+ * Tableau de plages `[ouverture, fermeture]` au format `"HH:MM"`. Un tableau
+ * vide signifie "fermé" ce jour. Plusieurs plages permettent de modéliser la
+ * pause déjeuner (`[["09:00","12:00"],["14:00","18:00"]]`).
+ */
+export type DaySchedule = [string, string][]
+export interface OpeningHours {
+  mon?: DaySchedule
+  tue?: DaySchedule
+  wed?: DaySchedule
+  thu?: DaySchedule
+  fri?: DaySchedule
+  sat?: DaySchedule
+  sun?: DaySchedule
+}
+
+/**
+ * Validate `OpeningHours`. Returns null when valid, error code otherwise.
+ * Garantit :
+ *  - Format HH:MM strict
+ *  - Heure de fermeture > ouverture (par plage)
+ *  - Pas de chevauchement entre plages d'un même jour
+ */
+export function validateOpeningHours(hours: OpeningHours): string | null {
+  for (const day of Object.keys(hours) as (keyof OpeningHours)[]) {
+    const ranges = hours[day]
+    if (!ranges) continue
+    if (!Array.isArray(ranges)) return "opening_hours_invalid_shape"
+    for (const range of ranges) {
+      if (!Array.isArray(range) || range.length !== 2) {
+        return "opening_hours_invalid_range"
+      }
+      const [open, close] = range
+      if (!TIME_REGEX.test(open) || !TIME_REGEX.test(close)) {
+        return "opening_hours_invalid_time_format"
+      }
+      if (open >= close) return "opening_hours_close_before_open"
+    }
+    // Check for overlapping ranges within the day.
+    const sorted = [...ranges].sort((a, b) => a[0].localeCompare(b[0]))
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i]![0] < sorted[i - 1]![1]) {
+        return "opening_hours_ranges_overlap"
+      }
+    }
+  }
+  return null
+}
+
 interface CreateInput {
   name: string
   type: ServiceType
   establishment?: string | null
+  addressLine1?: string | null
+  addressLine2?: string | null
+  postalCode?: string | null
   city?: string | null
   country?: string | null
+  phone?: string | null
+  email?: string | null
+  website?: string | null
+  openingHours?: OpeningHours | null
+  specialties?: string[]
+  capacity?: number | null
+  managerId?: number | null
   /** RPPS / ADELI — requis pour `freelance`, optionnel sinon. */
   licenseNumber?: string | null
 }
@@ -40,8 +121,18 @@ interface UpdateInput {
   name?: string
   type?: ServiceType
   establishment?: string | null
+  addressLine1?: string | null
+  addressLine2?: string | null
+  postalCode?: string | null
   city?: string | null
   country?: string | null
+  phone?: string | null
+  email?: string | null
+  website?: string | null
+  openingHours?: OpeningHours | null
+  specialties?: string[]
+  capacity?: number | null
+  managerId?: number | null
   licenseNumber?: string | null
 }
 
@@ -84,6 +175,28 @@ export function validateLicenseNumber(value: string): string | null {
       : "adeli_checksum_invalid"
   }
   return null
+}
+
+/**
+ * Vérifie qu'un `managerId` proposé pointe sur un User actif au rôle compatible
+ * (DOCTOR ou ADMIN). Empêche un caller d'assigner n'importe quel ID arbitraire
+ * comme manager d'un cabinet (escalade implicite ou pollution référentielle).
+ *
+ * Throw : `manager_not_found` | `manager_role_invalid` | `manager_inactive`.
+ */
+async function assertManagerEligible(
+  tx: Prisma.TransactionClient,
+  managerId: number,
+): Promise<void> {
+  const u = await tx.user.findUnique({
+    where: { id: managerId },
+    select: { id: true, role: true, status: true },
+  })
+  if (!u) throw new Error("manager_not_found")
+  if (u.role !== "DOCTOR" && u.role !== "ADMIN") {
+    throw new Error("manager_role_invalid")
+  }
+  if (u.status !== "active") throw new Error("manager_inactive")
 }
 
 export const healthcareManagementService = {
@@ -132,14 +245,33 @@ export const healthcareManagementService = {
       if (error) throw new Error(error)
     }
 
+    if (input.openingHours) {
+      const err = validateOpeningHours(input.openingHours)
+      if (err) throw new Error(err)
+    }
+
     return prisma.$transaction(async (tx) => {
+      if (input.managerId != null) {
+        await assertManagerEligible(tx, input.managerId)
+      }
+
       const created = await tx.healthcareService.create({
         data: {
           name: input.name.trim(),
           type: input.type,
           establishment: input.establishment?.trim() || null,
+          addressLine1: input.addressLine1?.trim() || null,
+          addressLine2: input.addressLine2?.trim() || null,
+          postalCode: input.postalCode?.trim() || null,
           city: input.city?.trim() || null,
           country: input.country?.trim() || null,
+          phone: input.phone?.trim() || null,
+          email: input.email?.trim() || null,
+          website: input.website?.trim() || null,
+          openingHours: (input.openingHours as Prisma.InputJsonValue) ?? Prisma.JsonNull,
+          specialties: input.specialties ?? [],
+          capacity: input.capacity ?? null,
+          managerId: input.managerId ?? null,
           licenseNumber: input.licenseNumber?.trim() || null,
         },
       })
@@ -152,7 +284,7 @@ export const healthcareManagementService = {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
-        metadata: { type: input.type },
+        metadata: { type: input.type, managerId: created.managerId },
       })
 
       return created
@@ -170,6 +302,11 @@ export const healthcareManagementService = {
       if (error) throw new Error(error)
     }
 
+    if (input.openingHours) {
+      const err = validateOpeningHours(input.openingHours)
+      if (err) throw new Error(err)
+    }
+
     return prisma.$transaction(async (tx) => {
       const current = await tx.healthcareService.findUnique({
         where: { id: serviceId },
@@ -183,6 +320,12 @@ export const healthcareManagementService = {
         throw new Error("license_number_required_for_freelance")
       }
 
+      // Si le caller (re)assigne un manager non null, valider son éligibilité.
+      // Un explicite `null` (désassignation) n'a pas besoin de validation.
+      if (input.managerId != null) {
+        await assertManagerEligible(tx, input.managerId)
+      }
+
       const updated = await tx.healthcareService.update({
         where: { id: serviceId },
         data: {
@@ -191,10 +334,30 @@ export const healthcareManagementService = {
           ...(input.establishment !== undefined && {
             establishment: input.establishment?.trim() || null,
           }),
+          ...(input.addressLine1 !== undefined && {
+            addressLine1: input.addressLine1?.trim() || null,
+          }),
+          ...(input.addressLine2 !== undefined && {
+            addressLine2: input.addressLine2?.trim() || null,
+          }),
+          ...(input.postalCode !== undefined && {
+            postalCode: input.postalCode?.trim() || null,
+          }),
           ...(input.city !== undefined && { city: input.city?.trim() || null }),
           ...(input.country !== undefined && {
             country: input.country?.trim() || null,
           }),
+          ...(input.phone !== undefined && { phone: input.phone?.trim() || null }),
+          ...(input.email !== undefined && { email: input.email?.trim() || null }),
+          ...(input.website !== undefined && {
+            website: input.website?.trim() || null,
+          }),
+          ...(input.openingHours !== undefined && {
+            openingHours: (input.openingHours as Prisma.InputJsonValue | null) ?? Prisma.JsonNull,
+          }),
+          ...(input.specialties !== undefined && { specialties: input.specialties }),
+          ...(input.capacity !== undefined && { capacity: input.capacity }),
+          ...(input.managerId !== undefined && { managerId: input.managerId }),
           ...(input.licenseNumber !== undefined && {
             licenseNumber: input.licenseNumber?.trim() || null,
           }),
@@ -209,8 +372,11 @@ export const healthcareManagementService = {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
-        oldValue: { type: current.type, name: current.name },
-        newValue: { type: updated.type, name: updated.name },
+        // `managerId` capture explicite : changement de manager = event de
+        // contrôle d'accès (le manager voit tous les patients du service via
+        // PatientService) — doit apparaître dans la trace d'audit.
+        oldValue: { type: current.type, name: current.name, managerId: current.managerId },
+        newValue: { type: updated.type, name: updated.name, managerId: updated.managerId },
       })
 
       return updated

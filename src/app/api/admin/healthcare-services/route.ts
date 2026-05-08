@@ -7,12 +7,18 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
+import { ServiceType } from "@prisma/client"
 import { requireRole, AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { healthcareManagementService } from "@/lib/services/healthcare-management.service"
+import {
+  healthcareManagementService,
+  openingHoursSchema,
+} from "@/lib/services/healthcare-management.service"
 import { logger } from "@/lib/logger"
 
-const typeEnum = z.enum(["clinic", "hospital", "freelance"])
+// Dérivé du Prisma enum : ajout d'une valeur côté schema → route alignée
+// automatiquement, plus de littéraux dupliqués à maintenir en parallèle.
+const typeEnum = z.nativeEnum(ServiceType)
 
 export async function GET(req: NextRequest) {
   try {
@@ -58,8 +64,18 @@ const createSchema = z.object({
   name: z.string().trim().min(2).max(255),
   type: typeEnum,
   establishment: z.string().trim().max(255).optional().nullable(),
+  addressLine1: z.string().trim().max(255).optional().nullable(),
+  addressLine2: z.string().trim().max(255).optional().nullable(),
+  postalCode: z.string().trim().max(10).optional().nullable(),
   city: z.string().trim().max(100).optional().nullable(),
   country: z.string().trim().length(2).optional().nullable(),
+  phone: z.string().trim().max(30).optional().nullable(),
+  email: z.string().trim().email().max(255).optional().nullable(),
+  website: z.string().trim().url().max(500).optional().nullable(),
+  openingHours: openingHoursSchema.optional().nullable(),
+  specialties: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
+  capacity: z.number().int().min(0).max(10_000).optional().nullable(),
+  managerId: z.number().int().positive().optional().nullable(),
   licenseNumber: z.string().trim().regex(/^([0-9]{9}|[0-9]{11})$/, "license_number_invalid_format").optional().nullable(),
 })
 
@@ -68,6 +84,15 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["license_number_invalid_format", 400],
   ["rpps_checksum_invalid", 400],
   ["adeli_checksum_invalid", 400],
+  ["opening_hours_invalid_shape", 400],
+  ["opening_hours_invalid_range", 400],
+  ["opening_hours_invalid_time_format", 400],
+  ["opening_hours_close_before_open", 400],
+  ["opening_hours_ranges_overlap", 400],
+  // 404 = ressource référencée absente (cohérent avec `service_not_found`).
+  ["manager_not_found", 404],
+  ["manager_role_invalid", 400],
+  ["manager_inactive", 400],
 ])
 
 export async function POST(req: NextRequest) {
