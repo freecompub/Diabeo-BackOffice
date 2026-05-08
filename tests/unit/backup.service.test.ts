@@ -45,7 +45,7 @@ describe("backupService.list", () => {
   it("returns sizeBytes as string when value exceeds Number.MAX_SAFE_INTEGER", async () => {
     // PB-scale dump (>= 2^53 bytes ~= 9 PB) — Number conversion would lose
     // precision. Service falls back to string representation.
-    const huge = BigInt(Number.MAX_SAFE_INTEGER) + 1n
+    const huge = BigInt(Number.MAX_SAFE_INTEGER) + BigInt(1)
     prismaMock.backupLog.findMany.mockResolvedValue([
       {
         id: 1, backupRef: "huge", status: "completed",
