@@ -361,10 +361,12 @@ export const patientService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:medicalData`,
+      // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+      resource: "MEDICAL_DATA",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     if (!data) return null
@@ -397,9 +399,10 @@ export const patientService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:medicalData`,
-        metadata: { updatedFields: Object.keys(input) },
+        // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+        resource: "MEDICAL_DATA",
+        resourceId: String(patientId),
+        metadata: { patientId, updatedFields: Object.keys(input) },
       })
 
       return { patientId: data.patientId, updated: true }

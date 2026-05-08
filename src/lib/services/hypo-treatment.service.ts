@@ -82,10 +82,12 @@ export const hypoTreatmentService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:hypo-treatment`,
+      // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+      resource: "HYPO_TREATMENT_PROTOCOL",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     if (!record) {
@@ -149,11 +151,13 @@ export const hypoTreatmentService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:hypo-treatment`,
+        // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+        resource: "HYPO_TREATMENT_PROTOCOL",
+        resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         metadata: {
+          patientId,
           sugarType: data.sugarType,
           fastCarbsGrams: data.fastCarbsGrams,
           retestMinutes: data.retestMinutes,

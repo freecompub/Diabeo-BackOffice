@@ -120,9 +120,14 @@ describe("ketoneThresholdService", () => {
 
       await ketoneThresholdService.get(1, 42)
       expect(auditSpy).toHaveBeenCalled()
-      const call = auditSpy.mock.calls.at(-1)?.[0] as { data?: { action?: string; resourceId?: string } }
+      const call = auditSpy.mock.calls.at(-1)?.[0] as {
+        data?: { action?: string; resource?: string; resourceId?: string; metadata?: unknown }
+      }
       expect(call?.data?.action).toBe("READ")
-      expect(call?.data?.resourceId).toContain("ketone-thresholds")
+      // US-2268 — resourceId = patientId, resource = KETONE_THRESHOLD, metadata.patientId pivot.
+      expect(call?.data?.resource).toBe("KETONE_THRESHOLD")
+      expect(call?.data?.resourceId).toBe("1")
+      expect(call?.data?.metadata).toMatchObject({ patientId: 1 })
     })
   })
 

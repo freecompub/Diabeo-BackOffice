@@ -10,9 +10,11 @@ export const deviceService = {
     const devices = await prisma.patientDevice.findMany({ where: { patientId } })
 
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "PATIENT",
-      resourceId: `${patientId}:devices`,
+      // US-2268 — list devices par patient.
+      userId: auditUserId, action: "READ", resource: "DEVICE",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return devices
@@ -36,9 +38,11 @@ export const deviceService = {
       })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "PATIENT",
-        resourceId: `device:${device.id}`,
+        // US-2268 — resourceId = device.id, patientId pivot.
+        userId: auditUserId, action: "CREATE", resource: "DEVICE",
+        resourceId: String(device.id),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return device
@@ -53,9 +57,11 @@ export const deviceService = {
       await tx.patientDevice.delete({ where: { id: deviceId } })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "DELETE", resource: "PATIENT",
-        resourceId: `device:${deviceId}`,
+        // US-2268 — resourceId = device.id, patientId pivot.
+        userId: auditUserId, action: "DELETE", resource: "DEVICE",
+        resourceId: String(deviceId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return { deleted: true }
@@ -66,9 +72,12 @@ export const deviceService = {
     const syncs = await prisma.deviceDataSync.findMany({ where: { userId } })
 
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "PATIENT",
-      resourceId: `${userId}:syncStatus`,
+      // US-2268 — sync status par user (souvent = patient.user). Note : la pivot
+      // ici est userId, pas patientId — getByPatient ne couvrira pas ce cas.
+      userId: auditUserId, action: "READ", resource: "DEVICE_SYNC",
+      resourceId: String(userId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: { targetUserId: userId },
     })
 
     return syncs

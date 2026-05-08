@@ -75,9 +75,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       await auditService.logWithTx(tx, {
         userId: user.id,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:pregnancy:${pregnancyId}`,
-        metadata: { updatedFields: Object.keys(parsed.data) },
+        // US-2268 — resourceId = pregnancy.id, patientId pivot.
+        resource: "PATIENT_PREGNANCY",
+        resourceId: String(pregnancyId),
+        metadata: { patientId, updatedFields: Object.keys(parsed.data) },
       })
 
       return updated
