@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), 2 follow-ups Batch D livrés (PR #349 : US-2265 + US-2266), 2 restants (US-2267 + US-2268)
-> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **74%** (49/66 DONE)
+> Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), Batch D1 livré (PR #349 : US-2265 + US-2266), US-2267 reclassée V1 + blocker-pre-prod (Diabeo pas en prod)
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **78%** (49/63 DONE — scope original)
 
 ---
 
@@ -9,14 +9,14 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 66    | 49   | 6       | 11          | **74%** |
-| **V1**   | 121   | 0    | 7       | 114         | **0%**  |
+| **MVP**  | 65    | 49   | 6       | 10          | **75%** |
+| **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
 | **TOTAL**| **268** | **49** | **13**  | **206**     | **23%** |
 
-> MVP scope original (63 US) → 49 DONE = **78%**. Reste 1 follow-up MVP (US-2267 Migrations Prisma) — discussion en cours sur reclassification V1 (pas encore en prod). US-2268 (resourceId convention) reste V1.
+> MVP scope original (63 US) → 49 DONE = **78%**. Avec US-2265+US-2266 ajoutés au scope MVP (Batch D1 livré) → **49/65 = 75%**. US-2267 (Migrations Prisma) reclassée **V1 + blocker-pre-prod** : reste sûr avec `db push` tant que Diabeo n'est pas en prod, mais doit être livré avant le 1er go-live. US-2268 reste V1.
 
 ---
 
@@ -161,13 +161,12 @@
 |----|-------|--------|---------------|
 | US-2140 | Upload S3 documents | DONE | `src/lib/storage/s3.ts`, `src/app/api/documents/upload/route.ts`, `src/app/api/documents/[id]/download/route.ts`, `src/app/api/account/photo/route.ts`. SSE-S3, ClamAV, rate limit, RBAC, audit. PR #339. |
 
-### Domaine 13 — Administration (3 US — 1 follow-up Mirror MVP)
+### Domaine 13 — Administration (2 US)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2148 | Admin gestion utilisateurs UI | NOT STARTED | Backend RBAC OK, page admin manquante |
 | US-2151 | Backup management | NOT STARTED | — |
-| US-2267 | Migrations Prisma versionnées | NOT STARTED | Follow-up PR #343 — 5 SP. Issue [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346). Bloquant audit HDS — `prisma migrate deploy` actuellement vide. |
 
 ### Domaine 14 — Prescriptions (1 US)
 
@@ -197,13 +196,13 @@
 |----|-------|----------|----|-------|--------|
 | US-2265 | Événements `ACCESS_DENIED` audit | MVP | 2 | [#344](https://github.com/freecompub/Diabeo-BackOffice/issues/344) | ✅ DONE PR #349 |
 | US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | ✅ DONE PR #349 |
-| US-2267 | Migrations Prisma versionnées | MVP | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | ⏸️ NOT STARTED — reclassification V1 en discussion (Diabeo pas encore en prod) |
+| US-2267 | Migrations Prisma versionnées | **V1** + `blocker-pre-prod` | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | ⏸️ NOT STARTED — à livrer AVANT 1er go-live prod |
 | US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | NOT STARTED |
 
-**PR #349** — US-2265 + US-2266 livrés (5 SP). 1102 tests verts, branch coverage maintenue, 3 agents re-review (READY/FIX-MEDIUM tous résolus avant merge).
+**PR #349** — US-2265 + US-2266 livrés (5 SP MVP). 1102 tests verts, branch coverage maintenue, 3 agents re-review (READY/FIX-MEDIUM tous résolus avant merge).
 **PR #348** mergée — Spec markdown des 4 US + issues GitHub + items board #2.
 
-**Batch D restant** : 5 SP (US-2267 si maintenu MVP) ou 0 SP (si reclassifié V1). US-2268 (8 SP) reste V1.
+**Batch D MVP** : ✅ 100 % livré (5/5 SP). Reste US-2267 (V1 blocker-pre-prod) + US-2268 (V1) = **13 SP V1**.
 
 ---
 
@@ -412,10 +411,11 @@
 | B | 7 nouvelles US backoffice | ~22 SP | À faire |
 | C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ DONE (PR #343) |
 | D1 | ~~US-2265 + US-2266~~ | ~~5 SP~~ | ✅ DONE (PR #349) |
-| D2 | US-2267 Migrations Prisma versionnées | 5 SP | À reclassifier V1 (pas en prod) |
-| **Total** | **14 US restantes** | **~39 SP** (ou 34 SP si US-2267 reclassée V1) | |
+| **Total restant** | **13 US restantes** | **~34 SP MVP** | |
 
-> Compteurs : **49/63 = 78%** sur le MVP scope original. Avec US-2267 livré → 50/63 = 79%. US-2268 (8 SP) reste V1.
+**Pre-prod blocker** (V1 prioritaire) : **US-2267** Migrations Prisma versionnées (5 SP) — à livrer avant le 1er go-live prod, label `blocker-pre-prod`.
+
+> Compteurs : **49/63 = 78%** sur le MVP scope original. US-2267 reclassée V1 (Diabeo n'est pas encore en prod, `db push` reste sûr en dev/recette).
 
 ### US MVP récemment livrées
 

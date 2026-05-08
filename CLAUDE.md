@@ -791,16 +791,16 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 66    | 49   | 6       | 11          | **74%** |
-| **V1**   | 121   | 0    | 7       | 114         | **0%**  |
+| **MVP**  | 65    | 49   | 6       | 10          | **75%** |
+| **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
 | **TOTAL**| **268** | **49** | **13**  | **206**     | **23%** |
 
-> MVP scope original (63 US) → 49 DONE = **78%**. Reste 1 follow-up MVP (US-2267 Migrations Prisma) — discussion en cours sur reclassification V1 vu que Diabeo n'est pas encore en prod.
+> MVP : **49/65 = 75%** (49/63 = 78% sur scope original). US-2267 reclassée **V1 + blocker-pre-prod** (Diabeo pas en prod, `db push` reste sûr en dev/recette ; à livrer avant 1er go-live).
 
-### MVP — Effort restant (~39 SP, ou 34 SP si US-2267 → V1)
+### MVP — Effort restant (~34 SP)
 
 **Batch A — Compléter les PARTIAL (6 US)**
 - US-2047 (UI validation médecin), US-2089 (UI pairing device),
@@ -816,10 +816,10 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - 1093 tests verts · branch coverage 78% · CI green
 - 5 critical + 10 high fixés en re-review (5 agents)
 
-**Batch D — Follow-ups Mirror MVP (4 US — Batch D1 livré, D2 restant)**
+**Batch D — Follow-ups Mirror MVP (4 US — Batch D1 MVP livré ; reste V1)**
 - ✅ **US-2265** — Événements `ACCESS_DENIED` audit (2 SP, MVP, PR #349) · Issue #344
 - ✅ **US-2266** — Email médecin sur alerte critique (3 SP, MVP, PR #349) · Issue #345
-- ⏸️ **US-2267** — Migrations Prisma versionnées (5 SP, reclassification V1 en discussion) · Issue #346
+- 🚨 **US-2267** — Migrations Prisma versionnées (5 SP, **V1 + blocker-pre-prod**) · Issue #346
 - 🔜 **US-2268** — Convention `auditLog.resourceId` normalisée (8 SP, V1) · Issue #347
 
 ### Décisions architecturales
@@ -888,4 +888,4 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), Batch D1 livré (PR #349 : US-2265 + US-2266). Total 268 US (217 pro + 51 mirror). MVP 49/66 = 74% (78% sur scope original 63). Reste US-2267 (Migrations Prisma — reclassification V1 en discussion) + US-2268 (V1).*
+*Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), Batch D1 livré (PR #349 : US-2265 + US-2266), US-2267 reclassée V1 + blocker-pre-prod (Diabeo pas en prod). Total 268 US. MVP 49/65 = 75% (78% sur scope original 63).*

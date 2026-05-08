@@ -1,8 +1,10 @@
 # US-2267 — Mise en place des migrations Prisma versionnées
 
-> 📌 **18. Administration système** · Priorité **MVP** · Pays **Universel**
+> 📌 **18. Administration système** · Priorité **V1 (blocker-pre-prod)** · Pays **Universel**
 >
 > 💬 **Origine** : Follow-up review PR #343. Le repo utilise `prisma db push` sans dossier `prisma/migrations/` versionné. Bloquant pour l'audit HDS et tout rollback prod.
+>
+> 🚨 **Reclassification 2026-05-08** : MVP → V1. Justification : Diabeo n'est pas encore déployé en production, donc `prisma db push` reste sûr en dev/recette. **Doit impérativement être traité AVANT le 1er déploiement prod** (label `blocker-pre-prod`).
 
 ---
 
@@ -12,12 +14,13 @@
 |---|---|
 | **ID** | `US-2267` |
 | **Domaine** | 18. Administration système |
-| **Priorité** | **MVP** (bloquant audit HDS prochaine certification) |
+| **Priorité** | **V1** + label `blocker-pre-prod` (bloquant audit HDS et 1er go-live) |
 | **Pays cible** | Universel |
 | **Story points** | **5** |
 | **Statut** | 🆕 À démarrer |
 | **Dépendances** | Aucune (préalable à toute migration future) |
 | **Owner** | À assigner |
+| **Bloquant pour** | 1er déploiement prod, certification HDS |
 
 ---
 
