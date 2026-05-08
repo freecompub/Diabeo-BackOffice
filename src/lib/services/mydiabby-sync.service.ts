@@ -565,7 +565,9 @@ async function syncHealthData(
     action: "IMPORT",
     resource: "CGM_ENTRY",
     resourceId: String(patient.id),
-    metadata: { source: "mydiabby", cgmCount, glycemiaCount, eventCount },
+    // US-2268 — patientId pivot : import bulk PHI massif, doit apparaître dans
+    // getByPatient (forensics CNIL/ANS).
+    metadata: { patientId: patient.id, source: "mydiabby", cgmCount, glycemiaCount, eventCount },
     ...CRON_AUDIT_CONTEXT,
   })
 

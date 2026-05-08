@@ -10,9 +10,11 @@ export const deviceService = {
     const devices = await prisma.patientDevice.findMany({ where: { patientId } })
 
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "PATIENT",
-      resourceId: `${patientId}:devices`,
+      // US-2268 — list devices par patient.
+      userId: auditUserId, action: "READ", resource: "DEVICE",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return devices
@@ -36,9 +38,11 @@ export const deviceService = {
       })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "PATIENT",
-        resourceId: `device:${device.id}`,
+        // US-2268 — resourceId = device.id, patientId pivot.
+        userId: auditUserId, action: "CREATE", resource: "DEVICE",
+        resourceId: String(device.id),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return device
@@ -53,9 +57,11 @@ export const deviceService = {
       await tx.patientDevice.delete({ where: { id: deviceId } })
 
       await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "DELETE", resource: "PATIENT",
-        resourceId: `device:${deviceId}`,
+        // US-2268 — resourceId = device.id, patientId pivot.
+        userId: auditUserId, action: "DELETE", resource: "DEVICE",
+        resourceId: String(deviceId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return { deleted: true }
@@ -63,12 +69,21 @@ export const deviceService = {
   },
 
   async getSyncStatus(userId: number, auditUserId: number, ctx?: AuditContext) {
-    const syncs = await prisma.deviceDataSync.findMany({ where: { userId } })
+    const [syncs, patient] = await Promise.all([
+      prisma.deviceDataSync.findMany({ where: { userId } }),
+      // US-2268 (re-review B6) — résolution userId → patientId pour pivot
+      // forensics. Si l'user est un patient, getByPatient retrouvera ce sync.
+      // Fallback sur targetUserId pour les users non-patients (admin/staff).
+      prisma.patient.findFirst({ where: { userId, deletedAt: null }, select: { id: true } }),
+    ])
 
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "PATIENT",
-      resourceId: `${userId}:syncStatus`,
+      userId: auditUserId, action: "READ", resource: "DEVICE_SYNC",
+      resourceId: String(userId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+      metadata: patient
+        ? { patientId: patient.id, targetUserId: userId }
+        : { targetUserId: userId },
     })
 
     return syncs

@@ -109,13 +109,15 @@ export const pregnancyModeService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:pregnancy-mode`,
+        // US-2268 — flag par patient → resourceId = patientId, pivot metadata.
+        resource: "PREGNANCY_MODE",
+        resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         oldValue: { pregnancyMode: patient.pregnancyMode },
         newValue: { pregnancyMode: enabled },
         metadata: {
+          patientId,
           thresholdsAdapted: thresholdsActuallyChange,
           pinnedTo: targetPathology,
           ...(options?.forceOverride && {

@@ -105,8 +105,10 @@ export const objectivesService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:objectives`,
+      // US-2268 — objectifs = composite par patient → resourceId = patientId.
+      resource: "OBJECTIVE",
+      resourceId: String(patientId),
+      metadata: { patientId, kind: "all" },
     })
 
     return {
@@ -138,9 +140,10 @@ export const objectivesService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:objectives:glycemia`,
-        metadata: { count: input.length },
+        // US-2268 — glycemia objectives par patient.
+        resource: "OBJECTIVE",
+        resourceId: String(patientId),
+        metadata: { patientId, kind: "glycemia", count: input.length },
       })
 
       return created
@@ -162,8 +165,10 @@ export const objectivesService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:objectives:cgm`,
+        // US-2268 — cgm objective par patient.
+        resource: "OBJECTIVE",
+        resourceId: String(patientId),
+        metadata: { patientId, kind: "cgm" },
       })
 
       return cgm
@@ -190,8 +195,10 @@ export const objectivesService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:objectives:annex`,
+        // US-2268 — annex objective par patient.
+        resource: "OBJECTIVE",
+        resourceId: String(patientId),
+        metadata: { patientId, kind: "annex" },
       })
 
       return annex

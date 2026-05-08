@@ -228,6 +228,8 @@ export const patientService = {
         action: "CREATE",
         resource: "PATIENT",
         resourceId: String(patient.id),
+        // US-2268 — patientId pivot pour forensics getByPatient.
+        metadata: { patientId: patient.id },
       })
 
       return { id: patient.id, pathology: patient.pathology }
@@ -274,6 +276,8 @@ export const patientService = {
       resourceId: String(patient.id),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      // US-2268 — patientId pivot pour forensics getByPatient.
+      metadata: { patientId: patient.id },
     })
 
     return {
@@ -337,7 +341,8 @@ export const patientService = {
         action: "UPDATE",
         resource: "PATIENT",
         resourceId: String(patientId),
-        metadata: { updatedFields: Object.keys(input) },
+        // US-2268 — patientId pivot pour forensics getByPatient.
+        metadata: { patientId, updatedFields: Object.keys(input) },
       })
 
       return { id: patient.id, pathology: patient.pathology }
@@ -361,10 +366,12 @@ export const patientService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:medicalData`,
+      // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+      resource: "MEDICAL_DATA",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     if (!data) return null
@@ -397,9 +404,10 @@ export const patientService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:medicalData`,
-        metadata: { updatedFields: Object.keys(input) },
+        // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+        resource: "MEDICAL_DATA",
+        resourceId: String(patientId),
+        metadata: { patientId, updatedFields: Object.keys(input) },
       })
 
       return { patientId: data.patientId, updated: true }
@@ -432,9 +440,12 @@ export const patientService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
+      // US-2268 — listing du portefeuille du médecin. Pas de pivot
+      // patientId (vue agrégée multi-patients). On capture le doctorUserId
+      // dans metadata pour audit "qui a listé son portefeuille".
       resource: "PATIENT",
-      resourceId: `doctor:${doctorUserId}`,
-      metadata: { action: "list", count: referents.length },
+      resourceId: "list",
+      metadata: { doctorUserId, count: referents.length },
     })
 
     return referents.map((r) => ({
@@ -495,6 +506,8 @@ export const patientService = {
         action: "DELETE",
         resource: "PATIENT",
         resourceId: String(id),
+        // US-2268 — patientId pivot (soft delete = encore traçable).
+        metadata: { patientId: id },
       })
 
       return { id: patient.id, deletedAt: patient.deletedAt }

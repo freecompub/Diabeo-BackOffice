@@ -90,6 +90,7 @@ export type AuditResource =
   | "AUDIT_LOG"
   /** US-2265 — emergency alerts / Mirror MVP resources. */
   | "EMERGENCY_ALERT"
+  | "EMERGENCY_ALERT_ACTION"
   | "ALERT_THRESHOLD_CONFIG"
   | "KETONE_THRESHOLD"
   | "HYPO_TREATMENT_PROTOCOL"
@@ -98,6 +99,20 @@ export type AuditResource =
   | "HEALTHCARE_SERVICE"
   | "BACKUP"
   | "MOBILE_INVITATION"
+  /** US-2268 — patient-scoped resources (resourceId = native ID, metadata.patientId pivot). */
+  | "MEDICAL_DATA"
+  | "OBJECTIVE"
+  | "PATIENT_PREGNANCY"
+  | "ANALYTICS"
+  | "DEVICE"
+  | "APPOINTMENT"
+  | "ANNOUNCEMENT"
+  | "INSULIN_FLOW"
+  | "AVERAGE_DATA"
+  | "REFERENT"
+  | "PATIENT_SERVICE_LINK"
+  | "DEVICE_SYNC"
+  | "RETENTION"
 
 /**
  * Audit log entry — parameters for logging an action.
@@ -359,6 +374,38 @@ export const auditService = {
       orderBy: { createdAt: "desc" },
       take: Math.min(limit, MAX_QUERY_LIMIT),
     })
+  },
+
+  /**
+   * US-2268 — Get audit logs for a specific patient via `metadata.patientId` pivot.
+   *
+   * Convention `resourceId` = ID natif de la ressource (UUID alert, Int objective, etc.)
+   * + `metadata.patientId` = pivot patient. Cette requête retrouve TOUS les events
+   * patient-scoped (CGM, glycemia, emergency-alert, objectifs, seuils, etc.) en une
+   * seule passe — impossible avec `getByResource("PATIENT", String(patientId))` qui
+   * ne voyait que les events où `resourceId === String(patientId)`.
+   *
+   * Performance : index GIN partiel `audit_logs_metadata_patient_id_idx` sur
+   * `(metadata) jsonb_path_ops WHERE metadata ? 'patientId'`. Pour que le
+   * planner l'utilise, la query DOIT contenir BOTH `metadata @> ...` ET
+   * `metadata ? 'patientId'` (le partial index requiert que la query implique
+   * son prédicat). Prisma 7 `path: [...] equals: ...` n'émet pas `?` →
+   * on passe par `$queryRaw` pour garantir l'utilisation de l'index. Vérifié
+   * empiriquement avec EXPLAIN ANALYZE : seq scan ~45ms à 200k rows sans le
+   * `?`, bitmap index scan ~16ms avec le `?`.
+   */
+  async getByPatient(patientId: number, limit = 50) {
+    const cap = Math.min(limit, MAX_QUERY_LIMIT)
+    // jsonb_build_object évite injection SQL via le pattern `@>` typé.
+    const rows = await prisma.$queryRaw<Array<AuditLogRow>>`
+      SELECT *
+      FROM audit_logs
+      WHERE metadata ? 'patientId'
+        AND metadata @> jsonb_build_object('patientId', ${patientId}::int)
+      ORDER BY created_at DESC
+      LIMIT ${cap}
+    `
+    return rows
   },
 
   /**

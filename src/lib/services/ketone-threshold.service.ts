@@ -98,10 +98,12 @@ export const ketoneThresholdService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:ketone-thresholds`,
+      // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+      resource: "KETONE_THRESHOLD",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return record ?? { patientId, ...KETONE_DEFAULTS }
@@ -142,11 +144,12 @@ export const ketoneThresholdService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:ketone-thresholds`,
+        // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+        resource: "KETONE_THRESHOLD",
+        resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
-        metadata: { thresholds: merged },
+        metadata: { patientId, thresholds: merged },
       })
 
       return updated

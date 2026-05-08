@@ -34,7 +34,7 @@ describe("retentionService.applyRetention", () => {
     expect(result.anonymizedCount).toBe(42)
   })
 
-  it("audits with ANONYMIZE action on AUDIT_LOG resource", async () => {
+  it("audits with ANONYMIZE action on RETENTION resource (US-2268)", async () => {
     prismaMock.$queryRaw.mockResolvedValue([{ anonymized_count: BigInt(10) }])
 
     await retentionService.applyRetention(99)
@@ -43,8 +43,9 @@ describe("retentionService.applyRetention", () => {
       expect.objectContaining({
         userId: 99,
         action: "ANONYMIZE",
-        resource: "AUDIT_LOG",
-        resourceId: expect.stringContaining("retention-"),
+        // US-2268 — `RETENTION` enum (was AUDIT_LOG which is too broad).
+        resource: "RETENTION",
+        resourceId: expect.stringMatching(/^\d+y$/),
         metadata: expect.objectContaining({ anonymizedCount: 10 }),
       }),
     )

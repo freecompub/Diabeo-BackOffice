@@ -51,10 +51,12 @@ export const alertThresholdService = {
     await auditService.log({
       userId: auditUserId,
       action: "READ",
-      resource: "PATIENT",
-      resourceId: `${patientId}:alert-thresholds`,
+      // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+      resource: "ALERT_THRESHOLD_CONFIG",
+      resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      metadata: { patientId },
     })
 
     return record ?? { patientId, ...ALERT_THRESHOLD_DEFAULTS }
@@ -85,10 +87,12 @@ export const alertThresholdService = {
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: `${patientId}:alert-thresholds`,
+        // US-2268 — singleton par patient → resourceId = patientId, pivot metadata.
+        resource: "ALERT_THRESHOLD_CONFIG",
+        resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
 
       return updated
