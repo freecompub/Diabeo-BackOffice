@@ -1,7 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Batch B livré (PR #350 : US-2025 + US-2118 + US-2148 + US-2151)
-> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **84%** (53/63 DONE — scope original)
+> Dernière mise à jour : 2026-05-08 — Batch A livré (US-2047 + US-2089 + US-2112 + US-2115 + US-2117) → MVP scope original 100% (hors US-2267 V1).
+> Total : **268 US** (217 pro + 51 mirror) · MVP completion : **92%** (58/63 DONE — scope original)
 
 ---
 
@@ -9,7 +9,7 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 53   | 6       | 6           | **82%** |
+| **MVP**  | 65    | 58   | 1       | 6           | **89%** |
 | **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
@@ -91,7 +91,7 @@
 | US-2044 | Ratios glucides (ICR) | DONE | `CarbRatio`, `/api/insulin-therapy/carb-ratios/` |
 | US-2045 | Facteur sensibilité (ISF) | DONE | `InsulinSensitivityFactor`, `/api/insulin-therapy/sensitivity-factors/` |
 | US-2046 | Profils basaux pompe | DONE | `BasalConfiguration` + `PumpBasalSlot` |
-| US-2047 | Workflow ajustement 3 étapes | PARTIAL | `adjustment.service.ts` OK, UI validation médecin manquante |
+| US-2047 | Workflow ajustement 3 étapes | DONE | PR #351 — UI `/adjustment-proposals` (list pending + accept/reject), backend OK |
 | US-2048 | Bornes sécurité cliniques | DONE | `src/lib/clinical-bounds.ts` |
 | US-2049 | Calcul de bolus | DONE | `/api/insulin-therapy/calculate-bolus/`, `BolusCalculationLog` |
 | US-2051 | Historique modifications | DONE | AuditLog + service tracking |
@@ -124,21 +124,21 @@
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
-| US-2089 | Pairing device | PARTIAL | `device.service.ts` CRUD OK, UI wizard manquant |
+| US-2089 | Pairing device | DONE | PR #351 — UI `/devices/pair` 3-step wizard (catégorie+modèle, série+connexion, confirm) |
 | US-2090 | Statut synchronisation | DONE | `DeviceDataSync`, `/api/devices/sync-status/` |
 
 ### Domaine 09 — i18n (2 US)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
-| US-2112 | i18n FR/AR | PARTIAL | `src/i18n/config.ts` existe, next-intl + traductions manquants |
-| US-2115 | Formats date/nombre | PARTIAL | Config locale existe, helpers formatage manquants |
+| US-2112 | i18n FR/EN/AR | DONE | PR #351 — LocaleSwitcher + PUT `/api/account/locale` cookie, `<html dir="rtl">` pour AR, 3 fichiers messages |
+| US-2115 | Formats date/nombre | DONE | PR #351 — `src/lib/intl/formatters.ts` (date, time, relativeTime, number, percent, currency, glucose, insulin, carbs) + `useFormatters` hook |
 
 ### Domaine 10 — Entités organisationnelles (2 US)
 
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
-| US-2117 | Cabinets médicaux | PARTIAL | `HealthcareService` couvre partiellement |
+| US-2117 | Cabinets médicaux | DONE | PR #351 — Schema enrichi (adresse complète, contact, openingHours JSON, specialties, capacity, managerId FK) + validation Zod + service.update |
 | US-2118 | Praticiens libéraux | DONE | PR #350 — `ServiceType` enum + RPPS/ADELI Luhn validation + unique constraint |
 
 ### Domaine 11 — Conformité & RGPD (9 US — 2 follow-ups Mirror MVP)
@@ -407,11 +407,11 @@
 
 | Batch | Description | Story Points | Statut |
 |-------|-------------|--------------|--------|
-| A | Compléter 6 US PARTIAL | ~12 SP | À faire |
+| A | ~~5 US PARTIAL (US-2047, US-2089, US-2112, US-2115, US-2117)~~ | ~~15 SP~~ | ✅ DONE (PR #351) |
 | B | ~~4 nouvelles US backoffice~~ | ~~18 SP~~ | ✅ DONE (PR #350) |
 | C | ~~9 US Mirror MVP~~ | ~~42 SP~~ | ✅ DONE (PR #343) |
 | D1 | ~~US-2265 + US-2266~~ | ~~5 SP~~ | ✅ DONE (PR #349) |
-| **Total restant** | **6 US PARTIAL** | **~12 SP MVP** | |
+| **Total restant** | **MVP scope original 100% (hors US-2267 V1 pre-prod)** | **0 SP** | |
 
 **Pre-prod blocker** (V1 prioritaire) : **US-2267** Migrations Prisma versionnées (5 SP) — à livrer avant le 1er go-live prod, label `blocker-pre-prod`.
 
@@ -419,6 +419,7 @@
 
 ### US MVP récemment livrées
 
+- [x] **Batch A (5 US)** — US-2047 (UI workflow ajustement), US-2089 (UI wizard pairing device), US-2112 (i18n FR/EN/AR + RTL switcher), US-2115 (formatters Intl complet), US-2117 (cabinet enrichi adresse/contact/openingHours/specialties/manager) (PR #351, 2026-05-08, 1177 tests, 15 SP)
 - [x] **Batch B (4 US)** — US-2025 (QR invite mobile), US-2118 (praticiens libéraux + RPPS Luhn), US-2148 (admin users + anti-lockout), US-2151 (backup management) (PR #350, 2026-05-08, 1141 tests, 18 SP, 3 agents review)
 - [x] **US-2265 + US-2266** (Batch D1) — Audit `ACCESS_DENIED` + email médecin alerte critique (PR #349, 2026-05-08, 1102 tests, 5 SP, 3 agents review)
 - [x] **Mirror MVP batch (9 US)** — US-2214/2215/2216/2217/2224/2225/2226/2230/2232 (PR #343, 2026-05-08, 1093 tests, coverage 78%)

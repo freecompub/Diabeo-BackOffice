@@ -18,6 +18,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { LocaleSwitcher } from "./LocaleSwitcher"
 
 const navItems = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
@@ -69,6 +70,11 @@ export function Sidebar() {
           )
         })}
       </nav>
+
+      {/* Locale switcher (US-2112) */}
+      <div className="border-t border-[var(--color-border)] p-3">
+        <LocaleSwitcher />
+      </div>
 
       {/* Logout */}
       <div className="border-t border-[var(--color-border)] p-3">

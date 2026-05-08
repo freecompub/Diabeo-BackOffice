@@ -1,6 +1,7 @@
 {
   "common": {
     "loading": "Loading...",
+    "changeLanguage": "Change language",
     "error": "An error occurred",
     "retry": "Retry",
     "save": "Save",

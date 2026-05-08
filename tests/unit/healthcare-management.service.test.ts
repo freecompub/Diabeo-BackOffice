@@ -21,6 +21,7 @@ vi.mock("@/lib/logger", () => ({
 import {
   healthcareManagementService,
   validateLicenseNumber,
+  validateOpeningHours,
 } from "@/lib/services/healthcare-management.service"
 
 beforeEach(() => {
@@ -174,5 +175,56 @@ describe("healthcareManagementService.update", () => {
     await expect(
       healthcareManagementService.update(999, { name: "X" }, 99),
     ).rejects.toThrow("service_not_found")
+  })
+})
+
+/**
+ * US-2117 — `validateOpeningHours` — règles métier :
+ *  - format HH:MM strict
+ *  - close > open par plage
+ *  - pas de chevauchement entre plages d'un même jour
+ */
+describe("validateOpeningHours", () => {
+  it("accepts a valid weekly schedule with lunch break", () => {
+    const ok = validateOpeningHours({
+      mon: [["09:00", "12:00"], ["14:00", "18:00"]],
+      tue: [["09:00", "18:00"]],
+      sun: [], // closed Sunday
+    })
+    expect(ok).toBeNull()
+  })
+
+  it("rejects malformed time string", () => {
+    const r = validateOpeningHours({ mon: [["9:00", "12:00"]] })
+    expect(r).toBe("opening_hours_invalid_time_format")
+  })
+
+  it("rejects 24:00 (out of HH:MM range)", () => {
+    const r = validateOpeningHours({ mon: [["09:00", "24:00"]] })
+    expect(r).toBe("opening_hours_invalid_time_format")
+  })
+
+  it("rejects close time <= open time", () => {
+    const r = validateOpeningHours({ mon: [["18:00", "09:00"]] })
+    expect(r).toBe("opening_hours_close_before_open")
+  })
+
+  it("rejects equal open/close (zero-length range)", () => {
+    const r = validateOpeningHours({ mon: [["09:00", "09:00"]] })
+    expect(r).toBe("opening_hours_close_before_open")
+  })
+
+  it("rejects overlapping ranges within same day", () => {
+    const r = validateOpeningHours({
+      mon: [["09:00", "13:00"], ["12:00", "18:00"]],
+    })
+    expect(r).toBe("opening_hours_ranges_overlap")
+  })
+
+  it("accepts adjacent (non-overlapping) ranges", () => {
+    const r = validateOpeningHours({
+      mon: [["09:00", "12:00"], ["12:00", "18:00"]],
+    })
+    expect(r).toBeNull()
   })
 })

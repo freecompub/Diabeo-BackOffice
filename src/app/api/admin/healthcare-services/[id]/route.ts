@@ -44,12 +44,34 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   }
 }
 
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time_format_invalid")
+const daySchema = z.array(z.tuple([timeSchema, timeSchema])).max(4)
+const openingHoursSchema = z.object({
+  mon: daySchema.optional(),
+  tue: daySchema.optional(),
+  wed: daySchema.optional(),
+  thu: daySchema.optional(),
+  fri: daySchema.optional(),
+  sat: daySchema.optional(),
+  sun: daySchema.optional(),
+})
+
 const patchSchema = z.object({
   name: z.string().trim().min(2).max(255).optional(),
   type: z.enum(["clinic", "hospital", "freelance"]).optional(),
   establishment: z.string().trim().max(255).nullable().optional(),
+  addressLine1: z.string().trim().max(255).nullable().optional(),
+  addressLine2: z.string().trim().max(255).nullable().optional(),
+  postalCode: z.string().trim().max(20).nullable().optional(),
   city: z.string().trim().max(100).nullable().optional(),
   country: z.string().trim().length(2).nullable().optional(),
+  phone: z.string().trim().max(30).nullable().optional(),
+  email: z.string().trim().email().max(255).nullable().optional(),
+  website: z.string().trim().url().max(500).nullable().optional(),
+  openingHours: openingHoursSchema.nullable().optional(),
+  specialties: z.array(z.string().trim().min(1).max(50)).max(20).optional(),
+  capacity: z.number().int().min(0).max(10_000).nullable().optional(),
+  managerId: z.number().int().positive().nullable().optional(),
   licenseNumber: z.string().trim().regex(/^([0-9]{9}|[0-9]{11})$/, "license_number_invalid_format").nullable().optional(),
 })
 
@@ -59,6 +81,11 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["license_number_invalid_format", 400],
   ["rpps_checksum_invalid", 400],
   ["adeli_checksum_invalid", 400],
+  ["opening_hours_invalid_shape", 400],
+  ["opening_hours_invalid_range", 400],
+  ["opening_hours_invalid_time_format", 400],
+  ["opening_hours_close_before_open", 400],
+  ["opening_hours_ranges_overlap", 400],
 ])
 
 export async function PATCH(req: NextRequest, { params }: RouteParams) {

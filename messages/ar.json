@@ -1,6 +1,7 @@
 {
   "common": {
     "loading": "جاري التحميل...",
+    "changeLanguage": "تغيير اللغة",
     "error": "حدث خطأ",
     "retry": "إعادة المحاولة",
     "save": "حفظ",

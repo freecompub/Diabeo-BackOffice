@@ -1,6 +1,7 @@
 {
   "common": {
     "loading": "Chargement...",
+    "changeLanguage": "Changer la langue",
     "error": "Une erreur est survenue",
     "retry": "Reessayer",
     "save": "Enregistrer",

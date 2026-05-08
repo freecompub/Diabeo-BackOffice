@@ -791,7 +791,7 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 53   | 6       | 6           | **82%** |
+| **MVP**  | 65    | 58   | 1       | 6           | **89%** |
 | **V1**   | 122   | 0    | 7       | 115         | **0%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
@@ -802,9 +802,12 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ### MVP — Effort restant (~12 SP)
 
-**Batch A — Compléter les PARTIAL (6 US)**
-- US-2047 (UI validation médecin), US-2089 (UI pairing device),
-  US-2112/US-2115 (i18n next-intl), US-2117 (modèle cabinet), US-2118 (praticien libéral)
+**Batch A — Compléter les PARTIAL (5 US) — ✅ DONE PR #351**
+- ✅ US-2047 (UI workflow ajustement validation médecin)
+- ✅ US-2089 (UI wizard pairing device 3-step)
+- ✅ US-2112 (i18n FR/EN/AR — LocaleSwitcher + cookie persistence + dir=rtl)
+- ✅ US-2115 (formatters Intl — date/time/relativeTime/number/percent/currency/glucose/insulinUnits/carbs)
+- ✅ US-2117 (cabinet enrichi — addresses, contact, openingHours JSON, specialties, capacity, manager FK)
 
 **Batch B — Nouvelles US backoffice (4 US) — ✅ DONE PR #350**
 - ✅ US-2025 (QR invite mobile, JWT 15min audience dédiée)
