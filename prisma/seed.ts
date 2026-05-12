@@ -120,7 +120,22 @@ async function main() {
   // NOTE: In production, firstname/lastname/email must be encrypted.
   // Seeds use plaintext for readability — this is dev-only data.
 
-  const adminPasswordHash = await seedPassword("Admin123!")
+  // Parallélise les bcrypt(12) (~250ms chacun) — 5×250ms séquentiel devient
+  // ~250ms total. Acceptable même si le seed est run rare.
+  const [
+    adminPasswordHash,
+    doctorPasswordHash,
+    nursePasswordHash,
+    patient1PasswordHash,
+    patient2PasswordHash,
+  ] = await Promise.all([
+    seedPassword("Admin123!"),
+    seedPassword("Doctor123!"),
+    seedPassword("Nurse123!"),
+    seedPassword("Patient123!"),
+    seedPassword("Patient123!"),
+  ])
+
   const admin = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("admin@diabeo.test") },
     update: { passwordHash: adminPasswordHash },
@@ -138,7 +153,6 @@ async function main() {
     },
   })
 
-  const doctorPasswordHash = await seedPassword("Doctor123!")
   const doctor = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("docteur@diabeo.test") },
     update: { passwordHash: doctorPasswordHash },
@@ -156,7 +170,6 @@ async function main() {
     },
   })
 
-  const nursePasswordHash = await seedPassword("Nurse123!")
   const nurse = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("infirmiere@diabeo.test") },
     update: { passwordHash: nursePasswordHash },
@@ -174,7 +187,6 @@ async function main() {
     },
   })
 
-  const patient1PasswordHash = await seedPassword("Patient123!")
   const patientUserDT1 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt1@diabeo.test") },
     update: { passwordHash: patient1PasswordHash },
@@ -194,7 +206,6 @@ async function main() {
     },
   })
 
-  const patient2PasswordHash = await seedPassword("Patient123!")
   const patientUserDT2 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt2@diabeo.test") },
     update: { passwordHash: patient2PasswordHash },
@@ -577,9 +588,12 @@ async function main() {
 }
 
 main()
-  .then(() => prisma.$disconnect())
   .catch((e) => {
     console.error(e)
-    prisma.$disconnect()
-    process.exit(1)
+    process.exitCode = 1
+  })
+  .finally(async () => {
+    // `finally` garantit le disconnect dans tous les cas (success + crash) →
+    // évite un pool de connexions pg laissé pendant qui hang le process.
+    await prisma.$disconnect()
   })

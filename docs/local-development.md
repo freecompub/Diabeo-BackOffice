@@ -149,13 +149,8 @@ pnpm dev
 | `/patients/1` | Fiche patient DT1 avec 30j CGM (4 onglets) |
 | `/adjustment-proposals` | Workflow ajustement médecin (US-2047) |
 | `/devices/pair?patientId=1` | Wizard pairing 3 étapes (US-2089) |
-| `/import` | Import MyDiabby — connecter un compte, sync CGM (autorisé en dev local en plus de recette `APP_ENV=staging`) |
+| `/import` | **Import MyDiabby** — connecter un compte, sync CGM. ⚠️ Gate `isStagingEnv()` : ouvert en dev local (`NODE_ENV=development`) ET recette (`APP_ENV=staging`), 404 en production. |
 | Switcher locale en bas du sidebar | FR / EN / AR avec RTL pour l'arabe (US-2112) |
-
-> 💡 **MyDiabby en dev local** : le guard `isStagingEnv()`
-> (`src/lib/staging-guard.ts`) ouvre les routes `/api/import/mydiabby/*` quand
-> `NODE_ENV === "development"`, en plus de `APP_ENV === "staging"`. La
-> production (`NODE_ENV === "production"` sans `APP_ENV`) reste bloquée en 404.
 
 ---
 
