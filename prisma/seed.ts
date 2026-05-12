@@ -9,9 +9,17 @@ import {
   GlucoseTargetPreset,
   DayMomentType,
 } from "@prisma/client"
+import { PrismaPg } from "@prisma/adapter-pg"
 import { createHmac } from "crypto"
+import { hash as bcryptHash } from "bcryptjs"
 
-const prisma = new PrismaClient()
+// Prisma 7 — Driver adapter pg requis (legacy "library" engine supprimé).
+// `DATABASE_URL` doit être set par l'env d'invocation (`pnpm prisma db seed`
+// passe par `prisma.config.ts` qui charge `.env`).
+const databaseUrl = process.env.DATABASE_URL
+if (!databaseUrl) throw new Error("DATABASE_URL is required to run the seed")
+const adapter = new PrismaPg({ connectionString: databaseUrl })
+const prisma = new PrismaClient({ adapter, log: ["warn", "error"] })
 
 // ─── Deterministic PRNG (seeded LCG) ──────────────────────
 // Seed data must be reproducible for snapshot tests.
@@ -25,9 +33,28 @@ function seededRandom(seed: number): () => number {
 
 // ─── HMAC helper for email lookup index ────────────────────
 // In production, HMAC_SECRET comes from env. For seeds, use a fixed key.
+//
+// ⚠️ DOIT matcher EXACTEMENT le pattern du runtime (`src/lib/crypto/hmac.ts`) :
+//   `.update(value.toLowerCase().trim())`
+// Sinon l'`emailHmac` du seed est désaligné avec le hash recalculé au login
+// → 401 invalidCredentials malgré un user existant.
 const HMAC_KEY = process.env.HMAC_SECRET ?? "dev-seed-hmac-key-not-for-production"
 function hmacEmail(email: string): string {
-  return createHmac("sha256", HMAC_KEY).update(email).digest("hex")
+  return createHmac("sha256", HMAC_KEY).update(email.toLowerCase().trim()).digest("hex")
+}
+
+// ─── Password hashing for seed users ───────────────────────
+// bcrypt(12) — même cost factor que le runtime (cf. src/app/api/auth/login/route.ts).
+// Les mots de passe seedés ci-dessous sont dev-only, jamais à utiliser en prod.
+//
+// Mapping email → mot de passe (documenté dans docs/local-development.md §6) :
+//   admin@diabeo.test       / Admin123!
+//   docteur@diabeo.test     / Doctor123!
+//   infirmiere@diabeo.test  / Nurse123!
+//   patient.dt1@diabeo.test / Patient123!
+//   patient.dt2@diabeo.test / Patient123!
+async function seedPassword(plaintext: string): Promise<string> {
+  return bcryptHash(plaintext, 12)
 }
 
 // ─── Time helper ───────────────────────────────────────────
@@ -93,13 +120,14 @@ async function main() {
   // NOTE: In production, firstname/lastname/email must be encrypted.
   // Seeds use plaintext for readability — this is dev-only data.
 
+  const adminPasswordHash = await seedPassword("Admin123!")
   const admin = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("admin@diabeo.test") },
-    update: {},
+    update: { passwordHash: adminPasswordHash },
     create: {
       email: "admin@diabeo.test",
       emailHmac: hmacEmail("admin@diabeo.test"),
-      passwordHash: "$2b$10$placeholder_hash_never_real",
+      passwordHash: adminPasswordHash,
       title: "M.",
       firstname: "Admin",
       lastname: "Test",
@@ -110,13 +138,14 @@ async function main() {
     },
   })
 
+  const doctorPasswordHash = await seedPassword("Doctor123!")
   const doctor = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("docteur@diabeo.test") },
-    update: {},
+    update: { passwordHash: doctorPasswordHash },
     create: {
       email: "docteur@diabeo.test",
       emailHmac: hmacEmail("docteur@diabeo.test"),
-      passwordHash: "$2b$10$placeholder_hash_never_real",
+      passwordHash: doctorPasswordHash,
       title: "Dr",
       firstname: "Sophie",
       lastname: "Martin",
@@ -127,13 +156,14 @@ async function main() {
     },
   })
 
+  const nursePasswordHash = await seedPassword("Nurse123!")
   const nurse = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("infirmiere@diabeo.test") },
-    update: {},
+    update: { passwordHash: nursePasswordHash },
     create: {
       email: "infirmiere@diabeo.test",
       emailHmac: hmacEmail("infirmiere@diabeo.test"),
-      passwordHash: "$2b$10$placeholder_hash_never_real",
+      passwordHash: nursePasswordHash,
       title: "Mme",
       firstname: "Marie",
       lastname: "Dupont",
@@ -144,13 +174,14 @@ async function main() {
     },
   })
 
+  const patient1PasswordHash = await seedPassword("Patient123!")
   const patientUserDT1 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt1@diabeo.test") },
-    update: {},
+    update: { passwordHash: patient1PasswordHash },
     create: {
       email: "patient.dt1@diabeo.test",
       emailHmac: hmacEmail("patient.dt1@diabeo.test"),
-      passwordHash: "$2b$10$placeholder_hash_never_real",
+      passwordHash: patient1PasswordHash,
       firstname: "Jean",
       lastname: "Durand",
       sex: Sex.M,
@@ -163,13 +194,14 @@ async function main() {
     },
   })
 
+  const patient2PasswordHash = await seedPassword("Patient123!")
   const patientUserDT2 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt2@diabeo.test") },
-    update: {},
+    update: { passwordHash: patient2PasswordHash },
     create: {
       email: "patient.dt2@diabeo.test",
       emailHmac: hmacEmail("patient.dt2@diabeo.test"),
-      passwordHash: "$2b$10$placeholder_hash_never_real",
+      passwordHash: patient2PasswordHash,
       firstname: "Claire",
       lastname: "Bernard",
       sex: Sex.F,

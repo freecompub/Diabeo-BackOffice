@@ -106,17 +106,6 @@ pnpm prisma migrate deploy   # applique baseline_v1 + post_deploy_sql + audit_me
 pnpm prisma db seed
 ```
 
-### Workaround si `db seed` échoue
-
-Prisma 7 a un bug avec `prisma.seed` dans `package.json` — si tu vois
-"No seed command configured", contourne avec :
-
-```bash
-DATABASE_URL="postgresql://diabeo:password@localhost:5432/diabeo?schema=public" \
-HMAC_SECRET="<celui-que-tu-as-mis-dans-.env>" \
-npx tsx prisma/seed.ts
-```
-
 Le seed crée :
 - 5 users (admin, doctor, nurse, 2 patients DT1 + DT2)
 - 30 jours de données CGM déterministes
@@ -137,14 +126,16 @@ pnpm dev
 
 | Email | Mot de passe | Rôle |
 |---|---|---|
-| `admin@diabeo.fr` | `Admin123!` | ADMIN |
-| `doctor@diabeo.fr` | `Doctor123!` | DOCTOR |
-| `nurse@diabeo.fr` | `Nurse123!` | NURSE |
-| `patient1@diabeo.fr` | `Patient123!` | VIEWER (DT1) |
-| `patient2@diabeo.fr` | `Patient123!` | VIEWER (DT2) |
+| `admin@diabeo.test` | `Admin123!` | ADMIN |
+| `docteur@diabeo.test` | `Doctor123!` | DOCTOR |
+| `infirmiere@diabeo.test` | `Nurse123!` | NURSE |
+| `patient.dt1@diabeo.test` | `Patient123!` | VIEWER (DT1) |
+| `patient.dt2@diabeo.test` | `Patient123!` | VIEWER (DT2) |
 
 > ⚠️ Ces credentials sont **uniquement** pour le dev local. Les valeurs sont
-> définies dans `prisma/seed.ts`.
+> définies dans `prisma/seed.ts`. Le TLD `.test` est réservé (RFC 2606) — il
+> ne résoudra jamais publiquement, garantissant qu'on ne risque pas d'envoyer
+> un email accidentel à un domaine réel.
 
 ---
 
@@ -216,6 +207,24 @@ pnpm dev
 ---
 
 ## Troubleshooting
+
+### 🚨 Solution universelle : reset complet
+
+> 90 % des soucis en local viennent d'une DB dans un état incohérent
+> (mélange `db push` historique + nouvelles migrations, schéma partiel,
+> seed désaligné). **Commence toujours par ça** avant de débugger plus
+> finement :
+
+```bash
+docker compose --profile local down -v   # -v supprime les volumes (data jetée)
+docker compose --profile local up -d
+sleep 5
+pnpm prisma migrate deploy
+pnpm prisma db seed
+```
+
+Si ça résout, le problème était de l'état résiduel. Sinon, voir les
+sections ci-dessous.
 
 ### "Cannot connect to database"
 
