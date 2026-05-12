@@ -24,7 +24,7 @@ alignés entre les deux dépôts.
 | Framework      | Next.js (App Router)               | 16.x     |
 | Langage        | TypeScript                         | strict   |
 | UI             | shadcn/ui + Tailwind CSS           | latest   |
-| ORM            | Prisma                             | 5.x      |
+| ORM            | Prisma + `@prisma/adapter-pg`      | 7.x      |
 | Base de données| PostgreSQL                         | 16       |
 | Auth           | JWT RS256 custom (jose + bcryptjs) | —        |
 | Chiffrement    | AES-256-GCM (Node.js crypto natif) | —        |
@@ -641,6 +641,8 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 | 16 | JWT RS256 custom (pas NextAuth) | Compatibilité API iOS existante, contrôle total payload/session |
 | 17 | Migrations Prisma versionnées (US-2267) | Audit HDS exigeable, rollback formel, CI drift gate. `db push` interdit en prod. Voir `docs/runbook/migrations.md`. |
 | 18 | `auditLog.resourceId` plat + `metadata.patientId` pivot (US-2268) | Forensics CNIL/ANS impossible avec composite. GIN index partiel garantit < 100ms à 10M logs. Helper `getByPatient` retrouve tous les events patient-scoped. |
+| 19 | Prisma 7 driver adapter `@prisma/adapter-pg` | Prisma 7 a supprimé l'engine "library" — `new PrismaClient()` exige désormais un driver adapter ou `accelerateUrl`. `node-postgres` (pg) élimine le binaire Rust, améliore cold-start serverless. Voir `src/lib/db/client.ts` et `prisma/seed.ts`. |
+| 20 | Early-fail env validation au boot (`src/lib/env.ts` + `instrumentation.ts`) | Sans ça, un secret manquant produit un 503 mystérieux au login. `assertRequiredEnv()` (serveur) + `assertSeedEnv()` (seed) crashent avec un message clair pointant vers `docs/local-development.md` §3. |
 
 ---
 

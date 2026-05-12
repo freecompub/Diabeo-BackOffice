@@ -97,6 +97,36 @@ jobs:
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
 
+      # `pnpm dev` (lancé par Playwright webServer) force NODE_ENV=development,
+      # ce qui active `src/instrumentation.ts` → `assertRequiredEnv()`. Le hook
+      # exige JWT_PRIVATE_KEY/JWT_PUBLIC_KEY (RSA PEM) au boot. On génère une
+      # paire éphémère en CI — pas besoin de secret stocké, l'E2E n'a pas
+      # vocation à valider la sécurité crypto (ça c'est les unit tests).
+      - name: Generate ephemeral JWT keypair for E2E
+        run: |
+          openssl genrsa -out /tmp/jwt-private.pem 2048
+          openssl rsa -in /tmp/jwt-private.pem -pubout -out /tmp/jwt-public.pem
+          # M3 — mask les valeurs PEM dans les logs CI : un futur step qui
+          # echo `printenv` ne leakera pas le PEM en clair. GitHub Actions
+          # remplace toute occurrence par `***` une fois masqué.
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::add-mask::$line"
+          done < /tmp/jwt-private.pem
+          while IFS= read -r line; do
+            [ -n "$line" ] && echo "::add-mask::$line"
+          done < /tmp/jwt-public.pem
+          # M8 — `printf` garantit le trailing newline ; sans ça si openssl
+          # produit un fichier sans `\n` final, le marker heredoc se colle
+          # à `-----END PRIVATE KEY-----` et le parser ne le détecte pas.
+          {
+            echo "JWT_PRIVATE_KEY<<JWTPK_EOF"
+            printf '%s\n' "$(cat /tmp/jwt-private.pem)"
+            echo "JWTPK_EOF"
+            echo "JWT_PUBLIC_KEY<<JWTPUB_EOF"
+            printf '%s\n' "$(cat /tmp/jwt-public.pem)"
+            echo "JWTPUB_EOF"
+          } >> "$GITHUB_ENV"
+
       - name: Run E2E tests
         run: pnpm test:e2e
         env:
