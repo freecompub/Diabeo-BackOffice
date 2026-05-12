@@ -9,8 +9,6 @@
  * @see https://nextjs.org/docs/app/api-reference/file-conventions/instrumentation
  */
 
-import { assertRequiredEnv } from "@/lib/env"
-
 export async function register() {
   // M6 — defense-in-depth : skip uniquement si on est dans un vrai contexte
   // Vitest. `NODE_ENV === "test"` seul est trop large (un deploy mal-configuré
@@ -26,7 +24,10 @@ export async function register() {
   // inutile — les API Edge n'utilisent pas les secrets validés ici).
   if (process.env.NEXT_RUNTIME === "edge") return
 
-  // L5 — import statique (au lieu de dynamic) : meilleure analyse bundler
-  // sans coût réel (la fonction early-return au-dessus si on skip).
+  // Dynamic import requis : `env.ts` utilise `node:crypto` qui n'existe pas
+  // sur Edge runtime. Static import ferait crasher le bundle Edge même si
+  // `assertRequiredEnv` n'est pas appelée (early-return ci-dessus). Le coût
+  // est négligeable — register() ne s'exécute qu'une fois au boot.
+  const { assertRequiredEnv } = await import("@/lib/env")
   assertRequiredEnv()
 }
