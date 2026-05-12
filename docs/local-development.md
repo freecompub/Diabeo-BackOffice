@@ -126,11 +126,11 @@ pnpm dev
 
 | Email | Mot de passe | Rôle |
 |---|---|---|
-| `admin@diabeo.test` | `Admin123!` | ADMIN |
-| `docteur@diabeo.test` | `Doctor123!` | DOCTOR |
-| `infirmiere@diabeo.test` | `Nurse123!` | NURSE |
-| `patient.dt1@diabeo.test` | `Patient123!` | VIEWER (DT1) |
-| `patient.dt2@diabeo.test` | `Patient123!` | VIEWER (DT2) |
+| `admin@diabeo.test` | `DEV-ONLY-Admin123!` | ADMIN |
+| `docteur@diabeo.test` | `DEV-ONLY-Doctor123!` | DOCTOR |
+| `infirmiere@diabeo.test` | `DEV-ONLY-Nurse123!` | NURSE |
+| `patient.dt1@diabeo.test` | `DEV-ONLY-Patient123!` | VIEWER (DT1) |
+| `patient.dt2@diabeo.test` | `DEV-ONLY-Patient123!` | VIEWER (DT2) |
 
 > ⚠️ Ces credentials sont **uniquement** pour le dev local. Les valeurs sont
 > définies dans `prisma/seed.ts`. Le TLD `.test` est réservé (RFC 2606) — il
@@ -149,7 +149,7 @@ pnpm dev
 | `/patients/1` | Fiche patient DT1 avec 30j CGM (4 onglets) |
 | `/adjustment-proposals` | Workflow ajustement médecin (US-2047) |
 | `/devices/pair?patientId=1` | Wizard pairing 3 étapes (US-2089) |
-| `/import` | **Import MyDiabby** — connecter un compte, sync CGM. ⚠️ Gate `isStagingEnv()` : ouvert en dev local (`NODE_ENV=development`) ET recette (`APP_ENV=staging`), 404 en production. |
+| `/import` | **Import MyDiabby** — opt-in explicite requis : `DIABEO_ALLOW_LOCAL_MYDIABBY=1 pnpm dev`. Sans ça, 404 même en dev (évite import accidentel de PHI réelles). En recette, `APP_ENV=staging` suffit. |
 | Switcher locale en bas du sidebar | FR / EN / AR avec RTL pour l'arabe (US-2112) |
 
 ---

@@ -10,14 +10,31 @@ import {
   DayMomentType,
 } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
-import { createHmac } from "crypto"
 import { hash as bcryptHash } from "bcryptjs"
+import { assertSeedEnv } from "../src/lib/env"
+import { hmacEmail } from "../src/lib/crypto/hmac"
+
+// L2 — refuse de tourner sur un cluster production. Le seed crée 5 users avec
+// des passwords plaintext committés dans le repo (visuellement préfixés
+// DEV-ONLY) — si quelqu'un lance ça contre prod par accident, c'est admin
+// compromise immédiate.
+if (process.env.NODE_ENV === "production") {
+  throw new Error(
+    "REFUSING to run seed in production (NODE_ENV=production). " +
+      "The seed creates known-password admin/doctor/nurse users — never run on a real DB. " +
+      "If you intentionally want to seed a non-prod DB, unset NODE_ENV.",
+  )
+}
+
+// C1 + C2 fix — valide HMAC_SECRET, HEALTH_DATA_ENCRYPTION_KEY, DATABASE_URL
+// AVANT toute écriture. Sans ça, `emailHmac` serait calculé avec une clé
+// fallback prévisible du repo → RGPD Art. 32 cassée. `assertSeedEnv` throw
+// avec un message clair pointant vers docs/local-development.md.
+assertSeedEnv()
 
 // Prisma 7 — Driver adapter pg requis (legacy "library" engine supprimé).
-// `DATABASE_URL` doit être set par l'env d'invocation (`pnpm prisma db seed`
-// passe par `prisma.config.ts` qui charge `.env`).
-const databaseUrl = process.env.DATABASE_URL
-if (!databaseUrl) throw new Error("DATABASE_URL is required to run the seed")
+// `DATABASE_URL` validé ci-dessus par assertSeedEnv → non-null garanti.
+const databaseUrl = process.env.DATABASE_URL!
 const adapter = new PrismaPg({ connectionString: databaseUrl })
 const prisma = new PrismaClient({ adapter, log: ["warn", "error"] })
 
@@ -31,28 +48,30 @@ function seededRandom(seed: number): () => number {
   }
 }
 
-// ─── HMAC helper for email lookup index ────────────────────
-// In production, HMAC_SECRET comes from env. For seeds, use a fixed key.
-//
-// ⚠️ DOIT matcher EXACTEMENT le pattern du runtime (`src/lib/crypto/hmac.ts`) :
-//   `.update(value.toLowerCase().trim())`
-// Sinon l'`emailHmac` du seed est désaligné avec le hash recalculé au login
-// → 401 invalidCredentials malgré un user existant.
-const HMAC_KEY = process.env.HMAC_SECRET ?? "dev-seed-hmac-key-not-for-production"
-function hmacEmail(email: string): string {
-  return createHmac("sha256", HMAC_KEY).update(email.toLowerCase().trim()).digest("hex")
-}
+// H6 fix — on importe `hmacEmail` directement depuis le runtime
+// (`src/lib/crypto/hmac.ts`) au lieu de répliquer la logique ici. Garantit
+// que seed et runtime calculent identiquement l'emailHmac, même si le
+// helper runtime évolue (e.g., normalisation NFKC unicode plus tard).
+// C1/C2 — `assertSeedEnv()` au top du fichier garantit que `HMAC_SECRET`
+// est présent et valide avant qu'`hmacEmail` ne soit appelé.
 
 // ─── Password hashing for seed users ───────────────────────
 // bcrypt(12) — même cost factor que le runtime (cf. src/app/api/auth/login/route.ts).
-// Les mots de passe seedés ci-dessous sont dev-only, jamais à utiliser en prod.
+//
+// H3 fix — préfixe `DEV-ONLY-` sur chaque password : visible visuellement au
+// scan du code source, et garantit qu'un copier-coller accidentel en prod
+// produit un password qui :
+//   - flag immédiatement le risque (revue de PR repère "DEV-ONLY-")
+//   - reste >= 12 chars + complexité (politique runtime OK)
+// Combiné avec le guard `NODE_ENV === "production"` en haut de fichier, le
+// seed est triple-locked.
 //
 // Mapping email → mot de passe (documenté dans docs/local-development.md §6) :
-//   admin@diabeo.test       / Admin123!
-//   docteur@diabeo.test     / Doctor123!
-//   infirmiere@diabeo.test  / Nurse123!
-//   patient.dt1@diabeo.test / Patient123!
-//   patient.dt2@diabeo.test / Patient123!
+//   admin@diabeo.test       / DEV-ONLY-Admin123!
+//   docteur@diabeo.test     / DEV-ONLY-Doctor123!
+//   infirmiere@diabeo.test  / DEV-ONLY-Nurse123!
+//   patient.dt1@diabeo.test / DEV-ONLY-Patient123!
+//   patient.dt2@diabeo.test / DEV-ONLY-Patient123!
 async function seedPassword(plaintext: string): Promise<string> {
   return bcryptHash(plaintext, 12)
 }
@@ -129,16 +148,19 @@ async function main() {
     patient1PasswordHash,
     patient2PasswordHash,
   ] = await Promise.all([
-    seedPassword("Admin123!"),
-    seedPassword("Doctor123!"),
-    seedPassword("Nurse123!"),
-    seedPassword("Patient123!"),
-    seedPassword("Patient123!"),
+    seedPassword("DEV-ONLY-Admin123!"),
+    seedPassword("DEV-ONLY-Doctor123!"),
+    seedPassword("DEV-ONLY-Nurse123!"),
+    seedPassword("DEV-ONLY-Patient123!"),
+    seedPassword("DEV-ONLY-Patient123!"),
   ])
 
   const admin = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("admin@diabeo.test") },
-    update: { passwordHash: adminPasswordHash },
+    // M4 — `update: {}` évite de re-hash bcrypt(12) à chaque seed run
+    // (5×250ms gaspillés). Si tu veux resync les passwords après une
+    // rotation, drop la DB (`docker compose down -v`) et reseed.
+    update: {},
     create: {
       email: "admin@diabeo.test",
       emailHmac: hmacEmail("admin@diabeo.test"),
@@ -155,7 +177,7 @@ async function main() {
 
   const doctor = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("docteur@diabeo.test") },
-    update: { passwordHash: doctorPasswordHash },
+    update: {},
     create: {
       email: "docteur@diabeo.test",
       emailHmac: hmacEmail("docteur@diabeo.test"),
@@ -172,7 +194,7 @@ async function main() {
 
   const nurse = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("infirmiere@diabeo.test") },
-    update: { passwordHash: nursePasswordHash },
+    update: {},
     create: {
       email: "infirmiere@diabeo.test",
       emailHmac: hmacEmail("infirmiere@diabeo.test"),
@@ -189,7 +211,7 @@ async function main() {
 
   const patientUserDT1 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt1@diabeo.test") },
-    update: { passwordHash: patient1PasswordHash },
+    update: {},
     create: {
       email: "patient.dt1@diabeo.test",
       emailHmac: hmacEmail("patient.dt1@diabeo.test"),
@@ -208,7 +230,7 @@ async function main() {
 
   const patientUserDT2 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt2@diabeo.test") },
-    update: { passwordHash: patient2PasswordHash },
+    update: {},
     create: {
       email: "patient.dt2@diabeo.test",
       emailHmac: hmacEmail("patient.dt2@diabeo.test"),
@@ -313,16 +335,27 @@ async function main() {
   const humalogCatalog = await prisma.insulinCatalog.findUnique({ where: { displayName: "Humalog" } })
   const lantusCatalog = await prisma.insulinCatalog.findUnique({ where: { displayName: "Lantus" } })
 
-  const piDT1Bolus = await prisma.patientInsulin.upsert({
-    where: { id: -1 }, // force create
-    update: {},
-    create: {
-      patientId: patientDT1.id,
-      insulinCatalogId: novorapidCatalog!.id,
-      usage: "bolus",
-      customDurationHours: 4.0,
-    },
-  })
+  // M10 — pattern findFirst + create idempotent. L'ancien
+  // `upsert({ where: { id: -1 } })` créait un nouveau row à chaque run, ce
+  // qui violait le partial unique index `patient_insulin_active_unique`
+  // (post_deploy_sql) → P2002 au 2e seed.
+  const piDT1Bolus =
+    (await prisma.patientInsulin.findFirst({
+      where: {
+        patientId: patientDT1.id,
+        insulinCatalogId: novorapidCatalog!.id,
+        usage: "bolus",
+        isActive: true,
+      },
+    })) ??
+    (await prisma.patientInsulin.create({
+      data: {
+        patientId: patientDT1.id,
+        insulinCatalogId: novorapidCatalog!.id,
+        usage: "bolus",
+        customDurationHours: 4.0,
+      },
+    }))
 
   const settingsDT1 = await prisma.insulinTherapySettings.upsert({
     where: { patientId: patientDT1.id },
@@ -334,6 +367,9 @@ async function main() {
     },
   })
 
+  // H2 — pas de @@unique sur GlucoseTarget → skipDuplicates inerte.
+  // Pattern idempotent : deleteMany scope + createMany.
+  await prisma.glucoseTarget.deleteMany({ where: { settingsId: settingsDT1.id } })
   await prisma.glucoseTarget.createMany({
     data: [
       {
@@ -342,7 +378,6 @@ async function main() {
         preset: GlucoseTargetPreset.standard, isActive: true,
       },
     ],
-    skipDuplicates: true,
   })
 
   await prisma.iobSettings.upsert({
@@ -357,23 +392,25 @@ async function main() {
     create: { settingsId: settingsDT1.id, enabled: false, immediatePercentage: 100 },
   })
 
-  // ISF — 3 creneaux
+  // ISF — 3 creneaux (H2 — idempotent via deleteMany scope)
+  await prisma.insulinSensitivityFactor.deleteMany({
+    where: { settingsId: settingsDT1.id },
+  })
   await prisma.insulinSensitivityFactor.createMany({
     data: [
       { settingsId: settingsDT1.id, startHour: 6, endHour: 12, startTime: t(6, 0), endTime: t(12, 0), sensitivityFactorGl: 0.30, sensitivityFactorMgdl: 30 },
       { settingsId: settingsDT1.id, startHour: 12, endHour: 22, startTime: t(12, 0), endTime: t(22, 0), sensitivityFactorGl: 0.50, sensitivityFactorMgdl: 50 },
       { settingsId: settingsDT1.id, startHour: 22, endHour: 6, startTime: t(22, 0), endTime: t(6, 0), sensitivityFactorGl: 0.60, sensitivityFactorMgdl: 60 },
     ],
-    skipDuplicates: true,
   })
 
-  // ICR — 2 creneaux
+  // ICR — 2 creneaux (H2 — idempotent via deleteMany scope)
+  await prisma.carbRatio.deleteMany({ where: { settingsId: settingsDT1.id } })
   await prisma.carbRatio.createMany({
     data: [
       { settingsId: settingsDT1.id, startHour: 6, endHour: 12, startTime: t(6, 0), endTime: t(12, 0), gramsPerUnit: 8.0, mealLabel: "Petit-dejeuner" },
       { settingsId: settingsDT1.id, startHour: 12, endHour: 6, startTime: t(12, 0), endTime: t(6, 0), gramsPerUnit: 12.0, mealLabel: "Dejeuner/Diner" },
     ],
-    skipDuplicates: true,
   })
 
   // Basal configuration — pump with 4 slots (Time, not Timestamptz)
@@ -386,6 +423,8 @@ async function main() {
     },
   })
 
+  // H2 — idempotent : deleteMany scope par basalConfig avant create.
+  await prisma.pumpBasalSlot.deleteMany({ where: { basalConfigId: basalConfig.id } })
   await prisma.pumpBasalSlot.createMany({
     data: [
       { basalConfigId: basalConfig.id, startTime: t(0, 0), endTime: t(6, 0), rate: 0.65, durationHours: 6 },
@@ -393,31 +432,45 @@ async function main() {
       { basalConfigId: basalConfig.id, startTime: t(12, 0), endTime: t(22, 0), rate: 0.75, durationHours: 10 },
       { basalConfigId: basalConfig.id, startTime: t(22, 0), endTime: t(0, 0), rate: 0.70, durationHours: 2 },
     ],
-    skipDuplicates: true,
   })
 
   // ─── 8. Insulin therapy settings (DT2 — manual) ──────────
 
-  const piDT2Bolus = await prisma.patientInsulin.upsert({
-    where: { id: -1 },
-    update: {},
-    create: {
-      patientId: patientDT2.id,
-      insulinCatalogId: humalogCatalog!.id,
-      usage: "bolus",
-      customDurationHours: 4.0,
-    },
-  })
+  // M10 — pattern findFirst + create (idempotent vs partial unique index).
+  const piDT2Bolus =
+    (await prisma.patientInsulin.findFirst({
+      where: {
+        patientId: patientDT2.id,
+        insulinCatalogId: humalogCatalog!.id,
+        usage: "bolus",
+        isActive: true,
+      },
+    })) ??
+    (await prisma.patientInsulin.create({
+      data: {
+        patientId: patientDT2.id,
+        insulinCatalogId: humalogCatalog!.id,
+        usage: "bolus",
+        customDurationHours: 4.0,
+      },
+    }))
 
-  const piDT2Basal = await prisma.patientInsulin.upsert({
-    where: { id: -1 },
-    update: {},
-    create: {
-      patientId: patientDT2.id,
-      insulinCatalogId: lantusCatalog!.id,
-      usage: "basal",
-    },
-  })
+  const piDT2Basal =
+    (await prisma.patientInsulin.findFirst({
+      where: {
+        patientId: patientDT2.id,
+        insulinCatalogId: lantusCatalog!.id,
+        usage: "basal",
+        isActive: true,
+      },
+    })) ??
+    (await prisma.patientInsulin.create({
+      data: {
+        patientId: patientDT2.id,
+        insulinCatalogId: lantusCatalog!.id,
+        usage: "basal",
+      },
+    }))
 
   const settingsDT2 = await prisma.insulinTherapySettings.upsert({
     where: { patientId: patientDT2.id },
@@ -430,6 +483,8 @@ async function main() {
     },
   })
 
+  // H2 — idempotent : deleteMany scope par settings avant create.
+  await prisma.glucoseTarget.deleteMany({ where: { settingsId: settingsDT2.id } })
   await prisma.glucoseTarget.createMany({
     data: [
       {
@@ -438,7 +493,6 @@ async function main() {
         preset: GlucoseTargetPreset.elderly, isActive: true,
       },
     ],
-    skipDuplicates: true,
   })
 
   await prisma.basalConfiguration.upsert({
@@ -516,11 +570,14 @@ async function main() {
     }
   }
 
+  // H2 — CgmEntry n'a pas de @@unique → deleteMany scope (patient) avant
+  // batch insert pour garantir idempotence (re-seed = 8640 rows, pas 17280).
+  await prisma.cgmEntry.deleteMany({ where: { patientId: patientDT1.id } })
+
   const BATCH_SIZE = 1000
   for (let i = 0; i < cgmData.length; i += BATCH_SIZE) {
     await prisma.cgmEntry.createMany({
       data: cgmData.slice(i, i + BATCH_SIZE),
-      skipDuplicates: true,
     })
   }
   console.log(`CGM entries created: ${cgmData.length} readings (30 days)`)

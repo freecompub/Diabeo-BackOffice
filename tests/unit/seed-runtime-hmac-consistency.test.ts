@@ -2,51 +2,46 @@
  * Test suite: Seed ↔ Runtime HMAC consistency
  *
  * Behavior tested:
- * - `prisma/seed.ts` calcule `emailHmac` avec la MÊME normalisation que le
- *   runtime (`src/lib/crypto/hmac.ts`) : `.toLowerCase().trim()` avant le
- *   HMAC-SHA256.
+ * - `prisma/seed.ts` importe `hmacEmail` du même module que le runtime
+ *   (`src/lib/crypto/hmac.ts`) — pas de réplique locale.
  *
  * Risk mitigated:
- * - Si le seed insère "Admin@Diabeo.test" hashé tel quel et que le runtime
- *   au login fait `hmacEmail(email.toLowerCase().trim())`, les 2 hashes
- *   diffèrent → user introuvable au login → 401 invalidCredentials malgré
- *   un user existant en base. Faux négatif difficile à diagnostiquer.
+ * - Si quelqu'un re-créé une fonction `hmacEmail` locale dans seed.ts (ex:
+ *   pour ajouter un fallback fixe en dev), seed et runtime divergent →
+ *   401 invalidCredentials au login après seed.
  *
- * Edge cases:
- * - Whitespace de bord (espaces, tabulations) doit être trim.
- * - Casse mixte doit être normalisée.
+ * Edge cases couverts par le runtime (`crypto/hmac.ts` tests):
+ *  - lowercase + trim normalization
+ *  - throw si HMAC_SECRET absent
+ *  - HMAC-SHA256 hex output 64 chars
+ *
+ * Ce test garantit juste que le seed UTILISE ce helper, pas qu'il
+ * implémente correctement le HMAC (couvert ailleurs).
  */
 import { describe, it, expect } from "vitest"
-import { createHmac } from "node:crypto"
-import { hmacEmail } from "@/lib/crypto/hmac"
+import * as fs from "node:fs"
+import * as path from "node:path"
 
-// Réplique du helper utilisé dans prisma/seed.ts. Si ces deux implémentations
-// divergent, ce test capture la dérive immédiatement.
-function seedHmacEmail(email: string): string {
-  const key = process.env.HMAC_SECRET
-  if (!key) throw new Error("HMAC_SECRET is not set")
-  return createHmac("sha256", key)
-    .update(email.toLowerCase().trim())
-    .digest("hex")
-}
+const SEED_FILE = path.join(__dirname, "..", "..", "prisma", "seed.ts")
 
-describe("seed ↔ runtime HMAC consistency (US-prisma7-finalize)", () => {
-  it("seed and runtime produce the same HMAC for lowercase email", () => {
-    const email = "admin@diabeo.test"
-    expect(seedHmacEmail(email)).toBe(hmacEmail(email))
+describe("seed.ts uses the runtime hmacEmail (no local replica)", () => {
+  const source = fs.readFileSync(SEED_FILE, "utf8")
+
+  it("imports hmacEmail from src/lib/crypto/hmac", () => {
+    expect(source).toMatch(
+      /import\s*\{[^}]*\bhmacEmail\b[^}]*\}\s*from\s*["'](?:\.\.\/)+src\/lib\/crypto\/hmac["']/,
+    )
   })
 
-  it("seed and runtime normalize mixed-case identically", () => {
-    expect(seedHmacEmail("Admin@DIABEO.test")).toBe(hmacEmail("admin@diabeo.test"))
-    expect(seedHmacEmail("Admin@DIABEO.test")).toBe(hmacEmail("Admin@DIABEO.test"))
+  it("does NOT define a local hmacEmail function (would diverge from runtime)", () => {
+    // Une seule mention du nom hmacEmail dans la fonction = OK.
+    // Le motif "function hmacEmail" ou "const hmacEmail =" = divergence.
+    expect(source).not.toMatch(/function\s+hmacEmail\s*\(/)
+    expect(source).not.toMatch(/(?:const|let|var)\s+hmacEmail\s*=/)
   })
 
-  it("seed and runtime normalize surrounding whitespace identically", () => {
-    expect(seedHmacEmail("  admin@diabeo.test  ")).toBe(hmacEmail("admin@diabeo.test"))
-    expect(seedHmacEmail("\tadmin@diabeo.test\n")).toBe(hmacEmail("admin@diabeo.test"))
-  })
-
-  it("different normalized emails produce different HMACs (no collision)", () => {
-    expect(hmacEmail("admin@diabeo.test")).not.toBe(hmacEmail("doctor@diabeo.test"))
+  it("does NOT define a fallback HMAC_KEY (RGPD violation if seed runs without HMAC_SECRET)", () => {
+    expect(source).not.toMatch(/HMAC_KEY\s*=\s*process\.env\.HMAC_SECRET\s*\?\?/)
+    expect(source).not.toMatch(/dev-seed-hmac-key-not-for-production/)
   })
 })

@@ -24,6 +24,7 @@ describe("staging-guard.isStagingEnv", () => {
     // mutation directe de process.env qui pourrait fuiter en parallèle.
     vi.stubEnv("APP_ENV", "")
     vi.stubEnv("NODE_ENV", "")
+    vi.stubEnv("DIABEO_ALLOW_LOCAL_MYDIABBY", "")
   })
 
   afterEach(() => {
@@ -36,13 +37,32 @@ describe("staging-guard.isStagingEnv", () => {
     expect(isStagingEnv()).toBe(true)
   })
 
-  it("returns true when NODE_ENV === 'development' (local pnpm dev)", () => {
+  it("returns true when NODE_ENV === 'development' AND opt-in (DIABEO_ALLOW_LOCAL_MYDIABBY=1)", () => {
     vi.stubEnv("NODE_ENV", "development")
+    vi.stubEnv("DIABEO_ALLOW_LOCAL_MYDIABBY", "1")
     expect(isStagingEnv()).toBe(true)
+  })
+
+  it("returns FALSE in dev local without opt-in (H4 — opt-in explicite requis)", () => {
+    vi.stubEnv("NODE_ENV", "development")
+    // DIABEO_ALLOW_LOCAL_MYDIABBY non set → gate fermée par défaut.
+    expect(isStagingEnv()).toBe(false)
+  })
+
+  it("returns false in dev local with malformed opt-in (e.g. 'true' instead of '1')", () => {
+    vi.stubEnv("NODE_ENV", "development")
+    vi.stubEnv("DIABEO_ALLOW_LOCAL_MYDIABBY", "true")
+    expect(isStagingEnv()).toBe(false)
   })
 
   it("returns false in production (no APP_ENV, NODE_ENV=production)", () => {
     vi.stubEnv("NODE_ENV", "production")
+    expect(isStagingEnv()).toBe(false)
+  })
+
+  it("ignores DIABEO_ALLOW_LOCAL_MYDIABBY in production (defense in depth)", () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("DIABEO_ALLOW_LOCAL_MYDIABBY", "1")
     expect(isStagingEnv()).toBe(false)
   })
 

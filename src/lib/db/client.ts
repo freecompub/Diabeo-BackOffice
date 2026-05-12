@@ -23,7 +23,20 @@ function createPrismaClient(): PrismaClient {
         "See docs/local-development.md §3.",
     )
   }
-  const adapter = new PrismaPg({ connectionString })
+  // L1 — wrap dans try/catch et scrub la connection string de l'éventuel
+  // message d'erreur. `pg`/`PrismaPg` peuvent inclure la URL (user:password@host)
+  // dans leur erreur de parse → fuite credentials dans APM/Sentry.
+  let adapter: PrismaPg
+  try {
+    adapter = new PrismaPg({ connectionString })
+  } catch {
+    // Pas de re-throw avec `{ cause: err }` — le message original peut
+    // contenir l'URL en clair (user:password@host).
+    throw new Error(
+      "Failed to initialize Postgres adapter — check DATABASE_URL format. " +
+        "(Original error scrubbed to avoid leaking credentials.)",
+    )
+  }
   return new PrismaClient({
     adapter,
     log:

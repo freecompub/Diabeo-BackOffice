@@ -16,15 +16,26 @@
  *   le premier `encrypt()` ou `signJwt()`.
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { generateKeyPairSync, randomBytes } from "node:crypto"
 import { assertRequiredEnv } from "@/lib/env"
 
 // Valeurs valides — utilisées comme baseline pour tester un seul champ
 // invalide à la fois.
-const VALID_ENCRYPT_KEY =
-  "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2"
-const VALID_HMAC = "test-hmac-secret-32-bytes-long-x" // exactement 32 chars
-const VALID_PRIV_PEM = "-----BEGIN PRIVATE KEY-----\nXXX\n-----END PRIVATE KEY-----"
-const VALID_PUB_PEM = "-----BEGIN PUBLIC KEY-----\nXXX\n-----END PUBLIC KEY-----"
+//
+// HMAC + ENCRYPTION : vraie randomBytes(32) hex → matche les nouvelles
+// validations (regex hex 64 chars + Shannon entropy floor).
+// JWT : vraie paire RSA générée au module-load → matche createPrivateKey /
+// createPublicKey de Node crypto utilisés dans env.ts.
+const VALID_ENCRYPT_KEY = randomBytes(32).toString("hex")
+const VALID_HMAC = randomBytes(32).toString("hex")
+
+const { publicKey, privateKey } = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+})
+const VALID_PRIV_PEM = privateKey
+const VALID_PUB_PEM = publicKey
 
 function setupValidEnv() {
   vi.stubEnv("DATABASE_URL", "postgresql://x:y@localhost:5432/z")
@@ -62,40 +73,72 @@ describe("assertRequiredEnv", () => {
     expect(() => assertRequiredEnv()).toThrow(/64 hex chars/)
   })
 
-  it("rejects HMAC_SECRET shorter than 32 chars", () => {
+  it("rejects HMAC_SECRET shorter than 32 bytes", () => {
     vi.stubEnv("HMAC_SECRET", "too-short")
-    expect(() => assertRequiredEnv()).toThrow(/at least 32 characters/)
+    expect(() => assertRequiredEnv()).toThrow(/at least 32 bytes/)
+  })
+
+  it("rejects HMAC_SECRET with low entropy (M1 — refuses 'a'×64)", () => {
+    vi.stubEnv("HMAC_SECRET", "a".repeat(64))
+    expect(() => assertRequiredEnv()).toThrow(/insufficient entropy/)
   })
 
   it("rejects JWT_PRIVATE_KEY without PEM markers", () => {
     vi.stubEnv("JWT_PRIVATE_KEY", "not-a-pem-key")
-    expect(() => assertRequiredEnv()).toThrow(/PEM-encoded RSA private key/)
+    expect(() => assertRequiredEnv()).toThrow(/PEM-encoded private key/)
+  })
+
+  it("rejects JWT_PRIVATE_KEY with PEM markers but invalid content (M2)", () => {
+    vi.stubEnv(
+      "JWT_PRIVATE_KEY",
+      "-----BEGIN PRIVATE KEY-----\nXXX\n-----END PRIVATE KEY-----\n",
+    )
+    expect(() => assertRequiredEnv()).toThrow(/could not be parsed/)
   })
 
   it("rejects JWT_PUBLIC_KEY without PEM markers", () => {
     vi.stubEnv("JWT_PUBLIC_KEY", "not-a-pem-key")
-    expect(() => assertRequiredEnv()).toThrow(/PEM-encoded RSA public key/)
+    expect(() => assertRequiredEnv()).toThrow(/PEM-encoded public key/)
+  })
+
+  it("rejects JWT_PUBLIC_KEY with PEM markers but invalid content (M2)", () => {
+    vi.stubEnv(
+      "JWT_PUBLIC_KEY",
+      "-----BEGIN PUBLIC KEY-----\nXXX\n-----END PUBLIC KEY-----\n",
+    )
+    expect(() => assertRequiredEnv()).toThrow(/could not be parsed/)
   })
 
   it("error message references docs/local-development.md §3", () => {
     vi.stubEnv("DATABASE_URL", "")
-    try {
-      assertRequiredEnv()
-      throw new Error("expected throw")
-    } catch (err) {
-      expect((err as Error).message).toMatch(/docs\/local-development\.md/)
-    }
+    // M9 — pattern uniforme expect().toThrow() (au lieu de try/catch + cast).
+    expect(() => assertRequiredEnv()).toThrow(/docs\/local-development\.md/)
   })
 
   it("collects ALL problems before throwing (not just the first)", () => {
     vi.stubEnv("DATABASE_URL", "")
     vi.stubEnv("HMAC_SECRET", "")
+    expect(() => assertRequiredEnv()).toThrow(/DATABASE_URL/)
+    // Re-throw pour le second match — Vitest toThrow ne chain pas.
+    expect(() => assertRequiredEnv()).toThrow(/HMAC_SECRET/)
+  })
+
+  it("L4 — validator error messages never echo the secret value", () => {
+    // Si un futur dev interpole `v` dans le message d'erreur, le secret leak
+    // dans les logs (boot + stack traces). Ce test verrouille le contrat.
+    const sentinelSecret = "PR356-SENTINEL-DO-NOT-LEAK-abcdef123456789012345678"
+    vi.stubEnv("HMAC_SECRET", sentinelSecret)
+    // Le HMAC_SECRET ci-dessus est valide (>32 bytes, entropy OK) donc on
+    // utilise un autre champ pour faire fail la validation : invalid hex
+    // pour la clé d'encryption.
+    vi.stubEnv("HEALTH_DATA_ENCRYPTION_KEY", "z".repeat(64))
     try {
       assertRequiredEnv()
       throw new Error("expected throw")
     } catch (err) {
-      expect((err as Error).message).toMatch(/DATABASE_URL/)
-      expect((err as Error).message).toMatch(/HMAC_SECRET/)
+      const msg = (err as Error).message
+      expect(msg).not.toContain(sentinelSecret)
+      expect(msg).not.toContain("z".repeat(64))
     }
   })
 
