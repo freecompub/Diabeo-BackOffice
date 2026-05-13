@@ -1,12 +1,18 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
 import { encryptField } from "@/lib/crypto/fields"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { glycemiaService } from "@/lib/services/glycemia.service"
 
 type RouteParams = { params: Promise<{ id: string }> }
+
+const listQuerySchema = z.object({
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+}).refine((d) => d.from < d.to, { message: "from must be before to" })
 
 const glycemiaSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -34,6 +40,53 @@ function serializeEntry(entry: Record<string, unknown>) {
     }
   }
   return result
+}
+
+/**
+ * GET /api/patients/:id/glycemia?from=&to= — BGM/capillary entries list.
+ *
+ * US-2032 — Glycémies capillaires (BGM). Backoffice-side read endpoint for
+ * the patient detail "BGM" tab; complements the bulk `/api/userdata` route
+ * with a focused, per-patient read.
+ */
+export async function GET(req: NextRequest, { params }: RouteParams) {
+  try {
+    const user = requireAuth(req)
+    const { id } = await params
+    if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
+    const patientId = parseInt(id, 10)
+
+    const ctx = extractRequestContext(req)
+    const allowed = await canAccessPatient(user.id, user.role, patientId)
+    if (!allowed) {
+      await auditService.log({
+        userId: user.id, action: "UNAUTHORIZED", resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent,
+        metadata: { patientId, endpoint: "list" },
+      })
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
+    const parsed = listQuerySchema.safeParse(
+      Object.fromEntries(req.nextUrl.searchParams.entries()),
+    )
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
+        { status: 400 },
+      )
+    }
+
+    const entries = await glycemiaService.getGlycemiaEntries(
+      patientId, parsed.data.from, parsed.data.to, user.id, ctx,
+    )
+    return NextResponse.json(entries.map((e) => serializeEntry(e as unknown as Record<string, unknown>)))
+  } catch (error) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[patients/:id/glycemia GET]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
+  }
 }
 
 /** POST /api/patients/:id/glycemia — professional glycemia entry */

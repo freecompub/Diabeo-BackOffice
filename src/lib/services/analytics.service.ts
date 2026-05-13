@@ -328,4 +328,153 @@ export const analyticsService = {
       pumpEvents,
     }
   },
+
+  /**
+   * Heat-map glycémique (US-2038) — 7 days × 24 hours grid (168 cells).
+   * Each cell aggregates the patient's CGM readings whose timestamp matches
+   * (dayOfWeek, hour). Returns avg glucose in mg/dL + reading count per cell.
+   *
+   * Days are indexed Mon=0..Sun=6 to match clinical conventions (week starts
+   * Monday in FR/EU). Cells with zero readings carry `avgMgdl=null`.
+   *
+   * Window bounded to MAX_PERIOD_DAYS for performance. Long periods are
+   * tolerated but capped.
+   */
+  async heatmap(
+    patientId: number,
+    period: string,
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    const days = parsePeriod(period)
+    const { withTimestamp, from, to, entryCount } = await getPatientCgmValues(patientId, days)
+
+    type Cell = { sumGl: number; count: number }
+    const cells: Cell[] = Array.from({ length: 7 * 24 }, () => ({ sumGl: 0, count: 0 }))
+
+    for (const r of withTimestamp) {
+      // Sunday=0..Saturday=6 → Monday=0..Sunday=6 (FR week)
+      const jsDow = r.timestamp.getDay()
+      const dayOfWeek = (jsDow + 6) % 7
+      const hour = r.timestamp.getHours()
+      const idx = dayOfWeek * 24 + hour
+      cells[idx].sumGl += r.valueGl
+      cells[idx].count++
+    }
+
+    const grid = cells.map((c, idx) => ({
+      dayOfWeek: Math.floor(idx / 24),
+      hour: idx % 24,
+      readingCount: c.count,
+      avgMgdl: c.count > 0 ? Math.round(glToMgdl(c.sumGl / c.count)) : null,
+    }))
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      // US-2268 — patient-scoped analytics view.
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "heatmap" },
+    })
+
+    return {
+      period: { from: from.toISOString(), to: to.toISOString(), days },
+      readingCount: entryCount,
+      cells: grid,
+    }
+  },
+
+  /**
+   * Comparaison de deux périodes (US-2039) — calcule les métriques (TIR, GMI,
+   * CV, captureRate) sur deux fenêtres successives et expose le delta. Utilisé
+   * pour évaluer l'effet d'un ajustement thérapeutique.
+   *
+   * Le caller passe la durée commune des deux fenêtres (en jours). La fenêtre
+   * A se termine `gapDays` après le début de la fenêtre B — par défaut elles
+   * sont contiguës (gap = 0) et la fenêtre B est la plus récente.
+   */
+  async compare(
+    patientId: number,
+    period: string,
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    const days = parsePeriod(period)
+    const now = new Date()
+    const recentTo = now
+    const recentFrom = new Date(now.getTime() - days * 24 * 3600_000)
+    const previousTo = new Date(recentFrom.getTime() - 1)
+    const previousFrom = new Date(previousTo.getTime() - days * 24 * 3600_000)
+
+    const thresholds = await getPatientThresholds(patientId)
+
+    const [recentEntries, previousEntries] = await Promise.all([
+      prisma.cgmEntry.findMany({
+        where: {
+          patientId,
+          timestamp: { gte: recentFrom, lte: recentTo },
+          valueGl: { gte: 0.40, lte: 5.00 },
+        },
+        select: { valueGl: true },
+      }),
+      prisma.cgmEntry.findMany({
+        where: {
+          patientId,
+          timestamp: { gte: previousFrom, lte: previousTo },
+          valueGl: { gte: 0.40, lte: 5.00 },
+        },
+        select: { valueGl: true },
+      }),
+    ])
+
+    const summarize = (rows: Array<{ valueGl: unknown }>, periodFrom: Date, periodTo: Date) => {
+      const values = rows.map((e) => Number(e.valueGl))
+      const avgGl = mean(values)
+      const avgMgdl = glToMgdl(avgGl)
+      return {
+        from: periodFrom.toISOString(),
+        to: periodTo.toISOString(),
+        readingCount: values.length,
+        captureRate: Math.round(cgmCaptureRate(values.length, days) * 10) / 10,
+        averageGlucoseMgdl: values.length > 0 ? Math.round(avgMgdl) : null,
+        gmi: values.length > 0 ? Math.round(glucoseManagementIndicator(avgMgdl) * 10) / 10 : null,
+        coefficientOfVariation:
+          values.length > 0 ? Math.round(coefficientOfVariation(values) * 10) / 10 : null,
+        tir: values.length > 0 ? computeTir(values, thresholds) : null,
+      }
+    }
+
+    const recent = summarize(recentEntries, recentFrom, recentTo)
+    const previous = summarize(previousEntries, previousFrom, previousTo)
+
+    const delta = {
+      inRangePct:
+        recent.tir && previous.tir
+          ? Math.round((recent.tir.inRange - previous.tir.inRange) * 10) / 10
+          : null,
+      gmi:
+        recent.gmi !== null && previous.gmi !== null
+          ? Math.round((recent.gmi - previous.gmi) * 10) / 10
+          : null,
+      averageGlucoseMgdl:
+        recent.averageGlucoseMgdl !== null && previous.averageGlucoseMgdl !== null
+          ? recent.averageGlucoseMgdl - previous.averageGlucoseMgdl
+          : null,
+    }
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "ANALYTICS",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "compare", days },
+    })
+
+    return { previous, recent, delta }
+  },
 }
