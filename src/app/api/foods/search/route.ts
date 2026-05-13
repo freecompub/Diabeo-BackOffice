@@ -20,8 +20,9 @@ export async function GET(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
     if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
-    const user = await auditedRequireRole(req, "NURSE", ctx, "FOOD_ITEM", "search")
-    const items = await foodItemService.search(parsed.data, user.id, ctx)
+    // Auth required (NURSE+) but no audit on public CIQUAL searches (review M2).
+    await auditedRequireRole(req, "NURSE", ctx, "FOOD_ITEM", "search")
+    const items = await foodItemService.search(parsed.data)
     return NextResponse.json({ items })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })

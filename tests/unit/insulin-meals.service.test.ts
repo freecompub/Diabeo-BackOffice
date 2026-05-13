@@ -19,9 +19,24 @@ vi.mock("@/lib/storage/s3", () => ({
   uploadFile: vi.fn(async () => ({ key: "meal-photos/7/abc.jpg", size: 123 })),
   deleteFile: vi.fn(async () => {}),
 }))
+// C1 — ScanResult shape is { scanned, clean, viruses } (no `infected` field).
 vi.mock("@/lib/services/antivirus.service", () => ({
-  scanBuffer: vi.fn(async () => ({ clean: true, infected: false, viruses: [] })),
+  scanBuffer: vi.fn(async () => ({ scanned: true, clean: true, viruses: [] })),
 }))
+// Mock sharp so tests don't need real image data.
+vi.mock("sharp", () => {
+  const sharpFn: any = vi.fn(() => sharpFn)
+  sharpFn.rotate = vi.fn(() => sharpFn)
+  sharpFn.jpeg = vi.fn(() => sharpFn)
+  sharpFn.png = vi.fn(() => sharpFn)
+  sharpFn.webp = vi.fn(() => sharpFn)
+  sharpFn.withMetadata = vi.fn(() => sharpFn)
+  sharpFn.toBuffer = vi.fn(async () => ({
+    data: Buffer.from([0xff, 0xd8, 0xff]),
+    info: { width: 800, height: 600 },
+  }))
+  return { default: sharpFn }
+})
 
 import {
   pumpEventService,
@@ -185,33 +200,53 @@ describe("mealValidationService (US-2053)", () => {
 })
 
 describe("foodItemService (US-2054)", () => {
-  it("search by name uses HMAC equality", async () => {
+  it("search by name uses HMAC equality (no audit emitted — M2)", async () => {
     prismaMock.foodItem.findMany.mockResolvedValue([] as any)
-    await foodItemService.search({ name: "Riz blanc" }, 9)
+    const beforeAudits = prismaMock.auditLog.create.mock.calls.length
+    await foodItemService.search({ name: "Riz blanc" })
     const call = prismaMock.foodItem.findMany.mock.calls[0][0] as any
     expect(call.where.nameHmac).toBeTypeOf("string")
     expect(call.where.nameHmac).toHaveLength(64) // SHA256 hex
+    // M2 — public CIQUAL data, no audit.
+    expect(prismaMock.auditLog.create.mock.calls.length).toBe(beforeAudits)
   })
 
   it("getById returns null when missing", async () => {
     prismaMock.foodItem.findUnique.mockResolvedValue(null)
-    const r = await foodItemService.getById(999, 9)
+    const r = await foodItemService.getById(999)
     expect(r).toBeNull()
   })
 
-  it("getById returns DTO with Decimal->number coercion", async () => {
+  it("getById returns DTO with decimalToNumber coercion (M1)", async () => {
     prismaMock.foodItem.findUnique.mockResolvedValue({
       id: 1, ciqualCode: "20051", name: "Riz",
       carbsPer100g: "80.5", proteinPer100g: null,
       fatPer100g: null, energyKcal100g: null, category: "Cereales",
     } as any)
-    const r = await foodItemService.getById(1, 9)
+    const r = await foodItemService.getById(1)
     expect(r?.carbsPer100g).toBe(80.5)
     expect(r?.proteinPer100g).toBeNull()
   })
+
+  it("search NFC-normalizes the name before HMAC (L1)", async () => {
+    prismaMock.foodItem.findMany.mockResolvedValue([] as any)
+    // Two encodings of "café" — NFC vs NFD — should produce the same HMAC.
+    await foodItemService.search({ name: "café" })
+    const hmacNfc = (prismaMock.foodItem.findMany.mock.calls[0][0] as any).where.nameHmac
+    prismaMock.foodItem.findMany.mockClear()
+    await foodItemService.search({ name: "café" }) // NFD
+    const hmacNfd = (prismaMock.foodItem.findMany.mock.calls[0][0] as any).where.nameHmac
+    expect(hmacNfc).toBe(hmacNfd)
+  })
 })
 
-describe("mealPhotoService (US-2057)", () => {
+describe("mealPhotoService (US-2057, post review)", () => {
+  // Valid JPEG magic bytes for the magic-byte sniffer (M4).
+  const jpegBuffer = Buffer.concat([
+    Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]),
+    Buffer.alloc(100),
+  ])
+
   it("rejects unsupported MIME", async () => {
     await expect(
       mealPhotoService.upload({
@@ -230,39 +265,50 @@ describe("mealPhotoService (US-2057)", () => {
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
-  it("rejects mismatched event/patient", async () => {
+  it("rejects mimeMismatch when declared JPEG but bytes are not (M4)", async () => {
+    const fakeJpeg = Buffer.from([0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42, 0x42])
+    await expect(
+      mealPhotoService.upload({
+        eventId: "uuid", patientId: 7, buffer: fakeJpeg, mimeType: "image/jpeg",
+      }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it("rejects mismatched event/patient inside the transaction (C3)", async () => {
     prismaMock.diabetesEvent.findFirst.mockResolvedValue(null)
     await expect(
       mealPhotoService.upload({
-        eventId: "uuid", patientId: 7, buffer: Buffer.from([1]), mimeType: "image/jpeg",
+        eventId: "uuid", patientId: 7, buffer: jpegBuffer, mimeType: "image/jpeg",
       }, 9),
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
   it("rejects infected upload (ClamAV)", async () => {
-    prismaMock.diabetesEvent.findFirst.mockResolvedValue({ id: "uuid" } as any)
-    vi.mocked(scanBuffer).mockResolvedValueOnce({ clean: false, infected: true, viruses: ["Eicar"] })
+    vi.mocked(scanBuffer).mockResolvedValueOnce({ scanned: true, clean: false, viruses: ["Eicar"] })
     await expect(
       mealPhotoService.upload({
-        eventId: "uuid", patientId: 7, buffer: Buffer.from([1]), mimeType: "image/jpeg",
+        eventId: "uuid", patientId: 7, buffer: jpegBuffer, mimeType: "image/jpeg",
       }, 9),
     ).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it("happy path uploads + audits with patientId pivot", async () => {
+  it("happy path uploads, strips metadata + audits with patientId pivot", async () => {
+    vi.mocked(scanBuffer).mockResolvedValueOnce({ scanned: true, clean: true, viruses: [] })
     prismaMock.diabetesEvent.findFirst.mockResolvedValue({ id: "uuid" } as any)
-    vi.mocked(scanBuffer).mockResolvedValueOnce({ clean: true, infected: false, viruses: [] })
     prismaMock.mealPhoto.create.mockResolvedValue({
-      id: 1, eventId: "uuid", patientId: 7, s3Key: "meal-photos/7/abc.jpg",
-      mimeType: "image/jpeg", sizeBytes: 3, width: null, height: null, createdAt: new Date(),
+      id: 1, eventId: "uuid", patientId: 7,
+      mimeType: "image/jpeg", sizeBytes: 3, width: 800, height: 600, createdAt: new Date(),
     } as any)
     const out = await mealPhotoService.upload({
       eventId: "uuid", patientId: 7,
-      buffer: Buffer.from([1, 2, 3]), mimeType: "image/jpeg",
+      buffer: jpegBuffer, mimeType: "image/jpeg",
     }, 9)
     expect(out.id).toBe(1)
+    // M13 — DTO does NOT include s3Key
+    expect((out as Record<string, unknown>).s3Key).toBeUndefined()
     const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(audit.action).toBe("CREATE")
     expect(audit.metadata.patientId).toBe(7)
+    expect(audit.metadata.stripped).toBe(true)
   })
 })

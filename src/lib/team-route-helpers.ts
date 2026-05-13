@@ -1,14 +1,13 @@
 /**
  * @module team-route-helpers
- * @description Shared helpers for Groupe 3 routes — typed-error → HTTP
+ * @description Shared helpers for Groupe 3/5 routes — typed-error → HTTP
  * mapping + RBAC role check with `accessDenied` audit emission.
  *
- * Review PR #390 :
- *  - M1 : log includes error.stack + requestId for HDS correlation.
- *  - H1 : `auditedRequireRole` emits an `accessDenied` audit row on RBAC
- *         failures so US-2265 burst detector sees them.
- *  - H6 / H7 / H9 : services raise `ForbiddenError`; here we provide the
- *    bridge to a 403 + optional audit row before responding.
+ * Review PR #391 H1 : `mapErrorToResponse` now accepts an optional audit
+ * context so service-layer `ForbiddenError` (e.g. `assertServiceMember`
+ * failure) is recorded through `auditService.accessDenied()` — preserves
+ * the US-2265 burst detector contract that was already extended to RBAC
+ * 403 in PR #390.
  */
 
 import { NextResponse } from "next/server"
@@ -27,11 +26,7 @@ import {
 
 /**
  * Wrapper around `requireRole` that emits an `accessDenied()` audit entry
- * when the caller is authenticated but lacks the required role. Drops the
- * 401-no-user case (no audit row possible without a userId).
- *
- * Re-throws `AuthError` so the route's outer catch (via `mapErrorToResponse`)
- * still produces the right HTTP status.
+ * when the caller is authenticated but lacks the required role.
  */
 export async function auditedRequireRole(
   req: Request,
@@ -57,7 +52,7 @@ export async function auditedRequireRole(
             metadata: { requiredRole: minRole },
           })
         } catch {
-          // swallow — never fail the response on audit-write hiccup.
+          // swallow
         }
       }
     }
@@ -65,8 +60,27 @@ export async function auditedRequireRole(
   }
 }
 
-/** Map any error caught at the route layer to a NextResponse. */
-export function mapErrorToResponse(error: unknown, routeTag: string, requestId?: string): NextResponse {
+export interface RouteAuditTarget {
+  user: AuthUser
+  ctx: AuditContext
+  resource: AuditResource
+  resourceId: string
+  /** Optional metadata to attach to the `accessDenied` row. */
+  metadata?: Record<string, unknown>
+}
+
+/**
+ * Map any error caught at the route layer to a NextResponse. When called with
+ * an `auditTarget`, a `ForbiddenError` will additionally emit an `accessDenied`
+ * audit row (review PR #391 H1) — preserves US-2265 burst detection on
+ * service-layer authorisation failures.
+ */
+export function mapErrorToResponse(
+  error: unknown,
+  routeTag: string,
+  requestId?: string,
+  auditTarget?: RouteAuditTarget,
+): NextResponse {
   if (error instanceof AuthError) {
     return NextResponse.json({ error: error.message }, { status: error.status })
   }
@@ -77,6 +91,20 @@ export function mapErrorToResponse(error: unknown, routeTag: string, requestId?:
     return NextResponse.json({ error: "notFound" }, { status: 404 })
   }
   if (error instanceof ForbiddenError) {
+    if (auditTarget) {
+      // Fire-and-forget audit — never block the response.
+      void auditService
+        .accessDenied({
+          userId: auditTarget.user.id,
+          resource: auditTarget.resource,
+          resourceId: auditTarget.resourceId,
+          ipAddress: auditTarget.ctx.ipAddress,
+          userAgent: auditTarget.ctx.userAgent,
+          requestId: auditTarget.ctx.requestId,
+          metadata: auditTarget.metadata as never,
+        })
+        .catch(() => { /* swallow */ })
+    }
     return NextResponse.json({ error: "forbidden" }, { status: 403 })
   }
   const msg = error instanceof Error ? error.message : "Unknown error"

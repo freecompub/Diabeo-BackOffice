@@ -535,6 +535,8 @@ model Patient {
   groupAssignments      PatientGroupAssignment[]
   /// US-2065 — Accusés patient sur AdjustmentProposal (review PR #390 H10).
   proposalAcks          AdjustmentProposalAck[]
+  /// US-2057 — Photos repas (review PR #391 H5 FK explicite).
+  mealPhotos            MealPhoto[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1221,6 +1223,9 @@ model PumpEvent {
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId, timestamp])
+  /// Review PR #391 C4 — dédup cross-batch sur `bulkSync` (réimport CSV).
+  /// Combiné avec `skipDuplicates: true` côté Prisma → idempotence garantie.
+  @@unique([patientId, timestamp, eventType])
   @@map("pump_events")
 }
 
@@ -2157,7 +2162,8 @@ model InsulinAdjustmentTemplate {
   creator User?             @relation("InsulinAdjustmentTemplateCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@unique([serviceId, title])
-  @@index([serviceId])
+  /// Review PR #391 M9 — l'index sur `serviceId` seul est redondant avec
+  /// l'unique `(serviceId, title)` : le préfixe sert déjà les `WHERE serviceId = ?`.
   @@map("insulin_adjustment_templates")
 }
 
@@ -2206,6 +2212,10 @@ model MealPhoto {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   event     DiabetesEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// Review PR #391 H5 — FK explicite vers Patient pour garantir l'intégrité
+  /// même en cas d'écriture SQL directe (la cascade event→patient seule ne
+  /// protégeait pas un éventuel re-routage de l'event).
+  patient   Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
   uploader  User?         @relation("MealPhotoUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
 
   @@index([eventId])

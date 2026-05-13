@@ -1,4 +1,4 @@
-/** US-2054 — Get a single CIQUAL food item. */
+/** US-2054 — Get a single CIQUAL food item (no audit — public data). */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { AuthError } from "@/lib/auth"
@@ -13,8 +13,8 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidId" }, { status: 400 })
-    const user = await auditedRequireRole(req, "NURSE", ctx, "FOOD_ITEM", id)
-    const item = await foodItemService.getById(parseInt(id, 10), user.id, ctx)
+    await auditedRequireRole(req, "NURSE", ctx, "FOOD_ITEM", id)
+    const item = await foodItemService.getById(parseInt(id, 10))
     if (!item) return NextResponse.json({ error: "notFound" }, { status: 404 })
     return NextResponse.json(item)
   } catch (e) {

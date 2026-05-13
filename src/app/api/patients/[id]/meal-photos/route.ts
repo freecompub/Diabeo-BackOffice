@@ -1,25 +1,29 @@
 /**
- * US-2057 — Meal photos (upload + list per patient).
+ * US-2057 — Meal photos.
  *
- * POST multipart/form-data : { eventId, photo: File }
- * GET                       : list patient's meal photos (metadata only,
- *                              S3 download via signed URL is separate)
+ * Review PR #391 :
+ *  - L3 : Content-Length short-circuit (avoid buffering 5 MB before reject).
+ *  - M5 : `analytics` rate-limit (fail-open) on POST — anti-DoS ClamAV.
+ *  - L2 : width/height NOT accepted from form data anymore (computed by `sharp`).
+ *  - C2/C3 : EXIF strip + TOCTOU fix handled service-side.
+ *  - M13 : `s3Key` not returned (service returns `MealPhotoPublicDTO`).
  */
 
 import { NextResponse, type NextRequest } from "next/server"
-import { z } from "zod"
 import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { patientShareConsent } from "@/lib/consent"
 import { mealPhotoService } from "@/lib/services/insulin-meals.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { prisma } from "@/lib/db/client"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
 import { ValidationError } from "@/lib/services/team-workflow.errors"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const PHOTO_MAX_BYTES = 5 * 1024 * 1024
 
 async function ensurePatientAlive(id: number): Promise<boolean> {
   const p = await prisma.patient.findFirst({
@@ -67,6 +71,21 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const patientId = parseInt(id, 10)
     const user = await auditedRequireRole(req, "NURSE", ctx, "MEAL_PHOTO", String(patientId))
 
+    // M5 — rate-limit photo uploads (fail-open analytics bucket — UX over guard).
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.analytics)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rateLimitExceeded" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      )
+    }
+
+    // L3 — short-circuit before buffering large bodies.
+    const contentLength = parseInt(req.headers.get("content-length") ?? "0", 10)
+    if (contentLength > PHOTO_MAX_BYTES + 2048 /* small overhead for multipart */) {
+      return NextResponse.json({ error: "sizeBytes", field: "sizeBytes" }, { status: 413 })
+    }
+
     if (!(await ensurePatientAlive(patientId))) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
@@ -82,7 +101,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const consent = await patientShareConsent(patientId)
     if (!consent.ok) return NextResponse.json({ error: consent.error }, { status: consent.status })
 
-    // multipart upload
     const formData = await req.formData().catch(() => null)
     if (!formData) return NextResponse.json({ error: "invalidMultipart" }, { status: 400 })
     const eventId = formData.get("eventId")
@@ -93,15 +111,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "missingPhoto" }, { status: 400 })
     }
+    if (file.size > PHOTO_MAX_BYTES) {
+      return NextResponse.json({ error: "sizeBytes", field: "sizeBytes" }, { status: 413 })
+    }
     const buffer = Buffer.from(await file.arrayBuffer())
-    const widthStr = formData.get("width")
-    const heightStr = formData.get("height")
-    const width = typeof widthStr === "string" && /^\d+$/.test(widthStr) ? parseInt(widthStr, 10) : undefined
-    const height = typeof heightStr === "string" && /^\d+$/.test(heightStr) ? parseInt(heightStr, 10) : undefined
 
     try {
+      // Width/height computed by sharp during EXIF strip — not trusted from client.
       const out = await mealPhotoService.upload(
-        { eventId, patientId, buffer, mimeType: file.type, width, height },
+        { eventId, patientId, buffer, mimeType: file.type },
         user.id, ctx,
       )
       return NextResponse.json(out, { status: 201 })

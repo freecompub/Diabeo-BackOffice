@@ -1,4 +1,4 @@
-/** US-2053 — Marquer un DiabetesEvent comme validé par le soignant. */
+/** US-2053 — Validate DiabetesEvent (review PR #391 M6 — accessGuard service-side). */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { AuthError } from "@/lib/auth"
@@ -34,7 +34,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const consent = await patientShareConsent(patientId)
     if (!consent.ok) return NextResponse.json({ error: consent.error }, { status: consent.status })
 
-    const out = await mealValidationService.validate(id, user.id, ctx)
+    // M6 — service-side guard (defence-in-depth ; the route already checked).
+    const out = await mealValidationService.validate(
+      id, user.id, ctx,
+      async (pid) => canAccessPatient(user.id, user.role, pid),
+    )
     return NextResponse.json(out)
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })

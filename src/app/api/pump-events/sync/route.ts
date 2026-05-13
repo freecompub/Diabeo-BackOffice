@@ -1,12 +1,15 @@
 /**
  * US-2043 — Bulk sync pump events.
  *
- * POST `/api/pump-events/sync` { patientId, events: [{timestamp, eventType, data}] }
- * NURSE+ + canAccessPatient + patient consent.
+ * Review PR #391 :
+ *  - H3 : `Prisma.InputJsonValue | undefined` (no `as never`).
+ *  - H2 : per-event size cap enforced service-side.
+ *  - C4 : idempotent via DB unique index + `skipDuplicates`.
  */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
+import { Prisma } from "@prisma/client"
 import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { patientShareConsent } from "@/lib/consent"
@@ -53,7 +56,8 @@ export async function POST(req: NextRequest) {
       parsed.data.events.map((e) => ({
         timestamp: e.timestamp,
         eventType: e.eventType,
-        data: e.data as never,
+        // H3 — explicit Prisma.InputJsonValue cast (replaces `as never`).
+        data: e.data as Prisma.InputJsonValue | undefined,
       })),
       user.id, ctx,
     )
