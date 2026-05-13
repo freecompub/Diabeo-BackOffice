@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 143   | 2    | 7       | 134         | **1%**  |
+| **V1**   | 143   | 10   | 6       | 127         | **7%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **294** | **67** | **7**   | **220**     | **23%** |
+| **TOTAL**| **294** | **75** | **6**   | **213**     | **26%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -224,17 +224,19 @@
 | US | Titre | Statut |
 |----|-------|--------|
 | US-2031 | Ingestion Medtronic Guardian | NOT STARTED |
-| US-2032 | Glycémies capillaires (BGM) | PARTIAL |
-| US-2038 | Heat-map glycémique | NOT STARTED |
-| US-2039 | Comparaison de périodes | NOT STARTED |
-| US-2040 | Rapport AGP exportable PDF | NOT STARTED |
-| US-2041 | Pattern detection | NOT STARTED |
-| US-2094 | Tableau de bord population | NOT STARTED |
-| US-2095 | Indicateurs qualité cabinet | NOT STARTED |
-| US-2096 | Cohorte par pathologie | NOT STARTED |
-| US-2098 | Export CSV / Excel | NOT STARTED |
+| US-2032 | Glycémies capillaires (BGM) | DONE (PR #388 — GET + rate-limit + decrypt) |
+| US-2038 | Heat-map glycémique | DONE (PR #388 — TZ-pinned Europe/Paris) |
+| US-2039 | Comparaison de périodes | DONE (PR #388 — half-open windows + delta) |
+| US-2040 | Rapport AGP exportable PDF | DONE (PR #388 — pdf-lib + warning banner) |
+| US-2041 | Pattern detection | NOT STARTED (V2 per spec) |
+| US-2094 | Tableau de bord population | DONE (PR #388 — RBAC + p-limit + GDPR filter) |
+| US-2095 | Indicateurs qualité cabinet | DONE (PR #388 — TIR/GMI distributions) |
+| US-2096 | Cohorte par pathologie | DONE (PR #388 — DT1/DT2/GD breakdown) |
+| US-2098 | Export CSV / Excel | DONE (PR #388 — CSV anti-injection + fail-closed) |
 | US-2243 | (Mirror) Supervision glycémie patient | NOT STARTED |
 | US-2244 | (Mirror) Détection patterns par patient | NOT STARTED |
+
+**Batches 1+2 livrés** : 8 US (US-2032, 2038, 2039, 2040, 2094, 2095, 2096, 2098) — PR #388, ~21 SP, 1251 tests verts.
 
 ### Groupe 2 — Patients avancés (7 US)
 
