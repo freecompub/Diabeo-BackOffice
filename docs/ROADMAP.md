@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 143   | 15   | 4       | 124         | **10%** |
+| **V1**   | 141   | 25   | 2       | 114         | **18%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **294** | **80** | **4**   | **210**     | **27%** |
+| **TOTAL**| **292** | **90** | **3**   | **199**     | **31%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -252,24 +252,30 @@
 **Batches 1+2 livrés** : 5 US (US-2019, 2021, 2022, 2024, 2028) — PR #389, ~5 SP,
 1282 tests verts, 35 findings de review traités (3 Critical + 11 High + 15 Medium + 8 Low).
 
-### Groupe 3 — Équipe & Communication (15 US)
+### Groupe 3 — Équipe & Communication (12 US — US-2070/2071 dédoublonnés vers Groupe 8 RDV)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2076 | Messagerie sécurisée patient↔PS | NOT STARTED |
-| US-2077 | MSSanté intégration | NOT STARTED |
-| US-2078 | Templates de messages | PARTIAL |
-| US-2080 | Accusés de lecture | NOT STARTED |
-| US-2083 | Délégation médecin → IDE | NOT STARTED |
-| US-2084 | Remplacement / congés | NOT STARTED |
-| US-2086 | Handoff entre soignants | NOT STARTED |
-| US-2088 | Groupes patients par équipe | NOT STARTED |
-| US-2065 | Accusé réception patient | NOT STARTED |
-| US-2066 | Suivi application réelle | NOT STARTED |
-| US-2068 | Notes consultation | NOT STARTED |
-| US-2070 | Planification suivi | PARTIAL |
-| US-2071 | Templates consultation | NOT STARTED |
-| US-2072 | Facturation acte téléconsult | NOT STARTED |
+| US-2076 | Messagerie sécurisée patient↔PS | NOT STARTED (V1, 13 SP — Batch 3, chantier multi-PR) |
+| US-2077 | MSSanté intégration | NOT STARTED (V1, 3 SP — Batch 2 standalone FR PKI) |
+| US-2078 | Templates de messages | DONE (PR #390) |
+| US-2080 | Accusés de lecture | DONE (PR #390 — ReadReceipt générique + H9 access check) |
+| US-2083 | Délégation médecin → IDE | DONE (PR #390 — IDE→DOCTOR workflow + colleague enforcement) |
+| US-2084 | Remplacement / congés | DONE (PR #390 — cabinet-scoped + audit READ) |
+| US-2086 | Handoff entre soignants | DONE (PR #390 — chiffré + consent filter) |
+| US-2088 | Groupes patients par équipe | DONE (PR #390 — cohortes cabinet + M:N) |
+| US-2065 | Accusé réception patient | DONE (PR #390 — patient ack avec auditUserId) |
+| US-2066 | Suivi application réelle | DONE (PR #390 — verifiedVia + overwrite guard) |
+| US-2068 | Notes consultation | DONE (PR #390 — chiffré + appointment-patient guard) |
+| US-2072 | Facturation acte téléconsult | DONE (PR #390 — billing acte + double-invoice guard) |
+| ~~US-2070~~ | ~~Planification suivi~~ | **DÉDOUBLONNÉ → US-2500** (Groupe 8 RDV, PR #388 DONE) |
+| ~~US-2071~~ | ~~Templates consultation~~ | **DÉDOUBLONNÉ → US-2501** (Groupe 8 RDV, PR #388 DONE) |
+
+**Batch 1 livré** — PR #390 mergée. Review multi-agent (4 agents) a identifié 44 findings
+(5 Critical BOLA/fraude/forensic + 12 High RGPD/HDS + 15 Medium + 12 Low) → tous corrigés
+avant merge. Suite 1345 tests verts, branches 76.64%, migration `groupe3_refinements`
+ajoutée (FK adjustment_proposal_acks.patient_id + 2 indexes performance).
+Total V1 effectif Groupe 3 : 12 US (vs 15 affiché initialement).
 
 ### Groupe 4 — Devices & Sync (3 US)
 
