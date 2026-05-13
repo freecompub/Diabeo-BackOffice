@@ -113,6 +113,10 @@ export type AuditResource =
   | "PATIENT_SERVICE_LINK"
   | "DEVICE_SYNC"
   | "RETENTION"
+  /** US-2022 — Patient tag entity (cabinet-scoped). */
+  | "PATIENT_TAG"
+  /** US-2022 — Tag <-> patient assignment. */
+  | "PATIENT_TAG_ASSIGNMENT"
 
 /**
  * Audit log entry — parameters for logging an action.

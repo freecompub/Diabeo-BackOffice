@@ -12,6 +12,7 @@
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { encryptField } from "@/lib/crypto/fields"
+import { hmacField } from "@/lib/crypto/hmac"
 import { auditService, extractRequestContext } from "./audit.service"
 import type { Pathology, Prisma, PatientMedicalData } from "@prisma/client"
 
@@ -422,6 +423,111 @@ export const patientService = {
    * @param {number} auditUserId - User ID performing the list (audit trail)
    * @returns {Promise<Array<Object>>} Array of patients with decrypted user data
    */
+  /**
+   * US-2019 — Search patients accessible to the caller.
+   *
+   * Search is implemented with the user-side HMAC pattern (`firstnameHmac` /
+   * `lastnameHmac`): the caller types an EXACT firstname or lastname (case-
+   * insensitive). No fuzzy match — by design, since the plaintext is AES-256-GCM
+   * encrypted. Pathology filter is exact-match on the Patient.pathology enum.
+   *
+   * Scoping:
+   *  - `accessibleIds=null` → ADMIN (no IN-clause).
+   *  - `accessibleIds=[]`   → no accessible patients → empty result.
+   *  - otherwise → restricted to the given list.
+   *
+   * Pagination: cursor on `id DESC`. Page size capped server-side.
+   */
+  async search(
+    input: {
+      search?: string
+      pathology?: Pathology
+      accessibleIds: number[] | null
+      cursor?: number
+      limit?: number
+    },
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    const limit = Math.min(Math.max(input.limit ?? 25, 1), 50)
+
+    if (input.accessibleIds !== null && input.accessibleIds.length === 0) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "PATIENT",
+        resourceId: "search",
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: { count: 0, scoped: true },
+      })
+      return { items: [], nextCursor: null as number | null }
+    }
+
+    const userFilter: Prisma.UserWhereInput | undefined = input.search?.trim()
+      ? (() => {
+          const hmac = hmacField(input.search!.trim().toLowerCase())
+          return { OR: [{ firstnameHmac: hmac }, { lastnameHmac: hmac }] }
+        })()
+      : undefined
+
+    const where: Prisma.PatientWhereInput = {
+      deletedAt: null,
+      ...(input.accessibleIds !== null && { id: { in: input.accessibleIds } }),
+      ...(input.pathology && { pathology: input.pathology }),
+      ...(userFilter && { user: userFilter }),
+    }
+
+    const items = await prisma.patient.findMany({
+      where,
+      include: {
+        user: {
+          select: {
+            id: true, firstname: true, lastname: true, email: true,
+            birthday: true,
+          },
+        },
+      },
+      orderBy: { id: "desc" },
+      take: limit + 1,
+      ...(input.cursor && { cursor: { id: input.cursor }, skip: 1 }),
+    })
+
+    const hasMore = items.length > limit
+    const page = hasMore ? items.slice(0, limit) : items
+    const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "PATIENT",
+      resourceId: "search",
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      metadata: {
+        count: page.length,
+        scoped: input.accessibleIds !== null,
+        hasSearch: !!input.search,
+        pathology: input.pathology ?? null,
+      },
+    })
+
+    return {
+      items: page.map((p) => ({
+        ...p,
+        user: {
+          ...p.user,
+          firstname: safeDecrypt(p.user.firstname),
+          lastname: safeDecrypt(p.user.lastname),
+          email: safeDecrypt(p.user.email),
+        },
+      })),
+      nextCursor,
+    }
+  },
+
   async listByDoctor(doctorUserId: number, auditUserId: number) {
     const referents = await prisma.patientReferent.findMany({
       where: {

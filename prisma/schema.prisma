@@ -504,6 +504,8 @@ model Patient {
   documents             MedicalDocument[]
   appointments          Appointment[]
   patientInsulins       PatientInsulin[]
+  /// US-2022 — Tags posés sur ce patient au sein de son/ses cabinet(s).
+  tagAssignments        PatientTagAssignment[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1297,6 +1299,8 @@ model HealthcareService {
   members         HealthcareMember[]
   patientServices PatientService[]
   referents       PatientReferent[]
+  /// US-2022 — Tags (catégorisation libre) appartenant à ce cabinet.
+  patientTags     PatientTag[]
 
   @@unique([name, establishment])
   @@index([type])
@@ -1351,6 +1355,44 @@ model PatientReferent {
   service HealthcareService? @relation(fields: [serviceId], references: [id])
 
   @@map("patient_referent")
+}
+
+/// US-2022 — Tags libres (catégorisation) appliqués par un cabinet. Portée
+/// `serviceId` : chaque HealthcareService maintient son propre vocabulaire.
+/// `label` est libre (max 50 char), `color` est un code hex `#RRGGBB`.
+model PatientTag {
+  id        Int      @id @default(autoincrement())
+  serviceId Int      @map("service_id")
+  label     String   @db.VarChar(50)
+  color     String   @db.VarChar(7) // #RRGGBB
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  createdBy Int?     @map("created_by")
+
+  service     HealthcareService     @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  assignments PatientTagAssignment[]
+
+  @@unique([serviceId, label])
+  @@index([serviceId])
+  @@map("patient_tags")
+}
+
+/// US-2022 — Affectation d'un tag à un patient (jointure M:N). Un tag ne peut
+/// être posé qu'une fois sur un patient donné. Pas de soft-delete : la
+/// dissociation est immédiate (`DELETE` ligne).
+model PatientTagAssignment {
+  id         Int      @id @default(autoincrement())
+  patientId  Int      @map("patient_id")
+  tagId      Int      @map("tag_id")
+  assignedBy Int?     @map("assigned_by")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tag     PatientTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, tagId])
+  @@index([patientId])
+  @@index([tagId])
+  @@map("patient_tag_assignments")
 }
 
 // ═══════════════════════════════════════════════════════════════
