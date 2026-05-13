@@ -101,6 +101,19 @@ export interface CgmThresholds {
 }
 
 /**
+ * Default CGM thresholds in g/L when a patient has no `CgmObjective`. Pulled
+ * from CLAUDE.md clinical bounds: severe hypo <0.54, hypo <0.70, target up to
+ * 1.80, hyper >2.50. Centralized here so analytics & population services
+ * don't drift.
+ */
+export const DEFAULT_CGM_THRESHOLDS: CgmThresholds = {
+  veryLow: 0.54,
+  low: 0.70,
+  ok: 1.80,
+  high: 2.50,
+}
+
+/**
  * Time In Range result — percentage in each glucose zone.
  * @typedef {Object} TirResult
  * @property {number} severeHypo - % of readings < veryLow threshold
@@ -194,15 +207,34 @@ export interface AgpSlot {
  * @param {Array<{timestamp: Date, valueGl: number}>} entries - CGM entries with timestamps
  * @returns {AgpSlot[]} Array of 96 slots (one per 15-minute interval)
  */
+/** Clinical timezone for time-of-day grouping (heatmap, AGP). Pinned so the
+ *  output is invariant of the server's local TZ. */
+export const CLINICAL_TIMEZONE = "Europe/Paris"
+
+/**
+ * Compute Ambulatory Glucose Profile — 96 slots (15-min intervals over 24h).
+ * Groups readings by 15-minute slot in the clinical timezone (Europe/Paris by
+ * default). Pinning the TZ is critical for clinical correctness: a UTC-deployed
+ * server would otherwise shift the meal-time distribution by 1–2 hours.
+ */
 export function computeAgp(
   entries: { timestamp: Date; valueGl: number }[],
+  timezone: string = CLINICAL_TIMEZONE,
 ): AgpSlot[] {
-  // Group by 15-min slot (0-95)
   const slots: number[][] = Array.from({ length: 96 }, () => [])
 
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  })
+
   for (const entry of entries) {
-    const minutes = entry.timestamp.getHours() * 60 + entry.timestamp.getMinutes()
-    const slotIndex = Math.floor(minutes / 15)
+    const parts = fmt.formatToParts(entry.timestamp)
+    const hour = parseInt(parts.find((p) => p.type === "hour")?.value ?? "0", 10) % 24
+    const minute = parseInt(parts.find((p) => p.type === "minute")?.value ?? "0", 10) % 60
+    const slotIndex = Math.floor((hour * 60 + minute) / 15)
     slots[slotIndex].push(entry.valueGl)
   }
 
@@ -319,5 +351,17 @@ export function cgmCaptureRate(entryCount: number, periodDays: number): number {
   const expectedPerDay = 288 // every 5 minutes
   const expected = expectedPerDay * periodDays
   if (expected === 0) return 0
-  return (entryCount / expected) * 100
+  // Clamp at 100 so duplicate-sync incidents don't push the rate above the
+  // ceiling and silence the "insufficientCgmCapture" warning downstream.
+  return Math.min(100, (entryCount / expected) * 100)
 }
+
+/**
+ * Canonical analytics warning codes returned by services + AGP PDF generator.
+ * Use these constants instead of string literals to keep callers in sync.
+ */
+export const ANALYTICS_WARNINGS = {
+  INSUFFICIENT_CGM_CAPTURE: "insufficientCgmCapture",
+} as const
+export type AnalyticsWarning =
+  typeof ANALYTICS_WARNINGS[keyof typeof ANALYTICS_WARNINGS]

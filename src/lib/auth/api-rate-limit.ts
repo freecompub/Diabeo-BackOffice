@@ -138,25 +138,47 @@ export async function checkApiRateLimit(
 
 /** Preset configurations for common endpoint families. */
 export const RATE_LIMITS = {
-  /** Analytics: 30 req/60 s/user. Fail-open — availability first. */
+  /** Analytics reads: 30 req/60 s/user. Fail-open — availability first. */
   analytics: {
     bucket: "analytics",
     windowSec: 60,
     max: 30,
     failMode: "open",
   } satisfies ApiRateLimitConfig,
+  /** Per-patient detail reads (BGM, glycemia): 60 req/60 s/user. Fail-open. */
+  patientDataRead: {
+    bucket: "patient-data-read",
+    windowSec: 60,
+    max: 60,
+    failMode: "open",
+  } satisfies ApiRateLimitConfig,
   /** Export RGPD per user: 3 req/h. Fail-closed — HDS data-exfiltration guard. */
   exportUser: {
-    bucket: "export",
+    bucket: "export-rgpd-user",
     windowSec: 3600,
     max: 3,
     failMode: "closed",
   } satisfies ApiRateLimitConfig,
   /** Export RGPD per IP: 10 req/h. Fail-closed — defense against token theft. */
   exportIp: {
-    bucket: "export-ip",
+    bucket: "export-rgpd-ip",
     windowSec: 3600,
     max: 10,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
+  /** Analytics CSV/PDF export per user: 10 req/h. Fail-closed but distinct
+   *  from RGPD account export so the two don't share a budget. */
+  exportAnalyticsUser: {
+    bucket: "export-analytics-user",
+    windowSec: 3600,
+    max: 10,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
+  /** Analytics CSV/PDF export per IP: 30 req/h. Fail-closed. */
+  exportAnalyticsIp: {
+    bucket: "export-analytics-ip",
+    windowSec: 3600,
+    max: 30,
     failMode: "closed",
   } satisfies ApiRateLimitConfig,
 } as const

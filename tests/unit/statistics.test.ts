@@ -167,14 +167,25 @@ describe("statistics", () => {
     })
 
     it("computes correct percentiles per slot", () => {
-      // All values 1.0 in slot 0 → all percentiles = 1.0
+      // All values 1.0 at 00:05 Paris (= 23:05 UTC on the previous day in winter)
+      // → all readings land in slot 0 of the Paris-pinned binning.
       const entries = Array.from({ length: 10 }, () => ({
-        timestamp: new Date(2026, 0, 1, 0, 5),
+        timestamp: new Date(Date.UTC(2025, 11, 31, 23, 5)),
         valueGl: 1.0,
       }))
       const agp = computeAgp(entries)
       expect(agp[0].p50).toBe(1.0)
       expect(agp[0].p10).toBe(1.0)
+    })
+
+    it("bins to slot 0 regardless of server TZ (Europe/Paris pinned)", () => {
+      // 2026-07-01 22:05 UTC = 00:05 Paris CEST (UTC+2) → slot 0
+      const entries = [
+        { timestamp: new Date(Date.UTC(2026, 6, 1, 22, 5)), valueGl: 1.2 },
+      ]
+      const agp = computeAgp(entries)
+      // The slot 0 reading is 1.2; all percentiles should be 1.2
+      expect(agp[0].p50).toBe(1.2)
     })
   })
 
