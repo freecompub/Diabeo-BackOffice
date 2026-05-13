@@ -359,6 +359,14 @@
 > **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
 > démonstration produit (présentation cabinet médecin).
 > **V1 dashboard** : US-2403, US-2404, US-2405-2415 = 81 SP.
+>
+> **Décisions archi temps réel (session Samir 2026-05-13)** :
+>  - **US-2401 (urgences)** : **polling 30s** — WebSocket reporté V2/V3.
+>    Le canal alerte instantané reste US-2230 (push FCM mobile, DONE).
+>  - **US-2076 / US-2408 (messagerie)** : **approche combinée A+B** :
+>    WebSocket pendant l'écran chat + polling 60s pour le badge unread
+>    + FCM push (US-2073 DONE) pour mobile/offline. Pattern Slack/WhatsApp.
+>    US-2076 SP bumpé 1 → 13 pour couvrir l'infra WS chat-only.
 
 ### Groupe 9c — Dashboards patient web (4 US — backoffice serves these)
 

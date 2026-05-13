@@ -1,7 +1,11 @@
-# US-2076 — Messagerie sécurisée patient↔PS
+# US-2076 — Messagerie sécurisée patient↔PS (et staff↔staff)
 
 > 📌 **8. Messagerie & notifs** · Priorité **V1** · Pays **Universel**
-> 
+>
+> 🔄 **Mis à jour 2026-05-13** (session Samir, Q2 + Q9) :
+>  - Étendu pour couvrir aussi la coordination staff↔staff (utilisé par US-2408).
+>  - Architecture temps réel tranchée : **approche combinée A+B**
+>    (WebSocket pendant l'écran chat + polling 60s badge + FCM push offline).
 
 ---
 
@@ -15,14 +19,110 @@
 | **Priorité** | **V1** |
 | **Pays cible** | Universel |
 | **Intégration externe** | Non |
-| **Service / Standard** | Interne (ws + chiffrement) |
+| **Service / Standard** | Interne (WebSocket + polling + FCM + chiffrement AES-256-GCM) |
 | **Modèle économique** | Interne |
 | **Coût estimé** | — |
 | **Statut** | 🆕 À démarrer |
-| **Story points** | **1** (Fibonacci) |
-| **Dépendances** | US-2001 (Login JWT), US-2011 (Audit log immuable) |
+| **Story points** | **13** (Fibonacci) — bumpé depuis 1 SP suite décision archi temps réel session Samir 2026-05-13 |
+| **Dépendances** | US-2001 (Login JWT), US-2011 (Audit log immuable), **US-2073 (Push FCM, DONE PR #340)**, **US-2015 (Chiffrement AES-256-GCM, DONE)** |
 | **Sprint cible** | À définir lors du planning |
 | **Owner** | À assigner |
+
+---
+
+## 🏗️ Architecture temps réel (décision session Samir 2026-05-13)
+
+**Approche combinée A+B** — pattern Slack/WhatsApp adapté HDS :
+
+| Contexte utilisateur | Mécanisme | Latence |
+|---|---|---|
+| **Écran `/messages` ouvert (web)** | WebSocket — connexion ouverte au mount, fermée au unmount | < 100 ms |
+| **Autres écrans web** (dashboard, fiche patient) | Polling `GET /api/messages/unread-count` toutes les 60s — badge sidebar | < 60s |
+| **App iOS ouverte** | FCM data-only via US-2073 — MAJ badge tabbar | < 1s |
+| **User offline** (téléphone éteint) | FCM lockscreen notif — réveille au reconnect | dépend du device |
+
+### Détails d'implémentation
+
+```typescript
+// Côté server — quand Alice envoie un msg à Bob
+async function sendMessage(from, to, encryptedText) {
+  await prisma.message.create({ data: { from, to, encryptedText } })
+  await auditService.log({ ... })
+
+  // 1. Broadcast WS aux clients web de Bob (room = userId)
+  wsHub.publishToUser(to.id, { type: "new-message", id, from, preview })
+
+  // 2. Push FCM en parallèle (via US-2073) — couvre mobile + multi-device
+  await fcmService.sendToUser(to.id, {
+    title: from.name,
+    body: "[message chiffré]",  // jamais de PHI lockscreen
+    data: { messageId: id },
+  })
+}
+
+// Côté client — écran /messages monté
+useEffect(() => {
+  const ws = new WebSocket("/api/ws/messages")
+  ws.onmessage = (e) => addMessage(JSON.parse(e.data))
+  return () => ws.close()  // ferme au unmount
+}, [])
+
+// Côté client — sidebar (badge unread, présent sur toutes les pages)
+useEffect(() => {
+  const id = setInterval(() => {
+    fetch("/api/messages/unread-count").then(r => r.json()).then(setBadge)
+  }, 60_000)
+  return () => clearInterval(id)
+}, [])
+```
+
+### Pourquoi pas WebSocket partout
+
+Avoir N WS persistantes pour N utilisateurs connectés (même non-actifs sur le chat) consomme ~50 Ko RAM/user et 1 file descriptor. Pour 500 users connectés simultanément :
+- WS partout : 500 × 50 Ko = **25 Mo RAM** + 500 FD + nginx config WS pour tous
+- **WS chat-only** : ~50 WS actives (10% des connectés sur l'écran chat) = **2.5 Mo RAM** + 50 FD
+
+Le badge unread mis à jour à 60s n'est pas critique — l'utilisateur ne fixe pas le sidebar en attendant.
+
+### Pourquoi FCM en parallèle (B)
+
+- **Multi-device** : un médecin peut avoir web ouvert ET app iOS sur son téléphone → FCM réveille les deux
+- **Offline** : si l'utilisateur ferme le navigateur, FCM lockscreen le notifie
+- **Coût** : FCM est déjà construit (US-2073 DONE PR #340), donc câblage ≈ 1 heure
+
+### Risque doublon notification
+
+Si Bob a web ouvert + app iOS → il voit la notif 2 fois.
+**Mitigation** : marquer "vu" instantanément via WS → FCM mobile vérifie au receive si `metadata.readAt` est set → supprime silencieusement (pattern `data-only` FCM, US-2073 le supporte).
+
+### Capacité serveur (sizing)
+
+| Users connectés simultanément | RAM WS chat-only | Conn. WS | FD utilisés |
+|---|---|---|---|
+| 100 | 0.5 Mo | 10 | 10 / 1024 |
+| 500 | 2.5 Mo | 50 | 50 / 1024 |
+| 5 000 | 25 Mo | 500 | 500 / **8192** (bump ulimit) |
+| 50 000 | 250 Mo | 5 000 | 5 000 / **65536** + **Redis pub/sub multi-server** |
+
+Pour Diabeo (< 500 users actifs prévus à court terme), **1 seul VPS Next.js suffit**. Sticky session / Redis pub/sub à prévoir uniquement si > 5k.
+
+---
+
+## 🔐 Sécurité HDS
+
+- Corps de message chiffré AES-256-GCM (US-2015) — clé stockée hors DB
+- `requireRole(NURSE+)` pour staff↔staff (US-2408), `requireAuth` pour patient↔PS
+- Audit log à chaque envoi/lecture (`resource: "MESSAGE"`, `metadata.patientId` pivot US-2268)
+- FCM payload contient `[message chiffré]` placeholder — jamais de PHI lockscreen (vérifié par US-2073 audit)
+- WS authentifié via cookie httpOnly (pas de JWT dans le query string)
+- Rate-limit `wsHub.publishToUser` : max 100 msgs/min/userId pour éviter spam déni de service
+
+---
+
+## 🔗 US dépendantes
+
+- **US-2408** — Coordination équipe (infirmier) : ré-utilise ce module messagerie pour staff↔staff
+- **Futures** : annonces broadcast cabinet, messagerie groupe (V2+)
 
 ---
 

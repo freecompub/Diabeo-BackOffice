@@ -20,7 +20,7 @@
 
 ## 📋 Contexte produit
 
-Card prioritaire du dashboard médecin. Affiche les urgences actives dans le portefeuille avec mise à jour temps réel via WebSocket. Bordure gauche rouge pour signaler la criticité. Actions directes 'Réagir' depuis la card pour gain de temps en consultation.
+Card prioritaire du dashboard médecin. Affiche les urgences actives dans le portefeuille avec mise à jour temps réel via **polling 30s** (Q9 session Samir 2026-05-13 — WebSocket reporté V2/V3, push FCM mobile via US-2230 reste le canal d'alerte primaire). Bordure gauche rouge pour signaler la criticité. Actions directes 'Réagir' depuis la card pour gain de temps en consultation.
 
 ---
 
@@ -38,7 +38,7 @@ Card prioritaire du dashboard médecin. Affiche les urgences actives dans le por
   - Bouton 'Réagir' (ouvre workflow)
 
 ### Mise à jour temps réel
-- WebSocket connecté en permanence
+- Polling 30s (Q9 — WebSocket V2/V3)
 - Nouvelle urgence : apparition slide-down + pulse rouge
 - Urgence résolue : fade-out
 
@@ -53,17 +53,17 @@ Quand il consulte le dashboard
 Alors les 2 urgences affichées avec criticité visuelle
 ```
 
-### AC-2 — MAJ temps réel <10s
+### AC-2 — MAJ via polling 30s
 ```gherkin
 Étant donné nouvelle urgence se déclenche
-Quand WebSocket pousse l'événement
+Quand le polling 30s récupère un nouvel event
 Alors card mise à jour en <10s avec slide-down
 ```
 
 ### AC-3 — Urgence résolue
 ```gherkin
 Étant donné urgence marquée résolue
-Quand WebSocket pousse l'événement
+Quand le polling 30s récupère un nouvel event
 Alors card disparaît avec fade-out
 ```
 
@@ -88,9 +88,9 @@ Quand médecin consulte la card
 Alors 'Aucune urgence en cours. Vos patients sont stables.' (vert)
 ```
 
-### AC-7 — Reconnexion WebSocket
+### AC-7 — Reprise polling après perte réseau
 ```gherkin
-Étant donné WebSocket se déconnecte
+Étant donné le navigateur se reconnecte après perte réseau
 Quand frontend détecte
 Alors reconnexion auto avec backoff exponentiel
 ```
@@ -101,7 +101,7 @@ Alors reconnexion auto avec backoff exponentiel
 
 - **RM-1** : Tri urgences : DKA → hypo sévère niveau 2 (<54) → hypo niveau 1 → hyper → autres
 - **RM-2** : Max 5 urgences visibles, CTA 'Voir toutes' → page Inbox
-- **RM-3** : WebSocket auth via JWT, reconnexion auto avec backoff (1s, 2s, 4s, 8s, max 30s)
+- **RM-3** : polling 30s auth via cookie httpOnly (idem auth REST), pas de gestion reconnexion (chaque poll est indépendant)
 - **RM-4** : Aucune donnée patient sensible hors nom/âge/pathologie + détail urgence
 - **RM-5** : Périmètre patients du médecin strict (referentId ou délégation)
 
@@ -135,8 +135,8 @@ WS /api/dashboard/medecin/urgencies/stream
 
 ## 🧪 Tests prioritaires
 
-- **WebSocket** : connexion, reconnexion auto, latence <10s
-- **Charge** : 50 connexions WebSocket simultanées
+- **Polling 30s** : latence affichage <30s, push FCM US-2230 = canal alerte instantané
+- **Charge** : 50 médecins connectés = 1.6 req/s (50/30) — non-bloquant
 - **Tri criticité** : valider ordre avec différentes urgences mélangées
 - **Empty state** : valider message rassurant
 - **Périmètre** : test patient hors portefeuille → exclu
@@ -147,7 +147,7 @@ WS /api/dashboard/medecin/urgencies/stream
 
 ## 📦 DoD dashboard-spécifique
 
-- [ ] WebSocket testé connexion + reconnexion
+- [ ] Polling 30s testé (intervalle stable, pas de fuite de timers au unmount)
 - [ ] Latence MAJ < 10s validée
 - [ ] Tri criticité fonctionnel
 - [ ] Empty state vu et validé par PO
