@@ -101,6 +101,19 @@ export interface CgmThresholds {
 }
 
 /**
+ * Default CGM thresholds in g/L when a patient has no `CgmObjective`. Pulled
+ * from CLAUDE.md clinical bounds: severe hypo <0.54, hypo <0.70, target up to
+ * 1.80, hyper >2.50. Centralized here so analytics & population services
+ * don't drift.
+ */
+export const DEFAULT_CGM_THRESHOLDS: CgmThresholds = {
+  veryLow: 0.54,
+  low: 0.70,
+  ok: 1.80,
+  high: 2.50,
+}
+
+/**
  * Time In Range result — percentage in each glucose zone.
  * @typedef {Object} TirResult
  * @property {number} severeHypo - % of readings < veryLow threshold

@@ -1,27 +1,22 @@
 /**
  * @module analytics-scope
- * @description Helper to resolve the list of patient IDs visible to the caller
+ * @description Helper to resolve the population scope visible to the caller
  * for population-level analytics (US-2094/2095/2096/2098).
  *
- * Wraps `getAccessiblePatientIds` and expands the ADMIN "null = no restriction"
- * answer into an actual ID list so downstream analytics services don't need
- * special-case branches.
+ * Returns `null` when the caller is ADMIN (no restriction — the service
+ * handles the "all non-deleted patients" branch in SQL without an IN-clause)
+ * or an array of allowed patient IDs otherwise. An empty array means "no
+ * accessible patients" (e.g. DOCTOR with no PatientService link) — services
+ * MUST treat it as a hard filter, not as "all".
  */
 
-import { prisma } from "@/lib/db/client"
 import type { Role } from "@prisma/client"
 import { getAccessiblePatientIds } from "@/lib/access-control"
+import type { PopulationScope } from "@/lib/services/population-analytics.service"
 
-export async function resolveAnalyticsPatientIds(
+export async function resolveAnalyticsScope(
   userId: number,
   role: Role,
-): Promise<number[]> {
-  const ids = await getAccessiblePatientIds(userId, role)
-  if (ids !== null) return ids
-
-  const rows = await prisma.patient.findMany({
-    where: { deletedAt: null },
-    select: { id: true },
-  })
-  return rows.map((r) => r.id)
+): Promise<PopulationScope> {
+  return getAccessiblePatientIds(userId, role)
 }

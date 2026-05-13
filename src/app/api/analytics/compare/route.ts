@@ -1,13 +1,4 @@
-/**
- * US-2039 — Comparaison de deux périodes (avant / après ajustement).
- *
- * Compare deux fenêtres contiguës de même durée (N jours) sur les métriques
- * clés : TIR, GMI, glucose moyen, CV, capture rate. Renvoie également le
- * delta entre les deux périodes (recent vs previous).
- *
- * Cas d'usage type : vérifier l'effet d'un ajustement de basale ou d'ISF
- * sur deux semaines comparables.
- */
+/** US-2039 — Comparaison de deux périodes (avant / après ajustement). */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
@@ -17,6 +8,7 @@ import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditAnalyticsFailure } from "@/lib/audit/analytics-helpers"
 
 const querySchema = z.object({
   period: z
@@ -27,11 +19,16 @@ const querySchema = z.object({
 })
 
 export async function GET(req: NextRequest) {
+  const ctx = extractRequestContext(req)
   try {
     const user = requireAuth(req)
 
     const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.analytics)
     if (!rl.allowed) {
+      await auditAnalyticsFailure({
+        user, ctx, resourceId: "compare", reason: "rateLimitExceeded",
+        action: "RATE_LIMITED",
+      })
       return NextResponse.json(
         { error: "rateLimitExceeded" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
@@ -40,11 +37,18 @@ export async function GET(req: NextRequest) {
 
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
+      await auditAnalyticsFailure({
+        user, ctx, resourceId: "compare", reason: "gdprConsentRequired",
+      })
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
     const res = await resolvePatientIdFromQuery(req, user.id, user.role)
     if (res.error) {
+      await auditAnalyticsFailure({
+        user, ctx, resourceId: "compare", reason: res.error,
+        metadata: { kind: "compare" },
+      })
       return NextResponse.json(
         { error: res.error },
         { status: res.error === "invalidPatientId" ? 400 : 404 },
@@ -59,12 +63,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
 
-    const ctx = extractRequestContext(req)
     const result = await analyticsService.compare(
-      patientId,
-      parsed.data.period,
-      user.id,
-      ctx,
+      patientId, parsed.data.period, user.id, ctx,
     )
     return NextResponse.json(result)
   } catch (error) {

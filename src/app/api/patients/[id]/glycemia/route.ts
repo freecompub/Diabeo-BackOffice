@@ -3,7 +3,8 @@ import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
-import { encryptField } from "@/lib/crypto/fields"
+import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 
@@ -13,6 +14,11 @@ const listQuerySchema = z.object({
   from: z.coerce.date(),
   to: z.coerce.date(),
 }).refine((d) => d.from < d.to, { message: "from must be before to" })
+
+const measurementFields = [
+  "glycemiaGl", "glycemiaMgdl", "weight", "hba1c", "ketones",
+  "bpSystolic", "bpDiastolic", "bolus", "basal", "carb",
+] as const
 
 const glycemiaSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -28,9 +34,16 @@ const glycemiaSchema = z.object({
   basal: z.number().min(0).max(10).optional(),
   carb: z.number().int().min(0).max(500).optional(),
   comment: z.string().max(500).optional(),
-})
+}).refine(
+  (v) => measurementFields.some((k) => v[k] !== undefined),
+  { message: "atLeastOneMeasurementRequired" },
+)
 
-/** Serialize Decimal fields for JSON */
+/**
+ * Serialize a GlycemiaEntry for JSON response:
+ *  - Decimal fields → number (lossy for sub-double precision but fine clinically)
+ *  - mealDescription ciphertext → plaintext (we never leak base64 to the API)
+ */
 function serializeEntry(entry: Record<string, unknown>) {
   const decimals = ["glycemiaGl", "glycemiaMgdl", "weight", "hba1c", "ketones", "bolus", "bolusCorr", "basal"]
   const result = { ...entry }
@@ -38,6 +51,9 @@ function serializeEntry(entry: Record<string, unknown>) {
     if (result[key] != null && typeof result[key] === "object") {
       result[key] = Number(result[key])
     }
+  }
+  if (typeof result.mealDescription === "string") {
+    result.mealDescription = safeDecryptField(result.mealDescription)
   }
   return result
 }
@@ -56,6 +72,11 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
 
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
     const ctx = extractRequestContext(req)
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
@@ -65,6 +86,18 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
         metadata: { patientId, endpoint: "list" },
       })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+
+    // Mirror the POST policy — when sharing is off, do not expose entries.
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null }, select: { userId: true },
+    })
+    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const privacy = await prisma.userPrivacySettings.findUnique({
+      where: { userId: patient.userId },
+    })
+    if (privacy && !privacy.shareWithProviders) {
+      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
     }
 
     const parsed = listQuerySchema.safeParse(

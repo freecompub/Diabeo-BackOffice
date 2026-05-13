@@ -2,10 +2,7 @@
  * US-2038 — Heat-map glycémique (patient-level).
  *
  * Renvoie une grille 7×24 (168 cellules) : glycémie moyenne en mg/dL par
- * (jour de la semaine, heure). Permet au médecin de repérer les motifs
- * récurrents (ex. hyperglycémie post-prandiale du déjeuner).
- *
- * Scope: caller doit pouvoir accéder au patient (RBAC standard analytics).
+ * (jour de la semaine, heure). Groupement TZ-stable Europe/Paris.
  */
 
 import { NextResponse, type NextRequest } from "next/server"
@@ -16,6 +13,7 @@ import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditAnalyticsFailure } from "@/lib/audit/analytics-helpers"
 
 const querySchema = z.object({
   period: z
@@ -26,11 +24,16 @@ const querySchema = z.object({
 })
 
 export async function GET(req: NextRequest) {
+  const ctx = extractRequestContext(req)
   try {
     const user = requireAuth(req)
 
     const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.analytics)
     if (!rl.allowed) {
+      await auditAnalyticsFailure({
+        user, ctx, resourceId: "heatmap", reason: "rateLimitExceeded",
+        action: "RATE_LIMITED",
+      })
       return NextResponse.json(
         { error: "rateLimitExceeded" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
@@ -39,11 +42,18 @@ export async function GET(req: NextRequest) {
 
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
+      await auditAnalyticsFailure({
+        user, ctx, resourceId: "heatmap", reason: "gdprConsentRequired",
+      })
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
     const res = await resolvePatientIdFromQuery(req, user.id, user.role)
     if (res.error) {
+      await auditAnalyticsFailure({
+        user, ctx, resourceId: "heatmap", reason: res.error,
+        metadata: { kind: "heatmap" },
+      })
       return NextResponse.json(
         { error: res.error },
         { status: res.error === "invalidPatientId" ? 400 : 404 },
@@ -51,18 +61,15 @@ export async function GET(req: NextRequest) {
     }
     const patientId = res.patientId
 
-    const params = Object.fromEntries(req.nextUrl.searchParams.entries())
-    const parsed = querySchema.safeParse(params)
+    const parsed = querySchema.safeParse(
+      Object.fromEntries(req.nextUrl.searchParams.entries()),
+    )
     if (!parsed.success) {
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
 
-    const ctx = extractRequestContext(req)
     const result = await analyticsService.heatmap(
-      patientId,
-      parsed.data.period,
-      user.id,
-      ctx,
+      patientId, parsed.data.period, user.id, ctx,
     )
     return NextResponse.json(result)
   } catch (error) {

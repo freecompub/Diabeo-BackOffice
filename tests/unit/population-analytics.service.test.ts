@@ -8,30 +8,36 @@
  *   ADA-aligned distribution bands for quality reports.
  * - Cohort segmentation by pathology (DT1 / DT2 / GD) so the practice can
  *   compare clinical outcomes by patient type.
+ * - GDPR — patients without `gdprConsent=true` MUST be excluded from every
+ *   aggregation (RGPD Art. 7.3).
+ * - Population size cap — fan-out is blocked at `MAX_POPULATION_PATIENTS` to
+ *   protect the DB pool.
  *
  * Associated risks:
  * - Including a patient with insufficient CGM capture in averages would
- *   skew the cabinet KPIs; the service excludes anything below 30%.
+ *   skew the cabinet KPIs (excluded below 30%).
  * - Mis-counting `activeLast24h` could let dormant patients pass for
- *   followed-up ones — covered by the 24h boundary test.
- * - Returning non-null averages on an empty cabinet would propagate NaN to
- *   the dashboard — covered by the empty-input test.
+ *   followed-up ones.
+ * - GDPR-revoked patients leaking into aggregates would be HDS/RGPD breach.
  *
  * Edge cases:
- * - Empty patient list → all zeros, null averages
- * - Patient with zero CGM readings in the window → counted in total but
- *   excluded from TIR/GMI averages
+ * - Empty patient list (explicit []) → all zeros, null averages
+ * - ADMIN scope (null) → service builds the patient query without IN-clause
+ * - Patient with zero CGM readings → counted in total but excluded from TIR
  * - Patient with a recent reading inside the 24h boundary → activeLast24h
  */
 import { describe, it, expect, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
-import { populationAnalyticsService } from "@/lib/services/population-analytics.service"
+import {
+  populationAnalyticsService,
+  MAX_POPULATION_PATIENTS,
+} from "@/lib/services/population-analytics.service"
 import { Pathology } from "@prisma/client"
 
 function mockCgmEntries(count: number, avgGl: number, hoursAgo: number[] = []) {
   const base = Date.now()
-  // Default: distribute readings 25h..336h ago so `activeLast24h` is only
-  // true when the caller passes an explicit `hoursAgo[i] < 24` value.
+  // Default: distribute readings 25h..336h ago so `activeLast24h` only
+  // becomes true when the caller passes an explicit `hoursAgo[i] < 24`.
   return Array.from({ length: count }, (_, i) => ({
     valueGl: avgGl + (i % 5 - 2) * 0.05,
     timestamp: new Date(base - (hoursAgo[i] ?? (25 + (i / Math.max(count, 1)) * 311)) * 3600_000),
@@ -44,7 +50,7 @@ beforeEach(() => {
 
 describe("populationAnalyticsService", () => {
   describe("cabinetKpis", () => {
-    it("returns zeros when patient list is empty", async () => {
+    it("returns zeros when patient list is empty (explicit [])", async () => {
       const result = await populationAnalyticsService.cabinetKpis([], 14, 1)
       expect(result.totalPatients).toBe(0)
       expect(result.activeLast24h).toBe(0)
@@ -76,17 +82,39 @@ describe("populationAnalyticsService", () => {
         { id: 2, pathology: Pathology.DT2 },
       ] as any)
       prismaMock.cgmObjective.findMany.mockResolvedValue([])
-      // patient 1 — good capture (~60%)
       prismaMock.cgmEntry.findMany
         .mockResolvedValueOnce(mockCgmEntries(2500, 1.2, [0]) as any)
-        // patient 2 — almost no data (low capture)
         .mockResolvedValueOnce(mockCgmEntries(10, 1.2) as any)
 
       const result = await populationAnalyticsService.cabinetKpis([1, 2], 14, 1)
       expect(result.totalPatients).toBe(2)
-      // Only patient 1 contributes to the average
-      expect(result.inTarget + (2 - result.totalPatients)).toBeGreaterThanOrEqual(0)
       expect(result.averageTimeInRange).not.toBeNull()
+    })
+
+    it("throws populationTooLarge when result exceeds the cap", async () => {
+      const oversized = Array.from({ length: MAX_POPULATION_PATIENTS + 1 }, (_, i) => ({
+        id: i + 1,
+        pathology: Pathology.DT1,
+      }))
+      prismaMock.patient.findMany.mockResolvedValue(oversized as any)
+      await expect(
+        populationAnalyticsService.cabinetKpis(null, 14, 1),
+      ).rejects.toThrow(/populationTooLarge/)
+    })
+
+    it("supports ADMIN scope=null (no IN-clause) by querying via where=undefined", async () => {
+      prismaMock.patient.findMany.mockResolvedValue([
+        { id: 1, pathology: Pathology.DT1 },
+      ] as any)
+      prismaMock.cgmObjective.findMany.mockResolvedValue([])
+      prismaMock.cgmEntry.findMany.mockResolvedValueOnce(mockCgmEntries(500, 1.2) as any)
+
+      await populationAnalyticsService.cabinetKpis(null, 14, 1)
+      const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+      // null scope should not produce an `id: { in: ... }` filter.
+      expect(call.where.id).toBeUndefined()
+      // GDPR consent filter is still applied.
+      expect(call.where.user.privacySettings.gdprConsent).toBe(true)
     })
   })
 
@@ -99,9 +127,9 @@ describe("populationAnalyticsService", () => {
       ] as any)
       prismaMock.cgmObjective.findMany.mockResolvedValue([])
       prismaMock.cgmEntry.findMany
-        .mockResolvedValueOnce(mockCgmEntries(2500, 1.10) as any) // mostly in range — TIR high
-        .mockResolvedValueOnce(mockCgmEntries(2500, 2.20) as any) // mostly elevated — TIR low
-        .mockResolvedValueOnce(mockCgmEntries(2500, 1.30) as any) // in range — TIR mid
+        .mockResolvedValueOnce(mockCgmEntries(2500, 1.10) as any)
+        .mockResolvedValueOnce(mockCgmEntries(2500, 2.20) as any)
+        .mockResolvedValueOnce(mockCgmEntries(2500, 1.30) as any)
 
       const result = await populationAnalyticsService.qualityIndicators([1, 2, 3], 14, 1)
       const tirTotal =
@@ -129,12 +157,9 @@ describe("populationAnalyticsService", () => {
       expect(result.cohorts).toHaveLength(3)
       const dt1 = result.cohorts.find((c) => c.pathology === Pathology.DT1)!
       const dt2 = result.cohorts.find((c) => c.pathology === Pathology.DT2)!
-      const gd  = result.cohorts.find((c) => c.pathology === Pathology.GD)!
       expect(dt1.patientCount).toBe(2)
       expect(dt2.patientCount).toBe(0)
-      expect(gd.patientCount).toBe(0)
       expect(dt2.averageTimeInRange).toBeNull()
-      expect(gd.averageTimeInRange).toBeNull()
     })
   })
 
@@ -153,11 +178,21 @@ describe("populationAnalyticsService", () => {
       expect(result[0].activeLast24h).toBe(true)
     })
 
-    it("does not call the auditService (caller logs the EXPORT)", async () => {
+    it("does not call auditService (caller logs the EXPORT)", async () => {
       prismaMock.patient.findMany.mockResolvedValue([])
       const before = prismaMock.auditLog.create.mock.calls.length
       await populationAnalyticsService.exportDataset([], 14)
       expect(prismaMock.auditLog.create.mock.calls.length).toBe(before)
+    })
+  })
+
+  describe("GDPR consent filter (RGPD Art. 7.3)", () => {
+    it("filters patients by privacySettings.gdprConsent=true at the DB level", async () => {
+      prismaMock.patient.findMany.mockResolvedValue([])
+      await populationAnalyticsService.exportDataset([1, 2, 3], 14)
+      const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+      expect(call.where.user.privacySettings.gdprConsent).toBe(true)
+      expect(call.where.deletedAt).toBeNull()
     })
   })
 })

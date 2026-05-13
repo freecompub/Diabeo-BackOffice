@@ -9,16 +9,23 @@
  * - US-2096 — Cohorte par pathologie (breakdown DT1/DT2/GD)
  * - US-2098 — Export CSV (population dataset)
  *
- * Access control: relies on `getAccessiblePatientIds` for RBAC scoping.
- * ADMIN sees the whole cabinet; DOCTOR/NURSE only their PatientService links;
- * VIEWER (patient) is filtered out earlier — population analytics is pro-only.
+ * Access control: callers pass either an explicit `patientIds` array (RBAC
+ * already applied via `getAccessiblePatientIds`) or `null` meaning "no
+ * restriction" (ADMIN). When null, the service builds the patient query
+ * with only `deletedAt: null` — it never expands to an IN-clause, which is
+ * the right behaviour for large cabinets.
  *
- * Performance: computes TIR/GMI per patient by streaming CGM rows. The 30-day
- * window keeps the worst-case dataset under ~500 patients × 8640 readings
- * (≈4.3M rows). For larger cabinets the caller should cache (Redis 5 min).
+ * GDPR — patients who revoked `UserPrivacySettings.gdprConsent` are excluded
+ * from every aggregation (RGPD Art. 7.3 — withdrawal must take effect). This
+ * is enforced at the patient-list resolution step.
+ *
+ * Performance — fan-out is bounded by `MAX_POPULATION_PATIENTS` and concurrency
+ * is capped via `p-limit` to keep the Prisma pool happy. For very large
+ * cabinets the caller should cache the response (Redis 5-min TTL).
  */
 
 import { Pathology } from "@prisma/client"
+import pLimit from "p-limit"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import {
@@ -28,23 +35,21 @@ import {
   coefficientOfVariation,
   computeTir,
   cgmCaptureRate,
+  DEFAULT_CGM_THRESHOLDS,
   type CgmThresholds,
   type TirResult,
 } from "@/lib/statistics"
 import type { AuditContext } from "./patient.service"
 
-/** Default CGM thresholds in g/L if patient has no CgmObjective row. */
-const DEFAULT_THRESHOLDS: CgmThresholds = {
-  veryLow: 0.54,
-  low: 0.70,
-  ok: 1.80,
-  high: 2.50,
-}
 /** Capture-rate threshold below which the patient is excluded from population metrics. */
 const MIN_CAPTURE_RATE = 30
 /** Default analytics window for population metrics — bounded for perf. */
 const DEFAULT_WINDOW_DAYS = 14
-const MAX_WINDOW_DAYS = 30
+export const MAX_WINDOW_DAYS = 30
+/** Hard cap on the number of patients aggregated per request — protects DB pool. */
+export const MAX_POPULATION_PATIENTS = 2000
+/** Max concurrent CGM queries against the DB. */
+const DB_CONCURRENCY = 8
 
 export type PopulationPatientMetric = {
   patientId: number
@@ -65,7 +70,7 @@ export type PopulationKpi = {
   activeLast24h: number
   /** Patients with TIR ≥ 70% over the window. */
   inTarget: number
-  /** Patients with at least one severeLow (level2) zone reading in the window. */
+  /** Patients with at least one severe-hypo zone reading in the window. */
   criticalHypoCount: number
   /** Mean TIR (% in range) across patients with sufficient capture. */
   averageTimeInRange: number | null
@@ -91,6 +96,9 @@ export type CohortBreakdown = {
     activeLast24h: number
   }>
 }
+
+/** Caller scope: `null` = ADMIN no-restriction, array = filtered list. */
+export type PopulationScope = number[] | null
 
 function clampWindow(days: number | undefined): number {
   if (!days || days <= 0) return DEFAULT_WINDOW_DAYS
@@ -141,7 +149,11 @@ async function computePatientMetric(
     select: { valueGl: true, timestamp: true },
   })
 
-  const values = entries.map((e) => Number(e.valueGl))
+  const values = entries.map((e) =>
+    typeof e.valueGl === "object" && e.valueGl !== null && "toNumber" in e.valueGl
+      ? (e.valueGl as { toNumber(): number }).toNumber()
+      : Number(e.valueGl),
+  )
   const captureRate = cgmCaptureRate(entries.length, windowDays)
   const activeLast24h = entries.some((e) => e.timestamp >= twentyFourHoursAgo)
 
@@ -178,33 +190,64 @@ async function computePatientMetric(
   }
 }
 
-/** Compute per-patient metrics for the given accessible patient IDs. Pure logic, no audit. */
+/**
+ * Resolve the actual patient list with GDPR + soft-delete + scope filters.
+ * Throws if the resulting list exceeds `MAX_POPULATION_PATIENTS`.
+ *
+ * GDPR — patients without an explicit `gdprConsent=true` row are excluded.
+ * `UserPrivacySettings` is optional on the User model; absence is treated as
+ * "no consent given" (fail-closed) so a freshly-created user is not surfaced
+ * to analytics until they accept the policy.
+ */
+async function resolvePopulation(scope: PopulationScope) {
+  const baseWhere: { deletedAt: null; id?: { in: number[] } } = { deletedAt: null }
+  if (scope !== null) {
+    if (scope.length === 0) return [] as Array<{ id: number; pathology: Pathology }>
+    baseWhere.id = { in: scope }
+  }
+
+  const patients = await prisma.patient.findMany({
+    where: {
+      ...baseWhere,
+      user: { privacySettings: { gdprConsent: true } },
+    },
+    select: { id: true, pathology: true },
+  })
+
+  if (patients.length > MAX_POPULATION_PATIENTS) {
+    throw new Error(
+      `populationTooLarge: ${patients.length} > ${MAX_POPULATION_PATIENTS}`,
+    )
+  }
+  return patients
+}
+
 async function computeMetricsBatch(
-  patientIds: number[],
+  scope: PopulationScope,
   windowDays: number,
 ): Promise<PopulationPatientMetric[]> {
-  if (patientIds.length === 0) return []
+  const patients = await resolvePopulation(scope)
+  if (patients.length === 0) return []
 
   const to = new Date()
   const from = new Date(to.getTime() - windowDays * 24 * 3600_000)
   const twentyFourHoursAgo = new Date(to.getTime() - 24 * 3600_000)
 
-  const patients = await prisma.patient.findMany({
-    where: { id: { in: patientIds }, deletedAt: null },
-    select: { id: true, pathology: true },
-  })
   const thresholdMap = await loadThresholds(patients.map((p) => p.id))
+  const limit = pLimit(DB_CONCURRENCY)
 
   return Promise.all(
     patients.map((p) =>
-      computePatientMetric(
-        p.id,
-        p.pathology,
-        from,
-        to,
-        windowDays,
-        thresholdMap.get(p.id) ?? DEFAULT_THRESHOLDS,
-        twentyFourHoursAgo,
+      limit(() =>
+        computePatientMetric(
+          p.id,
+          p.pathology,
+          from,
+          to,
+          windowDays,
+          thresholdMap.get(p.id) ?? DEFAULT_CGM_THRESHOLDS,
+          twentyFourHoursAgo,
+        ),
       ),
     ),
   )
@@ -221,20 +264,20 @@ function averageOrNull(values: number[]): number | null {
 
 export const populationAnalyticsService = {
   /**
-   * Cabinet KPIs (US-2094) — total/active/inTarget/criticalHypo counts and average TIR/GMI.
-   * Returns null averages when no patient has sufficient CGM capture.
+   * Cabinet KPIs (US-2094). Throws `populationTooLarge` if the resolved patient
+   * list exceeds `MAX_POPULATION_PATIENTS`.
    *
-   * Audit: one `READ` entry on `ANALYTICS` with metadata.kind=population and patientCount.
-   * No `metadata.patientId` because this view is cabinet-scoped (multi-patient).
+   * Audit: one `READ` entry on `ANALYTICS` with metadata.kind=population. No
+   * `metadata.patientId` because this view is cabinet-scoped (multi-patient).
    */
   async cabinetKpis(
-    accessiblePatientIds: number[],
+    scope: PopulationScope,
     windowDays: number,
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<PopulationKpi> {
     const window = clampWindow(windowDays)
-    const metrics = await computeMetricsBatch(accessiblePatientIds, window)
+    const metrics = await computeMetricsBatch(scope, window)
 
     const sufficient = metrics.filter(isSufficient)
     const tirValues = sufficient.map((m) => m.tir!.inRange)
@@ -263,16 +306,15 @@ export const populationAnalyticsService = {
 
   /**
    * Quality indicators (US-2095) — TIR and GMI distributions over the cabinet.
-   * Buckets follow ADA reporting bands.
    */
   async qualityIndicators(
-    accessiblePatientIds: number[],
+    scope: PopulationScope,
     windowDays: number,
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<QualityIndicators> {
     const window = clampWindow(windowDays)
-    const metrics = await computeMetricsBatch(accessiblePatientIds, window)
+    const metrics = await computeMetricsBatch(scope, window)
     const sufficient = metrics.filter(isSufficient)
 
     const tirDistribution = { under50: 0, from50to70: 0, from70to90: 0, over90: 0 }
@@ -316,13 +358,13 @@ export const populationAnalyticsService = {
    * Cohort breakdown by pathology (US-2096) — DT1/DT2/GD aggregates.
    */
   async cohortsByPathology(
-    accessiblePatientIds: number[],
+    scope: PopulationScope,
     windowDays: number,
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<CohortBreakdown> {
     const window = clampWindow(windowDays)
-    const metrics = await computeMetricsBatch(accessiblePatientIds, window)
+    const metrics = await computeMetricsBatch(scope, window)
 
     const cohorts: CohortBreakdown["cohorts"] = []
     for (const path of [Pathology.DT1, Pathology.DT2, Pathology.GD]) {
@@ -354,14 +396,14 @@ export const populationAnalyticsService = {
 
   /**
    * Raw population metric list for CSV/Excel export (US-2098).
-   * Does not include PII (names/emails); only patient IDs + aggregate metrics.
-   * The caller is responsible for CSV formatting and the EXPORT audit action.
+   * Does not include PII; only patient IDs + aggregate metrics. The caller is
+   * responsible for CSV formatting and the EXPORT audit action.
    */
   async exportDataset(
-    accessiblePatientIds: number[],
+    scope: PopulationScope,
     windowDays: number,
   ): Promise<PopulationPatientMetric[]> {
     const window = clampWindow(windowDays)
-    return computeMetricsBatch(accessiblePatientIds, window)
+    return computeMetricsBatch(scope, window)
   },
 }
