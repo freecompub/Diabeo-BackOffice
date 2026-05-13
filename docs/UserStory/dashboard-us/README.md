@@ -1,12 +1,12 @@
 # Dashboards Diabeo — User Stories
 
-> **25 User Stories** pour les 5 dashboards (1 par persona) + leurs composants satellites.
+> **24 User Stories** pour les 5 dashboards (1 par persona) + leurs composants satellites.
 
 ## Vue d'ensemble
 
 | Métrique | Valeur |
 |----------|-------:|
-| **US totales** | 25 |
+| **US totales** | 24 |
 | **US principales** (1 par dashboard) | 5 |
 | **US satellites** | 20 |
 | **Story points cumulés** | 170 |
@@ -24,7 +24,7 @@
 | [Patient web](patient-web/README.md) | 4 | 29 |
 | [Médecin](medecin/README.md) | 5 | 34 |
 | [Infirmier](infirmier/README.md) | 5 | 31 |
-| [Administrateur](admin/README.md) | 6 | 37 |
+| [Administrateur](admin/README.md) | 5 | 29 |
 
 
 ## Conventions

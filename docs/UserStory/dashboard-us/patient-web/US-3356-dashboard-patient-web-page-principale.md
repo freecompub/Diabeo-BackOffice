@@ -2,6 +2,8 @@
 
 > 📌 **patient-web** · Priorité **V1**
 
+> ⏸️ **PAUSED** (Q10 session Samir 2026-05-13) — Bloqué par absence dauth patient web. US-2025 (mobile invite) = JWT 15min mono-usage, pas de session web long-vie. Cadrage différé.
+
 ---
 
 ## 📊 Métadonnées

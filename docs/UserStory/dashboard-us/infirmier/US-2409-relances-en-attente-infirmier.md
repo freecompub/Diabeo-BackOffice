@@ -13,7 +13,7 @@
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2076 (détection patients à risque), US-2405 |
+| **Dépendances** | US-2800 (algorithme détection patients à risque, V4), US-2405 |
 | **US parente** | `US-2405` |
 
 ---
@@ -144,6 +144,6 @@ POST /api/dashboard/infirmier/recall/[patientId]/log-call
 ## 🔗 Liens
 
 - US parente : US-2405
-- US liée : US-2076
+- US liée : US-2800 (V4)
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

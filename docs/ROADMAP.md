@@ -10,11 +10,12 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 137   | 2    | 7       | 128         | **1%**  |
+| **V1**   | 136   | 2    | 7       | 127         | **1%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
-| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
+| **V4**   | 16    | 0    | 0       | 16          | **0%**  |
 | **TOTAL**| **287** | **67** | **7**   | **213**     | **23%** |
+> Note Q6 (2026-05-13) : US-2414 supprimée (duplicate) → V1 137→136. Q8 : US-2800 ajoutée V4 16. Total inchangé (287 = +1 −1).
 
 > ⚠️ +20 US ajoutées suite au commit `f6700a0` (dashboards). 16 backoffice
 > renumérotées `US-2400-2415` (conflit `US-2265-2280` ↔ batch audit déjà
@@ -352,7 +353,7 @@
 | US-2411 | KPI activité cabinet (admin) | V1 → ⏸️ PAUSED | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — session Samir 2026-05-13 |
 | US-2412 | Facturation à traiter (admin) | V1 | 5 | dep remappée US-2170 → **US-2107** (Groupe 7 Facturation) |
 | US-2413 | Conformité RGPD (admin) | V1 → ⏸️ PAUSED | 8 | deps US-2190/2191/2192 absentes du ROADMAP — session Samir 2026-05-13 |
-| US-2414 | Santé système 6 services (admin) | V1 | 5 | dep US-2210 (à clarifier, Q6 non répondu) |
+| ~~US-2414~~ | ~~Santé système 6 services (admin)~~ | ❌ SUPPRIMÉE | — | Q6 session Samir 2026-05-13 — duplicate (`/api/health` couvre déjà) |
 | US-2415 | Sidebar pilotage administration (admin) | V1 | 6 | `admin/US-2415-…` |
 
 > **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
@@ -366,10 +367,10 @@
 
 | US | Titre | Priorité | SP | Fichier |
 |----|-------|---------:|---:|---------|
-| US-3356 | Dashboard patient web (page principale) | V1 | 8 | `patient-web/US-3356-…` |
-| US-3361 | Section glycémie 24h détaillée (web) | V1 | 8 | `patient-web/US-3361-…` |
-| US-3362 | Section AGP 7 jours résumé (web) | V1 | 8 | `patient-web/US-3362-…` |
-| US-3363 | Panel actions rapides patient (web) | V1 | 5 | `patient-web/US-3363-…` |
+| US-3356 | Dashboard patient web (page principale) | V1 → ⏸️ PAUSED | 8 | Q10 session Samir 2026-05-13 — Auth patient web à concevoir |
+| US-3361 | Section glycémie 24h détaillée (web) | V1 → ⏸️ PAUSED | 8 | idem |
+| US-3362 | Section AGP 7 jours résumé (web) | V1 → ⏸️ PAUSED | 8 | idem |
+| US-3363 | Panel actions rapides patient (web) | V1 → ⏸️ PAUSED | 5 | idem |
 
 > US patient-mobile (US-3355, 3357-3360 = 39 SP) **hors scope** ce repo —
 > iOS app séparée (cf. CLAUDE.md "on ne developpe pas les applications
@@ -444,7 +445,7 @@
 
 ---
 
-## V4 — 15 US
+## V4 — 16 US
 
 | US | Titre |
 |----|-------|
@@ -455,6 +456,7 @@
 | US-2172+ | LAP certifié HAS (module prescription complet) |
 | US-2192+ | Signatures eIDAS qualifiées |
 | US-2206+ | Transmission e-prescription nationale |
+| US-2800 | Algorithme détection patients à risque (TIR critique, alertes répétées, gap CGM, etc.) — décision session Samir 2026-05-13 |
 
 ---
 
