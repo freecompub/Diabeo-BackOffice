@@ -460,33 +460,44 @@ export const patientService = {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
-        metadata: { count: 0, scoped: true },
+        metadata: {
+          count: 0,
+          scoped: true,
+          // M14 — distinguish "no permissions" from "no matches".
+          reason: "noServiceMembership",
+        },
       })
       return { items: [], nextCursor: null as number | null }
     }
 
     const userFilter: Prisma.UserWhereInput | undefined = input.search?.trim()
+      // hmacField internally normalizes (lowercase + trim).
       ? (() => {
-          const hmac = hmacField(input.search!.trim().toLowerCase())
+          const hmac = hmacField(input.search!)
           return { OR: [{ firstnameHmac: hmac }, { lastnameHmac: hmac }] }
         })()
       : undefined
 
     const where: Prisma.PatientWhereInput = {
       deletedAt: null,
+      // H1 — exclude patients who revoked sharing or never accepted GDPR.
+      // Matches the same filter applied in `population-analytics.service`
+      // (RGPD Art. 7.3 — revocation effective on all aggregations).
+      user: {
+        privacySettings: { gdprConsent: true, shareWithProviders: true },
+        ...(userFilter ?? {}),
+      },
       ...(input.accessibleIds !== null && { id: { in: input.accessibleIds } }),
       ...(input.pathology && { pathology: input.pathology }),
-      ...(userFilter && { user: userFilter }),
     }
 
     const items = await prisma.patient.findMany({
       where,
       include: {
         user: {
-          select: {
-            id: true, firstname: true, lastname: true, email: true,
-            birthday: true,
-          },
+          // Low — data minimization: search list trims to identification
+          // fields only. Email / birthday only on the detail endpoint.
+          select: { id: true, firstname: true, lastname: true },
         },
       },
       orderBy: { id: "desc" },
@@ -516,12 +527,13 @@ export const patientService = {
 
     return {
       items: page.map((p) => ({
-        ...p,
+        id: p.id,
+        pathology: p.pathology,
+        createdAt: p.createdAt,
         user: {
-          ...p.user,
+          id: p.user.id,
           firstname: safeDecrypt(p.user.firstname),
           lastname: safeDecrypt(p.user.lastname),
-          email: safeDecrypt(p.user.email),
         },
       })),
       nextCursor,

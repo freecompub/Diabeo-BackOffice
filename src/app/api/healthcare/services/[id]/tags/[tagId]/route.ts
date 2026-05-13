@@ -3,6 +3,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireRole, AuthError } from "@/lib/auth"
 import { patientTagService } from "@/lib/services/patient-tag.service"
+import {
+  TagForbiddenError,
+  TagNotFoundError,
+} from "@/lib/services/patient-tag.errors"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 type RouteParams = { params: Promise<{ id: string; tagId: string }> }
@@ -20,13 +24,13 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    if (msg === "tagNotFound") {
+    if (error instanceof TagNotFoundError) {
       return NextResponse.json({ error: "tagNotFound" }, { status: 404 })
     }
-    if (msg === "forbidden") {
+    if (error instanceof TagForbiddenError) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
+    const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[healthcare/services/:id/tags/:tagId DELETE]", msg)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }

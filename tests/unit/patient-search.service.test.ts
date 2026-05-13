@@ -41,6 +41,29 @@ describe("patientService.search", () => {
     expect(call.where.user.OR[1]).toHaveProperty("lastnameHmac")
   })
 
+  it("filters out patients without gdprConsent + shareWithProviders (H1)", async () => {
+    await patientService.search(
+      { accessibleIds: [1] },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.where.user.privacySettings).toEqual({
+      gdprConsent: true, shareWithProviders: true,
+    })
+  })
+
+  it("response trims to id/firstname/lastname (data-minimization)", async () => {
+    prismaMock.patient.findMany.mockResolvedValueOnce([
+      {
+        id: 1, pathology: "DT1", createdAt: new Date(),
+        user: { id: 9, firstname: "encrypted", lastname: "encrypted" },
+      },
+    ] as any)
+    const r = await patientService.search({ accessibleIds: [1] }, 9)
+    expect(r.items[0].user).not.toHaveProperty("email")
+    expect(r.items[0].user).not.toHaveProperty("birthday")
+  })
+
   it("adds pathology filter as exact match", async () => {
     await patientService.search(
       { pathology: Pathology.DT1, accessibleIds: null },
