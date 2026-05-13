@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 143   | 10   | 6       | 127         | **7%**  |
+| **V1**   | 143   | 15   | 4       | 124         | **10%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **294** | **75** | **6**   | **213**     | **26%** |
+| **TOTAL**| **294** | **80** | **4**   | **210**     | **27%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -242,12 +242,15 @@
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2019 | Recherche full-text patients | NOT STARTED |
-| US-2021 | Transfert patient entre médecins | NOT STARTED |
-| US-2022 | Tags & catégorisation patients | NOT STARTED |
-| US-2024 | Historique modifications (UI audit) | PARTIAL |
-| US-2026 | INS — Identité Nationale Santé | NOT STARTED |
-| US-2028 | Dossier multi-praticiens | PARTIAL |
+| US-2019 | Recherche full-text patients | DONE (PR #389 — HMAC exact + Pathology + consent filter) |
+| US-2021 | Transfert patient entre médecins | DONE (PR #389 — ADMIN/référent/self-claim only) |
+| US-2022 | Tags & catégorisation patients | DONE (PR #389 — 2 modèles Prisma + 4 routes + anti-PII) |
+| US-2024 | Historique modifications (UI audit) | DONE (PR #389 — PHI redacted, DOCTOR+ only) |
+| US-2026 | INS — Identité Nationale Santé | NOT STARTED (V1, 8 SP — Batch 3 standalone) |
+| US-2028 | Dossier multi-praticiens | DONE (PR #389 — referents view) |
+
+**Batches 1+2 livrés** : 5 US (US-2019, 2021, 2022, 2024, 2028) — PR #389, ~5 SP,
+1282 tests verts, 35 findings de review traités (3 Critical + 11 High + 15 Medium + 8 Low).
 
 ### Groupe 3 — Équipe & Communication (15 US)
 
