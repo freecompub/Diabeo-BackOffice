@@ -1,14 +1,14 @@
-/** US-2068 — Consultation notes (encrypted, per patient). */
+/** US-2068 — Consultation notes par patient (review PR #390 H1, M2). */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { patientShareConsent } from "@/lib/consent"
 import { consultationNoteService } from "@/lib/services/team-workflow.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { prisma } from "@/lib/db/client"
-import { mapErrorToResponse } from "@/lib/team-route-helpers"
+import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -26,12 +26,12 @@ async function ensurePatientAlive(id: number): Promise<boolean> {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
+  const ctx = extractRequestContext(req)
   try {
-    const user = requireRole(req, "NURSE")
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
-    const ctx = extractRequestContext(req)
+    const user = await auditedRequireRole(req, "NURSE", ctx, "CONSULTATION_NOTE", String(patientId))
 
     if (!(await ensurePatientAlive(patientId))) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
@@ -52,17 +52,17 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ items })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "patients/:id/consultation-notes GET")
+    return mapErrorToResponse(e, "patients/:id/consultation-notes GET", ctx.requestId)
   }
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  const ctx = extractRequestContext(req)
   try {
-    const user = requireRole(req, "DOCTOR")
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
-    const ctx = extractRequestContext(req)
+    const user = await auditedRequireRole(req, "DOCTOR", ctx, "CONSULTATION_NOTE", String(patientId))
 
     if (!(await ensurePatientAlive(patientId))) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
@@ -93,6 +93,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json(out, { status: 201 })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "patients/:id/consultation-notes POST")
+    return mapErrorToResponse(e, "patients/:id/consultation-notes POST", ctx.requestId)
   }
 }

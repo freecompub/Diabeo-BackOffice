@@ -50,6 +50,17 @@ export const prisma = globalForPrisma.prisma ?? createPrismaClient()
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma
 
+/**
+ * Either the global Prisma client or a transactional one (returned from the
+ * `$transaction` callback). Centralised here so service helpers can accept
+ * "tx or prisma" without re-deriving the type signature in each file.
+ *
+ * Single source of truth — review PR #390 M7.
+ */
+export type PrismaClientOrTx =
+  | Parameters<Parameters<PrismaClient["$transaction"]>[0]>[0]
+  | typeof prisma
+
 // NOTE: Prisma 7 removed $use() middleware.
 // AuditLog immutability is enforced via:
 // 1. Database-level trigger (prisma/sql/audit_immutability.sql)

@@ -529,6 +529,8 @@ model Patient {
   handoffNotes          HandoffNote[]
   /// US-2088 — Groupes-cohortes équipe.
   groupAssignments      PatientGroupAssignment[]
+  /// US-2065 — Accusés patient sur AdjustmentProposal (review PR #390 H10).
+  proposalAcks          AdjustmentProposalAck[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1937,6 +1939,9 @@ model AdjustmentProposalAck {
   comment      String?
 
   proposal AdjustmentProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  /// FK explicite vers Patient (review PR #390 H10) : empêche le drift
+  /// `patient_id` ↔ proposal.patient_id et cascade le soft-delete RGPD.
+  patient  Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId])
   @@map("adjustment_proposal_acks")
@@ -1958,6 +1963,9 @@ model AdjustmentProposalActualization {
   proposal AdjustmentProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
   verifier User?              @relation("ProposalActualizationVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
 
+  /// review PR #390 L7 — index sur la FK SetNull pour éviter le seq-scan
+  /// quand un User est anonymisé.
+  @@index([verifiedBy])
   @@map("adjustment_proposal_actualizations")
 }
 
@@ -2088,6 +2096,8 @@ model PatientGroupAssignment {
   @@unique([patientId, groupId])
   @@index([groupId])
   @@index([patientId, createdAt])
+  /// review PR #390 L6 — index sur la FK SetNull (anonymisation user RGPD).
+  @@index([assignedBy])
   @@map("patient_group_assignments")
 }
 

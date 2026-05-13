@@ -53,6 +53,10 @@ export type AuditAction =
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"
+  /** US-2083 — Decision on a delegation request (distinct from PROPOSAL_* on
+   *  AdjustmentProposal to keep forensic queries clean — review PR #390 C5). */
+  | "DELEGATION_APPROVED"
+  | "DELEGATION_REJECTED"
   | "IMPORT"
   | "ANONYMIZE"
   /** US-2265 — RBAC-breach burst signal (50+ UNAUTHORIZED in 60s by same userId). */

@@ -1,14 +1,14 @@
-/** US-2088 — Affectation de groupes-cohortes à un patient. */
+/** US-2088 — Groupes patient (review PR #390 H1 + L2). */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { patientShareConsent } from "@/lib/consent"
 import { patientGroupService } from "@/lib/services/team-workflow.service"
 import { prisma } from "@/lib/db/client"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
-import { mapErrorToResponse } from "@/lib/team-route-helpers"
+import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -24,12 +24,12 @@ async function ensurePatientAlive(id: number): Promise<boolean> {
 }
 
 export async function GET(req: NextRequest, { params }: RouteParams) {
+  const ctx = extractRequestContext(req)
   try {
-    const user = requireRole(req, "NURSE")
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
-    const ctx = extractRequestContext(req)
+    const user = await auditedRequireRole(req, "NURSE", ctx, "PATIENT_GROUP_ASSIGNMENT", String(patientId))
 
     if (!(await ensurePatientAlive(patientId))) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
@@ -46,21 +46,21 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const consent = await patientShareConsent(patientId)
     if (!consent.ok) return NextResponse.json({ error: consent.error }, { status: consent.status })
 
-    const items = await patientGroupService.listForPatient(patientId)
+    const items = await patientGroupService.listForPatient(patientId, user.id, ctx)
     return NextResponse.json({ items })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "patients/:id/groups GET")
+    return mapErrorToResponse(e, "patients/:id/groups GET", ctx.requestId)
   }
 }
 
 export async function PUT(req: NextRequest, { params }: RouteParams) {
+  const ctx = extractRequestContext(req)
   try {
-    const user = requireRole(req, "NURSE")
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
-    const ctx = extractRequestContext(req)
+    const user = await auditedRequireRole(req, "NURSE", ctx, "PATIENT_GROUP_ASSIGNMENT", String(patientId))
 
     if (!(await ensurePatientAlive(patientId))) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
@@ -91,6 +91,6 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json(out)
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "patients/:id/groups PUT")
+    return mapErrorToResponse(e, "patients/:id/groups PUT", ctx.requestId)
   }
 }

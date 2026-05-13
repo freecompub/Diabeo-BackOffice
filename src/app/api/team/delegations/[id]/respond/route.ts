@@ -1,11 +1,11 @@
-/** US-2083 — Approve / reject a delegation request (target DOCTOR only). */
+/** US-2083 — Approve / reject (review PR #390 C5 + H1). */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole } from "@/lib/auth"
+import { AuthError } from "@/lib/auth"
 import { delegationRequestService } from "@/lib/services/team-workflow.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { mapErrorToResponse } from "@/lib/team-route-helpers"
+import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -15,11 +15,11 @@ const schema = z.object({
 })
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
+  const ctx = extractRequestContext(req)
   try {
-    const user = requireRole(req, "DOCTOR")
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidId" }, { status: 400 })
-    const ctx = extractRequestContext(req)
+    const user = await auditedRequireRole(req, "DOCTOR", ctx, "DELEGATION_REQUEST", id)
     const body = await req.json()
     const parsed = schema.safeParse(body)
     if (!parsed.success) {
@@ -30,6 +30,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     )
     return NextResponse.json(out)
   } catch (e) {
-    return mapErrorToResponse(e, "team/delegations/:id/respond POST")
+    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
+    return mapErrorToResponse(e, "team/delegations/:id/respond POST", ctx.requestId)
   }
 }
