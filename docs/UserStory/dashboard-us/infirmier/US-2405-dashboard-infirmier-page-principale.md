@@ -1,4 +1,4 @@
-# US-2266 — Dashboard infirmier (page principale)
+# US-2405 — Dashboard infirmier (page principale)
 
 > 📌 **infirmier** · Priorité **V1**
 
@@ -8,12 +8,12 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2266` |
+| **ID** | `US-2405` |
 | **Type** | Page composite |
 | **Priorité** | **V1** |
 | **Story points** | **8** |
 | **Persona** | NURSE (🖥️ Web ≥1024px) |
-| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC NURSE), US-2272 (KPI ma journée), US-2273 (to-do), US-2274 (coordination équipe), US-2275 (relances) |
+| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC NURSE), US-2406 (KPI ma journée), US-2407 (to-do), US-2408 (coordination équipe), US-2409 (relances) |
 
 ---
 
@@ -29,21 +29,21 @@ Cf prototype interactif « Dashboard infirmier » et écran SCR-116 (à ajouter)
 
 ### KPI 'Ma journée' (4 chiffres en haut)
 - RDV à préparer · Patients à relancer · Mesures à saisir · Avant 12h
-- Source : US-2272
+- Source : US-2406
 
 ### Zone principale (3/5 + 2/5)
 
 **Gauche : To-do du jour (3/5)**
 - Liste type checkbox triée par urgence + horaire
-- Source : US-2273
+- Source : US-2407
 
 **Droite : Coordination équipe (2/5)**
 - Messages reçus des médecins / soignants
-- Source : US-2274
+- Source : US-2408
 
 ### Zone basse : Relances en attente
 - Cards patients avec actions Appeler/SMS directes
-- Source : US-2275
+- Source : US-2409
 
 ### Sidebar avec accent NURSE
 - Ma journée (actif), Patients, RDV, Messages, Relances (badge)
@@ -174,6 +174,6 @@ GET /api/team/messages?recipient=me
 
 - Cartographie écran : SCR-116 (Dashboard infirmier — à ajouter)
 - Prototype : Dashboard infirmier
-- US satellites : US-2272, US-2273, US-2274, US-2275
+- US satellites : US-2406, US-2407, US-2408, US-2409
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

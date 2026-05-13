@@ -1,6 +1,6 @@
-# US-2280 — Sidebar pilotage + administration (admin)
+# US-2415 — Sidebar pilotage + administration (admin)
 
-> 📌 **admin** · Priorité **V1** · Satellite de `US-2267`
+> 📌 **admin** · Priorité **V1** · Satellite de `US-2410`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2280` |
+| **ID** | `US-2415` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **3** |
 | **Persona** | ADMIN |
-| **Dépendances** | US-2012 (RBAC), US-2267 |
-| **US parente** | `US-2267` |
+| **Dépendances** | US-2012 (RBAC), US-2410 |
+| **US parente** | `US-2410` |
 
 ---
 
@@ -150,6 +150,6 @@ GET /api/admin/sidebar-data
 
 ## 🔗 Liens
 
-- US parente : US-2267
+- US parente : US-2410
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

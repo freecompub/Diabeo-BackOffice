@@ -1,6 +1,6 @@
-# US-2274 — Coordination équipe (infirmier)
+# US-2408 — Coordination équipe (infirmier)
 
-> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2266`
+> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2405`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2274` |
+| **ID** | `US-2408` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2160 (messagerie interne équipe), US-2266 |
-| **US parente** | `US-2266` |
+| **Dépendances** | US-2160 (messagerie interne équipe), US-2405 |
+| **US parente** | `US-2405` |
 
 ---
 
@@ -134,7 +134,7 @@ GET /api/team/messages?recipient=me&limit=5
 
 ## 🔗 Liens
 
-- US parente : US-2266
+- US parente : US-2405
 - US liée : US-2160
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

@@ -1,4 +1,4 @@
-# US-2265 — Dashboard médecin (page principale)
+# US-2400 — Dashboard médecin (page principale)
 
 > 📌 **medecin** · Priorité **MVP** · Remplace `US-2094`
 
@@ -8,12 +8,12 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2265` |
+| **ID** | `US-2400` |
 | **Type** | Page composite |
 | **Priorité** | **MVP** |
 | **Story points** | **8** |
 | **Persona** | DOCTOR, NURSE (🖥️ Web ≥1024px) |
-| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC), US-2018 (fiche patient), US-2268 (card urgences), US-2269 (card RDV), US-2270 (card patients à suivre), US-2271 (KPI cabinet) |
+| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC), US-2018 (fiche patient), US-2401 (card urgences), US-2402 (card RDV), US-2403 (card patients à suivre), US-2404 (KPI cabinet) |
 | **Remplace** | US-2094 (Tableau de bord population — à archiver) |
 
 ---
@@ -33,13 +33,13 @@ Cf prototype interactif « Dashboard médecin » et écran SCR-115.
 ```
 ┌──────────────────┬──────────────────┐
 │ Card urgences    │ Card RDV jour    │
-│ (US-2268, MVP)   │ (US-2269, MVP)   │
+│ (US-2401, MVP)   │ (US-2402, MVP)   │
 ├──────────────────┴──────────────────┤
 │ Card patients à suivre              │
-│ (US-2270, MVP)                      │
+│ (US-2403, MVP)                      │
 ├─────────────────────────────────────┤
 │ Section KPI cabinet 14j             │
-│ (US-2271, V1)                       │
+│ (US-2404, V1)                       │
 └─────────────────────────────────────┘
 ```
 
@@ -188,7 +188,7 @@ GET /api/search?q=...&scope=patients,actions,screens
 
 - Cartographie écran : SCR-115
 - Prototype : Dashboard médecin
-- US satellites : US-2268, US-2269, US-2270, US-2271
+- US satellites : US-2401, US-2402, US-2403, US-2404
 - US remplacée : US-2094
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

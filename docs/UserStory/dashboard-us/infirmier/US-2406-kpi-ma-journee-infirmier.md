@@ -1,6 +1,6 @@
-# US-2272 — KPI 'Ma journée' infirmier
+# US-2406 — KPI 'Ma journée' infirmier
 
-> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2266`
+> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2405`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2272` |
+| **ID** | `US-2406` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2070 (RDV), US-2266 |
-| **US parente** | `US-2266` |
+| **Dépendances** | US-2070 (RDV), US-2405 |
+| **US parente** | `US-2405` |
 
 ---
 
@@ -121,6 +121,6 @@ GET /api/dashboard/infirmier/kpi-day
 
 ## 🔗 Liens
 
-- US parente : US-2266
+- US parente : US-2405
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

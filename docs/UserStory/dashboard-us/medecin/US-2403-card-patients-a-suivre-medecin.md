@@ -1,6 +1,6 @@
-# US-2270 — Card patients à suivre (médecin)
+# US-2403 — Card patients à suivre (médecin)
 
-> 📌 **medecin** · Priorité **MVP** · Satellite de `US-2265`
+> 📌 **medecin** · Priorité **MVP** · Satellite de `US-2400`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2270` |
+| **ID** | `US-2403` |
 | **Type** | Composant satellite |
 | **Priorité** | **MVP** |
 | **Story points** | **8** |
 | **Persona** | DOCTOR, NURSE |
-| **Dépendances** | US-2076 (algorithme détection patients à risque), US-2018 (fiche patient), US-2265 |
-| **US parente** | `US-2265` |
+| **Dépendances** | US-2076 (algorithme détection patients à risque), US-2018 (fiche patient), US-2400 |
+| **US parente** | `US-2400` |
 
 ---
 
@@ -150,7 +150,7 @@ GET /api/dashboard/medecin/patients-at-risk/all
 
 ## 🔗 Liens
 
-- US parente : US-2265
+- US parente : US-2400
 - US liées : US-2076, US-2018
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

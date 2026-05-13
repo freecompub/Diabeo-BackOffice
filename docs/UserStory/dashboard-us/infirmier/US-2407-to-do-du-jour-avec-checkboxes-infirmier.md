@@ -1,6 +1,6 @@
-# US-2273 — To-do du jour avec checkboxes (infirmier)
+# US-2407 — To-do du jour avec checkboxes (infirmier)
 
-> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2266`
+> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2405`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2273` |
+| **ID** | `US-2407` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **8** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2070, US-2266 |
-| **US parente** | `US-2266` |
+| **Dépendances** | US-2070, US-2405 |
+| **US parente** | `US-2405` |
 
 ---
 
@@ -168,6 +168,6 @@ PATCH /api/dashboard/infirmier/todo/[id]/uncomplete
 
 ## 🔗 Liens
 
-- US parente : US-2266
+- US parente : US-2405
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

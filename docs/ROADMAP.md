@@ -9,12 +9,18 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 65   | 0       | 0           | **100%** |
-| **V1**   | 120   | 2    | 7       | 111         | **2%**  |
+| **MVP**  | 68    | 65   | 0       | 3           | **96%** |
+| **V1**   | 137   | 2    | 7       | 128         | **1%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 8     | 0    | 0       | 8           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **266** | **67** | **7**   | **192**     | **25%** |
+| **TOTAL**| **286** | **67** | **7**   | **212**     | **23%** |
+
+> ⚠️ +20 US ajoutées suite au commit `f6700a0` (dashboards). 16 backoffice
+> renumérotées `US-2400-2415` (conflit `US-2265-2280` ↔ batch audit déjà
+> livré PR #349/#352/#354). 4 patient-web (US-3356/3361/3362/3363) gardent
+> leur numéro. Les 5 patient-mobile (US-3355/3357-3360, 39 SP) restent
+> hors scope ce repo (iOS app séparée).
 
 > MVP scope original (63 US) → **63/63 = 100%** ✅. Avec Batch D1 (US-2265+US-2266) → **65/65**.
 > US-2267 (Migrations Prisma versionnées) ✅ DONE PR #352 — pre-prod blocker levé.
@@ -322,6 +328,52 @@
 | US-2164 | APM monitoring | NOT STARTED |
 | US-2165 | Error tracking | NOT STARTED |
 | US-2137 | Notification breach CNIL | NOT STARTED |
+
+### Groupe 9b — Dashboards backoffice (16 US — renumérotés depuis dashboard-us/)
+
+> Suite au commit `f6700a0`, 16 US dashboard ont été renumérotées de
+> US-2265-2280 vers **US-2400-2415** (la plage initiale collisionait avec
+> les US auth/Prisma déjà livrées en PR #349/#352/#354). Cf.
+> `docs/UserStory/dashboard-us/`.
+
+| US | Titre | Priorité | SP | Fichier |
+|----|-------|---------:|---:|---------|
+| US-2400 | Dashboard médecin (page principale) | **MVP** | 8 | `medecin/US-2400-…` |
+| US-2401 | Card urgences en cours (médecin) | **MVP** | 8 | `medecin/US-2401-…` |
+| US-2402 | Card RDV du jour (médecin) | MVP | 5 | `medecin/US-2402-…` |
+| US-2403 | Card patients à suivre (médecin) | V1 | 8 | `medecin/US-2403-…` |
+| US-2404 | Section KPI cabinet 14j (médecin) | V1 | 5 | `medecin/US-2404-…` |
+| US-2405 | Dashboard infirmier (page principale) | V1 | 8 | `infirmier/US-2405-…` |
+| US-2406 | KPI ma journée (infirmier) | V1 | 5 | `infirmier/US-2406-…` |
+| US-2407 | To-do du jour avec checkboxes (infirmier) | V1 | 8 | `infirmier/US-2407-…` |
+| US-2408 | Coordination équipe (infirmier) | V1 | 5 | `infirmier/US-2408-…` |
+| US-2409 | Relances en attente (infirmier) | V1 | 5 | `infirmier/US-2409-…` |
+| US-2410 | Dashboard administrateur (page principale) | V1 | 8 | `admin/US-2410-…` |
+| US-2411 | KPI activité cabinet (admin) | V1 | 5 | `admin/US-2411-…` |
+| US-2412 | Facturation à traiter (admin) | V1 | 5 | `admin/US-2412-…` |
+| US-2413 | Conformité RGPD (admin) | V1 | 8 | `admin/US-2413-…` |
+| US-2414 | Santé système 6 services (admin) | V1 | 5 | `admin/US-2414-…` |
+| US-2415 | Sidebar pilotage administration (admin) | V1 | 6 | `admin/US-2415-…` |
+
+> **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
+> démonstration produit (présentation cabinet médecin).
+> **V1 dashboard** : US-2403, US-2404, US-2405-2415 = 81 SP.
+
+### Groupe 9c — Dashboards patient web (4 US — backoffice serves these)
+
+> US patient-web sont incluses dans le scope backoffice car l'API patient
+> est servie par ce repo. Numérotation conservée (US-3355-3363 sans conflit).
+
+| US | Titre | Priorité | SP | Fichier |
+|----|-------|---------:|---:|---------|
+| US-3356 | Dashboard patient web (page principale) | V1 | 8 | `patient-web/US-3356-…` |
+| US-3361 | Section glycémie 24h détaillée (web) | V1 | 8 | `patient-web/US-3361-…` |
+| US-3362 | Section AGP 7 jours résumé (web) | V1 | 8 | `patient-web/US-3362-…` |
+| US-3363 | Panel actions rapides patient (web) | V1 | 5 | `patient-web/US-3363-…` |
+
+> US patient-mobile (US-3355, 3357-3360 = 39 SP) **hors scope** ce repo —
+> iOS app séparée (cf. CLAUDE.md "on ne developpe pas les applications
+> android et ios").
 
 ### Groupe 10 — Mirror V1 (20 US)
 
