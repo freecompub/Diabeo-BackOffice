@@ -98,15 +98,19 @@ describe("analyticsService.compare", () => {
     expect(result.delta.averageGlucoseMgdl!).toBeGreaterThan(0)
   })
 
-  it("flags captureWarning when a window is sub-sampled", async () => {
-    // 14d × 24h × 12 readings/hour = 4032 expected; 70% threshold ≈ 2822.
+  it("flags warning when a window is sub-sampled", async () => {
+    // 14d × 288 readings/day = 4032 expected; 70% threshold ≈ 2822.
     prismaMock.cgmEntry.findMany
       .mockResolvedValueOnce(Array.from({ length: 50 }, () => ({ valueGl: 1.2, timestamp: new Date() })) as any)
       .mockResolvedValueOnce(Array.from({ length: 3500 }, () => ({ valueGl: 1.2, timestamp: new Date() })) as any)
 
     const result = await analyticsService.compare(1, "14d", 1)
-    expect(result.recent.captureWarning).toBe("insufficientCgmCapture")
-    expect(result.previous.captureWarning).toBeUndefined()
+    expect(result.recent.warning).toBe("insufficientCgmCapture")
+    expect(result.previous.warning).toBeUndefined()
+  })
+
+  it("rejects period > MAX_COMPARE_PERIOD_DAYS (45)", async () => {
+    await expect(analyticsService.compare(1, "60d", 1)).rejects.toThrow(/45 days/)
   })
 
   it("returns null deltas when either window is empty", async () => {

@@ -10,19 +10,24 @@
 
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import type { AuditContext } from "./audit.service"
 import {
   mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation,
   computeTir, assessTirQuality, computeAgp, detectHypoEpisodes,
   cgmCaptureRate,
+  ANALYTICS_WARNINGS,
   DEFAULT_CGM_THRESHOLDS,
+  type AnalyticsWarning,
   type CgmThresholds,
 } from "@/lib/statistics"
-import type { AuditContext } from "./patient.service"
+import { decimalToNumber } from "@/lib/db/decimal"
 
 /** Warn if CGM capture rate below this % */
 const MIN_CAPTURE_RATE = 70 // percent
-/** Max query period for analytics (performance limit) */
+/** Max query period for single-window analytics (performance limit). */
 const MAX_PERIOD_DAYS = 90
+/** Max period per window for `compare` (two windows = 90d total, perf-safe). */
+const MAX_COMPARE_PERIOD_DAYS = 45
 
 /**
  * Parse period string (e.g., "14d" → 14 days).
@@ -59,9 +64,7 @@ async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
   })
 
   const withTimestamp = entries.map((e) => ({
-    valueGl: typeof e.valueGl === "object" && e.valueGl !== null && "toNumber" in e.valueGl
-      ? (e.valueGl as { toNumber(): number }).toNumber()
-      : Number(e.valueGl),
+    valueGl: decimalToNumber(e.valueGl),
     timestamp: e.timestamp,
   }))
   const values = withTimestamp.map((e) => e.valueGl)
@@ -144,6 +147,8 @@ export const analyticsService = {
         resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+
+        requestId: ctx?.requestId,
         metadata: { patientId, kind: "profile" },
       })
     }
@@ -151,7 +156,9 @@ export const analyticsService = {
     return {
       period: { from: from.toISOString(), to: to.toISOString(), days },
       captureRate: Math.round(captureRate * 10) / 10,
-      warning: captureRate < MIN_CAPTURE_RATE ? "insufficientCgmCapture" : undefined,
+      warning: (captureRate < MIN_CAPTURE_RATE
+        ? ANALYTICS_WARNINGS.INSUFFICIENT_CGM_CAPTURE
+        : undefined) as AnalyticsWarning | undefined,
       metrics: {
         averageGlucoseGl: Math.round(avgGl * 100) / 100,
         averageGlucoseMgdl: Math.round(avgMgdl),
@@ -195,6 +202,8 @@ export const analyticsService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: { patientId, kind: "tir" },
     })
 
@@ -236,6 +245,8 @@ export const analyticsService = {
         resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+
+        requestId: ctx?.requestId,
         metadata: { patientId, kind: "agp" },
       })
     }
@@ -276,6 +287,8 @@ export const analyticsService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: { patientId, kind: "hypo" },
     })
 
@@ -324,6 +337,8 @@ export const analyticsService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: { patientId, kind: "insulin" },
     })
 
@@ -408,6 +423,8 @@ export const analyticsService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: {
         patientId,
         kind: "heatmap",
@@ -439,6 +456,12 @@ export const analyticsService = {
     ctx?: AuditContext,
   ) {
     const days = parsePeriod(period)
+    if (days > MAX_COMPARE_PERIOD_DAYS) {
+      // Defense-in-depth: the route already enforces ≤ 45d via Zod, but a
+      // direct service call must not bypass the per-window cap (two windows
+      // would exceed the 90-day perf budget).
+      throw new Error(`Period must not exceed ${MAX_COMPARE_PERIOD_DAYS} days for compare`)
+    }
     const now = new Date()
     const recentTo = now
     const recentFrom = new Date(now.getTime() - days * 24 * 3600_000)
@@ -467,7 +490,9 @@ export const analyticsService = {
         to: periodTo.toISOString(),
         readingCount: entryCount,
         captureRate: Math.round(captureRate * 10) / 10,
-        captureWarning: captureRate < MIN_CAPTURE_RATE ? "insufficientCgmCapture" : undefined,
+        warning: (captureRate < MIN_CAPTURE_RATE
+          ? ANALYTICS_WARNINGS.INSUFFICIENT_CGM_CAPTURE
+          : undefined) as AnalyticsWarning | undefined,
         averageGlucoseMgdl: entryCount > 0 ? Math.round(avgMgdl) : null,
         gmi: entryCount > 0 ? Math.round(glucoseManagementIndicator(avgMgdl) * 10) / 10 : null,
         coefficientOfVariation:
@@ -503,6 +528,8 @@ export const analyticsService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: {
         patientId,
         kind: "compare",

@@ -29,6 +29,9 @@ export type AgpReportInput = {
   captureRate: number
   readingCount: number
   agp: AgpSlot[]
+  /** Optional clinical warning (e.g. "insufficientCgmCapture"). When set, a red
+   *  banner is rendered above the metrics block to signal data unreliability. */
+  warning?: string
 }
 
 const PAGE_W = 595 // A4 portrait, pt
@@ -182,6 +185,23 @@ export async function generateAgpPdf(input: AgpReportInput): Promise<Uint8Array>
     font,
     rgb(0.4, 0.4, 0.45),
   )
+
+  // Clinical-safety warning banner (red rectangle + bold text) when the
+  // caller flags data unreliability (e.g. capture rate < 70%). Drawn above
+  // the metrics so a clinician cannot miss it.
+  if (input.warning === "insufficientCgmCapture") {
+    cursor -= 24
+    page.drawRectangle({
+      x: MARGIN, y: cursor - 4, width: PAGE_W - 2 * MARGIN, height: 22,
+      color: rgb(0.94, 0.27, 0.27), opacity: 0.18,
+      borderColor: rgb(0.94, 0.27, 0.27), borderWidth: 0.8,
+    })
+    drawText(
+      page,
+      "Donnees CGM insuffisantes (capture < 70%) - interpretation non fiable",
+      MARGIN + 6, cursor + 4, 10, fontBold, rgb(0.78, 0.15, 0.15),
+    )
+  }
 
   // Metrics block
   cursor -= 30

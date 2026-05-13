@@ -21,7 +21,10 @@ export default defineConfig({
         "src/lib/proposal-algorithm.ts",
         "src/lib/conversions.ts",
         "src/lib/gdpr.ts",
+        "src/lib/consent.ts",
         "src/lib/analytics-scope.ts",
+        "src/lib/csv/**",
+        "src/lib/db/**",
         "src/lib/pdf/**",
       ],
       exclude: [

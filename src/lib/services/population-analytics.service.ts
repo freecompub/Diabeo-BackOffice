@@ -28,6 +28,7 @@ import { Pathology } from "@prisma/client"
 import pLimit from "p-limit"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import type { AuditContext } from "./audit.service"
 import {
   mean,
   glToMgdl,
@@ -39,7 +40,7 @@ import {
   type CgmThresholds,
   type TirResult,
 } from "@/lib/statistics"
-import type { AuditContext } from "./patient.service"
+import { decimalToNumber } from "@/lib/db/decimal"
 
 /** Capture-rate threshold below which the patient is excluded from population metrics. */
 const MIN_CAPTURE_RATE = 30
@@ -48,8 +49,23 @@ const DEFAULT_WINDOW_DAYS = 14
 export const MAX_WINDOW_DAYS = 30
 /** Hard cap on the number of patients aggregated per request — protects DB pool. */
 export const MAX_POPULATION_PATIENTS = 2000
-/** Max concurrent CGM queries against the DB. */
-const DB_CONCURRENCY = 8
+/** Max concurrent CGM queries against the DB. Lower than the default Prisma
+ *  pool size (10) minus 2 reserved (loadThresholds + outer Promise.all). */
+const DB_CONCURRENCY = 4
+
+/**
+ * Resource-limit error — distinct class so routes can map to 413 without
+ * string-prefix matching on `Error.message`.
+ */
+export class PopulationTooLargeError extends Error {
+  readonly cap = MAX_POPULATION_PATIENTS
+  readonly observed: number
+  constructor(observed: number) {
+    super(`populationTooLarge: ${observed} > ${MAX_POPULATION_PATIENTS}`)
+    this.name = "PopulationTooLargeError"
+    this.observed = observed
+  }
+}
 
 export type PopulationPatientMetric = {
   patientId: number
@@ -121,10 +137,10 @@ async function loadThresholds(patientIds: number[]): Promise<Map<number, CgmThre
   const map = new Map<number, CgmThresholds>()
   for (const r of rows) {
     map.set(r.patientId, {
-      veryLow: Number(r.veryLow),
-      low: Number(r.low),
-      ok: Number(r.ok),
-      high: Number(r.high),
+      veryLow: decimalToNumber(r.veryLow),
+      low: decimalToNumber(r.low),
+      ok: decimalToNumber(r.ok),
+      high: decimalToNumber(r.high),
     })
   }
   return map
@@ -149,11 +165,7 @@ async function computePatientMetric(
     select: { valueGl: true, timestamp: true },
   })
 
-  const values = entries.map((e) =>
-    typeof e.valueGl === "object" && e.valueGl !== null && "toNumber" in e.valueGl
-      ? (e.valueGl as { toNumber(): number }).toNumber()
-      : Number(e.valueGl),
-  )
+  const values = entries.map((e) => decimalToNumber(e.valueGl))
   const captureRate = cgmCaptureRate(entries.length, windowDays)
   const activeLast24h = entries.some((e) => e.timestamp >= twentyFourHoursAgo)
 
@@ -206,18 +218,19 @@ async function resolvePopulation(scope: PopulationScope) {
     baseWhere.id = { in: scope }
   }
 
+  // `take: MAX+1` bounds the DB row scan even before the in-memory throw.
+  // Avoids loading 50k rows on a huge cabinet just to reject them.
   const patients = await prisma.patient.findMany({
     where: {
       ...baseWhere,
       user: { privacySettings: { gdprConsent: true } },
     },
     select: { id: true, pathology: true },
+    take: MAX_POPULATION_PATIENTS + 1,
   })
 
   if (patients.length > MAX_POPULATION_PATIENTS) {
-    throw new Error(
-      `populationTooLarge: ${patients.length} > ${MAX_POPULATION_PATIENTS}`,
-    )
+    throw new PopulationTooLargeError(patients.length)
   }
   return patients
 }
@@ -281,7 +294,11 @@ export const populationAnalyticsService = {
 
     const sufficient = metrics.filter(isSufficient)
     const tirValues = sufficient.map((m) => m.tir!.inRange)
-    const gmiValues = sufficient.map((m) => m.gmi!).filter((g) => g !== null) as number[]
+    // `isSufficient` guarantees `tir !== null` but not `gmi !== null`, so we
+    // narrow with a real predicate instead of a non-null assertion.
+    const gmiValues = sufficient
+      .map((m) => m.gmi)
+      .filter((g): g is number => g !== null)
 
     await auditService.log({
       userId: auditUserId,
@@ -290,6 +307,8 @@ export const populationAnalyticsService = {
       resourceId: "population",
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: { kind: "population", patientCount: metrics.length, windowDays: window },
     })
 
@@ -342,6 +361,8 @@ export const populationAnalyticsService = {
       resourceId: "quality",
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: { kind: "quality", patientCount: metrics.length, windowDays: window },
     })
 
@@ -367,7 +388,9 @@ export const populationAnalyticsService = {
     const metrics = await computeMetricsBatch(scope, window)
 
     const cohorts: CohortBreakdown["cohorts"] = []
-    for (const path of [Pathology.DT1, Pathology.DT2, Pathology.GD]) {
+    // Enumerate via `Object.values` so future Pathology enum additions are
+    // picked up automatically (e.g. LADA, MODY).
+    for (const path of Object.values(Pathology)) {
       const subset = metrics.filter((m) => m.pathology === path)
       const sufficient = subset.filter(isSufficient)
       cohorts.push({
@@ -388,6 +411,8 @@ export const populationAnalyticsService = {
       resourceId: "cohorts",
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+
+      requestId: ctx?.requestId,
       metadata: { kind: "cohorts", patientCount: metrics.length, windowDays: window },
     })
 

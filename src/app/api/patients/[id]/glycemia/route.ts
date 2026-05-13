@@ -2,11 +2,15 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { prisma } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { requireGdprConsent } from "@/lib/gdpr"
+import { patientShareConsent } from "@/lib/consent"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
+import { decimalToNumber } from "@/lib/db/decimal"
+import type { GlycemiaEntry } from "@prisma/client"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -39,31 +43,50 @@ const glycemiaSchema = z.object({
   { message: "atLeastOneMeasurementRequired" },
 )
 
+type SerializedGlycemiaEntry = Omit<
+  GlycemiaEntry,
+  "glycemiaGl" | "glycemiaMgdl" | "weight" | "hba1c" | "ketones" | "bolus" | "bolusCorr" | "basal"
+> & {
+  glycemiaGl: number | null
+  glycemiaMgdl: number | null
+  weight: number | null
+  hba1c: number | null
+  ketones: number | null
+  bolus: number | null
+  bolusCorr: number | null
+  basal: number | null
+  mealDescription: string | null
+}
+
 /**
- * Serialize a GlycemiaEntry for JSON response:
- *  - Decimal fields → number (lossy for sub-double precision but fine clinically)
- *  - mealDescription ciphertext → plaintext (we never leak base64 to the API)
+ * Type-preserving serialization of a `GlycemiaEntry` for JSON response:
+ *  - Decimal fields are coerced via `decimalToNumber` (no double-cast through
+ *    `Record<string, unknown>`).
+ *  - `mealDescription` ciphertext is decrypted (never leak base64).
  */
-function serializeEntry(entry: Record<string, unknown>) {
-  const decimals = ["glycemiaGl", "glycemiaMgdl", "weight", "hba1c", "ketones", "bolus", "bolusCorr", "basal"]
-  const result = { ...entry }
-  for (const key of decimals) {
-    if (result[key] != null && typeof result[key] === "object") {
-      result[key] = Number(result[key])
-    }
+function serializeEntry(entry: GlycemiaEntry): SerializedGlycemiaEntry {
+  return {
+    ...entry,
+    glycemiaGl: entry.glycemiaGl === null ? null : decimalToNumber(entry.glycemiaGl),
+    glycemiaMgdl: entry.glycemiaMgdl === null ? null : decimalToNumber(entry.glycemiaMgdl),
+    weight: entry.weight === null ? null : decimalToNumber(entry.weight),
+    hba1c: entry.hba1c === null ? null : decimalToNumber(entry.hba1c),
+    ketones: entry.ketones === null ? null : decimalToNumber(entry.ketones),
+    bolus: entry.bolus === null ? null : decimalToNumber(entry.bolus),
+    bolusCorr: entry.bolusCorr === null ? null : decimalToNumber(entry.bolusCorr),
+    basal: entry.basal === null ? null : decimalToNumber(entry.basal),
+    mealDescription: entry.mealDescription === null
+      ? null
+      : safeDecryptField(entry.mealDescription),
   }
-  if (typeof result.mealDescription === "string") {
-    result.mealDescription = safeDecryptField(result.mealDescription)
-  }
-  return result
 }
 
 /**
  * GET /api/patients/:id/glycemia?from=&to= — BGM/capillary entries list.
  *
- * US-2032 — Glycémies capillaires (BGM). Backoffice-side read endpoint for
- * the patient detail "BGM" tab; complements the bulk `/api/userdata` route
- * with a focused, per-patient read.
+ * US-2032 — Glycémies capillaires. Decrypts `mealDescription` server-side
+ * before returning. Rate-limited via `patientDataRead`. Enforces patient's
+ * own `gdprConsent` + `shareWithProviders` flags via `patientShareConsent`.
  */
 export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
@@ -71,33 +94,34 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
+    const ctx = extractRequestContext(req)
+
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
+    if (!rl.allowed) {
+      return NextResponse.json(
+        { error: "rateLimitExceeded" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+      )
+    }
 
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    const ctx = extractRequestContext(req)
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
-      await auditService.log({
-        userId: user.id, action: "UNAUTHORIZED", resource: "GLYCEMIA_ENTRY",
-        resourceId: String(patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent,
+      await auditService.accessDenied({
+        userId: user.id, resource: "GLYCEMIA_ENTRY", resourceId: String(patientId),
+        ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
         metadata: { patientId, endpoint: "list" },
       })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    // Mirror the POST policy — when sharing is off, do not expose entries.
-    const patient = await prisma.patient.findFirst({
-      where: { id: patientId, deletedAt: null }, select: { userId: true },
-    })
-    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-    const privacy = await prisma.userPrivacySettings.findUnique({
-      where: { userId: patient.userId },
-    })
-    if (privacy && !privacy.shareWithProviders) {
-      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
+    const consent = await patientShareConsent(patientId)
+    if (!consent.ok) {
+      return NextResponse.json({ error: consent.error }, { status: consent.status })
     }
 
     const parsed = listQuerySchema.safeParse(
@@ -113,7 +137,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const entries = await glycemiaService.getGlycemiaEntries(
       patientId, parsed.data.from, parsed.data.to, user.id, ctx,
     )
-    return NextResponse.json(entries.map((e) => serializeEntry(e as unknown as Record<string, unknown>)))
+    return NextResponse.json(entries.map(serializeEntry))
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"
@@ -129,24 +153,26 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const { id } = await params
     if (!/^\d+$/.test(id)) return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
     const patientId = parseInt(id, 10)
-
     const ctx = extractRequestContext(req)
+
+    // Parity with GET — pro caller must have accepted the GDPR policy too.
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
+
     const allowed = await canAccessPatient(user.id, user.role, patientId)
     if (!allowed) {
-      await auditService.log({
-        userId: user.id, action: "UNAUTHORIZED", resource: "GLYCEMIA_ENTRY",
-        resourceId: String(patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent,
+      await auditService.accessDenied({
+        userId: user.id, resource: "GLYCEMIA_ENTRY", resourceId: String(patientId),
+        ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
       })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    // Check shareWithProviders
-    const patient = await prisma.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { userId: true } })
-    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
-    const privacy = await prisma.userPrivacySettings.findUnique({ where: { userId: patient.userId } })
-    if (privacy && !privacy.shareWithProviders) {
-      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
+    const consent = await patientShareConsent(patientId)
+    if (!consent.ok) {
+      return NextResponse.json({ error: consent.error }, { status: consent.status })
     }
 
     const body = await req.json()
@@ -183,13 +209,14 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
         resourceId: String(created.id),
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
         metadata: { patientId, isProfessional: true },
       })
 
       return created
     })
 
-    return NextResponse.json(serializeEntry(entry as unknown as Record<string, unknown>), { status: 201 })
+    return NextResponse.json(serializeEntry(entry), { status: 201 })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"

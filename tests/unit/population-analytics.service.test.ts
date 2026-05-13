@@ -31,6 +31,7 @@ import { prismaMock } from "../helpers/prisma-mock"
 import {
   populationAnalyticsService,
   MAX_POPULATION_PATIENTS,
+  PopulationTooLargeError,
 } from "@/lib/services/population-analytics.service"
 import { Pathology } from "@prisma/client"
 
@@ -91,7 +92,7 @@ describe("populationAnalyticsService", () => {
       expect(result.averageTimeInRange).not.toBeNull()
     })
 
-    it("throws populationTooLarge when result exceeds the cap", async () => {
+    it("throws PopulationTooLargeError when result exceeds the cap", async () => {
       const oversized = Array.from({ length: MAX_POPULATION_PATIENTS + 1 }, (_, i) => ({
         id: i + 1,
         pathology: Pathology.DT1,
@@ -99,7 +100,14 @@ describe("populationAnalyticsService", () => {
       prismaMock.patient.findMany.mockResolvedValue(oversized as any)
       await expect(
         populationAnalyticsService.cabinetKpis(null, 14, 1),
-      ).rejects.toThrow(/populationTooLarge/)
+      ).rejects.toBeInstanceOf(PopulationTooLargeError)
+    })
+
+    it("applies `take: MAX+1` to bound DB row scan", async () => {
+      prismaMock.patient.findMany.mockResolvedValue([] as any)
+      await populationAnalyticsService.cabinetKpis(null, 14, 1)
+      const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+      expect(call.take).toBe(MAX_POPULATION_PATIENTS + 1)
     })
 
     it("supports ADMIN scope=null (no IN-clause) by querying via where=undefined", async () => {
