@@ -13,7 +13,7 @@
 | **Priorité** | **V1** |
 | **Story points** | **8** |
 | **Persona** | ADMIN |
-| **Dépendances** | US-2170 (facturation), US-2410 |
+| **Dépendances** | US-2107 (Tableau revenus — Groupe 7 Facturation), US-2410 |
 | **US parente** | `US-2410` |
 
 ---
@@ -133,6 +133,6 @@ GET /api/dashboard/admin/billing
 ## 🔗 Liens
 
 - US parente : US-2410
-- US liée : US-2170
+- US liée : US-2107 (et le Groupe 7 Facturation au complet : US-2102 à US-2110)
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

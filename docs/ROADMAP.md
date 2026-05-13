@@ -10,11 +10,14 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 137   | 2    | 7       | 128         | **1%**  |
+| **V1**   | 143   | 2    | 7       | 134         | **1%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
-| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
-| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **286** | **67** | **7**   | **212**     | **23%** |
+| **V3**   | 9     | 0    | 0       | 9           | **0%**  |
+| **V4**   | 16    | 0    | 0       | 16          | **0%**  |
+| **TOTAL**| **294** | **67** | **7**   | **220**     | **23%** |
+> Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
+> RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
+> Total : 286 → 294 (+8).
 
 > ⚠️ +20 US ajoutées suite au commit `f6700a0` (dashboards). 16 backoffice
 > renumérotées `US-2400-2415` (conflit `US-2265-2280` ↔ batch audit déjà
@@ -329,6 +332,32 @@
 | US-2165 | Error tracking | NOT STARTED |
 | US-2137 | Notification breach CNIL | NOT STARTED |
 
+### Groupe 8 — Gestion des RDV (7 US, 49 SP — décision session Samir 2026-05-13 Q7)
+
+> Module RDV complet, prérequis des dashboards US-2402 (médecin), US-2406 et
+> US-2407 (infirmier). IDs frais US-2500-2506 pour éviter collision avec
+> US-2070 "Planification suivi" PARTIAL et US-2071 "Templates consultation"
+> NOT STARTED qui ont une sémantique différente.
+
+| US | Titre | SP | Notes |
+|----|-------|---:|-------|
+| US-2500 | Calendrier RDV (jour/semaine/mois + drag&drop) | 13 | 3 vues commutables, drag&drop pour reprogrammer |
+| US-2501 | Détail RDV (CRUD + note médicale chiffrée AES-256-GCM) | 8 | Champs : date+heure, patient, type, durée, note, motif, lieu (présentiel/visio) |
+| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | Patient choisit son canal préféré dans `UserNotifPreferences` |
+| US-2503 | Annulation / report bilatéral | 5 | Patient ou médecin, délai 24h sans pénalité, si annulation médecin → proposition alternative |
+| US-2504 | Plages indisponibles médecin | 5 | Congés, jours fériés FR/DZ, créneaux bloqués manuellement |
+| US-2505 | Config prise de RDV (auto vs validation manuelle) | 5 | Toggle par médecin lors de la config de son calendrier |
+| US-2506 | Option SMS payante cabinet | 5 | Provider SMS (Twilio/OVH/autre) + activation cabinet via admin UI |
+
+> **Dépendances** :
+>  - US-2074 (Email Resend, DONE) pour rappels email
+>  - US-2073 (Push FCM, DONE) pour rappels J-0
+>  - US-2002 (MFA) + US-2012 (RBAC) pour CRUD RDV
+>  - US-2079 (Préférences notifs, DONE) pour le choix canal patient
+>
+> **Téléconsultation (Q7.5)** : reportée — pas d'intégration visio MVP, à voir
+> plus tard avec la décision ADR existante du domaine 05.
+
 ### Groupe 9b — Dashboards backoffice (16 US — renumérotés depuis dashboard-us/)
 
 > Suite au commit `f6700a0`, 16 US dashboard ont été renumérotées de
@@ -349,15 +378,23 @@
 | US-2408 | Coordination équipe (infirmier) | V1 | 5 | `infirmier/US-2408-…` |
 | US-2409 | Relances en attente (infirmier) | V1 | 5 | `infirmier/US-2409-…` |
 | US-2410 | Dashboard administrateur (page principale) | V1 | 8 | `admin/US-2410-…` |
-| US-2411 | KPI activité cabinet (admin) | V1 | 5 | `admin/US-2411-…` |
-| US-2412 | Facturation à traiter (admin) | V1 | 5 | `admin/US-2412-…` |
-| US-2413 | Conformité RGPD (admin) | V1 | 8 | `admin/US-2413-…` |
-| US-2414 | Santé système 6 services (admin) | V1 | 5 | `admin/US-2414-…` |
+| US-2411 | KPI activité cabinet (admin) | V1 → ⏸️ PAUSED | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — session Samir 2026-05-13 |
+| US-2412 | Facturation à traiter (admin) | V1 | 5 | dep remappée US-2170 → **US-2107** (Groupe 7 Facturation) |
+| US-2413 | Conformité RGPD (admin) | V1 → ⏸️ PAUSED | 8 | deps US-2190/2191/2192 absentes du ROADMAP — session Samir 2026-05-13 |
+| ~~US-2414~~ | ~~Santé système 6 services (admin)~~ | ❌ SUPPRIMÉE | — | Q6 session Samir 2026-05-13 — duplicate (`/api/health` couvre déjà) |
 | US-2415 | Sidebar pilotage administration (admin) | V1 | 6 | `admin/US-2415-…` |
 
 > **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
 > démonstration produit (présentation cabinet médecin).
 > **V1 dashboard** : US-2403, US-2404, US-2405-2415 = 81 SP.
+>
+> **Décisions archi temps réel (session Samir 2026-05-13)** :
+>  - **US-2401 (urgences)** : **polling 30s** — WebSocket reporté V2/V3.
+>    Le canal alerte instantané reste US-2230 (push FCM mobile, DONE).
+>  - **US-2076 / US-2408 (messagerie)** : **approche combinée A+B** :
+>    WebSocket pendant l'écran chat + polling 60s pour le badge unread
+>    + FCM push (US-2073 DONE) pour mobile/offline. Pattern Slack/WhatsApp.
+>    US-2076 SP bumpé 1 → 13 pour couvrir l'infra WS chat-only.
 
 ### Groupe 9c — Dashboards patient web (4 US — backoffice serves these)
 
@@ -366,10 +403,10 @@
 
 | US | Titre | Priorité | SP | Fichier |
 |----|-------|---------:|---:|---------|
-| US-3356 | Dashboard patient web (page principale) | V1 | 8 | `patient-web/US-3356-…` |
-| US-3361 | Section glycémie 24h détaillée (web) | V1 | 8 | `patient-web/US-3361-…` |
-| US-3362 | Section AGP 7 jours résumé (web) | V1 | 8 | `patient-web/US-3362-…` |
-| US-3363 | Panel actions rapides patient (web) | V1 | 5 | `patient-web/US-3363-…` |
+| US-3356 | Dashboard patient web (page principale) | V1 → ⏸️ PAUSED | 8 | Q10 session Samir 2026-05-13 — Auth patient web à concevoir |
+| US-3361 | Section glycémie 24h détaillée (web) | V1 → ⏸️ PAUSED | 8 | idem |
+| US-3362 | Section AGP 7 jours résumé (web) | V1 → ⏸️ PAUSED | 8 | idem |
+| US-3363 | Panel actions rapides patient (web) | V1 → ⏸️ PAUSED | 5 | idem |
 
 > US patient-mobile (US-3355, 3357-3360 = 39 SP) **hors scope** ce repo —
 > iOS app séparée (cf. CLAUDE.md "on ne developpe pas les applications
@@ -428,10 +465,11 @@
 
 ---
 
-## V3 — 8 US
+## V3 — 9 US
 
 | US | Titre |
 |----|-------|
+| US-2150 | Analytics cabinet (agrégats KPI multi-patients) — décision session Samir 2026-05-13 |
 | US-2155 | AI prédiction risque hypo |
 | US-2156 | AI suggestions ajustement |
 | US-2162 | Évaluation post-programme ETP |
@@ -443,7 +481,7 @@
 
 ---
 
-## V4 — 15 US
+## V4 — 16 US
 
 | US | Titre |
 |----|-------|
@@ -454,6 +492,7 @@
 | US-2172+ | LAP certifié HAS (module prescription complet) |
 | US-2192+ | Signatures eIDAS qualifiées |
 | US-2206+ | Transmission e-prescription nationale |
+| US-2800 | Algorithme détection patients à risque (TIR critique, alertes répétées, gap CGM, etc.) — décision session Samir 2026-05-13 |
 
 ---
 

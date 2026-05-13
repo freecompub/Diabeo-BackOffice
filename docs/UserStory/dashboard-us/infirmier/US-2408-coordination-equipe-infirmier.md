@@ -13,7 +13,7 @@
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2160 (messagerie interne équipe), US-2405 |
+| **Dépendances** | US-2076 (messagerie sécurisée — archi WS chat-only + polling 60s badge + FCM offline, décision session Samir 2026-05-13), US-2073 (Push FCM, DONE), US-2405 |
 | **US parente** | `US-2405` |
 
 ---
@@ -135,6 +135,6 @@ GET /api/team/messages?recipient=me&limit=5
 ## 🔗 Liens
 
 - US parente : US-2405
-- US liée : US-2160
+- US liée : US-2076
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

@@ -1,6 +1,11 @@
 # US-2413 — Conformité & RGPD (admin)
 
 > 📌 **admin** · Priorité **V1** · Satellite de `US-2410`
+>
+> ⏸️ **PAUSED** (session Samir 2026-05-13) — Les dépendances `US-2190` (audit HDS),
+> `US-2191` (gestion demandes RGPD), `US-2192` (notifs CNIL) ne sont pas
+> définies dans le ROADMAP. À cadrer avant de planifier l'implémentation.
+> Note : backups (`US-2193`) existe via `US-2151` (DONE PR #350).
 
 ---
 

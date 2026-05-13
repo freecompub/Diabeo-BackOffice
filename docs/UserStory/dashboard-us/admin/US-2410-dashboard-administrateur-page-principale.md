@@ -13,7 +13,7 @@
 | **Priorité** | **V1** |
 | **Story points** | **8** |
 | **Persona** | ADMIN (🖥️ Web ≥1024px) |
-| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC ADMIN), US-2411 (KPI activité), US-2412 (facturation), US-2413 (conformité), US-2414 (santé système), US-2415 (sidebar admin) |
+| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC ADMIN), US-2411 (KPI activité), US-2412 (facturation), US-2413 (conformité), US-2415 (sidebar admin) |
 
 ---
 
@@ -43,9 +43,6 @@ Cf prototype interactif « Dashboard administrateur » et écran SCR-117 (à ajo
 - Statuts : Audit HDS, Demandes RGPD, Backup, Notifs CNIL
 
 ### Zone basse : Santé système 24h
-- 6 services monitorés (API, DB, MinIO, FCM, Email, CGM sync)
-- Source : US-2414
-
 ### Sidebar dédiée admin
 - Source : US-2415
 - 2 sections : Pilotage + Administration
@@ -180,6 +177,6 @@ WS /api/admin/system-health/stream
 
 - Cartographie écran : SCR-117 (Dashboard administrateur — à ajouter)
 - Prototype : Dashboard administrateur
-- US satellites : US-2411, US-2412, US-2413, US-2414, US-2415
+- US satellites : US-2411, US-2412, US-2413, US-2415
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*
