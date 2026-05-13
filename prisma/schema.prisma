@@ -1950,7 +1950,7 @@ model AdjustmentProposalActualization {
   proposalId  String    @unique @map("proposal_id")
   effectiveAt DateTime? @map("effective_at") @db.Timestamptz()
   /// Source de vérification : "device-sync" / "manual-ps" / "patient-confirmed".
-  verifiedVia String    @db.VarChar(40)
+  verifiedVia String    @map("verified_via") @db.VarChar(40)
   /// PS ayant confirmé (NULL si vérification auto via sync device).
   verifiedBy  Int?      @map("verified_by")
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
