@@ -348,6 +348,10 @@ model User {
   createdPatientGroups           PatientGroup[]                    @relation("PatientGroupCreator")
   assignedPatientGroups          PatientGroupAssignment[]          @relation("PatientGroupAssigner")
   invoicedTeleconsultActes       TeleconsultationActe[]            @relation("TeleconsultInvoicer")
+  // Groupe 5 — Insuline & Repas
+  createdInsulinAdjustmentTemplates InsulinAdjustmentTemplate[]    @relation("InsulinAdjustmentTemplateCreator")
+  validatedDiabetesEvents        DiabetesEvent[]                   @relation("DiabetesEventValidator")
+  uploadedMealPhotos             MealPhoto[]                       @relation("MealPhotoUploader")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -531,6 +535,8 @@ model Patient {
   groupAssignments      PatientGroupAssignment[]
   /// US-2065 — Accusés patient sur AdjustmentProposal (review PR #390 H10).
   proposalAcks          AdjustmentProposalAck[]
+  /// US-2057 — Photos repas (review PR #391 H5 FK explicite).
+  mealPhotos            MealPhoto[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1159,12 +1165,21 @@ model DiabetesEvent {
   systolicPressure  Int?     @map("systolic_pressure") @db.SmallInt
   diastolicPressure Int?     @map("diastolic_pressure") @db.SmallInt
   comment           String?
+  /// US-2053 — Validation soignant. `validatedBy` = User.id (NURSE+), null
+  /// si l'event n'a pas (encore) été revu par un PS.
+  validatedAt       DateTime? @map("validated_at") @db.Timestamptz()
+  validatedBy       Int?      @map("validated_by")
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
-  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  validator User?   @relation("DiabetesEventValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
+  /// US-2057 — Photos repas attachées à un event de type insulinMeal.
+  mealPhotos MealPhoto[]
 
   @@index([patientId, eventDate])
+  /// US-2053 — index pour le listing "meals à valider" (validatedAt = null).
+  @@index([patientId, validatedAt])
   @@map("diabetes_events")
 }
 
@@ -1208,6 +1223,9 @@ model PumpEvent {
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
   @@index([patientId, timestamp])
+  /// Review PR #391 C4 — dédup cross-batch sur `bulkSync` (réimport CSV).
+  /// Combiné avec `skipDuplicates: true` côté Prisma → idempotence garantie.
+  @@unique([patientId, timestamp, eventType])
   @@map("pump_events")
 }
 
@@ -1334,6 +1352,8 @@ model HealthcareService {
   messageTemplates MessageTemplate[]
   /// US-2088 — Groupes patients (cohortes).
   patientGroups   PatientGroup[]
+  /// US-2050 — Templates d'ajustement insuline (cabinet-scoped).
+  insulinAdjustmentTemplates InsulinAdjustmentTemplate[]
 
   @@unique([name, establishment])
   @@index([type])
@@ -2118,4 +2138,87 @@ model TeleconsultationActe {
 
   @@index([invoicedAt])
   @@map("teleconsultation_actes")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 14. DOMAINE INSULINE & REPAS — Groupe 5 (3 tables)
+// ═══════════════════════════════════════════════════════════════
+
+/// US-2050 — Templates d'ajustement d'insuline (cabinet-scoped).
+/// Réutilisable par profil patient (DT1/DT2/GD). `adjustments` est un JSONB
+/// structuré : { parameter: "BASAL"|"ISF"|"ICR", deltaPct: -10, slotStart: 6, ... }.
+model InsulinAdjustmentTemplate {
+  id          Int      @id @default(autoincrement())
+  serviceId   Int      @map("service_id")
+  title       String   @db.VarChar(120)
+  pathology   Pathology?
+  parameter   String   @db.VarChar(20) // BASAL | ISF | ICR
+  adjustments Json
+  createdBy   Int?     @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  service HealthcareService @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  creator User?             @relation("InsulinAdjustmentTemplateCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([serviceId, title])
+  /// Review PR #391 M9 — l'index sur `serviceId` seul est redondant avec
+  /// l'unique `(serviceId, title)` : le préfixe sert déjà les `WHERE serviceId = ?`.
+  @@map("insulin_adjustment_templates")
+}
+
+/// US-2054 — Référentiel CIQUAL (ANSES). Aliments avec macronutriments par 100g.
+/// `ciqualCode` est l'identifiant officiel ANSES (ex: "20051" = "Riz blanc cru").
+/// Importé via cron seed depuis le fichier CSV public (license open data ANSES).
+/// `nameHmac` permet la recherche exact-match déterministe sans full-text index
+/// sur le nom (qui n'est pas chiffré ici — données publiques — mais l'index
+/// trigram est lourd pour 3000+ lignes).
+model FoodItem {
+  id             Int      @id @default(autoincrement())
+  ciqualCode     String   @unique @map("ciqual_code") @db.VarChar(20)
+  name           String   @db.VarChar(255)
+  /// HMAC-SHA256 lowercase(name) pour lookup exact rapide.
+  nameHmac       String   @map("name_hmac") @db.Char(64)
+  /// Macronutriments par 100g.
+  carbsPer100g   Decimal? @map("carbs_per_100g") @db.Decimal(6, 2)
+  proteinPer100g Decimal? @map("protein_per_100g") @db.Decimal(6, 2)
+  fatPer100g     Decimal? @map("fat_per_100g") @db.Decimal(6, 2)
+  energyKcal100g Decimal? @map("energy_kcal_100g") @db.Decimal(6, 2)
+  /// Catégorie CIQUAL (ex: "Fruits", "Produits céréaliers").
+  category       String?  @db.VarChar(100)
+  /// Source/version (ex: "ciqual-2020", "manual-curation").
+  source         String   @default("ciqual") @db.VarChar(40)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([nameHmac])
+  @@index([category])
+  @@map("food_items")
+}
+
+/// US-2057 — Photos repas attachées à un DiabetesEvent (type insulinMeal).
+/// `s3Key` opaque — le fichier est chiffré côté OVH S3 (SSE-S3) + scan ClamAV
+/// avant l'insertion. Pas de plaintext de l'image en base. Métadonnées : mime,
+/// taille, dimensions.
+model MealPhoto {
+  id        Int      @id @default(autoincrement())
+  eventId   String   @map("event_id")
+  patientId Int      @map("patient_id")
+  s3Key     String   @map("s3_key") @db.VarChar(500)
+  mimeType  String   @map("mime_type") @db.VarChar(100)
+  sizeBytes Int      @map("size_bytes")
+  width     Int?
+  height    Int?
+  uploadedBy Int?    @map("uploaded_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  event     DiabetesEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  /// Review PR #391 H5 — FK explicite vers Patient pour garantir l'intégrité
+  /// même en cas d'écriture SQL directe (la cascade event→patient seule ne
+  /// protégeait pas un éventuel re-routage de l'event).
+  patient   Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploader  User?         @relation("MealPhotoUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+
+  @@index([eventId])
+  @@index([patientId, createdAt])
+  @@map("meal_photos")
 }

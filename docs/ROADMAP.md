@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 141   | 25   | 2       | 114         | **18%** |
+| **V1**   | 141   | 30   | 1       | 110         | **21%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **90** | **3**   | **199**     | **31%** |
+| **TOTAL**| **292** | **95** | **2**   | **195**     | **33%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -285,15 +285,19 @@ Total V1 effectif Groupe 3 : 12 US (vs 15 affiché initialement).
 | US-2092 | Désactivation / révocation | PARTIAL |
 | US-2093 | Historique des dispositifs | NOT STARTED |
 
-### Groupe 5 — Insuline & Repas (6 US)
+### Groupe 5 — Insuline & Repas (5 US, V1 100% DONE)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2043 | Données pompe à insuline | PARTIAL |
-| US-2050 | Templates ajustement | NOT STARTED |
-| US-2053 | Saisie repas patient | NOT STARTED |
-| US-2054 | Bibliothèque aliments France | NOT STARTED |
-| US-2057 | Photos repas | NOT STARTED |
+| US-2043 | Données pompe à insuline | DONE (PR #391 — bulkSync + dedup cross-batch) |
+| US-2050 | Templates ajustement insuline | DONE (PR #391 — cabinet-scoped BASAL/ISF/ICR) |
+| US-2053 | Saisie repas patient (validation soignant) | DONE (PR #391 — DiabetesEvent.validatedAt) |
+| US-2054 | Bibliothèque aliments CIQUAL ANSES | DONE (PR #391 — HMAC search + NFC norm) |
+| US-2057 | Photos repas | DONE (PR #391 — S3 + ClamAV + EXIF strip via sharp) |
+
+**Groupe 5 livré intégralement** — PR #391 mergée le 2026-05-13. Review 4-agents
+identifié 41 findings (4 Critical EXIF/TOCTOU/bulkSync/tsc + 10 High RGPD/HDS + 15 Medium + 12 Low)
+tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + partial index).
 
 ### Groupe 6 — Activité physique (3 US)
 

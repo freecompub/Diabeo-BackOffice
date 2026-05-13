@@ -141,6 +141,12 @@ export type AuditResource =
   | "PATIENT_GROUP_ASSIGNMENT"
   /** US-2072 — Teleconsultation billing acte. */
   | "TELECONSULT_ACTE"
+  /** US-2050 — Insulin adjustment template (cabinet-scoped). */
+  | "INSULIN_ADJUSTMENT_TEMPLATE"
+  /** US-2054 — CIQUAL food item lookup / search. */
+  | "FOOD_ITEM"
+  /** US-2057 — Meal photo (S3 reference, patient-scoped). */
+  | "MEAL_PHOTO"
 
 /**
  * Audit log entry — parameters for logging an action.
