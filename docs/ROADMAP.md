@@ -12,9 +12,9 @@
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
 | **V1**   | 137   | 2    | 7       | 128         | **1%**  |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
-| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
+| **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **286** | **67** | **7**   | **212**     | **23%** |
+| **TOTAL**| **287** | **67** | **7**   | **213**     | **23%** |
 
 > ⚠️ +20 US ajoutées suite au commit `f6700a0` (dashboards). 16 backoffice
 > renumérotées `US-2400-2415` (conflit `US-2265-2280` ↔ batch audit déjà
@@ -349,10 +349,10 @@
 | US-2408 | Coordination équipe (infirmier) | V1 | 5 | `infirmier/US-2408-…` |
 | US-2409 | Relances en attente (infirmier) | V1 | 5 | `infirmier/US-2409-…` |
 | US-2410 | Dashboard administrateur (page principale) | V1 | 8 | `admin/US-2410-…` |
-| US-2411 | KPI activité cabinet (admin) | V1 | 5 | `admin/US-2411-…` |
-| US-2412 | Facturation à traiter (admin) | V1 | 5 | `admin/US-2412-…` |
-| US-2413 | Conformité RGPD (admin) | V1 | 8 | `admin/US-2413-…` |
-| US-2414 | Santé système 6 services (admin) | V1 | 5 | `admin/US-2414-…` |
+| US-2411 | KPI activité cabinet (admin) | V1 → ⏸️ PAUSED | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — session Samir 2026-05-13 |
+| US-2412 | Facturation à traiter (admin) | V1 | 5 | dep remappée US-2170 → **US-2107** (Groupe 7 Facturation) |
+| US-2413 | Conformité RGPD (admin) | V1 → ⏸️ PAUSED | 8 | deps US-2190/2191/2192 absentes du ROADMAP — session Samir 2026-05-13 |
+| US-2414 | Santé système 6 services (admin) | V1 | 5 | dep US-2210 (à clarifier, Q6 non répondu) |
 | US-2415 | Sidebar pilotage administration (admin) | V1 | 6 | `admin/US-2415-…` |
 
 > **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
@@ -428,10 +428,11 @@
 
 ---
 
-## V3 — 8 US
+## V3 — 9 US
 
 | US | Titre |
 |----|-------|
+| US-2150 | Analytics cabinet (agrégats KPI multi-patients) — décision session Samir 2026-05-13 |
 | US-2155 | AI prédiction risque hypo |
 | US-2156 | AI suggestions ajustement |
 | US-2162 | Évaluation post-programme ETP |

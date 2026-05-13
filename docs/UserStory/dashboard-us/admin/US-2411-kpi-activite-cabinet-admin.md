@@ -1,6 +1,13 @@
 # US-2411 — KPI activité cabinet (admin)
 
 > 📌 **admin** · Priorité **V1** · Satellite de `US-2410`
+>
+> ⏸️ **PAUSED** (session Samir 2026-05-13) — Deux dépendances bloquent :
+>  - `US-2150` (analytics cabinet) → reclassée V3 (cf. ROADMAP V3)
+>  - `US-2200` (gestion users) → cadrage différé, à clarifier
+>
+> Le KPI activité dépend donc d'une US V3 — cette US devient de fait V3 jusqu'à
+> clarification de US-2200 et planification de US-2150.
 
 ---
 
