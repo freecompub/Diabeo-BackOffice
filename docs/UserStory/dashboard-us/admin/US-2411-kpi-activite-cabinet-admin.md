@@ -1,6 +1,6 @@
-# US-2276 — KPI activité cabinet (admin)
+# US-2411 — KPI activité cabinet (admin)
 
-> 📌 **admin** · Priorité **V1** · Satellite de `US-2267`
+> 📌 **admin** · Priorité **V1** · Satellite de `US-2410`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2276` |
+| **ID** | `US-2411` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | ADMIN |
-| **Dépendances** | US-2150 (analytics cabinet), US-2200 (gestion users), US-2267 |
-| **US parente** | `US-2267` |
+| **Dépendances** | US-2150 (analytics cabinet), US-2200 (gestion users), US-2410 |
+| **US parente** | `US-2410` |
 
 ---
 
@@ -134,6 +134,6 @@ GET /api/dashboard/admin/kpi?cabinetId=...
 
 ## 🔗 Liens
 
-- US parente : US-2267
+- US parente : US-2410
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

@@ -1,6 +1,6 @@
-# US-2271 — Section KPI cabinet 14j (médecin)
+# US-2404 — Section KPI cabinet 14j (médecin)
 
-> 📌 **medecin** · Priorité **V1** · Satellite de `US-2265`
+> 📌 **medecin** · Priorité **V1** · Satellite de `US-2400`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2271` |
+| **ID** | `US-2404` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | DOCTOR, NURSE |
-| **Dépendances** | US-2150 (analytics cabinet), US-2265 |
-| **US parente** | `US-2265` |
+| **Dépendances** | US-2150 (analytics cabinet), US-2400 |
+| **US parente** | `US-2400` |
 
 ---
 
@@ -125,7 +125,7 @@ GET /api/dashboard/medecin/kpi?period=14d
 
 ## 🔗 Liens
 
-- US parente : US-2265
+- US parente : US-2400
 - US liée : US-2150
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

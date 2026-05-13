@@ -1,6 +1,6 @@
-# US-2269 — Card RDV du jour (médecin)
+# US-2402 — Card RDV du jour (médecin)
 
-> 📌 **medecin** · Priorité **MVP** · Satellite de `US-2265`
+> 📌 **medecin** · Priorité **MVP** · Satellite de `US-2400`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2269` |
+| **ID** | `US-2402` |
 | **Type** | Composant satellite |
 | **Priorité** | **MVP** |
 | **Story points** | **5** |
 | **Persona** | DOCTOR, NURSE |
-| **Dépendances** | US-2070 (calendrier RDV), US-2071 (détail RDV), US-2265 |
-| **US parente** | `US-2265` |
+| **Dépendances** | US-2070 (calendrier RDV), US-2071 (détail RDV), US-2400 |
+| **US parente** | `US-2400` |
 
 ---
 
@@ -140,7 +140,7 @@ GET /api/dashboard/medecin/rdv-today
 
 ## 🔗 Liens
 
-- US parente : US-2265
+- US parente : US-2400
 - US liées : US-2070, US-2071
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

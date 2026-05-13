@@ -1,4 +1,4 @@
-# US-2267 — Dashboard administrateur (page principale)
+# US-2410 — Dashboard administrateur (page principale)
 
 > 📌 **admin** · Priorité **V1**
 
@@ -8,12 +8,12 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2267` |
+| **ID** | `US-2410` |
 | **Type** | Page composite |
 | **Priorité** | **V1** |
 | **Story points** | **8** |
 | **Persona** | ADMIN (🖥️ Web ≥1024px) |
-| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC ADMIN), US-2276 (KPI activité), US-2277 (facturation), US-2278 (conformité), US-2279 (santé système), US-2280 (sidebar admin) |
+| **Dépendances** | US-2001 (login), US-2011 (audit), US-2012 (RBAC ADMIN), US-2411 (KPI activité), US-2412 (facturation), US-2413 (conformité), US-2414 (santé système), US-2415 (sidebar admin) |
 
 ---
 
@@ -29,25 +29,25 @@ Cf prototype interactif « Dashboard administrateur » et écran SCR-117 (à ajo
 
 ### KPI activité (4 cards en haut)
 - CA du mois · Patients actifs · Équipe · Audit HDS
-- Source : US-2276
+- Source : US-2411
 
 ### Zone principale (3/5 + 2/5)
 
 **Gauche : Facturation à traiter (3/5)**
-- Source : US-2277
+- Source : US-2412
 - 3 sous-cards (Impayées / En retard / Encaissées)
 - Top 3 impayées avec liens factures
 
 **Droite : Conformité & RGPD (2/5)**
-- Source : US-2278
+- Source : US-2413
 - Statuts : Audit HDS, Demandes RGPD, Backup, Notifs CNIL
 
 ### Zone basse : Santé système 24h
 - 6 services monitorés (API, DB, MinIO, FCM, Email, CGM sync)
-- Source : US-2279
+- Source : US-2414
 
 ### Sidebar dédiée admin
-- Source : US-2280
+- Source : US-2415
 - 2 sections : Pilotage + Administration
 - Pilotage : Tableau de bord (actif), Analytics
 - Administration : Facturation, Utilisateurs, RGPD & audit, Système, Paramètres
@@ -180,6 +180,6 @@ WS /api/admin/system-health/stream
 
 - Cartographie écran : SCR-117 (Dashboard administrateur — à ajouter)
 - Prototype : Dashboard administrateur
-- US satellites : US-2276, US-2277, US-2278, US-2279, US-2280
+- US satellites : US-2411, US-2412, US-2413, US-2414, US-2415
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

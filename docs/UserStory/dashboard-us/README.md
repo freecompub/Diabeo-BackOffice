@@ -38,11 +38,11 @@ Les US suivent le **format B allégé** (~250 lignes par US) pour les dashboards
 - Sections dashboard-spécifiques détaillées dans chaque US
 
 ### Numérotation
-- **US backoffice** : US-2265 → US-2280 (dashboards médecin, infirmier, admin)
+- **US backoffice** : US-2400 → US-2415 (dashboards médecin, infirmier, admin)
 - **US patient** : US-3355 → US-3363 (dashboards patient mobile + web)
 
 ### Substitutions
-- **US-2094** (Tableau de bord population) → remplacée par **US-2265** (Dashboard médecin)
+- **US-2094** (Tableau de bord population) → remplacée par **US-2400** (Dashboard médecin)
 - **FNP-178** (Tableau de bord journalier) → remplacée par **US-3355** (Dashboard patient mobile)
 
 ## Organisation des fichiers
@@ -58,14 +58,14 @@ dashboard-us/
 │   ├── US-3356-dashboard-patient-web.md (principale)
 │   ├── US-3361 à US-3363 (satellites)
 ├── medecin/
-│   ├── US-2265-dashboard-medecin.md (principale)
-│   ├── US-2268 à US-2271 (satellites)
+│   ├── US-2400-dashboard-medecin.md (principale)
+│   ├── US-2401 à US-2404 (satellites)
 ├── infirmier/
-│   ├── US-2266-dashboard-infirmier.md (principale)
-│   ├── US-2272 à US-2275 (satellites)
+│   ├── US-2405-dashboard-infirmier.md (principale)
+│   ├── US-2406 à US-2409 (satellites)
 └── admin/
-    ├── US-2267-dashboard-administrateur.md (principale)
-    ├── US-2276 à US-2280 (satellites)
+    ├── US-2410-dashboard-administrateur.md (principale)
+    ├── US-2411 à US-2415 (satellites)
 ```
 
 ## Cadres communs à créer dans le repo

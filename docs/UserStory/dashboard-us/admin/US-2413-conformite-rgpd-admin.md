@@ -1,6 +1,6 @@
-# US-2278 — Conformité & RGPD (admin)
+# US-2413 — Conformité & RGPD (admin)
 
-> 📌 **admin** · Priorité **V1** · Satellite de `US-2267`
+> 📌 **admin** · Priorité **V1** · Satellite de `US-2410`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2278` |
+| **ID** | `US-2413` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | ADMIN |
-| **Dépendances** | US-2190 (audit HDS), US-2191 (gestion demandes RGPD), US-2192 (notifs CNIL), US-2193 (backups), US-2267 |
-| **US parente** | `US-2267` |
+| **Dépendances** | US-2190 (audit HDS), US-2191 (gestion demandes RGPD), US-2192 (notifs CNIL), US-2193 (backups), US-2410 |
+| **US parente** | `US-2410` |
 
 ---
 
@@ -137,7 +137,7 @@ WS /api/dashboard/admin/compliance/stream
 
 ## 🔗 Liens
 
-- US parente : US-2267
+- US parente : US-2410
 - US liées : US-2190, US-2191, US-2192, US-2193
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

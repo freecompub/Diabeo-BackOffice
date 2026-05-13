@@ -1,6 +1,6 @@
-# US-2268 — Card urgences en cours (médecin)
+# US-2401 — Card urgences en cours (médecin)
 
-> 📌 **medecin** · Priorité **MVP** · Satellite de `US-2265`
+> 📌 **medecin** · Priorité **MVP** · Satellite de `US-2400`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2268` |
+| **ID** | `US-2401` |
 | **Type** | Composant satellite |
 | **Priorité** | **MVP** |
 | **Story points** | **8** |
 | **Persona** | DOCTOR, NURSE |
-| **Dépendances** | US-2224 (inbox urgences), US-2225 (détail timeline), US-2230 (notif temps réel), US-2265 |
-| **US parente** | `US-2265` |
+| **Dépendances** | US-2224 (inbox urgences), US-2225 (détail timeline), US-2230 (notif temps réel), US-2400 |
+| **US parente** | `US-2400` |
 
 ---
 
@@ -160,7 +160,7 @@ WS /api/dashboard/medecin/urgencies/stream
 
 ## 🔗 Liens
 
-- US parente : US-2265
+- US parente : US-2400
 - US liées : US-2224, US-2225, US-2226, US-2230
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

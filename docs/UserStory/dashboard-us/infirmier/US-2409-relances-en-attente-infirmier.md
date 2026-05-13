@@ -1,6 +1,6 @@
-# US-2275 — Relances en attente (infirmier)
+# US-2409 — Relances en attente (infirmier)
 
-> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2266`
+> 📌 **infirmier** · Priorité **V1** · Satellite de `US-2405`
 
 ---
 
@@ -8,13 +8,13 @@
 
 | Champ | Valeur |
 |---|---|
-| **ID** | `US-2275` |
+| **ID** | `US-2409` |
 | **Type** | Composant satellite |
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2076 (détection patients à risque), US-2266 |
-| **US parente** | `US-2266` |
+| **Dépendances** | US-2076 (détection patients à risque), US-2405 |
+| **US parente** | `US-2405` |
 
 ---
 
@@ -143,7 +143,7 @@ POST /api/dashboard/infirmier/recall/[patientId]/log-call
 
 ## 🔗 Liens
 
-- US parente : US-2266
+- US parente : US-2405
 - US liée : US-2076
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*
