@@ -117,6 +117,26 @@ export type AuditResource =
   | "PATIENT_TAG"
   /** US-2022 — Tag <-> patient assignment. */
   | "PATIENT_TAG_ASSIGNMENT"
+  /** US-2078 — Reusable message templates (cabinet-scoped). */
+  | "MESSAGE_TEMPLATE"
+  /** US-2080 / US-2065 — Generic read receipt / patient acknowledgement. */
+  | "READ_RECEIPT"
+  | "PROPOSAL_ACK"
+  /** US-2066 — Adjustment proposal real-world actualization. */
+  | "PROPOSAL_ACTUALIZATION"
+  /** US-2068 — Structured consultation note. */
+  | "CONSULTATION_NOTE"
+  /** US-2083 — IDE→DOCTOR delegation workflow. */
+  | "DELEGATION_REQUEST"
+  /** US-2084 — Member absence + cover. */
+  | "MEMBER_ABSENCE"
+  /** US-2086 — Handoff note between staff. */
+  | "HANDOFF_NOTE"
+  /** US-2088 — Patient group (cohort). */
+  | "PATIENT_GROUP"
+  | "PATIENT_GROUP_ASSIGNMENT"
+  /** US-2072 — Teleconsultation billing acte. */
+  | "TELECONSULT_ACTE"
 
 /**
  * Audit log entry — parameters for logging an action.

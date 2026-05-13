@@ -335,6 +335,19 @@ model User {
   managedServices      HealthcareService[]   @relation("HealthcareServiceManager")
   createdPatientTags   PatientTag[]          @relation("PatientTagCreator")
   assignedPatientTags  PatientTagAssignment[] @relation("PatientTagAssigner")
+  // Groupe 3 — Équipe & Communication
+  createdMessageTemplates        MessageTemplate[]                 @relation("MessageTemplateCreator")
+  readReceipts                   ReadReceipt[]                     @relation("ReadReceiptUser")
+  verifiedProposalActualizations AdjustmentProposalActualization[] @relation("ProposalActualizationVerifier")
+  consultationNotes              ConsultationNote[]                @relation("ConsultationNoteAuthor")
+  delegationsRequested           DelegationRequest[]               @relation("DelegationFrom")
+  delegationsToReview            DelegationRequest[]               @relation("DelegationTo")
+  reviewedDelegations            DelegationRequest[]               @relation("DelegationReviewer")
+  handoffsSent                   HandoffNote[]                     @relation("HandoffFrom")
+  handoffsReceived               HandoffNote[]                     @relation("HandoffTo")
+  createdPatientGroups           PatientGroup[]                    @relation("PatientGroupCreator")
+  assignedPatientGroups          PatientGroupAssignment[]          @relation("PatientGroupAssigner")
+  invoicedTeleconsultActes       TeleconsultationActe[]            @relation("TeleconsultInvoicer")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -508,6 +521,14 @@ model Patient {
   patientInsulins       PatientInsulin[]
   /// US-2022 — Tags posés sur ce patient au sein de son/ses cabinet(s).
   tagAssignments        PatientTagAssignment[]
+  /// US-2068 — Notes de consultation structurées.
+  consultationNotes     ConsultationNote[]
+  /// US-2083 — Demandes de délégation clinique (IDE → DOCTOR).
+  delegationRequests    DelegationRequest[]
+  /// US-2086 — Handoff entre soignants.
+  handoffNotes          HandoffNote[]
+  /// US-2088 — Groupes-cohortes équipe.
+  groupAssignments      PatientGroupAssignment[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1059,6 +1080,10 @@ model AdjustmentProposal {
   patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
   reviewer      User?          @relation("ReviewedBy", fields: [reviewedBy], references: [id])
   pumpBasalSlot PumpBasalSlot? @relation(fields: [pumpBasalSlotId], references: [id])
+  /// US-2065 — accusé patient (1:1).
+  ack           AdjustmentProposalAck?
+  /// US-2066 — actualisation effective (1:1).
+  actualization AdjustmentProposalActualization?
 
   @@index([patientId, status, createdAt])
   @@map("adjustment_proposals")
@@ -1303,6 +1328,10 @@ model HealthcareService {
   referents       PatientReferent[]
   /// US-2022 — Tags (catégorisation libre) appartenant à ce cabinet.
   patientTags     PatientTag[]
+  /// US-2078 — Templates de messages partagés au sein du cabinet.
+  messageTemplates MessageTemplate[]
+  /// US-2088 — Groupes patients (cohortes).
+  patientGroups   PatientGroup[]
 
   @@unique([name, establishment])
   @@index([type])
@@ -1325,6 +1354,9 @@ model HealthcareMember {
   patientServices PatientService[]
   referents       PatientReferent[]
   documents       MedicalDocument[]
+  /// US-2084 — Absences du membre + couvertures qu'il assure pour autrui
+  absencesAsOwner    MemberAbsence[]  @relation("MemberAbsenceOwner")
+  absencesAsCover    MemberAbsence[]  @relation("MemberAbsenceCover")
 
   @@unique([name, serviceId])
   @@map("healthcare_members")
@@ -1446,6 +1478,10 @@ model Appointment {
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// US-2068 — Notes consultation rattachées
+  consultationNotes ConsultationNote[]
+  /// US-2072 — Acte facturable si téléconsult
+  teleconsultActe   TeleconsultationActe?
 
   @@map("appointments")
 }
@@ -1840,4 +1876,236 @@ model BackupLog {
 
   @@index([status, startedAt])
   @@map("backup_logs")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 13. DOMAINE ÉQUIPE & COMMUNICATION — Groupe 3 (10 tables)
+// ═══════════════════════════════════════════════════════════════
+// Workflow équipe soignante : templates de messages, accusés de lecture
+// patient/PS, délégation IDE→DOCTOR, remplacement, handoff, groupes
+// patients, notes de consultation, lien facturation téléconsult.
+
+/// US-2078 — Templates de messages réutilisables, scope cabinet.
+/// `variables` est la liste des placeholders supportés (ex: ["firstname",
+/// "appointmentDate"]) ; le rendu côté UI fait l'interpolation.
+model MessageTemplate {
+  id        Int      @id @default(autoincrement())
+  serviceId Int      @map("service_id")
+  title     String   @db.VarChar(120)
+  body      String   // free-text, max 4096 char validé service-side
+  variables String[] @default([])
+  createdBy Int?     @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  service HealthcareService @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  creator User?             @relation("MessageTemplateCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([serviceId, title])
+  @@index([serviceId])
+  @@map("message_templates")
+}
+
+/// US-2080 — Accusé de lecture sur Announcement (ou autres broadcast objets
+/// dans le futur). Modèle générique : `resource` + `resourceId` polymorphe.
+/// Index unique (resource, resourceId, userId) empêche les doublons.
+model ReadReceipt {
+  id         Int      @id @default(autoincrement())
+  resource   String   @db.VarChar(40) // "ANNOUNCEMENT", "DELEGATION_REQUEST", etc.
+  resourceId Int      @map("resource_id")
+  userId     Int      @map("user_id")
+  readAt     DateTime @default(now()) @map("read_at") @db.Timestamptz()
+
+  user User @relation("ReadReceiptUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([resource, resourceId, userId])
+  @@index([resource, resourceId])
+  @@map("read_receipts")
+}
+
+/// US-2065 — Accusé patient sur une AdjustmentProposal : tracking
+/// lecture / acceptation / rejet côté patient (mobile app).
+model AdjustmentProposalAck {
+  id           Int      @id @default(autoincrement())
+  proposalId   String   @unique @map("proposal_id")
+  patientId    Int      @map("patient_id")
+  acknowledged Boolean  @default(false)
+  accepted     Boolean?
+  readAt       DateTime? @map("read_at") @db.Timestamptz()
+  respondedAt  DateTime? @map("responded_at") @db.Timestamptz()
+  /// Commentaire libre patient (max 500 char). Chiffré AES-256-GCM si non-null.
+  comment      String?
+
+  proposal AdjustmentProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("adjustment_proposal_acks")
+}
+
+/// US-2066 — Vérification que l'ajustement proposé a été appliqué dans le
+/// monde réel (sur le device). `effectiveAt` = quand le réglage a pris
+/// effet (peut différer du `respondedAt` patient).
+model AdjustmentProposalActualization {
+  id          Int       @id @default(autoincrement())
+  proposalId  String    @unique @map("proposal_id")
+  effectiveAt DateTime? @map("effective_at") @db.Timestamptz()
+  /// Source de vérification : "device-sync" / "manual-ps" / "patient-confirmed".
+  verifiedVia String    @db.VarChar(40)
+  /// PS ayant confirmé (NULL si vérification auto via sync device).
+  verifiedBy  Int?      @map("verified_by")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  proposal AdjustmentProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  verifier User?              @relation("ProposalActualizationVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  @@map("adjustment_proposal_actualizations")
+}
+
+/// US-2068 — Note de consultation structurée. `content` chiffré AES-256-GCM
+/// (texte libre, peut contenir PII clinique).
+model ConsultationNote {
+  id            Int       @id @default(autoincrement())
+  patientId     Int       @map("patient_id")
+  authorId      Int       @map("author_id")
+  appointmentId Int?      @map("appointment_id")
+  content       String    // chiffré base64
+  /// Catégorie structurelle (anamnèse, examen, conclusion, plan…).
+  category      String?   @db.VarChar(40)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  author      User         @relation("ConsultationNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  appointment Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  @@index([patientId, createdAt])
+  @@map("consultation_notes")
+}
+
+/// US-2083 — Demande de délégation IDE → DOCTOR pour une action clinique
+/// nécessitant validation (ex: nouvelle proposition d'ajustement).
+model DelegationRequest {
+  id          Int                       @id @default(autoincrement())
+  patientId   Int                       @map("patient_id")
+  fromUserId  Int                       @map("from_user_id") // IDE qui demande
+  toUserId    Int                       @map("to_user_id")   // DOCTOR sollicité
+  action      String                    @db.VarChar(80)      // ex: "PROPOSE_ADJUSTMENT"
+  payload     Json?
+  status      DelegationRequestStatus   @default(pending)
+  reviewedAt  DateTime?                 @map("reviewed_at") @db.Timestamptz()
+  reviewedBy  Int?                      @map("reviewed_by")
+  reason      String?                   @db.VarChar(500)
+  createdAt   DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fromUser   User    @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser     User    @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Restrict)
+  reviewer   User?   @relation("DelegationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+
+  @@index([toUserId, status])
+  @@index([patientId])
+  @@map("delegation_requests")
+}
+
+enum DelegationRequestStatus {
+  pending
+  approved
+  rejected
+  expired
+
+  @@map("delegation_request_status")
+}
+
+/// US-2084 — Période d'absence d'un membre, avec couverture éventuelle
+/// par un autre membre du même cabinet.
+model MemberAbsence {
+  id              Int      @id @default(autoincrement())
+  memberId        Int      @map("member_id")
+  startDate       DateTime @map("start_date") @db.Date
+  endDate         DateTime @map("end_date") @db.Date
+  coverMemberId   Int?     @map("cover_member_id")
+  reason          String?  @db.VarChar(120)
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  member      HealthcareMember  @relation("MemberAbsenceOwner", fields: [memberId], references: [id], onDelete: Cascade)
+  coverMember HealthcareMember? @relation("MemberAbsenceCover", fields: [coverMemberId], references: [id], onDelete: SetNull)
+
+  @@index([memberId, startDate])
+  @@index([coverMemberId])
+  @@map("member_absences")
+}
+
+/// US-2086 — Note de handoff (transfert dossier annoté) entre soignants.
+/// `note` chiffré AES-256-GCM. `acknowledgedAt` marqué quand le destinataire
+/// a lu et accepté la prise en charge.
+model HandoffNote {
+  id             Int       @id @default(autoincrement())
+  patientId      Int       @map("patient_id")
+  fromUserId     Int       @map("from_user_id")
+  toUserId       Int       @map("to_user_id")
+  note           String    // chiffré base64
+  acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz()
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient  Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fromUser User    @relation("HandoffFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser   User    @relation("HandoffTo", fields: [toUserId], references: [id], onDelete: Restrict)
+
+  @@index([toUserId, acknowledgedAt])
+  @@index([patientId])
+  @@map("handoff_notes")
+}
+
+/// US-2088 — Groupe-cohorte de patients au sein d'un cabinet (ex: "Service
+/// diabéto endocrino HDJ"). Scope `serviceId`, M:N via PatientGroupAssignment.
+model PatientGroup {
+  id        Int      @id @default(autoincrement())
+  serviceId Int      @map("service_id")
+  label     String   @db.VarChar(80)
+  createdBy Int?     @map("created_by")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  service     HealthcareService        @relation(fields: [serviceId], references: [id], onDelete: Restrict)
+  creator     User?                    @relation("PatientGroupCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  assignments PatientGroupAssignment[]
+
+  @@unique([serviceId, label])
+  @@index([serviceId])
+  @@map("patient_groups")
+}
+
+model PatientGroupAssignment {
+  id         Int      @id @default(autoincrement())
+  patientId  Int      @map("patient_id")
+  groupId    Int      @map("group_id")
+  assignedBy Int?     @map("assigned_by")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient  Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  group    PatientGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  assigner User?        @relation("PatientGroupAssigner", fields: [assignedBy], references: [id], onDelete: SetNull)
+
+  @@unique([patientId, groupId])
+  @@index([groupId])
+  @@index([patientId, createdAt])
+  @@map("patient_group_assignments")
+}
+
+/// US-2072 — Lien facturation pour un Appointment marqué téléconsultation.
+/// Un Appointment peut avoir un seul Acte (1:1). `billingCode` libre côté
+/// MVP — un futur référentiel `CCAM`/`NABM` pourra contraindre.
+model TeleconsultationActe {
+  id             Int       @id @default(autoincrement())
+  appointmentId  Int       @unique @map("appointment_id")
+  billingCode    String    @map("billing_code") @db.VarChar(20)
+  amountCents    Int?      @map("amount_cents")
+  invoicedAt     DateTime? @map("invoiced_at") @db.Timestamptz()
+  invoicedBy     Int?      @map("invoiced_by")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  invoicer    User?       @relation("TeleconsultInvoicer", fields: [invoicedBy], references: [id], onDelete: SetNull)
+
+  @@index([invoicedAt])
+  @@map("teleconsultation_actes")
 }
