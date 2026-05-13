@@ -13,7 +13,7 @@
 | **Priorité** | **MVP** |
 | **Story points** | **5** |
 | **Persona** | DOCTOR, NURSE |
-| **Dépendances** | US-2070 (calendrier RDV), US-2071 (détail RDV), US-2400 |
+| **Dépendances** | US-2500 (calendrier RDV), US-2501 (détail RDV), US-2400 |
 | **US parente** | `US-2400` |
 
 ---
@@ -61,7 +61,7 @@ Alors pill horaire en couleur active (teal) pour signaler
 ```gherkin
 Étant donné médecin clique RDV
 Quand il valide
-Alors détail RDV s'ouvre (US-2071)
+Alors détail RDV s'ouvre (US-2501)
 ```
 
 ### AC-4 — Tri chronologique
@@ -141,6 +141,6 @@ GET /api/dashboard/medecin/rdv-today
 ## 🔗 Liens
 
 - US parente : US-2400
-- US liées : US-2070, US-2071
+- US liées : US-2500, US-2501 (groupe Gestion RDV V1)
 
 *Cadres communs : `docs/security/baseline.md`, `docs/testing/baseline.md`, `docs/dod/baseline.md`*

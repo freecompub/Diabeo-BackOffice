@@ -13,7 +13,7 @@
 | **Priorité** | **V1** |
 | **Story points** | **5** |
 | **Persona** | NURSE |
-| **Dépendances** | US-2070 (RDV), US-2405 |
+| **Dépendances** | US-2500 (calendrier RDV), US-2405 |
 | **US parente** | `US-2405` |
 
 ---
