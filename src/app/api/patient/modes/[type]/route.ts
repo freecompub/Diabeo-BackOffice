@@ -46,13 +46,18 @@ const ramadanUpsertSchema = z.object({
   icrMultiplier: z.number().min(0.5).max(2.0),
 })
 
+// H1 (re-review C, post-merge) — Zod bounds must match service constants
+//   (medical M1+M2) : basalMultiplier ∈ [0.7, 1.3] (ATTD/EASD 2022 ±30%),
+//   basalDelayHours ∈ [0, 12]. Without this, the route returns a 400 with
+//   shape `{ error, details }` while the service returns `{ error, field }`
+//   — clients branch on shape.
 const travelUpsertSchema = z.object({
   destination: z.string().min(1).max(100),
   timezoneOffsetHours: z.number().min(-12).max(14),
   departureDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   returnDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  basalMultiplier: z.number().min(0.5).max(1.5),
-  basalDelayHours: z.number().int().min(0).max(24),
+  basalMultiplier: z.number().min(0.7).max(1.3),
+  basalDelayHours: z.number().int().min(0).max(12),
 })
 
 type RouteCtx = { params: Promise<{ type: string }> }

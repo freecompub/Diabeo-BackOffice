@@ -96,6 +96,54 @@ async function supersedePrevious(
   })
 }
 
+/**
+ * L2 (re-review C, post-merge) — DRY helper used by all 3 mode upserts.
+ * Wraps the Serializable transaction, nextVersion+supersede, ConfigVersion
+ * insert (with optional child rows via `extraCreate`), and audit emission.
+ *
+ * `auditKind` flows into `metadata.kind` for forensic filtering (e.g.
+ * "ramadan.upsert"). `extraCreate` is folded into `configVersion.create.data`
+ * so callers (only pediatric today) can add nested `pediatricCaregivers.create`.
+ *
+ * Returns a `ConfigVersionDTO` ; callers wrap with their own `warnings`.
+ */
+async function createConfigVersion(args: {
+  patientId: number
+  configType: ConfigVersionType
+  snapshot: Prisma.InputJsonValue
+  auditUserId: number
+  ctx?: AuditContext
+  auditKind: string
+  auditExtra?: Record<string, unknown>
+  extraCreate?: Partial<Prisma.ConfigVersionUncheckedCreateInput>
+}): Promise<ConfigVersionDTO> {
+  return prisma.$transaction(async (tx: Tx) => {
+    const now = new Date()
+    const version = await nextVersion(tx, args.patientId, args.configType)
+    await supersedePrevious(tx, args.patientId, args.configType, now)
+    const created = await tx.configVersion.create({
+      data: {
+        patientId: args.patientId,
+        configType: args.configType,
+        version,
+        configSnapshot: args.snapshot,
+        createdBy: args.auditUserId,
+        ...args.extraCreate,
+      },
+    })
+    await auditService.logWithTx(tx, {
+      userId: args.auditUserId, action: "CREATE", resource: "CONFIG_VERSION",
+      resourceId: String(created.id),
+      ipAddress: args.ctx?.ipAddress, userAgent: args.ctx?.userAgent, requestId: args.ctx?.requestId,
+      metadata: {
+        patientId: args.patientId, kind: args.auditKind,
+        version, ...args.auditExtra,
+      },
+    })
+    return toConfigVersionDTO(created)
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+}
+
 export type ConfigVersionDTO = {
   id: number
   patientId: number | null
@@ -222,50 +270,39 @@ export const pediatricModeService = {
   async upsert(
     patientId: number, caregivers: PediatricCaregiverInput[],
     auditUserId: number, ctx?: AuditContext,
-  ): Promise<ConfigVersionDTO> {
+  ): Promise<{ version: ConfigVersionDTO; warnings: ModeWarning[] }> {
     validateCaregivers(caregivers)
-    return prisma.$transaction(async (tx: Tx) => {
-      const now = new Date()
-      const version = await nextVersion(tx, patientId, ConfigVersionType.pediatric_mode)
-      await supersedePrevious(tx, patientId, ConfigVersionType.pediatric_mode, now)
-      // Snapshot redacted (no PHI) — pattern emergency_contacts (PR #395).
-      const snapshot = caregivers.map((c) => ({
-        rank: c.rank,
-        relationship: c.relationship,
-        permissionLevel: c.permissionLevel,
-        hasName: c.name.length > 0,
-        hasPhone: c.phone.length > 0,
-      })) satisfies Prisma.InputJsonValue
-      const created = await tx.configVersion.create({
-        data: {
-          patientId,
-          configType: ConfigVersionType.pediatric_mode,
-          version,
-          configSnapshot: snapshot,
-          createdBy: auditUserId,
-          pediatricCaregivers: {
-            create: caregivers.map((c) => ({
-              patientId,
-              rank: c.rank,
-              nameEncrypted: encryptField(c.name),
-              phoneEncrypted: encryptField(c.phone),
-              relationship: c.relationship,
-              permissionLevel: c.permissionLevel,
-            })),
-          },
+    // L3 (re-review C, post-merge) — consistent return shape across modes :
+    //   `{ version, warnings }` even when pediatric emits no soft warnings.
+    // L2 — uses shared `createConfigVersion` helper.
+    const snapshot = caregivers.map((c) => ({
+      rank: c.rank,
+      relationship: c.relationship,
+      permissionLevel: c.permissionLevel,
+      hasName: c.name.length > 0,
+      hasPhone: c.phone.length > 0,
+    })) satisfies Prisma.InputJsonValue
+    const version = await createConfigVersion({
+      patientId,
+      configType: ConfigVersionType.pediatric_mode,
+      snapshot,
+      auditUserId, ctx,
+      auditKind: "pediatric.upsert",
+      auditExtra: { count: caregivers.length },
+      extraCreate: {
+        pediatricCaregivers: {
+          create: caregivers.map((c) => ({
+            patientId,
+            rank: c.rank,
+            nameEncrypted: encryptField(c.name),
+            phoneEncrypted: encryptField(c.phone),
+            relationship: c.relationship,
+            permissionLevel: c.permissionLevel,
+          })),
         },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "CONFIG_VERSION",
-        resourceId: String(created.id),
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: {
-          patientId, kind: "pediatric.upsert",
-          version, count: caregivers.length,
-        },
-      })
-      return toConfigVersionDTO(created)
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+      } as Partial<Prisma.ConfigVersionUncheckedCreateInput>,
+    })
+    return { version, warnings: [] }
   },
 }
 
@@ -417,31 +454,17 @@ export const ramadanModeService = {
     auditUserId: number, ctx?: AuditContext,
   ): Promise<{ version: ConfigVersionDTO; warnings: ModeWarning[] }> {
     const warnings = validateRamadan(input)
-    const version = await prisma.$transaction(async (tx: Tx) => {
-      const now = new Date()
-      const nextVer = await nextVersion(tx, patientId, ConfigVersionType.ramadan_mode)
-      await supersedePrevious(tx, patientId, ConfigVersionType.ramadan_mode, now)
-      const created = await tx.configVersion.create({
-        data: {
-          patientId,
-          configType: ConfigVersionType.ramadan_mode,
-          version: nextVer,
-          configSnapshot: input satisfies Prisma.InputJsonValue,
-          createdBy: auditUserId,
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "CONFIG_VERSION",
-        resourceId: String(created.id),
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: {
-          patientId, kind: "ramadan.upsert",
-          version: nextVer, ramadanYear: input.ramadanYear,
-          warnings: warnings.map((w) => w.code),
-        },
-      })
-      return toConfigVersionDTO(created)
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    const version = await createConfigVersion({
+      patientId,
+      configType: ConfigVersionType.ramadan_mode,
+      snapshot: input satisfies Prisma.InputJsonValue,
+      auditUserId, ctx,
+      auditKind: "ramadan.upsert",
+      auditExtra: {
+        ramadanYear: input.ramadanYear,
+        warnings: warnings.map((w) => w.code),
+      },
+    })
     return { version, warnings }
   },
 }
@@ -619,31 +642,17 @@ export const travelModeService = {
     auditUserId: number, ctx?: AuditContext,
   ): Promise<{ version: ConfigVersionDTO; warnings: ModeWarning[] }> {
     const warnings = validateTravel(input)
-    const version = await prisma.$transaction(async (tx: Tx) => {
-      const now = new Date()
-      const nextVer = await nextVersion(tx, patientId, ConfigVersionType.travel_mode)
-      await supersedePrevious(tx, patientId, ConfigVersionType.travel_mode, now)
-      const created = await tx.configVersion.create({
-        data: {
-          patientId,
-          configType: ConfigVersionType.travel_mode,
-          version: nextVer,
-          configSnapshot: input satisfies Prisma.InputJsonValue,
-          createdBy: auditUserId,
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "CONFIG_VERSION",
-        resourceId: String(created.id),
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: {
-          patientId, kind: "travel.upsert",
-          version: nextVer, tzOffset: input.timezoneOffsetHours,
-          warnings: warnings.map((w) => w.code),
-        },
-      })
-      return toConfigVersionDTO(created)
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    const version = await createConfigVersion({
+      patientId,
+      configType: ConfigVersionType.travel_mode,
+      snapshot: input satisfies Prisma.InputJsonValue,
+      auditUserId, ctx,
+      auditKind: "travel.upsert",
+      auditExtra: {
+        tzOffset: input.timezoneOffsetHours,
+        warnings: warnings.map((w) => w.code),
+      },
+    })
     return { version, warnings }
   },
 }
