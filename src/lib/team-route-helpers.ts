@@ -98,6 +98,18 @@ export function mapErrorToResponse(
   ) {
     return NextResponse.json({ error: "serializationConflict" }, { status: 409 })
   }
+  // H2 (re-review C, post-merge) — Unique constraint conflict (race between
+  // concurrent `nextVersion` callers, or duplicate (version_id, rank), etc.).
+  // 409 lets the client retry/refresh ; field surfaced for UI debug.
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  ) {
+    return NextResponse.json(
+      { error: "uniqueConflict", target: error.meta?.target },
+      { status: 409 },
+    )
+  }
   if (error instanceof ForbiddenError) {
     if (auditTarget) {
       // Fire-and-forget audit — never block the response.

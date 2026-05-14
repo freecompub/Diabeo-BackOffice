@@ -73,7 +73,9 @@ describe("pediatricModeService (US-2233)", () => {
       validatedBy: null, validatedAt: null, createdAt: new Date(),
     } as any)
     const out = await pediatricModeService.upsert(7, validCaregivers, 9)
-    expect(out.version).toBe(3)
+    // L3 (re-review C) — unified shape : { version, warnings: [] }.
+    expect(out.version.version).toBe(3)
+    expect(out.warnings).toEqual([])
     expect(prismaMock.configVersion.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
@@ -352,6 +354,10 @@ describe("computeBasalProtocol", () => {
     expect(out0.reference).toBe("ATTD-EASD-2022")
     expect(computeBasalProtocol(2).basalMultiplier).toBe(1.0)
     expect(computeBasalProtocol(-2).basalMultiplier).toBe(1.0)
+    // L1 (re-review C) — boundary at 3.0 : `abs < 3` is strict, so 2.999
+    //   takes the identity branch ; 3.0 exactly takes the tranche branch.
+    expect(computeBasalProtocol(2.999).basalMultiplier).toBe(1.0)
+    expect(computeBasalProtocol(3.0).basalMultiplier).toBeCloseTo(0.95, 2)
   })
 
   it("uses ceil(abs/6) tranches — boundary at 6h between 1 and 2 tranches", () => {

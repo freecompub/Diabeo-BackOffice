@@ -19,7 +19,13 @@ const querySchema = z.object({
 export async function GET(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
-    await auditedRequireRole(req, "NURSE", ctx, "PATIENT_MODE", "auto-protocol")
+    // L4 (re-review C, post-merge) — ADR #18 (US-2268) : resourceId must
+    //   be a native ID (or "0" when stateless). String literals like
+    //   "auto-protocol" break `auditService.getByPatient` forensic queries.
+    //   This endpoint has no patient FK and no PHI access ; 403 audit
+    //   metadata.requiredRole already disambiguates from other PATIENT_MODE
+    //   accessDenied rows.
+    await auditedRequireRole(req, "NURSE", ctx, "PATIENT_MODE", "0")
     const parsed = querySchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )

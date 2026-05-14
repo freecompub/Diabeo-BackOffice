@@ -2617,7 +2617,8 @@ model PediatricCaregiver {
   /// AES-256-GCM (base64).
   phoneEncrypted  String   @map("phone_encrypted") @db.Text
   relationship    String   @db.VarChar(50)
-  /// Permissions : "read" | "write" | "config".
+  /// Permissions : "read" | "write" | "propose" (caregivers may propose
+  /// adjustments but never directly mutate — HAS pédiatrique / ISPAD 2022).
   permissionLevel String   @map("permission_level") @db.VarChar(20)
   /// M2 (healthcare audit) — historical "active" flag retained for parity
   /// with `emergency_contacts.is_active` ; truth lives in
@@ -2629,6 +2630,10 @@ model PediatricCaregiver {
   patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
   configVersion ConfigVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
+  /// H3 (re-review C, post-merge) — UNIQUE(version_id, rank) couples with
+  /// the CHECK constraint `rank BETWEEN 1 AND 5` to enforce MAX_CAREGIVERS=5
+  /// at the DB layer (defense in depth ; service-level validator stays).
+  @@unique([versionId, rank])
   @@index([patientId, rank, isActive])
   /// M4 (healthcare audit) — index FK so cascade-include joins from
   /// ConfigVersion don't sequential-scan at scale.
