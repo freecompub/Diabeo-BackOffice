@@ -35,6 +35,12 @@ export type PollingState<T> = {
 
 const STALE_FACTOR = 2
 
+// code-review L3 (re-review) — module-level guard : when ANY card receives
+// 401, this flag stays true for the rest of the page lifetime. Subsequent
+// polls from sibling cards short-circuit before issuing a network request,
+// avoiding 4 simultaneous 401s in the audit log + 4 redundant redirects.
+let authDead = false
+
 export function usePollingFetch<T>(
   url: string,
   intervalMs: number = 30_000,
@@ -47,7 +53,7 @@ export function usePollingFetch<T>(
   const stoppedRef = useRef<boolean>(false)
 
   const fetchOnce = useCallback(async (silent: boolean = false) => {
-    if (stoppedRef.current) return
+    if (stoppedRef.current || authDead) return
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
@@ -61,7 +67,10 @@ export function usePollingFetch<T>(
       if (res.status === 401) {
         // healthcare L3 — JWT expired ; stop polling and bounce to login.
         stoppedRef.current = true
-        if (typeof window !== "undefined") window.location.href = "/login"
+        if (!authDead) {
+          authDead = true
+          if (typeof window !== "undefined") window.location.href = "/login"
+        }
         return
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)

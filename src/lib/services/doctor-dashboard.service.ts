@@ -39,13 +39,30 @@ import type { Role } from "@prisma/client"
  * Returns `{}` for ADMIN (no restriction) ; otherwise an `IN` filter.
  * Empty array → forces no rows (caller has empty portfolio).
  */
+/**
+ * Build the patient-portfolio `WHERE` clause for cross-patient queries.
+ *
+ * **Three return states** (code-review L1 re-review — discriminated by
+ * caller via null check + presence of `patientId`) :
+ *  - `null`       → caller's portfolio is empty ; query should be skipped
+ *                    to avoid scanning the whole table.
+ *  - `{ patient: { deletedAt: null } }`
+ *                 → ADMIN, no portfolio restriction beyond soft-delete.
+ *  - `{ patientId: { in: ids }, patient: { deletedAt: null } }`
+ *                 → DOCTOR/NURSE, restricted to managed patients.
+ *
+ * **healthcare H1** — even for ADMIN, exclude soft-deleted patients to
+ * honour RGPD Art. 17 (no resurfacing of erased patients on aggregate
+ * dashboards).
+ *
+ * Callers MUST NOT redeclare a `patient:` relation filter at the call site
+ * — it would silently override the one inserted here (re-review H1).
+ */
 function patientScopeWhere(
   ids: number[] | null,
 ): { patientId?: { in: number[] }; patient?: { deletedAt: null } } | null {
-  // healthcare H1 — even for ADMIN, exclude soft-deleted patients to honour
-  // RGPD Art. 17 (no resurfacing of erased patients on aggregate dashboards).
   if (ids === null) return { patient: { deletedAt: null } }
-  if (ids.length === 0) return null // empty portfolio → no rows
+  if (ids.length === 0) return null
   return { patientId: { in: ids }, patient: { deletedAt: null } }
 }
 
@@ -108,12 +125,19 @@ export const urgenciesQuery = {
         },
       },
     } as const
+    // code-review M1 (re-review) — uncap `criticalRows` to a generous
+    //   ceiling (50) instead of `URGENCY_LIMIT=5`. A mass-event scenario
+    //   (sensor outage, multi-patient DKA on a heatwave) shouldn't hide
+    //   the 6th critical alert behind newer non-critical noise. 50 is large
+    //   enough to dominate the URGENCY_LIMIT slice and small enough to
+    //   bound query cost.
+    const CRITICAL_OVERFETCH = 50
     const [criticalRows, recentRows] = await Promise.all([
       prisma.emergencyAlert.findMany({
         where: { ...baseWhere, severity: EmergencyAlertSeverity.critical },
         include,
         orderBy: [{ triggeredAt: "desc" }],
-        take: URGENCY_LIMIT,
+        take: CRITICAL_OVERFETCH,
       }),
       prisma.emergencyAlert.findMany({
         where: baseWhere,
@@ -140,12 +164,24 @@ export const urgenciesQuery = {
       })
       .slice(0, URGENCY_LIMIT)
 
+    // code-review M2 (re-review) — summary + per-patient pivot.
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "EMERGENCY_ALERT",
       resourceId: "0",
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { kind: "dashboard.medecin.urgencies", count: sorted.length },
     })
+    await Promise.allSettled(sorted.map((r) =>
+      auditService.log({
+        userId: auditUserId, action: "READ", resource: "EMERGENCY_ALERT",
+        resourceId: String(r.id),
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: {
+          patientId: r.patientId,
+          kind: "dashboard.medecin.urgencies",
+        },
+      }),
+    ))
 
     return sorted.map((r) => ({
       id: r.id,
@@ -216,11 +252,14 @@ export const appointmentsQuery = {
     const scope = patientScopeWhere(ids)
     if (scope === null) return []
     const { start, end } = todayBounds()
+    // code-review H1 (re-review) — `scope` already carries
+    //   `patient: { deletedAt: null }` ; don't override it here. Adding a
+    //   literal `patient:` below would silently drop any future sub-filter
+    //   introduced in `patientScopeWhere` (e.g. status filtering).
     const where: Prisma.AppointmentWhereInput = {
       ...scope,
       date: { gte: start, lt: end },
       status: { in: [AppointmentStatus.scheduled, AppointmentStatus.pending_validation] },
-      patient: { deletedAt: null },
     }
     const rows = await prisma.appointment.findMany({
       where,
@@ -236,12 +275,28 @@ export const appointmentsQuery = {
       take: APPOINTMENTS_LIMIT,
     })
 
+    // code-review M2 (re-review) — emit both summary AND per-patient pivot
+    //   audit rows. Appointments expose decrypted firstname + pathology per
+    //   patient ; CNIL forensic query "who saw patient X today" must surface
+    //   the dashboard view via `auditService.getByPatient(X)` (ADR #18).
+    //   KPI stays summary-only (aggregate metrics, no per-patient PHI).
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "APPOINTMENT",
       resourceId: "0",
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { kind: "dashboard.medecin.appointments", count: rows.length },
     })
+    await Promise.allSettled(rows.map((r) =>
+      auditService.log({
+        userId: auditUserId, action: "READ", resource: "APPOINTMENT",
+        resourceId: String(r.id),
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: {
+          patientId: r.patientId,
+          kind: "dashboard.medecin.appointments",
+        },
+      }),
+    ))
 
     return rows.map((r) => ({
       id: r.id,
@@ -370,6 +425,10 @@ export const patientsAtRiskQuery = {
 
     // Silent monitoring : patients whose latest CGM is older than cutoff,
     // OR patients in portfolio with NO CGM entries at all.
+    // code-review L2 (re-review) — `last === null` retained at the type
+    //   level (Map value type from `_max.timestamp` is `Date | null`)
+    //   though semantically dead : the column is `@db.Timestamptz()`
+    //   non-null, so a row only exists with a non-null timestamp.
     const portfolioIds = ids ?? (adminPortfolio ?? []).map((p) => p.id)
     for (const pid of portfolioIds) {
       if (exclude.has(pid) || flags.has(pid)) continue
@@ -396,11 +455,19 @@ export const patientsAtRiskQuery = {
 
     // healthcare M2 — always emit a summary `resourceId:"0"` audit row,
     //   matching the other 3 dashboard endpoints' telemetry convention.
+    // code-review L4 (re-review) — flag when the ADMIN seed list was
+    //   truncated at 1000 so forensics knows the silent-monitoring count
+    //   under-reports.
+    const adminTruncated = ids === null && (adminPortfolio?.length ?? 0) >= 1000
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "PATIENT",
       resourceId: "0",
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { kind: "dashboard.medecin.patientsAtRisk", count: top.length },
+      metadata: {
+        kind: "dashboard.medecin.patientsAtRisk",
+        count: top.length,
+        ...(adminTruncated ? { wasTruncated: true } : {}),
+      },
     })
 
     if (top.length === 0) return []
@@ -551,7 +618,11 @@ export const kpisQuery = {
     const tirPrev = tirTotalPrev > 0
       ? Math.round((tirInRangePrev / tirTotalPrev) * 1000) / 10
       : 0
-    const tirDelta = tirTotalPrev > 0
+    // code-review H2 (re-review) — only compute delta when BOTH windows
+    //   have data. Otherwise a quiet portfolio (no CGM uploads this
+    //   fortnight) would surface a fake "down trend" of -tirPrev. Clinical
+    //   UX risk: doctor sees catastrophic drop on a stable patient.
+    const tirDelta = tirTotalNow > 0 && tirTotalPrev > 0
       ? Math.round((tirNow - tirPrev) * 10) / 10
       : null
 

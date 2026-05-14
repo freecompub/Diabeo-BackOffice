@@ -8,6 +8,7 @@
 import Link from "next/link"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { PatientAtRiskItem } from "@/lib/services/doctor-dashboard.service"
@@ -37,11 +38,7 @@ export function PatientsAtRiskCard() {
         </h2>
         <span className="text-xs text-muted-foreground">Top {items.length || 0}</span>
       </header>
-      {isStale && (
-        <p className="px-4 text-xs text-glycemia-high" role="status">
-          Données obsolètes — rafraîchissement en attente.
-        </p>
-      )}
+      {isStale && <StaleBanner />}
 
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (

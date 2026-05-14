@@ -10,6 +10,7 @@
 import { Badge } from "@/components/ui/badge"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { UrgencyItem } from "@/lib/services/doctor-dashboard.service"
 
@@ -51,11 +52,7 @@ export function EmergencyCard() {
           {lastUpdatedAt ? `MAJ ${new Date(lastUpdatedAt).toLocaleTimeString("fr-FR")}` : "—"}
         </span>
       </header>
-      {isStale && (
-        <p className="px-4 text-xs text-glycemia-high" role="status">
-          Données obsolètes — rafraîchissement en attente.
-        </p>
-      )}
+      {isStale && <StaleBanner />}
 
       {/* code-review M1 — separate live regions :
             - "polite" announces transitions (loading/empty/error) without
