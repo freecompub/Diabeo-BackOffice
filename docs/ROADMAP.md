@@ -353,16 +353,19 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 > US-2407 (infirmier). IDs frais US-2500-2506 pour éviter collision avec
 > US-2070 "Planification suivi" PARTIAL et US-2071 "Templates consultation"
 > NOT STARTED qui ont une sémantique différente.
+>
+> **Batch 1 (CRUD core, 36 SP) — DONE PR #392** : US-2500/2501/2503/2504/2505.
+> Batch 2 (notifications, 13 SP) — TODO : US-2502 + US-2506.
 
-| US | Titre | SP | Notes |
-|----|-------|---:|-------|
-| US-2500 | Calendrier RDV (jour/semaine/mois + drag&drop) | 13 | 3 vues commutables, drag&drop pour reprogrammer |
-| US-2501 | Détail RDV (CRUD + note médicale chiffrée AES-256-GCM) | 8 | Champs : date+heure, patient, type, durée, note, motif, lieu (présentiel/visio) |
-| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | Patient choisit son canal préféré dans `UserNotifPreferences` |
-| US-2503 | Annulation / report bilatéral | 5 | Patient ou médecin, délai 24h sans pénalité, si annulation médecin → proposition alternative |
-| US-2504 | Plages indisponibles médecin | 5 | Congés, jours fériés FR/DZ, créneaux bloqués manuellement |
-| US-2505 | Config prise de RDV (auto vs validation manuelle) | 5 | Toggle par médecin lors de la config de son calendrier |
-| US-2506 | Option SMS payante cabinet | 5 | Provider SMS (Twilio/OVH/autre) + activation cabinet via admin UI |
+| US | Titre | SP | Status | Notes |
+|----|-------|---:|:------:|-------|
+| US-2500 | Calendrier RDV (list + range query, sécurisé scope) | 13 | ✅ DONE | `listInRange` scope obligatoire (patient/member), soft-delete filter, cross-midnight overlap, truncated flag — PR #392 |
+| US-2501 | Détail RDV (CRUD + note/motif/cancelReason chiffrés AES-256-GCM) | 8 | ✅ DONE | 5 endpoints API (list, detail, create, update, cancel), DTO split list/detail (pas de bulk decrypt) — PR #392 |
+| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | ⏳ Batch 2 | Provider SMS dépend US-2506 |
+| US-2503 | Annulation / report bilatéral | 5 | ✅ DONE | State machine cancel/propose/accept, TTL 7j sur alternative, audit `actor`+`callerRole`, EXCLUDE overlap re-check — PR #392 |
+| US-2504 | Plages indisponibles médecin | 5 | ✅ DONE | `MemberUnavailability` table, EXCLUDE GiST constraint (btree_gist), reason chiffrée, audit US-2265 — PR #392 |
+| US-2505 | Config prise de RDV (auto vs validation manuelle) | 5 | ✅ DONE | `HealthcareMember.bookingMode` enum, `confirm` route DOCTOR, default duration 15-240 — PR #392 |
+| US-2506 | Option SMS payante cabinet | 5 | ⏳ Batch 2 | Provider SMS (Twilio/OVH) + activation admin UI |
 
 > **Dépendances** :
 >  - US-2074 (Email Resend, DONE) pour rappels email

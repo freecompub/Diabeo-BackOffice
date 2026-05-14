@@ -928,4 +928,4 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-*Dernière mise à jour : 2026-05-08 — Mirror MVP livré (PR #343), Batch D1 livré (PR #349 : US-2265 + US-2266), US-2267 reclassée V1 + blocker-pre-prod (Diabeo pas en prod). Total 268 US. MVP 49/65 = 75% (78% sur scope original 63).*
+*Dernière mise à jour : 2026-05-14 — Groupe 8 Batch 1 RDV livré (PR #392 : US-2500/2501/2503/2504/2505, 36 SP). Module RDV CRUD complet : calendrier sécurisé (scope obligatoire, soft-delete filter, cross-midnight overlap), note/motif/cancelReason chiffrés AES-256-GCM, state machine annulation/report bilatéral (actor + callerRole audit), plages indisponibles `MemberUnavailability` avec EXCLUDE GiST constraint (btree_gist), mode booking auto/validation. 1412/1412 tests verts. Batch 2 (US-2502 rappels + US-2506 SMS, 13 SP) TODO. Total 268 US.*
