@@ -321,18 +321,21 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2109 | TVA / fiscalité FR | NOT STARTED |
 | US-2110 | Facturation DZ | NOT STARTED |
 
-### Groupe 8 — i18n & Interopérabilité (8 US)
+### Groupe 8 — i18n & Interopérabilité (8 US, 33 SP)
 
-| US | Titre | Statut |
-|----|-------|--------|
-| US-2113 | Devises multi-pays | NOT STARTED |
-| US-2114 | Règles fiscales pays | NOT STARTED |
-| US-2116 | Réglementation santé pays | NOT STARTED |
-| US-2123 | HL7 FHIR R4 | NOT STARTED |
-| US-2124 | DMP (Dossier Médical Partagé) | NOT STARTED |
-| US-2125 | MSSanté backend | NOT STARTED |
-| US-2126 | INS (API INSi) | NOT STARTED |
-| US-2127 | Pro Santé Connect | NOT STARTED |
+> **Batch 1 (4 US, 6 SP) — DONE PR #393** : US-2113 + US-2114 + US-2116 + US-2123 scaffold.
+> Batch 2 (4 US, 27 SP) — bloqué procurement (habilitations ANS, contrats Mailiz/Apicrypt).
+
+| US | Titre | SP | Statut |
+|----|-------|---:|--------|
+| US-2113 | Devises EUR/DZD (CountryCurrency, CRUD ADMIN, ISO 3166/4217 CHECK) | 1 | ✅ DONE |
+| US-2114 | Règles fiscales par pays (CountryTaxRule, date-bounded, overlap-rejected) | 1 | ✅ DONE |
+| US-2116 | Réglementation santé par pays (HealthcareRegulation : RPPS/ADELI/INS/HDS/RGPD/MSSANTE) | 1 | ✅ DONE |
+| US-2123 | HL7 FHIR R4 scaffold (FhirInteroperability + FhirAllowedSystem + retry queue + AES-256-GCM payload + SSRF guard + DPA allowlist + kill-switch) | 3 | ✅ DONE |
+| US-2124 | DMP / Mon Espace Santé | 8 | ⏳ Blocked ANS habilitation (10-30k€) |
+| US-2125 | MSSanté backend | 3 | ⏳ Blocked contrat Mailiz/Apicrypt |
+| US-2126 | INSi (API identité nationale) | 8 | ⏳ Blocked ANS habilitation (5-10k€) |
+| US-2127 | Pro Santé Connect (OIDC) | 8 | ⏳ Blocked ANS homologation (5-15k€) |
 
 ### Groupe 9 — Admin & Ops (8 US)
 
