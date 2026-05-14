@@ -163,6 +163,40 @@ const REQUIRED_SEED: readonly EnvSpec[] = [
   SPEC_ENCRYPTION_KEY,
 ]
 
+/**
+ * H8 (review PR #393) — validate optional feature-flag env vars.
+ *
+ * Throws if `FHIR_ENABLED` is set to anything other than the strings
+ * `"true"` / `"false"`. Unset (=== feature off) is fine. Keeps misconfig
+ * fail-fast at boot, consistent with ADR #20.
+ */
+function assertOptionalBoolean(name: string): void {
+  const raw = process.env[name]
+  if (raw === undefined) return
+  if (raw !== "true" && raw !== "false") {
+    throw new Error(
+      `Environment variable ${name} must be exactly "true" or "false" (got an invalid value). See docs/local-development.md.`,
+    )
+  }
+}
+
+/**
+ * M7 (re-review) — typed accessor for boolean feature flags. Use this from
+ * service code instead of comparing `process.env[X] === "true"` manually,
+ * so the validation and consumption share a single source of truth.
+ *
+ * Returns `undefined` when unset (feature off) ; `true`/`false` otherwise.
+ */
+export function getEnvBoolean(name: string): boolean | undefined {
+  const raw = process.env[name]
+  if (raw === undefined) return undefined
+  if (raw === "true") return true
+  if (raw === "false") return false
+  // Should never happen if assertOptionalBoolean ran at boot, but fail-safe:
+  // treat malformed as "off" rather than crash a request handler.
+  return false
+}
+
 function assertSpecs(specs: readonly EnvSpec[]): void {
   const problems: string[] = []
 
@@ -206,6 +240,8 @@ function assertSpecs(specs: readonly EnvSpec[]): void {
  */
 export function assertRequiredEnv(): void {
   assertSpecs(REQUIRED_FULL)
+  // US-2123 — fail-fast on misconfigured FHIR feature flag.
+  assertOptionalBoolean("FHIR_ENABLED")
 }
 
 /**

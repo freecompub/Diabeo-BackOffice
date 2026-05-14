@@ -151,6 +151,16 @@ export type AuditResource =
   | "MEMBER_UNAVAILABILITY"
   /** US-2505 — Member booking config (auto vs validation). */
   | "MEMBER_BOOKING_CONFIG"
+  /** US-2113 — Country currency configuration. */
+  | "COUNTRY_CURRENCY"
+  /** US-2114 — Country tax rule. */
+  | "COUNTRY_TAX_RULE"
+  /** US-2116 — Healthcare regulation per country. */
+  | "HEALTHCARE_REGULATION"
+  /** US-2123 — HL7 FHIR R4 interoperability resource. */
+  | "FHIR_INTEROP"
+  /** US-2123 H5 — FHIR allowed-system registry entry (DPA-approved destination). */
+  | "FHIR_ALLOWED_SYSTEM"
 
 /**
  * Audit log entry — parameters for logging an action.
