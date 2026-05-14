@@ -60,9 +60,9 @@ CREATE TABLE "country_tax_rules" (
     CONSTRAINT "country_tax_rules_range_check"
         CHECK ("applies_until" IS NULL OR "applies_until" > "applies_from")
 );
-CREATE UNIQUE INDEX "country_tax_rules_country_tax_from_key"
+CREATE UNIQUE INDEX "country_tax_rules_country_code_tax_type_applies_from_key"
     ON "country_tax_rules"("country_code", "tax_type", "applies_from");
-CREATE INDEX "country_tax_rules_country_tax_active_idx"
+CREATE INDEX "country_tax_rules_country_code_tax_type_is_active_idx"
     ON "country_tax_rules"("country_code", "tax_type", "is_active");
 
 ALTER TABLE "country_tax_rules"
@@ -93,7 +93,7 @@ CREATE TABLE "healthcare_regulations" (
     CONSTRAINT "healthcare_regulations_range_check"
         CHECK ("enforced_until" IS NULL OR "enforced_until" > "enforced_from")
 );
-CREATE INDEX "healthcare_regulations_country_type_active_idx"
+CREATE INDEX "healthcare_regulations_country_code_regulation_type_is_acti_idx"
     ON "healthcare_regulations"("country_code", "regulation_type", "is_active");
 
 ALTER TABLE "healthcare_regulations"
@@ -125,7 +125,7 @@ CREATE TABLE "fhir_allowed_systems" (
 );
 CREATE UNIQUE INDEX "fhir_allowed_systems_origin_key"
     ON "fhir_allowed_systems"("origin");
-CREATE INDEX "fhir_allowed_systems_active_killswitch_idx"
+CREATE INDEX "fhir_allowed_systems_is_active_kill_switch_active_idx"
     ON "fhir_allowed_systems"("is_active", "kill_switch_active");
 
 ALTER TABLE "fhir_allowed_systems"
@@ -167,9 +167,9 @@ CREATE TABLE "fhir_interoperability" (
 );
 CREATE INDEX "fhir_interoperability_status_retry_idx"
     ON "fhir_interoperability"("sync_status", "next_retry_at");
-CREATE INDEX "fhir_interoperability_patient_resource_idx"
+CREATE INDEX "fhir_interoperability_patient_id_resource_type_idx"
     ON "fhir_interoperability"("patient_id", "resource_type");
-CREATE INDEX "fhir_interoperability_resource_url_idx"
+CREATE INDEX "fhir_interoperability_resource_type_external_system_url_idx"
     ON "fhir_interoperability"("resource_type", "external_system_url");
 
 -- H2 — SetNull (not Cascade) so the audit-trail of PHI exports survives
@@ -195,7 +195,7 @@ CREATE TABLE "fhir_sync_logs" (
 
     CONSTRAINT "fhir_sync_logs_pkey" PRIMARY KEY ("id")
 );
-CREATE INDEX "fhir_sync_logs_interop_created_idx"
+CREATE INDEX "fhir_sync_logs_interop_id_created_at_idx"
     ON "fhir_sync_logs"("interop_id", "created_at");
 
 ALTER TABLE "fhir_sync_logs"
