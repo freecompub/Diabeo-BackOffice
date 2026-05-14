@@ -225,6 +225,220 @@ describe("healthcareRegulationService (US-2116)", () => {
 // Cross-cutting: list with filters
 // ─────────────────────────────────────────────────────────────
 
+describe("countryCurrencyService.update + delete + list (coverage)", () => {
+  it("update happy path", async () => {
+    prismaMock.countryCurrency.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", currencyCode: "EUR",
+    } as any)
+    prismaMock.countryCurrency.update.mockResolvedValue({
+      id: 1, countryCode: "FR", currencyCode: "EUR", symbol: "€",
+      exchangeRate: new Prisma.Decimal(1), isActive: false,
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    const out = await countryCurrencyService.update(1, { isActive: false, symbol: "€" }, 9)
+    expect(out.isActive).toBe(false)
+  })
+  it("update rejects empty symbol", async () => {
+    await expect(
+      countryCurrencyService.update(1, { symbol: "" }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("update rejects negative exchange rate", async () => {
+    await expect(
+      countryCurrencyService.update(1, { exchangeRate: -1 }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("delete happy path + audits", async () => {
+    prismaMock.countryCurrency.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", currencyCode: "EUR",
+    } as any)
+    prismaMock.countryCurrency.delete.mockResolvedValue({} as any)
+    const out = await countryCurrencyService.deleteById(1, 9)
+    expect(out.deleted).toBe(true)
+  })
+  it("list with countryCode filter", async () => {
+    prismaMock.countryCurrency.findMany.mockResolvedValue([] as any)
+    await countryCurrencyService.list({ countryCode: "FR", isActive: true })
+    expect(prismaMock.countryCurrency.findMany).toHaveBeenCalled()
+  })
+})
+
+describe("countryTaxRuleService.update + delete + list + overlap (coverage)", () => {
+  it("update happy path", async () => {
+    prismaMock.countryTaxRule.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", taxType: "VAT",
+      baseRate: new Prisma.Decimal(0.2),
+      appliesFrom: new Date("2024-01-01"), appliesUntil: null,
+    } as any)
+    prismaMock.countryTaxRule.update.mockResolvedValue({
+      id: 1, countryCode: "FR", taxType: "VAT",
+      baseRate: new Prisma.Decimal(0.21), description: null,
+      appliesFrom: new Date("2024-01-01"),
+      appliesUntil: new Date("2025-12-31"),
+      isActive: true, createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    const out = await countryTaxRuleService.update(
+      1, { baseRate: 0.21, appliesUntil: new Date("2025-12-31"), description: "test" }, 9,
+    )
+    expect(out.baseRate).toBe(0.21)
+  })
+  it("update rejects out-of-range baseRate", async () => {
+    await expect(
+      countryTaxRuleService.update(1, { baseRate: 2 }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("update rejects too-long description", async () => {
+    await expect(
+      countryTaxRuleService.update(1, { description: "x".repeat(501) }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("delete throws NotFoundError when missing", async () => {
+    prismaMock.countryTaxRule.findUnique.mockResolvedValue(null)
+    await expect(countryTaxRuleService.deleteById(999, 9))
+      .rejects.toBeInstanceOf(NotFoundError)
+  })
+  it("delete happy path", async () => {
+    prismaMock.countryTaxRule.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", taxType: "VAT",
+    } as any)
+    prismaMock.countryTaxRule.delete.mockResolvedValue({} as any)
+    const out = await countryTaxRuleService.deleteById(1, 9)
+    expect(out.deleted).toBe(true)
+  })
+  it("M4 — overlap rejected on create with adjacent existing rule", async () => {
+    prismaMock.countryTaxRule.findFirst.mockResolvedValue({ id: 99 } as any)
+    await expect(
+      countryTaxRuleService.create(
+        { countryCode: "FR", taxType: "VAT", baseRate: 0.2, appliesFrom: new Date("2024-01-01") },
+        9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("rejects too-long description on create", async () => {
+    await expect(
+      countryTaxRuleService.create(
+        {
+          countryCode: "FR", taxType: "VAT", baseRate: 0.2,
+          description: "x".repeat(501),
+          appliesFrom: new Date("2024-01-01"),
+        }, 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("maps P2002 to ValidationError(alreadyExists)", async () => {
+    prismaMock.countryTaxRule.findFirst.mockResolvedValue(null)
+    const err = new Prisma.PrismaClientKnownRequestError(
+      "unique violation", { code: "P2002", clientVersion: "7.6.0", meta: {} },
+    )
+    prismaMock.countryTaxRule.create.mockRejectedValueOnce(err)
+    await expect(
+      countryTaxRuleService.create(
+        { countryCode: "FR", taxType: "VAT", baseRate: 0.2, appliesFrom: new Date("2024-01-01") },
+        9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("list filters happy path", async () => {
+    prismaMock.countryTaxRule.findMany.mockResolvedValue([] as any)
+    await countryTaxRuleService.list({ countryCode: "FR", taxType: "VAT", isActive: true })
+    expect(prismaMock.countryTaxRule.findMany).toHaveBeenCalled()
+  })
+})
+
+describe("healthcareRegulationService.update + delete + list + overlap (coverage)", () => {
+  it("update happy path", async () => {
+    prismaMock.healthcareRegulation.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", regulationType: "HDS",
+      enforcedFrom: new Date("2018-04-01"), enforcedUntil: null,
+    } as any)
+    prismaMock.healthcareRegulation.update.mockResolvedValue({
+      id: 1, countryCode: "FR", regulationType: "HDS",
+      title: "Updated", rule: "Updated rule",
+      references: "ref-url",
+      enforcedFrom: new Date("2018-04-01"),
+      enforcedUntil: new Date("2030-01-01"),
+      isActive: false, createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    const out = await healthcareRegulationService.update(
+      1,
+      {
+        title: "Updated", rule: "Updated rule",
+        references: "ref-url",
+        enforcedUntil: new Date("2030-01-01"),
+        isActive: false,
+      },
+      9,
+    )
+    expect(out.title).toBe("Updated")
+    expect(out.isActive).toBe(false)
+  })
+  it("update rejects empty title", async () => {
+    await expect(
+      healthcareRegulationService.update(1, { title: "" }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("update rejects empty rule", async () => {
+    await expect(
+      healthcareRegulationService.update(1, { rule: "" }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("update rejects too-long references", async () => {
+    await expect(
+      healthcareRegulationService.update(1, { references: "x".repeat(10_001) }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("update rejects whitespace-only references", async () => {
+    await expect(
+      healthcareRegulationService.update(1, { references: "   " }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("update rejects appliesUntil before existing enforcedFrom", async () => {
+    prismaMock.healthcareRegulation.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", regulationType: "HDS",
+      enforcedFrom: new Date("2018-04-01"), enforcedUntil: null,
+    } as any)
+    await expect(
+      healthcareRegulationService.update(1, { enforcedUntil: new Date("2010-01-01") }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("delete happy path", async () => {
+    prismaMock.healthcareRegulation.findUnique.mockResolvedValue({
+      id: 1, countryCode: "FR", regulationType: "HDS",
+    } as any)
+    prismaMock.healthcareRegulation.delete.mockResolvedValue({} as any)
+    const out = await healthcareRegulationService.deleteById(1, 9)
+    expect(out.deleted).toBe(true)
+  })
+  it("delete throws NotFoundError when missing", async () => {
+    prismaMock.healthcareRegulation.findUnique.mockResolvedValue(null)
+    await expect(healthcareRegulationService.deleteById(999, 9))
+      .rejects.toBeInstanceOf(NotFoundError)
+  })
+  it("M5 — overlap rejected on create with adjacent existing", async () => {
+    prismaMock.healthcareRegulation.findFirst.mockResolvedValue({ id: 99 } as any)
+    await expect(
+      healthcareRegulationService.create(
+        {
+          countryCode: "FR", regulationType: "HDS",
+          title: "T", rule: "R", enforcedFrom: new Date("2024-01-01"),
+        }, 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("rejects too-long references on create", async () => {
+    await expect(
+      healthcareRegulationService.create(
+        {
+          countryCode: "FR", regulationType: "HDS",
+          title: "T", rule: "R",
+          references: "x".repeat(10_001),
+          enforcedFrom: new Date("2024-01-01"),
+        }, 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+})
+
 describe("list filter validation", () => {
   it("currency list rejects bad countryCode filter", async () => {
     await expect(countryCurrencyService.list({ countryCode: "FRA" }))

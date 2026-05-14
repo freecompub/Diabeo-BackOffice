@@ -508,7 +508,10 @@ export const healthcareRegulationService = {
   ): Promise<RegulationDTO> {
     if (input.title !== undefined) validateTitle(input.title)
     if (input.rule !== undefined) validateRule(input.rule)
-    if (input.references !== undefined && input.references !== null && input.references.length > 10_000) {
+    if (input.references !== undefined && input.references !== null && (
+      input.references.length > 10_000 ||
+      (input.references.length > 0 && !input.references.trim())
+    )) {
       throw new ValidationError("references")
     }
     return prisma.$transaction(async (tx: Tx) => {
