@@ -1,0 +1,233 @@
+/**
+ * Test suite : doctor-dashboard.service (Groupe 9b Batch 1 — 5 US, ~34 SP).
+ *
+ * Couvre :
+ *  - US-2401 urgencies : portfolio scoping, criticality sort, limit=5
+ *  - US-2402 appointments : today window, scope, limit=3
+ *  - US-2403 patients-at-risk : hypo threshold, silent detection, exclusion
+ *    of open-urgency patients
+ *  - US-2404 KPI : trend up/down/flat, TIR fraction, empty portfolio
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest"
+import {
+  EmergencyAlertStatus, EmergencyAlertType, EmergencyAlertSeverity,
+  AppointmentStatus,
+} from "@prisma/client"
+import { prismaMock } from "../helpers/prisma-mock"
+
+vi.mock("@/lib/access-control", () => ({
+  getAccessiblePatientIds: vi.fn(),
+}))
+import {
+  urgenciesQuery, appointmentsQuery,
+  patientsAtRiskQuery, kpisQuery,
+} from "@/lib/services/doctor-dashboard.service"
+import { getAccessiblePatientIds } from "@/lib/access-control"
+
+const mockedAccessible = vi.mocked(getAccessiblePatientIds)
+
+beforeEach(() => {
+  prismaMock.auditLog.create.mockResolvedValue({} as any)
+  mockedAccessible.mockReset()
+})
+
+// ─── US-2401 urgencies ───────────────────────────────────────────────────
+
+describe("urgenciesQuery (US-2401)", () => {
+  it("returns [] when caller has empty portfolio", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await urgenciesQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toEqual([])
+    expect(prismaMock.emergencyAlert.findMany).not.toHaveBeenCalled()
+  })
+
+  it("sorts by criticality (DKA before hypo), limits to 5", async () => {
+    mockedAccessible.mockResolvedValue([10, 20, 30])
+    const now = new Date("2026-05-14T10:00:00Z")
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([
+      {
+        id: 1, patientId: 10, alertType: EmergencyAlertType.hypo,
+        severity: EmergencyAlertSeverity.warning,
+        status: EmergencyAlertStatus.open,
+        triggeredAt: now, glucoseValueMgdl: null, ketoneValueMmol: null,
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+      {
+        id: 2, patientId: 20, alertType: EmergencyAlertType.ketone_dka,
+        severity: EmergencyAlertSeverity.critical,
+        status: EmergencyAlertStatus.open,
+        triggeredAt: now, glucoseValueMgdl: null, ketoneValueMmol: null,
+        patient: { id: 20, pathology: "DT1", user: { firstname: null } },
+      },
+    ] as any)
+    const out = await urgenciesQuery.forCaller(1, "DOCTOR", 1)
+    expect(out[0]!.alertType).toBe("ketone_dka") // most critical first
+    expect(out).toHaveLength(2)
+  })
+
+  it("emits 1 audit row with kind = dashboard.medecin.urgencies", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    await urgenciesQuery.forCaller(1, "DOCTOR", 1)
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.kind).toBe("dashboard.medecin.urgencies")
+  })
+})
+
+// ─── US-2402 appointments ────────────────────────────────────────────────
+
+describe("appointmentsQuery (US-2402)", () => {
+  it("returns [] when empty portfolio", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await appointmentsQuery.forCaller(1, "NURSE", 1)
+    expect(out).toEqual([])
+  })
+
+  it("queries today's scheduled+pending_validation, limit 3", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.appointment.findMany.mockResolvedValue([
+      {
+        id: 1, patientId: 10, date: new Date(), hour: new Date("2026-05-14T08:00:00Z"),
+        type: "diabeto", status: AppointmentStatus.scheduled, location: "video",
+        patient: { id: 10, pathology: "DT2", user: { firstname: null } },
+      },
+    ] as any)
+    const out = await appointmentsQuery.forCaller(1, "NURSE", 1)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.location).toBe("video")
+    const callArg = prismaMock.appointment.findMany.mock.calls[0]![0]
+    expect(callArg!.take).toBe(3)
+  })
+})
+
+// ─── US-2403 patients-at-risk ────────────────────────────────────────────
+
+describe("patientsAtRiskQuery (US-2403)", () => {
+  it("returns [] when empty portfolio", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toEqual([])
+  })
+
+  it("flags hypos >=3/7d and excludes patients with open urgencies", async () => {
+    mockedAccessible.mockResolvedValue([10, 20])
+    // Patient 20 is in open urgency → excluded entirely.
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([
+      { patientId: 20 },
+    ] as any)
+    prismaMock.emergencyAlert.groupBy.mockResolvedValue([
+      { patientId: 10, _count: { patientId: 4 } }, // flag recentHypos
+      { patientId: 20, _count: { patientId: 5 } }, // excluded
+    ] as any)
+    // Patient 10 has recent CGM (no silence flag).
+    prismaMock.cgmEntry.groupBy.mockResolvedValue([
+      { patientId: 10, _max: { timestamp: new Date() } },
+      { patientId: 20, _max: { timestamp: new Date() } },
+    ] as any)
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null } },
+    ] as any)
+    const out = await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.patientId).toBe(10)
+    expect(out[0]!.reason).toBe("recentHypos")
+  })
+
+  it("flags silence > 5 days without CGM activity", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    prismaMock.emergencyAlert.groupBy.mockResolvedValue([] as any)
+    const oldCgm = new Date(Date.now() - 10 * 86_400_000)
+    prismaMock.cgmEntry.groupBy.mockResolvedValue([
+      { patientId: 10, _max: { timestamp: oldCgm } },
+    ] as any)
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null } },
+    ] as any)
+    const out = await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.reason).toBe("silentMonitoring")
+  })
+
+  it("flags patients with no CGM entry at all (assumed silent ≥ SILENT_DAYS+1)", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    prismaMock.emergencyAlert.groupBy.mockResolvedValue([] as any)
+    prismaMock.cgmEntry.groupBy.mockResolvedValue([] as any) // no rows for 10
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null } },
+    ] as any)
+    const out = await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.reason).toBe("silentMonitoring")
+  })
+
+  it("audits per-patient (US-2268 pivot)", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    prismaMock.emergencyAlert.groupBy.mockResolvedValue([
+      { patientId: 10, _count: { patientId: 5 } },
+    ] as any)
+    prismaMock.cgmEntry.groupBy.mockResolvedValue([] as any)
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null } },
+    ] as any)
+    await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    // Last audit row has metadata.patientId = 10 (per-patient pivot).
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.patientId).toBe(10)
+    expect(meta.metadata.kind).toBe("dashboard.medecin.patientsAtRisk")
+  })
+})
+
+// ─── US-2404 KPIs ────────────────────────────────────────────────────────
+
+describe("kpisQuery (US-2404)", () => {
+  it("returns zeroed cards when empty portfolio (DOCTOR with no service)", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await kpisQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toHaveLength(4)
+    expect(out.every((c) => c.value === 0)).toBe(true)
+  })
+
+  it("computes activePatients + TIR + urgencies + proposals with trend", async () => {
+    mockedAccessible.mockResolvedValue([10, 20])
+    // 2 patients active now, 1 prev → delta +1, trend up.
+    prismaMock.cgmEntry.groupBy
+      .mockResolvedValueOnce([{ patientId: 10 }, { patientId: 20 }] as any)
+      .mockResolvedValueOnce([{ patientId: 10 }] as any)
+    prismaMock.cgmEntry.count
+      .mockResolvedValueOnce(100) // total now
+      .mockResolvedValueOnce(70)  // in range now → 70%
+      .mockResolvedValueOnce(80)  // total prev
+      .mockResolvedValueOnce(56)  // in range prev → 70%
+    prismaMock.emergencyAlert.count.mockResolvedValueOnce(3)
+    prismaMock.adjustmentProposal.count.mockResolvedValueOnce(5)
+    const out = await kpisQuery.forCaller(1, "DOCTOR", 1)
+    const byCode = Object.fromEntries(out.map((c) => [c.code, c]))
+    expect(byCode.activePatients!.value).toBe(2)
+    expect(byCode.activePatients!.delta).toBe(1)
+    expect(byCode.activePatients!.trend).toBe("up")
+    expect(byCode.avgTir!.value).toBe(70)
+    expect(byCode.weekUrgencies!.value).toBe(3)
+    expect(byCode.pendingProposals!.value).toBe(5)
+  })
+
+  it("returns null trend for TIR when no prior data", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.cgmEntry.groupBy
+      .mockResolvedValueOnce([{ patientId: 10 }] as any)
+      .mockResolvedValueOnce([] as any)
+    prismaMock.cgmEntry.count
+      .mockResolvedValueOnce(50)
+      .mockResolvedValueOnce(40)
+      .mockResolvedValueOnce(0) // no prev
+      .mockResolvedValueOnce(0)
+    prismaMock.emergencyAlert.count.mockResolvedValueOnce(0)
+    prismaMock.adjustmentProposal.count.mockResolvedValueOnce(0)
+    const out = await kpisQuery.forCaller(1, "DOCTOR", 1)
+    const tir = out.find((c) => c.code === "avgTir")!
+    expect(tir.trend).toBeNull()
+    expect(tir.delta).toBeNull()
+  })
+})
