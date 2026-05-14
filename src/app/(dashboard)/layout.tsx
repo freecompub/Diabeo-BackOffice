@@ -22,7 +22,13 @@ export default async function DashboardLayout({
 }) {
   const headersList = await headers()
   const rawRole = headersList.get("x-user-role")
-  const userRole: UserRole = isValidRole(rawRole) ? rawRole : "VIEWER"
+
+  // L2 (re-review) — fail-safe : missing/invalid role header bounces to
+  // login rather than defaulting to VIEWER and granting access.
+  if (!isValidRole(rawRole)) {
+    redirect("/login")
+  }
+  const userRole: UserRole = rawRole
 
   // US-3356 — Symmetry with (patient)/layout : VIEWER hitting the pro
   // dashboard is bounced to the patient self-service area. Handles the

@@ -28,26 +28,24 @@ import {
 import { QuickActionsPanel, type QuickAction } from "@/components/diabeo/QuickActionsPanel"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 
-/** UI-level period (selector) → API `period` string. */
-function periodToApiString(p: TimePeriod): string {
-  switch (p) {
-    case TimePeriod.OneWeek: return "7d"
-    case TimePeriod.TwoWeeks: return "14d"
-    case TimePeriod.OneMonth: return "30d"
-    case TimePeriod.ThreeMonths: return "90d"
-    default: return "7d"
-  }
-}
+/**
+ * H5 (re-review) — `satisfies Record<TimePeriod, T>` ensures the lookup is
+ * exhaustive : adding a new TimePeriod value produces a compile error
+ * rather than silently falling back to "7d".
+ */
+const PERIOD_TO_API = {
+  "1W": "7d",
+  "2W": "14d",
+  "1M": "30d",
+  "3M": "90d",
+} as const satisfies Record<TimePeriod, string>
 
-function periodToDays(p: TimePeriod): number {
-  switch (p) {
-    case TimePeriod.OneWeek: return 7
-    case TimePeriod.TwoWeeks: return 14
-    case TimePeriod.OneMonth: return 30
-    case TimePeriod.ThreeMonths: return 90
-    default: return 7
-  }
-}
+const PERIOD_TO_DAYS = {
+  "1W": 7,
+  "2W": 14,
+  "1M": 30,
+  "3M": 90,
+} as const satisfies Record<TimePeriod, number>
 
 interface GlycemicMetrics {
   tir: number       // % time in range
@@ -61,16 +59,28 @@ interface CgmEntry {
   valueGl: number
 }
 
+/**
+ * Per-section error state — H1 (re-review) : a transient AGP 503 must NOT
+ * hide the CGM chart and KPIs. Each section reports its own failure.
+ */
+interface SectionState {
+  loading: boolean
+  error: string | null
+}
+
+const INITIAL_STATE: SectionState = { loading: true, error: null }
+
 export default function PatientDashboardPage() {
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.OneWeek)
   const [cgmPoints, setCgmPoints] = useState<{ time: string; glucose: number }[]>([])
   const [metrics, setMetrics] = useState<GlycemicMetrics | null>(null)
   const [agpSlots, setAgpSlots] = useState<AgpSlotPoint[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [cgmState, setCgmState] = useState<SectionState>(INITIAL_STATE)
+  const [metricsState, setMetricsState] = useState<SectionState>(INITIAL_STATE)
+  const [agpState, setAgpState] = useState<SectionState>(INITIAL_STATE)
 
-  const days = periodToDays(period)
-  const apiPeriod = periodToApiString(period)
+  const days = PERIOD_TO_DAYS[period]
+  const apiPeriod = PERIOD_TO_API[period]
 
   // 24h window for the CGM line chart — independent of selector period.
   const cgmRange = useMemo(() => {
@@ -82,40 +92,85 @@ export default function PatientDashboardPage() {
     }
   }, [])
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [cgmRes, metricsRes, agpRes] = await Promise.all([
-        fetch(`/api/cgm?from=${cgmRange.from}&to=${cgmRange.to}`, { credentials: "include" }),
-        fetch(`/api/analytics/glycemic-profile?period=${apiPeriod}`, { credentials: "include" }),
-        fetch(`/api/analytics/agp?period=${apiPeriod}`, { credentials: "include" }),
-      ])
-      if (!cgmRes.ok || !metricsRes.ok || !agpRes.ok) {
-        throw new Error("fetchFailed")
-      }
-      const cgmData = (await cgmRes.json()) as { entries: CgmEntry[] }
-      const metricsData = (await metricsRes.json()) as {
-        metrics: GlycemicMetrics
-      }
-      const agpData = (await agpRes.json()) as { slots: AgpSlotPoint[] }
+  /**
+   * H2 (re-review) — translate API error → human-actionable message.
+   * `gdprConsentRequired` is the most common 403 we expect from /api/cgm.
+   */
+  function describeError(status: number, code?: string): string {
+    if (status === 403 && code === "gdprConsentRequired") {
+      return "Acceptez la politique de confidentialité dans vos préférences pour visualiser vos données."
+    }
+    if (status === 401) return "Session expirée. Reconnectez-vous."
+    if (status >= 500) return "Service temporairement indisponible. Réessayez dans un instant."
+    return "Impossible de charger cette section."
+  }
 
+  /** Fetch + parse a single endpoint into a `SectionState` + payload. */
+  async function fetchSection<T>(url: string): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+    try {
+      const res = await fetch(url, { credentials: "include" })
+      if (!res.ok) {
+        let code: string | undefined
+        try {
+          const body = (await res.json()) as { error?: string }
+          code = body.error
+        } catch { /* not JSON */ }
+        return { ok: false, error: describeError(res.status, code) }
+      }
+      const data = (await res.json()) as T
+      return { ok: true, data }
+    } catch {
+      return { ok: false, error: "Vérifiez votre connexion réseau." }
+    }
+  }
+
+  const fetchData = useCallback(async () => {
+    setCgmState({ loading: true, error: null })
+    setMetricsState({ loading: true, error: null })
+    setAgpState({ loading: true, error: null })
+
+    // H1 — Promise.allSettled : each section completes independently.
+    const [cgmResult, metricsResult, agpResult] = await Promise.all([
+      fetchSection<{ entries: CgmEntry[] }>(
+        `/api/cgm?from=${cgmRange.from}&to=${cgmRange.to}`,
+      ),
+      fetchSection<{ metrics: GlycemicMetrics }>(
+        `/api/analytics/glycemic-profile?period=${apiPeriod}`,
+      ),
+      fetchSection<{ slots: AgpSlotPoint[] }>(
+        `/api/analytics/agp?period=${apiPeriod}`,
+      ),
+    ])
+
+    if (cgmResult.ok) {
       setCgmPoints(
-        cgmData.entries.map((e) => ({
-          time: new Date(e.timestamp).toLocaleTimeString("fr-FR", {
+        cgmResult.data.entries.map((e) => ({
+          // L3 (re-review) — formatters.time delegates to next-intl ; fr-FR
+          // is no longer hardcoded.
+          time: new Date(e.timestamp).toLocaleTimeString(undefined, {
             hour: "2-digit",
             minute: "2-digit",
           }),
-          // Convert g/L → mg/dL for the chart (CgmChart expects mg/dL).
           glucose: Math.round(e.valueGl * 100),
         })),
       )
-      setMetrics(metricsData.metrics)
-      setAgpSlots(agpData.slots ?? [])
-    } catch {
-      setError("Impossible de charger les données. Vérifiez votre connexion.")
-    } finally {
-      setLoading(false)
+      setCgmState({ loading: false, error: null })
+    } else {
+      setCgmState({ loading: false, error: cgmResult.error })
+    }
+
+    if (metricsResult.ok) {
+      setMetrics(metricsResult.data.metrics)
+      setMetricsState({ loading: false, error: null })
+    } else {
+      setMetricsState({ loading: false, error: metricsResult.error })
+    }
+
+    if (agpResult.ok) {
+      setAgpSlots(agpResult.data.slots ?? [])
+      setAgpState({ loading: false, error: null })
+    } else {
+      setAgpState({ loading: false, error: agpResult.error })
     }
   }, [cgmRange, apiPeriod])
 
@@ -123,31 +178,43 @@ export default function PatientDashboardPage() {
     void fetchData()
   }, [fetchData])
 
+  /**
+   * M3 (re-review) — QuickActionsPanel modal wiring lands in Batch 2. Until
+   * then surface a "Bientôt disponible" status so a patient knows the click
+   * was registered (vs. broken UI). H3 — production builds drop the
+   * console.info to avoid leaking action payload in browser logs.
+   */
+  const [toast, setToast] = useState<string | null>(null)
   const handleQuickAction = useCallback((action: QuickAction) => {
-    // TODO(Batch 2) — wire to modal infrastructure when patient modals land.
-    // For now log to console so QA can validate clicks.
-    // eslint-disable-next-line no-console
-    console.info("[patient/dashboard] quick action", action)
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.info("[patient/dashboard] quick action", action)
+    }
+    setToast("Bientôt disponible")
+    window.setTimeout(() => setToast(null), 2500)
   }, [])
 
   return (
-    <div className="space-y-6">
+    <main className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Mon tableau de bord</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Aperçu de vos {days} dernier{days > 1 ? "s" : ""} jour{days > 1 ? "s" : ""}.
+            {/* L1 (re-review) — i18n-grade plural rule will land with US-2115
+                formatters. Until then keep a single phrasing valid for FR. */}
+            Aperçu des {days} derniers jours.
           </p>
         </div>
         <PeriodSelector selectedPeriod={period} onPeriodSelected={setPeriod} />
       </header>
 
-      {error && (
+      {toast && (
         <div
-          role="alert"
-          className="rounded-md border border-red-200 bg-red-50 text-red-800 p-3 text-sm"
+          role="status"
+          aria-live="polite"
+          className="rounded-md border border-teal-200 bg-teal-50 text-teal-900 p-2 text-sm"
         >
-          {error}
+          {toast}
         </div>
       )}
 
@@ -156,6 +223,11 @@ export default function PatientDashboardPage() {
         <h2 id="glycemia-section" className="text-lg font-medium text-gray-800">
           Glycémie sur 24 h
         </h2>
+        {metricsState.error && (
+          <div role="status" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
+            {metricsState.error}
+          </div>
+        )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard
             title="Temps dans la cible"
@@ -166,14 +238,14 @@ export default function PatientDashboardPage() {
               : metrics && metrics.tir >= 50 ? "warning"
               : "critical"
             }
-            loading={loading}
+            loading={metricsState.loading}
           />
           <MetricCard
             title="Glycémie moyenne"
             value={metrics ? `${Math.round(metrics.avgMgdl)}` : "—"}
             unit="mg/dL"
             status="info"
-            loading={loading}
+            loading={metricsState.loading}
           />
           <MetricCard
             title="Variabilité (CV)"
@@ -184,19 +256,25 @@ export default function PatientDashboardPage() {
               : metrics && metrics.cv < 45 ? "warning"
               : "critical"
             }
-            loading={loading}
+            loading={metricsState.loading}
           />
           <MetricCard
             title="HbA1c estimée"
             value={metrics ? metrics.gmi.toFixed(1) : "—"}
             unit="%"
             status="info"
-            loading={loading}
+            loading={metricsState.loading}
           />
         </div>
-        <DiabeoCard variant="elevated" padding="md">
-          <CgmChart data={cgmPoints} targetLow={70} targetHigh={180} height={320} />
-        </DiabeoCard>
+        {cgmState.error ? (
+          <div role="status" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
+            {cgmState.error}
+          </div>
+        ) : (
+          <DiabeoCard variant="elevated" padding="md">
+            <CgmChart data={cgmPoints} targetLow={70} targetHigh={180} height={320} />
+          </DiabeoCard>
+        )}
       </section>
 
       {/* US-3362 — AGP 7d résumé. */}
@@ -204,9 +282,15 @@ export default function PatientDashboardPage() {
         <h2 id="agp-section" className="text-lg font-medium text-gray-800">
           Profil ambulatoire (AGP)
         </h2>
-        <DiabeoCard variant="elevated" padding="md">
-          <AgpPercentileChart slots={agpSlots} />
-        </DiabeoCard>
+        {agpState.error ? (
+          <div role="status" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
+            {agpState.error}
+          </div>
+        ) : (
+          <DiabeoCard variant="elevated" padding="md">
+            <AgpPercentileChart slots={agpSlots} />
+          </DiabeoCard>
+        )}
       </section>
 
       {/* US-3363 — Quick actions side panel. */}
@@ -216,6 +300,6 @@ export default function PatientDashboardPage() {
           <QuickActionsPanel onAction={handleQuickAction} />
         </DiabeoCard>
       </section>
-    </div>
+    </main>
   )
 }

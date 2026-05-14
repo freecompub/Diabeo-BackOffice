@@ -118,15 +118,24 @@ export function useAuth() {
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
         // US-3356 — Role-based redirect : VIEWER lands on patient self-service
-        // dashboard, all other roles (pros) on the cabinet dashboard.
-        // We probe `/api/account` (returns role) immediately after login since
-        // the JWT cookie is now set and the endpoint is JWT-protected.
+        // dashboard, all other roles (pros) on the cabinet dashboard. We probe
+        // `/api/account` (returns role) immediately after login. Layout-side
+        // guards in (dashboard) and (patient) layouts will bounce mis-routed
+        // users if this probe ever returns a stale or malformed payload.
         let target = "/dashboard"
         try {
           const me = await fetch("/api/account", { credentials: "include" })
           if (me.ok) {
-            const account = (await me.json()) as { role?: string }
-            if (account.role === "VIEWER") target = "/patient/dashboard"
+            const account = (await me.json()) as unknown
+            // H6/M8 (re-review) — minimal shape guard so a backend rename of
+            // `role` doesn't silently misroute users without a redirect loop.
+            if (
+              typeof account === "object" && account !== null
+              && "role" in account
+              && (account as { role?: unknown }).role === "VIEWER"
+            ) {
+              target = "/patient/dashboard"
+            }
           }
         } catch {
           // Network blip: fall through to /dashboard. Layout-side guards will

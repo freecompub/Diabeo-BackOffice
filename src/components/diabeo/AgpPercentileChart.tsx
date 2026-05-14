@@ -15,6 +15,7 @@
 
 "use client"
 
+import { useMemo } from "react"
 import {
   ComposedChart,
   Area,
@@ -26,15 +27,12 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts"
+import { type AgpSlot } from "@/lib/statistics"
 
-export interface AgpSlotPoint {
-  timeMinutes: number
-  p10: number
-  p25: number
-  p50: number
-  p75: number
-  p90: number
-}
+// H4 (re-review) — import the canonical AgpSlot type from statistics.ts to
+// avoid shape-drift. Re-exported here as `AgpSlotPoint` for backward-compat
+// with existing callers.
+export type AgpSlotPoint = AgpSlot
 
 export interface AgpPercentileChartProps {
   slots: AgpSlotPoint[]
@@ -80,10 +78,17 @@ export function AgpPercentileChart({
     )
   }
 
+  // Detect reduced-motion preference once at render (H7 — WCAG 2.3.3).
+  const prefersReducedMotion =
+    typeof window !== "undefined"
+    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+
   // Build chart data: stacked Areas need cumulative deltas, but Recharts
   // supports value pairs via Area with `stackId`. We derive bands as raw
   // mg/dL pairs and rely on layered Areas for the visual bands.
-  const data = slots.map((s) => ({
+  // M4 (re-review) — Math.max(0, …) clamp guards against inverted percentiles
+  // from upstream stats bugs ; a negative slice would visually "eat" the floor.
+  const data = useMemo(() => slots.map((s) => ({
     minute: s.timeMinutes,
     hour: formatHour(s.timeMinutes),
     p10: glToMgdl(s.p10),
@@ -91,12 +96,23 @@ export function AgpPercentileChart({
     p50: glToMgdl(s.p50),
     p75: glToMgdl(s.p75),
     p90: glToMgdl(s.p90),
-    // Band deltas for stacked Areas:
-    bandLow: glToMgdl(s.p25 - s.p10), // outer-low slice
-    bandMid: glToMgdl(s.p75 - s.p25), // inner band
-    bandHigh: glToMgdl(s.p90 - s.p75), // outer-high slice
+    bandLow: Math.max(0, glToMgdl(s.p25 - s.p10)),
+    bandMid: Math.max(0, glToMgdl(s.p75 - s.p25)),
+    bandHigh: Math.max(0, glToMgdl(s.p90 - s.p75)),
     floor: glToMgdl(s.p10),
-  }))
+  })), [slots])
+
+  /** Recharts uses internal dataKeys (`bandLow/bandMid/bandHigh/floor`) for
+   *  the stacked-area trick. Filter them out of the tooltip + show only the
+   *  user-meaningful percentiles. (M5 re-review.) */
+  const userVisibleKeys = new Set(["p10", "p25", "p50", "p75", "p90"])
+  const PERCENTILE_LABELS: Record<string, string> = {
+    p10: "10ᵉ percentile",
+    p25: "25ᵉ percentile",
+    p50: "Médiane",
+    p75: "75ᵉ percentile",
+    p90: "90ᵉ percentile",
+  }
 
   return (
     <div className="w-full" role="figure" aria-label="Profil ambulatoire de glycémie sur 7 jours">
@@ -131,20 +147,32 @@ export function AgpPercentileChart({
           />
           {/* Stacked percentile bands. Floor (transparent) lifts the visible
               bands to start at p10. Each subsequent Area stacks delta height. */}
-          <Area type="monotone" dataKey="floor" stackId="agp" stroke="none" fill="transparent" />
+          <Area type="monotone" dataKey="floor" stackId="agp"
+                stroke="none" fill="transparent"
+                isAnimationActive={!prefersReducedMotion} />
           <Area type="monotone" dataKey="bandLow" stackId="agp"
-                stroke="none" fill="#0D9488" fillOpacity={0.12} />
+                stroke="none" fill="#0D9488" fillOpacity={0.12}
+                isAnimationActive={!prefersReducedMotion} />
           <Area type="monotone" dataKey="bandMid" stackId="agp"
-                stroke="none" fill="#0D9488" fillOpacity={0.28} />
+                stroke="none" fill="#0D9488" fillOpacity={0.28}
+                isAnimationActive={!prefersReducedMotion} />
           <Area type="monotone" dataKey="bandHigh" stackId="agp"
-                stroke="none" fill="#0D9488" fillOpacity={0.12} />
+                stroke="none" fill="#0D9488" fillOpacity={0.12}
+                isAnimationActive={!prefersReducedMotion} />
           {/* Median line */}
           <Line type="monotone" dataKey="p50"
-                stroke="#0F766E" strokeWidth={2} dot={false} />
+                stroke="#0F766E" strokeWidth={2} dot={false}
+                isAnimationActive={!prefersReducedMotion} />
           <Tooltip
-            formatter={(value, key) => {
+            formatter={(value, name) => {
+              const key = String(name)
+              if (!userVisibleKeys.has(key)) return null as never
               const n = typeof value === "number" ? value : Number(value)
-              return [Number.isFinite(n) ? `${Math.round(n)} mg/dL` : "—", String(key)]
+              const label = PERCENTILE_LABELS[key] ?? key
+              return [
+                Number.isFinite(n) ? `${Math.round(n)} mg/dL` : "—",
+                label,
+              ]
             }}
             labelFormatter={(m) => formatHour(m as number)}
             contentStyle={{ fontSize: 12 }}
@@ -153,19 +181,69 @@ export function AgpPercentileChart({
       </ResponsiveContainer>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
         <span className="flex items-center gap-1">
-          <span className="w-3 h-1 bg-teal-700 inline-block" /> Médiane
+          <span
+            className="w-3 h-1 bg-teal-700 inline-block"
+            aria-label="Ligne médiane (50ème percentile)"
+            role="img"
+          />
+          Médiane
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-teal-600/30 inline-block" /> 25-75 %
+          <span
+            className="w-3 h-3 bg-teal-600/30 inline-block"
+            aria-label="Bande percentile 25-75 (teinte moyenne)"
+            role="img"
+          />
+          25-75 %
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-teal-500/15 inline-block" /> 10-90 %
+          <span
+            className="w-3 h-3 bg-teal-500/15 inline-block"
+            aria-label="Bande percentile 10-90 (teinte claire)"
+            role="img"
+          />
+          10-90 %
         </span>
         <span className="flex items-center gap-1">
-          <span className="w-3 h-3 bg-emerald-500/15 inline-block" />
+          <span
+            className="w-3 h-3 bg-emerald-500/15 inline-block"
+            aria-label="Zone glycémique cible"
+            role="img"
+          />
           Cible {targetLowMgdl}-{targetHighMgdl} mg/dL
         </span>
       </div>
+
+      {/* C1 (re-review) — sr-only table for screen readers (WCAG 1.1.1 / 1.3.1).
+          Pattern aligned with CgmChart.tsx — required in a medical app. */}
+      <table className="sr-only">
+        <caption>
+          Profil ambulatoire de glycémie — valeurs par tranche de 15 minutes
+          sur 7 jours. Cible {targetLowMgdl}-{targetHighMgdl} mg/dL.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Heure</th>
+            <th scope="col">10ᵉ percentile</th>
+            <th scope="col">25ᵉ percentile</th>
+            <th scope="col">Médiane</th>
+            <th scope="col">75ᵉ percentile</th>
+            <th scope="col">90ᵉ percentile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row) => (
+            <tr key={row.minute}>
+              <th scope="row">{row.hour}</th>
+              <td>{Math.round(row.p10)} mg/dL</td>
+              <td>{Math.round(row.p25)} mg/dL</td>
+              <td>{Math.round(row.p50)} mg/dL</td>
+              <td>{Math.round(row.p75)} mg/dL</td>
+              <td>{Math.round(row.p90)} mg/dL</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }

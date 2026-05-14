@@ -47,10 +47,11 @@ describe("AgpPercentileChart", () => {
 
   it("renders the percentile legend (médiane, 25-75%, 10-90%, cible)", () => {
     render(<AgpPercentileChart slots={makeSlots(20)} />)
-    expect(screen.getByText(/Médiane/i)).toBeTruthy()
+    // Multiple occurrences expected (legend + sr-only table caption/header)
+    expect(screen.getAllByText(/Médiane/i).length).toBeGreaterThan(0)
     expect(screen.getByText(/25-75 %/i)).toBeTruthy()
     expect(screen.getByText(/10-90 %/i)).toBeTruthy()
-    expect(screen.getByText(/70-180 mg\/dL/i)).toBeTruthy()
+    expect(screen.getAllByText(/70-180 mg\/dL/i).length).toBeGreaterThan(0)
   })
 
   it("accepts custom target range and renders it in legend", () => {
@@ -61,6 +62,20 @@ describe("AgpPercentileChart", () => {
         targetHighMgdl={160}
       />,
     )
-    expect(screen.getByText(/80-160 mg\/dL/i)).toBeTruthy()
+    expect(screen.getAllByText(/80-160 mg\/dL/i).length).toBeGreaterThan(0)
+  })
+
+  it("C1 (re-review) — renders sr-only data table for screen readers", () => {
+    const { container } = render(<AgpPercentileChart slots={makeSlots(20)} />)
+    const table = container.querySelector("table.sr-only")
+    expect(table).toBeTruthy()
+    // 20 rows + 1 header
+    expect(table?.querySelectorAll("tbody tr").length).toBe(20)
+  })
+
+  it("C2 (re-review) — legend swatches have aria-label", () => {
+    const { container } = render(<AgpPercentileChart slots={makeSlots(20)} />)
+    const labelled = container.querySelectorAll('[role="img"][aria-label]')
+    expect(labelled.length).toBe(4) // 4 swatches: median, 25-75, 10-90, target
   })
 })
