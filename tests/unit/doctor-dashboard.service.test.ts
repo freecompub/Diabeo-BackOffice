@@ -25,6 +25,19 @@ import {
 import { getAccessiblePatientIds } from "@/lib/access-control"
 
 const mockedAccessible = vi.mocked(getAccessiblePatientIds)
+// Prisma's `groupBy` has a complex generic signature that defeats
+// vitest-mock-extended's deep auto-mock typing ; cast once here so test
+// `mockResolvedValue` calls type-check under CI's stricter tsc.
+const pm = prismaMock as unknown as {
+  emergencyAlert: {
+    findMany: any; count: any; groupBy: any;
+  }
+  cgmEntry: { findMany: any; count: any; groupBy: any }
+  appointment: { findMany: any }
+  patient: { findMany: any }
+  adjustmentProposal: { count: any }
+  auditLog: { create: any }
+}
 
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
@@ -115,12 +128,12 @@ describe("patientsAtRiskQuery (US-2403)", () => {
     prismaMock.emergencyAlert.findMany.mockResolvedValue([
       { patientId: 20 },
     ] as any)
-    prismaMock.emergencyAlert.groupBy.mockResolvedValue([
+    pm.emergencyAlert.groupBy.mockResolvedValue([
       { patientId: 10, _count: { patientId: 4 } }, // flag recentHypos
       { patientId: 20, _count: { patientId: 5 } }, // excluded
     ] as any)
     // Patient 10 has recent CGM (no silence flag).
-    prismaMock.cgmEntry.groupBy.mockResolvedValue([
+    pm.cgmEntry.groupBy.mockResolvedValue([
       { patientId: 10, _max: { timestamp: new Date() } },
       { patientId: 20, _max: { timestamp: new Date() } },
     ] as any)
@@ -136,9 +149,9 @@ describe("patientsAtRiskQuery (US-2403)", () => {
   it("flags silence > 5 days without CGM activity", async () => {
     mockedAccessible.mockResolvedValue([10])
     prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
-    prismaMock.emergencyAlert.groupBy.mockResolvedValue([] as any)
+    pm.emergencyAlert.groupBy.mockResolvedValue([] as any)
     const oldCgm = new Date(Date.now() - 10 * 86_400_000)
-    prismaMock.cgmEntry.groupBy.mockResolvedValue([
+    pm.cgmEntry.groupBy.mockResolvedValue([
       { patientId: 10, _max: { timestamp: oldCgm } },
     ] as any)
     prismaMock.patient.findMany.mockResolvedValue([
@@ -152,8 +165,8 @@ describe("patientsAtRiskQuery (US-2403)", () => {
   it("flags patients with no CGM entry at all (assumed silent ≥ SILENT_DAYS+1)", async () => {
     mockedAccessible.mockResolvedValue([10])
     prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
-    prismaMock.emergencyAlert.groupBy.mockResolvedValue([] as any)
-    prismaMock.cgmEntry.groupBy.mockResolvedValue([] as any) // no rows for 10
+    pm.emergencyAlert.groupBy.mockResolvedValue([] as any)
+    pm.cgmEntry.groupBy.mockResolvedValue([] as any) // no rows for 10
     prismaMock.patient.findMany.mockResolvedValue([
       { id: 10, pathology: "DT1", user: { firstname: null } },
     ] as any)
@@ -165,10 +178,10 @@ describe("patientsAtRiskQuery (US-2403)", () => {
   it("audits per-patient (US-2268 pivot)", async () => {
     mockedAccessible.mockResolvedValue([10])
     prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
-    prismaMock.emergencyAlert.groupBy.mockResolvedValue([
+    pm.emergencyAlert.groupBy.mockResolvedValue([
       { patientId: 10, _count: { patientId: 5 } },
     ] as any)
-    prismaMock.cgmEntry.groupBy.mockResolvedValue([] as any)
+    pm.cgmEntry.groupBy.mockResolvedValue([] as any)
     prismaMock.patient.findMany.mockResolvedValue([
       { id: 10, pathology: "DT1", user: { firstname: null } },
     ] as any)
@@ -193,7 +206,7 @@ describe("kpisQuery (US-2404)", () => {
   it("computes activePatients + TIR + urgencies + proposals with trend", async () => {
     mockedAccessible.mockResolvedValue([10, 20])
     // 2 patients active now, 1 prev → delta +1, trend up.
-    prismaMock.cgmEntry.groupBy
+    pm.cgmEntry.groupBy
       .mockResolvedValueOnce([{ patientId: 10 }, { patientId: 20 }] as any)
       .mockResolvedValueOnce([{ patientId: 10 }] as any)
     prismaMock.cgmEntry.count
@@ -215,7 +228,7 @@ describe("kpisQuery (US-2404)", () => {
 
   it("returns null trend for TIR when no prior data", async () => {
     mockedAccessible.mockResolvedValue([10])
-    prismaMock.cgmEntry.groupBy
+    pm.cgmEntry.groupBy
       .mockResolvedValueOnce([{ patientId: 10 }] as any)
       .mockResolvedValueOnce([] as any)
     prismaMock.cgmEntry.count
