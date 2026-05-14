@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 9b Batch 1 livré (PR #399, 5 US US-2400/2401/2402/2403/2404, ~34 SP). Dashboard médecin complet : page server-component + role-based redirect + 4 cards (urgences polling 30s two-pass critical, RDV du jour Europe/Paris, patients à suivre on-demand DOCTOR-only, KPI cabinet 14j Promise.all). usePollingFetch hook avec isStale + visibilitychange listener + 401 module-level guard. 2 rounds reviews appliqués (29 findings : Critical/High/Medium/Low). **MVP désormais 100%** (68/68). V1 53 → 55 DONE (39%). Total 123/292 (42%). 1618/1618 tests verts.
+> Dernière mise à jour : 2026-05-14 — Groupe 9b Batch 2 livré (PR #401, 5 US US-2405/2406/2407/2408/2409, ~31 SP). Dashboard infirmier complet : redirect split NURSE → /infirmier, page + 4 cards (KPI ma journée Promise.all 4 metrics, To-do read-only 3 sources avec scoring imminent, Coordination équipe via DelegationRequest cabinet-scoped, Relances heuristique + tel:/sms: URI natif). todayBounds fix DST-aware Paris→UTC midnight (propagé sur doctor-dashboard.service.ts pour PR #399). 2 rounds reviews appliqués (13 findings). V1 55 → 60 DONE (43%). Total 128/292 (44%). 1633/1633 tests verts. ⚠️ V2 deferrals : NurseTaskItem (US-2407 checkbox), TeamMessage (US-2408 chat libre), PatientRecallLog + Twilio (US-2409).
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 55   | 1       | 85          | **39%** |
+| **V1**   | 141   | 60   | 1       | 80          | **43%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **123** | **2**   | **167**     | **42%** |
+| **TOTAL**| **292** | **128** | **2**   | **162**     | **44%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -393,11 +393,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2402 | Card RDV du jour (médecin) | ✅ DONE PR #399 | 5 | Today bounds Europe/Paris, max 3, badge imminent <30min |
 | US-2403 | Card patients à suivre (médecin) | ✅ DONE PR #399 | 8 | DOCTOR-only, on-demand (hypos 7j + silence 5j), exclut urgences ouvertes |
 | US-2404 | Section KPI cabinet 14j (médecin) | ✅ DONE PR #399 | 5 | 4 MetricCard, Promise.all 8 queries, trend up/down/flat |
-| US-2405 | Dashboard infirmier (page principale) | V1 | 8 | `infirmier/US-2405-…` |
-| US-2406 | KPI ma journée (infirmier) | V1 | 5 | `infirmier/US-2406-…` |
-| US-2407 | To-do du jour avec checkboxes (infirmier) | V1 | 8 | `infirmier/US-2407-…` |
-| US-2408 | Coordination équipe (infirmier) | V1 | 5 | `infirmier/US-2408-…` |
-| US-2409 | Relances en attente (infirmier) | V1 | 5 | `infirmier/US-2409-…` |
+| US-2405 | Dashboard infirmier (page principale) | ✅ DONE PR #401 | 8 | `/infirmier` server-component + redirect split NURSE |
+| US-2406 | KPI ma journée (infirmier) | ✅ DONE PR #401 | 5 | 4 metrics on-demand Promise.all (RDV/events/urgences/proposals) |
+| US-2407 | To-do du jour avec checkboxes (infirmier) | ✅ DONE PR #401 (READ-ONLY) | 8 | Compute 3 sources Appointment+Event+Proposal ; ⚠️ checkbox completion deferred V2 (NurseTaskItem table) |
+| US-2408 | Coordination équipe (infirmier) | ✅ DONE PR #401 (workflow) | 5 | DelegationRequest inbox + cabinet scope ; ⚠️ libre chat deferred V2 (TeamMessage table) |
+| US-2409 | Relances en attente (infirmier) | ✅ DONE PR #401 (heuristique) | 5 | silentMonitoring+apptUnconfirmed+neverSynced + tel:/sms: URI ; ⚠️ Twilio + PatientRecallLog deferred V2 |
 | US-2410 | Dashboard administrateur (page principale) | V1 | 8 | `admin/US-2410-…` |
 | US-2411 | KPI activité cabinet (admin) | V1 → ⏸️ PAUSED | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — session Samir 2026-05-13 |
 | US-2412 | Facturation à traiter (admin) | V1 | 5 | dep remappée US-2170 → **US-2107** (Groupe 7 Facturation) |
