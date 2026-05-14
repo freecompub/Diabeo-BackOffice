@@ -18,7 +18,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
-import PatientDashboardPage from "@/app/(patient)/dashboard/page"
+import PatientDashboardPage from "@/app/(patient)/patient/dashboard/page"
 
 // next-intl is imported transitively via NavigationShell — stub it here so
 // the page renders standalone without an IntlProvider in tests.
