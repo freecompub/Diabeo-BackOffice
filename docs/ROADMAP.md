@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 9b Batch 2 livré (PR #401, 5 US US-2405/2406/2407/2408/2409, ~31 SP). Dashboard infirmier complet : redirect split NURSE → /infirmier, page + 4 cards (KPI ma journée Promise.all 4 metrics, To-do read-only 3 sources avec scoring imminent, Coordination équipe via DelegationRequest cabinet-scoped, Relances heuristique + tel:/sms: URI natif). todayBounds fix DST-aware Paris→UTC midnight (propagé sur doctor-dashboard.service.ts pour PR #399). 2 rounds reviews appliqués (13 findings). V1 55 → 60 DONE (43%). Total 128/292 (44%). 1633/1633 tests verts. ⚠️ V2 deferrals : NurseTaskItem (US-2407 checkbox), TeamMessage (US-2408 chat libre), PatientRecallLog + Twilio (US-2409).
+> Dernière mise à jour : 2026-05-14 — Groupe 9b Batch 3 Dashboard admin livré (PR #403, 3 US US-2410/2412/2415, ~19 SP). Redirect split étendu ADMIN → /admin. Page + 3 cards : AdminKpiSection (4 metrics on-demand : cabinets/staff/patients actifs/audit 7j, COUNT(DISTINCT) raw SQL), BillingCard (heuristique fallback TeleconsultationActe.invoicedAt IS NULL, label "(arrondi)"), ComplianceCard (lastBackup avec NULLS FIRST guard, audit 24h, failed backups 30d, STALE constant 2j). US-2415 Sidebar couvert par NavigationShell existant (minRole ADMIN). 2 rounds reviews appliqués (11 findings). V1 60 → 63 DONE (45%). Total 131/292 (45%). 1642/1642 tests verts. ⚠️ V2 deferrals : Invoice table (US-2107 → US-2412 v2), KPI activité (US-2411 V3 deps), RGPD conformité (US-2413 V3 deps), multi-cabinet switcher + sidebar badges (US-2415 v2).
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 60   | 1       | 80          | **43%** |
+| **V1**   | 141   | 63   | 1       | 77          | **45%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **128** | **2**   | **162**     | **44%** |
+| **TOTAL**| **292** | **131** | **2**   | **159**     | **45%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -398,12 +398,12 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2407 | To-do du jour avec checkboxes (infirmier) | ✅ DONE PR #401 (READ-ONLY) | 8 | Compute 3 sources Appointment+Event+Proposal ; ⚠️ checkbox completion deferred V2 (NurseTaskItem table) |
 | US-2408 | Coordination équipe (infirmier) | ✅ DONE PR #401 (workflow) | 5 | DelegationRequest inbox + cabinet scope ; ⚠️ libre chat deferred V2 (TeamMessage table) |
 | US-2409 | Relances en attente (infirmier) | ✅ DONE PR #401 (heuristique) | 5 | silentMonitoring+apptUnconfirmed+neverSynced + tel:/sms: URI ; ⚠️ Twilio + PatientRecallLog deferred V2 |
-| US-2410 | Dashboard administrateur (page principale) | V1 | 8 | `admin/US-2410-…` |
+| US-2410 | Dashboard administrateur (page principale) | ✅ DONE PR #403 | 8 | `/admin` server-component + redirect split + 3 cards (KPI/Billing/Compliance) |
 | US-2411 | KPI activité cabinet (admin) | V1 → ⏸️ PAUSED | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — session Samir 2026-05-13 |
-| US-2412 | Facturation à traiter (admin) | V1 | 5 | dep remappée US-2170 → **US-2107** (Groupe 7 Facturation) |
+| US-2412 | Facturation à traiter (admin) | ✅ DONE PR #403 (heuristique) | 5 | TeleconsultationActe.invoicedAt IS NULL fallback ; ⚠️ Invoice table V2 (US-2107) |
 | US-2413 | Conformité RGPD (admin) | V1 → ⏸️ PAUSED | 8 | deps US-2190/2191/2192 absentes du ROADMAP — session Samir 2026-05-13 |
 | ~~US-2414~~ | ~~Santé système 6 services (admin)~~ | ❌ SUPPRIMÉE | — | Q6 session Samir 2026-05-13 — duplicate (`/api/health` couvre déjà) |
-| US-2415 | Sidebar pilotage administration (admin) | V1 | 6 | `admin/US-2415-…` |
+| US-2415 | Sidebar pilotage administration (admin) | ✅ DONE PR #403 (existant) | 6 | NavigationShell déjà gated minRole ADMIN sur /users + /audit ; ⚠️ badges count V2 |
 
 > **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
 > démonstration produit (présentation cabinet médecin).
