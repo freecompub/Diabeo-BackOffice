@@ -28,8 +28,10 @@
  */
 
 import { Prisma, FhirSyncStatus } from "@prisma/client"
+import type { z } from "zod"
 import { prisma, type PrismaClientOrTx as Tx } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+import { getEnvBoolean } from "@/lib/env"
 import { auditService, type AuditContext } from "./audit.service"
 import { NotFoundError, ValidationError } from "./team-workflow.errors"
 
@@ -44,6 +46,9 @@ import { NotFoundError, ValidationError } from "./team-workflow.errors"
  *
  * "Total attempts" = 5 (initial + 4 backed-off retries).
  */
+// L7 (re-review) — DB constraint `fhir_interoperability_retry_count_check`
+// in the migration must match this value (it caps at <= 5). Raising one
+// without raising the other will cause INSERT/UPDATE to fail at the DB layer.
 const MAX_RETRIES = 5
 const BACKOFF_BASE_MS = 60_000 // 1 min, doubled per retry (1, 2, 4, 8 min)
 const ERROR_MSG_MAX = 500
@@ -136,32 +141,44 @@ function sanitizeErrorMessage(input: unknown): string {
     try { return JSON.stringify(input) }
     catch { return String(input) }
   })()
+  // Ordering matters — phone patterns must run BEFORE the pure digit-run
+  // regex, otherwise `0612345678` gets tagged ID instead of PHONE (M1).
+  // The phone matcher requires EITHER a leading `+` (intl), OR at least one
+  // separator between groups, OR a French 10-digit number starting with `0`.
+  // Unified 9-17 digit run closes the 12-digit gap (M2).
   const redacted = s
-    // INS/NIR/SNAS — long digit runs with optional internal spaces
-    .replace(/\b\d{13,17}\b/g, "[REDACTED_ID]")
-    // RPPS (11) / ADELI (9) — narrower ranges, distinct token to aid forensics
-    .replace(/\b\d{11}\b/g, "[REDACTED_RPPS]")
-    .replace(/\b\d{9,10}\b/g, "[REDACTED_ID9]")
+    // Phone with + prefix (international)
+    .replace(/\+\d[\d\s.-]{7,}\d/g, "[REDACTED_PHONE]")
+    // Phone with separator between digit groups (national formatted)
+    .replace(/\b\d{1,4}[\s.-][\d\s.-]{6,}\d/g, "[REDACTED_PHONE]")
+    // French 10-digit phone (mobile / landline, starts with 0)
+    .replace(/\b0\d{9}\b/g, "[REDACTED_PHONE]")
     // Email
     .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[REDACTED_EMAIL]")
-    // Phone (≥10 contiguous digits or grouped with separators)
-    .replace(/\+?\d[\d\s.-]{9,}\d/g, "[REDACTED_PHONE]")
     // ISO date YYYY-MM-DD (DOB)
     .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "[REDACTED_DATE]")
+    // Long digit runs cover INS/NIR/SNAS (13-17), RPPS (11), 12-digit FINESS,
+    // ADELI (9), and arbitrary 10-digit IDs (other than FR phone, already
+    // redacted above). Single unified pattern avoids gaps.
+    .replace(/\b\d{9,17}\b/g, "[REDACTED_ID]")
   return redacted.slice(0, ERROR_MSG_MAX)
 }
 
 /**
  * H3 — strip query + fragment from a URL before audit logging so embedded
  * tokens / API keys never persist in the immutable audit table. Returns
- * `origin + pathname` only. Invalid URLs are returned as `[malformed]`.
+ * `origin + pathname` only.
+ *
+ * L1 (re-review) — explicit `null` on parse failure so callers can fall back
+ * to a sentinel like "[malformed]" only where appropriate, instead of writing
+ * the literal sentinel into audit metadata.
  */
-function stripUrlSecrets(url: string): string {
+function stripUrlSecrets(url: string): string | null {
   try {
     const u = new URL(url)
     return `${u.origin}${u.pathname}`
   } catch {
-    return "[malformed]"
+    return null
   }
 }
 
@@ -238,13 +255,32 @@ function validateEnqueueInput(input: EnqueueInput) {
 }
 
 /**
+ * M4 (re-review) — SSRF defense. Reject internal/loopback/RFC1918/cloud-metadata
+ * hostnames even if (via legacy DB rows or compromise) they appear in the
+ * allowlist. The admin write path enforces the same rule when creating rows,
+ * so this is defense-in-depth.
+ */
+const FORBIDDEN_HOST_RE = /^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|::1|fe80:|metadata\.google\.internal)/i
+const PRIVATE_IPV4_RE = /^(?:10\.|192\.168\.|172\.(?:1[6-9]|2\d|3[01])\.)/
+
+function isForbiddenOrigin(origin: string): boolean {
+  try {
+    const host = new URL(origin).hostname.toLowerCase()
+    return FORBIDDEN_HOST_RE.test(host) || PRIVATE_IPV4_RE.test(host)
+  } catch {
+    return true
+  }
+}
+
+/**
  * H5 — verify the target origin is in the allowlist + kill-switch is off.
- * Throws `ValidationError` ("systemNotAllowed" / "killSwitchActive") on
- * failure so the caller surfaces a 422 rather than enqueueing silently.
+ * Throws `ValidationError` ("systemNotAllowed" / "killSwitchActive" /
+ * "forbiddenHost") on failure so the caller surfaces a 422.
  */
 async function assertSystemAllowed(tx: Tx, url: string): Promise<void> {
   const origin = extractOrigin(url)
   if (!origin) throw new ValidationError("externalSystemUrl")
+  if (isForbiddenOrigin(origin)) throw new ValidationError("forbiddenHost")
   const allowed = await tx.fhirAllowedSystem.findUnique({
     where: { origin },
     select: { isActive: true, killSwitchActive: true },
@@ -309,19 +345,30 @@ export const fhirInteropService = {
     return row ? toInteropDTO(row) : null
   },
 
-  /** Decrypt the stored payload. Generic-typed so the worker gets a typed
-   *  resource back ; defaults to `FhirResource` (the discriminated union).
+  /** Decrypt the stored payload.
+   *
+   *  H4 (re-review) — when a `schema` is provided, runtime shape validation
+   *  is enforced (Zod) before returning. Without a schema, the cast is unsafe
+   *  but documented for the worker path that already knows the resource type.
+   *
    *  Returns `null` if the row is missing, the ciphertext can't be decrypted,
-   *  or the plaintext isn't valid JSON. */
-  async getDecryptedPayload<T = FhirResource>(id: number): Promise<T | null> {
+   *  the plaintext isn't valid JSON, or the shape fails validation.
+   */
+  async getDecryptedPayload<T>(id: number, schema?: z.ZodType<T>): Promise<T | null> {
     const row = await prisma.fhirInteroperability.findUnique({
       where: { id }, select: { payloadEncrypted: true },
     })
     if (!row) return null
     const plaintext = safeDecryptField(row.payloadEncrypted)
     if (!plaintext) return null
-    try { return JSON.parse(plaintext) as T }
+    let parsed: unknown
+    try { parsed = JSON.parse(plaintext) }
     catch { return null }
+    if (schema) {
+      const result = schema.safeParse(parsed)
+      return result.success ? result.data : null
+    }
+    return parsed as T
   },
 
   /**
@@ -332,9 +379,10 @@ export const fhirInteropService = {
     id: number, fhirResourceId: string, durationMs: number,
     auditUserId: number, ctx?: AuditContext,
   ): Promise<FhirInteropDTO> {
-    // M2 — FHIR R4 resource id charset (spec §2.34.1): [A-Za-z0-9.-_]{1,64}.
+    // M5 (re-review) — strictly FHIR R4 spec §2.34.1: [A-Za-z0-9\-\.]{1,64}.
+    //      No underscore (was permitted in the previous round, tightened now).
     //      Defends against log poisoning from a hostile FHIR server response.
-    if (!/^[A-Za-z0-9._-]{1,64}$/.test(fhirResourceId)) {
+    if (!/^[A-Za-z0-9.\-]{1,64}$/.test(fhirResourceId)) {
       throw new ValidationError("fhirResourceId")
     }
     return prisma.$transaction(async (tx: Tx) => {
@@ -429,6 +477,11 @@ export const fhirInteropService = {
       if (row.syncStatus !== FhirSyncStatus.failed) {
         throw new ValidationError("notFailed")
       }
+      // H1 (re-review) — re-check allowlist + kill-switch on manual retry.
+      // An ADMIN that retries after the operator has revoked the destination
+      // (RGPD Art. 28 DPA revocation) must NOT bypass the gate.
+      await assertSystemAllowed(tx, row.externalSystemUrl)
+
       const updated = await tx.fhirInteroperability.update({
         where: { id },
         data: {
@@ -452,6 +505,12 @@ export const fhirInteropService = {
 
   /**
    * List sync status with optional filters. ADMIN/DOCTOR read.
+   *
+   * M9 (re-review) — after H2 SetNull, hard-deleted patient rows surface with
+   * `patientId: null`. ADMIN global listing intentionally returns these for
+   * forensic continuity (CNIL/ANS retention). Callers must NOT treat
+   * `patientId === null` as an error — it represents "export emitted before
+   * patient anonymisation".
    */
   async listStatus(filter?: {
     patientId?: number;
@@ -484,9 +543,12 @@ export const fhirInteropService = {
   /**
    * Feature flag check. When `FHIR_ENABLED!=="true"`, the queue stays in
    * scaffold mode — items remain `pending` and no outbound HTTP fires.
+   *
+   * M7 (re-review) — delegate to the typed env getter to keep validation
+   * and consumption in lockstep.
    */
   isEnabled(): boolean {
-    return process.env.FHIR_ENABLED === "true"
+    return getEnvBoolean("FHIR_ENABLED") === true
   },
 
   /** Exposed for tests + worker. */

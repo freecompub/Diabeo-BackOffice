@@ -327,7 +327,7 @@ export const countryTaxRuleService = {
         }
         throw err
       }
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
   async update(
@@ -500,7 +500,7 @@ export const healthcareRegulationService = {
         metadata: { countryCode: input.countryCode, regulationType: input.regulationType },
       })
       return toRegulationDTO(created)
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
   async update(

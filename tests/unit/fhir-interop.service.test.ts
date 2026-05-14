@@ -91,6 +91,16 @@ describe("sanitizeErrorMessage", () => {
     const out = sanitizeErrorMessage(msg)
     expect(out).toContain("[REDACTED_PHONE]")
   })
+  it("M1 (re-review) — 10-digit phone `0612345678` redacted as PHONE not ID", () => {
+    const out = sanitizeErrorMessage("Call 0612345678 immediately")
+    expect(out).toContain("[REDACTED_PHONE]")
+    expect(out).not.toContain("[REDACTED_ID]")
+  })
+  it("M2 (re-review) — 12-digit FINESS identifier is redacted (no fall-through)", () => {
+    const out = sanitizeErrorMessage("FINESS 123456789012 missing")
+    expect(out).not.toContain("123456789012")
+    expect(out).toContain("[REDACTED_ID]")
+  })
   it("safely stringifies non-string inputs", () => {
     const out = sanitizeErrorMessage({ status: 500, detail: "boom" })
     expect(out).toContain("status")
@@ -141,6 +151,27 @@ describe("fhirInteropService.enqueue", () => {
         {
           patientId: 7, resourceType: "Patient",
           externalSystemUrl: "https://rogue.example.com/Patient",
+          resource,
+        }, 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("M4 (re-review) — rejects RFC1918 / loopback hosts (SSRF guard)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as any)
+    await expect(
+      fhirInteropService.enqueue(
+        {
+          patientId: 7, resourceType: "Patient",
+          externalSystemUrl: "https://10.0.0.5/Patient",
+          resource,
+        }, 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+    await expect(
+      fhirInteropService.enqueue(
+        {
+          patientId: 7, resourceType: "Patient",
+          externalSystemUrl: "https://localhost/Patient",
           resource,
         }, 9,
       ),
@@ -314,6 +345,17 @@ describe("fhirInteropService.markFailed", () => {
 })
 
 describe("fhirInteropService.retry", () => {
+  it("H1 (re-review) — rejects retry when kill-switch is active", async () => {
+    prismaMock.fhirInteroperability.findUnique.mockResolvedValue({
+      id: 1, patientId: 7, syncStatus: FhirSyncStatus.failed, retryCount: 5,
+      externalSystemUrl: "https://fhir.example.com/",
+    } as any)
+    prismaMock.fhirAllowedSystem.findUnique.mockResolvedValue({
+      isActive: true, killSwitchActive: true,
+    } as any)
+    await expect(fhirInteropService.retry(1, 9))
+      .rejects.toBeInstanceOf(ValidationError)
+  })
   it("rejects when not in failed status", async () => {
     prismaMock.fhirInteroperability.findUnique.mockResolvedValue({
       id: 1, patientId: 7, syncStatus: FhirSyncStatus.synced,
@@ -324,6 +366,10 @@ describe("fhirInteropService.retry", () => {
   it("resets retryCount + schedules immediate retry", async () => {
     prismaMock.fhirInteroperability.findUnique.mockResolvedValue({
       id: 1, patientId: 7, syncStatus: FhirSyncStatus.failed, retryCount: 5,
+      externalSystemUrl: "https://fhir.example.com/",
+    } as any)
+    prismaMock.fhirAllowedSystem.findUnique.mockResolvedValue({
+      isActive: true, killSwitchActive: false,
     } as any)
     prismaMock.fhirInteroperability.update.mockResolvedValue({
       id: 1, patientId: 7,

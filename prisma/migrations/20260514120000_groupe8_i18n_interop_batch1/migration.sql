@@ -15,7 +15,7 @@ CREATE TABLE "country_currencies" (
     "exchange_rate" DECIMAL(12, 6) NOT NULL,
     "is_active"     BOOLEAN NOT NULL DEFAULT true,
     "created_at"    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at"    TIMESTAMPTZ NOT NULL,
+    "updated_at"    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by"    INTEGER,
 
     CONSTRAINT "country_currencies_pkey" PRIMARY KEY ("id"),
@@ -49,7 +49,7 @@ CREATE TABLE "country_tax_rules" (
     "applies_until"  DATE,
     "is_active"      BOOLEAN NOT NULL DEFAULT true,
     "created_at"     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at"     TIMESTAMPTZ NOT NULL,
+    "updated_at"     TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by"     INTEGER,
 
     CONSTRAINT "country_tax_rules_pkey" PRIMARY KEY ("id"),
@@ -84,7 +84,7 @@ CREATE TABLE "healthcare_regulations" (
     "enforced_until"   DATE,
     "is_active"        BOOLEAN NOT NULL DEFAULT true,
     "created_at"       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at"       TIMESTAMPTZ NOT NULL,
+    "updated_at"       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by"       INTEGER,
 
     CONSTRAINT "healthcare_regulations_pkey" PRIMARY KEY ("id"),
@@ -116,7 +116,7 @@ CREATE TABLE "fhir_allowed_systems" (
     "is_active"          BOOLEAN NOT NULL DEFAULT true,
     "kill_switch_active" BOOLEAN NOT NULL DEFAULT false,
     "created_at"         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at"         TIMESTAMPTZ NOT NULL,
+    "updated_at"         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by"         INTEGER,
 
     CONSTRAINT "fhir_allowed_systems_pkey" PRIMARY KEY ("id"),
@@ -150,7 +150,7 @@ CREATE TABLE "fhir_interoperability" (
     "next_retry_at"       TIMESTAMPTZ,
     "last_synced_at"      TIMESTAMPTZ,
     "created_at"          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updated_at"          TIMESTAMPTZ NOT NULL,
+    "updated_at"          TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "created_by"          INTEGER,
 
     CONSTRAINT "fhir_interoperability_pkey" PRIMARY KEY ("id"),

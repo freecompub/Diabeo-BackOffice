@@ -180,6 +180,23 @@ function assertOptionalBoolean(name: string): void {
   }
 }
 
+/**
+ * M7 (re-review) — typed accessor for boolean feature flags. Use this from
+ * service code instead of comparing `process.env[X] === "true"` manually,
+ * so the validation and consumption share a single source of truth.
+ *
+ * Returns `undefined` when unset (feature off) ; `true`/`false` otherwise.
+ */
+export function getEnvBoolean(name: string): boolean | undefined {
+  const raw = process.env[name]
+  if (raw === undefined) return undefined
+  if (raw === "true") return true
+  if (raw === "false") return false
+  // Should never happen if assertOptionalBoolean ran at boot, but fail-safe:
+  // treat malformed as "off" rather than crash a request handler.
+  return false
+}
+
 function assertSpecs(specs: readonly EnvSpec[]): void {
   const problems: string[] = []
 

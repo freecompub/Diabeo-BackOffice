@@ -75,7 +75,10 @@ export async function POST(req: NextRequest) {
         ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
         metadata: { patientId: parsed.data.patientId, kind: "decryption-failed" },
       })
-      return NextResponse.json({ error: "patientDataCorrupted" }, { status: 500 })
+      // L3 (re-review) — return a generic 500 to the client so a DOCTOR can't
+      // probe which patients have decryption failures (oracle). The real
+      // reason ("decryption-failed") lives in the audit metadata above.
+      return NextResponse.json({ error: "internalError" }, { status: 500 })
     }
 
     const resource = buildFhirPatient({

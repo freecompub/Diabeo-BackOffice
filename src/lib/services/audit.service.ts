@@ -159,6 +159,8 @@ export type AuditResource =
   | "HEALTHCARE_REGULATION"
   /** US-2123 — HL7 FHIR R4 interoperability resource. */
   | "FHIR_INTEROP"
+  /** US-2123 H5 — FHIR allowed-system registry entry (DPA-approved destination). */
+  | "FHIR_ALLOWED_SYSTEM"
 
 /**
  * Audit log entry — parameters for logging an action.
