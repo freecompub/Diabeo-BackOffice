@@ -164,7 +164,7 @@ enum AndroidPriority {
 enum InsulinUsage {
   bolus
   basal
-  both  // Pour les pré-mélangées (NovoMix, Humalog Mix)
+  both // Pour les pré-mélangées (NovoMix, Humalog Mix)
 }
 
 /// US-2148 — Statut compte utilisateur (suspension / archivage admin).
@@ -197,13 +197,13 @@ enum BackupStatus {
 
 /// Type d'alerte d'urgence générée par seuils CGM/cétones ou saisie manuelle.
 enum EmergencyAlertType {
-  severe_hypo      // CGM < seuil veryLow (par défaut 54 mg/dL)
-  hypo             // CGM < seuil low (par défaut 70 mg/dL)
-  severe_hyper     // CGM > seuil high (par défaut 250 mg/dL)
-  hyper            // CGM > seuil ok (par défaut 180 mg/dL)
-  ketone_dka       // Cétones > seuil DKA (par défaut 3.0 mmol/L)
-  ketone_moderate  // Cétones entre seuils modérés (par défaut 1.5–3.0 mmol/L)
-  manual           // Alerte créée manuellement (patient ou pro)
+  severe_hypo // CGM < seuil veryLow (par défaut 54 mg/dL)
+  hypo // CGM < seuil low (par défaut 70 mg/dL)
+  severe_hyper // CGM > seuil high (par défaut 250 mg/dL)
+  hyper // CGM > seuil ok (par défaut 180 mg/dL)
+  ketone_dka // Cétones > seuil DKA (par défaut 3.0 mmol/L)
+  ketone_moderate // Cétones entre seuils modérés (par défaut 1.5–3.0 mmol/L)
+  manual // Alerte créée manuellement (patient ou pro)
 }
 
 /// Sévérité clinique d'une alerte — pilote prioritisation push & UI.
@@ -246,125 +246,125 @@ enum EmergencyAlertActionType {
 // ═══════════════════════════════════════════════════════════════
 
 model User {
-  id                       Int       @id @default(autoincrement())
-  email                    String    // chiffre AES-256-GCM en production
-  emailHmac                String    @unique @map("email_hmac") // HMAC-SHA256 pour lookup unique
-  passwordHash             String    @map("password_hash")
-  title                    String?   // 'M.' | 'Mme' | 'Dr' | 'Prof'
-  firstname                String?   // chiffre
-  firstnameHmac            String?   @map("firstname_hmac") // HMAC-SHA256 pour recherche
-  firstnames               String?   // chiffre
-  usedFirstname            String?   @map("used_firstname") // chiffre
-  lastname                 String?   // chiffre
-  lastnameHmac             String?   @map("lastname_hmac") // HMAC-SHA256 pour recherche
-  usedLastname             String?   @map("used_lastname") // chiffre
-  birthday                 DateTime? @db.Date // chiffre
+  id                       Int        @id @default(autoincrement())
+  email                    String // chiffre AES-256-GCM en production
+  emailHmac                String     @unique @map("email_hmac") // HMAC-SHA256 pour lookup unique
+  passwordHash             String     @map("password_hash")
+  title                    String? // 'M.' | 'Mme' | 'Dr' | 'Prof'
+  firstname                String? // chiffre
+  firstnameHmac            String?    @map("firstname_hmac") // HMAC-SHA256 pour recherche
+  firstnames               String? // chiffre
+  usedFirstname            String?    @map("used_firstname") // chiffre
+  lastname                 String? // chiffre
+  lastnameHmac             String?    @map("lastname_hmac") // HMAC-SHA256 pour recherche
+  usedLastname             String?    @map("used_lastname") // chiffre
+  birthday                 DateTime?  @db.Date // chiffre
   sex                      Sex?
-  codeBirthPlace           String?   @map("code_birth_place") // chiffre
-  timezone                 String?   @default("Europe/Paris")
-  phone                    String?   // chiffre
-  address1                 String?   // chiffre
-  address2                 String?   // chiffre
-  cp                       String?   // chiffre
-  city                     String?   // chiffre
-  country                  String?   @db.Char(2)
+  codeBirthPlace           String?    @map("code_birth_place") // chiffre
+  timezone                 String?    @default("Europe/Paris")
+  phone                    String? // chiffre
+  address1                 String? // chiffre
+  address2                 String? // chiffre
+  cp                       String? // chiffre
+  city                     String? // chiffre
+  country                  String?    @db.Char(2)
   pic                      String?
-  language                 Language? @default(fr)
-  role                     Role      @default(VIEWER)
+  language                 Language?  @default(fr)
+  role                     Role       @default(VIEWER)
   /// US-2148 — Statut compte (active/suspended/archived). Suspension bloque
   /// le login dans /api/auth/login (vérification post-bcrypt).
   status                   UserStatus @default(active)
   /// US-2148 — Date de suspension/archivage. Set au moment de la transition.
-  statusChangedAt          DateTime? @map("status_changed_at") @db.Timestamptz()
+  statusChangedAt          DateTime?  @map("status_changed_at") @db.Timestamptz()
   /// US-2148 — User-ID de l'admin ayant effectué la transition (audit + rollback).
   /// FK Restrict : empêche la suppression DELETE d'un admin qui a effectué des
   /// transitions. RGPD Art. 17 utilise l'anonymisation (non-DELETE) — la trace
   /// reste en colonne, le user est anonymisé via `deletion.service`.
-  statusChangedBy          Int?      @map("status_changed_by")
-  mfaSecret                String?   @map("mfa_secret")
-  mfaEnabled               Boolean   @default(false) @map("mfa_enabled")
+  statusChangedBy          Int?       @map("status_changed_by")
+  mfaSecret                String?    @map("mfa_secret")
+  mfaEnabled               Boolean    @default(false) @map("mfa_enabled")
   /// Last accepted TOTP time step (RFC 6238 T counter). Prevents replay of
   /// a code within its ±1 step window. Set atomically on successful verify.
-  mfaLastUsedStep          Int?      @map("mfa_last_used_step")
-  hasSignedTerms           Boolean   @default(false) @map("has_signed_terms")
-  profileComplete          Boolean   @default(false) @map("profile_complete")
-  needDataPolicyUpdate     Boolean   @default(false) @map("need_data_policy_update")
-  dataPolicyUpdate         DateTime? @map("data_policy_update")
-  needPasswordUpdate       Boolean   @default(false) @map("need_password_update")
-  needOnboarding           Boolean   @default(false) @map("need_onboarding")
-  debug                    Boolean   @default(false)
-  nirpp                    String?   // chiffre — TRES SENSIBLE
-  nirppType                String?   @map("nirpp_type") // 'nir' | 'nia' | 'nir_key'
-  nirppPolicyholder        String?   @map("nirpp_policyholder") // chiffre
-  nirppPolicyholderType    String?   @map("nirpp_policyholder_type")
-  oid                      String?   // interne — jamais expose
-  ins                      String?   // Identite Nationale de Sante, chiffre
-  intercomHash             String?   @map("intercom_hash") // interne — jamais expose
-  deploymentKey            String?   @map("deployment_key") // interne — jamais expose
-  pro                      String?   // interne
-  photoUrl                 String?   @map("photo_url") @db.VarChar(500)
-  displayModalTlsMutual    Boolean   @default(false) @map("display_modal_tls_mutual")
-  displayModalTlsMandatory Boolean   @default(false) @map("display_modal_tls_mandatory")
-  createdAt                DateTime  @default(now()) @map("created_at")
-  updatedAt                DateTime  @updatedAt @map("updated_at")
+  mfaLastUsedStep          Int?       @map("mfa_last_used_step")
+  hasSignedTerms           Boolean    @default(false) @map("has_signed_terms")
+  profileComplete          Boolean    @default(false) @map("profile_complete")
+  needDataPolicyUpdate     Boolean    @default(false) @map("need_data_policy_update")
+  dataPolicyUpdate         DateTime?  @map("data_policy_update")
+  needPasswordUpdate       Boolean    @default(false) @map("need_password_update")
+  needOnboarding           Boolean    @default(false) @map("need_onboarding")
+  debug                    Boolean    @default(false)
+  nirpp                    String? // chiffre — TRES SENSIBLE
+  nirppType                String?    @map("nirpp_type") // 'nir' | 'nia' | 'nir_key'
+  nirppPolicyholder        String?    @map("nirpp_policyholder") // chiffre
+  nirppPolicyholderType    String?    @map("nirpp_policyholder_type")
+  oid                      String? // interne — jamais expose
+  ins                      String? // Identite Nationale de Sante, chiffre
+  intercomHash             String?    @map("intercom_hash") // interne — jamais expose
+  deploymentKey            String?    @map("deployment_key") // interne — jamais expose
+  pro                      String? // interne
+  photoUrl                 String?    @map("photo_url") @db.VarChar(500)
+  displayModalTlsMutual    Boolean    @default(false) @map("display_modal_tls_mutual")
+  displayModalTlsMandatory Boolean    @default(false) @map("display_modal_tls_mandatory")
+  createdAt                DateTime   @default(now()) @map("created_at")
+  updatedAt                DateTime   @updatedAt @map("updated_at")
 
   // Relations
-  patient              Patient?
-  unitPreferences      UserUnitPreferences?
-  notifPreferences     UserNotifPreferences?
-  privacySettings      UserPrivacySettings?
-  dayMoments           UserDayMoment[]
-  uiStates             UiStateSave[]
-  sessions             Session[]
-  accounts             Account[]
-  deviceSyncs          DeviceDataSync[]
-  dashboardConfig      DashboardConfiguration?
-  pushRegistrations    PushDeviceRegistration[]
-  pushNotifLogs        PushNotificationLog[]
-  pushScheduled        PushScheduledNotification[]
-  auditLogs            AuditLog[]
-  reviewedProposals    AdjustmentProposal[] @relation("ReviewedBy")
-  prescribedInsulins   PatientInsulin[]     @relation("PrescribedInsulins")
-  mydiabbyCredential   MyDiabbyCredential?
-  acknowledgedAlerts   EmergencyAlert[]      @relation("AlertAcknowledger")
-  resolvedAlerts       EmergencyAlert[]      @relation("AlertResolver")
-  emergencyActions     EmergencyAlertAction[] @relation("EmergencyActionPerformer")
-  statusTransitionsBy  User[]                @relation("UserStatusChangedBy")
-  statusTransitionedBy User?                 @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
-  triggeredBackups     BackupLog[]           @relation("BackupTriggeredBy")
-  managedServices      HealthcareService[]   @relation("HealthcareServiceManager")
-  createdPatientTags   PatientTag[]          @relation("PatientTagCreator")
-  assignedPatientTags  PatientTagAssignment[] @relation("PatientTagAssigner")
+  patient                           Patient?
+  unitPreferences                   UserUnitPreferences?
+  notifPreferences                  UserNotifPreferences?
+  privacySettings                   UserPrivacySettings?
+  dayMoments                        UserDayMoment[]
+  uiStates                          UiStateSave[]
+  sessions                          Session[]
+  accounts                          Account[]
+  deviceSyncs                       DeviceDataSync[]
+  dashboardConfig                   DashboardConfiguration?
+  pushRegistrations                 PushDeviceRegistration[]
+  pushNotifLogs                     PushNotificationLog[]
+  pushScheduled                     PushScheduledNotification[]
+  auditLogs                         AuditLog[]
+  reviewedProposals                 AdjustmentProposal[]              @relation("ReviewedBy")
+  prescribedInsulins                PatientInsulin[]                  @relation("PrescribedInsulins")
+  mydiabbyCredential                MyDiabbyCredential?
+  acknowledgedAlerts                EmergencyAlert[]                  @relation("AlertAcknowledger")
+  resolvedAlerts                    EmergencyAlert[]                  @relation("AlertResolver")
+  emergencyActions                  EmergencyAlertAction[]            @relation("EmergencyActionPerformer")
+  statusTransitionsBy               User[]                            @relation("UserStatusChangedBy")
+  statusTransitionedBy              User?                             @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
+  triggeredBackups                  BackupLog[]                       @relation("BackupTriggeredBy")
+  managedServices                   HealthcareService[]               @relation("HealthcareServiceManager")
+  createdPatientTags                PatientTag[]                      @relation("PatientTagCreator")
+  assignedPatientTags               PatientTagAssignment[]            @relation("PatientTagAssigner")
   // Groupe 3 — Équipe & Communication
-  createdMessageTemplates        MessageTemplate[]                 @relation("MessageTemplateCreator")
-  readReceipts                   ReadReceipt[]                     @relation("ReadReceiptUser")
-  verifiedProposalActualizations AdjustmentProposalActualization[] @relation("ProposalActualizationVerifier")
-  consultationNotes              ConsultationNote[]                @relation("ConsultationNoteAuthor")
-  delegationsRequested           DelegationRequest[]               @relation("DelegationFrom")
-  delegationsToReview            DelegationRequest[]               @relation("DelegationTo")
-  reviewedDelegations            DelegationRequest[]               @relation("DelegationReviewer")
-  handoffsSent                   HandoffNote[]                     @relation("HandoffFrom")
-  handoffsReceived               HandoffNote[]                     @relation("HandoffTo")
-  createdPatientGroups           PatientGroup[]                    @relation("PatientGroupCreator")
-  assignedPatientGroups          PatientGroupAssignment[]          @relation("PatientGroupAssigner")
-  invoicedTeleconsultActes       TeleconsultationActe[]            @relation("TeleconsultInvoicer")
+  createdMessageTemplates           MessageTemplate[]                 @relation("MessageTemplateCreator")
+  readReceipts                      ReadReceipt[]                     @relation("ReadReceiptUser")
+  verifiedProposalActualizations    AdjustmentProposalActualization[] @relation("ProposalActualizationVerifier")
+  consultationNotes                 ConsultationNote[]                @relation("ConsultationNoteAuthor")
+  delegationsRequested              DelegationRequest[]               @relation("DelegationFrom")
+  delegationsToReview               DelegationRequest[]               @relation("DelegationTo")
+  reviewedDelegations               DelegationRequest[]               @relation("DelegationReviewer")
+  handoffsSent                      HandoffNote[]                     @relation("HandoffFrom")
+  handoffsReceived                  HandoffNote[]                     @relation("HandoffTo")
+  createdPatientGroups              PatientGroup[]                    @relation("PatientGroupCreator")
+  assignedPatientGroups             PatientGroupAssignment[]          @relation("PatientGroupAssigner")
+  invoicedTeleconsultActes          TeleconsultationActe[]            @relation("TeleconsultInvoicer")
   // Groupe 5 — Insuline & Repas
-  createdInsulinAdjustmentTemplates InsulinAdjustmentTemplate[]    @relation("InsulinAdjustmentTemplateCreator")
-  validatedDiabetesEvents        DiabetesEvent[]                   @relation("DiabetesEventValidator")
-  uploadedMealPhotos             MealPhoto[]                       @relation("MealPhotoUploader")
+  createdInsulinAdjustmentTemplates InsulinAdjustmentTemplate[]       @relation("InsulinAdjustmentTemplateCreator")
+  validatedDiabetesEvents           DiabetesEvent[]                   @relation("DiabetesEventValidator")
+  uploadedMealPhotos                MealPhoto[]                       @relation("MealPhotoUploader")
   // Groupe 8 — RDV
-  createdMemberUnavailabilities  MemberUnavailability[]            @relation("MemberUnavailabilityCreator")
+  createdMemberUnavailabilities     MemberUnavailability[]            @relation("MemberUnavailabilityCreator")
   // Groupe 8 — i18n & Interopérabilité (Batch 1)
-  createdCountryCurrencies       CountryCurrency[]                 @relation("CountryCurrencyCreator")
-  createdCountryTaxRules         CountryTaxRule[]                  @relation("CountryTaxRuleCreator")
-  createdHealthcareRegulations   HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
-  createdFhirInteroperability    FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
-  createdFhirAllowedSystems      FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
+  createdCountryCurrencies          CountryCurrency[]                 @relation("CountryCurrencyCreator")
+  createdCountryTaxRules            CountryTaxRule[]                  @relation("CountryTaxRuleCreator")
+  createdHealthcareRegulations      HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
+  createdFhirInteroperability       FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
+  createdFhirAllowedSystems         FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
   // Groupe 10 Mirror V1 — Batches A+B
-  createdConfigVersions          ConfigVersion[]                   @relation("ConfigVersionCreator")
-  validatedConfigVersions        ConfigVersion[]                   @relation("ConfigVersionValidator")
-  createdAlertThresholdTemplates AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
-  acknowledgedRiskScores         PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
+  createdConfigVersions             ConfigVersion[]                   @relation("ConfigVersionCreator")
+  validatedConfigVersions           ConfigVersion[]                   @relation("ConfigVersionValidator")
+  createdAlertThresholdTemplates    AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
+  acknowledgedRiskScores            PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -418,16 +418,16 @@ model VerificationToken {
 }
 
 model UserUnitPreferences {
-  id                Int  @id @default(autoincrement())
-  userId            Int  @unique @map("user_id")
-  unitGlycemia      Int  @default(5) @map("unit_glycemia") // 3:g/L 4:mg/dL 5:mmol/L
-  unitWeight        Int  @default(6) @map("unit_weight") // 6:kg 7:lbs
-  unitSize          Int  @default(8) @map("unit_size") // 8:cm 9:ft
-  unitCarb          Int  @default(2) @map("unit_carb") // 1:CP 2:g
-  unitHba1c         Int  @default(10) @map("unit_hba1c") // 10:% 11:mmol/mol
+  id                 Int @id @default(autoincrement())
+  userId             Int @unique @map("user_id")
+  unitGlycemia       Int @default(5) @map("unit_glycemia") // 3:g/L 4:mg/dL 5:mmol/L
+  unitWeight         Int @default(6) @map("unit_weight") // 6:kg 7:lbs
+  unitSize           Int @default(8) @map("unit_size") // 8:cm 9:ft
+  unitCarb           Int @default(2) @map("unit_carb") // 1:CP 2:g
+  unitHba1c          Int @default(10) @map("unit_hba1c") // 10:% 11:mmol/mol
   unitCarbExchangeNb Int @default(15) @map("unit_carb_exchange_nb")
-  unitKetones       Int  @default(12) @map("unit_ketones") // 12:mmol/L 13:mg/dL
-  unitBloodPressure Int  @default(14) @map("unit_blood_pressure") // 14:mmHg
+  unitKetones        Int @default(12) @map("unit_ketones") // 12:mmol/L 13:mg/dL
+  unitBloodPressure  Int @default(14) @map("unit_blood_pressure") // 14:mmHg
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -435,17 +435,17 @@ model UserUnitPreferences {
 }
 
 model UserNotifPreferences {
-  id                    Int      @id @default(autoincrement())
-  userId                Int      @unique @map("user_id")
-  notifMessageMail      Boolean  @default(true) @map("notif_message_mail")
-  notifDocumentMail     Boolean  @default(true) @map("notif_document_mail")
-  glycemiaReminders     Boolean  @default(false) @map("glycemia_reminders")
-  glycemiaReminderTimes Json?    @map("glycemia_reminder_times") // string[]
-  insulinReminders      Boolean  @default(false) @map("insulin_reminders")
-  insulinReminderTimes  Json?    @map("insulin_reminder_times") // string[]
-  medicalAppointments   Boolean  @default(true) @map("medical_appointments")
-  autoExport            Boolean  @default(false) @map("auto_export")
-  autoExportFrequency   Int?     @map("auto_export_frequency") // jours
+  id                    Int     @id @default(autoincrement())
+  userId                Int     @unique @map("user_id")
+  notifMessageMail      Boolean @default(true) @map("notif_message_mail")
+  notifDocumentMail     Boolean @default(true) @map("notif_document_mail")
+  glycemiaReminders     Boolean @default(false) @map("glycemia_reminders")
+  glycemiaReminderTimes Json?   @map("glycemia_reminder_times") // string[]
+  insulinReminders      Boolean @default(false) @map("insulin_reminders")
+  insulinReminderTimes  Json?   @map("insulin_reminder_times") // string[]
+  medicalAppointments   Boolean @default(true) @map("medical_appointments")
+  autoExport            Boolean @default(false) @map("auto_export")
+  autoExportFrequency   Int?    @map("auto_export_frequency") // jours
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -497,68 +497,70 @@ model UiStateSave {
 // ═══════════════════════════════════════════════════════════════
 
 model Patient {
-  id             Int       @id @default(autoincrement())
-  userId         Int       @unique @map("user_id")
-  pathology      Pathology
+  id            Int       @id @default(autoincrement())
+  userId        Int       @unique @map("user_id")
+  pathology     Pathology
   /// Mode grossesse (US-2232) — bascule cibles glycémiques sur defaults GD
   /// (plus stricts — cf. ACOG/ADA). Indépendant de PatientPregnancy.active
   /// pour permettre activation rapide sans saisir DPA, puis synchronisation
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
-  pregnancyMode  Boolean   @default(false) @map("pregnancy_mode")
-  createdAt      DateTime  @default(now()) @map("created_at")
-  deletedAt      DateTime? @map("deleted_at")
+  pregnancyMode Boolean   @default(false) @map("pregnancy_mode")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  deletedAt     DateTime? @map("deleted_at")
 
-  user                  User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  medicalData           PatientMedicalData?
-  administrative        PatientAdministrative?
-  pregnancies           PatientPregnancy[]
-  glycemiaObjectives    GlycemiaObjective[]
-  cgmObjectives         CgmObjective?
-  annexObjectives       AnnexObjective?
-  ketoneThreshold       KetoneThreshold?
-  hypoTreatmentProtocol HypoTreatmentProtocol?
-  alertThreshold        AlertThresholdConfig?
-  emergencyAlerts       EmergencyAlert[]
-  treatments            Treatment[]
+  user                   User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  medicalData            PatientMedicalData?
+  administrative         PatientAdministrative?
+  pregnancies            PatientPregnancy[]
+  glycemiaObjectives     GlycemiaObjective[]
+  cgmObjectives          CgmObjective?
+  annexObjectives        AnnexObjective?
+  ketoneThreshold        KetoneThreshold?
+  hypoTreatmentProtocol  HypoTreatmentProtocol?
+  alertThreshold         AlertThresholdConfig?
+  emergencyAlerts        EmergencyAlert[]
+  treatments             Treatment[]
   insulinTherapySettings InsulinTherapySettings?
-  bolusCalculationLogs  BolusCalculationLog[]
-  adjustmentProposals   AdjustmentProposal[]
-  cgmEntries            CgmEntry[]
-  glycemiaEntries       GlycemiaEntry[]
-  diabetesEvents        DiabetesEvent[]
-  insulinFlowEntries    InsulinFlowEntry[]
-  insulinFlowDeviceData InsulinFlowDeviceData[]
-  pumpEvents            PumpEvent[]
-  averageData           AverageData[]
-  devices               PatientDevice[]
-  patientServices       PatientService[]
-  referent              PatientReferent?
-  documents             MedicalDocument[]
-  appointments          Appointment[]
-  patientInsulins       PatientInsulin[]
+  bolusCalculationLogs   BolusCalculationLog[]
+  adjustmentProposals    AdjustmentProposal[]
+  cgmEntries             CgmEntry[]
+  glycemiaEntries        GlycemiaEntry[]
+  diabetesEvents         DiabetesEvent[]
+  insulinFlowEntries     InsulinFlowEntry[]
+  insulinFlowDeviceData  InsulinFlowDeviceData[]
+  pumpEvents             PumpEvent[]
+  averageData            AverageData[]
+  devices                PatientDevice[]
+  patientServices        PatientService[]
+  referent               PatientReferent?
+  documents              MedicalDocument[]
+  appointments           Appointment[]
+  patientInsulins        PatientInsulin[]
   /// US-2123 — Exports FHIR R4 référençant ce patient.
-  fhirExports           FhirInteroperability[]
+  fhirExports            FhirInteroperability[]
   /// US-2022 — Tags posés sur ce patient au sein de son/ses cabinet(s).
-  tagAssignments        PatientTagAssignment[]
+  tagAssignments         PatientTagAssignment[]
   /// US-2068 — Notes de consultation structurées.
-  consultationNotes     ConsultationNote[]
+  consultationNotes      ConsultationNote[]
   /// US-2083 — Demandes de délégation clinique (IDE → DOCTOR).
-  delegationRequests    DelegationRequest[]
+  delegationRequests     DelegationRequest[]
   /// US-2086 — Handoff entre soignants.
-  handoffNotes          HandoffNote[]
+  handoffNotes           HandoffNote[]
   /// US-2088 — Groupes-cohortes équipe.
-  groupAssignments      PatientGroupAssignment[]
+  groupAssignments       PatientGroupAssignment[]
   /// US-2065 — Accusés patient sur AdjustmentProposal (review PR #390 H10).
-  proposalAcks          AdjustmentProposalAck[]
+  proposalAcks           AdjustmentProposalAck[]
   /// US-2057 — Photos repas (review PR #391 H5 FK explicite).
-  mealPhotos            MealPhoto[]
+  mealPhotos             MealPhoto[]
   /// Groupe 10 Batch A — config versionning hub + features.
-  configVersions        ConfigVersion[]
-  emergencyContacts     EmergencyContact[]
-  escalationRules       EscalationRule[]
+  configVersions         ConfigVersion[]
+  emergencyContacts      EmergencyContact[]
+  escalationRules        EscalationRule[]
+  /// Groupe 10 Batch C — modes spéciaux (pédiatrique).
+  pediatricCaregivers    PediatricCaregiver[]
   /// Groupe 10 Batch B — analytics caches.
-  monitoringMetrics     PatientMonitoringMetrics[]
-  riskScore             PatientRiskScore?
+  monitoringMetrics      PatientMonitoringMetrics[]
+  riskScore              PatientRiskScore?
 
   @@index([deletedAt])
   @@map("patients")
@@ -615,13 +617,13 @@ model PatientAdministrative {
 }
 
 model PatientPregnancy {
-  id              Int       @id @default(autoincrement())
-  patientId       Int       @map("patient_id")
-  active          Boolean   @default(true)
-  dueDate         DateTime? @map("due_date") @db.Date
-  gestationalAge  Int?      @map("gestational_age") // semaines
-  notes           String?
-  createdAt       DateTime  @default(now()) @map("created_at")
+  id             Int       @id @default(autoincrement())
+  patientId      Int       @map("patient_id")
+  active         Boolean   @default(true)
+  dueDate        DateTime? @map("due_date") @db.Date
+  gestationalAge Int?      @map("gestational_age") // semaines
+  notes          String?
+  createdAt      DateTime  @default(now()) @map("created_at")
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -633,22 +635,22 @@ model PatientPregnancy {
 // ═══════════════════════════════════════════════════════════════
 
 model GlycemiaObjective {
-  id             Int      @id @default(autoincrement())
-  patientId      Int      @map("patient_id")
-  isDefault      Boolean  @default(false) @map("is_default")
-  isCurrent      Boolean  @default(true) @map("is_current")
+  id              Int      @id @default(autoincrement())
+  patientId       Int      @map("patient_id")
+  isDefault       Boolean  @default(false) @map("is_default")
+  isCurrent       Boolean  @default(true) @map("is_current")
   // Seuils blanc/vert/orange par moment repas (g/L)
-  limitEmWhite   Decimal? @map("limit_em_white") @db.Decimal(4, 2)
-  limitEmGreen   Decimal? @map("limit_em_green") @db.Decimal(4, 2)
-  limitEmOrange  Decimal? @map("limit_em_orange") @db.Decimal(4, 2)
-  limitBmWhite   Decimal? @map("limit_bm_white") @db.Decimal(4, 2)
-  limitBmGreen   Decimal? @map("limit_bm_green") @db.Decimal(4, 2)
-  limitBmOrange  Decimal? @map("limit_bm_orange") @db.Decimal(4, 2)
-  limitAmWhite   Decimal? @map("limit_am_white") @db.Decimal(4, 2)
-  limitAmGreen   Decimal? @map("limit_am_green") @db.Decimal(4, 2)
-  limitAmOrange  Decimal? @map("limit_am_orange") @db.Decimal(4, 2)
-  limitAm1hWhite Decimal? @map("limit_am1h_white") @db.Decimal(4, 2)
-  limitAm1hGreen Decimal? @map("limit_am1h_green") @db.Decimal(4, 2)
+  limitEmWhite    Decimal? @map("limit_em_white") @db.Decimal(4, 2)
+  limitEmGreen    Decimal? @map("limit_em_green") @db.Decimal(4, 2)
+  limitEmOrange   Decimal? @map("limit_em_orange") @db.Decimal(4, 2)
+  limitBmWhite    Decimal? @map("limit_bm_white") @db.Decimal(4, 2)
+  limitBmGreen    Decimal? @map("limit_bm_green") @db.Decimal(4, 2)
+  limitBmOrange   Decimal? @map("limit_bm_orange") @db.Decimal(4, 2)
+  limitAmWhite    Decimal? @map("limit_am_white") @db.Decimal(4, 2)
+  limitAmGreen    Decimal? @map("limit_am_green") @db.Decimal(4, 2)
+  limitAmOrange   Decimal? @map("limit_am_orange") @db.Decimal(4, 2)
+  limitAm1hWhite  Decimal? @map("limit_am1h_white") @db.Decimal(4, 2)
+  limitAm1hGreen  Decimal? @map("limit_am1h_green") @db.Decimal(4, 2)
   limitAm1hOrange Decimal? @map("limit_am1h_orange") @db.Decimal(4, 2)
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
@@ -672,12 +674,12 @@ model CgmObjective {
 }
 
 model AnnexObjective {
-  id                Int      @id @default(autoincrement())
-  patientId         Int      @unique @map("patient_id")
-  objectiveHba1c    Decimal? @map("objective_hba1c") @db.Decimal(4, 2)
+  id                 Int      @id @default(autoincrement())
+  patientId          Int      @unique @map("patient_id")
+  objectiveHba1c     Decimal? @map("objective_hba1c") @db.Decimal(4, 2)
   objectiveMinWeight Decimal? @map("objective_min_weight") @db.Decimal(5, 2)
   objectiveMaxWeight Decimal? @map("objective_max_weight") @db.Decimal(5, 2)
-  objectiveWalk     Int?     @map("objective_walk") // min/jour
+  objectiveWalk      Int?     @map("objective_walk") // min/jour
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -689,24 +691,24 @@ model AnnexObjective {
 /// permet de configurer un comportement différent (ex: alertes sur veryLow/high
 /// uniquement, pas sur low/ok), notification push, email médecin référent, etc.
 model AlertThresholdConfig {
-  id                    Int      @id @default(autoincrement())
-  patientId             Int      @unique @map("patient_id")
+  id                 Int      @id @default(autoincrement())
+  patientId          Int      @unique @map("patient_id")
   /// Émettre alertes hypo (CGM < low). Par défaut true.
-  alertOnHypo           Boolean  @default(true) @map("alert_on_hypo")
+  alertOnHypo        Boolean  @default(true) @map("alert_on_hypo")
   /// Émettre alertes hypo sévère (CGM < veryLow). Par défaut true.
-  alertOnSevereHypo     Boolean  @default(true) @map("alert_on_severe_hypo")
+  alertOnSevereHypo  Boolean  @default(true) @map("alert_on_severe_hypo")
   /// Émettre alertes hyper (CGM > ok). Par défaut false (trop bruyant).
-  alertOnHyper          Boolean  @default(false) @map("alert_on_hyper")
+  alertOnHyper       Boolean  @default(false) @map("alert_on_hyper")
   /// Émettre alertes hyper sévère (CGM > high). Par défaut true.
-  alertOnSevereHyper    Boolean  @default(true) @map("alert_on_severe_hyper")
+  alertOnSevereHyper Boolean  @default(true) @map("alert_on_severe_hyper")
   /// Notifier médecin référent par push pour alertes critiques.
-  notifyDoctorPush      Boolean  @default(true) @map("notify_doctor_push")
+  notifyDoctorPush   Boolean  @default(true) @map("notify_doctor_push")
   /// Notifier médecin référent par email (si critique uniquement).
-  notifyDoctorEmail     Boolean  @default(true) @map("notify_doctor_email")
+  notifyDoctorEmail  Boolean  @default(true) @map("notify_doctor_email")
   /// Délai en minutes avant ré-alerte sur même type (anti-spam). Min 5, max 1440.
-  cooldownMinutes       Int      @default(30) @map("cooldown_minutes")
-  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  cooldownMinutes    Int      @default(30) @map("cooldown_minutes")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -719,20 +721,20 @@ model AlertThresholdConfig {
 /// Cétones modérées : 1.5–3.0 mmol/L → action rapide (insuline + glucides).
 /// Cétones DKA : ≥ 3.0 mmol/L → critère diagnostique DKA (ISPAD 2022).
 model KetoneThreshold {
-  id                    Int      @id @default(autoincrement())
-  patientId             Int      @unique @map("patient_id")
+  id                Int      @id @default(autoincrement())
+  patientId         Int      @unique @map("patient_id")
   /// Limite supérieure cétones « légères » (mmol/L). Par défaut 0.6.
-  lightThreshold        Decimal  @default(0.6) @map("light_threshold") @db.Decimal(3, 1)
+  lightThreshold    Decimal  @default(0.6) @map("light_threshold") @db.Decimal(3, 1)
   /// Limite supérieure cétones « modérées » (mmol/L). Par défaut 1.5.
-  moderateThreshold     Decimal  @default(1.5) @map("moderate_threshold") @db.Decimal(3, 1)
+  moderateThreshold Decimal  @default(1.5) @map("moderate_threshold") @db.Decimal(3, 1)
   /// À ce seuil ou au-dessus → DKA (urgence). Par défaut 3.0 (ISPAD 2022).
-  dkaThreshold          Decimal  @default(3.0) @map("dka_threshold") @db.Decimal(3, 1)
+  dkaThreshold      Decimal  @default(3.0) @map("dka_threshold") @db.Decimal(3, 1)
   /// Émettre alerte sur cétones modérées.
-  alertOnModerate       Boolean  @default(true) @map("alert_on_moderate")
+  alertOnModerate   Boolean  @default(true) @map("alert_on_moderate")
   /// Émettre alerte critique sur DKA.
-  alertOnDka            Boolean  @default(true) @map("alert_on_dka")
-  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  alertOnDka        Boolean  @default(true) @map("alert_on_dka")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -744,21 +746,21 @@ model KetoneThreshold {
 /// Type de glucide adapté aux préférences/allergies. Quantité standard 15 g pour adulte,
 /// modifiable selon poids/âge/médecin.
 model HypoTreatmentProtocol {
-  id                    Int           @id @default(autoincrement())
-  patientId             Int           @unique @map("patient_id")
-  sugarType             HypoSugarType @default(glucose_tabs) @map("sugar_type")
+  id             Int           @id @default(autoincrement())
+  patientId      Int           @unique @map("patient_id")
+  sugarType      HypoSugarType @default(glucose_tabs) @map("sugar_type")
   /// Description libre si sugarType = other (ex: "miel + biscotte").
-  sugarTypeOther        String?       @map("sugar_type_other") @db.VarChar(200)
+  sugarTypeOther String?       @map("sugar_type_other") @db.VarChar(200)
   /// Grammes de glucides rapides à ingérer. Par défaut 15 g.
-  fastCarbsGrams        Int           @default(15) @map("fast_carbs_grams")
+  fastCarbsGrams Int           @default(15) @map("fast_carbs_grams")
   /// Délai (minutes) avant re-mesure glycémie. Par défaut 15 min.
-  retestMinutes         Int           @default(15) @map("retest_minutes")
+  retestMinutes  Int           @default(15) @map("retest_minutes")
   /// Allergies à éviter (chiffré AES-256-GCM si non vide).
-  allergies             String?       // chiffré
+  allergies      String? // chiffré
   /// Instructions complémentaires destinées au patient (chiffré).
-  instructions          String?       // chiffré
-  createdAt             DateTime      @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
+  instructions   String? // chiffré
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -773,33 +775,33 @@ model HypoTreatmentProtocol {
 ///  - `notes`, `resolutionNotes` (texte libre clinicien),
 ///  - `contextSnapshot` (timeline CGM 30 min — données de santé).
 model EmergencyAlert {
-  id                Int                     @id @default(autoincrement())
-  patientId         Int                     @map("patient_id")
-  alertType         EmergencyAlertType      @map("alert_type")
-  severity          EmergencyAlertSeverity  @default(warning)
-  status            EmergencyAlertStatus    @default(open)
-  triggeredAt       DateTime                @default(now()) @map("triggered_at") @db.Timestamptz()
+  id               Int                    @id @default(autoincrement())
+  patientId        Int                    @map("patient_id")
+  alertType        EmergencyAlertType     @map("alert_type")
+  severity         EmergencyAlertSeverity @default(warning)
+  status           EmergencyAlertStatus   @default(open)
+  triggeredAt      DateTime               @default(now()) @map("triggered_at") @db.Timestamptz()
   /// Valeur glycémie déclencheuse (mg/dL). NULL si manuelle ou cétone.
-  glucoseValueMgdl  Decimal?                @map("glucose_value_mgdl") @db.Decimal(6, 2)
+  glucoseValueMgdl Decimal?               @map("glucose_value_mgdl") @db.Decimal(6, 2)
   /// Valeur cétones déclencheuse (mmol/L). NULL si manuelle ou glycémie.
-  ketoneValueMmol   Decimal?                @map("ketone_value_mmol") @db.Decimal(4, 2)
+  ketoneValueMmol  Decimal?               @map("ketone_value_mmol") @db.Decimal(4, 2)
   /// Timeline CGM 30 min avant trigger — chiffré base64(AES-256-GCM)
   /// d'un JSON `[{ts, mgdl}]`. Texte vide / NULL si non renseigné.
-  contextSnapshot   String?                 @map("context_snapshot") @db.Text
+  contextSnapshot  String?                @map("context_snapshot") @db.Text
   /// Texte libre clinicien — chiffré AES-256-GCM si non vide.
-  notes             String?                 @db.Text
-  acknowledgedBy    Int?                    @map("acknowledged_by")
-  acknowledgedAt    DateTime?               @map("acknowledged_at") @db.Timestamptz()
-  resolvedBy        Int?                    @map("resolved_by")
-  resolvedAt        DateTime?               @map("resolved_at") @db.Timestamptz()
+  notes            String?                @db.Text
+  acknowledgedBy   Int?                   @map("acknowledged_by")
+  acknowledgedAt   DateTime?              @map("acknowledged_at") @db.Timestamptz()
+  resolvedBy       Int?                   @map("resolved_by")
+  resolvedAt       DateTime?              @map("resolved_at") @db.Timestamptz()
   /// Notes de résolution clinicien — chiffré AES-256-GCM si non vide.
-  resolutionNotes   String?                 @map("resolution_notes") @db.Text
-  createdAt         DateTime                @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime                @updatedAt @map("updated_at") @db.Timestamptz()
+  resolutionNotes  String?                @map("resolution_notes") @db.Text
+  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz()
 
-  patient            Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  acknowledgedByUser User?   @relation("AlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: Restrict)
-  resolvedByUser     User?   @relation("AlertResolver", fields: [resolvedBy], references: [id], onDelete: Restrict)
+  patient            Patient                @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  acknowledgedByUser User?                  @relation("AlertAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: Restrict)
+  resolvedByUser     User?                  @relation("AlertResolver", fields: [resolvedBy], references: [id], onDelete: Restrict)
   actions            EmergencyAlertAction[]
 
   @@index([patientId, status, triggeredAt])
@@ -813,19 +815,19 @@ model EmergencyAlert {
 /// US-2226 — Actions effectuées par un soignant face à une alerte (audit + workflow).
 /// Append-only ; jamais supprimé pour traçabilité HDS.
 model EmergencyAlertAction {
-  id           Int                       @id @default(autoincrement())
-  alertId      Int                       @map("alert_id")
-  performedBy  Int                       @map("performed_by")
-  actionType   EmergencyAlertActionType  @map("action_type")
+  id          Int                      @id @default(autoincrement())
+  alertId     Int                      @map("alert_id")
+  performedBy Int                      @map("performed_by")
+  actionType  EmergencyAlertActionType @map("action_type")
   /// Notes libres clinicien — chiffré AES-256-GCM si non vide.
-  notes        String?                   @db.Text
+  notes       String?                  @db.Text
   /// Métadonnées strictement bornées (durée, résultat). Aucune PHI/PII.
   /// Schéma applicatif : { durationSec?: number, outcome?: string }.
-  metadata     Json                      @default("{}")
-  createdAt    DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+  metadata    Json                     @default("{}")
+  createdAt   DateTime                 @default(now()) @map("created_at") @db.Timestamptz()
 
-  alert            EmergencyAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
-  performedByUser  User           @relation("EmergencyActionPerformer", fields: [performedBy], references: [id], onDelete: Restrict)
+  alert           EmergencyAlert @relation(fields: [alertId], references: [id], onDelete: Cascade)
+  performedByUser User           @relation("EmergencyActionPerformer", fields: [performedBy], references: [id], onDelete: Restrict)
 
   @@index([alertId, createdAt])
   @@index([performedBy, createdAt])
@@ -837,29 +839,29 @@ model EmergencyAlertAction {
 // ═══════════════════════════════════════════════════════════════
 
 model Treatment {
-  id            Int           @id @default(autoincrement())
-  patientId     Int           @map("patient_id")
-  type          TreatmentType
-  name          String?       @db.VarChar(100)
-  other         String?
-  posology      String?
-  posologyData  Json?         @map("posology_data")
-  treatmentId   Int?          @map("treatment_id") // ID traitement externe
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  id           Int           @id @default(autoincrement())
+  patientId    Int           @map("patient_id")
+  type         TreatmentType
+  name         String?       @db.VarChar(100)
+  other        String?
+  posology     String?
+  posologyData Json?         @map("posology_data")
+  treatmentId  Int?          @map("treatment_id") // ID traitement externe
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  patient            Patient              @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient            Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
   basalFlowSchedules BasalFlowSchedule[]
 
   @@map("treatments")
 }
 
 model BasalFlowSchedule {
-  id            Int     @id @default(autoincrement())
-  treatmentId   Int     @map("treatment_id")
-  label         String? @db.VarChar(50)
+  id            Int      @id @default(autoincrement())
+  treatmentId   Int      @map("treatment_id")
+  label         String?  @db.VarChar(50)
   scheduleStart DateTime @map("schedule_start") @db.Time()
-  scheduleRate  Decimal @map("schedule_rate") @db.Decimal(5, 3)
+  scheduleRate  Decimal  @map("schedule_rate") @db.Decimal(5, 3)
 
   treatment Treatment @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
 
@@ -876,18 +878,18 @@ model BasalFlowSchedule {
 model InsulinCatalog {
   id                       Int      @id @default(autoincrement())
   displayName              String   @unique @map("display_name") @db.VarChar(100) // Nom commercial (ex: "Humalog", "Lantus")
-  genericName              String   @map("generic_name") @db.VarChar(100)          // DCI (ex: "insulin lispro", "insulin glargine")
-  typicalOnsetMinutes      Int      @map("typical_onset_minutes")                  // Debut d'action en minutes (ex: 15 pour rapide, 60 pour lente)
-  typicalPeakMinutes       Int?     @map("typical_peak_minutes")                   // Pic d'action en minutes (null pour basales sans pic — ex: Tresiba)
+  genericName              String   @map("generic_name") @db.VarChar(100) // DCI (ex: "insulin lispro", "insulin glargine")
+  typicalOnsetMinutes      Int      @map("typical_onset_minutes") // Debut d'action en minutes (ex: 15 pour rapide, 60 pour lente)
+  typicalPeakMinutes       Int?     @map("typical_peak_minutes") // Pic d'action en minutes (null pour basales sans pic — ex: Tresiba)
   typicalDurationHours     Decimal  @map("typical_duration_hours") @db.Decimal(4, 1) // Duree d'action en heures (ex: 4.0 pour rapide, 24.0 pour lente)
-  isFasterActing           Boolean  @default(false) @map("is_faster_acting")       // Ultra-rapide (Fiasp, Lyumjev) — onset < 10 min
+  isFasterActing           Boolean  @default(false) @map("is_faster_acting") // Ultra-rapide (Fiasp, Lyumjev) — onset < 10 min
   isTraditionalRapidActing Boolean  @default(false) @map("is_traditional_rapid_acting") // Rapide classique (Humalog, NovoRapid, Apidra)
-  isLongActing             Boolean  @default(false) @map("is_long_acting")         // Basale longue duree (Lantus, Levemir, Tresiba)
-  approvalYear             Int?     @map("approval_year")                          // Annee d'approbation FDA/EMA (reference)
-  manufacturer             String?  @db.VarChar(100)                               // Fabricant (Eli Lilly, Novo Nordisk, Sanofi...)
-  isActive                 Boolean  @default(true) @map("is_active")               // Actif dans le catalogue (desactivable sans suppression)
+  isLongActing             Boolean  @default(false) @map("is_long_acting") // Basale longue duree (Lantus, Levemir, Tresiba)
+  approvalYear             Int?     @map("approval_year") // Annee d'approbation FDA/EMA (reference)
+  manufacturer             String?  @db.VarChar(100) // Fabricant (Eli Lilly, Novo Nordisk, Sanofi...)
+  isActive                 Boolean  @default(true) @map("is_active") // Actif dans le catalogue (desactivable sans suppression)
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz()  // Audit: date correction donnees PK
+  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz() // Audit: date correction donnees PK
 
   patientInsulins PatientInsulin[]
 
@@ -899,24 +901,24 @@ model InsulinCatalog {
 /// Historique conserve via startDate/endDate — un patient peut avoir plusieurs insulines actives.
 /// La duree d'action personnalisee (customDurationHours) override la duree du catalogue pour le calcul IOB.
 model PatientInsulin {
-  id                    Int       @id @default(autoincrement())
-  patientId             Int       @map("patient_id")
-  insulinCatalogId      Int       @map("insulin_catalog_id")
-  usage                 InsulinUsage                           // bolus, basal, ou both (pré-mélangées)
-  customDurationHours   Decimal?  @map("custom_duration_hours") @db.Decimal(4, 1) // Durée d'action personnalisée (override catalogue). Si null, utiliser catalogue.
-  customOnsetMinutes    Int?      @map("custom_onset_minutes") // Onset personnalisé (override catalogue). Si null, utiliser catalogue.
-  dosage                String?   @db.VarChar(100)             // Posologie libre (ex: "18U le soir", "6-8U avant repas")
-  isActive              Boolean   @default(true) @map("is_active")  // Actif dans le traitement actuel
-  startDate             DateTime  @default(now()) @map("start_date") @db.Date // Date de début d'utilisation
-  endDate               DateTime? @map("end_date") @db.Date         // Date de fin (null = en cours). Rempli quand on arrête une insuline.
-  prescribedBy          Int?      @map("prescribed_by")             // ID du médecin prescripteur (User.id, rôle DOCTOR)
-  notes                 String?                                     // Notes cliniques (chiffrées AES-256-GCM)
-  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  id                  Int          @id @default(autoincrement())
+  patientId           Int          @map("patient_id")
+  insulinCatalogId    Int          @map("insulin_catalog_id")
+  usage               InsulinUsage // bolus, basal, ou both (pré-mélangées)
+  customDurationHours Decimal?     @map("custom_duration_hours") @db.Decimal(4, 1) // Durée d'action personnalisée (override catalogue). Si null, utiliser catalogue.
+  customOnsetMinutes  Int?         @map("custom_onset_minutes") // Onset personnalisé (override catalogue). Si null, utiliser catalogue.
+  dosage              String?      @db.VarChar(100) // Posologie libre (ex: "18U le soir", "6-8U avant repas")
+  isActive            Boolean      @default(true) @map("is_active") // Actif dans le traitement actuel
+  startDate           DateTime     @default(now()) @map("start_date") @db.Date // Date de début d'utilisation
+  endDate             DateTime?    @map("end_date") @db.Date // Date de fin (null = en cours). Rempli quand on arrête une insuline.
+  prescribedBy        Int?         @map("prescribed_by") // ID du médecin prescripteur (User.id, rôle DOCTOR)
+  notes               String? // Notes cliniques (chiffrées AES-256-GCM)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
 
-  patient        Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  insulinCatalog InsulinCatalog @relation(fields: [insulinCatalogId], references: [id])
-  prescriber     User?          @relation("PrescribedInsulins", fields: [prescribedBy], references: [id], onDelete: SetNull)
+  patient        Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  insulinCatalog InsulinCatalog           @relation(fields: [insulinCatalogId], references: [id])
+  prescriber     User?                    @relation("PrescribedInsulins", fields: [prescribedBy], references: [id], onDelete: SetNull)
   bolusSettings  InsulinTherapySettings[] @relation("BolusInsulinSettings")
   basalSettings  InsulinTherapySettings[] @relation("BasalInsulinSettings")
 
@@ -927,36 +929,36 @@ model PatientInsulin {
 }
 
 model InsulinTherapySettings {
-  id                    Int                   @id @default(autoincrement())
-  patientId             Int                   @unique @map("patient_id")
-  bolusInsulinId        Int?                  @map("bolus_insulin_id")    // FK → PatientInsulin (insuline bolus active)
-  basalInsulinId        Int?                  @map("basal_insulin_id")    // FK → PatientInsulin (insuline basale active)
-  deliveryMethod        InsulinDeliveryMethod @map("delivery_method")
-  lastModified          DateTime              @default(now()) @map("last_modified") @db.Timestamptz()
-  createdAt             DateTime              @default(now()) @map("created_at") @db.Timestamptz()
+  id             Int                   @id @default(autoincrement())
+  patientId      Int                   @unique @map("patient_id")
+  bolusInsulinId Int?                  @map("bolus_insulin_id") // FK → PatientInsulin (insuline bolus active)
+  basalInsulinId Int?                  @map("basal_insulin_id") // FK → PatientInsulin (insuline basale active)
+  deliveryMethod InsulinDeliveryMethod @map("delivery_method")
+  lastModified   DateTime              @default(now()) @map("last_modified") @db.Timestamptz()
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient              Patient                  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  bolusInsulin         PatientInsulin?          @relation("BolusInsulinSettings", fields: [bolusInsulinId], references: [id], onDelete: SetNull)
-  basalInsulin         PatientInsulin?          @relation("BasalInsulinSettings", fields: [basalInsulinId], references: [id], onDelete: SetNull)
-  glucoseTargets       GlucoseTarget[]
-  iobSettings          IobSettings?
+  patient               Patient                    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  bolusInsulin          PatientInsulin?            @relation("BolusInsulinSettings", fields: [bolusInsulinId], references: [id], onDelete: SetNull)
+  basalInsulin          PatientInsulin?            @relation("BasalInsulinSettings", fields: [basalInsulinId], references: [id], onDelete: SetNull)
+  glucoseTargets        GlucoseTarget[]
+  iobSettings           IobSettings?
   extendedBolusSettings ExtendedBolusSettings?
-  sensitivityFactors   InsulinSensitivityFactor[]
-  carbRatios           CarbRatio[]
-  basalConfiguration   BasalConfiguration?
+  sensitivityFactors    InsulinSensitivityFactor[]
+  carbRatios            CarbRatio[]
+  basalConfiguration    BasalConfiguration?
 
   @@map("insulin_therapy_settings")
 }
 
 model GlucoseTarget {
-  id               String              @id @default(uuid())
-  settingsId       Int                 @map("settings_id")
-  targetGlucose    Decimal             @map("target_glucose") @db.Decimal(6, 2) // mg/dL
-  targetRangeLower Decimal             @default(0.70) @map("target_range_lower") @db.Decimal(4, 2) // g/L
-  targetRangeUpper Decimal             @default(1.80) @map("target_range_upper") @db.Decimal(4, 2) // g/L
+  id               String               @id @default(uuid())
+  settingsId       Int                  @map("settings_id")
+  targetGlucose    Decimal              @map("target_glucose") @db.Decimal(6, 2) // mg/dL
+  targetRangeLower Decimal              @default(0.70) @map("target_range_lower") @db.Decimal(4, 2) // g/L
+  targetRangeUpper Decimal              @default(1.80) @map("target_range_upper") @db.Decimal(4, 2) // g/L
   preset           GlucoseTargetPreset?
-  isActive         Boolean             @default(true) @map("is_active")
-  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  isActive         Boolean              @default(true) @map("is_active")
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz()
 
   settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
 
@@ -987,16 +989,16 @@ model ExtendedBolusSettings {
 }
 
 model InsulinSensitivityFactor {
-  id                   String   @id @default(uuid())
-  settingsId           Int      @map("settings_id")
-  startHour            Int      @map("start_hour") @db.SmallInt
-  endHour              Int      @map("end_hour") @db.SmallInt
-  startTime            DateTime @map("start_time") @db.Time()
-  endTime              DateTime @map("end_time") @db.Time()
-  sensitivityFactorGl  Decimal  @map("sensitivity_factor_gl") @db.Decimal(6, 4)
-  sensitivityFactorMgdl Decimal @map("sensitivity_factor_mgdl") @db.Decimal(6, 2)
-  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  id                    String   @id @default(uuid())
+  settingsId            Int      @map("settings_id")
+  startHour             Int      @map("start_hour") @db.SmallInt
+  endHour               Int      @map("end_hour") @db.SmallInt
+  startTime             DateTime @map("start_time") @db.Time()
+  endTime               DateTime @map("end_time") @db.Time()
+  sensitivityFactorGl   Decimal  @map("sensitivity_factor_gl") @db.Decimal(6, 4)
+  sensitivityFactorMgdl Decimal  @map("sensitivity_factor_mgdl") @db.Decimal(6, 2)
+  createdAt             DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   settings InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)
 
@@ -1040,41 +1042,41 @@ model BasalConfiguration {
 }
 
 model PumpBasalSlot {
-  id              String   @id @default(uuid())
-  basalConfigId   Int      @map("basal_config_id")
-  startTime       DateTime @map("start_time") @db.Time()
-  endTime         DateTime @map("end_time") @db.Time()
-  rate            Decimal  @db.Decimal(5, 3) // U/h
-  durationHours   Decimal? @map("duration_hours") @db.Decimal(5, 2)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id            String   @id @default(uuid())
+  basalConfigId Int      @map("basal_config_id")
+  startTime     DateTime @map("start_time") @db.Time()
+  endTime       DateTime @map("end_time") @db.Time()
+  rate          Decimal  @db.Decimal(5, 3) // U/h
+  durationHours Decimal? @map("duration_hours") @db.Decimal(5, 2)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  basalConfig          BasalConfiguration   @relation(fields: [basalConfigId], references: [id], onDelete: Cascade)
-  adjustmentProposals  AdjustmentProposal[]
+  basalConfig         BasalConfiguration   @relation(fields: [basalConfigId], references: [id], onDelete: Cascade)
+  adjustmentProposals AdjustmentProposal[]
 
   @@map("pump_basal_slots")
 }
 
 model BolusCalculationLog {
-  id                      String    @id @default(uuid())
-  patientId               Int       @map("patient_id")
-  calculatedAt            DateTime  @default(now()) @map("calculated_at") @db.Timestamptz()
-  inputGlucoseGl          Decimal?  @map("input_glucose_gl") @db.Decimal(6, 4)
-  inputCarbsGrams         Decimal?  @map("input_carbs_grams") @db.Decimal(6, 2)
-  targetGlucoseMgdl       Decimal   @map("target_glucose_mgdl") @db.Decimal(6, 2)
-  isfUsedGl               Decimal   @map("isf_used_gl") @db.Decimal(6, 4)
-  icrUsed                 Decimal   @map("icr_used") @db.Decimal(5, 2)
-  mealBolus               Decimal   @default(0) @map("meal_bolus") @db.Decimal(5, 2)
-  rawCorrectionDose       Decimal   @default(0) @map("raw_correction_dose") @db.Decimal(5, 2)
-  iobValue                Decimal   @default(0) @map("iob_value") @db.Decimal(5, 2)
-  iobAdjustment           Decimal   @default(0) @map("iob_adjustment") @db.Decimal(5, 2)
-  correctionDose          Decimal   @default(0) @map("correction_dose") @db.Decimal(5, 2)
-  recommendedDose         Decimal   @map("recommended_dose") @db.Decimal(5, 2)
-  wasCapped               Boolean   @default(false) @map("was_capped")
-  warnings                String[]
-  deliveryMethod          String    @map("delivery_method") @db.VarChar(20)
-  wasDelivered            Boolean   @default(false) @map("was_delivered")
-  extendedImmediatePct    Decimal?  @map("extended_immediate_pct") @db.Decimal(5, 2)
-  extendedDurationHours   Decimal?  @map("extended_duration_hours") @db.Decimal(4, 2)
+  id                    String   @id @default(uuid())
+  patientId             Int      @map("patient_id")
+  calculatedAt          DateTime @default(now()) @map("calculated_at") @db.Timestamptz()
+  inputGlucoseGl        Decimal? @map("input_glucose_gl") @db.Decimal(6, 4)
+  inputCarbsGrams       Decimal? @map("input_carbs_grams") @db.Decimal(6, 2)
+  targetGlucoseMgdl     Decimal  @map("target_glucose_mgdl") @db.Decimal(6, 2)
+  isfUsedGl             Decimal  @map("isf_used_gl") @db.Decimal(6, 4)
+  icrUsed               Decimal  @map("icr_used") @db.Decimal(5, 2)
+  mealBolus             Decimal  @default(0) @map("meal_bolus") @db.Decimal(5, 2)
+  rawCorrectionDose     Decimal  @default(0) @map("raw_correction_dose") @db.Decimal(5, 2)
+  iobValue              Decimal  @default(0) @map("iob_value") @db.Decimal(5, 2)
+  iobAdjustment         Decimal  @default(0) @map("iob_adjustment") @db.Decimal(5, 2)
+  correctionDose        Decimal  @default(0) @map("correction_dose") @db.Decimal(5, 2)
+  recommendedDose       Decimal  @map("recommended_dose") @db.Decimal(5, 2)
+  wasCapped             Boolean  @default(false) @map("was_capped")
+  warnings              String[]
+  deliveryMethod        String   @map("delivery_method") @db.VarChar(20)
+  wasDelivered          Boolean  @default(false) @map("was_delivered")
+  extendedImmediatePct  Decimal? @map("extended_immediate_pct") @db.Decimal(5, 2)
+  extendedDurationHours Decimal? @map("extended_duration_hours") @db.Decimal(4, 2)
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -1083,33 +1085,33 @@ model BolusCalculationLog {
 }
 
 model AdjustmentProposal {
-  id                     String              @id @default(uuid())
-  patientId              Int                 @map("patient_id")
-  parameterType          AdjustableParameter @map("parameter_type")
-  currentValue           Decimal             @map("current_value") @db.Decimal(8, 4)
-  proposedValue          Decimal             @map("proposed_value") @db.Decimal(8, 4)
-  changePercent          Decimal             @map("change_percent") @db.Decimal(5, 2)
-  confidence             ConfidenceLevel
-  reason                 AdjustmentReason
-  supportingEvents       Int                 @map("supporting_events")
-  totalEventsConsidered  Int?                @map("total_events_considered")
-  excludedEvents         Int?                @map("excluded_events")
-  averageObservedValue   Decimal?            @map("average_observed_value") @db.Decimal(8, 4)
-  timeSlotStartHour      Int?                @map("time_slot_start_hour") @db.SmallInt
-  timeSlotEndHour        Int?                @map("time_slot_end_hour") @db.SmallInt
-  carbRatioSlotStart     Int?                @map("carb_ratio_slot_start") @db.SmallInt
-  carbRatioSlotEnd       Int?                @map("carb_ratio_slot_end") @db.SmallInt
-  pumpBasalSlotId        String?             @map("pump_basal_slot_id")
-  analysisPeriod         String?             @map("analysis_period") @db.VarChar(10)
-  dataQuality            String?             @map("data_quality") @db.VarChar(20)
-  status                 ProposalStatus      @default(pending)
-  reviewedAt             DateTime?           @map("reviewed_at") @db.Timestamptz()
-  reviewedBy             Int?                @map("reviewed_by")
-  createdAt              DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  id                    String              @id @default(uuid())
+  patientId             Int                 @map("patient_id")
+  parameterType         AdjustableParameter @map("parameter_type")
+  currentValue          Decimal             @map("current_value") @db.Decimal(8, 4)
+  proposedValue         Decimal             @map("proposed_value") @db.Decimal(8, 4)
+  changePercent         Decimal             @map("change_percent") @db.Decimal(5, 2)
+  confidence            ConfidenceLevel
+  reason                AdjustmentReason
+  supportingEvents      Int                 @map("supporting_events")
+  totalEventsConsidered Int?                @map("total_events_considered")
+  excludedEvents        Int?                @map("excluded_events")
+  averageObservedValue  Decimal?            @map("average_observed_value") @db.Decimal(8, 4)
+  timeSlotStartHour     Int?                @map("time_slot_start_hour") @db.SmallInt
+  timeSlotEndHour       Int?                @map("time_slot_end_hour") @db.SmallInt
+  carbRatioSlotStart    Int?                @map("carb_ratio_slot_start") @db.SmallInt
+  carbRatioSlotEnd      Int?                @map("carb_ratio_slot_end") @db.SmallInt
+  pumpBasalSlotId       String?             @map("pump_basal_slot_id")
+  analysisPeriod        String?             @map("analysis_period") @db.VarChar(10)
+  dataQuality           String?             @map("data_quality") @db.VarChar(20)
+  status                ProposalStatus      @default(pending)
+  reviewedAt            DateTime?           @map("reviewed_at") @db.Timestamptz()
+  reviewedBy            Int?                @map("reviewed_by")
+  createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  reviewer      User?          @relation("ReviewedBy", fields: [reviewedBy], references: [id])
-  pumpBasalSlot PumpBasalSlot? @relation(fields: [pumpBasalSlotId], references: [id])
+  patient       Patient                          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  reviewer      User?                            @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  pumpBasalSlot PumpBasalSlot?                   @relation(fields: [pumpBasalSlotId], references: [id])
   /// US-2065 — accusé patient (1:1).
   ack           AdjustmentProposalAck?
   /// US-2066 — actualisation effective (1:1).
@@ -1141,27 +1143,27 @@ model CgmEntry {
 }
 
 model GlycemiaEntry {
-  id              Int      @id @default(autoincrement())
-  patientId       Int      @map("patient_id")
-  date            DateTime @db.Date
+  id              Int       @id @default(autoincrement())
+  patientId       Int       @map("patient_id")
+  date            DateTime  @db.Date
   time            DateTime? @db.Time()
-  isProfessional  Boolean  @default(false) @map("is_professional")
-  glycemiaGl      Decimal? @map("glycemia_gl") @db.Decimal(6, 4) // g/L
-  glycemiaMgdl    Decimal? @map("glycemia_mgdl") @db.Decimal(6, 2) // mg/dL
-  weight          Decimal? @db.Decimal(5, 2)
-  hba1c           Decimal? @db.Decimal(5, 2)
-  ketones         Decimal? @db.Decimal(5, 2)
-  bpSystolic      Int?     @map("bp_systolic") @db.SmallInt
-  bpDiastolic     Int?     @map("bp_diastolic") @db.SmallInt
-  bolus           Decimal? @db.Decimal(5, 2)
-  bolusCorr       Decimal? @map("bolus_corr") @db.Decimal(5, 2)
-  basal           Decimal? @db.Decimal(5, 2)
-  insulinDevice   Int?     @map("insulin_device")
-  carb            Int?     // grammes
-  mealDescription String?  @map("meal_description")
-  mealFullStarchy Boolean? @map("meal_full_starchy")
-  mealProtein     Boolean? @map("meal_protein")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  isProfessional  Boolean   @default(false) @map("is_professional")
+  glycemiaGl      Decimal?  @map("glycemia_gl") @db.Decimal(6, 4) // g/L
+  glycemiaMgdl    Decimal?  @map("glycemia_mgdl") @db.Decimal(6, 2) // mg/dL
+  weight          Decimal?  @db.Decimal(5, 2)
+  hba1c           Decimal?  @db.Decimal(5, 2)
+  ketones         Decimal?  @db.Decimal(5, 2)
+  bpSystolic      Int?      @map("bp_systolic") @db.SmallInt
+  bpDiastolic     Int?      @map("bp_diastolic") @db.SmallInt
+  bolus           Decimal?  @db.Decimal(5, 2)
+  bolusCorr       Decimal?  @map("bolus_corr") @db.Decimal(5, 2)
+  basal           Decimal?  @db.Decimal(5, 2)
+  insulinDevice   Int?      @map("insulin_device")
+  carb            Int? // grammes
+  mealDescription String?   @map("meal_description")
+  mealFullStarchy Boolean?  @map("meal_full_starchy")
+  mealProtein     Boolean?  @map("meal_protein")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -1170,32 +1172,32 @@ model GlycemiaEntry {
 }
 
 model DiabetesEvent {
-  id                String   @id @default(uuid())
-  patientId         Int      @map("patient_id")
-  eventDate         DateTime @map("event_date") @db.Timestamptz()
+  id                String              @id @default(uuid())
+  patientId         Int                 @map("patient_id")
+  eventDate         DateTime            @map("event_date") @db.Timestamptz()
   eventTypes        DiabetesEventType[] @map("event_types")
-  glycemiaValue     Decimal? @map("glycemia_value") @db.Decimal(6, 2)
-  carbohydrates     Decimal? @db.Decimal(6, 2)
-  bolusDose         Decimal? @map("bolus_dose") @db.Decimal(5, 2)
-  basalDose         Decimal? @map("basal_dose") @db.Decimal(5, 2)
-  activityType      String?  @map("activity_type") @db.VarChar(20)
-  activityDuration  Int?     @map("activity_duration") // minutes
-  contextType       String?  @map("context_type") @db.VarChar(20)
-  weight            Decimal? @db.Decimal(5, 2)
-  hba1c             Decimal? @db.Decimal(5, 2)
-  ketones           Decimal? @db.Decimal(5, 2)
-  systolicPressure  Int?     @map("systolic_pressure") @db.SmallInt
-  diastolicPressure Int?     @map("diastolic_pressure") @db.SmallInt
+  glycemiaValue     Decimal?            @map("glycemia_value") @db.Decimal(6, 2)
+  carbohydrates     Decimal?            @db.Decimal(6, 2)
+  bolusDose         Decimal?            @map("bolus_dose") @db.Decimal(5, 2)
+  basalDose         Decimal?            @map("basal_dose") @db.Decimal(5, 2)
+  activityType      String?             @map("activity_type") @db.VarChar(20)
+  activityDuration  Int?                @map("activity_duration") // minutes
+  contextType       String?             @map("context_type") @db.VarChar(20)
+  weight            Decimal?            @db.Decimal(5, 2)
+  hba1c             Decimal?            @db.Decimal(5, 2)
+  ketones           Decimal?            @db.Decimal(5, 2)
+  systolicPressure  Int?                @map("systolic_pressure") @db.SmallInt
+  diastolicPressure Int?                @map("diastolic_pressure") @db.SmallInt
   comment           String?
   /// US-2053 — Validation soignant. `validatedBy` = User.id (NURSE+), null
   /// si l'event n'a pas (encore) été revu par un PS.
-  validatedAt       DateTime? @map("validated_at") @db.Timestamptz()
-  validatedBy       Int?      @map("validated_by")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  validatedAt       DateTime?           @map("validated_at") @db.Timestamptz()
+  validatedBy       Int?                @map("validated_by")
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
 
-  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  validator User?   @relation("DiabetesEventValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
+  patient    Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  validator  User?       @relation("DiabetesEventValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
   /// US-2057 — Photos repas attachées à un event de type insulinMeal.
   mealPhotos MealPhoto[]
 
@@ -1210,7 +1212,7 @@ model InsulinFlowEntry {
   patientId Int      @map("patient_id")
   date      DateTime @db.Date
   flow      Decimal? @db.Decimal(6, 2) // U total journalier
-  hour      Json?    // tableau de 24 valeurs
+  hour      Json? // tableau de 24 valeurs
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
@@ -1226,7 +1228,7 @@ model InsulinFlowDeviceData {
   date      DateTime @db.Date
   flow      Decimal? @db.Decimal(6, 2)
   hour      Json?
-  events    Json?    // [{start, end, rate, temp, datas}]
+  events    Json? // [{start, end, rate, temp, datas}]
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
@@ -1244,10 +1246,10 @@ model PumpEvent {
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
-  @@index([patientId, timestamp])
   /// Review PR #391 C4 — dédup cross-batch sur `bulkSync` (réimport CSV).
   /// Combiné avec `skipDuplicates: true` côté Prisma → idempotence garantie.
   @@unique([patientId, timestamp, eventType])
+  @@index([patientId, timestamp])
   @@map("pump_events")
 }
 
@@ -1255,20 +1257,20 @@ model PumpEvent {
 /// rows (varchar 'current' | '7d' | '30d') remain valid after enum migration.
 enum PeriodType {
   current
-  d7  @map("7d")
-  d30 @map("30d")
+  d7      @map("7d")
+  d30     @map("30d")
 }
 
 model AverageData {
-  id          Int        @id @default(autoincrement())
-  patientId   Int        @map("patient_id")
-  periodType  PeriodType @map("period_type")
-  mealType    String     @map("meal_type") @db.VarChar(20)
-  glycemia    Decimal?   @db.Decimal(4, 2) // g/L
-  color       String?    @db.VarChar(10)
-  glycemia1h  Decimal?   @map("glycemia_1h") @db.Decimal(4, 2)
-  color1h     String?    @map("color_1h") @db.VarChar(10)
-  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+  id         Int        @id @default(autoincrement())
+  patientId  Int        @map("patient_id")
+  periodType PeriodType @map("period_type")
+  mealType   String     @map("meal_type") @db.VarChar(20)
+  glycemia   Decimal?   @db.Decimal(4, 2) // g/L
+  color      String?    @db.VarChar(10)
+  glycemia1h Decimal?   @map("glycemia_1h") @db.Decimal(4, 2)
+  color1h    String?    @map("color_1h") @db.VarChar(10)
+  updatedAt  DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
@@ -1316,44 +1318,44 @@ model DeviceDataSync {
 // ═══════════════════════════════════════════════════════════════
 
 model HealthcareService {
-  id            Int          @id @default(autoincrement())
-  name          String       @db.VarChar(255)
-  establishment String?      @db.VarChar(255)
+  id            Int         @id @default(autoincrement())
+  name          String      @db.VarChar(255)
+  establishment String?     @db.VarChar(255)
   /// US-2117 — Adresse complète (chiffrée AES-256-GCM si contient des PII
   /// identifiables ; ici champ de rue donc plain). Utile pour annuaire,
   /// envoi documents postaux, etc.
-  addressLine1  String?      @map("address_line1") @db.VarChar(255)
-  addressLine2  String?      @map("address_line2") @db.VarChar(255)
-  postalCode    String?      @map("postal_code") @db.VarChar(10)
-  city          String?      @db.VarChar(100)
-  country       String?      @db.Char(2)
+  addressLine1  String?     @map("address_line1") @db.VarChar(255)
+  addressLine2  String?     @map("address_line2") @db.VarChar(255)
+  postalCode    String?     @map("postal_code") @db.VarChar(10)
+  city          String?     @db.VarChar(100)
+  country       String?     @db.Char(2)
   /// US-2117 — Coordonnées de contact (publiques cabinet).
-  phone         String?      @db.VarChar(30)
-  email         String?      @db.VarChar(255)
-  website       String?      @db.VarChar(500)
+  phone         String?     @db.VarChar(30)
+  email         String?     @db.VarChar(255)
+  website       String?     @db.VarChar(500)
   /// US-2117 — Horaires d'ouverture format JSON :
   /// { mon: [["09:00","12:00"],["14:00","18:00"]], tue: [...], ..., sun: [] }
   /// Tableau vide = fermé. Validation côté service (Zod).
-  openingHours  Json?        @map("opening_hours")
+  openingHours  Json?       @map("opening_hours")
   /// US-2117 — Spécialités cliniques (libellés libres ou codes CIM).
   /// Ex: ["diabetologie", "endocrinologie", "pediatrie"]. Cardinalité 0-N.
-  specialties   String[]     @default([])
+  specialties   String[]    @default([])
   /// US-2117 — Capacité (lits / box / postes consultation). Optionnel.
   capacity      Int?
   /// US-2117 — Manager responsable (User backoffice). Différent du référent
   /// patient (qui est par patient). Le manager voit tous les patients du
   /// service via PatientService (relation existante).
-  managerId     Int?         @map("manager_id")
+  managerId     Int?        @map("manager_id")
   /// `Restrict` cohérent avec le reste du schéma (statusChangedBy, BackupLog.triggeredBy) :
   /// la suppression d'un User manager d'un service échoue côté DB, forçant un
   /// admin à réassigner explicitement avant deletion. Évite l'orphelinage silencieux
   /// d'une structure dont le manager a été supprimé.
-  manager       User?        @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: Restrict)
-  noVideos      Boolean      @default(false) @map("no_videos")
-  noFood        Boolean      @default(false) @map("no_food")
-  logo          String?      @db.VarChar(500)
+  manager       User?       @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: Restrict)
+  noVideos      Boolean     @default(false) @map("no_videos")
+  noFood        Boolean     @default(false) @map("no_food")
+  logo          String?     @db.VarChar(500)
   /// US-2118 — Type de structure (cabinet, hôpital, praticien libéral).
-  type          ServiceType  @default(clinic)
+  type          ServiceType @default(clinic)
   /// US-2118 — Numéro RPPS (11 digits) / ADELI (9 digits) pour praticiens
   /// libéraux. Validation Luhn + format côté service. Optionnel pour
   /// cabinets / hôpitaux.
@@ -1363,21 +1365,21 @@ model HealthcareService {
   /// contrainte unique inline rejetterait la création du nouveau cabinet
   /// avant suppression de l'ancien. La validation business (warning
   /// "RPPS déjà utilisé") est appliquée au service layer si besoin futur.
-  licenseNumber String?      @map("license_number") @db.VarChar(11)
+  licenseNumber String?     @map("license_number") @db.VarChar(11)
 
-  members         HealthcareMember[]
-  patientServices PatientService[]
-  referents       PatientReferent[]
+  members                    HealthcareMember[]
+  patientServices            PatientService[]
+  referents                  PatientReferent[]
   /// US-2022 — Tags (catégorisation libre) appartenant à ce cabinet.
-  patientTags     PatientTag[]
+  patientTags                PatientTag[]
   /// US-2078 — Templates de messages partagés au sein du cabinet.
-  messageTemplates MessageTemplate[]
+  messageTemplates           MessageTemplate[]
   /// Groupe 10 Batch A US-2220 — Bibliothèque de templates de seuils
-  alertThresholdTemplates AlertThresholdTemplate[]
+  alertThresholdTemplates    AlertThresholdTemplate[]
   /// Groupe 10 Batch B US-2228 — Snapshots quotidiens KPIs cohorte
-  cohortAnalyticsSnapshots CohortAnalyticsSnapshot[]
+  cohortAnalyticsSnapshots   CohortAnalyticsSnapshot[]
   /// US-2088 — Groupes patients (cohortes).
-  patientGroups   PatientGroup[]
+  patientGroups              PatientGroup[]
   /// US-2050 — Templates d'ajustement insuline (cabinet-scoped).
   insulinAdjustmentTemplates InsulinAdjustmentTemplate[]
 
@@ -1399,21 +1401,21 @@ model HealthcareMember {
   serviceId Int?   @map("service_id")
 
   /// US-2505 — Mode de prise de RDV (auto-confirm vs validation manuelle).
-  bookingMode    BookingMode @default(auto) @map("booking_mode")
+  bookingMode               BookingMode @default(auto) @map("booking_mode")
   /// US-2505 — Durée par défaut (min) appliquée si l'input ne précise pas.
-  defaultAppointmentMinutes Int? @map("default_appointment_minutes")
+  defaultAppointmentMinutes Int?        @map("default_appointment_minutes")
 
-  service         HealthcareService? @relation(fields: [serviceId], references: [id])
-  patientServices PatientService[]
-  referents       PatientReferent[]
-  documents       MedicalDocument[]
+  service          HealthcareService?     @relation(fields: [serviceId], references: [id])
+  patientServices  PatientService[]
+  referents        PatientReferent[]
+  documents        MedicalDocument[]
   /// US-2084 — Absences du membre + couvertures qu'il assure pour autrui
-  absencesAsOwner    MemberAbsence[]  @relation("MemberAbsenceOwner")
-  absencesAsCover    MemberAbsence[]  @relation("MemberAbsenceCover")
+  absencesAsOwner  MemberAbsence[]        @relation("MemberAbsenceOwner")
+  absencesAsCover  MemberAbsence[]        @relation("MemberAbsenceCover")
   /// US-2500/2501 — RDV portés par ce membre.
-  appointments       Appointment[]
+  appointments     Appointment[]
   /// US-2504 — Plages indisponibles (créneaux bloqués pour la prise de RDV).
-  unavailabilities   MemberUnavailability[]
+  unavailabilities MemberUnavailability[]
 
   @@unique([name, serviceId])
   @@map("healthcare_members")
@@ -1428,14 +1430,14 @@ model HealthcareMember {
 /// vérifie qu'aucun `Appointment.status IN scheduled/confirmed/pending_validation`
 /// ne touche l'intervalle avant insertion).
 model MemberUnavailability {
-  id        Int       @id @default(autoincrement())
-  memberId  Int       @map("member_id")
-  startAt   DateTime  @map("start_at") @db.Timestamptz()
-  endAt     DateTime  @map("end_at") @db.Timestamptz()
+  id              Int      @id @default(autoincrement())
+  memberId        Int      @map("member_id")
+  startAt         DateTime @map("start_at") @db.Timestamptz()
+  endAt           DateTime @map("end_at") @db.Timestamptz()
   /// Raison chiffrée AES-256-GCM (PHI possible : "congé maladie", "examen médical").
-  reasonEncrypted String? @map("reason_encrypted")
-  createdBy Int?      @map("created_by")
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  reasonEncrypted String?  @map("reason_encrypted")
+  createdBy       Int?     @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   member  HealthcareMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
   creator User?            @relation("MemberUnavailabilityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -1528,63 +1530,63 @@ model PatientTagAssignment {
 // ═══════════════════════════════════════════════════════════════
 
 model MedicalDocument {
-  id              Int               @id @default(autoincrement())
-  patientId       Int               @map("patient_id")
-  title           String            @db.VarChar(255)
-  date            DateTime          @db.Timestamptz()
-  memberId        Int?              @map("member_id")
-  patientShare    Boolean           @default(true) @map("patient_share")
-  isAuthorPsad    Boolean           @default(false) @map("is_author_psad")
-  shareWithPsad   Boolean           @default(false) @map("share_with_psad")
-  category        DocumentCategory?
-  mimeType        String            @default("application/pdf") @map("mime_type") @db.VarChar(100)
-  fileUrl         String?           @map("file_url") @db.VarChar(500)
-  fileSize        BigInt?           @map("file_size")
-  isDownloaded    Boolean           @default(false) @map("is_downloaded")
-  isRead          Boolean           @default(false) @map("is_read")
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  id            Int               @id @default(autoincrement())
+  patientId     Int               @map("patient_id")
+  title         String            @db.VarChar(255)
+  date          DateTime          @db.Timestamptz()
+  memberId      Int?              @map("member_id")
+  patientShare  Boolean           @default(true) @map("patient_share")
+  isAuthorPsad  Boolean           @default(false) @map("is_author_psad")
+  shareWithPsad Boolean           @default(false) @map("share_with_psad")
+  category      DocumentCategory?
+  mimeType      String            @default("application/pdf") @map("mime_type") @db.VarChar(100)
+  fileUrl       String?           @map("file_url") @db.VarChar(500)
+  fileSize      BigInt?           @map("file_size")
+  isDownloaded  Boolean           @default(false) @map("is_downloaded")
+  isRead        Boolean           @default(false) @map("is_read")
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
   member  HealthcareMember? @relation(fields: [memberId], references: [id])
 
   @@map("medical_documents")
 }
 
 model Appointment {
-  id        Int       @id @default(autoincrement())
-  patientId Int       @map("patient_id")
-  type      String?   @db.VarChar(50) // ide, diabeto, hdj...
-  date      DateTime  @db.Date
-  hour      DateTime? @db.Time()
-  comment   String?
+  id                    Int                  @id @default(autoincrement())
+  patientId             Int                  @map("patient_id")
+  type                  String?              @db.VarChar(50) // ide, diabeto, hdj...
+  date                  DateTime             @db.Date
+  hour                  DateTime?            @db.Time()
+  comment               String?
   /// US-2500/2501 — Praticien titulaire du RDV (NULL si non-affecté).
-  memberId    Int?              @map("member_id")
+  memberId              Int?                 @map("member_id")
   /// US-2501 — Durée en minutes (15-240). NULL = legacy/non-typé.
-  durationMinutes Int?          @map("duration_minutes")
+  durationMinutes       Int?                 @map("duration_minutes")
   /// US-2501 — Lieu/canal du RDV.
-  location    AppointmentLocation?
+  location              AppointmentLocation?
   /// US-2501/2503 — État du RDV. Defaults `scheduled`, état terminal `cancelled`/`completed`/`no_show`.
   ///                Workflow `pending_validation` activé si le médecin est en mode "validation" (US-2505).
-  status      AppointmentStatus @default(scheduled)
+  status                AppointmentStatus    @default(scheduled)
   /// US-2501 — Motif chiffré AES-256-GCM (base64). PHI : peut contenir nom/symptômes patient.
-  motifEncrypted String?        @map("motif_encrypted")
+  motifEncrypted        String?              @map("motif_encrypted")
   /// US-2501 — Note médicale chiffrée AES-256-GCM (base64). NULL = pas de note.
-  noteEncrypted String?         @map("note_encrypted")
+  noteEncrypted         String?              @map("note_encrypted")
   /// US-2503 — Date/heure proposée par le médecin lors d'une annulation pour
   /// re-programmer. Renseignée par `propose-alternative`, validée par le patient
   /// via `accept-alternative` (qui repasse le RDV en `scheduled` et met à jour
   /// `date` + `hour`). TTL applicatif : la proposition expire après 7 jours.
-  proposedAlternativeAt DateTime? @map("proposed_alternative_at") @db.Timestamptz()
+  proposedAlternativeAt DateTime?            @map("proposed_alternative_at") @db.Timestamptz()
   /// US-2503 — Auteur de l'annulation. Dérivé du rôle au moment du cancel.
-  cancelledBy   CancellationActor? @map("cancelled_by")
+  cancelledBy           CancellationActor?   @map("cancelled_by")
   /// US-2503 — Raison d'annulation chiffrée AES-256-GCM (PHI possible).
-  cancelReasonEncrypted String? @map("cancel_reason_encrypted")
-  cancelledAt   DateTime?       @map("cancelled_at") @db.Timestamptz()
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  cancelReasonEncrypted String?              @map("cancel_reason_encrypted")
+  cancelledAt           DateTime?            @map("cancelled_at") @db.Timestamptz()
+  createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime             @updatedAt @map("updated_at") @db.Timestamptz()
 
-  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  member  HealthcareMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  patient           Patient               @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  member            HealthcareMember?     @relation(fields: [memberId], references: [id], onDelete: SetNull)
   /// US-2068 — Notes consultation rattachées
   consultationNotes ConsultationNote[]
   /// US-2072 — Acte facturable si téléconsult
@@ -1644,24 +1646,24 @@ enum BookingMode {
 // ═══════════════════════════════════════════════════════════════
 
 model Announcement {
-  id                     Int      @id @default(autoincrement())
-  title                  String   @db.VarChar(255)
-  content                String   // HTML
-  callBackDelay          Int?     @map("call_back_delay")
-  displayAnnouncement    Boolean  @default(true) @map("display_announcement")
-  displayShowButton      Boolean  @default(true) @map("display_show_button")
-  createdAt              DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt              DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  id                  Int      @id @default(autoincrement())
+  title               String   @db.VarChar(255)
+  content             String // HTML
+  callBackDelay       Int?     @map("call_back_delay")
+  displayAnnouncement Boolean  @default(true) @map("display_announcement")
+  displayShowButton   Boolean  @default(true) @map("display_show_button")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   @@map("announcements")
 }
 
 model DashboardConfiguration {
-  id          Int      @id @default(autoincrement())
-  userId      Int      @unique @map("user_id")
-  version     Int      @default(1)
-  columnCount Int      @default(4) @map("column_count")
-  name        String?  @db.VarChar(100)
+  id           Int      @id @default(autoincrement())
+  userId       Int      @unique @map("user_id")
+  version      Int      @default(1)
+  columnCount  Int      @default(4) @map("column_count")
+  name         String?  @db.VarChar(100)
   lastModified DateTime @default(now()) @map("last_modified") @db.Timestamptz()
 
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -1704,24 +1706,24 @@ model UnitDefinition {
 // ═══════════════════════════════════════════════════════════════
 
 model PushDeviceRegistration {
-  id              String       @id @default(uuid())
-  userId          Int          @map("user_id")
-  platform        PushPlatform
-  pushToken       String       @unique @map("push_token") @db.VarChar(500)
-  deviceName      String?      @map("device_name") @db.VarChar(100)
-  deviceModel     String?      @map("device_model") @db.VarChar(50)
-  osVersion       String?      @map("os_version") @db.VarChar(20)
-  appVersion      String?      @map("app_version") @db.VarChar(20)
-  appBundleId     String?      @map("app_bundle_id") @db.VarChar(100)
-  endpointArn     String?      @map("endpoint_arn") @db.VarChar(500)
-  locale          String?      @default("fr") @db.VarChar(10)
-  pushTimezone    String?      @map("push_timezone") @db.VarChar(50)
-  isActive        Boolean      @default(true) @map("is_active")
-  isSandbox       Boolean      @default(false) @map("is_sandbox")
-  lastUsedAt      DateTime?    @map("last_used_at") @db.Timestamptz()
-  registeredAt    DateTime     @default(now()) @map("registered_at") @db.Timestamptz()
-  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
-  unregisteredAt  DateTime?    @map("unregistered_at") @db.Timestamptz()
+  id             String       @id @default(uuid())
+  userId         Int          @map("user_id")
+  platform       PushPlatform
+  pushToken      String       @unique @map("push_token") @db.VarChar(500)
+  deviceName     String?      @map("device_name") @db.VarChar(100)
+  deviceModel    String?      @map("device_model") @db.VarChar(50)
+  osVersion      String?      @map("os_version") @db.VarChar(20)
+  appVersion     String?      @map("app_version") @db.VarChar(20)
+  appBundleId    String?      @map("app_bundle_id") @db.VarChar(100)
+  endpointArn    String?      @map("endpoint_arn") @db.VarChar(500)
+  locale         String?      @default("fr") @db.VarChar(10)
+  pushTimezone   String?      @map("push_timezone") @db.VarChar(50)
+  isActive       Boolean      @default(true) @map("is_active")
+  isSandbox      Boolean      @default(false) @map("is_sandbox")
+  lastUsedAt     DateTime?    @map("last_used_at") @db.Timestamptz()
+  registeredAt   DateTime     @default(now()) @map("registered_at") @db.Timestamptz()
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+  unregisteredAt DateTime?    @map("unregistered_at") @db.Timestamptz()
 
   user User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   logs PushNotificationLog[]
@@ -1732,26 +1734,26 @@ model PushDeviceRegistration {
 }
 
 model PushNotificationTemplate {
-  id                   String               @id @db.VarChar(50)
-  category             String               @db.VarChar(30)
-  titleFr              String               @map("title_fr") @db.VarChar(200)
-  titleEn              String               @map("title_en") @db.VarChar(200)
-  titleAr              String               @map("title_ar") @db.VarChar(200)
-  bodyFr               String               @map("body_fr")
-  bodyEn               String               @map("body_en")
-  bodyAr               String               @map("body_ar")
-  iosSound             String?              @default("default") @map("ios_sound") @db.VarChar(50)
-  iosBadgeIncrement    Int?                 @default(1) @map("ios_badge_increment")
-  iosCategory          String?              @map("ios_category") @db.VarChar(50)
+  id                   String                @id @db.VarChar(50)
+  category             String                @db.VarChar(30)
+  titleFr              String                @map("title_fr") @db.VarChar(200)
+  titleEn              String                @map("title_en") @db.VarChar(200)
+  titleAr              String                @map("title_ar") @db.VarChar(200)
+  bodyFr               String                @map("body_fr")
+  bodyEn               String                @map("body_en")
+  bodyAr               String                @map("body_ar")
+  iosSound             String?               @default("default") @map("ios_sound") @db.VarChar(50)
+  iosBadgeIncrement    Int?                  @default(1) @map("ios_badge_increment")
+  iosCategory          String?               @map("ios_category") @db.VarChar(50)
   iosInterruptionLevel IosInterruptionLevel? @default(active) @map("ios_interruption_level")
-  androidChannelId     String?              @map("android_channel_id") @db.VarChar(50)
-  androidPriority      AndroidPriority?     @default(high) @map("android_priority")
-  androidIcon          String?              @map("android_icon") @db.VarChar(50)
-  dataPayload          Json?                @map("data_payload")
-  ttlSeconds           Int?                 @default(86400) @map("ttl_seconds")
-  isActive             Boolean              @default(true) @map("is_active")
-  createdAt            DateTime             @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt            DateTime             @updatedAt @map("updated_at") @db.Timestamptz()
+  androidChannelId     String?               @map("android_channel_id") @db.VarChar(50)
+  androidPriority      AndroidPriority?      @default(high) @map("android_priority")
+  androidIcon          String?               @map("android_icon") @db.VarChar(50)
+  dataPayload          Json?                 @map("data_payload")
+  ttlSeconds           Int?                  @default(86400) @map("ttl_seconds")
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime              @updatedAt @map("updated_at") @db.Timestamptz()
 
   logs      PushNotificationLog[]
   scheduled PushScheduledNotification[]
@@ -1790,23 +1792,23 @@ model PushNotificationLog {
 }
 
 model PushScheduledNotification {
-  id                 String       @id @default(uuid())
-  userId             Int          @map("user_id")
-  templateId         String       @map("template_id") @db.VarChar(50)
-  scheduleType       ScheduleType @map("schedule_type")
-  scheduledAt        DateTime?    @map("scheduled_at") @db.Timestamptz()
-  cronExpression     String?      @map("cron_expression") @db.VarChar(50)
-  cronTimezone       String       @default("Europe/Paris") @map("cron_timezone") @db.VarChar(50)
-  templateVariables  Json?        @map("template_variables")
-  platforms          PushPlatform[] @default([ios, android, web])
-  isActive           Boolean      @default(true) @map("is_active")
-  lastTriggeredAt    DateTime?    @map("last_triggered_at") @db.Timestamptz()
-  nextTriggerAt      DateTime?    @map("next_trigger_at") @db.Timestamptz()
-  maxOccurrences     Int?         @map("max_occurrences")
-  occurrencesCount   Int          @default(0) @map("occurrences_count")
-  expiresAt          DateTime?    @map("expires_at") @db.Timestamptz()
-  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt          DateTime     @updatedAt @map("updated_at") @db.Timestamptz()
+  id                String         @id @default(uuid())
+  userId            Int            @map("user_id")
+  templateId        String         @map("template_id") @db.VarChar(50)
+  scheduleType      ScheduleType   @map("schedule_type")
+  scheduledAt       DateTime?      @map("scheduled_at") @db.Timestamptz()
+  cronExpression    String?        @map("cron_expression") @db.VarChar(50)
+  cronTimezone      String         @default("Europe/Paris") @map("cron_timezone") @db.VarChar(50)
+  templateVariables Json?          @map("template_variables")
+  platforms         PushPlatform[] @default([ios, android, web])
+  isActive          Boolean        @default(true) @map("is_active")
+  lastTriggeredAt   DateTime?      @map("last_triggered_at") @db.Timestamptz()
+  nextTriggerAt     DateTime?      @map("next_trigger_at") @db.Timestamptz()
+  maxOccurrences    Int?           @map("max_occurrences")
+  occurrencesCount  Int            @default(0) @map("occurrences_count")
+  expiresAt         DateTime?      @map("expires_at") @db.Timestamptz()
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
 
   user     User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
   template PushNotificationTemplate @relation(fields: [templateId], references: [id])
@@ -1856,21 +1858,21 @@ model AuditLog {
 /// Table utilisée UNIQUEMENT en environnement de recette (staging).
 /// Les identifiants (email, password) sont chiffrés AES-256-GCM.
 model MyDiabbyCredential {
-  id              Int       @id @default(autoincrement())
-  userId          Int       @unique @map("user_id")
-  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mydiabbyUid     Int       @map("mydiabby_uid")
-  email           String                                    // Chiffré AES-256-GCM
-  password        String                                    // Chiffré AES-256-GCM
-  token           String?   @db.Text                        // JWT MyDiabby courant
-  refreshToken    String?   @map("refresh_token") @db.Text  // Refresh token MyDiabby
-  tokenExpiresAt  DateTime? @map("token_expires_at") @db.Timestamptz()
-  lastSyncAt      DateTime? @map("last_sync_at") @db.Timestamptz()
-  lastSequenceNum String?   @map("last_sequence_num")       // Pour sync différentielle
-  consecutiveErrors Int     @default(0) @map("consecutive_errors")
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  id                Int       @id @default(autoincrement())
+  userId            Int       @unique @map("user_id")
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mydiabbyUid       Int       @map("mydiabby_uid")
+  email             String // Chiffré AES-256-GCM
+  password          String // Chiffré AES-256-GCM
+  token             String?   @db.Text // JWT MyDiabby courant
+  refreshToken      String?   @map("refresh_token") @db.Text // Refresh token MyDiabby
+  tokenExpiresAt    DateTime? @map("token_expires_at") @db.Timestamptz()
+  lastSyncAt        DateTime? @map("last_sync_at") @db.Timestamptz()
+  lastSequenceNum   String?   @map("last_sequence_num") // Pour sync différentielle
+  consecutiveErrors Int       @default(0) @map("consecutive_errors")
+  isActive          Boolean   @default(true) @map("is_active")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   syncLogs MyDiabbySyncLog[]
 
@@ -1880,17 +1882,17 @@ model MyDiabbyCredential {
 /// Journal de chaque exécution de synchronisation MyDiabby.
 /// Permet le suivi et le diagnostic des imports.
 model MyDiabbySyncLog {
-  id              Int      @id @default(autoincrement())
-  credentialId    Int      @map("credential_id")
-  credential      MyDiabbyCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
-  status          String   @db.VarChar(20)                  // "success" | "error" | "partial"
-  cgmCount        Int      @default(0) @map("cgm_count")
-  glycemiaCount   Int      @default(0) @map("glycemia_count")
-  eventCount      Int      @default(0) @map("event_count")
-  profileUpdated  Boolean  @default(false) @map("profile_updated")
-  errorMessage    String?  @map("error_message") @db.Text
-  durationMs      Int      @map("duration_ms")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id             Int                @id @default(autoincrement())
+  credentialId   Int                @map("credential_id")
+  credential     MyDiabbyCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  status         String             @db.VarChar(20) // "success" | "error" | "partial"
+  cgmCount       Int                @default(0) @map("cgm_count")
+  glycemiaCount  Int                @default(0) @map("glycemia_count")
+  eventCount     Int                @default(0) @map("event_count")
+  profileUpdated Boolean            @default(false) @map("profile_updated")
+  errorMessage   String?            @map("error_message") @db.Text
+  durationMs     Int                @map("duration_ms")
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz()
 
   @@index([credentialId, createdAt])
   @@map("mydiabby_sync_logs")
@@ -1904,23 +1906,23 @@ model MyDiabbySyncLog {
 /// Source : fichier CIS_bdpm.txt (~14 000 entrées).
 /// Licence Ouverte 2.0 — attribution ANSM/BDPM requise.
 model BdpmSpecialty {
-  id            Int      @id @default(autoincrement())
-  codeCIS       String   @unique @map("code_cis") @db.VarChar(8)
-  denomination  String   @db.Text
-  formePharma   String   @map("forme_pharma") @db.VarChar(200)
-  voiesAdmin    String   @map("voies_admin") @db.VarChar(500)
-  statutAMM     String   @map("statut_amm") @db.VarChar(100)
-  procedureAMM  String?  @map("procedure_amm") @db.VarChar(100)
-  etatComm      String?  @map("etat_comm") @db.VarChar(100)
-  dateAMM       DateTime? @map("date_amm") @db.Date
-  titulaires    String?  @db.Text
-  surveillance  Boolean  @default(false)
-  atcCode       String?  @map("atc_code") @db.VarChar(10)
+  id           Int       @id @default(autoincrement())
+  codeCIS      String    @unique @map("code_cis") @db.VarChar(8)
+  denomination String    @db.Text
+  formePharma  String    @map("forme_pharma") @db.VarChar(200)
+  voiesAdmin   String    @map("voies_admin") @db.VarChar(500)
+  statutAMM    String    @map("statut_amm") @db.VarChar(100)
+  procedureAMM String?   @map("procedure_amm") @db.VarChar(100)
+  etatComm     String?   @map("etat_comm") @db.VarChar(100)
+  dateAMM      DateTime? @map("date_amm") @db.Date
+  titulaires   String?   @db.Text
+  surveillance Boolean   @default(false)
+  atcCode      String?   @map("atc_code") @db.VarChar(10)
 
   presentations BdpmPresentation[]
   compositions  BdpmComposition[]
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
 
   @@index([denomination(ops: raw("gin_trgm_ops"))], type: Gin)
   @@index([atcCode])
@@ -1931,18 +1933,18 @@ model BdpmSpecialty {
 /// Présentation d'un médicament (boîte, conditionnement).
 /// Source : fichier CIS_CIP_bdpm.txt (~20 000 entrées).
 model BdpmPresentation {
-  id            Int      @id @default(autoincrement())
-  codeCIS       String   @map("code_cis") @db.VarChar(8)
-  codeCIP7      String?  @map("code_cip7") @db.VarChar(7)
-  codeCIP13     String   @unique @map("code_cip13") @db.VarChar(13)
-  libelle       String   @db.Text
-  statutAdmin   String?  @map("statut_admin") @db.VarChar(100)
-  etatComm      String?  @map("etat_comm") @db.VarChar(100)
-  tauxRemb      String?  @map("taux_remb") @db.VarChar(20)
-  prix          Decimal? @db.Decimal(10, 2)
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id          Int      @id @default(autoincrement())
+  codeCIS     String   @map("code_cis") @db.VarChar(8)
+  codeCIP7    String?  @map("code_cip7") @db.VarChar(7)
+  codeCIP13   String   @unique @map("code_cip13") @db.VarChar(13)
+  libelle     String   @db.Text
+  statutAdmin String?  @map("statut_admin") @db.VarChar(100)
+  etatComm    String?  @map("etat_comm") @db.VarChar(100)
+  tauxRemb    String?  @map("taux_remb") @db.VarChar(20)
+  prix        Decimal? @db.Decimal(10, 2)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  specialty     BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
+  specialty BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
 
   @@index([codeCIS])
   @@map("bdpm_presentations")
@@ -1960,7 +1962,7 @@ model BdpmComposition {
   nature        String   @db.VarChar(5) // "SA" (substance active) ou "ST" (fraction thérapeutique)
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  specialty     BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
+  specialty BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
 
   @@index([codeCIS])
   @@index([substance(ops: raw("gin_trgm_ops"))], type: Gin)
@@ -2010,22 +2012,22 @@ model BdpmImportLog {
 /// **HDS** : aucune donnée patient en clair n'est stockée ici. La location
 /// (URI S3) est une référence, pas le payload chiffré du dump lui-même.
 model BackupLog {
-  id            Int          @id @default(autoincrement())
+  id           Int          @id @default(autoincrement())
   /// Identifiant opaque retourné par le worker (UUID). Unique pour idempotence.
-  backupRef     String       @unique @map("backup_ref") @db.VarChar(64)
-  status        BackupStatus @default(pending)
+  backupRef    String       @unique @map("backup_ref") @db.VarChar(64)
+  status       BackupStatus @default(pending)
   /// URI S3 où le dump est stocké (s3://bucket/path/dump.sql.gz). Nullable
   /// jusqu'à completion. Jamais loggué en clair (ANSSI RGS).
-  location      String?      @db.VarChar(500)
-  sizeBytes     BigInt?      @map("size_bytes")
-  durationMs    Int?         @map("duration_ms")
+  location     String?      @db.VarChar(500)
+  sizeBytes    BigInt?      @map("size_bytes")
+  durationMs   Int?         @map("duration_ms")
   /// User-ID de l'admin ayant déclenché le backup (NULL si cron auto).
-  triggeredBy   Int?         @map("triggered_by")
-  triggerer     User?        @relation("BackupTriggeredBy", fields: [triggeredBy], references: [id], onDelete: Restrict)
+  triggeredBy  Int?         @map("triggered_by")
+  triggerer    User?        @relation("BackupTriggeredBy", fields: [triggeredBy], references: [id], onDelete: Restrict)
   /// Brève description erreur (non-PII). Stack traces dans les logs serveur.
-  errorMessage  String?      @map("error_message") @db.VarChar(500)
-  startedAt     DateTime     @default(now()) @map("started_at") @db.Timestamptz()
-  completedAt   DateTime?    @map("completed_at") @db.Timestamptz()
+  errorMessage String?      @map("error_message") @db.VarChar(500)
+  startedAt    DateTime     @default(now()) @map("started_at") @db.Timestamptz()
+  completedAt  DateTime?    @map("completed_at") @db.Timestamptz()
 
   @@index([status, startedAt])
   @@map("backup_logs")
@@ -2045,7 +2047,7 @@ model MessageTemplate {
   id        Int      @id @default(autoincrement())
   serviceId Int      @map("service_id")
   title     String   @db.VarChar(120)
-  body      String   // free-text, max 4096 char validé service-side
+  body      String // free-text, max 4096 char validé service-side
   variables String[] @default([])
   createdBy Int?     @map("created_by")
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
@@ -2079,10 +2081,10 @@ model ReadReceipt {
 /// US-2065 — Accusé patient sur une AdjustmentProposal : tracking
 /// lecture / acceptation / rejet côté patient (mobile app).
 model AdjustmentProposalAck {
-  id           Int      @id @default(autoincrement())
-  proposalId   String   @unique @map("proposal_id")
-  patientId    Int      @map("patient_id")
-  acknowledged Boolean  @default(false)
+  id           Int       @id @default(autoincrement())
+  proposalId   String    @unique @map("proposal_id")
+  patientId    Int       @map("patient_id")
+  acknowledged Boolean   @default(false)
   accepted     Boolean?
   readAt       DateTime? @map("read_at") @db.Timestamptz()
   respondedAt  DateTime? @map("responded_at") @db.Timestamptz()
@@ -2123,15 +2125,15 @@ model AdjustmentProposalActualization {
 /// US-2068 — Note de consultation structurée. `content` chiffré AES-256-GCM
 /// (texte libre, peut contenir PII clinique).
 model ConsultationNote {
-  id            Int       @id @default(autoincrement())
-  patientId     Int       @map("patient_id")
-  authorId      Int       @map("author_id")
-  appointmentId Int?      @map("appointment_id")
-  content       String    // chiffré base64
+  id            Int      @id @default(autoincrement())
+  patientId     Int      @map("patient_id")
+  authorId      Int      @map("author_id")
+  appointmentId Int?     @map("appointment_id")
+  content       String // chiffré base64
   /// Catégorie structurelle (anamnèse, examen, conclusion, plan…).
-  category      String?   @db.VarChar(40)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  category      String?  @db.VarChar(40)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient     Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   author      User         @relation("ConsultationNoteAuthor", fields: [authorId], references: [id], onDelete: Restrict)
@@ -2144,22 +2146,22 @@ model ConsultationNote {
 /// US-2083 — Demande de délégation IDE → DOCTOR pour une action clinique
 /// nécessitant validation (ex: nouvelle proposition d'ajustement).
 model DelegationRequest {
-  id          Int                       @id @default(autoincrement())
-  patientId   Int                       @map("patient_id")
-  fromUserId  Int                       @map("from_user_id") // IDE qui demande
-  toUserId    Int                       @map("to_user_id")   // DOCTOR sollicité
-  action      String                    @db.VarChar(80)      // ex: "PROPOSE_ADJUSTMENT"
-  payload     Json?
-  status      DelegationRequestStatus   @default(pending)
-  reviewedAt  DateTime?                 @map("reviewed_at") @db.Timestamptz()
-  reviewedBy  Int?                      @map("reviewed_by")
-  reason      String?                   @db.VarChar(500)
-  createdAt   DateTime                  @default(now()) @map("created_at") @db.Timestamptz()
+  id         Int                     @id @default(autoincrement())
+  patientId  Int                     @map("patient_id")
+  fromUserId Int                     @map("from_user_id") // IDE qui demande
+  toUserId   Int                     @map("to_user_id") // DOCTOR sollicité
+  action     String                  @db.VarChar(80) // ex: "PROPOSE_ADJUSTMENT"
+  payload    Json?
+  status     DelegationRequestStatus @default(pending)
+  reviewedAt DateTime?               @map("reviewed_at") @db.Timestamptz()
+  reviewedBy Int?                    @map("reviewed_by")
+  reason     String?                 @db.VarChar(500)
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient    Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  fromUser   User    @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
-  toUser     User    @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Restrict)
-  reviewer   User?   @relation("DelegationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
+  patient  Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  fromUser User    @relation("DelegationFrom", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser   User    @relation("DelegationTo", fields: [toUserId], references: [id], onDelete: Restrict)
+  reviewer User?   @relation("DelegationReviewer", fields: [reviewedBy], references: [id], onDelete: SetNull)
 
   @@index([toUserId, status])
   @@index([patientId])
@@ -2178,13 +2180,13 @@ enum DelegationRequestStatus {
 /// US-2084 — Période d'absence d'un membre, avec couverture éventuelle
 /// par un autre membre du même cabinet.
 model MemberAbsence {
-  id              Int      @id @default(autoincrement())
-  memberId        Int      @map("member_id")
-  startDate       DateTime @map("start_date") @db.Date
-  endDate         DateTime @map("end_date") @db.Date
-  coverMemberId   Int?     @map("cover_member_id")
-  reason          String?  @db.VarChar(120)
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id            Int      @id @default(autoincrement())
+  memberId      Int      @map("member_id")
+  startDate     DateTime @map("start_date") @db.Date
+  endDate       DateTime @map("end_date") @db.Date
+  coverMemberId Int?     @map("cover_member_id")
+  reason        String?  @db.VarChar(120)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   member      HealthcareMember  @relation("MemberAbsenceOwner", fields: [memberId], references: [id], onDelete: Cascade)
   coverMember HealthcareMember? @relation("MemberAbsenceCover", fields: [coverMemberId], references: [id], onDelete: SetNull)
@@ -2202,7 +2204,7 @@ model HandoffNote {
   patientId      Int       @map("patient_id")
   fromUserId     Int       @map("from_user_id")
   toUserId       Int       @map("to_user_id")
-  note           String    // chiffré base64
+  note           String // chiffré base64
   acknowledgedAt DateTime? @map("acknowledged_at") @db.Timestamptz()
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -2256,13 +2258,13 @@ model PatientGroupAssignment {
 /// Un Appointment peut avoir un seul Acte (1:1). `billingCode` libre côté
 /// MVP — un futur référentiel `CCAM`/`NABM` pourra contraindre.
 model TeleconsultationActe {
-  id             Int       @id @default(autoincrement())
-  appointmentId  Int       @unique @map("appointment_id")
-  billingCode    String    @map("billing_code") @db.VarChar(20)
-  amountCents    Int?      @map("amount_cents")
-  invoicedAt     DateTime? @map("invoiced_at") @db.Timestamptz()
-  invoicedBy     Int?      @map("invoiced_by")
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  id            Int       @id @default(autoincrement())
+  appointmentId Int       @unique @map("appointment_id")
+  billingCode   String    @map("billing_code") @db.VarChar(20)
+  amountCents   Int?      @map("amount_cents")
+  invoicedAt    DateTime? @map("invoiced_at") @db.Timestamptz()
+  invoicedBy    Int?      @map("invoiced_by")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   invoicer    User?       @relation("TeleconsultInvoicer", fields: [invoicedBy], references: [id], onDelete: SetNull)
@@ -2279,15 +2281,15 @@ model TeleconsultationActe {
 /// Réutilisable par profil patient (DT1/DT2/GD). `adjustments` est un JSONB
 /// structuré : { parameter: "BASAL"|"ISF"|"ICR", deltaPct: -10, slotStart: 6, ... }.
 model InsulinAdjustmentTemplate {
-  id          Int      @id @default(autoincrement())
-  serviceId   Int      @map("service_id")
-  title       String   @db.VarChar(120)
+  id          Int        @id @default(autoincrement())
+  serviceId   Int        @map("service_id")
+  title       String     @db.VarChar(120)
   pathology   Pathology?
-  parameter   String   @db.VarChar(20) // BASAL | ISF | ICR
+  parameter   String     @db.VarChar(20) // BASAL | ISF | ICR
   adjustments Json
-  createdBy   Int?     @map("created_by")
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy   Int?       @map("created_by")
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt   DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
 
   service HealthcareService @relation(fields: [serviceId], references: [id], onDelete: Restrict)
   creator User?             @relation("InsulinAdjustmentTemplateCreator", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -2331,23 +2333,23 @@ model FoodItem {
 /// avant l'insertion. Pas de plaintext de l'image en base. Métadonnées : mime,
 /// taille, dimensions.
 model MealPhoto {
-  id        Int      @id @default(autoincrement())
-  eventId   String   @map("event_id")
-  patientId Int      @map("patient_id")
-  s3Key     String   @map("s3_key") @db.VarChar(500)
-  mimeType  String   @map("mime_type") @db.VarChar(100)
-  sizeBytes Int      @map("size_bytes")
-  width     Int?
-  height    Int?
-  uploadedBy Int?    @map("uploaded_by")
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id         Int      @id @default(autoincrement())
+  eventId    String   @map("event_id")
+  patientId  Int      @map("patient_id")
+  s3Key      String   @map("s3_key") @db.VarChar(500)
+  mimeType   String   @map("mime_type") @db.VarChar(100)
+  sizeBytes  Int      @map("size_bytes")
+  width      Int?
+  height     Int?
+  uploadedBy Int?     @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  event     DiabetesEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  event    DiabetesEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   /// Review PR #391 H5 — FK explicite vers Patient pour garantir l'intégrité
   /// même en cas d'écriture SQL directe (la cascade event→patient seule ne
   /// protégeait pas un éventuel re-routage de l'event).
-  patient   Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  uploader  User?         @relation("MealPhotoUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
+  patient  Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  uploader User?         @relation("MealPhotoUploader", fields: [uploadedBy], references: [id], onDelete: SetNull)
 
   @@index([eventId])
   @@index([patientId, createdAt])
@@ -2362,17 +2364,17 @@ model MealPhoto {
 /// `exchangeRate` est la parité vers la devise de référence (EUR ; 1.0 pour EUR).
 /// Pas de PHI ; configuration publique gérée par ADMIN, lue par DOCTOR/NURSE.
 model CountryCurrency {
-  id            Int      @id @default(autoincrement())
-  countryCode   String   @map("country_code") @db.Char(2)   // ISO 3166-1 alpha-2 : FR, DZ
-  currencyCode  String   @map("currency_code") @db.Char(3)  // ISO 4217 : EUR, DZD
-  symbol        String   @db.VarChar(8)                     // €, DA
-  exchangeRate  Decimal  @map("exchange_rate") @db.Decimal(12, 6) // parité → EUR (référence)
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy     Int?     @map("created_by")
+  id           Int      @id @default(autoincrement())
+  countryCode  String   @map("country_code") @db.Char(2) // ISO 3166-1 alpha-2 : FR, DZ
+  currencyCode String   @map("currency_code") @db.Char(3) // ISO 4217 : EUR, DZD
+  symbol       String   @db.VarChar(8) // €, DA
+  exchangeRate Decimal  @map("exchange_rate") @db.Decimal(12, 6) // parité → EUR (référence)
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy    Int?     @map("created_by")
 
-  creator       User?    @relation("CountryCurrencyCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  creator User? @relation("CountryCurrencyCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@unique([countryCode, currencyCode])
   @@index([countryCode, isActive])
@@ -2384,19 +2386,19 @@ model CountryCurrency {
 /// changements de taux (ex. TVA FR 19.6 → 20.0 au 01/01/2014).
 /// Pas de PHI.
 model CountryTaxRule {
-  id            Int       @id @default(autoincrement())
-  countryCode   String    @map("country_code") @db.Char(2)
-  taxType       String    @map("tax_type") @db.VarChar(30)
-  baseRate      Decimal   @map("base_rate") @db.Decimal(6, 4) // 0.2000 = 20.00 %
-  description   String?   @db.VarChar(500)
-  appliesFrom   DateTime  @map("applies_from") @db.Date
-  appliesUntil  DateTime? @map("applies_until") @db.Date
-  isActive      Boolean   @default(true) @map("is_active")
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy     Int?      @map("created_by")
+  id           Int       @id @default(autoincrement())
+  countryCode  String    @map("country_code") @db.Char(2)
+  taxType      String    @map("tax_type") @db.VarChar(30)
+  baseRate     Decimal   @map("base_rate") @db.Decimal(6, 4) // 0.2000 = 20.00 %
+  description  String?   @db.VarChar(500)
+  appliesFrom  DateTime  @map("applies_from") @db.Date
+  appliesUntil DateTime? @map("applies_until") @db.Date
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy    Int?      @map("created_by")
 
-  creator       User?     @relation("CountryTaxRuleCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  creator User? @relation("CountryTaxRuleCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   /// Une seule règle active à la fois pour (pays, type, date début).
   @@unique([countryCode, taxType, appliesFrom])
@@ -2408,20 +2410,20 @@ model CountryTaxRule {
 /// (HDS, ANS, CNIL FR ; DPSP DZ ; etc.). Strictement référentiel —
 /// la conformité opérationnelle reste applicative.
 model HealthcareRegulation {
-  id              Int       @id @default(autoincrement())
-  countryCode     String    @map("country_code") @db.Char(2)
-  regulationType  String    @map("regulation_type") @db.VarChar(50) // RPPS, ADELI, INS, HDS, RGPD, ...
-  title           String    @db.VarChar(200)
-  rule            String    @db.Text   // texte ou JSON
-  references      String?   @db.Text   // URL légifrance / DOM, refs normatives
-  enforcedFrom    DateTime  @map("enforced_from") @db.Date
-  enforcedUntil   DateTime? @map("enforced_until") @db.Date
-  isActive        Boolean   @default(true) @map("is_active")
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy       Int?      @map("created_by")
+  id             Int       @id @default(autoincrement())
+  countryCode    String    @map("country_code") @db.Char(2)
+  regulationType String    @map("regulation_type") @db.VarChar(50) // RPPS, ADELI, INS, HDS, RGPD, ...
+  title          String    @db.VarChar(200)
+  rule           String    @db.Text // texte ou JSON
+  references     String?   @db.Text // URL légifrance / DOM, refs normatives
+  enforcedFrom   DateTime  @map("enforced_from") @db.Date
+  enforcedUntil  DateTime? @map("enforced_until") @db.Date
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy      Int?      @map("created_by")
 
-  creator         User?     @relation("HealthcareRegulationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  creator User? @relation("HealthcareRegulationCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([countryCode, regulationType, isActive])
   @@map("healthcare_regulations")
@@ -2432,20 +2434,20 @@ model HealthcareRegulation {
 /// présent dans cette table et `isActive = true`. `killSwitchActive = true`
 /// sur n'importe quelle ligne désactive instantanément tout PUSH (rejet 503).
 model FhirAllowedSystem {
-  id                Int      @id @default(autoincrement())
+  id               Int      @id @default(autoincrement())
   /// Origin (scheme://host[:port]) — pas de path/query, comparé en strict equality.
-  origin            String   @db.VarChar(255)
+  origin           String   @db.VarChar(255)
   /// Description du destinataire pour audit (`DMP Mon Espace Santé`, `EHR Cabinet X`).
-  label             String   @db.VarChar(200)
+  label            String   @db.VarChar(200)
   /// Référence du DPA signé (URL interne ou identifiant document compliance).
-  dpaReference      String   @map("dpa_reference") @db.VarChar(500)
-  isActive          Boolean  @default(true) @map("is_active")
-  killSwitchActive  Boolean  @default(false) @map("kill_switch_active")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy         Int?     @map("created_by")
+  dpaReference     String   @map("dpa_reference") @db.VarChar(500)
+  isActive         Boolean  @default(true) @map("is_active")
+  killSwitchActive Boolean  @default(false) @map("kill_switch_active")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy        Int?     @map("created_by")
 
-  creator           User?    @relation("FhirAllowedSystemCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  creator User? @relation("FhirAllowedSystemCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@unique([origin])
   @@index([isActive, killSwitchActive])
@@ -2458,26 +2460,26 @@ model FhirAllowedSystem {
 /// (file de retry) pour résister aux indisponibilités tierces. Feature flag
 /// `FHIR_ENABLED` (env) gate l'activation.
 model FhirInteroperability {
-  id                Int       @id @default(autoincrement())
-  patientId         Int?      @map("patient_id")
-  resourceType      String    @map("resource_type") @db.VarChar(50)   // Patient, Observation, Medication, MedicationRequest, ...
-  externalSystemUrl String    @map("external_system_url") @db.VarChar(500)
-  fhirResourceId    String?   @map("fhir_resource_id") @db.VarChar(255) // ID retourné par le serveur tiers après PUSH OK
+  id                Int            @id @default(autoincrement())
+  patientId         Int?           @map("patient_id")
+  resourceType      String         @map("resource_type") @db.VarChar(50) // Patient, Observation, Medication, MedicationRequest, ...
+  externalSystemUrl String         @map("external_system_url") @db.VarChar(500)
+  fhirResourceId    String?        @map("fhir_resource_id") @db.VarChar(255) // ID retourné par le serveur tiers après PUSH OK
   /// Payload FHIR JSON chiffré (AES-256-GCM ; format IV+TAG+CIPHERTEXT en base64).
-  payloadEncrypted  String    @map("payload_encrypted") @db.Text
+  payloadEncrypted  String         @map("payload_encrypted") @db.Text
   syncStatus        FhirSyncStatus @default(pending) @map("sync_status")
-  retryCount        Int       @default(0) @map("retry_count")
-  nextRetryAt       DateTime? @map("next_retry_at") @db.Timestamptz()
-  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamptz()
-  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
-  createdBy         Int?      @map("created_by")
+  retryCount        Int            @default(0) @map("retry_count")
+  nextRetryAt       DateTime?      @map("next_retry_at") @db.Timestamptz()
+  lastSyncedAt      DateTime?      @map("last_synced_at") @db.Timestamptz()
+  createdAt         DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy         Int?           @map("created_by")
 
   /// H2 — onDelete SetNull preserves the audit trail of PHI exports even when
   /// the patient record is hard-deleted (CNIL/ANS forensic retention).
-  patient           Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  creator           User?     @relation("FhirInteroperabilityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
-  syncLogs          FhirSyncLog[]
+  patient  Patient?      @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  creator  User?         @relation("FhirInteroperabilityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  syncLogs FhirSyncLog[]
 
   @@index([syncStatus, nextRetryAt])
   @@index([patientId, resourceType])
@@ -2489,15 +2491,15 @@ model FhirInteroperability {
 /// Immuable (un log par tentative). Pas de PHI dans `errorMessage` (le
 /// service tronque/anonymise les corps de réponse).
 model FhirSyncLog {
-  id            Int      @id @default(autoincrement())
-  interopId     Int      @map("interop_id")
-  action        String   @db.VarChar(30)   // PUSH, PULL, TRANSFORM, RETRY
-  httpStatus    Int?     @map("http_status")
-  errorMessage  String?  @map("error_message") @db.Text
-  durationMs    Int?     @map("duration_ms")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  id           Int      @id @default(autoincrement())
+  interopId    Int      @map("interop_id")
+  action       String   @db.VarChar(30) // PUSH, PULL, TRANSFORM, RETRY
+  httpStatus   Int?     @map("http_status")
+  errorMessage String?  @map("error_message") @db.Text
+  durationMs   Int?     @map("duration_ms")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  interop       FhirInteroperability @relation(fields: [interopId], references: [id], onDelete: Cascade)
+  interop FhirInteroperability @relation(fields: [interopId], references: [id], onDelete: Cascade)
 
   @@index([interopId, createdAt])
   @@map("fhir_sync_logs")
@@ -2525,27 +2527,28 @@ enum FhirSyncStatus {
 /// utilisé par l'API history pour reconstituer un état passé sans dépendre
 /// de l'évolution future des tables filles.
 model ConfigVersion {
-  id              Int       @id @default(autoincrement())
+  id             Int                 @id @default(autoincrement())
   /// C3-NEW (re-review) — nullable for RGPD Art. 17 hard-delete compatibility :
   /// patient deletion sets this to NULL, preserving config history as orphan
   /// (audit-friendly) without violating the append-only `no_delete` trigger.
-  patientId       Int?      @map("patient_id")
-  configType      ConfigVersionType @map("config_type")
-  version         Int
-  configSnapshot  Json      @map("config_snapshot")
-  validFrom       DateTime  @default(now()) @map("valid_from") @db.Timestamptz()
-  validTo         DateTime? @map("valid_to") @db.Timestamptz()
-  status          ConfigVersionStatus @default(active)
-  createdBy       Int       @map("created_by")
-  validatedBy     Int?      @map("validated_by")
-  validatedAt     DateTime? @map("validated_at") @db.Timestamptz()
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  patientId      Int?                @map("patient_id")
+  configType     ConfigVersionType   @map("config_type")
+  version        Int
+  configSnapshot Json                @map("config_snapshot")
+  validFrom      DateTime            @default(now()) @map("valid_from") @db.Timestamptz()
+  validTo        DateTime?           @map("valid_to") @db.Timestamptz()
+  status         ConfigVersionStatus @default(active)
+  createdBy      Int                 @map("created_by")
+  validatedBy    Int?                @map("validated_by")
+  validatedAt    DateTime?           @map("validated_at") @db.Timestamptz()
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient         Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  creator         User               @relation("ConfigVersionCreator", fields: [createdBy], references: [id])
-  validator       User?              @relation("ConfigVersionValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
-  contacts        EmergencyContact[]
-  escalationRules EscalationRule[]
+  patient             Patient?             @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  creator             User                 @relation("ConfigVersionCreator", fields: [createdBy], references: [id])
+  validator           User?                @relation("ConfigVersionValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
+  contacts            EmergencyContact[]
+  escalationRules     EscalationRule[]
+  pediatricCaregivers PediatricCaregiver[]
 
   @@unique([patientId, configType, version])
   @@index([patientId, configType, validFrom])
@@ -2557,6 +2560,12 @@ enum ConfigVersionType {
   emergency_contacts
   escalation_rules
   alert_thresholds
+  /// US-2233 — Mode pédiatrique (multi-aidants, validation DOCTOR).
+  pediatric_mode
+  /// US-2234 — Mode Ramadan (dates jeûne, sahur/iftar, ISF/ICR adaptés).
+  ramadan_mode
+  /// US-2235 — Mode voyage (fuseau horaire, protocole basal).
+  travel_mode
 
   @@map("config_version_type")
 }
@@ -2575,41 +2584,67 @@ enum ConfigVersionStatus {
 /// US-2218 — Contacts d'urgence (max 5 par patient) joignables en cas
 /// d'alerte critique. `name` et `phone` chiffrés AES-256-GCM (PHI).
 model EmergencyContact {
-  id            Int      @id @default(autoincrement())
-  patientId     Int      @map("patient_id")
-  versionId     Int      @map("version_id")
-  rank          Int
+  id             Int      @id @default(autoincrement())
+  patientId      Int      @map("patient_id")
+  versionId      Int      @map("version_id")
+  rank           Int
   /// AES-256-GCM (base64).
-  nameEncrypted  String  @map("name_encrypted") @db.Text
+  nameEncrypted  String   @map("name_encrypted") @db.Text
   /// AES-256-GCM (base64).
-  phoneEncrypted String  @map("phone_encrypted") @db.Text
-  relationship  String   @db.VarChar(50)
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  phoneEncrypted String   @map("phone_encrypted") @db.Text
+  relationship   String   @db.VarChar(50)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  configVersion ConfigVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  configVersion ConfigVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([patientId, rank, isActive])
   @@map("emergency_contacts")
 }
 
+/// US-2233 — Aidant pédiatrique (parent, école, baby-sitter, etc.).
+/// PHI : `name` et `phone` chiffrés AES-256-GCM (base64). FK ConfigVersion
+/// pour versioning : la création d'une nouvelle version pédiatrique crée
+/// une nouvelle ligne par aidant lié à la nouvelle `versionId`.
+model PediatricCaregiver {
+  id              Int      @id @default(autoincrement())
+  patientId       Int      @map("patient_id")
+  versionId       Int      @map("version_id")
+  rank            Int
+  /// AES-256-GCM (base64).
+  nameEncrypted   String   @map("name_encrypted") @db.Text
+  /// AES-256-GCM (base64).
+  phoneEncrypted  String   @map("phone_encrypted") @db.Text
+  relationship    String   @db.VarChar(50)
+  /// Permissions : "read" | "write" | "config".
+  permissionLevel String   @map("permission_level") @db.VarChar(20)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  configVersion ConfigVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, rank, isActive])
+  @@map("pediatric_caregivers")
+}
+
 /// US-2219 — Règles d'escalade urgence (chaîne patient → contact → médecin
 /// → SAMU). `delayMinutes` = délai d'attente avant escalade au target suivant.
 model EscalationRule {
-  id           Int      @id @default(autoincrement())
-  patientId    Int      @map("patient_id")
-  versionId    Int      @map("version_id")
+  id           Int                  @id @default(autoincrement())
+  patientId    Int                  @map("patient_id")
+  versionId    Int                  @map("version_id")
   priority     Int
   targetType   EscalationTargetType @map("target_type")
   /// FK vers EmergencyContact.id (si targetType=contact) ou User.id (si targetType=doctor).
   /// Null pour SAMU (pas de FK).
-  targetId     Int?     @map("target_id")
-  delayMinutes Int      @default(15) @map("delay_minutes")
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  targetId     Int?                 @map("target_id")
+  delayMinutes Int                  @default(15) @map("delay_minutes")
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  configVersion ConfigVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  configVersion ConfigVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([patientId, priority])
   @@map("escalation_rules")
@@ -2700,18 +2735,18 @@ model CohortAnalyticsSnapshot {
 /// BullMQ job. Trigger une alerte au DOCTOR si score > 70 (niveau HIGH/CRITICAL).
 /// `contributingFactors` = explicabilité du score (rule-based, pas ML pour MVP).
 model PatientRiskScore {
-  id                  Int      @id @default(autoincrement())
-  patientId           Int      @unique @map("patient_id")
-  riskScore           Int      @map("risk_score") @db.SmallInt
+  id                  Int       @id @default(autoincrement())
+  patientId           Int       @unique @map("patient_id")
+  riskScore           Int       @map("risk_score") @db.SmallInt
   riskLevel           RiskLevel @map("risk_level")
-  recentHypoCount     Int      @map("recent_hypo_count")
-  declarationRatio    Decimal  @map("declaration_ratio") @db.Decimal(4, 2)
-  dkaHistory          Boolean  @default(false) @map("dka_history")
-  contributingFactors Json     @map("contributing_factors")
+  recentHypoCount     Int       @map("recent_hypo_count")
+  declarationRatio    Decimal   @map("declaration_ratio") @db.Decimal(4, 2)
+  dkaHistory          Boolean   @default(false) @map("dka_history")
+  contributingFactors Json      @map("contributing_factors")
   flaggedAt           DateTime? @map("flagged_at") @db.Timestamptz()
-  acknowledgedBy      Int?     @map("acknowledged_by")
+  acknowledgedBy      Int?      @map("acknowledged_by")
   acknowledgedAt      DateTime? @map("acknowledged_at") @db.Timestamptz()
-  computedAt          DateTime @default(now()) @map("computed_at") @db.Timestamptz()
+  computedAt          DateTime  @default(now()) @map("computed_at") @db.Timestamptz()
 
   patient      Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   acknowledger User?   @relation("PatientRiskScoreAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
