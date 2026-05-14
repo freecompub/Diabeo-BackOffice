@@ -6,11 +6,13 @@ import { AppointmentLocation, AppointmentStatus } from "@prisma/client"
 import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { patientShareConsent } from "@/lib/consent"
-import { rdvAppointmentService } from "@/lib/services/rdv.service"
+import {
+  rdvAppointmentService,
+  assertMemberServiceAccess,
+} from "@/lib/services/rdv.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
-
-const HOUR_RE = /^([01]\d|2[0-3]):[0-5]\d$/
+import { HOUR_RE } from "@/lib/appointments-route-helpers"
 
 const listSchema = z.object({
   from: z.coerce.date(),
@@ -39,8 +41,15 @@ export async function GET(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
     if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+
+    // C1 — refuse unscoped listings (cross-tenant PHI leak otherwise).
+    if (parsed.data.memberId === undefined && parsed.data.patientId === undefined) {
+      return NextResponse.json({ error: "scopeRequired" }, { status: 400 })
+    }
+
     const user = await auditedRequireRole(req, "NURSE", ctx, "APPOINTMENT", "list")
 
+    // C1 — when scoped by patient, enforce per-patient access control.
     if (parsed.data.patientId !== undefined) {
       const allowed = await canAccessPatient(user.id, user.role, parsed.data.patientId)
       if (!allowed) {
@@ -52,9 +61,21 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "forbidden" }, { status: 403 })
       }
     }
+    // C1 — when scoped by member only, enforce same-service membership.
+    if (parsed.data.memberId !== undefined && parsed.data.patientId === undefined) {
+      try {
+        await assertMemberServiceAccess(user.id, parsed.data.memberId)
+      } catch (err) {
+        return mapErrorToResponse(err, "appointments GET", ctx.requestId, {
+          user, ctx, resource: "APPOINTMENT",
+          resourceId: `member:${parsed.data.memberId}`,
+          metadata: { memberId: parsed.data.memberId, endpoint: "list" },
+        })
+      }
+    }
 
-    const items = await rdvAppointmentService.listInRange(parsed.data, user.id, ctx)
-    return NextResponse.json({ items })
+    const out = await rdvAppointmentService.listInRange(parsed.data, user.id, ctx)
+    return NextResponse.json(out)
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
     return mapErrorToResponse(e, "appointments GET", ctx.requestId)

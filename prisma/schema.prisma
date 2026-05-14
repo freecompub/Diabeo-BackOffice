@@ -1408,7 +1408,8 @@ model MemberUnavailability {
   memberId  Int       @map("member_id")
   startAt   DateTime  @map("start_at") @db.Timestamptz()
   endAt     DateTime  @map("end_at") @db.Timestamptz()
-  reason    String?   @db.VarChar(200)
+  /// Raison chiffrée AES-256-GCM (PHI possible : "congé maladie", "examen médical").
+  reasonEncrypted String? @map("reason_encrypted")
   createdBy Int?      @map("created_by")
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -1416,6 +1417,7 @@ model MemberUnavailability {
   creator User?            @relation("MemberUnavailabilityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
 
   @@index([memberId, startAt])
+  @@index([memberId, endAt])
   @@map("member_unavailabilities")
 }
 
@@ -1540,18 +1542,19 @@ model Appointment {
   /// US-2501/2503 — État du RDV. Defaults `scheduled`, état terminal `cancelled`/`completed`/`no_show`.
   ///                Workflow `pending_validation` activé si le médecin est en mode "validation" (US-2505).
   status      AppointmentStatus @default(scheduled)
-  /// US-2501 — Motif court (libre, max 200 char).
-  motif       String?           @db.VarChar(200)
+  /// US-2501 — Motif chiffré AES-256-GCM (base64). PHI : peut contenir nom/symptômes patient.
+  motifEncrypted String?        @map("motif_encrypted")
   /// US-2501 — Note médicale chiffrée AES-256-GCM (base64). NULL = pas de note.
   noteEncrypted String?         @map("note_encrypted")
   /// US-2503 — Date/heure proposée par le médecin lors d'une annulation pour
   /// re-programmer. Renseignée par `propose-alternative`, validée par le patient
   /// via `accept-alternative` (qui repasse le RDV en `scheduled` et met à jour
-  /// `date` + `hour`).
+  /// `date` + `hour`). TTL applicatif : la proposition expire après 7 jours.
   proposedAlternativeAt DateTime? @map("proposed_alternative_at") @db.Timestamptz()
-  /// US-2503 — Auteur de l'annulation/report. `patient`/`doctor`.
-  cancelledBy   String?         @map("cancelled_by") @db.VarChar(20)
-  cancelReason  String?         @map("cancel_reason") @db.VarChar(500)
+  /// US-2503 — Auteur de l'annulation. Dérivé du rôle au moment du cancel.
+  cancelledBy   CancellationActor? @map("cancelled_by")
+  /// US-2503 — Raison d'annulation chiffrée AES-256-GCM (PHI possible).
+  cancelReasonEncrypted String? @map("cancel_reason_encrypted")
   cancelledAt   DateTime?       @map("cancelled_at") @db.Timestamptz()
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
@@ -1594,6 +1597,13 @@ enum AppointmentStatus {
   no_show
 
   @@map("appointment_status")
+}
+
+enum CancellationActor {
+  patient
+  doctor
+
+  @@map("cancellation_actor")
 }
 
 enum BookingMode {

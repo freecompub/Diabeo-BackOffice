@@ -4,7 +4,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { BookingMode } from "@prisma/client"
 import { AuthError } from "@/lib/auth"
-import { memberBookingConfigService } from "@/lib/services/rdv.service"
+import {
+  memberBookingConfigService,
+  assertMemberServiceAccess,
+} from "@/lib/services/rdv.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
 
@@ -20,8 +23,18 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
   try {
     const { memberId } = await params
     if (!/^\d+$/.test(memberId)) return NextResponse.json({ error: "invalidId" }, { status: 400 })
-    await auditedRequireRole(req, "NURSE", ctx, "MEMBER_BOOKING_CONFIG", memberId)
-    const cfg = await memberBookingConfigService.get(parseInt(memberId, 10))
+    const user = await auditedRequireRole(req, "NURSE", ctx, "MEMBER_BOOKING_CONFIG", memberId)
+    const mid = parseInt(memberId, 10)
+    try {
+      // H11 — same-service access required before any read.
+      await assertMemberServiceAccess(user.id, mid)
+    } catch (err) {
+      return mapErrorToResponse(err, "team/booking-config GET", ctx.requestId, {
+        user, ctx, resource: "MEMBER_BOOKING_CONFIG", resourceId: memberId,
+        metadata: { memberId: mid, endpoint: "get" },
+      })
+    }
+    const cfg = await memberBookingConfigService.get(mid)
     if (!cfg) return NextResponse.json({ error: "notFound" }, { status: 404 })
     return NextResponse.json(cfg)
   } catch (e) {
@@ -44,8 +57,14 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         { status: 400 },
       )
     }
+    // H1 — preserve `null` (clear) vs `undefined` (no-op) through the call chain.
+    const input: Parameters<typeof memberBookingConfigService.update>[1] = {}
+    if (parsed.data.bookingMode !== undefined) input.bookingMode = parsed.data.bookingMode
+    if (parsed.data.defaultAppointmentMinutes !== undefined) {
+      input.defaultAppointmentMinutes = parsed.data.defaultAppointmentMinutes
+    }
     const out = await memberBookingConfigService.update(
-      parseInt(memberId, 10), parsed.data, user.id, ctx,
+      parseInt(memberId, 10), input, user.id, ctx,
     )
     return NextResponse.json(out)
   } catch (e) {

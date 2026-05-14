@@ -22,6 +22,7 @@ import {
   type AppointmentLocation,
   type AppointmentStatus,
   type BookingMode,
+  type CancellationActor,
 } from "@prisma/client"
 import { prisma, type PrismaClientOrTx as Tx } from "@/lib/db/client"
 import { auditService } from "./audit.service"
@@ -39,6 +40,7 @@ const MOTIF_MAX = 200
 const NOTE_MAX = 4096
 const RANGE_MAX_DAYS = 62 // ≈ 2 months window
 const CANCEL_GRACE_HOURS = 24 // delay below which "doctor cancel" must propose alt
+const PROPOSAL_TTL_MS = 7 * 86_400_000 // M10 — alternatives expire after 7 days
 
 async function assertServiceMember(
   userId: number,
@@ -51,6 +53,22 @@ async function assertServiceMember(
   if (!link) throw new ForbiddenError()
 }
 
+/**
+ * H11 — guard for routes that scope by `memberId` rather than `patientId`.
+ * Ensures the caller is a member of the same service as the target member,
+ * preventing cross-tenant reconnaissance via member-scoped endpoints.
+ */
+export async function assertMemberServiceAccess(
+  callerUserId: number, memberId: number,
+): Promise<void> {
+  const target = await prisma.healthcareMember.findUnique({
+    where: { id: memberId }, select: { id: true, serviceId: true },
+  })
+  if (!target) throw new NotFoundError()
+  if (target.serviceId === null) throw new ForbiddenError()
+  await assertServiceMember(callerUserId, target.serviceId)
+}
+
 async function assertPatientAlive(patientId: number, tx: Tx = prisma): Promise<void> {
   const p = await tx.patient.findFirst({
     where: { id: patientId, deletedAt: null }, select: { id: true },
@@ -58,8 +76,19 @@ async function assertPatientAlive(patientId: number, tx: Tx = prisma): Promise<v
   if (!p) throw new NotFoundError()
 }
 
-/** Combine date + hour columns into a single UTC instant. `hour` is a `Time`
- *  (no zone) ; we treat it as already-UTC. */
+/**
+ * Combine a `date` (calendar day) + `hour` (time-of-day) into a single UTC
+ * instant.
+ *
+ * **Timezone contract** : both columns are persisted as UTC clock values.
+ * The backoffice contract is "absolute UTC wall-clock" — no DST adjustment is
+ * applied. Clients (web UI, iOS) are responsible for translating user-local
+ * times to UTC before submission, and re-translating UTC back for display.
+ * This avoids ambiguity around the autumn DST fall-back hour and keeps the
+ * service stateless w.r.t. the patient/practitioner's local zone.
+ *
+ * If `hour` is null we assume midnight (00:00 UTC).
+ */
 function combineDateHour(date: Date, hour: Date | null): Date {
   const d = new Date(date)
   if (hour) {
@@ -81,6 +110,9 @@ function computeEnd(start: Date, durationMinutes: number | null): Date {
  *
  * `excludeAppointmentId` lets `update/cancel/reschedule` skip the row being
  * modified.
+ *
+ * Day-bound query expands by 1 day backwards to catch prior-day appointments
+ * whose hour+duration spills past midnight into the requested slot (fix C3).
  */
 async function assertNoOverlap(
   tx: Tx,
@@ -90,10 +122,9 @@ async function assertNoOverlap(
   excludeAppointmentId?: number,
 ): Promise<void> {
   const activeStatuses: AppointmentStatus[] = ["scheduled", "pending_validation", "confirmed"]
-  // Appointments: rough filter on `date` THEN check overlap in JS using hour.
-  // Limit scan to the day(s) the slot touches.
   const dayFloor = new Date(startAt)
   dayFloor.setUTCHours(0, 0, 0, 0)
+  dayFloor.setUTCDate(dayFloor.getUTCDate() - 1) // include yesterday for cross-midnight
   const dayCeil = new Date(endAt)
   dayCeil.setUTCHours(23, 59, 59, 999)
 
@@ -105,6 +136,7 @@ async function assertNoOverlap(
       ...(excludeAppointmentId ? { NOT: { id: excludeAppointmentId } } : {}),
     },
     select: { date: true, hour: true, durationMinutes: true },
+    take: 1000, // M3 safety cap — a single day overlap query should never exceed this
   })
   for (const a of sameDay) {
     const aStart = combineDateHour(a.date, a.hour)
@@ -121,6 +153,7 @@ async function assertNoOverlap(
       endAt: { gt: startAt },
     },
     select: { id: true },
+    take: 100,
   })
   if (unav.length > 0) throw new ValidationError("slotOverlapUnavailability")
 }
@@ -139,35 +172,59 @@ export type AppointmentDTO = {
   durationMinutes: number | null
   location: AppointmentLocation | null
   status: AppointmentStatus
-  motif: string | null
-  note: string | null   // decrypted
+  motif: string | null  // decrypted
+  note: string | null   // decrypted (only on detail)
   proposedAlternativeAt: Date | null
-  cancelledBy: string | null
-  cancelReason: string | null
+  cancelledBy: CancellationActor | null
+  cancelReason: string | null  // decrypted
   cancelledAt: Date | null
   createdAt: Date
   updatedAt: Date
 }
 
-function toAppointmentDTO(a: {
+/** Light DTO for list view — never contains decrypted note or cancelReason. */
+export type AppointmentListItemDTO = Omit<AppointmentDTO, "note" | "cancelReason">
+
+type AppointmentRow = {
   id: number; patientId: number; memberId: number | null;
   type: string | null; date: Date; hour: Date | null;
   durationMinutes: number | null;
   location: AppointmentLocation | null; status: AppointmentStatus;
-  motif: string | null; noteEncrypted: string | null;
+  motifEncrypted: string | null; noteEncrypted: string | null;
   proposedAlternativeAt: Date | null;
-  cancelledBy: string | null; cancelReason: string | null; cancelledAt: Date | null;
+  cancelledBy: CancellationActor | null;
+  cancelReasonEncrypted: string | null;
+  cancelledAt: Date | null;
   createdAt: Date; updatedAt: Date;
-}): AppointmentDTO {
+}
+
+function toAppointmentDTO(a: AppointmentRow): AppointmentDTO {
   return {
     id: a.id, patientId: a.patientId, memberId: a.memberId,
     type: a.type, date: a.date, hour: a.hour,
     durationMinutes: a.durationMinutes,
     location: a.location, status: a.status,
-    motif: a.motif,
+    motif: a.motifEncrypted ? safeDecryptField(a.motifEncrypted) : null,
     note: a.noteEncrypted ? safeDecryptField(a.noteEncrypted) : null,
     proposedAlternativeAt: a.proposedAlternativeAt,
-    cancelledBy: a.cancelledBy, cancelReason: a.cancelReason, cancelledAt: a.cancelledAt,
+    cancelledBy: a.cancelledBy,
+    cancelReason: a.cancelReasonEncrypted ? safeDecryptField(a.cancelReasonEncrypted) : null,
+    cancelledAt: a.cancelledAt,
+    createdAt: a.createdAt, updatedAt: a.updatedAt,
+  }
+}
+
+/** List DTO — strips encrypted/sensitive free-text fields. Avoids bulk decrypt. */
+function toAppointmentListItemDTO(a: Omit<AppointmentRow, "noteEncrypted" | "cancelReasonEncrypted">): AppointmentListItemDTO {
+  return {
+    id: a.id, patientId: a.patientId, memberId: a.memberId,
+    type: a.type, date: a.date, hour: a.hour,
+    durationMinutes: a.durationMinutes,
+    location: a.location, status: a.status,
+    motif: a.motifEncrypted ? safeDecryptField(a.motifEncrypted) : null,
+    proposedAlternativeAt: a.proposedAlternativeAt,
+    cancelledBy: a.cancelledBy,
+    cancelledAt: a.cancelledAt,
     createdAt: a.createdAt, updatedAt: a.updatedAt,
   }
 }
@@ -229,7 +286,7 @@ export const rdvAppointmentService = {
           durationMinutes: duration,
           location: input.location ?? null,
           status: initialStatus,
-          motif: input.motif ?? null,
+          motifEncrypted: input.motif ? encryptField(input.motif) : null,
           noteEncrypted: input.note ? encryptField(input.note) : null,
         },
       })
@@ -264,6 +321,10 @@ export const rdvAppointmentService = {
   /**
    * US-2500 — list appointments in a date range. Filterable by member or patient
    * scope (route enforces RBAC). Hard-cap on range (62 days) to avoid heavy queries.
+   *
+   * Returns lighter `AppointmentListItemDTO` (no decrypted note / cancelReason).
+   * Soft-deleted patients are excluded (M1). Result is paginated/limited at 200
+   * with `truncated` flag so the UI can warn the user (M2).
    */
   async listInRange(
     input: {
@@ -273,20 +334,42 @@ export const rdvAppointmentService = {
     },
     auditUserId: number,
     ctx?: AuditContext,
-  ): Promise<AppointmentDTO[]> {
+  ): Promise<{ items: AppointmentListItemDTO[]; truncated: boolean }> {
     if (input.to < input.from) throw new ValidationError("dateRange")
     const days = (input.to.getTime() - input.from.getTime()) / 86_400_000
     if (days > RANGE_MAX_DAYS) throw new ValidationError("rangeTooLarge")
+    // C1 — refuse unscoped listings ; route enforces RBAC per scope.
+    if (input.memberId === undefined && input.patientId === undefined) {
+      throw new ValidationError("scopeRequired")
+    }
 
+    const LIST_LIMIT = 200
     const where: Prisma.AppointmentWhereInput = {
       date: { gte: input.from, lte: input.to },
+      // M1 — exclude soft-deleted patients.
+      patient: { deletedAt: null },
       ...(input.memberId !== undefined && { memberId: input.memberId }),
       ...(input.patientId !== undefined && { patientId: input.patientId }),
       ...(input.status && { status: input.status }),
     }
     const rows = await prisma.appointment.findMany({
-      where, orderBy: [{ date: "asc" }, { hour: "asc" }], take: 500,
+      where,
+      orderBy: [{ date: "asc" }, { hour: "asc" }],
+      take: LIST_LIMIT + 1,
+      select: {
+        id: true, patientId: true, memberId: true,
+        type: true, date: true, hour: true,
+        durationMinutes: true,
+        location: true, status: true,
+        motifEncrypted: true,
+        proposedAlternativeAt: true,
+        cancelledBy: true,
+        cancelledAt: true,
+        createdAt: true, updatedAt: true,
+      },
     })
+    const truncated = rows.length > LIST_LIMIT
+    const items = (truncated ? rows.slice(0, LIST_LIMIT) : rows).map(toAppointmentListItemDTO)
 
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "APPOINTMENT",
@@ -295,10 +378,10 @@ export const rdvAppointmentService = {
       metadata: {
         from: input.from.toISOString(), to: input.to.toISOString(),
         memberId: input.memberId ?? null, patientId: input.patientId ?? null,
-        count: rows.length,
+        count: items.length, truncated,
       },
     })
-    return rows.map(toAppointmentDTO)
+    return { items, truncated }
   },
 
   async update(
@@ -306,12 +389,12 @@ export const rdvAppointmentService = {
     patch: {
       date?: Date; hour?: Date; durationMinutes?: number;
       location?: AppointmentLocation; type?: string;
-      motif?: string; note?: string | null;
+      motif?: string | null; note?: string | null;
     },
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
-    if (patch.motif !== undefined && patch.motif.length > MOTIF_MAX) {
+    if (patch.motif !== undefined && patch.motif !== null && patch.motif.length > MOTIF_MAX) {
       throw new ValidationError("motif")
     }
     if (patch.note !== undefined && patch.note !== null && patch.note.length > NOTE_MAX) {
@@ -327,7 +410,12 @@ export const rdvAppointmentService = {
     return prisma.$transaction(async (tx) => {
       const existing = await tx.appointment.findUnique({ where: { id } })
       if (!existing) throw new NotFoundError()
-      if (existing.status === "cancelled" || existing.status === "no_show") {
+      // H5 — terminal states (cancelled, completed, no_show) are immutable.
+      if (
+        existing.status === "cancelled" ||
+        existing.status === "completed" ||
+        existing.status === "no_show"
+      ) {
         throw new ValidationError("alreadyClosed")
       }
 
@@ -335,31 +423,34 @@ export const rdvAppointmentService = {
       const newDate = patch.date ?? existing.date
       const newHour = patch.hour ?? existing.hour
       const newDuration = patch.durationMinutes ?? existing.durationMinutes
-      if (existing.memberId !== null && (patch.date || patch.hour || patch.durationMinutes)) {
+      const rescheduled =
+        patch.date !== undefined ||
+        patch.hour !== undefined ||
+        patch.durationMinutes !== undefined
+      if (existing.memberId !== null && rescheduled) {
         const startAt = combineDateHour(newDate, newHour)
         const endAt = computeEnd(startAt, newDuration)
         await assertNoOverlap(tx, existing.memberId, startAt, endAt, id)
       }
 
-      const noteUpdate: { noteEncrypted?: string | null } =
-        patch.note === undefined
-          ? {}
-          : patch.note === null
-            ? { noteEncrypted: null }
-            : { noteEncrypted: encryptField(patch.note) }
+      // H6 — `null` is the explicit clear signal ; build update fields explicitly so
+      //       Prisma writes `null` instead of treating it as "unchanged".
+      const data: Prisma.AppointmentUpdateInput = {}
+      if (patch.date) data.date = patch.date
+      if (patch.hour) data.hour = patch.hour
+      if (patch.durationMinutes !== undefined) data.durationMinutes = patch.durationMinutes
+      if (patch.location !== undefined) data.location = patch.location
+      if (patch.type !== undefined) data.type = patch.type
+      if (patch.motif !== undefined) {
+        data.motifEncrypted = patch.motif === null ? null : encryptField(patch.motif)
+      }
+      if (patch.note !== undefined) {
+        data.noteEncrypted = patch.note === null ? null : encryptField(patch.note)
+      }
+      // M6 — reschedule clears any stale alternative proposal.
+      if (rescheduled) data.proposedAlternativeAt = null
 
-      const updated = await tx.appointment.update({
-        where: { id },
-        data: {
-          date: patch.date,
-          hour: patch.hour,
-          durationMinutes: patch.durationMinutes,
-          location: patch.location,
-          type: patch.type,
-          motif: patch.motif,
-          ...noteUpdate,
-        },
-      })
+      const updated = await tx.appointment.update({ where: { id }, data })
       await auditService.logWithTx(tx, {
         userId: auditUserId, action: "UPDATE", resource: "APPOINTMENT",
         resourceId: String(id),
@@ -376,15 +467,15 @@ export const rdvAppointmentService = {
   },
 
   /**
-   * US-2503 — Cancel an appointment. `cancelledBy` distinguishes
-   * patient/doctor for the audit pivot and triggers different UX flows:
-   * a patient cancel within `CANCEL_GRACE_HOURS` is recorded without
-   * penalty. A doctor cancel typically proposes an alternative via
-   * `proposeAlternative`.
+   * US-2503 — Cancel an appointment. `actor` is derived by the route from the
+   * caller's role (NEVER from request body — H4) and recorded in the immutable
+   * audit log. A patient cancel within `CANCEL_GRACE_HOURS` of the start time
+   * is flagged `lateCancel=true` for downstream UX (penalty / notification).
+   * A doctor cancel typically proposes an alternative via `proposeAlternative`.
    */
   async cancel(
     id: number,
-    input: { by: "patient" | "doctor"; reason?: string },
+    input: { actor: CancellationActor; reason?: string },
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
@@ -399,14 +490,16 @@ export const rdvAppointmentService = {
       const now = new Date()
       const startAt = combineDateHour(existing.date, existing.hour)
       const hoursUntil = (startAt.getTime() - now.getTime()) / 3_600_000
-      const withinGrace = hoursUntil >= CANCEL_GRACE_HOURS
+      // H2 — semantic fix: late = cancel within grace window before start.
+      const lateCancel = hoursUntil >= 0 && hoursUntil < CANCEL_GRACE_HOURS
 
+      const reasonClipped = input.reason?.slice(0, 500)
       const updated = await tx.appointment.update({
         where: { id },
         data: {
           status: "cancelled",
-          cancelledBy: input.by,
-          cancelReason: input.reason?.slice(0, 500) ?? null,
+          cancelledBy: input.actor,
+          cancelReasonEncrypted: reasonClipped ? encryptField(reasonClipped) : null,
           cancelledAt: now,
         },
       })
@@ -416,15 +509,17 @@ export const rdvAppointmentService = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: {
           patientId: existing.patientId,
-          kind: "cancel", by: input.by,
-          withinGrace, hoursUntil: Math.round(hoursUntil),
+          kind: "cancel", actor: input.actor,
+          lateCancel, hoursUntil: Math.round(hoursUntil),
         },
       })
       return toAppointmentDTO(updated)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
-  /** US-2503 — doctor proposes a new date/hour to a cancelled appointment. */
+  /** US-2503 — doctor proposes a new date/hour to a cancelled appointment.
+   *  H10 — overlap-check the proposed slot so the patient doesn't accept a
+   *  slot that has become unavailable since the cancel. */
   async proposeAlternative(
     id: number, alternativeAt: Date, auditUserId: number, ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
@@ -435,6 +530,11 @@ export const rdvAppointmentService = {
         throw new ValidationError("notDoctorCancelled")
       }
       if (alternativeAt <= new Date()) throw new ValidationError("alternativeInPast")
+
+      if (existing.memberId !== null) {
+        const endAt = computeEnd(alternativeAt, existing.durationMinutes)
+        await assertNoOverlap(tx, existing.memberId, alternativeAt, endAt, id)
+      }
 
       const updated = await tx.appointment.update({
         where: { id },
@@ -454,24 +554,47 @@ export const rdvAppointmentService = {
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
-  /** US-2503 — patient accepts the alternative → revert cancellation. */
+  /** US-2503 — patient accepts the alternative → revert cancellation.
+   *  M14 — must still be `cancelled`. M10 — TTL applied (proposal expires after 7d).
+   *  L6 — preserve seconds in the new hour. L9 — audit on conflict. */
   async acceptAlternative(
     id: number, auditUserId: number, ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
     return prisma.$transaction(async (tx) => {
       const existing = await tx.appointment.findUnique({ where: { id } })
       if (!existing) throw new NotFoundError()
+      if (existing.status !== "cancelled") throw new ValidationError("notCancelled")
       if (!existing.proposedAlternativeAt) throw new ValidationError("noAlternative")
+      if (Date.now() - existing.proposedAlternativeAt.getTime() > PROPOSAL_TTL_MS) {
+        throw new ValidationError("alternativeExpired")
+      }
 
       const alt = existing.proposedAlternativeAt
       const newDate = new Date(alt)
       newDate.setUTCHours(0, 0, 0, 0)
-      const newHour = new Date(Date.UTC(1970, 0, 1, alt.getUTCHours(), alt.getUTCMinutes()))
+      const newHour = new Date(Date.UTC(
+        1970, 0, 1, alt.getUTCHours(), alt.getUTCMinutes(), alt.getUTCSeconds(),
+      ))
 
       if (existing.memberId !== null) {
         const startAt = combineDateHour(newDate, newHour)
         const endAt = computeEnd(startAt, existing.durationMinutes)
-        await assertNoOverlap(tx, existing.memberId, startAt, endAt, id)
+        try {
+          await assertNoOverlap(tx, existing.memberId, startAt, endAt, id)
+        } catch (err) {
+          // L9 — audit the conflict so forensics can correlate which proposal raced.
+          await auditService.logWithTx(tx, {
+            userId: auditUserId, action: "UPDATE", resource: "APPOINTMENT",
+            resourceId: String(id),
+            ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+            metadata: {
+              patientId: existing.patientId,
+              kind: "accept-alternative-conflict",
+              alternativeAt: alt.toISOString(),
+            },
+          })
+          throw err
+        }
       }
 
       const updated = await tx.appointment.update({
@@ -480,7 +603,7 @@ export const rdvAppointmentService = {
           status: "scheduled",
           date: newDate, hour: newHour,
           proposedAlternativeAt: null,
-          cancelledBy: null, cancelReason: null, cancelledAt: null,
+          cancelledBy: null, cancelReasonEncrypted: null, cancelledAt: null,
         },
       })
       await auditService.logWithTx(tx, {
@@ -508,7 +631,8 @@ export const rdvAppointmentService = {
         throw new ValidationError("notPending")
       }
       const updated = await tx.appointment.update({
-        where: { id }, data: { status: "confirmed" },
+        where: { id },
+        data: { status: "confirmed", proposedAlternativeAt: null },
       })
       await auditService.logWithTx(tx, {
         userId: auditUserId, action: "UPDATE", resource: "APPOINTMENT",
@@ -543,6 +667,18 @@ export type UnavailabilityDTO = {
   reason: string | null
 }
 
+const UNAVAIL_REASON_MAX = 200
+
+function decodeUnavailability(r: {
+  id: number; memberId: number; startAt: Date; endAt: Date;
+  reasonEncrypted: string | null;
+}): UnavailabilityDTO {
+  return {
+    id: r.id, memberId: r.memberId, startAt: r.startAt, endAt: r.endAt,
+    reason: r.reasonEncrypted ? safeDecryptField(r.reasonEncrypted) : null,
+  }
+}
+
 export const memberUnavailabilityService = {
   async create(
     input: { memberId: number; startAt: Date; endAt: Date; reason?: string },
@@ -561,22 +697,34 @@ export const memberUnavailabilityService = {
       if (member.serviceId === null) throw new ValidationError("memberHasNoService")
       await assertServiceMember(auditUserId, member.serviceId, tx)
 
-      const row = await tx.memberUnavailability.create({
-        data: {
-          memberId: input.memberId,
-          startAt: input.startAt,
-          endAt: input.endAt,
-          reason: input.reason?.slice(0, 200),
-          createdBy: auditUserId,
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId, action: "CREATE", resource: "MEMBER_UNAVAILABILITY",
-        resourceId: String(row.id),
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: { memberId: input.memberId, serviceId: member.serviceId },
-      })
-      return { id: row.id, memberId: row.memberId, startAt: row.startAt, endAt: row.endAt, reason: row.reason }
+      const reasonClipped = input.reason?.slice(0, UNAVAIL_REASON_MAX)
+      try {
+        const row = await tx.memberUnavailability.create({
+          data: {
+            memberId: input.memberId,
+            startAt: input.startAt,
+            endAt: input.endAt,
+            reasonEncrypted: reasonClipped ? encryptField(reasonClipped) : null,
+            createdBy: auditUserId,
+          },
+        })
+        await auditService.logWithTx(tx, {
+          userId: auditUserId, action: "CREATE", resource: "MEMBER_UNAVAILABILITY",
+          resourceId: String(row.id),
+          ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+          metadata: { memberId: input.memberId, serviceId: member.serviceId },
+        })
+        return decodeUnavailability(row)
+      } catch (err) {
+        // H3 — Postgres EXCLUDE constraint surfaces as P2002/P2010 ; map to typed error.
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          (err.code === "P2002" || err.code === "P2010")
+        ) {
+          throw new ValidationError("unavailabilityOverlap")
+        }
+        throw err
+      }
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
@@ -603,9 +751,7 @@ export const memberUnavailabilityService = {
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { memberId, count: rows.length },
     })
-    return rows.map((r) => ({
-      id: r.id, memberId: r.memberId, startAt: r.startAt, endAt: r.endAt, reason: r.reason,
-    }))
+    return rows.map(decodeUnavailability)
   },
 
   async delete(id: number, auditUserId: number, ctx?: AuditContext) {
@@ -676,12 +822,16 @@ export const memberBookingConfigService = {
       if (m.serviceId === null) throw new ValidationError("memberHasNoService")
       await assertServiceMember(auditUserId, m.serviceId, tx)
 
+      // H1 — distinguish "not provided" (undefined → no-op) from
+      // "explicit clear" (null → set to NULL). Coalescing to `undefined`
+      // silently swallowed the null and prevented clears.
+      const data: Prisma.HealthcareMemberUpdateInput = {}
+      if (input.bookingMode !== undefined) data.bookingMode = input.bookingMode
+      if (input.defaultAppointmentMinutes !== undefined) {
+        data.defaultAppointmentMinutes = input.defaultAppointmentMinutes
+      }
       const updated = await tx.healthcareMember.update({
-        where: { id: memberId },
-        data: {
-          bookingMode: input.bookingMode,
-          defaultAppointmentMinutes: input.defaultAppointmentMinutes ?? undefined,
-        },
+        where: { id: memberId }, data,
         select: { id: true, bookingMode: true, defaultAppointmentMinutes: true },
       })
       await auditService.logWithTx(tx, {

@@ -68,6 +68,31 @@ describe("rdvAppointmentService.create", () => {
     ).rejects.toBeInstanceOf(ValidationError)
   })
 
+  it("C3 — rejects slot overlap that starts on day-before and spills past midnight", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as any)
+    prismaMock.healthcareMember.findUnique.mockResolvedValue({
+      id: 1, serviceId: 10, bookingMode: "auto", defaultAppointmentMinutes: null,
+    } as any)
+    // Existing appointment 2026-06-09 23:30 + 120 min → ends 2026-06-10 01:30 UTC.
+    prismaMock.appointment.findMany.mockResolvedValue([
+      {
+        date: new Date("2026-06-09"),
+        hour: new Date("1970-01-01T23:30:00Z"),
+        durationMinutes: 120,
+      } as any,
+    ])
+    prismaMock.memberUnavailability.findMany.mockResolvedValue([])
+    // New slot 2026-06-10 00:30 → must conflict.
+    await expect(
+      rdvAppointmentService.create({
+        patientId: 7, memberId: 1,
+        date: new Date("2026-06-10"),
+        hour: new Date("1970-01-01T00:30:00Z"),
+        durationMinutes: 30,
+      }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
   it("rejects slot overlap with an unavailability", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as any)
     prismaMock.healthcareMember.findUnique.mockResolvedValue({
@@ -89,8 +114,8 @@ describe("rdvAppointmentService.create", () => {
     prismaMock.memberUnavailability.findMany.mockResolvedValue([])
     prismaMock.appointment.create.mockResolvedValue({
       id: 1, patientId: 7, memberId: 1, type: null, date, hour, durationMinutes: 30,
-      location: null, status: "scheduled", motif: null, noteEncrypted: null,
-      proposedAlternativeAt: null, cancelledBy: null, cancelReason: null, cancelledAt: null,
+      location: null, status: "scheduled", motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: null, cancelReasonEncrypted: null, cancelledAt: null,
       createdAt: new Date(), updatedAt: new Date(),
     } as any)
     const out = await rdvAppointmentService.create(
@@ -108,8 +133,8 @@ describe("rdvAppointmentService.create", () => {
     prismaMock.memberUnavailability.findMany.mockResolvedValue([])
     prismaMock.appointment.create.mockResolvedValue({
       id: 1, patientId: 7, memberId: 1, type: null, date, hour, durationMinutes: 30,
-      location: null, status: "pending_validation", motif: null, noteEncrypted: null,
-      proposedAlternativeAt: null, cancelledBy: null, cancelReason: null, cancelledAt: null,
+      location: null, status: "pending_validation", motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: null, cancelReasonEncrypted: null, cancelledAt: null,
       createdAt: new Date(), updatedAt: new Date(),
     } as any)
     const out = await rdvAppointmentService.create(
@@ -143,25 +168,76 @@ describe("rdvAppointmentService.listInRange (US-2500)", () => {
   it("rejects range > 62 days", async () => {
     await expect(
       rdvAppointmentService.listInRange(
-        { from: new Date("2026-01-01"), to: new Date("2026-04-01") }, 9,
+        { from: new Date("2026-01-01"), to: new Date("2026-04-01"), memberId: 1 }, 9,
       ),
     ).rejects.toBeInstanceOf(ValidationError)
   })
   it("rejects to < from", async () => {
     await expect(
       rdvAppointmentService.listInRange(
-        { from: new Date("2026-02-01"), to: new Date("2026-01-01") }, 9,
+        { from: new Date("2026-02-01"), to: new Date("2026-01-01"), memberId: 1 }, 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("rejects unscoped listing (C1 — cross-tenant PHI leak)", async () => {
+    await expect(
+      rdvAppointmentService.listInRange(
+        { from: new Date("2026-06-01"), to: new Date("2026-06-15") }, 9,
       ),
     ).rejects.toBeInstanceOf(ValidationError)
   })
   it("audits READ with count", async () => {
     prismaMock.appointment.findMany.mockResolvedValue([] as any)
-    await rdvAppointmentService.listInRange(
+    const out = await rdvAppointmentService.listInRange(
       { from: new Date("2026-06-01"), to: new Date("2026-06-15"), memberId: 1 }, 9,
     )
+    expect(out.items).toEqual([])
+    expect(out.truncated).toBe(false)
     const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(audit.resource).toBe("APPOINTMENT")
     expect(audit.resourceId).toBe("list")
+  })
+  it("flags truncated=true when result exceeds limit", async () => {
+    const row = {
+      id: 1, patientId: 7, memberId: 1, type: null, date, hour,
+      durationMinutes: 30, location: null, status: "scheduled",
+      motifEncrypted: null, proposedAlternativeAt: null,
+      cancelledBy: null, cancelledAt: null,
+      createdAt: new Date(), updatedAt: new Date(),
+    }
+    prismaMock.appointment.findMany.mockResolvedValue(
+      Array.from({ length: 201 }, (_, i) => ({ ...row, id: i + 1 })) as any,
+    )
+    const out = await rdvAppointmentService.listInRange(
+      { from: new Date("2026-06-01"), to: new Date("2026-06-15"), memberId: 1 }, 9,
+    )
+    expect(out.items.length).toBe(200)
+    expect(out.truncated).toBe(true)
+  })
+})
+
+describe("rdvAppointmentService.update (H5 / H6)", () => {
+  it("H5 — rejects update on `completed`", async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({
+      id: 1, patientId: 7, status: "completed", memberId: 1, date, hour, durationMinutes: 30,
+    } as any)
+    await expect(
+      rdvAppointmentService.update(1, { type: "ide" }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("H6 — explicit note=null clears the noteEncrypted column", async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({
+      id: 1, patientId: 7, status: "scheduled", memberId: 1, date, hour, durationMinutes: 30,
+    } as any)
+    prismaMock.appointment.update.mockResolvedValue({
+      id: 1, patientId: 7, memberId: 1, type: null, date, hour, durationMinutes: 30,
+      location: null, status: "scheduled", motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: null, cancelReasonEncrypted: null,
+      cancelledAt: null, createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    await rdvAppointmentService.update(1, { note: null }, 9)
+    const args = prismaMock.appointment.update.mock.calls[0][0] as any
+    expect(args.data.noteEncrypted).toBeNull()
   })
 })
 
@@ -171,7 +247,7 @@ describe("rdvAppointmentService.cancel (US-2503)", () => {
       id: 1, patientId: 7, status: "cancelled",
     } as any)
     await expect(
-      rdvAppointmentService.cancel(1, { by: "patient" }, 9),
+      rdvAppointmentService.cancel(1, { actor: "patient" }, 9),
     ).rejects.toBeInstanceOf(ValidationError)
   })
   it("rejects completed", async () => {
@@ -179,10 +255,10 @@ describe("rdvAppointmentService.cancel (US-2503)", () => {
       id: 1, patientId: 7, status: "completed",
     } as any)
     await expect(
-      rdvAppointmentService.cancel(1, { by: "doctor" }, 9),
+      rdvAppointmentService.cancel(1, { actor: "doctor" }, 9),
     ).rejects.toBeInstanceOf(ValidationError)
   })
-  it("audits withinGrace=true when patient cancels > 24h before", async () => {
+  it("audits lateCancel=false when patient cancels > 24h before", async () => {
     const future = new Date(Date.now() + 48 * 3600_000)
     const futureDate = new Date(future)
     futureDate.setUTCHours(0, 0, 0, 0)
@@ -195,13 +271,37 @@ describe("rdvAppointmentService.cancel (US-2503)", () => {
     prismaMock.appointment.update.mockResolvedValue({
       id: 1, patientId: 7, memberId: null, type: null, date: futureDate, hour: futureHour,
       durationMinutes: 30, location: null, status: "cancelled",
-      motif: null, noteEncrypted: null,
-      proposedAlternativeAt: null, cancelledBy: "patient", cancelReason: null, cancelledAt: new Date(),
+      motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: "patient",
+      cancelReasonEncrypted: null, cancelledAt: new Date(),
       createdAt: new Date(), updatedAt: new Date(),
     } as any)
-    await rdvAppointmentService.cancel(1, { by: "patient" }, 9)
+    await rdvAppointmentService.cancel(1, { actor: "patient" }, 9)
     const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(audit.metadata.withinGrace).toBe(true)
+    expect(audit.metadata.lateCancel).toBe(false)
+  })
+
+  it("audits lateCancel=true when cancel happens within 24h", async () => {
+    const soon = new Date(Date.now() + 2 * 3600_000) // 2h ahead
+    const soonDate = new Date(soon)
+    soonDate.setUTCHours(0, 0, 0, 0)
+    const soonHour = new Date(soon)
+    soonHour.setUTCFullYear(1970, 0, 1)
+    prismaMock.appointment.findUnique.mockResolvedValue({
+      id: 1, patientId: 7, status: "scheduled",
+      date: soonDate, hour: soonHour, durationMinutes: 30,
+    } as any)
+    prismaMock.appointment.update.mockResolvedValue({
+      id: 1, patientId: 7, memberId: null, type: null, date: soonDate, hour: soonHour,
+      durationMinutes: 30, location: null, status: "cancelled",
+      motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: "patient",
+      cancelReasonEncrypted: null, cancelledAt: new Date(),
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    await rdvAppointmentService.cancel(1, { actor: "patient" }, 9)
+    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(audit.metadata.lateCancel).toBe(true)
   })
 })
 
@@ -222,6 +322,36 @@ describe("rdvAppointmentService.proposeAlternative + accept (US-2503)", () => {
       rdvAppointmentService.proposeAlternative(1, new Date("2020-01-01"), 9),
     ).rejects.toBeInstanceOf(ValidationError)
   })
+  it("H10 — propose checks overlap with existing appointments", async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({
+      id: 1, patientId: 7, memberId: 1, status: "cancelled",
+      cancelledBy: "doctor", durationMinutes: 30,
+    } as any)
+    prismaMock.appointment.findMany.mockResolvedValue([
+      { date: new Date("2026-07-01"), hour: new Date("1970-01-01T10:00:00Z"), durationMinutes: 30 } as any,
+    ])
+    prismaMock.memberUnavailability.findMany.mockResolvedValue([])
+    await expect(
+      rdvAppointmentService.proposeAlternative(
+        1, new Date("2026-07-01T10:15:00Z"), 9,
+      ),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("M14 — accept rejects when status != cancelled", async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({
+      id: 1, status: "scheduled", proposedAlternativeAt: new Date(Date.now() + 3600_000),
+    } as any)
+    await expect(rdvAppointmentService.acceptAlternative(1, 9))
+      .rejects.toBeInstanceOf(ValidationError)
+  })
+  it("M10 — accept rejects expired proposals (TTL 7d)", async () => {
+    prismaMock.appointment.findUnique.mockResolvedValue({
+      id: 1, status: "cancelled",
+      proposedAlternativeAt: new Date(Date.now() - 8 * 86_400_000), // 8d old
+    } as any)
+    await expect(rdvAppointmentService.acceptAlternative(1, 9))
+      .rejects.toBeInstanceOf(ValidationError)
+  })
   it("accept-alternative resets the appointment to scheduled", async () => {
     const alt = new Date(Date.now() + 86_400_000)
     prismaMock.appointment.findUnique.mockResolvedValue({
@@ -233,8 +363,8 @@ describe("rdvAppointmentService.proposeAlternative + accept (US-2503)", () => {
     prismaMock.appointment.update.mockResolvedValue({
       id: 1, patientId: 7, memberId: 1, type: null, date: alt, hour: alt,
       durationMinutes: 30, location: null, status: "scheduled",
-      motif: null, noteEncrypted: null,
-      proposedAlternativeAt: null, cancelledBy: null, cancelReason: null, cancelledAt: null,
+      motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: null, cancelReasonEncrypted: null, cancelledAt: null,
       createdAt: new Date(), updatedAt: new Date(),
     } as any)
     const out = await rdvAppointmentService.acceptAlternative(1, 9)
@@ -257,8 +387,8 @@ describe("rdvAppointmentService.confirm (US-2505)", () => {
     prismaMock.appointment.update.mockResolvedValue({
       id: 1, patientId: 7, memberId: 1, type: null, date, hour,
       durationMinutes: 30, location: null, status: "confirmed",
-      motif: null, noteEncrypted: null,
-      proposedAlternativeAt: null, cancelledBy: null, cancelReason: null, cancelledAt: null,
+      motifEncrypted: null, noteEncrypted: null,
+      proposedAlternativeAt: null, cancelledBy: null, cancelReasonEncrypted: null, cancelledAt: null,
       createdAt: new Date(), updatedAt: new Date(),
     } as any)
     const out = await rdvAppointmentService.confirm(1, 9)
@@ -302,7 +432,7 @@ describe("memberUnavailabilityService (US-2504)", () => {
       id: 1, memberId: 1,
       startAt: new Date("2026-06-10T09:00:00Z"),
       endAt: new Date("2026-06-10T10:00:00Z"),
-      reason: null,
+      reasonEncrypted: null,
     } as any)
     const out = await memberUnavailabilityService.create({
       memberId: 1,
@@ -310,6 +440,26 @@ describe("memberUnavailabilityService (US-2504)", () => {
       endAt: new Date("2026-06-10T10:00:00Z"),
     }, 9)
     expect(out.id).toBe(1)
+    expect(out.reason).toBeNull()
+  })
+  it("encrypts reason before storing (H8)", async () => {
+    prismaMock.healthcareMember.findUnique.mockResolvedValue({ id: 1, serviceId: 10 } as any)
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 99 } as any)
+    prismaMock.memberUnavailability.create.mockResolvedValue({
+      id: 1, memberId: 1,
+      startAt: new Date("2026-06-10T09:00:00Z"),
+      endAt: new Date("2026-06-10T10:00:00Z"),
+      reasonEncrypted: "ciphertext",
+    } as any)
+    await memberUnavailabilityService.create({
+      memberId: 1,
+      startAt: new Date("2026-06-10T09:00:00Z"),
+      endAt: new Date("2026-06-10T10:00:00Z"),
+      reason: "Congé maladie",
+    }, 9)
+    const args = prismaMock.memberUnavailability.create.mock.calls[0][0] as any
+    expect(args.data.reasonEncrypted).not.toContain("maladie")
+    expect(args.data.reasonEncrypted).toBeTruthy()
   })
 })
 
