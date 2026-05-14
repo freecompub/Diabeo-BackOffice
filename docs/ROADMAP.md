@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 10 Batch C livré (PR #396, 3 US US-2233/2234/2235, 16 SP). Modes spéciaux pédiatrique/Ramadan/voyage via hub ConfigVersion (étendu enum). PediatricCaregiver PHI chiffrée AES-256-GCM, permissionLevel ∈ {read,write,propose} (HAS/ISPAD), Ramadan 29-30j stricts + warnings IDF-DAR §6.4, protocole voyage transitoire ATTD/EASD 2022 (24-48h post-arrivée). V1 50 → 53 DONE (38%). 1590/1590 tests verts.
+> Dernière mise à jour : 2026-05-14 — Groupe 10 Batch C livré (PR #396, 3 US US-2233/2234/2235, 16 SP) + hotfix re-review (PR #397). Modes spéciaux pédiatrique/Ramadan/voyage via hub ConfigVersion (étendu enum). PediatricCaregiver PHI chiffrée AES-256-GCM, permissionLevel ∈ {read,write,propose} (HAS/ISPAD), Ramadan 29-30j stricts + warnings IDF-DAR §6.4, protocole voyage transitoire ATTD/EASD 2022 (24-48h post-arrivée). PR #397 corrige 1 production-blocker (CHECK constraint SQL non synchronisée au rename "config"→"propose") + 3 HIGH (Zod bounds lockstep, P2002 → 409, UNIQUE(version_id,rank) DB-level) + 4 LOW (boundary tests, DRY createConfigVersion helper, signature unifiée upserts, ADR #18 resourceId). V1 50 → 53 DONE (38%). 1596/1596 tests verts.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
