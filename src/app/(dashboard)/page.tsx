@@ -1,9 +1,10 @@
 /**
  * Dashboard root redirect — role-based.
  *
- *  - DOCTOR / ADMIN → `/medecin` (Groupe 9b Batch 1, US-2400)
- *  - NURSE          → `/infirmier` (Groupe 9b Batch 2, US-2405)
- *  - VIEWER         → handled by `(dashboard)/layout.tsx` → `/patient/dashboard`
+ *  - DOCTOR → `/medecin` (Groupe 9b Batch 1, US-2400)
+ *  - NURSE  → `/infirmier` (Groupe 9b Batch 2, US-2405)
+ *  - ADMIN  → `/admin` (Groupe 9b Batch 3, US-2410)
+ *  - VIEWER → handled by `(dashboard)/layout.tsx` → `/patient/dashboard`
  *
  * Reads role from JWT middleware header (`x-user-role`) ; falls back to
  * `/login` if absent (same pattern as the layout).
@@ -18,10 +19,11 @@ export default async function DashboardRootPage() {
   if (!role) redirect("/login")
   switch (role) {
     case "DOCTOR":
-    case "ADMIN":
       redirect("/medecin")
     case "NURSE":
       redirect("/infirmier")
+    case "ADMIN":
+      redirect("/admin")
     case "VIEWER":
       redirect("/patient/dashboard")
     default:
