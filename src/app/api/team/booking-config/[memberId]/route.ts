@@ -7,6 +7,7 @@ import { AuthError } from "@/lib/auth"
 import {
   memberBookingConfigService,
   assertMemberServiceAccess,
+  type MemberBookingConfigUpdateInput,
 } from "@/lib/services/rdv.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
@@ -58,7 +59,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       )
     }
     // H1 — preserve `null` (clear) vs `undefined` (no-op) through the call chain.
-    const input: Parameters<typeof memberBookingConfigService.update>[1] = {}
+    const input: MemberBookingConfigUpdateInput = {}
     if (parsed.data.bookingMode !== undefined) input.bookingMode = parsed.data.bookingMode
     if (parsed.data.defaultAppointmentMinutes !== undefined) {
       input.defaultAppointmentMinutes = parsed.data.defaultAppointmentMinutes

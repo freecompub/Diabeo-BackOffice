@@ -61,8 +61,11 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "forbidden" }, { status: 403 })
       }
     }
-    // C1 — when scoped by member only, enforce same-service membership.
-    if (parsed.data.memberId !== undefined && parsed.data.patientId === undefined) {
+    // C1/L1 — when scoped by member (with or without patient), enforce
+    //         same-service membership. Defense-in-depth: even when patientId
+    //         is also provided (and authorised), a cross-tenant memberId must
+    //         not leak via empty results.
+    if (parsed.data.memberId !== undefined) {
       try {
         await assertMemberServiceAccess(user.id, parsed.data.memberId)
       } catch (err) {

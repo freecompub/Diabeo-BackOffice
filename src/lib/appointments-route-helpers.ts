@@ -15,7 +15,7 @@ import {
   type AuditContext,
 } from "@/lib/services/audit.service"
 import { auditedRequireRole } from "@/lib/team-route-helpers"
-import type { AuthUser } from "@/lib/auth"
+import { AuthError, type AuthUser } from "@/lib/auth"
 import type { Role } from "@prisma/client"
 
 export const HOUR_RE = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -28,6 +28,10 @@ export type GateResult =
  * Validates `id` is a positive integer, enforces `minRole`, then runs
  * `canAccessPatient` + `patientShareConsent` for the patient owning the
  * appointment. Emits `accessDenied()` audit on RBAC/access failure.
+ *
+ * H6 — `AuthError` from `auditedRequireRole` is caught internally so callers
+ * can rely purely on the `GateResult` discriminated union (no implicit throw
+ * across the type contract).
  */
 export async function appointmentRouteGate(
   req: NextRequest,
@@ -40,7 +44,21 @@ export async function appointmentRouteGate(
     return { kind: "error", res: NextResponse.json({ error: "invalidId" }, { status: 400 }) }
   }
   const apptId = parseInt(rawId, 10)
-  const user = await auditedRequireRole(req, minRole, ctx, "APPOINTMENT", rawId)
+  // L4 — use String(apptId) for resourceId so forensics are consistent with
+  //      the parsed int and not confused by leading-zero strings.
+  const resourceId = String(apptId)
+  let user: AuthUser
+  try {
+    user = await auditedRequireRole(req, minRole, ctx, "APPOINTMENT", resourceId)
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return {
+        kind: "error",
+        res: NextResponse.json({ error: err.message }, { status: err.status }),
+      }
+    }
+    throw err
+  }
 
   const patientId = await rdvAppointmentService.getPatientIdFor(apptId)
   if (patientId === null) {
@@ -49,7 +67,7 @@ export async function appointmentRouteGate(
   const allowed = await canAccessPatient(user.id, user.role, patientId)
   if (!allowed) {
     await auditService.accessDenied({
-      userId: user.id, resource: "APPOINTMENT", resourceId: rawId,
+      userId: user.id, resource: "APPOINTMENT", resourceId,
       ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
       metadata: { patientId, endpoint },
     })

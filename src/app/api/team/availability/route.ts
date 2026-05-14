@@ -3,7 +3,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError } from "@/lib/auth"
-import { memberUnavailabilityService } from "@/lib/services/rdv.service"
+import {
+  memberUnavailabilityService,
+  assertMemberServiceAccess,
+} from "@/lib/services/rdv.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
 
@@ -26,7 +29,19 @@ export async function GET(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
     if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
-    const user = await auditedRequireRole(req, "NURSE", ctx, "MEMBER_UNAVAILABILITY", String(parsed.data.memberId))
+    const user = await auditedRequireRole(
+      req, "NURSE", ctx, "MEMBER_UNAVAILABILITY", String(parsed.data.memberId),
+    )
+    // H3 — route-level guard with `accessDenied` audit (US-2265 burst feed).
+    try {
+      await assertMemberServiceAccess(user.id, parsed.data.memberId)
+    } catch (err) {
+      return mapErrorToResponse(err, "team/availability GET", ctx.requestId, {
+        user, ctx, resource: "MEMBER_UNAVAILABILITY",
+        resourceId: String(parsed.data.memberId),
+        metadata: { memberId: parsed.data.memberId, endpoint: "list" },
+      })
+    }
     const items = await memberUnavailabilityService.listForMember(
       parsed.data.memberId, { from: parsed.data.from, to: parsed.data.to }, user.id, ctx,
     )
@@ -48,7 +63,18 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    const user = await auditedRequireRole(req, "DOCTOR", ctx, "MEMBER_UNAVAILABILITY", String(parsed.data.memberId))
+    const user = await auditedRequireRole(
+      req, "DOCTOR", ctx, "MEMBER_UNAVAILABILITY", String(parsed.data.memberId),
+    )
+    try {
+      await assertMemberServiceAccess(user.id, parsed.data.memberId)
+    } catch (err) {
+      return mapErrorToResponse(err, "team/availability POST", ctx.requestId, {
+        user, ctx, resource: "MEMBER_UNAVAILABILITY",
+        resourceId: String(parsed.data.memberId),
+        metadata: { memberId: parsed.data.memberId, endpoint: "create" },
+      })
+    }
     const row = await memberUnavailabilityService.create(parsed.data, user.id, ctx)
     return NextResponse.json(row, { status: 201 })
   } catch (e) {

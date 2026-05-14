@@ -127,6 +127,18 @@ export async function generateUserExport(userId: number) {
       prisma.medicalDocument.findMany({ where: { patientId: pid }, orderBy: { createdAt: "desc" } }),
     ])
 
+    // C1 — RGPD Art. 20 portability requires intelligible content. Encrypted
+    // PHI columns must be decrypted before serialising for the data subject.
+    const appointmentsDecrypted = appointments.map((a) => ({
+      ...a,
+      motifEncrypted: undefined,
+      noteEncrypted: undefined,
+      cancelReasonEncrypted: undefined,
+      motif: safeDecrypt(a.motifEncrypted),
+      note: safeDecrypt(a.noteEncrypted),
+      cancelReason: safeDecrypt(a.cancelReasonEncrypted),
+    }))
+
     patientData = {
       pathology: patient.pathology,
       medicalData: decryptMedicalData(medicalData as unknown as Record<string, unknown>),
@@ -139,7 +151,7 @@ export async function generateUserExport(userId: number) {
       bolusLogs,
       adjustmentProposals,
       devices,
-      appointments,
+      appointments: appointmentsDecrypted,
       documents: documents.map((d) => ({
         id: d.id,
         title: d.title,

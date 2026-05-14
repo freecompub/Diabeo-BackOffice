@@ -43,6 +43,17 @@ ALTER TABLE "appointments"
     ADD CONSTRAINT "appointments_duration_minutes_check"
         CHECK ("duration_minutes" IS NULL OR ("duration_minutes" BETWEEN 15 AND 240));
 
+-- L2 — Defense-in-depth caps on encrypted PHI columns. Plaintext caps are
+-- 200 (motif), 4096 (note), 500 (reason). Encrypted base64 overhead is ~33% +
+-- 28 bytes (12 IV + 16 TAG) + base64 padding. Allow ~2x headroom.
+ALTER TABLE "appointments"
+    ADD CONSTRAINT "appointments_motif_enc_length_check"
+        CHECK (octet_length("motif_encrypted") IS NULL OR octet_length("motif_encrypted") <= 600),
+    ADD CONSTRAINT "appointments_note_enc_length_check"
+        CHECK (octet_length("note_encrypted") IS NULL OR octet_length("note_encrypted") <= 9000),
+    ADD CONSTRAINT "appointments_cancel_reason_enc_length_check"
+        CHECK (octet_length("cancel_reason_encrypted") IS NULL OR octet_length("cancel_reason_encrypted") <= 1200);
+
 CREATE INDEX "appointments_member_id_date_idx" ON "appointments"("member_id", "date");
 CREATE INDEX "appointments_patient_id_date_idx" ON "appointments"("patient_id", "date");
 CREATE INDEX "appointments_member_id_status_date_idx"
@@ -74,7 +85,10 @@ CREATE TABLE "member_unavailabilities" (
 
     CONSTRAINT "member_unavailabilities_pkey" PRIMARY KEY ("id"),
     -- L8 — Coherence check on temporal interval.
-    CONSTRAINT "member_unavailabilities_range_check" CHECK ("end_at" > "start_at")
+    CONSTRAINT "member_unavailabilities_range_check" CHECK ("end_at" > "start_at"),
+    -- L2 — Defense-in-depth cap on encrypted reason (plaintext 200 chars).
+    CONSTRAINT "member_unavailabilities_reason_enc_length_check"
+        CHECK (octet_length("reason_encrypted") IS NULL OR octet_length("reason_encrypted") <= 600)
 );
 CREATE INDEX "member_unavailabilities_member_id_start_at_idx"
     ON "member_unavailabilities"("member_id", "start_at");
@@ -85,7 +99,16 @@ CREATE INDEX "member_unavailabilities_member_id_end_at_idx"
 -- H3/M12 — Postgres EXCLUDE constraint prevents overlapping unavailabilities
 -- for the same member without relying on Serializable transactions catching
 -- write-write conflicts (which they may not when no rw-conflict exists).
+--
 -- `btree_gist` extension is required for INT GiST ops.
+-- ┌─────────────────────────────────────────────────────────────────────────┐
+-- │ DEPLOYMENT PREREQUISITE (H4) — `btree_gist` must be available on the    │
+-- │ target Postgres instance. OVH-managed DBaaS pre-installs it by default  │
+-- │ (verify via `SELECT * FROM pg_available_extensions WHERE name           │
+-- │ = 'btree_gist'`). If the role lacks `CREATE EXTENSION` privilege, run   │
+-- │ the statement below as a superuser BEFORE `prisma migrate deploy`.      │
+-- │ Documented in `docs/runbook/migrations.md` (US-2267).                   │
+-- └─────────────────────────────────────────────────────────────────────────┘
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 ALTER TABLE "member_unavailabilities"
     ADD CONSTRAINT "member_unavailabilities_no_overlap"

@@ -10,10 +10,12 @@
  */
 import { describe, it, expect, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
+import { Prisma } from "@prisma/client"
 import {
   rdvAppointmentService,
   memberUnavailabilityService,
   memberBookingConfigService,
+  assertMemberServiceAccess,
 } from "@/lib/services/rdv.service"
 import {
   ForbiddenError,
@@ -460,6 +462,57 @@ describe("memberUnavailabilityService (US-2504)", () => {
     const args = prismaMock.memberUnavailability.create.mock.calls[0][0] as any
     expect(args.data.reasonEncrypted).not.toContain("maladie")
     expect(args.data.reasonEncrypted).toBeTruthy()
+  })
+})
+
+describe("assertMemberServiceAccess (H2/H7 — cross-tenant denial)", () => {
+  it("M3 — throws ForbiddenError when caller is not in target's service", async () => {
+    prismaMock.healthcareMember.findFirst.mockResolvedValue(null)
+    await expect(assertMemberServiceAccess(9, 1))
+      .rejects.toBeInstanceOf(ForbiddenError)
+  })
+  it("M3 — throws ForbiddenError when member does not exist (no 404 oracle)", async () => {
+    prismaMock.healthcareMember.findFirst.mockResolvedValue(null)
+    await expect(assertMemberServiceAccess(9, 99999))
+      .rejects.toBeInstanceOf(ForbiddenError)
+  })
+  it("M3 — passes when caller shares the target's service", async () => {
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
+    await expect(assertMemberServiceAccess(9, 1)).resolves.toBeUndefined()
+  })
+})
+
+describe("memberUnavailability EXCLUDE constraint (C2/M10)", () => {
+  it("C2 — maps PrismaClientUnknownRequestError(23P01) to ValidationError", async () => {
+    prismaMock.healthcareMember.findUnique.mockResolvedValue({ id: 1, serviceId: 10 } as any)
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 99 } as any)
+    const err = new Prisma.PrismaClientUnknownRequestError(
+      "exclusion violation 23P01 conflicting key range",
+      { clientVersion: "7.6.0" },
+    )
+    prismaMock.memberUnavailability.create.mockRejectedValueOnce(err)
+    await expect(
+      memberUnavailabilityService.create({
+        memberId: 1,
+        startAt: new Date("2026-06-10T09:00:00Z"),
+        endAt: new Date("2026-06-10T10:00:00Z"),
+      }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+  it("M10 — maps P2002 UNIQUE violation to ValidationError fallback", async () => {
+    prismaMock.healthcareMember.findUnique.mockResolvedValue({ id: 1, serviceId: 10 } as any)
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 99 } as any)
+    const err = new Prisma.PrismaClientKnownRequestError(
+      "unique violation", { code: "P2002", clientVersion: "7.6.0", meta: {} },
+    )
+    prismaMock.memberUnavailability.create.mockRejectedValueOnce(err)
+    await expect(
+      memberUnavailabilityService.create({
+        memberId: 1,
+        startAt: new Date("2026-06-10T09:00:00Z"),
+        endAt: new Date("2026-06-10T10:00:00Z"),
+      }, 9),
+    ).rejects.toBeInstanceOf(ValidationError)
   })
 })
 

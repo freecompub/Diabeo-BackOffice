@@ -23,6 +23,7 @@ import {
   type AppointmentStatus,
   type BookingMode,
   type CancellationActor,
+  type Role,
 } from "@prisma/client"
 import { prisma, type PrismaClientOrTx as Tx } from "@/lib/db/client"
 import { auditService } from "./audit.service"
@@ -54,19 +55,28 @@ async function assertServiceMember(
 }
 
 /**
- * H11 — guard for routes that scope by `memberId` rather than `patientId`.
- * Ensures the caller is a member of the same service as the target member,
- * preventing cross-tenant reconnaissance via member-scoped endpoints.
+ * H11/H2 — guard for routes that scope by `memberId` rather than `patientId`.
+ * Ensures the caller is a member of the same service as the target member.
+ *
+ * **Returns `ForbiddenError` for all failure modes** (member missing, member
+ * has no service, caller is not in the same service) — collapses 404 vs 403
+ * into a single response shape to prevent cross-tenant memberId enumeration.
+ *
+ * H7 — single-query implementation : join the membership check with the
+ * target lookup to avoid two sequential round-trips.
  */
 export async function assertMemberServiceAccess(
   callerUserId: number, memberId: number,
 ): Promise<void> {
-  const target = await prisma.healthcareMember.findUnique({
-    where: { id: memberId }, select: { id: true, serviceId: true },
+  const target = await prisma.healthcareMember.findFirst({
+    where: {
+      id: memberId,
+      serviceId: { not: null },
+      service: { members: { some: { userId: callerUserId } } },
+    },
+    select: { id: true },
   })
-  if (!target) throw new NotFoundError()
-  if (target.serviceId === null) throw new ForbiddenError()
-  await assertServiceMember(callerUserId, target.serviceId)
+  if (!target) throw new ForbiddenError()
 }
 
 async function assertPatientAlive(patientId: number, tx: Tx = prisma): Promise<void> {
@@ -128,6 +138,7 @@ async function assertNoOverlap(
   const dayCeil = new Date(endAt)
   dayCeil.setUTCHours(23, 59, 59, 999)
 
+  const OVERLAP_TAKE = 1000
   const sameDay = await tx.appointment.findMany({
     where: {
       memberId,
@@ -136,8 +147,13 @@ async function assertNoOverlap(
       ...(excludeAppointmentId ? { NOT: { id: excludeAppointmentId } } : {}),
     },
     select: { date: true, hour: true, durationMinutes: true },
-    take: 1000, // M3 safety cap — a single day overlap query should never exceed this
+    take: OVERLAP_TAKE, // M3 safety cap
   })
+  if (sameDay.length === OVERLAP_TAKE) {
+    // M4 — silent truncation would miss conflicts beyond position 1000.
+    //      Refuse the booking conservatively rather than risk a double-book.
+    throw new ValidationError("overlapQueryTruncated")
+  }
   for (const a of sameDay) {
     const aStart = combineDateHour(a.date, a.hour)
     const aEnd = computeEnd(aStart, a.durationMinutes)
@@ -239,6 +255,18 @@ export type AppointmentCreateInput = {
   type?: string
   motif?: string
   note?: string
+}
+
+/** M7 — named patch types so callers don't depend on positional `Parameters<>`
+ *  indexing into private function signatures. */
+export type AppointmentUpdatePatch = {
+  date?: Date; hour?: Date; durationMinutes?: number;
+  location?: AppointmentLocation; type?: string;
+  motif?: string | null; note?: string | null;
+}
+export type MemberBookingConfigUpdateInput = {
+  bookingMode?: BookingMode;
+  defaultAppointmentMinutes?: number | null;
 }
 
 export const rdvAppointmentService = {
@@ -344,15 +372,20 @@ export const rdvAppointmentService = {
     }
 
     const LIST_LIMIT = 200
+    // M2 — widen `from` by 1 day so cross-midnight appointments starting the
+    //      day before the queried range are returned, then re-filter in JS to
+    //      keep only those whose end-time falls inside [input.from, input.to].
+    const widenedFrom = new Date(input.from)
+    widenedFrom.setUTCDate(widenedFrom.getUTCDate() - 1)
     const where: Prisma.AppointmentWhereInput = {
-      date: { gte: input.from, lte: input.to },
+      date: { gte: widenedFrom, lte: input.to },
       // M1 — exclude soft-deleted patients.
       patient: { deletedAt: null },
       ...(input.memberId !== undefined && { memberId: input.memberId }),
       ...(input.patientId !== undefined && { patientId: input.patientId }),
       ...(input.status && { status: input.status }),
     }
-    const rows = await prisma.appointment.findMany({
+    const rowsRaw = await prisma.appointment.findMany({
       where,
       orderBy: [{ date: "asc" }, { hour: "asc" }],
       take: LIST_LIMIT + 1,
@@ -367,6 +400,13 @@ export const rdvAppointmentService = {
         cancelledAt: true,
         createdAt: true, updatedAt: true,
       },
+    })
+    // Filter day-before rows whose end ≤ input.from (they don't spill into the
+    // requested window).
+    const rows = rowsRaw.filter((r) => {
+      const start = combineDateHour(r.date, r.hour)
+      const end = computeEnd(start, r.durationMinutes)
+      return end > input.from && start <= input.to
     })
     const truncated = rows.length > LIST_LIMIT
     const items = (truncated ? rows.slice(0, LIST_LIMIT) : rows).map(toAppointmentListItemDTO)
@@ -386,11 +426,7 @@ export const rdvAppointmentService = {
 
   async update(
     id: number,
-    patch: {
-      date?: Date; hour?: Date; durationMinutes?: number;
-      location?: AppointmentLocation; type?: string;
-      motif?: string | null; note?: string | null;
-    },
+    patch: AppointmentUpdatePatch,
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
@@ -475,7 +511,7 @@ export const rdvAppointmentService = {
    */
   async cancel(
     id: number,
-    input: { actor: CancellationActor; reason?: string },
+    input: { actor: CancellationActor; reason?: string; callerRole?: Role },
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
@@ -510,6 +546,7 @@ export const rdvAppointmentService = {
         metadata: {
           patientId: existing.patientId,
           kind: "cancel", actor: input.actor,
+          callerRole: input.callerRole ?? null,
           lateCancel, hoursUntil: Math.round(hoursUntil),
         },
       })
@@ -519,7 +556,12 @@ export const rdvAppointmentService = {
 
   /** US-2503 — doctor proposes a new date/hour to a cancelled appointment.
    *  H10 — overlap-check the proposed slot so the patient doesn't accept a
-   *  slot that has become unavailable since the cancel. */
+   *  slot that has become unavailable since the cancel.
+   *
+   *  L7 — re-proposal is idempotent (overwrites any stale `proposedAlternativeAt`).
+   *       The TTL (`PROPOSAL_TTL_MS`) is only checked on the accept-side so an
+   *       expired proposal can be refreshed by the doctor without a state transition.
+   */
   async proposeAlternative(
     id: number, alternativeAt: Date, auditUserId: number, ctx?: AuditContext,
   ): Promise<AppointmentDTO> {
@@ -556,9 +598,11 @@ export const rdvAppointmentService = {
 
   /** US-2503 — patient accepts the alternative → revert cancellation.
    *  M14 — must still be `cancelled`. M10 — TTL applied (proposal expires after 7d).
-   *  L6 — preserve seconds in the new hour. L9 — audit on conflict. */
+   *  L6 — preserve seconds in the new hour. L9 — audit on conflict.
+   *  H8 — `callerRole` is logged alongside the accept action so forensics
+   *       can distinguish patient self-accept vs staff accept-on-behalf. */
   async acceptAlternative(
-    id: number, auditUserId: number, ctx?: AuditContext,
+    id: number, auditUserId: number, ctx?: AuditContext, callerRole?: Role,
   ): Promise<AppointmentDTO> {
     return prisma.$transaction(async (tx) => {
       const existing = await tx.appointment.findUnique({ where: { id } })
@@ -613,6 +657,7 @@ export const rdvAppointmentService = {
         metadata: {
           patientId: existing.patientId,
           kind: "accept-alternative",
+          callerRole: callerRole ?? null,
           newAt: alt.toISOString(),
         },
       })
@@ -716,10 +761,19 @@ export const memberUnavailabilityService = {
         })
         return decodeUnavailability(row)
       } catch (err) {
-        // H3 — Postgres EXCLUDE constraint surfaces as P2002/P2010 ; map to typed error.
+        // H3/C2 — Postgres EXCLUDE constraint violations raise sqlstate 23P01.
+        // @prisma/adapter-pg does NOT remap 23P01 to a `PrismaClientKnownRequestError`,
+        // so the error surfaces as `PrismaClientUnknownRequestError` with the raw
+        // driver code embedded in `.message`. We must catch both flavours.
         if (
           err instanceof Prisma.PrismaClientKnownRequestError &&
-          (err.code === "P2002" || err.code === "P2010")
+          err.code === "P2002"
+        ) {
+          throw new ValidationError("unavailabilityOverlap") // UNIQUE fallback
+        }
+        if (
+          err instanceof Prisma.PrismaClientUnknownRequestError &&
+          err.message.includes("23P01")
         ) {
           throw new ValidationError("unavailabilityOverlap")
         }
@@ -734,12 +788,8 @@ export const memberUnavailabilityService = {
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<UnavailabilityDTO[]> {
-    const member = await prisma.healthcareMember.findUnique({
-      where: { id: memberId }, select: { id: true, serviceId: true },
-    })
-    if (!member) throw new NotFoundError()
-    if (member.serviceId === null) throw new ValidationError("memberHasNoService")
-    await assertServiceMember(auditUserId, member.serviceId)
+    // H2 — uniform `ForbiddenError` (no 404 vs 403 oracle on member enumeration).
+    await assertMemberServiceAccess(auditUserId, memberId)
 
     const rows = await prisma.memberUnavailability.findMany({
       where: { memberId, startAt: { lt: range.to }, endAt: { gt: range.from } },
@@ -756,13 +806,20 @@ export const memberUnavailabilityService = {
 
   async delete(id: number, auditUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
-      const u = await tx.memberUnavailability.findUnique({
-        where: { id },
+      // H2 — fold the membership check + existence check into one query so
+      // a cross-tenant caller sees a uniform `ForbiddenError` regardless of
+      // whether the unavailability exists.
+      const u = await tx.memberUnavailability.findFirst({
+        where: {
+          id,
+          member: {
+            serviceId: { not: null },
+            service: { members: { some: { userId: auditUserId } } },
+          },
+        },
         select: { id: true, memberId: true, member: { select: { serviceId: true } } },
       })
-      if (!u) throw new NotFoundError()
-      if (u.member.serviceId === null) throw new ValidationError("memberHasNoService")
-      await assertServiceMember(auditUserId, u.member.serviceId, tx)
+      if (!u) throw new ForbiddenError()
       await tx.memberUnavailability.delete({ where: { id } })
       await auditService.logWithTx(tx, {
         userId: auditUserId, action: "DELETE", resource: "MEMBER_UNAVAILABILITY",
@@ -801,7 +858,7 @@ export const memberBookingConfigService = {
 
   async update(
     memberId: number,
-    input: { bookingMode?: BookingMode; defaultAppointmentMinutes?: number | null },
+    input: MemberBookingConfigUpdateInput,
     auditUserId: number,
     ctx?: AuditContext,
   ): Promise<MemberBookingConfigDTO> {

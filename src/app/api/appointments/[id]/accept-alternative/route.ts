@@ -16,7 +16,9 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const gate = await appointmentRouteGate(req, id, "NURSE", "accept-alternative")
     if (gate.kind === "error") return gate.res
 
-    const out = await rdvAppointmentService.acceptAlternative(gate.apptId, gate.user.id, ctx)
+    const out = await rdvAppointmentService.acceptAlternative(
+      gate.apptId, gate.user.id, ctx, gate.user.role,
+    )
     return NextResponse.json(out)
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })

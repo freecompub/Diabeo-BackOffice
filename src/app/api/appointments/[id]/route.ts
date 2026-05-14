@@ -4,7 +4,10 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AppointmentLocation } from "@prisma/client"
 import { AuthError } from "@/lib/auth"
-import { rdvAppointmentService } from "@/lib/services/rdv.service"
+import {
+  rdvAppointmentService,
+  type AppointmentUpdatePatch,
+} from "@/lib/services/rdv.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
 import { appointmentRouteGate, HOUR_RE } from "@/lib/appointments-route-helpers"
@@ -52,7 +55,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
       )
     }
     // H6 — preserve `null` as explicit clear (don't drop it via && short-circuit).
-    const patch: Parameters<typeof rdvAppointmentService.update>[1] = {}
+    const patch: AppointmentUpdatePatch = {}
     if (parsed.data.date) patch.date = new Date(parsed.data.date)
     if (parsed.data.hour) patch.hour = new Date(`1970-01-01T${parsed.data.hour}:00Z`)
     if (parsed.data.durationMinutes !== undefined) patch.durationMinutes = parsed.data.durationMinutes
