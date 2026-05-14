@@ -51,6 +51,19 @@ interface LoginResult {
  * @param errorCode - Value of the `error` field returned by the API
  * @param status    - HTTP response status code
  */
+/**
+ * L4 (re-review) — type guard for the `/api/account` probe response. Returns
+ * true only when the payload definitively identifies a VIEWER (patient self-
+ * service role).
+ */
+function isViewerAccount(value: unknown): value is { role: "VIEWER" } {
+  return (
+    typeof value === "object" && value !== null
+    && "role" in value
+    && (value as Record<string, unknown>).role === "VIEWER"
+  )
+}
+
 function mapErrorToMessage(errorCode: string, status: number): string {
   switch (errorCode) {
     case "invalidCredentials":
@@ -117,8 +130,25 @@ export function useAuth() {
         // JWT itself is httpOnly — we never touch it from client code.
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
+        // US-3356 — Role-based redirect : VIEWER lands on patient self-service
+        // dashboard, all other roles (pros) on the cabinet dashboard. We probe
+        // `/api/account` (returns role) immediately after login. Layout-side
+        // guards in (dashboard) and (patient) layouts will bounce mis-routed
+        // users if this probe ever returns a stale or malformed payload.
+        let target = "/dashboard"
+        try {
+          const me = await fetch("/api/account", { credentials: "include" })
+          if (me.ok) {
+            const account: unknown = await me.json()
+            if (isViewerAccount(account)) target = "/patient/dashboard"
+          }
+        } catch {
+          // Network blip: fall through to /dashboard. Layout-side guards will
+          // bounce a VIEWER back to /patient/dashboard if needed.
+        }
+
         // JWT is set as httpOnly cookie by the server — no client-side storage
-        router.push("/dashboard")
+        router.push(target)
         return { success: true }
       } catch {
         const errorMsg = t("networkError")

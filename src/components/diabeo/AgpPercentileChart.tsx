@@ -1,0 +1,268 @@
+/**
+ * US-3362 — AGP percentile chart (Ambulatory Glucose Profile).
+ *
+ * Renders 24h glucose distribution as nested percentile bands:
+ *  - outer (10-90%)  pale teal
+ *  - inner (25-75%)  mid teal
+ *  - median line     dark teal
+ *
+ * Input: 96 slots @ 15-min intervals (cf. `AgpSlot` in `src/lib/statistics`).
+ * Empty state ("Données insuffisantes — porter le capteur ≥ 3 jours")
+ * is rendered when fewer than `minSlots` are present.
+ *
+ * The chart is read-only ; period selection is owned by the parent.
+ */
+
+"use client"
+
+import { useEffect, useMemo, useState } from "react"
+
+/** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
+ *  preference change re-applies to the animation prop. */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  })
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+    const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches)
+    mql.addEventListener("change", handler)
+    return () => mql.removeEventListener("change", handler)
+  }, [])
+  return reduced
+}
+import {
+  ComposedChart,
+  Area,
+  Line,
+  ReferenceArea,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+} from "recharts"
+import { type AgpSlot } from "@/lib/statistics"
+
+// H4 (re-review) — import the canonical AgpSlot type from statistics.ts to
+// avoid shape-drift. Re-exported here as `AgpSlotPoint` for backward-compat
+// with existing callers.
+export type AgpSlotPoint = AgpSlot
+
+export interface AgpPercentileChartProps {
+  slots: AgpSlotPoint[]
+  /** Glycemia target range in mg/dL (default ADA: 70–180). */
+  targetLowMgdl?: number
+  targetHighMgdl?: number
+  /** Minimum slot count to render the chart (rest → empty state). */
+  minSlots?: number
+  height?: number
+}
+
+/** Convert g/L → mg/dL (input stored in g/L per repo convention). */
+function glToMgdl(gl: number): number {
+  return gl * 100
+}
+
+function formatHour(minutes: number): string {
+  const h = Math.floor(minutes / 60)
+  return h.toString().padStart(2, "0") + ":00"
+}
+
+/** M7/L3 — narrow keys + module-scope (allocated once, not per render). */
+const USER_VISIBLE_KEYS = new Set(["p10", "p25", "p50", "p75", "p90"])
+const PERCENTILE_LABELS = {
+  p10: "10ᵉ percentile",
+  p25: "25ᵉ percentile",
+  p50: "Médiane",
+  p75: "75ᵉ percentile",
+  p90: "90ᵉ percentile",
+} as const satisfies Record<"p10" | "p25" | "p50" | "p75" | "p90", string>
+
+export function AgpPercentileChart({
+  slots,
+  targetLowMgdl = 70,
+  targetHighMgdl = 180,
+  minSlots = 12, // ≈ 3h of capture across the day
+  height = 280,
+}: AgpPercentileChartProps) {
+  // All hooks must be called BEFORE any conditional return (Rules of Hooks).
+  // H7 / L1 (re-review) — listener-based hook reacts to runtime preference change.
+  const prefersReducedMotion = useReducedMotion()
+
+  // Build chart data: stacked Areas need cumulative deltas, but Recharts
+  // supports value pairs via Area with `stackId`. We derive bands as raw
+  // mg/dL pairs and rely on layered Areas for the visual bands.
+  // M4 (re-review) — Math.max(0, …) clamp guards against inverted percentiles
+  // from upstream stats bugs ; a negative slice would visually "eat" the floor.
+  const data = useMemo(() => slots.map((s) => ({
+    minute: s.timeMinutes,
+    hour: formatHour(s.timeMinutes),
+    p10: glToMgdl(s.p10),
+    p25: glToMgdl(s.p25),
+    p50: glToMgdl(s.p50),
+    p75: glToMgdl(s.p75),
+    p90: glToMgdl(s.p90),
+    bandLow: Math.max(0, glToMgdl(s.p25 - s.p10)),
+    bandMid: Math.max(0, glToMgdl(s.p75 - s.p25)),
+    bandHigh: Math.max(0, glToMgdl(s.p90 - s.p75)),
+    floor: glToMgdl(s.p10),
+  })), [slots])
+
+  /** Recharts uses internal dataKeys (`bandLow/bandMid/bandHigh/floor`) for
+   *  the stacked-area trick. Filter them out of the tooltip + show only the
+   *  user-meaningful percentiles. (M5 re-review.) */
+
+  // Empty-state check runs AFTER hooks (Rules of Hooks compliance).
+  if (slots.length < minSlots) {
+    return (
+      <div
+        role="status"
+        className="flex flex-col items-center justify-center text-center
+                   border border-dashed border-gray-300 rounded-lg
+                   p-6 text-sm text-gray-600"
+        style={{ height }}
+      >
+        <p className="font-medium text-gray-700 mb-1">
+          Données insuffisantes
+        </p>
+        <p>Portez le capteur CGM au moins 3 jours pour générer un profil AGP.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full" role="figure" aria-label="Profil ambulatoire de glycémie sur 7 jours">
+      <ResponsiveContainer width="100%" height={height}>
+        <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 24, left: 12 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+          <XAxis
+            dataKey="minute"
+            type="number"
+            domain={[0, 1440]}
+            ticks={[0, 240, 480, 720, 960, 1200, 1440]}
+            tickFormatter={(m) => formatHour(m)}
+            stroke="#6B7280"
+            tick={{ fontSize: 11 }}
+          />
+          <YAxis
+            domain={[40, 300]}
+            ticks={[40, 70, 140, 180, 250]}
+            stroke="#6B7280"
+            tick={{ fontSize: 11 }}
+            label={{
+              value: "mg/dL", angle: -90,
+              position: "insideLeft", offset: 0,
+              style: { textAnchor: "middle", fontSize: 11, fill: "#6B7280" },
+            }}
+          />
+          {/* Target range band — green tint */}
+          <ReferenceArea
+            y1={targetLowMgdl} y2={targetHighMgdl}
+            fill="#10B981" fillOpacity={0.08}
+            ifOverflow="extendDomain"
+          />
+          {/* Stacked percentile bands. Floor (transparent) lifts the visible
+              bands to start at p10. Each subsequent Area stacks delta height. */}
+          <Area type="monotone" dataKey="floor" stackId="agp"
+                stroke="none" fill="transparent"
+                isAnimationActive={!prefersReducedMotion} />
+          <Area type="monotone" dataKey="bandLow" stackId="agp"
+                stroke="none" fill="#0D9488" fillOpacity={0.12}
+                isAnimationActive={!prefersReducedMotion} />
+          <Area type="monotone" dataKey="bandMid" stackId="agp"
+                stroke="none" fill="#0D9488" fillOpacity={0.28}
+                isAnimationActive={!prefersReducedMotion} />
+          <Area type="monotone" dataKey="bandHigh" stackId="agp"
+                stroke="none" fill="#0D9488" fillOpacity={0.12}
+                isAnimationActive={!prefersReducedMotion} />
+          {/* Median line */}
+          <Line type="monotone" dataKey="p50"
+                stroke="#0F766E" strokeWidth={2} dot={false}
+                isAnimationActive={!prefersReducedMotion} />
+          <Tooltip
+            formatter={(value, name) => {
+              const key = String(name)
+              if (!USER_VISIBLE_KEYS.has(key)) return null as never
+              const n = typeof value === "number" ? value : Number(value)
+              const label = PERCENTILE_LABELS[key as keyof typeof PERCENTILE_LABELS] ?? key
+              return [
+                Number.isFinite(n) ? `${Math.round(n)} mg/dL` : "—",
+                label,
+              ]
+            }}
+            labelFormatter={(m) => formatHour(m as number)}
+            contentStyle={{ fontSize: 12 }}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
+        <span className="flex items-center gap-1">
+          <span
+            className="w-3 h-1 bg-teal-700 inline-block"
+            aria-label="Ligne médiane (50ème percentile)"
+            role="img"
+          />
+          Médiane
+        </span>
+        <span className="flex items-center gap-1">
+          <span
+            className="w-3 h-3 bg-teal-600/30 inline-block"
+            aria-label="Bande percentile 25-75 (teinte moyenne)"
+            role="img"
+          />
+          25-75 %
+        </span>
+        <span className="flex items-center gap-1">
+          <span
+            className="w-3 h-3 bg-teal-500/15 inline-block"
+            aria-label="Bande percentile 10-90 (teinte claire)"
+            role="img"
+          />
+          10-90 %
+        </span>
+        <span className="flex items-center gap-1">
+          <span
+            className="w-3 h-3 bg-emerald-500/15 inline-block"
+            aria-label="Zone glycémique cible"
+            role="img"
+          />
+          Cible {targetLowMgdl}-{targetHighMgdl} mg/dL
+        </span>
+      </div>
+
+      {/* C1 (re-review) — sr-only table for screen readers (WCAG 1.1.1 / 1.3.1).
+          Pattern aligned with CgmChart.tsx — required in a medical app. */}
+      <table className="sr-only">
+        <caption>
+          Profil ambulatoire de glycémie — valeurs par tranche de 15 minutes
+          sur 7 jours. Cible {targetLowMgdl}-{targetHighMgdl} mg/dL.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Heure</th>
+            <th scope="col">10ᵉ percentile</th>
+            <th scope="col">25ᵉ percentile</th>
+            <th scope="col">Médiane</th>
+            <th scope="col">75ᵉ percentile</th>
+            <th scope="col">90ᵉ percentile</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map((row) => (
+            <tr key={row.minute}>
+              <th scope="row">{row.hour}</th>
+              <td>{Math.round(row.p10)} mg/dL</td>
+              <td>{Math.round(row.p25)} mg/dL</td>
+              <td>{Math.round(row.p50)} mg/dL</td>
+              <td>{Math.round(row.p75)} mg/dL</td>
+              <td>{Math.round(row.p90)} mg/dL</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

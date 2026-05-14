@@ -84,6 +84,12 @@ interface NavigationShellProps {
   userRole?: UserRole
   userName?: string
   onRefresh?: () => void
+  /**
+   * US-3356 — Override default pro-facing nav items. Used by the patient
+   * (patient) layout to render a simpler self-service sidebar (Accueil,
+   * Glycémie, Profil, Préférences, etc.) instead of the cabinet nav.
+   */
+  navItemsOverride?: NavItem[]
 }
 
 // --- Constants ---
@@ -227,6 +233,7 @@ export function NavigationShell({
   userRole = "VIEWER",
   userName,
   onRefresh,
+  navItemsOverride,
 }: NavigationShellProps) {
   const t = useTranslations()
   const tNav = useTranslations("nav")
@@ -235,7 +242,8 @@ export function NavigationShell({
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const filteredItems = navItems.filter((item) =>
+  const sourceItems = navItemsOverride ?? navItems
+  const filteredItems = sourceItems.filter((item) =>
     hasRoleAccess(userRole, item.minRole)
   )
 

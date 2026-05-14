@@ -162,5 +162,7 @@ export const config = {
     "/medications/:path*",
     "/settings/:path*",
     "/import/:path*",
+    /** US-3356 — patient self-service layout. */
+    "/patient/:path*",
   ],
 }
