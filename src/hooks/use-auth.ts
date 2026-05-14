@@ -51,6 +51,19 @@ interface LoginResult {
  * @param errorCode - Value of the `error` field returned by the API
  * @param status    - HTTP response status code
  */
+/**
+ * L4 (re-review) — type guard for the `/api/account` probe response. Returns
+ * true only when the payload definitively identifies a VIEWER (patient self-
+ * service role).
+ */
+function isViewerAccount(value: unknown): value is { role: "VIEWER" } {
+  return (
+    typeof value === "object" && value !== null
+    && "role" in value
+    && (value as Record<string, unknown>).role === "VIEWER"
+  )
+}
+
 function mapErrorToMessage(errorCode: string, status: number): string {
   switch (errorCode) {
     case "invalidCredentials":
@@ -126,16 +139,8 @@ export function useAuth() {
         try {
           const me = await fetch("/api/account", { credentials: "include" })
           if (me.ok) {
-            const account = (await me.json()) as unknown
-            // H6/M8 (re-review) — minimal shape guard so a backend rename of
-            // `role` doesn't silently misroute users without a redirect loop.
-            if (
-              typeof account === "object" && account !== null
-              && "role" in account
-              && (account as { role?: unknown }).role === "VIEWER"
-            ) {
-              target = "/patient/dashboard"
-            }
+            const account: unknown = await me.json()
+            if (isViewerAccount(account)) target = "/patient/dashboard"
           }
         } catch {
           // Network blip: fall through to /dashboard. Layout-side guards will

@@ -15,7 +15,24 @@
 
 "use client"
 
-import { useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
+
+/** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
+ *  preference change re-applies to the animation prop. */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  })
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return
+    const mql = window.matchMedia("(prefers-reduced-motion: reduce)")
+    const handler = (e: MediaQueryListEvent) => setReduced(e.matches)
+    mql.addEventListener("change", handler)
+    return () => mql.removeEventListener("change", handler)
+  }, [])
+  return reduced
+}
 import {
   ComposedChart,
   Area,
@@ -54,6 +71,16 @@ function formatHour(minutes: number): string {
   return h.toString().padStart(2, "0") + ":00"
 }
 
+/** M7/L3 — narrow keys + module-scope (allocated once, not per render). */
+const USER_VISIBLE_KEYS = new Set(["p10", "p25", "p50", "p75", "p90"])
+const PERCENTILE_LABELS = {
+  p10: "10ᵉ percentile",
+  p25: "25ᵉ percentile",
+  p50: "Médiane",
+  p75: "75ᵉ percentile",
+  p90: "90ᵉ percentile",
+} as const satisfies Record<"p10" | "p25" | "p50" | "p75" | "p90", string>
+
 export function AgpPercentileChart({
   slots,
   targetLowMgdl = 70,
@@ -78,10 +105,8 @@ export function AgpPercentileChart({
     )
   }
 
-  // Detect reduced-motion preference once at render (H7 — WCAG 2.3.3).
-  const prefersReducedMotion =
-    typeof window !== "undefined"
-    && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches
+  // H7 / L1 (re-review) — listener-based hook reacts to runtime preference change.
+  const prefersReducedMotion = useReducedMotion()
 
   // Build chart data: stacked Areas need cumulative deltas, but Recharts
   // supports value pairs via Area with `stackId`. We derive bands as raw
@@ -105,14 +130,6 @@ export function AgpPercentileChart({
   /** Recharts uses internal dataKeys (`bandLow/bandMid/bandHigh/floor`) for
    *  the stacked-area trick. Filter them out of the tooltip + show only the
    *  user-meaningful percentiles. (M5 re-review.) */
-  const userVisibleKeys = new Set(["p10", "p25", "p50", "p75", "p90"])
-  const PERCENTILE_LABELS: Record<string, string> = {
-    p10: "10ᵉ percentile",
-    p25: "25ᵉ percentile",
-    p50: "Médiane",
-    p75: "75ᵉ percentile",
-    p90: "90ᵉ percentile",
-  }
 
   return (
     <div className="w-full" role="figure" aria-label="Profil ambulatoire de glycémie sur 7 jours">
@@ -166,9 +183,9 @@ export function AgpPercentileChart({
           <Tooltip
             formatter={(value, name) => {
               const key = String(name)
-              if (!userVisibleKeys.has(key)) return null as never
+              if (!USER_VISIBLE_KEYS.has(key)) return null as never
               const n = typeof value === "number" ? value : Number(value)
-              const label = PERCENTILE_LABELS[key] ?? key
+              const label = PERCENTILE_LABELS[key as keyof typeof PERCENTILE_LABELS] ?? key
               return [
                 Number.isFinite(n) ? `${Math.round(n)} mg/dL` : "—",
                 label,
