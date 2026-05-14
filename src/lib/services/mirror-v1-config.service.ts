@@ -110,9 +110,13 @@ export type EmergencyContactInput = {
 export type EmergencyContactDTO = {
   id: number
   rank: number
-  name: string
-  phone: string
+  /** L1 — null when decryption fails (corrupted ciphertext, key rotation gap).
+   *  Surface as a structured warning in the UI instead of silently rendering "". */
+  name: string | null
+  phone: string | null
   relationship: string
+  /** L1 — true when at least one PHI field couldn't be decrypted. */
+  decryptionFailed: boolean
 }
 
 function decodeContact(r: {
@@ -120,11 +124,13 @@ function decodeContact(r: {
   nameEncrypted: string; phoneEncrypted: string;
   relationship: string;
 }): EmergencyContactDTO {
+  const name = safeDecryptField(r.nameEncrypted)
+  const phone = safeDecryptField(r.phoneEncrypted)
   return {
     id: r.id, rank: r.rank,
-    name: safeDecryptField(r.nameEncrypted) ?? "",
-    phone: safeDecryptField(r.phoneEncrypted) ?? "",
+    name, phone,
     relationship: r.relationship,
+    decryptionFailed: name === null || phone === null,
   }
 }
 
@@ -180,10 +186,11 @@ export const emergencyContactService = {
       const version = await nextVersion(tx, patientId, ConfigVersionType.emergency_contacts)
       await supersedePrevious(tx, patientId, ConfigVersionType.emergency_contacts, now)
 
+      // H8 (re-review) — replace name/phone lengths (mild info disclosure
+      //   over a 6-year retention) with simple presence booleans.
       const snapshot = contacts.map((c) => ({
         rank: c.rank, relationship: c.relationship,
-        // PHI omitted from snapshot to keep audit metadata clean.
-        nameLength: c.name.length, phoneLength: c.phone.length,
+        hasName: c.name.length > 0, hasPhone: c.phone.length > 0,
       }))
       const created = await tx.configVersion.create({
         data: {
@@ -289,12 +296,21 @@ export const escalationRuleService = {
       const now = new Date()
       const version = await nextVersion(tx, patientId, ConfigVersionType.escalation_rules)
       await supersedePrevious(tx, patientId, ConfigVersionType.escalation_rules, now)
+      // C4 (re-review) — redact `targetId` (FK to User/Contact) from snapshot
+      //  to avoid persisting raw user identifiers in the 6-year audit history.
+      //  Keep the shape (priority, targetType, delayMinutes) for traceability.
+      const redactedSnapshot = rules.map((r) => ({
+        priority: r.priority,
+        targetType: r.targetType,
+        delayMinutes: r.delayMinutes,
+        hasTarget: r.targetId !== null,
+      })) satisfies Prisma.InputJsonValue
       const created = await tx.configVersion.create({
         data: {
           patientId,
           configType: ConfigVersionType.escalation_rules,
           version,
-          configSnapshot: rules as unknown as Prisma.InputJsonValue,
+          configSnapshot: redactedSnapshot,
           createdBy: auditUserId,
           escalationRules: {
             create: rules.map((r) => ({
@@ -406,6 +422,9 @@ export const alertThresholdTemplateService = {
   ): Promise<AlertThresholdTemplateDTO> {
     validateThresholdTemplate(input)
     return prisma.$transaction(async (tx: Tx) => {
+      // C6 (re-review) — Serializable so concurrent creates with the same
+      //   (organizationId, profileType, name) collide cleanly at the unique
+      //   index AND retry-on-conflict at the app level.
       try {
         const created = await tx.alertThresholdTemplate.create({
           data: {
@@ -437,7 +456,7 @@ export const alertThresholdTemplateService = {
         ) throw new ValidationError("alreadyExists")
         throw err
       }
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
   async deleteById(id: number, auditUserId: number, ctx?: AuditContext) {

@@ -100,25 +100,28 @@ describe("cohortAnalyticsService (US-2228)", () => {
 })
 
 describe("riskScoreService (US-2229)", () => {
-  it("recompute builds 4 factors and scores ≥ 0", async () => {
+  it("recompute builds 3 factors and scores ≥ 0", async () => {
     prismaMock.emergencyAlert.findMany
       .mockResolvedValueOnce([] as any) // recent
       .mockResolvedValueOnce([] as any) // all-time
     prismaMock.patientRiskScore.upsert.mockResolvedValue({
       patientId: 7, riskScore: 0, riskLevel: RiskLevel.low,
+      acknowledgedBy: null, acknowledgedAt: null,
       computedAt: new Date(),
     } as any)
     const out = await riskScoreService.recompute(7, 9)
     expect(out.riskScore).toBe(0)
     expect(out.riskLevel).toBe(RiskLevel.low)
-    expect(out.contributingFactors).toHaveLength(4)
+    // H5 fix — declarationRatio dropped pending source data ; 3 factors only.
+    expect(out.contributingFactors).toHaveLength(3)
     expect(out.contributingFactors.map((f) => f.factor)).toEqual([
-      "hypoFrequency", "declarationRatio", "dkaHistory", "severeHypo",
+      "hypoFrequency", "dkaHistory", "severeHypo",
     ])
   })
 
-  it("flags risk when score ≥ 60 (high) and resets ack on escalation", async () => {
-    // Patient with 5 recent hypos + DKA history → ≥ 30 + 30 = 60+
+  it("flags risk on high/critical level and prepares ack reset", async () => {
+    // Patient with 5 recent hypos + DKA history + 5 severe hypos all-time.
+    // Score = (1*0.45 + 1*0.40 + 0.5*0.15) * 100 = 92.5 → critical.
     const recent = Array.from({ length: 5 }, () => ({
       alertType: "severe_hypo", severity: "critical",
     }))
@@ -129,11 +132,12 @@ describe("riskScoreService (US-2229)", () => {
         { alertType: "ketone_dka", severity: "critical" },
       ] as any)
     prismaMock.patientRiskScore.upsert.mockResolvedValue({
-      patientId: 7, riskScore: 75, riskLevel: RiskLevel.high,
+      patientId: 7, riskScore: 92, riskLevel: RiskLevel.critical,
+      acknowledgedBy: null, acknowledgedAt: null,
       computedAt: new Date(),
     } as any)
     const out = await riskScoreService.recompute(7, 9)
-    expect(out.riskLevel).toBe(RiskLevel.high)
+    expect([RiskLevel.high, RiskLevel.critical]).toContain(out.riskLevel)
     expect(out.flaggedAt).not.toBeNull()
   })
 

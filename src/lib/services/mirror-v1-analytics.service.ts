@@ -159,7 +159,7 @@ export const patientMonitoringService = {
         topHourOfDay,
         computedAt: upserted.computedAt,
       }
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 }
 
@@ -177,11 +177,16 @@ export type CohortAnalyticsDTO = {
   computedAt: Date
 }
 
-/** National benchmarks — anonymized aggregate published by ANSM / SFD.
- *  Placeholder values for MVP ; replace with monthly-updated dataset later. */
+/**
+ * M5 (re-review) — Placeholder benchmark NOT vetted by ANSM/SFD. Source field
+ * lets the UI render an appropriate disclaimer ("source: placeholder").
+ * Replace with monthly-updated dataset before launching the comparison line
+ * in the DOCTOR dashboard.
+ */
 const NATIONAL_BENCHMARK = {
   severeHypoRate: 8.5, // per 1000 patient-days
   dkaIncidence: 1.2,   // per 1000 patient-days
+  source: "placeholder-not-vetted" as const,
 }
 
 export const cohortAnalyticsService = {
@@ -267,10 +272,10 @@ export const cohortAnalyticsService = {
         userId: auditUserId, action: "UPDATE", resource: "COHORT_ANALYTICS",
         resourceId: String(organizationId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: {
-          organizationId, kind: "snapshot.recompute",
-          patientCount, severeHypoRate, dkaIncidence,
-        },
+        // H7 (re-review) — drop raw rates from audit metadata. The snapshot row
+        // already carries them; duplicating into audit_logs persists clinical
+        // KPIs in immutable storage for 6 years without need.
+        metadata: { organizationId, kind: "snapshot.recompute", patientCount },
       })
       return {
         organizationId: upserted.organizationId,
@@ -279,7 +284,7 @@ export const cohortAnalyticsService = {
         nationalBenchmark: NATIONAL_BENCHMARK,
         computedAt: upserted.computedAt,
       }
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 }
 
@@ -301,11 +306,20 @@ export type RiskScoreDTO = {
   computedAt: Date
 }
 
+/**
+ * H5 (re-review) — `declarationRatio` (self-reported vs detected hypos) needs
+ * a `source` field on EmergencyAlert that doesn't exist yet (TODO Batch C).
+ * Until that data lands, drop the factor and renormalise the 3 remaining
+ * weights to sum to 1.0 so scores can still reach 100.
+ *
+ * Weights chosen so a patient with frequent hypos AND a DKA history hits HIGH
+ * (≥ 60). Re-calibration to be validated by `medical-domain-validator` when
+ * the declaration source is wired up.
+ */
 const RISK_WEIGHTS = {
-  hypoFrequency: 0.35,
-  declarationRatio: 0.25,
-  dkaHistory: 0.30,
-  severeHypo: 0.10,
+  hypoFrequency: 0.45,
+  dkaHistory: 0.40,
+  severeHypo: 0.15,
 } as const
 
 function levelFromScore(score: number): RiskLevel {
@@ -345,6 +359,9 @@ export const riskScoreService = {
     patientId: number, auditUserId: number, ctx?: AuditContext,
   ): Promise<RiskScoreDTO> {
     const SEVEN_DAYS_AGO = new Date(Date.now() - 7 * 86_400_000)
+    // C5 (re-review) — bound the "all-time" lookback to 2 years to avoid
+    //  loading thousands of rows for long-lived patients (OOM risk).
+    const TWO_YEARS_AGO = new Date(Date.now() - 730 * 86_400_000)
     return prisma.$transaction(async (tx: Tx) => {
       const [recentAlerts, allAlerts] = await Promise.all([
         tx.emergencyAlert.findMany({
@@ -353,19 +370,21 @@ export const riskScoreService = {
             triggeredAt: { gte: SEVEN_DAYS_AGO },
           },
           select: { alertType: true, severity: true },
+          take: 500,
         }),
         tx.emergencyAlert.findMany({
-          where: { patientId },
+          where: {
+            patientId,
+            triggeredAt: { gte: TWO_YEARS_AGO },
+          },
           select: { alertType: true, severity: true },
+          take: 5000,
         }),
       ])
 
       const recentHypoCount = recentAlerts.filter(
         (a) => a.alertType === "hypo" || a.alertType === "severe_hypo",
       ).length
-      // Declaration ratio is a placeholder for self-report vs detected tracking
-      // (not yet captured on EmergencyAlert). Defaults to 1.0 (neutral).
-      const declarationRatio = 1.0
       const dkaHistory = allAlerts.some((a) => a.alertType === "ketone_dka")
       const allTimeSevere = allAlerts.filter(
         (a) => a.alertType === "severe_hypo",
@@ -378,14 +397,6 @@ export const riskScoreService = {
           weight: RISK_WEIGHTS.hypoFrequency,
           value: Math.min(recentHypoCount / 5, 1),
           contribution: Math.min(recentHypoCount / 5, 1) * RISK_WEIGHTS.hypoFrequency * 100,
-        },
-        {
-          factor: "declarationRatio",
-          weight: RISK_WEIGHTS.declarationRatio,
-          // Low declaration ratio (< 0.5) is risky → invert.
-          value: declarationRatio < 0.5 ? 1 - declarationRatio : 0,
-          contribution: (declarationRatio < 0.5 ? 1 - declarationRatio : 0)
-            * RISK_WEIGHTS.declarationRatio * 100,
         },
         {
           factor: "dkaHistory",
@@ -413,7 +424,9 @@ export const riskScoreService = {
           patientId,
           riskScore: score, riskLevel: level,
           recentHypoCount,
-          declarationRatio: new Prisma.Decimal(declarationRatio.toFixed(2)),
+          // H5 — placeholder (1.0 = neutral). Field is kept on the schema for
+          // future use once EmergencyAlert exposes the report source.
+          declarationRatio: new Prisma.Decimal("1.00"),
           dkaHistory,
           contributingFactors: factors as unknown as Prisma.InputJsonValue,
           flaggedAt,
@@ -421,7 +434,9 @@ export const riskScoreService = {
         update: {
           riskScore: score, riskLevel: level,
           recentHypoCount,
-          declarationRatio: new Prisma.Decimal(declarationRatio.toFixed(2)),
+          // H5 — placeholder (1.0 = neutral). Field is kept on the schema for
+          // future use once EmergencyAlert exposes the report source.
+          declarationRatio: new Prisma.Decimal("1.00"),
           dkaHistory,
           contributingFactors: factors as unknown as Prisma.InputJsonValue,
           flaggedAt,
@@ -435,16 +450,21 @@ export const riskScoreService = {
         userId: auditUserId, action: "UPDATE", resource: "PATIENT_RISK_SCORE",
         resourceId: String(patientId),
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: { patientId, kind: "score.recompute", score, level },
+        // H7 (re-review) — score/level are stored in the table, no need to
+        // duplicate into audit_logs (clinical judgment retained 6 years).
+        metadata: { patientId, kind: "score.recompute" },
       })
       return {
         patientId: upserted.patientId, riskScore: score, riskLevel: level,
-        recentHypoCount, declarationRatio, dkaHistory,
+        recentHypoCount, declarationRatio: 1.0, dkaHistory,
         contributingFactors: factors,
-        flaggedAt, acknowledgedBy: null, acknowledgedAt: null,
+        flaggedAt,
+        // M12 (re-review) — read from upserted row (may differ on update branch).
+        acknowledgedBy: upserted.acknowledgedBy,
+        acknowledgedAt: upserted.acknowledgedAt,
         computedAt: upserted.computedAt,
       }
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
   async acknowledge(
@@ -494,7 +514,13 @@ export const riskScoreService = {
       userId: auditUserId, action: "READ", resource: "PATIENT_RISK_SCORE",
       resourceId: String(organizationId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { organizationId, kind: "dashboard.list", count: rows.length },
+      // H9 (re-review) — record the patientIds touched so US-2268 forensics
+      //   `getByPatient(X)` can find this dashboard-read event. GIN index on
+      //   metadata->'patientIds' would be ideal ; ANY operator works on JSONB.
+      metadata: {
+        organizationId, kind: "dashboard.list", count: rows.length,
+        patientIds: rows.map((r) => r.patientId),
+      },
     })
     return rows.map((r) => ({
       patientId: r.patientId, riskScore: r.riskScore, riskLevel: r.riskLevel,

@@ -5,6 +5,7 @@ import { z } from "zod"
 import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
+import { requireGdprConsent } from "@/lib/gdpr"
 import {
   emergencyContactService,
 } from "@/lib/services/mirror-v1-config.service"
@@ -25,9 +26,24 @@ const upsertSchema = z.object({
 export async function GET(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
-    const user = await auditedRequireRole(req, "VIEWER", ctx, "EMERGENCY_CONTACT", "list")
+    const user = await auditedRequireRole(req, "VIEWER", ctx, "EMERGENCY_CONTACT", "0")
     const res = await resolvePatientIdFromQuery(req, user.id, user.role)
     if (res.error) return NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 })
+    // C1 (re-review) — block cross-tenant PHI reads.
+    const allowed = await canAccessPatient(user.id, user.role, res.patientId)
+    if (!allowed) {
+      await auditService.accessDenied({
+        userId: user.id, resource: "EMERGENCY_CONTACT", resourceId: String(res.patientId),
+        ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+        metadata: { patientId: res.patientId, endpoint: "list" },
+      })
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+    // H6 — GDPR consent required before decrypting PHI.
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const out = await emergencyContactService.list(res.patientId, user.id, ctx)
     return NextResponse.json(out)
   } catch (e) {

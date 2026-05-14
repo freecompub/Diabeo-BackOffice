@@ -24,9 +24,19 @@ const upsertSchema = z.object({
 export async function GET(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
-    const user = await auditedRequireRole(req, "VIEWER", ctx, "ESCALATION_RULE", "list")
+    const user = await auditedRequireRole(req, "VIEWER", ctx, "ESCALATION_RULE", "0")
     const res = await resolvePatientIdFromQuery(req, user.id, user.role)
     if (res.error) return NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 })
+    // C1 — block cross-tenant access.
+    const allowed = await canAccessPatient(user.id, user.role, res.patientId)
+    if (!allowed) {
+      await auditService.accessDenied({
+        userId: user.id, resource: "ESCALATION_RULE", resourceId: String(res.patientId),
+        ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+        metadata: { patientId: res.patientId, endpoint: "list" },
+      })
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
     const out = await escalationRuleService.list(res.patientId, user.id, ctx)
     return NextResponse.json(out)
   } catch (e) {

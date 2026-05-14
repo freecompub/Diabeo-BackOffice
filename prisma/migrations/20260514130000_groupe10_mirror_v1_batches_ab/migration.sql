@@ -56,8 +56,12 @@ ALTER TABLE "config_versions"
         ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- US-2221 — append-only trigger : reject UPDATE on config_snapshot /
--- created_by / version after row insertion. valid_to + status + validated_*
--- remain mutable (intentional, for state transitions).
+-- created_by / version after row insertion.
+-- H3 (re-review) — also lock `validated_by` and `validated_at` once set
+-- (a NURSE-created version can be approved by a DOCTOR exactly once ;
+-- attempts to forge approval via direct SQL/Prisma are blocked).
+-- `valid_to` and `status` remain mutable for the supersession workflow,
+-- but status transitions are restricted to allowed states.
 CREATE OR REPLACE FUNCTION config_versions_immutability()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -69,6 +73,17 @@ BEGIN
        OR OLD.valid_from    IS DISTINCT FROM NEW.valid_from THEN
         RAISE EXCEPTION 'config_versions: immutable columns cannot be modified';
     END IF;
+    -- H3 — once validated, validated_by + validated_at are frozen forever.
+    IF OLD.validated_at IS NOT NULL AND (
+           OLD.validated_at IS DISTINCT FROM NEW.validated_at
+        OR OLD.validated_by IS DISTINCT FROM NEW.validated_by
+    ) THEN
+        RAISE EXCEPTION 'config_versions: validation cannot be revoked or replayed';
+    END IF;
+    -- Forbid resurrecting an archived version.
+    IF OLD.status = 'archived' AND NEW.status <> 'archived' THEN
+        RAISE EXCEPTION 'config_versions: archived versions are terminal';
+    END IF;
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -77,6 +92,20 @@ CREATE TRIGGER config_versions_immutability_trigger
     BEFORE UPDATE ON "config_versions"
     FOR EACH ROW
     EXECUTE FUNCTION config_versions_immutability();
+
+-- M6 (re-review) — append-only also means no DELETE. Match the audit_logs
+-- pattern (cf. prisma/sql/audit_immutability.sql).
+CREATE OR REPLACE FUNCTION config_versions_no_delete()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'config_versions: append-only, DELETE is forbidden';
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER config_versions_no_delete_trigger
+    BEFORE DELETE ON "config_versions"
+    FOR EACH ROW
+    EXECUTE FUNCTION config_versions_no_delete();
 
 -- ─────────────────────────────────────────────────────────────
 -- US-2218 — emergency_contacts (PHI, max 5/patient)
@@ -192,9 +221,12 @@ ALTER TABLE "alert_threshold_templates"
     ADD CONSTRAINT "alert_threshold_templates_organization_id_fkey"
         FOREIGN KEY ("organization_id") REFERENCES "healthcare_services"("id")
         ON DELETE CASCADE ON UPDATE CASCADE,
+    -- M10 (re-review) — SetNull so RGPD Art. 17 user deletion doesn't get
+    --   blocked by templates. The "author" reference is for forensic trace
+    --   only ; orphaning is preferable to blocking deletion.
     ADD CONSTRAINT "alert_threshold_templates_created_by_fkey"
         FOREIGN KEY ("created_by") REFERENCES "users"("id")
-        ON DELETE RESTRICT ON UPDATE CASCADE;
+        ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- ─────────────────────────────────────────────────────────────
 -- US-2227 — patient_monitoring_metrics (quarterly cache)
