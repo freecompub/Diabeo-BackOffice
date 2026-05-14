@@ -181,4 +181,13 @@ export const RATE_LIMITS = {
     max: 30,
     failMode: "closed",
   } satisfies ApiRateLimitConfig,
+  /** US-2123 — ADMIN manual FHIR retry: 5 req/h/user. Fail-closed — abuse
+   *  prevention against accidental loops + outbound DoS on the partner FHIR
+   *  server (cf review PR #393 M1). */
+  fhirRetryAdmin: {
+    bucket: "fhir-retry-admin",
+    windowSec: 3600,
+    max: 5,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
 } as const

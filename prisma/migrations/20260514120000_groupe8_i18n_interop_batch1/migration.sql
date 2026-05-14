@@ -102,6 +102,38 @@ ALTER TABLE "healthcare_regulations"
         ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- ─────────────────────────────────────────────────────────────
+-- US-2123 (H5) — FHIR allowed-systems registry
+-- RGPD Art. 28 / HDS Art. 4 : un destinataire ne peut recevoir des
+-- données de santé qu'après signature d'un Data Processing Agreement.
+-- Cette table en est la source de vérité. `kill_switch_active=true`
+-- arrête immédiatement toute transmission.
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE "fhir_allowed_systems" (
+    "id"                 SERIAL NOT NULL,
+    "origin"             VARCHAR(255) NOT NULL,
+    "label"              VARCHAR(200) NOT NULL,
+    "dpa_reference"      VARCHAR(500) NOT NULL,
+    "is_active"          BOOLEAN NOT NULL DEFAULT true,
+    "kill_switch_active" BOOLEAN NOT NULL DEFAULT false,
+    "created_at"         TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at"         TIMESTAMPTZ NOT NULL,
+    "created_by"         INTEGER,
+
+    CONSTRAINT "fhir_allowed_systems_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "fhir_allowed_systems_origin_https_check"
+        CHECK ("origin" ~ '^https://[a-z0-9.-]+(:\d+)?$')
+);
+CREATE UNIQUE INDEX "fhir_allowed_systems_origin_key"
+    ON "fhir_allowed_systems"("origin");
+CREATE INDEX "fhir_allowed_systems_active_killswitch_idx"
+    ON "fhir_allowed_systems"("is_active", "kill_switch_active");
+
+ALTER TABLE "fhir_allowed_systems"
+    ADD CONSTRAINT "fhir_allowed_systems_created_by_fkey"
+        FOREIGN KEY ("created_by") REFERENCES "users"("id")
+        ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- ─────────────────────────────────────────────────────────────
 -- US-2123 — FHIR interoperability + sync log
 -- ─────────────────────────────────────────────────────────────
 CREATE TYPE "fhir_sync_status" AS ENUM ('pending', 'synced', 'failed', 'stale');
@@ -126,10 +158,12 @@ CREATE TABLE "fhir_interoperability" (
     -- but a single resource > 1 MB is suspicious — flag for review).
     CONSTRAINT "fhir_interoperability_payload_length_check"
         CHECK (octet_length("payload_encrypted") <= 2097152), -- 2 MB
+    -- M8 — Aligned with service-layer MAX_RETRIES=5 ; raising one must update both.
     CONSTRAINT "fhir_interoperability_retry_count_check"
-        CHECK ("retry_count" >= 0 AND "retry_count" <= 10),
+        CHECK ("retry_count" >= 0 AND "retry_count" <= 5),
+    -- H1 — HDS: PHI must NEVER travel unencrypted over http://. https:// only.
     CONSTRAINT "fhir_interoperability_external_url_check"
-        CHECK ("external_system_url" ~* '^https?://')
+        CHECK ("external_system_url" ~ '^https://')
 );
 CREATE INDEX "fhir_interoperability_status_retry_idx"
     ON "fhir_interoperability"("sync_status", "next_retry_at");
@@ -138,10 +172,14 @@ CREATE INDEX "fhir_interoperability_patient_resource_idx"
 CREATE INDEX "fhir_interoperability_resource_url_idx"
     ON "fhir_interoperability"("resource_type", "external_system_url");
 
+-- H2 — SetNull (not Cascade) so the audit-trail of PHI exports survives
+-- a patient hard-delete. CNIL/ANS require traceability of every PHI
+-- transmission to a third-party for the legal retention period, even if
+-- the patient record is later anonymised.
 ALTER TABLE "fhir_interoperability"
     ADD CONSTRAINT "fhir_interoperability_patient_id_fkey"
         FOREIGN KEY ("patient_id") REFERENCES "patients"("id")
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE SET NULL ON UPDATE CASCADE,
     ADD CONSTRAINT "fhir_interoperability_created_by_fkey"
         FOREIGN KEY ("created_by") REFERENCES "users"("id")
         ON DELETE SET NULL ON UPDATE CASCADE;

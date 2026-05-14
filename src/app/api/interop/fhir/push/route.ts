@@ -58,11 +58,30 @@ export async function POST(req: NextRequest) {
     if (!patient) return NextResponse.json({ error: "notFound" }, { status: 404 })
 
     const systemUrl = process.env.FHIR_PATIENT_SYSTEM_URL ?? "urn:diabeo:patient"
+
+    // M3 — fail-loud on decryption failure : if either firstname/lastname is
+    //      stored non-null but cannot be decrypted (corrupted ciphertext, key
+    //      rotation gap), refuse to enqueue a degraded payload that the partner
+    //      system would silently accept as `family: ""`.
+    const firstname = safeDecryptField(patient.user.firstname)
+    const lastname = safeDecryptField(patient.user.lastname)
+    if (
+      (patient.user.firstname !== null && firstname === null) ||
+      (patient.user.lastname !== null && lastname === null)
+    ) {
+      await auditService.log({
+        userId: user.id, action: "READ", resource: "FHIR_INTEROP",
+        resourceId: "decrypt-failure",
+        ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+        metadata: { patientId: parsed.data.patientId, kind: "decryption-failed" },
+      })
+      return NextResponse.json({ error: "patientDataCorrupted" }, { status: 500 })
+    }
+
     const resource = buildFhirPatient({
       internalId: patient.id,
       systemUrl,
-      firstname: safeDecryptField(patient.user.firstname),
-      lastname: safeDecryptField(patient.user.lastname),
+      firstname, lastname,
       birthday: patient.user.birthday ?? null,
     })
 

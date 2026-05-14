@@ -23,14 +23,14 @@ import { NotFoundError, ValidationError } from "./team-workflow.errors"
 
 const ISO_3166_RE = /^[A-Z]{2}$/
 const ISO_4217_RE = /^[A-Z]{3}$/
-const TAX_TYPES = [
+export const TAX_TYPES = [
   "VAT", "INCOME_TAX", "CORPORATE_TAX", "SOCIAL_CONTRIBUTION",
 ] as const
-type TaxType = (typeof TAX_TYPES)[number]
-const REG_TYPES = [
+export type TaxType = (typeof TAX_TYPES)[number]
+export const REG_TYPES = [
   "RPPS", "ADELI", "INS", "HDS", "RGPD", "MSSANTE", "FINESS", "OTHER",
 ] as const
-type RegulationType = (typeof REG_TYPES)[number]
+export type RegulationType = (typeof REG_TYPES)[number]
 
 // ─────────────────────────────────────────────────────────────
 // US-2113 — Country currencies
@@ -73,21 +73,31 @@ export type CurrencyUpdateInput = {
   isActive?: boolean
 }
 
-function validateCurrencyInput(input: { countryCode?: string; currencyCode?: string; exchangeRate?: number }) {
-  if (input.countryCode !== undefined && !ISO_3166_RE.test(input.countryCode)) {
-    throw new ValidationError("countryCode")
-  }
-  if (input.currencyCode !== undefined && !ISO_4217_RE.test(input.currencyCode)) {
-    throw new ValidationError("currencyCode")
-  }
-  if (input.exchangeRate !== undefined && (input.exchangeRate <= 0 || !Number.isFinite(input.exchangeRate))) {
-    throw new ValidationError("exchangeRate")
-  }
+// M11 — Named field validators. Each enforces a single rule and throws a
+// typed ValidationError. Composition at the call site is explicit so a
+// missing check is visible at code-review time.
+function validateCountryCode(code: string): void {
+  if (!ISO_3166_RE.test(code)) throw new ValidationError("countryCode")
+}
+function validateCurrencyCode(code: string): void {
+  if (!ISO_4217_RE.test(code)) throw new ValidationError("currencyCode")
+}
+function validateExchangeRate(rate: number): void {
+  if (rate <= 0 || !Number.isFinite(rate)) throw new ValidationError("exchangeRate")
+}
+function validateTaxType(t: string): void {
+  if (!TAX_TYPES.includes(t as TaxType)) throw new ValidationError("taxType")
+}
+function validateBaseRate(rate: number): void {
+  if (rate < 0 || rate > 1 || !Number.isFinite(rate)) throw new ValidationError("baseRate")
+}
+function validateRegulationType(t: string): void {
+  if (!REG_TYPES.includes(t as RegulationType)) throw new ValidationError("regulationType")
 }
 
 export const countryCurrencyService = {
   async list(filter?: { countryCode?: string; isActive?: boolean }): Promise<CurrencyDTO[]> {
-    if (filter?.countryCode) validateCurrencyInput({ countryCode: filter.countryCode })
+    if (filter?.countryCode) validateCountryCode(filter.countryCode)
     const rows = await prisma.countryCurrency.findMany({
       where: {
         ...(filter?.countryCode && { countryCode: filter.countryCode }),
@@ -102,7 +112,9 @@ export const countryCurrencyService = {
   async create(
     input: CurrencyCreateInput, auditUserId: number, ctx?: AuditContext,
   ): Promise<CurrencyDTO> {
-    validateCurrencyInput(input)
+    validateCountryCode(input.countryCode)
+    validateCurrencyCode(input.currencyCode)
+    validateExchangeRate(input.exchangeRate)
     if (!input.symbol || input.symbol.length > 8) throw new ValidationError("symbol")
 
     return prisma.$transaction(async (tx: Tx) => {
@@ -141,9 +153,7 @@ export const countryCurrencyService = {
     if (input.symbol !== undefined && (!input.symbol || input.symbol.length > 8)) {
       throw new ValidationError("symbol")
     }
-    if (input.exchangeRate !== undefined) {
-      validateCurrencyInput({ exchangeRate: input.exchangeRate })
-    }
+    if (input.exchangeRate !== undefined) validateExchangeRate(input.exchangeRate)
     return prisma.$transaction(async (tx: Tx) => {
       const existing = await tx.countryCurrency.findUnique({ where: { id } })
       if (!existing) throw new NotFoundError()
@@ -190,7 +200,7 @@ export const countryCurrencyService = {
 export type TaxRuleDTO = {
   id: number
   countryCode: string
-  taxType: string
+  taxType: TaxType
   baseRate: number
   description: string | null
   appliesFrom: Date
@@ -207,7 +217,10 @@ function toTaxRuleDTO(r: {
   isActive: boolean; createdAt: Date; updatedAt: Date;
 }): TaxRuleDTO {
   return {
-    id: r.id, countryCode: r.countryCode, taxType: r.taxType,
+    id: r.id, countryCode: r.countryCode,
+    // taxType is validated against TAX_TYPES at write-time + DB CHECK constraint,
+    // so a stored value outside the enum is impossible (defense in depth).
+    taxType: r.taxType as TaxType,
     baseRate: r.baseRate.toNumber(),
     description: r.description,
     appliesFrom: r.appliesFrom, appliesUntil: r.appliesUntil,
@@ -231,23 +244,8 @@ export type TaxRuleUpdateInput = {
   isActive?: boolean
 }
 
-function validateTaxInput(input: { countryCode?: string; taxType?: string; baseRate?: number; appliesFrom?: Date; appliesUntil?: Date | null }) {
-  if (input.countryCode !== undefined && !ISO_3166_RE.test(input.countryCode)) {
-    throw new ValidationError("countryCode")
-  }
-  if (input.taxType !== undefined && !TAX_TYPES.includes(input.taxType as TaxType)) {
-    throw new ValidationError("taxType")
-  }
-  if (
-    input.baseRate !== undefined &&
-    (input.baseRate < 0 || input.baseRate > 1 || !Number.isFinite(input.baseRate))
-  ) {
-    throw new ValidationError("baseRate")
-  }
-  if (
-    input.appliesFrom !== undefined && input.appliesUntil !== undefined &&
-    input.appliesUntil !== null && input.appliesUntil <= input.appliesFrom
-  ) {
+function validateDateRange(from: Date, until: Date | null | undefined): void {
+  if (until !== null && until !== undefined && until <= from) {
     throw new ValidationError("dateRange")
   }
 }
@@ -256,8 +254,8 @@ export const countryTaxRuleService = {
   async list(filter?: {
     countryCode?: string; taxType?: TaxType; isActive?: boolean;
   }): Promise<TaxRuleDTO[]> {
-    if (filter?.countryCode) validateTaxInput({ countryCode: filter.countryCode })
-    if (filter?.taxType) validateTaxInput({ taxType: filter.taxType })
+    if (filter?.countryCode) validateCountryCode(filter.countryCode)
+    if (filter?.taxType) validateTaxType(filter.taxType)
     const rows = await prisma.countryTaxRule.findMany({
       where: {
         ...(filter?.countryCode && { countryCode: filter.countryCode }),
@@ -271,11 +269,33 @@ export const countryTaxRuleService = {
   },
 
   async create(input: TaxRuleCreateInput, auditUserId: number, ctx?: AuditContext): Promise<TaxRuleDTO> {
-    validateTaxInput(input)
-    if (input.description !== undefined && input.description.length > 500) {
+    validateCountryCode(input.countryCode)
+    validateTaxType(input.taxType)
+    validateBaseRate(input.baseRate)
+    validateDateRange(input.appliesFrom, input.appliesUntil ?? null)
+    // L1 — reject whitespace-only descriptions (treat as empty).
+    if (input.description !== undefined && (input.description.length > 500 || (input.description.length > 0 && !input.description.trim()))) {
       throw new ValidationError("description")
     }
     return prisma.$transaction(async (tx: Tx) => {
+      // M4 — reject overlapping active periods for same (countryCode, taxType).
+      // Two rules with overlapping ranges create ambiguous "current rate"
+      // lookups. The UNIQUE constraint only catches identical `appliesFrom`.
+      const conflict = await tx.countryTaxRule.findFirst({
+        where: {
+          countryCode: input.countryCode,
+          taxType: input.taxType,
+          isActive: true,
+          appliesFrom: { lt: input.appliesUntil ?? new Date("9999-12-31") },
+          OR: [
+            { appliesUntil: null },
+            { appliesUntil: { gt: input.appliesFrom } },
+          ],
+        },
+        select: { id: true },
+      })
+      if (conflict) throw new ValidationError("overlappingPeriod")
+
       try {
         const created = await tx.countryTaxRule.create({
           data: {
@@ -313,7 +333,7 @@ export const countryTaxRuleService = {
   async update(
     id: number, input: TaxRuleUpdateInput, auditUserId: number, ctx?: AuditContext,
   ): Promise<TaxRuleDTO> {
-    if (input.baseRate !== undefined) validateTaxInput({ baseRate: input.baseRate })
+    if (input.baseRate !== undefined) validateBaseRate(input.baseRate)
     if (input.description !== undefined && input.description !== null && input.description.length > 500) {
       throw new ValidationError("description")
     }
@@ -365,7 +385,7 @@ export const countryTaxRuleService = {
 export type RegulationDTO = {
   id: number
   countryCode: string
-  regulationType: string
+  regulationType: RegulationType
   title: string
   rule: string
   references: string | null
@@ -383,7 +403,8 @@ function toRegulationDTO(r: {
   isActive: boolean; createdAt: Date; updatedAt: Date;
 }): RegulationDTO {
   return {
-    id: r.id, countryCode: r.countryCode, regulationType: r.regulationType,
+    id: r.id, countryCode: r.countryCode,
+    regulationType: r.regulationType as RegulationType,
     title: r.title, rule: r.rule, references: r.references,
     enforcedFrom: r.enforcedFrom, enforcedUntil: r.enforcedUntil,
     isActive: r.isActive,
@@ -408,27 +429,19 @@ export type RegulationUpdateInput = {
   isActive?: boolean
 }
 
-function validateRegulationInput(input: { countryCode?: string; regulationType?: string; title?: string; rule?: string }) {
-  if (input.countryCode !== undefined && !ISO_3166_RE.test(input.countryCode)) {
-    throw new ValidationError("countryCode")
-  }
-  if (input.regulationType !== undefined && !REG_TYPES.includes(input.regulationType as RegulationType)) {
-    throw new ValidationError("regulationType")
-  }
-  if (input.title !== undefined && (!input.title || input.title.length > 200)) {
-    throw new ValidationError("title")
-  }
-  if (input.rule !== undefined && (!input.rule || input.rule.length > 50_000)) {
-    throw new ValidationError("rule")
-  }
+function validateTitle(t: string): void {
+  if (!t || !t.trim() || t.length > 200) throw new ValidationError("title")
+}
+function validateRule(r: string): void {
+  if (!r || !r.trim() || r.length > 50_000) throw new ValidationError("rule")
 }
 
 export const healthcareRegulationService = {
   async list(filter?: {
     countryCode?: string; regulationType?: RegulationType; isActive?: boolean;
   }): Promise<RegulationDTO[]> {
-    if (filter?.countryCode) validateRegulationInput({ countryCode: filter.countryCode })
-    if (filter?.regulationType) validateRegulationInput({ regulationType: filter.regulationType })
+    if (filter?.countryCode) validateCountryCode(filter.countryCode)
+    if (filter?.regulationType) validateRegulationType(filter.regulationType)
     const rows = await prisma.healthcareRegulation.findMany({
       where: {
         ...(filter?.countryCode && { countryCode: filter.countryCode }),
@@ -442,14 +455,32 @@ export const healthcareRegulationService = {
   },
 
   async create(input: RegulationCreateInput, auditUserId: number, ctx?: AuditContext): Promise<RegulationDTO> {
-    validateRegulationInput(input)
-    if (input.references !== undefined && input.references.length > 10_000) {
+    validateCountryCode(input.countryCode)
+    validateRegulationType(input.regulationType)
+    validateTitle(input.title)
+    validateRule(input.rule)
+    // L1 — reject whitespace-only references.
+    if (input.references !== undefined && (input.references.length > 10_000 || (input.references.length > 0 && !input.references.trim()))) {
       throw new ValidationError("references")
     }
-    if (input.enforcedUntil && input.enforcedUntil <= input.enforcedFrom) {
-      throw new ValidationError("dateRange")
-    }
+    validateDateRange(input.enforcedFrom, input.enforcedUntil ?? null)
     return prisma.$transaction(async (tx: Tx) => {
+      // M5 — reject overlapping active periods for same (countryCode, regulationType).
+      const conflict = await tx.healthcareRegulation.findFirst({
+        where: {
+          countryCode: input.countryCode,
+          regulationType: input.regulationType,
+          isActive: true,
+          enforcedFrom: { lt: input.enforcedUntil ?? new Date("9999-12-31") },
+          OR: [
+            { enforcedUntil: null },
+            { enforcedUntil: { gt: input.enforcedFrom } },
+          ],
+        },
+        select: { id: true },
+      })
+      if (conflict) throw new ValidationError("overlappingPeriod")
+
       const created = await tx.healthcareRegulation.create({
         data: {
           countryCode: input.countryCode,
@@ -475,8 +506,8 @@ export const healthcareRegulationService = {
   async update(
     id: number, input: RegulationUpdateInput, auditUserId: number, ctx?: AuditContext,
   ): Promise<RegulationDTO> {
-    if (input.title !== undefined) validateRegulationInput({ title: input.title })
-    if (input.rule !== undefined) validateRegulationInput({ rule: input.rule })
+    if (input.title !== undefined) validateTitle(input.title)
+    if (input.rule !== undefined) validateRule(input.rule)
     if (input.references !== undefined && input.references !== null && input.references.length > 10_000) {
       throw new ValidationError("references")
     }

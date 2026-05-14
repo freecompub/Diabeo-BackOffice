@@ -163,6 +163,23 @@ const REQUIRED_SEED: readonly EnvSpec[] = [
   SPEC_ENCRYPTION_KEY,
 ]
 
+/**
+ * H8 (review PR #393) — validate optional feature-flag env vars.
+ *
+ * Throws if `FHIR_ENABLED` is set to anything other than the strings
+ * `"true"` / `"false"`. Unset (=== feature off) is fine. Keeps misconfig
+ * fail-fast at boot, consistent with ADR #20.
+ */
+function assertOptionalBoolean(name: string): void {
+  const raw = process.env[name]
+  if (raw === undefined) return
+  if (raw !== "true" && raw !== "false") {
+    throw new Error(
+      `Environment variable ${name} must be exactly "true" or "false" (got an invalid value). See docs/local-development.md.`,
+    )
+  }
+}
+
 function assertSpecs(specs: readonly EnvSpec[]): void {
   const problems: string[] = []
 
@@ -206,6 +223,8 @@ function assertSpecs(specs: readonly EnvSpec[]): void {
  */
 export function assertRequiredEnv(): void {
   assertSpecs(REQUIRED_FULL)
+  // US-2123 — fail-fast on misconfigured FHIR feature flag.
+  assertOptionalBoolean("FHIR_ENABLED")
 }
 
 /**

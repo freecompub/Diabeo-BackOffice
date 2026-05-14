@@ -33,14 +33,31 @@ import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService, type AuditContext } from "./audit.service"
 import { NotFoundError, ValidationError } from "./team-workflow.errors"
 
+/**
+ * H9 — Retry sequence:
+ *  - Attempt 1 (initial) fails → `retryCount: 1`, next at +1 min (BASE * 2^0)
+ *  - Attempt 2 fails → `retryCount: 2`, next at +2 min (BASE * 2^1)
+ *  - Attempt 3 fails → `retryCount: 3`, next at +4 min
+ *  - Attempt 4 fails → `retryCount: 4`, next at +8 min
+ *  - Attempt 5 fails → `retryCount: 5` (= MAX_RETRIES) → exhausted,
+ *                      `nextRetryAt = null`, requires manual `retry()` (ADMIN).
+ *
+ * "Total attempts" = 5 (initial + 4 backed-off retries).
+ */
 const MAX_RETRIES = 5
-const BACKOFF_BASE_MS = 60_000 // 1 min, doubling each retry (1, 2, 4, 8, 16 min)
+const BACKOFF_BASE_MS = 60_000 // 1 min, doubled per retry (1, 2, 4, 8 min)
 const ERROR_MSG_MAX = 500
 const SUPPORTED_RESOURCE_TYPES = ["Patient"] as const
 export type FhirResourceType = (typeof SUPPORTED_RESOURCE_TYPES)[number]
 
 // ─────────────────────────────────────────────────────────────
 // FHIR R4 Patient resource (minimal, ANS-extensible)
+//
+// Inline ad-hoc type — `@types/fhir` is intentionally NOT imported to keep
+// the bundle lean for the scaffold batch. When Observation / Medication /
+// MedicationRequest are added (Batch 2+), revisit and consider the official
+// types library. Discriminated union below ties resourceType to its concrete
+// resource shape so future additions stay type-safe at the call site.
 // ─────────────────────────────────────────────────────────────
 
 export type FhirPatientResource = {
@@ -60,6 +77,13 @@ export type FhirPatientResource = {
   birthDate?: string  // YYYY-MM-DD
 }
 
+/** Discriminated union of FHIR resources accepted by `enqueue`. */
+export type FhirResource = FhirPatientResource
+/** Tighter `buildFhirPatient` return type — `identifier` and `active` are
+ *  unconditionally set by the constructor. */
+export type FhirPatientBuilt = FhirPatientResource &
+  Required<Pick<FhirPatientResource, "identifier" | "active">>
+
 /**
  * Build a minimal FHIR R4 Patient resource from internal data.
  *
@@ -75,8 +99,8 @@ export function buildFhirPatient(input: {
   lastname: string | null
   birthday: Date | null
   gender?: "male" | "female" | "other" | "unknown"
-}): FhirPatientResource {
-  const resource: FhirPatientResource = {
+}): FhirPatientBuilt {
+  const resource: FhirPatientBuilt = {
     resourceType: "Patient",
     identifier: [{ system: input.systemUrl, value: String(input.internalId) }],
     active: true,
@@ -95,30 +119,78 @@ export function buildFhirPatient(input: {
   return resource
 }
 
-/** Truncate + redact a response body for safe audit logging. */
+/**
+ * Truncate + redact a response body for safe audit logging.
+ *
+ * H4 — strips identifiers commonly echoed by FHIR servers in 4xx bodies :
+ *  - INS / NIR / SNAS (13-17 digit runs, with optional spaces)
+ *  - RPPS (11 digits) / ADELI (9 digits)
+ *  - emails, phones, ISO dates (DOB)
+ *
+ * Replacement happens BEFORE truncation so a redaction at character ~480
+ * still fits in `ERROR_MSG_MAX`.
+ */
 function sanitizeErrorMessage(input: unknown): string {
   if (input === null || input === undefined) return ""
   const s = typeof input === "string" ? input : (() => {
     try { return JSON.stringify(input) }
     catch { return String(input) }
   })()
-  // Strip well-known PHI patterns (INS/NIR/RPPS digits) before truncation.
   const redacted = s
-    .replace(/\b\d{13,15}\b/g, "[REDACTED_ID]")
-    .replace(/\b\d{2}\d{2}\d{2}\d{3}\d{3}\d{2}\b/g, "[REDACTED_INS]")
+    // INS/NIR/SNAS — long digit runs with optional internal spaces
+    .replace(/\b\d{13,17}\b/g, "[REDACTED_ID]")
+    // RPPS (11) / ADELI (9) — narrower ranges, distinct token to aid forensics
+    .replace(/\b\d{11}\b/g, "[REDACTED_RPPS]")
+    .replace(/\b\d{9,10}\b/g, "[REDACTED_ID9]")
+    // Email
+    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[REDACTED_EMAIL]")
+    // Phone (≥10 contiguous digits or grouped with separators)
+    .replace(/\+?\d[\d\s.-]{9,}\d/g, "[REDACTED_PHONE]")
+    // ISO date YYYY-MM-DD (DOB)
+    .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "[REDACTED_DATE]")
   return redacted.slice(0, ERROR_MSG_MAX)
+}
+
+/**
+ * H3 — strip query + fragment from a URL before audit logging so embedded
+ * tokens / API keys never persist in the immutable audit table. Returns
+ * `origin + pathname` only. Invalid URLs are returned as `[malformed]`.
+ */
+function stripUrlSecrets(url: string): string {
+  try {
+    const u = new URL(url)
+    return `${u.origin}${u.pathname}`
+  } catch {
+    return "[malformed]"
+  }
+}
+
+/** H5 — origin (scheme://host[:port]) extracted from a full URL for allowlist
+ *  comparisons. Returns null if the URL is malformed. */
+function extractOrigin(url: string): string | null {
+  try {
+    return new URL(url).origin
+  } catch {
+    return null
+  }
 }
 
 // ─────────────────────────────────────────────────────────────
 // Service — queue / push / retry
 // ─────────────────────────────────────────────────────────────
 
-export type EnqueueInput = {
-  patientId: number
-  resourceType: FhirResourceType
-  externalSystemUrl: string
-  resource: FhirPatientResource
-}
+/**
+ * Discriminated input — `resourceType` and `resource` are correlated so the
+ * compiler prevents passing a Patient JSON under `"Observation"` (or vice
+ * versa). The runtime `resourceTypeMismatch` check remains as defense in depth.
+ */
+export type EnqueueInput =
+  | {
+      patientId: number
+      resourceType: "Patient"
+      externalSystemUrl: string
+      resource: FhirPatientResource
+    }
 
 export type FhirInteropDTO = {
   id: number
@@ -156,7 +228,8 @@ function validateEnqueueInput(input: EnqueueInput) {
   if (!SUPPORTED_RESOURCE_TYPES.includes(input.resourceType)) {
     throw new ValidationError("unsupportedResourceType")
   }
-  if (!input.externalSystemUrl || !/^https?:\/\//.test(input.externalSystemUrl)) {
+  // H1 — https only (HDS: PHI must never travel unencrypted).
+  if (!input.externalSystemUrl || !/^https:\/\//.test(input.externalSystemUrl)) {
     throw new ValidationError("externalSystemUrl")
   }
   if (input.resource.resourceType !== input.resourceType) {
@@ -164,14 +237,30 @@ function validateEnqueueInput(input: EnqueueInput) {
   }
 }
 
+/**
+ * H5 — verify the target origin is in the allowlist + kill-switch is off.
+ * Throws `ValidationError` ("systemNotAllowed" / "killSwitchActive") on
+ * failure so the caller surfaces a 422 rather than enqueueing silently.
+ */
+async function assertSystemAllowed(tx: Tx, url: string): Promise<void> {
+  const origin = extractOrigin(url)
+  if (!origin) throw new ValidationError("externalSystemUrl")
+  const allowed = await tx.fhirAllowedSystem.findUnique({
+    where: { origin },
+    select: { isActive: true, killSwitchActive: true },
+  })
+  if (!allowed || !allowed.isActive) throw new ValidationError("systemNotAllowed")
+  if (allowed.killSwitchActive) throw new ValidationError("killSwitchActive")
+}
+
 export const fhirInteropService = {
   /**
    * Queue a FHIR resource for outbound PUSH. The actual HTTP call is
-   * triggered separately by `pushOnce` or a background worker. Returns the
-   * persisted interop row with `pending` status.
+   * triggered separately by a background worker (not in this PR — Batch 2).
+   * Returns the persisted interop row with `pending` status.
    *
    * The payload is encrypted at rest. The plaintext FHIR JSON only exists
-   * in memory inside `pushOnce` when the worker actually transmits it.
+   * in memory inside the worker when it actually transmits it.
    */
   async enqueue(
     input: EnqueueInput, auditUserId: number, ctx?: AuditContext,
@@ -184,6 +273,9 @@ export const fhirInteropService = {
         where: { id: input.patientId, deletedAt: null }, select: { id: true },
       })
       if (!patient) throw new NotFoundError()
+
+      // H5 — allowlist + kill-switch enforcement before any PHI is persisted.
+      await assertSystemAllowed(tx, input.externalSystemUrl)
 
       const row = await tx.fhirInteroperability.create({
         data: {
@@ -204,7 +296,8 @@ export const fhirInteropService = {
         metadata: {
           patientId: input.patientId,
           resourceType: input.resourceType,
-          systemUrl: input.externalSystemUrl,
+          // H3 — strip query/fragment so embedded tokens never persist in audit.
+          systemUrl: stripUrlSecrets(input.externalSystemUrl),
         },
       })
       return toInteropDTO(row)
@@ -216,16 +309,18 @@ export const fhirInteropService = {
     return row ? toInteropDTO(row) : null
   },
 
-  /** Decrypt the stored payload — only callers that need the plaintext
-   *  (the worker about to PUSH) should invoke this. */
-  async getDecryptedPayload(id: number): Promise<unknown | null> {
+  /** Decrypt the stored payload. Generic-typed so the worker gets a typed
+   *  resource back ; defaults to `FhirResource` (the discriminated union).
+   *  Returns `null` if the row is missing, the ciphertext can't be decrypted,
+   *  or the plaintext isn't valid JSON. */
+  async getDecryptedPayload<T = FhirResource>(id: number): Promise<T | null> {
     const row = await prisma.fhirInteroperability.findUnique({
       where: { id }, select: { payloadEncrypted: true },
     })
     if (!row) return null
     const plaintext = safeDecryptField(row.payloadEncrypted)
     if (!plaintext) return null
-    try { return JSON.parse(plaintext) }
+    try { return JSON.parse(plaintext) as T }
     catch { return null }
   },
 
@@ -237,6 +332,11 @@ export const fhirInteropService = {
     id: number, fhirResourceId: string, durationMs: number,
     auditUserId: number, ctx?: AuditContext,
   ): Promise<FhirInteropDTO> {
+    // M2 — FHIR R4 resource id charset (spec §2.34.1): [A-Za-z0-9.-_]{1,64}.
+    //      Defends against log poisoning from a hostile FHIR server response.
+    if (!/^[A-Za-z0-9._-]{1,64}$/.test(fhirResourceId)) {
+      throw new ValidationError("fhirResourceId")
+    }
     return prisma.$transaction(async (tx: Tx) => {
       const row = await tx.fhirInteroperability.findUnique({ where: { id } })
       if (!row) throw new NotFoundError()

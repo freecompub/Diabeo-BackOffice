@@ -359,6 +359,7 @@ model User {
   createdCountryTaxRules         CountryTaxRule[]                  @relation("CountryTaxRuleCreator")
   createdHealthcareRegulations   HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
   createdFhirInteroperability    FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
+  createdFhirAllowedSystems      FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -2410,6 +2411,31 @@ model HealthcareRegulation {
   @@map("healthcare_regulations")
 }
 
+/// US-2123 — Allowlist des systèmes FHIR tiers approuvés (DPA en place).
+/// Toute tentative de PUSH vers `externalSystemUrl` doit matcher un origin
+/// présent dans cette table et `isActive = true`. `killSwitchActive = true`
+/// sur n'importe quelle ligne désactive instantanément tout PUSH (rejet 503).
+model FhirAllowedSystem {
+  id                Int      @id @default(autoincrement())
+  /// Origin (scheme://host[:port]) — pas de path/query, comparé en strict equality.
+  origin            String   @db.VarChar(255)
+  /// Description du destinataire pour audit (`DMP Mon Espace Santé`, `EHR Cabinet X`).
+  label             String   @db.VarChar(200)
+  /// Référence du DPA signé (URL interne ou identifiant document compliance).
+  dpaReference      String   @map("dpa_reference") @db.VarChar(500)
+  isActive          Boolean  @default(true) @map("is_active")
+  killSwitchActive  Boolean  @default(false) @map("kill_switch_active")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy         Int?     @map("created_by")
+
+  creator           User?    @relation("FhirAllowedSystemCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([origin])
+  @@index([isActive, killSwitchActive])
+  @@map("fhir_allowed_systems")
+}
+
 /// US-2123 — Ressources FHIR R4 exportées vers un serveur tiers (DMP, EHR,
 /// laboratoire, etc.). Le payload contient des données de santé : chiffré
 /// AES-256-GCM (base64) comme le reste du repo. Le flux est asynchrone
@@ -2431,7 +2457,9 @@ model FhirInteroperability {
   updatedAt         DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
   createdBy         Int?      @map("created_by")
 
-  patient           Patient?  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// H2 — onDelete SetNull preserves the audit trail of PHI exports even when
+  /// the patient record is hard-deleted (CNIL/ANS forensic retention).
+  patient           Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
   creator           User?     @relation("FhirInteroperabilityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
   syncLogs          FhirSyncLog[]
 
