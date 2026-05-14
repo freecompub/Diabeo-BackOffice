@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-08 — Batch A livré + US-2267 (PR #352) + US-2268 (PR #353) → MVP scope original 100% + V1 pre-prod blocker LEVÉ.
+> Dernière mise à jour : 2026-05-14 — Groupe 8 RDV Batch 1 (PR #392, 5 US) + Groupe 8 i18n/Interop Batch 1 (PR #393, 4 US) → V1 30 → 39 DONE (28%).
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 141   | 30   | 1       | 110         | **21%** |
+| **V1**   | 141   | 39   | 1       | 101         | **28%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **95** | **2**   | **195**     | **33%** |
+| **TOTAL**| **292** | **104** | **2**   | **186**     | **36%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
