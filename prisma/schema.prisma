@@ -2526,7 +2526,10 @@ enum FhirSyncStatus {
 /// de l'évolution future des tables filles.
 model ConfigVersion {
   id              Int       @id @default(autoincrement())
-  patientId       Int       @map("patient_id")
+  /// C3-NEW (re-review) — nullable for RGPD Art. 17 hard-delete compatibility :
+  /// patient deletion sets this to NULL, preserving config history as orphan
+  /// (audit-friendly) without violating the append-only `no_delete` trigger.
+  patientId       Int?      @map("patient_id")
   configType      ConfigVersionType @map("config_type")
   version         Int
   configSnapshot  Json      @map("config_snapshot")
@@ -2538,7 +2541,7 @@ model ConfigVersion {
   validatedAt     DateTime? @map("validated_at") @db.Timestamptz()
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient         Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient         Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
   creator         User               @relation("ConfigVersionCreator", fields: [createdBy], references: [id])
   validator       User?              @relation("ConfigVersionValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
   contacts        EmergencyContact[]

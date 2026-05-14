@@ -75,6 +75,11 @@ export async function PUT(req: NextRequest) {
       })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
+    // C1-NEW — GDPR consent required to write PHI (name/phone encrypted).
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const out = await emergencyContactService.upsert(
       res.patientId, parsed.data.contacts, user.id, ctx,
     )

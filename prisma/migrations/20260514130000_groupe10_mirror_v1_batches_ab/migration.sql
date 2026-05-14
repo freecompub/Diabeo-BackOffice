@@ -19,7 +19,8 @@ CREATE TYPE "risk_level" AS ENUM ('low', 'medium', 'high', 'critical');
 -- ─────────────────────────────────────────────────────────────
 CREATE TABLE "config_versions" (
     "id"              SERIAL NOT NULL,
-    "patient_id"      INTEGER NOT NULL,
+    -- C3-NEW (re-review) — nullable to support FK SetNull on patient hard-delete.
+    "patient_id"      INTEGER,
     "config_type"     "config_version_type" NOT NULL,
     "version"         INTEGER NOT NULL,
     "config_snapshot" JSONB NOT NULL,
@@ -44,10 +45,15 @@ CREATE INDEX "config_versions_patient_id_config_type_valid_from_idx"
 CREATE INDEX "config_versions_status_config_type_idx"
     ON "config_versions"("status", "config_type");
 
+-- C3-NEW (re-review) — patient_id FK SetNull (was CASCADE). The append-only
+-- BEFORE DELETE trigger blocks any cascade-delete, which would make RGPD
+-- Art. 17 hard-deletion of a patient fail. SetNull lets the patient row
+-- be deleted while preserving the config history as an orphan (audit-friendly).
+-- patient_id must therefore be nullable in the schema.
 ALTER TABLE "config_versions"
     ADD CONSTRAINT "config_versions_patient_id_fkey"
         FOREIGN KEY ("patient_id") REFERENCES "patients"("id")
-        ON DELETE CASCADE ON UPDATE CASCADE,
+        ON DELETE SET NULL ON UPDATE CASCADE,
     ADD CONSTRAINT "config_versions_created_by_fkey"
         FOREIGN KEY ("created_by") REFERENCES "users"("id")
         ON DELETE RESTRICT ON UPDATE CASCADE,
@@ -80,9 +86,15 @@ BEGIN
     ) THEN
         RAISE EXCEPTION 'config_versions: validation cannot be revoked or replayed';
     END IF;
-    -- Forbid resurrecting an archived version.
+    -- Forbid resurrecting an archived or superseded version.
+    -- H1-NEW (re-review) — without this, a direct SQL UPDATE could revive a
+    -- previously-superseded row and produce dual-active rows for the same
+    -- (patient, configType), defeating the version model.
     IF OLD.status = 'archived' AND NEW.status <> 'archived' THEN
         RAISE EXCEPTION 'config_versions: archived versions are terminal';
+    END IF;
+    IF OLD.status = 'superseded' AND NEW.status = 'active' THEN
+        RAISE EXCEPTION 'config_versions: superseded versions cannot be reactivated';
     END IF;
     RETURN NEW;
 END;

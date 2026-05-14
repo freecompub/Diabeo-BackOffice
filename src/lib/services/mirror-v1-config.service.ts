@@ -47,7 +47,8 @@ export type ProfileType = (typeof PROFILE_TYPES)[number]
 
 export type ConfigVersionDTO = {
   id: number
-  patientId: number
+  /** C3-NEW — null when the patient has been hard-deleted (audit orphan). */
+  patientId: number | null
   configType: ConfigVersionType
   version: number
   validFrom: Date
@@ -60,7 +61,7 @@ export type ConfigVersionDTO = {
 }
 
 function toConfigVersionDTO(r: {
-  id: number; patientId: number; configType: ConfigVersionType; version: number;
+  id: number; patientId: number | null; configType: ConfigVersionType; version: number;
   validFrom: Date; validTo: Date | null; status: ConfigVersionStatus;
   createdBy: number; validatedBy: number | null; validatedAt: Date | null;
   createdAt: Date;
@@ -170,9 +171,21 @@ export const emergencyContactService = {
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { patientId, kind: "list" },
     })
+    const contacts = version ? version.contacts.map(decodeContact) : []
+    // L1-NEW (re-review) — audit decryption failures distinctly so ops can
+    //   alert on KMS rotation gaps / corruption (RGPD Art. 32 §1.b).
+    const failed = contacts.filter((c) => c.decryptionFailed).length
+    if (failed > 0) {
+      await auditService.log({
+        userId: auditUserId, action: "READ", resource: "EMERGENCY_CONTACT",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { patientId, kind: "decrypt.failure", count: failed },
+      })
+    }
     return {
       version: version ? toConfigVersionDTO(version) : null,
-      contacts: version ? version.contacts.map(decodeContact) : [],
+      contacts,
     }
   },
 
@@ -188,10 +201,12 @@ export const emergencyContactService = {
 
       // H8 (re-review) — replace name/phone lengths (mild info disclosure
       //   over a 6-year retention) with simple presence booleans.
+      // M4 (re-review) — `satisfies` instead of bare assignment so future
+      //   shape changes fail at compile time.
       const snapshot = contacts.map((c) => ({
         rank: c.rank, relationship: c.relationship,
         hasName: c.name.length > 0, hasPhone: c.phone.length > 0,
-      }))
+      })) satisfies Prisma.InputJsonValue
       const created = await tx.configVersion.create({
         data: {
           patientId,

@@ -14,9 +14,9 @@ const querySchema = z.object({
   quarter: z.string().regex(/^[0-9]{4}-Q[1-4]$/),
 })
 
-async function gateAndResolve(req: NextRequest) {
+async function gateAndResolve(req: NextRequest, minRole: import("@prisma/client").Role) {
   const ctx = extractRequestContext(req)
-  const user = await auditedRequireRole(req, "NURSE", ctx, "PATIENT_MONITORING_METRICS", "0")
+  const user = await auditedRequireRole(req, minRole, ctx, "PATIENT_MONITORING_METRICS", "0")
   const res = await resolvePatientIdFromQuery(req, user.id, user.role)
   if (res.error) return { error: NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 }) }
   const allowed = await canAccessPatient(user.id, user.role, res.patientId)
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
     if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
-    const gate = await gateAndResolve(req)
+    const gate = await gateAndResolve(req, "NURSE")
     if ("error" in gate) return gate.error
     const out = await patientMonitoringService.getOrCompute(
       gate.patientId, parsed.data.quarter, gate.user.id, gate.ctx,
@@ -59,11 +59,11 @@ export async function POST(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
     if (!parsed.success) return NextResponse.json({ error: "validationFailed" }, { status: 400 })
-    const gate = await gateAndResolve(req)
+    // H5-NEW (re-review) — gate at DOCTOR directly so a NURSE attempt produces
+    // an `accessDenied` audit row (via auditedRequireRole) instead of slipping
+    // past the NURSE gate then being silently rejected.
+    const gate = await gateAndResolve(req, "DOCTOR")
     if ("error" in gate) return gate.error
-    if (gate.user.role === "VIEWER" || gate.user.role === "NURSE") {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
-    }
     const out = await patientMonitoringService.recompute(
       gate.patientId, parsed.data.quarter, gate.user.id, gate.ctx,
     )

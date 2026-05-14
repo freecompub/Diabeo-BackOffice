@@ -187,6 +187,12 @@ const NATIONAL_BENCHMARK = {
   severeHypoRate: 8.5, // per 1000 patient-days
   dkaIncidence: 1.2,   // per 1000 patient-days
   source: "placeholder-not-vetted" as const,
+  // M2-NEW (re-review) — server-controlled disclaimer string the UI cannot
+  //   strip. If a client renders the rate without rendering the disclaimer,
+  //   that's a downstream a11y/safety bug ; the server's contract is fulfilled.
+  disclaimer:
+    "Données de référence indicatives — non validées par ANSM/SFD."
+    + " Ne pas utiliser comme seuil clinique.",
 }
 
 export const cohortAnalyticsService = {
@@ -297,7 +303,9 @@ export type RiskScoreDTO = {
   riskScore: number
   riskLevel: RiskLevel
   recentHypoCount: number
-  declarationRatio: number
+  /** M1-NEW (re-review) — `declarationRatio` removed from public DTO until
+   *  the EmergencyAlert.source field lands. Returning a placeholder 1.0
+   *  was misleading clinicians ("100% self-reporting" green signal). */
   dkaHistory: boolean
   contributingFactors: { factor: string; weight: number; value: number; contribution: number }[]
   flaggedAt: Date | null
@@ -345,7 +353,6 @@ export const riskScoreService = {
       patientId: row.patientId, riskScore: row.riskScore,
       riskLevel: row.riskLevel,
       recentHypoCount: row.recentHypoCount,
-      declarationRatio: row.declarationRatio.toNumber(),
       dkaHistory: row.dkaHistory,
       contributingFactors: row.contributingFactors as RiskScoreDTO["contributingFactors"],
       flaggedAt: row.flaggedAt,
@@ -428,21 +435,21 @@ export const riskScoreService = {
           // future use once EmergencyAlert exposes the report source.
           declarationRatio: new Prisma.Decimal("1.00"),
           dkaHistory,
-          contributingFactors: factors as unknown as Prisma.InputJsonValue,
+          contributingFactors: factors satisfies Prisma.InputJsonValue,
           flaggedAt,
         },
         update: {
           riskScore: score, riskLevel: level,
           recentHypoCount,
-          // H5 — placeholder (1.0 = neutral). Field is kept on the schema for
-          // future use once EmergencyAlert exposes the report source.
           declarationRatio: new Prisma.Decimal("1.00"),
           dkaHistory,
-          contributingFactors: factors as unknown as Prisma.InputJsonValue,
+          contributingFactors: factors satisfies Prisma.InputJsonValue,
           flaggedAt,
-          // Reset ack if level escalated.
-          ...(level === RiskLevel.high || level === RiskLevel.critical
-            ? { acknowledgedBy: null, acknowledgedAt: null } : {}),
+          // H3-NEW (re-review) — always reset acknowledgement on recompute.
+          //   Acks are tied to a specific score snapshot ; once recompute runs
+          //   the prior ack is no longer meaningful (level may have dropped or
+          //   risen). A new ack is required on any flagged level.
+          acknowledgedBy: null, acknowledgedAt: null,
           computedAt: new Date(),
         },
       })
@@ -456,7 +463,7 @@ export const riskScoreService = {
       })
       return {
         patientId: upserted.patientId, riskScore: score, riskLevel: level,
-        recentHypoCount, declarationRatio: 1.0, dkaHistory,
+        recentHypoCount, dkaHistory,
         contributingFactors: factors,
         flaggedAt,
         // M12 (re-review) — read from upserted row (may differ on update branch).
@@ -487,7 +494,6 @@ export const riskScoreService = {
       return {
         patientId: updated.patientId, riskScore: updated.riskScore, riskLevel: updated.riskLevel,
         recentHypoCount: updated.recentHypoCount,
-        declarationRatio: updated.declarationRatio.toNumber(),
         dkaHistory: updated.dkaHistory,
         contributingFactors: updated.contributingFactors as RiskScoreDTO["contributingFactors"],
         flaggedAt: updated.flaggedAt,
@@ -510,22 +516,27 @@ export const riskScoreService = {
       orderBy: [{ riskLevel: "desc" }, { riskScore: "desc" }, { computedAt: "desc" }],
       take: 200,
     })
+    // C2-NEW (re-review) — emit ONE audit row per patient so the existing
+    //   US-2268 GIN partial index on `metadata->'patientId'` (scalar)
+    //   surfaces the dashboard read in `getByPatient(X)`. Plural `patientIds`
+    //   array would NOT be covered by that index.
+    // Parent row for the organization-level event :
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "PATIENT_RISK_SCORE",
       resourceId: String(organizationId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      // H9 (re-review) — record the patientIds touched so US-2268 forensics
-      //   `getByPatient(X)` can find this dashboard-read event. GIN index on
-      //   metadata->'patientIds' would be ideal ; ANY operator works on JSONB.
-      metadata: {
-        organizationId, kind: "dashboard.list", count: rows.length,
-        patientIds: rows.map((r) => r.patientId),
-      },
+      metadata: { organizationId, kind: "dashboard.list", count: rows.length },
     })
+    // Per-patient pivot rows for forensics (capped at 200 by `take`).
+    await Promise.all(rows.map((r) => auditService.log({
+      userId: auditUserId, action: "READ", resource: "PATIENT_RISK_SCORE",
+      resourceId: String(r.patientId),
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { patientId: r.patientId, kind: "dashboard.read", organizationId },
+    })))
     return rows.map((r) => ({
       patientId: r.patientId, riskScore: r.riskScore, riskLevel: r.riskLevel,
       recentHypoCount: r.recentHypoCount,
-      declarationRatio: r.declarationRatio.toNumber(),
       dkaHistory: r.dkaHistory,
       contributingFactors: r.contributingFactors as RiskScoreDTO["contributingFactors"],
       flaggedAt: r.flaggedAt,

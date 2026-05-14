@@ -62,10 +62,10 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
+    // M3-NEW (re-review) — POST is ADMIN-only (super-admin). isOrgMember()
+    //   would bypass for ADMIN anyway, so the check is dead code. ADMIN is
+    //   intentionally trusted to recompute any org's analytics.
     const user = await auditedRequireRole(req, "ADMIN", ctx, "COHORT_ANALYTICS", String(parsed.data.organizationId))
-    // ADMIN can recompute any org (super-admin) — but still audit if cross-org.
-    const denied = await denyIfNotMember(req, user, parsed.data.organizationId, "snapshot.recompute")
-    if (denied) return denied
     const out = await cohortAnalyticsService.recompute(
       parsed.data.organizationId,
       parsed.data.snapshotDate ?? new Date(),

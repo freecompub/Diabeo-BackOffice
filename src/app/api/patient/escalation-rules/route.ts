@@ -6,6 +6,7 @@ import { EscalationTargetType } from "@prisma/client"
 import { AuthError } from "@/lib/auth"
 import { canAccessPatient } from "@/lib/access-control"
 import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { escalationRuleService } from "@/lib/services/mirror-v1-config.service"
 import {
   auditService, extractRequestContext,
@@ -37,6 +38,12 @@ export async function GET(req: NextRequest) {
       })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
+    // C1-NEW (re-review) — GDPR consent on PHI-adjacent read (rules reference
+    //   emergency contacts which are PHI).
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const out = await escalationRuleService.list(res.patientId, user.id, ctx)
     return NextResponse.json(out)
   } catch (e) {
@@ -67,6 +74,11 @@ export async function PUT(req: NextRequest) {
         metadata: { patientId: res.patientId, endpoint: "upsert" },
       })
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+    // C1-NEW — GDPR consent required for write too (PHI-adjacent).
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
     const out = await escalationRuleService.upsert(res.patientId, parsed.data.rules, user.id, ctx)
     return NextResponse.json(out, { status: 201 })
