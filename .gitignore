@@ -67,3 +67,4 @@ Thumbs.db
 __pycache__/
 figma-export-script.js
 2026-*-*.txt
+.claude/scheduled_tasks.lock
