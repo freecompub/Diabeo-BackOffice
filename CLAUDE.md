@@ -599,7 +599,11 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 - Créer des migrations destructives (DROP COLUMN, DROP TABLE) sans confirmation explicite
 - Désactiver les middlewares d'authentification pour "tester plus vite"
 - Exposer des stack traces ou messages d'erreur internes dans les API responses
-- Merger une pull request sans le consentement explicite de l'utilisateur
+- **Merger une pull request sans AUTORISATION EXPLICITE de l'utilisateur sur CETTE PR précise.**
+  - Une autorisation de lancer un batch ("a", "b", "go", "on commence Batch X") ≠ autorisation de merge.
+  - "ci ok", "tests verts", "la review est OK" ≠ autorisation de merge.
+  - Même si la CI est verte, même si les reviews sont appliquées, même après plusieurs PRs précédentes mergées sur autorisation : il faut demander "je peux merger ?" et obtenir un GO explicite ("oui merge", "tu peux merger", "merge-la") avant tout `gh pr merge`.
+  - L'autorisation de merge d'une PR ne se reporte JAMAIS sur la PR suivante.
 - Merger une pull request si la CI (pipeline) a des erreurs
 - supprimer une feature sans le consentement explicite de l'utilisateur
 - on ne developpe pas les applications android et ios
