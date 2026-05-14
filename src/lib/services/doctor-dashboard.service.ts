@@ -218,26 +218,34 @@ const APPOINTMENTS_LIMIT = 3
 const CABINET_TIMEZONE = "Europe/Paris"
 
 /**
- * code-review C3 / M6 — return [start, end) covering "today" in the cabinet's
- * timezone (Europe/Paris). The `appointment.date` column is `@db.Date`
- * (timezone-naive), so we must build the boundary against Paris wall-clock,
- * not the server's UTC midnight. At 01h Paris (= 23h UTC previous day), the
- * previous UTC-midnight implementation showed yesterday's RDV instead of
- * today's morning slots.
+ * code-review C3 / M6 / H3 (PR #401 re-review) — return [start, end) for
+ * "today" in the cabinet timezone, **as UTC instants** correctly aligned
+ * with Paris midnight boundaries (DST-aware).
+ *
+ * Earlier impl built `${YYYY-MM-DD}T00:00:00Z` which is UTC midnight of
+ * the Paris-local date string — off by the Paris→UTC offset (1h CET /
+ * 2h CEST). For `@db.Date` columns this happens to work (only the date
+ * portion is compared) but for `@db.Timestamptz()` columns (EmergencyAlert
+ * .triggeredAt, CgmEntry.timestamp, etc.) the filter silently excludes
+ * events from the first 1-2h of the Paris day.
+ *
+ * Fix : extract the live offset via `longOffset` Intl part, embed it in
+ * the ISO literal so JS parses correctly to UTC.
  */
 function todayBounds(now = new Date()): { start: Date; end: Date } {
-  // Compute the Paris YYYY-MM-DD for `now`, then build the start of that
-  // local day and the start of the next local day as UTC instants.
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: CABINET_TIMEZONE,
     year: "numeric", month: "2-digit", day: "2-digit",
+    timeZoneName: "longOffset",
   })
-  const parts = fmt.format(now) // "YYYY-MM-DD"
-  // `@db.Date` columns are stored as Postgres DATE (no time/tz). Comparing
-  // against a UTC-midnight Date works because Prisma serialises Date → DATE
-  // via the date portion only. Using UTC midnight of the *Paris-local* date
-  // means we filter for the right calendar day.
-  const start = new Date(`${parts}T00:00:00Z`)
+  const parts = fmt.formatToParts(now)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
+  const year = get("year")
+  const month = get("month")
+  const day = get("day")
+  // `longOffset` → "GMT+02:00" / "GMT-05:00" ; ISO literal accepts ±HH:MM.
+  const offset = get("timeZoneName").replace(/^GMT/, "") || "+00:00"
+  const start = new Date(`${year}-${month}-${day}T00:00:00${offset}`)
   const end = new Date(start)
   end.setUTCDate(end.getUTCDate() + 1)
   return { start, end }
