@@ -165,7 +165,7 @@ CREATE TABLE "fhir_interoperability" (
     CONSTRAINT "fhir_interoperability_external_url_check"
         CHECK ("external_system_url" ~ '^https://')
 );
-CREATE INDEX "fhir_interoperability_status_retry_idx"
+CREATE INDEX "fhir_interoperability_sync_status_next_retry_at_idx"
     ON "fhir_interoperability"("sync_status", "next_retry_at");
 CREATE INDEX "fhir_interoperability_patient_id_resource_type_idx"
     ON "fhir_interoperability"("patient_id", "resource_type");
