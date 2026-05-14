@@ -13,6 +13,11 @@ import type { ComplianceSnapshot } from "@/lib/services/admin-dashboard.service"
 
 type ApiResponse = { item: ComplianceSnapshot }
 
+// code-review M3 (re-review) — externalised threshold for ANSSI/HDS
+//   traceability ; surfaces a "Stale" badge when last successful backup
+//   is older than this many days.
+const STALE_BACKUP_DAYS = 2
+
 function formatDate(d: Date | string | null): string {
   if (!d) return "Aucun backup"
   return new Date(d).toLocaleString("fr-FR", {
@@ -24,7 +29,8 @@ function formatDate(d: Date | string | null): string {
 
 function backupAgeDays(d: Date | string | null): number | null {
   if (!d) return null
-  return Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000)
+  // code-review M3 (re-review) — clamp negative ages from clock skew.
+  return Math.max(0, Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000))
 }
 
 export function ComplianceCard() {
@@ -35,7 +41,7 @@ export function ComplianceCard() {
   const item = data?.item ?? null
   const hasError = error !== null && data === null
   const backupAge = item ? backupAgeDays(item.lastBackupAt) : null
-  const backupStale = backupAge !== null && backupAge > 2
+  const backupStale = backupAge !== null && backupAge > STALE_BACKUP_DAYS
   return (
     <DiabeoCard role="region" aria-labelledby="admin-compliance-title">
       <header className="flex items-center justify-between px-4 pt-4">

@@ -15,6 +15,9 @@ import type { BillingMetric } from "@/lib/services/admin-dashboard.service"
 
 type ApiResponse = { item: BillingMetric }
 
+// code-review M4 (re-review) — keep round-euro display for a glance-able
+//   KPI ; UI labels the value "arrondi" so an auditor doesn't reconcile
+//   the rounded display against the cents in the DB.
 function formatEuros(cents: number): string {
   return new Intl.NumberFormat("fr-FR", {
     style: "currency", currency: "EUR", maximumFractionDigits: 0,
@@ -50,7 +53,10 @@ export function BillingCard() {
           </p>
         )}
         {item && (
-          <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <dl
+            className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+            aria-live="polite"
+          >
             <div>
               <dt className="text-xs text-muted-foreground">Éligibles total</dt>
               <dd className="text-lg font-semibold">{item.totalEligible}</dd>
@@ -68,7 +74,9 @@ export function BillingCard() {
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Montant non facturé</dt>
+              <dt className="text-xs text-muted-foreground">
+                Montant non facturé <span className="opacity-60">(arrondi)</span>
+              </dt>
               <dd className="text-lg font-semibold">
                 {formatEuros(item.unbilledAmountCents)}
               </dd>

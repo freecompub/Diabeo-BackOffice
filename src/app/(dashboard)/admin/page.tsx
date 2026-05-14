@@ -14,7 +14,13 @@ import { ComplianceCard } from "@/components/diabeo/dashboard/admin/ComplianceCa
 export default async function AdminDashboardPage() {
   const headersList = await headers()
   const role = headersList.get("x-user-role")
-  if (role !== "ADMIN") redirect("/login")
+  // UX guard — server-side fast bounce ; the actual authorization happens
+  // inside the API routes (`auditedRequireRole(req, "ADMIN", …)`). Non-ADMIN
+  // bounce goes to `/` so the root role-router sends them to their proper
+  // dashboard (DOCTOR → /medecin, NURSE → /infirmier, VIEWER → /patient/…).
+  // code-review L3 (re-review) — previously redirected to `/login` which
+  //   was misleading (caller IS logged in, just role-mismatched).
+  if (role !== "ADMIN") redirect("/")
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
