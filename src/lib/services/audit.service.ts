@@ -175,6 +175,8 @@ export type AuditResource =
   | "COHORT_ANALYTICS"
   /** Groupe 10 Batch B — patient risk score (US-2229). */
   | "PATIENT_RISK_SCORE"
+  /** Groupe 10 Batch C — modes spéciaux (pédiatrique/Ramadan/voyage, US-2233/2234/2235). */
+  | "PATIENT_MODE"
 
 /**
  * Audit log entry — parameters for logging an action.
