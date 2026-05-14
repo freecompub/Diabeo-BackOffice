@@ -243,4 +243,106 @@ describe("kpisQuery (US-2404)", () => {
     expect(tir.trend).toBeNull()
     expect(tir.delta).toBeNull()
   })
+
+  // ─── code-review L4 — TIR drop scenario (down trend) ───────────────────
+  it("L4 — TIR drop from prior window emits down trend + negative delta", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    pm.cgmEntry.groupBy
+      .mockResolvedValueOnce([{ patientId: 10 }] as any)
+      .mockResolvedValueOnce([{ patientId: 10 }] as any)
+    prismaMock.cgmEntry.count
+      .mockResolvedValueOnce(100) // total now
+      .mockResolvedValueOnce(50)  // in range now → 50%
+      .mockResolvedValueOnce(100) // total prev
+      .mockResolvedValueOnce(80)  // in range prev → 80%
+    prismaMock.emergencyAlert.count.mockResolvedValueOnce(0)
+    prismaMock.adjustmentProposal.count.mockResolvedValueOnce(0)
+    const out = await kpisQuery.forCaller(1, "DOCTOR", 1)
+    const tir = out.find((c) => c.code === "avgTir")!
+    expect(tir.value).toBe(50)
+    expect(tir.delta).toBe(-30) // 50 - 80
+    expect(tir.trend).toBe("down")
+  })
+})
+
+// ─── code-review L1 — CRITICALITY_ORDER invariants ─────────────────────
+
+describe("CRITICALITY_ORDER (L1)", () => {
+  it("orders DKA before severe_hypo before hypo before manual", async () => {
+    const { CRITICALITY_ORDER } = await import(
+      "@/lib/services/doctor-dashboard.service"
+    )
+    expect(CRITICALITY_ORDER.ketone_dka).toBeLessThan(CRITICALITY_ORDER.severe_hypo)
+    expect(CRITICALITY_ORDER.severe_hypo).toBeLessThan(CRITICALITY_ORDER.hypo)
+    expect(CRITICALITY_ORDER.hypo).toBeLessThan(CRITICALITY_ORDER.manual)
+    expect(CRITICALITY_ORDER.ketone_moderate).toBeLessThan(CRITICALITY_ORDER.hypo)
+  })
+})
+
+// ─── code-review L3 — HYPO_THRESHOLD_7D boundary ──────────────────────
+
+describe("patientsAtRiskQuery boundaries (L3)", () => {
+  it("does NOT flag at 2 hypos (below threshold)", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    pm.emergencyAlert.groupBy.mockResolvedValue([
+      { patientId: 10, _count: { patientId: 2 } },
+    ] as any)
+    pm.cgmEntry.groupBy.mockResolvedValue([
+      { patientId: 10, _max: { timestamp: new Date() } },
+    ] as any)
+    prismaMock.patient.findMany.mockResolvedValue([] as any)
+    const out = await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toEqual([])
+  })
+
+  it("flags at exactly 3 hypos (boundary)", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    pm.emergencyAlert.groupBy.mockResolvedValue([
+      { patientId: 10, _count: { patientId: 3 } },
+    ] as any)
+    pm.cgmEntry.groupBy.mockResolvedValue([
+      { patientId: 10, _max: { timestamp: new Date() } },
+    ] as any)
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null } },
+    ] as any)
+    const out = await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toHaveLength(1)
+    expect(out[0]!.reason).toBe("recentHypos")
+  })
+})
+
+// ─── healthcare M2 — summary audit always emitted ─────────────────────
+
+describe("patientsAtRiskQuery summary audit (healthcare M2)", () => {
+  it("emits summary resourceId:0 row even on non-empty result", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([] as any)
+    pm.emergencyAlert.groupBy.mockResolvedValue([
+      { patientId: 10, _count: { patientId: 5 } },
+    ] as any)
+    pm.cgmEntry.groupBy.mockResolvedValue([
+      { patientId: 10, _max: { timestamp: new Date() } },
+    ] as any)
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null } },
+    ] as any)
+    await patientsAtRiskQuery.forCaller(1, "DOCTOR", 1)
+    // Summary row should have resourceId="0" AND a per-patient row should
+    // have metadata.patientId set.
+    const calls = prismaMock.auditLog.create.mock.calls.map((c) => (c[0].data as any))
+    const summary = calls.find((d) =>
+      d.resourceId === "0"
+      && d.metadata?.kind === "dashboard.medecin.patientsAtRisk"
+      && d.metadata?.count === 1,
+    )
+    expect(summary).toBeDefined()
+    const perPatient = calls.find((d) =>
+      d.metadata?.patientId === 10
+      && d.metadata?.kind === "dashboard.medecin.patientsAtRisk",
+    )
+    expect(perPatient).toBeDefined()
+  })
 })

@@ -25,11 +25,12 @@ function mapTrendDirection(t: KpiCard["trend"]): "up" | "down" | "stable" | unde
 }
 
 export function KpiSection() {
-  const { data, error, loading } = usePollingFetch<ApiResponse>(
+  const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/kpi",
     10 * 60_000,
   )
-  const items = data?.items ?? []
+  // code-review H5 — defensive against malformed response.
+  const items = Array.isArray(data?.items) ? data!.items : []
   const hasError = error !== null && data === null
 
   return (
@@ -40,6 +41,11 @@ export function KpiSection() {
       {hasError && (
         <p className="mb-2 text-sm text-glycemia-critical">
           Impossible de charger les KPI.
+        </p>
+      )}
+      {isStale && (
+        <p className="mb-2 text-xs text-glycemia-high" role="status">
+          Données obsolètes — rafraîchissement en attente.
         </p>
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

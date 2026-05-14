@@ -21,11 +21,12 @@ const REASON_LABELS: Record<string, { label: string; variant: "destructive" | "o
 }
 
 export function PatientsAtRiskCard() {
-  const { data, error, loading } = usePollingFetch<ApiResponse>(
+  const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/patients-at-risk",
     5 * 60_000,
   )
-  const items = data?.items ?? []
+  // code-review H5 — defensive against malformed response.
+  const items = Array.isArray(data?.items) ? data!.items : []
   const hasError = error !== null && data === null
 
   return (
@@ -36,6 +37,11 @@ export function PatientsAtRiskCard() {
         </h2>
         <span className="text-xs text-muted-foreground">Top {items.length || 0}</span>
       </header>
+      {isStale && (
+        <p className="px-4 text-xs text-glycemia-high" role="status">
+          Données obsolètes — rafraîchissement en attente.
+        </p>
+      )}
 
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (

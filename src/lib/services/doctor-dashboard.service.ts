@@ -41,13 +41,20 @@ import type { Role } from "@prisma/client"
  */
 function patientScopeWhere(
   ids: number[] | null,
-): { patientId?: { in: number[] } } | null {
-  if (ids === null) return {} // ADMIN — no restriction
+): { patientId?: { in: number[] }; patient?: { deletedAt: null } } | null {
+  // healthcare H1 — even for ADMIN, exclude soft-deleted patients to honour
+  // RGPD Art. 17 (no resurfacing of erased patients on aggregate dashboards).
+  if (ids === null) return { patient: { deletedAt: null } }
   if (ids.length === 0) return null // empty portfolio → no rows
-  return { patientId: { in: ids } }
+  return { patientId: { in: ids }, patient: { deletedAt: null } }
 }
 
-const CRITICALITY_ORDER: Record<EmergencyAlertType, number> = {
+/**
+ * code-review L1 — exported so tests can assert criticality invariants.
+ * Lower value = higher priority. Ordering matches IDF/EASD severity scale
+ * (DKA > severe hypo > moderate ketone > hypo > severe hyper > hyper > manual).
+ */
+export const CRITICALITY_ORDER: Record<EmergencyAlertType, number> = {
   ketone_dka: 0,
   severe_hypo: 1,
   ketone_moderate: 2,
@@ -85,25 +92,47 @@ export const urgenciesQuery = {
     const ids = await getAccessiblePatientIds(userId, role)
     const scope = patientScopeWhere(ids)
     if (scope === null) return [] // empty portfolio
-    const rows = await prisma.emergencyAlert.findMany({
-      where: {
-        ...scope,
-        status: { in: [EmergencyAlertStatus.open, EmergencyAlertStatus.acknowledged] },
-        patient: { deletedAt: null },
-      },
-      include: {
-        patient: {
-          select: {
-            id: true, pathology: true,
-            user: { select: { firstname: true } },
-          },
+    const baseWhere = {
+      ...scope,
+      status: { in: [EmergencyAlertStatus.open, EmergencyAlertStatus.acknowledged] },
+    }
+    // healthcare M1 — two-pass : always surface critical-severity alerts
+    // (DKA, severe hypo, severe hyper) regardless of trigger time ; then
+    // top up with newer non-critical to URGENCY_LIMIT. Eliminates the
+    // "DKA hidden behind 50 newer hypers" failure mode.
+    const include = {
+      patient: {
+        select: {
+          id: true, pathology: true,
+          user: { select: { firstname: true } },
         },
       },
-      orderBy: [{ triggeredAt: "desc" }],
-      // Over-fetch then sort by criticality in-memory (small N, K ≤ 5).
-      take: 50,
-    })
-    const sorted = rows
+    } as const
+    const [criticalRows, recentRows] = await Promise.all([
+      prisma.emergencyAlert.findMany({
+        where: { ...baseWhere, severity: EmergencyAlertSeverity.critical },
+        include,
+        orderBy: [{ triggeredAt: "desc" }],
+        take: URGENCY_LIMIT,
+      }),
+      prisma.emergencyAlert.findMany({
+        where: baseWhere,
+        include,
+        orderBy: [{ triggeredAt: "desc" }],
+        take: URGENCY_LIMIT * 2,
+      }),
+    ])
+    // Dedupe by id (critical rows are a subset of recent in time) preserving
+    // criticalRows first so they survive the limit cut.
+    const seen = new Set<number>()
+    const merged: typeof criticalRows = []
+    for (const r of criticalRows) {
+      if (!seen.has(r.id)) { seen.add(r.id); merged.push(r) }
+    }
+    for (const r of recentRows) {
+      if (!seen.has(r.id)) { seen.add(r.id); merged.push(r) }
+    }
+    const sorted = merged
       .sort((a, b) => {
         const cmp = CRITICALITY_ORDER[a.alertType] - CRITICALITY_ORDER[b.alertType]
         if (cmp !== 0) return cmp
@@ -150,10 +179,29 @@ export type AppointmentItem = {
 }
 
 const APPOINTMENTS_LIMIT = 3
+const CABINET_TIMEZONE = "Europe/Paris"
 
+/**
+ * code-review C3 / M6 — return [start, end) covering "today" in the cabinet's
+ * timezone (Europe/Paris). The `appointment.date` column is `@db.Date`
+ * (timezone-naive), so we must build the boundary against Paris wall-clock,
+ * not the server's UTC midnight. At 01h Paris (= 23h UTC previous day), the
+ * previous UTC-midnight implementation showed yesterday's RDV instead of
+ * today's morning slots.
+ */
 function todayBounds(now = new Date()): { start: Date; end: Date } {
-  const start = new Date(now)
-  start.setUTCHours(0, 0, 0, 0)
+  // Compute the Paris YYYY-MM-DD for `now`, then build the start of that
+  // local day and the start of the next local day as UTC instants.
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CABINET_TIMEZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  })
+  const parts = fmt.format(now) // "YYYY-MM-DD"
+  // `@db.Date` columns are stored as Postgres DATE (no time/tz). Comparing
+  // against a UTC-midnight Date works because Prisma serialises Date → DATE
+  // via the date portion only. Using UTC midnight of the *Paris-local* date
+  // means we filter for the right calendar day.
+  const start = new Date(`${parts}T00:00:00Z`)
   const end = new Date(start)
   end.setUTCDate(end.getUTCDate() + 1)
   return { start, end }
@@ -213,7 +261,9 @@ export const appointmentsQuery = {
 // US-2403 — Patients at risk (on-demand, no batch job)
 // ─────────────────────────────────────────────────────────────
 
-export type RiskReason = "recentHypos" | "silentMonitoring" | "tirDrop"
+// code-review L6 — dropped `tirDrop` (defined but never produced) ;
+//   reintroduce when prior-window TIR per patient is implemented.
+export type RiskReason = "recentHypos" | "silentMonitoring"
 
 export type PatientAtRiskItem = {
   patientId: number
@@ -250,35 +300,52 @@ export const patientsAtRiskQuery = {
     const now = new Date()
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
     const silentCutoff = new Date(now.getTime() - SILENT_DAYS * 86_400_000)
-
-    // Patients with open urgencies (excluded from list).
-    const inUrgencyRows = await prisma.emergencyAlert.findMany({
-      where: {
-        ...(ids ? { patientId: { in: ids } } : {}),
-        status: { in: [EmergencyAlertStatus.open, EmergencyAlertStatus.acknowledged] },
-      },
-      select: { patientId: true },
-      distinct: ["patientId"],
-    })
+    // healthcare H1 — soft-delete filter on every cross-patient aggregation,
+    //   including ADMIN (ids=null).
+    const patientFilter = { patient: { deletedAt: null } }
+    // code-review M5 — parallelize 3 independent queries (3x latency win).
+    // healthcare H2 — for ADMIN with no portfolio restriction, fetch the
+    //   full non-deleted patient list to seed silence detection ; otherwise
+    //   `Array.from(latestByPatient.keys())` would miss patients with no CGM.
+    const [inUrgencyRows, hypoCounts, latestCgm, adminPortfolio] = await Promise.all([
+      prisma.emergencyAlert.findMany({
+        where: {
+          ...(ids ? { patientId: { in: ids } } : {}),
+          ...patientFilter,
+          status: { in: [EmergencyAlertStatus.open, EmergencyAlertStatus.acknowledged] },
+        },
+        select: { patientId: true },
+        distinct: ["patientId"],
+      }),
+      prisma.emergencyAlert.groupBy({
+        by: ["patientId"],
+        where: {
+          ...(ids ? { patientId: { in: ids } } : {}),
+          ...patientFilter,
+          alertType: { in: [EmergencyAlertType.hypo, EmergencyAlertType.severe_hypo] },
+          triggeredAt: { gte: sevenDaysAgo },
+        },
+        _count: { patientId: true },
+      }),
+      prisma.cgmEntry.groupBy({
+        by: ["patientId"],
+        where: {
+          ...(ids ? { patientId: { in: ids } } : {}),
+          ...patientFilter,
+        },
+        _max: { timestamp: true },
+      }),
+      // ADMIN seed : full non-deleted patient list (cap 1000 to bound audit
+      // explosion). DOCTOR/NURSE rely on their `ids` portfolio.
+      ids === null
+        ? prisma.patient.findMany({
+            where: { deletedAt: null },
+            select: { id: true },
+            take: 1000,
+          })
+        : Promise.resolve(null),
+    ])
     const exclude = new Set(inUrgencyRows.map((r) => r.patientId))
-
-    // Hypo count last 7 days, by patient.
-    const hypoCounts = await prisma.emergencyAlert.groupBy({
-      by: ["patientId"],
-      where: {
-        ...(ids ? { patientId: { in: ids } } : {}),
-        alertType: { in: [EmergencyAlertType.hypo, EmergencyAlertType.severe_hypo] },
-        triggeredAt: { gte: sevenDaysAgo },
-      },
-      _count: { patientId: true },
-    })
-
-    // Silence detection : latest cgmEntry timestamp per patient.
-    const latestCgm = await prisma.cgmEntry.groupBy({
-      by: ["patientId"],
-      where: ids ? { patientId: { in: ids } } : undefined,
-      _max: { timestamp: true },
-    })
     const latestByPatient = new Map(
       latestCgm.map((r) => [r.patientId, r._max.timestamp]),
     )
@@ -303,7 +370,7 @@ export const patientsAtRiskQuery = {
 
     // Silent monitoring : patients whose latest CGM is older than cutoff,
     // OR patients in portfolio with NO CGM entries at all.
-    const portfolioIds = ids ?? Array.from(latestByPatient.keys())
+    const portfolioIds = ids ?? (adminPortfolio ?? []).map((p) => p.id)
     for (const pid of portfolioIds) {
       if (exclude.has(pid) || flags.has(pid)) continue
       const last = latestByPatient.get(pid)
@@ -327,15 +394,16 @@ export const patientsAtRiskQuery = {
       .sort((a, b) => b.score - a.score)
       .slice(0, RISK_LIMIT)
 
-    if (top.length === 0) {
-      await auditService.log({
-        userId: auditUserId, action: "READ", resource: "PATIENT",
-        resourceId: "0",
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: { kind: "dashboard.medecin.patientsAtRisk", count: 0 },
-      })
-      return []
-    }
+    // healthcare M2 — always emit a summary `resourceId:"0"` audit row,
+    //   matching the other 3 dashboard endpoints' telemetry convention.
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "PATIENT",
+      resourceId: "0",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { kind: "dashboard.medecin.patientsAtRisk", count: top.length },
+    })
+
+    if (top.length === 0) return []
 
     // Hydrate first-name (via User) + pathology for the top N only.
     const patients = await prisma.patient.findMany({
@@ -348,7 +416,9 @@ export const patientsAtRiskQuery = {
     const byId = new Map(patients.map((p) => [p.id, p]))
 
     // Per-patient audit row (forensic pivot per US-2268).
-    await Promise.all(top.map((t) =>
+    // code-review L8 — `allSettled` so a single audit failure doesn't 500
+    //   the dashboard call after data is already computed.
+    await Promise.allSettled(top.map((t) =>
       auditService.log({
         userId: auditUserId, action: "READ", resource: "PATIENT",
         resourceId: String(t.patientId),
@@ -414,83 +484,76 @@ export const kpisQuery = {
     }
 
     const now = new Date()
+    // code-review C2 — windowed dates : current 14d window is `[now-14d, now)`,
+    //   previous 14d window is `[now-28d, now-14d)`. `fourteenDaysAgo` doubles
+    //   as the upper bound of the previous window — no duplicate constant.
     const fourteenDaysAgo = new Date(now.getTime() - 14 * 86_400_000)
     const twentyEightDaysAgo = new Date(now.getTime() - 28 * 86_400_000)
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
-    const fourteenDaysAgoPrev = new Date(now.getTime() - 14 * 86_400_000)
 
-    // 1. Active patients = patient with ≥ 1 CGM entry in last 14d.
-    const activeNow = await prisma.cgmEntry.groupBy({
-      by: ["patientId"],
-      where: {
-        ...scope,
-        timestamp: { gte: fourteenDaysAgo },
-      },
-      _count: { _all: true },
-    })
-    const activePrev = await prisma.cgmEntry.groupBy({
-      by: ["patientId"],
-      where: {
-        ...scope,
-        timestamp: { gte: twentyEightDaysAgo, lt: fourteenDaysAgoPrev },
-      },
-      _count: { _all: true },
-    })
+    // code-review H3 — 8 independent queries parallelized in one Promise.all
+    //   (~6x latency win on first paint vs sequential awaits).
+    const [
+      activeNow, activePrev,
+      tirTotalNow, tirInRangeNow,
+      tirTotalPrev, tirInRangePrev,
+      weekUrg, pendingProposals,
+    ] = await Promise.all([
+      prisma.cgmEntry.groupBy({
+        by: ["patientId"],
+        where: { ...scope, timestamp: { gte: fourteenDaysAgo } },
+        _count: { patientId: true },
+      }),
+      prisma.cgmEntry.groupBy({
+        by: ["patientId"],
+        where: { ...scope, timestamp: { gte: twentyEightDaysAgo, lt: fourteenDaysAgo } },
+        _count: { patientId: true },
+      }),
+      prisma.cgmEntry.count({
+        where: { ...scope, timestamp: { gte: fourteenDaysAgo } },
+      }),
+      prisma.cgmEntry.count({
+        where: {
+          ...scope,
+          timestamp: { gte: fourteenDaysAgo },
+          valueGl: { gte: TIR_LOW_GL, lte: TIR_HIGH_GL },
+        },
+      }),
+      prisma.cgmEntry.count({
+        where: { ...scope, timestamp: { gte: twentyEightDaysAgo, lt: fourteenDaysAgo } },
+      }),
+      prisma.cgmEntry.count({
+        where: {
+          ...scope,
+          timestamp: { gte: twentyEightDaysAgo, lt: fourteenDaysAgo },
+          valueGl: { gte: TIR_LOW_GL, lte: TIR_HIGH_GL },
+        },
+      }),
+      prisma.emergencyAlert.count({
+        where: {
+          ...scope,
+          triggeredAt: { gte: sevenDaysAgo },
+          severity: EmergencyAlertSeverity.critical,
+        },
+      }),
+      prisma.adjustmentProposal.count({
+        where: { ...scope, status: "pending" },
+      }),
+    ])
+
     const activeNowCount = activeNow.length
     const activePrevCount = activePrev.length
     const activeDelta = activeNowCount - activePrevCount
 
-    // 2. Avg TIR : aggregate CGM readings last 14d, fraction in [0.70, 1.80] g/L.
-    const tirTotalNow = await prisma.cgmEntry.count({
-      where: { ...scope, timestamp: { gte: fourteenDaysAgo } },
-    })
-    const tirInRangeNow = await prisma.cgmEntry.count({
-      where: {
-        ...scope,
-        timestamp: { gte: fourteenDaysAgo },
-        valueGl: { gte: TIR_LOW_GL, lte: TIR_HIGH_GL },
-      },
-    })
     const tirNow = tirTotalNow > 0
       ? Math.round((tirInRangeNow / tirTotalNow) * 1000) / 10
       : 0
-
-    const tirTotalPrev = await prisma.cgmEntry.count({
-      where: {
-        ...scope,
-        timestamp: { gte: twentyEightDaysAgo, lt: fourteenDaysAgoPrev },
-      },
-    })
-    const tirInRangePrev = await prisma.cgmEntry.count({
-      where: {
-        ...scope,
-        timestamp: { gte: twentyEightDaysAgo, lt: fourteenDaysAgoPrev },
-        valueGl: { gte: TIR_LOW_GL, lte: TIR_HIGH_GL },
-      },
-    })
     const tirPrev = tirTotalPrev > 0
       ? Math.round((tirInRangePrev / tirTotalPrev) * 1000) / 10
       : 0
     const tirDelta = tirTotalPrev > 0
       ? Math.round((tirNow - tirPrev) * 10) / 10
       : null
-
-    // 3. Week urgencies = critical alerts triggered last 7 days.
-    const weekUrg = await prisma.emergencyAlert.count({
-      where: {
-        ...scope,
-        triggeredAt: { gte: sevenDaysAgo },
-        severity: EmergencyAlertSeverity.critical,
-      },
-    })
-
-    // 4. Pending adjustment proposals in portfolio.
-    const pendingProposals = await prisma.adjustmentProposal.count({
-      where: {
-        ...scope,
-        status: "pending",
-      },
-    })
 
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "PATIENT",

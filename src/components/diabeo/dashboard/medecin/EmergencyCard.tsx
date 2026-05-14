@@ -32,12 +32,13 @@ const SEVERITY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
 }
 
 export function EmergencyCard() {
-  const { data, error, loading, lastUpdatedAt } = usePollingFetch<ApiResponse>(
+  const { data, error, loading, lastUpdatedAt, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/urgencies",
     30_000,
   )
 
-  const items = data?.items ?? []
+  // code-review H5 — defensive : assume nothing about response shape.
+  const items = Array.isArray(data?.items) ? data!.items : []
   const hasError = error !== null && data === null
 
   return (
@@ -46,12 +47,21 @@ export function EmergencyCard() {
         <h2 id="card-urgencies-title" className="text-base font-semibold text-glycemia-critical">
           Urgences en cours
         </h2>
-        <span className="text-xs text-muted-foreground" aria-live="polite">
+        <span className="text-xs text-muted-foreground">
           {lastUpdatedAt ? `MAJ ${new Date(lastUpdatedAt).toLocaleTimeString("fr-FR")}` : "—"}
         </span>
       </header>
+      {isStale && (
+        <p className="px-4 text-xs text-glycemia-high" role="status">
+          Données obsolètes — rafraîchissement en attente.
+        </p>
+      )}
 
-      <div className="px-4 pb-4" role="status" aria-live="polite" aria-atomic="true">
+      {/* code-review M1 — separate live regions :
+            - "polite" announces transitions (loading/empty/error) without
+              interrupting reader flow.
+            - "assertive" on the count below interrupts for new urgencies. */}
+      <div className="px-4 pb-1" role="status" aria-live="polite">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">Chargement…</p>
         )}
@@ -65,6 +75,11 @@ export function EmergencyCard() {
             message="Patients stables sur le portefeuille."
           />
         )}
+      </div>
+      <div className="px-4 pb-4">
+        <p className="sr-only" role="alert" aria-live="assertive">
+          {items.length > 0 ? `${items.length} urgence${items.length > 1 ? "s" : ""} en cours` : ""}
+        </p>
         {items.length > 0 && (
           <ul className="space-y-2">
             {items.map((u) => (
