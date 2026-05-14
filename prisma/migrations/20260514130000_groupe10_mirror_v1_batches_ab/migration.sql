@@ -207,7 +207,9 @@ CREATE TABLE "alert_threshold_templates" (
     "is_active"              BOOLEAN NOT NULL DEFAULT true,
     "created_at"             TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at"             TIMESTAMPTZ NOT NULL,
-    "created_by"             INTEGER NOT NULL,
+    -- M10 (re-review) — nullable to allow RGPD Art. 17 user hard-delete to
+    -- SetNull the author reference rather than block on Restrict.
+    "created_by"             INTEGER,
 
     CONSTRAINT "alert_threshold_templates_pkey" PRIMARY KEY ("id"),
     -- Clinical bounds 40-300 mg/dL ; cooldown bounded.
