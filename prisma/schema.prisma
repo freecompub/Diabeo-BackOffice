@@ -360,6 +360,11 @@ model User {
   createdHealthcareRegulations   HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
   createdFhirInteroperability    FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
   createdFhirAllowedSystems      FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
+  // Groupe 10 Mirror V1 — Batches A+B
+  createdConfigVersions          ConfigVersion[]                   @relation("ConfigVersionCreator")
+  validatedConfigVersions        ConfigVersion[]                   @relation("ConfigVersionValidator")
+  createdAlertThresholdTemplates AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
+  acknowledgedRiskScores         PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -547,6 +552,13 @@ model Patient {
   proposalAcks          AdjustmentProposalAck[]
   /// US-2057 — Photos repas (review PR #391 H5 FK explicite).
   mealPhotos            MealPhoto[]
+  /// Groupe 10 Batch A — config versionning hub + features.
+  configVersions        ConfigVersion[]
+  emergencyContacts     EmergencyContact[]
+  escalationRules       EscalationRule[]
+  /// Groupe 10 Batch B — analytics caches.
+  monitoringMetrics     PatientMonitoringMetrics[]
+  riskScore             PatientRiskScore?
 
   @@index([deletedAt])
   @@map("patients")
@@ -1360,6 +1372,10 @@ model HealthcareService {
   patientTags     PatientTag[]
   /// US-2078 — Templates de messages partagés au sein du cabinet.
   messageTemplates MessageTemplate[]
+  /// Groupe 10 Batch A US-2220 — Bibliothèque de templates de seuils
+  alertThresholdTemplates AlertThresholdTemplate[]
+  /// Groupe 10 Batch B US-2228 — Snapshots quotidiens KPIs cohorte
+  cohortAnalyticsSnapshots CohortAnalyticsSnapshot[]
   /// US-2088 — Groupes patients (cohortes).
   patientGroups   PatientGroup[]
   /// US-2050 — Templates d'ajustement insuline (cabinet-scoped).
@@ -2494,4 +2510,221 @@ enum FhirSyncStatus {
   stale
 
   @@map("fhir_sync_status")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Groupe 10 Mirror V1 — Batch A : Config urgences avancée
+// ─────────────────────────────────────────────────────────────
+
+/// US-2221 — Hub versioning partagé pour les configurations patient
+/// (contacts urgence, escalation rules, alert thresholds). Append-only :
+/// chaque changement crée une nouvelle ligne avec `validFrom` set, l'ancienne
+/// passe `validTo`. Immuable après insertion (trigger PostgreSQL).
+///
+/// `configSnapshot` = JSON dénormalisé de la config au moment du change,
+/// utilisé par l'API history pour reconstituer un état passé sans dépendre
+/// de l'évolution future des tables filles.
+model ConfigVersion {
+  id              Int       @id @default(autoincrement())
+  /// C3-NEW (re-review) — nullable for RGPD Art. 17 hard-delete compatibility :
+  /// patient deletion sets this to NULL, preserving config history as orphan
+  /// (audit-friendly) without violating the append-only `no_delete` trigger.
+  patientId       Int?      @map("patient_id")
+  configType      ConfigVersionType @map("config_type")
+  version         Int
+  configSnapshot  Json      @map("config_snapshot")
+  validFrom       DateTime  @default(now()) @map("valid_from") @db.Timestamptz()
+  validTo         DateTime? @map("valid_to") @db.Timestamptz()
+  status          ConfigVersionStatus @default(active)
+  createdBy       Int       @map("created_by")
+  validatedBy     Int?      @map("validated_by")
+  validatedAt     DateTime? @map("validated_at") @db.Timestamptz()
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient         Patient?           @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  creator         User               @relation("ConfigVersionCreator", fields: [createdBy], references: [id])
+  validator       User?              @relation("ConfigVersionValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
+  contacts        EmergencyContact[]
+  escalationRules EscalationRule[]
+
+  @@unique([patientId, configType, version])
+  @@index([patientId, configType, validFrom])
+  @@index([status, configType])
+  @@map("config_versions")
+}
+
+enum ConfigVersionType {
+  emergency_contacts
+  escalation_rules
+  alert_thresholds
+
+  @@map("config_version_type")
+}
+
+enum ConfigVersionStatus {
+  /// US-2221 — Live, en vigueur.
+  active
+  /// Remplacée par une version ultérieure.
+  superseded
+  /// Archivée (purgée du listing actif).
+  archived
+
+  @@map("config_version_status")
+}
+
+/// US-2218 — Contacts d'urgence (max 5 par patient) joignables en cas
+/// d'alerte critique. `name` et `phone` chiffrés AES-256-GCM (PHI).
+model EmergencyContact {
+  id            Int      @id @default(autoincrement())
+  patientId     Int      @map("patient_id")
+  versionId     Int      @map("version_id")
+  rank          Int
+  /// AES-256-GCM (base64).
+  nameEncrypted  String  @map("name_encrypted") @db.Text
+  /// AES-256-GCM (base64).
+  phoneEncrypted String  @map("phone_encrypted") @db.Text
+  relationship  String   @db.VarChar(50)
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  configVersion ConfigVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, rank, isActive])
+  @@map("emergency_contacts")
+}
+
+/// US-2219 — Règles d'escalade urgence (chaîne patient → contact → médecin
+/// → SAMU). `delayMinutes` = délai d'attente avant escalade au target suivant.
+model EscalationRule {
+  id           Int      @id @default(autoincrement())
+  patientId    Int      @map("patient_id")
+  versionId    Int      @map("version_id")
+  priority     Int
+  targetType   EscalationTargetType @map("target_type")
+  /// FK vers EmergencyContact.id (si targetType=contact) ou User.id (si targetType=doctor).
+  /// Null pour SAMU (pas de FK).
+  targetId     Int?     @map("target_id")
+  delayMinutes Int      @default(15) @map("delay_minutes")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  configVersion ConfigVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@index([patientId, priority])
+  @@map("escalation_rules")
+}
+
+enum EscalationTargetType {
+  contact
+  doctor
+  samu
+
+  @@map("escalation_target_type")
+}
+
+/// US-2220 — Bibliothèque de templates de seuils glycémiques par profil
+/// patient (T1 adulte stable, T1 ado, T2, gestationnel, pédiatrique).
+/// `glucose*Mgdl` en mg/dL. Cabinet-scoped via `organizationId`.
+model AlertThresholdTemplate {
+  id                  Int      @id @default(autoincrement())
+  organizationId      Int      @map("organization_id")
+  profileType         String   @map("profile_type") @db.VarChar(50)
+  name                String   @db.VarChar(100)
+  glucoseLowMgdl      Decimal  @map("glucose_low_mgdl") @db.Decimal(6, 2)
+  glucoseHighMgdl     Decimal  @map("glucose_high_mgdl") @db.Decimal(6, 2)
+  glucoseVeryLowMgdl  Decimal  @map("glucose_very_low_mgdl") @db.Decimal(6, 2)
+  glucoseVeryHighMgdl Decimal  @map("glucose_very_high_mgdl") @db.Decimal(6, 2)
+  alertOnHypo         Boolean  @default(true) @map("alert_on_hypo")
+  cooldownMinutes     Int      @default(30) @map("cooldown_minutes")
+  isActive            Boolean  @default(true) @map("is_active")
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy           Int?     @map("created_by")
+
+  organization HealthcareService @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator      User?             @relation("AlertThresholdTemplateCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, profileType, name])
+  @@index([organizationId, isActive])
+  @@map("alert_threshold_templates")
+}
+
+// ─────────────────────────────────────────────────────────────
+// Groupe 10 Mirror V1 — Batch B : Analytics urgences
+// ─────────────────────────────────────────────────────────────
+
+/// US-2227 — Cache trimestriel des métriques d'urgence par patient.
+/// Recomputed nightly via BullMQ job + on-demand refresh par DOCTOR.
+model PatientMonitoringMetrics {
+  id              Int      @id @default(autoincrement())
+  patientId       Int      @map("patient_id")
+  /// Format `YYYY-Qn` (e.g. `2026-Q2`).
+  quarter         String   @db.VarChar(7)
+  hypoCount       Int      @default(0) @map("hypo_count")
+  severeHypoCount Int      @default(0) @map("severe_hypo_count")
+  dkaCount        Int      @default(0) @map("dka_count")
+  avgDurationMin  Decimal? @map("avg_duration_min") @db.Decimal(6, 1)
+  topHourOfDay    Int?     @map("top_hour_of_day")
+  metricsJson     Json     @map("metrics_json")
+  computedAt      DateTime @default(now()) @map("computed_at") @db.Timestamptz()
+
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([patientId, quarter])
+  @@index([computedAt])
+  @@map("patient_monitoring_metrics")
+}
+
+/// US-2228 — Snapshot quotidien des KPIs cohorte (taux hypos sévères pour
+/// 1000 jours-patient, incidence DKA, benchmarks nationaux anonymisés).
+model CohortAnalyticsSnapshot {
+  id                Int      @id @default(autoincrement())
+  organizationId    Int      @map("organization_id")
+  snapshotDate      DateTime @map("snapshot_date") @db.Date
+  patientCount      Int      @map("patient_count")
+  severeHypoRate    Decimal  @map("severe_hypo_rate") @db.Decimal(7, 2)
+  dkaIncidence      Decimal  @map("dka_incidence") @db.Decimal(7, 2)
+  nationalBenchmark Json     @map("national_benchmark")
+  stratification    Json
+  computedAt        DateTime @default(now()) @map("computed_at") @db.Timestamptz()
+
+  organization HealthcareService @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, snapshotDate])
+  @@index([snapshotDate])
+  @@map("cohort_analytics_snapshots")
+}
+
+/// US-2229 — Score de risque patient agrégé (0-100). Recomputed hebdo via
+/// BullMQ job. Trigger une alerte au DOCTOR si score > 70 (niveau HIGH/CRITICAL).
+/// `contributingFactors` = explicabilité du score (rule-based, pas ML pour MVP).
+model PatientRiskScore {
+  id                  Int      @id @default(autoincrement())
+  patientId           Int      @unique @map("patient_id")
+  riskScore           Int      @map("risk_score") @db.SmallInt
+  riskLevel           RiskLevel @map("risk_level")
+  recentHypoCount     Int      @map("recent_hypo_count")
+  declarationRatio    Decimal  @map("declaration_ratio") @db.Decimal(4, 2)
+  dkaHistory          Boolean  @default(false) @map("dka_history")
+  contributingFactors Json     @map("contributing_factors")
+  flaggedAt           DateTime? @map("flagged_at") @db.Timestamptz()
+  acknowledgedBy      Int?     @map("acknowledged_by")
+  acknowledgedAt      DateTime? @map("acknowledged_at") @db.Timestamptz()
+  computedAt          DateTime @default(now()) @map("computed_at") @db.Timestamptz()
+
+  patient      Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  acknowledger User?   @relation("PatientRiskScoreAcknowledger", fields: [acknowledgedBy], references: [id], onDelete: SetNull)
+
+  @@index([riskLevel, computedAt])
+  @@map("patient_risk_scores")
+}
+
+enum RiskLevel {
+  low
+  medium
+  high
+  critical
+
+  @@map("risk_level")
 }

@@ -161,6 +161,20 @@ export type AuditResource =
   | "FHIR_INTEROP"
   /** US-2123 H5 — FHIR allowed-system registry entry (DPA-approved destination). */
   | "FHIR_ALLOWED_SYSTEM"
+  /** Groupe 10 Batch A — config version hub (US-2221). */
+  | "CONFIG_VERSION"
+  /** Groupe 10 Batch A — emergency contacts (US-2218). */
+  | "EMERGENCY_CONTACT"
+  /** Groupe 10 Batch A — escalation rule (US-2219). */
+  | "ESCALATION_RULE"
+  /** Groupe 10 Batch A — alert threshold template library (US-2220). */
+  | "ALERT_THRESHOLD_TEMPLATE"
+  /** Groupe 10 Batch B — patient monitoring metrics cache (US-2227). */
+  | "PATIENT_MONITORING_METRICS"
+  /** Groupe 10 Batch B — cohort analytics snapshot (US-2228). */
+  | "COHORT_ANALYTICS"
+  /** Groupe 10 Batch B — patient risk score (US-2229). */
+  | "PATIENT_RISK_SCORE"
 
 /**
  * Audit log entry — parameters for logging an action.
