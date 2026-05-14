@@ -117,8 +117,24 @@ export function useAuth() {
         // JWT itself is httpOnly — we never touch it from client code.
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
+        // US-3356 — Role-based redirect : VIEWER lands on patient self-service
+        // dashboard, all other roles (pros) on the cabinet dashboard.
+        // We probe `/api/account` (returns role) immediately after login since
+        // the JWT cookie is now set and the endpoint is JWT-protected.
+        let target = "/dashboard"
+        try {
+          const me = await fetch("/api/account", { credentials: "include" })
+          if (me.ok) {
+            const account = (await me.json()) as { role?: string }
+            if (account.role === "VIEWER") target = "/patient/dashboard"
+          }
+        } catch {
+          // Network blip: fall through to /dashboard. Layout-side guards will
+          // bounce a VIEWER back to /patient/dashboard if needed.
+        }
+
         // JWT is set as httpOnly cookie by the server — no client-side storage
-        router.push("/dashboard")
+        router.push(target)
         return { success: true }
       } catch {
         const errorMsg = t("networkError")
