@@ -14,6 +14,16 @@
  *  - `deactivate` = transition vers `status=archived` (manuel ou cron pour
  *    Ramadan/voyage qui ont une date d'expiration naturelle)
  *
+ * ⚠️ CLINICAL DISCLAIMER (medical-domain-validator C2) ⚠️
+ *
+ * Mode configs are **informational only** in this PR : `insulin.service.ts`
+ * does NOT yet read `isfMultiplier`, `icrMultiplier`, or `basalMultiplier`
+ * during bolus/basal calculation. DOCTOR review remains mandatory at
+ * `validate` step, and the UI MUST surface a "Adjustments are manual —
+ * automated dose adaptation not yet implemented" banner. Wiring into the
+ * insulin calculator is tracked as a follow-up US (modes → calculator
+ * integration with re-validation of CLINICAL_BOUNDS post-multiplier).
+ *
  * PHI :
  *  - Pédiatrique : `name` et `phone` des aidants chiffrés AES-256-GCM dans
  *    `pediatric_caregivers`. Snapshot ConfigVersion redacted (hasName/hasPhone
@@ -26,6 +36,7 @@ import {
   ConfigVersionStatus,
   ConfigVersionType,
 } from "@prisma/client"
+import { z } from "zod"
 import { prisma, type PrismaClientOrTx as Tx } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService, type AuditContext } from "./audit.service"
@@ -35,8 +46,27 @@ import { NotFoundError, ValidationError } from "./team-workflow.errors"
 // Shared helpers (mirror mirror-v1-config.service patterns)
 // ─────────────────────────────────────────────────────────────
 
-const PERMISSION_LEVELS = ["read", "write", "config"] as const
+// Medical H1 — renamed "config" → "propose" : caregivers cannot mutate
+// clinical thresholds directly. "propose" grants the right to create a
+// pending AdjustmentProposal that still requires DOCTOR review (per HAS
+// pediatric T1D guidelines + ISPAD 2022 §13). UI must not expose
+// threshold-write controls to "propose"-only caregivers.
+const PERMISSION_LEVELS = ["read", "write", "propose"] as const
 export type PermissionLevel = (typeof PERMISSION_LEVELS)[number]
+
+/**
+ * Soft warnings surfaced from validation. They do NOT block the operation
+ * but are logged in audit metadata and returned to callers so the DOCTOR
+ * can acknowledge them at `validate` time.
+ */
+export type ModeWarning = {
+  code:
+    | "extendedFasting"        // Ramadan > 16h (IDF-DAR 2021 §6.4)
+    | "basalAdjustmentLarge"   // travel basal multiplier > ±20%
+    | "basalDelayLong"         // travel delay > 8h
+    | "ramadanShortMonth"      // Ramadan = 29 days (acceptable, FYI)
+  severity: "info" | "warning"
+}
 
 const MAX_CAREGIVERS = 5
 const NAME_MAX_LEN = 100
@@ -243,26 +273,53 @@ export const pediatricModeService = {
 // US-2234 — Mode Ramadan
 // ─────────────────────────────────────────────────────────────
 
-export type RamadanModeInput = {
-  ramadanYear: number
-  startDate: string // ISO yyyy-mm-dd
-  endDate: string
-  sahurTime: string // HH:MM
-  iftarTime: string
-  allowedFastingHours: number
-  isfMultiplier: number
-  icrMultiplier: number
-}
+/**
+ * Code-review H2 — Zod schema as the single source of truth for the
+ * Ramadan snapshot shape ; used to parse `configSnapshot` on read so a
+ * corrupted JSONB row degrades gracefully (returns null + audit) instead
+ * of silently emitting undefined to the calculator.
+ */
+export const ramadanSnapshotSchema = z.object({
+  ramadanYear: z.number(),
+  startDate: z.string(),
+  endDate: z.string(),
+  sahurTime: z.string(),
+  iftarTime: z.string(),
+  allowedFastingHours: z.number(),
+  isfMultiplier: z.number(),
+  icrMultiplier: z.number(),
+})
+
+export type RamadanModeInput = z.infer<typeof ramadanSnapshotSchema>
 
 const RAMADAN_BOUNDS = {
   YEAR_MIN: 2024, YEAR_MAX: 2050,
   FASTING_HOURS_MIN: 1, FASTING_HOURS_MAX: 20,
-  // Clinical bounds : adjustment must stay within ±50% of base.
+  /** Medical H3 — > 16h fasting raises an `extendedFasting` warning. */
+  FASTING_HOURS_WARN: 16,
+  /** Medical L1 — lunar Ramadan is always 29 or 30 days. */
+  DURATION_MIN_DAYS: 29, DURATION_MAX_DAYS: 30,
+  /** ±50% of base ISF/ICR (DOCTOR can downscale further). */
   ISF_MULT_MIN: 0.5, ISF_MULT_MAX: 2.0,
   ICR_MULT_MIN: 0.5, ICR_MULT_MAX: 2.0,
+} as const
+
+/**
+ * Compute fasting hours from `sahurTime` → `iftarTime` (wrapping past
+ * midnight if needed). Used by L2 sanity check (consistency with the
+ * declared `allowedFastingHours`).
+ */
+function computeFastingHours(sahur: string, iftar: string): number {
+  const [sh, sm] = sahur.split(":").map(Number) as [number, number]
+  const [ih, im] = iftar.split(":").map(Number) as [number, number]
+  const sahurMin = sh * 60 + sm
+  const iftarMin = ih * 60 + im
+  let diff = iftarMin - sahurMin
+  if (diff <= 0) diff += 24 * 60
+  return diff / 60
 }
 
-function validateRamadan(input: RamadanModeInput): void {
+function validateRamadan(input: RamadanModeInput): ModeWarning[] {
   if (input.ramadanYear < RAMADAN_BOUNDS.YEAR_MIN
     || input.ramadanYear > RAMADAN_BOUNDS.YEAR_MAX) {
     throw new ValidationError("ramadanYear")
@@ -273,15 +330,24 @@ function validateRamadan(input: RamadanModeInput): void {
   const end = Date.parse(`${input.endDate}T00:00:00Z`)
   if (Number.isNaN(start) || Number.isNaN(end)) throw new ValidationError("dateFormat")
   if (start >= end) throw new ValidationError("dateOrder")
-  // Ramadan dure 29 ou 30 jours (lunaire). Borne large pour tolérer
-  // les ajustements de fin de mois.
+  // Medical L1 — lunar Ramadan is always 29 or 30 days (moon-sighting
+  // variance ±1d ; 28 or 31-day months don't occur naturally).
   const days = (end - start) / 86_400_000
-  if (days < 28 || days > 31) throw new ValidationError("ramadanDuration")
+  if (days < RAMADAN_BOUNDS.DURATION_MIN_DAYS
+    || days > RAMADAN_BOUNDS.DURATION_MAX_DAYS) {
+    throw new ValidationError("ramadanDuration")
+  }
   if (!TIME_HHMM_RE.test(input.sahurTime)) throw new ValidationError("sahurTime")
   if (!TIME_HHMM_RE.test(input.iftarTime)) throw new ValidationError("iftarTime")
   if (input.allowedFastingHours < RAMADAN_BOUNDS.FASTING_HOURS_MIN
     || input.allowedFastingHours > RAMADAN_BOUNDS.FASTING_HOURS_MAX) {
     throw new ValidationError("allowedFastingHours")
+  }
+  // Medical L2 — sahur → iftar window must roughly match allowedFastingHours
+  //   (tolerate ±1.5h for travel time between locales).
+  const fastingFromTimes = computeFastingHours(input.sahurTime, input.iftarTime)
+  if (Math.abs(fastingFromTimes - input.allowedFastingHours) > 1.5) {
+    throw new ValidationError("fastingWindowMismatch")
   }
   if (input.isfMultiplier < RAMADAN_BOUNDS.ISF_MULT_MIN
     || input.isfMultiplier > RAMADAN_BOUNDS.ISF_MULT_MAX) {
@@ -291,12 +357,24 @@ function validateRamadan(input: RamadanModeInput): void {
     || input.icrMultiplier > RAMADAN_BOUNDS.ICR_MULT_MAX) {
     throw new ValidationError("icrMultiplier")
   }
+
+  // Soft warnings (Medical H3 / IDF-DAR 2021 §6.4).
+  const warnings: ModeWarning[] = []
+  if (input.allowedFastingHours > RAMADAN_BOUNDS.FASTING_HOURS_WARN) {
+    warnings.push({ code: "extendedFasting", severity: "warning" })
+  }
+  if (days === RAMADAN_BOUNDS.DURATION_MIN_DAYS) {
+    warnings.push({ code: "ramadanShortMonth", severity: "info" })
+  }
+  return warnings
 }
 
 export const ramadanModeService = {
   async getActive(patientId: number, auditUserId: number, ctx?: AuditContext): Promise<{
     version: ConfigVersionDTO | null
     config: RamadanModeInput | null
+    /** Code-review H2 — true when configSnapshot failed Zod validation. */
+    snapshotInvalid: boolean
   }> {
     const version = await prisma.configVersion.findFirst({
       where: {
@@ -311,28 +389,43 @@ export const ramadanModeService = {
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { patientId, kind: "ramadan.read" },
     })
+    let config: RamadanModeInput | null = null
+    let snapshotInvalid = false
+    if (version) {
+      const parsed = ramadanSnapshotSchema.safeParse(version.configSnapshot)
+      if (parsed.success) {
+        config = parsed.data
+      } else {
+        snapshotInvalid = true
+        await auditService.log({
+          userId: auditUserId, action: "READ", resource: "PATIENT_MODE",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+          metadata: { patientId, kind: "ramadan.snapshot.invalid", versionId: version.id },
+        })
+      }
+    }
     return {
       version: version ? toConfigVersionDTO(version) : null,
-      config: version
-        ? (version.configSnapshot as unknown as RamadanModeInput)
-        : null,
+      config,
+      snapshotInvalid,
     }
   },
 
   async upsert(
     patientId: number, input: RamadanModeInput,
     auditUserId: number, ctx?: AuditContext,
-  ): Promise<ConfigVersionDTO> {
-    validateRamadan(input)
-    return prisma.$transaction(async (tx: Tx) => {
+  ): Promise<{ version: ConfigVersionDTO; warnings: ModeWarning[] }> {
+    const warnings = validateRamadan(input)
+    const version = await prisma.$transaction(async (tx: Tx) => {
       const now = new Date()
-      const version = await nextVersion(tx, patientId, ConfigVersionType.ramadan_mode)
+      const nextVer = await nextVersion(tx, patientId, ConfigVersionType.ramadan_mode)
       await supersedePrevious(tx, patientId, ConfigVersionType.ramadan_mode, now)
       const created = await tx.configVersion.create({
         data: {
           patientId,
           configType: ConfigVersionType.ramadan_mode,
-          version,
+          version: nextVer,
           configSnapshot: input satisfies Prisma.InputJsonValue,
           createdBy: auditUserId,
         },
@@ -343,11 +436,13 @@ export const ramadanModeService = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: {
           patientId, kind: "ramadan.upsert",
-          version, ramadanYear: input.ramadanYear,
+          version: nextVer, ramadanYear: input.ramadanYear,
+          warnings: warnings.map((w) => w.code),
         },
       })
       return toConfigVersionDTO(created)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    return { version, warnings }
   },
 }
 
@@ -355,27 +450,38 @@ export const ramadanModeService = {
 // US-2235 — Mode voyage
 // ─────────────────────────────────────────────────────────────
 
-export type TravelModeInput = {
-  destination: string
+/**
+ * Code-review H2 — Zod schema as the single source of truth for the
+ * Travel snapshot shape.
+ */
+export const travelSnapshotSchema = z.object({
+  destination: z.string(),
   /** Décalage horaire entre origine et destination, en heures (-12..14). */
-  timezoneOffsetHours: number
-  departureDate: string // ISO yyyy-mm-dd
-  returnDate: string
-  /** Multiplicateur basal global appliqué pendant le voyage (0.5..1.5). */
-  basalMultiplier: number
-  /** Délai d'ajustement basal (en heures) après changement de fuseau (0..24). */
-  basalDelayHours: number
-}
+  timezoneOffsetHours: z.number(),
+  departureDate: z.string(),
+  returnDate: z.string(),
+  /** Multiplicateur basal pendant la fenêtre de transition (0.7..1.3). */
+  basalMultiplier: z.number(),
+  /** Délai d'ajustement basal (en heures) après changement de fuseau (0..12). */
+  basalDelayHours: z.number(),
+})
+
+export type TravelModeInput = z.infer<typeof travelSnapshotSchema>
 
 const TRAVEL_BOUNDS = {
   TZ_OFFSET_MIN: -12, TZ_OFFSET_MAX: 14,
-  BASAL_MULT_MIN: 0.5, BASAL_MULT_MAX: 1.5,
-  BASAL_DELAY_MIN: 0, BASAL_DELAY_MAX: 24,
+  /** Medical M1 — tightened from ±50% to ±30% (ATTD/EASD 2022 consensus). */
+  BASAL_MULT_MIN: 0.7, BASAL_MULT_MAX: 1.3,
+  /** Medical M1 — warn above ±20% (typical adjustment, AACE Pump Position). */
+  BASAL_MULT_WARN_MIN: 0.8, BASAL_MULT_WARN_MAX: 1.2,
+  /** Medical M2 — tightened from 24h to 12h (typical 2-6h). */
+  BASAL_DELAY_MIN: 0, BASAL_DELAY_MAX: 12,
+  BASAL_DELAY_WARN: 8,
   DESTINATION_MAX_LEN: 100,
   TRIP_DAYS_MAX: 365,
-}
+} as const
 
-function validateTravel(input: TravelModeInput): void {
+function validateTravel(input: TravelModeInput): ModeWarning[] {
   if (!input.destination || input.destination.length > TRAVEL_BOUNDS.DESTINATION_MAX_LEN) {
     throw new ValidationError("destination")
   }
@@ -400,32 +506,69 @@ function validateTravel(input: TravelModeInput): void {
     || input.basalDelayHours > TRAVEL_BOUNDS.BASAL_DELAY_MAX) {
     throw new ValidationError("basalDelayHours")
   }
+
+  // Soft warnings (Medical M1 / M2).
+  const warnings: ModeWarning[] = []
+  if (input.basalMultiplier < TRAVEL_BOUNDS.BASAL_MULT_WARN_MIN
+    || input.basalMultiplier > TRAVEL_BOUNDS.BASAL_MULT_WARN_MAX) {
+    warnings.push({ code: "basalAdjustmentLarge", severity: "warning" })
+  }
+  if (input.basalDelayHours > TRAVEL_BOUNDS.BASAL_DELAY_WARN) {
+    warnings.push({ code: "basalDelayLong", severity: "warning" })
+  }
+  return warnings
 }
 
 /**
  * Protocole basal généré à partir du décalage horaire.
  *
- * Règle métier (consensus diabéto, à valider DOCTOR avant push patient) :
- *  - eastbound (offset > 0)  → journée raccourcie → réduire basal 5% par
- *    tranche de 6h, capé à -10%
- *  - westbound (offset < 0)  → journée allongée → augmenter basal 5% par
- *    tranche de 6h, capé à +10%
- *  - |offset| < 3h → pas d'ajustement (multiplier = 1.0)
+ * Règle métier (ATTD/EASD travel consensus 2022 ; AACE Pump Therapy
+ * Position Statement). L'ajustement n'est appliqué que pendant la fenêtre
+ * de transition (acclimatation circadienne, ~24-48h post-arrivée), pas
+ * pendant tout le séjour (medical C1 — corrige une erreur clinique).
  *
- * Le DOCTOR peut surcharger ces valeurs lors du `upsert` ; cette fonction
- * sert d'aide à la décision (UI pré-remplie).
+ *  - eastbound (offset > 0)  → journée raccourcie → réduire basal pendant
+ *    la fenêtre de transition (5% par tranche de 6h, capé à -10%)
+ *  - westbound (offset < 0)  → journée allongée → augmenter basal pendant
+ *    la fenêtre de transition (+5% par tranche de 6h, capé à +10%)
+ *  - |offset| < 3h → pas d'ajustement
+ *
+ * Le retour est UNE PROPOSITION ; `requiresDoctorReview: true` toujours
+ * vrai, le DOCTOR doit relire avant `upsert`.
+ *
+ * Cap formula : `Math.min(2, Math.ceil(abs / 6))` — 1 tranche pour [3, 6h],
+ * 2 tranches pour [6, 12h], capé à 2 (10%) au-delà (medical M4 + code-review
+ * C1 — corrige l'off-by-one sur l'ancienne formule).
  */
 export function computeBasalProtocol(timezoneOffsetHours: number): {
   basalMultiplier: number
   basalDelayHours: number
+  /** Durée de la fenêtre de transition pendant laquelle appliquer le multiplier. */
+  transitionWindowHours: number
+  /** Toujours `true` — le DOCTOR doit valider avant push patient. */
+  requiresDoctorReview: true
+  /** Source clinique pour traçabilité. */
+  reference: "ATTD-EASD-2022"
 } {
   const abs = Math.abs(timezoneOffsetHours)
-  if (abs < 3) return { basalMultiplier: 1.0, basalDelayHours: 0 }
-  const tranches = Math.min(2, Math.floor(abs / 6) + 1)
+  if (abs < 3) {
+    return {
+      basalMultiplier: 1.0,
+      basalDelayHours: 0,
+      transitionWindowHours: 0,
+      requiresDoctorReview: true,
+      reference: "ATTD-EASD-2022",
+    }
+  }
+  const tranches = Math.min(2, Math.ceil(abs / 6))
   const delta = 0.05 * tranches
   return {
     basalMultiplier: timezoneOffsetHours > 0 ? 1 - delta : 1 + delta,
-    basalDelayHours: Math.min(TRAVEL_BOUNDS.BASAL_DELAY_MAX, Math.round(abs / 2)),
+    basalDelayHours: Math.min(TRAVEL_BOUNDS.BASAL_DELAY_MAX, Math.round(abs / 3)),
+    // Transition window : ~24h pour <6h offset, 48h pour ≥6h offset.
+    transitionWindowHours: abs < 6 ? 24 : 48,
+    requiresDoctorReview: true,
+    reference: "ATTD-EASD-2022",
   }
 }
 
@@ -433,6 +576,7 @@ export const travelModeService = {
   async getActive(patientId: number, auditUserId: number, ctx?: AuditContext): Promise<{
     version: ConfigVersionDTO | null
     config: TravelModeInput | null
+    snapshotInvalid: boolean
   }> {
     const version = await prisma.configVersion.findFirst({
       where: {
@@ -447,28 +591,43 @@ export const travelModeService = {
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { patientId, kind: "travel.read" },
     })
+    let config: TravelModeInput | null = null
+    let snapshotInvalid = false
+    if (version) {
+      const parsed = travelSnapshotSchema.safeParse(version.configSnapshot)
+      if (parsed.success) {
+        config = parsed.data
+      } else {
+        snapshotInvalid = true
+        await auditService.log({
+          userId: auditUserId, action: "READ", resource: "PATIENT_MODE",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+          metadata: { patientId, kind: "travel.snapshot.invalid", versionId: version.id },
+        })
+      }
+    }
     return {
       version: version ? toConfigVersionDTO(version) : null,
-      config: version
-        ? (version.configSnapshot as unknown as TravelModeInput)
-        : null,
+      config,
+      snapshotInvalid,
     }
   },
 
   async upsert(
     patientId: number, input: TravelModeInput,
     auditUserId: number, ctx?: AuditContext,
-  ): Promise<ConfigVersionDTO> {
-    validateTravel(input)
-    return prisma.$transaction(async (tx: Tx) => {
+  ): Promise<{ version: ConfigVersionDTO; warnings: ModeWarning[] }> {
+    const warnings = validateTravel(input)
+    const version = await prisma.$transaction(async (tx: Tx) => {
       const now = new Date()
-      const version = await nextVersion(tx, patientId, ConfigVersionType.travel_mode)
+      const nextVer = await nextVersion(tx, patientId, ConfigVersionType.travel_mode)
       await supersedePrevious(tx, patientId, ConfigVersionType.travel_mode, now)
       const created = await tx.configVersion.create({
         data: {
           patientId,
           configType: ConfigVersionType.travel_mode,
-          version,
+          version: nextVer,
           configSnapshot: input satisfies Prisma.InputJsonValue,
           createdBy: auditUserId,
         },
@@ -479,11 +638,13 @@ export const travelModeService = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: {
           patientId, kind: "travel.upsert",
-          version, tzOffset: input.timezoneOffsetHours,
+          version: nextVer, tzOffset: input.timezoneOffsetHours,
+          warnings: warnings.map((w) => w.code),
         },
       })
       return toConfigVersionDTO(created)
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+    return { version, warnings }
   },
 }
 
@@ -502,6 +663,9 @@ export const patientModeWorkflow = {
   async validate(
     versionId: number, auditUserId: number, ctx?: AuditContext,
   ): Promise<ConfigVersionDTO> {
+    // H1 (healthcare audit) — Serializable so concurrent DOCTOR validates
+    //   surface cleanly as 409 (P2034) via mapErrorToResponse, instead of a
+    //   500 from the immutability trigger firing on the second commit.
     return prisma.$transaction(async (tx: Tx) => {
       const row = await tx.configVersion.findUnique({ where: { id: versionId } })
       if (!row) throw new NotFoundError()
@@ -526,7 +690,7 @@ export const patientModeWorkflow = {
         },
       })
       return toConfigVersionDTO(updated)
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
   /**
@@ -541,6 +705,8 @@ export const patientModeWorkflow = {
     if (!SUPPORTED_MODE_TYPES.has(configType)) {
       throw new ValidationError("unsupportedConfigType")
     }
+    // H1 (healthcare audit) — Serializable so concurrent deactivates collapse
+    //   to a single update + audit row (no duplicate audit on the second tx).
     return prisma.$transaction(async (tx: Tx) => {
       const active = await tx.configVersion.findFirst({
         where: { patientId, configType, status: ConfigVersionStatus.active },
@@ -560,7 +726,7 @@ export const patientModeWorkflow = {
         },
       })
       return { archived: true }
-    })
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
   },
 
   async listHistory(

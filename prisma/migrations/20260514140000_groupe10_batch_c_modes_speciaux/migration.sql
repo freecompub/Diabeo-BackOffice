@@ -33,6 +33,11 @@ CREATE TABLE "pediatric_caregivers" (
 CREATE INDEX "pediatric_caregivers_patient_id_rank_is_active_idx"
     ON "pediatric_caregivers" ("patient_id", "rank", "is_active");
 
+-- M4 (healthcare audit) — index FK so cascade-include joins from
+-- ConfigVersion don't sequential-scan at scale.
+CREATE INDEX "pediatric_caregivers_version_id_idx"
+    ON "pediatric_caregivers" ("version_id");
+
 ALTER TABLE "pediatric_caregivers"
     ADD CONSTRAINT "pediatric_caregivers_patient_id_fkey"
     FOREIGN KEY ("patient_id") REFERENCES "patients"("id")

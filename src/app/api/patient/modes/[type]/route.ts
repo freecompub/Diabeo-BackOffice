@@ -31,7 +31,7 @@ const pediatricUpsertSchema = z.object({
     name: z.string().min(1).max(100),
     phone: z.string().min(1).max(20),
     relationship: z.string().min(1).max(50),
-    permissionLevel: z.enum(["read", "write", "config"]),
+    permissionLevel: z.enum(["read", "write", "propose"]),
   })).min(1).max(5),
 })
 

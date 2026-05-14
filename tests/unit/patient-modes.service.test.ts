@@ -38,7 +38,7 @@ beforeEach(() => {
 
 describe("pediatricModeService (US-2233)", () => {
   const validCaregivers = [
-    { rank: 1, name: "Marie", phone: "0600000001", relationship: "mother", permissionLevel: "config" as const },
+    { rank: 1, name: "Marie", phone: "0600000001", relationship: "mother", permissionLevel: "propose" as const },
     { rank: 2, name: "Paul", phone: "0600000002", relationship: "father", permissionLevel: "write" as const },
   ]
 
@@ -106,7 +106,7 @@ describe("pediatricModeService (US-2233)", () => {
         {
           id: 1, rank: 1, nameEncrypted: "$$$invalid$$$",
           phoneEncrypted: "$$$invalid$$$",
-          relationship: "mother", permissionLevel: "config",
+          relationship: "mother", permissionLevel: "propose",
         },
       ],
     } as any)
@@ -131,11 +131,12 @@ describe("pediatricModeService (US-2233)", () => {
 // ─────────────────────────────────────────────────────────────
 
 describe("ramadanModeService (US-2234)", () => {
+  // 29-day month (Medical L1) ; sahur→iftar window matches allowedFastingHours.
   const valid = {
     ramadanYear: 2026,
     startDate: "2026-03-01", endDate: "2026-03-30",
-    sahurTime: "05:30", iftarTime: "18:45",
-    allowedFastingHours: 14,
+    sahurTime: "05:30", iftarTime: "18:30",
+    allowedFastingHours: 13,
     isfMultiplier: 1.2, icrMultiplier: 1.1,
   }
 
@@ -155,9 +156,25 @@ describe("ramadanModeService (US-2234)", () => {
     }, 9)).rejects.toBeInstanceOf(ValidationError)
   })
 
-  it("rejects duration outside [28-31] days", async () => {
+  it("rejects duration outside [29-30] days (medical L1)", async () => {
+    // 45 days
     await expect(ramadanModeService.upsert(7, {
-      ...valid, startDate: "2026-03-01", endDate: "2026-04-15", // 45 days
+      ...valid, startDate: "2026-03-01", endDate: "2026-04-15",
+    }, 9)).rejects.toBeInstanceOf(ValidationError)
+    // 28 days (clinically impossible — lunar month is 29 or 30)
+    await expect(ramadanModeService.upsert(7, {
+      ...valid, startDate: "2026-03-01", endDate: "2026-03-29",
+    }, 9)).rejects.toBeInstanceOf(ValidationError)
+    // 31 days (impossible)
+    await expect(ramadanModeService.upsert(7, {
+      ...valid, startDate: "2026-03-01", endDate: "2026-04-01",
+    }, 9)).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it("rejects sahur→iftar window that doesn't match allowedFastingHours (L2)", async () => {
+    // sahur 05:30 → iftar 18:30 = 13h, declared 8h → reject.
+    await expect(ramadanModeService.upsert(7, {
+      ...valid, allowedFastingHours: 8,
     }, 9)).rejects.toBeInstanceOf(ValidationError)
   })
 
@@ -173,7 +190,7 @@ describe("ramadanModeService (US-2234)", () => {
       .rejects.toBeInstanceOf(ValidationError)
   })
 
-  it("upsert happy path increments version + audits", async () => {
+  it("upsert happy path increments version + audits + emits warnings", async () => {
     prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
     prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
     prismaMock.configVersion.create.mockResolvedValue({
@@ -183,8 +200,42 @@ describe("ramadanModeService (US-2234)", () => {
       validatedBy: null, validatedAt: null, createdAt: new Date(),
     } as any)
     const out = await ramadanModeService.upsert(7, valid, 9)
-    expect(out.version).toBe(1)
+    expect(out.version.version).toBe(1)
+    expect(out.warnings).toBeDefined()
     expect(prismaMock.auditLog.create).toHaveBeenCalled()
+  })
+
+  it("upsert with allowedFastingHours > 16 emits extendedFasting warning (H3)", async () => {
+    prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
+    prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.configVersion.create.mockResolvedValue({
+      id: 200, patientId: 7, configType: ConfigVersionType.ramadan_mode,
+      version: 1, validFrom: new Date(), validTo: null,
+      status: ConfigVersionStatus.active, createdBy: 9,
+      validatedBy: null, validatedAt: null, createdAt: new Date(),
+    } as any)
+    // sahur 03:00 → iftar 21:00 = 18h window.
+    const out = await ramadanModeService.upsert(7, {
+      ...valid, sahurTime: "03:00", iftarTime: "21:00", allowedFastingHours: 18,
+    }, 9)
+    expect(out.warnings.map((w) => w.code)).toContain("extendedFasting")
+  })
+
+  it("getActive flags snapshotInvalid + audits on corrupted JSONB (code-review H2)", async () => {
+    prismaMock.configVersion.findFirst.mockResolvedValue({
+      id: 200, patientId: 7, configType: ConfigVersionType.ramadan_mode,
+      version: 1, validFrom: new Date(), validTo: null,
+      status: ConfigVersionStatus.active, createdBy: 9,
+      validatedBy: null, validatedAt: null, createdAt: new Date(),
+      configSnapshot: { ramadanYear: "not-a-number" }, // schema violation
+    } as any)
+    const out = await ramadanModeService.getActive(7, 9)
+    expect(out.snapshotInvalid).toBe(true)
+    expect(out.config).toBeNull()
+    expect(prismaMock.auditLog.create).toHaveBeenCalledTimes(2)
+    expect(
+      (prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any).metadata.kind,
+    ).toBe("ramadan.snapshot.invalid")
   })
 
   it("getActive deserializes snapshot back to config", async () => {
@@ -197,8 +248,9 @@ describe("ramadanModeService (US-2234)", () => {
     } as any)
     const out = await ramadanModeService.getActive(7, 9)
     expect(out.config).toMatchObject({
-      ramadanYear: 2026, sahurTime: "05:30", iftarTime: "18:45",
+      ramadanYear: 2026, sahurTime: "05:30", iftarTime: "18:30",
     })
+    expect(out.snapshotInvalid).toBe(false)
   })
 })
 
@@ -211,7 +263,7 @@ describe("travelModeService (US-2235)", () => {
     destination: "Tokyo",
     timezoneOffsetHours: 8,
     departureDate: "2026-06-15", returnDate: "2026-06-22",
-    basalMultiplier: 0.95,
+    basalMultiplier: 0.9,
     basalDelayHours: 4,
   }
 
@@ -234,10 +286,15 @@ describe("travelModeService (US-2235)", () => {
     }, 9)).rejects.toBeInstanceOf(ValidationError)
   })
 
-  it("rejects basal multiplier out of clinical bounds", async () => {
-    await expect(travelModeService.upsert(7, { ...valid, basalMultiplier: 2.0 }, 9))
+  it("rejects basal multiplier out of clinical bounds 0.7..1.3 (M1)", async () => {
+    await expect(travelModeService.upsert(7, { ...valid, basalMultiplier: 1.5 }, 9))
       .rejects.toBeInstanceOf(ValidationError)
-    await expect(travelModeService.upsert(7, { ...valid, basalMultiplier: 0.3 }, 9))
+    await expect(travelModeService.upsert(7, { ...valid, basalMultiplier: 0.5 }, 9))
+      .rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it("rejects basal delay > 12h (M2)", async () => {
+    await expect(travelModeService.upsert(7, { ...valid, basalDelayHours: 24 }, 9))
       .rejects.toBeInstanceOf(ValidationError)
   })
 
@@ -251,7 +308,33 @@ describe("travelModeService (US-2235)", () => {
       validatedBy: null, validatedAt: null, createdAt: new Date(),
     } as any)
     const out = await travelModeService.upsert(7, valid, 9)
-    expect(out.version).toBe(1)
+    expect(out.version.version).toBe(1)
+  })
+
+  it("upsert with basalMultiplier outside [0.8, 1.2] emits warning (M1)", async () => {
+    prismaMock.configVersion.findFirst.mockResolvedValue(null)
+    prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.configVersion.create.mockResolvedValue({
+      id: 300, patientId: 7, configType: ConfigVersionType.travel_mode,
+      version: 1, validFrom: new Date(), validTo: null,
+      status: ConfigVersionStatus.active, createdBy: 9,
+      validatedBy: null, validatedAt: null, createdAt: new Date(),
+    } as any)
+    const out = await travelModeService.upsert(7, { ...valid, basalMultiplier: 0.75 }, 9)
+    expect(out.warnings.map((w) => w.code)).toContain("basalAdjustmentLarge")
+  })
+
+  it("upsert with basalDelay > 8h emits warning (M2)", async () => {
+    prismaMock.configVersion.findFirst.mockResolvedValue(null)
+    prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.configVersion.create.mockResolvedValue({
+      id: 300, patientId: 7, configType: ConfigVersionType.travel_mode,
+      version: 1, validFrom: new Date(), validTo: null,
+      status: ConfigVersionStatus.active, createdBy: 9,
+      validatedBy: null, validatedAt: null, createdAt: new Date(),
+    } as any)
+    const out = await travelModeService.upsert(7, { ...valid, basalDelayHours: 10 }, 9)
+    expect(out.warnings.map((w) => w.code)).toContain("basalDelayLong")
   })
 })
 
@@ -260,28 +343,41 @@ describe("travelModeService (US-2235)", () => {
 // ─────────────────────────────────────────────────────────────
 
 describe("computeBasalProtocol", () => {
-  it("returns identity for |offset| < 3h", () => {
-    expect(computeBasalProtocol(0)).toEqual({ basalMultiplier: 1.0, basalDelayHours: 0 })
-    expect(computeBasalProtocol(2)).toEqual({ basalMultiplier: 1.0, basalDelayHours: 0 })
-    expect(computeBasalProtocol(-2)).toEqual({ basalMultiplier: 1.0, basalDelayHours: 0 })
+  it("returns identity + transitionWindow=0 + requiresDoctorReview for |offset| < 3h", () => {
+    const out0 = computeBasalProtocol(0)
+    expect(out0.basalMultiplier).toBe(1.0)
+    expect(out0.basalDelayHours).toBe(0)
+    expect(out0.transitionWindowHours).toBe(0)
+    expect(out0.requiresDoctorReview).toBe(true)
+    expect(out0.reference).toBe("ATTD-EASD-2022")
+    expect(computeBasalProtocol(2).basalMultiplier).toBe(1.0)
+    expect(computeBasalProtocol(-2).basalMultiplier).toBe(1.0)
   })
 
-  it("reduces basal eastbound (positive offset)", () => {
-    const out = computeBasalProtocol(8)
-    expect(out.basalMultiplier).toBeLessThan(1.0)
-    expect(out.basalMultiplier).toBeGreaterThanOrEqual(0.9)
+  it("uses ceil(abs/6) tranches — boundary at 6h between 1 and 2 tranches", () => {
+    // offset=3 → ceil(3/6)=1 → 5% reduction eastbound (medical M4 / code-review C1)
+    const out3 = computeBasalProtocol(3)
+    expect(out3.basalMultiplier).toBeCloseTo(0.95, 2)
+    expect(out3.transitionWindowHours).toBe(24)
+    // offset=6 → ceil(6/6)=1 → 5% reduction
+    const out6 = computeBasalProtocol(6)
+    expect(out6.basalMultiplier).toBeCloseTo(0.95, 2)
+    expect(out6.transitionWindowHours).toBe(48) // |offset|>=6 → 48h window
+    // offset=7 → ceil(7/6)=2 → 10% reduction
+    const out7 = computeBasalProtocol(7)
+    expect(out7.basalMultiplier).toBeCloseTo(0.9, 2)
+    // offset=12 → ceil(12/6)=2 → 10% reduction
+    expect(computeBasalProtocol(12).basalMultiplier).toBeCloseTo(0.9, 2)
   })
 
-  it("increases basal westbound (negative offset)", () => {
-    const out = computeBasalProtocol(-8)
-    expect(out.basalMultiplier).toBeGreaterThan(1.0)
-    expect(out.basalMultiplier).toBeLessThanOrEqual(1.1)
+  it("reduces basal eastbound, increases westbound", () => {
+    expect(computeBasalProtocol(8).basalMultiplier).toBeLessThan(1.0)
+    expect(computeBasalProtocol(-8).basalMultiplier).toBeGreaterThan(1.0)
   })
 
-  it("caps adjustment at ±10% regardless of offset magnitude", () => {
-    const out = computeBasalProtocol(14)
-    expect(out.basalMultiplier).toBeGreaterThanOrEqual(0.9)
-    expect(out.basalMultiplier).toBeLessThanOrEqual(0.95)
+  it("caps adjustment at ±10% regardless of offset magnitude (medical M4)", () => {
+    expect(computeBasalProtocol(14).basalMultiplier).toBeCloseTo(0.9, 2)
+    expect(computeBasalProtocol(-12).basalMultiplier).toBeCloseTo(1.1, 2)
   })
 })
 

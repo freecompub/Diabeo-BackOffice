@@ -2619,6 +2619,10 @@ model PediatricCaregiver {
   relationship    String   @db.VarChar(50)
   /// Permissions : "read" | "write" | "config".
   permissionLevel String   @map("permission_level") @db.VarChar(20)
+  /// M2 (healthcare audit) — historical "active" flag retained for parity
+  /// with `emergency_contacts.is_active` ; truth lives in
+  /// `config_versions.status` (filter via `findFirst({ status: active })`).
+  /// Never flipped on supersede ; do NOT query raw SQL on this column.
   isActive        Boolean  @default(true) @map("is_active")
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -2626,6 +2630,9 @@ model PediatricCaregiver {
   configVersion ConfigVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
 
   @@index([patientId, rank, isActive])
+  /// M4 (healthcare audit) — index FK so cascade-include joins from
+  /// ConfigVersion don't sequential-scan at scale.
+  @@index([versionId])
   @@map("pediatric_caregivers")
 }
 
