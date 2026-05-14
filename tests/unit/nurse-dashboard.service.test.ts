@@ -104,6 +104,7 @@ describe("nurseTodoQuery (US-2407)", () => {
 
 describe("nurseTeamInboxQuery (US-2408)", () => {
   it("flags direction=incoming when caller is toUserId", async () => {
+    mockedAccessible.mockResolvedValue([10])
     prismaMock.delegationRequest.findMany.mockResolvedValue([
       {
         id: 1, patientId: 10, fromUserId: 99, toUserId: 1,
@@ -119,6 +120,7 @@ describe("nurseTeamInboxQuery (US-2408)", () => {
   })
 
   it("flags direction=outgoing when caller is fromUserId", async () => {
+    mockedAccessible.mockResolvedValue([10])
     prismaMock.delegationRequest.findMany.mockResolvedValue([
       {
         id: 2, patientId: 10, fromUserId: 1, toUserId: 99,
@@ -133,6 +135,7 @@ describe("nurseTeamInboxQuery (US-2408)", () => {
   })
 
   it("emits audit row with kind=dashboard.infirmier.teamInbox", async () => {
+    mockedAccessible.mockResolvedValue([10])
     prismaMock.delegationRequest.findMany.mockResolvedValue([] as any)
     await nurseTeamInboxQuery.forCaller(1, "NURSE", 1)
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
@@ -196,5 +199,64 @@ describe("nurseRecallQuery (US-2409)", () => {
       && d.metadata?.kind === "dashboard.infirmier.recallList",
     )
     expect(perPatient).toBeDefined()
+  })
+
+  // ─── M2 (re-review) — neverSynced distinct from silentMonitoring ────
+  it("flags neverSynced (not silentMonitoring) when no CGM ever", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    pm.cgmEntry.groupBy.mockResolvedValue([] as any) // no rows for any patient
+    prismaMock.appointment.findMany.mockResolvedValue([] as any)
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 10, pathology: "DT1", user: { firstname: null, phone: null } },
+    ] as any)
+    const out = await nurseRecallQuery.forCaller(1, "NURSE", 1)
+    expect(out[0]!.reason).toBe("neverSynced")
+    expect(out[0]!.metricLabel).toBe("Aucune saisie enregistrée")
+  })
+})
+
+// ─── H1 (re-review) — cabinet scope on team inbox ────────────────────
+
+describe("nurseTeamInboxQuery cabinet scope (H1 re-review)", () => {
+  it("restricts delegation rows to caller's portfolio patients", async () => {
+    mockedAccessible.mockResolvedValue([10, 20])
+    prismaMock.delegationRequest.findMany.mockResolvedValue([] as any)
+    await nurseTeamInboxQuery.forCaller(1, "NURSE", 1)
+    const call = prismaMock.delegationRequest.findMany.mock.calls[0]![0]!
+    // The where clause must include patientId IN [10, 20] (cabinet scope).
+    expect((call.where as any).patientId).toEqual({ in: [10, 20] })
+  })
+
+  it("returns [] when caller has empty portfolio", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await nurseTeamInboxQuery.forCaller(1, "NURSE", 1)
+    expect(out).toEqual([])
+    expect(prismaMock.delegationRequest.findMany).not.toHaveBeenCalled()
+  })
+})
+
+// ─── M1 (re-review) — to-do scoring : true imminent ──────────────────
+
+describe("nurseTodoQuery scoring (M1 re-review)", () => {
+  it("scores imminent appointment higher than far-future one", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    const now = Date.now()
+    prismaMock.appointment.findMany.mockResolvedValue([
+      {
+        id: 1, patientId: 10, hour: new Date(now + 30 * 60_000), // 30 min away
+        status: AppointmentStatus.scheduled,
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+      {
+        id: 2, patientId: 10, hour: new Date(now + 8 * 3600_000), // 8h away
+        status: AppointmentStatus.scheduled,
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+    ] as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as any)
+    prismaMock.adjustmentProposal.findMany.mockResolvedValue([] as any)
+    const out = await nurseTodoQuery.forCaller(1, "NURSE", 1)
+    expect(out).toHaveLength(2)
+    expect(out[0]!.id).toBe("appt-1") // imminent (30 min) wins over 8h
   })
 })

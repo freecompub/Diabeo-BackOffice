@@ -21,3 +21,9 @@ export async function GET(req: NextRequest) {
     return mapErrorToResponse(e, "dashboard/infirmier/kpi GET", ctx.requestId)
   }
 }
+
+// code-review M5 (re-review) — `mapErrorToResponse` is called WITHOUT an
+//   `auditTarget` because the service has no `ForbiddenError` throw paths
+//   today ; `auditedRequireRole` already covers 403-on-role. Future defensive
+//   hardening : pass `auditTarget: { user, ctx, resource:"PATIENT", resourceId:"0" }`
+//   if downstream services start throwing ForbiddenError (US-2265 parity).

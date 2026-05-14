@@ -72,8 +72,14 @@ export function TeamInboxCard() {
                 <Badge variant={STATUS_VARIANT[m.status] ?? "outline"}>
                   {m.status}
                 </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {m.direction === "incoming" ? "⇩" : "⇧"}
+                {/* code-review L4 (re-review) — text fallback for direction
+                    glyph ; SR users hear "Entrante"/"Sortante" instead of
+                    "down arrowhead" or being skipped. */}
+                <span
+                  className="text-xs text-muted-foreground"
+                  aria-label={m.direction === "incoming" ? "Entrante" : "Sortante"}
+                >
+                  <span aria-hidden="true">{m.direction === "incoming" ? "⇩" : "⇧"}</span>
                 </span>
                 <span className="flex-1 truncate text-sm">
                   {m.action} · {m.patientFirstName || "Patient"}

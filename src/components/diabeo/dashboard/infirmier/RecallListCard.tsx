@@ -19,9 +19,10 @@ import type { RecallItem } from "@/lib/services/nurse-dashboard.service"
 
 type ApiResponse = { items: RecallItem[] }
 
-const REASON_META: Record<RecallItem["reason"], { label: string; variant: "destructive" | "outline" }> = {
+const REASON_META: Record<RecallItem["reason"], { label: string; variant: "destructive" | "outline" | "secondary" }> = {
   silentMonitoring: { label: "Silence saisie", variant: "outline" },
   appointmentUnconfirmed: { label: "RDV non confirmé", variant: "destructive" },
+  neverSynced: { label: "Jamais synchronisé", variant: "secondary" },
 }
 
 export function RecallListCard() {
@@ -80,17 +81,17 @@ export function RecallListCard() {
                       <a
                         href={`tel:${phoneSafe}`}
                         className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
-                        aria-label="Appeler le patient"
+                        aria-label={`Appeler ${r.patientFirstName || "le patient"}`}
                       >
-                        <Phone size={12} />
+                        <Phone size={12} aria-hidden="true" />
                         Appeler
                       </a>
                       <a
                         href={`sms:${phoneSafe}`}
                         className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
-                        aria-label="Envoyer un SMS au patient"
+                        aria-label={`Envoyer un SMS à ${r.patientFirstName || "le patient"}`}
                       >
-                        <MessageSquare size={12} />
+                        <MessageSquare size={12} aria-hidden="true" />
                         SMS
                       </a>
                     </>

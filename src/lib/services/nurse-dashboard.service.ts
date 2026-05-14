@@ -57,13 +57,35 @@ function patientScopeWhere(
 
 const CABINET_TIMEZONE = "Europe/Paris"
 
+/**
+ * code-review H3 (re-review) — return [start, end) for "today" in the
+ * cabinet timezone, **as UTC instants** that correctly correspond to
+ * Paris midnight boundaries (incl. DST).
+ *
+ * Earlier impl built `${YYYY-MM-DD}T00:00:00Z` which is UTC midnight of
+ * the Paris-local date string — off by the Paris→UTC offset (1h CET /
+ * 2h CEST). For `@db.Date` columns this happens to work (only date
+ * portion compared) but for `@db.Timestamptz()` columns (DiabetesEvent.createdAt,
+ * EmergencyAlert.triggeredAt) the filter silently excludes events from
+ * the first 1-2h of the Paris day.
+ *
+ * Fix : extract the live offset via `longOffset` Intl part, embed it
+ * in the ISO literal, let JS parse correctly to UTC.
+ */
 function todayBounds(now = new Date()): { start: Date; end: Date } {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: CABINET_TIMEZONE,
     year: "numeric", month: "2-digit", day: "2-digit",
+    timeZoneName: "longOffset",
   })
-  const parts = fmt.format(now)
-  const start = new Date(`${parts}T00:00:00Z`)
+  const parts = fmt.formatToParts(now)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
+  const year = get("year")
+  const month = get("month")
+  const day = get("day")
+  // `longOffset` → "GMT+02:00" / "GMT-05:00" ; ISO literal accepts ±HH:MM.
+  const offset = get("timeZoneName").replace(/^GMT/, "") || "+00:00"
+  const start = new Date(`${year}-${month}-${day}T00:00:00${offset}`)
   const end = new Date(start)
   end.setUTCDate(end.getUTCDate() + 1)
   return { start, end }
@@ -230,10 +252,21 @@ export const nurseTodoQuery = {
       })
     }
 
+    // code-review M1 (re-review) — score truly imminent appointments higher.
+    //   minutesUntilAppt = (apptDateTime - now) / 60_000, clamped to ±24h.
+    //   100 - clamp/14.4 : 0min away → 100, 24h away → ~0, already passed
+    //   → small positive (caps via clamp lower bound).
+    const nowMs = Date.now()
     const items: TodoItem[] = []
     for (const a of appts) {
       const firstname = safeDecryptField(a.patient.user.firstname ?? "") ?? ""
       const time = fmtHour(a.hour)
+      let score = 50 // no time → default
+      if (a.hour) {
+        const minutesUntil = (new Date(a.hour).getTime() - nowMs) / 60_000
+        const clamped = Math.max(-60, Math.min(1440, minutesUntil))
+        score = 100 - clamped / 14.4
+      }
       items.push({
         id: `appt-${a.id}`,
         kind: "prepareAppointment",
@@ -244,8 +277,7 @@ export const nurseTodoQuery = {
         label: time
           ? `Préparer le dossier — RDV ${time}`
           : "Préparer le dossier patient",
-        // Imminent appointments score higher.
-        score: time ? 100 - Math.min(99, parseInt(time.replace(":", ""), 10) / 100) : 50,
+        score,
       })
     }
     for (const e of events) {
@@ -311,21 +343,29 @@ const TEAM_INBOX_LIMIT = 5
 
 export const nurseTeamInboxQuery = {
   async forCaller(
-    userId: number, _role: Role,
+    userId: number, role: Role,
     auditUserId: number, ctx?: AuditContext,
   ): Promise<TeamInboxItem[]> {
-    // DelegationRequest is user-to-user (no portfolio scope at this layer ;
-    // the rows naturally restrict to the caller via from/to filter).
+    // code-review H1 (re-review) — cabinet scope. Restrict delegations to
+    //   patients the caller can access (`getAccessiblePatientIds`). Without
+    //   this, a NURSE covering for another cabinet would see incoming/outgoing
+    //   delegations from outside her primary service (RBAC leak).
+    //
+    // code-review L5 — `expired` excluded from the inbox by design : nurse
+    //   workflow surfaces only actionable rows. Expired delegations remain
+    //   in the audit log + history view but don't clutter the dashboard.
+    const ids = await getAccessiblePatientIds(userId, role)
+    if (ids !== null && ids.length === 0) return []
     const rows = await prisma.delegationRequest.findMany({
       where: {
         OR: [{ fromUserId: userId }, { toUserId: userId }],
-        // Surface recent rows : pending + last 7d reviewed.
         status: { in: [
           DelegationRequestStatus.pending,
           DelegationRequestStatus.approved,
           DelegationRequestStatus.rejected,
         ] },
         patient: { deletedAt: null },
+        ...(ids ? { patientId: { in: ids } } : {}),
       },
       include: {
         patient: {
@@ -365,7 +405,13 @@ export const nurseTeamInboxQuery = {
 // US-2409 — Relances en attente (heuristique fallback)
 // ─────────────────────────────────────────────────────────────
 
-export type RecallReason = "silentMonitoring" | "appointmentUnconfirmed"
+// code-review M2 (re-review) — `neverSynced` distinguishes a never-active
+//   patient from one who went silent. UI displays a different label and
+//   skips the misleading "14 j sans saisie" message.
+export type RecallReason =
+  | "silentMonitoring"
+  | "appointmentUnconfirmed"
+  | "neverSynced"
 
 export type RecallItem = {
   patientId: number
@@ -422,6 +468,11 @@ export const nurseRecallQuery = {
         select: { patientId: true, createdAt: true },
         distinct: ["patientId"],
       }),
+      // code-review M3 (re-review) — ADMIN portfolio cap 1000 patients.
+      //   Intentional bound on the silent-monitoring scan ; for >1000-patient
+      //   deployments the top 5 may under-report (sorted by `Patient.id` asc).
+      //   Audit metadata flags `wasTruncated: true` when the cap hits so
+      //   forensics knows the dataset is incomplete.
       ids === null
         ? prisma.patient.findMany({
             where: { deletedAt: null },
@@ -436,14 +487,23 @@ export const nurseRecallQuery = {
     )
     const flags = new Map<number, RecallItem>()
 
-    // Heuristic 1 — silentMonitoring.
+    // Heuristic 1 — silentMonitoring vs neverSynced.
     const portfolioIds = ids ?? (adminPortfolio ?? []).map((p) => p.id)
     for (const pid of portfolioIds) {
       const last = latestByPatient.get(pid)
-      if (last === undefined || last === null || last < silentCutoff) {
-        const days = last
-          ? Math.floor((now.getTime() - last.getTime()) / 86_400_000)
-          : Math.max(SILENT_DAYS + 1, 14)
+      if (last === undefined || last === null) {
+        // No CGM entry ever → distinct reason ; no fake day count.
+        flags.set(pid, {
+          patientId: pid,
+          patientFirstName: "",
+          pathology: null,
+          reason: "neverSynced",
+          metricLabel: "Aucune saisie enregistrée",
+          phone: null,
+          score: 50,
+        })
+      } else if (last < silentCutoff) {
+        const days = Math.floor((now.getTime() - last.getTime()) / 86_400_000)
         flags.set(pid, {
           patientId: pid,
           patientFirstName: "",
@@ -474,11 +534,17 @@ export const nurseRecallQuery = {
       .sort((a, b) => b.score - a.score)
       .slice(0, RECALL_LIMIT)
 
+    // Summary audit + wasTruncated flag (M3 forensics).
+    const adminTruncated = ids === null && (adminPortfolio?.length ?? 0) >= 1000
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "PATIENT",
       resourceId: "0",
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { kind: "dashboard.infirmier.recallList", count: top.length },
+      metadata: {
+        kind: "dashboard.infirmier.recallList",
+        count: top.length,
+        ...(adminTruncated ? { wasTruncated: true } : {}),
+      },
     })
 
     if (top.length === 0) return []
