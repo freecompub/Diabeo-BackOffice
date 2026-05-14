@@ -352,6 +352,8 @@ model User {
   createdInsulinAdjustmentTemplates InsulinAdjustmentTemplate[]    @relation("InsulinAdjustmentTemplateCreator")
   validatedDiabetesEvents        DiabetesEvent[]                   @relation("DiabetesEventValidator")
   uploadedMealPhotos             MealPhoto[]                       @relation("MealPhotoUploader")
+  // Groupe 8 — RDV
+  createdMemberUnavailabilities  MemberUnavailability[]            @relation("MemberUnavailabilityCreator")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -1372,6 +1374,11 @@ model HealthcareMember {
   name      String @db.VarChar(255)
   serviceId Int?   @map("service_id")
 
+  /// US-2505 — Mode de prise de RDV (auto-confirm vs validation manuelle).
+  bookingMode    BookingMode @default(auto) @map("booking_mode")
+  /// US-2505 — Durée par défaut (min) appliquée si l'input ne précise pas.
+  defaultAppointmentMinutes Int? @map("default_appointment_minutes")
+
   service         HealthcareService? @relation(fields: [serviceId], references: [id])
   patientServices PatientService[]
   referents       PatientReferent[]
@@ -1379,9 +1386,39 @@ model HealthcareMember {
   /// US-2084 — Absences du membre + couvertures qu'il assure pour autrui
   absencesAsOwner    MemberAbsence[]  @relation("MemberAbsenceOwner")
   absencesAsCover    MemberAbsence[]  @relation("MemberAbsenceCover")
+  /// US-2500/2501 — RDV portés par ce membre.
+  appointments       Appointment[]
+  /// US-2504 — Plages indisponibles (créneaux bloqués pour la prise de RDV).
+  unavailabilities   MemberUnavailability[]
 
   @@unique([name, serviceId])
   @@map("healthcare_members")
+}
+
+/// US-2504 — Plages d'indisponibilité d'un membre (créneaux bloqués pour la
+/// prise de RDV — congé court, blocage personnel, jour férié manuel). Distinct
+/// de `MemberAbsence` qui modélise un congé multi-jours avec couverture.
+///
+/// Représentation : intervalle (`startAt`, `endAt`) en UTC stocké timestamptz.
+/// Recouvrement avec un RDV existant : prévention au service layer (le service
+/// vérifie qu'aucun `Appointment.status IN scheduled/confirmed/pending_validation`
+/// ne touche l'intervalle avant insertion).
+model MemberUnavailability {
+  id        Int       @id @default(autoincrement())
+  memberId  Int       @map("member_id")
+  startAt   DateTime  @map("start_at") @db.Timestamptz()
+  endAt     DateTime  @map("end_at") @db.Timestamptz()
+  /// Raison chiffrée AES-256-GCM (PHI possible : "congé maladie", "examen médical").
+  reasonEncrypted String? @map("reason_encrypted")
+  createdBy Int?      @map("created_by")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  member  HealthcareMember @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  creator User?            @relation("MemberUnavailabilityCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  @@index([memberId, startAt])
+  @@index([memberId, endAt])
+  @@map("member_unavailabilities")
 }
 
 model PatientService {
@@ -1496,16 +1533,86 @@ model Appointment {
   date      DateTime  @db.Date
   hour      DateTime? @db.Time()
   comment   String?
+  /// US-2500/2501 — Praticien titulaire du RDV (NULL si non-affecté).
+  memberId    Int?              @map("member_id")
+  /// US-2501 — Durée en minutes (15-240). NULL = legacy/non-typé.
+  durationMinutes Int?          @map("duration_minutes")
+  /// US-2501 — Lieu/canal du RDV.
+  location    AppointmentLocation?
+  /// US-2501/2503 — État du RDV. Defaults `scheduled`, état terminal `cancelled`/`completed`/`no_show`.
+  ///                Workflow `pending_validation` activé si le médecin est en mode "validation" (US-2505).
+  status      AppointmentStatus @default(scheduled)
+  /// US-2501 — Motif chiffré AES-256-GCM (base64). PHI : peut contenir nom/symptômes patient.
+  motifEncrypted String?        @map("motif_encrypted")
+  /// US-2501 — Note médicale chiffrée AES-256-GCM (base64). NULL = pas de note.
+  noteEncrypted String?         @map("note_encrypted")
+  /// US-2503 — Date/heure proposée par le médecin lors d'une annulation pour
+  /// re-programmer. Renseignée par `propose-alternative`, validée par le patient
+  /// via `accept-alternative` (qui repasse le RDV en `scheduled` et met à jour
+  /// `date` + `hour`). TTL applicatif : la proposition expire après 7 jours.
+  proposedAlternativeAt DateTime? @map("proposed_alternative_at") @db.Timestamptz()
+  /// US-2503 — Auteur de l'annulation. Dérivé du rôle au moment du cancel.
+  cancelledBy   CancellationActor? @map("cancelled_by")
+  /// US-2503 — Raison d'annulation chiffrée AES-256-GCM (PHI possible).
+  cancelReasonEncrypted String? @map("cancel_reason_encrypted")
+  cancelledAt   DateTime?       @map("cancelled_at") @db.Timestamptz()
   createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  member  HealthcareMember? @relation(fields: [memberId], references: [id], onDelete: SetNull)
   /// US-2068 — Notes consultation rattachées
   consultationNotes ConsultationNote[]
   /// US-2072 — Acte facturable si téléconsult
   teleconsultActe   TeleconsultationActe?
 
+  /// Hot path : liste RDV d'un praticien sur une plage temporelle (calendrier).
+  @@index([memberId, date])
+  @@index([patientId, date])
+  /// US-2503 — filtre `WHERE status = 'scheduled'` pour la vue calendrier.
+  @@index([memberId, status, date])
   @@map("appointments")
+}
+
+enum AppointmentLocation {
+  in_person
+  video
+  phone
+
+  @@map("appointment_location")
+}
+
+enum AppointmentStatus {
+  /// État initial après création (mode auto-booking).
+  scheduled
+  /// US-2505 — créé en mode validation manuelle ; le médecin doit accepter.
+  pending_validation
+  /// Confirmé par le médecin (ou auto après création en mode auto).
+  confirmed
+  /// US-2503 — annulé par l'une ou l'autre partie.
+  cancelled
+  /// Le RDV a eu lieu.
+  completed
+  /// Le patient ne s'est pas présenté.
+  no_show
+
+  @@map("appointment_status")
+}
+
+enum CancellationActor {
+  patient
+  doctor
+
+  @@map("cancellation_actor")
+}
+
+enum BookingMode {
+  /// Tout RDV créé est immédiatement `scheduled`.
+  auto
+  /// Tout RDV créé est `pending_validation` jusqu'à accept du médecin.
+  validation
+
+  @@map("booking_mode")
 }
 
 // ═══════════════════════════════════════════════════════════════

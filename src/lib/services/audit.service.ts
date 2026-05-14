@@ -147,6 +147,10 @@ export type AuditResource =
   | "FOOD_ITEM"
   /** US-2057 — Meal photo (S3 reference, patient-scoped). */
   | "MEAL_PHOTO"
+  /** US-2504 — Member unavailability (RDV slot blocker). */
+  | "MEMBER_UNAVAILABILITY"
+  /** US-2505 — Member booking config (auto vs validation). */
+  | "MEMBER_BOOKING_CONFIG"
 
 /**
  * Audit log entry — parameters for logging an action.

@@ -212,3 +212,28 @@ Avant le go-live :
 - [ ] Health endpoint `/api/health` répond 200 post-deploy
 - [ ] Tests E2E smoke (login + un READ patient) verts en prod
 - [ ] Rollback testé (sur dump récent staging) : voir §5
+
+---
+
+## Prérequis extensions Postgres (Groupe 8 RDV)
+
+La migration `20260514100000_groupe8_rdv` crée une contrainte `EXCLUDE USING GIST` sur `member_unavailabilities` pour bloquer les chevauchements horaires sans dépendre de Serializable. Elle requiert l'extension `btree_gist`.
+
+### Vérification avant deploy
+
+```sql
+-- Sur le rôle applicatif
+SELECT extname, extversion FROM pg_extension WHERE extname = 'btree_gist';
+-- Si absent, vérifier sa disponibilité
+SELECT * FROM pg_available_extensions WHERE name = 'btree_gist';
+```
+
+### Action si extension manquante
+
+OVH Public Cloud DBaaS pré-installe `btree_gist`. Si le rôle applicatif n'a pas `CREATE EXTENSION`, exécuter en superuser :
+
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+```
+
+Puis relancer `pnpm prisma migrate deploy` (idempotent).

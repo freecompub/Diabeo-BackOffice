@@ -11,6 +11,7 @@
  */
 
 import { NextResponse } from "next/server"
+import { Prisma } from "@prisma/client"
 import { AuthError, getAuthUser, requireRole, type AuthUser } from "@/lib/auth"
 import type { Role } from "@prisma/client"
 import {
@@ -89,6 +90,13 @@ export function mapErrorToResponse(
   }
   if (error instanceof NotFoundError) {
     return NextResponse.json({ error: "notFound" }, { status: 404 })
+  }
+  // H7 — Postgres serialization conflict ; client should retry the request.
+  if (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2034"
+  ) {
+    return NextResponse.json({ error: "serializationConflict" }, { status: 409 })
   }
   if (error instanceof ForbiddenError) {
     if (auditTarget) {
