@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 8 RDV Batch 1 (PR #392, 5 US) + Groupe 8 i18n/Interop Batch 1 (PR #393, 4 US) → V1 30 → 39 DONE (28%).
+> Dernière mise à jour : 2026-05-14 — Groupe 9c patient-web Batch 1 livré (PR #394, 4 US US-3356/3361/3362/3363). V1 39 → 43 DONE (31%). Auth patient web débloquée (le "blocker" n'en était pas un : VIEWER role + JWT cookie déjà supportent l'usage).
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 141   | 39   | 1       | 101         | **28%** |
+| **V1**   | 141   | 43   | 1       | 97          | **31%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **104** | **2**   | **186**     | **36%** |
+| **TOTAL**| **292** | **108** | **2**   | **182**     | **37%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -424,10 +424,10 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 | US | Titre | Priorité | SP | Fichier |
 |----|-------|---------:|---:|---------|
-| US-3356 | Dashboard patient web (page principale) | V1 → ⏸️ PAUSED | 8 | Q10 session Samir 2026-05-13 — Auth patient web à concevoir |
-| US-3361 | Section glycémie 24h détaillée (web) | V1 → ⏸️ PAUSED | 8 | idem |
-| US-3362 | Section AGP 7 jours résumé (web) | V1 → ⏸️ PAUSED | 8 | idem |
-| US-3363 | Panel actions rapides patient (web) | V1 → ⏸️ PAUSED | 5 | idem |
+| US-3356 | Dashboard patient web (page principale) | ✅ DONE | 8 | PR #394 — (patient) layout + role-based redirect + `<main>` via NavigationShell |
+| US-3361 | Section glycémie 24h détaillée (web) | ✅ DONE | 8 | PR #394 — CgmChart réutilisé + 4 KPI MetricCards (TIR, moy, CV, GMI) |
+| US-3362 | Section AGP 7 jours résumé (web) | ✅ DONE | 8 | PR #394 — nouveau AgpPercentileChart (Recharts stacked Area p10/p25/p50/p75/p90) + sr-only table WCAG AA |
+| US-3363 | Panel actions rapides patient (web) | ✅ DONE | 5 | PR #394 — QuickActionsPanel scaffold ; modal wiring Batch 2 |
 
 > US patient-mobile (US-3355, 3357-3360 = 39 SP) **hors scope** ce repo —
 > iOS app séparée (cf. CLAUDE.md "on ne developpe pas les applications

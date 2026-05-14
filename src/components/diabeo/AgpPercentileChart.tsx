@@ -88,23 +88,7 @@ export function AgpPercentileChart({
   minSlots = 12, // ≈ 3h of capture across the day
   height = 280,
 }: AgpPercentileChartProps) {
-  if (slots.length < minSlots) {
-    return (
-      <div
-        role="status"
-        className="flex flex-col items-center justify-center text-center
-                   border border-dashed border-gray-300 rounded-lg
-                   p-6 text-sm text-gray-600"
-        style={{ height }}
-      >
-        <p className="font-medium text-gray-700 mb-1">
-          Données insuffisantes
-        </p>
-        <p>Portez le capteur CGM au moins 3 jours pour générer un profil AGP.</p>
-      </div>
-    )
-  }
-
+  // All hooks must be called BEFORE any conditional return (Rules of Hooks).
   // H7 / L1 (re-review) — listener-based hook reacts to runtime preference change.
   const prefersReducedMotion = useReducedMotion()
 
@@ -130,6 +114,24 @@ export function AgpPercentileChart({
   /** Recharts uses internal dataKeys (`bandLow/bandMid/bandHigh/floor`) for
    *  the stacked-area trick. Filter them out of the tooltip + show only the
    *  user-meaningful percentiles. (M5 re-review.) */
+
+  // Empty-state check runs AFTER hooks (Rules of Hooks compliance).
+  if (slots.length < minSlots) {
+    return (
+      <div
+        role="status"
+        className="flex flex-col items-center justify-center text-center
+                   border border-dashed border-gray-300 rounded-lg
+                   p-6 text-sm text-gray-600"
+        style={{ height }}
+      >
+        <p className="font-medium text-gray-700 mb-1">
+          Données insuffisantes
+        </p>
+        <p>Portez le capteur CGM au moins 3 jours pour générer un profil AGP.</p>
+      </div>
+    )
+  }
 
   return (
     <div className="w-full" role="figure" aria-label="Profil ambulatoire de glycémie sur 7 jours">

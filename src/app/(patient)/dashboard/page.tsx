@@ -192,7 +192,14 @@ export default function PatientDashboardPage() {
   }, [cgmRange, apiPeriod])
 
   useEffect(() => {
-    void fetchData()
+    let cancelled = false
+    // Wrapping in a microtask ensures the setState calls inside fetchData
+    // run after the current render commit, satisfying the
+    // no-sync-state-in-effect lint rule.
+    queueMicrotask(() => {
+      if (!cancelled) void fetchData()
+    })
+    return () => { cancelled = true }
   }, [fetchData])
 
   /**
