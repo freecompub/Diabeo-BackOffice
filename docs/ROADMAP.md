@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 10 Mirror V1 Batches A+B livré (PR #395, 7 US US-2218/2219/2220/2221/2227/2228/2229, ~30 SP). V1 43 → 50 DONE (35%). ConfigVersion hub + EmergencyContact + EscalationRule + AlertThresholdTemplate + PatientMonitoringMetrics + CohortAnalyticsSnapshot + PatientRiskScore.
+> Dernière mise à jour : 2026-05-14 — Groupe 10 Batch C livré (PR #396, 3 US US-2233/2234/2235, 16 SP). Modes spéciaux pédiatrique/Ramadan/voyage via hub ConfigVersion (étendu enum). PediatricCaregiver PHI chiffrée AES-256-GCM, permissionLevel ∈ {read,write,propose} (HAS/ISPAD), Ramadan 29-30j stricts + warnings IDF-DAR §6.4, protocole voyage transitoire ATTD/EASD 2022 (24-48h post-arrivée). V1 50 → 53 DONE (38%). 1590/1590 tests verts.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 141   | 50   | 1       | 90          | **35%** |
+| **V1**   | 141   | 53   | 1       | 87          | **38%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **115** | **2**   | **175**     | **39%** |
+| **TOTAL**| **292** | **118** | **2**   | **172**     | **40%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -447,9 +447,9 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2227 | Rapport trimestriel urgences (cache + recompute) | ✅ DONE PR #395 |
 | US-2228 | Stats cohorte urgences (vs benchmark national) | ✅ DONE PR #395 |
 | US-2229 | Détection patterns risque (score 0-100, 3 facteurs) | ✅ DONE PR #395 |
-| US-2233 | Activation mode pédiatrique | NOT STARTED |
-| US-2234 | Activation mode Ramadan | NOT STARTED |
-| US-2235 | Activation mode voyage | NOT STARTED |
+| US-2233 | Activation mode pédiatrique (multi-aidants PHI chiffrée, permissionLevel propose) | ✅ DONE PR #396 |
+| US-2234 | Activation mode Ramadan (29-30j, sahur/iftar, ISF/ICR multipliers, warnings IDF-DAR) | ✅ DONE PR #396 |
+| US-2235 | Activation mode voyage (tz offset, basal protocol transitoire ATTD/EASD 2022) | ✅ DONE PR #396 |
 | US-2239 | Audit partages temporaires | NOT STARTED |
 | US-2240 | Validation médicale aidants | NOT STARTED |
 | US-2242 | Statut sync temps réel | NOT STARTED |
