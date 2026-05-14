@@ -605,6 +605,11 @@ pnpm test:e2e                          # Playwright sur pages et API routes
   - Même si la CI est verte, même si les reviews sont appliquées, même après plusieurs PRs précédentes mergées sur autorisation : il faut demander "je peux merger ?" et obtenir un GO explicite ("oui merge", "tu peux merger", "merge-la") avant tout `gh pr merge`.
   - L'autorisation de merge d'une PR ne se reporte JAMAIS sur la PR suivante.
 - Merger une pull request si la CI (pipeline) a des erreurs
+- **Pousser DIRECTEMENT sur `main` (`git push origin main`).**
+  - Inclut TOUT commit, même docs-only (CLAUDE.md, ROADMAP.md, README, comments).
+  - Inclut les "petites mises à jour de footer", les "updates de stats", les "fix de typo".
+  - Tout changement passe par : branche dédiée → PR → CI verte → autorisation de merge explicite → `gh pr merge`.
+  - Le contournement "c'est juste de la doc, la CI ne s'applique pas" est interdit : la CI valide aussi la doc (markdown lint, lien rot), et le PR audit trail est nécessaire pour la traçabilité HDS/ANS.
 - supprimer une feature sans le consentement explicite de l'utilisateur
 - on ne developpe pas les applications android et ios
 
