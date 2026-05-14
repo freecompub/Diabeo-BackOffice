@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 10 Batch C livré (PR #396, 3 US US-2233/2234/2235, 16 SP) + hotfix re-review (PR #397). Modes spéciaux pédiatrique/Ramadan/voyage via hub ConfigVersion (étendu enum). PediatricCaregiver PHI chiffrée AES-256-GCM, permissionLevel ∈ {read,write,propose} (HAS/ISPAD), Ramadan 29-30j stricts + warnings IDF-DAR §6.4, protocole voyage transitoire ATTD/EASD 2022 (24-48h post-arrivée). PR #397 corrige 1 production-blocker (CHECK constraint SQL non synchronisée au rename "config"→"propose") + 3 HIGH (Zod bounds lockstep, P2002 → 409, UNIQUE(version_id,rank) DB-level) + 4 LOW (boundary tests, DRY createConfigVersion helper, signature unifiée upserts, ADR #18 resourceId). V1 50 → 53 DONE (38%). 1596/1596 tests verts.
+> Dernière mise à jour : 2026-05-14 — Groupe 9b Batch 1 livré (PR #399, 5 US US-2400/2401/2402/2403/2404, ~34 SP). Dashboard médecin complet : page server-component + role-based redirect + 4 cards (urgences polling 30s two-pass critical, RDV du jour Europe/Paris, patients à suivre on-demand DOCTOR-only, KPI cabinet 14j Promise.all). usePollingFetch hook avec isStale + visibilitychange listener + 401 module-level guard. 2 rounds reviews appliqués (29 findings : Critical/High/Medium/Low). **MVP désormais 100%** (68/68). V1 53 → 55 DONE (39%). Total 123/292 (42%). 1618/1618 tests verts.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -9,12 +9,12 @@
 
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
-| **MVP**  | 68    | 65   | 0       | 3           | **96%** |
-| **V1**   | 141   | 53   | 1       | 87          | **38%** |
+| **MVP**  | 68    | 68   | 0       | 0           | **100%** |
+| **V1**   | 141   | 55   | 1       | 85          | **39%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **118** | **2**   | **172**     | **40%** |
+| **TOTAL**| **292** | **123** | **2**   | **167**     | **42%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -388,11 +388,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 | US | Titre | Priorité | SP | Fichier |
 |----|-------|---------:|---:|---------|
-| US-2400 | Dashboard médecin (page principale) | **MVP** | 8 | `medecin/US-2400-…` |
-| US-2401 | Card urgences en cours (médecin) | **MVP** | 8 | `medecin/US-2401-…` |
-| US-2402 | Card RDV du jour (médecin) | MVP | 5 | `medecin/US-2402-…` |
-| US-2403 | Card patients à suivre (médecin) | V1 | 8 | `medecin/US-2403-…` |
-| US-2404 | Section KPI cabinet 14j (médecin) | V1 | 5 | `medecin/US-2404-…` |
+| US-2400 | Dashboard médecin (page principale) | ✅ DONE PR #399 | 8 | Server-component /medecin + role-based redirect |
+| US-2401 | Card urgences en cours (médecin) | ✅ DONE PR #399 | 8 | Polling 30s, two-pass critical+recent, criticity sort |
+| US-2402 | Card RDV du jour (médecin) | ✅ DONE PR #399 | 5 | Today bounds Europe/Paris, max 3, badge imminent <30min |
+| US-2403 | Card patients à suivre (médecin) | ✅ DONE PR #399 | 8 | DOCTOR-only, on-demand (hypos 7j + silence 5j), exclut urgences ouvertes |
+| US-2404 | Section KPI cabinet 14j (médecin) | ✅ DONE PR #399 | 5 | 4 MetricCard, Promise.all 8 queries, trend up/down/flat |
 | US-2405 | Dashboard infirmier (page principale) | V1 | 8 | `infirmier/US-2405-…` |
 | US-2406 | KPI ma journée (infirmier) | V1 | 5 | `infirmier/US-2406-…` |
 | US-2407 | To-do du jour avec checkboxes (infirmier) | V1 | 8 | `infirmier/US-2407-…` |
