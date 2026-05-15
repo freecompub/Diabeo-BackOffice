@@ -1,6 +1,8 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-15 — Groupe 9 Admin & Ops Batch 1 livré (PR #409, 4 US internes US-2007/2137/2147/2150, ~4 SP, option A). Migration `20260515400000_groupe9_admin_ops` : Session enrichi (createdAt/ipAddress/userAgent/lastSeenAt + index user+createdAt) + nouveau model `DataBreach` (RGPD Art. 33 registre violations) + 2 enums (DataBreachSeverity low/medium/high/critical, DataBreachStatus FSM `draft→under_assessment→notified_cnil→notified_users→closed` terminal). 4 services : `session-management.service` (listOwn isCurrent flag / revokeOne self-only avec accessDenied audit US-2265 sur cross-user / revokeOthers preserve current via WHERE not in), `data-breach.service` (declare + transition FSM avec ALLOWED_TRANSITIONS + chiffrement AES-256-GCM description/remediation/cnilCaseNumber + `cnilDeadlineHoursRemaining` cap 0 + flag `cnilDeadlineExceeded` + heuristique anti-PHI title regex NIRPP/téléphone/email), `cabinet-settings.service` (manager-level subset vs ADMIN full CRUD US-2117/2118, openingHoursSchema validation typed CabinetSettingsValidationError 422), `system-health.service` (snapshot Promise.all DB+Redis+CGM lag+backups freshness+active sessions+unauthorizedAttempts24h + per-check withTimeout 2000ms + pingRedis distingue not_configured/ok/down). 10 nouvelles routes : 3 sessions (/api/account/sessions + [id]) + 4 data-breaches (/api/admin/data-breaches + [id] + [id]/transition) + 2 cabinet-settings (/api/cabinet/[id]/settings GET+PUT) + 1 system-health (/api/admin/system-health). touchSession câblé Node `/api/auth/refresh` (~15min cycle) + lazy bump `listOwn` (middleware Edge incompatible Prisma). AuthUser.sessionId injecté via x-session-id header middleware. AuditResource enum +3 : DATA_BREACH / SYSTEM_HEALTH / CABINET_SETTINGS. Audit kinds typés unions + AUDIT_KIND const satisfies. **2 rounds review** (code-reviewer) : 19 findings (4H + 8M + 7L) — 0 résiduel Critical/High. NEW-M2 PHI heuristic regex sans ReDoS + cap 200c title + JSDoc ⚠️ schema. NEW-M3 backup freshness 30h→36h. NEW-M4 metrics rename recentErrors24h→unauthorizedAttempts24h (sémantique honnête RBAC fail). NEW-L1 audit metadata.fields noms business (description vs descriptionEnc). NEW-L5 detectedAt window 1y→5y. V1 79 → 83 DONE (59%). Total 147/292 → 151/292 (**52%**). 1887/1887 tests verts. ⚠️ Batch 2 Groupe 9 (4 US ⏳ Blocked procurement) : US-2004 Cloudflare Turnstile, US-2153 Logs Loki/OVH, US-2164 APM Sentry, US-2165 Error Sentry. V1 follow-ups : touchSession Redis throttle > 50k users actifs, pingRedis memoize 30s, OpenAPI doc anti-PHI title contract.
+> **Mise à jour 2026-05-15 (post-PR #409) — Reclassification V1→V2 (15 US)** : décision Samir de déplacer en V2 toutes les US bloquées par procurement externe (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ) ou par dépendances internes V3 (US-2150/US-2200), pour clarifier le scope V1 livrable sans dépendance non maîtrisée. **US reclassées** : US-2031 (Medtronic), US-2041 (Pattern AI), US-2077 (MSSanté UX, dep US-2125), US-2104 (Abonnement DZ), US-2106 (Stripe webhooks), US-2109 (Remboursements), US-2124 (DMP), US-2125 (MSSanté backend), US-2126 (INSi), US-2127 (PSC), US-2153 (Logs), US-2164 (APM), US-2165 (Error tracking), US-2411 (KPI cabinet admin), US-2413 (Conformité RGPD admin). **Impact stats** : V1 141→126 (% DONE 59→66), V2 58→73. Total 292 inchangé. Cf. tableau V1 + V2 ci-dessous.
+
+> Précédente mise à jour : 2026-05-15 — Groupe 9 Admin & Ops Batch 1 livré (PR #409, 4 US internes US-2007/2137/2147/2150, ~4 SP, option A). Migration `20260515400000_groupe9_admin_ops` : Session enrichi (createdAt/ipAddress/userAgent/lastSeenAt + index user+createdAt) + nouveau model `DataBreach` (RGPD Art. 33 registre violations) + 2 enums (DataBreachSeverity low/medium/high/critical, DataBreachStatus FSM `draft→under_assessment→notified_cnil→notified_users→closed` terminal). 4 services : `session-management.service` (listOwn isCurrent flag / revokeOne self-only avec accessDenied audit US-2265 sur cross-user / revokeOthers preserve current via WHERE not in), `data-breach.service` (declare + transition FSM avec ALLOWED_TRANSITIONS + chiffrement AES-256-GCM description/remediation/cnilCaseNumber + `cnilDeadlineHoursRemaining` cap 0 + flag `cnilDeadlineExceeded` + heuristique anti-PHI title regex NIRPP/téléphone/email), `cabinet-settings.service` (manager-level subset vs ADMIN full CRUD US-2117/2118, openingHoursSchema validation typed CabinetSettingsValidationError 422), `system-health.service` (snapshot Promise.all DB+Redis+CGM lag+backups freshness+active sessions+unauthorizedAttempts24h + per-check withTimeout 2000ms + pingRedis distingue not_configured/ok/down). 10 nouvelles routes : 3 sessions (/api/account/sessions + [id]) + 4 data-breaches (/api/admin/data-breaches + [id] + [id]/transition) + 2 cabinet-settings (/api/cabinet/[id]/settings GET+PUT) + 1 system-health (/api/admin/system-health). touchSession câblé Node `/api/auth/refresh` (~15min cycle) + lazy bump `listOwn` (middleware Edge incompatible Prisma). AuthUser.sessionId injecté via x-session-id header middleware. AuditResource enum +3 : DATA_BREACH / SYSTEM_HEALTH / CABINET_SETTINGS. Audit kinds typés unions + AUDIT_KIND const satisfies. **2 rounds review** (code-reviewer) : 19 findings (4H + 8M + 7L) — 0 résiduel Critical/High. NEW-M2 PHI heuristic regex sans ReDoS + cap 200c title + JSDoc ⚠️ schema. NEW-M3 backup freshness 30h→36h. NEW-M4 metrics rename recentErrors24h→unauthorizedAttempts24h (sémantique honnête RBAC fail). NEW-L1 audit metadata.fields noms business (description vs descriptionEnc). NEW-L5 detectedAt window 1y→5y. V1 79 → 83 DONE (59%). Total 147/292 → 151/292 (**52%**). 1887/1887 tests verts. ⚠️ Batch 2 Groupe 9 (4 US ⏳ Blocked procurement) : US-2004 Cloudflare Turnstile, US-2153 Logs Loki/OVH, US-2164 APM Sentry, US-2165 Error Sentry. V1 follow-ups : touchSession Redis throttle > 50k users actifs, pingRedis memoize 30s, OpenAPI doc anti-PHI title contract.
 
 > Précédente mise à jour : 2026-05-15 — Groupe 1 Devices supervision + sync status livré (PR #408, 2 US US-2243/2244, ~8 SP). Étend `PatientDevice` avec 3 colonnes (`batteryLevel` 0-100%, `sensorExpiresAt`, `lastSyncAt`) + 2 indexes (cohort filter + sensor expiration). Migration `NOT VALID + VALIDATE` (zero-downtime). 2 services : `device-supervision.service` (listByPatient/listCohort/recordSyncPing) avec DTO computed (`batteryLow <20%`, `sensorExpired <now`, `sensorExpiringSoon now..now+3j`) + `device-sync-status.service` (computeStatus pure helper + getStatus aggregate MAX(lastSyncAt) + cohortStatus avec merge accessibleIds → patients sans devices = `never_synced`). 5 routes API : GET `/api/patients/[id]/devices/{supervision,sync-status}` (VIEWER own / NURSE+ cabinet) + GET `/api/devices/{supervision,sync-status}/cohort` (NURSE+) + POST `/api/patients/[id]/devices/[deviceId]/sync-ping` (alimente lastSyncAt + optional batteryLevel/sensorExpiresAt). `requireGdprConsent` partout + `accessDenied` audit US-2265. SyncStatus enum ok/late/critical/never_synced avec seuils 5min/30min. **2 rounds review** (code-reviewer) : 18 findings (12 round-1 + 6 round-2) — 0 résiduel Critical/High. NEW-H1 sensorExpiresAt borné [2020-01-01, now+365j] (anti patient-safety bypass via VIEWER mobile). NEW-M2 soft-cap MAX_ACCESSIBLE_COHORT_PATIENTS=2000 (anti-OOM gros cabinets). Constantes partagées `COHORT_RESOURCE_ID`, `SUPERVISION_BOUNDS`, `SYNC_STATUS_BOUNDS`. AuditResource = `DEVICE` existant. V1 77 → 79 DONE (56%). Total 145/292 → 147/292 (50%). 1835/1835 tests verts. ⚠️ US-2031 Medtronic Guardian ⏳ bloqué partenariat CareLink. US-2041 Pattern detection AI ⏸️ V2. V2 follow-ups : refactor DB-side LEFT JOIN cohort (pagination > 2000 patients), filtre `sensorStale` (expiré > N jours), Zod `pipe(z.array(z.enum))` idiomatic refactor.
 
@@ -14,11 +16,13 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 83   | 0       | 58          | **59%** |
-| **V2**   | 58    | 0    | 0       | 58          | **0%**  |
+| **V1**   | 126   | 83   | 0       | 43          | **66%** |
+| **V2**   | 73    | 0    | 0       | 73          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
 | **TOTAL**| **292** | **151** | **1**   | **140**     | **52%** |
+
+> **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -223,16 +227,16 @@
 
 ## V1 — 120 US
 
-### Groupe 1 — Glycémie & Analytics (13 US — 11/13 DONE V1)
+### Groupe 1 — Glycémie & Analytics (13 US — 11/11 DONE V1, 2 reclassées V2)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2031 | Ingestion Medtronic Guardian | ⏳ Blocked partenariat CareLink (procurement) |
+| US-2031 | Ingestion Medtronic Guardian | ⏸️ **V2** — bloqué partenariat CareLink (procurement) |
 | US-2032 | Glycémies capillaires (BGM) | ✅ DONE PR #388 — GET + rate-limit + decrypt |
 | US-2038 | Heat-map glycémique | ✅ DONE PR #388 — TZ-pinned Europe/Paris |
 | US-2039 | Comparaison de périodes | ✅ DONE PR #388 — half-open windows + delta |
 | US-2040 | Rapport AGP exportable PDF | ✅ DONE PR #388 — pdf-lib + warning banner |
-| US-2041 | Pattern detection AI | ⏸️ V2 per spec |
+| US-2041 | Pattern detection AI | ⏸️ **V2** per spec |
 | US-2094 | Tableau de bord population | ✅ DONE PR #388 — RBAC + p-limit + GDPR filter |
 | US-2095 | Indicateurs qualité cabinet | ✅ DONE PR #388 — TIR/GMI distributions |
 | US-2096 | Cohorte par pathologie | ✅ DONE PR #388 — DT1/DT2/GD breakdown |
@@ -242,8 +246,8 @@
 
 **Batches livrés** : 8 US PR #388 (~21 SP) + 2 US PR #408 (~8 SP). Total 10 US V1 DONE.
 
-> ⏳ **US-2031 Medtronic Guardian** : bloqué partenariat Medtronic CareLink (cf. blocked DMP/MSSanté/INSi/PSC Groupe 8). À reprendre post-signature DPA.
-> ⏸️ **US-2041 Pattern detection** : V2 per spec (AI pattern recognition — hors scope V1).
+> ⏸️ **US-2031 Medtronic Guardian — reclassée V2** (décision 2026-05-15) : bloqué partenariat Medtronic CareLink, hors scope V1.
+> ⏸️ **US-2041 Pattern detection — V2** (V2 per spec — AI pattern recognition).
 
 ### Groupe 2 — Patients avancés (7 US)
 
@@ -264,7 +268,7 @@
 | US | Titre | Statut |
 |----|-------|--------|
 | US-2076 | Messagerie sécurisée patient↔PS | NOT STARTED (V1, 13 SP — Batch 3, chantier multi-PR) |
-| US-2077 | MSSanté intégration | NOT STARTED (V1, 3 SP — Batch 2 standalone FR PKI) |
+| US-2077 | MSSanté intégration | ⏸️ **V2** — dep US-2125 backend (Mailiz/Apicrypt) lui-même V2 |
 | US-2078 | Templates de messages | DONE (PR #390) |
 | US-2080 | Accusés de lecture | DONE (PR #390 — ReadReceipt générique + H9 access check) |
 | US-2083 | Délégation médecin → IDE | DONE (PR #390 — IDE→DOCTOR workflow + colleague enforcement) |
@@ -318,7 +322,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2060 | Apple HealthKit sync | ✅ DONE PR #407 — endpoint backend `/sync` (source `healthkit`) avec dedup UNIQUE PARTIAL `(activitySource, externalSyncId)` |
 | US-2061 | Google Fit / Health Connect | ✅ DONE PR #407 — même endpoint, source `google_fit` / `health_connect`, `createManyAndReturn` atomic race-free |
 
-### Groupe 7 — Facturation (9 US) — Batch 1 Foundation DONE PR #406
+### Groupe 7 — Facturation (9 US — 3 DONE / 3 V1 restant / 3 reclassées V2) — Batch 1 Foundation DONE PR #406
 
 > Libellés alignés sur les specs réelles (`docs/UserStory/pro-user-stories/12-facturation/`).
 > Batch 1 (Foundation, 11 SP) — DONE PR #406 : Invoice/InvoiceItem/InvoiceSequence + 3 triggers PG.
@@ -328,15 +332,15 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 |----|-------|--------|
 | US-2102 | Virement bancaire + facture PDF | NOT STARTED (Batch 2 — pdf-lib + IBAN) |
 | US-2103 | Facturation au patient FR | ✅ DONE PR #406 — Invoice service + customerSnapshot AES-256-GCM + audit US-2268 pivot |
-| US-2104 | Abonnement DZ | NOT STARTED (Batch 3 — partenaire bancaire DZ à confirmer) |
+| US-2104 | Abonnement DZ | ⏸️ **V2** — bloqué partenariat bancaire DZ |
 | US-2105 | Numérotation séquentielle pays | ✅ DONE PR #406 — InvoiceSequence gap-less FOR UPDATE + format `FR-2026-000001` + Luhn SIRET |
-| US-2106 | Webhooks idempotents Stripe | NOT STARTED (Batch 3 — bloqué provision Stripe Connect) |
+| US-2106 | Webhooks idempotents Stripe | ⏸️ **V2** — bloqué provision Stripe Connect |
 | US-2107 | Versioning facture immuable | ✅ DONE PR #406 — 3 triggers PG (enforce_invoice_immutability + DELETE-block + items-lock) + FSM atomique |
 | US-2108 | Relances automatiques | NOT STARTED (Batch 4 — cron J+7/15/30 via Resend US-2074) |
-| US-2109 | Remboursements | NOT STARTED (Batch 4 — dépend US-2106 webhooks) |
+| US-2109 | Remboursements | ⏸️ **V2** — dépend US-2106 webhooks Stripe (lui-même V2) |
 | US-2110 | TVA multi-pays | NOT STARTED (Batch 2 — CountryTaxRule US-2114 snapshot dans InvoiceItem.taxRate déjà prévu) |
 
-### Groupe 8 — i18n & Interopérabilité (8 US, 33 SP)
+### Groupe 8 — i18n & Interopérabilité (8 US, 33 SP — 4 DONE V1 / 4 reclassées V2)
 
 > **Batch 1 (4 US, 6 SP) — DONE PR #393** : US-2113 + US-2114 + US-2116 + US-2123 scaffold.
 > Batch 2 (4 US, 27 SP) — bloqué procurement (habilitations ANS, contrats Mailiz/Apicrypt).
@@ -347,12 +351,12 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2114 | Règles fiscales par pays (CountryTaxRule, date-bounded, overlap-rejected) | 1 | ✅ DONE |
 | US-2116 | Réglementation santé par pays (HealthcareRegulation : RPPS/ADELI/INS/HDS/RGPD/MSSANTE) | 1 | ✅ DONE |
 | US-2123 | HL7 FHIR R4 scaffold (FhirInteroperability + FhirAllowedSystem + retry queue + AES-256-GCM payload + SSRF guard + DPA allowlist + kill-switch) | 3 | ✅ DONE |
-| US-2124 | DMP / Mon Espace Santé | 8 | ⏳ Blocked ANS habilitation (10-30k€) |
-| US-2125 | MSSanté backend | 3 | ⏳ Blocked contrat Mailiz/Apicrypt |
-| US-2126 | INSi (API identité nationale) | 8 | ⏳ Blocked ANS habilitation (5-10k€) |
-| US-2127 | Pro Santé Connect (OIDC) | 8 | ⏳ Blocked ANS homologation (5-15k€) |
+| US-2124 | DMP / Mon Espace Santé | 8 | ⏸️ **V2** — bloqué ANS habilitation (10-30k€) |
+| US-2125 | MSSanté backend | 3 | ⏸️ **V2** — bloqué contrat Mailiz/Apicrypt |
+| US-2126 | INSi (API identité nationale) | 8 | ⏸️ **V2** — bloqué ANS habilitation (5-10k€) |
+| US-2127 | Pro Santé Connect (OIDC) | 8 | ⏸️ **V2** — bloqué ANS homologation (5-15k€) |
 
-### Groupe 9 — Admin & Ops (8 US — 4/8 DONE V1, Batch 1)
+### Groupe 9 — Admin & Ops (8 US — 4 DONE V1 / 1 V1 restant US-2004 / 3 reclassées V2)
 
 > **Batch 1 internes (~4 SP) — DONE PR #409** : 4 US sans dep procurement.
 > Batch 2 externes (~12 SP) — bloqué procurement Sentry / Cloudflare / Logs.
@@ -364,9 +368,9 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2137 | Notification breach CNIL | ✅ DONE PR #409 — model DataBreach + FSM 5 statuses + chiffrement AES + cnilDeadlineHoursRemaining + PHI heuristic anti-leak title |
 | US-2147 | Paramètres cabinet | ✅ DONE PR #409 — manager-level CRUD `/api/cabinet/[id]/settings` (régaliens siret/tva/iban restent ADMIN-only) |
 | US-2150 | Dashboard santé système | ✅ DONE PR #409 — `/api/admin/system-health` (DB/Redis/CGM lag/backups freshness + per-check timeout 2s + pingRedis distingue not_configured/down) |
-| US-2153 | Logs centralisés | ⏳ Blocked procurement (Loki / Datadog / OVH Logs) |
-| US-2164 | APM monitoring | ⏳ Blocked procurement (Sentry / Datadog) |
-| US-2165 | Error tracking | ⏳ Blocked procurement (Sentry self-hosted possible HDS) |
+| US-2153 | Logs centralisés | ⏸️ **V2** — bloqué procurement (Loki / Datadog / OVH Logs) |
+| US-2164 | APM monitoring | ⏸️ **V2** — bloqué procurement (Sentry / Datadog) |
+| US-2165 | Error tracking | ⏸️ **V2** — bloqué procurement (Sentry self-hosted HDS) |
 
 ### Groupe 8 — Gestion des RDV (7 US, 49 SP — décision session Samir 2026-05-13 Q7)
 
@@ -417,9 +421,9 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2408 | Coordination équipe (infirmier) | ✅ DONE PR #401 (workflow) | 5 | DelegationRequest inbox + cabinet scope ; ⚠️ libre chat deferred V2 (TeamMessage table) |
 | US-2409 | Relances en attente (infirmier) | ✅ DONE PR #401 (heuristique) | 5 | silentMonitoring+apptUnconfirmed+neverSynced + tel:/sms: URI ; ⚠️ Twilio + PatientRecallLog deferred V2 |
 | US-2410 | Dashboard administrateur (page principale) | ✅ DONE PR #403 | 8 | `/admin` server-component + redirect split + 3 cards (KPI/Billing/Compliance) |
-| US-2411 | KPI activité cabinet (admin) | V1 → ⏸️ PAUSED | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — session Samir 2026-05-13 |
+| US-2411 | KPI activité cabinet (admin) | ⏸️ **V2** | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — reclassée V2 2026-05-15 |
 | US-2412 | Facturation à traiter (admin) | ✅ DONE PR #403 (heuristique) | 5 | TeleconsultationActe.invoicedAt IS NULL fallback ; ⚠️ Invoice table V2 (US-2107) |
-| US-2413 | Conformité RGPD (admin) | V1 → ⏸️ PAUSED | 8 | deps US-2190/2191/2192 absentes du ROADMAP — session Samir 2026-05-13 |
+| US-2413 | Conformité RGPD (admin) | ⏸️ **V2** | 8 | deps US-2190/2191/2192 absentes du ROADMAP — reclassée V2 2026-05-15 |
 | ~~US-2414~~ | ~~Santé système 6 services (admin)~~ | ❌ SUPPRIMÉE | — | Q6 session Samir 2026-05-13 — duplicate (`/api/health` couvre déjà) |
 | US-2415 | Sidebar pilotage administration (admin) | ✅ DONE PR #403 (existant) | 6 | NavigationShell déjà gated minRole ADMIN sur /users + /audit ; ⚠️ badges count V2 |
 
@@ -481,7 +485,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V2 — 58 US
+## V2 — 73 US
 
 | Domaine | US | Titre |
 |---------|----|-------|
@@ -489,7 +493,8 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | Auth | US-2014 | Notification breach |
 | Auth | US-2010 | e-CPS |
 | Patients | US-2027 | Import/export cohorte |
-| Glycémie | US-2041 | Pattern detection AI |
+| Glycémie | US-2031 | Ingestion Medtronic Guardian (reclassée V1→V2 — partenariat CareLink) |
+| Glycémie | US-2041 | Pattern detection AI (V2 per spec) |
 | Insuline | US-2052 | Comparaison MDI vs pompe |
 | Repas | US-2055 | Bibliothèque aliments DZ |
 | Repas | US-2056 | Comptage glucides assisté |
@@ -497,12 +502,25 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | Analytics | US-2099 | Rapports personnalisés |
 | Analytics | US-2100 | Charge soignants |
 | Entités | US-2119–2122 | Réseaux, mutuelles, hôpitaux |
+| Facturation | US-2104 | Abonnement DZ (reclassée V1→V2 — partenaire bancaire DZ) |
+| Facturation | US-2106 | Webhooks idempotents Stripe (reclassée V1→V2 — provision Stripe) |
+| Facturation | US-2109 | Remboursements (reclassée V1→V2 — dep US-2106) |
+| Interop | US-2077 | MSSanté intégration UX (reclassée V1→V2 — dep US-2125 backend) |
+| Interop | US-2124 | DMP / Mon Espace Santé (reclassée V1→V2 — ANS 10-30k€) |
+| Interop | US-2125 | MSSanté backend (reclassée V1→V2 — contrat Mailiz/Apicrypt) |
+| Interop | US-2126 | INSi (reclassée V1→V2 — ANS 5-10k€) |
+| Interop | US-2127 | Pro Santé Connect (reclassée V1→V2 — ANS 5-15k€) |
 | Interop | US-2128–2131 | e-prescription, Segur, HPRIM |
 | Documents | US-2142–2146 | Versioning, eIDAS, OCR |
 | Admin | US-2149, 2152 | Branding, DR |
+| Admin | US-2153 | Logs centralisés (reclassée V1→V2 — Loki/Datadog/OVH) |
+| Admin | US-2164 | APM monitoring (reclassée V1→V2 — Sentry/Datadog) |
+| Admin | US-2165 | Error tracking (reclassée V1→V2 — Sentry) |
 | AI | US-2154–2159 | Pattern, prédiction, stratification |
 | ETP | US-2160–2163 | Bibliothèque, programmes, quiz |
 | Prescriptions | US-2169–2213 (sauf 2171) | Éditeur, templates, signatures, LAP |
+| Dashboards admin | US-2411 | KPI activité cabinet (reclassée V1→V2 — dep US-2150/US-2200) |
+| Dashboards admin | US-2413 | Conformité RGPD admin (reclassée V1→V2 — deps US-2190/91/92 absentes) |
 | Mirror V2 | US-2236–2241, 2245–2249, 2254–2259 | Transition adulte, PAI, révocation, dispositifs avancés |
 
 ---
