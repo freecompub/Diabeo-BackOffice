@@ -133,3 +133,25 @@ export function mapErrorToResponse(
   console.error(`[${routeTag}]`, { msg, stack, requestId })
   return NextResponse.json({ error: "serverError" }, { status: 500 })
 }
+
+/**
+ * L-RR3-4 (review re-3 PR #406) — REST hygiene : rejette les POST/
+ * PUT/PATCH dont le Content-Type n'est pas `application/json`. Évite
+ * d'accepter un body `text/plain` ou un form-encoded par erreur.
+ *
+ * `Content-Type` absent → toléré (compatibilité legacy clients).
+ * `Content-Type` présent mais non-JSON → 415.
+ */
+export function assertJsonContentType(req: Request): NextResponse | null {
+  const ct = req.headers.get("content-type")
+  if (!ct) return null
+  // strip params (e.g. `application/json; charset=utf-8`).
+  const mediaType = ct.split(";")[0]!.trim().toLowerCase()
+  if (mediaType !== "application/json") {
+    return NextResponse.json(
+      { error: "unsupportedMediaType", expected: "application/json" },
+      { status: 415 },
+    )
+  }
+  return null
+}

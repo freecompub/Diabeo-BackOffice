@@ -11,7 +11,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
+import { auditedRequireRole, mapErrorToResponse, assertJsonContentType } from "@/lib/team-route-helpers"
 import {
   invoiceService,
   InvoiceValidationError,
@@ -97,6 +97,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
+    // L-RR3-4 (review re-3) — Content-Type guard avant tout work.
+    const ctErr = assertJsonContentType(req)
+    if (ctErr) return ctErr
+
     // C4 + L-NEW-2 (review re-2) — auth d'abord, body peek shallow
     // pour récupérer le cabinetId comme `resourceId` audit. Sources :
     //   1. header `x-cabinet-id` (clients programmatiques)

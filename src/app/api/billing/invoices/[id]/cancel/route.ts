@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
+import { auditedRequireRole, mapErrorToResponse, assertJsonContentType } from "@/lib/team-route-helpers"
 import {
   invoiceService,
   InvoiceAccessError,
@@ -33,6 +33,10 @@ export async function POST(
 ) {
   const ctx = extractRequestContext(req)
   try {
+    // L-RR3-4 (review re-3) — Content-Type guard.
+    const ctErr = assertJsonContentType(req)
+    if (ctErr) return ctErr
+
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {

@@ -3,13 +3,20 @@
 -- (US-2103 / 2105 / 2107 — DGFiP art. 242 nonies A CGI)
 -- ═══════════════════════════════════════════════════════════════
 --
--- COPIE CANONIQUE pour audit & review (le code source réel est dans
--- `prisma/migrations/20260515100000_groupe7_batch1_invoice_foundation/migration.sql`).
+-- COPIE DOCUMENTAIRE pour audit & review HDS — **PAS** la source de
+-- vérité. Le code réellement appliqué en BDD est dans :
+--   prisma/migrations/20260515100000_groupe7_batch1_invoice_foundation/migration.sql
 --
--- M-NEW-4 (review re-2 PR #406) — co-localisation demandée par le
--- reviewer pour parité avec `audit_immutability.sql`. Toute
--- modification doit être faite simultanément sur les deux fichiers
--- (le drift est détecté par la CI `Migrations Drift Check`).
+-- M-NEW-4 (review re-2 PR #406) — co-localisation pour parité avec
+-- `audit_immutability.sql`.
+--
+-- M-RR3-2 (review re-3 PR #406) — **AVERTISSEMENT** : la CI
+-- `Migrations Drift Check` ne compare que `prisma/schema.prisma`
+-- contre les migrations. Elle NE DÉTECTE PAS le drift entre ce
+-- fichier de référence et la migration. Toute modification doit
+-- être faite simultanément sur les deux fichiers ET le drift doit
+-- être vérifié à la main avant merge. Follow-up V1 : ajouter un
+-- step CI `diff` pour automatiser cette vérification.
 --
 -- ─────────────────────────────────────────────────────────────
 -- TRIGGER 1 : enforce_invoice_immutability

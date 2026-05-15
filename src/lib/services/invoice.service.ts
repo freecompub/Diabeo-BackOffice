@@ -27,6 +27,7 @@
  * — méthode admise comptablement, documentée ici.
  */
 
+import { z } from "zod"
 import { Prisma } from "@prisma/client"
 import type {
   InvoiceStatus,
@@ -113,6 +114,15 @@ export class InvoiceNotFoundError extends Error {
 
 // Re-export pour les routes (mapping HTTP 409).
 export { InvoiceSequenceOverflowError } from "./invoice-numbering.service"
+
+/**
+ * L-RR3-1 (review re-3) — Constante partagée route/service pour la
+ * regex Stripe paymentIntentId. Stripe garantit `pi_` prefix + 24+
+ * caractères alphanum (longueur réelle ~27, théorique sans plafond
+ * fixe). On utilise une borne haute conservatrice à 60 pour ne pas
+ * casser si Stripe étend le format.
+ */
+export const STRIPE_PAYMENT_INTENT_ID_REGEX = /^pi_[A-Za-z0-9]{24,60}$/
 
 // ─────────────────────────────────────────────────────────────
 // Bornes & types
@@ -385,14 +395,21 @@ async function buildIssuerSnapshot(
 /**
  * PII contenu dans le snapshot client. Sérialisé en JSON puis chiffré
  * AES-256-GCM avant stockage JSONB (M-NEW-3 review re-2).
+ *
+ * M-RR3-1 (review re-3) — Zod schema `.strict()` empêche un dev futur
+ * d'ajouter par mégarde un champ non-whitelisté qui se retrouverait
+ * chiffré puis rendu dans le PDF (Batch 2). Toute clé inconnue échoue
+ * au parse → la facture ne peut pas être émise avec un champ surprise.
  */
-interface CustomerSnapshotPii {
-  name: string
-  address1?: string
-  address2?: string
-  postalCode?: string
-  city?: string
-}
+const customerSnapshotPiiSchema = z.object({
+  name: z.string().min(1).max(200),
+  address1: z.string().max(255).optional(),
+  address2: z.string().max(255).optional(),
+  postalCode: z.string().max(20).optional(),
+  city: z.string().max(100).optional(),
+}).strict()
+
+export type CustomerSnapshotPii = z.infer<typeof customerSnapshotPiiSchema>
 
 /**
  * Schéma JSONB stocké en colonne `customer_snapshot` :
@@ -407,12 +424,17 @@ interface CustomerSnapshotPii {
  * politique HDS que `users.firstname` (chiffré applicativement).
  * Un dump SQL `SELECT customer_snapshot FROM invoices` retourne le
  * blob chiffré, pas le nom du client en clair.
+ *
+ * L-RR3-3 (review re-3) — `.strict()` rejette les snapshots corrompus
+ * avec des clés supplémentaires + `datetime()` valide `encryptedAt`.
  */
-interface CustomerSnapshotStored {
-  patientRef: string
-  encryptedPii: string
-  encryptedAt: string
-}
+const customerSnapshotStoredSchema = z.object({
+  patientRef: z.string().regex(/^patient#\d+$/),
+  encryptedPii: z.string().min(1),
+  encryptedAt: z.string().datetime(),
+}).strict()
+
+type CustomerSnapshotStored = z.infer<typeof customerSnapshotStoredSchema>
 
 /**
  * Construit le snapshot client (C2 + M-NEW-3 review).
@@ -460,17 +482,23 @@ async function buildCustomerSnapshot(
     throw new InvoiceValidationError("customerNameUnavailable")
   }
 
-  const pii: CustomerSnapshotPii = { name: fullName }
+  const piiCandidate: Record<string, string> = { name: fullName }
   const address1 = safeDecrypt(patient.user.address1, "patient.address1")
-  if (address1) pii.address1 = address1
+  if (address1) piiCandidate.address1 = address1
   const address2 = safeDecrypt(patient.user.address2, "patient.address2")
-  if (address2) pii.address2 = address2
+  if (address2) piiCandidate.address2 = address2
   const postalCode = safeDecrypt(patient.user.cp, "patient.cp")
-  if (postalCode) pii.postalCode = postalCode
+  if (postalCode) piiCandidate.postalCode = postalCode
   const city = safeDecrypt(patient.user.city, "patient.city")
-  if (city) pii.city = city
+  if (city) piiCandidate.city = city
 
-  // M-NEW-3 (review re-2) — chiffrement applicatif AES-256-GCM du blob PII.
+  // M-RR3-1 (review re-3) — Whitelist Zod `.strict()` avant chiffrement.
+  // Toute clé inattendue (debug, leak inter-record, etc.) throw → la
+  // facture ne peut pas être émise avec un champ surprise. Le PDF
+  // Batch 2 décryptera et n'aura que des champs validés.
+  const pii = customerSnapshotPiiSchema.parse(piiCandidate)
+
+  // M-NEW-3 (review re-2) — chiffrement applicatif AES-256-GCM du blob.
   const encryptedPii = Buffer.from(encrypt(JSON.stringify(pii))).toString("base64")
 
   return {
@@ -494,15 +522,21 @@ export function decryptCustomerSnapshot(
   if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
     return null
   }
-  const enc = (snapshot as Record<string, unknown>).encryptedPii
-  if (typeof enc !== "string") return null
+  // L-RR3-3 (review re-3) — Valide la forme stockée via Zod : `patientRef`
+  // bien formé, `encryptedPii` non-vide, `encryptedAt` ISO-8601. Ignore
+  // les clés non whitelistées (`.strict()`). Empêche un snapshot
+  // corrompu de produire des erreurs silencieuses au décryptage.
+  const storedParse = customerSnapshotStoredSchema.safeParse(snapshot)
+  if (!storedParse.success) return null
   try {
-    const json = decrypt(new Uint8Array(Buffer.from(enc, "base64")))
+    const json = decrypt(new Uint8Array(Buffer.from(storedParse.data.encryptedPii, "base64")))
     const parsed = JSON.parse(json)
-    if (typeof parsed !== "object" || !parsed || typeof parsed.name !== "string") {
-      return null
-    }
-    return parsed as CustomerSnapshotPii
+    // M-RR3-1 (review re-3) — re-valider au déchiffrement aussi : le
+    // PDF ne reçoit que des clés whitelistées même si un dump SQL
+    // direct a injecté du contenu PHI parasite dans le blob chiffré.
+    const piiParse = customerSnapshotPiiSchema.safeParse(parsed)
+    if (!piiParse.success) return null
+    return piiParse.data
   } catch {
     return null
   }
@@ -788,8 +822,9 @@ export const invoiceService = {
     // H-NEW-2 (review re-2) — defense-in-depth : valider le PI ID au
     // niveau service (pas seulement Zod route). Couvre les callers
     // internes (webhook reconciliation Batch 3, server actions, etc.).
+    // L-RR3-1 (review re-3) — regex unifiée via STRIPE_PAYMENT_INTENT_ID_REGEX.
     if (paymentMethod === "stripe") {
-      if (!stripePaymentIntentId || !/^pi_[A-Za-z0-9]{1,46}$/.test(stripePaymentIntentId)) {
+      if (!stripePaymentIntentId || !STRIPE_PAYMENT_INTENT_ID_REGEX.test(stripePaymentIntentId)) {
         throw new InvoiceValidationError("stripePaymentIntentId")
       }
     } else if (stripePaymentIntentId) {

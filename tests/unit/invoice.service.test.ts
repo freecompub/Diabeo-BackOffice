@@ -18,7 +18,7 @@
  *     `cabinetId` / `patientId` pivots cohérents.
  */
 import { describe, it, expect, beforeEach } from "vitest"
-import { prismaMock } from "../helpers/prisma-mock"
+import { prismaMock, mockInvoiceTxGuard } from "../helpers/prisma-mock"
 import {
   invoiceService,
   InvoiceValidationError,
@@ -253,19 +253,8 @@ describe("invoiceService FSM (US-2107) — atomic transitions (H4)", () => {
 
   beforeEach(() => {
     prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
-    prismaMock.$executeRaw.mockResolvedValue(1 as any)
-    prismaMock.$queryRaw.mockImplementation((sql: any) => {
-      // Distinguish reserveNextInvoiceNumber queries by SQL content.
-      const text = Array.isArray(sql) ? sql.join("") : String(sql)
-      // H-NEW-4 (review re-2) — guard runs always, return fake xid.
-      if (text.includes("pg_current_xact_id_if_assigned")) {
-        return Promise.resolve([{ xid: "fake-xid" }]) as any
-      }
-      if (text.includes("last_number")) {
-        return Promise.resolve([{ last_number: 0 }]) as any
-      }
-      return Promise.resolve([]) as any
-    })
+    // L-RR3-5 (review re-3) — helper partagé : guard + last_number.
+    mockInvoiceTxGuard({ lastNumber: 0 })
     prismaMock.invoice.updateMany.mockResolvedValue({ count: 1 } as any)
     // Patient User PII encrypted (for customerSnapshot).
     prismaMock.patient.findFirst.mockResolvedValue({
@@ -579,17 +568,7 @@ describe("InvoiceSequenceOverflowError class (M10)", () => {
 describe("Re-review fixes (H-NEW + M-NEW + L-NEW)", () => {
   beforeEach(() => {
     prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
-    prismaMock.$executeRaw.mockResolvedValue(1 as any)
-    prismaMock.$queryRaw.mockImplementation((sql: any) => {
-      const text = Array.isArray(sql) ? sql.join("") : String(sql)
-      if (text.includes("pg_current_xact_id_if_assigned")) {
-        return Promise.resolve([{ xid: "fake-xid" }]) as any
-      }
-      if (text.includes("last_number")) {
-        return Promise.resolve([{ last_number: 0 }]) as any
-      }
-      return Promise.resolve([]) as any
-    })
+    mockInvoiceTxGuard({ lastNumber: 0 })
     prismaMock.invoice.updateMany.mockResolvedValue({ count: 1 } as any)
     prismaMock.patient.findFirst.mockResolvedValue({
       id: 42,
