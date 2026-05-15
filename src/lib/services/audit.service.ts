@@ -181,6 +181,8 @@ export type AuditResource =
   | "PUSH_SCHEDULED_NOTIFICATION"
   /** Groupe 7 Batch 1 — Facturation (US-2103 / 2105 / 2107). */
   | "INVOICE"
+  /** Groupe 6 Batch 1 — Activité physique (US-2059 / 2060 / 2061). */
+  | "ACTIVITY"
 
 /**
  * Audit log entry — parameters for logging an action.
