@@ -90,7 +90,11 @@ export async function POST(req: NextRequest) {
     // Tag the session as MFA-verified so HDS forensics can tell second-factor
     // sessions apart from password-only ones.
     await clearAttempts(rateLimitKey)
-    const session = await createSession(user.id, { mfaVerified: true })
+    const session = await createSession(user.id, {
+      mfaVerified: true,
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    })
     const token = await signJwt({
       sub: user.id,
       role: user.role,

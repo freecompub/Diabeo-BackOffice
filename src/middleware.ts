@@ -123,6 +123,9 @@ export async function middleware(request: NextRequest) {
     requestHeaders.set("x-user-id", String(payload.sub))
     requestHeaders.set("x-user-role", String(payload.role))
     requestHeaders.set("x-request-id", requestId)
+    // US-2007 (Groupe 9) — expose session ID aux route handlers pour
+    // permettre la révocation ciblée + détection "session courante".
+    if (sid) requestHeaders.set("x-session-id", sid)
 
     // C4: CSRF protection — state-changing requests must include custom header.
     // This header cannot be set by cross-origin form submissions (CORS blocks custom headers).

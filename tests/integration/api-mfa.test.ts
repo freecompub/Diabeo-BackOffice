@@ -151,7 +151,10 @@ describe("/api/auth/mfa/challenge", () => {
     expect(setCookie).toMatch(/diabeo_token=full-jwt/)
     expect(setCookie).toMatch(/HttpOnly/i)
     // Session was created with mfaVerified=true (HDS forensics)
-    expect(createSessionMock).toHaveBeenCalledWith(userId, { mfaVerified: true })
+    // US-2007 — createSession reçoit aussi ipAddress/userAgent depuis ctx.
+    expect(createSessionMock).toHaveBeenCalledWith(userId, expect.objectContaining({
+      mfaVerified: true,
+    }))
     // LOGIN audit (not MFA_CHALLENGE_FAILED)
     const audit = auditLogMock.mock.calls[0][0]
     expect(audit.action).toBe("LOGIN")

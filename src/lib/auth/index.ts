@@ -22,6 +22,9 @@ const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "V
 export interface AuthUser {
   id: number
   role: Role
+  /** US-2007 (Groupe 9) — session ID du JWT courant (`sid`).
+   *  Présent si le JWT inclut un sid valide (cas standard). */
+  sessionId?: string
 }
 
 /** Extract authenticated user from headers set by middleware */
@@ -34,7 +37,8 @@ export function getAuthUser(req: Request): AuthUser | null {
   if (!Number.isInteger(id) || id <= 0) return null
   if (!VALID_ROLES.has(userRole)) return null
 
-  return { id, role: userRole as Role }
+  const sessionId = req.headers.get("x-session-id") ?? undefined
+  return { id, role: userRole as Role, sessionId }
 }
 
 export function requireAuth(req: Request): AuthUser {
