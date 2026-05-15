@@ -189,6 +189,8 @@ export type AuditResource =
   | "SYSTEM_HEALTH"
   /** Groupe 9 — Admin & Ops : settings cabinet manager-level (US-2147). */
   | "CABINET_SETTINGS"
+  /** US-2076 scope A — Messagerie sécurisée patient↔PS / staff↔staff. */
+  | "MESSAGE"
 
 /**
  * Audit log entry — parameters for logging an action.
