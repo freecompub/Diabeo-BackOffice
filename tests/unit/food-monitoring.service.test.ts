@@ -50,6 +50,42 @@ describe("foodJournalQuery (US-2248)", () => {
       has: DiabetesEventType.insulinMeal,
     })
   })
+
+  // L2 (re-review) — service queries enforce soft-delete filter at the
+  //   data layer (defense-in-depth ; route layer already gates via
+  //   canAccessPatient).
+  it("applies patient.deletedAt: null in query where", async () => {
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as any)
+    await foodJournalQuery.forPatient(7, 9)
+    const call = prismaMock.diabetesEvent.findMany.mock.calls[0]![0]!
+    expect((call.where as any).patient).toEqual({ deletedAt: null })
+  })
+
+  // L1 (re-review) — comment is truncated at 500 chars defensively.
+  it("truncates comment to 500 chars (defense against oversized payloads)", async () => {
+    const longComment = "x".repeat(1000)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      {
+        id: "e1", eventDate: new Date(),
+        carbohydrates: null, bolusDose: null,
+        comment: longComment, validatedAt: null,
+        _count: { mealPhotos: 0 },
+      },
+    ] as any)
+    const out = await foodJournalQuery.forPatient(7, 9)
+    expect(out[0]!.comment!.length).toBe(500)
+  })
+
+  // L6 (re-review) — assert full audit shape (action + resource + pivot).
+  it("emits per-patient pivot audit row with DIABETES_EVENT resource", async () => {
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as any)
+    await foodJournalQuery.forPatient(7, 9)
+    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(audit.action).toBe("READ")
+    expect(audit.resource).toBe("DIABETES_EVENT")
+    expect(audit.resourceId).toBe("7")
+    expect(audit.metadata.patientId).toBe(7)
+  })
 })
 
 // ─── US-2251 ────────────────────────────────────────────────────
@@ -95,6 +131,51 @@ describe("adherenceQuery (US-2251)", () => {
     const out = await adherenceQuery.forPatient(7, 9)
     expect(out.daysWithEntry).toBe(0)
     expect(out.score).toBe(0)
+  })
+
+  // L3 (re-review) — pin both boundary cases : 30 distinct days with 0
+  //   meals → score 100 (regularity-only fallback) ; 30 days × 30 meals
+  //   all bolus-covered → score 100. UI must disambiguate via totalMeals.
+  it("L3 boundary : 30 distinct days + 0 meals → score 100, totalMeals 0", async () => {
+    const dates = Array.from({ length: 30 }, (_, i) => ({
+      eventDate: new Date(`2026-05-${String(i + 1).padStart(2, "0")}T08:00:00Z`),
+    }))
+    prismaMock.diabetesEvent.findMany.mockResolvedValue(dates as any)
+    prismaMock.diabetesEvent.count
+      .mockResolvedValueOnce(0) // totalMeals = 0
+      .mockResolvedValueOnce(0) // mealsWithBolus = 0
+    const out = await adherenceQuery.forPatient(7, 9)
+    expect(out.totalMeals).toBe(0)
+    expect(out.bolusCoveragePercent).toBeNull()
+    expect(out.score).toBe(100)
+  })
+
+  it("L3 boundary : 30 days × 30 meals × 30 bolus → score 100", async () => {
+    const dates = Array.from({ length: 30 }, (_, i) => ({
+      eventDate: new Date(`2026-05-${String(i + 1).padStart(2, "0")}T08:00:00Z`),
+    }))
+    prismaMock.diabetesEvent.findMany.mockResolvedValue(dates as any)
+    prismaMock.diabetesEvent.count
+      .mockResolvedValueOnce(30) // totalMeals
+      .mockResolvedValueOnce(30) // mealsWithBolus
+    const out = await adherenceQuery.forPatient(7, 9)
+    expect(out.bolusCoveragePercent).toBe(100)
+    expect(out.score).toBe(100)
+  })
+
+  // M1 (re-review) — Paris-timezone bucketing : a meal at 22:30 UTC on
+  //   2026-05-14 = 00:30 Paris on 2026-05-15 (CEST) buckets as Paris day.
+  it("M1 buckets distinct days in Europe/Paris timezone", async () => {
+    // 2 events : one at 22:30 UTC May 14 (= 00:30 Paris May 15), one at
+    // 22:00 UTC May 15 (= 00:00 Paris May 16). Paris-buckets to 2 distinct
+    // days even though UTC strings only differ by hour.
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { eventDate: new Date("2026-05-14T22:30:00Z") },
+      { eventDate: new Date("2026-05-15T22:00:00Z") },
+    ] as any)
+    prismaMock.diabetesEvent.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0)
+    const out = await adherenceQuery.forPatient(7, 9)
+    expect(out.daysWithEntry).toBe(2)
   })
 })
 
@@ -144,5 +225,28 @@ describe("glycemiaMealContextQuery (US-2253)", () => {
     expect(out[0]!.postMealAvgGl).toBeNull()
     expect(out[0]!.preMealSamples).toBe(0)
     expect(out[0]!.postMealSamples).toBe(0)
+  })
+
+  // L6 (re-review) — multi-meal : confirm bucketing isolates each meal's
+  //   window even when two meals share overlapping CGM windows.
+  it("multi-meal bucketing isolates pre/post per meal", async () => {
+    const meal1 = new Date("2026-05-14T12:00:00Z")
+    const meal2 = new Date("2026-05-14T15:00:00Z") // 3h after meal1
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { id: "m2", eventDate: meal2, carbohydrates: null, bolusDose: null },
+      { id: "m1", eventDate: meal1, carbohydrates: null, bolusDose: null },
+    ] as any)
+    // Single CGM reading at 13:30 (1.5h after meal1, 1.5h before meal2).
+    // Should appear as post for meal1 AND pre for meal2 (each meal has
+    // its own ±2h window — they overlap at 13:00-14:00 Z).
+    prismaMock.cgmEntry.findMany.mockResolvedValue([
+      { timestamp: new Date("2026-05-14T13:30:00Z"), valueGl: new Prisma.Decimal(1.5) },
+    ] as any)
+    const out = await glycemiaMealContextQuery.forPatient(7, 9)
+    const byId = Object.fromEntries(out.map((m) => [m.mealId, m]))
+    expect(byId.m1!.postMealAvgGl).toBe(1.5)
+    expect(byId.m1!.postMealSamples).toBe(1)
+    expect(byId.m2!.preMealAvgGl).toBe(1.5)
+    expect(byId.m2!.preMealSamples).toBe(1)
   })
 })

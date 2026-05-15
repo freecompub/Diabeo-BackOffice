@@ -23,7 +23,7 @@
  *    actifs ; à revoir au-delà)
  */
 
-import { DiabetesEventType, type Prisma } from "@prisma/client"
+import { DiabetesEventType } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { auditService, type AuditContext } from "./audit.service"
 
@@ -39,6 +39,16 @@ const HOUR_MS = 3_600_000
 
 const FOOD_JOURNAL_LIMIT = 50
 const GLYCEMIA_CONTEXT_LIMIT = 30
+/** L1 (re-review) — defensive truncation on free-text `comment` exposed
+ *  in API responses ; patient-authored content may carry incidental PHI. */
+const COMMENT_MAX_LEN = 500
+const CABINET_TIMEZONE = "Europe/Paris"
+
+/** L2 (re-review) — defense-in-depth : every service query enforces
+ *  `patient.deletedAt: null`. RBAC gate via `canAccessPatient` already
+ *  filters at the route layer, but the service is publicly exported and
+ *  reusable from crons / background workers / future GraphQL resolvers. */
+const NON_DELETED_PATIENT = { patient: { deletedAt: null } } as const
 
 // ─────────────────────────────────────────────────────────────
 // US-2248 — Journal alimentaire patient
@@ -64,6 +74,7 @@ export const foodJournalQuery = {
     const rows = await prisma.diabetesEvent.findMany({
       where: {
         patientId,
+        ...NON_DELETED_PATIENT,
         // `eventTypes` is `DiabetesEventType[]` ; the `has` operator on
         // Prisma array fields lets us filter "contains insulinMeal".
         eventTypes: { has: DiabetesEventType.insulinMeal },
@@ -74,6 +85,8 @@ export const foodJournalQuery = {
         eventDate: true,
         carbohydrates: true,
         bolusDose: true,
+        // L1 (re-review) — SECURITY : never log this field outside the
+        //   audited READ. Patient-authored free text, may contain PHI.
         comment: true,
         validatedAt: true,
         _count: { select: { mealPhotos: true } },
@@ -95,7 +108,9 @@ export const foodJournalQuery = {
       carbohydrates: r.carbohydrates?.toNumber() ?? null,
       bolusDose: r.bolusDose?.toNumber() ?? null,
       photoCount: r._count.mealPhotos,
-      comment: r.comment,
+      // L1 (re-review) — defensive truncation against accidental
+      //   exfiltration via oversized response payload.
+      comment: r.comment ? r.comment.slice(0, COMMENT_MAX_LEN) : null,
       validatedAt: r.validatedAt,
     }))
   },
@@ -118,7 +133,20 @@ export type AdherenceSnapshot = {
   totalMeals: number
   /** % meals covered by a bolus (rounded 1 decimal) ; null if no meals. */
   bolusCoveragePercent: number | null
-  /** Composite score 0-100. Weighted : 0.6 * regularity + 0.4 * bolusCoverage. */
+  /**
+   * Composite adherence score 0-100. Default weighting:
+   *  - 0.6 × regularity + 0.4 × bolusCoverage
+   *
+   * Fallback (no meals in window) : score = regularity only.
+   *
+   * ⚠️ L3 (re-review) — clinical ambiguity : a DT1 patient logging 30j de
+   * glucose-only events sans repas du tout score 100% (régularité parfaite)
+   * mais n'est PAS adhérent au protocole alimentaire. The UI MUST surface
+   * `totalMeals === 0` so a clinician can disambiguate ("Score 100 basé
+   * sur la régularité de saisie seule, aucun repas évalué"). The 0.6/0.4
+   * weighting is a heuristic ; medical-domain-validator review pending
+   * pre-MVP go-live.
+   */
   score: number
 }
 
@@ -131,12 +159,13 @@ export const adherenceQuery = {
     // count meal/bolus pairs in parallel.
     const [eventDates, totalMeals, mealsWithBolus] = await Promise.all([
       prisma.diabetesEvent.findMany({
-        where: { patientId, eventDate: { gte: since } },
+        where: { patientId, ...NON_DELETED_PATIENT, eventDate: { gte: since } },
         select: { eventDate: true },
       }),
       prisma.diabetesEvent.count({
         where: {
           patientId,
+          ...NON_DELETED_PATIENT,
           eventDate: { gte: since },
           eventTypes: { has: DiabetesEventType.insulinMeal },
         },
@@ -144,15 +173,23 @@ export const adherenceQuery = {
       prisma.diabetesEvent.count({
         where: {
           patientId,
+          ...NON_DELETED_PATIENT,
           eventDate: { gte: since },
           eventTypes: { has: DiabetesEventType.insulinMeal },
           bolusDose: { not: null },
         },
       }),
     ])
-    // Distinct days (truncate to YYYY-MM-DD).
+    // code-review M1 (re-review) — bucket distinct days on `Europe/Paris`
+    //   wall-clock instead of UTC. A meal at 00:30 Paris (= 22:30 UTC
+    //   previous day) was wrongly attributed to the previous UTC day,
+    //   skewing the regularity metric.
+    const parisDayFmt = new Intl.DateTimeFormat("fr-CA", {
+      timeZone: CABINET_TIMEZONE,
+      year: "numeric", month: "2-digit", day: "2-digit",
+    })
     const distinctDays = new Set(
-      eventDates.map((e) => e.eventDate.toISOString().slice(0, 10)),
+      eventDates.map((e) => parisDayFmt.format(e.eventDate)),
     )
     const daysWithEntry = distinctDays.size
     const regularityPercent = Math.round((daysWithEntry / ADHERENCE_WINDOW_DAYS) * 1000) / 10
@@ -165,8 +202,11 @@ export const adherenceQuery = {
       ? Math.round(regularityPercent)
       : Math.round(0.6 * regularityPercent + 0.4 * bolusCoveragePercent)
 
+    // L8 (re-review) — unify `resource` on DIABETES_EVENT across all 3
+    //   queries so forensic "reads of patient X's events" returns all 3
+    //   endpoints (was `PATIENT` here, inconsistent with the other two).
     await auditService.log({
-      userId: auditUserId, action: "READ", resource: "PATIENT",
+      userId: auditUserId, action: "READ", resource: "DIABETES_EVENT",
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: { patientId, kind: "food.adherence" },
@@ -217,6 +257,7 @@ export const glycemiaMealContextQuery = {
     const meals = await prisma.diabetesEvent.findMany({
       where: {
         patientId,
+        ...NON_DELETED_PATIENT,
         eventTypes: { has: DiabetesEventType.insulinMeal },
         eventDate: { gte: since },
       },
@@ -251,11 +292,19 @@ export const glycemiaMealContextQuery = {
     const cgm = await prisma.cgmEntry.findMany({
       where: {
         patientId,
+        ...NON_DELETED_PATIENT,
         timestamp: { gte: cgmFrom, lte: cgmTo },
       },
       select: { timestamp: true, valueGl: true },
     })
 
+    // L4 (re-review) — V1+ perf : currently O(meals × cgm). For >50
+    //   active patients consider binary search on sorted CGM or OR-of-N
+    //   ranges in the query (Postgres handles 30-OR clauses well).
+    // L5 (re-review) — a CGM reading exactly at meal time (`t === mealMs`)
+    //   is excluded from both buckets (strict `< mealMs` and `> mealMs`).
+    //   Edge case unlikely (CGM 1-5min granularity vs meal precision)
+    //   ; document the deterministic choice so it's not surprising.
     const ctxHoursMs = GLYCEMIA_CONTEXT_HOURS * HOUR_MS
     const out: GlycemiaMealContextEntry[] = meals.map((m) => {
       const mealMs = m.eventDate.getTime()
@@ -298,5 +347,3 @@ export const glycemiaMealContextQuery = {
   },
 }
 
-// Suppress unused import warning on bundlers that strip type-only imports.
-export type { Prisma as _Prisma }
