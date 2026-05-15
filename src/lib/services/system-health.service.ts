@@ -14,7 +14,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
-import { cacheGet } from "@/lib/cache/redis-cache"
+import { pingRedis } from "@/lib/cache/redis-cache"
 import { auditService, type AuditContext } from "./audit.service"
 
 // ─────────────────────────────────────────────────────────────
@@ -37,8 +37,15 @@ export const SYSTEM_HEALTH_BOUNDS = {
   /** Lag CGM acceptable avant de marquer l'ingestion comme `degraded`. */
   CGM_INGESTION_OK_MAX_MIN: 15,
   CGM_INGESTION_DEGRADED_MAX_MIN: 60,
-  /** Age maximum d'un backup pour le marquer `ok`. */
-  BACKUP_FRESHNESS_OK_HOURS: 30,
+  /**
+   * Age maximum d'un backup pour le marquer `ok`.
+   * M3 (review re-1 PR #409) — 30h → 36h. Couvre 1.5 cron cycle
+   * (cron quotidien standard) sans false-positive sur un retard
+   * ponctuel + jitter.
+   */
+  BACKUP_FRESHNESS_OK_HOURS: 36,
+  /** Timeout per-check pour éviter de bloquer le dashboard sur DB lente. */
+  CHECK_TIMEOUT_MS: 2000,
 } as const
 
 export type ComponentStatus = "ok" | "degraded" | "down" | "unknown"
@@ -54,7 +61,12 @@ export interface SystemHealthDTO {
   }
   metrics: {
     activeSessions: number
-    recentErrors24h: number
+    /**
+     * M4 (review re-1 PR #409) — renommé depuis `recentErrors24h`.
+     * Comptage des actions AuditLog `UNAUTHORIZED` sur les 24h
+     * (RBAC fails, login échoué, etc.). Pas un proxy 500 errors.
+     */
+    unauthorizedAttempts24h: number
     cgmLagMinutes: number | null
     lastBackupAgeHours: number | null
   }
@@ -74,18 +86,16 @@ async function checkDb(): Promise<ComponentStatus> {
   }
 }
 
+/**
+ * H3 (review re-1 PR #409) — utilise `pingRedis()` qui distingue
+ * `not_configured` (env Redis absente, mode dégradé sain) de `down`
+ * (config présente, backend injoignable — signal panne réel).
+ */
 async function checkRedis(): Promise<ComponentStatus> {
-  try {
-    // `cacheGet` retourne null si Redis n'est pas configuré (mode dégradé OK).
-    // Si erreur réseau, on considère down.
-    const ok = await Promise.race([
-      cacheGet<string>("system-health", "probe").then(() => true),
-      new Promise<false>((resolve) => setTimeout(() => resolve(false), 1_500)),
-    ])
-    return ok ? "ok" : "degraded"
-  } catch {
-    return "down"
-  }
+  const r = await pingRedis()
+  if (r === "not_configured") return "unknown"
+  if (r === "ok") return "ok"
+  return "down"
 }
 
 async function checkCgmIngestion(): Promise<{
@@ -156,18 +166,29 @@ export const systemHealthService = {
       Date.now() - SYSTEM_HEALTH_BOUNDS.RECENT_ERRORS_WINDOW_HOURS * 3_600_000,
     )
 
-    const [db, redis, cgm, backup, activeSessions, recentErrors24h] = await Promise.all([
-      checkDb(),
-      checkRedis(),
-      checkCgmIngestion(),
-      checkBackups(),
-      prisma.session.count({ where: { expires: { gt: new Date() } } }),
-      prisma.auditLog.count({
-        where: {
-          action: "UNAUTHORIZED",
-          createdAt: { gte: recentErrorsCutoff },
-        },
-      }),
+    // L7 (review re-1) — timeout par check pour éviter de bloquer le
+    // dashboard si la DB rame. Fallback "unknown" en cas de dépassement.
+    const withTimeout = <T>(p: Promise<T>, fallback: T): Promise<T> =>
+      Promise.race([
+        p,
+        new Promise<T>((resolve) => setTimeout(() => resolve(fallback), SYSTEM_HEALTH_BOUNDS.CHECK_TIMEOUT_MS)),
+      ])
+
+    const [db, redis, cgm, backup, activeSessions, unauthorizedAttempts24h] = await Promise.all([
+      withTimeout(checkDb(), "down" as ComponentStatus),
+      withTimeout(checkRedis(), "down" as ComponentStatus),
+      withTimeout(checkCgmIngestion(), { status: "unknown" as ComponentStatus, lagMinutes: null }),
+      withTimeout(checkBackups(), { status: "unknown" as ComponentStatus, ageHours: null }),
+      withTimeout(prisma.session.count({ where: { expires: { gt: new Date() } } }), 0),
+      withTimeout(
+        prisma.auditLog.count({
+          where: {
+            action: "UNAUTHORIZED",
+            createdAt: { gte: recentErrorsCutoff },
+          },
+        }),
+        0,
+      ),
     ])
 
     const overall = rollupStatus([db, redis, cgm.status, backup.status])
@@ -195,7 +216,7 @@ export const systemHealthService = {
       },
       metrics: {
         activeSessions,
-        recentErrors24h,
+        unauthorizedAttempts24h,
         cgmLagMinutes: cgm.lagMinutes,
         lastBackupAgeHours: backup.ageHours,
       },

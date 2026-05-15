@@ -84,10 +84,26 @@ describe("revokeOne", () => {
 
   it("throws NotFound when session doesn't belong to user (anti-énumération)", async () => {
     prismaMock.session.findFirst.mockResolvedValue(null)
+    prismaMock.session.findUnique.mockResolvedValue(null) // session inexistante
     await expect(sessionManagementService.revokeOne(42, "sess-99", "sess-1"))
       .rejects.toBeInstanceOf(SessionNotFoundError)
     // delete NE doit PAS être appelé.
     expect(prismaMock.session.delete).not.toHaveBeenCalled()
+  })
+
+  // NEW-H4 (review re-1 PR #409) — session existe mais appartient
+  // à un autre user → 404 status code mais audit accessDenied row.
+  it("NEW-H4 — audit accessDenied émis si session appartient à un autre user", async () => {
+    prismaMock.session.findFirst.mockResolvedValue(null) // self-scoped query miss
+    prismaMock.session.findUnique.mockResolvedValue({ userId: 99 } as any) // mais existe pour user 99
+    await expect(sessionManagementService.revokeOne(42, "sess-99", "sess-1"))
+      .rejects.toBeInstanceOf(SessionNotFoundError)
+    // Audit accessDenied émis.
+    const lastAudit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(lastAudit.action).toBe("UNAUTHORIZED")
+    expect(lastAudit.resourceId).toBe("sess-99")
+    expect(lastAudit.metadata.reason).toBe("notOwnSession")
+    expect(lastAudit.metadata.actualOwnerId).toBe(99)
   })
 
   it("WHERE clause inclut userId pour scoping", async () => {

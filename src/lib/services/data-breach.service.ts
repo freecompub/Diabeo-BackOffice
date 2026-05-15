@@ -88,7 +88,15 @@ export const DATA_BREACH_BOUNDS = {
   CNIL_NOTIFICATION_DEADLINE_HOURS: 72,
 } as const
 
-/** Transitions FSM autorisées. */
+/**
+ * Transitions FSM autorisées.
+ *
+ * M5 (review re-1 PR #409) — `closed` est **terminal** : pas de
+ * réouverture. Si une violation est clôturée à tort, la procédure
+ * est de créer un nouveau dossier référençant l'ancien via
+ * `description`. Documenter dans l'UI admin que la fermeture est
+ * irréversible.
+ */
 const ALLOWED_TRANSITIONS: Record<DataBreachStatus, DataBreachStatus[]> = {
   draft: ["under_assessment", "closed"],
   under_assessment: ["notified_cnil", "closed"],
@@ -121,8 +129,16 @@ export interface DataBreachDTO {
   cnilNotifiedAt: Date | null
   usersNotifiedAt: Date | null
   closedAt: Date | null
-  /** Heures restantes avant l'échéance CNIL 72h (si applicable). `null` si déjà notifié ou closed. */
+  /**
+   * Heures restantes avant l'échéance CNIL 72h (si applicable).
+   * `null` si severity < high OU si déjà notifié/closed.
+   *
+   * M1 (review re-1 PR #409) — cap floor à 0 (jamais négatif).
+   * Le flag `cnilDeadlineExceeded` indique le dépassement réel.
+   */
   cnilDeadlineHoursRemaining: number | null
+  /** M1 — `true` si severity ≥ high ET deadline 72h dépassée sans notification CNIL. */
+  cnilDeadlineExceeded: boolean
   createdAt: Date
   updatedAt: Date
 }
@@ -148,12 +164,16 @@ interface UpdateInput {
 function toDTO(b: DataBreach): DataBreachDTO {
   const now = Date.now()
   let cnilDeadlineHoursRemaining: number | null = null
+  let cnilDeadlineExceeded = false
   if (
     (b.status === "draft" || b.status === "under_assessment")
     && (b.severity === "high" || b.severity === "critical")
   ) {
     const deadlineMs = b.detectedAt.getTime() + DATA_BREACH_BOUNDS.CNIL_NOTIFICATION_DEADLINE_HOURS * 3_600_000
-    cnilDeadlineHoursRemaining = Math.floor((deadlineMs - now) / 3_600_000)
+    const rawHours = Math.floor((deadlineMs - now) / 3_600_000)
+    // M1 (review re-1) — cap floor à 0, flag dépassement explicite.
+    cnilDeadlineHoursRemaining = Math.max(0, rawHours)
+    cnilDeadlineExceeded = rawHours < 0
   }
   return {
     id: b.id,
@@ -170,8 +190,37 @@ function toDTO(b: DataBreach): DataBreachDTO {
     usersNotifiedAt: b.usersNotifiedAt,
     closedAt: b.closedAt,
     cnilDeadlineHoursRemaining,
+    cnilDeadlineExceeded,
     createdAt: b.createdAt,
     updatedAt: b.updatedAt,
+  }
+}
+
+/**
+ * M2 (review re-1 PR #409) — Heuristique anti-PHI dans le `title`.
+ * Le title n'est PAS chiffré (search/listing) → un admin pourrait
+ * y mettre du PHI par erreur. On reject les patterns probables :
+ *   - NIRPP (15 chiffres bruts)
+ *   - Numéro INS (15 chars commence par 1 ou 2)
+ *   - Numéro téléphone FR (10 digits ou +33...)
+ *
+ * Ces patterns sont conservateurs — un admin qui écrit "Lot 1850734
+ * compromis" hit le NIRPP-like check par erreur. Acceptable :
+ * l'admin reformule le title sans identifiant numérique. Documentation
+ * dans la JSDoc du model.
+ */
+function assertNoPiiInTitle(title: string): void {
+  // NIRPP / INS = 15 digits consecutifs.
+  if (/\d{15}/.test(title)) {
+    throw new DataBreachValidationError("title.piiPattern")
+  }
+  // Téléphone FR : +33 puis 9 digits, ou 0 puis 9 digits.
+  if (/(?:\+33|0)\s?[1-9](?:[\s.-]?\d{2}){4}/.test(title)) {
+    throw new DataBreachValidationError("title.piiPattern")
+  }
+  // Email littéral.
+  if (/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/.test(title)) {
+    throw new DataBreachValidationError("title.piiPattern")
   }
 }
 
@@ -179,14 +228,16 @@ function validateDeclare(input: DeclareInput): void {
   if (!input.title || input.title.length > DATA_BREACH_BOUNDS.MAX_TITLE_LEN) {
     throw new DataBreachValidationError("title")
   }
+  assertNoPiiInTitle(input.title)
   if (input.description != null && input.description.length > DATA_BREACH_BOUNDS.MAX_DESCRIPTION_LEN) {
     throw new DataBreachValidationError("description")
   }
   if (input.detectedAt != null) {
     const ts = input.detectedAt.getTime()
     if (!Number.isFinite(ts)) throw new DataBreachValidationError("detectedAt")
-    // Pas de detection antidatée > 1 an, pas dans le futur.
-    if (ts < Date.now() - 365 * 86_400_000) {
+    // L5 (review re-1) — fenêtre étendue à 5 ans (rétention RGPD typique).
+    // Couvre les violations découvertes longtemps après les faits.
+    if (ts < Date.now() - 5 * 365 * 86_400_000) {
       throw new DataBreachValidationError("detectedAt.tooOld")
     }
     if (ts > Date.now() + 5 * 60_000) {
@@ -295,6 +346,8 @@ export const dataBreachService = {
         count: rows.length,
         ...(filters.status ? { statusFilter: filters.status } : {}),
         ...(filters.severity ? { severityFilter: filters.severity } : {}),
+        // L3 (review re-1) — cursor inclus pour forensique pagination.
+        ...(filters.cursor ? { cursor: filters.cursor } : {}),
       },
     })
 
@@ -325,15 +378,26 @@ export const dataBreachService = {
     }
 
     const data: Prisma.DataBreachUpdateInput = {}
-    if (input.severity !== undefined) data.severity = input.severity
+    // L1 (review re-1 PR #409) — audit `fields` expose les noms
+    // business (description, remediation, cnilCaseNumber) au lieu
+    // des noms internes Prisma chiffrés (descriptionEnc, etc.) qui
+    // exposent l'implémentation. Clé du business sans rien révéler.
+    const auditFields: string[] = []
+    if (input.severity !== undefined) {
+      data.severity = input.severity
+      auditFields.push("severity")
+    }
     if (input.description !== undefined) {
       data.descriptionEnc = input.description == null ? null : encryptField(input.description)
+      auditFields.push("description")
     }
     if (input.remediation !== undefined) {
       data.remediationEnc = input.remediation == null ? null : encryptField(input.remediation)
+      auditFields.push("remediation")
     }
     if (input.cnilCaseNumber !== undefined) {
       data.cnilCaseNumberEnc = input.cnilCaseNumber == null ? null : encryptField(input.cnilCaseNumber)
+      auditFields.push("cnilCaseNumber")
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -348,7 +412,7 @@ export const dataBreachService = {
         requestId: ctx?.requestId,
         metadata: {
           kind: AUDIT_KIND.ASSESS,
-          fields: Object.keys(data),
+          fields: auditFields,
         },
       })
       return u

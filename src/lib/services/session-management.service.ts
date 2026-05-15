@@ -11,6 +11,7 @@
 
 import { prisma } from "@/lib/db/client"
 import { revokeSession } from "@/lib/auth/revocation"
+import { touchSession } from "@/lib/auth/session"
 import { auditService, type AuditContext } from "./audit.service"
 
 // ─────────────────────────────────────────────────────────────
@@ -85,6 +86,11 @@ export const sessionManagementService = {
       orderBy: { createdAt: "desc" },
     })
 
+    // US-2007 H1 (review re-1) — bump lastSeenAt sur la session
+    // courante (fire-and-forget). Refresh JWT le fait aussi mais on
+    // bump aussi ici pour refléter la lecture explicite de la liste.
+    void touchSession(currentSessionId)
+
     await auditService.log({
       userId,
       action: "READ",
@@ -128,8 +134,28 @@ export const sessionManagementService = {
       select: { id: true },
     })
     if (!session) {
-      // Soit la session n'existe pas, soit elle n'appartient pas au user.
-      // On retourne 404 sans distinguer (anti-énumération).
+      // H4 (review re-1 PR #409) — anti-énumération côté status code
+      // (404 indistinguable de "n'existe pas"), MAIS forensique audit
+      // distinguée : si la session existe pour un AUTRE user, on émet
+      // un `accessDenied` US-2265 burst detector compatible.
+      const otherUserSession = await prisma.session.findUnique({
+        where: { id: sessionId },
+        select: { userId: true },
+      })
+      if (otherUserSession && otherUserSession.userId !== userId) {
+        await auditService.accessDenied({
+          userId,
+          resource: "SESSION",
+          resourceId: sessionId,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          requestId: ctx?.requestId,
+          metadata: {
+            reason: "notOwnSession",
+            actualOwnerId: otherUserSession.userId,
+          },
+        })
+      }
       throw new SessionNotFoundError()
     }
 

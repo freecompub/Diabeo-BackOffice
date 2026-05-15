@@ -81,12 +81,52 @@ describe("declare (US-2137)", () => {
     }, 9)).rejects.toMatchObject({ field: "detectedAt.future" })
   })
 
-  it("rejects detectedAt > 1 year ago", async () => {
+  it("L5 — accepts detectedAt up to 5 years ago", async () => {
+    prismaMock.dataBreach.create.mockResolvedValue(baseBreach as any)
+    // 4 ans en arrière : OK (rentré dans la fenêtre 5 ans).
+    await expect(dataBreachService.declare({
+      severity: DataBreachSeverity.high,
+      title: "Historical breach 2022",
+      detectedAt: new Date(Date.now() - 4 * 365 * 86_400_000),
+    }, 9)).resolves.toBeTruthy()
+  })
+
+  it("L5 — rejects detectedAt > 5 years ago", async () => {
     await expect(dataBreachService.declare({
       severity: DataBreachSeverity.high,
       title: "t",
-      detectedAt: new Date(Date.now() - 400 * 86_400_000),
+      detectedAt: new Date(Date.now() - 6 * 365 * 86_400_000),
     }, 9)).rejects.toMatchObject({ field: "detectedAt.tooOld" })
+  })
+
+  // M2 (review re-1) — heuristique PII anti-leak title.
+  it("M2 — rejects title containing 15 consecutive digits (NIRPP-like)", async () => {
+    await expect(dataBreachService.declare({
+      severity: DataBreachSeverity.high,
+      title: "Lot 185073412345678 compromis",
+    }, 9)).rejects.toMatchObject({ field: "title.piiPattern" })
+  })
+
+  it("M2 — rejects title containing FR phone", async () => {
+    await expect(dataBreachService.declare({
+      severity: DataBreachSeverity.high,
+      title: "Patient +33 6 12 34 56 78 compromis",
+    }, 9)).rejects.toMatchObject({ field: "title.piiPattern" })
+  })
+
+  it("M2 — rejects title containing email", async () => {
+    await expect(dataBreachService.declare({
+      severity: DataBreachSeverity.high,
+      title: "Account dr.dupont@cabinet.fr leaked",
+    }, 9)).rejects.toMatchObject({ field: "title.piiPattern" })
+  })
+
+  it("M2 — accepts neutral technical title", async () => {
+    prismaMock.dataBreach.create.mockResolvedValue(baseBreach as any)
+    await expect(dataBreachService.declare({
+      severity: DataBreachSeverity.high,
+      title: "Incident SEC-2026-042 — fuite via webhook",
+    }, 9)).resolves.toBeTruthy()
   })
 
   it("audit kind=data_breach.declare + severity in metadata", async () => {
@@ -100,7 +140,7 @@ describe("declare (US-2137)", () => {
   })
 })
 
-describe("cnilDeadlineHoursRemaining (computed DTO)", () => {
+describe("cnilDeadlineHoursRemaining + cnilDeadlineExceeded (computed DTO)", () => {
   it("returns hours remaining for severity=high in draft", async () => {
     prismaMock.dataBreach.findUnique.mockResolvedValue({
       ...baseBreach,
@@ -111,6 +151,20 @@ describe("cnilDeadlineHoursRemaining (computed DTO)", () => {
     const out = await dataBreachService.getById(1, 9)
     expect(out?.cnilDeadlineHoursRemaining).toBeLessThanOrEqual(48)
     expect(out?.cnilDeadlineHoursRemaining).toBeGreaterThanOrEqual(47)
+    expect(out?.cnilDeadlineExceeded).toBe(false)
+  })
+
+  // M1 (review re-1) — cap floor à 0 + flag exceeded explicite.
+  it("M1 — cnilDeadlineHoursRemaining=0 + cnilDeadlineExceeded=true si dépassé", async () => {
+    prismaMock.dataBreach.findUnique.mockResolvedValue({
+      ...baseBreach,
+      severity: DataBreachSeverity.critical,
+      status: DataBreachStatus.draft,
+      detectedAt: new Date(Date.now() - 100 * 3_600_000), // 100h ago > 72h
+    } as any)
+    const out = await dataBreachService.getById(1, 9)
+    expect(out?.cnilDeadlineHoursRemaining).toBe(0)
+    expect(out?.cnilDeadlineExceeded).toBe(true)
   })
 
   it("returns null for severity=low (no CNIL obligation)", async () => {
@@ -211,13 +265,15 @@ describe("FSM transitions", () => {
 })
 
 describe("update (text fields)", () => {
-  it("updates remediation + audit fields=[remediationEnc]", async () => {
+  // L1 (review re-1 PR #409) — audit.metadata.fields utilise des noms
+  // business (remediation), pas internes (remediationEnc).
+  it("L1 — updates remediation + audit fields=[remediation] (business name)", async () => {
     prismaMock.dataBreach.update.mockResolvedValue(baseBreach as any)
     await dataBreachService.update(1, { remediation: "Reset all passwords" }, 9)
     const updateArg = prismaMock.dataBreach.update.mock.calls[0]![0]!
     expect((updateArg.data as any).remediationEnc).not.toBe("Reset all passwords")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(meta.metadata.fields).toEqual(["remediationEnc"])
+    expect(meta.metadata.fields).toEqual(["remediation"])
   })
 
   it("clears cnilCaseNumber when null sent", async () => {

@@ -36,14 +36,19 @@ export async function createSession(
 }
 
 /**
- * US-2007 — Bump `lastSeenAt` (called by middleware on JWT verify).
- * Async fire-and-forget OK — pas critique pour la latence.
+ * US-2007 — Bump `lastSeenAt`. Appelé en checkpoint Node (refresh JWT,
+ * GET /sessions). Le middleware Edge ne peut pas appeler Prisma.
+ * Fire-and-forget : un échec ne doit pas casser le flow appelant.
  */
 export async function touchSession(sessionId: string): Promise<void> {
-  await prisma.session.update({
-    where: { id: sessionId },
-    data: { lastSeenAt: new Date() },
-  }).catch(() => null) // session deleted ? no-op
+  try {
+    await prisma.session.update({
+      where: { id: sessionId },
+      data: { lastSeenAt: new Date() },
+    })
+  } catch {
+    // session deleted ou DB lente — no-op intentionnel.
+  }
 }
 
 export async function getSession(sessionId: string) {

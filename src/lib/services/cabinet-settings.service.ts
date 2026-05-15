@@ -49,6 +49,17 @@ export class CabinetSettingsNotFoundError extends Error {
   }
 }
 
+/**
+ * H2 (review re-1 PR #409) — Erreur de validation typée. Évite le
+ * `throw new Error()` brut qui était mappé 500 au lieu de 422.
+ */
+export class CabinetSettingsValidationError extends Error {
+  constructor(public field: string) {
+    super(field)
+    this.name = "CabinetSettingsValidationError"
+  }
+}
+
 // ─────────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────────
@@ -184,12 +195,12 @@ export const cabinetSettingsService = {
     await assertManagerOrAdmin(cabinetId, auditUserId, auditUserRole)
 
     // Validation openingHours si fourni.
+    // H2 (review re-1) — `CabinetSettingsValidationError` mappé en 422
+    // par la route, vs `throw new Error` mappé 500.
     if (input.openingHours !== undefined && input.openingHours !== null) {
       const parsed = openingHoursSchema.safeParse(input.openingHours)
       if (!parsed.success) {
-        // Délègue au CabinetSettingsAccessError-style mais c'est une validation
-        // — utilisons un throw direct géré au layer route.
-        throw new Error(`openingHours: ${parsed.error.flatten().fieldErrors}`)
+        throw new CabinetSettingsValidationError("openingHours")
       }
     }
 

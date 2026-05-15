@@ -21,6 +21,7 @@ import {
   cabinetSettingsService,
   CabinetSettingsAccessError,
   CabinetSettingsNotFoundError,
+  CabinetSettingsValidationError,
 } from "@/lib/services/cabinet-settings.service"
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
@@ -141,6 +142,9 @@ export async function PUT(
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
     if (e instanceof CabinetSettingsNotFoundError) {
       return NextResponse.json({ error: "notFound" }, { status: 404 })
+    }
+    if (e instanceof CabinetSettingsValidationError) {
+      return NextResponse.json({ error: "validationFailed", field: e.field }, { status: 422 })
     }
     return mapErrorToResponse(e, "cabinet/:id/settings PUT", ctx.requestId)
   }

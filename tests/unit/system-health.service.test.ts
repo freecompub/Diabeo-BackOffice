@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 vi.mock("@/lib/cache/redis-cache", () => ({
-  cacheGet: vi.fn().mockResolvedValue(undefined),
+  pingRedis: vi.fn().mockResolvedValue("ok"),
 }))
 
 import {
@@ -60,7 +60,7 @@ describe("snapshot — overall status", () => {
     expect(out.metrics.cgmLagMinutes).toBeGreaterThan(60)
   })
 
-  it("backups=degraded when last > 30h", async () => {
+  it("backups=degraded when last > 36h (M3 boundary)", async () => {
     prismaMock.backupLog.findFirst.mockResolvedValue({
       completedAt: new Date(Date.now() - 48 * 3_600_000),
     } as any)
@@ -76,10 +76,10 @@ describe("snapshot — overall status", () => {
     expect(out.metrics.cgmLagMinutes).toBeNull()
   })
 
-  it("metrics include activeSessions + recentErrors", async () => {
+  it("metrics include activeSessions + unauthorizedAttempts24h (M4 rename)", async () => {
     const out = await systemHealthService.snapshot(9)
     expect(out.metrics.activeSessions).toBe(150)
-    expect(out.metrics.recentErrors24h).toBe(5)
+    expect(out.metrics.unauthorizedAttempts24h).toBe(5)
   })
 
   it("audit kind=system_health.read + status in metadata", async () => {

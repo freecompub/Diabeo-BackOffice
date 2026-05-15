@@ -3079,6 +3079,11 @@ model DataBreach {
   severity           DataBreachSeverity
   status             DataBreachStatus   @default(draft)
   /// Titre court — pas chiffré pour permettre listing / search.
+  ///
+  /// **⚠️ NE PAS METTRE DE PHI/PII** : NIRPP, nom patient, email, téléphone.
+  /// Utiliser une référence technique (ticket-ID, incident-code). Le service
+  /// valide une heuristique anti-PII (15 digits, téléphone FR, email) au declare.
+  /// PHI/PII appartient à `description_enc` (chiffré AES-256-GCM).
   title              String             @db.VarChar(200)
   /// Description détaillée (chiffrée AES-256-GCM). Inclut nature exacte
   /// de la fuite, données affectées, vecteur, mesures immédiates.
