@@ -107,7 +107,9 @@ async function supersedePrevious(
  *
  * Returns a `ConfigVersionDTO` ; callers wrap with their own `warnings`.
  */
-async function createConfigVersion(args: {
+// Groupe 10 Batch D — exported for reuse by third-party-share + shared-
+//   notifications services (US-2240, US-2242).
+export async function createConfigVersion(args: {
   patientId: number
   configType: ConfigVersionType
   snapshot: Prisma.InputJsonValue
@@ -661,10 +663,17 @@ export const travelModeService = {
 // Common : validate (DOCTOR) + deactivate
 // ─────────────────────────────────────────────────────────────
 
+// Groupe 10 Batch D — workflow étendu aux 2 nouveaux configType
+//   patient-scoped versionnés (third_party_share / shared_notifications).
+//   Mental model : "patient-scoped versioned config" plutôt que "mode" strict.
+//   patientModeWorkflow.validate / deactivate / listHistory restent agnostiques
+//   du contenu — pure mécanique ConfigVersion + Serializable + audit.
 const SUPPORTED_MODE_TYPES = new Set<ConfigVersionType>([
   ConfigVersionType.pediatric_mode,
   ConfigVersionType.ramadan_mode,
   ConfigVersionType.travel_mode,
+  ConfigVersionType.third_party_share,
+  ConfigVersionType.shared_notifications,
 ])
 
 export const patientModeWorkflow = {
