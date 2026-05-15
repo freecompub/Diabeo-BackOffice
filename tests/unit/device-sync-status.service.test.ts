@@ -212,6 +212,20 @@ describe("cohortStatus (US-2244)", () => {
     expect(meta.metadata.scope).toBe("scoped")
     expect(meta.metadata.accessibleCount).toBe(2)
     expect(meta.metadata.adminEnumerationLimited).toBeUndefined()
+    expect(meta.metadata.accessibleTruncated).toBeUndefined()
+  })
+
+  // NEW-M2 (review re-2) — soft-cap 2000 patients accessibles.
+  it("NEW-M2 — audit accessibleTruncated=true quand DOCTOR > 2000 patients", async () => {
+    // 3000 patients accessibles → cap à 2000 côté enumeration.
+    const ids = Array.from({ length: 3000 }, (_, i) => ({ patientId: i + 1 }))
+    prismaMock.patientService.findMany.mockResolvedValue(ids as any)
+    pmGroupBy.mockResolvedValue([] as any)
+    await deviceSyncStatusService.cohortStatus({}, 9, "DOCTOR")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.accessibleTruncated).toBe(true)
+    // accessibleCount = vraie taille (forensique correcte).
+    expect(meta.metadata.accessibleCount).toBe(3000)
   })
 
   it("VIEWER no patient → returns [] without groupBy call", async () => {

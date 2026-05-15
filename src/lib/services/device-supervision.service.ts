@@ -61,6 +61,24 @@ export const SUPERVISION_BOUNDS = {
   BATTERY_LOW_PCT: 20,
   SENSOR_EXPIRES_SOON_DAYS: 3,
   MAX_COHORT_LIMIT: 500,
+  /**
+   * NEW-H1 (review re-2) — bornes `sensorExpiresAt`. Empêche un
+   * VIEWER (app patient mobile) d'envoyer `9999-12-31` (capteur
+   * jamais flagué proche expiration → patient passe sous les radars
+   * dashboard NURSE+) ou `1970-01-01` (DoS dashboard alarm fatigue).
+   *   - Min : 2020-01-01 (avant Diabeo n'existait pas)
+   *   - Max : now + 1 an (aucun capteur CGM commercial > 14j)
+   */
+  SENSOR_EXPIRES_MIN_DATE: new Date("2020-01-01"),
+  SENSOR_EXPIRES_MAX_FUTURE_DAYS: 365,
+  /**
+   * NEW-M2 (review re-2) — Hard-cap sur l'enumération des patients
+   * accessibles côté JS pour le merge cohort. Pour > 2000 patients,
+   * le path JS sort/slice devient trop coûteux mémoire — il faut
+   * paginer côté DB (V2 follow-up : LEFT JOIN Patient + ORDER BY
+   * MAX(last_sync_at) ASC NULLS LAST + LIMIT).
+   */
+  MAX_ACCESSIBLE_COHORT_PATIENTS: 2000,
 } as const
 
 export interface DeviceSupervisionDTO {
@@ -210,6 +228,16 @@ export const deviceSupervisionService = {
     const accessible = await getAccessiblePatientIds(auditUserId, auditUserRole)
     if (accessible !== null && accessible.length === 0) return []
 
+    // NEW-M2 (review re-2) — soft-cap `accessible` à 2000 (cohérent avec
+    // sync-status). Tronque + warning audit pour cabinets > 2000 patients.
+    let workingAccessible = accessible
+    let accessibleTruncated = false
+    if (workingAccessible !== null
+      && workingAccessible.length > SUPERVISION_BOUNDS.MAX_ACCESSIBLE_COHORT_PATIENTS) {
+      workingAccessible = workingAccessible.slice(0, SUPERVISION_BOUNDS.MAX_ACCESSIBLE_COHORT_PATIENTS)
+      accessibleTruncated = true
+    }
+
     const limit = Math.min(filters.limit ?? 50, SUPERVISION_BOUNDS.MAX_COHORT_LIMIT)
     const sensorExpiryCutoff = new Date(
       Date.now() + SUPERVISION_BOUNDS.SENSOR_EXPIRES_SOON_DAYS * 86_400_000,
@@ -217,7 +245,7 @@ export const deviceSupervisionService = {
 
     const rows = await prisma.patientDevice.findMany({
       where: {
-        ...(accessible !== null ? { patientId: { in: accessible } } : {}),
+        ...(workingAccessible !== null ? { patientId: { in: workingAccessible } } : {}),
         ...(filters.batteryLow ? { batteryLevel: { lt: SUPERVISION_BOUNDS.BATTERY_LOW_PCT } } : {}),
         ...(filters.sensorExpiringSoon ? { sensorExpiresAt: { lte: sensorExpiryCutoff, not: null } } : {}),
         ...(filters.category ? { category: filters.category } : {}),
@@ -245,6 +273,7 @@ export const deviceSupervisionService = {
         kind: AUDIT_KIND.READ_COHORT,
         count: rows.length,
         ...scopeMetadata,
+        ...(accessibleTruncated ? { accessibleTruncated: true } : {}),
         ...(filters.batteryLow ? { batteryLow: true } : {}),
         ...(filters.sensorExpiringSoon ? { sensorExpiringSoon: true } : {}),
         ...(filters.category ? { category: filters.category } : {}),
@@ -290,14 +319,33 @@ export const deviceSupervisionService = {
         throw new DeviceSupervisionValidationError("batteryLevel")
       }
     }
+    // NEW-H1 (review re-2) — bornes sensorExpiresAt : ni avant 2020,
+    // ni > 1 an dans le futur. Anti-patient-safety bypass.
+    if (payload.sensorExpiresAt != null) {
+      const ts = payload.sensorExpiresAt.getTime()
+      if (!Number.isFinite(ts)) {
+        throw new DeviceSupervisionValidationError("sensorExpiresAt")
+      }
+      if (ts < SUPERVISION_BOUNDS.SENSOR_EXPIRES_MIN_DATE.getTime()) {
+        throw new DeviceSupervisionValidationError("sensorExpiresAt.tooOld")
+      }
+      const maxFuture = Date.now() + SUPERVISION_BOUNDS.SENSOR_EXPIRES_MAX_FUTURE_DAYS * 86_400_000
+      if (ts > maxFuture) {
+        throw new DeviceSupervisionValidationError("sensorExpiresAt.tooFar")
+      }
+    }
+
+    // NEW-M1 (review re-2) — access check AVANT findFirst : un VIEWER
+    // probing massif un patient X qu'il ne peut pas accéder doit
+    // déclencher `accessDenied` audit (US-2265 burst detection) plutôt
+    // qu'un 404 silencieux. Coût : 1 query extra sur path d'erreur.
+    const allowed = await canAccessPatient(auditUserId, auditUserRole, patientId)
+    if (!allowed) throw new DeviceSupervisionAccessError("notPatientCaregiver")
 
     const device = await prisma.patientDevice.findFirst({
       where: { id: deviceId, patientId },
     })
     if (!device) throw new DeviceSupervisionNotFoundError()
-
-    const allowed = await canAccessPatient(auditUserId, auditUserRole, patientId)
-    if (!allowed) throw new DeviceSupervisionAccessError("notPatientCaregiver")
 
     const updated = await prisma.$transaction(async (tx) => {
       const now = new Date()

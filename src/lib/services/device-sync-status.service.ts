@@ -53,6 +53,12 @@ export const SYNC_STATUS_BOUNDS = {
   OK_MAX_MIN: 5,
   LATE_MAX_MIN: 30,
   MAX_COHORT_LIMIT: 500,
+  /**
+   * NEW-M2 (review re-2 PR #408) — Hard-cap enumération côté JS.
+   * Cohérent avec device-supervision SUPERVISION_BOUNDS. Cohortes
+   * > 2000 patients doivent paginer côté DB (V2 follow-up).
+   */
+  MAX_ACCESSIBLE_COHORT_PATIENTS: 2000,
 } as const
 
 export interface PatientSyncStatusDTO {
@@ -169,13 +175,25 @@ export const deviceSyncStatusService = {
     const accessible = await getAccessiblePatientIds(auditUserId, auditUserRole)
     if (accessible !== null && accessible.length === 0) return []
 
+    // NEW-M2 (review re-2) — soft-cap : si l'enumération dépasse 2000
+    // patients, on tronque + warning audit. Évite explosion mémoire
+    // serveur sur gros cabinets (~50k patients) en attendant le
+    // refactor DB-side V2.
+    let accessibleTruncated = false
+    let workingAccessible = accessible
+    if (workingAccessible !== null
+      && workingAccessible.length > SYNC_STATUS_BOUNDS.MAX_ACCESSIBLE_COHORT_PATIENTS) {
+      workingAccessible = workingAccessible.slice(0, SYNC_STATUS_BOUNDS.MAX_ACCESSIBLE_COHORT_PATIENTS)
+      accessibleTruncated = true
+    }
+
     const limit = Math.min(filters.limit ?? 100, SYNC_STATUS_BOUNDS.MAX_COHORT_LIMIT)
 
     // groupBy patientId pour récupérer le max(lastSyncAt) par patient.
     const rows = await prisma.patientDevice.groupBy({
       by: ["patientId"],
       where: {
-        ...(accessible !== null ? { patientId: { in: accessible } } : {}),
+        ...(workingAccessible !== null ? { patientId: { in: workingAccessible } } : {}),
         patient: { deletedAt: null },
       },
       _max: { lastSyncAt: true },
@@ -194,11 +212,12 @@ export const deviceSyncStatusService = {
 
     // H3 (review re-1 PR #408) — pour les rôles non-ADMIN, on enumère
     // les IDs accessibles et on ajoute les patients SANS device entry
-    // comme `never_synced`.
+    // comme `never_synced`. Utilise `workingAccessible` (potentiellement
+    // tronqué cf. NEW-M2).
     let adminEnumerationLimited = false
-    if (accessible !== null) {
+    if (workingAccessible !== null) {
       const patientsWithDevices = new Set(rows.map((r) => r.patientId))
-      const missingPatients = accessible.filter((id) => !patientsWithDevices.has(id))
+      const missingPatients = workingAccessible.filter((id) => !patientsWithDevices.has(id))
       for (const patientId of missingPatients) {
         results.push({
           patientId,
@@ -241,6 +260,7 @@ export const deviceSyncStatusService = {
         count: results.length,
         ...scopeMetadata,
         ...(adminEnumerationLimited ? { adminEnumerationLimited: true } : {}),
+        ...(accessibleTruncated ? { accessibleTruncated: true } : {}),
         ...(filters.statuses ? { statusFilter: filters.statuses } : {}),
         limit,
       },

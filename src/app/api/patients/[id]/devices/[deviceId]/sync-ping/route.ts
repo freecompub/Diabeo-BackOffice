@@ -26,6 +26,7 @@ import {
   DeviceSupervisionAccessError,
   DeviceSupervisionNotFoundError,
   DeviceSupervisionValidationError,
+  SUPERVISION_BOUNDS,
 } from "@/lib/services/device-supervision.service"
 
 const MAX_BODY_BYTES = 10_000
@@ -35,9 +36,21 @@ const paramsSchema = z.object({
   deviceId: z.coerce.number().int().positive(),
 })
 
+// NEW-H1 (review re-2) — Zod fail-fast sur sensorExpiresAt :
+// `.min(2020-01-01)` exclu les forgeries `1970` ;
+// `.max(now+365j)` exclu les `9999-12-31` qui désactiveraient les
+// alertes proche-expiration côté dashboard NURSE+. Validation
+// dupliquée service-side via SUPERVISION_BOUNDS pour defense-in-depth.
 const pingBodySchema = z.object({
   batteryLevel: z.number().int().min(0).max(100).nullable().optional(),
-  sensorExpiresAt: z.coerce.date().nullable().optional(),
+  sensorExpiresAt: z.coerce.date()
+    .min(SUPERVISION_BOUNDS.SENSOR_EXPIRES_MIN_DATE, "sensorExpiresAt.tooOld")
+    .nullable()
+    .optional()
+    .refine(
+      (d) => d == null || d.getTime() <= Date.now() + SUPERVISION_BOUNDS.SENSOR_EXPIRES_MAX_FUTURE_DAYS * 86_400_000,
+      { message: "sensorExpiresAt.tooFar" },
+    ),
 }).optional()
 
 export async function POST(

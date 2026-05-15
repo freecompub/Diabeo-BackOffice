@@ -270,4 +270,74 @@ describe("recordSyncPing (H1 review re-1 PR #408)", () => {
     await expect(deviceSupervisionService.recordSyncPing(99, 100, {}, 9, "VIEWER"))
       .rejects.toBeInstanceOf(DeviceSupervisionAccessError)
   })
+
+  // NEW-M1 (review re-2) — access check AVANT findFirst. Un VIEWER
+  // probing un device.id que son patient ne possède pas reçoit 403
+  // (audited US-2265) au lieu de 404 silencieux.
+  it("NEW-M1 — access check BEFORE findFirst (audit accessDenied path)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null) // VIEWER cross-tenant
+    await expect(deviceSupervisionService.recordSyncPing(99, 100, {}, 9, "VIEWER"))
+      .rejects.toBeInstanceOf(DeviceSupervisionAccessError)
+    // findFirst NE doit PAS être appelé si access refusé.
+    expect(prismaMock.patientDevice.findFirst).not.toHaveBeenCalled()
+  })
+
+  // NEW-H1 (review re-2) — bornes sensorExpiresAt.
+  it("NEW-H1 — rejects sensorExpiresAt before 2020", async () => {
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      sensorExpiresAt: new Date("2019-12-31"),
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "sensorExpiresAt.tooOld" })
+  })
+
+  it("NEW-H1 — rejects sensorExpiresAt > now + 365j (year 9999 forge)", async () => {
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      sensorExpiresAt: new Date("9999-12-31"),
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "sensorExpiresAt.tooFar" })
+  })
+
+  it("NEW-H1 — accepts sensorExpiresAt within 365j (typical 14j CGM)", async () => {
+    prismaMock.patientDevice.update.mockResolvedValue({
+      ...baseDevice, sensorExpiresAt: new Date(Date.now() + 14 * 86_400_000),
+    } as any)
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      sensorExpiresAt: new Date(Date.now() + 14 * 86_400_000),
+    }, 9, "VIEWER")).resolves.toBeTruthy()
+  })
+
+  // NEW-H1 — sensorExpiresAt dans le passé (rétro CGM expiré) accepté
+  // si > 2020 (cas légitime : device historique re-déclaré).
+  it("NEW-H1 — accepts sensorExpiresAt in recent past (legitimate retro)", async () => {
+    prismaMock.patientDevice.update.mockResolvedValue({
+      ...baseDevice, sensorExpiresAt: new Date(Date.now() - 7 * 86_400_000),
+    } as any)
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      sensorExpiresAt: new Date(Date.now() - 7 * 86_400_000),
+    }, 9, "VIEWER")).resolves.toBeTruthy()
+  })
+})
+
+// ─── NEW-M2 — cohort cap 2000 patients ──────────────────────────────
+
+describe("NEW-M2 — listCohort soft-cap accessible 2000 patients", () => {
+  it("audit metadata.accessibleTruncated=true quand > 2000 patients", async () => {
+    // Mock DOCTOR avec 3000 patients accessibles → cap à 2000.
+    const ids = Array.from({ length: 3000 }, (_, i) => ({ patientId: i + 1 }))
+    prismaMock.patientService.findMany.mockResolvedValue(ids as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
+    await deviceSupervisionService.listCohort({}, 9, "DOCTOR")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.accessibleTruncated).toBe(true)
+    expect(meta.metadata.scope).toBe("scoped")
+    // accessibleCount reste la vraie taille (pas tronquée) — forensique correcte.
+    expect(meta.metadata.accessibleCount).toBe(3000)
+  })
+
+  it("audit metadata.accessibleTruncated absent quand ≤ 2000", async () => {
+    const ids = Array.from({ length: 1500 }, (_, i) => ({ patientId: i + 1 }))
+    prismaMock.patientService.findMany.mockResolvedValue(ids as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
+    await deviceSupervisionService.listCohort({}, 9, "DOCTOR")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.accessibleTruncated).toBeUndefined()
+  })
 })
