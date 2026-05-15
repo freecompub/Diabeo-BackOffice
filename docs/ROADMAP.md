@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-14 — Groupe 9b Batch 3 Dashboard admin livré (PR #403, 3 US US-2410/2412/2415, ~19 SP). Redirect split étendu ADMIN → /admin. Page + 3 cards : AdminKpiSection (4 metrics on-demand : cabinets/staff/patients actifs/audit 7j, COUNT(DISTINCT) raw SQL), BillingCard (heuristique fallback TeleconsultationActe.invoicedAt IS NULL, label "(arrondi)"), ComplianceCard (lastBackup avec NULLS FIRST guard, audit 24h, failed backups 30d, STALE constant 2j). US-2415 Sidebar couvert par NavigationShell existant (minRole ADMIN). 2 rounds reviews appliqués (11 findings). V1 60 → 63 DONE (45%). Total 131/292 (45%). 1642/1642 tests verts. ⚠️ V2 deferrals : Invoice table (US-2107 → US-2412 v2), KPI activité (US-2411 V3 deps), RGPD conformité (US-2413 V3 deps), multi-cabinet switcher + sidebar badges (US-2415 v2).
+> Dernière mise à jour : 2026-05-15 — Groupe 10 Batch E Food monitoring livré (PR #404, 4 US US-2248/2251/2253/2260, ~16 SP, plan simplifié pas de migration). Service `food-monitoring.service.ts` : foodJournalQuery (DiabetesEvent insulinMeal + MealPhoto count + comment truncate 500c), adherenceQuery (score composite 0.6 régularité Paris-tz + 0.4 bolus coverage, fallback regularity-only), glycemiaMealContextQuery (CGM ±2h batch fetch + bucketing in-memory). US-2260 templates pathologie : `/api/team/templates` existant (US-2078). 3 routes `/api/patients/[id]/{food-journal,adherence,glycemia-meal-context}` NURSE+ + canAccessPatient + requireGdprConsent. 2 rounds review appliqués (9 findings : M1 Paris-tz bucketing, L1 SECURITY comment + truncate, L2 deletedAt 3 queries, L3 JSDoc clinical ambiguity, L4 perf TODO, L5 edge case doc, L6 7 tests, L7 drop unused Prisma re-export, L8 unify audit DIABETES_EVENT). V1 63 → 67 DONE (48%). Total 135/292 (46%). 1657/1657 tests verts. ⚠️ V2 deferrals : US-2250 workflow validation FSM, US-2252 cron orchestration, pathology column MessageTemplate, Redis cache, UI patient tabs integration.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 63   | 1       | 77          | **45%** |
+| **V1**   | 141   | 67   | 1       | 73          | **48%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **131** | **2**   | **159**     | **45%** |
+| **TOTAL**| **292** | **135** | **2**   | **155**     | **46%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -453,12 +453,12 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2239 | Audit partages temporaires | NOT STARTED |
 | US-2240 | Validation médicale aidants | NOT STARTED |
 | US-2242 | Statut sync temps réel | NOT STARTED |
-| US-2248 | Vue journal alimentaire patient | NOT STARTED |
-| US-2250 | Bibliothèque ETP | NOT STARTED |
-| US-2251 | Prescription programmes ETP | NOT STARTED |
-| US-2252 | Suivi progression ETP | NOT STARTED |
-| US-2253 | Templates messagerie pathologie | NOT STARTED |
-| US-2260 | Messages programmés | NOT STARTED |
+| US-2248 | Vue journal alimentaire patient | ✅ DONE PR #404 | DiabetesEvent insulinMeal + MealPhoto count + comment truncate 500c |
+| US-2250 | Validation comptage glucides patient | ⏸️ V2 (FSM table) | Workflow validation deferred — exige nouvelle table |
+| US-2251 | Suivi adhésion thérapeutique | ✅ DONE PR #404 | Score 0.6 régularité Paris-tz + 0.4 bolus coverage |
+| US-2252 | Alerte non-saisie depuis X jours | ⏸️ V2 (orchestration) | Cron + OrchestrationLog table deferred |
+| US-2253 | Contextualisation glycémie-repas | ✅ DONE PR #404 | CGM ±2h pre/post + sample counts |
+| US-2260 | Templates messagerie pathologie | ✅ DONE PR #404 (existant) | `/api/team/templates` (US-2078) ; ⚠️ pathology column V2 |
 | US-2261 | Coordination multi-aidants | NOT STARTED |
 
 ---
