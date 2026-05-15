@@ -157,6 +157,14 @@ export function assertJsonContentType(req: Request): NextResponse | null {
 }
 
 /**
+ * L4 (review PR #408) — Constante partagée pour le `resourceId` audit
+ * des routes cohort-scoped (pas d'ID natif à pointer). Évite la
+ * duplication string literal `"cohort"` et permet d'identifier ces
+ * audits par regex sur `resourceId='cohort'`.
+ */
+export const COHORT_RESOURCE_ID = "cohort"
+
+/**
  * H4 (review PR #407) — Garde anti-DoS : rejette les bodies déclarant
  * un `Content-Length` supérieur à `maxBytes`. Empêche `req.json()` de
  * buffer 50MB+ en mémoire avant validation Zod.
