@@ -51,7 +51,15 @@ export async function GET(
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {
-      return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+      // LOW review round 3 — cohérence : retourner les details Zod
+      // (alignement avec POST /api/messages qui retourne fieldErrors).
+      return NextResponse.json(
+        {
+          error: "validationFailed",
+          details: parsedParams.error.flatten().fieldErrors,
+        },
+        { status: 400 },
+      )
     }
     const parsedQuery = querySchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams.entries()),
@@ -70,7 +78,10 @@ export async function GET(
         parsedQuery.data,
         ctx,
       )
-      return NextResponse.json(result)
+      // LOW review round 3 — anti-cache (corps déchiffrés = données santé).
+      return NextResponse.json(result, {
+        headers: { "Cache-Control": "no-store, private" },
+      })
     } catch (e) {
       if (e instanceof MessagingNotFoundError) {
         return NextResponse.json({ error: "notFound" }, { status: 404 })

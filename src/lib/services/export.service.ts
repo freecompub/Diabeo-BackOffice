@@ -80,18 +80,30 @@ export async function generateUserExport(userId: number) {
   // US-2076 — RGPD Art. 20 portability : inclure les messages
   // envoyés/reçus (sent/received). Corps déchiffré au moment de l'export
   // pour livrer un format intelligible (Art. 20 = "lisible par machine").
-  const [messagesSent, messagesReceived] = await Promise.all([
-    prisma.message.findMany({
-      where: { fromUserId: userId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      take: 10000,
-    }),
-    prisma.message.findMany({
-      where: { toUserId: userId, deletedAt: null },
-      orderBy: { createdAt: "desc" },
-      take: 10000,
-    }),
-  ])
+  //
+  // MED-2 review round 3 — Cap `take: 10000` documenté + flag `truncated`
+  // pour conformité Art. 20 (sanction CNIL si export silencieusement
+  // incomplet — cf. SAN-2022-013, SAN-2023-010).
+  const MAX_EXPORT_MESSAGES = 10000 as const
+  const [messagesSent, messagesReceived, totalSentCount, totalReceivedCount] =
+    await Promise.all([
+      prisma.message.findMany({
+        where: { fromUserId: userId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: MAX_EXPORT_MESSAGES,
+      }),
+      prisma.message.findMany({
+        where: { toUserId: userId, deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        take: MAX_EXPORT_MESSAGES,
+      }),
+      prisma.message.count({
+        where: { fromUserId: userId, deletedAt: null },
+      }),
+      prisma.message.count({
+        where: { toUserId: userId, deletedAt: null },
+      }),
+    ])
   type MessageRow = (typeof messagesSent)[number]
   const decryptMessageBody = (b: Uint8Array | null): string | null => {
     if (!b) return null
@@ -219,9 +231,18 @@ export async function generateUserExport(userId: number) {
     preferences: { units: unitPreferences, notifications: notifPreferences, privacy: privacySettings, dayMoments },
     patient: patientData,
     // US-2076 — Messages échangés (RGPD Art. 20 portabilité).
+    // MED-2 review round 3 — Flag `truncated` + counts complets pour
+    // que le data subject sache si son export est partiel (sanction CNIL
+    // si truncation silencieuse).
     messages: {
       sent: messagesSent.map(serializeMessage),
       received: messagesReceived.map(serializeMessage),
+      totalSent: totalSentCount,
+      totalReceived: totalReceivedCount,
+      truncated:
+        totalSentCount > MAX_EXPORT_MESSAGES ||
+        totalReceivedCount > MAX_EXPORT_MESSAGES,
+      exportLimit: MAX_EXPORT_MESSAGES,
     },
   }
 }

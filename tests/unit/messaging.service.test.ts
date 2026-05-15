@@ -20,6 +20,13 @@ vi.mock("@/lib/services/fcm.service", () => ({
   },
 }))
 
+// HIGH-3 review round 3 — consent destinataire vérifié dans `send`.
+// Mock pour défaut consent=true ; tests négatifs override avec false.
+vi.mock("@/lib/gdpr", () => ({
+  requireGdprConsent: vi.fn().mockResolvedValue(true),
+  invalidateGdprConsentCache: vi.fn().mockResolvedValue(undefined),
+}))
+
 // HEALTH_DATA_ENCRYPTION_KEY est setté par tests/setup.ts en mode test.
 import {
   messagingService,
@@ -161,14 +168,48 @@ describe("canMessage", () => {
       }
       return Promise.resolve({ id: 2, role: "NURSE", patient: null })
     }) as any)
-    let call = 0
-    prismaMock.healthcareMember.findUnique.mockImplementation((() => {
-      call++
-      return Promise.resolve({ serviceId: call === 1 ? 7 : 8 } as any)
+    // LOW review round 3 — discrimination par `userId` (pas counter brittle).
+    prismaMock.healthcareMember.findUnique.mockImplementation(((args: any) => {
+      return Promise.resolve({
+        serviceId: args.where.userId === 1 ? 7 : 8,
+      } as any)
     }) as any)
     const r = await canMessage(1, 2)
     expect(r.allowed).toBe(false)
     expect(r.reason).toBe("notInSameCabinet")
+  })
+
+  // H7 review : ADMIN ↔ DOCTOR (PS) → pivot patientId null (pas patient pur).
+  it("ADMIN → DOCTOR (non-patient) → patientId null (H7 restriction)", async () => {
+    prismaMock.user.findUnique.mockImplementation(((args: any) => {
+      if (args.where.id === 1) {
+        return Promise.resolve({ id: 1, role: "ADMIN", patient: null })
+      }
+      // DOCTOR avec Patient associé (cas rare : médecin aussi soigné)
+      return Promise.resolve({
+        id: 2, role: "DOCTOR",
+        patient: { id: 99, deletedAt: null },
+      })
+    }) as any)
+    const r = await canMessage(1, 2)
+    expect(r.allowed).toBe(true)
+    expect(r.patientId).toBe(null) // H7 : pas de pollution forensique
+  })
+
+  // H7 review : ADMIN → VIEWER (patient pur) → pivot patientId posé.
+  it("ADMIN → VIEWER (patient pur) → pivot patientId 42", async () => {
+    prismaMock.user.findUnique.mockImplementation(((args: any) => {
+      if (args.where.id === 1) {
+        return Promise.resolve({ id: 1, role: "ADMIN", patient: null })
+      }
+      return Promise.resolve({
+        id: 9, role: "VIEWER",
+        patient: { id: 42, deletedAt: null },
+      })
+    }) as any)
+    const r = await canMessage(1, 9)
+    expect(r.allowed).toBe(true)
+    expect(r.patientId).toBe(42)
   })
 
   it("patient → patient rejected", async () => {
@@ -249,10 +290,63 @@ describe("send", () => {
       .rejects.toBeInstanceOf(MessagingValidationError)
   })
 
-  it("rejects body > MAX_BODY_CHARS", async () => {
-    const tooLong = "a".repeat(MESSAGING_BOUNDS.MAX_BODY_CHARS + 1)
+  it("rejects body > MAX_BODY_BYTES_UTF8 (ASCII)", async () => {
+    const tooLong = "a".repeat(MESSAGING_BOUNDS.MAX_BODY_BYTES_UTF8 + 1)
     await expect(messagingService.send(1, { toUserId: 2, body: tooLong }, ctx))
       .rejects.toBeInstanceOf(MessagingValidationError)
+  })
+
+  // BLOCKER #1 fix review round 3 — validation en octets UTF-8 (pas codepoints).
+  // 4000 emoji × 4 bytes = 16000 octets > 8164 → bodyTooLong (avant fix : 4000
+  // codepoints passait, INSERT échouait avec PG check_violation 500).
+  it("rejects 4000 emojis (= 16000 octets UTF-8 > 8164 cap)", async () => {
+    const emojiBody = "🎉".repeat(4000)
+    expect(Buffer.byteLength(emojiBody, "utf8")).toBeGreaterThan(
+      MESSAGING_BOUNDS.MAX_BODY_BYTES_UTF8,
+    )
+    await expect(messagingService.send(1, { toUserId: 2, body: emojiBody }, ctx))
+      .rejects.toBeInstanceOf(MessagingValidationError)
+  })
+
+  // BLOCKER #1 — accepte un body emoji dans la limite octets.
+  it("accepts emoji body within MAX_BODY_BYTES_UTF8 cap", async () => {
+    const created = {
+      id: "m-emoji", conversationKey: "a".repeat(64),
+      fromUserId: 1, toUserId: 2, patientId: null, createdAt: new Date(),
+    }
+    prismaMock.message.create.mockResolvedValue(created as any)
+    // 1000 emoji × 4 bytes = 4000 octets < 8164 ✓
+    const emojiBody = "🎉".repeat(1000)
+    const out = await messagingService.send(1, { toUserId: 2, body: emojiBody }, ctx)
+    expect(out.id).toBe("m-emoji")
+  })
+
+  // HIGH-3 review round 3 — Consent destinataire refusé.
+  it("rejects when recipient has revoked GDPR consent (reason recipientConsentRevoked)", async () => {
+    const { requireGdprConsent } = await import("@/lib/gdpr")
+    vi.mocked(requireGdprConsent).mockResolvedValueOnce(false)
+    try {
+      await messagingService.send(1, { toUserId: 2, body: "x" }, ctx)
+      expect.fail("expected MessagingAccessError")
+    } catch (e) {
+      expect(e).toBeInstanceOf(MessagingAccessError)
+      expect((e as MessagingAccessError).reason).toBe("recipientConsentRevoked")
+    }
+  })
+
+  // HSA MED-4 review round 3 — FCM payload ne doit PAS contenir conversationKey.
+  it("FCM payload exclut conversationKey (anti-corrélation Google)", async () => {
+    const created = {
+      id: "m-1", conversationKey: "a".repeat(64),
+      fromUserId: 1, toUserId: 2, patientId: null, createdAt: new Date(),
+    }
+    prismaMock.message.create.mockResolvedValue(created as any)
+    await messagingService.send(1, { toUserId: 2, body: "x" }, ctx)
+    const fcmCall = vi.mocked(fcmService.sendToUser).mock.calls.at(-1)!
+    const fcmData = fcmCall[0].data!
+    expect(fcmData.conversationKey).toBeUndefined()
+    expect(fcmData.messageId).toBe("m-1")
+    expect(fcmData.type).toBe("message")
   })
 
   it("rejects when canMessage denies", async () => {
@@ -372,19 +466,66 @@ describe("listThreads", () => {
     expect(meta.metadata.empty).toBe(true)
   })
 
-  // H2 review : audit doit lister les patientIds vus (forensique CNIL).
-  it("audit metadata.patientIds inclut les patients soft-delete-filtrés", async () => {
+  // BLOCKER #2 fix (review round 3) — l'audit émet désormais 1 row PAR
+  // patientId vu (metadata.patientId singulier) au lieu de 1 row avec
+  // metadata.patientIds[] pluriel — pour matcher le GIN index US-2268.
+  it("audit émet 1 row par patientId vu (singulier) + filtre soft-deleted", async () => {
     const encryptedBody = Buffer.from(encrypt("hi"))
     ;(prismaMock.$queryRaw as any).mockResolvedValue([
       { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(), read_at: null },
       { id: "m2", conversation_key: "b".repeat(64), from_user_id: 7, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 43, created_at: new Date(), read_at: null },
     ])
     ;(prismaMock.message.groupBy as any).mockResolvedValue([])
-    // Patient 43 est soft-deleted → exclu du Set.
+    // Patient 43 est soft-deleted → exclu, seul 42 reste.
     prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }] as any)
     await messagingService.listThreads(1, ctx)
-    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(meta.metadata.patientIds).toEqual([42]) // 43 filtered out
+    // 1 audit row avec patientId=42 (singulier, matche GIN US-2268).
+    const auditCalls = prismaMock.auditLog.create.mock.calls
+    const inboxRows = auditCalls.filter((c) => {
+      const d = c[0].data as any
+      return d.resource === "MESSAGE" && d.resourceId === "inbox"
+    })
+    expect(inboxRows).toHaveLength(1)
+    const meta = (inboxRows[0]![0].data as any).metadata
+    expect(meta.kind).toBe("message.inbox")
+    expect(meta.patientId).toBe(42) // singulier, pas patientIds[]
+    expect(meta.patientIds).toBeUndefined() // ancien pluriel disparu
+  })
+
+  it("audit émet N rows (1 par patient) si plusieurs patients distincts", async () => {
+    const encryptedBody = Buffer.from(encrypt("hi"))
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(), read_at: null },
+      { id: "m2", conversation_key: "b".repeat(64), from_user_id: 7, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 73, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 42 }, { id: 73 },
+    ] as any)
+    await messagingService.listThreads(1, ctx)
+    const inboxRows = prismaMock.auditLog.create.mock.calls.filter((c) => {
+      const d = c[0].data as any
+      return d.resource === "MESSAGE" && d.resourceId === "inbox"
+    })
+    expect(inboxRows).toHaveLength(2)
+    const pivotIds = inboxRows.map((c) => (c[0].data as any).metadata.patientId).sort()
+    expect(pivotIds).toEqual([42, 73])
+  })
+
+  it("audit émet 1 row sans patientId quand inbox staff-only (aucun pivot)", async () => {
+    const encryptedBody = Buffer.from(encrypt("hi"))
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: null, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    await messagingService.listThreads(1, ctx)
+    const inboxRows = prismaMock.auditLog.create.mock.calls.filter((c) => {
+      const d = c[0].data as any
+      return d.resource === "MESSAGE" && d.resourceId === "inbox"
+    })
+    expect(inboxRows).toHaveLength(1)
+    const meta = (inboxRows[0]![0].data as any).metadata
+    expect(meta.patientId).toBeUndefined() // pas de pivot
   })
 })
 

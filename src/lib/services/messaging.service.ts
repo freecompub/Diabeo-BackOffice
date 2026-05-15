@@ -41,7 +41,13 @@ import { logger } from "@/lib/logger"
 
 /** Bornes applicatives — partagées avec les validators Zod côté routes. */
 export const MESSAGING_BOUNDS = {
-  /** Cap longueur plaintext message (Unicode codepoints). */
+  /** Cap en octets UTF-8 plaintext (BLOCKER #1 fix review round 3).
+   *  Aligné sur le CHECK SQL `OCTET_LENGTH(body_encrypted) <= 8192` :
+   *  ciphertext_bytes = plaintext_utf8_bytes + IV(12) + TAG(16)
+   *  Donc plaintext ≤ 8192 - 28 = 8164 octets UTF-8. */
+  MAX_BODY_BYTES_UTF8: 8164,
+  /** Cap codepoints UNUSED (legacy — gardé pour rétrocompat tests).
+   *  La vraie validation se fait en octets UTF-8 via `MAX_BODY_BYTES_UTF8`. */
   MAX_BODY_CHARS: 4000,
   /** Quota anti-spam : 100 messages / minute / user. */
   RATE_LIMIT_PER_MIN: 100,
@@ -55,6 +61,9 @@ export const MESSAGING_BOUNDS = {
   CONVERSATION_KEY_LEN: 64,
   /** Hard cap mémoire rate-limit map (LRU eviction). */
   RATE_LIMIT_MAP_HARD_CAP: 10_000,
+  /** Throttle decrypt-failure logs (1 log par seconde max).
+   *  Évite log spam si DB corruption + reads volumineux. */
+  DECRYPT_FAIL_LOG_THROTTLE_MS: 1_000,
 } as const
 
 export class MessagingValidationError extends Error {
@@ -103,10 +112,21 @@ export function computeConversationKey(userIdA: number, userIdB: number): string
 // ─────────────────────────────────────────────────────────────
 // Rate limit in-memory (per VPS)
 // ─────────────────────────────────────────────────────────────
+//
+// ⚠️ Note : compte les requêtes y compris en cas de validation/RBAC fail
+// (C5 review — appliqué AVANT canMessage). Trade-off documenté : empêche
+// DoS amplification via probes parallel sur `canMessage` (~4 queries DB).
+// Le client est responsable de valider localement avant POST.
+//
+// Hardening (LOW review round 3) :
+//   - LRU eviction utilise `lastSeenAt` (cohérent avec audit burst map).
+//   - Clock skew negative (NTP slew) géré via reset windowStart.
 
 interface RateBucket {
   count: number
   windowStart: number
+  /** Dernière activité — pour LRU eviction cohérent (review LOW round 3). */
+  lastSeenAt: number
 }
 
 const rateLimitMap = new Map<number, RateBucket>()
@@ -117,35 +137,77 @@ function checkAndRecordSendRate(userId: number): {
 } {
   const now = Date.now()
 
-  // LRU eviction softcap.
+  // LRU eviction softcap — pivot sur lastSeenAt (et non windowStart) pour
+  // que les buckets inactifs depuis longtemps soient évincés en premier,
+  // cohérent avec `audit.service.ts` burst map.
   if (rateLimitMap.size > MESSAGING_BOUNDS.RATE_LIMIT_MAP_HARD_CAP) {
     let oldestKey: number | null = null
-    let oldestStart = Infinity
+    let oldestSeen = Infinity
     for (const [k, v] of rateLimitMap) {
-      if (v.windowStart < oldestStart) {
-        oldestStart = v.windowStart
+      if (v.lastSeenAt < oldestSeen) {
+        oldestSeen = v.lastSeenAt
         oldestKey = k
       }
     }
     if (oldestKey !== null) rateLimitMap.delete(oldestKey)
   }
 
-  const bucket = rateLimitMap.get(userId) ?? { count: 0, windowStart: now }
+  const bucket =
+    rateLimitMap.get(userId) ?? { count: 0, windowStart: now, lastSeenAt: now }
+
+  // Clock skew guard (LOW review round 3) — si NTP slew fait reculer
+  // l'horloge système, `now - windowStart` deviendrait négatif et
+  // bloquerait le user pendant 2× la fenêtre. Reset le bucket.
+  if (now < bucket.windowStart) {
+    bucket.windowStart = now
+    bucket.count = 0
+  }
+
   if (now - bucket.windowStart >= MESSAGING_BOUNDS.RATE_LIMIT_WINDOW_MS) {
     bucket.count = 1
     bucket.windowStart = now
+    bucket.lastSeenAt = now
     rateLimitMap.set(userId, bucket)
     return { allowed: true }
   }
   if (bucket.count >= MESSAGING_BOUNDS.RATE_LIMIT_PER_MIN) {
+    bucket.lastSeenAt = now
+    rateLimitMap.set(userId, bucket)
     const retryAfterSeconds = Math.ceil(
       (MESSAGING_BOUNDS.RATE_LIMIT_WINDOW_MS - (now - bucket.windowStart)) / 1000,
     )
     return { allowed: false, retryAfterSeconds }
   }
   bucket.count++
+  bucket.lastSeenAt = now
   rateLimitMap.set(userId, bucket)
   return { allowed: true }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Decrypt-fail logger throttle (M3 review round 3)
+// ─────────────────────────────────────────────────────────────
+
+let lastDecryptFailLogMs = 0
+
+/** Log throttled — évite spam si plusieurs rows corrompus dans la même
+ *  query. SOC reçoit 1 alerte / seconde max au lieu d'1 par row. */
+function logDecryptFailThrottled(
+  scope: string,
+  userId: number,
+  err: unknown,
+): void {
+  const now = Date.now()
+  if (now - lastDecryptFailLogMs < MESSAGING_BOUNDS.DECRYPT_FAIL_LOG_THROTTLE_MS) {
+    return
+  }
+  lastDecryptFailLogMs = now
+  logger.error(
+    "messaging",
+    `decrypt-failed in ${scope}`,
+    { userId, resource: "MESSAGE" },
+    err,
+  )
 }
 
 /** Test-only — reset rate limit state between tests. */
@@ -368,6 +430,15 @@ export const messagingService = {
   /**
    * Envoie un message. Encrypt + persist + FCM data-only.
    * Audit : `MESSAGE/CREATE`, `metadata.patientId` pivot, `metadata.conversationKey`.
+   *
+   * Garde-fous (review round 3) :
+   *   - BLOCKER #1 fix : validation `body` en **octets UTF-8** (pas codepoints
+   *     ni code-units) pour aligner sur le CHECK SQL `OCTET_LENGTH ≤ 8192`.
+   *     Sans ça, 4000 emoji = 16028 octets ciphertext → check_violation 500.
+   *   - HIGH-3 fix : consent destinataire vérifié (`requireGdprConsent(toUserId)`).
+   *     Si le destinataire a révoqué son consent RGPD Art. 9, l'envoi est
+   *     refusé (anti-énumération : reason `recipientConsentRevoked`).
+   *   - C5 : rate-limit avant validation+canMessage (anti DoS amplification).
    */
   async send(
     fromUserId: number,
@@ -382,13 +453,12 @@ export const messagingService = {
       throw new MessagingRateLimitError(rate.retryAfterSeconds ?? 60)
     }
 
-    // 2. Validation longueur (locale, pas de DB).
+    // 2. Validation longueur en OCTETS UTF-8 (BLOCKER #1 review round 3).
     if (typeof input.body !== "string" || input.body.length === 0) {
       throw new MessagingValidationError("body", "bodyEmpty")
     }
-    // Unicode codepoints (gère emoji multi-byte).
-    const codepointLen = [...input.body].length
-    if (codepointLen > MESSAGING_BOUNDS.MAX_BODY_CHARS) {
+    const utf8ByteLen = Buffer.byteLength(input.body, "utf8")
+    if (utf8ByteLen > MESSAGING_BOUNDS.MAX_BODY_BYTES_UTF8) {
       throw new MessagingValidationError("body", "bodyTooLong")
     }
 
@@ -396,6 +466,16 @@ export const messagingService = {
     const access = await canMessage(fromUserId, input.toUserId)
     if (!access.allowed) {
       throw new MessagingAccessError(access.reason ?? "forbidden")
+    }
+
+    // 3b. HIGH-3 review round 3 — Consent RGPD Art. 9 destinataire.
+    //     Si Bob a révoqué son consent, Alice ne peut pas lui envoyer
+    //     (refus côté serveur + jamais de FCM push à Bob).
+    //     Import dynamique pour casser un cycle potentiel gdpr ↔ messaging.
+    const { requireGdprConsent } = await import("@/lib/gdpr")
+    const recipientHasConsent = await requireGdprConsent(input.toUserId)
+    if (!recipientHasConsent) {
+      throw new MessagingAccessError("recipientConsentRevoked")
     }
 
     // 4. Encrypt + persist (transaction : message + audit).
@@ -439,6 +519,10 @@ export const messagingService = {
     })
 
     // 5. FCM data-only — body = "[message chiffré]" placeholder (jamais PHI lockscreen).
+    //    Payload data minimal (HSA MED-4 review round 3) :
+    //    `conversationKey` RETIRÉ — SHA-256 sans sel = corrélateur graphe-social
+    //    si Google FCM compromis (uid + 100M hashes brute-force ≈ 1 min GPU).
+    //    Le client peut recalculer `conversationKey` après auth via API.
     let fcmOutcome = { sent: 0, failed: 0 }
     try {
       const result = await fcmService.sendToUser(
@@ -450,7 +534,6 @@ export const messagingService = {
           data: {
             type: "message",
             messageId: message.id,
-            conversationKey,
           },
         },
         ctx,
@@ -504,14 +587,21 @@ export const messagingService = {
   ): Promise<ThreadSummary[]> {
     const cappedLimit = Math.min(limit, MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY)
 
-    // 1. DISTINCT ON natif PostgreSQL — pour chaque conversation_key, garde
-    //    le row le plus récent. Pas d'over-fetch, pas de dédup JS.
+    // 1. UNION ALL des deux perspectives (from_user_id OR to_user_id)
+    //    puis DISTINCT ON (Prisma H2 review round 3).
+    //    Chaque branche utilise son index respectif (`from_user_id` +
+    //    `(to_user_id, read_at, created_at)`), évite le BitmapOr + sort
+    //    mémoire à scale. Plan attendu :
+    //    Append → Index Scan ×2 → Sort (conv_key, created_at DESC) →
+    //    DISTINCT ON → outer Sort created_at DESC → Limit.
     interface RawRow {
       id: string
       conversation_key: string
       from_user_id: number
       to_user_id: number
-      body_encrypted: Buffer
+      // Buffer (pg driver) ou Uint8Array (Prisma engine) — les deux
+      // sont compatibles avec `new Uint8Array(...)` pour decrypt.
+      body_encrypted: Buffer | Uint8Array
       patient_id: number | null
       created_at: Date
       read_at: Date | null
@@ -521,9 +611,17 @@ export const messagingService = {
         SELECT DISTINCT ON (conversation_key)
           id, conversation_key, from_user_id, to_user_id,
           body_encrypted, patient_id, created_at, read_at
-        FROM messages
-        WHERE (from_user_id = ${userId} OR to_user_id = ${userId})
-          AND deleted_at IS NULL
+        FROM (
+          SELECT id, conversation_key, from_user_id, to_user_id,
+                 body_encrypted, patient_id, created_at, read_at
+          FROM messages
+          WHERE from_user_id = ${userId} AND deleted_at IS NULL
+          UNION ALL
+          SELECT id, conversation_key, from_user_id, to_user_id,
+                 body_encrypted, patient_id, created_at, read_at
+          FROM messages
+          WHERE to_user_id = ${userId} AND deleted_at IS NULL
+        ) combined
         ORDER BY conversation_key, created_at DESC
       ) sub
       ORDER BY created_at DESC
@@ -586,13 +684,8 @@ export const messagingService = {
         preview = [...plaintext].slice(0, 80).join("")
       } catch (err) {
         if (err instanceof HealthDataDecryptionError) {
-          // M3 (HSA review) — alerte décryption (clé compromise / corruption).
-          logger.error(
-            "messaging",
-            "decrypt-failed in listThreads preview",
-            { userId, resource: "MESSAGE" },
-            err,
-          )
+          // M3 review — alerte SOC throttled (anti log spam si DB corruption).
+          logDecryptFailThrottled("listThreads preview", userId, err)
           preview = "[message corrompu]"
         } else {
           throw err
@@ -619,25 +712,61 @@ export const messagingService = {
       }
     })
 
-    // 5. Audit inbox — H2 review : inclure la liste des patientIds vus pour
-    //    forensique CNIL "qui a consulté l'inbox du patient X".
+    // 5. Audit inbox — BLOCKER #2 fix (review round 3 — CR L8 / HSA HIGH-1 /
+    //    Prisma C2 convergence).
+    //
+    //    Le GIN partial index US-2268 est défini WHERE `metadata ? 'patientId'`
+    //    (clé SINGULIER). Émettre `metadata.patientIds: [...]` (pluriel array)
+    //    ne match PAS le predicate → forensique CNIL `getByPatient(X)` muette
+    //    sur les events inbox.
+    //
+    //    Fix : 1 audit row PAR patientId vu dans l'inbox (pivot singulier),
+    //    + 1 row "inbox vide ou staff-only" sans pivot. Aligné convention
+    //    ADR #18 CLAUDE.md.
+    //
+    //    Coût : ≤ MAX_THREADS_PER_QUERY (100) rows par consultation inbox,
+    //    acceptable car `listThreads` n'est pas sur le hot path.
     const exposedPatientIds = [
       ...new Set(summaries.map((s) => s.patientId).filter((p): p is number => p !== null)),
     ]
-    await auditService.log({
-      userId,
-      action: "READ",
-      resource: "MESSAGE",
-      resourceId: "inbox",
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      requestId: ctx.requestId,
-      metadata: {
-        kind: "message.inbox",
-        threadCount: summaries.length,
-        ...(exposedPatientIds.length > 0 && { patientIds: exposedPatientIds }),
-      },
-    })
+
+    if (exposedPatientIds.length === 0) {
+      // Inbox vue sans aucun patient pivot (staff-only) — 1 row global.
+      await auditService.log({
+        userId,
+        action: "READ",
+        resource: "MESSAGE",
+        resourceId: "inbox",
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: {
+          kind: "message.inbox",
+          threadCount: summaries.length,
+        },
+      })
+    } else {
+      // 1 row par patient vu — `metadata.patientId` singulier matche
+      // le GIN index US-2268. `getByPatient(X)` retrouvera ces events.
+      await Promise.all(
+        exposedPatientIds.map((pid) =>
+          auditService.log({
+            userId,
+            action: "READ",
+            resource: "MESSAGE",
+            resourceId: "inbox",
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            requestId: ctx.requestId,
+            metadata: {
+              kind: "message.inbox",
+              threadCount: summaries.length,
+              patientId: pid,
+            },
+          }),
+        ),
+      )
+    }
 
     return summaries
   },
@@ -765,13 +894,8 @@ export const messagingService = {
         body = decrypt(new Uint8Array(m.bodyEncrypted))
       } catch (err) {
         if (err instanceof HealthDataDecryptionError) {
-          // M3 (HSA review) — alerte SOC (clé compromise / corruption DB).
-          logger.error(
-            "messaging",
-            "decrypt-failed in getThread",
-            { userId, resource: "MESSAGE" },
-            err,
-          )
+          // M3 review — alerte SOC throttled (anti log spam).
+          logDecryptFailThrottled("getThread", userId, err)
           body = "[message corrompu]"
         } else {
           throw err
@@ -844,6 +968,11 @@ export const messagingService = {
       }
       if (existing.toUserId !== userId) {
         // Audit accessDenied + 404 (anti-énumération).
+        //
+        // Note HDS (CR L6 review round 3) : `actualRecipientId` est
+        // exposé uniquement dans l'audit log (table admin-only, immuable
+        // par trigger PG). Champ requis pour forensique CNIL
+        // "qui a tenté d'impersonner ?". Pas leak côté client (404 seul).
         try {
           await auditService.accessDenied({
             userId,
@@ -857,13 +986,26 @@ export const messagingService = {
               actualRecipientId: existing.toUserId,
             },
           })
-        } catch {
-          // swallow
+        } catch (auditErr) {
+          // Burst detector US-2265 perdrait visibilité silencieuse.
+          // Log local pour SOC (LOW review round 3).
+          logger.error(
+            "messaging",
+            "accessDenied audit emit failed",
+            { userId, resource: "MESSAGE" },
+            auditErr,
+          )
         }
         throw new MessagingNotFoundError("messageNotFound")
       }
-      // Déjà lu — idempotent.
-      return { id: messageId, readAt: existing.readAt!, alreadyRead: true }
+      // Déjà lu — idempotent. Fallback `now` si race exotique
+      // (concurrent thread set readAt entre updateMany et findFirst —
+      // LOW review round 3 : éviter `!` non-null assertion).
+      return {
+        id: messageId,
+        readAt: existing.readAt ?? now,
+        alreadyRead: true,
+      }
     }
 
     await auditService.log({

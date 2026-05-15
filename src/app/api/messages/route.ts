@@ -28,13 +28,28 @@ import {
   MessagingRateLimitError,
 } from "@/lib/services/messaging.service"
 
-// Cap body : 4000 chars plaintext × ~4 bytes UTF-8 worst-case + base64/JSON
-// overhead. 32 KB cap large mais safe.
-const MAX_BODY_BYTES = 32_000
+// Cap HTTP body : MAX_BODY_BYTES_UTF8 (8164) × ~3 (JSON envelope worst-case
+// escape + champs annexes) + 1KB headers. ~25 KB couvre largement.
+// L5 review round 3 — réduit de 32K à 24K (alignement réel).
+const MAX_BODY_BYTES = 24_000
 
 const sendSchema = z.object({
   toUserId: z.number().int().positive(),
-  body: z.string().min(1).max(MESSAGING_BOUNDS.MAX_BODY_CHARS),
+  // BLOCKER #1 fix (review round 3) — validation en octets UTF-8 (Buffer.byteLength)
+  // alignée sur CHECK SQL `OCTET_LENGTH(body_encrypted) <= 8192`.
+  // Le check codepoints/chars laissait passer 4000 emojis = 16028 octets → 500.
+  body: z
+    .string()
+    .min(1)
+    .superRefine((val, ctx) => {
+      if (Buffer.byteLength(val, "utf8") > MESSAGING_BOUNDS.MAX_BODY_BYTES_UTF8) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "bodyTooLong",
+          path: ["body"],
+        })
+      }
+    }),
 })
 
 const listQuerySchema = z.object({
@@ -69,7 +84,12 @@ export async function GET(req: NextRequest) {
       ctx,
       parsedQuery.data.limit,
     )
-    return NextResponse.json({ items: threads })
+    // LOW review round 3 — anti-cache proxy intermédiaire (previews déchiffrés
+    // = données santé). ANSSI RGS recommande `no-store` sur réponses sensibles.
+    return NextResponse.json(
+      { items: threads },
+      { headers: { "Cache-Control": "no-store, private" } },
+    )
   } catch (e) {
     if (e instanceof AuthError) {
       return NextResponse.json({ error: e.message }, { status: e.status })
@@ -106,7 +126,13 @@ export async function POST(req: NextRequest) {
 
     try {
       const result = await messagingService.send(user.id, parsed.data, ctx)
-      return NextResponse.json({ message: result }, { status: 201 })
+      return NextResponse.json(
+        { message: result },
+        {
+          status: 201,
+          headers: { "Cache-Control": "no-store, private" },
+        },
+      )
     } catch (e) {
       if (e instanceof MessagingValidationError) {
         return NextResponse.json(

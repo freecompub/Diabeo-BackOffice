@@ -90,6 +90,11 @@ describe("deleteUserAccount", () => {
       data: { managerId: null },
     })
     expect(updateData.status).toBe("archived")
+    // C2 review round 1 — RGPD Art. 17 : messages purgés (FK CASCADE ne
+    // se déclenche pas car user anonymisé, pas hard-deleted).
+    expect(mockTx.message.deleteMany).toHaveBeenCalledWith({
+      where: { OR: [{ fromUserId: 1 }, { toUserId: 1 }] },
+    })
   })
 
   it("performs cascade deletion for user with patient", async () => {

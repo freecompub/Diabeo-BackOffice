@@ -3156,19 +3156,27 @@ model Message {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
   deletedAt       DateTime? @map("deleted_at") @db.Timestamptz()
 
-  fromUser User     @relation("MessageSender", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser   User     @relation("MessageRecipient", fields: [toUserId], references: [id], onDelete: Cascade)
+  /// FK Restrict (Prisma H3 / HSA MED-3 review round 3) — empêche
+  /// toute DELETE physique raw SQL accidentelle. La suppression user
+  /// passe par `deletion.service.ts` qui purge explicitement.
+  fromUser User     @relation("MessageSender", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser   User     @relation("MessageRecipient", fields: [toUserId], references: [id], onDelete: Restrict)
   patient  Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
 
   /// Unread count badge + inbox tri (où `to_user_id = me AND read_at IS NULL`).
   @@index([toUserId, readAt, createdAt])
+  /// Prisma H1 review round 3 — couvre le `groupBy conversationKey` du
+  /// unread aggregate dans `listThreads`. Partial WHERE défini en SQL.
+  @@index([toUserId, readAt, conversationKey], map: "messages_unread_groupby_idx")
   /// Fetch d'un thread paginé par cursor `createdAt DESC`.
   @@index([conversationKey, createdAt(sort: Desc)])
   /// Pivot US-2268 — forensique "tous les messages liés au patient X".
+  /// Partial WHERE patient_id IS NOT NULL défini en SQL (Prisma 7 ne
+  /// supporte pas encore les partial indexes côté schema).
   @@index([patientId])
   /// FK index pour requêtes inverses (rare mais utile pour audit).
   @@index([fromUserId])
-  /// Soft-delete RGPD filter.
+  /// Soft-delete RGPD filter. Partial WHERE deleted_at IS NOT NULL en SQL.
   @@index([deletedAt])
   @@map("messages")
 }
