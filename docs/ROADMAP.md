@@ -17,10 +17,10 @@
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
 | **V1**   | 126   | 83   | 0       | 43          | **66%** |
-| **V2**   | 73    | 0    | 0       | 73          | **0%**  |
+| **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **151** | **1**   | **140**     | **52%** |
+| **TOTAL**| **293** | **151** | **1**   | **141**     | **52%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -267,7 +267,8 @@
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2076 | Messagerie sécurisée patient↔PS | NOT STARTED (V1, 13 SP — Batch 3, chantier multi-PR) |
+| US-2076 | Messagerie sécurisée patient↔PS (REST + polling 60s + FCM, **sans WS**) | NOT STARTED (V1, **~8 SP** — scope réduit A 2026-05-15) |
+| US-2076bis | Messagerie realtime layer (WS/SSE chat-only) | ⏸️ **V2** — scope B reporté, gain UX marginal en contexte médecin↔patient (~5 SP) |
 | US-2077 | MSSanté intégration | ⏸️ **V2** — dep US-2125 backend (Mailiz/Apicrypt) lui-même V2 |
 | US-2078 | Templates de messages | DONE (PR #390) |
 | US-2080 | Accusés de lecture | DONE (PR #390 — ReadReceipt générique + H9 access check) |
@@ -434,10 +435,12 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 > **Décisions archi temps réel (session Samir 2026-05-13)** :
 >  - **US-2401 (urgences)** : **polling 30s** — WebSocket reporté V2/V3.
 >    Le canal alerte instantané reste US-2230 (push FCM mobile, DONE).
->  - **US-2076 / US-2408 (messagerie)** : **approche combinée A+B** :
->    WebSocket pendant l'écran chat + polling 60s pour le badge unread
->    + FCM push (US-2073 DONE) pour mobile/offline. Pattern Slack/WhatsApp.
->    US-2076 SP bumpé 1 → 13 pour couvrir l'infra WS chat-only.
+>  - **US-2076 / US-2408 (messagerie)** : décision archi temps réel
+>    initialement **A+B** (WS + polling + FCM, 13 SP). **Révision 2026-05-15** :
+>    livraison V1 en **scope A** uniquement (REST + polling 60s badge
+>    + FCM push, ~8 SP) — gain UX du WS marginal en contexte médecin↔
+>    patient (réponses non-instantanées). Scope B (WS/SSE chat-only,
+>    ~5 SP) reporté V2 en `US-2076bis`.
 
 ### Groupe 9c — Dashboards patient web (4 US — backoffice serves these)
 
@@ -485,7 +488,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V2 — 73 US
+## V2 — 74 US
 
 | Domaine | US | Titre |
 |---------|----|-------|
@@ -506,6 +509,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | Facturation | US-2106 | Webhooks idempotents Stripe (reclassée V1→V2 — provision Stripe) |
 | Facturation | US-2109 | Remboursements (reclassée V1→V2 — dep US-2106) |
 | Interop | US-2077 | MSSanté intégration UX (reclassée V1→V2 — dep US-2125 backend) |
+| Messagerie | US-2076bis | Messagerie realtime layer WS/SSE chat-only (scope B reporté V1→V2 2026-05-15, ~5 SP) |
 | Interop | US-2124 | DMP / Mon Espace Santé (reclassée V1→V2 — ANS 10-30k€) |
 | Interop | US-2125 | MSSanté backend (reclassée V1→V2 — contrat Mailiz/Apicrypt) |
 | Interop | US-2126 | INSi (reclassée V1→V2 — ANS 5-10k€) |
