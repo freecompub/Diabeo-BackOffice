@@ -17,6 +17,7 @@ import {
   InvoiceValidationError,
   InvoiceAccessError,
   InvoiceStateError,
+  InvoiceConcurrencyError,
   InvoiceNotFoundError,
   InvoiceSequenceOverflowError,
   INVOICE_BOUNDS,
@@ -96,18 +97,45 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
-    // C4 (review PR #406) — auth d'abord, body après. On a besoin du
-    // cabinetId pour le `resourceId` audit ; on l'extrait des headers
-    // si présent, sinon on accepte `new` comme placeholder.
+    // C4 + L-NEW-2 (review re-2) — auth d'abord, body peek shallow
+    // pour récupérer le cabinetId comme `resourceId` audit. Sources :
+    //   1. header `x-cabinet-id` (clients programmatiques)
+    //   2. body.cabinetId (peek manuel sans Zod)
+    //   3. fallback `new` (audit row reste interprétable)
     const cabinetHeader = req.headers.get("x-cabinet-id")
+    let bodyJson: unknown = null
+    let peekedCabinetId: number | undefined
+    if (!cabinetHeader) {
+      const rawBody = await req.text()
+      if (rawBody.trim() !== "") {
+        try {
+          bodyJson = JSON.parse(rawBody)
+          if (typeof bodyJson === "object" && bodyJson !== null) {
+            const c = (bodyJson as Record<string, unknown>).cabinetId
+            if (typeof c === "number" && Number.isInteger(c) && c > 0) {
+              peekedCabinetId = c
+            }
+          }
+        } catch {
+          // Body malformé : audit avec placeholder, Zod renverra 400.
+        }
+      }
+    }
+    const auditResourceId = cabinetHeader
+      ? `cabinet:${cabinetHeader}`
+      : peekedCabinetId
+        ? `cabinet:${peekedCabinetId}`
+        : "new"
     const user = await auditedRequireRole(
-      req, "DOCTOR", ctx, "INVOICE",
-      cabinetHeader ? `cabinet:${cabinetHeader}` : "new",
+      req, "DOCTOR", ctx, "INVOICE", auditResourceId,
     )
 
-    const body = await req.json().catch(() => null)
-    if (!body) return NextResponse.json({ error: "invalidJSON" }, { status: 400 })
-    const parsed = createSchema.safeParse(body)
+    // Si pas encore peeké (header présent), parser .json() classique.
+    if (bodyJson === null && cabinetHeader) {
+      bodyJson = await req.json().catch(() => null)
+    }
+    if (!bodyJson) return NextResponse.json({ error: "invalidJSON" }, { status: 400 })
+    const parsed = createSchema.safeParse(bodyJson)
     if (!parsed.success) {
       return NextResponse.json(
         { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
@@ -124,6 +152,9 @@ export async function POST(req: NextRequest) {
     }
     if (e instanceof InvoiceAccessError) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+    if (e instanceof InvoiceConcurrencyError) {
+      return NextResponse.json({ error: "concurrentUpdate", current: e.current, expected: e.expected, retryable: true }, { status: 409 })
     }
     if (e instanceof InvoiceStateError) {
       return NextResponse.json({ error: "invalidTransition", from: e.from, to: e.to }, { status: 409 })

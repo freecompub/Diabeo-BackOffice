@@ -15,6 +15,7 @@ import {
   invoiceService,
   InvoiceAccessError,
   InvoiceStateError,
+  InvoiceConcurrencyError,
   InvoiceNotFoundError,
   INVOICE_BOUNDS,
 } from "@/lib/services/invoice.service"
@@ -42,20 +43,27 @@ export async function POST(
       req, "DOCTOR", ctx, "INVOICE", String(parsedParams.data.id),
     )
 
+    // H-NEW-3 (review re-2) — parser le body SANS dépendre du header
+    // Content-Length (absent en HTTP/2, Transfer-Encoding: chunked).
+    // Un body vide ou absent reste valide (reason null) ; seul un body
+    // présent ET malformé doit retourner 400.
     let reason: string | null = null
-    const contentLen = req.headers.get("content-length")
-    if (contentLen && contentLen !== "0") {
-      const body = await req.json().catch(() => null)
-      if (body !== null) {
-        const parsedBody = bodySchema.safeParse(body)
-        if (!parsedBody.success) {
-          return NextResponse.json(
-            { error: "validationFailed", details: parsedBody.error.flatten().fieldErrors },
-            { status: 400 },
-          )
-        }
-        reason = parsedBody.data.reason ?? null
+    const rawBody = await req.text()
+    if (rawBody.trim() !== "") {
+      let bodyJson: unknown
+      try {
+        bodyJson = JSON.parse(rawBody)
+      } catch {
+        return NextResponse.json({ error: "invalidJSON" }, { status: 400 })
       }
+      const parsedBody = bodySchema.safeParse(bodyJson)
+      if (!parsedBody.success) {
+        return NextResponse.json(
+          { error: "validationFailed", details: parsedBody.error.flatten().fieldErrors },
+          { status: 400 },
+        )
+      }
+      reason = parsedBody.data.reason ?? null
     }
 
     const invoice = await invoiceService.cancel(parsedParams.data.id, reason, user.id, ctx)
@@ -67,6 +75,9 @@ export async function POST(
     }
     if (e instanceof InvoiceAccessError) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+    if (e instanceof InvoiceConcurrencyError) {
+      return NextResponse.json({ error: "concurrentUpdate", current: e.current, expected: e.expected, retryable: true }, { status: 409 })
     }
     if (e instanceof InvoiceStateError) {
       return NextResponse.json({ error: "invalidTransition", from: e.from, to: e.to }, { status: 409 })

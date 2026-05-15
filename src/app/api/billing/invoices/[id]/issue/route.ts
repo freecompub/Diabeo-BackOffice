@@ -15,6 +15,7 @@ import {
   invoiceService,
   InvoiceAccessError,
   InvoiceStateError,
+  InvoiceConcurrencyError,
   InvoiceNotFoundError,
   InvoiceValidationError,
   InvoiceSequenceOverflowError,
@@ -45,6 +46,9 @@ export async function POST(
     }
     if (e instanceof InvoiceAccessError) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
+    if (e instanceof InvoiceConcurrencyError) {
+      return NextResponse.json({ error: "concurrentUpdate", current: e.current, expected: e.expected, retryable: true }, { status: 409 })
     }
     if (e instanceof InvoiceStateError) {
       return NextResponse.json({ error: "invalidTransition", from: e.from, to: e.to }, { status: 409 })

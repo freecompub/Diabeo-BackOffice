@@ -84,20 +84,20 @@ export async function reserveNextInvoiceNumber(
 ): Promise<string> {
   const cc = countryCode.toUpperCase()
 
-  // C1 (review PR #406) — Runtime guard : si on n'est PAS dans une
-  // transaction explicite, l'UPDATE commit immédiatement et un échec
-  // applicatif aval crée un gap permanent dans la séquence.
+  // C1 + H-NEW-4 (review re-2) — Runtime guard : si on n'est PAS dans
+  // une transaction explicite, l'UPDATE commit immédiatement et un
+  // échec applicatif aval crée un gap permanent dans la séquence.
   // `pg_current_xact_id_if_assigned()` retourne NULL hors transaction.
-  // Test ignoré quand le client transaction est un mock (typeof = function
-  // mock vs vraie Postgres) — le mock fournit `$queryRaw` qui retourne
-  // toutes les réponses configurées par le test.
-  if (process.env.NODE_ENV !== "test") {
-    const guard = await tx.$queryRaw<{ xid: string | null }[]>`
-      SELECT pg_current_xact_id_if_assigned()::text AS xid
-    `
-    if (!guard[0] || guard[0].xid === null) {
-      throw new InvoiceNumberingTransactionError()
-    }
+  //
+  // H-NEW-4 fix : suppression du gate `NODE_ENV !== "test"`. La SQL
+  // est toujours exécutée, y compris en test ; le mock `$queryRaw`
+  // peut retourner `[{ xid: "fake-xid" }]` pour simuler une vraie tx.
+  // Pas de short-circuit silencieux — défense réelle contre tx-skip.
+  const guard = await tx.$queryRaw<{ xid: string | null }[]>`
+    SELECT pg_current_xact_id_if_assigned()::text AS xid
+  `
+  if (!guard[0] || guard[0].xid === null) {
+    throw new InvoiceNumberingTransactionError()
   }
 
   // (1) Crée la ligne si elle n'existe pas. ON CONFLICT évite l'erreur

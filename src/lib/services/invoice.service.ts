@@ -36,9 +36,35 @@ import type {
   Role,
 } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
-import { decrypt } from "@/lib/crypto/health-data"
+import { decrypt, encrypt } from "@/lib/crypto/health-data"
+import { validateSiret } from "./healthcare-management.service"
 import { auditService, type AuditContext } from "./audit.service"
 import { reserveNextInvoiceNumber } from "./invoice-numbering.service"
+
+// ─────────────────────────────────────────────────────────────
+// L-NEW-4 (review re-2) — typed audit kinds (compile-time drift safety).
+// ─────────────────────────────────────────────────────────────
+
+export type InvoiceAuditKind =
+  | "invoice.create"
+  | "invoice.issue"
+  | "invoice.pay"
+  | "invoice.cancel"
+  | "invoice.read"
+  | "invoice.read.denied"
+  | "invoice.list.cabinet"
+  | "invoice.list.patient"
+
+const AUDIT_KIND = {
+  CREATE: "invoice.create",
+  ISSUE: "invoice.issue",
+  PAY: "invoice.pay",
+  CANCEL: "invoice.cancel",
+  READ: "invoice.read",
+  READ_DENIED: "invoice.read.denied",
+  LIST_CABINET: "invoice.list.cabinet",
+  LIST_PATIENT: "invoice.list.patient",
+} as const satisfies Record<string, InvoiceAuditKind>
 
 // ─────────────────────────────────────────────────────────────
 // Erreurs typées
@@ -62,6 +88,19 @@ export class InvoiceStateError extends Error {
   constructor(public from: InvoiceStatus, public to: InvoiceStatus) {
     super(`invalid invoice transition: ${from} → ${to}`)
     this.name = "InvoiceStateError"
+  }
+}
+
+/**
+ * M-NEW-1 (review re-2) — Lost-update race : la transition était
+ * légitime au moment du `findUnique` mais un autre writer concurrent
+ * a déjà transitionné depuis. À distinguer de `InvoiceStateError`
+ * pour que le client puisse retry (mappé 409 + `retryable:true`).
+ */
+export class InvoiceConcurrencyError extends Error {
+  constructor(public current: InvoiceStatus, public expected: InvoiceStatus[]) {
+    super(`concurrent update: invoice now ${current}, expected one of ${expected.join("|")}`)
+    this.name = "InvoiceConcurrencyError"
   }
 }
 
@@ -252,12 +291,27 @@ async function assertCabinetMember(
 /**
  * Décrypte un champ AES-256-GCM sans throw (renvoie null en cas d'erreur,
  * cohérent avec `safeDecryptField` de `user.service.ts`).
+ *
+ * L-NEW-3 (review re-2) — logs un warning structuré quand un champ
+ * non-null échoue au déchiffrement (corruption clé / format), pour
+ * que les ops détectent les key rotation skew sans fouiller à la main.
+ * Aucun PHI loggé : juste le contexte (field name + invoice context).
  */
-function safeDecrypt(value: string | null | undefined): string | null {
+function safeDecrypt(value: string | null | undefined, fieldContext?: string): string | null {
   if (!value) return null
   try {
     return decrypt(new Uint8Array(Buffer.from(value, "base64")))
   } catch {
+    if (fieldContext && process.env.NODE_ENV !== "test") {
+      // Structured warning — no PHI leaked.
+      console.warn(JSON.stringify({
+        level: "warn",
+        service: "invoice",
+        event: "snapshot_decrypt_failed",
+        field: fieldContext,
+        message: "PII field decryption failed, omitted from snapshot",
+      }))
+    }
     return null
   }
 }
@@ -298,10 +352,17 @@ async function buildIssuerSnapshot(
     throw new InvoiceValidationError("cabinetNotFound")
   }
 
-  // H3 (review PR #406) — conformité comptable FR :
-  // SIRET obligatoire pour facture émise sous juridiction FR.
-  if (countryCode.toUpperCase() === "FR" && !cabinet.siret) {
-    throw new InvoiceValidationError("cabinetSiretRequiredForFR")
+  // H3 + H-NEW-1 (review re-2) — conformité comptable FR :
+  // SIRET obligatoire pour facture émise sous juridiction FR, validé Luhn
+  // (anti-forge `00000000000000` qui passerait le simple regex DB).
+  if (countryCode.toUpperCase() === "FR") {
+    if (!cabinet.siret) {
+      throw new InvoiceValidationError("cabinetSiretRequiredForFR")
+    }
+    const siretError = validateSiret(cabinet.siret)
+    if (siretError) {
+      throw new InvoiceValidationError(`cabinetSiretInvalid:${siretError}`)
+    }
   }
 
   return {
@@ -322,26 +383,53 @@ async function buildIssuerSnapshot(
 }
 
 /**
- * Construit le snapshot client (C2 review).
+ * PII contenu dans le snapshot client. Sérialisé en JSON puis chiffré
+ * AES-256-GCM avant stockage JSONB (M-NEW-3 review re-2).
+ */
+interface CustomerSnapshotPii {
+  name: string
+  address1?: string
+  address2?: string
+  postalCode?: string
+  city?: string
+}
+
+/**
+ * Schéma JSONB stocké en colonne `customer_snapshot` :
+ *
+ *   { patientRef: "patient#42", encryptedPii: "base64...", encryptedAt: "ISO-8601" }
+ *
+ * - `patientRef` : référence non-PHI (juste l'ID patient).
+ * - `encryptedPii` : `base64( AES-256-GCM( JSON.stringify(CustomerSnapshotPii) ) )`.
+ * - `encryptedAt` : horodatage du chiffrement, utile pour rotation clé V2+.
+ *
+ * **Asymétrie defense-in-depth** : le contenu PHI suit la même
+ * politique HDS que `users.firstname` (chiffré applicativement).
+ * Un dump SQL `SELECT customer_snapshot FROM invoices` retourne le
+ * blob chiffré, pas le nom du client en clair.
+ */
+interface CustomerSnapshotStored {
+  patientRef: string
+  encryptedPii: string
+  encryptedAt: string
+}
+
+/**
+ * Construit le snapshot client (C2 + M-NEW-3 review).
  *
  * **Pour un patient** (User PII chiffrée AES-256-GCM) : on déchiffre
- * `firstname`/`lastname`/`address1`/`postalCode`/`city` pour matérialiser
- * l'identité légalement requise sur la facture.
+ * `firstname`/`lastname`/`address1`/`postalCode`/`city`, on construit
+ * l'objet `CustomerSnapshotPii`, on le sérialise en JSON, on chiffre
+ * AES-256-GCM le JSON, on stocke le blob base64 en JSONB.
  *
  * **Base légale RGPD** : Art. 6.1.c GDPR — obligation légale comptable
- * (DGFiP). La donnée est stockée chiffrée applicativement (JSONB) ; le
- * trigger PG la verrouille post-issuance pour conservation 10 ans.
- *
- * **MVP V1+ TODO** : chiffrer le snapshot lui-même en AES-256-GCM avant
- * sérialisation JSONB. Pour Batch 1, le snapshot est en clair JSONB —
- * acceptable tant que la table `invoices` n'est pas exfiltrée
- * indépendamment des autres tables HDS chiffrées (defense-in-depth via
- * pgcrypto at-rest sur tout le tablespace).
+ * (DGFiP art. 242 nonies A CGI). La donnée est doublement protégée :
+ * chiffrement applicatif AES-256-GCM + immuabilité trigger PG.
  */
 async function buildCustomerSnapshot(
   tx: Prisma.TransactionClient,
   patientId: number | null,
-): Promise<Prisma.JsonObject | null> {
+): Promise<CustomerSnapshotStored | null> {
   if (!patientId) return null
   const patient = await tx.patient.findFirst({
     where: { id: patientId, deletedAt: null },
@@ -352,7 +440,6 @@ async function buildCustomerSnapshot(
           firstname: true, lastname: true,
           address1: true, address2: true,
           cp: true, city: true,
-          email: true,
         },
       },
     },
@@ -364,8 +451,8 @@ async function buildCustomerSnapshot(
     throw new InvoiceValidationError("patientNotFound")
   }
 
-  const firstname = safeDecrypt(patient.user.firstname)
-  const lastname = safeDecrypt(patient.user.lastname)
+  const firstname = safeDecrypt(patient.user.firstname, "patient.firstname")
+  const lastname = safeDecrypt(patient.user.lastname, "patient.lastname")
   const fullName = [firstname, lastname].filter(Boolean).join(" ").trim()
 
   if (!fullName) {
@@ -373,25 +460,51 @@ async function buildCustomerSnapshot(
     throw new InvoiceValidationError("customerNameUnavailable")
   }
 
+  const pii: CustomerSnapshotPii = { name: fullName }
+  const address1 = safeDecrypt(patient.user.address1, "patient.address1")
+  if (address1) pii.address1 = address1
+  const address2 = safeDecrypt(patient.user.address2, "patient.address2")
+  if (address2) pii.address2 = address2
+  const postalCode = safeDecrypt(patient.user.cp, "patient.cp")
+  if (postalCode) pii.postalCode = postalCode
+  const city = safeDecrypt(patient.user.city, "patient.city")
+  if (city) pii.city = city
+
+  // M-NEW-3 (review re-2) — chiffrement applicatif AES-256-GCM du blob PII.
+  const encryptedPii = Buffer.from(encrypt(JSON.stringify(pii))).toString("base64")
+
   return {
     patientRef: `patient#${patientId}`,
-    name: fullName,
-    ...((() => {
-      const address1 = safeDecrypt(patient.user.address1)
-      return address1 ? { address1 } : {}
-    })()),
-    ...((() => {
-      const address2 = safeDecrypt(patient.user.address2)
-      return address2 ? { address2 } : {}
-    })()),
-    ...((() => {
-      const postalCode = safeDecrypt(patient.user.cp)
-      return postalCode ? { postalCode } : {}
-    })()),
-    ...((() => {
-      const city = safeDecrypt(patient.user.city)
-      return city ? { city } : {}
-    })()),
+    encryptedPii,
+    encryptedAt: new Date().toISOString(),
+  }
+}
+
+/**
+ * Déchiffre le `customer_snapshot` stocké pour reconstituer la PII
+ * client (utilisé par le générateur de PDF en Batch 2, par les routes
+ * d'export comptable, etc.).
+ *
+ * @returns `null` si la facture n'a pas de snapshot (cabinet-interne)
+ * ou si le snapshot est corrompu / clé absente (graceful degradation).
+ */
+export function decryptCustomerSnapshot(
+  snapshot: Prisma.JsonValue | null,
+): CustomerSnapshotPii | null {
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return null
+  }
+  const enc = (snapshot as Record<string, unknown>).encryptedPii
+  if (typeof enc !== "string") return null
+  try {
+    const json = decrypt(new Uint8Array(Buffer.from(enc, "base64")))
+    const parsed = JSON.parse(json)
+    if (typeof parsed !== "object" || !parsed || typeof parsed.name !== "string") {
+      return null
+    }
+    return parsed as CustomerSnapshotPii
+  } catch {
+    return null
   }
 }
 
@@ -408,6 +521,10 @@ async function atomicTransition(
   invoiceId: number,
   fromStatus: InvoiceStatus | InvoiceStatus[],
   patch: Prisma.InvoiceUpdateInput,
+  /** Status au moment du check pre-transition (caller-supplied). Sert
+   *  à distinguer une race (caller a lu A, mais maintenant B) d'une
+   *  vraie FSM violation (caller a lu B et tente B→X interdit). */
+  expectedSeenStatus?: InvoiceStatus,
 ): Promise<Invoice> {
   const fromArray = Array.isArray(fromStatus) ? fromStatus : [fromStatus]
   const updated = await tx.invoice.updateMany({
@@ -415,12 +532,18 @@ async function atomicTransition(
     data: patch,
   })
   if (updated.count === 0) {
-    // Soit la facture n'existe pas, soit elle n'est pas dans `fromStatus`.
     const current = await tx.invoice.findUnique({
       where: { id: invoiceId },
       select: { status: true },
     })
     if (!current) throw new InvoiceNotFoundError()
+    // M-NEW-1 (review re-2) — distinguer race lost-update vs FSM réelle.
+    // Si le status actuel est dans `fromArray` mais le updateMany a count=0,
+    // c'est une race (extrêmement rare, theorique). Plus probable :
+    // status a changé entre le `findUnique` du caller et notre updateMany.
+    if (expectedSeenStatus && current.status !== expectedSeenStatus) {
+      throw new InvoiceConcurrencyError(current.status, fromArray)
+    }
     const targetStatus = (patch.status as InvoiceStatus | undefined) ?? current.status
     throw new InvoiceStateError(current.status, targetStatus)
   }
@@ -580,7 +703,7 @@ export const invoiceService = {
         requestId: ctx?.requestId,
         metadata: {
           ...(input.patientId ? { patientId: input.patientId } : {}),
-          kind: "invoice.create",
+          kind: AUDIT_KIND.CREATE,
           cabinetId: input.cabinetId,
           itemCount: itemRows.length,
           totalCents,
@@ -617,15 +740,19 @@ export const invoiceService = {
       const issuerSnapshot = await buildIssuerSnapshot(tx, inv.cabinetId, inv.countryCode)
       const customerSnapshot = await buildCustomerSnapshot(tx, inv.patientId)
 
-      const updated = await atomicTransition(tx, invoiceId, "draft", {
-        status: "issued",
-        number,
-        issuedAt: now,
-        issuerSnapshot: issuerSnapshot as Prisma.InputJsonValue,
-        customerSnapshot: customerSnapshot === null
-          ? Prisma.JsonNull
-          : (customerSnapshot as Prisma.InputJsonValue),
-      })
+      const updated = await atomicTransition(
+        tx, invoiceId, "draft",
+        {
+          status: "issued",
+          number,
+          issuedAt: now,
+          issuerSnapshot: issuerSnapshot as Prisma.InputJsonValue,
+          customerSnapshot: customerSnapshot === null
+            ? Prisma.JsonNull
+            : (customerSnapshot as unknown as Prisma.InputJsonValue),
+        },
+        "draft", // expectedSeenStatus (M-NEW-1)
+      )
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -637,7 +764,7 @@ export const invoiceService = {
         requestId: ctx?.requestId,
         metadata: {
           ...(inv.patientId ? { patientId: inv.patientId } : {}),
-          kind: "invoice.issue",
+          kind: AUDIT_KIND.ISSUE,
           number,
           totalCents: updated.totalCents,
           currency: updated.currency,
@@ -658,17 +785,35 @@ export const invoiceService = {
     ctx?: AuditContext,
     stripePaymentIntentId?: string,
   ): Promise<InvoiceDTO> {
+    // H-NEW-2 (review re-2) — defense-in-depth : valider le PI ID au
+    // niveau service (pas seulement Zod route). Couvre les callers
+    // internes (webhook reconciliation Batch 3, server actions, etc.).
+    if (paymentMethod === "stripe") {
+      if (!stripePaymentIntentId || !/^pi_[A-Za-z0-9]{1,46}$/.test(stripePaymentIntentId)) {
+        throw new InvoiceValidationError("stripePaymentIntentId")
+      }
+    } else if (stripePaymentIntentId) {
+      throw new InvoiceValidationError("stripePaymentIntentIdUnexpected")
+    }
+
     return prisma.$transaction(async (tx) => {
       const inv = await tx.invoice.findUnique({ where: { id: invoiceId } })
       if (!inv) throw new InvoiceNotFoundError()
       await assertCabinetMember(tx, auditUserId, inv.cabinetId)
+      if (inv.status !== "issued") {
+        throw new InvoiceStateError(inv.status, "paid")
+      }
 
-      const updated = await atomicTransition(tx, invoiceId, "issued", {
-        status: "paid",
-        paidAt: new Date(),
-        paymentMethod,
-        ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
-      })
+      const updated = await atomicTransition(
+        tx, invoiceId, "issued",
+        {
+          status: "paid",
+          paidAt: new Date(),
+          paymentMethod,
+          ...(stripePaymentIntentId ? { stripePaymentIntentId } : {}),
+        },
+        "issued",
+      )
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -680,7 +825,7 @@ export const invoiceService = {
         requestId: ctx?.requestId,
         metadata: {
           ...(inv.patientId ? { patientId: inv.patientId } : {}),
-          kind: "invoice.pay",
+          kind: AUDIT_KIND.PAY,
           paymentMethod,
         },
       })
@@ -703,10 +848,14 @@ export const invoiceService = {
       const inv = await tx.invoice.findUnique({ where: { id: invoiceId } })
       if (!inv) throw new InvoiceNotFoundError()
       await assertCabinetMember(tx, auditUserId, inv.cabinetId)
+      if (inv.status !== "draft" && inv.status !== "issued") {
+        throw new InvoiceStateError(inv.status, "cancelled")
+      }
 
       const updated = await atomicTransition(
         tx, invoiceId, ["draft", "issued"],
         { status: "cancelled", cancelledAt: new Date() },
+        inv.status,
       )
 
       await auditService.logWithTx(tx, {
@@ -719,7 +868,7 @@ export const invoiceService = {
         requestId: ctx?.requestId,
         metadata: {
           ...(inv.patientId ? { patientId: inv.patientId } : {}),
-          kind: "invoice.cancel",
+          kind: AUDIT_KIND.CANCEL,
           previousStatus: inv.status,
           ...(reason ? { reason: reason.slice(0, INVOICE_BOUNDS.MAX_CANCEL_REASON_LEN) } : {}),
         },
@@ -768,7 +917,7 @@ export const invoiceService = {
         requestId: ctx?.requestId,
         metadata: {
           ...(inv.patientId ? { patientId: inv.patientId } : {}),
-          kind: "invoice.read.denied",
+          kind: AUDIT_KIND.READ_DENIED,
         },
       })
       return null
@@ -784,7 +933,7 @@ export const invoiceService = {
       requestId: ctx?.requestId,
       metadata: {
         ...(inv.patientId ? { patientId: inv.patientId } : {}),
-        kind: "invoice.read",
+        kind: AUDIT_KIND.READ,
       },
     })
 
@@ -827,8 +976,14 @@ export const invoiceService = {
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
       requestId: ctx?.requestId,
+      // M-NEW-2 (review re-2) — `metadata.cabinetId` est un pivot
+      // sortant de la convention US-2268 (`metadata.patientId` indexé
+      // par GIN partiel). Les requêtes forensiques cabinet-scope
+      // feront un sequential scan jusqu'à ce qu'un index complémentaire
+      // soit ajouté en V1 follow-up (issue à créer : "GIN partial
+      // index on audit_logs.metadata->'cabinetId'"). Acceptable Batch 1.
       metadata: {
-        kind: "invoice.list.cabinet",
+        kind: AUDIT_KIND.LIST_CABINET,
         cabinetId,
         count: rows.length,
         ...(options.status ? { statusFilter: options.status } : {}),
@@ -887,7 +1042,7 @@ export const invoiceService = {
       requestId: ctx?.requestId,
       metadata: {
         patientId,
-        kind: "invoice.list.patient",
+        kind: AUDIT_KIND.LIST_PATIENT,
         count: rows.length,
       },
     })
