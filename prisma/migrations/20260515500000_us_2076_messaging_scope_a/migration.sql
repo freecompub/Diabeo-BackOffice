@@ -117,6 +117,19 @@ CREATE INDEX "messages_patient_id_idx"
 CREATE INDEX "messages_from_user_id_idx"
     ON "messages"("from_user_id");
 
+-- NEW-H1 CR round 4 — Index composite pour DISTINCT ON listThreads.
+-- Permet à PostgreSQL d'utiliser Index Skip Scan (PG 14+) ou Merge Append
+-- pour le `DISTINCT ON (conversation_key) ... ORDER BY conversation_key,
+-- created_at DESC` au lieu d'un Sort O(N log N) sur tous les messages
+-- du user. Le partial `WHERE deleted_at IS NULL` réduit la taille.
+CREATE INDEX "messages_from_thread_recency_idx"
+    ON "messages"("from_user_id", "conversation_key", "created_at" DESC)
+    WHERE "deleted_at" IS NULL;
+
+CREATE INDEX "messages_to_thread_recency_idx"
+    ON "messages"("to_user_id", "conversation_key", "created_at" DESC)
+    WHERE "deleted_at" IS NULL;
+
 -- Soft-delete filter rapide.
 CREATE INDEX "messages_deleted_at_idx"
     ON "messages"("deleted_at")

@@ -51,10 +51,19 @@ export async function PUT(
         parsedParams.data.id,
         ctx,
       )
-      return NextResponse.json(result)
+      // NEW-L1 review round 4 — Anti-cache (readAt timestamp = info confidentielle).
+      return NextResponse.json(result, {
+        headers: { "Cache-Control": "no-store, private" },
+      })
     } catch (e) {
       if (e instanceof MessagingNotFoundError) {
-        return NextResponse.json({ error: "notFound" }, { status: 404 })
+        return NextResponse.json(
+          { error: "notFound" },
+          {
+            status: 404,
+            headers: { "Cache-Control": "no-store, private" },
+          },
+        )
       }
       throw e
     }

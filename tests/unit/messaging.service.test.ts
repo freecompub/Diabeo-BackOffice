@@ -38,6 +38,7 @@ import {
   MessagingRateLimitError,
   MessagingNotFoundError,
   __resetMessagingRateLimit,
+  __resetMessagingDecryptThrottle,
 } from "@/lib/services/messaging.service"
 import { fcmService } from "@/lib/services/fcm.service"
 import { encrypt } from "@/lib/crypto/health-data"
@@ -52,6 +53,7 @@ beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
   __resetMessagingRateLimit()
+  __resetMessagingDecryptThrottle()
   vi.mocked(fcmService.sendToUser).mockResolvedValue({
     sent: 1, failed: 0, results: [],
   })
@@ -270,15 +272,23 @@ describe("send", () => {
     expect(lastAudit.action).toBe("CREATE")
     expect(lastAudit.metadata.kind).toBe("message.send")
 
-    // FCM body sanitized (no PHI).
+    // FCM body sanitized (no PHI). NEW-M2 round 4 : messageId remplacé
+    // par nonce opaque (UUID v4) — pas de corrélation Google possible.
     expect(vi.mocked(fcmService.sendToUser)).toHaveBeenCalledWith(
       expect.objectContaining({
         body: "[message chiffré]",
         title: "Nouveau message",
-        data: expect.objectContaining({ type: "message", messageId: "msg-1" }),
+        data: expect.objectContaining({ type: "message" }),
       }),
       ctx,
     )
+    const fcmCall = vi.mocked(fcmService.sendToUser).mock.calls.at(-1)!
+    const fcmData = fcmCall[0].data!
+    // Nonce UUID v4 (8-4-4-4-12 hex chars).
+    expect(fcmData.nonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    // Pas de messageId, pas de conversationKey.
+    expect(fcmData.messageId).toBeUndefined()
+    expect(fcmData.conversationKey).toBeUndefined()
 
     // Verify body in DB call is encrypted (Buffer)
     const createArgs = prismaMock.message.create.mock.calls[0]![0]!
@@ -334,8 +344,10 @@ describe("send", () => {
     }
   })
 
-  // HSA MED-4 review round 3 — FCM payload ne doit PAS contenir conversationKey.
-  it("FCM payload exclut conversationKey (anti-corrélation Google)", async () => {
+  // HSA MED-4 round 3 + NEW-M2 round 4 — FCM payload sans conversationKey
+  // ni messageId (anti-corrélation Google FCM Cloud Act). Seul un nonce
+  // UUID opaque + type=message sont exposés.
+  it("FCM payload : seuls type + nonce UUID exposés (no conversationKey, no messageId)", async () => {
     const created = {
       id: "m-1", conversationKey: "a".repeat(64),
       fromUserId: 1, toUserId: 2, patientId: null, createdAt: new Date(),
@@ -344,9 +356,12 @@ describe("send", () => {
     await messagingService.send(1, { toUserId: 2, body: "x" }, ctx)
     const fcmCall = vi.mocked(fcmService.sendToUser).mock.calls.at(-1)!
     const fcmData = fcmCall[0].data!
-    expect(fcmData.conversationKey).toBeUndefined()
-    expect(fcmData.messageId).toBe("m-1")
+    // NEW-L4 CR round 4 — assertion stricte sur les clés exposées.
+    expect(Object.keys(fcmData).sort()).toEqual(["nonce", "type"])
     expect(fcmData.type).toBe("message")
+    expect(fcmData.nonce).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/)
+    expect(fcmData.conversationKey).toBeUndefined()
+    expect(fcmData.messageId).toBeUndefined()
   })
 
   it("rejects when canMessage denies", async () => {
@@ -445,7 +460,7 @@ describe("listThreads", () => {
     expect(out).toEqual([])
   })
 
-  it("preview truncates to 80 codepoints", async () => {
+  it("preview truncates to 80 codepoints + bodyPreviewTruncated=true", async () => {
     const long = "x".repeat(200)
     const encryptedBody = Buffer.from(encrypt(long))
     const k = "c".repeat(64)
@@ -455,6 +470,36 @@ describe("listThreads", () => {
     ;(prismaMock.message.groupBy as any).mockResolvedValue([])
     const out = await messagingService.listThreads(1, ctx)
     expect(out[0]!.lastMessage.bodyPreview).toHaveLength(80)
+    // NEW-M2 CR round 4 — flag truncated exposé à l'UI.
+    expect(out[0]!.lastMessage.bodyPreviewTruncated).toBe(true)
+  })
+
+  it("preview short message bodyPreviewTruncated=false", async () => {
+    const short = "Hello"
+    const encryptedBody = Buffer.from(encrypt(short))
+    const k = "c".repeat(64)
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: k, from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: null, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    const out = await messagingService.listThreads(1, ctx)
+    expect(out[0]!.lastMessage.bodyPreview).toBe("Hello")
+    expect(out[0]!.lastMessage.bodyPreviewTruncated).toBe(false)
+  })
+
+  // NEW-H3 CR round 4 — Promise.allSettled : audit fail ne bloque PAS l'inbox.
+  it("NEW-H3 audit log fail does NOT block inbox view (Promise.allSettled)", async () => {
+    const encryptedBody = Buffer.from(encrypt("hi"))
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }] as any)
+    // Audit log fails — should NOT propagate.
+    prismaMock.auditLog.create.mockRejectedValueOnce(new Error("DB locked"))
+    const out = await messagingService.listThreads(1, ctx)
+    expect(out).toHaveLength(1) // inbox returned successfully
+    expect(out[0]!.conversationKey).toBe("a".repeat(64))
   })
 
   it("audit kind=message.inbox + threadCount=0 + empty=true when no messages", async () => {
@@ -606,6 +651,17 @@ describe("getThread", () => {
     prismaMock.patient.findFirst.mockResolvedValueOnce(null) // 2nd check (isPsManagingPatient) → no link
     await expect(messagingService.getThread(5, VALID_KEY, {}, ctx))
       .rejects.toBeInstanceOf(MessagingNotFoundError)
+  })
+
+  // NEW-M5 CR round 4 — cursor invalide → 422 (au lieu silent fallback page 1).
+  it("invalid cursor throws MessagingValidationError (not silent page-1 fallback)", async () => {
+    prismaMock.message.findFirst.mockResolvedValueOnce({
+      id: "any", fromUserId: 1, toUserId: 2, patientId: null,
+    } as any) // probe success
+    prismaMock.message.findFirst.mockResolvedValueOnce(null) // cursor lookup fail
+    await expect(
+      messagingService.getThread(1, VALID_KEY, { cursor: "invalid-cursor" }, ctx),
+    ).rejects.toBeInstanceOf(MessagingValidationError)
   })
 
   it("hasMore + nextCursor when results exceed limit", async () => {

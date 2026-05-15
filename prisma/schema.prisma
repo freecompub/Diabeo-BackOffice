@@ -3176,6 +3176,11 @@ model Message {
   @@index([patientId])
   /// FK index pour requêtes inverses (rare mais utile pour audit).
   @@index([fromUserId])
+  /// NEW-H1 CR review round 4 — Composite indexes pour DISTINCT ON
+  /// listThreads. Permet à PG d'utiliser Index Skip Scan / Merge Append.
+  /// Partial WHERE deleted_at IS NULL défini en SQL.
+  @@index([fromUserId, conversationKey, createdAt(sort: Desc)], map: "messages_from_thread_recency_idx")
+  @@index([toUserId, conversationKey, createdAt(sort: Desc)], map: "messages_to_thread_recency_idx")
   /// Soft-delete RGPD filter. Partial WHERE deleted_at IS NOT NULL en SQL.
   @@index([deletedAt])
   @@map("messages")

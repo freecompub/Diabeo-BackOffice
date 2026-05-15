@@ -9,10 +9,11 @@
  * Auth : JWT requis. RBAC : tout user authentifié peut consulter son
  * propre compteur (jamais celui d'un autre).
  *
- * RGPD (MED-1 review round 3) : `requireGdprConsent` câblé pour cohérence
- * avec les 3 autres routes messagerie. Si user a révoqué son consent,
- * retourne `{ count: 0 }` (anti-leak : pas de signal "tu as N messages
- * en attente" si tu n'as plus de base légale pour les lire).
+ * RGPD (MED-1 round 3 / NEW-L4 round 4) : `requireGdprConsent` câblé +
+ * réponse 403 `gdprConsentRequired` cohérente avec les 3 autres routes.
+ * Le client SAIT qu'il a révoqué son consent (action explicite), donc
+ * pas de leak d'information à craindre vs silent count:0 (qui cassait
+ * la cohérence API et la transparence RGPD Art. 12).
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { AuthError, requireAuth } from "@/lib/auth"
@@ -25,13 +26,16 @@ export async function GET(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
     const user = requireAuth(req)
-    // MED-1 review round 3 — consent obligatoire ; si révoqué, count=0
-    // (anti-leak vs 403 qui révèlerait au client un changement d'état).
+    // NEW-L4 review round 4 — 403 cohérent avec les 3 autres routes
+    // (le client connaît son propre état de consent, pas de leak réel).
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json(
-        { count: 0 },
-        { headers: { "Cache-Control": "no-store, private" } },
+        { error: "gdprConsentRequired" },
+        {
+          status: 403,
+          headers: { "Cache-Control": "no-store, private" },
+        },
       )
     }
     const result = await messagingService.unreadCount(user.id)

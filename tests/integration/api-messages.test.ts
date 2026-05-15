@@ -135,7 +135,8 @@ describe("POST /api/messages", () => {
     expect(body.message.id).toBe("m1")
   })
 
-  it("400 on invalid body (missing toUserId)", async () => {
+  // NEW-M6 round 4 — Zod fail = 422 (normalisé avec MessagingValidationError).
+  it("422 on invalid body (missing toUserId)", async () => {
     const res = await sendPOST(
       makeReq("/api/messages", {
         method: "POST",
@@ -143,7 +144,7 @@ describe("POST /api/messages", () => {
         body: JSON.stringify({ body: "Hello" }),
       }),
     )
-    expect(res.status).toBe(400)
+    expect(res.status).toBe(422)
   })
 
   it("415 on non-JSON Content-Type", async () => {
@@ -171,6 +172,25 @@ describe("POST /api/messages", () => {
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.reason).toBe("psNotManaging")
+  })
+
+  // NEW-H1 HSA review round 4 — `recipientConsentRevoked` NE doit PAS leak
+  // côté client (anti-énumération users ayant révoqué consent).
+  it("403 with safe reason 'forbidden' when recipient revoked consent", async () => {
+    vi.mocked(messagingService.send).mockRejectedValue(
+      new MessagingAccessError("recipientConsentRevoked"),
+    )
+    const res = await sendPOST(
+      makeReq("/api/messages", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ toUserId: 2, body: "x" }),
+      }),
+    )
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.reason).toBe("forbidden") // NOT "recipientConsentRevoked"
+    expect(body.reason).not.toBe("recipientConsentRevoked")
   })
 
   it("422 on validation error from service (e.g. selfMessage)", async () => {
@@ -234,6 +254,16 @@ describe("GET /api/messages/unread-count", () => {
     expect(res.headers.get("Cache-Control")).toContain("no-store")
     const body = await res.json()
     expect(body.count).toBe(5)
+  })
+
+  // NEW-L4 round 4 — 403 cohérent si consent révoqué (au lieu count:0).
+  it("403 gdprConsentRequired when consent revoked (consistent with other routes)", async () => {
+    const { requireGdprConsent } = await import("@/lib/gdpr")
+    vi.mocked(requireGdprConsent).mockResolvedValueOnce(false)
+    const res = await unreadGET(makeReq("/api/messages/unread-count"))
+    expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe("gdprConsentRequired")
   })
 })
 

@@ -118,9 +118,12 @@ export async function POST(req: NextRequest) {
     }
     const parsed = sendSchema.safeParse(body)
     if (!parsed.success) {
+      // NEW-M6 review round 4 — Normalisation : Zod fail = 422 (cohérent
+      // avec MessagingValidationError service-side, body bien formé JSON
+      // mais unprocessable). Évite divergence 400 (Zod) vs 422 (service).
       return NextResponse.json(
         { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
+        { status: 422 },
       )
     }
 
@@ -141,7 +144,18 @@ export async function POST(req: NextRequest) {
         )
       }
       if (e instanceof MessagingAccessError) {
-        return NextResponse.json({ error: "forbidden", reason: e.reason }, { status: 403 })
+        // NEW-H1 review round 4 — Anti-énumération RGPD Art. 5(1)(f).
+        // La raison `recipientConsentRevoked` ne doit JAMAIS être exposée
+        // côté client : un attaquant authentifié pourrait énumérer les
+        // utilisateurs ayant révoqué leur consent (cartographie graphe
+        // social Diabeo). La raison reste dans l'audit log (admin-only,
+        // immuable) pour forensique CNIL.
+        const safeReason =
+          e.reason === "recipientConsentRevoked" ? "forbidden" : e.reason
+        return NextResponse.json(
+          { error: "forbidden", reason: safeReason },
+          { status: 403 },
+        )
       }
       if (e instanceof MessagingRateLimitError) {
         return NextResponse.json(
