@@ -122,7 +122,10 @@ export async function POST(req: NextRequest) {
     // Success — clear rate limit, create session, sign JWT
     await clearAttempts(emailHash)
 
-    const session = await createSession(user.id)
+    const session = await createSession(user.id, {
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    })
 
     const token = await signJwt({
       sub: user.id,

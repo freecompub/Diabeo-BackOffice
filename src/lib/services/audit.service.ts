@@ -183,6 +183,12 @@ export type AuditResource =
   | "INVOICE"
   /** Groupe 6 Batch 1 — Activité physique (US-2059 / 2060 / 2061). */
   | "ACTIVITY"
+  /** Groupe 9 — Admin & Ops : DataBreach RGPD Art. 33 (US-2137). */
+  | "DATA_BREACH"
+  /** Groupe 9 — Admin & Ops : dashboard santé système (US-2150). */
+  | "SYSTEM_HEALTH"
+  /** Groupe 9 — Admin & Ops : settings cabinet manager-level (US-2147). */
+  | "CABINET_SETTINGS"
 
 /**
  * Audit log entry — parameters for logging an action.

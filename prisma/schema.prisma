@@ -391,6 +391,8 @@ model User {
   acknowledgedRiskScores            PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
   // Groupe 7 Batch 1 — Facturation (US-2103/2105/2107)
   createdInvoices                   Invoice[]                         @relation("InvoiceCreator")
+  // Groupe 9 — Admin & Ops (US-2137 DataBreach)
+  declaredDataBreaches              DataBreach[]                      @relation("DataBreachDeclarer")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -428,9 +430,19 @@ model Session {
   /// True if this session was created via MFA challenge. HDS forensics:
   /// "which live sessions were second-factor-verified vs password-only".
   mfaVerified  Boolean  @default(false) @map("mfa_verified")
+  /// US-2007 (Groupe 9) — metadata pour la vue "Sessions multiples" UI :
+  /// le user identifie chaque session par device/localisation et peut
+  /// la révoquer. Pas de PHI — IP et UA déjà persistés en AuditLog.
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  ipAddress    String?  @map("ip_address") @db.VarChar(45)
+  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  /// Dernière activité (bumpé à chaque vérification token).
+  lastSeenAt   DateTime @default(now()) @map("last_seen_at") @db.Timestamptz()
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  /// US-2007 — listing par user trié par récence.
+  @@index([userId, createdAt(sort: Desc)])
   @@map("sessions")
 }
 
@@ -3017,4 +3029,85 @@ model InvoiceSequence {
 
   @@unique([countryCode, year])
   @@map("invoice_sequences")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 18. DOMAINE ADMIN & OPS — Groupe 9 (US-2137 / 2147 / 2150)
+// ═══════════════════════════════════════════════════════════════
+
+/// US-2137 — Sévérité d'une violation données personnelles (échelle CNIL).
+/// `high` ou `critical` déclenche l'obligation de notification à la CNIL
+/// dans les 72h (art. 33 RGPD).
+enum DataBreachSeverity {
+  low
+  medium
+  high
+  critical
+
+  @@map("data_breach_severity")
+}
+
+/// US-2137 — Machine d'états workflow notification breach CNIL.
+///
+///   draft → under_assessment → notified_cnil → notified_users → closed
+///   draft → closed (false_alarm)
+///   under_assessment → closed (non_qualifying)
+enum DataBreachStatus {
+  draft
+  under_assessment
+  notified_cnil
+  notified_users
+  closed
+
+  @@map("data_breach_status")
+}
+
+/// US-2137 — Registre des violations de données personnelles (RGPD Art. 33).
+///
+/// Workflow CNIL :
+///  1. Détection → `draft`
+///  2. Évaluation (DPO, juriste) → `under_assessment`
+///  3. Si severity ≥ high, notification CNIL dans 72h → `notified_cnil`
+///     (timer démarré à `detectedAt`).
+///  4. Si risque élevé pour les personnes, notification users → `notified_users`
+///  5. Clôture une fois remédiation appliquée → `closed`
+///
+/// Champs sensibles (`description`, `remediation`, `cnilCaseNumber`)
+/// chiffrés AES-256-GCM au service layer.
+model DataBreach {
+  id                 Int                @id @default(autoincrement())
+  severity           DataBreachSeverity
+  status             DataBreachStatus   @default(draft)
+  /// Titre court — pas chiffré pour permettre listing / search.
+  ///
+  /// **⚠️ NE PAS METTRE DE PHI/PII** : NIRPP, nom patient, email, téléphone.
+  /// Utiliser une référence technique (ticket-ID, incident-code). Le service
+  /// valide une heuristique anti-PII (15 digits, téléphone FR, email) au declare.
+  /// PHI/PII appartient à `description_enc` (chiffré AES-256-GCM).
+  title              String             @db.VarChar(200)
+  /// Description détaillée (chiffrée AES-256-GCM). Inclut nature exacte
+  /// de la fuite, données affectées, vecteur, mesures immédiates.
+  descriptionEnc     String?            @map("description_enc")
+  /// Plan de remédiation (chiffré). Mis à jour au fil du workflow.
+  remediationEnc     String?            @map("remediation_enc")
+  /// Numéro de dossier CNIL une fois notifié (chiffré, contient PII métier).
+  cnilCaseNumberEnc  String?            @map("cnil_case_number_enc")
+  /// Compteur des users notifiés (US art. 34). Pour audit/justification CNIL.
+  usersNotifiedCount Int                @default(0) @map("users_notified_count")
+  detectedAt         DateTime           @map("detected_at") @db.Timestamptz()
+  declaredBy         Int?               @map("declared_by")
+  cnilNotifiedAt     DateTime?          @map("cnil_notified_at") @db.Timestamptz()
+  usersNotifiedAt    DateTime?          @map("users_notified_at") @db.Timestamptz()
+  closedAt           DateTime?          @map("closed_at") @db.Timestamptz()
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.Timestamptz()
+
+  declarer User? @relation("DataBreachDeclarer", fields: [declaredBy], references: [id], onDelete: SetNull)
+
+  @@index([status, severity, detectedAt(sort: Desc)])
+  @@index([detectedAt(sort: Desc)])
+  /// FK SetNull : index sur declaredBy pour la requête forensique
+  /// "violations déclarées par user X".
+  @@index([declaredBy])
+  @@map("data_breaches")
 }

@@ -5,6 +5,7 @@ import {
   getSession,
   signJwt,
 } from "@/lib/auth"
+import { touchSession } from "@/lib/auth/session"
 import { isSessionRevoked } from "@/lib/auth/revocation"
 import { prisma } from "@/lib/db/client"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
@@ -28,6 +29,12 @@ export async function POST(req: NextRequest) {
     if (!session) {
       return NextResponse.json({ error: "sessionExpired" }, { status: 401 })
     }
+
+    // US-2007 H1 (review re-1 PR #409) — bump lastSeenAt à chaque
+    // refresh JWT (toutes les ~15 min). Fire-and-forget : un échec
+    // ne doit pas bloquer le refresh. Le middleware Edge ne peut pas
+    // appeler Prisma, donc refresh est le checkpoint Node naturel.
+    void touchSession(session.id)
 
     // Fetch current user role (may have changed since token was issued)
     const user = await prisma.user.findUnique({

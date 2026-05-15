@@ -31,6 +31,26 @@ function getRedis(): Redis | null {
   return redis
 }
 
+/**
+ * H3 (review re-1 PR #409) — Probe pour le system-health dashboard.
+ * Distingue not-configured (Redis env absent) vs configured-down
+ * (échec connexion). Sans ce helper, `cacheGet` swallow l'erreur
+ * en silence et le dashboard ne détecte jamais une panne Redis.
+ */
+export async function pingRedis(): Promise<"ok" | "down" | "not_configured"> {
+  const client = getRedis()
+  if (!client) return "not_configured"
+  try {
+    await Promise.race([
+      client.get<string>("__healthcheck__"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 1500)),
+    ])
+    return "ok"
+  } catch {
+    return "down"
+  }
+}
+
 const memoryFallback = new Map<string, { value: unknown; expiresAt: number }>()
 
 function nsKey(bucket: string, key: string): string {
