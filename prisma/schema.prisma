@@ -1344,9 +1344,25 @@ model PatientDevice {
   category        DeviceCategory?
   connectionTypes String[]        @map("connection_types")
   modelIdentifier String?         @map("model_identifier") @db.VarChar(100)
+  /// Groupe 1 — US-2243 supervision : niveau pile (0-100, %).
+  /// Null = info non remontée par l'app patient (legacy ou capteur muet).
+  batteryLevel    Int?            @map("battery_level") @db.SmallInt
+  /// Groupe 1 — US-2243 supervision : date d'expiration capteur CGM
+  /// (Dexcom 10j, FreeStyle Libre 14j, Medtronic Guardian 7j). Null si
+  /// pas applicable (pompe, lecteur BGM = consommable longue durée).
+  sensorExpiresAt DateTime?       @map("sensor_expires_at") @db.Timestamptz()
+  /// Groupe 1 — US-2244 sync status : dernière sync du device. Distinct
+  /// de DeviceDataSync.lastSyncDate qui agrège par (user, deviceUid)
+  /// global. Ici on track la fraîcheur par appareil physique (un patient
+  /// peut avoir 2 capteurs en simultané — un retire, un actif).
+  lastSyncAt      DateTime?       @map("last_sync_at") @db.Timestamptz()
 
   patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
 
+  /// US-2244 — index pour cohort sync status filter (lastSyncAt asc desc).
+  @@index([patientId, lastSyncAt])
+  /// US-2243 — index pour cohort capteurs proches expiration.
+  @@index([sensorExpiresAt])
   @@map("patient_devices")
 }
 
