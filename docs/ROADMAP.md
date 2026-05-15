@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> **Mise à jour 2026-05-15 (post-PR #409) — Reclassification V1→V2 (14 US)** : décision Samir de déplacer en V2 toutes les US bloquées par procurement externe (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ) ou par dépendances internes V3 (US-2150/US-2200), pour clarifier le scope V1 livrable sans dépendance non maîtrisée. **US reclassées** : US-2031 (Medtronic), US-2104 (Abonnement DZ), US-2106 (Stripe webhooks), US-2109 (Remboursements), US-2124 (DMP), US-2125 (MSSanté), US-2126 (INSi), US-2127 (PSC), US-2153 (Logs), US-2164 (APM), US-2165 (Error tracking), US-2411 (KPI cabinet admin), US-2413 (Conformité RGPD admin), US-2041 (Pattern AI déjà notée V2 per spec). **Impact stats** : V1 141→127 (% DONE 59→65), V2 58→72. Total 292 inchangé. Cf. tableau V1 + V2 ci-dessous.
+> **Mise à jour 2026-05-15 (post-PR #409) — Reclassification V1→V2 (15 US)** : décision Samir de déplacer en V2 toutes les US bloquées par procurement externe (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ) ou par dépendances internes V3 (US-2150/US-2200), pour clarifier le scope V1 livrable sans dépendance non maîtrisée. **US reclassées** : US-2031 (Medtronic), US-2041 (Pattern AI), US-2077 (MSSanté UX, dep US-2125), US-2104 (Abonnement DZ), US-2106 (Stripe webhooks), US-2109 (Remboursements), US-2124 (DMP), US-2125 (MSSanté backend), US-2126 (INSi), US-2127 (PSC), US-2153 (Logs), US-2164 (APM), US-2165 (Error tracking), US-2411 (KPI cabinet admin), US-2413 (Conformité RGPD admin). **Impact stats** : V1 141→126 (% DONE 59→66), V2 58→73. Total 292 inchangé. Cf. tableau V1 + V2 ci-dessous.
 
 > Précédente mise à jour : 2026-05-15 — Groupe 9 Admin & Ops Batch 1 livré (PR #409, 4 US internes US-2007/2137/2147/2150, ~4 SP, option A). Migration `20260515400000_groupe9_admin_ops` : Session enrichi (createdAt/ipAddress/userAgent/lastSeenAt + index user+createdAt) + nouveau model `DataBreach` (RGPD Art. 33 registre violations) + 2 enums (DataBreachSeverity low/medium/high/critical, DataBreachStatus FSM `draft→under_assessment→notified_cnil→notified_users→closed` terminal). 4 services : `session-management.service` (listOwn isCurrent flag / revokeOne self-only avec accessDenied audit US-2265 sur cross-user / revokeOthers preserve current via WHERE not in), `data-breach.service` (declare + transition FSM avec ALLOWED_TRANSITIONS + chiffrement AES-256-GCM description/remediation/cnilCaseNumber + `cnilDeadlineHoursRemaining` cap 0 + flag `cnilDeadlineExceeded` + heuristique anti-PHI title regex NIRPP/téléphone/email), `cabinet-settings.service` (manager-level subset vs ADMIN full CRUD US-2117/2118, openingHoursSchema validation typed CabinetSettingsValidationError 422), `system-health.service` (snapshot Promise.all DB+Redis+CGM lag+backups freshness+active sessions+unauthorizedAttempts24h + per-check withTimeout 2000ms + pingRedis distingue not_configured/ok/down). 10 nouvelles routes : 3 sessions (/api/account/sessions + [id]) + 4 data-breaches (/api/admin/data-breaches + [id] + [id]/transition) + 2 cabinet-settings (/api/cabinet/[id]/settings GET+PUT) + 1 system-health (/api/admin/system-health). touchSession câblé Node `/api/auth/refresh` (~15min cycle) + lazy bump `listOwn` (middleware Edge incompatible Prisma). AuthUser.sessionId injecté via x-session-id header middleware. AuditResource enum +3 : DATA_BREACH / SYSTEM_HEALTH / CABINET_SETTINGS. Audit kinds typés unions + AUDIT_KIND const satisfies. **2 rounds review** (code-reviewer) : 19 findings (4H + 8M + 7L) — 0 résiduel Critical/High. NEW-M2 PHI heuristic regex sans ReDoS + cap 200c title + JSDoc ⚠️ schema. NEW-M3 backup freshness 30h→36h. NEW-M4 metrics rename recentErrors24h→unauthorizedAttempts24h (sémantique honnête RBAC fail). NEW-L1 audit metadata.fields noms business (description vs descriptionEnc). NEW-L5 detectedAt window 1y→5y. V1 79 → 83 DONE (59%). Total 147/292 → 151/292 (**52%**). 1887/1887 tests verts. ⚠️ Batch 2 Groupe 9 (4 US ⏳ Blocked procurement) : US-2004 Cloudflare Turnstile, US-2153 Logs Loki/OVH, US-2164 APM Sentry, US-2165 Error Sentry. V1 follow-ups : touchSession Redis throttle > 50k users actifs, pingRedis memoize 30s, OpenAPI doc anti-PHI title contract.
 
@@ -16,13 +16,13 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 127   | 83   | 0       | 44          | **65%** |
-| **V2**   | 72    | 0    | 0       | 72          | **0%**  |
+| **V1**   | 126   | 83   | 0       | 43          | **66%** |
+| **V2**   | 73    | 0    | 0       | 73          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
 | **TOTAL**| **292** | **151** | **1**   | **140**     | **52%** |
 
-> **Reclassification 2026-05-15** : 14 US déplacées V1 → V2 (V1 141→127, V2 58→72). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
+> **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -268,7 +268,7 @@
 | US | Titre | Statut |
 |----|-------|--------|
 | US-2076 | Messagerie sécurisée patient↔PS | NOT STARTED (V1, 13 SP — Batch 3, chantier multi-PR) |
-| US-2077 | MSSanté intégration | NOT STARTED (V1, 3 SP — Batch 2 standalone FR PKI) |
+| US-2077 | MSSanté intégration | ⏸️ **V2** — dep US-2125 backend (Mailiz/Apicrypt) lui-même V2 |
 | US-2078 | Templates de messages | DONE (PR #390) |
 | US-2080 | Accusés de lecture | DONE (PR #390 — ReadReceipt générique + H9 access check) |
 | US-2083 | Délégation médecin → IDE | DONE (PR #390 — IDE→DOCTOR workflow + colleague enforcement) |
@@ -485,7 +485,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V2 — 72 US
+## V2 — 73 US
 
 | Domaine | US | Titre |
 |---------|----|-------|
@@ -505,6 +505,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | Facturation | US-2104 | Abonnement DZ (reclassée V1→V2 — partenaire bancaire DZ) |
 | Facturation | US-2106 | Webhooks idempotents Stripe (reclassée V1→V2 — provision Stripe) |
 | Facturation | US-2109 | Remboursements (reclassée V1→V2 — dep US-2106) |
+| Interop | US-2077 | MSSanté intégration UX (reclassée V1→V2 — dep US-2125 backend) |
 | Interop | US-2124 | DMP / Mon Espace Santé (reclassée V1→V2 — ANS 10-30k€) |
 | Interop | US-2125 | MSSanté backend (reclassée V1→V2 — contrat Mailiz/Apicrypt) |
 | Interop | US-2126 | INSi (reclassée V1→V2 — ANS 5-10k€) |
