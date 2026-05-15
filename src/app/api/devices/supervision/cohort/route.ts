@@ -8,7 +8,11 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
+import {
+  auditedRequireRole,
+  mapErrorToResponse,
+  COHORT_RESOURCE_ID,
+} from "@/lib/team-route-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { deviceSupervisionService } from "@/lib/services/device-supervision.service"
 
@@ -34,7 +38,7 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       )
     }
-    const user = await auditedRequireRole(req, "NURSE", ctx, "DEVICE", "cohort")
+    const user = await auditedRequireRole(req, "NURSE", ctx, "DEVICE", COHORT_RESOURCE_ID)
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

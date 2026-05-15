@@ -2,23 +2,42 @@
  * @route GET /api/devices/sync-status/cohort
  * @description US-2244 — Cohort sync status. NURSE+ uniquement.
  *   Query : `?statuses=critical,late&limit=100`
+ *
+ * H2 (review re-1 PR #408) — Zod fail-fast sur tokens invalides
+ * dans `?statuses=` au lieu de filter silencieux.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
-import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
+import {
+  auditedRequireRole,
+  mapErrorToResponse,
+  COHORT_RESOURCE_ID,
+} from "@/lib/team-route-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { deviceSyncStatusService } from "@/lib/services/device-sync-status.service"
 
 const SYNC_STATUSES = ["ok", "late", "critical", "never_synced"] as const
 
 const querySchema = z.object({
-  statuses: z.string().optional().transform((s) =>
-    s
-      ? s.split(",").filter((v) => SYNC_STATUSES.includes(v as typeof SYNC_STATUSES[number])) as typeof SYNC_STATUSES[number][]
-      : undefined,
-  ),
+  statuses: z.string().optional()
+    .transform((s, ctx) => {
+      if (!s) return undefined
+      const tokens = s.split(",").map((t) => t.trim()).filter(Boolean)
+      // H2 — fail-fast si un token n'est pas dans la whitelist.
+      const invalid = tokens.filter(
+        (t) => !SYNC_STATUSES.includes(t as typeof SYNC_STATUSES[number]),
+      )
+      if (invalid.length > 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `unknown status token(s): ${invalid.join(",")}`,
+        })
+        return z.NEVER
+      }
+      return tokens as typeof SYNC_STATUSES[number][]
+    }),
   limit: z.coerce.number().int().positive().max(500).default(100),
 })
 
@@ -34,7 +53,7 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       )
     }
-    const user = await auditedRequireRole(req, "NURSE", ctx, "DEVICE", "cohort")
+    const user = await auditedRequireRole(req, "NURSE", ctx, "DEVICE", COHORT_RESOURCE_ID)
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

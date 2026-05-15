@@ -12,6 +12,8 @@ import { prismaMock } from "../helpers/prisma-mock"
 import {
   deviceSupervisionService,
   DeviceSupervisionAccessError,
+  DeviceSupervisionNotFoundError,
+  DeviceSupervisionValidationError,
   SUPERVISION_BOUNDS,
 } from "@/lib/services/device-supervision.service"
 
@@ -27,6 +29,7 @@ const baseDevice = {
 
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
+  prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
 })
 
 describe("listByPatient (US-2243)", () => {
@@ -80,9 +83,21 @@ describe("listByPatient (US-2243)", () => {
       { ...baseDevice, id: 102, sensorExpiresAt: null },
     ] as any)
     const out = await deviceSupervisionService.listByPatient(42, 9, "VIEWER")
-    expect(out[0]!.sensorExpiringSoon).toBe(true)  // 2j < 3j
+    expect(out[0]!.sensorExpiringSoon).toBe(true)  // 2j < 3j (future)
+    expect(out[0]!.sensorExpired).toBe(false)
     expect(out[1]!.sensorExpiringSoon).toBe(false) // 5j > 3j
     expect(out[2]!.sensorExpiringSoon).toBe(false) // null
+  })
+
+  // M2 (review re-1) — distinction sensorExpired vs sensorExpiringSoon.
+  it("M2 — sensor déjà expiré → sensorExpired=true, sensorExpiringSoon=false", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([
+      { ...baseDevice, sensorExpiresAt: new Date(Date.now() - 86_400_000) }, // hier
+    ] as any)
+    const out = await deviceSupervisionService.listByPatient(42, 9, "VIEWER")
+    expect(out[0]!.sensorExpired).toBe(true)
+    expect(out[0]!.sensorExpiringSoon).toBe(false)
   })
 
   it("audit US-2268 pivot patientId + count", async () => {
@@ -162,7 +177,7 @@ describe("listCohort (US-2243)", () => {
     expect(call.take).toBe(SUPERVISION_BOUNDS.MAX_COHORT_LIMIT)
   })
 
-  it("audit metadata includes filters + count", async () => {
+  it("audit metadata includes filters + count + scope=all (ADMIN)", async () => {
     prismaMock.patientDevice.findMany.mockResolvedValue([baseDevice] as any)
     await deviceSupervisionService.listCohort({
       batteryLow: true, sensorExpiringSoon: true, category: "cgm",
@@ -172,6 +187,87 @@ describe("listCohort (US-2243)", () => {
     expect(meta.metadata.batteryLow).toBe(true)
     expect(meta.metadata.sensorExpiringSoon).toBe(true)
     expect(meta.metadata.category).toBe("cgm")
-    expect(meta.metadata.accessibleScope).toBe("all")
+    // M4 (review re-1) — scope discriminated union typé.
+    expect(meta.metadata.scope).toBe("all")
+    expect(meta.metadata.accessibleCount).toBeUndefined()
+  })
+
+  // M4 — scope=scoped pour DOCTOR/NURSE avec accessibleCount.
+  it("M4 — audit metadata.scope='scoped' + accessibleCount pour DOCTOR", async () => {
+    prismaMock.patientService.findMany.mockResolvedValue([
+      { patientId: 42 }, { patientId: 99 },
+    ] as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
+    await deviceSupervisionService.listCohort({}, 9, "DOCTOR")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.scope).toBe("scoped")
+    expect(meta.metadata.accessibleCount).toBe(2)
+  })
+})
+
+// ─── H1 — sync-ping ──────────────────────────────────────────────────
+
+describe("recordSyncPing (H1 review re-1 PR #408)", () => {
+  beforeEach(() => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    prismaMock.patientDevice.findFirst.mockResolvedValue(baseDevice as any)
+  })
+
+  it("updates lastSyncAt + audit kind=sync_ping", async () => {
+    prismaMock.patientDevice.update.mockResolvedValue({
+      ...baseDevice, lastSyncAt: new Date(),
+    } as any)
+    const out = await deviceSupervisionService.recordSyncPing(42, 100, {}, 9, "VIEWER")
+    expect(out.id).toBe(100)
+    expect(prismaMock.patientDevice.update).toHaveBeenCalled()
+    const updateArg = prismaMock.patientDevice.update.mock.calls[0]![0]!
+    expect((updateArg.data as any).lastSyncAt).toBeInstanceOf(Date)
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.kind).toBe("device_supervision.sync_ping")
+    expect(meta.metadata.patientId).toBe(42)
+  })
+
+  it("optional batteryLevel + sensorExpiresAt applied", async () => {
+    const sensorExpiry = new Date(Date.now() + 10 * 86_400_000)
+    prismaMock.patientDevice.update.mockResolvedValue({
+      ...baseDevice, batteryLevel: 75, sensorExpiresAt: sensorExpiry,
+    } as any)
+    await deviceSupervisionService.recordSyncPing(42, 100, {
+      batteryLevel: 75, sensorExpiresAt: sensorExpiry,
+    }, 9, "VIEWER")
+    const updateArg = prismaMock.patientDevice.update.mock.calls[0]![0]!
+    expect((updateArg.data as any).batteryLevel).toBe(75)
+    expect((updateArg.data as any).sensorExpiresAt).toEqual(sensorExpiry)
+  })
+
+  it("L1 — rejects non-integer batteryLevel (float)", async () => {
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      batteryLevel: 87.5,
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "batteryLevel" })
+  })
+
+  it("L1 — rejects batteryLevel < 0", async () => {
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      batteryLevel: -1,
+    }, 9, "VIEWER")).rejects.toBeInstanceOf(DeviceSupervisionValidationError)
+  })
+
+  it("L1 — rejects batteryLevel > 100", async () => {
+    await expect(deviceSupervisionService.recordSyncPing(42, 100, {
+      batteryLevel: 101,
+    }, 9, "VIEWER")).rejects.toBeInstanceOf(DeviceSupervisionValidationError)
+  })
+
+  it("throws NotFound when device doesn't belong to patient", async () => {
+    prismaMock.patientDevice.findFirst.mockResolvedValue(null)
+    await expect(deviceSupervisionService.recordSyncPing(42, 999, {}, 9, "VIEWER"))
+      .rejects.toBeInstanceOf(DeviceSupervisionNotFoundError)
+  })
+
+  it("VIEWER cross-patient throws AccessError (not Found leak)", async () => {
+    // Le device existe + appartient au patient 99, mais VIEWER 9 → 42.
+    prismaMock.patient.findFirst.mockResolvedValue(null)
+    await expect(deviceSupervisionService.recordSyncPing(99, 100, {}, 9, "VIEWER"))
+      .rejects.toBeInstanceOf(DeviceSupervisionAccessError)
   })
 })

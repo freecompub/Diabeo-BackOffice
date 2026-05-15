@@ -142,7 +142,23 @@ export const deviceSyncStatusService = {
 
   /**
    * Cohort sync status — un row par patient accessible avec son status.
-   * Calcul en mémoire après findMany aggrégé (limité par MAX_COHORT_LIMIT).
+   * Inclut les patients SANS device (status = `never_synced`).
+   *
+   * **H3 (review re-1 PR #408)** : un patient critique sans appairage
+   * doit apparaître au dashboard supervision NURSE+, sinon il "passe
+   * sous les radars". Pour DOCTOR/NURSE/VIEWER, on enumère les IDs
+   * accessibles puis on merge avec les agg-groupBy.
+   *
+   * Pour ADMIN (`accessible === null`), on ne peut pas enumérer la
+   * table `Patient` complète (potentiellement 50k+ rows). Comportement
+   * documenté : ADMIN cohortStatus se restreint aux patients ayant ≥1
+   * device entry. Audit metadata `adminEnumerationLimited=true` pour
+   * forensique transparente.
+   *
+   * **M3 (review re-1)** : ordre tri = critical → late → never_synced
+   * → ok (un patient never_synced est plus alarmant qu'un patient OK).
+   *
+   * @perf cohortes ≤ 1000 patients OK (tri/slice in-memory).
    */
   async cohortStatus(
     filters: CohortFilters,
@@ -176,17 +192,42 @@ export const deviceSyncStatusService = {
       }
     })
 
+    // H3 (review re-1 PR #408) — pour les rôles non-ADMIN, on enumère
+    // les IDs accessibles et on ajoute les patients SANS device entry
+    // comme `never_synced`.
+    let adminEnumerationLimited = false
+    if (accessible !== null) {
+      const patientsWithDevices = new Set(rows.map((r) => r.patientId))
+      const missingPatients = accessible.filter((id) => !patientsWithDevices.has(id))
+      for (const patientId of missingPatients) {
+        results.push({
+          patientId,
+          status: "never_synced",
+          lastSyncAt: null,
+          minutesSinceLastSync: null,
+        })
+      }
+    } else {
+      adminEnumerationLimited = true
+    }
+
     if (filters.statuses && filters.statuses.length > 0) {
       const filter = new Set(filters.statuses)
       results = results.filter((r) => filter.has(r.status))
     }
 
-    // Order: critical first (urgence visuelle dashboard), then late, ok, never_synced.
+    // M3 — Ordre tri : critical → late → never_synced → ok (un patient
+    // jamais sync est plus alarmant qu'un patient OK).
     const order: Record<SyncStatus, number> = {
       critical: 0, late: 1, never_synced: 2, ok: 3,
     }
     results.sort((a, b) => order[a.status] - order[b.status])
     results = results.slice(0, limit)
+
+    // M4 (review re-1) — scope discriminated union typé.
+    const scopeMetadata = accessible === null
+      ? { scope: "all" as const }
+      : { scope: "scoped" as const, accessibleCount: accessible.length }
 
     await auditService.log({
       userId: auditUserId,
@@ -198,7 +239,8 @@ export const deviceSyncStatusService = {
       metadata: {
         kind: AUDIT_KIND.READ_COHORT,
         count: results.length,
-        accessibleScope: accessible === null ? "all" : accessible.length,
+        ...scopeMetadata,
+        ...(adminEnumerationLimited ? { adminEnumerationLimited: true } : {}),
         ...(filters.statuses ? { statusFilter: filters.statuses } : {}),
         limit,
       },

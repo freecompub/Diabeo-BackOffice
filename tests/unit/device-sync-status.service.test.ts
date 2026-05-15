@@ -172,7 +172,7 @@ describe("cohortStatus (US-2244)", () => {
     expect(out).toHaveLength(SYNC_STATUS_BOUNDS.MAX_COHORT_LIMIT)
   })
 
-  it("audit row resource=DEVICE, pas de resourceId, metadata avec count", async () => {
+  it("audit row resource=DEVICE, pas de resourceId, metadata avec count + scope=all", async () => {
     pmGroupBy.mockResolvedValue([] as any)
     await deviceSyncStatusService.cohortStatus({}, 9, "ADMIN")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
@@ -180,7 +180,38 @@ describe("cohortStatus (US-2244)", () => {
     expect(meta.resourceId).toBeNull()
     expect(meta.metadata.kind).toBe("device_sync_status.read.cohort")
     expect(meta.metadata.count).toBe(0)
-    expect(meta.metadata.accessibleScope).toBe("all")
+    // M4 (review re-1) — scope discriminated union typé.
+    expect(meta.metadata.scope).toBe("all")
+    expect(meta.metadata.adminEnumerationLimited).toBe(true)
+  })
+
+  // H3 (review re-1 PR #408) — patients sans device apparaissent comme never_synced.
+  it("H3 — DOCTOR cohort inclut les patients sans device (never_synced)", async () => {
+    prismaMock.patientService.findMany.mockResolvedValue([
+      { patientId: 42 }, { patientId: 99 }, { patientId: 100 },
+    ] as any)
+    // groupBy ne retourne que les patients ayant ≥1 device.
+    pmGroupBy.mockResolvedValue([
+      { patientId: 42, _max: { lastSyncAt: new Date() } },
+    ] as any)
+    const out = await deviceSyncStatusService.cohortStatus({}, 9, "DOCTOR")
+    expect(out).toHaveLength(3)
+    const byId = Object.fromEntries(out.map((r) => [r.patientId, r.status]))
+    expect(byId[42]).toBe("ok")
+    expect(byId[99]).toBe("never_synced")
+    expect(byId[100]).toBe("never_synced")
+  })
+
+  it("H3 — audit scope=scoped + accessibleCount pour DOCTOR", async () => {
+    prismaMock.patientService.findMany.mockResolvedValue([
+      { patientId: 42 }, { patientId: 99 },
+    ] as any)
+    pmGroupBy.mockResolvedValue([] as any)
+    await deviceSyncStatusService.cohortStatus({}, 9, "DOCTOR")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.scope).toBe("scoped")
+    expect(meta.metadata.accessibleCount).toBe(2)
+    expect(meta.metadata.adminEnumerationLimited).toBeUndefined()
   })
 
   it("VIEWER no patient → returns [] without groupBy call", async () => {
