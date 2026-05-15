@@ -73,6 +73,8 @@ describe("generateUserExport", () => {
     prismaMock.userPrivacySettings.findUnique.mockResolvedValue(null)
     prismaMock.userDayMoment.findMany.mockResolvedValue([])
     prismaMock.patient.findFirst.mockResolvedValue(null)
+    // US-2076 — messages Art. 20 portability
+    prismaMock.message.findMany.mockResolvedValue([])
 
     const result = await generateUserExport(1)
 
@@ -113,6 +115,8 @@ describe("generateUserExport", () => {
     prismaMock.patientDevice.findMany.mockResolvedValue([])
     prismaMock.appointment.findMany.mockResolvedValue([])
     prismaMock.medicalDocument.findMany.mockResolvedValue([])
+    // US-2076 — messages Art. 20 portability
+    prismaMock.message.findMany.mockResolvedValue([])
 
     const result = await generateUserExport(1)
 

@@ -11,6 +11,7 @@ import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
+import { requireGdprConsent } from "@/lib/gdpr"
 import {
   messagingService,
   MESSAGING_BOUNDS,
@@ -42,6 +43,11 @@ export async function GET(
   const ctx = extractRequestContext(req)
   try {
     const user = requireAuth(req)
+    // C1 (review) — Messagerie = données santé Art. 9 RGPD → consent obligatoire.
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {

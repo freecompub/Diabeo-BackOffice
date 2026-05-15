@@ -64,6 +64,16 @@ export async function deleteUserAccount(
       metadata: { type: "gdpr_erasure" },
     })
 
+    // US-2076 — Purge messages envoyés/reçus (RGPD Art. 17).
+    // FK Cascade ne se déclenche PAS car user est anonymisé via UPDATE
+    // (jamais hard-deleted), donc cleanup explicite ici. Couvre :
+    //   - patient ↔ PS : on supprime les 2 sens.
+    //   - staff ↔ staff : idem.
+    // Audit log reste preuve immuable de l'existence passée.
+    await tx.message.deleteMany({
+      where: { OR: [{ fromUserId: userId }, { toUserId: userId }] },
+    })
+
     // Delete push notification data
     await tx.pushScheduledNotification.deleteMany({ where: { userId } })
     await tx.pushNotificationLog.deleteMany({ where: { userId } })

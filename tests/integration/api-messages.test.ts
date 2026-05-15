@@ -19,6 +19,13 @@ import { NextRequest } from "next/server"
 // Mock Prisma client to avoid DATABASE_URL requirement.
 vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 
+// C1 review : routes gardées par requireGdprConsent — mock pour passer
+// la garde dans les tests d'intégration (le check est testé séparément).
+vi.mock("@/lib/gdpr", () => ({
+  requireGdprConsent: vi.fn().mockResolvedValue(true),
+  invalidateGdprConsentCache: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock("@/lib/services/messaging.service", async (orig) => {
   const actual = await orig<typeof import("@/lib/services/messaging.service")>()
   return {
@@ -279,13 +286,17 @@ describe("GET /api/messages/thread/[conversationKey]", () => {
 // ────────────────────────────────────────────────────────────────
 
 describe("PUT /api/messages/[id]/read", () => {
+  // H5 review : regex strict cuid1 → c + 24 base36 chars.
+  const VALID_CUID = "cl5xxxxxxxxxxxxxxxxxxxxxx" // 25 chars, c + 24 lowercase
+  const VALID_CUID_2 = "claaaaaaaaaaaaaaaaaaaaaaa"
+
   it("200 marks as read", async () => {
     vi.mocked(messagingService.markRead).mockResolvedValue({
-      id: "msg-1", readAt: new Date(), alreadyRead: false,
+      id: VALID_CUID, readAt: new Date(), alreadyRead: false,
     })
     const res = await markReadPUT(
-      makeReq("/api/messages/msg-1/read", { method: "PUT" }),
-      { params: Promise.resolve({ id: "msg-1" }) },
+      makeReq(`/api/messages/${VALID_CUID}/read`, { method: "PUT" }),
+      { params: Promise.resolve({ id: VALID_CUID }) },
     )
     expect(res.status).toBe(200)
     const body = await res.json()
@@ -297,16 +308,24 @@ describe("PUT /api/messages/[id]/read", () => {
       new MessagingNotFoundError(),
     )
     const res = await markReadPUT(
-      makeReq("/api/messages/msg-99/read", { method: "PUT" }),
-      { params: Promise.resolve({ id: "msg-99" }) },
+      makeReq(`/api/messages/${VALID_CUID_2}/read`, { method: "PUT" }),
+      { params: Promise.resolve({ id: VALID_CUID_2 }) },
     )
     expect(res.status).toBe(404)
   })
 
-  it("400 on invalid id shape (special chars)", async () => {
+  it("400 on invalid id shape (not cuid)", async () => {
     const res = await markReadPUT(
       makeReq("/api/messages/bad!id/read", { method: "PUT" }),
       { params: Promise.resolve({ id: "bad!id" }) },
+    )
+    expect(res.status).toBe(400)
+  })
+
+  it("400 on id with hyphen (not cuid base36)", async () => {
+    const res = await markReadPUT(
+      makeReq("/api/messages/msg-1/read", { method: "PUT" }),
+      { params: Promise.resolve({ id: "msg-1" }) },
     )
     expect(res.status).toBe(400)
   })

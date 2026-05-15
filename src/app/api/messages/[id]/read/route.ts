@@ -14,15 +14,17 @@ import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
+import { requireGdprConsent } from "@/lib/gdpr"
 import {
   messagingService,
   MessagingNotFoundError,
 } from "@/lib/services/messaging.service"
 
-// Cuid format : alphanumeric + hyphen + underscore (max 64 chars).
-// Permissif pour supporter cuid1/cuid2/ulid sans coupler à un format précis.
+// H5 (review) — Format cuid1 strict (Prisma `@default(cuid())`) :
+//   `c` + 24 caractères base36 lowercase. Resserre la regex pour éviter le
+//   probing par timing sur des IDs arbitraires longs.
 const paramsSchema = z.object({
-  id: z.string().min(1).max(64).regex(/^[A-Za-z0-9_-]+$/),
+  id: z.string().regex(/^c[a-z0-9]{24}$/, "invalidCuid"),
 })
 
 export async function PUT(
@@ -32,6 +34,11 @@ export async function PUT(
   const ctx = extractRequestContext(req)
   try {
     const user = requireAuth(req)
+    // C1 (review) — Messagerie = données santé Art. 9 RGPD → consent obligatoire.
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {

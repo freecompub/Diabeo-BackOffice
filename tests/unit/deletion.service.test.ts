@@ -47,6 +47,8 @@ describe("deleteUserAccount", () => {
 
     const mockTx = {
       auditLog: { create: vi.fn().mockResolvedValue({}) },
+      // US-2076 — messages purgés à la suppression user (C2 review).
+      message: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       pushScheduledNotification: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       pushNotificationLog: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       pushDeviceRegistration: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -99,6 +101,8 @@ describe("deleteUserAccount", () => {
 
     const mockTx = {
       auditLog: { create: vi.fn().mockResolvedValue({}) },
+      // US-2076 — messages purgés à la suppression user (C2 review).
+      message: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       pushScheduledNotification: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       pushNotificationLog: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       pushDeviceRegistration: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },

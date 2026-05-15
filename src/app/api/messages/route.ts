@@ -19,6 +19,7 @@ import {
   assertJsonContentType,
   assertBodySize,
 } from "@/lib/team-route-helpers"
+import { requireGdprConsent } from "@/lib/gdpr"
 import {
   messagingService,
   MESSAGING_BOUNDS,
@@ -49,6 +50,11 @@ export async function GET(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
     const user = requireAuth(req)
+    // C1 (review) — Messagerie = données santé Art. 9 RGPD → consent obligatoire.
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const parsedQuery = listQuerySchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
@@ -81,6 +87,11 @@ export async function POST(req: NextRequest) {
     if (sizeErr) return sizeErr
 
     const user = requireAuth(req)
+    // C1 (review) — Messagerie = données santé Art. 9 RGPD → consent obligatoire.
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) {
+      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+    }
     const body = await req.json().catch(() => null)
     if (!body) {
       return NextResponse.json({ error: "invalidJSON" }, { status: 400 })

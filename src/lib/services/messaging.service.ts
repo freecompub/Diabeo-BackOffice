@@ -24,10 +24,15 @@
  * Sécurité HDS :
  *   - Corps chiffré AES-256-GCM (IV+TAG+CIPHERTEXT) via `lib/crypto/health-data`.
  *   - Rate limit applicatif 100 msgs/min/user (in-memory, 1 VPS POC).
+ *     ⚠️ H8 (review) — Multi-instance breaks this : pour scaling horizontal
+ *     (> 1 VPS Node.js), migrer vers `@/lib/cache/redis-cache` atomic INCR+EXPIRE.
+ *     Aujourd'hui cohérent avec `auth/rate-limit.ts` login (même ADR).
  *   - FCM payload n'expose JAMAIS le plaintext — body = `[message chiffré]`.
+ *   - Decryption failure → `logger.error` (M3 review) pour alerte SOC.
  */
 
 import { createHash } from "crypto"
+import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt, HealthDataDecryptionError } from "@/lib/crypto/health-data"
 import { auditService, type AuditContext } from "./audit.service"
@@ -207,13 +212,19 @@ export async function canMessage(
 
   // ADMIN passe partout (forensique + outillage).
   if (fromUser.role === "ADMIN" || toUser.role === "ADMIN") {
-    // Si l'autre est un patient, on flag le pivot.
-    const otherPatient =
-      fromUser.role === "ADMIN" ? toUser.patient : fromUser.patient
+    // H7 (review) — Ne flag le pivot patient que si l'autre partie est
+    // PUREMENT un patient (role VIEWER + Patient associé). Sinon (PS qui
+    // serait aussi soigné sur la plateforme, ou ADMIN↔ADMIN), le message
+    // n'a pas pour contexte clinique ce patient → pivot null pour ne pas
+    // polluer la forensique CNIL "getByPatient(X)".
+    const other = fromUser.role === "ADMIN" ? toUser : fromUser
+    const isPurelyPatient =
+      other.role === "VIEWER" &&
+      other.patient !== null &&
+      other.patient.deletedAt === null
     return {
       allowed: true,
-      patientId:
-        otherPatient && otherPatient.deletedAt === null ? otherPatient.id : null,
+      patientId: isPurelyPatient ? other.patient!.id : null,
     }
   }
 
@@ -268,17 +279,23 @@ async function isPsManagingPatient(
   })
   if (!member) return false
 
+  // H6 (review) — Construction conditionnelle de l'OR pour éviter le sentinel
+  // `{id: -1}` (code smell + masque potentiel de futurs bugs).
+  const orClauses: Prisma.PatientWhereInput[] = [
+    { referent: { proId: member.id } },
+  ]
+  if (member.serviceId !== null) {
+    orClauses.push({
+      patientServices: { some: { serviceId: member.serviceId } },
+    })
+  }
+
   // Soft-deleted patient ne peut plus recevoir/envoyer.
   const patient = await prisma.patient.findFirst({
     where: {
       id: patientId,
       deletedAt: null,
-      OR: [
-        { referent: { proId: member.id } },
-        member.serviceId !== null
-          ? { patientServices: { some: { serviceId: member.serviceId } } }
-          : { id: -1 }, // sentinel never matches if member n'a pas de serviceId
-      ],
+      OR: orClauses,
     },
     select: { id: true },
   })
@@ -357,7 +374,15 @@ export const messagingService = {
     input: SendMessageInput,
     ctx: AuditContext,
   ): Promise<SendMessageResult> {
-    // 1. Validation longueur.
+    // 1. Rate limit FIRST (C5 review) — avant tout work coûteux (encrypt,
+    //    canMessage 4 queries). Empêche DoS amplification via probes parallel
+    //    sur `canMessage` qui consomme ~4 DB queries par appel.
+    const rate = checkAndRecordSendRate(fromUserId)
+    if (!rate.allowed) {
+      throw new MessagingRateLimitError(rate.retryAfterSeconds ?? 60)
+    }
+
+    // 2. Validation longueur (locale, pas de DB).
     if (typeof input.body !== "string" || input.body.length === 0) {
       throw new MessagingValidationError("body", "bodyEmpty")
     }
@@ -367,16 +392,10 @@ export const messagingService = {
       throw new MessagingValidationError("body", "bodyTooLong")
     }
 
-    // 2. RBAC.
+    // 3. RBAC métier (canMessage = 4 queries — protégé par rate-limit ci-dessus).
     const access = await canMessage(fromUserId, input.toUserId)
     if (!access.allowed) {
       throw new MessagingAccessError(access.reason ?? "forbidden")
-    }
-
-    // 3. Rate limit.
-    const rate = checkAndRecordSendRate(fromUserId)
-    if (!rate.allowed) {
-      throw new MessagingRateLimitError(rate.retryAfterSeconds ?? 60)
     }
 
     // 4. Encrypt + persist (transaction : message + audit).
@@ -467,12 +486,16 @@ export const messagingService = {
   },
 
   /**
-   * Liste les threads (conversations) d'un user. Aggregate via dernière
-   * dernière message + unread count par conversationKey.
+   * Liste les threads (conversations) d'un user. Aggregate via dernier
+   * message + unread count par `conversationKey`.
    *
-   * Approche V1 : 2 queries — `findMany` ordered + groupBy unread.
-   * Pas de GROUP BY natif Prisma sur "last message" → on prend N derniers
-   * messages distinct par `conversationKey` côté JS (cap = MAX_THREADS_PER_QUERY).
+   * Refactor C4+H4 (review) : remplace l'ancien pattern `take * 20` + dédup
+   * JS (qui pouvait masquer des threads + DoS 2000 décryptions/appel) par
+   * une query SQL native `DISTINCT ON (conversation_key)` PostgreSQL :
+   *   - 1 query pour les threads (≤ cappedLimit lignes, pas × 20)
+   *   - 1 query pour unread aggregate
+   *   - 1 query pour patients soft-delete filter (H3)
+   * Total : 3 queries au lieu d'over-fetch + dédup quadratique.
    */
   async listThreads(
     userId: number,
@@ -481,39 +504,33 @@ export const messagingService = {
   ): Promise<ThreadSummary[]> {
     const cappedLimit = Math.min(limit, MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY)
 
-    // 1. Dernier message par conversationKey (où user est from OU to).
-    //    On charge plus large que `cappedLimit` pour permettre dédup côté JS.
-    const rawMessages = await prisma.message.findMany({
-      where: {
-        OR: [{ fromUserId: userId }, { toUserId: userId }],
-        deletedAt: null,
-      },
-      orderBy: { createdAt: "desc" },
-      // Multiplier × 20 pour couvrir cas où user a beaucoup de messages
-      // dans un seul thread, sans charger tout l'historique.
-      take: cappedLimit * 20,
-      select: {
-        id: true,
-        conversationKey: true,
-        fromUserId: true,
-        toUserId: true,
-        bodyEncrypted: true,
-        patientId: true,
-        createdAt: true,
-        readAt: true,
-      },
-    })
-
-    // Dédup par conversationKey — garde le plus récent.
-    const seen = new Map<string, (typeof rawMessages)[number]>()
-    for (const m of rawMessages) {
-      if (!seen.has(m.conversationKey)) seen.set(m.conversationKey, m)
-      if (seen.size >= cappedLimit) break
+    // 1. DISTINCT ON natif PostgreSQL — pour chaque conversation_key, garde
+    //    le row le plus récent. Pas d'over-fetch, pas de dédup JS.
+    interface RawRow {
+      id: string
+      conversation_key: string
+      from_user_id: number
+      to_user_id: number
+      body_encrypted: Buffer
+      patient_id: number | null
+      created_at: Date
+      read_at: Date | null
     }
+    const rows = await prisma.$queryRaw<RawRow[]>(Prisma.sql`
+      SELECT * FROM (
+        SELECT DISTINCT ON (conversation_key)
+          id, conversation_key, from_user_id, to_user_id,
+          body_encrypted, patient_id, created_at, read_at
+        FROM messages
+        WHERE (from_user_id = ${userId} OR to_user_id = ${userId})
+          AND deleted_at IS NULL
+        ORDER BY conversation_key, created_at DESC
+      ) sub
+      ORDER BY created_at DESC
+      LIMIT ${cappedLimit}
+    `)
 
-    // 2. Unread count par conversationKey (où user = receiver).
-    const conversationKeys = [...seen.keys()]
-    if (conversationKeys.length === 0) {
+    if (rows.length === 0) {
       // Inbox vide — audit quand même (HDS : "qui a consulté l'inbox").
       await auditService.log({
         userId,
@@ -523,56 +540,90 @@ export const messagingService = {
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
         requestId: ctx.requestId,
-        metadata: { kind: "message.inbox", threadCount: 0 },
+        metadata: { kind: "message.inbox", threadCount: 0, empty: true },
       })
       return []
     }
 
-    const unreadGroups = await prisma.message.groupBy({
-      by: ["conversationKey"],
-      where: {
-        conversationKey: { in: conversationKeys },
-        toUserId: userId,
-        readAt: null,
-        deletedAt: null,
-      },
-      _count: { _all: true },
-    })
+    const conversationKeys = rows.map((r) => r.conversation_key)
+    const candidatePatientIds = [
+      ...new Set(rows.map((r) => r.patient_id).filter((p): p is number => p !== null)),
+    ]
+
+    // 2. Unread aggregate par conversationKey (user = receiver).
+    // 3. Filtre H3 — patients soft-deleted exclus du pivot affiché.
+    const [unreadGroups, livePatients] = await Promise.all([
+      prisma.message.groupBy({
+        by: ["conversationKey"],
+        where: {
+          conversationKey: { in: conversationKeys },
+          toUserId: userId,
+          readAt: null,
+          deletedAt: null,
+        },
+        _count: { _all: true },
+      }),
+      candidatePatientIds.length > 0
+        ? prisma.patient.findMany({
+            where: { id: { in: candidatePatientIds }, deletedAt: null },
+            select: { id: true },
+          })
+        : Promise.resolve([] as { id: number }[]),
+    ])
+
     const unreadMap = new Map(
       unreadGroups.map((g) => [g.conversationKey, g._count._all]),
     )
+    const livePatientSet = new Set(livePatients.map((p) => p.id))
 
-    // 3. Build summaries.
-    const summaries: ThreadSummary[] = [...seen.values()].map((m) => {
-      const otherUserId = m.fromUserId === userId ? m.toUserId : m.fromUserId
+    // 4. Build summaries — décryption preview limitée aux ≤ cappedLimit rows.
+    const summaries: ThreadSummary[] = rows.map((m) => {
+      const otherUserId =
+        m.from_user_id === userId ? m.to_user_id : m.from_user_id
       let preview = ""
       try {
-        const plaintext = decrypt(new Uint8Array(m.bodyEncrypted))
-        // Preview = 80 premiers codepoints, JAMAIS le corps complet en list view.
+        const plaintext = decrypt(new Uint8Array(m.body_encrypted))
         preview = [...plaintext].slice(0, 80).join("")
       } catch (err) {
         if (err instanceof HealthDataDecryptionError) {
+          // M3 (HSA review) — alerte décryption (clé compromise / corruption).
+          logger.error(
+            "messaging",
+            "decrypt-failed in listThreads preview",
+            { userId, resource: "MESSAGE" },
+            err,
+          )
           preview = "[message corrompu]"
         } else {
           throw err
         }
       }
+      // H3 — pivot patientId nullifié si patient soft-deleted (l'historique
+      // n'est plus rattaché à un patient actif pour la forensique vivante).
+      const exposedPatientId =
+        m.patient_id !== null && livePatientSet.has(m.patient_id)
+          ? m.patient_id
+          : null
       return {
-        conversationKey: m.conversationKey,
+        conversationKey: m.conversation_key,
         otherUserId,
-        patientId: m.patientId,
+        patientId: exposedPatientId,
         lastMessage: {
           id: m.id,
-          fromUserId: m.fromUserId,
+          fromUserId: m.from_user_id,
           bodyPreview: preview,
-          createdAt: m.createdAt,
-          isRead: m.readAt !== null,
+          createdAt: m.created_at,
+          isRead: m.read_at !== null,
         },
-        unreadCount: unreadMap.get(m.conversationKey) ?? 0,
+        unreadCount: unreadMap.get(m.conversation_key) ?? 0,
       }
     })
 
-    // 4. Audit (lecture inbox).
+    // 5. Audit inbox — H2 review : inclure la liste des patientIds vus pour
+    //    forensique CNIL "qui a consulté l'inbox du patient X".
+    const exposedPatientIds = [
+      ...new Set(summaries.map((s) => s.patientId).filter((p): p is number => p !== null)),
+    ]
     await auditService.log({
       userId,
       action: "READ",
@@ -584,6 +635,7 @@ export const messagingService = {
       metadata: {
         kind: "message.inbox",
         threadCount: summaries.length,
+        ...(exposedPatientIds.length > 0 && { patientIds: exposedPatientIds }),
       },
     })
 
@@ -609,20 +661,57 @@ export const messagingService = {
       throw new MessagingValidationError("conversationKey", "invalidShape")
     }
 
-    // 2. RBAC — l'appelant doit être participant.
-    //    On vérifie via une query minimaliste sur un seul message du thread.
+    // 2. RBAC — l'appelant doit être participant. On charge en plus le
+    //    `patientId` pour les checks H1 (pivot audit) + H9 (re-verify).
     const probe = await prisma.message.findFirst({
       where: {
         conversationKey,
         deletedAt: null,
         OR: [{ fromUserId: userId }, { toUserId: userId }],
       },
-      select: { id: true, fromUserId: true, toUserId: true },
+      select: {
+        id: true,
+        fromUserId: true,
+        toUserId: true,
+        patientId: true,
+      },
     })
     if (!probe) {
       // Pas de message dans ce thread accessible à l'utilisateur → 404 pour
       // ne pas leaker l'existence d'autres threads.
       throw new MessagingNotFoundError("threadNotFound")
+    }
+
+    // H9 (review) — Re-vérifie le lien soignant↔patient à la lecture si le
+    //   thread est patient-scoped. Évite qu'un ex-référent garde accès à
+    //   l'historique après rupture du lien (RGPD Art. 5(1)(b) finalité).
+    //   H3 (review) — filtre aussi les patients soft-deleted.
+    //   Utilise `!= null` pour matcher null ET undefined (defensive si le
+    //   select ne remonte pas patient_id).
+    if (probe.patientId != null) {
+      const livePatient = await prisma.patient.findFirst({
+        where: { id: probe.patientId, deletedAt: null },
+        select: { id: true },
+      })
+      if (!livePatient) {
+        // Patient soft-deleted ou inexistant → thread orphelin, 404.
+        throw new MessagingNotFoundError("threadNotFound")
+      }
+      // Si l'appelant n'est PAS le patient lui-même (sender/recipient =
+      // patient.userId), re-check qu'il a toujours le droit clinique.
+      const caller = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { role: true, patient: { select: { id: true } } },
+      })
+      const callerIsThisPatient = caller?.patient?.id === probe.patientId
+      const callerIsAdmin = caller?.role === "ADMIN"
+      if (!callerIsThisPatient && !callerIsAdmin) {
+        const stillManages = await isPsManagingPatient(userId, probe.patientId)
+        if (!stillManages) {
+          // Lien rompu après le thread — refuse la lecture.
+          throw new MessagingNotFoundError("threadNotFound")
+        }
+      }
     }
 
     const limit = Math.min(
@@ -676,6 +765,13 @@ export const messagingService = {
         body = decrypt(new Uint8Array(m.bodyEncrypted))
       } catch (err) {
         if (err instanceof HealthDataDecryptionError) {
+          // M3 (HSA review) — alerte SOC (clé compromise / corruption DB).
+          logger.error(
+            "messaging",
+            "decrypt-failed in getThread",
+            { userId, resource: "MESSAGE" },
+            err,
+          )
           body = "[message corrompu]"
         } else {
           throw err
@@ -691,7 +787,8 @@ export const messagingService = {
       }
     })
 
-    // Audit (lecture thread).
+    // Audit (lecture thread) — H1 review : `metadata.patientId` pivot
+    //   US-2268 obligatoire pour forensique CNIL `getByPatient(X)`.
     await auditService.log({
       userId,
       action: "READ",
@@ -703,6 +800,7 @@ export const messagingService = {
       metadata: {
         kind: "message.thread",
         messageCount: items.length,
+        ...(probe.patientId != null && { patientId: probe.patientId }),
       },
     })
 

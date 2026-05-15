@@ -321,31 +321,32 @@ describe("unreadCount", () => {
 // ────────────────────────────────────────────────────────────────
 
 describe("listThreads", () => {
-  it("dedup by conversationKey, returns latest per thread", async () => {
+  it("dedup by conversationKey via DISTINCT ON, returns latest per thread", async () => {
     const encryptedBody = Buffer.from(encrypt("Hello world"))
     const k1 = "a".repeat(64)
     const k2 = "b".repeat(64)
-    prismaMock.message.findMany.mockResolvedValue([
-      { id: "m1", conversationKey: k1, fromUserId: 5, toUserId: 1, bodyEncrypted: encryptedBody, patientId: null, createdAt: new Date(3000), readAt: null },
-      { id: "m2", conversationKey: k1, fromUserId: 1, toUserId: 5, bodyEncrypted: encryptedBody, patientId: null, createdAt: new Date(2000), readAt: new Date() },
-      { id: "m3", conversationKey: k2, fromUserId: 7, toUserId: 1, bodyEncrypted: encryptedBody, patientId: 42, createdAt: new Date(1000), readAt: null },
-    ] as any)
+    // C4 review : le service utilise maintenant $queryRaw avec DISTINCT ON,
+    // pas findMany + dédup JS. Le mock retourne déjà les rows dédupliquées.
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: k1, from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: null, created_at: new Date(3000), read_at: null },
+      { id: "m3", conversation_key: k2, from_user_id: 7, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(1000), read_at: null },
+    ])
     ;(prismaMock.message.groupBy as any).mockResolvedValue([
       { conversationKey: k1, _count: { _all: 1 } },
       { conversationKey: k2, _count: { _all: 1 } },
-    ] as any)
+    ])
+    // H3 review : patient_id=42 → check live patient ; mock comme "actif".
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }] as any)
     const out = await messagingService.listThreads(1, ctx)
     expect(out).toHaveLength(2)
-    // Premier = thread plus récent (k1) avec m1 latest.
     expect(out[0]!.lastMessage.id).toBe("m1")
     expect(out[0]!.unreadCount).toBe(1)
     expect(out[0]!.lastMessage.bodyPreview).toContain("Hello")
-    // Pivot patientId remonté.
     expect(out[1]!.patientId).toBe(42)
   })
 
   it("returns [] when no messages", async () => {
-    prismaMock.message.findMany.mockResolvedValue([] as any)
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([])
     const out = await messagingService.listThreads(1, ctx)
     expect(out).toEqual([])
   })
@@ -354,20 +355,36 @@ describe("listThreads", () => {
     const long = "x".repeat(200)
     const encryptedBody = Buffer.from(encrypt(long))
     const k = "c".repeat(64)
-    prismaMock.message.findMany.mockResolvedValue([
-      { id: "m1", conversationKey: k, fromUserId: 5, toUserId: 1, bodyEncrypted: encryptedBody, patientId: null, createdAt: new Date(), readAt: null },
-    ] as any)
-    ;(prismaMock.message.groupBy as any).mockResolvedValue([] as any)
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: k, from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: null, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
     const out = await messagingService.listThreads(1, ctx)
     expect(out[0]!.lastMessage.bodyPreview).toHaveLength(80)
   })
 
-  it("audit kind=message.inbox + threadCount", async () => {
-    prismaMock.message.findMany.mockResolvedValue([] as any)
+  it("audit kind=message.inbox + threadCount=0 + empty=true when no messages", async () => {
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([])
     await messagingService.listThreads(1, ctx)
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(meta.metadata.kind).toBe("message.inbox")
     expect(meta.metadata.threadCount).toBe(0)
+    expect(meta.metadata.empty).toBe(true)
+  })
+
+  // H2 review : audit doit lister les patientIds vus (forensique CNIL).
+  it("audit metadata.patientIds inclut les patients soft-delete-filtrés", async () => {
+    const encryptedBody = Buffer.from(encrypt("hi"))
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(), read_at: null },
+      { id: "m2", conversation_key: "b".repeat(64), from_user_id: 7, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 43, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    // Patient 43 est soft-deleted → exclu du Set.
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }] as any)
+    await messagingService.listThreads(1, ctx)
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.patientIds).toEqual([42]) // 43 filtered out
   })
 })
 
@@ -389,10 +406,10 @@ describe("getThread", () => {
       .rejects.toBeInstanceOf(MessagingNotFoundError)
   })
 
-  it("returns decrypted messages when user is participant", async () => {
+  it("returns decrypted messages when user is participant (staff↔staff, patientId null)", async () => {
     const encryptedBody = Buffer.from(encrypt("Bonjour"))
     prismaMock.message.findFirst.mockResolvedValue({
-      id: "m1", fromUserId: 1, toUserId: 2,
+      id: "m1", fromUserId: 1, toUserId: 2, patientId: null,
     } as any)
     prismaMock.message.findMany.mockResolvedValue([
       { id: "m1", fromUserId: 1, toUserId: 2, bodyEncrypted: encryptedBody, createdAt: new Date(), readAt: null },
@@ -402,10 +419,59 @@ describe("getThread", () => {
     expect(out.nextCursor).toBe(null)
   })
 
+  // H1 review : audit metadata.patientId pivot doit être posé si thread
+  // patient-scoped + caller re-vérifié (H9).
+  it("audit metadata.patientId pivot quand thread patient-scoped (ADMIN bypass)", async () => {
+    const encryptedBody = Buffer.from(encrypt("hello"))
+    prismaMock.message.findFirst.mockResolvedValue({
+      id: "m1", fromUserId: 1, toUserId: 9, patientId: 42,
+    } as any)
+    // Patient 42 actif.
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    // Caller = ADMIN → bypass canMessage re-check.
+    prismaMock.user.findUnique.mockResolvedValue({
+      role: "ADMIN", patient: null,
+    } as any)
+    prismaMock.message.findMany.mockResolvedValue([
+      { id: "m1", fromUserId: 1, toUserId: 9, bodyEncrypted: encryptedBody, createdAt: new Date(), readAt: null },
+    ] as any)
+    await messagingService.getThread(1, VALID_KEY, {}, ctx)
+    const auditMeta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(auditMeta.metadata.patientId).toBe(42)
+  })
+
+  // H3 review : si patient soft-deleted, thread orphelin → 404.
+  it("404 si patient soft-deleted (thread orphelin)", async () => {
+    prismaMock.message.findFirst.mockResolvedValue({
+      id: "m1", fromUserId: 1, toUserId: 9, patientId: 99,
+    } as any)
+    prismaMock.patient.findFirst.mockResolvedValue(null) // soft-deleted
+    await expect(messagingService.getThread(1, VALID_KEY, {}, ctx))
+      .rejects.toBeInstanceOf(MessagingNotFoundError)
+  })
+
+  // H9 review : ex-référent post-rupture → refus.
+  it("404 si caller PS ne manage plus le patient (lien rompu post-rupture)", async () => {
+    prismaMock.message.findFirst.mockResolvedValue({
+      id: "m1", fromUserId: 5, toUserId: 9, patientId: 42,
+    } as any)
+    prismaMock.patient.findFirst.mockResolvedValueOnce({ id: 42 } as any) // 1er check (live patient)
+    prismaMock.user.findUnique.mockResolvedValue({
+      role: "DOCTOR", patient: null,
+    } as any)
+    prismaMock.healthcareMember.findUnique.mockResolvedValue({
+      id: 100, serviceId: 7,
+    } as any)
+    prismaMock.patient.findFirst.mockResolvedValueOnce(null) // 2nd check (isPsManagingPatient) → no link
+    await expect(messagingService.getThread(5, VALID_KEY, {}, ctx))
+      .rejects.toBeInstanceOf(MessagingNotFoundError)
+  })
+
   it("hasMore + nextCursor when results exceed limit", async () => {
     const enc = Buffer.from(encrypt("x"))
-    prismaMock.message.findFirst.mockResolvedValue({ id: "any" } as any)
-    // limit + 1 résultats → hasMore.
+    prismaMock.message.findFirst.mockResolvedValue({
+      id: "any", fromUserId: 1, toUserId: 2, patientId: null,
+    } as any)
     const items = Array.from({ length: MESSAGING_BOUNDS.MAX_MESSAGES_PER_PAGE + 1 }, (_, i) => ({
       id: `m${i}`, fromUserId: 1, toUserId: 2, bodyEncrypted: enc,
       createdAt: new Date(1000 - i), readAt: null,

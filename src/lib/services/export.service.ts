@@ -77,6 +77,41 @@ export async function generateUserExport(userId: number) {
       prisma.userDayMoment.findMany({ where: { userId } }),
     ])
 
+  // US-2076 — RGPD Art. 20 portability : inclure les messages
+  // envoyés/reçus (sent/received). Corps déchiffré au moment de l'export
+  // pour livrer un format intelligible (Art. 20 = "lisible par machine").
+  const [messagesSent, messagesReceived] = await Promise.all([
+    prisma.message.findMany({
+      where: { fromUserId: userId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 10000,
+    }),
+    prisma.message.findMany({
+      where: { toUserId: userId, deletedAt: null },
+      orderBy: { createdAt: "desc" },
+      take: 10000,
+    }),
+  ])
+  type MessageRow = (typeof messagesSent)[number]
+  const decryptMessageBody = (b: Uint8Array | null): string | null => {
+    if (!b) return null
+    try {
+      return decrypt(new Uint8Array(b))
+    } catch {
+      return null
+    }
+  }
+  const serializeMessage = (m: MessageRow) => ({
+    id: m.id,
+    conversationKey: m.conversationKey,
+    fromUserId: m.fromUserId,
+    toUserId: m.toUserId,
+    patientId: m.patientId,
+    body: decryptMessageBody(m.bodyEncrypted),
+    createdAt: m.createdAt.toISOString(),
+    readAt: m.readAt ? m.readAt.toISOString() : null,
+  })
+
   // US-SEC-002: a soft-deleted patient must not export — RGPD Art. 17 +
   // service-layer defense in depth (route-level guard could regress).
   const patient = await prisma.patient.findFirst({
@@ -183,5 +218,10 @@ export async function generateUserExport(userId: number) {
     },
     preferences: { units: unitPreferences, notifications: notifPreferences, privacy: privacySettings, dayMoments },
     patient: patientData,
+    // US-2076 — Messages échangés (RGPD Art. 20 portabilité).
+    messages: {
+      sent: messagesSent.map(serializeMessage),
+      received: messagesReceived.map(serializeMessage),
+    },
   }
 }
