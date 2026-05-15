@@ -1,6 +1,8 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-15 — Groupe 6 Activité physique livré (PR #407, 3 US US-2059/2060/2061, ~7 SP). Étend `DiabetesEvent` avec 7 colonnes typées (activityIntensity / activitySteps / activityDistanceM / activityCalories / activityHeartRateAvg / activitySource / externalSyncId) + 2 enums `ActivityIntensity` (light/moderate/intense) + `ActivitySource` (manual/healthkit/google_fit/health_connect) + 6 CHECK constraints `NOT VALID + VALIDATE` (zero-downtime) + UNIQUE PARTIAL `(activitySource, externalSyncId) WHERE externalSyncId IS NOT NULL` (idempotence sync). Service `activity.service.ts` (list/create/update/delete/bulkSync) avec **comment chiffré AES-256-GCM** symétrique `eventsService` (anti data-corruption cross-service) + Zod whitelist 10 codes (`walk/run/bike/swim/hike/yoga/elliptical/rowing/strength/other`) + bornes cliniques (HR 30-250, steps ≤100k, distance ≤300km, duration ≤24h, eventDate ∈ [-2y, +5min]) + sensor entries immutables (PUT/DELETE bloqués si `activitySource ≠ manual` → forensique préservée). **bulkSync** via `createManyAndReturn` Prisma 7 atomic (1 query race-free, dedup PG ON CONFLICT) + audit metadata `insertedIds[]` granulaire + transaction timeout 30s. 5 routes `/api/patients/[id]/activity[/activityId|/sync]` (NURSE+ cabinet / VIEWER own) + `requireGdprConsent` RGPD Art. 9 + `assertJsonContentType` 415 + `assertBodySize` 413 (1MB/200KB/5MB). Helper `auditService.accessDenied` émis sur `ActivityAccessError` (US-2265 burst detection). AuditResource enum +1 : `ACTIVITY`. **3 rounds review** code-reviewer : 40 findings (29 round-1 + 7 round-2 + 4 round-3) — 0 résiduel Critical/High/Medium. Script backfill `scripts/backfill-encrypt-event-comments.ts` (dry-run + --apply, audit per-row). Doc runbook `docs/runbook/infra-body-limits.md` (nginx/Traefik/OVH LB caps). V1 74 → 77 DONE (55%). Total 142/292 → 145/292 (50%). 1782/1782 tests verts. ⚠️ V2 follow-ups : OpenAPI doc `activityType` write/read asymmetry, advisory lock concurrent sync (theoretical), partitioning `diabetes_events` si volume > 50M rows.
+> Dernière mise à jour : 2026-05-15 — Groupe 1 Devices supervision + sync status livré (PR #408, 2 US US-2243/2244, ~8 SP). Étend `PatientDevice` avec 3 colonnes (`batteryLevel` 0-100%, `sensorExpiresAt`, `lastSyncAt`) + 2 indexes (cohort filter + sensor expiration). Migration `NOT VALID + VALIDATE` (zero-downtime). 2 services : `device-supervision.service` (listByPatient/listCohort/recordSyncPing) avec DTO computed (`batteryLow <20%`, `sensorExpired <now`, `sensorExpiringSoon now..now+3j`) + `device-sync-status.service` (computeStatus pure helper + getStatus aggregate MAX(lastSyncAt) + cohortStatus avec merge accessibleIds → patients sans devices = `never_synced`). 5 routes API : GET `/api/patients/[id]/devices/{supervision,sync-status}` (VIEWER own / NURSE+ cabinet) + GET `/api/devices/{supervision,sync-status}/cohort` (NURSE+) + POST `/api/patients/[id]/devices/[deviceId]/sync-ping` (alimente lastSyncAt + optional batteryLevel/sensorExpiresAt). `requireGdprConsent` partout + `accessDenied` audit US-2265. SyncStatus enum ok/late/critical/never_synced avec seuils 5min/30min. **2 rounds review** (code-reviewer) : 18 findings (12 round-1 + 6 round-2) — 0 résiduel Critical/High. NEW-H1 sensorExpiresAt borné [2020-01-01, now+365j] (anti patient-safety bypass via VIEWER mobile). NEW-M2 soft-cap MAX_ACCESSIBLE_COHORT_PATIENTS=2000 (anti-OOM gros cabinets). Constantes partagées `COHORT_RESOURCE_ID`, `SUPERVISION_BOUNDS`, `SYNC_STATUS_BOUNDS`. AuditResource = `DEVICE` existant. V1 77 → 79 DONE (56%). Total 145/292 → 147/292 (50%). 1835/1835 tests verts. ⚠️ US-2031 Medtronic Guardian ⏳ bloqué partenariat CareLink. US-2041 Pattern detection AI ⏸️ V2. V2 follow-ups : refactor DB-side LEFT JOIN cohort (pagination > 2000 patients), filtre `sensorStale` (expiré > N jours), Zod `pipe(z.array(z.enum))` idiomatic refactor.
+
+> Précédente mise à jour : 2026-05-15 — Groupe 6 Activité physique livré (PR #407, 3 US US-2059/2060/2061, ~7 SP). Étend `DiabetesEvent` avec 7 colonnes typées (activityIntensity / activitySteps / activityDistanceM / activityCalories / activityHeartRateAvg / activitySource / externalSyncId) + 2 enums `ActivityIntensity` (light/moderate/intense) + `ActivitySource` (manual/healthkit/google_fit/health_connect) + 6 CHECK constraints `NOT VALID + VALIDATE` (zero-downtime) + UNIQUE PARTIAL `(activitySource, externalSyncId) WHERE externalSyncId IS NOT NULL` (idempotence sync). Service `activity.service.ts` (list/create/update/delete/bulkSync) avec **comment chiffré AES-256-GCM** symétrique `eventsService` (anti data-corruption cross-service) + Zod whitelist 10 codes (`walk/run/bike/swim/hike/yoga/elliptical/rowing/strength/other`) + bornes cliniques (HR 30-250, steps ≤100k, distance ≤300km, duration ≤24h, eventDate ∈ [-2y, +5min]) + sensor entries immutables (PUT/DELETE bloqués si `activitySource ≠ manual` → forensique préservée). **bulkSync** via `createManyAndReturn` Prisma 7 atomic (1 query race-free, dedup PG ON CONFLICT) + audit metadata `insertedIds[]` granulaire + transaction timeout 30s. 5 routes `/api/patients/[id]/activity[/activityId|/sync]` (NURSE+ cabinet / VIEWER own) + `requireGdprConsent` RGPD Art. 9 + `assertJsonContentType` 415 + `assertBodySize` 413 (1MB/200KB/5MB). Helper `auditService.accessDenied` émis sur `ActivityAccessError` (US-2265 burst detection). AuditResource enum +1 : `ACTIVITY`. **3 rounds review** code-reviewer : 40 findings (29 round-1 + 7 round-2 + 4 round-3) — 0 résiduel Critical/High/Medium. Script backfill `scripts/backfill-encrypt-event-comments.ts` (dry-run + --apply, audit per-row). Doc runbook `docs/runbook/infra-body-limits.md` (nginx/Traefik/OVH LB caps). V1 74 → 77 DONE (55%). Total 142/292 → 145/292 (50%). 1782/1782 tests verts. ⚠️ V2 follow-ups : OpenAPI doc `activityType` write/read asymmetry, advisory lock concurrent sync (theoretical), partitioning `diabetes_events` si volume > 50M rows.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +12,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 77   | 1       | 63          | **55%** |
+| **V1**   | 141   | 79   | 1       | 61          | **56%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **145** | **2**   | **145**     | **50%** |
+| **TOTAL**| **292** | **147** | **2**   | **143**     | **50%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -219,24 +221,27 @@
 
 ## V1 — 120 US
 
-### Groupe 1 — Glycémie & Analytics (13 US)
+### Groupe 1 — Glycémie & Analytics (13 US — 11/13 DONE V1)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2031 | Ingestion Medtronic Guardian | NOT STARTED |
-| US-2032 | Glycémies capillaires (BGM) | DONE (PR #388 — GET + rate-limit + decrypt) |
-| US-2038 | Heat-map glycémique | DONE (PR #388 — TZ-pinned Europe/Paris) |
-| US-2039 | Comparaison de périodes | DONE (PR #388 — half-open windows + delta) |
-| US-2040 | Rapport AGP exportable PDF | DONE (PR #388 — pdf-lib + warning banner) |
-| US-2041 | Pattern detection | NOT STARTED (V2 per spec) |
-| US-2094 | Tableau de bord population | DONE (PR #388 — RBAC + p-limit + GDPR filter) |
-| US-2095 | Indicateurs qualité cabinet | DONE (PR #388 — TIR/GMI distributions) |
-| US-2096 | Cohorte par pathologie | DONE (PR #388 — DT1/DT2/GD breakdown) |
-| US-2098 | Export CSV / Excel | DONE (PR #388 — CSV anti-injection + fail-closed) |
-| US-2243 | (Mirror) Supervision glycémie patient | NOT STARTED |
-| US-2244 | (Mirror) Détection patterns par patient | NOT STARTED |
+| US-2031 | Ingestion Medtronic Guardian | ⏳ Blocked partenariat CareLink (procurement) |
+| US-2032 | Glycémies capillaires (BGM) | ✅ DONE PR #388 — GET + rate-limit + decrypt |
+| US-2038 | Heat-map glycémique | ✅ DONE PR #388 — TZ-pinned Europe/Paris |
+| US-2039 | Comparaison de périodes | ✅ DONE PR #388 — half-open windows + delta |
+| US-2040 | Rapport AGP exportable PDF | ✅ DONE PR #388 — pdf-lib + warning banner |
+| US-2041 | Pattern detection AI | ⏸️ V2 per spec |
+| US-2094 | Tableau de bord population | ✅ DONE PR #388 — RBAC + p-limit + GDPR filter |
+| US-2095 | Indicateurs qualité cabinet | ✅ DONE PR #388 — TIR/GMI distributions |
+| US-2096 | Cohorte par pathologie | ✅ DONE PR #388 — DT1/DT2/GD breakdown |
+| US-2098 | Export CSV / Excel | ✅ DONE PR #388 — CSV anti-injection + fail-closed |
+| US-2243 | Supervision dispositifs (CGM/pompe/lecteur) | ✅ DONE PR #408 — patient + cohort + battery/expiry/sync |
+| US-2244 | Statut sync temps-réel | ✅ DONE PR #408 — OK <5min / late 5-30min / critical >30min + cohort tri critical-first |
 
-**Batches 1+2 livrés** : 8 US (US-2032, 2038, 2039, 2040, 2094, 2095, 2096, 2098) — PR #388, ~21 SP, 1251 tests verts.
+**Batches livrés** : 8 US PR #388 (~21 SP) + 2 US PR #408 (~8 SP). Total 10 US V1 DONE.
+
+> ⏳ **US-2031 Medtronic Guardian** : bloqué partenariat Medtronic CareLink (cf. blocked DMP/MSSanté/INSi/PSC Groupe 8). À reprendre post-signature DPA.
+> ⏸️ **US-2041 Pattern detection** : V2 per spec (AI pattern recognition — hors scope V1).
 
 ### Groupe 2 — Patients avancés (7 US)
 
