@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-15 — Groupe 7 Batch 1 Facturation Foundation livré (PR #406, 3 US US-2103/2105/2107, ~11 SP). 2 modèles + 1 séquence + 2 enums : `Invoice` (immutable post-issued, snapshots cabinet + customer chiffré AES-256-GCM), `InvoiceItem`, `InvoiceSequence` (per-(country, year) gap-less), `InvoiceStatus` (FSM `draft → issued → paid → refunded`, cancelled terminal), `PaymentMethod`. 3 colonnes `HealthcareService.{siret,tvaIntra,iban}` + 3 CHECK regex format. 3 triggers PG : `enforce_invoice_immutability` (champs verrouillés post-draft + FSM DB-level), `block_invoice_delete_after_issued`, `block_invoice_items_after_issued`. Services `invoice-numbering.service` (`reserveNextInvoiceNumber` gap-less + runtime guard `pg_current_xact_id_if_assigned()`) + `invoice.service` (createDraft/issue/markPaid/cancel/getById/list + atomic FSM via `updateMany WHERE status` + `InvoiceConcurrencyError` retryable séparé). 5 routes API `/api/billing/invoices` + `[id]/{issue,pay,cancel}` (RBAC DOCTOR cabinet member + VIEWER own + `assertJsonContentType` 415). SIRET Luhn validation FR (validateSiret exporté de healthcare-management). `decryptCustomerSnapshot` exporté + Zod `.strict()` whitelist double-couche encode+decode (anti-leak Batch 2 PDF). 3 rounds review (toi) appliqués : 58 findings (36 + 15 + 7) — 0 résiduel critical/high. V1 71 → 74 DONE (52%). Total 139/292 → 142/292 (49%). 1736/1736 tests verts. ⚠️ Batches 2-4 à suivre (PDF+TVA / Stripe webhooks / Refunds+Relances) — voir Groupe 7 table.
+> Dernière mise à jour : 2026-05-15 — Groupe 6 Activité physique livré (PR #407, 3 US US-2059/2060/2061, ~7 SP). Étend `DiabetesEvent` avec 7 colonnes typées (activityIntensity / activitySteps / activityDistanceM / activityCalories / activityHeartRateAvg / activitySource / externalSyncId) + 2 enums `ActivityIntensity` (light/moderate/intense) + `ActivitySource` (manual/healthkit/google_fit/health_connect) + 6 CHECK constraints `NOT VALID + VALIDATE` (zero-downtime) + UNIQUE PARTIAL `(activitySource, externalSyncId) WHERE externalSyncId IS NOT NULL` (idempotence sync). Service `activity.service.ts` (list/create/update/delete/bulkSync) avec **comment chiffré AES-256-GCM** symétrique `eventsService` (anti data-corruption cross-service) + Zod whitelist 10 codes (`walk/run/bike/swim/hike/yoga/elliptical/rowing/strength/other`) + bornes cliniques (HR 30-250, steps ≤100k, distance ≤300km, duration ≤24h, eventDate ∈ [-2y, +5min]) + sensor entries immutables (PUT/DELETE bloqués si `activitySource ≠ manual` → forensique préservée). **bulkSync** via `createManyAndReturn` Prisma 7 atomic (1 query race-free, dedup PG ON CONFLICT) + audit metadata `insertedIds[]` granulaire + transaction timeout 30s. 5 routes `/api/patients/[id]/activity[/activityId|/sync]` (NURSE+ cabinet / VIEWER own) + `requireGdprConsent` RGPD Art. 9 + `assertJsonContentType` 415 + `assertBodySize` 413 (1MB/200KB/5MB). Helper `auditService.accessDenied` émis sur `ActivityAccessError` (US-2265 burst detection). AuditResource enum +1 : `ACTIVITY`. **3 rounds review** code-reviewer : 40 findings (29 round-1 + 7 round-2 + 4 round-3) — 0 résiduel Critical/High/Medium. Script backfill `scripts/backfill-encrypt-event-comments.ts` (dry-run + --apply, audit per-row). Doc runbook `docs/runbook/infra-body-limits.md` (nginx/Traefik/OVH LB caps). V1 74 → 77 DONE (55%). Total 142/292 → 145/292 (50%). 1782/1782 tests verts. ⚠️ V2 follow-ups : OpenAPI doc `activityType` write/read asymmetry, advisory lock concurrent sync (theoretical), partitioning `diabetes_events` si volume > 50M rows.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 74   | 1       | 66          | **52%** |
+| **V1**   | 141   | 77   | 1       | 63          | **55%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **142** | **2**   | **148**     | **49%** |
+| **TOTAL**| **292** | **145** | **2**   | **145**     | **50%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -299,13 +299,17 @@ Total V1 effectif Groupe 3 : 12 US (vs 15 affiché initialement).
 identifié 41 findings (4 Critical EXIF/TOCTOU/bulkSync/tsc + 10 High RGPD/HDS + 15 Medium + 12 Low)
 tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + partial index).
 
-### Groupe 6 — Activité physique (3 US)
+### Groupe 6 — Activité physique (3 US, 100% DONE PR #407)
+
+> Batch unique livré PR #407 (~7 SP). Extension `DiabetesEvent` avec
+> 7 colonnes typées + 2 enums + endpoint sync mobile bulk dedup.
+> App iOS/Android hors scope (per CLAUDE.md) — on livre le contrat API.
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2059 | Journal activité | NOT STARTED |
-| US-2060 | Apple HealthKit sync | NOT STARTED |
-| US-2061 | Google Fit / Health Connect | NOT STARTED |
+| US-2059 | Journal activité | ✅ DONE PR #407 — CRUD `/api/patients/[id]/activity` + comment chiffré AES-256-GCM + 10 codes whitelist + bornes cliniques |
+| US-2060 | Apple HealthKit sync | ✅ DONE PR #407 — endpoint backend `/sync` (source `healthkit`) avec dedup UNIQUE PARTIAL `(activitySource, externalSyncId)` |
+| US-2061 | Google Fit / Health Connect | ✅ DONE PR #407 — même endpoint, source `google_fit` / `health_connect`, `createManyAndReturn` atomic race-free |
 
 ### Groupe 7 — Facturation (9 US) — Batch 1 Foundation DONE PR #406
 

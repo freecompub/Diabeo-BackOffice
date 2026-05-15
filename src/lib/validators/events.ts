@@ -37,7 +37,9 @@ export const diabetesEventSchema = z.object({
     "walking", "running", "cycling", "swimming", "gym",
     "sports", "housework", "gardening", "yoga", "other",
   ]).optional(),
-  activityDuration: z.number().int().positive().max(600).optional(),
+  // NEW-L2 (review re-2 PR #407) — aligné sur ACTIVITY_BOUNDS.MAX_DURATION_MIN
+  // (1440 = 24h) et le CHECK constraint DB ; était 600 par historique.
+  activityDuration: z.number().int().positive().max(1440).optional(),
   contextType: z.enum([
     "stress", "illness", "menstruation", "alcohol", "travel",
     "sleepIssue", "medication", "hypoglycemia", "hyperglycemia", "other",

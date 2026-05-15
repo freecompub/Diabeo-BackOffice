@@ -156,6 +156,30 @@ enum DiabetesEventType {
   occasional
 }
 
+/// US-2059 — Intensité subjective ou calculée depuis HR/METs. Light <3 METs,
+/// moderate 3-6 METs, intense >6 METs (ACSM guidelines). Optionnel : si la
+/// source (HealthKit/Fit) ne fournit que la durée, on accepte `null`.
+enum ActivityIntensity {
+  light
+  moderate
+  intense
+
+  @@map("activity_intensity")
+}
+
+/// US-2059 / US-2060 / US-2061 — Source d'une saisie physicalActivity.
+/// Permet à un médecin de distinguer une entrée déclarative patient
+/// (`manual`) d'une mesure passive issue d'un capteur mobile (HealthKit
+/// iOS / Google Fit ou Health Connect Android).
+enum ActivitySource {
+  manual
+  healthkit
+  google_fit
+  health_connect
+
+  @@map("activity_source")
+}
+
 enum AndroidPriority {
   normal
   high
@@ -1186,6 +1210,25 @@ model DiabetesEvent {
   basalDose         Decimal?            @map("basal_dose") @db.Decimal(5, 2)
   activityType      String?             @map("activity_type") @db.VarChar(20)
   activityDuration  Int?                @map("activity_duration") // minutes
+  /// Groupe 6 Batch 1 (US-2059) — métriques détaillées physicalActivity.
+  /// Tous optionnels : une entrée manuelle ne renseigne souvent que
+  /// `activityType` + `activityDuration`. Les capteurs (US-2060/2061)
+  /// fournissent un sous-ensemble.
+  activityIntensity      ActivityIntensity? @map("activity_intensity")
+  activitySteps          Int?               @map("activity_steps")
+  activityDistanceM      Int?               @map("activity_distance_m") // mètres
+  activityCalories       Int?               @map("activity_calories") // kcal
+  activityHeartRateAvg   Int?               @map("activity_heart_rate_avg") // bpm
+  /// Groupe 6 Batch 1 (US-2060/2061) — provenance + dedup mobile sync.
+  /// `externalSyncId` est l'UUID que HealthKit / Google Fit attribue à
+  /// chaque sample. Couplé à `activitySource` il forme la clé unique
+  /// de dedup quand l'app iOS/Android re-pousse le même historique.
+  /// NEW-M6 (review PR #407) — pas de @default : c'est le service qui
+  /// pose explicitement la valeur (`manual` à la création, valeur enum
+  /// pour bulkSync). Évite la pollution cross-domain (events non
+  /// physicalActivity) lors d'inserts directs.
+  activitySource         ActivitySource?    @map("activity_source")
+  externalSyncId         String?            @map("external_sync_id") @db.VarChar(128)
   contextType       String?             @map("context_type") @db.VarChar(20)
   weight            Decimal?            @db.Decimal(5, 2)
   hba1c             Decimal?            @db.Decimal(5, 2)
@@ -1208,6 +1251,9 @@ model DiabetesEvent {
   @@index([patientId, eventDate])
   /// US-2053 — index pour le listing "meals à valider" (validatedAt = null).
   @@index([patientId, validatedAt])
+  /// Groupe 6 Batch 1 (US-2060/2061) — dedup mobile sync (partial unique
+  /// via migration SQL : `WHERE external_sync_id IS NOT NULL`).
+  @@index([activitySource, externalSyncId])
   @@map("diabetes_events")
 }
 
