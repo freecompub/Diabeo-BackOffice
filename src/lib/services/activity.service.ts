@@ -149,6 +149,15 @@ export interface ActivityDTO {
   id: string
   patientId: number
   eventDate: Date
+  /**
+   * NEW-3.3 (review re-3 PR #407) — **API contract drift toléré** :
+   * en write (POST/PUT/sync), `activityType` est borné à la whitelist
+   * `ACTIVITY_TYPES` (10 codes). En read (DTO), peut contenir une
+   * valeur legacy hors whitelist (`"walking"`, `"running"`, etc.)
+   * pour les events créés via `/api/events` AVANT le déploiement
+   * Groupe 6. Le client mobile doit tolérer une string libre en read.
+   * Documenté en OpenAPI (V1 follow-up).
+   */
   activityType: string | null
   activityDuration: number | null
   activityIntensity: ActivityIntensity | null
@@ -591,7 +600,6 @@ export const activityService = {
       }
     }
 
-    const externalIds = items.map((i) => i.externalSyncId)
     const data = items.map((i): Prisma.DiabetesEventCreateManyInput => ({
       patientId,
       eventDate: i.eventDate,
@@ -609,49 +617,22 @@ export const activityService = {
       comment: i.comment != null ? encryptField(i.comment) : null,
     }))
 
-    // H1 + H6 + NEW-M2 : capture les externalSyncIds DÉJÀ présents avant
-    // le createMany (pour distinguer ceux insérés par ce batch vs ceux
-    // pré-existants). Sans ça, le findMany post-createMany retourne aussi
-    // les UUIDs déjà en BDD (skipped duplicates), corrompant l'audit
-    // `metadata.insertedIds` → forensique CNIL/ANS fausse sur 2e sync
-    // identique. Le coût : 1 query supplémentaire (acceptable, timeout 30s).
+    // H1 + H6 + NEW-M2 + NEW-3.4 (review re-3) — `createManyAndReturn`
+    // (Prisma 7+, Postgres-only) effectue l'insert idempotent ON CONFLICT
+    // DO NOTHING ET retourne directement les rows réellement créés par
+    // CETTE query. Élimine définitivement la race window vs writer
+    // concurrent (l'ancien pattern existingBefore + createMany + findMany
+    // pouvait inclure un UUID d'un row créé entre les 2 queries par un
+    // autre writer). Bonus : 1 round-trip au lieu de 3.
     const result = await prisma.$transaction(
       async (tx) => {
-        // (1) Snapshot des externalSyncIds déjà présents (skipped set).
-        const existingBefore = await tx.diabetesEvent.findMany({
-          where: {
-            patientId,
-            activitySource: source,
-            externalSyncId: { in: externalIds },
-          },
-          select: { externalSyncId: true },
-        })
-        const existingBeforeIds = new Set(
-          existingBefore.map((r) => r.externalSyncId).filter((id): id is string => id !== null),
-        )
-
-        // (2) Insert idempotent — ON CONFLICT DO NOTHING via skipDuplicates.
-        const created = await tx.diabetesEvent.createMany({
+        const created = await tx.diabetesEvent.createManyAndReturn({
           data,
           skipDuplicates: true,
+          select: { id: true },
         })
-
-        // (3) Récupère les IDs des rows réellement créés par ce batch.
-        const newlyInsertedExternalIds = externalIds.filter(
-          (eId) => !existingBeforeIds.has(eId),
-        )
-        const inserted = newlyInsertedExternalIds.length > 0
-          ? await tx.diabetesEvent.findMany({
-            where: {
-              patientId,
-              activitySource: source,
-              externalSyncId: { in: newlyInsertedExternalIds },
-            },
-            select: { id: true },
-          })
-          : []
-        const insertedIds = inserted.map((r) => r.id)
-        const skipped = items.length - created.count
+        const insertedIds = created.map((r) => r.id)
+        const skipped = items.length - created.length
 
         await auditService.logWithTx(tx, {
           userId: auditUserId,
@@ -665,15 +646,16 @@ export const activityService = {
             patientId,
             kind: AUDIT_KIND.SYNC,
             source,
-            inserted: created.count,
+            inserted: created.length,
             skipped,
             totalRequested: items.length,
             // H6 + NEW-M2 — IDs strictement insérés par ce batch.
+            // NEW-3.4 — race-free grâce à createManyAndReturn atomic.
             insertedIds,
           },
         })
 
-        return { inserted: created.count, skipped }
+        return { inserted: created.length, skipped }
       },
       { timeout: 30_000, maxWait: 10_000 },
     )

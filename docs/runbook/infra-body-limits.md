@@ -84,3 +84,24 @@ curl -X POST https://staging.diabeo.fr/api/patients/1/activity/sync \
   contre cette spec (`pnpm run check:infra-limits`).
 - Si la limite proxy est plus basse que les caps applicatifs, le proxy
   est la source de vérité (sera atteint en premier).
+
+## NEW-3.2 — Partitioning `diabetes_events`
+
+État actuel : **non partitionnée** (vérifié au déploiement Groupe 6
+Batch 1). Le `ALTER TABLE … VALIDATE CONSTRAINT` ajouté dans la
+migration `20260515200000_groupe6_activity_physique` prend donc un
+SHARE UPDATE EXCLUSIVE lock instantané.
+
+⚠️ Si la table est partitionnée en V1+ (volume CGM-like > 50M rows),
+vérifier que `VALIDATE CONSTRAINT` se propage correctement aux
+sub-partitions. Postgres 11+ supporte la propagation automatique
+sur les partitions enfant pour les CHECK constraints (`ATTACH
+PARTITION` valide ; `ALTER TABLE … VALIDATE` propage). Si projet
+en Postgres 16 (notre version) → OK.
+
+Pattern à suivre lors d'un futur partitioning de `diabetes_events` :
+1. Créer la nouvelle table partitionnée `diabetes_events_partitioned`.
+2. Réutiliser ce pattern `NOT VALID + VALIDATE` sub-partition par
+   sub-partition pour les CHECK existants.
+3. Voir `prisma/sql/cgm_partitioning.sql` pour le template `CgmEntry`
+   déjà partitionnée par mois.

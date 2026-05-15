@@ -341,31 +341,29 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
     expect(prismaMock.diabetesEvent.createMany).not.toHaveBeenCalled()
   })
 
-  // H1 (review re-1) — utilise createMany skipDuplicates (1 round-trip).
-  it("H1 — uses createMany skipDuplicates (single round-trip)", async () => {
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 3 } as any)
-    prismaMock.diabetesEvent.findMany.mockResolvedValue([
-      { id: "uuid-a", externalSyncId: "hk-uuid-0" },
-      { id: "uuid-b", externalSyncId: "hk-uuid-1" },
-      { id: "uuid-c", externalSyncId: "hk-uuid-2" },
+  // H1 (review re-1) + NEW-3.4 (review re-3) — createManyAndReturn
+  // atomic, 1 seul round-trip, race-free.
+  it("H1 — uses createManyAndReturn skipDuplicates (single atomic call)", async () => {
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
+      { id: "uuid-a" },
+      { id: "uuid-b" },
+      { id: "uuid-c" },
     ] as any)
     const items = Array.from({ length: 3 }, (_, i) => ({
       ...baseSyncItem, externalSyncId: `hk-uuid-${i}`,
     }))
     const out = await activityService.bulkSync(42, "healthkit", items, 9, "VIEWER")
     expect(out).toEqual({ inserted: 3, skipped: 0 })
-    expect(prismaMock.diabetesEvent.createMany).toHaveBeenCalledTimes(1)
-    const call = prismaMock.diabetesEvent.createMany.mock.calls[0]![0]!
+    expect(prismaMock.diabetesEvent.createManyAndReturn).toHaveBeenCalledTimes(1)
+    const call = prismaMock.diabetesEvent.createManyAndReturn.mock.calls[0]![0]!
     expect((call as any).skipDuplicates).toBe(true)
+    expect((call as any).select).toEqual({ id: true })
   })
 
-  it("computes skipped from createMany.count vs items.length", async () => {
+  it("computes skipped from createManyAndReturn length vs items.length", async () => {
     // 5 sent, 3 inserted → 2 dedupped silently.
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 3 } as any)
-    prismaMock.diabetesEvent.findMany.mockResolvedValue([
-      { id: "u1", externalSyncId: "id-1" },
-      { id: "u3", externalSyncId: "id-3" },
-      { id: "u5", externalSyncId: "id-5" },
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
+      { id: "u1" }, { id: "u3" }, { id: "u5" },
     ] as any)
     const items = Array.from({ length: 5 }, (_, i) => ({
       ...baseSyncItem, externalSyncId: `id-${i + 1}`,
@@ -374,17 +372,14 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
     expect(out).toEqual({ inserted: 3, skipped: 2 })
   })
 
-  // H6 (review re-1) + NEW-M2 (review re-2) — audit metadata.insertedIds
-  // ne contient QUE les rows réellement créés par ce batch.
+  // H6 (review re-1) + NEW-M2 (review re-2) + NEW-3.4 (review re-3) —
+  // audit metadata.insertedIds = exactement les rows créés par cet
+  // appel (createManyAndReturn atomic, pas de race window).
   it("H6 — audit metadata includes insertedIds + counts (fresh batch)", async () => {
-    // 1st findMany: existingBefore (rien) ; 2nd findMany: newly inserted.
-    prismaMock.diabetesEvent.findMany
-      .mockResolvedValueOnce([] as any) // existingBefore
-      .mockResolvedValueOnce([
-        { id: "uuid-a" },
-        { id: "uuid-b" },
-      ] as any)
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 2 } as any)
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
+      { id: "uuid-a" },
+      { id: "uuid-b" },
+    ] as any)
     await activityService.bulkSync(42, "healthkit", [
       { ...baseSyncItem, externalSyncId: "hk-a" },
       { ...baseSyncItem, externalSyncId: "hk-b" },
@@ -425,26 +420,24 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
   })
 
   it("propagates source to created events", async () => {
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 1 } as any)
-    prismaMock.diabetesEvent.findMany.mockResolvedValue([
-      { id: "uuid-1", externalSyncId: "hk-uuid-1" },
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
+      { id: "uuid-1" },
     ] as any)
     await activityService.bulkSync(42, "google_fit", [baseSyncItem], 9, "VIEWER")
-    const call = prismaMock.diabetesEvent.createMany.mock.calls[0]![0]!
+    const call = prismaMock.diabetesEvent.createManyAndReturn.mock.calls[0]![0]!
     const data = (call as any).data as Array<{ activitySource: string }>
     expect(data[0]!.activitySource).toBe("google_fit")
   })
 
   // C1 — bulk sync encrypte aussi le comment.
   it("C1 — bulkSync encrypts comments", async () => {
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 1 } as any)
-    prismaMock.diabetesEvent.findMany.mockResolvedValue([
-      { id: "uuid-1", externalSyncId: "hk-1" },
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
+      { id: "uuid-1" },
     ] as any)
     await activityService.bulkSync(42, "healthkit", [{
       ...baseSyncItem, externalSyncId: "hk-1", comment: "patient note",
     }], 9, "VIEWER")
-    const call = prismaMock.diabetesEvent.createMany.mock.calls[0]![0]!
+    const call = prismaMock.diabetesEvent.createManyAndReturn.mock.calls[0]![0]!
     const data = (call as any).data as Array<{ comment: string }>
     expect(data[0]!.comment).not.toBe("patient note")
     expect(safeDecryptField(data[0]!.comment)).toBe("patient note")
@@ -476,38 +469,28 @@ describe("NEW-H1 — access check BEFORE immutability check (anti-existence-orac
   })
 })
 
-describe("NEW-M2 — bulkSync insertedIds correctness on 2nd sync", () => {
+describe("NEW-M2 + NEW-3.4 — bulkSync insertedIds correctness", () => {
   beforeEach(() => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
   })
 
-  it("2nd sync identical to 1st: insertedIds is empty even when findMany matches old rows", async () => {
-    // existingBefore returns ALL externalIds (already in BDD).
-    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce([
-      { externalSyncId: "hk-a" },
-      { externalSyncId: "hk-b" },
-    ] as any)
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 0 } as any)
-    // (3rd findMany would not be called since newlyInsertedExternalIds is empty)
-
+  it("2nd sync identical to 1st: insertedIds=[] (all dedupped silently)", async () => {
+    // createManyAndReturn ne retourne QUE les rows réellement créés.
+    // skipDuplicates → 0 row retourné si tout est en doublon.
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([] as any)
     const out = await activityService.bulkSync(42, "healthkit", [
       { externalSyncId: "hk-a", eventDate: recentDate(), activityType: "walk" },
       { externalSyncId: "hk-b", eventDate: recentDate(), activityType: "run" },
     ], 9, "VIEWER")
     expect(out).toEqual({ inserted: 0, skipped: 2 })
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(meta.metadata.insertedIds).toEqual([]) // ← was returning 2 old UUIDs before fix
+    expect(meta.metadata.insertedIds).toEqual([])
     expect(meta.metadata.inserted).toBe(0)
     expect(meta.metadata.skipped).toBe(2)
   })
 
   it("mixed sync (1 new + 1 dup): insertedIds contains ONLY the new one", async () => {
-    // hk-old already exists; hk-new is fresh.
-    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce([
-      { externalSyncId: "hk-old" },
-    ] as any)
-    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 1 } as any)
-    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce([
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
       { id: "uuid-new" },
     ] as any)
     const out = await activityService.bulkSync(42, "healthkit", [
@@ -517,6 +500,24 @@ describe("NEW-M2 — bulkSync insertedIds correctness on 2nd sync", () => {
     expect(out).toEqual({ inserted: 1, skipped: 1 })
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(meta.metadata.insertedIds).toEqual(["uuid-new"])
+  })
+
+  // NEW-3.4 (review re-3) — race-free : createManyAndReturn atomic
+  // garantit que insertedIds ne contient JAMAIS un UUID inséré par
+  // un writer concurrent. Plus de window between existingBefore SELECT
+  // et createMany.
+  it("NEW-3.4 — race-free: no concurrent UUID can leak into insertedIds", async () => {
+    // Simule : un autre writer a inséré entre nos calls théoriques.
+    // Le mock createManyAndReturn ne retourne QUE 1 row (le notre).
+    prismaMock.diabetesEvent.createManyAndReturn.mockResolvedValue([
+      { id: "ours-uuid" },
+    ] as any)
+    const out = await activityService.bulkSync(42, "healthkit", [
+      { externalSyncId: "hk-shared", eventDate: recentDate(), activityType: "walk" },
+    ], 9, "VIEWER")
+    expect(out.inserted).toBe(1)
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.insertedIds).toEqual(["ours-uuid"])
   })
 })
 
