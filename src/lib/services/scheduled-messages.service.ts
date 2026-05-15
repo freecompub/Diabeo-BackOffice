@@ -166,7 +166,19 @@ export const scheduledMessagesService = {
       where: { id: notifId, userId: patient.userId, isActive: true },
       select: { id: true },
     })
-    if (!row) return { cancelled: false }
+    if (!row) {
+      // M2 (re-review) — emit a distinct audit row on not-found so brute-
+      //   force notifId enumeration leaves a trail (US-2265 burst-detection
+      //   territory). No PHI leaked : only the patientId + the guessed
+      //   notifId are recorded.
+      await auditService.log({
+        userId: auditUserId, action: "UPDATE", resource: "PUSH_SCHEDULED_NOTIFICATION",
+        resourceId: notifId,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { patientId, kind: "scheduled_messages.cancel.notFound" },
+      })
+      return { cancelled: false }
+    }
 
     await prisma.pushScheduledNotification.update({
       where: { id: notifId },

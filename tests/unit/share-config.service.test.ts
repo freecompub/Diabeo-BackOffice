@@ -47,6 +47,24 @@ describe("thirdPartyShareService (US-2240)", () => {
     }, 9)).rejects.toBeInstanceOf(ShareValidationError)
   })
 
+  // M1 (re-review) — boundary : today (Paris end-of-day) must be accepted.
+  it("upsert accepts expiresAt = today (Paris end-of-day)", async () => {
+    prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
+    prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.configVersion.create.mockResolvedValue({
+      id: 100, patientId: 7, configType: ConfigVersionType.third_party_share,
+      version: 1, validFrom: new Date(), validTo: null,
+      status: ConfigVersionStatus.active, createdBy: 9,
+      validatedBy: null, validatedAt: null, createdAt: new Date(),
+    } as any)
+    // Today's date in any timezone — end-of-day Paris will be > now.
+    const today = new Date().toISOString().slice(0, 10)
+    const out = await thirdPartyShareService.upsert(7, {
+      ...validInput, expiresAt: today,
+    }, 9)
+    expect(out.id).toBe(100)
+  })
+
   it("upsert happy path emits audit + creates ConfigVersion", async () => {
     prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
     prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
@@ -101,7 +119,10 @@ describe("sharedNotificationsService (US-2242)", () => {
     },
   }
 
-  it("upsert creates new version with routing snapshot", async () => {
+  it("upsert creates new version with routing snapshot (caregivers exist)", async () => {
+    prismaMock.user.findMany.mockResolvedValue([
+      { id: 1 }, { id: 2 }, { id: 3 }, { id: 4 },
+    ] as any)
     prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
     prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
     prismaMock.configVersion.create.mockResolvedValue({
@@ -115,6 +136,16 @@ describe("sharedNotificationsService (US-2242)", () => {
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(meta.metadata.kind).toBe("shared_notifications.upsert")
     expect(meta.metadata.alertTypesConfigured).toBe(3)
+    expect(meta.metadata.caregiverCount).toBe(4) // distinct: 1,2,3,4
+  })
+
+  // M5 (re-review) — caregiverId FK check rejects unknown/inactive users.
+  it("upsert rejects when a caregiverId is not a known active User", async () => {
+    prismaMock.user.findMany.mockResolvedValue([
+      { id: 1 }, { id: 2 }, // id=3, id=4 missing/inactive
+    ] as any)
+    await expect(sharedNotificationsService.upsert(7, validInput, 9))
+      .rejects.toThrow(/unknownCaregiverIds:3,4|unknownCaregiverIds:4,3/)
   })
 
   it("getActive returns null config when no active version", async () => {

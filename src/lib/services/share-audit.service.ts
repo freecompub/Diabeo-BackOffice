@@ -22,18 +22,29 @@ export type ShareAuditEvent = {
   metadata: Record<string, unknown>
 }
 
-const SHARE_AUDIT_LIMIT = 100
+// H1 (re-review) — bumped from 100 to 500 and moved the kind filter to
+//   SQL so a busy patient's audit history doesn't drown share events.
+const SHARE_AUDIT_LIMIT = 500
 
-/** Kinds d'audit liés aux partages tiers, queryés sur metadata.kind. */
+/**
+ * Kinds d'audit liés aux partages tiers, queryés sur metadata.kind.
+ * H2 (re-review) : `mode.validate` / `mode.deactivate` (legacy) remplacés
+ * par les kinds dérivés du configType (`*.validate`, `*.deactivate`,
+ * `*.history`) émis par `patientModeWorkflow` post-fix.
+ */
 const SHARE_AUDIT_KINDS = [
   "third_party_share.read",
   "third_party_share.upsert",
+  "third_party_share.validate",
+  "third_party_share.deactivate",
+  "third_party_share.history",
   "third_party_share.snapshot.invalid",
   "shared_notifications.read",
   "shared_notifications.upsert",
+  "shared_notifications.validate",
+  "shared_notifications.deactivate",
+  "shared_notifications.history",
   "shared_notifications.snapshot.invalid",
-  "mode.validate",          // re-use patientModeWorkflow.validate (DOCTOR sign-off)
-  "mode.deactivate",
 ] as const
 
 export const shareAuditQuery = {
@@ -45,33 +56,36 @@ export const shareAuditQuery = {
   async forPatient(
     patientId: number, auditUserId: number, ctx?: AuditContext,
   ): Promise<ShareAuditEvent[]> {
+    // H1 (re-review) — kind filter pushed to SQL via Prisma OR-of-equals.
+    //   Combined with the GIN partial index on `metadata.patientId`
+    //   (ADR #18 / US-2268), this avoids the in-memory truncation risk.
     const rows = await prisma.auditLog.findMany({
       where: {
-        // GIN partial index sur metadata.patientId (ADR #18 / US-2268).
         metadata: { path: ["patientId"], equals: patientId },
-        AND: { metadata: { path: ["kind"], string_starts_with: "" } },
+        OR: SHARE_AUDIT_KINDS.map((kind) => ({
+          metadata: { path: ["kind"], equals: kind },
+        })),
       },
       orderBy: { createdAt: "desc" },
       take: SHARE_AUDIT_LIMIT,
     })
 
-    // Filtre in-memory sur le `kind` puisque l'égalité enum n'est pas
-    // trivial en JSON path ; SHARE_AUDIT_KINDS reste petit.
-    const allowedKinds = new Set<string>(SHARE_AUDIT_KINDS)
-    const filtered = rows.filter((r) => {
-      const meta = r.metadata as Record<string, unknown> | null
-      const kind = typeof meta?.kind === "string" ? meta.kind : null
-      return kind !== null && allowedKinds.has(kind)
-    })
-
+    // M4 (re-review) — emit scanned/filtered counts so forensics can detect
+    //   saturation (if `scanned === SHARE_AUDIT_LIMIT` and not equal to
+    //   `filtered`, the result set may be truncated — bump take or paginate).
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "AUDIT_LOG",
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { patientId, kind: "share_audit.read", count: filtered.length },
+      metadata: {
+        patientId, kind: "share_audit.read",
+        scanned: rows.length,
+        count: rows.length,
+        truncated: rows.length >= SHARE_AUDIT_LIMIT,
+      },
     })
 
-    return filtered.map((r) => ({
+    return rows.map((r) => ({
       id: r.id,
       userId: r.userId,
       action: r.action,

@@ -17,12 +17,27 @@ import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
 
+// M6 (re-review) — bound scheduledAt at now+1y to prevent year-9999 schedules
+//   (cron worker DoS) ; cap templateVariables at 4 KB stringified to bound
+//   payload size on push delivery.
+const MAX_SCHEDULE_HORIZON_MS = 365 * 86_400_000
+const MAX_TEMPLATE_VARS_BYTES = 4096
+
 const scheduleSchema = z.object({
   templateId: z.string().min(1).max(50),
-  scheduledAt: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
-    message: "scheduledAt must be in the future",
-  }),
-  templateVariables: z.record(z.string(), z.unknown()).optional(),
+  scheduledAt: z.coerce.date()
+    .refine((d) => d.getTime() > Date.now(), {
+      message: "scheduledAt must be in the future",
+    })
+    .refine((d) => d.getTime() <= Date.now() + MAX_SCHEDULE_HORIZON_MS, {
+      message: "scheduledAt must be within 1 year",
+    }),
+  templateVariables: z.record(z.string(), z.unknown())
+    .optional()
+    .refine((v) => {
+      if (!v) return true
+      return JSON.stringify(v).length <= MAX_TEMPLATE_VARS_BYTES
+    }, { message: "templateVariables exceeds 4KB" }),
   expiresAt: z.coerce.date().optional(),
 })
 

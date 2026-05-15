@@ -15,31 +15,35 @@ beforeEach(() => {
 // ─── US-2239 share-audit ─────────────────────────────────────────────
 
 describe("shareAuditQuery (US-2239)", () => {
-  it("filters audit rows by allowed kinds (share-related only)", async () => {
+  // H1 (re-review) — filtering now happens in SQL via OR-of-equals on
+  //   `metadata.kind` ; in-memory filter dropped. Verify the where clause
+  //   contains the kind filter list.
+  it("passes share-kind filter list in SQL where clause", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([
-      // Allowed kinds
       { id: "a", userId: 1, action: "CREATE", resource: "CONFIG_VERSION",
         resourceId: "100", createdAt: new Date(),
         metadata: { patientId: 7, kind: "third_party_share.upsert" } },
-      { id: "b", userId: 2, action: "READ", resource: "CONFIG_VERSION",
-        resourceId: "101", createdAt: new Date(),
-        metadata: { patientId: 7, kind: "shared_notifications.read" } },
-      // Disallowed — not a share kind
-      { id: "c", userId: 3, action: "READ", resource: "PATIENT",
-        resourceId: "7", createdAt: new Date(),
-        metadata: { patientId: 7, kind: "dashboard.medecin.urgencies" } },
     ] as any)
     const out = await shareAuditQuery.forPatient(7, 9)
-    expect(out).toHaveLength(2)
-    expect(out.map((r) => r.id)).toEqual(["a", "b"])
+    expect(out).toHaveLength(1)
+    const call = prismaMock.auditLog.findMany.mock.calls[0]![0]!
+    expect((call.where as any).OR).toBeDefined()
+    expect(Array.isArray((call.where as any).OR)).toBe(true)
+    // At least the third_party_share + shared_notifications kinds.
+    const orKinds = (call.where as any).OR.map((c: any) => c.metadata.equals)
+    expect(orKinds).toContain("third_party_share.upsert")
+    expect(orKinds).toContain("shared_notifications.upsert")
   })
 
-  it("emits audit row with kind=share_audit.read", async () => {
+  it("emits audit row with kind=share_audit.read + scanned/truncated metadata", async () => {
     prismaMock.auditLog.findMany.mockResolvedValue([] as any)
     await shareAuditQuery.forPatient(7, 9)
     const lastAudit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(lastAudit.metadata.kind).toBe("share_audit.read")
     expect(lastAudit.metadata.patientId).toBe(7)
+    // M4 (re-review) — scanned/truncated for forensic saturation signal.
+    expect(lastAudit.metadata.scanned).toBe(0)
+    expect(lastAudit.metadata.truncated).toBe(false)
   })
 })
 
@@ -98,13 +102,16 @@ describe("scheduledMessagesService (US-2261)", () => {
     }, 9)).rejects.toThrow("patientNotFound")
   })
 
-  it("cancel returns {cancelled:false} on cross-tenant attempt", async () => {
+  it("cancel returns {cancelled:false} on cross-tenant attempt + audits notFound", async () => {
     // Patient exists but the notif belongs to a different userId.
     prismaMock.patient.findUnique.mockResolvedValue({ userId: 42 } as any)
     prismaMock.pushScheduledNotification.findFirst.mockResolvedValue(null)
     const out = await scheduledMessagesService.cancel("notif-foreign", 7, 9)
     expect(out.cancelled).toBe(false)
     expect(prismaMock.pushScheduledNotification.update).not.toHaveBeenCalled()
+    // M2 (re-review) — brute-force notifId enumeration leaves an audit trail.
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.kind).toBe("scheduled_messages.cancel.notFound")
   })
 
   it("cancel happy path sets isActive=false + audits", async () => {

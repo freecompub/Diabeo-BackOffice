@@ -60,8 +60,22 @@ class ValidationError extends Error {
   }
 }
 
+// M1 (re-review) — interpret `expiresAt` as **end-of-day Europe/Paris**
+//   (23:59:59 local) so a doctor entering "today" in Paris (UTC+1/+2)
+//   doesn't get spurious `expiresPast`. Live tz offset extracted via
+//   Intl `longOffset` part to be DST-correct.
 function validateThirdPartyShare(input: ThirdPartyShareInput): void {
-  const expires = Date.parse(`${input.expiresAt}T00:00:00Z`)
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Paris",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    timeZoneName: "longOffset",
+  })
+  // Probe the offset at the target date (handles DST near the boundary).
+  const probe = new Date(`${input.expiresAt}T12:00:00Z`)
+  const parts = fmt.formatToParts(probe)
+  const offset = parts.find((p) => p.type === "timeZoneName")?.value
+    ?.replace(/^GMT/, "") ?? "+00:00"
+  const expires = Date.parse(`${input.expiresAt}T23:59:59${offset}`)
   if (Number.isNaN(expires)) throw new ValidationError("expiresAt")
   const now = Date.now()
   if (expires <= now) throw new ValidationError("expiresPast")
@@ -137,32 +151,25 @@ const ALERT_TYPES = [
 ] as const
 export type SharedNotifAlertType = (typeof ALERT_TYPES)[number]
 
+// M5 (re-review) — strict object schema with all 7 alertTypes as optional
+//   arrays. Avoids Zod 3's `z.record(z.enum, …)` quirk that infers a full
+//   (non-partial) Record. Unknown keys at parse time fall in `.strict()`
+//   territory but we keep `.passthrough()=false` (default) so they're
+//   silently stripped — acceptable since alertType is a known enum.
+const caregiverArraySchema = z.array(z.number().int().positive()).max(20).optional()
 export const sharedNotificationsSchema = z.object({
-  /**
-   * Map alertType → list de caregiver IDs autorisés à recevoir.
-   * Tous les alertTypes sont optionnels (partial record) — un alertType
-   * absent signifie "aucun aidant notifié".
-   */
-  routing: z.record(
-    z.string(),
-    z.array(z.number().int().positive()).max(20),
-  ).superRefine((val, ctx) => {
-    const allowed = new Set<string>(ALERT_TYPES)
-    for (const key of Object.keys(val)) {
-      if (!allowed.has(key)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: `unknownAlertType:${key}`,
-          path: ["routing", key],
-        })
-      }
-    }
-  }),
+  routing: z.object({
+    severe_hypo: caregiverArraySchema,
+    hypo: caregiverArraySchema,
+    severe_hyper: caregiverArraySchema,
+    hyper: caregiverArraySchema,
+    ketone_dka: caregiverArraySchema,
+    ketone_moderate: caregiverArraySchema,
+    manual: caregiverArraySchema,
+  }).strict(),
 })
 
-export type SharedNotificationsInput = {
-  routing: Partial<Record<SharedNotifAlertType, number[]>>
-}
+export type SharedNotificationsInput = z.infer<typeof sharedNotificationsSchema>
 
 export const sharedNotificationsService = {
   async getActive(
@@ -199,6 +206,23 @@ export const sharedNotificationsService = {
     patientId: number, input: SharedNotificationsInput,
     auditUserId: number, ctx?: AuditContext,
   ): Promise<ConfigVersionDTO> {
+    // M5 (re-review) — caregiverId FK check : ensure every referenced User
+    //   exists and is `active`. Prevents routing notifications to deleted/
+    //   suspended accounts (silently dropped at runtime today).
+    const allCaregiverIds = Array.from(new Set(
+      Object.values(input.routing).flatMap((ids) => ids ?? []),
+    ))
+    if (allCaregiverIds.length > 0) {
+      const known = await prisma.user.findMany({
+        where: { id: { in: allCaregiverIds }, status: "active" },
+        select: { id: true },
+      })
+      const knownIds = new Set(known.map((u) => u.id))
+      const missing = allCaregiverIds.filter((id) => !knownIds.has(id))
+      if (missing.length > 0) {
+        throw new ValidationError(`unknownCaregiverIds:${missing.join(",")}`)
+      }
+    }
     return createConfigVersion({
       patientId,
       configType: ConfigVersionType.shared_notifications,
@@ -207,6 +231,7 @@ export const sharedNotificationsService = {
       auditKind: "shared_notifications.upsert",
       auditExtra: {
         alertTypesConfigured: Object.keys(input.routing).length,
+        caregiverCount: allCaregiverIds.length,
       },
     })
   },
