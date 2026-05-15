@@ -177,6 +177,8 @@ export type AuditResource =
   | "PATIENT_RISK_SCORE"
   /** Groupe 10 Batch C — modes spéciaux (pédiatrique/Ramadan/voyage, US-2233/2234/2235). */
   | "PATIENT_MODE"
+  /** Groupe 10 Batch D — messages programmés patient (US-2261). */
+  | "PUSH_SCHEDULED_NOTIFICATION"
 
 /**
  * Audit log entry — parameters for logging an action.

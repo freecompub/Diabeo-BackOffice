@@ -2566,6 +2566,12 @@ enum ConfigVersionType {
   ramadan_mode
   /// US-2235 — Mode voyage (fuseau horaire, protocole basal).
   travel_mode
+  /// US-2240 — Partage tiers (école, EHPAD, cabinet externe). Validation
+  /// médicale DOCTOR requise avant activation.
+  third_party_share
+  /// US-2242 — Notifications partagées : matrice alertType × caregivers.
+  /// DOCTOR configure quels aidants reçoivent quelles alertes.
+  shared_notifications
 
   @@map("config_version_type")
 }

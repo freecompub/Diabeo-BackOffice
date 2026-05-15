@@ -107,7 +107,14 @@ async function supersedePrevious(
  *
  * Returns a `ConfigVersionDTO` ; callers wrap with their own `warnings`.
  */
-async function createConfigVersion(args: {
+// Groupe 10 Batch D — exported for reuse by third-party-share + shared-
+//   notifications services (US-2240, US-2242).
+//
+// M3 (re-review) — `extraCreate` carries nested writes (e.g. pediatric
+// caregivers) and is sensitive : only `pediatric_mode` is allowed to use
+// it. Other config types passing `extraCreate` are rejected at runtime
+// to avoid PHI relationship leaks via copy-paste.
+export async function createConfigVersion(args: {
   patientId: number
   configType: ConfigVersionType
   snapshot: Prisma.InputJsonValue
@@ -117,6 +124,11 @@ async function createConfigVersion(args: {
   auditExtra?: Record<string, unknown>
   extraCreate?: Partial<Prisma.ConfigVersionUncheckedCreateInput>
 }): Promise<ConfigVersionDTO> {
+  if (args.extraCreate && args.configType !== ConfigVersionType.pediatric_mode) {
+    throw new Error(
+      `createConfigVersion: extraCreate is only allowed for pediatric_mode (got ${args.configType})`,
+    )
+  }
   return prisma.$transaction(async (tx: Tx) => {
     const now = new Date()
     const version = await nextVersion(tx, args.patientId, args.configType)
@@ -661,11 +673,21 @@ export const travelModeService = {
 // Common : validate (DOCTOR) + deactivate
 // ─────────────────────────────────────────────────────────────
 
-const SUPPORTED_MODE_TYPES = new Set<ConfigVersionType>([
+// H2 (re-review) — workflow renommé `SUPPORTED_VERSIONED_CONFIG_TYPES`
+//   pour refléter sa nature post-Batch D : pas uniquement des modes, mais
+//   toute config patient-scoped versionnée (modes + partages + routing
+//   notifications). Le `kind` audit est désormais dérivé du `configType`
+//   pour distinguer correctement dans la forensique HDS
+//   (ex. `pediatric_mode.validate` vs `third_party_share.validate`).
+const SUPPORTED_VERSIONED_CONFIG_TYPES = new Set<ConfigVersionType>([
   ConfigVersionType.pediatric_mode,
   ConfigVersionType.ramadan_mode,
   ConfigVersionType.travel_mode,
+  ConfigVersionType.third_party_share,
+  ConfigVersionType.shared_notifications,
 ])
+// Backward-compat alias for legacy callers (deprecated, will be removed in V2).
+const SUPPORTED_MODE_TYPES = SUPPORTED_VERSIONED_CONFIG_TYPES
 
 export const patientModeWorkflow = {
   /** DOCTOR signs off a NURSE-created mode version. */
@@ -695,7 +717,10 @@ export const patientModeWorkflow = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: {
           patientId: row.patientId, configType: row.configType,
-          version: row.version, kind: "mode.validate",
+          version: row.version,
+          // H2 (re-review) — kind derived from configType so forensic
+          //   filters distinguish modes vs shares vs notifications.
+          kind: `${row.configType}.validate`,
         },
       })
       return toConfigVersionDTO(updated)
@@ -731,7 +756,9 @@ export const patientModeWorkflow = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: {
           patientId, configType,
-          version: active.version, kind: "mode.deactivate",
+          version: active.version,
+          // H2 (re-review) — kind derived from configType.
+          kind: `${configType}.deactivate`,
         },
       })
       return { archived: true }
@@ -754,7 +781,8 @@ export const patientModeWorkflow = {
       userId: auditUserId, action: "READ", resource: "CONFIG_VERSION",
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { patientId, kind: "mode.history", configType, count: rows.length },
+      // H2 (re-review) — kind derived from configType.
+      metadata: { patientId, kind: `${configType}.history`, configType, count: rows.length },
     })
     return rows.map(toConfigVersionDTO)
   },

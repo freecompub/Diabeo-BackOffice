@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-15 — Groupe 10 Batch E Food monitoring livré (PR #404, 4 US US-2248/2251/2253/2260, ~16 SP, plan simplifié pas de migration). Service `food-monitoring.service.ts` : foodJournalQuery (DiabetesEvent insulinMeal + MealPhoto count + comment truncate 500c), adherenceQuery (score composite 0.6 régularité Paris-tz + 0.4 bolus coverage, fallback regularity-only), glycemiaMealContextQuery (CGM ±2h batch fetch + bucketing in-memory). US-2260 templates pathologie : `/api/team/templates` existant (US-2078). 3 routes `/api/patients/[id]/{food-journal,adherence,glycemia-meal-context}` NURSE+ + canAccessPatient + requireGdprConsent. 2 rounds review appliqués (9 findings : M1 Paris-tz bucketing, L1 SECURITY comment + truncate, L2 deletedAt 3 queries, L3 JSDoc clinical ambiguity, L4 perf TODO, L5 edge case doc, L6 7 tests, L7 drop unused Prisma re-export, L8 unify audit DIABETES_EVENT). V1 63 → 67 DONE (48%). Total 135/292 (46%). 1657/1657 tests verts. ⚠️ V2 deferrals : US-2250 workflow validation FSM, US-2252 cron orchestration, pathology column MessageTemplate, Redis cache, UI patient tabs integration.
+> Dernière mise à jour : 2026-05-15 — Groupe 10 Batch D Shares+Messaging livré (PR #405, 4 US US-2239/2240/2242/2261, ~16 SP). Migration mineure : ConfigVersionType enum +2 valeurs (third_party_share, shared_notifications). 3 services : `share-config.service.ts` (thirdPartyShare + sharedNotifications via ConfigVersion hub PR #396), `share-audit.service.ts` (pure AuditLog query SQL OR-kinds), `scheduled-messages.service.ts` (wrapper PushScheduledNotification). 6 routes API NURSE+/DOCTOR + canAccessPatient + requireGdprConsent. Reuse maximum infra Batch C : `patientModeWorkflow.validate/deactivate/listHistory` étendus (SUPPORTED_VERSIONED_CONFIG_TYPES) ; kind audit dérivé du configType (`${configType}.validate`). 2 rounds review appliqués (12/13 findings : H1 SQL filter limit 500 + scanned/truncated metadata, H2 kind rename + SUPPORTED_VERSIONED_CONFIG_TYPES, M1 expiresAt end-of-day Paris DST-aware, M2 cancel.notFound audit anti brute-force, M3 createConfigVersion runtime guard extraCreate, M4 audit metadata enrichi, M5 z.object strict + caregiverId FK check User.status=active, M6 scheduledAt cap 1y + templateVariables 4KB). V1 67 → 71 DONE (50%). Total 139/292 (48%). 1675/1675 tests verts. ⚠️ V2 deferrals : OrchestrationLog idempotence dedup, retry exponential backoff push, patient opt-out par type, telemetry Sentry sur snapshot.invalid failures (L5), UI patient detail tabs intégration.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 67   | 1       | 73          | **48%** |
+| **V1**   | 141   | 71   | 1       | 69          | **50%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **135** | **2**   | **155**     | **46%** |
+| **TOTAL**| **292** | **139** | **2**   | **151**     | **48%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -450,16 +450,16 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2233 | Activation mode pédiatrique (multi-aidants PHI chiffrée, permissionLevel propose) | ✅ DONE PR #396 |
 | US-2234 | Activation mode Ramadan (29-30j, sahur/iftar, ISF/ICR multipliers, warnings IDF-DAR) | ✅ DONE PR #396 |
 | US-2235 | Activation mode voyage (tz offset, basal protocol transitoire ATTD/EASD 2022) | ✅ DONE PR #396 |
-| US-2239 | Audit partages temporaires | NOT STARTED |
-| US-2240 | Validation médicale aidants | NOT STARTED |
-| US-2242 | Statut sync temps réel | NOT STARTED |
+| US-2239 | Audit partages temporaires | ✅ DONE PR #405 | AuditLog SQL filter OR-kinds + scanned/truncated metadata |
+| US-2240 | Validation médicale partage tiers | ✅ DONE PR #405 | ConfigVersionType.third_party_share + patientModeWorkflow.validate DOCTOR |
+| US-2242 | Notifications partagées multi-aidants | ✅ DONE PR #405 | ConfigVersionType.shared_notifications + matrice alertType×caregivers + FK check User.status=active |
 | US-2248 | Vue journal alimentaire patient | ✅ DONE PR #404 | DiabetesEvent insulinMeal + MealPhoto count + comment truncate 500c |
 | US-2250 | Validation comptage glucides patient | ⏸️ V2 (FSM table) | Workflow validation deferred — exige nouvelle table |
 | US-2251 | Suivi adhésion thérapeutique | ✅ DONE PR #404 | Score 0.6 régularité Paris-tz + 0.4 bolus coverage |
 | US-2252 | Alerte non-saisie depuis X jours | ⏸️ V2 (orchestration) | Cron + OrchestrationLog table deferred |
 | US-2253 | Contextualisation glycémie-repas | ✅ DONE PR #404 | CGM ±2h pre/post + sample counts |
 | US-2260 | Templates messagerie pathologie | ✅ DONE PR #404 (existant) | `/api/team/templates` (US-2078) ; ⚠️ pathology column V2 |
-| US-2261 | Coordination multi-aidants | NOT STARTED |
+| US-2261 | Messages programmés patient | ✅ DONE PR #405 | Wrapper PushScheduledNotification (schedule/list/cancel) + cancel.notFound audit + scheduledAt cap 1y + templateVariables 4KB |
 
 ---
 
