@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> Dernière mise à jour : 2026-05-15 — Groupe 10 Batch D Shares+Messaging livré (PR #405, 4 US US-2239/2240/2242/2261, ~16 SP). Migration mineure : ConfigVersionType enum +2 valeurs (third_party_share, shared_notifications). 3 services : `share-config.service.ts` (thirdPartyShare + sharedNotifications via ConfigVersion hub PR #396), `share-audit.service.ts` (pure AuditLog query SQL OR-kinds), `scheduled-messages.service.ts` (wrapper PushScheduledNotification). 6 routes API NURSE+/DOCTOR + canAccessPatient + requireGdprConsent. Reuse maximum infra Batch C : `patientModeWorkflow.validate/deactivate/listHistory` étendus (SUPPORTED_VERSIONED_CONFIG_TYPES) ; kind audit dérivé du configType (`${configType}.validate`). 2 rounds review appliqués (12/13 findings : H1 SQL filter limit 500 + scanned/truncated metadata, H2 kind rename + SUPPORTED_VERSIONED_CONFIG_TYPES, M1 expiresAt end-of-day Paris DST-aware, M2 cancel.notFound audit anti brute-force, M3 createConfigVersion runtime guard extraCreate, M4 audit metadata enrichi, M5 z.object strict + caregiverId FK check User.status=active, M6 scheduledAt cap 1y + templateVariables 4KB). V1 67 → 71 DONE (50%). Total 139/292 (48%). 1675/1675 tests verts. ⚠️ V2 deferrals : OrchestrationLog idempotence dedup, retry exponential backoff push, patient opt-out par type, telemetry Sentry sur snapshot.invalid failures (L5), UI patient detail tabs intégration.
+> Dernière mise à jour : 2026-05-15 — Groupe 7 Batch 1 Facturation Foundation livré (PR #406, 3 US US-2103/2105/2107, ~11 SP). 2 modèles + 1 séquence + 2 enums : `Invoice` (immutable post-issued, snapshots cabinet + customer chiffré AES-256-GCM), `InvoiceItem`, `InvoiceSequence` (per-(country, year) gap-less), `InvoiceStatus` (FSM `draft → issued → paid → refunded`, cancelled terminal), `PaymentMethod`. 3 colonnes `HealthcareService.{siret,tvaIntra,iban}` + 3 CHECK regex format. 3 triggers PG : `enforce_invoice_immutability` (champs verrouillés post-draft + FSM DB-level), `block_invoice_delete_after_issued`, `block_invoice_items_after_issued`. Services `invoice-numbering.service` (`reserveNextInvoiceNumber` gap-less + runtime guard `pg_current_xact_id_if_assigned()`) + `invoice.service` (createDraft/issue/markPaid/cancel/getById/list + atomic FSM via `updateMany WHERE status` + `InvoiceConcurrencyError` retryable séparé). 5 routes API `/api/billing/invoices` + `[id]/{issue,pay,cancel}` (RBAC DOCTOR cabinet member + VIEWER own + `assertJsonContentType` 415). SIRET Luhn validation FR (validateSiret exporté de healthcare-management). `decryptCustomerSnapshot` exporté + Zod `.strict()` whitelist double-couche encode+decode (anti-leak Batch 2 PDF). 3 rounds review (toi) appliqués : 58 findings (36 + 15 + 7) — 0 résiduel critical/high. V1 71 → 74 DONE (52%). Total 139/292 → 142/292 (49%). 1736/1736 tests verts. ⚠️ Batches 2-4 à suivre (PDF+TVA / Stripe webhooks / Refunds+Relances) — voir Groupe 7 table.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
 ---
@@ -10,11 +10,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 141   | 71   | 1       | 69          | **50%** |
+| **V1**   | 141   | 74   | 1       | 66          | **52%** |
 | **V2**   | 58    | 0    | 0       | 58          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **292** | **139** | **2**   | **151**     | **48%** |
+| **TOTAL**| **292** | **142** | **2**   | **148**     | **49%** |
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -307,19 +307,23 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2060 | Apple HealthKit sync | NOT STARTED |
 | US-2061 | Google Fit / Health Connect | NOT STARTED |
 
-### Groupe 7 — Facturation (9 US)
+### Groupe 7 — Facturation (9 US) — Batch 1 Foundation DONE PR #406
+
+> Libellés alignés sur les specs réelles (`docs/UserStory/pro-user-stories/12-facturation/`).
+> Batch 1 (Foundation, 11 SP) — DONE PR #406 : Invoice/InvoiceItem/InvoiceSequence + 3 triggers PG.
+> Batches 2-4 à suivre : PDF+TVA, Stripe webhooks, Refunds.
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2102 | Stripe Connect paiement | NOT STARTED |
-| US-2103 | Virement bancaire | NOT STARTED |
-| US-2104 | Abonnements | NOT STARTED |
-| US-2105 | Factures PDF | NOT STARTED |
-| US-2106 | Webhooks paiement | NOT STARTED |
-| US-2107 | Tableau revenus | NOT STARTED |
-| US-2108 | Rappels automatiques | NOT STARTED |
-| US-2109 | TVA / fiscalité FR | NOT STARTED |
-| US-2110 | Facturation DZ | NOT STARTED |
+| US-2102 | Virement bancaire + facture PDF | NOT STARTED (Batch 2 — pdf-lib + IBAN) |
+| US-2103 | Facturation au patient FR | ✅ DONE PR #406 — Invoice service + customerSnapshot AES-256-GCM + audit US-2268 pivot |
+| US-2104 | Abonnement DZ | NOT STARTED (Batch 3 — partenaire bancaire DZ à confirmer) |
+| US-2105 | Numérotation séquentielle pays | ✅ DONE PR #406 — InvoiceSequence gap-less FOR UPDATE + format `FR-2026-000001` + Luhn SIRET |
+| US-2106 | Webhooks idempotents Stripe | NOT STARTED (Batch 3 — bloqué provision Stripe Connect) |
+| US-2107 | Versioning facture immuable | ✅ DONE PR #406 — 3 triggers PG (enforce_invoice_immutability + DELETE-block + items-lock) + FSM atomique |
+| US-2108 | Relances automatiques | NOT STARTED (Batch 4 — cron J+7/15/30 via Resend US-2074) |
+| US-2109 | Remboursements | NOT STARTED (Batch 4 — dépend US-2106 webhooks) |
+| US-2110 | TVA multi-pays | NOT STARTED (Batch 2 — CountryTaxRule US-2114 snapshot dans InvoiceItem.taxRate déjà prévu) |
 
 ### Groupe 8 — i18n & Interopérabilité (8 US, 33 SP)
 

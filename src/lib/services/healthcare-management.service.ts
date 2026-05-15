@@ -137,11 +137,13 @@ interface UpdateInput {
 }
 
 /**
- * Validation Luhn (mod-10) — RPPS et ADELI utilisent ce checksum sur tous
- * les chiffres. Tolère erreurs de saisie d'un chiffre (typo) et
- * permutations adjacentes.
+ * Validation Luhn (mod-10) — RPPS, ADELI, SIRET utilisent ce checksum
+ * sur tous les chiffres. Tolère erreurs de saisie d'un chiffre (typo)
+ * et permutations adjacentes.
+ *
+ * Exporté pour réutilisation (US-2103 SIRET validation, US-2118 RPPS).
  */
-function luhnValid(s: string): boolean {
+export function luhnValid(s: string): boolean {
   let sum = 0
   let alt = false
   for (let i = s.length - 1; i >= 0; i--) {
@@ -173,6 +175,28 @@ export function validateLicenseNumber(value: string): string | null {
     return trimmed.length === 11
       ? "rpps_checksum_invalid"
       : "adeli_checksum_invalid"
+  }
+  return null
+}
+
+/**
+ * US-2103 H-NEW-1 (review PR #406) — Validation SIRET FR sur 14 chiffres
+ * avec checksum Luhn. Refuse les `00000000000000` et autres formats
+ * sans contrôle de cohérence qui passeraient un simple regex.
+ *
+ * Note : La Poste (SIREN 356000000) est une exception historique au Luhn
+ * (somme de digits multiple de 5). Ignoré pour MVP — un cabinet médical
+ * n'a aucune raison d'avoir un SIRET La Poste.
+ *
+ * @returns `null` si valide, code d'erreur sinon.
+ */
+export function validateSiret(value: string): string | null {
+  const trimmed = value.trim()
+  if (!/^[0-9]{14}$/.test(trimmed)) {
+    return "siret_invalid_format"
+  }
+  if (!luhnValid(trimmed)) {
+    return "siret_checksum_invalid"
   }
   return null
 }

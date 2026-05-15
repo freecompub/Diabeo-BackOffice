@@ -28,3 +28,33 @@ vi.mock("@/lib/db/client", () => ({
 beforeEach(() => {
   mockReset(prismaMock)
 })
+
+/**
+ * L-RR3-5 (review re-3 PR #406) — Helper de mock partagé pour le
+ * runtime guard de `reserveNextInvoiceNumber` (H-NEW-4). Tout test
+ * qui exerce indirectement `invoiceService.issue` doit appeler ceci
+ * dans son `beforeEach` pour que la SQL `pg_current_xact_id_if_assigned`
+ * retourne un fake xid (simule une transaction Postgres active).
+ *
+ * Le 2ᵉ argument permet de configurer ce que retournent les autres
+ * `$queryRaw` (typiquement `SELECT last_number ...`).
+ *
+ * @example
+ *   beforeEach(() => {
+ *     mockInvoiceTxGuard({ lastNumber: 0 })
+ *   })
+ */
+export function mockInvoiceTxGuard(opts: { lastNumber?: number } = {}): void {
+  const lastNumber = opts.lastNumber ?? 0
+  prismaMock.$executeRaw.mockResolvedValue(1 as any)
+  prismaMock.$queryRaw.mockImplementation((sql: any) => {
+    const text = Array.isArray(sql) ? sql.join("") : String(sql)
+    if (text.includes("pg_current_xact_id_if_assigned")) {
+      return Promise.resolve([{ xid: "fake-xid" }]) as any
+    }
+    if (text.includes("last_number")) {
+      return Promise.resolve([{ last_number: lastNumber }]) as any
+    }
+    return Promise.resolve([]) as any
+  })
+}
