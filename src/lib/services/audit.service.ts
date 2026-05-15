@@ -179,6 +179,8 @@ export type AuditResource =
   | "PATIENT_MODE"
   /** Groupe 10 Batch D — messages programmés patient (US-2261). */
   | "PUSH_SCHEDULED_NOTIFICATION"
+  /** Groupe 7 Batch 1 — Facturation (US-2103 / 2105 / 2107). */
+  | "INVOICE"
 
 /**
  * Audit log entry — parameters for logging an action.

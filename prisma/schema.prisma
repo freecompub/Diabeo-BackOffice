@@ -365,6 +365,8 @@ model User {
   validatedConfigVersions           ConfigVersion[]                   @relation("ConfigVersionValidator")
   createdAlertThresholdTemplates    AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
   acknowledgedRiskScores            PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
+  // Groupe 7 Batch 1 — Facturation (US-2103/2105/2107)
+  createdInvoices                   Invoice[]                         @relation("InvoiceCreator")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -561,6 +563,8 @@ model Patient {
   /// Groupe 10 Batch B — analytics caches.
   monitoringMetrics      PatientMonitoringMetrics[]
   riskScore              PatientRiskScore?
+  /// Groupe 7 Batch 1 — Factures liées au patient (consultations, etc.).
+  invoices               Invoice[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1382,6 +1386,8 @@ model HealthcareService {
   patientGroups              PatientGroup[]
   /// US-2050 — Templates d'ajustement insuline (cabinet-scoped).
   insulinAdjustmentTemplates InsulinAdjustmentTemplate[]
+  /// Groupe 7 Batch 1 — Factures émises par le cabinet.
+  invoices                   Invoice[]
 
   @@unique([name, establishment])
   @@index([type])
@@ -2268,6 +2274,8 @@ model TeleconsultationActe {
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   invoicer    User?       @relation("TeleconsultInvoicer", fields: [invoicedBy], references: [id], onDelete: SetNull)
+  /// Groupe 7 Batch 1 — Ligne facture éventuellement émise pour cet acte.
+  invoiceItem InvoiceItem?
 
   @@index([invoicedAt])
   @@map("teleconsultation_actes")
@@ -2780,4 +2788,162 @@ enum RiskLevel {
   critical
 
   @@map("risk_level")
+}
+
+// ═══════════════════════════════════════════════════════════════
+// 17. DOMAINE FACTURATION — Groupe 7 Batch 1 (US-2103 / 2105 / 2107)
+// ═══════════════════════════════════════════════════════════════
+//
+// Modèle facture immuable post-issuance, numérotation gap-less per-
+// country/year, machine d'états explicite. Aucune PHI dans le modèle
+// (le snapshot patient/issuer est chiffré au service layer côté V1+).
+
+/// US-2107 — Cycle de vie facture, machine d'états explicite.
+///
+/// Transitions autorisées (FSM appliquée au trigger PG + service) :
+///   draft     → issued | cancelled
+///   issued    → paid | cancelled
+///   paid      → refunded
+///   cancelled = terminal
+///   refunded  = terminal
+enum InvoiceStatus {
+  draft
+  issued
+  paid
+  cancelled
+  refunded
+
+  @@map("invoice_status")
+}
+
+enum PaymentMethod {
+  stripe
+  bank_transfer
+  cash
+  other
+
+  @@map("payment_method")
+}
+
+/// US-2103 / US-2105 / US-2107 — Facture cabinet, immuable post-issuance.
+///
+/// Numérotation `number` : NULL en draft, format `FR-2026-000001` dès
+/// l'issuance (`InvoiceSequence` row-locked FOR UPDATE pour gap-less).
+///
+/// Immuabilité enforced par trigger `enforce_invoice_immutability` :
+///  - `number`, `total_cents`, `tax_cents`, `currency`, `country_code`,
+///    `cabinet_id`, `patient_id`, `issued_at`, `pdf_hash`, snapshots →
+///    locked dès status ≠ draft.
+///  - `status` transitions limitées à la FSM ci-dessus.
+///  - DELETE bloqué dès status ≠ draft (utiliser cancel transition).
+///
+/// Snapshots `issuer_snapshot` / `customer_snapshot` : copie immutable
+/// du cabinet (raison sociale, adresse, SIRET) et du client (nom,
+/// pseudonymisé HMAC pour patients) au moment de l'issuance. Garantit
+/// que des modifs ultérieures (changement d'adresse cabinet, soft-delete
+/// patient) n'altèrent pas une facture passée — exigence anti-fraude
+/// + obligation comptable FR (DGFiP).
+model Invoice {
+  id                    Int            @id @default(autoincrement())
+  /// Numéro séquentiel `<country>-<year>-<6digits>`. NULL en draft.
+  number                String?        @unique @db.VarChar(30)
+  countryCode           String         @map("country_code") @db.Char(2)
+  cabinetId             Int            @map("cabinet_id")
+  /// Optionnel : facture patient (US-2103) ou cabinet-interne.
+  patientId             Int?           @map("patient_id")
+  /// Montants entiers en cents (anti floating-point). EUR/DZD.
+  /// `total_cents` = HT + taxe = sum(items.line_total_cents)
+  /// `tax_cents`   = sum(items.tax_cents)
+  totalCents            Int            @map("total_cents")
+  taxCents              Int            @map("tax_cents")
+  /// ISO 4217 (EUR | DZD) — validé via CountryCurrency au service.
+  currency              String         @db.Char(3)
+  status                InvoiceStatus  @default(draft)
+  paymentMethod         PaymentMethod? @map("payment_method")
+  /// Renseigné après webhook Stripe US-2106 (Batch 3).
+  stripePaymentIntentId String?        @map("stripe_payment_intent_id") @db.VarChar(50)
+  /// PDF généré US-2102 (Batch 2) — URL S3 OVH + SHA-256 intégrité.
+  pdfUrl                String?        @map("pdf_url") @db.VarChar(500)
+  pdfHash               String?        @map("pdf_hash") @db.Char(64)
+  /// Snapshot cabinet au moment issuance — JSON arbitraire :
+  /// { name, addressLine1, postalCode, city, country, siret?, tva? }.
+  issuerSnapshot        Json?          @map("issuer_snapshot")
+  /// Snapshot client au moment issuance. Pour patients : nom pseudonymisé
+  /// (HMAC) ou chiffré AES selon politique RGPD V1+. MVP : null si pas patient.
+  customerSnapshot      Json?          @map("customer_snapshot")
+  issuedAt              DateTime?      @map("issued_at") @db.Timestamptz()
+  paidAt                DateTime?      @map("paid_at") @db.Timestamptz()
+  cancelledAt           DateTime?      @map("cancelled_at") @db.Timestamptz()
+  refundedAt            DateTime?      @map("refunded_at") @db.Timestamptz()
+  createdBy             Int            @map("created_by")
+  createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+
+  cabinet HealthcareService @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
+  patient Patient?          @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  creator User              @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items   InvoiceItem[]
+
+  /// Unicité globale du numéro garantie par `@unique` sur `number`,
+  /// mais `(countryCode, number)` garde la sémantique métier explicite.
+  @@unique([countryCode, number])
+  @@index([cabinetId, status, issuedAt(sort: Desc)])
+  @@index([patientId, issuedAt(sort: Desc)])
+  @@index([status, issuedAt])
+  /// FK Restrict : index sur createdBy pour les jointures admin.
+  @@index([createdBy])
+  @@map("invoices")
+}
+
+/// Ligne de facture. Verrouillée en immutabilité avec l'Invoice parente
+/// dès que invoice.status ≠ draft (trigger PG block_invoice_items_after_issued).
+model InvoiceItem {
+  id                Int      @id @default(autoincrement())
+  invoiceId         Int      @map("invoice_id")
+  description       String   @db.VarChar(500)
+  /// Quantité décimale (consultation 0.5h, forfait, etc.).
+  quantity          Decimal  @db.Decimal(10, 3)
+  /// Prix unitaire HT en cents.
+  unitPriceCents    Int      @map("unit_price_cents")
+  /// Taux TVA fractionnaire (0.2000 = 20%). Snapshot CountryTaxRule.
+  taxRate           Decimal  @map("tax_rate") @db.Decimal(6, 4)
+  /// `tax_cents`        = round(quantity × unit_price_cents × tax_rate)
+  /// `line_total_cents` = round(quantity × unit_price_cents) + tax_cents
+  taxCents          Int      @map("tax_cents")
+  lineTotalCents    Int      @map("line_total_cents")
+  /// US-2072 — Lien optionnel acte téléconsultation (1:1).
+  teleconsultActeId Int?     @unique @map("teleconsult_acte_id")
+  /// Ordre d'affichage sur la facture rendue.
+  position          Int
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  invoice         Invoice               @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  teleconsultActe TeleconsultationActe? @relation(fields: [teleconsultActeId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, position])
+  @@map("invoice_items")
+}
+
+/// US-2105 — Compteur séquentiel par (country, year).
+///
+/// Anti-fraude : numérotation gap-less garantie par
+///   1. INSERT … ON CONFLICT DO NOTHING (create row si manquante)
+///   2. SELECT last_number … FOR UPDATE (row lock — sérialise les
+///      issuances concurrentes du même pays/année)
+///   3. UPDATE last_number = last_number + 1
+///   4. INSERT invoice avec `number = format(countryCode, year, next)`
+///   5. Commit
+///
+/// Si l'INSERT invoice échoue, ROLLBACK rétablit `last_number` au
+/// précédent → pas de gap, pas de doublon. Conforme DGFiP FR
+/// (numérotation chronologique continue, art. 242 nonies A CGI).
+model InvoiceSequence {
+  id          Int      @id @default(autoincrement())
+  countryCode String   @map("country_code") @db.Char(2)
+  year        Int
+  lastNumber  Int      @default(0) @map("last_number")
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  @@unique([countryCode, year])
+  @@map("invoice_sequences")
 }
