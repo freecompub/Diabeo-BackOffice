@@ -2,27 +2,38 @@
  * @description Groupe 7 Batch 1 — Invoice service unit tests.
  *
  * Couvre :
- *   - US-2103 : `createDraft` validation + cabinet member assertion
- *               + currency-country supportée
+ *   - US-2103 : `createDraft` validation + cabinet member + country/
+ *     currency cohérent (H2 review)
  *   - US-2105 : `formatInvoiceNumber` format réglementaire
- *   - US-2107 : `issue` FSM draft → issued, `markPaid` issued → paid,
- *               `cancel` draft/issued → cancelled. Rejet des transitions
- *               invalides (paid → cancelled, refunded → *, etc.).
- *
- * `reserveNextInvoiceNumber` (gap-less concurrency) est testé en
- * `invoice-numbering.service.test.ts` séparé pour isoler la sémantique
- * de transaction.
+ *   - US-2107 : `issue` FSM draft → issued (atomique updateMany H4),
+ *     `markPaid` issued → paid, `cancel` draft/issued → cancelled.
+ *     Rejet transitions invalides (paid → cancelled, refunded → *).
+ *   - Snapshots immuables (C2 + H3 + H7 review) : SIRET obligatoire FR,
+ *     patient name déchiffré, cabinet/patient introuvable bloque issue.
+ *   - Access control (C3 + H5 review) : `getById` access-denied audit,
+ *     `canReadInvoice` ADMIN / VIEWER own / DOCTOR cabinet.
+ *   - List scoping (M5 review) : `listByCabinet` non-member rejette,
+ *     `listByPatient` cross-patient bloqué.
+ *   - Audit metadata pivots (M6 + US-2268) : `kind: invoice.*`,
+ *     `cabinetId` / `patientId` pivots cohérents.
  */
 import { describe, it, expect, beforeEach } from "vitest"
-import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 import {
   invoiceService,
   InvoiceValidationError,
   InvoiceAccessError,
   InvoiceStateError,
+  INVOICE_BOUNDS,
 } from "@/lib/services/invoice.service"
-import { formatInvoiceNumber } from "@/lib/services/invoice-numbering.service"
+import {
+  formatInvoiceNumber,
+  InvoiceSequenceOverflowError,
+} from "@/lib/services/invoice-numbering.service"
+
+// Encrypt firstname/lastname for snapshot test (C2 review).
+import { encrypt } from "@/lib/crypto/health-data"
+const encryptB64 = (s: string) => Buffer.from(encrypt(s)).toString("base64")
 
 const baseDraftInput = {
   cabinetId: 7,
@@ -36,8 +47,14 @@ const baseDraftInput = {
 
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
-  // Transaction passthrough by default — tests can re-mock.
   prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
+  // Cabinet par défaut : pays = FR cohérent.
+  prismaMock.healthcareService.findUnique.mockResolvedValue({
+    country: "FR", name: "Cabinet X", establishment: null,
+    addressLine1: null, addressLine2: null, postalCode: null, city: null,
+    phone: null, email: null, siret: "12345678901234",
+    tvaIntra: null, iban: null, licenseNumber: null,
+  } as any)
 })
 
 // ─── formatInvoiceNumber (US-2105) ───────────────────────────────────
@@ -90,7 +107,7 @@ describe("invoiceService.createDraft (US-2103)", () => {
     expect(prismaMock.invoice.create).toHaveBeenCalled()
   })
 
-  it("computes total + tax from multiple lines", async () => {
+  it("computes total + tax from line with TVA 20%", async () => {
     prismaMock.invoice.create.mockResolvedValue({
       id: 100, number: null, countryCode: "FR", cabinetId: 7,
       patientId: 42, totalCents: 6000, taxCents: 1000, currency: "EUR",
@@ -111,11 +128,46 @@ describe("invoiceService.createDraft (US-2103)", () => {
     expect(items[0]!.lineTotalCents).toBe(6000)   // 5000 + 1000
   })
 
+  // M2/M3 (review PR #406) — arrondi ligne-à-ligne sur quantités décimales.
+  it("rounds half-away-from-zero per line (3 lines qty=0.333 unit=100 TVA=20%)", async () => {
+    prismaMock.invoice.create.mockResolvedValue({
+      id: 100, number: null, countryCode: "FR", cabinetId: 7,
+      patientId: 42, totalCents: 0, taxCents: 0, currency: "EUR",
+      status: "draft", paymentMethod: null, stripePaymentIntentId: null,
+      pdfUrl: null, pdfHash: null, issuerSnapshot: null, customerSnapshot: null,
+      issuedAt: null, paidAt: null, cancelledAt: null, refundedAt: null,
+      createdBy: 9, createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    await invoiceService.createDraft({
+      ...baseDraftInput,
+      items: Array.from({ length: 3 }, () => ({
+        description: "split", quantity: 0.333, unitPriceCents: 100, taxRate: 0.20,
+      })),
+    }, 9)
+    const createArg = prismaMock.invoice.create.mock.calls[0]![0] as any
+    const items = createArg.data.items.create
+    // Chaque ligne : subtotal=33.3, tax=round(6.66)=7, line=round(33.3)+7=40
+    expect(items.length).toBe(3)
+    expect(items[0]!.taxCents).toBe(7)
+    expect(items[0]!.lineTotalCents).toBe(40)
+  })
+
   it("rejects when caller is not a cabinet member", async () => {
     prismaMock.healthcareMember.findFirst.mockResolvedValue(null)
     await expect(invoiceService.createDraft(baseDraftInput, 9))
       .rejects.toBeInstanceOf(InvoiceAccessError)
     expect(prismaMock.invoice.create).not.toHaveBeenCalled()
+  })
+
+  // H2 (review PR #406) — pays cabinet ≠ pays facture rejeté.
+  it("rejects when cabinet.country differs from invoice.countryCode (H2)", async () => {
+    prismaMock.healthcareService.findUnique.mockResolvedValue({
+      country: "DZ", siret: null, name: "Cabinet DZ", establishment: null,
+      addressLine1: null, addressLine2: null, postalCode: null, city: null,
+      phone: null, email: null, tvaIntra: null, iban: null, licenseNumber: null,
+    } as any)
+    await expect(invoiceService.createDraft(baseDraftInput, 9))
+      .rejects.toMatchObject({ field: "countryMismatchCabinet:DZ" })
   })
 
   it("rejects when currency is not supported for the country", async () => {
@@ -149,15 +201,28 @@ describe("invoiceService.createDraft (US-2103)", () => {
     }, 9)).rejects.toBeInstanceOf(InvoiceValidationError)
   })
 
+  // M4 (review PR #406) — borne totalCents 10 M€.
+  it("rejects when total exceeds MAX_TOTAL_CENTS (10 M€)", async () => {
+    await expect(invoiceService.createDraft({
+      ...baseDraftInput,
+      items: Array.from({ length: 100 }, () => ({
+        description: "huge",
+        quantity: 1000,
+        unitPriceCents: INVOICE_BOUNDS.MAX_UNIT_PRICE_CENTS,
+        taxRate: 0,
+      })),
+    }, 9)).rejects.toMatchObject({ field: "totalCentsExceedsMax" })
+  })
+
   it("emits audit row with patientId pivot (US-2268)", async () => {
     await invoiceService.createDraft(baseDraftInput, 9)
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(meta.metadata.kind).toBe("invoice.draft.create")
+    expect(meta.metadata.kind).toBe("invoice.create")
     expect(meta.metadata.patientId).toBe(42)
     expect(meta.metadata.cabinetId).toBe(7)
   })
 
-  it("audit row omits patientId pivot when invoice is cabinet-internal (no patient)", async () => {
+  it("audit row omits patientId pivot when invoice is cabinet-internal", async () => {
     prismaMock.invoice.create.mockResolvedValue({
       id: 100, number: null, countryCode: "FR", cabinetId: 7,
       patientId: null, totalCents: 5000, taxCents: 0, currency: "EUR",
@@ -174,8 +239,8 @@ describe("invoiceService.createDraft (US-2103)", () => {
 
 // ─── issue / markPaid / cancel FSM (US-2107) ─────────────────────────
 
-describe("invoiceService FSM (US-2107)", () => {
-  const baseIssued = {
+describe("invoiceService FSM (US-2107) — atomic transitions (H4)", () => {
+  const baseInvoice = {
     id: 100, number: null, countryCode: "FR", cabinetId: 7,
     patientId: 42, totalCents: 5000, taxCents: 0, currency: "EUR",
     status: "draft" as const, paymentMethod: null, stripePaymentIntentId: null,
@@ -186,86 +251,152 @@ describe("invoiceService FSM (US-2107)", () => {
 
   beforeEach(() => {
     prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.$executeRaw.mockResolvedValue(1 as any)
+    prismaMock.$queryRaw.mockImplementation((sql: any) => {
+      // Distinguish reserveNextInvoiceNumber SELECT vs anything else.
+      const text = Array.isArray(sql) ? sql.join("") : String(sql)
+      if (text.includes("last_number")) {
+        return Promise.resolve([{ last_number: 0 }]) as any
+      }
+      return Promise.resolve([]) as any
+    })
+    prismaMock.invoice.updateMany.mockResolvedValue({ count: 1 } as any)
+    // Patient User PII encrypted (for customerSnapshot).
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 42,
+      user: {
+        firstname: encryptB64("Jean"),
+        lastname: encryptB64("Dupont"),
+        address1: null, address2: null, cp: null, city: null, email: null,
+      },
+    } as any)
   })
 
-  it("issue assigns sequential number FR-YYYY-000001 in transaction", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue({ ...baseIssued } as any)
-    prismaMock.$executeRaw.mockResolvedValue(1 as any)
-    prismaMock.$queryRaw.mockResolvedValue([{ last_number: 0 }] as any)
-    prismaMock.healthcareService.findUnique.mockResolvedValue({
-      name: "Cabinet X", establishment: null, addressLine1: null,
-      addressLine2: null, postalCode: null, city: null, country: "FR",
-      phone: null, email: null,
+  it("issue assigns sequential number FR-YYYY-000001 + atomic transition", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({ ...baseInvoice } as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "issued", number: `FR-${new Date().getUTCFullYear()}-000001`,
+      issuedAt: new Date(),
     } as any)
-    prismaMock.invoice.update.mockImplementation((args: any) => Promise.resolve({
-      ...baseIssued,
-      status: "issued",
-      number: args.data.number,
-      issuedAt: args.data.issuedAt,
-    } as any))
 
     const out = await invoiceService.issue(100, 9)
     expect(out.status).toBe("issued")
     expect(out.number).toMatch(/^FR-\d{4}-000001$/)
+    expect(prismaMock.invoice.updateMany).toHaveBeenCalled()
+    // H4 — updateMany filtered on status=draft for atomicity.
+    const call = prismaMock.invoice.updateMany.mock.calls[0]![0]!
+    expect((call.where as any).status).toEqual({ in: ["draft"] })
   })
 
   it("issue rejects when invoice is already issued (FSM violation)", async () => {
     prismaMock.invoice.findUnique.mockResolvedValue({
-      ...baseIssued, status: "issued", number: "FR-2026-000001",
+      ...baseInvoice, status: "issued", number: "FR-2026-000001",
     } as any)
     await expect(invoiceService.issue(100, 9))
       .rejects.toBeInstanceOf(InvoiceStateError)
   })
 
-  it("markPaid sets status=paid + paymentMethod + paidAt", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue({
-      ...baseIssued, status: "issued", number: "FR-2026-000001",
+  // H4 (review PR #406) — race : si updateMany retourne count=0,
+  // c'est qu'un autre writer a déjà transitionné — throw InvoiceStateError.
+  it("issue throws InvoiceStateError on lost-update race (updateMany count=0)", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({ ...baseInvoice } as any)
+    prismaMock.invoice.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "issued",
     } as any)
-    prismaMock.invoice.update.mockResolvedValue({
-      ...baseIssued, status: "paid", paymentMethod: "bank_transfer", paidAt: new Date(),
+    await expect(invoiceService.issue(100, 9))
+      .rejects.toBeInstanceOf(InvoiceStateError)
+  })
+
+  // H7 (review PR #406) — patient introuvable bloque issue.
+  it("issue rejects when patient is soft-deleted / not found", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValue({ ...baseInvoice } as any)
+    prismaMock.patient.findFirst.mockResolvedValue(null)
+    await expect(invoiceService.issue(100, 9))
+      .rejects.toMatchObject({ field: "patientNotFound" })
+  })
+
+  // H3 (review PR #406) — SIRET obligatoire pour facture FR.
+  it("issue rejects when cabinet has no SIRET on a FR invoice", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValue({ ...baseInvoice } as any)
+    prismaMock.healthcareService.findUnique.mockResolvedValue({
+      country: "FR", name: "Cabinet X", establishment: null,
+      addressLine1: null, addressLine2: null, postalCode: null, city: null,
+      phone: null, email: null, siret: null,
+      tvaIntra: null, iban: null, licenseNumber: null,
+    } as any)
+    await expect(invoiceService.issue(100, 9))
+      .rejects.toMatchObject({ field: "cabinetSiretRequiredForFR" })
+  })
+
+  // C2 (review PR #406) — snapshot client contient le nom déchiffré.
+  it("issue includes decrypted patient name in customerSnapshot (C2)", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({ ...baseInvoice } as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "issued",
+      number: `FR-${new Date().getUTCFullYear()}-000001`,
+    } as any)
+    await invoiceService.issue(100, 9)
+    const updateArgs = prismaMock.invoice.updateMany.mock.calls[0]![0]!
+    const customerSnap = (updateArgs.data as any).customerSnapshot
+    expect(customerSnap.name).toBe("Jean Dupont")
+    expect(customerSnap.patientRef).toBe("patient#42")
+  })
+
+  // C2 — patient sans PII déchiffrable → rejet.
+  it("issue rejects when patient name cannot be decrypted", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValue({ ...baseInvoice } as any)
+    prismaMock.patient.findFirst.mockResolvedValue({
+      id: 42, user: {
+        firstname: null, lastname: null, address1: null, address2: null,
+        cp: null, city: null, email: null,
+      },
+    } as any)
+    await expect(invoiceService.issue(100, 9))
+      .rejects.toMatchObject({ field: "customerNameUnavailable" })
+  })
+
+  it("markPaid sets status=paid + paymentMethod + paidAt (atomic)", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "issued", number: "FR-2026-000001",
+    } as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "paid", number: "FR-2026-000001",
+      paymentMethod: "bank_transfer", paidAt: new Date(),
     } as any)
     const out = await invoiceService.markPaid(100, "bank_transfer", 9)
     expect(out.status).toBe("paid")
     expect(out.paymentMethod).toBe("bank_transfer")
   })
 
-  it("markPaid rejects on draft → paid (must go via issued)", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue(baseIssued as any)
+  it("markPaid throws InvoiceStateError on race (updateMany count=0)", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "issued",
+    } as any)
+    prismaMock.invoice.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "paid",
+    } as any)
     await expect(invoiceService.markPaid(100, "bank_transfer", 9))
       .rejects.toBeInstanceOf(InvoiceStateError)
   })
 
   it("cancel works on draft", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue(baseIssued as any)
-    prismaMock.invoice.update.mockResolvedValue({
-      ...baseIssued, status: "cancelled", cancelledAt: new Date(),
+    prismaMock.invoice.findUnique.mockResolvedValueOnce(baseInvoice as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "cancelled", cancelledAt: new Date(),
     } as any)
     const out = await invoiceService.cancel(100, "client desisted", 9)
     expect(out.status).toBe("cancelled")
   })
 
-  it("cancel works on issued", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue({
-      ...baseIssued, status: "issued", number: "FR-2026-000001",
-    } as any)
-    prismaMock.invoice.update.mockResolvedValue({
-      ...baseIssued, status: "cancelled", cancelledAt: new Date(),
-    } as any)
-    const out = await invoiceService.cancel(100, null, 9)
-    expect(out.status).toBe("cancelled")
-  })
-
   it("cancel rejects on paid (must use refund)", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue({
-      ...baseIssued, status: "paid", number: "FR-2026-000001",
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "paid", number: "FR-2026-000001",
     } as any)
-    await expect(invoiceService.cancel(100, null, 9))
-      .rejects.toBeInstanceOf(InvoiceStateError)
-  })
-
-  it("cancel rejects on refunded (terminal)", async () => {
-    prismaMock.invoice.findUnique.mockResolvedValue({
-      ...baseIssued, status: "refunded", number: "FR-2026-000001",
+    prismaMock.invoice.updateMany.mockResolvedValue({ count: 0 } as any)
+    prismaMock.invoice.findUnique.mockResolvedValueOnce({
+      ...baseInvoice, status: "paid",
     } as any)
     await expect(invoiceService.cancel(100, null, 9))
       .rejects.toBeInstanceOf(InvoiceStateError)
@@ -273,7 +404,7 @@ describe("invoiceService FSM (US-2107)", () => {
 
   it("write paths reject non-cabinet-member callers", async () => {
     prismaMock.healthcareMember.findFirst.mockResolvedValue(null)
-    prismaMock.invoice.findUnique.mockResolvedValue(baseIssued as any)
+    prismaMock.invoice.findUnique.mockResolvedValue(baseInvoice as any)
     await expect(invoiceService.issue(100, 9))
       .rejects.toBeInstanceOf(InvoiceAccessError)
     await expect(invoiceService.markPaid(100, "bank_transfer", 9))
@@ -283,7 +414,98 @@ describe("invoiceService FSM (US-2107)", () => {
   })
 })
 
-// ─── canReadInvoice — read access scoping ────────────────────────────
+// ─── getById — fetch → canRead → audit READ/accessDenied ────────────
+
+describe("invoiceService.getById (C3 + H5 access-aware)", () => {
+  const baseInvoice = {
+    id: 100, number: "FR-2026-000001", countryCode: "FR", cabinetId: 7,
+    patientId: 42, totalCents: 5000, taxCents: 0, currency: "EUR",
+    status: "issued", paymentMethod: null, stripePaymentIntentId: null,
+    pdfUrl: null, pdfHash: null, issuerSnapshot: null, customerSnapshot: null,
+    issuedAt: new Date(), paidAt: null, cancelledAt: null, refundedAt: null,
+    createdBy: 9, createdAt: new Date(), updatedAt: new Date(),
+    items: [],
+  }
+
+  it("returns null + emits accessDenied audit when VIEWER not patient owner", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValue(baseInvoice as any)
+    prismaMock.patient.findFirst.mockResolvedValue(null) // not own patient
+    const out = await invoiceService.getById(100, 9, "VIEWER")
+    expect(out).toBeNull()
+    const lastAudit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(lastAudit.action).toBe("UNAUTHORIZED")
+    expect(lastAudit.metadata.kind).toBe("invoice.read.denied")
+  })
+
+  it("returns invoice + emits READ when ADMIN", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValue(baseInvoice as any)
+    const out = await invoiceService.getById(100, 9, "ADMIN")
+    expect(out?.id).toBe(100)
+    const lastAudit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(lastAudit.action).toBe("READ")
+    expect(lastAudit.metadata.kind).toBe("invoice.read")
+    expect(lastAudit.metadata.patientId).toBe(42)
+  })
+
+  it("returns null without any audit when invoice does not exist", async () => {
+    prismaMock.invoice.findUnique.mockResolvedValue(null)
+    const out = await invoiceService.getById(999, 9, "DOCTOR")
+    expect(out).toBeNull()
+    // No audit row emitted.
+    expect(prismaMock.auditLog.create).not.toHaveBeenCalled()
+  })
+})
+
+// ─── List scoping (M5/M6 review) ─────────────────────────────────────
+
+describe("invoiceService.list scoping (M5 + M6)", () => {
+  it("listByCabinet enforces cabinet membership for DOCTOR/NURSE", async () => {
+    prismaMock.healthcareMember.findFirst.mockResolvedValue(null)
+    await expect(invoiceService.listByCabinet(7, {}, 9, "DOCTOR"))
+      .rejects.toBeInstanceOf(InvoiceAccessError)
+  })
+
+  it("listByCabinet bypasses membership for ADMIN", async () => {
+    prismaMock.invoice.findMany.mockResolvedValue([] as any)
+    const out = await invoiceService.listByCabinet(7, {}, 9, "ADMIN")
+    expect(out).toEqual([])
+    // membership query never executed.
+    expect(prismaMock.healthcareMember.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("listByCabinet audit omits resourceId, uses metadata.cabinetId pivot", async () => {
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.invoice.findMany.mockResolvedValue([] as any)
+    await invoiceService.listByCabinet(7, {}, 9, "DOCTOR")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.resourceId).toBeNull()
+    expect(meta.metadata.kind).toBe("invoice.list.cabinet")
+    expect(meta.metadata.cabinetId).toBe(7)
+  })
+
+  it("listByPatient rejects VIEWER cross-patient access", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null)
+    await expect(invoiceService.listByPatient(42, {}, 9, "VIEWER"))
+      .rejects.toBeInstanceOf(InvoiceAccessError)
+  })
+
+  it("listByPatient rejects DOCTOR without PatientService link", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue(null)
+    await expect(invoiceService.listByPatient(42, {}, 9, "DOCTOR"))
+      .rejects.toBeInstanceOf(InvoiceAccessError)
+  })
+
+  it("listByPatient audit uses metadata.patientId pivot (US-2268)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    prismaMock.invoice.findMany.mockResolvedValue([] as any)
+    await invoiceService.listByPatient(42, {}, 9, "VIEWER")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.kind).toBe("invoice.list.patient")
+    expect(meta.metadata.patientId).toBe(42)
+  })
+})
+
+// ─── canReadInvoice (M7 typed Role) ──────────────────────────────────
 
 describe("invoiceService.canReadInvoice", () => {
   it("ADMIN can always read", async () => {
@@ -326,11 +548,14 @@ describe("invoiceService.canReadInvoice", () => {
   })
 })
 
-// ─── Prisma.Decimal serialization (defensive) ───────────────────────
+// ─── Sequence overflow (M10 typed error) ─────────────────────────────
 
-describe("Prisma.Decimal in service", () => {
-  it("constructs Decimal without precision loss for typical taxRate", () => {
-    const d = new Prisma.Decimal(0.2)
-    expect(d.toString()).toBe("0.2")
+describe("InvoiceSequenceOverflowError class (M10)", () => {
+  it("is exported and contains country/year/last", () => {
+    const e = new InvoiceSequenceOverflowError("FR", 2099, 999_999)
+    expect(e.name).toBe("InvoiceSequenceOverflowError")
+    expect(e.countryCode).toBe("FR")
+    expect(e.year).toBe(2099)
+    expect(e.last).toBe(999_999)
   })
 })

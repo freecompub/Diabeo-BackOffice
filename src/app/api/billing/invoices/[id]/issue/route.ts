@@ -3,6 +3,8 @@
  * @description FSM `draft → issued`. Assigne le numéro séquentiel
  *   (US-2105 gap-less) et fige les snapshots immutables (US-2107).
  *   Réservé DOCTOR/ADMIN membres du cabinet émetteur.
+ *
+ * C4 (review PR #406) — Auth d'abord, pas de body à parser.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
@@ -14,6 +16,8 @@ import {
   InvoiceAccessError,
   InvoiceStateError,
   InvoiceNotFoundError,
+  InvoiceValidationError,
+  InvoiceSequenceOverflowError,
 } from "@/lib/services/invoice.service"
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
@@ -44,6 +48,12 @@ export async function POST(
     }
     if (e instanceof InvoiceStateError) {
       return NextResponse.json({ error: "invalidTransition", from: e.from, to: e.to }, { status: 409 })
+    }
+    if (e instanceof InvoiceValidationError) {
+      return NextResponse.json({ error: "validationFailed", field: e.field }, { status: 422 })
+    }
+    if (e instanceof InvoiceSequenceOverflowError) {
+      return NextResponse.json({ error: "sequenceOverflow" }, { status: 409 })
     }
     return mapErrorToResponse(e, "billing/invoices/:id/issue POST", ctx.requestId)
   }

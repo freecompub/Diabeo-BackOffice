@@ -1370,6 +1370,15 @@ model HealthcareService {
   /// avant suppression de l'ancien. La validation business (warning
   /// "RPPS déjà utilisé") est appliquée au service layer si besoin futur.
   licenseNumber String?     @map("license_number") @db.VarChar(11)
+  /// Groupe 7 Batch 1 — Mentions légales obligatoires sur facture FR
+  /// (art. 242 nonies A CGI, art. L441-9 Code de commerce). Stockés sur
+  /// HealthcareService pour snapshot atomique à l'issuance Invoice.
+  /// SIRET = 14 digits, validation Luhn côté service (US-2118 patron).
+  siret         String?     @db.VarChar(14)
+  /// Numéro TVA intracommunautaire (FR : FR + 2 cipher + SIREN = 13 chars).
+  tvaIntra      String?     @map("tva_intra") @db.VarChar(15)
+  /// IBAN pour paiement par virement (US-2102). Standard ISO 13616.
+  iban          String?     @db.VarChar(34)
 
   members                    HealthcareMember[]
   patientServices            PatientService[]

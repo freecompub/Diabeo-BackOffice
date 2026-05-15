@@ -7,6 +7,30 @@
 -- paid → refunded).
 
 -- ─────────────────────────────────────────────────────────────
+-- 0. Healthcare service — colonnes mentions légales (H3 review)
+-- ─────────────────────────────────────────────────────────────
+
+ALTER TABLE "healthcare_services"
+    ADD COLUMN "siret"     VARCHAR(14),
+    ADD COLUMN "tva_intra" VARCHAR(15),
+    ADD COLUMN "iban"      VARCHAR(34);
+
+-- SIRET = 14 digits exactement (validation Luhn applicative côté service).
+ALTER TABLE "healthcare_services"
+    ADD CONSTRAINT "healthcare_services_siret_format_chk"
+    CHECK ("siret" IS NULL OR "siret" ~ '^[0-9]{14}$');
+
+-- TVA intra FR : FR + 2 digits + 9 digits SIREN. Plus tolérant pour autres pays.
+ALTER TABLE "healthcare_services"
+    ADD CONSTRAINT "healthcare_services_tva_format_chk"
+    CHECK ("tva_intra" IS NULL OR "tva_intra" ~ '^[A-Z]{2}[A-Z0-9]{2,13}$');
+
+-- IBAN : ISO 13616 — 15 à 34 chars alphanum (validation applicative MOD-97).
+ALTER TABLE "healthcare_services"
+    ADD CONSTRAINT "healthcare_services_iban_format_chk"
+    CHECK ("iban" IS NULL OR "iban" ~ '^[A-Z]{2}[0-9]{2}[A-Z0-9]{11,30}$');
+
+-- ─────────────────────────────────────────────────────────────
 -- 1. Enums
 -- ─────────────────────────────────────────────────────────────
 
@@ -161,7 +185,26 @@ CREATE OR REPLACE FUNCTION enforce_invoice_immutability()
 RETURNS TRIGGER AS $$
 BEGIN
     -- DRAFT can be freely updated (la facture devient `issued` via le service).
+    --
+    -- H6 (review PR #406) — Defense-in-depth : même en draft, on
+    -- interdit la mutation directe de `number` / `issued_at` /
+    -- snapshots. Seul le service via `reserveNextInvoiceNumber` peut
+    -- les peupler, et toujours dans la même transaction que la
+    -- transition `draft → issued`. Empêche un attaquant SQL direct
+    -- (shell admin) de forger un numéro en draft puis transitionner.
     IF OLD.status = 'draft' THEN
+        IF NEW.number IS NOT NULL AND OLD.number IS DISTINCT FROM NEW.number AND NEW.status = 'draft' THEN
+            RAISE EXCEPTION 'invoice.number cannot be set while status remains draft' USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.issued_at IS NOT NULL AND OLD.issued_at IS DISTINCT FROM NEW.issued_at AND NEW.status = 'draft' THEN
+            RAISE EXCEPTION 'invoice.issued_at cannot be set while status remains draft' USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.issuer_snapshot IS NOT NULL AND OLD.issuer_snapshot IS DISTINCT FROM NEW.issuer_snapshot AND NEW.status = 'draft' THEN
+            RAISE EXCEPTION 'invoice.issuer_snapshot cannot be set while status remains draft' USING ERRCODE = 'check_violation';
+        END IF;
+        IF NEW.customer_snapshot IS NOT NULL AND OLD.customer_snapshot IS DISTINCT FROM NEW.customer_snapshot AND NEW.status = 'draft' THEN
+            RAISE EXCEPTION 'invoice.customer_snapshot cannot be set while status remains draft' USING ERRCODE = 'check_violation';
+        END IF;
         -- FSM check même pour draft (transitions sortantes).
         IF OLD.status <> NEW.status AND NEW.status NOT IN ('issued', 'cancelled', 'draft') THEN
             RAISE EXCEPTION 'invalid invoice status transition: % -> %', OLD.status, NEW.status

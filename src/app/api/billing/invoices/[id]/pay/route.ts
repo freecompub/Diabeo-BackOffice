@@ -1,8 +1,10 @@
 /**
  * @route POST /api/billing/invoices/[id]/pay
  * @description FSM `issued → paid`. Réservé DOCTOR/ADMIN membres du
- *   cabinet émetteur. Stripe paymentIntentId pris en charge en Batch 3
- *   (US-2106 webhooks) — ici, on accepte le manuel (bank_transfer/cash).
+ *   cabinet émetteur. H8 (review PR #406) — discriminated union
+ *   Zod : `paymentMethod=stripe` exige `stripePaymentIntentId`.
+ *
+ * C4 (review PR #406) — Auth d'abord, body après.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
@@ -18,10 +20,16 @@ import {
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
 
-const bodySchema = z.object({
-  paymentMethod: z.enum(["stripe", "bank_transfer", "cash", "other"]),
-  stripePaymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]+$/).max(50).optional(),
-})
+// H8 (review PR #406) — Stripe exige paymentIntentId, autres méthodes l'interdisent.
+const bodySchema = z.discriminatedUnion("paymentMethod", [
+  z.object({
+    paymentMethod: z.literal("stripe"),
+    stripePaymentIntentId: z.string().regex(/^pi_[A-Za-z0-9]+$/).max(50),
+  }),
+  z.object({
+    paymentMethod: z.enum(["bank_transfer", "cash", "other"]),
+  }),
+])
 
 export async function POST(
   req: NextRequest,
@@ -34,6 +42,11 @@ export async function POST(
     if (!parsedParams.success) {
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
+    // C4 — auth avant parsing du body.
+    const user = await auditedRequireRole(
+      req, "DOCTOR", ctx, "INVOICE", String(parsedParams.data.id),
+    )
+
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: "invalidJSON" }, { status: 400 })
     const parsedBody = bodySchema.safeParse(body)
@@ -44,14 +57,10 @@ export async function POST(
       )
     }
 
-    const user = await auditedRequireRole(
-      req, "DOCTOR", ctx, "INVOICE", String(parsedParams.data.id),
-    )
+    const data = parsedBody.data
+    const stripePI = data.paymentMethod === "stripe" ? data.stripePaymentIntentId : undefined
     const invoice = await invoiceService.markPaid(
-      parsedParams.data.id,
-      parsedBody.data.paymentMethod,
-      user.id, ctx,
-      parsedBody.data.stripePaymentIntentId,
+      parsedParams.data.id, data.paymentMethod, user.id, ctx, stripePI,
     )
     return NextResponse.json({ invoice })
   } catch (e) {

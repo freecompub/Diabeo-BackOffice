@@ -3,6 +3,9 @@
  * @description Groupe 7 Batch 1 — list + create draft invoice.
  *   - GET  : list cabinet (`?cabinetId=…`) or patient (`?patientId=…`)
  *   - POST : create DRAFT (DOCTOR/ADMIN — cabinet member only)
+ *
+ * C4 (review PR #406) — Pour les POST, on authentifie/autorise AVANT
+ * de parser le body. Évite l'amplification DoS sur l'auth gate.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
@@ -15,6 +18,8 @@ import {
   InvoiceAccessError,
   InvoiceStateError,
   InvoiceNotFoundError,
+  InvoiceSequenceOverflowError,
+  INVOICE_BOUNDS,
 } from "@/lib/services/invoice.service"
 
 const listQuerySchema = z.object({
@@ -28,9 +33,9 @@ const listQuerySchema = z.object({
 })
 
 const itemSchema = z.object({
-  description: z.string().trim().min(1).max(500),
-  quantity: z.number().positive().max(1000),
-  unitPriceCents: z.number().int().nonnegative().max(1_000_000),
+  description: z.string().trim().min(1).max(INVOICE_BOUNDS.MAX_DESCRIPTION_LEN),
+  quantity: z.number().positive().max(INVOICE_BOUNDS.MAX_QUANTITY),
+  unitPriceCents: z.number().int().nonnegative().max(INVOICE_BOUNDS.MAX_UNIT_PRICE_CENTS),
   taxRate: z.number().min(0).max(1),
   teleconsultActeId: z.number().int().positive().optional(),
 })
@@ -40,7 +45,7 @@ const createSchema = z.object({
   patientId: z.number().int().positive().nullable().optional(),
   countryCode: z.string().length(2).regex(/^[A-Za-z]{2}$/),
   currency: z.string().length(3).regex(/^[A-Za-z]{3}$/),
-  items: z.array(itemSchema).min(1).max(100),
+  items: z.array(itemSchema).min(INVOICE_BOUNDS.MIN_ITEMS).max(INVOICE_BOUNDS.MAX_ITEMS),
 })
 
 export async function GET(req: NextRequest) {
@@ -64,7 +69,7 @@ export async function GET(req: NextRequest) {
       const items = await invoiceService.listByCabinet(
         q.cabinetId,
         { status: q.status, cursor: q.cursor, limit: q.limit },
-        user.id, ctx,
+        user.id, user.role, ctx,
       )
       return NextResponse.json({ items })
     }
@@ -76,11 +81,14 @@ export async function GET(req: NextRequest) {
     const items = await invoiceService.listByPatient(
       q.patientId!,
       { cursor: q.cursor, limit: q.limit },
-      user.id, ctx,
+      user.id, user.role, ctx,
     )
     return NextResponse.json({ items })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
+    if (e instanceof InvoiceAccessError) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
     return mapErrorToResponse(e, "billing/invoices GET", ctx.requestId)
   }
 }
@@ -88,6 +96,15 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
+    // C4 (review PR #406) — auth d'abord, body après. On a besoin du
+    // cabinetId pour le `resourceId` audit ; on l'extrait des headers
+    // si présent, sinon on accepte `new` comme placeholder.
+    const cabinetHeader = req.headers.get("x-cabinet-id")
+    const user = await auditedRequireRole(
+      req, "DOCTOR", ctx, "INVOICE",
+      cabinetHeader ? `cabinet:${cabinetHeader}` : "new",
+    )
+
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: "invalidJSON" }, { status: 400 })
     const parsed = createSchema.safeParse(body)
@@ -97,9 +114,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       )
     }
-    const user = await auditedRequireRole(
-      req, "DOCTOR", ctx, "INVOICE", `cabinet:${parsed.data.cabinetId}`,
-    )
+
     const invoice = await invoiceService.createDraft(parsed.data, user.id, ctx)
     return NextResponse.json({ invoice }, { status: 201 })
   } catch (e) {
@@ -115,6 +130,9 @@ export async function POST(req: NextRequest) {
     }
     if (e instanceof InvoiceNotFoundError) {
       return NextResponse.json({ error: "notFound" }, { status: 404 })
+    }
+    if (e instanceof InvoiceSequenceOverflowError) {
+      return NextResponse.json({ error: "sequenceOverflow" }, { status: 409 })
     }
     return mapErrorToResponse(e, "billing/invoices POST", ctx.requestId)
   }

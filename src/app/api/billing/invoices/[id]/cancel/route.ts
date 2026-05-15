@@ -3,6 +3,8 @@
  * @description FSM `draft|issued → cancelled`. Réservé DOCTOR/ADMIN
  *   membres du cabinet émetteur. Une facture `paid` ne peut plus être
  *   cancelled — utiliser le refund flow (Batch 4 US-2109).
+ *
+ * C4 (review PR #406) — Auth d'abord, body après.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
@@ -14,12 +16,14 @@ import {
   InvoiceAccessError,
   InvoiceStateError,
   InvoiceNotFoundError,
+  INVOICE_BOUNDS,
 } from "@/lib/services/invoice.service"
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
 
+// M5 (review PR #406) — bornes partagées service/route.
 const bodySchema = z.object({
-  reason: z.string().trim().max(200).optional(),
+  reason: z.string().trim().max(INVOICE_BOUNDS.MAX_CANCEL_REASON_LEN).optional(),
 })
 
 export async function POST(
@@ -33,8 +37,14 @@ export async function POST(
     if (!parsedParams.success) {
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
+    // C4 — auth avant body.
+    const user = await auditedRequireRole(
+      req, "DOCTOR", ctx, "INVOICE", String(parsedParams.data.id),
+    )
+
     let reason: string | null = null
-    if (req.headers.get("content-length") && req.headers.get("content-length") !== "0") {
+    const contentLen = req.headers.get("content-length")
+    if (contentLen && contentLen !== "0") {
       const body = await req.json().catch(() => null)
       if (body !== null) {
         const parsedBody = bodySchema.safeParse(body)
@@ -48,9 +58,6 @@ export async function POST(
       }
     }
 
-    const user = await auditedRequireRole(
-      req, "DOCTOR", ctx, "INVOICE", String(parsedParams.data.id),
-    )
     const invoice = await invoiceService.cancel(parsedParams.data.id, reason, user.id, ctx)
     return NextResponse.json({ invoice })
   } catch (e) {

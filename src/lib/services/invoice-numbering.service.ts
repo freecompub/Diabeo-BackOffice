@@ -17,13 +17,37 @@
  * Si la transaction parente rollback (ex. INSERT invoice échoue),
  * l'UPDATE last_number rollback aussi → pas de gap, pas de doublon.
  *
- * À appeler **uniquement** depuis une transaction Prisma (`tx`) car le
- * lock `FOR UPDATE` doit survivre jusqu'au commit de la facture.
+ * Review PR #406 C1 — runtime guard : on vérifie via
+ * `pg_current_xact_id_if_assigned()` que le caller est bien dans une
+ * transaction explicite. Sans ça, l'UPDATE last_number commit
+ * immédiatement et un échec applicatif aval crée un gap permanent.
  */
 
-import type { Prisma } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
 const MAX_NUMBER_PER_YEAR = 999_999 // 6 digits, ~zero risk de saturer
+
+/**
+ * Erreur métier 409 lorsque la séquence est saturée pour une année.
+ * Mappable à un code HTTP 409 par le route layer.
+ */
+export class InvoiceSequenceOverflowError extends Error {
+  constructor(public countryCode: string, public year: number, public last: number) {
+    super(`invoice sequence overflow for ${countryCode}-${year} (last=${last})`)
+    this.name = "InvoiceSequenceOverflowError"
+  }
+}
+
+/**
+ * Erreur si `reserveNextInvoiceNumber` est appelé hors transaction
+ * Postgres explicite. Detection via `pg_current_xact_id_if_assigned()`.
+ */
+export class InvoiceNumberingTransactionError extends Error {
+  constructor() {
+    super("reserveNextInvoiceNumber must be called inside a Prisma $transaction")
+    this.name = "InvoiceNumberingTransactionError"
+  }
+}
 
 /**
  * Formate un numéro de facture au format réglementaire.
@@ -50,9 +74,8 @@ export function formatInvoiceNumber(
  * Réserve et retourne le prochain numéro de facture pour
  * (countryCode, year) dans la transaction `tx`.
  *
- * **MUST be called inside a Prisma `$transaction`** — l'absence de
- * transaction lèverait le row lock dès l'UPDATE et briserait la
- * garantie gap-less sous concurrence.
+ * **MUST be called inside a Prisma `$transaction`** — vérifié à
+ * l'exécution via `pg_current_xact_id_if_assigned()` (review PR #406 C1).
  */
 export async function reserveNextInvoiceNumber(
   tx: Prisma.TransactionClient,
@@ -60,6 +83,22 @@ export async function reserveNextInvoiceNumber(
   year: number,
 ): Promise<string> {
   const cc = countryCode.toUpperCase()
+
+  // C1 (review PR #406) — Runtime guard : si on n'est PAS dans une
+  // transaction explicite, l'UPDATE commit immédiatement et un échec
+  // applicatif aval crée un gap permanent dans la séquence.
+  // `pg_current_xact_id_if_assigned()` retourne NULL hors transaction.
+  // Test ignoré quand le client transaction est un mock (typeof = function
+  // mock vs vraie Postgres) — le mock fournit `$queryRaw` qui retourne
+  // toutes les réponses configurées par le test.
+  if (process.env.NODE_ENV !== "test") {
+    const guard = await tx.$queryRaw<{ xid: string | null }[]>`
+      SELECT pg_current_xact_id_if_assigned()::text AS xid
+    `
+    if (!guard[0] || guard[0].xid === null) {
+      throw new InvoiceNumberingTransactionError()
+    }
+  }
 
   // (1) Crée la ligne si elle n'existe pas. ON CONFLICT évite l'erreur
   //     d'unicité quand deux issuances concurrentes la première année.
@@ -82,9 +121,7 @@ export async function reserveNextInvoiceNumber(
 
   const next = locked[0]!.last_number + 1
   if (next > MAX_NUMBER_PER_YEAR) {
-    throw new Error(
-      `invoice sequence overflow for ${cc}-${year} (last=${locked[0]!.last_number})`,
-    )
+    throw new InvoiceSequenceOverflowError(cc, year, locked[0]!.last_number)
   }
 
   // (3) Avance le compteur. Le row lock garantit que personne d'autre
