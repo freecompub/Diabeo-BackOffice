@@ -432,20 +432,36 @@ export const activityService = {
     if (!existing || !existing.eventTypes.includes("physicalActivity")) {
       throw new ActivityNotFoundError()
     }
+    // NEW-H1 (review re-2) — access check AVANT le check immutabilité.
+    // Évite l'existence-oracle cross-tenant : un VIEWER probing des
+    // UUIDs random recevait 422 `immutableSource:healthkit` sur sensor
+    // entries d'autres patients, leakant l'existence + la source.
+    await assertCanAccessActivity(existing.patientId, auditUserId, auditUserRole)
     if (existing.activitySource && existing.activitySource !== "manual") {
       throw new ActivityValidationError(`immutableSource:${existing.activitySource}`)
     }
-    await assertCanAccessActivity(existing.patientId, auditUserId, auditUserRole)
 
+    // NEW-L1 (review re-2) — la re-validation du type ne s'applique que si
+    // l'input le modifie. Sinon, on tolère un legacy `activityType` non
+    // whitelisté (ex: "walking" via ancien /api/events) pour permettre
+    // l'édition de comment / steps sur une entry pré-existante.
     if (input.activityType !== undefined) {
       if (!ACTIVITY_TYPES.includes(input.activityType)) {
         throw new ActivityValidationError("activityType")
       }
     }
     // Re-validate full shape (merged with existing) for bound checks.
+    // NEW-L1 — utilise l'activityType de l'input si fourni, sinon dérive
+    // depuis l'existing en fallback whitelist-safe pour la validation
+    // (autres champs scalar restent validés normalement).
+    const effectiveActivityType: ActivityTypeCode =
+      input.activityType
+        ?? (ACTIVITY_TYPES.includes(existing.activityType as ActivityTypeCode)
+          ? (existing.activityType as ActivityTypeCode)
+          : "other")
     const decryptedComment = safeDecryptField(existing.comment)
     validateActivityInput({
-      activityType: input.activityType ?? (existing.activityType as ActivityTypeCode),
+      activityType: effectiveActivityType,
       eventDate: input.eventDate ?? existing.eventDate,
       activityDuration: input.activityDuration ?? existing.activityDuration,
       activityIntensity: input.activityIntensity ?? existing.activityIntensity,
@@ -516,10 +532,12 @@ export const activityService = {
     if (!existing || !existing.eventTypes.includes("physicalActivity")) {
       throw new ActivityNotFoundError()
     }
+    // NEW-H1 (review re-2) — access check AVANT le check immutabilité,
+    // symétrique avec update() (anti-existence-oracle).
+    await assertCanAccessActivity(existing.patientId, auditUserId, auditUserRole)
     if (existing.activitySource && existing.activitySource !== "manual") {
       throw new ActivityValidationError(`immutableSource:${existing.activitySource}`)
     }
-    await assertCanAccessActivity(existing.patientId, auditUserId, auditUserRole)
 
     await prisma.$transaction(async (tx) => {
       await tx.diabetesEvent.delete({ where: { id: activityId } })
@@ -591,26 +609,49 @@ export const activityService = {
       comment: i.comment != null ? encryptField(i.comment) : null,
     }))
 
-    // H1 + H6 : single createMany + post-query pour récupérer les UUIDs
-    // insérés (audit granulaire). Le timeout transaction est porté à 30s
-    // pour les batches MAX_BULK_ITEMS=500 sur infra partagée OVH.
+    // H1 + H6 + NEW-M2 : capture les externalSyncIds DÉJÀ présents avant
+    // le createMany (pour distinguer ceux insérés par ce batch vs ceux
+    // pré-existants). Sans ça, le findMany post-createMany retourne aussi
+    // les UUIDs déjà en BDD (skipped duplicates), corrompant l'audit
+    // `metadata.insertedIds` → forensique CNIL/ANS fausse sur 2e sync
+    // identique. Le coût : 1 query supplémentaire (acceptable, timeout 30s).
     const result = await prisma.$transaction(
       async (tx) => {
-        const created = await tx.diabetesEvent.createMany({
-          data,
-          skipDuplicates: true,
-        })
-        // Re-read pour récupérer les IDs (createMany ne les retourne pas).
-        const inserted = await tx.diabetesEvent.findMany({
+        // (1) Snapshot des externalSyncIds déjà présents (skipped set).
+        const existingBefore = await tx.diabetesEvent.findMany({
           where: {
             patientId,
             activitySource: source,
             externalSyncId: { in: externalIds },
           },
-          select: { id: true, externalSyncId: true },
+          select: { externalSyncId: true },
         })
-        const skipped = items.length - created.count
+        const existingBeforeIds = new Set(
+          existingBefore.map((r) => r.externalSyncId).filter((id): id is string => id !== null),
+        )
+
+        // (2) Insert idempotent — ON CONFLICT DO NOTHING via skipDuplicates.
+        const created = await tx.diabetesEvent.createMany({
+          data,
+          skipDuplicates: true,
+        })
+
+        // (3) Récupère les IDs des rows réellement créés par ce batch.
+        const newlyInsertedExternalIds = externalIds.filter(
+          (eId) => !existingBeforeIds.has(eId),
+        )
+        const inserted = newlyInsertedExternalIds.length > 0
+          ? await tx.diabetesEvent.findMany({
+            where: {
+              patientId,
+              activitySource: source,
+              externalSyncId: { in: newlyInsertedExternalIds },
+            },
+            select: { id: true },
+          })
+          : []
         const insertedIds = inserted.map((r) => r.id)
+        const skipped = items.length - created.count
 
         await auditService.logWithTx(tx, {
           userId: auditUserId,
@@ -627,9 +668,7 @@ export const activityService = {
             inserted: created.count,
             skipped,
             totalRequested: items.length,
-            // H6 — IDs insérés en métadonnées pour forensique granulaire.
-            // Limité à MAX_BULK_ITEMS UUIDs = ~18 KB JSONB, bien dans les
-            // bornes Postgres (pas d'index sur ce champ).
+            // H6 + NEW-M2 — IDs strictement insérés par ce batch.
             insertedIds,
           },
         })

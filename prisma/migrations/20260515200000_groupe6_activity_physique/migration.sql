@@ -38,22 +38,44 @@ WHERE 'physicalActivity' = ANY("event_types") AND "activity_source" IS NULL;
 -- ─────────────────────────────────────────────────────────────
 -- 3. CHECK constraints (bornes anti-coquille)
 -- ─────────────────────────────────────────────────────────────
+--
+-- NEW-L4 (review re-2 PR #407) — `NOT VALID` empêche le scan complet
+-- de la table existante au moment du ADD CONSTRAINT (évite l'ACCESS
+-- EXCLUSIVE lock sur diabetes_events partitionnée). La validation
+-- des rows existants est faite ensuite via `VALIDATE CONSTRAINT` qui
+-- prend un SHARE UPDATE EXCLUSIVE lock (compatible avec les writes).
+--
+-- Comportement : les CHECK s'appliquent à TOUS les INSERT/UPDATE
+-- post-migration, comme un CHECK normal. Seules les lignes historiques
+-- échappent à la validation tant que VALIDATE CONSTRAINT n'a pas tourné.
 
 ALTER TABLE "diabetes_events"
     ADD CONSTRAINT "diabetes_events_activity_steps_chk"
-    CHECK ("activity_steps" IS NULL OR ("activity_steps" >= 0 AND "activity_steps" <= 100000)),
+    CHECK ("activity_steps" IS NULL OR ("activity_steps" >= 0 AND "activity_steps" <= 100000)) NOT VALID,
     ADD CONSTRAINT "diabetes_events_activity_distance_chk"
-    CHECK ("activity_distance_m" IS NULL OR ("activity_distance_m" >= 0 AND "activity_distance_m" <= 300000)),
+    CHECK ("activity_distance_m" IS NULL OR ("activity_distance_m" >= 0 AND "activity_distance_m" <= 300000)) NOT VALID,
     ADD CONSTRAINT "diabetes_events_activity_calories_chk"
-    CHECK ("activity_calories" IS NULL OR ("activity_calories" >= 0 AND "activity_calories" <= 50000)),
+    CHECK ("activity_calories" IS NULL OR ("activity_calories" >= 0 AND "activity_calories" <= 50000)) NOT VALID,
     ADD CONSTRAINT "diabetes_events_activity_hr_chk"
-    CHECK ("activity_heart_rate_avg" IS NULL OR ("activity_heart_rate_avg" BETWEEN 30 AND 250)),
+    CHECK ("activity_heart_rate_avg" IS NULL OR ("activity_heart_rate_avg" BETWEEN 30 AND 250)) NOT VALID,
     ADD CONSTRAINT "diabetes_events_activity_duration_chk"
-    CHECK ("activity_duration" IS NULL OR ("activity_duration" >= 0 AND "activity_duration" <= 1440)),
-    -- M10 (review PR #407) — `external_sync_id` ne peut être présent
-    -- que sur un event physicalActivity (cohérence cross-domain).
+    CHECK ("activity_duration" IS NULL OR ("activity_duration" >= 0 AND "activity_duration" <= 1440)) NOT VALID,
+    -- M10 — `external_sync_id` ne peut être présent que sur un event
+    -- physicalActivity (cohérence cross-domain).
     ADD CONSTRAINT "diabetes_events_external_sync_id_activity_only_chk"
-    CHECK ("external_sync_id" IS NULL OR 'physicalActivity' = ANY("event_types"));
+    CHECK ("external_sync_id" IS NULL OR 'physicalActivity' = ANY("event_types")) NOT VALID;
+
+-- VALIDATE CONSTRAINT — vérifie les rows historiques (compatible writes).
+-- Sur petite table c'est instantané ; sur grosse table en production
+-- on peut splitter cette étape dans une migration séparée déployée
+-- après le release pour minimiser le blocage.
+ALTER TABLE "diabetes_events"
+    VALIDATE CONSTRAINT "diabetes_events_activity_steps_chk",
+    VALIDATE CONSTRAINT "diabetes_events_activity_distance_chk",
+    VALIDATE CONSTRAINT "diabetes_events_activity_calories_chk",
+    VALIDATE CONSTRAINT "diabetes_events_activity_hr_chk",
+    VALIDATE CONSTRAINT "diabetes_events_activity_duration_chk",
+    VALIDATE CONSTRAINT "diabetes_events_external_sync_id_activity_only_chk";
 
 -- ─────────────────────────────────────────────────────────────
 -- 4. Indexes

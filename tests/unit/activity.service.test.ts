@@ -374,13 +374,17 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
     expect(out).toEqual({ inserted: 3, skipped: 2 })
   })
 
-  // H6 (review re-1) — audit metadata.insertedIds.
-  it("H6 — audit metadata includes insertedIds + counts", async () => {
+  // H6 (review re-1) + NEW-M2 (review re-2) — audit metadata.insertedIds
+  // ne contient QUE les rows réellement créés par ce batch.
+  it("H6 — audit metadata includes insertedIds + counts (fresh batch)", async () => {
+    // 1st findMany: existingBefore (rien) ; 2nd findMany: newly inserted.
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([] as any) // existingBefore
+      .mockResolvedValueOnce([
+        { id: "uuid-a" },
+        { id: "uuid-b" },
+      ] as any)
     prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 2 } as any)
-    prismaMock.diabetesEvent.findMany.mockResolvedValue([
-      { id: "uuid-a", externalSyncId: "hk-a" },
-      { id: "uuid-b", externalSyncId: "hk-b" },
-    ] as any)
     await activityService.bulkSync(42, "healthkit", [
       { ...baseSyncItem, externalSyncId: "hk-a" },
       { ...baseSyncItem, externalSyncId: "hk-b" },
@@ -444,6 +448,102 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
     const data = (call as any).data as Array<{ comment: string }>
     expect(data[0]!.comment).not.toBe("patient note")
     expect(safeDecryptField(data[0]!.comment)).toBe("patient note")
+  })
+})
+
+// ─── Re-review 2 fixes (NEW-H1 + NEW-M2 + NEW-L1) ──────────────────
+
+describe("NEW-H1 — access check BEFORE immutability check (anti-existence-oracle)", () => {
+  it("update: cross-tenant VIEWER receives 403, not 422 immutableSource", async () => {
+    // Sensor entry exists for patient 99, current user owns patient 42.
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue({
+      ...baseEvent, patientId: 99, activitySource: "healthkit", externalSyncId: "hk-leak",
+    } as any)
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any) // own patient = 42, not 99
+    await expect(activityService.update(baseEvent.id, {
+      activityDuration: 60,
+    }, 9, "VIEWER"))
+      .rejects.toBeInstanceOf(ActivityAccessError) // ← was leaking 422 before fix
+  })
+
+  it("delete: cross-tenant VIEWER receives 403, not 422 immutableSource", async () => {
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue({
+      ...baseEvent, patientId: 99, activitySource: "google_fit", externalSyncId: "gf-leak",
+    } as any)
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    await expect(activityService.delete(baseEvent.id, 9, "VIEWER"))
+      .rejects.toBeInstanceOf(ActivityAccessError)
+  })
+})
+
+describe("NEW-M2 — bulkSync insertedIds correctness on 2nd sync", () => {
+  beforeEach(() => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+  })
+
+  it("2nd sync identical to 1st: insertedIds is empty even when findMany matches old rows", async () => {
+    // existingBefore returns ALL externalIds (already in BDD).
+    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce([
+      { externalSyncId: "hk-a" },
+      { externalSyncId: "hk-b" },
+    ] as any)
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 0 } as any)
+    // (3rd findMany would not be called since newlyInsertedExternalIds is empty)
+
+    const out = await activityService.bulkSync(42, "healthkit", [
+      { externalSyncId: "hk-a", eventDate: recentDate(), activityType: "walk" },
+      { externalSyncId: "hk-b", eventDate: recentDate(), activityType: "run" },
+    ], 9, "VIEWER")
+    expect(out).toEqual({ inserted: 0, skipped: 2 })
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.insertedIds).toEqual([]) // ← was returning 2 old UUIDs before fix
+    expect(meta.metadata.inserted).toBe(0)
+    expect(meta.metadata.skipped).toBe(2)
+  })
+
+  it("mixed sync (1 new + 1 dup): insertedIds contains ONLY the new one", async () => {
+    // hk-old already exists; hk-new is fresh.
+    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce([
+      { externalSyncId: "hk-old" },
+    ] as any)
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 1 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce([
+      { id: "uuid-new" },
+    ] as any)
+    const out = await activityService.bulkSync(42, "healthkit", [
+      { externalSyncId: "hk-old", eventDate: recentDate(), activityType: "walk" },
+      { externalSyncId: "hk-new", eventDate: recentDate(), activityType: "run" },
+    ], 9, "VIEWER")
+    expect(out).toEqual({ inserted: 1, skipped: 1 })
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.insertedIds).toEqual(["uuid-new"])
+  })
+})
+
+describe("NEW-L1 — legacy activityType tolerated when not modified", () => {
+  beforeEach(() => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+  })
+
+  it("allows updating comment on a manual entry with legacy activityType `walking`", async () => {
+    // Legacy event created via /api/events with non-whitelisted "walking".
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue({
+      ...baseEvent, activityType: "walking", // legacy code
+    } as any)
+    prismaMock.diabetesEvent.update.mockResolvedValue({
+      ...baseEvent, activityType: "walking",
+    } as any)
+    // Update only the comment — must not re-validate the legacy activityType.
+    await expect(activityService.update(baseEvent.id, {
+      comment: "edited note",
+    }, 9, "VIEWER")).resolves.toBeTruthy()
+  })
+
+  it("still rejects when input.activityType is a non-whitelisted value", async () => {
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue(baseEvent as any)
+    await expect(activityService.update(baseEvent.id, {
+      activityType: "skydiving" as any,
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "activityType" })
   })
 })
 
