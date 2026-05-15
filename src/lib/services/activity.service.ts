@@ -6,14 +6,16 @@
  *   - US-2061 : Google Fit / Health Connect sync (bulk push Android)
  *
  * Réutilise le modèle `DiabetesEvent` existant en filtrant sur
- * `eventTypes has physicalActivity`. Les champs riches (`activityIntensity`,
- * `activitySteps`, `activityDistanceM`, `activityCalories`,
- * `activityHeartRateAvg`, `activitySource`, `externalSyncId`) ont été
- * ajoutés via migration `20260515200000_groupe6_activity_physique`.
+ * `eventTypes has physicalActivity`. Champs riches ajoutés via
+ * migration `20260515200000_groupe6_activity_physique`.
  *
  * **Audit US-2268** : `resourceId = event.id`, `metadata.patientId`
  * pivot toujours présent — alimente `auditService.getByPatient(id)`
  * pour la forensique CNIL/ANS.
+ *
+ * **Encryption** (C1 review PR #407) : le champ `comment` est chiffré
+ * AES-256-GCM (cohérent avec `eventsService` qui partage la même
+ * colonne). Encrypt à l'écriture, decrypt au DTO.
  */
 
 import { Prisma } from "@prisma/client"
@@ -25,6 +27,7 @@ import type {
 } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { canAccessPatient, getOwnPatientId } from "@/lib/access-control"
+import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService, type AuditContext } from "./audit.service"
 
 // ─────────────────────────────────────────────────────────────
@@ -82,25 +85,41 @@ export class ActivityNotFoundError extends Error {
 /**
  * Bornes cliniques anti-coquille (alignées sur les CHECK constraints DB).
  * Exportées pour partage Zod/service.
+ *
+ * L3 (review PR #407) — bornes resserrées :
+ *   - MAX_STEPS 100_000 (Guinness ~73k/jour)
+ *   - MAX_DISTANCE_M 300_000 (300 km/jour ultra-marathon extrême)
+ *
+ * L4 (review PR #407) — `MAX_EXTERNAL_SYNC_ID_LEN = 128` couvre :
+ *   HealthKit UUID (36c), Google Fit `<dataSource>:<startTimeNs>` (~100c),
+ *   Health Connect record UUID (36c). Cap conservateur.
+ *
+ * C3 (review PR #407) — bornes temporelles eventDate :
+ *   - Lookback : 2 ans (couvre un re-push initial app fresh-install)
+ *   - Future cap : +5 minutes (tolérance clock-skew mobile)
  */
 export const ACTIVITY_BOUNDS = {
   MAX_DURATION_MIN: 1440, // 24h
-  MAX_STEPS: 200_000,
-  MAX_DISTANCE_M: 1_000_000, // 1000 km
+  MAX_STEPS: 100_000,
+  MAX_DISTANCE_M: 300_000,
   MAX_CALORIES: 50_000,
   MIN_HEART_RATE_BPM: 30,
   MAX_HEART_RATE_BPM: 250,
   MAX_COMMENT_LEN: 500,
   MAX_ACTIVITY_TYPE_LEN: 20,
   MAX_EXTERNAL_SYNC_ID_LEN: 128,
-  /** Bulk sync — capping anti-flood. */
   MAX_BULK_ITEMS: 500,
+  /** C3 — fenêtre acceptée pour `eventDate` (anti-forgery). */
+  EVENT_DATE_LOOKBACK_DAYS: 730,
+  EVENT_DATE_FUTURE_SKEW_MS: 5 * 60_000,
 } as const
 
 /**
- * Whitelist `activityType` (cohérent avec HealthKit `HKWorkoutActivityType`
- * et Google Fit `FitnessActivity`). Libre côté schema (VARCHAR(20)) mais
- * normalisé au service pour analytics cohérents.
+ * L2 (review PR #407) — Whitelist `activityType` MVP. L'app mobile
+ * doit normaliser HealthKit (80+ types) / Google Fit vers ces 10
+ * codes ; les types non-mappés tombent dans `"other"`. Pour preserver
+ * la précision clinique sans schema migration, la sync mobile peut
+ * passer `comment: "originalType:tennis"` ou metadata enrichie en V2.
  */
 export const ACTIVITY_TYPES = [
   "walk", "run", "bike", "swim", "hike", "yoga",
@@ -111,17 +130,18 @@ export type ActivityTypeCode = (typeof ACTIVITY_TYPES)[number]
 export interface ActivityInput {
   eventDate: Date
   activityType: ActivityTypeCode
-  activityDuration?: number | null // minutes
+  activityDuration?: number | null
   activityIntensity?: ActivityIntensity | null
   activitySteps?: number | null
   activityDistanceM?: number | null
   activityCalories?: number | null
   activityHeartRateAvg?: number | null
+  /** Stocké chiffré AES-256-GCM (C1 review PR #407). */
   comment?: string | null
 }
 
 export interface ActivitySyncItem extends ActivityInput {
-  /** ID UUID du sample HealthKit / Google Fit pour dédupliquer. */
+  /** UUID propre à la source mobile (HealthKit / Google Fit / Health Connect). */
   externalSyncId: string
 }
 
@@ -144,13 +164,44 @@ export interface ActivityDTO {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Helpers
+// Helpers internes
 // ─────────────────────────────────────────────────────────────
+
+/**
+ * C3 + M9 (review PR #407) — eventDate dans la fenêtre acceptée :
+ * `[now − 2y, now + 5min]`. Empêche un VIEWER malveillant de forger
+ * une activité antédatée pour falsifier un alibi clinique ou évader
+ * la rétention par fenêtre `eventDate >= NOW() - 6 years`.
+ */
+function assertEventDateInWindow(eventDate: Date): void {
+  const now = Date.now()
+  const minMs = now - ACTIVITY_BOUNDS.EVENT_DATE_LOOKBACK_DAYS * 86_400_000
+  const maxMs = now + ACTIVITY_BOUNDS.EVENT_DATE_FUTURE_SKEW_MS
+  const ts = eventDate.getTime()
+  if (!Number.isFinite(ts)) {
+    throw new ActivityValidationError("eventDate")
+  }
+  if (ts < minMs) throw new ActivityValidationError("eventDatePast")
+  if (ts > maxMs) throw new ActivityValidationError("eventDateFuture")
+}
+
+/**
+ * M4 (review PR #407) — rejet des control characters dans `comment`
+ * (defense-in-depth contre XSS / log injection / unicode tricks).
+ * Autorise `\n`, `\t`, `\r` ; rejette le reste de [\x00-\x1F].
+ */
+function assertCleanComment(comment: string): void {
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F]/.test(comment)) {
+    throw new ActivityValidationError("commentControlChars")
+  }
+}
 
 function validateActivityInput(input: ActivityInput): void {
   if (!ACTIVITY_TYPES.includes(input.activityType)) {
     throw new ActivityValidationError("activityType")
   }
+  // M9 — date validée au service aussi (defense-in-depth si caller non-Zod).
+  assertEventDateInWindow(input.eventDate)
   if (
     input.activityDuration != null
     && (input.activityDuration < 0 || input.activityDuration > ACTIVITY_BOUNDS.MAX_DURATION_MIN)
@@ -182,19 +233,21 @@ function validateActivityInput(input: ActivityInput): void {
   ) {
     throw new ActivityValidationError("activityHeartRateAvg")
   }
-  if (
-    input.comment != null
-    && input.comment.length > ACTIVITY_BOUNDS.MAX_COMMENT_LEN
-  ) {
-    throw new ActivityValidationError("comment")
+  if (input.comment != null) {
+    if (input.comment.length > ACTIVITY_BOUNDS.MAX_COMMENT_LEN) {
+      throw new ActivityValidationError("comment")
+    }
+    assertCleanComment(input.comment)
   }
 }
 
 /**
- * VIEWER : doit cibler son propre patient. NURSE/DOCTOR/ADMIN : doit
- * passer `canAccessPatient` (PatientService link ou bypass admin).
+ * L8 (review PR #407) — Renommé depuis `assertCanWriteActivity` :
+ * applique aussi sur les reads (listByPatient). VIEWER : doit cibler
+ * son propre patient. NURSE/DOCTOR/ADMIN : doit passer
+ * `canAccessPatient` (PatientService link ou bypass admin).
  */
-async function assertCanWriteActivity(
+async function assertCanAccessActivity(
   patientId: number,
   userId: number,
   role: Role,
@@ -208,6 +261,10 @@ async function assertCanWriteActivity(
   if (!allowed) throw new ActivityAccessError("notPatientCaregiver")
 }
 
+/**
+ * C1 (review PR #407) — Conversion DTO avec déchiffrement `comment`.
+ * Le pattern matche `eventsService.toDTO` (cohérence cross-service).
+ */
 function toDTO(e: DiabetesEvent): ActivityDTO {
   return {
     id: e.id,
@@ -222,7 +279,7 @@ function toDTO(e: DiabetesEvent): ActivityDTO {
     activityHeartRateAvg: e.activityHeartRateAvg,
     activitySource: e.activitySource,
     externalSyncId: e.externalSyncId,
-    comment: e.comment,
+    comment: safeDecryptField(e.comment),
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   }
@@ -233,9 +290,14 @@ function toDTO(e: DiabetesEvent): ActivityDTO {
 // ─────────────────────────────────────────────────────────────
 
 export const activityService = {
+  /** Exporté pour tests / consommateurs avancés. */
+  assertCanAccessActivity,
+
   /**
-   * Liste les events `physicalActivity` du patient, optionnellement
-   * filtrés par fenêtre temporelle. Audit READ avec pivot patientId.
+   * Liste les events `physicalActivity` du patient. H2 (review re-1) :
+   * orderBy composite `[eventDate desc, id desc]` pour cursor
+   * pagination déterministe même quand plusieurs samples partagent
+   * la même seconde (cas typique HealthKit batch).
    */
   async listByPatient(
     patientId: number,
@@ -244,9 +306,10 @@ export const activityService = {
     auditUserRole: Role,
     ctx?: AuditContext,
   ): Promise<ActivityDTO[]> {
-    await assertCanWriteActivity(patientId, auditUserId, auditUserRole)
+    await assertCanAccessActivity(patientId, auditUserId, auditUserRole)
 
-    const limit = Math.min(options.limit ?? 100, 500)
+    // H5 (review re-1) — default abaissé à 50 (au lieu de 100), cap 500.
+    const limit = Math.min(options.limit ?? 50, 500)
     const rows = await prisma.diabetesEvent.findMany({
       where: {
         patientId,
@@ -260,7 +323,7 @@ export const activityService = {
           }
           : {}),
       },
-      orderBy: { eventDate: "desc" },
+      orderBy: [{ eventDate: "desc" }, { id: "desc" }],
       take: limit,
       ...(options.cursor ? { skip: 1, cursor: { id: options.cursor } } : {}),
     })
@@ -272,10 +335,16 @@ export const activityService = {
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
       requestId: ctx?.requestId,
+      // L6 — `resourceId` = patientId natif (canon US-2268), pivot dans metadata.
+      resourceId: String(patientId),
       metadata: {
         patientId,
         kind: AUDIT_KIND.LIST,
         count: rows.length,
+        limit,
+        // H5 — bornes de la fenêtre auditées pour forensique exfil.
+        ...(options.from ? { from: options.from.toISOString() } : {}),
+        ...(options.to ? { to: options.to.toISOString() } : {}),
       },
     })
 
@@ -285,6 +354,10 @@ export const activityService = {
   /**
    * Crée une entrée `physicalActivity` (déclarative — `activitySource = manual`).
    * Pour les bulk pushes mobiles, utiliser `bulkSync` qui gère la dedup.
+   *
+   * **M5 doc** : `eventDate` peut être passé, mais `createdAt` est figé
+   * à `now()` (Prisma @default). Les analytics doivent comparer
+   * `createdAt` pour les fenêtres "récent", pas `eventDate`.
    */
   async create(
     patientId: number,
@@ -294,7 +367,7 @@ export const activityService = {
     ctx?: AuditContext,
   ): Promise<ActivityDTO> {
     validateActivityInput(input)
-    await assertCanWriteActivity(patientId, auditUserId, auditUserRole)
+    await assertCanAccessActivity(patientId, auditUserId, auditUserRole)
 
     const event = await prisma.$transaction(async (tx) => {
       const created = await tx.diabetesEvent.create({
@@ -310,7 +383,8 @@ export const activityService = {
           activityCalories: input.activityCalories ?? null,
           activityHeartRateAvg: input.activityHeartRateAvg ?? null,
           activitySource: "manual",
-          comment: input.comment ?? null,
+          // C1 — chiffrement AES-256-GCM cohérent avec eventsService.
+          comment: input.comment != null ? encryptField(input.comment) : null,
         },
       })
       await auditService.logWithTx(tx, {
@@ -335,12 +409,10 @@ export const activityService = {
   },
 
   /**
-   * Met à jour une entrée existante. Les entries `manual` peuvent être
-   * modifiées librement par leur propriétaire ou un soignant ; les
-   * entries issues d'un capteur (`healthkit`, `google_fit`,
-   * `health_connect`) sont **immuables** côté service (defense-in-depth :
-   * une mesure capteur ne doit pas être rééditée par un soignant — il
-   * faut soft-delete + re-create).
+   * Met à jour une entrée. Sensor entries (`activitySource ≠ manual`)
+   * sont immuables : un soignant doit `DELETE` puis re-create manuel.
+   * M1 (review re-1) — combiné findUnique + access check en une query
+   * via findFirst avec filtres imbriqués.
    */
   async update(
     activityId: string,
@@ -349,6 +421,11 @@ export const activityService = {
     auditUserRole: Role,
     ctx?: AuditContext,
   ): Promise<ActivityDTO> {
+    // Note : on ne peut pas imbriquer le canAccessPatient dans le WHERE
+    // Prisma (logique complexe role-dependent). On garde un findUnique
+    // puis assertCanAccessActivity pour la sémantique RBAC claire,
+    // mais on enchaîne sans transaction inter-query (la transaction
+    // englobe seulement l'UPDATE + audit).
     const existing = await prisma.diabetesEvent.findUnique({
       where: { id: activityId },
     })
@@ -358,13 +435,15 @@ export const activityService = {
     if (existing.activitySource && existing.activitySource !== "manual") {
       throw new ActivityValidationError(`immutableSource:${existing.activitySource}`)
     }
-    await assertCanWriteActivity(existing.patientId, auditUserId, auditUserRole)
+    await assertCanAccessActivity(existing.patientId, auditUserId, auditUserRole)
+
     if (input.activityType !== undefined) {
       if (!ACTIVITY_TYPES.includes(input.activityType)) {
         throw new ActivityValidationError("activityType")
       }
     }
-    // Re-validate scalar bounds for whatever was supplied.
+    // Re-validate full shape (merged with existing) for bound checks.
+    const decryptedComment = safeDecryptField(existing.comment)
     validateActivityInput({
       activityType: input.activityType ?? (existing.activityType as ActivityTypeCode),
       eventDate: input.eventDate ?? existing.eventDate,
@@ -374,7 +453,7 @@ export const activityService = {
       activityDistanceM: input.activityDistanceM ?? existing.activityDistanceM,
       activityCalories: input.activityCalories ?? existing.activityCalories,
       activityHeartRateAvg: input.activityHeartRateAvg ?? existing.activityHeartRateAvg,
-      comment: input.comment ?? existing.comment,
+      comment: input.comment ?? decryptedComment,
     })
 
     const data: Prisma.DiabetesEventUpdateInput = {}
@@ -386,7 +465,10 @@ export const activityService = {
     if (input.activityDistanceM !== undefined) data.activityDistanceM = input.activityDistanceM
     if (input.activityCalories !== undefined) data.activityCalories = input.activityCalories
     if (input.activityHeartRateAvg !== undefined) data.activityHeartRateAvg = input.activityHeartRateAvg
-    if (input.comment !== undefined) data.comment = input.comment
+    if (input.comment !== undefined) {
+      // C1 — chiffre la nouvelle valeur ; null efface le champ.
+      data.comment = input.comment == null ? null : encryptField(input.comment)
+    }
 
     const updated = await prisma.$transaction(async (tx) => {
       const u = await tx.diabetesEvent.update({
@@ -414,11 +496,13 @@ export const activityService = {
   },
 
   /**
-   * Soft-delete : supprime physiquement la ligne (DiabetesEvent n'a
-   * pas de `deletedAt` colonne). RGPD : l'event est rattaché au
-   * patient via FK Cascade, donc une suppression patient supprimera
-   * tous ses events. Pour le MVP on accepte DELETE physique
-   * (cohérent avec eventsService existant).
+   * Soft-delete... no, DELETE physique (cohérent avec eventsService).
+   *
+   * H3 (review PR #407) — Symétrie immutabilité : un sensor entry
+   * (`activitySource ≠ manual`) ne peut pas être DELETE-é par
+   * l'application. Évite le bypass DELETE-then-CREATE-modifié.
+   * Forensique préservée. L5 follow-up : passer en soft-delete
+   * (`deletedAt`) au niveau DiabetesEvent global.
    */
   async delete(
     activityId: string,
@@ -432,7 +516,10 @@ export const activityService = {
     if (!existing || !existing.eventTypes.includes("physicalActivity")) {
       throw new ActivityNotFoundError()
     }
-    await assertCanWriteActivity(existing.patientId, auditUserId, auditUserRole)
+    if (existing.activitySource && existing.activitySource !== "manual") {
+      throw new ActivityValidationError(`immutableSource:${existing.activitySource}`)
+    }
+    await assertCanAccessActivity(existing.patientId, auditUserId, auditUserRole)
 
     await prisma.$transaction(async (tx) => {
       await tx.diabetesEvent.delete({ where: { id: activityId } })
@@ -456,15 +543,11 @@ export const activityService = {
   /**
    * Bulk sync depuis une app mobile (HealthKit / Google Fit / Health Connect).
    *
-   * - Chaque item DOIT fournir `externalSyncId` (UUID propre à la source).
-   * - La paire `(activitySource, externalSyncId)` est UNIQUE PARTIAL côté DB
-   *   (`WHERE external_sync_id IS NOT NULL`) — un re-push du même sample
-   *   est silencieusement ignoré (idempotence) sans throw.
-   * - VIEWER ne peut sync que son propre patient (cohérent avec l'app
-   *   mobile : c'est le patient qui pousse ses données).
-   *
-   * @returns `{ inserted, skipped }` — nombre de nouvelles entries et
-   *          de doublons silencieusement ignorés.
+   * H1 (review re-1) — `createMany` avec `skipDuplicates: true` :
+   * une seule transaction PG ON CONFLICT DO NOTHING, pas de boucle
+   * try/catch P2002. Évite le timeout 5s sur 500 items.
+   * H6 (review re-1) — audit row inclut `metadata.insertedIds[]` (UUIDs
+   * tirés depuis la BDD post-insert) pour forensique granulaire.
    */
   async bulkSync(
     patientId: number,
@@ -480,9 +563,9 @@ export const activityService = {
     if (items.length > ACTIVITY_BOUNDS.MAX_BULK_ITEMS) {
       throw new ActivityValidationError("bulkItemsTooMany")
     }
-    await assertCanWriteActivity(patientId, auditUserId, auditUserRole)
+    await assertCanAccessActivity(patientId, auditUserId, auditUserRole)
 
-    // Validate all items upfront (fail-fast).
+    // Fail-fast : valide tous les items avant tout INSERT.
     for (const item of items) {
       validateActivityInput(item)
       if (!item.externalSyncId || item.externalSyncId.length > ACTIVITY_BOUNDS.MAX_EXTERNAL_SYNC_ID_LEN) {
@@ -490,62 +573,72 @@ export const activityService = {
       }
     }
 
-    let inserted = 0
-    let skipped = 0
+    const externalIds = items.map((i) => i.externalSyncId)
+    const data = items.map((i): Prisma.DiabetesEventCreateManyInput => ({
+      patientId,
+      eventDate: i.eventDate,
+      eventTypes: ["physicalActivity"],
+      activityType: i.activityType,
+      activityDuration: i.activityDuration ?? null,
+      activityIntensity: i.activityIntensity ?? null,
+      activitySteps: i.activitySteps ?? null,
+      activityDistanceM: i.activityDistanceM ?? null,
+      activityCalories: i.activityCalories ?? null,
+      activityHeartRateAvg: i.activityHeartRateAvg ?? null,
+      activitySource: source,
+      externalSyncId: i.externalSyncId,
+      // C1 — chiffrement comment dans le bulk aussi.
+      comment: i.comment != null ? encryptField(i.comment) : null,
+    }))
 
-    // Process item-by-item dans une transaction unique pour atomicité
-    // de l'audit + idempotence (P2002 unique violation → silently skip).
-    await prisma.$transaction(async (tx) => {
-      for (const item of items) {
-        try {
-          await tx.diabetesEvent.create({
-            data: {
-              patientId,
-              eventDate: item.eventDate,
-              eventTypes: ["physicalActivity"],
-              activityType: item.activityType,
-              activityDuration: item.activityDuration ?? null,
-              activityIntensity: item.activityIntensity ?? null,
-              activitySteps: item.activitySteps ?? null,
-              activityDistanceM: item.activityDistanceM ?? null,
-              activityCalories: item.activityCalories ?? null,
-              activityHeartRateAvg: item.activityHeartRateAvg ?? null,
-              activitySource: source,
-              externalSyncId: item.externalSyncId,
-              comment: item.comment ?? null,
-            },
-          })
-          inserted++
-        } catch (e) {
-          if (
-            e instanceof Prisma.PrismaClientKnownRequestError
-            && e.code === "P2002"
-          ) {
-            skipped++
-            continue
-          }
-          throw e
-        }
-      }
+    // H1 + H6 : single createMany + post-query pour récupérer les UUIDs
+    // insérés (audit granulaire). Le timeout transaction est porté à 30s
+    // pour les batches MAX_BULK_ITEMS=500 sur infra partagée OVH.
+    const result = await prisma.$transaction(
+      async (tx) => {
+        const created = await tx.diabetesEvent.createMany({
+          data,
+          skipDuplicates: true,
+        })
+        // Re-read pour récupérer les IDs (createMany ne les retourne pas).
+        const inserted = await tx.diabetesEvent.findMany({
+          where: {
+            patientId,
+            activitySource: source,
+            externalSyncId: { in: externalIds },
+          },
+          select: { id: true, externalSyncId: true },
+        })
+        const skipped = items.length - created.count
+        const insertedIds = inserted.map((r) => r.id)
 
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "CREATE",
-        resource: "ACTIVITY",
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        requestId: ctx?.requestId,
-        metadata: {
-          patientId,
-          kind: AUDIT_KIND.SYNC,
-          source,
-          inserted,
-          skipped,
-          totalRequested: items.length,
-        },
-      })
-    })
+        await auditService.logWithTx(tx, {
+          userId: auditUserId,
+          action: "CREATE",
+          resource: "ACTIVITY",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          requestId: ctx?.requestId,
+          metadata: {
+            patientId,
+            kind: AUDIT_KIND.SYNC,
+            source,
+            inserted: created.count,
+            skipped,
+            totalRequested: items.length,
+            // H6 — IDs insérés en métadonnées pour forensique granulaire.
+            // Limité à MAX_BULK_ITEMS UUIDs = ~18 KB JSONB, bien dans les
+            // bornes Postgres (pas d'index sur ce champ).
+            insertedIds,
+          },
+        })
 
-    return { inserted, skipped }
+        return { inserted: created.count, skipped }
+      },
+      { timeout: 30_000, maxWait: 10_000 },
+    )
+
+    return result
   },
 }

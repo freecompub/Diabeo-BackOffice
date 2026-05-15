@@ -23,8 +23,17 @@ ALTER TABLE "diabetes_events"
     ADD COLUMN "activity_distance_m"     INTEGER,
     ADD COLUMN "activity_calories"       INTEGER,
     ADD COLUMN "activity_heart_rate_avg" INTEGER,
-    ADD COLUMN "activity_source"         "activity_source" DEFAULT 'manual',
+    ADD COLUMN "activity_source"         "activity_source",
     ADD COLUMN "external_sync_id"        VARCHAR(128);
+
+-- M6 (review PR #407) — Backfill ciblé : seuls les events qui sont
+-- effectivement de type physicalActivity reçoivent `activity_source =
+-- 'manual'`. Les autres (glycemia, meal, etc.) gardent NULL → leur
+-- `activity_source` est non-significatif et ne pollue pas les
+-- futures requêtes WHERE activity_source = 'manual'.
+UPDATE "diabetes_events"
+SET "activity_source" = 'manual'
+WHERE 'physicalActivity' = ANY("event_types") AND "activity_source" IS NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- 3. CHECK constraints (bornes anti-coquille)
@@ -32,15 +41,19 @@ ALTER TABLE "diabetes_events"
 
 ALTER TABLE "diabetes_events"
     ADD CONSTRAINT "diabetes_events_activity_steps_chk"
-    CHECK ("activity_steps" IS NULL OR ("activity_steps" >= 0 AND "activity_steps" <= 200000)),
+    CHECK ("activity_steps" IS NULL OR ("activity_steps" >= 0 AND "activity_steps" <= 100000)),
     ADD CONSTRAINT "diabetes_events_activity_distance_chk"
-    CHECK ("activity_distance_m" IS NULL OR ("activity_distance_m" >= 0 AND "activity_distance_m" <= 1000000)),
+    CHECK ("activity_distance_m" IS NULL OR ("activity_distance_m" >= 0 AND "activity_distance_m" <= 300000)),
     ADD CONSTRAINT "diabetes_events_activity_calories_chk"
     CHECK ("activity_calories" IS NULL OR ("activity_calories" >= 0 AND "activity_calories" <= 50000)),
     ADD CONSTRAINT "diabetes_events_activity_hr_chk"
     CHECK ("activity_heart_rate_avg" IS NULL OR ("activity_heart_rate_avg" BETWEEN 30 AND 250)),
     ADD CONSTRAINT "diabetes_events_activity_duration_chk"
-    CHECK ("activity_duration" IS NULL OR ("activity_duration" >= 0 AND "activity_duration" <= 1440));
+    CHECK ("activity_duration" IS NULL OR ("activity_duration" >= 0 AND "activity_duration" <= 1440)),
+    -- M10 (review PR #407) — `external_sync_id` ne peut être présent
+    -- que sur un event physicalActivity (cohérence cross-domain).
+    ADD CONSTRAINT "diabetes_events_external_sync_id_activity_only_chk"
+    CHECK ("external_sync_id" IS NULL OR 'physicalActivity' = ANY("event_types"));
 
 -- ─────────────────────────────────────────────────────────────
 -- 4. Indexes

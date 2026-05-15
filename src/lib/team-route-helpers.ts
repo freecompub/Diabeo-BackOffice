@@ -155,3 +155,30 @@ export function assertJsonContentType(req: Request): NextResponse | null {
   }
   return null
 }
+
+/**
+ * H4 (review PR #407) — Garde anti-DoS : rejette les bodies déclarant
+ * un `Content-Length` supérieur à `maxBytes`. Empêche `req.json()` de
+ * buffer 50MB+ en mémoire avant validation Zod.
+ *
+ * `Content-Length` absent (HTTP/2 chunked) → toléré, mais le service
+ * doit appliquer ses propres caps applicatifs (MAX_BULK_ITEMS, etc.).
+ */
+export function assertBodySize(
+  req: Request,
+  maxBytes: number,
+): NextResponse | null {
+  const cl = req.headers.get("content-length")
+  if (!cl) return null
+  const size = Number(cl)
+  if (!Number.isFinite(size) || size < 0) {
+    return NextResponse.json({ error: "invalidContentLength" }, { status: 400 })
+  }
+  if (size > maxBytes) {
+    return NextResponse.json(
+      { error: "payloadTooLarge", maxBytes },
+      { status: 413 },
+    )
+  }
+  return null
+}

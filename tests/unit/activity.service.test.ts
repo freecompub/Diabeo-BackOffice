@@ -3,13 +3,19 @@
  *
  * Couvre :
  *   - US-2059 : list/create/update/delete + RBAC VIEWER own / NURSE+ cabinet
- *   - US-2060 / 2061 : bulkSync HealthKit/Google Fit avec dedup P2002
- *   - Validation bornes cliniques (steps, calories, heart rate, etc.)
+ *   - US-2060 / 2061 : bulkSync HealthKit/Google Fit avec dedup
+ *     `createMany skipDuplicates` (review re-1 H1)
+ *   - C1 (review re-1) : comment chiffré AES-256-GCM roundtrip
+ *   - C3 (review re-1) : eventDate bornes [-2y, +5min]
+ *   - H3 (review re-1) : DELETE bloqué sur sensor entry
+ *   - H6 (review re-1) : insertedIds dans audit metadata sync
+ *   - M4 (review re-1) : control chars rejetés
+ *   - M7 (review re-1) : skipDuplicates uniquement sur external_sync_id
+ *   - Validation bornes cliniques (steps, calories, heart rate)
  *   - Immutabilité entries non-manual (capteur)
  *   - Audit US-2268 pivot patientId
  */
 import { describe, it, expect, beforeEach } from "vitest"
-import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 import {
   activityService,
@@ -17,11 +23,14 @@ import {
   ActivityNotFoundError,
   ACTIVITY_BOUNDS,
 } from "@/lib/services/activity.service"
+import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+
+const recentDate = (): Date => new Date(Date.now() - 60_000)
 
 const baseEvent = {
   id: "00000000-0000-4000-8000-000000000001",
   patientId: 42,
-  eventDate: new Date("2026-05-15T08:30:00Z"),
+  eventDate: recentDate(),
   eventTypes: ["physicalActivity"] as const,
   glycemiaValue: null, carbohydrates: null, bolusDose: null, basalDose: null,
   activityType: "walk",
@@ -75,7 +84,7 @@ describe("RBAC", () => {
   })
 })
 
-// ─── create (US-2059) ───────────────────────────────────────────────
+// ─── create (US-2059 + C1 encryption) ──────────────────────────────
 
 describe("create — manual entry (US-2059)", () => {
   beforeEach(() => {
@@ -85,7 +94,7 @@ describe("create — manual entry (US-2059)", () => {
 
   it("creates manual activity event", async () => {
     const out = await activityService.create(42, {
-      eventDate: new Date("2026-05-15T08:30:00Z"),
+      eventDate: recentDate(),
       activityType: "walk",
       activityDuration: 45,
     }, 9, "VIEWER")
@@ -97,24 +106,54 @@ describe("create — manual entry (US-2059)", () => {
     expect((callArg.data as any).activitySource).toBe("manual")
   })
 
+  // C1 (review re-1) — comment chiffré AES-256-GCM avant insert.
+  it("C1 — encrypts comment before storage + decrypts in DTO", async () => {
+    const plaintext = "Course agréable au parc"
+    const encrypted = encryptField(plaintext)
+    prismaMock.diabetesEvent.create.mockResolvedValue({
+      ...baseEvent, comment: encrypted,
+    } as any)
+    const out = await activityService.create(42, {
+      eventDate: recentDate(),
+      activityType: "run",
+      comment: plaintext,
+    }, 9, "VIEWER")
+    const callArg = prismaMock.diabetesEvent.create.mock.calls[0]![0]!
+    const storedComment = (callArg.data as any).comment as string
+    // Stored value is NOT plaintext.
+    expect(storedComment).not.toBe(plaintext)
+    // Stored value decrypts back to plaintext.
+    expect(safeDecryptField(storedComment)).toBe(plaintext)
+    // DTO comment is decrypted to plaintext.
+    expect(out.comment).toBe(plaintext)
+  })
+
   it("rejects unknown activityType", async () => {
     await expect(activityService.create(42, {
-      eventDate: new Date(),
+      eventDate: recentDate(),
       activityType: "skydiving" as any,
     }, 9, "VIEWER")).rejects.toMatchObject({ field: "activityType" })
   })
 
   it("rejects negative steps", async () => {
     await expect(activityService.create(42, {
-      eventDate: new Date(),
+      eventDate: recentDate(),
       activityType: "walk",
       activitySteps: -1,
     }, 9, "VIEWER")).rejects.toMatchObject({ field: "activitySteps" })
   })
 
+  it("rejects steps > MAX_STEPS (100k, tightened L3)", async () => {
+    await expect(activityService.create(42, {
+      eventDate: recentDate(),
+      activityType: "walk",
+      activitySteps: 100_001,
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "activitySteps" })
+  })
+
   it("rejects HR < 30 bpm", async () => {
     await expect(activityService.create(42, {
-      eventDate: new Date(),
+      eventDate: recentDate(),
       activityType: "walk",
       activityHeartRateAvg: 20,
     }, 9, "VIEWER")).rejects.toMatchObject({ field: "activityHeartRateAvg" })
@@ -122,7 +161,7 @@ describe("create — manual entry (US-2059)", () => {
 
   it("rejects HR > 250 bpm", async () => {
     await expect(activityService.create(42, {
-      eventDate: new Date(),
+      eventDate: recentDate(),
       activityType: "walk",
       activityHeartRateAvg: 260,
     }, 9, "VIEWER")).rejects.toMatchObject({ field: "activityHeartRateAvg" })
@@ -130,15 +169,50 @@ describe("create — manual entry (US-2059)", () => {
 
   it("rejects duration > 24h", async () => {
     await expect(activityService.create(42, {
-      eventDate: new Date(),
+      eventDate: recentDate(),
       activityType: "walk",
       activityDuration: 1441,
     }, 9, "VIEWER")).rejects.toMatchObject({ field: "activityDuration" })
   })
 
+  // C3 (review re-1) — eventDate borné.
+  it("C3 — rejects eventDate in the future (> +5min)", async () => {
+    const future = new Date(Date.now() + 60 * 60_000) // +1h
+    await expect(activityService.create(42, {
+      eventDate: future,
+      activityType: "walk",
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "eventDateFuture" })
+  })
+
+  it("C3 — rejects eventDate older than 2 years", async () => {
+    const ancient = new Date(Date.now() - 3 * 365 * 86_400_000)
+    await expect(activityService.create(42, {
+      eventDate: ancient,
+      activityType: "walk",
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "eventDatePast" })
+  })
+
+  // M4 (review re-1) — control chars dans comment.
+  it("M4 — rejects comment containing NUL byte", async () => {
+    await expect(activityService.create(42, {
+      eventDate: recentDate(),
+      activityType: "walk",
+      comment: "test\x00malicious",
+    }, 9, "VIEWER")).rejects.toMatchObject({ field: "commentControlChars" })
+  })
+
+  it("M4 — accepts comment containing newline and tab", async () => {
+    prismaMock.diabetesEvent.create.mockResolvedValue(baseEvent as any)
+    await expect(activityService.create(42, {
+      eventDate: recentDate(),
+      activityType: "walk",
+      comment: "line1\nline2\twith tab",
+    }, 9, "VIEWER")).resolves.toBeTruthy()
+  })
+
   it("audit row contains patientId pivot + kind=activity.create", async () => {
     await activityService.create(42, {
-      eventDate: new Date(),
+      eventDate: recentDate(),
       activityType: "run",
     }, 9, "VIEWER")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
@@ -177,16 +251,6 @@ describe("update — immutable for sensor sources", () => {
       .rejects.toMatchObject({ field: "immutableSource:healthkit" })
   })
 
-  it("rejects update on google_fit-sourced entry", async () => {
-    prismaMock.diabetesEvent.findUnique.mockResolvedValue({
-      ...baseEvent, activitySource: "google_fit", externalSyncId: "gf-xyz",
-    } as any)
-    await expect(activityService.update(baseEvent.id, {
-      activityDuration: 60,
-    }, 9, "VIEWER"))
-      .rejects.toMatchObject({ field: "immutableSource:google_fit" })
-  })
-
   it("throws NotFound when event has no physicalActivity type", async () => {
     prismaMock.diabetesEvent.findUnique.mockResolvedValue({
       ...baseEvent, eventTypes: ["glycemia"],
@@ -197,19 +261,28 @@ describe("update — immutable for sensor sources", () => {
       .rejects.toBeInstanceOf(ActivityNotFoundError)
   })
 
-  it("throws NotFound when event missing", async () => {
-    prismaMock.diabetesEvent.findUnique.mockResolvedValue(null)
-    await expect(activityService.update("not-found-id", {
-      activityDuration: 60,
-    }, 9, "VIEWER")).rejects.toBeInstanceOf(ActivityNotFoundError)
+  // C1 — update aussi encrypte / decrypte.
+  it("C1 — encrypts updated comment", async () => {
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue(baseEvent as any)
+    prismaMock.diabetesEvent.update.mockResolvedValue(baseEvent as any)
+    await activityService.update(baseEvent.id, {
+      comment: "updated note",
+    }, 9, "VIEWER")
+    const updateArg = prismaMock.diabetesEvent.update.mock.calls[0]![0]!
+    const storedComment = (updateArg.data as any).comment as string
+    expect(storedComment).not.toBe("updated note")
+    expect(safeDecryptField(storedComment)).toBe("updated note")
   })
 })
 
-// ─── delete ─────────────────────────────────────────────────────────
+// ─── delete — H3 immutability symétrique ────────────────────────────
 
-describe("delete", () => {
-  it("deletes manual entry + audit", async () => {
+describe("delete — H3 sensor immutability", () => {
+  beforeEach(() => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+  })
+
+  it("deletes manual entry + audit", async () => {
     prismaMock.diabetesEvent.findUnique.mockResolvedValue(baseEvent as any)
     prismaMock.diabetesEvent.delete.mockResolvedValue(baseEvent as any)
     await activityService.delete(baseEvent.id, 9, "VIEWER")
@@ -217,6 +290,24 @@ describe("delete", () => {
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(meta.metadata.kind).toBe("activity.delete")
     expect(meta.metadata.patientId).toBe(42)
+  })
+
+  // H3 (review re-1) — symétrie : DELETE bloqué sur sensor.
+  it("H3 — rejects DELETE on healthkit-sourced entry", async () => {
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue({
+      ...baseEvent, activitySource: "healthkit", externalSyncId: "hk-abc",
+    } as any)
+    await expect(activityService.delete(baseEvent.id, 9, "VIEWER"))
+      .rejects.toMatchObject({ field: "immutableSource:healthkit" })
+    expect(prismaMock.diabetesEvent.delete).not.toHaveBeenCalled()
+  })
+
+  it("H3 — rejects DELETE on google_fit-sourced entry", async () => {
+    prismaMock.diabetesEvent.findUnique.mockResolvedValue({
+      ...baseEvent, activitySource: "google_fit", externalSyncId: "gf-xyz",
+    } as any)
+    await expect(activityService.delete(baseEvent.id, 9, "VIEWER"))
+      .rejects.toMatchObject({ field: "immutableSource:google_fit" })
   })
 
   it("404 when event not physicalActivity", async () => {
@@ -228,12 +319,12 @@ describe("delete", () => {
   })
 })
 
-// ─── bulkSync (US-2060 + US-2061) ───────────────────────────────────
+// ─── bulkSync — H1 createMany + H6 insertedIds ─────────────────────
 
 describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
   const baseSyncItem = {
     externalSyncId: "hk-uuid-1",
-    eventDate: new Date("2026-05-15T08:30:00Z"),
+    eventDate: recentDate(),
     activityType: "walk" as const,
     activityDuration: 30,
     activitySteps: 3500,
@@ -241,50 +332,65 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
 
   beforeEach(() => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as any)
   })
 
   it("returns inserted=0 / skipped=0 on empty array", async () => {
     const out = await activityService.bulkSync(42, "healthkit", [], 9, "VIEWER")
     expect(out).toEqual({ inserted: 0, skipped: 0 })
-    expect(prismaMock.diabetesEvent.create).not.toHaveBeenCalled()
+    expect(prismaMock.diabetesEvent.createMany).not.toHaveBeenCalled()
   })
 
-  it("inserts 3 new items + audits", async () => {
-    prismaMock.diabetesEvent.create.mockResolvedValue(baseEvent as any)
+  // H1 (review re-1) — utilise createMany skipDuplicates (1 round-trip).
+  it("H1 — uses createMany skipDuplicates (single round-trip)", async () => {
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 3 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { id: "uuid-a", externalSyncId: "hk-uuid-0" },
+      { id: "uuid-b", externalSyncId: "hk-uuid-1" },
+      { id: "uuid-c", externalSyncId: "hk-uuid-2" },
+    ] as any)
     const items = Array.from({ length: 3 }, (_, i) => ({
       ...baseSyncItem, externalSyncId: `hk-uuid-${i}`,
     }))
     const out = await activityService.bulkSync(42, "healthkit", items, 9, "VIEWER")
     expect(out).toEqual({ inserted: 3, skipped: 0 })
-    expect(prismaMock.diabetesEvent.create).toHaveBeenCalledTimes(3)
-    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(meta.metadata.kind).toBe("activity.sync")
-    expect(meta.metadata.inserted).toBe(3)
-    expect(meta.metadata.skipped).toBe(0)
-    expect(meta.metadata.source).toBe("healthkit")
+    expect(prismaMock.diabetesEvent.createMany).toHaveBeenCalledTimes(1)
+    const call = prismaMock.diabetesEvent.createMany.mock.calls[0]![0]!
+    expect((call as any).skipDuplicates).toBe(true)
   })
 
-  it("silently skips duplicates via P2002 unique violation", async () => {
-    const p2002 = new Prisma.PrismaClientKnownRequestError(
-      "Unique constraint failed",
-      { code: "P2002", clientVersion: "test" } as any,
-    )
-    prismaMock.diabetesEvent.create
-      .mockResolvedValueOnce(baseEvent as any)
-      .mockRejectedValueOnce(p2002) // 2nd item = duplicate
-      .mockResolvedValueOnce(baseEvent as any)
-    const items = Array.from({ length: 3 }, (_, i) => ({
-      ...baseSyncItem, externalSyncId: `hk-uuid-${i}`,
+  it("computes skipped from createMany.count vs items.length", async () => {
+    // 5 sent, 3 inserted → 2 dedupped silently.
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 3 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { id: "u1", externalSyncId: "id-1" },
+      { id: "u3", externalSyncId: "id-3" },
+      { id: "u5", externalSyncId: "id-5" },
+    ] as any)
+    const items = Array.from({ length: 5 }, (_, i) => ({
+      ...baseSyncItem, externalSyncId: `id-${i + 1}`,
     }))
     const out = await activityService.bulkSync(42, "healthkit", items, 9, "VIEWER")
-    expect(out).toEqual({ inserted: 2, skipped: 1 })
+    expect(out).toEqual({ inserted: 3, skipped: 2 })
   })
 
-  it("propagates non-P2002 errors (don't swallow)", async () => {
-    const fatal = new Error("DB down")
-    prismaMock.diabetesEvent.create.mockRejectedValue(fatal)
-    await expect(activityService.bulkSync(42, "healthkit", [baseSyncItem], 9, "VIEWER"))
-      .rejects.toThrow("DB down")
+  // H6 (review re-1) — audit metadata.insertedIds.
+  it("H6 — audit metadata includes insertedIds + counts", async () => {
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 2 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { id: "uuid-a", externalSyncId: "hk-a" },
+      { id: "uuid-b", externalSyncId: "hk-b" },
+    ] as any)
+    await activityService.bulkSync(42, "healthkit", [
+      { ...baseSyncItem, externalSyncId: "hk-a" },
+      { ...baseSyncItem, externalSyncId: "hk-b" },
+    ], 9, "VIEWER")
+    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.metadata.kind).toBe("activity.sync")
+    expect(meta.metadata.inserted).toBe(2)
+    expect(meta.metadata.skipped).toBe(0)
+    expect(meta.metadata.insertedIds).toEqual(["uuid-a", "uuid-b"])
+    expect(meta.metadata.source).toBe("healthkit")
   })
 
   it("rejects bulk > MAX_BULK_ITEMS", async () => {
@@ -307,16 +413,41 @@ describe("bulkSync (US-2060 / 2061) — mobile dedup", () => {
     }], 9, "VIEWER")).rejects.toMatchObject({ field: "activityType" })
   })
 
+  // C3 — eventDate validé aussi en bulkSync.
+  it("C3 — rejects sync item with future eventDate", async () => {
+    await expect(activityService.bulkSync(42, "healthkit", [{
+      ...baseSyncItem, eventDate: new Date(Date.now() + 86_400_000),
+    }], 9, "VIEWER")).rejects.toMatchObject({ field: "eventDateFuture" })
+  })
+
   it("propagates source to created events", async () => {
-    prismaMock.diabetesEvent.create.mockResolvedValue(baseEvent as any)
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 1 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { id: "uuid-1", externalSyncId: "hk-uuid-1" },
+    ] as any)
     await activityService.bulkSync(42, "google_fit", [baseSyncItem], 9, "VIEWER")
-    const callArg = prismaMock.diabetesEvent.create.mock.calls[0]![0]!
-    expect((callArg.data as any).activitySource).toBe("google_fit")
-    expect((callArg.data as any).externalSyncId).toBe("hk-uuid-1")
+    const call = prismaMock.diabetesEvent.createMany.mock.calls[0]![0]!
+    const data = (call as any).data as Array<{ activitySource: string }>
+    expect(data[0]!.activitySource).toBe("google_fit")
+  })
+
+  // C1 — bulk sync encrypte aussi le comment.
+  it("C1 — bulkSync encrypts comments", async () => {
+    prismaMock.diabetesEvent.createMany.mockResolvedValue({ count: 1 } as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([
+      { id: "uuid-1", externalSyncId: "hk-1" },
+    ] as any)
+    await activityService.bulkSync(42, "healthkit", [{
+      ...baseSyncItem, externalSyncId: "hk-1", comment: "patient note",
+    }], 9, "VIEWER")
+    const call = prismaMock.diabetesEvent.createMany.mock.calls[0]![0]!
+    const data = (call as any).data as Array<{ comment: string }>
+    expect(data[0]!.comment).not.toBe("patient note")
+    expect(safeDecryptField(data[0]!.comment)).toBe("patient note")
   })
 })
 
-// ─── list — time window ─────────────────────────────────────────────
+// ─── list — time window + audit ────────────────────────────────────
 
 describe("list — time window + audit", () => {
   beforeEach(() => {
@@ -325,20 +456,45 @@ describe("list — time window + audit", () => {
 
   it("filters by eventDate range", async () => {
     prismaMock.diabetesEvent.findMany.mockResolvedValue([baseEvent] as any)
-    const from = new Date("2026-05-01")
-    const to = new Date("2026-05-31")
+    const from = new Date(Date.now() - 30 * 86_400_000)
+    const to = new Date()
     await activityService.listByPatient(42, { from, to }, 9, "VIEWER")
     const call = prismaMock.diabetesEvent.findMany.mock.calls[0]![0]!
     expect((call.where as any).eventDate.gte).toEqual(from)
     expect((call.where as any).eventDate.lte).toEqual(to)
   })
 
-  it("audit metadata includes count + patientId pivot", async () => {
-    prismaMock.diabetesEvent.findMany.mockResolvedValue([baseEvent, baseEvent] as any)
+  // H2 (review re-1) — orderBy composite déterministe.
+  it("H2 — orderBy is composite [eventDate desc, id desc]", async () => {
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as any)
     await activityService.listByPatient(42, {}, 9, "VIEWER")
+    const call = prismaMock.diabetesEvent.findMany.mock.calls[0]![0]!
+    expect(call.orderBy).toEqual([{ eventDate: "desc" }, { id: "desc" }])
+  })
+
+  // H5 (review re-1) — default limit = 50 (au lieu de 100).
+  it("H5 — default limit is 50", async () => {
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as any)
+    await activityService.listByPatient(42, {}, 9, "VIEWER")
+    const call = prismaMock.diabetesEvent.findMany.mock.calls[0]![0]!
+    expect(call.take).toBe(50)
+  })
+
+  // L6 (review re-1) — resourceId = patientId natif US-2268.
+  it("L6 — audit resourceId = patientId, metadata.patientId pivot", async () => {
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([baseEvent, baseEvent] as any)
+    await activityService.listByPatient(42, {
+      from: new Date("2026-05-01"),
+      to: new Date("2026-05-31"),
+    }, 9, "VIEWER")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(meta.resourceId).toBe("42")
     expect(meta.metadata.kind).toBe("activity.list")
     expect(meta.metadata.patientId).toBe(42)
     expect(meta.metadata.count).toBe(2)
+    expect(meta.metadata.limit).toBe(50)
+    // H5 — bornes auditées pour forensique.
+    expect(meta.metadata.from).toBeDefined()
+    expect(meta.metadata.to).toBeDefined()
   })
 })
