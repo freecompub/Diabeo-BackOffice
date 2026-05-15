@@ -1223,7 +1223,11 @@ model DiabetesEvent {
   /// `externalSyncId` est l'UUID que HealthKit / Google Fit attribue à
   /// chaque sample. Couplé à `activitySource` il forme la clé unique
   /// de dedup quand l'app iOS/Android re-pousse le même historique.
-  activitySource         ActivitySource?    @default(manual) @map("activity_source")
+  /// NEW-M6 (review PR #407) — pas de @default : c'est le service qui
+  /// pose explicitement la valeur (`manual` à la création, valeur enum
+  /// pour bulkSync). Évite la pollution cross-domain (events non
+  /// physicalActivity) lors d'inserts directs.
+  activitySource         ActivitySource?    @map("activity_source")
   externalSyncId         String?            @map("external_sync_id") @db.VarChar(128)
   contextType       String?             @map("context_type") @db.VarChar(20)
   weight            Decimal?            @db.Decimal(5, 2)
