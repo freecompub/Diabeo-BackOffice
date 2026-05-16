@@ -157,6 +157,30 @@ export async function deleteUserAccount(
       await tx.patientAdministrative.deleteMany({ where: { patientId } })
       await tx.patientPregnancy.deleteMany({ where: { patientId } })
 
+      // HSA H-1 review round 1 — Invoices NON purgées (obligation comptable
+      // CGI L.123-22 + L.102-B LPF : conservation 10 ans factures). RGPD
+      // Art. 17.3.b dispense l'effacement pour ces données spécifiques.
+      // On audite explicitement la rétention pour traçabilité Art. 30.
+      const retainedInvoiceCount = await tx.invoice.count({
+        where: { patientId, status: { not: "draft" } },
+      })
+      if (retainedInvoiceCount > 0) {
+        await auditService.logWithTx(tx, {
+          userId,
+          action: "DELETE",
+          resource: "INVOICE",
+          resourceId: `patient:${patientId}`,
+          ipAddress,
+          userAgent,
+          metadata: {
+            kind: "user.account.deletion.invoicesRetained",
+            patientId,
+            invoiceCount: retainedInvoiceCount,
+            reason: "CGI_242_nonies_A_10y_retention",
+          },
+        })
+      }
+
       // Soft delete patient — never hard delete (RGPD + audit trail)
       await tx.patient.update({
         where: { id: patientId },

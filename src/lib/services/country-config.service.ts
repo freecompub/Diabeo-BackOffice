@@ -251,6 +251,49 @@ function validateDateRange(from: Date, until: Date | null | undefined): void {
 }
 
 export const countryTaxRuleService = {
+  /**
+   * US-2110 — Résolution du taux fiscal actif pour `(countryCode, taxType)`
+   * à la date `atDate` (default = now).
+   *
+   * Retourne la règle satisfaisant :
+   *   `appliesFrom <= atDate < appliesUntil` (ou appliesUntil IS NULL)
+   *   AND `isActive = true`
+   *
+   * `ORDER BY appliesFrom DESC LIMIT 1` — pick la plus récente si plusieurs
+   * règles overlapent (le `create` rejette déjà overlapping mais c'est
+   * defense-in-depth).
+   *
+   * Cas d'usage : `invoiceService.createDraft` peut résoudre le taux
+   * automatiquement si client ne l'envoie pas (UI cabinet, factures
+   * récurrentes), tout en gardant le snapshot dans `InvoiceItem.taxRate`
+   * pour l'immuabilité comptable.
+   */
+  async getActiveAt(
+    countryCode: string,
+    taxType: TaxType,
+    atDate: Date = new Date(),
+  ): Promise<TaxRuleDTO | null> {
+    validateCountryCode(countryCode)
+    validateTaxType(taxType)
+    if (!(atDate instanceof Date) || Number.isNaN(atDate.getTime())) {
+      throw new ValidationError("atDate")
+    }
+    const row = await prisma.countryTaxRule.findFirst({
+      where: {
+        countryCode,
+        taxType,
+        isActive: true,
+        appliesFrom: { lte: atDate },
+        OR: [
+          { appliesUntil: null },
+          { appliesUntil: { gt: atDate } },
+        ],
+      },
+      orderBy: { appliesFrom: "desc" },
+    })
+    return row ? toTaxRuleDTO(row) : null
+  },
+
   async list(filter?: {
     countryCode?: string; taxType?: TaxType; isActive?: boolean;
   }): Promise<TaxRuleDTO[]> {

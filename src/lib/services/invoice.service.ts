@@ -38,6 +38,7 @@ import type {
 } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { decrypt, encrypt } from "@/lib/crypto/health-data"
+import { encryptField } from "@/lib/crypto/fields"
 import { validateSiret } from "./healthcare-management.service"
 import { auditService, type AuditContext } from "./audit.service"
 import { reserveNextInvoiceNumber } from "./invoice-numbering.service"
@@ -375,6 +376,12 @@ async function buildIssuerSnapshot(
     }
   }
 
+  // HSA H-3 review round 1 — IBAN chiffré AES-256-GCM avant stockage
+  // dans le JSONB (defense-in-depth : un dump SQL ne révèle pas l'IBAN
+  // cabinet). Le helper `safeDecryptField` decrypt en lecture (read path
+  // pdf-lib + export).
+  const ibanEnc = cabinet.iban ? encryptField(cabinet.iban) : null
+
   return {
     name: cabinet.name,
     ...(cabinet.establishment ? { establishment: cabinet.establishment } : {}),
@@ -387,7 +394,7 @@ async function buildIssuerSnapshot(
     ...(cabinet.email ? { email: cabinet.email } : {}),
     ...(cabinet.siret ? { siret: cabinet.siret } : {}),
     ...(cabinet.tvaIntra ? { tvaIntra: cabinet.tvaIntra } : {}),
-    ...(cabinet.iban ? { iban: cabinet.iban } : {}),
+    ...(ibanEnc ? { ibanEnc } : {}),
     ...(cabinet.licenseNumber ? { licenseNumber: cabinet.licenseNumber } : {}),
   }
 }

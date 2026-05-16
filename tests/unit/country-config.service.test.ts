@@ -305,6 +305,60 @@ describe("countryTaxRuleService.update + delete + list + overlap (coverage)", ()
     const out = await countryTaxRuleService.deleteById(1, 9)
     expect(out.deleted).toBe(true)
   })
+
+  // US-2110 review — getActiveAt
+  it("US-2110 getActiveAt returns active rule for (country, tax, date)", async () => {
+    prismaMock.countryTaxRule.findFirst.mockResolvedValue({
+      id: 1, countryCode: "FR", taxType: "VAT",
+      baseRate: new Prisma.Decimal(0.2),
+      description: null,
+      appliesFrom: new Date("2024-01-01"),
+      appliesUntil: null,
+      isActive: true,
+      createdAt: new Date(), updatedAt: new Date(),
+    } as any)
+    const out = await countryTaxRuleService.getActiveAt(
+      "FR", "VAT", new Date("2026-05-15"),
+    )
+    expect(out).not.toBeNull()
+    expect(out!.baseRate).toBe(0.2)
+  })
+
+  it("US-2110 getActiveAt returns null if no rule active at date", async () => {
+    prismaMock.countryTaxRule.findFirst.mockResolvedValue(null)
+    const out = await countryTaxRuleService.getActiveAt(
+      "FR", "VAT", new Date("2020-01-01"),
+    )
+    expect(out).toBeNull()
+  })
+
+  it("US-2110 getActiveAt rejects invalid countryCode shape", async () => {
+    await expect(
+      countryTaxRuleService.getActiveAt("fr", "VAT", new Date()),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it("US-2110 getActiveAt rejects invalid taxType", async () => {
+    await expect(
+      countryTaxRuleService.getActiveAt("FR", "BADTYPE" as any, new Date()),
+    ).rejects.toBeInstanceOf(ValidationError)
+  })
+
+  it("US-2110 getActiveAt query filters appliesFrom <= atDate", async () => {
+    prismaMock.countryTaxRule.findFirst.mockResolvedValue(null)
+    const atDate = new Date("2026-01-15")
+    await countryTaxRuleService.getActiveAt("FR", "VAT", atDate)
+    const call = prismaMock.countryTaxRule.findFirst.mock.calls[0]![0]!
+    const where = call.where as any
+    expect(where.countryCode).toBe("FR")
+    expect(where.taxType).toBe("VAT")
+    expect(where.isActive).toBe(true)
+    expect(where.appliesFrom).toEqual({ lte: atDate })
+    expect(where.OR).toEqual([
+      { appliesUntil: null },
+      { appliesUntil: { gt: atDate } },
+    ])
+  })
   it("M4 — overlap rejected on create with adjacent existing rule", async () => {
     prismaMock.countryTaxRule.findFirst.mockResolvedValue({ id: 99 } as any)
     await expect(
