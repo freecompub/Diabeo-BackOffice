@@ -57,8 +57,12 @@ export async function POST(
         )
       }
       if (e instanceof InvoicePdfRenderError) {
+        // HSA M-4 review round 1 — no message brut leak.
+        // `e.code` est un identifiant stable (pdfTooLarge, issuerSnapshotInvalid,
+        // cabinetIbanMissingForBankTransfer, customerSnapshotUndecryptable,
+        // concurrentGenerationRaceLost).
         return NextResponse.json(
-          { error: "renderFailed", reason: e.message },
+          { error: "renderFailed", code: e.code },
           { status: 500 },
         )
       }
@@ -95,8 +99,13 @@ export async function GET(
           ...(file.contentLength !== undefined && {
             "Content-Length": String(file.contentLength),
           }),
-          "Content-Disposition": `attachment; filename="invoice-${parsed.data.id}.pdf"`,
+          // L4 review round 1 — RFC 6266 + UTF-8 filename pour i18n.
+          "Content-Disposition": `attachment; filename="invoice-${parsed.data.id}.pdf"; filename*=UTF-8''invoice-${parsed.data.id}.pdf`,
           "Cache-Control": "no-store, private",
+          // HSA M-2 review round 1 — defense-in-depth headers ANSSI RGS §4.5.
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'",
+          "Referrer-Policy": "no-referrer",
           "X-Content-SHA256": file.pdfHash,
         },
       })

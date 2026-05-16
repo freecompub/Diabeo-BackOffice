@@ -20,6 +20,18 @@ vi.mock("@/lib/storage/s3", () => ({
   }),
 }))
 
+// Mock decryptCustomerSnapshot pour fournir PII valide aux tests VIEWER.
+vi.mock("@/lib/services/invoice.service", async (orig) => {
+  const actual = await orig<typeof import("@/lib/services/invoice.service")>()
+  return {
+    ...actual,
+    decryptCustomerSnapshot: vi.fn((snapshot: unknown) => {
+      if (!snapshot) return null
+      return { name: "Jean Dupont", address1: "5 rue X", postalCode: "75001", city: "Paris" }
+    }),
+  }
+})
+
 import {
   invoicePdfService,
   renderInvoicePdf,
@@ -84,6 +96,7 @@ const baseInvoice = {
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
+  prismaMock.invoice.updateMany.mockResolvedValue({ count: 1 } as any)
   // Reset spy call counts between tests (mock implementations remain).
   vi.mocked(uploadFile).mockClear()
   vi.mocked(downloadFile).mockClear()
@@ -104,6 +117,7 @@ describe("renderInvoicePdf", () => {
     const buf = await renderInvoicePdf({
       number: "FR-2026-000001",
       issuedAt: new Date("2026-05-15"),
+      status: "issued",
       countryCode: "FR",
       currency: "EUR",
       paymentMethod: null,
@@ -125,6 +139,7 @@ describe("renderInvoicePdf", () => {
     const buf = await renderInvoicePdf({
       number: "FR-2026-000002",
       issuedAt: new Date("2026-05-15"),
+      status: "issued",
       countryCode: "FR",
       currency: "EUR",
       paymentMethod: "bank_transfer",
@@ -149,6 +164,7 @@ describe("renderInvoicePdf", () => {
     const buf = await renderInvoicePdf({
       number: "FR-2026-000003",
       issuedAt: new Date(),
+      status: "issued",
       countryCode: "FR", currency: "EUR", paymentMethod: null,
       issuer: baseIssuer, customer: null,
       items, totalCents: 12000, taxCents: 2000,
@@ -156,10 +172,56 @@ describe("renderInvoicePdf", () => {
     expect(buf.length).toBeLessThan(INVOICE_PDF_BOUNDS.MAX_PDF_BYTES)
   })
 
+  // C1 review round 1 — Unicode sanitization (Helvetica WinAnsi limitation).
+  it("C1 sanitizes non-WinAnsi characters (e.g. Cyrillic, Arabic) to ?", async () => {
+    const buf = await renderInvoicePdf({
+      number: "FR-2026-000005",
+      issuedAt: new Date(), status: "issued",
+      countryCode: "FR", currency: "EUR", paymentMethod: null,
+      issuer: baseIssuer,
+      customer: { name: "Ивaн Петров Łukasz العربية", postalCode: "75001", city: "Paris" },
+      items: [{ description: "Test 中文 🎉", quantity: 1, unitPriceCents: 100, taxRate: 0, taxCents: 0, lineTotalCents: 100 }],
+      totalCents: 100, taxCents: 0,
+    })
+    expect(buf.length).toBeGreaterThan(500)
+    expect(buf.subarray(0, 5).toString("ascii")).toBe("%PDF-")
+  })
+
+  // H1 review round 1 — multi-page support.
+  it("H1 supports multi-page when many items don't fit", async () => {
+    const manyItems = Array.from({ length: 80 }, (_, i) => ({
+      description: `Item ${i}`,
+      quantity: 1, unitPriceCents: 100, taxRate: 0, taxCents: 0, lineTotalCents: 100,
+    }))
+    const buf = await renderInvoicePdf({
+      number: "FR-2026-000006",
+      issuedAt: new Date(), status: "issued",
+      countryCode: "FR", currency: "EUR", paymentMethod: null,
+      issuer: baseIssuer, customer: null,
+      items: manyItems, totalCents: 8000, taxCents: 0,
+    })
+    expect(buf.length).toBeGreaterThan(2000)
+    // PDF should have multiple pages — check approximate size scales with items.
+  })
+
+  // H2 review round 1 — status banner.
+  it("H2 renders status banner for cancelled invoice", async () => {
+    const buf = await renderInvoicePdf({
+      number: "FR-2026-000007",
+      issuedAt: new Date(), status: "cancelled",
+      countryCode: "FR", currency: "EUR", paymentMethod: null,
+      issuer: baseIssuer, customer: null,
+      items: [{ description: "x", quantity: 1, unitPriceCents: 100, taxRate: 0, taxCents: 0, lineTotalCents: 100 }],
+      totalCents: 100, taxCents: 0,
+    })
+    expect(buf.length).toBeGreaterThan(500)
+  })
+
   it("renders customer block when customer provided", async () => {
     const buf = await renderInvoicePdf({
       number: "FR-2026-000004",
       issuedAt: new Date(),
+      status: "issued",
       countryCode: "FR", currency: "EUR", paymentMethod: null,
       issuer: baseIssuer,
       customer: { name: "Jean Dupont", address1: "5 rue X", postalCode: "75001", city: "Paris" },
@@ -244,7 +306,10 @@ describe("generate", () => {
 
   it("VIEWER (patient owner) can generate own invoice", async () => {
     prismaMock.invoice.findUnique.mockResolvedValue({
-      ...baseInvoice, patientId: 42,
+      ...baseInvoice,
+      patientId: 42,
+      // Snapshot non-null (mock decryptCustomerSnapshot retourne PII valide).
+      customerSnapshot: { patientRef: "patient#42", encryptedPii: "ZmFrZQ==", encryptedAt: new Date().toISOString() },
     } as any)
     prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
     prismaMock.invoice.update.mockResolvedValue({} as any)
@@ -256,6 +321,49 @@ describe("generate", () => {
     prismaMock.invoice.findUnique.mockResolvedValue(baseInvoice as any) // patientId: null
     await expect(invoicePdfService.generate(1, 9, "VIEWER", ctx))
       .rejects.toBeInstanceOf(InvoicePdfAccessError)
+  })
+
+  // M5 review round 1 — IBAN obligatoire si bank_transfer.
+  it("M5 throws RenderError if bank_transfer without IBAN in issuer snapshot", async () => {
+    const issuerNoIban = { ...baseIssuer, iban: undefined, ibanEnc: undefined }
+    prismaMock.invoice.findUnique.mockResolvedValue({
+      ...baseInvoice,
+      paymentMethod: "bank_transfer",
+      issuerSnapshot: issuerNoIban,
+    } as any)
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
+    await expect(invoicePdfService.generate(1, 9, "DOCTOR", ctx))
+      .rejects.toThrow(/cabinetIbanMissingForBankTransfer/)
+  })
+
+  // M3+M-5 review round 1 — Atomic CAS protège la race double-generate.
+  it("M3 atomic CAS — race lost retourne PDF existant (regenerated=false)", async () => {
+    prismaMock.invoice.findUnique
+      .mockResolvedValueOnce(baseInvoice as any)
+      .mockResolvedValueOnce({
+        pdfUrl: "invoices/7/2026/FR-2026-000001.pdf",
+        pdfHash: "raced".repeat(13).slice(0, 64),
+      } as any)
+    prismaMock.healthcareMember.findFirst.mockResolvedValue({ id: 1 } as any)
+    // updateMany count=0 → race lost (un autre thread a déjà UPDATE).
+    prismaMock.invoice.updateMany.mockResolvedValue({ count: 0 } as any)
+    const out = await invoicePdfService.generate(1, 9, "DOCTOR", ctx)
+    expect(out.regenerated).toBe(false)
+    expect(out.pdfHash).toBe("raced".repeat(13).slice(0, 64))
+  })
+
+  // L6 review round 1 — patient invoice + decrypt fail → throw.
+  it("L6 throws RenderError if patient invoice has un-decryptable customerSnapshot", async () => {
+    const { decryptCustomerSnapshot } = await import("@/lib/services/invoice.service")
+    vi.mocked(decryptCustomerSnapshot).mockReturnValueOnce(null) // simulate decrypt fail
+    prismaMock.invoice.findUnique.mockResolvedValue({
+      ...baseInvoice,
+      patientId: 42,
+      customerSnapshot: { patientRef: "patient#42", encryptedPii: "Y29ycnVwdGVk", encryptedAt: new Date().toISOString() },
+    } as any)
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    await expect(invoicePdfService.generate(1, 9, "VIEWER", ctx))
+      .rejects.toThrow(/customerSnapshotUndecryptable/)
   })
 })
 

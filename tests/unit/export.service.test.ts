@@ -128,6 +128,8 @@ describe("generateUserExport", () => {
     // US-2076 — messages Art. 20 portability
     prismaMock.message.findMany.mockResolvedValue([])
     prismaMock.message.count.mockResolvedValue(0 as any)
+    // HSA H-2 review round 1 — invoices Art. 20 portability.
+    prismaMock.invoice.findMany.mockResolvedValue([] as any)
 
     const result = await generateUserExport(1)
 

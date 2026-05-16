@@ -174,6 +174,14 @@ export async function generateUserExport(userId: number) {
       prisma.medicalDocument.findMany({ where: { patientId: pid }, orderBy: { createdAt: "desc" } }),
     ])
 
+    // HSA H-2 review round 1 — Invoices RGPD Art. 20 portability.
+    const invoices = await prisma.invoice.findMany({
+      where: { patientId: pid, status: { not: "draft" } },
+      include: { items: { orderBy: { position: "asc" } } },
+      orderBy: { issuedAt: "desc" },
+      take: 1000,
+    })
+
     // C1 — RGPD Art. 20 portability requires intelligible content. Encrypted
     // PHI columns must be decrypted before serialising for the data subject.
     const appointmentsDecrypted = appointments.map((a) => ({
@@ -204,6 +212,33 @@ export async function generateUserExport(userId: number) {
         title: d.title,
         category: d.category,
         createdAt: d.createdAt,
+      })),
+      // HSA H-2 review round 1 — RGPD Art. 20 portability invoices.
+      // Pas de PDF S3 dans l'export (download via API authentifiée séparée
+      // pour ne pas alourdir le JSON et faciliter la portabilité).
+      invoices: invoices.map((inv) => ({
+        id: inv.id,
+        number: inv.number,
+        countryCode: inv.countryCode,
+        totalCents: inv.totalCents,
+        taxCents: inv.taxCents,
+        currency: inv.currency,
+        status: inv.status,
+        paymentMethod: inv.paymentMethod,
+        issuedAt: inv.issuedAt?.toISOString() ?? null,
+        paidAt: inv.paidAt?.toISOString() ?? null,
+        items: inv.items.map((it) => ({
+          description: it.description,
+          quantity: Number(it.quantity),
+          unitPriceCents: it.unitPriceCents,
+          taxRate: Number(it.taxRate),
+          taxCents: it.taxCents,
+          lineTotalCents: it.lineTotalCents,
+          position: it.position,
+        })),
+        pdfDownloadEndpoint: inv.pdfHash
+          ? `/api/billing/invoices/${inv.id}/pdf`
+          : null,
       })),
     }
   }

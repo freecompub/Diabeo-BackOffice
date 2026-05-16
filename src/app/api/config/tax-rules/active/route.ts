@@ -68,7 +68,13 @@ export async function GET(req: NextRequest) {
     })
     if (!rule) {
       return NextResponse.json(
-        { error: "noActiveRule", countryCode: parsed.data.countryCode, taxType: parsed.data.taxType },
+        {
+          error: "noActiveRule",
+          countryCode: parsed.data.countryCode,
+          taxType: parsed.data.taxType,
+          // L7 review round 1 — atDate inclus pour replay forensique.
+          atDate: atDate.toISOString().slice(0, 10),
+        },
         { status: 404 },
       )
     }

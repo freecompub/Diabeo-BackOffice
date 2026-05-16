@@ -79,6 +79,7 @@ describe("POST /api/billing/invoices/[id]/pdf", () => {
     vi.mocked(invoicePdfService.generate).mockResolvedValue({
       pdfUrl: "invoices/7/2026/FR-2026-000001.pdf",
       pdfHash: "a".repeat(64),
+      pdfKey: "invoices/7/2026/FR-2026-000001.pdf",
       regenerated: true,
     })
     const res = await pdfPOST(
@@ -95,6 +96,7 @@ describe("POST /api/billing/invoices/[id]/pdf", () => {
     vi.mocked(invoicePdfService.generate).mockResolvedValue({
       pdfUrl: "existing.pdf",
       pdfHash: "b".repeat(64),
+      pdfKey: "existing.pdf",
       regenerated: false,
     })
     const res = await pdfPOST(
@@ -141,7 +143,7 @@ describe("POST /api/billing/invoices/[id]/pdf", () => {
 
   it("Cache-Control: no-store sur succès", async () => {
     vi.mocked(invoicePdfService.generate).mockResolvedValue({
-      pdfUrl: "x", pdfHash: "c".repeat(64), regenerated: true,
+      pdfUrl: "x", pdfHash: "c".repeat(64), pdfKey: "x", regenerated: true,
     })
     const res = await pdfPOST(
       makeReq("/api/billing/invoices/1/pdf", { method: "POST" }),
