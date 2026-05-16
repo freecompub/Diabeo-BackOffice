@@ -237,3 +237,41 @@ CREATE EXTENSION IF NOT EXISTS btree_gist;
 ```
 
 Puis relancer `pnpm prisma migrate deploy` (idempotent).
+
+---
+
+## Partial indexes (Prisma 7 limitation — US-2076)
+
+**Prisma 7 ne supporte pas la clause `where:` sur `@@index` côté
+`schema.prisma`**. Plusieurs migrations utilisent des indexes partiels
+définis directement en SQL pour réduire la taille et accélérer les
+queries hot-path :
+
+- `messages_unread_groupby_idx` — `WHERE read_at IS NULL AND deleted_at IS NULL`
+- `messages_from_thread_recency_idx` — `WHERE deleted_at IS NULL`
+- `messages_to_thread_recency_idx` — `WHERE deleted_at IS NULL`
+- `messages_patient_id_idx` — `WHERE patient_id IS NOT NULL`
+- `messages_deleted_at_idx` — `WHERE deleted_at IS NOT NULL`
+
+### ⚠️ Piège opérationnel
+
+Si quelqu'un exécute `pnpm prisma migrate dev` sur une DB où ces
+migrations sont déjà appliquées, Prisma peut détecter une "drift" et
+proposer une **migration corrective qui DROP les WHERE partiels** —
+recréant les indexes en full-table (perte de l'optimisation + bloat).
+
+### Procédure
+
+1. **NE JAMAIS accepter une migration `prisma migrate dev` qui DROP +
+   recrée un index partial sans WHERE.** Vérifier le contenu du fichier
+   `migration.sql` généré.
+2. Si une vraie modification du modèle nécessite une migration, **éditer
+   manuellement** le fichier pour préserver les clauses `WHERE`.
+3. La CI gate `migrations-check` (`prisma migrate diff --exit-code`)
+   ignore actuellement les clauses `WHERE` partielles (Prisma 7
+   limitation connue) — exit_code=0 ne valide PAS la cohérence partial.
+4. Audit manuel des indexes en prod via :
+   ```sql
+   SELECT indexname, indexdef FROM pg_indexes
+   WHERE tablename = 'messages' ORDER BY indexname;
+   ```

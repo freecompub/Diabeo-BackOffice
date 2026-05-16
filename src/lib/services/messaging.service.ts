@@ -62,6 +62,9 @@ export const MESSAGING_BOUNDS = {
   /** Throttle decrypt-failure logs (1 log par seconde max).
    *  Évite log spam si DB corruption + reads volumineux. */
   DECRYPT_FAIL_LOG_THROTTLE_MS: 1_000,
+  /** Cap `cumulativeSuppressed` (HSA R6-MEDIUM-2 round 6).
+   *  Évite int64 overflow théorique + leak ordre exact via log SOC. */
+  DECRYPT_CUMULATIVE_CAP: 10_000_000,
 } as const
 
 export class MessagingValidationError extends Error {
@@ -107,7 +110,14 @@ export class MessagingRateLimitError extends Error {
  * du pepper invalide tous les conversation_keys existants (acceptable V1
  * en dev/recette ; en prod, prévoir migration de re-key avant rotation).
  */
+// CR R6-L5 review round 6 — Memoize pepper buffer après 1ère validation.
+// `env.ts` validate au boot ; mais `computeConversationKey` est dans le hot
+// path (send + listThreads + getThread), un re-parse hex à chaque appel
+// gaspille ~10µs/call.
+let cachedPepper: Buffer | null = null
+
 function getConversationKeyPepper(): Buffer {
+  if (cachedPepper !== null) return cachedPepper
   const pepper = process.env.CONVERSATION_KEY_PEPPER
   if (!pepper) {
     throw new Error(
@@ -121,7 +131,17 @@ function getConversationKeyPepper(): Buffer {
       `CONVERSATION_KEY_PEPPER too short: ${buf.length} bytes, need ≥ 32`,
     )
   }
-  return buf
+  cachedPepper = buf
+  return cachedPepper
+}
+
+/** Test-only — reset memoized pepper (NEW round 6).
+ *  Permet aux tests env de re-charger après mockEnv. */
+export function __resetMessagingPepperCache(): void {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("test-only: __resetMessagingPepperCache disallowed in production")
+  }
+  cachedPepper = null
 }
 
 export function computeConversationKey(userIdA: number, userIdB: number): string {
@@ -281,7 +301,11 @@ function logDecryptFailThrottled(
   const entry =
     decryptFailThrottle.get(userId) ??
     { lastLogMs: 0, suppressedSinceLastLog: 0, cumulativeSuppressed: 0 }
-  entry.cumulativeSuppressed++
+  // HSA R6-MEDIUM-2 review round 6 — cap cumulativeSuppressed pour éviter
+  // int64 overflow théorique + leak ordre exact (oracle SOC).
+  if (entry.cumulativeSuppressed < MESSAGING_BOUNDS.DECRYPT_CUMULATIVE_CAP) {
+    entry.cumulativeSuppressed++
+  }
   if (now - entry.lastLogMs < MESSAGING_BOUNDS.DECRYPT_FAIL_LOG_THROTTLE_MS) {
     entry.suppressedSinceLastLog++
     decryptFailThrottle.set(userId, entry)
@@ -704,7 +728,10 @@ export const messagingService = {
 
   /**
    * Compte les messages non lus pour un user (badge polling 60s).
-   * Endpoint optimisé : COUNT direct sur index `(to_user_id, read_at, created_at)`.
+   * Endpoint optimisé : COUNT direct sur index partial `messages_unread_groupby_idx`
+   * (`to_user_id, read_at, conversation_key` WHERE `read_at IS NULL AND deleted_at IS NULL`).
+   * Index Only Scan possible — pas de heap fetch.
+   * (Prisma MED-1 round 5 — index `(to_user_id, read_at, created_at)` non-partial supprimé.)
    */
   async unreadCount(userId: number): Promise<{ count: number }> {
     const count = await prisma.message.count({

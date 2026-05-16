@@ -42,6 +42,7 @@ import {
 } from "@/lib/services/messaging.service"
 import { fcmService } from "@/lib/services/fcm.service"
 import { encrypt } from "@/lib/crypto/health-data"
+import { logger } from "@/lib/logger"
 
 const ctx = {
   ipAddress: "1.2.3.4",
@@ -346,7 +347,8 @@ describe("send", () => {
 
   // CRITICAL-1 review round 5 — Audit accessDenied DOIT être émis AVANT
   // le throw recipientConsentRevoked (forensique CNIL Art. 30/33).
-  it("CRITICAL-1 audit accessDenied émis pour recipientConsentRevoked", async () => {
+  // R6-LOW-4 round 6 — vérifie aussi propagation ipAddress/userAgent/requestId.
+  it("CRITICAL-1 audit accessDenied émis avec ctx propagation pour recipientConsentRevoked", async () => {
     const { requireGdprConsent } = await import("@/lib/gdpr")
     vi.mocked(requireGdprConsent).mockResolvedValueOnce(false)
     try {
@@ -361,7 +363,12 @@ describe("send", () => {
         d.metadata?.kind === "message.send.recipientConsentRevoked"
     })
     expect(accessDeniedRow).toBeDefined()
-    expect((accessDeniedRow![0].data as any).metadata.toUserId).toBe(2)
+    const auditData = (accessDeniedRow![0].data as any)
+    expect(auditData.metadata.toUserId).toBe(2)
+    // R6-LOW-4 — ctx propagation pour forensique CNIL.
+    expect(auditData.ipAddress).toBe(ctx.ipAddress)
+    expect(auditData.userAgent).toBe(ctx.userAgent)
+    expect(auditData.requestId).toBe(ctx.requestId)
   })
 
   // HSA MED-4 round 3 + NEW-M2 round 4 — FCM payload sans conversationKey
@@ -524,7 +531,8 @@ describe("listThreads", () => {
 
   // HIGH-1 review round 5 — auditFailures granulaires : log inclut
   // failedAuditPatientIds + failedAuditCount au lieu de juste première reason.
-  it("HIGH-1 audit failures log inclut failedAuditPatientIds granulaire", async () => {
+  // R6-LOW-3 round 6 — vi.spyOn(logger.error) pour locker le log content.
+  it("HIGH-1 logger.error appelé avec failedAuditPatientIds + failedAuditCount", async () => {
     const encryptedBody = Buffer.from(encrypt("hi"))
     ;(prismaMock.$queryRaw as any).mockResolvedValue([
       { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(), read_at: null },
@@ -532,13 +540,23 @@ describe("listThreads", () => {
     ])
     ;(prismaMock.message.groupBy as any).mockResolvedValue([])
     prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }, { id: 73 }] as any)
-    // 2 audits should be emitted (1 per patientId), both fail.
     prismaMock.auditLog.create.mockRejectedValue(new Error("DB locked"))
+    const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {})
     const out = await messagingService.listThreads(1, ctx)
-    expect(out).toHaveLength(2) // inbox encore renvoyé
-    // (le logger.error est appelé mais on ne peut pas l'inspecter facilement
-    // sans mocker logger ; le seul test pratique est que listThreads ne
-    // throw pas — déjà vérifié.)
+    expect(out).toHaveLength(2)
+    // Logger.error doit avoir été appelé avec contexte granulaire.
+    expect(errorSpy).toHaveBeenCalledWith(
+      "messaging",
+      "listThreads audit emit failed",
+      expect.objectContaining({
+        userId: 1,
+        resource: "MESSAGE",
+        failedAuditCount: 2,
+        failedAuditPatientIds: expect.arrayContaining([42, 73]),
+      }),
+      expect.any(Error),
+    )
+    errorSpy.mockRestore()
   })
 
   it("audit kind=message.inbox + threadCount=0 + empty=true when no messages", async () => {

@@ -41,6 +41,11 @@ function setupValidEnv() {
   vi.stubEnv("DATABASE_URL", "postgresql://x:y@localhost:5432/z")
   vi.stubEnv("HEALTH_DATA_ENCRYPTION_KEY", VALID_ENCRYPT_KEY)
   vi.stubEnv("HMAC_SECRET", VALID_HMAC)
+  // US-2076 HIGH-2 round 5 — pepper HMAC conversation_key (64 hex chars).
+  vi.stubEnv(
+    "CONVERSATION_KEY_PEPPER",
+    "a".repeat(32) + "b".repeat(16) + "c".repeat(16),
+  )
   vi.stubEnv("JWT_PRIVATE_KEY", VALID_PRIV_PEM)
   vi.stubEnv("JWT_PUBLIC_KEY", VALID_PUB_PEM)
 }
@@ -81,6 +86,22 @@ describe("assertRequiredEnv", () => {
   it("rejects HMAC_SECRET with low entropy (M1 — refuses 'a'×64)", () => {
     vi.stubEnv("HMAC_SECRET", "a".repeat(64))
     expect(() => assertRequiredEnv()).toThrow(/insufficient entropy/)
+  })
+
+  // R6-LOW-1 review round 6 — US-2076 HIGH-2 conversation_key pepper.
+  it("rejects CONVERSATION_KEY_PEPPER missing", () => {
+    vi.stubEnv("CONVERSATION_KEY_PEPPER", "")
+    expect(() => assertRequiredEnv()).toThrow(/CONVERSATION_KEY_PEPPER/)
+  })
+
+  it("rejects CONVERSATION_KEY_PEPPER too short (< 64 hex chars)", () => {
+    vi.stubEnv("CONVERSATION_KEY_PEPPER", "a".repeat(32))
+    expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
+  })
+
+  it("rejects CONVERSATION_KEY_PEPPER non-hex chars", () => {
+    vi.stubEnv("CONVERSATION_KEY_PEPPER", "z".repeat(64))
+    expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
   })
 
   it("rejects JWT_PRIVATE_KEY without PEM markers", () => {
