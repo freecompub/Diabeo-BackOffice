@@ -82,6 +82,18 @@ export async function middleware(request: NextRequest) {
     return res
   }
 
+  // US-2108 — Skip cron routes (Bearer CRON_SECRET auth custom, pas JWT user).
+  // Strip x-user-* spoofed headers — la route valide elle-meme via CRON_SECRET.
+  if (pathname.startsWith("/api/cron/")) {
+    const headers = new Headers(request.headers)
+    headers.delete("x-user-id")
+    headers.delete("x-user-role")
+    headers.set("x-request-id", requestId)
+    const res = NextResponse.next({ request: { headers } })
+    res.headers.set("x-request-id", requestId)
+    return res
+  }
+
   // Skip login page (public)
   if (pathname === "/login" || pathname === "/reset-password") {
     return NextResponse.next()

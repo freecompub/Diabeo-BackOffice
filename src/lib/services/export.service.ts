@@ -194,9 +194,13 @@ export async function generateUserExport(userId: number) {
     ])
 
     // HSA H-2 review round 1 — Invoices RGPD Art. 20 portability.
+    // US-2108 — `reminders` inclus pour traçabilité des relances envoyées.
     const invoices = await prisma.invoice.findMany({
       where: { patientId: pid, status: { not: "draft" } },
-      include: { items: { orderBy: { position: "asc" } } },
+      include: {
+        items: { orderBy: { position: "asc" } },
+        reminders: { orderBy: { sentAt: "desc" } },
+      },
       orderBy: { issuedAt: "desc" },
       take: 1000,
     })
@@ -262,6 +266,17 @@ export async function generateUserExport(userId: number) {
           taxCents: it.taxCents,
           lineTotalCents: it.lineTotalCents,
           position: it.position,
+        })),
+        // US-2108 — Relances envoyées (chronologique récent en premier).
+        // Email destinataire `sentToEnc` déchiffré → `sentTo` pour data
+        // subject (Art. 20 intelligible). Pas d'`emailMessageId` Resend
+        // dans l'export (interne forensique uniquement).
+        reminders: inv.reminders.map((r) => ({
+          step: r.step,
+          status: r.status,
+          sentAt: r.sentAt.toISOString(),
+          sentTo: r.sentToEnc ? safeDecrypt(r.sentToEnc) : null,
+          errorMessage: r.errorMessage,
         })),
         pdfDownloadEndpoint: inv.pdfHash
           ? `/api/billing/invoices/${inv.id}/pdf`

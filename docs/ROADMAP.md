@@ -344,7 +344,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2105 | Numérotation séquentielle pays | ✅ DONE PR #406 — InvoiceSequence gap-less FOR UPDATE + format `FR-2026-000001` + Luhn SIRET |
 | US-2106 | Webhooks idempotents Stripe | ⏸️ **V2** — bloqué provision Stripe Connect |
 | US-2107 | Versioning facture immuable | ✅ DONE PR #406 — 3 triggers PG (enforce_invoice_immutability + DELETE-block + items-lock) + FSM atomique |
-| US-2108 | Relances automatiques | NOT STARTED (Batch 4 — cron J+7/15/30 via Resend US-2074) |
+| US-2108 | Relances automatiques | ✅ **DONE PR #XXX** — Batch 4 cron J+7/15/30 via Resend US-2074 : `InvoiceReminder` model UNIQUE(invoiceId,step) idempotent + service `processOverdueInvoices` + route `/api/cron/billing/reminders` Bearer CRON_SECRET timing-safe + email i18n FR/EN/AR + email destinataire chiffré AES-256-GCM + RGPD Art. 17/20 |
 | US-2109 | Remboursements | ⏸️ **V2** — dépend US-2106 webhooks Stripe (lui-même V2) |
 | US-2110 | TVA multi-pays | ✅ **DONE PR #414** — `countryTaxRuleService.getActiveAt` + route `/api/config/tax-rules/active` (NURSE+, audit READ) |
 

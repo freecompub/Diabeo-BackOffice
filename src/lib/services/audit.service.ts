@@ -195,6 +195,8 @@ export type AuditResource =
   | "SUPPORTED_DEVICE"
   /** US-2026 — INS (Identité Nationale Santé). resourceId = User.id, metadata.patientId pivot si lié à un patient. */
   | "USER_INS"
+  /** US-2108 — Relance facture automatique (cron J+7/15/30). resourceId = Invoice.id. */
+  | "INVOICE_REMINDER"
 
 /**
  * Audit log entry — parameters for logging an action.
