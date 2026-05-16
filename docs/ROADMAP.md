@@ -257,7 +257,7 @@
 | US-2021 | Transfert patient entre médecins | DONE (PR #389 — ADMIN/référent/self-claim only) |
 | US-2022 | Tags & catégorisation patients | DONE (PR #389 — 2 modèles Prisma + 4 routes + anti-PII) |
 | US-2024 | Historique modifications (UI audit) | DONE (PR #389 — PHI redacted, DOCTOR+ only) |
-| US-2026 | INS — Identité Nationale Santé | NOT STARTED (V1, 8 SP — Batch 3 standalone) |
+| US-2026 | INS — Identité Nationale Santé | ✅ **DONE PR #XXX** — Scope V1 standalone (sans ANS Téléservice INSi V2 procurement) : validation Luhn-97 + HMAC unique anti-doublon RNIPP + CRUD `/api/patients/[id]/ins` + RGPD Art. 17/20 |
 | US-2028 | Dossier multi-praticiens | DONE (PR #389 — referents view) |
 
 **Batches 1+2 livrés** : 5 US (US-2019, 2021, 2022, 2024, 2028) — PR #389, ~5 SP,

@@ -233,6 +233,10 @@ export async function deleteUserAccount(
         nirpp: null,
         nirppPolicyholder: null,
         ins: null,
+        // US-2026 — Effacer aussi le HMAC (sinon RNIPP unique constraint
+        // bloque une eventuelle reattribution de l'INS apres suppression
+        // legale du compte).
+        insHmac: null,
         codeBirthPlace: null,
         pic: null,
         mfaSecret: null,

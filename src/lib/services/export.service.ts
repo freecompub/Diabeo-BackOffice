@@ -270,6 +270,10 @@ export async function generateUserExport(userId: number) {
       timezone: user.timezone,
       role: user.role,
       createdAt: user.createdAt.toISOString(),
+      // US-2026 — INS (Identite Nationale Sante) inclus dans export RGPD
+      // Art. 20 portabilite (le data subject doit pouvoir recuperer son
+      // identifiant national en clair pour le porter ailleurs).
+      ins: user.ins ? safeDecrypt(user.ins) : null,
     },
     preferences: { units: unitPreferences, notifications: notifPreferences, privacy: privacySettings, dayMoments },
     patient: patientData,

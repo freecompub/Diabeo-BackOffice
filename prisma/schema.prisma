@@ -322,7 +322,10 @@ model User {
   nirppPolicyholder        String?    @map("nirpp_policyholder") // chiffre
   nirppPolicyholderType    String?    @map("nirpp_policyholder_type")
   oid                      String? // interne — jamais expose
-  ins                      String? // Identite Nationale de Sante, chiffre
+  ins                      String? // Identite Nationale de Sante, chiffre AES-256-GCM
+  /// US-2026 — HMAC-SHA256 hex de l'INS plaintext (lookup unique anti-
+  /// doublon RNIPP). NULL si pas d'INS renseigne. Partial UNIQUE index.
+  insHmac                  String?    @map("ins_hmac") @db.VarChar(64)
   intercomHash             String?    @map("intercom_hash") // interne — jamais expose
   deploymentKey            String?    @map("deployment_key") // interne — jamais expose
   pro                      String? // interne
@@ -405,6 +408,9 @@ model User {
   /// US-2148 — supporte le count anti-lockout `count(active ADMIN)` et le
   /// filtre admin de la liste users.
   @@index([status, role])
+  /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
+  /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
+  @@unique([insHmac], map: "users_ins_hmac_key")
   @@map("users")
 }
 

@@ -193,6 +193,8 @@ export type AuditResource =
   | "MESSAGE"
   /** Groupe 4 — US-2091 référentiel devices supportés. */
   | "SUPPORTED_DEVICE"
+  /** US-2026 — INS (Identité Nationale Santé). resourceId = User.id, metadata.patientId pivot si lié à un patient. */
+  | "USER_INS"
 
 /**
  * Audit log entry — parameters for logging an action.
