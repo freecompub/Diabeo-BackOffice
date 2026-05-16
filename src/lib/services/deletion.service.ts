@@ -161,6 +161,36 @@ export async function deleteUserAccount(
       // CGI L.123-22 + L.102-B LPF : conservation 10 ans factures). RGPD
       // Art. 17.3.b dispense l'effacement pour ces données spécifiques.
       // On audite explicitement la rétention pour traçabilité Art. 30.
+      // US-2502 — Anonymise `sentToEnc` des appointment reminders (email/phone
+      // chiffré reste sinon PHI résiduel post-suppression RGPD Art. 17).
+      // Les rows AppointmentReminder elles-mêmes seront CASCADE DELETE quand
+      // les appointments seront supprimés ci-dessous, mais on anonymise
+      // explicitement par défense-en-profondeur (au cas où soft-delete patient
+      // sans hard-delete appointments).
+      const anonymisedApptReminders = await tx.appointmentReminder.updateMany({
+        where: {
+          appointment: { patientId },
+          sentToEnc: { not: null },
+        },
+        data: { sentToEnc: null },
+      })
+      if (anonymisedApptReminders.count > 0) {
+        await auditService.logWithTx(tx, {
+          userId,
+          action: "UPDATE",
+          resource: "APPOINTMENT_REMINDER",
+          resourceId: `patient:${patientId}`,
+          ipAddress,
+          userAgent,
+          metadata: {
+            kind: "user.account.deletion.apptRemindersAnonymised",
+            patientId,
+            reminderCount: anonymisedApptReminders.count,
+            reason: "rgpd_art17_recipient_residual_anonymisation",
+          },
+        })
+      }
+
       const retainedInvoiceCount = await tx.invoice.count({
         where: { patientId, status: { not: "draft" } },
       })

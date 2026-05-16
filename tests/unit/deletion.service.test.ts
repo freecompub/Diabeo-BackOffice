@@ -150,6 +150,10 @@ describe("deleteUserAccount", () => {
       patientAdministrative: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       // HSA H-1 round 1 — invoice rétention CGI 10 ans audit.
       invoice: { count: vi.fn().mockResolvedValue(0) },
+      // US-2502 — anonymisation appointment reminders.
+      appointmentReminder: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      // US-2108 round 2 — anonymisation invoice reminders.
+      invoiceReminder: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       patientPregnancy: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       patient: { update: vi.fn().mockResolvedValue({ id: 10, deletedAt: new Date() }) },
       healthcareMember: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },

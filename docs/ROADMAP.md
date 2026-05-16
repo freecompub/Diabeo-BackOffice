@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 91   | 0       | 35          | **72%** |
+| **V1**   | 126   | 93   | 0       | 33          | **74%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **159** | **1**   | **133**     | **54%** |
+| **TOTAL**| **294** | **161** | **1**   | **132**     | **55%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -394,11 +394,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 |----|-------|---:|:------:|-------|
 | US-2500 | Calendrier RDV (list + range query, sécurisé scope) | 13 | ✅ DONE | `listInRange` scope obligatoire (patient/member), soft-delete filter, cross-midnight overlap, truncated flag — PR #392 |
 | US-2501 | Détail RDV (CRUD + note/motif/cancelReason chiffrés AES-256-GCM) | 8 | ✅ DONE | 5 endpoints API (list, detail, create, update, cancel), DTO split list/detail (pas de bulk decrypt) — PR #392 |
-| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | ⏳ Batch 2 | Provider SMS dépend US-2506 |
+| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | ✅ DONE PR #418 | Cron `processAppointmentReminders` advisory lock + p-limit 10 + timeout 50s + filtre RGPD Art. 17 + Resend (J-2) + SMS mock US-2506 (J-1) + FCM (J-0) + anti-PHI strict templates FR/EN/AR + sentToEnc chiffré + audit US-2268 + DPIA |
 | US-2503 | Annulation / report bilatéral | 5 | ✅ DONE | State machine cancel/propose/accept, TTL 7j sur alternative, audit `actor`+`callerRole`, EXCLUDE overlap re-check — PR #392 |
 | US-2504 | Plages indisponibles médecin | 5 | ✅ DONE | `MemberUnavailability` table, EXCLUDE GiST constraint (btree_gist), reason chiffrée, audit US-2265 — PR #392 |
 | US-2505 | Config prise de RDV (auto vs validation manuelle) | 5 | ✅ DONE | `HealthcareMember.bookingMode` enum, `confirm` route DOCTOR, default duration 15-240 — PR #392 |
-| US-2506 | Option SMS payante cabinet | 5 | ⏳ Batch 2 | Provider SMS (Twilio/OVH) + activation admin UI |
+| US-2506 | Option SMS payante cabinet (V1 mock) | 5 | ✅ DONE PR #418 | `HealthcareService.smsEnabled` + `smsCreditBalance` admin toggle + `SmsLog` (provider=mock V1) + service `sms.service` (decrement atomique credits + `SmsDisabledError`/`SmsInsufficientCreditError`) + route `/api/cabinet/[id]/sms-config` ADMIN-only + chiffrement AES-256-GCM `toEnc` + messageExcerpt cap 120c. ⚠️ V1 mock — aucun SMS réellement envoyé. Real integration différée **V3 US-2506bis** |
 
 > **Dépendances** :
 >  - US-2074 (Email Resend, DONE) pour rappels email
@@ -536,7 +536,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V3 — 9 US
+## V3 — 10 US
 
 | US | Titre |
 |----|-------|
@@ -549,6 +549,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2263 | Diffusion cohorte messages |
 | US-2264 | Notifications proactives |
 | US-2058 | Reconnaissance image repas AI |
+| US-2506bis | **Real SMS provider integration (Twilio / OVH SMS)** — V1 livré en mock (US-2506 PR #418). Migration `provider="mock"` → `"twilio"`/`"ovh"`, webhooks delivery status, DPA + procurement (~500-2k€/mois + ~5-10c€/SMS). Contrat `sms.service.sendSms()` zero-breaking — seul l'interne change. Bloqueur pre-prod patients réels SMS si Diabeo veut activer recouvrement / rappels RDV J-1 réels. |
 
 ---
 
