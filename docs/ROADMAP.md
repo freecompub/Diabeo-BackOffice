@@ -16,21 +16,21 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 99    | 98   | 0       | 1           | **99%** |
-| **V2**   | 92    | 0    | 0       | 92          | **0%**  |
+| **V1**   | 98    | 98   | 0       | 0           | **100%** |
+| **V2**   | 93    | 0    | 0       | 93          | **0%**  |
 | **V3**   | 10    | 0    | 0       | 10          | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
 | **TOTAL**| **285** | **166** | **0**   | **119**     | **58%** |
 
-> **V1 nettoyé 2026-05-16** : 18 US reclassées V2 retirées des sections V1
+> **V1 nettoyé 2026-05-16** : 19 US reclassées V2 retirées des sections V1
 > (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte. Ces US restent
 > visibles dans la section V2 ci-dessous avec leurs motifs de procurement.
 > US retirées : **Groupe 1** US-2031, US-2041 · **Groupe 3** US-2076bis, US-2077
 > · **Groupe 7** US-2104, US-2106, US-2109 · **Groupe 8 i18n** US-2124, US-2125,
-> US-2126, US-2127 · **Groupe 9 Admin** US-2153, US-2164, US-2165 · **Groupe 9b**
-> US-2411, US-2413 · **Groupe 10 Mirror V1** US-2250, US-2252.
-> Seule US restante V1 NOT STARTED : **US-2004 Captcha anti-bot** (⏳ bloqué
-> procurement Cloudflare Turnstile / hCaptcha).
+> US-2126, US-2127 · **Groupe 9 Admin** US-2004, US-2153, US-2164, US-2165
+> · **Groupe 9b** US-2411, US-2413 · **Groupe 10 Mirror V1** US-2250, US-2252.
+> **V1 = 100 % DONE** (98/98). MVP + V1 entièrement livrés côté code (modulo
+> bloqueurs pre-prod gouvernance documentés dans DPIA + issues #419-#422).
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -233,7 +233,7 @@
 
 ---
 
-## V1 — 99 US (98 DONE + 1 NOT STARTED = US-2004 bloqué procurement)
+## V1 — 98 US (100 % DONE)
 
 ### Groupe 1 — Glycémie & Analytics (10 US, 100% DONE V1)
 
@@ -362,19 +362,18 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 > Note : US-2124 (DMP), US-2125 (MSSanté backend), US-2126 (INSi), US-2127 (PSC) reclassées V2 (bloqué procurement ANS / Mailiz / Apicrypt) — voir section V2 ci-dessous.
 
-### Groupe 9 — Admin & Ops (5 US — 4 DONE V1 + 1 V1 bloqué procurement)
+### Groupe 9 — Admin & Ops (4 US, 100% DONE V1)
 
 > **Batch 1 internes (~4 SP) — DONE PR #409** : 4 US sans dep procurement.
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2004 | Captcha anti-bot | ⏳ Blocked procurement (Cloudflare Turnstile / hCaptcha) |
 | US-2007 | Sessions multiples UI | ✅ DONE PR #409 — 3 routes `/api/account/sessions` + touchSession (refresh+listOwn) + Session enrichi (createdAt/ipAddress/userAgent/lastSeenAt) |
 | US-2137 | Notification breach CNIL | ✅ DONE PR #409 — model DataBreach + FSM 5 statuses + chiffrement AES + cnilDeadlineHoursRemaining + PHI heuristic anti-leak title |
 | US-2147 | Paramètres cabinet | ✅ DONE PR #409 — manager-level CRUD `/api/cabinet/[id]/settings` (régaliens siret/tva/iban restent ADMIN-only) |
 | US-2150 | Dashboard santé système | ✅ DONE PR #409 — `/api/admin/system-health` (DB/Redis/CGM lag/backups freshness + per-check timeout 2s + pingRedis distingue not_configured/down) |
 
-> Note : US-2153 (Logs centralisés), US-2164 (APM), US-2165 (Error tracking) reclassées V2 (bloqué procurement Loki / Sentry / Datadog) — voir section V2 ci-dessous.
+> Note : US-2004 (Captcha anti-bot), US-2153 (Logs centralisés), US-2164 (APM), US-2165 (Error tracking) reclassées V2 (bloqué procurement Cloudflare / Loki / Sentry / Datadog) — voir section V2 ci-dessous.
 
 ### Groupe 8 — Gestion des RDV (7 US, 49 SP — décision session Samir 2026-05-13 Q7)
 
@@ -500,10 +499,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V2 — 92 US (inclut 18 US reclassées V1→V2)
+## V2 — 93 US (inclut 19 US reclassées V1→V2)
 
 | Domaine | US | Titre |
 |---------|----|-------|
+| Auth | US-2004 | Captcha anti-bot (reclassée V1→V2 — bloqué procurement Cloudflare Turnstile / hCaptcha) |
 | Auth | US-2009 | Carte CPS |
 | Auth | US-2014 | Notification breach |
 | Auth | US-2010 | e-CPS |
@@ -622,7 +622,7 @@ Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives,
 
 ---
 
-*Dernière mise à jour : 2026-05-16 — **Cleanup V1 ROADMAP** : 18 US reclassées V2 retirées des sections V1 (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte (le user a indiqué que les US V2 ne doivent plus apparaître dans les sections V1 ni être comptabilisées dedans). Stats V1 corrigées : 99 total (98 DONE + 1 NOT STARTED = US-2004 procurement) = **99%** vs ancien 74%. V2 total ajusté : 92 (inclut les 18 US migrées V1→V2). Total global 285. US retirées : US-2031, US-2041, US-2076bis, US-2077, US-2104, US-2106, US-2109, US-2124-2127, US-2153, US-2164, US-2165, US-2411, US-2413, US-2250, US-2252.*
+*Dernière mise à jour : 2026-05-16 — **Cleanup V1 ROADMAP + US-2004 → V2** : 19 US reclassées V2 retirées des sections V1 (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte (user demand : les US V2 ne doivent plus apparaître dans les sections V1 ni être comptabilisées dedans). US-2004 Captcha anti-bot reclassée V2 (bloqué procurement Cloudflare Turnstile / hCaptcha — issue GH #138). **V1 = 100 % DONE (98/98)**. V2 total ajusté : 93 (inclut les 19 US migrées V1→V2). Total global 285. US retirées : US-2004, US-2031, US-2041, US-2076bis, US-2077, US-2104, US-2106, US-2109, US-2124-2127, US-2153, US-2164, US-2165, US-2411, US-2413, US-2250, US-2252.*
 
 *Précédente mise à jour : 2026-05-16 — Round 3 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 16 findings (1C/3H/7M/5L) → 0 résiduel. Corrections critiques round 3 : (a) CR-1 advisory lock cassé en prod — nouveau module `src/lib/db/cron-lock.ts` avec `pg.Pool({max:1})` dédié → garantit acquire/release sur la même connexion physique (round 2 utilisait `prisma.$queryRaw` partagé qui routait sur connexions différentes → release no-op silent → lock orphelin → cron bloqué) ; (b) HI-1 opt-in implicite cassé — filtre round 2 `notifPreferences: { medicalAppointments: true }` excluait silencieusement les patients sans row préférences (créée lazily) → majorité prod n'aurait reçu aucun rappel → fix `OR: [{null}, {true}]` ; (c) HI-2 SMS mock V1 mensonger — persistait `status="sent"` → fix `status="skipped"` + `errorReason="provider_mock_no_real_sms"` ; (d) HI-3 test C1 timezone laxiste → loop runtime TZ + pattern strict ; (e) MED-1 opt-out RGPD audit silencieux → count + `metadata.optOutSkipped` ; (f) MED-2 forensique by runId → GIN partial index `audit_logs(metadata->'runId')`. 2231/2231 tests verts. Migration suiveuse `20260519120000_us2502_round3_review` (GIN runId + CHECK cohérence reminders LOW-5). Runbook `docs/runbook/cron-reminders.md` créé (LOW-1).*
 
