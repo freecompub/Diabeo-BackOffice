@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 84   | 0       | 42          | **67%** |
+| **V1**   | 126   | 86   | 0       | 40          | **68%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **152** | **1**   | **140**     | **52%** |
+| **TOTAL**| **293** | **154** | **1**   | **138**     | **53%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -323,7 +323,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2060 | Apple HealthKit sync | ✅ DONE PR #407 — endpoint backend `/sync` (source `healthkit`) avec dedup UNIQUE PARTIAL `(activitySource, externalSyncId)` |
 | US-2061 | Google Fit / Health Connect | ✅ DONE PR #407 — même endpoint, source `google_fit` / `health_connect`, `createManyAndReturn` atomic race-free |
 
-### Groupe 7 — Facturation (9 US — 3 DONE / 3 V1 restant / 3 reclassées V2) — Batch 1 Foundation DONE PR #406
+### Groupe 7 — Facturation (9 US — 5 DONE / 1 V1 restant / 3 reclassées V2) — Batches 1+2 DONE PR #406 + PR #414
 
 > Libellés alignés sur les specs réelles (`docs/UserStory/pro-user-stories/12-facturation/`).
 > Batch 1 (Foundation, 11 SP) — DONE PR #406 : Invoice/InvoiceItem/InvoiceSequence + 3 triggers PG.
@@ -331,7 +331,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2102 | Virement bancaire + facture PDF | NOT STARTED (Batch 2 — pdf-lib + IBAN) |
+| US-2102 | Virement bancaire + facture PDF | ✅ **DONE PR #414** — pdf-lib multi-page + IBAN chiffré HSA H-3 + Intl FR + status banner + atomic CAS race-safe + Art. 17/20 RGPD invoices |
 | US-2103 | Facturation au patient FR | ✅ DONE PR #406 — Invoice service + customerSnapshot AES-256-GCM + audit US-2268 pivot |
 | US-2104 | Abonnement DZ | ⏸️ **V2** — bloqué partenariat bancaire DZ |
 | US-2105 | Numérotation séquentielle pays | ✅ DONE PR #406 — InvoiceSequence gap-less FOR UPDATE + format `FR-2026-000001` + Luhn SIRET |
@@ -339,7 +339,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2107 | Versioning facture immuable | ✅ DONE PR #406 — 3 triggers PG (enforce_invoice_immutability + DELETE-block + items-lock) + FSM atomique |
 | US-2108 | Relances automatiques | NOT STARTED (Batch 4 — cron J+7/15/30 via Resend US-2074) |
 | US-2109 | Remboursements | ⏸️ **V2** — dépend US-2106 webhooks Stripe (lui-même V2) |
-| US-2110 | TVA multi-pays | NOT STARTED (Batch 2 — CountryTaxRule US-2114 snapshot dans InvoiceItem.taxRate déjà prévu) |
+| US-2110 | TVA multi-pays | ✅ **DONE PR #414** — `countryTaxRuleService.getActiveAt` + route `/api/config/tax-rules/active` (NURSE+, audit READ) |
 
 ### Groupe 8 — i18n & Interopérabilité (8 US, 33 SP — 4 DONE V1 / 4 reclassées V2)
 
