@@ -33,7 +33,8 @@ vi.mock("@/lib/services/audit.service", async (orig) => {
 
 import { appointmentReminderService } from "@/lib/services/appointment-reminder.service"
 import { auditService } from "@/lib/services/audit.service"
-const { POST, GET } = await import("@/app/api/cron/appointments/reminders/route")
+const routeModule = await import("@/app/api/cron/appointments/reminders/route")
+const { POST } = routeModule
 
 const VALID_SECRET = "test-cron-secret-32-bytes-long-aaa"
 
@@ -66,9 +67,11 @@ describe("POST /api/cron/appointments/reminders", () => {
     expect(appointmentReminderService.processAppointmentReminders).toHaveBeenCalledTimes(1)
   })
 
-  it("GET aussi accepté (Vercel/OVH cron)", async () => {
-    const res = await GET(makeReq(VALID_SECRET))
-    expect(res.status).toBe(200)
+  // H3 round 2 review — GET retiré (action mutante = POST uniquement,
+  // évite leak CRON_SECRET via access logs / Referer). Scheduler doit
+  // utiliser `curl -X POST`.
+  it("H3 round 2 — GET non exporté (POST uniquement)", () => {
+    expect((routeModule as Record<string, unknown>).GET).toBeUndefined()
   })
 
   it("401 sans Bearer", async () => {

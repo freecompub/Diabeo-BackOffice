@@ -161,3 +161,79 @@
 - HDS : Art. L.1111-8
 - ANSSI : RGS §B1, §3.5, §4.5
 - CSP : Art. L.1110-4 (secret médical)
+
+## 9. Round 2 review (post-MR PR #418)
+
+Trois agents (code-reviewer + healthcare-security-auditor + prisma-specialist) ont
+identifié 29 findings : 3 CRITICAL + 4 HIGH + 15 MEDIUM + 7 LOW. **Option C totale**
+appliquée — 0 résiduel.
+
+### Findings résolus impactant DPIA
+
+- **C1 (timezone bug)** — `formatDateTime` doublement convertissait l'heure :
+  `Date.UTC(y,m,d,14,0)` + `Intl{timeZone:"Europe/Paris"}` → "14:00 stocké" rendu
+  "16:00 affiché" (été CEST). **Fix** : `timeZone: "UTC"` côté Intl + composantes
+  UTC du `Date.Time` → rendu fidèle "14:00". Le paramètre `User.timezone` reste
+  pour V1.5 (conversion patient voyageur). **Impact patient** : heure RDV correcte
+  dans tous emails/SMS/push, élimine risque erreur médicale (rétro-titration
+  basale calée sur la mauvaise heure).
+- **C2 (FCM senderId FK violation)** — `fcmService.sendToUser` exigeait
+  `senderId: number` mais le cron n'a pas d'utilisateur. Sentinel `0` violait
+  FK `audit_logs.user_id → users.id`. **Fix** : `senderId: number | null`
+  partout, `CRON_AUDIT_USER_ID = null` propagé jusqu'à audit. Aligne avec
+  contrat US-2108 (invoice reminders).
+- **C3 (advisory lock xact vs session)** — `pg_try_advisory_xact_lock` libère le
+  lock à la fin de la TX. Le cron tourne hors `$transaction` (multi-channel,
+  ~minutes), donc race possible entre 2 runs concurrents. **Fix** :
+  `pg_try_advisory_lock` SESSION-level + `pg_advisory_unlock` dans `finally`.
+- **H1 (opt-out notifPreferences)** — Le filtre `findMany` n'incluait pas
+  `patient.user.notifPreferences.medicalAppointments: true`. Risque RGPD Art. 21
+  (droit d'opposition). **Fix** : filtre ajouté côté SQL. Patient peut désormais
+  désactiver canal par canal via `/api/account/notifications`.
+- **H2 (SMS skipped audit perdu)** — `smsService.sendSms` throw avant commit du
+  log si `disabled`/`noCredits`/`noPhone`. Forensique HDS Art. L.1111-8 perdue.
+  **Fix** : `persistSmsLogStandalone()` (TX dédiée, commit garanti avant throw).
+- **H3 (GET → leak CRON_SECRET)** — Route exposait GET (alias POST). Risque leak
+  via Nginx access logs / Referer header / cache CDN. **Fix** : GET retiré,
+  POST uniquement (RFC 7231 §4.3.3). Runbook à mettre à jour : scheduler doit
+  envoyer `curl -X POST`.
+- **M11 (audit runId pivot)** — `auditService.log` n'avait pas de `runId`
+  partagé pour grouper les events d'un même run cron. **Fix** : `randomUUID()`
+  généré au début + propagé dans `metadata.runId`. Permet forensique CNIL/ANS
+  par run (cf. US-2268).
+- **M10 (step order inversion)** — Ancien ordre `email → SMS → push` repoussait
+  les notifs urgentes (J-0). **Fix** : `push J-0 → SMS J-1 → email J-2` (canal
+  le plus urgent traité en premier, dégradation gracieuse si timeout).
+- **M5 (index hot path)** — Cron scannait full table appointments sans index
+  `(status, date)`. **Fix** : `CREATE INDEX appointments_status_date_idx`.
+- **M7 (sms_logs ON DELETE)** — `CASCADE` sur `cabinet_id` permettait perte
+  audit financier en cas d'accidental DROP cabinet. **Fix** : `RESTRICT`.
+- **M2 (deletion dead code)** — `tx.appointmentReminder.updateMany` dans
+  `deletion.service` était dead code (CASCADE via FK). **Fix** : retiré, commentaire
+  explicite. Si soft-delete V2, réactiver explicitement (Art. 17 strict).
+- **M12/M13 (null handling)** — Templates email/push crashaient si
+  `appointment.location=null` ou `appointment.hour=null`. **Fix** : conditional
+  rendering FR/EN/AR ("aujourd'hui" vs "à HH:MM").
+
+### Tests ajoutés round 2
+
+- C1 timezone fidélité (UTC pinned)
+- C2 senderId null propagation
+- C3 advisory lock session (≥2 $queryRaw calls)
+- H1 filter notifPreferences
+- H3 GET non-exporté
+- M1 push partial metadata (recipientCount/sent/failed)
+- M5 orderBy date asc
+- M11 runId UUID propagation
+- M13 hour=null body
+
+Total : 25 unit + 6 integration = **31/31 verts post-round 2**.
+
+### Bloqueurs pre-prod inchangés
+
+- DPO sign-off §3.1 (V1 mock SMS = pilote uniquement)
+- Décision business V3 timeline (procurement Twilio/OVH)
+- CGU patient (rappels automatiques Art. 13)
+- Cron schedule prod `0 9 * * *` configuré
+- Runbook scheduler : **POST uniquement** (H3 round 2)
+- EXPLAIN ANALYZE sur dataset 100K RDV (index hot path round 2 M5)

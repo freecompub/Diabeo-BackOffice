@@ -360,9 +360,19 @@ export const emailService = {
     const deepLink = `${baseUrl}/appointments/${input.appointmentId}`
     const lang = input.language ?? "fr"
     const T = APPOINTMENT_REMINDER_I18N[lang]
-    const locationLabel = input.location
-      ? T.locations[input.location]
-      : T.locations.in_person
+    // M12 round 2 — `location IS NULL` → ne PAS afficher la ligne "Lieu"
+    // (vs ancien fallback "En cabinet" qui induisait en erreur les RDV
+    // vidéo/téléphone sans location renseignée).
+    const locationLabel = input.location ? T.locations[input.location] : null
+    const locationRowHtml = locationLabel
+      ? `<tr>
+            <td style="padding: 8px 0; color: #6B7280;">${escapeHtml(T.labels.location)}</td>
+            <td style="padding: 8px 0; color: #1F2937; font-weight: 600; text-align: right;">${escapeHtml(locationLabel)}</td>
+          </tr>`
+      : ""
+    const locationTextLine = locationLabel
+      ? `\n${T.labels.location}: ${locationLabel}`
+      : ""
 
     return this.send({
       to: input.email,
@@ -379,10 +389,7 @@ export const emailService = {
               <td style="padding: 8px 0; color: #6B7280;">${escapeHtml(T.labels.dateTime)}</td>
               <td style="padding: 8px 0; color: #1F2937; font-weight: 600; text-align: right;">${escapeHtml(input.dateTime)}</td>
             </tr>
-            <tr>
-              <td style="padding: 8px 0; color: #6B7280;">${escapeHtml(T.labels.location)}</td>
-              <td style="padding: 8px 0; color: #1F2937; font-weight: 600; text-align: right;">${escapeHtml(locationLabel)}</td>
-            </tr>
+            ${locationRowHtml}
           </table>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${escapeHtml(deepLink)}" style="background: #0D9488; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
@@ -396,7 +403,7 @@ export const emailService = {
           </p>
         </div>
       `,
-      text: `${T.heading}\n\n${T.body}\n\n${T.labels.dateTime}: ${input.dateTime}\n${T.labels.location}: ${locationLabel}\n\n${T.labels.cta}: ${deepLink}\n\n${T.footer}`,
+      text: `${T.heading}\n\n${T.body}\n\n${T.labels.dateTime}: ${input.dateTime}${locationTextLine}\n\n${T.labels.cta}: ${deepLink}\n\n${T.footer}`,
     })
   },
 

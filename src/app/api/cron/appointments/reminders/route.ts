@@ -94,10 +94,11 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   }
 }
 
+// H3 round 2 review — `GET` retiré. Action mutante = POST uniquement
+// (RFC 7231 §4.3.3). Évite leak de `CRON_SECRET` via Nginx access logs /
+// Referer / cache CDN (Cache-Control: no-store mal honoré par certains
+// proxies pour GET). Si le scheduler OVH/Vercel envoie GET → 405 ; à
+// adapter à `curl -X POST` dans le runbook.
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  return handle(req)
-}
-
-export async function GET(req: NextRequest): Promise<NextResponse> {
   return handle(req)
 }

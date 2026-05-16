@@ -159,76 +159,100 @@ export const smsService = {
       throw new SmsValidationError("to", "invalidPhone")
     }
 
-    return prisma.$transaction(async (tx) => {
-      // Atomic check + decrement : updateMany WHERE conditions garantit
-      // qu'on ne decrement pas en race (cabinet.smsEnabled + balance OK).
-      const result = await tx.healthcareService.updateMany({
-        where: {
-          id: input.cabinetId,
-          smsEnabled: true,
-          smsCreditBalance: { gte: creditCost },
-        },
-        data: { smsCreditBalance: { decrement: creditCost } },
+    // H2 round 2 — atomic check + decrement HORS $transaction wrappante
+    // (le throw skipped invalidait le persist sinon).
+    const result = await prisma.healthcareService.updateMany({
+      where: {
+        id: input.cabinetId,
+        smsEnabled: true,
+        smsCreditBalance: { gte: creditCost },
+      },
+      data: { smsCreditBalance: { decrement: creditCost } },
+    })
+
+    if (result.count === 0) {
+      // Discriminer pour throw error précis (forensique audit).
+      const cabinet = await prisma.healthcareService.findUnique({
+        where: { id: input.cabinetId },
+        select: { smsEnabled: true, smsCreditBalance: true },
       })
-
-      if (result.count === 0) {
-        // Soit cabinet n'existe pas, soit smsEnabled=false, soit credits<cost.
-        // Discriminer pour throw error precis (forensique audit).
-        const cabinet = await tx.healthcareService.findUnique({
-          where: { id: input.cabinetId },
-          select: { smsEnabled: true, smsCreditBalance: true },
-        })
-        if (!cabinet) {
-          throw new SmsValidationError("cabinetId", "notFound")
-        }
-        if (!cabinet.smsEnabled) {
-          await this.persistSmsLog(
-            tx, input.cabinetId, "skipped", phone, input.message,
-            null, "sms_disabled", input.contextKind, creditCost,
-            auditUserId, ctx, metadata,
-          )
-          throw new SmsDisabledError(input.cabinetId)
-        }
-        // Credits insuffisants.
-        await this.persistSmsLog(
-          tx, input.cabinetId, "skipped", phone, input.message,
-          null, "insufficient_credits", input.contextKind, creditCost,
-          auditUserId, ctx, metadata,
-        )
-        throw new SmsInsufficientCreditError(
-          input.cabinetId, cabinet.smsCreditBalance, creditCost,
-        )
+      if (!cabinet) {
+        throw new SmsValidationError("cabinetId", "notFound")
       }
-
-      // V1 mock — pas de vrai envoi. Generate provider message ID.
-      const providerMessageId = `mock-${randomUUID()}`
-      await this.persistSmsLog(
-        tx, input.cabinetId, "mock", phone, input.message,
-        providerMessageId, null, input.contextKind, creditCost,
+      const reason = !cabinet.smsEnabled ? "sms_disabled" : "insufficient_credits"
+      // H2 round 2 — persist skipped log AVANT throw, dans tx isolée (commit
+      // garanti même si caller catch le throw).
+      await this.persistSmsLogStandalone(
+        input.cabinetId, "skipped", phone, input.message,
+        null, reason, input.contextKind, creditCost,
         auditUserId, ctx, metadata,
       )
-
-      // Alerte ops si credits balance bas (<10).
-      const updatedBalance = await tx.healthcareService.findUnique({
-        where: { id: input.cabinetId },
-        select: { smsCreditBalance: true },
-      })
-      if (updatedBalance && updatedBalance.smsCreditBalance < 10) {
-        logger.warn(
-          "sms",
-          "cabinet credits low",
-          {
-            resource: "SMS_LOG",
-            kind: "credits.low_balance",
-          },
-        )
+      if (!cabinet.smsEnabled) {
+        throw new SmsDisabledError(input.cabinetId)
       }
+      throw new SmsInsufficientCreditError(
+        input.cabinetId, cabinet.smsCreditBalance, creditCost,
+      )
+    }
 
-      return {
-        sent: true,
-        status: "mock" as const,
-        providerMessageId,
-      }
+    // V1 mock — pas de vrai envoi. Generate provider message ID.
+    const providerMessageId = `mock-${randomUUID()}`
+    await this.persistSmsLogStandalone(
+      input.cabinetId, "mock", phone, input.message,
+      providerMessageId, null, input.contextKind, creditCost,
+      auditUserId, ctx, metadata,
+    )
+
+    // Alerte ops si credits balance bas (<10).
+    // M4 round 2 — ajout `cabinetId` pour alerte opérationnelle utile.
+    const updatedBalance = await prisma.healthcareService.findUnique({
+      where: { id: input.cabinetId },
+      select: { smsCreditBalance: true },
+    })
+    if (updatedBalance && updatedBalance.smsCreditBalance < 10) {
+      logger.warn(
+        "sms",
+        "cabinet credits low",
+        {
+          resource: "SMS_LOG",
+          kind: "credits.low_balance",
+          cabinetId: input.cabinetId,
+        },
+      )
+    }
+
+    return {
+      sent: true,
+      status: "mock" as const,
+      providerMessageId,
+    }
+  },
+
+  /**
+   * H2 round 2 — Standalone persist (sa propre tx) pour garantir commit
+   * même si caller throw après. Utilisé par les skipped paths.
+   *
+   * @internal
+   */
+  async persistSmsLogStandalone(
+    cabinetId: number,
+    status: SmsStatus,
+    phone: string | null,
+    message: string,
+    providerMessageId: string | null,
+    errorMessage: string | null,
+    contextKind: string,
+    creditCost: number,
+    auditUserId: number | null,
+    ctx: AuditContext,
+    metadata: { patientId?: number; appointmentId?: number } = {},
+  ): Promise<void> {
+    return prisma.$transaction(async (tx) => {
+      await this.persistSmsLog(
+        tx, cabinetId, status, phone, message,
+        providerMessageId, errorMessage, contextKind, creditCost,
+        auditUserId, ctx, metadata,
+      )
     })
   },
 
@@ -278,13 +302,16 @@ export const smsService = {
       userId: auditUserId,
       action: "CREATE",
       resource: "SMS_LOG",
-      resourceId: String(cabinetId),
+      // M3 round 2 (ADR #18) — resourceId = ID natif SmsLog (vs cabinetId
+      // qui violait la convention US-2268). cabinetId reste en metadata
+      // pivot pour la forensique "tous SMS du cabinet X".
+      resourceId: String(log.id),
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
       metadata: {
         kind: auditKind,
-        smsLogId: log.id,
+        cabinetId,
         contextKind,
         creditCost,
         provider: "mock",

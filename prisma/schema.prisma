@@ -1824,6 +1824,9 @@ model Appointment {
   @@index([patientId, date])
   /// US-2503 — filtre `WHERE status = 'scheduled'` pour la vue calendrier.
   @@index([memberId, status, date])
+  /// US-2502 M5 round 2 — hot path cron rappels RDV `WHERE status IN
+  /// (scheduled, confirmed) AND date BETWEEN X AND Y` sans préfixe member/patient.
+  @@index([status, date])
   @@map("appointments")
 }
 
@@ -3413,7 +3416,10 @@ model SmsLog {
   /// Contexte d'envoi : 'appointment_reminder' (US-2502) | futurs.
   contextKind         String    @map("context_kind") @db.VarChar(50)
 
-  cabinet HealthcareService @relation(fields: [cabinetId], references: [id], onDelete: Cascade)
+  /// M7 round 2 — Restrict pour préserver l'historique audit SMS forensique
+  /// (HealthcareService n'est jamais hard-deleted en pratique, mais CASCADE
+  /// silencieux serait dangereux). Cohérent avec `invoices.cabinet_id`.
+  cabinet HealthcareService @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
 
   @@index([cabinetId, sentAt(sort: Desc)])
   @@index([sentAt(sort: Desc)])
@@ -3460,7 +3466,10 @@ model AppointmentReminder {
   appointmentId       Int                          @map("appointment_id")
   channel             AppointmentReminderChannel
   step                AppointmentReminderStep
-  status              AppointmentReminderStatus    @default(sent)
+  /// M6 round 2 — default `skipped` (vs `sent` trompeur). Le caller doit
+  /// marquer explicitement `sent` après envoi réussi (defense-in-depth
+  /// si bulk insert futur omet le statut).
+  status              AppointmentReminderStatus    @default(skipped)
   sentAt              DateTime                     @default(now()) @map("sent_at") @db.Timestamptz()
   /// Destinataire chiffre AES-256-GCM (email pour channel=email, phone
   /// pour channel=sms, fcmToken pour channel=push).

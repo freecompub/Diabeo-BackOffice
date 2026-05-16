@@ -615,4 +615,6 @@ Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives,
 
 ---
 
-*Dernière mise à jour : 2026-05-02 — US-2140 DONE (PR #339) · source : `docs/UserStory/pro-user-stories/`, `docs/UserStory/user-stories-patient-management/`*
+*Dernière mise à jour : 2026-05-16 — Round 2 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 29 findings (3C/4H/15M/7L) → 0 résiduel. Corrections clés : timezone bug fidélité UTC (C1), FCM `senderId: number | null` (C2), advisory lock SESSION-level vs xact (C3), filtre RGPD Art. 21 `notifPreferences.medicalAppointments` (H1), SMS skipped audit standalone TX (H2), GET retiré anti-leak CRON_SECRET (H3), step order push J-0 → SMS J-1 → email J-2 (M10), index `appointments(status, date)` (M5), `sms_logs.cabinet_id ON DELETE RESTRICT` (M7), runId UUID audit pivot (M11), dead code anonymisation supprimé (M2), null handling location/hour (M12/M13). 25/25 unit + 6/6 integration verts. DPIA §9 ajoutée. ROADMAP V1 indicateurs inchangés (US toujours DONE).*
+
+*Précédente mise à jour : 2026-05-02 — US-2140 DONE (PR #339) · source : `docs/UserStory/pro-user-stories/`, `docs/UserStory/user-stories-patient-management/`*

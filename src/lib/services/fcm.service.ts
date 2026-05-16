@@ -24,7 +24,12 @@ const INVALID_TOKEN_CODES = new Set([
 
 interface SendInput {
   userId: number
-  senderId: number
+  /**
+   * Acteur qui déclenche l'envoi. `null` accepté pour les acteurs système
+   * (cron, worker) — sinon FK violation `audit_logs.user_id → users.id`
+   * (cf. US-2108 C1 round 2 + US-2502 C2 round 2).
+   */
+  senderId: number | null
   templateId?: string
   title: string
   body: string
@@ -214,7 +219,7 @@ export const fcmService = {
 
   async sendFromTemplate(
     userId: number,
-    senderId: number,
+    senderId: number | null,
     templateId: string,
     variables?: Record<string, string>,
     ctx?: AuditContext,
@@ -243,7 +248,7 @@ export const fcmService = {
 
   async sendToMultipleUsers(
     userIds: number[],
-    senderId: number,
+    senderId: number | null,
     input: { title: string; body: string; templateId?: string; data?: Record<string, string> },
     ctx?: AuditContext,
   ): Promise<{ total: number; sent: number; failed: number }> {
