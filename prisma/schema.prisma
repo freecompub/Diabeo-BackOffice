@@ -1396,7 +1396,7 @@ model PatientDevice {
   /// US-2243 — index pour cohort capteurs proches expiration.
   @@index([sensorExpiresAt])
   /// US-2093 — index pour history listing chronologique (revoked + actifs).
-  @@index([patientId, revokedAt])
+  @@index([patientId, revokedAt], map: "patient_devices_history_idx")
   @@map("patient_devices")
 }
 
@@ -1418,7 +1418,7 @@ model SupportedDevice {
   /// Identifiant technique (USB VID:PID, BLE service UUID, etc.) optionnel.
   modelIdentifier    String?        @map("model_identifier") @db.VarChar(100)
   /// Connexions supportées (bluetooth, nfc, usb, manual).
-  connectionTypes    String[]       @map("connection_types")
+  connectionTypes    String[]       @default([]) @map("connection_types")
   /// Capteur expirable (CGM) — durée en jours (Dexcom G7 = 10, FreeStyle Libre 3 = 14).
   /// Null pour pompes/lecteurs.
   sensorLifetimeDays Int?           @map("sensor_lifetime_days") @db.SmallInt

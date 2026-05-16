@@ -25,6 +25,8 @@ import type { DeviceCategory, Role } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { auditService, type AuditContext } from "./audit.service"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+import { canAccessPatient } from "@/lib/access-control"
+import { logger } from "@/lib/logger"
 
 // ─────────────────────────────────────────────────────────────
 // Bornes + types
@@ -46,7 +48,6 @@ export type DeviceLifecycleAuditKind =
   | "device.history"
   | "supported_device.search"
   | "supported_device.created"
-  | "supported_device.updated"
   | "device.revoke.accessDenied"
   | "device.history.accessDenied"
 
@@ -55,7 +56,6 @@ const AUDIT_KIND = {
   HISTORY: "device.history",
   SEARCH: "supported_device.search",
   SD_CREATED: "supported_device.created",
-  SD_UPDATED: "supported_device.updated",
   REVOKE_DENIED: "device.revoke.accessDenied",
   HISTORY_DENIED: "device.history.accessDenied",
 } as const satisfies Record<string, DeviceLifecycleAuditKind>
@@ -82,37 +82,10 @@ export class DeviceLifecycleNotFoundError extends Error {
 }
 
 // ─────────────────────────────────────────────────────────────
-// RBAC partagé — copy from patient.service patterns
-// ─────────────────────────────────────────────────────────────
-
-/** Vérifie accès patient : ADMIN tout, VIEWER own, NURSE+ cabinet member. */
-async function canAccessPatient(
-  userId: number,
-  role: Role,
-  patientId: number,
-): Promise<boolean> {
-  if (role === "ADMIN") return true
-  if (role === "VIEWER") {
-    const patient = await prisma.patient.findFirst({
-      where: { id: patientId, userId, deletedAt: null },
-      select: { id: true },
-    })
-    return patient !== null
-  }
-  // NURSE / DOCTOR — via PatientService (cabinet membership).
-  const link = await prisma.patientService.findFirst({
-    where: {
-      patientId,
-      service: {
-        members: { some: { userId } },
-      },
-      patient: { deletedAt: null },
-    },
-    select: { id: true },
-  })
-  return link !== null
-}
-
+// RBAC — utilise le helper partagé `canAccessPatient` (CR C1 review).
+// Anciennement local, dupliqué avec divergence (ADMIN bypass soft-delete) →
+// migré vers `@/lib/access-control` pour respecter l'invariant RGPD :
+// ADMIN ne peut pas accéder à un patient soft-deleted.
 // ─────────────────────────────────────────────────────────────
 // US-2091 — SupportedDevice search/CRUD
 // ─────────────────────────────────────────────────────────────
@@ -314,11 +287,41 @@ function toHistoryDTO(
     isActive: row.revokedAt === null,
     revokedAt: row.revokedAt,
     revokedBy: row.revokedBy,
-    revokedReason: safeDecryptField(row.revokedReasonEnc),
+    revokedReason: null, // injecté par toHistoryDTOForRole selon role
     batteryLevel: row.batteryLevel,
     sensorExpiresAt: row.sensorExpiresAt,
     lastSyncAt: row.lastSyncAt,
   }
+}
+
+/**
+ * CR C2 review — Cross-actor PHI protection. La `revokedReason` peut être
+ * écrite par un DOCTOR/NURSE et contenir contexte clinique-only (ex.
+ * "suspicion fraude", "décompensation"). VIEWER (patient) ne doit PAS
+ * la lire. PS+ peuvent la lire pour forensique.
+ *
+ * Log warning structuré si decrypt fail (HSA L2 review — distinguer
+ * "absence" de "corruption" en logs SOC).
+ */
+function toHistoryDTOForRole(
+  row: Prisma.PatientDeviceGetPayload<Record<string, never>>,
+  role: Role,
+  callerUserId: number,
+): DeviceHistoryDTO {
+  const dto = toHistoryDTO(row)
+  if (row.revokedReasonEnc !== null && role !== "VIEWER") {
+    const decrypted = safeDecryptField(row.revokedReasonEnc)
+    if (decrypted === null) {
+      // HSA L2 review — alerte SOC si ciphertext non-null mais decrypt fail.
+      logger.warn(
+        "device-lifecycle",
+        "revokedReasonEnc decrypt failed",
+        { userId: callerUserId, resource: "DEVICE" },
+      )
+    }
+    dto.revokedReason = decrypted
+  }
+  return dto
 }
 
 /** Émet audit accessDenied US-2265. Fire-and-forget. */
@@ -390,34 +393,36 @@ export const deviceLifecycleService = {
     const now = new Date()
     const reasonEnc = encryptField(reason)
 
-    // Atomic CAS — empêche race double-revoke (2 PSes concurrents).
-    const result = await prisma.patientDevice.updateMany({
-      where: { id: deviceId, patientId, revokedAt: null },
-      data: {
-        revokedAt: now,
-        revokedBy: auditUserId,
-        revokedReasonEnc: reasonEnc,
-      },
+    // CR H1 + HSA H2 review — Atomic CAS + audit DANS la transaction.
+    // Si l'audit fail, la révocation est rolled back (cohérence forensique HDS).
+    return prisma.$transaction(async (tx) => {
+      const result = await tx.patientDevice.updateMany({
+        where: { id: deviceId, patientId, revokedAt: null },
+        data: {
+          revokedAt: now,
+          revokedBy: auditUserId,
+          revokedReasonEnc: reasonEnc,
+        },
+      })
+      if (result.count === 0) {
+        // Race lost — autre thread a déjà révoqué.
+        return { revoked: true, alreadyRevoked: true }
+      }
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "DEVICE",
+        resourceId: String(deviceId),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: {
+          kind: AUDIT_KIND.REVOKED,
+          patientId, // pivot US-2268
+        },
+      })
+      return { revoked: true, alreadyRevoked: false }
     })
-    if (result.count === 0) {
-      // Race lost — autre thread a déjà révoqué.
-      return { revoked: true, alreadyRevoked: true }
-    }
-
-    await auditService.log({
-      userId: auditUserId,
-      action: "UPDATE",
-      resource: "DEVICE",
-      resourceId: String(deviceId),
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      requestId: ctx.requestId,
-      metadata: {
-        kind: AUDIT_KIND.REVOKED,
-        patientId, // pivot US-2268
-      },
-    })
-    return { revoked: true, alreadyRevoked: false }
   },
 
   /**
@@ -448,18 +453,24 @@ export const deviceLifecycleService = {
         patientId,
         ...(includeRevoked ? {} : { revokedAt: null }),
       },
+      // Prisma F-1 + CR M2 review — NULL ordering explicit "nulls: last".
+      // Sans ça, PG `DESC` = `NULLS FIRST` → devices actifs (revokedAt NULL)
+      // apparaissent en premier au lieu d'en dernier (contraire à intent).
       orderBy: [
-        { revokedAt: "desc" }, // revoked en premier (les plus récents)
-        { date: "desc" },
+        { revokedAt: { sort: "desc", nulls: "last" } },
+        { date: { sort: "desc", nulls: "last" } },
+        { id: "desc" }, // tie-breaker stable
       ],
       take: limit,
     })
 
+    // Prisma F-4 + L7 review — resourceId = "list" (action non patient-spécifique).
+    // patientId reste dans metadata (pivot US-2268) — getByPatient retrouve.
     await auditService.log({
       userId: auditUserId,
       action: "READ",
       resource: "DEVICE",
-      resourceId: String(patientId),
+      resourceId: "list",
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
@@ -470,6 +481,7 @@ export const deviceLifecycleService = {
         includeRevoked,
       },
     })
-    return rows.map(toHistoryDTO)
+    // CR C2 review — toHistoryDTOForRole masque revokedReason si VIEWER.
+    return rows.map((r) => toHistoryDTOForRole(r, auditUserRole, auditUserId))
   },
 }

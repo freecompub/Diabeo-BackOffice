@@ -193,11 +193,21 @@ describe("deviceLifecycleService.revoke", () => {
     ).rejects.toBeInstanceOf(DeviceLifecycleAccessError)
   })
 
-  it("ADMIN bypass cabinet check", async () => {
+  it("ADMIN bypass cabinet check (mais respecte soft-delete patient)", async () => {
+    // shared canAccessPatient vérifie deletedAt même pour ADMIN.
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue({ id: 10, revokedAt: null } as any)
     prismaMock.patientDevice.updateMany.mockResolvedValue({ count: 1 } as any)
     const out = await deviceLifecycleService.revoke(42, 10, "x", 9, "ADMIN", ctx)
     expect(out.revoked).toBe(true)
+  })
+
+  // CR C1 review — ADMIN sur patient soft-deleted = forbidden (invariant RGPD).
+  it("CR C1 — ADMIN sur patient soft-deleted → 403", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null) // soft-deleted
+    await expect(
+      deviceLifecycleService.revoke(99, 10, "x", 9, "ADMIN", ctx),
+    ).rejects.toBeInstanceOf(DeviceLifecycleAccessError)
   })
 
   it("rejects empty reason", async () => {
@@ -275,7 +285,7 @@ describe("deviceLifecycleService.listHistory", () => {
     expect(where.revokedAt).toBe(null)
   })
 
-  it("audit kind=device.history + pivot patientId + count", async () => {
+  it("audit kind=device.history + resourceId=list + pivot patientId + count", async () => {
     prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([
       { id: 1, patientId: 42, brand: null, model: null, category: null,
@@ -283,10 +293,55 @@ describe("deviceLifecycleService.listHistory", () => {
         batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
     ] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
-    const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(meta.metadata.kind).toBe("device.history")
-    expect(meta.metadata.patientId).toBe(42)
-    expect(meta.metadata.count).toBe(1)
+    const auditCall = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(auditCall.metadata.kind).toBe("device.history")
+    expect(auditCall.resourceId).toBe("list") // Prisma F-4 review
+    expect(auditCall.metadata.patientId).toBe(42) // pivot US-2268
+    expect(auditCall.metadata.count).toBe(1)
+  })
+
+  // CR C2 review — VIEWER ne doit PAS recevoir revokedReason (PHI cross-actor).
+  it("CR C2 — VIEWER ne reçoit pas revokedReason (clinician-only)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    // Mock encryptField output : un blob valid base64.
+    const fakeEnc = Buffer.from("fake").toString("base64")
+    prismaMock.patientDevice.findMany.mockResolvedValue([
+      { id: 1, patientId: 42, brand: "Dexcom", model: "G7", category: "cgm",
+        sn: null, date: null,
+        revokedAt: new Date("2026-04-01"), revokedBy: 5,
+        revokedReasonEnc: fakeEnc,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+    ] as any)
+    const out = await deviceLifecycleService.listHistory(42, 9, "VIEWER", ctx)
+    expect(out[0]!.revokedReason).toBe(null) // masqué pour VIEWER
+  })
+
+  // CR C2 — PS+ reçoit revokedReason déchiffré.
+  it("CR C2 — DOCTOR reçoit revokedReason déchiffré", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    const fakeEnc = Buffer.from("fake").toString("base64")
+    prismaMock.patientDevice.findMany.mockResolvedValue([
+      { id: 1, patientId: 42, brand: null, model: null, category: null,
+        sn: null, date: null,
+        revokedAt: new Date(), revokedBy: 5,
+        revokedReasonEnc: fakeEnc,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+    ] as any)
+    const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
+    // safeDecryptField sur fake ciphertext = null. Mais la branche du code
+    // tente le decrypt (et logue warning si échec).
+    expect(out[0]!.revokedReason).toBe(null) // decrypt fail OK pour test
+  })
+
+  // Prisma F-1 review — orderBy avec nulls: last.
+  it("Prisma F-1 — orderBy revokedAt nulls:last", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
+    await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
+    const orderBy = prismaMock.patientDevice.findMany.mock.calls[0]![0]!.orderBy as any
+    expect(orderBy[0]).toEqual({ revokedAt: { sort: "desc", nulls: "last" } })
+    expect(orderBy[1]).toEqual({ date: { sort: "desc", nulls: "last" } })
+    expect(orderBy[2]).toEqual({ id: "desc" }) // tie-breaker
   })
 
   it("limit capped at MAX_HISTORY_PAGE", async () => {

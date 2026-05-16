@@ -39,7 +39,8 @@ ALTER TABLE "supported_devices"
         ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- Unicité (brand, model, category) — un device par triplet exactement.
-CREATE UNIQUE INDEX "supported_devices_brand_model_category_idx"
+-- Naming `_key` (convention Prisma `@@unique`).
+CREATE UNIQUE INDEX "supported_devices_brand_model_category_key"
     ON "supported_devices"("brand", "model", "category");
 
 -- Index pour search UI pairing : `WHERE category = $1 AND is_active = TRUE`.
