@@ -191,6 +191,8 @@ export type AuditResource =
   | "CABINET_SETTINGS"
   /** US-2076 scope A — Messagerie sécurisée patient↔PS / staff↔staff. */
   | "MESSAGE"
+  /** Groupe 4 — US-2091 référentiel devices supportés. */
+  | "SUPPORTED_DEVICE"
 
 /**
  * Audit log entry — parameters for logging an action.

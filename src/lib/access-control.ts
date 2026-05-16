@@ -140,3 +140,68 @@ export async function getAccessiblePatientIds(
   })
   return links.map((l) => l.patientId)
 }
+
+/**
+ * Anti-énumération unifié : résout `(patient existe, RBAC OK, consent OK)`
+ * derrière un seul code-retour neutre `null` pour les non-autorisés.
+ *
+ * Le rationale (PR #415 review round 2 — HIGH-2 healthcare-security-auditor) :
+ * les routes patient/[id]/* ne doivent JAMAIS distinguer publiquement
+ *   - "patient n'existe pas" (404)
+ *   - "patient existe sans consent" (403 gdprConsentRequired)
+ *   - "patient existe, consent OK, mais RBAC denied" (403 forbidden)
+ *
+ * Sinon un VIEWER ou NURSE hors-cabinet peut énumérer (a) les patient IDs
+ * valides, (b) leur statut consent RGPD, en O(n) requêtes sur le parc.
+ *
+ * Ordre canonique (cf. `/api/patients/[id]/cgm/route.ts:31-42`) :
+ *   1. `canAccessPatient` → si false, retour null + audit accessDenied
+ *      (US-2265 burst detection sur tentatives d'énumération)
+ *   2. `patient.findFirst(deletedAt: null)` → résolution `userId` du data subject
+ *   3. `requireGdprConsent(patient.userId)` → consent du data subject (CR H4)
+ *
+ * Retour :
+ *   - `null` si une étape échoue (le caller doit retourner 403 forbidden
+ *     uniforme — pas de discrimination publique)
+ *   - `{ patientId, ownerUserId }` si toutes les étapes passent
+ *
+ * @internal Le module audit-service est résolu lazy pour éviter circular dep.
+ */
+export interface ResolvedPatient {
+  patientId: number
+  ownerUserId: number
+}
+
+export async function resolvePatientForConsent(
+  callerUserId: number,
+  callerRole: Role,
+  patientId: number,
+  audit: {
+    onAccessDenied: () => Promise<void> | void
+  },
+): Promise<ResolvedPatient | null> {
+  // Étape 1 — RBAC AVANT toute lecture (anti-énumération).
+  const allowed = await canAccessPatient(callerUserId, callerRole, patientId)
+  if (!allowed) {
+    await audit.onAccessDenied()
+    return null
+  }
+
+  // Étape 2 — résolution data subject (post-RBAC OK).
+  const patient = await prisma.patient.findFirst({
+    where: { id: patientId, deletedAt: null },
+    select: { userId: true },
+  })
+  if (!patient) {
+    // canAccessPatient vient de retourner true mais Patient soft-delete entre
+    // les deux queries → TOCTOU race rare. Sécurité : 403 uniforme.
+    return null
+  }
+
+  // Étape 3 — consent du data subject (CR H4 RGPD Art. 9).
+  const { requireGdprConsent } = await import("@/lib/gdpr")
+  const hasConsent = await requireGdprConsent(patient.userId)
+  if (!hasConsent) return null
+
+  return { patientId, ownerUserId: patient.userId }
+}

@@ -194,6 +194,14 @@ export async function generateUserExport(userId: number) {
       cancelReason: safeDecrypt(a.cancelReasonEncrypted),
     }))
 
+    // HSA H1 review (US-2092) — RGPD Art. 20 : revokedReasonEnc déchiffré
+    // pour livrer un export intelligible (G29 WP242).
+    const devicesDecrypted = devices.map((d) => ({
+      ...d,
+      revokedReasonEnc: undefined,
+      revokedReason: safeDecrypt(d.revokedReasonEnc),
+    }))
+
     patientData = {
       pathology: patient.pathology,
       medicalData: decryptMedicalData(medicalData as unknown as Record<string, unknown>),
@@ -205,7 +213,7 @@ export async function generateUserExport(userId: number) {
       diabetesEvents,
       bolusLogs,
       adjustmentProposals,
-      devices,
+      devices: devicesDecrypted,
       appointments: appointmentsDecrypted,
       documents: documents.map((d) => ({
         id: d.id,

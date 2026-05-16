@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/db/client"
 import { cacheGet, cacheSet, cacheDelete } from "@/lib/cache/redis-cache"
+import { logger } from "@/lib/logger"
 
 const CACHE_BUCKET = "gdpr-consent"
 /**
@@ -57,7 +58,30 @@ export async function requireGdprConsent(userId: number): Promise<boolean> {
  * Call this from any route that mutates UserPrivacySettings.gdprConsent —
  * otherwise a revocation could take up to 5 minutes to take effect,
  * violating Art. 7(3) "withdrawal must be as easy as giving consent".
+ *
+ * M3 round 2 review (RGPD Art. 7(3) + Art. 32) — wrapper try/catch + log
+ * structuré pour visibilité SOC. Sans ça, une panne Upstash entre commit DB
+ * et `cacheDelete` est silencieusement absorbée (fail-open du redis-cache
+ * module) ; la fenêtre stale 60s du cache positif s'applique invisiblement.
+ * Le log permet aux runbooks (RGPD breach window > 60s) de détecter le cas.
  */
 export async function invalidateGdprConsentCache(userId: number): Promise<void> {
-  await cacheDelete(CACHE_BUCKET, String(userId))
+  try {
+    await cacheDelete(CACHE_BUCKET, String(userId))
+  } catch (err) {
+    // Fail-soft : on ne bloque pas la mutation DB (le commit a déjà eu lieu).
+    // Mais on logue pour SOC + runbook RGPD Art. 7(3) breach window visibility.
+    // `logger.error` (4-arg) serialize l'err propre avec redaction PHI built-in.
+    logger.error(
+      "gdpr",
+      "consent cache invalidation failed",
+      {
+        userId,
+        kind: "consent.cache.invalidation.failed",
+        // Borne de la fenêtre stale (= TTL positive cache).
+        staleWindowSec: CACHE_TTL_POSITIVE_SEC,
+      },
+      err,
+    )
+  }
 }

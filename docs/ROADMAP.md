@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 86   | 0       | 40          | **68%** |
+| **V1**   | 126   | 89   | 0       | 37          | **71%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **154** | **1**   | **138**     | **53%** |
+| **TOTAL**| **293** | **157** | **1**   | **135**     | **54%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -289,13 +289,20 @@ avant merge. Suite 1345 tests verts, branches 76.64%, migration `groupe3_refinem
 ajoutée (FK adjustment_proposal_acks.patient_id + 2 indexes performance).
 Total V1 effectif Groupe 3 : 12 US (vs 15 affiché initialement).
 
-### Groupe 4 — Devices & Sync (3 US)
+### Groupe 4 — Devices & Sync (3 US, 100% DONE PR #415)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2091 | Compatibilité matérielle | NOT STARTED |
-| US-2092 | Désactivation / révocation | PARTIAL |
-| US-2093 | Historique des dispositifs | NOT STARTED |
+| US-2091 | Compatibilité matérielle | ✅ DONE PR #415 — `SupportedDevice` whitelist + search NURSE+ + CRUD ADMIN |
+| US-2092 | Désactivation / révocation | ✅ DONE PR #415 — soft-revoke atomic CAS + raison chiffrée AES + idempotent |
+| US-2093 | Historique des dispositifs | ✅ DONE PR #415 — `listHistory` cursor-safe + pivot patientId US-2268 |
+
+**3 rounds review multi-agents** (46 findings résolus) :
+- Round 1 (`5490edd`) — 14 findings (2 C + 6 H + 5 M + 1 INFO) : CR C1 shared `canAccessPatient`, CR C2 VIEWER mask `revokedReason` (cross-actor PHI), CR H1 audit transactionnel, HSA H1 export RGPD Art. 20 decrypt, Prisma F-1 NULL ordering.
+- Round 2 (`b95e69c`) — 18 findings (2 H + 5 M + 11 L) : CR H2 CHECK enforce `revoked_reason_enc NOT NULL`, CR H4 consent du data subject (pas caller), HSA M1 `createdAt` immutable, HSA M2 VARCHAR cap, HSA L1 cursor pagination keyset.
+- Round 3 (`e8f0f71`) — 14 findings (3 H + 5 M + 6 L) : H1 cursor compound orderBy unsafe → simplifié `[createdAt, id]`, H2 existence oracle 404 avant RBAC → helper `resolvePatientForConsent` 403 uniforme, H3 backfill `created_at` legacy, M1 VARCHAR(2816) UTF-8 safe + `Buffer.byteLength` Zod, M2 trigger `SET search_path` (ANSSI CWE-426), M3 cache GDPR invalidation log SOC, M4+M5 `docs/compliance/dpia-devices.md`.
+
+Helper `resolvePatientForConsent` exporté (`@/lib/access-control`) — réutilisable pour toutes les routes `/api/patients/[id]/*` (V1.5 cleanup transversal anti-énumération). DPIA devices (`docs/compliance/dpia-devices.md`) — validation DPO à venir sur §3.1 posture Art. 9.2.a stricte + §3.2 KMS V2 + §3.4 durée rétention.
 
 ### Groupe 5 — Insuline & Repas (5 US, V1 100% DONE)
 
