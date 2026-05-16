@@ -3163,8 +3163,8 @@ model Message {
   toUser   User     @relation("MessageRecipient", fields: [toUserId], references: [id], onDelete: Restrict)
   patient  Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
 
-  /// Unread count badge + inbox tri (où `to_user_id = me AND read_at IS NULL`).
-  @@index([toUserId, readAt, createdAt])
+  /// Prisma M-1 review round 5 — Index `(toUserId, readAt, createdAt)` retiré
+  /// (subsumé par `messages_unread_groupby_idx` partial + `messages_to_thread_recency_idx` partial).
   /// Prisma H1 review round 3 — couvre le `groupBy conversationKey` du
   /// unread aggregate dans `listThreads`. Partial WHERE défini en SQL.
   @@index([toUserId, readAt, conversationKey], map: "messages_unread_groupby_idx")
@@ -3174,7 +3174,8 @@ model Message {
   /// Partial WHERE patient_id IS NOT NULL défini en SQL (Prisma 7 ne
   /// supporte pas encore les partial indexes côté schema).
   @@index([patientId])
-  /// FK index pour requêtes inverses (rare mais utile pour audit).
+  /// FK index pour forensique deleted messages (les autres indexes
+  /// partials `WHERE deleted_at IS NULL` ne couvrent pas ce cas).
   @@index([fromUserId])
   /// NEW-H1 CR review round 4 — Composite indexes pour DISTINCT ON
   /// listThreads. Permet à PG d'utiliser Index Skip Scan / Merge Append.

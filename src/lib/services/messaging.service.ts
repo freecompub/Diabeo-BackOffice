@@ -31,7 +31,7 @@
  *   - Decryption failure → `logger.error` (M3 review) pour alerte SOC.
  */
 
-import { createHash, randomUUID } from "crypto"
+import { createHmac, randomUUID } from "crypto"
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt, HealthDataDecryptionError } from "@/lib/crypto/health-data"
@@ -93,16 +93,37 @@ export class MessagingRateLimitError extends Error {
 }
 
 /**
- * Canonical conversation hash. SHA-256(min(uid):max(uid)) hex 64 chars.
+ * Canonical conversation hash. HMAC-SHA256(min(uid):max(uid), pepper) hex 64.
  * Symétrique : `computeConversationKey(1, 2) === computeConversationKey(2, 1)`.
  *
- * ⚠️ NEW-L10 review round 4 — Le `conversation_key` est un CORRÉLATEUR
- * stable, pas un secret. Si un dump DB leak, un attaquant peut
- * reconstruire le graphe bipartite patient↔médecin par brute-force
- * (~30s GPU pour 50M paires user). Mitigation actuelle = chiffrement
- * at-rest pgcrypto. V2 : passer à HMAC-SHA256(uid:uid, server_pepper)
- * pour rendre un dump leaké inexploitable seul.
+ * HIGH-2 review round 5 — HMAC + server-side pepper rend un dump DB leaké
+ * INEXPLOITABLE seul. Sans le pepper (env var `CONVERSATION_KEY_PEPPER`,
+ * 32+ bytes hex stocké hors DB), un attaquant ne peut plus brute-forcer
+ * le graphe bipartite patient↔médecin même avec un dump complet de la
+ * table `messages` et des indexes B-tree.
+ *
+ * Le `conversation_key` reste un identifiant stable (même pair → même hash)
+ * — symétrie nécessaire pour fetch thread + dédup canonical. La rotation
+ * du pepper invalide tous les conversation_keys existants (acceptable V1
+ * en dev/recette ; en prod, prévoir migration de re-key avant rotation).
  */
+function getConversationKeyPepper(): Buffer {
+  const pepper = process.env.CONVERSATION_KEY_PEPPER
+  if (!pepper) {
+    throw new Error(
+      "CONVERSATION_KEY_PEPPER env var required (32+ bytes hex). " +
+      "See docs/local-development.md §3.",
+    )
+  }
+  const buf = Buffer.from(pepper, "hex")
+  if (buf.length < 32) {
+    throw new Error(
+      `CONVERSATION_KEY_PEPPER too short: ${buf.length} bytes, need ≥ 32`,
+    )
+  }
+  return buf
+}
+
 export function computeConversationKey(userIdA: number, userIdB: number): string {
   if (!Number.isInteger(userIdA) || !Number.isInteger(userIdB) || userIdA <= 0 || userIdB <= 0) {
     throw new MessagingValidationError("userId", "invalidUserId")
@@ -111,7 +132,9 @@ export function computeConversationKey(userIdA: number, userIdB: number): string
     throw new MessagingValidationError("userId", "selfMessageForbidden")
   }
   const [a, b] = userIdA < userIdB ? [userIdA, userIdB] : [userIdB, userIdA]
-  return createHash("sha256").update(`${a}:${b}`).digest("hex")
+  return createHmac("sha256", getConversationKeyPepper())
+    .update(`${a}:${b}`)
+    .digest("hex")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -190,21 +213,45 @@ function checkAndRecordSendRate(userId: number): {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Decrypt-fail logger throttle per-user (NEW-M1 CR / NEW-M4 HSA round 4)
+// Decrypt-fail logger throttle per-user (NEW-M1 CR / NEW-M4 HSA round 4
+// + HIGH-3 / MED-1+M-2 / CR L-2 review round 5)
 // ─────────────────────────────────────────────────────────────
 //
 // Throttle GLOBAL aurait perdu la visibilité forensique : si un attaquant
 // touche N users simultanément, le SOC ne voyait qu'1 alerte par seconde
-// totale. Refactor en per-user avec compteur de events suppressed (le
-// SOC voit "decrypt-failed × N depuis le dernier log").
+// totale. Refactor en per-user avec :
+//   - `suppressedSinceLastLog` — compteur depuis le dernier log émis (reset
+//     à 0 après chaque log) → utile pour burst detection court.
+//   - `cumulativeSuppressed` — compteur cumulatif depuis la création de
+//     l'entry (jamais reset) → utile pour évaluer ampleur breach (Art. 33
+//     CNIL notification gravité).
+//   - LRU eviction émet un log final si `suppressedSinceLastLog > 0` —
+//     SOC reçoit le total perdu (MED-1 HSA / M-2 CR review round 5).
 
 interface DecryptThrottleEntry {
   lastLogMs: number
   suppressedSinceLastLog: number
+  cumulativeSuppressed: number
 }
 
 const decryptFailThrottle = new Map<number, DecryptThrottleEntry>()
 const DECRYPT_THROTTLE_MAP_HARD_CAP = 5_000
+
+function emitFinalLogOnEviction(userId: number, entry: DecryptThrottleEntry): void {
+  if (entry.suppressedSinceLastLog === 0) return
+  // MED-1 HSA / M-2 CR review round 5 — Émet un log final pour ne PAS
+  // perdre silencieusement le compteur lors de l'éviction LRU.
+  logger.warn(
+    "messaging",
+    "decrypt-failed throttle entry evicted with suppressed events",
+    {
+      userId,
+      resource: "MESSAGE",
+      suppressedSinceLastLog: entry.suppressedSinceLastLog,
+      cumulativeSuppressed: entry.cumulativeSuppressed,
+    },
+  )
+}
 
 function logDecryptFailThrottled(
   scope: string,
@@ -216,42 +263,51 @@ function logDecryptFailThrottled(
   // LRU eviction softcap (pivot sur lastLogMs).
   if (decryptFailThrottle.size > DECRYPT_THROTTLE_MAP_HARD_CAP) {
     let oldestKey: number | null = null
+    let oldestEntry: DecryptThrottleEntry | null = null
     let oldestMs = Infinity
     for (const [k, v] of decryptFailThrottle) {
       if (v.lastLogMs < oldestMs) {
         oldestMs = v.lastLogMs
         oldestKey = k
+        oldestEntry = v
       }
     }
-    if (oldestKey !== null) decryptFailThrottle.delete(oldestKey)
+    if (oldestKey !== null && oldestEntry !== null) {
+      emitFinalLogOnEviction(oldestKey, oldestEntry)
+      decryptFailThrottle.delete(oldestKey)
+    }
   }
 
   const entry =
-    decryptFailThrottle.get(userId) ?? { lastLogMs: 0, suppressedSinceLastLog: 0 }
+    decryptFailThrottle.get(userId) ??
+    { lastLogMs: 0, suppressedSinceLastLog: 0, cumulativeSuppressed: 0 }
+  entry.cumulativeSuppressed++
   if (now - entry.lastLogMs < MESSAGING_BOUNDS.DECRYPT_FAIL_LOG_THROTTLE_MS) {
     entry.suppressedSinceLastLog++
     decryptFailThrottle.set(userId, entry)
     return
   }
+  // CR L-2 review round 5 — `suppressedSinceLastLog` + `cumulativeSuppressed`
+  // structured fields via logger.ts ALLOWED_CONTEXT_KEYS pour Loki/Datadog.
   logger.error(
     "messaging",
     `decrypt-failed in ${scope}`,
     {
       userId,
       resource: "MESSAGE",
-      // Compteur dans le message pour Loki/Datadog (LogContext n'accepte
-      // pas une clé `suppressed` arbitraire).
+      suppressedSinceLastLog: entry.suppressedSinceLastLog,
+      cumulativeSuppressed: entry.cumulativeSuppressed,
     },
-    err instanceof Error
-      ? new Error(
-          `${err.message} (suppressedSinceLastLog=${entry.suppressedSinceLastLog})`,
-        )
-      : err,
+    err,
   )
-  decryptFailThrottle.set(userId, { lastLogMs: now, suppressedSinceLastLog: 0 })
+  decryptFailThrottle.set(userId, {
+    lastLogMs: now,
+    suppressedSinceLastLog: 0, // reset window counter
+    cumulativeSuppressed: entry.cumulativeSuppressed, // NE PAS reset
+  })
 }
 
-/** Test-only — reset decrypt throttle (NEW-L9 review round 4). */
+/** Test-only — reset decrypt throttle (NEW-L9 round 4). */
 export function __resetMessagingDecryptThrottle(): void {
   if (process.env.NODE_ENV === "production") {
     throw new Error("test-only: __resetMessagingDecryptThrottle disallowed in production")
@@ -285,6 +341,10 @@ interface CanMessageResult {
  *
  * Règles :
  *   - selfMessage interdit (from === to).
+ *   - ADMIN bypass : autorisé partout. `patientId` pivot posé UNIQUEMENT si
+ *     l'autre partie est PUREMENT un patient (role=VIEWER + Patient associé
+ *     non soft-deleted). Cas edge ADMIN → patient soft-deleted (recovery /
+ *     audit ops) → `patientId: null` (CR L-3 review round 5).
  *   - patient (User avec Patient associé via 1:1) ↔ PS : autorisé si le PS
  *     encadre le patient via PatientReferent (proId = HealthcareMember.id du PS)
  *     OU PatientService (le PS est membre d'un service où le patient est inscrit).
@@ -531,6 +591,34 @@ export const messagingService = {
     //     gdpr ↔ messaging, le dynamic import masquait les erreurs de boot.
     const recipientHasConsent = await requireGdprConsent(input.toUserId)
     if (!recipientHasConsent) {
+      // CRITICAL-1 review round 5 — Émettre audit accessDenied AVANT le throw.
+      // Sans ça, forensique CNIL impossible : "qui a tenté de messager un
+      // patient ayant révoqué consent ?" + impact burst detector US-2265.
+      // Le client ne voit que `forbidden` (anti-énumération NEW-H1 round 4),
+      // mais l'admin via audit_logs voit la raison fine.
+      try {
+        await auditService.accessDenied({
+          userId: fromUserId,
+          resource: "MESSAGE",
+          resourceId: `attempted:${input.toUserId}`,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
+          metadata: {
+            kind: "message.send.recipientConsentRevoked",
+            toUserId: input.toUserId,
+            ...(access.patientId !== null && { patientId: access.patientId }),
+          },
+        })
+      } catch (auditErr) {
+        // Audit emit fail ne doit pas bloquer la réponse → log local pour SOC.
+        logger.error(
+          "messaging",
+          "accessDenied audit emit failed (recipientConsentRevoked)",
+          { userId: fromUserId, resource: "MESSAGE" },
+          auditErr,
+        )
+      }
       throw new MessagingAccessError("recipientConsentRevoked")
     }
 
@@ -649,12 +737,14 @@ export const messagingService = {
     const cappedLimit = Math.min(limit, MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY)
 
     // 1. UNION ALL des deux perspectives (from_user_id OR to_user_id)
-    //    puis DISTINCT ON (Prisma H2 review round 3).
-    //    Chaque branche utilise son index respectif (`from_user_id` +
-    //    `(to_user_id, read_at, created_at)`), évite le BitmapOr + sort
-    //    mémoire à scale. Plan attendu :
-    //    Append → Index Scan ×2 → Sort (conv_key, created_at DESC) →
-    //    DISTINCT ON → outer Sort created_at DESC → Limit.
+    //    puis DISTINCT ON (Prisma H2 round 3 + NEW-H1 CR round 4 + L2 round 5).
+    //    Chaque branche utilise les composite indexes round 4 :
+    //    `messages_from_thread_recency_idx` + `messages_to_thread_recency_idx`
+    //    (partial WHERE deleted_at IS NULL), ce qui fournit déjà l'ordre
+    //    `(conversation_key, created_at DESC)` nativement → permet PG 14+
+    //    d'utiliser Merge Append au lieu de Sort O(N log N).
+    //    Plan attendu : Append → Index Scan ×2 (ordered) → Merge Append →
+    //    DISTINCT ON → outer Sort created_at DESC → Limit cappedLimit.
     interface RawRow {
       id: string
       conversation_key: string
@@ -841,15 +931,35 @@ export const messagingService = {
       }
     }
 
+    // HIGH-1 review round 5 — Log granulaire par audit row échoué pour
+    // préserver la forensique CNIL (savoir QUELS patientIds ont perdu
+    // leur trace d'accès, pas juste "N failed"). Le mapping index→pid
+    // suit l'ordre `exposedPatientIds` si présent, sinon pas de pivot.
     const auditResults = await Promise.allSettled(auditTasks)
-    const auditFailures = auditResults.filter((r) => r.status === "rejected")
-    if (auditFailures.length > 0) {
+    const failedAuditPatientIds: number[] = []
+    let firstReason: unknown = null
+    for (const [idx, r] of auditResults.entries()) {
+      if (r.status === "rejected") {
+        if (firstReason === null) firstReason = r.reason
+        if (exposedPatientIds.length > 0 && idx < exposedPatientIds.length) {
+          failedAuditPatientIds.push(exposedPatientIds[idx]!)
+        }
+      }
+    }
+    if (failedAuditPatientIds.length > 0 || firstReason !== null) {
       // Audit gap loggé pour SOC — NE bloque PAS la réponse inbox.
       logger.error(
         "messaging",
-        `listThreads audit emit failed (${auditFailures.length}/${auditTasks.length})`,
-        { userId, resource: "MESSAGE" },
-        (auditFailures[0] as PromiseRejectedResult).reason,
+        "listThreads audit emit failed",
+        {
+          userId,
+          resource: "MESSAGE",
+          failedAuditCount: auditResults.filter((r) => r.status === "rejected").length,
+          ...(failedAuditPatientIds.length > 0 && {
+            failedAuditPatientIds,
+          }),
+        },
+        firstReason,
       )
     }
 

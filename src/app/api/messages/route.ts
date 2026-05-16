@@ -144,12 +144,12 @@ export async function POST(req: NextRequest) {
         )
       }
       if (e instanceof MessagingAccessError) {
-        // NEW-H1 review round 4 — Anti-énumération RGPD Art. 5(1)(f).
+        // NEW-H1 round 4 + CRITICAL-1 round 5 — Anti-énumération RGPD Art. 5(1)(f).
         // La raison `recipientConsentRevoked` ne doit JAMAIS être exposée
-        // côté client : un attaquant authentifié pourrait énumérer les
-        // utilisateurs ayant révoqué leur consent (cartographie graphe
-        // social Diabeo). La raison reste dans l'audit log (admin-only,
-        // immuable) pour forensique CNIL.
+        // côté client (mapped → `forbidden` générique). Le service-side
+        // émet un audit `accessDenied` (résource MESSAGE, kind
+        // `message.send.recipientConsentRevoked`) AVANT le throw — la
+        // forensique CNIL est ainsi préservée via audit_logs admin-only.
         const safeReason =
           e.reason === "recipientConsentRevoked" ? "forbidden" : e.reason
         return NextResponse.json(

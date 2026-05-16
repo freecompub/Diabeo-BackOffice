@@ -85,11 +85,13 @@ ALTER TABLE "messages"
 -- 3. Indexes
 -- ─────────────────────────────────────────────────────────────
 
--- Unread count badge + inbox tri.
--- Query : SELECT count(*) WHERE to_user_id = $me AND read_at IS NULL
---                          AND deleted_at IS NULL.
-CREATE INDEX "messages_to_user_id_read_at_created_at_idx"
-    ON "messages"("to_user_id", "read_at", "created_at");
+-- Prisma M-1 review round 5 — Index `(to_user_id, read_at, created_at)`
+-- supprimé : subsumé par `messages_unread_groupby_idx` (partial WHERE
+-- read_at IS NULL AND deleted_at IS NULL — couvre unreadCount + inbox tri)
+-- ET `messages_to_thread_recency_idx` (partial WHERE deleted_at IS NULL —
+-- couvre listThreads UNION ALL branch). Aucune query restante ne
+-- bénéficie exclusivement de l'index non-partial. Économie write
+-- throughput sur INSERT (1 b-tree de moins).
 
 -- Prisma H1 review round 3 — Couvre le `groupBy` unread aggregate
 -- de `listThreads` : SELECT conversation_key, count(*) WHERE
