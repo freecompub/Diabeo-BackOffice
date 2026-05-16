@@ -73,11 +73,23 @@ describe("generateUserExport", () => {
     prismaMock.userPrivacySettings.findUnique.mockResolvedValue(null)
     prismaMock.userDayMoment.findMany.mockResolvedValue([])
     prismaMock.patient.findFirst.mockResolvedValue(null)
+    // US-2076 — messages Art. 20 portability
+    prismaMock.message.findMany.mockResolvedValue([])
+    prismaMock.message.count.mockResolvedValue(0 as any)
 
     const result = await generateUserExport(1)
 
     expect(result).not.toBeNull()
     expect(result!.profile.email).toBe("jean@test.com")
+    // C3 review round 1 — RGPD Art. 20 : export inclut messages.
+    expect(result!.messages).toBeDefined()
+    expect(result!.messages.sent).toEqual([])
+    expect(result!.messages.received).toEqual([])
+    // MED-2 review round 3 — flag truncated + counts pour transparence.
+    expect(result!.messages.totalSent).toBe(0)
+    expect(result!.messages.totalReceived).toBe(0)
+    expect(result!.messages.truncated).toBe(false)
+    expect(result!.messages.exportLimit).toBe(10000)
     expect(result!.profile.firstname).toBe("Jean")
     expect(result!.profile.birthday).toBe("1990-05-10")
     expect(result!.patient).toBeNull()
@@ -113,6 +125,9 @@ describe("generateUserExport", () => {
     prismaMock.patientDevice.findMany.mockResolvedValue([])
     prismaMock.appointment.findMany.mockResolvedValue([])
     prismaMock.medicalDocument.findMany.mockResolvedValue([])
+    // US-2076 — messages Art. 20 portability
+    prismaMock.message.findMany.mockResolvedValue([])
+    prismaMock.message.count.mockResolvedValue(0 as any)
 
     const result = await generateUserExport(1)
 

@@ -43,6 +43,12 @@ const ALLOWED_CONTEXT_KEYS = new Set<string>([
   "resource",
   "attempt",
   "degraded",
+  // US-2076 messaging — decrypt-fail throttle metrics (CR L-2 review round 5).
+  "suppressedSinceLastLog",
+  "cumulativeSuppressed",
+  // US-2076 messaging — listThreads audit failures (HIGH-1 review round 5).
+  "failedAuditCount",
+  "failedAuditPatientIds",
 ])
 
 export interface LogContext {
@@ -57,6 +63,12 @@ export interface LogContext {
   durationMs?: number
   action?: string
   resource?: string
+  /** US-2076 messaging decrypt-fail throttle (CR L-2 review round 5). */
+  suppressedSinceLastLog?: number
+  cumulativeSuppressed?: number
+  /** US-2076 messaging audit failures (HIGH-1 review round 5). */
+  failedAuditCount?: number
+  failedAuditPatientIds?: number[]
   attempt?: number
   degraded?: boolean
 }

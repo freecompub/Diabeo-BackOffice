@@ -393,6 +393,9 @@ model User {
   createdInvoices                   Invoice[]                         @relation("InvoiceCreator")
   // Groupe 9 — Admin & Ops (US-2137 DataBreach)
   declaredDataBreaches              DataBreach[]                      @relation("DataBreachDeclarer")
+  // US-2076 scope A — Messagerie sécurisée 1-to-1
+  messagesSent                      Message[]                         @relation("MessageSender")
+  messagesReceived                  Message[]                         @relation("MessageRecipient")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -601,6 +604,8 @@ model Patient {
   riskScore              PatientRiskScore?
   /// Groupe 7 Batch 1 — Factures liées au patient (consultations, etc.).
   invoices               Invoice[]
+  /// US-2076 scope A — Messages liés au patient (pivot audit US-2268).
+  messages               Message[]
 
   @@index([deletedAt])
   @@map("patients")
@@ -1212,25 +1217,25 @@ model GlycemiaEntry {
 }
 
 model DiabetesEvent {
-  id                String              @id @default(uuid())
-  patientId         Int                 @map("patient_id")
-  eventDate         DateTime            @map("event_date") @db.Timestamptz()
-  eventTypes        DiabetesEventType[] @map("event_types")
-  glycemiaValue     Decimal?            @map("glycemia_value") @db.Decimal(6, 2)
-  carbohydrates     Decimal?            @db.Decimal(6, 2)
-  bolusDose         Decimal?            @map("bolus_dose") @db.Decimal(5, 2)
-  basalDose         Decimal?            @map("basal_dose") @db.Decimal(5, 2)
-  activityType      String?             @map("activity_type") @db.VarChar(20)
-  activityDuration  Int?                @map("activity_duration") // minutes
+  id                   String              @id @default(uuid())
+  patientId            Int                 @map("patient_id")
+  eventDate            DateTime            @map("event_date") @db.Timestamptz()
+  eventTypes           DiabetesEventType[] @map("event_types")
+  glycemiaValue        Decimal?            @map("glycemia_value") @db.Decimal(6, 2)
+  carbohydrates        Decimal?            @db.Decimal(6, 2)
+  bolusDose            Decimal?            @map("bolus_dose") @db.Decimal(5, 2)
+  basalDose            Decimal?            @map("basal_dose") @db.Decimal(5, 2)
+  activityType         String?             @map("activity_type") @db.VarChar(20)
+  activityDuration     Int?                @map("activity_duration") // minutes
   /// Groupe 6 Batch 1 (US-2059) — métriques détaillées physicalActivity.
   /// Tous optionnels : une entrée manuelle ne renseigne souvent que
   /// `activityType` + `activityDuration`. Les capteurs (US-2060/2061)
   /// fournissent un sous-ensemble.
-  activityIntensity      ActivityIntensity? @map("activity_intensity")
-  activitySteps          Int?               @map("activity_steps")
-  activityDistanceM      Int?               @map("activity_distance_m") // mètres
-  activityCalories       Int?               @map("activity_calories") // kcal
-  activityHeartRateAvg   Int?               @map("activity_heart_rate_avg") // bpm
+  activityIntensity    ActivityIntensity?  @map("activity_intensity")
+  activitySteps        Int?                @map("activity_steps")
+  activityDistanceM    Int?                @map("activity_distance_m") // mètres
+  activityCalories     Int?                @map("activity_calories") // kcal
+  activityHeartRateAvg Int?                @map("activity_heart_rate_avg") // bpm
   /// Groupe 6 Batch 1 (US-2060/2061) — provenance + dedup mobile sync.
   /// `externalSyncId` est l'UUID que HealthKit / Google Fit attribue à
   /// chaque sample. Couplé à `activitySource` il forme la clé unique
@@ -1239,21 +1244,21 @@ model DiabetesEvent {
   /// pose explicitement la valeur (`manual` à la création, valeur enum
   /// pour bulkSync). Évite la pollution cross-domain (events non
   /// physicalActivity) lors d'inserts directs.
-  activitySource         ActivitySource?    @map("activity_source")
-  externalSyncId         String?            @map("external_sync_id") @db.VarChar(128)
-  contextType       String?             @map("context_type") @db.VarChar(20)
-  weight            Decimal?            @db.Decimal(5, 2)
-  hba1c             Decimal?            @db.Decimal(5, 2)
-  ketones           Decimal?            @db.Decimal(5, 2)
-  systolicPressure  Int?                @map("systolic_pressure") @db.SmallInt
-  diastolicPressure Int?                @map("diastolic_pressure") @db.SmallInt
-  comment           String?
+  activitySource       ActivitySource?     @map("activity_source")
+  externalSyncId       String?             @map("external_sync_id") @db.VarChar(128)
+  contextType          String?             @map("context_type") @db.VarChar(20)
+  weight               Decimal?            @db.Decimal(5, 2)
+  hba1c                Decimal?            @db.Decimal(5, 2)
+  ketones              Decimal?            @db.Decimal(5, 2)
+  systolicPressure     Int?                @map("systolic_pressure") @db.SmallInt
+  diastolicPressure    Int?                @map("diastolic_pressure") @db.SmallInt
+  comment              String?
   /// US-2053 — Validation soignant. `validatedBy` = User.id (NURSE+), null
   /// si l'event n'a pas (encore) été revu par un PS.
-  validatedAt       DateTime?           @map("validated_at") @db.Timestamptz()
-  validatedBy       Int?                @map("validated_by")
-  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
+  validatedAt          DateTime?           @map("validated_at") @db.Timestamptz()
+  validatedBy          Int?                @map("validated_by")
+  createdAt            DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt            DateTime            @updatedAt @map("updated_at") @db.Timestamptz()
 
   patient    Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
   validator  User?       @relation("DiabetesEventValidator", fields: [validatedBy], references: [id], onDelete: SetNull)
@@ -2355,8 +2360,8 @@ model TeleconsultationActe {
   invoicedBy    Int?      @map("invoiced_by")
   createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz()
 
-  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
-  invoicer    User?       @relation("TeleconsultInvoicer", fields: [invoicedBy], references: [id], onDelete: SetNull)
+  appointment Appointment  @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  invoicer    User?        @relation("TeleconsultInvoicer", fields: [invoicedBy], references: [id], onDelete: SetNull)
   /// Groupe 7 Batch 1 — Ligne facture éventuellement émise pour cet acte.
   invoiceItem InvoiceItem?
 
@@ -3110,4 +3115,74 @@ model DataBreach {
   /// "violations déclarées par user X".
   @@index([declaredBy])
   @@map("data_breaches")
+}
+
+/// US-2076 scope A — Messagerie sécurisée 1↔1 patient↔PS et staff↔staff.
+///
+/// Approche V1 = REST + polling 60s badge + FCM data-only push (sans
+/// WebSocket realtime — reporté V2 sous `US-2076bis`, voir CLAUDE.md
+/// archi décision 2026-05-15). Pattern Slack-like adapté HDS.
+///
+/// Sécurité HDS :
+///   - `bodyEncrypted` : corps chiffré AES-256-GCM (IV+TAG+CIPHERTEXT)
+///     via `lib/crypto/health-data.ts`. JAMAIS de plaintext en DB.
+///   - `conversationKey` : SHA-256(min(uid1,uid2)+":"+max(uid1,uid2)) hex 64,
+///     index pour fetch thread + scoping (les deux participants partagent
+///     la même clé canonique).
+///   - `patientId` : pivot audit US-2268 si message lié à un patient
+///     (patient↔PS, ou staff↔staff discutant d'un patient). NULL pour
+///     coordination staff pure (sans patient identifié).
+///   - `deletedAt` : soft-delete RGPD (Art. 17). Trigger fait DELETE
+///     physique sur cascade User.
+///   - FK Cascade : suppression user → ses messages purgés. Audit log
+///     préservé (immuable par trigger).
+///
+/// Indexes :
+///   - `(toUserId, readAt, createdAt)` : unread count + inbox tri.
+///   - `(conversationKey, createdAt DESC)` : fetch d'un thread.
+///   - `(patientId)` : pivot US-2268 — events messagerie d'un patient.
+model Message {
+  id              String    @id @default(cuid())
+  /// SHA-256(min(uid1,uid2)+":"+max(uid1,uid2)) hex 64 — canonical hash.
+  conversationKey String    @map("conversation_key") @db.VarChar(64)
+  fromUserId      Int       @map("from_user_id")
+  toUserId        Int       @map("to_user_id")
+  /// Corps chiffré AES-256-GCM (IV+TAG+CIPHERTEXT). Bytes natif PostgreSQL.
+  bodyEncrypted   Bytes     @map("body_encrypted")
+  /// Pivot US-2268 — Patient.id si message contextualise un patient,
+  /// NULL pour coordination staff pure sans patient identifié.
+  patientId       Int?      @map("patient_id")
+  readAt          DateTime? @map("read_at") @db.Timestamptz()
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz()
+
+  /// FK Restrict (Prisma H3 / HSA MED-3 review round 3) — empêche
+  /// toute DELETE physique raw SQL accidentelle. La suppression user
+  /// passe par `deletion.service.ts` qui purge explicitement.
+  fromUser User     @relation("MessageSender", fields: [fromUserId], references: [id], onDelete: Restrict)
+  toUser   User     @relation("MessageRecipient", fields: [toUserId], references: [id], onDelete: Restrict)
+  patient  Patient? @relation(fields: [patientId], references: [id], onDelete: SetNull)
+
+  /// Prisma M-1 review round 5 — Index `(toUserId, readAt, createdAt)` retiré
+  /// (subsumé par `messages_unread_groupby_idx` partial + `messages_to_thread_recency_idx` partial).
+  /// Prisma H1 review round 3 — couvre le `groupBy conversationKey` du
+  /// unread aggregate dans `listThreads`. Partial WHERE défini en SQL.
+  @@index([toUserId, readAt, conversationKey], map: "messages_unread_groupby_idx")
+  /// Fetch d'un thread paginé par cursor `createdAt DESC`.
+  @@index([conversationKey, createdAt(sort: Desc)])
+  /// Pivot US-2268 — forensique "tous les messages liés au patient X".
+  /// Partial WHERE patient_id IS NOT NULL défini en SQL (Prisma 7 ne
+  /// supporte pas encore les partial indexes côté schema).
+  @@index([patientId])
+  /// FK index pour forensique deleted messages (les autres indexes
+  /// partials `WHERE deleted_at IS NULL` ne couvrent pas ce cas).
+  @@index([fromUserId])
+  /// NEW-H1 CR review round 4 — Composite indexes pour DISTINCT ON
+  /// listThreads. Permet à PG d'utiliser Index Skip Scan / Merge Append.
+  /// Partial WHERE deleted_at IS NULL défini en SQL.
+  @@index([fromUserId, conversationKey, createdAt(sort: Desc)], map: "messages_from_thread_recency_idx")
+  @@index([toUserId, conversationKey, createdAt(sort: Desc)], map: "messages_to_thread_recency_idx")
+  /// Soft-delete RGPD filter. Partial WHERE deleted_at IS NOT NULL en SQL.
+  @@index([deletedAt])
+  @@map("messages")
 }

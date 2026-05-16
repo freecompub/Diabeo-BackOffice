@@ -77,6 +77,21 @@ const SPEC_ENCRYPTION_KEY: EnvSpec = {
   },
 }
 
+const SPEC_CONVERSATION_KEY_PEPPER: EnvSpec = {
+  name: "CONVERSATION_KEY_PEPPER",
+  validate: (v) => {
+    // US-2076 HIGH-2 review round 5 — HMAC-SHA256 pepper pour
+    // `conversation_key`. 32+ bytes hex empêche brute-force du graphe
+    // bipartite patient↔médecin même sur dump DB leak.
+    if (!/^[0-9a-fA-F]{64,}$/.test(v)) {
+      throw new Error(
+        "CONVERSATION_KEY_PEPPER must be at least 64 hex chars (32 bytes). " +
+          "Generate via: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+      )
+    }
+  },
+}
+
 const SPEC_HMAC_SECRET: EnvSpec = {
   name: "HMAC_SECRET",
   validate: (v) => {
@@ -147,6 +162,7 @@ const REQUIRED_FULL: readonly EnvSpec[] = [
   SPEC_DATABASE_URL,
   SPEC_ENCRYPTION_KEY,
   SPEC_HMAC_SECRET,
+  SPEC_CONVERSATION_KEY_PEPPER,
   SPEC_JWT_PRIVATE_KEY,
   SPEC_JWT_PUBLIC_KEY,
 ]

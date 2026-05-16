@@ -67,14 +67,20 @@ echo "JWT_PRIVATE_KEY=\"$(awk 'NF {sub(/\r/, ""); printf "%s\\n", $0}' /tmp/jwt-
 echo "JWT_PUBLIC_KEY=\"$(awk 'NF {sub(/\r/, ""); printf "%s\\n", $0}' /tmp/jwt-public.pem)\""
 ```
 
-### 3.2 HMAC + clé de chiffrement (32 bytes hex chacun)
+### 3.2 HMAC + clé de chiffrement + pepper messagerie (32 bytes hex chacun)
 
 ```bash
 node -e "console.log('HMAC_SECRET=\"' + require('crypto').randomBytes(32).toString('hex') + '\"')"
 node -e "console.log('HEALTH_DATA_ENCRYPTION_KEY=\"' + require('crypto').randomBytes(32).toString('hex') + '\"')"
+node -e "console.log('CONVERSATION_KEY_PEPPER=\"' + require('crypto').randomBytes(32).toString('hex') + '\"')"
 ```
 
-Colle les 4 sorties dans `.env`.
+Colle les 5 sorties dans `.env`.
+
+> ⚠️ **`CONVERSATION_KEY_PEPPER` doit être DISTINCT de `HMAC_SECRET`** —
+> chaque secret a un usage unique. Cross-domain key reuse interdit par
+> ANSSI RGS §B1.2 (compromission HMAC email = compromission graphe
+> social patient↔médecin). Régénérer trois valeurs **indépendantes**.
 
 ### 3.3 Configuration S3 (déjà bonne pour le local)
 

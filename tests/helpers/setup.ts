@@ -15,3 +15,8 @@ process.env.HEALTH_DATA_ENCRYPTION_KEY =
 
 // HMAC secret for email lookup
 process.env.HMAC_SECRET = "test-hmac-secret-32-bytes-long!!"
+
+// US-2076 HIGH-2 review round 5 — Pepper HMAC pour conversation_key.
+// 32 bytes hex test-only — generate via crypto.randomBytes(32).toString("hex").
+process.env.CONVERSATION_KEY_PEPPER =
+  "f1e2d3c4b5a69788796a5b4c3d2e1f00112233445566778899aabbccddeeff00"
