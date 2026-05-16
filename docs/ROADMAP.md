@@ -289,13 +289,20 @@ avant merge. Suite 1345 tests verts, branches 76.64%, migration `groupe3_refinem
 ajoutée (FK adjustment_proposal_acks.patient_id + 2 indexes performance).
 Total V1 effectif Groupe 3 : 12 US (vs 15 affiché initialement).
 
-### Groupe 4 — Devices & Sync (3 US, 100% DONE)
+### Groupe 4 — Devices & Sync (3 US, 100% DONE PR #415)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2091 | Compatibilité matérielle | ✅ DONE PR — `SupportedDevice` whitelist + search NURSE+ + CRUD ADMIN |
-| US-2092 | Désactivation / révocation | ✅ DONE PR — soft-revoke atomic CAS + raison chiffrée AES + idempotent |
-| US-2093 | Historique des dispositifs | ✅ DONE PR — `listHistory` (incl. revoked) + pivot patientId US-2268 |
+| US-2091 | Compatibilité matérielle | ✅ DONE PR #415 — `SupportedDevice` whitelist + search NURSE+ + CRUD ADMIN |
+| US-2092 | Désactivation / révocation | ✅ DONE PR #415 — soft-revoke atomic CAS + raison chiffrée AES + idempotent |
+| US-2093 | Historique des dispositifs | ✅ DONE PR #415 — `listHistory` cursor-safe + pivot patientId US-2268 |
+
+**3 rounds review multi-agents** (46 findings résolus) :
+- Round 1 (`5490edd`) — 14 findings (2 C + 6 H + 5 M + 1 INFO) : CR C1 shared `canAccessPatient`, CR C2 VIEWER mask `revokedReason` (cross-actor PHI), CR H1 audit transactionnel, HSA H1 export RGPD Art. 20 decrypt, Prisma F-1 NULL ordering.
+- Round 2 (`b95e69c`) — 18 findings (2 H + 5 M + 11 L) : CR H2 CHECK enforce `revoked_reason_enc NOT NULL`, CR H4 consent du data subject (pas caller), HSA M1 `createdAt` immutable, HSA M2 VARCHAR cap, HSA L1 cursor pagination keyset.
+- Round 3 (`e8f0f71`) — 14 findings (3 H + 5 M + 6 L) : H1 cursor compound orderBy unsafe → simplifié `[createdAt, id]`, H2 existence oracle 404 avant RBAC → helper `resolvePatientForConsent` 403 uniforme, H3 backfill `created_at` legacy, M1 VARCHAR(2816) UTF-8 safe + `Buffer.byteLength` Zod, M2 trigger `SET search_path` (ANSSI CWE-426), M3 cache GDPR invalidation log SOC, M4+M5 `docs/compliance/dpia-devices.md`.
+
+Helper `resolvePatientForConsent` exporté (`@/lib/access-control`) — réutilisable pour toutes les routes `/api/patients/[id]/*` (V1.5 cleanup transversal anti-énumération). DPIA devices (`docs/compliance/dpia-devices.md`) — validation DPO à venir sur §3.1 posture Art. 9.2.a stricte + §3.2 KMS V2 + §3.4 durée rétention.
 
 ### Groupe 5 — Insuline & Repas (5 US, V1 100% DONE)
 
