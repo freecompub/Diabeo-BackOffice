@@ -46,6 +46,11 @@ function setupValidEnv() {
     "CONVERSATION_KEY_PEPPER",
     "a".repeat(32) + "b".repeat(16) + "c".repeat(16),
   )
+  // US-2026 H1 round 2 — pepper HMAC audit anonymisation (64 hex chars).
+  vi.stubEnv(
+    "AUDIT_PEPPER",
+    "d".repeat(16) + "e".repeat(32) + "f".repeat(16),
+  )
   vi.stubEnv("JWT_PRIVATE_KEY", VALID_PRIV_PEM)
   vi.stubEnv("JWT_PUBLIC_KEY", VALID_PUB_PEM)
 }
@@ -101,6 +106,22 @@ describe("assertRequiredEnv", () => {
 
   it("rejects CONVERSATION_KEY_PEPPER non-hex chars", () => {
     vi.stubEnv("CONVERSATION_KEY_PEPPER", "z".repeat(64))
+    expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
+  })
+
+  // US-2026 H1 round 2 — AUDIT_PEPPER validation.
+  it("rejects AUDIT_PEPPER missing", () => {
+    vi.stubEnv("AUDIT_PEPPER", "")
+    expect(() => assertRequiredEnv()).toThrow(/AUDIT_PEPPER/)
+  })
+
+  it("rejects AUDIT_PEPPER too short (< 64 hex chars)", () => {
+    vi.stubEnv("AUDIT_PEPPER", "a".repeat(32))
+    expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
+  })
+
+  it("rejects AUDIT_PEPPER non-hex chars", () => {
+    vi.stubEnv("AUDIT_PEPPER", "z".repeat(64))
     expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
   })
 

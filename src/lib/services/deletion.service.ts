@@ -206,6 +206,30 @@ export async function deleteUserAccount(
       data: { managerId: null },
     })
 
+    // M7 round 2 review — Audit row dedie USER_INS si l'utilisateur avait
+    // un INS (forensique HDS L.1111-8 : trace de l'effacement INS distincte
+    // du master `user.account.deletion`). Le `previousInsHmac` permet
+    // chainage forensique sans plaintext.
+    const userBeforeAnon = await tx.user.findUnique({
+      where: { id: userId },
+      select: { insHmac: true },
+    })
+    if (userBeforeAnon?.insHmac) {
+      await auditService.logWithTx(tx, {
+        userId,
+        action: "UPDATE",
+        resource: "USER_INS",
+        resourceId: String(userId),
+        ipAddress,
+        userAgent,
+        metadata: {
+          kind: "user.ins.cleared",
+          reason: "user_deletion",
+          previousInsHmac: userBeforeAnon.insHmac,
+        },
+      })
+    }
+
     // Anonymize user — keep the row for audit log FK integrity
     await tx.user.update({
       where: { id: userId },
@@ -233,10 +257,15 @@ export async function deleteUserAccount(
         nirpp: null,
         nirppPolicyholder: null,
         ins: null,
-        // US-2026 — Effacer aussi le HMAC (sinon RNIPP unique constraint
-        // bloque une eventuelle reattribution de l'INS apres suppression
-        // legale du compte).
+        // US-2026 — Effacer aussi le HMAC + colonnes qualite round 2 (sinon
+        // RNIPP unique constraint bloque une eventuelle reattribution post-
+        // suppression legale + CHECK coherence `users_ins_coherence_check`
+        // exige all-null OR all-set).
         insHmac: null,
+        insQualityStatus: null,
+        insSetAt: null,
+        insSetByUserId: null,
+        insTraitsHash: null,
         codeBirthPlace: null,
         pic: null,
         mfaSecret: null,

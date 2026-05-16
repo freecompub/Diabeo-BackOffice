@@ -30,3 +30,47 @@ export function hmacField(value: string): string {
   if (!key) throw new Error("HMAC_SECRET is not set")
   return createHmac("sha256", key).update(value.toLowerCase().trim()).digest("hex")
 }
+
+/**
+ * US-2026 M6 review — HMAC dedie INS (Identite Nationale Sante).
+ *
+ * Distinct de `hmacField` car :
+ *   - INS = digits-only (0-9), `toLowerCase` est un no-op mais cree un
+ *     couplage implicite avec `hmacField` qui pourrait casser le HMAC si
+ *     jamais l'INS incluait des lettres (DOM-TOM 9A-9Z theoriques).
+ *   - Pas de `trim` defensif a l'interieur — le caller (ins.service) est
+ *     responsable de `normalizeIns` AVANT d'invoquer.
+ *
+ * Reutilise `HMAC_SECRET` (coherent avec les autres HMAC). Si rotation
+ * independante INS necessaire en V2, basculer vers `HMAC_INS_SECRET` dedie.
+ *
+ * @param insNormalized INS deja normalise (15 digits, pas d'espace).
+ * @returns 64-char hex HMAC-SHA256.
+ */
+export function hmacIns(insNormalized: string): string {
+  const key = process.env.HMAC_SECRET
+  if (!key) throw new Error("HMAC_SECRET is not set")
+  return createHmac("sha256", key).update(insNormalized).digest("hex")
+}
+
+/**
+ * US-2026 H1 review — HMAC dedie anonymisation IDs dans audit metadata.
+ *
+ * Utilise `AUDIT_PEPPER` (separe de HMAC_SECRET) → rotation independante
+ * + correlation interne DPO/RSSI via fonction dediee.
+ *
+ * Usage typique : `collidingUserId` dans audit collision INS — evite leak
+ * cross-cabinet d'identite via audit log lisible PS.
+ *
+ * @param domain Tag de domaine ("ins-collision", "msg-recipient") pour
+ *               separer les espaces de hashage en cas de besoin.
+ * @param plaintextId ID a anonymiser (typiquement User.id).
+ * @returns 64-char hex HMAC-SHA256.
+ */
+export function hmacAuditId(domain: string, plaintextId: string | number): string {
+  const pepper = process.env.AUDIT_PEPPER
+  if (!pepper) throw new Error("AUDIT_PEPPER is not set")
+  return createHmac("sha256", pepper)
+    .update(`${domain}:${plaintextId}`)
+    .digest("hex")
+}

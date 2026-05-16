@@ -62,7 +62,11 @@ describe("deleteUserAccount", () => {
       userPrivacySettings: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       healthcareMember: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      user: { update: vi.fn().mockResolvedValue({}) },
+      user: {
+        update: vi.fn().mockResolvedValue({}),
+        // US-2026 round 2 M7 — clearIns audit dans deletion tx
+        findUnique: vi.fn().mockResolvedValue({ insHmac: null }),
+      },
     }
 
     prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -148,7 +152,11 @@ describe("deleteUserAccount", () => {
       patient: { update: vi.fn().mockResolvedValue({ id: 10, deletedAt: new Date() }) },
       healthcareMember: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      user: { update: vi.fn().mockResolvedValue({}) },
+      user: {
+        update: vi.fn().mockResolvedValue({}),
+        // US-2026 round 2 M7 — clearIns audit dans deletion tx
+        findUnique: vi.fn().mockResolvedValue({ insHmac: null }),
+      },
     }
 
     prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)

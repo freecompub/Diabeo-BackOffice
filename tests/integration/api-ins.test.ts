@@ -43,6 +43,7 @@ import {
   insService,
   InsValidationError,
   InsCollisionError,
+  InsCollisionRateLimitError,
   InsNotFoundError,
 } from "@/lib/services/ins.service"
 
@@ -78,19 +79,27 @@ const VALID_INS = "190017500100196"
 // ────────────────────────────────────────────────────────────────
 
 describe("GET /api/patients/[id]/ins", () => {
-  it("200 + ins dechiffre + Cache-Control no-store", async () => {
+  it("200 + ins dechiffre + headers ANSSI complets (M2 round 2)", async () => {
     vi.mocked(insService.getIns).mockResolvedValue({
       ins: VALID_INS, hasIns: true,
+      qualityStatus: "saisi_non_verifie",
+      setAt: new Date("2026-05-17T10:00:00Z"),
     })
     const res = await GET(
       makeReq("/api/patients/42/ins"),
       { params: Promise.resolve({ id: "42" }) },
     )
     expect(res.status).toBe(200)
+    // M2 review — 4 headers ANSSI RGS §4.5.
     expect(res.headers.get("Cache-Control")).toContain("no-store")
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(res.headers.get("Content-Security-Policy")).toContain("default-src 'none'")
     const body = await res.json()
     expect(body.ins).toBe(VALID_INS)
     expect(body.hasIns).toBe(true)
+    expect(body.qualityStatus).toBe("saisi_non_verifie")
+    expect(body.setAt).toBe("2026-05-17T10:00:00.000Z")
   })
 
   it("401 sans JWT", async () => {
@@ -116,6 +125,8 @@ describe("GET /api/patients/[id]/ins", () => {
   it("VIEWER own : peut lire son propre INS", async () => {
     vi.mocked(insService.getIns).mockResolvedValue({
       ins: VALID_INS, hasIns: true,
+      qualityStatus: "saisi_non_verifie",
+      setAt: new Date("2026-05-17T10:00:00Z"),
     })
     const res = await GET(
       makeReq("/api/patients/42/ins", { role: "VIEWER" }),
@@ -127,6 +138,8 @@ describe("GET /api/patients/[id]/ins", () => {
   it("NURSE : peut lire (RBAC NURSE+)", async () => {
     vi.mocked(insService.getIns).mockResolvedValue({
       ins: VALID_INS, hasIns: true,
+      qualityStatus: "saisi_non_verifie",
+      setAt: new Date("2026-05-17T10:00:00Z"),
     })
     const res = await GET(
       makeReq("/api/patients/42/ins", { role: "NURSE" }),
@@ -142,7 +155,9 @@ describe("GET /api/patients/[id]/ins", () => {
 
 describe("PUT /api/patients/[id]/ins", () => {
   it("200 DOCTOR set INS valide", async () => {
-    vi.mocked(insService.setIns).mockResolvedValue({ updated: true })
+    vi.mocked(insService.setIns).mockResolvedValue({
+      updated: true, qualityStatus: "saisi_non_verifie",
+    })
     const res = await PUT(
       makeReq("/api/patients/42/ins", {
         method: "PUT", role: "DOCTOR",
@@ -157,7 +172,9 @@ describe("PUT /api/patients/[id]/ins", () => {
   })
 
   it("200 VIEWER set son propre INS", async () => {
-    vi.mocked(insService.setIns).mockResolvedValue({ updated: true })
+    vi.mocked(insService.setIns).mockResolvedValue({
+      updated: true, qualityStatus: "saisi_non_verifie",
+    })
     const res = await PUT(
       makeReq("/api/patients/42/ins", {
         method: "PUT", role: "VIEWER",
@@ -251,6 +268,41 @@ describe("PUT /api/patients/[id]/ins", () => {
     expect(res.status).toBe(403)
     const body = await res.json()
     expect(body.error).toBe("forbidden")
+  })
+
+  // H2 round 2 — rate-limit anti-énumération RNIPP
+  it("H2 round 2 — 429 + Retry-After si InsCollisionRateLimitError", async () => {
+    vi.mocked(insService.setIns).mockRejectedValue(
+      new InsCollisionRateLimitError(86400),
+    )
+    const res = await PUT(
+      makeReq("/api/patients/42/ins", {
+        method: "PUT", role: "DOCTOR",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ins: VALID_INS }),
+      }),
+      { params: Promise.resolve({ id: "42" }) },
+    )
+    expect(res.status).toBe(429)
+    expect(res.headers.get("Retry-After")).toBe("86400")
+    const body = await res.json()
+    expect(body.error).toBe("rateLimited")
+    expect(body.retryAfterSec).toBe(86400)
+  })
+
+  // VIEWER cross-patient (L7 round 1)
+  it("L7 — VIEWER tentative PUT autre patient → 403 forbidden via resolvePatientForConsent null", async () => {
+    const { resolvePatientForConsent } = await import("@/lib/access-control")
+    vi.mocked(resolvePatientForConsent).mockResolvedValueOnce(null)
+    const res = await PUT(
+      makeReq("/api/patients/99/ins", {
+        method: "PUT", role: "VIEWER",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ins: VALID_INS }),
+      }),
+      { params: Promise.resolve({ id: "99" }) },
+    )
+    expect(res.status).toBe(403)
   })
 })
 

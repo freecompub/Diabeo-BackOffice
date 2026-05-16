@@ -10,8 +10,14 @@
  * verifie RBAC + existence + consent en un seul appel, retourne 403
  * forbidden uniforme pour les non-autorises.
  *
- * Cache-Control: no-store (ANSSI RGS §4.5 — donnee identifiante sensible
- * jamais cachee navigateur/proxy).
+ * Rate-limit anti-enumeration RNIPP (H2 round 2) : 5 collisions/24h max
+ * par auditUserId → 429 RateLimited (audit + SOC alerte).
+ *
+ * Headers ANSSI RGS §4.5 (M2 round 2) :
+ *   - Cache-Control: no-store, private
+ *   - Referrer-Policy: no-referrer
+ *   - X-Content-Type-Options: nosniff
+ *   - Content-Security-Policy: default-src 'none'
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
@@ -27,7 +33,9 @@ import {
   insService,
   InsValidationError,
   InsCollisionError,
+  InsCollisionRateLimitError,
   InsNotFoundError,
+  INS_AUDIT_KIND,
 } from "@/lib/services/ins.service"
 
 const paramsSchema = z.object({
@@ -35,18 +43,28 @@ const paramsSchema = z.object({
 })
 
 const putBodySchema = z.object({
-  // Accepte espaces (Zod min/max sur normalised) — la normalisation finale
-  // est faite par le service (`normalizeIns`).
-  ins: z.string().min(15).max(25), // 15 chiffres min, marge pour 5 espaces
+  ins: z.string().min(15).max(25), // 15 chiffres + marge espaces
 })
 
+// M2 round 2 review — Headers ANSSI RGS §4.5 sur toutes les routes INS.
+// PHI defense-en-profondeur (cache navigateur/proxy, Referer leak, MIME
+// sniffing, CSP fallback no-resource).
+const ANSSI_SECURITY_HEADERS = {
+  "Cache-Control": "no-store, private",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+  "Content-Security-Policy": "default-src 'none'",
+} as const
+
 // ─────────────────────────────────────────────────────────────
-// Helper RBAC role-gated write/clear (DOCTOR+ OR VIEWER own pour set).
+// Helper RBAC role-gated write/clear.
 // ─────────────────────────────────────────────────────────────
 function canWriteIns(role: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"): boolean {
-  // VIEWER peut definir/clear son propre INS (auto-onboarding patient).
-  // NURSE = lecture uniquement (cf. spec — DOCTOR cree, NURSE consulte).
+  // VIEWER peut definir son propre INS (auto-onboarding patient).
+  // NURSE = lecture uniquement (DOCTOR cree, NURSE consulte).
   // ADMIN = full (audit + correctif).
+  // H5 round 2 review — l'audit metadata `setByRole` trace le role qui a
+  // saisi, le DPO peut filtrer "INS saisi par VIEWER" pour identitovigilance.
   return role === "ADMIN" || role === "DOCTOR" || role === "VIEWER"
 }
 
@@ -54,6 +72,10 @@ function canDeleteIns(role: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"): boolean {
   // VIEWER (patient) ne peut PAS clear son INS — passe par DOCTOR/ADMIN
   // ou bien suppression compte RGPD Art. 17.
   return role === "ADMIN" || role === "DOCTOR"
+}
+
+function jsonWithSecurityHeaders(body: unknown, status = 200): NextResponse {
+  return NextResponse.json(body, { status, headers: ANSSI_SECURITY_HEADERS })
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -68,7 +90,7 @@ export async function GET(
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {
-      return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+      return jsonWithSecurityHeaders({ error: "validationFailed" }, 400)
     }
     const user = requireAuth(req)
 
@@ -83,13 +105,13 @@ export async function GET(
             ipAddress: ctx.ipAddress,
             userAgent: ctx.userAgent,
             requestId: ctx.requestId,
-            metadata: { kind: "user.ins.accessDenied" },
+            metadata: { kind: INS_AUDIT_KIND.ACCESS_DENIED },
           }).catch(() => undefined)
         },
       },
     )
     if (!resolved) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      return jsonWithSecurityHeaders({ error: "forbidden" }, 403)
     }
 
     try {
@@ -97,19 +119,21 @@ export async function GET(
         resolved.ownerUserId, user.id, ctx,
         { patientId: resolved.patientId },
       )
-      return NextResponse.json(
-        { ins: result.ins, hasIns: result.hasIns },
-        { headers: { "Cache-Control": "no-store, private" } },
-      )
+      return jsonWithSecurityHeaders({
+        ins: result.ins,
+        hasIns: result.hasIns,
+        qualityStatus: result.qualityStatus,
+        setAt: result.setAt?.toISOString() ?? null,
+      })
     } catch (e) {
       if (e instanceof InsNotFoundError) {
-        return NextResponse.json({ error: "notFound" }, { status: 404 })
+        return jsonWithSecurityHeaders({ error: "notFound" }, 404)
       }
       throw e
     }
   } catch (e) {
     if (e instanceof AuthError) {
-      return NextResponse.json({ error: e.message }, { status: e.status })
+      return jsonWithSecurityHeaders({ error: e.message }, e.status)
     }
     return mapErrorToResponse(e, "patients/:id/ins GET", ctx.requestId)
   }
@@ -126,13 +150,13 @@ export async function PUT(
   try {
     const ctErr = assertJsonContentType(req)
     if (ctErr) return ctErr
-    const sizeErr = assertBodySize(req, 256) // payload micro : {"ins": "..."}
+    const sizeErr = assertBodySize(req, 256) // payload micro
     if (sizeErr) return sizeErr
 
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {
-      return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+      return jsonWithSecurityHeaders({ error: "validationFailed" }, 400)
     }
     const user = requireAuth(req)
 
@@ -147,59 +171,71 @@ export async function PUT(
             ipAddress: ctx.ipAddress,
             userAgent: ctx.userAgent,
             requestId: ctx.requestId,
-            metadata: { kind: "user.ins.accessDenied" },
+            metadata: { kind: INS_AUDIT_KIND.ACCESS_DENIED },
           }).catch(() => undefined)
         },
       },
     )
     if (!resolved) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      return jsonWithSecurityHeaders({ error: "forbidden" }, 403)
     }
 
-    // Role-gate write : NURSE ne peut pas set (lecture uniquement).
     if (!canWriteIns(user.role)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      return jsonWithSecurityHeaders({ error: "forbidden" }, 403)
     }
 
     const body = await req.json().catch(() => null)
     if (!body) {
-      return NextResponse.json({ error: "invalidJSON" }, { status: 400 })
+      return jsonWithSecurityHeaders({ error: "invalidJSON" }, 400)
     }
     const parsedBody = putBodySchema.safeParse(body)
     if (!parsedBody.success) {
-      return NextResponse.json(
+      return jsonWithSecurityHeaders(
         { error: "validationFailed", details: parsedBody.error.flatten().fieldErrors },
-        { status: 422 },
+        422,
       )
     }
 
     try {
-      await insService.setIns(
-        resolved.ownerUserId, parsedBody.data.ins, user.id, ctx,
+      const result = await insService.setIns(
+        resolved.ownerUserId, parsedBody.data.ins, user.id, user.role, ctx,
         { patientId: resolved.patientId },
       )
-      return NextResponse.json(
-        { updated: true },
-        { headers: { "Cache-Control": "no-store, private" } },
-      )
+      return jsonWithSecurityHeaders({
+        updated: result.updated,
+        qualityStatus: result.qualityStatus,
+      })
     } catch (e) {
       if (e instanceof InsValidationError) {
-        return NextResponse.json(
+        return jsonWithSecurityHeaders(
           { error: "validationFailed", field: e.field, reason: e.reason },
-          { status: 422 },
+          422,
         )
       }
       if (e instanceof InsCollisionError) {
-        return NextResponse.json({ error: "insAlreadyRegistered" }, { status: 409 })
+        return jsonWithSecurityHeaders({ error: "insAlreadyRegistered" }, 409)
+      }
+      if (e instanceof InsCollisionRateLimitError) {
+        // H2 round 2 — rate-limit anti-enumeration RNIPP.
+        return NextResponse.json(
+          { error: "rateLimited", retryAfterSec: e.retryAfterSec },
+          {
+            status: 429,
+            headers: {
+              ...ANSSI_SECURITY_HEADERS,
+              "Retry-After": String(e.retryAfterSec),
+            },
+          },
+        )
       }
       if (e instanceof InsNotFoundError) {
-        return NextResponse.json({ error: "notFound" }, { status: 404 })
+        return jsonWithSecurityHeaders({ error: "notFound" }, 404)
       }
       throw e
     }
   } catch (e) {
     if (e instanceof AuthError) {
-      return NextResponse.json({ error: e.message }, { status: e.status })
+      return jsonWithSecurityHeaders({ error: e.message }, e.status)
     }
     return mapErrorToResponse(e, "patients/:id/ins PUT", ctx.requestId)
   }
@@ -217,7 +253,7 @@ export async function DELETE(
     const raw = await params
     const parsedParams = paramsSchema.safeParse(raw)
     if (!parsedParams.success) {
-      return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+      return jsonWithSecurityHeaders({ error: "validationFailed" }, 400)
     }
     const user = requireAuth(req)
 
@@ -232,31 +268,27 @@ export async function DELETE(
             ipAddress: ctx.ipAddress,
             userAgent: ctx.userAgent,
             requestId: ctx.requestId,
-            metadata: { kind: "user.ins.accessDenied" },
+            metadata: { kind: INS_AUDIT_KIND.ACCESS_DENIED },
           }).catch(() => undefined)
         },
       },
     )
     if (!resolved) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      return jsonWithSecurityHeaders({ error: "forbidden" }, 403)
     }
 
-    // Role-gate : DELETE reserve DOCTOR+/ADMIN (VIEWER passe par compte deletion RGPD).
     if (!canDeleteIns(user.role)) {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      return jsonWithSecurityHeaders({ error: "forbidden" }, 403)
     }
 
     const result = await insService.clearIns(
       resolved.ownerUserId, user.id, ctx,
       { patientId: resolved.patientId, reason: "manual" },
     )
-    return NextResponse.json(
-      result,
-      { headers: { "Cache-Control": "no-store, private" } },
-    )
+    return jsonWithSecurityHeaders(result)
   } catch (e) {
     if (e instanceof AuthError) {
-      return NextResponse.json({ error: e.message }, { status: e.status })
+      return jsonWithSecurityHeaders({ error: e.message }, e.status)
     }
     return mapErrorToResponse(e, "patients/:id/ins DELETE", ctx.requestId)
   }

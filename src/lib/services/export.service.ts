@@ -271,9 +271,21 @@ export async function generateUserExport(userId: number) {
       role: user.role,
       createdAt: user.createdAt.toISOString(),
       // US-2026 — INS (Identite Nationale Sante) inclus dans export RGPD
-      // Art. 20 portabilite (le data subject doit pouvoir recuperer son
-      // identifiant national en clair pour le porter ailleurs).
-      ins: user.ins ? safeDecrypt(user.ins) : null,
+      // Art. 20 portabilite. Wrapper qualite ANS (M1 round 2 review) — le
+      // recepteur de l'export sait si l'INS est qualifie INSi ou simple
+      // saisie non-verifiee. Critique car Referentiel INS ANS v3 §5.1
+      // interdit d'utiliser un INS non-qualifie hors-Diabeo. Disclaimer
+      // explicite pour eviter propagation accidentelle.
+      ins: user.ins
+        ? {
+            value: safeDecrypt(user.ins),
+            qualityStatus: user.insQualityStatus,
+            setAt: user.insSetAt?.toISOString() ?? null,
+            disclaimer: user.insQualityStatus === "saisi_non_verifie"
+              ? "Cet INS a ete saisi manuellement dans Diabeo et N'A PAS ete verifie aupres du Teleservice INSi (ANS). Le Referentiel INS ANS v3 interdit son utilisation comme INS qualifie pour partage avec un systeme tiers (DMP, MSSante, FHIR, facturation tiers payant). Une verification INSi est requise avant toute reutilisation."
+              : null,
+          }
+        : null,
     },
     preferences: { units: unitPreferences, notifications: notifPreferences, privacy: privacySettings, dayMoments },
     patient: patientData,
