@@ -33,7 +33,7 @@ import { logger } from "@/lib/logger"
 // ─────────────────────────────────────────────────────────────
 
 export const DEVICE_LIFECYCLE_BOUNDS = {
-  /** Max revoked reason length (cohérent avec encrypted column TEXT). */
+  /** Max revoked reason length (cohérent avec VARCHAR(1024) DB après chiffrement). */
   MAX_REASON_LEN: 500,
   /** Max history page size (cap forensique pour patient prolifique). */
   MAX_HISTORY_PAGE: 100,
@@ -42,6 +42,11 @@ export const DEVICE_LIFECYCLE_BOUNDS = {
   /** Max search results SupportedDevice. */
   MAX_SEARCH_RESULTS: 50,
 } as const
+
+// CR L7 review — resourceId const pour search référentiel
+// (sentinel "all" ≠ entité spécifique, requête transversale).
+const SEARCH_RESOURCE_ID = "all"
+const LIST_RESOURCE_ID = "list"
 
 export type DeviceLifecycleAuditKind =
   | "device.revoked"
@@ -160,7 +165,7 @@ export const supportedDeviceService = {
       userId: auditUserId,
       action: "READ",
       resource: "SUPPORTED_DEVICE",
-      resourceId: "search",
+      resourceId: SEARCH_RESOURCE_ID,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
@@ -377,9 +382,11 @@ export const deviceLifecycleService = {
     }
 
     // Fetch device + verify patientId match.
+    // CR L3 review — brand/model pour audit metadata (forensique sans
+    // déchiffrement, traçabilité fournisseur).
     const device = await prisma.patientDevice.findFirst({
       where: { id: deviceId, patientId },
-      select: { id: true, revokedAt: true },
+      select: { id: true, revokedAt: true, brand: true, model: true },
     })
     if (!device) {
       throw new DeviceLifecycleNotFoundError("deviceNotFound")
@@ -419,6 +426,9 @@ export const deviceLifecycleService = {
         metadata: {
           kind: AUDIT_KIND.REVOKED,
           patientId, // pivot US-2268
+          // CR L3 — brand/model pour traçabilité fournisseur sans décrypter.
+          ...(device.brand && { brand: device.brand }),
+          ...(device.model && { model: device.model }),
         },
       })
       return { revoked: true, alreadyRevoked: false }
@@ -427,15 +437,19 @@ export const deviceLifecycleService = {
 
   /**
    * US-2093 — Historique complet des devices d'un patient (actifs + révoqués).
-   * Tri chronologique inverse (revokedAt si présent, sinon date d'ajout).
+   * Tri chronologique inverse (revokedAt si présent, sinon createdAt).
+   *
+   * HSA L1 review — Cursor pagination (`cursorId`) pour patient prolifique
+   * (>100 devices forensique post-recall fournisseur). OFFSET-based aurait
+   * O(n) scan ; cursor = O(log n) via index `(patientId, createdAt DESC)`.
    */
   async listHistory(
     patientId: number,
     auditUserId: number,
     auditUserRole: Role,
     ctx: AuditContext,
-    opts?: { limit?: number; includeRevoked?: boolean },
-  ): Promise<DeviceHistoryDTO[]> {
+    opts?: { limit?: number; includeRevoked?: boolean; cursorId?: number },
+  ): Promise<{ items: DeviceHistoryDTO[]; nextCursor: number | null }> {
     // RBAC.
     const allowed = await canAccessPatient(auditUserId, auditUserRole, patientId)
     if (!allowed) {
@@ -453,16 +467,26 @@ export const deviceLifecycleService = {
         patientId,
         ...(includeRevoked ? {} : { revokedAt: null }),
       },
-      // Prisma F-1 + CR M2 review — NULL ordering explicit "nulls: last".
-      // Sans ça, PG `DESC` = `NULLS FIRST` → devices actifs (revokedAt NULL)
-      // apparaissent en premier au lieu d'en dernier (contraire à intent).
+      // Prisma F-1 + CR M2 + HSA M1 review — Tri déterministe :
+      //   1. revokedAt DESC NULLS LAST (révoqués récents en premier)
+      //   2. createdAt DESC (HSA M1 — colonne immutable, vs `date` nullable)
+      //   3. id DESC (tie-breaker stable)
       orderBy: [
         { revokedAt: { sort: "desc", nulls: "last" } },
-        { date: { sort: "desc", nulls: "last" } },
-        { id: "desc" }, // tie-breaker stable
+        { createdAt: "desc" as const },
+        { id: "desc" as const },
       ],
-      take: limit,
+      // HSA L1 — cursor pagination (keyset, perf O(log n)).
+      ...(opts?.cursorId && {
+        cursor: { id: opts.cursorId },
+        skip: 1,
+      }),
+      take: limit + 1, // +1 pour détecter `hasMore`.
     })
+
+    const hasMore = rows.length > limit
+    const items = hasMore ? rows.slice(0, limit) : rows
+    const nextCursor = hasMore ? items[items.length - 1].id : null
 
     // Prisma F-4 + L7 review — resourceId = "list" (action non patient-spécifique).
     // patientId reste dans metadata (pivot US-2268) — getByPatient retrouve.
@@ -470,18 +494,22 @@ export const deviceLifecycleService = {
       userId: auditUserId,
       action: "READ",
       resource: "DEVICE",
-      resourceId: "list",
+      resourceId: LIST_RESOURCE_ID,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
       metadata: {
         kind: AUDIT_KIND.HISTORY,
         patientId,
-        count: rows.length,
+        count: items.length,
         includeRevoked,
+        ...(opts?.cursorId && { cursor: opts.cursorId }),
       },
     })
     // CR C2 review — toHistoryDTOForRole masque revokedReason si VIEWER.
-    return rows.map((r) => toHistoryDTOForRole(r, auditUserRole, auditUserId))
+    return {
+      items: items.map((r) => toHistoryDTOForRole(r, auditUserRole, auditUserId)),
+      nextCursor,
+    }
   },
 }

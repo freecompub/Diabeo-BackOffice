@@ -14,6 +14,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
+import { prisma } from "@/lib/db/client"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
@@ -31,6 +32,8 @@ const querySchema = z.object({
   limit: z.coerce.number().int().positive()
     .max(DEVICE_LIFECYCLE_BOUNDS.MAX_HISTORY_PAGE).optional(),
   includeRevoked: z.coerce.boolean().optional(),
+  // HSA L1 review — cursor pagination (keyset).
+  cursor: z.coerce.number().int().positive().optional(),
 })
 
 export async function GET(
@@ -54,20 +57,29 @@ export async function GET(
       )
     }
     const user = requireAuth(req)
-    const hasConsent = await requireGdprConsent(user.id)
+    // CR H4 review — consent du data subject (patient owner), pas du caller.
+    const patient = await prisma.patient.findFirst({
+      where: { id: parsedParams.data.id, deletedAt: null },
+      select: { userId: true },
+    })
+    if (!patient) {
+      return NextResponse.json({ error: "notFound" }, { status: 404 })
+    }
+    const hasConsent = await requireGdprConsent(patient.userId)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
     try {
-      const items = await deviceLifecycleService.listHistory(
+      const result = await deviceLifecycleService.listHistory(
         parsedParams.data.id, user.id, user.role, ctx,
         {
           limit: parsedQuery.data.limit,
           includeRevoked: parsedQuery.data.includeRevoked,
+          cursorId: parsedQuery.data.cursor,
         },
       )
       return NextResponse.json(
-        { items },
+        { items: result.items, nextCursor: result.nextCursor },
         { headers: { "Cache-Control": "no-store, private" } },
       )
     } catch (e) {

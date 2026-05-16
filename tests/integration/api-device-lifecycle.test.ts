@@ -4,7 +4,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-vi.mock("@/lib/db/client", () => ({ prisma: {} }))
+// CR H4 review — routes patient/[id]/devices/* font un lookup prisma.patient
+// pour résoudre userId du data subject avant requireGdprConsent. Mock minimal.
+vi.mock("@/lib/db/client", () => ({
+  prisma: {
+    patient: {
+      findFirst: vi.fn().mockResolvedValue({ userId: 100 }),
+    },
+  },
+}))
 
 vi.mock("@/lib/gdpr", () => ({
   requireGdprConsent: vi.fn().mockResolvedValue(true),
@@ -237,12 +245,15 @@ describe("POST /api/patients/[id]/devices/[deviceId]/revoke", () => {
 
 describe("GET /api/patients/[id]/devices/history", () => {
   it("200 retourne history triée", async () => {
-    vi.mocked(deviceLifecycleService.listHistory).mockResolvedValue([
-      { id: 1, patientId: 42, brand: "Dexcom", model: "G7", category: "cgm",
-        sn: null, date: null, isActive: false, revokedAt: new Date(),
-        revokedBy: null, revokedReason: null, batteryLevel: null,
-        sensorExpiresAt: null, lastSyncAt: null },
-    ] as any)
+    vi.mocked(deviceLifecycleService.listHistory).mockResolvedValue({
+      items: [
+        { id: 1, patientId: 42, brand: "Dexcom", model: "G7", category: "cgm",
+          sn: null, date: null, isActive: false, revokedAt: new Date(),
+          revokedBy: null, revokedReason: null, batteryLevel: null,
+          sensorExpiresAt: null, lastSyncAt: null },
+      ],
+      nextCursor: null,
+    } as any)
     const res = await historyGET(
       makeReq("/api/patients/42/devices/history", { role: "DOCTOR" }),
       { params: Promise.resolve({ id: "42" }) },

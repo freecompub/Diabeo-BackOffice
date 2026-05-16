@@ -24,6 +24,13 @@ import {
 
 const DEVICE_CATEGORIES = ["glucometer", "cgm", "insulinPump", "insulinPen", "healthApp"] as const
 
+// CR M7 + HSA M3 review — whitelist taxonomique stricte des connexions
+// supportées (vs string libre). Anti-typo + cohérence inter-équipes (iOS/Web).
+// Évolution : ajouter ici si nouveau transport (ex. "matter" IoT future).
+const CONNECTION_TYPES = [
+  "bluetooth", "nfc", "usb", "manual", "wifi", "cellular",
+] as const
+
 const searchSchema = z.object({
   category: z.enum(DEVICE_CATEGORIES).optional(),
   brand: z.string().max(100).optional(),
@@ -35,7 +42,7 @@ const createSchema = z.object({
   model: z.string().min(1).max(100),
   category: z.enum(DEVICE_CATEGORIES),
   modelIdentifier: z.string().max(100).optional(),
-  connectionTypes: z.array(z.string().max(50)).max(10).optional(),
+  connectionTypes: z.array(z.enum(CONNECTION_TYPES)).max(10).optional(),
   sensorLifetimeDays: z.number().int().positive().max(90).optional(),
   isHdsCertified: z.boolean().optional(),
   notes: z.string().max(2000).optional(),
@@ -44,6 +51,12 @@ const createSchema = z.object({
 export async function GET(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
+    // CR M3 review — auth AVANT Zod parse (anti-énumération enum).
+    // Sans ça, un user anonyme reçoit la liste des DeviceCategory valides
+    // via le message d'erreur Zod (`expected category enum`).
+    const user = await auditedRequireRole(
+      req, "NURSE", ctx, "SUPPORTED_DEVICE", "search",
+    )
     const parsed = searchSchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
@@ -53,11 +66,14 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       )
     }
-    const user = await auditedRequireRole(
-      req, "NURSE", ctx, "SUPPORTED_DEVICE", "search",
-    )
     const items = await supportedDeviceService.search(parsed.data, user.id, ctx)
-    return NextResponse.json({ items })
+    // CR L1 review — Cache-Control no-store (référentiel HDS, pas de cache
+    // navigateur/proxy : un device peut être déprécié à tout moment et la
+    // décision de pairing doit refléter l'état courant).
+    return NextResponse.json(
+      { items },
+      { headers: { "Cache-Control": "no-store, private" } },
+    )
   } catch (e) {
     if (e instanceof AuthError) {
       return NextResponse.json({ error: e.message }, { status: e.status })
@@ -69,6 +85,10 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
+    // CR M3 review — auth AVANT body/Zod parse (anti-énumération).
+    const user = await auditedRequireRole(
+      req, "ADMIN", ctx, "SUPPORTED_DEVICE", "create",
+    )
     const ctErr = assertJsonContentType(req)
     if (ctErr) return ctErr
     const body = await req.json().catch(() => null)
@@ -82,9 +102,6 @@ export async function POST(req: NextRequest) {
         { status: 422 },
       )
     }
-    const user = await auditedRequireRole(
-      req, "ADMIN", ctx, "SUPPORTED_DEVICE", "create",
-    )
     try {
       const created = await supportedDeviceService.create(parsed.data, user.id, ctx)
       return NextResponse.json({ item: created }, { status: 201 })

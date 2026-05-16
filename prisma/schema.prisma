@@ -1385,8 +1385,12 @@ model PatientDevice {
   revokedBy        Int?            @map("revoked_by")
   /// US-2092 — Raison de révocation chiffrée AES-256-GCM (peut contenir
   /// PHI : "remplacé par Dexcom G7 suite à dysfonctionnement répété"
-  /// → indirect health context). Stocké base64.
-  revokedReasonEnc String?         @map("revoked_reason_enc")
+  /// → indirect health context). Stocké base64. Cap VARCHAR(1024)
+  /// (HSA M2 — anti DoS, plaintext borné Zod à 500 chars).
+  revokedReasonEnc String?         @map("revoked_reason_enc") @db.VarChar(1024)
+  /// HSA M1 review — Date de création immutable (vs `date` nullable =
+  /// date pairing). Tri history déterministe + audit RGPD Art. 5.1.d.
+  createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz()
 
   patient       Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
   revokedByUser User?   @relation("PatientDeviceRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
@@ -1397,6 +1401,8 @@ model PatientDevice {
   @@index([sensorExpiresAt])
   /// US-2093 — index pour history listing chronologique (revoked + actifs).
   @@index([patientId, revokedAt], map: "patient_devices_history_idx")
+  /// HSA M1 — index history déterministe sur created_at.
+  @@index([patientId, createdAt(sort: Desc)], map: "patient_devices_patient_created_idx")
   @@map("patient_devices")
 }
 
@@ -1437,6 +1443,10 @@ model SupportedDevice {
   @@unique([brand, model, category])
   /// Index pour search par brand + category (UI filter pairing).
   @@index([category, isActive])
+  /// CR L4 / HSA L3 — model_identifier unique quand renseigné
+  /// (USB VID:PID ou BLE UUID = identifiant matériel global). PG défaut
+  /// NULLS DISTINCT permet multiples NULL (legacy devices).
+  @@unique([modelIdentifier], map: "supported_devices_model_identifier_key")
   @@map("supported_devices")
 }
 

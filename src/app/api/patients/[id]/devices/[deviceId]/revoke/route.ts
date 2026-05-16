@@ -15,6 +15,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
+import { prisma } from "@/lib/db/client"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import {
   assertJsonContentType,
@@ -56,8 +57,20 @@ export async function POST(
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
     const user = requireAuth(req)
-    // Consent RGPD Art. 9 — device = device médical patient.
-    const hasConsent = await requireGdprConsent(user.id)
+    // CR H4 review — RGPD Art. 9 : consent du data subject (patient) requis,
+    // pas du caller. Quand un PS (DOCTOR/NURSE) agit sur les données patient,
+    // c'est le consent du patient qui légitime le traitement, pas le sien.
+    // Résolution patient.userId → consent check sur ce userId.
+    // (Anti-énumération : 404 si patient inexistant — pas de distinction
+    // avec "patient sans consent" via l'erreur HTTP.)
+    const patient = await prisma.patient.findFirst({
+      where: { id: parsedParams.data.id, deletedAt: null },
+      select: { userId: true },
+    })
+    if (!patient) {
+      return NextResponse.json({ error: "notFound" }, { status: 404 })
+    }
+    const hasConsent = await requireGdprConsent(patient.userId)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }

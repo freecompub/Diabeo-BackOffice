@@ -260,9 +260,10 @@ describe("deviceLifecycleService.listHistory", () => {
         batteryLevel: 95, sensorExpiresAt: null, lastSyncAt: null },
     ] as any)
     const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
-    expect(out).toHaveLength(2)
-    expect(out[0]!.isActive).toBe(false) // revoked first
-    expect(out[1]!.isActive).toBe(true)
+    expect(out.items).toHaveLength(2)
+    expect(out.items[0]!.isActive).toBe(false) // revoked first
+    expect(out.items[1]!.isActive).toBe(true)
+    expect(out.nextCursor).toBe(null) // pas de page suivante
   })
 
   it("403 si pas membre cabinet", async () => {
@@ -313,11 +314,11 @@ describe("deviceLifecycleService.listHistory", () => {
         batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
     ] as any)
     const out = await deviceLifecycleService.listHistory(42, 9, "VIEWER", ctx)
-    expect(out[0]!.revokedReason).toBe(null) // masqué pour VIEWER
+    expect(out.items[0]!.revokedReason).toBe(null) // masqué pour VIEWER
   })
 
-  // CR C2 — PS+ reçoit revokedReason déchiffré.
-  it("CR C2 — DOCTOR reçoit revokedReason déchiffré", async () => {
+  // CR C2 — PS+ reçoit revokedReason déchiffré (ou null si decrypt fail).
+  it("CR C2 — DOCTOR voit le champ revokedReason (déchiffré)", async () => {
     prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
     const fakeEnc = Buffer.from("fake").toString("base64")
     prismaMock.patientDevice.findMany.mockResolvedValue([
@@ -328,27 +329,110 @@ describe("deviceLifecycleService.listHistory", () => {
         batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
     ] as any)
     const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
-    // safeDecryptField sur fake ciphertext = null. Mais la branche du code
-    // tente le decrypt (et logue warning si échec).
-    expect(out[0]!.revokedReason).toBe(null) // decrypt fail OK pour test
+    // safeDecryptField sur fake ciphertext = null. Le code TENTE le decrypt
+    // (vs VIEWER qui ne tente même pas). Branche couverte.
+    expect(out.items[0]!.revokedReason).toBe(null) // decrypt fail OK pour test
   })
 
-  // Prisma F-1 review — orderBy avec nulls: last.
-  it("Prisma F-1 — orderBy revokedAt nulls:last", async () => {
+  // CR M6 review — encrypt roundtrip réel (pas mock) pour DOCTOR.
+  it("CR M6 — encrypt→decrypt roundtrip réel : DOCTOR voit reason déchiffrée", async () => {
+    const { encryptField } = await import("@/lib/crypto/fields")
+    const realCiphertext = encryptField("Remplacé suite à dysfonctionnement")
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([
+      { id: 1, patientId: 42, brand: null, model: null, category: null,
+        sn: null, date: null,
+        revokedAt: new Date(), revokedBy: 5,
+        revokedReasonEnc: realCiphertext,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+    ] as any)
+    const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
+    expect(out.items[0]!.revokedReason).toBe("Remplacé suite à dysfonctionnement")
+  })
+
+  // CR M6 — VIEWER même avec ciphertext réel ne voit pas reason.
+  it("CR M6 — VIEWER ne tente même pas le decrypt (clinician-only)", async () => {
+    const { encryptField } = await import("@/lib/crypto/fields")
+    const realCiphertext = encryptField("contexte clinique sensible")
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 42 } as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([
+      { id: 1, patientId: 42, brand: null, model: null, category: null,
+        sn: null, date: null,
+        revokedAt: new Date(), revokedBy: 5,
+        revokedReasonEnc: realCiphertext,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+    ] as any)
+    const out = await deviceLifecycleService.listHistory(42, 9, "VIEWER", ctx)
+    expect(out.items[0]!.revokedReason).toBe(null)
+  })
+
+  // Prisma F-1 + HSA M1 review — orderBy avec nulls: last + createdAt + tie-breaker.
+  it("Prisma F-1 + HSA M1 — orderBy revokedAt/createdAt nulls:last", async () => {
     prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
     const orderBy = prismaMock.patientDevice.findMany.mock.calls[0]![0]!.orderBy as any
     expect(orderBy[0]).toEqual({ revokedAt: { sort: "desc", nulls: "last" } })
-    expect(orderBy[1]).toEqual({ date: { sort: "desc", nulls: "last" } })
-    expect(orderBy[2]).toEqual({ id: "desc" }) // tie-breaker
+    expect(orderBy[1]).toEqual({ createdAt: "desc" })
+    expect(orderBy[2]).toEqual({ id: "desc" }) // tie-breaker stable
   })
 
   it("limit capped at MAX_HISTORY_PAGE", async () => {
     prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, { limit: 9999 })
+    // take = limit + 1 pour détection hasMore.
     const take = prismaMock.patientDevice.findMany.mock.calls[0]![0]!.take
-    expect(take).toBe(DEVICE_LIFECYCLE_BOUNDS.MAX_HISTORY_PAGE)
+    expect(take).toBe(DEVICE_LIFECYCLE_BOUNDS.MAX_HISTORY_PAGE + 1)
+  })
+
+  // HSA L1 review — cursor pagination.
+  it("HSA L1 — cursor pagination : nextCursor non-null si hasMore", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    // Retourne 3 rows pour limit=2 (limit+1=3 → hasMore=true).
+    prismaMock.patientDevice.findMany.mockResolvedValue([
+      { id: 100, patientId: 42, brand: null, model: null, category: null,
+        sn: null, date: null, revokedAt: null, revokedBy: null, revokedReasonEnc: null,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+      { id: 50, patientId: 42, brand: null, model: null, category: null,
+        sn: null, date: null, revokedAt: null, revokedBy: null, revokedReasonEnc: null,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+      { id: 10, patientId: 42, brand: null, model: null, category: null,
+        sn: null, date: null, revokedAt: null, revokedBy: null, revokedReasonEnc: null,
+        batteryLevel: null, sensorExpiresAt: null, lastSyncAt: null },
+    ] as any)
+    const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, { limit: 2 })
+    expect(out.items).toHaveLength(2)
+    expect(out.nextCursor).toBe(50) // dernier id de la page
+  })
+
+  it("HSA L1 — cursor passe `cursor: {id}` + `skip: 1` à Prisma", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
+    await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, { cursorId: 50 })
+    const call = prismaMock.patientDevice.findMany.mock.calls[0]![0]!
+    expect((call as any).cursor).toEqual({ id: 50 })
+    expect((call as any).skip).toBe(1)
+  })
+
+  // CR L3 review — audit revoke metadata contient brand/model.
+  it("CR L3 — audit revoke metadata contient brand+model du device", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientDevice.findFirst.mockResolvedValue({
+      id: 10, revokedAt: null, brand: "Dexcom", model: "G7",
+    } as any)
+    prismaMock.patientDevice.updateMany.mockResolvedValue({ count: 1 } as any)
+    await deviceLifecycleService.revoke(42, 10, "Replaced", 9, "DOCTOR", ctx)
+    const auditCall = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(auditCall.metadata.brand).toBe("Dexcom")
+    expect(auditCall.metadata.model).toBe("G7")
+  })
+
+  // CR M6 review — VIEWER guess deviceId d'un autre patient → 403.
+  it("CR M6 — VIEWER tente listHistory sur autre patient → 403 (anti TOCTOU)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue(null) // VIEWER not owner
+    await expect(
+      deviceLifecycleService.listHistory(99, 9, "VIEWER", ctx),
+    ).rejects.toBeInstanceOf(DeviceLifecycleAccessError)
   })
 })
