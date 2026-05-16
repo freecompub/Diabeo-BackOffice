@@ -2,22 +2,25 @@
  * @route GET /api/patients/[id]/devices/history
  * @description US-2093 — Historique des dispositifs d'un patient (incl. révoqués).
  *
- * Tri chronologique inverse (revoked en premier, puis date d'ajout DESC).
+ * Tri chronologique strict sur `createdAt DESC` (HSA M1 + Prisma F-1
+ * round 2 — cursor-safe keyset, voir docstring listHistory).
  *
  * Auth : VIEWER own / NURSE+ cabinet member.
+ * RBAC : helper unifié `resolvePatientForConsent` (anti-énumération round 2
+ * HIGH-2 — 403 forbidden uniforme pour les non-autorisés).
  * Audit : `DEVICE/READ` kind `device.history` + pivot `patientId`.
  *
  * Query params :
  *   - `limit` (1-100, default 100)
  *   - `includeRevoked` (default true)
+ *   - `cursor` (id du dernier device de la page précédente — keyset)
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
-import { prisma } from "@/lib/db/client"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
-import { requireGdprConsent } from "@/lib/gdpr"
+import { resolvePatientForConsent } from "@/lib/access-control"
 import {
   deviceLifecycleService,
   DEVICE_LIFECYCLE_BOUNDS,
@@ -57,18 +60,28 @@ export async function GET(
       )
     }
     const user = requireAuth(req)
-    // CR H4 review — consent du data subject (patient owner), pas du caller.
-    const patient = await prisma.patient.findFirst({
-      where: { id: parsedParams.data.id, deletedAt: null },
-      select: { userId: true },
-    })
-    if (!patient) {
-      return NextResponse.json({ error: "notFound" }, { status: 404 })
+
+    // HIGH-2 round 2 review — helper unifié RBAC + consent + 403 uniforme.
+    const resolved = await resolvePatientForConsent(
+      user.id, user.role, parsedParams.data.id,
+      {
+        onAccessDenied: async () => {
+          await auditService.accessDenied({
+            userId: user.id,
+            resource: "DEVICE",
+            resourceId: String(parsedParams.data.id),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            requestId: ctx.requestId,
+            metadata: { kind: "device.history.accessDenied" },
+          }).catch(() => undefined)
+        },
+      },
+    )
+    if (!resolved) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
-    const hasConsent = await requireGdprConsent(patient.userId)
-    if (!hasConsent) {
-      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-    }
+
     try {
       const result = await deviceLifecycleService.listHistory(
         parsedParams.data.id, user.id, user.role, ctx,

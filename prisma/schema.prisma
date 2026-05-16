@@ -1385,9 +1385,10 @@ model PatientDevice {
   revokedBy        Int?            @map("revoked_by")
   /// US-2092 — Raison de révocation chiffrée AES-256-GCM (peut contenir
   /// PHI : "remplacé par Dexcom G7 suite à dysfonctionnement répété"
-  /// → indirect health context). Stocké base64. Cap VARCHAR(1024)
-  /// (HSA M2 — anti DoS, plaintext borné Zod à 500 chars).
-  revokedReasonEnc String?         @map("revoked_reason_enc") @db.VarChar(1024)
+  /// → indirect health context). Stocké base64. Cap VARCHAR(2816)
+  /// (HSA M2 round 2 — anti DoS + UTF-8 multi-octets safe : 500 chars
+  /// UTF-8 × 4 bytes = 2000 bytes plaintext → 2704 chars base64 chiffré).
+  revokedReasonEnc String?         @map("revoked_reason_enc") @db.VarChar(2816)
   /// HSA M1 review — Date de création immutable (vs `date` nullable =
   /// date pairing). Tri history déterministe + audit RGPD Art. 5.1.d.
   createdAt        DateTime        @default(now()) @map("created_at") @db.Timestamptz()
@@ -1446,7 +1447,9 @@ model SupportedDevice {
   /// CR L4 / HSA L3 — model_identifier unique quand renseigné
   /// (USB VID:PID ou BLE UUID = identifiant matériel global). PG défaut
   /// NULLS DISTINCT permet multiples NULL (legacy devices).
-  @@unique([modelIdentifier], map: "supported_devices_model_identifier_key")
+  /// (Prisma auto-name = `supported_devices_model_identifier_key` —
+  /// L6 round 2 review : `map:` redondant retiré.)
+  @@unique([modelIdentifier])
   @@map("supported_devices")
 }
 

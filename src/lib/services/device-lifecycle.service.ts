@@ -33,8 +33,16 @@ import { logger } from "@/lib/logger"
 // ─────────────────────────────────────────────────────────────
 
 export const DEVICE_LIFECYCLE_BOUNDS = {
-  /** Max revoked reason length (cohérent avec VARCHAR(1024) DB après chiffrement). */
+  /** Max revoked reason length en CHARS UTF-8 (cohérent avec VARCHAR(2816) DB). */
   MAX_REASON_LEN: 500,
+  /**
+   * M1 round 2 review — Max revoked reason length en BYTES UTF-8.
+   * 500 chars × 4 bytes max (emojis, arabe US-2112) = 2000 bytes plaintext.
+   * Cap byte-length applicatif = 500 bytes (Zod `refine`) pour cohérence
+   * avec l'esprit de la borne "500 chars" alors que l'utilisateur restera
+   * presque toujours sub-byte (ASCII français standard).
+   */
+  MAX_REASON_BYTES: 500,
   /** Max history page size (cap forensique pour patient prolifique). */
   MAX_HISTORY_PAGE: 100,
   /** Sensor lifetime cap (jours) — Dexcom G7 10, FreeStyle Libre 14, max 90j cohérent CHECK SQL. */
@@ -318,10 +326,17 @@ function toHistoryDTOForRole(
     const decrypted = safeDecryptField(row.revokedReasonEnc)
     if (decrypted === null) {
       // HSA L2 review — alerte SOC si ciphertext non-null mais decrypt fail.
+      // L2 round 2 review — ajout `deviceId` + `patientId` pour forensique
+      // ciblée (SOC peut investiguer la row directement vs grep aveugle).
       logger.warn(
         "device-lifecycle",
         "revokedReasonEnc decrypt failed",
-        { userId: callerUserId, resource: "DEVICE" },
+        {
+          userId: callerUserId,
+          resource: "DEVICE",
+          deviceId: row.id,
+          patientId: row.patientId,
+        },
       )
     }
     dto.revokedReason = decrypted
@@ -373,6 +388,14 @@ export const deviceLifecycleService = {
     }
     if (reason.length > DEVICE_LIFECYCLE_BOUNDS.MAX_REASON_LEN) {
       throw new DeviceLifecycleValidationError("reason", "tooLong")
+    }
+    // M1 round 2 review — byte-length defense-in-depth.
+    // String.length compte les chars Unicode (code points). UTF-8 multi-
+    // octets (arabe, emojis) → byte size > char count. Sans cette borne,
+    // un payload 500 chars arabe = 1000-2000 bytes ciphertext → potentiellement
+    // tronqué silencieusement par VARCHAR(2816) (= 2704 chars max base64).
+    if (Buffer.byteLength(reason, "utf8") > DEVICE_LIFECYCLE_BOUNDS.MAX_REASON_BYTES) {
+      throw new DeviceLifecycleValidationError("reason", "tooLongBytes")
     }
     // RBAC.
     const allowed = await canAccessPatient(auditUserId, auditUserRole, patientId)
@@ -437,11 +460,19 @@ export const deviceLifecycleService = {
 
   /**
    * US-2093 — Historique complet des devices d'un patient (actifs + révoqués).
-   * Tri chronologique inverse (revokedAt si présent, sinon createdAt).
+   * Tri chronologique inverse strict sur `createdAt` (le plus récent en premier).
    *
-   * HSA L1 review — Cursor pagination (`cursorId`) pour patient prolifique
-   * (>100 devices forensique post-recall fournisseur). OFFSET-based aurait
-   * O(n) scan ; cursor = O(log n) via index `(patientId, createdAt DESC)`.
+   * HSA L1 + Prisma F-1 review round 2 — Cursor pagination keyset valide :
+   * Prisma traduit `cursor: {id}` en `WHERE id < $cursorId` qui n'est SÉMANTI-
+   * QUEMENT correct que si `id` est le premier critère de tri (ou tie-breaker
+   * unique avec orderBy mono-colonne). Avec un compound orderBy `[revokedAt,
+   * createdAt, id]`, le cursor peut sauter ou dupliquer des lignes entre pages
+   * — casse forensique HDS Art. L.1111-8.
+   *
+   * Solution : tri unique `(createdAt DESC, id DESC)` — `createdAt` étant
+   * immutable (HSA M1) + `id` tie-breaker unique = keyset valide. Le tri
+   * "révoqués en premier" est abandonné pour préserver l'intégrité de la
+   * pagination ; le caller peut séparer client-side via `isActive` du DTO.
    */
   async listHistory(
     patientId: number,
@@ -467,16 +498,13 @@ export const deviceLifecycleService = {
         patientId,
         ...(includeRevoked ? {} : { revokedAt: null }),
       },
-      // Prisma F-1 + CR M2 + HSA M1 review — Tri déterministe :
-      //   1. revokedAt DESC NULLS LAST (révoqués récents en premier)
-      //   2. createdAt DESC (HSA M1 — colonne immutable, vs `date` nullable)
-      //   3. id DESC (tie-breaker stable)
+      // Tri chronologique unique — cursor-safe (cf. doc ci-dessus).
       orderBy: [
-        { revokedAt: { sort: "desc", nulls: "last" } },
         { createdAt: "desc" as const },
-        { id: "desc" as const },
+        { id: "desc" as const }, // tie-breaker stable
       ],
-      // HSA L1 — cursor pagination (keyset, perf O(log n)).
+      // HSA L1 — cursor pagination keyset (perf O(log n) via index
+      // patient_devices_patient_created_idx).
       ...(opts?.cursorId && {
         cursor: { id: opts.cursorId },
         skip: 1,

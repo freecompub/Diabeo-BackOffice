@@ -6,23 +6,28 @@
  *
  * Auth : VIEWER own (patient révoque son propre device via app) ou
  *        NURSE+ cabinet member (PS révoque pour le patient).
- * RBAC : `canAccessPatient` (ADMIN/cabinet/owner-VIEWER).
+ * RBAC : `canAccessPatient` AVANT toute lecture (helper unifié
+ *        `resolvePatientForConsent` — anti-énumération round 2).
  * Audit : `DEVICE/UPDATE` kind `device.revoked` + pivot `patientId`.
  *
- * Body : `{ reason: string }` (max 500 chars, chiffré AES-256-GCM avant
- * stockage — peut contenir PHI ex. "remplacé suite dysfonctionnement").
+ * Anti-énumération HIGH-2 round 2 review : la route retourne `403 forbidden`
+ * UNIFORME pour les non-autorisés, sans distinguer "patient inexistant"
+ * vs "patient sans consent" vs "RBAC denied". Discrimination réservée
+ * aux callers ayant prouvé `canAccessPatient = true`.
+ *
+ * Body : `{ reason: string }` (max 500 chars UTF-8 / max bytes Zod, chiffré
+ * AES-256-GCM — peut contenir PHI ex. "remplacé suite dysfonctionnement").
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
-import { prisma } from "@/lib/db/client"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import {
   assertJsonContentType,
   assertBodySize,
   mapErrorToResponse,
 } from "@/lib/team-route-helpers"
-import { requireGdprConsent } from "@/lib/gdpr"
+import { resolvePatientForConsent } from "@/lib/access-control"
 import {
   deviceLifecycleService,
   DEVICE_LIFECYCLE_BOUNDS,
@@ -37,7 +42,16 @@ const paramsSchema = z.object({
 })
 
 const bodySchema = z.object({
-  reason: z.string().min(1).max(DEVICE_LIFECYCLE_BOUNDS.MAX_REASON_LEN),
+  reason: z.string()
+    .min(1)
+    .max(DEVICE_LIFECYCLE_BOUNDS.MAX_REASON_LEN)
+    // M1 round 2 review — byte-length cap UTF-8 (defense-in-depth vs
+    // VARCHAR(2816) DB column). Anti truncation silencieuse pour
+    // payloads multi-octets (arabe US-2112, emojis).
+    .refine(
+      (v) => Buffer.byteLength(v, "utf8") <= DEVICE_LIFECYCLE_BOUNDS.MAX_REASON_BYTES,
+      { message: "reasonTooLongBytes" },
+    ),
 })
 
 export async function POST(
@@ -48,7 +62,9 @@ export async function POST(
   try {
     const ctErr = assertJsonContentType(req)
     if (ctErr) return ctErr
-    const sizeErr = assertBodySize(req, 4_000)
+    // L1 review — tighten body size cap (était 4000, Zod max 500 chars +
+    // wrapping JSON ≈ 600). Marge 2× sécurité.
+    const sizeErr = assertBodySize(req, 1_024)
     if (sizeErr) return sizeErr
 
     const raw = await params
@@ -57,22 +73,31 @@ export async function POST(
       return NextResponse.json({ error: "validationFailed" }, { status: 400 })
     }
     const user = requireAuth(req)
-    // CR H4 review — RGPD Art. 9 : consent du data subject (patient) requis,
-    // pas du caller. Quand un PS (DOCTOR/NURSE) agit sur les données patient,
-    // c'est le consent du patient qui légitime le traitement, pas le sien.
-    // Résolution patient.userId → consent check sur ce userId.
-    // (Anti-énumération : 404 si patient inexistant — pas de distinction
-    // avec "patient sans consent" via l'erreur HTTP.)
-    const patient = await prisma.patient.findFirst({
-      where: { id: parsedParams.data.id, deletedAt: null },
-      select: { userId: true },
-    })
-    if (!patient) {
-      return NextResponse.json({ error: "notFound" }, { status: 404 })
-    }
-    const hasConsent = await requireGdprConsent(patient.userId)
-    if (!hasConsent) {
-      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
+    // HIGH-2 round 2 review — RBAC AVANT findFirst (anti-énumération).
+    // Le helper `resolvePatientForConsent` chaîne :
+    //   1. canAccessPatient (RBAC) → audit accessDenied si fail
+    //   2. patient.findFirst (résolution userId data subject)
+    //   3. requireGdprConsent (consent du data subject — CR H4)
+    // Tous les 3 cas d'échec → null → 403 forbidden uniforme.
+    const resolved = await resolvePatientForConsent(
+      user.id, user.role, parsedParams.data.id,
+      {
+        onAccessDenied: async () => {
+          await auditService.accessDenied({
+            userId: user.id,
+            resource: "DEVICE",
+            resourceId: String(parsedParams.data.id),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            requestId: ctx.requestId,
+            metadata: { kind: "device.revoke.accessDenied" },
+          }).catch(() => undefined) // fire-and-forget
+        },
+      },
+    )
+    if (!resolved) {
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
     const body = await req.json().catch(() => null)
@@ -99,6 +124,8 @@ export async function POST(
       })
     } catch (e) {
       if (e instanceof DeviceLifecycleNotFoundError) {
+        // Device introuvable pour ce patient → 404 OK car le caller a déjà
+        // prouvé l'accès au patient via resolvePatientForConsent.
         return NextResponse.json({ error: "notFound" }, { status: 404 })
       }
       if (e instanceof DeviceLifecycleAccessError) {

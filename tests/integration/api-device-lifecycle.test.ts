@@ -4,20 +4,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-// CR H4 review — routes patient/[id]/devices/* font un lookup prisma.patient
-// pour résoudre userId du data subject avant requireGdprConsent. Mock minimal.
-vi.mock("@/lib/db/client", () => ({
-  prisma: {
-    patient: {
-      findFirst: vi.fn().mockResolvedValue({ userId: 100 }),
-    },
-  },
-}))
+// Round 2 review — routes patient/[id]/devices/* utilisent désormais le
+// helper unifié `resolvePatientForConsent` (RBAC + findFirst + consent en
+// un seul appel, 403 uniforme anti-énumération). On mocke ce helper
+// directement plutôt que prisma + gdpr séparément.
+vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 
 vi.mock("@/lib/gdpr", () => ({
   requireGdprConsent: vi.fn().mockResolvedValue(true),
   invalidateGdprConsentCache: vi.fn().mockResolvedValue(undefined),
 }))
+
+vi.mock("@/lib/access-control", async (orig) => {
+  const actual = await orig<typeof import("@/lib/access-control")>()
+  return {
+    ...actual,
+    resolvePatientForConsent: vi.fn().mockResolvedValue({
+      patientId: 42, ownerUserId: 100,
+    }),
+  }
+})
 
 vi.mock("@/lib/services/device-lifecycle.service", async (orig) => {
   const actual = await orig<typeof import("@/lib/services/device-lifecycle.service")>()
@@ -222,9 +228,11 @@ describe("POST /api/patients/[id]/devices/[deviceId]/revoke", () => {
     expect(res.status).toBe(422)
   })
 
-  it("403 gdprConsentRequired si user a révoqué", async () => {
-    const { requireGdprConsent } = await import("@/lib/gdpr")
-    vi.mocked(requireGdprConsent).mockResolvedValueOnce(false)
+  // HIGH-2 round 2 — non-autorisé (RBAC fail OU patient inexistant OU
+  // consent fail) → 403 forbidden UNIFORME (helper retourne null).
+  it("HIGH-2 round 2 — resolvePatientForConsent → null = 403 forbidden uniforme", async () => {
+    const { resolvePatientForConsent } = await import("@/lib/access-control")
+    vi.mocked(resolvePatientForConsent).mockResolvedValueOnce(null)
     const res = await revokePOST(
       makeReq("/api/patients/42/devices/10/revoke", {
         method: "POST", role: "DOCTOR",
@@ -235,7 +243,7 @@ describe("POST /api/patients/[id]/devices/[deviceId]/revoke", () => {
     )
     expect(res.status).toBe(403)
     const body = await res.json()
-    expect(body.error).toBe("gdprConsentRequired")
+    expect(body.error).toBe("forbidden") // pas de gdprConsentRequired discriminant
   })
 })
 
@@ -284,13 +292,17 @@ describe("GET /api/patients/[id]/devices/history", () => {
     expect(res.status).toBe(400)
   })
 
-  it("403 gdprConsentRequired", async () => {
-    const { requireGdprConsent } = await import("@/lib/gdpr")
-    vi.mocked(requireGdprConsent).mockResolvedValueOnce(false)
+  // HIGH-2 round 2 — non-autorisé (RBAC fail OU patient inexistant OU
+  // consent fail) → 403 forbidden UNIFORME.
+  it("HIGH-2 round 2 — resolvePatientForConsent → null = 403 forbidden uniforme", async () => {
+    const { resolvePatientForConsent } = await import("@/lib/access-control")
+    vi.mocked(resolvePatientForConsent).mockResolvedValueOnce(null)
     const res = await historyGET(
       makeReq("/api/patients/42/devices/history", { role: "DOCTOR" }),
       { params: Promise.resolve({ id: "42" }) },
     )
     expect(res.status).toBe(403)
+    const body = await res.json()
+    expect(body.error).toBe("forbidden")
   })
 })

@@ -247,22 +247,23 @@ describe("deviceLifecycleService.revoke", () => {
 // ────────────────────────────────────────────────────────────────
 
 describe("deviceLifecycleService.listHistory", () => {
-  it("lists all devices (active + revoked) for cabinet member", async () => {
+  it("lists all devices (active + revoked) for cabinet member, tri createdAt DESC", async () => {
     prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    // Round 2 : tri sur createdAt strict — ordre fourni par Prisma (mock).
     prismaMock.patientDevice.findMany.mockResolvedValue([
-      { id: 1, patientId: 42, brand: "Dexcom", model: "G7", category: "cgm",
-        sn: "SN001", date: new Date("2026-01-01"),
-        revokedAt: new Date("2026-04-01"), revokedBy: 5, revokedReasonEnc: null,
-        batteryLevel: 80, sensorExpiresAt: null, lastSyncAt: null },
       { id: 2, patientId: 42, brand: "Abbott", model: "FreeStyle 3", category: "cgm",
         sn: "SN002", date: new Date("2026-04-15"),
         revokedAt: null, revokedBy: null, revokedReasonEnc: null,
         batteryLevel: 95, sensorExpiresAt: null, lastSyncAt: null },
+      { id: 1, patientId: 42, brand: "Dexcom", model: "G7", category: "cgm",
+        sn: "SN001", date: new Date("2026-01-01"),
+        revokedAt: new Date("2026-04-01"), revokedBy: 5, revokedReasonEnc: null,
+        batteryLevel: 80, sensorExpiresAt: null, lastSyncAt: null },
     ] as any)
     const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
     expect(out.items).toHaveLength(2)
-    expect(out.items[0]!.isActive).toBe(false) // revoked first
-    expect(out.items[1]!.isActive).toBe(true)
+    expect(out.items[0]!.isActive).toBe(true) // actif récent en premier (createdAt DESC)
+    expect(out.items[1]!.isActive).toBe(false)
     expect(out.nextCursor).toBe(null) // pas de page suivante
   })
 
@@ -366,15 +367,21 @@ describe("deviceLifecycleService.listHistory", () => {
     expect(out.items[0]!.revokedReason).toBe(null)
   })
 
-  // Prisma F-1 + HSA M1 review — orderBy avec nulls: last + createdAt + tie-breaker.
-  it("Prisma F-1 + HSA M1 — orderBy revokedAt/createdAt nulls:last", async () => {
+  // H1 round 2 review — orderBy keyset-safe `(createdAt DESC, id DESC)`.
+  // L'ancien orderBy compound `[revokedAt, createdAt, id]` était incompatible
+  // avec Prisma `cursor: {id}` (Prisma traduit en `WHERE id < $cursor` qui
+  // n'est valide qu'avec orderBy ayant id en 1er ou en tie-breaker unique).
+  // Simplification : `(createdAt DESC, id DESC)` — createdAt immutable +
+  // id unique = keyset valide. Le tri "révoqués en premier" est abandonné
+  // pour préserver l'intégrité de la pagination.
+  it("H1 round 2 — orderBy simplifié (createdAt, id) DESC", async () => {
     prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
     const orderBy = prismaMock.patientDevice.findMany.mock.calls[0]![0]!.orderBy as any
-    expect(orderBy[0]).toEqual({ revokedAt: { sort: "desc", nulls: "last" } })
-    expect(orderBy[1]).toEqual({ createdAt: "desc" })
-    expect(orderBy[2]).toEqual({ id: "desc" }) // tie-breaker stable
+    expect(orderBy).toHaveLength(2)
+    expect(orderBy[0]).toEqual({ createdAt: "desc" })
+    expect(orderBy[1]).toEqual({ id: "desc" }) // tie-breaker stable + cursor key
   })
 
   it("limit capped at MAX_HISTORY_PAGE", async () => {
@@ -413,6 +420,17 @@ describe("deviceLifecycleService.listHistory", () => {
     const call = prismaMock.patientDevice.findMany.mock.calls[0]![0]!
     expect((call as any).cursor).toEqual({ id: 50 })
     expect((call as any).skip).toBe(1)
+  })
+
+  // I2 round 2 review — cursor pointant sur un id inexistant → items vide.
+  it("I2 round 2 — cursor inexistant (999999) → items: [], nextCursor: null", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
+    const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, {
+      cursorId: 999999,
+    })
+    expect(out.items).toEqual([])
+    expect(out.nextCursor).toBe(null)
   })
 
   // CR L3 review — audit revoke metadata contient brand/model.
