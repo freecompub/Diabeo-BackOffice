@@ -16,13 +16,21 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 93   | 0       | 33          | **74%** |
-| **V2**   | 74    | 0    | 0       | 74          | **0%**  |
-| **V3**   | 9     | 0    | 0       | 9           | **0%**  |
+| **V1**   | 99    | 98   | 0       | 1           | **99%** |
+| **V2**   | 92    | 0    | 0       | 92          | **0%**  |
+| **V3**   | 10    | 0    | 0       | 10          | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **294** | **161** | **1**   | **132**     | **55%** |
+| **TOTAL**| **285** | **166** | **0**   | **119**     | **58%** |
 
-> **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
+> **V1 nettoyé 2026-05-16** : 18 US reclassées V2 retirées des sections V1
+> (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte. Ces US restent
+> visibles dans la section V2 ci-dessous avec leurs motifs de procurement.
+> US retirées : **Groupe 1** US-2031, US-2041 · **Groupe 3** US-2076bis, US-2077
+> · **Groupe 7** US-2104, US-2106, US-2109 · **Groupe 8 i18n** US-2124, US-2125,
+> US-2126, US-2127 · **Groupe 9 Admin** US-2153, US-2164, US-2165 · **Groupe 9b**
+> US-2411, US-2413 · **Groupe 10 Mirror V1** US-2250, US-2252.
+> Seule US restante V1 NOT STARTED : **US-2004 Captcha anti-bot** (⏳ bloqué
+> procurement Cloudflare Turnstile / hCaptcha).
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
 > RDV ajouté V1 (+7 US US-2500-2506 = +49 SP), Q8 US-2800 ajoutée V4 (+1).
 > Total : 286 → 294 (+8).
@@ -225,18 +233,16 @@
 
 ---
 
-## V1 — 120 US
+## V1 — 99 US (98 DONE + 1 NOT STARTED = US-2004 bloqué procurement)
 
-### Groupe 1 — Glycémie & Analytics (13 US — 11/11 DONE V1, 2 reclassées V2)
+### Groupe 1 — Glycémie & Analytics (10 US, 100% DONE V1)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2031 | Ingestion Medtronic Guardian | ⏸️ **V2** — bloqué partenariat CareLink (procurement) |
 | US-2032 | Glycémies capillaires (BGM) | ✅ DONE PR #388 — GET + rate-limit + decrypt |
 | US-2038 | Heat-map glycémique | ✅ DONE PR #388 — TZ-pinned Europe/Paris |
 | US-2039 | Comparaison de périodes | ✅ DONE PR #388 — half-open windows + delta |
 | US-2040 | Rapport AGP exportable PDF | ✅ DONE PR #388 — pdf-lib + warning banner |
-| US-2041 | Pattern detection AI | ⏸️ **V2** per spec |
 | US-2094 | Tableau de bord population | ✅ DONE PR #388 — RBAC + p-limit + GDPR filter |
 | US-2095 | Indicateurs qualité cabinet | ✅ DONE PR #388 — TIR/GMI distributions |
 | US-2096 | Cohorte par pathologie | ✅ DONE PR #388 — DT1/DT2/GD breakdown |
@@ -246,8 +252,7 @@
 
 **Batches livrés** : 8 US PR #388 (~21 SP) + 2 US PR #408 (~8 SP). Total 10 US V1 DONE.
 
-> ⏸️ **US-2031 Medtronic Guardian — reclassée V2** (décision 2026-05-15) : bloqué partenariat Medtronic CareLink, hors scope V1.
-> ⏸️ **US-2041 Pattern detection — V2** (V2 per spec — AI pattern recognition).
+> Note : US-2031 (Medtronic Guardian) et US-2041 (Pattern detection AI) reclassées V2 — voir section V2 ci-dessous.
 
 ### Groupe 2 — Patients avancés (7 US)
 
@@ -263,13 +268,11 @@
 **Batches 1+2 livrés** : 5 US (US-2019, 2021, 2022, 2024, 2028) — PR #389, ~5 SP,
 1282 tests verts, 35 findings de review traités (3 Critical + 11 High + 15 Medium + 8 Low).
 
-### Groupe 3 — Équipe & Communication (12 US — US-2070/2071 dédoublonnés vers Groupe 8 RDV)
+### Groupe 3 — Équipe & Communication (12 US, 100% DONE V1 — US-2070/2071 dédoublonnés vers Groupe 8 RDV)
 
 | US | Titre | Statut |
 |----|-------|--------|
 | US-2076 | Messagerie sécurisée patient↔PS (REST + polling 60s + FCM, **sans WS**) | ✅ **DONE PR #412 (2026-05-16)** — 6 rounds review (3 agents en parallèle), 1957/1957 tests, HMAC pepper + audit accessDenied + DPIA livré |
-| US-2076bis | Messagerie realtime layer (WS/SSE chat-only) | ⏸️ **V2** — scope B reporté, gain UX marginal en contexte médecin↔patient (~5 SP) |
-| US-2077 | MSSanté intégration | ⏸️ **V2** — dep US-2125 backend (Mailiz/Apicrypt) lui-même V2 |
 | US-2078 | Templates de messages | DONE (PR #390) |
 | US-2080 | Accusés de lecture | DONE (PR #390 — ReadReceipt générique + H9 access check) |
 | US-2083 | Délégation médecin → IDE | DONE (PR #390 — IDE→DOCTOR workflow + colleague enforcement) |
@@ -330,28 +333,25 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2060 | Apple HealthKit sync | ✅ DONE PR #407 — endpoint backend `/sync` (source `healthkit`) avec dedup UNIQUE PARTIAL `(activitySource, externalSyncId)` |
 | US-2061 | Google Fit / Health Connect | ✅ DONE PR #407 — même endpoint, source `google_fit` / `health_connect`, `createManyAndReturn` atomic race-free |
 
-### Groupe 7 — Facturation (9 US — 5 DONE / 1 V1 restant / 3 reclassées V2) — Batches 1+2 DONE PR #406 + PR #414
+### Groupe 7 — Facturation (6 US, 100% DONE V1) — Batches 1+2 DONE PR #406 + PR #414
 
 > Libellés alignés sur les specs réelles (`docs/UserStory/pro-user-stories/12-facturation/`).
 > Batch 1 (Foundation, 11 SP) — DONE PR #406 : Invoice/InvoiceItem/InvoiceSequence + 3 triggers PG.
-> Batches 2-4 à suivre : PDF+TVA, Stripe webhooks, Refunds.
 
 | US | Titre | Statut |
 |----|-------|--------|
 | US-2102 | Virement bancaire + facture PDF | ✅ **DONE PR #414** — pdf-lib multi-page + IBAN chiffré HSA H-3 + Intl FR + status banner + atomic CAS race-safe + Art. 17/20 RGPD invoices |
 | US-2103 | Facturation au patient FR | ✅ DONE PR #406 — Invoice service + customerSnapshot AES-256-GCM + audit US-2268 pivot |
-| US-2104 | Abonnement DZ | ⏸️ **V2** — bloqué partenariat bancaire DZ |
 | US-2105 | Numérotation séquentielle pays | ✅ DONE PR #406 — InvoiceSequence gap-less FOR UPDATE + format `FR-2026-000001` + Luhn SIRET |
-| US-2106 | Webhooks idempotents Stripe | ⏸️ **V2** — bloqué provision Stripe Connect |
 | US-2107 | Versioning facture immuable | ✅ DONE PR #406 — 3 triggers PG (enforce_invoice_immutability + DELETE-block + items-lock) + FSM atomique |
 | US-2108 | Relances automatiques | ✅ **DONE PR #417** — Batch 4 cron J+7/15/30 via Resend US-2074 : `InvoiceReminder` model UNIQUE(invoiceId,step) idempotent + service `processOverdueInvoices` (advisory lock anti double-run + p-limit 10 parallel + timeout 50s) + route `/api/cron/billing/reminders` Bearer CRON_SECRET timing-safe + email i18n FR/EN/AR anti-PHI strict + sanitize Resend errorMessage anti-leak + filtre RGPD Art. 17 (patient.deletedAt + user.status='active') + anonymisation `sentToEnc` post-deletion + audit `metadata.patientId` US-2268 + DPIA `dpia-us2108-invoice-reminders.md`. **2 rounds review** (31 findings). Bloqueurs pre-prod : DPIA signatures DPO/RSSI + DPA Resend US transfert hors-UE. |
-| US-2109 | Remboursements | ⏸️ **V2** — dépend US-2106 webhooks Stripe (lui-même V2) |
 | US-2110 | TVA multi-pays | ✅ **DONE PR #414** — `countryTaxRuleService.getActiveAt` + route `/api/config/tax-rules/active` (NURSE+, audit READ) |
 
-### Groupe 8 — i18n & Interopérabilité (8 US, 33 SP — 4 DONE V1 / 4 reclassées V2)
+> Note : US-2104 (Abonnement DZ), US-2106 (Webhooks Stripe), US-2109 (Remboursements) reclassées V2 — voir section V2 ci-dessous.
+
+### Groupe 8 — i18n & Interopérabilité (4 US, 6 SP, 100% DONE V1)
 
 > **Batch 1 (4 US, 6 SP) — DONE PR #393** : US-2113 + US-2114 + US-2116 + US-2123 scaffold.
-> Batch 2 (4 US, 27 SP) — bloqué procurement (habilitations ANS, contrats Mailiz/Apicrypt).
 
 | US | Titre | SP | Statut |
 |----|-------|---:|--------|
@@ -359,15 +359,12 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2114 | Règles fiscales par pays (CountryTaxRule, date-bounded, overlap-rejected) | 1 | ✅ DONE |
 | US-2116 | Réglementation santé par pays (HealthcareRegulation : RPPS/ADELI/INS/HDS/RGPD/MSSANTE) | 1 | ✅ DONE |
 | US-2123 | HL7 FHIR R4 scaffold (FhirInteroperability + FhirAllowedSystem + retry queue + AES-256-GCM payload + SSRF guard + DPA allowlist + kill-switch) | 3 | ✅ DONE |
-| US-2124 | DMP / Mon Espace Santé | 8 | ⏸️ **V2** — bloqué ANS habilitation (10-30k€) |
-| US-2125 | MSSanté backend | 3 | ⏸️ **V2** — bloqué contrat Mailiz/Apicrypt |
-| US-2126 | INSi (API identité nationale) | 8 | ⏸️ **V2** — bloqué ANS habilitation (5-10k€) |
-| US-2127 | Pro Santé Connect (OIDC) | 8 | ⏸️ **V2** — bloqué ANS homologation (5-15k€) |
 
-### Groupe 9 — Admin & Ops (8 US — 4 DONE V1 / 1 V1 restant US-2004 / 3 reclassées V2)
+> Note : US-2124 (DMP), US-2125 (MSSanté backend), US-2126 (INSi), US-2127 (PSC) reclassées V2 (bloqué procurement ANS / Mailiz / Apicrypt) — voir section V2 ci-dessous.
+
+### Groupe 9 — Admin & Ops (5 US — 4 DONE V1 + 1 V1 bloqué procurement)
 
 > **Batch 1 internes (~4 SP) — DONE PR #409** : 4 US sans dep procurement.
-> Batch 2 externes (~12 SP) — bloqué procurement Sentry / Cloudflare / Logs.
 
 | US | Titre | Statut |
 |----|-------|--------|
@@ -376,9 +373,8 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2137 | Notification breach CNIL | ✅ DONE PR #409 — model DataBreach + FSM 5 statuses + chiffrement AES + cnilDeadlineHoursRemaining + PHI heuristic anti-leak title |
 | US-2147 | Paramètres cabinet | ✅ DONE PR #409 — manager-level CRUD `/api/cabinet/[id]/settings` (régaliens siret/tva/iban restent ADMIN-only) |
 | US-2150 | Dashboard santé système | ✅ DONE PR #409 — `/api/admin/system-health` (DB/Redis/CGM lag/backups freshness + per-check timeout 2s + pingRedis distingue not_configured/down) |
-| US-2153 | Logs centralisés | ⏸️ **V2** — bloqué procurement (Loki / Datadog / OVH Logs) |
-| US-2164 | APM monitoring | ⏸️ **V2** — bloqué procurement (Sentry / Datadog) |
-| US-2165 | Error tracking | ⏸️ **V2** — bloqué procurement (Sentry self-hosted HDS) |
+
+> Note : US-2153 (Logs centralisés), US-2164 (APM), US-2165 (Error tracking) reclassées V2 (bloqué procurement Loki / Sentry / Datadog) — voir section V2 ci-dessous.
 
 ### Groupe 8 — Gestion des RDV (7 US, 49 SP — décision session Samir 2026-05-13 Q7)
 
@@ -418,12 +414,12 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 > **Téléconsultation (Q7.5)** : reportée — pas d'intégration visio MVP, à voir
 > plus tard avec la décision ADR existante du domaine 05.
 
-### Groupe 9b — Dashboards backoffice (16 US — renumérotés depuis dashboard-us/)
+### Groupe 9b — Dashboards backoffice (13 US, 100% DONE V1 — renumérotés depuis dashboard-us/)
 
 > Suite au commit `f6700a0`, 16 US dashboard ont été renumérotées de
 > US-2265-2280 vers **US-2400-2415** (la plage initiale collisionait avec
 > les US auth/Prisma déjà livrées en PR #349/#352/#354). Cf.
-> `docs/UserStory/dashboard-us/`.
+> `docs/UserStory/dashboard-us/`. 13 V1 + 2 V2 + 1 supprimée.
 
 | US | Titre | Priorité | SP | Fichier |
 |----|-------|---------:|---:|---------|
@@ -438,11 +434,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2408 | Coordination équipe (infirmier) | ✅ DONE PR #401 (workflow) | 5 | DelegationRequest inbox + cabinet scope ; ⚠️ libre chat deferred V2 (TeamMessage table) |
 | US-2409 | Relances en attente (infirmier) | ✅ DONE PR #401 (heuristique) | 5 | silentMonitoring+apptUnconfirmed+neverSynced + tel:/sms: URI ; ⚠️ Twilio + PatientRecallLog deferred V2 |
 | US-2410 | Dashboard administrateur (page principale) | ✅ DONE PR #403 | 8 | `/admin` server-component + redirect split + 3 cards (KPI/Billing/Compliance) |
-| US-2411 | KPI activité cabinet (admin) | ⏸️ **V2** | 5 | dep US-2150 (V3) + US-2200 (à clarifier) — reclassée V2 2026-05-15 |
 | US-2412 | Facturation à traiter (admin) | ✅ DONE PR #403 (heuristique) | 5 | TeleconsultationActe.invoicedAt IS NULL fallback ; ⚠️ Invoice table V2 (US-2107) |
-| US-2413 | Conformité RGPD (admin) | ⏸️ **V2** | 8 | deps US-2190/2191/2192 absentes du ROADMAP — reclassée V2 2026-05-15 |
-| ~~US-2414~~ | ~~Santé système 6 services (admin)~~ | ❌ SUPPRIMÉE | — | Q6 session Samir 2026-05-13 — duplicate (`/api/health` couvre déjà) |
 | US-2415 | Sidebar pilotage administration (admin) | ✅ DONE PR #403 (existant) | 6 | NavigationShell déjà gated minRole ADMIN sur /users + /audit ; ⚠️ badges count V2 |
+
+> Note : US-2411 (KPI cabinet admin), US-2413 (Conformité RGPD admin) reclassées V2 (deps US-2150/2200/2190-2192) — voir section V2 ci-dessous.
+> Note : US-2414 (Santé système 6 services) supprimée — duplicate (`/api/health` couvre déjà).
 
 > **MVP dashboard** : US-2400, US-2401, US-2402 = 21 SP — critique pour
 > démonstration produit (présentation cabinet médecin).
@@ -474,10 +470,10 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 > iOS app séparée (cf. CLAUDE.md "on ne developpe pas les applications
 > android et ios").
 
-### Groupe 10 — Mirror V1 (20 US)
+### Groupe 10 — Mirror V1 (18 US, 100% DONE V1)
 
-> Batches A+B livrés PR #395 (7 US ~30 SP). Batches C/D/E restants
-> (modes spéciaux, partage aidants, ETP) = 13 US ~55 SP.
+> Batches A+B livrés PR #395 (7 US ~30 SP). Modes spéciaux PR #396 (3 US).
+> Partage aidants PR #405 (3 US). ETP / journal PR #404+#405 (5 US).
 
 | US | Titre | Statut |
 |----|-------|--------|
@@ -491,20 +487,20 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2233 | Activation mode pédiatrique (multi-aidants PHI chiffrée, permissionLevel propose) | ✅ DONE PR #396 |
 | US-2234 | Activation mode Ramadan (29-30j, sahur/iftar, ISF/ICR multipliers, warnings IDF-DAR) | ✅ DONE PR #396 |
 | US-2235 | Activation mode voyage (tz offset, basal protocol transitoire ATTD/EASD 2022) | ✅ DONE PR #396 |
-| US-2239 | Audit partages temporaires | ✅ DONE PR #405 | AuditLog SQL filter OR-kinds + scanned/truncated metadata |
-| US-2240 | Validation médicale partage tiers | ✅ DONE PR #405 | ConfigVersionType.third_party_share + patientModeWorkflow.validate DOCTOR |
-| US-2242 | Notifications partagées multi-aidants | ✅ DONE PR #405 | ConfigVersionType.shared_notifications + matrice alertType×caregivers + FK check User.status=active |
-| US-2248 | Vue journal alimentaire patient | ✅ DONE PR #404 | DiabetesEvent insulinMeal + MealPhoto count + comment truncate 500c |
-| US-2250 | Validation comptage glucides patient | ⏸️ V2 (FSM table) | Workflow validation deferred — exige nouvelle table |
-| US-2251 | Suivi adhésion thérapeutique | ✅ DONE PR #404 | Score 0.6 régularité Paris-tz + 0.4 bolus coverage |
-| US-2252 | Alerte non-saisie depuis X jours | ⏸️ V2 (orchestration) | Cron + OrchestrationLog table deferred |
-| US-2253 | Contextualisation glycémie-repas | ✅ DONE PR #404 | CGM ±2h pre/post + sample counts |
-| US-2260 | Templates messagerie pathologie | ✅ DONE PR #404 (existant) | `/api/team/templates` (US-2078) ; ⚠️ pathology column V2 |
-| US-2261 | Messages programmés patient | ✅ DONE PR #405 | Wrapper PushScheduledNotification (schedule/list/cancel) + cancel.notFound audit + scheduledAt cap 1y + templateVariables 4KB |
+| US-2239 | Audit partages temporaires | ✅ DONE PR #405 — AuditLog SQL filter OR-kinds + scanned/truncated metadata |
+| US-2240 | Validation médicale partage tiers | ✅ DONE PR #405 — ConfigVersionType.third_party_share + patientModeWorkflow.validate DOCTOR |
+| US-2242 | Notifications partagées multi-aidants | ✅ DONE PR #405 — ConfigVersionType.shared_notifications + matrice alertType×caregivers + FK check User.status=active |
+| US-2248 | Vue journal alimentaire patient | ✅ DONE PR #404 — DiabetesEvent insulinMeal + MealPhoto count + comment truncate 500c |
+| US-2251 | Suivi adhésion thérapeutique | ✅ DONE PR #404 — Score 0.6 régularité Paris-tz + 0.4 bolus coverage |
+| US-2253 | Contextualisation glycémie-repas | ✅ DONE PR #404 — CGM ±2h pre/post + sample counts |
+| US-2260 | Templates messagerie pathologie | ✅ DONE PR #404 (existant) — `/api/team/templates` (US-2078) ; ⚠️ pathology column V2 |
+| US-2261 | Messages programmés patient | ✅ DONE PR #405 — Wrapper PushScheduledNotification (schedule/list/cancel) + cancel.notFound audit + scheduledAt cap 1y + templateVariables 4KB |
+
+> Note : US-2250 (Validation comptage glucides) et US-2252 (Alerte non-saisie X jours) reclassées V2 — voir section V2 ci-dessous.
 
 ---
 
-## V2 — 74 US
+## V2 — 92 US (inclut 18 US reclassées V1→V2)
 
 | Domaine | US | Titre |
 |---------|----|-------|
@@ -542,6 +538,8 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | Dashboards admin | US-2411 | KPI activité cabinet (reclassée V1→V2 — dep US-2150/US-2200) |
 | Dashboards admin | US-2413 | Conformité RGPD admin (reclassée V1→V2 — deps US-2190/91/92 absentes) |
 | Mirror V2 | US-2236–2241, 2245–2249, 2254–2259 | Transition adulte, PAI, révocation, dispositifs avancés |
+| Mirror V1→V2 | US-2250 | Validation comptage glucides patient (reclassée V1→V2 — exige FSM table) |
+| Mirror V1→V2 | US-2252 | Alerte non-saisie depuis X jours (reclassée V1→V2 — cron + OrchestrationLog table deferred) |
 
 ---
 
@@ -624,7 +622,9 @@ Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives,
 
 ---
 
-*Dernière mise à jour : 2026-05-16 — Round 3 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 16 findings (1C/3H/7M/5L) → 0 résiduel. Corrections critiques round 3 : (a) CR-1 advisory lock cassé en prod — nouveau module `src/lib/db/cron-lock.ts` avec `pg.Pool({max:1})` dédié → garantit acquire/release sur la même connexion physique (round 2 utilisait `prisma.$queryRaw` partagé qui routait sur connexions différentes → release no-op silent → lock orphelin → cron bloqué) ; (b) HI-1 opt-in implicite cassé — filtre round 2 `notifPreferences: { medicalAppointments: true }` excluait silencieusement les patients sans row préférences (créée lazily) → majorité prod n'aurait reçu aucun rappel → fix `OR: [{null}, {true}]` ; (c) HI-2 SMS mock V1 mensonger — persistait `status="sent"` → fix `status="skipped"` + `errorReason="provider_mock_no_real_sms"` ; (d) HI-3 test C1 timezone laxiste → loop runtime TZ + pattern strict ; (e) MED-1 opt-out RGPD audit silencieux → count + `metadata.optOutSkipped` ; (f) MED-2 forensique by runId → GIN partial index `audit_logs(metadata->'runId')`. 2231/2231 tests verts. Migration suiveuse `20260519120000_us2502_round3_review` (GIN runId + CHECK cohérence reminders LOW-5). Runbook `docs/runbook/cron-reminders.md` créé (LOW-1).*
+*Dernière mise à jour : 2026-05-16 — **Cleanup V1 ROADMAP** : 18 US reclassées V2 retirées des sections V1 (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte (le user a indiqué que les US V2 ne doivent plus apparaître dans les sections V1 ni être comptabilisées dedans). Stats V1 corrigées : 99 total (98 DONE + 1 NOT STARTED = US-2004 procurement) = **99%** vs ancien 74%. V2 total ajusté : 92 (inclut les 18 US migrées V1→V2). Total global 285. US retirées : US-2031, US-2041, US-2076bis, US-2077, US-2104, US-2106, US-2109, US-2124-2127, US-2153, US-2164, US-2165, US-2411, US-2413, US-2250, US-2252.*
+
+*Précédente mise à jour : 2026-05-16 — Round 3 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 16 findings (1C/3H/7M/5L) → 0 résiduel. Corrections critiques round 3 : (a) CR-1 advisory lock cassé en prod — nouveau module `src/lib/db/cron-lock.ts` avec `pg.Pool({max:1})` dédié → garantit acquire/release sur la même connexion physique (round 2 utilisait `prisma.$queryRaw` partagé qui routait sur connexions différentes → release no-op silent → lock orphelin → cron bloqué) ; (b) HI-1 opt-in implicite cassé — filtre round 2 `notifPreferences: { medicalAppointments: true }` excluait silencieusement les patients sans row préférences (créée lazily) → majorité prod n'aurait reçu aucun rappel → fix `OR: [{null}, {true}]` ; (c) HI-2 SMS mock V1 mensonger — persistait `status="sent"` → fix `status="skipped"` + `errorReason="provider_mock_no_real_sms"` ; (d) HI-3 test C1 timezone laxiste → loop runtime TZ + pattern strict ; (e) MED-1 opt-out RGPD audit silencieux → count + `metadata.optOutSkipped` ; (f) MED-2 forensique by runId → GIN partial index `audit_logs(metadata->'runId')`. 2231/2231 tests verts. Migration suiveuse `20260519120000_us2502_round3_review` (GIN runId + CHECK cohérence reminders LOW-5). Runbook `docs/runbook/cron-reminders.md` créé (LOW-1).*
 
 *Précédente mise à jour : 2026-05-16 (round 2) — Round 2 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 29 findings (3C/4H/15M/7L) → 0 résiduel. Corrections clés : timezone bug fidélité UTC (C1), FCM `senderId: number | null` (C2), advisory lock SESSION-level vs xact (C3), filtre RGPD Art. 21 `notifPreferences.medicalAppointments` (H1), SMS skipped audit standalone TX (H2), GET retiré anti-leak CRON_SECRET (H3), step order push J-0 → SMS J-1 → email J-2 (M10), index `appointments(status, date)` (M5), `sms_logs.cabinet_id ON DELETE RESTRICT` (M7), runId UUID audit pivot (M11), dead code anonymisation supprimé (M2), null handling location/hour (M12/M13). 25/25 unit + 6/6 integration verts. DPIA §9 ajoutée. ROADMAP V1 indicateurs inchangés (US toujours DONE).*
 
