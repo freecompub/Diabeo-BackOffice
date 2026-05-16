@@ -400,6 +400,15 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2505 | Config prise de RDV (auto vs validation manuelle) | 5 | ✅ DONE | `HealthcareMember.bookingMode` enum, `confirm` route DOCTOR, default duration 15-240 — PR #392 |
 | US-2506 | Option SMS payante cabinet (V1 mock) | 5 | ✅ DONE PR #418 | `HealthcareService.smsEnabled` + `smsCreditBalance` admin toggle + `SmsLog` (provider=mock V1) + service `sms.service` (decrement atomique credits + `SmsDisabledError`/`SmsInsufficientCreditError`) + route `/api/cabinet/[id]/sms-config` ADMIN-only + chiffrement AES-256-GCM `toEnc` + messageExcerpt cap 120c. ⚠️ V1 mock — aucun SMS réellement envoyé. Real integration différée **V3 US-2506bis** |
 
+#### Follow-ups round 3 PR #418 (4 issues GH créées 2026-05-16)
+
+| Issue | Bloqueur pre-prod | Estimation | Description |
+|-------|-------------------|------------|-------------|
+| [#419](https://github.com/freecompub/Diabeo-BackOffice/issues/419) | ✅ oui | 3 SP | Test E2E réel pool advisory lock sur staging Postgres (le mock unit ne reproduit pas la condition pool node-postgres) |
+| [#420](https://github.com/freecompub/Diabeo-BackOffice/issues/420) | ✅ oui si > 1M audit_logs | 1 SP | EXPLAIN ANALYZE GIN `audit_logs_run_id_gin_idx` sur dataset ≥ 1M rows + switch `jsonb_path_ops` si nécessaire |
+| [#421](https://github.com/freecompub/Diabeo-BackOffice/issues/421) | ✅ oui RGPD | 0.5-2 SP | Décision DPO : `optOutSkipped` count audit suffit Art. 5.2 ou ajouter API admin `proof-of-optout/[patientId]` ? |
+| [#422](https://github.com/freecompub/Diabeo-BackOffice/issues/422) | ✅ oui patients réels | 0.5-1.5 SP | Décision business V1.5 : retirer step SMS du cron OU mentionner dans CGU "pas de SMS V1" OU procurement Twilio sandbox |
+
 > **Dépendances** :
 >  - US-2074 (Email Resend, DONE) pour rappels email
 >  - US-2073 (Push FCM, DONE) pour rappels J-0
