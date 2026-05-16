@@ -64,8 +64,10 @@ describe("deleteUserAccount", () => {
       healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       user: {
         update: vi.fn().mockResolvedValue({}),
-        // US-2026 round 2 M7 — clearIns audit dans deletion tx
+        // US-2026 round 2 M7 + round 3 M4 — clearIns audit dans deletion tx
+        // (utilise insService.clearIns avec externalTx).
         findUnique: vi.fn().mockResolvedValue({ insHmac: null }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }), // pas d'INS → no-op
       },
     }
 
@@ -154,8 +156,10 @@ describe("deleteUserAccount", () => {
       healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       user: {
         update: vi.fn().mockResolvedValue({}),
-        // US-2026 round 2 M7 — clearIns audit dans deletion tx
+        // US-2026 round 2 M7 + round 3 M4 — clearIns audit dans deletion tx
+        // (utilise insService.clearIns avec externalTx).
         findUnique: vi.fn().mockResolvedValue({ insHmac: null }),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }), // pas d'INS → no-op
       },
     }
 

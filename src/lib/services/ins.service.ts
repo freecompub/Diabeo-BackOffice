@@ -3,9 +3,10 @@
  * @description US-2026 — INS (Identite Nationale de Sante) lifecycle.
  *
  * **Perimetre V1 standalone** : stockage chiffre + validation format
- * + lookup HMAC anti-doublon RNIPP + flag qualite `saisi_non_verifie`.
- * L'integration ANS Teleservice INSi (verification temps-reel) reste **V2**
- * (US-2126, bloque procurement habilitation ANS 5-10k€).
+ * + structure ANS + lookup HMAC anti-doublon RNIPP + flag qualite
+ * `saisi_non_verifie`. L'integration ANS Teleservice INSi (verification
+ * temps-reel) reste **V2** (US-2126, bloque procurement habilitation
+ * ANS 5-10k€).
  *
  * ### Format INS (15 chiffres)
  *
@@ -14,39 +15,88 @@
  *   - Positions 2-3 : annee naissance (00-99)
  *   - Positions 4-5 : mois naissance (01-12, plus 20/30/31/41-99 pour INS
  *                     temporaire)
- *   - Positions 6-7 : departement (01-95, 96-99 etranger, 9A-9Z DOM)
+ *   - Positions 6-7 : departement (01-99 metropolitain/etranger, 9A-9Z DOM
+ *                     hors scope V1 — Diabeo metropolitain only)
  *   - Positions 8-10 : code commune (000-999)
  *   - Positions 11-13 : ordre de naissance (001-999)
  *   - Positions 14-15 : cle Luhn-97
  *
  * Validation cle : `cle = 97 - (NIR_13_digits mod 97)`.
  *
- * ### Securite HDS / RGPD Art. 9
+ * ### Securite HDS / RGPD Art. 9 / ANSSI RGS
  *
- *   - Plaintext jamais journalise (audit log = metadata sans ins).
+ *   - Plaintext jamais journalise.
  *   - Stockage AES-256-GCM (`User.ins` base64).
- *   - Lookup unique via HMAC-SHA256 (`User.insHmac`, UNIQUE NULLS DISTINCT).
- *   - Audit collision metadata `collidingUserId` HMAC-pepper anonymise
- *     (H1 review — anti leak cross-cabinet via `hmacAuditId`).
- *   - Race P2002 catchee + remappee `InsCollisionError` (H4 review).
- *   - Coherence traits hashee `insTraitsHash` (C1 review — detection trait
- *     drift post-set).
+ *   - Lookup unique via HMAC-SHA256 (`User.insHmac`).
+ *   - Audit collision metadata `collidingUserIdHmac` peppered (H1 review
+ *     anti leak cross-cabinet via `hmacAuditId`).
+ *   - Audit `previousInsHmac` peppered via `hmacAuditId("ins-history", ...)`
+ *     (L1 round 3 — sinon JOIN audit_logs ↔ users.ins_hmac demasque).
+ *   - Race P2002 catch → `InsCollisionError` (H4 review round 2).
+ *   - Rate-limit anti-enumeration 5/24h avec `pg_advisory_xact_lock`
+ *     atomique (H2 round 3 — anti-TOCTOU race parallele).
+ *   - Forensic audit `rate_limited` emit-once-per-window (M1 round 3
+ *     anti audit log amplification).
+ *   - `insTraitsHash` HMAC-SHA256(HMAC_SECRET) — pas SHA-256 nu (M5 round 3
+ *     anti bruteforce GPU sur dump SQL leak).
  *
  * ### Referentiel INS ANS v3 conformite
  *
  *   - `insQualityStatus = saisi_non_verifie` force V1 (sans INSi).
- *   - **Interdiction de partage hors-Diabeo** tant que qualite non-verifiee
- *     (§5.1 ANS) — enforced via `assertInsCanBeShared` (a appeler par
- *     US-2123 FHIR, US-2102 Facture si propagation downstream).
+ *   - **Interdiction de partage hors-Diabeo** §5.1 enforced via Branded
+ *     type `QualifiedIns` (H3 round 3) — impossible d'appeler les
+ *     futurs serializers US-2123 FHIR / US-2102 Facture sans
+ *     `assertQualifiedForSharing` qui throw si quality non-validee.
  */
 
 import { Prisma } from "@prisma/client"
-import { createHash } from "crypto"
+import { createHmac } from "crypto"
 import { prisma } from "@/lib/db/client"
 import { auditService, type AuditContext } from "./audit.service"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { hmacIns, hmacAuditId } from "@/lib/crypto/hmac"
 import type { Role, InsQualityStatus } from "@prisma/client"
+
+// ─────────────────────────────────────────────────────────────
+// Branded type — H3 round 3 review
+// ─────────────────────────────────────────────────────────────
+
+/**
+ * Brand qui empeche un INS non-qualifie d'etre passe a un serializer
+ * partage hors-Diabeo. Le brand est unique => meme un cast `as string`
+ * ne le produit pas. Seul `assertQualifiedForSharing` retourne ce type.
+ *
+ * Usage (futur US-2123 / US-2102) :
+ * ```typescript
+ * const ins: QualifiedIns = assertQualifiedForSharing(decrypted, quality)
+ * fhirBundle.patient.identifier.value = ins  // OK
+ * msSantePayload.ins = ins                   // OK
+ * ```
+ */
+declare const QualifiedInsBrand: unique symbol
+export type QualifiedIns = string & { readonly [QualifiedInsBrand]: never }
+
+export class InsNotQualifiedError extends Error {
+  constructor(public quality: InsQualityStatus | null) {
+    super(`INS not qualified for external sharing (status=${quality})`)
+    this.name = "InsNotQualifiedError"
+  }
+}
+
+/**
+ * H3 review — Guard statique pour les serializers downstream (FHIR, Facture).
+ * Throw si l'INS n'est pas `insi_recupere` ou `insi_verifie` (V1 force
+ * `saisi_non_verifie` → toujours throw). Conforme Referentiel INS ANS §5.1.
+ */
+export function assertQualifiedForSharing(
+  ins: string,
+  quality: InsQualityStatus | null,
+): QualifiedIns {
+  if (!insService.canBeSharedExternally(quality)) {
+    throw new InsNotQualifiedError(quality)
+  }
+  return ins as QualifiedIns
+}
 
 // ─────────────────────────────────────────────────────────────
 // Erreurs typees
@@ -73,7 +123,6 @@ export class InsNotFoundError extends Error {
   }
 }
 
-/** H2 review — rate-limit collision attempts par caller (anti-enumeration RNIPP). */
 export class InsCollisionRateLimitError extends Error {
   constructor(public retryAfterSec: number) {
     super(`Too many INS collision attempts (retry after ${retryAfterSec}s)`)
@@ -105,77 +154,153 @@ const AUDIT_KIND = {
 export { AUDIT_KIND as INS_AUDIT_KIND }
 
 // ─────────────────────────────────────────────────────────────
-// Rate-limit anti-enumeration (H2 review — sliding window 24h).
+// Rate-limit anti-enumeration (H2 + M1 round 3 — advisory lock + emit-once)
 // ─────────────────────────────────────────────────────────────
 
-/**
- * Compte les collisions INS par `auditUserId` sur 24h glissantes via
- * `audit_logs` (kind=user.ins.collision). Cap a 5 (un PS legitime
- * n'enumere pas 5 INS distincts par jour). Au-dela, lockout 24h.
- */
 const INS_COLLISION_WINDOW_HOURS = 24
 const INS_COLLISION_MAX_PER_WINDOW = 5
 
+// Type alias pour transaction Prisma 7 (interactive transaction context).
+type TxClient = Prisma.TransactionClient
+
+/**
+ * H2 round 3 — `pg_advisory_xact_lock` serialise les setIns concurrents
+ * par `auditUserId` dans la meme transaction. Le lock est relache
+ * automatiquement au COMMIT/ROLLBACK → pas de leak ressource.
+ *
+ * `hashtextextended(text, seed)` produit un bigint stable, parfait pour
+ * advisory lock key (sinon collision possible sur hash 32-bit).
+ */
+async function acquireRateLimitLock(
+  tx: TxClient,
+  auditUserId: number,
+): Promise<void> {
+  await tx.$executeRawUnsafe(
+    `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`,
+    `ins-rate-limit:${auditUserId}`,
+  )
+}
+
+/**
+ * Compte les collisions INS par `auditUserId` sur 24h glissantes via
+ * `audit_logs` (kind=user.ins.collision). Cap a 5. Au-dela, lockout 24h.
+ *
+ * Doit etre appele DANS la transaction qui a deja acquis advisory lock
+ * via `acquireRateLimitLock` (sinon TOCTOU race parallele).
+ *
+ * M1 round 3 review — emit `rate_limited` audit row UNE seule fois par
+ * fenetre 24h (sinon amplification : 1 audit row par call pendant lockout).
+ */
 async function assertNotRateLimited(
+  tx: TxClient,
   auditUserId: number,
   ctx: AuditContext,
 ): Promise<void> {
   const since = new Date(Date.now() - INS_COLLISION_WINDOW_HOURS * 3600_000)
-  const count = await prisma.auditLog.count({
+
+  // Compte les collisions passees dans la fenetre.
+  // HIGH-1 round 3 + Prisma F-1 — la query utilise l'index partiel
+  // `audit_logs_ins_collision_by_user_idx` (migration round 3) :
+  //   ON audit_logs (user_id, created_at DESC)
+  //   WHERE resource='USER_INS' AND action='UNAUTHORIZED'
+  //     AND metadata @> '{"kind":"user.ins.collision"}'
+  // → O(log N + matching_collisions) sans seq scan.
+  const count = await tx.auditLog.count({
     where: {
       userId: auditUserId,
       resource: "USER_INS",
       action: "UNAUTHORIZED",
       createdAt: { gte: since },
-      // Filtre metadata.kind = "user.ins.collision" via JSON path
-      // (PG GIN index sur metadata supporte ce query).
       metadata: { path: ["kind"], equals: AUDIT_KIND.COLLISION },
     },
   })
+
   if (count >= INS_COLLISION_MAX_PER_WINDOW) {
-    // Audit rate-limit hit (SOC alerte burst detection).
-    await auditService.log({
-      userId: auditUserId,
-      action: "UNAUTHORIZED",
-      resource: "USER_INS",
-      resourceId: "rate_limit",
-      ipAddress: ctx.ipAddress,
-      userAgent: ctx.userAgent,
-      requestId: ctx.requestId,
-      metadata: { kind: AUDIT_KIND.RATE_LIMITED, attempts: count },
-    }).catch(() => undefined)
+    // M1 round 3 — verifier si `rate_limited` audit deja emis cette fenetre
+    // pour eviter amplification log spam pendant 24h lockout.
+    const alreadyAlerted = await tx.auditLog.findFirst({
+      where: {
+        userId: auditUserId,
+        resource: "USER_INS",
+        action: "UNAUTHORIZED",
+        createdAt: { gte: since },
+        metadata: { path: ["kind"], equals: AUDIT_KIND.RATE_LIMITED },
+      },
+      select: { id: true },
+    })
+    if (!alreadyAlerted) {
+      // M8 round 3 — resourceId = String(auditUserId) US-2268 convention
+      // (caller dont l'attack surface est protegee, pas sentinel "rate_limit").
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UNAUTHORIZED",
+        resource: "USER_INS",
+        resourceId: String(auditUserId),
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: { kind: AUDIT_KIND.RATE_LIMITED, attempts: count },
+      })
+    }
     throw new InsCollisionRateLimitError(INS_COLLISION_WINDOW_HOURS * 3600)
   }
 }
 
 // ─────────────────────────────────────────────────────────────
-// Validation format INS — pure helpers
+// Validation format + structure INS — pure helpers
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Validation stricte du format INS-NIR (15 chiffres + cle Luhn-97).
+ * Validation stricte format + structure ANS + Luhn-97.
  *
- * @param ins Chaine candidate.
- * @returns `true` si valide.
- * @example
- * isValidInsFormat("1234567890123") // false (manque cle)
- * isValidInsFormat("190017A00100196") // false (non-numerique)
+ * Round 3 (M2 review) — vraie structure ANS (sexe / mois / dept), pas
+ * juste Luhn. Sans ce check, INS "9999990000000XX" passerait Luhn ok mais
+ * sexe=9 impossible per ANS — identitovigilance amplifier.
  */
 export function isValidInsFormat(ins: string): boolean {
   if (typeof ins !== "string") return false
   if (!/^\d{15}$/.test(ins)) return false
+  if (!isValidInsStructure(ins)) return false
   return validateLuhn97(ins)
 }
 
 /**
- * Calcul + verification de la cle Luhn-97 du NIR francais.
+ * M2 round 3 review — structure ANS-NIR/NIA conforme Referentiel INS v3 §3.1.
+ *
+ *   - Sexe (pos 1) : {1, 2, 3, 4, 7, 8} (1/2 qualifie, 3/4 indetermine,
+ *     7/8 INS-NIA temporaire).
+ *   - Mois (pos 4-5) : 01-12 (NIR normal) OU 20/30/31/41-99 (NIA temporaire).
+ *   - Dept (pos 6-7) : 01-99 (metropole + etranger). 9A-9Z DOM exclu V1
+ *     (Diabeo metropolitain only — regex /^\d{15}$/ deja exclut DOM).
+ *
+ * @internal
+ */
+function isValidInsStructure(ins15: string): boolean {
+  const sexe = ins15[0]
+  if (!["1", "2", "3", "4", "7", "8"].includes(sexe)) return false
+
+  const monthStr = ins15.slice(3, 5)
+  const month = parseInt(monthStr, 10)
+  const monthValid =
+    (month >= 1 && month <= 12)
+    || month === 20 || month === 30 || month === 31
+    || (month >= 41 && month <= 99)
+  if (!monthValid) return false
+
+  const deptStr = ins15.slice(5, 7)
+  const dept = parseInt(deptStr, 10)
+  // 00 invalide. 01-95 metropole, 96-99 etranger ou DOM legacy.
+  if (dept < 1 || dept > 99) return false
+
+  return true
+}
+
+/**
+ * Calcul + verification cle Luhn-97 du NIR francais.
  * Algorithme ANS : `cle = 97 - (NIR_13_digits mod 97)`.
  *
- * BigInt pour exactitude (13 chiffres = 9.999... < 2^53 mais defense-in-depth).
- * `BigInt(97)` syntaxe (vs litteral `97n`) pour compat tsconfig target ES2017.
+ * BigInt pour exactitude. `BigInt(97)` syntax pour compat tsconfig ES2017.
  *
- * @param ins15 INS de 15 chiffres exactement (deja valide format regex).
- * @returns `true` si la cle correspond.
  * @internal
  */
 function validateLuhn97(ins15: string): boolean {
@@ -183,8 +308,6 @@ function validateLuhn97(ins15: string): boolean {
   const body = ins15.slice(0, 13)
   const cleExpected = parseInt(ins15.slice(13, 15), 10)
 
-  // Defense-in-depth : BigInt(body) throw SyntaxError sur non-digit.
-  // Le regex check precedent garantit pas de throw mais on guard.
   let bodyNum: bigint
   try {
     bodyNum = BigInt(body)
@@ -196,24 +319,28 @@ function validateLuhn97(ins15: string): boolean {
 }
 
 /**
- * Normalisation INS : strip whitespace + trim. Format ANS = digits only.
+ * Normalisation INS : strip whitespace + trim.
  */
 export function normalizeIns(raw: string): string {
   return raw.replace(/\s+/g, "").trim()
 }
 
 // ─────────────────────────────────────────────────────────────
-// Traits hash (C1 review — detection trait drift post-set)
+// Traits hash (C1 + M5 round 3 — HMAC-SHA256 anti bruteforce)
 // ─────────────────────────────────────────────────────────────
 
 /**
- * Calcule SHA-256 hex du tuple `(firstnameHmac, lastnameHmac, birthday,
- * sex, codeBirthPlace)`. Stocke au moment du set INS, compare au moment de
- * re-set/check qualite. Permet de detecter qu'un trait a change
- * post-saisie INS (declenche workflow re-verification INSi futur V2).
+ * M5 round 3 review — HMAC-SHA256(HMAC_SECRET) au lieu de SHA-256 nu.
  *
- * Note : utilise les HMAC existants des traits (deja stockes) pour ne pas
- * deciffrer les plaintext. Si un trait est null → on hash "null" string.
+ * Pourquoi HMAC :
+ *   - SHA-256 nu sur `(firstnameHmac|lastnameHmac|YYYY-MM-DD|sex|cog)` est
+ *     bruteforce-feasible (~5.8 milliards combinaisons sex+date+cog,
+ *     ~12s GPU consumer @ 500 MH/s).
+ *   - HMAC avec secret 32 bytes = infeasible sans compromission secret.
+ *
+ * L2 round 3 — date convertie via `getUTCFullYear/Month/Date` pour
+ * future-proof si schema passe a Timestamptz (sinon timezone-sensitive
+ * sur drift detection).
  *
  * @internal
  */
@@ -226,14 +353,23 @@ export function computeTraitsHash(
     codeBirthPlace: string | null
   },
 ): string {
+  const key = process.env.HMAC_SECRET
+  if (!key) throw new Error("HMAC_SECRET is not set")
+
+  let dateStr = "null"
+  if (traits.birthday) {
+    const d = traits.birthday
+    dateStr = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
+  }
   const tuple = [
     traits.firstnameHmac ?? "null",
     traits.lastnameHmac ?? "null",
-    traits.birthday ? traits.birthday.toISOString().split("T")[0] : "null",
+    dateStr,
     traits.sex ?? "null",
     traits.codeBirthPlace ?? "null",
   ].join("|")
-  return createHash("sha256").update(tuple).digest("hex")
+  // Domain prefix "ins-traits:" → cross-domain key reuse separation RGS B1.2.
+  return createHmac("sha256", key).update(`ins-traits:${tuple}`).digest("hex")
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -241,13 +377,9 @@ export function computeTraitsHash(
 // ─────────────────────────────────────────────────────────────
 
 export interface InsReadResult {
-  /** Plaintext INS dechiffre. null si non renseigne. */
   ins: string | null
-  /** Indicateur "INS configure" (UI sans exposer plaintext). */
   hasIns: boolean
-  /** Statut qualite Referentiel ANS — null si pas d'INS. */
   qualityStatus: InsQualityStatus | null
-  /** Timestamp du set INS. */
   setAt: Date | null
 }
 
@@ -255,25 +387,14 @@ export const insService = {
   /**
    * Persiste un INS pour un User (V1 force qualite `saisi_non_verifie`).
    *
-   * Workflow :
-   *   1. Validation format Luhn-97 (defense-in-depth applicative).
-   *   2. Rate-limit anti-enumeration (5 collisions/24h/auditUserId — H2).
-   *   3. Lookup HMAC anti-doublon RNIPP (autres users).
-   *   4. Si collision → audit `collidingUserIdHmac` (anonymise H1) + throw.
-   *   5. Recupere traits actuels User + calcule `traitsHash`.
-   *   6. Transaction : updateMany + audit `set` avec chainage
-   *      `previousInsHmac` (forensique LOW review).
-   *
-   * Note `updateMany` vs `update` (M5 review) : `updateMany` permet le
-   * filtre additionnel `WHERE` futur (ex. `deletedAt: null`) sans devoir
-   * refactorer. `update({where:{id}})` necessite que `id` soit @id/@unique
-   * et catch P2025 NotFound — equivalent fonctionnel mais moins flexible.
-   *
-   * @throws InsValidationError si format invalide.
-   * @throws InsCollisionError si INS deja registered pour un autre User
-   *                            (ou race P2002 H4).
-   * @throws InsCollisionRateLimitError si > 5 collisions/24h (H2).
-   * @throws InsNotFoundError si User cible introuvable.
+   * Architecture round 3 :
+   *   - Transaction unique avec advisory lock per-user (H2 atomique).
+   *   - Pre-check rate-limit dans la meme tx.
+   *   - Collision lookup HMAC.
+   *   - Audit collision metadata `collidingUserIdHmac` peppered (H1).
+   *   - Audit `previousInsHmac` peppered via hmacAuditId "ins-history" (L1).
+   *   - Traits hash HMAC-SHA256 (M5).
+   *   - Race P2002 catch → InsCollisionError (H4).
    */
   async setIns(
     targetUserId: number,
@@ -288,66 +409,64 @@ export const insService = {
       throw new InsValidationError("ins", "invalidFormat")
     }
 
-    // H2 — rate-limit anti-enumeration AVANT lookup HMAC (= la lecture du
-    // count audit_logs ne donne pas d'info attaquant).
-    await assertNotRateLimited(auditUserId, ctx)
-
     const insHmac = hmacIns(ins)
 
-    // Anti-doublon RNIPP : verifier qu'aucun AUTRE User n'a deja ce HMAC.
-    const existing = await prisma.user.findFirst({
-      where: { insHmac, NOT: { id: targetUserId } },
-      select: { id: true },
-    })
-    if (existing) {
-      // H1 review — HMAC anonymise collidingUserId (DPO/RSSI re-correle
-      // via fonction interne dediee, PS audit reader ne voit qu'un hash).
-      const collidingUserIdHmac = hmacAuditId(
-        "ins-collision",
-        existing.id,
-      )
-      await auditService.log({
-        userId: auditUserId,
-        action: "UNAUTHORIZED",
-        resource: "USER_INS",
-        resourceId: String(targetUserId),
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        requestId: ctx.requestId,
-        metadata: {
-          kind: AUDIT_KIND.COLLISION,
-          collidingUserIdHmac, // ID anonymise (H1)
-          ...(metadata.patientId && { patientId: metadata.patientId }),
-        },
-      })
-      throw new InsCollisionError()
-    }
-
-    // Recupere les traits + previousInsHmac actuels pour audit chainage (LOW HSA-F8).
-    const userRow = await prisma.user.findUnique({
-      where: { id: targetUserId },
-      select: {
-        firstnameHmac: true,
-        lastnameHmac: true,
-        birthday: true,
-        sex: true,
-        codeBirthPlace: true,
-        insHmac: true,
-      },
-    })
-    if (!userRow) {
-      throw new InsNotFoundError()
-    }
-    const traitsHash = computeTraitsHash(userRow)
-    const previousInsHmac = userRow.insHmac
-
-    const insEnc = encryptField(ins)
-    const now = new Date()
-
-    // H4 review — try/catch P2002 race condition (entre findFirst et update
-    // un autre thread peut inserer le meme HMAC → 500 sinon).
     try {
       return await prisma.$transaction(async (tx) => {
+        // H2 round 3 — advisory lock serialise les concurrents per-userId.
+        await acquireRateLimitLock(tx, auditUserId)
+
+        // Pre-check rate-limit dans la meme tx (snapshot consistent).
+        await assertNotRateLimited(tx, auditUserId, ctx)
+
+        // Anti-doublon RNIPP : verifier qu'aucun AUTRE User n'a deja ce HMAC.
+        const existing = await tx.user.findFirst({
+          where: { insHmac, NOT: { id: targetUserId } },
+          select: { id: true },
+        })
+        if (existing) {
+          // H1 review — HMAC peppered collidingUserId (anti leak cross-cabinet).
+          const collidingUserIdHmac = hmacAuditId("ins-collision", existing.id)
+          await auditService.logWithTx(tx, {
+            userId: auditUserId,
+            action: "UNAUTHORIZED",
+            resource: "USER_INS",
+            resourceId: String(targetUserId),
+            ipAddress: ctx.ipAddress,
+            userAgent: ctx.userAgent,
+            requestId: ctx.requestId,
+            metadata: {
+              kind: AUDIT_KIND.COLLISION,
+              collidingUserIdHmac,
+              ...(metadata.patientId && { patientId: metadata.patientId }),
+            },
+          })
+          throw new InsCollisionError()
+        }
+
+        // Recupere traits + previousInsHmac (LOW L1 round 3 — chainage forensique).
+        const userRow = await tx.user.findUnique({
+          where: { id: targetUserId },
+          select: {
+            firstnameHmac: true,
+            lastnameHmac: true,
+            birthday: true,
+            sex: true,
+            codeBirthPlace: true,
+            insHmac: true,
+          },
+        })
+        if (!userRow) {
+          throw new InsNotFoundError()
+        }
+        const traitsHash = computeTraitsHash(userRow)
+        const previousInsHmacPeppered = userRow.insHmac
+          ? hmacAuditId("ins-history", userRow.insHmac)
+          : null
+
+        const insEnc = encryptField(ins)
+        const now = new Date()
+
         const result = await tx.user.updateMany({
           where: { id: targetUserId },
           data: {
@@ -362,6 +481,7 @@ export const insService = {
         if (result.count === 0) {
           throw new InsNotFoundError()
         }
+
         await auditService.logWithTx(tx, {
           userId: auditUserId,
           action: "UPDATE",
@@ -373,10 +493,10 @@ export const insService = {
           metadata: {
             kind: AUDIT_KIND.SET,
             qualityStatus: "saisi_non_verifie",
-            // H5 review — role du saisisseur (forensique identitovigilance).
             setByRole: auditUserRole,
-            // LOW HSA-F8 — chainage forensique (sans plaintext).
-            ...(previousInsHmac && { previousInsHmac }),
+            ...(previousInsHmacPeppered && {
+              previousInsHmacPeppered, // L1 round 3 — domain-separated HMAC
+            }),
             ...(metadata.patientId && { patientId: metadata.patientId }),
           },
         })
@@ -389,8 +509,7 @@ export const insService = {
         && Array.isArray(e.meta?.target)
         && (e.meta.target as string[]).some((t) => t === "ins_hmac")
       ) {
-        // Race lost — un autre thread a insere le meme INS entre findFirst
-        // et updateMany. On remappe en InsCollisionError pour cohérence.
+        // H4 — race lost entre findFirst et update : remap en collision coherente.
         throw new InsCollisionError()
       }
       throw e
@@ -398,9 +517,7 @@ export const insService = {
   },
 
   /**
-   * Lit l'INS dechiffre d'un User. Le caller assume avoir deja valide
-   * le RBAC (typiquement via `resolvePatientForConsent` pour les routes
-   * patient-scoped).
+   * Lit l'INS dechiffre d'un User.
    *
    * @throws InsNotFoundError si User introuvable.
    */
@@ -425,7 +542,6 @@ export const insService = {
 
     const ins = user.ins !== null ? safeDecryptField(user.ins) : null
 
-    // Audit READ — toute consultation est tracee (HDS Art. L.1111-8).
     await auditService.log({
       userId: auditUserId,
       action: "READ",
@@ -451,30 +567,32 @@ export const insService = {
   },
 
   /**
-   * Efface l'INS d'un User (idempotent — efface deja efface = no-op).
-   * Utilise pour RGPD Art. 17 (deletion cascade) + correctif PS.
+   * Efface l'INS d'un User (idempotent).
    *
-   * Note M5 — `updateMany` necessaire car filtre `{ ins: { not: null } }`
-   * pas exprimable via `update({where:{id}})` (where unique limite a @id/@unique).
-   *
-   * Note F8 review — `clearIns` masque silencieusement un userId inexistant
-   * (count=0 sur User inexistant = meme reponse que User-sans-INS). Choix
-   * de design intent : DELETE idempotent. Si validation user-must-exist
-   * requise futur, ajouter findFirst prealable.
+   * Round 3 :
+   *   - M3 — `RepeatableRead` isolation pour eviter race findUnique↔updateMany
+   *     qui pourrait perdre `previousInsHmac` chainage.
+   *   - M4 — accepte un `tx` externe optionnel pour reutilisation par
+   *     `deletion.service.ts` dans sa propre tx (sans nested $transaction).
+   *   - L8 — `clearedByRole` dans audit metadata (asymétrie corrigée vs setIns).
+   *   - L1 — `previousInsHmacPeppered` chainage forensique sans JOIN-leak.
    */
   async clearIns(
     targetUserId: number,
     auditUserId: number,
+    auditUserRole: Role,
     ctx: AuditContext,
     metadata: { patientId?: number; reason?: "user_deletion" | "manual" } = {},
+    externalTx?: TxClient,
   ): Promise<{ cleared: boolean; alreadyCleared: boolean }> {
-    return prisma.$transaction(async (tx) => {
-      // Recupere previousInsHmac pour chainage forensique (LOW HSA-F8).
+    const exec = async (tx: TxClient) => {
       const userRow = await tx.user.findUnique({
         where: { id: targetUserId },
         select: { insHmac: true },
       })
-      const previousInsHmac = userRow?.insHmac ?? null
+      const previousInsHmacPeppered = userRow?.insHmac
+        ? hmacAuditId("ins-history", userRow.insHmac)
+        : null
 
       const result = await tx.user.updateMany({
         where: { id: targetUserId, ins: { not: null } },
@@ -501,24 +619,30 @@ export const insService = {
         metadata: {
           kind: AUDIT_KIND.CLEARED,
           reason: metadata.reason ?? "manual",
-          ...(previousInsHmac && { previousInsHmac }),
+          clearedByRole: auditUserRole, // L8 round 3
+          ...(previousInsHmacPeppered && { previousInsHmacPeppered }),
           ...(metadata.patientId && { patientId: metadata.patientId }),
         },
       })
       return { cleared: true, alreadyCleared: false }
+    }
+
+    if (externalTx) {
+      // M4 round 3 — reuse caller transaction (deletion.service).
+      return exec(externalTx)
+    }
+    // M3 round 3 — RepeatableRead pour eviter race findUnique/updateMany.
+    return prisma.$transaction(exec, {
+      isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead,
     })
   },
 
   /**
-   * Helper export — assert que l'INS peut etre partage hors-Diabeo selon
-   * Referentiel INS ANS v3 §5.1.
+   * H3 review — guard ANS §5.1 partage hors-Diabeo. Utilise par
+   * `assertQualifiedForSharing` qui retourne `QualifiedIns` branded type.
    *
-   * V1 retourne toujours `false` pour `saisi_non_verifie` (interdit DMP,
-   * MSSante, FHIR, factures DGFiP). V2 US-2126 elargit a `insi_recupere`
-   * et `insi_verifie`.
-   *
-   * Usage : appeler depuis US-2123 FHIR ou US-2102 Facture AVANT d'inclure
-   * l'INS dans un payload externe.
+   * V1 retourne `false` pour `saisi_non_verifie` → US-2123 FHIR / US-2102
+   * Facture ne peuvent pas propager. V2 US-2126 elargit aux statuts INSi.
    */
   canBeSharedExternally(quality: InsQualityStatus | null): boolean {
     return quality === "insi_recupere" || quality === "insi_verifie"

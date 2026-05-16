@@ -123,7 +123,56 @@
   s'applique.
 - **Acceptabilité** : OK V1.
 
-### 3.5 LOW — KMS envelope V2
+### 3.5 V1.5 follow-up — Triple cap rate-limit (HIGH-2 round 3)
+
+- **Risque (round 3 HSA-H2)** : Le rate-limit V1 cap **per `auditUserId`**
+  uniquement (5 collisions/24h). Un PS malveillant avec accès à N
+  patients bidons (création workflow Diabeo cabinet) peut tenter
+  `5 × N` INS distincts en 24h → énumération RNIPP sur plusieurs mois
+  reste réaliste sur 50k users.
+- **Mitigation V1** : per-userId cap. Acceptable pour déploiement pilote
+  (1-3 cabinets fermés). **Bloqueur pre-prod déploiement >100 cabinets
+  publics.**
+- **Plan V1.5** : ajouter triple cap convergent :
+  - Per-user cap : 5 collisions/24h (déjà implémenté)
+  - Per-IP cap : 10 collisions/heure (anti NAT-cabinet partagé)
+  - Per-cabinet cap : 20 collisions/24h (anti tout PS d'un cabinet
+    coordonné)
+  - Requiert : index supplémentaire `audit_logs_ip_collision_idx` +
+    `audit_logs_cabinet_collision_idx` OU Redis sliding-window keys.
+- **Décision DPO** : valider posture V1 (cap per-user only suffit) si
+  déploiement pilote uniquement. Replanner V1.5 avant scaling commercial.
+
+### 3.6 V1.5 follow-up — Rate-limit ne couvre pas Luhn-fail (MEDIUM-3 round 3)
+
+- **Risque** : la validation Luhn-97 throw `InsValidationError` (422)
+  AVANT le rate-limit. Un attaquant peut tester des INS aléatoires illimités
+  pour explorer l'espace valide Luhn (~1% des 15-digit séquences).
+  La rate-limit collision ne se déclenche qu'après lookup DB → l'attaquant
+  ralentit son rythme à 5 collisions/24h après filtrage Luhn.
+- **Mitigation V1** : NGINX/Traefik rate-limit générique 422 + 429 par IP
+  (déjà ANSSI RGS §4.5 standard).
+- **Plan V1.5** : si l'analyse trafic révèle des bursts Luhn-fail
+  inhabituels, ajouter `assertNotLuhnFailRateLimited` symétrique.
+- **Acceptabilité** : OK V1 — NGINX rate-limit suffit comme defense-en-
+  profondeur.
+
+### 3.7 INFO — Modèle de menace `collidingUserIdHmac` brute-force
+
+- **Risque (round 3 HSA-MED-1)** : Si un attaquant capture simultanément
+  (a) un export `audit_logs` ET (b) la valeur de `AUDIT_PEPPER`, il peut
+  bruteforcer `User.id ∈ [1, N]` × HMAC-SHA256 ≈ <1s sur CPU moderne pour
+  démasquer tous les `collidingUserIdHmac` historiques.
+- **Mitigation V1** :
+  - `AUDIT_PEPPER` stocké en secret manager OVH (≠ env-var de dev).
+  - Runbook rotation (`hmac-secret-rotation.md`) documenté.
+  - L'anonymisation `collidingUserIdHmac` vise spécifiquement le **modèle
+    de menace "insider curieux"** (admin cabinet lit audit_logs sans accès
+    pepper), pas "insider technique compromis avec accès aux secrets".
+- **Plan V2** : HSM/KMS envelope avec `AUDIT_PEPPER` isolé hardware (OVH KMS).
+- **Acceptabilité** : OK V1 documenté.
+
+### 3.8 LOW — KMS envelope V2
 
 - **Risque** : Clé applicative `HEALTH_DATA_ENCRYPTION_KEY` dans env-var
   partagée pour tous les champs chiffrés (nom, prénom, INS, etc.). En

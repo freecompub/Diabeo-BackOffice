@@ -8,6 +8,34 @@
 
 import { createHmac } from "crypto"
 
+// L4 round 3 review — memoize secrets buffers pour eviter
+// `process.env` lookup sur chaque HMAC call (hot path). Trade-off :
+// rotation env-var requiert restart Node (runbook deja le documente).
+let _hmacSecretBuf: Buffer | null = null
+let _auditPepperBuf: Buffer | null = null
+
+function getHmacSecretBuf(): Buffer {
+  if (_hmacSecretBuf) return _hmacSecretBuf
+  const k = process.env.HMAC_SECRET
+  if (!k) throw new Error("HMAC_SECRET is not set")
+  _hmacSecretBuf = Buffer.from(k, "utf8")
+  return _hmacSecretBuf
+}
+
+function getAuditPepperBuf(): Buffer {
+  if (_auditPepperBuf) return _auditPepperBuf
+  const p = process.env.AUDIT_PEPPER
+  if (!p) throw new Error("AUDIT_PEPPER is not set")
+  _auditPepperBuf = Buffer.from(p, "utf8")
+  return _auditPepperBuf
+}
+
+/** Test-only — reset memoization (vi.stubEnv-friendly). */
+export function __resetHmacMemoForTests(): void {
+  _hmacSecretBuf = null
+  _auditPepperBuf = null
+}
+
 /**
  * Compute HMAC-SHA256 of lowercase, trimmed email.
  * Returns fixed 64-character hex string for database indexing.
@@ -26,9 +54,9 @@ export function hmacEmail(email: string): string {
 }
 
 export function hmacField(value: string): string {
-  const key = process.env.HMAC_SECRET
-  if (!key) throw new Error("HMAC_SECRET is not set")
-  return createHmac("sha256", key).update(value.toLowerCase().trim()).digest("hex")
+  return createHmac("sha256", getHmacSecretBuf())
+    .update(value.toLowerCase().trim())
+    .digest("hex")
 }
 
 /**
@@ -48,9 +76,9 @@ export function hmacField(value: string): string {
  * @returns 64-char hex HMAC-SHA256.
  */
 export function hmacIns(insNormalized: string): string {
-  const key = process.env.HMAC_SECRET
-  if (!key) throw new Error("HMAC_SECRET is not set")
-  return createHmac("sha256", key).update(insNormalized).digest("hex")
+  return createHmac("sha256", getHmacSecretBuf())
+    .update(insNormalized)
+    .digest("hex")
 }
 
 /**
@@ -68,9 +96,7 @@ export function hmacIns(insNormalized: string): string {
  * @returns 64-char hex HMAC-SHA256.
  */
 export function hmacAuditId(domain: string, plaintextId: string | number): string {
-  const pepper = process.env.AUDIT_PEPPER
-  if (!pepper) throw new Error("AUDIT_PEPPER is not set")
-  return createHmac("sha256", pepper)
+  return createHmac("sha256", getAuditPepperBuf())
     .update(`${domain}:${plaintextId}`)
     .digest("hex")
 }

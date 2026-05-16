@@ -206,29 +206,21 @@ export async function deleteUserAccount(
       data: { managerId: null },
     })
 
-    // M7 round 2 review — Audit row dedie USER_INS si l'utilisateur avait
-    // un INS (forensique HDS L.1111-8 : trace de l'effacement INS distincte
-    // du master `user.account.deletion`). Le `previousInsHmac` permet
-    // chainage forensique sans plaintext.
-    const userBeforeAnon = await tx.user.findUnique({
-      where: { id: userId },
-      select: { insHmac: true },
-    })
-    if (userBeforeAnon?.insHmac) {
-      await auditService.logWithTx(tx, {
-        userId,
-        action: "UPDATE",
-        resource: "USER_INS",
-        resourceId: String(userId),
-        ipAddress,
-        userAgent,
-        metadata: {
-          kind: "user.ins.cleared",
-          reason: "user_deletion",
-          previousInsHmac: userBeforeAnon.insHmac,
-        },
-      })
-    }
+    // M4 round 3 review — Reutilise `insService.clearIns` avec tx externe
+    // (DRY + single source of truth pour audit shape kind=user.ins.cleared
+    // reason=user_deletion + previousInsHmacPeppered + clearedByRole).
+    // - clear ins/insHmac/insQualityStatus/insSetAt/insSetByUserId/insTraitsHash
+    // - audit USER_INS UPDATE avec metadata complet (idempotent si pas d'INS)
+    // L'anonymisation user.update qui suit n'a plus a effacer les cols INS
+    // (deja faites par clearIns) mais le fait quand meme (defense-en-profondeur).
+    // L'audit master `user.account.deletion` reste emis avant cette etape.
+    const { insService: insServiceModule } = await import("./ins.service")
+    await insServiceModule.clearIns(
+      userId, userId, "VIEWER", // VIEWER = role du data subject (auto-deletion)
+      { ipAddress, userAgent, requestId: "user-deletion" },
+      { reason: "user_deletion" },
+      tx, // reuse cette transaction (pas de nested $transaction)
+    )
 
     // Anonymize user — keep the row for audit log FK integrity
     await tx.user.update({

@@ -21,6 +21,7 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
+import type { Role } from "@prisma/client"
 import { AuthError, requireAuth } from "@/lib/auth"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import {
@@ -57,9 +58,9 @@ const ANSSI_SECURITY_HEADERS = {
 } as const
 
 // ─────────────────────────────────────────────────────────────
-// Helper RBAC role-gated write/clear.
+// Helper RBAC role-gated write/clear (L5 round 3 — Role enum import).
 // ─────────────────────────────────────────────────────────────
-function canWriteIns(role: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"): boolean {
+function canWriteIns(role: Role): boolean {
   // VIEWER peut definir son propre INS (auto-onboarding patient).
   // NURSE = lecture uniquement (DOCTOR cree, NURSE consulte).
   // ADMIN = full (audit + correctif).
@@ -68,7 +69,7 @@ function canWriteIns(role: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"): boolean {
   return role === "ADMIN" || role === "DOCTOR" || role === "VIEWER"
 }
 
-function canDeleteIns(role: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"): boolean {
+function canDeleteIns(role: Role): boolean {
   // VIEWER (patient) ne peut PAS clear son INS — passe par DOCTOR/ADMIN
   // ou bien suppression compte RGPD Art. 17.
   return role === "ADMIN" || role === "DOCTOR"
@@ -282,7 +283,7 @@ export async function DELETE(
     }
 
     const result = await insService.clearIns(
-      resolved.ownerUserId, user.id, ctx,
+      resolved.ownerUserId, user.id, user.role, ctx,
       { patientId: resolved.patientId, reason: "manual" },
     )
     return jsonWithSecurityHeaders(result)

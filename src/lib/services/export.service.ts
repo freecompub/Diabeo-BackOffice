@@ -11,6 +11,25 @@ import { prisma } from "@/lib/db/client"
 import { decrypt } from "@/lib/crypto/health-data"
 
 /**
+ * US-2026 L7 round 3 — disclaimer INS i18n (FR/EN/AR — US-2112 LocaleSwitcher).
+ *
+ * Le data subject Art. 20 RGPD recoit l'export dans sa langue UI pour
+ * conformite WP242 G29 "intelligible". Les noms propres (Diabeo / Teleservice
+ * INSi / ANS / DMP / MSSante) restent en francais comme dans le Referentiel
+ * ANS v3 (terms officiels).
+ */
+const INS_DISCLAIMERS: Record<"fr" | "en" | "ar", string> = {
+  fr: "Cet INS a ete saisi manuellement dans Diabeo et N'A PAS ete verifie aupres du Teleservice INSi (ANS). Le Referentiel INS ANS v3 interdit son utilisation comme INS qualifie pour partage avec un systeme tiers (DMP, MSSante, FHIR, facturation tiers payant). Une verification INSi est requise avant toute reutilisation.",
+  en: "This INS was manually entered in Diabeo and has NOT been verified with the INSi Teleservice (ANS). The ANS INS Reference Framework v3 prohibits its use as a qualified INS for sharing with third-party systems (DMP, MSSante, FHIR, third-party billing). INSi verification is required before any reuse.",
+  ar: "تم إدخال رقم INS هذا يدويًا في Diabeo ولم يتم التحقق منه عبر خدمة INSi (ANS). يحظر إطار مرجعية INS ANS v3 استخدامه كرقم INS مؤهل للمشاركة مع أنظمة الطرف الثالث (DMP, MSSante, FHIR, الفوترة عبر طرف ثالث). يلزم التحقق عبر INSi قبل أي إعادة استخدام.",
+}
+
+function getInsDisclaimer(language: string): string {
+  if (language === "en" || language === "ar") return INS_DISCLAIMERS[language]
+  return INS_DISCLAIMERS.fr // fallback
+}
+
+/**
  * Safe decryption — returns null on error instead of throwing.
  * Used in export to handle corrupted data gracefully.
  * @private
@@ -271,18 +290,15 @@ export async function generateUserExport(userId: number) {
       role: user.role,
       createdAt: user.createdAt.toISOString(),
       // US-2026 — INS (Identite Nationale Sante) inclus dans export RGPD
-      // Art. 20 portabilite. Wrapper qualite ANS (M1 round 2 review) — le
-      // recepteur de l'export sait si l'INS est qualifie INSi ou simple
-      // saisie non-verifiee. Critique car Referentiel INS ANS v3 §5.1
-      // interdit d'utiliser un INS non-qualifie hors-Diabeo. Disclaimer
-      // explicite pour eviter propagation accidentelle.
+      // Art. 20 portabilite. Wrapper qualite ANS (M1 round 2 review). L7
+      // round 3 — disclaimer i18n FR/EN/AR (US-2112 supporte ces 3 langues).
       ins: user.ins
         ? {
             value: safeDecrypt(user.ins),
             qualityStatus: user.insQualityStatus,
             setAt: user.insSetAt?.toISOString() ?? null,
             disclaimer: user.insQualityStatus === "saisi_non_verifie"
-              ? "Cet INS a ete saisi manuellement dans Diabeo et N'A PAS ete verifie aupres du Teleservice INSi (ANS). Le Referentiel INS ANS v3 interdit son utilisation comme INS qualifie pour partage avec un systeme tiers (DMP, MSSante, FHIR, facturation tiers payant). Une verification INSi est requise avant toute reutilisation."
+              ? getInsDisclaimer(user.language ?? "fr")
               : null,
           }
         : null,

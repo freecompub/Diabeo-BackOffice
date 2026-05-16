@@ -40,13 +40,17 @@ describe("hmacEmail", () => {
 })
 
 describe("hmacField — missing secret", () => {
-  it("throws when HMAC_SECRET is not set", () => {
+  it("throws when HMAC_SECRET is not set", async () => {
+    // L4 round 3 — memoization buffer reset apres test (cf. __resetHmacMemoForTests).
+    const { __resetHmacMemoForTests } = await import("@/lib/crypto/hmac")
     const original = process.env.HMAC_SECRET
     delete process.env.HMAC_SECRET
+    __resetHmacMemoForTests()
     try {
       expect(() => hmacField("test")).toThrow("HMAC_SECRET is not set")
     } finally {
       process.env.HMAC_SECRET = original
+      __resetHmacMemoForTests() // restaure pour les tests suivants
     }
   })
 })

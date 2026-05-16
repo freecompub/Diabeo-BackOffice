@@ -356,6 +356,9 @@ model User {
   insSetAt                 DateTime?  @map("ins_set_at") @db.Timestamptz()
   /// US-2026 H5 review — User qui a saisi l'INS (FK SetNull si anonymisation
   /// RGPD du saisisseur). Permet "INS saisi par DOCTOR.123 vs VIEWER auto".
+  /// Index partiel `users_ins_set_by_user_id_idx WHERE ins_set_by_user_id
+  /// IS NOT NULL` defini en SQL uniquement (Prisma ne supporte pas partial
+  /// WHERE dans `@@index` cote schema — cf. messaging.thread idem).
   insSetByUserId           Int?       @map("ins_set_by_user_id")
   /// US-2026 C1 review — Hash SHA-256 des traits d'identite au moment du
   /// set (nom+prenom+dob+sex+lieu naissance). Permet de detecter qu'un
