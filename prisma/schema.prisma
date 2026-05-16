@@ -3090,10 +3090,12 @@ model Invoice {
   createdAt             DateTime       @default(now()) @map("created_at") @db.Timestamptz()
   updatedAt             DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
 
-  cabinet HealthcareService @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
-  patient Patient?          @relation(fields: [patientId], references: [id], onDelete: SetNull)
-  creator User              @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  items   InvoiceItem[]
+  cabinet   HealthcareService @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
+  patient   Patient?          @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  creator   User              @relation("InvoiceCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  items     InvoiceItem[]
+  /// US-2108 — Journal des relances envoyees (cron J+7/15/30).
+  reminders InvoiceReminder[]
 
   /// Unicité globale du numéro garantie par `@unique` sur `number`,
   /// mais `(countryCode, number)` garde la sémantique métier explicite.
@@ -3104,6 +3106,55 @@ model Invoice {
   /// FK Restrict : index sur createdBy pour les jointures admin.
   @@index([createdBy])
   @@map("invoices")
+}
+
+/// US-2108 — Relances factures automatiques (Batch 4 Facturation).
+///
+/// Cron J+7 / J+15 / J+30 via Resend. Idempotent : `@@unique([invoiceId,
+/// step])` empeche envoi double si cron rejoue le meme jour.
+enum InvoiceReminderStep {
+  /// J+7 amicale "facture en attente".
+  step_7
+  /// J+15 ferme "deuxieme relance".
+  step_15
+  /// J+30 finale "derniere relance avant procedure".
+  step_30
+
+  @@map("invoice_reminder_step")
+}
+
+enum InvoiceReminderStatus {
+  /// Email envoye (Resend OK).
+  sent
+  /// Resend a echoue (erreur reseau, quota, etc.).
+  failed
+  /// Pas d'email destinataire (invoice cabinet-interne sans patient).
+  skipped
+
+  @@map("invoice_reminder_status")
+}
+
+model InvoiceReminder {
+  id             Int                  @id @default(autoincrement())
+  invoiceId      Int                  @map("invoice_id")
+  step           InvoiceReminderStep
+  sentAt         DateTime             @default(now()) @map("sent_at") @db.Timestamptz()
+  status         InvoiceReminderStatus @default(sent)
+  /// Email destinataire chiffre AES-256-GCM (base64) — forensique sans
+  /// exposer mail patient en clair en BDD. Optional car certaines step
+  /// `skipped` arrivent avant qu'on ait pu dechiffrer.
+  sentToEnc      String?              @map("sent_to_enc")
+  /// ID Resend (data.id) — debug rebonds via Resend dashboard.
+  emailMessageId String?              @map("email_message_id") @db.VarChar(100)
+  /// Message d'erreur Resend (pas de PHI — code/timeout). Cap 500 chars.
+  errorMessage   String?              @map("error_message") @db.VarChar(500)
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@unique([invoiceId, step])
+  @@index([invoiceId, sentAt(sort: Desc)])
+  @@index([sentAt(sort: Desc)])
+  @@map("invoice_reminders")
 }
 
 /// Ligne de facture. Verrouillée en immutabilité avec l'Invoice parente

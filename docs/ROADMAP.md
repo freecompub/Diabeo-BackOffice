@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 90   | 0       | 36          | **71%** |
+| **V1**   | 126   | 91   | 0       | 35          | **72%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **158** | **1**   | **134**     | **54%** |
+| **TOTAL**| **293** | **159** | **1**   | **133**     | **54%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -344,7 +344,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2105 | Numérotation séquentielle pays | ✅ DONE PR #406 — InvoiceSequence gap-less FOR UPDATE + format `FR-2026-000001` + Luhn SIRET |
 | US-2106 | Webhooks idempotents Stripe | ⏸️ **V2** — bloqué provision Stripe Connect |
 | US-2107 | Versioning facture immuable | ✅ DONE PR #406 — 3 triggers PG (enforce_invoice_immutability + DELETE-block + items-lock) + FSM atomique |
-| US-2108 | Relances automatiques | NOT STARTED (Batch 4 — cron J+7/15/30 via Resend US-2074) |
+| US-2108 | Relances automatiques | ✅ **DONE PR #417** — Batch 4 cron J+7/15/30 via Resend US-2074 : `InvoiceReminder` model UNIQUE(invoiceId,step) idempotent + service `processOverdueInvoices` (advisory lock anti double-run + p-limit 10 parallel + timeout 50s) + route `/api/cron/billing/reminders` Bearer CRON_SECRET timing-safe + email i18n FR/EN/AR anti-PHI strict + sanitize Resend errorMessage anti-leak + filtre RGPD Art. 17 (patient.deletedAt + user.status='active') + anonymisation `sentToEnc` post-deletion + audit `metadata.patientId` US-2268 + DPIA `dpia-us2108-invoice-reminders.md`. **2 rounds review** (31 findings). Bloqueurs pre-prod : DPIA signatures DPO/RSSI + DPA Resend US transfert hors-UE. |
 | US-2109 | Remboursements | ⏸️ **V2** — dépend US-2106 webhooks Stripe (lui-même V2) |
 | US-2110 | TVA multi-pays | ✅ **DONE PR #414** — `countryTaxRuleService.getActiveAt` + route `/api/config/tax-rules/active` (NURSE+, audit READ) |
 

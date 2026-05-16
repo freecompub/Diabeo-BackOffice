@@ -25,3 +25,7 @@ process.env.CONVERSATION_KEY_PEPPER =
 // Distinct de CONVERSATION_KEY_PEPPER + HMAC_SECRET (RGS §B1.2 cross-domain).
 process.env.AUDIT_PEPPER =
   "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
+
+// US-2108 H10 round 2 — Bearer secret cron /api/cron/* (assertRequiredEnv).
+process.env.CRON_SECRET =
+  "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"

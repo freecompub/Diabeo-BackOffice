@@ -77,6 +77,28 @@ const SPEC_ENCRYPTION_KEY: EnvSpec = {
   },
 }
 
+const SPEC_CRON_SECRET: EnvSpec = {
+  name: "CRON_SECRET",
+  validate: (v) => {
+    // US-2108 H10 round 2 review (ADR #20) — Bearer Secret pour les routes
+    // /api/cron/*. 32+ bytes hex (256 bits entropy) → infeasible brute-force.
+    // Sans cette validation, la route 503 silencieux en prod = relances
+    // jamais envoyées + 100% recouvrement Batch 4 perdu sans alerte.
+    if (!/^[0-9a-fA-F]{64,}$/.test(v)) {
+      throw new Error(
+        "CRON_SECRET must be at least 64 hex chars (32 bytes). " +
+          "Generate via: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+      )
+    }
+    if (shannonEntropyBits(v) < HMAC_MIN_ENTROPY_BITS) {
+      throw new Error(
+        `CRON_SECRET has insufficient entropy (< ${HMAC_MIN_ENTROPY_BITS} bits Shannon). ` +
+          "Looks like a low-entropy pattern. Generate via crypto.randomBytes(32).toString('hex').",
+      )
+    }
+  },
+}
+
 const SPEC_AUDIT_PEPPER: EnvSpec = {
   name: "AUDIT_PEPPER",
   validate: (v) => {
@@ -196,6 +218,7 @@ const REQUIRED_FULL: readonly EnvSpec[] = [
   SPEC_HMAC_SECRET,
   SPEC_CONVERSATION_KEY_PEPPER,
   SPEC_AUDIT_PEPPER,
+  SPEC_CRON_SECRET,
   SPEC_JWT_PRIVATE_KEY,
   SPEC_JWT_PUBLIC_KEY,
 ]
