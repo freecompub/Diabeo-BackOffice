@@ -206,6 +206,22 @@ export async function deleteUserAccount(
       data: { managerId: null },
     })
 
+    // M4 round 3 review — Reutilise `insService.clearIns` avec tx externe
+    // (DRY + single source of truth pour audit shape kind=user.ins.cleared
+    // reason=user_deletion + previousInsHmacPeppered + clearedByRole).
+    // - clear ins/insHmac/insQualityStatus/insSetAt/insSetByUserId/insTraitsHash
+    // - audit USER_INS UPDATE avec metadata complet (idempotent si pas d'INS)
+    // L'anonymisation user.update qui suit n'a plus a effacer les cols INS
+    // (deja faites par clearIns) mais le fait quand meme (defense-en-profondeur).
+    // L'audit master `user.account.deletion` reste emis avant cette etape.
+    const { insService: insServiceModule } = await import("./ins.service")
+    await insServiceModule.clearIns(
+      userId, userId, "VIEWER", // VIEWER = role du data subject (auto-deletion)
+      { ipAddress, userAgent, requestId: "user-deletion" },
+      { reason: "user_deletion" },
+      tx, // reuse cette transaction (pas de nested $transaction)
+    )
+
     // Anonymize user — keep the row for audit log FK integrity
     await tx.user.update({
       where: { id: userId },
@@ -233,6 +249,15 @@ export async function deleteUserAccount(
         nirpp: null,
         nirppPolicyholder: null,
         ins: null,
+        // US-2026 — Effacer aussi le HMAC + colonnes qualite round 2 (sinon
+        // RNIPP unique constraint bloque une eventuelle reattribution post-
+        // suppression legale + CHECK coherence `users_ins_coherence_check`
+        // exige all-null OR all-set).
+        insHmac: null,
+        insQualityStatus: null,
+        insSetAt: null,
+        insSetByUserId: null,
+        insTraitsHash: null,
         codeBirthPlace: null,
         pic: null,
         mfaSecret: null,

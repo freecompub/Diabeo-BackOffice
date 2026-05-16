@@ -154,14 +154,20 @@ describe("Rate Limiting", () => {
 describe("HMAC Email", () => {
   let hmacEmail: typeof import("@/lib/crypto/hmac").hmacEmail
 
+  let resetMemo: () => void
+
   beforeEach(async () => {
     process.env.HMAC_SECRET = "test-hmac-secret-32-bytes-long!!"
     const mod = await import("@/lib/crypto/hmac")
     hmacEmail = mod.hmacEmail
+    // L4 round 3 — reset memoization (env vient juste de changer).
+    resetMemo = mod.__resetHmacMemoForTests
+    resetMemo()
   })
 
   afterEach(() => {
     delete process.env.HMAC_SECRET
+    resetMemo?.()
   })
 
   it("produces a deterministic hex hash", () => {
@@ -185,6 +191,7 @@ describe("HMAC Email", () => {
 
   it("throws when HMAC_SECRET is not set", () => {
     delete process.env.HMAC_SECRET
+    resetMemo() // L4 round 3 — bust memoize after env change
     expect(() => hmacEmail("test@example.com")).toThrow("HMAC_SECRET is not set")
   })
 })

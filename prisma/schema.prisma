@@ -31,6 +31,27 @@ enum Sex {
   X
 }
 
+/// US-2026 — Statut de qualite de l'INS (Identite Nationale Sante)
+/// conforme Referentiel INS ANS v3 §4.1.
+///
+///   - `saisi_non_verifie` : INS saisi manuellement (PS ou patient), format
+///                           Luhn-97 valide mais NON verifie aupres du
+///                           Teleservice INSi. **Interdiction de partage
+///                           hors-Diabeo** (DMP, MSSante, FHIR, factures
+///                           DGFiP) — V1 procurement non debloque.
+///   - `insi_recupere`     : Recupere via TeleserviceInsi (V2 US-2126).
+///                           Identitovigilance pleine.
+///   - `insi_verifie`      : Verifie via TeleserviceInsi en complement
+///                           saisie manuelle (V2 US-2126).
+///   - `rejete_traits_incoherent` : INS rejete par INSi pour incoherence
+///                                  traits (V2 — pour audit).
+enum InsQualityStatus {
+  saisi_non_verifie
+  insi_recupere
+  insi_verifie
+  rejete_traits_incoherent
+}
+
 enum Language {
   fr
   en
@@ -322,7 +343,27 @@ model User {
   nirppPolicyholder        String?    @map("nirpp_policyholder") // chiffre
   nirppPolicyholderType    String?    @map("nirpp_policyholder_type")
   oid                      String? // interne — jamais expose
-  ins                      String? // Identite Nationale de Sante, chiffre
+  ins                      String? // Identite Nationale de Sante, chiffre AES-256-GCM
+  /// US-2026 — HMAC-SHA256 hex de l'INS plaintext (lookup unique anti-
+  /// doublon RNIPP). NULL si pas d'INS renseigne. UNIQUE index avec
+  /// NULLS DISTINCT (PG 16 default — plusieurs NULL autorises).
+  /// Aligne `TEXT` avec emailHmac/firstnameHmac/lastnameHmac (M4 review).
+  insHmac                  String?    @map("ins_hmac")
+  /// US-2026 C1 review — Statut de qualite INS conforme Referentiel ANS v3.
+  /// V1 force `saisi_non_verifie` (INSi reste V2 US-2126 procurement-bloque).
+  insQualityStatus         InsQualityStatus? @map("ins_quality_status")
+  /// US-2026 C1 review — Timestamp de set INS (forensique HDS Art. L.1111-8).
+  insSetAt                 DateTime?  @map("ins_set_at") @db.Timestamptz()
+  /// US-2026 H5 review — User qui a saisi l'INS (FK SetNull si anonymisation
+  /// RGPD du saisisseur). Permet "INS saisi par DOCTOR.123 vs VIEWER auto".
+  /// Index partiel `users_ins_set_by_user_id_idx WHERE ins_set_by_user_id
+  /// IS NOT NULL` defini en SQL uniquement (Prisma ne supporte pas partial
+  /// WHERE dans `@@index` cote schema — cf. messaging.thread idem).
+  insSetByUserId           Int?       @map("ins_set_by_user_id")
+  /// US-2026 C1 review — Hash SHA-256 des traits d'identite au moment du
+  /// set (nom+prenom+dob+sex+lieu naissance). Permet de detecter qu'un
+  /// trait a change post-set (declenche re-verification INSi futur V2).
+  insTraitsHash            String?    @map("ins_traits_hash")
   intercomHash             String?    @map("intercom_hash") // interne — jamais expose
   deploymentKey            String?    @map("deployment_key") // interne — jamais expose
   pro                      String? // interne
@@ -399,12 +440,18 @@ model User {
   // Groupe 4 — Devices & Sync (US-2091/2092)
   revokedPatientDevices             PatientDevice[]                   @relation("PatientDeviceRevoker")
   createdSupportedDevices           SupportedDevice[]                 @relation("SupportedDeviceCreator")
+  // US-2026 H5 review — Forensique : qui a saisi cet INS / pour qui.
+  insSetByUser                      User?                             @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
+  insSetForUsers                    User[]                            @relation("InsSetter")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
   /// US-2148 — supporte le count anti-lockout `count(active ADMIN)` et le
   /// filtre admin de la liste users.
   @@index([status, role])
+  /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
+  /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
+  @@unique([insHmac], map: "users_ins_hmac_key")
   @@map("users")
 }
 

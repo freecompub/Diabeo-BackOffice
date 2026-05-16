@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 89   | 0       | 37          | **71%** |
+| **V1**   | 126   | 90   | 0       | 36          | **71%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **157** | **1**   | **135**     | **54%** |
+| **TOTAL**| **293** | **158** | **1**   | **134**     | **54%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -257,7 +257,7 @@
 | US-2021 | Transfert patient entre médecins | DONE (PR #389 — ADMIN/référent/self-claim only) |
 | US-2022 | Tags & catégorisation patients | DONE (PR #389 — 2 modèles Prisma + 4 routes + anti-PII) |
 | US-2024 | Historique modifications (UI audit) | DONE (PR #389 — PHI redacted, DOCTOR+ only) |
-| US-2026 | INS — Identité Nationale Santé | NOT STARTED (V1, 8 SP — Batch 3 standalone) |
+| US-2026 | INS — Identité Nationale Santé | ✅ **DONE PR #416** — Scope V1 standalone (sans ANS Téléservice INSi V2 procurement) : Luhn-97 + structure ANS §3.1 (sexe/mois/dept) + HMAC unique anti-doublon RNIPP + `insQualityStatus=saisi_non_verifie` + Branded type `QualifiedIns` (§5.1 ANS) + advisory lock rate-limit 5/24h + RGPD Art. 17/20 + DPIA signée DPO pending. 3 rounds review (42 findings résolus). Bloqueurs gouvernance documentés `docs/compliance/preprod-checklist-us2026.md`. |
 | US-2028 | Dossier multi-praticiens | DONE (PR #389 — referents view) |
 
 **Batches 1+2 livrés** : 5 US (US-2019, 2021, 2022, 2024, 2028) — PR #389, ~5 SP,

@@ -77,16 +77,48 @@ const SPEC_ENCRYPTION_KEY: EnvSpec = {
   },
 }
 
+const SPEC_AUDIT_PEPPER: EnvSpec = {
+  name: "AUDIT_PEPPER",
+  validate: (v) => {
+    // US-2026 H1 review — HMAC-SHA256 pepper pour anonymisation d'IDs
+    // dans audit metadata (notamment `collidingUserId` cross-cabinet INS).
+    // 32+ bytes hex. Distinct de HMAC_SECRET (rotation independante,
+    // DPO/RSSI re-correlation interne via fonction dediee).
+    if (!/^[0-9a-fA-F]{64,}$/.test(v)) {
+      throw new Error(
+        "AUDIT_PEPPER must be at least 64 hex chars (32 bytes). " +
+          "Generate via: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+      )
+    }
+    // M7 round 3 review — entropy floor coherent avec HMAC_SECRET.
+    // Refuse "a".repeat(64) ou "0".repeat(64) (faible entropy = bruteforce
+    // pepper trivial → demasquage `collidingUserIdHmac` historique).
+    if (shannonEntropyBits(v) < HMAC_MIN_ENTROPY_BITS) {
+      throw new Error(
+        `AUDIT_PEPPER has insufficient entropy (< ${HMAC_MIN_ENTROPY_BITS} bits Shannon). ` +
+          "Looks like a low-entropy pattern. Generate via crypto.randomBytes(32).toString('hex').",
+      )
+    }
+  },
+}
+
 const SPEC_CONVERSATION_KEY_PEPPER: EnvSpec = {
   name: "CONVERSATION_KEY_PEPPER",
   validate: (v) => {
     // US-2076 HIGH-2 review round 5 — HMAC-SHA256 pepper pour
     // `conversation_key`. 32+ bytes hex empêche brute-force du graphe
     // bipartite patient↔médecin même sur dump DB leak.
+    // US-2026 M7 round 3 — entropy floor coherent avec HMAC_SECRET.
     if (!/^[0-9a-fA-F]{64,}$/.test(v)) {
       throw new Error(
         "CONVERSATION_KEY_PEPPER must be at least 64 hex chars (32 bytes). " +
           "Generate via: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
+      )
+    }
+    if (shannonEntropyBits(v) < HMAC_MIN_ENTROPY_BITS) {
+      throw new Error(
+        `CONVERSATION_KEY_PEPPER has insufficient entropy (< ${HMAC_MIN_ENTROPY_BITS} bits Shannon). ` +
+          "Looks like a low-entropy pattern. Generate via crypto.randomBytes(32).toString('hex').",
       )
     }
   },
@@ -163,6 +195,7 @@ const REQUIRED_FULL: readonly EnvSpec[] = [
   SPEC_ENCRYPTION_KEY,
   SPEC_HMAC_SECRET,
   SPEC_CONVERSATION_KEY_PEPPER,
+  SPEC_AUDIT_PEPPER,
   SPEC_JWT_PRIVATE_KEY,
   SPEC_JWT_PUBLIC_KEY,
 ]
