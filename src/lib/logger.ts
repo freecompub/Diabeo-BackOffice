@@ -49,6 +49,11 @@ const ALLOWED_CONTEXT_KEYS = new Set<string>([
   // US-2076 messaging — listThreads audit failures (HIGH-1 review round 5).
   "failedAuditCount",
   "failedAuditPatientIds",
+  // PR #415 Groupe 4 round 3 — device-lifecycle decrypt warn (CR L2) +
+  // GDPR cache invalidation log (M3). Taxonomie event SOC + ID forensique.
+  "kind",
+  "deviceId",
+  "staleWindowSec",
 ])
 
 export interface LogContext {
@@ -71,6 +76,10 @@ export interface LogContext {
   failedAuditPatientIds?: number[]
   attempt?: number
   degraded?: boolean
+  /** PR #415 Groupe 4 round 3 — taxonomie event SOC + ID forensique. */
+  kind?: string
+  deviceId?: number
+  staleWindowSec?: number
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"

@@ -1435,7 +1435,11 @@ model SupportedDevice {
   notes              String?        @db.Text
   isActive           Boolean        @default(true) @map("is_active")
   createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  /// `@default(now())` aligne le schema sur le DEFAULT CURRENT_TIMESTAMP de
+  /// la migration originale (groupe4_devices_sync.sql:28). Le trigger
+  /// `set_updated_at` PG (migration follow-up §5) garantit le refresh au
+  /// UPDATE même via SQL direct (Prisma `@updatedAt` ne couvre que le client).
+  updatedAt          DateTime       @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
   createdBy          Int?           @map("created_by")
 
   creator User? @relation("SupportedDeviceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
@@ -1443,7 +1447,9 @@ model SupportedDevice {
   /// Unicité par (brand, model, category) : un même device n'a qu'une entrée.
   @@unique([brand, model, category])
   /// Index pour search par brand + category (UI filter pairing).
-  @@index([category, isActive])
+  /// CI drift fix — `map:` explicite car migration originale a nommé l'index
+  /// `_active_idx` (vs Prisma auto-name `_is_active_idx`).
+  @@index([category, isActive], map: "supported_devices_category_active_idx")
   /// CR L4 / HSA L3 — model_identifier unique quand renseigné
   /// (USB VID:PID ou BLE UUID = identifiant matériel global). PG défaut
   /// NULLS DISTINCT permet multiples NULL (legacy devices).

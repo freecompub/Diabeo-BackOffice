@@ -71,16 +71,17 @@ export async function invalidateGdprConsentCache(userId: number): Promise<void> 
   } catch (err) {
     // Fail-soft : on ne bloque pas la mutation DB (le commit a déjà eu lieu).
     // Mais on logue pour SOC + runbook RGPD Art. 7(3) breach window visibility.
-    logger.warn(
+    // `logger.error` (4-arg) serialize l'err propre avec redaction PHI built-in.
+    logger.error(
       "gdpr",
       "consent cache invalidation failed",
       {
         userId,
         kind: "consent.cache.invalidation.failed",
-        error: err instanceof Error ? err.message : String(err),
         // Borne de la fenêtre stale (= TTL positive cache).
         staleWindowSec: CACHE_TTL_POSITIVE_SEC,
       },
+      err,
     )
   }
 }
