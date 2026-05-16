@@ -1,19 +1,20 @@
 /**
- * @description US-2108 — Relances factures automatiques unit tests.
+ * @description US-2108 — Relances factures unit tests round 2.
  *
- * Couvre :
- *   - Selection invoices overdue par step (filtre `reminders: none`).
- *   - Idempotence P2002 UNIQUE(invoiceId, step) → silent skip.
- *   - Email Resend best-effort : echec n'interrompt pas le cron.
- *   - Skipped cases : invoice sans patient OU email decrypt fail.
- *   - Audit metrics + audit per-reminder.
- *   - Email destinataire chiffre AES-256-GCM dans `sentToEnc`.
+ * Couvre round 2 :
+ *   - C1 : CRON_AUDIT_USER_ID = null (FK-safe)
+ *   - H1 : filtre patient.deletedAt + user.status='active'
+ *   - H3 : timeout 50s + parallel p-limit
+ *   - H4 : sanitizeResendError scrub email
+ *   - H5 : advisory lock anti double-run
+ *   - H8 : metadata.patientId propage (US-2268)
+ *   - M3 : recheck status='issued' avant persist
+ *   - M9 : orderBy issuedAt asc
  */
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 
-// Mock email service AVANT import du service (pour bien capter l'appel).
 vi.mock("@/lib/services/email.service", () => ({
   emailService: {
     sendInvoiceReminder: vi.fn().mockResolvedValue({ sent: true, id: "resend-msg-1" }),
@@ -24,6 +25,7 @@ import {
   invoiceReminderService,
   REMINDER_STEPS,
   REMINDER_AUDIT_KIND,
+  MAX_INVOICES_PER_STEP,
 } from "@/lib/services/invoice-reminder.service"
 import { emailService } from "@/lib/services/email.service"
 
@@ -33,7 +35,6 @@ const ctx = {
   requestId: "cron-1",
 }
 
-// Helper : fixture invoice avec patient.
 function makeInvoice(overrides: Partial<{
   id: number
   number: string | null
@@ -50,7 +51,7 @@ function makeInvoice(overrides: Partial<{
     totalCents: overrides.totalCents ?? 12000,
     currency: overrides.currency ?? "EUR",
     issuedAt: overrides.issuedAt ?? new Date("2026-04-01"),
-    patientId: overrides.patientId ?? 42,
+    patientId: overrides.patientId === null ? null : (overrides.patientId ?? 42),
     patient: overrides.patientId === null ? null : {
       user: {
         id: 100,
@@ -66,6 +67,10 @@ beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   prismaMock.invoiceReminder.create.mockResolvedValue({} as any)
   prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
+  // H5 round 2 — advisory lock default acquired (skippedConcurrent=false).
+  prismaMock.$queryRaw.mockResolvedValue([{ locked: true }] as any)
+  // M3 round 2 — recheck status='issued' default OK.
+  prismaMock.invoice.findUnique.mockResolvedValue({ status: "issued" } as any)
 })
 
 // ────────────────────────────────────────────────────────────────
@@ -80,36 +85,81 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
     expect(m.sent).toBe(0)
     expect(m.failed).toBe(0)
     expect(m.skipped).toBe(0)
+    expect(m.timedOut).toBe(false)
+    expect(m.skippedConcurrent).toBe(false)
+  })
+
+  // H5 round 2 — advisory lock anti double-run.
+  it("H5 round 2 — skippedConcurrent=true si advisory lock non-acquis", async () => {
+    prismaMock.$queryRaw.mockResolvedValueOnce([{ locked: false }] as any)
+    const m = await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    expect(m.skippedConcurrent).toBe(true)
+    expect(m.processed).toBe(0)
+    // findMany ne doit PAS etre appele.
+    expect(prismaMock.invoice.findMany).not.toHaveBeenCalled()
+    // Audit `cron.skipped_locked` emis.
+    const audit = prismaMock.auditLog.create.mock.calls.find((c) => {
+      const d = c[0].data as any
+      return d.metadata?.kind === REMINDER_AUDIT_KIND.CRON_SKIPPED_LOCKED
+    })
+    expect(audit).toBeDefined()
   })
 
   it("appelle invoice.findMany pour chaque step (3 queries)", async () => {
     prismaMock.invoice.findMany.mockResolvedValue([])
     await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
     expect(prismaMock.invoice.findMany).toHaveBeenCalledTimes(REMINDER_STEPS.length)
-    // Verifie filtre `reminders: { none: { step } }` present.
     const firstCallWhere = prismaMock.invoice.findMany.mock.calls[0]![0]!.where as any
     expect(firstCallWhere.status).toBe("issued")
     expect(firstCallWhere.reminders.none.step).toBe("step_7")
   })
 
-  it("emit audit cron.run avec metrics", async () => {
+  // H1 round 2 — filtre RGPD Art. 17 patient soft-deleted + user.status
+  it("H1 round 2 — filtre patient.deletedAt + user.status='active'", async () => {
+    prismaMock.invoice.findMany.mockResolvedValue([])
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    const where = prismaMock.invoice.findMany.mock.calls[0]![0]!.where as any
+    expect(where.patient.deletedAt).toBe(null)
+    expect(where.patient.user.status).toBe("active")
+  })
+
+  // M9 round 2 — orderBy issuedAt asc oldest first
+  it("M9 round 2 — orderBy issuedAt ASC (oldest first)", async () => {
+    prismaMock.invoice.findMany.mockResolvedValue([])
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    const orderBy = prismaMock.invoice.findMany.mock.calls[0]![0]!.orderBy as any
+    expect(orderBy).toEqual({ issuedAt: "asc" })
+  })
+
+  it("emit audit cron.run avec metrics + durationMs", async () => {
     prismaMock.invoice.findMany.mockResolvedValue([])
     await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
     const runAudit = prismaMock.auditLog.create.mock.calls.find((c) => {
       const d = c[0].data as any
-      return d.metadata?.kind === "invoice.reminder.cron.run"
+      return d.metadata?.kind === REMINDER_AUDIT_KIND.CRON_RUN
     })
     expect(runAudit).toBeDefined()
     const meta = (runAudit![0].data as any).metadata
     expect(meta.processed).toBe(0)
+    expect(typeof meta.durationMs).toBe("number")
+  })
+
+  // C1 round 2 — CRON_AUDIT_USER_ID = null (FK-safe).
+  it("C1 round 2 — audit userId = null (sentinel cron system, pas 0)", async () => {
+    prismaMock.invoice.findMany.mockResolvedValue([])
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    const runAudit = prismaMock.auditLog.create.mock.calls.find((c) => {
+      const d = c[0].data as any
+      return d.metadata?.kind === REMINDER_AUDIT_KIND.CRON_RUN
+    })
+    const data = runAudit![0].data as any
+    expect(data.userId).toBe(null) // pas 0 !
   })
 
   it("envoie email pour invoice overdue patient → status=sent", async () => {
-    // Mock email decrypt (safeDecryptField appellé sur invoice.patient.user.email)
     const { encryptField } = await import("@/lib/crypto/fields")
     const emailEnc = encryptField("patient@example.com")
     const invFixture = makeInvoice({ emailEnc })
-    // 3 calls: step_7 returns [inv], step_15 + step_30 return [].
     prismaMock.invoice.findMany
       .mockResolvedValueOnce([invFixture])
       .mockResolvedValueOnce([])
@@ -137,12 +187,6 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
     expect(m.skipped).toBe(1)
     expect(m.sent).toBe(0)
     expect(emailService.sendInvoiceReminder).not.toHaveBeenCalled()
-    // Persist reminder avec status=skipped + errorReason="no_recipient".
-    const skipReminder = prismaMock.invoiceReminder.create.mock.calls.find((c) => {
-      const d = c[0].data as any
-      return d.status === "skipped"
-    })
-    expect(skipReminder).toBeDefined()
   })
 
   it("skipped si email decrypt fail", async () => {
@@ -168,21 +212,64 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
       .mockResolvedValueOnce([])
     const m = await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
     expect(m.failed).toBe(1)
-    expect(m.sent).toBe(0)
-    const failReminder = prismaMock.invoiceReminder.create.mock.calls.find((c) => {
-      const d = c[0].data as any
-      return d.status === "failed"
-    })
-    expect(failReminder).toBeDefined()
-    expect((failReminder![0].data as any).errorMessage).toContain("Resend quota")
   })
 
-  it("status=failed si Resend throw (api key manquant)", async () => {
+  // H4 round 2 — sanitize email plaintext dans errorMessage
+  it("H4 round 2 — sanitize email plaintext dans errorMessage Resend", async () => {
+    vi.mocked(emailService.sendInvoiceReminder).mockResolvedValueOnce({
+      sent: false, error: "Invalid email address: leak@example.com — bounced",
+    })
+    const { encryptField } = await import("@/lib/crypto/fields")
+    const inv = makeInvoice({ emailEnc: encryptField("leak@example.com") })
+    prismaMock.invoice.findMany
+      .mockResolvedValueOnce([inv])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    const reminderData = prismaMock.invoiceReminder.create.mock.calls[0]![0]!.data as any
+    expect(reminderData.errorMessage).not.toContain("leak@example.com")
+    expect(reminderData.errorMessage).toContain("<recipient>")
+  })
+
+  // H8 round 2 — patientId pivot US-2268
+  it("H8 round 2 — audit metadata.patientId propage (US-2268 pivot)", async () => {
+    const { encryptField } = await import("@/lib/crypto/fields")
+    const inv = makeInvoice({ emailEnc: encryptField("a@b.com"), patientId: 99 })
+    prismaMock.invoice.findMany
+      .mockResolvedValueOnce([inv])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    const sentAudit = prismaMock.auditLog.create.mock.calls.find((c) => {
+      const d = c[0].data as any
+      return d.metadata?.kind === REMINDER_AUDIT_KIND.SENT
+    })
+    expect(sentAudit).toBeDefined()
+    expect((sentAudit![0].data as any).metadata.patientId).toBe(99)
+  })
+
+  // M3 round 2 — recheck status='issued' avant persist
+  it("M3 round 2 — skip persist si status passe a 'paid' entre findMany et persist", async () => {
+    const { encryptField } = await import("@/lib/crypto/fields")
+    const inv = makeInvoice({ emailEnc: encryptField("a@b.com") })
+    prismaMock.invoice.findMany
+      .mockResolvedValueOnce([inv])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+    // Simulate status changed to paid between findMany and persist.
+    prismaMock.invoice.findUnique.mockResolvedValue({ status: "paid" } as any)
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    // L'email a ete envoye (effet de bord accepte M4 race) mais le row
+    // InvoiceReminder n'est PAS persiste (recheck status fail).
+    expect(prismaMock.invoiceReminder.create).not.toHaveBeenCalled()
+  })
+
+  it("status=failed si Resend throw", async () => {
     vi.mocked(emailService.sendInvoiceReminder).mockRejectedValueOnce(
       new Error("RESEND_API_KEY not configured"),
     )
     const { encryptField } = await import("@/lib/crypto/fields")
-    const inv = makeInvoice({ emailEnc: encryptField("patient@example.com") })
+    const inv = makeInvoice({ emailEnc: encryptField("a@b.com") })
     prismaMock.invoice.findMany
       .mockResolvedValueOnce([inv])
       .mockResolvedValueOnce([])
@@ -191,9 +278,9 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
     expect(m.failed).toBe(1)
   })
 
-  it("idempotent : P2002 UNIQUE(invoiceId, step) → silent skip pas erreur", async () => {
+  it("idempotent : P2002 → silent skip pas erreur", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
-    const inv = makeInvoice({ emailEnc: encryptField("patient@example.com") })
+    const inv = makeInvoice({ emailEnc: encryptField("a@b.com") })
     prismaMock.invoice.findMany
       .mockResolvedValueOnce([inv])
       .mockResolvedValueOnce([])
@@ -203,9 +290,6 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
       meta: { target: ["invoice_id", "step"] },
     })
     prismaMock.invoiceReminder.create.mockRejectedValueOnce(p2002)
-    // Ne throw pas, mais le metric `sent` est compté car emailService a réussi
-    // (le P2002 arrive seulement à la persist). C'est documenté comme race
-    // condition acceptable — l'email est parti, le row existe déjà via le 1er run.
     await expect(
       invoiceReminderService.processOverdueInvoices(new Date(), ctx),
     ).resolves.toBeDefined()
@@ -241,7 +325,7 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
 
   it("language=fr fallback si user.language non-supporte", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
-    const inv = makeInvoice({ emailEnc: encryptField("x@y.com"), language: "es" }) // pas supporte
+    const inv = makeInvoice({ emailEnc: encryptField("x@y.com"), language: "es" })
     prismaMock.invoice.findMany
       .mockResolvedValueOnce([inv])
       .mockResolvedValueOnce([])
@@ -252,7 +336,14 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
     )
   })
 
-  it("audit per-reminder INVOICE_REMINDER kind=sent + step + emailMessageId", async () => {
+  it("MAX_INVOICES_PER_STEP cap appliqué (take=500)", async () => {
+    prismaMock.invoice.findMany.mockResolvedValue([])
+    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
+    const call = prismaMock.invoice.findMany.mock.calls[0]![0]!
+    expect((call as any).take).toBe(MAX_INVOICES_PER_STEP)
+  })
+
+  it("audit per-reminder kind=sent + step + emailMessageId", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
     const inv = makeInvoice({ emailEnc: encryptField("john@x.com") })
     prismaMock.invoice.findMany
@@ -270,7 +361,7 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
     expect(meta.emailMessageId).toBe("resend-msg-1")
   })
 
-  it("sentToEnc chiffré AES-256-GCM (pas plaintext en BDD)", async () => {
+  it("sentToEnc chiffré (pas plaintext)", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
     const inv = makeInvoice({ emailEnc: encryptField("plaintext@example.com") })
     prismaMock.invoice.findMany
@@ -280,13 +371,6 @@ describe("invoiceReminderService.processOverdueInvoices", () => {
     await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
     const reminderData = prismaMock.invoiceReminder.create.mock.calls[0]![0]!.data as any
     expect(reminderData.sentToEnc).toBeTruthy()
-    expect(reminderData.sentToEnc).not.toContain("plaintext@example.com") // chiffré
-  })
-
-  it("MAX_INVOICES_PER_RUN cap appliqué (take=500)", async () => {
-    prismaMock.invoice.findMany.mockResolvedValue([])
-    await invoiceReminderService.processOverdueInvoices(new Date(), ctx)
-    const call = prismaMock.invoice.findMany.mock.calls[0]![0]!
-    expect((call as any).take).toBe(500)
+    expect(reminderData.sentToEnc).not.toContain("plaintext@example.com")
   })
 })

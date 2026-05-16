@@ -8,13 +8,17 @@
 -- 1. Enums
 -- ─────────────────────────────────────────────────────────────
 
-CREATE TYPE "InvoiceReminderStep" AS ENUM (
+-- C2 round 2 review (Prisma F-1) — naming snake_case coherent avec
+-- les autres enums du schema (invoice_status, data_breach_severity,
+-- activity_intensity, etc.). Le `@@map` Prisma sur l'enum schema dicte
+-- ce nom PG, sinon drift CI exit 2.
+CREATE TYPE "invoice_reminder_step" AS ENUM (
     'step_7',    -- J+7 amicale "facture en attente"
     'step_15',   -- J+15 ferme "deuxieme relance"
     'step_30'    -- J+30 finale "derniere relance avant procedure"
 );
 
-CREATE TYPE "InvoiceReminderStatus" AS ENUM (
+CREATE TYPE "invoice_reminder_status" AS ENUM (
     'sent',      -- Email envoye (Resend OK, message ID present)
     'failed',    -- Resend a echoue (erreur reseau, quota, etc.)
     'skipped'    -- Pas d'email destinataire (invoice cabinet-interne)
@@ -27,9 +31,9 @@ CREATE TYPE "InvoiceReminderStatus" AS ENUM (
 CREATE TABLE "invoice_reminders" (
     "id"               SERIAL                  PRIMARY KEY,
     "invoice_id"       INTEGER                 NOT NULL,
-    "step"             "InvoiceReminderStep"   NOT NULL,
-    "sent_at"          TIMESTAMPTZ             NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "status"           "InvoiceReminderStatus" NOT NULL DEFAULT 'sent',
+    "step"             "invoice_reminder_step"   NOT NULL,
+    "sent_at"          TIMESTAMPTZ               NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "status"           "invoice_reminder_status" NOT NULL DEFAULT 'sent',
     -- Email destinataire chiffre AES-256-GCM (base64) — forensique sans
     -- exposer mail patient en clair. Optional car certaines step='skipped'
     -- arrivent avant qu'on ait pu deciffrer le destinataire.

@@ -179,6 +179,34 @@ export async function deleteUserAccount(
             reason: "CGI_242_nonies_A_10y_retention",
           },
         })
+
+        // US-2108 H6 round 2 — Anonymise `sentToEnc` des reminders du
+        // patient (email chiffré reste sinon comme PHI résiduel post-
+        // suppression RGPD). Les rows InvoiceReminder elles-mêmes sont
+        // conservées (sous-entités comptables, même rétention 10 ans).
+        const anonymisedReminders = await tx.invoiceReminder.updateMany({
+          where: {
+            invoice: { patientId },
+            sentToEnc: { not: null },
+          },
+          data: { sentToEnc: null },
+        })
+        if (anonymisedReminders.count > 0) {
+          await auditService.logWithTx(tx, {
+            userId,
+            action: "UPDATE",
+            resource: "INVOICE_REMINDER",
+            resourceId: `patient:${patientId}`,
+            ipAddress,
+            userAgent,
+            metadata: {
+              kind: "user.account.deletion.remindersAnonymised",
+              patientId,
+              reminderCount: anonymisedReminders.count,
+              reason: "rgpd_art17_email_residual_anonymisation",
+            },
+          })
+        }
       }
 
       // Soft delete patient — never hard delete (RGPD + audit trail)

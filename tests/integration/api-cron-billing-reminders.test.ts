@@ -25,8 +25,21 @@ vi.mock("@/lib/services/invoice-reminder.service", () => ({
   },
 }))
 
+vi.mock("@/lib/services/audit.service", async (orig) => {
+  const actual = await orig<typeof import("@/lib/services/audit.service")>()
+  return {
+    ...actual,
+    auditService: {
+      ...actual.auditService,
+      log: vi.fn().mockResolvedValue(undefined),
+      accessDenied: vi.fn().mockResolvedValue(undefined),
+    },
+  }
+})
+
 import { invoiceReminderService } from "@/lib/services/invoice-reminder.service"
-const { POST } = await import("@/app/api/cron/billing/reminders/route")
+import { auditService } from "@/lib/services/audit.service"
+const { POST, GET } = await import("@/app/api/cron/billing/reminders/route")
 
 const VALID_SECRET = "test-cron-secret-32-bytes-long-aaa"
 
@@ -112,5 +125,46 @@ describe("POST /api/cron/billing/reminders", () => {
     const call = vi.mocked(invoiceReminderService.processOverdueInvoices).mock.calls[0]
     expect(call![0]).toBeInstanceOf(Date) // now
     expect(call![1]).toHaveProperty("requestId")
+  })
+
+  // H2 round 2 — GET accepte aussi (Vercel cron / OVH cron basic)
+  it("H2 round 2 — GET accepte (200) avec Bearer correct", async () => {
+    const res = await GET(makeReq(VALID_SECRET))
+    expect(res.status).toBe(200)
+    expect(invoiceReminderService.processOverdueInvoices).toHaveBeenCalled()
+  })
+
+  it("H2 round 2 — GET 401 sans Bearer", async () => {
+    const res = await GET(makeReq())
+    expect(res.status).toBe(401)
+  })
+
+  // H9 round 2 — audit auth failed US-2265 (via log direct, userId=null cron).
+  it("H9 round 2 — emit audit cron.auth.failed sur 401", async () => {
+    await POST(makeReq("wrong-secret"))
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: null, // C1 round 2 — sentinel cron, pas 0
+        action: "UNAUTHORIZED",
+        resource: "INVOICE_REMINDER",
+        resourceId: "cron",
+        metadata: expect.objectContaining({ kind: "cron.auth.failed" }),
+      }),
+    )
+  })
+
+  // Headers ANSSI sur toutes les responses (M9 round 2).
+  it("headers ANSSI no-referrer + nosniff sur 401", async () => {
+    const res = await POST(makeReq("wrong"))
+    expect(res.headers.get("Cache-Control")).toContain("no-store")
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
+  })
+
+  it("headers ANSSI sur 503", async () => {
+    delete process.env.CRON_SECRET
+    const res = await POST(makeReq(VALID_SECRET))
+    expect(res.headers.get("Cache-Control")).toContain("no-store")
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
   })
 })

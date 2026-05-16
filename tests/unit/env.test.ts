@@ -51,6 +51,11 @@ function setupValidEnv() {
     "AUDIT_PEPPER",
     "d".repeat(16) + "e".repeat(32) + "f".repeat(16),
   )
+  // US-2108 H10 round 2 — Bearer secret cron /api/cron/* (64 hex chars).
+  vi.stubEnv(
+    "CRON_SECRET",
+    "a".repeat(16) + "b".repeat(32) + "c".repeat(16),
+  )
   vi.stubEnv("JWT_PRIVATE_KEY", VALID_PRIV_PEM)
   vi.stubEnv("JWT_PUBLIC_KEY", VALID_PUB_PEM)
 }
@@ -123,6 +128,22 @@ describe("assertRequiredEnv", () => {
   it("rejects AUDIT_PEPPER non-hex chars", () => {
     vi.stubEnv("AUDIT_PEPPER", "z".repeat(64))
     expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
+  })
+
+  // US-2108 H10 round 2 — CRON_SECRET validation.
+  it("rejects CRON_SECRET missing", () => {
+    vi.stubEnv("CRON_SECRET", "")
+    expect(() => assertRequiredEnv()).toThrow(/CRON_SECRET/)
+  })
+
+  it("rejects CRON_SECRET too short (< 64 hex chars)", () => {
+    vi.stubEnv("CRON_SECRET", "a".repeat(32))
+    expect(() => assertRequiredEnv()).toThrow(/at least 64 hex chars/)
+  })
+
+  it("rejects CRON_SECRET low entropy (all-same-char)", () => {
+    vi.stubEnv("CRON_SECRET", "a".repeat(64))
+    expect(() => assertRequiredEnv()).toThrow(/insufficient entropy/)
   })
 
   it("rejects JWT_PRIVATE_KEY without PEM markers", () => {
