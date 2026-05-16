@@ -396,6 +396,9 @@ model User {
   // US-2076 scope A — Messagerie sécurisée 1-to-1
   messagesSent                      Message[]                         @relation("MessageSender")
   messagesReceived                  Message[]                         @relation("MessageRecipient")
+  // Groupe 4 — Devices & Sync (US-2091/2092)
+  revokedPatientDevices             PatientDevice[]                   @relation("PatientDeviceRevoker")
+  createdSupportedDevices           SupportedDevice[]                 @relation("SupportedDeviceCreator")
 
   @@index([createdAt])
   @@index([firstnameHmac, lastnameHmac])
@@ -1350,37 +1353,91 @@ model AverageData {
 // ═══════════════════════════════════════════════════════════════
 
 model PatientDevice {
-  id              Int             @id @default(autoincrement())
-  patientId       Int             @map("patient_id")
-  brand           String?         @db.VarChar(100)
-  name            String?         @db.VarChar(100)
-  model           String?         @db.VarChar(100)
-  sn              String?         @db.VarChar(100)
-  date            DateTime?       @db.Timestamptz()
-  type            String?         @db.VarChar(50)
-  category        DeviceCategory?
-  connectionTypes String[]        @map("connection_types")
-  modelIdentifier String?         @map("model_identifier") @db.VarChar(100)
+  id               Int             @id @default(autoincrement())
+  patientId        Int             @map("patient_id")
+  brand            String?         @db.VarChar(100)
+  name             String?         @db.VarChar(100)
+  model            String?         @db.VarChar(100)
+  sn               String?         @db.VarChar(100)
+  date             DateTime?       @db.Timestamptz()
+  type             String?         @db.VarChar(50)
+  category         DeviceCategory?
+  connectionTypes  String[]        @map("connection_types")
+  modelIdentifier  String?         @map("model_identifier") @db.VarChar(100)
   /// Groupe 1 — US-2243 supervision : niveau pile (0-100, %).
   /// Null = info non remontée par l'app patient (legacy ou capteur muet).
-  batteryLevel    Int?            @map("battery_level") @db.SmallInt
+  batteryLevel     Int?            @map("battery_level") @db.SmallInt
   /// Groupe 1 — US-2243 supervision : date d'expiration capteur CGM
   /// (Dexcom 10j, FreeStyle Libre 14j, Medtronic Guardian 7j). Null si
   /// pas applicable (pompe, lecteur BGM = consommable longue durée).
-  sensorExpiresAt DateTime?       @map("sensor_expires_at") @db.Timestamptz()
+  sensorExpiresAt  DateTime?       @map("sensor_expires_at") @db.Timestamptz()
   /// Groupe 1 — US-2244 sync status : dernière sync du device. Distinct
   /// de DeviceDataSync.lastSyncDate qui agrège par (user, deviceUid)
   /// global. Ici on track la fraîcheur par appareil physique (un patient
   /// peut avoir 2 capteurs en simultané — un retire, un actif).
-  lastSyncAt      DateTime?       @map("last_sync_at") @db.Timestamptz()
+  lastSyncAt       DateTime?       @map("last_sync_at") @db.Timestamptz()
+  /// US-2092 — Soft-delete device : timestamp de révocation. Null = actif.
+  /// Le device reste en DB pour historique (US-2093) et audit forensique
+  /// (sync data passée, prescription médicale, etc.).
+  revokedAt        DateTime?       @map("revoked_at") @db.Timestamptz()
+  /// US-2092 — User qui a déclenché la révocation (PS ou patient via app).
+  /// FK SetNull : si user supprimé (anonymisation RGPD), l'audit reste.
+  revokedBy        Int?            @map("revoked_by")
+  /// US-2092 — Raison de révocation chiffrée AES-256-GCM (peut contenir
+  /// PHI : "remplacé par Dexcom G7 suite à dysfonctionnement répété"
+  /// → indirect health context). Stocké base64.
+  revokedReasonEnc String?         @map("revoked_reason_enc")
 
-  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  patient       Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  revokedByUser User?   @relation("PatientDeviceRevoker", fields: [revokedBy], references: [id], onDelete: SetNull)
 
   /// US-2244 — index pour cohort sync status filter (lastSyncAt asc desc).
   @@index([patientId, lastSyncAt])
   /// US-2243 — index pour cohort capteurs proches expiration.
   @@index([sensorExpiresAt])
+  /// US-2093 — index pour history listing chronologique (revoked + actifs).
+  @@index([patientId, revokedAt])
   @@map("patient_devices")
+}
+
+/// US-2091 — Référentiel des dispositifs supportés (whitelist).
+///
+/// Avant pairing, l'app vérifie que `(brand, model, category)` existe
+/// dans cette table. Permet de :
+///   - Filtrer les listes de pairing UI (afficher uniquement les compatibles).
+///   - Empêcher l'enregistrement d'un device non testé / non-conforme HDS.
+///   - Documenter les capabilities (bluetooth, NFC, sync interval, etc.).
+///
+/// Sourced ANSM (registre dispositifs médicaux FR) + tests internes.
+/// Maintenu par ADMIN via UI/API.
+model SupportedDevice {
+  id                 Int            @id @default(autoincrement())
+  brand              String         @db.VarChar(100)
+  model              String         @db.VarChar(100)
+  category           DeviceCategory
+  /// Identifiant technique (USB VID:PID, BLE service UUID, etc.) optionnel.
+  modelIdentifier    String?        @map("model_identifier") @db.VarChar(100)
+  /// Connexions supportées (bluetooth, nfc, usb, manual).
+  connectionTypes    String[]       @map("connection_types")
+  /// Capteur expirable (CGM) — durée en jours (Dexcom G7 = 10, FreeStyle Libre 3 = 14).
+  /// Null pour pompes/lecteurs.
+  sensorLifetimeDays Int?           @map("sensor_lifetime_days") @db.SmallInt
+  /// Marqueur HDS-conformity (testé/validé par Diabeo).
+  isHdsCertified     Boolean        @default(false) @map("is_hds_certified")
+  /// Notes opérationnelles libres (ANSM ref, instructions pairing, etc.).
+  notes              String?        @db.Text
+  isActive           Boolean        @default(true) @map("is_active")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.Timestamptz()
+  createdBy          Int?           @map("created_by")
+
+  creator User? @relation("SupportedDeviceCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+
+  /// Unicité par (brand, model, category) : un même device n'a qu'une entrée.
+  @@unique([brand, model, category])
+  /// Index pour search par brand + category (UI filter pairing).
+  @@index([category, isActive])
+  @@map("supported_devices")
 }
 
 model DeviceDataSync {

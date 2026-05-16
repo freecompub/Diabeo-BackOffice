@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 86   | 0       | 40          | **68%** |
+| **V1**   | 126   | 89   | 0       | 37          | **71%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **154** | **1**   | **138**     | **53%** |
+| **TOTAL**| **293** | **157** | **1**   | **135**     | **54%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -289,13 +289,13 @@ avant merge. Suite 1345 tests verts, branches 76.64%, migration `groupe3_refinem
 ajoutée (FK adjustment_proposal_acks.patient_id + 2 indexes performance).
 Total V1 effectif Groupe 3 : 12 US (vs 15 affiché initialement).
 
-### Groupe 4 — Devices & Sync (3 US)
+### Groupe 4 — Devices & Sync (3 US, 100% DONE)
 
 | US | Titre | Statut |
 |----|-------|--------|
-| US-2091 | Compatibilité matérielle | NOT STARTED |
-| US-2092 | Désactivation / révocation | PARTIAL |
-| US-2093 | Historique des dispositifs | NOT STARTED |
+| US-2091 | Compatibilité matérielle | ✅ DONE PR — `SupportedDevice` whitelist + search NURSE+ + CRUD ADMIN |
+| US-2092 | Désactivation / révocation | ✅ DONE PR — soft-revoke atomic CAS + raison chiffrée AES + idempotent |
+| US-2093 | Historique des dispositifs | ✅ DONE PR — `listHistory` (incl. revoked) + pivot patientId US-2268 |
 
 ### Groupe 5 — Insuline & Repas (5 US, V1 100% DONE)
 
