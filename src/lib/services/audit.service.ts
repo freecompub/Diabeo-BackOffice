@@ -197,6 +197,12 @@ export type AuditResource =
   | "USER_INS"
   /** US-2108 — Relance facture automatique (cron J+7/15/30). resourceId = Invoice.id. */
   | "INVOICE_REMINDER"
+  /** US-2506 V1 mock — Envoi SMS cabinet. resourceId = Cabinet.id, metadata.patientId pivot si lié. */
+  | "SMS_LOG"
+  /** US-2506 V1 mock — Config SMS cabinet (admin toggle). resourceId = Cabinet.id. */
+  | "CABINET_SMS_CONFIG"
+  /** US-2502 — Rappel RDV multi-canal (email J-2 / SMS J-1 / push J-0). resourceId = Appointment.id, metadata.patientId pivot. */
+  | "APPOINTMENT_REMINDER"
 
 /**
  * Audit log entry — parameters for logging an action.

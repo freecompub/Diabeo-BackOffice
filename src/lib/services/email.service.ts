@@ -35,6 +35,46 @@ interface ReminderI18n {
   step_30: ReminderStepCopy
 }
 
+/**
+ * US-2502 — i18n template rappel RDV J-2.
+ * Aucune mention donnee sante / nom / DDN / NIR / INS / nom medecin.
+ */
+interface AppointmentReminderI18n {
+  subject: (dateTime: string) => string
+  heading: string
+  body: string
+  footer: string
+  labels: { dateTime: string; location: string; cta: string }
+  locations: { in_person: string; video: string; phone: string }
+}
+
+const APPOINTMENT_REMINDER_I18N: Record<"fr" | "en" | "ar", AppointmentReminderI18n> = {
+  fr: {
+    subject: (dt) => `Diabeo — Rappel rendez-vous le ${dt}`,
+    heading: "Rappel de votre rendez-vous",
+    body: "Nous vous rappelons votre rendez-vous prévu dans 2 jours. Si vous ne pouvez plus venir, merci d'annuler dès que possible via l'application.",
+    footer: "Vous recevrez également un rappel la veille et le jour même.",
+    labels: { dateTime: "Date et heure", location: "Lieu", cta: "Voir le rendez-vous" },
+    locations: { in_person: "En cabinet", video: "Vidéo (téléconsultation)", phone: "Téléphone" },
+  },
+  en: {
+    subject: (dt) => `Diabeo — Appointment reminder on ${dt}`,
+    heading: "Appointment reminder",
+    body: "This is a reminder for your appointment in 2 days. If you can no longer attend, please cancel as soon as possible via the application.",
+    footer: "You will also receive a reminder the day before and on the day itself.",
+    labels: { dateTime: "Date and time", location: "Location", cta: "View appointment" },
+    locations: { in_person: "In-cabinet", video: "Video (teleconsultation)", phone: "Phone" },
+  },
+  ar: {
+    subject: (dt) => `Diabeo — تذكير بموعدك في ${dt}`,
+    heading: "تذكير بموعدك",
+    body: "نذكرك بموعدك المحدد بعد يومين. إذا لم تعد قادرا على الحضور، يرجى الإلغاء في أقرب وقت ممكن عبر التطبيق.",
+    footer: "ستتلقى أيضًا تذكيرًا اليوم السابق وفي اليوم نفسه.",
+    labels: { dateTime: "التاريخ والوقت", location: "الموقع", cta: "عرض الموعد" },
+    locations: { in_person: "في العيادة", video: "فيديو (استشارة عن بعد)", phone: "هاتف" },
+  },
+}
+
 const REMINDER_I18N: Record<"fr" | "en" | "ar", ReminderI18n> = {
   fr: {
     labels: { invoice: "Numéro de facture", amount: "Montant", dueDate: "Échéance", cta: "Régler la facture" },
@@ -291,6 +331,79 @@ export const emailService = {
         </div>
       `,
       text: `${stepCfg.heading}\n\n${stepCfg.body}\n\n${T.labels.invoice}: ${input.invoiceNumber}\n${T.labels.amount}: ${input.totalAmount}\n${T.labels.dueDate}: ${input.dueDate}\n\n${T.labels.cta}: ${deepLink}\n\n${stepCfg.footer}`,
+    })
+  },
+
+  /**
+   * US-2502 — Email de rappel RDV J-2 (avant échéance).
+   *
+   * **Contrat anti-PHI strict** :
+   *   - AUCUNE donnée de santé (TIR, glucose, pathologie).
+   *   - AUCUN nom/DDN/NIR/INS patient ni nom médecin.
+   *   - Uniquement : date+heure RDV, lieu type (cabinet/video/phone),
+   *     deep link auth.
+   *
+   * @param input.email         Destinataire (déjà déchiffré par caller).
+   * @param input.dateTime      Date+heure formatées localement (ex. "20 mai 2026 à 14h00").
+   * @param input.location      Type de RDV (in_person/video/phone).
+   * @param input.appointmentId Deep link.
+   * @param input.language      "fr" | "en" | "ar" (US-2112).
+   */
+  async sendAppointmentReminder(input: {
+    email: string
+    dateTime: string
+    location: "in_person" | "video" | "phone" | null
+    appointmentId: number
+    language?: "fr" | "en" | "ar"
+  }): Promise<EmailResult> {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.diabeo.fr"
+    const deepLink = `${baseUrl}/appointments/${input.appointmentId}`
+    const lang = input.language ?? "fr"
+    const T = APPOINTMENT_REMINDER_I18N[lang]
+    // M12 round 2 — `location IS NULL` → ne PAS afficher la ligne "Lieu"
+    // (vs ancien fallback "En cabinet" qui induisait en erreur les RDV
+    // vidéo/téléphone sans location renseignée).
+    const locationLabel = input.location ? T.locations[input.location] : null
+    const locationRowHtml = locationLabel
+      ? `<tr>
+            <td style="padding: 8px 0; color: #6B7280;">${escapeHtml(T.labels.location)}</td>
+            <td style="padding: 8px 0; color: #1F2937; font-weight: 600; text-align: right;">${escapeHtml(locationLabel)}</td>
+          </tr>`
+      : ""
+    const locationTextLine = locationLabel
+      ? `\n${T.labels.location}: ${locationLabel}`
+      : ""
+
+    return this.send({
+      to: input.email,
+      subject: T.subject(input.dateTime),
+      html: `
+        <div style="font-family: 'Figtree', system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;${lang === "ar" ? " direction: rtl;" : ""}">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #0D9488; font-size: 24px; margin: 0;">Diabeo</h1>
+          </div>
+          <h2 style="color: #1F2937; font-size: 18px;">${escapeHtml(T.heading)}</h2>
+          <p style="color: #6B7280; line-height: 1.6;">${escapeHtml(T.body)}</p>
+          <table style="border-collapse: collapse; margin: 24px 0; width: 100%;">
+            <tr>
+              <td style="padding: 8px 0; color: #6B7280;">${escapeHtml(T.labels.dateTime)}</td>
+              <td style="padding: 8px 0; color: #1F2937; font-weight: 600; text-align: right;">${escapeHtml(input.dateTime)}</td>
+            </tr>
+            ${locationRowHtml}
+          </table>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${escapeHtml(deepLink)}" style="background: #0D9488; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              ${escapeHtml(T.labels.cta)}
+            </a>
+          </div>
+          <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">${escapeHtml(T.footer)}</p>
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+          <p style="color: #9CA3AF; font-size: 12px; text-align: center;">
+            Diabeo — Hébergement HDS certifié — OVHcloud GRA
+          </p>
+        </div>
+      `,
+      text: `${T.heading}\n\n${T.body}\n\n${T.labels.dateTime}: ${input.dateTime}${locationTextLine}\n\n${T.labels.cta}: ${deepLink}\n\n${T.footer}`,
     })
   },
 

@@ -80,6 +80,8 @@ export interface LogContext {
   kind?: string
   deviceId?: number
   staleWindowSec?: number
+  /** PR #418 round 2 M4 — SMS / cron lock ops logs. */
+  cabinetId?: number
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"

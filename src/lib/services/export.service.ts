@@ -189,7 +189,12 @@ export async function generateUserExport(userId: number) {
       prisma.bolusCalculationLog.findMany({ where: { patientId: pid }, orderBy: { calculatedAt: "desc" }, take: 5000 }),
       prisma.adjustmentProposal.findMany({ where: { patientId: pid }, orderBy: { createdAt: "desc" } }),
       prisma.patientDevice.findMany({ where: { patientId: pid } }),
-      prisma.appointment.findMany({ where: { patientId: pid }, orderBy: { date: "desc" } }),
+      prisma.appointment.findMany({
+        where: { patientId: pid },
+        orderBy: { date: "desc" },
+        // US-2502 — inclure les reminders envoyés (Art. 20 traçabilité multi-canal).
+        include: { reminders: { orderBy: { sentAt: "desc" } } },
+      }),
       prisma.medicalDocument.findMany({ where: { patientId: pid }, orderBy: { createdAt: "desc" } }),
     ])
 
@@ -215,6 +220,15 @@ export async function generateUserExport(userId: number) {
       motif: safeDecrypt(a.motifEncrypted),
       note: safeDecrypt(a.noteEncrypted),
       cancelReason: safeDecrypt(a.cancelReasonEncrypted),
+      // US-2502 — reminders avec sentTo déchiffré pour intelligibilité Art. 20.
+      reminders: a.reminders.map((r) => ({
+        channel: r.channel,
+        step: r.step,
+        status: r.status,
+        sentAt: r.sentAt.toISOString(),
+        sentTo: r.sentToEnc ? safeDecrypt(r.sentToEnc) : null,
+        errorMessage: r.errorMessage,
+      })),
     }))
 
     // HSA H1 review (US-2092) — RGPD Art. 20 : revokedReasonEnc déchiffré

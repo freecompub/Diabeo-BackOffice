@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 126   | 91   | 0       | 35          | **72%** |
+| **V1**   | 126   | 93   | 0       | 33          | **74%** |
 | **V2**   | 74    | 0    | 0       | 74          | **0%**  |
 | **V3**   | 9     | 0    | 0       | 9           | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **293** | **159** | **1**   | **133**     | **54%** |
+| **TOTAL**| **294** | **161** | **1**   | **132**     | **55%** |
 
 > **Reclassification 2026-05-15** : 15 US déplacées V1 → V2 (V1 141→126, V2 58→73). Motifs : procurement externe bloqué (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ), deps internes V3 (US-2150/US-2200), spec V2 (AI pattern). US déplacées : US-2031, US-2041, US-2077, US-2104, US-2106, US-2109, US-2124, US-2125, US-2126, US-2127, US-2153, US-2164, US-2165, US-2411, US-2413.
 > Note (2026-05-13 session Samir) : Q6 US-2414 supprimée (V1 −1), Q7 module
@@ -394,11 +394,20 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 |----|-------|---:|:------:|-------|
 | US-2500 | Calendrier RDV (list + range query, sécurisé scope) | 13 | ✅ DONE | `listInRange` scope obligatoire (patient/member), soft-delete filter, cross-midnight overlap, truncated flag — PR #392 |
 | US-2501 | Détail RDV (CRUD + note/motif/cancelReason chiffrés AES-256-GCM) | 8 | ✅ DONE | 5 endpoints API (list, detail, create, update, cancel), DTO split list/detail (pas de bulk decrypt) — PR #392 |
-| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | ⏳ Batch 2 | Provider SMS dépend US-2506 |
+| US-2502 | Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0) | 8 | ✅ DONE PR #418 | Cron `processAppointmentReminders` advisory lock + p-limit 10 + timeout 50s + filtre RGPD Art. 17 + Resend (J-2) + SMS mock US-2506 (J-1) + FCM (J-0) + anti-PHI strict templates FR/EN/AR + sentToEnc chiffré + audit US-2268 + DPIA |
 | US-2503 | Annulation / report bilatéral | 5 | ✅ DONE | State machine cancel/propose/accept, TTL 7j sur alternative, audit `actor`+`callerRole`, EXCLUDE overlap re-check — PR #392 |
 | US-2504 | Plages indisponibles médecin | 5 | ✅ DONE | `MemberUnavailability` table, EXCLUDE GiST constraint (btree_gist), reason chiffrée, audit US-2265 — PR #392 |
 | US-2505 | Config prise de RDV (auto vs validation manuelle) | 5 | ✅ DONE | `HealthcareMember.bookingMode` enum, `confirm` route DOCTOR, default duration 15-240 — PR #392 |
-| US-2506 | Option SMS payante cabinet | 5 | ⏳ Batch 2 | Provider SMS (Twilio/OVH) + activation admin UI |
+| US-2506 | Option SMS payante cabinet (V1 mock) | 5 | ✅ DONE PR #418 | `HealthcareService.smsEnabled` + `smsCreditBalance` admin toggle + `SmsLog` (provider=mock V1) + service `sms.service` (decrement atomique credits + `SmsDisabledError`/`SmsInsufficientCreditError`) + route `/api/cabinet/[id]/sms-config` ADMIN-only + chiffrement AES-256-GCM `toEnc` + messageExcerpt cap 120c. ⚠️ V1 mock — aucun SMS réellement envoyé. Real integration différée **V3 US-2506bis** |
+
+#### Follow-ups round 3 PR #418 (4 issues GH créées 2026-05-16)
+
+| Issue | Bloqueur pre-prod | Estimation | Description |
+|-------|-------------------|------------|-------------|
+| [#419](https://github.com/freecompub/Diabeo-BackOffice/issues/419) | ✅ oui | 3 SP | Test E2E réel pool advisory lock sur staging Postgres (le mock unit ne reproduit pas la condition pool node-postgres) |
+| [#420](https://github.com/freecompub/Diabeo-BackOffice/issues/420) | ✅ oui si > 1M audit_logs | 1 SP | EXPLAIN ANALYZE GIN `audit_logs_run_id_gin_idx` sur dataset ≥ 1M rows + switch `jsonb_path_ops` si nécessaire |
+| [#421](https://github.com/freecompub/Diabeo-BackOffice/issues/421) | ✅ oui RGPD | 0.5-2 SP | Décision DPO : `optOutSkipped` count audit suffit Art. 5.2 ou ajouter API admin `proof-of-optout/[patientId]` ? |
+| [#422](https://github.com/freecompub/Diabeo-BackOffice/issues/422) | ✅ oui patients réels | 0.5-1.5 SP | Décision business V1.5 : retirer step SMS du cron OU mentionner dans CGU "pas de SMS V1" OU procurement Twilio sandbox |
 
 > **Dépendances** :
 >  - US-2074 (Email Resend, DONE) pour rappels email
@@ -536,7 +545,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V3 — 9 US
+## V3 — 10 US
 
 | US | Titre |
 |----|-------|
@@ -549,6 +558,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2263 | Diffusion cohorte messages |
 | US-2264 | Notifications proactives |
 | US-2058 | Reconnaissance image repas AI |
+| US-2506bis | **Real SMS provider integration (Twilio / OVH SMS)** — V1 livré en mock (US-2506 PR #418). Migration `provider="mock"` → `"twilio"`/`"ovh"`, webhooks delivery status, DPA + procurement (~500-2k€/mois + ~5-10c€/SMS). Contrat `sms.service.sendSms()` zero-breaking — seul l'interne change. Bloqueur pre-prod patients réels SMS si Diabeo veut activer recouvrement / rappels RDV J-1 réels. |
 
 ---
 
@@ -614,4 +624,8 @@ Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives,
 
 ---
 
-*Dernière mise à jour : 2026-05-02 — US-2140 DONE (PR #339) · source : `docs/UserStory/pro-user-stories/`, `docs/UserStory/user-stories-patient-management/`*
+*Dernière mise à jour : 2026-05-16 — Round 3 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 16 findings (1C/3H/7M/5L) → 0 résiduel. Corrections critiques round 3 : (a) CR-1 advisory lock cassé en prod — nouveau module `src/lib/db/cron-lock.ts` avec `pg.Pool({max:1})` dédié → garantit acquire/release sur la même connexion physique (round 2 utilisait `prisma.$queryRaw` partagé qui routait sur connexions différentes → release no-op silent → lock orphelin → cron bloqué) ; (b) HI-1 opt-in implicite cassé — filtre round 2 `notifPreferences: { medicalAppointments: true }` excluait silencieusement les patients sans row préférences (créée lazily) → majorité prod n'aurait reçu aucun rappel → fix `OR: [{null}, {true}]` ; (c) HI-2 SMS mock V1 mensonger — persistait `status="sent"` → fix `status="skipped"` + `errorReason="provider_mock_no_real_sms"` ; (d) HI-3 test C1 timezone laxiste → loop runtime TZ + pattern strict ; (e) MED-1 opt-out RGPD audit silencieux → count + `metadata.optOutSkipped` ; (f) MED-2 forensique by runId → GIN partial index `audit_logs(metadata->'runId')`. 2231/2231 tests verts. Migration suiveuse `20260519120000_us2502_round3_review` (GIN runId + CHECK cohérence reminders LOW-5). Runbook `docs/runbook/cron-reminders.md` créé (LOW-1).*
+
+*Précédente mise à jour : 2026-05-16 (round 2) — Round 2 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 29 findings (3C/4H/15M/7L) → 0 résiduel. Corrections clés : timezone bug fidélité UTC (C1), FCM `senderId: number | null` (C2), advisory lock SESSION-level vs xact (C3), filtre RGPD Art. 21 `notifPreferences.medicalAppointments` (H1), SMS skipped audit standalone TX (H2), GET retiré anti-leak CRON_SECRET (H3), step order push J-0 → SMS J-1 → email J-2 (M10), index `appointments(status, date)` (M5), `sms_logs.cabinet_id ON DELETE RESTRICT` (M7), runId UUID audit pivot (M11), dead code anonymisation supprimé (M2), null handling location/hour (M12/M13). 25/25 unit + 6/6 integration verts. DPIA §9 ajoutée. ROADMAP V1 indicateurs inchangés (US toujours DONE).*
+
+*Précédente mise à jour : 2026-05-02 — US-2140 DONE (PR #339) · source : `docs/UserStory/pro-user-stories/`, `docs/UserStory/user-stories-patient-management/`*

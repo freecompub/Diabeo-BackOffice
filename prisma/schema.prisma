@@ -1581,6 +1581,12 @@ model HealthcareService {
   tvaIntra      String?     @map("tva_intra") @db.VarChar(15)
   /// IBAN pour paiement par virement (US-2102). Standard ISO 13616.
   iban          String?     @db.VarChar(34)
+  /// US-2506 V1 mock — Feature flag SMS active par cabinet (admin toggle).
+  /// Real provider (Twilio/OVH) reportee V3 sous US-2506bis.
+  smsEnabled        Boolean @default(false) @map("sms_enabled")
+  /// US-2506 V1 mock — Credits SMS prepayes (decrement par envoi reussi).
+  /// Alerte ops si <10. Mock V1 = on n'achete pas vraiment.
+  smsCreditBalance  Int     @default(0) @map("sms_credit_balance")
 
   members                    HealthcareMember[]
   patientServices            PatientService[]
@@ -1599,6 +1605,8 @@ model HealthcareService {
   insulinAdjustmentTemplates InsulinAdjustmentTemplate[]
   /// Groupe 7 Batch 1 — Factures émises par le cabinet.
   invoices                   Invoice[]
+  /// US-2506 V1 mock — Journal envois SMS (mock provider V1, Twilio V3).
+  smsLogs                    SmsLog[]
 
   @@unique([name, establishment])
   @@index([type])
@@ -1808,12 +1816,17 @@ model Appointment {
   consultationNotes ConsultationNote[]
   /// US-2072 — Acte facturable si téléconsult
   teleconsultActe   TeleconsultationActe?
+  /// US-2502 — Journal rappels envoyes (J-2 email / J-1 SMS / J-0 push).
+  reminders         AppointmentReminder[]
 
   /// Hot path : liste RDV d'un praticien sur une plage temporelle (calendrier).
   @@index([memberId, date])
   @@index([patientId, date])
   /// US-2503 — filtre `WHERE status = 'scheduled'` pour la vue calendrier.
   @@index([memberId, status, date])
+  /// US-2502 M5 round 2 — hot path cron rappels RDV `WHERE status IN
+  /// (scheduled, confirmed) AND date BETWEEN X AND Y` sans préfixe member/patient.
+  @@index([status, date])
   @@map("appointments")
 }
 
@@ -3359,4 +3372,115 @@ model Message {
   /// Soft-delete RGPD filter. Partial WHERE deleted_at IS NOT NULL en SQL.
   @@index([deletedAt])
   @@map("messages")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// US-2506 — Option SMS payante cabinet (V1 mock, real Twilio/OVH V3)
+// ────────────────────────────────────────────────────────────────────────
+
+/// US-2506 V1 mock — Statut envoi SMS.
+enum SmsStatus {
+  /// Real provider OK (Twilio/OVH V3).
+  sent
+  /// Provider erreur.
+  failed
+  /// Cabinet `smsEnabled=FALSE` ou `smsCreditBalance=0`.
+  skipped
+  /// V1 mock explicite — pas de vrai envoi (provider="mock").
+  mock
+
+  @@map("sms_status")
+}
+
+/// US-2506 V1 mock — Journal envois SMS. V1 = mock provider (status=mock
+/// par defaut). V3 = real Twilio/OVH (status=sent/failed). Le mock est
+/// utilise par US-2502 pour les rappels RDV J-1.
+model SmsLog {
+  id                  Int       @id @default(autoincrement())
+  cabinetId           Int       @map("cabinet_id")
+  /// Numero destinataire chiffre AES-256-GCM base64 (defensive vs dump
+  /// BDD). Optional pour status='skipped' (avant decryption).
+  toEnc               String?   @map("to_enc")
+  /// Apercu 120 premiers chars du message (forensique sans plaintext
+  /// complet contre leak PHI).
+  messageExcerpt      String?   @map("message_excerpt") @db.VarChar(120)
+  status              SmsStatus @default(mock)
+  /// Provider : 'mock' (V1) | 'twilio' (V3) | 'ovh' (V3).
+  provider            String    @default("mock") @db.VarChar(30)
+  /// ID Twilio/OVH si real ; UUID mock-* si V1.
+  providerMessageId   String?   @map("provider_message_id") @db.VarChar(100)
+  /// Cout en credits (1 SMS standard = 1 credit V1).
+  creditCost          Int       @default(1) @map("credit_cost")
+  errorMessage        String?   @map("error_message") @db.VarChar(500)
+  sentAt              DateTime  @default(now()) @map("sent_at") @db.Timestamptz()
+  /// Contexte d'envoi : 'appointment_reminder' (US-2502) | futurs.
+  contextKind         String    @map("context_kind") @db.VarChar(50)
+
+  /// M7 round 2 — Restrict pour préserver l'historique audit SMS forensique
+  /// (HealthcareService n'est jamais hard-deleted en pratique, mais CASCADE
+  /// silencieux serait dangereux). Cohérent avec `invoices.cabinet_id`.
+  cabinet HealthcareService @relation(fields: [cabinetId], references: [id], onDelete: Restrict)
+
+  @@index([cabinetId, sentAt(sort: Desc)])
+  @@index([sentAt(sort: Desc)])
+  @@map("sms_logs")
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// US-2502 — Rappels RDV multi-canal (email J-2 / SMS J-1 / push J-0)
+// ────────────────────────────────────────────────────────────────────────
+
+enum AppointmentReminderChannel {
+  /// J-2 via Resend (US-2074).
+  email
+  /// J-1 via sms.service (US-2506 mock V1 / real V3).
+  sms
+  /// J-0 via FCM (US-2073).
+  push
+
+  @@map("appointment_reminder_channel")
+}
+
+enum AppointmentReminderStep {
+  j_minus_2
+  j_minus_1
+  j_0
+
+  @@map("appointment_reminder_step")
+}
+
+enum AppointmentReminderStatus {
+  sent
+  failed
+  skipped
+
+  @@map("appointment_reminder_status")
+}
+
+/// US-2502 — Journal rappels RDV envoyes (cron quotidien J-2/J-1/J-0).
+///
+/// Idempotence absolue : `@@unique([appointmentId, channel, step])`
+/// empeche envoi double si cron rejoue.
+model AppointmentReminder {
+  id                  Int                          @id @default(autoincrement())
+  appointmentId       Int                          @map("appointment_id")
+  channel             AppointmentReminderChannel
+  step                AppointmentReminderStep
+  /// M6 round 2 — default `skipped` (vs `sent` trompeur). Le caller doit
+  /// marquer explicitement `sent` après envoi réussi (defense-in-depth
+  /// si bulk insert futur omet le statut).
+  status              AppointmentReminderStatus    @default(skipped)
+  sentAt              DateTime                     @default(now()) @map("sent_at") @db.Timestamptz()
+  /// Destinataire chiffre AES-256-GCM (email pour channel=email, phone
+  /// pour channel=sms, fcmToken pour channel=push).
+  sentToEnc           String?                      @map("sent_to_enc")
+  providerMessageId   String?                      @map("provider_message_id") @db.VarChar(100)
+  errorMessage        String?                      @map("error_message") @db.VarChar(500)
+
+  appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  @@unique([appointmentId, channel, step], map: "appointment_reminders_appt_channel_step_key")
+  @@index([appointmentId, sentAt(sort: Desc)])
+  @@index([sentAt(sort: Desc)])
+  @@map("appointment_reminders")
 }
