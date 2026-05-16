@@ -1,9 +1,14 @@
 /**
- * @route GET|POST /api/cron/appointments/reminders
+ * @route POST /api/cron/appointments/reminders
  * @description US-2502 — Cron quotidien rappels RDV multi-canal.
  *
  * Bearer `CRON_SECRET` timing-safe + headers ANSSI + audit auth fail.
  * Réutilise pattern PR #417 (US-2108 invoice reminders).
+ *
+ * **POST uniquement** depuis round 2 H3 fix : GET retiré pour éviter leak
+ * de `CRON_SECRET` via Nginx access logs / Referer header / cache CDN.
+ * Le scheduler OVH/Vercel doit utiliser `curl -X POST` — voir runbook
+ * `docs/runbook/cron-reminders.md`.
  *
  * **Schedule recommandé** : `0 9 * * *` (9h Paris) — meilleur taux
  * d'ouverture côté patient.

@@ -159,57 +159,99 @@ export const smsService = {
       throw new SmsValidationError("to", "invalidPhone")
     }
 
-    // H2 round 2 — atomic check + decrement HORS $transaction wrappante
-    // (le throw skipped invalidait le persist sinon).
-    const result = await prisma.healthcareService.updateMany({
-      where: {
-        id: input.cabinetId,
-        smsEnabled: true,
-        smsCreditBalance: { gte: creditCost },
-      },
-      data: { smsCreditBalance: { decrement: creditCost } },
-    })
+    // MED-4 round 3 — atomic decrement + persist log dans une seule
+    // `$transaction` pour éviter fuite crédit non-tracée si le persist
+    // standalone échoue après un commit du decrement (round 2). On peut
+    // throw APRÈS le commit pour propager l'erreur métier au caller.
+    type SmsOutcome = "sent" | "disabled" | "insufficient" | "not_found"
+    let providerMessageId: string | null = null
+    let outcome: SmsOutcome = "sent"
+    let cabinetBalanceForAlert: number | null = null
+    let insufficientBalance = 0 // balance lue dans la tx pour le SmsInsufficientCreditError
 
-    if (result.count === 0) {
-      // Discriminer pour throw error précis (forensique audit).
-      const cabinet = await prisma.healthcareService.findUnique({
-        where: { id: input.cabinetId },
-        select: { smsEnabled: true, smsCreditBalance: true },
+    try {
+      await prisma.$transaction(async (tx) => {
+        const decrement = await tx.healthcareService.updateMany({
+          where: {
+            id: input.cabinetId,
+            smsEnabled: true,
+            smsCreditBalance: { gte: creditCost },
+          },
+          data: { smsCreditBalance: { decrement: creditCost } },
+        })
+
+        if (decrement.count === 0) {
+          // Discriminer le motif d'échec pour audit forensique précis.
+          const cabinet = await tx.healthcareService.findUnique({
+            where: { id: input.cabinetId },
+            select: { smsEnabled: true, smsCreditBalance: true },
+          })
+          if (!cabinet) {
+            outcome = "not_found"
+            return
+          }
+          const isDisabled = !cabinet.smsEnabled
+          outcome = isDisabled ? "disabled" : "insufficient"
+          insufficientBalance = cabinet.smsCreditBalance
+          // Persist skipped DANS la TX — commit garanti avec decrement
+          // (qui est 0 ici, donc safe). Pas de fuite crédit.
+          await this.persistSmsLog(
+            tx, input.cabinetId, "skipped", phone, input.message,
+            null,
+            isDisabled ? "sms_disabled" : "insufficient_credits",
+            input.contextKind, creditCost,
+            auditUserId, ctx, metadata,
+          )
+          return
+        }
+
+        // V1 mock — pas de vrai envoi. Generate provider message ID.
+        providerMessageId = `mock-${randomUUID()}`
+        await this.persistSmsLog(
+          tx, input.cabinetId, "mock", phone, input.message,
+          providerMessageId, null, input.contextKind, creditCost,
+          auditUserId, ctx, metadata,
+        )
+
+        // Capture balance pour alerte ops post-commit (hors TX).
+        const updatedBalance = await tx.healthcareService.findUnique({
+          where: { id: input.cabinetId },
+          select: { smsCreditBalance: true },
+        })
+        cabinetBalanceForAlert = updatedBalance?.smsCreditBalance ?? null
       })
-      if (!cabinet) {
-        throw new SmsValidationError("cabinetId", "notFound")
-      }
-      const reason = !cabinet.smsEnabled ? "sms_disabled" : "insufficient_credits"
-      // H2 round 2 — persist skipped log AVANT throw, dans tx isolée (commit
-      // garanti même si caller catch le throw).
-      await this.persistSmsLogStandalone(
-        input.cabinetId, "skipped", phone, input.message,
-        null, reason, input.contextKind, creditCost,
-        auditUserId, ctx, metadata,
+    } catch (err) {
+      // MED-3 round 3 — distinguer erreur métier (SmsDisabled/Insufficient,
+      // propagés au caller pour skipped path) d'erreur infra (DB down). Si
+      // la TX a fail elle-même, on log mais on continue à throw une erreur
+      // distincte pour que le caller ne confonde pas "cabinet désactivé"
+      // (issue métier) avec "DB indisponible" (issue infra).
+      logger.error(
+        "sms",
+        "sendSms transaction failed",
+        { kind: "sms.persist.failed", cabinetId: input.cabinetId },
+        err,
       )
-      if (!cabinet.smsEnabled) {
-        throw new SmsDisabledError(input.cabinetId)
-      }
+      throw err
+    }
+
+    // outcome est mutable via la closure — re-type via cast pour TS narrowing.
+    const finalOutcome = outcome as SmsOutcome
+    if (finalOutcome === "not_found") {
+      throw new SmsValidationError("cabinetId", "notFound")
+    }
+    if (finalOutcome === "disabled") {
+      throw new SmsDisabledError(input.cabinetId)
+    }
+    if (finalOutcome === "insufficient") {
       throw new SmsInsufficientCreditError(
-        input.cabinetId, cabinet.smsCreditBalance, creditCost,
+        input.cabinetId, insufficientBalance, creditCost,
       )
     }
 
-    // V1 mock — pas de vrai envoi. Generate provider message ID.
-    const providerMessageId = `mock-${randomUUID()}`
-    await this.persistSmsLogStandalone(
-      input.cabinetId, "mock", phone, input.message,
-      providerMessageId, null, input.contextKind, creditCost,
-      auditUserId, ctx, metadata,
-    )
-
-    // Alerte ops si credits balance bas (<10).
-    // M4 round 2 — ajout `cabinetId` pour alerte opérationnelle utile.
-    const updatedBalance = await prisma.healthcareService.findUnique({
-      where: { id: input.cabinetId },
-      select: { smsCreditBalance: true },
-    })
-    if (updatedBalance && updatedBalance.smsCreditBalance < 10) {
+    // Alerte ops si credits balance bas (<10). M4 round 2 — `cabinetId`
+    // dans le log. Hors TX = ne bloque pas le commit.
+    if (cabinetBalanceForAlert !== null && cabinetBalanceForAlert < 10) {
       logger.warn(
         "sms",
         "cabinet credits low",
@@ -226,34 +268,6 @@ export const smsService = {
       status: "mock" as const,
       providerMessageId,
     }
-  },
-
-  /**
-   * H2 round 2 — Standalone persist (sa propre tx) pour garantir commit
-   * même si caller throw après. Utilisé par les skipped paths.
-   *
-   * @internal
-   */
-  async persistSmsLogStandalone(
-    cabinetId: number,
-    status: SmsStatus,
-    phone: string | null,
-    message: string,
-    providerMessageId: string | null,
-    errorMessage: string | null,
-    contextKind: string,
-    creditCost: number,
-    auditUserId: number | null,
-    ctx: AuditContext,
-    metadata: { patientId?: number; appointmentId?: number } = {},
-  ): Promise<void> {
-    return prisma.$transaction(async (tx) => {
-      await this.persistSmsLog(
-        tx, cabinetId, status, phone, message,
-        providerMessageId, errorMessage, contextKind, creditCost,
-        auditUserId, ctx, metadata,
-      )
-    })
   },
 
   /**

@@ -4,23 +4,33 @@
  *
  * Cron quotidien : push J-0 (priorité critique) / SMS J-1 / email J-2.
  *
- * ### Architecture round 2 review
+ * ### Architecture round 3 review
  *
- *   - **C1** : `formatDateTime` pin `timeZone` Europe/Paris (ou
- *     `User.timezone` per-patient) — sinon décalage en prod Docker UTC.
+ *   - **CR-1** : advisory lock SESSION-level via `withSessionAdvisoryLock`
+ *     (pool pg dédié max:1) — garantit que acquire et release tournent sur
+ *     la **même** connexion physique. Le round 2 utilisait `prisma.$queryRaw`
+ *     qui pouvait router acquire/release sur des connexions différentes du
+ *     pool partagé → release no-op silencieux → lock orphelin → cron bloqué.
+ *   - **HI-1** : filtre `notifPreferences` accepte `null OR true` (l'opt-in
+ *     implicite est respecté ; round 2 excluait à tort les patients sans
+ *     préférences explicites = majorité prod).
+ *   - **HI-2** : SMS mock V1 persiste `status="skipped"` (vs round 2 `"sent"`
+ *     mensonger) avec `errorReason="provider_mock_no_real_sms"` → médecin
+ *     voit la réalité dans la timeline.
+ *   - **MED-1** : compter opt-outs RGPD Art. 21 dans audit `cron.run`
+ *     metadata.optOutSkipped → démonstrabilité CNIL Art. 5.2.
+ *   - **MED-5** : `User.timezone` retiré du SELECT (dead code V1).
+ *   - **LOW-2** : marker U+200F (RLM) en début string arabe push body.
+ *   - **LOW-4** : `extraMetadata` typé `ExtraReminderMetadata` strict.
+ *
+ * ### Heritage rounds précédents (round 2)
+ *
+ *   - **C1** : `formatDateTime` `timeZone: "UTC"` + composantes UTC →
+ *     rendu fidèle "14:00 stocké" → "14:00 affiché".
  *   - **C2** : `senderId: null` passé à `fcmService.sendToUser` (FK-safe).
- *   - **C3** : advisory lock SESSION-level via `pg_try_advisory_lock` +
- *     `pg_advisory_unlock` dans `finally` (hors `$transaction`). Évite
- *     le timeout 5s Prisma + pool exhaustion 50s.
- *   - **H1** : filtre `notifPreferences.medicalAppointments: true`
- *     (RGPD Art. 21 droit d'opposition).
- *   - **M10** : ordre steps inversé — J-0 push first (critique), J-1 SMS,
- *     J-2 email last (lag-tolérant). Évite que le 1er step consomme
- *     tout le timeout.
- *   - **M11** : `runId` UUID par run + `resourceId: String(appointmentId)`
- *     pour les events per-reminder (US-2268 ADR #18).
- *   - **M12** : `location IS NULL` → ne pas afficher la ligne "Lieu".
- *   - **M13** : `hour IS NULL` → push body adapté (pas "à 2026").
+ *   - **M10** : ordre steps inversé — push J-0 first, SMS J-1, email J-2.
+ *   - **M11** : `runId` UUID + `resourceId: String(appointmentId)` US-2268.
+ *   - **M12/M13** : null handling `location` / `hour`.
  *   - **M1** : push partial errors → metadata.recipientCount/sent/failed.
  *
  * ### Channels
@@ -49,6 +59,7 @@ import type {
 } from "@prisma/client"
 import { randomUUID } from "crypto"
 import { prisma } from "@/lib/db/client"
+import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService, type AuditContext } from "./audit.service"
 import { emailService } from "./email.service"
@@ -229,7 +240,13 @@ function combineDateTimeLabel(
   language: AllowedLanguage,
 ): string {
   if (!parts.timePart) return parts.datePart
-  const sep = language === "fr" ? "à" : language === "en" ? "at" : "في"
+  if (language === "ar") {
+    // LOW-2 round 3 — préfixe U+200F (RLM = RIGHT-TO-LEFT MARK) pour
+    // forcer le rendu RTL des notifications push (certains clients
+    // Android/iOS rendent la concat LTR par défaut, brisant le sens).
+    return `‏${parts.datePart} في ${parts.timePart}`
+  }
+  const sep = language === "fr" ? "à" : "at"
   return `${parts.datePart} ${sep} ${parts.timePart}`
 }
 
@@ -274,43 +291,23 @@ function pLimit<T>(concurrency: number) {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Advisory lock SESSION-level (C3 round 2)
+// Advisory lock — voir `src/lib/db/cron-lock.ts`
 // ─────────────────────────────────────────────────────────────
 
-const CRON_LOCK_KEY = "appointment-reminder-cron"
+export const CRON_LOCK_KEY = "appointment-reminder-cron"
+
+// ─────────────────────────────────────────────────────────────
+// Metadata typing strict (LOW-4 round 3)
+// ─────────────────────────────────────────────────────────────
 
 /**
- * C3 round 2 — `pg_try_advisory_lock` SESSION-level (vs xact-level qui
- * forçait outer $transaction 50s → timeout Prisma 5s default + pool
- * exhaustion).
- *
- * Lock libéré explicitement via `pg_advisory_unlock` dans finally.
- *
- * Returns `true` si acquis, `false` si autre run concurrent détient.
+ * LOW-4 round 3 — metadata extension typée strictement. Empêche un futur
+ * dev de leak PHI (`phoneFull`, `nirpp`, etc.) dans audit_logs via une
+ * extension `Record<string, unknown>` permissive.
  */
-async function acquireCronLock(): Promise<boolean> {
-  const result = await prisma.$queryRaw<{ locked: boolean }[]>`
-    SELECT pg_try_advisory_lock(hashtextextended(${CRON_LOCK_KEY}, 0)) AS locked
-  `
-  return result[0]?.locked === true
-}
-
-async function releaseCronLock(): Promise<void> {
-  try {
-    await prisma.$queryRaw`
-      SELECT pg_advisory_unlock(hashtextextended(${CRON_LOCK_KEY}, 0))
-    `
-  } catch (err) {
-    // Best-effort : si le release fail, le lock expire à la fin de
-    // session Node (ou à la fin du pool connection idle).
-    logger.error(
-      "appointment-reminder",
-      "advisory_unlock failed",
-      { kind: "lock.release.failed" },
-      err,
-    )
-  }
-}
+type ExtraReminderMetadata =
+  | { recipientCount: number; sent: number; failed: number }
+  | Record<string, never>
 
 // ─────────────────────────────────────────────────────────────
 // Service
@@ -320,14 +317,15 @@ export const appointmentReminderService = {
   /**
    * Cron entrypoint quotidien.
    *
-   * Round 2 architecture (C3) :
-   *   1. Advisory lock SESSION (hors $transaction).
+   * Round 3 architecture (CR-1) :
+   *   1. Advisory lock SESSION via `withSessionAdvisoryLock` (pool dédié
+   *      max:1 → acquire et release garantis sur la même connexion).
    *   2. Pour chaque step (J-0 push first → J-2 email last) :
-   *      - findMany hors tx
+   *      - findMany via `prisma` (pool partagé)
    *      - parallel send via p-limit + Promise.allSettled
    *      - chaque persist se fait dans sa propre tx courte
    *   3. Audit cron.run dans une tx finale séparée (best-effort).
-   *   4. Release advisory lock dans finally.
+   *   4. Release advisory lock garanti par `withSessionAdvisoryLock`.
    */
   async processAppointmentReminders(
     now: Date,
@@ -337,31 +335,10 @@ export const appointmentReminderService = {
     const metrics = emptyMetrics(runId)
     const t0 = Date.now()
 
-    const acquired = await acquireCronLock()
-    if (!acquired) {
-      metrics.skippedConcurrent = true
-      await auditService.log({
-        userId: CRON_AUDIT_USER_ID,
-        action: "CREATE",
-        resource: "APPOINTMENT_REMINDER",
-        resourceId: runId, // M11 — runId pivot vs sentinel "cron"
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-        requestId: ctx.requestId,
-        metadata: { kind: AUDIT_KIND.CRON_SKIPPED_LOCKED, runId },
-      }).catch((err) => {
-        logger.error(
-          "appointment-reminder",
-          "audit cron.skipped_locked failed",
-          { kind: "audit.write.failed" },
-          err,
-        )
-      })
-      return metrics
-    }
-
-    try {
+    const result = await withSessionAdvisoryLock(CRON_LOCK_KEY, async () => {
       const limit = pLimit<ResultKind>(PARALLEL_CONCURRENCY)
+      // MED-1 round 3 — compteur opt-outs RGPD Art. 21 (démonstrabilité CNIL).
+      let optOutSkippedTotal = 0
 
       for (const stepCfg of APPOINTMENT_REMINDER_STEPS) {
         if (Date.now() - t0 > CRON_TIMEOUT_MS) {
@@ -374,8 +351,33 @@ export const appointmentReminderService = {
         const nextDate = new Date(targetDate)
         nextDate.setUTCDate(nextDate.getUTCDate() + 1)
 
-        // H1 round 2 — filtre RGPD Art. 21 droit d'opposition via
-        // `notifPreferences.medicalAppointments: true`.
+        // MED-1 round 3 — count opt-outs avant findMany pour audit.
+        // Le coût est marginal (count partial sur l'index) et permet
+        // démonstrabilité CNIL Art. 5.2 sans révéler identité patient.
+        const optOutCount = await prisma.appointment.count({
+          where: {
+            status: { in: ["scheduled", "confirmed"] },
+            date: { gte: targetDate, lt: nextDate },
+            reminders: {
+              none: { channel: stepCfg.channel, step: stepCfg.step },
+            },
+            patient: {
+              deletedAt: null,
+              user: {
+                status: "active",
+                notifPreferences: { medicalAppointments: false },
+              },
+            },
+          },
+        })
+        optOutSkippedTotal += optOutCount
+
+        // HI-1 round 3 — opt-in implicite respecté : patient sans row
+        // `UserNotifPreferences` est traité comme `medicalAppointments=true`
+        // (défaut conforme `prisma/schema.prisma:UserNotifPreferences`). Round
+        // 2 utilisait juste `{ medicalAppointments: true }` → EXISTS SQL qui
+        // excluait à tort la majorité des patients en prod (préférences
+        // créées lazily au 1er PUT, GET ne persiste pas).
         const appointments = await prisma.appointment.findMany({
           where: {
             status: { in: ["scheduled", "confirmed"] },
@@ -387,9 +389,10 @@ export const appointmentReminderService = {
               deletedAt: null,
               user: {
                 status: "active",
-                notifPreferences: {
-                  medicalAppointments: true,
-                },
+                OR: [
+                  { notifPreferences: null },
+                  { notifPreferences: { medicalAppointments: true } },
+                ],
               },
             },
           },
@@ -410,8 +413,10 @@ export const appointmentReminderService = {
                     email: true,
                     phone: true,
                     language: true,
-                    // C1 round 2 — timezone per-patient pour formatDateTime.
-                    timezone: true,
+                    // MED-5 round 3 — `timezone` retiré du SELECT (dead code
+                    // V1 — `formatDateTime` ignore le param `_timezone`).
+                    // Sera réintroduit V1.5 si on implémente conversion TZ
+                    // patient (voyageur).
                   },
                 },
               },
@@ -469,6 +474,9 @@ export const appointmentReminderService = {
           sent: metrics.sent,
           failed: metrics.failed,
           skipped: metrics.skipped,
+          // MED-1 round 3 — count anonyme opt-outs (RGPD Art. 21
+          // démonstrabilité CNIL).
+          optOutSkipped: optOutSkippedTotal,
           durationMs: Date.now() - t0,
         },
       }).catch((err) => {
@@ -481,11 +489,33 @@ export const appointmentReminderService = {
       })
 
       return metrics
-    } finally {
-      // C3 round 2 — release lock SESSION explicitement (vs xact-scoped
-      // automatique mais qui imposait outer $transaction).
-      await releaseCronLock()
+    })
+
+    // CR-1 round 3 — `withSessionAdvisoryLock` retourne `null` si lock non
+    // acquis. Sinon retourne le résultat du callback.
+    if (result === null) {
+      metrics.skippedConcurrent = true
+      await auditService.log({
+        userId: CRON_AUDIT_USER_ID,
+        action: "CREATE",
+        resource: "APPOINTMENT_REMINDER",
+        resourceId: runId,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: { kind: AUDIT_KIND.CRON_SKIPPED_LOCKED, runId },
+      }).catch((err) => {
+        logger.error(
+          "appointment-reminder",
+          "audit cron.skipped_locked failed",
+          { kind: "audit.write.failed" },
+          err,
+        )
+      })
+      return metrics
     }
+
+    return result
   },
 
   /**
@@ -507,7 +537,6 @@ export const appointmentReminderService = {
           email: string
           phone: string | null
           language: string | null
-          timezone: string | null
         }
       }
     },
@@ -516,8 +545,8 @@ export const appointmentReminderService = {
     ctx: AuditContext,
   ): Promise<ResultKind> {
     const language = normalizeLanguage(appt.patient.user.language)
-    const timezone = appt.patient.user.timezone || DEFAULT_CLINIC_TIMEZONE
-    const dtParts = formatDateTime(appt.date, appt.hour, language, timezone)
+    // MED-5 round 3 — `timezone` retiré (formatDateTime ignore le param V1).
+    const dtParts = formatDateTime(appt.date, appt.hour, language)
 
     if (stepCfg.channel === "email") {
       return this.sendEmailReminder(appt, stepCfg, dtParts, language, runId, ctx)
@@ -648,6 +677,18 @@ export const appointmentReminderService = {
         { patientId: appt.patientId, appointmentId: appt.id },
       )
       if (result.sent) {
+        // HI-2 round 3 — distinguer "mock" V1 (aucun SMS réellement envoyé)
+        // de "sent" réel (V3 Twilio/OVH). Le médecin verra dans la timeline
+        // patient `status="skipped"` + `errorReason="provider_mock_no_real_sms"`
+        // → ne croira pas le patient prévenu (vs round 2 qui mentait).
+        if (result.status === "mock") {
+          await this.persistReminder(
+            appt.id, stepCfg, "skipped", phonePlain, result.providerMessageId,
+            "provider_mock_no_real_sms",
+            appt.patientId, runId, ctx,
+          )
+          return "skipped"
+        }
         await this.persistReminder(
           appt.id, stepCfg, "sent", phonePlain, result.providerMessageId, null,
           appt.patientId, runId, ctx,
@@ -797,7 +838,7 @@ export const appointmentReminderService = {
     patientId: number,
     runId: string,
     ctx: AuditContext,
-    extraMetadata: Record<string, unknown> = {},
+    extraMetadata: ExtraReminderMetadata = {} as ExtraReminderMetadata,
   ): Promise<void> {
     const sentToEnc = recipientPlain ? encryptField(recipientPlain) : null
     try {

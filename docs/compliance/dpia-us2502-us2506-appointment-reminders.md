@@ -237,3 +237,81 @@ Total : 25 unit + 6 integration = **31/31 verts post-round 2**.
 - Cron schedule prod `0 9 * * *` configuré
 - Runbook scheduler : **POST uniquement** (H3 round 2)
 - EXPLAIN ANALYZE sur dataset 100K RDV (index hot path round 2 M5)
+
+## 10. Round 3 review (post-round 2)
+
+Trois agents (code-reviewer + healthcare-security-auditor + prisma-specialist)
+ont identifié **16 findings** post-round 2 : 1 CRITICAL + 3 HIGH + 7 MEDIUM
++ 5 LOW. **Option C totale** appliquée — 0 résiduel.
+
+### Findings résolus impactant DPIA
+
+- **CR-1 (advisory lock cassé en prod)** — Le fix C3 round 2 utilisait
+  `pg_try_advisory_lock` (SESSION-level) via `prisma.$queryRaw` partagé.
+  `@prisma/adapter-pg` route chaque query sur une connexion différente du
+  pool `node-postgres` → `acquire` sur conn A, `release` sur conn B → release
+  no-op silencieux, lock orphelin sur A jusqu'au recyclage (idle ~10s) ou
+  restart Node. **Impact patient** : cron bloqué N runs (`skippedConcurrent`)
+  OU double-sends (lock disparu à mi-run). **Fix** : module
+  `src/lib/db/cron-lock.ts` avec `pg.Pool({ max: 1, idleTimeoutMillis: 0 })`
+  dédié — `withSessionAdvisoryLock` garantit acquire/release sur la même
+  connexion physique. Les ops Prisma à l'intérieur utilisent le pool partagé
+  (parallelism préservé).
+- **HI-1 (opt-in implicite cassé)** — Filtre round 2
+  `notifPreferences: { medicalAppointments: true }` générait un `EXISTS` qui
+  excluait silencieusement tous les patients **sans row `UserNotifPreferences`**
+  (créée lazily au 1er PUT). **Impact** : la majorité des patients en prod
+  n'auraient reçu aucun rappel. **Fix** : `OR: [{notifPreferences: null},
+  {medicalAppointments: true}]` → respect opt-in implicite + opt-out Art. 21
+  explicite préservé.
+- **HI-2 (SMS mock V1 mensonger)** — Round 2 persistait
+  `AppointmentReminder.status="sent"` pour `result.status === "mock"`. Le
+  médecin voyait "rappel envoyé" alors que rien n'est parti. **Fix** : persist
+  `status="skipped"` + `errorReason="provider_mock_no_real_sms"`. V3 (real
+  Twilio/OVH) reviendra à `"sent"` via le contrat `SmsSendResult.status`.
+- **HI-3 (test C1 timezone laxiste)** — Round 2 `stringContaining("14")`
+  matchait aussi `"14 mai 2026 à 02:00"`. **Fix** : loop
+  `process.env.TZ ∈ {UTC, Europe/Paris, America/New_York}` + pattern strict
+  `/\b14:00\b/` + anti-régression `not.toMatch(/\b16:00\b/)` (CEST). Verrouille
+  C1 patient-safety.
+- **MED-1 (opt-out RGPD silencieux)** — Round 2 filtrait les opt-outs sans
+  audit → démonstrabilité CNIL Art. 5.2 fastidieuse. **Fix** :
+  `prisma.appointment.count` AVANT findMany par step + propagation dans
+  audit `cron.run.metadata.optOutSkipped`. Coût marginal, démonstrabilité directe.
+- **MED-2 (forensique by runId)** — Migration suiveuse
+  `20260519120000_us2502_round3_review` : `CREATE INDEX ... USING gin
+  ((metadata -> 'runId')) WHERE metadata ? 'runId'` (partial GIN) →
+  forensique `metadata @> '{"runId": "x"}'` < 100ms à 10M rows.
+- **MED-3/MED-4 (TX SMS atomique)** — `sendSms` re-wrap dans une
+  `$transaction` unique (decrement crédit + persist log atomique). Throw
+  erreur métier reporté APRÈS commit. `persistSmsLogStandalone` helper
+  retiré.
+- **MED-5 (timezone dead code)** — `User.timezone` SELECT retiré + param
+  ignoré nettoyé. Sera réintroduit V1.5.
+- **LOW-5 (CHECK cohérence reminders)** — Migration round 3 ajoute
+  `appointment_reminders_status_fields_coherence_check` defense-in-depth.
+
+### Findings UX/observabilité
+
+- **MED-7** : docstring `@route POST` (vs ancien GET|POST).
+- **LOW-1** : runbook `docs/runbook/cron-reminders.md` créé (210 lignes).
+- **LOW-2** : préfixe U+200F (RLM) pour push body arabe.
+- **LOW-4** : `ExtraReminderMetadata` discriminated union (anti-leak PHI).
+
+### Tests round 3
+
+- 28/28 unit + 6/6 + 10/10 + 22/22 = **66/66 verts** sur les fichiers concernés.
+- Full suite : **2231/2231 verts** (+3 nouveaux : CR-1 lock null, HI-3
+  timezone strict, MED-1 opt-out count, HI-2 V3 real provider).
+
+### Bloqueurs pre-prod round 3 (en plus du round 2)
+
+- **Test E2E réel** sur staging Postgres + `@prisma/adapter-pg` pour
+  valider `withSessionAdvisoryLock` (mock test ne reproduit pas pool).
+- **EXPLAIN ANALYZE** `audit_logs_run_id_gin_idx` post-migration sur
+  dataset staging ≥1M rows.
+- **Décision DPO** : `optOutSkipped` audit count est-il acceptable Art. 5.2
+  ou faut-il une API admin de démonstration à la demande ?
+- **Décision business V1.5** : retirer le mock SMS ou documenter dans CGU
+  patient que "les SMS de rappel ne sont pas envoyés en V1" (sinon attente
+  patient déçue).

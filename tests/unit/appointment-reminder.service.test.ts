@@ -14,6 +14,14 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 
+// CR-1 round 3 — mock cron-lock pour éviter d'instancier un vrai pg.Pool
+// dans les tests. Le mock par défaut acquire le lock (returns fn()).
+vi.mock("@/lib/db/cron-lock", () => ({
+  withSessionAdvisoryLock: vi.fn(async (_key: string, fn: () => Promise<unknown>) => fn()),
+}))
+import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
+const mockWithSessionAdvisoryLock = vi.mocked(withSessionAdvisoryLock)
+
 vi.mock("@/lib/services/email.service", () => ({
   emailService: {
     sendAppointmentReminder: vi.fn().mockResolvedValue({ sent: true, id: "resend-1" }),
@@ -67,8 +75,7 @@ function makeAppointment(overrides: any = {}) {
         email: overrides.emailEnc ?? "encrypted-email",
         phone: overrides.phoneEnc ?? null,
         language: overrides.language ?? "fr",
-        // C1 round 2 — timezone per-patient.
-        timezone: overrides.timezone ?? null,
+        // MED-5 round 3 — `timezone` retiré (V1 ignore le param formatDateTime).
       },
     },
   } as any
@@ -86,10 +93,17 @@ function mockFindManyForChannel(channel: "push" | "sms" | "email", appt: any) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // CR-1 round 3 — re-établir le default behavior du mock cron-lock après
+  // clearAllMocks (qui efface les implémentations).
+  mockWithSessionAdvisoryLock.mockImplementation(
+    async (_key: string, fn: () => Promise<unknown>) => fn(),
+  )
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   prismaMock.appointmentReminder.create.mockResolvedValue({} as any)
   prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
   prismaMock.$queryRaw.mockResolvedValue([{ locked: true }] as any)
+  // MED-1 round 3 — count opt-outs par défaut = 0.
+  prismaMock.appointment.count.mockResolvedValue(0 as any)
   prismaMock.appointment.findUnique.mockResolvedValue({ status: "scheduled" } as any)
 })
 
@@ -104,7 +118,8 @@ describe("appointmentReminderService.processAppointmentReminders", () => {
   })
 
   it("skippedConcurrent=true si advisory lock non-acquis", async () => {
-    prismaMock.$queryRaw.mockResolvedValueOnce([{ locked: false }] as any)
+    // CR-1 round 3 — `withSessionAdvisoryLock` retourne `null` si non acquis.
+    mockWithSessionAdvisoryLock.mockResolvedValueOnce(null)
     const m = await appointmentReminderService.processAppointmentReminders(
       new Date(), ctx,
     )
@@ -204,12 +219,16 @@ describe("appointmentReminderService.processAppointmentReminders", () => {
     expect(m.skipped).toBe(1)
   })
 
-  it("sms J-1 : envoie OK avec phone + credits + smsEnabled", async () => {
+  // HI-2 round 3 — SMS mock V1 → persisté en SKIPPED (vs sent mensonger
+  // round 2). En V3 (real Twilio/OVH), `status="sent"` reviendra.
+  it("sms J-1 : mock V1 → status=skipped + errorReason='provider_mock_no_real_sms'", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
     const appt = makeAppointment({ phoneEnc: encryptField("+33612345678") })
     mockFindManyForChannel("sms", appt)
     const m = await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
-    expect(m.sent).toBe(1)
+    // HI-2 : skipped, pas sent. La timeline patient ne ment plus au médecin.
+    expect(m.skipped).toBe(1)
+    expect(m.sent).toBe(0)
     expect(smsService.sendSms).toHaveBeenCalledWith(
       expect.objectContaining({
         cabinetId: 7,
@@ -218,6 +237,37 @@ describe("appointmentReminderService.processAppointmentReminders", () => {
       }),
       null, ctx,
       expect.objectContaining({ patientId: 42, appointmentId: 1 }),
+    )
+    // Vérifie l'errorReason de skipped.
+    expect(prismaMock.appointmentReminder.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "skipped",
+          errorMessage: "provider_mock_no_real_sms",
+        }),
+      }),
+    )
+  })
+
+  // HI-2 round 3 — Quand un futur V3 retournera `status="sent"`, le persist
+  // doit utiliser `sent` (vs skipped mock V1).
+  it("HI-2 round 3 — SMS V3 real provider status='sent' → persist sent", async () => {
+    const { encryptField } = await import("@/lib/crypto/fields")
+    vi.mocked(smsService.sendSms).mockResolvedValueOnce({
+      sent: true, status: "sent", providerMessageId: "twilio-MX-123",
+    })
+    const appt = makeAppointment({ phoneEnc: encryptField("+33612345678") })
+    mockFindManyForChannel("sms", appt)
+    const m = await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
+    expect(m.sent).toBe(1)
+    expect(m.skipped).toBe(0)
+    expect(prismaMock.appointmentReminder.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          status: "sent",
+          providerMessageId: "twilio-MX-123",
+        }),
+      }),
     )
   })
 
@@ -304,13 +354,33 @@ describe("appointmentReminderService.processAppointmentReminders", () => {
     expect(reminder.sentToEnc).not.toContain("plaintext@example.com")
   })
 
-  // C3 round 2 — advisory lock SESSION-level (vs xact-level qui imposait
-  // outer $transaction 50s → timeout Prisma 5s default).
-  it("C3 round 2 — advisory lock session : acquire + release via pg_advisory_*lock", async () => {
+  // CR-1 round 3 — advisory lock via `withSessionAdvisoryLock` (pool dédié
+  // max:1 garantit acquire + release sur même connexion physique). Round 2
+  // utilisait `prisma.$queryRaw` partagé → bug pool.
+  it("CR-1 round 3 — advisory lock via withSessionAdvisoryLock + key correcte", async () => {
     prismaMock.appointment.findMany.mockResolvedValue([])
     await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
-    // Au moins 2 appels $queryRaw : acquire (try_lock) + release (unlock).
-    expect(prismaMock.$queryRaw.mock.calls.length).toBeGreaterThanOrEqual(2)
+    // 1 appel à withSessionAdvisoryLock avec la clé canonique.
+    expect(mockWithSessionAdvisoryLock).toHaveBeenCalledTimes(1)
+    expect(mockWithSessionAdvisoryLock).toHaveBeenCalledWith(
+      "appointment-reminder-cron",
+      expect.any(Function),
+    )
+  })
+
+  // CR-1 round 3 — Si le lock n'est pas acquis (autre cron concurrent),
+  // skippedConcurrent=true et findMany jamais appelé.
+  it("CR-1 round 3 — lock non acquis → skippedConcurrent + audit cron.skipped_locked", async () => {
+    mockWithSessionAdvisoryLock.mockResolvedValueOnce(null)
+    const m = await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
+    expect(m.skippedConcurrent).toBe(true)
+    expect(m.processed).toBe(0)
+    expect(prismaMock.appointment.findMany).not.toHaveBeenCalled()
+    const skippedAudit = prismaMock.auditLog.create.mock.calls.find((c) => {
+      const d = c[0].data as any
+      return d.metadata?.kind === "appointment.reminder.cron.skipped_locked"
+    })
+    expect(skippedAudit).toBeDefined()
   })
 
   // M11 round 2 — runId UUID au lieu de sentinel "cron".
@@ -352,12 +422,36 @@ describe("appointmentReminderService.processAppointmentReminders", () => {
     expect(meta.failed).toBe(2)
   })
 
-  // H1 round 2 — filtre notifPreferences.medicalAppointments=true (Art. 21).
-  it("H1 round 2 — filtre user.notifPreferences.medicalAppointments=true", async () => {
+  // HI-1 round 3 — filtre `OR: [notifPreferences=null, medicalAppointments=true]`
+  // (l'opt-in implicite : patient sans préférences explicites est inclus).
+  // Round 2 utilisait `{medicalAppointments: true}` → EXISTS SQL excluait à
+  // tort la majorité des patients (préférences créées lazily).
+  it("HI-1 round 3 — filtre OR notifPreferences null OR medicalAppointments=true", async () => {
     prismaMock.appointment.findMany.mockResolvedValue([])
     await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
     const where = prismaMock.appointment.findMany.mock.calls[0]![0]!.where as any
-    expect(where.patient.user.notifPreferences.medicalAppointments).toBe(true)
+    expect(where.patient.user.OR).toEqual([
+      { notifPreferences: null },
+      { notifPreferences: { medicalAppointments: true } },
+    ])
+  })
+
+  // MED-1 round 3 — count opt-outs RGPD Art. 21 + audit cron.run metadata.
+  it("MED-1 round 3 — opt-outs comptés + audit cron.run.metadata.optOutSkipped", async () => {
+    prismaMock.appointment.findMany.mockResolvedValue([])
+    // Mock count : 3 opt-outs sur le step push, 0 sur sms et email.
+    prismaMock.appointment.count
+      .mockResolvedValueOnce(3 as any)
+      .mockResolvedValueOnce(0 as any)
+      .mockResolvedValueOnce(0 as any)
+    await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
+    const runAudit = prismaMock.auditLog.create.mock.calls.find((c) => {
+      const d = c[0].data as any
+      return d.metadata?.kind === "appointment.reminder.cron.run"
+    })
+    expect(runAudit).toBeDefined()
+    const meta = (runAudit![0].data as any).metadata
+    expect(meta.optOutSkipped).toBe(3)
   })
 
   // M5 round 2 — orderBy date asc (priorise oldest in target day).
@@ -381,22 +475,46 @@ describe("appointmentReminderService.processAppointmentReminders", () => {
     )
   })
 
-  // C1 round 2 — timezone Europe/Paris par défaut.
-  it("C1 round 2 — timezone Europe/Paris par défaut + User.timezone override", async () => {
+  // HI-3 round 3 — Test C1 timezone renforcé : "14:00 stocké" doit toujours
+  // rendre "14:00 affiché" quelle que soit la TZ du runtime Node. Round 2 le
+  // test utilisait `stringContaining("14")` trop laxiste (matchait aussi
+  // "14 mai 2026 à 02:00"). Pattern strict `\b14:00\b` + loop sur runtime TZ.
+  it("HI-3 round 3 — timezone fidèle : 14:00 stocké → 14:00 affiché (runtime UTC + Paris + NYC)", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
-    // appt à 14:00 (timezone-less, considéré local cabinet)
-    const appt = makeAppointment({
-      emailEnc: encryptField("a@b.com"),
-      hour: new Date("1970-01-01T14:00:00Z"),
-      timezone: "Europe/Paris",
-    })
-    mockFindManyForChannel("email", appt)
-    await appointmentReminderService.processAppointmentReminders(new Date(), ctx)
-    expect(emailService.sendAppointmentReminder).toHaveBeenCalledWith(
-      expect.objectContaining({
-        // Heure 14:00 Paris → reste 14:00 dans le rendu (vs ancien 14:00 UTC).
-        dateTime: expect.stringContaining("14"),
-      }),
-    )
+    const originalTZ = process.env.TZ
+    try {
+      for (const runtimeTZ of ["UTC", "Europe/Paris", "America/New_York"]) {
+        process.env.TZ = runtimeTZ
+        vi.clearAllMocks()
+        mockWithSessionAdvisoryLock.mockImplementation(
+          async (_key: string, fn: () => Promise<unknown>) => fn(),
+        )
+        prismaMock.auditLog.create.mockResolvedValue({} as any)
+        prismaMock.appointmentReminder.create.mockResolvedValue({} as any)
+        prismaMock.$transaction.mockImplementation(async (fn: any) => fn(prismaMock))
+        prismaMock.appointment.count.mockResolvedValue(0 as any)
+        vi.mocked(emailService.sendAppointmentReminder).mockResolvedValue({
+          sent: true, id: "resend-1",
+        })
+
+        const appt = makeAppointment({
+          emailEnc: encryptField("a@b.com"),
+          hour: new Date("1970-01-01T14:00:00Z"),
+        })
+        mockFindManyForChannel("email", appt)
+        await appointmentReminderService.processAppointmentReminders(
+          new Date("2026-05-21T00:00:00Z"), ctx,
+        )
+        const call = vi.mocked(emailService.sendAppointmentReminder).mock.calls.at(-1)
+        // Pattern strict : "14:00" exactement (vs "14 mai à 02:00" qui passait
+        // round 2 par stringContaining laxiste).
+        expect(call![0].dateTime).toMatch(/\b14:00\b/)
+        // Anti-régression : pas de "16:00" (double conversion CEST) ni "02:00".
+        expect(call![0].dateTime).not.toMatch(/\b16:00\b/)
+        expect(call![0].dateTime).not.toMatch(/\b02:00\b/)
+      }
+    } finally {
+      process.env.TZ = originalTZ
+    }
   })
 })
