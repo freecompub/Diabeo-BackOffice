@@ -8,7 +8,7 @@
  *  - Réutilisation patientModeWorkflow.validate via SUPPORTED_MODE_TYPES
  *    élargi (vérifié dans patient-modes test)
  */
-import { describe, it, expect, beforeEach } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import {
   ConfigVersionStatus, ConfigVersionType, Prisma,
 } from "@prisma/client"
@@ -48,21 +48,33 @@ describe("thirdPartyShareService (US-2240)", () => {
   })
 
   // M1 (re-review) — boundary : today (Paris end-of-day) must be accepted.
+  //
+  // Fix 2026-05-17 (flaky timezone) : le test utilisait `new Date().toISOString()`
+  // qui retourne la date UTC. Entre 22h UTC et minuit UTC (= 00h-02h Paris du
+  // lendemain), "today UTC" = jour J, mais end-of-day Paris = J 21:59 UTC →
+  // déjà passé → throw `expiresPast`. Fix : fake timer à midi UTC neutre.
   it("upsert accepts expiresAt = today (Paris end-of-day)", async () => {
-    prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
-    prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
-    prismaMock.configVersion.create.mockResolvedValue({
-      id: 100, patientId: 7, configType: ConfigVersionType.third_party_share,
-      version: 1, validFrom: new Date(), validTo: null,
-      status: ConfigVersionStatus.active, createdBy: 9,
-      validatedBy: null, validatedAt: null, createdAt: new Date(),
-    } as any)
-    // Today's date in any timezone — end-of-day Paris will be > now.
-    const today = new Date().toISOString().slice(0, 10)
-    const out = await thirdPartyShareService.upsert(7, {
-      ...validInput, expiresAt: today,
-    }, 9)
-    expect(out.id).toBe(100)
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date("2026-06-15T12:00:00Z"))
+    try {
+      prismaMock.configVersion.findFirst.mockResolvedValue({ version: 0 } as any)
+      prismaMock.configVersion.updateMany.mockResolvedValue({ count: 0 } as any)
+      prismaMock.configVersion.create.mockResolvedValue({
+        id: 100, patientId: 7, configType: ConfigVersionType.third_party_share,
+        version: 1, validFrom: new Date(), validTo: null,
+        status: ConfigVersionStatus.active, createdBy: 9,
+        validatedBy: null, validatedAt: null, createdAt: new Date(),
+      } as any)
+      // Avec systemTime = 2026-06-15T12:00:00Z (= 14:00 Paris CEST),
+      // today UTC = "2026-06-15" et end-of-day Paris = 21:59:59 UTC > now.
+      const today = new Date().toISOString().slice(0, 10)
+      const out = await thirdPartyShareService.upsert(7, {
+        ...validInput, expiresAt: today,
+      }, 9)
+      expect(out.id).toBe(100)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it("upsert happy path emits audit + creates ConfigVersion", async () => {
