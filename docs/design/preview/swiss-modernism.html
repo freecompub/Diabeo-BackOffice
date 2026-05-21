@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Diabeo — Dashboard médecin (proto Swiss Modernism 2.0)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'Helvetica Neue', 'sans-serif'] },
+          colors: {
+            accent: '#0D9488',
+            glycemia: { critical: '#991B1B', high: '#F59E0B', normal: '#10B981' },
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', 'Helvetica Neue', sans-serif; background: #FFFFFF; color: #000000; }
+    .num { font-feature-settings: 'tnum'; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen antialiased">
+<div class="mx-auto max-w-[1440px] px-8 py-12">
+
+  <!-- ═══ Header — h1 64px font-light + meta asymmetric ═══ -->
+  <header class="grid grid-cols-12 gap-8 border-b border-black/10 pb-12">
+    <div class="col-span-12 lg:col-span-8">
+      <h1 class="text-[64px] font-light leading-[1.05] tracking-tight">Dashboard médecin</h1>
+      <p class="mt-4 max-w-prose text-base text-neutral-600">
+        Vue d'ensemble cabinet — urgences, consultations, adhérence.
+        Mise à jour automatique toutes les 30 secondes.
+      </p>
+    </div>
+    <aside class="col-span-12 mt-8 flex items-start justify-start gap-8 text-xs uppercase tracking-[0.12em] text-neutral-600 lg:col-span-4 lg:mt-0 lg:justify-end">
+      <div>
+        <div class="mb-1 text-neutral-500">Date</div>
+        <div class="font-medium text-black">21 mai 2026</div>
+      </div>
+      <div>
+        <div class="mb-1 text-neutral-500">Rôle</div>
+        <div class="font-medium text-black">DOCTOR</div>
+      </div>
+      <div>
+        <div class="mb-1 text-neutral-500">Sync</div>
+        <div class="font-medium text-black">il y a 12 s</div>
+      </div>
+    </aside>
+  </header>
+
+  <!-- ═══ Section 01 — Urgences en cours (asymétrie 7/5) ═══ -->
+  <section class="mt-16">
+    <div class="mb-8 grid grid-cols-12 items-end gap-8">
+      <div class="col-span-12 lg:col-span-8 flex items-baseline gap-6">
+        <span class="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">01</span>
+        <h2 class="text-2xl font-medium tracking-tight">Urgences en cours</h2>
+      </div>
+      <p class="col-span-12 lg:col-span-4 lg:text-right max-w-prose text-sm text-neutral-600">
+        Triées par sévérité clinique. Cliquer pour ouvrir la timeline patient.
+      </p>
+    </div>
+    <div class="border-t border-black/10 pt-8 grid grid-cols-12 gap-8">
+
+      <!-- Table 7 cols -->
+      <div class="col-span-12 lg:col-span-7">
+        <!-- Header row -->
+        <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-xs uppercase tracking-[0.12em] text-neutral-600">
+          <div class="col-span-3">Patient</div>
+          <div class="col-span-3">Type</div>
+          <div class="col-span-2">Glucose</div>
+          <div class="col-span-2">Délai</div>
+          <div class="col-span-2"></div>
+        </div>
+
+        <!-- Critical row -->
+        <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm border-l-2 border-l-glycemia-critical pl-4 -ml-4">
+          <div class="col-span-3">
+            <div class="font-medium">DT1-001</div>
+            <div class="text-xs text-neutral-500">34 ans</div>
+          </div>
+          <div class="col-span-3">Hypoglycémie sévère</div>
+          <div class="col-span-2 font-medium text-glycemia-critical num">52 mg/dL</div>
+          <div class="col-span-2 text-neutral-600">il y a 3 min</div>
+          <div class="col-span-2 text-right">
+            <svg class="ml-auto h-4 w-4 text-neutral-400 inline" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+          </div>
+        </div>
+
+        <!-- Warning row -->
+        <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm border-l-2 border-l-glycemia-high pl-4 -ml-4">
+          <div class="col-span-3">
+            <div class="font-medium">DT1-014</div>
+            <div class="text-xs text-neutral-500">28 ans</div>
+          </div>
+          <div class="col-span-3">Hyperglycémie répétée</div>
+          <div class="col-span-2 font-medium text-glycemia-high num">312 mg/dL</div>
+          <div class="col-span-2 text-neutral-600">il y a 17 min</div>
+          <div class="col-span-2 text-right">
+            <svg class="ml-auto h-4 w-4 text-neutral-400 inline" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+          </div>
+        </div>
+
+        <!-- Warning row signal -->
+        <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm border-l-2 border-l-glycemia-high pl-4 -ml-4">
+          <div class="col-span-3">
+            <div class="font-medium">DT2-088</div>
+            <div class="text-xs text-neutral-500">62 ans</div>
+          </div>
+          <div class="col-span-3">CGM signal perdu</div>
+          <div class="col-span-2 text-neutral-500">—</div>
+          <div class="col-span-2 text-neutral-600">il y a 1 h</div>
+          <div class="col-span-2 text-right">
+            <svg class="ml-auto h-4 w-4 text-neutral-400 inline" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Side metrics 5 cols -->
+      <aside class="col-span-12 lg:col-span-5">
+        <div class="grid grid-cols-2 gap-8">
+          <div class="border-l border-black pl-6">
+            <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Total ouvert</div>
+            <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">3</div>
+          </div>
+          <div class="border-l border-black pl-6">
+            <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Critiques</div>
+            <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">1</div>
+            <div class="mt-2 text-xs font-medium text-glycemia-critical">depuis 3 min</div>
+          </div>
+          <div class="border-l border-black pl-6">
+            <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">En attente</div>
+            <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">2</div>
+          </div>
+          <div class="border-l border-black pl-6">
+            <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Résolues 24h</div>
+            <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">11</div>
+            <div class="mt-2 text-xs font-medium text-glycemia-normal">100% &lt; 30 min</div>
+          </div>
+        </div>
+        <div class="mt-8 border-l-2 border-l-accent pl-4 text-sm text-neutral-700">
+          Toutes les urgences sont traitées dans les délais cibles (SLO 30 min).
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ═══ Section 02 — RDV aujourd'hui (numérotation 01/02/...) ═══ -->
+  <section class="mt-16">
+    <div class="mb-8 grid grid-cols-12 items-end gap-8">
+      <div class="col-span-12 lg:col-span-8 flex items-baseline gap-6">
+        <span class="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">02</span>
+        <h2 class="text-2xl font-medium tracking-tight">Rendez-vous aujourd'hui</h2>
+      </div>
+      <p class="col-span-12 lg:col-span-4 lg:text-right max-w-prose text-sm text-neutral-600">
+        4 consultations. Prochain dans 12 minutes.
+      </p>
+    </div>
+    <div class="border-t border-black/10 pt-8 grid grid-cols-12 gap-8">
+
+      <!-- Appointments list 7 cols -->
+      <div class="col-span-12 lg:col-span-7">
+        <div class="grid grid-cols-12 items-baseline gap-4 border-b border-black/10 py-5">
+          <div class="col-span-2 font-mono text-xs uppercase tracking-[0.12em] text-neutral-500">01</div>
+          <div class="col-span-3">
+            <div class="text-lg font-medium num tracking-tight">09:30</div>
+            <div class="text-xs text-neutral-500">30 min</div>
+          </div>
+          <div class="col-span-4">
+            <div class="font-medium">DT1-007</div>
+            <div class="text-xs text-neutral-500">Titration basale</div>
+          </div>
+          <div class="col-span-3 text-right text-xs uppercase tracking-[0.1em] text-neutral-500">Programmé</div>
+        </div>
+
+        <div class="grid grid-cols-12 items-baseline gap-4 border-b border-black/10 py-5">
+          <div class="col-span-2 font-mono text-xs uppercase tracking-[0.12em] text-neutral-500">02</div>
+          <div class="col-span-3">
+            <div class="text-lg font-medium num tracking-tight">10:15</div>
+            <div class="text-xs text-neutral-500">45 min</div>
+          </div>
+          <div class="col-span-4">
+            <div class="font-medium">DT2-022</div>
+            <div class="text-xs text-neutral-500">Consult post-hospi</div>
+          </div>
+          <div class="col-span-3 text-right text-xs uppercase tracking-[0.1em] text-neutral-500">Programmé</div>
+        </div>
+
+        <div class="grid grid-cols-12 items-baseline gap-4 border-b border-black/10 py-5">
+          <div class="col-span-2 font-mono text-xs uppercase tracking-[0.12em] text-neutral-500">03</div>
+          <div class="col-span-3">
+            <div class="text-lg font-medium num tracking-tight">11:00</div>
+            <div class="text-xs text-neutral-500">30 min</div>
+          </div>
+          <div class="col-span-4">
+            <div class="font-medium">GD-003</div>
+            <div class="text-xs text-neutral-500">Suivi grossesse S28</div>
+          </div>
+          <div class="col-span-3 text-right text-xs uppercase tracking-[0.1em] text-neutral-500">Programmé</div>
+        </div>
+
+        <div class="grid grid-cols-12 items-baseline gap-4 border-b border-black/10 py-5">
+          <div class="col-span-2 font-mono text-xs uppercase tracking-[0.12em] text-neutral-500">04</div>
+          <div class="col-span-3">
+            <div class="text-lg font-medium num tracking-tight">14:00</div>
+            <div class="text-xs text-neutral-500">30 min</div>
+          </div>
+          <div class="col-span-4">
+            <div class="font-medium">DT1-014</div>
+            <div class="text-xs text-neutral-500">Ajustement ICR</div>
+          </div>
+          <div class="col-span-3 text-right text-xs uppercase tracking-[0.1em] text-neutral-500">Programmé</div>
+        </div>
+      </div>
+
+      <!-- Side metrics 5 cols -->
+      <aside class="col-span-12 lg:col-span-5">
+        <div class="grid grid-cols-2 gap-8">
+          <div class="border-l border-black pl-6">
+            <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Aujourd'hui</div>
+            <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">4</div>
+          </div>
+          <div class="border-l border-black pl-6">
+            <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Cette semaine</div>
+            <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">27</div>
+          </div>
+        </div>
+        <div class="mt-8 space-y-3 text-sm text-neutral-700">
+          <div class="flex items-center gap-3">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Prochain : 09:30 — Titration basale (DT1-007)</span>
+          </div>
+          <div class="flex items-center gap-3">
+            <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
+            <span>Plage libre suivante : 13:00 (60 min)</span>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ═══ Section 03 — Patients à suivre (full width tableau dense) ═══ -->
+  <section class="mt-16">
+    <div class="mb-8 grid grid-cols-12 items-end gap-8">
+      <div class="col-span-12 lg:col-span-8 flex items-baseline gap-6">
+        <span class="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">03</span>
+        <h2 class="text-2xl font-medium tracking-tight">Patients à suivre</h2>
+      </div>
+      <p class="col-span-12 lg:col-span-4 lg:text-right max-w-prose text-sm text-neutral-600">
+        TIR &lt; 65% sur 14 j, hypos répétées, ou silence &gt; 5 j.
+      </p>
+    </div>
+    <div class="border-t border-black/10 pt-8">
+      <!-- Header -->
+      <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-xs uppercase tracking-[0.12em] text-neutral-600">
+        <div class="col-span-2">Patient</div>
+        <div class="col-span-3">Motif</div>
+        <div class="col-span-2">TIR 14 j</div>
+        <div class="col-span-2">Hypos 7 j</div>
+        <div class="col-span-2">Dernière sync</div>
+        <div class="col-span-1"></div>
+      </div>
+
+      <!-- Rows -->
+      <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm">
+        <div class="col-span-2 font-medium">DT1-031</div>
+        <div class="col-span-3 text-neutral-700">TIR &lt; 50%</div>
+        <div class="col-span-2 font-medium text-glycemia-critical num">42%</div>
+        <div class="col-span-2 num">4</div>
+        <div class="col-span-2 text-neutral-600">2 j</div>
+        <div class="col-span-1 text-right"><svg class="inline h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div>
+      </div>
+      <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm">
+        <div class="col-span-2 font-medium">DT2-099</div>
+        <div class="col-span-3 text-neutral-700">Hypos répétées</div>
+        <div class="col-span-2 font-medium text-glycemia-high num">58%</div>
+        <div class="col-span-2 num">1</div>
+        <div class="col-span-2 text-neutral-600">8 h</div>
+        <div class="col-span-1 text-right"><svg class="inline h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div>
+      </div>
+      <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm">
+        <div class="col-span-2 font-medium">DT1-118</div>
+        <div class="col-span-3 text-neutral-700">Silence &gt; 5j</div>
+        <div class="col-span-2 font-medium text-glycemia-normal num">71%</div>
+        <div class="col-span-2 num">0</div>
+        <div class="col-span-2 text-neutral-600">5 j</div>
+        <div class="col-span-1 text-right"><svg class="inline h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div>
+      </div>
+      <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm">
+        <div class="col-span-2 font-medium">GD-015</div>
+        <div class="col-span-3 text-neutral-700">GMI ↑ 0.4%</div>
+        <div class="col-span-2 font-medium text-glycemia-high num">65%</div>
+        <div class="col-span-2 num">2</div>
+        <div class="col-span-2 text-neutral-600">1 j</div>
+        <div class="col-span-1 text-right"><svg class="inline h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div>
+      </div>
+      <div class="grid grid-cols-12 gap-4 border-b border-black/10 py-4 text-sm">
+        <div class="col-span-2 font-medium">DT1-007</div>
+        <div class="col-span-3 text-neutral-700">Variabilité &gt; 36%</div>
+        <div class="col-span-2 font-medium text-glycemia-normal num">81%</div>
+        <div class="col-span-2 num">0</div>
+        <div class="col-span-2 text-neutral-600">1 h</div>
+        <div class="col-span-1 text-right"><svg class="inline h-4 w-4 text-neutral-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/></svg></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Section 04 — KPI cabinet 14j ═══ -->
+  <section class="mt-16">
+    <div class="mb-8 grid grid-cols-12 items-end gap-8">
+      <div class="col-span-12 lg:col-span-8 flex items-baseline gap-6">
+        <span class="font-mono text-xs uppercase tracking-[0.2em] text-neutral-500">04</span>
+        <h2 class="text-2xl font-medium tracking-tight">KPI cabinet — 14 derniers jours</h2>
+      </div>
+      <p class="col-span-12 lg:col-span-4 lg:text-right max-w-prose text-sm text-neutral-600">
+        Indicateurs agrégés non-PHI. Comparés à la semaine précédente.
+      </p>
+    </div>
+    <div class="border-t border-black/10 pt-8 grid grid-cols-12 gap-8">
+      <div class="col-span-12 sm:col-span-6 lg:col-span-3 border-l border-black pl-6">
+        <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Patients actifs</div>
+        <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">142</div>
+        <div class="mt-2 text-xs font-medium text-glycemia-normal num">+8 vs S-1</div>
+      </div>
+      <div class="col-span-12 sm:col-span-6 lg:col-span-3 border-l border-black pl-6">
+        <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">TIR moyen cabinet</div>
+        <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">68<span class="text-2xl text-neutral-600">%</span></div>
+        <div class="mt-2 text-xs font-medium text-glycemia-normal num">+2.1 pts</div>
+      </div>
+      <div class="col-span-12 sm:col-span-6 lg:col-span-3 border-l border-black pl-6">
+        <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Urgences ouvertes</div>
+        <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">3</div>
+        <div class="mt-2 text-xs font-medium text-glycemia-normal num">-2 vs S-1</div>
+      </div>
+      <div class="col-span-12 sm:col-span-6 lg:col-span-3 border-l border-black pl-6">
+        <div class="text-xs uppercase tracking-[0.15em] text-neutral-600">Adhérence CGM</div>
+        <div class="mt-3 text-[56px] font-light leading-none num tracking-tight">82<span class="text-2xl text-neutral-600">%</span></div>
+        <div class="mt-2 text-xs font-medium text-glycemia-critical num">-1.3 pts</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ Footer ═══ -->
+  <footer class="mt-24 border-t border-black/10 pt-8 text-xs text-neutral-500 grid grid-cols-12 gap-8">
+    <div class="col-span-12 lg:col-span-6">
+      Diabeo Backoffice — prototype Swiss Modernism 2.0 · Mock data (non-PHI)
+    </div>
+    <div class="col-span-12 lg:col-span-6 lg:text-right">
+      Comparer avec : serenite-active.html (production) ↔ swiss-modernism.html (ce prototype)
+    </div>
+  </footer>
+</div>
+</body>
+</html>
