@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Diabeo — Comparaison side-by-side (Sérénité Active ↔ Swiss Modernism)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; }
+    .frame { background: #fff; border: 1px solid #1f1f1f; }
+    iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  </style>
+</head>
+<body class="h-screen flex flex-col">
+
+  <header class="flex items-center justify-between gap-4 border-b border-neutral-800 bg-neutral-950 px-6 py-3 flex-shrink-0">
+    <div class="flex items-center gap-3">
+      <div class="flex h-7 w-7 items-center justify-center rounded bg-teal-500 text-xs font-bold">D</div>
+      <h1 class="text-sm font-semibold">Diabeo — Comparaison Design</h1>
+      <span class="text-xs text-neutral-400">Dashboard médecin · mock data</span>
+    </div>
+    <div class="flex items-center gap-2 text-xs">
+      <button id="layout-side" class="rounded border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800" title="Côte à côte (50/50)">⇆ Side-by-side</button>
+      <button id="layout-stack" class="rounded border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800" title="Empilé vertical">⇅ Stacked</button>
+      <button id="layout-left" class="rounded border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800" title="Seulement Sérénité Active">A only</button>
+      <button id="layout-right" class="rounded border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800" title="Seulement Swiss Modernism">B only</button>
+      <span class="mx-2 h-4 w-px bg-neutral-700"></span>
+      <a href="serenite-active.html" target="_blank" class="rounded border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800">↗ Open A</a>
+      <a href="swiss-modernism.html" target="_blank" class="rounded border border-neutral-700 px-3 py-1.5 hover:bg-neutral-800">↗ Open B</a>
+    </div>
+  </header>
+
+  <main id="grid" class="grid grid-cols-2 gap-2 p-2 flex-1 min-h-0">
+    <!-- A — Sérénité Active -->
+    <div class="frame relative flex flex-col min-h-0">
+      <div class="bg-neutral-950 text-white px-3 py-1.5 text-xs font-medium flex items-center justify-between flex-shrink-0">
+        <span><span class="inline-block w-2 h-2 rounded-full bg-teal-400 mr-2"></span>A — Sérénité Active <span class="text-neutral-400 ml-2">(production actuelle)</span></span>
+        <span class="text-neutral-500">Figtree · teal #0D9488 + corail #F97316</span>
+      </div>
+      <iframe src="serenite-active.html" title="Style actuel Sérénité Active" loading="eager"></iframe>
+    </div>
+
+    <!-- B — Swiss Modernism -->
+    <div class="frame relative flex flex-col min-h-0">
+      <div class="bg-neutral-950 text-white px-3 py-1.5 text-xs font-medium flex items-center justify-between flex-shrink-0">
+        <span><span class="inline-block w-2 h-2 rounded-full bg-white mr-2"></span>B — Swiss Modernism 2.0 <span class="text-neutral-400 ml-2">(prototype)</span></span>
+        <span class="text-neutral-500">Inter · monochrome + accent teal · grille 12 col</span>
+      </div>
+      <iframe src="swiss-modernism.html" title="Prototype Swiss Modernism" loading="eager"></iframe>
+    </div>
+  </main>
+
+  <footer class="border-t border-neutral-800 bg-neutral-950 px-6 py-2 text-xs text-neutral-500 flex-shrink-0 flex items-center justify-between">
+    <span>Tip : scroller dans chaque panel indépendamment. Layouts : side / stacked / single.</span>
+    <span>2026-05-21 · prototype design</span>
+  </footer>
+
+  <script>
+    const grid = document.getElementById('grid')
+    const panels = grid.children
+    document.getElementById('layout-side').onclick = () => {
+      grid.className = 'grid grid-cols-2 gap-2 p-2 flex-1 min-h-0'
+      Array.from(panels).forEach(p => p.style.display = 'flex')
+    }
+    document.getElementById('layout-stack').onclick = () => {
+      grid.className = 'grid grid-rows-2 gap-2 p-2 flex-1 min-h-0'
+      Array.from(panels).forEach(p => p.style.display = 'flex')
+    }
+    document.getElementById('layout-left').onclick = () => {
+      grid.className = 'grid grid-cols-1 gap-2 p-2 flex-1 min-h-0'
+      panels[0].style.display = 'flex'
+      panels[1].style.display = 'none'
+    }
+    document.getElementById('layout-right').onclick = () => {
+      grid.className = 'grid grid-cols-1 gap-2 p-2 flex-1 min-h-0'
+      panels[0].style.display = 'none'
+      panels[1].style.display = 'flex'
+    }
+  </script>
+</body>
+</html>
