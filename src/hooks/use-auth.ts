@@ -131,11 +131,18 @@ export function useAuth() {
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
         // US-3356 — Role-based redirect : VIEWER lands on patient self-service
-        // dashboard, all other roles (pros) on the cabinet dashboard. We probe
-        // `/api/account` (returns role) immediately after login. Layout-side
-        // guards in (dashboard) and (patient) layouts will bounce mis-routed
-        // users if this probe ever returns a stale or malformed payload.
-        let target = "/dashboard"
+        // dashboard, all other roles (pros) on the role-router `/` which
+        // dispatches to `/medecin` / `/infirmier` / `/admin` according to
+        // their role. We probe `/api/account` (returns role) immediately
+        // after login. Layout-side guards in (dashboard) and (patient)
+        // layouts will bounce mis-routed users if this probe ever returns
+        // a stale or malformed payload.
+        //
+        // Fix #11.b (session 2026-05-22) — Target précédent `/dashboard`
+        // est la page glycémie PATIENT-facing (single-patient view).
+        // DOCTOR/NURSE/ADMIN y atterrissaient → 404 sur /api/cgm et
+        // /api/analytics/* (qui exigent `?patientId=` côté pro).
+        let target = "/"
         try {
           const me = await fetch("/api/account", { credentials: "include" })
           if (me.ok) {
@@ -143,8 +150,8 @@ export function useAuth() {
             if (isViewerAccount(account)) target = "/patient/dashboard"
           }
         } catch {
-          // Network blip: fall through to /dashboard. Layout-side guards will
-          // bounce a VIEWER back to /patient/dashboard if needed.
+          // Network blip: fall through to role-router. Layout-side guards
+          // will bounce a VIEWER back to /patient/dashboard if needed.
         }
 
         // JWT is set as httpOnly cookie by the server — no client-side storage
