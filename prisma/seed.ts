@@ -266,8 +266,19 @@ async function main() {
   }
 
   // ─── 3. Privacy settings ──────────────────────────────────
+  //
+  // Fix #6 (session 2026-05-22) — Inclut désormais les pros (admin,
+  // doctor, nurse) en plus des patients. Sans `UserPrivacySettings`,
+  // `requireGdprConsent(user.id)` lit `gdprConsent = false` → 403
+  // `gdprConsentRequired` sur `/api/analytics/*`, `/api/cgm` et autres
+  // routes médicales. En dev, un onboarding pro est inutilisable sans
+  // upsert manuel — autant l'amorcer dans le seed.
+  //
+  // En prod, les pros consentent explicitement à leur 1er login via le
+  // wizard `/api/account/privacy` (US-2013). Ici on simule cet état
+  // pour les comptes de démo seedés.
 
-  for (const userId of [patientUserDT1.id, patientUserDT2.id]) {
+  for (const userId of [admin.id, doctor.id, nurse.id, patientUserDT1.id, patientUserDT2.id]) {
     await prisma.userPrivacySettings.upsert({
       where: { userId },
       update: {},
