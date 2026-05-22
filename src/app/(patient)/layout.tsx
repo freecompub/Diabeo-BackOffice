@@ -19,22 +19,8 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import {
-  NavigationShell,
-  type UserRole,
-} from "@/components/diabeo/NavigationShell"
-
-const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
-
-const ROLE_TO_HOME: Record<Exclude<UserRole, "VIEWER">, string> = {
-  DOCTOR: "/medecin",
-  NURSE: "/infirmier",
-  ADMIN: "/admin",
-}
-
-function isValidRole(role: string | null): role is UserRole {
-  return role !== null && VALID_ROLES.includes(role as UserRole)
-}
+import { NavigationShell } from "@/components/diabeo/NavigationShell"
+import { isKnownRoleString, resolveHomeForRole } from "@/lib/auth/role-home"
 
 export default async function PatientLayout({
   children,
@@ -46,21 +32,20 @@ export default async function PatientLayout({
 
   // L2 (re-review) — fail-safe : missing/invalid role header bounces to login
   // rather than defaulting to VIEWER and granting patient-area access.
-  if (!isValidRole(rawRole)) {
+  if (!isKnownRoleString(rawRole)) {
     redirect("/login")
   }
-  const userRole: UserRole = rawRole
 
   // Pro users hitting /patient/* — bounce them to their role-specific home.
   // Patient self-service routes are NOT meant for staff.
-  if (userRole !== "VIEWER") {
-    redirect(ROLE_TO_HOME[userRole])
+  if (rawRole !== "VIEWER") {
+    redirect(resolveHomeForRole(rawRole))
   }
 
   return (
     <NavigationShell
       pageTitle="Diabeo"
-      userRole={userRole}
+      userRole={rawRole}
       variant="patient"
     >
       {children}

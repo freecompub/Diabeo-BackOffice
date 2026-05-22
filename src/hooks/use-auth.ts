@@ -56,24 +56,16 @@ interface LoginResult {
  * dépendance au role-router `/` qui était cassée par `src/app/page.tsx`
  * (supprimé dans ce même commit).
  *
- * Le `/api/account` probe retourne `{ role }` — ce mapping le transforme
- * directement en target path final, sans round-trip serveur additionnel.
+ * Source of truth : `@/lib/auth/role-home` (partagé avec layouts + nav).
  */
-const ROLE_TO_HOME = {
-  DOCTOR: "/medecin",
-  NURSE: "/infirmier",
-  ADMIN: "/admin",
-  VIEWER: "/patient/dashboard",
-} as const satisfies Record<string, string>
+import { ROLE_TO_HOME, isKnownRoleString, type KnownRole } from "@/lib/auth/role-home"
 
-type KnownRole = keyof typeof ROLE_TO_HOME
-
-function isKnownRole(value: unknown): value is { role: KnownRole } {
+function isKnownRoleAccount(value: unknown): value is { role: KnownRole } {
   return (
     typeof value === "object" && value !== null
     && "role" in value
     && typeof (value as Record<string, unknown>).role === "string"
-    && (value as Record<string, string>).role in ROLE_TO_HOME
+    && isKnownRoleString((value as Record<string, string>).role)
   )
 }
 
@@ -162,7 +154,7 @@ export function useAuth() {
           const me = await fetch("/api/account", { credentials: "include" })
           if (me.ok) {
             const account: unknown = await me.json()
-            if (isKnownRole(account)) target = ROLE_TO_HOME[account.role]
+            if (isKnownRoleAccount(account)) target = ROLE_TO_HOME[account.role]
           }
         } catch {
           // Network blip: fall through to /login (fail-safe). L'user verra

@@ -41,6 +41,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
   Sheet,
   SheetContent,
@@ -115,18 +116,10 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
  * dépendait du role-router serveur qui était cassé par `src/app/page.tsx`
  * (supprimé). Le marker permet de garder une nav statique tout en
  * dispatchant côté client selon le `userRole` prop.
+ *
+ * Mapping centralisé : `@/lib/auth/role-home` (SoT partagée).
  */
 const HOME_HREF_MARKER = "__home__"
-
-const HOME_HREF_BY_ROLE: Record<Exclude<UserRole, "VIEWER">, string> = {
-  DOCTOR: "/medecin",
-  NURSE: "/infirmier",
-  ADMIN: "/admin",
-}
-
-function resolveHomeHref(role: UserRole): string {
-  return role === "VIEWER" ? "/patient/dashboard" : HOME_HREF_BY_ROLE[role]
-}
 
 /**
  * Pro nav (DOCTOR / NURSE / ADMIN).
@@ -300,7 +293,7 @@ export function NavigationShell({
     .filter((item) => hasRoleAccess(userRole, item.minRole))
     .map((item) =>
       item.href === HOME_HREF_MARKER
-        ? { ...item, href: resolveHomeHref(userRole) }
+        ? { ...item, href: resolveHomeForRole(userRole) }
         : item,
     )
 

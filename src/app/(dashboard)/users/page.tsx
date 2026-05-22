@@ -14,11 +14,16 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { Users } from "lucide-react"
+import { isKnownRoleString, resolveHomeForRole } from "@/lib/auth/role-home"
 
 export default async function UsersStubPage() {
   const headersList = await headers()
   const role = headersList.get("x-user-role")
-  if (role !== "ADMIN") redirect("/")
+  // Fail-safe round 2 review (HIGH-1) : si le middleware ne tourne pas
+  // (matcher manquant) → role null → redirect /login (vs piège silencieux
+  // sur `/` qui était cassé CRIT-1).
+  if (!isKnownRoleString(role)) redirect("/login")
+  if (role !== "ADMIN") redirect(resolveHomeForRole(role))
 
   return (
     <main className="flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center gap-6 p-8 text-center">
