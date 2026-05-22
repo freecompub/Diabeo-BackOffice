@@ -108,16 +108,37 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
 }
 
 /**
+ * Marker sentinel pour `NavItem.href` : résolu dynamiquement vers le home
+ * rôle-spécifique au render (DOCTOR → /medecin, NURSE → /infirmier, etc.).
+ *
+ * Fix CRIT-1 round 2 review PR #426 — Le pattern précédent `href: "/"`
+ * dépendait du role-router serveur qui était cassé par `src/app/page.tsx`
+ * (supprimé). Le marker permet de garder une nav statique tout en
+ * dispatchant côté client selon le `userRole` prop.
+ */
+const HOME_HREF_MARKER = "__home__"
+
+const HOME_HREF_BY_ROLE: Record<Exclude<UserRole, "VIEWER">, string> = {
+  DOCTOR: "/medecin",
+  NURSE: "/infirmier",
+  ADMIN: "/admin",
+}
+
+function resolveHomeHref(role: UserRole): string {
+  return role === "VIEWER" ? "/patient/dashboard" : HOME_HREF_BY_ROLE[role]
+}
+
+/**
  * Pro nav (DOCTOR / NURSE / ADMIN).
  *
  * Fix #11.b/#11.c (session 2026-05-22) :
- *   - 1er item pointe sur `/` (role-router) — montre la home de rôle
- *     (`/medecin`, `/infirmier`, `/admin`) au lieu du dashboard patient.
+ *   - 1er item `href: HOME_HREF_MARKER` — résolu vers `/medecin` / `/infirmier`
+ *     / `/admin` selon le role courant.
  *   - `/users` et `/audit` ADMIN-only — pages stub livrées dans la même
  *     PR pour éviter 404 (refonte UI à planifier en US dédiée).
  */
 const navItems: NavItem[] = [
-  { href: "/", labelKey: "dashboard", icon: LayoutDashboard },
+  { href: HOME_HREF_MARKER, labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/patients", labelKey: "patients", icon: Users },
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
@@ -275,9 +296,13 @@ export function NavigationShell({
   const [mobileOpen, setMobileOpen] = useState(false)
 
   const sourceItems = variant === "patient" ? patientNavItems : navItems
-  const filteredItems = sourceItems.filter((item) =>
-    hasRoleAccess(userRole, item.minRole)
-  )
+  const filteredItems = sourceItems
+    .filter((item) => hasRoleAccess(userRole, item.minRole))
+    .map((item) =>
+      item.href === HOME_HREF_MARKER
+        ? { ...item, href: resolveHomeHref(userRole) }
+        : item,
+    )
 
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 

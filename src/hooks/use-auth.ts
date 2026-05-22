@@ -52,15 +52,28 @@ interface LoginResult {
  * @param status    - HTTP response status code
  */
 /**
- * L4 (re-review) — type guard for the `/api/account` probe response. Returns
- * true only when the payload definitively identifies a VIEWER (patient self-
- * service role).
+ * CRIT-1 round 2 (review PR #426) — Mapping rôle → home path. Élimine la
+ * dépendance au role-router `/` qui était cassée par `src/app/page.tsx`
+ * (supprimé dans ce même commit).
+ *
+ * Le `/api/account` probe retourne `{ role }` — ce mapping le transforme
+ * directement en target path final, sans round-trip serveur additionnel.
  */
-function isViewerAccount(value: unknown): value is { role: "VIEWER" } {
+const ROLE_TO_HOME = {
+  DOCTOR: "/medecin",
+  NURSE: "/infirmier",
+  ADMIN: "/admin",
+  VIEWER: "/patient/dashboard",
+} as const satisfies Record<string, string>
+
+type KnownRole = keyof typeof ROLE_TO_HOME
+
+function isKnownRole(value: unknown): value is { role: KnownRole } {
   return (
     typeof value === "object" && value !== null
     && "role" in value
-    && (value as Record<string, unknown>).role === "VIEWER"
+    && typeof (value as Record<string, unknown>).role === "string"
+    && (value as Record<string, string>).role in ROLE_TO_HOME
   )
 }
 
@@ -130,28 +143,30 @@ export function useAuth() {
         // JWT itself is httpOnly — we never touch it from client code.
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
-        // US-3356 — Role-based redirect : VIEWER lands on patient self-service
-        // dashboard, all other roles (pros) on the role-router `/` which
-        // dispatches to `/medecin` / `/infirmier` / `/admin` according to
-        // their role. We probe `/api/account` (returns role) immediately
-        // after login. Layout-side guards in (dashboard) and (patient)
-        // layouts will bounce mis-routed users if this probe ever returns
-        // a stale or malformed payload.
+        // US-3356 — Role-based redirect. On probe `/api/account` (returns
+        // role) immédiatement après login et on map role → home path
+        // directement via `ROLE_TO_HOME` (cf. constant en tête de fichier).
         //
-        // Fix #11.b (session 2026-05-22) — Target précédent `/dashboard`
-        // est la page glycémie PATIENT-facing (single-patient view).
-        // DOCTOR/NURSE/ADMIN y atterrissaient → 404 sur /api/cgm et
-        // /api/analytics/* (qui exigent `?patientId=` côté pro).
-        let target = "/"
+        // Fix CRIT-1 round 2 review PR #426 (session 2026-05-22) — L'ancien
+        // pattern `target = "/"` + role-router serveur était cassé par
+        // `src/app/page.tsx` qui shadow `(dashboard)/page.tsx` et redirige
+        // toujours vers `/login`. Tous les pros étaient bloqués post-login.
+        //
+        // Le mapping client-side est plus robuste :
+        // - Pas de dépendance à `/` (qui pourrait redevenir un piège)
+        // - Pas de double round-trip (login + role-router serveur)
+        // - Fail-safe : si la probe fail, on revient à `/login` (visible)
+        //   plutôt qu'à `/` (piège silencieux).
+        let target = "/login"
         try {
           const me = await fetch("/api/account", { credentials: "include" })
           if (me.ok) {
             const account: unknown = await me.json()
-            if (isViewerAccount(account)) target = "/patient/dashboard"
+            if (isKnownRole(account)) target = ROLE_TO_HOME[account.role]
           }
         } catch {
-          // Network blip: fall through to role-router. Layout-side guards
-          // will bounce a VIEWER back to /patient/dashboard if needed.
+          // Network blip: fall through to /login (fail-safe). L'user verra
+          // une page propre et pourra retenter sans confusion silencieuse.
         }
 
         // JWT is set as httpOnly cookie by the server — no client-side storage
