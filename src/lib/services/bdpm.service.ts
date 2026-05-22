@@ -25,7 +25,13 @@ import { writeFile, mkdir, unlink } from "fs/promises"
 import { existsSync } from "fs"
 import path from "path"
 
-const BDPM_BASE_URL = "https://base-donnees-publique.medicaments.gouv.fr/telechargement.php"
+/**
+ * Fix #9.bis (session 2026-05-22) — Le site BDPM a été refondu :
+ * `telechargement.php` n'existe plus (404). Nouvelle convention :
+ *   - Index HTML : `/telechargement`
+ *   - Fichiers : `/download/file/<filename>`
+ */
+const BDPM_BASE_URL = "https://base-donnees-publique.medicaments.gouv.fr/download/file"
 const DOWNLOAD_DIR = "/tmp/diabeo-bdpm"
 const BATCH_SIZE = 500
 const REQUEST_TIMEOUT_MS = 60_000
@@ -133,7 +139,8 @@ export async function importBdpm(
 // ── Download ───────────────────────────────────────────────
 
 async function downloadFile(filename: string, destPath: string): Promise<void> {
-  const url = `${BDPM_BASE_URL}?fichier=${filename}`
+  // Fix #9.bis — path style (vs ancien query string `?fichier=`).
+  const url = `${BDPM_BASE_URL}/${filename}`
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
 
@@ -197,24 +204,49 @@ async function importSpecialties(filePath: string): Promise<number> {
 
 // ── Import presentations ───────────────────────────────────
 
+/**
+ * CIS_CIP_bdpm.txt — colonnes (0-based, vérifié 2026-05-22) :
+ *   0 CIS · 1 CIP7 · 2 libellé · 3 statut admin · 4 état comm
+ *   5 date déclaration · 6 CIP13 · 7 agrément · 8 taux remb · 9 prix · 10 TFR
+ *
+ * Fix #9.ter (session 2026-05-22) — Anciens indices faux écrivaient
+ * le libellé (≤ 274 chars) dans `codeCIP13` (varchar(13)) → crash.
+ *
+ * Fix #9.quater (session 2026-05-22) — BDPM publie des présentations
+ * dont le CIS n'est pas (ou plus) dans CIS_bdpm.txt (décalage entre
+ * fichiers, médicaments retirés). Préchargement des CIS valides +
+ * filtre avant upsert pour éviter FK violation (même pattern que
+ * importCompositions).
+ */
 async function importPresentations(filePath: string): Promise<number> {
   const rows = await readAndParse(filePath)
+
+  // Fix #9.quater — précharger les CIS valides pour filtrer les orphelins.
+  const validCodes = new Set(
+    (await prisma.bdpmSpecialty.findMany({
+      select: { codeCIS: true },
+    })).map((s) => s.codeCIS),
+  )
+
   let count = 0
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
     const ops = batch
-      .filter((cols) => cols.length >= 4 && cols[0] && cols[2])
+      // Fix #9.ter — CIP13 est en colonne 6, plus en 2. Min 7 colonnes.
+      .filter((cols) => cols.length >= 7 && cols[0] && cols[6])
+      // Fix #9.quater — ignorer présentations orphelines (CIS absent).
+      .filter((cols) => validCodes.has(cols[0]))
       .map((cols) => {
-        const codeCIP13 = cols[2]
+        const codeCIP13 = cols[6]
         const data = {
           codeCIS: cols[0],
           codeCIP7: cols[1] || null,
-          libelle: cols[3] || "",
-          statutAdmin: cols[4] || null,
-          etatComm: cols[5] || null,
-          tauxRemb: cols[9] || null,
-          prix: parsePrice(cols[10]),
+          libelle: cols[2] || "",
+          statutAdmin: cols[3] || null,
+          etatComm: cols[4] || null,
+          tauxRemb: cols[8] || null,
+          prix: parsePrice(cols[9]),
         }
         return prisma.bdpmPresentation.upsert({
           where: { codeCIP13 },
@@ -232,19 +264,29 @@ async function importPresentations(filePath: string): Promise<number> {
 
 // ── Import compositions ────────────────────────────────────
 
+/**
+ * CIS_COMPO_bdpm.txt — colonnes (0-based, vérifié 2026-05-22) :
+ *   0 CIS · 1 forme pharma · 2 code substance · 3 substance
+ *   4 dosage · 5 référence · 6 nature (SA/FT) · 7 numéro liaison
+ *
+ * Fix #9.ter (session 2026-05-22) — `nature` était lu en col[1] (forme
+ * pharma) au lieu de col[6] (SA/FT). Toutes les compositions étaient
+ * persistées avec `nature` = libellé de forme pharmaceutique.
+ */
 async function importCompositions(filePath: string): Promise<number> {
   const rows = await readAndParse(filePath)
 
   // Prepare all data first
   const allData = rows
-    .filter((cols) => cols.length >= 4 && cols[0] && cols[3])
+    .filter((cols) => cols.length >= 7 && cols[0] && cols[3])
     .map((cols) => ({
       codeCIS: cols[0],
       substance: cols[3] || "",
       codeSubstance: cols[2] || null,
       dosage: cols[4] || null,
       reference: cols[5] || null,
-      nature: cols[1] || "SA",
+      // Fix #9.ter — nature en col[6], pas col[1].
+      nature: cols[6] || "SA",
     }))
 
   // Get all valid specialty codes
