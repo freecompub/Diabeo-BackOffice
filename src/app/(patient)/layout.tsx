@@ -2,19 +2,22 @@
  * Patient self-service layout (US-3356).
  *
  * Mirrors the pro `(dashboard)` layout but renders a simpler, patient-facing
- * sidebar via `navItemsOverride`. The server component still reads
+ * sidebar via `variant="patient"`. The server component still reads
  * `x-user-role` from the JWT middleware to guard against non-VIEWER access.
  * Non-VIEWER roles fall through here (the layout doesn't block them) — the
  * `(patient)/dashboard/page.tsx` does the actual role redirect server-side
  * if a pro hits the patient route by mistake.
+ *
+ * Fix RSC (#3 session 2026-05-22) : ce server component ne peut pas
+ * importer / passer une `LucideIcon` au `NavigationShell` client. Les nav
+ * items (avec leurs icônes) sont déclarés DANS `NavigationShell.tsx` et
+ * sélectionnés ici via la prop `variant` (string sérialisable).
  */
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { Home } from "lucide-react"
 import {
   NavigationShell,
-  type NavItem,
   type UserRole,
 } from "@/components/diabeo/NavigationShell"
 
@@ -23,16 +26,6 @@ const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
 function isValidRole(role: string | null): role is UserRole {
   return role !== null && VALID_ROLES.includes(role as UserRole)
 }
-
-/**
- * M1 (re-review) — Batch 1 only ships the dashboard page ; nav items are
- * limited to existing routes so a click never lands on a 404. Future
- * sections (glycemia/events/appointments/profile/preferences) get added
- * here as the corresponding pages land in Batch 2+.
- */
-const PATIENT_NAV_ITEMS: NavItem[] = [
-  { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
-]
 
 export default async function PatientLayout({
   children,
@@ -49,17 +42,17 @@ export default async function PatientLayout({
   }
   const userRole: UserRole = rawRole
 
-  // Pro users hitting /patient/* — bounce them back to their dashboard.
+  // Pro users hitting /patient/* — bounce them back to the role-router (#11.b).
   // Patient self-service routes are NOT meant for staff.
   if (userRole !== "VIEWER") {
-    redirect("/dashboard")
+    redirect("/")
   }
 
   return (
     <NavigationShell
       pageTitle="Diabeo"
       userRole={userRole}
-      navItemsOverride={PATIENT_NAV_ITEMS}
+      variant="patient"
     >
       {children}
     </NavigationShell>
