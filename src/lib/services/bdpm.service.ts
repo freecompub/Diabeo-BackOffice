@@ -35,6 +35,22 @@ const BDPM_BASE_URL = "https://base-donnees-publique.medicaments.gouv.fr/downloa
 const DOWNLOAD_DIR = "/tmp/diabeo-bdpm"
 const BATCH_SIZE = 500
 const REQUEST_TIMEOUT_MS = 60_000
+/**
+ * Fix M-3 round 2 review PR #426 — Timeout explicite pour les batch
+ * transactions Prisma. Cohérent avec `importCompositions` (déjà 120_000).
+ * Évite `P2024 Transaction timeout` (défaut 5s) sur grosses tables.
+ */
+const BATCH_TX_TIMEOUT_MS = 30_000
+/**
+ * Fix HIGH-2 round 2 review PR #426 — Seuil minimum de specialties pour
+ * considérer l'import "vraiment réussi". En dessous → BdpmEmptyImportError.
+ * Évite "all green, 0 rows imported" silencieux si le format upstream
+ * change (TSV columns shifted, encoding différent, etc.).
+ *
+ * Valeur conservatrice : la base BDPM réelle a ~16 000 specialties, donc
+ * 1000 est ~6% du nominal — toute baisse en dessous est un drift suspect.
+ */
+const MIN_SPECIALTY_THRESHOLD = 1000
 
 const BDPM_FILES = {
   specialties: "CIS_bdpm.txt",
@@ -50,6 +66,27 @@ export interface BdpmImportResult {
   antivirusPassed: boolean
   durationMs: number
   errorMessage?: string
+  /**
+   * Fix L round 2 review PR #426 — Tracking de présentations / compositions
+   * filtrées car CIS orphelin (medicaments retirés OU specialty manquante).
+   * Si > 0, signaler dans audit pour forensique.
+   */
+  skippedOrphanCount?: number
+}
+
+/**
+ * Fix HIGH-2 round 2 review PR #426 — Erreur typée levée si
+ * `importSpecialties` produit moins de `MIN_SPECIALTY_THRESHOLD` rows
+ * (drift upstream silencieux suspecté).
+ */
+export class BdpmEmptyImportError extends Error {
+  constructor(public readonly specialtyCount: number) {
+    super(
+      `BDPM import returned ${specialtyCount} specialties (< ${MIN_SPECIALTY_THRESHOLD} threshold). ` +
+        `Likely upstream format change or parser regression — aborting before corrupting downstream tables.`,
+    )
+    this.name = "BdpmEmptyImportError"
+  }
 }
 
 // ── Main import function ───────────────────────────────────
@@ -71,8 +108,11 @@ export async function importBdpm(
     }
 
     // Download all files
+    // Fix L-3 round 2 review PR #426 — path.basename defense-in-depth :
+    // si BDPM_FILES devient dynamique (config externe), évite path traversal
+    // via `../../../etc/passwd`. Aujourd'hui les valeurs sont hardcodées.
     for (const [key, filename] of Object.entries(BDPM_FILES)) {
-      const filePath = path.join(DOWNLOAD_DIR, filename)
+      const filePath = path.join(DOWNLOAD_DIR, path.basename(filename))
       await downloadFile(filename, filePath)
       files[key] = filePath
     }
@@ -87,18 +127,35 @@ export async function importBdpm(
       }
     }
 
-    // Parse and import
+    // Parse and import (séquentiel — l'ordre est important : presentations
+    // et compositions dépendent de specialties via FK).
     const specialtyCount = await importSpecialties(files.specialties)
-    const presentCount = await importPresentations(files.presentations)
-    const compositionCount = await importCompositions(files.compositions)
+
+    // Fix HIGH-2 round 2 — Hard-assert pour éviter "all green, 0 rows".
+    if (specialtyCount < MIN_SPECIALTY_THRESHOLD) {
+      throw new BdpmEmptyImportError(specialtyCount)
+    }
+
+    // Fix M-4 round 2 — Précharger validCodes UNE fois et le partager
+    // entre importPresentations et importCompositions (vs 2 findMany
+    // dupliqués sur ~16k rows).
+    const validCodes = new Set(
+      (await prisma.bdpmSpecialty.findMany({
+        select: { codeCIS: true },
+      })).map((s) => s.codeCIS),
+    )
+
+    const presentResult = await importPresentations(files.presentations, validCodes)
+    const compositionResult = await importCompositions(files.compositions, validCodes)
 
     const result: BdpmImportResult = {
       status: "success",
       specialtyCount,
-      presentCount,
-      compositionCount,
+      presentCount: presentResult.count,
+      compositionCount: compositionResult.count,
       antivirusPassed: allScanned,
       durationMs: Date.now() - start,
+      skippedOrphanCount: presentResult.skipped + compositionResult.skipped,
     }
 
     await logImport(result)
@@ -110,9 +167,10 @@ export async function importBdpm(
       metadata: {
         source: "bdpm-ansm",
         specialtyCount,
-        presentCount,
-        compositionCount,
+        presentCount: presentResult.count,
+        compositionCount: compositionResult.count,
         antivirusPassed: allScanned,
+        skippedOrphanCount: result.skippedOrphanCount,
       },
     })
 
@@ -173,30 +231,36 @@ async function importSpecialties(filePath: string): Promise<number> {
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
-    const ops = batch
-      .filter((cols) => cols.length >= 2 && cols[0])
-      .map((cols) => {
-        const codeCIS = cols[0]
-        const data = {
-          denomination: cols[1] || "",
-          formePharma: cols[2] || "",
-          voiesAdmin: cols[3] || "",
-          statutAMM: cols[4] || "",
-          procedureAMM: cols[5] || null,
-          etatComm: cols[6] || null,
-          dateAMM: parseDate(cols[7]),
-          titulaires: cols[10] || null,
-          surveillance: cols[11]?.toLowerCase() === "oui",
-        }
-        return prisma.bdpmSpecialty.upsert({
-          where: { codeCIS },
-          create: { codeCIS, ...data },
-          update: data,
-        })
-      })
+    const filtered = batch.filter((cols) => cols.length >= 2 && cols[0])
 
-    await prisma.$transaction(ops)
-    count += ops.length
+    // Fix M-3 round 2 — interactive transaction avec timeout explicite
+    // (Prisma 7 ne supporte `timeout` que sur la forme interactive, pas
+    // sur la forme array `$transaction([...])`).
+    await prisma.$transaction(
+      async (tx) => {
+        for (const cols of filtered) {
+          const codeCIS = cols[0]
+          const data = {
+            denomination: cols[1] || "",
+            formePharma: cols[2] || "",
+            voiesAdmin: cols[3] || "",
+            statutAMM: cols[4] || "",
+            procedureAMM: cols[5] || null,
+            etatComm: cols[6] || null,
+            dateAMM: parseDate(cols[7]),
+            titulaires: cols[10] || null,
+            surveillance: cols[11]?.toLowerCase() === "oui",
+          }
+          await tx.bdpmSpecialty.upsert({
+            where: { codeCIS },
+            create: { codeCIS, ...data },
+            update: data,
+          })
+        }
+      },
+      { timeout: BATCH_TX_TIMEOUT_MS },
+    )
+    count += filtered.length
   }
 
   return count
@@ -214,52 +278,73 @@ async function importSpecialties(filePath: string): Promise<number> {
  *
  * Fix #9.quater (session 2026-05-22) — BDPM publie des présentations
  * dont le CIS n'est pas (ou plus) dans CIS_bdpm.txt (décalage entre
- * fichiers, médicaments retirés). Préchargement des CIS valides +
- * filtre avant upsert pour éviter FK violation (même pattern que
- * importCompositions).
+ * fichiers, médicaments retirés). Filtrage via `validCodes` partagé
+ * pour éviter FK violation.
+ *
+ * Fix M-3/M-4 round 2 review PR #426 — `validCodes` passé en paramètre
+ * (partagé avec importCompositions, élimine double findMany) + timeout
+ * explicite `BATCH_TX_TIMEOUT_MS`.
+ *
+ * Fix L round 2 review PR #426 — Tracking des orphelins skippés pour
+ * forensique (count + return shape).
+ *
+ * Fix L round 2 review PR #426 — Assertions regex CIP13 /^\d{13}$/ et
+ * CIS /^\d{8}$/ avant upsert : si BDPM décale les colonnes (par ex.
+ * tab dans libellé non-quoted), un faux CIP13 saute en alerte (skip
+ * + log) au lieu de polluer la DB silencieusement.
  */
-async function importPresentations(filePath: string): Promise<number> {
+const CIP13_REGEX = /^\d{13}$/
+const CIS_REGEX = /^\d{8}$/
+
+async function importPresentations(
+  filePath: string,
+  validCodes: Set<string>,
+): Promise<{ count: number; skipped: number }> {
   const rows = await readAndParse(filePath)
-
-  // Fix #9.quater — précharger les CIS valides pour filtrer les orphelins.
-  const validCodes = new Set(
-    (await prisma.bdpmSpecialty.findMany({
-      select: { codeCIS: true },
-    })).map((s) => s.codeCIS),
-  )
-
   let count = 0
+  let skipped = 0
 
   for (let i = 0; i < rows.length; i += BATCH_SIZE) {
     const batch = rows.slice(i, i + BATCH_SIZE)
-    const ops = batch
-      // Fix #9.ter — CIP13 est en colonne 6, plus en 2. Min 7 colonnes.
-      .filter((cols) => cols.length >= 7 && cols[0] && cols[6])
-      // Fix #9.quater — ignorer présentations orphelines (CIS absent).
-      .filter((cols) => validCodes.has(cols[0]))
-      .map((cols) => {
-        const codeCIP13 = cols[6]
-        const data = {
-          codeCIS: cols[0],
-          codeCIP7: cols[1] || null,
-          libelle: cols[2] || "",
-          statutAdmin: cols[3] || null,
-          etatComm: cols[4] || null,
-          tauxRemb: cols[8] || null,
-          prix: parsePrice(cols[9]),
-        }
-        return prisma.bdpmPresentation.upsert({
-          where: { codeCIP13 },
-          create: { codeCIP13, ...data },
-          update: data,
-        })
-      })
+    const candidates = batch.filter(
+      (cols) =>
+        cols.length >= 7
+        && cols[0]
+        && cols[6]
+        && CIS_REGEX.test(cols[0])
+        && CIP13_REGEX.test(cols[6]),
+    )
+    const valid = candidates.filter((cols) => validCodes.has(cols[0]))
+    skipped += candidates.length - valid.length
 
-    await prisma.$transaction(ops)
-    count += ops.length
+    // Fix M-3 round 2 — interactive transaction avec timeout explicite
+    // (Prisma 7 ne supporte `timeout` que sur la forme interactive).
+    await prisma.$transaction(
+      async (tx) => {
+        for (const cols of valid) {
+          const codeCIP13 = cols[6]
+          const data = {
+            codeCIS: cols[0],
+            codeCIP7: cols[1] || null,
+            libelle: cols[2] || "",
+            statutAdmin: cols[3] || null,
+            etatComm: cols[4] || null,
+            tauxRemb: cols[8] || null,
+            prix: parsePrice(cols[9]),
+          }
+          await tx.bdpmPresentation.upsert({
+            where: { codeCIP13 },
+            create: { codeCIP13, ...data },
+            update: data,
+          })
+        }
+      },
+      { timeout: BATCH_TX_TIMEOUT_MS },
+    )
+    count += valid.length
   }
 
-  return count
+  return { count, skipped }
 }
 
 // ── Import compositions ────────────────────────────────────
@@ -272,45 +357,55 @@ async function importPresentations(filePath: string): Promise<number> {
  * Fix #9.ter (session 2026-05-22) — `nature` était lu en col[1] (forme
  * pharma) au lieu de col[6] (SA/FT). Toutes les compositions étaient
  * persistées avec `nature` = libellé de forme pharmaceutique.
+ *
+ * Fix M-4 round 2 review PR #426 — `validCodes` partagé (vs double
+ * findMany).
+ *
+ * Fix L round 2 review PR #426 — Return shape `{count, skipped}` pour
+ * tracking forensique (cohérence avec importPresentations).
  */
-async function importCompositions(filePath: string): Promise<number> {
+async function importCompositions(
+  filePath: string,
+  validCodes: Set<string>,
+): Promise<{ count: number; skipped: number }> {
   const rows = await readAndParse(filePath)
 
   // Prepare all data first
-  const allData = rows
-    .filter((cols) => cols.length >= 7 && cols[0] && cols[3])
+  const candidates = rows
+    .filter(
+      (cols) =>
+        cols.length >= 7
+        && cols[0]
+        && cols[3]
+        && CIS_REGEX.test(cols[0]),
+    )
     .map((cols) => ({
       codeCIS: cols[0],
       substance: cols[3] || "",
       codeSubstance: cols[2] || null,
       dosage: cols[4] || null,
       reference: cols[5] || null,
-      // Fix #9.ter — nature en col[6], pas col[1].
       nature: cols[6] || "SA",
     }))
 
-  // Get all valid specialty codes
-  const validCodes = new Set(
-    (await prisma.bdpmSpecialty.findMany({
-      select: { codeCIS: true },
-    })).map((s) => s.codeCIS),
-  )
-
-  const validData = allData.filter((d) => validCodes.has(d.codeCIS))
+  const validData = candidates.filter((d) => validCodes.has(d.codeCIS))
+  const skipped = candidates.length - validData.length
 
   // Atomic delete + insert in a single transaction (C2 fix)
-  return prisma.$transaction(async (tx) => {
+  const count = await prisma.$transaction(async (tx) => {
     await tx.bdpmComposition.deleteMany()
 
-    let count = 0
+    let inserted = 0
     for (let i = 0; i < validData.length; i += BATCH_SIZE) {
       const batch = validData.slice(i, i + BATCH_SIZE)
       await tx.bdpmComposition.createMany({ data: batch })
-      count += batch.length
+      inserted += batch.length
     }
 
-    return count
+    return inserted
   }, { timeout: 120_000 }) // 2min timeout for large datasets
+
+  return { count, skipped }
 }
 
 // ── Helpers ────────────────────────────────────────────────
