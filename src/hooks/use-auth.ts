@@ -35,22 +35,9 @@ interface LoginResult {
 }
 
 // ---------------------------------------------------------------------------
-// i18n key mapping (pure function — no React dependency)
+// Role mapping (post-login redirect)
 // ---------------------------------------------------------------------------
 
-/**
- * Maps a raw API error code / HTTP status to an i18n key within the "auth"
- * namespace. Keeping this as a standalone function (rather than inlining
- * switch logic inside the hook) makes it straightforward to unit-test without
- * React context.
- *
- * Valid return values correspond to keys defined in messages/{locale}.json
- * under the "auth" object: "loginError", "rateLimited", "mfaRequired",
- * "networkError".
- *
- * @param errorCode - Value of the `error` field returned by the API
- * @param status    - HTTP response status code
- */
 /**
  * CRIT-1 round 2 (review PR #426) — Mapping rôle → home path. Élimine la
  * dépendance au role-router `/` qui était cassée par `src/app/page.tsx`
@@ -68,6 +55,24 @@ function isKnownRoleAccount(value: unknown): value is { role: KnownRole } {
     && isKnownRoleString((value as Record<string, string>).role)
   )
 }
+
+// ---------------------------------------------------------------------------
+// i18n key mapping (pure function — no React dependency)
+// ---------------------------------------------------------------------------
+
+/**
+ * Maps a raw API error code / HTTP status to an i18n key within the "auth"
+ * namespace. Keeping this as a standalone function (rather than inlining
+ * switch logic inside the hook) makes it straightforward to unit-test without
+ * React context.
+ *
+ * Valid return values correspond to keys defined in messages/{locale}.json
+ * under the "auth" object: "loginError", "rateLimited", "mfaRequired",
+ * "networkError".
+ *
+ * @param errorCode - Value of the `error` field returned by the API
+ * @param status    - HTTP response status code
+ */
 
 function mapErrorToMessage(errorCode: string, status: number): string {
   switch (errorCode) {

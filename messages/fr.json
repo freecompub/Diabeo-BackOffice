@@ -231,8 +231,8 @@
   "education": {
     "averageGlucose": "La glycemie moyenne est calculee sur la periode selectionnee. Elle aide a evaluer le controle glycemique global.",
     "hba1c": "L'HbA1c estimee est calculee a partir des donnees CGM. Elle donne une indication du controle glycemique sur les 3 derniers mois.",
-    "hypoEvents": "Nombre d'episodes hypoglycemiques detectes. Un episode est defini par une glycemie inferieure a {threshold} mg/dL.",
-    "timeInRange": "Le temps dans la cible (TIR) represente le pourcentage de temps passe entre {targetMin} et {targetMax} mg/dL. L'objectif recommande est >= 70%.",
+    "hypoEvents": "Nombre d'episodes hypoglycemiques detectes. Un episode est defini par une glycemie inferieure a {threshold} mg/dL (reference ADA, valeur generique — vos objectifs personnels peuvent differer).",
+    "timeInRange": "Le temps dans la cible (TIR) represente le pourcentage de temps passe entre {targetMin} et {targetMax} mg/dL (reference ADA, valeur generique — vos objectifs personnels peuvent differer). L'objectif recommande est >= 70%.",
     "cv": "Le coefficient de variation mesure la variabilite glycemique. Un CV < 36% est considere comme stable.",
     "standardDeviation": "L'ecart-type mesure la dispersion des valeurs glycemiques autour de la moyenne."
   },

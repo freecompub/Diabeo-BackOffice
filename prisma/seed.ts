@@ -278,11 +278,38 @@ async function main() {
   // wizard `/api/account/privacy` (US-2013). Ici on simule cet état
   // pour les comptes de démo seedés.
 
-  for (const userId of [admin.id, doctor.id, nurse.id, patientUserDT1.id, patientUserDT2.id]) {
+  // Fix L-3 prisma round 2 review PR #426 — `consentDate` fixe (vs
+  // `new Date()` non-déterministe). Cohérent avec autres dates seed.
+  const SEED_CONSENT_DATE = new Date("2024-01-01T00:00:00.000Z")
+
+  // Fix M-6 round 2 review PR #426 — `shareWithProviders` n'a pas de sens
+  // pour un pro qui EST provider (anti-pattern conceptuel). False pour
+  // admin/doctor/nurse, true pour patients (cohérent wizard US-2013).
+  const proUserIds = [admin.id, doctor.id, nurse.id]
+  for (const userId of proUserIds) {
     await prisma.userPrivacySettings.upsert({
       where: { userId },
       update: {},
-      create: { userId, gdprConsent: true, consentDate: new Date(), shareWithProviders: true, shareWithResearchers: false },
+      create: {
+        userId,
+        gdprConsent: true,
+        consentDate: SEED_CONSENT_DATE,
+        shareWithProviders: false,
+        shareWithResearchers: false,
+      },
+    })
+  }
+  for (const userId of [patientUserDT1.id, patientUserDT2.id]) {
+    await prisma.userPrivacySettings.upsert({
+      where: { userId },
+      update: {},
+      create: {
+        userId,
+        gdprConsent: true,
+        consentDate: SEED_CONSENT_DATE,
+        shareWithProviders: true,
+        shareWithResearchers: false,
+      },
     })
   }
 

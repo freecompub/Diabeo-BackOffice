@@ -2189,7 +2189,7 @@ model BdpmComposition {
   codeSubstance String?  @map("code_substance") @db.VarChar(20)
   dosage        String?  @db.VarChar(200)
   reference     String?  @db.VarChar(200)
-  nature        String   @db.VarChar(5) // "SA" (substance active) ou "ST" (fraction thérapeutique)
+  nature        String   @db.VarChar(5) // "SA" (substance active) ou "FT" (fraction thérapeutique) — valeurs BDPM ANSM (col 6 du TSV CIS_COMPO_bdpm.txt). Fix L-2 prisma review PR #426 : ancien commentaire "ST" était erroné.
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   specialty BdpmSpecialty @relation(fields: [codeCIS], references: [codeCIS], onDelete: Cascade)
