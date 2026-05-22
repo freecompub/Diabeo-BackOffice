@@ -30,8 +30,8 @@ export default async function UsersStubPage() {
           Gestion des utilisateurs
         </h1>
         <p className="text-sm text-muted-foreground">
-          Backend opérationnel (US-2148) mais l'interface d'administration
-          n'est pas encore livrée. L'API <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/api/admin/users</code>{" "}
+          Backend opérationnel (US-2148) mais l&apos;interface d&apos;administration
+          n&apos;est pas encore livrée. L&apos;API <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/api/admin/users</code>{" "}
           est utilisable directement.
         </p>
       </div>

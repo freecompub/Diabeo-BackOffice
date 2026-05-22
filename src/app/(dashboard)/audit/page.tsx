@@ -33,7 +33,7 @@ export default async function AuditStubPage() {
         </h1>
         <p className="text-sm text-muted-foreground">
           Backend audit log immuable opérationnel (US-2011 / US-2268) mais
-          l'interface de consultation n'est pas encore livrée. L'API{" "}
+          l&apos;interface de consultation n&apos;est pas encore livrée. L&apos;API{" "}
           <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/api/admin/audit-logs</code>{" "}
           accepte les filtres (userId, resource, action, from, to).
         </p>
