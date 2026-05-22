@@ -116,7 +116,16 @@ export function useAuth() {
           credentials: "include",
         })
 
-        const data = (await res.json()) as { error?: string; retryAfterSeconds?: number }
+        const data = (await res.json()) as {
+          error?: string
+          retryAfterSeconds?: number
+          /**
+           * Fix M-2 round 2 review PR #426 — Le login API retourne désormais
+           * `role` dans la réponse success pour éliminer le round-trip
+           * `/api/account` post-login.
+           */
+          role?: string
+        }
 
         if (!res.ok) {
           const key = mapErrorToMessage(data.error ?? "", res.status)
@@ -140,30 +149,33 @@ export function useAuth() {
         // JWT itself is httpOnly — we never touch it from client code.
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
-        // US-3356 — Role-based redirect. On probe `/api/account` (returns
-        // role) immédiatement après login et on map role → home path
-        // directement via `ROLE_TO_HOME` (cf. constant en tête de fichier).
+        // US-3356 — Role-based redirect. Le login API retourne `role` (fix
+        // M-2 round 2) → mapping client-side direct via ROLE_TO_HOME sans
+        // round-trip supplémentaire.
         //
         // Fix CRIT-1 round 2 review PR #426 (session 2026-05-22) — L'ancien
         // pattern `target = "/"` + role-router serveur était cassé par
         // `src/app/page.tsx` qui shadow `(dashboard)/page.tsx` et redirige
         // toujours vers `/login`. Tous les pros étaient bloqués post-login.
         //
-        // Le mapping client-side est plus robuste :
-        // - Pas de dépendance à `/` (qui pourrait redevenir un piège)
-        // - Pas de double round-trip (login + role-router serveur)
-        // - Fail-safe : si la probe fail, on revient à `/login` (visible)
-        //   plutôt qu'à `/` (piège silencieux).
+        // Fail-safe : si le serveur ne retourne pas de role (regression
+        // future, schema change), fall-back sur `/api/account` probe puis
+        // sur `/login` (visible plutôt que piège silencieux).
         let target = "/login"
-        try {
-          const me = await fetch("/api/account", { credentials: "include" })
-          if (me.ok) {
-            const account: unknown = await me.json()
-            if (isKnownRoleAccount(account)) target = ROLE_TO_HOME[account.role]
+        if (data.role && isKnownRoleString(data.role)) {
+          target = ROLE_TO_HOME[data.role]
+        } else {
+          // Backwards-compat / regression safety : probe en fallback si la
+          // réponse login n'a pas de role (vieux serveur, deploy partiel).
+          try {
+            const me = await fetch("/api/account", { credentials: "include" })
+            if (me.ok) {
+              const account: unknown = await me.json()
+              if (isKnownRoleAccount(account)) target = ROLE_TO_HOME[account.role]
+            }
+          } catch {
+            // Network blip: stays on /login fail-safe.
           }
-        } catch {
-          // Network blip: fall through to /login (fail-safe). L'user verra
-          // une page propre et pourra retenter sans confusion silencieuse.
         }
 
         // JWT is set as httpOnly cookie by the server — no client-side storage

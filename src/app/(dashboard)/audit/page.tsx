@@ -11,6 +11,11 @@
  * À remplacer par la vraie UI quand US-2024-UI sera planifiée.
  *
  * Server-side guard : ADMIN-only.
+ *
+ * TODO V1.5 (LOW-4 HSA round 2 review PR #426) — Quand l'UI réelle
+ * arrivera, ajouter `auditService.log({userId, action: "READ",
+ * resource: "AUDIT_LOGS_LIST"})` ici (cohérence US-2265). Pas urgent
+ * sur le stub puisqu'aucune donnée PHI n'est rendue.
  */
 
 import { headers } from "next/headers"

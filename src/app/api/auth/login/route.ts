@@ -143,9 +143,16 @@ export async function POST(req: NextRequest) {
       userAgent: ctx.userAgent,
     })
 
-    // C3: JWT is set as httpOnly cookie — never returned in JSON body to prevent XSS token theft
+    // C3: JWT is set as httpOnly cookie — never returned in JSON body to prevent XSS token theft.
+    //
+    // Fix M-2 round 2 review PR #426 — `role` retourné dans la réponse pour
+    // éliminer le round-trip `/api/account` que `use-auth.ts` faisait juste
+    // après le login pour déterminer le home path (VIEWER vs pro). Le role
+    // est non-PHI, déjà dans le JWT côté client (claim `role`), donc le
+    // renvoyer en JSON n'expose rien de plus.
     const response = NextResponse.json({
       expiresAt: session.expires.toISOString(),
+      role: user.role,
     })
     response.cookies.set("diabeo_token", token, {
       httpOnly: true,

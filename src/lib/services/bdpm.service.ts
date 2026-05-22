@@ -296,6 +296,22 @@ async function importSpecialties(filePath: string): Promise<number> {
 const CIP13_REGEX = /^\d{13}$/
 const CIS_REGEX = /^\d{8}$/
 
+/**
+ * TODO V1.5 (M-1 code-reviewer round 2 review PR #426) — Asymétrie avec
+ * `importCompositions` : ici on fait UPSERT uniquement, pas de `deleteMany`.
+ * Conséquence : les présentations dont le CIP13 disparaît du fichier
+ * upstream (médicaments retirés du marché) restent en DB indéfiniment.
+ * Apparaissent dans `searchMedications` autocomplete → clinical risk LOW
+ * (un médecin peut prescrire un médicament décommissionné).
+ *
+ * Migration future : 2 approches possibles :
+ *  (a) Pattern delete+insert comme compositions (risque downtime UI pendant TX)
+ *  (b) deleteMany WHERE codeCIP13 NOT IN (current upstream CIP13s) post-upsert
+ *      (plus chirurgical, mais nécessite tenir le set en mémoire)
+ *
+ * Pas changé dans cette PR pour éviter changement destructif sur table
+ * partagée — à traiter en US dédiée avec test E2E sur dataset complet.
+ */
 async function importPresentations(
   filePath: string,
   validCodes: Set<string>,
