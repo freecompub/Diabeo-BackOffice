@@ -36,10 +36,12 @@ import {
   CalendarDays,
   Syringe,
   Smartphone,
+  Home,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
   Sheet,
   SheetContent,
@@ -85,11 +87,16 @@ interface NavigationShellProps {
   userName?: string
   onRefresh?: () => void
   /**
-   * US-3356 — Override default pro-facing nav items. Used by the patient
-   * (patient) layout to render a simpler self-service sidebar (Accueil,
-   * Glycémie, Profil, Préférences, etc.) instead of the cabinet nav.
+   * US-3356 — Variant selector for nav items.
+   *
+   * - `"pro"` (default) : sidebar cabinet (Patients, Analytics, Médicaments…)
+   * - `"patient"` : sidebar self-service (Accueil)
+   *
+   * Fix RSC (#3 session 2026-05-22) : `variant` (string) traverse la boundary
+   * server→client sans problème ; un `navItemsOverride` contenant des
+   * références `LucideIcon` ne peut pas être sérialisé entre RSC et CC.
    */
-  navItemsOverride?: NavItem[]
+  variant?: "pro" | "patient"
 }
 
 // --- Constants ---
@@ -101,8 +108,30 @@ const ROLE_HIERARCHY: Record<UserRole, number> = {
   ADMIN: 3,
 }
 
+/**
+ * Marker sentinel pour `NavItem.href` : résolu dynamiquement vers le home
+ * rôle-spécifique au render (DOCTOR → /medecin, NURSE → /infirmier, etc.).
+ *
+ * Fix CRIT-1 round 2 review PR #426 — Le pattern précédent `href: "/"`
+ * dépendait du role-router serveur qui était cassé par `src/app/page.tsx`
+ * (supprimé). Le marker permet de garder une nav statique tout en
+ * dispatchant côté client selon le `userRole` prop.
+ *
+ * Mapping centralisé : `@/lib/auth/role-home` (SoT partagée).
+ */
+const HOME_HREF_MARKER = "__home__"
+
+/**
+ * Pro nav (DOCTOR / NURSE / ADMIN).
+ *
+ * Fix #11.b/#11.c (session 2026-05-22) :
+ *   - 1er item `href: HOME_HREF_MARKER` — résolu vers `/medecin` / `/infirmier`
+ *     / `/admin` selon le role courant.
+ *   - `/users` et `/audit` ADMIN-only — pages stub livrées dans la même
+ *     PR pour éviter 404 (refonte UI à planifier en US dédiée).
+ */
 const navItems: NavItem[] = [
-  { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
+  { href: HOME_HREF_MARKER, labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/patients", labelKey: "patients", icon: Users },
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
@@ -114,6 +143,23 @@ const navItems: NavItem[] = [
   { href: "/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
   { href: "/audit", labelKey: "audit", icon: FileText, minRole: "ADMIN" },
   { href: "/settings", labelKey: "settings", icon: Settings },
+]
+
+/**
+ * Patient self-service nav (VIEWER, layout `(patient)`).
+ *
+ * #10 (session 2026-05-22) — Batch 1 US-3356 ne livre que la page
+ * `/patient/dashboard` ; les items nav sont limités aux routes
+ * réellement implémentées pour qu'un clic ne tombe jamais sur 404.
+ * Futures sections (glycémie/événements/RDV/profil/préférences) à
+ * ajouter ici quand les pages correspondantes atterriront en Batch 2+.
+ *
+ * #3 (session 2026-05-22) — Déclaré dans ce client component pour
+ * éviter de passer une référence `LucideIcon` à travers la boundary
+ * RSC depuis `(patient)/layout.tsx`.
+ */
+const patientNavItems: NavItem[] = [
+  { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
 ]
 
 function hasRoleAccess(userRole: UserRole, minRole?: UserRole): boolean {
@@ -233,7 +279,7 @@ export function NavigationShell({
   userRole = "VIEWER",
   userName,
   onRefresh,
-  navItemsOverride,
+  variant = "pro",
 }: NavigationShellProps) {
   const t = useTranslations()
   const tNav = useTranslations("nav")
@@ -242,10 +288,14 @@ export function NavigationShell({
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const sourceItems = navItemsOverride ?? navItems
-  const filteredItems = sourceItems.filter((item) =>
-    hasRoleAccess(userRole, item.minRole)
-  )
+  const sourceItems = variant === "patient" ? patientNavItems : navItems
+  const filteredItems = sourceItems
+    .filter((item) => hasRoleAccess(userRole, item.minRole))
+    .map((item) =>
+      item.href === HOME_HREF_MARKER
+        ? { ...item, href: resolveHomeForRole(userRole) }
+        : item,
+    )
 
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 

@@ -31,6 +31,16 @@ const CACHE_TTL_NEGATIVE_SEC = 300
  * on PUT /api/account/privacy. A cache MISS or Redis outage falls back to
  * a direct Prisma query — caching is an optimization, never a trust boundary.
  *
+ * **TODO V1.5 (M-5 HSA round 2 review PR #426)** — sémantique RGPD à
+ * revoir : pour un PRO accédant à des données PHI patient, la base légale
+ * applicable est Art. 9.2.h (médecine préventive/diagnostique) ou
+ * Art. 6.1.c (obligation légale), PAS Art. 9.2.a (consentement explicite).
+ * Le check actuel `requireGdprConsent(user.id)` interroge le consent du
+ * PRO, pas du patient. Refactor à faire en V1.5 :
+ *   - Routes `/api/analytics/*`, `/api/cgm`, etc. → check
+ *     `requireGdprConsent(patient.userId)` après `resolvePatientId(...)`.
+ *   - DPIA à mettre à jour : base légale par scope (pro vs self-service).
+ *
  * @async
  * @param {number} userId - User ID
  * @returns {Promise<boolean>} True if user has explicitly consented to data processing

@@ -231,8 +231,8 @@
   "education": {
     "averageGlucose": "Average glucose is calculated over the selected period. It helps assess overall glycemic control.",
     "hba1c": "Estimated HbA1c is calculated from CGM data. It gives an indication of glycemic control over the past 3 months.",
-    "hypoEvents": "Number of detected hypoglycemic episodes. An episode is defined as a glucose reading below {threshold} mg/dL.",
-    "timeInRange": "Time in Range (TIR) represents the percentage of time spent between {targetMin} and {targetMax} mg/dL. The recommended target is >= 70%.",
+    "hypoEvents": "Number of detected hypoglycemic episodes. An episode is defined as a glucose reading below {threshold} mg/dL (ADA reference, generic value — your personal targets may differ).",
+    "timeInRange": "Time in Range (TIR) represents the percentage of time spent between {targetMin} and {targetMax} mg/dL (ADA reference, generic value — your personal targets may differ). The recommended target is >= 70%.",
     "cv": "The coefficient of variation measures glycemic variability. A CV < 36% is considered stable.",
     "standardDeviation": "Standard deviation measures the dispersion of glucose values around the mean."
   },

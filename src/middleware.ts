@@ -179,5 +179,26 @@ export const config = {
     "/import/:path*",
     /** US-3356 — patient self-service layout. */
     "/patient/:path*",
+    /**
+     * Fix HIGH-1 round 2 review PR #426 — Pages (dashboard) groupées non
+     * préfixées par `/dashboard` étaient orphelines du middleware → JWT
+     * jamais vérifié, `x-user-role` jamais set, redirect(`/`) silencieux
+     * pour tout user légit. Aussi : risque header-spoofing si le reverse-
+     * proxy ne strip pas `x-user-*` côté client.
+     *
+     * Les routes ci-dessous correspondent aux dashboards rôle-spécifiques
+     * (US-2400/2405/2410) + pages stub admin (#11.a) + autres pages
+     * (dashboard) pré-existantes orphelines.
+     */
+    "/admin/:path*",
+    "/medecin/:path*",
+    "/infirmier/:path*",
+    "/users/:path*",
+    "/audit/:path*",
+    "/devices/:path*",
+    "/insulin-therapy/:path*",
+    "/weekly/:path*",
+    "/adjustment-proposals/:path*",
+    "/events/:path*",
   ],
 }

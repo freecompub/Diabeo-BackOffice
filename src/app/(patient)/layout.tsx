@@ -2,37 +2,25 @@
  * Patient self-service layout (US-3356).
  *
  * Mirrors the pro `(dashboard)` layout but renders a simpler, patient-facing
- * sidebar via `navItemsOverride`. The server component still reads
- * `x-user-role` from the JWT middleware to guard against non-VIEWER access.
- * Non-VIEWER roles fall through here (the layout doesn't block them) — the
- * `(patient)/dashboard/page.tsx` does the actual role redirect server-side
- * if a pro hits the patient route by mistake.
+ * sidebar via `variant="patient"`. The server component reads `x-user-role`
+ * from the JWT middleware to guard against non-VIEWER access. Pro roles are
+ * bounced immediately to their role-specific dashboard (this layout fully
+ * blocks them — the page itself does no further role guard).
+ *
+ * Fix RSC (#3 session 2026-05-22) : ce server component ne peut pas
+ * importer / passer une `LucideIcon` au `NavigationShell` client. Les nav
+ * items (avec leurs icônes) sont déclarés DANS `NavigationShell.tsx` et
+ * sélectionnés ici via la prop `variant` (string sérialisable).
+ *
+ * Fix CRIT-2 round 2 review PR #426 — Le redirect non-VIEWER cible
+ * désormais le home rôle-spécifique au lieu de `/` (cassé par
+ * `src/app/page.tsx` supprimé dans CRIT-1).
  */
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { Home } from "lucide-react"
-import {
-  NavigationShell,
-  type NavItem,
-  type UserRole,
-} from "@/components/diabeo/NavigationShell"
-
-const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
-
-function isValidRole(role: string | null): role is UserRole {
-  return role !== null && VALID_ROLES.includes(role as UserRole)
-}
-
-/**
- * M1 (re-review) — Batch 1 only ships the dashboard page ; nav items are
- * limited to existing routes so a click never lands on a 404. Future
- * sections (glycemia/events/appointments/profile/preferences) get added
- * here as the corresponding pages land in Batch 2+.
- */
-const PATIENT_NAV_ITEMS: NavItem[] = [
-  { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
-]
+import { NavigationShell } from "@/components/diabeo/NavigationShell"
+import { isKnownRoleString, resolveHomeForRole } from "@/lib/auth/role-home"
 
 export default async function PatientLayout({
   children,
@@ -44,22 +32,21 @@ export default async function PatientLayout({
 
   // L2 (re-review) — fail-safe : missing/invalid role header bounces to login
   // rather than defaulting to VIEWER and granting patient-area access.
-  if (!isValidRole(rawRole)) {
+  if (!isKnownRoleString(rawRole)) {
     redirect("/login")
   }
-  const userRole: UserRole = rawRole
 
-  // Pro users hitting /patient/* — bounce them back to their dashboard.
+  // Pro users hitting /patient/* — bounce them to their role-specific home.
   // Patient self-service routes are NOT meant for staff.
-  if (userRole !== "VIEWER") {
-    redirect("/dashboard")
+  if (rawRole !== "VIEWER") {
+    redirect(resolveHomeForRole(rawRole))
   }
 
   return (
     <NavigationShell
       pageTitle="Diabeo"
-      userRole={userRole}
-      navItemsOverride={PATIENT_NAV_ITEMS}
+      userRole={rawRole}
+      variant="patient"
     >
       {children}
     </NavigationShell>

@@ -62,11 +62,27 @@ import { NavigationShell } from "@/components/diabeo/NavigationShell"
 /**
  * Counts visible nav links (excludes logout buttons, breadcrumbs, etc.).
  * The sidebar renders links with href matching known nav paths.
+ *
+ * Round 2 review PR #426 — Le 1er item "Dashboard" pointe désormais sur
+ * le home rôle-spécifique (`/medecin`, `/infirmier`, `/admin`,
+ * `/patient/dashboard`) via `HOME_HREF_MARKER` résolu au render dans
+ * `NavigationShell.tsx` (fix CRIT-1 `src/app/page.tsx` supprimé qui
+ * shadowait `(dashboard)/page.tsx`). L'ancien path `/dashboard` est
+ * remplacé par les 4 home roots possibles.
+ *
+ * Le sous-ensemble navPaths reste volontairement limité (les items
+ * `/weekly`, `/insulin-therapy`, `/devices`, `/import` ne sont pas
+ * testés ici — couverts par d'autres tests RBAC ailleurs si besoin).
  */
 function getNavLinks(container: HTMLElement): HTMLAnchorElement[] {
   const allLinks = container.querySelectorAll<HTMLAnchorElement>("a[href]")
   const navPaths = [
-    "/dashboard",
+    // Home roots résolus dynamiquement (HOME_HREF_MARKER) — remplacent
+    // l'ancien `/dashboard` selon le role courant.
+    "/medecin",
+    "/infirmier",
+    "/admin",
+    "/patient/dashboard",
     "/patients",
     "/medications",
     "/analytics",

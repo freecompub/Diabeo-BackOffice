@@ -35,6 +35,28 @@ interface LoginResult {
 }
 
 // ---------------------------------------------------------------------------
+// Role mapping (post-login redirect)
+// ---------------------------------------------------------------------------
+
+/**
+ * CRIT-1 round 2 (review PR #426) — Mapping rôle → home path. Élimine la
+ * dépendance au role-router `/` qui était cassée par `src/app/page.tsx`
+ * (supprimé dans ce même commit).
+ *
+ * Source of truth : `@/lib/auth/role-home` (partagé avec layouts + nav).
+ */
+import { ROLE_TO_HOME, isKnownRoleString, type KnownRole } from "@/lib/auth/role-home"
+
+function isKnownRoleAccount(value: unknown): value is { role: KnownRole } {
+  return (
+    typeof value === "object" && value !== null
+    && "role" in value
+    && typeof (value as Record<string, unknown>).role === "string"
+    && isKnownRoleString((value as Record<string, string>).role)
+  )
+}
+
+// ---------------------------------------------------------------------------
 // i18n key mapping (pure function — no React dependency)
 // ---------------------------------------------------------------------------
 
@@ -51,18 +73,6 @@ interface LoginResult {
  * @param errorCode - Value of the `error` field returned by the API
  * @param status    - HTTP response status code
  */
-/**
- * L4 (re-review) — type guard for the `/api/account` probe response. Returns
- * true only when the payload definitively identifies a VIEWER (patient self-
- * service role).
- */
-function isViewerAccount(value: unknown): value is { role: "VIEWER" } {
-  return (
-    typeof value === "object" && value !== null
-    && "role" in value
-    && (value as Record<string, unknown>).role === "VIEWER"
-  )
-}
 
 function mapErrorToMessage(errorCode: string, status: number): string {
   switch (errorCode) {
@@ -106,7 +116,16 @@ export function useAuth() {
           credentials: "include",
         })
 
-        const data = (await res.json()) as { error?: string; retryAfterSeconds?: number }
+        const data = (await res.json()) as {
+          error?: string
+          retryAfterSeconds?: number
+          /**
+           * Fix M-2 round 2 review PR #426 — Le login API retourne désormais
+           * `role` dans la réponse success pour éliminer le round-trip
+           * `/api/account` post-login.
+           */
+          role?: string
+        }
 
         if (!res.ok) {
           const key = mapErrorToMessage(data.error ?? "", res.status)
@@ -130,21 +149,33 @@ export function useAuth() {
         // JWT itself is httpOnly — we never touch it from client code.
         sessionStorage.setItem(LOGIN_TIMESTAMP_KEY, String(Date.now()))
 
-        // US-3356 — Role-based redirect : VIEWER lands on patient self-service
-        // dashboard, all other roles (pros) on the cabinet dashboard. We probe
-        // `/api/account` (returns role) immediately after login. Layout-side
-        // guards in (dashboard) and (patient) layouts will bounce mis-routed
-        // users if this probe ever returns a stale or malformed payload.
-        let target = "/dashboard"
-        try {
-          const me = await fetch("/api/account", { credentials: "include" })
-          if (me.ok) {
-            const account: unknown = await me.json()
-            if (isViewerAccount(account)) target = "/patient/dashboard"
+        // US-3356 — Role-based redirect. Le login API retourne `role` (fix
+        // M-2 round 2) → mapping client-side direct via ROLE_TO_HOME sans
+        // round-trip supplémentaire.
+        //
+        // Fix CRIT-1 round 2 review PR #426 (session 2026-05-22) — L'ancien
+        // pattern `target = "/"` + role-router serveur était cassé par
+        // `src/app/page.tsx` qui shadow `(dashboard)/page.tsx` et redirige
+        // toujours vers `/login`. Tous les pros étaient bloqués post-login.
+        //
+        // Fail-safe : si le serveur ne retourne pas de role (regression
+        // future, schema change), fall-back sur `/api/account` probe puis
+        // sur `/login` (visible plutôt que piège silencieux).
+        let target = "/login"
+        if (data.role && isKnownRoleString(data.role)) {
+          target = ROLE_TO_HOME[data.role]
+        } else {
+          // Backwards-compat / regression safety : probe en fallback si la
+          // réponse login n'a pas de role (vieux serveur, deploy partiel).
+          try {
+            const me = await fetch("/api/account", { credentials: "include" })
+            if (me.ok) {
+              const account: unknown = await me.json()
+              if (isKnownRoleAccount(account)) target = ROLE_TO_HOME[account.role]
+            }
+          } catch {
+            // Network blip: stays on /login fail-safe.
           }
-        } catch {
-          // Network blip: fall through to /dashboard. Layout-side guards will
-          // bounce a VIEWER back to /patient/dashboard if needed.
         }
 
         // JWT is set as httpOnly cookie by the server — no client-side storage
