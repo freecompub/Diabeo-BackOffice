@@ -556,7 +556,7 @@ async function main() {
     create: { name: "Dr Sophie Martin", serviceId: service.id, userId: doctor.id },
   })
 
-  await prisma.healthcareMember.upsert({
+  const memberNurse = await prisma.healthcareMember.upsert({
     where: { name_serviceId: { name: "Marie Dupont (IDE)", serviceId: service.id } },
     update: {},
     create: { name: "Marie Dupont (IDE)", serviceId: service.id, userId: nurse.id },
@@ -575,6 +575,83 @@ async function main() {
       update: {},
       create: { patientId, proId: memberDoctor.id, serviceId: service.id },
     })
+  }
+
+  // ─── 9.bis Appointments (calendrier RDV — seed dev US-2500-UI) ──
+  //
+  // Idempotent : skippé si Dr Sophie Martin a déjà des RDV. Sinon, crée
+  // ~15 RDV variés couvrant tous les statuts sur ±1 mois autour de today,
+  // pour permettre de tester /appointments en dev avec des données
+  // réalistes (différentes vues mois/semaine/jour, badges statuts).
+  //
+  // Distribution :
+  //   - 4 cette semaine (scheduled / pending_validation / confirmed)
+  //   - 3 semaine prochaine (scheduled)
+  //   - 2 mois précédent (completed / no_show)
+  //   - 1 cancelled
+  //   - 2 sur memberNurse (test filtre membre cabinet)
+  //   - 3 répartis sur le mois courant
+
+  const existingApptCount = await prisma.appointment.count({
+    where: { memberId: memberDoctor.id },
+  })
+
+  if (existingApptCount === 0) {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    function dateAtOffset(days: number): Date {
+      const d = new Date(today)
+      d.setDate(d.getDate() + days)
+      return d
+    }
+
+    function timeAt(h: number, m = 0): Date {
+      // @db.Time naive — stocké en UTC sans tz pour heure d'horloge.
+      return new Date(`1970-01-01T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`)
+    }
+
+    const apptSeedData: Array<{
+      patientId: number
+      memberId: number
+      type: string
+      date: Date
+      hour: Date
+      durationMinutes: number
+      location: "in_person" | "video" | "phone"
+      status: "scheduled" | "pending_validation" | "confirmed" | "cancelled" | "completed" | "no_show"
+    }> = [
+      // Semaine en cours — DOCTOR
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "confirmed" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(1), hour: timeAt(10, 15), durationMinutes: 45, location: "in_person", status: "scheduled" },
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(2), hour: timeAt(14, 0), durationMinutes: 30, location: "video", status: "pending_validation" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "hdj", date: dateAtOffset(3), hour: timeAt(11, 0), durationMinutes: 60, location: "in_person", status: "scheduled" },
+      // Semaine prochaine — DOCTOR
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(7), hour: timeAt(9, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(8), hour: timeAt(15, 30), durationMinutes: 30, location: "phone", status: "scheduled" },
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(10), hour: timeAt(10, 30), durationMinutes: 45, location: "in_person", status: "scheduled" },
+      // Mois précédent — DOCTOR (historique)
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-21), hour: timeAt(14, 30), durationMinutes: 30, location: "in_person", status: "completed" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-14), hour: timeAt(11, 30), durationMinutes: 30, location: "in_person", status: "no_show" },
+      // Annulé
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(5), hour: timeAt(16, 0), durationMinutes: 30, location: "in_person", status: "cancelled" },
+      // NURSE — test filtre membre cabinet
+      { patientId: patientDT1.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(0), hour: timeAt(13, 0), durationMinutes: 30, location: "in_person", status: "confirmed" },
+      { patientId: patientDT2.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(2), hour: timeAt(15, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      // Mois courant — répartis (DOCTOR)
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(15), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(20), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(25), hour: timeAt(14, 0), durationMinutes: 45, location: "video", status: "scheduled" },
+    ]
+
+    await prisma.appointment.createMany({
+      data: apptSeedData,
+      skipDuplicates: true,
+    })
+
+    console.log(`  ✓ ${apptSeedData.length} appointments seeded (10 DOCTOR + 2 NURSE + 3 mois courant)`)
+  } else {
+    console.log(`  ✓ Appointments already seeded (${existingApptCount} existing) — skipped`)
   }
 
   // ─── 10. CGM data — 30 days for DT1 (deterministic) ──────
