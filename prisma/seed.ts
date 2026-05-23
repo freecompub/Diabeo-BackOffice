@@ -148,10 +148,12 @@ async function main() {
     nursePasswordHash,
     patient1PasswordHash,
     patient2PasswordHash,
+    extraPatientsPasswordHash, // partagé pour les 3 patients dev supplémentaires
   ] = await Promise.all([
     seedPassword("DEV-ONLY-Admin123!"),
     seedPassword("DEV-ONLY-Doctor123!"),
     seedPassword("DEV-ONLY-Nurse123!"),
+    seedPassword("DEV-ONLY-Patient123!"),
     seedPassword("DEV-ONLY-Patient123!"),
     seedPassword("DEV-ONLY-Patient123!"),
   ])
@@ -248,17 +250,99 @@ async function main() {
     },
   })
 
+  // ─── 1.bis Patients dev supplémentaires (seed enrichi calendrier RDV) ──
+  //
+  // 3 patients additionnels pour avoir une vraie liste à scroller en dev
+  // (cabinet view, search bar, filtre pathologie). Tous rattachés au même
+  // service + memberDoctor que DT1/DT2 (cohérent avec scope cabinet existant).
+  //
+  // Couvre les 3 pathologies de l'enum `Pathology` :
+  //   - DT1 (jeune adulte, sous pompe)
+  //   - DT2 (senior, ADO seul)
+  //   - GD  (femme enceinte, suivi grossesse)
+  //
+  // Pattern idempotent identique (upsert via emailHmac unique).
+
+  const patientUserDT1Extra = await prisma.user.upsert({
+    where: { emailHmac: hmacEmail("patient.dt1bis@diabeo.test") },
+    update: {},
+    create: {
+      email: "patient.dt1bis@diabeo.test",
+      emailHmac: hmacEmail("patient.dt1bis@diabeo.test"),
+      passwordHash: extraPatientsPasswordHash,
+      firstname: "Lucas",
+      lastname: "Petit",
+      sex: Sex.M,
+      birthday: new Date("1998-11-04"),
+      timezone: "Europe/Paris",
+      language: Language.fr,
+      role: Role.VIEWER,
+      hasSignedTerms: true,
+      profileComplete: true,
+    },
+  })
+
+  const patientUserDT2Extra = await prisma.user.upsert({
+    where: { emailHmac: hmacEmail("patient.dt2bis@diabeo.test") },
+    update: {},
+    create: {
+      email: "patient.dt2bis@diabeo.test",
+      emailHmac: hmacEmail("patient.dt2bis@diabeo.test"),
+      passwordHash: extraPatientsPasswordHash,
+      firstname: "Hélène",
+      lastname: "Moreau",
+      sex: Sex.F,
+      birthday: new Date("1958-04-12"),
+      timezone: "Europe/Paris",
+      language: Language.fr,
+      role: Role.VIEWER,
+      hasSignedTerms: true,
+      profileComplete: true,
+    },
+  })
+
+  const patientUserGD = await prisma.user.upsert({
+    where: { emailHmac: hmacEmail("patient.gd@diabeo.test") },
+    update: {},
+    create: {
+      email: "patient.gd@diabeo.test",
+      emailHmac: hmacEmail("patient.gd@diabeo.test"),
+      passwordHash: extraPatientsPasswordHash,
+      firstname: "Amélie",
+      lastname: "Rousseau",
+      sex: Sex.F,
+      birthday: new Date("1993-07-19"),
+      timezone: "Europe/Paris",
+      language: Language.fr,
+      role: Role.VIEWER,
+      hasSignedTerms: true,
+      profileComplete: true,
+    },
+  })
+
   console.log("Users created:", {
     admin: admin.id,
     doctor: doctor.id,
     nurse: nurse.id,
     patientDT1: patientUserDT1.id,
     patientDT2: patientUserDT2.id,
+    patientDT1Extra: patientUserDT1Extra.id,
+    patientDT2Extra: patientUserDT2Extra.id,
+    patientGD: patientUserGD.id,
   })
 
   // ─── 2. Unit preferences ──────────────────────────────────
 
-  for (const userId of [admin.id, doctor.id, nurse.id, patientUserDT1.id, patientUserDT2.id]) {
+  for (const userId of [
+    admin.id,
+    doctor.id,
+    nurse.id,
+    patientUserDT1.id,
+    patientUserDT2.id,
+    patientUserDT1Extra.id,
+    patientUserDT2Extra.id,
+    patientUserGD.id,
+  ]) {
     await prisma.userUnitPreferences.upsert({
       where: { userId },
       update: {},
@@ -300,7 +384,13 @@ async function main() {
       },
     })
   }
-  for (const userId of [patientUserDT1.id, patientUserDT2.id]) {
+  for (const userId of [
+    patientUserDT1.id,
+    patientUserDT2.id,
+    patientUserDT1Extra.id,
+    patientUserDT2Extra.id,
+    patientUserGD.id,
+  ]) {
     await prisma.userPrivacySettings.upsert({
       where: { userId },
       update: {},
@@ -328,7 +418,32 @@ async function main() {
     create: { userId: patientUserDT2.id, pathology: Pathology.DT2 },
   })
 
-  console.log("Patients created:", { dt1: patientDT1.id, dt2: patientDT2.id })
+  // ─── 4.bis Patients dev supplémentaires (3 extras) ───────
+  const patientDT1Extra = await prisma.patient.upsert({
+    where: { userId: patientUserDT1Extra.id },
+    update: {},
+    create: { userId: patientUserDT1Extra.id, pathology: Pathology.DT1 },
+  })
+
+  const patientDT2Extra = await prisma.patient.upsert({
+    where: { userId: patientUserDT2Extra.id },
+    update: {},
+    create: { userId: patientUserDT2Extra.id, pathology: Pathology.DT2 },
+  })
+
+  const patientGD = await prisma.patient.upsert({
+    where: { userId: patientUserGD.id },
+    update: {},
+    create: { userId: patientUserGD.id, pathology: Pathology.GD },
+  })
+
+  console.log("Patients created:", {
+    dt1: patientDT1.id,
+    dt2: patientDT2.id,
+    dt1Extra: patientDT1Extra.id,
+    dt2Extra: patientDT2Extra.id,
+    gd: patientGD.id,
+  })
 
   // ─── 5. Medical data ──────────────────────────────────────
 
@@ -351,9 +466,44 @@ async function main() {
     },
   })
 
+  // ─── 5.bis MedicalData pour les 3 extras (minimal) ───────
+  await prisma.patientMedicalData.upsert({
+    where: { patientId: patientDT1Extra.id },
+    update: {},
+    create: {
+      patientId: patientDT1Extra.id, dt1: true, size: 184, yearDiag: 2015,
+      insulin: true, insulinYear: 2015, insulinPump: true, tabac: false, alcool: false,
+    },
+  })
+
+  await prisma.patientMedicalData.upsert({
+    where: { patientId: patientDT2Extra.id },
+    update: {},
+    create: {
+      patientId: patientDT2Extra.id, dt1: false, size: 158, yearDiag: 2008,
+      insulin: false, insulinPump: false, tabac: false, alcool: false,
+      riskWeight: true, riskCardio: true,
+    },
+  })
+
+  await prisma.patientMedicalData.upsert({
+    where: { patientId: patientGD.id },
+    update: {},
+    create: {
+      patientId: patientGD.id, dt1: false, size: 168, yearDiag: 2026,
+      insulin: true, insulinYear: 2026, insulinPump: false, tabac: false, alcool: false,
+    },
+  })
+
   // ─── 6. CGM & annex objectives ────────────────────────────
 
-  for (const patientId of [patientDT1.id, patientDT2.id]) {
+  for (const patientId of [
+    patientDT1.id,
+    patientDT2.id,
+    patientDT1Extra.id,
+    patientDT2Extra.id,
+    patientGD.id,
+  ]) {
     await prisma.cgmObjective.upsert({
       where: { patientId },
       update: {},
@@ -563,8 +713,14 @@ async function main() {
     create: { name: "Marie Dupont (IDE)", serviceId: service.id, userId: nurse.id },
   })
 
-  // Patient services & referent
-  for (const patientId of [patientDT1.id, patientDT2.id]) {
+  // Patient services & referent (5 patients = 2 original + 3 dev extras)
+  for (const patientId of [
+    patientDT1.id,
+    patientDT2.id,
+    patientDT1Extra.id,
+    patientDT2Extra.id,
+    patientGD.id,
+  ]) {
     await prisma.patientService.upsert({
       where: { patientId_serviceId: { patientId, serviceId: service.id } },
       update: {},
@@ -617,7 +773,7 @@ async function main() {
      * permettre de tester le modal détail RDV (déchiffrement AES-256-GCM)
      * en dev. PHI fictif (patients DT1/DT2 de démo).
      */
-    const apptSeedData: Array<{
+    type ApptRow = {
       patientId: number
       memberId: number
       type: string
@@ -627,28 +783,62 @@ async function main() {
       location: "in_person" | "video" | "phone"
       status: "scheduled" | "pending_validation" | "confirmed" | "cancelled" | "completed" | "no_show"
       motifEncrypted?: string
-    }> = [
-      // Semaine en cours — DOCTOR (avec motif chiffré pour test modal détail)
-      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "confirmed", motifEncrypted: encryptField("Titration basale post-hypos répétées") },
-      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(1), hour: timeAt(10, 15), durationMinutes: 45, location: "in_person", status: "scheduled" },
-      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(2), hour: timeAt(14, 0), durationMinutes: 30, location: "video", status: "pending_validation" },
-      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "hdj", date: dateAtOffset(3), hour: timeAt(11, 0), durationMinutes: 60, location: "in_person", status: "scheduled" },
-      // Semaine prochaine — DOCTOR
-      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(7), hour: timeAt(9, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
-      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(8), hour: timeAt(15, 30), durationMinutes: 30, location: "phone", status: "scheduled" },
-      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(10), hour: timeAt(10, 30), durationMinutes: 45, location: "in_person", status: "scheduled" },
-      // Mois précédent — DOCTOR (historique)
+    }
+
+    const apptSeedData: ApptRow[] = [
+      // ─── HISTORIQUE 3 MOIS PASSÉS (status completed / no_show) ───
+      // Test vue mois précédent + KPI "RDV passés"
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-75), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "completed" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-60), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "completed" },
+      { patientId: patientDT1Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-45), hour: timeAt(14, 0), durationMinutes: 30, location: "in_person", status: "completed" },
+      { patientId: patientDT2Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-35), hour: timeAt(10, 30), durationMinutes: 30, location: "in_person", status: "no_show" },
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-28), hour: timeAt(9, 0), durationMinutes: 45, location: "in_person", status: "completed" },
       { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-21), hour: timeAt(14, 30), durationMinutes: 30, location: "in_person", status: "completed" },
       { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-14), hour: timeAt(11, 30), durationMinutes: 30, location: "in_person", status: "no_show" },
-      // Annulé
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(-7), hour: timeAt(10, 0), durationMinutes: 30, location: "video", status: "completed" },
+
+      // ─── SEMAINE EN COURS — DOCTOR (densité haute, journée chargée test back-to-back) ───
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(8, 30), durationMinutes: 30, location: "in_person", status: "confirmed", motifEncrypted: encryptField("Titration basale post-hypos répétées") },
+      { patientId: patientDT2Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(9, 0), durationMinutes: 30, location: "in_person", status: "confirmed", motifEncrypted: encryptField("Bilan annuel HbA1c") },
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(9, 45), durationMinutes: 30, location: "in_person", status: "confirmed", motifEncrypted: encryptField("Suivi grossesse — 24 SA") },
+      { patientId: patientDT1Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(10, 30), durationMinutes: 45, location: "video", status: "confirmed", motifEncrypted: encryptField("Téléconsultation — ajustement ICR") },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(1), hour: timeAt(10, 15), durationMinutes: 45, location: "in_person", status: "scheduled" },
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(2), hour: timeAt(14, 0), durationMinutes: 30, location: "video", status: "pending_validation" },
+      { patientId: patientDT1Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(2), hour: timeAt(15, 30), durationMinutes: 30, location: "phone", status: "scheduled" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "hdj", date: dateAtOffset(3), hour: timeAt(11, 0), durationMinutes: 60, location: "in_person", status: "scheduled" },
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(4), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "scheduled" },
+
+      // RDV annulé (test badge gris barré)
       { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(5), hour: timeAt(16, 0), durationMinutes: 30, location: "in_person", status: "cancelled" },
-      // NURSE — test filtre membre cabinet
-      { patientId: patientDT1.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(0), hour: timeAt(13, 0), durationMinutes: 30, location: "in_person", status: "confirmed" },
-      { patientId: patientDT2.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(2), hour: timeAt(15, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
-      // Mois courant — répartis (DOCTOR)
+
+      // ─── SEMAINE PROCHAINE — DOCTOR ───
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(7), hour: timeAt(9, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT2Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(7), hour: timeAt(10, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(8), hour: timeAt(15, 30), durationMinutes: 30, location: "phone", status: "scheduled" },
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "hdj", date: dateAtOffset(9), hour: timeAt(8, 30), durationMinutes: 90, location: "in_person", status: "scheduled", motifEncrypted: encryptField("HDJ surveillance glycémique grossesse") },
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(10), hour: timeAt(10, 30), durationMinutes: 45, location: "in_person", status: "scheduled" },
+      { patientId: patientDT1Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(11), hour: timeAt(14, 0), durationMinutes: 30, location: "video", status: "scheduled" },
+
+      // ─── 2 SEMAINES SUIVANTES — DOCTOR (vue mois remplie) ───
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(14), hour: timeAt(9, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
       { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(15), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "scheduled" },
-      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(20), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(16), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT2Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(17), hour: timeAt(14, 30), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT1Extra.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(20), hour: timeAt(10, 0), durationMinutes: 30, location: "video", status: "scheduled" },
       { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(25), hour: timeAt(14, 0), durationMinutes: 45, location: "video", status: "scheduled" },
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(28), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "scheduled" },
+
+      // ─── MOIS +2 (Schedule-X range fetch fetches -7..+14after-next-month) ───
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(35), hour: timeAt(10, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientGD.id, memberId: memberDoctor.id, type: "hdj", date: dateAtOffset(42), hour: timeAt(8, 30), durationMinutes: 120, location: "in_person", status: "scheduled" },
+
+      // ─── NURSE — test filtre membre cabinet (≥2 memberships hors schema actuel) ───
+      { patientId: patientDT1.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(0), hour: timeAt(13, 0), durationMinutes: 30, location: "in_person", status: "confirmed", motifEncrypted: encryptField("Éducation pompe insuline") },
+      { patientId: patientDT2.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(2), hour: timeAt(15, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientDT1Extra.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(4), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientGD.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(9), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled", motifEncrypted: encryptField("Suivi hebdomadaire IDE — grossesse") },
+      { patientId: patientGD.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(16), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+      { patientId: patientGD.id, memberId: memberNurse.id, type: "ide", date: dateAtOffset(23), hour: timeAt(11, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
     ]
 
     // Fix M-5 round 2 review PR #431 — `skipDuplicates: true` retiré
@@ -674,6 +864,21 @@ async function main() {
     const nextWeekEnd = new Date(dateAtOffset(9))
     nextWeekEnd.setUTCHours(23, 59, 59, 999)
 
+    // 2 plages additionnelles pour densifier le test "gris hachuré" :
+    //   - Demi-journée formation continue (mardi matin de la semaine +2)
+    //   - Journée fériée fictive (lundi de Pâques fictif J+24)
+    const trainingDay = dateAtOffset(15)
+    const trainingStart = new Date(trainingDay)
+    trainingStart.setUTCHours(8, 0, 0, 0)
+    const trainingEnd = new Date(trainingDay)
+    trainingEnd.setUTCHours(12, 0, 0, 0)
+
+    const holiday = dateAtOffset(24)
+    const holidayStart = new Date(holiday)
+    holidayStart.setUTCHours(0, 0, 0, 0)
+    const holidayEnd = new Date(holiday)
+    holidayEnd.setUTCHours(23, 59, 59, 999)
+
     await prisma.memberUnavailability.createMany({
       data: [
         {
@@ -690,11 +895,33 @@ async function main() {
           reasonEncrypted: encryptField("Congés — 3 jours"),
           createdBy: doctor.id,
         },
+        {
+          memberId: memberDoctor.id,
+          startAt: trainingStart,
+          endAt: trainingEnd,
+          reasonEncrypted: encryptField("Formation continue DPC — diabétologie pédiatrique"),
+          createdBy: doctor.id,
+        },
+        {
+          memberId: memberDoctor.id,
+          startAt: holidayStart,
+          endAt: holidayEnd,
+          reasonEncrypted: encryptField("Jour férié — cabinet fermé"),
+          createdBy: doctor.id,
+        },
+        // Plage indispo NURSE (test affichage gris si filtre nurse actif)
+        {
+          memberId: memberNurse.id,
+          startAt: nextWeekStart,
+          endAt: nextWeekEnd,
+          reasonEncrypted: encryptField("Congés annuels IDE"),
+          createdBy: doctor.id,
+        },
       ],
     })
 
-    console.log(`  ✓ ${apptSeedData.length} appointments seeded (10 DOCTOR + 2 NURSE + 3 mois courant)`)
-    console.log(`  ✓ 2 plages indispo médecin seedées (test US-2504 affichage gris hachuré)`)
+    console.log(`  ✓ ${apptSeedData.length} appointments seeded sur 5 patients (DOCTOR + NURSE, -3 mois → +2 mois)`)
+    console.log(`  ✓ 5 plages indispo seedées (4 DOCTOR + 1 NURSE — test US-2504 affichage gris hachuré)`)
   } else {
     console.log(`  ✓ Appointments already seeded (${existingApptCount} existing) — skipped`)
   }

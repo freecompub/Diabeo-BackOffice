@@ -2,7 +2,66 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 
+export interface MembershipDTO {
+  memberId: number
+  memberName: string
+  serviceId: number
+  serviceName: string
+  establishment: string | null
+}
+
 export const healthcareService = {
+  /**
+   * US-2500-UI iter 4 — Memberships du user connecté.
+   *
+   * Retourne tous les `HealthcareMember` où `userId === userId`, avec
+   * leur service rattaché. Utilisé par le filtre membre cabinet du
+   * calendrier RDV pour auto-résoudre le memberId par défaut.
+   *
+   * **Schema constraint** : `HealthcareMember.userId @unique` au schema
+   * actuel garantit `array.length ≤ 1`. La branche "≥ 2 memberships"
+   * du composant `<MemberFilter>` est défensive pour US-2118 (praticiens
+   * libéraux multi-sites) si la contrainte unique est levée.
+   *
+   * **Audit log** : géré côté route handler (cf. `/api/account/me-memberships`).
+   * Fix M-3 round 2 review PR #432 — forensique HDS minimaliste.
+   *
+   * **Filter `service !== null`** : la FK `serviceId Int?` est nullable
+   * au schema (orphan possible si admin retire le serviceId pendant
+   * transition). Fix M-4 round 2 review : commentaire correct.
+   *
+   * @param userId - User.id (depuis JWT middleware-injected `x-user-id`)
+   * @returns Memberships triés par `(name, id)` (Fix L-4 tiebreaker stable),
+   *          orphelins (service NULL) filtrés.
+   */
+  async getMembershipsForUser(userId: number): Promise<MembershipDTO[]> {
+    const memberships = await prisma.healthcareMember.findMany({
+      where: { userId },
+      include: {
+        service: {
+          select: { id: true, name: true, establishment: true },
+        },
+      },
+      // Fix L-4 round 2 — tiebreaker `id` pour ordre stable (rare cas
+      // 2 memberships avec même name).
+      orderBy: [{ name: "asc" }, { id: "asc" }],
+    })
+
+    // Fix L-5 round 2 — `flatMap` au lieu de `filter + map + type predicate`
+    // (plus lisible, équivalent fonctionnel).
+    return memberships.flatMap((m) =>
+      m.service
+        ? [{
+            memberId: m.id,
+            memberName: m.name,
+            serviceId: m.service.id,
+            serviceName: m.service.name,
+            establishment: m.service.establishment,
+          }]
+        : [],
+    )
+  },
+
   /** List all healthcare services (caller must enforce NURSE+ role) */
   async listServices(auditUserId: number, ctx?: AuditContext) {
     const services = await prisma.healthcareService.findMany({
