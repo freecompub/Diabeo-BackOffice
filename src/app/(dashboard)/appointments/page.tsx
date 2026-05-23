@@ -20,7 +20,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import { isKnownRoleString, resolveHomeForRole } from "@/lib/auth/role-home"
-import { AppointmentCalendar } from "@/components/diabeo/appointments/AppointmentCalendar"
+import { AppointmentCalendarLazy } from "@/components/diabeo/appointments/AppointmentCalendarLazy"
 
 export default async function AppointmentsPage() {
   const headersList = await headers()
@@ -43,7 +43,7 @@ export default async function AppointmentsPage() {
         </div>
       </header>
 
-      <AppointmentCalendar />
+      <AppointmentCalendarLazy />
     </main>
   )
 }
