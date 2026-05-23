@@ -404,6 +404,22 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | [#421](https://github.com/freecompub/Diabeo-BackOffice/issues/421) | ✅ oui RGPD | 0.5-2 SP | Décision DPO : `optOutSkipped` count audit suffit Art. 5.2 ou ajouter API admin `proof-of-optout/[patientId]` ? |
 | [#422](https://github.com/freecompub/Diabeo-BackOffice/issues/422) | ✅ oui patients réels | 0.5-1.5 SP | Décision business V1.5 : retirer step SMS du cron OU mentionner dans CGU "pas de SMS V1" OU procurement Twilio sandbox |
 
+#### UI Pro manquantes (V1.5 — backend déployé, UI à livrer)
+
+> Découvert session dev 2026-05-23 quand un médecin a constaté l'absence
+> de pages dédiées pour le calendrier RDV et la messagerie. Backends prod
+> opérationnels (PR #392 / #412) mais pas d'UI pro de consommation.
+> Identifié dans `docs/reference/features-by-role.md` §11.d.
+
+| US | Titre | SP | Issue | Spec | Priorité |
+|----|-------|---:|-------|------|----------|
+| US-2500-UI | Calendrier RDV pro (vues mois/semaine/jour, drag&drop, filtres, modal détail + create/edit/cancel + alternatives workflow) | 13 | [#428](https://github.com/freecompub/Diabeo-BackOffice/issues/428) | [docs](../UserStory/pro-user-stories/23-rdv/US-2500-UI-calendrier-rdv-pro.md) | V1.5 |
+| US-2076-UI | Messagerie inbox pro (2-column threads + viewer, badge sidebar, polling 60s, read receipts, optimistic UI, FCM consume) | 13 | [#429](https://github.com/freecompub/Diabeo-BackOffice/issues/429) | [docs](../UserStory/pro-user-stories/08-messagerie-notifs/US-2076-UI-messagerie-inbox-pro.md) | V1.5 |
+
+> **Bloqueur** : sans ces UIs, les pros (DOCTOR/NURSE) ne peuvent ni gérer
+> leur planning ni communiquer avec leurs patients depuis le backoffice.
+> À planifier avant 1er déploiement prod patients réels.
+
 > **Dépendances** :
 >  - US-2074 (Email Resend, DONE) pour rappels email
 >  - US-2073 (Push FCM, DONE) pour rappels J-0
@@ -622,7 +638,9 @@ Auth (login/MFA/refresh), Profil patient, CGM data, Insulin therapy, Objectives,
 
 ---
 
-*Dernière mise à jour : 2026-05-16 — **Cleanup V1 ROADMAP + US-2004 → V2** : 19 US reclassées V2 retirées des sections V1 (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte (user demand : les US V2 ne doivent plus apparaître dans les sections V1 ni être comptabilisées dedans). US-2004 Captcha anti-bot reclassée V2 (bloqué procurement Cloudflare Turnstile / hCaptcha — issue GH #138). **V1 = 100 % DONE (98/98)**. V2 total ajusté : 93 (inclut les 19 US migrées V1→V2). Total global 285. US retirées : US-2004, US-2031, US-2041, US-2076bis, US-2077, US-2104, US-2106, US-2109, US-2124-2127, US-2153, US-2164, US-2165, US-2411, US-2413, US-2250, US-2252.*
+*Dernière mise à jour : 2026-05-23 — **UI Pro manquantes (V1.5) ajoutées au backlog** : 2 nouvelles US documentées dans `docs/UserStory/pro-user-stories/` après découverte session dev 2026-05-23 (médecin a constaté absence calendrier RDV + messagerie inbox dans le backoffice malgré backend prod). **US-2500-UI** (calendrier RDV pro, 13 SP, issue #428, spec `23-rdv/US-2500-UI-calendrier-rdv-pro.md`) + **US-2076-UI** (messagerie inbox pro, 13 SP, issue #429, spec `08-messagerie-notifs/US-2076-UI-messagerie-inbox-pro.md`). Section `Groupe 8 RDV > UI Pro manquantes (V1.5)` ajoutée. Backends opérationnels depuis PR #392/#412 mais UI pro non livrées — bloqueurs pre-prod patients réels.*
+
+*Précédente mise à jour : 2026-05-16 — **Cleanup V1 ROADMAP + US-2004 → V2** : 19 US reclassées V2 retirées des sections V1 (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte (user demand : les US V2 ne doivent plus apparaître dans les sections V1 ni être comptabilisées dedans). US-2004 Captcha anti-bot reclassée V2 (bloqué procurement Cloudflare Turnstile / hCaptcha — issue GH #138). **V1 = 100 % DONE (98/98)**. V2 total ajusté : 93 (inclut les 19 US migrées V1→V2). Total global 285. US retirées : US-2004, US-2031, US-2041, US-2076bis, US-2077, US-2104, US-2106, US-2109, US-2124-2127, US-2153, US-2164, US-2165, US-2411, US-2413, US-2250, US-2252.*
 
 *Précédente mise à jour : 2026-05-16 — Round 3 review PR #418 (US-2502 + US-2506) appliquée intégralement (Option C). 16 findings (1C/3H/7M/5L) → 0 résiduel. Corrections critiques round 3 : (a) CR-1 advisory lock cassé en prod — nouveau module `src/lib/db/cron-lock.ts` avec `pg.Pool({max:1})` dédié → garantit acquire/release sur la même connexion physique (round 2 utilisait `prisma.$queryRaw` partagé qui routait sur connexions différentes → release no-op silent → lock orphelin → cron bloqué) ; (b) HI-1 opt-in implicite cassé — filtre round 2 `notifPreferences: { medicalAppointments: true }` excluait silencieusement les patients sans row préférences (créée lazily) → majorité prod n'aurait reçu aucun rappel → fix `OR: [{null}, {true}]` ; (c) HI-2 SMS mock V1 mensonger — persistait `status="sent"` → fix `status="skipped"` + `errorReason="provider_mock_no_real_sms"` ; (d) HI-3 test C1 timezone laxiste → loop runtime TZ + pattern strict ; (e) MED-1 opt-out RGPD audit silencieux → count + `metadata.optOutSkipped` ; (f) MED-2 forensique by runId → GIN partial index `audit_logs(metadata->'runId')`. 2231/2231 tests verts. Migration suiveuse `20260519120000_us2502_round3_review` (GIN runId + CHECK cohérence reminders LOW-5). Runbook `docs/runbook/cron-reminders.md` créé (LOW-1).*
 
