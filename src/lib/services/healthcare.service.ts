@@ -14,14 +14,25 @@ export const healthcareService = {
   /**
    * US-2500-UI iter 4 — Memberships du user connecté.
    *
-   * Retourne tous les `HealthcareMember` où `userId === auditUserId`,
-   * avec leur service rattaché. Utilisé par le filtre membre cabinet
-   * du calendrier RDV pour auto-résoudre le memberId par défaut
-   * (DOCTOR/NURSE qui appartient à un cabinet) ou afficher un dropdown
-   * (rare cas multi-cabinets, ADMIN).
+   * Retourne tous les `HealthcareMember` où `userId === userId`, avec
+   * leur service rattaché. Utilisé par le filtre membre cabinet du
+   * calendrier RDV pour auto-résoudre le memberId par défaut.
    *
-   * Pas d'audit log nécessaire (lecture de ses propres memberships,
-   * pas de PHI patient impliqué).
+   * **Schema constraint** : `HealthcareMember.userId @unique` au schema
+   * actuel garantit `array.length ≤ 1`. La branche "≥ 2 memberships"
+   * du composant `<MemberFilter>` est défensive pour US-2118 (praticiens
+   * libéraux multi-sites) si la contrainte unique est levée.
+   *
+   * **Audit log** : géré côté route handler (cf. `/api/account/me-memberships`).
+   * Fix M-3 round 2 review PR #432 — forensique HDS minimaliste.
+   *
+   * **Filter `service !== null`** : la FK `serviceId Int?` est nullable
+   * au schema (orphan possible si admin retire le serviceId pendant
+   * transition). Fix M-4 round 2 review : commentaire correct.
+   *
+   * @param userId - User.id (depuis JWT middleware-injected `x-user-id`)
+   * @returns Memberships triés par `(name, id)` (Fix L-4 tiebreaker stable),
+   *          orphelins (service NULL) filtrés.
    */
   async getMembershipsForUser(userId: number): Promise<MembershipDTO[]> {
     const memberships = await prisma.healthcareMember.findMany({
@@ -31,20 +42,24 @@ export const healthcareService = {
           select: { id: true, name: true, establishment: true },
         },
       },
-      orderBy: { name: "asc" },
+      // Fix L-4 round 2 — tiebreaker `id` pour ordre stable (rare cas
+      // 2 memberships avec même name).
+      orderBy: [{ name: "asc" }, { id: "asc" }],
     })
 
-    // FK `serviceId` non-nullable dans schema (cf. HealthcareMember),
-    // mais TS infère nullable via include. On filtre defense-in-depth.
-    return memberships
-      .filter((m): m is typeof m & { service: NonNullable<typeof m.service> } => m.service !== null)
-      .map((m) => ({
-        memberId: m.id,
-        memberName: m.name,
-        serviceId: m.service.id,
-        serviceName: m.service.name,
-        establishment: m.service.establishment,
-      }))
+    // Fix L-5 round 2 — `flatMap` au lieu de `filter + map + type predicate`
+    // (plus lisible, équivalent fonctionnel).
+    return memberships.flatMap((m) =>
+      m.service
+        ? [{
+            memberId: m.id,
+            memberName: m.name,
+            serviceId: m.service.id,
+            serviceName: m.service.name,
+            establishment: m.service.establishment,
+          }]
+        : [],
+    )
   },
 
   /** List all healthcare services (caller must enforce NURSE+ role) */

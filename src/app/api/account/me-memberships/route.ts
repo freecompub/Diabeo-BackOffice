@@ -25,7 +25,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { healthcareService } from "@/lib/services/healthcare.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
 
 export async function GET(req: NextRequest) {
@@ -34,8 +34,25 @@ export async function GET(req: NextRequest) {
     const user = requireAuth(req)
     const items = await healthcareService.getMembershipsForUser(user.id)
 
+    // Fix M-3 round 2 review PR #432 — audit READ minimaliste pour
+    // forensique HDS (énumération memberships en cas de token volé).
+    // Pas de PHI dans metadata, juste count + kind.
+    await auditService.log({
+      userId: user.id,
+      action: "READ",
+      resource: "HEALTHCARE_SERVICE",
+      resourceId: "self",
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+      requestId: ctx.requestId,
+      metadata: { kind: "me-memberships", count: items.length },
+    })
+
     const res = NextResponse.json({ items })
+    // Fix M-1 round 2 review PR #432 — Cohérence headers ANSSI avec
+    // pattern H-2 PR #431 (`Pragma: no-cache` pour proxies HTTP/1.0).
     res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+    res.headers.set("Pragma", "no-cache")
     res.headers.set("Referrer-Policy", "no-referrer")
     res.headers.set("X-Content-Type-Options", "nosniff")
     return res

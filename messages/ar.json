@@ -276,6 +276,7 @@
     "pageTitle": "المواعيد",
     "pageSubtitle": "تقويم العيادة — عرض الشهر / الأسبوع / اليوم",
     "scopeMissingTitle": "لم يتم تحديد عيادة",
+    "scopeChooseTitle": "حدد عيادة للبدء",
     "scopeMissingDescription": "حدد عضواً من العيادة في عامل التصفية أعلاه لعرض تقويم المواعيد.",
     "loading": "جاري التحميل…",
     "errorWithSync": "فشل التحديث — آخر مزامنة في {time}",

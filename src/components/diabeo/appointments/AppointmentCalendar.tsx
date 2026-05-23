@@ -45,6 +45,7 @@ import "@schedule-x/theme-default/dist/index.css"
 import { useAppointments } from "./useAppointments"
 import { appointmentToScheduleXEvent, APPOINTMENT_CALENDARS } from "./adapter"
 import { MemberFilter } from "./MemberFilter"
+import { useMyMemberships } from "./useMyMemberships"
 
 /**
  * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
@@ -115,12 +116,52 @@ export function AppointmentCalendar({
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const range = useMemo(() => computeRange(selectedDate), [selectedDate])
 
-  // US-2500-UI iter 4 — état du filtre membre cabinet. Si `memberIdProp`
-  // est fourni en prop (page parent), on l'utilise sans dropdown.
-  // Sinon, état interne piloté par `<MemberFilter>` qui auto-résout si
-  // 1 seul membership cabinet.
-  const [memberFilterState, setMemberFilterState] = useState<number | null>(null)
-  const effectiveMemberId = memberIdProp ?? memberFilterState ?? undefined
+  // US-2500-UI iter 4 — état du filtre membre cabinet.
+  // Fix CR-1 + H-4 round 2 review PR #432 — `useMyMemberships` est appelé
+  // dans le parent (vs auparavant dans `<MemberFilter>`) pour éviter le
+  // double mount/fetch (le filter était rendu dans 2 branches return
+  // distinctes → unmount/remount à chaque transition scopeMissing).
+  const memberships = useMyMemberships()
+  // `pickedMemberId` = choix explicite user via dropdown (controlled value).
+  // Reste `null` tant que user n'a pas cliqué — auto-resolve via dérivation.
+  const [pickedMemberId, setPickedMemberId] = useState<number | null>(null)
+
+  // Fix React-Compiler lint — éviter `setState` synchronously dans useEffect
+  // (cascading renders warning). On dérive `effectiveMemberId` au render au
+  // lieu de stocker le résultat dans un state séparé synchronisé via effect.
+  // Couvre :
+  //   - prop override (parent injecte memberId)
+  //   - user pick (pickedMemberId) avec sanitization staleness
+  //   - auto-resolve si exactement 1 membership (cas DOCTOR/NURSE le plus courant)
+  // Fix H-2 round 2 — sanitize si pick pointe vers un memberId disparu
+  // (cas rare : admin retire affectation pendant la session).
+  const effectiveMemberId = useMemo<number | undefined>(() => {
+    if (memberIdProp !== undefined) return memberIdProp
+    // Si user a fait un pick explicite ET qu'il est encore dans la liste, on garde.
+    if (
+      pickedMemberId !== null
+      && memberships.items.some((m) => m.memberId === pickedMemberId)
+    ) {
+      return pickedMemberId
+    }
+    // Auto-resolve : exactement 1 membership → on l'utilise directement.
+    // (HealthcareMember.userId @unique au schema actuel = N=1 quasi-toujours.)
+    if (!memberships.loading && !memberships.error && memberships.items.length === 1) {
+      return memberships.items[0].memberId
+    }
+    return undefined
+  }, [
+    memberIdProp,
+    pickedMemberId,
+    memberships.items,
+    memberships.loading,
+    memberships.error,
+  ])
+
+  // Value affichée dans `<MemberFilter>` — soit le pick valide, soit l'auto-resolve
+  // (pour que le dropdown ≥ 2 reflète bien le défaut). Si effectiveMemberId est
+  // `undefined`, le dropdown reste vide (placeholder).
+  const filterValue = effectiveMemberId ?? null
 
   const { items, isInitialLoading, error, truncated, lastFetchedAt } = useAppointments({
     from: range.from,
@@ -175,15 +216,34 @@ export function AppointmentCalendar({
   // que l'utilisateur puisse switcher de cabinet.
   const showMemberFilter = memberIdProp === undefined && patientId === undefined
 
+  // Fix CR-1 round 2 review PR #432 — `<MemberFilter>` rendu UNE SEULE FOIS
+  // en haut du tree, pas dans 2 branches return distinctes. Évite le
+  // double mount/fetch.
+  const filterEl = showMemberFilter ? (
+    <MemberFilter
+      items={memberships.items}
+      loading={memberships.loading}
+      error={memberships.error}
+      value={filterValue}
+      onMemberChange={setPickedMemberId}
+      onRetry={memberships.refetch}
+    />
+  ) : null
+
+  // Fix M-10 round 2 — message contextualisé : si ≥2 memberships, le user
+  // doit choisir activement ; si 0, il n'a rien à faire.
+  const scopeMissingTitleKey =
+    memberships.items.length >= 2
+      ? "scopeChooseTitle"
+      : "scopeMissingTitle"
+
   if (scopeMissing) {
     return (
       <div className="flex flex-col gap-3">
-        {showMemberFilter && (
-          <MemberFilter value={memberFilterState} onMemberChange={setMemberFilterState} />
-        )}
+        {filterEl}
         <div className="rounded-lg border border-border bg-card p-12 text-center">
           <h2 className="text-lg font-medium text-foreground">
-            {t("scopeMissingTitle")}
+            {t(scopeMissingTitleKey)}
           </h2>
           <p className="mt-2 text-sm text-muted-foreground max-w-prose mx-auto">
             {t("scopeMissingDescription")}
@@ -197,9 +257,7 @@ export function AppointmentCalendar({
 
   return (
     <div className="flex flex-col gap-3">
-      {showMemberFilter && (
-        <MemberFilter value={memberFilterState} onMemberChange={setMemberFilterState} />
-      )}
+      {filterEl}
 
       {/* Status bar — fix M-6 (isInitialLoading silent polling) +
           fix H-7 (stale items conservés sur erreur) +

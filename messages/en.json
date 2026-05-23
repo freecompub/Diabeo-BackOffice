@@ -276,6 +276,7 @@
     "pageTitle": "Appointments",
     "pageSubtitle": "Practice calendar — month / week / day views",
     "scopeMissingTitle": "No practice selected",
+    "scopeChooseTitle": "Select a practice to get started",
     "scopeMissingDescription": "Select a practice member from the filter above to display the appointments calendar.",
     "loading": "Loading…",
     "errorWithSync": "Update failed — last sync at {time}",

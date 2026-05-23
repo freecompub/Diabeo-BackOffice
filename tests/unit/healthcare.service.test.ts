@@ -94,4 +94,88 @@ describe("healthcareService", () => {
       expect(result.proId).toBe(5)
     })
   })
+
+  /**
+   * Fix M-9 round 2 review PR #432 — couverture service getMembershipsForUser.
+   *
+   * Clinical behavior tested:
+   * - Mapping `HealthcareMember + service` -> DTO `MembershipDTO`
+   * - Filter `service !== null` (FK serviceId nullable -> orphan possible)
+   * - Ordering `[name asc, id asc]` tiebreaker (Fix L-4)
+   * - flatMap refactor (Fix L-5)
+   *
+   * Associated risks:
+   * - Si `service === null` était retourné, le UI crasherait en accédant
+   *   `m.service.name` sans nullcheck.
+   * - Sans tiebreaker `id`, l'ordre de 2 memberships avec même name serait
+   *   non-déterministe -> dropdown flicker entre fetchs.
+   */
+  describe("getMembershipsForUser", () => {
+    it("retourne DTOs avec mapping correct (id/name/serviceId/serviceName/establishment)", async () => {
+      prismaMock.healthcareMember.findMany.mockResolvedValue([
+        {
+          id: 1,
+          name: "Dr Sophie Martin",
+          service: { id: 1, name: "Service Diabetologie", establishment: "CHU Paris" },
+        },
+      ] as any)
+
+      const result = await healthcareService.getMembershipsForUser(42)
+      expect(result).toEqual([
+        {
+          memberId: 1,
+          memberName: "Dr Sophie Martin",
+          serviceId: 1,
+          serviceName: "Service Diabetologie",
+          establishment: "CHU Paris",
+        },
+      ])
+    })
+
+    it("filtre les orphelins (service === null) -> defense-in-depth schema", async () => {
+      prismaMock.healthcareMember.findMany.mockResolvedValue([
+        {
+          id: 1,
+          name: "Dr Valide",
+          service: { id: 1, name: "Service A", establishment: "CHU" },
+        },
+        {
+          id: 2,
+          name: "Dr Orphan",
+          service: null, // FK serviceId Int? nullable
+        },
+      ] as any)
+
+      const result = await healthcareService.getMembershipsForUser(42)
+      expect(result).toHaveLength(1)
+      expect(result[0].memberName).toBe("Dr Valide")
+    })
+
+    it("query Prisma utilise orderBy [name asc, id asc] tiebreaker (Fix L-4)", async () => {
+      prismaMock.healthcareMember.findMany.mockResolvedValue([] as any)
+      await healthcareService.getMembershipsForUser(42)
+
+      expect(prismaMock.healthcareMember.findMany).toHaveBeenCalledWith({
+        where: { userId: 42 },
+        include: {
+          service: { select: { id: true, name: true, establishment: true } },
+        },
+        orderBy: [{ name: "asc" }, { id: "asc" }],
+      })
+    })
+
+    it("retourne tableau vide si aucun membership (cas patient pur)", async () => {
+      prismaMock.healthcareMember.findMany.mockResolvedValue([] as any)
+      const result = await healthcareService.getMembershipsForUser(42)
+      expect(result).toEqual([])
+    })
+
+    it("filtre par userId (anti-leak cross-tenant)", async () => {
+      prismaMock.healthcareMember.findMany.mockResolvedValue([] as any)
+      await healthcareService.getMembershipsForUser(999)
+      expect(prismaMock.healthcareMember.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { userId: 999 } }),
+      )
+    })
+  })
 })

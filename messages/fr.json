@@ -276,6 +276,7 @@
     "pageTitle": "Rendez-vous",
     "pageSubtitle": "Calendrier RDV cabinet — vues mois / semaine / jour",
     "scopeMissingTitle": "Aucun cabinet sélectionné",
+    "scopeChooseTitle": "Sélectionnez un cabinet pour commencer",
     "scopeMissingDescription": "Sélectionnez un membre cabinet dans le filtre ci-dessus pour afficher le calendrier des rendez-vous.",
     "loading": "Chargement…",
     "errorWithSync": "Mise à jour échouée — dernière sync à {time}",

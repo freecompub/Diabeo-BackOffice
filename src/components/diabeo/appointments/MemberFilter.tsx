@@ -1,27 +1,31 @@
 "use client"
 
 /**
- * MemberFilter — dropdown filtre membre cabinet pour US-2500-UI.
+ * MemberFilter — dropdown filtre membre cabinet (stateless display).
  *
- * Comportements selon nombre de memberships du user :
- *   - 0 membership → message "Pas de cabinet rattaché"
- *     (peut arriver pour ADMIN sans HealthcareMember row)
- *   - 1 membership → label statique "Dr Sophie Martin · CHU Paris"
- *     (pas de dropdown, info contextuelle uniquement)
- *   - ≥2 memberships → dropdown Select shadcn (cas rare multi-cabinets)
+ * Fix CR-1 + H-4 round 2 review PR #432 — Composant **pur stateless**
+ * qui reçoit `items` / `loading` / `error` du parent. Plus de `useEffect`
+ * mutant le state parent (anti-pattern React "you might not need an
+ * effect"). Plus de hook `useMyMemberships` propre → plus de double
+ * fetch dû au remount entre branches return du parent.
  *
- * Loading state : skeleton compact.
- * Error state : badge erreur + bouton réessayer.
+ * L'auto-select logic est désormais dans `<AppointmentCalendar>` qui
+ * a la source of truth `useMyMemberships` + `manualMemberId`.
  *
- * Émet `onMemberChange(memberId | null)` au parent. Le parent (`<AppointmentCalendar>`)
- * gère le state authority et le passe à `useAppointments({memberId})`.
+ * Comportements selon nombre de memberships :
+ *   - 0 → message "Pas de cabinet rattaché"
+ *   - 1 → label statique "Dr X · Service Y"
+ *   - ≥ 2 → dropdown Select shadcn (cas défensif US-2118 multi-cabinets V1.5)
  *
- * Auto-sélection au mount : si exactement 1 membership, fire
- * `onMemberChange(items[0].memberId)` immédiatement (évite que le parent
- * affiche "Sélectionnez un filtre" entre le mount et la sélection).
+ * Loading state : skeleton avec `role="status"` + `aria-busy`.
+ * Error state : badge `role="alert"` + bouton "Réessayer" (callback parent).
+ *
+ * Note L-1 review : `HealthcareMember.userId @unique` au schema actuel
+ * garantit `items.length ≤ 1`. La branche ≥ 2 est défensive pour
+ * US-2118 (praticiens libéraux multi-sites) si la contrainte unique
+ * est levée plus tard.
  */
 
-import { useEffect } from "react"
 import { useTranslations } from "next-intl"
 import {
   Select,
@@ -30,40 +34,61 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { useMyMemberships } from "./useMyMemberships"
+import type { Membership } from "./useMyMemberships"
 
 export interface MemberFilterProps {
+  /** Liste des memberships fournie par le parent (lift state up H-4). */
+  items: Membership[]
+  /** Loading state du parent (initial fetch en cours). */
+  loading: boolean
+  /** Error state du parent (fetch failed). */
+  error: string | null
   /** memberId sélectionné (controlled). */
   value: number | null
-  /** Callback quand la sélection change (ou auto-set au mount). */
+  /** Callback sélection changée. Doit avoir identity stable (setter ou useCallback). */
   onMemberChange: (memberId: number | null) => void
+  /** Callback "Réessayer" si erreur (consume `refetch` du hook côté parent). */
+  onRetry?: () => void
 }
 
-export function MemberFilter({ value, onMemberChange }: MemberFilterProps) {
+export function MemberFilter({
+  items,
+  loading,
+  error,
+  value,
+  onMemberChange,
+  onRetry,
+}: MemberFilterProps) {
   const t = useTranslations("appointments")
-  const { items, loading, error } = useMyMemberships()
-
-  // Auto-select unique membership au mount (cas dominant DOCTOR/NURSE).
-  useEffect(() => {
-    if (loading || error) return
-    if (items.length === 1 && value === null) {
-      onMemberChange(items[0].memberId)
-    }
-  }, [items, loading, error, value, onMemberChange])
+  const tCommon = useTranslations("common")
 
   if (loading) {
+    // Fix M-7 round 2 — `role="status"` + `aria-busy` + `aria-live`
+    // pour annonce lecteur d'écran WCAG 2.1 SC 4.1.3.
     return (
       <div
-        className="h-9 w-64 animate-pulse rounded-md bg-muted"
+        role="status"
+        aria-busy="true"
+        aria-live="polite"
         aria-label={t("loading")}
+        className="h-9 w-64 animate-pulse rounded-md bg-muted"
       />
     )
   }
 
   if (error) {
     return (
-      <div role="alert" className="text-xs text-red-600">
-        {t("memberFilterError")}
+      <div role="alert" className="text-xs text-red-600 flex items-center gap-2">
+        <span>{t("memberFilterError")}</span>
+        {onRetry && (
+          <button
+            type="button"
+            onClick={onRetry}
+            className="underline hover:no-underline"
+          >
+            {tCommon("retry")}
+          </button>
+        )}
       </div>
     )
   }
@@ -88,17 +113,24 @@ export function MemberFilter({ value, onMemberChange }: MemberFilterProps) {
     )
   }
 
-  // ≥ 2 memberships — dropdown.
+  // ≥ 2 memberships — dropdown (cas défensif US-2118 multi-cabinets).
   return (
     <div className="flex items-center gap-2 text-sm">
-      <label htmlFor="member-filter" className="text-muted-foreground">
+      <label id="member-filter-label" className="text-muted-foreground">
         {t("memberLabel")} :
       </label>
       <Select
         value={value !== null ? String(value) : undefined}
         onValueChange={(v) => onMemberChange(Number(v))}
       >
-        <SelectTrigger id="member-filter" className="w-72">
+        {/* Fix M-7 — `aria-labelledby` (vs `htmlFor` qui peut être consommé
+            par un wrapper interne Base UI) + `aria-invalid` si error. */}
+        <SelectTrigger
+          id="member-filter"
+          aria-labelledby="member-filter-label"
+          aria-invalid={error !== null && error !== undefined ? "true" : undefined}
+          className="w-72"
+        >
           <SelectValue placeholder={t("memberPlaceholder")} />
         </SelectTrigger>
         <SelectContent>
