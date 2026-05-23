@@ -92,7 +92,7 @@ export function AppointmentCalendar({
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const range = useMemo(() => computeRange(selectedDate), [selectedDate])
 
-  const { items, loading, error, truncated } = useAppointments({
+  const { items, isInitialLoading, error, truncated, lastFetchedAt } = useAppointments({
     from: range.from,
     to: range.to,
     memberId,
@@ -158,18 +158,26 @@ export function AppointmentCalendar({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Status bar minimal — loading / error / truncated */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
+      {/* Status bar — fix M-6 (isInitialLoading vs polling silent) +
+          fix H-7 (stale items conservés sur erreur) + fix H-4 (i18n).
+          La pluralisation FR "rendez-vous" est invariable. */}
+      <div
+        className="flex items-center justify-between text-xs text-muted-foreground"
+        aria-live="polite"
+      >
         <div className="flex items-center gap-3">
-          {loading && <span aria-live="polite">Chargement…</span>}
+          {isInitialLoading && <span>Chargement…</span>}
           {error && (
-            <span role="alert" className="text-red-600">
-              Erreur : {error}
+            <span role="alert" className="text-amber-700">
+              Mise à jour échouée
+              {lastFetchedAt && (
+                <> — dernière sync à {lastFetchedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</>
+              )}
             </span>
           )}
-          {!loading && !error && (
-            <span aria-live="polite">
-              {items.length} rendez-vous{items.length > 1 ? "s" : ""}
+          {!isInitialLoading && !error && (
+            <span>
+              {items.length} rendez-vous
               {truncated && " (résultats tronqués — affinez la plage)"}
             </span>
           )}

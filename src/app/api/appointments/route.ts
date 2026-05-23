@@ -78,7 +78,15 @@ export async function GET(req: NextRequest) {
     }
 
     const out = await rdvAppointmentService.listInRange(parsed.data, user.id, ctx)
-    return NextResponse.json(out)
+    const res = NextResponse.json(out)
+    // Fix H-2 round 2 review PR #431 — Headers ANSSI RGS §4.5 + RGPD
+    // Art. 32 sur la réponse list qui contient PHI déchiffrée (motif).
+    // Empêche cache browser disk + CDN/proxy entreprise + back button.
+    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+    res.headers.set("Pragma", "no-cache")
+    res.headers.set("Referrer-Policy", "no-referrer")
+    res.headers.set("X-Content-Type-Options", "nosniff")
+    return res
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
     return mapErrorToResponse(e, "appointments GET", ctx.requestId)
