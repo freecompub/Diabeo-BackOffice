@@ -2,7 +2,51 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 
+export interface MembershipDTO {
+  memberId: number
+  memberName: string
+  serviceId: number
+  serviceName: string
+  establishment: string | null
+}
+
 export const healthcareService = {
+  /**
+   * US-2500-UI iter 4 — Memberships du user connecté.
+   *
+   * Retourne tous les `HealthcareMember` où `userId === auditUserId`,
+   * avec leur service rattaché. Utilisé par le filtre membre cabinet
+   * du calendrier RDV pour auto-résoudre le memberId par défaut
+   * (DOCTOR/NURSE qui appartient à un cabinet) ou afficher un dropdown
+   * (rare cas multi-cabinets, ADMIN).
+   *
+   * Pas d'audit log nécessaire (lecture de ses propres memberships,
+   * pas de PHI patient impliqué).
+   */
+  async getMembershipsForUser(userId: number): Promise<MembershipDTO[]> {
+    const memberships = await prisma.healthcareMember.findMany({
+      where: { userId },
+      include: {
+        service: {
+          select: { id: true, name: true, establishment: true },
+        },
+      },
+      orderBy: { name: "asc" },
+    })
+
+    // FK `serviceId` non-nullable dans schema (cf. HealthcareMember),
+    // mais TS infère nullable via include. On filtre defense-in-depth.
+    return memberships
+      .filter((m): m is typeof m & { service: NonNullable<typeof m.service> } => m.service !== null)
+      .map((m) => ({
+        memberId: m.id,
+        memberName: m.name,
+        serviceId: m.service.id,
+        serviceName: m.service.name,
+        establishment: m.service.establishment,
+      }))
+  },
+
   /** List all healthcare services (caller must enforce NURSE+ role) */
   async listServices(auditUserId: number, ctx?: AuditContext) {
     const services = await prisma.healthcareService.findMany({

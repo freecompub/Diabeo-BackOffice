@@ -81,10 +81,15 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 
 ### Filtres et scope
 
-- [ ] Filtre par membre cabinet (dropdown — DOCTOR voit son propre planning par défaut, ADMIN voit tous)
+- [x] **Filtre par membre cabinet** ✅ (iter 4 — PR `feat/us-2500-ui-member-filter`)
+  - Endpoint `/api/account/me-memberships` (auth, NURSE+ ont des memberships)
+  - Hook `useMyMemberships` + composant `<MemberFilter>` shadcn Select
+  - Auto-résolution si 1 seul membership (cas dominant DOCTOR/NURSE)
+  - Label statique si 1 membership · dropdown si ≥ 2 (cas multi-cabinets)
+  - Empty state distinct si 0 membership (ADMIN sans HealthcareMember)
 - [ ] Filtre par statut (multi-select avec defaults : scheduled + confirmed + pending_validation)
 - [ ] Filtre par patient (search via PatientId)
-- [ ] Range query optimisée (`/api/appointments?from=X&to=Y&memberId=Z`)
+- [x] Range query optimisée (`/api/appointments?from=X&to=Y&memberId=Z`) ✅ iter 2
 
 ### Création / édition
 

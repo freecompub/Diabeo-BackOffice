@@ -44,6 +44,7 @@ import { createEventsServicePlugin } from "@schedule-x/events-service"
 import "@schedule-x/theme-default/dist/index.css"
 import { useAppointments } from "./useAppointments"
 import { appointmentToScheduleXEvent, APPOINTMENT_CALENDARS } from "./adapter"
+import { MemberFilter } from "./MemberFilter"
 
 /**
  * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
@@ -57,7 +58,11 @@ const SX_LOCALE_BY_NEXTINTL: Record<string, string> = {
 }
 
 export interface AppointmentCalendarProps {
-  /** Scope cabinet : RDV d'un membre healthcare-service. */
+  /**
+   * Scope cabinet initial passé en prop (override le filtre interne).
+   * Si undefined, le composant utilise `<MemberFilter>` pour résoudre
+   * via `/api/account/me-memberships` (auto-select si 1 seul membership).
+   */
   memberId?: number
   /** Scope patient : RDV d'un patient (alternative à memberId). */
   patientId?: number
@@ -97,7 +102,7 @@ function computeRange(selectedDate: Date): { from: Date; to: Date } {
 }
 
 export function AppointmentCalendar({
-  memberId,
+  memberId: memberIdProp,
   patientId,
 }: AppointmentCalendarProps) {
   const t = useTranslations("appointments")
@@ -110,10 +115,17 @@ export function AppointmentCalendar({
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const range = useMemo(() => computeRange(selectedDate), [selectedDate])
 
+  // US-2500-UI iter 4 — état du filtre membre cabinet. Si `memberIdProp`
+  // est fourni en prop (page parent), on l'utilise sans dropdown.
+  // Sinon, état interne piloté par `<MemberFilter>` qui auto-résout si
+  // 1 seul membership cabinet.
+  const [memberFilterState, setMemberFilterState] = useState<number | null>(null)
+  const effectiveMemberId = memberIdProp ?? memberFilterState ?? undefined
+
   const { items, isInitialLoading, error, truncated, lastFetchedAt } = useAppointments({
     from: range.from,
     to: range.to,
-    memberId,
+    memberId: effectiveMemberId,
     patientId,
   })
 
@@ -155,17 +167,28 @@ export function AppointmentCalendar({
     eventsService.set(events)
   }, [events, calendar, eventsService])
 
-  // Scope missing — message UX clair via i18n (Fix M-7 round 2 review).
-  const scopeMissing = memberId === undefined && patientId === undefined
+  // US-2500-UI iter 4 — Empty state si aucun scope résolu (memberId+patientId
+  // tous deux undefined, le filtre cabinet n'a rien remonté ou pas encore résolu).
+  const scopeMissing = effectiveMemberId === undefined && patientId === undefined
+
+  // Le `<MemberFilter>` est toujours rendu (sauf si patientId-only scope) pour
+  // que l'utilisateur puisse switcher de cabinet.
+  const showMemberFilter = memberIdProp === undefined && patientId === undefined
+
   if (scopeMissing) {
     return (
-      <div className="rounded-lg border border-border bg-card p-12 text-center">
-        <h2 className="text-lg font-medium text-foreground">
-          {t("scopeMissingTitle")}
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground max-w-prose mx-auto">
-          {t("scopeMissingDescription")}
-        </p>
+      <div className="flex flex-col gap-3">
+        {showMemberFilter && (
+          <MemberFilter value={memberFilterState} onMemberChange={setMemberFilterState} />
+        )}
+        <div className="rounded-lg border border-border bg-card p-12 text-center">
+          <h2 className="text-lg font-medium text-foreground">
+            {t("scopeMissingTitle")}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground max-w-prose mx-auto">
+            {t("scopeMissingDescription")}
+          </p>
+        </div>
       </div>
     )
   }
@@ -174,6 +197,10 @@ export function AppointmentCalendar({
 
   return (
     <div className="flex flex-col gap-3">
+      {showMemberFilter && (
+        <MemberFilter value={memberFilterState} onMemberChange={setMemberFilterState} />
+      )}
+
       {/* Status bar — fix M-6 (isInitialLoading silent polling) +
           fix H-7 (stale items conservés sur erreur) +
           fix H-4 (i18n ICU plural correct, "rendez-vous" invariable FR). */}
