@@ -52,13 +52,28 @@ function combineDateTime(date: string, hour: string | null): string {
   return `${datePart} ${timePart}`
 }
 
+/**
+ * Fix CR-3 round 2 review PR #431 — `Date.setMinutes` natif gère le
+ * rollover minuit correctement. L'ancien `% 24` perdait les RDV soirée
+ * (22:00 + 180min retournait `01:00` même jour au lieu de J+1 01:00),
+ * ce qui produisait `end < start` côté Schedule-X (events corrompus).
+ *
+ * Use `Date(Date.UTC(...))` pour éviter de dépendre de la TZ locale du
+ * navigateur ; on garde le wall-clock `yyyy-mm-dd hh:mm` (cohérent avec
+ * `combineDateTime` qui ne convertit pas non plus).
+ */
 function addMinutes(dateTime: string, minutes: number): string {
   const [datePart, timePart] = dateTime.split(" ")
+  const [y, mo, d] = datePart.split("-").map(Number)
   const [h, m] = timePart.split(":").map(Number)
-  const total = h * 60 + m + minutes
-  const newH = Math.floor(total / 60) % 24
-  const newM = total % 60
-  return `${datePart} ${String(newH).padStart(2, "0")}:${String(newM).padStart(2, "0")}`
+  const base = new Date(Date.UTC(y, mo - 1, d, h, m, 0))
+  base.setUTCMinutes(base.getUTCMinutes() + minutes)
+  const yy = base.getUTCFullYear()
+  const mm = String(base.getUTCMonth() + 1).padStart(2, "0")
+  const dd = String(base.getUTCDate()).padStart(2, "0")
+  const hh = String(base.getUTCHours()).padStart(2, "0")
+  const mi = String(base.getUTCMinutes()).padStart(2, "0")
+  return `${yy}-${mm}-${dd} ${hh}:${mi}`
 }
 
 /**
