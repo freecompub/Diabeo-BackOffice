@@ -30,6 +30,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react"
+import { useLocale, useTranslations } from "next-intl"
 import {
   ScheduleXCalendar,
   useNextCalendarApp,
@@ -43,6 +44,17 @@ import { createEventsServicePlugin } from "@schedule-x/events-service"
 import "@schedule-x/theme-default/dist/index.css"
 import { useAppointments } from "./useAppointments"
 import { appointmentToScheduleXEvent, APPOINTMENT_CALENDARS } from "./adapter"
+
+/**
+ * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
+ * la locale active next-intl (fr/en/ar). RTL pour arabe à valider
+ * post-merge (Schedule-X v4 supporte `ar-DZ` natif depuis v4.1).
+ */
+const SX_LOCALE_BY_NEXTINTL: Record<string, string> = {
+  fr: "fr-FR",
+  en: "en-US",
+  ar: "ar-DZ",
+}
 
 export interface AppointmentCalendarProps {
   /** Scope cabinet : RDV d'un membre healthcare-service. */
@@ -88,8 +100,14 @@ export function AppointmentCalendar({
   memberId,
   patientId,
 }: AppointmentCalendarProps) {
+  const t = useTranslations("appointments")
+  const locale = useLocale()
+  const sxLocale = SX_LOCALE_BY_NEXTINTL[locale] ?? "fr-FR"
+
   // selectedDate change quand l'utilisateur navigue dans le calendrier.
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  // Fix M-5 — `useState(() => new Date())` lazy initializer pour éviter
+  // de re-créer Date à chaque render (et stable strict-mode double-render).
+  const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const range = useMemo(() => computeRange(selectedDate), [selectedDate])
 
   const { items, isInitialLoading, error, truncated, lastFetchedAt } = useAppointments({
@@ -113,7 +131,7 @@ export function AppointmentCalendar({
     views: [createViewMonthGrid(), createViewWeek(), createViewDay()],
     events,
     selectedDate: selectedDate.toISOString().split("T")[0],
-    locale: "fr-FR",
+    locale: sxLocale,
     calendars: APPOINTMENT_CALENDARS,
     plugins: [eventsService],
     callbacks: {
@@ -137,18 +155,16 @@ export function AppointmentCalendar({
     eventsService.set(events)
   }, [events, calendar, eventsService])
 
-  // Scope missing — message UX clair (à remplacer par filtre cabinet dans
-  // l'itération suivante).
+  // Scope missing — message UX clair via i18n (Fix M-7 round 2 review).
   const scopeMissing = memberId === undefined && patientId === undefined
   if (scopeMissing) {
     return (
       <div className="rounded-lg border border-border bg-card p-12 text-center">
         <h2 className="text-lg font-medium text-foreground">
-          Sélectionnez un filtre
+          {t("scopeMissingTitle")}
         </h2>
         <p className="mt-2 text-sm text-muted-foreground max-w-prose mx-auto">
-          Pour afficher le calendrier, sélectionnez un membre cabinet (DOCTOR/NURSE)
-          ou un patient. Filtres dropdown disponibles dans la prochaine itération.
+          {t("scopeMissingDescription")}
         </p>
       </div>
     )
@@ -158,36 +174,38 @@ export function AppointmentCalendar({
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Status bar — fix M-6 (isInitialLoading vs polling silent) +
-          fix H-7 (stale items conservés sur erreur) + fix H-4 (i18n).
-          La pluralisation FR "rendez-vous" est invariable. */}
+      {/* Status bar — fix M-6 (isInitialLoading silent polling) +
+          fix H-7 (stale items conservés sur erreur) +
+          fix H-4 (i18n ICU plural correct, "rendez-vous" invariable FR). */}
       <div
         className="flex items-center justify-between text-xs text-muted-foreground"
         aria-live="polite"
       >
         <div className="flex items-center gap-3">
-          {isInitialLoading && <span>Chargement…</span>}
+          {isInitialLoading && <span>{t("loading")}</span>}
           {error && (
             <span role="alert" className="text-amber-700">
-              Mise à jour échouée
-              {lastFetchedAt && (
-                <> — dernière sync à {lastFetchedAt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</>
-              )}
+              {lastFetchedAt
+                ? t("errorWithSync", {
+                    time: lastFetchedAt.toLocaleTimeString(sxLocale, {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    }),
+                  })
+                : t("errorNoSync")}
             </span>
           )}
           {!isInitialLoading && !error && (
             <span>
-              {items.length} rendez-vous
-              {truncated && " (résultats tronqués — affinez la plage)"}
+              {t("count", { count: items.length })}
+              {truncated && ` ${t("truncated")}`}
             </span>
           )}
         </div>
       </div>
 
-      <div
-        className="rounded-lg border border-border bg-card overflow-hidden"
-        style={{ minHeight: "640px" }}
-      >
+      {/* Fix L-1 — Tailwind class au lieu de magic inline style. */}
+      <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px]">
         <ScheduleXCalendar calendarApp={calendar} />
       </div>
     </div>

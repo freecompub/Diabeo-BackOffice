@@ -131,10 +131,23 @@ describe("appointmentToScheduleXEvent", () => {
     })
   })
 
-  describe("title anti-PHI strict", () => {
-    it("title = type uppercase si présent", () => {
+  describe("title anti-PHI strict (whitelist L-3)", () => {
+    it("title = type uppercase si type whitelisted (diabeto)", () => {
       const evt = appointmentToScheduleXEvent(makeAppt({ type: "diabeto" }))
       expect(evt.title).toBe("DIABETO")
+    })
+
+    it("title = type uppercase pour ide / hdj", () => {
+      expect(appointmentToScheduleXEvent(makeAppt({ type: "ide" })).title).toBe("IDE")
+      expect(appointmentToScheduleXEvent(makeAppt({ type: "hdj" })).title).toBe("HDJ")
+    })
+
+    it("L-3 : type INCONNU (PHI accidentelle) → 'OTHER' au lieu de raw uppercase", () => {
+      // Simule backend qui laisse passer un type arbitraire (anti-PHI leak)
+      const evt = appointmentToScheduleXEvent(makeAppt({ type: "Mme Martine Dupont" }))
+      expect(evt.title).toBe("OTHER")
+      expect(evt.title).not.toContain("MARTINE")
+      expect(evt.title).not.toContain("DUPONT")
     })
 
     it("title = 'RDV' fallback si type null", () => {
@@ -142,13 +155,23 @@ describe("appointmentToScheduleXEvent", () => {
       expect(evt.title).toBe("RDV")
     })
 
-    it("title NE contient PAS le motif (cf. H-3 + DTO sans motif)", () => {
+    it("title NE contient JAMAIS de PHI identifiable", () => {
       const evt = appointmentToScheduleXEvent(makeAppt())
-      // motif n'est plus dans le shape AppointmentListItem (cf. H-3).
-      // Test defense-in-depth : title ne doit jamais leaker patientId.
       expect(evt.title).not.toContain("42") // patientId
       expect(evt.title).not.toContain("M.") // pas de civilité
       expect(evt.title).not.toContain("@")  // pas d'email
+    })
+  })
+
+  describe("M-3 : RDV sans heure → calendarId unscheduled (visuel distinct)", () => {
+    it("hour=null → calendarId 'unscheduled' (couleur grise)", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ hour: null }))
+      expect(evt.calendarId).toBe("unscheduled")
+    })
+
+    it("hour présent → calendarId selon status (pas unscheduled)", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ hour: "09:30:00", status: "confirmed" }))
+      expect(evt.calendarId).toBe("confirmed")
     })
   })
 
@@ -160,10 +183,11 @@ describe("appointmentToScheduleXEvent", () => {
   })
 
   describe("APPOINTMENT_CALENDARS palette WCAG AA", () => {
-    it("expose 6 calendars correspondant aux 6 statuts", () => {
-      expect(Object.keys(APPOINTMENT_CALENDARS)).toHaveLength(6)
+    it("expose 7 calendars (6 statuts + unscheduled M-3)", () => {
+      expect(Object.keys(APPOINTMENT_CALENDARS)).toHaveLength(7)
       expect(APPOINTMENT_CALENDARS.scheduled.lightColors.main).toBe("#0D9488")
       expect(APPOINTMENT_CALENDARS.noShow.lightColors.main).toBe("#991B1B")
+      expect(APPOINTMENT_CALENDARS.unscheduled.lightColors.main).toBe("#9CA3AF")
     })
   })
 })

@@ -1,6 +1,24 @@
 /**
  * Adapter `AppointmentListItem` API → Schedule-X event.
  *
+ * ## Contrat timezone (Fix H-5 round 2 review PR #431 — documentation)
+ *
+ * Backend stocke `date` (`@db.Date`) + `hour` (`@db.Time()`) séparément
+ * **sans timezone** = wall-clock du cabinet (par convention Europe/Paris).
+ *
+ * L'adapter ne fait AUCUNE conversion timezone : l'heure stockée
+ * "09:30" est rendue "09:30" au navigateur. Schedule-X interprète comme
+ * heure locale du navigateur — donc OK tant que le DOCTOR/IDE consulte
+ * depuis un fuseau aligné avec le cabinet.
+ *
+ * **Risque résiduel V1** : DOCTOR voyage à NYC (UTC-5) consulte calendrier
+ * Paris cabinet → "09:30 Paris" affiché comme "09:30 NYC" → confusion.
+ *
+ * **Fix V1.5 (issue à créer)** : intégrer `HealthcareService.timezone`
+ * (à ajouter au schema) + conversion `Intl.DateTimeFormat({timeZone})`
+ * cohérente avec pattern PR #418 round 2 C1 (`formatDateTime` messagerie
+ * et reminders RDV).
+ *
  * Backend stocke `date` (yyyy-mm-dd) + `hour` (hh:mm:ss) séparément
  * (`@db.Date` + `@db.Time()` timezone-less). On combine en string locale
  * `"yyyy-mm-dd hh:mm"` attendue par Schedule-X (cf. docs sx events format).
@@ -37,6 +55,29 @@ const STATUS_TO_CALENDAR_ID: Record<string, string> = {
   completed: "completed",
   no_show: "noShow",
 }
+
+/**
+ * Fix L-3 round 2 review PR #431 — Whitelist des types autorisés.
+ * Si le backend laisse passer un `type` arbitraire (PHI accidentelle :
+ * nom patient, motif...), on tombe sur "OTHER" au lieu d'afficher
+ * `appt.type.toUpperCase()` raw qui leakerait dans le calendrier.
+ *
+ * À aligner avec la doc product des types (`AppointmentType` en
+ * `appointment.service.ts:7` mais le backend route Zod accepte
+ * `z.string().trim().max(50)` → tout string est autorisé).
+ */
+const KNOWN_APPOINTMENT_TYPES = new Set(["ide", "diabeto", "hdj"])
+
+/**
+ * Fix M-3 round 2 review PR #431 — RDV sans heure (`hour=null`) sont
+ * affichés sur le calendrier avec `calendarId="unscheduled"` (couleur
+ * grise rayée) pour signaler visuellement à l'utilisateur que l'heure
+ * 09:00 affichée est un FALLBACK et non l'heure réelle planifiée.
+ *
+ * Évite la confusion clinique (DOCTOR croit RDV à 9h réel et planifie
+ * dessus).
+ */
+const UNSCHEDULED_CALENDAR_ID = "unscheduled"
 
 /**
  * Combine `date` (yyyy-mm-dd) + `hour` (hh:mm:ss) en `"yyyy-mm-dd hh:mm"`.
@@ -88,13 +129,27 @@ export function appointmentToScheduleXEvent(appt: AppointmentListItem): Schedule
   const durationMin = appt.durationMinutes ?? 30
   const end = addMinutes(start, durationMin)
 
+  // Fix L-3 — whitelist types : si type inconnu (ou PHI accidentelle),
+  // afficher "OTHER" plutôt que `appt.type.toUpperCase()` raw.
+  const safeType =
+    appt.type && KNOWN_APPOINTMENT_TYPES.has(appt.type)
+      ? appt.type.toUpperCase()
+      : appt.type
+        ? "OTHER"
+        : "RDV"
+
+  // Fix M-3 — RDV sans heure → calendarId "unscheduled" (visuel distinct).
+  const calendarId = appt.hour === null
+    ? UNSCHEDULED_CALENDAR_ID
+    : STATUS_TO_CALENDAR_ID[appt.status] ?? "scheduled"
+
   return {
     id: String(appt.id),
-    // Title anti-PHI : statut + type seulement (pas nom patient ni motif).
-    title: appt.type ? `${appt.type.toUpperCase()}` : "RDV",
+    // Title anti-PHI : statut + type whitelisted seulement.
+    title: safeType,
     start,
     end,
-    calendarId: STATUS_TO_CALENDAR_ID[appt.status] ?? "scheduled",
+    calendarId,
   }
 }
 
@@ -149,6 +204,15 @@ export const APPOINTMENT_CALENDARS = {
       main: "#991B1B", // red-700 (very-low glycemia critical)
       container: "#FEF2F2", // red-50
       onContainer: "#7F1D1D", // red-900
+    },
+  },
+  // Fix M-3 — RDV sans heure (hour=null), visuellement distinct.
+  unscheduled: {
+    colorName: "unscheduled",
+    lightColors: {
+      main: "#9CA3AF", // gray-400 (less prominent)
+      container: "#F3F4F6", // gray-100
+      onContainer: "#374151", // gray-700
     },
   },
 } as const

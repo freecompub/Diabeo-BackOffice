@@ -37,6 +37,7 @@ import {
   Syringe,
   Smartphone,
   Home,
+  CalendarClock,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -134,7 +135,9 @@ const navItems: NavItem[] = [
   { href: HOME_HREF_MARKER, labelKey: "dashboard", icon: LayoutDashboard },
   { href: "/patients", labelKey: "patients", icon: Users },
   // US-2500-UI — Calendrier RDV pro (issue #428, spec docs/UserStory/.../23-rdv/).
-  { href: "/appointments", labelKey: "appointments", icon: CalendarDays, minRole: "NURSE" },
+  // Fix L-2 round 2 review — `CalendarClock` (vs `CalendarDays` partagé avec /weekly)
+  // pour distinguer visuellement dans la sidebar collapsed (icône seule).
+  { href: "/appointments", labelKey: "appointments", icon: CalendarClock, minRole: "NURSE" },
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
   { href: "/weekly", labelKey: "weekly", icon: CalendarDays },

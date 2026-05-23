@@ -274,7 +274,21 @@
   },
   "appointments": {
     "pageTitle": "Appointments",
-    "pageSubtitle": "Practice calendar — month / week / day views"
+    "pageSubtitle": "Practice calendar — month / week / day views",
+    "scopeMissingTitle": "Select a filter",
+    "scopeMissingDescription": "To display the calendar, select a practice member (doctor/nurse) or a patient. Dropdown filters available in the next iteration.",
+    "loading": "Loading…",
+    "errorWithSync": "Update failed — last sync at {time}",
+    "errorNoSync": "Update failed",
+    "count": "{count, plural, =0 {No appointments} one {1 appointment} other {# appointments}}",
+    "truncated": "(results truncated — narrow the range)",
+    "unscheduledTitle": "Unscheduled",
+    "type": {
+      "ide": "Nurse",
+      "diabeto": "Diabetology",
+      "hdj": "Day hospital",
+      "other": "Consultation"
+    }
   },
   "weekly": {
     "title": "Weekly View",
