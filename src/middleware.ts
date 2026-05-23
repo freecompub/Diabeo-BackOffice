@@ -200,5 +200,7 @@ export const config = {
     "/weekly/:path*",
     "/adjustment-proposals/:path*",
     "/events/:path*",
+    /** US-2500-UI — Calendrier RDV pro. */
+    "/appointments/:path*",
   ],
 }

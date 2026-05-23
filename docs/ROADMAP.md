@@ -411,10 +411,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 > opérationnels (PR #392 / #412) mais pas d'UI pro de consommation.
 > Identifié dans `docs/reference/features-by-role.md` §11.d.
 
-| US | Titre | SP | Issue | Spec | Priorité |
-|----|-------|---:|-------|------|----------|
-| US-2500-UI | Calendrier RDV pro (vues mois/semaine/jour, drag&drop, filtres, modal détail + create/edit/cancel + alternatives workflow) | 13 | [#428](https://github.com/freecompub/Diabeo-BackOffice/issues/428) | [docs](../UserStory/pro-user-stories/23-rdv/US-2500-UI-calendrier-rdv-pro.md) | V1.5 |
-| US-2076-UI | Messagerie inbox pro (2-column threads + viewer, badge sidebar, polling 60s, read receipts, optimistic UI, FCM consume) | 13 | [#429](https://github.com/freecompub/Diabeo-BackOffice/issues/429) | [docs](../UserStory/pro-user-stories/08-messagerie-notifs/US-2076-UI-messagerie-inbox-pro.md) | V1.5 |
+| US | Titre | SP | Issue | Spec | Priorité | Statut |
+|----|-------|---:|-------|------|----------|--------|
+| US-2500-UI | Calendrier RDV pro (vues mois/semaine/jour, drag&drop, filtres, modal détail + create/edit/cancel + alternatives workflow) | 13 | [#428](https://github.com/freecompub/Diabeo-BackOffice/issues/428) | [docs](../UserStory/pro-user-stories/23-rdv/US-2500-UI-calendrier-rdv-pro.md) | V1.5 | 🚧 En cours (Schedule-X) |
+| US-2500-UI-FALLBACK | Migration custom build calendrier RDV (contingency si Schedule-X bloquant en recette) | 19 | (à créer si déclenchée) | [docs](../UserStory/pro-user-stories/23-rdv/US-2500-UI-FALLBACK-custom-build.md) | CONTINGENCY | 💤 Dormant |
+| US-2076-UI | Messagerie inbox pro (2-column threads + viewer, badge sidebar, polling 60s, read receipts, optimistic UI, FCM consume) | 13 | [#429](https://github.com/freecompub/Diabeo-BackOffice/issues/429) | [docs](../UserStory/pro-user-stories/08-messagerie-notifs/US-2076-UI-messagerie-inbox-pro.md) | V1.5 | À démarrer |
 
 > **Bloqueur** : sans ces UIs, les pros (DOCTOR/NURSE) ne peuvent ni gérer
 > leur planning ni communiquer avec leurs patients depuis le backoffice.

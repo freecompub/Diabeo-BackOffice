@@ -33,6 +33,7 @@
   "nav": {
     "dashboard": "لوحة القيادة",
     "patients": "المرضى",
+    "appointments": "المواعيد",
     "users": "المستخدمون",
     "audit": "التدقيق",
     "settings": "الإعدادات",
@@ -270,6 +271,24 @@
     "agpLegendMedian": "الوسيط",
     "agpLegendIqr": "P25-P75",
     "agpLegendRange": "P10-P90"
+  },
+  "appointments": {
+    "pageTitle": "المواعيد",
+    "pageSubtitle": "تقويم العيادة — عرض الشهر / الأسبوع / اليوم",
+    "scopeMissingTitle": "حدد عاملاً للتصفية",
+    "scopeMissingDescription": "لعرض التقويم، حدد عضواً من العيادة (طبيب/ممرض) أو مريضاً. ستتوفر قوائم التصفية المنسدلة في التكرار التالي.",
+    "loading": "جاري التحميل…",
+    "errorWithSync": "فشل التحديث — آخر مزامنة في {time}",
+    "errorNoSync": "فشل التحديث",
+    "count": "{count, plural, =0 {لا توجد مواعيد} one {موعد واحد} other {# مواعيد}}",
+    "truncated": "(النتائج مقطوعة — قلّص النطاق)",
+    "unscheduledTitle": "بدون توقيت",
+    "type": {
+      "ide": "ممرض",
+      "diabeto": "طب السكري",
+      "hdj": "مستشفى نهاري",
+      "other": "استشارة"
+    }
   },
   "weekly": {
     "title": "العرض الأسبوعي",
