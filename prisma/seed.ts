@@ -13,6 +13,7 @@ import { PrismaPg } from "@prisma/adapter-pg"
 import { hash as bcryptHash } from "bcryptjs"
 import { assertSeedEnv } from "../src/lib/env"
 import { hmacEmail } from "../src/lib/crypto/hmac"
+import { encryptField } from "../src/lib/crypto/fields"
 
 // L2 — refuse de tourner sur un cluster production. Le seed crée 5 users avec
 // des passwords plaintext committés dans le repo (visuellement préfixés
@@ -611,6 +612,11 @@ async function main() {
       return new Date(`1970-01-01T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`)
     }
 
+    /**
+     * Fix L-4 round 2 review PR #431 — seeds avec `motifEncrypted` pour
+     * permettre de tester le modal détail RDV (déchiffrement AES-256-GCM)
+     * en dev. PHI fictif (patients DT1/DT2 de démo).
+     */
     const apptSeedData: Array<{
       patientId: number
       memberId: number
@@ -620,9 +626,10 @@ async function main() {
       durationMinutes: number
       location: "in_person" | "video" | "phone"
       status: "scheduled" | "pending_validation" | "confirmed" | "cancelled" | "completed" | "no_show"
+      motifEncrypted?: string
     }> = [
-      // Semaine en cours — DOCTOR
-      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "confirmed" },
+      // Semaine en cours — DOCTOR (avec motif chiffré pour test modal détail)
+      { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(0), hour: timeAt(9, 30), durationMinutes: 30, location: "in_person", status: "confirmed", motifEncrypted: encryptField("Titration basale post-hypos répétées") },
       { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(1), hour: timeAt(10, 15), durationMinutes: 45, location: "in_person", status: "scheduled" },
       { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(2), hour: timeAt(14, 0), durationMinutes: 30, location: "video", status: "pending_validation" },
       { patientId: patientDT2.id, memberId: memberDoctor.id, type: "hdj", date: dateAtOffset(3), hour: timeAt(11, 0), durationMinutes: 60, location: "in_person", status: "scheduled" },
@@ -644,12 +651,50 @@ async function main() {
       { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: dateAtOffset(25), hour: timeAt(14, 0), durationMinutes: 45, location: "video", status: "scheduled" },
     ]
 
+    // Fix M-5 round 2 review PR #431 — `skipDuplicates: true` retiré
+    // car `Appointment` n'a aucune contrainte UNIQUE composite naturelle :
+    // Prisma ne sait pas quoi "skip". Le guard `existingApptCount === 0`
+    // au-dessus assure l'idempotence (binaire mais suffisante en dev).
     await prisma.appointment.createMany({
       data: apptSeedData,
-      skipDuplicates: true,
+    })
+
+    // Fix L-4 round 2 review PR #431 — `MemberUnavailability` (plages
+    // indispo médecin) seedés pour tester l'affichage gris hachuré sur
+    // le calendrier (cf. US-2504 backend, US-2500-UI spec).
+    const tomorrow = dateAtOffset(1)
+    const tomorrowStart = new Date(tomorrow)
+    tomorrowStart.setUTCHours(12, 0, 0, 0)
+    const tomorrowEnd = new Date(tomorrow)
+    tomorrowEnd.setUTCHours(14, 0, 0, 0)
+
+    const nextWeek = dateAtOffset(7)
+    const nextWeekStart = new Date(nextWeek)
+    nextWeekStart.setUTCHours(0, 0, 0, 0)
+    const nextWeekEnd = new Date(dateAtOffset(9))
+    nextWeekEnd.setUTCHours(23, 59, 59, 999)
+
+    await prisma.memberUnavailability.createMany({
+      data: [
+        {
+          memberId: memberDoctor.id,
+          startAt: tomorrowStart,
+          endAt: tomorrowEnd,
+          reasonEncrypted: encryptField("Réunion équipe — 2h"),
+          createdBy: doctor.id,
+        },
+        {
+          memberId: memberDoctor.id,
+          startAt: nextWeekStart,
+          endAt: nextWeekEnd,
+          reasonEncrypted: encryptField("Congés — 3 jours"),
+          createdBy: doctor.id,
+        },
+      ],
     })
 
     console.log(`  ✓ ${apptSeedData.length} appointments seeded (10 DOCTOR + 2 NURSE + 3 mois courant)`)
+    console.log(`  ✓ 2 plages indispo médecin seedées (test US-2504 affichage gris hachuré)`)
   } else {
     console.log(`  ✓ Appointments already seeded (${existingApptCount} existing) — skipped`)
   }
