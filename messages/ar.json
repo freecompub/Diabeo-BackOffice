@@ -33,6 +33,7 @@
   "nav": {
     "dashboard": "لوحة القيادة",
     "patients": "المرضى",
+    "appointments": "المواعيد",
     "users": "المستخدمون",
     "audit": "التدقيق",
     "settings": "الإعدادات",
@@ -270,6 +271,10 @@
     "agpLegendMedian": "الوسيط",
     "agpLegendIqr": "P25-P75",
     "agpLegendRange": "P10-P90"
+  },
+  "appointments": {
+    "pageTitle": "المواعيد",
+    "pageSubtitle": "تقويم العيادة — عرض الشهر / الأسبوع / اليوم"
   },
   "weekly": {
     "title": "العرض الأسبوعي",

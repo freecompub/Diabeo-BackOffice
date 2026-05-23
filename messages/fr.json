@@ -33,6 +33,7 @@
   "nav": {
     "dashboard": "Tableau de bord",
     "patients": "Patients",
+    "appointments": "Rendez-vous",
     "users": "Utilisateurs",
     "audit": "Audit",
     "settings": "Parametres",
@@ -270,6 +271,10 @@
     "agpLegendMedian": "Mediane",
     "agpLegendIqr": "P25-P75",
     "agpLegendRange": "P10-P90"
+  },
+  "appointments": {
+    "pageTitle": "Rendez-vous",
+    "pageSubtitle": "Calendrier RDV cabinet — vues mois / semaine / jour"
   },
   "weekly": {
     "title": "Vue hebdomadaire",

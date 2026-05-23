@@ -33,6 +33,7 @@
   "nav": {
     "dashboard": "Dashboard",
     "patients": "Patients",
+    "appointments": "Appointments",
     "users": "Users",
     "audit": "Audit",
     "settings": "Settings",
@@ -270,6 +271,10 @@
     "agpLegendMedian": "Median",
     "agpLegendIqr": "P25-P75",
     "agpLegendRange": "P10-P90"
+  },
+  "appointments": {
+    "pageTitle": "Appointments",
+    "pageSubtitle": "Practice calendar — month / week / day views"
   },
   "weekly": {
     "title": "Weekly View",
