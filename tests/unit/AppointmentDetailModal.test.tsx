@@ -857,6 +857,104 @@ describe("<AppointmentDetailModal>", () => {
       expect(onClose).toHaveBeenCalledTimes(1)
     })
 
+    it("US-2500-UI iter 11 — bouton 'Confirmer' visible si status=pending_validation + DOCTOR/ADMIN", () => {
+      const { rerender } = render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "pending_validation" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      expect(screen.getByText("actionConfirmPending")).toBeTruthy()
+
+      rerender(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "pending_validation" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="ADMIN"
+        />,
+      )
+      expect(screen.getByText("actionConfirmPending")).toBeTruthy()
+    })
+
+    it("US-2500-UI iter 11 — bouton 'Confirmer' CACHÉ pour NURSE/VIEWER (RBAC DOCTOR+ uniquement)", () => {
+      const { rerender } = render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "pending_validation" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="NURSE"
+        />,
+      )
+      expect(screen.queryByText("actionConfirmPending")).toBeNull()
+
+      rerender(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "pending_validation" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="VIEWER"
+        />,
+      )
+      expect(screen.queryByText("actionConfirmPending")).toBeNull()
+    })
+
+    it("US-2500-UI iter 11 — bouton 'Confirmer' CACHÉ si status ≠ pending_validation", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState({ detail: { ...baseDetail, status: "scheduled" } })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      expect(screen.queryByText("actionConfirmPending")).toBeNull()
+    })
+
+    it("US-2500-UI iter 11 — clic 'Confirmer' → POST /api/appointments/[id]/confirm + onActionSuccess", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 42, status: "scheduled", date: "2026-06-15", hour: "09:30:00", durationMinutes: 30 }),
+      } as Response)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "pending_validation" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionConfirmPending"))
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          "/api/appointments/42/confirm",
+          expect.objectContaining({ method: "POST" }),
+        )
+      })
+      expect(onActionSuccess).toHaveBeenCalledTimes(1)
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
     it("M-2 — pas de input hidden data-testid='appt-id' (debug reliquat retiré)", () => {
       render(
         <AppointmentDetailModal

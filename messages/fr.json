@@ -391,7 +391,20 @@
     "resetFilters": "Réinitialiser les filtres",
     "skipToCalendar": "Passer au calendrier des rendez-vous",
     "calendarMainLabel": "Calendrier des rendez-vous",
-    "todayDateAnnouncement": "Aujourd'hui : {date}"
+    "todayDateAnnouncement": "Aujourd'hui : {date}",
+    "actionConfirmPending": "Confirmer le RDV",
+    "myAppointmentsTitle": "Mes rendez-vous",
+    "myAppointmentsSubtitle": "Vos prochains rendez-vous et historique récent. Pour créer ou modifier, contactez votre cabinet.",
+    "myAppointmentsNoProfile": "Aucun dossier patient associé à votre compte. Contactez votre cabinet.",
+    "myAppointmentsError": "Impossible de charger vos rendez-vous — réessayez plus tard.",
+    "myAppointmentsUpcoming": "{count, plural, =0 {Aucun rendez-vous à venir} one {1 rendez-vous à venir} other {# rendez-vous à venir}}",
+    "myAppointmentsUpcomingEmpty": "Vous n'avez aucun rendez-vous planifié dans les 90 prochains jours.",
+    "myAppointmentsPast": "{count, plural, =0 {Aucun rendez-vous récent} one {1 rendez-vous récent} other {# rendez-vous récents}}",
+    "myAppointmentsPastEmpty": "Aucun rendez-vous dans les 30 derniers jours.",
+    "myAppointmentsProposedAlt": "Alternative proposée : {date}",
+    "myAppointmentsAcceptOk": "✓ Alternative acceptée — votre rendez-vous est confirmé.",
+    "myAppointmentsAcceptError": "Impossible d'accepter — créneau peut-être pris ou délai dépassé.",
+    "lastSync": "dernière synchronisation à {time}"
   },
   "weekly": {
     "title": "Vue hebdomadaire",

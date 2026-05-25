@@ -165,6 +165,9 @@ const navItems: NavItem[] = [
  */
 const patientNavItems: NavItem[] = [
   { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
+  // US-2500-UI iter 12 — UI patient "Mes RDV" : vue read-only des RDV
+  // du patient connecté + bouton "Accepter alternative" si propAlt set.
+  { href: "/patient/appointments", labelKey: "appointments", icon: CalendarDays },
 ]
 
 function hasRoleAccess(userRole: UserRole, minRole?: UserRole): boolean {

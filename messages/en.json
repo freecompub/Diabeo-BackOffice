@@ -391,7 +391,20 @@
     "resetFilters": "Reset filters",
     "skipToCalendar": "Skip to appointments calendar",
     "calendarMainLabel": "Appointments calendar",
-    "todayDateAnnouncement": "Today: {date}"
+    "todayDateAnnouncement": "Today: {date}",
+    "actionConfirmPending": "Confirm appointment",
+    "myAppointmentsTitle": "My appointments",
+    "myAppointmentsSubtitle": "Your upcoming appointments and recent history. To create or modify, contact your practice.",
+    "myAppointmentsNoProfile": "No patient record linked to your account. Please contact your practice.",
+    "myAppointmentsError": "Could not load your appointments — please retry later.",
+    "myAppointmentsUpcoming": "{count, plural, =0 {No upcoming appointment} one {1 upcoming appointment} other {# upcoming appointments}}",
+    "myAppointmentsUpcomingEmpty": "You have no appointment scheduled in the next 90 days.",
+    "myAppointmentsPast": "{count, plural, =0 {No recent appointment} one {1 recent appointment} other {# recent appointments}}",
+    "myAppointmentsPastEmpty": "No appointment in the last 30 days.",
+    "myAppointmentsProposedAlt": "Alternative proposed: {date}",
+    "myAppointmentsAcceptOk": "✓ Alternative accepted — your appointment is confirmed.",
+    "myAppointmentsAcceptError": "Could not accept — slot may be taken or deadline exceeded.",
+    "lastSync": "last sync at {time}"
   },
   "weekly": {
     "title": "Weekly View",

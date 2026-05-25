@@ -62,6 +62,7 @@ import type {
   UseAppointmentDetailResult,
 } from "./useAppointmentDetail"
 import { useAcceptAlternative } from "./useAcceptAlternative"
+import { useConfirmAppointment } from "./useConfirmAppointment"
 
 /**
  * Type union strict pour le rôle (Fix M-5 round 1 review PR #433) — propagé
@@ -232,6 +233,9 @@ export function AppointmentDetailModal({
    * sub-mode `acceptAlt` (vs ancien POST direct one-click).
    */
   const acceptAltHook = useAcceptAlternative()
+  // US-2500-UI iter 11 — hook confirm pour RDV pending_validation (US-2505
+  // bookingMode=validation). DOCTOR+ valide explicitement.
+  const confirmHook = useConfirmAppointment()
 
   const submitAcceptAlternative = useCallback(async () => {
     if (!detail || actionLoading) return
@@ -248,6 +252,27 @@ export function AppointmentDetailModal({
     }
     setActionLoading(false)
   }, [detail, actionLoading, acceptAltHook, onActionSuccess, onClose])
+
+  /**
+   * US-2500-UI iter 11 — Confirme un RDV en `pending_validation` (US-2505
+   * bookingMode=validation). DOCTOR+ uniquement (backend gate). Pattern
+   * cohérent submitAcceptAlternative : hook consommé (CR-1 round 1 PR #436),
+   * whitelist HSA-3, retour structuré.
+   */
+  const submitConfirm = useCallback(async () => {
+    if (!detail || actionLoading) return
+    setActionLoading(true)
+    setActionError(null)
+    const result = await confirmHook.submit(detail.id)
+    if (result.ok) {
+      onActionSuccess()
+      onClose()
+    } else {
+      setActionError(result.code)
+      setErrorNonce((n) => n + 1)
+    }
+    setActionLoading(false)
+  }, [detail, actionLoading, confirmHook, onActionSuccess, onClose])
 
   /**
    * Fix FE-2 round 1 review PR #435 — Alternative a11y au drag&drop
@@ -335,6 +360,11 @@ export function AppointmentDetailModal({
             // Fix FE-3 round 1 review PR #436 — onAccept ouvre le sub-mode
             // `acceptAlt` (récap + confirm) vs ancien POST one-click.
             onAccept={() => setSubMode("acceptAlt")}
+            // US-2500-UI iter 11 — confirm bookingMode validation manuelle.
+            // Pas de sub-mode dédié : action one-click claire ("Confirmer"
+            // le RDV → status scheduled). Si futur dev veut un récap, suivre
+            // pattern acceptAlt (sub-mode confirm récap).
+            onConfirm={submitConfirm}
             onClose={handleClose}
           />
         )}
@@ -403,6 +433,8 @@ interface ViewModeProps {
   onMove: () => void
   /** US-2500-UI iter 9 — Accept l'alternative proposée (NURSE+). */
   onAccept: () => void
+  /** US-2500-UI iter 11 — Confirm RDV pending_validation (DOCTOR+, US-2505). */
+  onConfirm: () => void
   onClose: () => void
 }
 
@@ -487,7 +519,7 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onConfirm, onClose }: ViewModeProps) {
   const t = useTranslations("appointments")
   // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
   // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
@@ -497,6 +529,14 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
 
   const actionable = isActionable(detail.status)
   const showPropose = actionable && canProposeAlternative(userRole)
+
+  // US-2500-UI iter 11 — Bouton "Confirmer" visible si :
+  //   - status === "pending_validation" (US-2505 bookingMode=validation)
+  //   - userRole DOCTOR+ (backend gate, NURSE refuse 403)
+  // Pattern cohérent canAcceptAlternative iter 9.
+  const canConfirm =
+    (userRole === "ADMIN" || userRole === "DOCTOR")
+    && detail.status === "pending_validation"
 
   // US-2500-UI iter 9 — Bouton "Accepter alternative" visible si :
   //   - RDV en status `cancelled` (= original cancel pour proposer alt)
@@ -623,6 +663,14 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
         {canAcceptAlternative && (
           <Button variant="default" onClick={onAccept}>
             {t("actionAcceptAlternative")}
+          </Button>
+        )}
+        {/* US-2500-UI iter 11 — Bouton "Confirmer" si RDV en pending_validation
+            (US-2505 bookingMode=validation manuelle). DOCTOR+ gate via canConfirm.
+            Variant=default (primary teal) — action engageante. */}
+        {canConfirm && (
+          <Button variant="default" onClick={onConfirm}>
+            {t("actionConfirmPending")}
           </Button>
         )}
         <Button onClick={onClose}>{t("actionClose")}</Button>

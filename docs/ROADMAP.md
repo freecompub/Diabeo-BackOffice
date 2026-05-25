@@ -560,7 +560,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## V3 — 10 US
+## V3 — 11 US
 
 | US | Titre |
 |----|-------|
@@ -574,6 +574,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2264 | Notifications proactives |
 | US-2058 | Reconnaissance image repas AI |
 | US-2506bis | **Real SMS provider integration (Twilio / OVH SMS)** — V1 livré en mock (US-2506 PR #418). Migration `provider="mock"` → `"twilio"`/`"ovh"`, webhooks delivery status, DPA + procurement (~500-2k€/mois + ~5-10c€/SMS). Contrat `sms.service.sendSms()` zero-breaking — seul l'interne change. Bloqueur pre-prod patients réels SMS si Diabeo veut activer recouvrement / rappels RDV J-1 réels. |
+| US-2507 | **Analytics RDV cabinet** — Dashboard KPI gestion RDV : taux no-show (%), taux occupation calendrier (RDV/jour vs capacity), taux cancelled (% global + par actor patient/doctor), durée moyenne consultations, RDV par membre/cabinet/période, alertes seuils (no-show > 10% / membre, occupation < 50%). Backend : agrégats SQL sur table `appointments` + `appointment_reminders` (US-2502). Front : page `/analytics/appointments` cabinet manager + intégration `/dashboard/medecin` widgets KPI. Décision session 2026-05-25 — manquait du scope V1 Groupe 8 RDV (focus sur backend CRUD + UI calendar). Estimation : 8 SP (backend agrégats Prisma + 3-4 widgets dashboard + page dédiée + tests). |
 
 ---
 

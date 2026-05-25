@@ -103,7 +103,7 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
   - motif (textarea max 200c, chiffré AES-256-GCM côté backend)
   - member auto-résolu via `effectiveMemberId` du parent (iter 4)
 - [ ] Validation client : pas de double-booking sur le même slot membre (visuel + API enforce EXCLUDE GiST) — V1.5 (backend déjà enforce 409)
-- [ ] Si `bookingMode = "manual_validation"` → RDV créé en status `pending_validation`, badge orange jusqu'à `/confirm` DOCTOR+ — V1.5 (champ HealthcareService.bookingMode à ajouter au schema)
+- [x] Si `bookingMode = "validation"` → RDV créé en status `pending_validation` (backend US-2505 PR #392), badge `outline` orange (status mapping iter 5), bouton "Confirmer le RDV" dans `<AppointmentDetailModal>` view mode pour DOCTOR+ → POST `/api/appointments/[id]/confirm` (US-2505 PR #392) ✅ iter 11. Hook `useConfirmAppointment` cohérent pattern HSA-3 whitelist (notFound/notPending/forbidden/validationFailed).
 
 ### Workflow annulation / alternative
 
