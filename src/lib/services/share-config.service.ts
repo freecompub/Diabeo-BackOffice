@@ -145,6 +145,7 @@ export const thirdPartyShareService = {
  * Alert types pour lesquels la matrice est configurable. Sous-ensemble
  * de `EmergencyAlertType` côté schéma + types généraux.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used via `typeof ALERT_TYPES` in the type export below
 const ALERT_TYPES = [
   "severe_hypo", "hypo", "severe_hyper", "hyper",
   "ketone_dka", "ketone_moderate", "manual",

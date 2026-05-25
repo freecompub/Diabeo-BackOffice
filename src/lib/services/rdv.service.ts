@@ -41,7 +41,10 @@ const MOTIF_MAX = 200
 const NOTE_MAX = 4096
 const RANGE_MAX_DAYS = 62 // ≈ 2 months window
 const CANCEL_GRACE_HOURS = 24 // delay below which "doctor cancel" must propose alt
-const PROPOSAL_TTL_MS = 7 * 86_400_000 // M10 — alternatives expire after 7 days
+// M10 — alternatives expire after 7 days. Fix CR-5 round 1 review PR #436 :
+// const partagé client+serveur via @/lib/rdv-constants.ts pour éviter drift
+// entre backend gate `alternativeExpired` 422 et UI count `<AlternativesBanner>`.
+import { PROPOSAL_TTL_MS } from "@/lib/rdv-constants"
 
 async function assertServiceMember(
   userId: number,

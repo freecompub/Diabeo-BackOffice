@@ -87,8 +87,8 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
   - Auto-résolution si 1 seul membership (cas dominant DOCTOR/NURSE)
   - Label statique si 1 membership · dropdown si ≥ 2 (cas multi-cabinets)
   - Empty state distinct si 0 membership (ADMIN sans HealthcareMember)
-- [ ] Filtre par statut (multi-select avec defaults : scheduled + confirmed + pending_validation)
-- [ ] Filtre par patient (search via PatientId)
+- [x] Filtre par statut multi-select via chips toggle (defaults : scheduled + confirmed + pending_validation) ✅ iter 8 — `<StatusFilter>` aria-pressed, filtre client-side
+- [x] Filtre par patient (search-select via `<PatientFilter>` réutilisant `<PatientCombobox>`) ✅ iter 8 — filtre server-side via `useAppointments(patientId)`
 - [x] Range query optimisée (`/api/appointments?from=X&to=Y&memberId=Z`) ✅ iter 2
 
 ### Création / édition
@@ -109,8 +109,8 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 
 - [x] Bouton "Annuler" dans modal détail → form `cancelReason` (chiffré) ✅ iter 5
 - [x] Bouton "Proposer une alternative" → form date+heure inline (DOCTOR+ uniquement) ✅ iter 5
-- [ ] Inbox "Alternatives en attente" — bandeau visible si `patient` a accepté ou si `patient` doit accepter
-- [ ] Bouton "Accepter alternative" → `/accept-alternative`
+- [x] Bandeau "Alternatives en attente" ✅ iter 9 — `<AlternativesBanner>` auto-affiché si RDV cancelled + proposedAlternativeAt non expiré (TTL 7j), bouton "Voir" filtre calendar sur cancelled
+- [x] Bouton "Accepter alternative" → `/accept-alternative` ✅ iter 9 — dans `<AppointmentDetailModal>` view mode, visible si status=cancelled + proposedAlternativeAt set
 
 ### Accessibilité
 

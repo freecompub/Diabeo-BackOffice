@@ -264,7 +264,7 @@ function RadarSkeleton() {
 
 export default function RadarPage() {
   const t = useTranslations("radar")
-  const tCommon = useTranslations("common")
+  const _tCommon = useTranslations("common")
 
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.OneWeek)
   const [metric, setMetric] = useState<MetricKey>("tir")

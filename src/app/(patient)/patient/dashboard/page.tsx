@@ -210,7 +210,7 @@ export default function PatientDashboardPage() {
   const toastTimerRef = useRef<number | null>(null)
   const handleQuickAction = useCallback((action: QuickAction) => {
     if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
+       
       console.info("[patient/dashboard] quick action", action)
     }
     if (toastTimerRef.current !== null) {

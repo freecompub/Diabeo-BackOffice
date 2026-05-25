@@ -61,6 +61,7 @@ import type {
   AppointmentDetail,
   UseAppointmentDetailResult,
 } from "./useAppointmentDetail"
+import { useAcceptAlternative } from "./useAcceptAlternative"
 
 /**
  * Type union strict pour le rôle (Fix M-5 round 1 review PR #433) — propagé
@@ -68,7 +69,7 @@ import type {
  */
 export type UserRole = "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 
-type SubMode = "view" | "cancel" | "proposeAlt" | "move"
+type SubMode = "view" | "cancel" | "proposeAlt" | "move" | "acceptAlt"
 
 export interface AppointmentDetailModalProps {
   /** Résultat du hook `useAppointmentDetail(id)`. */
@@ -215,6 +216,40 @@ export function AppointmentDetailModal({
   )
 
   /**
+   * Fix CR-1 + HSA-1 + FE-1 round 1 review PR #436 — Consomme `useAcceptAlternative`
+   * hook au lieu de cloner la logique POST.
+   *
+   * Avantages :
+   *   - whitelist HSA-3 du hook appliquée (normalize erreur backend → empêche
+   *     leak PHI futur via `body.error` brut)
+   *   - pattern cohérent iter 7 (`useUpdateAppointment` consommé par calendar)
+   *   - test surface unique (le hook a son test suite)
+   *   - mountedRef cleanup au unmount via le hook
+   *
+   * Fix FE-3 round 1 review PR #436 — sub-mode `acceptAlt` avec récap +
+   * confirm (WCAG 3.3.4 Error Prevention en santé). Évite le click accidentel
+   * "Accepter" pris pour "Détail". Le bouton ViewMode ouvre maintenant le
+   * sub-mode `acceptAlt` (vs ancien POST direct one-click).
+   */
+  const acceptAltHook = useAcceptAlternative()
+
+  const submitAcceptAlternative = useCallback(async () => {
+    if (!detail || actionLoading) return
+    setActionLoading(true)
+    setActionError(null)
+    const result = await acceptAltHook.submit(detail.id)
+    if (result.ok) {
+      onActionSuccess()
+      onClose()
+    } else {
+      // Code normalisé via whitelist HSA-3 — render via i18n key, jamais brut.
+      setActionError(result.code)
+      setErrorNonce((n) => n + 1)
+    }
+    setActionLoading(false)
+  }, [detail, actionLoading, acceptAltHook, onActionSuccess, onClose])
+
+  /**
    * Fix FE-2 round 1 review PR #435 — Alternative a11y au drag&drop
    * (WCAG 2.5.7 Dragging Movements + 2.1.1 Keyboard).
    *
@@ -297,6 +332,9 @@ export function AppointmentDetailModal({
             onCancel={() => setSubMode("cancel")}
             onPropose={() => setSubMode("proposeAlt")}
             onMove={() => setSubMode("move")}
+            // Fix FE-3 round 1 review PR #436 — onAccept ouvre le sub-mode
+            // `acceptAlt` (récap + confirm) vs ancien POST one-click.
+            onAccept={() => setSubMode("acceptAlt")}
             onClose={handleClose}
           />
         )}
@@ -335,6 +373,20 @@ export function AppointmentDetailModal({
             onChangeClearsError={clearError}
           />
         )}
+
+        {/* Fix FE-3 round 1 review PR #436 — sub-mode acceptAlt avec récap
+            visuel + confirm explicite. WCAG 3.3.4 Error Prevention en santé :
+            l'infirmière voit la nouvelle date/heure cible avant POST. */}
+        {detail && subMode === "acceptAlt" && (
+          <AcceptAlternativeForm
+            detail={detail}
+            loading={actionLoading}
+            error={actionError}
+            errorNonce={errorNonce}
+            onConfirm={submitAcceptAlternative}
+            onBack={handleBackToView}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -349,8 +401,11 @@ interface ViewModeProps {
   onPropose: () => void
   /** Fix FE-2 round 1 review PR #435 — alternative a11y drag&drop (WCAG 2.5.7) */
   onMove: () => void
+  /** US-2500-UI iter 9 — Accept l'alternative proposée (NURSE+). */
+  onAccept: () => void
   onClose: () => void
 }
+
 
 /**
  * Fix M-4 + FE-4 round 1 + HSA-2-7 round 2 review PR #433 — Cache module-level
@@ -432,7 +487,7 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onClose }: ViewModeProps) {
   const t = useTranslations("appointments")
   // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
   // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
@@ -442,6 +497,24 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: Vi
 
   const actionable = isActionable(detail.status)
   const showPropose = actionable && canProposeAlternative(userRole)
+
+  // US-2500-UI iter 9 — Bouton "Accepter alternative" visible si :
+  //   - RDV en status `cancelled` (= original cancel pour proposer alt)
+  //   - `proposedAlternativeAt` set (≠ null)
+  //   - userRole NURSE+ (Fix HSA-2 round 1 review PR #436 — RBAC defense-in-depth
+  //     cohérent pattern iter 5 `canProposeAlternative`. Backend gate via
+  //     `appointmentRouteGate("NURSE")` mais UI doit refléter le RBAC pour
+  //     éviter audit accessDenied US-2265 spam + signal d'intention exfiltrable
+  //     à un VIEWER qui verrait le bouton sans pouvoir l'utiliser).
+  //
+  // Note : pas de check TTL 7j côté UI (React-Compiler refuse Date.now()
+  // au render). Backend valide via `alternativeExpired` (422) au POST →
+  // si TTL dépassé, user clique puis voit l'erreur dans le modal. UX
+  // dégradée acceptable car cas rare (TTL = 7j).
+  const canAcceptAlternative =
+    userRole !== "VIEWER"
+    && detail.status === "cancelled"
+    && detail.proposedAlternativeAt !== null
 
   // Fix FE-2-3 round 2 — pas de `useMemo` redondant : `getTimestampFormatter`
   // utilise déjà la `Map` module-level → identité stable, lookup O(1).
@@ -542,6 +615,14 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: Vi
         {showPropose && (
           <Button variant="outline" onClick={onPropose}>
             {t("actionProposeAlternative")}
+          </Button>
+        )}
+        {/* US-2500-UI iter 9 — Bouton "Accepter alternative" si RDV est en
+            attente d'acceptation (status=cancelled + proposedAlternativeAt
+            set + TTL 7j non dépassé côté backend qui re-valide). */}
+        {canAcceptAlternative && (
+          <Button variant="default" onClick={onAccept}>
+            {t("actionAcceptAlternative")}
           </Button>
         )}
         <Button onClick={onClose}>{t("actionClose")}</Button>
@@ -900,6 +981,85 @@ function MoveForm({
           </Button>
         </DialogFooter>
       </form>
+    </>
+  )
+}
+
+/* ─── AcceptAlternativeForm (Fix FE-3 round 1 PR #436 — WCAG 3.3.4 confirm) ─── */
+
+interface AcceptAlternativeFormProps {
+  detail: AppointmentDetail
+  loading: boolean
+  error: string | null
+  errorNonce: number
+  onConfirm: () => void
+  onBack: () => void
+}
+
+/**
+ * AcceptAlternativeForm — récap visuel + confirm explicite (WCAG 3.3.4
+ * Error Prevention en santé).
+ *
+ * Affiche la nouvelle date+heure cible AVANT le POST pour que l'utilisateur
+ * confirme visuellement avant action. Évite le click accidentel pris pour
+ * "Voir détail". Cohérent pattern sub-mode iter 5/6/7 (`cancel`, `move`).
+ *
+ * Note : pas de form fields (juste 2 boutons Back/Confirm) — l'action est
+ * one-click mais via 2 paliers (View → AcceptAlt → POST). Le récap utilise
+ * le formatter timestamp wall-clock cohérent ProposeAlt (timeZone UTC).
+ */
+function AcceptAlternativeForm({
+  detail,
+  loading,
+  error,
+  errorNonce,
+  onConfirm,
+  onBack,
+}: AcceptAlternativeFormProps) {
+  const t = useTranslations("appointments")
+  const locale = useLocale()
+  const tsFormatter = getTimestampFormatter(locale)
+
+  // `proposedAlternativeAt` est garanti non-null (gate ViewMode `canAcceptAlternative`).
+  const alternativeLabel = detail.proposedAlternativeAt
+    ? tsFormatter.format(new Date(detail.proposedAlternativeAt))
+    : "—"
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{t("acceptAltTitle")}</DialogTitle>
+        <DialogDescription>{t("acceptAltDescription")}</DialogDescription>
+      </DialogHeader>
+
+      <div className="grid gap-3 py-4">
+        <div className="rounded-md border border-emerald-500/40 bg-emerald-50 p-4 text-sm">
+          <p className="text-xs font-medium text-emerald-900/70 uppercase tracking-wide mb-1">
+            {t("acceptAltNewSlot")}
+          </p>
+          <p className="text-lg font-medium text-emerald-900">{alternativeLabel}</p>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("acceptAltConfirmHint")}</p>
+      </div>
+
+      {error && (
+        <p
+          key={`${error}-${errorNonce}`}
+          role="alert"
+          className="text-sm text-red-600"
+        >
+          {t("actionError")}
+        </p>
+      )}
+
+      <DialogFooter>
+        <Button type="button" variant="ghost" onClick={onBack} disabled={loading}>
+          {t("actionBack")}
+        </Button>
+        <Button type="button" variant="default" onClick={onConfirm} disabled={loading}>
+          {loading ? t("loading") : t("actionConfirmAcceptAlt")}
+        </Button>
+      </DialogFooter>
     </>
   )
 }

@@ -331,7 +331,7 @@ function AccountCard({ account, onDisconnect }: AccountCardProps) {
     } finally {
       setDisconnecting(false)
     }
-  }, [account.id, onDisconnect])
+  }, [account.id, onDisconnect, t])
 
   return (
     <>

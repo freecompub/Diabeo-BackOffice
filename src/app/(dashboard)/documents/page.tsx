@@ -31,7 +31,6 @@ import {
   Download,
   Search,
   ChevronDown,
-  ChevronRight,
   X,
   AlertTriangle,
   Loader2,
@@ -153,6 +152,7 @@ function DocumentRow({ doc, onPreview, onDownload, tDocs }: DocumentRowProps) {
           className="shrink-0 text-muted-foreground [&_svg]:size-5"
           aria-hidden="true"
         >
+          {/* eslint-disable-next-line jsx-a11y/alt-text -- Lucide icon, not <img> */}
           {isImage(doc.mimeType) ? <Image /> : <FileText />}
         </span>
         <div className="min-w-0">
@@ -427,6 +427,7 @@ export default function DocumentsPage() {
         setUploadFileName("")
       }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- ALLOWED_MIME_TYPES est une const top-of-component, identité stable
     [loadDocuments, tDocs]
   )
 

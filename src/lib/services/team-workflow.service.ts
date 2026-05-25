@@ -318,6 +318,7 @@ export const proposalAckService = {
 // US-2066 — Real-world actualization (H4 guard against overwrite, M8 literal)
 // ─────────────────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used via `typeof VERIFY_VIA_VALUES` in the type export below
 const VERIFY_VIA_VALUES = ["device-sync", "manual-ps", "patient-confirmed"] as const
 export type VerifyVia = typeof VERIFY_VIA_VALUES[number]
 

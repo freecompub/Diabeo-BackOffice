@@ -10,7 +10,7 @@
  */
 import { describe, it, expect, beforeEach, vi } from "vitest"
 import {
-  AppointmentStatus, EmergencyAlertStatus,
+  AppointmentStatus,
   DelegationRequestStatus, ProposalStatus,
 } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"

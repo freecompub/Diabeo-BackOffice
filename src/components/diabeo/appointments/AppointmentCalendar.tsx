@@ -61,6 +61,10 @@ import {
 } from "./useUpdateAppointment"
 import { useAutoClearAfter } from "@/hooks/useAutoClearAfter"
 import { Button } from "@/components/ui/button"
+import { StatusFilter, DEFAULT_STATUS_FILTER } from "./StatusFilter"
+import { PatientFilter } from "./PatientFilter"
+import { AlternativesBanner } from "./AlternativesBanner"
+import type { AppointmentStatus } from "@prisma/client"
 
 /**
  * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
@@ -233,12 +237,29 @@ export function AppointmentCalendar({
   // `undefined`, le dropdown reste vide (placeholder).
   const filterValue = effectiveMemberId ?? null
 
+  // US-2500-UI iter 8 — state filtres statut + patient.
+  // Status filter : multi-select client-side (Set lookup O(1)).
+  // Patient filter : server-side (passé à useAppointments).
+  const [statusFilter, setStatusFilter] = useState<ReadonlySet<AppointmentStatus>>(
+    DEFAULT_STATUS_FILTER,
+  )
+  const [patientFilter, setPatientFilter] = useState<number | null>(null)
+  // Si patient pinné dans le calendar (prop `patientId`), override le state local.
+  const effectivePatientId = patientId ?? patientFilter ?? undefined
+
   const { items, isInitialLoading, error, truncated, lastFetchedAt, refetch } = useAppointments({
     from: range.from,
     to: range.to,
     memberId: effectiveMemberId,
-    patientId,
+    patientId: effectivePatientId,
   })
+
+  // Fix iter 8 — filter client-side par statut (les items déjà fetchés sont
+  // filtrés en mémoire, pas de re-fetch nécessaire).
+  const filteredItems = useMemo(
+    () => items.filter((it) => statusFilter.has(it.status)),
+    [items, statusFilter],
+  )
 
   // US-2500-UI iter 5 — state du modal détail RDV (clic sur événement).
   // `openedApptId === null` = modal fermé. Le hook `useAppointmentDetail`
@@ -250,7 +271,10 @@ export function AppointmentCalendar({
   // Mount-on-open + `key` (cohérent pattern iter 5) pour reset state interne.
   const [createOpen, setCreateOpen] = useState(false)
 
-  const events = useMemo(() => items.map(appointmentToScheduleXEvent), [items])
+  // Fix iter 8 — Schedule-X reçoit la liste FILTRÉE (status filter client-side).
+  // Le compteur "X RDV" reste basé sur `items` total (vs filtré) pour ne pas
+  // mentir sur la charge backend — cohérent FE-9 PR #434 patientHint backend count.
+  const events = useMemo(() => filteredItems.map(appointmentToScheduleXEvent), [filteredItems])
 
   // Fix CR-1 round 2 review PR #431 — `useNextCalendarApp` ne re-crée
   // jamais le calendrier ; passer `events` dans config est ignoré après
@@ -435,6 +459,31 @@ export function AppointmentCalendar({
   // US-2500-UI iter 6 — handlers create modal.
   const handleOpenCreate = useCallback(() => setCreateOpen(true), [])
   const handleCloseCreate = useCallback(() => setCreateOpen(false), [])
+
+  // US-2500-UI iter 9 — handler "Voir alternatives" : AJOUTE le statut
+  // `cancelled` au filtre actif (vs ancien écrasement complet).
+  //
+  // Fix CR-2 + FE-4 round 1 review PR #436 — ancien `setStatusFilter(new
+  // Set(["cancelled"]))` perdait les statuts précédemment actifs (scheduled,
+  // confirmed) → médecin devait re-cocher manuellement après "Voir". Le
+  // pattern additif préserve les filtres user + ajoute juste cancelled.
+  const handleShowAlternatives = useCallback(() => {
+    setStatusFilter((prev) => new Set<AppointmentStatus>([...prev, "cancelled"]))
+  }, [])
+
+  // Fix FE-4 round 1 review PR #436 — bouton "Réinitialiser filtres" pour
+  // revenir aux defaults metier (scheduled + pending_validation + confirmed).
+  // Visible UNIQUEMENT si filtres modifiés vs defaults — évite clutter UI.
+  const handleResetFilters = useCallback(() => {
+    setStatusFilter(DEFAULT_STATUS_FILTER)
+    setPatientFilter(null)
+  }, [])
+
+  // Calcul si filtres modifiés (vs defaults) — compare Set + patientFilter.
+  const filtersAreCustom =
+    patientFilter !== null
+    || statusFilter.size !== DEFAULT_STATUS_FILTER.size
+    || ![...statusFilter].every((s) => DEFAULT_STATUS_FILTER.has(s))
   // Fix FE-12 round 1 review PR #434 — flag temporaire pour aria-live polite
   // qui annonce le succès création (vs ancien close silent).
   const [justCreated, setJustCreated] = useState(false)
@@ -555,6 +604,36 @@ export function AppointmentCalendar({
         {newApptButton}
       </div>
 
+      {/* US-2500-UI iter 8 — Filtres statut multi-select + patient.
+          Le filtre statut agit côté client (Set lookup), le patient côté
+          serveur via useAppointments(patientId=...). Patient filter
+          masqué si patientId pré-pinné (scope patient-only). */}
+      <div className="flex items-center justify-between gap-3 flex-wrap pb-1">
+        <StatusFilter value={statusFilter} onChange={setStatusFilter} />
+        {patientId === undefined && (
+          <PatientFilter value={patientFilter} onChange={setPatientFilter} />
+        )}
+      </div>
+
+      {/* US-2500-UI iter 9 — Bandeau alternatives en attente.
+          Auto-affiché si countPendingAlternatives(items) > 0. Click "Voir"
+          filtre le calendar sur status=cancelled. Compté sur `items` total
+          (vs filteredItems) pour ne pas disparaître quand l'utilisateur a
+          filtré out le statut cancelled. */}
+      {/* Fix FE-5 round 1 review PR #436 — `now` calculé depuis `lastFetchedAt`
+          du hook polling (refresh toutes les 60s via setState items). Si pas
+          encore fetché (lastFetchedAt=null), on skip le rendu — pas de count
+          significatif avant le 1er fetch. La granularité TTL 7j accepte
+          largement 60s de delta. */}
+      {lastFetchedAt && (
+        <AlternativesBanner
+          items={items}
+          now={lastFetchedAt.getTime()}
+          onShowAlternatives={handleShowAlternatives}
+        />
+      )}
+
+
       {/* Status bar — fix M-6 (isInitialLoading silent polling) +
           fix H-7 (stale items conservés sur erreur) +
           fix H-4 (i18n ICU plural correct, "rendez-vous" invariable FR). */}
@@ -578,11 +657,28 @@ export function AppointmentCalendar({
           )}
           {!isInitialLoading && !error && (
             <span>
-              {t("count", { count: items.length })}
+              {/* Fix iter 8 — afficher 2 compteurs distincts : filtré vs total
+                  backend. Évite le piège FE-9 PR #434 (compteur trompeur après
+                  filter client). Format : "5 sur 30 RDV". Si pas de filter
+                  appliqué, n = total → affichage simplifié. */}
+              {filteredItems.length === items.length
+                ? t("count", { count: items.length })
+                : t("countFiltered", { count: filteredItems.length, total: items.length })}
               {truncated && ` ${t("truncated")}`}
             </span>
           )}
         </div>
+        {/* Fix FE-4 round 1 review PR #436 — bouton "Réinitialiser filtres"
+            visible si filtres custom (pas defaults). Permet retour rapide. */}
+        {filtersAreCustom && (
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="text-xs underline-offset-2 hover:underline text-primary"
+          >
+            {t("resetFilters")}
+          </button>
+        )}
       </div>
 
       {successAnnounce}

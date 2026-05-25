@@ -44,7 +44,6 @@ import {
   InsValidationError,
   InsCollisionError,
   InsCollisionRateLimitError,
-  InsNotFoundError,
 } from "@/lib/services/ins.service"
 
 const { GET, PUT, DELETE } = await import(

@@ -18,7 +18,6 @@
 
 import { prisma } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
-import { hmacEmail } from "@/lib/crypto/hmac"
 import {
   authenticate,
   getAccount,
@@ -34,10 +33,6 @@ import {
   mapSnackEntries,
   mapMedicalData,
   mapUnitPreferences,
-  mapCgmObjective,
-  mapBasalSchedule,
-  mapIcrSchedule,
-  mapIsfSchedule,
 } from "./mydiabby-mapper.service"
 import { auditService } from "./audit.service"
 

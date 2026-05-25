@@ -607,9 +607,9 @@ describe("<AppointmentDetailModal>", () => {
       fireEvent.click(screen.getByText("actionCancel"))
       fireEvent.click(screen.getByText("actionConfirmCancel"))
 
-      // 1er échec → alerte initiale
+      // 1er échec → alerte initiale (ref capturée pour vérification ré-annonce
+      // ci-dessous via comparaison DOM node identity).
       await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
-      const firstAlert = screen.getByRole("alert")
 
       // Retry sans clear (input pas changé → error toujours visible)
       // → simule resubmit après timeout réseau
@@ -749,6 +749,108 @@ describe("<AppointmentDetailModal>", () => {
             // Backend PUT accepte {date, hour} séparé (vs ISO Z proposeAlt).
             body: JSON.stringify({ date: "2026-06-15", hour: "11:00" }),
           }),
+        )
+      })
+      expect(onActionSuccess).toHaveBeenCalledTimes(1)
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it("HSA-2 round 1 PR #436 — bouton 'Accepter alternative' caché pour VIEWER (RBAC defense-in-depth)", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: {
+              ...baseDetail,
+              status: "cancelled",
+              proposedAlternativeAt: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+            },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="VIEWER"
+        />,
+      )
+      // VIEWER ne voit pas le bouton — cohérent pattern iter 5 canProposeAlternative
+      expect(screen.queryByText("actionAcceptAlternative")).toBeNull()
+    })
+
+    it("HSA-2 round 1 PR #436 — bouton 'Accepter alternative' VISIBLE pour DOCTOR/NURSE", () => {
+      const recent = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
+      const { rerender } = render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "cancelled", proposedAlternativeAt: recent },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      expect(screen.getByText("actionAcceptAlternative")).toBeTruthy()
+
+      rerender(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "cancelled", proposedAlternativeAt: recent },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="NURSE"
+        />,
+      )
+      expect(screen.getByText("actionAcceptAlternative")).toBeTruthy()
+    })
+
+    it("FE-3 round 1 PR #436 — clic 'Accepter' ouvre sub-mode 'acceptAlt' avec récap (WCAG 3.3.4)", () => {
+      const recent = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
+      render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "cancelled", proposedAlternativeAt: recent },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionAcceptAlternative"))
+      // Sub-mode acceptAlt rendu avec récap visuel
+      expect(screen.getByText("acceptAltTitle")).toBeTruthy()
+      expect(screen.getByText("acceptAltNewSlot")).toBeTruthy()
+      expect(screen.getByText("actionConfirmAcceptAlt")).toBeTruthy()
+      // PAS de POST direct — l'utilisateur doit confirmer
+      expect(onActionSuccess).not.toHaveBeenCalled()
+    })
+
+    it("FE-3 round 1 PR #436 — clic 'Confirmer' dans sub-mode acceptAlt → POST /accept-alternative", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 42, status: "scheduled", date: "2026-06-15", hour: "11:00:00", durationMinutes: 30 }),
+      } as Response)
+
+      const recent = new Date(Date.now() + 24 * 3600 * 1000).toISOString()
+      render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "cancelled", proposedAlternativeAt: recent },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionAcceptAlternative"))
+      fireEvent.click(screen.getByText("actionConfirmAcceptAlt"))
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          "/api/appointments/42/accept-alternative",
+          expect.objectContaining({ method: "POST" }),
         )
       })
       expect(onActionSuccess).toHaveBeenCalledTimes(1)
