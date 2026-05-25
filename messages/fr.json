@@ -388,7 +388,10 @@
     "acceptAltNewSlot": "Nouveau créneau",
     "acceptAltConfirmHint": "L'acceptation est définitive : le RDV repassera en \"planifié\" à cette nouvelle date.",
     "actionConfirmAcceptAlt": "Confirmer l'acceptation",
-    "resetFilters": "Réinitialiser les filtres"
+    "resetFilters": "Réinitialiser les filtres",
+    "skipToCalendar": "Passer au calendrier des rendez-vous",
+    "calendarMainLabel": "Calendrier des rendez-vous",
+    "todayDateAnnouncement": "Aujourd'hui : {date}"
   },
   "weekly": {
     "title": "Vue hebdomadaire",

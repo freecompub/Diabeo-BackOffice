@@ -388,7 +388,10 @@
     "acceptAltNewSlot": "New slot",
     "acceptAltConfirmHint": "Acceptance is final: the appointment will go back to \"scheduled\" at this new date.",
     "actionConfirmAcceptAlt": "Confirm acceptance",
-    "resetFilters": "Reset filters"
+    "resetFilters": "Reset filters",
+    "skipToCalendar": "Skip to appointments calendar",
+    "calendarMainLabel": "Appointments calendar",
+    "todayDateAnnouncement": "Today: {date}"
   },
   "weekly": {
     "title": "Weekly View",
