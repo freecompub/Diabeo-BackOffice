@@ -390,7 +390,8 @@
     "actionConfirmAcceptAlt": "Confirmer l'acceptation",
     "resetFilters": "Réinitialiser les filtres",
     "skipToCalendar": "Passer au calendrier des rendez-vous",
-    "calendarMainLabel": "Calendrier des rendez-vous"
+    "calendarMainLabel": "Calendrier des rendez-vous",
+    "todayDateAnnouncement": "Aujourd'hui : {date}"
   },
   "weekly": {
     "title": "Vue hebdomadaire",

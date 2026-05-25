@@ -17,7 +17,11 @@ import { describe, it, expect, vi } from "vitest"
 import { render, screen } from "@testing-library/react"
 
 vi.mock("next-intl", () => ({
-  useTranslations: () => (k: string) => k,
+  useTranslations: () => (k: string, v?: Record<string, unknown>) => {
+    // Mock interpolate {date} param pour test A11Y-5 todayDateAnnouncement.
+    if (v && "date" in v) return `${k}:${v.date}`
+    return k
+  },
   useLocale: () => "fr-FR",
 }))
 
@@ -121,14 +125,14 @@ describe("US-2500-UI iter 10 a11y polish", () => {
     expect(region!.className).toContain("focus-visible:ring-2")
   })
 
-  it("scopeMissing path : id+role region cohérent pour skip-link", () => {
+  it("scopeMissing path : region cohérente (id renommé `-empty` par CR-1 fix round 1)", () => {
     setUpMocks({ scopeMissing: true })
     const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
-    const region = container.querySelector("#appointment-calendar-main")
+    // Fix CR-1 round 1 — id distinct `-empty` (vs `-main`) pour éviter
+    // duplicate id si futur refactor casse l'exclusion mutuelle des branches.
+    const region = container.querySelector("#appointment-calendar-empty")
     expect(region).not.toBeNull()
     expect(region!.getAttribute("role")).toBe("region")
-    // En scopeMissing, on garde l'id pour que le skip-link page atteigne
-    // la zone "Sélectionnez un membre" cohérent UX.
     // Mock memberships=[] → scopeMissingTitleKey="scopeMissingTitle"
     // (vs "scopeChooseTitle" si >= 2 memberships).
     expect(screen.getByText("scopeMissingTitle")).toBeTruthy()
@@ -148,5 +152,78 @@ describe("US-2500-UI iter 10 a11y polish", () => {
     // tabIndex=-1 = pas dans le Tab order naturel MAIS focusable
     // programmatiquement (skip-link.focus() ou href="#id" déplace focus).
     expect(region!.getAttribute("tabindex")).toBe("-1")
+  })
+
+  /**
+   * Fix CR-1/A11Y-3/HSA-6 round 1 review PR #437 — id distinct entre les 2
+   * paths (scopeMissing vs normal) pour éviter risque duplicate id si futur
+   * refactor casse l'exclusion mutuelle des branches conditionnelles.
+   */
+  it("Fix CR-1/A11Y-3 round 1 — id distinct '-empty' sur scopeMissing path (vs '-main' normal)", () => {
+    setUpMocks({ scopeMissing: true })
+    const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
+    expect(container.querySelector("#appointment-calendar-empty")).not.toBeNull()
+    expect(container.querySelector("#appointment-calendar-main")).toBeNull()
+  })
+
+  /**
+   * Fix CR-2 round 1 review PR #437 — symétrie scopeMissing path
+   * (tabIndex={-1} + focus-visible:ring) cohérent path normal.
+   */
+  it("Fix CR-2 round 1 — scopeMissing path : tabIndex=-1 + focus-visible:ring symétrique", () => {
+    setUpMocks({ scopeMissing: true })
+    const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
+    const region = container.querySelector("#appointment-calendar-empty")
+    expect(region!.getAttribute("tabindex")).toBe("-1")
+    expect(region!.className).toContain("focus-visible:ring-2")
+  })
+
+  /**
+   * Fix CR-4 round 1 review PR #437 — `aria-busy={isInitialLoading}` boolean
+   * direct (React sérialise correctement). Pas de conversion manuelle.
+   */
+  it("Fix CR-4 round 1 — aria-busy boolean direct (React sérialise en 'true'/'false')", () => {
+    setUpMocks({ isInitialLoading: true })
+    const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
+    const region = container.querySelector("#appointment-calendar-main")
+    // React sérialise boolean en string DOM "true"/"false"
+    expect(region!.getAttribute("aria-busy")).toBe("true")
+  })
+
+  /**
+   * Fix A11Y-4 round 1 review PR #437 — aria-label contextuel pendant
+   * isInitialLoading pour SR feedback informatif (vs annonce vague
+   * "Calendrier occupé" sans contexte).
+   */
+  it("Fix A11Y-4 round 1 — aria-label inclut 'loading' pendant isInitialLoading", () => {
+    setUpMocks({ isInitialLoading: true })
+    const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
+    const region = container.querySelector("#appointment-calendar-main")
+    // Format: "{calendarMainLabel} — {loading}" → "calendarMainLabel — loading"
+    expect(region!.getAttribute("aria-label")).toContain("loading")
+    expect(region!.getAttribute("aria-label")).toContain("calendarMainLabel")
+  })
+
+  it("Fix A11Y-4 round 1 — aria-label revient à label simple après chargement", () => {
+    setUpMocks({ isInitialLoading: false })
+    const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
+    const region = container.querySelector("#appointment-calendar-main")
+    // Pas de "loading" suffix après le 1er fetch.
+    expect(region!.getAttribute("aria-label")).toBe("calendarMainLabel")
+  })
+
+  /**
+   * Fix A11Y-5 round 1 review PR #437 — SR-only annonce date du jour
+   * (workaround Schedule-X v4 pas de `aria-current="date"` natif).
+   */
+  it("Fix A11Y-5 round 1 — annonce SR-only 'todayDateAnnouncement' avec date locale", () => {
+    setUpMocks()
+    const { container } = render(<AppointmentCalendar userRole="DOCTOR" />)
+    const srOnly = container.querySelector("p.sr-only")
+    expect(srOnly).not.toBeNull()
+    // Mock i18n returns key name; le formatage Intl.DateTimeFormat est appliqué
+    // sur la date réelle au mount → la chaîne contient au moins l'année courante.
+    const year = new Date().getFullYear()
+    expect(srOnly!.textContent).toContain(String(year))
   })
 })

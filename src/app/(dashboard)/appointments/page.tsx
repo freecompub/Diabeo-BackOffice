@@ -44,10 +44,22 @@ export default async function AppointmentsPage() {
           (WCAG 2.4.1 Bypass Blocks AA). Permet à un user clavier-only ou
           SR de sauter le header + filtres pour aller direct au calendrier
           (qui peut contenir 200+ RDV). Le link reste invisible sauf focus
-          via la classe `sr-only focus:not-sr-only`. */}
+          via la classe `sr-only focus:not-sr-only`.
+
+          Fix A11Y-1 round 1 review PR #437 — `bg-teal-800` (#115E59) sur
+          white = contraste 7.1:1 (WCAG AAA). L'ancien `bg-primary` teal-600
+          (#0D9488) donnait 3.74:1 (FAIL WCAG AA 4.5:1).
+
+          Fix A11Y-2 round 1 — `focus:start-2` (vs `focus:left-2`) Tailwind
+          logical property → respecte automatiquement `dir="rtl"` arabe :
+          skip-link à droite en RTL, à gauche en LTR.
+
+          Fix CR-5 round 1 — `focus-visible:outline-none` (vs `focus:`)
+          cohérent avec wrapper calendar pour éviter outline natif sur clic
+          souris involontaire. */}
       <a
         href="#appointment-calendar-main"
-        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:start-2 focus:z-50 focus:rounded focus:bg-teal-800 focus:px-3 focus:py-2 focus:text-white focus-visible:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
       >
         {t("skipToCalendar")}
       </a>

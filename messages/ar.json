@@ -390,7 +390,8 @@
     "actionConfirmAcceptAlt": "تأكيد القبول",
     "resetFilters": "إعادة ضبط عوامل التصفية",
     "skipToCalendar": "تخطي إلى تقويم المواعيد",
-    "calendarMainLabel": "تقويم المواعيد"
+    "calendarMainLabel": "تقويم المواعيد",
+    "todayDateAnnouncement": "اليوم: {date}"
   },
   "weekly": {
     "title": "العرض الأسبوعي",

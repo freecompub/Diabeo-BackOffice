@@ -390,7 +390,8 @@
     "actionConfirmAcceptAlt": "Confirm acceptance",
     "resetFilters": "Reset filters",
     "skipToCalendar": "Skip to appointments calendar",
-    "calendarMainLabel": "Appointments calendar"
+    "calendarMainLabel": "Appointments calendar",
+    "todayDateAnnouncement": "Today: {date}"
   },
   "weekly": {
     "title": "Weekly View",

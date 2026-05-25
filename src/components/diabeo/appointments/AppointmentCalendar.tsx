@@ -190,6 +190,20 @@ export function AppointmentCalendar({
   const [selectedDate, setSelectedDate] = useState<Date>(() => new Date())
   const range = useMemo(() => computeRange(selectedDate), [selectedDate])
 
+  // Fix A11Y-5 round 1 review PR #437 — date du jour stable au mount via
+  // useState lazy init (anti React-Compiler `Date.now()` au render +
+  // anti drift visible si polling à minuit). Format Intl.DateTimeFormat
+  // locale-aware pour SR users (workaround Schedule-X v4 pas de
+  // `aria-current="date"` natif).
+  const [todayLabel] = useState(() =>
+    new Intl.DateTimeFormat(undefined, {
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date()),
+  )
+
   // US-2500-UI iter 4 — état du filtre membre cabinet.
   // Fix CR-1 + H-4 round 2 review PR #432 — `useMyMemberships` est appelé
   // dans le parent (vs auparavant dans `<MemberFilter>`) pour éviter le
@@ -580,12 +594,20 @@ export function AppointmentCalendar({
           {newApptButton}
         </div>
         {/* US-2500-UI iter 10 a11y polish — id target skip-link cohérent même
-            en scopeMissing path. role=region + aria-label pour landmark SR. */}
+            en scopeMissing path. role=region + aria-label pour landmark SR.
+            Fix CR-1/A11Y-3/HSA-6 round 1 — id distinct `-empty` (vs `-main`)
+            pour éviter risque duplicate id si futur refactor casse l'exclusion
+            mutuelle des 2 branches. Skip-link cible `-main` ; en scopeMissing
+            on accepte qu'il n'atteigne pas la zone (calendar absent de toute
+            façon, le filtre membre cabinet est juste au-dessus). Fix CR-2
+            round 1 — tabIndex={-1} + focus-visible:ring symétrique au path
+            normal pour cohérence visuelle si futur skip-link cible `-empty`. */}
         <div
-          id="appointment-calendar-main"
+          id="appointment-calendar-empty"
           role="region"
           aria-label={t("calendarMainLabel")}
-          className="rounded-lg border border-border bg-card p-12 text-center"
+          tabIndex={-1}
+          className="rounded-lg border border-border bg-card p-12 text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <h2 className="text-lg font-medium text-foreground">
             {t(scopeMissingTitleKey)}
@@ -699,6 +721,11 @@ export function AppointmentCalendar({
        *     fournit pas de landmark natif sur son outer wrapper)
        *   - `aria-busy` synchronisé avec `isInitialLoading` du hook polling
        *     (SR users informés que le contenu est en cours de chargement)
+       *   - Fix CR-4 round 1 — `aria-busy={isInitialLoading}` boolean direct
+       *     (React sérialise correctement en string "true"/"false")
+       *   - Fix A11Y-4 round 1 — `aria-label` contextuel "Calendrier des
+       *     rendez-vous — Chargement..." pendant isInitialLoading (vs
+       *     annonce vague "Calendrier occupé" sans contexte).
        *
        * **Schedule-X v4 a11y limitations connues** (V1.5 follow-up V2 — issue
        * GH à créer si besoin) :
@@ -706,7 +733,8 @@ export function AppointmentCalendar({
        *     (rendu DOM Schedule-X imperatif via preact-signals)
        *   - Navigation clavier flèches : Schedule-X v4 supporte Tab + Enter
        *     mais pas flèches directionnelles natives sur la grille
-       *   - aria-current="date" sur la cellule "today" : à vérifier QA visuel
+       *   - aria-current="date" sur la cellule "today" : workaround
+       *     SR-only "Aujourd'hui : <date>" rendu en dessous (A11Y-5 fix).
        *
        * Pour V1, l'alternative a11y du drag&drop est le bouton "Déplacer"
        * dans le modal détail iter 5 (Fix FE-2 PR #435 WCAG 2.5.7).
@@ -714,13 +742,25 @@ export function AppointmentCalendar({
       <div
         id="appointment-calendar-main"
         role="region"
-        aria-label={t("calendarMainLabel")}
-        aria-busy={isInitialLoading ? "true" : "false"}
+        aria-label={
+          isInitialLoading
+            ? `${t("calendarMainLabel")} — ${t("loading")}`
+            : t("calendarMainLabel")
+        }
+        aria-busy={isInitialLoading}
         className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         tabIndex={-1}
       >
         <ScheduleXCalendar calendarApp={calendar} />
       </div>
+
+      {/* Fix A11Y-5 round 1 review PR #437 — workaround Schedule-X v4 ne
+          fournit pas `aria-current="date"` sur la cellule today. SR users
+          peuvent identifier la date du jour via cette annonce SR-only
+          (invisible visuellement, ne perturbe pas le rendu).
+          aria-live="off" par défaut — pas d'annonce dynamique (la date du
+          jour ne change pas pendant la session). */}
+      <p className="sr-only">{t("todayDateAnnouncement", { date: todayLabel })}</p>
 
       {detailModal}
       {createModal}
