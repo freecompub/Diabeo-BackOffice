@@ -112,6 +112,28 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 - [x] Bandeau "Alternatives en attente" ✅ iter 9 — `<AlternativesBanner>` auto-affiché si RDV cancelled + proposedAlternativeAt non expiré (TTL 7j), bouton "Voir" filtre calendar sur cancelled
 - [x] Bouton "Accepter alternative" → `/accept-alternative` ✅ iter 9 — dans `<AppointmentDetailModal>` view mode, visible si status=cancelled + proposedAlternativeAt set
 
+### UI patient "Mes RDV" (iter 12 — PR #438)
+
+> Surface web complémentaire de l'app iOS Diabeo. Pour patients sans iPhone
+> récent, secrétariat / aidant qui aide le patient, ou session iOS expirée.
+
+- [x] Page `/patient/appointments` (VIEWER role gated par `(patient)/layout.tsx`) — server component avec `force-dynamic` + Cache-Control `no-store` via middleware `/patient/*` (defense-in-depth PHI bfcache + proxy CDN/corporate).
+- [x] `MyAppointmentsList` (~360 lignes) — liste chronologique split "Prochains" (>= today) + "Passés", range -30j → +90j. Tri prochains croissant + passés décroissant. Reuse hooks `useAppointments` + `useAcceptAlternative` (iter 9).
+- [x] Bouton "Accepter alternative" visible UNIQUEMENT si status=cancelled + proposedAlternativeAt set. Backend `/api/appointments/[id]/accept-alternative` abaissé à `VIEWER` (PR #438 B2) — `appointmentRouteGate` enforce ownership via `canAccessPatient` branche VIEWER → own patient uniquement.
+- [x] Backend `/api/appointments` GET abaissé à `VIEWER` (PR #438 B1) avec garde defense-in-depth : `memberId` interdit pour VIEWER (sinon = leak inter-patients du même membre) + IDOR `?patientId=<other>` → 403 + audit `accessDenied` US-2265.
+- [x] `requireGdprConsent(userId)` upfront server-side avec redirect `/account/privacy?redirect=/patient/appointments` si OFF (RGPD Art. 9.2.a).
+- [x] Audit `accessDenied` si mismatch role (DOCTOR tentant /patient) + audit `viewer.no_patient_row` si VIEWER orphelin (détection compte démo recyclé / migration ratée).
+- [x] `error.tsx` + `loading.tsx` co-locés (RSC streaming + Suspense fallback) — pas de crash silencieux si `getOwnPatientId` throw.
+- [x] i18n FR/EN/AR avec ICU plural arabe 6 catégories CLDR (zero/one/two/few/many/other) — messages erreur acceptAlt discriminés par code (deadlineExceeded / conflict / alreadyHandled / notAllowed / network / generic).
+- [x] Hook `nowMs` refresh via `setInterval(10min)` + `visibilitychange` + recompute range si écart > 6h (page laissée ouverte longtemps — pas de classification figée au mount).
+- [x] `submittingId` per-card (pas `loading` global) — clic Accepter sur 1 RDV ne disable PAS les autres cards.
+- [x] `mountedRef` cleanup pour gate `setActionMessage` après unmount.
+- [x] WCAG : `aria-atomic="true"` sur live regions (NVDA/JAWS re-vocalisent) + badge `pending_validation` border-amber-600 + font-semibold (contraste WCAG AA 4.5:1) + aria-label discriminants boutons modal + skip-link cohérent pattern pro + touch targets ≥ 44px.
+- [x] `AppointmentCard` extrait `React.memo` (perf : pas de re-render N items à chaque polling tick 60s).
+- [x] Hook `useConfirmAppointment` (iter 11) + `useAcceptAlternative` (iter 9) : guard in-flight double-click + pattern HSA-3 whitelist codes erreur backend.
+- [x] Item sidebar patient `/patient/appointments` (NavigationShell variant="patient") avec icon CalendarClock cohérent sidebar pro.
+- [x] Tests : 37 nouveaux (10 useConfirmAppointment + 13 MyAppointmentsList + 8 viewer-access + 6 middleware-headers) — total 2556 verts.
+
 ### Accessibilité
 
 - [⚠️] ARIA roles `role="grid"` interne — Schedule-X v4 ne le fournit pas nativement (rendu DOM imperatif via preact-signals). Wrapper `<div role="region" aria-label>` ajouté iter 10 pour landmark SR. Migration cmdk/custom V1.5 si requis WCAG strict.
