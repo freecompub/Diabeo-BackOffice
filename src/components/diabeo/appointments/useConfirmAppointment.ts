@@ -67,6 +67,12 @@ export function useConfirmAppointment(): UseConfirmAppointmentResult {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ConfirmAppointmentErrorCode | null>(null)
   const mountedRef = useRef(true)
+  // Fix H4 round 1 review PR #438 — guard double-click (in-flight).
+  // mountedRef + inFlightRef pattern : si l'utilisateur double-clic avant
+  // que le 1er POST réponde, on ignore silencieusement le 2e (idempotent
+  // côté backend mais évite audit log polluant + double feedback UI).
+  const inFlightRef = useRef(false)
+
   useEffect(() => {
     mountedRef.current = true
     return () => {
@@ -82,6 +88,11 @@ export function useConfirmAppointment(): UseConfirmAppointmentResult {
 
   const submit = useCallback(
     async (id: number): Promise<ConfirmAppointmentResult> => {
+      // Fix H4 round 1 review PR #438 — guard in-flight.
+      if (inFlightRef.current) {
+        return { ok: false, code: "unexpectedError" }
+      }
+      inFlightRef.current = true
       if (mountedRef.current) {
         setLoading(true)
         setError(null)
@@ -106,15 +117,21 @@ export function useConfirmAppointment(): UseConfirmAppointmentResult {
         const dto = (await res.json()) as UpdatedAppointmentLite
         return { ok: true, dto }
       } catch (err) {
+        // Fix L1 round 1 review PR #438 — log dev pour visibilité ops sur
+        // erreurs réseau (vs silently → "unexpectedError" générique).
+        if (process.env.NODE_ENV !== "production" && err instanceof Error && err.name !== "AbortError") {
+          console.warn("[useConfirmAppointment] network error:", err.message)
+        }
         const code = normalizeError(err instanceof Error ? err.message : undefined)
         if (mountedRef.current) setError(code)
         return { ok: false, code }
       } finally {
+        inFlightRef.current = false
         if (mountedRef.current) setLoading(false)
       }
     },
     // Deps vide intentionnel cohérent pattern hooks iter 5/6/7/9 :
-    // mountedRef useRef stable, setters useState identité stable React.
+    // mountedRef + inFlightRef useRef stables, setters useState identité stable.
     [],
   )
 

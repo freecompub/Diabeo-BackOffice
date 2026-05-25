@@ -17,7 +17,11 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   const ctx = extractRequestContext(req)
   try {
     const { id } = await params
-    const gate = await appointmentRouteGate(req, id, "NURSE", "accept-alternative")
+    // PR #438 B2 — VIEWER (patient) accepte sa propre alternative depuis l'UI
+    // /patient/appointments. Helper enforce ownership via canAccessPatient
+    // (branche VIEWER → own patient uniquement). NURSE+ peut aussi accepter
+    // au nom du patient (helpdesk / proxy téléphonique).
+    const gate = await appointmentRouteGate(req, id, "VIEWER", "accept-alternative")
     if (gate.kind === "error") return setAppointmentSecurityHeaders(gate.res)
 
     const out = await rdvAppointmentService.acceptAlternative(

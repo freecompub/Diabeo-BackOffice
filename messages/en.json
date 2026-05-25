@@ -393,9 +393,14 @@
     "calendarMainLabel": "Appointments calendar",
     "todayDateAnnouncement": "Today: {date}",
     "actionConfirmPending": "Confirm appointment",
+    "actionConfirmPendingAria": "Confirm appointment number {id}",
+    "actionAcceptAlternativeAria": "Accept alternative for appointment number {id}",
+    "actionRetry": "Retry",
+    "skipToList": "Skip to appointments list",
     "myAppointmentsTitle": "My appointments",
     "myAppointmentsSubtitle": "Your upcoming appointments and recent history. To create or modify, contact your practice.",
-    "myAppointmentsNoProfile": "No patient record linked to your account. Please contact your practice.",
+    "myAppointmentsUnavailable": "Your appointments are not available right now. Please contact your practice if the issue persists.",
+    "myAppointmentsLoading": "Loading your appointments...",
     "myAppointmentsError": "Could not load your appointments — please retry later.",
     "myAppointmentsUpcoming": "{count, plural, =0 {No upcoming appointment} one {1 upcoming appointment} other {# upcoming appointments}}",
     "myAppointmentsUpcomingEmpty": "You have no appointment scheduled in the next 90 days.",
@@ -403,7 +408,14 @@
     "myAppointmentsPastEmpty": "No appointment in the last 30 days.",
     "myAppointmentsProposedAlt": "Alternative proposed: {date}",
     "myAppointmentsAcceptOk": "✓ Alternative accepted — your appointment is confirmed.",
-    "myAppointmentsAcceptError": "Could not accept — slot may be taken or deadline exceeded.",
+    "myAppointmentsAcceptError": {
+      "generic": "Could not accept — please retry later.",
+      "deadlineExceeded": "The acceptance deadline has passed. Contact your practice to reschedule.",
+      "conflict": "The proposed slot is no longer available. Contact your practice.",
+      "alreadyHandled": "This appointment has already been handled.",
+      "notAllowed": "You are not allowed to accept this alternative.",
+      "network": "Network connection interrupted. Check your connection and retry."
+    },
     "lastSync": "last sync at {time}"
   },
   "weekly": {
