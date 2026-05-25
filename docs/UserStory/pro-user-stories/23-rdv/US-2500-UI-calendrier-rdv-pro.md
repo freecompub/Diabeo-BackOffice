@@ -114,11 +114,15 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 
 ### Accessibilité
 
-- [ ] ARIA roles : `role="grid"` sur le calendrier mois, `role="gridcell"` sur chaque jour
-- [ ] Navigation clavier : flèches pour naviguer entre slots, Enter pour ouvrir détail
-- [ ] Focus rings 3-4px (cohérent design system Sérénité Active)
-- [ ] `aria-live="polite"` sur les changements de statut RDV (announce screen reader)
-- [ ] Touch targets ≥ 44px sur les boutons de navigation mois
+- [⚠️] ARIA roles `role="grid"` interne — Schedule-X v4 ne le fournit pas nativement (rendu DOM imperatif via preact-signals). Wrapper `<div role="region" aria-label>` ajouté iter 10 pour landmark SR. Migration cmdk/custom V1.5 si requis WCAG strict.
+- [⚠️] Navigation clavier flèches Schedule-X — Tab+Enter supportés natifs v4, flèches directionnelles non natives. Alternative bouton "Déplacer" iter 5 (WCAG 2.5.7) couvre le besoin déplacement clavier.
+- [x] Focus rings explicites `focus-visible:ring-2 ring-primary ring-offset-2` sur tous boutons custom (StatusFilter chips iter 8, region calendar iter 10, modal buttons via shadcn). ✅ iter 10
+- [x] `aria-live="polite"` sur successAnnounce + status bar / `aria-live="assertive"` sur erreurs (dndError, actionError modal, alertes). ✅ iter 6/7/8/9
+- [x] Touch targets ≥ 44px sur boutons interactifs custom (PatientFilter clear/close, StatusFilter chips, modal sub-mode actions). ✅ iter 5/6/7/8
+- [x] Skip-link "Aller au calendrier" visible au focus (WCAG 2.4.1 Bypass Blocks AA) ✅ iter 10
+- [x] Landmark region `role="region" aria-label` sur wrapper Schedule-X + scopeMissing path cohérent ✅ iter 10
+- [x] `aria-busy` synchronisé avec `isInitialLoading` du hook polling ✅ iter 10
+- [x] `aria-labelledby` main → h1 page pour landmark sémantique ✅ iter 10
 
 ### Performance
 

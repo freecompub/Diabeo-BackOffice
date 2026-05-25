@@ -579,7 +579,14 @@ export function AppointmentCalendar({
           {filterEl}
           {newApptButton}
         </div>
-        <div className="rounded-lg border border-border bg-card p-12 text-center">
+        {/* US-2500-UI iter 10 a11y polish — id target skip-link cohérent même
+            en scopeMissing path. role=region + aria-label pour landmark SR. */}
+        <div
+          id="appointment-calendar-main"
+          role="region"
+          aria-label={t("calendarMainLabel")}
+          className="rounded-lg border border-border bg-card p-12 text-center"
+        >
           <h2 className="text-lg font-medium text-foreground">
             {t(scopeMissingTitleKey)}
           </h2>
@@ -684,8 +691,34 @@ export function AppointmentCalendar({
       {successAnnounce}
       {dndErrorAnnounce}
 
-      {/* Fix L-1 — Tailwind class au lieu de magic inline style. */}
-      <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px]">
+      {/* Fix L-1 — Tailwind class au lieu de magic inline style.
+       *
+       * US-2500-UI iter 10 a11y polish :
+       *   - `id="appointment-calendar-main"` cible du skip-link page (WCAG 2.4.1)
+       *   - `role="region"` + `aria-label` landmark explicite (Schedule-X v4 ne
+       *     fournit pas de landmark natif sur son outer wrapper)
+       *   - `aria-busy` synchronisé avec `isInitialLoading` du hook polling
+       *     (SR users informés que le contenu est en cours de chargement)
+       *
+       * **Schedule-X v4 a11y limitations connues** (V1.5 follow-up V2 — issue
+       * GH à créer si besoin) :
+       *   - Pas de `role="grid"` interne sur les vues mois/semaine/jour
+       *     (rendu DOM Schedule-X imperatif via preact-signals)
+       *   - Navigation clavier flèches : Schedule-X v4 supporte Tab + Enter
+       *     mais pas flèches directionnelles natives sur la grille
+       *   - aria-current="date" sur la cellule "today" : à vérifier QA visuel
+       *
+       * Pour V1, l'alternative a11y du drag&drop est le bouton "Déplacer"
+       * dans le modal détail iter 5 (Fix FE-2 PR #435 WCAG 2.5.7).
+       */}
+      <div
+        id="appointment-calendar-main"
+        role="region"
+        aria-label={t("calendarMainLabel")}
+        aria-busy={isInitialLoading ? "true" : "false"}
+        className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        tabIndex={-1}
+      >
         <ScheduleXCalendar calendarApp={calendar} />
       </div>
 

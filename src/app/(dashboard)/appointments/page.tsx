@@ -35,10 +35,27 @@ export default async function AppointmentsPage() {
   const t = await getTranslations("appointments")
 
   return (
-    <main className="flex flex-col gap-6 p-4 lg:p-6">
+    <main
+      className="flex flex-col gap-6 p-4 lg:p-6"
+      // Fix US-2500-UI iter 10 a11y polish — landmark main lié au h1 page.
+      aria-labelledby="appointments-page-title"
+    >
+      {/* US-2500-UI iter 10 a11y polish — skip-link visible only on focus
+          (WCAG 2.4.1 Bypass Blocks AA). Permet à un user clavier-only ou
+          SR de sauter le header + filtres pour aller direct au calendrier
+          (qui peut contenir 200+ RDV). Le link reste invisible sauf focus
+          via la classe `sr-only focus:not-sr-only`. */}
+      <a
+        href="#appointment-calendar-main"
+        className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-primary focus:px-3 focus:py-2 focus:text-primary-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+      >
+        {t("skipToCalendar")}
+      </a>
       <header className="flex items-baseline justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
+          <h1 id="appointments-page-title" className="text-2xl font-semibold">
+            {t("pageTitle")}
+          </h1>
           <p className="mt-1 text-sm text-muted-foreground">{t("pageSubtitle")}</p>
         </div>
       </header>
