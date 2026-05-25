@@ -24,6 +24,15 @@ import { useTranslations } from "next-intl"
 import type { AppointmentStatus } from "@prisma/client"
 import { cn } from "@/lib/utils"
 
+/**
+ * Liste des statuts affichables — hardcodée (alignée avec enum Prisma).
+ *
+ * Fix CR-11 round 1 review PR #436 — si Prisma ajoute un nouveau statut
+ * (e.g. `rescheduled`), il sera invisible côté filter UI tant que ce tableau
+ * n'est pas mis à jour. Pas critique car backend gate le statut accepté.
+ * Test CI à créer V1.5 : iterate `AppointmentStatus` enum via Object.values
+ * et assert que `ALL_STATUSES` contient tous les membres.
+ */
 const ALL_STATUSES: ReadonlyArray<AppointmentStatus> = [
   "scheduled",
   "pending_validation",
@@ -33,7 +42,15 @@ const ALL_STATUSES: ReadonlyArray<AppointmentStatus> = [
   "no_show",
 ]
 
-/** Defaults metier — actifs à l'ouverture du calendar (RDV à venir). */
+/**
+ * Defaults metier — actifs à l'ouverture du calendar (RDV à venir).
+ *
+ * Fix CR-13 round 1 review PR #436 — `ReadonlySet` est un contract type-only,
+ * pas un freeze runtime. Pour bloquer toute mutation accidentelle d'un caller
+ * mal codé (cast + `.add()`), on aurait besoin d'un Proxy custom car les
+ * Maps/Sets n'acceptent pas `Object.freeze`. Documenter le contrat suffit
+ * pour V1 — tous les consumers internes respectent le ReadonlySet typing.
+ */
 export const DEFAULT_STATUS_FILTER: ReadonlySet<AppointmentStatus> = new Set<AppointmentStatus>([
   "scheduled",
   "pending_validation",
@@ -89,7 +106,14 @@ export function StatusFilter({ value, onChange }: StatusFilterProps) {
             onClick={() => toggle(status)}
             aria-pressed={active}
             className={cn(
-              "text-xs px-3 min-h-[44px] rounded-full border transition-all",
+              // Fix FE-11 round 1 review PR #436 — text-sm + min-h-[36px]
+              // (WCAG 2.5.5 AA exige 24×24 minimum — 36 reste confortable
+              // sans le visual mismatch "bouton vide" qu'on avait avec
+              // min-h-[44px] + text-xs).
+              "text-sm px-3 min-h-[36px] rounded-full border transition-all",
+              // Fix FE-8 round 1 review PR #436 — focus-visible explicit ring
+              // pour clavier nav (WCAG 2.4.7 Focus Visible AA).
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
               STATUS_CHIP_COLORS[status],
               active
                 ? "bg-foreground/5 font-medium"

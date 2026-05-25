@@ -104,10 +104,9 @@ export function useAcceptAlternative(): UseAcceptAlternativeResult {
           method: "POST",
           credentials: "include",
           cache: "no-store",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-          },
+          // Fix CR-10 round 1 review PR #436 — Content-Type retiré (pas de body).
+          // X-Requested-With préservé pour CSRF defense-in-depth.
+          headers: { "X-Requested-With": "XMLHttpRequest" },
         })
         if (!res.ok) {
           if (res.status === 401 && typeof window !== "undefined") {
@@ -129,6 +128,9 @@ export function useAcceptAlternative(): UseAcceptAlternativeResult {
         if (mountedRef.current) setLoading(false)
       }
     },
+    // Fix CR-4 round 1 review PR #436 — deps vide intentionnel cohérent
+    // pattern hooks iter 5/6/7 : `mountedRef` est un useRef (identité stable),
+    // setters useState ont identité stable React. Pas de closure stale.
     [],
   )
 

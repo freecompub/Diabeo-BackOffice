@@ -382,7 +382,13 @@
     "alternativesBannerLabel": "بدائل في انتظار القبول",
     "alternativesBannerMessage": "{count, plural, zero {لا توجد بدائل} one {بديل واحد في انتظار القبول} two {بديلان في انتظار القبول} few {# بدائل في انتظار القبول} many {# بديلاً في انتظار القبول} other {# بديل في انتظار القبول}}",
     "alternativesBannerAction": "عرض",
-    "actionAcceptAlternative": "قبول البديل"
+    "actionAcceptAlternative": "قبول البديل",
+    "acceptAltTitle": "تأكيد التاريخ الجديد",
+    "acceptAltDescription": "تحقق من التاريخ والوقت الجديد الذي اقترحه الطبيب قبل القبول نيابة عن المريض.",
+    "acceptAltNewSlot": "الموعد الجديد",
+    "acceptAltConfirmHint": "القبول نهائي: سيعود الموعد إلى حالة \"مجدول\" في هذا التاريخ الجديد.",
+    "actionConfirmAcceptAlt": "تأكيد القبول",
+    "resetFilters": "إعادة ضبط عوامل التصفية"
   },
   "weekly": {
     "title": "العرض الأسبوعي",

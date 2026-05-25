@@ -4,25 +4,27 @@
  * PatientFilter — filtre patient pour le calendrier RDV.
  *
  * US-2500-UI iter 8 — Permet à un médecin de focaliser le calendrier sur
- * UN patient (e.g. pour préparer une consultation, voir l'historique d'un
- * patient spécifique). Le filtre est **server-side** : `useAppointments`
- * reçoit `patientId` qui devient un filtre Prisma backend (vs filtre
- * client-side du `<StatusFilter>` qui agit sur les `items` déjà fetchés).
+ * UN patient. Le filtre est **server-side** : `useAppointments` reçoit
+ * `patientId` qui devient un filtre Prisma backend.
  *
  * **UX** :
  *   - Si pas de filtre : bouton compact "Filtrer par patient"
  *   - Si filtre actif : chip "Patient: Jean Durand #42" + bouton "X" clear
+ *   - Si édition : combobox autocomplete
  *
- * **A11y** : bouton clear avec `aria-label` explicite + touch target 44px.
+ * **A11y** : bouton clear avec `aria-label` explicite, `aria-hidden` sur le
+ * caractère `×` purement décoratif (Fix FE-12 round 1 review PR #436),
+ * touch target 44px.
  *
- * Réutilise `<PatientCombobox>` iter 6 pour la sélection (autocomplete +
- * accent-aware + disambiguation #id).
+ * **Fix FE-2 round 1 review PR #436** : le label est propagé par
+ * `<PatientCombobox>` via `onChange(id, label)` (vs ancien `<PatientCombobox>`
+ * qui ne donnait que l'id, forçant un re-fetch `usePatientList` côté parent
+ * juste pour afficher le label). Single fetch via le combobox uniquement.
  */
 
-import { useCallback, useMemo, useState } from "react"
+import { useCallback, useState } from "react"
 import { useTranslations } from "next-intl"
 import { PatientCombobox } from "./PatientCombobox"
-import { usePatientList } from "./usePatientList"
 import { Button } from "@/components/ui/button"
 
 export interface PatientFilterProps {
@@ -35,47 +37,46 @@ export interface PatientFilterProps {
 export function PatientFilter({ value, onChange }: PatientFilterProps) {
   const t = useTranslations("appointments")
   const [open, setOpen] = useState(false)
+  // Fix FE-2 round 1 — label local persisté depuis `<PatientCombobox>` au
+  // moment de la sélection, vs ancien `usePatientList` fetch côté parent.
+  // Synchronisé avec `value` : si parent clear externally (value=null),
+  // on clear aussi le label.
+  const [label, setLabel] = useState<string | null>(null)
 
   const handleSelect = useCallback(
-    (patientId: number | null) => {
+    (patientId: number | null, nextLabel: string | null) => {
       onChange(patientId)
+      setLabel(nextLabel)
       if (patientId !== null) {
         // Fermer le combobox après sélection — UX confirmée par chip.
         setOpen(false)
       }
+      // Fix CR-14 round 1 review PR #436 — fermer aussi si clear via clavier.
+      if (patientId === null && nextLabel === null && open) {
+        setOpen(false)
+      }
     },
-    [onChange],
+    [onChange, open],
   )
 
   const handleClear = useCallback(() => {
     onChange(null)
+    setLabel(null)
     setOpen(false)
   }, [onChange])
 
-  // Si filtre actif, on a besoin du label patient (firstname/lastname) pour
-  // afficher la chip. On fetch la liste pour retrouver le label depuis l'id.
-  // (Cabinet < 50 patients, fetch déjà fait par le combobox si open.)
-  const { items } = usePatientList({ enabled: value !== null })
-  const selectedLabel = useMemo(() => {
-    if (value === null) return null
-    const found = items.find((p) => p.id === value)
-    if (!found) return `#${value}` // fallback si pas encore chargé
-    const parts = [found.firstname, found.lastname].filter(Boolean)
-    return `${parts.join(" ").trim()} #${value}`
-  }, [value, items])
-
   // Filtre actif : afficher chip + bouton clear
   if (value !== null && !open) {
+    const displayLabel = label ?? `#${value}`
     return (
       <div className="flex items-center gap-2">
         <span className="text-xs text-muted-foreground">
           {t("patientFilterLabel")} :
         </span>
-        <span
-          className="text-xs px-3 py-1 min-h-[28px] inline-flex items-center rounded-full bg-primary/10 text-primary"
-          aria-label={t("patientFilterActive", { label: selectedLabel ?? `#${value}` })}
-        >
-          {selectedLabel ?? `#${value}`}
+        {/* Fix CR-6 round 1 review PR #436 — pas d'aria-label dupliqué.
+            Le texte visible est lu par le SR comme accessible name natif. */}
+        <span className="text-xs px-3 py-1 min-h-[28px] inline-flex items-center rounded-full bg-primary/10 text-primary">
+          {displayLabel}
         </span>
         <Button
           variant="ghost"
@@ -84,7 +85,10 @@ export function PatientFilter({ value, onChange }: PatientFilterProps) {
           aria-label={t("patientFilterClear")}
           className="min-h-[44px]"
         >
-          ×
+          {/* Fix FE-12 round 1 review PR #436 — aria-hidden sur le glyphe
+              décoratif × (sinon SR vocalise "multiplication"). aria-label
+              du bouton englobant est l'accessible name. */}
+          <span aria-hidden="true">×</span>
         </Button>
       </div>
     )
@@ -106,7 +110,7 @@ export function PatientFilter({ value, onChange }: PatientFilterProps) {
           aria-label={t("patientFilterClose")}
           className="min-h-[44px]"
         >
-          ×
+          <span aria-hidden="true">×</span>
         </Button>
       </div>
     )

@@ -42,8 +42,17 @@ export interface PatientComboboxProps {
   id: string
   /** patientId sélectionné (controlled). */
   value: number | null
-  /** Callback sélection changée. */
-  onChange: (patientId: number | null) => void
+  /**
+   * Callback sélection changée.
+   *
+   * Fix FE-2 round 1 review PR #436 — propage aussi le `label` du patient
+   * (firstname lastname #id) pour permettre au caller de l'afficher sans
+   * re-fetcher la liste via `usePatientList` (élimine le double-fetch
+   * `<PatientFilter>` ↔ `<PatientCombobox>` round 1).
+   * `label` est `null` quand `patientId === null` (clear) OU quand le user
+   * tape sans match exact.
+   */
+  onChange: (patientId: number | null, label: string | null) => void
   /** Désactive le combobox (e.g. pendant submit). */
   disabled?: boolean
 }
@@ -109,7 +118,9 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
       const match = items.find(
         (p) => normalize(patientLabel(p)) === normalizedInput,
       )
-      onChange(match ? match.id : null)
+      // Fix FE-2 round 1 review PR #436 — propage le label avec l'id pour
+      // que le caller puisse l'afficher sans re-fetcher la liste patients.
+      onChange(match ? match.id : null, match ? patientLabel(match) : null)
     },
     [items, onChange],
   )

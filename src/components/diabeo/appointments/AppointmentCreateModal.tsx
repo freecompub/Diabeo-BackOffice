@@ -256,7 +256,10 @@ export function AppointmentCreateModal({
             <PatientCombobox
               id="create-patient"
               value={patientId}
-              onChange={setPatientId}
+              // Fix FE-2 round 1 review PR #436 — la signature onChange a
+              // changé pour propager le label. Le modal create n'utilise pas
+              // le label (le combobox affiche déjà le label dans son input).
+              onChange={(id) => setPatientId(id)}
               disabled={loading}
             />
           </div>

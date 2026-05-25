@@ -93,11 +93,21 @@ describe("<StatusFilter>", () => {
     expect(group!.getAttribute("aria-label")).toBe("statusFilterLabel")
   })
 
-  it("touch targets min-h-[44px] (WCAG 2.5.5)", () => {
+  it("Fix FE-11 round 1 — touch targets min-h-[36px] WCAG 2.5.5 AA (24x24 min)", () => {
     const { container } = render(
       <StatusFilter value={DEFAULT_STATUS_FILTER} onChange={vi.fn()} />,
     )
-    const buttons = container.querySelectorAll("button.min-h-\\[44px\\]")
+    // FE-11 fix : min-h-[44px] + text-xs → mismatch visuel → reduced to 36px
+    // (WCAG AA exige 24x24 minimum, 36 reste confortable sans visual bug).
+    const buttons = container.querySelectorAll("button.min-h-\\[36px\\]")
+    expect(buttons.length).toBe(6)
+  })
+
+  it("Fix FE-8 round 1 — focus-visible:ring-2 explicit (WCAG 2.4.7)", () => {
+    const { container } = render(
+      <StatusFilter value={DEFAULT_STATUS_FILTER} onChange={vi.fn()} />,
+    )
+    const buttons = container.querySelectorAll("button.focus-visible\\:ring-2")
     expect(buttons.length).toBe(6)
   })
 })

@@ -51,7 +51,7 @@ function makeItem(overrides: Partial<AppointmentListItem> = {}): AppointmentList
 
 describe("countPendingAlternatives", () => {
   it("compte 0 si aucun RDV cancelled avec proposedAlt", () => {
-    expect(countPendingAlternatives([makeItem(), makeItem({ id: 2 })])).toBe(0)
+    expect(countPendingAlternatives([makeItem(), makeItem({ id: 2 })], Date.now())).toBe(0)
   })
 
   it("compte les RDV cancelled + proposedAlt récent (< 7j)", () => {
@@ -61,7 +61,7 @@ describe("countPendingAlternatives", () => {
       makeItem({ id: 2, status: "cancelled", proposedAlternativeAt: recent }),
       makeItem({ id: 3 }), // not cancelled
     ]
-    expect(countPendingAlternatives(items)).toBe(2)
+    expect(countPendingAlternatives(items, Date.now())).toBe(2)
   })
 
   it("exclut RDV cancelled mais proposedAlt EXPIRÉ (> 7j)", () => {
@@ -69,14 +69,14 @@ describe("countPendingAlternatives", () => {
     const items = [
       makeItem({ id: 1, status: "cancelled", proposedAlternativeAt: expired }),
     ]
-    expect(countPendingAlternatives(items)).toBe(0)
+    expect(countPendingAlternatives(items, Date.now())).toBe(0)
   })
 
   it("exclut RDV cancelled SANS proposedAlt", () => {
     const items = [
       makeItem({ id: 1, status: "cancelled", proposedAlternativeAt: null }),
     ]
-    expect(countPendingAlternatives(items)).toBe(0)
+    expect(countPendingAlternatives(items, Date.now())).toBe(0)
   })
 })
 
@@ -85,7 +85,7 @@ describe("<AlternativesBanner>", () => {
 
   it("rien rendu si count === 0", () => {
     const { container } = render(
-      <AlternativesBanner items={[]} onShowAlternatives={onShow} />,
+      <AlternativesBanner items={[]} now={Date.now()} onShowAlternatives={onShow} />,
     )
     expect(container.querySelector("[role='region']")).toBeNull()
   })
@@ -94,6 +94,7 @@ describe("<AlternativesBanner>", () => {
     const recent = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
     render(
       <AlternativesBanner
+        now={Date.now()}
         items={[
           makeItem({ id: 1, status: "cancelled", proposedAlternativeAt: recent }),
           makeItem({ id: 2, status: "cancelled", proposedAlternativeAt: recent }),
@@ -111,6 +112,7 @@ describe("<AlternativesBanner>", () => {
     const recent = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
     const { container } = render(
       <AlternativesBanner
+        now={Date.now()}
         items={[makeItem({ id: 1, status: "cancelled", proposedAlternativeAt: recent })]}
         onShowAlternatives={onShow}
       />,
@@ -125,6 +127,7 @@ describe("<AlternativesBanner>", () => {
     const recent = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
     render(
       <AlternativesBanner
+        now={Date.now()}
         items={[makeItem({ id: 1, status: "cancelled", proposedAlternativeAt: recent })]}
         onShowAlternatives={onShowMock}
       />,

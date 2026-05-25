@@ -115,15 +115,15 @@ describe("<PatientCombobox>", () => {
 
     // Tape exactement le label "Jean Martin #42"
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "Jean Martin #42" } })
-    expect(onChange).toHaveBeenCalledWith(42)
+    expect(onChange).toHaveBeenCalledWith(42, "Jean Martin #42")
 
     // Tape le label avec casse différente — toujours match (insensitive)
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "jean martin #43" } })
-    expect(onChange).toHaveBeenCalledWith(43)
+    expect(onChange).toHaveBeenCalledWith(43, "Jean Martin #43")
 
     // Tape accent absent ("muller perez #7" → match "Müller Pérez #7")
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "muller perez #7" } })
-    expect(onChange).toHaveBeenCalledWith(7)
+    expect(onChange).toHaveBeenCalledWith(7, "Müller Pérez #7")
   })
 
   it("CR-H3 — partial input (pas exact match) → onChange(null)", () => {
@@ -131,7 +131,7 @@ describe("<PatientCombobox>", () => {
     render(<PatientCombobox id="test-combobox" value={null} onChange={onChange} />)
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "Jean" } })
-    expect(onChange).toHaveBeenCalledWith(null)
+    expect(onChange).toHaveBeenCalledWith(null, null)
   })
 
   it("FE-7 — no-results state : input avec text + filtered empty → message warning", () => {

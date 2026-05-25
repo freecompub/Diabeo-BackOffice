@@ -382,7 +382,13 @@
     "alternativesBannerLabel": "Pending alternatives",
     "alternativesBannerMessage": "{count, plural, one {# alternative awaiting acceptance} other {# alternatives awaiting acceptance}}",
     "alternativesBannerAction": "View",
-    "actionAcceptAlternative": "Accept alternative"
+    "actionAcceptAlternative": "Accept alternative",
+    "acceptAltTitle": "Confirm the new date",
+    "acceptAltDescription": "Review the new date and time proposed by the doctor before accepting on behalf of the patient.",
+    "acceptAltNewSlot": "New slot",
+    "acceptAltConfirmHint": "Acceptance is final: the appointment will go back to \"scheduled\" at this new date.",
+    "actionConfirmAcceptAlt": "Confirm acceptance",
+    "resetFilters": "Reset filters"
   },
   "weekly": {
     "title": "Weekly View",

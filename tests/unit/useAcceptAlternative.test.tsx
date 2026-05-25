@@ -189,7 +189,8 @@ describe("useAcceptAlternative", () => {
     expect(init.credentials).toBe("include")
     expect(init.cache).toBe("no-store")
     const headers = init.headers as Record<string, string>
-    expect(headers["Content-Type"]).toBe("application/json")
+    // Fix CR-10 round 1 review PR #436 — Content-Type retiré (pas de body).
+    expect(headers["Content-Type"]).toBeUndefined()
     expect(headers["X-Requested-With"]).toBe("XMLHttpRequest")
     // No body — accept-alternative est idempotent (id dans URL).
     expect(init.body).toBeUndefined()

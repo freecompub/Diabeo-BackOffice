@@ -463,14 +463,30 @@ export function AppointmentCalendar({
   const handleOpenCreate = useCallback(() => setCreateOpen(true), [])
   const handleCloseCreate = useCallback(() => setCreateOpen(false), [])
 
-  // US-2500-UI iter 9 — handler "Voir alternatives" : active uniquement
-  // le statut `cancelled` (filtre client-side) → user voit les alternatives
-  // pending alors qu'elles sont normalement masquées (default = scheduled/
-  // pending_validation/confirmed). Le banner reste visible tant qu'il y a
-  // des alternatives pending dans le range (cf. countPendingAlternatives).
+  // US-2500-UI iter 9 — handler "Voir alternatives" : AJOUTE le statut
+  // `cancelled` au filtre actif (vs ancien écrasement complet).
+  //
+  // Fix CR-2 + FE-4 round 1 review PR #436 — ancien `setStatusFilter(new
+  // Set(["cancelled"]))` perdait les statuts précédemment actifs (scheduled,
+  // confirmed) → médecin devait re-cocher manuellement après "Voir". Le
+  // pattern additif préserve les filtres user + ajoute juste cancelled.
   const handleShowAlternatives = useCallback(() => {
-    setStatusFilter(new Set<AppointmentStatus>(["cancelled"]))
+    setStatusFilter((prev) => new Set<AppointmentStatus>([...prev, "cancelled"]))
   }, [])
+
+  // Fix FE-4 round 1 review PR #436 — bouton "Réinitialiser filtres" pour
+  // revenir aux defaults metier (scheduled + pending_validation + confirmed).
+  // Visible UNIQUEMENT si filtres modifiés vs defaults — évite clutter UI.
+  const handleResetFilters = useCallback(() => {
+    setStatusFilter(DEFAULT_STATUS_FILTER)
+    setPatientFilter(null)
+  }, [])
+
+  // Calcul si filtres modifiés (vs defaults) — compare Set + patientFilter.
+  const filtersAreCustom =
+    patientFilter !== null
+    || statusFilter.size !== DEFAULT_STATUS_FILTER.size
+    || ![...statusFilter].every((s) => DEFAULT_STATUS_FILTER.has(s))
   // Fix FE-12 round 1 review PR #434 — flag temporaire pour aria-live polite
   // qui annonce le succès création (vs ancien close silent).
   const [justCreated, setJustCreated] = useState(false)
@@ -607,7 +623,18 @@ export function AppointmentCalendar({
           filtre le calendar sur status=cancelled. Compté sur `items` total
           (vs filteredItems) pour ne pas disparaître quand l'utilisateur a
           filtré out le statut cancelled. */}
-      <AlternativesBanner items={items} onShowAlternatives={handleShowAlternatives} />
+      {/* Fix FE-5 round 1 review PR #436 — `now` calculé depuis `lastFetchedAt`
+          du hook polling (refresh toutes les 60s via setState items). Si pas
+          encore fetché (lastFetchedAt=null), on skip le rendu — pas de count
+          significatif avant le 1er fetch. La granularité TTL 7j accepte
+          largement 60s de delta. */}
+      {lastFetchedAt && (
+        <AlternativesBanner
+          items={items}
+          now={lastFetchedAt.getTime()}
+          onShowAlternatives={handleShowAlternatives}
+        />
+      )}
 
 
       {/* Status bar — fix M-6 (isInitialLoading silent polling) +
@@ -644,6 +671,17 @@ export function AppointmentCalendar({
             </span>
           )}
         </div>
+        {/* Fix FE-4 round 1 review PR #436 — bouton "Réinitialiser filtres"
+            visible si filtres custom (pas defaults). Permet retour rapide. */}
+        {filtersAreCustom && (
+          <button
+            type="button"
+            onClick={handleResetFilters}
+            className="text-xs underline-offset-2 hover:underline text-primary"
+          >
+            {t("resetFilters")}
+          </button>
+        )}
       </div>
 
       {successAnnounce}

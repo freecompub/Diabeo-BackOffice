@@ -25,11 +25,21 @@
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import type { AppointmentListItem } from "./useAppointments"
+// Fix CR-5 round 1 review PR #436 — single source of truth client+serveur
+// pour éviter drift TTL entre backend gate `alternativeExpired` 422 et UI count.
+import { PROPOSAL_TTL_MS } from "@/lib/rdv-constants"
 
-const PROPOSAL_TTL_MS = 7 * 24 * 3600 * 1000
-
-export function countPendingAlternatives(items: ReadonlyArray<AppointmentListItem>): number {
-  const now = Date.now()
+/**
+ * Fix FE-5 round 1 review PR #436 — `now` REQUIS en paramètre (vs default
+ * `Date.now()` qui violait React-Compiler "Cannot call impure function during
+ * render"). Le caller calcule `now` une fois via `useMemo` ou `useState` et
+ * le propage stable, ce qui permet la mémoisation correcte et les tests
+ * déterministes (mock `Date.now` non requis).
+ */
+export function countPendingAlternatives(
+  items: ReadonlyArray<AppointmentListItem>,
+  now: number,
+): number {
   return items.filter(
     (it) =>
       it.status === "cancelled"
@@ -42,15 +52,26 @@ export interface AlternativesBannerProps {
   /** Items du calendar (déjà filtrés par range/scope) — count appliqué dessus. */
   items: ReadonlyArray<AppointmentListItem>
   /**
+   * Fix FE-5 round 1 review PR #436 — `now` REQUIS en prop (vs `Date.now()`
+   * en body refusé par React-Compiler). Le parent passe typiquement
+   * `lastFetchedAt?.getTime() ?? Date.now()` qui se met à jour à chaque
+   * polling 60s — granularité TTL 7j largement suffisante.
+   */
+  now: number
+  /**
    * Callback "Voir" : le parent applique un filtre pour ne montrer que les
    * alternatives en attente (filtre status=cancelled + proposedAlt non null).
    */
   onShowAlternatives: () => void
 }
 
-export function AlternativesBanner({ items, onShowAlternatives }: AlternativesBannerProps) {
+export function AlternativesBanner({
+  items,
+  now,
+  onShowAlternatives,
+}: AlternativesBannerProps) {
   const t = useTranslations("appointments")
-  const count = countPendingAlternatives(items)
+  const count = countPendingAlternatives(items, now)
 
   if (count === 0) return null
 
