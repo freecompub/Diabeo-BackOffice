@@ -27,7 +27,27 @@ vi.mock("@/lib/services/rdv.service", async (orig) => {
       proposeAlternative: vi.fn(),
       acceptAlternative: vi.fn(),
       confirm: vi.fn(),
+      create: vi.fn(),
     },
+    assertMemberServiceAccess: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
+vi.mock("@/lib/access-control", () => ({
+  canAccessPatient: vi.fn().mockResolvedValue(true),
+}))
+
+vi.mock("@/lib/consent", () => ({
+  patientShareConsent: vi.fn().mockResolvedValue({ ok: true }),
+}))
+
+vi.mock("@/lib/team-route-helpers", async (orig) => {
+  const actual = await orig<typeof import("@/lib/team-route-helpers")>()
+  return {
+    ...actual,
+    auditedRequireRole: vi.fn().mockResolvedValue({
+      id: 1, role: "DOCTOR", email: "doctor@test.local",
+    }),
   }
 })
 
@@ -66,6 +86,8 @@ const { POST: acceptPOST } = await import(
 const { POST: confirmPOST } = await import(
   "@/app/api/appointments/[id]/confirm/route"
 )
+// US-2500-UI iter 6 — POST /api/appointments (création).
+const { POST: createPOST } = await import("@/app/api/appointments/route")
 
 function makeReq(method: string, body?: unknown): NextRequest {
   const headers = new Headers()
@@ -287,5 +309,101 @@ describe("HSA-2-2 — POST /confirm headers", () => {
     const res = await confirmPOST(makeReq("POST"), makeParams())
     expect(res.status).toBe(403)
     assertSecurityHeaders(res, "confirm 403")
+  })
+})
+
+/**
+ * Fix régression iter 6 — POST /api/appointments (création) avait aussi été
+ * oublié dans HSA-2-1/2 round 2. Maintenant couvert par helper factorisé.
+ */
+describe("HSA-2-1 corollaire — POST /api/appointments (création) headers", () => {
+  it("201 création réussie → 4 headers présents (PHI déchiffré dans response)", async () => {
+    vi.mocked(rdvAppointmentService.create).mockResolvedValue(stubAppointmentDTO as never)
+
+    const validBody = {
+      patientId: 7,
+      memberId: 1,
+      date: "2026-05-25",
+      hour: "09:30",
+      durationMinutes: 30,
+      location: "in_person",
+      type: "diabeto",
+    }
+    const res = await createPOST(makeReq("POST", validBody))
+    expect(res.status).toBe(201)
+    assertSecurityHeaders(res, "create 201")
+  })
+
+  it("400 validation failed → 4 headers présents", async () => {
+    const res = await createPOST(
+      makeReq("POST", { patientId: -1 }), // invalid
+    )
+    expect(res.status).toBe(400)
+    assertSecurityHeaders(res, "create 400")
+  })
+
+  /**
+   * Fix HSA-8 round 1 review PR #434 — couverture des paths 403/422/500
+   * (absents du test initial PR #434 round 0). Tous les paths return du
+   * POST DOIVENT passer par `setAppointmentSecurityHeaders` — defense-in-depth
+   * vs régression future.
+   */
+  it("HSA-8 round 1 — 403 forbidden (canAccessPatient refuse) → 4 headers présents", async () => {
+    const { canAccessPatient } = await import("@/lib/access-control")
+    vi.mocked(canAccessPatient).mockResolvedValueOnce(false)
+
+    const validBody = {
+      patientId: 7,
+      memberId: 1,
+      date: "2026-05-25",
+      hour: "09:30",
+      durationMinutes: 30,
+      location: "in_person",
+      type: "diabeto",
+    }
+    const res = await createPOST(makeReq("POST", validBody))
+    expect(res.status).toBe(403)
+    assertSecurityHeaders(res, "create 403 (canAccess)")
+  })
+
+  it("HSA-8 round 1 — 422 gdprConsentRequired → 4 headers présents", async () => {
+    const { patientShareConsent } = await import("@/lib/consent")
+    vi.mocked(patientShareConsent).mockResolvedValueOnce({
+      ok: false,
+      error: "gdprConsentRequired",
+      status: 422,
+    } as never)
+
+    const validBody = {
+      patientId: 7,
+      memberId: 1,
+      date: "2026-05-25",
+      hour: "09:30",
+      durationMinutes: 30,
+      location: "in_person",
+      type: "diabeto",
+    }
+    const res = await createPOST(makeReq("POST", validBody))
+    expect(res.status).toBe(422)
+    assertSecurityHeaders(res, "create 422 (consent)")
+  })
+
+  it("HSA-8 round 1 — 500 service throw → 4 headers présents (mapErrorToResponse)", async () => {
+    vi.mocked(rdvAppointmentService.create).mockRejectedValueOnce(
+      new Error("Prisma connection timeout"),
+    )
+
+    const validBody = {
+      patientId: 7,
+      memberId: 1,
+      date: "2026-05-25",
+      hour: "09:30",
+      durationMinutes: 30,
+      location: "in_person",
+      type: "diabeto",
+    }
+    const res = await createPOST(makeReq("POST", validBody))
+    expect(res.status).toBe(500)
+    assertSecurityHeaders(res, "create 500")
   })
 })

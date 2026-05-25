@@ -12,7 +12,7 @@ import {
 } from "@/lib/services/rdv.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { auditedRequireRole, mapErrorToResponse } from "@/lib/team-route-helpers"
-import { HOUR_RE } from "@/lib/appointments-route-helpers"
+import { HOUR_RE, setAppointmentSecurityHeaders } from "@/lib/appointments-route-helpers"
 
 const listSchema = z.object({
   from: z.coerce.date(),
@@ -78,30 +78,40 @@ export async function GET(req: NextRequest) {
     }
 
     const out = await rdvAppointmentService.listInRange(parsed.data, user.id, ctx)
-    const res = NextResponse.json(out)
-    // Fix H-2 round 2 review PR #431 — Headers ANSSI RGS §4.5 + RGPD
-    // Art. 32 sur la réponse list qui contient PHI déchiffrée (motif).
-    // Empêche cache browser disk + CDN/proxy entreprise + back button.
-    res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
-    res.headers.set("Pragma", "no-cache")
-    res.headers.set("Referrer-Policy", "no-referrer")
-    res.headers.set("X-Content-Type-Options", "nosniff")
-    return res
+    // Fix H-2 round 2 review PR #431 + factorisé via helper partagé (HSA-2-10
+    // round 2 PR #433) — Headers ANSSI RGS §4.5 + RGPD Art. 32 sur la réponse
+    // list qui contient PHI déchiffrée (motif).
+    return setAppointmentSecurityHeaders(NextResponse.json(out))
   } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "appointments GET", ctx.requestId)
+    if (e instanceof AuthError) {
+      return setAppointmentSecurityHeaders(
+        NextResponse.json({ error: e.message }, { status: e.status }),
+      )
+    }
+    return setAppointmentSecurityHeaders(
+      mapErrorToResponse(e, "appointments GET", ctx.requestId),
+    )
   }
 }
 
+/**
+ * US-2500-UI iter 6 — création RDV depuis le modal `<AppointmentCreateModal>`.
+ *
+ * Headers ANSSI RGS §4.5 + RGPD Art. 32 via helper factorisé (HSA-2-10) :
+ * la réponse 201 contient `AppointmentDTO` complet déchiffré (motif). Sans
+ * `no-store`, bfcache + proxies cacheables retiendraient le payload PHI.
+ */
 export async function POST(req: NextRequest) {
   const ctx = extractRequestContext(req)
   try {
     const body = await req.json()
     const parsed = createSchema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
+      return setAppointmentSecurityHeaders(
+        NextResponse.json(
+          { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
+          { status: 400 },
+        ),
       )
     }
     const user = await auditedRequireRole(req, "NURSE", ctx, "APPOINTMENT", "create")
@@ -113,10 +123,16 @@ export async function POST(req: NextRequest) {
         ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
         metadata: { patientId: parsed.data.patientId, endpoint: "create" },
       })
-      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+      return setAppointmentSecurityHeaders(
+        NextResponse.json({ error: "forbidden" }, { status: 403 }),
+      )
     }
     const consent = await patientShareConsent(parsed.data.patientId)
-    if (!consent.ok) return NextResponse.json({ error: consent.error }, { status: consent.status })
+    if (!consent.ok) {
+      return setAppointmentSecurityHeaders(
+        NextResponse.json({ error: consent.error }, { status: consent.status }),
+      )
+    }
 
     const out = await rdvAppointmentService.create(
       {
@@ -132,9 +148,15 @@ export async function POST(req: NextRequest) {
       },
       user.id, ctx,
     )
-    return NextResponse.json(out, { status: 201 })
+    return setAppointmentSecurityHeaders(NextResponse.json(out, { status: 201 }))
   } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "appointments POST", ctx.requestId)
+    if (e instanceof AuthError) {
+      return setAppointmentSecurityHeaders(
+        NextResponse.json({ error: e.message }, { status: e.status }),
+      )
+    }
+    return setAppointmentSecurityHeaders(
+      mapErrorToResponse(e, "appointments POST", ctx.requestId),
+    )
   }
 }

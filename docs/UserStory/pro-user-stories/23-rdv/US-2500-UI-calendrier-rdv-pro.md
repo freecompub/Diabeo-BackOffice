@@ -93,16 +93,17 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 
 ### Création / édition
 
-- [ ] Bouton **"+ Nouveau RDV"** en haut à droite
-- [ ] Modal formulaire :
-  - patient (search-select)
-  - date+heure
-  - durée (15-240 min)
-  - location (in_person / video / phone)
-  - motif (chiffré)
-  - member (auto si DOCTOR seul, dropdown sinon)
-- [ ] Validation client : pas de double-booking sur le même slot membre (visuel + API enforce EXCLUDE GiST)
-- [ ] Si `bookingMode = "manual_validation"` → RDV créé en status `pending_validation`, badge orange jusqu'à `/confirm` DOCTOR+
+- [x] Bouton **"+ Nouveau RDV"** en haut à droite ✅ iter 6
+- [x] Modal formulaire ✅ iter 6 :
+  - patient (combobox autocomplete via `<datalist>` + `usePatientList`)
+  - date+heure (input date + time natifs, min=aujourd'hui)
+  - durée (15-240 min, select avec presets 15/30/45/60/90/120)
+  - location (in_person / video / phone, select)
+  - type (diabeto / ide / hdj / other)
+  - motif (textarea max 200c, chiffré AES-256-GCM côté backend)
+  - member auto-résolu via `effectiveMemberId` du parent (iter 4)
+- [ ] Validation client : pas de double-booking sur le même slot membre (visuel + API enforce EXCLUDE GiST) — V1.5 (backend déjà enforce 409)
+- [ ] Si `bookingMode = "manual_validation"` → RDV créé en status `pending_validation`, badge orange jusqu'à `/confirm` DOCTOR+ — V1.5 (champ HealthcareService.bookingMode à ajouter au schema)
 
 ### Workflow annulation / alternative
 
