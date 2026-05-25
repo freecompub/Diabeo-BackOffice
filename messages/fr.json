@@ -361,7 +361,13 @@
     "patientSelected": "Patient sélectionné",
     "patientNoResults": "Aucun patient ne correspond à votre recherche.",
     "patientHint": "{count, plural, =0 {Aucun patient disponible} one {1 patient disponible} other {# patients disponibles}}",
-    "scopeMissingChooseFirst": "Sélectionnez d'abord un membre cabinet pour créer un RDV."
+    "scopeMissingChooseFirst": "Sélectionnez d'abord un membre cabinet pour créer un RDV.",
+    "dndErrorConflict": "Le créneau cible est déjà pris — le RDV est revenu à sa position d'origine.",
+    "dndErrorForbidden": "Vous n'avez pas le droit de modifier ce RDV.",
+    "dndErrorNotEditable": "Ce RDV ne peut plus être modifié (annulé / passé).",
+    "dndErrorNotFound": "Ce RDV n'existe plus — actualisez le calendrier.",
+    "dndErrorValidation": "Date ou heure invalide — le RDV n'a pas été déplacé.",
+    "dndErrorGeneric": "Échec du déplacement — réessayez ou rechargez le calendrier."
   },
   "weekly": {
     "title": "Vue hebdomadaire",

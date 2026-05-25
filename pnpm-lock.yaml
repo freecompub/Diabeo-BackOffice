@@ -23,6 +23,9 @@ importers:
       '@schedule-x/calendar':
         specifier: ^4.6.0
         version: 4.6.0(@preact/signals@2.9.0(preact@10.24.3))(preact@10.24.3)(temporal-polyfill@0.3.0)
+      '@schedule-x/drag-and-drop':
+        specifier: 3.7.3
+        version: 3.7.3
       '@schedule-x/events-service':
         specifier: ^4.6.0
         version: 4.6.0
@@ -1709,6 +1712,9 @@ packages:
       '@preact/signals': ^2.0.2
       preact: ^10.19.2
       temporal-polyfill: 0.3.0
+
+  '@schedule-x/drag-and-drop@3.7.3':
+    resolution: {integrity: sha512-nHwZKzdIKWNTdT5BEXy4vLlHOmOH3C3M744QUIU0EOXPAFZQR1bBTviGs2NhmvaLiGstnVx2/TZtdhocy60hgg==}
 
   '@schedule-x/events-service@4.6.0':
     resolution: {integrity: sha512-czUSPdanESNYgckCxId3weoL3omSG6FKuJMYMefCyzx/NFBxJM83b6PKQQ+pJeRnPuyax+KNKFc/DQFCC05YLA==}
@@ -7430,6 +7436,8 @@ snapshots:
       '@preact/signals': 2.9.0(preact@10.24.3)
       preact: 10.24.3
       temporal-polyfill: 0.3.0
+
+  '@schedule-x/drag-and-drop@3.7.3': {}
 
   '@schedule-x/events-service@4.6.0': {}
 

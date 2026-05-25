@@ -9,7 +9,11 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { appointmentToScheduleXEvent, APPOINTMENT_CALENDARS } from "@/components/diabeo/appointments/adapter"
+import {
+  appointmentToScheduleXEvent,
+  APPOINTMENT_CALENDARS,
+  extractDateHourFromScheduleXStart,
+} from "@/components/diabeo/appointments/adapter"
 import type { AppointmentListItem } from "@/components/diabeo/appointments/useAppointments"
 
 function makeAppt(overrides: Partial<AppointmentListItem> = {}): AppointmentListItem {
@@ -188,6 +192,117 @@ describe("appointmentToScheduleXEvent", () => {
       expect(APPOINTMENT_CALENDARS.scheduled.lightColors.main).toBe("#0D9488")
       expect(APPOINTMENT_CALENDARS.noShow.lightColors.main).toBe("#991B1B")
       expect(APPOINTMENT_CALENDARS.unscheduled.lightColors.main).toBe("#9CA3AF")
+    })
+  })
+
+  /**
+   * US-2500-UI iter 7 — drag&drop disabling.
+   *
+   * Le médecin ne doit pas pouvoir bouger un RDV en statut terminal
+   * (cancelled / completed / no_show) ni un RDV sans heure planifiée
+   * (hour=null). Le backend refuserait `appointmentNotEditable` mais UX =
+   * pas même proposer (curseur grab désactivé visuel par Schedule-X via
+   * `_options.disableDND`).
+   */
+  describe("disableDND (iter 7 drag & drop gating)", () => {
+    it("status=scheduled → pas de _options (drag enabled par défaut)", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ status: "scheduled" }))
+      expect(evt._options).toBeUndefined()
+    })
+
+    it("status=confirmed → drag enabled", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ status: "confirmed" }))
+      expect(evt._options).toBeUndefined()
+    })
+
+    it("status=pending_validation → drag enabled", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ status: "pending_validation" }))
+      expect(evt._options).toBeUndefined()
+    })
+
+    it("status=cancelled → disableDND + disableResize", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ status: "cancelled" }))
+      expect(evt._options?.disableDND).toBe(true)
+      expect(evt._options?.disableResize).toBe(true)
+    })
+
+    it("status=completed → disableDND + disableResize", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ status: "completed" }))
+      expect(evt._options?.disableDND).toBe(true)
+      expect(evt._options?.disableResize).toBe(true)
+    })
+
+    it("status=no_show → disableDND + disableResize", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ status: "no_show" }))
+      expect(evt._options?.disableDND).toBe(true)
+      expect(evt._options?.disableResize).toBe(true)
+    })
+
+    it("hour=null (unscheduled) → disableDND même si status=scheduled", () => {
+      const evt = appointmentToScheduleXEvent(makeAppt({ hour: null }))
+      expect(evt._options?.disableDND).toBe(true)
+      expect(evt._options?.disableResize).toBe(true)
+    })
+  })
+
+  /**
+   * US-2500-UI iter 7 — extraction date+hour depuis Schedule-X event après
+   * drag&drop. Schedule-X v4 utilise Temporal.ZonedDateTime | PlainDate.
+   */
+  describe("extractDateHourFromScheduleXStart", () => {
+    it("string format adapter 'yyyy-mm-dd hh:mm' → { date, hour }", () => {
+      expect(extractDateHourFromScheduleXStart("2026-05-26 14:30")).toEqual({
+        date: "2026-05-26",
+        hour: "14:30",
+      })
+    })
+
+    it("string format ISO 'yyyy-mm-ddThh:mm:ss' → extract date + hour", () => {
+      expect(extractDateHourFromScheduleXStart("2026-05-26T14:30:00")).toEqual({
+        date: "2026-05-26",
+        hour: "14:30",
+      })
+    })
+
+    it("Temporal-like object (ZonedDateTime.toString()) → extract", () => {
+      // Simule un Temporal.ZonedDateTime via objet avec toString()
+      const fakeZonedDateTime = {
+        toString() {
+          return "2026-05-26T14:30:00+02:00[Europe/Paris]"
+        },
+      }
+      expect(extractDateHourFromScheduleXStart(fakeZonedDateTime)).toEqual({
+        date: "2026-05-26",
+        hour: "14:30",
+      })
+    })
+
+    it("Temporal-like PlainDate (toString sans heure) → fallback hour 00:00", () => {
+      const fakePlainDate = {
+        toString() {
+          return "2026-05-26"
+        },
+      }
+      expect(extractDateHourFromScheduleXStart(fakePlainDate)).toEqual({
+        date: "2026-05-26",
+        hour: "00:00",
+      })
+    })
+
+    it("null → null (refuse l'update)", () => {
+      expect(extractDateHourFromScheduleXStart(null)).toBeNull()
+    })
+
+    it("undefined → null", () => {
+      expect(extractDateHourFromScheduleXStart(undefined)).toBeNull()
+    })
+
+    it("string invalide (pas de match regex) → null", () => {
+      expect(extractDateHourFromScheduleXStart("invalid")).toBeNull()
+    })
+
+    it("number → null (defense-in-depth)", () => {
+      expect(extractDateHourFromScheduleXStart(42)).toBeNull()
     })
   })
 })

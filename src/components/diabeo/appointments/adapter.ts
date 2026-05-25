@@ -45,6 +45,16 @@ export interface ScheduleXEvent {
   start: string // "yyyy-mm-dd hh:mm"
   end: string // "yyyy-mm-dd hh:mm"
   calendarId?: string // Schedule-X calendars (color groups)
+  /**
+   * Fix US-2500-UI iter 7 — Schedule-X event options pour gater drag&drop +
+   * resize sur les RDV en statuts terminaux (cancelled / completed / no_show).
+   * Le médecin ne devrait pas pouvoir bouger un RDV passé/annulé — le backend
+   * refuserait avec `appointmentNotEditable` mais UX = pas même proposer.
+   */
+  _options?: {
+    disableDND?: boolean
+    disableResize?: boolean
+  }
 }
 
 const STATUS_TO_CALENDAR_ID: Record<string, string> = {
@@ -143,6 +153,15 @@ export function appointmentToScheduleXEvent(appt: AppointmentListItem): Schedule
     ? UNSCHEDULED_CALENDAR_ID
     : STATUS_TO_CALENDAR_ID[appt.status] ?? "scheduled"
 
+  // US-2500-UI iter 7 — disable drag&drop/resize sur RDV terminaux.
+  // Le backend refuserait `appointmentNotEditable` mais UX = pas de hint visuel
+  // que l'event est draggable si l'action serait rejetée.
+  const isTerminal =
+    appt.status === "cancelled" || appt.status === "completed" || appt.status === "no_show"
+  const _options = isTerminal || appt.hour === null
+    ? { disableDND: true, disableResize: true }
+    : undefined
+
   return {
     id: String(appt.id),
     // Title anti-PHI : statut + type whitelisted seulement.
@@ -150,7 +169,50 @@ export function appointmentToScheduleXEvent(appt: AppointmentListItem): Schedule
     start,
     end,
     calendarId,
+    ...(_options && { _options }),
   }
+}
+
+/**
+ * US-2500-UI iter 7 — Extraction de `date` (yyyy-mm-dd) et `hour` (HH:MM)
+ * depuis un event Schedule-X qui a été modifié par drag&drop.
+ *
+ * Schedule-X v4 expose `start: Temporal.ZonedDateTime | Temporal.PlainDate`
+ * dans `onEventUpdate`/`onBeforeEventUpdateAsync`. Selon que l'event était
+ * timed ou all-day, le type varie.
+ *
+ * Format Temporal stringify :
+ *   - `ZonedDateTime.toString()` → "2026-05-26T14:00:00+02:00[Europe/Paris]"
+ *   - `PlainDate.toString()` → "2026-05-26"
+ *   - Fallback string "yyyy-mm-dd hh:mm" si l'event vient juste de l'adapter
+ *     (avant que Schedule-X le convertisse en interne).
+ *
+ * Retourne `null` si parsing échoue (defense-in-depth — refuse l'update
+ * plutôt que d'envoyer une date corrompue au backend).
+ */
+export function extractDateHourFromScheduleXStart(
+  start: unknown,
+): { date: string; hour: string } | null {
+  if (start === null || start === undefined) return null
+
+  // String format adapter "yyyy-mm-dd hh:mm" (legacy avant conversion Temporal)
+  if (typeof start === "string") {
+    const match = start.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2})/)
+    if (!match) return null
+    return { date: match[1], hour: match[2] }
+  }
+
+  // Temporal-like : utilise `toString()` puis parse.
+  if (typeof start === "object" && start !== null && "toString" in start) {
+    const iso = String(start)
+    // ZonedDateTime : "2026-05-26T14:00:00+02:00[Europe/Paris]"
+    // PlainDate : "2026-05-26"
+    const match = iso.match(/^(\d{4}-\d{2}-\d{2})(?:T(\d{2}:\d{2}))?/)
+    if (!match) return null
+    return { date: match[1], hour: match[2] ?? "00:00" }
+  }
+
+  return null
 }
 
 /**
