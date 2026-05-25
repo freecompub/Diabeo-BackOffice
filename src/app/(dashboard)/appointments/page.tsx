@@ -43,7 +43,9 @@ export default async function AppointmentsPage() {
         </div>
       </header>
 
-      <AppointmentCalendarLazy />
+      {/* US-2500-UI iter 5 — passe `userRole` au calendrier pour gater le
+          bouton "Proposer alternative" (DOCTOR+) du modal détail RDV. */}
+      <AppointmentCalendarLazy userRole={role} />
     </main>
   )
 }

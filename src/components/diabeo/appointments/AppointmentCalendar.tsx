@@ -46,6 +46,8 @@ import { useAppointments } from "./useAppointments"
 import { appointmentToScheduleXEvent, APPOINTMENT_CALENDARS } from "./adapter"
 import { MemberFilter } from "./MemberFilter"
 import { useMyMemberships } from "./useMyMemberships"
+import { useAppointmentDetail } from "./useAppointmentDetail"
+import { AppointmentDetailModal } from "./AppointmentDetailModal"
 
 /**
  * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
@@ -67,6 +69,15 @@ export interface AppointmentCalendarProps {
   memberId?: number
   /** Scope patient : RDV d'un patient (alternative à memberId). */
   patientId?: number
+  /**
+   * Rôle utilisateur courant — injecté par la page server-component
+   * (lecture directe du JWT via `requireAuth`). Utilisé pour gater le
+   * bouton "Proposer alternative" du modal détail (DOCTOR+ uniquement).
+   *
+   * US-2500-UI iter 5 — éviter un round-trip `/api/account` côté client
+   * juste pour le rôle.
+   */
+  userRole: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 }
 
 /**
@@ -105,6 +116,7 @@ function computeRange(selectedDate: Date): { from: Date; to: Date } {
 export function AppointmentCalendar({
   memberId: memberIdProp,
   patientId,
+  userRole,
 }: AppointmentCalendarProps) {
   const t = useTranslations("appointments")
   const locale = useLocale()
@@ -163,12 +175,18 @@ export function AppointmentCalendar({
   // `undefined`, le dropdown reste vide (placeholder).
   const filterValue = effectiveMemberId ?? null
 
-  const { items, isInitialLoading, error, truncated, lastFetchedAt } = useAppointments({
+  const { items, isInitialLoading, error, truncated, lastFetchedAt, refetch } = useAppointments({
     from: range.from,
     to: range.to,
     memberId: effectiveMemberId,
     patientId,
   })
+
+  // US-2500-UI iter 5 — state du modal détail RDV (clic sur événement).
+  // `openedApptId === null` = modal fermé. Le hook `useAppointmentDetail`
+  // est responsable du fetch + reset state quand id change.
+  const [openedApptId, setOpenedApptId] = useState<number | null>(null)
+  const detailState = useAppointmentDetail(openedApptId)
 
   const events = useMemo(() => items.map(appointmentToScheduleXEvent), [items])
 
@@ -196,6 +214,14 @@ export function AppointmentCalendar({
         if (next.getUTCMonth() !== selectedDate.getUTCMonth()
           || next.getUTCFullYear() !== selectedDate.getUTCFullYear()) {
           setSelectedDate(next)
+        }
+      },
+      // US-2500-UI iter 5 — clic sur événement ouvre le modal détail.
+      // `event.id` est le string id de l'adapter (cf. adapter.ts `String(appt.id)`).
+      onEventClick(event) {
+        const parsed = Number(event.id)
+        if (Number.isFinite(parsed) && parsed > 0) {
+          setOpenedApptId(parsed)
         }
       },
     },
@@ -237,6 +263,25 @@ export function AppointmentCalendar({
       ? "scopeChooseTitle"
       : "scopeMissingTitle"
 
+  // US-2500-UI iter 5 — handlers stables pour le modal détail.
+  const handleCloseModal = () => setOpenedApptId(null)
+  // Refetch la liste après une action (cancel / proposeAlt) pour
+  // que le calendrier reflète immédiatement le nouveau statut.
+  const handleActionSuccess = () => { void refetch() }
+
+  // Modal rendu UNE seule fois en haut du tree pour que React conserve
+  // son state interne (sub-mode, draft cancelReason...) si l'utilisateur
+  // navigue de mois pendant la consultation. `openId=null` = caché.
+  const detailModal = (
+    <AppointmentDetailModal
+      state={detailState}
+      openId={openedApptId}
+      onClose={handleCloseModal}
+      onActionSuccess={handleActionSuccess}
+      userRole={userRole}
+    />
+  )
+
   if (scopeMissing) {
     return (
       <div className="flex flex-col gap-3">
@@ -249,6 +294,7 @@ export function AppointmentCalendar({
             {t("scopeMissingDescription")}
           </p>
         </div>
+        {detailModal}
       </div>
     )
   }
@@ -293,6 +339,8 @@ export function AppointmentCalendar({
       <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px]">
         <ScheduleXCalendar calendarApp={calendar} />
       </div>
+
+      {detailModal}
     </div>
   )
 }
