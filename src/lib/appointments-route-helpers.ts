@@ -20,6 +20,35 @@ import type { Role } from "@prisma/client"
 
 export const HOUR_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
+/**
+ * Fix HSA-2-1 + HSA-2-2 + HSA-2-10 round 2 review PR #433 — Headers ANSSI/HDS
+ * factorisés pour TOUTES les routes `/api/appointments/*` qui retournent ou
+ * mutent des PHI déchiffrés (motif/note/cancelReason via `AppointmentDTO`).
+ *
+ * Round 1 ne posait ces headers que sur GET — régression : PUT/cancel/
+ * propose-alternative/accept-alternative/confirm renvoient aussi le DTO
+ * complet déchiffré (résultat de `service.update/cancel/proposeAlternative/...`).
+ * Sans `no-store`, le bfcache navigateur + proxies cacheables peuvent
+ * retenir le payload PHI (HDS Art. L.1111-8 + ANSSI RGS §4.5 + RGPD Art. 32).
+ *
+ * Couvre :
+ *   - `Cache-Control: no-store, no-cache, must-revalidate, private` (anti-cache)
+ *   - `Pragma: no-cache` (proxies HTTP/1.0)
+ *   - `Referrer-Policy: no-referrer` (anti-leak via Referer vers ressources tierces)
+ *   - `X-Content-Type-Options: nosniff` (anti-MIME-sniffing)
+ *
+ * Usage : wrapper sur TOUS les `return NextResponse.json(...)` d'une route PHI.
+ * Si un futur dev oublie d'envelopper, le test `tests/integration/api-appointment-detail-headers.test.ts`
+ * détecte (couvre 200/404/403 + sanity check PHI déchiffré).
+ */
+export function setAppointmentSecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+  res.headers.set("Pragma", "no-cache")
+  res.headers.set("Referrer-Policy", "no-referrer")
+  res.headers.set("X-Content-Type-Options", "nosniff")
+  return res
+}
+
 export type GateResult =
   | { kind: "ok"; user: AuthUser; apptId: number; patientId: number; ctx: AuditContext }
   | { kind: "error"; res: NextResponse }

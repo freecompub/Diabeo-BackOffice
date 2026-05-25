@@ -293,7 +293,53 @@
       "diabeto": "Diabétologie",
       "hdj": "HDJ",
       "other": "Consultation"
-    }
+    },
+    "status": {
+      "scheduled": "Planifié",
+      "pending_validation": "En attente de validation",
+      "confirmed": "Confirmé",
+      "cancelled": "Annulé",
+      "completed": "Terminé",
+      "no_show": "Patient absent"
+    },
+    "location": {
+      "in_person": "En cabinet",
+      "video": "Téléconsultation",
+      "phone": "Téléphone"
+    },
+    "cancelledBy": {
+      "patient": "Patient",
+      "professional": "Soignant"
+    },
+    "durationLabel": "Durée",
+    "minutesShort": "min",
+    "locationLabel": "Modalité",
+    "motifLabel": "Motif",
+    "noteLabel": "Note",
+    "patientLabel": "Patient",
+    "patientViewLink": "Ouvrir la fiche patient #{id}",
+    "cancelledAtLabel": "Annulé le",
+    "cancelledByLabel": "Annulé par",
+    "cancelReasonLabel": "Motif d'annulation",
+    "cancelReasonPlaceholder": "Optionnel — visible uniquement par les soignants autorisés.",
+    "proposedAlternativeAtLabel": "Alternative proposée",
+    "dateLabel": "Date",
+    "hourLabel": "Heure",
+    "actionCancel": "Annuler le RDV",
+    "actionProposeAlternative": "Proposer une alternative",
+    "actionClose": "Fermer",
+    "actionBack": "Retour",
+    "actionConfirmCancel": "Confirmer l'annulation",
+    "actionConfirmPropose": "Envoyer la proposition",
+    "actionError": "L'action a échoué — réessayez ou contactez le support.",
+    "detailLoadError": "Impossible de charger les détails du rendez-vous.",
+    "cancelTitle": "Annuler ce rendez-vous",
+    "cancelDescription": "L'annulation est définitive. Le patient sera notifié.",
+    "actorLegend": "À l'initiative de :",
+    "actorDoctor": "Soignant (cabinet)",
+    "actorPatient": "Patient (sur sa demande)",
+    "proposeAltTitle": "Proposer une alternative",
+    "proposeAltDescription": "Le patient devra accepter la nouvelle date depuis son application."
   },
   "weekly": {
     "title": "Vue hebdomadaire",

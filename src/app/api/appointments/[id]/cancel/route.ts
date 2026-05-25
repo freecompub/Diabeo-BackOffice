@@ -20,7 +20,10 @@ import {
   extractRequestContext,
 } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
-import { appointmentRouteGate } from "@/lib/appointments-route-helpers"
+import {
+  appointmentRouteGate,
+  setAppointmentSecurityHeaders,
+} from "@/lib/appointments-route-helpers"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -29,17 +32,24 @@ const schema = z.object({
   reason: z.string().max(500).optional(),
 })
 
+/**
+ * Fix HSA-2-2 round 2 review PR #433 — Le POST retourne `AppointmentDTO`
+ * complet (motif/note/cancelReason déchiffrés) via `cancel()`. Headers ANSSI
+ * factorisés via `setAppointmentSecurityHeaders` (helper partagé).
+ */
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const ctx = extractRequestContext(req)
   try {
     const { id } = await params
     const gate = await appointmentRouteGate(req, id, "NURSE", "cancel")
-    if (gate.kind === "error") return gate.res
+    if (gate.kind === "error") return setAppointmentSecurityHeaders(gate.res)
 
     const body = await req.json().catch(() => ({}))
     const parsed = schema.safeParse(body)
     if (!parsed.success) {
-      return NextResponse.json({ error: "validationFailed" }, { status: 400 })
+      return setAppointmentSecurityHeaders(
+        NextResponse.json({ error: "validationFailed" }, { status: 400 }),
+      )
     }
 
     const out = await rdvAppointmentService.cancel(
@@ -67,9 +77,15 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
       },
     })
 
-    return NextResponse.json(out)
+    return setAppointmentSecurityHeaders(NextResponse.json(out))
   } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "appointments/:id/cancel POST", ctx.requestId)
+    if (e instanceof AuthError) {
+      return setAppointmentSecurityHeaders(
+        NextResponse.json({ error: e.message }, { status: e.status }),
+      )
+    }
+    return setAppointmentSecurityHeaders(
+      mapErrorToResponse(e, "appointments/:id/cancel POST", ctx.requestId),
+    )
   }
 }

@@ -30,6 +30,8 @@ const AppointmentCalendarInner = dynamic(
 export interface AppointmentCalendarLazyProps {
   memberId?: number
   patientId?: number
+  /** Rôle utilisateur courant — propagé jusqu'au modal détail RDV (iter 5). */
+  userRole: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 }
 
 export function AppointmentCalendarLazy(props: AppointmentCalendarLazyProps) {

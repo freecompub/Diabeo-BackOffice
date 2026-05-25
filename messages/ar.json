@@ -293,7 +293,53 @@
       "diabeto": "طب السكري",
       "hdj": "مستشفى نهاري",
       "other": "استشارة"
-    }
+    },
+    "status": {
+      "scheduled": "مجدول",
+      "pending_validation": "في انتظار التأكيد",
+      "confirmed": "مؤكد",
+      "cancelled": "ملغى",
+      "completed": "منتهي",
+      "no_show": "لم يحضر"
+    },
+    "location": {
+      "in_person": "في العيادة",
+      "video": "استشارة عن بُعد",
+      "phone": "هاتف"
+    },
+    "cancelledBy": {
+      "patient": "المريض",
+      "professional": "المهني الصحي"
+    },
+    "durationLabel": "المدة",
+    "minutesShort": "دقيقة",
+    "locationLabel": "الطريقة",
+    "motifLabel": "السبب",
+    "noteLabel": "ملاحظة",
+    "patientLabel": "المريض",
+    "patientViewLink": "فتح ملف المريض رقم {id}",
+    "cancelledAtLabel": "تاريخ الإلغاء",
+    "cancelledByLabel": "تم الإلغاء بواسطة",
+    "cancelReasonLabel": "سبب الإلغاء",
+    "cancelReasonPlaceholder": "اختياري — يظهر فقط للمهنيين المخولين.",
+    "proposedAlternativeAtLabel": "البديل المقترح",
+    "dateLabel": "التاريخ",
+    "hourLabel": "الوقت",
+    "actionCancel": "إلغاء الموعد",
+    "actionProposeAlternative": "اقتراح بديل",
+    "actionClose": "إغلاق",
+    "actionBack": "رجوع",
+    "actionConfirmCancel": "تأكيد الإلغاء",
+    "actionConfirmPropose": "إرسال الاقتراح",
+    "actionError": "فشل الإجراء — حاول مرة أخرى أو تواصل مع الدعم.",
+    "detailLoadError": "تعذر تحميل تفاصيل الموعد.",
+    "cancelTitle": "إلغاء هذا الموعد",
+    "cancelDescription": "الإلغاء نهائي. سيتم إشعار المريض.",
+    "actorLegend": "بمبادرة من:",
+    "actorDoctor": "مهني صحي (العيادة)",
+    "actorPatient": "المريض (بناءً على طلبه)",
+    "proposeAltTitle": "اقتراح موعد بديل",
+    "proposeAltDescription": "سيحتاج المريض إلى قبول التاريخ الجديد من تطبيقه."
   },
   "weekly": {
     "title": "العرض الأسبوعي",

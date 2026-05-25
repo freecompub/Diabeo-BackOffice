@@ -77,7 +77,7 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 - [ ] Affichage RDV : couleur par statut (scheduled / pending_validation / confirmed / cancelled / completed / no_show)
 - [ ] Affichage plages indisponibles (`MemberUnavailability`) en gris hachuré
 - [ ] Drag & drop pour déplacer un RDV (vue semaine + jour uniquement, vue mois = clic only)
-- [ ] Clic sur un RDV → modal détail (note/motif déchiffrés à l'ouverture, audit READ ciblé)
+- [x] Clic sur un RDV → modal détail (note/motif déchiffrés à l'ouverture, audit READ ciblé) ✅ iter 5
 
 ### Filtres et scope
 
@@ -106,8 +106,8 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 
 ### Workflow annulation / alternative
 
-- [ ] Bouton "Annuler" dans modal détail → form `cancelReason` (chiffré)
-- [ ] Bouton "Proposer une alternative" → modal nouveau créneau + `cancelReason`, TTL 7j
+- [x] Bouton "Annuler" dans modal détail → form `cancelReason` (chiffré) ✅ iter 5
+- [x] Bouton "Proposer une alternative" → form date+heure inline (DOCTOR+ uniquement) ✅ iter 5
 - [ ] Inbox "Alternatives en attente" — bandeau visible si `patient` a accepté ou si `patient` doit accepter
 - [ ] Bouton "Accepter alternative" → `/accept-alternative`
 

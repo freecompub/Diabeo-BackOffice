@@ -29,7 +29,7 @@
  * @see docs/UserStory/pro-user-stories/23-rdv/US-2500-UI-FALLBACK-custom-build.md
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import {
   ScheduleXCalendar,
@@ -46,6 +46,8 @@ import { useAppointments } from "./useAppointments"
 import { appointmentToScheduleXEvent, APPOINTMENT_CALENDARS } from "./adapter"
 import { MemberFilter } from "./MemberFilter"
 import { useMyMemberships } from "./useMyMemberships"
+import { useAppointmentDetail } from "./useAppointmentDetail"
+import { AppointmentDetailModal } from "./AppointmentDetailModal"
 
 /**
  * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
@@ -67,6 +69,15 @@ export interface AppointmentCalendarProps {
   memberId?: number
   /** Scope patient : RDV d'un patient (alternative à memberId). */
   patientId?: number
+  /**
+   * Rôle utilisateur courant — injecté par la page server-component
+   * (lecture directe du JWT via `requireAuth`). Utilisé pour gater le
+   * bouton "Proposer alternative" du modal détail (DOCTOR+ uniquement).
+   *
+   * US-2500-UI iter 5 — éviter un round-trip `/api/account` côté client
+   * juste pour le rôle.
+   */
+  userRole: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 }
 
 /**
@@ -105,6 +116,7 @@ function computeRange(selectedDate: Date): { from: Date; to: Date } {
 export function AppointmentCalendar({
   memberId: memberIdProp,
   patientId,
+  userRole,
 }: AppointmentCalendarProps) {
   const t = useTranslations("appointments")
   const locale = useLocale()
@@ -163,12 +175,18 @@ export function AppointmentCalendar({
   // `undefined`, le dropdown reste vide (placeholder).
   const filterValue = effectiveMemberId ?? null
 
-  const { items, isInitialLoading, error, truncated, lastFetchedAt } = useAppointments({
+  const { items, isInitialLoading, error, truncated, lastFetchedAt, refetch } = useAppointments({
     from: range.from,
     to: range.to,
     memberId: effectiveMemberId,
     patientId,
   })
+
+  // US-2500-UI iter 5 — state du modal détail RDV (clic sur événement).
+  // `openedApptId === null` = modal fermé. Le hook `useAppointmentDetail`
+  // est responsable du fetch + reset state quand id change.
+  const [openedApptId, setOpenedApptId] = useState<number | null>(null)
+  const detailState = useAppointmentDetail(openedApptId)
 
   const events = useMemo(() => items.map(appointmentToScheduleXEvent), [items])
 
@@ -196,6 +214,14 @@ export function AppointmentCalendar({
         if (next.getUTCMonth() !== selectedDate.getUTCMonth()
           || next.getUTCFullYear() !== selectedDate.getUTCFullYear()) {
           setSelectedDate(next)
+        }
+      },
+      // US-2500-UI iter 5 — clic sur événement ouvre le modal détail.
+      // `event.id` est le string id de l'adapter (cf. adapter.ts `String(appt.id)`).
+      onEventClick(event) {
+        const parsed = Number(event.id)
+        if (Number.isFinite(parsed) && parsed > 0) {
+          setOpenedApptId(parsed)
         }
       },
     },
@@ -237,6 +263,37 @@ export function AppointmentCalendar({
       ? "scopeChooseTitle"
       : "scopeMissingTitle"
 
+  // US-2500-UI iter 5 — handlers stables pour le modal détail.
+  // Fix FE-6 round 1 review PR #433 — `useCallback` pour identité stable :
+  // les handlers passés en props au modal ne sont plus recréés à chaque
+  // render parent (cohérent si le modal devient `React.memo` plus tard).
+  const handleCloseModal = useCallback(() => setOpenedApptId(null), [])
+  // Refetch la liste après une action (cancel / proposeAlt) pour
+  // que le calendrier reflète immédiatement le nouveau statut.
+  const handleActionSuccess = useCallback(() => { void refetch() }, [refetch])
+
+  // Fix CR-1 + FE-5 + FE-12 round 1 + FE-2-4 round 2 review PR #433 —
+  // Modal TOUJOURS monté + `key={openedApptId ?? "closed"}` :
+  //   - À l'ouverture d'un nouveau RDV (key change), React remount complet le
+  //     modal → state interne reset (subMode/actionError/drafts) → drafts
+  //     toujours frais, plus de PHI résiduel (résout CR-1 + FE-12)
+  //   - À la fermeture (openId=null), le modal reste monté mais Base UI
+  //     Dialog joue son animation `data-closed:animate-out` (résout FE-2-4
+  //     régression mount-on-open round 1 qui snappait sans transition)
+  //   - Pas de `useEffect([openId])` setState-in-effect (résout FE-5)
+  //   - Coût mémoire négligeable : Base UI ne render rien si `open=false`
+  //     (Portal vide), juste le composant React lui-même
+  const detailModal = (
+    <AppointmentDetailModal
+      key={openedApptId ?? "closed"}
+      state={detailState}
+      openId={openedApptId}
+      onClose={handleCloseModal}
+      onActionSuccess={handleActionSuccess}
+      userRole={userRole}
+    />
+  )
+
   if (scopeMissing) {
     return (
       <div className="flex flex-col gap-3">
@@ -249,6 +306,7 @@ export function AppointmentCalendar({
             {t("scopeMissingDescription")}
           </p>
         </div>
+        {detailModal}
       </div>
     )
   }
@@ -293,6 +351,8 @@ export function AppointmentCalendar({
       <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px]">
         <ScheduleXCalendar calendarApp={calendar} />
       </div>
+
+      {detailModal}
     </div>
   )
 }

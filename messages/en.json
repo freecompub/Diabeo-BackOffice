@@ -293,7 +293,53 @@
       "diabeto": "Diabetology",
       "hdj": "Day hospital",
       "other": "Consultation"
-    }
+    },
+    "status": {
+      "scheduled": "Scheduled",
+      "pending_validation": "Pending validation",
+      "confirmed": "Confirmed",
+      "cancelled": "Cancelled",
+      "completed": "Completed",
+      "no_show": "No-show"
+    },
+    "location": {
+      "in_person": "In person",
+      "video": "Video call",
+      "phone": "Phone"
+    },
+    "cancelledBy": {
+      "patient": "Patient",
+      "professional": "Healthcare staff"
+    },
+    "durationLabel": "Duration",
+    "minutesShort": "min",
+    "locationLabel": "Modality",
+    "motifLabel": "Reason",
+    "noteLabel": "Note",
+    "patientLabel": "Patient",
+    "patientViewLink": "Open patient #{id}",
+    "cancelledAtLabel": "Cancelled at",
+    "cancelledByLabel": "Cancelled by",
+    "cancelReasonLabel": "Cancellation reason",
+    "cancelReasonPlaceholder": "Optional — only visible to authorised staff.",
+    "proposedAlternativeAtLabel": "Alternative proposed",
+    "dateLabel": "Date",
+    "hourLabel": "Time",
+    "actionCancel": "Cancel appointment",
+    "actionProposeAlternative": "Propose alternative",
+    "actionClose": "Close",
+    "actionBack": "Back",
+    "actionConfirmCancel": "Confirm cancellation",
+    "actionConfirmPropose": "Send proposal",
+    "actionError": "Action failed — please retry or contact support.",
+    "detailLoadError": "Could not load appointment details.",
+    "cancelTitle": "Cancel this appointment",
+    "cancelDescription": "Cancellation is definitive. The patient will be notified.",
+    "actorLegend": "Initiated by:",
+    "actorDoctor": "Healthcare staff (practice)",
+    "actorPatient": "Patient (on their request)",
+    "proposeAltTitle": "Propose an alternative",
+    "proposeAltDescription": "The patient will need to accept the new date from their app."
   },
   "weekly": {
     "title": "Weekly View",
