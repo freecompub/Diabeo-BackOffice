@@ -165,6 +165,11 @@ const navItems: NavItem[] = [
  */
 const patientNavItems: NavItem[] = [
   { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
+  // US-2500-UI iter 12 — UI patient "Mes RDV" : vue read-only des RDV
+  // du patient connecté + bouton "Accepter alternative" si propAlt set.
+  // Fix L1 round 1 review PR #438 — `CalendarClock` cohérent avec sidebar pro
+  // (vs `CalendarDays` réservé /weekly côté pro).
+  { href: "/patient/appointments", labelKey: "appointments", icon: CalendarClock },
 ]
 
 function hasRoleAccess(userRole: UserRole, minRole?: UserRole): boolean {

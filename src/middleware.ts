@@ -154,6 +154,19 @@ export async function middleware(request: NextRequest) {
 
     const res = NextResponse.next({ request: { headers: requestHeaders } })
     res.headers.set("x-request-id", requestId)
+
+    // Fix C1 round 1 review PR #438 — Defense-in-depth ANSSI RGS §4.5 +
+    // RGPD Art. 32 + HDS Art. L.1111-8 : pages patient/* contiennent du
+    // SSR HTML avec données médicales (RDV, location, motif). Sans
+    // no-store, bfcache navigateur + proxy CDN/corporate peuvent retenir
+    // le payload après logout sur poste partagé.
+    if (pathname.startsWith("/patient/")) {
+      res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+      res.headers.set("Pragma", "no-cache")
+      res.headers.set("Referrer-Policy", "no-referrer")
+      res.headers.set("X-Content-Type-Options", "nosniff")
+    }
+
     return res
   } catch (error) {
     const code = error instanceof Error && "code" in error

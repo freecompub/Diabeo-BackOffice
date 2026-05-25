@@ -47,7 +47,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "scopeRequired" }, { status: 400 })
     }
 
-    const user = await auditedRequireRole(req, "NURSE", ctx, "APPOINTMENT", "list")
+    // PR #438 B1 — abaisser à VIEWER pour UI patient "Mes RDV". Defense-in-depth :
+    // si VIEWER, memberId interdit (sinon = leak inter-patients du même membre).
+    // canAccessPatient enforce ownership pour VIEWER (own patient uniquement).
+    const user = await auditedRequireRole(req, "VIEWER", ctx, "APPOINTMENT", "list")
+    if (user.role === "VIEWER" && parsed.data.memberId !== undefined) {
+      await auditService.accessDenied({
+        userId: user.id, resource: "APPOINTMENT", resourceId: `member:${parsed.data.memberId}`,
+        ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+        metadata: { memberId: parsed.data.memberId, endpoint: "list", reason: "viewer_member_scope_forbidden" },
+      })
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
 
     // C1 — when scoped by patient, enforce per-patient access control.
     if (parsed.data.patientId !== undefined) {

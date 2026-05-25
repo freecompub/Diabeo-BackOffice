@@ -391,7 +391,32 @@
     "resetFilters": "إعادة ضبط عوامل التصفية",
     "skipToCalendar": "تخطي إلى تقويم المواعيد",
     "calendarMainLabel": "تقويم المواعيد",
-    "todayDateAnnouncement": "اليوم: {date}"
+    "todayDateAnnouncement": "اليوم: {date}",
+    "actionConfirmPending": "تأكيد الموعد",
+    "actionConfirmPendingAria": "تأكيد الموعد رقم {id}",
+    "actionAcceptAlternativeAria": "قبول البديل للموعد رقم {id}",
+    "actionRetry": "إعادة المحاولة",
+    "skipToList": "تخطي إلى قائمة المواعيد",
+    "myAppointmentsTitle": "مواعيدي",
+    "myAppointmentsSubtitle": "مواعيدك القادمة وسجلك الأخير. لإنشاء أو تعديل، تواصل مع عيادتك.",
+    "myAppointmentsUnavailable": "مواعيدك غير متاحة في الوقت الحالي. يرجى التواصل مع عيادتك إذا استمرت المشكلة.",
+    "myAppointmentsLoading": "جارٍ تحميل مواعيدك...",
+    "myAppointmentsError": "تعذر تحميل مواعيدك — أعد المحاولة لاحقاً.",
+    "myAppointmentsUpcoming": "{count, plural, zero {لا توجد مواعيد قادمة} one {موعد قادم واحد} two {موعدان قادمان} few {# مواعيد قادمة} many {# موعداً قادماً} other {# موعد قادم}}",
+    "myAppointmentsUpcomingEmpty": "ليس لديك أي موعد مجدول خلال الـ90 يوماً القادمة.",
+    "myAppointmentsPast": "{count, plural, zero {لا توجد مواعيد حديثة} one {موعد حديث واحد} two {موعدان حديثان} few {# مواعيد حديثة} many {# موعداً حديثاً} other {# موعد حديث}}",
+    "myAppointmentsPastEmpty": "لا توجد مواعيد خلال الـ30 يوماً الماضية.",
+    "myAppointmentsProposedAlt": "تم اقتراح بديل: {date}",
+    "myAppointmentsAcceptOk": "✓ تم قبول البديل — تم تأكيد موعدك.",
+    "myAppointmentsAcceptError": {
+      "generic": "تعذر القبول — أعد المحاولة لاحقاً.",
+      "deadlineExceeded": "انقضى المهلة المسموح بها للقبول. تواصل مع عيادتك لإعادة الجدولة.",
+      "conflict": "الموعد المقترح لم يعد متاحاً. تواصل مع عيادتك.",
+      "alreadyHandled": "تمت معالجة هذا الموعد بالفعل.",
+      "notAllowed": "غير مسموح لك بقبول هذا البديل.",
+      "network": "انقطع الاتصال بالشبكة. تحقق من الاتصال وأعد المحاولة."
+    },
+    "lastSync": "آخر مزامنة في {time}"
   },
   "weekly": {
     "title": "العرض الأسبوعي",

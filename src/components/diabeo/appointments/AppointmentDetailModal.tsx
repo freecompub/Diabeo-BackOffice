@@ -62,6 +62,7 @@ import type {
   UseAppointmentDetailResult,
 } from "./useAppointmentDetail"
 import { useAcceptAlternative } from "./useAcceptAlternative"
+import { useConfirmAppointment } from "./useConfirmAppointment"
 
 /**
  * Type union strict pour le rôle (Fix M-5 round 1 review PR #433) — propagé
@@ -232,12 +233,20 @@ export function AppointmentDetailModal({
    * sub-mode `acceptAlt` (vs ancien POST direct one-click).
    */
   const acceptAltHook = useAcceptAlternative()
+  // US-2500-UI iter 11 — hook confirm pour RDV pending_validation (US-2505
+  // bookingMode=validation). DOCTOR+ valide explicitement.
+  const confirmHook = useConfirmAppointment()
+  // Fix M1 round 1 review PR #438 — extraire `submit` (stable via useCallback)
+  // pour deps array stable. `acceptAltHook` / `confirmHook` objets changent
+  // ref chaque render, cassant memoization.
+  const acceptAltSubmit = acceptAltHook.submit
+  const confirmSubmit = confirmHook.submit
 
   const submitAcceptAlternative = useCallback(async () => {
     if (!detail || actionLoading) return
     setActionLoading(true)
     setActionError(null)
-    const result = await acceptAltHook.submit(detail.id)
+    const result = await acceptAltSubmit(detail.id)
     if (result.ok) {
       onActionSuccess()
       onClose()
@@ -247,7 +256,28 @@ export function AppointmentDetailModal({
       setErrorNonce((n) => n + 1)
     }
     setActionLoading(false)
-  }, [detail, actionLoading, acceptAltHook, onActionSuccess, onClose])
+  }, [detail, actionLoading, acceptAltSubmit, onActionSuccess, onClose])
+
+  /**
+   * US-2500-UI iter 11 — Confirme un RDV en `pending_validation` (US-2505
+   * bookingMode=validation). DOCTOR+ uniquement (backend gate). Pattern
+   * cohérent submitAcceptAlternative : hook consommé (CR-1 round 1 PR #436),
+   * whitelist HSA-3, retour structuré.
+   */
+  const submitConfirm = useCallback(async () => {
+    if (!detail || actionLoading) return
+    setActionLoading(true)
+    setActionError(null)
+    const result = await confirmSubmit(detail.id)
+    if (result.ok) {
+      onActionSuccess()
+      onClose()
+    } else {
+      setActionError(result.code)
+      setErrorNonce((n) => n + 1)
+    }
+    setActionLoading(false)
+  }, [detail, actionLoading, confirmSubmit, onActionSuccess, onClose])
 
   /**
    * Fix FE-2 round 1 review PR #435 — Alternative a11y au drag&drop
@@ -335,6 +365,11 @@ export function AppointmentDetailModal({
             // Fix FE-3 round 1 review PR #436 — onAccept ouvre le sub-mode
             // `acceptAlt` (récap + confirm) vs ancien POST one-click.
             onAccept={() => setSubMode("acceptAlt")}
+            // US-2500-UI iter 11 — confirm bookingMode validation manuelle.
+            // Pas de sub-mode dédié : action one-click claire ("Confirmer"
+            // le RDV → status scheduled). Si futur dev veut un récap, suivre
+            // pattern acceptAlt (sub-mode confirm récap).
+            onConfirm={submitConfirm}
             onClose={handleClose}
           />
         )}
@@ -347,6 +382,10 @@ export function AppointmentDetailModal({
             onSubmit={submitCancel}
             onBack={handleBackToView}
             onChangeClearsError={clearError}
+            // Fix C3 round 1 review PR #438 — default actor dérivé du userRole.
+            // Si VIEWER (patient self-service jamais utilisé ici aujourd'hui mais
+            // defense-in-depth), default "patient" pour audit attribution correct.
+            defaultActor={userRole === "VIEWER" ? "patient" : "doctor"}
           />
         )}
 
@@ -403,6 +442,8 @@ interface ViewModeProps {
   onMove: () => void
   /** US-2500-UI iter 9 — Accept l'alternative proposée (NURSE+). */
   onAccept: () => void
+  /** US-2500-UI iter 11 — Confirm RDV pending_validation (DOCTOR+, US-2505). */
+  onConfirm: () => void
   onClose: () => void
 }
 
@@ -487,7 +528,7 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onConfirm, onClose }: ViewModeProps) {
   const t = useTranslations("appointments")
   // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
   // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
@@ -497,6 +538,14 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
 
   const actionable = isActionable(detail.status)
   const showPropose = actionable && canProposeAlternative(userRole)
+
+  // US-2500-UI iter 11 — Bouton "Confirmer" visible si :
+  //   - status === "pending_validation" (US-2505 bookingMode=validation)
+  //   - userRole DOCTOR+ (backend gate, NURSE refuse 403)
+  // Pattern cohérent canAcceptAlternative iter 9.
+  const canConfirm =
+    (userRole === "ADMIN" || userRole === "DOCTOR")
+    && detail.status === "pending_validation"
 
   // US-2500-UI iter 9 — Bouton "Accepter alternative" visible si :
   //   - RDV en status `cancelled` (= original cancel pour proposer alt)
@@ -621,8 +670,27 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
             attente d'acceptation (status=cancelled + proposedAlternativeAt
             set + TTL 7j non dépassé côté backend qui re-valide). */}
         {canAcceptAlternative && (
-          <Button variant="default" onClick={onAccept}>
+          <Button
+            variant="default"
+            onClick={onAccept}
+            // Fix A11y M12 round 1 review PR #438 — aria-label discriminant
+            // (modal a plusieurs CTAs ; "Accepter alternative pour RDV #N").
+            aria-label={t("actionAcceptAlternativeAria", { id: detail.id })}
+          >
             {t("actionAcceptAlternative")}
+          </Button>
+        )}
+        {/* US-2500-UI iter 11 — Bouton "Confirmer" si RDV en pending_validation
+            (US-2505 bookingMode=validation manuelle). DOCTOR+ gate via canConfirm.
+            Variant=default (primary teal) — action engageante. */}
+        {canConfirm && (
+          <Button
+            variant="default"
+            onClick={onConfirm}
+            // Fix A11y M12 round 1 review PR #438 — aria-label discriminant.
+            aria-label={t("actionConfirmPendingAria", { id: detail.id })}
+          >
+            {t("actionConfirmPending")}
           </Button>
         )}
         <Button onClick={onClose}>{t("actionClose")}</Button>
@@ -638,12 +706,18 @@ interface CancelFormProps {
   onSubmit: (actor: "patient" | "doctor", reason: string) => void
   onBack: () => void
   onChangeClearsError: () => void
+  /** Fix C3 round 1 review PR #438 — default dérivé du userRole. */
+  defaultActor: "patient" | "doctor"
 }
 
 /**
  * Fix L-1 round 1 review PR #433 — Default `actor="doctor"` car la majorité
  * des annulations en cabinet sont initiées par le pro (secrétariat enregistre
  * l'annulation lors du créneau perdu, pas le patient qui appelle).
+ *
+ * Fix C3 round 1 review PR #438 — `defaultActor` prop pour dériver du
+ * userRole (VIEWER → patient, sinon doctor). Defense-in-depth si la modal
+ * est un jour montée côté patient self-service.
  */
 function CancelForm({
   loading,
@@ -652,9 +726,10 @@ function CancelForm({
   onSubmit,
   onBack,
   onChangeClearsError,
+  defaultActor,
 }: CancelFormProps) {
   const t = useTranslations("appointments")
-  const [actor, setActor] = useState<"patient" | "doctor">("doctor")
+  const [actor, setActor] = useState<"patient" | "doctor">(defaultActor)
   const [reason, setReason] = useState("")
 
   return (
