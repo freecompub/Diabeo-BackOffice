@@ -76,7 +76,7 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 - [ ] Navigation mois précédent/suivant (chevrons + bouton "Aujourd'hui")
 - [ ] Affichage RDV : couleur par statut (scheduled / pending_validation / confirmed / cancelled / completed / no_show)
 - [ ] Affichage plages indisponibles (`MemberUnavailability`) en gris hachuré
-- [ ] Drag & drop pour déplacer un RDV (vue semaine + jour uniquement, vue mois = clic only)
+- [x] Drag & drop pour déplacer un RDV (vue semaine + jour) ✅ iter 7 — plugin `@schedule-x/drag-and-drop`, snap 15min, `onBeforeEventUpdateAsync` rollback Schedule-X si API refuse, `_options.disableDND` sur statuts terminaux (cancelled/completed/no_show) + hour=null
 - [x] Clic sur un RDV → modal détail (note/motif déchiffrés à l'ouverture, audit READ ciblé) ✅ iter 5
 
 ### Filtres et scope

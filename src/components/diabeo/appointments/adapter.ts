@@ -45,6 +45,16 @@ export interface ScheduleXEvent {
   start: string // "yyyy-mm-dd hh:mm"
   end: string // "yyyy-mm-dd hh:mm"
   calendarId?: string // Schedule-X calendars (color groups)
+  /**
+   * Fix US-2500-UI iter 7 — Schedule-X event options pour gater drag&drop +
+   * resize sur les RDV en statuts terminaux (cancelled / completed / no_show).
+   * Le médecin ne devrait pas pouvoir bouger un RDV passé/annulé — le backend
+   * refuserait avec `appointmentNotEditable` mais UX = pas même proposer.
+   */
+  _options?: {
+    disableDND?: boolean
+    disableResize?: boolean
+  }
 }
 
 const STATUS_TO_CALENDAR_ID: Record<string, string> = {
@@ -143,6 +153,22 @@ export function appointmentToScheduleXEvent(appt: AppointmentListItem): Schedule
     ? UNSCHEDULED_CALENDAR_ID
     : STATUS_TO_CALENDAR_ID[appt.status] ?? "scheduled"
 
+  // US-2500-UI iter 7 — disable drag&drop/resize sur RDV terminaux.
+  // Le backend refuse `alreadyClosed` (422) — UX = pas de hint visuel
+  // que l'event est draggable si l'action serait rejetée.
+  //
+  // Fix CR-6 round 1 review PR #435 — `hour === null` (RDV unscheduled
+  // placé en fallback 09:00) reste **draggable** : c'est précisément
+  // l'action qui résout le bug "RDV sans heure" — le médecin drag le
+  // RDV pour lui donner une heure réelle. Si on bloquait, le seul moyen
+  // de fixer un RDV unscheduled serait d'ouvrir le modal détail puis
+  // utiliser le sub-mode "Déplacer" (V1.5 FE-2 WCAG 2.5.7 alternative).
+  const isTerminal =
+    appt.status === "cancelled" || appt.status === "completed" || appt.status === "no_show"
+  const _options = isTerminal
+    ? { disableDND: true, disableResize: true }
+    : undefined
+
   return {
     id: String(appt.id),
     // Title anti-PHI : statut + type whitelisted seulement.
@@ -150,7 +176,89 @@ export function appointmentToScheduleXEvent(appt: AppointmentListItem): Schedule
     start,
     end,
     calendarId,
+    ...(_options && { _options }),
   }
+}
+
+/**
+ * Fix CR-5 round 1 review PR #435 — Regex avec **bornes valides** :
+ *   - année : 1900-2999 (validation lâche — backend valide précis)
+ *   - mois : 01-12
+ *   - jour : 01-31 (validation calendaire fine déférée au backend — pas 30 février)
+ *   - heure : 00-23 (si présente)
+ *   - minute : 00-59 (si présente)
+ *
+ * Pattern : date OBLIGATOIRE. Si un séparateur ` ` ou `T` suit, alors heure
+ * + minute DOIVENT être valides (sinon return null — defense-in-depth contre
+ * formats inattendus type "24:60" qui faisaient fallback "00:00" silent).
+ *
+ * 2 regex distinctes pour faire le check en 2 passes :
+ *   1. Match date-only (optionnel séparateur + heure)
+ *   2. Si séparateur présent, heure DOIT valid avec regex stricte
+ */
+const ISO_DATE_RE = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])([ T])?(.*)$/
+const ISO_TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)/
+
+/**
+ * US-2500-UI iter 7 — Extraction de `date` (yyyy-mm-dd) et `hour` (HH:MM)
+ * depuis un event Schedule-X qui a été modifié par drag&drop.
+ *
+ * Schedule-X v4 expose `start: Temporal.ZonedDateTime | Temporal.PlainDate`
+ * dans `onEventUpdate`/`onBeforeEventUpdateAsync`. Selon que l'event était
+ * timed ou all-day, le type varie.
+ *
+ * Format Temporal stringify :
+ *   - `ZonedDateTime.toString()` → "2026-05-26T14:00:00+02:00[Europe/Paris]"
+ *   - `PlainDate.toString()` → "2026-05-26"
+ *   - Fallback string "yyyy-mm-dd hh:mm" si l'event vient juste de l'adapter
+ *     (avant que Schedule-X le convertisse en interne).
+ *
+ * Retourne `null` si parsing échoue (defense-in-depth — refuse l'update
+ * plutôt que d'envoyer une date corrompue au backend).
+ *
+ * **Timezone wall-clock contract (HSA-4 V1.5)** : on extrait les composantes
+ * ISO du `toString()` Temporal — c'est l'heure WALL-CLOCK affichée par
+ * Schedule-X. Si le navigateur du médecin tourne dans un fuseau différent
+ * du cabinet, l'heure stockée backend peut être décalée. Tracker
+ * V1.5 : `HealthcareService.timezone` schema + bannière UI mismatch.
+ */
+export function extractDateHourFromScheduleXStart(
+  start: unknown,
+): { date: string; hour: string } | null {
+  if (start === null || start === undefined) return null
+
+  let iso: string
+  if (typeof start === "string") {
+    iso = start
+  } else if (typeof start === "object" && "toString" in start) {
+    iso = String(start)
+  } else {
+    return null
+  }
+
+  const dateMatch = iso.match(ISO_DATE_RE)
+  if (!dateMatch) return null
+  const [, y, mo, d, sep, rest] = dateMatch
+  const date = `${y}-${mo}-${d}`
+
+  // Pas de séparateur = PlainDate (RDV all-day) → fallback hour "00:00"
+  if (!sep) return { date, hour: "00:00" }
+
+  // Séparateur présent → heure DOIT être valide (defense-in-depth CR-5).
+  const timeMatch = rest.match(ISO_TIME_RE)
+  if (!timeMatch) return null
+  return { date, hour: `${timeMatch[1]}:${timeMatch[2]}` }
+}
+
+/**
+ * Fix CR-8 round 1 review PR #435 — normalise une chaîne d'heure pour
+ * comparaison idempotente. Schedule-X peut retourner `"09:00"` OU `"09:00:00"`
+ * selon le path interne — sans normalisation, l'idempotence comparait des
+ * formats différents et envoyait un PUT inutile + audit fantôme.
+ */
+export function normalizeHourForCompare(hour: string | null): string {
+  if (hour === null) return ""
+  return hour.slice(0, 5) // "HH:MM" — strip seconds + millisec si présents
 }
 
 /**

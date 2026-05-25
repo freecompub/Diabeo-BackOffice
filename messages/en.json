@@ -361,7 +361,17 @@
     "patientSelected": "Patient selected",
     "patientNoResults": "No patient matches your search.",
     "patientHint": "{count, plural, =0 {No patient available} one {1 patient available} other {# patients available}}",
-    "scopeMissingChooseFirst": "Please select a practice member first to create an appointment."
+    "scopeMissingChooseFirst": "Please select a practice member first to create an appointment.",
+    "dndErrorConflict": "Target slot already taken — appointment reverted to original position.",
+    "dndErrorForbidden": "You do not have permission to modify this appointment.",
+    "dndErrorNotEditable": "This appointment can no longer be modified (cancelled / past).",
+    "dndErrorNotFound": "This appointment no longer exists — refresh the calendar.",
+    "dndErrorValidation": "Invalid date or time — appointment not moved.",
+    "dndErrorGeneric": "Move failed — please retry or reload the calendar.",
+    "actionMove": "Reschedule",
+    "moveTitle": "Reschedule appointment",
+    "moveDescription": "Choose the new date and time. The appointment is rescheduled immediately (keyboard alternative to drag & drop).",
+    "actionConfirmMove": "Reschedule appointment"
   },
   "weekly": {
     "title": "Weekly View",

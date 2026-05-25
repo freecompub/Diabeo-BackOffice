@@ -670,6 +670,91 @@ describe("<AppointmentDetailModal>", () => {
       expect(onClose).not.toHaveBeenCalled()
     })
 
+    it("FE-2 round 1 PR #435 — bouton 'Déplacer' visible si status actionable + a11y clavier WCAG 2.5.7", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      // Bouton 'Déplacer' présent comme alternative a11y au drag&drop calendar.
+      const moveBtn = screen.getByText("actionMove")
+      expect(moveBtn).toBeTruthy()
+    })
+
+    it("FE-2 round 1 PR #435 — clic 'Déplacer' → sub-mode 'move' avec form date+heure", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionMove"))
+      // Form move avec date + heure prerempli (cohérent ProposeAlternativeForm).
+      expect(screen.getByText("moveTitle")).toBeTruthy()
+      expect(screen.getByLabelText("dateLabel")).toBeTruthy()
+      expect(screen.getByLabelText("hourLabel")).toBeTruthy()
+      expect(screen.getByText("actionConfirmMove")).toBeTruthy()
+    })
+
+    it("FE-2 — bouton 'Déplacer' caché si status terminal (alignement disableDND drag)", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "cancelled", cancelledAt: "2026-05-23T10:00:00Z" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      expect(screen.queryByText("actionMove")).toBeNull()
+    })
+
+    it("FE-2 — submit form 'Déplacer' → PUT /api/appointments/[id] + onActionSuccess + onClose", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 42 }),
+      } as Response)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionMove"))
+
+      const dateInput = screen.getByLabelText("dateLabel") as HTMLInputElement
+      const timeInput = screen.getByLabelText("hourLabel") as HTMLInputElement
+      fireEvent.change(dateInput, { target: { value: "2026-06-15" } })
+      fireEvent.change(timeInput, { target: { value: "11:00" } })
+      fireEvent.click(screen.getByText("actionConfirmMove"))
+
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          "/api/appointments/42",
+          expect.objectContaining({
+            method: "PUT",
+            // Backend PUT accepte {date, hour} séparé (vs ISO Z proposeAlt).
+            body: JSON.stringify({ date: "2026-06-15", hour: "11:00" }),
+          }),
+        )
+      })
+      expect(onActionSuccess).toHaveBeenCalledTimes(1)
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
     it("M-2 — pas de input hidden data-testid='appt-id' (debug reliquat retiré)", () => {
       render(
         <AppointmentDetailModal
