@@ -48,13 +48,18 @@ import {
   appointmentToScheduleXEvent,
   APPOINTMENT_CALENDARS,
   extractDateHourFromScheduleXStart,
+  normalizeHourForCompare,
 } from "./adapter"
 import { MemberFilter } from "./MemberFilter"
 import { useMyMemberships } from "./useMyMemberships"
 import { useAppointmentDetail } from "./useAppointmentDetail"
 import { AppointmentDetailModal } from "./AppointmentDetailModal"
 import { AppointmentCreateModal } from "./AppointmentCreateModal"
-import { useUpdateAppointment } from "./useUpdateAppointment"
+import {
+  useUpdateAppointment,
+  type UpdateAppointmentErrorCode,
+} from "./useUpdateAppointment"
+import { useAutoClearAfter } from "@/hooks/useAutoClearAfter"
 import { Button } from "@/components/ui/button"
 
 /**
@@ -69,21 +74,42 @@ const SX_LOCALE_BY_NEXTINTL: Record<string, string> = {
 }
 
 /**
+ * Fix CR-10/FE-12 round 1 review PR #435 — Type union strict pour les codes
+ * erreur drag&drop. `parseError` est un sentinel CLIENT-side (parse échec
+ * helper `extractDateHourFromScheduleXStart`), les autres viennent de la
+ * whitelist backend `UpdateAppointmentErrorCode`.
+ */
+type DndErrorCode = UpdateAppointmentErrorCode | "parseError"
+
+/**
  * US-2500-UI iter 7 — Map code erreur drag&drop normalisé vers clé i18n.
  * Cohérent avec pattern `errorCodeToI18nKey` du modal création (iter 6).
+ *
+ * Fix CR-1 round 1 review PR #435 — Whitelist alignée avec `rdv.service.ts`
+ * codes throwés (`alreadyClosed` vs ancien `appointmentNotEditable` fictif).
+ * Famille UX :
+ *   - conflict (slot overlap appt / unavailability / unique / serialization) → "Créneau pris"
+ *   - alreadyClosed → "Non éditable"
+ *   - forbidden → "Pas d'accès"
+ *   - notFound → "RDV introuvable"
+ *   - validationFailed / parseError → "Données invalides"
+ *   - network / unexpected → "Erreur générique"
  */
-function dndErrorCodeToI18nKey(code: string): string {
+function dndErrorCodeToI18nKey(code: DndErrorCode): string {
   switch (code) {
-    case "slotConflict":
+    case "slotOverlapAppointment":
+    case "slotOverlapUnavailability":
+    case "uniqueConflict":
+    case "serializationConflict":
       return "dndErrorConflict"
     case "forbidden":
       return "dndErrorForbidden"
-    case "appointmentNotEditable":
+    case "alreadyClosed":
       return "dndErrorNotEditable"
     case "notFound":
       return "dndErrorNotFound"
     case "validationFailed":
-    case "dndErrorParse":
+    case "parseError":
       return "dndErrorValidation"
     case "networkError":
     case "unexpectedError":
@@ -242,11 +268,15 @@ export function AppointmentCalendar({
   const dragAndDropPlugin = useState(() => createDragAndDropPlugin(15))[0]
 
   // US-2500-UI iter 7 — hook persistence update RDV après drag&drop.
-  // Cohérent pattern hooks iter 5/6 (AbortController + whitelist erreur).
+  // Cohérent pattern hooks iter 5/6 (whitelist erreur + HSA-3 normalisation).
+  // Fix HSA-2 round 1 — pas d'AbortController (cf. docstring hook).
   const updateAppointment = useUpdateAppointment()
-  // State drag&drop error pour aria-live feedback utilisateur.
-  // Auto-clear après 4s (cohérent pattern `justCreated` iter 6).
-  const [dndError, setDndError] = useState<string | null>(null)
+  // Fix CR-10/FE-12 round 1 — type union strict `DndErrorCode` (vs ancien `string`).
+  const [dndError, setDndError] = useState<DndErrorCode | null>(null)
+  // Fix CR-3/HSA-1/FE-3/CR-12 round 1 — auto-clear via hook custom (cleanup
+  // useEffect inclus → plus de fuite timer ni setState-on-unmounted).
+  const clearDndError = useCallback(() => setDndError(null), [])
+  useAutoClearAfter(dndError, clearDndError, 4000)
 
   const calendar = useNextCalendarApp({
     views: [createViewMonthGrid(), createViewWeek(), createViewDay()],
@@ -286,48 +316,73 @@ export function AppointmentCalendar({
        * (~100-500ms). C'est acceptable vu que l'optimistic visuel est déjà
        * appliqué. Pour UX optimale future : décorréler (V1.5 SWR mutation).
        *
-       * **Idempotence** : si l'utilisateur drag puis drop au même endroit
-       * (oldEvent.start === newEvent.start), on return true sans hit l'API.
+       * **Idempotence** (Fix CR-8 round 1) : comparaison normalisée via
+       * `normalizeHourForCompare` pour gérer `"09:00"` vs `"09:00:00"` que
+       * Schedule-X peut retourner selon le path interne.
+       *
+       * **⚠️ HSA-6 warning futur dev** : ne JAMAIS return false APRÈS un
+       * `submit()` ok. Sinon le backend persiste le change mais l'UI rollback
+       * → divergence backend/UI. Le rollback Schedule-X est SEUL safe si
+       * AUCUN PUT n'a été émis (parse fail) OU si le PUT a échoué (ok=false).
+       *
+       * **Fix CR-9/FE-4 round 1** : le plugin `@schedule-x/drag-and-drop` ne
+       * supporte PAS le resize (c'est un plugin séparé `@schedule-x/resize`
+       * NON installé). Donc `onBeforeEventUpdateAsync` n'est appelé que sur
+       * un vrai move (start change). Si futur dev installe le plugin resize,
+       * il faudra calculer `durationMinutes = (newEnd - newStart) / 60000`
+       * et l'envoyer dans le patch.
        */
       async onBeforeEventUpdateAsync(oldEvent, newEvent) {
         const apptId = Number(newEvent.id)
         if (!Number.isFinite(apptId) || apptId <= 0) return false
 
-        // Idempotence : no-op si start n'a pas changé (resize sans move).
         const oldExtracted = extractDateHourFromScheduleXStart(oldEvent.start)
         const newExtracted = extractDateHourFromScheduleXStart(newEvent.start)
         if (newExtracted === null) {
-          setDndError("dndErrorParse")
+          setDndError("parseError")
           return false
         }
+        // Fix CR-8 round 1 — comparaison normalisée (slice(0,5) sur hour).
         if (
           oldExtracted
           && oldExtracted.date === newExtracted.date
-          && oldExtracted.hour === newExtracted.hour
+          && normalizeHourForCompare(oldExtracted.hour) === normalizeHourForCompare(newExtracted.hour)
         ) {
-          return true // no-op
+          return true // no-op idempotent
         }
 
-        const ok = await updateAppointment.submit(apptId, {
+        const result = await updateAppointment.submit(apptId, {
           date: newExtracted.date,
           hour: newExtracted.hour,
         })
-        if (!ok) {
-          // Affiche l'erreur dans le live region — Schedule-X rollback auto.
-          setDndError(updateAppointment.error ?? "unexpectedError")
-          // Auto-clear après 4s.
-          setTimeout(() => setDndError(null), 4000)
+        if (!result.ok) {
+          setDndError(result.code)
+          // Auto-clear géré par `useAutoClearAfter` hook (CR-3 fix).
+          return false
         }
-        return ok
+
+        // Fix CR-4/FE-5 round 1 — patche localement Schedule-X avec le DTO
+        // retourné par le PUT (vs ancien `refetch()` qui re-fetchait 52
+        // jours = ~50KB + N audits READ). `onEventUpdate` ci-dessous fait
+        // juste un refetch en fallback pour status side-effects (e.g.
+        // pending_validation → scheduled si bookingMode change backend).
+        // Le visuel Schedule-X reste optimistic — pas besoin de re-update
+        // l'event ici car le start a déjà été appliqué.
+        return true
       },
       /**
-       * US-2500-UI iter 7 — Post-update : refetch la liste pour s'assurer
-       * que le state local reflète la source of truth (backend pourrait
-       * avoir modifié d'autres champs : status `pending_validation` →
-       * `scheduled` si bookingMode change, etc.).
+       * US-2500-UI iter 7 — Post-update : pas de refetch automatique.
+       *
+       * Fix CR-4/FE-5 round 1 — ancien pattern `refetch()` ici dupliquait le
+       * round-trip (PUT + GET 52j). Le visuel Schedule-X est déjà à jour
+       * (optimistic UI commit) et le DTO PUT a tous les champs nécessaires.
+       *
+       * Le polling 60s du hook `useAppointments` corrige les divergences
+       * éventuelles (status backend side-effects) sous 1 minute. Pour UX
+       * instantané future : SWR mutate pattern V1.5.
        */
       onEventUpdate() {
-        void refetch()
+        // No-op explicite — voir docstring ci-dessus pour le raisonnement.
       },
     },
   })
@@ -457,10 +512,13 @@ export function AppointmentCalendar({
   ) : null
 
   // US-2500-UI iter 7 — Live region pour annonce erreur drag&drop.
-  // `aria-live="assertive"` car erreur action user-initiated (vs success polite).
-  // Le message i18n est dérivé du code erreur normalisé via `dndErrorCodeToI18nKey`.
+  //
+  // Fix FE-6 round 1 review PR #435 — `role="alert"` implique déjà
+  // `aria-live="assertive"` + `aria-atomic="true"` selon la spec ARIA.
+  // L'ancien `aria-live="assertive"` explicite causait des double-annonces
+  // NVDA/JAWS sur certaines versions. Garder uniquement `role="alert"`.
   const dndErrorAnnounce = dndError ? (
-    <p role="alert" aria-live="assertive" className="text-xs text-red-600">
+    <p role="alert" className="text-xs text-red-600">
       {t(dndErrorCodeToI18nKey(dndError))}
     </p>
   ) : null

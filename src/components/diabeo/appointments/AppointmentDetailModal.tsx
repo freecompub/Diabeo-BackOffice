@@ -68,7 +68,7 @@ import type {
  */
 export type UserRole = "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 
-type SubMode = "view" | "cancel" | "proposeAlt"
+type SubMode = "view" | "cancel" | "proposeAlt" | "move"
 
 export interface AppointmentDetailModalProps {
   /** Résultat du hook `useAppointmentDetail(id)`. */
@@ -214,6 +214,54 @@ export function AppointmentDetailModal({
     [detail, actionLoading, onActionSuccess, onClose],
   )
 
+  /**
+   * Fix FE-2 round 1 review PR #435 — Alternative a11y au drag&drop
+   * (WCAG 2.5.7 Dragging Movements + 2.1.1 Keyboard).
+   *
+   * Le drag&drop n'est pas accessible clavier nativement. WCAG 2.5.7 niveau
+   * AA exige un single-pointer alternative. Ce sub-mode "Déplacer" permet
+   * à un SR user ou clavier-only de modifier date+heure d'un RDV via PUT
+   * `/api/appointments/[id]` (même endpoint que le hook `useUpdateAppointment`
+   * utilisé par le drag&drop dans le calendar).
+   */
+  const submitMove = useCallback(
+    async (date: string, hour: string) => {
+      if (!detail || actionLoading) return // Fix H-1 garde double submit
+      setActionLoading(true)
+      setActionError(null)
+      try {
+        const res = await fetch(`/api/appointments/${detail.id}`, {
+          method: "PUT",
+          credentials: "include",
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify({ date, hour }),
+        })
+        if (!res.ok) {
+          if (res.status === 401 && typeof window !== "undefined") {
+            window.location.href = "/login?expired=1"
+            return
+          }
+          const body = (await res.json().catch(() => ({}))) as { error?: string }
+          setActionError(body.error ?? `httpError:${res.status}`)
+          setErrorNonce((n) => n + 1)
+          return
+        }
+        onActionSuccess()
+        onClose()
+      } catch (err) {
+        setActionError(err instanceof Error ? err.message : "networkError")
+        setErrorNonce((n) => n + 1)
+      } finally {
+        setActionLoading(false)
+      }
+    },
+    [detail, actionLoading, onActionSuccess, onClose],
+  )
+
   return (
     <Dialog
       open={openId !== null}
@@ -248,6 +296,7 @@ export function AppointmentDetailModal({
             userRole={userRole}
             onCancel={() => setSubMode("cancel")}
             onPropose={() => setSubMode("proposeAlt")}
+            onMove={() => setSubMode("move")}
             onClose={handleClose}
           />
         )}
@@ -274,6 +323,18 @@ export function AppointmentDetailModal({
             onChangeClearsError={clearError}
           />
         )}
+
+        {detail && subMode === "move" && (
+          <MoveForm
+            detail={detail}
+            loading={actionLoading}
+            error={actionError}
+            errorNonce={errorNonce}
+            onSubmit={submitMove}
+            onBack={handleBackToView}
+            onChangeClearsError={clearError}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )
@@ -286,6 +347,8 @@ interface ViewModeProps {
   userRole: UserRole
   onCancel: () => void
   onPropose: () => void
+  /** Fix FE-2 round 1 review PR #435 — alternative a11y drag&drop (WCAG 2.5.7) */
+  onMove: () => void
   onClose: () => void
 }
 
@@ -369,7 +432,7 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, onCancel, onPropose, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: ViewModeProps) {
   const t = useTranslations("appointments")
   // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
   // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
@@ -466,6 +529,14 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onClose }: ViewModePr
         {actionable && (
           <Button variant="outline" onClick={onCancel}>
             {t("actionCancel")}
+          </Button>
+        )}
+        {/* Fix FE-2 round 1 review PR #435 — alternative a11y au drag&drop
+            (WCAG 2.5.7 Dragging Movements + 2.1.1 Keyboard). NURSE+ peut
+            déplacer un RDV éditable via clavier sans toucher au drag&drop. */}
+        {actionable && (
+          <Button variant="outline" onClick={onMove}>
+            {t("actionMove")}
           </Button>
         )}
         {showPropose && (
@@ -723,5 +794,112 @@ function Field({ label, children }: FieldProps) {
       <dt className="text-xs font-medium text-muted-foreground uppercase tracking-wide">{label}</dt>
       <dd className="text-sm text-foreground">{children}</dd>
     </div>
+  )
+}
+
+/* ─── MoveForm (Fix FE-2 round 1 PR #435 — a11y alternative drag&drop) ─── */
+
+interface MoveFormProps {
+  detail: AppointmentDetail
+  loading: boolean
+  error: string | null
+  errorNonce: number
+  onSubmit: (date: string, hour: string) => void
+  onBack: () => void
+  onChangeClearsError: () => void
+}
+
+/**
+ * MoveForm — WCAG 2.5.7 Dragging Movements alternative.
+ *
+ * Form date+heure pour reschedule un RDV via PUT /api/appointments/[id].
+ * Pattern UI cloné de `ProposeAlternativeForm` (clavier-accessible) mais
+ * sémantique différente : MOVE = reschedule immédiat (vs PROPOSE = demande
+ * que le patient doit accepter).
+ *
+ * **Sécurité** : pas de suffixe `Z` ici (vs proposeAlt) car le backend PUT
+ * accepte `{date: "yyyy-mm-dd", hour: "HH:MM"}` séparé (cf. route.ts:18-19) —
+ * pas d'ambiguïté timezone, wall-clock direct.
+ */
+function MoveForm({
+  detail,
+  loading,
+  error,
+  errorNonce,
+  onSubmit,
+  onBack,
+  onChangeClearsError,
+}: MoveFormProps) {
+  const t = useTranslations("appointments")
+  const initialDate = detail.date.split("T")[0]
+  const initialTime = detail.hour ? detail.hour.slice(0, 5) : "09:00"
+  const [dateStr, setDateStr] = useState(initialDate)
+  const [timeStr, setTimeStr] = useState(initialTime)
+  // Fix H-4 pattern iter 5/6 — borne min snapshot lazy au mount.
+  const [today] = useState(() => new Date().toISOString().split("T")[0])
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>{t("moveTitle")}</DialogTitle>
+        <DialogDescription>{t("moveDescription")}</DialogDescription>
+      </DialogHeader>
+
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          onSubmit(dateStr, timeStr)
+        }}
+        className="grid gap-4 py-2"
+      >
+        <div className="grid gap-2">
+          <Label htmlFor="move-date">{t("dateLabel")}</Label>
+          <input
+            type="date"
+            id="move-date"
+            value={dateStr}
+            min={today}
+            onChange={(e) => { setDateStr(e.target.value); onChangeClearsError() }}
+            required
+            aria-required="true"
+            disabled={loading}
+            className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label htmlFor="move-time">{t("hourLabel")}</Label>
+          <input
+            type="time"
+            id="move-time"
+            value={timeStr}
+            onChange={(e) => { setTimeStr(e.target.value); onChangeClearsError() }}
+            required
+            aria-required="true"
+            disabled={loading}
+            className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
+          />
+        </div>
+
+        {error && (
+          <p
+            key={`${error}-${errorNonce}`}
+            role="alert"
+            className="text-sm text-red-600"
+          >
+            {t("actionError")}
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={onBack} disabled={loading}>
+            {t("actionBack")}
+          </Button>
+          <Button type="submit" disabled={loading}>
+            {loading ? t("loading") : t("actionConfirmMove")}
+          </Button>
+        </DialogFooter>
+      </form>
+    </>
   )
 }

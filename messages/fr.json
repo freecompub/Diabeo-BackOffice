@@ -367,7 +367,11 @@
     "dndErrorNotEditable": "Ce RDV ne peut plus être modifié (annulé / passé).",
     "dndErrorNotFound": "Ce RDV n'existe plus — actualisez le calendrier.",
     "dndErrorValidation": "Date ou heure invalide — le RDV n'a pas été déplacé.",
-    "dndErrorGeneric": "Échec du déplacement — réessayez ou rechargez le calendrier."
+    "dndErrorGeneric": "Échec du déplacement — réessayez ou rechargez le calendrier.",
+    "actionMove": "Déplacer",
+    "moveTitle": "Déplacer le rendez-vous",
+    "moveDescription": "Choisissez la nouvelle date et heure. Le RDV est reschedulé immédiatement (alternative clavier au glisser-déposer).",
+    "actionConfirmMove": "Déplacer le RDV"
   },
   "weekly": {
     "title": "Vue hebdomadaire",

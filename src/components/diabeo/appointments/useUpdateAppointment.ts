@@ -13,32 +13,56 @@
  *   - `durationMinutes` (15-240) optionnel
  *   - autres champs (location, type, motif, note) optionnels — non utilisés ici
  *
+ * **Codes erreur backend** (Fix CR-1 + HSA-3 round 1 review PR #435) :
+ *   Whitelist vérifiée contre `rdv.service.ts` méthode `update` :
+ *   - `forbidden` (403) — canAccessPatient gate
+ *   - `notFound` (404) — apptId inexistant
+ *   - `alreadyClosed` (422) — RDV en statut terminal (cancelled/completed/no_show)
+ *   - `slotOverlapAppointment` (422) — conflit créneau patient
+ *   - `slotOverlapUnavailability` (422) — conflit indispo membre
+ *   - `uniqueConflict` (409) — Prisma P2002 (race slot)
+ *   - `serializationConflict` (409) — Prisma P2034 (retry possible)
+ *   - `validationFailed` (400) — Zod route OU motif/note/durationMinutes
+ *   - tout autre → `unexpectedError` (HSA-3 defense-in-depth)
+ *
  * **Sécurité** :
  *   - Backend headers ANSSI sur réponse 200 (HSA-2-1 round 2 fix iter 5)
  *   - Audit `UPDATE` ciblé côté backend (resource=APPOINTMENT, metadata.patientId)
- *   - Whitelist codes erreur cohérente avec `useCreateAppointment` (HSA-3)
+ *   - Render uniquement clé i18n normalisée jamais code brut (HSA-3)
  *
- * **Pattern** : `submit(id, patch)` retourne `boolean` — true = succès, false =
- * erreur. Schedule-X `onBeforeEventUpdateAsync` consume ce bool pour rollback.
+ * **Fix CR-4 + FE-5 round 1 review PR #435** : `submit` retourne le DTO mis
+ * à jour (vs juste bool). Le parent peut appeler `eventsService.update(dto)`
+ * pour patcher localement Schedule-X au lieu de `refetch()` la fenêtre entière
+ * (52 jours = ~50KB transit + N audits READ par item — coût RGPD audit).
+ *
+ * **Pattern** : pas d'AbortController (Fix HSA-2 round 1 — voir docstring de
+ * `submit`). Les PUT mutations sont sériées implicitement par le caller via
+ * Schedule-X qui attend `Promise<boolean>` avant de débloquer un nouveau drag.
  */
 
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 export type UpdateAppointmentErrorCode =
-  | "slotConflict"
+  | "alreadyClosed"
+  | "slotOverlapAppointment"
+  | "slotOverlapUnavailability"
+  | "uniqueConflict"
+  | "serializationConflict"
   | "forbidden"
-  | "validationFailed"
   | "notFound"
-  | "appointmentNotEditable"
+  | "validationFailed"
   | "networkError"
   | "unexpectedError"
 
 const ACCEPTED_ERROR_CODES: ReadonlySet<UpdateAppointmentErrorCode> = new Set([
-  "slotConflict",
+  "alreadyClosed",
+  "slotOverlapAppointment",
+  "slotOverlapUnavailability",
+  "uniqueConflict",
+  "serializationConflict",
   "forbidden",
-  "validationFailed",
   "notFound",
-  "appointmentNotEditable",
+  "validationFailed",
   "networkError",
 ])
 
@@ -56,35 +80,62 @@ export interface UpdateAppointmentPatch {
   durationMinutes?: number
 }
 
+/** Shape minimal du DTO retourné par PUT — utilisé par `eventsService.update`. */
+export interface UpdatedAppointmentLite {
+  id: number
+  date: string // ISO
+  hour: string | null // ISO time
+  durationMinutes: number | null
+  status: string
+}
+
+export type UpdateAppointmentResult =
+  | { ok: true; dto: UpdatedAppointmentLite }
+  | { ok: false; code: UpdateAppointmentErrorCode }
+
 export interface UseUpdateAppointmentResult {
   loading: boolean
   error: UpdateAppointmentErrorCode | null
-  /** Submit le patch. Retourne `true` si 200, `false` si erreur. */
-  submit: (id: number, patch: UpdateAppointmentPatch) => Promise<boolean>
-  /** Reset state. */
+  /**
+   * Submit le patch. Retourne `{ ok: true, dto }` ou `{ ok: false, code }`.
+   * Fix CR-4/FE-5 round 1 — retour structuré pour permettre au caller de
+   * patcher Schedule-X localement (vs full refetch).
+   *
+   * Note CR-7 + HSA-2 round 1 : pas d'AbortController. Schedule-X sérialise
+   * les drag callbacks naturellement (un drag attend la résolution de la
+   * Promise avant qu'un nouveau drag commence). Pas de race entre 2 PUT
+   * simultanés.
+   */
+  submit: (id: number, patch: UpdateAppointmentPatch) => Promise<UpdateAppointmentResult>
+  /** Reset state (utile entre 2 ouvertures). */
   reset: () => void
 }
 
 export function useUpdateAppointment(): UseUpdateAppointmentResult {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<UpdateAppointmentErrorCode | null>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  // Fix CR-7 round 1 — mountedRef pour gate setState sur composant unmounted.
+  // (Pas d'AbortController vu qu'on n'abort plus les PUT — Schedule-X sérialise.)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
 
   const reset = useCallback(() => {
-    abortRef.current?.abort()
+    if (!mountedRef.current) return
     setError(null)
     setLoading(false)
   }, [])
 
   const submit = useCallback(
-    async (id: number, patch: UpdateAppointmentPatch): Promise<boolean> => {
-      abortRef.current?.abort()
-      const ctrl = new AbortController()
-      abortRef.current = ctrl
-      const myCtrl = ctrl
-
-      setLoading(true)
-      setError(null)
+    async (id: number, patch: UpdateAppointmentPatch): Promise<UpdateAppointmentResult> => {
+      if (mountedRef.current) {
+        setLoading(true)
+        setError(null)
+      }
       try {
         const res = await fetch(`/api/appointments/${id}`, {
           method: "PUT",
@@ -95,30 +146,27 @@ export function useUpdateAppointment(): UseUpdateAppointmentResult {
             "X-Requested-With": "XMLHttpRequest",
           },
           body: JSON.stringify(patch),
-          signal: myCtrl.signal,
         })
-
-        if (myCtrl.signal.aborted) return false
 
         if (!res.ok) {
           if (res.status === 401 && typeof window !== "undefined") {
             window.location.href = "/login?expired=1"
-            return false
+            return { ok: false, code: "unexpectedError" }
           }
           const body = (await res.json().catch(() => ({}))) as { error?: string }
-          if (myCtrl.signal.aborted) return false
-          setError(normalizeError(body.error))
-          return false
+          const code = normalizeError(body.error)
+          if (mountedRef.current) setError(code)
+          return { ok: false, code }
         }
 
-        return true
+        const dto = (await res.json()) as UpdatedAppointmentLite
+        return { ok: true, dto }
       } catch (err) {
-        if (err instanceof Error && err.name === "AbortError") return false
-        if (myCtrl.signal.aborted) return false
-        setError(normalizeError(err instanceof Error ? err.message : undefined))
-        return false
+        const code = normalizeError(err instanceof Error ? err.message : undefined)
+        if (mountedRef.current) setError(code)
+        return { ok: false, code }
       } finally {
-        if (!myCtrl.signal.aborted) setLoading(false)
+        if (mountedRef.current) setLoading(false)
       }
     },
     [],

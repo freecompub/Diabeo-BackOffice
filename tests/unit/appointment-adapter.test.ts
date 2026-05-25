@@ -13,6 +13,7 @@ import {
   appointmentToScheduleXEvent,
   APPOINTMENT_CALENDARS,
   extractDateHourFromScheduleXStart,
+  normalizeHourForCompare,
 } from "@/components/diabeo/appointments/adapter"
 import type { AppointmentListItem } from "@/components/diabeo/appointments/useAppointments"
 
@@ -238,10 +239,11 @@ describe("appointmentToScheduleXEvent", () => {
       expect(evt._options?.disableResize).toBe(true)
     })
 
-    it("hour=null (unscheduled) → disableDND même si status=scheduled", () => {
+    it("Fix CR-6 round 1 — hour=null (unscheduled) reste DRAGGABLE (drag résout le bug 'sans heure')", () => {
+      // Fix CR-6 review : ancien comportement bloquait hour=null mais c'est
+      // précisément l'action qui permet de donner une heure au RDV.
       const evt = appointmentToScheduleXEvent(makeAppt({ hour: null }))
-      expect(evt._options?.disableDND).toBe(true)
-      expect(evt._options?.disableResize).toBe(true)
+      expect(evt._options).toBeUndefined()
     })
   })
 
@@ -303,6 +305,73 @@ describe("appointmentToScheduleXEvent", () => {
 
     it("number → null (defense-in-depth)", () => {
       expect(extractDateHourFromScheduleXStart(42)).toBeNull()
+    })
+
+    /**
+     * Fix CR-5 round 1 review PR #435 — Regex avec bornes valides
+     * (mois 01-12 / jour 01-31 / heure 00-23 / minute 00-59).
+     * Anciennes regex acceptaient `9999-99-99T99:99` → backend rejette mais
+     * audit row fantôme. Defense-in-depth = rejeter côté frontend.
+     */
+    it("Fix CR-5 — mois invalide (13) → null (bornes valides)", () => {
+      expect(extractDateHourFromScheduleXStart("2026-13-15T14:00")).toBeNull()
+    })
+
+    it("Fix CR-5 — jour invalide (32) → null", () => {
+      expect(extractDateHourFromScheduleXStart("2026-05-32T14:00")).toBeNull()
+    })
+
+    it("Fix CR-5 — heure invalide (24) → null", () => {
+      expect(extractDateHourFromScheduleXStart("2026-05-15T24:00")).toBeNull()
+    })
+
+    it("Fix CR-5 — minute invalide (60) → null", () => {
+      expect(extractDateHourFromScheduleXStart("2026-05-15T14:60")).toBeNull()
+    })
+
+    it("Fix CR-5 — mois 00 → null (pas de mois 0)", () => {
+      expect(extractDateHourFromScheduleXStart("2026-00-15T14:00")).toBeNull()
+    })
+
+    it("Fix CR-5 — jour 00 → null", () => {
+      expect(extractDateHourFromScheduleXStart("2026-05-00T14:00")).toBeNull()
+    })
+
+    it("Fix CR-5 — bornes max valides : 12/31/23/59 → OK", () => {
+      expect(extractDateHourFromScheduleXStart("2026-12-31T23:59")).toEqual({
+        date: "2026-12-31",
+        hour: "23:59",
+      })
+    })
+
+    it("Fix CR-5 — bornes min valides : 01/01/00/00 → OK", () => {
+      expect(extractDateHourFromScheduleXStart("2026-01-01T00:00")).toEqual({
+        date: "2026-01-01",
+        hour: "00:00",
+      })
+    })
+  })
+
+  /**
+   * Fix CR-8 round 1 review PR #435 — `normalizeHourForCompare` pour
+   * idempotence comparaison `"09:00"` vs `"09:00:00"` que Schedule-X peut
+   * retourner selon path interne.
+   */
+  describe("normalizeHourForCompare", () => {
+    it("strip seconds : '09:00:00' → '09:00'", () => {
+      expect(normalizeHourForCompare("09:00:00")).toBe("09:00")
+    })
+
+    it("préserve format HH:MM : '14:30' → '14:30'", () => {
+      expect(normalizeHourForCompare("14:30")).toBe("14:30")
+    })
+
+    it("null → '' (defense)", () => {
+      expect(normalizeHourForCompare(null)).toBe("")
+    })
+
+    it("comparaison idempotente : '09:00' === normalize('09:00:00')", () => {
+      expect("09:00" === normalizeHourForCompare("09:00:00")).toBe(true)
     })
   })
 })

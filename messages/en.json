@@ -367,7 +367,11 @@
     "dndErrorNotEditable": "This appointment can no longer be modified (cancelled / past).",
     "dndErrorNotFound": "This appointment no longer exists — refresh the calendar.",
     "dndErrorValidation": "Invalid date or time — appointment not moved.",
-    "dndErrorGeneric": "Move failed — please retry or reload the calendar."
+    "dndErrorGeneric": "Move failed — please retry or reload the calendar.",
+    "actionMove": "Reschedule",
+    "moveTitle": "Reschedule appointment",
+    "moveDescription": "Choose the new date and time. The appointment is rescheduled immediately (keyboard alternative to drag & drop).",
+    "actionConfirmMove": "Reschedule appointment"
   },
   "weekly": {
     "title": "Weekly View",

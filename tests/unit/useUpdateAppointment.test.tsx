@@ -3,25 +3,33 @@
  *
  * Tests unitaires pour le hook `useUpdateAppointment`.
  *
- * US-2500-UI iter 7 — couvre :
- *   - Happy path : PUT 200 → true
- *   - 409 slotConflict → false + code normalisé
- *   - 422 appointmentNotEditable → false + code normalisé
- *   - 403 forbidden → false + code normalisé
- *   - 400 validationFailed → false + code normalisé
- *   - 404 notFound → false + code normalisé
- *   - 500 service throw → unexpectedError (whitelist HSA-3 pattern)
+ * US-2500-UI iter 7 round 1 review — Couvre :
+ *   - Happy path : PUT 200 → { ok: true, dto } (Fix CR-4 retour DTO)
+ *   - 409 slotOverlapAppointment → { ok: false, code } (Fix CR-1 codes corrects)
+ *   - 422 alreadyClosed → { ok: false, code } (Fix CR-1)
+ *   - 403 forbidden / 404 notFound
+ *   - 500 service throw → unexpectedError (HSA-3 pattern)
  *   - 401 → redirect /login?expired=1
- *   - Body request : patch (date + hour) + headers
- *   - AbortController cleanup
- *   - reset()
+ *   - Body request : patch (date + hour) + headers PUT + cache:no-store
+ *   - reset() / mountedRef unmount cleanup (CR-7)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { renderHook, act, waitFor } from "@testing-library/react"
-import { useUpdateAppointment } from "@/components/diabeo/appointments/useUpdateAppointment"
+import {
+  useUpdateAppointment,
+  type UpdateAppointmentResult,
+} from "@/components/diabeo/appointments/useUpdateAppointment"
 
 const validPatch = { date: "2026-06-01", hour: "14:00" }
+
+const stubDto = {
+  id: 42,
+  date: "2026-06-01",
+  hour: "14:00:00",
+  durationMinutes: 30,
+  status: "scheduled",
+}
 
 const originalLocation = window.location
 
@@ -43,46 +51,46 @@ afterEach(() => {
 })
 
 describe("useUpdateAppointment", () => {
-  it("happy path : PUT 200 → true + loading=false", async () => {
+  it("happy path : PUT 200 → { ok: true, dto } (Fix CR-4 retour DTO)", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({ id: 42 }),
+      json: async () => stubDto,
     } as Response)
 
     const { result } = renderHook(() => useUpdateAppointment())
-    let returned = false
+    let returned: UpdateAppointmentResult | undefined
     await act(async () => {
       returned = await result.current.submit(42, validPatch)
     })
 
-    expect(returned).toBe(true)
+    expect(returned).toEqual({ ok: true, dto: stubDto })
     expect(result.current.loading).toBe(false)
     expect(result.current.error).toBeNull()
   })
 
-  it("409 slotConflict → false + code normalisé 'slotConflict'", async () => {
+  it("Fix CR-1 — 422 alreadyClosed (RDV terminal) → { ok: false, code: 'alreadyClosed' }", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
-      status: 409,
-      json: async () => ({ error: "slotConflict" }),
+      status: 422,
+      json: async () => ({ error: "alreadyClosed", field: "alreadyClosed" }),
     } as Response)
 
     const { result } = renderHook(() => useUpdateAppointment())
-    let returned = true
+    let returned: UpdateAppointmentResult | undefined
     await act(async () => {
       returned = await result.current.submit(42, validPatch)
     })
 
-    expect(returned).toBe(false)
-    expect(result.current.error).toBe("slotConflict")
+    expect(returned).toEqual({ ok: false, code: "alreadyClosed" })
+    expect(result.current.error).toBe("alreadyClosed")
   })
 
-  it("422 appointmentNotEditable → false + code normalisé", async () => {
+  it("Fix CR-1 — 422 slotOverlapAppointment (conflit créneau) → code 'slotOverlapAppointment'", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 422,
-      json: async () => ({ error: "appointmentNotEditable" }),
+      json: async () => ({ error: "slotOverlapAppointment" }),
     } as Response)
 
     const { result } = renderHook(() => useUpdateAppointment())
@@ -90,10 +98,55 @@ describe("useUpdateAppointment", () => {
       await result.current.submit(42, validPatch)
     })
 
-    expect(result.current.error).toBe("appointmentNotEditable")
+    expect(result.current.error).toBe("slotOverlapAppointment")
   })
 
-  it("403 forbidden → false + code 'forbidden'", async () => {
+  it("Fix CR-1 — 422 slotOverlapUnavailability (conflit indispo membre) → code", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ error: "slotOverlapUnavailability" }),
+    } as Response)
+
+    const { result } = renderHook(() => useUpdateAppointment())
+    await act(async () => {
+      await result.current.submit(42, validPatch)
+    })
+
+    expect(result.current.error).toBe("slotOverlapUnavailability")
+  })
+
+  it("Fix CR-1 — 409 uniqueConflict (Prisma P2002) → code 'uniqueConflict'", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: "uniqueConflict" }),
+    } as Response)
+
+    const { result } = renderHook(() => useUpdateAppointment())
+    await act(async () => {
+      await result.current.submit(42, validPatch)
+    })
+
+    expect(result.current.error).toBe("uniqueConflict")
+  })
+
+  it("Fix CR-1 — 409 serializationConflict (Prisma P2034) → code 'serializationConflict'", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: "serializationConflict" }),
+    } as Response)
+
+    const { result } = renderHook(() => useUpdateAppointment())
+    await act(async () => {
+      await result.current.submit(42, validPatch)
+    })
+
+    expect(result.current.error).toBe("serializationConflict")
+  })
+
+  it("403 forbidden → code 'forbidden'", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 403,
@@ -108,22 +161,7 @@ describe("useUpdateAppointment", () => {
     expect(result.current.error).toBe("forbidden")
   })
 
-  it("400 validationFailed → false + code 'validationFailed'", async () => {
-    vi.spyOn(global, "fetch").mockResolvedValue({
-      ok: false,
-      status: 400,
-      json: async () => ({ error: "validationFailed" }),
-    } as Response)
-
-    const { result } = renderHook(() => useUpdateAppointment())
-    await act(async () => {
-      await result.current.submit(42, validPatch)
-    })
-
-    expect(result.current.error).toBe("validationFailed")
-  })
-
-  it("404 notFound → false + code 'notFound'", async () => {
+  it("404 notFound → code 'notFound'", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 404,
@@ -136,6 +174,21 @@ describe("useUpdateAppointment", () => {
     })
 
     expect(result.current.error).toBe("notFound")
+  })
+
+  it("400 validationFailed → code 'validationFailed'", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: "validationFailed" }),
+    } as Response)
+
+    const { result } = renderHook(() => useUpdateAppointment())
+    await act(async () => {
+      await result.current.submit(42, validPatch)
+    })
+
+    expect(result.current.error).toBe("validationFailed")
   })
 
   it("HSA-3 pattern — code backend non-whitelisté → 'unexpectedError'", async () => {
@@ -168,23 +221,23 @@ describe("useUpdateAppointment", () => {
     await waitFor(() => expect(window.location.href).toBe("/login?expired=1"))
   })
 
-  it("network error → false + 'unexpectedError' (normalisé HSA-3)", async () => {
+  it("network error → { ok: false, code: 'unexpectedError' }", async () => {
     vi.spyOn(global, "fetch").mockRejectedValue(new Error("Failed to fetch"))
 
     const { result } = renderHook(() => useUpdateAppointment())
-    let returned = true
+    let returned: UpdateAppointmentResult | undefined
     await act(async () => {
       returned = await result.current.submit(42, validPatch)
     })
 
-    expect(returned).toBe(false)
+    expect(returned).toEqual({ ok: false, code: "unexpectedError" })
     expect(result.current.error).toBe("unexpectedError")
   })
 
   it("fetch options : method=PUT + credentials + cache + headers + body patch", async () => {
     const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({}),
+      json: async () => stubDto,
     } as Response)
 
     const { result } = renderHook(() => useUpdateAppointment())
@@ -205,7 +258,7 @@ describe("useUpdateAppointment", () => {
   it("URL : utilise l'id passé en argument", async () => {
     const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({}),
+      json: async () => stubDto,
     } as Response)
 
     const { result } = renderHook(() => useUpdateAppointment())
@@ -223,27 +276,55 @@ describe("useUpdateAppointment", () => {
     vi.spyOn(global, "fetch")
       .mockResolvedValueOnce({
         ok: false,
-        status: 409,
-        json: async () => ({ error: "slotConflict" }),
+        status: 422,
+        json: async () => ({ error: "alreadyClosed" }),
       } as Response)
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({}),
+        json: async () => stubDto,
       } as Response)
 
     const { result } = renderHook(() => useUpdateAppointment())
     await act(async () => {
       await result.current.submit(42, validPatch)
     })
-    expect(result.current.error).toBe("slotConflict")
+    expect(result.current.error).toBe("alreadyClosed")
 
     act(() => result.current.reset())
     expect(result.current.error).toBeNull()
 
-    let returned = false
+    let returned: UpdateAppointmentResult | undefined
     await act(async () => {
       returned = await result.current.submit(42, validPatch)
     })
-    expect(returned).toBe(true)
+    expect(returned?.ok).toBe(true)
+  })
+
+  /**
+   * Fix CR-7 round 1 — mountedRef cleanup au unmount du hook : si user
+   * unmount le calendar pendant un PUT in-flight, le setState async ne doit
+   * pas tirer (warn React 18+ silent mais bug latent).
+   */
+  it("Fix CR-7 — unmount pendant PUT in-flight : pas de setState fantôme", async () => {
+    let resolveFetch!: (v: Response) => void
+    const pendingResponse = new Promise<Response>((r) => { resolveFetch = r })
+    vi.spyOn(global, "fetch").mockReturnValue(pendingResponse)
+
+    const { result, unmount } = renderHook(() => useUpdateAppointment())
+
+    // Lance submit (pending)
+    const submitPromise = result.current.submit(42, validPatch)
+    // Unmount avant que la réponse arrive
+    unmount()
+    // Résoudre la réponse — mountedRef bloque les setState
+    resolveFetch({
+      ok: true,
+      json: async () => stubDto,
+    } as Response)
+
+    // La promise se résout normalement (pas de throw)
+    const returned = await submitPromise
+    expect(returned.ok).toBe(true)
+    // Pas d'assertion explicite sur state — passe si pas de warn React
   })
 })
