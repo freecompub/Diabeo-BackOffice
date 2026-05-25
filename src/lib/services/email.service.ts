@@ -21,7 +21,7 @@ const FROM = process.env.EMAIL_FROM ?? "Diabeo <noreply@diabeo.fr>"
  * US-2108 — i18n templates relances factures (FR/EN/AR).
  * Aucune mention donnee sante. Trois tons gradues (amical/ferme/final).
  */
-type ReminderStep = "step_7" | "step_15" | "step_30"
+type _ReminderStep = "step_7" | "step_15" | "step_30"
 interface ReminderStepCopy {
   subject: (invoiceNumber: string) => string
   heading: string

@@ -626,7 +626,8 @@ export default function NewEventPage() {
                 <div
                   role="group"
                   aria-label={t("fields.eventTypes")}
-                  aria-required="true"
+                  // aria-required="true" — non supporté sur role=group (WCAG warn)
+                  // Le caractère requis est exprimé via texte visible "*" + label section.
                   className="flex flex-wrap gap-2"
                 >
                   {EVENT_TYPES.map((type) => {

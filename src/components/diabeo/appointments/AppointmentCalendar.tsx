@@ -63,10 +63,7 @@ import { useAutoClearAfter } from "@/hooks/useAutoClearAfter"
 import { Button } from "@/components/ui/button"
 import { StatusFilter, DEFAULT_STATUS_FILTER } from "./StatusFilter"
 import { PatientFilter } from "./PatientFilter"
-import {
-  AlternativesBanner,
-  countPendingAlternatives,
-} from "./AlternativesBanner"
+import { AlternativesBanner } from "./AlternativesBanner"
 import type { AppointmentStatus } from "@prisma/client"
 
 /**

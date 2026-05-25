@@ -6,7 +6,7 @@
  *   - deviceLifecycleService.revoke : idempotent + RBAC + raison chiffrée
  *   - deviceLifecycleService.listHistory : tri + filter includeRevoked + audit pivot
  */
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 import {

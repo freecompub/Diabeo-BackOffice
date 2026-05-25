@@ -209,9 +209,14 @@ export function useAppointments({
   }, [skip, scopeMissing])
 
   // Initial fetch + refetch on params change (from/to/scope/status).
+  // Fix react-hooks/exhaustive-deps round 1 PR #436 — extract `from.getTime()`
+  // et `to.getTime()` en variables stables (la règle refuse les expressions
+  // complexes dans le dep array pour permettre l'analyse statique).
+  const fromMs = from.getTime()
+  const toMs = to.getTime()
   useEffect(() => {
     void refetch()
-  }, [refetch, from.getTime(), to.getTime(), memberId, patientId, status])
+  }, [refetch, fromMs, toMs, memberId, patientId, status])
 
   // Cleanup AbortController au unmount.
   useEffect(() => {

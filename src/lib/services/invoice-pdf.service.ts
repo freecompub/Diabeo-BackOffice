@@ -120,7 +120,7 @@ function sanitizeForWinAnsi(text: string): string {
   // Pour simplicité : on autorise U+00 → U+FF, et on remplace tout le
   // reste par '?'. Cas spécial : on garde explicitement € (U+20AC) car
   // pdf-lib WinAnsi le supporte au glyph 0x80.
-  // eslint-disable-next-line no-control-regex
+   
   return text.replace(/[^\x00-\xFF€]/g, "?")
 }
 

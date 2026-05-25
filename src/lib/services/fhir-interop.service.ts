@@ -27,7 +27,7 @@
  * to 500 chars and strips obvious PII patterns before storage.
  */
 
-import { Prisma, FhirSyncStatus } from "@prisma/client"
+import { FhirSyncStatus } from "@prisma/client"
 import type { z } from "zod"
 import { prisma, type PrismaClientOrTx as Tx } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"

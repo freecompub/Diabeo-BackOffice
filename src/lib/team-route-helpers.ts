@@ -129,7 +129,7 @@ export function mapErrorToResponse(
   }
   const msg = error instanceof Error ? error.message : "Unknown error"
   const stack = error instanceof Error ? error.stack : undefined
-  // eslint-disable-next-line no-console
+   
   console.error(`[${routeTag}]`, { msg, stack, requestId })
   return NextResponse.json({ error: "serverError" }, { status: 500 })
 }

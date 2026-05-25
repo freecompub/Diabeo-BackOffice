@@ -52,7 +52,7 @@ vi.mock("@/components/ui/dialog", () => ({
 
 // Mock Select to render children directly
 vi.mock("@/components/ui/select", () => ({
-  Select: ({ children, onValueChange, value }: { children: React.ReactNode; onValueChange?: (v: string) => void; value?: string }) => (
+  Select: ({ children, onValueChange: _onValueChange, value }: { children: React.ReactNode; onValueChange?: (v: string) => void; value?: string }) => (
     <div data-testid="select" data-value={value}>{children}</div>
   ),
   SelectContent: ({ children }: { children: React.ReactNode }) => (

@@ -14,7 +14,6 @@ import { prismaMock } from "../helpers/prisma-mock"
 import {
   smsService,
   isValidPhone,
-  normalizePhone,
   SmsDisabledError,
   SmsInsufficientCreditError,
   SmsValidationError,

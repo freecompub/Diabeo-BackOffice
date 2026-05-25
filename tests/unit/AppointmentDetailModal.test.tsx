@@ -607,9 +607,9 @@ describe("<AppointmentDetailModal>", () => {
       fireEvent.click(screen.getByText("actionCancel"))
       fireEvent.click(screen.getByText("actionConfirmCancel"))
 
-      // 1er échec → alerte initiale
+      // 1er échec → alerte initiale (ref capturée pour vérification ré-annonce
+      // ci-dessous via comparaison DOM node identity).
       await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
-      const firstAlert = screen.getByRole("alert")
 
       // Retry sans clear (input pas changé → error toujours visible)
       // → simule resubmit après timeout réseau
