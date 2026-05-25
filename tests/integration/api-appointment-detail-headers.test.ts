@@ -185,4 +185,26 @@ describe("GET /api/appointments/[id] — Headers ANSSI/HDS (Fix HSA-1)", () => {
     // Et bien sûr les headers sont posés.
     assertSecurityHeaders(res)
   })
+
+  /**
+   * Fix HSA-2-9 round 2 review PR #433 — couvre le path `mapErrorToResponse`
+   * (500 service throw → headers présents). Sans ce test, un futur refactor
+   * du catch pourrait omettre `setAppointmentSecurityHeaders` et casser
+   * silencieusement la promesse no-store sur les erreurs serveur.
+   */
+  it("500 service throw → headers présents (HSA-2-9 catch mapErrorToResponse)", async () => {
+    vi.mocked(appointmentRouteGate).mockResolvedValue({
+      kind: "ok",
+      apptId: 42,
+      patientId: 7,
+      user: { id: 1, role: "DOCTOR" },
+    } as never)
+    vi.mocked(rdvAppointmentService.getById).mockRejectedValue(
+      new Error("Prisma timeout"),
+    )
+
+    const res = await GET(makeReq(), makeParams("42"))
+    expect(res.status).toBe(500)
+    assertSecurityHeaders(res)
+  })
 })

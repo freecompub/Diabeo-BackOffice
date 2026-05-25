@@ -80,13 +80,17 @@ export function useAppointmentDetail(
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
-    // Fix H-2 round 1 review PR #433 — capture local du ctrl pour le `finally` :
-    // sans ça, `abortRef.current?.signal.aborted` teste le NOUVEAU ctrl (vu que
-    // `abortRef.current` est réassigné lors du fetch suivant), ce qui faisait
-    // que le `finally` du VIEUX fetch reset `loading=false` pendant que le
-    // nouveau fetch est en cours → glitch UX visible (loading clignote).
+    // Fix H-2 round 1 + CR-2 H-2-1 round 2 review PR #433 — capture locale
+    // `myCtrl` pour TOUS les paths (setError/setDetail/setLoading), pas juste
+    // le `finally`. Sans ça, un setter post-abort pouvait re-render le state
+    // pendant qu'un nouveau fetch est en cours (race fetch obsolète).
     const myCtrl = ctrl
 
+    // Fix CR-2 I-2-1 round 2 — reset `detail` quand `id` change (non-null
+    // → non-null) pour éviter le flash de l'ancien détail à la réouverture
+    // du même RDV après nav. Sans ça, l'utilisateur revoit brièvement
+    // l'ancien payload PHI avant que le nouveau fetch arrive.
+    setDetail(null)
     setLoading(true)
     setError(null)
 
@@ -98,6 +102,8 @@ export function useAppointmentDetail(
         signal: myCtrl.signal,
       })
 
+      // Fix CR-2 H-2-1 — early-return AVANT tout setter si la requête a été
+      // abort (id change rapide, modal close, unmount parent).
       if (myCtrl.signal.aborted) return
 
       if (!res.ok) {
@@ -106,18 +112,24 @@ export function useAppointmentDetail(
           return
         }
         const body = (await res.json().catch(() => ({}))) as { error?: string }
+        // Fix CR-2 H-2-1 — re-check abort après `await res.json()` qui yields.
+        if (myCtrl.signal.aborted) return
         setError(body.error ?? `httpError:${res.status}`)
         return
       }
 
       const data = (await res.json()) as AppointmentDetail
+      // Fix CR-2 H-2-1 — re-check abort après `await res.json()` qui yields.
+      if (myCtrl.signal.aborted) return
       setDetail(data)
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
+      // Fix CR-2 H-2-1 — gate setError aussi sur signal abort.
+      if (myCtrl.signal.aborted) return
       setError(err instanceof Error ? err.message : "networkError")
     } finally {
-      // Fix H-2 — utiliser `myCtrl` (closure stable) au lieu de `abortRef.current`
-      // (qui a pu être remplacé par un fetch concurrent).
+      // Fix H-2 round 1 — utiliser `myCtrl` (closure stable) au lieu de
+      // `abortRef.current` (qui a pu être remplacé par un fetch concurrent).
       if (!myCtrl.signal.aborted) setLoading(false)
     }
   }, [id])

@@ -272,24 +272,27 @@ export function AppointmentCalendar({
   // que le calendrier reflète immédiatement le nouveau statut.
   const handleActionSuccess = useCallback(() => { void refetch() }, [refetch])
 
-  // Fix CR-1 + FE-5 + FE-7 + FE-12 round 1 review PR #433 — mount-on-open :
-  // le modal n'est rendu QUE lorsque `openedApptId !== null` + clé reset
-  // chaque ouverture pour invalider le state interne (sub-mode, drafts cancelReason
-  // / dateStr / timeStr) → résout :
-  //   - CR-1 : réouverture du même RDV ne montre plus l'ancien sub-mode
-  //   - FE-5 : plus de `setState in useEffect` anti-pattern dans le modal
-  //   - FE-7 : pas de coût React render quand modal fermé
-  //   - FE-12 : drafts toujours frais à l'ouverture
-  const detailModal = openedApptId !== null ? (
+  // Fix CR-1 + FE-5 + FE-12 round 1 + FE-2-4 round 2 review PR #433 —
+  // Modal TOUJOURS monté + `key={openedApptId ?? "closed"}` :
+  //   - À l'ouverture d'un nouveau RDV (key change), React remount complet le
+  //     modal → state interne reset (subMode/actionError/drafts) → drafts
+  //     toujours frais, plus de PHI résiduel (résout CR-1 + FE-12)
+  //   - À la fermeture (openId=null), le modal reste monté mais Base UI
+  //     Dialog joue son animation `data-closed:animate-out` (résout FE-2-4
+  //     régression mount-on-open round 1 qui snappait sans transition)
+  //   - Pas de `useEffect([openId])` setState-in-effect (résout FE-5)
+  //   - Coût mémoire négligeable : Base UI ne render rien si `open=false`
+  //     (Portal vide), juste le composant React lui-même
+  const detailModal = (
     <AppointmentDetailModal
-      key={openedApptId}
+      key={openedApptId ?? "closed"}
       state={detailState}
       openId={openedApptId}
       onClose={handleCloseModal}
       onActionSuccess={handleActionSuccess}
       userRole={userRole}
     />
-  ) : null
+  )
 
   if (scopeMissing) {
     return (

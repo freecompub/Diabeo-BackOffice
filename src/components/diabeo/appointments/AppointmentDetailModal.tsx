@@ -9,19 +9,22 @@
  *   - `cancel` : form pour annuler (radio actor + textarea reason)
  *   - `proposeAlt` : form pour proposer une nouvelle date/heure (DOCTOR only)
  *
- * **Architecture lifecycle** (Fix CR-1 + FE-5 + FE-7 + FE-12 round 1) :
- *   Le parent `<AppointmentCalendar>` ne monte ce composant que lorsque
- *   `openedApptId !== null`, et applique `key={openedApptId}` → React unmount
- *   complet entre chaque ouverture. Conséquences :
- *     - State interne (`subMode`, `actionError`, drafts `reason`/`dateStr`/
- *       `timeStr`) garantis frais à chaque ouverture (anti-PHI résiduel)
- *     - Pas besoin de `useEffect([openId])` pour reset (anti-pattern setState-
- *       in-effect cascading-renders évité)
+ * **Architecture lifecycle (Fix FE-2-4 round 2 review PR #433)** :
+ *   Le modal reste TOUJOURS monté dans le tree parent ; l'ouverture/fermeture
+ *   est contrôlée via `open={openId !== null}` (Base UI Dialog en mode contrôlé).
+ *   Le parent applique `key={openedApptId}` SUR LE MODAL pour reset le state
+ *   interne (subMode, actionError, drafts) à chaque ouverture d'un RDV distinct.
+ *   Avantages :
+ *     - L'animation `data-closed:animate-out` de Base UI joue avant unmount
+ *       (UX fluide vs ancien pattern mount-on-open qui snappait)
+ *     - State interne garanti frais à chaque ouverture (anti-PHI résiduel,
+ *       résout CR-1 + FE-12 round 1)
+ *     - Pas de `useEffect([openId])` setState-in-effect (FE-5 round 1)
  *
  * **Sécurité** :
  *   - Le payload déchiffré (`motif`, `note`, `cancelReason`) n'existe que
- *     pendant l'ouverture du modal. À la fermeture (unmount complet via key),
- *     le hook `useAppointmentDetail` reset son state et abort le fetch en cours.
+ *     pendant l'ouverture du modal. À la fermeture, le hook `useAppointmentDetail`
+ *     reset son state et abort le fetch en cours.
  *   - Audit READ ciblé est tiré côté backend dans `getById`.
  *   - Les actions cancel/propose-alternative déclenchent un audit UPDATE
  *     côté backend dans les services correspondants.
@@ -41,7 +44,7 @@
  * @see src/app/api/appointments/[id]/propose-alternative/route.ts
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import {
   Dialog,
@@ -70,7 +73,7 @@ type SubMode = "view" | "cancel" | "proposeAlt"
 export interface AppointmentDetailModalProps {
   /** Résultat du hook `useAppointmentDetail(id)`. */
   state: UseAppointmentDetailResult
-  /** id du RDV ouvert (null = modal fermé, mais le parent gère le mount-on-open). */
+  /** id du RDV ouvert (null = modal fermé). */
   openId: number | null
   /** Callback fermeture (modal + parent state). */
   onClose: () => void
@@ -105,26 +108,15 @@ export function AppointmentDetailModal({
   userRole,
 }: AppointmentDetailModalProps) {
   const t = useTranslations("appointments")
-  // Fix FE-1 + HSA-5 round 1 review PR #433 — utiliser `useLocale()` next-intl
-  // au lieu de `navigator.language` pour cohérence avec LocaleSwitcher (US-2112).
-  // Évite l'incohérence FR-UI / EN-dates si user a un navigateur en anglais.
-  const locale = useLocale()
 
   const [subMode, setSubMode] = useState<SubMode>("view")
   const [actionLoading, setActionLoading] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
-
-  // Fix HSA-4 round 1 review PR #433 — mountedRef pour éviter setState sur
-  // composant unmounted (warn React + cycle audit log inutile côté backend).
-  // En pratique le garde `handleClose actionLoading` prévient ce cas, mais
-  // defense-in-depth pour Escape/backdrop si jamais le garde est contourné.
-  const mountedRef = useRef(true)
-  useEffect(() => {
-    mountedRef.current = true
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
+  // Fix FE-2-5 round 2 review PR #433 — nonce pour ré-annonce screen reader
+  // si l'utilisateur retry et reçoit le même message d'erreur.
+  // `key={errorNonce}` force le remount du `<p role="alert">` → NVDA/JAWS
+  // re-vocalisent même message identique.
+  const [errorNonce, setErrorNonce] = useState(0)
 
   const { detail, loading, error } = state
 
@@ -133,11 +125,18 @@ export function AppointmentDetailModal({
     onClose()
   }, [actionLoading, onClose])
 
-  // Fix H-1 + FE-2 round 1 review PR #433 — guard double-submit + clear
-  // actionError au prochain change form (input/textarea/radio).
+  // Fix CR-2 L-2-2 round 2 review PR #433 — functional setter pour identity
+  // stable (pas de dep `actionError` qui invaliderait useCallback à chaque toggle).
   const clearError = useCallback(() => {
-    if (actionError !== null) setActionError(null)
-  }, [actionError])
+    setActionError((prev) => (prev !== null ? null : prev))
+  }, [])
+
+  // Fix M-7/FE-12 round 1 — handlers stables pour back depuis sub-mode.
+  const handleBackToView = useCallback(() => {
+    if (actionLoading) return
+    setSubMode("view")
+    setActionError(null)
+  }, [actionLoading])
 
   const submitCancel = useCallback(
     async (actor: "patient" | "doctor", reason: string) => {
@@ -161,17 +160,17 @@ export function AppointmentDetailModal({
             return
           }
           const body = (await res.json().catch(() => ({}))) as { error?: string }
-          if (mountedRef.current) setActionError(body.error ?? `httpError:${res.status}`)
+          setActionError(body.error ?? `httpError:${res.status}`)
+          setErrorNonce((n) => n + 1)
           return
         }
         onActionSuccess()
         onClose()
       } catch (err) {
-        if (mountedRef.current) {
-          setActionError(err instanceof Error ? err.message : "networkError")
-        }
+        setActionError(err instanceof Error ? err.message : "networkError")
+        setErrorNonce((n) => n + 1)
       } finally {
-        if (mountedRef.current) setActionLoading(false)
+        setActionLoading(false)
       }
     },
     [detail, actionLoading, onActionSuccess, onClose],
@@ -199,17 +198,17 @@ export function AppointmentDetailModal({
             return
           }
           const body = (await res.json().catch(() => ({}))) as { error?: string }
-          if (mountedRef.current) setActionError(body.error ?? `httpError:${res.status}`)
+          setActionError(body.error ?? `httpError:${res.status}`)
+          setErrorNonce((n) => n + 1)
           return
         }
         onActionSuccess()
         onClose()
       } catch (err) {
-        if (mountedRef.current) {
-          setActionError(err instanceof Error ? err.message : "networkError")
-        }
+        setActionError(err instanceof Error ? err.message : "networkError")
+        setErrorNonce((n) => n + 1)
       } finally {
-        if (mountedRef.current) setActionLoading(false)
+        setActionLoading(false)
       }
     },
     [detail, actionLoading, onActionSuccess, onClose],
@@ -222,9 +221,7 @@ export function AppointmentDetailModal({
       // **contrôlé** (`open=openId !== null`) : si on n'appelle pas `handleClose`
       // (qui contient le garde `actionLoading`), l'état contrôlé reste à `open`
       // et Base UI respecte ce contrat → pas de flash close ni focus perdu
-      // pour Escape/clic backdrop. (Vs Radix qui exposerait onEscapeKeyDown
-      // dédiés.) Le garde couvre toutes les sources de dismiss : X close icon,
-      // Escape, clic backdrop, et `onActionSuccess→onClose` post-submit.
+      // pour Escape/clic backdrop.
       onOpenChange={(o) => { if (!o) handleClose() }}
     >
       <DialogContent className="sm:max-w-lg">
@@ -249,7 +246,6 @@ export function AppointmentDetailModal({
           <ViewMode
             detail={detail}
             userRole={userRole}
-            locale={locale}
             onCancel={() => setSubMode("cancel")}
             onPropose={() => setSubMode("proposeAlt")}
             onClose={handleClose}
@@ -260,12 +256,9 @@ export function AppointmentDetailModal({
           <CancelForm
             loading={actionLoading}
             error={actionError}
+            errorNonce={errorNonce}
             onSubmit={submitCancel}
-            onBack={() => {
-              if (actionLoading) return
-              setSubMode("view")
-              setActionError(null)
-            }}
+            onBack={handleBackToView}
             onChangeClearsError={clearError}
           />
         )}
@@ -275,12 +268,9 @@ export function AppointmentDetailModal({
             detail={detail}
             loading={actionLoading}
             error={actionError}
+            errorNonce={errorNonce}
             onSubmit={submitProposeAlt}
-            onBack={() => {
-              if (actionLoading) return
-              setSubMode("view")
-              setActionError(null)
-            }}
+            onBack={handleBackToView}
             onChangeClearsError={clearError}
           />
         )}
@@ -294,51 +284,76 @@ export function AppointmentDetailModal({
 interface ViewModeProps {
   detail: AppointmentDetail
   userRole: UserRole
-  locale: string
   onCancel: () => void
   onPropose: () => void
   onClose: () => void
 }
 
 /**
- * Fix M-4 + FE-4 round 1 review PR #433 — `Intl.DateTimeFormat` mémorisé
- * par locale (rebuild instance coûte ~10x un format()). Cache module-level
- * partagé entre instances de ViewMode.
+ * Fix M-4 + FE-4 round 1 + HSA-2-7 round 2 review PR #433 — Cache module-level
+ * `Intl.DateTimeFormat` borné à 8 entrées (LRU naïf via `Map` qui réordonne).
+ *
+ * Aujourd'hui 3 locales (fr/en/ar) → 6 entrées max. Cap à 8 prévient le DoS
+ * mémoire théorique si un futur dev passe des locales enrichies dynamiquement
+ * (e.g. `fr-FR-x-vendor`, `en-US-u-ca-buddhist`, locale automatique IA).
+ *
+ * Note `"use client"` : ces Maps sont SAFE en SSR car le composant est
+ * client-only. Si la directive disparaît un jour, voir HSA-2-10 (factoriser
+ * en middleware ou helper isolated).
  */
+const MAX_FORMATTER_CACHE = 8
 const dateFormatterCache = new Map<string, Intl.DateTimeFormat>()
-function getDateFormatter(locale: string): Intl.DateTimeFormat {
-  let f = dateFormatterCache.get(locale)
-  if (!f) {
-    f = new Intl.DateTimeFormat(locale, {
-      weekday: "long",
-      day: "2-digit",
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC", // wall-clock — pas de conversion
-    })
-    dateFormatterCache.set(locale, f)
+const timestampFormatterCache = new Map<string, Intl.DateTimeFormat>()
+
+function getCachedFormatter(
+  cache: Map<string, Intl.DateTimeFormat>,
+  locale: string,
+  options: Intl.DateTimeFormatOptions,
+): Intl.DateTimeFormat {
+  const existing = cache.get(locale)
+  if (existing) return existing
+  if (cache.size >= MAX_FORMATTER_CACHE) {
+    // LRU naïf : retire la 1re entrée (Map garde insertion order).
+    const firstKey = cache.keys().next().value
+    if (firstKey !== undefined) cache.delete(firstKey)
   }
+  const f = new Intl.DateTimeFormat(locale, options)
+  cache.set(locale, f)
   return f
 }
 
+function getDateFormatter(locale: string): Intl.DateTimeFormat {
+  return getCachedFormatter(dateFormatterCache, locale, {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC", // wall-clock — pas de conversion
+  })
+}
+
 /**
- * Fix L-2 round 1 review PR #433 — formatter timestamp `toLocaleString` avec
- * options stables (jour court + heure-minute) au lieu du défaut runtime-dépendant.
+ * Fix L-2 round 1 + HSA-2-3 round 2 review PR #433 — Formatter timestamp
+ * **avec `timeZone: "UTC"`** pour cohérence avec le contrat wall-clock du
+ * proposeAlternative (l'utilisateur saisit 14:00, on stocke 14:00Z, on
+ * réaffiche 14:00 → pas de conversion fuseau qui décale visuellement).
+ *
+ * Conséquence : `proposedAlternativeAt` (Timestamp UTC) sera affiché à
+ * l'heure UTC = heure wall-clock saisie. Cohérent tant que les utilisateurs
+ * restent dans le fuseau du cabinet (V1 = pilote mono-fuseau Europe/Paris).
+ *
+ * V1.5 follow-up : intégrer `HealthcareService.timezone` quand ajouté au
+ * schema (cf. issue tracker HSA-6).
  */
-const timestampFormatterCache = new Map<string, Intl.DateTimeFormat>()
 function getTimestampFormatter(locale: string): Intl.DateTimeFormat {
-  let f = timestampFormatterCache.get(locale)
-  if (!f) {
-    f = new Intl.DateTimeFormat(locale, {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-    timestampFormatterCache.set(locale, f)
-  }
-  return f
+  return getCachedFormatter(timestampFormatterCache, locale, {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  })
 }
 
 /**
@@ -354,13 +369,20 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, locale, onCancel, onPropose, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onClose }: ViewModeProps) {
   const t = useTranslations("appointments")
+  // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
+  // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
+  // next-intl (le hook est gratuit, lecture context). Cohérent avec usage
+  // de `useTranslations` qui est aussi appelé localement.
+  const locale = useLocale()
 
   const actionable = isActionable(detail.status)
   const showPropose = actionable && canProposeAlternative(userRole)
 
-  const tsFormatter = useMemo(() => getTimestampFormatter(locale), [locale])
+  // Fix FE-2-3 round 2 — pas de `useMemo` redondant : `getTimestampFormatter`
+  // utilise déjà la `Map` module-level → identité stable, lookup O(1).
+  const tsFormatter = getTimestampFormatter(locale)
 
   return (
     <>
@@ -424,12 +446,15 @@ function ViewMode({ detail, userRole, locale, onCancel, onPropose, onClose }: Vi
         )}
 
         <Field label={t("patientLabel")}>
-          {/* Fix HSA-2 round 1 review PR #433 — `rel="noreferrer"` empêche le
-              leak via Referer de l'URL d'origine `/appointments?memberId=X`
-              vers la page patient (et ses éventuelles ressources tierces). */}
+          {/* Fix HSA-2 round 1 + HSA-2-4 round 2 review PR #433 — `rel="noopener
+              noreferrer"` defense-in-depth contre :
+              - leak Referer de l'URL d'origine `/appointments?memberId=X`
+              - reverse tabnabbing si un futur dev ajoute `target="_blank"`
+                (Safari < 14 / Firefox ESR healthcare ne posent pas `noopener`
+                par défaut malgré la spec moderne). */}
           <a
             href={`/patients/${detail.patientId}`}
-            rel="noreferrer"
+            rel="noopener noreferrer"
             className="text-primary underline-offset-2 hover:underline"
           >
             {t("patientViewLink", { id: detail.patientId })}
@@ -457,6 +482,7 @@ function ViewMode({ detail, userRole, locale, onCancel, onPropose, onClose }: Vi
 interface CancelFormProps {
   loading: boolean
   error: string | null
+  errorNonce: number
   onSubmit: (actor: "patient" | "doctor", reason: string) => void
   onBack: () => void
   onChangeClearsError: () => void
@@ -467,7 +493,14 @@ interface CancelFormProps {
  * des annulations en cabinet sont initiées par le pro (secrétariat enregistre
  * l'annulation lors du créneau perdu, pas le patient qui appelle).
  */
-function CancelForm({ loading, error, onSubmit, onBack, onChangeClearsError }: CancelFormProps) {
+function CancelForm({
+  loading,
+  error,
+  errorNonce,
+  onSubmit,
+  onBack,
+  onChangeClearsError,
+}: CancelFormProps) {
   const t = useTranslations("appointments")
   const [actor, setActor] = useState<"patient" | "doctor">("doctor")
   const [reason, setReason] = useState("")
@@ -488,9 +521,10 @@ function CancelForm({ loading, error, onSubmit, onBack, onChangeClearsError }: C
       >
         <fieldset className="grid gap-2" disabled={loading}>
           <legend className="text-sm font-medium">{t("actorLegend")}</legend>
-          {/* Fix L-5 + FE-15 round 1 review PR #433 — touch target ≥ 44px (WCAG 2.5.5) :
-              `min-h-[44px]` sur le label englobant le radio + texte. */}
-          <label className="flex items-center gap-2 text-sm min-h-[44px]">
+          {/* Fix L-5 + FE-15 round 1 + FE-2-7 round 2 review PR #433 — touch target
+              ≥ 44px (WCAG 2.5.5) sur label englobant + `cursor-pointer` pour signal
+              visuel zone cliquable. */}
+          <label className="flex items-center gap-2 text-sm min-h-[44px] cursor-pointer">
             <input
               type="radio"
               name="actor"
@@ -500,7 +534,7 @@ function CancelForm({ loading, error, onSubmit, onBack, onChangeClearsError }: C
             />
             {t("actorDoctor")}
           </label>
-          <label className="flex items-center gap-2 text-sm min-h-[44px]">
+          <label className="flex items-center gap-2 text-sm min-h-[44px] cursor-pointer">
             <input
               type="radio"
               name="actor"
@@ -531,13 +565,15 @@ function CancelForm({ loading, error, onSubmit, onBack, onChangeClearsError }: C
         </div>
 
         {error && (
-          // Fix FE-9 round 1 review PR #433 — `aria-live="assertive"` +
-          // `key={error}` force ré-annonce du lecteur d'écran si message
-          // identique sur retry. `role="alert"` reste pour fallback.
+          // Fix FE-9 round 1 + FE-2-5 round 2 review PR #433 —
+          // `key={`${error}-${errorNonce}`}` force re-mount du `<p>` même si
+          // le message d'erreur est identique sur retry (NVDA/JAWS re-vocalisent).
+          // `role="alert"` + `aria-live="assertive"` redondants intentionnels
+          // pour couvrir bugs historiques screen readers.
           // HSA-3 : on render UNIQUEMENT la clé i18n `actionError` générique,
           // jamais `error` brut (defense-in-depth contre PHI/PII backend).
           <p
-            key={error}
+            key={`${error}-${errorNonce}`}
             role="alert"
             aria-live="assertive"
             className="text-sm text-red-600"
@@ -563,6 +599,7 @@ interface ProposeAltFormProps {
   detail: AppointmentDetail
   loading: boolean
   error: string | null
+  errorNonce: number
   onSubmit: (alternativeAtIso: string) => void
   onBack: () => void
   onChangeClearsError: () => void
@@ -572,6 +609,7 @@ function ProposeAlternativeForm({
   detail,
   loading,
   error,
+  errorNonce,
   onSubmit,
   onBack,
   onChangeClearsError,
@@ -599,16 +637,26 @@ function ProposeAlternativeForm({
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          // Combine date + time en ISO local (sans tz suffix = wall-clock).
-          // **Note timezone (HSA-6 round 1 review PR #433)** : le backend
-          // `z.coerce.date()` interprète UTC si pas de tz. Le contrat wall-clock
-          // global (cf. adapter.ts) suppose que le cabinet et le médecin sont
-          // dans le même fuseau (Europe/Paris). Issue V1.5 tracker :
-          // `HealthcareService.timezone` à ajouter au schema + conversion
-          // explicite cohérente avec pattern PR #418 round 3 (formatDateTime
-          // reminders). En attendant, cet envoi est sûr pour le 1er release
-          // tant que les utilisateurs restent dans le fuseau cabinet.
-          const iso = `${dateStr}T${timeStr}:00`
+          /**
+           * Fix HSA-2-3 round 2 review PR #433 — Contrat wall-clock explicite :
+           * on suffixe `Z` pour que le backend `z.coerce.date()` interprète
+           * **toujours en UTC** (déterministe, pas d'ambiguïté serveur-side
+           * `new Date()` qui dépend de la TZ du process Node).
+           *
+           * Combiné avec `timeZone: "UTC"` dans le formatter d'affichage
+           * (`getTimestampFormatter`), on a un contrat wall-clock cohérent :
+           *   - saisie médecin "14:00" → envoi "2026-05-25T14:00:00Z"
+           *   - stockage backend Timestamp = 2026-05-25T14:00:00Z
+           *   - réaffichage frontend (UTC) → "14:00"
+           *
+           * Pas de décalage CEST. Cohérent tant que tous les utilisateurs
+           * (médecin saisie, patient mobile, secrétariat) interprètent
+           * l'heure stockée comme wall-clock du cabinet.
+           *
+           * V1.5 follow-up : `HealthcareService.timezone` au schema +
+           * conversion vraie cabinet-local (cf. issue tracker HSA-6).
+           */
+          const iso = `${dateStr}T${timeStr}:00Z`
           onSubmit(iso)
         }}
         className="grid gap-4 py-2"
@@ -642,7 +690,7 @@ function ProposeAlternativeForm({
 
         {error && (
           <p
-            key={error}
+            key={`${error}-${errorNonce}`}
             role="alert"
             aria-live="assertive"
             className="text-sm text-red-600"

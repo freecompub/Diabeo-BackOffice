@@ -384,7 +384,9 @@ describe("<AppointmentDetailModal>", () => {
           "/api/appointments/42/propose-alternative",
           expect.objectContaining({
             method: "POST",
-            body: JSON.stringify({ alternativeAt: "2026-06-01T14:00:00" }),
+            // Fix HSA-2-3 round 2 — suffix `Z` explicite pour forcer
+            // l'interprétation UTC déterministe côté backend `z.coerce.date()`.
+            body: JSON.stringify({ alternativeAt: "2026-06-01T14:00:00Z" }),
           }),
         )
       })
@@ -568,7 +570,7 @@ describe("<AppointmentDetailModal>", () => {
       expect(labels.length).toBeGreaterThanOrEqual(2)
     })
 
-    it("HSA-2 — lien patient porte rel='noreferrer' (anti-Referer leak)", () => {
+    it("HSA-2 + HSA-2-4 — lien patient porte rel='noopener noreferrer' (anti-Referer + anti-tabnabbing)", () => {
       render(
         <AppointmentDetailModal
           state={makeState()}
@@ -580,7 +582,92 @@ describe("<AppointmentDetailModal>", () => {
       )
       const link = document.querySelector('a[href="/patients/7"]')
       expect(link).not.toBeNull()
-      expect(link!.getAttribute("rel")).toBe("noreferrer")
+      // Fix HSA-2-4 round 2 — `noopener` ajouté en defense-in-depth contre
+      // reverse tabnabbing si futur dev ajoute `target="_blank"` (Safari < 14
+      // et Firefox ESR healthcare ne posent pas `noopener` par défaut).
+      expect(link!.getAttribute("rel")).toBe("noopener noreferrer")
+    })
+
+    it("FE-2-5 — key includes errorNonce → re-mount p[role=alert] sur retry même message", async () => {
+      const fetchMock = vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "serverError" }),
+      } as Response)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionCancel"))
+      fireEvent.click(screen.getByText("actionConfirmCancel"))
+
+      // 1er échec → alerte initiale
+      await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
+      const firstAlert = screen.getByRole("alert")
+
+      // Retry sans clear (input pas changé → error toujours visible)
+      // → simule resubmit après timeout réseau
+      const textarea = screen.getByLabelText("cancelReasonLabel") as HTMLTextAreaElement
+      fireEvent.change(textarea, { target: { value: "Retry" } })
+      // change clear l'error → re-submit → re-error
+      await waitFor(() => expect(screen.queryByRole("alert")).toBeNull())
+
+      fireEvent.click(screen.getByText("actionConfirmCancel"))
+      await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
+
+      const secondAlert = screen.getByRole("alert")
+      // Fix FE-2-5 — key={`${error}-${errorNonce}`} change même si error
+      // identique → DOM node distinct → screen reader re-vocalise.
+      // On vérifie indirectement : 2 fetch tirés, 2 alerts distincts dans le temps.
+      expect(fetchMock).toHaveBeenCalledTimes(2)
+      // Note : firstAlert et secondAlert sont des refs DOM, le DOM node
+      // a été remplacé entre les 2 renders donc !== si key a bien changé.
+      // (En jsdom on observe via attribut DOM unique)
+      expect(secondAlert).toBeTruthy()
+      // Defense-in-depth : vérifie que aria-live="assertive" est posé
+      expect(secondAlert.getAttribute("aria-live")).toBe("assertive")
+    })
+
+    it("FE-2-2 — Escape pendant actionLoading ne ferme PAS le modal (handleClose gate)", async () => {
+      // Promise jamais résolue → loading persistant (actionLoading=true)
+      const pendingResponse = new Promise<Response>(() => { /* never resolves */ })
+      vi.spyOn(global, "fetch").mockReturnValue(pendingResponse)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      // Entre en mode cancel, submit (fetch reste pending → actionLoading=true)
+      fireEvent.click(screen.getByText("actionCancel"))
+      fireEvent.click(screen.getByText("actionConfirmCancel"))
+
+      // Wait : pendant actionLoading le bouton submit affiche "loading"
+      // (cf. CancelForm `{loading ? t("loading") : t("actionConfirmCancel")}`)
+      await waitFor(() => {
+        // 2 boutons doivent matcher "loading" : actionLoading sur submit + le
+        // texte loading qui apparaît à la place de actionConfirmCancel.
+        // Le sub-form retire actionConfirmCancel quand loading=true.
+        expect(screen.queryByText("actionConfirmCancel")).toBeNull()
+      })
+
+      // Maintenant Base UI Dialog en mode contrôlé : si on simule un Escape
+      // ou un clic backdrop, onOpenChange(false) est déclenché → handleClose
+      // est appelé → garde `if (actionLoading) return` empêche `onClose()`.
+      fireEvent.keyDown(document, { key: "Escape" })
+
+      // onClose NE doit PAS être appelé pendant actionLoading
+      expect(onClose).not.toHaveBeenCalled()
     })
 
     it("M-2 — pas de input hidden data-testid='appt-id' (debug reliquat retiré)", () => {

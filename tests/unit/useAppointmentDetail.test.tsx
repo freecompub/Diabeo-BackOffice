@@ -211,6 +211,83 @@ describe("useAppointmentDetail", () => {
   })
 
   /**
+   * Fix CR-2 I-2-1 round 2 review PR #433 — `setDetail(null)` au début de
+   * refetch quand `id` change (non-null → non-null). Sans ça, l'ancien
+   * `detail` reste affiché brièvement avant que le nouveau fetch arrive
+   * → flash visuel du payload PHI précédent (RGPD Art. 5.1.c minimisation).
+   */
+  it("CR-2 I-2-1 — id change non-null→non-null reset detail AVANT nouveau fetch", async () => {
+    let resolveSecond!: (v: Response) => void
+    const secondResponse = new Promise<Response>((r) => { resolveSecond = r })
+
+    vi.spyOn(global, "fetch")
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockDetail,
+      } as Response)
+      .mockReturnValueOnce(secondResponse)
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: number | null }) => useAppointmentDetail(id),
+      { initialProps: { id: 42 } as { id: number | null } },
+    )
+    await waitFor(() => expect(result.current.detail?.id).toBe(42))
+
+    // Change id → detail DOIT être reset immédiatement (pas attendre la réponse)
+    rerender({ id: 99 })
+
+    // Avant que le 2e fetch résolve, detail est déjà null
+    await waitFor(() => expect(result.current.detail).toBeNull())
+    expect(result.current.loading).toBe(true)
+
+    // Cleanup
+    resolveSecond({ ok: true, json: async () => ({ ...mockDetail, id: 99 }) } as Response)
+  })
+
+  /**
+   * Fix CR-2 H-2-1 round 2 review PR #433 — gate `myCtrl.signal.aborted`
+   * sur TOUS les setters (setError + setDetail) pas juste loading.
+   * Sans ça, un setter post-abort pouvait re-render le state pendant qu'un
+   * nouveau fetch est en cours.
+   */
+  it("CR-2 H-2-1 — abort uniforme : setError/setDetail gated sur signal.aborted", async () => {
+    let resolveFirst!: (v: Response) => void
+    const firstResponse = new Promise<Response>((r) => { resolveFirst = r })
+
+    vi.spyOn(global, "fetch")
+      .mockReturnValueOnce(firstResponse)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ ...mockDetail, id: 99 }),
+      } as Response)
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: number | null }) => useAppointmentDetail(id),
+      { initialProps: { id: 42 } as { id: number | null } },
+    )
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    // Change id → abort le 1er fetch + lance le 2e
+    rerender({ id: 99 })
+
+    // Résout maintenant le 1er fetch (qui devrait être ignoré car aborted)
+    await act(async () => {
+      resolveFirst({
+        ok: true,
+        json: async () => ({ ...mockDetail, id: 42, motif: "ANCIEN motif ne doit pas s'afficher" }),
+      } as Response)
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    // Wait for the second fetch to complete
+    await waitFor(() => expect(result.current.detail?.id).toBe(99))
+    // Le motif du 1er fetch ne doit pas avoir leak
+    expect(result.current.detail?.motif).toBe(mockDetail.motif)
+    expect(result.current.detail?.motif).not.toBe("ANCIEN motif ne doit pas s'afficher")
+  })
+
+  /**
    * Fix H-2 round 1 review PR #433 — race fetch obsolète.
    *
    * Scénario : id change rapidement (user clique 2 RDV successifs avant que
