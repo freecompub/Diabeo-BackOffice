@@ -339,7 +339,19 @@
     "actorDoctor": "Healthcare staff (practice)",
     "actorPatient": "Patient (on their request)",
     "proposeAltTitle": "Propose an alternative",
-    "proposeAltDescription": "The patient will need to accept the new date from their app."
+    "proposeAltDescription": "The patient will need to accept the new date from their app.",
+    "newAppointmentButton": "+ New appointment",
+    "createTitle": "New appointment",
+    "createDescription": "Fill in the appointment details. The reason is encrypted.",
+    "createError": "Could not create appointment — check fields or retry.",
+    "actionConfirmCreate": "Create appointment",
+    "typeLabel": "Type",
+    "motifPlaceholder": "Optional — only visible to authorised staff.",
+    "motifEncryptedNote": "encrypted server-side",
+    "patientPlaceholder": "Type patient name or surname",
+    "patientListError": "Could not load patient list.",
+    "patientSelected": "Patient selected",
+    "patientHint": "{count, plural, =0 {No patient found} one {1 patient available} other {# patients available}}"
   },
   "weekly": {
     "title": "Weekly View",

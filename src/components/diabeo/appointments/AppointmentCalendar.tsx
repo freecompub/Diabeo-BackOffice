@@ -48,6 +48,8 @@ import { MemberFilter } from "./MemberFilter"
 import { useMyMemberships } from "./useMyMemberships"
 import { useAppointmentDetail } from "./useAppointmentDetail"
 import { AppointmentDetailModal } from "./AppointmentDetailModal"
+import { AppointmentCreateModal } from "./AppointmentCreateModal"
+import { Button } from "@/components/ui/button"
 
 /**
  * Fix M-10 round 2 review PR #431 — Locale Schedule-X dynamique selon
@@ -188,6 +190,10 @@ export function AppointmentCalendar({
   const [openedApptId, setOpenedApptId] = useState<number | null>(null)
   const detailState = useAppointmentDetail(openedApptId)
 
+  // US-2500-UI iter 6 — state du modal création RDV (bouton "+ Nouveau RDV").
+  // Mount-on-open + `key` (cohérent pattern iter 5) pour reset state interne.
+  const [createOpen, setCreateOpen] = useState(false)
+
   const events = useMemo(() => items.map(appointmentToScheduleXEvent), [items])
 
   // Fix CR-1 round 2 review PR #431 — `useNextCalendarApp` ne re-crée
@@ -272,6 +278,14 @@ export function AppointmentCalendar({
   // que le calendrier reflète immédiatement le nouveau statut.
   const handleActionSuccess = useCallback(() => { void refetch() }, [refetch])
 
+  // US-2500-UI iter 6 — handlers create modal.
+  const handleOpenCreate = useCallback(() => setCreateOpen(true), [])
+  const handleCloseCreate = useCallback(() => setCreateOpen(false), [])
+  const handleCreated = useCallback(() => {
+    setCreateOpen(false)
+    void refetch() // refresh calendar avec le nouveau RDV
+  }, [refetch])
+
   // Fix CR-1 + FE-5 + FE-12 round 1 + FE-2-4 round 2 review PR #433 —
   // Modal TOUJOURS monté + `key={openedApptId ?? "closed"}` :
   //   - À l'ouverture d'un nouveau RDV (key change), React remount complet le
@@ -294,10 +308,43 @@ export function AppointmentCalendar({
     />
   )
 
+  // US-2500-UI iter 6 — modal création RDV.
+  // Mount-on-open via render condition + `key` reset state au cycle d'ouverture
+  // (cohérent pattern iter 5 : drafts toujours frais, anti-PHI résiduel).
+  // `memberId={effectiveMemberId}` requis — donc bouton "+ Nouveau RDV" est
+  // disabled si scope membre pas résolu (cas multi-cabinets sans pick).
+  const createModal = createOpen && effectiveMemberId !== undefined ? (
+    <AppointmentCreateModal
+      key={`create-${effectiveMemberId}`}
+      open={createOpen}
+      memberId={effectiveMemberId}
+      onClose={handleCloseCreate}
+      onCreated={handleCreated}
+    />
+  ) : null
+
+  // Bouton "+ Nouveau RDV" rendu dans la barre d'actions header.
+  // Disabled si `effectiveMemberId` undefined (scope manquant — le user doit
+  // d'abord sélectionner un membre cabinet via `<MemberFilter>`).
+  const newApptButton = (
+    <Button
+      variant="default"
+      size="sm"
+      onClick={handleOpenCreate}
+      disabled={effectiveMemberId === undefined}
+      aria-label={t("createTitle")}
+    >
+      {t("newAppointmentButton")}
+    </Button>
+  )
+
   if (scopeMissing) {
     return (
       <div className="flex flex-col gap-3">
-        {filterEl}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          {filterEl}
+          {newApptButton}
+        </div>
         <div className="rounded-lg border border-border bg-card p-12 text-center">
           <h2 className="text-lg font-medium text-foreground">
             {t(scopeMissingTitleKey)}
@@ -307,6 +354,7 @@ export function AppointmentCalendar({
           </p>
         </div>
         {detailModal}
+        {createModal}
       </div>
     )
   }
@@ -315,7 +363,12 @@ export function AppointmentCalendar({
 
   return (
     <div className="flex flex-col gap-3">
-      {filterEl}
+      {/* US-2500-UI iter 6 — header avec filtre cabinet à gauche + bouton
+          "+ Nouveau RDV" à droite. Flex-wrap pour responsive mobile. */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        {filterEl}
+        {newApptButton}
+      </div>
 
       {/* Status bar — fix M-6 (isInitialLoading silent polling) +
           fix H-7 (stale items conservés sur erreur) +
@@ -353,6 +406,7 @@ export function AppointmentCalendar({
       </div>
 
       {detailModal}
+      {createModal}
     </div>
   )
 }

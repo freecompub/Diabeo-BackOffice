@@ -339,7 +339,19 @@
     "actorDoctor": "مهني صحي (العيادة)",
     "actorPatient": "المريض (بناءً على طلبه)",
     "proposeAltTitle": "اقتراح موعد بديل",
-    "proposeAltDescription": "سيحتاج المريض إلى قبول التاريخ الجديد من تطبيقه."
+    "proposeAltDescription": "سيحتاج المريض إلى قبول التاريخ الجديد من تطبيقه.",
+    "newAppointmentButton": "+ موعد جديد",
+    "createTitle": "موعد جديد",
+    "createDescription": "أدخل تفاصيل الموعد. السبب مشفر.",
+    "createError": "تعذر إنشاء الموعد — تحقق من الحقول أو أعد المحاولة.",
+    "actionConfirmCreate": "إنشاء الموعد",
+    "typeLabel": "النوع",
+    "motifPlaceholder": "اختياري — يظهر فقط للمهنيين المخولين.",
+    "motifEncryptedNote": "مشفر على الخادم",
+    "patientPlaceholder": "اكتب اسم المريض أو لقبه",
+    "patientListError": "تعذر تحميل قائمة المرضى.",
+    "patientSelected": "تم اختيار المريض",
+    "patientHint": "{count, plural, =0 {لم يتم العثور على مريض} one {مريض واحد متاح} other {# مرضى متاحون}}"
   },
   "weekly": {
     "title": "العرض الأسبوعي",
