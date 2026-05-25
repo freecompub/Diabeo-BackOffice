@@ -25,6 +25,9 @@ vi.mock("next-intl", () => ({
     if (v && "count" in v) return `${k}=${v.count}`
     return k
   },
+  // Fix FE-1/HSA-5 round 1 review PR #433 — `useLocale` désormais utilisé
+  // par ViewMode pour cohérence next-intl (vs `navigator.language`).
+  useLocale: () => "fr-FR",
 }))
 
 const baseDetail: AppointmentDetail = {
@@ -390,9 +393,214 @@ describe("<AppointmentDetailModal>", () => {
     })
   })
 
+  describe("Round 1 review fixes — couverture incrémentale", () => {
+    it("FE-14 — submitProposeAlt 401 → redirect /login?expired=1 (parité avec cancel)", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: false,
+        status: 401,
+        json: async () => ({ error: "tokenExpired" }),
+      } as Response)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionProposeAlternative"))
+      fireEvent.click(screen.getByText("actionConfirmPropose"))
+
+      await waitFor(() => {
+        expect(window.location.href).toBe("/login?expired=1")
+      })
+      expect(onActionSuccess).not.toHaveBeenCalled()
+    })
+
+    it("M-7 — status no_show : pas de boutons action (status-gating completeness)", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState({
+            detail: { ...baseDetail, status: "no_show" },
+          })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      expect(screen.queryByText("actionCancel")).toBeNull()
+      expect(screen.queryByText("actionProposeAlternative")).toBeNull()
+      expect(screen.getByText("actionClose")).toBeTruthy()
+    })
+
+    it("H-1/FE-2 — guard double-submit : second clic ignoré pendant actionLoading", async () => {
+      // Promise jamais résolue → loading persistant pendant le test.
+      let resolveFn!: (v: Response) => void
+      const pendingResponse = new Promise<Response>((resolve) => { resolveFn = resolve })
+      const fetchMock = vi.spyOn(global, "fetch").mockReturnValue(pendingResponse)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionCancel"))
+      const submitBtn = screen.getByText("actionConfirmCancel")
+      fireEvent.click(submitBtn) // 1er submit → fetch en cours
+      fireEvent.click(submitBtn) // 2e submit → doit être ignoré (disabled + guard)
+      fireEvent.click(submitBtn) // 3e submit → idem
+
+      await waitFor(() => {
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+      })
+
+      // Cleanup : resolve la promise pour ne pas leak entre tests
+      resolveFn({ ok: true, json: async () => ({}) } as Response)
+    })
+
+    it("FE-9 — actionError ré-annoncé via key+aria-live=assertive sur retry", async () => {
+      vi.spyOn(global, "fetch").mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ error: "serverError" }),
+      } as Response)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionCancel"))
+      fireEvent.click(screen.getByText("actionConfirmCancel"))
+
+      await waitFor(() => {
+        const alert = screen.getByRole("alert")
+        expect(alert.getAttribute("aria-live")).toBe("assertive")
+      })
+    })
+
+    it("H-1 corollaire — change input clear actionError pour permettre re-submit", async () => {
+      const fetchMock = vi.spyOn(global, "fetch")
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: "serverError" }),
+        } as Response)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({}),
+        } as Response)
+
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionCancel"))
+      fireEvent.click(screen.getByText("actionConfirmCancel"))
+
+      // 1er échec → alerte visible
+      await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
+
+      // Change textarea → clear error
+      const textarea = screen.getByLabelText("cancelReasonLabel") as HTMLTextAreaElement
+      fireEvent.change(textarea, { target: { value: "Nouvelle raison" } })
+      expect(screen.queryByRole("alert")).toBeNull()
+
+      // Re-submit → succès
+      fireEvent.click(screen.getByText("actionConfirmCancel"))
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+      expect(onActionSuccess).toHaveBeenCalledTimes(1)
+    })
+
+    it("M-7/FE-12 corollaire — drafts reset entre sub-modes via remount sub-composant", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      // Ouvre cancel, tape reason
+      fireEvent.click(screen.getByText("actionCancel"))
+      const textarea1 = screen.getByLabelText("cancelReasonLabel") as HTMLTextAreaElement
+      fireEvent.change(textarea1, { target: { value: "Patient injoignable" } })
+      expect(textarea1.value).toBe("Patient injoignable")
+
+      // Retour view
+      fireEvent.click(screen.getByText("actionBack"))
+      // Re-ouvre cancel → composant remonté, draft reset
+      fireEvent.click(screen.getByText("actionCancel"))
+      const textarea2 = screen.getByLabelText("cancelReasonLabel") as HTMLTextAreaElement
+      expect(textarea2.value).toBe("")
+    })
+
+    it("L-5/FE-15 — touch targets radio actor ≥ 44px (WCAG 2.5.5)", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      fireEvent.click(screen.getByText("actionCancel"))
+      // Labels englobants doivent avoir min-h-[44px] via classe Tailwind.
+      const labels = document.querySelectorAll("label.min-h-\\[44px\\]")
+      expect(labels.length).toBeGreaterThanOrEqual(2)
+    })
+
+    it("HSA-2 — lien patient porte rel='noreferrer' (anti-Referer leak)", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      const link = document.querySelector('a[href="/patients/7"]')
+      expect(link).not.toBeNull()
+      expect(link!.getAttribute("rel")).toBe("noreferrer")
+    })
+
+    it("M-2 — pas de input hidden data-testid='appt-id' (debug reliquat retiré)", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState()}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      expect(document.querySelector("[data-testid='appt-id']")).toBeNull()
+      expect(document.querySelector("input[type='hidden']")).toBeNull()
+    })
+  })
+
   describe("openId / open state coupling", () => {
-    it("openId=null → modal not rendered (Dialog open=false → content hidden)", () => {
-      const { container } = render(
+    it("FE-11 — openId=null → Dialog non rendu (assertion stricte sur role=dialog vs textContent)", () => {
+      render(
         <AppointmentDetailModal
           state={makeState({ detail: null })}
           openId={null}
@@ -401,8 +609,10 @@ describe("<AppointmentDetailModal>", () => {
           userRole="DOCTOR"
         />,
       )
-      // Pas de motif visible (Dialog overlay non rendu).
-      expect(container.textContent).not.toContain("Titration basale")
+      // Fix FE-11 round 1 — assertion sémantique sur le rôle ARIA dialog
+      // (vs ancien `.not.toContain("Titration basale")` qui était faux-positif
+      // facile car le motif n'est même pas dans le state quand detail=null).
+      expect(document.querySelector('[role="dialog"]')).toBeNull()
     })
   })
 })

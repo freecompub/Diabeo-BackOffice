@@ -29,7 +29,7 @@
  * @see docs/UserStory/pro-user-stories/23-rdv/US-2500-UI-FALLBACK-custom-build.md
  */
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import {
   ScheduleXCalendar,
@@ -264,23 +264,32 @@ export function AppointmentCalendar({
       : "scopeMissingTitle"
 
   // US-2500-UI iter 5 — handlers stables pour le modal détail.
-  const handleCloseModal = () => setOpenedApptId(null)
+  // Fix FE-6 round 1 review PR #433 — `useCallback` pour identité stable :
+  // les handlers passés en props au modal ne sont plus recréés à chaque
+  // render parent (cohérent si le modal devient `React.memo` plus tard).
+  const handleCloseModal = useCallback(() => setOpenedApptId(null), [])
   // Refetch la liste après une action (cancel / proposeAlt) pour
   // que le calendrier reflète immédiatement le nouveau statut.
-  const handleActionSuccess = () => { void refetch() }
+  const handleActionSuccess = useCallback(() => { void refetch() }, [refetch])
 
-  // Modal rendu UNE seule fois en haut du tree pour que React conserve
-  // son state interne (sub-mode, draft cancelReason...) si l'utilisateur
-  // navigue de mois pendant la consultation. `openId=null` = caché.
-  const detailModal = (
+  // Fix CR-1 + FE-5 + FE-7 + FE-12 round 1 review PR #433 — mount-on-open :
+  // le modal n'est rendu QUE lorsque `openedApptId !== null` + clé reset
+  // chaque ouverture pour invalider le state interne (sub-mode, drafts cancelReason
+  // / dateStr / timeStr) → résout :
+  //   - CR-1 : réouverture du même RDV ne montre plus l'ancien sub-mode
+  //   - FE-5 : plus de `setState in useEffect` anti-pattern dans le modal
+  //   - FE-7 : pas de coût React render quand modal fermé
+  //   - FE-12 : drafts toujours frais à l'ouverture
+  const detailModal = openedApptId !== null ? (
     <AppointmentDetailModal
+      key={openedApptId}
       state={detailState}
       openId={openedApptId}
       onClose={handleCloseModal}
       onActionSuccess={handleActionSuccess}
       userRole={userRole}
     />
-  )
+  ) : null
 
   if (scopeMissing) {
     return (

@@ -24,18 +24,36 @@ const updateSchema = z.object({
   note: z.string().max(4096).nullable().optional(),
 })
 
+/**
+ * Fix HSA-1 round 1 review PR #433 — Headers ANSSI RGS §4.5 sur toutes les
+ * responses (200 / 404 / autres). La GET sert des PHI déchiffrés (motif/note/
+ * cancelReason via `getById`) — sans `no-store`, le bfcache navigateur et les
+ * proxies cacheables intermédiaires (Nginx mal configuré, CDN client-side)
+ * peuvent retenir le payload. Asymétrie corrigée vs la route liste qui posait
+ * déjà ces headers (`src/app/api/appointments/route.ts` PR #392).
+ */
+function setSecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+  res.headers.set("Pragma", "no-cache")
+  res.headers.set("Referrer-Policy", "no-referrer")
+  res.headers.set("X-Content-Type-Options", "nosniff")
+  return res
+}
+
 export async function GET(req: NextRequest, { params }: RouteParams) {
   const ctx = extractRequestContext(req)
   try {
     const { id } = await params
     const gate = await appointmentRouteGate(req, id, "NURSE", "detail")
-    if (gate.kind === "error") return gate.res
+    if (gate.kind === "error") return setSecurityHeaders(gate.res)
     const item = await rdvAppointmentService.getById(gate.apptId, gate.user.id, ctx)
-    if (!item) return NextResponse.json({ error: "notFound" }, { status: 404 })
-    return NextResponse.json(item)
+    if (!item) return setSecurityHeaders(NextResponse.json({ error: "notFound" }, { status: 404 }))
+    return setSecurityHeaders(NextResponse.json(item))
   } catch (e) {
-    if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
-    return mapErrorToResponse(e, "appointments/:id GET", ctx.requestId)
+    if (e instanceof AuthError) {
+      return setSecurityHeaders(NextResponse.json({ error: e.message }, { status: e.status }))
+    }
+    return setSecurityHeaders(mapErrorToResponse(e, "appointments/:id GET", ctx.requestId))
   }
 }
 

@@ -209,4 +209,55 @@ describe("useAppointmentDetail", () => {
     })
     expect(fetchMock).toHaveBeenCalledTimes(2)
   })
+
+  /**
+   * Fix H-2 round 1 review PR #433 — race fetch obsolète.
+   *
+   * Scénario : id change rapidement (user clique 2 RDV successifs avant que
+   * le 1er fetch retourne). Le vieux fetch ne doit PAS reset `loading=false`
+   * pendant que le nouveau est en cours (glitch UX visible).
+   *
+   * Mécanique testée : capture locale `const myCtrl = ctrl` dans le `try`
+   * → le `finally` du vieux fetch teste `myCtrl.signal.aborted` (true car
+   * abort a été appelé par le nouveau fetch) → skip setLoading(false).
+   */
+  it("H-2 race — id change rapide : vieux fetch ne reset PAS loading du nouveau", async () => {
+    let resolveFirst!: (v: Response) => void
+    const firstResponse = new Promise<Response>((r) => { resolveFirst = r })
+    let resolveSecond!: (v: Response) => void
+    const secondResponse = new Promise<Response>((r) => { resolveSecond = r })
+
+    vi.spyOn(global, "fetch")
+      .mockReturnValueOnce(firstResponse)
+      .mockReturnValueOnce(secondResponse)
+
+    const { result, rerender } = renderHook(
+      ({ id }: { id: number | null }) => useAppointmentDetail(id),
+      { initialProps: { id: 42 } as { id: number | null } },
+    )
+    // Loading true au mount
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    // Change id avant que le 1er fetch retourne
+    rerender({ id: 99 })
+    // Loading reste true (nouveau fetch en cours)
+    await waitFor(() => expect(result.current.loading).toBe(true))
+
+    // Maintenant on résout le VIEUX fetch (qui a été abort par le nouveau).
+    // Son `finally` ne doit PAS setLoading(false) car `myCtrl.signal.aborted=true`.
+    await act(async () => {
+      resolveFirst({ ok: true, json: async () => mockDetail } as Response)
+      // wait a tick pour que le `finally` du vieux fetch s'exécute
+      await Promise.resolve()
+    })
+    // Loading toujours true → le vieux fetch n'a pas perturbé
+    expect(result.current.loading).toBe(true)
+
+    // Le nouveau fetch se résout normalement
+    await act(async () => {
+      resolveSecond({ ok: true, json: async () => ({ ...mockDetail, id: 99 }) } as Response)
+    })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.detail?.id).toBe(99)
+  })
 })

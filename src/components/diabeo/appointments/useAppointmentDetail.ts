@@ -80,6 +80,12 @@ export function useAppointmentDetail(
     abortRef.current?.abort()
     const ctrl = new AbortController()
     abortRef.current = ctrl
+    // Fix H-2 round 1 review PR #433 — capture local du ctrl pour le `finally` :
+    // sans ça, `abortRef.current?.signal.aborted` teste le NOUVEAU ctrl (vu que
+    // `abortRef.current` est réassigné lors du fetch suivant), ce qui faisait
+    // que le `finally` du VIEUX fetch reset `loading=false` pendant que le
+    // nouveau fetch est en cours → glitch UX visible (loading clignote).
+    const myCtrl = ctrl
 
     setLoading(true)
     setError(null)
@@ -89,10 +95,10 @@ export function useAppointmentDetail(
         credentials: "include",
         cache: "no-store",
         headers: { "X-Requested-With": "XMLHttpRequest" },
-        signal: ctrl.signal,
+        signal: myCtrl.signal,
       })
 
-      if (ctrl.signal.aborted) return
+      if (myCtrl.signal.aborted) return
 
       if (!res.ok) {
         if (res.status === 401 && typeof window !== "undefined") {
@@ -110,7 +116,9 @@ export function useAppointmentDetail(
       if (err instanceof Error && err.name === "AbortError") return
       setError(err instanceof Error ? err.message : "networkError")
     } finally {
-      if (!abortRef.current?.signal.aborted) setLoading(false)
+      // Fix H-2 — utiliser `myCtrl` (closure stable) au lieu de `abortRef.current`
+      // (qui a pu être remplacé par un fetch concurrent).
+      if (!myCtrl.signal.aborted) setLoading(false)
     }
   }, [id])
 
