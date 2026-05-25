@@ -281,8 +281,14 @@ export function AppointmentCalendar({
   // US-2500-UI iter 6 — handlers create modal.
   const handleOpenCreate = useCallback(() => setCreateOpen(true), [])
   const handleCloseCreate = useCallback(() => setCreateOpen(false), [])
+  // Fix FE-12 round 1 review PR #434 — flag temporaire pour aria-live polite
+  // qui annonce le succès création (vs ancien close silent).
+  const [justCreated, setJustCreated] = useState(false)
   const handleCreated = useCallback(() => {
     setCreateOpen(false)
+    setJustCreated(true)
+    // Auto-clear après 4s pour ne pas polluer le live region indéfiniment.
+    setTimeout(() => setJustCreated(false), 4000)
     void refetch() // refresh calendar avec le nouveau RDV
   }, [refetch])
 
@@ -326,17 +332,30 @@ export function AppointmentCalendar({
   // Bouton "+ Nouveau RDV" rendu dans la barre d'actions header.
   // Disabled si `effectiveMemberId` undefined (scope manquant — le user doit
   // d'abord sélectionner un membre cabinet via `<MemberFilter>`).
+  //
+  // Fix FE-14 round 1 review PR #434 — `aria-label` retiré (était redondant
+  // avec le texte visible "+ Nouveau RDV" = WCAG 2.5.3 violation "Label in Name").
+  // Fix CR-L7 round 1 — `title` tooltip si disabled pour expliquer "sélectionnez
+  // un membre cabinet d'abord" au médecin qui clique sans comprendre.
   const newApptButton = (
     <Button
       variant="default"
       size="sm"
       onClick={handleOpenCreate}
       disabled={effectiveMemberId === undefined}
-      aria-label={t("createTitle")}
+      title={effectiveMemberId === undefined ? t("scopeMissingChooseFirst") : undefined}
     >
       {t("newAppointmentButton")}
     </Button>
   )
+
+  // Fix FE-12 round 1 review PR #434 — Live region pour annonce succès création
+  // (SR users + visuel discret). `aria-live="polite"` non-bloquant.
+  const successAnnounce = justCreated ? (
+    <p role="status" aria-live="polite" className="text-xs text-emerald-700">
+      {t("createdSuccess")}
+    </p>
+  ) : null
 
   if (scopeMissing) {
     return (
@@ -399,6 +418,8 @@ export function AppointmentCalendar({
           )}
         </div>
       </div>
+
+      {successAnnounce}
 
       {/* Fix L-1 — Tailwind class au lieu de magic inline style. */}
       <div className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px]">

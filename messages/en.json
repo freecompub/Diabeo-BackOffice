@@ -344,6 +344,14 @@
     "createTitle": "New appointment",
     "createDescription": "Fill in the appointment details. The reason is encrypted.",
     "createError": "Could not create appointment — check fields or retry.",
+    "createErrorConflict": "Slot already taken — please choose another time.",
+    "createErrorConsent": "The patient has not accepted data sharing. Action denied.",
+    "createErrorForbidden": "You do not have access to this patient.",
+    "createErrorValidation": "Please check fields: date, time and duration must be valid.",
+    "createErrorGeneric": "Unexpected error — please retry or contact support.",
+    "createDatePastWarning": "Selected date is in the past — please choose a future date.",
+    "createRecap": "Summary: {datetime}",
+    "createdSuccess": "✓ Appointment created successfully",
     "actionConfirmCreate": "Create appointment",
     "typeLabel": "Type",
     "motifPlaceholder": "Optional — only visible to authorised staff.",
@@ -351,7 +359,9 @@
     "patientPlaceholder": "Type patient name or surname",
     "patientListError": "Could not load patient list.",
     "patientSelected": "Patient selected",
-    "patientHint": "{count, plural, =0 {No patient found} one {1 patient available} other {# patients available}}"
+    "patientNoResults": "No patient matches your search.",
+    "patientHint": "{count, plural, =0 {No patient available} one {1 patient available} other {# patients available}}",
+    "scopeMissingChooseFirst": "Please select a practice member first to create an appointment."
   },
   "weekly": {
     "title": "Weekly View",

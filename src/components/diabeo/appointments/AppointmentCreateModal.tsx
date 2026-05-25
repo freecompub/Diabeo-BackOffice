@@ -38,7 +38,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   Dialog,
   DialogContent,
@@ -50,12 +50,83 @@ import {
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { PatientCombobox } from "./PatientCombobox"
-import { useCreateAppointment, type CreateAppointmentInput } from "./useCreateAppointment"
+import {
+  useCreateAppointment,
+  type CreateAppointmentInput,
+  type CreateAppointmentErrorCode,
+} from "./useCreateAppointment"
 
 const APPOINTMENT_TYPES = ["diabeto", "ide", "hdj", "other"] as const
 const LOCATIONS = ["in_person", "video", "phone"] as const
+// Fix FE-13 round 1 review PR #434 — Presets durée étendus :
+// +20 (consultation flash) +75 (HDJ court) +180/240 (HDJ long).
+const DURATION_PRESETS = [15, 20, 30, 45, 60, 75, 90, 120, 180, 240] as const
 type AppointmentType = (typeof APPOINTMENT_TYPES)[number]
 type Location = (typeof LOCATIONS)[number]
+
+/**
+ * Fix CR-H2 + HSA-3 round 1 review PR #434 — Mapping code erreur backend
+ * (whitelist normalisée par le hook) vers clé i18n distincte. Donne au médecin
+ * un feedback actionnable :
+ *   - slotConflict (409) : "Le créneau est déjà pris — choisissez un autre"
+ *   - gdprConsentRequired (422) : "Le patient n'a pas accepté le partage"
+ *   - forbidden (403) : "Vous n'avez pas accès à ce patient"
+ *   - validationFailed (400) : "Vérifiez les champs"
+ *   - networkError / unexpectedError : "Erreur inattendue — réessayez"
+ */
+function errorCodeToI18nKey(code: CreateAppointmentErrorCode): string {
+  switch (code) {
+    case "slotConflict":
+      return "createErrorConflict"
+    case "gdprConsentRequired":
+      return "createErrorConsent"
+    case "forbidden":
+      return "createErrorForbidden"
+    case "validationFailed":
+      return "createErrorValidation"
+    case "networkError":
+    case "unexpectedError":
+    default:
+      return "createErrorGeneric"
+  }
+}
+
+/**
+ * Format wall-clock "DD/MM/YYYY à HH:MM" en locale next-intl pour récap
+ * visuel au-dessus du bouton submit (Fix FE-11 round 1 review PR #434).
+ * Utilise `timeZone: "UTC"` cohérent avec contrat wall-clock iter 5.
+ */
+function formatRecap(date: string, hour: string, locale: string): string {
+  try {
+    const [y, m, d] = date.split("-").map(Number)
+    const [h, mi] = hour.split(":").map(Number)
+    const dt = new Date(Date.UTC(y, m - 1, d, h, mi, 0))
+    return new Intl.DateTimeFormat(locale, {
+      day: "2-digit",
+      month: "long",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      timeZone: "UTC",
+    }).format(dt)
+  } catch {
+    return `${date} ${hour}`
+  }
+}
+
+/** Vérifie si `date + hour` est dans le futur (Fix CR-M4 round 1). */
+function isInFuture(date: string, hour: string): boolean {
+  if (!date || !hour) return false
+  try {
+    const [y, m, d] = date.split("-").map(Number)
+    const [h, mi] = hour.split(":").map(Number)
+    // Utilise heure locale du navigateur pour comparer (wall-clock du user).
+    const target = new Date(y, m - 1, d, h, mi, 0)
+    return target.getTime() > Date.now()
+  } catch {
+    return false
+  }
+}
 
 export interface AppointmentCreateModalProps {
   /** Modal open state (contrôlé par le parent). */
@@ -75,6 +146,7 @@ export function AppointmentCreateModal({
   onCreated,
 }: AppointmentCreateModalProps) {
   const t = useTranslations("appointments")
+  const locale = useLocale()
   const { loading, error, submit, reset } = useCreateAppointment()
 
   // Pré-remplir date = aujourd'hui (snapshot lazy au mount — Fix H-4 pattern iter 5).
@@ -90,15 +162,38 @@ export function AppointmentCreateModal({
   // Fix FE-2-5 pattern iter 5 — nonce pour re-mount du `<p role=alert>` même
   // si message d'erreur identique sur retry → screen reader re-vocalise.
   const [errorNonce, setErrorNonce] = useState(0)
+  // Fix FE-16 round 1 review PR #434 — tracker submit échoué pour `aria-invalid`
+  // sur les inputs (signal SR users du champ fautif).
+  const [submitFailed, setSubmitFailed] = useState(false)
 
   // Reset hook state au close (defense-in-depth — parent unmount aussi via `key`).
   useEffect(() => {
     if (!open) reset()
   }, [open, reset])
 
+  // Fix CR-M4 round 1 review PR #434 — validation date+hour future client-side.
+  // Empêche la création d'un RDV dans le passé par mégarde (e.g. RDV 09:00 today
+  // alors qu'il est 14:00). Backend Zod ne valide pas le futur — defense-in-depth.
+  const dateTimeIsFuture = useMemo(
+    () => isInFuture(dateStr, hourStr),
+    [dateStr, hourStr],
+  )
+
   const canSubmit = useMemo(
-    () => patientId !== null && dateStr.length > 0 && hourStr.length > 0 && !loading,
-    [patientId, dateStr, hourStr, loading],
+    () =>
+      patientId !== null
+      && dateStr.length > 0
+      && hourStr.length > 0
+      && dateTimeIsFuture
+      && !loading,
+    [patientId, dateStr, hourStr, dateTimeIsFuture, loading],
+  )
+
+  // Fix FE-11 round 1 — récap visuel "12 juin 2026 à 09:00" pour que l'user
+  // confirme visuellement ce qu'il s'apprête à créer (vs juste un bouton).
+  const recap = useMemo(
+    () => (dateStr && hourStr ? formatRecap(dateStr, hourStr, locale) : ""),
+    [dateStr, hourStr, locale],
   )
 
   const handleClose = useCallback(() => {
@@ -123,8 +218,10 @@ export function AppointmentCreateModal({
       }
       const newId = await submit(input)
       if (newId !== null) {
+        setSubmitFailed(false)
         onCreated(newId)
       } else {
+        setSubmitFailed(true)
         setErrorNonce((n) => n + 1)
       }
     },
@@ -167,6 +264,8 @@ export function AppointmentCreateModal({
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label htmlFor="create-date">{t("dateLabel")}</Label>
+              {/* Fix FE-15 round 1 — aria-required + Fix FE-16 — aria-invalid si
+                  submitFailed OU date dans le passé (validation CR-M4). */}
               <input
                 type="date"
                 id="create-date"
@@ -174,6 +273,8 @@ export function AppointmentCreateModal({
                 min={today}
                 onChange={(e) => setDateStr(e.target.value)}
                 required
+                aria-required="true"
+                aria-invalid={submitFailed || !dateTimeIsFuture ? "true" : undefined}
                 disabled={loading}
                 className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
               />
@@ -187,11 +288,20 @@ export function AppointmentCreateModal({
                 value={hourStr}
                 onChange={(e) => setHourStr(e.target.value)}
                 required
+                aria-required="true"
+                aria-invalid={submitFailed || !dateTimeIsFuture ? "true" : undefined}
                 disabled={loading}
                 className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
               />
             </div>
           </div>
+
+          {/* Fix CR-M4 round 1 — message d'avertissement si date+heure dans le passé. */}
+          {!dateTimeIsFuture && dateStr.length > 0 && hourStr.length > 0 && (
+            <p role="status" aria-live="polite" className="text-xs text-amber-700">
+              {t("createDatePastWarning")}
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
@@ -203,12 +313,12 @@ export function AppointmentCreateModal({
                 disabled={loading}
                 className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
               >
-                <option value={15}>15 {t("minutesShort")}</option>
-                <option value={30}>30 {t("minutesShort")}</option>
-                <option value={45}>45 {t("minutesShort")}</option>
-                <option value={60}>60 {t("minutesShort")}</option>
-                <option value={90}>90 {t("minutesShort")}</option>
-                <option value={120}>120 {t("minutesShort")}</option>
+                {/* Fix FE-13 round 1 — presets étendus 15→240 min. */}
+                {DURATION_PRESETS.map((d) => (
+                  <option key={d} value={d}>
+                    {d} {t("minutesShort")}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -272,9 +382,20 @@ export function AppointmentCreateModal({
               aria-live="assertive"
               className="text-sm text-red-600"
             >
-              {/* Defense-in-depth : on render UNIQUEMENT la clé i18n générique,
-                  jamais le code backend brut (HSA-3 pattern iter 5). */}
-              {t("createError")}
+              {/* Fix CR-H2 + HSA-3 round 1 review PR #434 — map vers clé i18n
+                  distincte selon le code backend (whitelist normalisée par hook).
+                  Donne au médecin un feedback actionnable vs ancien `createError`
+                  générique qui poussait au re-clic en boucle. */}
+              {t(errorCodeToI18nKey(error))}
+            </p>
+          )}
+
+          {/* Fix FE-11 round 1 — récap visuel "12 juin 2026 à 09:00" au-dessus du
+              bouton submit pour que l'user confirme visuellement le RDV qu'il
+              s'apprête à créer. Pattern UX standard "confirm before commit". */}
+          {recap && dateTimeIsFuture && (
+            <p className="text-xs text-muted-foreground" aria-live="polite">
+              {t("createRecap", { datetime: recap })}
             </p>
           )}
 

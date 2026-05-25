@@ -70,7 +70,7 @@ describe("useCreateAppointment", () => {
     expect(result.current.error).toBeNull()
   })
 
-  it("400 validation → retourne null + error code stable", async () => {
+  it("400 validation → retourne null + code normalisé 'validationFailed'", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 400,
@@ -87,7 +87,7 @@ describe("useCreateAppointment", () => {
     expect(result.current.error).toBe("validationFailed")
   })
 
-  it("403 forbidden → retourne null + error code", async () => {
+  it("403 forbidden → retourne null + code normalisé 'forbidden'", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 403,
@@ -104,7 +104,7 @@ describe("useCreateAppointment", () => {
     expect(result.current.error).toBe("forbidden")
   })
 
-  it("409 conflict slot membre (EXCLUDE GiST) → retourne null + error code", async () => {
+  it("409 conflict slot (EXCLUDE GiST) → retourne null + code 'slotConflict'", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 409,
@@ -119,6 +119,38 @@ describe("useCreateAppointment", () => {
 
     expect(returned).toBeNull()
     expect(result.current.error).toBe("slotConflict")
+  })
+
+  it("HSA-3 round 1 — backend code non-whitelisté → normalisé 'unexpectedError' (defense-in-depth)", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 500,
+      // Simule un leak verbeux backend : "Failed to decrypt motif for patient 4242"
+      json: async () => ({ error: "Failed to decrypt motif for patient 4242: invalid GCM tag" }),
+    } as Response)
+
+    const { result } = renderHook(() => useCreateAppointment())
+    await act(async () => {
+      await result.current.submit(validInput)
+    })
+
+    // Code normalisé vs raw — empêche futur dev d'afficher message PHI brut.
+    expect(result.current.error).toBe("unexpectedError")
+  })
+
+  it("HSA-3 round 1 — body.error absent → 'unexpectedError'", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    } as Response)
+
+    const { result } = renderHook(() => useCreateAppointment())
+    await act(async () => {
+      await result.current.submit(validInput)
+    })
+
+    expect(result.current.error).toBe("unexpectedError")
   })
 
   it("401 → redirect /login?expired=1 (auth perdue)", async () => {
@@ -136,7 +168,7 @@ describe("useCreateAppointment", () => {
     await waitFor(() => expect(window.location.href).toBe("/login?expired=1"))
   })
 
-  it("network error → retourne null + 'networkError' code", async () => {
+  it("network error → retourne null + code normalisé 'unexpectedError' (whitelist)", async () => {
     vi.spyOn(global, "fetch").mockRejectedValue(new Error("Failed to fetch"))
 
     const { result } = renderHook(() => useCreateAppointment())
@@ -146,7 +178,9 @@ describe("useCreateAppointment", () => {
     })
 
     expect(returned).toBeNull()
-    expect(result.current.error).toBe("Failed to fetch")
+    // Fix HSA-3 round 1 — message brut "Failed to fetch" non-whitelisté →
+    // normalisé "unexpectedError" pour empêcher leak verbeux dans state React.
+    expect(result.current.error).toBe("unexpectedError")
   })
 
   it("fetch options : credentials + cache:no-store + X-Requested-With + Content-Type", async () => {

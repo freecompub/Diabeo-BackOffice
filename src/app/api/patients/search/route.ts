@@ -22,6 +22,26 @@ import { getAccessiblePatientIds } from "@/lib/access-control"
 import { patientService } from "@/lib/services/patient.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
+/**
+ * Fix CR-H1 round 1 review PR #434 — Headers ANSSI RGS §4.5 + RGPD Art. 32
+ * sur la réponse qui contient des PHI déchiffrés (`user.firstname`/`lastname`
+ * de tous les patients accessibles via RBAC). Sans `no-store`, le bfcache
+ * navigateur + proxies cacheables (Nginx mal configuré, CDN client-side)
+ * peuvent retenir la liste patients.
+ *
+ * Asymétrie corrigée vs autres routes PHI (cf. helper partagé
+ * `setAppointmentSecurityHeaders` pour `/api/appointments/*` PR #433).
+ * Pas factorisé dans un helper global pour rester scope minimal — pattern
+ * à généraliser V1.5 via middleware Next.js (cf. HSA-2-10 PR #433).
+ */
+function setPatientsSearchSecurityHeaders(res: NextResponse): NextResponse {
+  res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
+  res.headers.set("Pragma", "no-cache")
+  res.headers.set("Referrer-Policy", "no-referrer")
+  res.headers.set("X-Content-Type-Options", "nosniff")
+  return res
+}
+
 const querySchema = z.object({
   search: z.string().trim().min(1).max(100).optional(),
   pathology: z.enum(Pathology).optional(),
@@ -38,9 +58,11 @@ export async function GET(req: NextRequest) {
       Object.fromEntries(req.nextUrl.searchParams.entries()),
     )
     if (!parsed.success) {
-      return NextResponse.json(
-        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
+      return setPatientsSearchSecurityHeaders(
+        NextResponse.json(
+          { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
+          { status: 400 },
+        ),
       )
     }
 
@@ -56,13 +78,17 @@ export async function GET(req: NextRequest) {
       user.id,
       ctx,
     )
-    return NextResponse.json(result)
+    return setPatientsSearchSecurityHeaders(NextResponse.json(result))
   } catch (error) {
     if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
+      return setPatientsSearchSecurityHeaders(
+        NextResponse.json({ error: error.message }, { status: error.status }),
+      )
     }
     const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[patients/search]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
+    return setPatientsSearchSecurityHeaders(
+      NextResponse.json({ error: "serverError" }, { status: 500 }),
+    )
   }
 }
