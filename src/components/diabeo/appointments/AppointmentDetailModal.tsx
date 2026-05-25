@@ -215,6 +215,50 @@ export function AppointmentDetailModal({
   )
 
   /**
+   * US-2500-UI iter 9 — Accept alternative proposée.
+   *
+   * POST direct vers `/api/appointments/[id]/accept-alternative` (NURSE+).
+   * Effet : RDV repasse status `scheduled` avec la nouvelle date+heure
+   * stockée dans `proposedAlternativeAt`. Backend gère TTL + slot conflict.
+   *
+   * Pas de form intermédiaire : action one-click (le user a déjà confirmé
+   * implicitement en cliquant le bouton). Si erreur, alert dans le modal.
+   */
+  const submitAcceptAlternative = useCallback(async () => {
+    if (!detail || actionLoading) return
+    setActionLoading(true)
+    setActionError(null)
+    try {
+      const res = await fetch(`/api/appointments/${detail.id}/accept-alternative`, {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
+      })
+      if (!res.ok) {
+        if (res.status === 401 && typeof window !== "undefined") {
+          window.location.href = "/login?expired=1"
+          return
+        }
+        const body = (await res.json().catch(() => ({}))) as { error?: string }
+        setActionError(body.error ?? `httpError:${res.status}`)
+        setErrorNonce((n) => n + 1)
+        return
+      }
+      onActionSuccess()
+      onClose()
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "networkError")
+      setErrorNonce((n) => n + 1)
+    } finally {
+      setActionLoading(false)
+    }
+  }, [detail, actionLoading, onActionSuccess, onClose])
+
+  /**
    * Fix FE-2 round 1 review PR #435 — Alternative a11y au drag&drop
    * (WCAG 2.5.7 Dragging Movements + 2.1.1 Keyboard).
    *
@@ -297,6 +341,7 @@ export function AppointmentDetailModal({
             onCancel={() => setSubMode("cancel")}
             onPropose={() => setSubMode("proposeAlt")}
             onMove={() => setSubMode("move")}
+            onAccept={submitAcceptAlternative}
             onClose={handleClose}
           />
         )}
@@ -349,8 +394,11 @@ interface ViewModeProps {
   onPropose: () => void
   /** Fix FE-2 round 1 review PR #435 — alternative a11y drag&drop (WCAG 2.5.7) */
   onMove: () => void
+  /** US-2500-UI iter 9 — Accept l'alternative proposée (NURSE+). */
+  onAccept: () => void
   onClose: () => void
 }
+
 
 /**
  * Fix M-4 + FE-4 round 1 + HSA-2-7 round 2 review PR #433 — Cache module-level
@@ -432,7 +480,7 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onClose }: ViewModeProps) {
   const t = useTranslations("appointments")
   // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
   // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
@@ -442,6 +490,17 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: Vi
 
   const actionable = isActionable(detail.status)
   const showPropose = actionable && canProposeAlternative(userRole)
+
+  // US-2500-UI iter 9 — Bouton "Accepter alternative" visible si :
+  //   - RDV en status `cancelled` (= original cancel pour proposer alt)
+  //   - `proposedAlternativeAt` set (≠ null)
+  //
+  // Note : pas de check TTL 7j côté UI (React-Compiler refuse Date.now()
+  // au render). Backend valide via `alternativeExpired` (422) au POST →
+  // si TTL dépassé, user clique puis voit l'erreur dans le modal. UX
+  // dégradée acceptable car cas rare (TTL = 7j).
+  const canAcceptAlternative =
+    detail.status === "cancelled" && detail.proposedAlternativeAt !== null
 
   // Fix FE-2-3 round 2 — pas de `useMemo` redondant : `getTimestampFormatter`
   // utilise déjà la `Map` module-level → identité stable, lookup O(1).
@@ -542,6 +601,14 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onClose }: Vi
         {showPropose && (
           <Button variant="outline" onClick={onPropose}>
             {t("actionProposeAlternative")}
+          </Button>
+        )}
+        {/* US-2500-UI iter 9 — Bouton "Accepter alternative" si RDV est en
+            attente d'acceptation (status=cancelled + proposedAlternativeAt
+            set + TTL 7j non dépassé côté backend qui re-valide). */}
+        {canAcceptAlternative && (
+          <Button variant="default" onClick={onAccept}>
+            {t("actionAcceptAlternative")}
           </Button>
         )}
         <Button onClick={onClose}>{t("actionClose")}</Button>

@@ -371,7 +371,18 @@
     "actionMove": "Déplacer",
     "moveTitle": "Déplacer le rendez-vous",
     "moveDescription": "Choisissez la nouvelle date et heure. Le RDV est reschedulé immédiatement (alternative clavier au glisser-déposer).",
-    "actionConfirmMove": "Déplacer le RDV"
+    "actionConfirmMove": "Déplacer le RDV",
+    "statusFilterLabel": "Statuts affichés",
+    "patientFilterLabel": "Patient",
+    "patientFilterButton": "Filtrer par patient",
+    "patientFilterActive": "Filtre patient actif : {label}",
+    "patientFilterClear": "Retirer le filtre patient",
+    "patientFilterClose": "Fermer le sélecteur patient",
+    "countFiltered": "{count} sur {total} rendez-vous",
+    "alternativesBannerLabel": "Alternatives RDV en attente",
+    "alternativesBannerMessage": "{count, plural, one {# alternative en attente d'acceptation} other {# alternatives en attente d'acceptation}}",
+    "alternativesBannerAction": "Voir",
+    "actionAcceptAlternative": "Accepter l'alternative"
   },
   "weekly": {
     "title": "Vue hebdomadaire",

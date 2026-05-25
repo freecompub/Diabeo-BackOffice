@@ -371,7 +371,18 @@
     "actionMove": "Reschedule",
     "moveTitle": "Reschedule appointment",
     "moveDescription": "Choose the new date and time. The appointment is rescheduled immediately (keyboard alternative to drag & drop).",
-    "actionConfirmMove": "Reschedule appointment"
+    "actionConfirmMove": "Reschedule appointment",
+    "statusFilterLabel": "Shown statuses",
+    "patientFilterLabel": "Patient",
+    "patientFilterButton": "Filter by patient",
+    "patientFilterActive": "Patient filter active: {label}",
+    "patientFilterClear": "Remove patient filter",
+    "patientFilterClose": "Close patient picker",
+    "countFiltered": "{count} of {total} appointments",
+    "alternativesBannerLabel": "Pending alternatives",
+    "alternativesBannerMessage": "{count, plural, one {# alternative awaiting acceptance} other {# alternatives awaiting acceptance}}",
+    "alternativesBannerAction": "View",
+    "actionAcceptAlternative": "Accept alternative"
   },
   "weekly": {
     "title": "Weekly View",
