@@ -69,9 +69,21 @@
     "foundationPlaceholderDemoThread": "Demo conversation #{id} (placeholder)",
     "foundationContextRole": "Signed in as {role}",
     "emptyStateNoConversation": "You have no conversation yet. Your patients can contact you through their mobile app.",
+    "emptyStateFiltered": "No conversation matches your search.",
     "loading": "Loading your conversations...",
     "loadError": "Could not load messaging — please retry later.",
-    "actionRetry": "Retry"
+    "actionRetry": "Retry",
+    "lastSync": "last sync {time}",
+    "threadListCount": "{count, plural, =0 {No conversation} one {1 conversation} other {# conversations}}",
+    "searchPlaceholder": "Search a conversation...",
+    "searchClear": "Clear search",
+    "filterGroupLabel": "Filter conversations",
+    "filterAll": "All",
+    "filterUnread": "Unread",
+    "filterAllAria": "Show all conversations ({count, plural, =0 {none} one {1} other {#}})",
+    "filterUnreadAria": "Show unread conversations ({count, plural, =0 {no unread message} one {1 unread message} other {# unread messages}})",
+    "previewPrefixMe": "You:",
+    "itemUnreadAria": "{count, plural, one {1 unread message} other {# unread messages}}"
   },
   "auth": {
     "welcome": "Welcome to Diabeo",
