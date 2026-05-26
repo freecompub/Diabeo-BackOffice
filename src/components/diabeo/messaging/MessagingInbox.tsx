@@ -36,6 +36,7 @@ import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
+import { ThreadList } from "./ThreadList"
 
 export interface MessagingInboxProps {
   /**
@@ -47,11 +48,11 @@ export interface MessagingInboxProps {
   userRole: "ADMIN" | "DOCTOR" | "NURSE"
 }
 
-export function MessagingInbox({ userId: _userId, userRole }: MessagingInboxProps) {
+export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxProps) {
   const t = useTranslations("messages")
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
 
-  const handleSelectThread = useCallback((key: string | null) => {
+  const handleSelectThread = useCallback((key: string) => {
     setSelectedKey(key)
   }, [])
 
@@ -74,10 +75,17 @@ export function MessagingInbox({ userId: _userId, userRole }: MessagingInboxProp
           "w-full md:w-80 md:shrink-0",
         )}
       >
-        <ThreadListPlaceholder
-          userRole={userRole}
+        {/* US-2076-UI iter 2 — ThreadList branche fetch /api/messages réel
+            polling 60s. Remplace `ThreadListPlaceholder` iter 1 (gardé en
+            référence dans le fichier pour iter 3+ si besoin d'un mode
+            offline / fallback réseau). */}
+        <ThreadList
+          currentUserId={userId}
           selectedKey={selectedKey}
           onSelect={handleSelectThread}
+          // Fix H5 round 1 review PR #441 — reset selectedKey si thread
+          // purgé backend entre 2 polls (RGPD Art. 17 cascade).
+          onSelectedThreadVanished={handleBackToList}
         />
       </aside>
 
@@ -113,93 +121,7 @@ export function MessagingInbox({ userId: _userId, userRole }: MessagingInboxProp
   )
 }
 
-/* ─── Placeholders iter 1 ───────────────────────────────────────── */
-
-interface ThreadListPlaceholderProps {
-  userRole: "ADMIN" | "DOCTOR" | "NURSE"
-  selectedKey: string | null
-  onSelect: (key: string | null) => void
-}
-
-// Fix CR L11 round 1 review PR #440 — `userId` retiré des props placeholders.
-// Le `userId` reste dans `MessagingInbox` top-level (utilisé par iter 2 fetch
-// via Context). Les placeholders n'en avaient pas besoin.
-function ThreadListPlaceholder({ userRole, selectedKey, onSelect }: ThreadListPlaceholderProps) {
-  const t = useTranslations("messages")
-
-  // Fix B3 round 1 review PR #440 — demo buttons cliquables UNIQUEMENT en
-  // dev/staging (NODE_ENV !== "production"). En prod, on rend un empty-state
-  // honnête "Pas encore de conversation" pour éviter d'exposer aux médecins
-  // des "Conversation démo #1 (placeholder)" si iter 2 retardé/oublié.
-  // Iter 2 retire complètement ce placeholder et branche le fetch réel.
-  const showDemoButtons = process.env.NODE_ENV !== "production"
-
-  // Fix CR M5 round 1 — retirer userId du context placeholder (ID interne
-  // BDD utile à un attaquant pour énumération /api/admin/users/[id]).
-  // On garde uniquement le role pour le contexte dev.
-  return (
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border p-3">
-        <h2
-          id="messaging-thread-list-heading"
-          className="text-base font-medium text-foreground"
-        >
-          {t("threadListTitle")}
-        </h2>
-      </div>
-      <div
-        className="flex-1 overflow-y-auto p-4 text-sm text-muted-foreground"
-        data-testid="thread-list-placeholder"
-      >
-        {showDemoButtons ? (
-          <>
-            <p>{t("foundationPlaceholderList")}</p>
-            {/* iter 2 démo navigation entre threads (sera remplacé par
-                <ThreadList items={...} onSelect={onSelect} />) */}
-            <div className="mt-4 flex flex-col gap-3">
-              <button
-                type="button"
-                onClick={() => onSelect("demo-key-1")}
-                className={cn(
-                  "rounded-md border border-border px-3 py-2 text-start text-sm transition-colors min-h-[44px]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-                  selectedKey === "demo-key-1"
-                    ? "bg-teal-50 text-teal-700 border-teal-300"
-                    : "hover:bg-muted",
-                )}
-                // Fix A11y M2 + FE L3 round 1 review PR #440 —
-                // `aria-current="location"` plus sémantique que "true" pour
-                // un item sélectionné dans une liste (vs "page" pour route).
-                aria-current={selectedKey === "demo-key-1" ? "location" : undefined}
-              >
-                {t("foundationPlaceholderDemoThread", { id: 1 })}
-              </button>
-              <button
-                type="button"
-                onClick={() => onSelect("demo-key-2")}
-                className={cn(
-                  "rounded-md border border-border px-3 py-2 text-start text-sm transition-colors min-h-[44px]",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-                  selectedKey === "demo-key-2"
-                    ? "bg-teal-50 text-teal-700 border-teal-300"
-                    : "hover:bg-muted",
-                )}
-                aria-current={selectedKey === "demo-key-2" ? "location" : undefined}
-              >
-                {t("foundationPlaceholderDemoThread", { id: 2 })}
-              </button>
-            </div>
-            <p className="mt-6 text-xs text-muted-foreground">
-              {t("foundationContextRole", { role: userRole })}
-            </p>
-          </>
-        ) : (
-          <p>{t("emptyStateNoConversation")}</p>
-        )}
-      </div>
-    </div>
-  )
-}
+/* ─── Thread Viewer Placeholder (iter 3 remplacera) ─────────────── */
 
 interface ThreadViewerPlaceholderProps {
   conversationKey: string | null

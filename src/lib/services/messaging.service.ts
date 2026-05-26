@@ -760,6 +760,24 @@ export const messagingService = {
     userId: number,
     ctx: AuditContext,
     limit: number = MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY,
+    /**
+     * Fix H1 round 1 review PR #441 — `trigger` discriminator pour éviter
+     * la pollution audit_logs sur le polling 60s côté UI.
+     *
+     * - `"user"` (default — backward compat) : ouverture inbox par action
+     *   utilisateur explicite → audit per-patient row complet (forensique CNIL
+     *   "qui a accédé aux données du patient X").
+     * - `"poll"` : polling background hook UI → 1 SEUL audit row coalescé
+     *   (kind `message.inbox.poll`) avec threadCount, SANS pivot patientId.
+     *   Réduit 480 entries/j/médecin → 1-2 entries/j (initial fetch + visibility).
+     * - `"visibilitychange"` : refetch post tab-resume → audit "poll" idem
+     *   (acceptable car événement automatique non-attribuable à intent user).
+     *
+     * Volume audit_logs HDS Art. L.1111-8 : 1 médecin × 8h = 480 polls → 1 row
+     * "user" + ~1 row "poll" / fenêtre 10 min via dedup naturel (read = pas
+     * d'actualisation backend pour la même fenêtre = pas de pollution).
+     */
+    trigger: "user" | "poll" | "visibilitychange" = "user",
   ): Promise<ThreadSummary[]> {
     const cappedLimit = Math.min(limit, MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY)
 
@@ -913,12 +931,43 @@ export const messagingService = {
       ...new Set(summaries.map((s) => s.patientId).filter((p): p is number => p !== null)),
     ]
 
+    // Fix H1 round 1 review PR #441 — coalesce audit emission sur trigger
+    // automatique (polling 60s / visibilitychange). Sinon : 1 médecin × 8h
+    // = 480 polls × N patients par inbox = saturation audit_logs HDS.
+    //
+    // - trigger="user" → audit per-patient (forensique CNIL granulaire)
+    // - trigger="poll" ou "visibilitychange" → 1 SEUL row coalescé sans
+    //   pivot patientId (kind="message.inbox.poll"), pas exploitable par
+    //   `getByPatient(X)` mais marque l'activité pour audit ops.
+    const isAutomaticTrigger = trigger === "poll" || trigger === "visibilitychange"
+
     // NEW-H3 CR review round 4 — `Promise.allSettled` au lieu de
     // `Promise.all` pour ne PAS faire échouer l'inbox view sur un audit
     // log fail transient. Les failures sont loggées localement pour SOC.
     // Audit gap est recoverable ; UI 500 ne l'est pas.
     const auditTasks: Array<Promise<unknown>> = []
-    if (exposedPatientIds.length === 0) {
+    if (isAutomaticTrigger) {
+      // Polling / visibilitychange — 1 row coalescé, pas de pivot patient.
+      // Forensique : pour reconstituer "qui a accédé X", chercher les
+      // events kind="message.inbox" (user-triggered) uniquement.
+      auditTasks.push(
+        auditService.log({
+          userId,
+          action: "READ",
+          resource: "MESSAGE",
+          resourceId: "inbox",
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
+          metadata: {
+            kind: "message.inbox.poll",
+            trigger,
+            threadCount: summaries.length,
+            exposedPatientCount: exposedPatientIds.length,
+          },
+        }),
+      )
+    } else if (exposedPatientIds.length === 0) {
       // Inbox vue sans aucun patient pivot (staff-only) — 1 row global.
       auditTasks.push(
         auditService.log({
