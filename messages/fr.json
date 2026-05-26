@@ -67,7 +67,11 @@
     "foundationPlaceholderViewer": "Conversation : {key} — le viewer des messages sera implémenté en iter 3.",
     "foundationPlaceholderEmpty": "Sélectionnez une conversation pour afficher les messages.",
     "foundationPlaceholderDemoThread": "Conversation démo #{id} (placeholder)",
-    "foundationContextUser": "Connecté : user #{userId} ({role})"
+    "foundationContextRole": "Connecté en tant que {role}",
+    "emptyStateNoConversation": "Vous n'avez pas encore de conversation. Vos patients pourront vous contacter via leur application mobile.",
+    "loading": "Chargement de vos conversations...",
+    "loadError": "Impossible de charger la messagerie — réessayez plus tard.",
+    "actionRetry": "Réessayer"
   },
   "auth": {
     "welcome": "Bienvenue sur Diabeo",

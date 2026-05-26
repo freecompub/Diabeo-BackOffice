@@ -25,6 +25,24 @@ import { useCallback, useEffect, useRef, useState } from "react"
 
 const DEFAULT_REFRESH_INTERVAL_MS = 60_000
 
+/**
+ * Fix H8 round 1 review PR #440 — DoS amplification note.
+ *
+ * Le hook est consommé via `<UnreadCountProvider>` UNIQUEMENT depuis
+ * `NavigationShell` (= toutes les pages dashboard). Le Provider passe
+ * `skip={!hasBadgeItem}` pour ne pas fire de fetch si l'utilisateur n'a
+ * AUCUN item nav avec `showUnreadBadge` (ex: variant patient ou role qui
+ * n'a pas accès `/messages`).
+ *
+ * En pratique : seuls NURSE+ déclenchent le polling. Backend `/api/messages/
+ * unread-count` doit néanmoins avoir un rate-limit par user (vérifier
+ * `src/lib/services/messaging.service.ts` `checkAndRecordSendRate` étendu
+ * au `unreadCount` ou un middleware dédié).
+ *
+ * Polling 60s × N NURSE+ connectés simultanés = charge constante. Acceptable
+ * MVP. Long terme : migration SSE / WebSocket scope B (US-2076bis V2).
+ */
+
 export type UnreadCountErrorCode = "gdprConsentRevoked" | "networkError" | "unexpectedError"
 
 export interface UseUnreadCountResult {
@@ -52,6 +70,18 @@ export function useUnreadCount({
   const [isInitialLoading, setIsInitialLoading] = useState<boolean>(!skip)
   const [error, setError] = useState<UnreadCountErrorCode | null>(null)
   const mountedRef = useRef(true)
+  // Fix H1 round 1 review PR #440 — in-flight guard + lastFetchAt debounce.
+  // Évite race fetch double quand tab hidden→visible juste avant un tick
+  // setInterval (visibilitychange + tick déclenchent 2 fetchs < 1s).
+  const inFlightRef = useRef(false)
+  const lastFetchAtRef = useRef(0)
+  // Fix M5 round 1 review PR #440 — pendingOptimisticDelta : compense les
+  // decrements optimistic locaux pendant qu'un fetch en cours peut
+  // retourner un count pré-markRead (latence backend cache).
+  const pendingOptimisticDeltaRef = useRef(0)
+  // Fix CR M4 round 1 review PR #440 — fetchSeq pour ignorer setCount des
+  // fetchs obsolètes (race condition out-of-order responses).
+  const fetchSeqRef = useRef(0)
 
   useEffect(() => {
     mountedRef.current = true
@@ -61,6 +91,11 @@ export function useUnreadCount({
   }, [])
 
   const fetchCount = useCallback(async (): Promise<void> => {
+    // Fix H1 round 1 — guard in-flight (1 fetch simultané max).
+    if (inFlightRef.current) return
+    inFlightRef.current = true
+    const seq = ++fetchSeqRef.current
+    lastFetchAtRef.current = Date.now()
     try {
       const res = await fetch("/api/messages/unread-count", {
         method: "GET",
@@ -68,6 +103,8 @@ export function useUnreadCount({
         cache: "no-store",
         headers: { Accept: "application/json" },
       })
+      // Skip setCount si ce fetch est obsolète (newer fetch parti entretemps).
+      if (seq !== fetchSeqRef.current) return
       if (!res.ok) {
         if (res.status === 401 && typeof window !== "undefined") {
           window.location.href = "/login?expired=1"
@@ -91,58 +128,68 @@ export function useUnreadCount({
         return
       }
       const data = (await res.json()) as { count: number }
+      if (seq !== fetchSeqRef.current) return
       if (mountedRef.current) {
-        setCount(typeof data.count === "number" && data.count >= 0 ? data.count : 0)
+        const rawCount = typeof data.count === "number" && data.count >= 0 ? data.count : 0
+        // Fix M5 round 1 — soustraire le pendingOptimisticDelta (decrement
+        // local appliqué pendant que le fetch était en vol). Si markRead
+        // côté serveur a déjà été propagé, rawCount sera déjà réduit →
+        // delta clamp à 0 max. Reset delta après application.
+        const adjustedCount = Math.max(0, rawCount - pendingOptimisticDeltaRef.current)
+        pendingOptimisticDeltaRef.current = 0
+        setCount(adjustedCount)
         setError(null)
         setIsInitialLoading(false)
       }
     } catch (err) {
-      if (process.env.NODE_ENV !== "production" && err instanceof Error && err.name !== "AbortError") {
+      // Fix CR L8 round 1 — pas d'AbortController utilisé donc le check
+      // err.name !== "AbortError" est dead code. Retiré.
+      if (process.env.NODE_ENV !== "production" && err instanceof Error) {
         console.warn("[useUnreadCount] network error:", err.message)
       }
+      if (seq !== fetchSeqRef.current) return
       if (mountedRef.current) {
         setError("networkError")
         setIsInitialLoading(false)
       }
+    } finally {
+      inFlightRef.current = false
     }
   }, [])
 
   const decrement = useCallback((by: number = 1) => {
     if (!mountedRef.current) return
+    // Fix M5 round 1 — tracker delta pour compenser fetch en cours.
+    pendingOptimisticDeltaRef.current += by
     setCount((prev) => Math.max(0, prev - by))
   }, [])
 
-  // Initial fetch + polling. Pattern cohérent useAppointments :
-  // wrap setInterval pour éviter `react-hooks/set-state-in-effect` —
-  // l'initial fetch est planifié via queueMicrotask (sort du body sync).
+  // Initial fetch + polling. Fix H2 round 1 — retirer queueMicrotask
+  // injustifié (fetchCount est async, setState est déjà déféré post-await).
+  // Pattern aligné useAppointments (`start/stop` fonctionnel direct).
   useEffect(() => {
     if (skip) return
-    let cancelled = false
-    const runInitial = () => {
-      if (!cancelled) void fetchCount()
-    }
-    queueMicrotask(runInitial)
-    if (refreshInterval <= 0) {
-      return () => {
-        cancelled = true
-      }
-    }
+    void fetchCount()
+    if (refreshInterval <= 0) return undefined
     const id = setInterval(() => {
       // Pause polling si tab hidden — économise quotas backend + batterie mobile.
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return
       void fetchCount()
     }, refreshInterval)
     return () => {
-      cancelled = true
       clearInterval(id)
     }
   }, [skip, refreshInterval, fetchCount])
 
-  // Refetch immediate quand tab revient visible (latence acceptable < 1s).
+  // Refetch immediate quand tab revient visible (debounced 5s pour éviter
+  // race avec tick setInterval qui pourrait tomber < 100ms après).
   useEffect(() => {
     if (skip) return
+    const DEBOUNCE_MS = 5_000
     const onVisible = () => {
       if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        // Skip si fetch < 5s (cohérence avec interval pacing).
+        if (Date.now() - lastFetchAtRef.current < DEBOUNCE_MS) return
         void fetchCount()
       }
     }

@@ -67,7 +67,11 @@
     "foundationPlaceholderViewer": "المحادثة: {key} — سيتم إضافة عارض الرسائل في النسخة 3.",
     "foundationPlaceholderEmpty": "اختر محادثة لعرض الرسائل.",
     "foundationPlaceholderDemoThread": "محادثة تجريبية رقم {id} (عنصر نائب)",
-    "foundationContextUser": "متصل: مستخدم رقم {userId} ({role})"
+    "foundationContextRole": "متصل بصفة {role}",
+    "emptyStateNoConversation": "ليس لديك أي محادثة بعد. يمكن لمرضاك التواصل معك عبر تطبيق الجوال.",
+    "loading": "جارٍ تحميل المحادثات...",
+    "loadError": "تعذر تحميل المراسلة — أعد المحاولة لاحقاً.",
+    "actionRetry": "إعادة المحاولة"
   },
   "auth": {
     "welcome": "مرحبا بك في Diabeo",

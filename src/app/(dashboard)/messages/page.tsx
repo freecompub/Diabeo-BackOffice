@@ -53,14 +53,20 @@ export default async function MessagesPage() {
 
   if (!isKnownRoleString(role) || !userIdStr) redirect("/login")
 
+  // Fix M4 + M6 round 1 review PR #440 — regex strict + Number.isSafeInteger
+  // (defense-in-depth — middleware doit déjà valider).
+  if (!/^\d+$/.test(userIdStr)) redirect("/login")
   const userId = Number.parseInt(userIdStr, 10)
-  if (!Number.isInteger(userId) || userId <= 0) redirect("/login")
+  if (!Number.isSafeInteger(userId) || userId <= 0) redirect("/login")
 
   // Defense-in-depth : page messagerie destinée aux pros (NURSE+). VIEWER
   // (patient) a son propre flux inbox dans l'app iOS (UI patient web V2+).
+  // Fix L10 round 1 review PR #440 — `resourceId: "messages-inbox"` (pattern
+  // US-2268 forensique CNIL/ANS) plutôt que `String(userId)` qui est l'ID
+  // de l'attaquant lui-même (déjà capturé dans `userId` field).
   if (role === "VIEWER") {
     await auditService.accessDenied({
-      userId, resource: "MESSAGE", resourceId: String(userId),
+      userId, resource: "MESSAGE", resourceId: "messages-inbox",
       ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
       metadata: { endpoint: "/messages", attemptedRole: role, reason: "viewer_pro_inbox_forbidden" },
     }).catch(() => { /* fire-and-forget */ })
@@ -68,8 +74,20 @@ export default async function MessagesPage() {
   }
 
   // Consent RGPD Art. 9 — messagerie = donnée santé (échange clinique).
+  // Fix M2 round 1 review PR #440 — redirect param est un chemin interne
+  // hardcodé `/messages` (pas user-controlled), donc pas de risque open-
+  // redirect ici. TODO : créer la page `/account/privacy` (route API
+  // existe, UI manquante). En attendant, redirect vers home rôle pour ne
+  // pas atterrir sur un 404 (UX + RGPD Art. 7.3).
   const hasConsent = await requireGdprConsent(userId)
-  if (!hasConsent) redirect("/account/privacy?redirect=/messages")
+  if (!hasConsent) {
+    await auditService.log({
+      userId, action: "READ", resource: "MESSAGE", resourceId: String(userId),
+      ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+      metadata: { kind: "messages.consent_required", endpoint: "/messages" },
+    }).catch(() => { /* fire-and-forget */ })
+    redirect(resolveHomeForRole(role))
+  }
 
   const t = await getTranslations("messages")
 

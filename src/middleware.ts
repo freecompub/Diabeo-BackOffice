@@ -155,12 +155,17 @@ export async function middleware(request: NextRequest) {
     const res = NextResponse.next({ request: { headers: requestHeaders } })
     res.headers.set("x-request-id", requestId)
 
-    // Fix C1 round 1 review PR #438 — Defense-in-depth ANSSI RGS §4.5 +
-    // RGPD Art. 32 + HDS Art. L.1111-8 : pages patient/* contiennent du
-    // SSR HTML avec données médicales (RDV, location, motif). Sans
+    // Fix C1 round 1 review PR #438 + Fix C2 round 1 review PR #440 —
+    // Defense-in-depth ANSSI RGS §4.5 + RGPD Art. 32 + HDS Art. L.1111-8 :
+    // pages patient/* + messages/* contiennent du SSR HTML avec données
+    // médicales (RDV, location, motif, threads, unread counts). Sans
     // no-store, bfcache navigateur + proxy CDN/corporate peuvent retenir
     // le payload après logout sur poste partagé.
-    if (pathname.startsWith("/patient/")) {
+    //
+    // Liste blanche PHI_PATHS — étendre ici quand de nouvelles pages PHI
+    // arrivent (PR #438 patient module + PR #440 messaging).
+    const PHI_PATH_PREFIXES = ["/patient/", "/messages/", "/messages"]
+    if (PHI_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) {
       res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
       res.headers.set("Pragma", "no-cache")
       res.headers.set("Referrer-Policy", "no-referrer")
@@ -215,5 +220,12 @@ export const config = {
     "/events/:path*",
     /** US-2500-UI — Calendrier RDV pro. */
     "/appointments/:path*",
+    /**
+     * Fix B1 round 1 review PR #440 — US-2076-UI iter 1 messagerie pro.
+     * Sans matcher, x-user-* jamais set → page redirect /login systematic.
+     * Aussi : middleware pose Cache-Control no-store via fix C2 (étendu
+     * de /patient/* à /messages/*).
+     */
+    "/messages/:path*",
   ],
 }

@@ -43,7 +43,10 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
-import { useUnreadCount } from "@/components/diabeo/messaging/useUnreadCount"
+import {
+  UnreadCountProvider,
+  useUnreadCountFromContext,
+} from "@/components/diabeo/messaging/UnreadCountContext"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
   Sheet,
@@ -78,6 +81,12 @@ interface NavItem {
    * US-2076-UI iter 1 — affiche un badge dynamique unread count via
    * `useUnreadCount()`. Activé uniquement sur `/messages` pour le moment.
    * Polling 60s + pause sur tab hidden + refetch sur visibilitychange.
+   *
+   * **Single global count (Fix M7 round 1 review PR #440)** : tous les
+   * items avec `showUnreadBadge=true` partagent LA MÊME source
+   * `/api/messages/unread-count`. Si V2 nécessite des badges différents
+   * (ex: notifications cabinet ≠ messages patients), créer un
+   * `useNotificationCount` séparé avec un nouveau Context.
    */
   showUnreadBadge?: boolean
 }
@@ -204,12 +213,20 @@ function SidebarNav({
   onItemClick?: () => void
 }) {
   const t = useTranslations("nav")
+  // Fix M8 round 1 review PR #440 note — `useTranslations("messages")`
+  // scope une lookup mais ne lazy-load PAS le namespace (next-intl charge
+  // tous les namespaces dans le bundle initial via `getMessages()` root
+  // layout). Pas de coût bundle additionnel par utilisation.
   const tMessages = useTranslations("messages")
 
-  // US-2076-UI iter 1 — fetch unread count UNE FOIS pour tout le shell.
-  // Si aucun item n'a `showUnreadBadge`, skip pour éviter fetch inutile.
-  const hasBadgeItem = items.some((it) => it.showUnreadBadge)
-  const { count: unreadCount, error: unreadError } = useUnreadCount({ skip: !hasBadgeItem })
+  // Fix B2 round 1 review PR #440 — consume via Context (mounted UNE FOIS
+  // dans NavigationShell parent). `SidebarNav` est rendu 2× (desktop +
+  // mobile Sheet) ; sans Context = 2 polling timers + désynchro.
+  // Fallback `{ count: 0, error: null }` si Provider absent (tests unit
+  // isolés hors NavigationShell parent).
+  const ctx = useUnreadCountFromContext()
+  const unreadCount = ctx?.count ?? 0
+  const unreadError = ctx?.error ?? null
 
   return (
     <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Menu principal">
@@ -218,10 +235,25 @@ function SidebarNav({
           pathname === item.href || pathname.startsWith(`${item.href}/`)
         const label = t(item.labelKey)
         const showBadge = item.showUnreadBadge && unreadCount > 0 && unreadError !== "gdprConsentRevoked"
+        // Fix M11 round 1 review PR #440 — si consent révoqué, on n'affiche
+        // pas le badge mais l'item reste visible. Pas de marker visuel
+        // additionnel pour ne pas révéler en open-space que l'utilisateur a
+        // refusé le consent (sensible RGPD Art. 9). Feedback côté
+        // /account/privacy uniquement (à créer V1.5 — page UI).
+        // Fix M1 round 1 review PR #440 — cap à 9 max sur l'affichage visuel
+        // pour limiter inférence cliniques (open-space, screen-sharing,
+        // capture journaliste). Au-delà = "9+". Le aria-label reste précis
+        // pour SR (utilisateurs qui ont besoin du count exact pour gérer
+        // leur charge — non visible à l'œil tiers).
+        const badgeDisplay = unreadCount > 9 ? "9+" : String(unreadCount)
         const badgeAriaLabel = showBadge
           ? tMessages("unreadBadgeAria", { count: unreadCount })
           : undefined
 
+        // Fix H4 + H7 round 1 review PR #440 — `aria-label` sur Link
+        // remplace `aria-current="page"` côté SR. On retire aria-label et
+        // on annonce le count via un span `sr-only` SEUL (non-redondant
+        // avec tooltip mode collapsed). aria-current reste exposé.
         const linkEl = (
           <Link
             href={item.href}
@@ -234,17 +266,16 @@ function SidebarNav({
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
             aria-current={isActive ? "page" : undefined}
-            aria-label={showBadge ? `${label} — ${badgeAriaLabel}` : undefined}
           >
             <span className="relative shrink-0">
               <item.icon className="h-5 w-5" aria-hidden="true" />
               {showBadge && collapsed && (
                 // Mode collapsed : badge en overlay sur l'icône (top-right corner).
                 <span
-                  className="absolute -top-1 -end-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white"
+                  className="absolute -top-1 -end-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-semibold leading-none text-white"
                   aria-hidden="true"
                 >
-                  {unreadCount > 99 ? "99+" : unreadCount}
+                  {badgeDisplay}
                 </span>
               )}
             </span>
@@ -254,13 +285,22 @@ function SidebarNav({
                 {showBadge && (
                   // Mode expanded : badge inline à droite.
                   <span
-                    className="ms-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-semibold text-white"
+                    className="ms-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-700 px-1.5 text-xs font-semibold text-white"
                     aria-hidden="true"
                   >
-                    {unreadCount > 99 ? "99+" : unreadCount}
+                    {badgeDisplay}
                   </span>
                 )}
               </>
+            )}
+            {/* Fix H4 PR #440 — SR-only label discriminant single-source.
+                Tooltip mode collapsed annonce le même contenu visuel mais
+                en lecture, on garde UN seul source (sr-only) pour pas
+                double-vocaliser. Le label visible (`<span>{label}</span>`)
+                est lu en mode expanded ; en mode collapsed le linkEl
+                fallback sur cet sr-only. */}
+            {showBadge && (
+              <span className="sr-only">{badgeAriaLabel}</span>
             )}
           </Link>
         )
@@ -270,7 +310,10 @@ function SidebarNav({
             <Tooltip key={item.href}>
               <TooltipTrigger className="w-full">{linkEl}</TooltipTrigger>
               <TooltipContent side="inline-end">
-                <p>{showBadge ? `${label} — ${badgeAriaLabel}` : label}</p>
+                {/* Fix H4 PR #440 — Tooltip visuel uniquement (aria-hidden).
+                    SR lit le label via icon-context + sr-only `<span>` du
+                    Link parent (single-source — pas de double-annonce). */}
+                <p aria-hidden="true">{showBadge ? `${label} — ${badgeDisplay}` : label}</p>
               </TooltipContent>
             </Tooltip>
           )
@@ -355,6 +398,11 @@ export function NavigationShell({
         : item,
     )
 
+  // Fix B2 round 1 review PR #440 — Skip `useUnreadCount` si aucun item
+  // visible n'a `showUnreadBadge=true` (économise un fetch /api/messages/
+  // unread-count sur tous les rôles qui n'ont pas accès à /messages).
+  const hasBadgeItem = filteredItems.some((it) => it.showUnreadBadge)
+
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
   const initials = userName
@@ -367,6 +415,7 @@ export function NavigationShell({
     : "U"
 
   return (
+    <UnreadCountProvider skip={!hasBadgeItem}>
     <TooltipProvider delay={300}>
       <div className="flex h-screen overflow-hidden bg-[var(--background)]">
         {/* Desktop sidebar */}
@@ -559,6 +608,7 @@ export function NavigationShell({
         </div>
       </div>
     </TooltipProvider>
+    </UnreadCountProvider>
   )
 }
 

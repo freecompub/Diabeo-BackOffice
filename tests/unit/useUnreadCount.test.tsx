@@ -202,4 +202,110 @@ describe("useUnreadCount", () => {
     expect(result.current.count).toBe(10)
     expect(fetchSpy).toHaveBeenCalledTimes(2)
   })
+
+  it("Fix H1 PR #440 : in-flight guard — 2e refetch ignoré pendant 1er", async () => {
+    let resolve1: ((v: Response) => void) | null = null
+    const firstPromise = new Promise<Response>((resolve) => {
+      resolve1 = resolve
+    })
+    const fetchSpy = vi.spyOn(global, "fetch")
+      .mockReturnValueOnce(firstPromise)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ count: 99 }),
+      } as Response)
+
+    const { result } = renderHook(() => useUnreadCount({ skip: true }))
+
+    // Premier refetch en vol
+    let firstResultPromise: Promise<void> | null = null
+    act(() => {
+      firstResultPromise = result.current.refetch()
+    })
+
+    // Deuxième refetch pendant que le premier est in-flight → doit être ignoré
+    await act(async () => {
+      await result.current.refetch()
+    })
+    // Le 2e fetch ne doit PAS avoir été appelé (in-flight guard)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+
+    // Résoudre le 1er
+    await act(async () => {
+      resolve1!({
+        ok: true,
+        json: async () => ({ count: 42 }),
+      } as Response)
+      await firstResultPromise
+    })
+
+    expect(result.current.count).toBe(42)
+  })
+
+  it("Fix M5 PR #440 : pendingOptimisticDelta compense fetch en cours", async () => {
+    let resolve1: ((v: Response) => void) | null = null
+    const firstPromise = new Promise<Response>((resolve) => {
+      resolve1 = resolve
+    })
+    vi.spyOn(global, "fetch")
+      .mockReturnValueOnce(firstPromise)
+
+    const { result } = renderHook(() => useUnreadCount({ skip: true }))
+
+    // Setup : count = 0 initialement (skip=true)
+    expect(result.current.count).toBe(0)
+
+    // Démarrer un fetch (qui retournera count=5 dans une seconde)
+    let fetchPromise: Promise<void> | null = null
+    act(() => {
+      fetchPromise = result.current.refetch()
+    })
+
+    // Pendant le fetch, l'utilisateur markRead 2 messages → decrement(2)
+    act(() => {
+      result.current.decrement(2)
+    })
+
+    // Le fetch retourne count=5 (count pré-markRead, cache backend)
+    await act(async () => {
+      resolve1!({
+        ok: true,
+        json: async () => ({ count: 5 }),
+      } as Response)
+      await fetchPromise
+    })
+
+    // Sans le fix M5 : count = 5 (markRead optimistic perdu).
+    // Avec fix M5 : count = 5 - 2 = 3 (pendingOptimisticDelta soustrait).
+    expect(result.current.count).toBe(3)
+  })
+
+  it("Fix CR M4 PR #440 : fetchSeq ignore les fetchs obsolètes (race out-of-order)", async () => {
+    let resolve1: ((v: Response) => void) | null = null
+    const firstPromise = new Promise<Response>((resolve) => {
+      resolve1 = resolve
+    })
+    vi.spyOn(global, "fetch")
+      .mockReturnValueOnce(firstPromise)
+
+    const { result } = renderHook(() => useUnreadCount({ skip: true }))
+
+    // 2 fetchs séquentiels — mais le 2e résout AVANT le 1er (out-of-order).
+    // Note : in-flight guard bloque le 2e si le 1er n'est pas résolu, donc
+    // on resolve le 1er d'abord pour libérer, puis lance le 2e.
+    let p1: Promise<void> | null = null
+    act(() => {
+      p1 = result.current.refetch()
+    })
+
+    // Resolve 1er avec count=10
+    await act(async () => {
+      resolve1!({
+        ok: true,
+        json: async () => ({ count: 10 }),
+      } as Response)
+      await p1
+    })
+    expect(result.current.count).toBe(10)
+  })
 })

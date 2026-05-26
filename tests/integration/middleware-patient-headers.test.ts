@@ -22,8 +22,12 @@ const MIDDLEWARE_SOURCE = readFileSync(
 )
 
 describe("Fix C1 PR #438 — middleware /patient/* security headers (source-level)", () => {
-  it("contient le branch `pathname.startsWith('/patient/')`", () => {
-    expect(MIDDLEWARE_SOURCE).toMatch(/pathname\.startsWith\(\s*["']\/patient\/["']\s*\)/)
+  it("contient le branch `/patient/` (via PHI_PATH_PREFIXES après fix C2 PR #440)", () => {
+    // Fix C2 PR #440 a refactoré la condition en `PHI_PATH_PREFIXES.some(...)`
+    // qui couvre `/patient/` ET `/messages` (extensible). Test source-level
+    // que `/patient/` est toujours dans la liste blanche.
+    expect(MIDDLEWARE_SOURCE).toMatch(/PHI_PATH_PREFIXES/)
+    expect(MIDDLEWARE_SOURCE).toMatch(/["']\/patient\/["']/)
   })
 
   it("set Cache-Control no-store dans le branch patient", () => {
