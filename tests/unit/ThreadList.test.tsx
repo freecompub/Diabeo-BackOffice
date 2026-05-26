@@ -195,7 +195,9 @@ describe("ThreadList (iter 2)", () => {
         .find((b) => b.className.includes("min-h-[64px]"))
       expect(itemButton).toBeTruthy()
       fireEvent.click(itemButton!)
-      expect(onSelect).toHaveBeenCalledWith("click-me")
+      // Fix C6 round 1 review PR #443 — onSelect prop now signature
+      // (key, toUserId) — toUserId vient de item.otherUserId (= 7 from makeThread).
+      expect(onSelect).toHaveBeenCalledWith("click-me", 7)
     })
   })
 

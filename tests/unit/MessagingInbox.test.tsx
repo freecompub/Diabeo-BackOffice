@@ -29,8 +29,7 @@ vi.mock("next-intl", () => ({
   useLocale: () => "fr",
 }))
 
-// Mock ThreadList pour isoler les tests shell de la logique fetch.
-// Permet de simuler onSelect sans backend.
+// Mock ThreadList + ThreadViewer pour isoler les tests shell de la logique fetch.
 vi.mock("@/components/diabeo/messaging/ThreadList", () => ({
   ThreadList: ({
     currentUserId,
@@ -39,17 +38,39 @@ vi.mock("@/components/diabeo/messaging/ThreadList", () => ({
   }: {
     currentUserId: number
     selectedKey: string | null
-    onSelect: (key: string) => void
+    onSelect: (key: string, toUserId: number | null) => void
   }) => (
     <div data-testid="mocked-thread-list">
       <span data-testid="current-user-id">{currentUserId}</span>
       <span data-testid="selected-key">{selectedKey ?? "none"}</span>
-      <button type="button" onClick={() => onSelect("thread-key-1")}>
+      <button type="button" onClick={() => onSelect("thread-key-1", 7)}>
         select-thread-1
       </button>
-      <button type="button" onClick={() => onSelect("thread-key-2")}>
+      <button type="button" onClick={() => onSelect("thread-key-2", 8)}>
         select-thread-2
       </button>
+    </div>
+  ),
+}))
+
+vi.mock("@/components/diabeo/messaging/ThreadViewer", () => ({
+  ThreadViewer: ({
+    conversationKey,
+    currentUserId,
+    toUserId,
+  }: {
+    conversationKey: string | null
+    currentUserId: number
+    toUserId?: number | null
+  }) => (
+    <div data-testid="mocked-thread-viewer">
+      {conversationKey === null ? (
+        <span data-testid="thread-viewer-empty">no-thread</span>
+      ) : (
+        <span data-testid="thread-viewer-placeholder">
+          viewer-key:{conversationKey}|user:{currentUserId}|to:{toUserId ?? "none"}
+        </span>
+      )}
     </div>
   ),
 }))
@@ -73,18 +94,19 @@ describe("MessagingInbox (iter 2 — ThreadList wired)", () => {
     expect(screen.getByTestId("current-user-id").textContent).toBe("42")
   })
 
-  it("initial state : selectedKey null → viewer empty placeholder", () => {
+  it("initial state : selectedKey null → viewer empty", () => {
     render(<MessagingInbox userId={42} userRole="DOCTOR" />)
-    expect(screen.getByText("foundationPlaceholderEmpty")).toBeTruthy()
+    expect(screen.getByTestId("thread-viewer-empty")).toBeTruthy()
     expect(screen.queryByTestId("thread-viewer-placeholder")).toBeNull()
     expect(screen.getByTestId("selected-key").textContent).toBe("none")
   })
 
-  it("clic thread #1 dans ThreadList → propage selectedKey → viewer affiche placeholder", () => {
+  it("clic thread #1 dans ThreadList → propage selectedKey → viewer affiche message", () => {
     render(<MessagingInbox userId={42} userRole="DOCTOR" />)
     fireEvent.click(screen.getByText("select-thread-1"))
     const viewer = screen.getByTestId("thread-viewer-placeholder")
-    expect(viewer.textContent).toContain("foundationPlaceholderViewer:thread-key-1")
+    expect(viewer.textContent).toContain("viewer-key:thread-key-1")
+    expect(viewer.textContent).toContain("user:42")
     expect(screen.getByTestId("selected-key").textContent).toBe("thread-key-1")
   })
 
@@ -101,7 +123,7 @@ describe("MessagingInbox (iter 2 — ThreadList wired)", () => {
     expect(screen.getByTestId("thread-viewer-placeholder")).toBeTruthy()
     fireEvent.click(screen.getByRole("button", { name: "backToList" }))
     expect(screen.queryByTestId("thread-viewer-placeholder")).toBeNull()
-    expect(screen.getByText("foundationPlaceholderEmpty")).toBeTruthy()
+    expect(screen.getByTestId("thread-viewer-empty")).toBeTruthy()
     expect(screen.getByTestId("selected-key").textContent).toBe("none")
   })
 

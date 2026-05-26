@@ -1051,6 +1051,17 @@ export const messagingService = {
     conversationKey: string,
     opts: { cursor?: string; limit?: number },
     ctx: AuditContext,
+    /**
+     * Fix H8 round 1 review PR #443 — `trigger` discriminator pour audit
+     * coalescing polling 30s côté UI. Cohérence avec listThreads iter 2
+     * PR #441 (X-Inbox-Trigger).
+     *
+     * - `"user"` (default) : action user explicite → audit per-thread complet
+     *   (forensique CNIL "qui a accédé aux messages COMPLETS de X")
+     * - `"poll"` / `"visibilitychange"` : automatic background → audit
+     *   row coalescé `kind="message.thread.poll"` SANS pivot patient
+     */
+    trigger: "user" | "poll" | "visibilitychange" = "user",
   ): Promise<{ items: ThreadMessage[]; nextCursor: string | null }> {
     // 1. Validation conversation key shape.
     if (
@@ -1189,6 +1200,17 @@ export const messagingService = {
 
     // Audit (lecture thread) — H1 review : `metadata.patientId` pivot
     //   US-2268 obligatoire pour forensique CNIL `getByPatient(X)`.
+    //
+    // Fix H8 round 1 review PR #443 — coalesce audit emission si trigger
+    // automatique (polling 30s / visibilitychange). Sinon 1 médecin × 8h
+    // × thread ouvert = 960 audit rows par thread sat audit_logs HDS.
+    //
+    // - trigger="user" → audit per-thread avec pivot patientId (forensique
+    //   CNIL granulaire "qui a accédé aux messages COMPLETS de X")
+    // - trigger="poll" / "visibilitychange" → 1 row coalescé SANS pivot
+    //   (kind="message.thread.poll") — pas exploitable par `getByPatient(X)`
+    //   mais marque l'activité polling pour audit ops.
+    const isAutomaticTrigger = trigger === "poll" || trigger === "visibilitychange"
     await auditService.log({
       userId,
       action: "READ",
@@ -1197,11 +1219,18 @@ export const messagingService = {
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
-      metadata: {
-        kind: "message.thread",
-        messageCount: items.length,
-        ...(probe.patientId != null && { patientId: probe.patientId }),
-      },
+      metadata: isAutomaticTrigger
+        ? {
+            kind: "message.thread.poll",
+            trigger,
+            messageCount: items.length,
+            // PAS de pivot patientId (anti-forensique pollution).
+          }
+        : {
+            kind: "message.thread",
+            messageCount: items.length,
+            ...(probe.patientId != null && { patientId: probe.patientId }),
+          },
     })
 
     return {

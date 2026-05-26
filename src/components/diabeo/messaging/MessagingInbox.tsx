@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { ThreadList } from "./ThreadList"
+import { ThreadViewer } from "./ThreadViewer"
 
 export interface MessagingInboxProps {
   /**
@@ -51,13 +52,19 @@ export interface MessagingInboxProps {
 export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxProps) {
   const t = useTranslations("messages")
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  // Fix C6 round 1 review PR #443 — track toUserId du thread sélectionné
+  // (résolu depuis ThreadSummary.otherUserId par ThreadList) → passé à
+  // ThreadViewer pour permettre composer même si messages.length === 0.
+  const [selectedToUserId, setSelectedToUserId] = useState<number | null>(null)
 
-  const handleSelectThread = useCallback((key: string) => {
+  const handleSelectThread = useCallback((key: string, toUserId: number | null) => {
     setSelectedKey(key)
+    setSelectedToUserId(toUserId)
   }, [])
 
   const handleBackToList = useCallback(() => {
     setSelectedKey(null)
+    setSelectedToUserId(null)
   }, [])
 
   return (
@@ -115,29 +122,19 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
             </Button>
           </div>
         )}
-        <ThreadViewerPlaceholder conversationKey={selectedKey} />
+        {/* US-2076-UI iter 3 — ThreadViewer wire fetch /api/messages/thread/[key]
+            + composer optimistic + read receipts auto-mark on scroll.
+            `key={selectedKey}` force re-mount au changement de thread →
+            tout state local (optimistic/composer/error) reset automatique
+            (vs useEffect setState patterns flaggés react-hooks/set-state-in-effect). */}
+        <ThreadViewer
+          key={selectedKey ?? "__no-thread__"}
+          conversationKey={selectedKey}
+          currentUserId={userId}
+          toUserId={selectedToUserId}
+        />
       </section>
     </div>
   )
 }
 
-/* ─── Thread Viewer Placeholder (iter 3 remplacera) ─────────────── */
-
-interface ThreadViewerPlaceholderProps {
-  conversationKey: string | null
-}
-
-function ThreadViewerPlaceholder({ conversationKey }: ThreadViewerPlaceholderProps) {
-  const t = useTranslations("messages")
-  return (
-    <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-      {conversationKey === null ? (
-        <p>{t("foundationPlaceholderEmpty")}</p>
-      ) : (
-        <p data-testid="thread-viewer-placeholder">
-          {t("foundationPlaceholderViewer", { key: conversationKey })}
-        </p>
-      )}
-    </div>
-  )
-}
