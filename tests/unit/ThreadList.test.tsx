@@ -201,6 +201,43 @@ describe("ThreadList (iter 2)", () => {
     })
   })
 
+  describe("iter 4 new thread button", () => {
+    it("button '+ Nouveau' visible si onNewThread prop fourni", () => {
+      vi.spyOn(useMessageThreadsModule, "useMessageThreads").mockReturnValue({
+        threads: [],
+        isInitialLoading: false,
+        error: null,
+        refetch: vi.fn(),
+        lastFetchedAt: new Date(),
+      })
+      const onNewThread = vi.fn()
+      render(
+        <ThreadList
+          currentUserId={1}
+          selectedKey={null}
+          onSelect={vi.fn()}
+          onNewThread={onNewThread}
+        />,
+      )
+      const btn = screen.getByRole("button", { name: "newThreadButtonAria" })
+      expect(btn).toBeTruthy()
+      fireEvent.click(btn)
+      expect(onNewThread).toHaveBeenCalledTimes(1)
+    })
+
+    it("button '+ Nouveau' caché si onNewThread prop absent", () => {
+      vi.spyOn(useMessageThreadsModule, "useMessageThreads").mockReturnValue({
+        threads: [],
+        isInitialLoading: false,
+        error: null,
+        refetch: vi.fn(),
+        lastFetchedAt: new Date(),
+      })
+      render(<ThreadList currentUserId={1} selectedKey={null} onSelect={vi.fn()} />)
+      expect(screen.queryByRole("button", { name: "newThreadButtonAria" })).toBeNull()
+    })
+  })
+
   describe("filter Tous / Non lus", () => {
     it("filtre 'Non lus' aria-pressed=true quand actif", () => {
       renderList([makeThread()])

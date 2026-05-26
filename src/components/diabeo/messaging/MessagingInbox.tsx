@@ -38,6 +38,9 @@ import { Button } from "@/components/ui/button"
 import { ArrowLeft } from "lucide-react"
 import { ThreadList } from "./ThreadList"
 import { ThreadViewer } from "./ThreadViewer"
+import { NewThreadModal } from "./NewThreadModal"
+import { useMessagingPush } from "./useMessagingPush"
+import { useUnreadCountFromContext } from "./UnreadCountContext"
 
 export interface MessagingInboxProps {
   /**
@@ -56,6 +59,8 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
   // (résolu depuis ThreadSummary.otherUserId par ThreadList) → passé à
   // ThreadViewer pour permettre composer même si messages.length === 0.
   const [selectedToUserId, setSelectedToUserId] = useState<number | null>(null)
+  // US-2076-UI iter 4 — modal "+ Nouveau message" open state.
+  const [newThreadModalOpen, setNewThreadModalOpen] = useState<boolean>(false)
 
   const handleSelectThread = useCallback((key: string, toUserId: number | null) => {
     setSelectedKey(key)
@@ -66,6 +71,34 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
     setSelectedKey(null)
     setSelectedToUserId(null)
   }, [])
+
+  // US-2076-UI iter 4 — post-send : select le nouveau thread (le backend
+  // retourne conversationKey dans dto). UI bascule immédiatement vers le
+  // ThreadViewer du nouveau thread + ThreadList se rafraîchira au prochain
+  // polling tick (60s) ou via FCM push consume (iter 4b).
+  const handleNewThreadMessageSent = useCallback(
+    (conversationKey: string, toUserId: number) => {
+      setSelectedKey(conversationKey)
+      setSelectedToUserId(toUserId)
+    },
+    [],
+  )
+
+  const handleOpenNewThread = useCallback(() => setNewThreadModalOpen(true), [])
+  const handleCloseNewThread = useCallback(() => setNewThreadModalOpen(false), [])
+
+  // US-2076-UI iter 4 — FCM push consume. Quand un push `message_received`
+  // arrive (data-only, sans PHI lockscreen), on refetch le badge unread
+  // sidebar (Context iter 1) — la liste threads + viewer se mettent à jour
+  // au prochain polling tick (30s/60s). Latence push réduite vs polling pur.
+  const unreadCtx = useUnreadCountFromContext()
+  useMessagingPush({
+    onMessageReceived: useCallback(() => {
+      // Refetch immédiat du badge — l'utilisateur voit le compteur bump
+      // < 1s après push reçu (vs 60s polling worst case).
+      void unreadCtx?.refetch()
+    }, [unreadCtx]),
+  })
 
   return (
     <div className="flex h-full overflow-hidden">
@@ -93,6 +126,9 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
           // Fix H5 round 1 review PR #441 — reset selectedKey si thread
           // purgé backend entre 2 polls (RGPD Art. 17 cascade).
           onSelectedThreadVanished={handleBackToList}
+          // US-2076-UI iter 4 — button "+ Nouveau message" dans header
+          // ThreadList → ouvre NewThreadModal.
+          onNewThread={handleOpenNewThread}
         />
       </aside>
 
@@ -134,6 +170,15 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
           toUserId={selectedToUserId}
         />
       </section>
+
+      {/* US-2076-UI iter 4 — modal "+ Nouveau message" mounted hors layout
+          2-col (Dialog portal-rendered). Open state piloté par button
+          ThreadList header. */}
+      <NewThreadModal
+        open={newThreadModalOpen}
+        onClose={handleCloseNewThread}
+        onMessageSent={handleNewThreadMessageSent}
+      />
     </div>
   )
 }
