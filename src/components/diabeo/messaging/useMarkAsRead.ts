@@ -29,6 +29,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { logHookError } from "@/lib/ui/sanitize-error"
 
 export type MarkAsReadErrorCode = "notFound" | "networkError" | "unexpectedError"
 
@@ -46,6 +47,12 @@ export interface UseMarkAsReadResult {
   reset: () => void
 }
 
+/**
+ * Fix M1 round 1 review PR #443 — LRU cap pour éviter memory leak sur
+ * sessions longues (poste kiosk hôpital). 500 ids = ~30KB heap.
+ */
+const MARKED_IDS_LRU_CAP = 500
+
 export function useMarkAsRead(): UseMarkAsReadResult {
   const [loading, setLoading] = useState<boolean>(false)
   const [error, setError] = useState<MarkAsReadErrorCode | null>(null)
@@ -53,7 +60,17 @@ export function useMarkAsRead(): UseMarkAsReadResult {
   // Track in-flight messageIds pour dedup (queue auto-mark on scroll).
   const inFlightIdsRef = useRef<Set<string>>(new Set())
   // Track déjà-marqué pour ne pas re-poster (cache local idempotence).
+  // Fix M1 round 1 review PR #443 — LRU cap (eviction first-inserted).
   const markedIdsRef = useRef<Set<string>>(new Set())
+
+  function addMarkedId(id: string): void {
+    if (markedIdsRef.current.size >= MARKED_IDS_LRU_CAP) {
+      // Évict le plus ancien (Set préserve l'ordre d'insertion).
+      const oldest = markedIdsRef.current.values().next().value
+      if (oldest !== undefined) markedIdsRef.current.delete(oldest)
+    }
+    markedIdsRef.current.add(id)
+  }
 
   useEffect(() => {
     mountedRef.current = true
@@ -95,7 +112,7 @@ export function useMarkAsRead(): UseMarkAsReadResult {
           }
           if (res.status === 409) {
             // Déjà lu — idempotent success.
-            markedIdsRef.current.add(messageId)
+            addMarkedId(messageId)
             return { ok: true }
           }
           if (res.status === 404) {
@@ -105,13 +122,12 @@ export function useMarkAsRead(): UseMarkAsReadResult {
           if (mountedRef.current) setError("unexpectedError")
           return { ok: false, code: "unexpectedError" }
         }
-        markedIdsRef.current.add(messageId)
+        addMarkedId(messageId)
         if (mountedRef.current) setError(null)
         return { ok: true }
       } catch (err) {
-        if (process.env.NODE_ENV !== "production" && err instanceof Error) {
-          console.warn("[useMarkAsRead] network error:", err.message)
-        }
+        // Fix H7 round 1 review PR #443 — helper centralisé sanitize PII.
+        logHookError("useMarkAsRead", err)
         if (mountedRef.current) setError("networkError")
         return { ok: false, code: "networkError" }
       } finally {

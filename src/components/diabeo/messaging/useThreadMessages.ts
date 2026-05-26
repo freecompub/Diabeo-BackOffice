@@ -31,6 +31,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import { usePolling, type PollingTrigger } from "@/hooks/usePolling"
+import { logHookError } from "@/lib/ui/sanitize-error"
 
 /**
  * ThreadMessage tel qu'exposé par `/api/messages/thread/[key]` GET.
@@ -186,9 +187,8 @@ export function useThreadMessages({
           setLastFetchedAt(new Date())
         }
       } catch (err) {
-        if (process.env.NODE_ENV !== "production" && err instanceof Error) {
-          console.warn("[useThreadMessages] network error:", err.message)
-        }
+        // Fix H7 round 1 review PR #443 — helper centralisé sanitize PII.
+        logHookError("useThreadMessages", err)
         if (seq !== fetchSeqRef.current) return
         if (mountedRef.current) {
           setError("networkError")

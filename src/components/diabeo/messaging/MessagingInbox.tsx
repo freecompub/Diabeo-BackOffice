@@ -52,13 +52,19 @@ export interface MessagingInboxProps {
 export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxProps) {
   const t = useTranslations("messages")
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
+  // Fix C6 round 1 review PR #443 — track toUserId du thread sélectionné
+  // (résolu depuis ThreadSummary.otherUserId par ThreadList) → passé à
+  // ThreadViewer pour permettre composer même si messages.length === 0.
+  const [selectedToUserId, setSelectedToUserId] = useState<number | null>(null)
 
-  const handleSelectThread = useCallback((key: string) => {
+  const handleSelectThread = useCallback((key: string, toUserId: number | null) => {
     setSelectedKey(key)
+    setSelectedToUserId(toUserId)
   }, [])
 
   const handleBackToList = useCallback(() => {
     setSelectedKey(null)
+    setSelectedToUserId(null)
   }, [])
 
   return (
@@ -125,6 +131,7 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
           key={selectedKey ?? "__no-thread__"}
           conversationKey={selectedKey}
           currentUserId={userId}
+          toUserId={selectedToUserId}
         />
       </section>
     </div>

@@ -27,6 +27,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { logHookError } from "@/lib/ui/sanitize-error"
 
 export interface SendMessageInput {
   toUserId: number
@@ -144,9 +145,8 @@ export function useSendMessage(): UseSendMessageResult {
         const data = (await res.json()) as { message: SendMessageResult }
         return { ok: true, data: data.message }
       } catch (err) {
-        if (process.env.NODE_ENV !== "production" && err instanceof Error) {
-          console.warn("[useSendMessage] network error:", err.message)
-        }
+        // Fix H7 round 1 review PR #443 — helper centralisé sanitize PII.
+        logHookError("useSendMessage", err)
         if (mountedRef.current) setError("networkError")
         return { ok: false, code: "networkError" }
       } finally {

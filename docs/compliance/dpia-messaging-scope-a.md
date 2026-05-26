@@ -157,3 +157,62 @@ Volume estimé : 1 médecin × 8h connecté = 480 polls → 1 row `inbox` (user)
 - [ ] Rate-limit GET `/api/messages` côté backend (cap Redis 30 req/min/user)
 - [ ] Documentation runbook Ops sur volume audit_logs attendu (post-coalescing)
 - [ ] Test EXPLAIN ANALYZE dataset 100K messages confirm perf listThreads avec trigger param
+
+## 8. UI iter 3 — Thread viewer + composer + read receipts (PR #443)
+
+### 8.1 Surface UI exposée
+
+`ThreadViewer` (PR #443) — viewer messages COMPLETS déchiffrés (vs preview 80c iter 2) :
+
+- Messages body **complets** (jusqu'à 8164 octets UTF-8 par message) déchiffrés côté backend, transmis JSON, affichés dans bubbles `bg-teal-700` / `bg-slate-100`
+- Composer textarea + cap 8164 octets UTF-8 (defense-in-depth backend re-check)
+- Cursor pagination loadMore (messages anciens, 50/page backend)
+- Polling 30s `useThreadMessages` (vs 60s threads list `useMessageThreads`)
+- Auto-mark on scroll via IntersectionObserver
+
+### 8.2 Risques identifiés et mitigations
+
+| Risque | Mitigation iter 3 | Statut |
+|---|---|---|
+| `readAt` acte clinique opposable (RGPD Art. 4(11) + CSP Art. R.4127-32) | `threshold: 1.0` (vs 0.5) + `dwell time: 1500ms` minimum visible avant trigger | ✓ Fix C1 PR #443 |
+| Memory PHI plaintext non wipée au unmount | `key={selectedKey}` parent force re-mount → state local clear auto | ✓ Iter 1 pattern |
+| PHI dans `console.warn` dev mode (echo backend "Invalid: john@x.com") | Helper `sanitizeError` + `logHookError` scrub email/phone/NIRPP | ✓ Fix H7 PR #443 |
+| Audit pollution polling 30s `getThread` | `X-Thread-Trigger` header + coalesce row si trigger="poll" (cohérent X-Inbox-Trigger iter 2) | ✓ Fix H8 PR #443 |
+| Composer texte clinique → API spell-check tiers (Chrome→Google) | `autocomplete="off" spellcheck="false" data-1p-ignore data-lpignore="true"` | ✓ Fix M4 PR #443 |
+| Auto-mark `readAt` sans contexte CGU pro | DPIA documente sémantique "vu, ≠ traité cliniquement" | ⏳ DPO sign-off + CGU clarification |
+| Rate-limit GET `/api/messages/thread` non enforced | V1.5 — Redis cap 100 req/min/user (cohérent listThreads) | ⏳ V1.5 |
+| Mémoire client-side wipe au logout | V1.5 — `window.location.replace()` force full-page nav (vs router.push) | ⏳ V1.5 |
+
+### 8.3 Sémantique `readAt` — DPO decision required
+
+**`readAt` est un acte clinique opposable** :
+- Patient peut prouver "le médecin a vu mon message à 14:32" via `readAt` exposé
+- Médecin = responsable Art. R.4127-32 CSP (devoir d'assistance)
+- Si signalement hypo nocturne marqué `readAt` mais médecin n'a pas agi → litige
+
+**Mitigations iter 3** :
+- IntersectionObserver `threshold: 1.0` (message ENTIÈREMENT visible)
+- Dwell time 1500ms minimum avant trigger
+- Auto-mark UNIQUEMENT messages reçus non-lus (`data-mark-on-view`)
+
+**CGU pro à compléter** (bloqueur pre-prod patients réels) :
+- "Le statut 'lu' indique que le message a été affiché à l'écran du professionnel ≥ 1.5s. Il ne préjuge pas de la prise en compte clinique du contenu."
+- "Pour toute urgence vitale, contactez le SAMU 15 — la messagerie n'est pas un canal d'urgence."
+
+### 8.4 Audit coalescing iter 3 trigger
+
+PR #443 introduit `trigger` parameter à `getThread()` + header `X-Thread-Trigger` (cohérent iter 2 `X-Inbox-Trigger`) :
+- `user` — ouverture thread par action explicite → audit per-thread row complet avec pivot `metadata.patientId` (forensique CNIL granulaire "qui a accédé aux messages COMPLETS de X")
+- `poll` — polling 30s background → 1 row coalescé `kind="message.thread.poll"` SANS pivot
+- `visibilitychange` — refetch post tab-resume → idem `poll`
+
+Forensique CNIL : pour reconstituer "qui a accédé aux messages complets de patient X", chercher `kind: "message.thread"` (user-triggered) UNIQUEMENT. Volume estimé : 1 médecin × 8h thread ouvert = ~1 row "user" + ~16 rows "poll" / fenêtre 10 min (réduction ~95% vs ancien per-thread audit).
+
+### 8.5 Conditions GO prod patients réels (iter 3 additionnelles)
+
+- [ ] DPO sign-off sémantique `readAt` "vu ≠ traité cliniquement"
+- [ ] CGU pro mention IntersectionObserver auto-mark (clause "non préjuge")
+- [ ] V1.5 : full-page nav logout (`window.location.replace`) pour wipe heap
+- [ ] V1.5 : rate-limit GET `/api/messages/thread` Redis 100 req/min/user
+- [ ] V1.5 : decision préférence user "masquer previews" (mode discret open-space)
+- [ ] Test E2E Playwright : IntersectionObserver threshold 1.0 + dwell time validé navigateurs réels

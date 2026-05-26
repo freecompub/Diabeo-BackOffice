@@ -54,8 +54,13 @@ export interface ThreadListProps {
   currentUserId: number
   /** ConversationKey du thread courant ouvert (null = aucun). */
   selectedKey: string | null
-  /** Callback lors de la sélection d'un thread. */
-  onSelect: (key: string) => void
+  /**
+   * Callback lors de la sélection d'un thread.
+   * Fix C6 round 1 review PR #443 — `toUserId` propagé pour permettre au
+   * parent (MessagingInbox) de le passer à ThreadViewer composer (thread
+   * vide sendable).
+   */
+  onSelect: (key: string, toUserId: number | null) => void
   /**
    * Fix H5 round 1 review PR #441 — callback appelé si le thread sélectionné
    * disparaît du fetch (RGPD Art. 17 cascade, expiration). Le parent reset
@@ -352,7 +357,7 @@ interface ThreadItemProps {
   locale: Locale
   isSelected: boolean
   currentUserId: number
-  onSelect: (key: string) => void
+  onSelect: (key: string, toUserId: number | null) => void
   /** Fix M5 round 1 review PR #441 — labels en props (hoist depuis parent). */
   labelPreviewMe: string
   labelUnreadAria: (count: number) => string
@@ -393,7 +398,7 @@ const ThreadItem = memo(function ThreadItem({
     <li role="listitem">
       <button
         type="button"
-        onClick={() => onSelect(item.conversationKey)}
+        onClick={() => onSelect(item.conversationKey, item.otherUserId)}
         aria-current={isSelected ? "location" : undefined}
         // Fix A11y PR #440 pattern — pas d'aria-label discriminant qui
         // remplace le contenu visible. Le SR lit naturellement le contenu

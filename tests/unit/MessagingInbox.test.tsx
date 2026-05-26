@@ -38,15 +38,15 @@ vi.mock("@/components/diabeo/messaging/ThreadList", () => ({
   }: {
     currentUserId: number
     selectedKey: string | null
-    onSelect: (key: string) => void
+    onSelect: (key: string, toUserId: number | null) => void
   }) => (
     <div data-testid="mocked-thread-list">
       <span data-testid="current-user-id">{currentUserId}</span>
       <span data-testid="selected-key">{selectedKey ?? "none"}</span>
-      <button type="button" onClick={() => onSelect("thread-key-1")}>
+      <button type="button" onClick={() => onSelect("thread-key-1", 7)}>
         select-thread-1
       </button>
-      <button type="button" onClick={() => onSelect("thread-key-2")}>
+      <button type="button" onClick={() => onSelect("thread-key-2", 8)}>
         select-thread-2
       </button>
     </div>
@@ -57,16 +57,18 @@ vi.mock("@/components/diabeo/messaging/ThreadViewer", () => ({
   ThreadViewer: ({
     conversationKey,
     currentUserId,
+    toUserId,
   }: {
     conversationKey: string | null
     currentUserId: number
+    toUserId?: number | null
   }) => (
     <div data-testid="mocked-thread-viewer">
       {conversationKey === null ? (
         <span data-testid="thread-viewer-empty">no-thread</span>
       ) : (
         <span data-testid="thread-viewer-placeholder">
-          viewer-key:{conversationKey}|user:{currentUserId}
+          viewer-key:{conversationKey}|user:{currentUserId}|to:{toUserId ?? "none"}
         </span>
       )}
     </div>

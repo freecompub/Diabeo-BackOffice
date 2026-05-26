@@ -71,12 +71,22 @@ export async function GET(
       )
     }
 
+    // Fix H8 round 1 review PR #443 — `X-Thread-Trigger` header dispatched
+    // par hook UI (`useThreadMessages`) — cohérence avec X-Inbox-Trigger
+    // iter 2 PR #441. Whitelist stricte anti header-injection.
+    const rawTrigger = req.headers.get("x-thread-trigger")
+    const trigger: "user" | "poll" | "visibilitychange" =
+      rawTrigger === "poll" || rawTrigger === "visibilitychange"
+        ? rawTrigger
+        : "user"
+
     try {
       const result = await messagingService.getThread(
         user.id,
         parsedParams.data.conversationKey,
         parsedQuery.data,
         ctx,
+        trigger,
       )
       // LOW review round 3 — anti-cache (corps déchiffrés = données santé).
       return NextResponse.json(result, {
