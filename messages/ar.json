@@ -51,7 +51,23 @@
     "notifications": "الإشعارات",
     "weekly": "الجدول الأسبوعي",
     "insulinTherapy": "العلاج بالأنسولين",
-    "devices": "الأجهزة"
+    "devices": "الأجهزة",
+    "messages": "المراسلة"
+  },
+  "messages": {
+    "pageTitle": "المراسلة",
+    "pageSubtitle": "تواصل مع مرضاك وزملائك في العيادة.",
+    "skipToInbox": "تخطي إلى صندوق الوارد",
+    "threadListLabel": "قائمة المحادثات",
+    "threadListTitle": "المحادثات",
+    "threadViewerLabel": "المحادثة",
+    "backToList": "العودة إلى القائمة",
+    "unreadBadgeAria": "{count, plural, zero {لا توجد رسائل غير مقروءة} one {رسالة واحدة غير مقروءة} two {رسالتان غير مقروءتين} few {# رسائل غير مقروءة} many {# رسالة غير مقروءة} other {# رسالة غير مقروءة}}",
+    "foundationPlaceholderList": "النسخة 1 (الأساس) — ستتم إضافة قائمة المحادثات في النسخة 2.",
+    "foundationPlaceholderViewer": "المحادثة: {key} — سيتم إضافة عارض الرسائل في النسخة 3.",
+    "foundationPlaceholderEmpty": "اختر محادثة لعرض الرسائل.",
+    "foundationPlaceholderDemoThread": "محادثة تجريبية رقم {id} (عنصر نائب)",
+    "foundationContextUser": "متصل: مستخدم رقم {userId} ({role})"
   },
   "auth": {
     "welcome": "مرحبا بك في Diabeo",

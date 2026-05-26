@@ -38,10 +38,12 @@ import {
   Smartphone,
   Home,
   CalendarClock,
+  MessageSquare,
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { useUnreadCount } from "@/components/diabeo/messaging/useUnreadCount"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
   Sheet,
@@ -72,6 +74,12 @@ interface NavItem {
   labelKey: string
   icon: LucideIcon
   minRole?: UserRole
+  /**
+   * US-2076-UI iter 1 — affiche un badge dynamique unread count via
+   * `useUnreadCount()`. Activé uniquement sur `/messages` pour le moment.
+   * Polling 60s + pause sur tab hidden + refetch sur visibilitychange.
+   */
+  showUnreadBadge?: boolean
 }
 
 interface BreadcrumbItem {
@@ -138,6 +146,11 @@ const navItems: NavItem[] = [
   // Fix L-2 round 2 review — `CalendarClock` (vs `CalendarDays` partagé avec /weekly)
   // pour distinguer visuellement dans la sidebar collapsed (icône seule).
   { href: "/appointments", labelKey: "appointments", icon: CalendarClock, minRole: "NURSE" },
+  // US-2076-UI iter 1 — Messagerie pro (issue #429). Badge unread count
+  // dynamique via useUnreadCount() polling 60s. Gated NURSE+ (backend
+  // /api/messages route accepte tout user authentifié + GDPR consent
+  // mais la page pro est destinée aux praticiens uniquement).
+  { href: "/messages", labelKey: "messages", icon: MessageSquare, minRole: "NURSE", showUnreadBadge: true },
   { href: "/medications", labelKey: "medications", icon: Pill },
   { href: "/analytics", labelKey: "analytics", icon: Activity },
   { href: "/weekly", labelKey: "weekly", icon: CalendarDays },
@@ -191,6 +204,12 @@ function SidebarNav({
   onItemClick?: () => void
 }) {
   const t = useTranslations("nav")
+  const tMessages = useTranslations("messages")
+
+  // US-2076-UI iter 1 — fetch unread count UNE FOIS pour tout le shell.
+  // Si aucun item n'a `showUnreadBadge`, skip pour éviter fetch inutile.
+  const hasBadgeItem = items.some((it) => it.showUnreadBadge)
+  const { count: unreadCount, error: unreadError } = useUnreadCount({ skip: !hasBadgeItem })
 
   return (
     <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Menu principal">
@@ -198,22 +217,51 @@ function SidebarNav({
         const isActive =
           pathname === item.href || pathname.startsWith(`${item.href}/`)
         const label = t(item.labelKey)
+        const showBadge = item.showUnreadBadge && unreadCount > 0 && unreadError !== "gdprConsentRevoked"
+        const badgeAriaLabel = showBadge
+          ? tMessages("unreadBadgeAria", { count: unreadCount })
+          : undefined
 
         const linkEl = (
           <Link
             href={item.href}
             onClick={onItemClick}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative",
               collapsed && "justify-center px-2",
               isActive
                 ? "bg-teal-50 text-teal-600"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
             aria-current={isActive ? "page" : undefined}
+            aria-label={showBadge ? `${label} — ${badgeAriaLabel}` : undefined}
           >
-            <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-            {!collapsed && <span>{label}</span>}
+            <span className="relative shrink-0">
+              <item.icon className="h-5 w-5" aria-hidden="true" />
+              {showBadge && collapsed && (
+                // Mode collapsed : badge en overlay sur l'icône (top-right corner).
+                <span
+                  className="absolute -top-1 -end-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-semibold leading-none text-white"
+                  aria-hidden="true"
+                >
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </span>
+            {!collapsed && (
+              <>
+                <span className="flex-1">{label}</span>
+                {showBadge && (
+                  // Mode expanded : badge inline à droite.
+                  <span
+                    className="ms-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 text-xs font-semibold text-white"
+                    aria-hidden="true"
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </>
+            )}
           </Link>
         )
 
@@ -222,7 +270,7 @@ function SidebarNav({
             <Tooltip key={item.href}>
               <TooltipTrigger className="w-full">{linkEl}</TooltipTrigger>
               <TooltipContent side="inline-end">
-                <p>{label}</p>
+                <p>{showBadge ? `${label} — ${badgeAriaLabel}` : label}</p>
               </TooltipContent>
             </Tooltip>
           )
