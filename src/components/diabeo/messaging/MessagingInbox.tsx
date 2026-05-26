@@ -83,6 +83,9 @@ export function MessagingInbox({ userId, userRole: _userRole }: MessagingInboxPr
           currentUserId={userId}
           selectedKey={selectedKey}
           onSelect={handleSelectThread}
+          // Fix H5 round 1 review PR #441 — reset selectedKey si thread
+          // purgé backend entre 2 polls (RGPD Art. 17 cascade).
+          onSelectedThreadVanished={handleBackToList}
         />
       </aside>
 

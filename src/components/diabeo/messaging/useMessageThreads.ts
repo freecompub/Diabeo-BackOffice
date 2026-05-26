@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import type { Locale } from "@/i18n/config"
+import { usePolling, type PollingTrigger } from "@/hooks/usePolling"
 
 /**
  * ThreadSummary tel qu'exposé par `/api/messages` GET.
@@ -67,6 +67,8 @@ export interface UseMessageThreadsParams {
   limit?: number
 }
 
+type InboxTrigger = PollingTrigger
+
 export function useMessageThreads({
   refreshInterval = DEFAULT_REFRESH_INTERVAL_MS,
   skip = false,
@@ -77,10 +79,10 @@ export function useMessageThreads({
   const [error, setError] = useState<MessageThreadsErrorCode | null>(null)
   const [lastFetchedAt, setLastFetchedAt] = useState<Date | null>(null)
   const mountedRef = useRef(true)
-  // Fix H1 pattern hook iter 1 — in-flight guard + lastFetchAt debounce
-  // + fetchSeq pour ignorer responses obsolètes.
+  // Pattern hook iter 1 — in-flight guard + fetchSeq pour ignorer responses
+  // obsolètes (race out-of-order). lastSuccessAtRef est fourni par usePolling
+  // helper (Fix M8 round 1 PR #441 factor).
   const inFlightRef = useRef(false)
-  const lastFetchAtRef = useRef(0)
   const fetchSeqRef = useRef(0)
 
   useEffect(() => {
@@ -90,18 +92,26 @@ export function useMessageThreads({
     }
   }, [])
 
-  const fetchThreads = useCallback(async (): Promise<void> => {
+  const fetchThreads = useCallback(async (trigger: InboxTrigger = "user"): Promise<void> => {
     if (inFlightRef.current) return
     inFlightRef.current = true
     const seq = ++fetchSeqRef.current
-    lastFetchAtRef.current = Date.now()
     try {
-      const url = `/api/messages?limit=${encodeURIComponent(String(limit))}`
+      // Fix H2 round 1 review PR #441 — `limit` NaN-safe (defense-in-depth :
+      // signature publique du hook expose `limit` libre, un consumer peut
+      // passer NaN/Infinity/string parseInt-cast → URL `?limit=NaN` →
+      // backend Zod 400 → boucle `unexpectedError` toutes les 60s).
+      const safeLimit = Number.isInteger(limit) && limit > 0 && limit <= 100 ? limit : 100
+      const url = `/api/messages?limit=${encodeURIComponent(String(safeLimit))}`
       const res = await fetch(url, {
         method: "GET",
         credentials: "include",
         cache: "no-store",
-        headers: { Accept: "application/json" },
+        headers: {
+          Accept: "application/json",
+          // Fix H1 round 1 review PR #441 — discriminator audit polling.
+          "X-Inbox-Trigger": trigger,
+        },
       })
       if (seq !== fetchSeqRef.current) return
       if (!res.ok) {
@@ -121,6 +131,10 @@ export function useMessageThreads({
           }
         }
         if (mountedRef.current) {
+          // Fix H4 round 1 review PR #441 — stale-while-error : ne PAS
+          // vider `threads` sur 500 si on a déjà eu un succès (l'UI peut
+          // afficher un bandeau "Synchronisation interrompue" en
+          // overlay). `setThreads` NON appelé → preserve l'ancien array.
           setError("unexpectedError")
           setIsInitialLoading(false)
         }
@@ -133,6 +147,8 @@ export function useMessageThreads({
         setError(null)
         setIsInitialLoading(false)
         setLastFetchedAt(new Date())
+        // Fix H6 + M8 round 1 review PR #441 — lastSuccessAtRef est managé
+        // par usePolling helper (synced via useEffect [lastFetchedAt]).
       }
     } catch (err) {
       if (process.env.NODE_ENV !== "production" && err instanceof Error) {
@@ -140,6 +156,7 @@ export function useMessageThreads({
       }
       if (seq !== fetchSeqRef.current) return
       if (mountedRef.current) {
+        // Fix H4 round 1 review PR #441 — stale-while-error idem 500.
         setError("networkError")
         setIsInitialLoading(false)
       }
@@ -148,41 +165,36 @@ export function useMessageThreads({
     }
   }, [limit])
 
-  // Initial fetch + polling.
-  useEffect(() => {
-    if (skip) return
-    void fetchThreads()
-    if (refreshInterval <= 0) return undefined
-    const id = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return
-      void fetchThreads()
-    }, refreshInterval)
-    return () => {
-      clearInterval(id)
-    }
-  }, [skip, refreshInterval, fetchThreads])
+  // Refetch public (sans paramètre trigger — défault "user" pour appels
+  // manuels comme `refetch()` post-markRead). Le polling interne utilise
+  // directement `fetchThreads("poll")` / `fetchThreads("visibilitychange")`.
+  const refetch = useCallback(async (): Promise<void> => {
+    await fetchThreads("user")
+  }, [fetchThreads])
 
-  // Refetch immediate quand tab visible (debounced 5s vs tick interval).
-  useEffect(() => {
-    if (skip) return
-    const DEBOUNCE_MS = 5_000
-    const onVisible = () => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        if (Date.now() - lastFetchAtRef.current < DEBOUNCE_MS) return
-        void fetchThreads()
-      }
-    }
-    if (typeof document !== "undefined") {
-      document.addEventListener("visibilitychange", onVisible)
-    }
-    return () => {
-      if (typeof document !== "undefined") {
-        document.removeEventListener("visibilitychange", onVisible)
-      }
-    }
-  }, [skip, fetchThreads])
+  // Fix M8 round 1 review PR #441 — factor polling lifecycle dans
+  // `usePolling` helper réutilisable iter 3/4. Le helper expose
+  // `lastSuccessAtRef` que le fetcher update post-commit success
+  // (pour debounce visibilitychange).
+  const { lastSuccessAtRef } = usePolling(fetchThreads, {
+    intervalMs: refreshInterval,
+    skip,
+  })
 
-  return { threads, isInitialLoading, error, refetch: fetchThreads, lastFetchedAt }
+  // Update lastSuccessAtRef après commit success (le helper le lit pour
+  // debouncer visibilitychange). Wrap fetchThreads via useEffect-like ?
+  // Plus simple : on lit lastSuccessAtRef.current directement dans fetch
+  // setState block via closure stable.
+  // Pour éviter ce couplage, on update inline dans le fetcher principal :
+  useEffect(() => {
+    // Mark lastSuccess via lastFetchedAt sync — chaque setLastFetchedAt
+    // est suivi de l'update ref pour le debounce.
+    if (lastFetchedAt) {
+      lastSuccessAtRef.current = lastFetchedAt.getTime()
+    }
+  }, [lastFetchedAt, lastSuccessAtRef])
+
+  return { threads, isInitialLoading, error, refetch, lastFetchedAt }
 }
 
 /**
@@ -192,8 +204,11 @@ export function useMessageThreads({
  *
  * Pas de PHI exposé en clair côté UI tant que iter 3 ne livre pas le
  * mapping userId → name déchiffré + audit READ.
+ *
+ * Fix M6 round 1 review PR #441 — `_locale` param retiré (YAGNI). Iter 3
+ * réintroduira si nécessaire pour formater "Mme/M. Patient" localisé.
  */
-export function getThreadDisplayName(item: ThreadListItem, _locale: Locale): string {
+export function getThreadDisplayName(item: ThreadListItem): string {
   if (item.patientId !== null) {
     return `Patient #${item.patientId}`
   }

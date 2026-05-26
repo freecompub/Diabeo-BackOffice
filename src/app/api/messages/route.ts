@@ -79,10 +79,20 @@ export async function GET(req: NextRequest) {
         { status: 400 },
       )
     }
+    // Fix H1 round 1 review PR #441 — `X-Inbox-Trigger` header dispatché
+     // par le hook UI (`useMessageThreads`) pour discriminer audit "user
+     // open" vs "polling background" vs "visibilitychange". Whitelist
+     // stricte (enum) — anti header-injection.
+    const rawTrigger = req.headers.get("x-inbox-trigger")
+    const trigger: "user" | "poll" | "visibilitychange" =
+      rawTrigger === "poll" || rawTrigger === "visibilitychange"
+        ? rawTrigger
+        : "user"
     const threads = await messagingService.listThreads(
       user.id,
       ctx,
       parsedQuery.data.limit,
+      trigger,
     )
     // LOW review round 3 — anti-cache proxy intermédiaire (previews déchiffrés
     // = données santé). ANSSI RGS recommande `no-store` sur réponses sensibles.

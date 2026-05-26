@@ -222,11 +222,12 @@ describe("useMessageThreads", () => {
 
 describe("getThreadDisplayName", () => {
   it("patientId set → 'Patient #N'", () => {
-    expect(getThreadDisplayName(makeThread({ patientId: 42 }), "fr")).toBe("Patient #42")
+    // Fix M6 round 1 review PR #441 — `_locale` param retiré (YAGNI iter 2).
+    expect(getThreadDisplayName(makeThread({ patientId: 42 }))).toBe("Patient #42")
   })
 
   it("patientId null → 'User #N' (staff↔staff cabinet)", () => {
-    expect(getThreadDisplayName(makeThread({ patientId: null, otherUserId: 8 }), "fr")).toBe("User #8")
+    expect(getThreadDisplayName(makeThread({ patientId: null, otherUserId: 8 }))).toBe("User #8")
   })
 })
 
