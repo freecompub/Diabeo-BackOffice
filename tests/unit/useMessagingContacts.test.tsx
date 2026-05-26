@@ -47,14 +47,18 @@ describe("useMessagingContacts", () => {
     expect(result.current.isLoading).toBe(false)
   })
 
-  it("happy path : array backend → MessagingContact mapped", async () => {
+  it("happy path : { items: [...] } backend → MessagingContact mapped", async () => {
+    // Fix H3 round 1 review PR #444 — endpoint /api/messaging/contacts
+    // retourne maintenant `{ items: [{patientId, userId, displayName}] }`.
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => [
-        { id: 1, userId: 100 },
-        { id: 2, userId: 200 },
-        { id: 3, userId: 300 },
-      ],
+      json: async () => ({
+        items: [
+          { patientId: 1, userId: 100, displayName: "Patient #1" },
+          { patientId: 2, userId: 200, displayName: "Patient #2" },
+          { patientId: 3, userId: 300, displayName: "Patient #3" },
+        ],
+      }),
     } as Response)
     const { result } = renderHook(() => useMessagingContacts())
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -66,10 +70,26 @@ describe("useMessagingContacts", () => {
     })
   })
 
-  it("shape `{ items: [...] }` defensive fallback", async () => {
+  it("URL fetch /api/messaging/contacts (vs ancien /api/patients)", async () => {
+    const fetchSpy = vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({ items: [] }),
+    } as Response)
+    renderHook(() => useMessagingContacts())
+    await waitFor(() => {
+      expect(fetchSpy).toHaveBeenCalledWith(
+        "/api/messaging/contacts",
+        expect.objectContaining({ method: "GET" }),
+      )
+    })
+  })
+
+  it("fallback displayName si backend omit (defensive)", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => ({ items: [{ id: 5, userId: 500 }] }),
+      json: async () => ({
+        items: [{ patientId: 5, userId: 500 }], // displayName absent
+      }),
     } as Response)
     const { result } = renderHook(() => useMessagingContacts())
     await waitFor(() => expect(result.current.contacts.length).toBe(1))
@@ -79,11 +99,13 @@ describe("useMessagingContacts", () => {
   it("patient sans userId → filtré (defensive)", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: true,
-      json: async () => [
-        { id: 1, userId: 100 },
-        { id: 2 }, // missing userId
-        { id: 3, userId: "not-a-number" },
-      ],
+      json: async () => ({
+        items: [
+          { patientId: 1, userId: 100, displayName: "Patient #1" },
+          { patientId: 2 }, // missing userId
+          { patientId: 3, userId: "not-a-number" },
+        ],
+      }),
     } as Response)
     const { result } = renderHook(() => useMessagingContacts())
     await waitFor(() => expect(result.current.isLoading).toBe(false))
@@ -100,13 +122,25 @@ describe("useMessagingContacts", () => {
     await waitFor(() => expect(window.location.href).toBe("/login?expired=1"))
   })
 
-  it("403 → error forbidden", async () => {
+  it("403 forbidden RBAC → error forbidden", async () => {
     vi.spyOn(global, "fetch").mockResolvedValue({
       ok: false,
       status: 403,
+      json: async () => ({ error: "forbidden" }),
     } as Response)
     const { result } = renderHook(() => useMessagingContacts())
     await waitFor(() => expect(result.current.error).toBe("forbidden"))
+    expect(result.current.contacts).toEqual([])
+  })
+
+  it("403 gdprConsentRequired → error gdprConsentRevoked", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ error: "gdprConsentRequired" }),
+    } as Response)
+    const { result } = renderHook(() => useMessagingContacts())
+    await waitFor(() => expect(result.current.error).toBe("gdprConsentRevoked"))
     expect(result.current.contacts).toEqual([])
   })
 
@@ -133,5 +167,24 @@ describe("useMessagingContacts", () => {
     const { result } = renderHook(() => useMessagingContacts())
     await waitFor(() => expect(result.current.isLoading).toBe(false))
     expect(result.current.contacts).toEqual([])
+  })
+
+  it("Fix M3 round 1 PR #444 : reset contacts à [] quand skip flip false→true→false", async () => {
+    vi.spyOn(global, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [{ patientId: 1, userId: 100, displayName: "Patient #1" }],
+      }),
+    } as Response)
+    const { result, rerender } = renderHook(
+      ({ skip }: { skip: boolean }) => useMessagingContacts({ skip }),
+      { initialProps: { skip: false } },
+    )
+    await waitFor(() => expect(result.current.contacts.length).toBe(1))
+
+    // skip → true : reset à []
+    rerender({ skip: true })
+    await waitFor(() => expect(result.current.contacts).toEqual([]))
+    expect(result.current.isLoading).toBe(false)
   })
 })

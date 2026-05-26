@@ -105,6 +105,8 @@
     "newThreadNoMatch": "لا يوجد مريض يطابق بحثك.",
     "newThreadErrorForbidden": "ليس لديك صلاحية الوصول إلى أي مريض.",
     "newThreadErrorLoad": "تعذر تحميل المرضى — أعد المحاولة لاحقاً.",
+    "newThreadContactRadioAria": "اختر {name} (المعرف {id})",
+    "composerHint": "نصيحة: Cmd أو Ctrl + Enter للإرسال السريع.",
     "statusSending": "جارٍ الإرسال...",
     "statusSent": "تم الإرسال",
     "statusFailed": "فشل — أعد المحاولة",

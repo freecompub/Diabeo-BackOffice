@@ -132,16 +132,22 @@ describe("NewThreadModal (iter 4)", () => {
     expect(screen.getByText("newThreadNoMatch")).toBeTruthy()
   })
 
-  it("search filter par patientId → 1 résultat", () => {
-    setupHooks({ contacts: defaultContacts })
+  it("Fix M4 round 1 PR #444 : search filter par patientId exact → 1 résultat unique", () => {
+    setupHooks({
+      contacts: [
+        { patientId: 7, userId: 700, displayName: "Patient #7" },
+        { patientId: 8, userId: 800, displayName: "Patient #8" },
+        { patientId: 9, userId: 900, displayName: "Patient #9" },
+      ],
+    })
     render(<NewThreadModal open={true} onClose={vi.fn()} onMessageSent={vi.fn()} />)
     const search = screen.getByRole("searchbox")
-    fireEvent.change(search, { target: { value: "1" } })
-    // Patient #1 + Patient #100 (userId 100 contient "1") + Patient #200 + Patient #300 — beaucoup match.
-    // Test plus précis : "Patient #1" exact (haystack includes "patient #1").
+    // "Patient #7" matche uniquement le 1er (userId 700 contient aussi "7"
+    // donc match — mais Patient #8 et #9 ne contiennent pas "7" → 1 result.
+    // Plus précis : search "Patient #7" texte exact.
+    fireEvent.change(search, { target: { value: "Patient #7" } })
     const radios = screen.getAllByRole("radio")
-    // Au moins "Patient #1" devrait matcher.
-    expect(radios.length).toBeGreaterThanOrEqual(1)
+    expect(radios.length).toBe(1)
   })
 
   it("selection contact → aria-checked='true'", () => {
@@ -222,7 +228,58 @@ describe("NewThreadModal (iter 4)", () => {
     expect(screen.getByText(/composerByteCount:7000/)).toBeTruthy()
   })
 
-  it("send error forbidden → composerError message + composer keep value", async () => {
+  it("Fix C4 round 1 PR #444 : ArrowDown sur radio → selection next + focus next", () => {
+    setupHooks({ contacts: defaultContacts })
+    render(<NewThreadModal open={true} onClose={vi.fn()} onMessageSent={vi.fn()} />)
+    const radios = screen.getAllByRole("radio")
+    // Click radio 0 → selected
+    fireEvent.click(radios[0]!)
+    expect(radios[0]!.getAttribute("aria-checked")).toBe("true")
+    // ArrowDown → radio 1 selected
+    fireEvent.keyDown(radios[0]!, { key: "ArrowDown" })
+    expect(radios[1]!.getAttribute("aria-checked")).toBe("true")
+    // ArrowDown wrap → radio 2 selected
+    fireEvent.keyDown(radios[1]!, { key: "ArrowDown" })
+    expect(radios[2]!.getAttribute("aria-checked")).toBe("true")
+    // ArrowDown wrap → radio 0 selected
+    fireEvent.keyDown(radios[2]!, { key: "ArrowDown" })
+    expect(radios[0]!.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("Fix C4 round 1 PR #444 : Home/End sur radio → first/last selection", () => {
+    setupHooks({ contacts: defaultContacts })
+    render(<NewThreadModal open={true} onClose={vi.fn()} onMessageSent={vi.fn()} />)
+    const radios = screen.getAllByRole("radio")
+    fireEvent.click(radios[1]!)
+    // End → last
+    fireEvent.keyDown(radios[1]!, { key: "End" })
+    expect(radios[2]!.getAttribute("aria-checked")).toBe("true")
+    // Home → first
+    fireEvent.keyDown(radios[2]!, { key: "Home" })
+    expect(radios[0]!.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("Fix M9 round 1 PR #444 : Space sur radio → check (WAI-ARIA pattern)", () => {
+    setupHooks({ contacts: defaultContacts })
+    render(<NewThreadModal open={true} onClose={vi.fn()} onMessageSent={vi.fn()} />)
+    const radios = screen.getAllByRole("radio")
+    fireEvent.keyDown(radios[1]!, { key: " " })
+    expect(radios[1]!.getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("Fix C4 round 1 PR #444 : roving tabindex — selected=0, autres=-1", () => {
+    setupHooks({ contacts: defaultContacts })
+    render(<NewThreadModal open={true} onClose={vi.fn()} onMessageSent={vi.fn()} />)
+    const radios = screen.getAllByRole("radio")
+    // Aucune sélection → radio[0] roving tabIndex=0
+    expect(radios[0]!.getAttribute("tabindex")).toBe("0")
+    expect(radios[1]!.getAttribute("tabindex")).toBe("-1")
+    fireEvent.click(radios[1]!)
+    expect(radios[0]!.getAttribute("tabindex")).toBe("-1")
+    expect(radios[1]!.getAttribute("tabindex")).toBe("0")
+  })
+
+  it("Fix H1 round 1 PR #444 : send error forbidden → composerError message + composer keep value", async () => {
     setupHooks({ contacts: defaultContacts, sendOutcome: "forbidden" })
     render(<NewThreadModal open={true} onClose={vi.fn()} onMessageSent={vi.fn()} />)
     fireEvent.click(screen.getAllByRole("radio")[0]!)

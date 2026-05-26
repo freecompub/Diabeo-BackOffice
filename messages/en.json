@@ -105,6 +105,8 @@
     "newThreadNoMatch": "No patient matches your search.",
     "newThreadErrorForbidden": "You have no patient access.",
     "newThreadErrorLoad": "Could not load patients — please retry later.",
+    "newThreadContactRadioAria": "Select {name} (identifier {id})",
+    "composerHint": "Tip: Cmd or Ctrl + Enter to send quickly.",
     "statusSending": "Sending...",
     "statusSent": "Sent",
     "statusFailed": "Failed — please retry",
