@@ -51,7 +51,27 @@
     "notifications": "Notifications",
     "weekly": "Semainier",
     "insulinTherapy": "Insulinotherapie",
-    "devices": "Appareils"
+    "devices": "Appareils",
+    "messages": "Messagerie"
+  },
+  "messages": {
+    "pageTitle": "Messagerie",
+    "pageSubtitle": "Échangez avec vos patients et collègues du cabinet.",
+    "skipToInbox": "Passer à la boîte de réception",
+    "threadListLabel": "Liste des conversations",
+    "threadListTitle": "Conversations",
+    "threadViewerLabel": "Conversation",
+    "backToList": "Retour à la liste",
+    "unreadBadgeAria": "{count, plural, =0 {Aucun message non lu} one {1 message non lu} other {# messages non lus}}",
+    "foundationPlaceholderList": "Iter 1 (foundation) — la liste des conversations sera implémentée en iter 2.",
+    "foundationPlaceholderViewer": "Conversation : {key} — le viewer des messages sera implémenté en iter 3.",
+    "foundationPlaceholderEmpty": "Sélectionnez une conversation pour afficher les messages.",
+    "foundationPlaceholderDemoThread": "Conversation démo #{id} (placeholder)",
+    "foundationContextRole": "Connecté en tant que {role}",
+    "emptyStateNoConversation": "Vous n'avez pas encore de conversation. Vos patients pourront vous contacter via leur application mobile.",
+    "loading": "Chargement de vos conversations...",
+    "loadError": "Impossible de charger la messagerie — réessayez plus tard.",
+    "actionRetry": "Réessayer"
   },
   "auth": {
     "welcome": "Bienvenue sur Diabeo",

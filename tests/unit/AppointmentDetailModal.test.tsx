@@ -403,9 +403,17 @@ describe("<AppointmentDetailModal>", () => {
         json: async () => ({ error: "tokenExpired" }),
       } as Response)
 
+      // Fix round 1 review PR #440 — RDV en date FUTURE (vs hardcoded
+      // 2026-05-25 qui devient < today.now après le 2026-05-26 → input
+      // `min` du form ProposeAlt refusait la valeur → submit jamais
+      // déclenché → fetch jamais appelé → CI Unit & Integration fail).
+      const futureDate = new Date()
+      futureDate.setDate(futureDate.getDate() + 7)
+      const futureDateStr = futureDate.toISOString().slice(0, 10)
+
       render(
         <AppointmentDetailModal
-          state={makeState()}
+          state={makeState({ detail: { ...baseDetail, date: futureDateStr } })}
           openId={42}
           onClose={onClose}
           onActionSuccess={onActionSuccess}

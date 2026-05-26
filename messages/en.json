@@ -51,7 +51,27 @@
     "notifications": "Notifications",
     "weekly": "Weekly",
     "insulinTherapy": "Insulin Therapy",
-    "devices": "Devices"
+    "devices": "Devices",
+    "messages": "Messages"
+  },
+  "messages": {
+    "pageTitle": "Messages",
+    "pageSubtitle": "Communicate with your patients and practice members.",
+    "skipToInbox": "Skip to inbox",
+    "threadListLabel": "Conversation list",
+    "threadListTitle": "Conversations",
+    "threadViewerLabel": "Conversation",
+    "backToList": "Back to list",
+    "unreadBadgeAria": "{count, plural, =0 {No unread messages} one {1 unread message} other {# unread messages}}",
+    "foundationPlaceholderList": "Iter 1 (foundation) — the conversation list will land in iter 2.",
+    "foundationPlaceholderViewer": "Conversation: {key} — the message viewer will land in iter 3.",
+    "foundationPlaceholderEmpty": "Select a conversation to display messages.",
+    "foundationPlaceholderDemoThread": "Demo conversation #{id} (placeholder)",
+    "foundationContextRole": "Signed in as {role}",
+    "emptyStateNoConversation": "You have no conversation yet. Your patients can contact you through their mobile app.",
+    "loading": "Loading your conversations...",
+    "loadError": "Could not load messaging — please retry later.",
+    "actionRetry": "Retry"
   },
   "auth": {
     "welcome": "Welcome to Diabeo",
