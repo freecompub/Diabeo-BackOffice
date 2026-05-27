@@ -596,6 +596,13 @@ model Patient {
   /// pour permettre activation rapide sans saisir DPA, puis synchronisation
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
   pregnancyMode Boolean   @default(false) @map("pregnancy_mode")
+  /// US-2076bis-V2 (Issue #442) — UUID v4 opaque pour anonymisation UI
+  /// (ThreadList messagerie + future Patient list). Élimine timing oracle
+  /// énumération `patient.id` séquentiel (ANSSI / RGPD Art. 5.1.f). Le
+  /// `patientId` BDD reste l'identifiant interne pour FK + audit pivot
+  /// US-2268 (jamais exposé client UI). Le `publicRef` est stable
+  /// (pas de rotation V2 — compromis stabilité historique vs anti-énumération).
+  publicRef     String    @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
   createdAt     DateTime  @default(now()) @map("created_at")
   deletedAt     DateTime? @map("deleted_at")
 
@@ -658,6 +665,9 @@ model Patient {
   messages               Message[]
 
   @@index([deletedAt])
+  /// US-2076bis-V2 (Issue #442) — lookup `publicRef → patientId` interne
+  /// (résolve quand UI envoie ref opaque). UNIQUE empêche collision UUID v4.
+  @@unique([publicRef], map: "patients_public_ref_key")
   @@map("patients")
 }
 

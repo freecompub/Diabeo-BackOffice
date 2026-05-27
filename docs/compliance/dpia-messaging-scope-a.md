@@ -114,7 +114,7 @@
 
 - `docs/runbook/messaging-mobile-contract.md` — Contract API mobile/web.
 - Issue GH #413 — `US-2076-bis-retention`.
-- Issue GH #442 — `US-2076bis-V2` — Opaque UUID for patientId/userId (anti-énumération iter 2 PR #441).
+- Issue GH #442 — `US-2076bis-V2` — Opaque UUID for patientId/userId (anti-énumération iter 2 PR #441). ✅ **Livré PR #455** (V1 acquis early — patientId BDD plus exposé UI). Reste `otherUserId` numeric V2 (hors scope #442 — IDs staff rares hors PHI).
 - ADR #18 CLAUDE.md — Convention audit `metadata.patientId` pivot.
 - CLAUDE.md §"Sécurité des données de santé" — Patterns crypto.
 
@@ -124,7 +124,9 @@
 
 `ThreadList` (sidebar 320px) — affiche per thread :
 - Avatar P/U (décoratif, pas PHI)
-- `Patient #N` ou `User #N` (ID BDD séquentiel — anonymisation transitoire iter 2)
+- `Patient #<8 first chars UUID>` (US-2076bis-V2 Issue #442 PR #455 — UUID v4
+  opaque vs `patient.id` BDD séquentiel iter 2 — anti-énumération ANSSI /
+  RGPD Art. 5.1.f) ou `User #N` (staff, hors scope #442)
 - `bodyPreview` 80 codepoints clear-text (déchiffré server-side, PHI Art. 9)
 - Timestamp relatif "il y a 3 min" via `formatRelativeTime`
 - Badge `unreadCount` cap "9+" (cf. iter 1 M1)
@@ -134,7 +136,8 @@
 | Risque | Mitigation V1.5 | Statut |
 |---|---|---|
 | `bodyPreview` PHI visible permanent open-space | Cap 80c backend + `Cache-Control: no-store` + middleware `/messages/*` (Fix C2 PR #440) | ✓ couvert |
-| `patientId/userId` BDD séquentiel timing oracle | UUID opaque V2 — **Issue #442 tracking** | ⏳ V2 |
+| `patientId` BDD séquentiel timing oracle | UUID opaque `patientPublicRef` (UUID v4 ~122 bits entropy) — 8 premiers chars affichés UI | ✅ **Livré PR #455 (Issue #442)** |
+| `userId` (staff) BDD séquentiel timing oracle | Hors scope #442 (staff IDs rares hors PHI). V2 si besoin scaling > pilote interne | ⏳ V2 |
 | Audit pollution polling 60s | `X-Inbox-Trigger` discriminator + coalesce row si `trigger=poll` (Fix H1 PR #441) | ✓ couvert |
 | Preview mask preference user (mode discret) | V1.5 — Issue à créer si demande utilisateurs | ⏳ V1.5 |
 | Rate-limit GET `/api/messages` (DoS amplification) | Cap backend Redis 30 req/min/user (Fix M1 PR #441) | ⏳ V1.5 |

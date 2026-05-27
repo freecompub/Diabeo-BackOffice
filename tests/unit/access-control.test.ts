@@ -57,7 +57,10 @@ describe("canAccessPatient", () => {
 
   it("ADMIN can access any non-deleted patient", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({
-      id: 99, userId: 50, pathology: "DT1", pregnancyMode: false, createdAt: new Date(), deletedAt: null,
+      id: 99, userId: 50, pathology: "DT1", pregnancyMode: false,
+      // US-2076bis-V2 (Issue #442) — publicRef requis dans le shape Patient.
+      publicRef: "99000000-0000-4000-8000-000000000000",
+      createdAt: new Date(), deletedAt: null,
     })
     const result = await canAccessPatient(1, "ADMIN", 99)
     expect(result).toBe(true)
@@ -71,7 +74,10 @@ describe("canAccessPatient", () => {
 
   it("VIEWER can access own patient record", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({
-      id: 5, userId: 42, pathology: "DT1", pregnancyMode: false, createdAt: new Date(), deletedAt: null,
+      id: 5, userId: 42, pathology: "DT1", pregnancyMode: false,
+      // US-2076bis-V2 (Issue #442) — publicRef requis dans le shape Patient.
+      publicRef: "05000000-0000-4000-8000-000000000000",
+      createdAt: new Date(), deletedAt: null,
     })
     const result = await canAccessPatient(42, "VIEWER", 5)
     expect(result).toBe(true)

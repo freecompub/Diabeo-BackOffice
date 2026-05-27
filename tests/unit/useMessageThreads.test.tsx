@@ -27,11 +27,15 @@ import {
 
 const originalLocation = window.location
 
+// US-2076bis-V2 (Issue #442) — `patientPublicRef` UUID v4 opaque (vs
+// `patientId` numeric iter 2). 8 premiers chars affichés UI.
+const TEST_PUBLIC_REF = "a3f9b8c2-4d56-7e89-0f12-345678abcdef"
+
 function makeThread(overrides: Partial<ThreadListItem> = {}): ThreadListItem {
   return {
     conversationKey: "abc123",
     otherUserId: 7,
-    patientId: 42,
+    patientPublicRef: TEST_PUBLIC_REF,
     lastMessage: {
       id: "msg-1",
       fromUserId: 7,
@@ -220,23 +224,28 @@ describe("useMessageThreads", () => {
   })
 })
 
-describe("getThreadDisplayName", () => {
-  it("patientId set → 'Patient #N'", () => {
+describe("getThreadDisplayName (US-2076bis-V2 Issue #442 — opaque UUID)", () => {
+  it("patientPublicRef set → 'Patient #<8 first chars of UUID>'", () => {
     // Fix M6 round 1 review PR #441 — `_locale` param retiré (YAGNI iter 2).
-    expect(getThreadDisplayName(makeThread({ patientId: 42 }))).toBe("Patient #42")
+    // US-2076bis-V2 — affiche 8 premiers chars du UUID v4 (anti-énumération).
+    expect(getThreadDisplayName(makeThread({ patientPublicRef: TEST_PUBLIC_REF }))).toBe(
+      "Patient #a3f9b8c2",
+    )
   })
 
-  it("patientId null → 'User #N' (staff↔staff cabinet)", () => {
-    expect(getThreadDisplayName(makeThread({ patientId: null, otherUserId: 8 }))).toBe("User #8")
+  it("patientPublicRef null → 'User #N' (staff↔staff cabinet)", () => {
+    expect(
+      getThreadDisplayName(makeThread({ patientPublicRef: null, otherUserId: 8 })),
+    ).toBe("User #8")
   })
 })
 
-describe("getThreadAvatarInitials", () => {
-  it("patientId set → 'P'", () => {
-    expect(getThreadAvatarInitials(makeThread({ patientId: 42 }))).toBe("P")
+describe("getThreadAvatarInitials (US-2076bis-V2 Issue #442)", () => {
+  it("patientPublicRef set → 'P'", () => {
+    expect(getThreadAvatarInitials(makeThread({ patientPublicRef: TEST_PUBLIC_REF }))).toBe("P")
   })
 
-  it("patientId null → 'U'", () => {
-    expect(getThreadAvatarInitials(makeThread({ patientId: null }))).toBe("U")
+  it("patientPublicRef null → 'U'", () => {
+    expect(getThreadAvatarInitials(makeThread({ patientPublicRef: null }))).toBe("U")
   })
 })

@@ -32,7 +32,14 @@ import { usePolling, type PollingTrigger } from "@/hooks/usePolling"
 export interface ThreadListItem {
   conversationKey: string
   otherUserId: number
-  patientId: number | null
+  /**
+   * US-2076bis-V2 (Issue #442) — UUID v4 opaque (remplace `patientId` BDD
+   * séquentiel iter 2). Élimine timing oracle énumération ANSSI / RGPD
+   * Art. 5.1.f. `null` si message coordination staff pure ou patient
+   * soft-deleted. UI affiche les 8 premiers chars (= ~32 bits entropy,
+   * suffisant pour avatars uniques).
+   */
+  patientPublicRef: string | null
   lastMessage: {
     id: string
     fromUserId: number
@@ -209,8 +216,11 @@ export function useMessageThreads({
  * réintroduira si nécessaire pour formater "Mme/M. Patient" localisé.
  */
 export function getThreadDisplayName(item: ThreadListItem): string {
-  if (item.patientId !== null) {
-    return `Patient #${item.patientId}`
+  if (item.patientPublicRef !== null) {
+    // US-2076bis-V2 (Issue #442) — 8 premiers chars du UUID v4 = ~32 bits
+    // entropy = ~4 milliards de valeurs distinctes (suffisant avatars
+    // uniques) sans révéler l'UUID complet (defense-in-depth).
+    return `Patient #${item.patientPublicRef.slice(0, 8)}`
   }
   return `User #${item.otherUserId}`
 }
@@ -220,5 +230,5 @@ export function getThreadDisplayName(item: ThreadListItem): string {
  * Iter 3 remplacera par initiales réelles (P.D. = Pierre Dupont).
  */
 export function getThreadAvatarInitials(item: ThreadListItem): string {
-  return item.patientId !== null ? "P" : "U"
+  return item.patientPublicRef !== null ? "P" : "U"
 }

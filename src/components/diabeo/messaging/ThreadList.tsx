@@ -124,7 +124,10 @@ export function ThreadList({
     const q = deferredQuery.trim().toLowerCase()
     if (q.length > 0) {
       list = list.filter((t) => {
-        const hayId = `${t.otherUserId} ${t.patientId ?? ""}`.toLowerCase()
+        // Fix US-2076bis-V2 (Issue #442) — search filtre sur publicRef UUID
+        // (8 premiers chars affichés). Match contre la ref opaque user-visible.
+        const patientRefShort = t.patientPublicRef?.slice(0, 8) ?? ""
+        const hayId = `${t.otherUserId} ${patientRefShort}`.toLowerCase()
         return hayId.includes(q)
       })
     }
@@ -446,7 +449,7 @@ const ThreadItem = memo(function ThreadItem({
         <div
           className={cn(
             "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold",
-            item.patientId !== null
+            item.patientPublicRef !== null
               ? "bg-teal-100 text-teal-900"
               : "bg-slate-200 text-slate-800",
           )}
@@ -532,7 +535,7 @@ function areThreadItemsEqual(prev: ThreadItemProps, next: ThreadItemProps): bool
     prev.item.lastMessage.isRead === next.item.lastMessage.isRead &&
     prev.item.lastMessage.fromUserId === next.item.lastMessage.fromUserId &&
     prev.item.unreadCount === next.item.unreadCount &&
-    prev.item.patientId === next.item.patientId &&
+    prev.item.patientPublicRef === next.item.patientPublicRef &&
     prev.isSelected === next.isSelected &&
     prev.currentUserId === next.currentUserId &&
     prev.locale === next.locale &&
