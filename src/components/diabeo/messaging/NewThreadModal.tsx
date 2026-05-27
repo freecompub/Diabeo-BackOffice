@@ -163,6 +163,7 @@ export function NewThreadModal({ open, onClose, onMessageSent }: NewThreadModalP
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
       <DialogContent
         className="sm:max-w-lg"
+        data-testid="new-thread-modal"
         aria-labelledby="new-thread-modal-title"
         aria-describedby="new-thread-modal-desc"
       >
