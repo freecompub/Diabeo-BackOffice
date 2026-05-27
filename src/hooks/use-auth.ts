@@ -22,6 +22,7 @@ import { useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { LOGIN_TIMESTAMP_KEY } from "@/hooks/use-session-timeout"
+import { unregisterMessagingServiceWorker } from "@/components/diabeo/messaging/useMessagingPush"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,6 +194,35 @@ export function useAuth() {
   )
 
   const logout = useCallback(async () => {
+    // Fix Issue #446 (US-2076-UI iter 4 PR #444 follow-up) — cleanup FCM
+    // device avant invalidation session backend. Sur poste partagé cabinet
+    // multi-PS (HDS Art. L.1111-8 gestion fin de session) :
+    //   1. unregister service worker `firebase-messaging-sw.js` côté browser
+    //      → prochain user sur ce PC NE reçoit PAS les push FCM du PS sortant
+    //   2. DELETE backend FCM tokens (table PushDeviceRegistration US-2073)
+    //      → backend NE PEUT PLUS envoyer push à ce device
+    //
+    // Pattern fire-and-forget : si SW unregister ou DELETE backend fail,
+    // le logout doit TOUJOURS continuer (clear cookie + redirect login) —
+    // on ne bloque jamais la sortie de session sur cleanup tierce.
+    try {
+      // Étape 1 : unregister SW (helper iter 4 PR #444).
+      // Throws silently — pas de wait sur le promise pour ne pas bloquer.
+      await unregisterMessagingServiceWorker()
+    } catch {
+      // Silent — SW unregister échoue n'empêche pas logout.
+    }
+    try {
+      // Étape 2 : DELETE backend FCM tokens. Middleware CSRF exige
+      // X-Requested-With pour state-changing requests sur routes non-auth.
+      await fetch("/api/push/register", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+      })
+    } catch {
+      // Silent — token cleanup échec n'empêche pas logout.
+    }
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
