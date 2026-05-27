@@ -27,6 +27,13 @@
  */
 
 import { useEffect, useRef } from "react"
+import { getOrCreateSwRegistration } from "@/lib/messaging/sw-lifecycle"
+
+// Re-export pour backwards compat — le helper est désormais hébergé dans
+// `@/lib/messaging/sw-lifecycle` (Fix HSA H4 round 1 review PR #449 —
+// découplage `useAuth` ↔ composants messaging). Les anciens imports continuent
+// de fonctionner.
+export { unregisterMessagingServiceWorker } from "@/lib/messaging/sw-lifecycle"
 
 export interface UseMessagingPushOptions {
   /** Callback appelé à chaque push `kind: "message_received"` reçu. */
@@ -36,29 +43,6 @@ export interface UseMessagingPushOptions {
 }
 
 const FEATURE_FLAG_ENV = process.env.NEXT_PUBLIC_FIREBASE_CONFIG
-
-// Fix HSA M2 round 1 review PR #444 — guard module-level singleton SW
-// registration (StrictMode double-mount, multi-tab, multi-mount Provider).
-// Browser dedupe par scope déjà, mais éliminer le bruit telemetry.
-let swRegistrationPromise: Promise<ServiceWorkerRegistration | null> | null = null
-
-/**
- * Helper : unregister le SW messaging (logout flow).
- * Fix HSA M1 round 1 review PR #444 — appelé par hook logout pour libérer
- * FCM device + éviter notifications fuites sur poste partagé.
- */
-export async function unregisterMessagingServiceWorker(): Promise<void> {
-  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return
-  try {
-    const reg = await navigator.serviceWorker.getRegistration("/firebase-messaging-sw.js")
-    if (reg) {
-      await reg.unregister()
-    }
-    swRegistrationPromise = null
-  } catch {
-    // Silent — logout doit toujours continuer même si SW unregister fail.
-  }
-}
 
 export function useMessagingPush({ onMessageReceived, skip = false }: UseMessagingPushOptions = {}): {
   isSupported: boolean
@@ -84,15 +68,9 @@ export function useMessagingPush({ onMessageReceived, skip = false }: UseMessagi
 
     const setup = async (): Promise<void> => {
       try {
-        // Fix HSA M2 round 1 — singleton registration via module ref.
-        // Fix HSA M3 round 1 — `updateViaCache: "none"` permet force
-        // update SW si bug critique iter 5+ (sans bump SW_VERSION strict
-        // bypass cache 24h max-age default).
-        swRegistrationPromise ??= navigator.serviceWorker.register(
-          "/firebase-messaging-sw.js",
-          { updateViaCache: "none" },
-        )
-        const reg = await swRegistrationPromise
+        // Fix HSA M2 + M3 round 1 PR #444 — singleton register `updateViaCache: "none"`
+        // déplacé dans `@/lib/messaging/sw-lifecycle` (PR #449 H4 découplage).
+        const reg = await getOrCreateSwRegistration()
         if (cancelled || !reg) return
 
         // Fix HSA C1 round 1 — validation shape config côté CLIENT aussi

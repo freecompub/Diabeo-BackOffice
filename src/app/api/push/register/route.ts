@@ -61,7 +61,11 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const user = requireAuth(req)
-    const result = await pushService.unregisterAll(user.id)
+    // Fix HSA H2 round 1 review PR #449 (Issue #446) — `ctx` (IP/UA) doit
+    // être propagé pour audit HDS Art. L.1111-8. Sans ça, forensique
+    // "depuis quelle IP le PS X s'est-il déconnecté" impossible.
+    const ctx = extractRequestContext(req)
+    const result = await pushService.unregisterAll(user.id, ctx, { reason: "logout" })
     return NextResponse.json(result)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

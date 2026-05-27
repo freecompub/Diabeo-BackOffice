@@ -97,10 +97,43 @@ describe("pushService", () => {
   })
 
   describe("unregisterAll", () => {
-    it("deactivates all registrations", async () => {
-      prismaMock.pushDeviceRegistration.updateMany.mockResolvedValue({ count: 3 })
-      const result = await pushService.unregisterAll(1)
-      expect(result.unregisteredAll).toBe(true)
+    it("deactivates all registrations + audit metadata.count (HSA H2 PR #449)", async () => {
+      const updateMany = vi.fn().mockResolvedValue({ count: 3 })
+      const auditLogWithTxSpy = vi.fn().mockResolvedValue(undefined)
+      const mockTx = {
+        pushDeviceRegistration: { updateMany },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      // Hijack auditService.logWithTx pour valider que metadata + ctx propagés.
+      const { auditService } = await import("@/lib/services/audit.service")
+      const auditSpy = vi
+        .spyOn(auditService, "logWithTx")
+        .mockImplementation(auditLogWithTxSpy)
+
+      const result = await pushService.unregisterAll(
+        42,
+        { ipAddress: "1.2.3.4", userAgent: "Test-UA", requestId: "req-test-1" },
+        { reason: "logout" },
+      )
+
+      // Retour enrichi count (forensique).
+      expect(result).toEqual({ unregisteredAll: true, count: 3 })
+
+      // Audit émis dans la transaction avec resourceId plat US-2268 +
+      // metadata.kind + metadata.count + ctx (IP/UA) HSA H2.
+      expect(auditLogWithTxSpy).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          userId: 42,
+          action: "DELETE",
+          resource: "PUSH_REGISTRATION",
+          resourceId: "42",
+          ipAddress: "1.2.3.4",
+          userAgent: "Test-UA",
+          metadata: { kind: "push.unregister.all", count: 3, reason: "logout" },
+        }),
+      )
+      auditSpy.mockRestore()
     })
   })
 

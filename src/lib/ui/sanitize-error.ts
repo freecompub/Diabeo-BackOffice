@@ -47,9 +47,23 @@ export function sanitizeError(message: string): string {
  * `useMessageThreads`, `useThreadMessages`, `useSendMessage`, `useMarkAsRead`.
  *
  * Fix L10 round 1 review PR #443 — factor `logHookError` partagé.
+ *
+ * **`alwaysLog`** (CRITICAL C1 round 1 review PR #449 — Issue #446) :
+ * par défaut `false`, le log est gated en dev. Mettre `true` pour les
+ * cleanup paths critiques HDS (logout flow) où la silent fail en prod
+ * empêche la démonstrabilité Art. L.1111-8 lors audit ANS.
+ *
+ * Quand `alwaysLog: true`, le log sort en prod via `console.warn` (capturé
+ * par OVH Logs / DataDog / Sentry breadcrumb sans envoyer le message PII
+ * grâce au scrub `sanitizeError`).
  */
-export function logHookError(hookName: string, err: unknown): void {
-  if (process.env.NODE_ENV === "production") return
+export function logHookError(
+  hookName: string,
+  err: unknown,
+  options: { alwaysLog?: boolean } = {},
+): void {
+  const { alwaysLog = false } = options
+  if (!alwaysLog && process.env.NODE_ENV === "production") return
   if (err instanceof Error) {
     console.warn(`[${hookName}] error:`, sanitizeError(err.message))
   } else {
