@@ -262,10 +262,10 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
     // État initial : seed a créé 2 messages non-lus du patient vers docteur.
     // L'API /api/messaging/unread-count doit retourner ≥ 2 avant scroll.
     const initialUnread = await page.evaluate(async () => {
-      const res = await fetch("/api/messaging/unread-count", { credentials: "include" })
+      const res = await fetch("/api/messages/unread-count", { credentials: "include" })
       if (!res.ok) return null
-      const data = (await res.json()) as { unreadCount?: number }
-      return data.unreadCount ?? null
+      const data = (await res.json()) as { count?: number }
+      return data.count ?? null
     })
     expect(initialUnread).not.toBeNull()
     expect(initialUnread!).toBeGreaterThanOrEqual(2)
@@ -291,10 +291,10 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
     // Vérifier que l'unread count a diminué (au moins 1 message marqué lu
     // après dwell IntersectionObserver). Le test passe si delta ≥ 1.
     const finalUnread = await page.evaluate(async () => {
-      const res = await fetch("/api/messaging/unread-count", { credentials: "include" })
+      const res = await fetch("/api/messages/unread-count", { credentials: "include" })
       if (!res.ok) return null
-      const data = (await res.json()) as { unreadCount?: number }
-      return data.unreadCount ?? null
+      const data = (await res.json()) as { count?: number }
+      return data.count ?? null
     })
     expect(finalUnread).not.toBeNull()
     // Au moins 1 message marqué lu (les 2 non-lus peuvent être marqués selon
