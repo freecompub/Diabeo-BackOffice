@@ -23,7 +23,7 @@
 | **Service / Standard** | Interne (consume `/api/messages/*` + FCM push) |
 | **Modèle économique** | Interne |
 | **Coût estimé** | — |
-| **Statut** | ✅ DONE (5 itérations livrées PR #440-#444 + iter 5 polish) |
+| **Statut** | ✅ DONE (5 itérations livrées PR #440 / #441 / #443 / #444 / #447 — polish + E2E auth) |
 | **Story points** | **13** (Fibonacci) |
 | **Issue GH** | [#429](https://github.com/freecompub/Diabeo-BackOffice/issues/429) |
 | **Owner** | À assigner |

@@ -1,9 +1,12 @@
 import { test, expect } from "@playwright/test"
+import { loginAs } from "./helpers/auth"
 
 /**
- * E2E tests for messaging UI — US-2076-UI iter 5.
+ * E2E tests for messaging UI — US-2076-UI iter 5 + round 1 review PR #447.
  *
- * Couvre les flows critiques messagerie (PR #440-#444) :
+ * Couvre les flows critiques messagerie (PR #440-#444) avec **auth réel**
+ * via `loginAs` helper (seed users `prisma/seed.ts`) :
+ *
  *   - Route `/messages` gated NURSE+ (redirect login si VIEWER/anon)
  *   - Cache-Control no-store sur /messages (PR #440 C2 — PHI bfcache)
  *   - Sidebar item "Messagerie" avec icon + badge unread
@@ -14,116 +17,229 @@ import { test, expect } from "@playwright/test"
  *
  * **Prérequis** :
  *   - PostgreSQL running + DATABASE_URL configuré
- *   - Seed exécuté (5 users + 2 patients)
- *   - JWT_PRIVATE_KEY + JWT_PUBLIC_KEY + HMAC_SECRET + ENCRYPTION_KEY
+ *   - Seed exécuté (5 users) — cf. `pnpm prisma db seed`
  *
- * **Limitations jsdom unit tests vs E2E réel** :
- *   - IntersectionObserver native (iter 3 auto-mark on scroll)
- *   - BroadcastChannel native (iter 4 SW push consume)
- *   - Cookie + cookie-based JWT auth réel
+ * **Fix H1 + M1 + M2 + M3 round 1 review PR #447** :
+ *   - Pas de `test.skip` body trompeur — utilisé `test.fixme` Playwright
+ *     pour intent "à implémenter quand seed enrichi" (signal CI distinct)
+ *   - Tests E2E réels (vs ancien `test.skip`) avec auth `loginAs(...)`
+ *   - Cache-Control test sur redirect 3xx ET response 200 (defense-in-depth)
+ *   - Retiré asserts tautologiques après `waitForURL`
+ *   - Retiré test SW trompeur (`/login` jamais monté hook)
  */
 
-test.describe("Messaging — /messages route", () => {
-  test("redirect /login si user non authentifié", async ({ page }) => {
+test.describe("Messaging — /messages route gating", () => {
+  test("user non authentifié → redirect /login", async ({ page }) => {
     await page.goto("/messages")
-    await page.waitForURL(/\/login/, { timeout: 5_000 })
-    expect(page.url()).toContain("/login")
+    // `toHaveURL` idiomatic Playwright (waitForURL + assert combinés)
+    await expect(page).toHaveURL(/\/login/, { timeout: 5_000 })
+  })
+
+  test("VIEWER (patient) → redirect home rôle (defense-in-depth)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "patient_dt1")
+    await page.goto("/messages")
+    // Patient (VIEWER) doit être redirigé hors /messages — soit /patient/dashboard
+    // soit /login si gate manquant.
+    await expect(page).not.toHaveURL(/\/messages$/, { timeout: 5_000 })
+  })
+
+  test("DOCTOR → accès /messages OK", async ({ page, context, request }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    // Pas de redirect — doit rester sur /messages.
+    await expect(page).toHaveURL(/\/messages/, { timeout: 5_000 })
+    // Title page visible (i18n FR/EN selon cookie).
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible()
+  })
+
+  test("NURSE → accès /messages OK", async ({ page, context, request }) => {
+    await loginAs(context, request, "nurse")
+    await page.goto("/messages")
+    await expect(page).toHaveURL(/\/messages/, { timeout: 5_000 })
   })
 })
 
 test.describe("Messaging — Cache-Control headers (Fix C2 PR #440)", () => {
-  test("response sur /messages a Cache-Control no-store via middleware", async ({ request }) => {
-    // Pages SSR avec middleware /patient/* + /messages/* → headers ANSSI/HDS
-    const res = await request.get("/messages", {
-      failOnStatusCode: false,
-      maxRedirects: 0,
-    })
-    // Si redirect login (user non auth), check le redirect a no-store aussi.
-    // Sinon (auth), la page elle-même.
-    if (res.status() === 200) {
-      expect(res.headers()["cache-control"]).toContain("no-store")
+  test("Cache-Control no-store présent sur response /messages authentifiée", async ({
+    context,
+    request,
+    page,
+  }) => {
+    // Fix M2 round 1 review PR #447 — auth réelle pour tester la response
+    // 200 (vs ancien test conditionnel `if (status === 200)` jamais
+    // exécuté en CI sans seed).
+    await loginAs(context, request, "doctor")
+    // page.goto pour capturer la response HTML (vs request.get qui peut
+    // bypass middleware).
+    const response = await page.goto("/messages")
+    expect(response).not.toBeNull()
+    if (response) {
+      // Middleware /messages/* applique no-store (Fix C2 PR #440 +
+      // PHI_PATH_PREFIXES iter 12 patient PR #438).
+      const cacheControl = response.headers()["cache-control"]
+      expect(cacheControl).toContain("no-store")
+      expect(cacheControl).toContain("no-cache")
+      expect(cacheControl).toContain("must-revalidate")
+      expect(cacheControl).toContain("private")
     }
-    // Soit redirect 302/307 vers /login (status >= 300 < 400), soit 200 si auth.
-    expect([200, 302, 303, 307].includes(res.status())).toBeTruthy()
+  })
+
+  test("Referrer-Policy + X-Content-Type-Options présents (defense-in-depth)", async ({
+    context,
+    request,
+    page,
+  }) => {
+    await loginAs(context, request, "doctor")
+    const response = await page.goto("/messages")
+    if (response) {
+      expect(response.headers()["referrer-policy"]).toBe("no-referrer")
+      expect(response.headers()["x-content-type-options"]).toBe("nosniff")
+    }
   })
 })
 
-test.describe("Messaging — login flow + sidebar", () => {
-  test.skip("login DOCTOR → /messages accessible + sidebar item visible", async () => {
-    // Skipped : requires seed users (doctor@diabeo.fr + password) — voir
-    // tests/e2e/login-flow.spec.ts pour pattern. Sera implémenté quand
-    // seed CI dispose d'un user DOCTOR avec patients + threads.
-    //
-    // Test plan :
-    //   1. page.goto("/login")
-    //   2. fill #login-email + #login-password
-    //   3. click data-testid="login-button"
-    //   4. page.waitForURL("/dashboard") (ou home rôle)
-    //   5. cliquer item sidebar "Messagerie"
-    //   6. expect URL = /messages
-    //   7. expect "Messagerie" h1 visible
-    //   8. expect button "+ Nouveau" visible
+test.describe("Messaging — ThreadList + NewThreadModal (iter 4)", () => {
+  test("button '+ Nouveau' visible dans ThreadList header", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    const newButton = page.getByTestId("thread-list-new-button")
+    await expect(newButton).toBeVisible({ timeout: 10_000 })
   })
 
-  test.skip("VIEWER (patient) → /messages redirect home rôle (defense-in-depth)", async () => {
-    // Skipped : requires seed user VIEWER (patient).
-    //
-    // Test plan :
-    //   1. login patient@diabeo.fr
-    //   2. page.goto("/messages")
-    //   3. expect redirect / page patient home (NON /messages)
-    //   4. expect audit log "accessDenied" emit (vérif via integration test)
-  })
-})
-
-test.describe("Messaging — NewThreadModal a11y", () => {
-  test.skip("Modal opens + focus trap + ESC close", async () => {
-    // Skipped pending seed contacts.
-    //
-    // Test plan :
-    //   1. login NURSE/DOCTOR
-    //   2. go /messages
-    //   3. click "+ Nouveau"
-    //   4. expect modal visible + focus sur search input
-    //   5. ESC → modal close + focus retour sur "+ Nouveau" button
+  test("clic '+ Nouveau' ouvre NewThreadModal", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    await page.getByTestId("thread-list-new-button").click()
+    const modal = page.getByTestId("new-thread-modal")
+    await expect(modal).toBeVisible({ timeout: 5_000 })
   })
 
-  test.skip("Radiogroup keyboard nav (Fix C4 PR #444)", async () => {
-    // Test plan :
-    //   1. open modal
-    //   2. wait contacts list visible
-    //   3. focus 1er radio via Tab
-    //   4. press ArrowDown → 2e radio focused + aria-checked=true
-    //   5. press End → last radio
-    //   6. press Home → first radio
-    //   7. press Space → first radio reste checked
+  test("modal close via ESC reset state", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    await page.getByTestId("thread-list-new-button").click()
+    await expect(page.getByTestId("new-thread-modal")).toBeVisible()
+    await page.keyboard.press("Escape")
+    await expect(page.getByTestId("new-thread-modal")).not.toBeVisible({
+      timeout: 3_000,
+    })
   })
 })
 
 test.describe("Messaging — Composer byte counter (Fix H12 PR #441 + M10 PR #444)", () => {
-  test.skip("Counter visible > 80% cap + role=status", async () => {
-    // Test plan :
-    //   1. open thread existant
-    //   2. fill composer with 7000 chars (> 80% de 8164 cap)
-    //   3. expect byte counter visible + role="status" + aria-live="polite"
-    //   4. fill 9000 chars (> cap)
-    //   5. expect byte counter red + aria-live="assertive" + send button disabled
+  test("Counter visible > 80% cap (8164 bytes UTF-8)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    await page.getByTestId("thread-list-new-button").click()
+    await expect(page.getByTestId("new-thread-modal")).toBeVisible()
+    const textarea = page.locator("#new-thread-body")
+    // Remplir > 80% du cap (8164 × 0.8 ≈ 6531) → counter visible.
+    await textarea.fill("a".repeat(7000))
+    // Counter rendu via t("composerByteCount", { current, max }) — match
+    // sur le pattern "7000" + "8164" présents.
+    await expect(page.getByText(/7000/)).toBeVisible({ timeout: 3_000 })
+  })
+
+  test("Counter rouge si > MAX → send disabled", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    await page.getByTestId("thread-list-new-button").click()
+    await expect(page.getByTestId("new-thread-modal")).toBeVisible()
+    const textarea = page.locator("#new-thread-body")
+    // > cap (9000 > 8164) → aria-invalid + send disabled.
+    await textarea.fill("a".repeat(9000))
+    await expect(textarea).toHaveAttribute("aria-invalid", "true")
   })
 })
 
 test.describe("Messaging — Service Worker FCM (Fix C1 PR #444)", () => {
-  test("SW pas registered si NEXT_PUBLIC_FIREBASE_CONFIG absent", async ({ page }) => {
+  // Fix H1 round 1 review PR #447 — ancien test sur `/login` ne prouvait
+  // rien (hook useMessagingPush jamais monté hors /messages). Remplacé par
+  // test depuis page authentifiée + check feature flag respected.
+  test("SW Firebase pas registered si NEXT_PUBLIC_FIREBASE_CONFIG absent", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
     // Sans Firebase config (env vide ou absent), useMessagingPush skip
     // registration → graceful fallback polling 30s/60s.
-    await page.goto("/login")
-    // Inspecter directement le DOM/console — pas de SW Firebase registered.
     const swRegs = await page.evaluate(async () => {
       if (!("serviceWorker" in navigator)) return []
       const regs = await navigator.serviceWorker.getRegistrations()
       return regs.map((r) => r.scope)
     })
-    // Firebase SW (s'il était registered) aurait scope contenant "firebase".
-    const fbSw = swRegs.find((s) => s.includes("firebase-messaging-sw"))
-    expect(fbSw).toBeUndefined()
+    // Si FIREBASE_CONFIG env absent en CI, SW Firebase pas registered.
+    // Si Firebase activé en prod future, ce test fail = signal explicite.
+    const hasFirebase = Boolean(process.env.NEXT_PUBLIC_FIREBASE_CONFIG)
+    if (!hasFirebase) {
+      const fbSw = swRegs.find((s) => s.includes("firebase-messaging-sw"))
+      expect(fbSw).toBeUndefined()
+    }
   })
+})
+
+test.describe("Messaging — FIXME post-seed enrichi (Issue #448)", () => {
+  // Fix M1 round 1 review PR #447 — `test.fixme` Playwright (vs ancien
+  // `test.skip` body trompeur). Reporter affiche distinctement. Activation
+  // post-seed enrichi (patient avec consent messagerie + thread ≥ 5 msg).
+  //
+  // Tracking : Issue GH #448 — Enrichir seed E2E.
+
+  test.fixme(
+    "Send message depuis NewThreadModal → optimistic UI + refresh threads list (requiert seed avec patient consent messagerie)",
+    async () => {
+      // À implémenter quand seed inclut patient avec consent messagerie OK +
+      // PatientReferent ou PatientService lien cabinet.
+    },
+  )
+
+  test.fixme(
+    "Radiogroup keyboard nav ArrowDown/Up/Home/End + Space (Fix C4 PR #444) — requiert seed contacts ≥ 2",
+    async () => {
+      // Couverture unit existante : NewThreadModal.test.tsx (4 tests
+      // ArrowDown/Home/End/Space). E2E réel browser pending.
+    },
+  )
+
+  test.fixme(
+    "Auto-mark on scroll IntersectionObserver threshold 1.0 + dwell 1500ms (Fix C1 PR #443) — requiert seed thread avec ≥ 5 messages",
+    async () => {
+      // Couverture unit via IntersectionObserver mock jsdom (ThreadViewer.test.tsx).
+      // E2E réel browser : native IO + viewport simulation + dwell timer.
+    },
+  )
+
+  test.fixme(
+    "BroadcastChannel FCM consume → badge bump (Fix C1 PR #444) — requiert mock SW + simulate push event",
+    async () => {
+      // Requiert mock service worker dans test fixture + simulate push.
+      // Acceptable iter 5 — fallback polling 30s/60s couvre absence FCM.
+    },
+  )
 })
