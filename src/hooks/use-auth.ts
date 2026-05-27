@@ -18,10 +18,32 @@
  * calculate remaining session time without touching the httpOnly cookie.
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { LOGIN_TIMESTAMP_KEY } from "@/hooks/use-session-timeout"
+// Fix HSA H4 round 1 review PR #449 (Issue #446) — import depuis module pur
+// `@/lib/messaging/sw-lifecycle` (pas depuis `@/components/diabeo/messaging/`)
+// pour éviter le couplage cross-domain auth ↔ composants messaging et la
+// charge bundle du hook `useMessagingPush` sur les pages non-messaging.
+import { unregisterMessagingServiceWorker } from "@/lib/messaging/sw-lifecycle"
+import { fetchWithTimeout } from "@/lib/ui/fetch-with-timeout"
+import { logHookError } from "@/lib/ui/sanitize-error"
+
+// Helper local — wrap chaque étape cleanup logout dans try/catch + log
+// `alwaysLog: true` (Fix CRITICAL C1 round 1 review PR #449). Sans
+// observabilité, un silent fail prod = violation HDS Art. L.1111-8
+// démonstrabilité.
+async function safeCleanupStep(
+  label: string,
+  fn: () => Promise<unknown>,
+): Promise<void> {
+  try {
+    await fn()
+  } catch (err) {
+    logHookError(label, err, { alwaysLog: true })
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -192,18 +214,68 @@ export function useAuth() {
     [router, t],
   )
 
+  // Fix CR H3 + FE M4 round 1 review PR #449 (Issue #446) — guard double
+  // click. useRef plutôt que useState pour éviter re-render inutile (pattern
+  // aligné HSA-3 inFlightRef iter 2).
+  const isLoggingOutRef = useRef(false)
+
   const logout = useCallback(async () => {
+    // Fix Issue #446 (US-2076-UI iter 4 PR #444 follow-up) + reviews PR #449
+    // — cleanup HDS Art. L.1111-8 gestion fin de session sur poste partagé
+    // cabinet multi-PS :
+    //   1. POST /api/auth/logout — révoque session backend (cookie Set max-age=0,
+    //      sid invalidé en BDD → middleware refuse au prochain refresh).
+    //   2. DELETE /api/push/register — supprime tokens FCM backend (table
+    //      PushDeviceRegistration US-2073) parallèle SW unregister.
+    //   3. unregister service worker `firebase-messaging-sw.js` côté browser
+    //      → prochain user sur ce PC NE reçoit PAS les push FCM du PS sortant.
+    //   4. Clear sessionStorage + redirect /login.
+    //
+    // Fix HSA H1 round 1 PR #449 — POST EN PREMIER pour fermer le canal
+    // d'émission backend avant cleanup tokens. Sinon entre étapes 2 et 1,
+    // le cron messagerie / cron RDV pouvait encore push via tokens valides.
+    //
+    // Pattern fire-and-forget : chaque étape wrappée dans `safeCleanupStep`
+    // qui catch + logue avec `alwaysLog: true` (Fix CRITICAL C1 round 1
+    // PR #449 — observabilité prod requise pour démonstrabilité HDS).
+    if (isLoggingOutRef.current) return
+    isLoggingOutRef.current = true
+
     try {
-      await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      })
-    } catch {
-      // Logout even if API fails
+      // Étape 1 — révoquer session backend (await séquentiel : ferme le
+      // canal émetteur avant cleanup tokens).
+      await safeCleanupStep("logout.auth", () =>
+        fetchWithTimeout("/api/auth/logout", {
+          method: "POST",
+          credentials: "include",
+        }),
+      )
+
+      // Étapes 2 + 3 — cleanup tokens + SW en parallèle (indépendants,
+      // Fix L1 round 1 PR #449 — latence ~50% réduite vs await séquentiel).
+      // Middleware CSRF exige X-Requested-With sur DELETE routes non-auth.
+      await Promise.allSettled([
+        safeCleanupStep("logout.fcm.delete", () =>
+          fetchWithTimeout("/api/push/register", {
+            method: "DELETE",
+            credentials: "include",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+          }),
+        ),
+        safeCleanupStep("logout.sw.unregister", () =>
+          unregisterMessagingServiceWorker(),
+        ),
+      ])
     } finally {
-      // Remove session tracking timestamp so useSessionTimeout resets cleanly.
+      // Fix FE M3 round 1 PR #449 — clear + redirect dans finally global,
+      // même si un bug React 19 compiler edge case fait throw sur await.
       sessionStorage.removeItem(LOGIN_TIMESTAMP_KEY)
-      router.push("/login")
+      // Fix FE H6 round 1 PR #449 — `router.replace` au lieu de `router.push`.
+      // Push conserve l'historique → back button → flash PHI dashboard cached
+      // avant que middleware re-redirect. Sur poste partagé cabinet = leak
+      // visuel. `replace` invalide le history entry courant.
+      router.replace("/login")
+      isLoggingOutRef.current = false
     }
   }, [router])
 

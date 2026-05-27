@@ -84,19 +84,34 @@ export const pushService = {
     })
   },
 
-  async unregisterAll(userId: number, ctx?: AuditContext) {
-    await prisma.pushDeviceRegistration.updateMany({
-      where: { userId, isActive: true },
-      data: { isActive: false, unregisteredAt: new Date() },
-    })
+  async unregisterAll(
+    userId: number,
+    ctx?: AuditContext,
+    options: { reason?: "logout" | "admin" | "expired" } = {},
+  ) {
+    // Fix HSA H2 round 1 review PR #449 (Issue #446) — TX atomique + metadata
+    // `count` (forensique HDS Art. L.1111-8 "N tokens supprimés au logout").
+    // resourceId plat US-2268 (composite `push-reg:all:${userId}` non
+    // requêtable par GIN `metadata.userId`).
+    const reason = options.reason ?? "logout"
+    return prisma.$transaction(async (tx) => {
+      const { count } = await tx.pushDeviceRegistration.updateMany({
+        where: { userId, isActive: true },
+        data: { isActive: false, unregisteredAt: new Date() },
+      })
 
-    await auditService.log({
-      userId, action: "DELETE", resource: "PUSH_REGISTRATION",
-      resourceId: `push-reg:all:${userId}`,
-      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
-    })
+      await auditService.logWithTx(tx, {
+        userId,
+        action: "DELETE",
+        resource: "PUSH_REGISTRATION",
+        resourceId: String(userId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { kind: "push.unregister.all", count, reason },
+      })
 
-    return { unregisteredAll: true }
+      return { unregisteredAll: true, count }
+    })
   },
 
   async listTemplates() {
