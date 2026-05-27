@@ -472,13 +472,40 @@ describe("listThreads", () => {
       { conversationKey: k2, _count: { _all: 1 } },
     ])
     // H3 review : patient_id=42 → check live patient ; mock comme "actif".
-    prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }] as any)
+    // US-2076bis-V2 (Issue #442) — mock inclut maintenant `publicRef` car le
+    // service `select: { id: true, publicRef: true }`.
+    const PUBLIC_REF_42 = "42000000-0000-4000-8000-000000000000"
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 42, publicRef: PUBLIC_REF_42 }] as any)
     const out = await messagingService.listThreads(1, ctx)
     expect(out).toHaveLength(2)
     expect(out[0]!.lastMessage.id).toBe("m1")
     expect(out[0]!.unreadCount).toBe(1)
     expect(out[0]!.lastMessage.bodyPreview).toContain("Hello")
-    expect(out[1]!.patientId).toBe(42)
+    // US-2076bis-V2 — ThreadSummary expose `patientPublicRef` UUID opaque
+    // (vs `patientId` BDD séquentiel iter 2).
+    expect(out[1]!.patientPublicRef).toBe(PUBLIC_REF_42)
+  })
+
+  // Fix L3 round 1 review PR #455 — test régression H3 patient soft-deleted.
+  // Le filtre `livePatientMap.has(patient_id)` retourne `undefined → null` quand
+  // un patient_id existe en row Message mais que le Patient est soft-deleted
+  // (deletedAt set). L'UI doit recevoir `patientPublicRef: null` (anonymisation
+  // forensique vivante — historique conservé mais plus rattaché à un patient
+  // actif).
+  it("H3 — patient soft-deleted → patientPublicRef null malgré patient_id ≠ null", async () => {
+    const encryptedBody = Buffer.from(encrypt("hi"))
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 99, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    // Patient 99 est soft-deleted → findMany retourne [] (filtre deletedAt: null
+    // dans la query du service).
+    prismaMock.patient.findMany.mockResolvedValue([] as any)
+    const out = await messagingService.listThreads(1, ctx)
+    expect(out).toHaveLength(1)
+    // Critique : malgré patient_id=99 dans la row Message, UI reçoit null
+    // (H3 anonymisation forensique vivante).
+    expect(out[0]!.patientPublicRef).toBeNull()
   })
 
   it("returns [] when no messages", async () => {
@@ -521,7 +548,10 @@ describe("listThreads", () => {
       { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 42, created_at: new Date(), read_at: null },
     ])
     ;(prismaMock.message.groupBy as any).mockResolvedValue([])
-    prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }] as any)
+    // US-2076bis-V2 (Issue #442) — mock inclut publicRef.
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 42, publicRef: "42000000-0000-4000-8000-000000000000" },
+    ] as any)
     // Audit log fails — should NOT propagate.
     prismaMock.auditLog.create.mockRejectedValueOnce(new Error("DB locked"))
     const out = await messagingService.listThreads(1, ctx)
@@ -539,7 +569,11 @@ describe("listThreads", () => {
       { id: "m2", conversation_key: "b".repeat(64), from_user_id: 7, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 73, created_at: new Date(), read_at: null },
     ])
     ;(prismaMock.message.groupBy as any).mockResolvedValue([])
-    prismaMock.patient.findMany.mockResolvedValue([{ id: 42 }, { id: 73 }] as any)
+    // US-2076bis-V2 (Issue #442) — mock inclut publicRef pour les 2 patients.
+    prismaMock.patient.findMany.mockResolvedValue([
+      { id: 42, publicRef: "42000000-0000-4000-8000-000000000000" },
+      { id: 73, publicRef: "73000000-0000-4000-8000-000000000000" },
+    ] as any)
     prismaMock.auditLog.create.mockRejectedValue(new Error("DB locked"))
     const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {})
     const out = await messagingService.listThreads(1, ctx)

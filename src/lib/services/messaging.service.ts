@@ -543,7 +543,17 @@ export interface SendMessageResult {
 export interface ThreadSummary {
   conversationKey: string
   otherUserId: number
-  patientId: number | null
+  /**
+   * US-2076bis-V2 (Issue #442) — UUID v4 opaque du patient (vs `patientId`
+   * BDD séquentiel iter 2). Élimine timing oracle énumération
+   * (ANSSI / RGPD Art. 5.1.f). 8 premiers chars affichés UI (still 32 bits
+   * entropy = ~4 milliards de valeurs distinctes, suffisant pour avatars).
+   * `null` si message est coordination staff pure (pas de patient pivot)
+   * OU si le patient associé est soft-deleted (anonymisation H3 active).
+   * Backend continue d'utiliser `patient.id` BDD interne pour audit pivot
+   * US-2268 — `patientPublicRef` est strictement UI.
+   */
+  patientPublicRef: string | null
   lastMessage: {
     id: string
     fromUserId: number
@@ -860,15 +870,25 @@ export const messagingService = {
       candidatePatientIds.length > 0
         ? prisma.patient.findMany({
             where: { id: { in: candidatePatientIds }, deletedAt: null },
-            select: { id: true },
+            // Fix US-2076bis-V2 (Issue #442) — récupérer aussi publicRef pour
+            // anonymisation UI. `id` reste pour livePatientMap.has() check
+            // (filtre H3 patients soft-deleted).
+            select: { id: true, publicRef: true },
           })
-        : Promise.resolve([] as { id: number }[]),
+        : Promise.resolve([] as { id: number; publicRef: string }[]),
     ])
 
     const unreadMap = new Map(
       unreadGroups.map((g) => [g.conversationKey, g._count._all]),
     )
-    const livePatientSet = new Set(livePatients.map((p) => p.id))
+    // Fix US-2076bis-V2 — Map `patientId → publicRef` pour résolution O(1).
+    // Remplace l'ancien `livePatientSet` (le Map est aussi un test d'existence
+    // efficace via `.has()`).
+    // Fix L2 round 1 review PR #455 — annotation explicite `Map<number, string>`
+    // pour lisibilité (inférence TS correcte mais moins évidente au lecteur).
+    const livePatientMap: Map<number, string> = new Map(
+      livePatients.map((p) => [p.id, p.publicRef]),
+    )
 
     // 4. Build summaries — décryption preview limitée aux ≤ cappedLimit rows.
     const PREVIEW_MAX_CODEPOINTS = 80
@@ -893,14 +913,20 @@ export const messagingService = {
       }
       // H3 — pivot patientId nullifié si patient soft-deleted (l'historique
       // n'est plus rattaché à un patient actif pour la forensique vivante).
-      const exposedPatientId =
-        m.patient_id !== null && livePatientSet.has(m.patient_id)
-          ? m.patient_id
+      // Fix US-2076bis-V2 (Issue #442) — UI reçoit `patientPublicRef` UUID
+      // opaque (vs `patient_id` BDD séquentiel). Le `m.patient_id` interne
+      // reste utilisé pour audit pivot US-2268 ci-dessous.
+      // Fix L4 round 1 review PR #455 — commentaire explicite : `get()` retourne
+      // `undefined` si patient_id soft-deleted (H3) — `?? null` mappe en null
+      // explicite pour cohérence Type ThreadSummary.patientPublicRef: string | null.
+      const exposedPublicRef =
+        m.patient_id !== null
+          ? (livePatientMap.get(m.patient_id) ?? null) // undefined if soft-deleted (H3)
           : null
       return {
         conversationKey: m.conversation_key,
         otherUserId,
-        patientId: exposedPatientId,
+        patientPublicRef: exposedPublicRef,
         lastMessage: {
           id: m.id,
           fromUserId: m.from_user_id,
@@ -927,8 +953,17 @@ export const messagingService = {
     //
     //    Coût : ≤ MAX_THREADS_PER_QUERY (100) rows par consultation inbox,
     //    acceptable car `listThreads` n'est pas sur le hot path.
+    //
+    // Fix US-2076bis-V2 (Issue #442) — `ThreadSummary` n'expose plus
+    // `patientId` BDD (anonymisation UI). On reconstitue les `exposedPatientIds`
+    // à partir des `rows` raw query interne + filtre `livePatientMap` (idem
+    // H3 — patients soft-deleted exclus du pivot audit).
     const exposedPatientIds = [
-      ...new Set(summaries.map((s) => s.patientId).filter((p): p is number => p !== null)),
+      ...new Set(
+        rows
+          .map((r) => r.patient_id)
+          .filter((p): p is number => p !== null && livePatientMap.has(p)),
+      ),
     ]
 
     // Fix H1 round 1 review PR #441 — coalesce audit emission sur trigger

@@ -33,11 +33,28 @@ vi.mock("next-intl", () => ({
   useLocale: () => "fr",
 }))
 
+// US-2076bis-V2 (Issue #442) — UUID v4 opaque (anti-énumération vs
+// patient.id séquentiel iter 2).
+//
+// Fix M2 round 1 review PR #455 — `slice(0, 8)` AVANT `padEnd` pour empêcher
+// segment 1 > 8 chars (corruption format UUID si caller passe prefix long).
+// Validation regex hex defense-in-depth.
+function makePublicRef(prefix: string): string {
+  const cleanPrefix = prefix.slice(0, 8).padEnd(8, "0")
+  if (!/^[0-9a-f]{8}$/i.test(cleanPrefix)) {
+    throw new Error(`makePublicRef: invalid hex prefix "${prefix}" — segment 1 must match /^[0-9a-f]{8}$/`)
+  }
+  // Format UUID v4 RFC 4122 : version digit '4' au bit 13 + variant digit
+  // '8/9/a/b' au bit 17. Le préfixe permet identifier visuellement le thread
+  // (ex: "01" → "01000000-...").
+  return `${cleanPrefix}-0000-4000-8000-000000000000`
+}
+
 function makeThread(overrides: Partial<ThreadListItem> = {}): ThreadListItem {
   return {
     conversationKey: "abc123",
     otherUserId: 7,
-    patientId: 42,
+    patientPublicRef: makePublicRef("42"),
     lastMessage: {
       id: "msg-1",
       fromUserId: 7,
@@ -115,9 +132,9 @@ describe("ThreadList (iter 2)", () => {
   describe("thread items", () => {
     it("render N items avec key conversationKey", () => {
       const items = [
-        makeThread({ conversationKey: "k1", patientId: 1 }),
-        makeThread({ conversationKey: "k2", patientId: 2 }),
-        makeThread({ conversationKey: "k3", patientId: 3 }),
+        makeThread({ conversationKey: "k1", patientPublicRef: makePublicRef("01") }),
+        makeThread({ conversationKey: "k2", patientPublicRef: makePublicRef("02") }),
+        makeThread({ conversationKey: "k3", patientPublicRef: makePublicRef("03") }),
       ]
       renderList(items)
       const buttons = screen.getAllByRole("button").filter((b) => b.getAttribute("type") === "button")
@@ -134,14 +151,14 @@ describe("ThreadList (iter 2)", () => {
       expect(selectedItem).toBeTruthy()
     })
 
-    it("avatar 'P' si patientId set", () => {
-      const items = [makeThread({ patientId: 42 })]
+    it("avatar 'P' si patientPublicRef set (US-2076bis-V2)", () => {
+      const items = [makeThread({ patientPublicRef: makePublicRef("42") })]
       renderList(items)
       expect(screen.getByText("P")).toBeTruthy()
     })
 
-    it("avatar 'U' si patientId null (staff↔staff)", () => {
-      const items = [makeThread({ patientId: null })]
+    it("avatar 'U' si patientPublicRef null (staff↔staff)", () => {
+      const items = [makeThread({ patientPublicRef: null })]
       renderList(items)
       expect(screen.getByText("U")).toBeTruthy()
     })
@@ -287,8 +304,8 @@ describe("ThreadList (iter 2)", () => {
   describe("search", () => {
     it("search vide → toutes les conversations visibles", () => {
       const items = [
-        makeThread({ conversationKey: "k1", patientId: 100 }),
-        makeThread({ conversationKey: "k2", patientId: 200 }),
+        makeThread({ conversationKey: "k1", patientPublicRef: makePublicRef("11") }),
+        makeThread({ conversationKey: "k2", patientPublicRef: makePublicRef("22") }),
       ]
       renderList(items)
       const threadButtons = screen
@@ -297,14 +314,18 @@ describe("ThreadList (iter 2)", () => {
       expect(threadButtons.length).toBe(2)
     })
 
-    it("search par patientId numérique filtre la liste", () => {
+    it("search par patientPublicRef (12 premiers chars Fix H1 round 1) filtre la liste", () => {
       const items = [
-        makeThread({ conversationKey: "k1", patientId: 100, otherUserId: 1 }),
-        makeThread({ conversationKey: "k2", patientId: 200, otherUserId: 2 }),
+        makeThread({ conversationKey: "k1", patientPublicRef: makePublicRef("aabbccdd"), otherUserId: 1 }),
+        makeThread({ conversationKey: "k2", patientPublicRef: makePublicRef("eeff1122"), otherUserId: 2 }),
       ]
       renderList(items)
       const input = screen.getByRole("searchbox")
-      fireEvent.change(input, { target: { value: "100" } })
+      // Search par préfixe UUID — match 12 premiers chars affichés UI
+      // (Fix H1 round 1 PR #455 — 32→48 bits collision protection).
+      // `makePublicRef("aabbccdd")` produit `aabbccdd-0000-...` donc les
+      // 12 premiers chars sont "aabbccdd-000" — search avec "aabbccdd" match.
+      fireEvent.change(input, { target: { value: "aabbccdd" } })
       const threadButtons = screen
         .getAllByRole("button")
         .filter((b) => b.className.includes("min-h-[64px]"))
