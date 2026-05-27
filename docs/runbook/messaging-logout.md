@@ -92,19 +92,43 @@ client sont **inopérantes** sur cookies httpOnly (par design).
 chaque requête → si la session DB a été révoquée par un autre canal (ex:
 admin force-logout), le cookie résiduel est rejeté au prochain refresh.
 
-### M2 — Multi-tab : tab2 conserve SW + tokens après logout tab1
+### M2 — Multi-tab : sync cross-tab via BroadcastChannel ✅ RÉSOLU (PR #451)
 
-Si PS ouvre 2 tabs `/messages` + `/patients` et logout dans tab1, le tab2 :
-- reste authentifié visuellement jusqu'au prochain refresh (cookie cleared
-  côté tab1 → tab2 voit aussi le cookie vide via storage event natif sur
-  reload)
-- garde son SW registered tant qu'il n'est pas naviqué vers `/login`
-- peut potentiellement ré-register un token FCM via `useMessagingPush`
-  (annulant le cleanup tab1)
+**Statut V1** : implémenté via `BroadcastChannel("diabeo:auth")` (Issue #450
+PR #451). Si PS A logout dans tab 1, tous les autres tabs ouverts sur la
+même origin Diabeo reçoivent un message `{type: "logout", from, at}` et
+cleanup local (sessionStorage clear + `router.replace("/login")`) SANS
+ré-émettre (anti-loop : seul l'initiateur broadcast).
 
-**Statut** : tracking GitHub Issue follow-up V1.5 — implémenter
-`BroadcastChannel("auth")` pour cross-tab logout sync (postMessage `logout`
-→ listener force redirect `/login` + cleanup local sur tous tabs).
+**Pattern** :
+
+```typescript
+// useAuth — listener au mount (toutes instances).
+useEffect(() => {
+  if (typeof BroadcastChannel === "undefined") return  // fallback IE/vieux Safari
+  const channel = new BroadcastChannel("diabeo:auth")
+  channel.onmessage = (event) => {
+    if (event.data?.type === "logout" && event.data?.from !== ownTabId) {
+      applyLogoutLocalCleanup(router.replace)
+    }
+  }
+  return () => channel.close()
+}, [router])
+
+// logout() — broadcast après cleanup backend chain.
+const channel = new BroadcastChannel("diabeo:auth")
+channel.postMessage({ type: "logout", from: ownTabId, at: Date.now() })
+channel.close()
+```
+
+**Filtre `from === ownTabId`** : spec browser dit que sender ne reçoit pas,
+mais Node `worker_threads.BroadcastChannel` (jsdom + Edge runtime futur)
+renvoie au sender. Filtre défensif requis pour portabilité.
+
+**Limite résiduelle** : BroadcastChannel ne fonctionne que SAME-ORIGIN dans
+des tabs DU MÊME profil/contexte navigateur. PS qui a ouvert tab 1 dans
+Chrome profil A et tab 2 dans Chrome profil B → pas de sync (sessions
+isolées de toute façon, pas un cas réel sur poste cabinet).
 
 ### M4 — Race async cleanup window (~100-500ms)
 
@@ -202,7 +226,9 @@ Inclut la régression HSA H2 : `unregisterAll` propage `ctx` + `metadata.count`
 - **`Notification.show()` futur** : si iter 6+ ajoute notifications visibles
   tray, vérifier que `getRegistrations()` cleanup au logout couvre TOUS les
   workers (pas juste `firebase-messaging-sw.js`).
-- **Cross-tab logout sync** : Issue follow-up V1.5 (BroadcastChannel("auth")).
+- ~~**Cross-tab logout sync** : Issue follow-up V1.5 (BroadcastChannel("auth")).~~
+  ✅ **Résolu** PR #451 (Issue #450) — cf. section "Limites connues — M2"
+  ci-dessus.
 - **Cookie httpOnly clear** : non clearable côté JS — fallback middleware
   re-check JWT à chaque requête (cf. limite M1 ci-dessus).
 
@@ -210,6 +236,8 @@ Inclut la régression HSA H2 : `unregisterAll` propage `ctx` + `metadata.count`
 
 - Issue GH #446 — Logout flow unregister SW + DELETE FCM token
 - PR #449 — Implémentation (reviews round 1 : 17 findings résolus)
+- Issue GH #450 — Cross-tab logout sync (follow-up HSA M2)
+- PR #451 — Implémentation cross-tab sync via `BroadcastChannel("diabeo:auth")`
 - US-2076-UI iter 4 PR #444 — `unregisterMessagingServiceWorker()` helper
 - US-2073 PR #340 — Backend `/api/push/register` DELETE endpoint
 - US-2268 — Convention `auditLog.resourceId` plat + `metadata.userId` pivot
