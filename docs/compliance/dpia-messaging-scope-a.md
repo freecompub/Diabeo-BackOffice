@@ -271,3 +271,43 @@ Nouveau endpoint backend (PR #444) qui appelle `canMessage()` côté serveur pou
 - [ ] DPA Google Firebase signé (transfert hors-UE Art. 44+ — projet Firebase US-region)
 - [ ] CGU pro mention notifications push activées + permission flow `Notification.requestPermission()` UI
 - [ ] Test E2E Playwright : SW registration + push consume + BroadcastChannel callback (jsdom unsupported)
+
+## §11 — Cross-tab logout sync (Issue #450 PR #451)
+
+### 11.1 Contexte
+
+L'iter 4 (PR #444) + Issue #446 (PR #449) résolvent le bug FCM cleanup sur logout d'un onglet — mais sur poste partagé cabinet, si PS A laisse plusieurs onglets ouverts et logout dans un seul, les autres restent visuellement authentifiés. Risque : `useMessagingPush` mount cycle des autres tabs ré-register un token FCM (annulant cleanup tab 1) → PS B login derrière reçoit push PS A.
+
+### 11.2 Solution implémentée — `BroadcastChannel("diabeo:auth")`
+
+Cf. `docs/runbook/messaging-logout.md` section M2. Le tab initiateur du logout broadcast `{type, from, at}` après cleanup backend ; les autres tabs cleanup local (sessionStorage clear + replace `/login`) sans ré-émettre (anti-loop). `useState(() => crypto.randomUUID())[0]` comme tab identifier.
+
+### 11.3 Modèle de menace
+
+| Risque | Impact | Mitigation V1 | Statut |
+|---|---|---|---|
+| **XSS amplification** : attaquant XSS broadcast `{type: "logout"}` → DOS session tous tabs | XSS est game-over (cookie déjà exfiltrable via XHR) ; DOS empêche victime de noter l'attaque | Aucune mitigation pratique (un secret JS-accessible serait extractible par même XSS). Documenté DPIA, surveillance CSP `default-src 'self'` | ⏸ Acceptable V1 |
+| **Timing oracle sous-domaine** : si futur `cdn.diabeo.fr` partage origin (CSP relax) → attaquant observe quand PS logout | Information disclosure faible (timing patterns d'activité) | BroadcastChannel strictement same-origin (host+port+protocol). Sous-domaines hors-origin isolés | ✓ Spec-level |
+| **Forge tab id par XSS** : attaquant peut envoyer `{type, from: "fake-id"}` pour faire cleanup d'un autre tab | Cf. XSS amplification ci-dessus | `tabId` non secret, juste désambiguïsation runtime — pas une frontière sécurité | ⏸ Acceptable V1 |
+| **Cross-user logout DOS multi-account** : V2 multi-account UX → logout user A déclenche logout user B | Pas applicable V1 (cookie unique par origin = 1 user actif) | Documenté DPIA + Issue GH V2 (filter `userId` payload) | ⏸ V2 ([Issue #452](https://github.com/freecompub/Diabeo-BackOffice/issues/452)) |
+| **Cookie httpOnly tab 2 résiduel post-logout tab 1** : cookie reste jusqu'à expiration JWT (~15min) | Tab 2 peut tenter d'accéder à PHI cached avant prochain middleware refresh | Cleanup UI immédiat via cross-tab listener (replace `/login` < 100ms) | ✓ PR #451 |
+
+### 11.4 Décision audit `session.cross_tab_close`
+
+**Question HSA H2 round 2 PR #451** : faut-il émettre un audit log backend pour chaque tab fermé via broadcast cross-tab ?
+
+**Décision V1 (PR #451)** : **NON** — la révocation backend tab 1 (POST `/api/auth/logout`) fait foi pour démontrer "PS X a fini sa session à T". Audit cross-tab additionnel = bruit (N tabs × 1 audit = pollution + perf cron messagerie).
+
+**Démonstrabilité HDS Art. L.1111-8** : forensique "PS X a fini sa session à T sur tous ses tabs" reconstituable via :
+1. Audit `session.logout` (action="DELETE" resource="SESSION") tab initiateur — IP/UA + count tokens FCM cleared
+2. Audit `push.unregister.all` (PR #449 HSA H2) — IP/UA + count
+3. Middleware refuse cookie résiduel autres tabs au prochain refresh (≤15min) — implicite par modèle cookie unique
+
+**Validation DPO** : pending signature pre-prod patients réels (à demander avec PR #451 review).
+
+### 11.5 Bloqueurs pre-prod patients réels (iter 4 — addendum PR #451)
+
+- [ ] Décision DPO §11.4 — confirmation que révocation backend tab 1 + middleware refresh suffit pour démonstrabilité Art. L.1111-8 cross-tab
+- [ ] Surveillance CSP `default-src 'self'` + `script-src 'self'` strict (mitigation XSS amplification §11.3)
+- [ ] Issue GH V1.5 trackée pour filtre `userId` si multi-account UX V2
+

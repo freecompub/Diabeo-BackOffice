@@ -18,7 +18,7 @@
  * calculate remaining session time without touching the httpOnly cookie.
  */
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 import { LOGIN_TIMESTAMP_KEY } from "@/hooks/use-session-timeout"
@@ -43,6 +43,49 @@ async function safeCleanupStep(
   } catch (err) {
     logHookError(label, err, { alwaysLog: true })
   }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-tab logout sync (Issue #450 — follow-up review HSA M2 PR #449)
+// ---------------------------------------------------------------------------
+
+/**
+ * Nom du `BroadcastChannel` partagé entre tous les tabs ouverts sur la même
+ * origin Diabeo. Toute instance `useAuth` mount un listener — quand le tab
+ * initiateur du logout finit sa chaîne cleanup, il post un message `"logout"`
+ * que les autres tabs consomment pour se déconnecter localement.
+ *
+ * Sans ce sync, sur poste partagé cabinet multi-PS (HDS Art. L.1111-8) :
+ *   - PS A logout tab 1 → tokens DELETE backend
+ *   - Tab 2 toujours actif → `useMessagingPush` mount cycle → ré-register
+ *     token FCM (annule cleanup tab 1)
+ *   - PS B login peu après → token PS A persiste sous identité PS A
+ *   - Cron messagerie push → arrive à device PS A (alors qu'il a logout)
+ */
+const AUTH_CHANNEL_NAME = "diabeo:auth"
+
+interface AuthBroadcastMessage {
+  type: "logout"
+  /** Identifiant unique du tab émetteur — permet au listener d'ignorer ses
+   * propres broadcasts. Spec `BroadcastChannel` dit que le sender ne reçoit
+   * pas, mais l'implémentation Node (`node:worker_threads`) renvoie au sender
+   * → filtrage défensif requis pour tests jsdom + portabilité Node future
+   * (Edge runtime). Browser : `BroadcastChannel` ne se renvoie pas, donc le
+   * filtre est un no-op runtime. */
+  from: string
+  /** Timestamp émission UTC. Utilisé uniquement pour observability (logs ops
+   * "tab X cleanup à T+50ms après broadcast tab Y") — pas de logique métier. */
+  at: number
+}
+
+/**
+ * Cleanup LOCAL au tab courant — appelé soit par le `finally` du logout
+ * initiateur, soit par les listeners cross-tab. Ne broadcast PAS (sinon
+ * loop infini théorique, même si `BroadcastChannel` n'envoie pas au sender).
+ */
+function applyLogoutLocalCleanup(redirect: (path: string) => void): void {
+  sessionStorage.removeItem(LOGIN_TIMESTAMP_KEY)
+  redirect("/login")
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +262,71 @@ export function useAuth() {
   // aligné HSA-3 inFlightRef iter 2).
   const isLoggingOutRef = useRef(false)
 
+  // Fix H3 round 2 review PR #451 — `useState(() => init)[0]` lazy init
+  // idiomatic React 19 (vs mutation `tabIdRef.current` pendant render body
+  // qui viole render purity + risque sous compiler/StrictMode double-invoke).
+  // Fix L1 round 2 — `crypto.randomUUID()` (RFC 4122 v4, ~122 bits entropy)
+  // élimine la collision théorique `Math.random + Date.now` 2 tabs même ms.
+  // Disponible browser ≥ 2022 + Node ≥ 19 + Edge runtime.
+  // Pas de valeur sécurité : tabId est un identifiant UI éphémère pour
+  // désambiguïser le sender côté listener BroadcastChannel — un attaquant
+  // XSS pourrait forger n'importe quel tabId, donc pas une frontière de
+  // confiance. `crypto.randomUUID()` choisi pour son caractère collision-proof
+  // (~1 chance sur 2^122 de collision même au pire moment).
+  const [tabId] = useState(() => {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return crypto.randomUUID()
+    }
+    // Fallback test env (jsdom < 19 ou polyfill manquant) — Math.random OK car
+    // jamais sécurité, juste désambiguïsation runtime.
+    return Math.random().toString(36).slice(2) + Date.now().toString(36)
+  })
+
+  // Fix H4 round 2 review PR #451 — `routerRef` stable mis à jour dans un
+  // useEffect séparé (vs mutation render body). Le listener useEffect a
+  // désormais deps `[tabId]` (stable) au lieu de `[router]` — évite la
+  // fenêtre microscopique close→new à chaque changement d'instance router
+  // (Next.js 16 useRouter contrat non-stable garanti).
+  const routerRef = useRef(router)
+  useEffect(() => {
+    routerRef.current = router
+  }, [router])
+
+  // Fix H1 + FE L3 round 2 review PR #451 — channel ref PERSISTANT pour
+  // toute la durée de vie du hook (au lieu d'éphémère post + close à chaque
+  // logout). Élimine la race postMessage/close (postMessage async + close
+  // sync immédiat → Firefox a historiquement abandonné des messages). Le
+  // channel est créé au mount + posté via ref dans logout + closed au
+  // unmount du hook uniquement.
+  const channelRef = useRef<BroadcastChannel | null>(null)
+
+  // Issue #450 follow-up review HSA M2 PR #449 — listener cross-tab logout.
+  // Si un AUTRE tab logout, on cleanup local (sessionStorage clear + redirect
+  // /login) SANS ré-émettre (anti-loop : seul l'initiateur broadcast).
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") {
+      // Vieux Safari/IE ou SSR : graceful fallback no-op.
+      return
+    }
+    const channel = new BroadcastChannel(AUTH_CHANNEL_NAME)
+    channelRef.current = channel
+    channel.onmessage = (event: MessageEvent<AuthBroadcastMessage>) => {
+      const data = event.data
+      if (data?.type !== "logout") return
+      // Fix M1 round 2 review PR #451 — validation runtime `from` typeof
+      // string. Sans ça, `{type: "logout", from: null}` passe filtre (null
+      // !== string ownTabId) → cleanup déclenché par message malformé.
+      if (typeof data.from !== "string") return
+      // Filtre défensif : ignorer ses propres broadcasts (cf. doc `from`).
+      if (data.from === tabId) return
+      applyLogoutLocalCleanup((path) => routerRef.current.replace(path))
+    }
+    return () => {
+      channel.close()
+      channelRef.current = null
+    }
+  }, [tabId])
+
   const logout = useCallback(async () => {
     // Fix Issue #446 (US-2076-UI iter 4 PR #444 follow-up) + reviews PR #449
     // — cleanup HDS Art. L.1111-8 gestion fin de session sur poste partagé
@@ -267,17 +375,40 @@ export function useAuth() {
         ),
       ])
     } finally {
+      // Issue #450 — broadcast aux autres tabs AVANT le cleanup local pour
+      // que tous les tabs cleanup en parallèle (latence cross-tab minimisée).
+      // Seul l'initiateur du logout broadcast → pas de loop (les listeners
+      // appellent `applyLogoutLocalCleanup` sans ré-émettre).
+      //
+      // Fix H1 round 2 review PR #451 — utilise `channelRef.current`
+      // persistant (créé au mount) au lieu d'un channel éphémère post+close.
+      // Élimine race postMessage async / close sync immédiat (Firefox a
+      // historiquement abandonné des messages avec ce pattern).
+      const channel = channelRef.current
+      if (channel) {
+        try {
+          channel.postMessage({
+            type: "logout",
+            from: tabId,
+            at: Date.now(),
+          } satisfies AuthBroadcastMessage)
+        } catch (err) {
+          // Fire-and-forget : si broadcast fail (browser quirk), le cleanup
+          // local du tab initiateur fonctionne toujours. Les autres tabs
+          // verront le 401 au prochain refresh middleware.
+          logHookError("logout.broadcast", err, { alwaysLog: true })
+        }
+      }
       // Fix FE M3 round 1 PR #449 — clear + redirect dans finally global,
       // même si un bug React 19 compiler edge case fait throw sur await.
-      sessionStorage.removeItem(LOGIN_TIMESTAMP_KEY)
       // Fix FE H6 round 1 PR #449 — `router.replace` au lieu de `router.push`.
       // Push conserve l'historique → back button → flash PHI dashboard cached
       // avant que middleware re-redirect. Sur poste partagé cabinet = leak
       // visuel. `replace` invalide le history entry courant.
-      router.replace("/login")
+      applyLogoutLocalCleanup((path) => routerRef.current.replace(path))
       isLoggingOutRef.current = false
     }
-  }, [router])
+  }, [tabId])
 
   return { login, logout, isLoading, error, setError }
 }
