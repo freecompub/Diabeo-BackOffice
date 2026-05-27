@@ -216,3 +216,58 @@ Forensique CNIL : pour reconstituer "qui a accédé aux messages complets de pat
 - [ ] V1.5 : rate-limit GET `/api/messages/thread` Redis 100 req/min/user
 - [ ] V1.5 : decision préférence user "masquer previews" (mode discret open-space)
 - [ ] Test E2E Playwright : IntersectionObserver threshold 1.0 + dwell time validé navigateurs réels
+
+## 9. UI iter 4 — NewThreadModal + FCM consume (PR #444)
+
+### 9.1 Surface UI exposée
+
+PR #444 introduit :
+- `NewThreadModal` : permet PS de démarrer une conversation avec un patient autorisé. Search + radiogroup contacts + composer premier message.
+- `useMessagingContacts` : fetch `/api/messaging/contacts` (NEW endpoint Fix HSA H2) — filtré par `canMessage()` server-side
+- `useMessagingPush` : FCM consume via service worker `public/firebase-messaging-sw.js`
+- Backend route `/api/messaging/contacts` : pré-filtre patients via `canMessage` (NURSE+, GDPR consent)
+
+### 9.2 Risques identifiés et mitigations
+
+| Risque | Mitigation iter 4 | Statut |
+|---|---|---|
+| Fuite préférence patient consent opt-out (modal affiche TOUS patients) | Endpoint `/api/messaging/contacts` filtre `canMessage` server-side avant exposition UI | ✓ Fix HSA H2 PR #444 |
+| SW `importScripts` Firebase CDN sans SRI — supply chain compromise | TODO V1.5 — self-host SDK dans `public/vendor/` après scan AV manuel | ⏳ Issue #445 |
+| SW accepte `FIREBASE_CONFIG` postMessage sans validation | Whitelist origin + shape config + allowlist `projectId` + latch TOCTOU | ✓ Fix HSA C1 PR #444 |
+| BroadcastChannel exfiltrable par scripts same-origin (XSS, extensions) | Documenté DPIA §9.4 — limitation API native, surveillance code |  ⏳ V2 si XSS surface |
+| Modal close pendant send in-flight → message envoyé silencieusement | `closedDuringSendRef` flag — ignore `onMessageSent` callback post-close | ✓ Fix H1 PR #444 |
+| SW persiste après logout → notifications fuites poste partagé | TODO V1.5 — `unregisterMessagingServiceWorker()` helper + DELETE FCM token | ⏳ Issue #446 |
+| SW pas de cache-bust si bug critique iter 5+ | `updateViaCache: "none"` + `SW_VERSION` bump strategy | ✓ Fix HSA M3 PR #444 |
+| `apiKey` Firebase via postMessage observable devtools | Validation shape côté SW + client (defense-in-depth) | ✓ Fix HSA C1 PR #444 |
+
+### 9.3 Endpoint `/api/messaging/contacts` (Fix HSA H2)
+
+Nouveau endpoint backend (PR #444) qui appelle `canMessage()` côté serveur pour CHAQUE patient du portefeuille PS avant exposition UI :
+
+- **RBAC** : NURSE+ + GDPR consent obligatoire
+- **Performance** : O(N) appels `canMessage` (4 queries DB chacun). Cap N à `MAX_CONTACTS_PER_QUERY = 50`. V1.5 introduira cache Redis pré-calculé
+- **Anonymisation** : retourne `Patient #{patientId}` uniquement (cohérent iter 2)
+- **Audit** : 1 row `READ MESSAGING_CONTACTS` agrégé (pas de pivot patientId — vue multi-patients)
+- **Cache-Control** : `no-store, private` (préférences messagerie peuvent changer)
+
+### 9.4 BroadcastChannel surface (HSA H1)
+
+`BroadcastChannel("messaging-events")` est l'API standard Web pour SW→client communication. Limitation native : **n'a pas de mécanisme origin/auth** — tout script JS sur app.diabeo.fr peut listen.
+
+**Threat model** : XSS attaquant peut `new BroadcastChannel("messaging-events").onmessage = ...` et collecter le `nonce` de chaque push reçu. Corrélé timing avec backend, permet inférer "PS X a reçu un message à T" → reconstruit graphe relations patient↔PS (Art. 9 inférée).
+
+**Mitigations V1+** :
+- Pas de PHI dans le broadcast (uniquement `nonce` opaque)
+- Surveillance XSS via CSP `default-src 'self'`
+- CGU pro mention monitoring sécurité
+
+**Mitigations V2** : signature HMAC du nonce SW→client + verification.
+
+### 9.5 Conditions GO prod patients réels (iter 4 additionnelles)
+
+- [ ] Issue #445 (self-host Firebase SDK) livrée — bloqueur si CSP `script-src 'self'` strict appliqué
+- [ ] Issue #446 (logout flow unregister SW + DELETE FCM token) livrée — bloqueur multi-PS cabinet poste partagé
+- [ ] Firebase config (`apiKey` + `projectId` + `messagingSenderId` + `appId`) provisionnée + ajoutée à `ALLOWED_PROJECT_IDS` du SW (3 envs : dev/staging/prod)
+- [ ] DPA Google Firebase signé (transfert hors-UE Art. 44+ — projet Firebase US-region)
+- [ ] CGU pro mention notifications push activées + permission flow `Notification.requestPermission()` UI
+- [ ] Test E2E Playwright : SW registration + push consume + BroadcastChannel callback (jsdom unsupported)

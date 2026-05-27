@@ -40,7 +40,7 @@ import type { Locale } from "@/i18n/config"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Search, XCircle } from "lucide-react"
+import { Search, XCircle, Plus } from "lucide-react"
 import { formatRelativeTime } from "@/lib/intl/formatters"
 import {
   useMessageThreads,
@@ -68,6 +68,11 @@ export interface ThreadListProps {
    * mort.
    */
   onSelectedThreadVanished?: () => void
+  /**
+   * US-2076-UI iter 4 — callback button "+ Nouveau message" dans header.
+   * Parent ouvre NewThreadModal. Si undefined, button non rendu.
+   */
+  onNewThread?: () => void
 }
 
 type ReadFilter = "all" | "unread"
@@ -77,6 +82,7 @@ export function ThreadList({
   selectedKey,
   onSelect,
   onSelectedThreadVanished,
+  onNewThread,
 }: ThreadListProps) {
   const t = useTranslations("messages")
   const locale = useLocale() as Locale
@@ -187,19 +193,38 @@ export function ThreadList({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header — search + filtres */}
+      {/* Header — title + new thread button + search + filtres */}
       <div className="border-b border-border p-3 space-y-2">
-        <h2
-          id="messaging-thread-list-heading"
-          className="text-base font-medium text-foreground"
-        >
-          {t("threadListTitle")}
-          {totalCount > 0 && (
-            <span className="ms-2 text-xs font-normal text-muted-foreground">
-              {t("threadListCount", { count: totalCount })}
-            </span>
+        <div className="flex items-center justify-between gap-2">
+          <h2
+            id="messaging-thread-list-heading"
+            className="text-base font-medium text-foreground"
+          >
+            {t("threadListTitle")}
+            {totalCount > 0 && (
+              <span className="ms-2 text-xs font-normal text-muted-foreground">
+                {t("threadListCount", { count: totalCount })}
+              </span>
+            )}
+          </h2>
+          {/* US-2076-UI iter 4 — button "+ Nouveau message".
+              Touch target 44px + focus ring + aria-label discriminant. */}
+          {onNewThread && (
+            <button
+              type="button"
+              onClick={onNewThread}
+              aria-label={t("newThreadButtonAria")}
+              className={cn(
+                "inline-flex items-center justify-center rounded-md px-3 min-h-[44px] text-xs font-medium",
+                "bg-teal-700 text-white hover:bg-teal-800",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+              )}
+            >
+              <Plus className="h-4 w-4 me-1" aria-hidden="true" />
+              <span className="hidden sm:inline">{t("newThreadButton")}</span>
+            </button>
           )}
-        </h2>
+        </div>
 
         {/* Search */}
         <div className="relative">

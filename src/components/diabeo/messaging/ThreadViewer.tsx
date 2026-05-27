@@ -42,6 +42,7 @@ import { Send, Loader2 } from "lucide-react"
 import { formatRelativeTime } from "@/lib/intl/formatters"
 import { logHookError } from "@/lib/ui/sanitize-error"
 import { MAX_BODY_BYTES_UTF8 } from "@/lib/shared/messaging-bounds"
+import { composerErrorI18nKey } from "@/lib/ui/messaging-error-keys"
 import { useThreadMessages, type ThreadMessageItem } from "./useThreadMessages"
 import { useSendMessage } from "./useSendMessage"
 import { useMarkAsRead } from "./useMarkAsRead"
@@ -121,7 +122,9 @@ export function ThreadViewer({
   // automatiquement (React idiomatic, pas de useEffect setState).
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticMessage[]>([])
   const [composerValue, setComposerValue] = useState<string>("")
-  const [composerError, setComposerError] = useState<string | null>(null)
+  // Fix M1 round 1 review PR #444 — type narrowing `SendMessageErrorCode`
+  // (vs ancien `string` libre) → exhaustive switch dans helper i18n.
+  const [composerError, setComposerError] = useState<import("./useSendMessage").SendMessageErrorCode | null>(null)
 
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const scrollContainerRef = useRef<HTMLDivElement | null>(null)
@@ -455,7 +458,9 @@ export function ThreadViewer({
           {composerByteLength > MAX_BODY_BYTES_UTF8 * 0.8 && (
             <div
               id={isBodyTooLong ? "composer-error-too-long" : undefined}
-              role={isBodyTooLong ? "alert" : "status"}
+              // Fix M10 round 1 review PR #444 — role="status" toujours
+              // (urgency via aria-live=assertive + texte rouge visuel).
+              role="status"
               aria-live={isBodyTooLong ? "assertive" : "polite"}
               aria-atomic="true"
               className={cn(
@@ -616,22 +621,5 @@ function MessageBubble({
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────── */
-
-function composerErrorI18nKey(code: string): string {
-  switch (code) {
-    case "forbidden":
-      return "composerErrorForbidden"
-    case "gdprConsentRevoked":
-      return "composerErrorConsent"
-    case "bodyTooLong":
-      return "composerErrorTooLong"
-    case "bodyEmpty":
-      return "composerErrorEmpty"
-    case "rateLimited":
-      return "composerErrorRateLimited"
-    case "networkError":
-      return "composerErrorNetwork"
-    default:
-      return "composerErrorGeneric"
-  }
-}
+// Fix M1 round 1 review PR #444 — `composerErrorI18nKey` factor dans
+// `@/lib/ui/messaging-error-keys` (shared avec NewThreadModal iter 4).
