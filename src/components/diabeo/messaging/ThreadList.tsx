@@ -213,6 +213,7 @@ export function ThreadList({
             <button
               type="button"
               onClick={onNewThread}
+              data-testid="thread-list-new-button"
               aria-label={t("newThreadButtonAria")}
               className={cn(
                 "inline-flex items-center justify-center rounded-md px-3 min-h-[44px] text-xs font-medium",
