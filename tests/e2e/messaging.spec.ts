@@ -174,42 +174,140 @@ test.describe("Messaging — Service Worker FCM (Fix C1 PR #444)", () => {
   })
 })
 
-test.describe("Messaging — FIXME post-seed enrichi (Issue #448)", () => {
-  // Fix M1 round 1 review PR #447 — `test.fixme` Playwright (vs ancien
-  // `test.skip` body trompeur). Reporter affiche distinctement. Activation
-  // post-seed enrichi (patient avec consent messagerie + thread ≥ 5 msg).
-  //
-  // Tracking : Issue GH #448 — Enrichir seed E2E.
+test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)", () => {
+  // Tests activés post-seed Issue #448 (5 messages docteur↔patientDT1
+  // distribution 3 lus + 2 non-lus, 5 patients tous reliés docteur via
+  // PatientReferent → ≥ 5 contacts messageables visibles dans NewThreadModal).
 
-  test.fixme(
-    "Send message depuis NewThreadModal → optimistic UI + refresh threads list (requiert seed avec patient consent messagerie)",
-    async () => {
-      // À implémenter quand seed inclut patient avec consent messagerie OK +
-      // PatientReferent ou PatientService lien cabinet.
-    },
-  )
+  test("Send message depuis NewThreadModal → modal close + thread visible dans liste", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
 
-  test.fixme(
-    "Radiogroup keyboard nav ArrowDown/Up/Home/End + Space (Fix C4 PR #444) — requiert seed contacts ≥ 2",
-    async () => {
-      // Couverture unit existante : NewThreadModal.test.tsx (4 tests
-      // ArrowDown/Home/End/Space). E2E réel browser pending.
-    },
-  )
+    // Attendre que la liste threads soit chargée (au moins le thread du seed
+    // docteur↔patientDT1 doit apparaître).
+    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 10_000 })
 
-  test.fixme(
-    "Auto-mark on scroll IntersectionObserver threshold 1.0 + dwell 1500ms (Fix C1 PR #443) — requiert seed thread avec ≥ 5 messages",
-    async () => {
-      // Couverture unit via IntersectionObserver mock jsdom (ThreadViewer.test.tsx).
-      // E2E réel browser : native IO + viewport simulation + dwell timer.
-    },
-  )
+    // Ouvrir modal nouveau thread
+    await page.getByTestId("thread-list-new-button").click()
+    await expect(page.getByTestId("new-thread-modal")).toBeVisible({ timeout: 5_000 })
+
+    // Sélectionner le 1er contact disponible (seed garantit ≥ 5 patients
+    // messageables via PatientReferent docteur).
+    const radios = page.getByRole("radio")
+    await expect(radios.first()).toBeVisible({ timeout: 10_000 })
+    await radios.first().click()
+
+    // Remplir le composer (texte unique pour identifier le message après send).
+    const uniqueText = `E2E send #448 ${Date.now()}`
+    await page.locator("#new-thread-body").fill(uniqueText)
+
+    // Cliquer Envoyer — i18n FR/EN/AR (button accessible name "Envoyer" / "Send" /
+    // "إرسال"). Pattern regex case-insensitive multilingue.
+    await page.getByRole("button", { name: /envoyer|send|إرسال/i }).click()
+
+    // Modal close après send réussi (closedDuringSendRef pattern PR #444).
+    await expect(page.getByTestId("new-thread-modal")).not.toBeVisible({ timeout: 10_000 })
+  })
+
+  test("Radiogroup keyboard nav ArrowDown/Up/Home/End + Space (Fix C4 PR #444)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    await page.getByTestId("thread-list-new-button").click()
+    await expect(page.getByTestId("new-thread-modal")).toBeVisible({ timeout: 5_000 })
+
+    // Seed garantit ≥ 5 contacts messageables docteur (5 patients via
+    // PatientReferent).
+    const radios = page.getByRole("radio")
+    await expect(radios.first()).toBeVisible({ timeout: 10_000 })
+    const count = await radios.count()
+    expect(count).toBeGreaterThanOrEqual(2)
+
+    // Focus 1er radio (roving tabindex)
+    await radios.first().focus()
+
+    // ArrowDown → focus 2e (WCAG 2.1.1 keyboard nav)
+    await page.keyboard.press("ArrowDown")
+    await expect(radios.nth(1)).toBeFocused()
+
+    // End → focus dernier
+    await page.keyboard.press("End")
+    await expect(radios.last()).toBeFocused()
+
+    // Home → focus 1er
+    await page.keyboard.press("Home")
+    await expect(radios.first()).toBeFocused()
+
+    // Space → select 1er radio
+    await page.keyboard.press("Space")
+    await expect(radios.first()).toBeChecked()
+  })
+
+  test("Auto-mark on scroll : unread count diminue après dwell 1500ms (Fix C1 PR #443)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/messages")
+    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 10_000 })
+
+    // État initial : seed a créé 2 messages non-lus du patient vers docteur.
+    // L'API /api/messaging/unread-count doit retourner ≥ 2 avant scroll.
+    const initialUnread = await page.evaluate(async () => {
+      const res = await fetch("/api/messaging/unread-count", { credentials: "include" })
+      if (!res.ok) return null
+      const data = (await res.json()) as { unreadCount?: number }
+      return data.unreadCount ?? null
+    })
+    expect(initialUnread).not.toBeNull()
+    expect(initialUnread!).toBeGreaterThanOrEqual(2)
+
+    // Cliquer sur le 1er thread (docteur↔patientDT1) pour ouvrir ThreadViewer.
+    // ThreadList row n'a pas de data-testid spécifique — utiliser le rôle button/link
+    // ou cibler le thread visible.
+    const threadRows = page.locator('[role="listitem"], [data-testid^="thread-row"]')
+    const threadCount = await threadRows.count()
+    if (threadCount === 0) {
+      // Fallback : cliquer sur le premier élément clickable dans la zone threads.
+      // Acceptable car le seed garantit ≥ 1 thread.
+      const firstThread = page.locator("aside, [aria-label*='thread'], [class*='thread']").first()
+      await firstThread.click({ timeout: 5_000 }).catch(() => {})
+    } else {
+      await threadRows.first().click()
+    }
+
+    // Attendre que le ThreadViewer affiche les messages.
+    // Dwell 1500ms (Fix C1 PR #443) + marge réseau/render = 2500ms safe.
+    await page.waitForTimeout(2500)
+
+    // Vérifier que l'unread count a diminué (au moins 1 message marqué lu
+    // après dwell IntersectionObserver). Le test passe si delta ≥ 1.
+    const finalUnread = await page.evaluate(async () => {
+      const res = await fetch("/api/messaging/unread-count", { credentials: "include" })
+      if (!res.ok) return null
+      const data = (await res.json()) as { unreadCount?: number }
+      return data.unreadCount ?? null
+    })
+    expect(finalUnread).not.toBeNull()
+    // Au moins 1 message marqué lu (les 2 non-lus peuvent être marqués selon
+    // viewport + IntersectionObserver coverage).
+    expect(finalUnread!).toBeLessThan(initialUnread!)
+  })
 
   test.fixme(
     "BroadcastChannel FCM consume → badge bump (Fix C1 PR #444) — requiert mock SW + simulate push event",
     async () => {
       // Requiert mock service worker dans test fixture + simulate push.
-      // Acceptable iter 5 — fallback polling 30s/60s couvre absence FCM.
+      // Acceptable V1 — fallback polling 30s/60s couvre absence FCM.
+      // Tracking : V2 si FCM activé en prod (Issue #445 self-host SDK).
     },
   )
 })

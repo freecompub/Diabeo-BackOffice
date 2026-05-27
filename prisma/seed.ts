@@ -734,7 +734,71 @@ async function main() {
     })
   }
 
-  // ─── 9.bis Appointments (calendrier RDV — seed dev US-2500-UI) ──
+  // ─── 9.bis Messages messagerie (seed dev US-2076-UI E2E — Issue #448) ──
+  //
+  // Idempotent : skippé si conversationKey docteur↔patientDT1 a déjà des
+  // messages. Sinon crée 5 messages alternés docteur ↔ patient avec
+  // distribution 3 lus + 2 non-lus pour tester :
+  //   - ThreadList affichage threads + unread badges
+  //   - ThreadViewer auto-mark on scroll (IntersectionObserver dwell 1500ms)
+  //   - NewThreadModal contact list (canMessage via PatientReferent existant)
+  //
+  // Le `PatientReferent` (seed ci-dessus) garantit que `canMessage(doctor,
+  // patientDT1)` retourne true → contact apparaît dans NewThreadModal.
+  //
+  // Requiert env `CONVERSATION_KEY_PEPPER` (déjà configuré CI .github/workflows
+  // /ci.yml). Sans ce pepper, le seed messages échoue tôt (computeConversationKey
+  // throw) — comportement attendu, runbook docs/runbook/e2e-messaging.md
+  // documente le setup.
+
+  const { computeConversationKey } = await import("../src/lib/services/messaging.service")
+  const { encrypt } = await import("../src/lib/crypto/health-data")
+
+  const conversationKey = computeConversationKey(doctor.id, patientUserDT1.id)
+  const existingMessagesCount = await prisma.message.count({
+    where: { conversationKey },
+  })
+
+  if (existingMessagesCount === 0) {
+    // 5 messages alternés. Dates espacées 5min, base fixée pour idempotence
+    // déterministe (cohérent SEED_CONSENT_DATE pattern).
+    const baseDate = new Date("2026-05-25T10:00:00.000Z")
+    const messages = [
+      { offsetMin: 0,  from: doctor.id,          to: patientUserDT1.id, text: "Bonjour, comment vous sentez-vous aujourd'hui ?", read: true },
+      { offsetMin: 5,  from: patientUserDT1.id,  to: doctor.id,         text: "Bonjour docteur, ça va mieux merci. Glycémies stables.", read: true },
+      { offsetMin: 10, from: doctor.id,          to: patientUserDT1.id, text: "Très bien. N'oubliez pas votre prochain rendez-vous mercredi.", read: true },
+      // 2 unread récents du patient vers docteur — testent unread badge +
+      // auto-mark on scroll côté ThreadViewer docteur.
+      { offsetMin: 15, from: patientUserDT1.id,  to: doctor.id,         text: "J'ai une question sur mon nouveau dosage d'insuline.", read: false },
+      { offsetMin: 20, from: patientUserDT1.id,  to: doctor.id,         text: "Pouvez-vous me rappeler quand vous avez un moment ?", read: false },
+    ]
+
+    for (const m of messages) {
+      const createdAt = new Date(baseDate.getTime() + m.offsetMin * 60_000)
+      // readAt = createdAt + 2min (réaliste delivery → read latency).
+      const readAt = m.read ? new Date(createdAt.getTime() + 2 * 60_000) : null
+      // bodyEncrypted = Buffer AES-256-GCM (IV+TAG+CIPHERTEXT) — `encrypt`
+      // retourne Uint8Array, Prisma accepte Buffer pour `Bytes` columns.
+      await prisma.message.create({
+        data: {
+          conversationKey,
+          fromUserId: m.from,
+          toUserId: m.to,
+          bodyEncrypted: Buffer.from(encrypt(m.text)),
+          // Pivot US-2268 — patientId pour forensique "tous les messages
+          // contextualisant patient X".
+          patientId: patientDT1.id,
+          readAt,
+          createdAt,
+        },
+      })
+    }
+    console.log(`Messaging seed: 5 messages docteur↔patientDT1 (3 read + 2 unread, conversationKey=${conversationKey.slice(0, 8)}...)`)
+  } else {
+    console.log(`Messaging seed: skipped (${existingMessagesCount} messages already exist)`)
+  }
+
+  // ─── 9.ter Appointments (calendrier RDV — seed dev US-2500-UI) ──
   //
   // Idempotent : skippé si Dr Sophie Martin a déjà des RDV. Sinon, crée
   // ~15 RDV variés couvrant tous les statuts sur ±1 mois autour de today,
