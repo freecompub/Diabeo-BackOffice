@@ -13,10 +13,11 @@ L'Issue #448 (PR #453) résout les bloqueurs seed et active 3 des 4 fixmes :
 
 | Test | Statut | Pré-requis seed |
 |---|---|---|
-| Send message → modal close + thread visible | ✅ Activé PR #453 | Patient consent + PatientReferent docteur (déjà seed) |
-| Radiogroup keyboard nav ArrowDown/Up/Home/End/Space | ✅ Activé PR #453 | ≥ 2 contacts messageables docteur |
-| Auto-mark on scroll IntersectionObserver dwell 1500ms | ✅ Activé PR #453 | Thread avec ≥ 1 message non-lu côté docteur |
-| BroadcastChannel FCM consume → badge bump | ⏸ Fixme V2 | Mock service worker dans test fixture + simulate push event |
+| Send message → POST 201 + modal close (Fix H3 round 1 PR #453) | ✅ Activé PR #453 | Patient consent + PatientReferent docteur (déjà seed) + `waitForResponse` POST 201 |
+| Radiogroup keyboard nav ArrowDown/Up/Home/End/Space | ✅ Activé PR #453 | ≥ 2 contacts messageables docteur, scope `modal.getByRole("radio")` |
+| API unread-count exposé docteur (smoke seed + endpoint) | ✅ Activé PR #453 | Seed 2 unread messages (proxy fonctionnel, **pas** validation auto-mark scroll réel) |
+| Auto-mark on scroll IntersectionObserver dwell 1500ms | ⚠️ Fixme V1.5 ([Issue #454](https://github.com/freecompub/Diabeo-BackOffice/issues/454)) | Couverture unit OK via `ThreadViewer.test.tsx` mock jsdom — E2E réel = fixture Playwright IntersectionObserver |
+| BroadcastChannel FCM consume → badge bump | ⏸ Fixme V2 ([Issue #445](https://github.com/freecompub/Diabeo-BackOffice/issues/445)) | Mock service worker dans test fixture + simulate push event |
 
 ## Fixtures seed (PR #453)
 
@@ -39,16 +40,25 @@ Comportement attendu après seed :
 
 ### Env variables obligatoires
 
+Fix L5 round 1 review PR #453 — séparation **seed-only** vs **E2E runtime**
+(le seed n'utilise PAS JWT, source de confusion onboarding).
+
+#### Seed-only (`pnpm prisma db seed`)
+
 ```bash
-# Identifiant DB + chiffrement
 DATABASE_URL="postgresql://..."
-HMAC_SECRET="<64 hex chars>"                          # 32 bytes
-HEALTH_DATA_ENCRYPTION_KEY="<64 hex chars>"            # 32 bytes
+HMAC_SECRET="<64 hex chars>"                  # 32 bytes — emailHmac
+HEALTH_DATA_ENCRYPTION_KEY="<64 hex chars>"   # 32 bytes — AES-256-GCM bodyEncrypted
+# Pepper conversationKey (Issue #450 PR #449) — requis par bloc 9.bis Messages.
+CONVERSATION_KEY_PEPPER="<64 hex chars>"      # 32 bytes ≥ 96 bits Shannon
+```
 
-# Pepper conversationKey (Issue #450 PR #449)
-CONVERSATION_KEY_PEPPER="<64 hex chars>"               # 32 bytes ≥ 96 bits Shannon
+#### E2E runtime additionnel (`pnpm test:e2e`)
 
-# JWT auth (login E2E via /api/auth/login)
+```bash
+# JWT auth — login E2E via /api/auth/login. Le seed n'en a pas besoin
+# (il insère directement en DB), mais le webServer Playwright booté avec
+# `pnpm dev` exige JWT au boot (instrumentation.ts assertRequiredEnv).
 JWT_PRIVATE_KEY="<RSA PEM>"
 JWT_PUBLIC_KEY="<RSA PEM>"
 ```

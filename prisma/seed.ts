@@ -14,6 +14,12 @@ import { hash as bcryptHash } from "bcryptjs"
 import { assertSeedEnv } from "../src/lib/env"
 import { hmacEmail } from "../src/lib/crypto/hmac"
 import { encryptField } from "../src/lib/crypto/fields"
+// Fix M3 round 1 review PR #453 (Issue #448) — static imports pour le bloc
+// 9.bis Messages messagerie (vs dynamic `await import(...)` qui n'apporte
+// aucun bénéfice de lazy loading sur un script CLI one-shot + perd la
+// validation TS au compile-time).
+import { computeConversationKey } from "../src/lib/services/messaging.service"
+import { encrypt } from "../src/lib/crypto/health-data"
 
 // L2 — refuse de tourner sur un cluster production. Le seed crée 5 users avec
 // des passwords plaintext committés dans le repo (visuellement préfixés
@@ -736,33 +742,42 @@ async function main() {
 
   // ─── 9.bis Messages messagerie (seed dev US-2076-UI E2E — Issue #448) ──
   //
-  // Idempotent : skippé si conversationKey docteur↔patientDT1 a déjà des
-  // messages. Sinon crée 5 messages alternés docteur ↔ patient avec
-  // distribution 3 lus + 2 non-lus pour tester :
+  // Idempotent ATOMIQUE (Fix H1 round 1 review PR #453) : si conversationKey
+  // docteur↔patientDT1 a < 5 messages (état attendu), on cleanup + recrée le
+  // bloc en transaction. Sans transaction, un crash entre msg 3 et msg 4
+  // bloquait définitivement la DB en état partiel (count=3 → skip rerun)
+  // → tests E2E silencieusement faux-négatifs.
+  //
+  // Le bloc crée 5 messages alternés docteur ↔ patient pour tester :
   //   - ThreadList affichage threads + unread badges
-  //   - ThreadViewer auto-mark on scroll (IntersectionObserver dwell 1500ms)
+  //   - ThreadViewer auto-mark on scroll (couverture unit jsdom — E2E V1.5 Issue #454)
   //   - NewThreadModal contact list (canMessage via PatientReferent existant)
   //
   // Le `PatientReferent` (seed ci-dessus) garantit que `canMessage(doctor,
   // patientDT1)` retourne true → contact apparaît dans NewThreadModal.
   //
-  // Requiert env `CONVERSATION_KEY_PEPPER` (déjà configuré CI .github/workflows
-  // /ci.yml). Sans ce pepper, le seed messages échoue tôt (computeConversationKey
-  // throw) — comportement attendu, runbook docs/runbook/e2e-messaging.md
-  // documente le setup.
+  // Couverture seed : badge UNREAD côté DOCTEUR uniquement (les 2 unread
+  // sont du patient → docteur). Le badge côté PATIENT n'est pas couvert ici
+  // (angle mort accepté scope #448 — focus vue docteur backoffice).
+  //
+  // Requiert env `CONVERSATION_KEY_PEPPER` (déjà configuré CI). Sans ce
+  // pepper, `computeConversationKey` throw — comportement attendu (runbook
+  // docs/runbook/e2e-messaging.md documente le setup).
 
-  const { computeConversationKey } = await import("../src/lib/services/messaging.service")
-  const { encrypt } = await import("../src/lib/crypto/health-data")
+  // Constantes nommées (Fix L1 round 1) — offsets minutes + count attendu.
+  const MESSAGE_OFFSETS_MIN = [0, 5, 10, 15, 20]
+  const EXPECTED_MESSAGE_COUNT = MESSAGE_OFFSETS_MIN.length
 
+  // Fix M2 round 1 — date hard-codée déterministe : NE PAS modifier sans
+  // aligner les tests E2E qui dépendent de l'ordre/dates des messages
+  // (tests/e2e/messaging.spec.ts + tests/unit/ThreadViewer.test.tsx).
+  const baseDate = new Date("2026-05-25T10:00:00.000Z")
   const conversationKey = computeConversationKey(doctor.id, patientUserDT1.id)
   const existingMessagesCount = await prisma.message.count({
     where: { conversationKey },
   })
 
-  if (existingMessagesCount === 0) {
-    // 5 messages alternés. Dates espacées 5min, base fixée pour idempotence
-    // déterministe (cohérent SEED_CONSENT_DATE pattern).
-    const baseDate = new Date("2026-05-25T10:00:00.000Z")
+  if (existingMessagesCount !== EXPECTED_MESSAGE_COUNT) {
     const messages = [
       { offsetMin: 0,  from: doctor.id,          to: patientUserDT1.id, text: "Bonjour, comment vous sentez-vous aujourd'hui ?", read: true },
       { offsetMin: 5,  from: patientUserDT1.id,  to: doctor.id,         text: "Bonjour docteur, ça va mieux merci. Glycémies stables.", read: true },
@@ -773,29 +788,40 @@ async function main() {
       { offsetMin: 20, from: patientUserDT1.id,  to: doctor.id,         text: "Pouvez-vous me rappeler quand vous avez un moment ?", read: false },
     ]
 
-    for (const m of messages) {
-      const createdAt = new Date(baseDate.getTime() + m.offsetMin * 60_000)
-      // readAt = createdAt + 2min (réaliste delivery → read latency).
-      const readAt = m.read ? new Date(createdAt.getTime() + 2 * 60_000) : null
-      // bodyEncrypted = Buffer AES-256-GCM (IV+TAG+CIPHERTEXT) — `encrypt`
-      // retourne Uint8Array, Prisma accepte Buffer pour `Bytes` columns.
-      await prisma.message.create({
-        data: {
-          conversationKey,
-          fromUserId: m.from,
-          toUserId: m.to,
-          bodyEncrypted: Buffer.from(encrypt(m.text)),
-          // Pivot US-2268 — patientId pour forensique "tous les messages
-          // contextualisant patient X".
-          patientId: patientDT1.id,
-          readAt,
-          createdAt,
-        },
-      })
-    }
-    console.log(`Messaging seed: 5 messages docteur↔patientDT1 (3 read + 2 unread, conversationKey=${conversationKey.slice(0, 8)}...)`)
+    // Fix H1 round 1 — transaction atomique : tout-ou-rien. Si crash
+    // n'importe où dans la boucle, rollback intégral → rerun voit count=0
+    // → recrée propre. Cleanup des messages partiels existants en début
+    // de TX pour gérer l'état dégradé (count=3 ou count=4 par exemple).
+    await prisma.$transaction(async (tx) => {
+      if (existingMessagesCount > 0) {
+        await tx.message.deleteMany({ where: { conversationKey } })
+      }
+      for (const m of messages) {
+        const createdAt = new Date(baseDate.getTime() + m.offsetMin * 60_000)
+        // readAt = createdAt + 2min (réaliste delivery → read latency).
+        const readAt = m.read ? new Date(createdAt.getTime() + 2 * 60_000) : null
+        // Fix M4 round 1 — `encrypt(text)` retourne Uint8Array, Prisma
+        // `Bytes` field accepte direct (cohérent avec `messaging.service.ts`).
+        // Le wrap `Buffer.from(...)` superflu créait une copie inutile.
+        await tx.message.create({
+          data: {
+            conversationKey,
+            fromUserId: m.from,
+            toUserId: m.to,
+            bodyEncrypted: encrypt(m.text),
+            // Pivot US-2268 — patientId pour forensique "tous les messages
+            // contextualisant patient X".
+            patientId: patientDT1.id,
+            readAt,
+            createdAt,
+          },
+        })
+      }
+    })
+    const action = existingMessagesCount === 0 ? "created" : `replaced (was ${existingMessagesCount})`
+    console.log(`Messaging seed: ${EXPECTED_MESSAGE_COUNT} messages docteur↔patientDT1 ${action} (3 read + 2 unread)`)
   } else {
-    console.log(`Messaging seed: skipped (${existingMessagesCount} messages already exist)`)
+    console.log(`Messaging seed: skipped (${EXPECTED_MESSAGE_COUNT} messages already exist)`)
   }
 
   // ─── 9.ter Appointments (calendrier RDV — seed dev US-2500-UI) ──

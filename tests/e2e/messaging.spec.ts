@@ -179,7 +179,7 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
   // distribution 3 lus + 2 non-lus, 5 patients tous reliés docteur via
   // PatientReferent → ≥ 5 contacts messageables visibles dans NewThreadModal).
 
-  test("Send message depuis NewThreadModal → modal close + thread visible dans liste", async ({
+  test("Send message depuis NewThreadModal → POST 201 + modal close (Fix H3 round 1 PR #453)", async ({
     page,
     context,
     request,
@@ -187,30 +187,47 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
     await loginAs(context, request, "doctor")
     await page.goto("/messages")
 
-    // Attendre que la liste threads soit chargée (au moins le thread du seed
-    // docteur↔patientDT1 doit apparaître).
-    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 10_000 })
+    // Fix M5 round 1 — timeout 30s pour visibilité initiale (CI cold build
+    // Next + Postgres peut dépasser 10s).
+    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 30_000 })
 
     // Ouvrir modal nouveau thread
     await page.getByTestId("thread-list-new-button").click()
-    await expect(page.getByTestId("new-thread-modal")).toBeVisible({ timeout: 5_000 })
+    const modal = page.getByTestId("new-thread-modal")
+    await expect(modal).toBeVisible({ timeout: 5_000 })
 
-    // Sélectionner le 1er contact disponible (seed garantit ≥ 5 patients
-    // messageables via PatientReferent docteur).
-    const radios = page.getByRole("radio")
-    await expect(radios.first()).toBeVisible({ timeout: 10_000 })
+    // Fix H2 round 1 — scope radio AU MODAL uniquement (sinon getByRole
+    // capture aussi les filtres ThreadList "Tous/Non lus" qui sont des
+    // button[role="radio"] → faux positif si modal radios absents).
+    const radios = modal.getByRole("radio")
+    await expect(radios.first()).toBeVisible({ timeout: 30_000 })
     await radios.first().click()
 
     // Remplir le composer (texte unique pour identifier le message après send).
     const uniqueText = `E2E send #448 ${Date.now()}`
     await page.locator("#new-thread-body").fill(uniqueText)
 
+    // Fix H3 round 1 — assert persist effectif : `waitForResponse` POST 201
+    // sur `/api/messages` ANTE-modal-close pour garantir que le message a
+    // bien été créé backend. Un bug `closeModal()` prématuré (avant POST)
+    // ferait passer le test précédemment.
+    const responsePromise = page.waitForResponse(
+      (resp) =>
+        resp.url().includes("/api/messages") &&
+        resp.request().method() === "POST" &&
+        resp.status() === 201,
+      { timeout: 10_000 },
+    )
+
     // Cliquer Envoyer — i18n FR/EN/AR (button accessible name "Envoyer" / "Send" /
     // "إرسال"). Pattern regex case-insensitive multilingue.
-    await page.getByRole("button", { name: /envoyer|send|إرسال/i }).click()
+    await modal.getByRole("button", { name: /envoyer|send|إرسال/i }).click()
+
+    // Le POST DOIT répondre 201 avant qu'on accepte la fermeture du modal.
+    await responsePromise
 
     // Modal close après send réussi (closedDuringSendRef pattern PR #444).
-    await expect(page.getByTestId("new-thread-modal")).not.toBeVisible({ timeout: 10_000 })
+    await expect(modal).not.toBeVisible({ timeout: 10_000 })
   })
 
   test("Radiogroup keyboard nav ArrowDown/Up/Home/End + Space (Fix C4 PR #444)", async ({
@@ -220,13 +237,17 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
   }) => {
     await loginAs(context, request, "doctor")
     await page.goto("/messages")
+    // Fix M5 round 1 — timeout 30s pour visibilité initiale.
+    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 30_000 })
     await page.getByTestId("thread-list-new-button").click()
-    await expect(page.getByTestId("new-thread-modal")).toBeVisible({ timeout: 5_000 })
+    const modal = page.getByTestId("new-thread-modal")
+    await expect(modal).toBeVisible({ timeout: 5_000 })
 
+    // Fix H2 round 1 — scope au modal pour éviter capture filtres ThreadList.
     // Seed garantit ≥ 5 contacts messageables docteur (5 patients via
-    // PatientReferent).
-    const radios = page.getByRole("radio")
-    await expect(radios.first()).toBeVisible({ timeout: 10_000 })
+    // PatientReferent) → ≥ 5 radios dans le modal.
+    const radios = modal.getByRole("radio")
+    await expect(radios.first()).toBeVisible({ timeout: 30_000 })
     const count = await radios.count()
     expect(count).toBeGreaterThanOrEqual(2)
 
@@ -267,26 +288,30 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
     // Tracking E2E scroll : Issue #454 V1.5.
     await loginAs(context, request, "doctor")
     await page.goto("/messages")
-    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 10_000 })
+    // Fix M5 round 1 — timeout 30s pour visibilité initiale.
+    await expect(page.locator("#messages-page-title")).toBeVisible({ timeout: 30_000 })
 
+    // Fix L6 round 1 — simplifier shape : `count` typé `number | undefined`,
+    // assertion `toBeDefined()` au lieu de `not.toBeNull()` + `??`.
     const unread = await page.evaluate(async () => {
       const res = await fetch("/api/messages/unread-count", { credentials: "include" })
-      if (!res.ok) return { ok: false, status: res.status }
+      if (!res.ok) return { ok: false as const, status: res.status }
       const data = (await res.json()) as { count?: number }
-      return { ok: true, count: data.count ?? null }
+      return { ok: true as const, count: data.count }
     })
     expect(unread.ok).toBe(true)
-    expect(unread.count).not.toBeNull()
-    // Seed crée 2 messages non-lus (patient → docteur) via bloc 9.bis seed.
-    expect(unread.count!).toBeGreaterThanOrEqual(2)
+    if (unread.ok) {
+      expect(unread.count).toBeDefined()
+      // Seed crée 2 messages non-lus (patient → docteur) via bloc 9.bis seed.
+      expect(unread.count!).toBeGreaterThanOrEqual(2)
+    }
   })
 
   test.fixme(
-    "Auto-mark on scroll IntersectionObserver dwell 1500ms (Fix C1 PR #443) — E2E flaky headless, V1.5 fixture",
+    "Auto-mark on scroll IntersectionObserver dwell 1500ms (Fix C1 PR #443) — E2E flaky headless → Issue #454 V1.5",
     async () => {
-      // Reporté V1.5 (Issue #454) : nécessite fixture Playwright
-      // qui simule scroll viewport + IntersectionObserver intersection ratio
-      // 1.0 + dwell timer déterministe (sinon timing CI variable → flaky).
+      // Reporté V1.5 — Tracking : Issue GH #454 (Playwright fixture
+      // IntersectionObserver simulation). Owner : open. Milestone : V1.5.
       //
       // Couverture unit déjà solide : `tests/unit/ThreadViewer.test.tsx` mock
       // IntersectionObserver jsdom + dwell timer (Fix C1 PR #443).
@@ -294,11 +319,11 @@ test.describe("Messaging — E2E réels post-seed enrichi (Issue #448 PR #453)",
   )
 
   test.fixme(
-    "BroadcastChannel FCM consume → badge bump (Fix C1 PR #444) — requiert mock SW + simulate push event",
+    "BroadcastChannel FCM consume → badge bump (Fix C1 PR #444) — requiert mock SW + simulate push event → Issue #445 V2",
     async () => {
-      // Requiert mock service worker dans test fixture + simulate push.
+      // Reporté V2 — Tracking : Issue GH #445 (self-host Firebase SDK +
+      // mock SW Playwright fixture). Owner : open. Milestone : V2.
       // Acceptable V1 — fallback polling 30s/60s couvre absence FCM.
-      // Tracking : V2 si FCM activé en prod (Issue #445 self-host SDK).
     },
   )
 })
