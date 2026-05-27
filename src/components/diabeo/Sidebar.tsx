@@ -7,6 +7,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
 import {
   LayoutDashboard,
   Users,
@@ -15,23 +16,68 @@ import {
   LogOut,
   Activity,
   Pill,
+  ShieldAlert,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { LocaleSwitcher } from "./LocaleSwitcher"
 
-const navItems = [
+interface NavItem {
+  href: string
+  label: string
+  icon: typeof LayoutDashboard
+  /** Si défini, item visible uniquement pour les rôles listés. */
+  roles?: ReadonlyArray<"ADMIN" | "DOCTOR" | "NURSE" | "VIEWER">
+}
+
+const navItems: ReadonlyArray<NavItem> = [
   { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
   { href: "/patients", label: "Patients", icon: Users },
   { href: "/medications", label: "Médicaments", icon: Pill },
   { href: "/analytics", label: "Analytics", icon: Activity },
   { href: "/documents", label: "Documents", icon: FileText },
   { href: "/settings", label: "Paramètres", icon: Settings },
+  // US-2137 RGPD Art. 33 (iter 1 PR — Groupe 9 Admin/Ops) — ADMIN-only.
+  // Le gate côté server `/admin/data-breaches/page.tsx` redirige vers `/`
+  // pour non-ADMIN, donc cacher l'item côté Sidebar évite la confusion UX.
+  { href: "/admin/data-breaches", label: "Violations RGPD", icon: ShieldAlert, roles: ["ADMIN"] },
 ]
 
 export function Sidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
+  // US-2137 iter 1 — récupère le rôle courant pour filtrer items ADMIN-only.
+  // Fetch `/api/account` au mount (le rôle n'est pas exposé côté client par
+  // useAuth iter actuel). Cache via session storage pour éviter refetch.
+  const [role, setRole] = useState<string | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const cached = sessionStorage.getItem("diabeo_user_role")
+        if (cached) {
+          if (!cancelled) setRole(cached)
+          return
+        }
+        const res = await fetch("/api/account", { credentials: "include" })
+        if (!res.ok) return
+        const data = (await res.json()) as { role?: string }
+        if (data.role && !cancelled) {
+          sessionStorage.setItem("diabeo_user_role", data.role)
+          setRole(data.role)
+        }
+      } catch {
+        // Silent — gate sera fail-closed (item ADMIN caché par défaut).
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const visibleItems = navItems.filter(
+    (item) => !item.roles || (role !== null && item.roles.includes(role as "ADMIN")),
+  )
 
   return (
     <aside
@@ -50,7 +96,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Menu principal">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           return (
             <Link

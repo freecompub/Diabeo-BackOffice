@@ -989,6 +989,10 @@
       "gdprConsent": "Consentement RGPD",
       "gdprConsentSubtitle": "J'accepte que mes donnees de sante soient traitees conformement a la politique de confidentialite Diabeo"
     },
+    "sessions": {
+      "title": "Sessions actives",
+      "description": "Liste des appareils connectes a votre compte. Revoquez les sessions suspectes ou anciennes."
+    },
     "export": {
       "pdf": "Exporter en PDF",
       "json": "Exporter en JSON"
