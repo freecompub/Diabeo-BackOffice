@@ -36,8 +36,13 @@ export interface ThreadListItem {
    * US-2076bis-V2 (Issue #442) — UUID v4 opaque (remplace `patientId` BDD
    * séquentiel iter 2). Élimine timing oracle énumération ANSSI / RGPD
    * Art. 5.1.f. `null` si message coordination staff pure ou patient
-   * soft-deleted. UI affiche les 8 premiers chars (= ~32 bits entropy,
-   * suffisant pour avatars uniques).
+   * soft-deleted.
+   *
+   * Fix H1 round 1 review PR #455 — UI affiche les 12 premiers chars
+   * (= 48 bits entropy ≈ 281 trillion valeurs), collision birthday
+   * paradox 1% à ~2M patients (vs 9 300 avec 8 chars). Le full UUID est
+   * exposé dans `aria-label` / `title` tooltip pour disambiguation
+   * accessible si collision UI improbable mais existe.
    */
   patientPublicRef: string | null
   lastMessage: {
@@ -215,14 +220,31 @@ export function useMessageThreads({
  * Fix M6 round 1 review PR #441 — `_locale` param retiré (YAGNI). Iter 3
  * réintroduira si nécessaire pour formater "Mme/M. Patient" localisé.
  */
+/**
+ * Fix H1 round 1 review PR #455 — `PUBLIC_REF_DISPLAY_CHARS = 12` (48 bits
+ * entropy, collision 1% à ~2M patients). 8 chars (32 bits) avait collision
+ * 1% à ~9 300 patients = risque patient safety sur scaling > 5k.
+ */
+export const PUBLIC_REF_DISPLAY_CHARS = 12
+
 export function getThreadDisplayName(item: ThreadListItem): string {
   if (item.patientPublicRef !== null) {
-    // US-2076bis-V2 (Issue #442) — 8 premiers chars du UUID v4 = ~32 bits
-    // entropy = ~4 milliards de valeurs distinctes (suffisant avatars
-    // uniques) sans révéler l'UUID complet (defense-in-depth).
-    return `Patient #${item.patientPublicRef.slice(0, 8)}`
+    // US-2076bis-V2 (Issue #442) + Fix H1 round 1 — 12 chars UUID v4 affichés
+    // (= 48 bits entropy, ~281 trillion valeurs distinctes). Pour disambiguation
+    // accessible en cas de collision UI improbable, le full UUID est exposé
+    // dans `aria-label` / `title` via `getThreadDisplayFullRef()` ci-dessous.
+    return `Patient #${item.patientPublicRef.slice(0, PUBLIC_REF_DISPLAY_CHARS)}`
   }
   return `User #${item.otherUserId}`
+}
+
+/**
+ * Fix H1 round 1 review PR #455 — full UUID pour `aria-label` / tooltip,
+ * permet à un screen reader ou hover d'avoir la vraie identité opaque (vs
+ * version tronquée 12 chars affichée visuellement).
+ */
+export function getThreadDisplayFullRef(item: ThreadListItem): string | null {
+  return item.patientPublicRef
 }
 
 /**

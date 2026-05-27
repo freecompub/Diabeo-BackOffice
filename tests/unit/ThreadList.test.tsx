@@ -34,12 +34,20 @@ vi.mock("next-intl", () => ({
 }))
 
 // US-2076bis-V2 (Issue #442) — UUID v4 opaque (anti-énumération vs
-// patient.id séquentiel iter 2). Test helper genère un ref unique par appel
-// si overrides ne le spécifie pas (cohérent avec UUID).
+// patient.id séquentiel iter 2).
+//
+// Fix M2 round 1 review PR #455 — `slice(0, 8)` AVANT `padEnd` pour empêcher
+// segment 1 > 8 chars (corruption format UUID si caller passe prefix long).
+// Validation regex hex defense-in-depth.
 function makePublicRef(prefix: string): string {
-  // UUID v4 valide format pour tests (8-4-4-4-12 hex). Le préfixe permet
-  // d'identifier visuellement quel thread (ex: "01" → "01000000-...").
-  return `${prefix.padEnd(8, "0")}-0000-4000-8000-000000000000`
+  const cleanPrefix = prefix.slice(0, 8).padEnd(8, "0")
+  if (!/^[0-9a-f]{8}$/i.test(cleanPrefix)) {
+    throw new Error(`makePublicRef: invalid hex prefix "${prefix}" — segment 1 must match /^[0-9a-f]{8}$/`)
+  }
+  // Format UUID v4 RFC 4122 : version digit '4' au bit 13 + variant digit
+  // '8/9/a/b' au bit 17. Le préfixe permet identifier visuellement le thread
+  // (ex: "01" → "01000000-...").
+  return `${cleanPrefix}-0000-4000-8000-000000000000`
 }
 
 function makeThread(overrides: Partial<ThreadListItem> = {}): ThreadListItem {
@@ -306,14 +314,17 @@ describe("ThreadList (iter 2)", () => {
       expect(threadButtons.length).toBe(2)
     })
 
-    it("search par patientPublicRef (8 premiers chars) filtre la liste (US-2076bis-V2)", () => {
+    it("search par patientPublicRef (12 premiers chars Fix H1 round 1) filtre la liste", () => {
       const items = [
         makeThread({ conversationKey: "k1", patientPublicRef: makePublicRef("aabbccdd"), otherUserId: 1 }),
         makeThread({ conversationKey: "k2", patientPublicRef: makePublicRef("eeff1122"), otherUserId: 2 }),
       ]
       renderList(items)
       const input = screen.getByRole("searchbox")
-      // Search par préfixe UUID — match 8 premiers chars affichés UI.
+      // Search par préfixe UUID — match 12 premiers chars affichés UI
+      // (Fix H1 round 1 PR #455 — 32→48 bits collision protection).
+      // `makePublicRef("aabbccdd")` produit `aabbccdd-0000-...` donc les
+      // 12 premiers chars sont "aabbccdd-000" — search avec "aabbccdd" match.
       fireEvent.change(input, { target: { value: "aabbccdd" } })
       const threadButtons = screen
         .getAllByRole("button")

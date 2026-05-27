@@ -486,6 +486,28 @@ describe("listThreads", () => {
     expect(out[1]!.patientPublicRef).toBe(PUBLIC_REF_42)
   })
 
+  // Fix L3 round 1 review PR #455 — test régression H3 patient soft-deleted.
+  // Le filtre `livePatientMap.has(patient_id)` retourne `undefined → null` quand
+  // un patient_id existe en row Message mais que le Patient est soft-deleted
+  // (deletedAt set). L'UI doit recevoir `patientPublicRef: null` (anonymisation
+  // forensique vivante — historique conservé mais plus rattaché à un patient
+  // actif).
+  it("H3 — patient soft-deleted → patientPublicRef null malgré patient_id ≠ null", async () => {
+    const encryptedBody = Buffer.from(encrypt("hi"))
+    ;(prismaMock.$queryRaw as any).mockResolvedValue([
+      { id: "m1", conversation_key: "a".repeat(64), from_user_id: 5, to_user_id: 1, body_encrypted: encryptedBody, patient_id: 99, created_at: new Date(), read_at: null },
+    ])
+    ;(prismaMock.message.groupBy as any).mockResolvedValue([])
+    // Patient 99 est soft-deleted → findMany retourne [] (filtre deletedAt: null
+    // dans la query du service).
+    prismaMock.patient.findMany.mockResolvedValue([] as any)
+    const out = await messagingService.listThreads(1, ctx)
+    expect(out).toHaveLength(1)
+    // Critique : malgré patient_id=99 dans la row Message, UI reçoit null
+    // (H3 anonymisation forensique vivante).
+    expect(out[0]!.patientPublicRef).toBeNull()
+  })
+
   it("returns [] when no messages", async () => {
     ;(prismaMock.$queryRaw as any).mockResolvedValue([])
     const out = await messagingService.listThreads(1, ctx)

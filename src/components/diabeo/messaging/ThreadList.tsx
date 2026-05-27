@@ -45,7 +45,9 @@ import { formatRelativeTime } from "@/lib/intl/formatters"
 import {
   useMessageThreads,
   getThreadDisplayName,
+  getThreadDisplayFullRef,
   getThreadAvatarInitials,
+  PUBLIC_REF_DISPLAY_CHARS,
   type ThreadListItem,
 } from "./useMessageThreads"
 
@@ -124,9 +126,11 @@ export function ThreadList({
     const q = deferredQuery.trim().toLowerCase()
     if (q.length > 0) {
       list = list.filter((t) => {
-        // Fix US-2076bis-V2 (Issue #442) — search filtre sur publicRef UUID
-        // (8 premiers chars affichés). Match contre la ref opaque user-visible.
-        const patientRefShort = t.patientPublicRef?.slice(0, 8) ?? ""
+        // Fix US-2076bis-V2 (Issue #442) + H1 round 1 PR #455 — search filtre
+        // sur publicRef UUID (12 premiers chars affichés). Match contre la
+        // ref opaque user-visible. Cohérent avec getThreadDisplayName qui
+        // utilise PUBLIC_REF_DISPLAY_CHARS=12.
+        const patientRefShort = t.patientPublicRef?.slice(0, PUBLIC_REF_DISPLAY_CHARS) ?? ""
         const hayId = `${t.otherUserId} ${patientRefShort}`.toLowerCase()
         return hayId.includes(q)
       })
@@ -404,6 +408,12 @@ const ThreadItem = memo(function ThreadItem({
 
   const displayName = getThreadDisplayName(item)
   const initials = getThreadAvatarInitials(item)
+  // Fix H1 round 1 review PR #455 — full UUID dans `title` tooltip pour
+  // disambiguation visuelle si 2 patients partagent les 12 premiers chars
+  // (collision birthday paradox improbable mais possible sur scaling > 2M
+  // patients). Le `title` natif HTML s'affiche au hover (UX desktop) sans
+  // polluer l'arbre A11y du SR (pattern "single source" PR #440 préservé).
+  const fullRef = getThreadDisplayFullRef(item)
 
   // Timestamp relatif — try/catch defensive si locale invalide.
   let relativeTime: string
@@ -467,6 +477,9 @@ const ThreadItem = memo(function ThreadItem({
                 "truncate text-sm font-medium",
                 item.unreadCount > 0 ? "text-foreground" : "text-foreground/80",
               )}
+              // Fix H1 round 1 review PR #455 — `title` natif HTML pour hover
+              // tooltip full UUID (disambiguation si collision UI 12 chars).
+              title={fullRef ?? undefined}
             >
               {displayName}
             </span>

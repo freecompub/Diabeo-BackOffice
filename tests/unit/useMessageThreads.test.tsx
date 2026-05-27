@@ -21,6 +21,7 @@ import { renderHook, act, waitFor } from "@testing-library/react"
 import {
   useMessageThreads,
   getThreadDisplayName,
+  getThreadDisplayFullRef,
   getThreadAvatarInitials,
   type ThreadListItem,
 } from "@/components/diabeo/messaging/useMessageThreads"
@@ -225,11 +226,12 @@ describe("useMessageThreads", () => {
 })
 
 describe("getThreadDisplayName (US-2076bis-V2 Issue #442 — opaque UUID)", () => {
-  it("patientPublicRef set → 'Patient #<8 first chars of UUID>'", () => {
+  it("patientPublicRef set → 'Patient #<12 first chars of UUID>' (Fix H1 round 1)", () => {
     // Fix M6 round 1 review PR #441 — `_locale` param retiré (YAGNI iter 2).
-    // US-2076bis-V2 — affiche 8 premiers chars du UUID v4 (anti-énumération).
+    // US-2076bis-V2 + Fix H1 round 1 PR #455 — 12 chars (48 bits entropy,
+    // collision 1% à ~2M patients vs 8 chars 9 300 = patient safety risk).
     expect(getThreadDisplayName(makeThread({ patientPublicRef: TEST_PUBLIC_REF }))).toBe(
-      "Patient #a3f9b8c2",
+      "Patient #a3f9b8c2-4d5",
     )
   })
 
@@ -237,6 +239,18 @@ describe("getThreadDisplayName (US-2076bis-V2 Issue #442 — opaque UUID)", () =
     expect(
       getThreadDisplayName(makeThread({ patientPublicRef: null, otherUserId: 8 })),
     ).toBe("User #8")
+  })
+})
+
+describe("getThreadDisplayFullRef (Fix H1 round 1 PR #455 — disambiguation tooltip)", () => {
+  it("patientPublicRef set → returns full UUID for tooltip/aria", () => {
+    expect(
+      getThreadDisplayFullRef(makeThread({ patientPublicRef: TEST_PUBLIC_REF })),
+    ).toBe(TEST_PUBLIC_REF)
+  })
+
+  it("patientPublicRef null → null (no tooltip rendered)", () => {
+    expect(getThreadDisplayFullRef(makeThread({ patientPublicRef: null }))).toBeNull()
   })
 })
 

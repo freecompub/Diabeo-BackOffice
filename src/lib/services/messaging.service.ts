@@ -884,7 +884,11 @@ export const messagingService = {
     // Fix US-2076bis-V2 — Map `patientId → publicRef` pour résolution O(1).
     // Remplace l'ancien `livePatientSet` (le Map est aussi un test d'existence
     // efficace via `.has()`).
-    const livePatientMap = new Map(livePatients.map((p) => [p.id, p.publicRef]))
+    // Fix L2 round 1 review PR #455 — annotation explicite `Map<number, string>`
+    // pour lisibilité (inférence TS correcte mais moins évidente au lecteur).
+    const livePatientMap: Map<number, string> = new Map(
+      livePatients.map((p) => [p.id, p.publicRef]),
+    )
 
     // 4. Build summaries — décryption preview limitée aux ≤ cappedLimit rows.
     const PREVIEW_MAX_CODEPOINTS = 80
@@ -912,9 +916,12 @@ export const messagingService = {
       // Fix US-2076bis-V2 (Issue #442) — UI reçoit `patientPublicRef` UUID
       // opaque (vs `patient_id` BDD séquentiel). Le `m.patient_id` interne
       // reste utilisé pour audit pivot US-2268 ci-dessous.
+      // Fix L4 round 1 review PR #455 — commentaire explicite : `get()` retourne
+      // `undefined` si patient_id soft-deleted (H3) — `?? null` mappe en null
+      // explicite pour cohérence Type ThreadSummary.patientPublicRef: string | null.
       const exposedPublicRef =
         m.patient_id !== null
-          ? (livePatientMap.get(m.patient_id) ?? null)
+          ? (livePatientMap.get(m.patient_id) ?? null) // undefined if soft-deleted (H3)
           : null
       return {
         conversationKey: m.conversation_key,

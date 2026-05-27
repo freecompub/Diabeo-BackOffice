@@ -114,7 +114,7 @@
 
 - `docs/runbook/messaging-mobile-contract.md` — Contract API mobile/web.
 - Issue GH #413 — `US-2076-bis-retention`.
-- Issue GH #442 — `US-2076bis-V2` — Opaque UUID for patientId/userId (anti-énumération iter 2 PR #441). ✅ **Livré PR #455** (V1 acquis early — patientId BDD plus exposé UI). Reste `otherUserId` numeric V2 (hors scope #442 — IDs staff rares hors PHI).
+- Issue GH #442 — `US-2076bis-V2` — Opaque UUID for patientId/userId (anti-énumération iter 2 PR #441). ✅ **Livré** (V1 acquis early — patientId BDD plus exposé UI, 12 chars affichés Fix H1 round 1). Reste `otherUserId` numeric — Issue follow-up GH (cf. §7.2 ci-dessous).
 - ADR #18 CLAUDE.md — Convention audit `metadata.patientId` pivot.
 - CLAUDE.md §"Sécurité des données de santé" — Patterns crypto.
 
@@ -124,9 +124,12 @@
 
 `ThreadList` (sidebar 320px) — affiche per thread :
 - Avatar P/U (décoratif, pas PHI)
-- `Patient #<8 first chars UUID>` (US-2076bis-V2 Issue #442 PR #455 — UUID v4
+- `Patient #<12 first chars UUID>` (US-2076bis-V2 Issue #442 — UUID v4
   opaque vs `patient.id` BDD séquentiel iter 2 — anti-énumération ANSSI /
-  RGPD Art. 5.1.f) ou `User #N` (staff, hors scope #442)
+  RGPD Art. 5.1.f). Fix H1 round 1 — 12 chars (48 bits entropy, collision
+  1% à ~2M patients) vs 8 chars (32 bits, collision 1% à ~9 300 patients =
+  patient safety risk sur scaling). Full UUID exposé dans `title` tooltip
+  pour disambiguation visuelle. Ou `User #N` (staff, hors scope #442).
 - `bodyPreview` 80 codepoints clear-text (déchiffré server-side, PHI Art. 9)
 - Timestamp relatif "il y a 3 min" via `formatRelativeTime`
 - Badge `unreadCount` cap "9+" (cf. iter 1 M1)
@@ -136,8 +139,9 @@
 | Risque | Mitigation V1.5 | Statut |
 |---|---|---|
 | `bodyPreview` PHI visible permanent open-space | Cap 80c backend + `Cache-Control: no-store` + middleware `/messages/*` (Fix C2 PR #440) | ✓ couvert |
-| `patientId` BDD séquentiel timing oracle | UUID opaque `patientPublicRef` (UUID v4 ~122 bits entropy) — 8 premiers chars affichés UI | ✅ **Livré PR #455 (Issue #442)** |
-| `userId` (staff) BDD séquentiel timing oracle | Hors scope #442 (staff IDs rares hors PHI). V2 si besoin scaling > pilote interne | ⏳ V2 |
+| `patientId` BDD séquentiel timing oracle | UUID opaque `patientPublicRef` (UUID v4 ~122 bits entropy) — **12 premiers chars** affichés UI (Fix H1 round 1 — 32→48 bits) + full UUID dans `title` tooltip | ✅ **Livré Issue #442** |
+| Collision UI 12 chars publicRef (patient safety) | Birthday paradox 1% à ~2M patients. Full UUID dans tooltip pour disambiguation. Affichage initiales réelles iter 3 éliminera le risque | ⏳ V1.5 (iter 3) |
+| `userId` (staff) BDD séquentiel timing oracle | Hors scope #442 (staff IDs rares hors PHI). Issue GH follow-up V2 si scaling > pilote interne (CHU multi-cabinets) | ⏳ V2 — [Issue #456](https://github.com/freecompub/Diabeo-BackOffice/issues/456) |
 | Audit pollution polling 60s | `X-Inbox-Trigger` discriminator + coalesce row si `trigger=poll` (Fix H1 PR #441) | ✓ couvert |
 | Preview mask preference user (mode discret) | V1.5 — Issue à créer si demande utilisateurs | ⏳ V1.5 |
 | Rate-limit GET `/api/messages` (DoS amplification) | Cap backend Redis 30 req/min/user (Fix M1 PR #441) | ⏳ V1.5 |
