@@ -3,12 +3,22 @@
 /**
  * BackupsListClient — UI US-2151 Admin gestion backups (ADMIN-only).
  *
- * Liste backups + filtres status + bouton "Déclencher backup" (POST).
- * Le worker externe (cron) consomme les rows pending. UI affiche state +
- * permet de relancer si pending stuck.
- *
  * Backend : `backupService.list/trigger` (PR #409). Pas de restore exposé
- * iter 2 (procédure ops manuelle documentée runbook).
+ * iter 2 (procédure ops manuelle via runbook).
+ *
+ * Fixes round 1 review PR #458 :
+ *   - H1 : `setTimeout` reset success tracké via ref (régression M8 PR #457)
+ *   - M1 : types extraits dans `src/lib/types/admin-ops.ts`
+ *   - M2 : `<StatusIcon kind="backup">` partagé (admin/StatusIcon.tsx)
+ *   - M3 : mapping backend error codes UI (backup_already_in_progress / generic)
+ *   - M5 : DTO retire `location` (HSA) — `hasLocation` flag à la place
+ *   - M7 : `title={backup.backupRef}` tooltip full UUID (A11y M1)
+ *   - M8 : `Intl.NumberFormat` dynamic locale (dates via formatDate)
+ *   - L1 : helpers `formatBytes`/`formatDuration` documentés (Intl gigabyte
+ *     unit fallback navigateur < unit support → preserve custom helper)
+ *   - L7 : clear filter button si filterStatus ≠ all
+ *   - A11y M3 : errorMessage long via <details>/<summary> expandable
+ *   - A11y L1 : statut affiché Capitalize (Pending) vs UPPERCASE
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -19,10 +29,9 @@ import {
   Clock,
   Database,
   HardDrive,
-  Loader2,
   Plus,
   RefreshCw,
-  XCircle,
+  X,
 } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { Badge } from "@/components/ui/badge"
@@ -36,49 +45,33 @@ import {
 } from "@/components/ui/dialog"
 import { formatDate } from "@/lib/intl/formatters"
 import type { Locale } from "@/i18n/config"
-
-type BackupStatus = "pending" | "running" | "completed" | "failed"
-
-interface BackupLogDTO {
-  id: number
-  backupRef: string
-  status: BackupStatus
-  location: string | null
-  sizeBytes: number | null // BigInt sérialisé number
-  durationMs: number | null
-  triggeredBy: number | null
-  startedAt: string // ISO
-  completedAt: string | null
-  errorMessage: string | null
-}
+import {
+  type BackupStatus,
+  type BackupLogDTOClient as BackupLogDTO,
+  BACKUP_STATUS_LABELS_FR,
+  BACKUP_STATUS_VARIANT,
+} from "@/lib/types/admin-ops"
+import { StatusIcon } from "./StatusIcon"
 
 type AsyncState = "idle" | "loading" | "success" | "error"
 
-const STATUS_LABELS: Record<BackupStatus, string> = {
-  pending: "En attente",
-  running: "En cours",
-  completed: "Terminé",
-  failed: "Échoué",
-}
-
-const STATUS_VARIANT: Record<BackupStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "secondary",
-  running: "outline",
-  completed: "default",
-  failed: "destructive",
-}
-
-function StatusIcon({ status, className }: { status: BackupStatus; className?: string }) {
-  if (status === "completed") return <CheckCircle2 className={className} aria-hidden="true" />
-  if (status === "running") return <Loader2 className={`${className ?? ""} animate-spin`} aria-hidden="true" />
-  if (status === "failed") return <XCircle className={className} aria-hidden="true" />
-  return <Clock className={className} aria-hidden="true" />
+/**
+ * Fix M3 round 1 review PR #458 — mapping codes erreur backend → message
+ * UI lisible. Codes connus backendService.trigger (PR #409 + future).
+ */
+const BACKUP_TRIGGER_ERROR_LABELS: Record<string, string> = {
+  backup_already_in_progress: "Un backup est déjà en cours. Réessayer plus tard.",
+  worker_unreachable: "Worker backup indisponible. Contacter l'équipe ops.",
+  disk_full: "Espace disque insuffisant sur le serveur backup.",
 }
 
 /**
- * Formate sizeBytes en KB/MB/GB lisible.
+ * Fix L1 round 1 review PR #458 — formatBytes custom (Intl.NumberFormat
+ * `style: "unit", unit: "gigabyte"` n'est pas supporté de manière fiable
+ * sur tous les navigateurs pour les unités sub-GB). Locale-aware via
+ * Intl.NumberFormat pour le nombre, suffix unit en suffixe textuel.
  */
-function formatBytes(bytes: number | null): string {
+function formatBytes(bytes: number | null, locale: Locale): string {
   if (bytes === null || bytes === 0) return "—"
   const units = ["B", "KB", "MB", "GB", "TB"]
   let size = bytes
@@ -87,17 +80,25 @@ function formatBytes(bytes: number | null): string {
     size /= 1024
     unitIdx++
   }
-  return `${size.toFixed(unitIdx === 0 ? 0 : 1)} ${units[unitIdx]}`
+  const formatter = new Intl.NumberFormat(locale, {
+    maximumFractionDigits: unitIdx === 0 ? 0 : 1,
+  })
+  return `${formatter.format(size)} ${units[unitIdx]}`
 }
 
-/**
- * Formate durationMs en secondes/minutes.
- */
 function formatDuration(ms: number | null): string {
   if (ms === null) return "—"
   if (ms < 1000) return `${ms} ms`
   if (ms < 60_000) return `${(ms / 1000).toFixed(1)} s`
   return `${Math.floor(ms / 60_000)} min ${Math.floor((ms % 60_000) / 1000)} s`
+}
+
+/**
+ * Fix A11y L1 round 1 — Status badge Capitalize au lieu UPPERCASE
+ * (WCAG 1.4.8 AAA lisibilité — capitales plus dures à lire).
+ */
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase()
 }
 
 export function BackupsListClient() {
@@ -113,6 +114,9 @@ export function BackupsListClient() {
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
   const fetchSeqRef = useRef(0)
+  // Fix H1 round 1 review PR #458 (régression M8 PR #457) — tracking ref
+  // pour setTimeout success reset + cleanup au unmount (anti memory leak).
+  const triggerResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const fetchBackups = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort()
@@ -146,13 +150,13 @@ export function BackupsListClient() {
 
   useEffect(() => {
     mountedRef.current = true
-    // fetchBackups recapture filterStatus via useCallback — re-triggered au
-    // changement de filtre. AbortController + fetchSeq gèrent race condition.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchBackups()
     return () => {
       mountedRef.current = false
       if (abortRef.current) abortRef.current.abort()
+      // Fix H1 round 1 — cleanup timer reset au unmount.
+      if (triggerResetTimerRef.current) clearTimeout(triggerResetTimerRef.current)
     }
   }, [fetchBackups])
 
@@ -170,20 +174,20 @@ export function BackupsListClient() {
         },
       })
       if (!mountedRef.current) return
-      if (res.status === 409) {
-        setTriggerState("error")
-        setTriggerError("Un backup est déjà en cours. Réessayer plus tard.")
-        return
-      }
       if (!res.ok) {
         setTriggerState("error")
-        setTriggerError(`HTTP ${res.status}`)
+        // Fix M3 round 1 — parse body pour récupérer error code backend.
+        const data = (await res.json().catch(() => null)) as { error?: string } | null
+        const code = data?.error
+        const friendly = code ? BACKUP_TRIGGER_ERROR_LABELS[code] : undefined
+        setTriggerError(friendly ?? `Erreur backend (HTTP ${res.status})`)
         return
       }
       setTriggerState("success")
       await fetchBackups()
-      // Reset state success après 3s.
-      setTimeout(() => {
+      // Fix H1 round 1 — timer tracké pour cleanup au unmount.
+      if (triggerResetTimerRef.current) clearTimeout(triggerResetTimerRef.current)
+      triggerResetTimerRef.current = setTimeout(() => {
         if (mountedRef.current) setTriggerState("idle")
       }, 3000)
     } catch (err) {
@@ -196,22 +200,30 @@ export function BackupsListClient() {
   return (
     <>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-1 text-sm">
-          <span className="text-muted-foreground">Statut :</span>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value as BackupStatus | "all")}
-            className="rounded-md border bg-background px-2 py-1 text-sm"
-            aria-label="Filtrer par statut backup"
-          >
-            <option value="all">Tous</option>
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex items-center gap-2">
+          <label className="flex items-center gap-1 text-sm">
+            <span className="text-muted-foreground">Statut :</span>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value as BackupStatus | "all")}
+              className="rounded-md border bg-background px-2 py-1 text-sm"
+              aria-label="Filtrer par statut backup"
+            >
+              <option value="all">Tous</option>
+              {Object.entries(BACKUP_STATUS_LABELS_FR).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {/* Fix L7 round 1 — bouton clear filter si actif. */}
+          {filterStatus !== "all" && (
+            <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => setFilterStatus("all")} aria-label="Effacer le filtre">
+              <X className="size-3.5" aria-hidden="true" />
+            </DiabeoButton>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchBackups()}>
             <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
@@ -278,12 +290,23 @@ export function BackupsListClient() {
               }`}
             >
               <div className="flex items-start gap-3">
-                <StatusIcon status={backup.status} className="size-5 text-muted-foreground shrink-0 mt-0.5" />
+                <StatusIcon
+                  kind="backup"
+                  status={backup.status}
+                  className="size-5 text-muted-foreground shrink-0 mt-0.5"
+                />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <code className="text-xs font-mono">{backup.backupRef.slice(0, 12)}…</code>
-                    <Badge variant={STATUS_VARIANT[backup.status]} className="text-[10px]">
-                      {STATUS_LABELS[backup.status]}
+                    {/* Fix M7 + A11y M1 round 1 — title tooltip full backupRef. */}
+                    <code
+                      className="text-xs font-mono"
+                      title={`Référence backup : ${backup.backupRef}`}
+                    >
+                      {backup.backupRef.slice(0, 12)}…
+                    </code>
+                    {/* Fix A11y L1 round 1 — Capitalize au lieu de UPPERCASE. */}
+                    <Badge variant={BACKUP_STATUS_VARIANT[backup.status]} className="text-[10px]">
+                      {capitalize(BACKUP_STATUS_LABELS_FR[backup.status])}
                     </Badge>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-3">
@@ -297,15 +320,23 @@ export function BackupsListClient() {
                     {backup.sizeBytes !== null && (
                       <span className="flex items-center gap-1">
                         <Database className="size-3" aria-hidden="true" />
-                        {formatBytes(backup.sizeBytes)}
+                        {formatBytes(backup.sizeBytes, locale)}
                       </span>
                     )}
                     {backup.triggeredBy !== null && (
+                      // TODO V2 (Issue #456) — remplacer User #ID séquentiel par
+                      // staff.publicRef UUID opaque (anti-énumération).
                       <span>Par User #{backup.triggeredBy}</span>
                     )}
                   </div>
                   {backup.errorMessage && (
-                    <p className="text-xs text-destructive mt-1">⚠ {backup.errorMessage}</p>
+                    // Fix A11y M3 round 1 — expandable details (vs overflow horizontal).
+                    <details className="text-xs text-destructive mt-1.5">
+                      <summary className="cursor-pointer font-medium">⚠ Voir l&apos;erreur</summary>
+                      <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-destructive/5 p-2 max-h-32 overflow-auto">
+                        {backup.errorMessage}
+                      </pre>
+                    </details>
                   )}
                 </div>
               </div>
