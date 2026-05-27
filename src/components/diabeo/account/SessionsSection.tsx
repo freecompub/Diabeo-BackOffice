@@ -9,13 +9,30 @@
  *
  * Backend : `src/lib/services/session-management.service.ts` (US-2007 livré PR #409).
  * Pattern aligné avec autres sections du `/settings` page (PR #426).
+ *
+ * Fixes round 1 review PR #457 :
+ *   - H1 : remplace `confirm()` natif par `<Dialog>` shadcn (i18n + a11y)
+ *   - M2 : `formatRelativeTime` next-intl (US-2115) au lieu de helper FR hardcoded
+ *   - M8 : error feedback inline `setActionError`
+ *   - M8 : `setTimeout` cleanup via mounted ref (anti memory leak)
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useLocale } from "next-intl"
 import { Monitor, Smartphone, Tablet, Trash2, ShieldCheck, AlertCircle } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { DiabeoFormSection } from "@/components/diabeo/DiabeoFormSection"
 import { Badge } from "@/components/ui/badge"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { formatRelativeTime } from "@/lib/intl/formatters"
+import type { Locale } from "@/i18n/config"
 
 interface SessionDTO {
   id: string
@@ -53,34 +70,36 @@ function summarizeUserAgent(ua: string | null): string {
   return ua.slice(0, 40)
 }
 
-/**
- * Format date relatif simple. Pas d'i18n iter 1 — itération suivante via
- * `formatRelativeTime` de @/lib/intl/formatters si besoin.
- */
-function formatRelative(iso: string): string {
-  const date = new Date(iso)
-  const diffMs = Date.now() - date.getTime()
-  const minutes = Math.floor(diffMs / 60_000)
-  if (minutes < 1) return "à l'instant"
-  if (minutes < 60) return `il y a ${minutes} min`
-  const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `il y a ${hours}h`
-  const days = Math.floor(hours / 24)
-  return `il y a ${days}j`
-}
-
 export function SessionsSection() {
+  const locale = useLocale() as Locale
   const [sessions, setSessions] = useState<SessionDTO[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [revokeAllState, setRevokeAllState] = useState<AsyncState>("idle")
   const [revokingIds, setRevokingIds] = useState<Set<string>>(new Set())
+  // Fix H1 round 1 PR #457 — dialog confirmation pattern (vs confirm() natif).
+  // `null` = closed ; string sessionId = revoke-one ; "all" = revoke-others.
+  const [pendingConfirm, setPendingConfirm] = useState<string | "all" | null>(null)
+
+  // Fix M8 round 1 — mountedRef + timer ref pour cleanup (anti memory leak
+  // + React warning "set state on unmounted component").
+  const mountedRef = useRef(true)
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+    }
+  }, [])
 
   const fetchSessions = useCallback(async () => {
     setState("loading")
     setErrorMessage(null)
     try {
       const res = await fetch("/api/account/sessions", { credentials: "include" })
+      if (!mountedRef.current) return
       if (!res.ok) {
         setState("error")
         setErrorMessage(`HTTP ${res.status}`)
@@ -90,6 +109,7 @@ export function SessionsSection() {
       setSessions(data.items ?? [])
       setState("success")
     } catch (err) {
+      if (!mountedRef.current) return
       setState("error")
       setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
     }
@@ -99,11 +119,11 @@ export function SessionsSection() {
     void fetchSessions()
   }, [fetchSessions])
 
-  const handleRevokeOne = useCallback(
+  // Fix H1 round 1 PR #457 — exécution de la révocation après confirmation
+  // explicite via le Dialog shadcn. Fix M8 — error feedback inline.
+  const executeRevokeOne = useCallback(
     async (sessionId: string) => {
-      if (!confirm("Révoquer cette session ? L'appareil sera déconnecté immédiatement.")) {
-        return
-      }
+      setActionError(null)
       setRevokingIds((prev) => new Set(prev).add(sessionId))
       try {
         const res = await fetch(`/api/account/sessions/${sessionId}`, {
@@ -111,10 +131,15 @@ export function SessionsSection() {
           credentials: "include",
           headers: { "X-Requested-With": "XMLHttpRequest" },
         })
+        if (!mountedRef.current) return
         if (res.ok) {
-          // Optimistic remove + refetch pour state cohérent.
           setSessions((prev) => prev.filter((s) => s.id !== sessionId))
+        } else {
+          setActionError(`Révocation échouée (HTTP ${res.status})`)
         }
+      } catch (err) {
+        if (!mountedRef.current) return
+        setActionError(err instanceof Error ? err.message : "Erreur réseau")
       } finally {
         setRevokingIds((prev) => {
           const next = new Set(prev)
@@ -126,14 +151,8 @@ export function SessionsSection() {
     [],
   )
 
-  const handleRevokeOthers = useCallback(async () => {
-    if (
-      !confirm(
-        "Révoquer toutes les autres sessions ? Tous vos autres appareils (téléphone, autre PC) seront déconnectés.",
-      )
-    ) {
-      return
-    }
+  const executeRevokeOthers = useCallback(async () => {
+    setActionError(null)
     setRevokeAllState("loading")
     try {
       const res = await fetch("/api/account/sessions", {
@@ -141,18 +160,36 @@ export function SessionsSection() {
         credentials: "include",
         headers: { "X-Requested-With": "XMLHttpRequest" },
       })
+      if (!mountedRef.current) return
       if (res.ok) {
         setRevokeAllState("success")
         await fetchSessions()
-        // Reset state success après 3s pour permettre nouvelle action.
-        setTimeout(() => setRevokeAllState("idle"), 3000)
+        // Fix M8 round 1 — timer tracké pour cleanup au unmount.
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current)
+        resetTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) setRevokeAllState("idle")
+        }, 3000)
       } else {
         setRevokeAllState("error")
+        setActionError(`Révocation échouée (HTTP ${res.status})`)
       }
-    } catch {
+    } catch (err) {
+      if (!mountedRef.current) return
       setRevokeAllState("error")
+      setActionError(err instanceof Error ? err.message : "Erreur réseau")
     }
   }, [fetchSessions])
+
+  // Fix H1 round 1 — handler triggered par confirmation Dialog (vs confirm() natif).
+  const handleConfirmAccept = useCallback(() => {
+    const current = pendingConfirm
+    setPendingConfirm(null)
+    if (current === "all") {
+      void executeRevokeOthers()
+    } else if (current) {
+      void executeRevokeOne(current)
+    }
+  }, [pendingConfirm, executeRevokeOne, executeRevokeOthers])
 
   const otherSessionsCount = sessions.filter((s) => !s.isCurrent).length
 
@@ -227,7 +264,7 @@ export function SessionsSection() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {session.ipAddress ?? "IP inconnue"} · Dernière activité {formatRelative(session.lastSeenAt)}
+                        {session.ipAddress ?? "IP inconnue"} · Dernière activité {formatRelativeTime(session.lastSeenAt, locale)}
                       </p>
                     </div>
                   </div>
@@ -235,7 +272,7 @@ export function SessionsSection() {
                     <DiabeoButton
                       variant="diabeoTertiary"
                       size="sm"
-                      onClick={() => void handleRevokeOne(session.id)}
+                      onClick={() => setPendingConfirm(session.id)}
                       disabled={isRevoking}
                       aria-label={`Révoquer la session ${summarizeUserAgent(session.userAgent)}`}
                     >
@@ -256,7 +293,7 @@ export function SessionsSection() {
               <DiabeoButton
                 variant="diabeoTertiary"
                 size="sm"
-                onClick={() => void handleRevokeOthers()}
+                onClick={() => setPendingConfirm("all")}
                 disabled={revokeAllState === "loading"}
               >
                 {revokeAllState === "loading"
@@ -269,6 +306,45 @@ export function SessionsSection() {
           )}
         </>
       )}
+
+      {/* Fix M8 round 1 — error feedback inline (vs anciennement silent fail). */}
+      {actionError && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm mt-3"
+        >
+          <AlertCircle className="size-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-destructive">{actionError}</p>
+        </div>
+      )}
+
+      {/* Fix H1 + Fix A11y C1+C2 round 1 PR #457 — Dialog shadcn (Radix) gère
+          focus trap + ESC handler + focus restoration + i18n. Remplace les
+          `confirm()` natifs FR-hardcoded. */}
+      <Dialog open={pendingConfirm !== null} onOpenChange={(open) => { if (!open) setPendingConfirm(null) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {pendingConfirm === "all"
+                ? "Révoquer toutes les autres sessions ?"
+                : "Révoquer cette session ?"}
+            </DialogTitle>
+            <DialogDescription>
+              {pendingConfirm === "all"
+                ? "Tous vos autres appareils (téléphone, autre PC) seront déconnectés immédiatement."
+                : "L'appareil sera déconnecté immédiatement."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DiabeoButton variant="diabeoTertiary" onClick={() => setPendingConfirm(null)}>
+              Annuler
+            </DiabeoButton>
+            <DiabeoButton variant="diabeoDestructive" onClick={handleConfirmAccept}>
+              Confirmer la révocation
+            </DiabeoButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </DiabeoFormSection>
   )
 }

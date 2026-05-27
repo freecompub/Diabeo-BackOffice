@@ -997,5 +997,15 @@
       "pdf": "Export as PDF",
       "json": "Export as JSON"
     }
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "patients": "Patients",
+    "medications": "Medications",
+    "analytics": "Analytics",
+    "documents": "Documents",
+    "settings": "Settings",
+    "adminDataBreaches": "GDPR breaches",
+    "logout": "Sign out"
   }
 }

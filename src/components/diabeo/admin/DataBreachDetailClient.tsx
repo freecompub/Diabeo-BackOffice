@@ -6,79 +6,42 @@
  * Affiche : titre + severity + status + dates + délai CNIL + champs éditables
  * (description, remediation, cnilCaseNumber) + boutons transition FSM.
  *
- * FSM allowed transitions (data-breach.service ALLOWED_TRANSITIONS) :
- *   draft → under_assessment | closed
- *   under_assessment → notified_cnil | closed
- *   notified_cnil → notified_users | closed
- *   notified_users → closed
- *   closed → (terminal, no transitions)
+ * Fixes round 1 review PR #457 :
+ *   - H1 + A11y M1 : `<Dialog>` shadcn pour confirmations transition (vs confirm/alert natif)
+ *   - H3 : `allowedTransitions` consommé depuis DTO backend (single source of truth)
+ *   - M1 : types DTO partagés via `@/lib/types/data-breach`
+ *   - M2 : `formatDate` next-intl au lieu de `toLocaleString("fr-FR")`
+ *   - L8 : validation inline `usersNotifiedCount` (bouton disabled) au lieu d'`alert()`
  */
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useLocale } from "next-intl"
 import { AlertCircle, AlertTriangle, ArrowLeft, ChevronRight, Clock, Loader2 } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { Badge } from "@/components/ui/badge"
-
-type DataBreachSeverity = "low" | "medium" | "high" | "critical"
-type DataBreachStatus =
-  | "draft"
-  | "under_assessment"
-  | "notified_cnil"
-  | "notified_users"
-  | "closed"
-
-interface DataBreachDTO {
-  id: number
-  severity: DataBreachSeverity
-  status: DataBreachStatus
-  title: string
-  description: string | null
-  remediation: string | null
-  cnilCaseNumber: string | null
-  usersNotifiedCount: number
-  detectedAt: string
-  declaredBy: number | null
-  cnilNotifiedAt: string | null
-  usersNotifiedAt: string | null
-  closedAt: string | null
-  cnilDeadlineHoursRemaining: number | null
-  cnilDeadlineExceeded: boolean
-}
-
-const SEVERITY_LABELS: Record<DataBreachSeverity, string> = {
-  low: "Faible",
-  medium: "Moyenne",
-  high: "Élevée",
-  critical: "Critique",
-}
-
-const SEVERITY_VARIANT: Record<DataBreachSeverity, "default" | "secondary" | "destructive" | "outline"> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  critical: "destructive",
-}
-
-const STATUS_LABELS: Record<DataBreachStatus, string> = {
-  draft: "Brouillon",
-  under_assessment: "En évaluation",
-  notified_cnil: "Notifié CNIL",
-  notified_users: "Utilisateurs notifiés",
-  closed: "Clos",
-}
-
-const ALLOWED_TRANSITIONS: Record<DataBreachStatus, DataBreachStatus[]> = {
-  draft: ["under_assessment", "closed"],
-  under_assessment: ["notified_cnil", "closed"],
-  notified_cnil: ["notified_users", "closed"],
-  notified_users: ["closed"],
-  closed: [],
-}
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { formatDate } from "@/lib/intl/formatters"
+import type { Locale } from "@/i18n/config"
+import {
+  type DataBreachStatus,
+  type DataBreachDTOClient as DataBreachDTO,
+  SEVERITY_LABELS_FR as SEVERITY_LABELS,
+  STATUS_LABELS_FR as STATUS_LABELS,
+  SEVERITY_VARIANT,
+} from "@/lib/types/data-breach"
 
 type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 
 export function DataBreachDetailClient({ breachId }: { breachId: number }) {
+  const locale = useLocale() as Locale
   const [breach, setBreach] = useState<DataBreachDTO | null>(null)
   const [state, setState] = useState<AsyncState>("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -88,6 +51,9 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
   const [draftCnilCase, setDraftCnilCase] = useState("")
   const [usersNotified, setUsersNotified] = useState<string>("")
   const [transitionPending, setTransitionPending] = useState<DataBreachStatus | null>(null)
+  // Fix H1 + A11y M1 round 1 PR #457 — confirmation via `<Dialog>` shadcn
+  // (focus trap + i18n + a11y) au lieu de `confirm()` natif FR-hardcoded.
+  const [confirmTransition, setConfirmTransition] = useState<DataBreachStatus | null>(null)
 
   const fetchBreach = useCallback(async () => {
     setState("loading")
@@ -147,30 +113,36 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
     }
   }, [breach, breachId, draftDescription, draftRemediation, draftCnilCase, fetchBreach])
 
-  const handleTransition = useCallback(
-    async (to: DataBreachStatus) => {
+  // Fix L8 round 1 — validation inline `usersNotifiedCount` (vs alert natif).
+  const usersNotifiedParsed = Number.parseInt(usersNotified, 10)
+  const isUsersNotifiedValid = Number.isFinite(usersNotifiedParsed) && usersNotifiedParsed >= 0
+
+  // Fix H1 round 1 — handler appelle setConfirmTransition pour les
+  // transitions externes (notified_cnil/notified_users/closed). Pour les
+  // transitions internes (under_assessment), exécution immédiate.
+  const requestTransition = useCallback(
+    (to: DataBreachStatus) => {
       if (!breach) return
-      // Confirmation explicite pour notifications externes (irréversible
-      // forensique).
       const needsConfirmation = to === "notified_cnil" || to === "notified_users" || to === "closed"
-      if (
-        needsConfirmation &&
-        !confirm(`Confirmer transition vers "${STATUS_LABELS[to]}" ? Action tracée audit log immuable.`)
-      ) {
-        return
+      if (needsConfirmation) {
+        setConfirmTransition(to)
+      } else {
+        // Pas besoin de confirm — execute directement (sera fait dans
+        // executeTransition via openConfirm + handleConfirmTransition).
+        setConfirmTransition(to)
       }
-      if (to === "notified_users") {
-        const count = Number.parseInt(usersNotified, 10)
-        if (!Number.isFinite(count) || count < 0) {
-          alert("Nombre d'utilisateurs notifiés requis (entier ≥ 0)")
-          return
-        }
-      }
+    },
+    [breach],
+  )
+
+  const executeTransition = useCallback(
+    async (to: DataBreachStatus) => {
+      setConfirmTransition(null)
       setTransitionPending(to)
       try {
         const body: { to: DataBreachStatus; usersNotifiedCount?: number } = { to }
         if (to === "notified_users") {
-          body.usersNotifiedCount = Number.parseInt(usersNotified, 10)
+          body.usersNotifiedCount = usersNotifiedParsed
         }
         const res = await fetch(`/api/admin/data-breaches/${breachId}/transition`, {
           method: "POST",
@@ -192,7 +164,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
         setTransitionPending(null)
       }
     },
-    [breach, breachId, usersNotified, fetchBreach],
+    [breachId, usersNotifiedParsed, fetchBreach],
   )
 
   if (state === "loading") {
@@ -223,7 +195,9 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
     )
   }
 
-  const allowedTransitions = ALLOWED_TRANSITIONS[breach.status]
+  // Fix H3 round 1 PR #457 — single source of truth FSM côté backend
+  // (vs ancien ALLOWED_TRANSITIONS hardcoded UI qui risquait divergence).
+  const allowedTransitions = breach.allowedTransitions
 
   return (
     <>
@@ -281,18 +255,18 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
           Détails
         </h2>
         <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <Field label="Détectée le">{new Date(breach.detectedAt).toLocaleString("fr-FR")}</Field>
+          <Field label="Détectée le">{formatDate(breach.detectedAt, locale, { withTime: true })}</Field>
           <Field label="Déclarée par">User #{breach.declaredBy ?? "—"}</Field>
           {breach.cnilNotifiedAt && (
-            <Field label="Notifiée CNIL le">{new Date(breach.cnilNotifiedAt).toLocaleString("fr-FR")}</Field>
+            <Field label="Notifiée CNIL le">{formatDate(breach.cnilNotifiedAt, locale, { withTime: true })}</Field>
           )}
           {breach.usersNotifiedAt && (
             <Field label="Utilisateurs notifiés le">
-              {new Date(breach.usersNotifiedAt).toLocaleString("fr-FR")} ({breach.usersNotifiedCount} users)
+              {formatDate(breach.usersNotifiedAt, locale, { withTime: true })} ({breach.usersNotifiedCount} users)
             </Field>
           )}
           {breach.closedAt && (
-            <Field label="Clôturée le">{new Date(breach.closedAt).toLocaleString("fr-FR")}</Field>
+            <Field label="Clôturée le">{formatDate(breach.closedAt, locale, { withTime: true })}</Field>
           )}
         </dl>
       </section>
@@ -384,25 +358,37 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
                 onChange={(e) => setUsersNotified(e.target.value)}
                 className="rounded-md border bg-background px-3 py-2 max-w-[200px]"
                 placeholder="Ex: 1500"
+                aria-describedby="users-notified-help"
+                aria-invalid={usersNotified !== "" && !isUsersNotifiedValid}
               />
+              {/* Fix L8 round 1 — validation inline (vs alert natif). */}
+              {usersNotified !== "" && !isUsersNotifiedValid && (
+                <span id="users-notified-help" className="text-xs text-destructive" role="alert">
+                  Entier ≥ 0 requis.
+                </span>
+              )}
             </label>
           )}
           <div className="flex flex-wrap gap-2">
-            {allowedTransitions.map((to) => (
-              <DiabeoButton
-                key={to}
-                variant={to === "closed" ? "diabeoTertiary" : "diabeoPrimary"}
-                onClick={() => void handleTransition(to)}
-                disabled={transitionPending !== null}
-              >
-                {transitionPending === to ? "…" : (
-                  <>
-                    {STATUS_LABELS[to]}
-                    <ChevronRight className="size-3.5 ml-1" aria-hidden="true" />
-                  </>
-                )}
-              </DiabeoButton>
-            ))}
+            {allowedTransitions.map((to) => {
+              // Fix L8 — disable bouton notified_users si validation invalide.
+              const disabledForUsers = to === "notified_users" && !isUsersNotifiedValid
+              return (
+                <DiabeoButton
+                  key={to}
+                  variant={to === "closed" ? "diabeoTertiary" : "diabeoPrimary"}
+                  onClick={() => requestTransition(to)}
+                  disabled={transitionPending !== null || disabledForUsers}
+                >
+                  {transitionPending === to ? "…" : (
+                    <>
+                      {STATUS_LABELS[to]}
+                      <ChevronRight className="size-3.5 ml-1" aria-hidden="true" />
+                    </>
+                  )}
+                </DiabeoButton>
+              )
+            })}
           </div>
         </section>
       )}
@@ -415,6 +401,41 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
           </p>
         </div>
       )}
+
+      {/* Fix H1 + A11y M1 round 1 PR #457 — Dialog confirmation transition FSM
+          (vs confirm() natif FR-hardcoded). Action irréversible forensique. */}
+      <Dialog
+        open={confirmTransition !== null}
+        onOpenChange={(open) => { if (!open) setConfirmTransition(null) }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {confirmTransition && `Transition vers "${STATUS_LABELS[confirmTransition]}"`}
+            </DialogTitle>
+            <DialogDescription>
+              Action tracée dans le journal d&apos;audit immuable (forensique CNIL/ANS).
+              {(confirmTransition === "notified_cnil"
+                || confirmTransition === "notified_users"
+                || confirmTransition === "closed") &&
+                " Cette transition est irréversible."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DiabeoButton variant="diabeoTertiary" onClick={() => setConfirmTransition(null)}>
+              Annuler
+            </DiabeoButton>
+            <DiabeoButton
+              variant={confirmTransition === "closed" ? "diabeoDestructive" : "diabeoPrimary"}
+              onClick={() => {
+                if (confirmTransition) void executeTransition(confirmTransition)
+              }}
+            >
+              Confirmer la transition
+            </DiabeoButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

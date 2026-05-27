@@ -997,5 +997,15 @@
       "pdf": "Exporter en PDF",
       "json": "Exporter en JSON"
     }
+  },
+  "sidebar": {
+    "dashboard": "Tableau de bord",
+    "patients": "Patients",
+    "medications": "Medicaments",
+    "analytics": "Analytics",
+    "documents": "Documents",
+    "settings": "Parametres",
+    "adminDataBreaches": "Violations RGPD",
+    "logout": "Se deconnecter"
   }
 }

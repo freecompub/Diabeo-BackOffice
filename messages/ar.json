@@ -997,5 +997,15 @@
       "pdf": "تصدير PDF",
       "json": "تصدير JSON"
     }
+  },
+  "sidebar": {
+    "dashboard": "لوحة التحكم",
+    "patients": "المرضى",
+    "medications": "الأدوية",
+    "analytics": "التحليلات",
+    "documents": "المستندات",
+    "settings": "الإعدادات",
+    "adminDataBreaches": "انتهاكات اللائحة الأوروبية",
+    "logout": "تسجيل الخروج"
   }
 }

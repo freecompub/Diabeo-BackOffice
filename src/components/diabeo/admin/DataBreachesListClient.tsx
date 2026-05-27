@@ -7,65 +7,46 @@
  * bouton "Déclarer une violation" qui ouvre dialog de création.
  *
  * Backend : `dataBreachService` (PR #409 Groupe 9 Admin/Ops).
+ *
+ * Fixes round 1 review PR #457 :
+ *   - C2 + H2 + A11y C1+C2 : utilise `<Dialog>` shadcn (focus trap + ESC +
+ *     restore focus + ARIA correct) au lieu d'un modal custom
+ *   - H2 : `AbortController` pour fetch (race condition sur filter change rapide)
+ *   - H1 : confirm `<AlertDialog>` shadcn pour close si dirty form (M5)
+ *   - M1 : types DTO partagés via `@/lib/types/data-breach`
+ *   - M2 : `formatDateTime` next-intl au lieu de `toLocaleString("fr-FR")`
+ *   - M7 : char count visible pour textarea description
  */
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
+import { useLocale } from "next-intl"
 import { AlertCircle, AlertTriangle, Clock, Plus, ShieldAlert } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { Badge } from "@/components/ui/badge"
-
-type DataBreachSeverity = "low" | "medium" | "high" | "critical"
-type DataBreachStatus =
-  | "draft"
-  | "under_assessment"
-  | "notified_cnil"
-  | "notified_users"
-  | "closed"
-
-interface DataBreachDTO {
-  id: number
-  severity: DataBreachSeverity
-  status: DataBreachStatus
-  title: string
-  description: string | null
-  remediation: string | null
-  cnilCaseNumber: string | null
-  usersNotifiedCount: number
-  detectedAt: string // ISO
-  declaredBy: number | null
-  cnilNotifiedAt: string | null
-  usersNotifiedAt: string | null
-  closedAt: string | null
-  cnilDeadlineHoursRemaining: number | null
-  cnilDeadlineExceeded: boolean
-}
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { formatDate } from "@/lib/intl/formatters"
+import type { Locale } from "@/i18n/config"
+import {
+  type DataBreachSeverity,
+  type DataBreachStatus,
+  type DataBreachDTOClient as DataBreachDTO,
+  SEVERITY_LABELS_FR as SEVERITY_LABELS,
+  STATUS_LABELS_FR as STATUS_LABELS,
+  SEVERITY_VARIANT,
+} from "@/lib/types/data-breach"
 
 type AsyncState = "idle" | "loading" | "success" | "error"
 
-const SEVERITY_LABELS: Record<DataBreachSeverity, string> = {
-  low: "Faible",
-  medium: "Moyenne",
-  high: "Élevée",
-  critical: "Critique",
-}
-
-const SEVERITY_VARIANT: Record<DataBreachSeverity, "default" | "secondary" | "destructive" | "outline"> = {
-  low: "secondary",
-  medium: "outline",
-  high: "default",
-  critical: "destructive",
-}
-
-const STATUS_LABELS: Record<DataBreachStatus, string> = {
-  draft: "Brouillon",
-  under_assessment: "En évaluation",
-  notified_cnil: "Notifié CNIL",
-  notified_users: "Utilisateurs notifiés",
-  closed: "Clos",
-}
-
 export function DataBreachesListClient() {
+  const locale = useLocale() as Locale
   const [breaches, setBreaches] = useState<DataBreachDTO[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -73,7 +54,18 @@ export function DataBreachesListClient() {
   const [filterSeverity, setFilterSeverity] = useState<DataBreachSeverity | "all">("all")
   const [showDeclareDialog, setShowDeclareDialog] = useState(false)
 
+  // Fix H2 round 1 PR #457 — AbortController + fetchSeq pour éliminer race
+  // condition au changement rapide de filterStatus/filterSeverity (pattern
+  // HSA-3 connu projet, cf. useMessageThreads PR #441 iter messaging).
+  const abortRef = useRef<AbortController | null>(null)
+  const fetchSeqRef = useRef(0)
+
   const fetchBreaches = useCallback(async () => {
+    // Cancel any in-flight previous fetch (filter change rapide).
+    if (abortRef.current) abortRef.current.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+    const seq = ++fetchSeqRef.current
     setState("loading")
     setErrorMessage(null)
     try {
@@ -81,16 +73,21 @@ export function DataBreachesListClient() {
       if (filterStatus !== "all") params.set("status", filterStatus)
       if (filterSeverity !== "all") params.set("severity", filterSeverity)
       const url = `/api/admin/data-breaches${params.toString() ? `?${params.toString()}` : ""}`
-      const res = await fetch(url, { credentials: "include" })
+      const res = await fetch(url, { credentials: "include", signal: controller.signal })
+      // Si une autre requête a démarré entre temps, ignore cette réponse.
+      if (seq !== fetchSeqRef.current) return
       if (!res.ok) {
         setState("error")
         setErrorMessage(`HTTP ${res.status}`)
         return
       }
       const data = (await res.json()) as { items?: DataBreachDTO[] }
+      if (seq !== fetchSeqRef.current) return
       setBreaches(data.items ?? [])
       setState("success")
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return // expected
+      if (seq !== fetchSeqRef.current) return
       setState("error")
       setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
     }
@@ -99,11 +96,17 @@ export function DataBreachesListClient() {
   useEffect(() => {
     // fetchBreaches est intentionally re-triggered au changement de
     // filterStatus/filterSeverity (le useCallback recapture les filtres pour
-    // la query URL). Pattern aligné avec autres clients admin du projet —
-    // alternative SWR/react-query reportée V2.
+    // la query URL). AbortController + fetchSeq gèrent la race condition.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void fetchBreaches()
   }, [fetchBreaches])
+
+  // Cleanup au unmount — abort fetch en cours.
+  useEffect(() => {
+    return () => {
+      if (abortRef.current) abortRef.current.abort()
+    }
+  }, [])
 
   return (
     <>
@@ -201,7 +204,7 @@ export function DataBreachesListClient() {
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Détectée le {new Date(breach.detectedAt).toLocaleString("fr-FR")}
+                      Détectée le {formatDate(breach.detectedAt, locale, { withTime: true })}
                     </p>
                     {breach.cnilDeadlineHoursRemaining !== null && breach.status !== "notified_cnil" && breach.status !== "notified_users" && breach.status !== "closed" && (
                       <p
@@ -260,6 +263,11 @@ function DeclareDialog({
   const [description, setDescription] = useState("")
   const [submitState, setSubmitState] = useState<AsyncState>("idle")
   const [submitError, setSubmitError] = useState<string | null>(null)
+  // Fix M5 round 1 PR #457 — confirm si dirty form pour éviter perte de
+  // données draft (PHI potentiel) si user clique outside ou ESC.
+  const [showDirtyConfirm, setShowDirtyConfirm] = useState(false)
+
+  const isDirty = title.trim().length > 0 || description.trim().length > 0
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -296,90 +304,134 @@ function DeclareDialog({
     [severity, title, description, onCreated],
   )
 
+  // Fix M5 — interception close si form dirty.
+  const handleCloseAttempt = useCallback(() => {
+    if (isDirty && submitState !== "loading") {
+      setShowDirtyConfirm(true)
+    } else {
+      onClose()
+    }
+  }, [isDirty, submitState, onClose])
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="declare-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4"
-      onClick={onClose}
-    >
-      <form
-        onSubmit={handleSubmit}
-        onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-lg rounded-lg border bg-card p-6 shadow-lg flex flex-col gap-4"
+    <>
+      {/* Fix C2 + H2 + A11y C1+C2 round 1 PR #457 — shadcn `<Dialog>` (Radix)
+          gère focus trap + ESC handler + restore focus + ARIA + inert backdrop.
+          Remplace le modal custom qui violait WCAG 2.1.2 + 2.4.3. */}
+      <Dialog
+        open={!showDirtyConfirm}
+        onOpenChange={(open) => {
+          if (!open) handleCloseAttempt()
+        }}
       >
-        <header>
-          <h2 id="declare-dialog-title" className="text-lg font-semibold">
-            Déclarer une violation de données
-          </h2>
-          <p className="text-xs text-muted-foreground mt-1">
-            ⚠️ NE PAS INCLURE de PHI/PII dans le titre (anti-fuite audit logs).
-          </p>
-        </header>
+        <DialogContent>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <DialogHeader>
+              <DialogTitle>Déclarer une violation de données</DialogTitle>
+              <DialogDescription>
+                ⚠️ NE PAS INCLURE de PHI/PII dans le titre (anti-fuite audit logs).
+              </DialogDescription>
+            </DialogHeader>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Sévérité</span>
-          <select
-            value={severity}
-            onChange={(e) => setSeverity(e.target.value as DataBreachSeverity)}
-            className="rounded-md border bg-background px-3 py-2"
-            required
-          >
-            {Object.entries(SEVERITY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Sévérité</span>
+              <select
+                value={severity}
+                onChange={(e) => setSeverity(e.target.value as DataBreachSeverity)}
+                className="rounded-md border bg-background px-3 py-2"
+                required
+              >
+                {Object.entries(SEVERITY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span>
-            Titre <span className="text-destructive">*</span>
-          </span>
-          <input
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Ex: Fuite tokens FCM cabinet X (sans détails identifiants)"
-            className="rounded-md border bg-background px-3 py-2"
-            required
-            maxLength={200}
-          />
-        </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span>
+                Titre <span className="text-destructive" aria-label="requis">*</span>
+              </span>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex: Fuite tokens FCM cabinet X (sans détails identifiants)"
+                className="rounded-md border bg-background px-3 py-2"
+                required
+                maxLength={200}
+                aria-describedby="declare-title-count"
+              />
+              {/* Fix M7 round 1 — char count visible (WCAG 3.3.2). */}
+              <span id="declare-title-count" className="text-xs text-muted-foreground">
+                {title.length} / 200 caractères
+              </span>
+            </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          <span>Description (optionnel)</span>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Détails techniques de la violation (chiffré en base)"
-            className="rounded-md border bg-background px-3 py-2 min-h-[80px]"
-            maxLength={5000}
-          />
-        </label>
+            <label className="flex flex-col gap-1 text-sm">
+              <span>Description (optionnel)</span>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Détails techniques de la violation (chiffré en base)"
+                className="rounded-md border bg-background px-3 py-2 min-h-[80px]"
+                maxLength={5000}
+                aria-describedby="declare-desc-count"
+              />
+              <span id="declare-desc-count" className="text-xs text-muted-foreground">
+                {description.length} / 5000 caractères
+              </span>
+            </label>
 
-        {submitState === "error" && submitError && (
-          <p role="alert" className="text-sm text-destructive flex items-center gap-2">
-            <AlertCircle className="size-4" aria-hidden="true" />
-            Erreur : {submitError}
-          </p>
-        )}
+            {submitState === "error" && submitError && (
+              <p role="alert" className="text-sm text-destructive flex items-center gap-2">
+                <AlertCircle className="size-4" aria-hidden="true" />
+                Erreur : {submitError}
+              </p>
+            )}
 
-        <footer className="flex justify-end gap-2 pt-2">
-          <DiabeoButton type="button" variant="diabeoTertiary" onClick={onClose}>
-            Annuler
-          </DiabeoButton>
-          <DiabeoButton
-            type="submit"
-            disabled={submitState === "loading" || title.trim().length === 0}
-          >
-            {submitState === "loading" ? "Création…" : "Déclarer (status=brouillon)"}
-          </DiabeoButton>
-        </footer>
-      </form>
-    </div>
+            <DialogFooter>
+              <DiabeoButton type="button" variant="diabeoTertiary" onClick={handleCloseAttempt}>
+                Annuler
+              </DiabeoButton>
+              <DiabeoButton
+                type="submit"
+                disabled={submitState === "loading" || title.trim().length === 0}
+              >
+                {submitState === "loading" ? "Création…" : "Déclarer (status=brouillon)"}
+              </DiabeoButton>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Fix M5 round 1 — confirm dialog si user tente close avec dirty form. */}
+      <Dialog open={showDirtyConfirm} onOpenChange={(open) => { if (!open) setShowDirtyConfirm(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Abandonner les modifications ?</DialogTitle>
+            <DialogDescription>
+              Le titre et la description saisis seront perdus. Cette action n&apos;est pas réversible.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DiabeoButton variant="diabeoTertiary" onClick={() => setShowDirtyConfirm(false)}>
+              Continuer la saisie
+            </DiabeoButton>
+            <DiabeoButton
+              variant="diabeoDestructive"
+              onClick={() => {
+                setShowDirtyConfirm(false)
+                onClose()
+              }}
+            >
+              Abandonner
+            </DiabeoButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
