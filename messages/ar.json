@@ -989,9 +989,23 @@
       "gdprConsent": "موافقة اللائحة الأوروبية",
       "gdprConsentSubtitle": "أوافق على معالجة بياناتي الصحية وفقا لسياسة خصوصية Diabeo"
     },
+    "sessions": {
+      "title": "الجلسات النشطة",
+      "description": "قائمة الأجهزة المتصلة بحسابك. ألغ الجلسات المشبوهة أو القديمة."
+    },
     "export": {
       "pdf": "تصدير PDF",
       "json": "تصدير JSON"
     }
+  },
+  "sidebar": {
+    "dashboard": "لوحة التحكم",
+    "patients": "المرضى",
+    "medications": "الأدوية",
+    "analytics": "التحليلات",
+    "documents": "المستندات",
+    "settings": "الإعدادات",
+    "adminDataBreaches": "انتهاكات اللائحة الأوروبية",
+    "logout": "تسجيل الخروج"
   }
 }

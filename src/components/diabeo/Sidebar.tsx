@@ -7,6 +7,8 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   LayoutDashboard,
   Users,
@@ -15,23 +17,99 @@ import {
   LogOut,
   Activity,
   Pill,
+  ShieldAlert,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { LocaleSwitcher } from "./LocaleSwitcher"
 
-const navItems = [
-  { href: "/dashboard", label: "Tableau de bord", icon: LayoutDashboard },
-  { href: "/patients", label: "Patients", icon: Users },
-  { href: "/medications", label: "Médicaments", icon: Pill },
-  { href: "/analytics", label: "Analytics", icon: Activity },
-  { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/settings", label: "Paramètres", icon: Settings },
+interface NavItem {
+  href: string
+  /** Fix M3 round 1 PR #457 — i18n key dans messages/{fr,en,ar}.json sous `sidebar.*`. */
+  labelKey: string
+  icon: typeof LayoutDashboard
+  /** Si défini, item visible uniquement pour les rôles listés. */
+  roles?: ReadonlyArray<"ADMIN" | "DOCTOR" | "NURSE" | "VIEWER">
+}
+
+const navItems: ReadonlyArray<NavItem> = [
+  { href: "/dashboard", labelKey: "dashboard", icon: LayoutDashboard },
+  { href: "/patients", labelKey: "patients", icon: Users },
+  { href: "/medications", labelKey: "medications", icon: Pill },
+  { href: "/analytics", labelKey: "analytics", icon: Activity },
+  { href: "/documents", labelKey: "documents", icon: FileText },
+  { href: "/settings", labelKey: "settings", icon: Settings },
+  // US-2137 RGPD Art. 33 (iter 1 PR — Groupe 9 Admin/Ops) — ADMIN-only.
+  // Le gate côté server "/admin/data-breaches/page.tsx" redirige vers "/"
+  // pour non-ADMIN, donc cacher l'item côté Sidebar évite la confusion UX.
+  { href: "/admin/data-breaches", labelKey: "adminDataBreaches", icon: ShieldAlert, roles: ["ADMIN"] },
 ]
+
+/**
+ * ⚠️ SECURITY (Fix H6 round 1 review PR #457 — HSA HIGH-1) ⚠️
+ *
+ * Le cache `sessionStorage.diabeo_user_role` est utilisé **UNIQUEMENT** pour
+ * gater la VISIBILITÉ d'items de navigation côté UI. Ce N'EST PAS une
+ * source of truth de sécurité.
+ *
+ * La vraie authentification se fait :
+ *   1. Server-side dans chaque "/admin/<route>/page.tsx" via `headers().get("x-user-role")`
+ *      (JWT validé par middleware) → redirect "/" si non-ADMIN.
+ *   2. Backend API dans `auditedRequireRole(ADMIN, ...)` (audit log automatique).
+ *
+ * Un attaquant XSS pourrait `sessionStorage.setItem("diabeo_user_role","ADMIN")`
+ * et cliquer programmatically sur l'item ADMIN → mais click → server-side
+ * redirect → backend refuse 403. Cache UI bypassé = juste leak existence route,
+ * pas accès aux données.
+ *
+ * ⚠️ TOUTE référence à `diabeo_user_role` côté API/middleware = FAILLE CRITIQUE.
+ *
+ * Le cache est clear au logout via `useAuth.logout()` (Fix C1 round 1).
+ */
+const USER_ROLE_CACHE_KEY = "diabeo_user_role"
+
+type KnownRole = "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
+const KNOWN_ROLES: ReadonlySet<KnownRole> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
+
+function isKnownRole(value: unknown): value is KnownRole {
+  return typeof value === "string" && KNOWN_ROLES.has(value as KnownRole)
+}
 
 export function Sidebar() {
   const pathname = usePathname()
   const { logout } = useAuth()
+  const t = useTranslations("sidebar")
+  // US-2137 iter 1 — récupère le rôle courant pour filtrer items ADMIN-only.
+  // Fix M5 round 1 PR #457 — type guard `isKnownRole` au lieu de cast `as`.
+  const [role, setRole] = useState<KnownRole | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const cached = sessionStorage.getItem(USER_ROLE_CACHE_KEY)
+        if (cached && isKnownRole(cached)) {
+          if (!cancelled) setRole(cached)
+          return
+        }
+        const res = await fetch("/api/account", { credentials: "include" })
+        if (!res.ok) return
+        const data = (await res.json()) as { role?: unknown }
+        if (isKnownRole(data.role) && !cancelled) {
+          sessionStorage.setItem(USER_ROLE_CACHE_KEY, data.role)
+          setRole(data.role)
+        }
+      } catch {
+        // Silent — gate sera fail-closed (item ADMIN caché par défaut).
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const visibleItems = navItems.filter(
+    (item) => !item.roles || (role !== null && (item.roles as readonly string[]).includes(role)),
+  )
 
   return (
     <aside
@@ -50,7 +128,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Menu principal">
-        {navItems.map((item) => {
+        {visibleItems.map((item) => {
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           return (
             <Link
@@ -65,7 +143,7 @@ export function Sidebar() {
               aria-current={isActive ? "page" : undefined}
             >
               <item.icon className="h-5 w-5 shrink-0" aria-hidden="true" />
-              {item.label}
+              {t(item.labelKey as Parameters<typeof t>[0])}
             </Link>
           )
         })}
@@ -81,10 +159,10 @@ export function Sidebar() {
         <button
           onClick={logout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--color-muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600"
-          aria-label="Se déconnecter"
+          aria-label={t("logout")}
         >
           <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
-          Se déconnecter
+          {t("logout")}
         </button>
       </div>
     </aside>

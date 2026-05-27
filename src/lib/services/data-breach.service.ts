@@ -97,13 +97,18 @@ export const DATA_BREACH_BOUNDS = {
  * `description`. Documenter dans l'UI admin que la fermeture est
  * irréversible.
  */
-const ALLOWED_TRANSITIONS: Record<DataBreachStatus, DataBreachStatus[]> = {
+/**
+ * Fix H3 round 1 review PR #457 — exporté `as const` pour réutilisation UI
+ * via DTO `allowedTransitions` (single source of truth — UI ne duplique
+ * plus les transitions hardcoded, élimine risque divergence backend ↔ UI).
+ */
+export const ALLOWED_TRANSITIONS: Record<DataBreachStatus, readonly DataBreachStatus[]> = {
   draft: ["under_assessment", "closed"],
   under_assessment: ["notified_cnil", "closed"],
   notified_cnil: ["notified_users", "closed"],
   notified_users: ["closed"],
   closed: [],
-}
+} as const
 
 function assertTransition(from: DataBreachStatus, to: DataBreachStatus): void {
   if (!ALLOWED_TRANSITIONS[from].includes(to)) {
@@ -139,6 +144,13 @@ export interface DataBreachDTO {
   cnilDeadlineHoursRemaining: number | null
   /** M1 — `true` si severity ≥ high ET deadline 72h dépassée sans notification CNIL. */
   cnilDeadlineExceeded: boolean
+  /**
+   * Fix H3 round 1 review PR #457 — Transitions FSM autorisées depuis
+   * le `status` actuel. UI consomme ce champ directement (vs ancien
+   * `ALLOWED_TRANSITIONS` hardcoded côté UI qui risquait divergence si
+   * backend ajoutait une transition).
+   */
+  allowedTransitions: readonly DataBreachStatus[]
   createdAt: Date
   updatedAt: Date
 }
@@ -191,6 +203,8 @@ function toDTO(b: DataBreach): DataBreachDTO {
     closedAt: b.closedAt,
     cnilDeadlineHoursRemaining,
     cnilDeadlineExceeded,
+    // Fix H3 round 1 PR #457 — single source of truth FSM côté backend.
+    allowedTransitions: ALLOWED_TRANSITIONS[b.status],
     createdAt: b.createdAt,
     updatedAt: b.updatedAt,
   }

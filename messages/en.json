@@ -989,9 +989,23 @@
       "gdprConsent": "GDPR consent",
       "gdprConsentSubtitle": "I agree that my health data is processed in accordance with the Diabeo privacy policy"
     },
+    "sessions": {
+      "title": "Active sessions",
+      "description": "List of devices connected to your account. Revoke suspicious or old sessions."
+    },
     "export": {
       "pdf": "Export as PDF",
       "json": "Export as JSON"
     }
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "patients": "Patients",
+    "medications": "Medications",
+    "analytics": "Analytics",
+    "documents": "Documents",
+    "settings": "Settings",
+    "adminDataBreaches": "GDPR breaches",
+    "logout": "Sign out"
   }
 }

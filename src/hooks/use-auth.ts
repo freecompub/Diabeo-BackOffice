@@ -83,8 +83,24 @@ interface AuthBroadcastMessage {
  * initiateur, soit par les listeners cross-tab. Ne broadcast PAS (sinon
  * loop infini théorique, même si `BroadcastChannel` n'envoie pas au sender).
  */
+/**
+ * Liste des sessionStorage keys à clear à chaque logout. À étendre quand
+ * un nouveau key UX est ajouté (pattern centralisé pour éviter divergence).
+ *
+ * Fix C1 round 1 review PR #457 (Issue HSA CRITICAL-1) — clear
+ * `diabeo_user_role` cache (utilisé par Sidebar.tsx pour gate items ADMIN-only).
+ * Sans ça : poste partagé hôpital, ADMIN logout → DOCTOR login → cache
+ * renvoie "ADMIN" → item "Violations RGPD" visible (leak d'info structurelle).
+ */
+const SESSION_STORAGE_KEYS_TO_CLEAR_ON_LOGOUT = [
+  LOGIN_TIMESTAMP_KEY,
+  "diabeo_user_role", // Fix C1 round 1 PR #457
+] as const
+
 function applyLogoutLocalCleanup(redirect: (path: string) => void): void {
-  sessionStorage.removeItem(LOGIN_TIMESTAMP_KEY)
+  for (const key of SESSION_STORAGE_KEYS_TO_CLEAR_ON_LOGOUT) {
+    sessionStorage.removeItem(key)
+  }
   redirect("/login")
 }
 

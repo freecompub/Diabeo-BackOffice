@@ -39,6 +39,7 @@ import {
   Clock,
   Bell,
   Lock,
+  Monitor,
   ChevronDown,
   Download,
   Loader2,
@@ -48,6 +49,7 @@ import {
   EyeOff,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
+import { SessionsSection } from "@/components/diabeo/account/SessionsSection"
 import {
   DiabeoButton,
   DiabeoCard,
@@ -76,6 +78,7 @@ type SectionId =
   | "dayMoments"
   | "notifications"
   | "privacy"
+  | "sessions"
 
 interface SectionMeta {
   id: SectionId
@@ -91,6 +94,9 @@ const SECTIONS: SectionMeta[] = [
   { id: "dayMoments", icon: <Clock className="size-4" /> },
   { id: "notifications", icon: <Bell className="size-4" /> },
   { id: "privacy", icon: <Lock className="size-4" /> },
+  // US-2007 Sessions multiples (Groupe 9 Admin/Ops) — UI itération 1
+  // bloqueur prod cabinet multi-PS (audit HDS gestion fin de session).
+  { id: "sessions", icon: <Monitor className="size-4" /> },
 ]
 
 // ---------------------------------------------------------------------------
@@ -1276,6 +1282,10 @@ export default function SettingsPage() {
         return <NotificationsSection prefs={notifPrefs} />
       case "privacy":
         return <PrivacySection settings={privacySettings} />
+      case "sessions":
+        // US-2007 Sessions multiples UI — composant autonome (fetch propre,
+        // pas de props initial — chargement async).
+        return <SessionsSection />
       default:
         return null
     }
