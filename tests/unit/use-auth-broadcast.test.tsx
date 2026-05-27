@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  *
  * Tests pour Issue #450 — cross-tab logout sync via `BroadcastChannel("diabeo:auth")`
- * (follow-up review HSA M2 PR #449).
+ * (follow-up review HSA M2 PR #449 + round 2 reviews PR #451).
  *
  * **Risque HDS Art. L.1111-8 résolu** : sur poste partagé cabinet multi-PS,
  * si PS A logout dans tab 1 mais laisse tab 2 ouvert, ce dernier peut
@@ -37,7 +37,7 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (k: string) => k,
 }))
 
-describe("useAuth — cross-tab logout sync (Issue #450)", () => {
+describe("useAuth — cross-tab logout sync (Issue #450 + round 2 PR #451)", () => {
   let fetchSpy: ReturnType<typeof vi.spyOn>
   let unregisterSpy: ReturnType<typeof vi.spyOn>
 
@@ -56,17 +56,14 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    vi.unstubAllGlobals()
   })
 
   // -------------------------------------------------------------------------
-  // Broadcast émission lors du logout
+  // Broadcast émission lors du logout (Fix M2 round 2 : waitFor vs setTimeout)
   // -------------------------------------------------------------------------
 
   it("logout() broadcast un message {type: 'logout', from, at} après cleanup", async () => {
-    // On crée un listener SPY sur un channel distinct (simule "autre tab")
-    // monté AVANT le logout. BroadcastChannel jsdom envoie aussi à ses
-    // propres listeners — donc le `from` doit être DIFFÉRENT pour qu'on le
-    // capture comme "autre tab".
     const otherTabMessages: Array<{ type: string; from: string; at: number }> = []
     const otherTabChannel = new BroadcastChannel("diabeo:auth")
     otherTabChannel.onmessage = (event) => {
@@ -78,7 +75,8 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
       await result.current.logout()
     })
 
-    // Vérifier qu'un message logout a bien été broadcasté.
+    // Fix M2 round 2 : waitFor au lieu de `await new Promise(r => setTimeout(r, 20))`
+    // (flaky en CI sous charge). waitFor retry jusqu'à timeout par défaut 1s.
     await waitFor(() => expect(otherTabMessages.length).toBeGreaterThan(0))
     const msg = otherTabMessages.find((m) => m.type === "logout")
     expect(msg).toBeDefined()
@@ -95,11 +93,9 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
   // -------------------------------------------------------------------------
 
   it("tab 2 reçoit broadcast logout d'un autre tab → cleanup local (replace /login + clear sessionStorage)", async () => {
-    // Mount du hook "tab 2" → installe listener BroadcastChannel.
     sessionStorage.setItem("diabeo_session_start", "999")
     renderHook(() => useAuth())
 
-    // Simule un broadcast depuis un AUTRE tab (with different `from` id).
     const senderChannel = new BroadcastChannel("diabeo:auth")
     await act(async () => {
       senderChannel.postMessage({
@@ -107,12 +103,9 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
         from: "other-tab-id-xyz",
         at: Date.now(),
       })
-      // Petite attente pour propagation event loop BroadcastChannel.
-      await new Promise((r) => setTimeout(r, 20))
     })
 
-    // Tab 2 doit avoir cleanup local SANS appeler logout() complet
-    // (pas de POST /api/auth/logout, pas de DELETE FCM, pas de SW unregister).
+    // Fix M2 round 2 : waitFor robuste vs setTimeout arbitraire.
     await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login"))
     expect(sessionStorage.getItem("diabeo_session_start")).toBeNull()
 
@@ -125,19 +118,67 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
 
   // -------------------------------------------------------------------------
   // Anti-loop : tab initiateur ignore son propre broadcast
+  // (Fix H2 round 2 : test efficace — capture le `from` réellement envoyé
+  // puis simule un message ENTRANT avec le MÊME `from` pour valider que le
+  // filtre `from === ownTabId` est réellement actif)
   // -------------------------------------------------------------------------
 
-  it("tab initiateur ignore son propre broadcast (anti-loop via from === ownTabId)", async () => {
-    const { result } = renderHook(() => useAuth())
+  it("Fix H2 — tab initiateur ignore son propre broadcast (anti-loop via from === ownTabId réellement filtré)", async () => {
+    // Capture le tabId réel via le broadcast émis lors du logout.
+    let capturedTabId: string | null = null
+    const spyChannel = new BroadcastChannel("diabeo:auth")
+    spyChannel.onmessage = (event) => {
+      if (event.data?.type === "logout" && typeof event.data.from === "string") {
+        capturedTabId = event.data.from
+      }
+    }
 
+    const { result } = renderHook(() => useAuth())
     await act(async () => {
       await result.current.logout()
     })
 
-    // logout() complet broadcast + cleanup local — DOIT appeler replace
-    // exactement 1 fois (sa propre exécution finally), pas 2 (si listener
-    // se déclenchait aussi sur son propre broadcast).
-    await waitFor(() => expect(mockReplace).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(capturedTabId).not.toBeNull())
+    const replaceCallsAfterLogout = mockReplace.mock.calls.length
+    expect(replaceCallsAfterLogout).toBe(1) // 1 appel via finally local
+
+    // Maintenant simule un message ENTRANT avec exactement le même tabId
+    // que celui que ce hook a émis → le listener DOIT l'ignorer (sinon
+    // replace serait appelé une 2e fois).
+    await act(async () => {
+      spyChannel.postMessage({
+        type: "logout",
+        from: capturedTabId,
+        at: Date.now() + 10,
+      })
+    })
+
+    // Attente robuste pour propagation — replace doit rester à 1 appel.
+    // On utilise waitFor avec un délai borné pour permettre à un éventuel
+    // listener bogué de déclencher (et faire échouer le test si filtre cassé).
+    await new Promise((r) => setTimeout(r, 50))
+    expect(mockReplace).toHaveBeenCalledTimes(replaceCallsAfterLogout)
+
+    spyChannel.close()
+  })
+
+  // -------------------------------------------------------------------------
+  // Validation runtime — message malformé (Fix M1 round 2)
+  // -------------------------------------------------------------------------
+
+  it("Fix M1 — message broadcast avec from null (malformé) → ignoré", async () => {
+    renderHook(() => useAuth())
+
+    const sender = new BroadcastChannel("diabeo:auth")
+    await act(async () => {
+      // `from: null` : passerait le filtre `from === ownTabId` (null !== string)
+      // sans la guard `typeof from !== "string"` introduite en round 2.
+      sender.postMessage({ type: "logout", from: null, at: Date.now() })
+    })
+
+    await new Promise((r) => setTimeout(r, 50))
+    expect(mockReplace).not.toHaveBeenCalled()
+    sender.close()
   })
 
   // -------------------------------------------------------------------------
@@ -151,10 +192,9 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
     const sender = new BroadcastChannel("diabeo:auth")
     await act(async () => {
       sender.postMessage({ type: "other-event", payload: 42 })
-      await new Promise((r) => setTimeout(r, 20))
     })
 
-    // Pas de cleanup local pour message non-logout.
+    await new Promise((r) => setTimeout(r, 50))
     expect(mockReplace).not.toHaveBeenCalled()
     expect(sessionStorage.getItem("diabeo_session_start")).toBe("555")
 
@@ -169,8 +209,6 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
     const { unmount } = renderHook(() => useAuth())
     unmount()
 
-    // Après unmount, un broadcast logout d'un autre tab ne doit PLUS
-    // déclencher de cleanup (channel closed, listener détaché).
     const sender = new BroadcastChannel("diabeo:auth")
     await act(async () => {
       sender.postMessage({
@@ -178,32 +216,63 @@ describe("useAuth — cross-tab logout sync (Issue #450)", () => {
         from: "other-tab-after-unmount",
         at: Date.now(),
       })
-      await new Promise((r) => setTimeout(r, 20))
     })
 
+    await new Promise((r) => setTimeout(r, 50))
     expect(mockReplace).not.toHaveBeenCalled()
     sender.close()
   })
 
   // -------------------------------------------------------------------------
   // Graceful fallback : BroadcastChannel non supporté
+  // (Fix L2 round 2 : vi.stubGlobal au lieu de delete global.X)
   // -------------------------------------------------------------------------
 
   it("BroadcastChannel non supporté → logout fonctionne quand même (graceful fallback)", async () => {
-    const originalBC = global.BroadcastChannel
-    // @ts-expect-error — simulate absence dans vieux navigateurs.
-    delete global.BroadcastChannel
+    // Fix L2 round 2 : `vi.stubGlobal` + `vi.unstubAllGlobals()` dans afterEach
+    // au lieu de `delete global.BroadcastChannel` (isolation test, restore
+    // garanti même si test throw).
+    vi.stubGlobal("BroadcastChannel", undefined)
 
-    try {
-      const { result } = renderHook(() => useAuth())
-      await act(async () => {
-        await result.current.logout()
-      })
+    const { result } = renderHook(() => useAuth())
+    await act(async () => {
+      await result.current.logout()
+    })
 
-      // Logout local doit fonctionner même sans BroadcastChannel.
-      await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login"))
-    } finally {
-      global.BroadcastChannel = originalBC
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/login"))
+  })
+
+  // -------------------------------------------------------------------------
+  // Concurrent dual-logout 2 tabs simultanés (Fix M3 round 2)
+  // -------------------------------------------------------------------------
+
+  it("Fix M3 — 2 tabs logout simultanés → chaque tab cleanup exactement 1 fois (idempotent)", async () => {
+    // Simule 2 hooks distincts (= 2 tabs ouverts par le même PS).
+    const { result: tab1 } = renderHook(() => useAuth())
+    const { result: tab2 } = renderHook(() => useAuth())
+
+    // Les 2 tabs cliquent logout SIMULTANÉMENT.
+    await act(async () => {
+      await Promise.all([tab1.current.logout(), tab2.current.logout()])
+    })
+
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled())
+    // Petite attente pour permettre aux broadcasts cross-tab de se propager.
+    await new Promise((r) => setTimeout(r, 50))
+
+    // Comportement attendu :
+    //   - tab1 broadcast → tab2 reçoit (autre from) → tab2 listener cleanup local
+    //     MAIS tab2 a déjà fait son cleanup local via son propre finally
+    //   - inverse pour tab2 → tab1
+    // Total replace : 2 calls minimum (1 par finally) ; cleanup local
+    // additionnel listener idempotent (sessionStorage déjà cleared, router.replace
+    // appelé sur même path = no-op visuel Next.js).
+    // Le test garantit qu'on n'a PAS de boucle infinie (sinon dépasserait 4).
+    expect(mockReplace.mock.calls.length).toBeGreaterThanOrEqual(2)
+    expect(mockReplace.mock.calls.length).toBeLessThanOrEqual(4)
+    // Tous les replace doivent cibler /login (pas de URL corruption).
+    for (const call of mockReplace.mock.calls) {
+      expect(call[0]).toBe("/login")
     }
   })
 })

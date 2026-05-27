@@ -103,22 +103,48 @@ ré-émettre (anti-loop : seul l'initiateur broadcast).
 **Pattern** :
 
 ```typescript
-// useAuth — listener au mount (toutes instances).
+// useAuth — channel ref persistant + listener au mount.
+// Fix H1 round 2 PR #451 — channel ref REUSE (vs éphémère post+close à chaque
+// logout) élimine race postMessage async / close sync immédiat.
+const channelRef = useRef<BroadcastChannel | null>(null)
+
+// Fix H3 + L1 round 2 — useState lazy + crypto.randomUUID() collision-proof
+// (vs Math.random + Date.now + useRef mutation render).
+const [tabId] = useState(() => crypto.randomUUID())
+
+// Fix H4 round 2 — routerRef stable + deps [tabId] (vs [router] qui re-mount
+// le channel à chaque navigation, fenêtre microscopique sans listener actif).
+const routerRef = useRef(router)
+useEffect(() => { routerRef.current = router }, [router])
+
 useEffect(() => {
   if (typeof BroadcastChannel === "undefined") return  // fallback IE/vieux Safari
   const channel = new BroadcastChannel("diabeo:auth")
+  channelRef.current = channel
   channel.onmessage = (event) => {
-    if (event.data?.type === "logout" && event.data?.from !== ownTabId) {
-      applyLogoutLocalCleanup(router.replace)
-    }
+    const data = event.data
+    if (data?.type !== "logout") return
+    // Fix M1 round 2 — guard runtime sur from typeof string (anti malformed msg).
+    if (typeof data.from !== "string") return
+    // Anti-loop : ignorer ses propres broadcasts.
+    if (data.from === tabId) return
+    applyLogoutLocalCleanup((path) => routerRef.current.replace(path))
   }
-  return () => channel.close()
-}, [router])
+  return () => {
+    channel.close()
+    channelRef.current = null
+  }
+}, [tabId])
 
-// logout() — broadcast après cleanup backend chain.
-const channel = new BroadcastChannel("diabeo:auth")
-channel.postMessage({ type: "logout", from: ownTabId, at: Date.now() })
-channel.close()
+// logout() — broadcast via ref persistant dans le finally.
+const channel = channelRef.current
+if (channel) {
+  try {
+    channel.postMessage({ type: "logout", from: tabId, at: Date.now() })
+  } catch (err) {
+    logHookError("logout.broadcast", err, { alwaysLog: true })
+  }
+}
 ```
 
 **Filtre `from === ownTabId`** : spec browser dit que sender ne reçoit pas,
@@ -129,6 +155,43 @@ renvoie au sender. Filtre défensif requis pour portabilité.
 des tabs DU MÊME profil/contexte navigateur. PS qui a ouvert tab 1 dans
 Chrome profil A et tab 2 dans Chrome profil B → pas de sync (sessions
 isolées de toute façon, pas un cas réel sur poste cabinet).
+
+### Modèle Session + cookie httpOnly tab 2 (résolution HSA H1 round 2 PR #451)
+
+**Investigation** : `src/lib/auth/session.ts` + `prisma/schema.prisma:478`
+montrent que le modèle Session est **1 row par login event** (createSession
+génère un sessionToken random à chaque appel). Cependant :
+
+- **Cookie httpOnly est unique par origin** : 2 tabs ouverts par PS A après
+  son login unique partagent le **même cookie** → **même session DB**.
+- Tab 1 POST `/api/auth/logout` invalide cette session (cookie Set-Cookie
+  max-age=0) → tab 2 hérite du cookie clear via storage event natif au
+  prochain navigateur reload.
+- Middleware Edge re-vérifie le JWT à chaque requête → si la session DB est
+  révoquée, refuse même si tab 2 garde encore le cookie en mémoire (≤15min
+  refresh).
+
+**Conséquence pour cross-tab sync** : tab 2 n'a PAS besoin d'émettre son
+propre POST `/api/auth/logout` (la session backend est déjà révoquée par
+tab 1). Le listener cross-tab fait uniquement le cleanup UI immédiat
+(replace `/login` + clear sessionStorage) pour **fermer la vue PHI sans
+attendre le prochain middleware refresh**.
+
+**Forensique HDS Art. L.1111-8** : la révocation backend tab 1 fait foi
+pour démontrer "PS X a fini sa session à T". Aucun audit cross-tab
+additionnel requis (cf. DPIA §11 décision documentée).
+
+### HSA H6 round 2 — Pas de filtre `userId` dans message (V1.5 follow-up)
+
+**Statut V1** : message broadcast contient uniquement `{type, from, at}`,
+pas d'`userId`. Acceptable car le modèle cookie unique par origin garantit
+"1 user actif par contexte navigateur" — pas de scénario multi-account
+same-origin en V1.
+
+**Risque V2 (multi-account UX)** : si à l'avenir le backoffice supporte
+plusieurs comptes simultanés dans le même navigateur (account switcher),
+un logout d'un compte cleanup actuellement TOUS les tabs (cross-user DOS).
+Issue GH #452 trackée V2 — ajouter `userId` au payload + filtrage listener.
 
 ### M4 — Race async cleanup window (~100-500ms)
 
