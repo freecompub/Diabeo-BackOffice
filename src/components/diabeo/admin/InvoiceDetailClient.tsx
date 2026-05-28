@@ -29,9 +29,9 @@ import { formatDate } from "@/lib/intl/formatters"
 import type { Locale } from "@/i18n/config"
 import {
   type InvoiceWithItemsDTOClient,
-  INVOICE_STATUS_LABELS_FR,
-  INVOICE_STATUS_VARIANT,
-  PAYMENT_METHOD_LABELS_FR,
+  getInvoiceStatusLabel,
+  getInvoiceStatusVariant,
+  getPaymentMethodLabel,
   formatAmount,
 } from "@/lib/types/invoice-admin"
 import { extractApiError } from "@/lib/ui/api-error"
@@ -129,8 +129,15 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
   }
 
   if (state === "error" || !invoice) {
+    // Fix M4 round 1 review PR #460 — focus management role=alert via
+    // tabindex=-1 + ref autofocus pour SR / clavier ne rate pas le message.
     return (
-      <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3">
+      <div
+        role="alert"
+        tabIndex={-1}
+        ref={(el) => { el?.focus() }}
+        className="rounded-md border border-destructive/20 bg-destructive/10 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+      >
         <p className="font-medium text-destructive flex items-center gap-2">
           <AlertCircle className="size-4" aria-hidden="true" />
           Erreur de chargement
@@ -148,7 +155,9 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
   }
 
   const canDownload = invoice.status !== "draft"
-  const subtotalCents = invoice.totalCents - invoice.taxCents
+  // Fix M1 round 1 — utilise subtotalCents canonique backend (vs recalcul
+  // client `totalCents - taxCents` qui dérivait si remises ligne).
+  const subtotalCents = invoice.subtotalCents
 
   return (
     <>
@@ -168,18 +177,23 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
           {invoice.number ?? `Brouillon #${invoice.id}`}
         </h1>
         <div className="flex items-center gap-2 flex-wrap mt-1">
-          <Badge variant={INVOICE_STATUS_VARIANT[invoice.status]}>
-            {INVOICE_STATUS_LABELS_FR[invoice.status]}
+          <Badge variant={getInvoiceStatusVariant(invoice.status)}>
+            {getInvoiceStatusLabel(invoice.status)}
           </Badge>
           <Badge variant="outline">{invoice.countryCode}</Badge>
         </div>
       </header>
 
       {/* PDF action */}
-      <section className="rounded-md border p-4 space-y-3" aria-labelledby="pdf-section">
+      <section
+        className="rounded-md border p-4 space-y-3"
+        aria-labelledby="pdf-section"
+        aria-describedby={!canDownload ? "pdf-disabled-help" : undefined}
+      >
         <h2 id="pdf-section" className="text-lg font-semibold">PDF</h2>
         {!canDownload ? (
-          <p className="text-sm text-muted-foreground">
+          // Fix M6 round 1 — aria-describedby pointe vers explication state disabled.
+          <p id="pdf-disabled-help" className="text-sm text-muted-foreground">
             Le PDF n&apos;est disponible que pour les factures émises. Émettre la facture pour générer.
           </p>
         ) : (
@@ -188,14 +202,21 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
               <RefreshCw className="size-4 mr-1" aria-hidden="true" />
               {pdfGenState === "saving" ? "Génération…" : "Régénérer PDF"}
             </DiabeoButton>
+            {/* Fix H1 + H4 round 1 review PR #460 :
+                - `referrerPolicy="no-referrer"` : pas de leak ID séquentiel via Referer
+                - `aria-label` : indique "nouvel onglet" WCAG 3.2.5 Change on Request
+                Backend (PR #414) renvoie déjà Cache-Control: no-store + Content-Disposition. */}
             <a
               href={`/api/billing/invoices/${invoice.id}/pdf`}
               target="_blank"
               rel="noopener noreferrer"
+              referrerPolicy="no-referrer"
+              aria-label={`Télécharger PDF de la facture ${invoice.number ?? `brouillon ${invoice.id}`} (nouvel onglet)`}
               className="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             >
               <Download className="size-4" aria-hidden="true" />
               Télécharger PDF
+              <span aria-hidden="true" className="text-xs opacity-75 ml-0.5">(nouvel onglet)</span>
             </a>
           </div>
         )}
@@ -227,7 +248,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
           <Field label="Pays">{invoice.countryCode}</Field>
           {invoice.paymentMethod && (
             <Field label="Mode de paiement">
-              {PAYMENT_METHOD_LABELS_FR[invoice.paymentMethod]}
+              {getPaymentMethodLabel(invoice.paymentMethod)}
             </Field>
           )}
           {invoice.issuedAt && (
@@ -256,12 +277,14 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
+                {/* Fix C1 + A11y CRITICAL round 1 review PR #460 — scope="col"
+                    pour mapping screen-reader headers→cellules (WCAG 1.3.1). */}
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th className="py-2 pr-3 font-medium">Description</th>
-                  <th className="py-2 px-3 font-medium text-right">Qté</th>
-                  <th className="py-2 px-3 font-medium text-right">Prix unit. HT</th>
-                  <th className="py-2 px-3 font-medium text-right">TVA</th>
-                  <th className="py-2 pl-3 font-medium text-right">Total TTC</th>
+                  <th scope="col" className="py-2 pr-3 font-medium">Description</th>
+                  <th scope="col" className="py-2 px-3 font-medium text-right">Qté</th>
+                  <th scope="col" className="py-2 px-3 font-medium text-right">Prix unit. HT</th>
+                  <th scope="col" className="py-2 px-3 font-medium text-right">TVA</th>
+                  <th scope="col" className="py-2 pl-3 font-medium text-right">Total TTC</th>
                 </tr>
               </thead>
               <tbody>
@@ -282,26 +305,28 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
                 ))}
               </tbody>
               <tfoot>
+                {/* Fix C1 round 1 — <th scope="row"> sur labels totaux pour
+                    SR mapping (les chiffres totaux sont la ligne associée). */}
                 <tr className="border-t-2">
-                  <td colSpan={3} className="py-2 pr-3 text-right font-medium text-muted-foreground">
+                  <th scope="row" colSpan={3} className="py-2 pr-3 text-right font-medium text-muted-foreground">
                     Sous-total HT
-                  </td>
+                  </th>
                   <td colSpan={2} className="py-2 pl-3 text-right tabular-nums">
                     {formatAmount(subtotalCents, invoice.currency, locale)}
                   </td>
                 </tr>
                 <tr>
-                  <td colSpan={3} className="py-2 pr-3 text-right font-medium text-muted-foreground">
+                  <th scope="row" colSpan={3} className="py-2 pr-3 text-right font-medium text-muted-foreground">
                     TVA
-                  </td>
+                  </th>
                   <td colSpan={2} className="py-2 pl-3 text-right tabular-nums">
                     {formatAmount(invoice.taxCents, invoice.currency, locale)}
                   </td>
                 </tr>
                 <tr className="border-t">
-                  <td colSpan={3} className="py-2 pr-3 text-right font-semibold">
+                  <th scope="row" colSpan={3} className="py-2 pr-3 text-right font-semibold">
                     Total TTC
-                  </td>
+                  </th>
                   <td colSpan={2} className="py-2 pl-3 text-right tabular-nums font-semibold">
                     {formatAmount(invoice.totalCents, invoice.currency, locale)}
                   </td>

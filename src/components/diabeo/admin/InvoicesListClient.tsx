@@ -25,7 +25,8 @@ import {
   type InvoiceDTOClient,
   type InvoiceStatus,
   INVOICE_STATUS_LABELS_FR,
-  INVOICE_STATUS_VARIANT,
+  getInvoiceStatusLabel,
+  getInvoiceStatusVariant,
   formatAmount,
 } from "@/lib/types/invoice-admin"
 import { extractApiError } from "@/lib/ui/api-error"
@@ -38,6 +39,9 @@ export function InvoicesListClient() {
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [filterStatus, setFilterStatus] = useState<InvoiceStatus | "all">("all")
+  // Fix H5 round 1 review PR #460 — track nextCursor pour indiquer si la
+  // liste est tronquée (affiche "100+ factures, affiner le filtre").
+  const [hasMore, setHasMore] = useState(false)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
   const fetchSeqRef = useRef(0)
@@ -68,6 +72,7 @@ export function InvoicesListClient() {
       const data = (await res.json()) as { items?: InvoiceDTOClient[]; nextCursor?: number }
       if (seq !== fetchSeqRef.current || !mountedRef.current) return
       setInvoices(data.items ?? [])
+      setHasMore(data.nextCursor !== undefined && data.nextCursor !== null)
       setState("success")
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
@@ -98,12 +103,16 @@ export function InvoicesListClient() {
             onChange={(e) => setFilterStatus(e.target.value as InvoiceStatus | "all")}
             className="rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             aria-label="Filtrer par statut"
+            aria-describedby="filter-status-help"
           >
-            <option value="all">Tous</option>
+            <option value="all">Tous les statuts</option>
             {Object.entries(INVOICE_STATUS_LABELS_FR).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
+          <span id="filter-status-help" className="sr-only">
+            Sélectionnez un statut pour filtrer la liste des factures.
+          </span>
         </label>
         <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchInvoices()}>
           <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
@@ -149,8 +158,8 @@ export function InvoicesListClient() {
                     <span className="font-medium">
                       {invoice.number ?? `Brouillon #${invoice.id}`}
                     </span>
-                    <Badge variant={INVOICE_STATUS_VARIANT[invoice.status]} className="text-[10px]">
-                      {INVOICE_STATUS_LABELS_FR[invoice.status]}
+                    <Badge variant={getInvoiceStatusVariant(invoice.status)} className="text-[10px]">
+                      {getInvoiceStatusLabel(invoice.status)}
                     </Badge>
                     <span className="text-sm font-medium ml-auto">
                       {formatAmount(invoice.totalCents, invoice.currency, locale)}
@@ -171,6 +180,19 @@ export function InvoicesListClient() {
             </li>
           ))}
         </ul>
+      )}
+
+      {/* Fix H5 round 1 — indicateur liste tronquée (pagination V1.5). */}
+      {hasMore && (
+        <div role="note" className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm flex items-start gap-2">
+          <AlertCircle className="size-4 text-orange-700 shrink-0 mt-0.5" aria-hidden="true" />
+          <p className="text-orange-800">
+            Plus de 100 factures correspondent. Affiner le filtre statut pour réduire la liste.
+            <span className="block text-xs opacity-80 mt-0.5">
+              Pagination cursor V1.5 — affichage tronqué aux 100 plus récentes.
+            </span>
+          </p>
+        </div>
       )}
     </>
   )
