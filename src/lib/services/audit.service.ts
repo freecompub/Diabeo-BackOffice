@@ -708,6 +708,61 @@ export const auditService = {
   },
 
   /**
+   * A4 round 2 C-2 — Émet `RATE_LIMITED` avec burst detection US-2265.
+   *
+   * Le pattern précédent (`auditService.log` direct) n'alimentait PAS
+   * `recordAndCheckBurst` → SOC aveugle aux saturations rate-limit
+   * massives (signal d'ADMIN compromis spam ou bug UI en boucle).
+   *
+   * Sémantique alignée `requireStepUp` :
+   *   - Crée 1 row `RATE_LIMITED` par appel.
+   *   - Si même userId dépasse BURST_THRESHOLD (50) events / 60s →
+   *     émet aussi 1 row `RBAC_BREACH_BURST` atomique dans la même TX
+   *     avec `metadata.kind: "rate_limited_burst"`.
+   *   - Cooldown 60s entre 2 burst rows pour éviter log flood.
+   *
+   * @returns row RATE_LIMITED + optionnel burstRow.
+   */
+  async rateLimited(
+    entry: AccessDeniedInput,
+  ): Promise<{ rateLimitedRow: AuditLogRow; burstRow: AuditLogRow | null }> {
+    const now = Date.now()
+    const eventsInWindow = recordAndCheckBurst(entry.userId, now)
+
+    if (eventsInWindow === null) {
+      const rateLimitedRow = await prisma.auditLog.create({
+        data: createAuditData({ ...entry, action: "RATE_LIMITED" }),
+      })
+      return { rateLimitedRow, burstRow: null }
+    }
+
+    const txRows = (await prisma.$transaction([
+      prisma.auditLog.create({
+        data: createAuditData({ ...entry, action: "RATE_LIMITED" }),
+      }),
+      prisma.auditLog.create({
+        data: createAuditData({
+          userId: entry.userId,
+          action: "RBAC_BREACH_BURST",
+          resource: entry.resource,
+          resourceId: entry.resourceId,
+          ipAddress: entry.ipAddress,
+          userAgent: entry.userAgent,
+          requestId: entry.requestId,
+          metadata: {
+            windowMs: BURST_WINDOW_MS,
+            threshold: BURST_THRESHOLD,
+            eventsInWindow,
+            kind: "rate_limited_burst",
+          },
+        }),
+      }),
+    ])) as [AuditLogRow, AuditLogRow]
+    markBurstEmitted(entry.userId, now)
+    return { rateLimitedRow: txRows[0], burstRow: txRows[1] }
+  },
+
+  /**
    * A2 round 2 C-2 — Émet `MFA_STEP_UP_REQUIRED` avec burst detection
    * US-2265. Le pattern précédent (auditService.log direct) n'alimentait
    * PAS `recordAndCheckBurst` → SOC aveugle aux sondages step-up massifs.
