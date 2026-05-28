@@ -190,4 +190,37 @@ export const RATE_LIMITS = {
     max: 5,
     failMode: "closed",
   } satisfies ApiRateLimitConfig,
+  /**
+   * Plan B follow-up A4 — ADMIN manual backup trigger per-user.
+   *
+   * Le service `backupService.trigger` a déjà un `backup_already_in_progress`
+   * guard (409 si un backup pending/running existe), MAIS aucune protection
+   * volumétrique : un ADMIN compromis peut spammer POST → flood audit_logs +
+   * count queries DB + pg_dump pile-up si les workers se débloquent en
+   * cascade.
+   *
+   * 5 req/h/user fail-closed — aligné `fhirRetryAdmin` (5/h) + `exportUser`
+   * (3/h). Diabeo prod : 1 backup/jour automatique + 1-2 manuels = 3/h
+   * raisonnable plafond. Fail-closed car backup = action OPS sensible avec
+   * impact disk/S3.
+   */
+  adminBackupTrigger: {
+    bucket: "admin-backup-trigger",
+    windowSec: 3600,
+    max: 5,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
+  /**
+   * Plan B follow-up A4 — ADMIN backup trigger per-IP defense.
+   *
+   * Si un attacker vole un cookie session ET rotate les sessions
+   * (multi-account compromis), le per-user bucket ne le voit pas. Per-IP
+   * cap 10/h limite l'attaque cross-session par IP source.
+   */
+  adminBackupTriggerIp: {
+    bucket: "admin-backup-trigger-ip",
+    windowSec: 3600,
+    max: 10,
+    failMode: "closed",
+  } satisfies ApiRateLimitConfig,
 } as const
