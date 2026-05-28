@@ -1008,6 +1008,7 @@
     "adminDataBreaches": "Violations RGPD",
     "adminSystemHealth": "Sante systeme",
     "adminBackups": "Backups DB",
+    "adminCabinets": "Cabinets",
     "logout": "Se deconnecter"
   }
 }
