@@ -193,6 +193,13 @@ export interface InvoiceWithItemsDTO extends InvoiceDTO {
     teleconsultActeId: number | null
     position: number
   }>
+  /**
+   * Fix M1 round 1 review PR #460 — exposé serveur-side pour cohérence
+   * avec le PDF officiel généré (DGFiP). UI ne recalcule plus
+   * `totalCents - taxCents` (risque drift si remises ligne futures).
+   * = Somme `lineTotalCents` HT (avant TVA).
+   */
+  subtotalCents: number
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -654,21 +661,30 @@ function toDTO(inv: Invoice): InvoiceDTO {
 function toDetailDTO(
   inv: Invoice & { items: InvoiceItem[] },
 ): InvoiceWithItemsDTO {
+  const items = inv.items
+    .sort((a, b) => a.position - b.position)
+    .map((it) => ({
+      id: it.id,
+      description: it.description,
+      quantity: Number(it.quantity),
+      unitPriceCents: it.unitPriceCents,
+      taxRate: Number(it.taxRate),
+      taxCents: it.taxCents,
+      lineTotalCents: it.lineTotalCents,
+      teleconsultActeId: it.teleconsultActeId,
+      position: it.position,
+    }))
+  // Fix M1 round 1 review PR #460 — subtotalCents canonique côté serveur
+  // (UI ne recalcule plus, risque drift remises ligne futures DGFiP).
+  // = somme `lineTotalCents` (HT, avant TVA appliquée per row).
+  const subtotalCents = items.reduce(
+    (acc, it) => acc + (it.lineTotalCents - it.taxCents),
+    0,
+  )
   return {
     ...toDTO(inv),
-    items: inv.items
-      .sort((a, b) => a.position - b.position)
-      .map((it) => ({
-        id: it.id,
-        description: it.description,
-        quantity: Number(it.quantity),
-        unitPriceCents: it.unitPriceCents,
-        taxRate: Number(it.taxRate),
-        taxCents: it.taxCents,
-        lineTotalCents: it.lineTotalCents,
-        teleconsultActeId: it.teleconsultActeId,
-        position: it.position,
-      })),
+    items,
+    subtotalCents,
   }
 }
 

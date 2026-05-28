@@ -1009,6 +1009,7 @@
     "adminSystemHealth": "Sante systeme",
     "adminBackups": "Backups DB",
     "adminCabinets": "Cabinets",
+    "adminInvoices": "Factures",
     "logout": "Se deconnecter"
   }
 }

@@ -1009,6 +1009,7 @@
     "adminSystemHealth": "System health",
     "adminBackups": "DB backups",
     "adminCabinets": "Cabinets",
+    "adminInvoices": "Invoices",
     "logout": "Sign out"
   }
 }

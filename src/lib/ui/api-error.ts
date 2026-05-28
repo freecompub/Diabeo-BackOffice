@@ -24,6 +24,14 @@ const ERROR_CODE_LABELS_FR: Record<string, string> = {
   cabinetNotFoundSms: "Cabinet SMS introuvable.",
   smsValidation: "Validation SMS échouée.",
   atLeastOneFieldRequired: "Au moins un champ requis.",
+  // invoice.service (Fix PR #460 — codes US-2102/2108)
+  invoiceNotFound: "Facture introuvable.",
+  invoiceAccessDenied: "Accès facture refusé.",
+  invoiceInvalidState: "État de la facture incompatible avec cette action.",
+  invoiceConcurrency: "Conflit de modification — recharger la facture.",
+  invoiceSequenceOverflow: "Séquence de facturation saturée — contacter l'équipe ops.",
+  pdfNotGenerated: "PDF pas encore généré — émettre la facture d'abord.",
+  pdfRenderFailed: "Erreur génération PDF — réessayer ou contacter l'équipe ops.",
   // génériques
   validationFailed: "Données invalides — vérifier les champs en rouge.",
   forbidden: "Accès refusé.",
