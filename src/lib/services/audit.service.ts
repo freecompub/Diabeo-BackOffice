@@ -203,6 +203,13 @@ export type AuditResource =
   | "CABINET_SMS_CONFIG"
   /** US-2502 — Rappel RDV multi-canal (email J-2 / SMS J-1 / push J-0). resourceId = Appointment.id, metadata.patientId pivot. */
   | "APPOINTMENT_REMINDER"
+  /**
+   * Plan B follow-up A1 round 2 (H-HSA-2/4) — Idempotency-Key forensique.
+   * resourceId = idempKey préfixe 8 chars (UUID v4, 32 bits = pas d'entropie identité).
+   * metadata.route = "admin/users/[id] PATCH" + metadata.kind = "replay" | "mismatch".
+   * Burst detection US-2265 sur mismatch (sondage malicieux ou bug client en boucle).
+   */
+  | "IDEMPOTENCY"
 
 /**
  * Audit log entry — parameters for logging an action.

@@ -12,6 +12,8 @@ import { prisma } from "@/lib/db/client"
 import { createHash } from "crypto"
 import { invalidateGdprConsentCache } from "@/lib/gdpr"
 import { auditService } from "./audit.service"
+import { idempotencyService } from "@/lib/idempotency/service"
+import { logger } from "@/lib/logger"
 
 /**
  * GDPR Article 17 — Right to erasure (complete account deletion).
@@ -311,6 +313,29 @@ export async function deleteUserAccount(
     // if another request populated it (DB-read returning lingering `true`)
     // between the pre-TX invalidate and the row deletion.
     await invalidateGdprConsentCache(userId)
+
+    // Plan B follow-up A1 round 2 (H-HSA-1) — RGPD Art. 17 strict :
+    // purge des entries Idempotency-Key Redis du user. Le cache contient
+    // potentiellement PHI déchiffrée (responses GET/POST cachées 24h).
+    // Best-effort (post-commit) : si la purge échoue, le TTL 24h finit le
+    // travail. Log warn pour visibility.
+    try {
+      const { deleted } = await idempotencyService.purgeUserKeys(userId)
+      if (deleted > 0) {
+        logger.info("idempotency", "RGPD Art. 17 — purged idempotency cache", {
+          kind: "idem.purge.gdpr_art17",
+          userId,
+          deletedCount: deleted,
+        })
+      }
+    } catch (err) {
+      logger.warn("idempotency", "RGPD Art. 17 purge failed (TTL 24h fallback)", {
+        kind: "idem.purge.failed",
+        userId,
+        failMode: err instanceof Error ? err.message : String(err),
+      })
+    }
+
     return result
   })
 }

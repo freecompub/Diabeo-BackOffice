@@ -54,6 +54,10 @@ const ALLOWED_CONTEXT_KEYS = new Set<string>([
   "kind",
   "deviceId",
   "staleWindowSec",
+  // PR #418 round 2 M4 — SMS / cron lock ops logs.
+  "cabinetId",
+  // Plan B follow-up A1 round 2 — idempotency RGPD Art. 17 purge count.
+  "deletedCount",
 ])
 
 export interface LogContext {
@@ -82,6 +86,8 @@ export interface LogContext {
   staleWindowSec?: number
   /** PR #418 round 2 M4 — SMS / cron lock ops logs. */
   cabinetId?: number
+  /** Plan B follow-up A1 round 2 — idempotency RGPD Art. 17 purge count. */
+  deletedCount?: number
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"

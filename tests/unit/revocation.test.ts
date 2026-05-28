@@ -28,7 +28,12 @@ vi.mock("@upstash/redis", () => {
 // Set env vars before importing the module
 process.env.UPSTASH_REDIS_REST_URL = "https://test.upstash.io"
 process.env.UPSTASH_REDIS_REST_TOKEN = "test-token"
-// REDIS_KEY_PREFIX not set → defaults to "diabeo:prod:"
+// Force `diabeo:prod:` deterministically — CI peut set `REDIS_KEY_PREFIX` à
+// une autre valeur (cf. Plan B A1 round 2 M-HSA-5 — la var est désormais
+// requise via `assertRequiredEnv`). Sans cet override, le `revocation`
+// module captureait `diabeo:test:` au module-load et toutes les assertions
+// `toHaveBeenCalledWith("diabeo:prod:revoked:…")` casseraient.
+process.env.REDIS_KEY_PREFIX = "diabeo:prod:"
 
 // Dynamic import to pick up mocked env vars
 const { revokeSession, isSessionRevoked, _resetForTesting } = await import(

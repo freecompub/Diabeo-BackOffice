@@ -146,6 +146,32 @@ const SPEC_CONVERSATION_KEY_PEPPER: EnvSpec = {
   },
 }
 
+/**
+ * Plan B follow-up A1 round 2 (M-HSA-5) — `REDIS_KEY_PREFIX` requis en prod.
+ *
+ * Sans cette var (et avec Upstash REST set), 5 modules (cache/redis-cache,
+ * auth/api-rate-limit, idempotency/service, billing/billing-rate-limit,
+ * messaging) tomberaient sur le défaut littéral `"diabeo:prod:"`. En dev /
+ * recette où l'opérateur a oublié de set la var ET pointe accidentellement
+ * Upstash prod (cas d'erreur typique), les clés de test pollueraient l'espace
+ * prod (collision idem keys, faux replays cross-env).
+ *
+ * Format : `"diabeo:<env>:"` (typiquement `diabeo:prod:` / `diabeo:staging:` /
+ * `diabeo:dev:`). Pattern court anti-faute de frappe.
+ */
+const SPEC_REDIS_KEY_PREFIX: EnvSpec = {
+  name: "REDIS_KEY_PREFIX",
+  validate: (v) => {
+    if (!/^diabeo:[a-z][a-z0-9_-]{1,15}:$/.test(v)) {
+      throw new Error(
+        "REDIS_KEY_PREFIX must match `diabeo:<env>:` " +
+          "(e.g. `diabeo:prod:`, `diabeo:staging:`). " +
+          "Lowercase alphanumeric + hyphen/underscore, 1-16 chars between colons.",
+      )
+    }
+  },
+}
+
 const SPEC_HMAC_SECRET: EnvSpec = {
   name: "HMAC_SECRET",
   validate: (v) => {
@@ -219,6 +245,7 @@ const REQUIRED_FULL: readonly EnvSpec[] = [
   SPEC_CONVERSATION_KEY_PEPPER,
   SPEC_AUDIT_PEPPER,
   SPEC_CRON_SECRET,
+  SPEC_REDIS_KEY_PREFIX,
   SPEC_JWT_PRIVATE_KEY,
   SPEC_JWT_PUBLIC_KEY,
 ]
