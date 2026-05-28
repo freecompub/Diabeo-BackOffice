@@ -26,7 +26,9 @@ import {
   type Role,
   type UserStatus,
   ROLE_LABELS_FR,
+  ROLES_ORDERED,
   USER_STATUS_LABELS_FR,
+  USER_STATUSES_ORDERED,
   getRoleLabel,
   getRoleVariant,
   getUserStatusLabel,
@@ -34,6 +36,7 @@ import {
   getUserDisplayName,
 } from "@/lib/types/user-admin"
 import { extractApiError } from "@/lib/ui/api-error"
+import { AdminPhiBanner } from "./AdminPhiBanner"
 
 type AsyncState = "idle" | "loading" | "success" | "error"
 
@@ -107,6 +110,8 @@ export function UsersListClient() {
 
   return (
     <>
+      {/* Fix M4 round 1 (HSA M3) — bandeau PHI rappel utilisation strictement admin. */}
+      <AdminPhiBanner />
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" aria-hidden="true" />
@@ -117,6 +122,11 @@ export function UsersListClient() {
             placeholder="Rechercher par nom / email…"
             className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             aria-label="Rechercher un utilisateur"
+            // Fix M2 round 1 review PR #461 (HSA M1) — autocomplete OFF :
+            // évite que le navigateur conserve historique emails partiels
+            // (poste cabinet partagé multi-PS).
+            autoComplete="off"
+            spellCheck={false}
           />
         </div>
         <label className="flex items-center gap-1 text-sm">
@@ -128,8 +138,9 @@ export function UsersListClient() {
             aria-label="Filtrer par rôle"
           >
             <option value="all">Tous les rôles</option>
-            {Object.entries(ROLE_LABELS_FR).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+            {/* Fix H4 round 1 — ROLES_ORDERED iter stable (hiérarchique). */}
+            {ROLES_ORDERED.map((r) => (
+              <option key={r} value={r}>{ROLE_LABELS_FR[r]}</option>
             ))}
           </select>
         </label>
@@ -142,8 +153,8 @@ export function UsersListClient() {
             aria-label="Filtrer par statut"
           >
             <option value="all">Tous les statuts</option>
-            {Object.entries(USER_STATUS_LABELS_FR).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+            {USER_STATUSES_ORDERED.map((s) => (
+              <option key={s} value={s}>{USER_STATUS_LABELS_FR[s]}</option>
             ))}
           </select>
         </label>
@@ -155,6 +166,15 @@ export function UsersListClient() {
 
       {state === "loading" && users.length === 0 && (
         <p className="text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
+      )}
+
+      {/* Fix H5 round 1 — indicateur loading même si liste déjà affichée
+          (sinon user croit voir données filtrées). */}
+      {state === "loading" && users.length > 0 && (
+        <p className="text-xs text-muted-foreground flex items-center gap-1" aria-live="polite">
+          <RefreshCw className="size-3 motion-safe:animate-spin" aria-hidden="true" />
+          Mise à jour des résultats…
+        </p>
       )}
 
       {state === "error" && users.length === 0 && (
@@ -216,7 +236,8 @@ export function UsersListClient() {
       )}
 
       {hasMore && (
-        <div role="note" className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm flex items-start gap-2">
+        // Fix H4 round 1 (A11y HIGH 2) — role="status" + aria-live (vs non-standard "note").
+        <div role="status" aria-live="polite" className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm flex items-start gap-2">
           <AlertCircle className="size-4 text-orange-700 shrink-0 mt-0.5" aria-hidden="true" />
           <p className="text-orange-800">
             Plus de 100 utilisateurs correspondent. Affiner les filtres pour réduire la liste.

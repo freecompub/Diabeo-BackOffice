@@ -8,8 +8,16 @@
 export type Role = "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
 export type UserStatus = "active" | "suspended" | "archived"
 
-const ROLES: ReadonlySet<Role> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
-const STATUSES: ReadonlySet<UserStatus> = new Set(["active", "suspended", "archived"])
+/**
+ * Fix H4 round 1 review PR #461 — ordre stable (hiérarchique) pour itération
+ * UI (vs `Object.entries(ROLE_LABELS_FR)` qui dépend ordre d'insertion JS).
+ * Régression-proof : si refactor passe par Map/serializer, ordre cassé.
+ */
+export const ROLES_ORDERED: ReadonlyArray<Role> = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
+export const USER_STATUSES_ORDERED: ReadonlyArray<UserStatus> = ["active", "suspended", "archived"]
+
+const ROLES: ReadonlySet<Role> = new Set(ROLES_ORDERED)
+const STATUSES: ReadonlySet<UserStatus> = new Set(USER_STATUSES_ORDERED)
 
 export function isRole(value: unknown): value is Role {
   return typeof value === "string" && ROLES.has(value as Role)
@@ -135,4 +143,16 @@ export function formatTaxRate(rate: number, locale: string): string {
     style: "percent",
     maximumFractionDigits: 2,
   }).format(rate)
+}
+
+/**
+ * Fix M6 round 1 review PR #461 — date locale-aware (vs `new Date().toISOString()`
+ * qui force UTC). Évite "demain" par défaut si client après minuit UTC mais
+ * avant minuit local (Paris CEST 01h30).
+ */
+export function getLocalIsoDate(date: Date = new Date()): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
 }

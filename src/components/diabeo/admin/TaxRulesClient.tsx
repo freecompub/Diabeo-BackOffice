@@ -26,31 +26,42 @@ import {
   TAX_TYPES,
   TAX_TYPE_LABELS_FR,
   formatTaxRate,
+  getLocalIsoDate,
 } from "@/lib/types/user-admin"
 import { extractApiError } from "@/lib/ui/api-error"
 
 type AsyncState = "idle" | "loading" | "success" | "error" | "not_found"
 
-// ISO 3166-1 alpha-2 codes — extension V1.5 si besoin.
-const COUNTRY_OPTIONS: ReadonlyArray<{ code: string; label: string }> = [
+// Fix M5 round 1 review PR #461 — `<datalist>` suggestions + `<input type="text">`
+// libre (vs `<select>` qui figeait 6 codes et bloquait cabinets US/UK/DE).
+// Backend `countryTaxRuleService` accepte tout ISO 3166-1 alpha-2.
+const COUNTRY_SUGGESTIONS: ReadonlyArray<{ code: string; label: string }> = [
   { code: "FR", label: "France" },
   { code: "DZ", label: "Algérie" },
   { code: "BE", label: "Belgique" },
   { code: "CH", label: "Suisse" },
   { code: "MA", label: "Maroc" },
   { code: "TN", label: "Tunisie" },
+  { code: "DE", label: "Allemagne" },
+  { code: "US", label: "États-Unis" },
+  { code: "GB", label: "Royaume-Uni" },
 ]
+
+const COUNTRY_CODE_RE = /^[A-Z]{2}$/
 
 export function TaxRulesClient() {
   const locale = useLocale() as Locale
   const [countryCode, setCountryCode] = useState<string>("FR")
   const [taxType, setTaxType] = useState<TaxType>("VAT")
-  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10))
+  // Fix M6 round 1 — getLocalIsoDate (vs new Date().toISOString() UTC).
+  const [date, setDate] = useState<string>(getLocalIsoDate())
   const [result, setResult] = useState<TaxRuleDTOClient | null>(null)
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
+  // Fix L1 round 1 — useRef + useEffect focus error state.
+  const errorRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     mountedRef.current = true
     return () => {
@@ -58,6 +69,10 @@ export function TaxRulesClient() {
       if (abortRef.current) abortRef.current.abort()
     }
   }, [])
+  useEffect(() => {
+    if (state === "error") errorRef.current?.focus()
+  }, [state])
+  const isCountryValid = COUNTRY_CODE_RE.test(countryCode)
 
   const fetchRule = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort()
@@ -103,16 +118,25 @@ export function TaxRulesClient() {
         <h2 id="search-section" className="text-lg font-semibold">Rechercher un taux actif</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <label className="flex flex-col gap-1 text-sm">
-            <span>Pays</span>
-            <select
+            <span>Pays (ISO 3166-1 alpha-2)</span>
+            {/* Fix M5 round 1 — input libre + datalist suggestions. */}
+            <input
+              type="text"
               value={countryCode}
-              onChange={(e) => setCountryCode(e.target.value)}
-              className="rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            >
-              {COUNTRY_OPTIONS.map((c) => (
+              onChange={(e) => setCountryCode(e.target.value.toUpperCase())}
+              list="country-suggestions"
+              pattern="[A-Z]{2}"
+              maxLength={2}
+              required
+              placeholder="FR"
+              aria-invalid={countryCode.length > 0 && !COUNTRY_CODE_RE.test(countryCode) ? "true" : undefined}
+              className="rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary uppercase"
+            />
+            <datalist id="country-suggestions">
+              {COUNTRY_SUGGESTIONS.map((c) => (
                 <option key={c.code} value={c.code}>{c.label} ({c.code})</option>
               ))}
-            </select>
+            </datalist>
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span>Type de taxe</span>
@@ -136,7 +160,7 @@ export function TaxRulesClient() {
             />
           </label>
           <div className="flex items-end">
-            <DiabeoButton onClick={() => void fetchRule()} disabled={state === "loading"} className="w-full">
+            <DiabeoButton onClick={() => void fetchRule()} disabled={state === "loading" || !isCountryValid} className="w-full">
               <Search className="size-4 mr-1" aria-hidden="true" />
               {state === "loading" ? "Recherche…" : "Rechercher"}
             </DiabeoButton>
@@ -153,7 +177,7 @@ export function TaxRulesClient() {
       )}
 
       {state === "error" && errorMessage && (
-        <div role="alert" tabIndex={-1} ref={(el) => { el?.focus() }} className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive">
+        <div role="alert" tabIndex={-1} ref={errorRef} className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
             Erreur

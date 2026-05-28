@@ -20,6 +20,7 @@ import Link from "next/link"
 import { useLocale } from "next-intl"
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   CheckCircle2,
   Loader2,
@@ -43,7 +44,9 @@ import {
   type Role,
   type UserStatus,
   ROLE_LABELS_FR,
+  ROLES_ORDERED,
   USER_STATUS_LABELS_FR,
+  USER_STATUSES_ORDERED,
   getRoleLabel,
   getRoleVariant,
   getUserStatusLabel,
@@ -51,6 +54,7 @@ import {
   getUserDisplayName,
 } from "@/lib/types/user-admin"
 import { extractApiError, type ParsedApiError } from "@/lib/ui/api-error"
+import { AdminPhiBanner } from "./AdminPhiBanner"
 
 type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 
@@ -70,6 +74,12 @@ export function UserDetailClient({ userId }: { userId: number }) {
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
   const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Fix L1 round 1 — useRef + useEffect pour focus error state (vs inline
+  // `ref={(el) => el?.focus()}` qui re-focus à chaque re-render → focus volé).
+  const errorRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (state === "error") errorRef.current?.focus()
+  }, [state])
 
   useEffect(() => {
     mountedRef.current = true
@@ -84,7 +94,10 @@ export function UserDetailClient({ userId }: { userId: number }) {
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
-    setUser(null)
+    // Fix M7 round 1 review PR #461 — reset conditionnel (vs blank flash après
+    // refetch action PATCH). On garde l'UI affichée si user déjà en mémoire,
+    // jusqu'au prochain success/error. Pattern via setter functional (stale-safe).
+    setUser((prev) => prev) // no-op : on conserve l'ancien snapshot.
     setState("loading")
     setErrorMessage(null)
     try {
@@ -119,12 +132,15 @@ export function UserDetailClient({ userId }: { userId: number }) {
   }, [fetchUser])
 
   const executeAction = useCallback(async () => {
-    if (!pending) return
+    // Fix L2 round 1 — capture pending dans var locale AVANT reset state
+    // (sinon perte du contexte action si erreur affichée plus tard).
+    const action = pending
+    if (!action) return
     setActionState("saving")
     setActionError(null)
-    const body = pending.type === "role"
-      ? { role: pending.newRole }
-      : { status: pending.newStatus }
+    const body = action.type === "role"
+      ? { role: action.newRole }
+      : { status: action.newStatus }
     setPending(null)
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -133,6 +149,9 @@ export function UserDetailClient({ userId }: { userId: number }) {
         headers: {
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
+          // Fix L6 round 1 (HSA L2) — Idempotency-Key pour dedup audit
+          // backend si double-click. Random UUID v4 unique par action.
+          "Idempotency-Key": crypto.randomUUID(),
         },
         body: JSON.stringify(body),
       })
@@ -172,8 +191,8 @@ export function UserDetailClient({ userId }: { userId: number }) {
       <div
         role="alert"
         tabIndex={-1}
-        ref={(el) => { el?.focus() }}
-        className="rounded-md border border-destructive/20 bg-destructive/10 p-3"
+        ref={errorRef}
+        className="rounded-md border border-destructive/20 bg-destructive/10 p-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
       >
         <p className="font-medium text-destructive flex items-center gap-2">
           <AlertCircle className="size-4" aria-hidden="true" />
@@ -191,11 +210,17 @@ export function UserDetailClient({ userId }: { userId: number }) {
     )
   }
 
-  const otherRoles: Role[] = (["ADMIN", "DOCTOR", "NURSE", "VIEWER"] as Role[]).filter((r) => r !== user.role)
-  const otherStatuses: UserStatus[] = (["active", "suspended", "archived"] as UserStatus[]).filter((s) => s !== user.status)
+  // Fix H4 round 1 — utilise ROLES_ORDERED + USER_STATUSES_ORDERED (hiérarchique stable).
+  const otherRoles: Role[] = ROLES_ORDERED.filter((r) => r !== user.role)
+  const otherStatuses: UserStatus[] = USER_STATUSES_ORDERED.filter((s) => s !== user.status)
+  // Fix H2 round 1 (HSA) — gate dur sur promotion ADMIN si MFA non activée.
+  // HDS ANS référentiel : comptes à privilèges DOIVENT avoir MFA.
+  const canPromoteToAdmin = user.mfaEnabled
 
   return (
     <>
+      {/* Fix M4 round 1 (HSA M3) — bandeau PHI rappel utilisation strictement admin. */}
+      <AdminPhiBanner />
       <nav aria-label="Fil d'Ariane">
         <Link
           href="/admin/users"
@@ -235,7 +260,10 @@ export function UserDetailClient({ userId }: { userId: number }) {
           {user.statusChangedAt && (
             <Field label="Statut modifié le">{formatDate(user.statusChangedAt, locale, { withTime: true })}</Field>
           )}
-          <Field label="Mis à jour le">{formatDate(user.updatedAt, locale, { withTime: true })}</Field>
+          {/* Fix H6 round 1 — null-guard updatedAt cohérent statusChangedAt. */}
+          {user.updatedAt && (
+            <Field label="Mis à jour le">{formatDate(user.updatedAt, locale, { withTime: true })}</Field>
+          )}
         </dl>
       </section>
 
@@ -249,26 +277,50 @@ export function UserDetailClient({ userId }: { userId: number }) {
 
         {/* Rôle */}
         <div className="space-y-2">
-          <h3 className="text-sm font-medium">Changer le rôle</h3>
-          <div className="flex flex-wrap gap-2">
-            {otherRoles.map((r) => (
-              <DiabeoButton
-                key={r}
-                variant="diabeoTertiary"
-                size="sm"
-                onClick={() => setPending({ type: "role", newRole: r })}
-                disabled={actionState === "saving"}
-              >
-                Promouvoir / Rétrograder en {ROLE_LABELS_FR[r]}
-              </DiabeoButton>
-            ))}
+          <h3 className="text-sm font-medium" id="role-section-heading">Changer le rôle</h3>
+          {/* Fix H2 round 1 (HSA) — warning visible MFA required ADMIN. */}
+          {!canPromoteToAdmin && (
+            <p
+              id="admin-mfa-warning"
+              role="note"
+              className="text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded p-2 flex items-start gap-1"
+            >
+              <AlertTriangle className="size-3.5 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>
+                Promotion vers ADMIN désactivée : MFA requise pour les comptes à privilèges (HDS ANS référentiel).
+                L&apos;utilisateur doit d&apos;abord activer MFA dans ses paramètres.
+              </span>
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2" role="group" aria-labelledby="role-section-heading">
+            {otherRoles.map((r) => {
+              const isAdminPromote = r === "ADMIN"
+              const disabled = actionState === "saving" || (isAdminPromote && !canPromoteToAdmin)
+              return (
+                <DiabeoButton
+                  key={r}
+                  variant="diabeoTertiary"
+                  size="sm"
+                  onClick={() => setPending({ type: "role", newRole: r })}
+                  disabled={disabled}
+                  // Fix M1 + L5 round 1 — libellé explicite + aria-describedby warning.
+                  aria-describedby={isAdminPromote && !canPromoteToAdmin ? "admin-mfa-warning" : undefined}
+                >
+                  Définir le rôle : {ROLE_LABELS_FR[user.role]} → {ROLE_LABELS_FR[r]}
+                </DiabeoButton>
+              )
+            })}
           </div>
         </div>
 
         {/* Status */}
         <div className="space-y-2">
-          <h3 className="text-sm font-medium">Changer le statut</h3>
-          <div className="flex flex-wrap gap-2">
+          <h3 className="text-sm font-medium" id="status-section-heading">Changer le statut</h3>
+          {/* Fix M1 round 1 — aria-describedby pointe vers warning archivage. */}
+          <p id="archive-warning" className="sr-only">
+            L&apos;archivage révoque tous les tokens JWT et déconnecte l&apos;utilisateur immédiatement.
+          </p>
+          <div className="flex flex-wrap gap-2" role="group" aria-labelledby="status-section-heading">
             {otherStatuses.map((s) => (
               <DiabeoButton
                 key={s}
@@ -276,8 +328,9 @@ export function UserDetailClient({ userId }: { userId: number }) {
                 size="sm"
                 onClick={() => setPending({ type: "status", newStatus: s })}
                 disabled={actionState === "saving"}
+                aria-describedby={s === "archived" ? "archive-warning" : undefined}
               >
-                {USER_STATUS_LABELS_FR[s]}
+                Statut : {USER_STATUS_LABELS_FR[user.status]} → {USER_STATUS_LABELS_FR[s]}
               </DiabeoButton>
             ))}
           </div>
@@ -310,13 +363,17 @@ export function UserDetailClient({ userId }: { userId: number }) {
             </DialogTitle>
             <DialogDescription>
               {pending?.type === "status" && pending.newStatus === "archived" && (
+                // Fix H3 round 1 (A11y HIGH 1) — wrap emoji ⚠ avec aria-label
+                // (vs raw emoji que SR rendent inconsistant entre lecteurs).
                 <span className="block font-semibold text-destructive">
-                  ⚠ L&apos;archivage révoque tous les tokens JWT — l&apos;utilisateur sera déconnecté immédiatement.
+                  <span aria-label="Attention" role="img" className="mr-1">⚠</span>
+                  L&apos;archivage révoque tous les tokens JWT — l&apos;utilisateur sera déconnecté immédiatement.
                 </span>
               )}
               {pending?.type === "role" && pending.newRole === "ADMIN" && (
                 <span className="block">
-                  ⚠ Promotion vers ADMIN = accès complet plateforme.
+                  <span aria-label="Attention" role="img" className="mr-1">⚠</span>
+                  Promotion vers ADMIN = accès complet plateforme.
                 </span>
               )}
               <span className="block mt-2 text-xs">
