@@ -93,7 +93,7 @@ describe("patientService.search", () => {
     expect(call.take).toBe(11)
   })
 
-  it("emits an audit row with flags", async () => {
+  it("emits an audit row with flags (1:1 — adoption coalescing retirée A3 round 2)", async () => {
     await patientService.search(
       { search: "Curie", pathology: Pathology.DT2, accessibleIds: [1] },
       9,
@@ -106,5 +106,7 @@ describe("patientService.search", () => {
       pathology: Pathology.DT2,
       scoped: true,
     })
+    // A3 round 2 — pas de marker coalesced (1:1 préservé pour forensique CNIL)
+    expect(audit.metadata).not.toHaveProperty("coalesced")
   })
 })

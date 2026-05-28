@@ -282,11 +282,14 @@ export interface AuditContext {
 
 /**
  * Transform AuditLogEntry to Prisma create input — fills defaults (null/JsonNull).
- * @private
- * @param {AuditLogEntry} entry - Audit entry parameters
- * @returns {Prisma.AuditLogUncheckedCreateInput} Prisma-ready input object
+ *
+ * **A3 round 2 H-7** — exporté pour ré-utilisation depuis
+ * `audit-coalescing.service.ts` (élimine duplication divergente).
+ *
+ * @param entry - Audit entry parameters
+ * @returns Prisma-ready input object
  */
-function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateInput {
+export function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedCreateInput {
   return {
     userId: entry.userId ?? null,
     action: entry.action,
@@ -424,6 +427,20 @@ export function __resetAuditBurstState(): void {
 }
 
 /**
+ * A3 round 2 M-3 — Memoize lazy import du module coalescing (évite microtask
+ * overhead à chaque `logCoalesced` call sur hot path).
+ *
+ * Lazy = isolation au boot (les processes qui n'utilisent pas le coalescing,
+ * ex: seed scripts, ne chargent pas le module et donc ne register pas le
+ * timer ni les SIGTERM handlers).
+ */
+let coalescingModulePromise: Promise<typeof import("./audit-coalescing.service")> | null = null
+function getCoalescingModule(): Promise<typeof import("./audit-coalescing.service")> {
+  coalescingModulePromise ??= import("./audit-coalescing.service")
+  return coalescingModulePromise
+}
+
+/**
  * Audit service — immutable logging for HDS compliance.
  * @namespace auditService
  */
@@ -440,6 +457,31 @@ export const auditService = {
     return prisma.auditLog.create({
       data: createAuditData(entry),
     })
+  },
+
+  /**
+   * Plan B follow-up A3 — Coalesced audit logging pour events haute fréquence.
+   *
+   * **A3 round 2 M-2 — IMPORTANT SÉMANTIQUE** : `await logCoalesced(...)` NE
+   * GARANTIT PAS la persistance DB. L'event est ajouté à un buffer mémoire qui
+   * flush toutes les 30s (ou SIGTERM/cap). Si le process crash entre
+   * l'enqueue et le flush, l'event est perdu.
+   *
+   * Pour les events critiques forensiquement (LOGIN, mutations, exports) →
+   * utiliser `auditService.log()` (1:1 INSERT synchrone garanti).
+   *
+   * **Usage strict (cf. runbook §3)** :
+   *   - ✅ READ list views à metadata uniforme + non-PHI.
+   *   - ✅ IDEMPOTENT_REPLAY.
+   *   - ❌ Mutations (CREATE/UPDATE/DELETE) — interdit par assertion.
+   *   - ❌ Auth events (LOGIN/UNAUTHORIZED) — visibilité 1:1.
+   *   - ❌ PHI list view (firstname/lastname/glucoseValue dans metadata).
+   *
+   * @returns void résolu quand l'event est en buffer (PAS quand persisté).
+   */
+  async logCoalesced(entry: AuditLogEntry): Promise<void> {
+    const { enqueueCoalesced } = await getCoalescingModule()
+    await enqueueCoalesced(entry)
   },
 
   /**

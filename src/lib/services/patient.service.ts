@@ -452,19 +452,20 @@ export const patientService = {
     const limit = Math.min(Math.max(input.limit ?? 25, 1), 50)
 
     if (input.accessibleIds !== null && input.accessibleIds.length === 0) {
-      await auditService.log({
+      // A3 round 2 C-2 (HSA CRITICAL-1) — user authentifié mais sans permission
+      // patient = sémantique RBAC failure (US-2265 burst-detectable), pas un
+      // READ légitime sans résultats. Pattern accessDenied au lieu de log
+      // (révèle compte interne compromis qui sonde l'API en masse).
+      await auditService.accessDenied({
         userId: auditUserId,
-        action: "READ",
         resource: "PATIENT",
         resourceId: "search",
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
         metadata: {
-          count: 0,
-          scoped: true,
-          // M14 — distinguish "no permissions" from "no matches".
           reason: "noServiceMembership",
+          scoped: true,
         },
       })
       return { items: [], nextCursor: null as number | null }
@@ -509,6 +510,12 @@ export const patientService = {
     const page = hasMore ? items.slice(0, limit) : items
     const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null
 
+    // A3 round 2 C-1 (HSA CRITICAL-2 + CR CRIT-2 + H-1 metadata variance) —
+    // adoption retirée : `count`/`hasSearch`/`pathology` à haute variance
+    // perdent leur valeur forensique sous coalescing (metadata 1ère wins).
+    // De plus, `firstname`/`lastname` déchiffrés ci-dessous = PHI list view
+    // qui viole le critère runbook §3.3 "PHI direct → 1:1". Maintenu en
+    // `auditService.log` (1 row/event) jusqu'à validation HSA formelle.
     await auditService.log({
       userId: auditUserId,
       action: "READ",
