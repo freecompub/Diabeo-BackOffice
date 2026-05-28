@@ -43,6 +43,8 @@ jobs:
           AUDIT_PEPPER: "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
           # US-2108 H10 round 2 — Bearer secret cron (CI test-only).
           CRON_SECRET: "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
+          # Plan B follow-up A1 round 2 — REDIS_KEY_PREFIX (idempotency cache).
+          REDIS_KEY_PREFIX: "diabeo:test:"
           NODE_ENV: test
 
       - name: Check coverage thresholds
@@ -53,6 +55,8 @@ jobs:
           AUDIT_PEPPER: "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
           # US-2108 H10 round 2 — Bearer secret cron (CI test-only).
           CRON_SECRET: "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
+          # Plan B follow-up A1 round 2 — REDIS_KEY_PREFIX (idempotency cache).
+          REDIS_KEY_PREFIX: "diabeo:test:"
           NODE_ENV: test
 
   # ──────────────────────────────────────────────────────────────
@@ -109,6 +113,8 @@ jobs:
           AUDIT_PEPPER: "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
           # US-2108 H10 round 2 — Bearer secret cron (CI test-only).
           CRON_SECRET: "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
+          # Plan B follow-up A1 round 2 — REDIS_KEY_PREFIX (idempotency cache).
+          REDIS_KEY_PREFIX: "diabeo:test:"
 
       - name: Install Playwright Chromium
         run: pnpm exec playwright install --with-deps chromium
@@ -158,6 +164,8 @@ jobs:
           AUDIT_PEPPER: "aa00bb11cc22dd33ee44ff5566778899aabbccddeeff00112233445566778899"
           # US-2108 H10 round 2 — Bearer secret cron (CI test-only).
           CRON_SECRET: "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
+          # Plan B follow-up A1 round 2 — REDIS_KEY_PREFIX (idempotency cache).
+          REDIS_KEY_PREFIX: "diabeo:test:"
           NODE_ENV: test
           CI: true
 
