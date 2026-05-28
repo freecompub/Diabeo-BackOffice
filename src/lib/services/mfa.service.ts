@@ -198,4 +198,44 @@ export const mfaService = {
       data: { mfaSecret: null, mfaEnabled: false, mfaLastUsedStep: null },
     })
   },
+
+  /**
+   * Plan B follow-up A2 — Step-up MFA verification.
+   *
+   * Verify OTP AND bump `Session.mfaLastVerifiedAt` for freshness checks on
+   * sensitive admin endpoints. Returns the bumped timestamp or null if OTP
+   * invalid / MFA disabled.
+   *
+   * Distinct from `verifyOtp` :
+   *   - exige `mfaEnabled = true` (refuse setup-in-progress).
+   *   - bump une colonne Session (vs colonne User `mfaLastUsedStep` qui ne
+   *     porte que l'anti-replay TOTP).
+   *   - écrit même si l'OTP est rejoué dans la même fenêtre `mfaLastUsedStep`
+   *     (verifyOtp retournerait `false` → on retourne null sans bump).
+   *
+   * **Anti-replay** : repose entièrement sur `verifyOtp` (compare-and-set
+   * `mfaLastUsedStep`). Si l'OTP est rejoué → `verifyOtp` retourne `false` →
+   * step-up échoue. Pas de risque "même OTP réutilisé pour 2 step-ups".
+   *
+   * **Session FK** : le caller doit s'assurer que `sessionId` appartient au
+   * user (helper `requireFreshMfa` valide via `auth/session.ts`).
+   */
+  async stepUp(
+    userId: number,
+    sessionId: string,
+    otp: string,
+  ): Promise<Date | null> {
+    const ok = await mfaService.verifyOtp(userId, otp)
+    if (!ok) return null
+
+    // Vérifier que la session existe et appartient au user AVANT bump.
+    // updateMany sur (id, userId) atomique anti-cross-user replay.
+    const verifiedAt = new Date()
+    const updated = await prisma.session.updateMany({
+      where: { id: sessionId, userId },
+      data: { mfaLastVerifiedAt: verifiedAt },
+    })
+    if (updated.count !== 1) return null
+    return verifiedAt
+  },
 }

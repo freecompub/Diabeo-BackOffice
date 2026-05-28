@@ -19,7 +19,23 @@
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-vi.mock("@/lib/db/client", () => ({ prisma: {} }))
+vi.mock("@/lib/db/client", () => ({
+  prisma: {
+    // A2 — session findFirst pour `checkFreshMfa` gate sur PATCH. Le défaut
+    // retourne une session avec MFA fresh (1 min ago). Tests step-up dédiés
+    // dans `api-admin-users-step-up.test.ts`.
+    // Note : impl passée en argument à vi.fn (vs .mockImplementation() chaîné)
+    // pour survivre à `vi.clearAllMocks()` qui reset l'impl chaînée.
+    session: {
+      findFirst: vi.fn(() =>
+        Promise.resolve({
+          mfaLastVerifiedAt: new Date(Date.now() - 60_000),
+          user: { mfaEnabled: true },
+        }),
+      ),
+    },
+  },
+}))
 
 vi.mock("@/lib/services/user-management.service", () => ({
   userManagementService: {
@@ -42,6 +58,7 @@ vi.mock("@/lib/services/audit.service", async (orig) => {
 
 import { userManagementService } from "@/lib/services/user-management.service"
 import { auditService } from "@/lib/services/audit.service"
+import { prisma } from "@/lib/db/client"
 import { idempotencyService } from "@/lib/idempotency/service"
 import { IDEMPOTENCY_REPLAYED_HEADER } from "@/lib/idempotency/with-idempotency"
 
@@ -60,6 +77,8 @@ function makeReq(
     "content-type": "application/json",
     "x-user-id": init.userId ?? "1",
     "x-user-role": "ADMIN",
+    // A2 — session id requis pour `checkFreshMfa` gate.
+    "x-session-id": "sess-abc",
   })
   if (init.idemKey !== null && init.idemKey !== undefined) {
     headers.set("idempotency-key", init.idemKey)
@@ -80,6 +99,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   idempotencyService.__resetMemoryForTests()
   idempotencyService.__resetRedisClientForTests()
+  // A2 — re-prime le mock après clearAllMocks (vitest 4 reset impl chaînées).
+  vi.mocked(prisma.session.findFirst).mockResolvedValue({
+    mfaLastVerifiedAt: new Date(Date.now() - 60_000),
+    user: { mfaEnabled: true },
+  } as never)
 })
 
 describe("PATCH /api/admin/users/[id] — Idempotency-Key wrapper", () => {

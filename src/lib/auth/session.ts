@@ -29,6 +29,11 @@ export async function createSession(
       userId,
       expires,
       mfaVerified: opts.mfaVerified ?? false,
+      // Plan B follow-up A2 — Si MFA-verified au login, bumper aussi
+      // `mfaLastVerifiedAt` pour que les actions sensibles dans les 5min
+      // suivantes ne demandent pas de step-up immédiat (UX cohérent —
+      // l'utilisateur vient de prouver MFA).
+      mfaLastVerifiedAt: opts.mfaVerified ? new Date() : undefined,
       ipAddress: opts.ipAddress,
       userAgent: opts.userAgent ? opts.userAgent.slice(0, 500) : undefined,
     },

@@ -50,6 +50,16 @@ export type AuditAction =
   | "MFA_ENABLED"
   | "MFA_DISABLED"
   | "MFA_CHALLENGE_FAILED"
+  /**
+   * Plan B follow-up A2 — Step-up MFA réussi sur une action sensible
+   * ADMIN. resourceId = sessionId, metadata.route = endpoint protégé.
+   */
+  | "MFA_STEP_UP_VERIFIED"
+  /**
+   * Plan B follow-up A2 — Tentative d'action sensible refusée car MFA
+   * non-fresh OU non-enrolled. Burst detection US-2265 sur répétition.
+   */
+  | "MFA_STEP_UP_REQUIRED"
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"

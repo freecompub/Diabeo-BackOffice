@@ -6,7 +6,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { DataBreachStatus } from "@prisma/client"
-import { AuthError } from "@/lib/auth"
+import { AuthError, checkFreshMfa, stepUpErrorResponse } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import {
   auditedRequireRole,
@@ -54,6 +54,16 @@ async function postHandler(
     const user = await auditedRequireRole(
       req, "ADMIN", ctx, "DATA_BREACH", String(parsedParams.data.id),
     )
+
+    // Plan B follow-up A2 — Step-up MFA exigé sur les FSM transitions
+    // data-breach (CNIL notification, user notification — actions à risque
+    // élevé d'erreur humaine + impact externe).
+    const stepUp = await checkFreshMfa(user.id, user.sessionId)
+    if (!stepUp.ok) {
+      return stepUpErrorResponse(stepUp.reason, user.id, user.sessionId, ctx, {
+        route: "admin/data-breaches/[id]/transition POST",
+      })
+    }
 
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: "invalidJSON" }, { status: 400 })

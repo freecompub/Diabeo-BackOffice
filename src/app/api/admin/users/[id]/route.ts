@@ -6,7 +6,12 @@
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import {
+  requireRole,
+  AuthError,
+  checkFreshMfa,
+  stepUpErrorResponse,
+} from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { userManagementService } from "@/lib/services/user-management.service"
 import { logger } from "@/lib/logger"
@@ -76,12 +81,22 @@ const USER_ERROR_CODES = new Map<string, number>([
  * (zéro side-effect : pas de re-PATCH, pas de re-audit, pas de re-JWT-revoke).
  */
 async function patchHandler(req: NextRequest, { params }: RouteParams) {
+  const ctx = extractRequestContext(req)
   try {
     const user = requireRole(req, "ADMIN")
     const { id: rawId } = await params
     const id = parseId(rawId)
     if (id === null) {
       return NextResponse.json({ error: "invalidUserId" }, { status: 400 })
+    }
+
+    // Plan B follow-up A2 — Step-up MFA exigé sur les changements de rôle /
+    // suspension. Cohérent avec UX banking apps : freshness 5 min.
+    const stepUp = await checkFreshMfa(user.id, user.sessionId)
+    if (!stepUp.ok) {
+      return stepUpErrorResponse(stepUp.reason, user.id, user.sessionId, ctx, {
+        route: "admin/users/[id] PATCH",
+      })
     }
 
     const body = await req.json()
@@ -93,7 +108,6 @@ async function patchHandler(req: NextRequest, { params }: RouteParams) {
       )
     }
 
-    const ctx = extractRequestContext(req)
     try {
       // Type guard explicite : la `.refine` garantit qu'exactement UN champ
       // est défini, mais TS ne narrow pas. Branche switch lisible et sans `!`.

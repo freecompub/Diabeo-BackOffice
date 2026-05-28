@@ -16,6 +16,14 @@ export {
   clearAttempts,
 } from "./rate-limit"
 export { revokeSession, isSessionRevoked } from "./revocation"
+export {
+  STEP_UP_WINDOW_SECONDS,
+  checkFreshMfa,
+  requireFreshMfa,
+  stepUpErrorResponse,
+  StepUpRequiredError,
+} from "./step-up"
+export type { StepUpReason, StepUpCheck } from "./step-up"
 
 const VALID_ROLES: ReadonlySet<string> = new Set(["ADMIN", "DOCTOR", "NURSE", "VIEWER"])
 

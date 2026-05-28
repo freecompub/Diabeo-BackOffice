@@ -51,3 +51,13 @@ export const mfaDisableBodySchema = z.object({
   otp: otpSchema,
 })
 export type MfaDisableBody = z.infer<typeof mfaDisableBodySchema>
+
+/**
+ * POST /api/auth/mfa/step-up body — Plan B follow-up A2.
+ * Re-prove MFA pour les actions sensibles ADMIN (role/status changes, FSM
+ * data-breach transitions, etc.). Bump `Session.mfaLastVerifiedAt`.
+ */
+export const mfaStepUpBodySchema = z.object({
+  otp: otpSchema,
+})
+export type MfaStepUpBody = z.infer<typeof mfaStepUpBodySchema>

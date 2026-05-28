@@ -267,4 +267,78 @@ describe("mfaService", () => {
       })
     })
   })
+
+  // Plan B follow-up A2 — Step-up MFA.
+  describe("stepUp", () => {
+    it("returns null si OTP invalide (verifyOtp false)", async () => {
+      // findUnique pour verifyOtp interne → user sans secret = échec
+      prismaMock.user.findUnique.mockResolvedValue({ mfaSecret: null } as any)
+
+      const result = await mfaService.stepUp(1, "sess-x", "123456")
+      expect(result).toBeNull()
+      expect(prismaMock.session.updateMany).not.toHaveBeenCalled()
+    })
+
+    it("bump mfaLastVerifiedAt si OTP valide", async () => {
+      const secret = generateSecret()
+      prismaMock.user.findUnique.mockResolvedValue({
+        mfaSecret: `ENCRYPTED[${secret}]`,
+        mfaLastUsedStep: null,
+      } as any)
+      // updateMany pour verifyOtp CAS step
+      prismaMock.user.updateMany.mockResolvedValue({ count: 1 } as any)
+      // updateMany pour session bump
+      prismaMock.session.updateMany.mockResolvedValue({ count: 1 } as any)
+
+      const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
+      const result = await mfaService.stepUp(42, "sess-x", code)
+      expect(result).toBeInstanceOf(Date)
+      // Session updated avec scope per-user
+      expect(prismaMock.session.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: "sess-x", userId: 42 },
+          data: { mfaLastVerifiedAt: expect.any(Date) },
+        }),
+      )
+    })
+
+    it("returns null si session.updateMany count=0 (cross-user spoof)", async () => {
+      const secret = generateSecret()
+      prismaMock.user.findUnique.mockResolvedValue({
+        mfaSecret: `ENCRYPTED[${secret}]`,
+        mfaLastUsedStep: null,
+      } as any)
+      prismaMock.user.updateMany.mockResolvedValue({ count: 1 } as any)
+      // Session inexistante ou pas du user → count=0
+      prismaMock.session.updateMany.mockResolvedValue({ count: 0 } as any)
+
+      const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
+      const result = await mfaService.stepUp(42, "sess-foreign", code)
+      expect(result).toBeNull()
+    })
+
+    it("anti-replay — un OTP valide consommé ne peut pas re-step-up", async () => {
+      const secret = generateSecret()
+      // 1er appel : findUnique avec mfaLastUsedStep=null
+      prismaMock.user.findUnique.mockResolvedValueOnce({
+        mfaSecret: `ENCRYPTED[${secret}]`,
+        mfaLastUsedStep: null,
+      } as any)
+      prismaMock.user.updateMany.mockResolvedValueOnce({ count: 1 } as any)
+      prismaMock.session.updateMany.mockResolvedValueOnce({ count: 1 } as any)
+
+      const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
+      const first = await mfaService.stepUp(42, "sess-x", code)
+      expect(first).toBeInstanceOf(Date)
+
+      // 2e appel même code : mfaLastUsedStep désormais consommé → verifyOtp false
+      const consumedStep = Math.floor(Date.now() / 1000 / 30)
+      prismaMock.user.findUnique.mockResolvedValueOnce({
+        mfaSecret: `ENCRYPTED[${secret}]`,
+        mfaLastUsedStep: consumedStep,
+      } as any)
+      const second = await mfaService.stepUp(42, "sess-x", code)
+      expect(second).toBeNull()
+    })
+  })
 })
