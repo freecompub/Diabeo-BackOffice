@@ -10,6 +10,7 @@ import { requireRole, AuthError } from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { userManagementService } from "@/lib/services/user-management.service"
 import { logger } from "@/lib/logger"
+import { withIdempotency } from "@/lib/idempotency/with-idempotency"
 
 interface RouteParams {
   params: Promise<{ id: string }>
@@ -68,7 +69,13 @@ const USER_ERROR_CODES = new Map<string, number>([
   ["cannot_demote_self", 403],
 ])
 
-export async function PATCH(req: NextRequest, { params }: RouteParams) {
+/**
+ * Plan B follow-up A1 — wrappé `withIdempotency` (HSA L2 PR #461). UI
+ * envoie `Idempotency-Key: <UUID v4>` via PR #461 `crypto.randomUUID()`.
+ * Replay même clé + même body → response cachée + header `X-Idempotency-Replayed: true`
+ * (zéro side-effect : pas de re-PATCH, pas de re-audit, pas de re-JWT-revoke).
+ */
+async function patchHandler(req: NextRequest, { params }: RouteParams) {
   try {
     const user = requireRole(req, "ADMIN")
     const { id: rawId } = await params
@@ -116,3 +123,5 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
+
+export const PATCH = withIdempotency(patchHandler, { route: "admin/users/[id] PATCH" })
