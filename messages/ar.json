@@ -1009,6 +1009,7 @@
     "adminSystemHealth": "صحة النظام",
     "adminBackups": "نسخ احتياطية",
     "adminCabinets": "العيادات",
+    "adminInvoices": "الفواتير",
     "logout": "تسجيل الخروج"
   }
 }

@@ -21,6 +21,7 @@ import {
   HardDrive,
   Heart,
   Building2,
+  Receipt,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
@@ -51,6 +52,8 @@ const navItems: ReadonlyArray<NavItem> = [
   { href: "/admin/backups", labelKey: "adminBackups", icon: HardDrive, roles: ["ADMIN"] },
   // US-2117/2118 + US-2506 (iter 3 PR Plan B) — Admin cabinets + SMS config.
   { href: "/admin/cabinets", labelKey: "adminCabinets", icon: Building2, roles: ["ADMIN"] },
+  // US-2102/2108 (iter 4 PR Plan B) — Admin invoices + PDF download.
+  { href: "/admin/invoices", labelKey: "adminInvoices", icon: Receipt, roles: ["ADMIN"] },
 ]
 
 /**
