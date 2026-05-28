@@ -20,6 +20,7 @@ import {
   ShieldAlert,
   HardDrive,
   Heart,
+  Building2,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
@@ -48,6 +49,8 @@ const navItems: ReadonlyArray<NavItem> = [
   // US-2150 + US-2151 (iter 2 PR Plan B) — ADMIN ops monitoring.
   { href: "/admin/system-health", labelKey: "adminSystemHealth", icon: Heart, roles: ["ADMIN"] },
   { href: "/admin/backups", labelKey: "adminBackups", icon: HardDrive, roles: ["ADMIN"] },
+  // US-2117/2118 + US-2506 (iter 3 PR Plan B) — Admin cabinets + SMS config.
+  { href: "/admin/cabinets", labelKey: "adminCabinets", icon: Building2, roles: ["ADMIN"] },
 ]
 
 /**

@@ -1008,6 +1008,7 @@
     "adminDataBreaches": "GDPR breaches",
     "adminSystemHealth": "System health",
     "adminBackups": "DB backups",
+    "adminCabinets": "Cabinets",
     "logout": "Sign out"
   }
 }
