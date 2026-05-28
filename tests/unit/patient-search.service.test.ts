@@ -12,18 +12,11 @@
 import { describe, it, expect, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 import { patientService } from "@/lib/services/patient.service"
-import {
-  flush as flushCoalescedAudit,
-  __resetCoalescingForTests,
-} from "@/lib/services/audit-coalescing.service"
 import { Pathology } from "@prisma/client"
 
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   prismaMock.patient.findMany.mockResolvedValue([])
-  // A3 — patientService.search utilise logCoalesced (buffered). Reset le
-  // buffer entre tests pour éviter cross-pollination.
-  __resetCoalescingForTests()
 })
 
 describe("patientService.search", () => {
@@ -100,13 +93,11 @@ describe("patientService.search", () => {
     expect(call.take).toBe(11)
   })
 
-  it("emits an audit row with flags (via logCoalesced + flush)", async () => {
+  it("emits an audit row with flags (1:1 — adoption coalescing retirée A3 round 2)", async () => {
     await patientService.search(
       { search: "Curie", pathology: Pathology.DT2, accessibleIds: [1] },
       9,
     )
-    // A3 — audit row buffered → flush manuel pour matérialiser l'INSERT.
-    await flushCoalescedAudit()
     const audit = prismaMock.auditLog.create.mock.calls[0][0].data as any
     expect(audit.resource).toBe("PATIENT")
     expect(audit.resourceId).toBe("search")
@@ -115,7 +106,7 @@ describe("patientService.search", () => {
       pathology: Pathology.DT2,
       scoped: true,
     })
-    // A3 — vérifie le marker coalescing
-    expect(audit.metadata).toHaveProperty("coalesced.count", 1)
+    // A3 round 2 — pas de marker coalesced (1:1 préservé pour forensique CNIL)
+    expect(audit.metadata).not.toHaveProperty("coalesced")
   })
 })
