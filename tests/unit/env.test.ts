@@ -56,6 +56,8 @@ function setupValidEnv() {
     "CRON_SECRET",
     "a".repeat(16) + "b".repeat(32) + "c".repeat(16),
   )
+  // Plan B follow-up A1 round 2 — REDIS_KEY_PREFIX (idempotency cache).
+  vi.stubEnv("REDIS_KEY_PREFIX", "diabeo:test:")
   vi.stubEnv("JWT_PRIVATE_KEY", VALID_PRIV_PEM)
   vi.stubEnv("JWT_PUBLIC_KEY", VALID_PUB_PEM)
 }
@@ -144,6 +146,27 @@ describe("assertRequiredEnv", () => {
   it("rejects CRON_SECRET low entropy (all-same-char)", () => {
     vi.stubEnv("CRON_SECRET", "a".repeat(64))
     expect(() => assertRequiredEnv()).toThrow(/insufficient entropy/)
+  })
+
+  // Plan B follow-up A1 round 2 (M-HSA-5) — REDIS_KEY_PREFIX validation.
+  it("rejects REDIS_KEY_PREFIX missing", () => {
+    vi.stubEnv("REDIS_KEY_PREFIX", "")
+    expect(() => assertRequiredEnv()).toThrow(/REDIS_KEY_PREFIX/)
+  })
+
+  it("rejects REDIS_KEY_PREFIX without 'diabeo:' prefix", () => {
+    vi.stubEnv("REDIS_KEY_PREFIX", "myapp:prod:")
+    expect(() => assertRequiredEnv()).toThrow(/diabeo:<env>:/)
+  })
+
+  it("rejects REDIS_KEY_PREFIX without trailing colon", () => {
+    vi.stubEnv("REDIS_KEY_PREFIX", "diabeo:prod")
+    expect(() => assertRequiredEnv()).toThrow(/diabeo:<env>:/)
+  })
+
+  it("accepts REDIS_KEY_PREFIX valid (diabeo:staging:)", () => {
+    vi.stubEnv("REDIS_KEY_PREFIX", "diabeo:staging:")
+    expect(() => assertRequiredEnv()).not.toThrow()
   })
 
   it("rejects JWT_PRIVATE_KEY without PEM markers", () => {

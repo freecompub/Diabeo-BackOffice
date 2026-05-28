@@ -23,6 +23,7 @@ import {
   CabinetSettingsNotFoundError,
   CabinetSettingsValidationError,
 } from "@/lib/services/cabinet-settings.service"
+import { withIdempotency } from "@/lib/idempotency/with-idempotency"
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
 
@@ -95,7 +96,11 @@ export async function GET(
   }
 }
 
-export async function PUT(
+/**
+ * Plan B follow-up A1 round 2 (M-CR-4) — wrappé `withIdempotency`.
+ * UI iter 3 PR #459 envoie déjà `Idempotency-Key: <UUID v4>` sur ce PUT.
+ */
+async function putHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -149,3 +154,7 @@ export async function PUT(
     return mapErrorToResponse(e, "cabinet/:id/settings PUT", ctx.requestId)
   }
 }
+
+export const PUT = withIdempotency(putHandler, {
+  route: "cabinet/[id]/settings PUT",
+})

@@ -20,6 +20,7 @@ import {
   DataBreachNotFoundError,
   DataBreachStateError,
 } from "@/lib/services/data-breach.service"
+import { withIdempotency } from "@/lib/idempotency/with-idempotency"
 
 const paramsSchema = z.object({ id: z.coerce.number().int().positive() })
 
@@ -28,7 +29,13 @@ const bodySchema = z.object({
   usersNotifiedCount: z.number().int().nonnegative().max(10_000_000).optional(),
 })
 
-export async function POST(
+/**
+ * Plan B follow-up A1 round 2 (M-CR-4) — wrappé `withIdempotency`.
+ * FSM transition `draft → notified_cnil` à risque double-submit (notif CNIL
+ * envoyée 2× si replay sans dédup). UI iter 1 PR #457 envoie déjà
+ * `Idempotency-Key: <UUID v4>` via `crypto.randomUUID()`.
+ */
+async function postHandler(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
@@ -80,3 +87,7 @@ export async function POST(
     return mapErrorToResponse(e, "admin/data-breaches/:id/transition POST", ctx.requestId)
   }
 }
+
+export const POST = withIdempotency(postHandler, {
+  route: "admin/data-breaches/[id]/transition POST",
+})
