@@ -5,6 +5,12 @@
  *
  * Backend : `GET /api/admin/healthcare-services` (paginé). Pattern aligné
  * iter 1+2 (AbortController + Dialog shadcn + i18n via formatDate).
+ *
+ * Fixes round 1 review PR #459 :
+ *   - H1 : error codes mapping via `extractApiError`
+ *   - H2 : types extraits dans `src/lib/types/cabinet-admin.ts`
+ *   - L1 : `isServiceType` guard + warning dev si type drift backend
+ *   - L8 : limit 100 documenté + TODO pagination cursor V1.5
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -18,33 +24,27 @@ import {
 } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { Badge } from "@/components/ui/badge"
-
-type ServiceType = "hospital" | "clinic" | "private_practice" | "lab" | "pharmacy" | "other"
-
-interface HealthcareServiceDTO {
-  id: number
-  name: string
-  type: ServiceType
-  city: string | null
-  establishment: string | null
-  smsEnabled: boolean
-  smsCreditBalance: number
-  managerId: number | null
-}
+import {
+  type HealthcareServiceListItem,
+  type ServiceType,
+  isServiceType,
+  SERVICE_TYPE_LABELS_FR,
+} from "@/lib/types/cabinet-admin"
+import { extractApiError } from "@/lib/ui/api-error"
 
 type AsyncState = "idle" | "loading" | "success" | "error"
 
-const TYPE_LABELS: Record<ServiceType, string> = {
-  hospital: "Hôpital",
-  clinic: "Clinique",
-  private_practice: "Cabinet libéral",
-  lab: "Laboratoire",
-  pharmacy: "Pharmacie",
-  other: "Autre",
+function getTypeLabel(type: ServiceType | string): string {
+  if (isServiceType(type)) return SERVICE_TYPE_LABELS_FR[type]
+  // Fix L1 round 1 — defense-in-depth + warning dev (drift backend enum).
+  if (process.env.NODE_ENV !== "production") {
+    console.warn(`[CabinetsListClient] Unknown ServiceType: ${type}`)
+  }
+  return type
 }
 
 export function CabinetsListClient() {
-  const [cabinets, setCabinets] = useState<HealthcareServiceDTO[]>([])
+  const [cabinets, setCabinets] = useState<HealthcareServiceListItem[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [query, setQuery] = useState("")
@@ -58,6 +58,8 @@ export function CabinetsListClient() {
     setState("loading")
     setErrorMessage(null)
     try {
+      // Fix L8 round 1 — pagination cursor V1.5 (backend `nextCursor` exposé).
+      // Iter 3 : 100 premiers cabinets (aligné backend cap MAX_LIST_LIMIT).
       const res = await fetch("/api/admin/healthcare-services?limit=100", {
         credentials: "include",
         signal: controller.signal,
@@ -65,10 +67,12 @@ export function CabinetsListClient() {
       if (!mountedRef.current) return
       if (!res.ok) {
         setState("error")
-        setErrorMessage(`HTTP ${res.status}`)
+        // Fix H1 round 1 review PR #459 — error code mapping friendly (vs HTTP générique).
+        const parsed = await extractApiError(res)
+        setErrorMessage(parsed.message)
         return
       }
-      const data = (await res.json()) as { items?: HealthcareServiceDTO[] }
+      const data = (await res.json()) as { items?: HealthcareServiceListItem[] }
       if (!mountedRef.current) return
       setCabinets(data.items ?? [])
       setState("success")
@@ -109,7 +113,7 @@ export function CabinetsListClient() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher par nom / ville / établissement…"
-            className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm"
+            className="w-full rounded-md border bg-background pl-9 pr-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             aria-label="Rechercher un cabinet"
           />
         </div>
@@ -160,7 +164,7 @@ export function CabinetsListClient() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">{cabinet.name}</span>
                     <Badge variant="outline" className="text-[10px]">
-                      {TYPE_LABELS[cabinet.type] ?? cabinet.type}
+                      {getTypeLabel(cabinet.type)}
                     </Badge>
                     {cabinet.smsEnabled && (
                       <Badge variant="default" className="text-[10px]">

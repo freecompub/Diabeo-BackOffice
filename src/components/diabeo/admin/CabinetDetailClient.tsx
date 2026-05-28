@@ -4,23 +4,25 @@
  * CabinetDetailClient — UI ADMIN detail cabinet (US-2117/2118 settings +
  * US-2506 SMS config V1 mock).
  *
- * 2 sections :
- *   - "Paramètres cabinet" — fetch GET `/api/cabinet/[id]/settings` +
- *     PUT pour update (manager-level fields : contact, adresse, capacity,
- *     spécialités, flags noVideos/noFood). Champs régaliens (siret, type)
- *     en read-only.
- *   - "Configuration SMS V1 mock" — GET/PUT `/api/cabinet/[id]/sms-config`
- *     (smsEnabled toggle + smsCreditBalance integer). Provider="mock" V1
- *     (US-2506bis V3 = Twilio/OVH réel).
- *
- * Pattern aligné iter 1+2 PR #457/#458 round 1 fixes :
- *   - AbortController + mountedRef + cleanup
- *   - Dialog shadcn pour confirmations
- *   - i18n via useLocale + formatDate
- *   - DiabeoButton variants
+ * Fixes round 1 review PR #459 (~22 findings — Option C totale) :
+ *   - H1 : `extractApiError` mapping codes erreur + détails per-field
+ *   - H2 : types extraits `src/lib/types/cabinet-admin.ts`
+ *   - H3 : reset state `setSettings(null) + setSms(null)` au début fetchAll
+ *   - H4 : color contrast warning crédit + aria-label emoji
+ *   - C1+H2 : aria-invalid + aria-describedby form inputs
+ *   - M1 : truncate spécialités 60 chars côté UI (cohérent Zod backend)
+ *   - M2 : `setDraft(prev => ...)` stale-safe vs spread direct
+ *   - M3 : success banner role="status" auto-dismiss 3s
+ *   - M4 : char count display TextInput
+ *   - M7 : Dialog close button aria-label i18n FR
+ *   - M8 : PUT diff body (changes only vs full draft)
+ *   - L4 : `SMS_CREDITS_MAX` const partagée
+ *   - L5 : confirmation Dialog Settings save (cohérence avec SMS)
+ *   - A11y L1 : emoji ⚠ wrap span aria-label
+ *   - A11y L2 : `<nav aria-label="Breadcrumb">` retour liste
  */
 
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useId, useRef, useState } from "react"
 import Link from "next/link"
 import {
   AlertCircle,
@@ -41,38 +43,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-
-// ---------------------------------------------------------------------------
-// Types DTO (cohérent backend cabinet-settings.service + sms.service)
-// ---------------------------------------------------------------------------
-
-interface CabinetSettingsDTO {
-  id: number
-  name: string
-  establishment: string | null
-  phone: string | null
-  email: string | null
-  website: string | null
-  addressLine1: string | null
-  addressLine2: string | null
-  postalCode: string | null
-  city: string | null
-  country: string | null
-  openingHours: unknown
-  specialties: string[]
-  capacity: number | null
-  noVideos: boolean
-  noFood: boolean
-  managerId: number | null
-  siret: string | null
-  tvaIntra: string | null
-  type: string
-}
-
-interface SmsConfigDTO {
-  smsEnabled: boolean
-  smsCreditBalance: number
-}
+import {
+  type CabinetSettingsDTOClient as CabinetSettingsDTO,
+  type SmsConfigDTOClient as SmsConfigDTO,
+  SMS_CREDITS_MAX,
+  CABINET_FIELD_LIMITS,
+} from "@/lib/types/cabinet-admin"
+import { extractApiError, type ParsedApiError } from "@/lib/ui/api-error"
 
 type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 
@@ -92,6 +69,10 @@ export function CabinetDetailClient({ cabinetId }: { cabinetId: number }) {
     if (abortRef.current) abortRef.current.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    // Fix H3 round 1 review PR #459 — reset state pour éviter données stales
+    // si seconde route échoue partiellement au refresh.
+    setSettings(null)
+    setSms(null)
     setState("loading")
     setErrorMessage(null)
     try {
@@ -108,11 +89,10 @@ export function CabinetDetailClient({ cabinetId }: { cabinetId: number }) {
       if (!mountedRef.current) return
       if (!settingsRes.ok || !smsRes.ok) {
         setState("error")
-        setErrorMessage(
-          settingsRes.status === 404
-            ? "Cabinet introuvable"
-            : `HTTP ${!settingsRes.ok ? settingsRes.status : smsRes.status}`,
-        )
+        // Fix H1 round 1 — extract error code friendly (vs HTTP générique).
+        const failedRes = !settingsRes.ok ? settingsRes : smsRes
+        const parsed = await extractApiError(failedRes)
+        setErrorMessage(parsed.message)
         return
       }
       const settingsData = (await settingsRes.json()) as { settings?: CabinetSettingsDTO }
@@ -169,13 +149,16 @@ export function CabinetDetailClient({ cabinetId }: { cabinetId: number }) {
 
   return (
     <>
-      <Link
-        href="/admin/cabinets"
-        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-      >
-        <ArrowLeft className="size-4" aria-hidden="true" />
-        Retour à la liste
-      </Link>
+      {/* Fix A11y L2 round 1 — wrap dans <nav> breadcrumb landmark. */}
+      <nav aria-label="Fil d'Ariane">
+        <Link
+          href="/admin/cabinets"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 rounded"
+        >
+          <ArrowLeft className="size-4" aria-hidden="true" />
+          Retour à la liste
+        </Link>
+      </nav>
 
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
@@ -225,11 +208,18 @@ function SettingsSection({
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState<Partial<CabinetSettingsDTO>>({})
   const [saveState, setSaveState] = useState<AsyncState>("idle")
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<ParsedApiError | null>(null)
+  // Fix L5 round 1 — confirmation Dialog (cohérence avec SmsConfigSection).
+  const [showConfirm, setShowConfirm] = useState(false)
   const mountedRef = useRef(true)
+  // Fix M3 round 1 — success banner auto-dismiss timer tracked.
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      if (successTimerRef.current) clearTimeout(successTimerRef.current)
+    }
   }, [])
 
   const startEdit = () => {
@@ -250,10 +240,49 @@ function SettingsSection({
     setEditing(true)
   }
 
-  const handleSave = useCallback(async () => {
+  /**
+   * Fix M8 round 1 — compute diff body (vs full draft) pour PATCH semantics.
+   * Backend audit log enregistre uniquement les changements effectifs.
+   * Comparaison shallow par field — `specialties` array compared via JSON.
+   */
+  const computeChanges = useCallback((): Partial<CabinetSettingsDTO> => {
+    const changes: Partial<CabinetSettingsDTO> = {}
+    const compareKey = <K extends keyof CabinetSettingsDTO>(key: K): void => {
+      if (draft[key] === undefined) return
+      const draftVal = draft[key]
+      const initialVal = initial[key]
+      // Compare arrays via JSON.stringify (specialties).
+      const same = Array.isArray(draftVal) && Array.isArray(initialVal)
+        ? JSON.stringify(draftVal) === JSON.stringify(initialVal)
+        : draftVal === initialVal
+      if (!same) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ;(changes as any)[key] = draftVal
+      }
+    }
+    compareKey("phone")
+    compareKey("email")
+    compareKey("website")
+    compareKey("addressLine1")
+    compareKey("addressLine2")
+    compareKey("postalCode")
+    compareKey("city")
+    compareKey("capacity")
+    compareKey("noVideos")
+    compareKey("noFood")
+    compareKey("specialties")
+    return changes
+  }, [draft, initial])
+
+  const hasChanges = Object.keys(computeChanges()).length > 0
+
+  const executeSave = useCallback(async () => {
+    setShowConfirm(false)
     setSaveState("saving")
     setSaveError(null)
     try {
+      // Fix M8 round 1 — send only changed fields.
+      const body = computeChanges()
       const res = await fetch(`/api/cabinet/${cabinetId}/settings`, {
         method: "PUT",
         credentials: "include",
@@ -261,23 +290,32 @@ function SettingsSection({
           "Content-Type": "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
-        body: JSON.stringify(draft),
+        body: JSON.stringify(body),
       })
       if (!mountedRef.current) return
       if (!res.ok) {
         setSaveState("error")
-        setSaveError(`HTTP ${res.status}`)
+        // Fix H1 round 1 — error code mapping friendly + field-level details.
+        const parsed = await extractApiError(res)
+        setSaveError(parsed)
         return
       }
       setSaveState("success")
       setEditing(false)
       onSaved()
+      // Fix M3 round 1 — success banner auto-dismiss after 3s.
+      if (successTimerRef.current) clearTimeout(successTimerRef.current)
+      successTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setSaveState("idle")
+      }, 3000)
     } catch (err) {
       if (!mountedRef.current) return
       setSaveState("error")
-      setSaveError(err instanceof Error ? err.message : "Erreur réseau")
+      setSaveError({
+        message: err instanceof Error ? err.message : "Erreur réseau",
+      })
     }
-  }, [cabinetId, draft, onSaved])
+  }, [cabinetId, computeChanges, onSaved])
 
   return (
     <section className="rounded-md border p-4 space-y-3" aria-labelledby="settings-section">
@@ -311,85 +349,111 @@ function SettingsSection({
         </dl>
       ) : (
         <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
+          {/* Fix M2 round 1 — `setDraft(prev => ...)` stale-safe (vs spread direct).
+              Fix C1+H2 round 1 — `errorField` propagé pour aria-invalid (H1 details). */}
           <TextInput
             label="Téléphone"
+            field="phone"
             value={draft.phone ?? ""}
-            onChange={(v) => setDraft({ ...draft, phone: v || null })}
-            maxLength={30}
+            onChange={(v) => setDraft((prev) => ({ ...prev, phone: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.PHONE_MAX}
+            errorDetails={saveError?.details}
           />
           <TextInput
             label="Email"
+            field="email"
             type="email"
             value={draft.email ?? ""}
-            onChange={(v) => setDraft({ ...draft, email: v || null })}
-            maxLength={255}
+            onChange={(v) => setDraft((prev) => ({ ...prev, email: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.EMAIL_MAX}
+            errorDetails={saveError?.details}
           />
           <TextInput
             label="Site web"
+            field="website"
             value={draft.website ?? ""}
-            onChange={(v) => setDraft({ ...draft, website: v || null })}
-            maxLength={500}
+            onChange={(v) => setDraft((prev) => ({ ...prev, website: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.WEBSITE_MAX}
+            errorDetails={saveError?.details}
           />
           <NumberInput
             label="Capacité"
+            field="capacity"
             value={draft.capacity ?? null}
-            onChange={(v) => setDraft({ ...draft, capacity: v })}
+            onChange={(v) => setDraft((prev) => ({ ...prev, capacity: v }))}
             min={0}
-            max={10_000}
+            max={CABINET_FIELD_LIMITS.CAPACITY_MAX}
+            errorDetails={saveError?.details}
           />
           <TextInput
             label="Adresse ligne 1"
+            field="addressLine1"
             value={draft.addressLine1 ?? ""}
-            onChange={(v) => setDraft({ ...draft, addressLine1: v || null })}
-            maxLength={255}
+            onChange={(v) => setDraft((prev) => ({ ...prev, addressLine1: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.ADDRESS_MAX}
+            errorDetails={saveError?.details}
             wide
           />
           <TextInput
             label="Adresse ligne 2"
+            field="addressLine2"
             value={draft.addressLine2 ?? ""}
-            onChange={(v) => setDraft({ ...draft, addressLine2: v || null })}
-            maxLength={255}
+            onChange={(v) => setDraft((prev) => ({ ...prev, addressLine2: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.ADDRESS_MAX}
+            errorDetails={saveError?.details}
             wide
           />
           <TextInput
             label="Code postal"
+            field="postalCode"
             value={draft.postalCode ?? ""}
-            onChange={(v) => setDraft({ ...draft, postalCode: v || null })}
-            maxLength={10}
+            onChange={(v) => setDraft((prev) => ({ ...prev, postalCode: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.POSTAL_CODE_MAX}
+            errorDetails={saveError?.details}
           />
           <TextInput
             label="Ville"
+            field="city"
             value={draft.city ?? ""}
-            onChange={(v) => setDraft({ ...draft, city: v || null })}
-            maxLength={100}
+            onChange={(v) => setDraft((prev) => ({ ...prev, city: v || null }))}
+            maxLength={CABINET_FIELD_LIMITS.CITY_MAX}
+            errorDetails={saveError?.details}
           />
           <TextInput
             label="Spécialités (séparées par virgule)"
+            field="specialties"
             value={(draft.specialties ?? []).join(", ")}
             onChange={(v) =>
-              setDraft({
-                ...draft,
-                specialties: v.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20),
-              })
+              // Fix M1 round 1 — truncate per-spécialité 60 chars (cohérent Zod backend).
+              setDraft((prev) => ({
+                ...prev,
+                specialties: v
+                  .split(",")
+                  .map((s) => s.trim().slice(0, CABINET_FIELD_LIMITS.SPECIALTY_LEN_MAX))
+                  .filter(Boolean)
+                  .slice(0, CABINET_FIELD_LIMITS.SPECIALTIES_COUNT_MAX),
+              }))
             }
             maxLength={500}
+            errorDetails={saveError?.details}
             wide
+            helpText={`Max ${CABINET_FIELD_LIMITS.SPECIALTIES_COUNT_MAX} spécialités, ${CABINET_FIELD_LIMITS.SPECIALTY_LEN_MAX} caractères chacune.`}
           />
           <BoolInput
             label="Pas de vidéo"
             value={draft.noVideos ?? false}
-            onChange={(v) => setDraft({ ...draft, noVideos: v })}
+            onChange={(v) => setDraft((prev) => ({ ...prev, noVideos: v }))}
           />
           <BoolInput
             label="Pas de repas"
             value={draft.noFood ?? false}
-            onChange={(v) => setDraft({ ...draft, noFood: v })}
+            onChange={(v) => setDraft((prev) => ({ ...prev, noFood: v }))}
           />
 
           {saveState === "error" && saveError && (
             <p role="alert" className="md:col-span-2 text-sm text-destructive flex items-center gap-2">
               <AlertCircle className="size-4" aria-hidden="true" />
-              Erreur : {saveError}
+              {saveError.message}
             </p>
           )}
 
@@ -397,13 +461,48 @@ function SettingsSection({
             <DiabeoButton variant="diabeoTertiary" onClick={() => setEditing(false)}>
               Annuler
             </DiabeoButton>
-            <DiabeoButton onClick={() => void handleSave()} disabled={saveState === "saving"}>
+            <DiabeoButton
+              onClick={() => setShowConfirm(true)}
+              disabled={saveState === "saving" || !hasChanges}
+            >
               <Save className="size-4 mr-1" aria-hidden="true" />
               {saveState === "saving" ? "Enregistrement…" : "Enregistrer"}
             </DiabeoButton>
           </div>
         </div>
       )}
+
+      {/* Fix M3 round 1 — success banner auto-dismiss 3s. */}
+      {!editing && saveState === "success" && (
+        <div role="status" aria-live="polite" className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+          <p className="flex items-center gap-2 text-primary">
+            <CheckCircle2 className="size-4" aria-hidden="true" />
+            Paramètres cabinet mis à jour.
+          </p>
+        </div>
+      )}
+
+      {/* Fix L5 round 1 — confirmation Dialog Settings save (cohérence SMS). */}
+      <Dialog open={showConfirm} onOpenChange={(open) => { if (!open) setShowConfirm(false) }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmer les modifications du cabinet ?</DialogTitle>
+            <DialogDescription>
+              {Object.keys(computeChanges()).length} champ(s) modifié(s).
+              Action tracée dans l&apos;audit log immuable.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DiabeoButton variant="diabeoTertiary" onClick={() => setShowConfirm(false)}>
+              Annuler
+            </DiabeoButton>
+            <DiabeoButton onClick={() => void executeSave()}>
+              <CheckCircle2 className="size-4 mr-1" aria-hidden="true" />
+              Confirmer
+            </DiabeoButton>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }
@@ -425,12 +524,17 @@ function SmsConfigSection({
   const [draftEnabled, setDraftEnabled] = useState(initial.smsEnabled)
   const [draftCredits, setDraftCredits] = useState(initial.smsCreditBalance)
   const [saveState, setSaveState] = useState<AsyncState>("idle")
-  const [saveError, setSaveError] = useState<string | null>(null)
+  // Fix H1 round 1 — ParsedApiError pour mapping codes + détails (vs string).
+  const [saveError, setSaveError] = useState<ParsedApiError | null>(null)
   const [showConfirm, setShowConfirm] = useState(false)
   const mountedRef = useRef(true)
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
     mountedRef.current = true
-    return () => { mountedRef.current = false }
+    return () => {
+      mountedRef.current = false
+      if (successTimerRef.current) clearTimeout(successTimerRef.current)
+    }
   }, [])
 
   const startEdit = () => {
@@ -462,16 +566,25 @@ function SmsConfigSection({
       if (!mountedRef.current) return
       if (!res.ok) {
         setSaveState("error")
-        setSaveError(`HTTP ${res.status}`)
+        // Fix H1 round 1 — error code mapping friendly.
+        const parsed = await extractApiError(res)
+        setSaveError(parsed)
         return
       }
       setSaveState("success")
       setEditing(false)
       onSaved()
+      // Fix M3 round 1 — success banner auto-dismiss 3s.
+      if (successTimerRef.current) clearTimeout(successTimerRef.current)
+      successTimerRef.current = setTimeout(() => {
+        if (mountedRef.current) setSaveState("idle")
+      }, 3000)
     } catch (err) {
       if (!mountedRef.current) return
       setSaveState("error")
-      setSaveError(err instanceof Error ? err.message : "Erreur réseau")
+      setSaveError({
+        message: err instanceof Error ? err.message : "Erreur réseau",
+      })
     }
   }, [cabinetId, draftEnabled, draftCredits, initial.smsEnabled, initial.smsCreditBalance, onSaved])
 
@@ -503,9 +616,15 @@ function SmsConfigSection({
             </Badge>
           </Field>
           <Field label="Crédits SMS restants">
-            <span className={initial.smsCreditBalance < 10 ? "text-orange-700 font-medium" : ""}>
+            {/* Fix H4 + A11y L1 round 1 — text-orange-800 augmente contraste ≥4.5:1.
+                Wrap emoji ⚠ + label sr-only pour SR ("Alerte : crédit faible"). */}
+            <span className={initial.smsCreditBalance < 10 && initial.smsEnabled ? "text-orange-800 font-medium" : ""}>
               {initial.smsCreditBalance}
-              {initial.smsCreditBalance < 10 && initial.smsEnabled && " ⚠ Faible"}
+              {initial.smsCreditBalance < 10 && initial.smsEnabled && (
+                <span className="ml-1" aria-label="Alerte : crédit SMS faible">
+                  <span aria-hidden="true">⚠ Faible</span>
+                </span>
+              )}
             </span>
           </Field>
         </dl>
@@ -518,16 +637,18 @@ function SmsConfigSection({
           />
           <NumberInput
             label="Crédits SMS"
+            field="smsCreditBalance"
             value={draftCredits}
             onChange={(v) => setDraftCredits(v ?? 0)}
             min={0}
-            max={1_000_000}
+            max={SMS_CREDITS_MAX}
+            errorDetails={saveError?.details}
           />
 
           {saveState === "error" && saveError && (
             <p role="alert" className="text-sm text-destructive flex items-center gap-2">
               <AlertCircle className="size-4" aria-hidden="true" />
-              Erreur : {saveError}
+              {saveError.message}
             </p>
           )}
 
@@ -578,6 +699,16 @@ function SmsConfigSection({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Fix M3 round 1 — success banner SMS auto-dismiss 3s. */}
+      {!editing && saveState === "success" && (
+        <div role="status" aria-live="polite" className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+          <p className="flex items-center gap-2 text-primary">
+            <CheckCircle2 className="size-4" aria-hidden="true" />
+            Configuration SMS mise à jour.
+          </p>
+        </div>
+      )}
     </section>
   )
 }
@@ -595,52 +726,103 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   )
 }
 
+/**
+ * Fix C1+H2+M4 round 1 review PR #459 — TextInput enrichi avec :
+ *   - `field` + `errorDetails` → `aria-invalid` + `aria-describedby` (validation feedback)
+ *   - `maxLength` + char count visible (`<small aria-live="polite">{N}/{MAX}</small>`)
+ *   - `helpText` optionnel pour instructions inline (WCAG 3.3.2)
+ */
 function TextInput({
   label,
+  field,
   type = "text",
   value,
   onChange,
   maxLength,
   wide = false,
+  errorDetails,
+  helpText,
 }: {
   label: string
+  field?: string
   type?: string
   value: string
   onChange: (value: string) => void
   maxLength?: number
   wide?: boolean
+  errorDetails?: Record<string, string[] | undefined>
+  helpText?: string
 }) {
+  const inputId = useId()
+  const helpId = useId()
+  const errorId = useId()
+  const fieldErrors = field && errorDetails ? errorDetails[field] : undefined
+  const hasError = Boolean(fieldErrors && fieldErrors.length > 0)
+  const showCharCount = typeof maxLength === "number" && maxLength <= 500
+  const describedBy = [
+    helpText ? helpId : null,
+    hasError ? errorId : null,
+    showCharCount ? `${inputId}-count` : null,
+  ].filter(Boolean).join(" ") || undefined
+
   return (
-    <label className={`flex flex-col gap-1 text-sm ${wide ? "md:col-span-2" : ""}`}>
+    <label htmlFor={inputId} className={`flex flex-col gap-1 text-sm ${wide ? "md:col-span-2" : ""}`}>
       <span>{label}</span>
       <input
+        id={inputId}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         maxLength={maxLength}
-        className="rounded-md border bg-background px-3 py-2"
+        aria-invalid={hasError || undefined}
+        aria-describedby={describedBy}
+        className={`rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
+          hasError ? "border-destructive" : ""
+        }`}
       />
+      {helpText && (
+        <span id={helpId} className="text-xs text-muted-foreground">{helpText}</span>
+      )}
+      {showCharCount && (
+        <small id={`${inputId}-count`} aria-live="polite" className="text-xs text-muted-foreground self-end">
+          {value.length} / {maxLength}
+        </small>
+      )}
+      {hasError && fieldErrors && (
+        <span id={errorId} role="alert" className="text-xs text-destructive">
+          {fieldErrors.join(", ")}
+        </span>
+      )}
     </label>
   )
 }
 
 function NumberInput({
   label,
+  field,
   value,
   onChange,
   min,
   max,
+  errorDetails,
 }: {
   label: string
+  field?: string
   value: number | null
   onChange: (value: number | null) => void
   min?: number
   max?: number
+  errorDetails?: Record<string, string[] | undefined>
 }) {
+  const inputId = useId()
+  const errorId = useId()
+  const fieldErrors = field && errorDetails ? errorDetails[field] : undefined
+  const hasError = Boolean(fieldErrors && fieldErrors.length > 0)
   return (
-    <label className="flex flex-col gap-1 text-sm">
+    <label htmlFor={inputId} className="flex flex-col gap-1 text-sm">
       <span>{label}</span>
       <input
+        id={inputId}
         type="number"
         value={value ?? ""}
         onChange={(e) => {
@@ -654,8 +836,17 @@ function NumberInput({
         }}
         min={min}
         max={max}
-        className="rounded-md border bg-background px-3 py-2"
+        aria-invalid={hasError || undefined}
+        aria-describedby={hasError ? errorId : undefined}
+        className={`rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 ${
+          hasError ? "border-destructive" : ""
+        }`}
       />
+      {hasError && fieldErrors && (
+        <span id={errorId} role="alert" className="text-xs text-destructive">
+          {fieldErrors.join(", ")}
+        </span>
+      )}
     </label>
   )
 }
