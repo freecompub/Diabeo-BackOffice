@@ -1006,6 +1006,8 @@
     "documents": "Documents",
     "settings": "Parametres",
     "adminDataBreaches": "Violations RGPD",
+    "adminSystemHealth": "Sante systeme",
+    "adminBackups": "Backups DB",
     "logout": "Se deconnecter"
   }
 }

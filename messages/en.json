@@ -1006,6 +1006,8 @@
     "documents": "Documents",
     "settings": "Settings",
     "adminDataBreaches": "GDPR breaches",
+    "adminSystemHealth": "System health",
+    "adminBackups": "DB backups",
     "logout": "Sign out"
   }
 }

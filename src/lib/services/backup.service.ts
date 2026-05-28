@@ -77,10 +77,16 @@ export const backupService = {
     })
 
     // BigInt n'est pas JSON-sérialisable. Cast en number côté API DTO.
+    // Fix M5 round 1 review PR #458 (HSA MEDIUM-3) — retire `location` du
+    // DTO API (URI S3 `s3://bucket/path/dump.sql.gz` = leak bucket name +
+    // path enumeration). Remplacé par `hasLocation: boolean` pour UI savoir
+    // si backup est restorable sans exposer le path. Le `location` reste
+    // côté backend pour les ops restore (cf. `runbook/postgres-backup.md`).
     return {
-      items: page.map((b) => ({
-        ...b,
-        sizeBytes: bigIntToJson(b.sizeBytes),
+      items: page.map(({ location, ...rest }) => ({
+        ...rest,
+        sizeBytes: bigIntToJson(rest.sizeBytes),
+        hasLocation: location !== null,
       })),
       nextCursor,
     }

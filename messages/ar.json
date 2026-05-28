@@ -1006,6 +1006,8 @@
     "documents": "المستندات",
     "settings": "الإعدادات",
     "adminDataBreaches": "انتهاكات اللائحة الأوروبية",
+    "adminSystemHealth": "صحة النظام",
+    "adminBackups": "نسخ احتياطية",
     "logout": "تسجيل الخروج"
   }
 }
