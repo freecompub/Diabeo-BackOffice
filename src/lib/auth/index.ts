@@ -18,6 +18,7 @@ export {
 export { revokeSession, isSessionRevoked } from "./revocation"
 export {
   STEP_UP_WINDOW_SECONDS,
+  STEP_UP_WINDOW_SECONDS_CRITICAL,
   checkFreshMfa,
   requireFreshMfa,
   stepUpErrorResponse,

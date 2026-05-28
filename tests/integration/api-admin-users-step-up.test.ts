@@ -31,6 +31,7 @@ vi.mock("@/lib/services/audit.service", async (orig) => {
       ...actual.auditService,
       log: vi.fn().mockResolvedValue({}),
       accessDenied: vi.fn().mockResolvedValue({}),
+      requireStepUp: vi.fn().mockResolvedValue({ stepUpRow: {}, burstRow: null }),
     },
   }
 })
@@ -79,10 +80,10 @@ describe("PATCH /api/admin/users/[id] — Step-up MFA gate", () => {
     // Handler PAS appelé
     expect(userManagementService.updateRole).not.toHaveBeenCalled()
 
-    // Audit MFA_STEP_UP_REQUIRED
-    expect(auditService.log).toHaveBeenCalledWith(
+    // A2 round 2 C-2 — Audit via requireStepUp (burst detection câblée)
+    expect(auditService.requireStepUp).toHaveBeenCalledWith(
       expect.objectContaining({
-        action: "MFA_STEP_UP_REQUIRED",
+        resource: "SESSION",
         metadata: expect.objectContaining({
           route: "admin/users/[id] PATCH",
           reason: "stepUpRequired",

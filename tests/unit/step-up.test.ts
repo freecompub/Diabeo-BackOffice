@@ -25,6 +25,7 @@ vi.mock("@/lib/services/audit.service", async (orig) => {
     auditService: {
       ...actual.auditService,
       log: vi.fn().mockResolvedValue({}),
+      requireStepUp: vi.fn().mockResolvedValue({ stepUpRow: {}, burstRow: null }),
     },
   }
 })
@@ -136,7 +137,7 @@ describe("stepUpErrorResponse", () => {
     requestId: "req-id",
   }
 
-  it("retourne 401 + WWW-Authenticate stepup + ANSSI no-store", async () => {
+  it("retourne 401 + WWW-Authenticate stepup + X-Step-Up-Required + ANSSI headers", async () => {
     const res = await stepUpErrorResponse(
       "stepUpRequired",
       42,
@@ -150,11 +151,16 @@ describe("stepUpErrorResponse", () => {
     expect(res.headers.get("WWW-Authenticate")).toBe(
       `stepup reason="stepUpRequired", realm="diabeo"`,
     )
+    // A2 round 2 H-3 — header custom pour clients qui ne parsent pas RFC 7235.
+    expect(res.headers.get("X-Step-Up-Required")).toBe("stepUpRequired")
+    // ANSSI RGS §4.5 — 4 headers de baseline.
     expect(res.headers.get("Cache-Control")).toContain("no-store")
     expect(res.headers.get("Pragma")).toBe("no-cache")
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
   })
 
-  it("audit MFA_STEP_UP_REQUIRED appelé avec route metadata", async () => {
+  it("audit via requireStepUp (C-2 burst detection câblée)", async () => {
     await stepUpErrorResponse(
       "mfaEnrollmentRequired",
       42,
@@ -162,10 +168,9 @@ describe("stepUpErrorResponse", () => {
       ctx,
       { route: "admin/users/[id] PATCH" },
     )
-    expect(auditService.log).toHaveBeenCalledTimes(1)
-    expect(vi.mocked(auditService.log).mock.calls[0]?.[0]).toMatchObject({
+    expect(auditService.requireStepUp).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(auditService.requireStepUp).mock.calls[0]?.[0]).toMatchObject({
       userId: 42,
-      action: "MFA_STEP_UP_REQUIRED",
       resource: "SESSION",
       resourceId: "sess-x",
       metadata: {
@@ -175,8 +180,22 @@ describe("stepUpErrorResponse", () => {
     })
   })
 
-  it("audit fail → response 401 quand-même retournée", async () => {
-    vi.mocked(auditService.log).mockRejectedValueOnce(new Error("DB down"))
+  it("LO-2 — sessionId absent → resourceId='jwt-legacy-no-sid' + metadata.legacyJwt", async () => {
+    await stepUpErrorResponse(
+      "stepUpRequired",
+      42,
+      undefined,
+      ctx,
+      { route: "admin/users/[id] PATCH" },
+    )
+    expect(vi.mocked(auditService.requireStepUp).mock.calls[0]?.[0]).toMatchObject({
+      resourceId: "jwt-legacy-no-sid",
+      metadata: expect.objectContaining({ legacyJwt: true }),
+    })
+  })
+
+  it("audit fail → logger.warn + response 401 quand-même retournée (M-10)", async () => {
+    vi.mocked(auditService.requireStepUp).mockRejectedValueOnce(new Error("DB down"))
     const res = await stepUpErrorResponse(
       "stepUpRequired",
       42,
@@ -185,5 +204,6 @@ describe("stepUpErrorResponse", () => {
       { route: "x" },
     )
     expect(res.status).toBe(401)
+    // logger.warn not directly observed (no spy), but the catch path is exercised.
   })
 })

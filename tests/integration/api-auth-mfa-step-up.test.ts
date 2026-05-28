@@ -40,9 +40,9 @@ vi.mock("@/lib/auth", async (orig) => {
   const actual = await orig<typeof import("@/lib/auth")>()
   return {
     ...actual,
-    checkRateLimit: vi.fn().mockResolvedValue({ blocked: false }),
-    recordFailedAttempt: vi.fn().mockResolvedValue(undefined),
-    clearAttempts: vi.fn().mockResolvedValue(undefined),
+    checkRateLimit: vi.fn(() => Promise.resolve({ blocked: false })),
+    recordFailedAttempt: vi.fn(() => Promise.resolve(undefined)),
+    clearAttempts: vi.fn(() => Promise.resolve(undefined)),
   }
 })
 
@@ -89,14 +89,20 @@ describe("POST /api/auth/mfa/step-up", () => {
     expect(json.error).toBe("validationFailed")
   })
 
-  it("403 mfaEnrollmentRequired si user n'a pas MFA activée", async () => {
+  it("LOW-4 — 401 mfaEnrollmentRequired + WWW-Authenticate + X-Step-Up-Required (alignement)", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       mfaEnabled: false,
     } as never)
     const res = await POST(makeReq({ otp: "123456" }))
-    expect(res.status).toBe(403)
+    // A2 round 2 LOW-4 — aligné sur 401 + WWW-Authenticate (vs ancien 403 sans header).
+    expect(res.status).toBe(401)
     const json = await res.json()
     expect(json.error).toBe("mfaEnrollmentRequired")
+    expect(res.headers.get("WWW-Authenticate")).toContain(
+      `stepup reason="mfaEnrollmentRequired"`,
+    )
+    expect(res.headers.get("X-Step-Up-Required")).toBe("mfaEnrollmentRequired")
+    expect(res.headers.get("Cache-Control")).toContain("no-store")
     expect(mfaService.stepUp).not.toHaveBeenCalled()
   })
 
@@ -130,7 +136,7 @@ describe("POST /api/auth/mfa/step-up", () => {
     expect(prisma.user.findUnique).not.toHaveBeenCalled()
   })
 
-  it("200 succès → verifiedAt + expiresAt + audit MFA_STEP_UP_VERIFIED", async () => {
+  it("200 succès → verifiedAt + expiresAt + audit MFA_STEP_UP_VERIFIED + ANSSI headers", async () => {
     vi.mocked(prisma.user.findUnique).mockResolvedValue({
       mfaEnabled: true,
     } as never)
@@ -141,7 +147,7 @@ describe("POST /api/auth/mfa/step-up", () => {
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json.verifiedAt).toBe(verifiedAt.toISOString())
-    // expiresAt = verifiedAt + 5min
+    // M-1 — expiresAt aligné STEP_UP_WINDOW_SECONDS (vs ancien magic 5*60_000)
     expect(new Date(json.expiresAt).getTime()).toBe(verifiedAt.getTime() + 5 * 60_000)
 
     expect(auditService.log).toHaveBeenCalledTimes(1)
@@ -150,5 +156,79 @@ describe("POST /api/auth/mfa/step-up", () => {
       resource: "SESSION",
       resourceId: "sess-abc",
     })
+
+    // A2 round 2 H-1 — ANSSI baseline sur 200 succès aussi
+    expect(res.headers.get("Cache-Control")).toContain("no-store")
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff")
+    expect(res.headers.get("Referrer-Policy")).toBe("no-referrer")
+  })
+
+  // A2 round 2 H-T3 — Si clearAttempts throw, audit MFA_STEP_UP_VERIFIED
+  // doit quand-même être émis (preuve forensique HDS préservée).
+  it("H-T3 — clearAttempts throw → audit MFA_STEP_UP_VERIFIED quand-même émis + 200", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      mfaEnabled: true,
+    } as never)
+    const verifiedAt = new Date()
+    vi.mocked(mfaService.stepUp).mockResolvedValue(verifiedAt)
+    // Patch clearAttempts pour throw
+    const { clearAttempts } = await import("@/lib/auth")
+    vi.mocked(clearAttempts).mockRejectedValueOnce(new Error("Redis down"))
+
+    const res = await POST(makeReq({ otp: "123456" }))
+    expect(res.status).toBe(200)
+    // Audit MFA_STEP_UP_VERIFIED appelé même si clearAttempts a throw
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "MFA_STEP_UP_VERIFIED" }),
+    )
+  })
+
+  // A2 round 2 H-T3 — Si auditService.log throw, response 200 reste retournée
+  // (la session est déjà bumpée — le user ne doit pas voir un faux échec).
+  it("H-T3 — audit MFA_STEP_UP_VERIFIED throw → response 200 quand-même + session bumpée", async () => {
+    vi.mocked(prisma.user.findUnique).mockResolvedValue({
+      mfaEnabled: true,
+    } as never)
+    vi.mocked(mfaService.stepUp).mockResolvedValue(new Date())
+    vi.mocked(auditService.log).mockRejectedValueOnce(new Error("DB down"))
+
+    const res = await POST(makeReq({ otp: "123456" }))
+    expect(res.status).toBe(200)
+  })
+
+  // L9 — assertJsonContentType 415
+  it("L9 — Content-Type: text/plain → 415 unsupportedMediaType + ANSSI headers", async () => {
+    const headers = new Headers({
+      "content-type": "text/plain",
+      "x-user-id": "1",
+      "x-user-role": "ADMIN",
+      "x-session-id": "sess-abc",
+    })
+    const req = new NextRequest(new URL("http://test.local/api/auth/mfa/step-up"), {
+      method: "POST",
+      headers,
+      body: "otp=123456",
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(415)
+    expect(res.headers.get("Cache-Control")).toContain("no-store")
+  })
+
+  // L9 — assertBodySize 413
+  it("L9 — Content-Length > 1024 → 413 payloadTooLarge", async () => {
+    const headers = new Headers({
+      "content-type": "application/json",
+      "x-user-id": "1",
+      "x-user-role": "ADMIN",
+      "x-session-id": "sess-abc",
+      "content-length": "10000",
+    })
+    const req = new NextRequest(new URL("http://test.local/api/auth/mfa/step-up"), {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ otp: "123456" }),
+    })
+    const res = await POST(req)
+    expect(res.status).toBe(413)
   })
 })

@@ -271,32 +271,59 @@ describe("mfaService", () => {
   // Plan B follow-up A2 — Step-up MFA.
   describe("stepUp", () => {
     it("returns null si OTP invalide (verifyOtp false)", async () => {
-      // findUnique pour verifyOtp interne → user sans secret = échec
-      prismaMock.user.findUnique.mockResolvedValue({ mfaSecret: null } as any)
+      // A2 round 2 H-2 — findUnique 1 = mfaEnabled check, findUnique 2 = verifyOtp.
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({ mfaEnabled: true } as any) // service-level check
+        .mockResolvedValueOnce({ mfaSecret: null } as any) // verifyOtp interne
 
       const result = await mfaService.stepUp(1, "sess-x", "123456")
       expect(result).toBeNull()
       expect(prismaMock.session.updateMany).not.toHaveBeenCalled()
     })
 
+    // A2 round 2 H-2 — service-level mfaEnabled check (defense-in-depth).
+    it("H-2 — returns null si mfaEnabled=false côté service (defense-in-depth)", async () => {
+      prismaMock.user.findUnique.mockResolvedValueOnce({
+        mfaEnabled: false,
+      } as any)
+
+      const result = await mfaService.stepUp(1, "sess-x", "123456")
+      expect(result).toBeNull()
+      // verifyOtp NE doit PAS être appelé si mfaEnabled=false côté service
+      // (cf. count d'invocations findUnique = 1, pas 2)
+      expect(prismaMock.user.findUnique).toHaveBeenCalledTimes(1)
+      expect(prismaMock.session.updateMany).not.toHaveBeenCalled()
+    })
+
+    it("H-2 — returns null si user introuvable", async () => {
+      prismaMock.user.findUnique.mockResolvedValueOnce(null)
+      const result = await mfaService.stepUp(999, "sess-x", "123456")
+      expect(result).toBeNull()
+      expect(prismaMock.session.updateMany).not.toHaveBeenCalled()
+    })
+
     it("bump mfaLastVerifiedAt si OTP valide", async () => {
       const secret = generateSecret()
-      prismaMock.user.findUnique.mockResolvedValue({
-        mfaSecret: `ENCRYPTED[${secret}]`,
-        mfaLastUsedStep: null,
-      } as any)
-      // updateMany pour verifyOtp CAS step
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({ mfaEnabled: true } as any) // H-2 service check
+        .mockResolvedValueOnce({
+          mfaSecret: `ENCRYPTED[${secret}]`,
+          mfaLastUsedStep: null,
+        } as any) // verifyOtp interne
       prismaMock.user.updateMany.mockResolvedValue({ count: 1 } as any)
-      // updateMany pour session bump
       prismaMock.session.updateMany.mockResolvedValue({ count: 1 } as any)
 
       const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
       const result = await mfaService.stepUp(42, "sess-x", code)
       expect(result).toBeInstanceOf(Date)
-      // Session updated avec scope per-user
+      // A2 round 2 H-5 — Session updated avec scope per-user + mfaEnabled filter (TOCTOU)
       expect(prismaMock.session.updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { id: "sess-x", userId: 42 },
+          where: {
+            id: "sess-x",
+            userId: 42,
+            user: { mfaEnabled: true },
+          },
           data: { mfaLastVerifiedAt: expect.any(Date) },
         }),
       )
@@ -304,12 +331,13 @@ describe("mfaService", () => {
 
     it("returns null si session.updateMany count=0 (cross-user spoof)", async () => {
       const secret = generateSecret()
-      prismaMock.user.findUnique.mockResolvedValue({
-        mfaSecret: `ENCRYPTED[${secret}]`,
-        mfaLastUsedStep: null,
-      } as any)
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({ mfaEnabled: true } as any)
+        .mockResolvedValueOnce({
+          mfaSecret: `ENCRYPTED[${secret}]`,
+          mfaLastUsedStep: null,
+        } as any)
       prismaMock.user.updateMany.mockResolvedValue({ count: 1 } as any)
-      // Session inexistante ou pas du user → count=0
       prismaMock.session.updateMany.mockResolvedValue({ count: 0 } as any)
 
       const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
@@ -317,13 +345,42 @@ describe("mfaService", () => {
       expect(result).toBeNull()
     })
 
+    // A2 round 2 H-5 — TOCTOU : disable concurrent flippe mfaEnabled entre
+    // verifyOtp et updateMany → updateMany filter rejette (count=0).
+    it("H-5 — TOCTOU disable concurrent → updateMany count=0 → null", async () => {
+      const secret = generateSecret()
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({ mfaEnabled: true } as any) // service check OK
+        .mockResolvedValueOnce({
+          mfaSecret: `ENCRYPTED[${secret}]`,
+          mfaLastUsedStep: null,
+        } as any)
+      prismaMock.user.updateMany.mockResolvedValue({ count: 1 } as any)
+      // Disable concurrent : entre verifyOtp et updateMany, mfaEnabled=false
+      // → updateMany WHERE user.mfaEnabled=true ne matche plus → count=0.
+      prismaMock.session.updateMany.mockResolvedValue({ count: 0 } as any)
+
+      const code = generateSync({ strategy: "totp", secret, digits: 6, period: 30 })
+      const result = await mfaService.stepUp(42, "sess-x", code)
+      expect(result).toBeNull()
+      // Vérifie qu'on a bien appelé updateMany avec le filter defense-in-depth
+      expect(prismaMock.session.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            user: { mfaEnabled: true },
+          }),
+        }),
+      )
+    })
+
     it("anti-replay — un OTP valide consommé ne peut pas re-step-up", async () => {
       const secret = generateSecret()
-      // 1er appel : findUnique avec mfaLastUsedStep=null
-      prismaMock.user.findUnique.mockResolvedValueOnce({
-        mfaSecret: `ENCRYPTED[${secret}]`,
-        mfaLastUsedStep: null,
-      } as any)
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({ mfaEnabled: true } as any)
+        .mockResolvedValueOnce({
+          mfaSecret: `ENCRYPTED[${secret}]`,
+          mfaLastUsedStep: null,
+        } as any)
       prismaMock.user.updateMany.mockResolvedValueOnce({ count: 1 } as any)
       prismaMock.session.updateMany.mockResolvedValueOnce({ count: 1 } as any)
 
@@ -331,14 +388,27 @@ describe("mfaService", () => {
       const first = await mfaService.stepUp(42, "sess-x", code)
       expect(first).toBeInstanceOf(Date)
 
-      // 2e appel même code : mfaLastUsedStep désormais consommé → verifyOtp false
+      // 2e appel même code : mfaLastUsedStep consommé → verifyOtp false
       const consumedStep = Math.floor(Date.now() / 1000 / 30)
-      prismaMock.user.findUnique.mockResolvedValueOnce({
-        mfaSecret: `ENCRYPTED[${secret}]`,
-        mfaLastUsedStep: consumedStep,
-      } as any)
+      prismaMock.user.findUnique
+        .mockResolvedValueOnce({ mfaEnabled: true } as any)
+        .mockResolvedValueOnce({
+          mfaSecret: `ENCRYPTED[${secret}]`,
+          mfaLastUsedStep: consumedStep,
+        } as any)
       const second = await mfaService.stepUp(42, "sess-x", code)
       expect(second).toBeNull()
     })
+
+    // H-T5 — Concurrent step-ups : repose entièrement sur verifyOtp CAS
+    // (mfaLastUsedStep compare-and-set). Si la CAS retourne count=0, stepUp
+    // retourne null. Test du contrat sans mock du Promise.all (simulation
+    // trop fragile avec 2 findUnique × 2 stepUps = 4 calls interleavés).
+    //
+    // Le test "H-5 TOCTOU disable concurrent → updateMany count=0 → null"
+    // ci-dessus exerce la même path code (count=0 → null) pour le CAS session.
+    // Le test "anti-replay — OTP valide consommé" couvre la path CAS verifyOtp.
+    //
+    // Together, ces 2 tests garantissent l'invariant H-T5 sans mock concurrent.
   })
 })

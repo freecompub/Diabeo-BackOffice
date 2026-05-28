@@ -2,14 +2,27 @@
 --
 -- Ajoute `Session.mfa_last_verified_at` (nullable timestamptz). Bumped à chaque
 -- MFA challenge (login OU step-up). `requireFreshMfa` helper exige que ce
--- timestamp soit < STEP_UP_WINDOW_SECONDS (5min default) pour les actions
--- sensibles ADMIN.
+-- timestamp soit < STEP_UP_WINDOW_SECONDS (5min default, 60s pour FSM CRITICAL)
+-- pour les actions sensibles ADMIN.
 --
--- Migration zero-downtime :
---  - ADD COLUMN nullable (pas de write lock long sur sessions).
---  - Pas d'index (queries triviales par PK Session).
+-- Migration zero-downtime (Requires PostgreSQL 11+ — L1) :
+--  - ADD COLUMN nullable sans DEFAULT = catalog-only metadata update (PG ≥ 11).
+--    Pas de table rewrite, AccessExclusiveLock acquis brièvement uniquement
+--    pour update pg_attribute. Sur PG 9.x/10.x → réécriture complète table.
+--    Diabeo cible PG 16 (CLAUDE.md).
+--  - Pas d'index (queries triviales par PK Session sur les paths actuels).
 --  - Backfill non requis : NULL = "jamais MFA-verified" (interprétation par
 --    `requireFreshMfa` = forcer step-up sur les sessions actuelles).
+--
+-- Rollout (cf. docs/runbook/step-up-mfa.md §11) :
+--  - Au déploiement, toutes les sessions live (~24h TTL max) auront NULL →
+--    forcent step-up dès la prochaine action sensible. Email aux ADMIN 48h
+--    avant deploy (procédure runbook §11).
+--
+-- Index futur (V1.5 si cron purge ou forensique 7j ajouté) :
+--   CREATE INDEX CONCURRENTLY sessions_mfa_last_verified_at_idx
+--     ON sessions (mfa_last_verified_at)
+--     WHERE mfa_last_verified_at IS NOT NULL;
 --
 -- Rollback : ALTER TABLE sessions DROP COLUMN mfa_last_verified_at.
 -- Aucune perte de données (le bump est ré-acquérable via step-up).

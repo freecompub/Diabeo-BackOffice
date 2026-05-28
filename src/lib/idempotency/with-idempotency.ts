@@ -80,6 +80,17 @@ function shouldSkipCache(status: number): boolean {
   return false
 }
 
+/**
+ * A2 round 2 C-1 — Détecte les responses 401 issues du gate step-up MFA
+ * (`WWW-Authenticate: stepup ...`). Ces 401 NE doivent PAS être cachées :
+ * sans ce skip, le user qui fait step-up + retry avec même Idempotency-Key
+ * recevrait la 401 cachée en boucle (contrat runbook §3.3 cassé).
+ */
+function isStepUpResponse(response: Response): boolean {
+  const wwwAuth = response.headers.get("www-authenticate")
+  return wwwAuth !== null && wwwAuth.toLowerCase().startsWith("stepup")
+}
+
 /** Ne cache que les responses JSON (H-TA-1 + LOW-HSA-3). */
 function isJsonContentType(contentType: string | null): boolean {
   if (!contentType) return false
@@ -280,6 +291,18 @@ export function withIdempotency<Ctx>(
     // Strip transient codes (H-CR-2) + 5xx — release lock pour retry.
     if (shouldSkipCache(response.status)) {
       await idempotencyService.releasePending(idemKey, userId)
+      return response
+    }
+
+    // A2 round 2 C-1 — Skip cache si 401 step-up MFA (WWW-Authenticate: stepup).
+    // Le user doit pouvoir retry avec même Idempotency-Key après step-up réussi
+    // sans recevoir la 401 cachée en boucle.
+    if (response.status === 401 && isStepUpResponse(response)) {
+      await idempotencyService.releasePending(idemKey, userId)
+      logger.debug?.("idempotency", "step-up 401 skipped cache", {
+        kind: "idem.cache.skip_stepup",
+        action: options.route,
+      })
       return response
     }
 

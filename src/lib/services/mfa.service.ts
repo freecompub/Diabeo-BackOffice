@@ -202,37 +202,52 @@ export const mfaService = {
   /**
    * Plan B follow-up A2 — Step-up MFA verification.
    *
-   * Verify OTP AND bump `Session.mfaLastVerifiedAt` for freshness checks on
-   * sensitive admin endpoints. Returns the bumped timestamp or null if OTP
-   * invalid / MFA disabled.
+   * **A2 round 2 H-2** — Defense-in-depth : check `mfaEnabled = true`
+   * AVANT `verifyOtp` (le service est autonome, ne dépend plus du caller
+   * pour cette garde — un autre endpoint ou CLI tool qui appellerait
+   * `mfaService.stepUp` sans pré-check ne pourrait pas bumper sur un user
+   * en setup-in-progress).
    *
-   * Distinct from `verifyOtp` :
-   *   - exige `mfaEnabled = true` (refuse setup-in-progress).
-   *   - bump une colonne Session (vs colonne User `mfaLastUsedStep` qui ne
-   *     porte que l'anti-replay TOTP).
-   *   - écrit même si l'OTP est rejoué dans la même fenêtre `mfaLastUsedStep`
-   *     (verifyOtp retournerait `false` → on retourne null sans bump).
+   * **A2 round 2 H-5** — Defense-in-depth TOCTOU : le `updateMany` final
+   * filtre `WHERE userId AND id AND user.mfaEnabled=true` (jointure via
+   * relation) → si `disable` concurrent flippe `mfaEnabled = false` entre
+   * notre lecture et l'update, le bump retourne count=0 (refus atomique).
    *
-   * **Anti-replay** : repose entièrement sur `verifyOtp` (compare-and-set
-   * `mfaLastUsedStep`). Si l'OTP est rejoué → `verifyOtp` retourne `false` →
-   * step-up échoue. Pas de risque "même OTP réutilisé pour 2 step-ups".
+   * Verify OTP AND bump `Session.mfaLastVerifiedAt`. Returns le timestamp
+   * bumpé ou null si :
+   *   - user introuvable
+   *   - `mfaEnabled = false` (setup-in-progress ou MFA désactivée)
+   *   - OTP invalide ou rejoué
+   *   - session inexistante / pas du user (cross-user spoof)
+   *   - disable concurrent (TOCTOU rejected par updateMany filter)
    *
-   * **Session FK** : le caller doit s'assurer que `sessionId` appartient au
-   * user (helper `requireFreshMfa` valide via `auth/session.ts`).
+   * **Anti-replay** : repose sur `verifyOtp` CAS sur `mfaLastUsedStep`.
    */
   async stepUp(
     userId: number,
     sessionId: string,
     otp: string,
   ): Promise<Date | null> {
+    // H-2 — Service-level mfaEnabled check (defense-in-depth).
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { mfaEnabled: true },
+    })
+    if (!user?.mfaEnabled) return null
+
     const ok = await mfaService.verifyOtp(userId, otp)
     if (!ok) return null
 
-    // Vérifier que la session existe et appartient au user AVANT bump.
-    // updateMany sur (id, userId) atomique anti-cross-user replay.
+    // H-5 — TOCTOU defense : `user.mfaEnabled = true` filter dans le
+    // updateMany. Si `disable` concurrent a flippé après verifyOtp →
+    // count=0 → no bump. Aligné Prisma 7+ relation filter syntax.
     const verifiedAt = new Date()
     const updated = await prisma.session.updateMany({
-      where: { id: sessionId, userId },
+      where: {
+        id: sessionId,
+        userId,
+        user: { mfaEnabled: true },
+      },
       data: { mfaLastVerifiedAt: verifiedAt },
     })
     if (updated.count !== 1) return null

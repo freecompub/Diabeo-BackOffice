@@ -32,8 +32,9 @@ export async function createSession(
       // Plan B follow-up A2 — Si MFA-verified au login, bumper aussi
       // `mfaLastVerifiedAt` pour que les actions sensibles dans les 5min
       // suivantes ne demandent pas de step-up immédiat (UX cohérent —
-      // l'utilisateur vient de prouver MFA).
-      mfaLastVerifiedAt: opts.mfaVerified ? new Date() : undefined,
+      // l'utilisateur vient de prouver MFA). L2 — `null` explicite
+      // sémantique "pas de valeur" vs `undefined` (= field absent).
+      mfaLastVerifiedAt: opts.mfaVerified ? new Date() : null,
       ipAddress: opts.ipAddress,
       userAgent: opts.userAgent ? opts.userAgent.slice(0, 500) : undefined,
     },

@@ -24,9 +24,17 @@
 import { NextResponse } from "next/server"
 import { prisma } from "@/lib/db/client"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 /** Fenêtre de fraîcheur — 5 min, cohérent avec UX banking apps. */
 export const STEP_UP_WINDOW_SECONDS = 5 * 60
+
+/**
+ * A2 round 2 H-4 — Fenêtre durcie 1 min pour actions à impact externe
+ * irréversible (notif CNIL via FSM data-breach transitions, exports PHI
+ * massifs, JWT revoke forcés). Aligné banking apps "live mode" Stripe.
+ */
+export const STEP_UP_WINDOW_SECONDS_CRITICAL = 60
 
 export type StepUpReason = "mfaEnrollmentRequired" | "stepUpRequired"
 
@@ -40,12 +48,19 @@ export type StepUpCheck =
  * @param userId — depuis `requireAuth(req).id`
  * @param sessionId — depuis `requireAuth(req).sessionId`. Si absent → flow
  *   legacy JWT sans sid → on retourne `stepUpRequired` (force migration).
+ * @param options.windowSeconds — fenêtre de fraîcheur custom. Default
+ *   `STEP_UP_WINDOW_SECONDS` (5 min). Pour actions à impact externe
+ *   irréversible (FSM data-breach CNIL), passer `STEP_UP_WINDOW_SECONDS_CRITICAL`
+ *   (1 min) — A2 round 2 H-4.
  */
 export async function checkFreshMfa(
   userId: number,
   sessionId: string | undefined,
+  options?: { windowSeconds?: number },
 ): Promise<StepUpCheck> {
   if (!sessionId) return { ok: false, reason: "stepUpRequired" }
+
+  const windowSeconds = options?.windowSeconds ?? STEP_UP_WINDOW_SECONDS
 
   // Une seule query : session + user.mfaEnabled (FK constraint garantit
   // session.userId === userId, mais on guarde quand même en filter pour
@@ -73,7 +88,7 @@ export async function checkFreshMfa(
   }
 
   const ageSec = (Date.now() - session.mfaLastVerifiedAt.getTime()) / 1000
-  if (ageSec >= STEP_UP_WINDOW_SECONDS) {
+  if (ageSec >= windowSeconds) {
     return { ok: false, reason: "stepUpRequired" }
   }
 
@@ -81,9 +96,19 @@ export async function checkFreshMfa(
 }
 
 /**
- * Variante "throw-style" alignée avec `requireAuth` / `requireRole` —
- * lance `StepUpRequiredError` si pas fresh. Le caller catch et renvoie via
- * `stepUpErrorResponse(err.reason, ctx, ...)`.
+ * Variante "throw-style" alignée avec `requireAuth` / `requireRole`.
+ *
+ * **A2 round 2 LO-6 / M-8** — Réservé pour usage futur : pattern HOF
+ * intercepteur type `withAuth(role, freshMfa)` qui consoliderait
+ * `requireRole + requireFreshMfa` en une seule annotation. Pas câblé dans
+ * `mapErrorToResponse` actuellement (les routes adoptantes utilisent
+ * `checkFreshMfa` return-style + `stepUpErrorResponse` pour conserver le
+ * contrôle sur l'audit metadata.route route-spécifique).
+ *
+ * Si un caller adopte cette variante : catch `StepUpRequiredError` et
+ * appeler `stepUpErrorResponse(err.reason, userId, sessionId, ctx, ...)`
+ * manuellement OU enrichir `mapErrorToResponse` avec un `stepUpTarget`
+ * analogue à `auditTarget`.
  */
 export class StepUpRequiredError extends Error {
   constructor(public reason: StepUpReason) {
@@ -95,19 +120,35 @@ export class StepUpRequiredError extends Error {
 export async function requireFreshMfa(
   userId: number,
   sessionId: string | undefined,
+  options?: { windowSeconds?: number },
 ): Promise<Date> {
-  const result = await checkFreshMfa(userId, sessionId)
+  const result = await checkFreshMfa(userId, sessionId, options)
   if (!result.ok) throw new StepUpRequiredError(result.reason)
   return result.verifiedAt
 }
 
 /**
+ * Whitelist explicite des `reason` autorisées dans le header
+ * `WWW-Authenticate` (LO-1 defense-in-depth anti CRLF injection si un
+ * futur dev introduit `reason` venant d'input utilisateur).
+ */
+const ALLOWED_STEP_UP_REASONS: ReadonlySet<StepUpReason> = new Set<StepUpReason>([
+  "mfaEnrollmentRequired",
+  "stepUpRequired",
+])
+
+/**
  * Construit la response 401 avec `WWW-Authenticate: stepup` + audit
- * `MFA_STEP_UP_REQUIRED` (US-2265 burst detection sur répétition).
+ * `MFA_STEP_UP_REQUIRED` via `auditService.requireStepUp` (A2 round 2 C-2 —
+ * câble US-2265 burst detection : 50 events / 60s → RBAC_BREACH_BURST).
  *
  * Le client UI doit détecter ce header et :
  *   - `reason=mfaEnrollmentRequired` → rediriger vers `/account/security` setup
  *   - `reason=stepUpRequired` → afficher prompt OTP, POST step-up, retry action
+ *
+ * **A2 round 2 H-3** — Le custom header `X-Step-Up-Required: <reason>` est
+ * AUSSI émis pour les clients qui ne parsent pas les schemes RFC 7235 custom
+ * (browsers natifs, OkHttp Android, NSURLSession iOS interceptors génériques).
  */
 export async function stepUpErrorResponse(
   reason: StepUpReason,
@@ -116,20 +157,39 @@ export async function stepUpErrorResponse(
   ctx: AuditContext,
   routeMeta: { route: string },
 ): Promise<NextResponse> {
-  // Audit best-effort — un fail audit ne doit pas bloquer la response 401.
+  // LO-1 — defense-in-depth whitelist (typage TS `StepUpReason` deja restrictif,
+  // mais une régression future qui ouvre le type à `string` serait bloquée ici).
+  if (!ALLOWED_STEP_UP_REASONS.has(reason)) {
+    throw new Error(`stepUpErrorResponse: invalid reason "${reason}"`)
+  }
+
+  // A2 round 2 LO-2 — Sentinel explicite pour les JWT legacy sans sid.
+  const auditResourceId = sessionId ?? "jwt-legacy-no-sid"
+
+  // A2 round 2 M-10 — logger.warn sur audit fail (vs silent swallow).
+  // C-2 — utilise requireStepUp (câble burst detection US-2265).
   try {
-    await auditService.log({
+    await auditService.requireStepUp({
       userId,
-      action: "MFA_STEP_UP_REQUIRED",
       resource: "SESSION",
-      resourceId: sessionId ?? "no-session",
+      resourceId: auditResourceId,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
       requestId: ctx.requestId,
-      metadata: { route: routeMeta.route, reason },
+      metadata: {
+        route: routeMeta.route,
+        reason,
+        legacyJwt: sessionId === undefined ? true : undefined,
+      },
     })
-  } catch {
-    // silent — instrumenté via logger.warn dans audit.service.ts
+  } catch (err) {
+    logger.warn("auth/step-up", "audit MFA_STEP_UP_REQUIRED failed", {
+      kind: "stepup.audit.failed",
+      userId,
+      requestId: ctx.requestId,
+      action: routeMeta.route,
+      failMode: err instanceof Error ? err.message : String(err),
+    })
   }
 
   return NextResponse.json(
@@ -138,11 +198,15 @@ export async function stepUpErrorResponse(
       status: 401,
       headers: {
         // RFC 7235 — challenge scheme custom `stepup` + param `reason`.
-        // Le client iOS/web parse pour différencier enrôlement vs re-prove.
         "WWW-Authenticate": `stepup reason="${reason}", realm="diabeo"`,
+        // H-3 — header custom non-RFC pour clients qui ne parsent pas
+        // WWW-Authenticate (interceptors fetch génériques, OkHttp natif).
+        "X-Step-Up-Required": reason,
         // ANSSI RGS §4.5 — pas de cache sur 401 sensibles.
         "Cache-Control": "no-store, no-cache, must-revalidate, private",
-        "Pragma": "no-cache",
+        Pragma: "no-cache",
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "no-referrer",
       },
     },
   )
