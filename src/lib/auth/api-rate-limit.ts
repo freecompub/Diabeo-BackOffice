@@ -136,6 +136,12 @@ export async function checkApiRateLimit(
   return { allowed: true, remaining: Math.max(0, max - entry.count), retryAfterSec: retryAfter }
 }
 
+/**
+ * A4 round 2 M-5 — Const partagée pour dériver `adminBackupTrigger` (user)
+ * et `adminBackupTriggerIp` sans risque de drift textual.
+ */
+const ADMIN_BACKUP_BUCKET_BASE = "admin-backup-trigger" as const
+
 /** Preset configurations for common endpoint families. */
 export const RATE_LIMITS = {
   /** Analytics reads: 30 req/60 s/user. Fail-open — availability first. */
@@ -194,33 +200,35 @@ export const RATE_LIMITS = {
    * Plan B follow-up A4 — ADMIN manual backup trigger per-user.
    *
    * Le service `backupService.trigger` a déjà un `backup_already_in_progress`
-   * guard (409 si un backup pending/running existe), MAIS aucune protection
-   * volumétrique : un ADMIN compromis peut spammer POST → flood audit_logs +
-   * count queries DB + pg_dump pile-up si les workers se débloquent en
-   * cascade.
+   * guard (409), MAIS aucune protection volumétrique. Un ADMIN compromis
+   * peut spammer POST → flood audit_logs + count queries DB + pg_dump
+   * pile-up si workers se débloquent en cascade.
    *
-   * 5 req/h/user fail-closed — aligné `fhirRetryAdmin` (5/h) + `exportUser`
-   * (3/h). Diabeo prod : 1 backup/jour automatique + 1-2 manuels = 3/h
-   * raisonnable plafond. Fail-closed car backup = action OPS sensible avec
-   * impact disk/S3.
+   * **A4 round 2 C-3** — Cap réduit 5→3/h aligné `exportUser` (RGPD Art.
+   * 20 = 1 user PHI déchiffré). Justification : un backup = dump
+   * PostgreSQL complet = TOUS les PHI Diabeo (× 50k patients). La
+   * sensibilité est × 50000 supérieure à `exportUser`. Le besoin métier
+   * réel est 1-2/h (runbook §1) — 3/h reste × 1.5 marge.
    */
   adminBackupTrigger: {
-    bucket: "admin-backup-trigger",
+    bucket: `${ADMIN_BACKUP_BUCKET_BASE}`,
     windowSec: 3600,
-    max: 5,
+    max: 3,
     failMode: "closed",
   } satisfies ApiRateLimitConfig,
   /**
    * Plan B follow-up A4 — ADMIN backup trigger per-IP defense.
    *
-   * Si un attacker vole un cookie session ET rotate les sessions
-   * (multi-account compromis), le per-user bucket ne le voit pas. Per-IP
-   * cap 10/h limite l'attaque cross-session par IP source.
+   * **A4 round 2 C-3** — Cap réduit 10→6/h cohérent avec 3/h user × 2
+   * ADMIN simultanés max. Si > 6/h depuis 1 IP source = signal anormal.
+   *
+   * **A4 round 2 M-5** — Bucket name dérivé de `ADMIN_BACKUP_BUCKET_BASE`
+   * (anti-drift si renommage).
    */
   adminBackupTriggerIp: {
-    bucket: "admin-backup-trigger-ip",
+    bucket: `${ADMIN_BACKUP_BUCKET_BASE}-ip`,
     windowSec: 3600,
-    max: 10,
+    max: 6,
     failMode: "closed",
   } satisfies ApiRateLimitConfig,
 } as const
