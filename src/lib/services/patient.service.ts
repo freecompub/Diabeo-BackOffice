@@ -452,7 +452,9 @@ export const patientService = {
     const limit = Math.min(Math.max(input.limit ?? 25, 1), 50)
 
     if (input.accessibleIds !== null && input.accessibleIds.length === 0) {
-      await auditService.log({
+      // A3 — coalesced (search avec 0 résultats = haute fréquence sur clic
+      // de filtres restrictifs — un audit row toutes les 30s suffit).
+      await auditService.logCoalesced({
         userId: auditUserId,
         action: "READ",
         resource: "PATIENT",
@@ -509,7 +511,11 @@ export const patientService = {
     const page = hasMore ? items.slice(0, limit) : items
     const nextCursor = hasMore ? (page[page.length - 1]?.id ?? null) : null
 
-    await auditService.log({
+    // A3 — coalesced (search list = haute fréquence avec scrolling/pagination
+    // → un audit row toutes les 30s suffit. resourceId="search" uniforme
+    // donc cohérent avec coalescing pattern keyed (userId, action, resource,
+    // resourceId).
+    await auditService.logCoalesced({
       userId: auditUserId,
       action: "READ",
       resource: "PATIENT",

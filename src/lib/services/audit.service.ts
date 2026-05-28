@@ -443,6 +443,32 @@ export const auditService = {
   },
 
   /**
+   * Plan B follow-up A3 — Coalesced audit logging pour events haute fréquence.
+   *
+   * Au lieu d'1 row par event, accumule dans un buffer mémoire (keyed par
+   * `userId:action:resource:resourceId`) et flush 1 row toutes les 30s (ou
+   * sur SIGTERM/cap atteint). La row insérée porte `metadata.coalesced = {
+   * count, firstAt, lastAt }`.
+   *
+   * **Usage strict** :
+   *   - ✅ READ list views (patient list, dashboard analytics, CGM polling).
+   *   - ✅ IDEMPOTENT_REPLAY (déjà fréquent — PR #462).
+   *   - ❌ Mutations (CREATE/UPDATE/DELETE) — forensique HDS 1:1 requise.
+   *   - ❌ Auth events (LOGIN/UNAUTHORIZED) — sécurité visibilité 1:1.
+   *   - ❌ Clinique (BOLUS_CALCULATED, EXPORT) — conformité 1:1.
+   *
+   * Voir `docs/runbook/audit-coalescing.md` §3 critères d'adoption.
+   *
+   * @returns void (le row est inséré async lors du prochain flush).
+   */
+  async logCoalesced(entry: AuditLogEntry): Promise<void> {
+    // Import lazy pour casser le cycle (audit-coalescing.service importe
+    // AuditLogEntry depuis ici).
+    const { enqueueCoalesced } = await import("./audit-coalescing.service")
+    await enqueueCoalesced(entry)
+  },
+
+  /**
    * Log within an existing Prisma transaction — ensures atomicity.
    * Used by services that log multiple operations (bolus + audit, patient create + audit, etc.).
    * @async
