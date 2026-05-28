@@ -198,4 +198,59 @@ export const mfaService = {
       data: { mfaSecret: null, mfaEnabled: false, mfaLastUsedStep: null },
     })
   },
+
+  /**
+   * Plan B follow-up A2 — Step-up MFA verification.
+   *
+   * **A2 round 2 H-2** — Defense-in-depth : check `mfaEnabled = true`
+   * AVANT `verifyOtp` (le service est autonome, ne dépend plus du caller
+   * pour cette garde — un autre endpoint ou CLI tool qui appellerait
+   * `mfaService.stepUp` sans pré-check ne pourrait pas bumper sur un user
+   * en setup-in-progress).
+   *
+   * **A2 round 2 H-5** — Defense-in-depth TOCTOU : le `updateMany` final
+   * filtre `WHERE userId AND id AND user.mfaEnabled=true` (jointure via
+   * relation) → si `disable` concurrent flippe `mfaEnabled = false` entre
+   * notre lecture et l'update, le bump retourne count=0 (refus atomique).
+   *
+   * Verify OTP AND bump `Session.mfaLastVerifiedAt`. Returns le timestamp
+   * bumpé ou null si :
+   *   - user introuvable
+   *   - `mfaEnabled = false` (setup-in-progress ou MFA désactivée)
+   *   - OTP invalide ou rejoué
+   *   - session inexistante / pas du user (cross-user spoof)
+   *   - disable concurrent (TOCTOU rejected par updateMany filter)
+   *
+   * **Anti-replay** : repose sur `verifyOtp` CAS sur `mfaLastUsedStep`.
+   */
+  async stepUp(
+    userId: number,
+    sessionId: string,
+    otp: string,
+  ): Promise<Date | null> {
+    // H-2 — Service-level mfaEnabled check (defense-in-depth).
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { mfaEnabled: true },
+    })
+    if (!user?.mfaEnabled) return null
+
+    const ok = await mfaService.verifyOtp(userId, otp)
+    if (!ok) return null
+
+    // H-5 — TOCTOU defense : `user.mfaEnabled = true` filter dans le
+    // updateMany. Si `disable` concurrent a flippé après verifyOtp →
+    // count=0 → no bump. Aligné Prisma 7+ relation filter syntax.
+    const verifiedAt = new Date()
+    const updated = await prisma.session.updateMany({
+      where: {
+        id: sessionId,
+        userId,
+        user: { mfaEnabled: true },
+      },
+      data: { mfaLastVerifiedAt: verifiedAt },
+    })
+    if (updated.count !== 1) return null
+    return verifiedAt
+  },
 }

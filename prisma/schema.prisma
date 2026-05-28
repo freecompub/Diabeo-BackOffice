@@ -483,6 +483,12 @@ model Session {
   /// True if this session was created via MFA challenge. HDS forensics:
   /// "which live sessions were second-factor-verified vs password-only".
   mfaVerified  Boolean  @default(false) @map("mfa_verified")
+  /// Plan B follow-up A2 — Step-up MFA freshness timestamp. Bumped à chaque
+  /// MFA challenge réussi (login OU step-up). `requireFreshMfa` exige que ce
+  /// timestamp soit < `STEP_UP_WINDOW_SECONDS` (5min) pour les actions
+  /// sensibles ADMIN (role/status changes, FSM data-breach transitions, etc.).
+  /// Null = jamais MFA-verified (login password-only).
+  mfaLastVerifiedAt DateTime? @map("mfa_last_verified_at") @db.Timestamptz()
   /// US-2007 (Groupe 9) — metadata pour la vue "Sessions multiples" UI :
   /// le user identifie chaque session par device/localisation et peut
   /// la révoquer. Pas de PHI — IP et UA déjà persistés en AuditLog.

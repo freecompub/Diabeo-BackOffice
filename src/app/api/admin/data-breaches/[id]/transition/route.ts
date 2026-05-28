@@ -6,7 +6,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { DataBreachStatus } from "@prisma/client"
-import { AuthError } from "@/lib/auth"
+import {
+  AuthError,
+  checkFreshMfa,
+  stepUpErrorResponse,
+  STEP_UP_WINDOW_SECONDS_CRITICAL,
+} from "@/lib/auth"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import {
   auditedRequireRole,
@@ -54,6 +59,20 @@ async function postHandler(
     const user = await auditedRequireRole(
       req, "ADMIN", ctx, "DATA_BREACH", String(parsedParams.data.id),
     )
+
+    // Plan B follow-up A2 round 2 H-4 — Step-up MFA exigé avec fenêtre
+    // durcie 1 min (CRITICAL) sur les FSM transitions data-breach :
+    // notification CNIL externe irréversible (RGPD Art. 33), email patients,
+    // sévérité gonflée potentielle si session compromise. Banking apps "live
+    // mode" Stripe = pattern équivalent.
+    const stepUp = await checkFreshMfa(user.id, user.sessionId, {
+      windowSeconds: STEP_UP_WINDOW_SECONDS_CRITICAL,
+    })
+    if (!stepUp.ok) {
+      return stepUpErrorResponse(stepUp.reason, user.id, user.sessionId, ctx, {
+        route: "admin/data-breaches/[id]/transition POST",
+      })
+    }
 
     const body = await req.json().catch(() => null)
     if (!body) return NextResponse.json({ error: "invalidJSON" }, { status: 400 })

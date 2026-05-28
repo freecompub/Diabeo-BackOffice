@@ -50,6 +50,16 @@ export type AuditAction =
   | "MFA_ENABLED"
   | "MFA_DISABLED"
   | "MFA_CHALLENGE_FAILED"
+  /**
+   * Plan B follow-up A2 — Step-up MFA réussi sur une action sensible
+   * ADMIN. resourceId = sessionId, metadata.route = endpoint protégé.
+   */
+  | "MFA_STEP_UP_VERIFIED"
+  /**
+   * Plan B follow-up A2 — Tentative d'action sensible refusée car MFA
+   * non-fresh OU non-enrolled. Burst detection US-2265 sur répétition.
+   */
+  | "MFA_STEP_UP_REQUIRED"
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"
@@ -653,6 +663,58 @@ export const auditService = {
     ])) as [AuditLogRow, AuditLogRow]
     markBurstEmitted(entry.userId, now)
     return { unauthorizedRow: txRows[0], burstRow: txRows[1] }
+  },
+
+  /**
+   * A2 round 2 C-2 — Émet `MFA_STEP_UP_REQUIRED` avec burst detection
+   * US-2265. Le pattern précédent (auditService.log direct) n'alimentait
+   * PAS `recordAndCheckBurst` → SOC aveugle aux sondages step-up massifs.
+   *
+   * Sémantique alignée `accessDenied` :
+   *   - Crée 1 row `MFA_STEP_UP_REQUIRED` par appel.
+   *   - Si même userId dépasse BURST_THRESHOLD (50) events / 60s →
+   *     émet aussi 1 row `RBAC_BREACH_BURST` atomique dans la même TX.
+   *   - Cooldown 60s entre 2 burst rows pour éviter log flood.
+   *
+   * @returns row MFA_STEP_UP_REQUIRED + optionnel burstRow.
+   */
+  async requireStepUp(
+    entry: AccessDeniedInput,
+  ): Promise<{ stepUpRow: AuditLogRow; burstRow: AuditLogRow | null }> {
+    const now = Date.now()
+    const eventsInWindow = recordAndCheckBurst(entry.userId, now)
+
+    if (eventsInWindow === null) {
+      const stepUpRow = await prisma.auditLog.create({
+        data: createAuditData({ ...entry, action: "MFA_STEP_UP_REQUIRED" }),
+      })
+      return { stepUpRow, burstRow: null }
+    }
+
+    const txRows = (await prisma.$transaction([
+      prisma.auditLog.create({
+        data: createAuditData({ ...entry, action: "MFA_STEP_UP_REQUIRED" }),
+      }),
+      prisma.auditLog.create({
+        data: createAuditData({
+          userId: entry.userId,
+          action: "RBAC_BREACH_BURST",
+          resource: entry.resource,
+          resourceId: entry.resourceId,
+          ipAddress: entry.ipAddress,
+          userAgent: entry.userAgent,
+          requestId: entry.requestId,
+          metadata: {
+            windowMs: BURST_WINDOW_MS,
+            threshold: BURST_THRESHOLD,
+            eventsInWindow,
+            kind: "step_up_required_burst",
+          },
+        }),
+      }),
+    ])) as [AuditLogRow, AuditLogRow]
+    markBurstEmitted(entry.userId, now)
+    return { stepUpRow: txRows[0], burstRow: txRows[1] }
   },
 }
 
