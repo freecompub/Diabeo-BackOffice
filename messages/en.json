@@ -1010,6 +1010,8 @@
     "adminBackups": "DB backups",
     "adminCabinets": "Cabinets",
     "adminInvoices": "Invoices",
+    "adminUsers": "Users",
+    "adminTaxRules": "Tax rules",
     "logout": "Sign out"
   }
 }

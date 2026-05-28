@@ -22,6 +22,8 @@ import {
   Heart,
   Building2,
   Receipt,
+  UserCog,
+  Percent,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
@@ -54,6 +56,9 @@ const navItems: ReadonlyArray<NavItem> = [
   { href: "/admin/cabinets", labelKey: "adminCabinets", icon: Building2, roles: ["ADMIN"] },
   // US-2102/2108 (iter 4 PR Plan B) — Admin invoices + PDF download.
   { href: "/admin/invoices", labelKey: "adminInvoices", icon: Receipt, roles: ["ADMIN"] },
+  // US-2148 + US-2110 (iter 5 PR Plan B FINAL) — Admin users + tax rules.
+  { href: "/admin/users", labelKey: "adminUsers", icon: UserCog, roles: ["ADMIN"] },
+  { href: "/admin/tax-rules", labelKey: "adminTaxRules", icon: Percent, roles: ["ADMIN"] },
 ]
 
 /**

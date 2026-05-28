@@ -1010,6 +1010,8 @@
     "adminBackups": "Backups DB",
     "adminCabinets": "Cabinets",
     "adminInvoices": "Factures",
+    "adminUsers": "Utilisateurs",
+    "adminTaxRules": "Regles fiscales",
     "logout": "Se deconnecter"
   }
 }

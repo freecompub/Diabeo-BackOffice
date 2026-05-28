@@ -1010,6 +1010,8 @@
     "adminBackups": "نسخ احتياطية",
     "adminCabinets": "العيادات",
     "adminInvoices": "الفواتير",
+    "adminUsers": "المستخدمون",
+    "adminTaxRules": "القواعد الضريبية",
     "logout": "تسجيل الخروج"
   }
 }
