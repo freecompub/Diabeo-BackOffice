@@ -124,6 +124,18 @@ function localDecryptField(value: string): string {
 }
 
 /**
+ * #474 R4 — Throttle process-local du warn de `safeDecrypt`. `safeDecrypt` est
+ * appelé ~16× par enregistrement sur les chemins de liste ; sans throttle, une
+ * mauvaise clé / un dump restauré émettrait des centaines de warns par requête
+ * (flooding Loki/OVH + corrélation volumétrique = fuite indirecte de la taille
+ * de cohorte). On émet au plus 1 warn / fenêtre / process, avec le compteur
+ * cumulé des occurrences supprimées (pattern aligné sur messaging.service).
+ */
+const DECRYPT_WARN_WINDOW_MS = 60_000
+let lastDecryptWarnAt = 0
+let suppressedDecryptWarns = 0
+
+/**
  * Safe decryption — returns null on error instead of throwing.
  * Used in read operations to handle corrupted or missing data gracefully.
  * @private
@@ -135,11 +147,26 @@ function safeDecrypt(value: string | null): string | null {
   try {
     return localDecryptField(value)
   } catch {
-    // #474 §11 — Surfacer le swallow silencieux : un échec de déchiffrement
-    // signale soit des données seedées en clair (dev — corrigé par le seed
-    // chiffré), soit un PHI réellement corrompu (prod — incident à investiguer).
-    // Aucune valeur loggée (PHI/ciphertext potentiel).
-    logger.warn("patient.service", "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)")
+    // #474 §11 — Surfacer le swallow silencieux : un échec signale soit des
+    // données seedées en clair (dev — corrigé par le seed chiffré), soit un PHI
+    // réellement corrompu / mauvaise clé (prod — incident à investiguer).
+    // Aucune valeur loggée (PHI/ciphertext potentiel) ; throttlé (R4) ; `kind`
+    // pour le filtrage SOC (R7).
+    const now = Date.now()
+    if (now - lastDecryptWarnAt >= DECRYPT_WARN_WINDOW_MS) {
+      logger.warn(
+        "patient.service",
+        "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)",
+        {
+          kind: "phi.decrypt.fail",
+          ...(suppressedDecryptWarns > 0 ? { cumulativeSuppressed: suppressedDecryptWarns } : {}),
+        },
+      )
+      lastDecryptWarnAt = now
+      suppressedDecryptWarns = 0
+    } else {
+      suppressedDecryptWarns++
+    }
     return null
   }
 }

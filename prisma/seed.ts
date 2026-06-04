@@ -12,7 +12,7 @@ import {
 import { PrismaPg } from "@prisma/adapter-pg"
 import { hash as bcryptHash } from "bcryptjs"
 import { assertSeedEnv } from "../src/lib/env"
-import { hmacEmail } from "../src/lib/crypto/hmac"
+import { hmacEmail, hmacField } from "../src/lib/crypto/hmac"
 import { encryptField } from "../src/lib/crypto/fields"
 // Fix M3 round 1 review PR #453 (Issue #448) — static imports pour le bloc
 // 9.bis Messages messagerie (vs dynamic `await import(...)` qui n'apporte
@@ -143,8 +143,8 @@ async function main() {
   console.log(`  ✓ ${insulinCatalog.length} insulins seeded`)
 
   // ─── 1. Users (5) ─────────────────────────────────────────
-  // NOTE: In production, firstname/lastname/email must be encrypted.
-  // Seeds use plaintext for readability — this is dev-only data.
+  // PII (email/firstname/lastname) chiffrées AES-256-GCM comme en production
+  // via `encUserPII` (#474) — voir ci-dessous.
 
   // Parallélise les bcrypt(12) (~250ms chacun) — 5×250ms séquentiel devient
   // ~250ms total. Acceptable même si le seed est run rare.
@@ -168,12 +168,25 @@ async function main() {
   // (AES-256-GCM base64). Sans ça, `patientService.safeDecrypt` (qui attend du
   // base64 chiffré) échoue silencieusement sur du texte clair → renvoie `null`
   // → les noms patients s'affichent "(?)" partout (liste, combobox, détail).
-  // `emailHmac` reste dérivé de l'email EN CLAIR → lookup login inchangé.
+  //
+  // R1 (review) — `firstnameHmac`/`lastnameHmac` peuplés (via `hmacField`) :
+  // `patientService.search` + admin users cherchent EXCLUSIVEMENT par ces HMAC,
+  // sinon la recherche par nom ne retourne aucun user seedé.
+  // `emailHmac` n'est PAS dans ce helper (R2) : il est dérivé du clair et figure
+  // déjà dans le `where` de l'upsert + le `create` ci-dessous — l'inclure dans
+  // `update` produirait un `SET email_hmac` redondant sur une colonne @unique.
+  //
+  // R3 (review) — utilisé en `update` pour AUTO-RÉPARER les rows seedées en clair
+  // (avant #474) sans wipe DB. Effet de bord assumé : AES-GCM ré-encrypte avec un
+  // IV aléatoire à chaque `db seed`, donc le ciphertext de ces colonnes n'est PAS
+  // byte-stable entre runs (le plaintext déchiffré, lui, l'est ; aucun snapshot
+  // ne compare ces colonnes).
   const encUserPII = (email: string, firstname: string, lastname: string) => ({
     email: encryptField(email),
-    emailHmac: hmacEmail(email),
     firstname: encryptField(firstname),
+    firstnameHmac: hmacField(firstname),
     lastname: encryptField(lastname),
+    lastnameHmac: hmacField(lastname),
   })
 
   const admin = await prisma.user.upsert({
@@ -185,6 +198,7 @@ async function main() {
     update: encUserPII("admin@diabeo.test", "Admin", "Test"),
     create: {
       ...encUserPII("admin@diabeo.test", "Admin", "Test"),
+      emailHmac: hmacEmail("admin@diabeo.test"),
       passwordHash: adminPasswordHash,
       title: "M.",
       role: Role.ADMIN,
@@ -199,6 +213,7 @@ async function main() {
     update: encUserPII("docteur@diabeo.test", "Sophie", "Martin"),
     create: {
       ...encUserPII("docteur@diabeo.test", "Sophie", "Martin"),
+      emailHmac: hmacEmail("docteur@diabeo.test"),
       passwordHash: doctorPasswordHash,
       title: "Dr",
       role: Role.DOCTOR,
@@ -213,6 +228,7 @@ async function main() {
     update: encUserPII("infirmiere@diabeo.test", "Marie", "Dupont"),
     create: {
       ...encUserPII("infirmiere@diabeo.test", "Marie", "Dupont"),
+      emailHmac: hmacEmail("infirmiere@diabeo.test"),
       passwordHash: nursePasswordHash,
       title: "Mme",
       role: Role.NURSE,
@@ -227,6 +243,7 @@ async function main() {
     update: encUserPII("patient.dt1@diabeo.test", "Jean", "Durand"),
     create: {
       ...encUserPII("patient.dt1@diabeo.test", "Jean", "Durand"),
+      emailHmac: hmacEmail("patient.dt1@diabeo.test"),
       passwordHash: patient1PasswordHash,
       sex: Sex.M,
       birthday: new Date("1990-03-15"),
@@ -243,6 +260,7 @@ async function main() {
     update: encUserPII("patient.dt2@diabeo.test", "Claire", "Bernard"),
     create: {
       ...encUserPII("patient.dt2@diabeo.test", "Claire", "Bernard"),
+      emailHmac: hmacEmail("patient.dt2@diabeo.test"),
       passwordHash: patient2PasswordHash,
       sex: Sex.F,
       birthday: new Date("1975-08-22"),
@@ -272,6 +290,7 @@ async function main() {
     update: encUserPII("patient.dt1bis@diabeo.test", "Lucas", "Petit"),
     create: {
       ...encUserPII("patient.dt1bis@diabeo.test", "Lucas", "Petit"),
+      emailHmac: hmacEmail("patient.dt1bis@diabeo.test"),
       passwordHash: extraPatientsPasswordHash,
       sex: Sex.M,
       birthday: new Date("1998-11-04"),
@@ -288,6 +307,7 @@ async function main() {
     update: encUserPII("patient.dt2bis@diabeo.test", "Hélène", "Moreau"),
     create: {
       ...encUserPII("patient.dt2bis@diabeo.test", "Hélène", "Moreau"),
+      emailHmac: hmacEmail("patient.dt2bis@diabeo.test"),
       passwordHash: extraPatientsPasswordHash,
       sex: Sex.F,
       birthday: new Date("1958-04-12"),
@@ -304,6 +324,7 @@ async function main() {
     update: encUserPII("patient.gd@diabeo.test", "Amélie", "Rousseau"),
     create: {
       ...encUserPII("patient.gd@diabeo.test", "Amélie", "Rousseau"),
+      emailHmac: hmacEmail("patient.gd@diabeo.test"),
       passwordHash: extraPatientsPasswordHash,
       sex: Sex.F,
       birthday: new Date("1993-07-19"),
