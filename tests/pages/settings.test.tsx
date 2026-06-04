@@ -35,7 +35,7 @@ globalThis.fetch = mockFetch
 // Import page AFTER mocks
 // ---------------------------------------------------------------------------
 
-import SettingsPage from "@/app/(dashboard)/settings/page"
+import { SettingsClient } from "@/app/(dashboard)/settings/SettingsClient"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -134,10 +134,11 @@ function setupFetchMocks() {
   })
 }
 
-async function renderAndWaitForLoad() {
+async function renderAndWaitForLoad(role: "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER" = "VIEWER") {
   setupFetchMocks()
   await act(async () => {
-    render(<SettingsPage />)
+    // role=VIEWER (patient) shows all sections — preserves existing assertions.
+    render(<SettingsClient role={role} />)
   })
   // Wait for loading to complete — look for the profile title text
   await waitFor(() => {
@@ -175,6 +176,27 @@ describe("SettingsPage", () => {
     for (const id of sectionIds) {
       const elements = screen.getAllByText(`profile.${id}.title`)
       expect(elements.length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  // ── #475 §7 — role gating ───────────────────────────────────────────────
+
+  it("hides patient-only sections for a DOCTOR (medicalData/administrative/dayMoments/privacy)", async () => {
+    await renderAndWaitForLoad("DOCTOR")
+
+    for (const hidden of ["medicalData", "administrative", "dayMoments", "privacy"]) {
+      expect(screen.queryByText(`profile.${hidden}.title`)).toBeNull()
+    }
+    // Pro-relevant sections remain visible.
+    for (const shown of ["personalInfo", "contact", "units", "notifications", "sessions"]) {
+      expect(screen.getAllByText(`profile.${shown}.title`).length).toBeGreaterThanOrEqual(1)
+    }
+  })
+
+  it("shows patient-only sections for a VIEWER (patient)", async () => {
+    await renderAndWaitForLoad("VIEWER")
+    for (const shown of ["medicalData", "administrative", "dayMoments", "privacy"]) {
+      expect(screen.getAllByText(`profile.${shown}.title`).length).toBeGreaterThanOrEqual(1)
     }
   })
 
