@@ -1,11 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { requireRole, AuthError, checkRateLimit, recordFailedAttempt } from "@/lib/auth"
 import {
   patientService,
   PatientCreationError,
 } from "@/lib/services/patient.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { emailService } from "@/lib/services/email.service"
 import { assertJsonContentType, assertBodySize } from "@/lib/team-route-helpers"
 import { logger } from "@/lib/logger"
@@ -24,11 +24,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-const currentYear = new Date().getFullYear()
-
 /**
  * Body schema for patient creation. Mirrors the `/patients/new` wizard.
  * `email` is normalised (trim + lowercase) so emailHmac lookups are stable.
+ * Upper bounds on year fields are evaluated at parse time (`new Date()` inside
+ * the refine) so a long-running process never rejects a valid next-year value
+ * after a New Year's Eve without a restart.
  */
 const createPatientSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(254),
@@ -42,8 +43,13 @@ const createPatientSchema = z.object({
     })
     .optional(),
   pathology: z.enum(["DT1", "DT2", "GD"]),
-  yearDiag: z.number().int().min(1900).max(currentYear).optional(),
+  yearDiag: z.number().int().min(1900)
+    .refine((v) => v <= new Date().getFullYear(), { message: "yearDiag in the future" })
+    .optional(),
 })
+
+/** Per-actor key throttling the email-existence conflict path (anti-enumeration). */
+const conflictRateKey = (userId: number) => `patient-create-conflict:${userId}`
 
 /**
  * POST /api/patients — create a new patient AND its backing User account.
@@ -54,8 +60,22 @@ const createPatientSchema = z.object({
  * `POST /api/patients/[id]/invite` (US-2025).
  */
 export async function POST(req: NextRequest) {
+  let actorId: number | undefined
   try {
     const user = requireRole(req, "NURSE")
+    actorId = user.id
+
+    // Anti-enumeration: if this actor has tripped the email-existence conflict
+    // limiter (repeated `emailExists` probes), short-circuit with 429 before
+    // doing any work. Successful creations never feed this counter, so legit
+    // bulk patient creation is unaffected.
+    const rl = await checkRateLimit(conflictRateKey(user.id))
+    if (rl.blocked) {
+      return NextResponse.json(
+        { error: "tooManyAttempts", retryAfter: rl.retryAfterSeconds },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSeconds ?? 60) } },
+      )
+    }
 
     const ctErr = assertJsonContentType(req)
     if (ctErr) return ctErr
@@ -105,11 +125,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
     if (error instanceof PatientCreationError) {
-      // Only known, non-leaky business code is `emailExists` (409 Conflict).
+      // `emailExists` reveals account existence (cross-tenant) — count it toward
+      // the anti-enumeration limiter and audit the conflict for burst detection
+      // (US-2265 spirit). No PII (no email) in the audit metadata.
+      if (error.code === "emailExists" && actorId !== undefined) {
+        await recordFailedAttempt(conflictRateKey(actorId))
+        await auditService.log({
+          userId: actorId,
+          action: "READ",
+          resource: "USER",
+          metadata: { kind: "patient.create.email_conflict" },
+          ...extractRequestContext(req),
+        }).catch(() => {})
+      }
       return NextResponse.json({ error: error.code }, { status: 409 })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[patients POST]", msg)
+    logger.error("api/patients", "POST failed", { userId: actorId }, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

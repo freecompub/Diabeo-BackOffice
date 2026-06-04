@@ -397,8 +397,16 @@ export const patientService = {
       return { ...result, resetToken }
     } catch (e) {
       // Race on the emailHmac unique index → friendly business error.
+      // Only map P2002 when it actually hits the email_hmac constraint — any
+      // other unique conflict (e.g. an astronomically unlikely VerificationToken
+      // UUID collision) must surface as the original error, not a misleading
+      // "emailExists" (pattern aligned with ins.service.ts meta.target check).
       if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-        throw new PatientCreationError("emailExists")
+        const target = e.meta?.target
+        const hitsEmailHmac = Array.isArray(target)
+          ? target.some((t) => String(t).includes("email_hmac"))
+          : String(target ?? "").includes("email_hmac")
+        if (hitsEmailHmac) throw new PatientCreationError("emailExists")
       }
       throw e
     }

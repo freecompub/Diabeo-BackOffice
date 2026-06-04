@@ -200,11 +200,12 @@ describe("patientService.createWithNewUser", () => {
     ).rejects.toBeInstanceOf(PatientCreationError)
   })
 
-  it("maps a P2002 unique-constraint race to emailExists", async () => {
+  it("maps a P2002 race on email_hmac to emailExists", async () => {
     prismaMock.$transaction.mockRejectedValue(
       new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
         code: "P2002",
         clientVersion: "7.0.0",
+        meta: { target: ["email_hmac"] },
       } as any),
     )
 
@@ -214,5 +215,31 @@ describe("patientService.createWithNewUser", () => {
         1,
       ),
     ).rejects.toMatchObject({ code: "emailExists" })
+  })
+
+  it("re-throws a P2002 on a DIFFERENT constraint (no false emailExists)", async () => {
+    // e.g. an astronomically unlikely VerificationToken UUID collision must NOT
+    // be reported to the user as "email already in use".
+    prismaMock.$transaction.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError("Unique constraint failed", {
+        code: "P2002",
+        clientVersion: "7.0.0",
+        meta: { target: ["token"] },
+      } as any),
+    )
+
+    await expect(
+      patientService.createWithNewUser(
+        { email: "other@example.com", firstName: "A", lastName: "B", pathology: "DT1" as any },
+        1,
+      ),
+    ).rejects.toMatchObject({ code: "P2002" })
+
+    await expect(
+      patientService.createWithNewUser(
+        { email: "other@example.com", firstName: "A", lastName: "B", pathology: "DT1" as any },
+        1,
+      ),
+    ).rejects.not.toBeInstanceOf(PatientCreationError)
   })
 })

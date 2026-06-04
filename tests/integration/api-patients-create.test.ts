@@ -11,6 +11,16 @@ import { NextRequest } from "next/server"
 
 vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 
+// Preserve requireRole/AuthError; control the rate limiter deterministically.
+vi.mock("@/lib/auth", async (orig) => {
+  const actual = await orig<typeof import("@/lib/auth")>()
+  return {
+    ...actual,
+    checkRateLimit: vi.fn().mockResolvedValue({ blocked: false }),
+    recordFailedAttempt: vi.fn().mockResolvedValue(undefined),
+  }
+})
+
 vi.mock("@/lib/services/patient.service", async (orig) => {
   const actual = await orig<typeof import("@/lib/services/patient.service")>()
   return {
@@ -36,6 +46,8 @@ vi.mock("@/lib/services/audit.service", async (orig) => {
 
 import { patientService, PatientCreationError } from "@/lib/services/patient.service"
 import { emailService } from "@/lib/services/email.service"
+import { checkRateLimit, recordFailedAttempt } from "@/lib/auth"
+import { auditService } from "@/lib/services/audit.service"
 
 const { POST } = await import("@/app/api/patients/route")
 
@@ -148,7 +160,7 @@ describe("POST /api/patients", () => {
     expect(json).not.toHaveProperty("userId")
   })
 
-  it("409 emailExists when the email is already in use", async () => {
+  it("409 emailExists records a conflict attempt + audits it (anti-enumeration)", async () => {
     vi.mocked(patientService.createWithNewUser).mockRejectedValue(
       new PatientCreationError("emailExists"),
     )
@@ -156,6 +168,20 @@ describe("POST /api/patients", () => {
     expect(res.status).toBe(409)
     expect((await res.json()).error).toBe("emailExists")
     expect(emailService.sendPasswordReset).not.toHaveBeenCalled()
+    // F3/F4 — the conflict feeds the per-actor limiter and is audited.
+    expect(recordFailedAttempt).toHaveBeenCalledWith("patient-create-conflict:1")
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ kind: "patient.create.email_conflict" }) }),
+    )
+  })
+
+  it("429 when the actor has tripped the conflict rate limiter", async () => {
+    vi.mocked(checkRateLimit).mockResolvedValueOnce({ blocked: true, retryAfterSeconds: 300 })
+    const res = await POST(makeReq(VALID_BODY))
+    expect(res.status).toBe(429)
+    expect(res.headers.get("Retry-After")).toBe("300")
+    // Short-circuits before any creation work.
+    expect(patientService.createWithNewUser).not.toHaveBeenCalled()
   })
 
   it("201 succeeds even if the invitation email fails (best-effort)", async () => {
