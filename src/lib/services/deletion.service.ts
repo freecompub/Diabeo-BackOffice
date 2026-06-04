@@ -39,7 +39,7 @@ export async function deleteUserAccount(
 ) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { id: true, email: true, patient: { select: { id: true } } },
+    select: { id: true, email: true, emailHmac: true, patient: { select: { id: true } } },
   })
 
   if (!user) throw new Error("User not found")
@@ -84,6 +84,13 @@ export async function deleteUserAccount(
     // Delete sessions
     await tx.session.deleteMany({ where: { userId } })
     await tx.account.deleteMany({ where: { userId } })
+
+    // RGPD Art. 17 — Purge any pending VerificationToken (password-reset /
+    // patient-invitation set-password). These are keyed by `emailHmac`
+    // (cf. reset-password route + patientService.createWithNewUser). The User
+    // is anonymized (not hard-deleted), so no FK cascade fires; without this
+    // an invitation/reset token would survive as an orphan after erasure.
+    await tx.verificationToken.deleteMany({ where: { identifier: user.emailHmac } })
 
     // Delete UI state & dashboard
     await tx.uiStateSave.deleteMany({ where: { userId } })

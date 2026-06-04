@@ -9,12 +9,15 @@
  * @see Prisma schema — Patient, PatientMedicalData, User models
  */
 
+import { randomBytes, randomUUID } from "crypto"
+import { hash as bcryptHash } from "bcryptjs"
 import { prisma } from "@/lib/db/client"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { encryptField } from "@/lib/crypto/fields"
-import { hmacField } from "@/lib/crypto/hmac"
+import { hmacField, hmacEmail } from "@/lib/crypto/hmac"
 import { auditService, extractRequestContext } from "./audit.service"
-import type { Pathology, Prisma, PatientMedicalData } from "@prisma/client"
+import { Prisma } from "@prisma/client"
+import type { Pathology, Sex, PatientMedicalData } from "@prisma/client"
 
 /**
  * Audit context extracted from request headers (IP, User-Agent).
@@ -52,6 +55,49 @@ interface CreatePatientInput {
   pathology: Pathology
   personalData: PersonalData
   userId: number
+}
+
+/**
+ * Input for creating a brand-new patient AND its backing User account in one
+ * go (no pre-existing user). Used by `POST /api/patients` (new-patient wizard).
+ * @typedef {Object} CreatePatientWithUserInput
+ */
+export interface CreatePatientWithUserInput {
+  email: string
+  firstName: string
+  lastName: string
+  sex?: Sex
+  /** ISO date "yyyy-mm-dd" (stored as a real Date in User.birthday, not encrypted). */
+  birthday?: string
+  pathology: Pathology
+  /** Year of diabetes diagnosis → PatientMedicalData.yearDiag. */
+  yearDiag?: number
+}
+
+/**
+ * Result of {@link patientService.createWithNewUser}. `resetToken` is the
+ * one-time invitation token (set-password link) — used to send the email,
+ * NEVER returned to the HTTP client.
+ */
+export interface CreatePatientWithUserResult {
+  id: number
+  userId: number
+  pathology: Pathology
+  resetToken: string
+}
+
+/** Stable, non-leaky error codes for patient creation (mapped to HTTP by the route). */
+export type PatientCreationErrorCode = "emailExists"
+
+/**
+ * Typed creation error — lets the API route map a known business failure to a
+ * specific HTTP status/message without leaking internals or stack traces.
+ */
+export class PatientCreationError extends Error {
+  constructor(public readonly code: PatientCreationErrorCode) {
+    super(code)
+    this.name = "PatientCreationError"
+  }
 }
 
 /**
@@ -235,6 +281,135 @@ export const patientService = {
 
       return { id: patient.id, pathology: patient.pathology }
     })
+  },
+
+  /**
+   * Create a brand-new patient together with its backing User account.
+   *
+   * Unlike {@link patientService.create} (which links to an existing user),
+   * this provisions the whole identity:
+   *   - User (encrypted email + emailHmac unique lookup, encrypted names,
+   *     random throwaway password — the patient sets a real one via the
+   *     invitation email), role VIEWER, `needPasswordUpdate`/`needOnboarding`.
+   *   - Patient (pathology) and optional PatientMedicalData (yearDiag).
+   *   - A one-time invitation token (same mechanism as the password-reset
+   *     flow) so the caller can email a set-password link.
+   *   - Atomic audit logs CREATE USER + CREATE PATIENT (US-2268 patientId pivot).
+   *
+   * Everything runs in a single transaction. Email uniqueness is enforced both
+   * by a friendly pre-check and the DB unique constraint on `emailHmac`
+   * (race-safe — P2002 is mapped to `emailExists`).
+   *
+   * @async
+   * @param {CreatePatientWithUserInput} input - Patient + user identity data
+   * @param {number} auditUserId - Healthcare pro performing the creation
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<CreatePatientWithUserResult>} Created patient id, user id, pathology and invitation token
+   * @throws {PatientCreationError} `emailExists` if the email is already in use
+   */
+  async createWithNewUser(
+    input: CreatePatientWithUserInput,
+    auditUserId: number,
+    ctx?: AuditContext,
+  ): Promise<CreatePatientWithUserResult> {
+    const emailHmac = hmacEmail(input.email)
+
+    // Friendly pre-check (the DB unique constraint below is the real guard).
+    const existing = await prisma.user.findUnique({
+      where: { emailHmac },
+      select: { id: true },
+    })
+    if (existing) throw new PatientCreationError("emailExists")
+
+    // Throwaway password — never communicated. The patient defines a real one
+    // through the invitation (set-password) email. bcrypt cost 12 = runtime.
+    const tempPasswordHash = await bcryptHash(randomBytes(32).toString("base64url"), 12)
+    const resetToken = randomUUID()
+
+    try {
+      const result = await prisma.$transaction(async (tx) => {
+        const user = await tx.user.create({
+          data: {
+            email: localEncryptField(input.email),
+            emailHmac,
+            passwordHash: tempPasswordHash,
+            firstname: localEncryptField(input.firstName),
+            firstnameHmac: hmacField(input.firstName),
+            lastname: localEncryptField(input.lastName),
+            lastnameHmac: hmacField(input.lastName),
+            ...(input.sex && { sex: input.sex }),
+            ...(input.birthday && { birthday: new Date(input.birthday) }),
+            role: "VIEWER",
+            status: "active",
+            language: "fr",
+            needPasswordUpdate: true,
+            needOnboarding: true,
+          },
+          select: { id: true },
+        })
+
+        const patient = await tx.patient.create({
+          data: { userId: user.id, pathology: input.pathology },
+          select: { id: true, pathology: true },
+        })
+
+        if (input.yearDiag != null) {
+          await tx.patientMedicalData.create({
+            data: { patientId: patient.id, yearDiag: input.yearDiag },
+          })
+        }
+
+        // Invitation (set-password) token — identical mechanism to the
+        // password-reset flow (VerificationToken keyed by emailHmac, 1h TTL).
+        await tx.verificationToken.deleteMany({ where: { identifier: emailHmac } })
+        await tx.verificationToken.create({
+          data: {
+            identifier: emailHmac,
+            token: resetToken,
+            expires: new Date(Date.now() + 3600_000),
+          },
+        })
+
+        await auditService.logWithTx(tx, {
+          userId: auditUserId,
+          action: "CREATE",
+          resource: "USER",
+          resourceId: String(user.id),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          // US-2268 — patientId pivot so this user-creation event is found by
+          // getByPatient forensics. Never log decrypted PII.
+          metadata: { patientId: patient.id, role: "VIEWER", via: "patient_creation" },
+        })
+        await auditService.logWithTx(tx, {
+          userId: auditUserId,
+          action: "CREATE",
+          resource: "PATIENT",
+          resourceId: String(patient.id),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { patientId: patient.id },
+        })
+
+        return { id: patient.id, userId: user.id, pathology: patient.pathology }
+      })
+
+      return { ...result, resetToken }
+    } catch (e) {
+      // Race on the emailHmac unique index → friendly business error.
+      // Only map P2002 when it actually hits the email_hmac constraint — any
+      // other unique conflict (e.g. an astronomically unlikely VerificationToken
+      // UUID collision) must surface as the original error, not a misleading
+      // "emailExists" (pattern aligned with ins.service.ts meta.target check).
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        const target = e.meta?.target
+        const hitsEmailHmac = Array.isArray(target)
+          ? target.some((t) => String(t).includes("email_hmac"))
+          : String(target ?? "").includes("email_hmac")
+        if (hitsEmailHmac) throw new PatientCreationError("emailExists")
+      }
+      throw e
+    }
   },
 
   /**

@@ -42,6 +42,7 @@ describe("deleteUserAccount", () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 1,
       email: "test",
+      emailHmac: "hmac-test",
       patient: null,
     } as never)
 
@@ -54,6 +55,7 @@ describe("deleteUserAccount", () => {
       pushDeviceRegistration: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       session: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       account: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      verificationToken: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       uiStateSave: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       dashboardConfiguration: { findUnique: vi.fn().mockResolvedValue(null) },
       userDayMoment: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -107,6 +109,7 @@ describe("deleteUserAccount", () => {
     prismaMock.user.findUnique.mockResolvedValue({
       id: 1,
       email: "test",
+      emailHmac: "hmac-test",
       patient: { id: 10 },
     } as never)
 
@@ -119,6 +122,7 @@ describe("deleteUserAccount", () => {
       pushDeviceRegistration: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       session: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       account: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      verificationToken: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       uiStateSave: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       dashboardConfiguration: { findUnique: vi.fn().mockResolvedValue(null) },
       dashboardWidget: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
