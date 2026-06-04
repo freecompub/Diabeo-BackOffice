@@ -217,7 +217,21 @@
     "yearOfDiagnosis": "Year of diagnosis",
     "back": "Back",
     "creating": "Creating...",
-    "createPatient": "Create patient"
+    "createPatient": "Create patient",
+    "emailLabel": "Email",
+    "invalidEmailFormat": "Invalid email format",
+    "errorTitle": "Error",
+    "errorValidationFailed": "Invalid fields. Check the entered data.",
+    "errorEmailExists": "An account with this email already exists.",
+    "errorForbidden": "You do not have permission to create a patient.",
+    "errorCsrfMissing": "Session expired. Reload the page.",
+    "errorTooManyAttempts": "Too many attempts. Please try again later.",
+    "errorServerError": "Server error. Please retry.",
+    "yearRangeHint": "Between {min} and {max}",
+    "yearRangeError": "Year between {min} and {max}",
+    "dt1Description": "Insulin-dependent, autoimmune",
+    "dt2Description": "Insulin resistance, often adult-onset",
+    "gdDescription": "Pregnancy-related"
   },
   "patient": {
     "overview": "Overview",

@@ -12,18 +12,21 @@ import { AlertBanner } from "@/components/diabeo/AlertBanner"
 type Pathology = "DT1" | "DT2" | "GD"
 type Sex = "M" | "F" | "X"
 
-const PATHOLOGIES: { value: Pathology; label: string; description: string }[] = [
-  { value: "DT1", label: "Diabète Type 1", description: "Insulinodépendant, auto-immun" },
-  { value: "DT2", label: "Diabète Type 2", description: "Insulinorésistance, souvent adulte" },
-  { value: "GD", label: "Diabète Gestationnel", description: "Lié à la grossesse" },
+// Labels/descriptions résolus via i18n au rendu (pas de texte en dur).
+const PATHOLOGIES: { value: Pathology; labelKey: string; descKey: string }[] = [
+  { value: "DT1", labelKey: "dt1", descKey: "dt1Description" },
+  { value: "DT2", labelKey: "dt2", descKey: "dt2Description" },
+  { value: "GD", labelKey: "gd", descKey: "gdDescription" },
 ]
 
-const ERROR_MESSAGES: Record<string, string> = {
-  validationFailed: "Champs invalides. Vérifiez les données saisies.",
-  emailExists: "Un compte avec cet email existe déjà.",
-  forbidden: "Vous n'avez pas les droits pour créer un patient.",
-  csrfMissing: "Session expirée. Rechargez la page.",
-  serverError: "Erreur serveur. Réessayez.",
+// Mappe le code d'erreur API → clé i18n (le texte vit dans messages/*.json).
+const ERROR_CODE_TO_KEY: Record<string, string> = {
+  validationFailed: "errorValidationFailed",
+  emailExists: "errorEmailExists",
+  forbidden: "errorForbidden",
+  csrfMissing: "errorCsrfMissing",
+  tooManyAttempts: "errorTooManyAttempts",
+  serverError: "errorServerError",
 }
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -74,14 +77,14 @@ export default function NewPatientPage() {
       if (!res.ok) {
         const data = await res.json()
         const code = data.error ?? "serverError"
-        setError(ERROR_MESSAGES[code] ?? ERROR_MESSAGES.serverError)
+        setError(t(ERROR_CODE_TO_KEY[code] ?? "errorServerError"))
         return
       }
 
       const patient = await res.json()
       router.push(`/patients/${patient.id}`)
     } catch {
-      setError(ERROR_MESSAGES.serverError)
+      setError(t("errorServerError"))
     } finally {
       setLoading(false)
     }
@@ -108,19 +111,19 @@ export default function NewPatientPage() {
       </div>
 
       {error && (
-        <AlertBanner severity="critical" title="Erreur" description={error} className="mb-4" />
+        <AlertBanner severity="critical" title={t("errorTitle")} description={error} className="mb-4" />
       )}
 
       {step === 1 && (
         <DiabeoCard>
           <DiabeoFormSection title={t("identity")} description={t("identityEncrypted")}>
             <DiabeoTextField
-              label="Email"
+              label={t("emailLabel")}
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              error={email.length > 0 && !EMAIL_REGEX.test(email) ? "Format email invalide" : undefined}
+              error={email.length > 0 && !EMAIL_REGEX.test(email) ? t("invalidEmailFormat") : undefined}
               id="patient-email"
             />
             <div className="grid grid-cols-2 gap-4">
@@ -205,8 +208,8 @@ export default function NewPatientPage() {
                     className="mt-1 accent-teal-600"
                   />
                   <div>
-                    <div className="text-sm font-semibold text-ink-900">{p.label}</div>
-                    <div className="text-xs text-ink-500">{p.description}</div>
+                    <div className="text-sm font-semibold text-ink-900">{t(p.labelKey)}</div>
+                    <div className="text-xs text-ink-500">{t(p.descKey)}</div>
                   </div>
                 </label>
               ))}
@@ -217,8 +220,8 @@ export default function NewPatientPage() {
               type="number"
               value={yearDiag}
               onChange={(e) => setYearDiag(e.target.value)}
-              hint={`Entre 1900 et ${currentYear}`}
-              error={!isYearDiagValid ? `Année entre 1900 et ${currentYear}` : undefined}
+              hint={t("yearRangeHint", { min: 1900, max: currentYear })}
+              error={!isYearDiagValid ? t("yearRangeError", { min: 1900, max: currentYear }) : undefined}
               id="patient-yeardiag"
             />
           </DiabeoFormSection>

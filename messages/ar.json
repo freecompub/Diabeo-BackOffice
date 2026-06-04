@@ -217,7 +217,21 @@
     "yearOfDiagnosis": "سنة التشخيص",
     "back": "رجوع",
     "creating": "جارٍ الإنشاء...",
-    "createPatient": "إنشاء المريض"
+    "createPatient": "إنشاء المريض",
+    "emailLabel": "البريد الإلكتروني",
+    "invalidEmailFormat": "صيغة البريد الإلكتروني غير صالحة",
+    "errorTitle": "خطأ",
+    "errorValidationFailed": "حقول غير صالحة. تحقق من البيانات المدخلة.",
+    "errorEmailExists": "يوجد حساب بهذا البريد الإلكتروني بالفعل.",
+    "errorForbidden": "ليس لديك صلاحية إنشاء مريض.",
+    "errorCsrfMissing": "انتهت الجلسة. أعد تحميل الصفحة.",
+    "errorTooManyAttempts": "محاولات كثيرة جدًا. أعد المحاولة لاحقًا.",
+    "errorServerError": "خطأ في الخادم. أعد المحاولة.",
+    "yearRangeHint": "بين {min} و {max}",
+    "yearRangeError": "سنة بين {min} و {max}",
+    "dt1Description": "يعتمد على الأنسولين، مناعي ذاتي",
+    "dt2Description": "مقاومة الأنسولين، غالبًا لدى البالغين",
+    "gdDescription": "مرتبط بالحمل"
   },
   "patient": {
     "overview": "نظرة عامة",
