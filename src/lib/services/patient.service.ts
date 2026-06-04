@@ -124,16 +124,37 @@ function localDecryptField(value: string): string {
 }
 
 /**
- * #474 R4 — Throttle process-local du warn de `safeDecrypt`. `safeDecrypt` est
- * appelé ~16× par enregistrement sur les chemins de liste ; sans throttle, une
- * mauvaise clé / un dump restauré émettrait des centaines de warns par requête
- * (flooding Loki/OVH + corrélation volumétrique = fuite indirecte de la taille
- * de cohorte). On émet au plus 1 warn / fenêtre / process, avec le compteur
- * cumulé des occurrences supprimées (pattern aligné sur messaging.service).
+ * #474 R4 — Throttle du warn de `safeDecrypt`. `safeDecrypt` est appelé ~16× par
+ * enregistrement sur les chemins de liste ; sans throttle, une mauvaise clé / un
+ * dump restauré émettrait des centaines de warns par requête (flooding Loki/OVH
+ * + corrélation volumétrique = fuite indirecte de la taille de cohorte). On émet
+ * au plus 1 warn / fenêtre / process, en reportant le nombre d'occurrences
+ * supprimées depuis le dernier warn (`suppressedSinceLastLog`).
+ *
+ * RR1 (review round 2) — Le throttle est volontairement **process-global** (un
+ * seul compteur), PAS per-user comme `messaging.service`. Raison : `safeDecrypt`
+ * reçoit un `value` opaque sans `userId`/`patientId` en contexte → une clé
+ * per-entity est impossible sans changer la signature, et un échec isolé (1/min)
+ * émet quand même son warn (non masqué). Seul le scénario de masse est throttlé.
+ *
+ * RR2 (review round 2) — `suppressedSinceLastLog` est remis à 0 à chaque fenêtre
+ * (≠ cumul process-life) + cappé pour éviter tout overflow théorique et borner
+ * l'oracle volumétrique du log SOC.
  */
 const DECRYPT_WARN_WINDOW_MS = 60_000
+const DECRYPT_SUPPRESSED_CAP = 10_000_000
 let lastDecryptWarnAt = 0
 let suppressedDecryptWarns = 0
+
+/**
+ * Test-only — réinitialise l'état du throttle de `safeDecrypt` (RR4) pour que
+ * les specs partent d'un état déterministe (état module partagé entre tests).
+ * @internal
+ */
+export function __resetDecryptWarnThrottleForTests(): void {
+  lastDecryptWarnAt = 0
+  suppressedDecryptWarns = 0
+}
 
 /**
  * Safe decryption — returns null on error instead of throwing.
@@ -159,12 +180,12 @@ function safeDecrypt(value: string | null): string | null {
         "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)",
         {
           kind: "phi.decrypt.fail",
-          ...(suppressedDecryptWarns > 0 ? { cumulativeSuppressed: suppressedDecryptWarns } : {}),
+          ...(suppressedDecryptWarns > 0 ? { suppressedSinceLastLog: suppressedDecryptWarns } : {}),
         },
       )
       lastDecryptWarnAt = now
       suppressedDecryptWarns = 0
-    } else {
+    } else if (suppressedDecryptWarns < DECRYPT_SUPPRESSED_CAP) {
       suppressedDecryptWarns++
     }
     return null
