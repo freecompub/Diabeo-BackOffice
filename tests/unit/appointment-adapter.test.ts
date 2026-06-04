@@ -9,6 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest"
+import { Temporal } from "temporal-polyfill"
 import {
   appointmentToScheduleXEvent,
   APPOINTMENT_CALENDARS,
@@ -380,5 +381,38 @@ describe("appointmentToScheduleXEvent", () => {
     it("comparaison idempotente : '09:00' === normalize('09:00:00')", () => {
       expect("09:00" === normalizeHourForCompare("09:00:00")).toBe(true)
     })
+  })
+})
+
+/**
+ * Fix F13 (review multi-agents PR #466) — preuve d'indépendance fuseau avec de
+ * VRAIS objets `Temporal` (et non un faux `{ toString }`). L'extracteur doit
+ * lire les composantes WALL-CLOCK locales quel que soit l'offset/la zone, et
+ * indépendamment du `TZ` du runner CI. Couvre aussi le gap "fake toString" :
+ * `extractDateHourFromScheduleXStart` consomme l'output réel de
+ * `Temporal.ZonedDateTime.toString()` / `Temporal.PlainDate.toString()`.
+ */
+describe("extractDateHourFromScheduleXStart — real Temporal objects (F13)", () => {
+  it("ZonedDateTime Europe/Paris (+02:00) → wall-clock local 14:30", () => {
+    const zdt = Temporal.ZonedDateTime.from("2026-05-26T14:30:00+02:00[Europe/Paris]")
+    expect(extractDateHourFromScheduleXStart(zdt)).toEqual({ date: "2026-05-26", hour: "14:30" })
+  })
+
+  it("ZonedDateTime America/New_York (-05:00) → wall-clock local 09:05 (offset-indépendant)", () => {
+    const zdt = Temporal.ZonedDateTime.from("2026-12-15T09:05:00-05:00[America/New_York]")
+    expect(extractDateHourFromScheduleXStart(zdt)).toEqual({ date: "2026-12-15", hour: "09:05" })
+  })
+
+  it("même wall-clock, zones différentes → même date/hour extraits", () => {
+    const paris = Temporal.ZonedDateTime.from("2026-05-26T14:30:00+02:00[Europe/Paris]")
+    const ny = Temporal.ZonedDateTime.from("2026-05-26T14:30:00-04:00[America/New_York]")
+    expect(extractDateHourFromScheduleXStart(paris)).toEqual(
+      extractDateHourFromScheduleXStart(ny),
+    )
+  })
+
+  it("PlainDate réel (all-day) → fallback hour 00:00", () => {
+    const pd = Temporal.PlainDate.from("2026-05-26")
+    expect(extractDateHourFromScheduleXStart(pd)).toEqual({ date: "2026-05-26", hour: "00:00" })
   })
 })
