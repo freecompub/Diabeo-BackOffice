@@ -374,8 +374,14 @@ describe("<AppointmentDetailModal>", () => {
       expect(dateInput.value).toBe("2026-05-25")
       expect(timeInput.value).toBe("09:30")
 
-      // Change date+time
-      fireEvent.change(dateInput, { target: { value: "2026-06-01" } })
+      // Change date+time. The propose-alternative date input has `min={today}`
+      // and jsdom enforces rangeUnderflow on submit — so a hardcoded date in the
+      // past (relative to the wall clock) would block the submit and the POST
+      // would never fire. Compute a date safely in the future so the test is
+      // not a time-bomb (was hardcoded "2026-06-01", which broke once the clock
+      // passed that day).
+      const futureDate = new Date(Date.now() + 14 * 86_400_000).toISOString().split("T")[0]
+      fireEvent.change(dateInput, { target: { value: futureDate } })
       fireEvent.change(timeInput, { target: { value: "14:00" } })
       fireEvent.click(screen.getByText("actionConfirmPropose"))
 
@@ -386,7 +392,7 @@ describe("<AppointmentDetailModal>", () => {
             method: "POST",
             // Fix HSA-2-3 round 2 — suffix `Z` explicite pour forcer
             // l'interprétation UTC déterministe côté backend `z.coerce.date()`.
-            body: JSON.stringify({ alternativeAt: "2026-06-01T14:00:00Z" }),
+            body: JSON.stringify({ alternativeAt: `${futureDate}T14:00:00Z` }),
           }),
         )
       })
