@@ -38,61 +38,68 @@ function makeAppt(overrides: Partial<AppointmentListItem> = {}): AppointmentList
 }
 
 describe("appointmentToScheduleXEvent", () => {
+  // Schedule-X v4 — `start`/`end` sont des `Temporal.ZonedDateTime`. On
+  // assert sur `.toPlainDateTime().toString()` ("yyyy-mm-ddThh:mm:ss") pour
+  // une comparaison wall-clock indépendante de la timezone du runner CI
+  // (l'offset/zone de `.toString()` varie selon `Temporal.Now.timeZoneId()`).
+  const wall = (zdt: { toPlainDateTime(): { toString(): string } }) =>
+    zdt.toPlainDateTime().toString()
+
   describe("date/time combine", () => {
-    it("combine date yyyy-mm-dd + hour hh:mm:ss → 'yyyy-mm-dd hh:mm'", () => {
+    it("combine date yyyy-mm-dd + hour hh:mm:ss → ZonedDateTime wall-clock", () => {
       const evt = appointmentToScheduleXEvent(makeAppt())
-      expect(evt.start).toBe("2026-05-15 09:30")
+      expect(wall(evt.start)).toBe("2026-05-15T09:30:00")
     })
 
     it("supporte hour au format ISO complet (post-JSON serialization)", () => {
       const evt = appointmentToScheduleXEvent(
         makeAppt({ hour: "1970-01-01T09:30:00.000Z" }),
       )
-      expect(evt.start).toBe("2026-05-15 09:30")
+      expect(wall(evt.start)).toBe("2026-05-15T09:30:00")
     })
 
     it("hour=null fallback à 09:00 (V1 — TODO M-3 badge UI à venir)", () => {
       const evt = appointmentToScheduleXEvent(makeAppt({ hour: null }))
-      expect(evt.start).toBe("2026-05-15 09:00")
+      expect(wall(evt.start)).toBe("2026-05-15T09:00:00")
     })
   })
 
-  describe("addMinutes rollover (fix CR-3)", () => {
+  describe("end = start.add({ minutes }) rollover (fix CR-3 via Temporal)", () => {
     it("rollover minuit J → J+1 (22:00 + 180min → J+1 01:00)", () => {
       const evt = appointmentToScheduleXEvent(
         makeAppt({ hour: "22:00:00", durationMinutes: 180 }),
       )
-      expect(evt.start).toBe("2026-05-15 22:00")
-      expect(evt.end).toBe("2026-05-16 01:00")
+      expect(wall(evt.start)).toBe("2026-05-15T22:00:00")
+      expect(wall(evt.end)).toBe("2026-05-16T01:00:00")
     })
 
     it("rollover fin de mois (31 → 01 du mois suivant)", () => {
       const evt = appointmentToScheduleXEvent(
         makeAppt({ date: "2026-05-31", hour: "23:45:00", durationMinutes: 30 }),
       )
-      expect(evt.start).toBe("2026-05-31 23:45")
-      expect(evt.end).toBe("2026-06-01 00:15")
+      expect(wall(evt.start)).toBe("2026-05-31T23:45:00")
+      expect(wall(evt.end)).toBe("2026-06-01T00:15:00")
     })
 
     it("durée standard 30 min sans rollover", () => {
       const evt = appointmentToScheduleXEvent(
         makeAppt({ hour: "09:30:00", durationMinutes: 30 }),
       )
-      expect(evt.end).toBe("2026-05-15 10:00")
+      expect(wall(evt.end)).toBe("2026-05-15T10:00:00")
     })
 
     it("durée max 240 min ne corrompt pas si pas de rollover", () => {
       const evt = appointmentToScheduleXEvent(
         makeAppt({ hour: "08:00:00", durationMinutes: 240 }),
       )
-      expect(evt.end).toBe("2026-05-15 12:00")
+      expect(wall(evt.end)).toBe("2026-05-15T12:00:00")
     })
 
     it("fallback durationMinutes=null → 30 min", () => {
       const evt = appointmentToScheduleXEvent(
         makeAppt({ hour: "09:30:00", durationMinutes: null }),
       )
-      expect(evt.end).toBe("2026-05-15 10:00")
+      expect(wall(evt.end)).toBe("2026-05-15T10:00:00")
     })
   })
 
