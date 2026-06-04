@@ -43,6 +43,15 @@ import {
 import { createEventsServicePlugin } from "@schedule-x/events-service"
 import { createDragAndDropPlugin } from "@schedule-x/drag-and-drop"
 import "@schedule-x/theme-default/dist/index.css"
+// Schedule-X v4 — `selectedDate` et `event.start/.end` exigent des objets
+// `Temporal` (TC39). Le bundle Schedule-X référence `Temporal` en GLOBAL (sans
+// import) : il faut donc le side-effect `temporal-polyfill/global` pour patcher
+// `globalThis.Temporal`, sinon les `instanceof Temporal.PlainDate` de
+// `validateConfig` échouent (classes distinctes). L'import nommé sert à
+// construire les objets côté React. Les deux pointent vers la même classe
+// (chunks/classApi) → `instanceof` true. Cf. doc session dev 2026-06-03 §4.
+import "temporal-polyfill/global"
+import { Temporal } from "temporal-polyfill"
 import { useAppointments } from "./useAppointments"
 import {
   appointmentToScheduleXEvent,
@@ -319,7 +328,10 @@ export function AppointmentCalendar({
   const calendar = useNextCalendarApp({
     views: [createViewMonthGrid(), createViewWeek(), createViewDay()],
     events,
-    selectedDate: selectedDate.toISOString().split("T")[0],
+    // Schedule-X v4 — `selectedDate` n'accepte plus un string ISO `yyyy-mm-dd`
+    // (v3) mais un `Temporal.PlainDate`. On extrait la composante date du
+    // `Date` JS pour préserver le comportement (jour courant sélectionné).
+    selectedDate: Temporal.PlainDate.from(selectedDate.toISOString().split("T")[0]),
     locale: sxLocale,
     calendars: APPOINTMENT_CALENDARS,
     plugins: [eventsService, dragAndDropPlugin],

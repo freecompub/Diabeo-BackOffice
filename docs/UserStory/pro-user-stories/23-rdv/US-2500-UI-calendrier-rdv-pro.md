@@ -190,6 +190,19 @@ Le backend RDV est livré et déployé en prod depuis **PR #392** (Groupe 8 RDV 
 - **Optimistic UI** : drag & drop applique localement avant PUT API, rollback si fail
 - **Tests** : 25-40 tests unit (composants calendrier, drag handler, modal) + 8-12 E2E Playwright (création/annulation/alternative workflow)
 
+### ⚠️ Contrainte Schedule-X v4 — Temporal (PR #466, session dev 2026-06-03)
+
+La stack retenue est `@schedule-x/*` v4. Contrairement à la v3, l'API v4 **n'accepte plus de strings ISO** :
+
+- `selectedDate` exige un `Temporal.PlainDate` (TC39 Temporal proposal).
+- `event.start` / `event.end` exigent un `Temporal.ZonedDateTime` (timed) ou `Temporal.PlainDate` (all-day).
+
+Conséquences pour le code (`adapter.ts` + `AppointmentCalendar.tsx`) :
+
+1. **Dépendance directe** : `temporal-polyfill` doit être déclaré dans `package.json` (pas seulement en peer transitive de `@schedule-x/calendar`) — sinon `pnpm install` le **prune silencieusement** → crash au mount du calendrier.
+2. **Side-effect import** : `import "temporal-polyfill/global"` est requis EN PLUS de l'import nommé `{ Temporal }`. Le bundle Schedule-X référence `Temporal` en **global** (`instanceof Temporal.PlainDate` dans `validateConfig`/`validateEvents`) ; sans le patch `globalThis`, les `instanceof` échouent (classes distinctes).
+3. **Wall-clock contract** : l'adapter construit les `ZonedDateTime` sur `Temporal.Now.timeZoneId()` (TZ navigateur), sans conversion — l'heure cabinet "09:30" stockée reste "09:30" affichée. V1.5 : `HealthcareService.timezone` (cf. en-tête `adapter.ts`).
+
 ---
 
 ## 🚫 Hors scope (reporté V2 ou autre US)

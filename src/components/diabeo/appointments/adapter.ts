@@ -20,10 +20,12 @@
  * et reminders RDV).
  *
  * Backend stocke `date` (yyyy-mm-dd) + `hour` (hh:mm:ss) séparément
- * (`@db.Date` + `@db.Time()` timezone-less). On combine en string locale
- * `"yyyy-mm-dd hh:mm"` attendue par Schedule-X (cf. docs sx events format).
+ * (`@db.Date` + `@db.Time()` timezone-less). On combine en
+ * `Temporal.ZonedDateTime` (Schedule-X v4 — l'ancien string
+ * `"yyyy-mm-dd hh:mm"` v3 est rejeté par `validateEvents`).
  *
- * `end` calculé via `durationMinutes` (defaults 30 min si null = legacy).
+ * `end` calculé via `durationMinutes` (defaults 30 min si null = legacy),
+ * additionné nativement par `ZonedDateTime.add` (rollover géré).
  *
  * Couleurs par statut (palette Sérénité Active + glycemia clinical) :
  *   - scheduled         → teal-600 (default cabinet)
@@ -37,13 +39,22 @@
  * avec defaults backend US-2505 (cf. `rdv.service` defaults).
  */
 
+import { Temporal } from "temporal-polyfill"
 import type { AppointmentListItem } from "./useAppointments"
 
 export interface ScheduleXEvent {
   id: string
   title: string
-  start: string // "yyyy-mm-dd hh:mm"
-  end: string // "yyyy-mm-dd hh:mm"
+  /**
+   * Schedule-X v4 — `start`/`end` doivent être des `Temporal.ZonedDateTime`
+   * (events "timed") ou `Temporal.PlainDate` (all-day). On utilise toujours
+   * `ZonedDateTime` ici (les RDV ont une heure ou un fallback 09:00).
+   *
+   * v3 utilisait un string `"yyyy-mm-dd hh:mm"` — `validateEvents`
+   * (`core.js`) le rejette désormais. Cf. doc session dev 2026-06-03 §5.
+   */
+  start: Temporal.ZonedDateTime
+  end: Temporal.ZonedDateTime
   calendarId?: string // Schedule-X calendars (color groups)
   /**
    * Fix US-2500-UI iter 7 — Schedule-X event options pour gater drag&drop +
@@ -90,41 +101,32 @@ const KNOWN_APPOINTMENT_TYPES = new Set(["ide", "diabeto", "hdj"])
 const UNSCHEDULED_CALENDAR_ID = "unscheduled"
 
 /**
- * Combine `date` (yyyy-mm-dd) + `hour` (hh:mm:ss) en `"yyyy-mm-dd hh:mm"`.
- * Renvoie null si `hour` est null (RDV sans heure = legacy, on les place
- * arbitrairement à 09:00 pour qu'ils apparaissent au début de la journée).
+ * Combine `date` (yyyy-mm-dd) + `hour` (hh:mm:ss) en un
+ * `Temporal.ZonedDateTime` (Schedule-X v4).
+ *
+ * RDV sans heure (`hour=null`, legacy) → fallback 09:00 pour qu'ils
+ * apparaissent en début de journée (signalés visuellement via
+ * `calendarId="unscheduled"`, cf. `UNSCHEDULED_CALENDAR_ID`).
+ *
+ * **Timezone wall-clock contract (cf. en-tête de fichier H-5)** : on
+ * construit le `ZonedDateTime` sur la timezone du navigateur
+ * (`Temporal.Now.timeZoneId()`) en y plaquant l'heure stockée telle quelle
+ * ("09:30" stocké → "09:30" affiché). Aucune conversion. V1.5 :
+ * `HealthcareService.timezone` quand le schema l'introduira.
  */
-function combineDateTime(date: string, hour: string | null): string {
+function combineDateTime(date: string, hour: string | null): Temporal.ZonedDateTime {
   // `date` est "yyyy-mm-dd" (ou ISO complet selon serializer JSON). Normaliser.
   const datePart = date.includes("T") ? date.split("T")[0] : date
-  if (!hour) return `${datePart} 09:00`
-  // `hour` est "hh:mm:ss" → garde "hh:mm"
-  const timePart = hour.includes("T") ? hour.split("T")[1].slice(0, 5) : hour.slice(0, 5)
-  return `${datePart} ${timePart}`
-}
-
-/**
- * Fix CR-3 round 2 review PR #431 — `Date.setMinutes` natif gère le
- * rollover minuit correctement. L'ancien `% 24` perdait les RDV soirée
- * (22:00 + 180min retournait `01:00` même jour au lieu de J+1 01:00),
- * ce qui produisait `end < start` côté Schedule-X (events corrompus).
- *
- * Use `Date(Date.UTC(...))` pour éviter de dépendre de la TZ locale du
- * navigateur ; on garde le wall-clock `yyyy-mm-dd hh:mm` (cohérent avec
- * `combineDateTime` qui ne convertit pas non plus).
- */
-function addMinutes(dateTime: string, minutes: number): string {
-  const [datePart, timePart] = dateTime.split(" ")
-  const [y, mo, d] = datePart.split("-").map(Number)
-  const [h, m] = timePart.split(":").map(Number)
-  const base = new Date(Date.UTC(y, mo - 1, d, h, m, 0))
-  base.setUTCMinutes(base.getUTCMinutes() + minutes)
-  const yy = base.getUTCFullYear()
-  const mm = String(base.getUTCMonth() + 1).padStart(2, "0")
-  const dd = String(base.getUTCDate()).padStart(2, "0")
-  const hh = String(base.getUTCHours()).padStart(2, "0")
-  const mi = String(base.getUTCMinutes()).padStart(2, "0")
-  return `${yy}-${mm}-${dd} ${hh}:${mi}`
+  // `hour` est "hh:mm:ss" (ou ISO complet) → garde "hh:mm". Fallback 09:00.
+  const timePart = !hour
+    ? "09:00"
+    : hour.includes("T")
+      ? hour.split("T")[1].slice(0, 5)
+      : hour.slice(0, 5)
+  // `PlainDateTime.from` exige un séparateur "T" ISO strict (pas l'espace v3).
+  return Temporal.PlainDateTime.from(`${datePart}T${timePart}`).toZonedDateTime(
+    Temporal.Now.timeZoneId(),
+  )
 }
 
 /**
@@ -137,7 +139,10 @@ function addMinutes(dateTime: string, minutes: number): string {
 export function appointmentToScheduleXEvent(appt: AppointmentListItem): ScheduleXEvent {
   const start = combineDateTime(appt.date, appt.hour)
   const durationMin = appt.durationMinutes ?? 30
-  const end = addMinutes(start, durationMin)
+  // `ZonedDateTime.add` gère nativement le rollover minuit/mois/année
+  // (ex: 22:00 + 180min → J+1 01:00) — plus de calcul manuel `% 24`
+  // (ancien fix CR-3 round 2 PR #431 désormais couvert par Temporal).
+  const end = start.add({ minutes: durationMin })
 
   // Fix L-3 — whitelist types : si type inconnu (ou PHI accidentelle),
   // afficher "OTHER" plutôt que `appt.type.toUpperCase()` raw.
