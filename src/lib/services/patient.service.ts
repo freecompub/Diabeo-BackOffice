@@ -16,6 +16,7 @@ import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { encryptField } from "@/lib/crypto/fields"
 import { hmacField, hmacEmail } from "@/lib/crypto/hmac"
 import { auditService, extractRequestContext } from "./audit.service"
+import { logger } from "@/lib/logger"
 import { Prisma } from "@prisma/client"
 import type { Pathology, Sex, PatientMedicalData } from "@prisma/client"
 
@@ -134,6 +135,11 @@ function safeDecrypt(value: string | null): string | null {
   try {
     return localDecryptField(value)
   } catch {
+    // #474 §11 — Surfacer le swallow silencieux : un échec de déchiffrement
+    // signale soit des données seedées en clair (dev — corrigé par le seed
+    // chiffré), soit un PHI réellement corrompu (prod — incident à investiguer).
+    // Aucune valeur loggée (PHI/ciphertext potentiel).
+    logger.warn("patient.service", "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)")
     return null
   }
 }
