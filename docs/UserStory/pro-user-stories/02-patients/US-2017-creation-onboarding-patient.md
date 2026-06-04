@@ -18,11 +18,18 @@
 | **Service / Standard** | Interne |
 | **Modèle économique** | Interne |
 | **Coût estimé** | — |
-| **Statut** | 🆕 À démarrer |
+| **Statut** | 🚧 PR ouverte ([#468](https://github.com/freecompub/Diabeo-BackOffice/pull/468)) — backend + UI livrés, en review |
 | **Story points** | **1** (Fibonacci) |
-| **Dépendances** | Aucune |
-| **Sprint cible** | À définir lors du planning |
+| **Dépendances** | i18n `patients.*` ([#467](https://github.com/freecompub/Diabeo-BackOffice/pull/467)) · invitation mobile QR US-2025 (workflow complémentaire) |
+| **Sprint cible** | Session dev 2026-06-03 |
 | **Owner** | À assigner |
+
+> ✅ **Implémenté (PR #468)** — la route `POST /api/patients` provisionne en une
+> transaction atomique le **User backing** (compte VIEWER) ET le **Patient**.
+> Le formulaire wizard 2 étapes `/patients/new` (déjà câblé) est désormais
+> fonctionnel. Cette fiche, auto-générée depuis l'inventaire, est mise à jour
+> ci-dessous pour refléter l'implémentation réelle (modèle, contrat API, erreurs,
+> tests). Les sections génériques restantes valent recommandation.
 
 ---
 
@@ -96,40 +103,50 @@ Alors le record est anonymisé et marqué deletedAt (jamais DELETE physique)
 
 ## 🗄️ Modèle de données
 
-### Schéma Prisma indicatif
+### Schéma Prisma réel (aucune migration — modèles existants)
+
+La création provisionne **un `User` + un `Patient`** liés 1:1. Les PII sont sur
+`User` (chiffrées AES-256-GCM base64, lookup via `emailHmac`), la pathologie sur
+`Patient`, l'année de diagnostic sur `PatientMedicalData`.
 
 ```prisma
-// Réutilise le modèle Patient existant (chiffré AES-256-GCM)
+model User {
+  id               Int        @id @default(autoincrement())
+  email            String     // chiffré AES-256-GCM (base64)
+  emailHmac        String     @unique // HMAC-SHA256 → lookup unicité
+  passwordHash     String     // bcrypt(12) — mot de passe temporaire random
+  firstname        String?    // chiffré
+  firstnameHmac    String?    // HMAC recherche
+  lastname         String?    // chiffré
+  lastnameHmac     String?
+  sex              Sex?       // M | F | X
+  birthday         DateTime?  @db.Date // stocké en clair (Date), pas chiffré
+  role             Role       @default(VIEWER) // patient = VIEWER
+  status           UserStatus @default(active)
+  needPasswordUpdate Boolean  @default(false) // → true (invitation set-password)
+  needOnboarding   Boolean    @default(false)  // → true
+  patient          Patient?
+}
+
 model Patient {
-  id              String   @id @default(cuid())
-  firstnameEnc    Bytes    // AES-256-GCM : IV + TAG + ciphertext
-  lastnameEnc     Bytes
-  birthdateEnc    Bytes
-  emailHmac       String?  @unique
-  insNumber       String?  @unique // Identifiant National de Santé (FR)
-  pathology       Pathology
-  referentId      String
-  cabinetId       String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  deletedAt       DateTime? // soft delete RGPD
+  id        Int       @id @default(autoincrement())
+  userId    Int       @unique
+  pathology Pathology // DT1 | DT2 | GD
+  deletedAt DateTime? // soft delete RGPD (trigger PG)
+}
 
-  referent        User     @relation(fields: [referentId], references: [id])
-  medicalData     PatientMedicalData?
-  treatments      Treatment[]
-  cgmEntries      CgmEntry[]
-
-  @@index([referentId, deletedAt])
-  @@index([cabinetId, pathology])
+model PatientMedicalData {
+  patientId Int  @unique
+  yearDiag  Int? // année de diagnostic (optionnel)
 }
 ```
 
 ### Notes de migration
 
-- Créer une migration Prisma dédiée : `pnpm prisma migrate dev --name creation-onboarding-patient`
-- Si nouveaux index : vérifier l'impact sur les performances avec `EXPLAIN ANALYZE`
-- Si données existantes à migrer : prévoir un script de backfill idempotent dans `prisma/migrations/sql/`
-- Mise à jour du seed si pertinent (`prisma/seed.ts`)
+- **Aucune migration** : la feature réutilise les modèles existants `User`,
+  `Patient`, `PatientMedicalData`, `VerificationToken`.
+- Invitation set-password : un `VerificationToken` (clé `emailHmac`, TTL 1h) est
+  créé dans la même transaction — même mécanisme que `POST /api/auth/reset-password`.
 
 ---
 
@@ -143,25 +160,37 @@ model Patient {
 
 | Méthode | Endpoint | Auth | Rôles autorisés | Description |
 |---------|----------|------|-----------------|-------------|
-| GET     | `/api/patients` | JWT | Selon AC-1 | Liste / lecture |
-| POST    | `/api/patients` | JWT | Selon AC-1 | Création |
-| PUT     | `/api/patients/[id]` | JWT | Selon AC-1 | Modification |
-| DELETE  | `/api/patients/[id]` | JWT | ADMIN/DOCTOR (selon RBAC) | Soft delete (RGPD) |
+| GET     | `/api/patients` | JWT | NURSE+ | Liste des patients du pro connecté |
+| POST    | `/api/patients` | JWT | **NURSE+** | **Création User + Patient (PR #468)** |
+| PUT     | `/api/patients/[id]` | JWT | NURSE+ (contrôle service) | Modification (US-2200, existant) |
+| DELETE  | `/api/patients/[id]` | JWT | — | Soft delete RGPD (US-2020) — hors scope cette US |
 
-> ⚠️ Les méthodes ci-dessus sont indicatives. À ajuster lors de la conception détaillée selon la nature exacte de la fonctionnalité.
+**Réponse `POST` (201)** : `{ "id": number, "pathology": "DT1"|"DT2"|"GD" }`.
+Le `resetToken` et le `userId` ne sont **jamais** renvoyés au client. Un email
+d'invitation (lien set-password) est envoyé best-effort après commit (un échec
+d'envoi ne rollback pas le patient). L'invitation mobile QR reste disponible via
+`POST /api/patients/[id]/invite` (US-2025).
 
-### Validation des entrées (Zod)
+### Validation des entrées (Zod) — implémentée dans `src/app/api/patients/route.ts`
 
 ```typescript
 import { z } from "zod"
 
-export const creation_onboarding_patientSchema = z.object({
-  // À compléter selon la fonctionnalité
-  // Exemples : id: z.string().cuid(), value: z.number().positive(), ...
+const createPatientSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(254),
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
+  sex: z.enum(["M", "F", "X"]).optional(),
+  birthday: z.coerce.date()
+    .refine((d) => d.getFullYear() >= 1900 && d <= new Date())
+    .optional(),
+  pathology: z.enum(["DT1", "DT2", "GD"]),
+  yearDiag: z.number().int().min(1900).max(new Date().getFullYear()).optional(),
 })
-
-export type CreationonboardingpatientInput = z.infer<typeof creation_onboarding_patientSchema>
 ```
+
+Service : `patientService.createWithNewUser(input, auditUserId, ctx)`
+(`src/lib/services/patient.service.ts`).
 
 ### Format de réponse standard
 
@@ -206,6 +235,18 @@ export type CreationonboardingpatientInput = z.infer<typeof creation_onboarding_
 | 500 | `INTERNAL_ERROR` | Erreur interne, l'équipe a été notifiée | Sentry / log + ID corrélation |
 | 503 | `SERVICE_UNAVAILABLE` | Service externe indisponible | Si fournisseur tiers KO, retry auto |
 
+### Codes réels `POST /api/patients` (PR #468)
+
+| HTTP | `error` | Déclencheur |
+|------|---------|-------------|
+| 400 | `validationFailed` | Body Zod invalide ou JSON malformé |
+| 401 | `unauthorized` | JWT absent/invalide |
+| 403 | `forbidden` | Rôle < NURSE |
+| 409 | `emailExists` | Email déjà utilisé (pré-check + contrainte unique `emailHmac`, race P2002) |
+| 413 | `payloadTooLarge` | `Content-Length` > 16KB |
+| 415 | `unsupportedMediaType` | `Content-Type` ≠ `application/json` |
+| 500 | `serverError` | Erreur inattendue (jamais de stack trace exposée) |
+
 ---
 
 ## 🔒 Sécurité & conformité HDS
@@ -241,6 +282,13 @@ export type CreationonboardingpatientInput = z.infer<typeof creation_onboarding_
 ---
 
 ## 🧪 Plan de test 3 niveaux
+
+> **État (PR #468)** : 8 tests unit service (`tests/unit/patient-create-with-user.service.test.ts`)
+> + 9 tests intégration route (`tests/integration/api-patients-create.test.ts`).
+> Couvrent chiffrement email/noms, flags VIEWER/onboarding, token invitation,
+> audit CREATE USER+PATIENT, P2002→emailExists, RBAC 401/403, 415/413/400/409,
+> email best-effort et non-fuite du `resetToken`. `tsc` + `eslint` verts.
+> E2E Playwright du wizard `/patients/new` : follow-up.
 
 ### Tests unitaires (Vitest)
 
