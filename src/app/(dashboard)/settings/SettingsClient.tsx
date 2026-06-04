@@ -1,20 +1,23 @@
 "use client"
 
 /**
- * User Profile / Settings page — WEB-208.
+ * User Profile / Settings client component — WEB-208.
  *
  * Two-panel layout on desktop (section list left, edit form right).
- * Accordion on mobile.
+ * Accordion on mobile. Sections are gated by `role` (#475 §7): a VIEWER
+ * (patient) sees all 9; a PS (NURSE/DOCTOR/ADMIN) does not see the patient-only
+ * ones (medicalData / administrative / dayMoments / privacy).
  *
- * 8 sections:
+ * 9 sections:
  *  1. personalInfo   — first name, last name, gender, birth date
- *  2. medicalData    — diabetes type, diagnosis year, height
- *  3. administrative — NIRPP, OID, INS (read-only)
+ *  2. medicalData    — diabetes type, diagnosis year, height        (patient-only)
+ *  3. administrative — NIRPP, OID, INS (read-only)                  (patient-only)
  *  4. contact        — phone, address, city
  *  5. units          — glucose, weight, height unit dropdowns
- *  6. dayMoments     — morning / noon / evening / night time ranges
- *  7. notifications  — toggles (glycemia, insulin, appointments, auto-export)
- *  8. privacy        — toggles (researchers, healthcare, analytics, GDPR consent)
+ *  6. dayMoments     — morning / noon / evening / night time ranges (patient-only)
+ *  7. notifications  — toggles (glycemia/insulin = patient-only, appointments, auto-export)
+ *  8. privacy        — toggles (researchers, healthcare, analytics, GDPR consent) (patient-only)
+ *  9. sessions       — active sessions management (US-2007)
  *
  * Security:
  * - All API calls use credentials: "include" + X-Requested-With header
@@ -103,9 +106,16 @@ const SECTIONS: SectionMeta[] = [
 /**
  * #475 §7 — Sections réservées au patient (rôle VIEWER). Un PS (NURSE/DOCTOR/
  * ADMIN) ne doit pas les voir : "Données médicales" (pathology/yearDiag/taille),
- * "Administratif" (NIRPP/INS), "Moments de la journée" et "Confidentialité"
- * (consentements RGPD patient) n'ont pas de sens pour un soignant — et leurs
- * "Enregistrer" tapent des routes `/api/patient/*` qui renverraient 403/404.
+ * "Administratif" (NIRPP/INS, lecture seule), "Moments de la journée" et
+ * "Confidentialité" (consentements RGPD patient) n'ont pas de sens pour un
+ * soignant.
+ *
+ * Raison du masquage = non-pertinence métier + RGPD (un PS ne gère pas les
+ * consentements du patient), PAS un échec d'API : seule "Données médicales" tape
+ * `/api/patient/*` (qui renverrait 403/404 pour un PS) ; `dayMoments`/`privacy`
+ * ciblent `/api/account/*` (scopé au user authentifié, pas un patient).
+ *
+ * ⚠️ Toute nouvelle section patient-only doit être listée ici ET dans `SECTIONS`.
  */
 const PATIENT_ONLY_SECTIONS = new Set<SectionId>([
   "medicalData",
@@ -910,7 +920,14 @@ function DayMomentsSection({ moments }: { moments: DayMoment[] | null }) {
 // NotificationsSection
 // ---------------------------------------------------------------------------
 
-function NotificationsSection({ prefs }: { prefs: NotifPrefs | null }) {
+function NotificationsSection({
+  prefs,
+  showPatientToggles,
+}: {
+  prefs: NotifPrefs | null
+  /** #475 L1 — rappels glycémie/insuline n'ont de sens que pour un patient (VIEWER). */
+  showPatientToggles: boolean
+}) {
   const t = useTranslations("profile")
   const tCommon = useTranslations("common")
   const { state, save } = useSectionSave<NotifPrefs>(
@@ -954,18 +971,23 @@ function NotificationsSection({ prefs }: { prefs: NotifPrefs | null }) {
         description={t("notifications.description")}
       >
         <div className="flex flex-col gap-4">
-          <DiabeoToggle
-            label={t("notifications.glycemiaReminders")}
-            subtitle={t("notifications.glycemiaRemindersSubtitle")}
-            checked={glycemiaReminders}
-            onCheckedChange={setGlycemiaReminders}
-          />
-          <DiabeoToggle
-            label={t("notifications.insulinReminders")}
-            subtitle={t("notifications.insulinRemindersSubtitle")}
-            checked={insulinReminders}
-            onCheckedChange={setInsulinReminders}
-          />
+          {/* #475 L1 — rappels glycémie/insuline = patient uniquement. */}
+          {showPatientToggles && (
+            <>
+              <DiabeoToggle
+                label={t("notifications.glycemiaReminders")}
+                subtitle={t("notifications.glycemiaRemindersSubtitle")}
+                checked={glycemiaReminders}
+                onCheckedChange={setGlycemiaReminders}
+              />
+              <DiabeoToggle
+                label={t("notifications.insulinReminders")}
+                subtitle={t("notifications.insulinRemindersSubtitle")}
+                checked={insulinReminders}
+                onCheckedChange={setInsulinReminders}
+              />
+            </>
+          )}
           <DiabeoToggle
             label={t("notifications.medicalAppointments")}
             subtitle={t("notifications.medicalAppointmentsSubtitle")}
@@ -1232,6 +1254,13 @@ export function SettingsClient({ role }: SettingsClientProps) {
   const [activeSection, setActiveSection] =
     React.useState<SectionId>("personalInfo")
 
+  // #475 L4 — garde defense-in-depth : ne jamais rendre une section masquée
+  // (ex. futur deep-link `?section=privacy`). La nav ne propose que `sections`,
+  // donc `activeSection` est déjà sûr aujourd'hui — ceci est une ceinture.
+  const effectiveSection = sections.some((s) => s.id === activeSection)
+    ? activeSection
+    : sections[0].id
+
   // Data states
   const [profile, setProfile] = React.useState<ProfileData | null>(null)
   const [patientData, setPatientData] = React.useState<PatientData | null>(null)
@@ -1249,6 +1278,10 @@ export function SettingsClient({ role }: SettingsClientProps) {
   React.useEffect(() => {
     const headers = { "X-Requested-With": "XMLHttpRequest" }
 
+    // #475 M3 — `dayMoments` + `privacy` ne sont affichées qu'au patient (VIEWER).
+    // Inutile de les fetcher pour un PS (sections masquées) → on les saute.
+    const isPatient = role === "VIEWER"
+
     const load = async () => {
       setIsLoading(true)
       const [
@@ -1260,9 +1293,13 @@ export function SettingsClient({ role }: SettingsClientProps) {
       ] = await Promise.allSettled([
         fetch("/api/account", { credentials: "include", headers }),
         fetch("/api/account/units", { credentials: "include", headers }),
-        fetch("/api/account/day-moments", { credentials: "include", headers }),
+        isPatient
+          ? fetch("/api/account/day-moments", { credentials: "include", headers })
+          : Promise.resolve(null),
         fetch("/api/account/notifications", { credentials: "include", headers }),
-        fetch("/api/account/privacy", { credentials: "include", headers }),
+        isPatient
+          ? fetch("/api/account/privacy", { credentials: "include", headers })
+          : Promise.resolve(null),
       ])
 
       if (profileRes.status === "fulfilled" && profileRes.value.ok) {
@@ -1274,20 +1311,20 @@ export function SettingsClient({ role }: SettingsClientProps) {
       if (unitsRes.status === "fulfilled" && unitsRes.value.ok) {
         setUnits(await unitsRes.value.json() as UnitPrefs)
       }
-      if (momentsRes.status === "fulfilled" && momentsRes.value.ok) {
+      if (momentsRes.status === "fulfilled" && momentsRes.value && momentsRes.value.ok) {
         setDayMoments(await momentsRes.value.json() as DayMoment[])
       }
       if (notifRes.status === "fulfilled" && notifRes.value.ok) {
         setNotifPrefs(await notifRes.value.json() as NotifPrefs)
       }
-      if (privacyRes.status === "fulfilled" && privacyRes.value.ok) {
+      if (privacyRes.status === "fulfilled" && privacyRes.value && privacyRes.value.ok) {
         setPrivacySettings(await privacyRes.value.json() as PrivacySettings)
       }
       setIsLoading(false)
     }
 
     void load()
-  }, [])
+  }, [role])
 
   // -------------------------------------------------------------------------
   // Section content renderer
@@ -1309,7 +1346,12 @@ export function SettingsClient({ role }: SettingsClientProps) {
       case "dayMoments":
         return <DayMomentsSection moments={dayMoments} />
       case "notifications":
-        return <NotificationsSection prefs={notifPrefs} />
+        return (
+          <NotificationsSection
+            prefs={notifPrefs}
+            showPatientToggles={role === "VIEWER"}
+          />
+        )
       case "privacy":
         return <PrivacySection settings={privacySettings} />
       case "sessions":
@@ -1408,9 +1450,9 @@ export function SettingsClient({ role }: SettingsClientProps) {
             ))}
           </nav>
 
-          {/* Right panel — active section form */}
-          <SectionPanel id={activeSection}>
-            {renderSectionContent(activeSection)}
+          {/* Right panel — active section form (#475 L4 — guarded section) */}
+          <SectionPanel id={effectiveSection}>
+            {renderSectionContent(effectiveSection)}
           </SectionPanel>
         </div>
       </div>

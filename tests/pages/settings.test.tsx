@@ -11,8 +11,13 @@
  * - GDPR consent toggle controls data processing permissions
  * - Administrative fields are read-only to prevent accidental modification
  *
- * @see src/app/(dashboard)/settings/page.tsx
+ * @see src/app/(dashboard)/settings/SettingsClient.tsx
  * @see CLAUDE.md — RGPD compliance requirements
+ *
+ * Note: the `page.tsx` Server Component wrapper (#475 §7) is not unit-tested
+ * here — it relies on `next/headers` (`await headers()`), which does not run in
+ * jsdom. Its only logic (read `x-user-role`, fail-closed redirect) is guarded by
+ * the JWT middleware that injects the header; covered by E2E if needed.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
@@ -157,7 +162,7 @@ describe("SettingsPage", () => {
 
   // ── Section headings ────────────────────────────────────────────────────
 
-  it("renders 8 section headings", async () => {
+  it("renders all 9 section headings for a VIEWER (patient)", async () => {
     await renderAndWaitForLoad()
 
     // The page renders both mobile (accordion) and desktop (nav+panel) layouts,
@@ -171,6 +176,7 @@ describe("SettingsPage", () => {
       "dayMoments",
       "notifications",
       "privacy",
+      "sessions",
     ]
 
     for (const id of sectionIds) {
@@ -198,6 +204,21 @@ describe("SettingsPage", () => {
     for (const shown of ["medicalData", "administrative", "dayMoments", "privacy"]) {
       expect(screen.getAllByText(`profile.${shown}.title`).length).toBeGreaterThanOrEqual(1)
     }
+  })
+
+  // #475 L1 — patient notification toggles (glycemia/insulin) gated.
+  it("hides glycemia/insulin reminder toggles for a DOCTOR, keeps appointments/autoExport", async () => {
+    await renderAndWaitForLoad("DOCTOR")
+    expect(screen.queryByText("profile.notifications.glycemiaReminders")).toBeNull()
+    expect(screen.queryByText("profile.notifications.insulinReminders")).toBeNull()
+    expect(screen.getAllByText("profile.notifications.medicalAppointments").length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText("profile.notifications.autoExport").length).toBeGreaterThanOrEqual(1)
+  })
+
+  it("shows glycemia/insulin reminder toggles for a VIEWER (patient)", async () => {
+    await renderAndWaitForLoad("VIEWER")
+    expect(screen.getAllByText("profile.notifications.glycemiaReminders").length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText("profile.notifications.insulinReminders").length).toBeGreaterThanOrEqual(1)
   })
 
   // ── NIRPP masking ───────────────────────────────────────────────────────
