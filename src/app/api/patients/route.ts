@@ -65,6 +65,16 @@ export async function POST(req: NextRequest) {
     const user = requireRole(req, "NURSE")
     actorId = user.id
 
+    // CSRF defense (F10) for this cookie-auth, state-changing endpoint: require
+    // the custom `X-Requested-With` header. A browser cannot attach a custom
+    // header to a cross-site request without a CORS preflight (blocked by the
+    // same-origin policy), so its presence proves a same-origin XHR/fetch — a
+    // forged <form>/<img> CSRF cannot set it. Matches the client contract
+    // (the wizard sends it and maps `csrfMissing`).
+    if (req.headers.get("x-requested-with") !== "XMLHttpRequest") {
+      return NextResponse.json({ error: "csrfMissing" }, { status: 403 })
+    }
+
     // Anti-enumeration: if this actor has tripped the email-existence conflict
     // limiter (repeated `emailExists` probes), short-circuit with 429 before
     // doing any work. Successful creations never feed this counter, so legit

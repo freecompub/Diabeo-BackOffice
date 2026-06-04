@@ -63,7 +63,7 @@ const VALID_BODY = {
 
 function makeReq(
   body: unknown,
-  init: { auth?: boolean; role?: string; contentType?: string | null } = {},
+  init: { auth?: boolean; role?: string; contentType?: string | null; csrf?: boolean } = {},
 ): NextRequest {
   const headers = new Headers()
   if (init.auth !== false) {
@@ -72,6 +72,11 @@ function makeReq(
   }
   if (init.contentType !== null) {
     headers.set("content-type", init.contentType ?? "application/json")
+  }
+  // CSRF token header sent by default (the wizard always sends it); pass
+  // `csrf: false` to exercise the missing-header path.
+  if (init.csrf !== false) {
+    headers.set("x-requested-with", "XMLHttpRequest")
   }
   return new NextRequest(new URL("/api/patients", "http://test.local"), {
     method: "POST",
@@ -95,6 +100,13 @@ describe("POST /api/patients", () => {
     const res = await POST(makeReq(VALID_BODY, { role: "VIEWER" }))
     expect(res.status).toBe(403)
     expect((await res.json()).error).toBe("forbidden")
+    expect(patientService.createWithNewUser).not.toHaveBeenCalled()
+  })
+
+  it("403 csrfMissing when X-Requested-With header is absent (F10)", async () => {
+    const res = await POST(makeReq(VALID_BODY, { csrf: false }))
+    expect(res.status).toBe(403)
+    expect((await res.json()).error).toBe("csrfMissing")
     expect(patientService.createWithNewUser).not.toHaveBeenCalled()
   })
 
