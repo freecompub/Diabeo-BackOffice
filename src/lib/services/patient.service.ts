@@ -16,6 +16,7 @@ import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { encryptField } from "@/lib/crypto/fields"
 import { hmacField, hmacEmail } from "@/lib/crypto/hmac"
 import { auditService, extractRequestContext } from "./audit.service"
+import { logger } from "@/lib/logger"
 import { Prisma } from "@prisma/client"
 import type { Pathology, Sex, PatientMedicalData } from "@prisma/client"
 
@@ -123,6 +124,39 @@ function localDecryptField(value: string): string {
 }
 
 /**
+ * #474 R4 — Throttle du warn de `safeDecrypt`. `safeDecrypt` est appelé ~16× par
+ * enregistrement sur les chemins de liste ; sans throttle, une mauvaise clé / un
+ * dump restauré émettrait des centaines de warns par requête (flooding Loki/OVH
+ * + corrélation volumétrique = fuite indirecte de la taille de cohorte). On émet
+ * au plus 1 warn / fenêtre / process, en reportant le nombre d'occurrences
+ * supprimées depuis le dernier warn (`suppressedSinceLastLog`).
+ *
+ * RR1 (review round 2) — Le throttle est volontairement **process-global** (un
+ * seul compteur), PAS per-user comme `messaging.service`. Raison : `safeDecrypt`
+ * reçoit un `value` opaque sans `userId`/`patientId` en contexte → une clé
+ * per-entity est impossible sans changer la signature, et un échec isolé (1/min)
+ * émet quand même son warn (non masqué). Seul le scénario de masse est throttlé.
+ *
+ * RR2 (review round 2) — `suppressedSinceLastLog` est remis à 0 à chaque fenêtre
+ * (≠ cumul process-life) + cappé pour éviter tout overflow théorique et borner
+ * l'oracle volumétrique du log SOC.
+ */
+const DECRYPT_WARN_WINDOW_MS = 60_000
+const DECRYPT_SUPPRESSED_CAP = 10_000_000
+let lastDecryptWarnAt = 0
+let suppressedDecryptWarns = 0
+
+/**
+ * Test-only — réinitialise l'état du throttle de `safeDecrypt` (RR4) pour que
+ * les specs partent d'un état déterministe (état module partagé entre tests).
+ * @internal
+ */
+export function __resetDecryptWarnThrottleForTests(): void {
+  lastDecryptWarnAt = 0
+  suppressedDecryptWarns = 0
+}
+
+/**
  * Safe decryption — returns null on error instead of throwing.
  * Used in read operations to handle corrupted or missing data gracefully.
  * @private
@@ -134,6 +168,26 @@ function safeDecrypt(value: string | null): string | null {
   try {
     return localDecryptField(value)
   } catch {
+    // #474 §11 — Surfacer le swallow silencieux : un échec signale soit des
+    // données seedées en clair (dev — corrigé par le seed chiffré), soit un PHI
+    // réellement corrompu / mauvaise clé (prod — incident à investiguer).
+    // Aucune valeur loggée (PHI/ciphertext potentiel) ; throttlé (R4) ; `kind`
+    // pour le filtrage SOC (R7).
+    const now = Date.now()
+    if (now - lastDecryptWarnAt >= DECRYPT_WARN_WINDOW_MS) {
+      logger.warn(
+        "patient.service",
+        "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)",
+        {
+          kind: "phi.decrypt.fail",
+          ...(suppressedDecryptWarns > 0 ? { suppressedSinceLastLog: suppressedDecryptWarns } : {}),
+        },
+      )
+      lastDecryptWarnAt = now
+      suppressedDecryptWarns = 0
+    } else if (suppressedDecryptWarns < DECRYPT_SUPPRESSED_CAP) {
+      suppressedDecryptWarns++
+    }
     return null
   }
 }

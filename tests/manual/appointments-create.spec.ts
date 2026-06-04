@@ -131,9 +131,11 @@ test.describe("/appointments — création nouveau RDV", () => {
     // Le hook polling 60s ou le revalidate post-create rappelle GET
     // /api/appointments. On vérifie que le nouvel id est dans la liste.
     const created = postResponses[0].body as { id?: number } | null
+    // `toBeTypeOf` est un matcher Vitest, absent de l'`expect` Playwright
+    // (cassait `tsc -p tsconfig.json` car ce spec est typecheck par le projet).
     expect(
-      created?.id,
+      typeof created?.id,
       `réponse 201 sans id : ${JSON.stringify(created)}`,
-    ).toBeTypeOf("number")
+    ).toBe("number")
   })
 })

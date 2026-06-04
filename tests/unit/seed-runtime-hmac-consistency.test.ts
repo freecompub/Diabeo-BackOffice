@@ -45,3 +45,33 @@ describe("seed.ts uses the runtime hmacEmail (no local replica)", () => {
     expect(source).not.toMatch(/dev-seed-hmac-key-not-for-production/)
   })
 })
+
+/**
+ * RR3 (review round 2 PR #479) — Depuis #474, le seed dépend aussi de
+ * `hmacField` (firstnameHmac/lastnameHmac → recherche patient) et de
+ * `encryptField` (chiffrement PII). Ces deux helpers ont la même criticité que
+ * `hmacEmail` : une réplique locale accidentelle produirait un seed fonctionnel
+ * mais incohérent avec le runtime (recherche cassée / champs indéchiffrables).
+ */
+describe("seed.ts uses the runtime hmacField + encryptField (no local replica)", () => {
+  const source = fs.readFileSync(SEED_FILE, "utf8")
+
+  it("imports hmacField from src/lib/crypto/hmac", () => {
+    expect(source).toMatch(
+      /import\s*\{[^}]*\bhmacField\b[^}]*\}\s*from\s*["'](?:\.\.\/)+src\/lib\/crypto\/hmac["']/,
+    )
+  })
+
+  it("imports encryptField from src/lib/crypto/fields", () => {
+    expect(source).toMatch(
+      /import\s*\{[^}]*\bencryptField\b[^}]*\}\s*from\s*["'](?:\.\.\/)+src\/lib\/crypto\/fields["']/,
+    )
+  })
+
+  it("does NOT define a local hmacField / encryptField (would diverge from runtime)", () => {
+    expect(source).not.toMatch(/function\s+hmacField\s*\(/)
+    expect(source).not.toMatch(/(?:const|let|var)\s+hmacField\s*=/)
+    expect(source).not.toMatch(/function\s+encryptField\s*\(/)
+    expect(source).not.toMatch(/(?:const|let|var)\s+encryptField\s*=/)
+  })
+})

@@ -12,7 +12,7 @@ import {
 import { PrismaPg } from "@prisma/adapter-pg"
 import { hash as bcryptHash } from "bcryptjs"
 import { assertSeedEnv } from "../src/lib/env"
-import { hmacEmail } from "../src/lib/crypto/hmac"
+import { hmacEmail, hmacField } from "../src/lib/crypto/hmac"
 import { encryptField } from "../src/lib/crypto/fields"
 // Fix M3 round 1 review PR #453 (Issue #448) — static imports pour le bloc
 // 9.bis Messages messagerie (vs dynamic `await import(...)` qui n'apporte
@@ -143,8 +143,8 @@ async function main() {
   console.log(`  ✓ ${insulinCatalog.length} insulins seeded`)
 
   // ─── 1. Users (5) ─────────────────────────────────────────
-  // NOTE: In production, firstname/lastname/email must be encrypted.
-  // Seeds use plaintext for readability — this is dev-only data.
+  // PII (email/firstname/lastname) chiffrées AES-256-GCM comme en production
+  // via `encUserPII` (#474) — voir ci-dessous.
 
   // Parallélise les bcrypt(12) (~250ms chacun) — 5×250ms séquentiel devient
   // ~250ms total. Acceptable même si le seed est run rare.
@@ -164,19 +164,43 @@ async function main() {
     seedPassword("DEV-ONLY-Patient123!"),
   ])
 
+  // #474 §11 — Seed PII chiffrées exactement comme en production
+  // (AES-256-GCM base64). Sans ça, `patientService.safeDecrypt` (qui attend du
+  // base64 chiffré) échoue silencieusement sur du texte clair → renvoie `null`
+  // → les noms patients s'affichent "(?)" partout (liste, combobox, détail).
+  //
+  // R1 (review) — `firstnameHmac`/`lastnameHmac` peuplés (via `hmacField`) :
+  // `patientService.search` + admin users cherchent EXCLUSIVEMENT par ces HMAC,
+  // sinon la recherche par nom ne retourne aucun user seedé.
+  // `emailHmac` n'est PAS dans ce helper (R2) : il est dérivé du clair et figure
+  // déjà dans le `where` de l'upsert + le `create` ci-dessous — l'inclure dans
+  // `update` produirait un `SET email_hmac` redondant sur une colonne @unique.
+  //
+  // R3 (review) — utilisé en `update` pour AUTO-RÉPARER les rows seedées en clair
+  // (avant #474) sans wipe DB. Effet de bord assumé : AES-GCM ré-encrypte avec un
+  // IV aléatoire à chaque `db seed`, donc le ciphertext de ces colonnes n'est PAS
+  // byte-stable entre runs (le plaintext déchiffré, lui, l'est ; aucun snapshot
+  // ne compare ces colonnes).
+  const encUserPII = (email: string, firstname: string, lastname: string) => ({
+    email: encryptField(email),
+    firstname: encryptField(firstname),
+    firstnameHmac: hmacField(firstname),
+    lastname: encryptField(lastname),
+    lastnameHmac: hmacField(lastname),
+  })
+
   const admin = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("admin@diabeo.test") },
     // M4 — `update: {}` évite de re-hash bcrypt(12) à chaque seed run
     // (5×250ms gaspillés). Si tu veux resync les passwords après une
     // rotation, drop la DB (`docker compose down -v`) et reseed.
-    update: {},
+    // update re-chiffre les PII → répare les rows seedées en clair avant #474.
+    update: encUserPII("admin@diabeo.test", "Admin", "Test"),
     create: {
-      email: "admin@diabeo.test",
+      ...encUserPII("admin@diabeo.test", "Admin", "Test"),
       emailHmac: hmacEmail("admin@diabeo.test"),
       passwordHash: adminPasswordHash,
       title: "M.",
-      firstname: "Admin",
-      lastname: "Test",
       role: Role.ADMIN,
       language: Language.fr,
       hasSignedTerms: true,
@@ -186,14 +210,12 @@ async function main() {
 
   const doctor = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("docteur@diabeo.test") },
-    update: {},
+    update: encUserPII("docteur@diabeo.test", "Sophie", "Martin"),
     create: {
-      email: "docteur@diabeo.test",
+      ...encUserPII("docteur@diabeo.test", "Sophie", "Martin"),
       emailHmac: hmacEmail("docteur@diabeo.test"),
       passwordHash: doctorPasswordHash,
       title: "Dr",
-      firstname: "Sophie",
-      lastname: "Martin",
       role: Role.DOCTOR,
       language: Language.fr,
       hasSignedTerms: true,
@@ -203,14 +225,12 @@ async function main() {
 
   const nurse = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("infirmiere@diabeo.test") },
-    update: {},
+    update: encUserPII("infirmiere@diabeo.test", "Marie", "Dupont"),
     create: {
-      email: "infirmiere@diabeo.test",
+      ...encUserPII("infirmiere@diabeo.test", "Marie", "Dupont"),
       emailHmac: hmacEmail("infirmiere@diabeo.test"),
       passwordHash: nursePasswordHash,
       title: "Mme",
-      firstname: "Marie",
-      lastname: "Dupont",
       role: Role.NURSE,
       language: Language.fr,
       hasSignedTerms: true,
@@ -220,13 +240,11 @@ async function main() {
 
   const patientUserDT1 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt1@diabeo.test") },
-    update: {},
+    update: encUserPII("patient.dt1@diabeo.test", "Jean", "Durand"),
     create: {
-      email: "patient.dt1@diabeo.test",
+      ...encUserPII("patient.dt1@diabeo.test", "Jean", "Durand"),
       emailHmac: hmacEmail("patient.dt1@diabeo.test"),
       passwordHash: patient1PasswordHash,
-      firstname: "Jean",
-      lastname: "Durand",
       sex: Sex.M,
       birthday: new Date("1990-03-15"),
       timezone: "Europe/Paris",
@@ -239,13 +257,11 @@ async function main() {
 
   const patientUserDT2 = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt2@diabeo.test") },
-    update: {},
+    update: encUserPII("patient.dt2@diabeo.test", "Claire", "Bernard"),
     create: {
-      email: "patient.dt2@diabeo.test",
+      ...encUserPII("patient.dt2@diabeo.test", "Claire", "Bernard"),
       emailHmac: hmacEmail("patient.dt2@diabeo.test"),
       passwordHash: patient2PasswordHash,
-      firstname: "Claire",
-      lastname: "Bernard",
       sex: Sex.F,
       birthday: new Date("1975-08-22"),
       timezone: "Europe/Paris",
@@ -271,13 +287,11 @@ async function main() {
 
   const patientUserDT1Extra = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt1bis@diabeo.test") },
-    update: {},
+    update: encUserPII("patient.dt1bis@diabeo.test", "Lucas", "Petit"),
     create: {
-      email: "patient.dt1bis@diabeo.test",
+      ...encUserPII("patient.dt1bis@diabeo.test", "Lucas", "Petit"),
       emailHmac: hmacEmail("patient.dt1bis@diabeo.test"),
       passwordHash: extraPatientsPasswordHash,
-      firstname: "Lucas",
-      lastname: "Petit",
       sex: Sex.M,
       birthday: new Date("1998-11-04"),
       timezone: "Europe/Paris",
@@ -290,13 +304,11 @@ async function main() {
 
   const patientUserDT2Extra = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.dt2bis@diabeo.test") },
-    update: {},
+    update: encUserPII("patient.dt2bis@diabeo.test", "Hélène", "Moreau"),
     create: {
-      email: "patient.dt2bis@diabeo.test",
+      ...encUserPII("patient.dt2bis@diabeo.test", "Hélène", "Moreau"),
       emailHmac: hmacEmail("patient.dt2bis@diabeo.test"),
       passwordHash: extraPatientsPasswordHash,
-      firstname: "Hélène",
-      lastname: "Moreau",
       sex: Sex.F,
       birthday: new Date("1958-04-12"),
       timezone: "Europe/Paris",
@@ -309,13 +321,11 @@ async function main() {
 
   const patientUserGD = await prisma.user.upsert({
     where: { emailHmac: hmacEmail("patient.gd@diabeo.test") },
-    update: {},
+    update: encUserPII("patient.gd@diabeo.test", "Amélie", "Rousseau"),
     create: {
-      email: "patient.gd@diabeo.test",
+      ...encUserPII("patient.gd@diabeo.test", "Amélie", "Rousseau"),
       emailHmac: hmacEmail("patient.gd@diabeo.test"),
       passwordHash: extraPatientsPasswordHash,
-      firstname: "Amélie",
-      lastname: "Rousseau",
       sex: Sex.F,
       birthday: new Date("1993-07-19"),
       timezone: "Europe/Paris",
