@@ -500,6 +500,7 @@
     "actionConfirmPending": "Confirmer le RDV",
     "actionConfirmPendingAria": "Confirmer le rendez-vous numéro {id}",
     "actionAcceptAlternativeAria": "Accepter l'alternative pour le rendez-vous numéro {id}",
+    "actionCloseAria": "Fermer le détail du rendez-vous numéro {id}",
     "actionRetry": "Réessayer",
     "skipToList": "Passer à la liste des rendez-vous",
     "myAppointmentsTitle": "Mes rendez-vous",

@@ -444,7 +444,11 @@ interface ViewModeProps {
   onAccept: () => void
   /** US-2500-UI iter 11 — Confirm RDV pending_validation (DOCTOR+, US-2505). */
   onConfirm: () => void
-  /** #476 review E — fermeture explicite sur statut terminal (footer sinon vide). */
+  /**
+   * #476 review E — fermeture explicite sur statut terminal (footer sinon vide).
+   * Le parent injecte `handleClose` (gardé `actionLoading`), PAS le `onClose`
+   * brut → le bouton terminal respecte le même garde que le X / Escape.
+   */
   onClose: () => void
 }
 
@@ -708,7 +712,13 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
         {/* review E — statut terminal sans action : "Fermer" explicite
             (sinon footer vide + seul X icône = faible découvrabilité). */}
         {!(actionable || canAcceptAlternative) && (
-          <Button variant="outline" onClick={onClose}>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            // #476 F-3 — aria-label discriminant (cohérent avec les autres CTAs)
+            // pour distinguer du X `sr-only "Close"` du DialogContent.
+            aria-label={t("actionCloseAria", { id: detail.id })}
+          >
             {t("actionClose")}
           </Button>
         )}

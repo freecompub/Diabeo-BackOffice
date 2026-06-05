@@ -500,6 +500,7 @@
     "actionConfirmPending": "تأكيد الموعد",
     "actionConfirmPendingAria": "تأكيد الموعد رقم {id}",
     "actionAcceptAlternativeAria": "قبول البديل للموعد رقم {id}",
+    "actionCloseAria": "إغلاق تفاصيل الموعد رقم {id}",
     "actionRetry": "إعادة المحاولة",
     "skipToList": "تخطي إلى قائمة المواعيد",
     "myAppointmentsTitle": "مواعيدي",
