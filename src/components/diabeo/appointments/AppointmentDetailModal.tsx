@@ -370,7 +370,6 @@ export function AppointmentDetailModal({
             // le RDV → status scheduled). Si futur dev veut un récap, suivre
             // pattern acceptAlt (sub-mode confirm récap).
             onConfirm={submitConfirm}
-            onClose={handleClose}
           />
         )}
 
@@ -444,7 +443,6 @@ interface ViewModeProps {
   onAccept: () => void
   /** US-2500-UI iter 11 — Confirm RDV pending_validation (DOCTOR+, US-2505). */
   onConfirm: () => void
-  onClose: () => void
 }
 
 
@@ -528,7 +526,7 @@ function formatDateTime(date: string, hour: string | null, locale: string): stri
   return `${dateLabel} - ${hourPart}`
 }
 
-function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onConfirm, onClose }: ViewModeProps) {
+function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onConfirm }: ViewModeProps) {
   const t = useTranslations("appointments")
   // Fix FE-2-1 round 2 review PR #433 — `useLocale()` directement dans le
   // sous-composant (vs prop drilling depuis le parent). Pattern idiomatique
@@ -647,54 +645,61 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
         </Field>
       </div>
 
-      <DialogFooter>
-        {actionable && (
-          <Button variant="outline" onClick={onCancel}>
-            {t("actionCancel")}
-          </Button>
-        )}
-        {/* Fix FE-2 round 1 review PR #435 — alternative a11y au drag&drop
-            (WCAG 2.5.7 Dragging Movements + 2.1.1 Keyboard). NURSE+ peut
-            déplacer un RDV éditable via clavier sans toucher au drag&drop. */}
-        {actionable && (
-          <Button variant="outline" onClick={onMove}>
-            {t("actionMove")}
-          </Button>
-        )}
-        {showPropose && (
-          <Button variant="outline" onClick={onPropose}>
-            {t("actionProposeAlternative")}
-          </Button>
-        )}
-        {/* US-2500-UI iter 9 — Bouton "Accepter alternative" si RDV est en
-            attente d'acceptation (status=cancelled + proposedAlternativeAt
-            set + TTL 7j non dépassé côté backend qui re-valide). */}
-        {canAcceptAlternative && (
-          <Button
-            variant="default"
-            onClick={onAccept}
-            // Fix A11y M12 round 1 review PR #438 — aria-label discriminant
-            // (modal a plusieurs CTAs ; "Accepter alternative pour RDV #N").
-            aria-label={t("actionAcceptAlternativeAria", { id: detail.id })}
-          >
-            {t("actionAcceptAlternative")}
-          </Button>
-        )}
-        {/* US-2500-UI iter 11 — Bouton "Confirmer" si RDV en pending_validation
-            (US-2505 bookingMode=validation manuelle). DOCTOR+ gate via canConfirm.
-            Variant=default (primary teal) — action engageante. */}
-        {canConfirm && (
-          <Button
-            variant="default"
-            onClick={onConfirm}
-            // Fix A11y M12 round 1 review PR #438 — aria-label discriminant.
-            aria-label={t("actionConfirmPendingAria", { id: detail.id })}
-          >
-            {t("actionConfirmPending")}
-          </Button>
-        )}
-        <Button onClick={onClose}>{t("actionClose")}</Button>
-      </DialogFooter>
+      {/* #476 §9 — `flex-wrap` : jusqu'à 4 CTAs (Annuler/Déplacer/Proposer +
+          Confirmer ou Accepter) ne débordent plus du `DialogContent` (sm:max-w-lg)
+          et passent sur 2 lignes au besoin. Le bouton "Fermer" redondant a été
+          retiré : le `X` du header (DialogContent showCloseButton) ferme déjà
+          (via onOpenChange → handleClose). Footer non rendu si aucune action
+          (statuts terminaux) → pas de barre vide. */}
+      {(actionable || showPropose || canAcceptAlternative || canConfirm) && (
+        <DialogFooter className="flex-wrap">
+          {actionable && (
+            <Button variant="outline" onClick={onCancel}>
+              {t("actionCancel")}
+            </Button>
+          )}
+          {/* Fix FE-2 round 1 review PR #435 — alternative a11y au drag&drop
+              (WCAG 2.5.7 Dragging Movements + 2.1.1 Keyboard). NURSE+ peut
+              déplacer un RDV éditable via clavier sans toucher au drag&drop. */}
+          {actionable && (
+            <Button variant="outline" onClick={onMove}>
+              {t("actionMove")}
+            </Button>
+          )}
+          {showPropose && (
+            <Button variant="outline" onClick={onPropose}>
+              {t("actionProposeAlternative")}
+            </Button>
+          )}
+          {/* US-2500-UI iter 9 — Bouton "Accepter alternative" si RDV est en
+              attente d'acceptation (status=cancelled + proposedAlternativeAt
+              set + TTL 7j non dépassé côté backend qui re-valide). */}
+          {canAcceptAlternative && (
+            <Button
+              variant="default"
+              onClick={onAccept}
+              // Fix A11y M12 round 1 review PR #438 — aria-label discriminant
+              // (modal a plusieurs CTAs ; "Accepter alternative pour RDV #N").
+              aria-label={t("actionAcceptAlternativeAria", { id: detail.id })}
+            >
+              {t("actionAcceptAlternative")}
+            </Button>
+          )}
+          {/* US-2500-UI iter 11 — Bouton "Confirmer" si RDV en pending_validation
+              (US-2505 bookingMode=validation manuelle). DOCTOR+ gate via canConfirm.
+              Variant=default (primary teal) — action engageante. */}
+          {canConfirm && (
+            <Button
+              variant="default"
+              onClick={onConfirm}
+              // Fix A11y M12 round 1 review PR #438 — aria-label discriminant.
+              aria-label={t("actionConfirmPendingAria", { id: detail.id })}
+            >
+              {t("actionConfirmPending")}
+            </Button>
+          )}
+        </DialogFooter>
+      )}
     </>
   )
 }

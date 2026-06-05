@@ -135,10 +135,11 @@ describe("<AppointmentDetailModal>", () => {
       expect(screen.getByText(/Titration basale/)).toBeTruthy()
       // Status badge
       expect(screen.getByText("status.confirmed")).toBeTruthy()
-      // Boutons : annuler + proposer + fermer (DOCTOR sur status confirmed)
+      // Boutons : annuler + proposer (DOCTOR sur status confirmed). Le bouton
+      // "Fermer" redondant a été retiré (#476) — le X du header ferme.
       expect(screen.getByText("actionCancel")).toBeTruthy()
       expect(screen.getByText("actionProposeAlternative")).toBeTruthy()
-      expect(screen.getByText("actionClose")).toBeTruthy()
+      expect(screen.queryByText("actionClose")).toBeNull()
     })
 
     it("RBAC : bouton 'Proposer alternative' CACHÉ pour NURSE", () => {
@@ -175,7 +176,8 @@ describe("<AppointmentDetailModal>", () => {
       )
       expect(screen.queryByText("actionCancel")).toBeNull()
       expect(screen.queryByText("actionProposeAlternative")).toBeNull()
-      expect(screen.getByText("actionClose")).toBeTruthy()
+      // #476 — statut terminal sans action → footer non rendu (X header ferme).
+      expect(screen.queryByText("actionClose")).toBeNull()
       // Détail annulation affiché
       expect(screen.getByText("cancelReasonLabel")).toBeTruthy()
       expect(screen.getByText(/Patient malade/)).toBeTruthy()
@@ -195,7 +197,7 @@ describe("<AppointmentDetailModal>", () => {
       expect(screen.queryByText("actionProposeAlternative")).toBeNull()
     })
 
-    it("clic 'Fermer' → onClose appelé", () => {
+    it("#476 — le X du header ferme le modal (plus de bouton 'Fermer' redondant)", () => {
       render(
         <AppointmentDetailModal
           state={makeState()}
@@ -205,7 +207,11 @@ describe("<AppointmentDetailModal>", () => {
           userRole="DOCTOR"
         />,
       )
-      fireEvent.click(screen.getByText("actionClose"))
+      // Plus de bouton "Fermer" dans le footer.
+      expect(screen.queryByText("actionClose")).toBeNull()
+      // Le X (DialogContent showCloseButton, sr-only "Close") ferme via
+      // onOpenChange → handleClose → onClose.
+      fireEvent.click(screen.getByRole("button", { name: "Close" }))
       expect(onClose).toHaveBeenCalledTimes(1)
     })
 
@@ -449,7 +455,8 @@ describe("<AppointmentDetailModal>", () => {
       )
       expect(screen.queryByText("actionCancel")).toBeNull()
       expect(screen.queryByText("actionProposeAlternative")).toBeNull()
-      expect(screen.getByText("actionClose")).toBeTruthy()
+      // #476 — statut terminal → footer non rendu (X header ferme).
+      expect(screen.queryByText("actionClose")).toBeNull()
     })
 
     it("H-1/FE-2 — guard double-submit : second clic ignoré pendant actionLoading", async () => {
