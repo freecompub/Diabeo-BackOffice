@@ -18,7 +18,7 @@ runner Playwright + le helper `loginAs`).
 
 ```
 tests/manual/bdd/
-  features/                       # .feature (Gherkin FR, # language: fr) — 72 scénarios
+  features/                       # .feature (Gherkin FR, # language: fr) — 75 scénarios
     login.feature                 # ← docs/qa/01-auth.md (connexion)
     auth/reset-password.feature   # ← docs/qa/01-auth.md (mot de passe oublié)
     dashboard-access.feature      # ← docs/qa/02-dashboards.md

@@ -1,5 +1,7 @@
 # language: fr
 # Source : docs/qa/11-clinical.md — insulinothérapie (contrat API + bornes cliniques)
+# Précondition seed : patient 1 accessible au DOCTOR/NURSE seed ; patient 1 SANS
+# insulin_therapy_settings → un ISF valide passe la validation puis 404 settingsNotFound.
 Fonctionnalité: Configuration insulinothérapie
 
   Scénario: un DOCTOR lit la configuration d'un patient
@@ -20,6 +22,30 @@ Fonctionnalité: Configuration insulinothérapie
     Quand je POST "/api/insulin-therapy/sensitivity-factors?patientId=1" avec le JSON:
       """
       {"startHour":8,"endHour":12,"sensitivityFactorGl":0.05}
+      """
+    Alors le statut de la réponse est 400
+
+  Scénario: ISF à la borne min exacte (0.10) accepté par la validation
+    Étant donné que je suis connecté en tant que "NURSE"
+    Quand je POST "/api/insulin-therapy/sensitivity-factors?patientId=1" avec le JSON:
+      """
+      {"startHour":8,"endHour":12,"sensitivityFactorGl":0.10}
+      """
+    Alors le statut de la réponse est 404
+
+  Scénario: ISF à la borne max exacte (1.00) accepté par la validation
+    Étant donné que je suis connecté en tant que "NURSE"
+    Quand je POST "/api/insulin-therapy/sensitivity-factors?patientId=1" avec le JSON:
+      """
+      {"startHour":8,"endHour":12,"sensitivityFactorGl":1.00}
+      """
+    Alors le statut de la réponse est 404
+
+  Scénario: ISF juste au-dessus de la borne max (1.01) refusé
+    Étant donné que je suis connecté en tant que "NURSE"
+    Quand je POST "/api/insulin-therapy/sensitivity-factors?patientId=1" avec le JSON:
+      """
+      {"startHour":8,"endHour":12,"sensitivityFactorGl":1.01}
       """
     Alors le statut de la réponse est 400
 
