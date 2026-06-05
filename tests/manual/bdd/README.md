@@ -18,13 +18,14 @@ runner Playwright + le helper `loginAs`).
 
 ```
 tests/manual/bdd/
-  features/                       # .feature (Gherkin FR, # language: fr) — 25 scénarios
+  features/                       # .feature (Gherkin FR, # language: fr) — 32 scénarios
     login.feature                 # ← docs/qa/01-auth.md (connexion)
     auth/reset-password.feature   # ← docs/qa/01-auth.md (mot de passe oublié)
     dashboard-access.feature      # ← docs/qa/02-dashboards.md
     rbac/redirects.feature        # ← 02-dashboards / 06-admin / 12-communication (RBAC + A5)
     settings/rbac.feature         # ← docs/qa/05-settings.md (PS vs patient)
-    patients/{list,detail,create}.feature  # ← docs/qa/03-patients.md (contrat API + effet base)
+    patients/{list,detail,create}.feature      # ← docs/qa/03-patients.md (contrat API + effet base)
+    appointments/{list,create,cancel}.feature  # ← docs/qa/04-appointments.md (contrat API + effet base)
     effet-base/login-session.feature  # ← docs/qa/01-auth.md (vérif EFFET BASE)
   steps/                          # step definitions (réutilisables)
     auth.steps.ts                 # "je suis connecté en tant que {string}" → loginAs()
@@ -32,10 +33,16 @@ tests/manual/bdd/
     navigation.steps.ts           # "je vais sur / je suis redirigé vers / je reste sur / je vois (pas) le titre"
     page.steps.ts                 # "je vois l'élément / je remplis le champ / je clique / je vois le texte"
     api.steps.ts                  # "j'appelle GET / je POST … avec le JSON" → page.request (cookie auth)
-    db.steps.ts                   # vérif EFFET BASE (pg) : session active, compte patient créé…
-    world.ts                      # état partagé entre steps (réponse API, email créé) — exécution série
+    appointments.steps.ts         # "je crée un RDV pour le patient {int} et le membre {int}" / "j'annule…"
+    db.steps.ts                   # vérif EFFET BASE (pg) : session active, compte patient créé, statut RDV…
+    hooks.steps.ts                # Before : reset `world` + garde anti-prod (DATABASE_URL local uniquement)
+    world.ts                      # état partagé entre steps (réponse API, email/RDV créé) — exécution série
 playwright.bdd.config.ts          # config (racine du repo) — pas de webServer
 ```
+
+> ⚠️ **Cucumber-expressions** : ne PAS mettre de parenthèses contenant un
+> paramètre dans le texte d'un step (`… (membre {int})` casse tout le registre :
+> « optional may not contain a parameter »). Utiliser `… et le membre {int}`.
 
 > **Vérification « effet base »** (`db.steps.ts`) : ces steps interrogent
 > directement PostgreSQL (driver `pg`, `.env` chargé via `dotenv`) pour valider la

@@ -32,4 +32,5 @@ Before(async () => {
   world.status = 0
   world.body = null
   world.createdEmail = ""
+  world.createdAppointmentId = 0
 })

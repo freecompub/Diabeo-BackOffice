@@ -7,8 +7,10 @@ export const world: {
   status: number
   body: unknown
   createdEmail: string
+  createdAppointmentId: number
 } = {
   status: 0,
   body: null,
   createdEmail: "",
+  createdAppointmentId: 0,
 }
