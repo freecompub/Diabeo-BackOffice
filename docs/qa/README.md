@@ -1,8 +1,7 @@
 # Plan de tests QA — Diabeo Backoffice
 
-> **Lot 1 (cœur MVP)** — 13 écrans. Lot 2 (audit, analytics, documents, messages,
-> devices, insulin-therapy, import, propositions d'ajustement, médications,
-> backups, data-breaches, factures, tax-rules, system-health) à suivre.
+> **Lot 1 (cœur MVP)** — 13 écrans · **Lot 2** — 25 écrans. **Couverture
+> complète des ~38 écrans de l'application.**
 >
 > Source des faits : lecture du code réel (composants + routes API + services)
 > au 2026-06-05. Chaque « effet base » est tracé jusqu'au fichier qui le produit.
@@ -26,6 +25,8 @@ Les tests sont joués **soit par un humain** (le tableau + les `Then` suffisent)
 
 ## 2. Découpage des fichiers
 
+**Lot 1 — cœur MVP**
+
 | Fichier | Écrans |
 |---|---|
 | [`01-auth.md`](01-auth.md) | `/login`, `/reset-password` |
@@ -34,6 +35,29 @@ Les tests sont joués **soit par un humain** (le tableau + les `Then` suffisent)
 | [`04-appointments.md`](04-appointments.md) | `/appointments` |
 | [`05-settings.md`](05-settings.md) | `/settings` |
 | [`06-admin.md`](06-admin.md) | `/admin/users`, `/admin/users/[id]`, `/admin/cabinets` (+ `[id]`) |
+
+**Lot 2 — reste de l'application**
+
+| Fichier | Écrans |
+|---|---|
+| [`07-dashboards-analytics.md`](07-dashboards-analytics.md) | `/`, `/dashboard`, `/analytics`, `/analytics/radar`, `/weekly` |
+| [`08-admin-ops.md`](08-admin-ops.md) | `/audit`, `/admin`, `/admin/backups`, `/admin/system-health` |
+| [`09-admin-compliance-billing.md`](09-admin-compliance-billing.md) | `/admin/data-breaches` (+`[id]`), `/admin/invoices` (+`[id]`), `/admin/tax-rules` |
+| [`10-devices-documents-events.md`](10-devices-documents-events.md) | `/devices`, `/devices/pair`, `/documents`, `/events/new` |
+| [`11-clinical.md`](11-clinical.md) | `/insulin-therapy`, `/adjustment-proposals`, `/medications`, `/import` |
+| [`12-communication.md`](12-communication.md) | `/messages`, `/patient/appointments`, `/users` (legacy) |
+
+## 2bis. Anomalies relevées (à trier par l'équipe)
+
+Détectées pendant l'extraction des faits — à confirmer puis corriger hors de ce plan QA :
+
+| # | Écran | Anomalie |
+|---|---|---|
+| A1 | `/login` | Lien « Créer un compte » → `/register`, **page inexistante** (404). |
+| A2 | `/insulin-therapy` | **Unité durée d'action** : UI en minutes (60–480), API en heures (3.5–5.0) → conversion manquante probable. |
+| A3 | (transverse) | **Bornes cliniques `CLAUDE.md` périmées** vs `clinical-bounds.ts` (ISF/ICR/Basal). Le code fait foi. |
+| A4 | `/adjustment-proposals` | Valeur hors bornes à l'acceptation → **500** au lieu de 400/422. |
+| A5 | `/users` | **Doublon legacy** de `/admin/users` (stub « Bientôt disponible ») → supprimer/rediriger. |
 
 ## 3. Conventions & légende
 
