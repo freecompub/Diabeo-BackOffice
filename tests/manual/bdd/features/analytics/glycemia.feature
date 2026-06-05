@@ -1,5 +1,7 @@
 # language: fr
 # Source : docs/qa/07-dashboards-analytics.md — analytics glycémiques (contrat API)
+# Précondition seed : le DOCTOR appelant a un consentement RGPD (requireGdprConsent
+# porte sur l'appelant) ET le patient 1 lui est accessible (canAccessPatient).
 Fonctionnalité: Analytics glycémiques
 
   Scénario: un DOCTOR consulte le profil glycémique d'un patient

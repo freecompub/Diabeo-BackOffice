@@ -27,6 +27,7 @@ tests/manual/bdd/
     patients/{list,detail,create}.feature      # ← docs/qa/03-patients.md (contrat API + effet base)
     appointments/{list,create,cancel}.feature  # ← docs/qa/04-appointments.md (contrat API + effet base)
     admin/{users,cabinets,audit}.feature        # ← docs/qa/06-admin.md + 08 (RBAC ADMIN, contrat API)
+    analytics/{dashboards,glycemia}.feature     # ← docs/qa/07-dashboards-analytics.md (contrat API + RBAC)
     effet-base/login-session.feature  # ← docs/qa/01-auth.md (vérif EFFET BASE)
   steps/                          # step definitions (réutilisables)
     auth.steps.ts                 # "je suis connecté en tant que {string}" → loginAs()
