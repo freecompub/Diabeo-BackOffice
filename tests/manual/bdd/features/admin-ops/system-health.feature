@@ -1,5 +1,9 @@
 # language: fr
 # Source : docs/qa/08-admin-ops.md — Santé système (/admin/system-health)
+# Dette (itération ultérieure) : le scénario QA « alerte tentatives élevées »
+# (highlight UI quand unauthorizedAttempts24h > 100) n'est pas porté ici — c'est
+# une assertion d'affichage + un état difficile à seeder. On porte le snapshot
+# (présence des sections) et le RBAC, robustes et sans état.
 Fonctionnalité: Santé système
 
   Scénario: snapshot santé pour un ADMIN

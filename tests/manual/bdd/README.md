@@ -18,7 +18,7 @@ runner Playwright + le helper `loginAs`).
 
 ```
 tests/manual/bdd/
-  features/                       # .feature (Gherkin FR, # language: fr) — 81 scénarios
+  features/                       # .feature (Gherkin FR, # language: fr) — 85 scénarios
     login.feature                 # ← docs/qa/01-auth.md (connexion)
     auth/reset-password.feature   # ← docs/qa/01-auth.md (mot de passe oublié)
     dashboard-access.feature      # ← docs/qa/02-dashboards.md
@@ -26,7 +26,8 @@ tests/manual/bdd/
     settings/rbac.feature         # ← docs/qa/05-settings.md (PS vs patient)
     patients/{list,detail,create}.feature      # ← docs/qa/03-patients.md (contrat API + effet base)
     appointments/{list,create,cancel}.feature  # ← docs/qa/04-appointments.md (contrat API + effet base)
-    admin/{users,cabinets,audit}.feature        # ← docs/qa/06-admin.md + 08 (RBAC ADMIN, contrat API)
+    admin/{users,cabinets,audit}.feature        # ← docs/qa/06-admin.md (RBAC ADMIN, contrat API)
+    admin-ops/{system-health,backups}.feature   # ← docs/qa/08-admin-ops.md (RBAC ADMIN, lecture seule)
     analytics/{dashboards,glycemia}.feature     # ← docs/qa/07-dashboards-analytics.md (contrat API + RBAC)
     compliance-billing/{data-breaches,invoices,tax-rules}.feature  # ← docs/qa/09 (RBAC + validation)
     devices/{devices,documents,events}.feature  # ← docs/qa/10 (contrat API + RBAC + effet base events)
