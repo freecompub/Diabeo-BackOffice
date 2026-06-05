@@ -164,7 +164,9 @@ export async function middleware(request: NextRequest) {
     //
     // Liste blanche PHI_PATHS — étendre ici quand de nouvelles pages PHI
     // arrivent (PR #438 patient module + PR #440 messaging).
-    const PHI_PATH_PREFIXES = ["/patient/", "/messages/", "/messages"]
+    // #475 — `/settings` affiche des PII (nom/naissance) et, pour un patient,
+    // NIRPP/INS/données médicales : même posture no-store que les autres pages.
+    const PHI_PATH_PREFIXES = ["/patient/", "/messages/", "/messages", "/settings/", "/settings"]
     if (PHI_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) {
       res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
       res.headers.set("Pragma", "no-cache")
