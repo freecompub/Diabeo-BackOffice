@@ -13,7 +13,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:setup": "./scripts/test-e2e.sh",
-    "test:all": "vitest run && playwright test"
+    "test:all": "vitest run && playwright test",
+    "bdd:gen": "bddgen --config playwright.bdd.config.ts",
+    "bdd:test": "bddgen --config playwright.bdd.config.ts && playwright test --config playwright.bdd.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1041.0",
@@ -80,6 +82,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
     "jsdom": "^29.0.1",
+    "playwright-bdd": "^9.0.0",
     "tailwindcss": "^4",
     "tsx": "^4.19.0",
     "typescript": "^5",
