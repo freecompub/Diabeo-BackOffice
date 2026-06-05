@@ -18,7 +18,7 @@ runner Playwright + le helper `loginAs`).
 
 ```
 tests/manual/bdd/
-  features/                       # .feature (Gherkin FR, # language: fr) — 32 scénarios
+  features/                       # .feature (Gherkin FR, # language: fr) — 41 scénarios
     login.feature                 # ← docs/qa/01-auth.md (connexion)
     auth/reset-password.feature   # ← docs/qa/01-auth.md (mot de passe oublié)
     dashboard-access.feature      # ← docs/qa/02-dashboards.md
@@ -26,6 +26,7 @@ tests/manual/bdd/
     settings/rbac.feature         # ← docs/qa/05-settings.md (PS vs patient)
     patients/{list,detail,create}.feature      # ← docs/qa/03-patients.md (contrat API + effet base)
     appointments/{list,create,cancel}.feature  # ← docs/qa/04-appointments.md (contrat API + effet base)
+    admin/{users,cabinets,audit}.feature        # ← docs/qa/06-admin.md + 08 (RBAC ADMIN, contrat API)
     effet-base/login-session.feature  # ← docs/qa/01-auth.md (vérif EFFET BASE)
   steps/                          # step definitions (réutilisables)
     auth.steps.ts                 # "je suis connecté en tant que {string}" → loginAs()
