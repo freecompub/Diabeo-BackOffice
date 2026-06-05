@@ -1,5 +1,6 @@
 # language: fr
 # Source : docs/qa/10-devices-documents-events.md — création événement (effet base)
+# Précondition seed : les patients ont gdprConsent=true (sinon 403 gdprConsentRequired).
 Fonctionnalité: Création d'un événement diabète
 
   Scénario: un DOCTOR crée un événement glycémie pour un patient — effet base
@@ -10,7 +11,8 @@ Fonctionnalité: Création d'un événement diabète
       """
     Alors le statut de la réponse est 201
     Et un événement existe en base avec l'id de la réponse
-    # Effet base: INSERT diabetes_events(eventTypes, glycemiaValue, comment chiffré) + audit
+    # Effet base: INSERT diabetes_events(eventTypes, glycemiaValue) + audit
+    # (le chiffrement du `comment` n'est pas exercé ici : aucun comment envoyé)
 
   Scénario: glycémie hors bornes cliniques refusée
     Étant donné que je suis connecté en tant que "DOCTOR"
