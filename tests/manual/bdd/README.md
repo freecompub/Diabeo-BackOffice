@@ -18,15 +18,26 @@ runner Playwright + le helper `loginAs`).
 
 ```
 tests/manual/bdd/
-  features/                       # .feature (Gherkin FR, # language: fr)
-    login.feature                 # ← docs/qa/01-auth.md
+  features/                       # .feature (Gherkin FR, # language: fr) — 15 scénarios
+    login.feature                 # ← docs/qa/01-auth.md (connexion)
+    auth/reset-password.feature   # ← docs/qa/01-auth.md (mot de passe oublié)
     dashboard-access.feature      # ← docs/qa/02-dashboards.md
+    rbac/redirects.feature        # ← 02-dashboards / 06-admin / 12-communication (RBAC + A5)
+    settings/rbac.feature         # ← docs/qa/05-settings.md (PS vs patient)
+    effet-base/login-session.feature  # ← docs/qa/01-auth.md (vérif EFFET BASE)
   steps/                          # step definitions (réutilisables)
     auth.steps.ts                 # "je suis connecté en tant que {string}" → loginAs()
     login.steps.ts                # steps de l'écran connexion (data-testid)
-    navigation.steps.ts           # "je vais sur {string}", "je suis redirigé vers {string}", "je vois le titre {string}"
+    navigation.steps.ts           # "je vais sur / je suis redirigé vers / je reste sur / je vois (pas) le titre"
+    page.steps.ts                 # "je vois l'élément / je remplis le champ / je clique / je vois le texte"
+    db.steps.ts                   # "une session active existe en base pour {string}" — VÉRIF EFFET BASE (pg)
 playwright.bdd.config.ts          # config (racine du repo) — pas de webServer
 ```
+
+> **Vérification « effet base »** (`db.steps.ts`) : ce step interroge directement
+> PostgreSQL (driver `pg`, `.env` chargé via `dotenv`) pour valider la ligne
+> `# Effet base:` d'un scénario (ici : la connexion a bien créé une ligne
+> `sessions`). C'est ce qui distingue ces tests d'un simple test d'UI.
 
 Le dossier `.features-gen/` (specs générées depuis les `.feature`) est
 **gitignoré** : il est régénéré par `bddgen`.
@@ -63,6 +74,13 @@ pnpm exec playwright test --config playwright.bdd.config.ts \
   .features-gen/tests/manual/bdd/features/login.feature.spec.js
 ```
 
+> **État frais entre rejeux** : le scénario « identifiants invalides » incrémente
+> le rate-limit de connexion (in-memory dans le dev server sans Redis configuré).
+> Après plusieurs rejeux complets, un lockout IP peut faire échouer le `loginAs`
+> de scénarios suivants. → relancer `pnpm dev` (purge le compteur in-memory) ou
+> attendre la fin de la fenêtre (≈ 1 min) avant un nouveau run complet. En CI
+> (un seul run sur base/serveur frais) le souci ne se pose pas.
+
 ## Étendre
 
 1. Copier un bloc Gherkin depuis `docs/qa/*.md` dans un nouveau `.feature`.
@@ -73,11 +91,11 @@ pnpm exec playwright test --config playwright.bdd.config.ts \
 
 ### Prochaines étapes recommandées (hors POC)
 
-- **Vérification « effet base »** : ajouter `steps/db.steps.ts` qui interroge
-  PostgreSQL (client Prisma en lecture) pour valider les lignes
-  `# Effet base:` des scénarios (ex. `appointments.status='cancelled'`,
-  présence d'une ligne `audit_logs`). C'est ce qui distingue ce harness d'un
-  simple test d'UI.
+- ✅ **Vérification « effet base »** : `steps/db.steps.ts` livré (interroge
+  PostgreSQL via `pg`). À étendre à d'autres effets (ex. `appointments.status`,
+  présence d'une ligne `audit_logs`) au fil des features d'écriture.
 - **Reset déterministe** entre features d'écriture (transaction rollback ou
   `prisma migrate reset`) pour l'idempotence.
-- **`data-testid`** systématiques sur les écrans à automatiser.
+- **`data-testid`** systématiques sur les écrans à automatiser : les features
+  assertent aujourd'hui des **libellés FR** (le dev server tourne en locale FR
+  par défaut) ; des `data-testid` les rendraient indépendantes de l'i18n.
