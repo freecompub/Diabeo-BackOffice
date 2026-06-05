@@ -15,9 +15,17 @@ Voir [conventions](README.md#3-conventions--légende).
 > | Durée d'action insuline | 3.5 | 5.0 | **heures** |
 > | Bolus unique max | — | 25.0 | U |
 >
-> ⚠️ **Anomalie doc** : ces bornes **diffèrent du `CLAUDE.md`** (qui indique ISF
-> 0.20–1.00, ICR 5.0–20.0, Basal 0.05–10.0). La **référence faisant foi est le
-> code** (`clinical-bounds.ts`). → mettre à jour `CLAUDE.md`.
+> ✅ **A3 corrigé** : la doc projet (`CLAUDE.md`, `README.md`, `docs/MEDICAL.md`,
+> `docs/DATABASE.md`, `docs/database/schema.md`) qui indiquait des bornes périmées
+> (ISF 0.20–1.00, ICR 5.0–20.0, Basal 0.05–10.0) est resynchronisée sur
+> `clinical-bounds.ts` (source de vérité unique), gardée par
+> `tests/unit/clinical-bounds.test.ts`.
+>
+> ⚠️ **A3b (suivi, NON corrigé)** : la **validation UI** des slots ISF rejette
+> `< 0.20` g/L/U (cf. `tests/pages/insulin-therapy.test.tsx`) alors que le code
+> autorise `0.10` → divergence **comportementale** (l'UI est plus stricte que les
+> bornes cliniques). À arbitrer avec `medical-domain-validator` (relâcher l'UI à
+> 0.10 ou resserrer `clinical-bounds`).
 
 ---
 
