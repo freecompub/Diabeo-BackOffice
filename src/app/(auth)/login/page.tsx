@@ -216,18 +216,6 @@ export default function LoginPage() {
         </CardContent>
       </Card>
 
-      {/* Footer — Create account */}
-      <div className="mt-6 flex flex-col items-center gap-2">
-        <p className="text-sm text-muted-foreground">{t("noAccount")}</p>
-        <Link
-          data-testid="create-account-button"
-          href="/register"
-          className="text-sm font-medium text-teal-600 hover:text-teal-700 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 rounded-sm"
-        >
-          {t("createAccount")}
-        </Link>
-      </div>
-
       {/* HDS footer */}
       <p className="mt-4 text-center text-xs text-muted-foreground">
         {t("welcome")} &mdash; {t("hostedHds")}
