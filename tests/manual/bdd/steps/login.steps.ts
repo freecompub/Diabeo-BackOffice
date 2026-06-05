@@ -33,6 +33,8 @@ Then("je reste sur la page de connexion", async ({ page }) => {
 })
 
 Then("je vois une alerte d'erreur", async ({ page }) => {
-  // AlertBanner severity="warning" → role="alert" (cf. AlertBanner.tsx).
-  await expect(page.getByRole("alert")).toBeVisible()
+  // AlertBanner severity="warning"/"critical" → role="alert" (cf. AlertBanner.tsx).
+  // `.first()` : en cas de rate-limit, plusieurs alertes (erreur + lockout)
+  // peuvent coexister — on valide qu'au moins une est visible.
+  await expect(page.getByRole("alert").first()).toBeVisible()
 })
