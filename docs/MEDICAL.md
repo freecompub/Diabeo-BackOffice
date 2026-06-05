@@ -36,9 +36,9 @@ L'insulinothérapie intensive repose sur le calcul de trois composantes :
 
 **Bornes cliniques** :
 ```typescript
-ISF_GL_MIN: 0.20      // Très sensible
+ISF_GL_MIN: 0.10      // Très sensible
 ISF_GL_MAX: 1.00      // Peu sensible
-ISF_MGDL_MIN: 20      // mg/dL equivalent
+ISF_MGDL_MIN: 10      // mg/dL equivalent
 ISF_MGDL_MAX: 100     // mg/dL equivalent
 ```
 
@@ -52,8 +52,8 @@ ISF_MGDL_MAX: 100     // mg/dL equivalent
 
 **Bornes cliniques** :
 ```typescript
-ICR_MIN: 5.0          // 1U couvre 5g (très peu)
-ICR_MAX: 20.0         // 1U couvre 20g (beaucoup)
+ICR_MIN: 3.0          // 1U couvre 3g (très peu)
+ICR_MAX: 30.0         // 1U couvre 30g (beaucoup)
 ```
 
 ### Structure horaire (Time Slots)
@@ -328,18 +328,18 @@ async calculateBolus(input: BolusInput, auditUserId: number): Promise<BolusResul
 ```typescript
 const CLINICAL_BOUNDS = {
   // ISF (Insulin Sensitivity Factor)
-  ISF_GL_MIN: 0.20,      // g/L/U — très sensible
+  ISF_GL_MIN: 0.10,      // g/L/U — très sensible
   ISF_GL_MAX: 1.00,      // g/L/U — peu sensible
-  ISF_MGDL_MIN: 20,      // mg/dL/U
+  ISF_MGDL_MIN: 10,      // mg/dL/U
   ISF_MGDL_MAX: 100,     // mg/dL/U
 
   // ICR (Insulin-to-Carb Ratio)
-  ICR_MIN: 5.0,          // g/U — couvre beaucoup
-  ICR_MAX: 20.0,         // g/U — couvre peu
+  ICR_MIN: 3.0,          // g/U — couvre beaucoup
+  ICR_MAX: 30.0,         // g/U — couvre peu
 
   // Basal rate
   BASAL_MIN: 0.05,       // U/h
-  BASAL_MAX: 10.0,       // U/h
+  BASAL_MAX: 5.0,        // U/h
   PUMP_BASAL_INCREMENT: 0.05,  // Résolution pompe
 
   // Glycémie

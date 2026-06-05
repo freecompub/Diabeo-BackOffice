@@ -363,8 +363,8 @@ Facteur de sensibilité insuline par créneau horaire.
 ```
 
 **Bornes cliniques** :
-- `ISF_GL_MIN: 0.20`, `ISF_GL_MAX: 1.00` (g/L/U)
-- `ISF_MGDL_MIN: 20`, `ISF_MGDL_MAX: 100` (mg/dL/U)
+- `ISF_GL_MIN: 0.10`, `ISF_GL_MAX: 1.00` (g/L/U)
+- `ISF_MGDL_MIN: 10`, `ISF_MGDL_MAX: 100` (mg/dL/U)
 
 ---
 
@@ -386,7 +386,7 @@ Ratio insuline-glucides par créneau horaire.
 ```
 
 **Bornes cliniques** :
-- `ICR_MIN: 5.0`, `ICR_MAX: 20.0` (g/U)
+- `ICR_MIN: 3.0`, `ICR_MAX: 30.0` (g/U)
 
 ---
 
@@ -424,7 +424,7 @@ PumpBasalSlot {
 **Constraint** (DB trigger) : `chk_basal_config_type_fields` garantit mutual exclusion des champs selon configType.
 
 **Bornes cliniques** :
-- `BASAL_MIN: 0.05`, `BASAL_MAX: 10.0` (U/h)
+- `BASAL_MIN: 0.05`, `BASAL_MAX: 5.0` (U/h)
 - `PUMP_BASAL_INCREMENT: 0.05` (U/h) — résolution pompe
 
 ---

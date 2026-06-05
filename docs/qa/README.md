@@ -55,7 +55,8 @@ Détectées pendant l'extraction des faits — à confirmer puis corriger hors d
 |---|---|---|
 | A1 | `/login` | Lien « Créer un compte » → `/register`, **page inexistante** (404). |
 | A2 | `/insulin-therapy` | **Unité durée d'action** : UI en minutes (60–480), API en heures (3.5–5.0) → conversion manquante probable. |
-| A3 | (transverse) | ✅ **Corrigé** — bloc `CLINICAL_BOUNDS` de `CLAUDE.md` resynchronisé sur `clinical-bounds.ts` (ISF 0.10, ICR 3–30, Basal max 5) + test anti-dérive `tests/unit/clinical-bounds.test.ts`. |
+| A3 | (transverse) | ✅ **Corrigé** — bornes resynchronisées sur `clinical-bounds.ts` (ISF 0.10, ICR 3–30, Basal max 5) dans `CLAUDE.md`, `README.md`, `docs/MEDICAL.md`, `docs/DATABASE.md`, `docs/database/schema.md` + test anti-dérive `tests/unit/clinical-bounds.test.ts`. |
+| A3b | `/insulin-therapy` | ⚠️ **Découvert pendant A3** — la validation **UI** des slots ISF rejette `< 0.20` g/L/U alors que le code autorise `0.10` (divergence comportementale UI vs bornes). Arbitrage `medical-domain-validator`. |
 | A4 | `/adjustment-proposals` | Valeur hors bornes à l'acceptation → **500** au lieu de 400/422. |
 | A5 | `/users` | **Doublon legacy** de `/admin/users` (stub « Bientôt disponible ») → supprimer/rediriger. |
 
