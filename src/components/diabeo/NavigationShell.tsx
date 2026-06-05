@@ -167,7 +167,7 @@ const navItems: NavItem[] = [
   { href: "/devices", labelKey: "devices", icon: Smartphone },
   { href: "/documents", labelKey: "documents", icon: FileText },
   { href: "/import", labelKey: "import", icon: Download, minRole: "DOCTOR" },
-  { href: "/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
+  { href: "/admin/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
   { href: "/audit", labelKey: "audit", icon: FileText, minRole: "ADMIN" },
   { href: "/settings", labelKey: "settings", icon: Settings },
 ]

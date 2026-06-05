@@ -118,36 +118,33 @@ Feature: RDV côté patient
 
 ---
 
-## Écran : Utilisateurs — legacy (`/users`) ⚠️🟡
+## Écran : Utilisateurs — alias legacy (`/users`) 🟢
 
-**Statut impl.** : 🟡 **Stub legacy** affichant « Bientôt disponible » (ADMIN only,
-sinon redirection vers le home du rôle). **L'UI réelle de gestion des utilisateurs
-est `/admin/users`** (voir [`06-admin.md`](06-admin.md)).
+**Statut impl.** : ✅ **A5 corrigé** — `/users` **redirige** désormais vers
+`/admin/users` (la vraie UI de gestion des utilisateurs, voir [`06-admin.md`](06-admin.md)).
+L'ancien stub « Bientôt disponible » est supprimé, et la **nav** (`NavigationShell`)
+pointe directement sur `/admin/users` (elle envoyait auparavant l'admin vers le stub).
 
-> ⚠️ **Anomalie / doublon** : `/users` et `/admin/users` coexistent. `/users` est
-> un stub obsolète, sans données ni audit. → **Recommandation : supprimer `/users`
-> ou le rediriger vers `/admin/users`** (lever l'ambiguïté UX).
+### Actions & effets
 
-### Affichage attendu
-
-| Élément | État attendu |
-|---|---|
-| Titre « Gestion des utilisateurs » + mention API opérationnelle | visible |
-| Badge « Bientôt disponible » | visible |
+| Action | Endpoint | Effet visuel | Effet base |
+|---|---|---|---|
+| Aller sur `/users` | — (redirection serveur) | redirigé vers `/admin/users` | aucun |
 
 ```gherkin
-Feature: Écran utilisateurs legacy
+Feature: Alias legacy /users
 
-  Scénario: la page /users est un stub
+  Scénario: /users redirige vers la vraie UI d'administration
     Étant donné que je suis connecté en tant que "ADMIN"
     Quand je vais sur "/users"
-    Alors je vois "Bientôt disponible"
-    # ⚠️ La gestion réelle est sur "/admin/users"
+    Alors je suis redirigé vers "/admin/users"
 
-  Scénario: un non-ADMIN est redirigé
-    Étant donné que je suis connecté en tant que "DOCTOR"
-    Quand je vais sur "/users"
-    Alors je suis redirigé vers le home de mon rôle
+  Scénario: la nav admin pointe directement sur /admin/users
+    Étant donné que je suis connecté en tant que "ADMIN"
+    Alors l'item de nav « Utilisateurs » pointe sur "/admin/users"
 ```
 
-**Cas limites** : aucune action ; pas d'audit (TODO V1.5) ; à dédoublonner avec `/admin/users`.
+**Cas limites** : le contrôle d'accès ADMIN est assuré par `/admin/users`
+(un non-ADMIN atteignant `/users` est redirigé vers `/admin/users` puis,
+faute de droit, vers `/`). Verrouillé par `tests/unit/users-legacy-redirect.test.tsx`
++ `tests/components/phase11/phase11-navigation.test.tsx`.

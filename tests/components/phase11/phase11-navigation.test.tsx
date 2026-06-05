@@ -11,7 +11,7 @@
  * prevents accidental access attempts and reduces the attack surface.
  *
  * Role hierarchy: ADMIN > DOCTOR > NURSE > VIEWER
- * Items with minRole="ADMIN": /users, /audit
+ * Items with minRole="ADMIN": /admin/users, /audit
  * All other items visible to all roles.
  */
 
@@ -87,7 +87,7 @@ function getNavLinks(container: HTMLElement): HTMLAnchorElement[] {
     "/medications",
     "/analytics",
     "/documents",
-    "/users",
+    "/admin/users",
     "/audit",
     "/settings",
   ]
@@ -129,7 +129,7 @@ describe("NavigationShell", () => {
       )
       const hrefs = getUniqueNavHrefs(container)
       expect(hrefs).toHaveLength(6)
-      expect(hrefs).not.toContain("/users")
+      expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
     })
 
@@ -141,7 +141,7 @@ describe("NavigationShell", () => {
       )
       const hrefs = getUniqueNavHrefs(container)
       expect(hrefs).toHaveLength(6)
-      expect(hrefs).not.toContain("/users")
+      expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
     })
 
@@ -153,7 +153,7 @@ describe("NavigationShell", () => {
       )
       const hrefs = getUniqueNavHrefs(container)
       expect(hrefs).toHaveLength(6)
-      expect(hrefs).not.toContain("/users")
+      expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
     })
 
@@ -165,7 +165,7 @@ describe("NavigationShell", () => {
       )
       const hrefs = getUniqueNavHrefs(container)
       expect(hrefs).toHaveLength(8)
-      expect(hrefs).toContain("/users")
+      expect(hrefs).toContain("/admin/users")
       expect(hrefs).toContain("/audit")
     })
   })
