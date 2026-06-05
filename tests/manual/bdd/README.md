@@ -92,9 +92,12 @@ pnpm exec playwright test --config playwright.bdd.config.ts \
 > frais) le souci ne se pose pas.
 >
 > Note : le scénario de **création patient** insère une vraie ligne en base à
-> chaque exécution (email unique horodaté) — données de test, à purger
-> éventuellement (`DELETE FROM users WHERE email_hmac IN (...)` via les emails
-> `qa.bdd.*@diabeo.test`).
+> chaque exécution (email unique horodaté `qa.bdd.*@diabeo.test`) — données de
+> test synthétiques. ⚠️ Un simple `DELETE FROM users WHERE …` **échoue** (FK
+> `audit_logs.user_id` + trigger d'**immutabilité** sur `audit_logs`). Pour
+> repartir propre : `pnpm prisma migrate reset --force && pnpm prisma db seed`.
+> Une **garde anti-prod** (`steps/hooks.steps.ts`) refuse toute `DATABASE_URL`
+> non-locale pour éviter de créer de faux patients en staging/prod.
 
 ## Étendre
 
