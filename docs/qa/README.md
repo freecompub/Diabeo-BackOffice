@@ -53,10 +53,12 @@ Détectées pendant l'extraction des faits — à confirmer puis corriger hors d
 
 | # | Écran | Anomalie |
 |---|---|---|
-| A1 | `/login` | Lien « Créer un compte » → `/register`, **page inexistante** (404). |
-| A2 | `/insulin-therapy` | **Unité durée d'action** : UI en minutes (60–480), API en heures (3.5–5.0) → conversion manquante probable. |
-| A3 | (transverse) | **Bornes cliniques `CLAUDE.md` périmées** vs `clinical-bounds.ts` (ISF/ICR/Basal). Le code fait foi. |
-| A4 | `/adjustment-proposals` | Valeur hors bornes à l'acceptation → **500** au lieu de 400/422. |
+| A1 | `/login` | ✅ **Corrigé** — lien mort « Créer un compte » → `/register` (404) retiré. |
+| A2 | `/insulin-therapy` | ✅ **Corrigé** — durée d'action alignée en **heures** (UI envoyait des minutes à une API en heures → 400). |
+| A2b | `/insulin-therapy` | ⚠️ **Découvert pendant A2** — sauvegarde des paramètres cassée end-to-end : (1) `deliveryMethod` manquant dans le body → **400** ; (2) `upsertSettings` écrit des colonnes inexistantes → **500** (masqué par les mocks) ; (3) la durée saisie n'alimente pas l'IOB (`IobSettings.actionDurationHours` séparé). Suivi data-model dédié (`prisma-specialist` + `medical-domain-validator`). |
+| A3 | (transverse) | ✅ **Corrigé** — bornes resynchronisées sur `clinical-bounds.ts` (ISF 0.10, ICR 3–30, Basal max 5) dans `CLAUDE.md`, `README.md`, `docs/MEDICAL.md`, `docs/DATABASE.md`, `docs/database/schema.md` + test anti-dérive `tests/unit/clinical-bounds.test.ts`. |
+| A3b | `/insulin-therapy` | ⚠️ **Découvert pendant A3** — la validation **UI** des slots ISF rejette `< 0.20` g/L/U alors que le code autorise `0.10` (divergence comportementale UI vs bornes). Arbitrage `medical-domain-validator`. |
+| A4 | `/adjustment-proposals` | ✅ **Faux positif clarifié** — la route renvoie déjà **400** `valueOutOfBounds` (pas 500) + rollback transactionnel ; l'UI envoie toujours `applyImmediately:false`. Contrat verrouillé par test d'intégration. |
 | A5 | `/users` | ✅ **Corrigé** — `/users` redirige vers `/admin/users` ; la nav (`NavigationShell`) pointe directement sur la vraie UI (elle envoyait l'admin vers le stub). |
 
 ## 3. Conventions & légende

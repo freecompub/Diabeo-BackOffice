@@ -395,10 +395,10 @@ Toutes les routes sont protégées par authentification JWT et validées avec Zo
 
 | Paramètre | Min | Max |
 |-----------|-----|-----|
-| ISF (g/L/U) | 0.20 | 1.00 |
-| ISF (mg/dL/U) | 20 | 100 |
-| ICR (g/U) | 5.0 | 20.0 |
-| Basal (U/h) | 0.05 | 10.0 |
+| ISF (g/L/U) | 0.10 | 1.00 |
+| ISF (mg/dL/U) | 10 | 100 |
+| ICR (g/U) | 3.0 | 30.0 |
+| Basal (U/h) | 0.05 | 5.0 |
 | Glycémie cible (mg/dL) | 60 | 250 |
 | Bolus max (U) | — | 25.0 |
 

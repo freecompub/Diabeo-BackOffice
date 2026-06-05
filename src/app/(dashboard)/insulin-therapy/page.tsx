@@ -199,7 +199,7 @@ export default function InsulinTherapyPage() {
   const [settings, setSettings] = useState<InsulinSettings>({
     bolusInsulinBrand: "novorapid",
     basalInsulinBrand: "lantus",
-    insulinActionDuration: 240,
+    insulinActionDuration: 4,
     targetGlucoseMgdl: 100,
     considerIob: true,
     extendedBolusEnabled: false,
@@ -266,7 +266,7 @@ export default function InsulinTherapyPage() {
         let fetchedSettings: InsulinSettings = {
           bolusInsulinBrand: "novorapid",
           basalInsulinBrand: "lantus",
-          insulinActionDuration: 240,
+          insulinActionDuration: 4,
           targetGlucoseMgdl: 100,
           considerIob: true,
           extendedBolusEnabled: false,
@@ -385,7 +385,7 @@ export default function InsulinTherapyPage() {
     setSettings({
       bolusInsulinBrand: "novorapid",
       basalInsulinBrand: "lantus",
-      insulinActionDuration: 240,
+      insulinActionDuration: 4,
       targetGlucoseMgdl: 100,
       considerIob: true,
       extendedBolusEnabled: false,
@@ -619,18 +619,21 @@ export default function InsulinTherapyPage() {
               hint={t("targetGlucoseHint")}
             />
 
-            {/* Insulin action duration */}
+            {/* Insulin action duration — en HEURES (contrat API + clinical-bounds
+                INSULIN_ACTION_MIN/MAX = 3.5–5.0 h). A2 : l'UI envoyait des minutes
+                à une API attendant des heures → toute sauvegarde échouait (400). */}
             <DiabeoTextField
               label={t("insulinActionDuration")}
               type="number"
-              min={60}
-              max={480}
+              min={3.5}
+              max={5}
+              step={0.5}
               value={settings.insulinActionDuration}
               onChange={(e) => {
-                // C2: guard against NaN and enforce bounds [60, 480] minutes (1–8 hours)
-                const val = e.target.value === "" ? 0 : parseInt(e.target.value, 10)
+                // C2: guard against NaN and enforce bounds [3.5, 5.0] hours.
+                const val = e.target.value === "" ? 0 : parseFloat(e.target.value)
                 if (Number.isNaN(val)) return
-                const clamped = Math.min(480, Math.max(60, val))
+                const clamped = Math.min(5, Math.max(3.5, val))
                 updateSettings("insulinActionDuration", clamped)
               }}
               hint={t("insulinActionDurationHint")}

@@ -95,8 +95,11 @@ test.describe("Login page", () => {
     await expect(page.getByTestId("forgot-password-button")).toBeVisible()
   })
 
-  test("create account link exists", async ({ page }) => {
+  // A1 — le lien « Créer un compte » pointait vers /register (page inexistante,
+  // 404). L'inscription patient se fait par le personnel via /patients/new ;
+  // pas d'auto-inscription publique. Le lien mort a été retiré.
+  test("create account link is removed (A1)", async ({ page }) => {
     await page.goto("/login")
-    await expect(page.getByTestId("create-account-button")).toBeVisible()
+    await expect(page.getByTestId("create-account-button")).toHaveCount(0)
   })
 })

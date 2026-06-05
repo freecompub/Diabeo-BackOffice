@@ -470,13 +470,18 @@ const events = await auditService.getByPatient(42)
  */
 
 // CLINICAL_BOUNDS (bornes de sécurité) :
+// ⚠️ SOURCE DE VÉRITÉ UNIQUE = src/lib/clinical-bounds.ts. Ce bloc est une copie
+// pédagogique, gardée synchrone par tests/unit/clinical-bounds.test.ts.
 const CLINICAL_BOUNDS = {
-  ISF_GL_MIN: 0.20,    ISF_GL_MAX: 1.00,    // g/L/U
-  ISF_MGDL_MIN: 20,    ISF_MGDL_MAX: 100,  // mg/dL/U
-  ICR_MIN: 5.0,        ICR_MAX: 20.0,       // g/U
-  BASAL_MIN: 0.05,     BASAL_MAX: 10.0,    // U/h
+  ISF_GL_MIN: 0.10,    ISF_GL_MAX: 1.00,    // g/L/U (élargi pour DT2 insulino-résistant)
+  ISF_MGDL_MIN: 10,    ISF_MGDL_MAX: 100,  // mg/dL/U (règle 1800)
+  ICR_MIN: 3.0,        ICR_MAX: 30.0,       // g/U (élargi pédiatrie + résistant)
+  BASAL_MIN: 0.05,     BASAL_MAX: 5.0,     // U/h
   TARGET_MIN_MGDL: 60, TARGET_MAX_MGDL: 250,
-  MAX_SINGLE_BOLUS: 25.0,  // U — jamais dépasser
+  MAX_SINGLE_BOLUS: 25.0,        // U — jamais dépasser
+  INSULIN_ACTION_MIN: 3.5,       // heures (durée d'action analogues rapides)
+  INSULIN_ACTION_MAX: 5.0,       // heures
+  PUMP_BASAL_INCREMENT: 0.05,    // U/h
 }
 
 // Formule : findSlotForHour(settings.sensitivityFactors, hour)

@@ -15,9 +15,17 @@ Voir [conventions](README.md#3-conventions--légende).
 > | Durée d'action insuline | 3.5 | 5.0 | **heures** |
 > | Bolus unique max | — | 25.0 | U |
 >
-> ⚠️ **Anomalie doc** : ces bornes **diffèrent du `CLAUDE.md`** (qui indique ISF
-> 0.20–1.00, ICR 5.0–20.0, Basal 0.05–10.0). La **référence faisant foi est le
-> code** (`clinical-bounds.ts`). → mettre à jour `CLAUDE.md`.
+> ✅ **A3 corrigé** : la doc projet (`CLAUDE.md`, `README.md`, `docs/MEDICAL.md`,
+> `docs/DATABASE.md`, `docs/database/schema.md`) qui indiquait des bornes périmées
+> (ISF 0.20–1.00, ICR 5.0–20.0, Basal 0.05–10.0) est resynchronisée sur
+> `clinical-bounds.ts` (source de vérité unique), gardée par
+> `tests/unit/clinical-bounds.test.ts`.
+>
+> ⚠️ **A3b (suivi, NON corrigé)** : la **validation UI** des slots ISF rejette
+> `< 0.20` g/L/U (cf. `tests/pages/insulin-therapy.test.tsx`) alors que le code
+> autorise `0.10` → divergence **comportementale** (l'UI est plus stricte que les
+> bornes cliniques). À arbitrer avec `medical-domain-validator` (relâcher l'UI à
+> 0.10 ou resserrer `clinical-bounds`).
 
 ---
 
@@ -71,9 +79,32 @@ Feature: Configuration insulinothérapie
 ```
 
 **Cas limites & anomalies** :
-- ⚠️ **Incohérence d'unité (à corriger)** : l'UI saisit la durée d'action en
-  **minutes** (60–480) tandis que l'API `PUT …/settings` valide en **heures**
-  (3.5–5.0). À vérifier : conversion manquante côté client ?
+- ✅ **A2 corrigé** : l'UI saisissait la durée d'action en **minutes** (défaut
+  240, bornes 60–480) alors que l'API `PUT …/settings` valide en **heures**
+  (3.5–5.0) → toute sauvegarde échouait (400). L'input est désormais en **heures**
+  (défaut 4, bornes 3.5–5.0, pas 0.5).
+- ⚠️ **A2b — Persistance des paramètres cassée (suivi dédié, NON corrigé ici).**
+  A2 corrige l'unité, mais la **sauvegarde reste KO end-to-end** pour deux raisons
+  indépendantes, à traiter dans un seul chantier « persistance insulinothérapie » :
+  1. **400 `deliveryMethod` manquant** : le body `PUT` (`page.tsx handleSave`)
+     n'envoie pas `deliveryMethod`, requis non-optionnel par le schéma Zod
+     (`route.ts`) → `validationFailed` systématique.
+  2. **500 colonnes inexistantes** : `upsertSettings` (`insulin-therapy.service.ts`)
+     écrit `bolusInsulinBrand` / `basalInsulinBrand` / `insulinActionDuration` dans
+     `insulin_therapy_settings`, **qui ne possède aucune de ces colonnes** (seulement
+     `bolus_insulin_id`, `basal_insulin_id`, `delivery_method`) → erreur Prisma.
+     Masqué en CI car les tests **mockent Prisma**.
+  3. **Câblage DIA→IOB manquant** (sécurité) : même réparé, la durée saisie ne
+     piloterait pas l'IOB — le moteur de bolus lit `IobSettings.actionDurationHours`
+     (table distincte, défaut 4 h), jamais le champ de cet écran. Un médecin réglant
+     5 h croirait modifier l'IOB sans effet.
+  Correction = décision data-model (brand → FK `PatientInsulin` ; durée →
+  `IobSettings.actionDurationHours` + round-trip GET) + `deliveryMethod` dans le
+  body + **test d'intégration sur vraie base**. Requiert `prisma-specialist` +
+  `medical-domain-validator`.
+- ℹ️ **Bornes 3.5–5.0 h** (clinical-bounds, hors périmètre A2) : couvrent les
+  analogues rapides adultes, mais excluent des réglages 2–3 h (pédiatrie / Fiasp /
+  pompes 2–8 h). À arbitrer côté `clinical-bounds.ts` si le périmètre s'élargit.
 - Chevauchement de slots : le service lève une erreur — **vérifier** qu'elle
   remonte en message utilisateur (risque 500 non explicite).
 - Suppression de slot = optimiste, sans rollback visuel si le DELETE échoue.
@@ -118,17 +149,23 @@ Feature: Propositions d'ajustement (validation médecin)
     Quand je tente de l'accepter
     Alors la réponse est 403 "forbidden" (erreur affichée sur la ligne)
 
-  Scénario: valeur proposée hors bornes cliniques
-    Quand j'accepte une proposition dont la valeur dépasse les bornes
-    Alors l'application est rejetée
-    # ⚠️ Anomalie: actuellement 500 "serverError" (devrait être 400/422) — à corriger
+  Scénario: valeur proposée hors bornes cliniques (applyImmediately=true)
+    Quand j'accepte (via API) une proposition dont la valeur dépasse les bornes
+    Alors la réponse est 400 "valueOutOfBounds"
+    # Effet base: AUCUNE modif (le throw dans la transaction annule l'update de statut)
 ```
 
 **Cas limites & anomalies** :
-- ⚠️ **Bornes dépassées → 500** (au lieu de 400/422), erreur non scopée à la
-  ligne — UX faible, à corriger.
+- ✅ **A4 — faux positif clarifié** : l'audit signalait « hors bornes → 500 ». En
+  réalité la route mappe déjà `valueOutOfBounds` → **400** et la transaction annule
+  l'update de statut (rollback atomique). De plus l'UI envoie toujours
+  `applyImmediately: false` → le chemin de validation des bornes n'est atteignable
+  que via **API directe** (ou un futur toggle « appliquer immédiatement »). Le
+  contrat 400/404/403/200 est désormais verrouillé par
+  `tests/integration/api-adjustment-proposals-accept.test.ts`.
 - Race statut (pending→accepted entre fetch et action) → 404 `proposalNotFound`.
-- Double-clic protégé (`actionPending`).
+- Double-clic protégé (`actionPending`). Erreur UI générique (`rowError`) — non
+  spécifique, mais le chemin hors-bornes n'est pas déclenché par l'UI actuelle.
 
 ---
 

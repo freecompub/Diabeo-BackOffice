@@ -1113,7 +1113,7 @@ Facteur de sensibilité insuline (ISF) par tranche horaire.
 - Slots ordonnés par `startHour` ascendant (00:00 → 23:00)
 - Sélection: premier slot où `startHour <= heure_courante`
 - Fallback: dernier slot (minuit)
-- **Validation clinique**: ISF ∈ [0.20, 1.00] g/L/U (voir `CLINICAL_BOUNDS` dans `insulin.service.ts`)
+- **Validation clinique**: ISF ∈ [0.10, 1.00] g/L/U (voir `CLINICAL_BOUNDS` dans `src/lib/clinical-bounds.ts`)
 - ❌ **TODO**: Empêcher chevauchements horaires
 
 ---
@@ -1146,7 +1146,7 @@ Ratio insuline-glucides (ICR) par tranche horaire.
 - `INDEX(settingsId, startHour)`
 
 **Règles métier**:
-- **Validation clinique**: ICR ∈ [5.0, 20.0] g/U
+- **Validation clinique**: ICR ∈ [3.0, 30.0] g/U
 - Même pattern slot que ISF
 
 ---
