@@ -57,6 +57,15 @@ Then(
   },
 )
 
+Then("le RDV créé a le statut {string} en base", async ({}, expected: string) => {
+  expect(world.createdAppointmentId, "aucun RDV créé (step de création manquant ?)").toBeGreaterThan(0)
+  const { rows } = await db().query<{ s: string }>(
+    `SELECT status::text AS s FROM appointments WHERE id = $1`,
+    [world.createdAppointmentId],
+  )
+  expect(rows[0]?.s).toBe(expected)
+})
+
 Then("un compte patient existe en base avec l'email créé", async ({}) => {
   expect(world.createdEmail, "aucun email créé (step de création manquant ?)").not.toBe("")
   const { rows } = await db().query<{ n: string }>(
