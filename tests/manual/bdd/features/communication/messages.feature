@@ -1,5 +1,6 @@
 # language: fr
 # Source : docs/qa/12-communication.md — messagerie sécurisée (contrat API + RBAC)
+# Pré-requis seed : gdprConsent actif sur DOCTOR + patient_dt1 (sinon 403, pas 200).
 Fonctionnalité: Messagerie sécurisée
 
   Scénario: un DOCTOR liste ses conversations
@@ -24,3 +25,12 @@ Fonctionnalité: Messagerie sécurisée
       {}
       """
     Alors le statut de la réponse est 422
+
+  Scénario: envoi sans en-tête CSRF refusé
+    Étant donné que je suis connecté en tant que "DOCTOR"
+    Quand je POST "/api/messages" sans en-tête CSRF avec le JSON:
+      """
+      {"toUserId":1,"body":"x"}
+      """
+    Alors le statut de la réponse est 403
+    Et le corps contient "csrfMissing"

@@ -1,5 +1,7 @@
 # language: fr
 # Source : docs/qa/12-communication.md — RDV côté patient (contrat API)
+# Note : le 400 scopeRequired est levé avant toute logique de rôle — valide la
+# garde de scope obligatoire (un from/to sans memberId ni patientId est refusé).
 Fonctionnalité: RDV côté patient
 
   Scénario: scope obligatoire pour lister les RDV
