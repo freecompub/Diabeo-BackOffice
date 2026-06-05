@@ -58,7 +58,10 @@
     "onlyBuiltDependencies": [
       "@prisma/engines",
       "prisma"
-    ]
+    ],
+    "overrides": {
+      "preact": ">=10.25.0 <11"
+    }
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
