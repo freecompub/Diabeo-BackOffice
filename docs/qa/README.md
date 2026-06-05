@@ -56,7 +56,7 @@ Détectées pendant l'extraction des faits — à confirmer puis corriger hors d
 | A1 | `/login` | Lien « Créer un compte » → `/register`, **page inexistante** (404). |
 | A2 | `/insulin-therapy` | **Unité durée d'action** : UI en minutes (60–480), API en heures (3.5–5.0) → conversion manquante probable. |
 | A3 | (transverse) | **Bornes cliniques `CLAUDE.md` périmées** vs `clinical-bounds.ts` (ISF/ICR/Basal). Le code fait foi. |
-| A4 | `/adjustment-proposals` | Valeur hors bornes à l'acceptation → **500** au lieu de 400/422. |
+| A4 | `/adjustment-proposals` | ✅ **Faux positif clarifié** — la route renvoie déjà **400** `valueOutOfBounds` (pas 500) + rollback transactionnel ; l'UI envoie toujours `applyImmediately:false`. Contrat verrouillé par test d'intégration. |
 | A5 | `/users` | **Doublon legacy** de `/admin/users` (stub « Bientôt disponible ») → supprimer/rediriger. |
 
 ## 3. Conventions & légende
