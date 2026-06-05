@@ -176,8 +176,9 @@ describe("<AppointmentDetailModal>", () => {
       )
       expect(screen.queryByText("actionCancel")).toBeNull()
       expect(screen.queryByText("actionProposeAlternative")).toBeNull()
-      // #476 — statut terminal sans action → footer non rendu (X header ferme).
-      expect(screen.queryByText("actionClose")).toBeNull()
+      // #476 review E — statut terminal sans action → bouton "Fermer" explicite
+      // (sinon footer vide + seul X icône peu découvrable).
+      expect(screen.getByText("actionClose")).toBeTruthy()
       // Détail annulation affiché
       expect(screen.getByText("cancelReasonLabel")).toBeTruthy()
       expect(screen.getByText(/Patient malade/)).toBeTruthy()
@@ -207,11 +208,27 @@ describe("<AppointmentDetailModal>", () => {
           userRole="DOCTOR"
         />,
       )
-      // Plus de bouton "Fermer" dans le footer.
+      // Statut actionnable : pas de "Fermer" redondant (actions + X présents).
       expect(screen.queryByText("actionClose")).toBeNull()
       // Le X (DialogContent showCloseButton, sr-only "Close") ferme via
       // onOpenChange → handleClose → onClose.
       fireEvent.click(screen.getByRole("button", { name: "Close" }))
+      expect(onClose).toHaveBeenCalledTimes(1)
+    })
+
+    it("#476 review E/B — statut terminal : bouton 'Fermer' visible ferme le modal", () => {
+      render(
+        <AppointmentDetailModal
+          state={makeState({ detail: { ...baseDetail, status: "no_show" } })}
+          openId={42}
+          onClose={onClose}
+          onActionSuccess={onActionSuccess}
+          userRole="DOCTOR"
+        />,
+      )
+      const closeBtn = screen.getByText("actionClose")
+      expect(closeBtn).toBeTruthy()
+      fireEvent.click(closeBtn)
       expect(onClose).toHaveBeenCalledTimes(1)
     })
 
@@ -455,8 +472,8 @@ describe("<AppointmentDetailModal>", () => {
       )
       expect(screen.queryByText("actionCancel")).toBeNull()
       expect(screen.queryByText("actionProposeAlternative")).toBeNull()
-      // #476 — statut terminal → footer non rendu (X header ferme).
-      expect(screen.queryByText("actionClose")).toBeNull()
+      // #476 review E — statut terminal → bouton "Fermer" explicite.
+      expect(screen.getByText("actionClose")).toBeTruthy()
     })
 
     it("H-1/FE-2 — guard double-submit : second clic ignoré pendant actionLoading", async () => {
