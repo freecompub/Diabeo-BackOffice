@@ -53,7 +53,7 @@ Détectées pendant l'extraction des faits — à confirmer puis corriger hors d
 
 | # | Écran | Anomalie |
 |---|---|---|
-| A1 | `/login` | Lien « Créer un compte » → `/register`, **page inexistante** (404). |
+| A1 | `/login` | ✅ **Corrigé** — lien mort « Créer un compte » → `/register` (404) retiré. |
 | A2 | `/insulin-therapy` | **Unité durée d'action** : UI en minutes (60–480), API en heures (3.5–5.0) → conversion manquante probable. |
 | A3 | (transverse) | **Bornes cliniques `CLAUDE.md` périmées** vs `clinical-bounds.ts` (ISF/ICR/Basal). Le code fait foi. |
 | A4 | `/adjustment-proposals` | Valeur hors bornes à l'acceptation → **500** au lieu de 400/422. |
