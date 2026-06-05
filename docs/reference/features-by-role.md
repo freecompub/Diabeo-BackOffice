@@ -55,7 +55,7 @@ autorise NURSE, DOCTOR et ADMIN.
 | Path | Description |
 |------|-------------|
 | `/admin` | Dashboard administrateur — 3 cards (KPI cabinet, facturation, conformité) — US-2410 |
-| `/users` | Gestion utilisateurs (stub V1 — backend US-2148 prêt) |
+| `/admin/users` | Gestion utilisateurs (US-2148 ; `/users` redirige ici) |
 | `/audit` | Consultation audit logs (stub V1 — API `/api/admin/audit-logs` prête) |
 
 ### 2.3 Pages DOCTOR-only

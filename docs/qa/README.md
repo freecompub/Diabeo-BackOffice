@@ -59,7 +59,7 @@ Détectées pendant l'extraction des faits — à confirmer puis corriger hors d
 | A3 | (transverse) | ✅ **Corrigé** — bornes resynchronisées sur `clinical-bounds.ts` (ISF 0.10, ICR 3–30, Basal max 5) dans `CLAUDE.md`, `README.md`, `docs/MEDICAL.md`, `docs/DATABASE.md`, `docs/database/schema.md` + test anti-dérive `tests/unit/clinical-bounds.test.ts`. |
 | A3b | `/insulin-therapy` | ⚠️ **Découvert pendant A3** — la validation **UI** des slots ISF rejette `< 0.20` g/L/U alors que le code autorise `0.10` (divergence comportementale UI vs bornes). Arbitrage `medical-domain-validator`. |
 | A4 | `/adjustment-proposals` | ✅ **Faux positif clarifié** — la route renvoie déjà **400** `valueOutOfBounds` (pas 500) + rollback transactionnel ; l'UI envoie toujours `applyImmediately:false`. Contrat verrouillé par test d'intégration. |
-| A5 | `/users` | **Doublon legacy** de `/admin/users` (stub « Bientôt disponible ») → supprimer/rediriger. |
+| A5 | `/users` | ✅ **Corrigé** — `/users` redirige vers `/admin/users` ; la nav (`NavigationShell`) pointe directement sur la vraie UI (elle envoyait l'admin vers le stub). |
 
 ## 3. Conventions & légende
 

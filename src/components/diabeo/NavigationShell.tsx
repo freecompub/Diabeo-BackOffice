@@ -145,8 +145,8 @@ const HOME_HREF_MARKER = "__home__"
  * Fix #11.b/#11.c (session 2026-05-22) :
  *   - 1er item `href: HOME_HREF_MARKER` — résolu vers `/medecin` / `/infirmier`
  *     / `/admin` selon le role courant.
- *   - `/users` et `/audit` ADMIN-only — pages stub livrées dans la même
- *     PR pour éviter 404 (refonte UI à planifier en US dédiée).
+ *   - `/admin/users` et `/audit` ADMIN-only. `/admin/users` = UI réelle
+ *     (US-2148) ; `/users` n'est plus qu'une redirection legacy (anomalie A5).
  */
 const navItems: NavItem[] = [
   { href: HOME_HREF_MARKER, labelKey: "dashboard", icon: LayoutDashboard },
@@ -167,7 +167,7 @@ const navItems: NavItem[] = [
   { href: "/devices", labelKey: "devices", icon: Smartphone },
   { href: "/documents", labelKey: "documents", icon: FileText },
   { href: "/import", labelKey: "import", icon: Download, minRole: "DOCTOR" },
-  { href: "/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
+  { href: "/admin/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
   { href: "/audit", labelKey: "audit", icon: FileText, minRole: "ADMIN" },
   { href: "/settings", labelKey: "settings", icon: Settings },
 ]
