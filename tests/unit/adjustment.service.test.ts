@@ -87,6 +87,32 @@ describe("adjustmentService", () => {
       await expect(adjustmentService.accept("p1", 2, false))
         .rejects.toThrow("proposalNotFound")
     })
+
+    // A4 — sécurité : applyImmediately=true avec une valeur hors bornes cliniques
+    // (ISF 5.0 > ISF_GL_MAX 1.00) doit lever `valueOutOfBounds` (string mappée en
+    // 400 par la route) AVANT d'appliquer le paramètre, et le throw dans la
+    // transaction garantit le rollback du statut (proposition reste `pending`).
+    it("throws 'valueOutOfBounds' and applies nothing when the value is out of clinical bounds", async () => {
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor",
+            proposedValue: 5.0, timeSlotStartHour: 8, // 5.0 g/L/U > ISF_GL_MAX (1.00)
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      // Le contrat exact de la chaîne d'erreur (consommée par la route → 400).
+      await expect(adjustmentService.accept("p1", 2, true))
+        .rejects.toThrow("valueOutOfBounds")
+      // Le paramètre insuline n'est JAMAIS appliqué (validation avant updateMany).
+      expect(mockTx.insulinSensitivityFactor.updateMany).not.toHaveBeenCalled()
+    })
   })
 
   describe("reject", () => {

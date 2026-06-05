@@ -149,17 +149,23 @@ Feature: Propositions d'ajustement (validation médecin)
     Quand je tente de l'accepter
     Alors la réponse est 403 "forbidden" (erreur affichée sur la ligne)
 
-  Scénario: valeur proposée hors bornes cliniques
-    Quand j'accepte une proposition dont la valeur dépasse les bornes
-    Alors l'application est rejetée
-    # ⚠️ Anomalie: actuellement 500 "serverError" (devrait être 400/422) — à corriger
+  Scénario: valeur proposée hors bornes cliniques (applyImmediately=true)
+    Quand j'accepte (via API) une proposition dont la valeur dépasse les bornes
+    Alors la réponse est 400 "valueOutOfBounds"
+    # Effet base: AUCUNE modif (le throw dans la transaction annule l'update de statut)
 ```
 
 **Cas limites & anomalies** :
-- ⚠️ **Bornes dépassées → 500** (au lieu de 400/422), erreur non scopée à la
-  ligne — UX faible, à corriger.
+- ✅ **A4 — faux positif clarifié** : l'audit signalait « hors bornes → 500 ». En
+  réalité la route mappe déjà `valueOutOfBounds` → **400** et la transaction annule
+  l'update de statut (rollback atomique). De plus l'UI envoie toujours
+  `applyImmediately: false` → le chemin de validation des bornes n'est atteignable
+  que via **API directe** (ou un futur toggle « appliquer immédiatement »). Le
+  contrat 400/404/403/200 est désormais verrouillé par
+  `tests/integration/api-adjustment-proposals-accept.test.ts`.
 - Race statut (pending→accepted entre fetch et action) → 404 `proposalNotFound`.
-- Double-clic protégé (`actionPending`).
+- Double-clic protégé (`actionPending`). Erreur UI générique (`rowError`) — non
+  spécifique, mais le chemin hors-bornes n'est pas déclenché par l'UI actuelle.
 
 ---
 
