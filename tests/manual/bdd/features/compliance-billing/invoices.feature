@@ -1,5 +1,7 @@
 # language: fr
 # Source : docs/qa/09-admin-compliance-billing.md — factures (contrat API)
+# Précondition seed : cabinetId=1 = le service du DOCTOR seed (cf. me-memberships
+# serviceId=1) → membre → 200. Sur un autre ordre d'insertion, résoudre l'id.
 Fonctionnalité: Factures
 
   Scénario: un DOCTOR liste les factures d'un cabinet

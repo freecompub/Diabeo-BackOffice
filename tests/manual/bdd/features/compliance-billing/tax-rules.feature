@@ -1,5 +1,7 @@
 # language: fr
 # Source : docs/qa/09-admin-compliance-billing.md — règles fiscales (contrat API, NURSE+)
+# Précondition seed : aucun CountryTaxRule FR/VAT n'est seedé → 404 noActiveRule
+# (si US-2110 ajoute un seed de taux FR, ce scénario passera à 200).
 Fonctionnalité: Règles fiscales (TVA)
 
   Scénario: aucun taux actif pour le pays/type demandé
