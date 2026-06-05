@@ -1,5 +1,7 @@
 # language: fr
 # Source : docs/qa/04-appointments.md — liste RDV (contrat API)
+# Pré-requis seed : le DOCTOR gère le service du membre 1
+# (assertMemberServiceAccess s'exécute avant la plage → sinon 403, pas 200/422).
 Fonctionnalité: Liste des rendez-vous
 
   Scénario: un DOCTOR liste les RDV de son cabinet

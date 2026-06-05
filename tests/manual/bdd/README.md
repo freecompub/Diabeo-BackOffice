@@ -98,9 +98,10 @@ pnpm exec playwright test --config playwright.bdd.config.ts \
 > in-memory) avant un nouveau run complet. **En CI** (un seul run sur base/serveur
 > frais) le souci ne se pose pas.
 >
-> Note : le scénario de **création patient** insère une vraie ligne en base à
-> chaque exécution (email unique horodaté `qa.bdd.*@diabeo.test`) — données de
-> test synthétiques. ⚠️ Un simple `DELETE FROM users WHERE …` **échoue** (FK
+> Note : les scénarios d'**écriture** insèrent de vraies lignes à chaque run —
+> **création patient** (`users`+`patients`, email horodaté `qa.bdd.*@diabeo.test`)
+> et **création/annulation RDV** (`appointments`, créneau futur unique) — données
+> de test synthétiques. ⚠️ Un simple `DELETE FROM users WHERE …` **échoue** (FK
 > `audit_logs.user_id` + trigger d'**immutabilité** sur `audit_logs`). Pour
 > repartir propre : `pnpm prisma migrate reset --force && pnpm prisma db seed`.
 > Une **garde anti-prod** (`steps/hooks.steps.ts`) refuse toute `DATABASE_URL`
