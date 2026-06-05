@@ -136,8 +136,6 @@
     "forgotPassword": "Mot de passe oublie ?",
     "loginButton": "Se connecter",
     "loggingIn": "Connexion en cours...",
-    "createAccount": "Creer un compte",
-    "noAccount": "Pas encore de compte ?",
     "loginError": "Identifiants incorrects",
     "invalidEmail": "Adresse e-mail invalide",
     "accountLocked": "Compte temporairement bloque. Reessayez dans {time}.",

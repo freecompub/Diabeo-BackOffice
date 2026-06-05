@@ -136,8 +136,6 @@
     "forgotPassword": "نسيت كلمة المرور؟",
     "loginButton": "دخول",
     "loggingIn": "جاري تسجيل الدخول...",
-    "createAccount": "إنشاء حساب",
-    "noAccount": "ليس لديك حساب؟",
     "loginError": "بيانات غير صحيحة",
     "invalidEmail": "عنوان بريد إلكتروني غير صالح",
     "accountLocked": "الحساب مقفل مؤقتاً. أعد المحاولة خلال {time}.",
