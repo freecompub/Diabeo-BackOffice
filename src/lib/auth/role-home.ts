@@ -5,7 +5,8 @@
  *   - `src/hooks/use-auth.ts` (client, post-login redirect)
  *   - `src/app/(patient)/layout.tsx` (server, pro→home guard)
  *   - `src/components/diabeo/NavigationShell.tsx` (client, dynamic href)
- *   - `src/app/(dashboard)/{users,audit}/page.tsx` (server, non-ADMIN bounce)
+ *   - `src/app/(dashboard)/audit/page.tsx` (server, non-ADMIN bounce ;
+ *     `/users` redirige désormais vers `/admin/users`)
  *
  * Si un dashboard rôle-spécifique change de path (e.g. `/medecin` →
  * `/cabinet`), un seul endroit à modifier.
