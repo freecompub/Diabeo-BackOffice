@@ -9,11 +9,15 @@ import { loginAs } from "../e2e/helpers/auth"
  *   2. Goto /appointments — vue Semaine par défaut
  *   3. Vérifier l'axe horaire à gauche du calendrier :
  *      - Le conteneur `.sx__week-grid__time-axis` est visible
- *      - 24 labels d'heure sont rendus (00:00 → 23:00, défaut Schedule-X
+ *      - 24 labels d'heure sont rendus (00 h → 23 h, défaut Schedule-X
  *        `dayBoundaries = { start: 0, end: 2400 }`)
- *      - Format `HH:MM` cohérent en `fr-FR`
+ *      - Format horaire `fr-FR` cohérent (`HH h`, ex. "00 h", "14 h")
  *      - Heures triées en ordre croissant strict
- *      - Première heure = "00:00", dernière = "23:00"
+ *      - Première heure = "00 h", dernière = "23 h"
+ *
+ * Note locale — Schedule-X v4 rend l'axe horaire en `fr-FR` sous la forme
+ * `HH h` (et non `HH:MM`). Le test parse l'heure de tête de chaque label
+ * et valide count/ordre/bornes sur cette base.
  *
  * Garde-fou non régression — si Schedule-X change le format des heures
  * ou si Diabeo override `dayBoundaries` à la baisse (ex: 08:00→20:00
@@ -25,7 +29,7 @@ import { loginAs } from "../e2e/helpers/auth"
  */
 
 test.describe("/appointments — axe horaire vue Semaine", () => {
-  test("DOCTOR voit 24 heures sur l'axe gauche, format HH:MM ordonné", async ({
+  test("DOCTOR voit 24 heures sur l'axe gauche, format HH h ordonné", async ({
     page,
     context,
     request,
@@ -47,39 +51,39 @@ test.describe("/appointments — axe horaire vue Semaine", () => {
     const hourLabels = timeAxis.locator(".sx__week-grid__hour-text")
     const labelTexts = await hourLabels.allTextContents()
 
-    // ─── Format : chaque label match HH:MM strict ────────────────────
-    const hourFormatRe = /^([01]\d|2[0-3]):([0-5]\d)$/
-    for (const t of labelTexts) {
+    // ─── Format : chaque label match le format horaire fr-FR `HH h` ──
+    // Schedule-X v4 rend l'axe en `fr-FR` sous la forme "00 h" … "23 h".
+    // Le groupe capture l'heure (2 chiffres, 00→23) pour la suite.
+    const hourFormatRe = /^([01]\d|2[0-3])\s*h$/
+    const hours = labelTexts.map((t) => {
       const trimmed = t.trim()
+      const m = trimmed.match(hourFormatRe)
       expect(
-        trimmed,
-        `label "${trimmed}" ne respecte pas le format HH:MM`,
-      ).toMatch(hourFormatRe)
-    }
+        m,
+        `label "${trimmed}" ne respecte pas le format fr-FR "HH h"`,
+      ).not.toBeNull()
+      return Number(m![1])
+    })
 
     // ─── Count : 24 labels (0h → 23h, defaults Schedule-X) ───────────
     expect(
-      labelTexts.length,
-      `attendu 24 labels (00:00 → 23:00), trouvé ${labelTexts.length}`,
+      hours.length,
+      `attendu 24 labels (00 h → 23 h), trouvé ${hours.length}`,
     ).toBe(24)
 
-    // ─── Premier label = "00:00", dernier = "23:00" ──────────────────
-    expect(labelTexts[0].trim()).toBe("00:00")
-    expect(labelTexts[labelTexts.length - 1].trim()).toBe("23:00")
+    // ─── Première heure = 0 ("00 h"), dernière = 23 ("23 h") ─────────
+    expect(hours[0]).toBe(0)
+    expect(hours[hours.length - 1]).toBe(23)
 
     // ─── Ordre croissant strict (anti régression DST, anti reverse) ──
-    const minutesList = labelTexts.map((t) => {
-      const [h, m] = t.trim().split(":").map(Number)
-      return h * 60 + m
-    })
-    for (let i = 1; i < minutesList.length; i++) {
+    for (let i = 1; i < hours.length; i++) {
       expect(
-        minutesList[i],
+        hours[i],
         `ordre rompu à l'index ${i}: ${labelTexts[i - 1]} → ${labelTexts[i]}`,
-      ).toBeGreaterThan(minutesList[i - 1])
+      ).toBeGreaterThan(hours[i - 1])
     }
 
     // ─── Pas de doublons ─────────────────────────────────────────────
-    expect(new Set(labelTexts).size).toBe(labelTexts.length)
+    expect(new Set(hours).size).toBe(hours.length)
   })
 })

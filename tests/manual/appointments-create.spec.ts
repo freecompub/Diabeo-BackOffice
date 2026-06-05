@@ -18,9 +18,13 @@ import { loginAs } from "../e2e/helpers/auth"
  *   9. Vérifier la fermeture du modal + live region "✓ Rendez-vous créé"
  *  10. (Cleanup hors test : RDV reste en base pour debug visuel)
  *
- * Slot dynamique : `J+30` à `17:HH` où HH = `Date.now() % 60`. Probabilité
- * de collision sur 2 runs rapprochés ≈ 1/60 ; en cas de collision, le
- * test capture proprement le `slotConflict` côté UI.
+ * Slot dynamique : étalé sur `J+30..J+89` × `08 h..19 h` × `00..59 min` à
+ * partir de `Date.now()` → ~43 200 créneaux distincts. La probabilité de
+ * collision entre 2 runs (qui diffèrent d'au moins une seconde) est
+ * négligeable, ce qui rend le test idempotent (pas de 422 slotConflict au
+ * rejeu). La réponse `POST` est lue directement via `waitForResponse`
+ * (pas de listener `page.on("response")` asynchrone — sinon course entre
+ * le `await res.json()` du handler et l'assertion).
  *
  * **Effet de bord** — Crée un vrai RDV en BDD (table `appointments`) à
  * chaque run réussi. Pas de cleanup automatique. Pour purger :
@@ -38,15 +42,22 @@ function pad2(n: number): string {
   return n.toString().padStart(2, "0")
 }
 
-function slotJPlus30(): { date: string; hour: string } {
+/**
+ * Génère un créneau futur quasi-unique pour rendre le test idempotent.
+ * Étale sur J+30..J+89 × 08 h..19 h × 00..59 min à partir de `Date.now()`
+ * → ~43 200 créneaux. 2 runs distants d'≥1 s tombent sur des créneaux
+ * différents → pas de 422 slotConflict au rejeu.
+ */
+function uniqueFutureSlot(): { date: string; hour: string } {
+  const now = Date.now()
   const target = new Date()
-  target.setDate(target.getDate() + 30)
+  target.setDate(target.getDate() + 30 + (now % 60)) // J+30..J+89
   // Date YYYY-MM-DD format pour <input type="date">.
   const date = `${target.getFullYear()}-${pad2(target.getMonth() + 1)}-${pad2(target.getDate())}`
-  // Hour HH:MM — minute basée sur Date.now() pour minimiser collisions
-  // si le test est relancé dans la même journée.
-  const minute = pad2(Date.now() % 60)
-  const hour = `17:${minute}`
+  // Heure HH:MM — h ∈ [08, 19], min ∈ [00, 59], dérivés de l'horloge.
+  const hourOfDay = 8 + (Math.floor(now / 1000) % 12)
+  const minute = now % 60
+  const hour = `${pad2(hourOfDay)}:${pad2(minute)}`
   return { date, hour }
 }
 
@@ -57,19 +68,6 @@ test.describe("/appointments — création nouveau RDV", () => {
     request,
   }) => {
     await loginAs(context, request, "doctor")
-
-    // Capture les responses /api/appointments POST pour vérifier le 201.
-    const postResponses: { status: number; body: unknown }[] = []
-    page.on("response", async (res) => {
-      const isApptPost =
-        res.url().endsWith("/api/appointments")
-        && res.request().method() === "POST"
-      if (isApptPost) {
-        let body: unknown = null
-        try { body = await res.json() } catch { /* noop */ }
-        postResponses.push({ status: res.status(), body })
-      }
-    })
 
     await page.goto("/appointments")
 
@@ -94,7 +92,7 @@ test.describe("/appointments — création nouveau RDV", () => {
     await patientInput.fill(PATIENT_LABEL)
 
     // ─── Date + heure futures uniques ────────────────────────────────
-    const { date, hour } = slotJPlus30()
+    const { date, hour } = uniqueFutureSlot()
     await dialog.locator("#create-date").fill(date)
     await dialog.locator("#create-hour").fill(hour)
 
@@ -102,21 +100,28 @@ test.describe("/appointments — création nouveau RDV", () => {
     await dialog.locator("#create-motif").fill(NEW_RDV_MOTIF)
 
     // ─── Submit ──────────────────────────────────────────────────────
-    const submitButton = dialog.getByRole("button", { name: "Créer le RDV" })
-    await expect(submitButton).toBeEnabled()
-    await submitButton.click()
-
-    // ─── POST /api/appointments → 201 attendu ────────────────────────
-    await page.waitForResponse(
+    // On arme l'attente de la réponse AVANT le clic (best practice
+    // Playwright) et on lit la réponse directement — pas de listener
+    // `page.on("response")` dont le `await res.json()` courrait avec
+    // l'assertion (faux négatif `toHaveLength(0)`).
+    const postResponsePromise = page.waitForResponse(
       (res) =>
         res.url().endsWith("/api/appointments")
         && res.request().method() === "POST",
       { timeout: 10_000 },
     )
-    expect(postResponses).toHaveLength(1)
+    const submitButton = dialog.getByRole("button", { name: "Créer le RDV" })
+    await expect(submitButton).toBeEnabled()
+    await submitButton.click()
+
+    // ─── POST /api/appointments → 201 attendu ────────────────────────
+    const postResponse = await postResponsePromise
+    const created = (await postResponse
+      .json()
+      .catch(() => null)) as { id?: number } | null
     expect(
-      postResponses[0].status,
-      `body = ${JSON.stringify(postResponses[0].body)}`,
+      postResponse.status(),
+      `body = ${JSON.stringify(created)}`,
     ).toBe(201)
 
     // ─── Modal se ferme ──────────────────────────────────────────────
@@ -127,10 +132,7 @@ test.describe("/appointments — création nouveau RDV", () => {
       page.getByText("✓ Rendez-vous créé avec succès"),
     ).toBeVisible({ timeout: 5_000 })
 
-    // ─── Le RDV créé apparaît dans la liste GET subséquente ──────────
-    // Le hook polling 60s ou le revalidate post-create rappelle GET
-    // /api/appointments. On vérifie que le nouvel id est dans la liste.
-    const created = postResponses[0].body as { id?: number } | null
+    // ─── La réponse 201 porte l'id du RDV créé ───────────────────────
     // `toBeTypeOf` est un matcher Vitest, absent de l'`expect` Playwright
     // (cassait `tsc -p tsconfig.json` car ce spec est typecheck par le projet).
     expect(
