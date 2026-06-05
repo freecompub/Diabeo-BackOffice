@@ -91,11 +91,11 @@ pnpm exec playwright test --config playwright.bdd.config.ts \
 
 ### Prochaines étapes recommandées (hors POC)
 
-- **Vérification « effet base »** : ajouter `steps/db.steps.ts` qui interroge
-  PostgreSQL (client Prisma en lecture) pour valider les lignes
-  `# Effet base:` des scénarios (ex. `appointments.status='cancelled'`,
-  présence d'une ligne `audit_logs`). C'est ce qui distingue ce harness d'un
-  simple test d'UI.
+- ✅ **Vérification « effet base »** : `steps/db.steps.ts` livré (interroge
+  PostgreSQL via `pg`). À étendre à d'autres effets (ex. `appointments.status`,
+  présence d'une ligne `audit_logs`) au fil des features d'écriture.
 - **Reset déterministe** entre features d'écriture (transaction rollback ou
   `prisma migrate reset`) pour l'idempotence.
-- **`data-testid`** systématiques sur les écrans à automatiser.
+- **`data-testid`** systématiques sur les écrans à automatiser : les features
+  assertent aujourd'hui des **libellés FR** (le dev server tourne en locale FR
+  par défaut) ; des `data-testid` les rendraient indépendantes de l'i18n.

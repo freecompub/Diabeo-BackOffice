@@ -1,8 +1,10 @@
 import "dotenv/config"
-import { createHmac } from "node:crypto"
 import { Pool } from "pg"
 import { expect } from "@playwright/test"
 import { createBdd } from "playwright-bdd"
+// Source de vérité unique du HMAC email (évite toute divergence avec le code).
+// `dotenv/config` ci-dessus charge HMAC_SECRET avant le 1er appel (lecture lazy).
+import { hmacEmail } from "../../../../src/lib/crypto/hmac"
 
 const { Then } = createBdd()
 
@@ -29,13 +31,6 @@ function db(): Pool {
   return pool
 }
 
-/** Réplique `hmacEmail` (`src/lib/crypto/hmac.ts`) : HMAC-SHA256 sur l'email normalisé. */
-function emailHmac(email: string): string {
-  const secret = process.env.HMAC_SECRET
-  if (!secret) throw new Error("HMAC_SECRET absent de l'environnement (.env)")
-  return createHmac("sha256", secret).update(email.toLowerCase().trim()).digest("hex")
-}
-
 const SEED_EMAIL: Record<string, string> = {
   ADMIN: "admin@diabeo.test",
   DOCTOR: "docteur@diabeo.test",
@@ -55,7 +50,7 @@ Then(
          FROM sessions s
          JOIN users u ON u.id = s.user_id
         WHERE u.email_hmac = $1 AND s.expires > NOW()`,
-      [emailHmac(email)],
+      [hmacEmail(email)],
     )
     expect(Number(rows[0].n)).toBeGreaterThan(0)
   },
