@@ -71,9 +71,19 @@ Feature: Configuration insulinothérapie
 ```
 
 **Cas limites & anomalies** :
-- ⚠️ **Incohérence d'unité (à corriger)** : l'UI saisit la durée d'action en
-  **minutes** (60–480) tandis que l'API `PUT …/settings` valide en **heures**
-  (3.5–5.0). À vérifier : conversion manquante côté client ?
+- ✅ **A2 corrigé** : l'UI saisissait la durée d'action en **minutes** (défaut
+  240, bornes 60–480) alors que l'API `PUT …/settings` valide en **heures**
+  (3.5–5.0) → toute sauvegarde échouait (400). L'input est désormais en **heures**
+  (défaut 4, bornes 3.5–5.0, pas 0.5).
+- ⚠️ **A2b (suivi dédié, NON corrigé ici)** : `upsertSettings`
+  (`insulin-therapy.service.ts`) écrit `bolusInsulinBrand` / `basalInsulinBrand` /
+  `insulinActionDuration` dans la table `insulin_therapy_settings`, **qui ne
+  possède aucune de ces colonnes** (seulement `bolus_insulin_id`,
+  `basal_insulin_id`, `delivery_method`). En base réelle → erreur Prisma (champs
+  inconnus) → **500**. Masqué en CI car les tests **mockent Prisma**. Correction =
+  décision data-model (brand → FK `PatientInsulin` ; durée → `PatientInsulin.
+  action_duration_hours`) + test d'intégration sur **vraie** base. Requiert
+  `prisma-specialist` + `medical-domain-validator`.
 - Chevauchement de slots : le service lève une erreur — **vérifier** qu'elle
   remonte en message utilisateur (risque 500 non explicite).
 - Suppression de slot = optimiste, sans rollback visuel si le DELETE échoue.
