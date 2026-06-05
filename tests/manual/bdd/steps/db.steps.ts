@@ -66,6 +66,16 @@ Then("le RDV créé a le statut {string} en base", async ({}, expected: string) 
   expect(rows[0]?.s).toBe(expected)
 })
 
+Then("un événement existe en base avec l'id de la réponse", async ({}) => {
+  const id = (world.body as { id?: string } | null)?.id
+  expect(id, "réponse sans id (création échouée ?)").toBeTruthy()
+  const { rows } = await db().query<{ n: string }>(
+    `SELECT COUNT(*)::int AS n FROM diabetes_events WHERE id = $1`,
+    [id],
+  )
+  expect(Number(rows[0].n)).toBe(1)
+})
+
 Then("un compte patient existe en base avec l'email créé", async ({}) => {
   expect(world.createdEmail, "aucun email créé (step de création manquant ?)").not.toBe("")
   const { rows } = await db().query<{ n: string }>(
