@@ -136,8 +136,6 @@
     "forgotPassword": "Forgot password?",
     "loginButton": "Sign in",
     "loggingIn": "Signing in...",
-    "createAccount": "Create account",
-    "noAccount": "Don't have an account?",
     "loginError": "Invalid credentials",
     "invalidEmail": "Invalid email address",
     "accountLocked": "Account temporarily locked. Try again in {time}.",
