@@ -500,6 +500,7 @@
     "actionConfirmPending": "Confirm appointment",
     "actionConfirmPendingAria": "Confirm appointment number {id}",
     "actionAcceptAlternativeAria": "Accept alternative for appointment number {id}",
+    "actionCloseAria": "Close appointment number {id} details",
     "actionRetry": "Retry",
     "skipToList": "Skip to appointments list",
     "myAppointmentsTitle": "My appointments",

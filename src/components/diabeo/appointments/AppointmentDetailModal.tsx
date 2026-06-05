@@ -444,6 +444,11 @@ interface ViewModeProps {
   onAccept: () => void
   /** US-2500-UI iter 11 — Confirm RDV pending_validation (DOCTOR+, US-2505). */
   onConfirm: () => void
+  /**
+   * #476 review E — fermeture explicite sur statut terminal (footer sinon vide).
+   * Le parent injecte `handleClose` (gardé `actionLoading`), PAS le `onClose`
+   * brut → le bouton terminal respecte le même garde que le X / Escape.
+   */
   onClose: () => void
 }
 
@@ -647,7 +652,18 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
         </Field>
       </div>
 
-      <DialogFooter>
+      {/* #476 §9 — `flex-wrap` : jusqu'à 4 CTAs (Annuler/Déplacer/Proposer +
+          Confirmer ou Accepter) ne débordent plus du `DialogContent` (sm:max-w-lg)
+          et passent sur 2 lignes au besoin (wrap pertinent seulement en
+          `sm:flex-row` ; inerte en `flex-col-reverse` mobile).
+
+          #476 round 2 (review E) — Quand le RDV est actionnable / a une
+          alternative, le `X` du `DialogContent` (coin haut-droit, ferme via
+          onOpenChange → handleClose) suffit : pas de bouton "Fermer" redondant.
+          Mais sur un statut terminal SANS action (cancelled sans alternative /
+          completed / no_show), le footer serait vide → on rend un bouton
+          "Fermer" explicite (découvrabilité a11y/UX vs le seul X icône). */}
+      <DialogFooter className="sm:flex-wrap">
         {actionable && (
           <Button variant="outline" onClick={onCancel}>
             {t("actionCancel")}
@@ -693,7 +709,19 @@ function ViewMode({ detail, userRole, onCancel, onPropose, onMove, onAccept, onC
             {t("actionConfirmPending")}
           </Button>
         )}
-        <Button onClick={onClose}>{t("actionClose")}</Button>
+        {/* review E — statut terminal sans action : "Fermer" explicite
+            (sinon footer vide + seul X icône = faible découvrabilité). */}
+        {!(actionable || canAcceptAlternative) && (
+          <Button
+            variant="outline"
+            onClick={onClose}
+            // #476 F-3 — aria-label discriminant (cohérent avec les autres CTAs)
+            // pour distinguer du X `sr-only "Close"` du DialogContent.
+            aria-label={t("actionCloseAria", { id: detail.id })}
+          >
+            {t("actionClose")}
+          </Button>
+        )}
       </DialogFooter>
     </>
   )
