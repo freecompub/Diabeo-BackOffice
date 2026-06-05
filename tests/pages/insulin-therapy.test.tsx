@@ -108,7 +108,7 @@ function setupFetchMocks(overrides?: {
         json: async () => overrides?.settings ?? {
           bolusInsulinBrand: "novorapid",
           basalInsulinBrand: "lantus",
-          insulinActionDuration: 240,
+          insulinActionDuration: 4,
           targetGlucoseMgdl: 100,
           considerIob: true,
           extendedBolusEnabled: false,
@@ -211,6 +211,46 @@ describe("InsulinTherapyPage", () => {
     await waitFor(() => {
       const val = parseInt((targetInput as HTMLInputElement).value, 10)
       expect(val).toBeLessThanOrEqual(250)
+    })
+  })
+
+  // ── A2 : durée d'action en HEURES (pas minutes) ─────────────────────────
+  // L'UI envoyait des minutes (défaut 240, bornes 60–480) à une API qui valide
+  // 3.5–5.0 heures → toute sauvegarde échouait (400). Bornes alignées en heures.
+  it("insulin action duration is in hours (3.5–5.0), default 4", async () => {
+    await renderAndWaitForLoad()
+
+    const input = screen.getByLabelText(
+      "insulinTherapy.insulinActionDuration",
+    ) as HTMLInputElement
+    expect(input.value).toBe("4")
+    expect(input.getAttribute("min")).toBe("3.5")
+    expect(input.getAttribute("max")).toBe("5")
+  })
+
+  it("insulin action duration clamps to 3.5–5.0 hours and keeps half-hours", async () => {
+    await renderAndWaitForLoad()
+
+    const input = screen.getByLabelText(
+      "insulinTherapy.insulinActionDuration",
+    ) as HTMLInputElement
+
+    // Sous la borne basse → ramené à 3.5
+    fireEvent.change(input, { target: { value: "1" } })
+    await waitFor(() => {
+      expect(parseFloat(input.value)).toBeGreaterThanOrEqual(3.5)
+    })
+
+    // Au-dessus de la borne haute → ramené à 5
+    fireEvent.change(input, { target: { value: "9" } })
+    await waitFor(() => {
+      expect(parseFloat(input.value)).toBeLessThanOrEqual(5)
+    })
+
+    // Demi-heure conservée (parseFloat, pas parseInt)
+    fireEvent.change(input, { target: { value: "4.5" } })
+    await waitFor(() => {
+      expect(input.value).toBe("4.5")
     })
   })
 

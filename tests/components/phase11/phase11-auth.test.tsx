@@ -98,9 +98,16 @@ describe("LoginPage", () => {
     expect(link.getAttribute("href")).toBe("/reset-password")
   })
 
-  it("renders create account button with data-testid='create-account-button'", () => {
+  // A1 — le lien « Créer un compte » pointait vers /register, page inexistante
+  // (404). L'inscription patient se fait par le personnel via /patients/new ;
+  // il n'y a pas d'auto-inscription publique. Le lien mort a été retiré.
+  it("does NOT render a dead create-account link to /register", () => {
     render(<LoginPage />)
-    expect(screen.getByTestId("create-account-button")).toBeTruthy()
+    expect(screen.queryByTestId("create-account-button")).toBeNull()
+    const registerLinks = screen
+      .queryAllByRole("link")
+      .filter((el) => el.getAttribute("href") === "/register")
+    expect(registerLinks).toHaveLength(0)
   })
 
   it("login button is disabled when fields are empty", () => {
@@ -137,17 +144,6 @@ describe("LoginPage", () => {
     render(<LoginPage />)
     const link = screen.getByTestId("forgot-password-button")
     expect(link.textContent).toBe("auth.forgotPassword")
-  })
-
-  it("shows i18n text for create account button", () => {
-    render(<LoginPage />)
-    const button = screen.getByTestId("create-account-button")
-    expect(button.textContent).toBe("auth.createAccount")
-  })
-
-  it("shows i18n text for no account prompt", () => {
-    render(<LoginPage />)
-    expect(screen.getByText("auth.noAccount")).toBeTruthy()
   })
 
   it("calls login on form submission with email and password", async () => {

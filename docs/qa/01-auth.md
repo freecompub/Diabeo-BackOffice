@@ -19,7 +19,6 @@ DOCTOR → `/medecin`, NURSE → `/infirmier`, ADMIN → `/admin`, VIEWER → `/
 | Champ mot de passe | vide, type `password` + bouton bascule visibilité |
 | Bouton « Connexion » | **désactivé** si email ou mot de passe vide |
 | Lien « Mot de passe oublié ? » | → `/reset-password` |
-| Lien « Créer un compte » | → `/register` ⚠️ (voir cas limites — page inexistante) |
 | Mention « Hébergement HDS » | visible en pied |
 | État chargement | bouton « Connexion en cours… », champs désactivés |
 | État rate-limit | bannière rouge « Compte verrouillé. Réessayez dans X » + compte à rebours, champs/bouton désactivés |
@@ -94,9 +93,9 @@ Feature: Connexion au backoffice
   rate-limit (anti-DoS : un attaquant ne peut pas re-verrouiller un compte déjà
   suspendu).
 - **Token MFA pending expiré** (> ~5 min) : OTP rejeté (401), recommencer le login.
-- ⚠️ **Lien « Créer un compte » → `/register`** : la page `(auth)/register`
-  **n'existe pas** (`src/app/(auth)/login/page.tsx:224`). Cliquer mène à un 404.
-  → **À corriger** : retirer le lien ou créer la page (selon le scope produit).
+- ✅ **Lien « Créer un compte » retiré** (anomalie A1, corrigée) : il pointait
+  vers `/register` (page inexistante → 404). L'inscription patient se fait par le
+  personnel via `/patients/new` ; il n'y a pas d'auto-inscription publique.
 
 ---
 
