@@ -71,9 +71,32 @@ Feature: Configuration insulinothérapie
 ```
 
 **Cas limites & anomalies** :
-- ⚠️ **Incohérence d'unité (à corriger)** : l'UI saisit la durée d'action en
-  **minutes** (60–480) tandis que l'API `PUT …/settings` valide en **heures**
-  (3.5–5.0). À vérifier : conversion manquante côté client ?
+- ✅ **A2 corrigé** : l'UI saisissait la durée d'action en **minutes** (défaut
+  240, bornes 60–480) alors que l'API `PUT …/settings` valide en **heures**
+  (3.5–5.0) → toute sauvegarde échouait (400). L'input est désormais en **heures**
+  (défaut 4, bornes 3.5–5.0, pas 0.5).
+- ⚠️ **A2b — Persistance des paramètres cassée (suivi dédié, NON corrigé ici).**
+  A2 corrige l'unité, mais la **sauvegarde reste KO end-to-end** pour deux raisons
+  indépendantes, à traiter dans un seul chantier « persistance insulinothérapie » :
+  1. **400 `deliveryMethod` manquant** : le body `PUT` (`page.tsx handleSave`)
+     n'envoie pas `deliveryMethod`, requis non-optionnel par le schéma Zod
+     (`route.ts`) → `validationFailed` systématique.
+  2. **500 colonnes inexistantes** : `upsertSettings` (`insulin-therapy.service.ts`)
+     écrit `bolusInsulinBrand` / `basalInsulinBrand` / `insulinActionDuration` dans
+     `insulin_therapy_settings`, **qui ne possède aucune de ces colonnes** (seulement
+     `bolus_insulin_id`, `basal_insulin_id`, `delivery_method`) → erreur Prisma.
+     Masqué en CI car les tests **mockent Prisma**.
+  3. **Câblage DIA→IOB manquant** (sécurité) : même réparé, la durée saisie ne
+     piloterait pas l'IOB — le moteur de bolus lit `IobSettings.actionDurationHours`
+     (table distincte, défaut 4 h), jamais le champ de cet écran. Un médecin réglant
+     5 h croirait modifier l'IOB sans effet.
+  Correction = décision data-model (brand → FK `PatientInsulin` ; durée →
+  `IobSettings.actionDurationHours` + round-trip GET) + `deliveryMethod` dans le
+  body + **test d'intégration sur vraie base**. Requiert `prisma-specialist` +
+  `medical-domain-validator`.
+- ℹ️ **Bornes 3.5–5.0 h** (clinical-bounds, hors périmètre A2) : couvrent les
+  analogues rapides adultes, mais excluent des réglages 2–3 h (pédiatrie / Fiasp /
+  pompes 2–8 h). À arbitrer côté `clinical-bounds.ts` si le périmètre s'élargit.
 - Chevauchement de slots : le service lève une erreur — **vérifier** qu'elle
   remonte en message utilisateur (risque 500 non explicite).
 - Suppression de slot = optimiste, sans rollback visuel si le DELETE échoue.

@@ -668,8 +668,8 @@
     "basalInsulinBrand": "Long-acting insulin (basal)",
     "targetGlucose": "Target glucose (mg/dL)",
     "targetGlucoseHint": "Target value for correction calculation — between 60 and 250 mg/dL",
-    "insulinActionDuration": "Action duration (minutes)",
-    "insulinActionDurationHint": "Total insulin action duration — between 60 and 480 min",
+    "insulinActionDuration": "Action duration (hours)",
+    "insulinActionDurationHint": "Total insulin action duration — between 3.5 and 5 h",
     "timeline24h": "Covered time slots (24h)",
     "brand": {
       "humalog": "Humalog (lispro)",

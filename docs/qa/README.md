@@ -54,7 +54,8 @@ Détectées pendant l'extraction des faits — à confirmer puis corriger hors d
 | # | Écran | Anomalie |
 |---|---|---|
 | A1 | `/login` | ✅ **Corrigé** — lien mort « Créer un compte » → `/register` (404) retiré. |
-| A2 | `/insulin-therapy` | **Unité durée d'action** : UI en minutes (60–480), API en heures (3.5–5.0) → conversion manquante probable. |
+| A2 | `/insulin-therapy` | ✅ **Corrigé** — durée d'action alignée en **heures** (UI envoyait des minutes à une API en heures → 400). |
+| A2b | `/insulin-therapy` | ⚠️ **Découvert pendant A2** — sauvegarde des paramètres cassée end-to-end : (1) `deliveryMethod` manquant dans le body → **400** ; (2) `upsertSettings` écrit des colonnes inexistantes → **500** (masqué par les mocks) ; (3) la durée saisie n'alimente pas l'IOB (`IobSettings.actionDurationHours` séparé). Suivi data-model dédié (`prisma-specialist` + `medical-domain-validator`). |
 | A3 | (transverse) | **Bornes cliniques `CLAUDE.md` périmées** vs `clinical-bounds.ts` (ISF/ICR/Basal). Le code fait foi. |
 | A4 | `/adjustment-proposals` | Valeur hors bornes à l'acceptation → **500** au lieu de 400/422. |
 | A5 | `/users` | **Doublon legacy** de `/admin/users` (stub « Bientôt disponible ») → supprimer/rediriger. |
