@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  preact: '>=10.25.0 <11'
+
 importers:
 
   .:
@@ -22,7 +25,7 @@ importers:
         version: 7.6.0(prisma@7.6.0(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3))(typescript@5.9.3)
       '@schedule-x/calendar':
         specifier: ^4.6.0
-        version: 4.6.0(@preact/signals@2.9.0(preact@10.24.3))(preact@10.24.3)(temporal-polyfill@0.3.0)
+        version: 4.6.0(@preact/signals@2.9.0(preact@10.29.2))(preact@10.29.2)(temporal-polyfill@0.3.0)
       '@schedule-x/drag-and-drop':
         specifier: 3.7.3
         version: 3.7.3
@@ -31,7 +34,7 @@ importers:
         version: 4.6.0
       '@schedule-x/react':
         specifier: ^4.1.0
-        version: 4.1.0(@schedule-x/calendar@4.6.0(@preact/signals@2.9.0(preact@10.24.3))(preact@10.24.3)(temporal-polyfill@0.3.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+        version: 4.1.0(@schedule-x/calendar@4.6.0(@preact/signals@2.9.0(preact@10.29.2))(preact@10.29.2)(temporal-polyfill@0.3.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
       '@schedule-x/theme-default':
         specifier: ^4.6.0
         version: 4.6.0
@@ -1425,7 +1428,7 @@ packages:
   '@preact/signals@2.9.0':
     resolution: {integrity: sha512-hYrY0KyUqkDgOl1qba/JGn6y81pXnurn21PMaxfcMwdncdZ3M/oVdmpTvEnsGjh48dIwDVc7bjWHqIsngSjYug==}
     peerDependencies:
-      preact: '>= 10.25.0 || >=11.0.0-0'
+      preact: '>=10.25.0 <11'
 
   '@prisma/adapter-pg@7.8.0':
     resolution: {integrity: sha512-ygb3UkerK3v8MDpXVgCISdRNDozpxh6+JVJgiIGbSr5KBgz10LLf5ejUskPGoXlsIjxsOu6nuy1JVQr2EKGSlg==}
@@ -1713,7 +1716,7 @@ packages:
     resolution: {integrity: sha512-8Rf5bUf0DVphJB2BaudtG4IHkw21wgMJiiuk5o+7SIOq6YH4hkVJo+Kk12pWSfp2KTZ9mnnUuLV+szBVhiEPlg==}
     peerDependencies:
       '@preact/signals': ^2.0.2
-      preact: ^10.19.2
+      preact: '>=10.25.0 <11'
       temporal-polyfill: 0.3.0
 
   '@schedule-x/drag-and-drop@3.7.3':
@@ -4740,10 +4743,10 @@ packages:
   preact-render-to-string@6.5.11:
     resolution: {integrity: sha512-ubnauqoGczeGISiOh6RjX0/cdaF8v/oDXIjO85XALCQjwQP+SB4RDXXtvZ6yTYSjG+PC1QRP2AhPgCEsM2EvUw==}
     peerDependencies:
-      preact: '>=10'
+      preact: '>=10.25.0 <11'
 
-  preact@10.24.3:
-    resolution: {integrity: sha512-Z2dPnBnMUfyQfSQ+GBdsGa16hz35YmLmtTLhM169uW944hYL6xzTYkJjC07j+Wosz733pMWx0fgON3JNw1jJQA==}
+  preact@10.29.2:
+    resolution: {integrity: sha512-7tNmwg/7mzzAoB/8kSg6Hl37JraAZw3Z3A0JSY7VXlZwo82Xn0G7wKbNNs2qoF4ZEEsQGTwDAroNdqKs1ofJxQ==}
 
   prelude-ls@1.2.1:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
@@ -5764,8 +5767,8 @@ snapshots:
       '@panva/hkdf': 1.2.1
       jose: 6.2.2
       oauth4webapi: 3.8.5
-      preact: 10.24.3
-      preact-render-to-string: 6.5.11(preact@10.24.3)
+      preact: 10.29.2
+      preact-render-to-string: 6.5.11(preact@10.29.2)
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
@@ -7173,10 +7176,10 @@ snapshots:
 
   '@preact/signals-core@1.14.2': {}
 
-  '@preact/signals@2.9.0(preact@10.24.3)':
+  '@preact/signals@2.9.0(preact@10.29.2)':
     dependencies:
       '@preact/signals-core': 1.14.2
-      preact: 10.24.3
+      preact: 10.29.2
 
   '@prisma/adapter-pg@7.8.0':
     dependencies:
@@ -7434,19 +7437,19 @@ snapshots:
 
   '@rtsao/scc@1.1.0': {}
 
-  '@schedule-x/calendar@4.6.0(@preact/signals@2.9.0(preact@10.24.3))(preact@10.24.3)(temporal-polyfill@0.3.0)':
+  '@schedule-x/calendar@4.6.0(@preact/signals@2.9.0(preact@10.29.2))(preact@10.29.2)(temporal-polyfill@0.3.0)':
     dependencies:
-      '@preact/signals': 2.9.0(preact@10.24.3)
-      preact: 10.24.3
+      '@preact/signals': 2.9.0(preact@10.29.2)
+      preact: 10.29.2
       temporal-polyfill: 0.3.0
 
   '@schedule-x/drag-and-drop@3.7.3': {}
 
   '@schedule-x/events-service@4.6.0': {}
 
-  '@schedule-x/react@4.1.0(@schedule-x/calendar@4.6.0(@preact/signals@2.9.0(preact@10.24.3))(preact@10.24.3)(temporal-polyfill@0.3.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
+  '@schedule-x/react@4.1.0(@schedule-x/calendar@4.6.0(@preact/signals@2.9.0(preact@10.29.2))(preact@10.29.2)(temporal-polyfill@0.3.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)':
     dependencies:
-      '@schedule-x/calendar': 4.6.0(@preact/signals@2.9.0(preact@10.24.3))(preact@10.24.3)(temporal-polyfill@0.3.0)
+      '@schedule-x/calendar': 4.6.0(@preact/signals@2.9.0(preact@10.29.2))(preact@10.29.2)(temporal-polyfill@0.3.0)
       react: 19.2.4
       react-dom: 19.2.4(react@19.2.4)
 
@@ -10728,11 +10731,11 @@ snapshots:
 
   powershell-utils@0.1.0: {}
 
-  preact-render-to-string@6.5.11(preact@10.24.3):
+  preact-render-to-string@6.5.11(preact@10.29.2):
     dependencies:
-      preact: 10.24.3
+      preact: 10.29.2
 
-  preact@10.24.3: {}
+  preact@10.29.2: {}
 
   prelude-ls@1.2.1: {}
 
