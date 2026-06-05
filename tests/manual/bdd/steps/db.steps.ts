@@ -2,6 +2,7 @@ import "dotenv/config"
 import { Pool } from "pg"
 import { expect } from "@playwright/test"
 import { createBdd } from "playwright-bdd"
+import { world } from "./world"
 // Source de vérité unique du HMAC email (évite toute divergence avec le code).
 // `dotenv/config` ci-dessus charge HMAC_SECRET avant le 1er appel (lecture lazy).
 import { hmacEmail } from "../../../../src/lib/crypto/hmac"
@@ -55,3 +56,15 @@ Then(
     expect(Number(rows[0].n)).toBeGreaterThan(0)
   },
 )
+
+Then("un compte patient existe en base avec l'email créé", async ({}) => {
+  expect(world.createdEmail, "aucun email créé (step de création manquant ?)").not.toBe("")
+  const { rows } = await db().query<{ n: string }>(
+    `SELECT COUNT(*)::int AS n
+       FROM users u
+       JOIN patients p ON p.user_id = u.id
+      WHERE u.email_hmac = $1 AND u.role = 'VIEWER'`,
+    [hmacEmail(world.createdEmail)],
+  )
+  expect(Number(rows[0].n)).toBe(1)
+})

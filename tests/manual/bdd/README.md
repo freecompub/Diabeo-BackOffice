@@ -18,26 +18,35 @@ runner Playwright + le helper `loginAs`).
 
 ```
 tests/manual/bdd/
-  features/                       # .feature (Gherkin FR, # language: fr) — 15 scénarios
+  features/                       # .feature (Gherkin FR, # language: fr) — 25 scénarios
     login.feature                 # ← docs/qa/01-auth.md (connexion)
     auth/reset-password.feature   # ← docs/qa/01-auth.md (mot de passe oublié)
     dashboard-access.feature      # ← docs/qa/02-dashboards.md
     rbac/redirects.feature        # ← 02-dashboards / 06-admin / 12-communication (RBAC + A5)
     settings/rbac.feature         # ← docs/qa/05-settings.md (PS vs patient)
+    patients/{list,detail,create}.feature  # ← docs/qa/03-patients.md (contrat API + effet base)
     effet-base/login-session.feature  # ← docs/qa/01-auth.md (vérif EFFET BASE)
   steps/                          # step definitions (réutilisables)
     auth.steps.ts                 # "je suis connecté en tant que {string}" → loginAs()
     login.steps.ts                # steps de l'écran connexion (data-testid)
     navigation.steps.ts           # "je vais sur / je suis redirigé vers / je reste sur / je vois (pas) le titre"
     page.steps.ts                 # "je vois l'élément / je remplis le champ / je clique / je vois le texte"
-    db.steps.ts                   # "une session active existe en base pour {string}" — VÉRIF EFFET BASE (pg)
+    api.steps.ts                  # "j'appelle GET / je POST … avec le JSON" → page.request (cookie auth)
+    db.steps.ts                   # vérif EFFET BASE (pg) : session active, compte patient créé…
+    world.ts                      # état partagé entre steps (réponse API, email créé) — exécution série
 playwright.bdd.config.ts          # config (racine du repo) — pas de webServer
 ```
 
-> **Vérification « effet base »** (`db.steps.ts`) : ce step interroge directement
-> PostgreSQL (driver `pg`, `.env` chargé via `dotenv`) pour valider la ligne
-> `# Effet base:` d'un scénario (ici : la connexion a bien créé une ligne
-> `sessions`). C'est ce qui distingue ces tests d'un simple test d'UI.
+> **Vérification « effet base »** (`db.steps.ts`) : ces steps interrogent
+> directement PostgreSQL (driver `pg`, `.env` chargé via `dotenv`) pour valider la
+> ligne `# Effet base:` d'un scénario (ex. la connexion a créé une ligne
+> `sessions` ; la création patient a inséré `users`+`patients`). C'est ce qui
+> distingue ces tests d'un simple test d'UI.
+>
+> **Contrat API** (`api.steps.ts`) : nombre de scénarios QA sont au niveau API
+> (`Quand j'appelle GET "/api/…"` / `Alors le statut … est 200`) — exécutés via
+> `page.request` qui hérite du cookie d'auth injecté par `loginAs`. Robuste (pas
+> de sélecteur UI fragile).
 
 Le dossier `.features-gen/` (specs générées depuis les `.feature`) est
 **gitignoré** : il est régénéré par `bddgen`.
@@ -74,12 +83,21 @@ pnpm exec playwright test --config playwright.bdd.config.ts \
   .features-gen/tests/manual/bdd/features/login.feature.spec.js
 ```
 
-> **État frais entre rejeux** : le scénario « identifiants invalides » incrémente
-> le rate-limit de connexion (in-memory dans le dev server sans Redis configuré).
-> Après plusieurs rejeux complets, un lockout IP peut faire échouer le `loginAs`
-> de scénarios suivants. → relancer `pnpm dev` (purge le compteur in-memory) ou
-> attendre la fin de la fenêtre (≈ 1 min) avant un nouveau run complet. En CI
-> (un seul run sur base/serveur frais) le souci ne se pose pas.
+> **État frais entre rejeux** : certains endpoints ont un rate-limit **in-memory**
+> (dev server sans Redis configuré) qui s'accumule entre rejeux complets :
+> `POST /api/auth/login` (scénario « identifiants invalides ») et `POST /api/patients`
+> (anti-énumération). Après plusieurs runs, un 429 / lockout IP peut faire échouer
+> le `loginAs` ou la création patient. → relancer `pnpm dev` (purge le compteur
+> in-memory) avant un nouveau run complet. **En CI** (un seul run sur base/serveur
+> frais) le souci ne se pose pas.
+>
+> Note : le scénario de **création patient** insère une vraie ligne en base à
+> chaque exécution (email unique horodaté `qa.bdd.*@diabeo.test`) — données de
+> test synthétiques. ⚠️ Un simple `DELETE FROM users WHERE …` **échoue** (FK
+> `audit_logs.user_id` + trigger d'**immutabilité** sur `audit_logs`). Pour
+> repartir propre : `pnpm prisma migrate reset --force && pnpm prisma db seed`.
+> Une **garde anti-prod** (`steps/hooks.steps.ts`) refuse toute `DATABASE_URL`
+> non-locale pour éviter de créer de faux patients en staging/prod.
 
 ## Étendre
 
