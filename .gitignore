@@ -71,3 +71,18 @@ figma-export-script.js
 
 # Playwright-BDD generated specs
 .features-gen/
+
+# graphify — exclure venv, paths machine-specific, et intermédiaires
+graphify-out/.venv/
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+graphify-out/.graphify_detect.json
+graphify-out/.graphify_extract.json
+graphify-out/.graphify_ast.json
+graphify-out/.graphify_semantic.json
+graphify-out/.graphify_analysis.json
+graphify-out/.graphify_chunk_*.json
+graphify-out/.cl_*.txt
+graphify-out/.graphify_uncached*.txt
+graphify-out/.needs_update
+graphify-out/.rebuild.lock

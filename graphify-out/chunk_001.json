@@ -1,0 +1,1227 @@
+{
+  "nodes": [
+    {
+      "id": "root_agents_md",
+      "label": "AGENTS.md — Next.js agent rules",
+      "file_type": "document",
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "root_claude_md",
+      "label": "CLAUDE.md — Project persistent context",
+      "file_type": "document",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "root_changelog_md",
+      "label": "CHANGELOG.md — Diabeo backoffice release notes",
+      "file_type": "document",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "root_readme_md",
+      "label": "README.md — Diabeo BackOffice",
+      "file_type": "document",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "root_docker_compose_yml",
+      "label": "docker-compose.yml — local services (postgres, minio)",
+      "file_type": "document",
+      "source_file": "docker-compose.yml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "root_pnpm_workspace_yaml",
+      "label": "pnpm-workspace.yaml — ignoredBuiltDependencies",
+      "file_type": "document",
+      "source_file": "pnpm-workspace.yaml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_diabeo_backoffice",
+      "label": "Diabeo Backoffice (Next.js healthcare app)",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_nextjs_16_app_router",
+      "label": "Next.js 16 App Router",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_prisma_7",
+      "label": "Prisma 7.x ORM",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_postgresql_16",
+      "label": "PostgreSQL 16",
+      "file_type": "concept",
+      "source_file": "docker-compose.yml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_minio_s3_local",
+      "label": "MinIO (local S3-compatible storage)",
+      "file_type": "concept",
+      "source_file": "docker-compose.yml",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_ovh_object_storage",
+      "label": "OVH Object Storage (production S3)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_jwt_rs256",
+      "label": "JWT RS256 custom auth (jose + bcryptjs)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_aes_256_gcm_encryption",
+      "label": "AES-256-GCM health-data encryption",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_hmac_sha256_email",
+      "label": "HMAC-SHA256 emailHmac lookup",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_rbac_hierarchy",
+      "label": "RBAC ADMIN>DOCTOR>NURSE>VIEWER",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_audit_log_immutable",
+      "label": "AuditLog immutable (PG trigger)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_soft_delete_rgpd",
+      "label": "Soft delete patient (RGPD Art. 17)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_hds_compliance",
+      "label": "HDS compliance (Hébergement de Données Santé)",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_rgpd_article_9",
+      "label": "RGPD Article 9 — sensitive data",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_rgpd_article_15_export",
+      "label": "RGPD Article 15 export (right of access)",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_rgpd_article_17_deletion",
+      "label": "RGPD Article 17 deletion (right to be forgotten)",
+      "file_type": "concept",
+      "source_file": "README.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_bolus_calculation_pattern",
+      "label": "Bolus suggestion pattern (never automatic injection)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_clinical_bounds",
+      "label": "CLINICAL_BOUNDS (ISF/ICR/Basal/Bolus safety)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_design_system_serenite_active",
+      "label": "Design system Sérénité Active (teal/corail palette)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_shadcn_ui",
+      "label": "shadcn/ui component library + Tailwind CSS",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_48_tables_11_domains",
+      "label": "48 tables × 11 domaines (Prisma schema)",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_zod_validation",
+      "label": "Zod schema validation",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_upstash_redis_cache",
+      "label": "Upstash Redis cache + rate limiting",
+      "file_type": "concept",
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_mfa_totp",
+      "label": "MFA TOTP (RFC 6238 + AES-256-GCM secret + replay guard)",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_openapi_spec",
+      "label": "OpenAPI 3.1 spec (Zod 4 toJSONSchema)",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_health_endpoint",
+      "label": "GET /api/health (OVH cloud monitoring)",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_backup_postgres_age",
+      "label": "scripts/backup-postgres.sh (age + SHA256 + Object Lock)",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_deploy_sh",
+      "label": "scripts/deploy.sh (deployment wrapper)",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_decrypt_smoke_ts",
+      "label": "scripts/decrypt-smoke.ts (post-restore encryption validation)",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "us_sec_001",
+      "label": "US-SEC-001 — Insulin therapy mutations require NURSE+",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "us_sec_002",
+      "label": "US-SEC-002 — Soft-delete filter at service layer",
+      "file_type": "concept",
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "skill_prisma_cli",
+      "label": "prisma-cli skill (Prisma 7 CLI reference)",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_init",
+      "label": "prisma init",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/init.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_generate",
+      "label": "prisma generate",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/generate.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_dev",
+      "label": "prisma dev (local Prisma Postgres)",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_db_pull",
+      "label": "prisma db pull (introspection)",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/db-pull.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_db_push",
+      "label": "prisma db push",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/db-push.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_db_seed",
+      "label": "prisma db seed",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/db-seed.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_db_execute",
+      "label": "prisma db execute",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/db-execute.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_migrate_dev",
+      "label": "prisma migrate dev",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_migrate_deploy",
+      "label": "prisma migrate deploy",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-deploy.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_migrate_diff",
+      "label": "prisma migrate diff",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-diff.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_migrate_reset",
+      "label": "prisma migrate reset",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-reset.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_migrate_resolve",
+      "label": "prisma migrate resolve",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-resolve.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_migrate_status",
+      "label": "prisma migrate status",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-status.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_format",
+      "label": "prisma format",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/format.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "prisma_cli_debug",
+      "label": "prisma debug",
+      "file_type": "document",
+      "source_file": ".agents/skills/prisma-cli/references/debug.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_prisma_config_ts",
+      "label": "prisma.config.ts (Prisma 7 CLI config)",
+      "file_type": "concept",
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    },
+    {
+      "id": "concept_shadow_database",
+      "label": "Shadow database (migrate dev drift detection)",
+      "file_type": "concept",
+      "source_file": ".agents/skills/prisma-cli/references/migrate-dev.md",
+      "source_location": null,
+      "source_url": null,
+      "captured_at": null,
+      "author": null,
+      "contributor": null
+    }
+  ],
+  "edges": [
+    {
+      "source": "root_readme_md",
+      "target": "concept_diabeo_backoffice",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_nextjs_16_app_router",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_prisma_7",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_prisma_7",
+      "target": "concept_postgresql_16",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "root_docker_compose_yml",
+      "target": "concept_postgresql_16",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docker-compose.yml",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "root_docker_compose_yml",
+      "target": "concept_minio_s3_local",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "docker-compose.yml",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_minio_s3_local",
+      "target": "concept_ovh_object_storage",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.85,
+      "source_file": "docker-compose.yml",
+      "source_location": null,
+      "weight": 0.85
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_jwt_rs256",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_aes_256_gcm_encryption",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_aes_256_gcm_encryption",
+      "target": "concept_hmac_sha256_email",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_jwt_rs256",
+      "target": "concept_rbac_hierarchy",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_audit_log_immutable",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_audit_log_immutable",
+      "target": "concept_hds_compliance",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_aes_256_gcm_encryption",
+      "target": "concept_rgpd_article_9",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_soft_delete_rgpd",
+      "target": "concept_rgpd_article_17_deletion",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_rgpd_article_15_export",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "README.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_bolus_calculation_pattern",
+      "target": "concept_clinical_bounds",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_diabeo_backoffice",
+      "target": "concept_design_system_serenite_active",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_design_system_serenite_active",
+      "target": "concept_shadcn_ui",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_prisma_7",
+      "target": "concept_48_tables_11_domains",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "root_changelog_md",
+      "target": "concept_mfa_totp",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_mfa_totp",
+      "target": "concept_jwt_rs256",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_openapi_spec",
+      "target": "concept_zod_validation",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "root_changelog_md",
+      "target": "concept_health_endpoint",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_backup_postgres_age",
+      "target": "concept_hds_compliance",
+      "relation": "rationale_for",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_deploy_sh",
+      "target": "concept_health_endpoint",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_decrypt_smoke_ts",
+      "target": "concept_aes_256_gcm_encryption",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "us_sec_001",
+      "target": "concept_rbac_hierarchy",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "us_sec_002",
+      "target": "concept_soft_delete_rgpd",
+      "relation": "implements",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CHANGELOG.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_upstash_redis_cache",
+      "target": "concept_diabeo_backoffice",
+      "relation": "shares_data_with",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_init",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_generate",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_dev",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_db_pull",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_db_push",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_db_seed",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_db_execute",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_migrate_dev",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_migrate_deploy",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_migrate_diff",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_migrate_reset",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_migrate_resolve",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_migrate_status",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_format",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "skill_prisma_cli",
+      "target": "prisma_cli_debug",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_init",
+      "target": "concept_prisma_config_ts",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/init.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_migrate_dev",
+      "target": "concept_shadow_database",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/migrate-dev.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_migrate_deploy",
+      "target": "prisma_cli_migrate_status",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/migrate-deploy.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_migrate_deploy",
+      "target": "prisma_cli_migrate_resolve",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/migrate-deploy.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_migrate_reset",
+      "target": "prisma_cli_db_seed",
+      "relation": "calls",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/migrate-reset.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_migrate_dev",
+      "target": "prisma_cli_generate",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/migrate-dev.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "prisma_cli_db_push",
+      "target": "prisma_cli_migrate_dev",
+      "relation": "semantically_similar_to",
+      "confidence": "INFERRED",
+      "confidence_score": 0.75,
+      "source_file": ".agents/skills/prisma-cli/references/db-push.md",
+      "source_location": null,
+      "weight": 0.75
+    },
+    {
+      "source": "prisma_cli_db_execute",
+      "target": "prisma_cli_migrate_diff",
+      "relation": "conceptually_related_to",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": ".agents/skills/prisma-cli/references/db-execute.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "concept_prisma_7",
+      "target": "skill_prisma_cli",
+      "relation": "references",
+      "confidence": "INFERRED",
+      "confidence_score": 0.95,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 0.95
+    },
+    {
+      "source": "root_claude_md",
+      "target": "concept_48_tables_11_domains",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "root_claude_md",
+      "target": "concept_bolus_calculation_pattern",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "CLAUDE.md",
+      "source_location": null,
+      "weight": 1.0
+    },
+    {
+      "source": "root_agents_md",
+      "target": "concept_nextjs_16_app_router",
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "AGENTS.md",
+      "source_location": null,
+      "weight": 1.0
+    }
+  ],
+  "hyperedges": [
+    {
+      "id": "hds_security_triad",
+      "label": "HDS/RGPD compliance core (encryption + audit + soft-delete)",
+      "nodes": [
+        "concept_aes_256_gcm_encryption",
+        "concept_audit_log_immutable",
+        "concept_soft_delete_rgpd",
+        "concept_hds_compliance"
+      ],
+      "relation": "implement",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": "CLAUDE.md"
+    },
+    {
+      "id": "prisma_migration_lifecycle",
+      "label": "Prisma migrations lifecycle (dev → diff → deploy → status → resolve)",
+      "nodes": [
+        "prisma_cli_migrate_dev",
+        "prisma_cli_migrate_diff",
+        "prisma_cli_migrate_deploy",
+        "prisma_cli_migrate_status",
+        "prisma_cli_migrate_resolve"
+      ],
+      "relation": "form",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": ".agents/skills/prisma-cli/SKILL.md"
+    },
+    {
+      "id": "auth_stack_diabeo",
+      "label": "Diabeo auth stack (JWT + MFA + RBAC)",
+      "nodes": [
+        "concept_jwt_rs256",
+        "concept_mfa_totp",
+        "concept_rbac_hierarchy"
+      ],
+      "relation": "participate_in",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.85,
+      "source_file": "CHANGELOG.md"
+    }
+  ],
+  "input_tokens": 0,
+  "output_tokens": 0
+}
