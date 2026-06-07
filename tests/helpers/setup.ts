@@ -30,20 +30,15 @@ process.env.AUDIT_PEPPER =
 process.env.CRON_SECRET =
   "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
 
-// Fallback for integration tests that hit the real database (Prisma instantiates
-// at import time, before the test's own fallback could run). Tests that mock
-// prisma (`vi.mock("@/lib/db/client", ...)`) are unaffected.
+// Fallback for tests that need Prisma to instantiate at import time. The
+// majority of integration tests mock `@/lib/db/client` and never touch the
+// real database — for those, only Prisma's import-time URL check matters.
+// Tests that hit a real Postgres (e.g. tests/integration/api-patients-
+// create-with-referent.test.ts) self-skip if Postgres is unreachable.
 //
-// In CI the var MUST be set explicitly — a fallback would let the pipeline
-// silently target a wrong (or absent) database. Locally we warn and default.
+// Earlier this file threw in CI to avoid silent misconfig, but that broke
+// the `test-unit` CI job (no Postgres by design — all tests there mock
+// prisma). Reverted to fallback-with-warn.
 if (!process.env.DATABASE_URL) {
-  if (process.env.CI === "true" || process.env.CI === "1") {
-    throw new Error(
-      "DATABASE_URL must be set explicitly in CI (no test-helper fallback).",
-    )
-  }
-  console.warn(
-    "[tests/setup] DATABASE_URL not set — using local fallback postgresql://localhost:5432/diabeo",
-  )
   process.env.DATABASE_URL = "postgresql://diabeo:password@localhost:5432/diabeo?schema=public"
 }

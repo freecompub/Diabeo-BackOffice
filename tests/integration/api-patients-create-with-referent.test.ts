@@ -61,6 +61,23 @@ async function createActorFixture() {
 
 let actorUserId: number | null = null
 let createdFixture: { userId: number; memberId: number; serviceId: number } | null = null
+let postgresReachable = false
+
+/**
+ * Connectivity probe — the CI `test-unit` job intentionally runs without
+ * Postgres (most integration tests in this repo mock prisma). This test
+ * hits the REAL database to assert transaction atomicity, so we self-skip
+ * gracefully when Postgres isn't listening rather than throwing a noisy
+ * `ECONNREFUSED` across N test cases.
+ */
+async function isPostgresReachable(): Promise<boolean> {
+  try {
+    await prisma.$queryRaw`SELECT 1`
+    return true
+  } catch {
+    return false
+  }
+}
 
 /**
  * Clean up test artefacts by deterministic HMAC (encrypted columns can't be
@@ -137,6 +154,8 @@ function makeReq(body: unknown): NextRequest {
 }
 
 beforeAll(async () => {
+  postgresReachable = await isPostgresReachable()
+  if (!postgresReachable) return
   // Try to reuse an existing actor (avoid polluting the DB if seed already
   // provides one). If none, create an ephemeral fixture for the suite.
   actorUserId = await findExistingActorUserId()
@@ -147,7 +166,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  if (!createdFixture) return
+  if (!postgresReachable || !createdFixture) return
   await prisma.patientReferent.deleteMany({ where: { proId: createdFixture.memberId } })
   await prisma.healthcareMember.delete({ where: { id: createdFixture.memberId } }).catch(() => {})
   await prisma.healthcareService
@@ -158,15 +177,19 @@ afterAll(async () => {
 
 beforeEach(async () => {
   vi.clearAllMocks()
-  await purgeTestUser()
+  if (postgresReachable) await purgeTestUser()
 })
 
 afterEach(async () => {
-  await purgeTestUser()
+  if (postgresReachable) await purgeTestUser()
 })
 
 describe("POST /api/patients — PatientReferent creation", () => {
   it("creates a patient and links a PatientReferent to the creating pro", async () => {
+    if (!postgresReachable) {
+      console.warn("[skip] Postgres not reachable — integration test requires a real DB.")
+      return
+    }
     if (actorUserId === null) throw new Error("beforeAll failed to resolve actorUserId")
 
     const res = await POST(makeReq(VALID_BODY))
@@ -191,6 +214,7 @@ describe("POST /api/patients — PatientReferent creation", () => {
   })
 
   it("rejects duplicate emails with no orphan referent", async () => {
+    if (!postgresReachable) return
     // The first POST succeeds (Patient + PatientReferent created in TX).
     // The second POST may be rejected either by the pre-check `findUnique` or
     // by the P2002 unique-constraint mapping AFTER the TX rolls back; both
