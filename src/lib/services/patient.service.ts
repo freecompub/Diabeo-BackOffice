@@ -180,7 +180,12 @@ export function __resetDecryptWarnThrottleForTests(): void {
  * @param {string | null} value - Base64-encoded ciphertext or null
  * @returns {string | null} Decrypted plaintext or null if decryption fails
  */
-function safeDecrypt(value: string | null, scope = "patient.user"): string | null {
+type DecryptScope = "patient.user" | "patient.medicalData"
+
+function safeDecrypt(
+  value: string | null,
+  scope: DecryptScope = "patient.user",
+): string | null {
   if (!value) return null
   try {
     return localDecryptField(value)
@@ -498,6 +503,30 @@ export const patientService = {
           } catch (e) {
             if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
               referentSkippedReason = "member_deleted_during_creation"
+            } else if (
+              e instanceof Prisma.PrismaClientKnownRequestError &&
+              e.code === "P2002"
+            ) {
+              // code-reviewer/prisma H-1 — `PatientReferent.patientId` est @unique.
+              // Une race (double POST concurrent pour le même patient) lèverait
+              // P2002 sur `patient_referent_patient_id_key`. Sans ce catch, le
+              // P2002 sortait de la TX et faisait rollback patient + user (500).
+              // Idempotent : le référent existe déjà → on ne rollback pas, on
+              // récupère son id pour continuer normalement.
+              const target = e.meta?.target
+              const hitsPatientUnique = Array.isArray(target)
+                ? target.some((t) => String(t).includes("patient_id"))
+                : String(target ?? "").includes("patient_id")
+              if (!hitsPatientUnique) throw e
+              const existing = await tx.patientReferent.findUnique({
+                where: { patientId: patient.id },
+                select: { id: true },
+              })
+              if (existing) {
+                referentId = existing.id
+              } else {
+                referentSkippedReason = "referent_unique_conflict"
+              }
             } else {
               throw e
             }
@@ -508,6 +537,18 @@ export const patientService = {
           // remontera pas dans `listByDoctor` du créateur ; adoption via
           // dashboard admin V1.5.
           referentSkippedReason = "creator_has_no_healthcare_member"
+        }
+        if (referentSkippedReason) {
+          // L-3 — visibilité ops : l'info est dans l'audit `CREATE PATIENT`
+          // (metadata.kind=patient.created_without_referent) mais les audit logs
+          // ne sont pas consultables sans dashboard admin. Un warn structuré
+          // (sans PHI) aide au debug "pourquoi ce patient n'apparaît pas dans
+          // listByDoctor". patientId = identifiant interne, pas une donnée santé.
+          logger.warn("patient.service", "patient created without referent", {
+            kind: "patient.created_without_referent",
+            patientId: patient.id,
+            failMode: referentSkippedReason,
+          })
         }
         if (referentId !== null && member) {
           await auditService.logWithTx(tx, {
@@ -1027,14 +1068,14 @@ export const patientService = {
       userId: auditUserId,
       action: "READ",
       resource: "PATIENT",
-      // VIEWER summary lookup — distinct from `getById`'s full READ. resourceId
-      // is "own-summary" (not the patient id) so this aggregate event does not
-      // pollute per-patient forensics; the patientId pivot is still in metadata
-      // (US-2268).
-      resourceId: "own-summary",
+      // M-1 (US-2268) — lecture 1:1 d'un patient précis (le sien) : resourceId
+      // DOIT être l'id natif, pas une étiquette d'agrégat. La forensique
+      // `WHERE resource='PATIENT' AND resource_id='42'` doit remonter cet accès.
+      // (≠ listByDoctor/search qui sont de vrais agrégats sans id natif unique.)
+      resourceId: String(patient.id),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
-      metadata: { patientId: patient.id },
+      metadata: { patientId: patient.id, kind: "own_summary" },
     })
 
     return {

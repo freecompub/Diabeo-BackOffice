@@ -189,6 +189,7 @@ export default function PatientsPage() {
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
             <Input
               placeholder={t("searchPlaceholder")}
+              aria-label={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="ps-10"
