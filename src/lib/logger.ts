@@ -88,6 +88,12 @@ export interface LogContext {
   cabinetId?: number
   /** Plan B follow-up A1 round 2 — idempotency RGPD Art. 17 purge count. */
   deletedCount?: number
+  /** patient.service round 3 — domaine de chiffrement échoué (phi.decrypt.fail SOC alert). */
+  scope?: string
+  /** patient.service round 3 — listByDoctor cap warning + audit metadata. */
+  count?: number
+  cap?: number
+  doctorUserId?: number
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"

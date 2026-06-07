@@ -220,6 +220,13 @@ export type AuditResource =
    * Burst detection US-2265 sur mismatch (sondage malicieux ou bug client en boucle).
    */
   | "IDEMPOTENCY"
+  /**
+   * HSA H3 review (patient list PR) — signal SOC actionable lorsque `safeDecrypt`
+   * échoue (clé HEALTH_DATA_ENCRYPTION_KEY rotée mal déployée, ciphertext corrompu).
+   * `resourceId` = scope ("patient.user", "patient.medicalData"…) ; metadata
+   * capture le compteur supprimé pour aggregation cross-pods. Aucun PHI.
+   */
+  | "ENCRYPTION_FAILURE"
 
 /**
  * Audit log entry — parameters for logging an action.

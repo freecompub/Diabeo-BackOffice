@@ -1711,9 +1711,17 @@ model PatientReferent {
   serviceId Int? @map("service_id")
 
   patient Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  pro     HealthcareMember?  @relation(fields: [proId], references: [id])
-  service HealthcareService? @relation(fields: [serviceId], references: [id])
+  // prisma-specialist F2 : `SetNull` au lieu de Restrict implicite — élimine le
+  // risque de FK violation si un `HealthcareMember` est supprimé entre la
+  // lecture (`tx.healthcareMember.findUnique`) et la création du référent. Le
+  // patient garde son lien (avec proId = null) et peut être ré-adopté ensuite.
+  pro     HealthcareMember?  @relation(fields: [proId], references: [id], onDelete: SetNull)
+  service HealthcareService? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
+  // prisma-specialist F6 : `listByDoctor` filtre `pro: { userId }` → join sur
+  // `pro_id`. Sans index, seq scan complet de la table à chaque hit. Critique
+  // dès quelques k patients dans le système.
+  @@index([proId])
   @@map("patient_referent")
 }
 

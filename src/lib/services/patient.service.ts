@@ -16,6 +16,7 @@ import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { encryptField } from "@/lib/crypto/fields"
 import { hmacField, hmacEmail } from "@/lib/crypto/hmac"
 import { auditService, extractRequestContext } from "./audit.service"
+import type { PatientListItemDto } from "@/lib/dto/patient"
 import { logger } from "@/lib/logger"
 import { Prisma } from "@prisma/client"
 import type { Pathology, Sex, PatientMedicalData } from "@prisma/client"
@@ -141,10 +142,25 @@ function localDecryptField(value: string): string {
  * (≠ cumul process-life) + cappé pour éviter tout overflow théorique et borner
  * l'oracle volumétrique du log SOC.
  */
+// prisma-specialist F5 — safety cap pour `listByDoctor`. Le portefeuille d'un
+// PS dépasse rarement quelques centaines de patients ; au-delà, pagination
+// nécessaire (V1.5). Ces bornes évitent l'OOM en attendant.
+const LIST_BY_DOCTOR_MAX = 2000
+const LIST_BY_DOCTOR_WARN_AT = 1000
+
 const DECRYPT_WARN_WINDOW_MS = 60_000
 const DECRYPT_SUPPRESSED_CAP = 10_000_000
+/**
+ * HSA H3 — Au-delà de ce seuil dans une seule fenêtre, on escalade `warn → error`
+ * ET on émet un `ENCRYPTION_FAILURE` audit log (signal SOC aggregable cross-pods
+ * via la table immuable `audit_logs`, vs `logger.warn` qui se dilue dans Loki).
+ * Le seuil est volontairement bas (10 échecs/min) car en prod la cible est 0 :
+ * un dépassement = incident à investiguer (bascule de clé ratée, dump restauré).
+ */
+const DECRYPT_FAIL_AUDIT_THRESHOLD = 10
 let lastDecryptWarnAt = 0
 let suppressedDecryptWarns = 0
+let decryptFailureAuditedAt = 0
 
 /**
  * Test-only — réinitialise l'état du throttle de `safeDecrypt` (RR4) pour que
@@ -154,6 +170,7 @@ let suppressedDecryptWarns = 0
 export function __resetDecryptWarnThrottleForTests(): void {
   lastDecryptWarnAt = 0
   suppressedDecryptWarns = 0
+  decryptFailureAuditedAt = 0
 }
 
 /**
@@ -163,7 +180,12 @@ export function __resetDecryptWarnThrottleForTests(): void {
  * @param {string | null} value - Base64-encoded ciphertext or null
  * @returns {string | null} Decrypted plaintext or null if decryption fails
  */
-function safeDecrypt(value: string | null): string | null {
+type DecryptScope = "patient.user" | "patient.medicalData"
+
+function safeDecrypt(
+  value: string | null,
+  scope: DecryptScope = "patient.user",
+): string | null {
   if (!value) return null
   try {
     return localDecryptField(value)
@@ -175,14 +197,47 @@ function safeDecrypt(value: string | null): string | null {
     // pour le filtrage SOC (R7).
     const now = Date.now()
     if (now - lastDecryptWarnAt >= DECRYPT_WARN_WINDOW_MS) {
-      logger.warn(
-        "patient.service",
-        "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)",
-        {
-          kind: "phi.decrypt.fail",
-          ...(suppressedDecryptWarns > 0 ? { suppressedSinceLastLog: suppressedDecryptWarns } : {}),
-        },
-      )
+      const burst = suppressedDecryptWarns
+      const escalate = burst >= DECRYPT_FAIL_AUDIT_THRESHOLD
+      // HSA H3 — au-delà du seuil, on escalade en `error` (PagerDuty/SOC) ET on
+      // émet un audit immuable `ENCRYPTION_FAILURE` aggregable cross-pods. En
+      // dessous, le `warn` reste pour le bruit isolé (dev / dump test).
+      const meta = {
+        kind: "phi.decrypt.fail",
+        scope,
+        ...(burst > 0 ? { suppressedSinceLastLog: burst } : {}),
+      }
+      if (escalate) {
+        logger.error("patient.service", "safeDecrypt mass failure — investigate key rotation", meta)
+        // Audit (immuable) — au plus 1 par fenêtre pour ne pas saturer la table.
+        if (now - decryptFailureAuditedAt >= DECRYPT_WARN_WINDOW_MS) {
+          decryptFailureAuditedAt = now
+          // Fire-and-forget : un échec d'écriture audit ne doit JAMAIS bloquer
+          // la lecture patient (UX dégradée OK vs 500 complet sur la liste).
+          // Review round 2 M2 — `CONFIG_ERROR` sémantiquement correct (pattern
+          // déjà utilisé par insulin.service / emergency.service pour les
+          // drift de config). `READ` ne capturait pas la nature "incident".
+          auditService.log({
+            userId: null,
+            action: "CONFIG_ERROR",
+            resource: "ENCRYPTION_FAILURE",
+            resourceId: scope,
+            metadata: { kind: "phi.decrypt.fail", suppressedSinceLastLog: burst, scope },
+          }).catch((auditErr) => {
+            // architect-reviewer M : ne PAS swallow l'erreur d'audit silencieusement
+            // (perdrait le signal SOC précisément quand on en a le plus besoin).
+            // Au minimum, escalader vers Loki/stderr — un opérateur peut grep ce
+            // log même si la table audit_logs est inaccessible (DB down).
+            logger.error("patient.service", "ENCRYPTION_FAILURE audit emission failed", { scope }, auditErr)
+          })
+        }
+      } else {
+        logger.warn(
+          "patient.service",
+          "safeDecrypt failed — returning null (plaintext seed or corrupted ciphertext?)",
+          meta,
+        )
+      }
       lastDecryptWarnAt = now
       suppressedDecryptWarns = 0
     } else if (suppressedDecryptWarns < DECRYPT_SUPPRESSED_CAP) {
@@ -225,13 +280,16 @@ const ENCRYPTED_MEDICAL_SET = new Set<string>(ENCRYPTED_MEDICAL_FIELDS)
 function decryptMedicalData(data: PatientMedicalData) {
   return {
     ...data,
-    historyMedical: safeDecrypt(data.historyMedical),
-    historyChirurgical: safeDecrypt(data.historyChirurgical),
-    historyFamily: safeDecrypt(data.historyFamily),
-    historyAllergy: safeDecrypt(data.historyAllergy),
-    historyVaccine: safeDecrypt(data.historyVaccine),
-    historyLife: safeDecrypt(data.historyLife),
-    diabetDiscovery: safeDecrypt(data.diabetDiscovery),
+    // Review round 2 M1 — scope explicite pour que le triage SOC pointe sur la
+    // bonne clé (PatientMedicalData a sa propre surface forensique vs
+    // patient.user qui est le default de safeDecrypt).
+    historyMedical: safeDecrypt(data.historyMedical, "patient.medicalData"),
+    historyChirurgical: safeDecrypt(data.historyChirurgical, "patient.medicalData"),
+    historyFamily: safeDecrypt(data.historyFamily, "patient.medicalData"),
+    historyAllergy: safeDecrypt(data.historyAllergy, "patient.medicalData"),
+    historyVaccine: safeDecrypt(data.historyVaccine, "patient.medicalData"),
+    historyLife: safeDecrypt(data.historyLife, "patient.medicalData"),
+    diabetDiscovery: safeDecrypt(data.diabetDiscovery, "patient.medicalData"),
   }
 }
 
@@ -413,6 +471,108 @@ export const patientService = {
           })
         }
 
+        // Link the new patient to the creating professional via PatientReferent
+        // (HDS traceability — required so listByDoctor() surfaces the patient in
+        // the creator's portfolio, and so all downstream pro↔patient access
+        // checks via canAccessPatient() succeed). If the creator has no
+        // HealthcareMember (e.g. ADMIN without a clinical role), we skip
+        // silently: the patient is still created, but the creator must rely on
+        // other access paths (PatientService link or ADMIN bypass).
+        const member = await tx.healthcareMember.findUnique({
+          where: { userId: auditUserId },
+          select: { id: true, serviceId: true },
+        })
+        let referentSkippedReason: string | null = null
+        let referentId: number | null = null
+        if (member) {
+          // prisma-specialist F2 — defense-in-depth contre race : si le
+          // HealthcareMember est supprimé (commit concurrent) entre findUnique
+          // et create, le INSERT lève P2003 (FK violation). On traite ça comme
+          // "member disparu" → flag referentSkipped au lieu de rollback toute
+          // la TX (le patient reste utile, peut être adopté ultérieurement).
+          try {
+            const referent = await tx.patientReferent.create({
+              data: {
+                patientId: patient.id,
+                proId: member.id,
+                serviceId: member.serviceId ?? null,
+              },
+              select: { id: true },
+            })
+            referentId = referent.id
+          } catch (e) {
+            if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+              referentSkippedReason = "member_deleted_during_creation"
+            } else if (
+              e instanceof Prisma.PrismaClientKnownRequestError &&
+              e.code === "P2002"
+            ) {
+              // code-reviewer/prisma H-1 — `PatientReferent.patientId` est @unique.
+              // Une race (double POST concurrent pour le même patient) lèverait
+              // P2002 sur `patient_referent_patient_id_key`. Sans ce catch, le
+              // P2002 sortait de la TX et faisait rollback patient + user (500).
+              // Idempotent : le référent existe déjà → on ne rollback pas, on
+              // récupère son id pour continuer normalement.
+              const target = e.meta?.target
+              const hitsPatientUnique = Array.isArray(target)
+                ? target.some((t) => String(t).includes("patient_id"))
+                : String(target ?? "").includes("patient_id")
+              if (!hitsPatientUnique) throw e
+              const existing = await tx.patientReferent.findUnique({
+                where: { patientId: patient.id },
+                select: { id: true },
+              })
+              if (existing) {
+                referentId = existing.id
+              } else {
+                referentSkippedReason = "referent_unique_conflict"
+              }
+            } else {
+              throw e
+            }
+          }
+        } else {
+          // HSA M4 — flag posé sur l'audit `CREATE PATIENT` ci-dessous (review
+          // round 2 H1 — pas de 2e row dédiée). Le patient sans référent ne
+          // remontera pas dans `listByDoctor` du créateur ; adoption via
+          // dashboard admin V1.5.
+          referentSkippedReason = "creator_has_no_healthcare_member"
+        }
+        if (referentSkippedReason) {
+          // L-3 — visibilité ops : l'info est dans l'audit `CREATE PATIENT`
+          // (metadata.kind=patient.created_without_referent) mais les audit logs
+          // ne sont pas consultables sans dashboard admin. Un warn structuré
+          // (sans PHI) aide au debug "pourquoi ce patient n'apparaît pas dans
+          // listByDoctor". patientId = identifiant interne, pas une donnée santé.
+          logger.warn("patient.service", "patient created without referent", {
+            kind: "patient.created_without_referent",
+            patientId: patient.id,
+            failMode: referentSkippedReason,
+          })
+        }
+        if (referentId !== null && member) {
+          await auditService.logWithTx(tx, {
+            userId: auditUserId,
+            action: "CREATE",
+            resource: "REFERENT",
+            // US-2268 — resourceId = native PatientReferent.id, patientId pivot
+            // dans metadata pour la forensique (`getByPatient`).
+            resourceId: String(referentId),
+            ipAddress: ctx?.ipAddress,
+            userAgent: ctx?.userAgent,
+            // HSA M3 — enrichi : serviceId (cohérence avec le row inséré) +
+            // proUserId (shortcut forensique "tous les patients dont user X
+            // est devenu référent", évite le join member → user).
+            metadata: {
+              patientId: patient.id,
+              proMemberId: member.id,
+              proUserId: auditUserId,
+              serviceId: member.serviceId ?? null,
+              via: "patient_creation",
+            },
+          })
+        }
+
         // Invitation (set-password) token — identical mechanism to the
         // password-reset flow (VerificationToken keyed by emailHmac, 1h TTL).
         await tx.verificationToken.deleteMany({ where: { identifier: emailHmac } })
@@ -442,7 +602,20 @@ export const patientService = {
           resourceId: String(patient.id),
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
-          metadata: { patientId: patient.id },
+          // HSA M4 + round 2 H1 — flag `referentSkipped` posé ici (single audit
+          // event) plutôt qu'une 2e row dédiée. Forensique : la query
+          // `metadata->>'kind' = 'patient.created_without_referent'` retrouve
+          // les patients orphelins pour le dashboard d'adoption (V1.5).
+          metadata: {
+            patientId: patient.id,
+            ...(referentSkippedReason
+              ? {
+                  referentSkipped: true,
+                  kind: "patient.created_without_referent",
+                  reason: referentSkippedReason,
+                }
+              : {}),
+          },
         })
 
         return { id: patient.id, userId: user.id, pathology: patient.pathology }
@@ -776,20 +949,60 @@ export const patientService = {
     }
   },
 
-  async listByDoctor(doctorUserId: number, auditUserId: number) {
+  /**
+   * Lists the patients in a PS's portfolio (via `PatientReferent.pro.userId`)
+   * as a minimal `PatientListItemDto[]`. Filters out soft-deleted patients +
+   * patients who have explicitly opted out of provider data sharing.
+   *
+   * Performance bound: V1.5 — capped at LIST_BY_DOCTOR_MAX (2000) rows to
+   * prevent OOM on enormous cabinets. Beyond this, the route should paginate.
+   * A `logger.warn` is emitted when approaching the cap (≥1000) for capacity
+   * monitoring (prisma-specialist F5).
+   */
+  async listByDoctor(doctorUserId: number, auditUserId: number): Promise<PatientListItemDto[]> {
     const referents = await prisma.patientReferent.findMany({
+      take: LIST_BY_DOCTOR_MAX,
       where: {
         pro: { userId: doctorUserId },
-        patient: { deletedAt: null },
-      },
-      include: {
         patient: {
-          include: {
-            user: { select: { id: true, firstname: true, lastname: true, email: true } },
+          deletedAt: null,
+          // HSA H1 + review round 2 C1 — RGPD Art. 7.3 (révocation) tout en
+          // respectant le défaut implicite : un patient nouvellement créé n'a
+          // PAS encore de row UserPrivacySettings (pas créée par le wizard) →
+          // il doit rester visible (sinon le PS qui le crée ne le voit jamais
+          // dans son portefeuille). Pattern aligné PR #418 round 3 :
+          //   OR (no settings row yet) (opt-out explicit not yet expressed)
+          //   OR (gdprConsent && shareWithProviders)  (opt-in confirmé)
+          // L'opt-out Art. 21 (révocation explicite via /api/account/privacy)
+          // est honoré dès qu'une row existe avec un flag false.
+          user: {
+            OR: [
+              { privacySettings: null },
+              { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+            ],
+          },
+        },
+      },
+      select: {
+        patient: {
+          select: {
+            id: true,
+            pathology: true,
+            // HSA L1 — `birthday` contractualisé côté DTO pour le calcul d'âge
+            // côté UI (cf. PatientListItemDto). À conserver dans la DPIA.
+            user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
           },
         },
       },
     })
+
+    if (referents.length >= LIST_BY_DOCTOR_WARN_AT) {
+      logger.warn("patient.service", "listByDoctor approaching cap — paginate soon", {
+        doctorUserId,
+        count: referents.length,
+        cap: LIST_BY_DOCTOR_MAX,
+      })
+    }
 
     await auditService.log({
       userId: auditUserId,
@@ -799,18 +1012,83 @@ export const patientService = {
       // dans metadata pour audit "qui a listé son portefeuille".
       resource: "PATIENT",
       resourceId: "list",
-      metadata: { doctorUserId, count: referents.length },
+      metadata: { doctorUserId, count: referents.length, capped: referents.length === LIST_BY_DOCTOR_MAX },
     })
 
     return referents.map((r) => ({
-      ...r.patient,
+      id: r.patient.id,
+      pathology: r.patient.pathology,
       user: {
-        ...r.patient.user,
+        id: r.patient.user.id,
         firstname: safeDecrypt(r.patient.user.firstname),
         lastname: safeDecrypt(r.patient.user.lastname),
-        email: safeDecrypt(r.patient.user.email),
+        // HSA L4 — date-only (YYYY-MM-DD) au lieu d'ISO complet : évite la
+        // dérive timezone côté navigateur (un patient né le 15/05 à 00:00 UTC
+        // apparaîtrait né le 14/05 dans un navigateur Hawaii).
+        birthday: r.patient.user.birthday?.toISOString().slice(0, 10) ?? null,
       },
     }))
+  },
+
+  /**
+   * Get a minimal summary of a single patient — used by the VIEWER branch of
+   * `GET /api/patients` so the patient sees only their own row with the same
+   * shape returned by `listByDoctor` for pros. Avoids the over-fetch of
+   * `getById` (which decrypts medical data, devices, treatments etc.) — RGPD
+   * Art. 5 data minimisation.
+   *
+   * **Volontairement PAS de filtre `privacySettings`** : un VIEWER qui révoque
+   * son `gdprConsent` doit pouvoir continuer à consulter son propre dossier
+   * (RGPD Art. 15 droit d'accès au sujet prime sur Art. 7.3 révocation, qui
+   * ne s'applique qu'au partage avec des tiers). Décision DPIA §3.3 — ne pas
+   * imiter le filtre `listByDoctor` ici par symétrie.
+   *
+   * @async
+   * @param {number} patientId - Patient ID
+   * @param {number} auditUserId - User ID performing the read (audit trail)
+   * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
+   * @returns {Promise<PatientListItemDto | null>} Minimal patient summary, or null if missing/soft-deleted
+   */
+  async getOwnSummary(
+    patientId: number,
+    auditUserId: number,
+    ctx?: AuditContext,
+  ): Promise<PatientListItemDto | null> {
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null },
+      select: {
+        id: true,
+        pathology: true,
+        user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
+      },
+    })
+    if (!patient) return null
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "PATIENT",
+      // M-1 (US-2268) — lecture 1:1 d'un patient précis (le sien) : resourceId
+      // DOIT être l'id natif, pas une étiquette d'agrégat. La forensique
+      // `WHERE resource='PATIENT' AND resource_id='42'` doit remonter cet accès.
+      // (≠ listByDoctor/search qui sont de vrais agrégats sans id natif unique.)
+      resourceId: String(patient.id),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      metadata: { patientId: patient.id, kind: "own_summary" },
+    })
+
+    return {
+      id: patient.id,
+      pathology: patient.pathology,
+      user: {
+        id: patient.user.id,
+        firstname: safeDecrypt(patient.user.firstname),
+        lastname: safeDecrypt(patient.user.lastname),
+        // HSA L4 — date-only pour éviter la dérive timezone front (cf. listByDoctor).
+        birthday: patient.user.birthday?.toISOString().slice(0, 10) ?? null,
+      },
+    }
   },
 
   /**

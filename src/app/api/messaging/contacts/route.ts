@@ -61,13 +61,14 @@ export async function GET(req: NextRequest) {
     const capped = patients.slice(0, MAX_CONTACTS_PER_QUERY)
     const checks = await Promise.all(
       capped.map(async (p) => {
-        if (typeof p.userId !== "number") return null
+        const userId = p.user.id
+        if (typeof userId !== "number") return null
         try {
-          const result = await canMessage(user.id, p.userId)
+          const result = await canMessage(user.id, userId)
           if (!result.allowed) return null
           return {
             patientId: p.id,
-            userId: p.userId,
+            userId,
             displayName: `Patient #${p.id}`,
           } as MessagingContactDTO
         } catch {

@@ -229,7 +229,10 @@
     "yearRangeError": "Annee entre {min} et {max}",
     "dt1Description": "Insulinodependant, auto-immun",
     "dt2Description": "Insulinoresistance, souvent adulte",
-    "gdDescription": "Lie a la grossesse"
+    "gdDescription": "Lie a la grossesse",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger la liste des patients.",
+    "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique."
   },
   "patient": {
     "overview": "Vue d'ensemble",

@@ -92,9 +92,9 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
     vi.mocked(requireRole).mockReturnValue({ id: 1, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
     vi.mocked(patientService.listByDoctor).mockResolvedValue([
-      { id: 100, userId: 1000 },
-      { id: 200, userId: 2000 },
-      { id: 300, userId: 3000 },
+      { id: 100, pathology: "DT1", user: { id: 1000, firstname: null, lastname: null, birthday: null } },
+      { id: 200, pathology: "DT2", user: { id: 2000, firstname: null, lastname: null, birthday: null } },
+      { id: 300, pathology: "DT1", user: { id: 3000, firstname: null, lastname: null, birthday: null } },
     ] as never)
     // canMessage allow patient #100 + #300, refuse #200
     vi.mocked(canMessage).mockImplementation(async (from, to) => {
@@ -128,8 +128,8 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
     vi.mocked(requireRole).mockReturnValue({ id: 42, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
     vi.mocked(patientService.listByDoctor).mockResolvedValue([
-      { id: 1, userId: 100 },
-      { id: 2, userId: 200 },
+      { id: 1, pathology: "DT1", user: { id: 100, firstname: null, lastname: null, birthday: null } },
+      { id: 2, pathology: "DT1", user: { id: 200, firstname: null, lastname: null, birthday: null } },
     ] as never)
     vi.mocked(canMessage).mockResolvedValue({ allowed: true, patientId: 1 })
 
@@ -156,7 +156,8 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
     // 55 patients → seuls les 50 premiers checked
     const bigList = Array.from({ length: 55 }, (_, i) => ({
       id: i + 1,
-      userId: (i + 1) * 10,
+      pathology: "DT1",
+      user: { id: (i + 1) * 10, firstname: null, lastname: null, birthday: null },
     }))
     vi.mocked(patientService.listByDoctor).mockResolvedValue(bigList as never)
     vi.mocked(canMessage).mockResolvedValue({ allowed: true, patientId: 1 })
@@ -179,8 +180,8 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
     vi.mocked(requireRole).mockReturnValue({ id: 1, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
     vi.mocked(patientService.listByDoctor).mockResolvedValue([
-      { id: 1, userId: 100 },
-      { id: 2, userId: 200 },
+      { id: 1, pathology: "DT1", user: { id: 100, firstname: null, lastname: null, birthday: null } },
+      { id: 2, pathology: "DT1", user: { id: 200, firstname: null, lastname: null, birthday: null } },
     ] as never)
     vi.mocked(canMessage)
       .mockImplementationOnce(async () => { throw new Error("DB transient") })

@@ -39,105 +39,20 @@ alignés entre les deux dépôts.
 ```
 diabeo-backoffice/
 ├── src/
-│   ├── app/                        # Next.js App Router
-│   │   ├── (auth)/                 # Layout auth (pages — login, reset, MFA)
-│   │   │   ├── login/
-│   │   │   │   └── page.tsx        # LoginForm (email/password, rate-limit visual)
-│   │   │   └── layout.tsx          # Centré, pas de sidebar
-│   │   ├── (dashboard)/            # Layout protégé (sidebar + main content)
-│   │   │   ├── page.tsx            # Dashboard principal (KPI, alertes, TIR)
-│   │   │   ├── patients/
-│   │   │   │   ├── page.tsx        # Patient list (search, filter pathology)
-│   │   │   │   └── [id]/
-│   │   │   │       └── page.tsx    # Patient detail (4 tabs: overview, glycemia, traitements, docs)
-│   │   │   ├── users/              # Module utilisateurs (Phase 3+)
-│   │   │   ├── audit/              # Module audit HDS (Phase 3+)
-│   │   │   └── layout.tsx          # Sidebar + DashboardHeader
-│   │   └── api/                    # API Routes Next.js
-│   │       ├── auth/               # Auth routes (JWT RS256)
-│   │       │   ├── login/          # POST — connexion
-│   │       │   ├── logout/         # POST — déconnexion
-│   │       │   ├── refresh/        # POST — renouvellement JWT
-│   │       │   └── reset-password/ # POST — reset MDP
-│   │       ├── account/            # Gestion compte utilisateur
-│   │       │   ├── route.ts        # GET/PUT/DELETE profil
-│   │       │   ├── photo/          # PUT — upload avatar S3 (jpeg/png/webp, 5MB, ClamAV)
-│   │       │   ├── terms/          # PUT — acceptation CGU
-│   │       │   ├── data-policy/    # PUT — politique données
-│   │       │   ├── day-moments/    # GET/PUT — périodes journalières
-│   │       │   ├── units/          # GET/PUT — préférences unités
-│   │       │   ├── privacy/        # GET/PUT — confidentialité RGPD
-│   │       │   ├── notifications/  # GET/PUT — préférences notifs
-│   │       │   └── export/         # GET — export RGPD
-│   │       ├── units/              # GET — référentiel unités
-│   │       ├── documents/           # Documents médicaux
-│   │       │   ├── route.ts        # GET/POST — liste & création metadata
-│   │       │   ├── upload/         # POST — multipart upload S3 (NURSE+, ClamAV, 50MB)
-│   │       │   └── [id]/download/  # GET — stream fichier S3 (RBAC + audit)
-│   │       ├── push/                # Notifications push
-│   │       │   ├── register/       # GET/POST/DELETE — device registration
-│   │       │   ├── send/           # POST — envoi FCM (NURSE+, RBAC target, rate limit)
-│   │       │   ├── templates/      # GET — templates notification
-│   │       │   └── scheduled/      # GET/POST — notifications programmées
-│   │       ├── admin/              # Admin-only endpoints (audit-logs)
-│   │       └── patients/           # CRUD patients (Phase 2)
-│   ├── lib/
-│   │   ├── db/
-│   │   │   └── client.ts           # Singleton Prisma (Prisma 7+)
-│   │   ├── crypto/
-│   │   │   ├── health-data.ts      # Chiffrement AES-256-GCM (IV+TAG+CIPHERTEXT)
-│   │   │   └── hmac.ts             # HMAC-SHA256 pour email lookup
-│   │   ├── auth/                   # Authentification JWT RS256
-│   │   │   ├── index.ts            # Exports: getAuthUser, requireAuth, requireRole
-│   │   │   ├── jwt.ts              # Sign/verify JWT RS256 (jose)
-│   │   │   ├── rbac.ts             # Hiérarchie rôles ADMIN>DOCTOR>NURSE>VIEWER
-│   │   │   ├── rate-limit.ts       # Backoff exponentiel login (in-memory)
-│   │   │   └── session.ts          # CRUD sessions en base
-│   │   ├── storage/
-│   │   │   └── s3.ts               # Client S3 OVH/MinIO (upload/download/delete, SSE-S3)
-│   │   ├── firebase/
-│   │   │   └── admin.ts            # Singleton Firebase Admin SDK (FCM)
-│   │   ├── conversions.ts          # Helpers conversion glucose g/L↔mg/dL↔mmol/L
-│   │   ├── gdpr.ts                 # Vérification consentement RGPD
-│   │   └── services/               # Logique métier (découplée du framework)
-│   │       ├── patient.service.ts  # CRUD patients + encrypt/decrypt base64
-│   │       ├── insulin.service.ts  # Bolus calc (transaction), ISF/ICR par slot horaire
-│   │       ├── audit.service.ts    # AuditLog + IP/UA tracking + query filters
-│   │       ├── user.service.ts     # Profil utilisateur + chiffrement champs
-│   │       ├── export.service.ts   # Export RGPD complet (Art. 20)
-│   │       ├── deletion.service.ts # Suppression cascade RGPD (Art. 17)
-│   │       ├── document.service.ts # Upload/download S3 + antivirus + audit
-│   │       ├── antivirus.service.ts # ClamAV scan (scanFile + scanBuffer helper)
-│   │       ├── fcm.service.ts     # Envoi FCM (sendToUser, sendFromTemplate, batch)
-│   │       ├── push.service.ts    # Registration devices, templates, scheduled
-│   │       ├── email.service.ts   # Email transactionnel (Resend: reset pwd, welcome, proposals)
-│   │       └── retention.service.ts # Rétention 6 ans audit logs (SQL SECURITY DEFINER)
-│   ├── types/
-│   │   └── next-auth.d.ts          # Module augmentation NextAuth (User.role, JWT.role)
-│   ├── hooks/                      # Hooks React (Phase 8)
-│   │   └── useAuth.ts              # useAuth() — login/logout via httpOnly cookie
-│   └── components/                 # Composants React réutilisables
-│       ├── ui/                     # shadcn/ui (NE PAS MODIFIER)
-│       └── diabeo/                 # Composants métier Diabeo (Phase 8)
-│           ├── Sidebar.tsx         # Navigation sidebar (5 items + logout)
-│           ├── DashboardHeader.tsx # Page title + notifications + settings
-│           └── CgmChart.tsx        # Graphique CGM (recharts, target range, sr-only data)
-├── prisma/
-│   ├── schema.prisma               # 48 tables × 11 domaines, 21 enums
-│   ├── migrations/                 # Migrations versionnées
-│   ├── prisma.config.ts            # Config Prisma 7 (connection URL, extensions)
-│   ├── seed.ts                     # 5 users, 2 patients (DT1/DT2), 30j données CGM
-│   └── sql/                        # Scripts SQL de référence
-│       ├── cgm_partitioning.sql    # Partitioning table CGM par mois
-│       ├── audit_immutability.sql  # DB trigger — immuabilité AuditLog
-│       └── basal_config_check.sql  # Check constraint — validations basales
-├── docker-compose.yml
-├── .env.example
-└── CLAUDE.md                       # CE FICHIER
+│   ├── app/        # Next.js App Router (groupes: (auth), (dashboard), api/)
+│   ├── lib/        # Logique métier découplée — services, crypto, auth, db, storage
+│   ├── components/ # ui/ (shadcn — NE PAS modifier) + diabeo/ (métier)
+│   ├── hooks/      # React hooks (useAuth, etc.)
+│   └── types/      # Module augmentations TS
+├── prisma/         # schema.prisma (48 tables), migrations versionnées, seed.ts, sql/
+├── tests/          # Vitest unit, Playwright E2E
+├── docs/           # ROADMAP, runbook/, compliance/ (DPIA), security/, qa/, UserStory/
+├── messages/       # i18n FR/EN/AR (next-intl)
+└── graphify-out/   # Knowledge graph (voir section ci-dessous)
 ```
 
----
-
+**Convention** : tout le code métier dans `src/lib/services/*.service.ts`, jamais dans les routes API.
+Les routes `src/app/api/**/route.ts` ne font que : parse Zod → call service → format response.
 ## 🎨 Design system
 
 ### Palette de couleurs — "Sérénité Active"
@@ -316,148 +231,28 @@ function hmacEmail(email: string): string {
 
 ---
 
-## 🗄️ Architecture des données — 48 tables × 11 domaines
+## 🗄️ Architecture des données
 
-### Domaine 1 : Utilisateur & Authentification (7 tables)
-**User, Account, Session, VerificationToken, UserUnitPreferences, UserNotifPreferences, UserPrivacySettings**
+**Source de vérité** : `prisma/schema.prisma` (48 tables × 11 domaines, 21 enums).
 
-- **User** : `emailHmac` (HMAC-SHA256) remplace l'index unique sur `email` chiffré
-  - Champs sensibles chiffrés en production : `email`, `firstname`, `lastname`, `phone`, `address*`, `cp`, `city`, `nirpp`, `ins`
-  - `mfaSecret`, `mfaEnabled`, `hasSignedTerms`, `profileComplete`
-  - `role` ∈ {ADMIN, DOCTOR, NURSE, VIEWER}
+Carte mentale des 11 domaines :
 
-- **Account, Session, VerificationToken** : Standard NextAuth v5
+1. **Utilisateur & Auth** (7 tables) — `User` avec `emailHmac` (HMAC-SHA256) pour lookup sans exposer email chiffré, `Account/Session/VerificationToken`, préférences (Unit/Notif/Privacy).
+2. **Patient & Données médicales** (8 tables) — `Patient` (pathology DT1/DT2/GD, soft delete RGPD), `PatientMedicalData` (antécédents chiffrés), `Treatment`, objectifs glycémiques.
+3. **Configuration insulinothérapie** (8 tables) — `InsulinTherapySettings` (root), `ISF`/`ICR` par slot horaire (Time, pas Timestamp), `BasalConfiguration` + `PumpBasalSlot`.
+4. **Glycémie & CGM** (5 tables) — `CgmEntry` (partitionnée par mois), `GlycemiaEntry`, `BolusCalculationLog` (immutable).
+5. **Événements & Activités** (3 tables) — `DiabetesEvent` (`eventType` ARRAY d'énums), `InsulinFlowEntry`, `PumpEvent`.
+6. **Propositions d'ajustement** (1 table) — `AdjustmentProposal` (status pending/accepted/rejected, jamais auto-appliqué).
+7. **Appareils & Sync** (4 tables) — `PatientDevice` (revoked tracking), `DeviceDataSync`.
+8. **Équipe médicale** (4 tables) — `HealthcareService`, `HealthcareMember`, `PatientService`, `PatientReferent`.
+9. **Documents & RDV** (3 tables) — `MedicalDocument` (S3, ClamAV), `Appointment`, `Announcement`.
+10. **Notifications Push** (4 tables) — FCM tokens, templates, logs, scheduled.
+11. **Configuration & UI** (3 tables) — unités, moments du jour, dashboard layouts.
 
-### Domaine 2 : Patient & Données Médicales (8 tables)
-**Patient, PatientMedicalData, PatientAdministrative, PatientPregnancy, GlycemiaObjective, CgmObjective, AnnexObjective, Treatment**
+**AuditLog** (table spéciale) — immutable via trigger PG (`audit_immutability.sql`). JAMAIS de PHI en clair.
+Convention `resourceId` (US-2268) : ID natif + `metadata.patientId` pivot pour forensics CNIL/ANS. GIN partial sur `metadata->'patientId'`.
 
-- **Patient** :
-  - `pathology` ∈ {DT1, DT2, GD} (Diabète Type 1, Type 2, Gestationnel)
-  - `userId` (1:1) — lien vers User
-  - Soft delete via PostgreSQL trigger si `deletedAt` set
-
-- **PatientMedicalData** : antécédents, comorbidités, allergies (chiffrées)
-
-- **Treatment** : déclaration multi-traitements (FGM, pompe, GLP-1, etc.)
-
-### Domaine 3 : Configuration Insulinothérapie (8 tables)
-**InsulinTherapySettings, GlucoseTarget, IobSettings, ExtendedBolusSettings, InsulinSensitivityFactor, CarbRatio, BasalConfiguration, PumpBasalSlot**
-
-- **InsulinTherapySettings** : config racine par patient
-- **InsulinSensitivityFactor (ISF)** : facteur de sensibilité insuline par slot horaire
-  - `startHour` ∈ [0–23], `sensitivityFactorGl` (g/L/U), `sensitivityFactorMgdl` (mg/dL/U)
-  - `insulinActionMin/Max` (Insulin On Board duration)
-
-- **CarbRatio (ICR)** : ratio insuline-glucides par slot horaire
-  - `startHour` ∈ [0–23], `gramsPerUnit` (g/U)
-
-- **BasalConfiguration** : profil basal (type pompe, injections simples ou fractionnées)
-- **PumpBasalSlot** : slot basal par Time (heure du jour, pas timestamp)
-  - Validation DB : `pump_basal_slot_check.sql`
-
-- **GlucoseTarget** : cibles glycémiques horaires (preset ou custom)
-  - `targetGlucose`, `targetMin`, `targetMax`, `isActive`
-
-### Domaine 4 : Données de Glycémie & CGM (5 tables)
-**CgmEntry, GlycemiaEntry, AverageData, CgmObjective, BolusCalculationLog**
-
-- **CgmEntry** : entrées capteur continu (CGM)
-  - `glucoseValue` (mg/dL), `timestamp`, `source` (FreeStyle, Dexcom, etc.)
-  - Table partitionnée par mois — voir `cgm_partitioning.sql`
-
-- **GlycemiaEntry** : mesures ponctuelles
-  - `glucoseValue`, `measurementType` (capillaire, etc.)
-
-- **BolusCalculationLog** : journal des bolus calculés (JAMAIS injecté sans validation)
-  - `mealBolus`, `correctionDose`, `recommendedDose`, `deliveryMethod`
-  - Immuable après création
-
-### Domaine 5 : Événements & Activités (3 tables)
-**DiabetesEvent, InsulinFlowEntry, PumpEvent**
-
-- **DiabetesEvent** : événements saisis par le patient
-  - `eventType` ∈ {glycemia, insulinMeal, physicalActivity, context, occasional}
-  - IMPORTANT : `eventType` est un ARRAY d'énums (Prisma 5+)
-
-- **InsulinFlowEntry, PumpEvent** : données d'administration insuline
-
-### Domaine 6 : Propositions d'Ajustement (1 table)
-**AdjustmentProposal**
-
-- Suggestions d'ajustement automatique (basales, ISF, ICR)
-- `parameter` ∈ {basalRate, insulinSensitivityFactor, insulinToCarbRatio}
-- `reason` ∈ {basalTooLow, basalTooHigh, isfTooLow, ...}
-- `status` ∈ {pending, accepted, rejected, expired}
-- `reviewedBy` : User.id (DOCTOR uniquement)
-
-### Domaine 7 : Appareils & Synchronisation (4 tables)
-**PatientDevice, DeviceDataSync, InsulinFlowDeviceData**
-
-- **PatientDevice** : appareils associés au patient (pompe, CGM, glucomètre)
-- **DeviceDataSync** : historique des syncs (source, dernière sync, erreurs)
-
-### Domaine 8 : Équipe Médicale (4 tables)
-**HealthcareService, HealthcareMember, PatientService, PatientReferent**
-
-- **HealthcareService** : structure de santé (CHU, cabinet privé, etc.)
-- **HealthcareMember** : membre de l'équipe (lien User → Service)
-- **PatientService** : adhésion patient à une structure
-- **PatientReferent** : médecin référent (1:N par patient)
-
-### Domaine 9 : Documents & Rendez-vous (3 tables)
-**MedicalDocument, Appointment, Announcement**
-
-- **MedicalDocument** : ordonnances, résultats labo, attestations
-  - `category` ∈ {general, forDoctor, personal, prescription, labResults, other}
-  - Fichiers sur OVH Object Storage (jamais disque local)
-
-- **Appointment** : consultations planifiées
-- **Announcement** : communications auprès des patients
-
-### Domaine 10 : Notifications Push (4 tables)
-**PushDeviceRegistration, PushNotificationTemplate, PushNotificationLog, PushScheduledNotification**
-
-- **PushDeviceRegistration** : FCM tokens (iOS, Android, web)
-- **PushNotificationTemplate** : modèles avec variables
-- **PushNotificationLog** : trace de chaque notification envoyée
-- **PushScheduledNotification** : notifications programmées (cron)
-
-### Domaine 11 : Configuration & UI (3 tables)
-**DashboardConfiguration, DashboardWidget, UnitDefinition, UserDayMoment, UiStateSave**
-
-- **UnitDefinition** : unités de mesure (mg/dL vs g/L, etc.)
-- **UserDayMoment** : moments du jour personnalisés (petit-déj, déj, goûter, etc.)
-- **DashboardConfiguration** : layout personnel du dashboard
-
-### AuditLog (1 table — spéciale)
-- Immuable par trigger PostgreSQL (voir `audit_immutability.sql`)
-- Contient : `action`, `resource`, `resourceId`, `oldValue`, `newValue`, `ipAddress`, `userAgent`, `metadata`
-- Ne contient JAMAIS de données de santé en clair
-- Indexés sur `(userId, createdAt)`, `(resource, resourceId, createdAt)`, GIN partiel sur `metadata->'patientId'` (US-2268)
-
-#### Convention `resourceId` (US-2268)
-
-```typescript
-// ✅ Canonique : resourceId = ID natif, metadata.patientId = pivot
-await auditService.log({
-  userId,
-  action: "UPDATE",
-  resource: "OBJECTIVE",            // jamais "PATIENT" générique pour sub-entité
-  resourceId: String(objective.id), // UUID/Int natif
-  metadata: { patientId, kind: "cgm" },  // patientId TOUJOURS présent pour events patient-scoped
-})
-
-// ❌ Anti-pattern : composite (impossible à requêter par patient)
-resourceId: `${patientId}:objectives:cgm`
-
-// Forensics CNIL/ANS — "qui a accédé aux données du patient X" :
-const events = await auditService.getByPatient(42)
-// Retrouve TOUS les events (CGM, alerts, objectives, thresholds, pregnancy, etc.)
-// via le GIN partiel sur metadata.patientId
-```
-
----
-
+Pour les détails de champs, contraintes, indexes : lire `prisma/schema.prisma` directement, ou interroger le knowledge graph (`/graphify query "..."`).
 ## 💊 Logique métier Diabeo
 
 ### Calcul de bolus (insulin.service.ts)
@@ -594,6 +389,42 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
+## 🗺️ Knowledge graph (graphify)
+
+Ce repo a un knowledge graph pré-construit dans `graphify-out/` (8 231 nœuds,
+17 074 edges, 411 communautés — couvre 2 271 fichiers : code + docs + UserStory + ADRs + i18n).
+
+**Pour Claude Code** : pour toute question d'exploration ("comment marche X ?",
+"qui appelle Y ?", "trace le flow Z", "où est défini A ?"), utilise
+`/graphify query "..."` AVANT grep/Read. Le graphe répond en ~2-8k tokens
+contre 30-150k pour grep+Read sur les questions équivalentes.
+
+**Commandes utiles** :
+- `/graphify query "<question>"` — réponse focalisée (BFS sur le graphe)
+- `/graphify path "<A>" "<B>"` — chemin le plus court entre 2 concepts
+- `/graphify explain "<node>"` — explication contextualisée d'un symbole
+- `/graphify --update` — re-build incrémental (cache hit sur fichiers inchangés)
+- Voir `graphify-out/GRAPH_REPORT.md` pour god nodes, communautés, surprising connections
+
+**Setup sur nouvelle machine** :
+```bash
+python3.12 -m venv graphify-out/.venv
+graphify-out/.venv/bin/pip install graphifyy
+echo "$(graphify-out/.venv/bin/python -c 'import sys; print(sys.executable)')" > graphify-out/.graphify_python
+echo "$(pwd)" > graphify-out/.graphify_root
+graphify hook install   # post-commit auto-rebuild (AST only, 0 token, 3-10s)
+```
+
+Le hook git rebuild automatiquement le graphe après chaque commit (code uniquement,
+sans LLM). Pour les changements de docs/UserStory, lance `/graphify --update` manuellement.
+
+Le `.venv/` et les fichiers `.graphify_python`/`.graphify_root` sont machine-specific
+(exclus du repo via `.gitignore`). Le reste (`graph.json`, `chunk_*.json`, `cache/`,
+`manifest.json`, `.graphify_labels.json`) est versionné — la re-extraction est gratuite
+au prochain `--update` tant que les fichiers source n'ont pas bougé.
+
+---
+
 ## 🚫 Ce que Claude Code ne doit JAMAIS faire
 
 - Modifier les fichiers dans `components/ui/` (shadcn/ui auto-généré)
@@ -660,310 +491,10 @@ pnpm test:e2e                          # Playwright sur pages et API routes
 
 ---
 
-## ✅ Phase 0 implémentée (US-000 + US-001)
-
-### Schéma Prisma complet
-- ✅ 48 tables organisées par 11 domaines métier
-- ✅ 21 énums (Role, Pathology, DiabetesEventType[], etc.)
-- ✅ Relations 1:1, 1:N, M:N
-- ✅ Index sur clés critiques (emailHmac unique, createdAt, userId+createdAt)
-- ✅ Soft delete RGPD
-
-### Chiffrement & Sécurité
-- ✅ AES-256-GCM IV+TAG+CIPHERTEXT pour encrypt/decrypt
-- ✅ Base64 encoding pour stockage en String columns
-- ✅ HMAC-SHA256 pour lookup unique (emailHmac)
-- ✅ NextAuth v5 avec module augmentation (User.role, JWT.role)
-
-### Services métier
-- ✅ patient.service.ts : create, getById, listByDoctor, encrypt/decrypt base64
-- ✅ insulin.service.ts : getSettings, calculateBolus avec clinical bounds + transaction
-- ✅ audit.service.ts : log, logWithTx, query avec IP/UA tracking
-
-### API Routes
-- ✅ /api/auth/[...nextauth] : NextAuth v5 endpoints
-- ✅ /api/admin/audit-logs : GET avec filtres (userId, resource, action, from, to), Zod validation, admin-only
-
-### Seeds & Tests
-- ✅ 5 users (admin, doctor, nurse, 2 patients)
-- ✅ 2 patients (DT1, DT2) avec insulin settings complets
-- ✅ 30 jours de données CGM déterministes
-- ✅ ISF/ICR/basal slots pour 24h
-
-### SQL scripts
-- ✅ audit_immutability.sql : trigger DB pour immuabilité AuditLog
-- ✅ cgm_partitioning.sql : partitioning CgmEntry par mois
-- ✅ basal_config_check.sql : constraints validations basales
-
-### Code Review (22 findings fixed)
-- ✅ 8 critiques (sécurité, encryption, auth)
-- ✅ 14 majeurs (types, naming, refactoring)
-
----
-
-## ✅ Phase 1 implémentée (US-100 à US-104)
-
-### US-100 — Authentification JWT RS256
-- ✅ `POST /api/auth/login` — bcrypt + JWT RS256 + Session DB
-- ✅ `POST /api/auth/logout` — invalidation session par sid
-- ✅ `POST /api/auth/refresh` — renouvellement JWT si session valide
-- ✅ `POST /api/auth/reset-password` — placeholder (anti-enumération)
-- ✅ Middleware JWT global (`src/middleware.ts`) — vérifie JWT sur `/api/**` sauf `/api/auth/*`
-- ✅ RBAC hiérarchique : ADMIN > DOCTOR > NURSE > VIEWER
-- ✅ Rate limiting applicatif (3 échecs → lockout 5/15/60min)
-- ✅ HMAC-SHA256 pour lookup email sécurisé
-
-### US-101 — Gestion du compte utilisateur
-- ✅ `GET /api/account` — profil déchiffré (sans champs internes)
-- ✅ `PUT /api/account` — mise à jour partielle avec chiffrement auto
-- ✅ `PUT /api/account/photo` — upload avatar via OVH S3 (jpeg/png/webp, 5MB, antivirus ClamAV, SSE-S3)
-- ✅ `PUT /api/account/terms` — acceptation CGU
-- ✅ `PUT /api/account/data-policy` — acceptation politique données
-- ✅ `GET/PUT /api/account/day-moments` — périodes journalières
-- ✅ userService avec chiffrement AES-256-GCM + base64
-
-### US-102 — Préférences d'unités de mesure
-- ✅ `GET/PUT /api/account/units` — préférences d'unités (codes 1-15)
-- ✅ `GET /api/units` — référentiel des 15 unités
-- ✅ Helpers de conversion glucose (g/L ↔ mg/dL ↔ mmol/L)
-- ✅ Règle : données toujours stockées en g/L, converties à l'affichage
-
-### US-103 — Paramètres de confidentialité & RGPD
-- ✅ `GET/PUT /api/account/privacy` — consentement GDPR, partage soignants/chercheurs
-- ✅ `GET/PUT /api/account/notifications` — préférences email, rappels glycémie/insuline
-- ✅ Auto-set `consentDate` quand `gdprConsent = true`
-- ✅ Helper `requireGdprConsent()` pour routes données médicales
-
-### US-104 — Export & suppression RGPD
-- ✅ `GET /api/account/export` — export JSON complet (profil + patient + CGM + événements)
-- ✅ `DELETE /api/account` — suppression cascade (confirmation par mot de passe)
-- ✅ Anonymisation user après suppression (FK audit log préservée)
-- ✅ Ordre de suppression respectant les FK (48 tables)
-
-### Infrastructure Phase 1
-- ✅ 142 tests Vitest (auth, RBAC, rate-limit, HMAC, conversions, audit-logs)
-- ✅ ADR #16 : JWT RS256 custom au lieu de NextAuth (compatibilité iOS)
-
----
-
-## ✅ Phase 2 implémentée (US-200 à US-203)
-
-### US-200 — Profil patient + contrôle d'accès
-- ✅ `GET /api/patient` — propre profil patient (déchiffré)
-- ✅ `PUT /api/patient` — mise à jour pathologie
-- ✅ `GET /api/patients/:id` — accès pro (NURSE+) avec contrôle service
-- ✅ `PUT /api/patients/:id` — mise à jour pro avec contrôle service
-- ✅ `canAccessPatient()` — ADMIN: tout, VIEWER: propre, DOCTOR/NURSE: via PatientService
-- ✅ `getOwnPatientId()` — résolution userId → patientId
-
-### US-201 — Données médicales & antécédents
-- ✅ `GET /api/patient/medical-data` — données déchiffrées
-- ✅ `PUT /api/patient/medical-data` — mise à jour avec chiffrement history_*
-- ✅ Champs chiffrés : historyMedical, historyChirurgical, historyFamily, historyAllergy, historyVaccine, historyLife
-- ✅ Validation yearDiag : [1900, année courante]
-
-### US-202 — Objectifs glycémiques & CGM
-- ✅ `GET /api/patient/objectives` — 3 types (glycemia, cgm, annex)
-- ✅ `PUT /api/patient/objectives` — CGM update (DOCTOR only)
-- ✅ Validation : veryLow < low < ok < high, titrLow < titrHigh
-- ✅ Defaults ADA : 54/70/180/250 mg/dL
-- ✅ objectivesService avec transactions
-
-### US-203 — Suivi de grossesse
-- ✅ `GET /api/patient/pregnancy` — grossesse active
-- ✅ `POST /api/patient/pregnancy` — nouvelle grossesse (désactive la précédente)
-- ✅ `PUT /api/patient/pregnancy/:id` — mise à jour DPA, âge gestationnel
-- ✅ Validation gestationalAge : [0, 45] semaines
-
-### Infrastructure Phase 2
-- ✅ 149 tests Vitest (+ access control, CGM thresholds)
-- ✅ patientService étendu (getByUserId, getMedicalData, updateMedicalData)
-
----
-
-## ✅ Phase 8 implémentée (Full UI — Pages & Composants)
-
-### Pages implémentées
-- ✅ `(auth)/login/page.tsx` — LoginForm (email/password, rate limiting visible, MFA prep, password toggle)
-- ✅ `(dashboard)/page.tsx` — Dashboard (4 KPI cards: patients total, actifs 24h, alerte grave, TIR moyen; alertes récentes, TIR donut, patients récents)
-- ✅ `(dashboard)/patients/page.tsx` — Patient list (search bar, filter by pathology DT1/DT2/GD, table avec glycemia color-coded verte/orange/rouge)
-- ✅ `(dashboard)/patients/[id]/page.tsx` — Patient detail (4 tabs: overview, glycémie CGM, traitements, documents médicaux)
-
-### Layouts & Navigation
-- ✅ `(auth)/layout.tsx` — Layout auth (centré, pas de sidebar, fond principal)
-- ✅ `(dashboard)/layout.tsx` — Layout protégé (Sidebar à gauche, DashboardHeader, main content responsive)
-- ✅ `Sidebar.tsx` — Navigation sidebar (5 items: Dashboard, Patients, Users, Audit, Logout) avec collapse mobile
-- ✅ `DashboardHeader.tsx` — Page header (title + notification bell + settings icon)
-
-### Composants métier (Phase 8)
-- ✅ `CgmChart.tsx` — Graphique CGM recharts (line chart, target range bande verte, seuils hypo/hyper, sr-only data table)
-- ✅ `GlycemiaValue.tsx` — Affichage glycémie (valeur + unité, couleur dynamique: green/orange/red)
-- ✅ `TirDonut.tsx` — Donut chart TIR (% en range / hypo / hyper, couleurs métier)
-- ✅ `ClinicalBadge.tsx` — Badge alerte (hypo, hyper, info, etc.)
-- ✅ `PatientRow.tsx` — Ligne table patients (pathology icon, glycemia, last CGM update)
-
-### Hooks (Phase 8)
-- ✅ `useAuth.ts` — Login/logout via httpOnly cookie (pas sessionStorage), redirect si token expiré
-- ✅ Cookie-based auth pour navigateur + Bearer header pour API
-- ✅ Token JWT stocké en httpOnly, secure, sameSite=Strict (XSS prevention)
-
-### Sécurité & Auth (Phase 8)
-- ✅ Middleware étendu — protège `/api/**` AND pages `/dashboard/**` (redirect /login si non auth)
-- ✅ httpOnly cookie JWT — XSS prevention, accès interdit au JavaScript client
-- ✅ Démo data synthétique (Patient DT1-001, etc.) — jamais de PII réelle
-- ✅ Rate limiting visible login — feedback utilisateur après 3 tentatives
-
-### UI Components (shadcn/ui installés)
-- ✅ Button, Card, Table, Input, Select, Badge, Dialog, DropdownMenu, AlertDialog, Tabs, Avatar, Tooltip (14 composants)
-- ✅ Design system "Sérénité Active" appliqué (teal #0D9488, corail #F97316, glycemia colors)
-- ✅ Tailwind CSS dark mode disabled (backoffice medical = light mode obligatoire)
-- ✅ Responsive mobile-first (priorité desktop pour backoffice médical)
-
-### Infrastructure Phase 8
-- ✅ 29 tests composants (GlycemiaValue, TirDonut, ClinicalBadge, Sidebar, CgmChart)
-- ✅ 7 tests E2E (Playwright) login flow
-- ✅ 412 tests au total (143 Phase 0 + 142 Phase 1 + 149 Phase 2 + 29 Phase 8)
-- ✅ recharts installed pour graphiques
-- ✅ @testing-library/react + jsdom pour tests composants
-
----
-
----
-
-## 📊 Roadmap User Stories intégrées
-
-> Détail complet : [`docs/ROADMAP.md`](docs/ROADMAP.md)
-> Source : `docs/UserStory/pro-user-stories/` (217 US) + `docs/UserStory/user-stories-patient-management/` (51 US)
-
-### Taux de réalisation (2026-05-08)
-
-| Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
-|----------|-------|------|---------|-------------|--------|
-| **MVP**  | 65    | 58   | 1       | 6           | **89%** |
-| **V1**   | 122   | 0    | 7       | 115         | **0%**  |
-| **V2**   | 58    | 0    | 0       | 58          | **0%**  |
-| **V3**   | 8     | 0    | 0       | 8           | **0%**  |
-| **V4**   | 15    | 0    | 0       | 15          | **0%**  |
-| **TOTAL**| **268** | **53** | **13**  | **202**     | **25%** |
-
-> MVP : **53/65 = 82%** (53/63 = 84% sur scope original). US-2267 reclassée **V1 + blocker-pre-prod** (Diabeo pas en prod, `db push` reste sûr en dev/recette ; à livrer avant 1er go-live).
-
-### MVP — Effort restant (~12 SP)
-
-**Batch A — Compléter les PARTIAL (5 US) — ✅ DONE PR #351**
-- ✅ US-2047 (UI workflow ajustement validation médecin)
-- ✅ US-2089 (UI wizard pairing device 3-step)
-- ✅ US-2112 (i18n FR/EN/AR — LocaleSwitcher + cookie persistence + dir=rtl)
-- ✅ US-2115 (formatters Intl — date/time/relativeTime/number/percent/currency/glucose/insulinUnits/carbs)
-- ✅ US-2117 (cabinet enrichi — addresses, contact, openingHours JSON, specialties, capacity, manager FK)
-
-**Batch B — Nouvelles US backoffice (4 US) — ✅ DONE PR #350**
-- ✅ US-2025 (QR invite mobile, JWT 15min audience dédiée)
-- ✅ US-2118 (praticiens libéraux, RPPS/ADELI Luhn, unique constraint)
-- ✅ US-2148 (admin users UI, anti-lockout Serializable, JWT revocation atomique)
-- ✅ US-2151 (backup management, BigInt-safe DTO, concurrency guard, errorMessage sanitization)
-
-**Batch C — Mirror MVP (9 US) — ✅ DONE PR #343**
-- US-2214–2217 (config seuils glycémiques/cétones/resucrage),
-  US-2224–2226/2230 (urgences inbox + timeline + workflow + push),
-  US-2232 (mode grossesse toggle)
-- 1093 tests verts · branch coverage 78% · CI green
-- 5 critical + 10 high fixés en re-review (5 agents)
-
-**Batch D — Follow-ups Mirror MVP (4 US — Batch D1 MVP livré ; reste V1)**
-- ✅ **US-2265** — Événements `ACCESS_DENIED` audit (2 SP, MVP, PR #349) · Issue #344
-- ✅ **US-2266** — Email médecin sur alerte critique (3 SP, MVP, PR #349) · Issue #345
-- 🚨 **US-2267** — Migrations Prisma versionnées (5 SP, **V1 + blocker-pre-prod**) · Issue #346
-- 🔜 **US-2268** — Convention `auditLog.resourceId` normalisée (8 SP, V1) · Issue #347
-
-### Décisions architecturales
-
-| Sujet | Décision |
-|-------|----------|
-| CGM Ingestion MVP | MyDiabby seul (Dexcom/Abbott en V1) |
-| Push Notifications | Firebase FCM |
-| Prescriptions (45 US) | Reportées en V2+ (seul US-2171 BDPM en MVP, déjà POC) |
-| Upload Documents | OVH S3 immédiat |
-
-### Fusions (redondances détectées)
-
-- US-2132 → alias US-2011 (audit log, DONE)
-- US-2026 ↔ US-2126 (INS : modèle patient / API INSi, liés)
-- US-2077 ↔ US-2125 (MSSanté : UX / backend, liés)
-- US-2008 ↔ US-2127 (PSC : login / intégration, liés)
-- US-2148 ↔ US-2012 (RBAC : backend DONE / UI admin restante)
-- US-2024 ↔ US-2011 (historique = UI consultation audit log)
-
----
-
-## 📋 Backlog technique (items historiques mappés)
-
-### Items résolus (mappés vers US)
-- [x] US-SEC-001 → US-2012 + US-2048 (RBAC + bornes cliniques)
-- [x] US-SEC-002 → US-2020 (soft-delete service layer)
-- [x] Unifier CLINICAL_BOUNDS → US-2048
-- [x] Slot overlap ISF/ICR → US-2044 + US-2045
-- [x] IOB implémentation → US-2049
-- [x] Session revocation Redis → US-2001
-- [x] JWT 15min + refresh → US-2001
-- [x] Rate limiting analytics/export → US-2005
-- [x] Routes Phase 3 accès pro → US-2016 + US-2018
-- [x] Number(Decimal) → .toNumber() → US-2042
-- [x] deliveryMethod typing → US-2042
-- [x] upsertBasalConfig input type → US-2046
-- [x] Tests write paths Phase 4 → US-2044/2045
-- [x] Tests requiresHypoTreatmentFirst → US-2037
-- [x] Tests division-by-zero ISF/ICR → US-2048
-- [x] Structured logger → transversal
-- [x] requireGdprConsent cache → US-2013
-- [x] periodType enum → US-2033
-- [x] MFA flow TOTP → US-2002
-
-### Items restants
-- [ ] **Audit `resourceId` convention** — reporté V2, faible valeur (67 call sites, helper `auditResourceId` à concevoir)
-- [ ] **Photo upload OVH** → **US-2140 MVP** (OVH S3, priorité immédiate)
-
-### Design System (transversal, hors US)
-- [x] Tokens (couleurs, typo, espacements, ombres) — `src/styles/tokens.css` (258 lignes)
-- [x] Composants métier — 44 composants dans `src/components/diabeo/`
-- [x] Logo Diabeo — `public/logo.svg` + `src/components/diabeo/brand/Logo.tsx`
-- [x] Loaders médicaux — `src/components/diabeo/loaders/` (chart/page/upload)
-- [ ] Storybook — stories par composant
-- [ ] Accessibilité WCAG 2.1 — audit contrastes + clavier
-- [ ] Responsive — validation mobile
-
-### Documentation (transversal, hors US)
-- [x] Roadmap US intégrées — `docs/ROADMAP.md`
-- [ ] Documentation API Swagger/OpenAPI
-- [ ] Runbook opérationnel
-- [ ] Guide développeur
-- [ ] Documentation HDS/RGPD
-- [ ] Changelog
-
----
-
-*Mise à jour 2026-05-19 (PR #418 round 3) — Round 3 review PR #418 appliquée intégralement (Option C totale). 3 agents (code-reviewer + healthcare-security-auditor + prisma-specialist) — **16 findings résolus** (1 CRITICAL + 3 HIGH + 7 MEDIUM + 5 LOW). 0 résiduel Critical/High final. **CR-1 advisory lock cassé en prod** : round 2 utilisait `pg_try_advisory_lock` SESSION-level via `prisma.$queryRaw` partagé. Mais `@prisma/adapter-pg` route chaque query sur une connexion différente du pool `node-postgres` → `acquire` sur conn A, `release` sur conn B → release `false` no-op silencieux → lock orphelin sur A jusqu'au recyclage (idle 10s) ou restart Node → cron bloqué N runs OU double-sends si lock disparaît à mi-run (idle 10s < cron 50s) → **bug fonctionnel bloquant** détecté par les 3 agents en convergence. Fix : nouveau module `src/lib/db/cron-lock.ts` (~130 lignes) avec `pg.Pool({ max: 1, idleTimeoutMillis: 0 })` dédié au cron → `withSessionAdvisoryLock(key, fn)` checkout 1 client, acquire lock, run fn (qui utilise `prisma` normal pool partagé pour parallelism), release dans finally, checkin. max:1 garantit que tous acquire/release du même process tournent sur la **même connexion physique** = même session PG = lock release effectif. idleTimeoutMillis:0 = connexion ne se ferme jamais = lock ne disparaît jamais à mi-run. Plus de risque double-sends ni cron orphelin. **HI-1 opt-in implicite cassé** : filtre round 2 `notifPreferences: { medicalAppointments: true }` générait `EXISTS` SQL qui excluait silencieusement tous patients **sans row `UserNotifPreferences`** (créée lazily au 1er PUT, GET retourne defaults sans persist). Majorité prod n'aurait reçu aucun rappel RDV. Fix : `OR: [{ notifPreferences: null }, { notifPreferences: { medicalAppointments: true } }]` → respect opt-in implicite défaut Prisma `true` + opt-out Art. 21 explicite préservé. **HI-2 SMS mock V1 mensonger** : round 2 persistait `AppointmentReminder.status="sent"` quand `smsService.sendSms` retournait `{sent: true, status: "mock"}` (provider="mock" V1, aucun SMS réellement envoyé). Médecin voyait "rappel SMS envoyé" dans timeline patient → no-show reprocha au patient (alors que rien n'est parti). Fix : si `result.status === "mock"`, persist `status="skipped"` + `errorReason="provider_mock_no_real_sms"`. Métrique `byChannel.sms.skipped` reflète réalité V1. V3 (real Twilio/OVH) reviendra à `"sent"` via contrat `SmsSendResult.status`. **HI-3 test C1 timezone laxiste** : round 2 `stringContaining("14")` matchait aussi `"14 mai 2026 à 02:00"`. Fix : loop sur `process.env.TZ ∈ {UTC, Europe/Paris, America/New_York}` + pattern strict `/\b14:00\b/` + anti-régression `not.toMatch(/\b16:00\b/)` (CEST double conversion). **MED-1 opt-out RGPD audit silencieux** : round 2 filtrait opt-outs en SQL sans audit → démonstrabilité CNIL Art. 5.2 fastidieuse → fix `prisma.appointment.count(...notifPreferences.medicalAppointments=false)` AVANT findMany par step + total propagé `audit cron.run.metadata.optOutSkipped`. **MED-2 forensique by runId** : migration suiveuse `20260519120000_us2502_round3_review` ajoute `CREATE INDEX audit_logs_run_id_gin_idx USING gin ((metadata -> 'runId')) WHERE metadata ? 'runId'` (GIN partial) → forensique `metadata @> '{"runId": "x"}'` < 100ms à 10M rows + CHECK constraint `appointment_reminders_status_fields_coherence_check` (LOW-5 defense-in-depth). **MED-3/MED-4 SMS TX atomique** : `sendSms` re-wrap dans une `$transaction` unique (decrement crédit + persist log atomique). Throw erreur métier reporté APRÈS commit. `persistSmsLogStandalone` helper retiré. Plus de fuite crédit possible. **MED-5 timezone dead code** : `User.timezone` SELECT inutile + variable ignorée par `formatDateTime` retirés (sera réintroduit V1.5 avec implémentation réelle). **MED-7** : docstring route `@route POST` (vs ancien GET|POST round 2). **LOW-1** : runbook `docs/runbook/cron-reminders.md` créé (210 lignes — POST uniquement, recovery lock orphelin via `pg_terminate_backend`, EXPLAIN ANALYZE attendu, SLO/alertes, rotation `CRON_SECRET`). **LOW-2** : préfixe U+200F (RLM = RIGHT-TO-LEFT MARK) pour push body arabe (`combineDateTimeLabel`). **LOW-4** : `ExtraReminderMetadata` discriminated union (`{recipientCount, sent, failed}` ou `Record<string, never>`) → empêche futur dev de leak PHI (`phoneFull`, `nirpp`). Tests : 28/28 unit (+3 nouveaux : CR-1 lock null, HI-3 timezone strict, HI-2 V3 real provider sent, MED-1 optOut count) + 6/6 + 10/10 + 22/22 sur fichiers concernés. Mock `vi.mock("@/lib/db/cron-lock")` ajouté pour éviter instancier vrai `pg.Pool` dans tests. DPIA §10 ajoutée avec détail findings + bloqueurs pre-prod round 3 (test E2E réel pool, EXPLAIN ANALYZE runId GIN, décision DPO `optOutSkipped`, décision business V1.5 retrait mock vs CGU). V1 indicateurs inchangés (US-2502/2506 toujours DONE). **2231/2231 tests verts** (+3 nouveaux). ⚠️ Bloqueurs pre-prod patients réels round 3 (en plus round 2) : test E2E pool sur staging Postgres + EXPLAIN ANALYZE runId GIN dataset ≥1M + décisions DPO/business.*
-
-*Précédente mise à jour : 2026-05-19 (PR #418 round 2) — Round 2 review PR #418 appliquée intégralement (Option C totale). 3 agents (code-reviewer + healthcare-security-auditor + prisma-specialist) — **29 findings résolus** (3 CRITICAL + 4 HIGH + 15 MEDIUM + 7 LOW). 0 résiduel Critical/High final. Migration suiveuse `20260519110000_us2502_round2_review` : index `appointments(status, date)` hot path cron (M5), `sms_logs.cabinet_id ON DELETE RESTRICT` vs CASCADE anti-perte audit financier (M7), `appointment_reminders.status DEFAULT 'skipped'` vs sent (M6 — fail-safe par défaut). **C1 timezone fidélité** : `formatDateTime` faisait double conversion (`Date.UTC + Intl{timeZone: "Europe/Paris"}` rendait "14:00 stocké" en "16:00 affiché" CEST été) → fix `timeZone: "UTC"` côté Intl + composantes UTC du `@db.Time` naïf → rendu fidèle, élimine risque erreur médicale rétro-titration basale. Paramètre `User.timezone` conservé V1.5 conversion patient voyageur. **C2 FCM senderId nullable** : `sendToUser`/`sendFromTemplate`/`sendToMultipleUsers` acceptent `senderId: number | null`. Sentinel `CRON_AUDIT_USER_ID = null` propagé (anti FK violation `audit_logs.user_id → users.id` si `0`). **C3 advisory lock SESSION-level** : `pg_try_advisory_xact_lock` libérait en fin TX, mais cron tournait hors `$transaction` (multi-channel ~minutes) → race possible entre 2 runs concurrents → fix `pg_try_advisory_lock` + `pg_advisory_unlock` dans `finally` (try/finally release garanti). **H1 RGPD Art. 21** : filtre `findMany` ajouté `patient.user.notifPreferences.medicalAppointments: true` → patient peut opt-out canal-par-canal via `/api/account/notifications`. **H2 SMS skipped audit standalone** : `smsService.sendSms` throw avant commit log si `disabled`/`noCredits`/`noPhone` → forensique HDS Art. L.1111-8 perdue → fix `persistSmsLogStandalone()` (TX dédiée, commit garanti avant throw). **H3 GET retiré** : route exposait GET (alias POST) → leak `CRON_SECRET` via Nginx access logs / Referer / cache CDN → POST uniquement (RFC 7231 §4.3.3, runbook scheduler à mettre à jour `curl -X POST`). **M10 step order inversion** : ancien `email → SMS → push` repoussait notifs urgentes (J-0) → fix `push J-0 → SMS J-1 → email J-2` (canal urgent en premier, dégradation gracieuse si timeout). **M11 runId UUID pivot** : `randomUUID()` au début + propagé `metadata.runId` → forensique CNIL/ANS par run (cf. US-2268). **M1 push partial metadata** : `recipientCount/sent/failed` propagés via `extraMetadata` audit. **M2 deletion dead code** : `tx.appointmentReminder.updateMany` retiré (CASCADE via FK). **M3 SMS audit resourceId** : `String(log.id)` vs cabinetId, cabinetId déplacé en `metadata`. **M4 logger warn cabinetId** : credits low log enrichi. **M12/M13 null handling** : templates email/push (HTML + text) conditional FR/EN/AR si `location=null` / `hour=null` ("aujourd'hui" vs "à HH:MM"). Tests : 25/25 unit + 6/6 integration = **31/31 verts post-round 2** (+ helper `mockFindManyForChannel` pour nouveau step order, `makeAppointment` "hour" in overrides pour respect `null` explicit, GET integration test inversé en `routeModule.GET === undefined`). DPIA §9 ajoutée avec détail findings impactants + bloqueurs pre-prod inchangés. V1 indicateurs inchangés (US-2502/2506 toujours DONE). 2228/2228 tests verts (full suite). ⚠️ Bloqueurs pre-prod patients réels inchangés : signatures DPO/RSSI/Direction Médicale + décision business V3 timeline + CGU patient Art. 13 + cron schedule prod `0 9 * * *` + EXPLAIN ANALYZE dataset 100K RDV (validation index hot path M5).*
-
-*Précédente mise à jour : 2026-05-19 (PR #418) — US-2506 + US-2502 batch livré (~13 SP, Batch 2 Groupe 8 RDV complet). **US-2506 V1 mock SMS** : `HealthcareService.smsEnabled` + `smsCreditBalance` (admin toggle) + table `sms_logs` (provider="mock" V1, toEnc chiffré AES-256-GCM, messageExcerpt cap 120c anti-leak PHI, status enum sent/failed/skipped/mock, 4 audit kinds sms.sent/failed/skipped + config.toggled/credits_adjusted). Service `sms.service.ts` ~380 lignes : `sendSms(input, auditUserId, ctx, metadata)` avec decrement crédits atomique `updateMany WHERE smsEnabled=true AND smsCreditBalance >= cost` (race-safe), 3 erreurs typées `SmsDisabledError`/`SmsInsufficientCreditError`/`SmsValidationError`, persist `SmsLog` + audit transactionnel avec `metadata.patientId+appointmentId` US-2268, alerte ops `logger.warn` si credits<10. `getConfig`/`updateConfig` admin avec audit transitions explicites (`before`/`after`/`delta`). Validation phone e164-like (`+\d{8,15}`). Route `/api/cabinet/[id]/sms-config` ADMIN-only GET+PUT (headers ANSSI no-store/Referrer/nosniff + assertBodySize 512 + 415/422/404 errors). **US-2502 Rappels RDV** : table `appointment_reminders` (UNIQUE(appointmentId, channel, step) idempotence, FK cascade, sentToEnc chiffré, providerMessageId, status enum sent/failed/skipped) + 3 enums (channel email/sms/push, step j_minus_2/j_minus_1/j_0, status). Service `appointment-reminder.service.ts` ~520 lignes : `processAppointmentReminders(now, ctx)` cron quotidien avec advisory lock global `pg_try_advisory_xact_lock('appointment-reminder-cron')` (anti double-run OVH+Vercel) + p-limit(10) parallelism + CRON_TIMEOUT_MS=50_000 break + filtre RGPD Art. 17 (`patient.deletedAt: null + user.status='active'`) + filtre `status IN [scheduled, confirmed]` + `orderBy date asc`. 3 channels dispatchés : email J-2 via `emailService.sendAppointmentReminder` (template anti-PHI strict FR/EN/AR + RTL — pas de nom médecin/symptôme), sms J-1 via `smsService.sendSms` (mock V1 — vérifie cabinet smsEnabled + credits, skipped si phone null/cabinet disabled/credits<cost), push J-0 via `fcmService.sendToUser` (data-only sans PHI, skipped si pas de device enregistré). Recheck `status` TOCTOU pré-persist + `sanitizeProviderError` scrub email/phone plaintext anti-PII leak + P2002 catch silent idempotent + `metadata.patientId` US-2268 + audit 6 kinds (cron.run/skipped_locked/timeout/sent/failed/skipped). `CRON_AUDIT_USER_ID = null` sentinel système (pas FK violation). Route `/api/cron/appointments/reminders` (GET+POST H2 pattern PR #417 — Vercel/OVH cron) Bearer CRON_SECRET timing-safe `timingSafeEqual` + audit `cron.auth.failed` US-2265 + 503 si CRON_SECRET non-set ADR #20 + headers ANSSI sur 200/401/503. Email template `sendAppointmentReminder` + `APPOINTMENT_REMINDER_I18N` 3 langues × 3 sections (subject/heading/body/footer/labels/locations in_person/video/phone). RGPD : Art. 17 cascade FK + `deletion.service.ts` anonymise `sentToEnc: null` post-deletion (défense-en-profondeur même si CASCADE) ; Art. 20 export `appointments[].reminders[]` déchiffré (intelligible WP242). AuditResource enum +3 : `SMS_LOG` + `CABINET_SMS_CONFIG` + `APPOINTMENT_REMINDER`. DPIA `docs/compliance/dpia-us2502-us2506-appointment-reminders.md` (250 lignes) — §3.1 V1 mock = pilote uniquement (Real V3 US-2506bis bloqueur prod patients SMS) + §3.2 Resend/FCM transferts hors-UE pattern US-2108 + §3.3 messages-id mock vs Twilio webhook V3 + §3.4 délais 2/1/0 V1.5 cabinet-configurable + §3.5 Reply-To cabinet V1.5. **Nouvelle entry V3 ROADMAP** : `US-2506bis Real SMS provider integration (Twilio/OVH SMS)` — V1 livré en mock, migration `provider="mock"` → real, webhooks delivery, DPA + procurement ~500-2k€/mois. Contrat `sms.service.sendSms()` zero-breaking V3. V1 91 → 93 DONE (72% → 74%). Total 159/293 → 161/294 (**55%**) — Total +1 car US-2506bis ajoutée V3. 2221/2221 tests verts (+58 nouveaux : 22 unit sms + 18 unit appt-reminder + 10 integration sms-config + 6 integration cron appts + 2 mock fix deletion). ⚠️ Bloqueurs pre-prod patients réels (hors PR) : DPIA signatures DPO/RSSI + décision business V3 timeline (procurement Twilio/OVH si Diabeo veut SMS réels) + CGU patient mention rappels automatiques RGPD Art. 13 + cron schedule prod configuré.*
-
-*Précédente mise à jour : 2026-05-18 (PR #417) — US-2108 Relances factures automatiques livré (~5 SP, Batch 4 Facturation termine Groupe 7 à 100%). Migration `20260518100000_us2108_invoice_reminders` : 2 enums (`invoice_reminder_step` step_7/15/30 + `invoice_reminder_status` sent/failed/skipped — snake_case cohérent C2 round 2) + table `invoice_reminders` avec `sentToEnc` chiffré AES-256-GCM + `emailMessageId` Resend + UNIQUE(invoice_id, step) idempotence absolue + FK cascade DELETE + 3 indexes (UNIQUE composite + (invoice_id, sent_at DESC) export + (sent_at DESC) metrics). Service `invoice-reminder.service.ts` ~520 lignes : `processOverdueInvoices(now, ctx)` en transaction unique avec `pg_try_advisory_xact_lock(hashtextextended('invoice-reminder-cron'))` anti double-run (H5 round 2 — OVH+Vercel oublies actifs = sinon doublons emails) + `pLimit(10)` parallelism + `CRON_TIMEOUT_MS=50_000` break (H3 round 2 anti Next.js timeout 60s) + filtre RGPD Art. 17 `patient.deletedAt: null + user.status='active'` (H1 round 2 anti relance patient soft-deleted) + `orderBy issuedAt asc` oldest first (M9). `sendReminderForInvoice` (skipped si pas patient OR email decrypt fail) + `persistReminder` avec recheck `status='issued'` pré-persist (M3 round 2 TOCTOU paid/cancelled) + `sanitizeResendError(msg, email)` scrub plaintext anti-PII leak (H4 round 2 — Resend echo `"Invalid: john@x.com"`) + `metadata.patientId` propagé US-2268 (H8 round 2 forensique CNIL/ANS) + audit `cron.run/cron.skipped_locked/cron.timeout/sent/failed/skipped` 6 kinds + `CRON_AUDIT_USER_ID: number | null = null` sentinel système (C1 round 2 — sinon FK violation `audit_logs.user_id → users.id` → boucle infinie relances) + P2002 catch silent skip idempotent. `emailService.sendInvoiceReminder` avec `REMINDER_I18N` map FR/EN/AR (9 templates = 3 tons × 3 langues, gradué amical→ferme→final) + contrat anti-PHI strict validé HSA (aucune mention TIR/glucose/pathologie). Route `/api/cron/billing/reminders` (GET et POST H2 round 2 — Vercel/OVH cron utilisent souvent GET, refus silent 405 cassait cron en prod) : Bearer `CRON_SECRET` timing-safe `timingSafeEqual` simplifié (M1 round 2 — longueur publique 64 hex, pas besoin protection length-mismatch) + regex `\S+` (M2 round 2 vs `(.+)$` trailing whitespace) + audit `cron.auth.failed` US-2265 burst detection (H9 round 2 via `auditService.log userId=null` car `accessDenied` exige userId non-null par design) + `SPEC_CRON_SECRET` `assertRequiredEnv` ADR #20 early-fail boot + entropy Shannon ≥96 bits (H10 round 2 — sans, route 503 silent en prod = 100% recouvrement Batch 4 perdu) + headers ANSSI RGS §4.5 sur 200/401/503 (Cache-Control no-store + Referrer-Policy + nosniff). RGPD : Art. 17 cascade FK + `deletion.service.ts` anonymise `sentToEnc: null` post-suppression patient (H6 round 2 — email chiffré reste sinon PHI résiduel) ; Art. 20 export `invoices[].reminders[]` avec `sentTo` déchiffré (intelligible WP242). Middleware `/api/cron/*` bypass JWT custom auth + strip x-user-* spoofed. AuditResource enum `INVOICE_REMINDER` ajouté. **2 rounds review multi-agents** (code-reviewer + healthcare-security-auditor + prisma-specialist en parallèle) : **31 findings résolus** (Round 1 `670e580` implémentation + Round 2 `31f5a77` 2C+10H+9M+10L). 0 résiduel Critical/High final. DPIA `docs/compliance/dpia-us2108-invoice-reminders.md` (350 lignes) — §3.1 Resend US transfert hors-UE Art. 44+ (SCC + DPA + TIA pending) + §3.2 errorMessage sanitize + §3.3 délais 7/15/30 vs CGI L.441-10 V1.5 + §3.4 émetteur cabinet vs Diabeo générique V1.5 (LCEN Art. 6) + §3.5 KMS V2. V1 90 → 91 DONE (72%). Total 158/293 → 159/293 (**54%**). 2163/2163 tests verts (+39 nouveaux : 22 unit + 14 integration + 3 env). ⚠️ Bloqueurs pre-prod patients réels (hors PR) : signatures DPIA DPO/RSSI + DPA Resend signature + sign-off Ops cron schedule + décision business scope (pilote fermé vs production publique pour cap per-IP/cabinet V1.5).*
-
-*Précédente mise à jour : 2026-05-17 (PR #416) — US-2026 INS (Identité Nationale Santé) scope V1 standalone livré (~8 SP). 3 migrations : `20260517100000_us2026_user_ins_hmac` (col `User.ins_hmac TEXT` + UNIQUE NULLS DISTINCT pour anti-doublon RNIPP), `20260517110000_us2026_ins_quality_review` (enum `InsQualityStatus` 4 valeurs `saisi_non_verifie/insi_recupere/insi_verifie/rejete_traits_incoherent` + 4 cols `insQualityStatus/insSetAt/insSetByUserId FK SetNull/insTraitsHash` + CHECK SQL cohérence `(all null) OR (all set)` + ALTER TYPE TEXT pour aligner avec autres HMAC), `20260517120000_us2026_round3_review` (index partiel `audit_logs_ins_collision_by_user_idx` pour rate-limit query scale 500M rows + ANSSI). Service `ins.service.ts` ~600 lignes : `isValidInsFormat` (regex 15 digits + `isValidInsStructure` ANS §3.1 sexe∈{1,2,3,4,7,8} + mois∈{01-12,20,30,31,41-99} + dept 01-99 + Luhn-97 BigInt précis), `normalizeIns` strip whitespace, `computeTraitsHash` HMAC-SHA256(HMAC_SECRET) avec domain prefix `ins-traits:` (M5 round 3 anti-bruteforce GPU vs SHA-256 nu), `setIns` en transaction unique avec `pg_advisory_xact_lock(hashtextextended)` atomique anti-TOCTOU (H2 round 3) + `assertNotRateLimited` 5 collisions/24h via audit_logs.count index partiel + collision audit `collidingUserIdHmac = hmacAuditId("ins-collision", existing.id)` peppered avec `AUDIT_PEPPER` distinct (H1 round 2 + entropy Shannon check round 3 M7) + race P2002 catch `meta.target=ins_hmac` → `InsCollisionError` (H4 round 2) + audit `previousInsHmacPeppered` chainage forensique sans leak (L1 round 3) + `setByRole/clearedByRole` audit metadata symétriques (H5+L8) + emit-once `rate_limited` audit par fenêtre 24h (M1 round 3 anti-amplification). `clearIns(targetUserId, auditUserId, role, ctx, metadata, externalTx?)` accepte tx externe pour réutilisation `deletion.service` (M4 round 3 DRY) + `RepeatableRead` isolation (M3 anti race findUnique/updateMany). Branded type `QualifiedIns = string & { brand }` + `assertQualifiedForSharing(ins, quality)` qui throw `InsNotQualifiedError` (H3 round 3 — empêche US-2123 FHIR/US-2102 Facture de propager INS sans validation, defense-en-profondeur §5.1 ANS). 3 routes API `/api/patients/[id]/ins` (GET/PUT/DELETE) via helper `resolvePatientForConsent` (PR #415 anti-énumération) + 4 headers ANSSI RGS §4.5 (Cache-Control no-store + Referrer-Policy + X-Content-Type-Options nosniff + CSP `default-src 'none'`) + 429 RateLimited + Retry-After. RBAC : GET NURSE+/VIEWER own, PUT DOCTOR+/VIEWER own, DELETE DOCTOR+/ADMIN (VIEWER passe par RGPD Art. 17 cascade). `crypto/hmac.ts` : nouveaux helpers `hmacIns(insNormalized)` dédié digits-only (M6 round 2 vs `hmacField` toLowerCase coupling) + `hmacAuditId(domain, id)` peppered + memoize Buffer (L4 round 3 perf) + `__resetHmacMemoForTests`. `env.ts` : nouvelle env `AUDIT_PEPPER` 32 bytes hex + entropy Shannon check ≥96 bits + idem sur `CONVERSATION_KEY_PEPPER` (M7 round 3 cohérence). RGPD Art. 17 : `deletion.service.ts` appelle `insService.clearIns(..., tx)` au lieu d'inline (M4 audit dédié reason=user_deletion + clearedByRole=VIEWER). RGPD Art. 20 : `export.service.ts` wrapper `ins: {value, qualityStatus, setAt, disclaimer}` avec disclaimer i18n FR/EN/AR (L7 round 3 — US-2112 LocaleSwitcher). AuditResource enum `USER_INS` ajouté. **3 rounds review multi-agents** (code-reviewer + healthcare-security-auditor + prisma-specialist en parallèle) : **42 findings résolus** (Round 1 `cd2e51c` implémentation + Round 2 `46d188d` 21 findings 1C+5H+7M+8L + Round 3 `7537063` 21 findings 4H+8M+9L). 0 résiduel Critical/High final. DPIA `docs/compliance/dpia-ins-us2026.md` (250 lignes) — §3.1 posture saisi_non_verifie V1 + §3.2 cohérence traits déférée V2 + §3.5 triple cap rate-limit V1.5 si scaling >100 cabinets + §3.7 modèle menace pepper compromis. Runbook `docs/runbook/hmac-secret-rotation.md` (180 lignes) — procédure dual-key zero-downtime + script re-HMAC progressif + cas AUDIT_PEPPER spécial. **Pre-prod gouvernance** : `docs/compliance/preprod-checklist-us2026.md` (593 lignes) — 3 HARD blockers (DPIA signée DPO+RSSI+DirMed, clause CGU "INS interne V1", sign-off Ops runbook HMAC) + 1 CONDITIONAL (triple cap rate-limit V1.5 si scaling) + 1 SOFT (CLI reconcile DPO). V1 89 → 90 DONE (71%). Total 157/293 → 158/293 (**54%**). 2124/2124 tests verts (+69 nouveaux : 46 unit + 20 integration + 3 env). ⚠️ Bloqueurs pre-prod patients réels documentés `preprod-checklist-us2026.md` : signatures DPIA, clause CGU, sign-off runbook HMAC (zero commit dev requis, gouvernance non-code).*
-
-*Précédente mise à jour : 2026-05-16 (PR #415) — Groupe 4 Devices & Sync livré (US-2091 + US-2092 + US-2093, ~8 SP). Migration `20260516093305_groupe4_devices_sync` : nouveau model `SupportedDevice` (whitelist HDS, 7 colonnes brand/model/category/modelIdentifier/connectionTypes/sensorLifetimeDays/isHdsCertified/notes + index `(category, isActive)` + `@@unique([brand, model, category])`) + 3 colonnes `PatientDevice.{revokedAt, revokedBy FK SetNull, revokedReasonEnc}` + CHECK coherence `(all null) OR (all NOT NULL)` `NOT VALID + VALIDATE` + 2 indexes `(patientId, revokedAt)` + partial `(revokedBy) WHERE NOT NULL`. Migration suiveuse `20260516120000_groupe4_devices_followup` round 2+3 : enforce `revoked_reason_enc NOT NULL` dans CHECK (CR H2 HDS Art. L.1111-8), ADD COLUMN `created_at` immutable (HSA M1 + H3 backfill `COALESCE(date, '2024-01-01')`) + index `(patient_id, created_at DESC)`, ALTER `revoked_reason_enc` TYPE VARCHAR(2816) UTF-8 safe (M1 round 3 — 500 chars × 4 bytes ≈ 2704 chars base64 chiffré), UNIQUE `model_identifier` (CR L4), trigger `set_updated_at` plpgsql avec `SET search_path = pg_catalog, public` (M2 round 3 ANSSI CWE-426). Service `device-lifecycle.service.ts` ~400 lignes : `supportedDeviceService.{search, isSupported, create}` (NURSE+/ADMIN) + `deviceLifecycleService.{revoke, listHistory}` avec transaction atomique audit (CR H1) + `toHistoryDTOForRole` masque `revokedReason` si VIEWER (CR C2 cross-actor PHI) + `MAX_REASON_BYTES=500` byte-length defense-in-depth (M1 round 3 UTF-8). 5 routes API : GET/POST `/api/devices/compatibility` (auth AVANT Zod CR M3 anti-énumération enum, `connectionTypes` z.enum whitelist CR M7), POST `/api/patients/[id]/devices/[deviceId]/revoke` (idempotent atomic CAS), GET `/api/patients/[id]/devices/history` (cursor pagination keyset-safe H1 round 3 `[createdAt DESC, id DESC]`). **Helper `resolvePatientForConsent`** exporté `@/lib/access-control` (H2 round 3 — chaîne `canAccessPatient` AVANT `patient.findFirst` AVANT `requireGdprConsent` → 403 forbidden uniforme anti-énumération vs ancien pattern 404/403/gdprConsentRequired discriminant). Export RGPD Art. 20 déchiffre `revokedReasonEnc` dans `devices[]` (HSA H1 round 1). Cache GDPR `invalidateGdprConsentCache` try/catch + `logger.warn` kind `consent.cache.invalidation.failed` (M3 round 3 RGPD Art. 7(3) breach window visibility). **3 rounds review multi-agents** (code-reviewer + healthcare-security-auditor + prisma-specialist en parallèle) : **46 findings résolus** (Round 1 `5490edd` : 14 findings 2C+6H+5M+1INFO ; Round 2 `b95e69c` : 18 findings 2H+5M+11L ; Round 3 `e8f0f71` : 14 findings 3H+5M+6L). 0 résiduel Critical/High final. DPIA `docs/compliance/dpia-devices.md` (211 lignes) — §3.1 posture Art. 9.2.a stricte (pas 9.2.h urgence) + §3.2 KMS V2 + §3.4 durée rétention 3a/6a/20a + §6.1 runbook rollback CHECK humain (décisions DPO à venir). V1 86 → 89 DONE (68% → 71%). Total 154/293 → 157/293 (**54%**). 2055/2055 tests verts (+53 nouveaux : 36 unit device-lifecycle + 17 integration). ⚠️ Bloqueurs pre-prod patients réels (hors PR) : DPIA §3.1 validation DPO sur posture Art. 9.2.a stricte, rétention devices Issue GH à créer, rotation clé `HEALTH_DATA_ENCRYPTION_KEY` runbook V2. V1.5 cleanup transversal : helper `resolvePatientForConsent` peut être adopté par toutes les routes `/api/patients/[id]/*` pour cohérence anti-énumération.*
-
-*Précédente mise à jour : 2026-05-16 (PR #414) — Groupe 7 Facturation Batch 2 livré (US-2102 + US-2110, ~6 SP). **US-2102 Facture PDF + IBAN virement** : service `invoice-pdf.service.ts` (~600 lignes) avec `generate` (RBAC canReadInvoice + status≥issued + idempotent + render pdf-lib multi-page + SHA-256 + S3 upload SSE-S3 + atomic CAS via updateMany WHERE pdfHash=$expected) et `download` (RBAC re-vérifié + stream S3 + audit). `renderInvoicePdf` pure helper avec `sanitizeForWinAnsi` (CR C1 anti-Latin1 crash Polonais/Cyrillique/Arabe/CJK), multi-page (CR H1+HSA H-4) avec `addPage` + `drawItemsHeader` répété + `ensureSpace` helper, `setCreationDate(input.issuedAt)` déterministe (CR M3+HSA M-5 race), status banner (FACTURE ANNULEE/REMBOURSEE/PAYEE — CR H2), IBAN required for `bank_transfer` (CR M5), `wrapDescription` word-wrap multi-ligne (CR L2+HSA M-1), `Intl.NumberFormat`+`Intl.DateTimeFormat` localisé fr-FR/fr-DZ (CR L1+L3+HSA L-1). 2 routes : POST `/api/billing/invoices/[id]/pdf` (201/200/403/404/409) + GET (stream avec Content-Disposition RFC 6266 UTF-8 + Cache-Control no-store + X-Content-Type-Options nosniff + CSP + Referrer-Policy ANSSI RGS §4.5 HSA M-2 + X-Content-SHA256). `invoiceService.buildIssuerSnapshot` modifié : IBAN chiffré AES-256-GCM via `encryptField` dans `ibanEnc` (HSA H-3 defense-in-depth — dump SQL ne révèle plus book bancaire cabinets). Service `invoice-pdf` `resolveIban` preferr `ibanEnc` fallback legacy `iban`. `issuerSnapshotSchema` Zod strict (CR M2). `InvoicePdfAuditKind` union typée (CR M8). `RenderError.code` stable (HSA M-4 no leak). RGPD Art. 17 : `deletion.service.ts` audit kind `user.account.deletion.invoicesRetained` (count + reason CGI_242_nonies_A_10y_retention — HSA H-1). RGPD Art. 20 : `export.service.ts` inclut `invoices[]` avec items + `pdfDownloadEndpoint` (HSA H-2). Customer decrypt fail sur patient invoice → throw (CR L6 non-conforme DGFiP sinon). **US-2110 TVA multi-pays** : `countryTaxRuleService.getActiveAt(countryCode, taxType, atDate)` + route `GET /api/config/tax-rules/active` (NURSE+, audit READ `tax_rule.active`, atDate in 404 body CR L7). **2 rounds review** (code-reviewer + healthcare-security-auditor) : 34 findings (1 Critical + 7 High + 14 Medium + 12 Low) → 0 résiduel Critical/High. V1 84 → 86 DONE (67% → 68%). Total 152/293 → 154/293 (**53%**). 2002/2002 tests verts (+45 nouveaux : 16 invoice-pdf unit + 11 country-config + 11 invoice-pdf integration + 7 tax-rules-active integration). ⚠️ Bloqueurs pre-prod patients réels (hors PR) : DPIA doc Art. 6.1.c base légale facturation (HSA M-3), DPIA doc rétention 10y CGI (HSA H-1), cron `pruneOldInvoices` V2 (Art. 17 strict post-10y obligation).*
-
-*Précédente mise à jour : 2026-05-16 (PR #412) — US-2076 scope A Messagerie sécurisée patient↔PS livrée. Modèle DB `messages` (corps AES-256-GCM bytea natif PG, `conversation_key` HMAC-SHA256+pepper hex 64, `patient_id` pivot US-2268). 5 routes API : POST/GET `/api/messages`, GET `/unread-count` (polling 60s badge), GET `/thread/[conversationKey]` (paginated cursor), PUT `/[id]/read`. Service `messaging.service.ts` : `canMessage` (patient↔PS via PatientReferent/PatientService, staff↔staff même cabinet, ADMIN bypass restreint au patient pur), `send` (rate-limit FIRST + validation octets UTF-8 + consent émetteur+destinataire + encrypt + persist + FCM data-only `nonce: randomUUID()`), `listThreads` (UNION ALL + DISTINCT ON via 2 indexes composite partial), `getThread` (re-check `isPsManagingPatient` H9 + cursor validation 422), `markRead` (atomique idempotent + accessDenied audit US-2265 anti-énumération), `unreadCount` (COUNT direct partial idx). Indexes : `messages_unread_groupby_idx` + `messages_from_thread_recency_idx` + `messages_to_thread_recency_idx` + `messages_conversation_key_created_at_idx` + `messages_patient_id_idx` + `messages_from_user_id_idx` + `messages_deleted_at_idx` (5 partials WHERE). Decrypt-fail logger throttle per-user + `cumulativeSuppressed` cap 10M. FK `Restrict` fromUser/toUser anti-DELETE-physique-accidental + purge explicite dans `deletion.service.ts` (RGPD Art. 17). Export RGPD Art. 20 inclut `messages.{sent, received, truncated, exportLimit}`. AuditResource `MESSAGE` ajouté. `requireGdprConsent` sur 4 routes (bilatéral émetteur+destinataire dans `send`). Cache-Control: no-store sur routes PHI. **6 rounds review** (3 agents en parallèle code-reviewer + healthcare-security-auditor + prisma-specialist) : 60+ findings résolus (5 Critical + 9 High initial → 0 Critical 0 High final). HMAC pepper `CONVERSATION_KEY_PEPPER` env var 32+ bytes via `env.ts` assertRequiredEnv + memoize Buffer + test setup + CI workflow (unit + E2E + seed). DPIA `docs/compliance/dpia-messaging-scope-a.md`. Runbooks `docs/runbook/messaging-mobile-contract.md` (iOS/web team 403 discriminator) + `docs/runbook/messaging-pepper-rotation.md` (procédure rotation HMAC). Tests : 85 messagerie + env (42 unit service + 23 integration + 22 unit env) + logger.error spy assertions (CRITICAL-1 ctx propagation + HIGH-1 failedAuditPatientIds structured). V1 83 → 84 DONE (66% → 67%). Total 151/293 → 152/293 (**52%**). 1957/1957 tests verts. ⚠️ Bloqueurs pre-prod patients réels (hors PR) : Issue GH #413 rétention messages, décisions DPO #1 (consent destinataire posture) + #2 (durée rétention 36 mois ou 6 ans), EXPLAIN ANALYZE dataset 100K, DPIA signed-off. Scope B (WS/SSE chat-only realtime, ~5 SP) toujours reporté V2 sous US-2076bis.*
-
-*Précédente mise à jour : 2026-05-15 — US-2076 Messagerie scope split : V1 livre **scope A** (REST + polling 60s + FCM, ~8 SP — sans WS). Scope B (WS/SSE chat-only realtime, ~5 SP) reporté V2 sous nouvelle ID `US-2076bis` — gain UX marginal médecin↔patient (réponses non-instantanées). Stats : V1 inchangé 126 (% 66%), V2 73→74, Total 292→293 (+1 nouvelle US).*
-
-*Mise à jour 2026-05-15 (post-PR #409) — Reclassification V1→V2 (15 US) : décision Samir de déplacer en V2 toutes les US bloquées par procurement externe ou deps internes non maîtrisées, pour clarifier le scope V1 livrable. US reclassées : US-2031 (Medtronic CareLink), US-2041 (Pattern AI déjà V2 per spec), US-2077 (MSSanté UX, dep US-2125 backend), US-2104 (Abonnement DZ partenaire bancaire), US-2106 (Stripe webhooks provision), US-2109 (Remboursements dep US-2106), US-2124 (DMP ANS 10-30k€), US-2125 (MSSanté Mailiz/Apicrypt), US-2126 (INSi ANS 5-10k€), US-2127 (PSC ANS 5-15k€), US-2153 (Logs Loki/Datadog/OVH), US-2164 (APM Sentry/Datadog), US-2165 (Error tracking Sentry), US-2411 (KPI cabinet admin dep US-2150 V3), US-2413 (Conformité RGPD admin deps absentes). Stats : V1 141→126 (% DONE 59%→66%), V2 58→73. Total 292 inchangé. Voir `docs/ROADMAP.md` pour détail.*
-
-*Précédente mise à jour : 2026-05-15 — Groupe 9 Admin & Ops Batch 1 livré (PR #409, 4 US internes US-2007/2137/2147/2150, ~4 SP, option A). Migration `20260515400000_groupe9_admin_ops` : Session enrichi (4 colonnes createdAt/ipAddress/userAgent/lastSeenAt + index user+createdAt) + nouveau model `DataBreach` (RGPD Art. 33) + 2 enums (DataBreachSeverity, DataBreachStatus FSM 5 statuses `draft→under_assessment→notified_cnil→notified_users→closed` terminal). 4 services : `session-management.service.ts` (listOwn isCurrent flag + revokeOne anti-énumération avec accessDenied audit US-2265 sur cross-user + revokeOthers preserve current), `data-breach.service.ts` (declare + transition FSM ALLOWED_TRANSITIONS + chiffrement AES-256-GCM description/remediation/cnilCaseNumber + `cnilDeadlineHoursRemaining` cap floor 0 + flag `cnilDeadlineExceeded` + `assertNoPiiInTitle` heuristique anti-PHI NIRPP/téléphone/email — 3 regex bornées sans ReDoS), `cabinet-settings.service.ts` (manager-level subset vs ADMIN full CRUD US-2117/2118, openingHoursSchema validation `CabinetSettingsValidationError` 422), `system-health.service.ts` (snapshot Promise.all DB+Redis+CGM lag+backups freshness 36h+active sessions+unauthorizedAttempts24h + per-check `withTimeout` 2000ms + `pingRedis` helper distingue not_configured/ok/down élimine false-negative). 10 nouvelles routes : 3 sessions (`/api/account/sessions` + `[id]`) + 4 data-breaches (`/api/admin/data-breaches` + `[id]` + `[id]/transition`) + 2 cabinet-settings (`/api/cabinet/[id]/settings` GET+PUT) + 1 system-health (`/api/admin/system-health`). `touchSession` câblé Node `/api/auth/refresh` (~15min cycle access token) + lazy bump `listOwn` UI view (middleware Edge incompatible Prisma, fire-and-forget non-bloquant). `AuthUser.sessionId` injecté via `x-session-id` header middleware. AuditResource enum +3 : DATA_BREACH / SYSTEM_HEALTH / CABINET_SETTINGS. Audit kinds typés `SessionMgmtAuditKind` + `DataBreachAuditKind` + `CabinetSettingsAuditKind` + `SystemHealthAuditKind` unions + `AUDIT_KIND` const satisfies. **2 rounds review** (code-reviewer) : 19 findings (4H + 8M + 7L round-1) — 0 résiduel Critical/High/Medium. NEW-M2 PHI heuristic regex + JSDoc ⚠️ schema "NE PAS METTRE DE PHI/PII title", NEW-M3 backup 30h→36h (1.5× cron cycle), NEW-M4 metrics rename `recentErrors24h`→`unauthorizedAttempts24h` (sémantique honnête RBAC fail), NEW-L1 audit `metadata.fields` noms business (description vs descriptionEnc internes), NEW-L5 detectedAt window 1y→5y (rétention RGPD typique). V1 79 → 83 DONE (59%). Total 147/292 → 151/292 (**52%**). 1887/1887 tests verts. ⚠️ Batch 2 Groupe 9 (4 US ⏳ Blocked procurement, ~12 SP) : US-2004 Cloudflare Turnstile, US-2153 Logs Loki/OVH, US-2164 APM Sentry, US-2165 Error tracking Sentry. V1 follow-ups : `touchSession` Redis throttle si > 50k users actifs (skip si touché < 30s), `pingRedis` memoize 30s process-local si dashboard auto-refresh, OpenAPI doc contrat anti-PHI title.*
-
-*Précédente mise à jour : 2026-05-15 — Groupe 1 Devices supervision + sync status livré (PR #408, 2 US US-2243/2244, ~8 SP, option A). Migration `20260515300000_groupe1_devices_supervision` : 3 colonnes `PatientDevice.{batteryLevel SMALLINT 0-100, sensorExpiresAt, lastSyncAt}` + CHECK `NOT VALID + VALIDATE` (zero-downtime) + 2 indexes `(patient_id, last_sync_at)` + `(sensor_expires_at)` pour cohort filter. 2 services : `device-supervision.service.ts` (listByPatient/listCohort/recordSyncPing) avec DTO computed `batteryLow (<20%)`, `sensorExpired (<now)`, `sensorExpiringSoon (now..now+3j)` + `device-sync-status.service.ts` (computeStatus pure helper + getStatus aggregate MAX(lastSyncAt) + cohortStatus avec merge accessibleIds → patients sans devices = `never_synced`, tri critical-first). SyncStatus enum ok/late/critical/never_synced avec seuils 5min/30min (alignés Dexcom G7 native interval). 5 routes : GET `/api/patients/[id]/devices/{supervision,sync-status}` (VIEWER own / NURSE+ cabinet) + GET `/api/devices/{supervision,sync-status}/cohort` (NURSE+) + POST `/api/patients/[id]/devices/[deviceId]/sync-ping` (NEW-H1 alimente lastSyncAt + optional batteryLevel/sensorExpiresAt bornés [2020, now+365j]). `requireGdprConsent` partout + `emitAccessDenied` US-2265 burst detection. AuditResource `DEVICE` existant réutilisé. Audit kinds typés `DeviceSupervisionAuditKind` + `SyncStatusAuditKind` unions + `AUDIT_KIND` const satisfies. Constantes partagées : `COHORT_RESOURCE_ID` (team-route-helpers), `SUPERVISION_BOUNDS` (BATTERY_LOW_PCT=20, SENSOR_EXPIRES_SOON_DAYS=3, SENSOR_EXPIRES_MIN_DATE=2020, MAX_FUTURE_DAYS=365, MAX_ACCESSIBLE_COHORT_PATIENTS=2000), `SYNC_STATUS_BOUNDS` (OK_MAX_MIN=5, LATE_MAX_MIN=30). M4 scope discriminated union `{scope:"all"}` vs `{scope:"scoped", accessibleCount:N}` typé audit metadata (vs ancien mixed-type). NEW-M2 soft-cap 2000 patients accessibles côté JS + `metadata.accessibleTruncated` flag (anti-OOM gros cabinets, vraie taille préservée pour forensique). **2 rounds review** (code-reviewer) : 18 findings (12 round-1 + 6 round-2) — 0 résiduel Critical/High. NEW-H1 sensorExpiresAt borné Zod route + service defense-in-depth (anti patient-safety bypass via VIEWER mobile push `9999-12-31`). NEW-M1 access check AVANT findFirst dans recordSyncPing (audit US-2265 sur cross-tenant probing). V1 77 → 79 DONE (56%). Total 145/292 → 147/292 (**50%**). 1835/1835 tests verts. ⚠️ US-2031 Medtronic Guardian ⏳ bloqué partenariat CareLink. US-2041 Pattern detection AI ⏸️ V2. V2 follow-ups : refactor DB-side LEFT JOIN cohort > 2000 patients, filtre `sensorStale` (expiré > N jours), Zod `pipe(z.array(z.enum))` idiomatic refactor.*
-
-*Précédente mise à jour : 2026-05-15 — Groupe 6 Activité physique livré (PR #407, 3 US US-2059/2060/2061, ~7 SP, batch unique). Migration `20260515200000_groupe6_activity_physique` : 7 colonnes `DiabetesEvent.{activityIntensity, activitySteps, activityDistanceM, activityCalories, activityHeartRateAvg, activitySource, externalSyncId}` + 2 enums (`ActivityIntensity` light/moderate/intense ; `ActivitySource` manual/healthkit/google_fit/health_connect) + 6 CHECK constraints `NOT VALID + VALIDATE` (NEW-L4 zero-downtime pattern) + UNIQUE PARTIAL `(activitySource, externalSyncId) WHERE externalSyncId IS NOT NULL` (idempotence mobile sync). Service `activity.service.ts` (list/create/update/delete/bulkSync) avec **comment chiffré AES-256-GCM** via `encryptField/safeDecryptField` symétrique avec `eventsService` (C1 anti data-corruption cross-service sur colonne partagée `comment`) + Zod whitelist 10 codes `ACTIVITY_TYPES` (walk/run/bike/swim/hike/yoga/elliptical/rowing/strength/other) + bornes cliniques resserrées (HR 30-250 bpm, steps ≤100k, distance ≤300km, duration ≤1440min, eventDate ∈ [-2y, +5min]) + sensor entries immutables (PUT/DELETE bloqués si `activitySource ≠ manual`, forensique préservée). **bulkSync mobile** : `createManyAndReturn` Prisma 7+ atomic ON CONFLICT DO NOTHING (1 query race-free vs ancien pattern 3 queries) + audit metadata `insertedIds[]` granulaire (forensique CNIL/ANS) + transaction timeout 30s + cap MAX_BULK_ITEMS=500. 5 routes `/api/patients/[id]/activity[/activityId|/sync]` (NURSE+ cabinet via canAccessPatient / VIEWER own via getOwnPatientId) + **`requireGdprConsent` sur tous les paths** (C2 RGPD Art. 9) + `assertJsonContentType` 415 + `assertBodySize` 413 (1MB/200KB/5MB selon route) + `assertCanAccessActivity` AVANT immutability check (NEW-H1 anti existence-oracle cross-tenant). Helper `emitAccessDenied` audit fire-and-forget (M8 US-2265 burst detection). AuditResource enum +1 : `ACTIVITY`. Audit kind typé `ActivityAuditKind` union + `AUDIT_KIND` const satisfies. Helpers shared : `assertBodySize` dans team-route-helpers. **3 rounds review** (code-reviewer) : 40 findings (29 round-1 + 7 round-2 + 4 round-3) — 0 résiduel Critical/High/Medium. Script `scripts/backfill-encrypt-event-comments.ts` (dry-run + --apply, idempotent, audit per-row, heuristique `isLikelyEncrypted` via decrypt). Doc `docs/runbook/infra-body-limits.md` contrat reverse proxy nginx/Traefik/OVH LB + note partitioning futur `diabetes_events`. validators/events.ts `activityDuration` max 600→1440 aligned (NEW-L2). V1 74 → 77 DONE (55%). Total 142/292 → 145/292 (**50%**). 1782/1782 tests verts. ⚠️ V2 follow-ups : OpenAPI doc API `activityType` write/read asymmetry (NEW-3.3), advisory lock concurrent sync (théorique), partitioning `diabetes_events` si volume > 50M rows.*
+## 📊 Roadmap & backlog
+
+- **Roadmap User Stories** : `docs/ROADMAP.md` (268 US, ~25% delivered, MVP en cours).
+- **Décisions architecturales** : voir tableau ADR ci-dessus + détails dans `docs/architecture/`.
+- **Conformité HDS/RGPD** : `docs/compliance/dpia-*.md` (1 DPIA par feature sensible).
+- **Runbooks ops** : `docs/runbook/*.md` (migrations, cron, MFA, messaging, pepper rotation).
+*Dernière révision : 2026-06-07 — nettoyage du CLAUDE.md pour réduire les tokens chargés à chaque session. Historique des PRs : `git log`.*

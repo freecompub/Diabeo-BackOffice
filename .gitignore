@@ -71,3 +71,14 @@ figma-export-script.js
 
 # Playwright-BDD generated specs
 .features-gen/
+
+# graphify — knowledge graph artefact intégralement LOCAL.
+# Raison d'être : la v0.8.33 de graphify génère des node IDs incluant le
+# path absolu pour les fichiers `.sh` (ex: `users_salili_projets_diabeo_*`),
+# ce qui (a) leak l'identité OS du dev dans git history permanent, (b) crée
+# des ghost duplicates sur chaque machine qui fait un `--update` (id dérive
+# du path qui dérive du checkout dir). Multi-dev = divergence garantie.
+# → chaque dev rebuild localement via `/graphify` (cf. CLAUDE.md section
+#   Knowledge graph). Hooks post-commit/checkout déjà installés via
+#   `graphify hook install` au setup initial.
+graphify-out/

@@ -1,22 +1,24 @@
 "use client"
 
 /**
- * Patient list page — US-801.
+ * Patient list page.
  *
- * Displays a searchable, filterable table of patients with:
- * - Search by name
- * - Filter by pathology (DT1, DT2, GD)
- * - Sortable columns
- * - Link to patient detail
- * - Glycemia color coding and TIR quality indicator
+ * Fetches the connected user's accessible patients from `GET /api/patients`,
+ * which returns `PatientListItemDto[]` (same shape for all roles):
+ * - VIEWER (patient role): sees only their own patient.
+ * - NURSE / DOCTOR / ADMIN: sees patients linked via PatientReferent
+ *   (their portfolio). ADMINs without a HealthcareMember see an empty list.
+ *
+ * UI features: search by name, filter by pathology (DT1/DT2/GD), link to detail.
+ * Clinical metrics (last glucose, TIR, sync) are placeholders — they require
+ * CGM rollup queries that this page does not yet issue.
  */
 
-import { useState, useMemo } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { GlycemiaValue, ClinicalBadge } from "@/components/diabeo"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import {
   Table,
   TableBody,
@@ -26,33 +28,23 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Card, CardContent } from "@/components/ui/card"
-import { Search, ChevronRight, UserPlus } from "lucide-react"
+import { Search, ChevronRight, UserPlus, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import type { PatientListItemDto } from "@/lib/dto/patient"
+
+type Pathology = "DT1" | "DT2" | "GD"
 
 interface PatientRow {
   id: number
   name: string
-  pathology: "DT1" | "DT2" | "GD"
-  age: number
+  pathology: Pathology
+  age: number | null
   lastGlucoseMgdl: number | null
   tirPercent: number | null
   lastSync: string
-  isActive: boolean
 }
-
-// DEMO DATA — synthetic, no real PII
-const DEMO_PATIENTS: PatientRow[] = [
-  { id: 1, name: "Patient DT1-001", pathology: "DT1", age: 34, lastGlucoseMgdl: 127, tirPercent: 75, lastSync: "2h", isActive: true },
-  { id: 2, name: "Patient DT2-002", pathology: "DT2", age: 58, lastGlucoseMgdl: 195, tirPercent: 52, lastSync: "30min", isActive: true },
-  { id: 3, name: "Patient DT1-003", pathology: "DT1", age: 27, lastGlucoseMgdl: 98, tirPercent: 82, lastSync: "15min", isActive: true },
-  { id: 4, name: "Patient DT1-004", pathology: "DT1", age: 41, lastGlucoseMgdl: 256, tirPercent: 38, lastSync: "1h", isActive: true },
-  { id: 5, name: "Patient GD-005", pathology: "GD", age: 32, lastGlucoseMgdl: 112, tirPercent: 71, lastSync: "45min", isActive: true },
-  { id: 6, name: "Patient DT2-006", pathology: "DT2", age: 63, lastGlucoseMgdl: 68, tirPercent: 55, lastSync: "3h", isActive: true },
-  { id: 7, name: "Patient DT1-007", pathology: "DT1", age: 19, lastGlucoseMgdl: 145, tirPercent: 67, lastSync: "20min", isActive: true },
-  { id: 8, name: "Patient DT2-008", pathology: "DT2", age: 55, lastGlucoseMgdl: null, tirPercent: null, lastSync: "7j", isActive: false },
-]
 
 const PATHOLOGY_FILTER_VALUES = ["all", "DT1", "DT2", "GD"] as const
 
@@ -64,19 +56,103 @@ function getTirQuality(tir: number | null): "excellent" | "good" | "moderate" | 
   return "poor"
 }
 
+function ageFromBirthday(iso?: string | null): number | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - d.getFullYear()
+  const m = now.getMonth() - d.getMonth()
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) age--
+  return age
+}
+
+function mapApiPatient(p: PatientListItemDto): PatientRow {
+  const first = p.user.firstname?.trim() ?? ""
+  const last = p.user.lastname?.trim() ?? ""
+  const name = `${first} ${last}`.trim() || `Patient #${p.id}`
+  return {
+    id: p.id,
+    name,
+    pathology: p.pathology,
+    age: ageFromBirthday(p.user.birthday),
+    lastGlucoseMgdl: null,
+    tirPercent: null,
+    lastSync: "—",
+  }
+}
+
 export default function PatientsPage() {
   const router = useRouter()
   const t = useTranslations("patients")
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
+  const [patients, setPatients] = useState<PatientRow[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    // Note: useState initializers already set loading=true / error=null on
+    // mount. Resetting them here would trigger cascading renders + violate
+    // react-hooks/set-state-in-effect. The single-shot effect (deps=[]) plus
+    // AbortController suffices for the strictMode dev double-fire scenario.
+    const ctrl = new AbortController()
+    fetch("/api/patients", { credentials: "same-origin", signal: ctrl.signal })
+      .then(async (res) => {
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}))
+          throw new Error((body as { error?: string })?.error ?? `HTTP ${res.status}`)
+        }
+        return res.json() as Promise<PatientListItemDto[]>
+      })
+      .then((data) => {
+        setPatients(data.map(mapApiPatient))
+      })
+      .catch((e: unknown) => {
+        // AbortController signal: silent — the component unmounted or the
+        // effect re-ran (React strictMode dev double-fire).
+        if (e instanceof DOMException && e.name === "AbortError") return
+        const msg = e instanceof Error ? e.message : "fetchFailed"
+        setError(msg || "fetchFailed")
+      })
+      .finally(() => {
+        // Only reset loading if we weren't aborted (avoids the flicker on
+        // strictMode dev double-mount).
+        if (!ctrl.signal.aborted) setLoading(false)
+      })
+    return () => ctrl.abort()
+  }, [])
 
   const filtered = useMemo(() => {
-    return DEMO_PATIENTS.filter((p) => {
+    return patients.filter((p) => {
       const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase())
       const matchesPathology = pathologyFilter === "all" || p.pathology === pathologyFilter
       return matchesSearch && matchesPathology
     })
-  }, [search, pathologyFilter])
+  }, [patients, search, pathologyFilter])
+
+  /**
+   * HSA H3 + review round 2 (M3/M4) — patient-safety banner. Triggered when a
+   * mass decryption failure is likely (key rotation gone wrong, dump restored
+   * without keys), so the practitioner doesn't continue prescribing on
+   * misidentified rows.
+   *
+   * Heuristic: at least 2 patients have the fallback placeholder name
+   * `Patient #${id}` AND null age, AND ≥80% of the visible list is in that
+   * state. The ratio handles small cabinets (2/2 = 100% triggers); the
+   * absolute minimum of 2 avoids alarming on a single legitimate edge case.
+   * Exact equality (not `startsWith`) protects against a future patient
+   * literally named "Patient #X" — match must come from `mapApiPatient`'s
+   * own fallback.
+   */
+  const decryptIncidentDetected = useMemo(() => {
+    if (patients.length === 0) return false
+    const nullishCount = patients.filter(
+      (p) => p.name === `Patient #${p.id}` && p.age === null,
+    ).length
+    if (nullishCount < 2) return false
+    return nullishCount / patients.length >= 0.8
+  }, [patients])
 
   const patientCountLabel =
     filtered.length === 1
@@ -94,20 +170,29 @@ export default function PatientsPage() {
     <>
       <DashboardHeader
         title={t("title")}
-        subtitle={patientCountLabel}
+        subtitle={loading ? t("loading") : patientCountLabel}
       />
 
       <div className="space-y-4 p-6">
+        {decryptIncidentDetected && (
+          <div
+            role="alert"
+            className="rounded-md border border-[var(--color-danger)] bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] px-4 py-3 text-sm text-[var(--color-danger)]"
+          >
+            {t("decryptIncident")}
+          </div>
+        )}
+
         {/* Search, Filters & New Patient */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 sm:max-w-sm">
             <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
             <Input
               placeholder={t("searchPlaceholder")}
+              aria-label={t("searchPlaceholder")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="ps-10"
-              aria-label={t("searchPlaceholder")}
             />
           </div>
           <div className="flex gap-1.5" role="group" aria-label={t("filterPathology")}>
@@ -152,7 +237,31 @@ export default function PatientsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map((patient) => (
+                {loading && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-12 text-center text-[var(--color-muted-foreground)]"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <Loader2 className="mx-auto h-5 w-5 animate-spin" aria-hidden="true" />
+                      <span className="sr-only">{t("loading")}</span>
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && error && (
+                  <TableRow>
+                    <TableCell
+                      colSpan={7}
+                      className="py-8 text-center text-[var(--color-danger)]"
+                      role="alert"
+                    >
+                      {t("loadError")}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!loading && !error && filtered.map((patient) => (
                   <TableRow
                     key={patient.id}
                     role="button"
@@ -174,17 +283,12 @@ export default function PatientsPage() {
                       >
                         {patient.name}
                       </Link>
-                      {!patient.isActive && (
-                        <Badge variant="secondary" className="ms-2 text-xs">
-                          {t("inactive")}
-                        </Badge>
-                      )}
                     </TableCell>
                     <TableCell>
                       <ClinicalBadge type="pathology" value={patient.pathology} />
                     </TableCell>
                     <TableCell className="text-[var(--color-muted-foreground)]">
-                      {t("years", { age: patient.age })}
+                      {patient.age !== null ? t("years", { age: patient.age }) : "—"}
                     </TableCell>
                     <TableCell>
                       {patient.lastGlucoseMgdl !== null ? (
@@ -219,7 +323,7 @@ export default function PatientsPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filtered.length === 0 && (
+                {!loading && !error && filtered.length === 0 && (
                   <TableRow>
                     <TableCell
                       colSpan={7}

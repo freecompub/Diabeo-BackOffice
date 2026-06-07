@@ -35,10 +35,16 @@
  * - Patient with optional fields absent (nirpp, ins not always set)
  */
 
-import { describe, it, expect, vi } from "vitest"
+import { beforeEach, describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
-import { patientService } from "@/lib/services/patient.service"
+import { patientService, __resetDecryptWarnThrottleForTests } from "@/lib/services/patient.service"
+
+// Round 2 L1 — Reset le throttle process-global de safeDecrypt entre tests :
+// les specs qui déclenchent des échecs (plaintext fixtures) sont sinon
+// affectées par leur ordre d'exécution (compteur partagé), pouvant émettre un
+// audit `ENCRYPTION_FAILURE` parasite au passage du seuil.
+beforeEach(() => __resetDecryptWarnThrottleForTests())
 
 // ---------------------------------------------------------------------------
 // Transaction mock helper
@@ -289,19 +295,14 @@ describe("patientService.listByDoctor", () => {
 
     const referents = [
       {
-        id: 1,
-        patientId: 10,
-        proId: 5,
         patient: {
           id: 10,
-          userId: 20,
           pathology: "DT1",
-          deletedAt: null,
           user: {
             id: 20,
             firstname: encryptedFirst,
             lastname: encryptedLast,
-            email: "test@test.com",
+            birthday: new Date("1990-05-15T00:00:00.000Z"),
           },
         },
       },
@@ -313,23 +314,41 @@ describe("patientService.listByDoctor", () => {
     const result = await patientService.listByDoctor(5, 1)
 
     expect(prismaMock.patientReferent.findMany).toHaveBeenCalledWith({
+      // prisma-specialist F5 — safety cap V1.5 (2000 patients/PS).
+      take: 2000,
       where: {
         pro: { userId: 5 },
-        patient: { deletedAt: null },
-      },
-      include: {
         patient: {
-          include: {
-            user: { select: { id: true, firstname: true, lastname: true, email: true } },
+          deletedAt: null,
+          // HSA H1 + round 2 C1 — Art. 21 opt-out (révocation explicite) tout
+          // en gardant l'opt-in implicite par défaut (UserPrivacySettings row
+          // absente = patient nouvellement créé, doit rester visible du PS
+          // créateur, sinon workflow cassé). Pattern PR #418 round 3.
+          user: {
+            OR: [
+              { privacySettings: null },
+              { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+            ],
+          },
+        },
+      },
+      select: {
+        patient: {
+          select: {
+            id: true,
+            pathology: true,
+            user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
           },
         },
       },
     })
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe(10)
-    // Verify PII is decrypted
+    expect(result[0].pathology).toBe("DT1")
+    // Verify PII is decrypted, birthday is date-only (HSA L4 anti-timezone).
     expect(result[0].user.firstname).toBe("Marie")
     expect(result[0].user.lastname).toBe("Martin")
+    expect(result[0].user.birthday).toBe("1990-05-15")
   })
 
   it("returns empty array when doctor has no patients", async () => {
@@ -354,7 +373,8 @@ describe("patientService.listByDoctor", () => {
         resource: "PATIENT",
         // US-2268 — listing global = resourceId "list", doctorUserId pivot via metadata.
         resourceId: "list",
-        metadata: { doctorUserId: 5, count: 0 },
+        // metadata.capped flag (round 3 prisma F5 — true si referents.length === LIST_BY_DOCTOR_MAX).
+        metadata: { doctorUserId: 5, count: 0, capped: false },
       }),
     })
   })

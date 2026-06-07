@@ -29,3 +29,16 @@ process.env.AUDIT_PEPPER =
 // US-2108 H10 round 2 — Bearer secret cron /api/cron/* (assertRequiredEnv).
 process.env.CRON_SECRET =
   "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
+
+// Fallback for tests that need Prisma to instantiate at import time. The
+// majority of integration tests mock `@/lib/db/client` and never touch the
+// real database — for those, only Prisma's import-time URL check matters.
+// Tests that hit a real Postgres (e.g. tests/integration/api-patients-
+// create-with-referent.test.ts) self-skip if Postgres is unreachable.
+//
+// Earlier this file threw in CI to avoid silent misconfig, but that broke
+// the `test-unit` CI job (no Postgres by design — all tests there mock
+// prisma). Reverted to fallback-with-warn.
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgresql://diabeo:password@localhost:5432/diabeo?schema=public"
+}
