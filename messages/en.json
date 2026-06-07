@@ -231,7 +231,10 @@
     "yearRangeError": "Year between {min} and {max}",
     "dt1Description": "Insulin-dependent, autoimmune",
     "dt2Description": "Insulin resistance, often adult-onset",
-    "gdDescription": "Pregnancy-related"
+    "gdDescription": "Pregnancy-related",
+    "loading": "Loading…",
+    "loadError": "Could not load the patient list.",
+    "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team."
   },
   "patient": {
     "overview": "Overview",

@@ -86,3 +86,4 @@ graphify-out/.cl_*.txt
 graphify-out/.graphify_uncached*.txt
 graphify-out/.needs_update
 graphify-out/.rebuild.lock
+graphify-out/.graph.tmp.json

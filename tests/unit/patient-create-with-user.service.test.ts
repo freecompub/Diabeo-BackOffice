@@ -39,10 +39,17 @@ interface Captured {
   medical?: any
   vToken?: any
   vTokenDeleted?: any
+  referent?: any
   audits: any[]
 }
 
-function mockCreateTx(): Captured {
+interface MockOpts {
+  /** When provided, healthcareMember.findUnique returns this member; the
+   *  PatientReferent path is exercised. */
+  member?: { id: number; serviceId: number | null }
+}
+
+function mockCreateTx(opts: MockOpts = {}): Captured {
   const cap: Captured = { audits: [] }
   prismaMock.$transaction.mockImplementation(async (fn: any) => {
     const tx = {
@@ -78,6 +85,18 @@ function mockCreateTx(): Captured {
         create: vi.fn(async (args: any) => {
           cap.audits.push(args.data)
           return {}
+        }),
+      },
+      // The creator's HealthcareMember lookup gates PatientReferent creation.
+      // Default: no member → referent creation path is skipped. Pass
+      // `opts.member` to exercise the create-referent branch.
+      healthcareMember: {
+        findUnique: vi.fn(async () => opts.member ?? null),
+      },
+      patientReferent: {
+        create: vi.fn(async (args: any) => {
+          cap.referent = args
+          return { id: 55, ...args.data }
         }),
       },
     }
@@ -187,6 +206,65 @@ describe("patientService.createWithNewUser", () => {
     )
 
     expect(cap.medical).toBeUndefined()
+  })
+
+  it("skips PatientReferent + REFERENT audit when actor has no HealthcareMember", async () => {
+    const cap = mockCreateTx() // no `member` option → findUnique returns null
+    await patientService.createWithNewUser(
+      { email: "no-member@example.com", firstName: "A", lastName: "B", pathology: "DT1" as any },
+      1,
+    )
+    expect(cap.referent).toBeUndefined()
+    expect(cap.audits.find((a) => a.resource === "REFERENT")).toBeUndefined()
+    // Sanity: the patient + user audits are still emitted.
+    expect(cap.audits.find((a) => a.resource === "USER")).toBeDefined()
+    // The patient audit carries the skip-reason flag (round 2 H1 — single row,
+    // not a duplicate dedicated audit for the skip).
+    const patientAudit = cap.audits.find((a) => a.resource === "PATIENT")
+    expect(patientAudit).toBeDefined()
+    expect(patientAudit.metadata).toMatchObject({
+      patientId: 42,
+      referentSkipped: true,
+      kind: "patient.created_without_referent",
+      reason: "creator_has_no_healthcare_member",
+    })
+  })
+
+  it("creates PatientReferent + REFERENT audit when actor IS a HealthcareMember", async () => {
+    const cap = mockCreateTx({ member: { id: 9, serviceId: 3 } })
+
+    await patientService.createWithNewUser(
+      { email: "with-member@example.com", firstName: "A", lastName: "B", pathology: "DT1" as any },
+      9,
+    )
+
+    // PatientReferent was created with the right links.
+    expect(cap.referent).toBeDefined()
+    expect(cap.referent.data).toMatchObject({ patientId: 42, proId: 9, serviceId: 3 })
+
+    // REFERENT audit was emitted with the native id (US-2268) + patientId pivot.
+    const refAudit = cap.audits.find((a) => a.resource === "REFERENT")
+    expect(refAudit).toMatchObject({
+      action: "CREATE",
+      userId: 9,
+      resourceId: "55", // returned by the mock
+    })
+    expect(refAudit.metadata).toMatchObject({
+      patientId: 42,
+      proMemberId: 9,
+      via: "patient_creation",
+    })
+  })
+
+  it("nulls serviceId on PatientReferent when actor's HealthcareMember has no service", async () => {
+    const cap = mockCreateTx({ member: { id: 9, serviceId: null } })
+
+    await patientService.createWithNewUser(
+      { email: "no-service@example.com", firstName: "A", lastName: "B", pathology: "DT1" as any },
+      9,
+    )
+
+    expect(cap.referent.data).toMatchObject({ patientId: 42, proId: 9, serviceId: null })
   })
 
   it("throws emailExists when the email is already in use (pre-check)", async () => {

@@ -29,3 +29,22 @@ process.env.AUDIT_PEPPER =
 // US-2108 H10 round 2 — Bearer secret cron /api/cron/* (assertRequiredEnv).
 process.env.CRON_SECRET =
   "cccc0011bbbb2233aaaa4455999988887777666655554444333322221111ffff"
+
+// Fallback for integration tests that hit the real database (Prisma instantiates
+// at import time, before the test's own fallback could run). Tests that mock
+// prisma (`vi.mock("@/lib/db/client", ...)`) are unaffected.
+//
+// In CI the var MUST be set explicitly — a fallback would let the pipeline
+// silently target a wrong (or absent) database. Locally we warn and default.
+if (!process.env.DATABASE_URL) {
+  if (process.env.CI === "true" || process.env.CI === "1") {
+    throw new Error(
+      "DATABASE_URL must be set explicitly in CI (no test-helper fallback).",
+    )
+  }
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[tests/setup] DATABASE_URL not set — using local fallback postgresql://localhost:5432/diabeo",
+  )
+  process.env.DATABASE_URL = "postgresql://diabeo:password@localhost:5432/diabeo?schema=public"
+}

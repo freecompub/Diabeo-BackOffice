@@ -1,25 +1,55 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError, checkRateLimit, recordFailedAttempt } from "@/lib/auth"
+import { requireAuth, requireRole, AuthError, checkRateLimit, recordFailedAttempt } from "@/lib/auth"
 import {
   patientService,
   PatientCreationError,
 } from "@/lib/services/patient.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { emailService } from "@/lib/services/email.service"
+import { getOwnPatientId } from "@/lib/access-control"
 import { assertJsonContentType, assertBodySize } from "@/lib/team-route-helpers"
 import { logger } from "@/lib/logger"
 
-/** GET /api/patients — list patients for the connected healthcare pro */
+/**
+ * ANSSI RGS §4.5 — headers de protection en transit pour réponses PHI :
+ *  - `no-store` interdit le cache (CDN, browser back-button sur poste cabinet).
+ *  - `no-referrer` évite la fuite de l'URL `/api/patients` dans le Referer.
+ *  - `nosniff` bloque le MIME-sniffing.
+ */
+const PHI_RESPONSE_HEADERS = {
+  "Cache-Control": "no-store, private",
+  "Referrer-Policy": "no-referrer",
+  "X-Content-Type-Options": "nosniff",
+} as const
+
+/**
+ * GET /api/patients — list patients accessible to the connected user.
+ *
+ * Returns `PatientListItemDto[]` for all roles (single common contract):
+ * - VIEWER (patient role): single-element array with their own patient summary.
+ * - NURSE / DOCTOR / ADMIN: portfolio via PatientReferent links (patients
+ *   explicitly assigned to a HealthcareMember linked to this user). Filters
+ *   out patients who have revoked `gdprConsent` or `shareWithProviders`
+ *   (RGPD Art. 7.3 effective revocation).
+ *
+ * ADMINs who are not also a HealthcareMember see an empty array here; broader
+ * patient access for them goes through admin-specific endpoints.
+ */
 export async function GET(req: NextRequest) {
   try {
-    const user = requireRole(req, "NURSE")
+    const user = requireAuth(req)
+    if (user.role === "VIEWER") {
+      const patientId = await getOwnPatientId(user.id)
+      if (patientId === null) return NextResponse.json([], { headers: PHI_RESPONSE_HEADERS })
+      const own = await patientService.getOwnSummary(patientId, user.id, extractRequestContext(req))
+      return NextResponse.json(own ? [own] : [], { headers: PHI_RESPONSE_HEADERS })
+    }
     const patients = await patientService.listByDoctor(user.id, user.id)
-    return NextResponse.json(patients)
+    return NextResponse.json(patients, { headers: PHI_RESPONSE_HEADERS })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[patients GET]", msg)
+    logger.error("api/patients", "GET failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
