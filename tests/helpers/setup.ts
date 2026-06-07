@@ -42,7 +42,6 @@ if (!process.env.DATABASE_URL) {
       "DATABASE_URL must be set explicitly in CI (no test-helper fallback).",
     )
   }
-  // eslint-disable-next-line no-console
   console.warn(
     "[tests/setup] DATABASE_URL not set — using local fallback postgresql://localhost:5432/diabeo",
   )

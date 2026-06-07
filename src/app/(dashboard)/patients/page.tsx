@@ -92,9 +92,11 @@ export default function PatientsPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    // Note: useState initializers already set loading=true / error=null on
+    // mount. Resetting them here would trigger cascading renders + violate
+    // react-hooks/set-state-in-effect. The single-shot effect (deps=[]) plus
+    // AbortController suffices for the strictMode dev double-fire scenario.
     const ctrl = new AbortController()
-    setLoading(true)
-    setError(null)
     fetch("/api/patients", { credentials: "same-origin", signal: ctrl.signal })
       .then(async (res) => {
         if (!res.ok) {
