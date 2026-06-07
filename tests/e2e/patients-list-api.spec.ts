@@ -56,21 +56,21 @@ test.describe("Patients list — /patients (real API connection)", () => {
     ).toBeVisible({ timeout: 10_000 })
   })
 
-  test("VIEWER (patient) → sees only own patient", async ({
+  test("VIEWER (patient) → redirected away from the pro patient list", async ({
     page,
     context,
     request,
   }) => {
+    // RBAC (US-3356) — la liste pro `/patients` est interdite aux patients :
+    // `(dashboard)/layout.tsx` redirige tout VIEWER vers `/patient/dashboard`.
+    // Le patient ne voit donc JAMAIS la liste des autres patients (cloisonnement
+    // PHI), il atterrit sur son propre tableau de bord (ses seules données).
     await loginAs(context, request, "patient_dt1")
     await page.goto("/patients")
 
-    const rows = page.locator("table tbody tr")
-    await expect(rows).toHaveCount(1, { timeout: 5_000 })
+    await expect(page).toHaveURL(/\/patient\/dashboard/, { timeout: 10_000 })
 
-    // Patient DT1 is Jean Durand per the seed.
-    await expect(page.getByText("Jean Durand")).toBeVisible()
-
-    // Should NOT see other seeded patients (RGPD scope).
+    // Garde-fou cloisonnement : aucun nom d'autre patient seedé n'est rendu.
     await expect(page.getByText("Claire Bernard")).not.toBeVisible()
     await expect(page.getByText("Lucas Petit")).not.toBeVisible()
     await expect(page.getByText("Amélie Rousseau")).not.toBeVisible()
