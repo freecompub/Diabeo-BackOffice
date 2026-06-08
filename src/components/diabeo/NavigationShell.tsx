@@ -14,7 +14,7 @@
  * No `asChild` prop — use `render` prop for composition.
  */
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
@@ -192,6 +192,10 @@ const patientNavItems: NavItem[] = [
   // Fix L1 round 1 review PR #438 — `CalendarClock` cohérent avec sidebar pro
   // (vs `CalendarDays` réservé /weekly côté pro).
   { href: "/patient/appointments", labelKey: "appointments", icon: CalendarClock },
+  // US-3356 extension — /settings is the single page shared across all roles.
+  // VIEWER sees it in the patient sidebar (patient-only sections: medicalData,
+  // administrative, dayMoments, privacy) ; PS roles access it via the pro sidebar.
+  { href: "/settings", labelKey: "settings", icon: Settings },
 ]
 
 function hasRoleAccess(userRole: UserRole, minRole?: UserRole): boolean {
@@ -370,6 +374,21 @@ function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
   )
 }
 
+const COLLAPSED_COOKIE = "sidebar_collapsed"
+
+function readCollapsedCookie(): boolean {
+  if (typeof document === "undefined") return false
+  const match = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${COLLAPSED_COOKIE}=`))
+  return match?.split("=")[1] === "1"
+}
+
+function writeCollapsedCookie(collapsed: boolean) {
+  if (typeof document === "undefined") return
+  document.cookie = `${COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`
+}
+
 // --- Main Component ---
 
 export function NavigationShell({
@@ -388,6 +407,12 @@ export function NavigationShell({
   const { logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Sync sidebar collapsed preference from cookie after mount to avoid
+  // SSR hydration mismatch (cookie is only readable in the browser).
+  useEffect(() => {
+    setCollapsed(readCollapsedCookie())
+  }, [])
 
   const sourceItems = variant === "patient" ? patientNavItems : navItems
   const filteredItems = sourceItems
@@ -447,7 +472,13 @@ export function NavigationShell({
           {/* Collapse toggle */}
           <div className="border-t border-border p-2">
             <button
-              onClick={() => setCollapsed((c) => !c)}
+              onClick={() =>
+                setCollapsed((c) => {
+                  const next = !c
+                  writeCollapsedCookie(next)
+                  return next
+                })
+              }
               className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-muted hover:text-gray-600 transition-colors"
               aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
             >
