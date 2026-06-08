@@ -14,7 +14,7 @@
  * No `asChild` prop — use `render` prop for composition.
  */
 
-import { useState, useCallback, useEffect } from "react"
+import { useState, useCallback, useSyncExternalStore } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
@@ -386,7 +386,24 @@ function readCollapsedCookie(): boolean {
 
 function writeCollapsedCookie(collapsed: boolean) {
   if (typeof document === "undefined") return
-  document.cookie = `${COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax`
+  document.cookie = `${COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax; Secure`
+}
+
+/**
+ * Cookie-backed sidebar state exposed via `useSyncExternalStore` — the React
+ * primitive for client-only external state. Avoids both the SSR hydration
+ * mismatch (server snapshot is always `false`, client reads the cookie) AND a
+ * `setState`-in-effect (the lint-flagged pattern). Toggling writes the cookie
+ * then notifies subscribers so the snapshot re-reads.
+ */
+const collapsedListeners = new Set<() => void>()
+function subscribeCollapsed(onChange: () => void): () => void {
+  collapsedListeners.add(onChange)
+  return () => collapsedListeners.delete(onChange)
+}
+function toggleCollapsedCookie(next: boolean) {
+  writeCollapsedCookie(next)
+  collapsedListeners.forEach((cb) => cb())
 }
 
 // --- Main Component ---
@@ -405,14 +422,13 @@ export function NavigationShell({
   const tNav = useTranslations("nav")
   const pathname = usePathname()
   const { logout } = useAuth()
-  const [collapsed, setCollapsed] = useState(false)
+  // Server snapshot is always `false`; the client reads the cookie post-hydration.
+  const collapsed = useSyncExternalStore(
+    subscribeCollapsed,
+    readCollapsedCookie,
+    () => false,
+  )
   const [mobileOpen, setMobileOpen] = useState(false)
-
-  // Sync sidebar collapsed preference from cookie after mount to avoid
-  // SSR hydration mismatch (cookie is only readable in the browser).
-  useEffect(() => {
-    setCollapsed(readCollapsedCookie())
-  }, [])
 
   const sourceItems = variant === "patient" ? patientNavItems : navItems
   const filteredItems = sourceItems
@@ -472,13 +488,7 @@ export function NavigationShell({
           {/* Collapse toggle */}
           <div className="border-t border-border p-2">
             <button
-              onClick={() =>
-                setCollapsed((c) => {
-                  const next = !c
-                  writeCollapsedCookie(next)
-                  return next
-                })
-              }
+              onClick={() => toggleCollapsedCookie(!collapsed)}
               className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-muted hover:text-gray-600 transition-colors"
               aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
             >

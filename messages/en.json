@@ -1049,5 +1049,11 @@
     "adminUsers": "Users",
     "adminTaxRules": "Tax rules",
     "logout": "Sign out"
+  },
+  "settings": {
+    "loadErrorTitle": "Failed to load settings",
+    "loadErrorBody": "An error occurred while displaying your settings. If the problem persists, contact technical support.",
+    "errorRef": "Ref:",
+    "actionRetry": "Retry"
   }
 }

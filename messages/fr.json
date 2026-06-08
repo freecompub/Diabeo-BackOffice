@@ -1049,5 +1049,11 @@
     "adminUsers": "Utilisateurs",
     "adminTaxRules": "Regles fiscales",
     "logout": "Se deconnecter"
+  },
+  "settings": {
+    "loadErrorTitle": "Erreur de chargement des paramètres",
+    "loadErrorBody": "Une erreur s'est produite lors de l'affichage de vos paramètres. Si le problème persiste, contactez le support technique.",
+    "errorRef": "Réf :",
+    "actionRetry": "Réessayer"
   }
 }
