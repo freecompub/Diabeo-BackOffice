@@ -77,6 +77,7 @@ export default function LoginPage() {
     }
 
     if (result.retryAfterSeconds) {
+      setError(null) // lockout banner has its own live countdown — don't show a redundant static message
       setLockoutSeconds(result.retryAfterSeconds)
     }
 

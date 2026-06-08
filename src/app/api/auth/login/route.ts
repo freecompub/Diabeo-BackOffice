@@ -56,6 +56,25 @@ export async function POST(req: NextRequest) {
       // Timing-safe: always run bcrypt compare even when user not found to prevent timing oracle
       await compare(password, DUMMY_HASH)
       await recordFailedAttempt(emailHash)
+      // A6 fix: after recording the failed attempt, check if this attempt just
+      // triggered the lockout. If so, return 429 immediately rather than a
+      // generic 401 so the user sees the lockout feedback on the triggering
+      // attempt (3rd failure), not the next one.
+      const postRateCheck = await checkRateLimit(emailHash)
+      if (postRateCheck.blocked) {
+        await auditService.log({
+          userId: null,
+          action: "UNAUTHORIZED",
+          resource: "SESSION",
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          metadata: { reason: "rateLimited", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+        })
+        return NextResponse.json(
+          { error: "tooManyAttempts", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+          { status: 429 },
+        )
+      }
       await auditService.log({
         // userId null = événement anonyme (email inconnu, pas de FK valide).
         userId: null,
@@ -73,6 +92,22 @@ export async function POST(req: NextRequest) {
 
     if (!valid) {
       await recordFailedAttempt(emailHash)
+      // A6 fix: check if this failed attempt just triggered the lockout.
+      const postRateCheck = await checkRateLimit(emailHash)
+      if (postRateCheck.blocked) {
+        await auditService.log({
+          userId: user.id,
+          action: "UNAUTHORIZED",
+          resource: "SESSION",
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          metadata: { reason: "rateLimited", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+        })
+        return NextResponse.json(
+          { error: "tooManyAttempts", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+          { status: 429 },
+        )
+      }
       await auditService.log({
         userId: user.id,
         action: "UNAUTHORIZED",

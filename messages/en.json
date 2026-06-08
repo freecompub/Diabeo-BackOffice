@@ -196,7 +196,7 @@
     "patientCount": "{count} patient",
     "patientsCount": "{count} patients",
     "fileTooLarge": "File exceeds the maximum allowed size (50 MB)",
-    "newPatient": "New patient",
+    "newPatient": "+ Add patient",
     "step": "Step",
     "of": "of",
     "identity": "Identity",
