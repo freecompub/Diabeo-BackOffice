@@ -200,11 +200,12 @@ définition de Done, ressources.
 | [US-2110](12-facturation/US-2110-tva-multi-pays.md) | TVA multi-pays | V1 | FR+DZ | Partiel |
 | [US-2111](12-facturation/US-2111-comptabilite-export.md) | Comptabilité export | V2 | FR | Non |
 
-### 13. Multi-pays & i18n (5 US)
+### 13. Multi-pays & i18n (6 US)
 
 | ID | Titre | Priorité | Pays | Externe |
 |----|-------|---------:|------|---------|
 | [US-2112](13-multi-pays-i18n/US-2112-internationalisation-fr-ar.md) | Internationalisation FR/AR | MVP | FR+DZ | Non |
+| [US-2112b](13-multi-pays-i18n/US-2112b-preference-langue-utilisateur.md) | Préférence de langue utilisateur (switcher hors-auth + persistance + confirmation login) | V1 | Universel | Non |
 | [US-2113](13-multi-pays-i18n/US-2113-devises-eur-dzd.md) | Devises EUR / DZD | V1 | FR+DZ | Non |
 | [US-2114](13-multi-pays-i18n/US-2114-regles-fiscales-par-pays.md) | Règles fiscales par pays | V1 | FR+DZ | Non |
 | [US-2115](13-multi-pays-i18n/US-2115-formats-date-nombre-localises.md) | Formats date/nombre localisés | MVP | FR+DZ | Non |
