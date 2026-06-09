@@ -37,6 +37,17 @@ export async function POST(req: NextRequest) {
     // Rate limit check
     const rateCheck = await checkRateLimit(emailHash)
     if (rateCheck.blocked) {
+      // Log the blocked attempt so SOC can track repeated probes during the
+      // lockout window (the trigger itself is logged below in the A6 branches).
+      await auditService.log({
+        userId: null,
+        action: "RATE_LIMITED",
+        resource: "SESSION",
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: { reason: "alreadyLocked", retryAfterSeconds: rateCheck.retryAfterSeconds },
+      })
       return NextResponse.json(
         { error: "tooManyAttempts", retryAfterSeconds: rateCheck.retryAfterSeconds },
         { status: 429 },
@@ -64,10 +75,11 @@ export async function POST(req: NextRequest) {
       if (postRateCheck.blocked) {
         await auditService.log({
           userId: null,
-          action: "UNAUTHORIZED",
+          action: "RATE_LIMITED",
           resource: "SESSION",
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
           metadata: { reason: "rateLimited", retryAfterSeconds: postRateCheck.retryAfterSeconds },
         })
         return NextResponse.json(
@@ -82,6 +94,7 @@ export async function POST(req: NextRequest) {
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
         metadata: { reason: "invalidCredentials" },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
@@ -95,13 +108,12 @@ export async function POST(req: NextRequest) {
       // A6 fix: check if this failed attempt just triggered the lockout.
       const postRateCheck = await checkRateLimit(emailHash)
       if (postRateCheck.blocked) {
-        await auditService.log({
+        await auditService.rateLimited({
           userId: user.id,
-          action: "UNAUTHORIZED",
           resource: "SESSION",
           ipAddress: ctx.ipAddress,
           userAgent: ctx.userAgent,
-          metadata: { reason: "rateLimited", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+          requestId: ctx.requestId,
         })
         return NextResponse.json(
           { error: "tooManyAttempts", retryAfterSeconds: postRateCheck.retryAfterSeconds },
@@ -114,6 +126,7 @@ export async function POST(req: NextRequest) {
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
         metadata: { reason: "invalidCredentials" },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })

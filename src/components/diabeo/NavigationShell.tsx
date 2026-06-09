@@ -386,7 +386,8 @@ function readCollapsedCookie(): boolean {
 
 function writeCollapsedCookie(collapsed: boolean) {
   if (typeof document === "undefined") return
-  document.cookie = `${COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax; Secure`
+  document.cookie = `${COLLAPSED_COOKIE}=${collapsed ? "1" : "0"}; path=/; max-age=31536000; SameSite=Lax` +
+    (location.protocol === "https:" ? "; Secure" : "")
 }
 
 /**

@@ -37,7 +37,7 @@ vi.mock("next/headers", () => ({
 
 // Stub the heavy client form so importing the page doesn't pull the 1.4k-line
 // component. It returns a sentinel element whose props we can assert on.
-vi.mock("@/app/settings/SettingsClient", () => ({
+vi.mock("../../src/app/settings/SettingsClient", () => ({
   SettingsClient: (props: { role: string }) => ({ __stub: "SettingsClient", props }),
 }))
 
