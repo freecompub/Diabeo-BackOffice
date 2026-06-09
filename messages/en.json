@@ -291,7 +291,8 @@
     "gdDescription": "Pregnancy-related",
     "loading": "Loading…",
     "loadError": "Could not load the patient list.",
-    "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team."
+    "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team.",
+    "openConsultation": "Open {name}'s consultation"
   },
   "patient": {
     "overview": "Overview",
@@ -1154,7 +1155,9 @@
       "age": "Age",
       "referent": "Referent",
       "objectives": "Glycemic targets",
-      "targetRange": "Target"
+      "objectivesStatus": "Targets",
+      "configured": "Configured",
+      "notSet": "Not set"
     },
     "glycemia": {
       "title": "Glucose profile (24 h)"
@@ -1164,6 +1167,7 @@
       "icr": "Carb ratio (ICR)",
       "basal": "Basal rate",
       "none": "No settings"
-    }
+    },
+    "openedAnnounce": "{name}'s consultation opened"
   }
 }

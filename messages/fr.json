@@ -291,7 +291,8 @@
     "gdDescription": "Lie a la grossesse",
     "loading": "Chargement…",
     "loadError": "Impossible de charger la liste des patients.",
-    "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique."
+    "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique.",
+    "openConsultation": "Ouvrir la consultation de {name}"
   },
   "patient": {
     "overview": "Vue d'ensemble",
@@ -1154,7 +1155,9 @@
       "age": "Âge",
       "referent": "Référent",
       "objectives": "Objectifs glycémiques",
-      "targetRange": "Cible"
+      "objectivesStatus": "Objectifs",
+      "configured": "Configurés",
+      "notSet": "Non définis"
     },
     "glycemia": {
       "title": "Profil glycémique (24 h)"
@@ -1164,6 +1167,7 @@
       "icr": "Ratio glucides (ICR)",
       "basal": "Débit basal",
       "none": "Aucun paramètre"
-    }
+    },
+    "openedAnnounce": "Consultation de {name} ouverte"
   }
 }

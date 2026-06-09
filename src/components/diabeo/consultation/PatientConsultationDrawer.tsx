@@ -9,7 +9,7 @@
  * naturellement le focus clavier dans le drawer (pas de trap manuel à maintenir).
  */
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { useTranslations } from "next-intl"
 import { Maximize2, Minimize2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -42,11 +42,25 @@ export function PatientConsultationDrawer({
   const t = useTranslations("consultation")
   const [active, setActive] = useState<TabKey>("overview")
   const headingRef = useRef<HTMLHeadingElement>(null)
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   // Déplace le focus dans le drawer à l'ouverture (WCAG — gestion du focus).
   useEffect(() => {
     headingRef.current?.focus()
   }, [])
+
+  // Navigation clavier des onglets (pattern WAI-ARIA Tabs) : ←/→/Home/End.
+  function onTabKeyDown(e: ReactKeyboardEvent, index: number) {
+    let next = index
+    if (e.key === "ArrowRight") next = (index + 1) % TABS.length
+    else if (e.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length
+    else if (e.key === "Home") next = 0
+    else if (e.key === "End") next = TABS.length - 1
+    else return
+    e.preventDefault()
+    setActive(TABS[next])
+    tabRefs.current[next]?.focus()
+  }
 
   const ageLabel = patient.age !== null ? `${patient.age} ${t("yearsShort")}` : null
   const subtitle = [`${t(`pathology.${patient.pathology}`)}`, ageLabel].filter(Boolean).join(" · ")
@@ -114,15 +128,22 @@ export function PatientConsultationDrawer({
           </button>
         </header>
 
-        {/* Onglets */}
+        {/* Onglets — roving tabindex + flèches (pattern WAI-ARIA Tabs) */}
         <div role="tablist" aria-label={t("tabsLabel")} className="flex gap-1 overflow-x-auto border-b border-border px-3 pt-2">
-          {TABS.map((key) => (
+          {TABS.map((key, i) => (
             <button
               key={key}
+              id={`ctab-${key}`}
               role="tab"
               type="button"
               aria-selected={active === key}
+              aria-controls={`cpanel-${key}`}
+              tabIndex={active === key ? 0 : -1}
+              ref={(el) => {
+                tabRefs.current[i] = el
+              }}
               onClick={() => setActive(key)}
+              onKeyDown={(e) => onTabKeyDown(e, i)}
               className={cn(
                 "whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
                 active === key
@@ -135,14 +156,25 @@ export function PatientConsultationDrawer({
           ))}
         </div>
 
-        {/* Contenu de l'onglet */}
-        <div className="flex-1 overflow-y-auto p-4">
+        {/* Contenu de l'onglet actif */}
+        <div
+          role="tabpanel"
+          id={`cpanel-${active}`}
+          aria-labelledby={`ctab-${active}`}
+          tabIndex={0}
+          className="flex-1 overflow-y-auto p-4"
+        >
           {active === "overview" && <OverviewTab cTok={cTok} />}
           {active === "glycemicProfile" && <GlycemicProfileTab cTok={cTok} />}
           {active === "glycemia" && <GlycemiaTab cTok={cTok} />}
           {active === "treatment" && <TreatmentTab cTok={cTok} />}
           {active === "documents" && <DocumentsTab cTok={cTok} />}
         </div>
+
+        {/* Annonce d'ouverture pour lecteurs d'écran (WCAG 4.1.3). */}
+        <p className="sr-only" role="status" aria-live="polite">
+          {t("openedAnnounce", { name: patient.name })}
+        </p>
       </aside>
     </>
   )

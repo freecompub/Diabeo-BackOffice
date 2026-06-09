@@ -7,9 +7,9 @@
  * result down to this DTO — adding a field here is the single point of change.
  *
  * IMPORTANT: keep this surface minimal. The list endpoint shows enough to
- * identify a patient and route to their detail page; rich PHI (medical data,
- * objectives, devices…) belongs to the per-patient endpoints, not the list.
- * RGPD Art. 5 data minimisation.
+ * identify a patient and open their ephemeral consultation overlay (US-2018b,
+ * via `publicRef`); rich PHI (medical data, objectives, devices…) belongs to
+ * the per-patient endpoints, not the list. RGPD Art. 5 data minimisation.
  */
 
 import type { Pathology } from "@prisma/client"

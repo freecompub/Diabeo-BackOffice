@@ -10,7 +10,8 @@ import { CgmChart } from "@/components/diabeo/CgmChart"
 import { useConsultationData } from "../useConsultationData"
 import { TabError, TabLoading } from "./TabState"
 
-type CgmEntry = { valueGl: number; timestamp: string }
+// `valueGl` est un Decimal Prisma → sérialisé en string par NextResponse.json.
+type CgmEntry = { valueGl: number | string; timestamp: string }
 
 // Fenêtre 24h. Calculée une seule fois au montage du module pour ne pas changer
 // l'URL (donc la clé de fetch) à chaque rendu.
@@ -30,7 +31,7 @@ export function GlycemiaTab({ cTok }: { cTok: string }) {
           hour: "2-digit",
           minute: "2-digit",
         }),
-        glucose: Math.round(e.valueGl * 18),
+        glucose: Math.round(Number(e.valueGl) * 18),
       })),
     [data],
   )

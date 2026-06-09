@@ -11,10 +11,14 @@ import { TabError, TabLoading } from "./TabState"
 interface InsulinSettings {
   sensitivityFactors: Array<{ startHour: number; sensitivityFactorMgdl: number | string | null }>
   carbRatios: Array<{ startHour: number; gramsPerUnit: number | string | null }>
-  basalConfiguration: { pumpSlots: Array<{ startTime: string; units: number | string | null }> } | null
+  // PumpBasalSlot : `rate` (U/h, Decimal→string) et `startTime` (@db.Time →
+  // DateTime sérialisé en ISO "1970-01-01THH:MM:..Z").
+  basalConfiguration: { pumpSlots: Array<{ startTime: string; rate: number | string | null }> } | null
 }
 
 const hh = (h: number) => `${String(h).padStart(2, "0")}:00`
+/** "1970-01-01T08:30:00.000Z" (Prisma @db.Time) → "08:30". */
+const hhmm = (iso: string) => (iso.length >= 16 ? iso.slice(11, 16) : iso)
 
 export function TreatmentTab({ cTok }: { cTok: string }) {
   const t = useTranslations("consultation")
@@ -48,7 +52,7 @@ export function TreatmentTab({ cTok }: { cTok: string }) {
       <DiabeoCard variant="outlined" padding="md">
         <h3 className="mb-2 text-sm font-semibold">{t("treatment.basal")}</h3>
         <SlotList
-          rows={basal.map((b) => ({ from: b.startTime, value: `${b.units ?? "—"} U/h` }))}
+          rows={basal.map((b) => ({ from: hhmm(b.startTime), value: `${b.rate ?? "—"} U/h` }))}
           empty={t("treatment.none")}
         />
       </DiabeoCard>

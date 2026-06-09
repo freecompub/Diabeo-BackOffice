@@ -42,9 +42,13 @@ export async function resolvePatientIdFromQuery(
   | { patientId: number; error?: undefined }
   | { error: "invalidPatientId" | "patientNotFound"; patientId?: undefined }
 > {
-  // 1. Ephemeral consultation token (pro workspace, no id in URL).
+  // 1. Ephemeral consultation token (pro workspace, no id in URL) — READ-ONLY.
+  //    H1 (review) — the token is a read credential for the consultation
+  //    overlay ; it must NOT widen its scope to mutations. Honor it only on GET.
+  //    Writes (POST/PUT/PATCH/DELETE) fall through to the explicit ?patientId
+  //    path, which is gated by canAccessPatient on every mutation route.
   const cTok = req.headers.get(CONSULTATION_TOKEN_HEADER)
-  if (cTok) {
+  if (cTok && req.method === "GET") {
     const patientId = await resolveConsultation(cTok, userId)
     if (!patientId) return { error: "patientNotFound" }
     return { patientId }

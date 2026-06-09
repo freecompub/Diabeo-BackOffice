@@ -9,7 +9,8 @@
  * - NURSE / DOCTOR / ADMIN: sees patients linked via PatientReferent
  *   (their portfolio). ADMINs without a HealthcareMember see an empty list.
  *
- * UI features: search by name, filter by pathology (DT1/DT2/GD), link to detail.
+ * UI features: search by name, filter by pathology (DT1/DT2/GD). A row click
+ * opens the patient's ephemeral consultation overlay (US-2018b) — no id in URL.
  * Clinical metrics (last glucose, TIR, sync) are placeholders — they require
  * CGM rollup queries that this page does not yet issue.
  */
@@ -287,7 +288,7 @@ export default function PatientsPage() {
                       }
                     }}
                     className="cursor-pointer hover:bg-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
-                    aria-label={t("viewRecord", { name: patient.name })}
+                    aria-label={t("openConsultation", { name: patient.name })}
                   >
                     <TableCell>
                       <span className="font-medium text-[var(--color-foreground)]">

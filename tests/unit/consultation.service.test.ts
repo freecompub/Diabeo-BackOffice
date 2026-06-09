@@ -99,4 +99,10 @@ describe("closeConsultation", () => {
     await closeConsultation(cTok, 7)
     expect(await resolveConsultation(cTok, 7)).toBeNull()
   })
+
+  it("C1 — un autre utilisateur ne peut PAS invalider la consultation (no-op)", async () => {
+    const { cTok } = (await openConsultation(7, "DOCTOR", REF)) as { cTok: string }
+    await closeConsultation(cTok, 99) // attaquant
+    expect(await resolveConsultation(cTok, 7)).toBe(42) // toujours valide pour le propriétaire
+  })
 })

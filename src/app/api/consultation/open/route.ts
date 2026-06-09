@@ -13,6 +13,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { AuthError, requireAuth } from "@/lib/auth"
+import { requireGdprConsent } from "@/lib/gdpr"
 import { openConsultation } from "@/lib/services/consultation.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
@@ -25,6 +26,11 @@ export async function POST(req: NextRequest) {
     if (user.role === "VIEWER") {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
+
+    // Aligne l'ouverture sur les routes de données : ne pas auditer une
+    // ouverture qui ne donnerait lieu à aucune lecture autorisée (review LOW).
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
     const parsed = bodySchema.safeParse(await req.json().catch(() => null))
     if (!parsed.success) {

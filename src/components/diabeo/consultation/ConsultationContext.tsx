@@ -70,6 +70,9 @@ export function ConsultationProvider({ children }: { children: React.ReactNode }
   // (handler stable, lit la valeur courante sans recréer l'effet).
   const cTokRef = useRef<string | null>(null)
   cTokRef.current = cTok
+  // Élément ayant déclenché l'ouverture (ligne patient) — pour rendre le focus
+  // à la fermeture (WCAG 2.4.3, gestion du focus).
+  const triggerRef = useRef<HTMLElement | null>(null)
 
   const close = useCallback(() => {
     const tok = cTokRef.current
@@ -88,10 +91,21 @@ export function ConsultationProvider({ children }: { children: React.ReactNode }
     setCTok(null)
     setExpanded(false)
     setError(null)
+    // Rend le focus à la ligne patient déclencheuse une fois le drawer démonté.
+    const trigger = triggerRef.current
+    if (trigger) {
+      setTimeout(() => trigger.focus(), 0)
+      triggerRef.current = null
+    }
   }, [])
 
   const open = useCallback(
     async (next: ConsultationPatient) => {
+      // Capture l'élément focalisé (la ligne patient) avant l'async, pour y
+      // rendre le focus à la fermeture.
+      if (typeof document !== "undefined") {
+        triggerRef.current = document.activeElement as HTMLElement | null
+      }
       setError(null)
       setOpening(true)
       // Ferme proprement une éventuelle consultation précédente (single-active

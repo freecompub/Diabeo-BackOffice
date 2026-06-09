@@ -1,9 +1,13 @@
 "use client"
 
 /**
- * US-2018b — Onglet « Profil glycémique » : reprend les vues analytics (synthèse
- * 6 métriques, Time-in-Range, hypoglycémies) câblées sur le patient de la
- * consultation via le jeton éphémère.
+ * US-2018b — Onglet « Profil glycémique » : synthèse (moyenne, GMI, CV),
+ * Time-in-Range et hypoglycémies, câblés sur le patient de la consultation via
+ * le jeton éphémère. Les formes correspondent AUX VRAIS retours des services
+ * analytics (review #523) : `glycemic-profile` → `{ captureRate, metrics, tir }`,
+ * `time-in-range` → `{ tir }`, `hypoglycemia` → `{ episodeCount, episodes }`.
+ * Le TIR serveur est `{severeHypo,hypo,inRange,elevated,hyper}` → mappé sur le
+ * contrat 5 zones `{veryLow,low,inRange,high,veryHigh}` des composants charts.
  */
 
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
@@ -15,61 +19,58 @@ import type { TimeInRangeData, HypoglycemiaData } from "@/components/diabeo/char
 import { useConsultationData } from "../useConsultationData"
 import { TabError, TabLoading } from "./TabState"
 
-interface GlycemicProfileResponse {
-  avg: number
-  hba1c: number
-  cv: number
-  sd: number
-  tir: { veryLow: number; low: number; inRange: number; high: number; veryHigh: number }
+/** TIR serveur (statistics.ts `TirResult`). Pourcentages. */
+interface TirResult {
+  severeHypo: number
+  hypo: number
+  inRange: number
+  elevated: number
+  hyper: number
+}
+interface ProfileResponse {
   captureRate: number
+  metrics: { averageGlucoseMgdl: number; gmi: number; coefficientOfVariation: number }
+  tir: TirResult
+}
+interface TimeInRangeResponse {
+  tir: TirResult
 }
 interface HypoResponse {
-  totalCount: number
-  lastEventTime?: string
-  dailyCounts: { date: string; count: number }[]
+  episodeCount: number
+}
+
+/** Mappe le TIR serveur (5 zones métier) sur le contrat des composants charts. */
+function toFiveZones(t: TirResult): TimeInRangeData {
+  return { veryLow: t.severeHypo, low: t.hypo, inRange: t.inRange, high: t.elevated, veryHigh: t.hyper }
 }
 
 export function GlycemicProfileTab({ cTok }: { cTok: string }) {
-  const profile = useConsultationData<GlycemicProfileResponse>(
+  const profile = useConsultationData<ProfileResponse>(
     "/api/analytics/glycemic-profile?period=14d",
     cTok,
   )
-  const tir = useConsultationData<TimeInRangeData>("/api/analytics/time-in-range?period=7d", cTok)
+  const tir = useConsultationData<TimeInRangeResponse>("/api/analytics/time-in-range?period=7d", cTok)
   const hypo = useConsultationData<HypoResponse>("/api/analytics/hypoglycemia?period=30d", cTok)
 
   if (profile.loading) return <TabLoading />
   if (profile.error || !profile.data) return <TabError />
 
   const p = profile.data
+  const tirZones = toFiveZones(tir.data?.tir ?? p.tir)
+
   const widgetData: WidgetData = {
-    averageGlucose: { value: Math.round(p.avg), unit: "mg/dL" },
-    hba1c: { value: Number(p.hba1c.toFixed(1)) },
-    hypoglycemia: {
-      count: hypo.data?.totalCount ?? 0,
-      lastEvent: hypo.data?.lastEventTime ? new Date(hypo.data.lastEventTime) : undefined,
-    },
-    timeInRange: {
-      inRange: tir.data?.inRange ?? p.tir.inRange,
-      low: tir.data?.low ?? p.tir.low,
-      veryLow: tir.data?.veryLow ?? p.tir.veryLow,
-      high: tir.data?.high ?? p.tir.high,
-      veryHigh: tir.data?.veryHigh ?? p.tir.veryHigh,
-    },
-    cv: { value: Number(p.cv.toFixed(1)) },
-    standardDeviation: { value: Math.round(p.sd), unit: "mg/dL" },
+    averageGlucose: { value: Math.round(p.metrics.averageGlucoseMgdl), unit: "mg/dL" },
+    // GMI (Glucose Management Indicator) = équivalent moderne de l'HbA1c estimée.
+    hba1c: { value: Number(p.metrics.gmi.toFixed(1)) },
+    hypoglycemia: { count: hypo.data?.episodeCount ?? 0 },
+    timeInRange: tirZones,
+    cv: { value: Number(p.metrics.coefficientOfVariation.toFixed(1)) },
   }
 
-  const tirChartData: TimeInRangeData = tir.data ?? {
-    veryLow: 0,
-    low: 0,
-    inRange: 0,
-    high: 0,
-    veryHigh: 0,
-  }
   const hypoChartData: HypoglycemiaData = {
-    totalCount: hypo.data?.totalCount ?? 0,
-    lastEventTime: hypo.data?.lastEventTime ? new Date(hypo.data.lastEventTime) : undefined,
-    dailyCounts: hypo.data?.dailyCounts ?? [],
+    totalCount: hypo.data?.episodeCount ?? 0,
+    lastEventTime: undefined,
+    dailyCounts: [],
   }
 
   return (
@@ -79,7 +80,7 @@ export function GlycemicProfileTab({ cTok }: { cTok: string }) {
       </DiabeoCard>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <DiabeoCard variant="elevated" padding="md">
-          <TimeInRangeChart data={tirChartData} />
+          <TimeInRangeChart data={tirZones} />
         </DiabeoCard>
         <DiabeoCard variant="elevated" padding="md">
           <HypoglycemiaCounter data={hypoChartData} />
