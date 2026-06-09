@@ -96,14 +96,20 @@ Feature: Connexion au backoffice
 - ✅ **Lien « Créer un compte » retiré** (anomalie A1, corrigée) : il pointait
   vers `/register` (page inexistante → 404). L'inscription patient se fait par le
   personnel via `/patients/new` ; il n'y a pas d'auto-inscription publique.
+- **Login réussi → réinitialise le compteur d'échecs** (`clearAttempts` au succès) :
+  comportement **intentionnel** (standard + sûr : un mot de passe correct prouve
+  la légitimité, on lève le lockout). Confirmé au run QA 2026-06-09.
+- ✅ **Sélecteur de langue présent sur `/login` et `/reset-password`** (US-2112b
+  AC-1, livré PR #513) — combobox FR/EN/AR, cookie client, sans appel authentifié.
 
-### 🔵 Planifié — Langue sur les écrans non authentifiés + confirmation au login ([US-2112b](../UserStory/pro-user-stories/13-multi-pays-i18n/US-2112b-preference-langue-utilisateur.md), V1)
+### 🟢 Réel — Langue sur les écrans non authentifiés + confirmation au login ([US-2112b](../UserStory/pro-user-stories/13-multi-pays-i18n/US-2112b-preference-langue-utilisateur.md), livré PR #513)
 
-> **Non encore implémenté.** Aujourd'hui aucun sélecteur de langue n'est exposé
-> sur `/login` (ni les autres écrans `(auth)`). AC-1 + AC-3 ci-dessous.
+> **Livré et confirmé** au run QA 2026-06-09 (AR/RTL) : switcher visible sur
+> `/login` + `/reset-password` ; alerte de réconciliation affichée après login
+> quand le cookie diffère de `User.language`.
 
 ```gherkin
-Feature: Langue à la connexion (US-2112b — planifié V1)
+Feature: Langue à la connexion (US-2112b)
 
   # AC-1 — switcher sur écran non authentifié (cookie uniquement, pas d'API auth)
   Scenario: un visiteur change la langue depuis l'écran de connexion
@@ -128,7 +134,7 @@ Feature: Langue à la connexion (US-2112b — planifié V1)
     Then aucune alerte de changement de langue n'est affichée
 ```
 
-**Cas limites (cible)** : alerte non bloquante (ignorable) ; « Continuer en {langue session} » met à jour `User.language` (cf. `05-settings.md` AC-2) ; pas d'alerte si `User.language` NULL.
+**Cas limites** : alerte non bloquante (ignorable) ; « Continuer en {langue session} » met à jour `User.language` (cf. `05-settings.md` AC-2) ; pas d'alerte si `User.language` NULL.
 
 ---
 

@@ -28,7 +28,8 @@
     "hourShort": "{count}h",
     "dayShort": "{count}d",
     "noEvent": "no event",
-    "eventCount": "{count} event(s)"
+    "eventCount": "{count} event(s)",
+    "alertClose": "Dismiss alert"
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -154,7 +155,8 @@
     "resetPasswordButton": "Send reset link",
     "resetPasswordSending": "Sending...",
     "resetPasswordSuccess": "If an account exists with this address, a reset email has been sent.",
-    "resetPasswordBack": "Back to login"
+    "resetPasswordBack": "Back to login",
+    "lockoutCountdown": "{minutes, plural, =0 {{seconds} s} other {# min {seconds} s}}"
   },
   "dashboard": {
     "title": "Dashboard",
