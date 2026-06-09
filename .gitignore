@@ -62,7 +62,10 @@ Thumbs.db
 
 # Local Claude Code artifacts
 .claude/settings.json
-.claude/skills/
+# Ignore le contenu de .claude/skills/ (symlinks locaux prisma-*, etc.)
+.claude/skills/*
+# … sauf le skill QA, versionné et partagé avec l'équipe
+!.claude/skills/qa-domain-runner/
 *.pyc
 __pycache__/
 figma-export-script.js
