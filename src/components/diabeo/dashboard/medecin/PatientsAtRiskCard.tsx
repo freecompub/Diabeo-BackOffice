@@ -6,6 +6,7 @@
 "use client"
 
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
@@ -15,13 +16,15 @@ import type { PatientAtRiskItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: PatientAtRiskItem[] }
 
-const REASON_LABELS: Record<string, { label: string; variant: "destructive" | "outline" | "secondary" }> = {
-  recentHypos: { label: "Hypos récentes", variant: "destructive" },
-  silentMonitoring: { label: "Silence saisie", variant: "outline" },
-  tirDrop: { label: "TIR en baisse", variant: "secondary" },
+// Visual variant per risk reason (non-textual — labels are localized via i18n).
+const REASON_VARIANT: Record<string, "destructive" | "outline" | "secondary"> = {
+  recentHypos: "destructive",
+  silentMonitoring: "outline",
+  tirDrop: "secondary",
 }
 
 export function PatientsAtRiskCard() {
+  const t = useTranslations("dashboard.medecin")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/patients-at-risk",
     5 * 60_000,
@@ -34,32 +37,38 @@ export function PatientsAtRiskCard() {
     <DiabeoCard role="region" aria-labelledby="card-risk-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="card-risk-title" className="text-base font-semibold">
-          Patients à suivre
+          {t("risk.title")}
         </h2>
-        <span className="text-xs text-muted-foreground">Top {items.length || 0}</span>
+        <span className="text-xs text-muted-foreground">
+          {t("risk.top", { count: items.length || 0 })}
+        </span>
       </header>
-      {isStale && <StaleBanner />}
+      {isStale && <StaleBanner message={t("stale")} />}
 
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">Chargement…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
         {hasError && (
-          <p className="text-sm text-glycemia-critical">
-            Impossible de charger les patients à risque.
-          </p>
+          <p className="text-sm text-glycemia-critical">{t("risk.error")}</p>
         )}
         {!loading && !hasError && items.length === 0 && (
           <DiabeoEmptyState
             variant="noData"
-            title="Tous stables"
-            message="Aucun patient ne déclenche d'indicateur de suivi."
+            title={t("risk.emptyTitle")}
+            message={t("risk.emptyMessage")}
           />
         )}
         {items.length > 0 && (
           <ul className="space-y-2">
             {items.map((p) => {
-              const meta = REASON_LABELS[p.reason] ?? { label: p.reason, variant: "outline" as const }
+              const variant = REASON_VARIANT[p.reason] ?? "outline"
+              const reasonLabel = t.has(`risk.reason.${p.reason}`)
+                ? t(`risk.reason.${p.reason}`)
+                : p.reason
+              const metricLabel = t.has(`risk.metric.${p.reason}`)
+                ? t(`risk.metric.${p.reason}`, { count: p.metricValue })
+                : p.metricLabel
               return (
                 <li
                   key={p.patientId}
@@ -72,11 +81,11 @@ export function PatientsAtRiskCard() {
                     href={`/patients/${p.patientId}`}
                     className="flex-1 truncate text-sm font-medium hover:underline"
                   >
-                    {p.patientFirstName || "Patient"}
+                    {p.patientFirstName || t("patientFallback")}
                     {p.pathology ? ` · ${p.pathology}` : ""}
                   </Link>
-                  <Badge variant={meta.variant}>{meta.label}</Badge>
-                  <span className="text-xs text-muted-foreground">{p.metricLabel}</span>
+                  <Badge variant={variant}>{reasonLabel}</Badge>
+                  <span className="text-xs text-muted-foreground">{metricLabel}</span>
                 </li>
               )
             })}

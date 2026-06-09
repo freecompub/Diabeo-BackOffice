@@ -169,7 +169,66 @@
     "refreshing": "Refreshing data...",
     "loadingMetrics": "Loading metrics...",
     "errorLoadingData": "Unable to load glycemia data",
-    "newEventAriaLabel": "Open new event form"
+    "newEventAriaLabel": "Open new event form",
+    "medecin": {
+      "pageTitle": "Doctor dashboard",
+      "lastUpdate": "Updated {time}",
+      "loading": "Loading…",
+      "stale": "Stale data — refresh pending.",
+      "patientFallback": "Patient",
+      "urgencies": {
+        "title": "Active emergencies",
+        "error": "Unable to load emergencies.",
+        "emptyTitle": "No emergencies",
+        "emptyMessage": "Patients stable across the portfolio.",
+        "countAnnounce": "{count, plural, =0 {} one {# active emergency} other {# active emergencies}}",
+        "alert": {
+          "severe_hypo": "Severe hypoglycemia",
+          "hypo": "Hypoglycemia",
+          "hyper": "Hyperglycemia",
+          "severe_hyper": "Severe hyperglycemia",
+          "ketone_dka": "Ketoacidosis",
+          "ketone_moderate": "Moderate ketones",
+          "manual": "Manual alert"
+        }
+      },
+      "appointments": {
+        "title": "Today's appointments",
+        "count": "{count, plural, =0 {0 scheduled} one {# scheduled} other {# scheduled}}",
+        "error": "Unable to load appointments.",
+        "emptyTitle": "No appointments",
+        "emptyMessage": "No appointments scheduled today.",
+        "video": "Video",
+        "inPerson": "In person",
+        "imminent": "imminent",
+        "imminentAria": "{hour} — imminent"
+      },
+      "risk": {
+        "title": "Patients to watch",
+        "top": "Top {count}",
+        "error": "Unable to load at-risk patients.",
+        "emptyTitle": "All stable",
+        "emptyMessage": "No patient triggers a monitoring indicator.",
+        "reason": {
+          "recentHypos": "Recent hypos",
+          "silentMonitoring": "No entries",
+          "tirDrop": "TIR dropping"
+        },
+        "metric": {
+          "recentHypos": "{count, plural, one {# hypo / 7d} other {# hypos / 7d}}",
+          "silentMonitoring": "{count, plural, one {# d without entry} other {# d without entry}}",
+          "tirDrop": "TIR dropping"
+        }
+      },
+      "kpi": {
+        "title": "Practice KPIs — last 14 days",
+        "error": "Unable to load KPIs.",
+        "activePatients": "Active patients (14d)",
+        "avgTir": "Average TIR (14d)",
+        "weekUrgencies": "Emergencies (7d)",
+        "pendingProposals": "Pending proposals"
+      }
+    }
   },
   "patients": {
     "title": "Patients",

@@ -169,7 +169,66 @@
     "refreshing": "جاري تحديث البيانات...",
     "loadingMetrics": "جاري تحميل المقاييس...",
     "errorLoadingData": "تعذر تحميل بيانات الجلوكوز",
-    "newEventAriaLabel": "فتح نموذج حدث جديد"
+    "newEventAriaLabel": "فتح نموذج حدث جديد",
+    "medecin": {
+      "pageTitle": "لوحة تحكم الطبيب",
+      "lastUpdate": "آخر تحديث {time}",
+      "loading": "جارٍ التحميل…",
+      "stale": "بيانات قديمة — في انتظار التحديث.",
+      "patientFallback": "مريض",
+      "urgencies": {
+        "title": "حالات طارئة جارية",
+        "error": "تعذّر تحميل الحالات الطارئة.",
+        "emptyTitle": "لا توجد حالات طارئة",
+        "emptyMessage": "المرضى مستقرون في المحفظة.",
+        "countAnnounce": "{count, plural, =0 {} other {# حالة طارئة جارية}}",
+        "alert": {
+          "severe_hypo": "نقص سكر حاد",
+          "hypo": "نقص سكر الدم",
+          "hyper": "ارتفاع سكر الدم",
+          "severe_hyper": "ارتفاع سكر حاد",
+          "ketone_dka": "حماض كيتوني",
+          "ketone_moderate": "كيتونات معتدلة",
+          "manual": "تنبيه يدوي"
+        }
+      },
+      "appointments": {
+        "title": "مواعيد اليوم",
+        "count": "{count, plural, =0 {0 مجدول} other {# مجدول}}",
+        "error": "تعذّر تحميل المواعيد.",
+        "emptyTitle": "لا توجد مواعيد",
+        "emptyMessage": "لا توجد مواعيد مجدولة اليوم.",
+        "video": "مكالمة فيديو",
+        "inPerson": "حضوري",
+        "imminent": "وشيك",
+        "imminentAria": "{hour} — وشيك"
+      },
+      "risk": {
+        "title": "مرضى للمتابعة",
+        "top": "أعلى {count}",
+        "error": "تعذّر تحميل المرضى المعرضين للخطر.",
+        "emptyTitle": "الجميع مستقرون",
+        "emptyMessage": "لا يوجد مريض يستدعي مؤشر متابعة.",
+        "reason": {
+          "recentHypos": "نقص سكر حديث",
+          "silentMonitoring": "غياب الإدخال",
+          "tirDrop": "انخفاض النطاق المستهدف"
+        },
+        "metric": {
+          "recentHypos": "{count, plural, other {# نقص سكر / 7 أيام}}",
+          "silentMonitoring": "{count, plural, other {# يوم دون إدخال}}",
+          "tirDrop": "انخفاض النطاق المستهدف"
+        }
+      },
+      "kpi": {
+        "title": "مؤشرات العيادة — آخر 14 يومًا",
+        "error": "تعذّر تحميل المؤشرات.",
+        "activePatients": "مرضى نشطون (14 يومًا)",
+        "avgTir": "متوسط النطاق المستهدف (14 يومًا)",
+        "weekUrgencies": "حالات طارئة (7 أيام)",
+        "pendingProposals": "مقترحات معلّقة"
+      }
+    }
   },
   "patients": {
     "title": "المرضى",

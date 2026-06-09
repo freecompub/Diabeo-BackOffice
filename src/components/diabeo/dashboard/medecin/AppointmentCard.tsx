@@ -4,22 +4,24 @@
 
 "use client"
 
+import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { bcp47 } from "@/i18n/config"
 import type { AppointmentItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: AppointmentItem[] }
 
 // code-review M6 — render time in Europe/Paris cabinet timezone, matching
 //   server `todayBounds` semantics. UTC display would shift wall-clock by
-//   1-2h on Paris timestamps.
-function formatHour(d: Date | null): string {
+//   1-2h on Paris timestamps. The number format follows the active locale.
+function formatHour(d: Date | null, locale: string): string {
   if (!d) return "—"
   const date = new Date(d)
-  return date.toLocaleTimeString("fr-FR", {
+  return date.toLocaleTimeString(bcp47(locale), {
     hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris",
   })
 }
@@ -30,6 +32,8 @@ function minutesUntil(hour: Date | null): number | null {
 }
 
 export function AppointmentCard() {
+  const t = useTranslations("dashboard.medecin")
+  const locale = useLocale()
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/appointments",
     5 * 60_000,
@@ -42,24 +46,26 @@ export function AppointmentCard() {
     <DiabeoCard role="region" aria-labelledby="card-appointments-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="card-appointments-title" className="text-base font-semibold">
-          RDV du jour
+          {t("appointments.title")}
         </h2>
-        <span className="text-xs text-muted-foreground">{items.length} prévu(s)</span>
+        <span className="text-xs text-muted-foreground">
+          {t("appointments.count", { count: items.length })}
+        </span>
       </header>
-      {isStale && <StaleBanner />}
+      {isStale && <StaleBanner message={t("stale")} />}
 
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">Chargement…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
         {hasError && (
-          <p className="text-sm text-glycemia-critical">Impossible de charger les RDV.</p>
+          <p className="text-sm text-glycemia-critical">{t("appointments.error")}</p>
         )}
         {!loading && !hasError && items.length === 0 && (
           <DiabeoEmptyState
             variant="noData"
-            title="Aucun RDV"
-            message="Pas de RDV programmés aujourd'hui."
+            title={t("appointments.emptyTitle")}
+            message={t("appointments.emptyMessage")}
           />
         )}
         {items.length > 0 && (
@@ -74,18 +80,24 @@ export function AppointmentCard() {
                 >
                   <Badge
                     variant={imminent ? "default" : "outline"}
-                    aria-label={imminent ? `${formatHour(a.hour)} — imminent` : formatHour(a.hour)}
+                    aria-label={
+                      imminent
+                        ? t("appointments.imminentAria", { hour: formatHour(a.hour, locale) })
+                        : formatHour(a.hour, locale)
+                    }
                   >
-                    {formatHour(a.hour)}
+                    {formatHour(a.hour, locale)}
                     {/* code-review M2 — text fallback for color-only imminent signal. */}
-                    {imminent && <span className="ml-1 sr-only">imminent</span>}
+                    {imminent && <span className="ml-1 sr-only">{t("appointments.imminent")}</span>}
                   </Badge>
                   <span className="flex-1 truncate text-sm font-medium">
-                    {a.patientFirstName || "Patient"}
+                    {a.patientFirstName || t("patientFallback")}
                     {a.pathology ? ` · ${a.pathology}` : ""}
                   </span>
                   <span className="text-xs text-muted-foreground">
-                    {a.location === "video" ? "Visio" : a.type ?? "Présence"}
+                    {a.location === "video"
+                      ? t("appointments.video")
+                      : a.type ?? t("appointments.inPerson")}
                   </span>
                 </li>
               )
