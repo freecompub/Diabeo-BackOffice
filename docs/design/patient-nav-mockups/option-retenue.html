@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option retenue — Workspace patient éphémère</title>
+<style>
+  :root{--teal:#0D9488;--teal-d:#0a7268;--coral:#F97316;--bg:#FAFAFA;--bd:#E5E7EB;--tx:#1F2937;--mut:#6B7280;--ok:#10B981;--hi:#F59E0B;--crit:#EF4444}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx);line-height:1.5}
+  header.page{padding:18px 24px;background:#fff;border-bottom:1px solid var(--bd)}
+  header.page h1{margin:0 0 4px;font-size:19px}header.page p{margin:0;color:var(--mut);font-size:14px}
+  .badges{max-width:1180px;margin:12px auto 0;padding:0 24px;display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-size:12px;background:#e9f6f4;color:var(--teal-d);border:1px solid #bfe6df;border-radius:999px;padding:3px 11px}
+  .wrap{max-width:1180px;margin:14px auto 30px;padding:0 24px}
+  .browser{border:1px solid #cfd4da;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08)}
+  .chrome{background:#eef0f3;padding:8px 12px;display:flex;align-items:center;gap:10px;border-bottom:1px solid #dfe3e8}
+  .dots{display:flex;gap:6px}.dots i{width:11px;height:11px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+  .navbtns{display:flex;gap:4px}.navbtns button{width:30px;height:30px;border:1px solid #d4d8de;background:#fff;border-radius:7px;cursor:pointer;font-size:14px;color:#444}
+  .addr{flex:1;display:flex;align-items:center;background:#fff;border:1px solid #d4d8de;border-radius:7px;padding:5px 12px;font-size:13px;gap:8px}
+  .addr .url{font-family:ui-monospace,Menlo,monospace}.addr .url b{color:var(--teal)}
+  .addr .noid{margin-left:auto;font-size:11px;color:var(--ok);font-family:system-ui}
+  .copy{border:1px solid #d4d8de;background:#fff;border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
+  .viewport{height:560px;display:flex;position:relative;overflow:hidden;background:var(--bg)}
+  .sidebar{width:158px;background:#0d2b29;color:#cfe8e4;padding:14px 10px;font-size:13px;flex-shrink:0;transition:opacity .2s,filter .2s}
+  .sidebar.dim{opacity:.4;filter:grayscale(.5);pointer-events:none}
+  .sidebar .logo{font-weight:700;color:#fff;margin-bottom:14px;font-size:15px}
+  .sidebar a{display:block;padding:7px 9px;border-radius:7px;color:#bcdad6;text-decoration:none;margin-bottom:2px}
+  .sidebar a.on{background:#13403c;color:#fff}
+  .content{flex:1;min-width:0;position:relative}
+  .list{padding:16px 18px;overflow:auto;height:100%}
+  .list h2{margin:0 0 4px;font-size:16px}.list .sub{color:var(--mut);font-size:13px;margin:0 0 12px}
+  .prow{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--bd);border-radius:9px;margin-bottom:8px;cursor:pointer}
+  .prow:hover{border-color:var(--teal);box-shadow:0 1px 6px rgba(13,148,136,.12)}
+  .prow.sel{border-color:var(--teal);box-shadow:0 0 0 2px rgba(13,148,136,.18)}
+  .av{width:34px;height:34px;border-radius:50%;background:#e6f4f2;color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+  .prow .nm{font-weight:600;flex:1}.prow .tag{font-size:11px;color:var(--mut)}.prow .tir{font-size:12px;font-weight:600}
+  .tir.g{color:var(--ok)}.tir.o{color:var(--hi)}
+  .scrim{position:absolute;inset:0;background:rgba(15,30,28,.32);opacity:0;pointer-events:none;transition:.18s}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .drawer{position:absolute;top:0;right:0;height:100%;width:76%;background:#fff;border-left:1px solid var(--bd);transform:translateX(100%);transition:transform .24s ease,width .24s ease;display:flex;flex-direction:column;box-shadow:-12px 0 30px rgba(0,0,0,.13)}
+  .drawer.show{transform:translateX(0)}.drawer.full{width:100%}
+  .ephbar{background:#fff7ed;border-bottom:1px solid #fbd9b4;color:#9a5412;font-size:11.5px;padding:5px 14px;display:flex;align-items:center;gap:7px}
+  .ephbar .dotlive{width:7px;height:7px;border-radius:50%;background:var(--coral);box-shadow:0 0 0 0 rgba(249,115,22,.5);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(249,115,22,.5)}70%{box-shadow:0 0 0 6px rgba(249,115,22,0)}100%{box-shadow:0 0 0 0 rgba(249,115,22,0)}}
+  .ephbar code{background:#fff;border:1px solid #fbd9b4;border-radius:4px;padding:0 5px;font-size:11px}
+  .dhead{padding:11px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:12px}
+  .dhead .nm{font-weight:700;font-size:15px}.dhead .tag{font-size:12px;color:var(--mut)}
+  .crumbs{font-size:12px;color:var(--mut)}.crumbs b{color:var(--tx)}
+  .dhead .acts{margin-left:auto;display:flex;gap:6px}
+  .dhead .acts button{border:1px solid var(--bd);background:#fff;height:30px;padding:0 10px;border-radius:7px;cursor:pointer;font-size:13px}
+  .dtabs{display:flex;gap:2px;padding:8px 14px 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+  .dtabs span{padding:8px 12px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent;cursor:pointer}
+  .dtabs span.on{color:var(--teal);border-color:var(--teal);font-weight:600}
+  .dbody{padding:16px;overflow:auto;flex:1}
+  .period{display:flex;gap:6px;margin-bottom:12px}
+  .period b{border:1px solid var(--bd);border-radius:7px;padding:4px 10px;font-size:12px;color:var(--mut);font-weight:500}.period b.on{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .metrics{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px}
+  .metric{background:#f6f8f8;border:1px solid var(--bd);border-radius:8px;padding:8px}.metric .k{font-size:10px;color:var(--mut)}.metric .v{font-size:15px;font-weight:700}
+  .grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:12px}
+  .card{background:#fff;border:1px solid var(--bd);border-radius:10px;padding:12px}.card h4{margin:0 0 2px;font-size:13px}.card .s{font-size:11px;color:var(--mut);margin:0 0 8px}
+  .ph{color:var(--mut);font-size:13px;padding:34px;text-align:center;border:1px dashed var(--bd);border-radius:10px;background:#fff}
+  .ann{font-size:12.5px;font-weight:600;min-height:18px;margin-top:10px}
+  .ann.ok{color:var(--teal-d)}.ann.warn{color:var(--coral)}
+  .explain{background:#fff;border:1px solid var(--bd);border-radius:12px;padding:16px 20px;margin-top:16px;font-size:13.5px}
+  .explain h3{margin:0 0 8px;font-size:15px}
+  .explain li{margin-bottom:5px}
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>✅ Option retenue — Workspace patient <u>éphémère</u> (drawer)</h1>
+  <p>Clic patient → drawer avec sa nav · sidebar grisée · onglets horizontaux · toutes les sections · <b>aucun id dans l'URL</b> · référence éphémère détruite à la fermeture (non partageable, non rejouable).</p>
+</header>
+<div class="badges">
+  <span class="chip">Drawer + ⤢ agrandir</span>
+  <span class="chip">Sidebar grisée</span>
+  <span class="chip">Onglets horizontaux</span>
+  <span class="chip">Toutes les sections</span>
+  <span class="chip">URL sans id patient</span>
+  <span class="chip">Référence éphémère</span>
+</div>
+
+<div class="wrap">
+  <div class="browser">
+    <div class="chrome">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="navbtns">
+        <button title="Retour" onclick="reload('back')">←</button>
+        <button title="Recharger" onclick="reload('refresh')">⟳</button>
+      </div>
+      <div class="addr">
+        <span style="color:var(--ok)">🔒</span>
+        <span class="url">app.diabeo.fr<b id="path">/patients</b></span>
+        <span class="noid" id="noid">aucun id patient</span>
+      </div>
+      <button class="copy" onclick="share()">Copier le lien</button>
+    </div>
+    <div class="viewport">
+      <div class="sidebar" id="appbar">
+        <div class="logo">Diabeo</div>
+        <a href="#">Tableau de bord</a><a href="#" class="on">Patients</a><a href="#">Médicaments</a><a href="#">Documents</a><a href="#">Paramètres</a>
+      </div>
+      <div class="content">
+        <div class="list">
+          <h2>Mes patients</h2><p class="sub">Clique un patient → consultation éphémère (rien dans l'URL)</p>
+          <div class="prow" data-id="42" onclick="open('42','Jean Martin','DT1 · 34 ans')"><div class="av">JM</div><div class="nm">Jean Martin <span class="tag">#42</span></div><div class="tag">DT1 · 34 ans</div><div class="tir g">TIR 75%</div></div>
+          <div class="prow" data-id="58" onclick="open('58','Amina Saïd','DT2 · 51 ans')"><div class="av">AS</div><div class="nm">Amina Saïd <span class="tag">#58</span></div><div class="tag">DT2 · 51 ans</div><div class="tir o">TIR 61%</div></div>
+          <div class="prow" data-id="71" onclick="open('71','Karim Benali','DT1 · 12 ans')"><div class="av">KB</div><div class="nm">Karim Benali <span class="tag">#71</span></div><div class="tag">DT1 · 12 ans</div><div class="tir g">TIR 83%</div></div>
+        </div>
+
+        <div class="scrim" id="scrim" onclick="closeP('close')"></div>
+        <aside class="drawer" id="drawer">
+          <div class="ephbar"><span class="dotlive"></span> Consultation éphémère · référence serveur <code id="tok">cTok:—</code> · détruite à la fermeture</div>
+          <div class="dhead">
+            <div class="av" id="dav">JM</div>
+            <div>
+              <div class="crumbs">Patients › <b id="cnm">Jean Martin</b></div>
+              <div class="nm" id="dnm">Jean Martin <span class="tag" id="dtag">#42 · DT1 · 34 ans</span></div>
+            </div>
+            <div class="acts">
+              <button id="fbtn" onclick="toggleFull()">⤢ Agrandir</button>
+              <button onclick="closeP('close')">✕ Fermer</button>
+            </div>
+          </div>
+          <div class="dtabs" id="tabs">
+            <span class="on" onclick="tab(this,'overview')">Vue d'ensemble</span>
+            <span onclick="tab(this,'glyc')">Profil glycémique</span>
+            <span onclick="tab(this,'cgm')">Glycémie</span>
+            <span onclick="tab(this,'ttt')">Traitements</span>
+            <span onclick="tab(this,'doc')">Documents</span>
+          </div>
+          <div class="dbody" id="body"></div>
+        </aside>
+      </div>
+    </div>
+  </div>
+  <div class="ann ok" id="ann">Clique un patient pour ouvrir sa consultation éphémère, puis teste « Copier le lien » et ⟳ Recharger.</div>
+
+  <div class="explain">
+    <h3>Pourquoi l'URL reste <code>/patients</code> (sans id)</h3>
+    <ul>
+      <li><b>Partage neutralisé</b> : le lien copié = <code>app.diabeo.fr/patients</code> → mène à la liste, jamais au patient. Un médecin ne peut pas partager un dossier par URL.</li>
+      <li><b>Référence éphémère</b> : à l'ouverture, le serveur forge un jeton court <code>cTok</code> lié à (toi + ce patient + TTL). Les graphes se chargent via ce jeton — <b>l'id patient n'est ni dans l'URL, ni partageable</b>.</li>
+      <li><b>Détruite à la fermeture</b> : ✕, clic dehors, F5 ou navigation → <code>cTok</code> invalidé côté serveur (beacon) et perdu côté client → <b>non rejouable</b>.</li>
+      <li><b>Audit HDS préservé</b> : le serveur sait quel patient tu as ouvert (via le jeton) → la traçabilité reste complète, sans exposer l'id côté navigateur.</li>
+      <li><b>Contrepartie assumée</b> : un <b>F5 referme la consultation</b> (re-sélection du patient) — c'est le prix de « éphémère + non partageable ».</li>
+    </ul>
+  </div>
+</div>
+
+<script>
+  const $=id=>document.getElementById(id);
+  let cur=null, full=false;
+  const fakeTok=()=>'cTok:'+Math.random().toString(36).slice(2,8);
+
+  const overview=`
+    <div class="grid2">
+      <div class="card"><h4>Identité & pathologie</h4><div class="s">DT1 · diagnostiqué 2014 · pompe</div>
+        <div style="font-size:13px;line-height:1.9">Cabinet : CH Demo<br>Référent : Dr Martin<br>Dernière consultation : 3 mai 2026</div></div>
+      <div class="card"><h4>Objectifs glycémiques</h4><div class="s">cibles personnalisées</div>
+        <div style="font-size:13px;line-height:1.9">Cible : 70–180 mg/dL<br>TIR visé : ≥ 70%<br>Alerte hypo : < 70 mg/dL</div></div>
+    </div>`;
+  const glyc=`
+    <div class="period"><b class="on">1S</b><b>2S</b><b>1M</b><b>3M</b><span style="margin-left:auto;color:var(--mut);font-size:12px;align-self:center">12 — 26 mai 2026</span></div>
+    <div class="metrics">
+      <div class="metric"><div class="k">Moy.</div><div class="v">158</div></div><div class="metric"><div class="k">HbA1c</div><div class="v">7.1</div></div>
+      <div class="metric"><div class="k">Hypo</div><div class="v">3</div></div><div class="metric"><div class="k">TIR</div><div class="v">75%</div></div>
+      <div class="metric"><div class="k">CV</div><div class="v">34</div></div><div class="metric"><div class="k">SD</div><div class="v">52</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card"><h4>AGP — Profil glycémique ambulatoire</h4><div class="s">p10 / p25 / médiane / p75 / p90 · 24h</div>
+        <svg viewBox="0 0 420 165" width="100%" height="165">
+          <rect x="0" y="60" width="420" height="50" fill="#10B98112"/>
+          <line x1="0" y1="60" x2="420" y2="60" stroke="#F59E0B" stroke-dasharray="4 4"/><line x1="0" y1="110" x2="420" y2="110" stroke="#F59E0B" stroke-dasharray="4 4"/>
+          <path d="M0,104 C60,76 95,44 150,60 S290,116 350,74 420,48 420,48 L420,138 L0,144 Z" fill="#0D948812"/>
+          <path d="M0,90 C60,72 95,56 150,66 S290,90 350,72 420,62 420,62 L420,116 L0,122 Z" fill="#0D948824"/>
+          <path d="M0,94 C60,76 95,62 150,72 S290,92 350,76 420,68" fill="none" stroke="#0D9488" stroke-width="2.5"/>
+        </svg></div>
+      <div class="card"><h4>Time-in-Range</h4><div class="s">5 zones</div>
+        <svg viewBox="0 0 90 90" width="90" height="90">
+          <circle cx="45" cy="45" r="32" fill="none" stroke="#EF4444" stroke-width="15" stroke-dasharray="10 191" transform="rotate(-90 45 45)"/>
+          <circle cx="45" cy="45" r="32" fill="none" stroke="#F59E0B" stroke-width="15" stroke-dasharray="30 171" stroke-dashoffset="-10" transform="rotate(-90 45 45)"/>
+          <circle cx="45" cy="45" r="32" fill="none" stroke="#10B981" stroke-width="15" stroke-dasharray="151 50" stroke-dashoffset="-40" transform="rotate(-90 45 45)"/>
+        </svg>
+        <div style="font-size:12px;color:var(--mut);margin-top:6px"><span style="color:var(--ok)">●</span> 75% · <span style="color:var(--hi)">●</span> 15% · <span style="color:var(--crit)">●</span> 5%</div></div>
+    </div>`;
+  const stub=(t,d)=>`<div class="ph">🗂️ <b>${t}</b><br><span style="font-size:12px">${d}</span></div>`;
+  const views={overview:overview,glyc:glyc,cgm:stub('Glycémie','Courbe CGM 24h (US-803)'),ttt:stub('Traitements','Basal-bolus, ISF/ICR par créneau, pompe'),doc:stub('Documents','Ordonnances, comptes-rendus (S3 + ClamAV)')};
+
+  function open(id,nm,tag){
+    cur=id; full=false;
+    document.querySelectorAll('.prow').forEach(r=>r.classList.toggle('sel',r.dataset.id===id));
+    $('dav').textContent=nm.split(' ').map(w=>w[0]).join('').slice(0,2);
+    $('cnm').textContent=nm; $('dnm').innerHTML=nm+' <span class="tag">#'+id+' · '+tag+'</span>';
+    $('tok').textContent=fakeTok();
+    $('drawer').classList.add('show'); $('drawer').classList.remove('full'); $('scrim').classList.add('show');
+    $('appbar').classList.add('dim'); $('fbtn').textContent='⤢ Agrandir';
+    document.querySelectorAll('#tabs span').forEach((s,i)=>s.classList.toggle('on',i===0));
+    $('body').innerHTML=views.overview;
+    $('path').textContent='/patients';  // ← jamais d'id
+    ok('✅ Consultation ouverte. Jeton éphémère forgé côté serveur. URL inchangée : /patients (aucun id patient).');
+  }
+  function closeP(kind){
+    cur=null; full=false;
+    document.querySelectorAll('.prow').forEach(r=>r.classList.remove('sel'));
+    $('drawer').classList.remove('show','full'); $('scrim').classList.remove('show'); $('appbar').classList.remove('dim');
+    $('path').textContent='/patients';
+    if(kind==='refresh') warn('⟳ Rechargé → la consultation se referme : la référence éphémère est perdue (intentionnel). Retour à la liste.');
+    else if(kind==='back') warn('← Retour → consultation fermée, jeton invalidé. Non rejouable.');
+    else ok('✕ Fermé → jeton cTok détruit côté serveur. Le patient n\'est plus accessible sans re-sélection.');
+  }
+  function reload(kind){ if(cur) closeP(kind); else ok(kind==='refresh'?'Page rechargée (liste).':'Retour (liste).'); }
+  function share(){
+    warn('📋 Lien copié : app.diabeo.fr/patients → mène à TA LISTE, pas au patient'+(cur?' ouvert':'')+'. Partage d\'un dossier par URL : impossible (voulu).');
+  }
+  function tab(el,key){
+    document.querySelectorAll('#tabs span').forEach(s=>s.classList.remove('on')); el.classList.add('on');
+    $('body').innerHTML=views[key];
+    ok('Onglet « '+el.textContent.trim()+' » — sous-navigation propre au patient. URL toujours /patients.');
+  }
+  function toggleFull(){ full=!full; $('drawer').classList.toggle('full',full); $('fbtn').textContent=full?'⤡ Réduire':'⤢ Agrandir';
+    ok(full?'⤢ Plein écran — plus d\'espace pour les courbes.':'⤡ Drawer — la liste redevient visible au bord.'); }
+  function ok(t){ const a=$('ann'); a.className='ann ok'; a.textContent=t; }
+  function warn(t){ const a=$('ann'); a.className='ann warn'; a.textContent=t; }
+</script>
+</body>
+</html>
