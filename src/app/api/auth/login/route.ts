@@ -73,6 +73,12 @@ export async function POST(req: NextRequest) {
       // attempt (3rd failure), not the next one.
       const postRateCheck = await checkRateLimit(emailHash)
       if (postRateCheck.blocked) {
+        // Unknown email → `auditService.log` (not `rateLimited`): the burst
+        // detector (US-2265) is keyed on a numeric userId and cannot ingest a
+        // `userId: null` event. Do NOT "fix" this by calling
+        // `rateLimited({ userId: null })` — that breaks the `userId: number`
+        // contract. Aggregated burst detection for unknown-email campaigns
+        // would need IP-based keying (tracked as a hardening follow-up).
         await auditService.log({
           userId: null,
           action: "RATE_LIMITED",
