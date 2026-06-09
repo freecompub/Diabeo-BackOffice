@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils"
-import { tokens } from "@/design-system/tokens"
+import { tokens, withAlpha } from "@/design-system/tokens"
 
 type ChartLoaderProps = {
   variant?: "line" | "agp" | "bars" | "donut"
@@ -83,7 +83,7 @@ export function ChartLoader({
 function LineSkeleton() {
   return (
     <svg viewBox="0 0 600 200" className="w-full h-48" aria-hidden>
-      <rect x="0" y="70" width="600" height="70" fill="rgba(16,185,129,0.06)" />
+      <rect x="0" y="70" width="600" height="70" fill={withAlpha(tokens.glycemia.normal, 0.06)} />
       <line x1="0" y1="70" x2="600" y2="70" stroke={tokens.neutral[200]} strokeDasharray="3 3" />
       <line x1="0" y1="140" x2="600" y2="140" stroke={tokens.neutral[200]} strokeDasharray="3 3" />
       <path
@@ -101,15 +101,15 @@ function LineSkeleton() {
 function AgpSkeleton() {
   return (
     <svg viewBox="0 0 600 200" className="w-full h-48" aria-hidden>
-      <rect x="0" y="70" width="600" height="70" fill="rgba(16,185,129,0.06)" />
+      <rect x="0" y="70" width="600" height="70" fill={withAlpha(tokens.glycemia.normal, 0.06)} />
       <path
         d="M0,140 L100,155 L200,125 L300,80 L400,100 L500,135 L600,140 L600,50 L500,45 L400,30 L300,15 L200,40 L100,75 L0,90 Z"
-        fill="rgba(13,148,136,0.12)"
+        fill={withAlpha(tokens.brand.primary[600], 0.12)}
         className="animate-pulse"
       />
       <path
         d="M0,130 L100,140 L200,115 L300,85 L400,100 L500,125 L600,130 L600,65 L500,60 L400,50 L300,40 L200,55 L100,85 L0,95 Z"
-        fill="rgba(13,148,136,0.22)"
+        fill={withAlpha(tokens.brand.primary[600], 0.22)}
         className="animate-pulse"
       />
       <path

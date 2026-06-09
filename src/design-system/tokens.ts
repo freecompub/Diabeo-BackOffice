@@ -102,13 +102,28 @@ export const COLOR_TOKEN_CSS = {
   "dt2-bg": "#EFF6FF",
   "gd": "#EC4899",
   "gd-bg": "#FDF2F8",
+  // Pur blanc — fonds de masquage des bandes de charts (≠ neutral-50 #FAFAFA).
+  "white": "#FFFFFF",
 } as const
 
 export type ColorTokenName = keyof typeof COLOR_TOKEN_CSS
 
-/** Récupère la valeur hex d'un token de couleur (helper typé). */
-export function color(name: ColorTokenName): string {
+/** Récupère la valeur hex d'un token de couleur — préserve le type littéral. */
+export function color<K extends ColorTokenName>(name: K): (typeof COLOR_TOKEN_CSS)[K] {
   return COLOR_TOKEN_CSS[name]
+}
+
+/**
+ * Applique une opacité à une couleur hex de token → `rgba(r,g,b,a)`. Évite les
+ * `rgba(...)` en dur qui dupliquent un token (anti-drift pour les bandes/halos
+ * de charts). Ex. `withAlpha(tokens.brand.primary[600], 0.12)`.
+ */
+export function withAlpha(hex: string, alpha: number): string {
+  const h = hex.replace("#", "")
+  const r = parseInt(h.slice(0, 2), 16)
+  const g = parseInt(h.slice(2, 4), 16)
+  const b = parseInt(h.slice(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 const C = COLOR_TOKEN_CSS
@@ -154,6 +169,6 @@ export const tokens = {
   pathology: {
     DT1: C["dt1"], DT2: C["dt2"], GD: C["gd"],
   },
-  /** Blanc pur — fonds de bandes/segments de charts (≡ neutral-50 visuel). */
-  white: "#FFFFFF",
+  /** Pur blanc (#FFFFFF) — fonds de masquage des bandes de charts. */
+  white: C["white"],
 } as const

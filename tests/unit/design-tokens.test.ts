@@ -40,7 +40,7 @@ describe("design tokens — parité tokens.ts ↔ tokens.css", () => {
     expect(cssTokens["primary-600"]).toBe("#0D9488")
   })
 
-  it("chaque token TS correspond EXACTEMENT à la variable CSS --diabeo-*", () => {
+  it("chaque token TS correspond EXACTEMENT à la variable CSS --diabeo-* (TS → CSS)", () => {
     const mismatches: string[] = []
     for (const [name, hex] of Object.entries(COLOR_TOKEN_CSS)) {
       const cssHex = cssTokens[name]
@@ -51,6 +51,15 @@ describe("design tokens — parité tokens.ts ↔ tokens.css", () => {
       }
     }
     expect(mismatches).toEqual([])
+  })
+
+  it("chaque variable CSS couleur a un pendant dans tokens.ts (CSS → TS, anti-drift inverse)", () => {
+    // `cssTokens` ne contient QUE les variables `--diabeo-*` à valeur hex (le
+    // regex filtre déjà sur `#...`) → toute couleur ajoutée côté CSS sans miroir
+    // TS est détectée ici. (Les tokens non-couleur — spacing, radius… — n'ont
+    // pas de valeur hex et ne sont donc pas concernés.)
+    const missingInTs = Object.keys(cssTokens).filter((name) => !(name in COLOR_TOKEN_CSS))
+    expect(missingInTs).toEqual([])
   })
 
   it("couvre les couleurs cliniques critiques (glycémie + TIR)", () => {

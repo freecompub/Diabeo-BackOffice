@@ -54,6 +54,9 @@
   --diabeo-neutral-900: #111827;
   --diabeo-neutral-950: #030712;
 
+  /* Pure white — chart band masking (distinct from neutral-50 #FAFAFA) */
+  --diabeo-white: #FFFFFF;
+
   /* ----------------------------------------------------------------
    * 2. COLOR TOKENS — Glycemia (clinical)
    * ---------------------------------------------------------------- */
