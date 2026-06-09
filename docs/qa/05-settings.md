@@ -103,3 +103,57 @@ Feature: Paramètres du compte
   prochaine création de RDV / accès données = 422/403.
 - **Double-save** : bouton désactivé pendant l'envoi (`loading`).
 - **Non authentifié** → `redirect("/login")`.
+
+---
+
+## 🔵 Planifié — Préférence de langue ([US-2112b](../UserStory/pro-user-stories/13-multi-pays-i18n/US-2112b-preference-langue-utilisateur.md), V1 — à implémenter)
+
+> **Non encore implémenté.** Spécification de test du follow-up US-2112b.
+> Aujourd'hui : le moteur i18n (US-2112) existe mais le `LocaleSwitcher` n'est
+> exposé sur aucun écran de l'app vivante, et la langue n'est **pas** persistée
+> en base (colonne `User.language` présente mais non câblée). AC-2 ci-dessous.
+
+### Affichage attendu (cible)
+
+| Section | Visibilité | Contenu |
+|---|---|---|
+| **Langue** | tous | Sélecteur FR / EN / AR (valeur courante = `User.language`, défaut `fr`) · application immédiate (reload) · `dir="rtl"` pour AR |
+
+### Actions & effets (cible)
+
+| Action | Endpoint | Effet visuel | Effet base |
+|---|---|---|---|
+| Changer la langue | `PUT /api/account/locale` (étendu) | reload localisé + toast | **UPDATE `users.language`** + cookie `diabeo_locale` synchronisé · audit UPDATE/USER (`metadata.setting=locale`, sans PHI) |
+
+### Scénarios (Gherkin — cible)
+
+```gherkin
+Feature: Préférence de langue (US-2112b — planifié V1)
+
+  Scenario: changer la langue dans les paramètres la persiste en base
+    Given je suis connecté en tant que "VIEWER"
+    And je suis sur "/settings" section "Langue"
+    When je choisis "العربية" (ar)
+    Then l'interface se recharge en arabe avec dir="rtl"
+    # Effet base: UPDATE users SET language='ar' WHERE id=? + cookie diabeo_locale=ar
+    #             + audit_logs(UPDATE/USER, metadata.setting=locale, value=ar)
+
+  Scenario: la préférence survit au changement d'appareil (cookie vidé)
+    Given ma préférence "User.language" = "ar"
+    And mon cookie "diabeo_locale" est absent (nouveau navigateur)
+    When je me connecte
+    Then l'interface s'affiche en arabe
+    # Effet base: le login (re)pose le cookie diabeo_locale depuis users.language
+
+  Scenario: langue non supportée rejetée
+    Given je suis connecté en tant que "VIEWER"
+    When je PUT "/api/account/locale" avec {"locale":"zz"}
+    Then le statut de la réponse est 400
+    # Validation Zod z.enum(["fr","en","ar"])
+```
+
+### Cas limites (cible)
+
+- Échec persistance base → le cookie reste posé (dégradation gracieuse), pas de blocage UX.
+- `User.language` NULL (jamais choisi) → défaut `fr`.
+- Écran non authentifié : la langue se change par cookie uniquement (cf. `01-auth.md`).

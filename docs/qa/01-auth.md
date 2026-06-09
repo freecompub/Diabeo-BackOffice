@@ -97,6 +97,39 @@ Feature: Connexion au backoffice
   vers `/register` (page inexistante → 404). L'inscription patient se fait par le
   personnel via `/patients/new` ; il n'y a pas d'auto-inscription publique.
 
+### 🔵 Planifié — Langue sur les écrans non authentifiés + confirmation au login ([US-2112b](../UserStory/pro-user-stories/13-multi-pays-i18n/US-2112b-preference-langue-utilisateur.md), V1)
+
+> **Non encore implémenté.** Aujourd'hui aucun sélecteur de langue n'est exposé
+> sur `/login` (ni les autres écrans `(auth)`). AC-1 + AC-3 ci-dessous.
+
+```gherkin
+Feature: Langue à la connexion (US-2112b — planifié V1)
+
+  # AC-1 — switcher sur écran non authentifié (cookie uniquement, pas d'API auth)
+  Scenario: un visiteur change la langue depuis l'écran de connexion
+    Given je suis sur "/login" (non authentifié)
+    When je choisis "العربية" dans le sélecteur de langue
+    Then "/login" se recharge en arabe avec dir="rtl"
+    # Effet base: AUCUN — cookie diabeo_locale=ar uniquement (aucun appel authentifié)
+
+  # AC-3 — alerte de confirmation si langue de session ≠ préférence enregistrée
+  Scenario: alerte quand la langue active diffère de la préférence au login
+    Given ma préférence "User.language" = "ar"
+    And mon cookie "diabeo_locale" = "fr" (poste partagé)
+    When je me connecte avec des identifiants valides
+    Then je vois une alerte de confirmation de changement de langue (role="alert", non bloquante)
+    When je clique "Revenir à l'arabe"
+    Then l'interface se recharge en arabe
+    # Effet base: cookie diabeo_locale reposé depuis users.language (aucune écriture base)
+
+  Scenario: pas d'alerte quand langue active == préférence
+    Given ma préférence "User.language" = "fr" et le cookie "diabeo_locale" = "fr"
+    When je me connecte
+    Then aucune alerte de changement de langue n'est affichée
+```
+
+**Cas limites (cible)** : alerte non bloquante (ignorable) ; « Continuer en {langue session} » met à jour `User.language` (cf. `05-settings.md` AC-2) ; pas d'alerte si `User.language` NULL.
+
 ---
 
 ## Écran : Mot de passe oublié (`/reset-password`) 🟢
