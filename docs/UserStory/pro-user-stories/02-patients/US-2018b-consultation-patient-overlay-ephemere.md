@@ -1,4 +1,4 @@
-# US-2029 — Consultation patient en overlay éphémère (sélection patient → vues patient-centrées)
+# US-2018b — Consultation patient en overlay éphémère (sélection patient → vues patient-centrées)
 
 > Résout un problème de navigation identifié en revue : les vues **patient-scoped**
 > (au premier chef le **profil glycémique** `/analytics` : AGP, TIR, hypos) sont
@@ -8,8 +8,8 @@
 > introduit le **workspace patient en overlay**, ouvert depuis la liste, avec une
 > **référence patient éphémère** (ni id ni rien de partageable dans l'URL).
 >
-> Maquettes de référence (support de décision) : `docs/design/patient-nav-mockups/`
-> (`index.html`, `url-problem.html`, `drawer.html`, `takeover.html`, `option-retenue.html`).
+> Les décisions de design ci-dessous ont été validées en session via des maquettes
+> interactives (support de discussion, non versionnées).
 
 ---
 
@@ -17,7 +17,7 @@
 
 | Champ | Valeur |
 |-------|--------|
-| **ID** | `US-2029` |
+| **ID** | `US-2018b` |
 | **Domaine** | 02. Patients |
 | **Priorité** | **V1** |
 | **Pays cible** | Universel |

@@ -91,7 +91,7 @@
 | US | Titre | Statut | Fichiers clés |
 |----|-------|--------|---------------|
 | US-2016 | Liste patients filtrable | DONE | `src/app/(dashboard)/patients/page.tsx`, `src/app/api/patients/` |
-| [US-2029](../UserStory/pro-user-stories/02-patients/US-2029-consultation-patient-overlay-ephemere.md) | Consultation patient en overlay éphémère (sélection patient → vues patient-centrées, jeton serveur non partageable, aucun id dans l'URL) | 🆕 À démarrer (V1, 8 SP) | Maquettes `docs/design/patient-nav-mockups/` ; cible : `consultation/open|close` + `PatientConsultationDrawer` + `/analytics` via jeton |
+| [US-2018b](../UserStory/pro-user-stories/02-patients/US-2018b-consultation-patient-overlay-ephemere.md) | Consultation patient en overlay éphémère (sélection patient → vues patient-centrées, jeton serveur non partageable, aucun id dans l'URL) | 🆕 À démarrer (V1, 8 SP) | Cible : `consultation/open|close` + `PatientConsultationDrawer` + `/analytics` via jeton |
 | US-2017 | Création / onboarding patient | DONE | Wizard 2 étapes (identité + pathologie), `src/app/(dashboard)/patients/new/page.tsx`. Backend `POST /api/patients` (création User+Patient, chiffrement, emailHmac, audit, email d'invitation) livré PR #468 ; i18n wizard PR #467. PR #341 (UI initiale). |
 | US-2018 | Fiche patient complète | DONE | `src/app/(dashboard)/patients/[id]/page.tsx` (4 tabs) |
 | US-2020 | Archivage / soft delete | DONE | `deletion.service.ts`, trigger PostgreSQL |
