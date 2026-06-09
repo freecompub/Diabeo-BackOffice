@@ -48,6 +48,7 @@ import {
   useUnreadCountFromContext,
 } from "@/components/diabeo/messaging/UnreadCountContext"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
+import { LocaleReconciliationBanner } from "@/components/diabeo/LocaleReconciliationBanner"
 import {
   Sheet,
   SheetContent,
@@ -645,6 +646,8 @@ export function NavigationShell({
           {/* Page content */}
           <main className="flex-1 overflow-y-auto p-4 md:p-6">
             {breadcrumbs.length > 0 && <Breadcrumbs items={breadcrumbs} />}
+            {/* US-2112b AC-3 — alerte si langue active ≠ préférence enregistrée. */}
+            <LocaleReconciliationBanner />
             {children}
           </main>
         </div>

@@ -1032,6 +1032,10 @@
     "export": {
       "pdf": "Export as PDF",
       "json": "Export as JSON"
+    },
+    "language": {
+      "title": "Language",
+      "description": "Choose the interface language — saved as your preference and applied across your devices."
     }
   },
   "sidebar": {
@@ -1055,5 +1059,11 @@
     "loadErrorBody": "An error occurred while displaying your settings. If the problem persists, contact technical support.",
     "errorRef": "Ref:",
     "actionRetry": "Retry"
+  },
+  "localeReconcile": {
+    "title": "Language differs from your preference",
+    "body": "The interface is shown in {active}, but your saved preference is {preference}.",
+    "continueAction": "Continue in {lang}",
+    "revertAction": "Switch back to {lang}"
   }
 }

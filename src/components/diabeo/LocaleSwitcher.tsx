@@ -17,7 +17,7 @@
 import { useEffect, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Languages } from "lucide-react"
-import { locales, defaultLocale, type Locale } from "@/i18n/config"
+import { locales, defaultLocale, type Locale, LOCALE_COOKIE } from "@/i18n/config"
 
 /**
  * Sentinel sessionStorage : marque qu'un reload locale-switch est en cours
@@ -32,6 +32,18 @@ import { locales, defaultLocale, type Locale } from "@/i18n/config"
 const FOCUS_SENTINEL = "diabeo:locale-switch-focus"
 const FOCUS_SENTINEL_TTL_MS = 5_000
 const SELECT_ID = "locale-select"
+const LOCALE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60
+
+/**
+ * US-2112b AC-1 — pose le cookie de locale côté client, sans appel API.
+ * Utilisé sur les écrans NON authentifiés (login/reset/MFA) où `PUT
+ * /api/account/locale` (authentifié + persistance base) n'est pas disponible.
+ * Mêmes attributs que le cookie posé côté serveur (`route.ts`) pour cohérence.
+ */
+function setLocaleCookieClient(locale: Locale): void {
+  const secure = process.env.NODE_ENV === "production" ? "; Secure" : ""
+  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE_S}; SameSite=Lax${secure}`
+}
 
 interface LocaleOption {
   code: Locale
@@ -48,9 +60,15 @@ const OPTIONS: LocaleOption[] = [
 interface Props {
   /** Variant compact pour les sidebars étroites — affiche juste le code (FR/EN/AR). */
   variant?: "full" | "compact"
+  /**
+   * US-2112b — `true` (défaut) : utilisateur authentifié → `PUT /api/account/locale`
+   * (persiste `User.language` + cookie). `false` : écran public non authentifié
+   * → pose le cookie côté client uniquement (aucun appel auth, AC-1).
+   */
+  persist?: boolean
 }
 
-export function LocaleSwitcher({ variant = "full" }: Props) {
+export function LocaleSwitcher({ variant = "full", persist = true }: Props) {
   const rawLocale = useLocale()
   const t = useTranslations("common")
   const tSwitcher = useTranslations("localeSwitcher")
@@ -88,12 +106,18 @@ export function LocaleSwitcher({ variant = "full" }: Props) {
     setPending(true)
     setAnnouncement(tSwitcher("switchedAnnounce"))
     try {
-      const res = await fetch("/api/account/locale", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale: next }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (persist) {
+        // Authentifié : persiste la préférence en base + cookie (AC-2).
+        const res = await fetch("/api/account/locale", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale: next }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      } else {
+        // Écran public (AC-1) : cookie côté client uniquement, aucun appel auth.
+        setLocaleCookieClient(next)
+      }
       // Mark intent BEFORE reload so the post-reload effect can restore focus.
       // Timestamp permet au useEffect post-reload d'ignorer un sentinel stale.
       window.sessionStorage.setItem(FOCUS_SENTINEL, String(Date.now()))

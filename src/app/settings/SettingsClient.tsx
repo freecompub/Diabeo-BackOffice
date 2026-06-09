@@ -51,9 +51,11 @@ import {
   AlertTriangle,
   Eye,
   EyeOff,
+  Languages,
 } from "lucide-react"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { SessionsSection } from "@/components/diabeo/account/SessionsSection"
+import { LocaleSwitcher } from "@/components/diabeo/LocaleSwitcher"
 import {
   DiabeoButton,
   DiabeoCard,
@@ -83,6 +85,7 @@ type SectionId =
   | "notifications"
   | "privacy"
   | "sessions"
+  | "language"
 
 interface SectionMeta {
   id: SectionId
@@ -101,6 +104,8 @@ const SECTIONS: SectionMeta[] = [
   // US-2007 Sessions multiples (Groupe 9 Admin/Ops) — UI itération 1
   // bloqueur prod cabinet multi-PS (audit HDS gestion fin de session).
   { id: "sessions", icon: <Monitor className="size-4" /> },
+  // US-2112b AC-2 — préférence de langue (tous rôles, persistée en base).
+  { id: "language", icon: <Languages className="size-4" /> },
 ]
 
 /**
@@ -1132,6 +1137,29 @@ function SectionPanel({
 }
 
 // ---------------------------------------------------------------------------
+// Language section (US-2112b AC-2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Préférence de langue — rend le `LocaleSwitcher` en mode persistant
+ * (`PUT /api/account/locale` → met à jour `User.language` + cookie). Disponible
+ * pour tous les rôles (non patient-only). La valeur courante affichée par le
+ * switcher reflète la locale active (`useLocale()`), synchronisée avec la
+ * préférence après enregistrement.
+ */
+function LanguageSection() {
+  const t = useTranslations("profile")
+  return (
+    <DiabeoFormSection
+      title={t("language.title")}
+      description={t("language.description")}
+    >
+      <LocaleSwitcher variant="full" />
+    </DiabeoFormSection>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // Mobile accordion section
 // ---------------------------------------------------------------------------
 
@@ -1358,6 +1386,9 @@ export function SettingsClient({ role }: SettingsClientProps) {
         // US-2007 Sessions multiples UI — composant autonome (fetch propre,
         // pas de props initial — chargement async).
         return <SessionsSection />
+      case "language":
+        // US-2112b AC-2 — préférence de langue (switcher persistant).
+        return <LanguageSection />
       default:
         return null
     }
