@@ -1064,6 +1064,7 @@
     "title": "اللغة تختلف عن تفضيلك",
     "body": "الواجهة معروضة باللغة {active}، لكن تفضيلك المحفوظ هو {preference}.",
     "continueAction": "المتابعة بـ {lang}",
-    "revertAction": "العودة إلى {lang}"
+    "revertAction": "العودة إلى {lang}",
+    "dismiss": "إغلاق التنبيه"
   }
 }

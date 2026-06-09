@@ -19,6 +19,12 @@ export interface AlertBannerProps {
   dismissible?: boolean
   /** Called when the dismiss button is clicked */
   onDismiss?: () => void
+  /**
+   * Accessible label for the dismiss button. Defaults to French; pass a
+   * localized string in i18n contexts (e.g. AR/EN) so screen readers announce
+   * the correct language. Suivi i18n complet du composant : à généraliser.
+   */
+  dismissLabel?: string
   /** Additional CSS classes */
   className?: string
   /** Child elements (e.g., action buttons) */
@@ -105,6 +111,7 @@ export function AlertBanner({
   glucoseUnit = "mg/dL",
   dismissible = false,
   onDismiss,
+  dismissLabel = "Fermer l'alerte",
   className,
   children,
 }: AlertBannerProps) {
@@ -174,7 +181,7 @@ export function AlertBanner({
               "hover:bg-foreground/10 focus-visible:outline-2",
               "focus-visible:outline-offset-2 focus-visible:outline-current"
             )}
-            aria-label="Fermer l'alerte"
+            aria-label={dismissLabel}
           >
             <svg
               className="h-4 w-4 text-foreground/60"

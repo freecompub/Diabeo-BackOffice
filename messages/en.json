@@ -1064,6 +1064,7 @@
     "title": "Language differs from your preference",
     "body": "The interface is shown in {active}, but your saved preference is {preference}.",
     "continueAction": "Continue in {lang}",
-    "revertAction": "Switch back to {lang}"
+    "revertAction": "Switch back to {lang}",
+    "dismiss": "Dismiss alert"
   }
 }

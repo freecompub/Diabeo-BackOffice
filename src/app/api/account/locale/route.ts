@@ -15,15 +15,12 @@ import { cookies } from "next/headers"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { prisma } from "@/lib/db/client"
 import { extractRequestContext, auditService } from "@/lib/services/audit.service"
-import { LOCALE_COOKIE, locales, defaultLocale } from "@/i18n/config"
+import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE_S, locales, defaultLocale } from "@/i18n/config"
 import { logger } from "@/lib/logger"
 
 const putSchema = z.object({
   locale: z.enum(locales),
 })
-
-/** Cookie TTL : 1 an (préférence stable, mais re-set sur login pour rafraîchir). */
-const LOCALE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60
 
 export async function PUT(req: NextRequest) {
   try {
@@ -41,12 +38,19 @@ export async function PUT(req: NextRequest) {
 
     // US-2112b AC-2 — persiste la préférence durable (suit l'utilisateur entre
     // appareils, indépendamment du cookie). La colonne `User.language` existe
-    // déjà (enum Language fr/en/ar). Si l'update échoue, on laisse tout de même
-    // le cookie posé ci-dessous (dégradation gracieuse — l'affichage reste correct).
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { language: parsed.data.locale },
-    })
+    // déjà (enum Language fr/en/ar). Dégradation gracieuse : si l'update échoue
+    // (erreur DB transitoire), on logue mais on pose tout de même le cookie
+    // ci-dessous pour que l'affichage applique la locale choisie.
+    let persisted = true
+    try {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { language: parsed.data.locale },
+      })
+    } catch (dbErr) {
+      persisted = false
+      logger.error("api", "account/locale: User.language update failed", {}, dbErr)
+    }
 
     const cookieStore = await cookies()
     cookieStore.set(LOCALE_COOKIE, parsed.data.locale, {
@@ -68,7 +72,7 @@ export async function PUT(req: NextRequest) {
       metadata: { setting: "locale", value: parsed.data.locale },
     })
 
-    return NextResponse.json({ locale: parsed.data.locale, persisted: true })
+    return NextResponse.json({ locale: parsed.data.locale, persisted })
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

@@ -14,26 +14,21 @@
  *    sur la langue active (PUT /api/account/locale) ;
  *  - « Revenir à {préférence} » → repose le cookie sur la préférence + reload.
  *
- * Un sentinel sessionStorage évite la réapparition après résolution/dismiss.
+ * Un sentinel sessionStorage évite la réapparition après résolution/dismiss ET
+ * le re-fetch à chaque montage (le banner est dans le shell de toutes les pages).
  */
 
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { AlertBanner } from "@/components/diabeo/AlertBanner"
-import { locales, type Locale, LOCALE_COOKIE } from "@/i18n/config"
+import { locales, type Locale, buildLocaleCookieString } from "@/i18n/config"
 
 const RECONCILED_SENTINEL = "diabeo:locale-reconciled"
-const LOCALE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60
 
 const LOCALE_LABEL: Record<Locale, string> = {
   fr: "Français",
   en: "English",
   ar: "العربية",
-}
-
-function setLocaleCookieClient(locale: Locale): void {
-  const secure = process.env.NODE_ENV === "production" ? "; Secure" : ""
-  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE_S}; SameSite=Lax${secure}`
 }
 
 interface LocaleStatus {
@@ -49,7 +44,8 @@ export function LocaleReconciliationBanner() {
   const [hidden, setHidden] = useState(false)
 
   useEffect(() => {
-    // Déjà résolu/ignoré dans cette session → ne pas re-fetch ni ré-afficher.
+    // Déjà résolu/ignoré dans cette session → ne pas re-fetch ni ré-afficher
+    // (le banner est monté dans le shell de chaque page authentifiée).
     if (typeof window !== "undefined" && window.sessionStorage.getItem(RECONCILED_SENTINEL)) {
       return
     }
@@ -59,10 +55,15 @@ export function LocaleReconciliationBanner() {
       .then((data: LocaleStatus | null) => {
         if (data && data.mismatch && data.active && locales.includes(data.active)) {
           setStatus(data)
+        } else if (data) {
+          // Pas de mismatch (ou résolu) → on pose le sentinel pour couper le
+          // polling sur les navigations suivantes de la session (M1).
+          window.sessionStorage.setItem(RECONCILED_SENTINEL, "1")
         }
       })
       .catch(() => {
-        /* réseau / abort : pas de bannière, dégradation silencieuse */
+        /* réseau / abort : pas de bannière, dégradation silencieuse (pas de
+           sentinel → on retentera à la prochaine navigation) */
       })
     return () => ctrl.abort()
   }, [])
@@ -78,19 +79,27 @@ export function LocaleReconciliationBanner() {
   }
 
   // « Continuer » : adopte la langue active comme nouvelle préférence (persiste
-  // en base). Pas de reload (l'affichage est déjà dans la langue active).
+  // en base). On ne masque la bannière QUE si le PUT a réussi — sinon on laisse
+  // l'utilisateur réessayer (H2 : pas de résolution trompeuse sur échec).
   const handleContinue = async () => {
     if (busy || !status.active) return
     setBusy(true)
     try {
-      await fetch("/api/account/locale", {
+      const res = await fetch("/api/account/locale", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ locale: status.active }),
       })
-    } finally {
-      markResolved()
+      if (res.ok) {
+        markResolved()
+      } else {
+        // Échec serveur : la préférence n'a PAS changé → on garde la bannière.
+        setBusy(false)
+      }
+    } catch {
+      // Réseau coupé : idem, on garde la bannière pour un nouvel essai.
+      setBusy(false)
     }
   }
 
@@ -98,7 +107,7 @@ export function LocaleReconciliationBanner() {
   // que le serveur recharge les messages dans la préférence.
   const handleRevert = () => {
     window.sessionStorage.setItem(RECONCILED_SENTINEL, "1")
-    setLocaleCookieClient(status.preference)
+    document.cookie = buildLocaleCookieString(status.preference)
     window.location.reload()
   }
 
@@ -109,6 +118,7 @@ export function LocaleReconciliationBanner() {
         title={t("title")}
         description={t("body", { active: activeLabel, preference: preferenceLabel })}
         dismissible
+        dismissLabel={t("dismiss")}
         onDismiss={markResolved}
       >
         <div className="mt-3 flex flex-wrap gap-2">

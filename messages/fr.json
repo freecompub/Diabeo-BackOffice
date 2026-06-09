@@ -1064,6 +1064,7 @@
     "title": "Langue différente de votre préférence",
     "body": "L'interface est affichée en {active}, mais votre préférence enregistrée est {preference}.",
     "continueAction": "Continuer en {lang}",
-    "revertAction": "Revenir à {lang}"
+    "revertAction": "Revenir à {lang}",
+    "dismiss": "Fermer l'alerte"
   }
 }

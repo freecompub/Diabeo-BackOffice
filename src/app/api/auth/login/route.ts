@@ -13,9 +13,7 @@ import {
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
 import { loginBodySchema } from "@/lib/schemas/auth"
-import { LOCALE_COOKIE, locales } from "@/i18n/config"
-
-const LOCALE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60
+import { seedLocaleCookieIfAbsent } from "@/i18n/seed-locale-cookie"
 
 // Pre-computed hash for timing-safe comparison when user is not found.
 // Prevents timing oracle attacks that would allow enumeration of valid emails.
@@ -220,19 +218,9 @@ export async function POST(req: NextRequest) {
     })
 
     // US-2112b AC-2 — sur un appareil sans cookie de langue (nouveau navigateur),
-    // initialiser la locale depuis la préférence enregistrée (`User.language`)
-    // pour qu'elle suive l'utilisateur. Si un cookie existe déjà et diffère, on
-    // ne l'écrase PAS ici : la bannière de réconciliation (AC-3) laisse le choix.
-    const hasLocaleCookie = req.cookies.get(LOCALE_COOKIE)?.value
-    if (!hasLocaleCookie && user.language && (locales as readonly string[]).includes(user.language)) {
-      response.cookies.set(LOCALE_COOKIE, user.language, {
-        httpOnly: false, // lisible client (switcher) — cohérent avec /api/account/locale
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        maxAge: LOCALE_COOKIE_MAX_AGE_S,
-      })
-    }
+    // initialiser la locale depuis la préférence enregistrée. Helper mutualisé
+    // avec le chemin MFA (`/api/auth/mfa/challenge`).
+    seedLocaleCookieIfAbsent(req, response, user.language)
 
     return response
   } catch (error) {
