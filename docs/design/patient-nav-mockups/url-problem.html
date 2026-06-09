@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Le problème d'URL — Diabeo nav patient</title>
+<style>
+  :root{
+    --teal:#0D9488; --teal-d:#0a7268; --coral:#F97316;
+    --bg:#FAFAFA; --panel:#fff; --bd:#E5E7EB; --tx:#1F2937; --mut:#6B7280;
+    --ok:#10B981; --hi:#F59E0B; --crit:#EF4444;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:var(--bg);color:var(--tx);line-height:1.5}
+  header.page{padding:20px 24px;background:#fff;border-bottom:1px solid var(--bd)}
+  header.page h1{margin:0 0 4px;font-size:20px}
+  header.page p{margin:0;color:var(--mut);font-size:14px}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  .modeswitch{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .modeswitch button{border:1px solid var(--bd);background:#fff;border-radius:999px;padding:8px 16px;font-size:14px;cursor:pointer}
+  .modeswitch button.active{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .modeswitch button small{display:block;font-size:11px;opacity:.85;font-weight:400}
+
+  /* fake browser */
+  .browser{border:1px solid #cfd4da;border-radius:12px;overflow:hidden;box-shadow:0 8px 24px rgba(0,0,0,.08);background:#fff}
+  .chrome{background:#eef0f3;padding:8px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid #dfe3e8}
+  .dots{display:flex;gap:6px;margin-right:4px}
+  .dots i{width:11px;height:11px;border-radius:50%;display:block}
+  .dots i:nth-child(1){background:#ff5f57}.dots i:nth-child(2){background:#febc2e}.dots i:nth-child(3){background:#28c840}
+  .navbtns{display:flex;gap:4px}
+  .navbtns button{width:30px;height:30px;border:1px solid #d4d8de;background:#fff;border-radius:7px;cursor:pointer;font-size:14px;color:#444}
+  .navbtns button:disabled{opacity:.4;cursor:not-allowed}
+  .addr{flex:1;display:flex;align-items:center;background:#fff;border:1px solid #d4d8de;border-radius:7px;padding:5px 12px;font-size:13px;gap:8px;min-width:0}
+  .addr .lock{color:var(--ok)}
+  .addr .url{font-family:ui-monospace,Menlo,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .addr .url b{color:var(--teal);font-weight:700}
+  .chrome .copy{border:1px solid #d4d8de;background:#fff;border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer}
+
+  .viewport{height:430px;display:flex;position:relative;overflow:hidden}
+  .applay{display:flex;width:100%}
+  .sidebar{width:150px;background:#0d2b29;color:#cfe8e4;padding:14px 10px;font-size:13px;flex-shrink:0}
+  .sidebar .logo{font-weight:700;color:#fff;margin-bottom:14px;font-size:15px}
+  .sidebar a{display:block;padding:7px 9px;border-radius:7px;color:#bcdad6;text-decoration:none;margin-bottom:2px}
+  .sidebar a.on{background:#13403c;color:#fff}
+  .content{flex:1;min-width:0;position:relative;background:var(--bg)}
+  .list{padding:16px 18px;overflow:auto;height:100%}
+  .list h2{margin:0 0 12px;font-size:16px}
+  .prow{display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid var(--bd);border-radius:9px;margin-bottom:8px;cursor:pointer}
+  .prow:hover{border-color:var(--teal);box-shadow:0 1px 6px rgba(13,148,136,.12)}
+  .prow.sel{border-color:var(--teal);box-shadow:0 0 0 2px rgba(13,148,136,.18)}
+  .av{width:34px;height:34px;border-radius:50%;background:#e6f4f2;color:var(--teal);display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0}
+  .prow .nm{font-weight:600;flex:1}
+  .prow .tag{font-size:11px;color:var(--mut)}
+  .prow .tir{font-size:12px;font-weight:600;color:var(--ok)}
+
+  /* overlay panel */
+  .scrim{position:absolute;inset:0;background:rgba(15,30,28,.35);opacity:0;pointer-events:none;transition:.18s}
+  .scrim.show{opacity:1;pointer-events:auto}
+  .drawer{position:absolute;top:0;right:0;height:100%;width:74%;background:#fff;border-left:1px solid var(--bd);transform:translateX(100%);transition:transform .22s ease;display:flex;flex-direction:column;box-shadow:-12px 0 30px rgba(0,0,0,.12)}
+  .drawer.show{transform:translateX(0)}
+  .drawer.full{width:100%;border-left:none}
+  .dhead{padding:12px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px}
+  .dhead .nm{font-weight:700}
+  .dhead .tag{font-size:12px;color:var(--mut)}
+  .dhead .x{margin-left:auto;border:1px solid var(--bd);background:#fff;width:30px;height:30px;border-radius:7px;cursor:pointer}
+  .dtabs{display:flex;gap:2px;padding:8px 12px 0;border-bottom:1px solid var(--bd);flex-wrap:wrap}
+  .dtabs span{padding:7px 12px;font-size:13px;color:var(--mut);border-bottom:2px solid transparent;cursor:pointer}
+  .dtabs span.on{color:var(--teal);border-color:var(--teal);font-weight:600}
+  .dbody{padding:16px;overflow:auto;flex:1}
+  .metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}
+  .metric{background:#f6f8f8;border:1px solid var(--bd);border-radius:8px;padding:8px 10px}
+  .metric .k{font-size:11px;color:var(--mut)}
+  .metric .v{font-size:16px;font-weight:700}
+  .agp{background:#fff;border:1px solid var(--bd);border-radius:10px;padding:10px}
+  .agp h4{margin:0 0 2px;font-size:13px}
+  .agp p{margin:0 0 6px;font-size:11px;color:var(--mut)}
+
+  /* callout */
+  .callout{margin-top:16px;border-radius:10px;padding:14px 16px;font-size:14px;border:1px solid;display:flex;gap:10px;align-items:flex-start}
+  .callout .ico{font-size:18px;line-height:1}
+  .callout.bad{background:#fff4f3;border-color:#f6c5c0;color:#9b2c22}
+  .callout.good{background:#eef9f5;border-color:#b6e6d6;color:#0a6b50}
+  .callout.neutral{background:#f3f6ff;border-color:#cfd9f5;color:#2c4080}
+  .callout b{font-weight:700}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:var(--mut)}
+  .legend b{color:var(--tx)}
+  .hint{font-size:12px;color:var(--mut);margin-top:8px}
+  .nav-note{font-size:12px;color:var(--coral);font-weight:600;margin-top:4px;min-height:16px}
+</style>
+</head>
+<body>
+<header class="page">
+  <h1>🔗 Le « problème d'URL » — démonstration interactive</h1>
+  <p>Une URL = l'adresse exacte de ce que tu regardes. La question : quand on ouvre un patient en surcouche, est-ce que l'adresse <b>sait</b> qu'on est dans ce patient ? Clique les boutons de la fausse barre d'adresse pour voir la différence.</p>
+</header>
+
+<div class="wrap">
+  <div class="modeswitch">
+    <button id="mA" class="active" onclick="setMode('A')">Mode A — surcouche <u>sans</u> URL<small>un simple « modal »</small></button>
+    <button id="mB" onclick="setMode('B')">Mode B — surcouche <u>qui EST</u> une URL<small>intercepting routes Next.js</small></button>
+  </div>
+
+  <div class="browser">
+    <div class="chrome">
+      <div class="dots"><i></i><i></i><i></i></div>
+      <div class="navbtns">
+        <button id="back" title="Retour" onclick="goBack()">←</button>
+        <button id="fwd" title="Suivant" disabled>→</button>
+        <button id="reload" title="Recharger la page" onclick="doReload()">⟳</button>
+      </div>
+      <div class="addr">
+        <span class="lock">🔒</span>
+        <span class="url" id="url">app.diabeo.fr<b id="path">/patients</b></span>
+      </div>
+      <button class="copy" onclick="copyLink()">Copier le lien</button>
+    </div>
+
+    <div class="viewport">
+      <div class="applay">
+        <div class="sidebar">
+          <div class="logo">Diabeo</div>
+          <a href="#">Tableau de bord</a>
+          <a href="#" class="on">Patients</a>
+          <a href="#">Médicaments</a>
+          <a href="#">Documents</a>
+          <a href="#">Paramètres</a>
+        </div>
+        <div class="content">
+          <div class="list">
+            <h2>Mes patients · portefeuille</h2>
+            <div class="prow" data-id="42" onclick="openPatient('42','Jean Martin','DT1 · 34 ans','75%')">
+              <div class="av">JM</div><div class="nm">Jean Martin <span class="tag">#42</span></div><div class="tag">DT1 · 34 ans</div><div class="tir">TIR 75%</div>
+            </div>
+            <div class="prow" data-id="58" onclick="openPatient('58','Amina Saïd','DT2 · 51 ans','61%')">
+              <div class="av">AS</div><div class="nm">Amina Saïd <span class="tag">#58</span></div><div class="tag">DT2 · 51 ans</div><div class="tir">TIR 61%</div>
+            </div>
+            <div class="prow" data-id="71" onclick="openPatient('71','Karim Benali','DT1 · 12 ans','83%')">
+              <div class="av">KB</div><div class="nm">Karim Benali <span class="tag">#71</span></div><div class="tag">DT1 · 12 ans</div><div class="tir">TIR 83%</div>
+            </div>
+          </div>
+
+          <div class="scrim" id="scrim" onclick="closePatient()"></div>
+          <aside class="drawer" id="drawer">
+            <div class="dhead">
+              <div class="av" id="dav">JM</div>
+              <div><div class="nm" id="dnm">Jean Martin <span class="tag">#42</span></div><div class="tag" id="dtag">DT1 · 34 ans</div></div>
+              <button class="x" onclick="closePatient()">✕</button>
+            </div>
+            <div class="dtabs">
+              <span class="on">Profil glycémique</span><span>Glycémie</span><span>Traitements</span><span>Documents</span><span>RDV</span>
+            </div>
+            <div class="dbody">
+              <div class="metrics">
+                <div class="metric"><div class="k">Glycémie moy.</div><div class="v">158 <small>mg/dL</small></div></div>
+                <div class="metric"><div class="k">HbA1c est.</div><div class="v">7.1 %</div></div>
+                <div class="metric"><div class="k">TIR</div><div class="v" id="dtir">75 %</div></div>
+              </div>
+              <div class="agp">
+                <h4>AGP — Profil glycémique ambulatoire</h4>
+                <p>Percentiles p10 / p25 / médiane / p75 / p90 · 14 jours</p>
+                <svg viewBox="0 0 320 110" width="100%" height="110">
+                  <rect x="0" y="40" width="320" height="34" fill="#10B98112"/>
+                  <line x1="0" y1="40" x2="320" y2="40" stroke="#F59E0B" stroke-dasharray="4 4"/>
+                  <line x1="0" y1="74" x2="320" y2="74" stroke="#F59E0B" stroke-dasharray="4 4"/>
+                  <path d="M0,70 C40,55 60,30 100,40 S180,75 220,50 280,30 320,45 L320,90 L0,95 Z" fill="#0D948814"/>
+                  <path d="M0,62 C40,52 60,42 100,48 S180,62 220,52 280,44 320,52" fill="none" stroke="#0D9488" stroke-width="2"/>
+                </svg>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="nav-note" id="note"></div>
+
+  <div class="callout" id="callout">
+    <span class="ico">👆</span>
+    <div id="calloutTxt">Choisis un mode ci-dessus, puis <b>clique sur un patient</b> dans la liste, et observe la barre d'adresse.</div>
+  </div>
+
+  <div class="legend">
+    <span>🔒 <b>Barre d'adresse</b> = ce que verrait un collègue si tu lui envoyais le lien</span>
+    <span>← <b>Retour</b> / ⟳ <b>Recharger</b> = ce qui se passe quand l'utilisateur les utilise</span>
+  </div>
+  <p class="hint">Astuce : en Mode A, ouvre un patient puis clique <b>⟳ Recharger</b> ou <b>Copier le lien</b>. Recommence en Mode B et compare.</p>
+</div>
+
+<script>
+  let mode='A', open=false, curId=null, full=false;
+  const $=id=>document.getElementById(id);
+
+  function setMode(m){
+    mode=m; closePatient(true);
+    $('mA').classList.toggle('active',m==='A');
+    $('mB').classList.toggle('active',m==='B');
+    setCallout('neutral','🔀','Mode <b>'+(m==='A'?'A — surcouche sans URL':'B — surcouche qui EST une URL')+'</b> sélectionné. Clique un patient.');
+  }
+
+  function openPatient(id,nm,tag,tir){
+    open=true; curId=id; full=false;
+    document.querySelectorAll('.prow').forEach(r=>r.classList.toggle('sel',r.dataset.id===id));
+    $('dav').textContent=nm.split(' ').map(w=>w[0]).join('').slice(0,2);
+    $('dnm').innerHTML=nm+' <span class="tag">#'+id+'</span>';
+    $('dtag').textContent=tag; $('dtir').textContent=tir;
+    $('drawer').classList.add('show'); $('drawer').classList.remove('full'); $('scrim').classList.add('show');
+    if(mode==='B'){ setPath('/patients/'+id, true); back_on(); }
+    else { setPath('/patients', false); }
+    if(mode==='B'){
+      setCallout('good','✅','Surcouche ouverte <b>ET</b> l\'adresse est passée à <b>/patients/'+id+'</b>. Le lien désigne maintenant ce patient précis.');
+    } else {
+      setCallout('bad','⚠️','Surcouche ouverte, mais l\'adresse est restée <b>/patients</b>. L\'URL « ne sait pas » qu\'on regarde le patient #'+id+'.');
+    }
+    note('');
+  }
+
+  function closePatient(silent){
+    open=false; full=false;
+    document.querySelectorAll('.prow').forEach(r=>r.classList.remove('sel'));
+    $('drawer').classList.remove('show','full'); $('scrim').classList.remove('show');
+    if(!silent && mode==='B'){ setPath('/patients', false); }
+  }
+
+  function doReload(){
+    if(mode==='B' && open){
+      // l'URL /patients/ID existe → rechargement = la VRAIE page plein écran du patient
+      full=true;
+      $('drawer').classList.add('full');
+      setCallout('good','✅','<b>Rechargé sur /patients/'+curId+'</b> → la page plein écran du patient s\'affiche directement. Rien n\'est perdu. (Refresh / lien direct = page réelle.)');
+      note('↳ refresh : la surcouche devient la page plein écran (fallback)');
+    } else if(mode==='A' && open){
+      // pas d'URL → le rechargement retombe sur /patients, la surcouche disparaît
+      closePatient(true);
+      setCallout('bad','❌','<b>Rechargé.</b> Comme l\'adresse était /patients, le navigateur revient à la simple liste : <b>la surcouche patient a disparu</b>. L\'utilisateur a perdu son contexte.');
+      note('↳ refresh : retour à la liste, patient perdu');
+    } else {
+      setCallout('neutral','⟳','Page rechargée (liste des patients).');
+    }
+  }
+
+  function goBack(){
+    if(mode==='B' && open){
+      closePatient(true); setPath('/patients', false); back_off();
+      setCallout('good','✅','<b>Retour</b> : la surcouche se referme proprement et on revient à la liste (URL /patients). Le bouton précédent fait ce qu\'on attend.');
+      note('↳ retour : referme le patient, revient à la liste');
+    } else if(mode==='A' && open){
+      // sans URL, "retour" sort carrément de la page
+      closePatient(true); setPath('/dashboard', false);
+      setCallout('bad','❌','<b>Retour</b> en Mode A : comme la surcouche n\'a pas d\'adresse, le navigateur quitte carrément la page Patients (→ /dashboard) au lieu de juste fermer le patient. Comportement inattendu.');
+      note('↳ retour : sort de la page Patients (surprise !)');
+    } else {
+      setCallout('neutral','←','Rien d\'ouvert : « retour » sort de la liste.');
+    }
+  }
+
+  function copyLink(){
+    const link='app.diabeo.fr'+$('path').textContent;
+    if(mode==='A'){
+      setCallout('bad','📋❌','Lien copié : <b>'+link+'</b>. Tu l\'envoies à un collègue → il tombe sur la <b>liste des patients</b>, pas sur le patient que tu voulais lui montrer. Et l\'audit HDS ne sait pas quel patient a été ouvert.');
+    } else {
+      setCallout('good','📋✅','Lien copié : <b>'+link+'</b>. Le collègue l\'ouvre → il arrive <b>directement sur le bon patient</b>. Et l\'audit HDS trace précisément le patient consulté.');
+    }
+  }
+
+  function setPath(p, highlight){
+    $('path').textContent=p;
+    $('path').style.color = highlight ? '' : '';
+  }
+  function back_on(){ $('back').disabled=false; }
+  function back_off(){ $('back').disabled=false; }
+  function note(t){ $('note').textContent=t; }
+  function setCallout(kind,ico,txt){
+    const c=$('callout'); c.className='callout '+kind;
+    c.querySelector('.ico').textContent=ico; $('calloutTxt').innerHTML=txt;
+  }
+</script>
+</body>
+</html>
