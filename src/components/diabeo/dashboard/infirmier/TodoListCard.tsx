@@ -9,7 +9,7 @@
 import Link from "next/link"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
-import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { TodoItem } from "@/lib/services/nurse-dashboard.service"
@@ -37,7 +37,7 @@ export function TodoListCard() {
         </h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
       </header>
-      {isStale && <StaleBanner />}
+      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">Chargement…</p>

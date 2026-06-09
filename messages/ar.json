@@ -211,13 +211,11 @@
         "emptyMessage": "لا يوجد مريض يستدعي مؤشر متابعة.",
         "reason": {
           "recentHypos": "نقص سكر حديث",
-          "silentMonitoring": "غياب الإدخال",
-          "tirDrop": "انخفاض النطاق المستهدف"
+          "silentMonitoring": "غياب الإدخال"
         },
         "metric": {
           "recentHypos": "{count, plural, other {# نقص سكر / 7 أيام}}",
-          "silentMonitoring": "{count, plural, other {# يوم دون إدخال}}",
-          "tirDrop": "انخفاض النطاق المستهدف"
+          "silentMonitoring": "{count, plural, other {# يوم دون إدخال}}"
         }
       },
       "kpi": {

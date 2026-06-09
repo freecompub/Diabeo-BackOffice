@@ -211,13 +211,11 @@
         "emptyMessage": "Aucun patient ne déclenche d'indicateur de suivi.",
         "reason": {
           "recentHypos": "Hypos récentes",
-          "silentMonitoring": "Silence saisie",
-          "tirDrop": "TIR en baisse"
+          "silentMonitoring": "Silence saisie"
         },
         "metric": {
           "recentHypos": "{count, plural, one {# hypo / 7j} other {# hypos / 7j}}",
-          "silentMonitoring": "{count, plural, one {# j sans saisie} other {# j sans saisie}}",
-          "tirDrop": "TIR en baisse"
+          "silentMonitoring": "{count, plural, one {# j sans saisie} other {# j sans saisie}}"
         }
       },
       "kpi": {

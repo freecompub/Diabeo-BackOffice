@@ -43,6 +43,11 @@ export function EmergencyCard() {
           {t("urgencies.title")}
         </h2>
         <span className="text-xs text-muted-foreground">
+          {/* "Last update" is a CLIENT-relative wall clock (when this browser
+              last polled) → formatted in the viewer's own timezone, unlike
+              AppointmentCard.formatHour which pins Europe/Paris for the
+              cabinet-anchored clinical appointment time. Number format follows
+              the active locale. */}
           {lastUpdatedAt
             ? t("lastUpdate", {
                 time: new Date(lastUpdatedAt).toLocaleTimeString(bcp47(locale)),

@@ -9,7 +9,7 @@
 "use client"
 
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
-import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { BillingMetric } from "@/lib/services/admin-dashboard.service"
 
@@ -42,7 +42,7 @@ export function BillingCard() {
           {item ? `${item.unbilledCount} en attente` : "—"}
         </span>
       </header>
-      {isStale && <StaleBanner />}
+      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
       <div className="px-4 pb-4">
         {loading && item === null && (
           <p className="text-sm text-muted-foreground">Chargement…</p>

@@ -17,10 +17,13 @@ import type { PatientAtRiskItem } from "@/lib/services/doctor-dashboard.service"
 type ApiResponse = { items: PatientAtRiskItem[] }
 
 // Visual variant per risk reason (non-textual — labels are localized via i18n).
+// Mirrors `RiskReason` (doctor-dashboard.service.ts) : only the reasons the
+// service actually emits. `tirDrop` was dropped server-side (code-review L6),
+// so it is intentionally absent here — re-add it alongside the type + i18n keys
+// if/when the service reintroduces it.
 const REASON_VARIANT: Record<string, "destructive" | "outline" | "secondary"> = {
   recentHypos: "destructive",
   silentMonitoring: "outline",
-  tirDrop: "secondary",
 }
 
 export function PatientsAtRiskCard() {

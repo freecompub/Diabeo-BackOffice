@@ -211,13 +211,11 @@
         "emptyMessage": "No patient triggers a monitoring indicator.",
         "reason": {
           "recentHypos": "Recent hypos",
-          "silentMonitoring": "No entries",
-          "tirDrop": "TIR dropping"
+          "silentMonitoring": "No entries"
         },
         "metric": {
           "recentHypos": "{count, plural, one {# hypo / 7d} other {# hypos / 7d}}",
-          "silentMonitoring": "{count, plural, one {# d without entry} other {# d without entry}}",
-          "tirDrop": "TIR dropping"
+          "silentMonitoring": "{count, plural, one {# d without entry} other {# d without entry}}"
         }
       },
       "kpi": {
