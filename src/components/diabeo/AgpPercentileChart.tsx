@@ -16,6 +16,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { tokens } from "@/design-system/tokens"
 
 /** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
  *  preference change re-applies to the animation prop. */
@@ -137,31 +138,31 @@ export function AgpPercentileChart({
     <div className="w-full" role="figure" aria-label="Profil ambulatoire de glycémie sur 7 jours">
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 24, left: 12 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+          <CartesianGrid strokeDasharray="3 3" stroke={tokens.neutral[200]} />
           <XAxis
             dataKey="minute"
             type="number"
             domain={[0, 1440]}
             ticks={[0, 240, 480, 720, 960, 1200, 1440]}
             tickFormatter={(m) => formatHour(m)}
-            stroke="#6B7280"
+            stroke={tokens.neutral[500]}
             tick={{ fontSize: 11 }}
           />
           <YAxis
             domain={[40, 300]}
             ticks={[40, 70, 140, 180, 250]}
-            stroke="#6B7280"
+            stroke={tokens.neutral[500]}
             tick={{ fontSize: 11 }}
             label={{
               value: "mg/dL", angle: -90,
               position: "insideLeft", offset: 0,
-              style: { textAnchor: "middle", fontSize: 11, fill: "#6B7280" },
+              style: { textAnchor: "middle", fontSize: 11, fill: tokens.neutral[500] },
             }}
           />
           {/* Target range band — green tint */}
           <ReferenceArea
             y1={targetLowMgdl} y2={targetHighMgdl}
-            fill="#10B981" fillOpacity={0.08}
+            fill={tokens.glycemia.normal} fillOpacity={0.08}
             ifOverflow="extendDomain"
           />
           {/* Stacked percentile bands. Floor (transparent) lifts the visible
@@ -170,17 +171,17 @@ export function AgpPercentileChart({
                 stroke="none" fill="transparent"
                 isAnimationActive={!prefersReducedMotion} />
           <Area type="monotone" dataKey="bandLow" stackId="agp"
-                stroke="none" fill="#0D9488" fillOpacity={0.12}
+                stroke="none" fill={tokens.brand.primary[600]} fillOpacity={0.12}
                 isAnimationActive={!prefersReducedMotion} />
           <Area type="monotone" dataKey="bandMid" stackId="agp"
-                stroke="none" fill="#0D9488" fillOpacity={0.28}
+                stroke="none" fill={tokens.brand.primary[600]} fillOpacity={0.28}
                 isAnimationActive={!prefersReducedMotion} />
           <Area type="monotone" dataKey="bandHigh" stackId="agp"
-                stroke="none" fill="#0D9488" fillOpacity={0.12}
+                stroke="none" fill={tokens.brand.primary[600]} fillOpacity={0.12}
                 isAnimationActive={!prefersReducedMotion} />
           {/* Median line */}
           <Line type="monotone" dataKey="p50"
-                stroke="#0F766E" strokeWidth={2} dot={false}
+                stroke={tokens.brand.primary[700]} strokeWidth={2} dot={false}
                 isAnimationActive={!prefersReducedMotion} />
           <Tooltip
             formatter={(value, name) => {

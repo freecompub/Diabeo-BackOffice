@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 type ChartLoaderProps = {
   variant?: "line" | "agp" | "bars" | "donut"
@@ -83,13 +84,13 @@ function LineSkeleton() {
   return (
     <svg viewBox="0 0 600 200" className="w-full h-48" aria-hidden>
       <rect x="0" y="70" width="600" height="70" fill="rgba(16,185,129,0.06)" />
-      <line x1="0" y1="70" x2="600" y2="70" stroke="#E5E7EB" strokeDasharray="3 3" />
-      <line x1="0" y1="140" x2="600" y2="140" stroke="#E5E7EB" strokeDasharray="3 3" />
+      <line x1="0" y1="70" x2="600" y2="70" stroke={tokens.neutral[200]} strokeDasharray="3 3" />
+      <line x1="0" y1="140" x2="600" y2="140" stroke={tokens.neutral[200]} strokeDasharray="3 3" />
       <path
         className="chart-draw"
         d="M0,120 L50,110 L100,95 L150,80 L200,100 L250,130 L300,145 L350,130 L400,115 L450,95 L500,105 L550,120 L600,115"
         fill="none"
-        stroke="#0D9488"
+        stroke={tokens.brand.primary[600]}
         strokeWidth="2.5"
         strokeLinecap="round"
       />
@@ -115,7 +116,7 @@ function AgpSkeleton() {
         className="chart-draw"
         d="M0,115 L100,125 L200,110 L300,88 L400,95 L500,115 L600,120"
         fill="none"
-        stroke="#0D9488"
+        stroke={tokens.brand.primary[600]}
         strokeWidth="2"
       />
     </svg>
@@ -136,7 +137,7 @@ function BarsSkeleton() {
             width="28"
             height={h}
             rx="4"
-            fill="#CCFBF1"
+            fill={tokens.brand.primary[100]}
             className="animate-pulse"
             style={{ animationDelay: `${i * 80}ms` }}
           />
@@ -150,13 +151,13 @@ function DonutSkeleton() {
   return (
     <div className="flex items-center justify-center py-4">
       <svg viewBox="0 0 120 120" className="w-36 h-36" aria-hidden>
-        <circle cx="60" cy="60" r="48" fill="none" stroke="#F3F4F6" strokeWidth="14" />
+        <circle cx="60" cy="60" r="48" fill="none" stroke={tokens.neutral[100]} strokeWidth="14" />
         <circle
           cx="60"
           cy="60"
           r="48"
           fill="none"
-          stroke="#0D9488"
+          stroke={tokens.brand.primary[600]}
           strokeWidth="14"
           strokeDasharray="60 302"
           strokeLinecap="round"

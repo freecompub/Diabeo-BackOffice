@@ -44,6 +44,33 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-explicit-any": "off",
     },
   },
+  // US-2269 — Gate anti-drift design system : interdit les couleurs hex en dur.
+  // En `warn` pour le MVP (migration incrémentale des ~call-sites existants ;
+  // `pnpm lint` n'a pas `--max-warnings`, la CI ne casse donc pas). Les charts
+  // doivent importer `tokens` de `@/design-system/tokens` ; les composants
+  // doivent utiliser des classes Tailwind sémantiques (var(--color-*)).
+  // Exclu : `components/ui/` (shadcn auto-généré), `email.service` (HTML d'email
+  // — les clients mail n'ont pas accès aux variables CSS), `design-system/` et
+  // `styles/` (la SOURCE des tokens).
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/components/ui/**",
+      "src/design-system/**",
+      "src/styles/**",
+      "src/lib/services/email.service.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "warn",
+        {
+          selector: "Literal[value=/^#[0-9a-fA-F]{3,8}$/]",
+          message:
+            "Couleur hex en dur interdite (US-2269 anti-drift). Importez `tokens` depuis @/design-system/tokens (charts/SVG) ou utilisez une classe Tailwind sémantique (var(--color-*)).",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
