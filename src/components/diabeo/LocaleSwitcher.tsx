@@ -17,7 +17,7 @@
 import { useEffect, useState } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { Languages } from "lucide-react"
-import { locales, defaultLocale, type Locale } from "@/i18n/config"
+import { locales, defaultLocale, type Locale, buildLocaleCookieString } from "@/i18n/config"
 
 /**
  * Sentinel sessionStorage : marque qu'un reload locale-switch est en cours
@@ -48,9 +48,15 @@ const OPTIONS: LocaleOption[] = [
 interface Props {
   /** Variant compact pour les sidebars étroites — affiche juste le code (FR/EN/AR). */
   variant?: "full" | "compact"
+  /**
+   * US-2112b — `true` (défaut) : utilisateur authentifié → `PUT /api/account/locale`
+   * (persiste `User.language` + cookie). `false` : écran public non authentifié
+   * → pose le cookie côté client uniquement (aucun appel auth, AC-1).
+   */
+  persist?: boolean
 }
 
-export function LocaleSwitcher({ variant = "full" }: Props) {
+export function LocaleSwitcher({ variant = "full", persist = true }: Props) {
   const rawLocale = useLocale()
   const t = useTranslations("common")
   const tSwitcher = useTranslations("localeSwitcher")
@@ -88,12 +94,18 @@ export function LocaleSwitcher({ variant = "full" }: Props) {
     setPending(true)
     setAnnouncement(tSwitcher("switchedAnnounce"))
     try {
-      const res = await fetch("/api/account/locale", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ locale: next }),
-      })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (persist) {
+        // Authentifié : persiste la préférence en base + cookie (AC-2).
+        const res = await fetch("/api/account/locale", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale: next }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      } else {
+        // Écran public (AC-1) : cookie côté client uniquement, aucun appel auth.
+        document.cookie = buildLocaleCookieString(next)
+      }
       // Mark intent BEFORE reload so the post-reload effect can restore focus.
       // Timestamp permet au useEffect post-reload d'ignorer un sentinel stale.
       window.sessionStorage.setItem(FOCUS_SENTINEL, String(Date.now()))

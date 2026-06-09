@@ -27,6 +27,7 @@ import {
 } from "@/lib/auth"
 import { mfaService } from "@/lib/services/mfa.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { seedLocaleCookieIfAbsent } from "@/i18n/seed-locale-cookie"
 import { logger } from "@/lib/logger"
 import { mfaChallengeBodySchema } from "@/lib/schemas/auth"
 
@@ -63,7 +64,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: pending.sub },
-      select: { id: true, role: true, mfaEnabled: true },
+      select: { id: true, role: true, mfaEnabled: true, language: true },
     })
     if (!user || !user.mfaEnabled) {
       // User deleted or MFA disabled between login and challenge — reject.
@@ -121,6 +122,12 @@ export async function POST(req: NextRequest) {
       path: "/",
       maxAge: 24 * 60 * 60,
     })
+
+    // US-2112b AC-2 (H1) — les comptes MFA passent par ici (pas par le succès
+    // direct de /api/auth/login). Seeder le cookie de langue depuis la
+    // préférence si absent, pour que la préférence suive aussi ces comptes.
+    seedLocaleCookieIfAbsent(req, response, user.language)
+
     return response
   } catch (error) {
     logger.error("auth/mfa/challenge", "challenge failed", { requestId: ctx.requestId }, error)

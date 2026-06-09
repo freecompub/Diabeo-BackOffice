@@ -1032,6 +1032,10 @@
     "export": {
       "pdf": "Exporter en PDF",
       "json": "Exporter en JSON"
+    },
+    "language": {
+      "title": "Langue",
+      "description": "Choisissez la langue de l'interface — enregistrée comme préférence et appliquée sur tous vos appareils."
     }
   },
   "sidebar": {
@@ -1055,5 +1059,12 @@
     "loadErrorBody": "Une erreur s'est produite lors de l'affichage de vos paramètres. Si le problème persiste, contactez le support technique.",
     "errorRef": "Réf :",
     "actionRetry": "Réessayer"
+  },
+  "localeReconcile": {
+    "title": "Langue différente de votre préférence",
+    "body": "L'interface est affichée en {active}, mais votre préférence enregistrée est {preference}.",
+    "continueAction": "Continuer en {lang}",
+    "revertAction": "Revenir à {lang}",
+    "dismiss": "Fermer l'alerte"
   }
 }

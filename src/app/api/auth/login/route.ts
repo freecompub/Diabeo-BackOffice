@@ -13,6 +13,7 @@ import {
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 import { logger } from "@/lib/logger"
 import { loginBodySchema } from "@/lib/schemas/auth"
+import { seedLocaleCookieIfAbsent } from "@/i18n/seed-locale-cookie"
 
 // Pre-computed hash for timing-safe comparison when user is not found.
 // Prevents timing oracle attacks that would allow enumeration of valid emails.
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
       where: { emailHmac: emailHash },
       select: {
         id: true, passwordHash: true, role: true,
-        mfaEnabled: true, status: true,
+        mfaEnabled: true, status: true, language: true,
       },
     })
 
@@ -215,6 +216,12 @@ export async function POST(req: NextRequest) {
       path: "/",
       maxAge: 24 * 60 * 60,
     })
+
+    // US-2112b AC-2 — sur un appareil sans cookie de langue (nouveau navigateur),
+    // initialiser la locale depuis la préférence enregistrée. Helper mutualisé
+    // avec le chemin MFA (`/api/auth/mfa/challenge`).
+    seedLocaleCookieIfAbsent(req, response, user.language)
+
     return response
   } catch (error) {
     const ctx = extractRequestContext(req)
