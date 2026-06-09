@@ -1125,5 +1125,45 @@
     "continueAction": "المتابعة بـ {lang}",
     "revertAction": "العودة إلى {lang}",
     "dismiss": "إغلاق التنبيه"
+  },
+  "consultation": {
+    "loading": "جارٍ التحميل…",
+    "loadError": "تعذّر تحميل هذه البيانات.",
+    "ephemeralNotice": "استشارة مؤقتة — يُتلف المرجع عند الإغلاق، غير قابل للمشاركة.",
+    "breadcrumbRoot": "المرضى",
+    "close": "إغلاق",
+    "expand": "تكبير",
+    "collapse": "تصغير",
+    "tabsLabel": "أقسام ملف المريض",
+    "yearsShort": "سنة",
+    "tabs": {
+      "overview": "نظرة عامة",
+      "glycemicProfile": "الملف السكري",
+      "glycemia": "سكر الدم",
+      "treatment": "العلاجات",
+      "documents": "المستندات"
+    },
+    "pathology": {
+      "DT1": "النوع 1",
+      "DT2": "النوع 2",
+      "GD": "سكري الحمل"
+    },
+    "overview": {
+      "identity": "الهوية",
+      "pathology": "المرض",
+      "age": "العمر",
+      "referent": "الطبيب المرجعي",
+      "objectives": "الأهداف السكرية",
+      "targetRange": "الهدف"
+    },
+    "glycemia": {
+      "title": "ملف سكر الدم (24 ساعة)"
+    },
+    "treatment": {
+      "isf": "عامل الحساسية (ISF)",
+      "icr": "نسبة الكربوهيدرات (ICR)",
+      "basal": "المعدل القاعدي",
+      "none": "لا توجد إعدادات"
+    }
   }
 }

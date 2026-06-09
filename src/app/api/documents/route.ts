@@ -3,6 +3,7 @@ import { z } from "zod"
 import { DocumentCategory } from "@prisma/client"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
+import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { documentService } from "@/lib/services/document.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
@@ -24,12 +25,14 @@ export async function GET(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const patientIdParam = req.nextUrl.searchParams.get("patientId")
-    const patientId = await resolvePatientId(user.id, user.role, patientIdParam ? parseInt(patientIdParam, 10) : undefined)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    // US-2018b — token-aware (consultation overlay) + ?patientId historique.
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 })
+    }
 
     const ctx = extractRequestContext(req)
-    const docs = await documentService.list(patientId, user.role, user.id, ctx)
+    const docs = await documentService.list(res.patientId, user.role, user.id, ctx)
     return NextResponse.json(docs)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

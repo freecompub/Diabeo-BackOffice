@@ -987,6 +987,7 @@ export const patientService = {
         patient: {
           select: {
             id: true,
+            publicRef: true, // US-2018b — ouverture consultation sans id dans l'URL
             pathology: true,
             // HSA L1 — `birthday` contractualisé côté DTO pour le calcul d'âge
             // côté UI (cf. PatientListItemDto). À conserver dans la DPIA.
@@ -1017,6 +1018,7 @@ export const patientService = {
 
     return referents.map((r) => ({
       id: r.patient.id,
+      publicRef: r.patient.publicRef,
       pathology: r.patient.pathology,
       user: {
         id: r.patient.user.id,
@@ -1058,6 +1060,7 @@ export const patientService = {
       where: { id: patientId, deletedAt: null },
       select: {
         id: true,
+        publicRef: true,
         pathology: true,
         user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
       },
@@ -1080,6 +1083,7 @@ export const patientService = {
 
     return {
       id: patient.id,
+      publicRef: patient.publicRef,
       pathology: patient.pathology,
       user: {
         id: patient.user.id,

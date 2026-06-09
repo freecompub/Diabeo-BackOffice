@@ -21,6 +21,12 @@ import type { Pathology } from "@prisma/client"
  */
 export interface PatientListItemDto {
   id: number
+  /**
+   * UUID opaque (`Patient.public_ref`) — identifiant non énumérable exposé au
+   * client pour ouvrir une consultation éphémère SANS exposer l'`id` interne
+   * dans l'URL (US-2018b). Ne révèle rien et n'est pas devinable.
+   */
+  publicRef: string
   pathology: Pathology
   user: {
     id: number

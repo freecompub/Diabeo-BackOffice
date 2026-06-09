@@ -30,14 +30,16 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, ChevronRight, UserPlus, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { useConsultation } from "@/components/diabeo/consultation/ConsultationContext"
 import type { PatientListItemDto } from "@/lib/dto/patient"
 
 type Pathology = "DT1" | "DT2" | "GD"
 
 interface PatientRow {
   id: number
+  /** UUID opaque pour ouvrir la consultation sans exposer l'id (US-2018b). */
+  publicRef: string
   name: string
   pathology: Pathology
   age: number | null
@@ -73,6 +75,7 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
   const name = `${first} ${last}`.trim() || `Patient #${p.id}`
   return {
     id: p.id,
+    publicRef: p.publicRef,
     name,
     pathology: p.pathology,
     age: ageFromBirthday(p.user.birthday),
@@ -83,7 +86,7 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
 }
 
 export default function PatientsPage() {
-  const router = useRouter()
+  const { open } = useConsultation()
   const t = useTranslations("patients")
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
@@ -261,28 +264,35 @@ export default function PatientsPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {!loading && !error && filtered.map((patient) => (
+                {!loading && !error && filtered.map((patient) => {
+                  // US-2018b — ouvre la consultation éphémère (overlay) sans
+                  // exposer l'id : aucune navigation d'URL, on passe le publicRef.
+                  const openPatient = () =>
+                    open({
+                      publicRef: patient.publicRef,
+                      name: patient.name,
+                      pathology: patient.pathology,
+                      age: patient.age,
+                    })
+                  return (
                   <TableRow
                     key={patient.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => router.push(`/patients/${patient.id}`)}
+                    onClick={openPatient}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault()
-                        router.push(`/patients/${patient.id}`)
+                        openPatient()
                       }
                     }}
                     className="cursor-pointer hover:bg-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
                     aria-label={t("viewRecord", { name: patient.name })}
                   >
                     <TableCell>
-                      <Link
-                        href={`/patients/${patient.id}`}
-                        className="font-medium text-[var(--color-foreground)] hover:text-[var(--color-primary)]"
-                      >
+                      <span className="font-medium text-[var(--color-foreground)]">
                         {patient.name}
-                      </Link>
+                      </span>
                     </TableCell>
                     <TableCell>
                       <ClinicalBadge type="pathology" value={patient.pathology} />
@@ -314,15 +324,16 @@ export default function PatientsPage() {
                       {patient.lastSync}
                     </TableCell>
                     <TableCell>
-                      <Link
-                        href={`/patients/${patient.id}`}
-                        aria-label={t("viewRecord", { name: patient.name })}
-                      >
-                        <ChevronRight className="h-4 w-4 text-[var(--color-muted-foreground)]" />
-                      </Link>
+                      {/* La ligne entière est le déclencheur (role=button) ;
+                          chevron purement décoratif. */}
+                      <ChevronRight
+                        className="h-4 w-4 text-[var(--color-muted-foreground)] rtl:rotate-180"
+                        aria-hidden="true"
+                      />
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
                 {!loading && !error && filtered.length === 0 && (
                   <TableRow>
                     <TableCell

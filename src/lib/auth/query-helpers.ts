@@ -8,18 +8,31 @@
 import { z } from "zod"
 import type { NextRequest } from "next/server"
 import { resolvePatientId } from "@/lib/access-control"
+import { resolveConsultation } from "@/lib/services/consultation.service"
 import type { Role } from "@prisma/client"
+
+/** En-tête portant le jeton de consultation éphémère (US-2018b). */
+export const CONSULTATION_TOKEN_HEADER = "x-consultation-token"
 
 const patientIdSchema = z.coerce.number().int().positive().optional()
 
 /**
- * Parse and resolve `?patientId=N` from a request URL, delegating RBAC to
- * `resolvePatientId` (VIEWER → own; pros → `canAccessPatient`).
+ * Resolve the patient targeted by a request. Resolution order:
+ *
+ * 1. **Consultation token** (`x-consultation-token`) — US-2018b pro path: the
+ *    patient opened in the ephemeral overlay, **with no id in the URL**. The
+ *    token is bound to the caller (anti-share); invalid/expired → neutral 404.
+ *    Folding it here means every patient-scoped route that already uses this
+ *    helper (analytics, cgm, /api/patient…) becomes token-aware with no change.
+ *    Safe: a token only ever resolves to a patient the caller can already
+ *    access (validated at `consultation/open` via `canAccessPatient`).
+ * 2. Otherwise **`?patientId=N`** — historical path (VIEWER → own; pros with an
+ *    explicit param → `canAccessPatient`).
  *
  * Returns:
  * - `{ patientId: number }` when resolved (200 path)
- * - `{ error: "invalidPatientId" }` when the query param is present but malformed (400)
- * - `{ error: "patientNotFound" }` when access is denied or no patient exists (404)
+ * - `{ error: "invalidPatientId" }` when `?patientId` is present but malformed (400)
+ * - `{ error: "patientNotFound" }` when access is denied / no patient / bad token (404)
  */
 export async function resolvePatientIdFromQuery(
   req: NextRequest,
@@ -29,6 +42,15 @@ export async function resolvePatientIdFromQuery(
   | { patientId: number; error?: undefined }
   | { error: "invalidPatientId" | "patientNotFound"; patientId?: undefined }
 > {
+  // 1. Ephemeral consultation token (pro workspace, no id in URL).
+  const cTok = req.headers.get(CONSULTATION_TOKEN_HEADER)
+  if (cTok) {
+    const patientId = await resolveConsultation(cTok, userId)
+    if (!patientId) return { error: "patientNotFound" }
+    return { patientId }
+  }
+
+  // 2. Explicit ?patientId (or VIEWER own).
   const raw = req.nextUrl.searchParams.get("patientId")
   const parsed = patientIdSchema.safeParse(raw ?? undefined)
   if (!parsed.success) {
