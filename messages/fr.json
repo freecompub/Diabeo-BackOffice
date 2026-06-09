@@ -136,7 +136,7 @@
     "forgotPassword": "Mot de passe oublie ?",
     "loginButton": "Se connecter",
     "loggingIn": "Connexion en cours...",
-    "loginError": "Identifiants incorrects",
+    "loginError": "Identifiants invalides",
     "invalidEmail": "Adresse e-mail invalide",
     "accountLocked": "Compte temporairement bloque. Reessayez dans {time}.",
     "rateLimited": "Trop de tentatives. Reessayez dans {minutes} min.",
@@ -196,7 +196,7 @@
     "patientCount": "{count} patient",
     "patientsCount": "{count} patients",
     "fileTooLarge": "Le fichier depasse la taille maximale autorisee (50 Mo)",
-    "newPatient": "Nouveau patient",
+    "newPatient": "+ Ajouter patient",
     "step": "Etape",
     "of": "sur",
     "identity": "Identite",
@@ -978,7 +978,7 @@
       "hide": "Masquer"
     },
     "contact": {
-      "title": "Coordonnees",
+      "title": "Contact",
       "description": "Vos informations de contact (chiffrees)",
       "phone": "Telephone",
       "address": "Adresse",
@@ -1049,5 +1049,11 @@
     "adminUsers": "Utilisateurs",
     "adminTaxRules": "Regles fiscales",
     "logout": "Se deconnecter"
+  },
+  "settings": {
+    "loadErrorTitle": "Erreur de chargement des paramètres",
+    "loadErrorBody": "Une erreur s'est produite lors de l'affichage de vos paramètres. Si le problème persiste, contactez le support technique.",
+    "errorRef": "Réf :",
+    "actionRetry": "Réessayer"
   }
 }

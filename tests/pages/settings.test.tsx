@@ -11,7 +11,7 @@
  * - GDPR consent toggle controls data processing permissions
  * - Administrative fields are read-only to prevent accidental modification
  *
- * @see src/app/(dashboard)/settings/SettingsClient.tsx
+ * @see src/app/settings/SettingsClient.tsx
  * @see CLAUDE.md — RGPD compliance requirements
  *
  * Note: the `page.tsx` Server Component wrapper (#475 §7) is not unit-tested
@@ -40,7 +40,7 @@ globalThis.fetch = mockFetch
 // Import page AFTER mocks
 // ---------------------------------------------------------------------------
 
-import { SettingsClient } from "@/app/(dashboard)/settings/SettingsClient"
+import { SettingsClient } from "@/app/settings/SettingsClient"
 
 // ---------------------------------------------------------------------------
 // Helpers

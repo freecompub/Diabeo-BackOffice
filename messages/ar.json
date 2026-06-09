@@ -196,7 +196,7 @@
     "patientCount": "{count} مريض",
     "patientsCount": "{count} مريض",
     "fileTooLarge": "حجم الملف يتجاوز الحد الأقصى المسموح به (50 ميغابايت)",
-    "newPatient": "مريض جديد",
+    "newPatient": "+ إضافة مريض",
     "step": "خطوة",
     "of": "من",
     "identity": "الهوية",
@@ -1049,5 +1049,11 @@
     "adminUsers": "المستخدمون",
     "adminTaxRules": "القواعد الضريبية",
     "logout": "تسجيل الخروج"
+  },
+  "settings": {
+    "loadErrorTitle": "تعذّر تحميل الإعدادات",
+    "loadErrorBody": "حدث خطأ أثناء عرض الإعدادات الخاصة بك. إذا استمرت المشكلة، يرجى الاتصال بالدعم الفني.",
+    "errorRef": "المرجع:",
+    "actionRetry": "إعادة المحاولة"
   }
 }

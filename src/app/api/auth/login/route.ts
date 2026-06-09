@@ -37,6 +37,17 @@ export async function POST(req: NextRequest) {
     // Rate limit check
     const rateCheck = await checkRateLimit(emailHash)
     if (rateCheck.blocked) {
+      // Log the blocked attempt so SOC can track repeated probes during the
+      // lockout window (the trigger itself is logged below in the A6 branches).
+      await auditService.log({
+        userId: null,
+        action: "RATE_LIMITED",
+        resource: "SESSION",
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: { reason: "alreadyLocked", retryAfterSeconds: rateCheck.retryAfterSeconds },
+      })
       return NextResponse.json(
         { error: "tooManyAttempts", retryAfterSeconds: rateCheck.retryAfterSeconds },
         { status: 429 },
@@ -56,6 +67,32 @@ export async function POST(req: NextRequest) {
       // Timing-safe: always run bcrypt compare even when user not found to prevent timing oracle
       await compare(password, DUMMY_HASH)
       await recordFailedAttempt(emailHash)
+      // A6 fix: after recording the failed attempt, check if this attempt just
+      // triggered the lockout. If so, return 429 immediately rather than a
+      // generic 401 so the user sees the lockout feedback on the triggering
+      // attempt (3rd failure), not the next one.
+      const postRateCheck = await checkRateLimit(emailHash)
+      if (postRateCheck.blocked) {
+        // Unknown email → `auditService.log` (not `rateLimited`): the burst
+        // detector (US-2265) is keyed on a numeric userId and cannot ingest a
+        // `userId: null` event. Do NOT "fix" this by calling
+        // `rateLimited({ userId: null })` — that breaks the `userId: number`
+        // contract. Aggregated burst detection for unknown-email campaigns
+        // would need IP-based keying (tracked as a hardening follow-up).
+        await auditService.log({
+          userId: null,
+          action: "RATE_LIMITED",
+          resource: "SESSION",
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
+          metadata: { reason: "rateLimited", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+        })
+        return NextResponse.json(
+          { error: "tooManyAttempts", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+          { status: 429 },
+        )
+      }
       await auditService.log({
         // userId null = événement anonyme (email inconnu, pas de FK valide).
         userId: null,
@@ -63,6 +100,7 @@ export async function POST(req: NextRequest) {
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
         metadata: { reason: "invalidCredentials" },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })
@@ -73,12 +111,28 @@ export async function POST(req: NextRequest) {
 
     if (!valid) {
       await recordFailedAttempt(emailHash)
+      // A6 fix: check if this failed attempt just triggered the lockout.
+      const postRateCheck = await checkRateLimit(emailHash)
+      if (postRateCheck.blocked) {
+        await auditService.rateLimited({
+          userId: user.id,
+          resource: "SESSION",
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
+        })
+        return NextResponse.json(
+          { error: "tooManyAttempts", retryAfterSeconds: postRateCheck.retryAfterSeconds },
+          { status: 429 },
+        )
+      }
       await auditService.log({
         userId: user.id,
         action: "UNAUTHORIZED",
         resource: "SESSION",
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
         metadata: { reason: "invalidCredentials" },
       })
       return NextResponse.json({ error: "invalidCredentials" }, { status: 401 })

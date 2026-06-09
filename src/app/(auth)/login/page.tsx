@@ -52,15 +52,14 @@ export default function LoginPage() {
   useEffect(() => {
     if (lockoutSeconds <= 0) return
     const timer = setInterval(() => {
-      setLockoutSeconds((prev) => {
-        if (prev <= 1) {
-          setError(null)
-          return 0
-        }
-        return prev - 1
-      })
+      setLockoutSeconds((prev) => (prev <= 1 ? 0 : prev - 1))
     }, 1000)
     return () => clearInterval(timer)
+  }, [lockoutSeconds])
+
+  // Clear error when lockout expires (side-effect kept OUT of the updater)
+  useEffect(() => {
+    if (lockoutSeconds === 0) setError(null)
   }, [lockoutSeconds, setError])
 
   const isLocked = lockoutSeconds > 0
@@ -77,6 +76,7 @@ export default function LoginPage() {
     }
 
     if (result.retryAfterSeconds) {
+      setError(null) // lockout banner has its own live countdown — don't show a redundant static message
       setLockoutSeconds(result.retryAfterSeconds)
     }
 

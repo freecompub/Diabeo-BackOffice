@@ -448,6 +448,9 @@ au prochain `--update` tant que les fichiers source n'ont pas bougé.
   - Le contournement "c'est juste de la doc, la CI ne s'applique pas" est interdit : la CI valide aussi la doc (markdown lint, lien rot), et le PR audit trail est nécessaire pour la traçabilité HDS/ANS.
 - supprimer une feature sans le consentement explicite de l'utilisateur
 - on ne developpe pas les applications android et ios
+- **Supprimer le dossier `graphify-out/`** (knowledge graph local, gitignoré).
+  - Il est coûteux à régénérer (~plusieurs M tokens d'extraction sémantique) et sert de carte du code pour les requêtes `/graphify`.
+  - Ne jamais le `rm -rf` même pour "faire de la place" ou "nettoyer" : seuls les fichiers temporaires `graphify-out/.graphify_*` (intermédiaires de pipeline) peuvent être nettoyés ; `graph.json`, `graph.html`, `GRAPH_REPORT.md` et `cache/` doivent être préservés.
 
 ---
 
