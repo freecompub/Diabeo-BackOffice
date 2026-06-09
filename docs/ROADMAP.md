@@ -16,11 +16,11 @@
 | Priorité | Total | DONE | PARTIAL | NOT STARTED | % Done |
 |----------|-------|------|---------|-------------|--------|
 | **MVP**  | 68    | 68   | 0       | 0           | **100%** |
-| **V1**   | 98    | 98   | 0       | 0           | **100%** |
+| **V1**   | 99    | 98   | 0       | 1           | **99%** |
 | **V2**   | 93    | 0    | 0       | 93          | **0%**  |
 | **V3**   | 10    | 0    | 0       | 10          | **0%**  |
 | **V4**   | 16    | 0    | 0       | 16          | **0%**  |
-| **TOTAL**| **285** | **166** | **0**   | **119**     | **58%** |
+| **TOTAL**| **286** | **166** | **0**   | **120**     | **58%** |
 
 > **V1 nettoyé 2026-05-16** : 19 US reclassées V2 retirées des sections V1
 > (Groupes 1/3/7/8 i18n/9/9b/10) pour cohérence du compte. Ces US restent
@@ -349,7 +349,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 > Note : US-2104 (Abonnement DZ), US-2106 (Webhooks Stripe), US-2109 (Remboursements) reclassées V2 — voir section V2 ci-dessous.
 
-### Groupe 8 — i18n & Interopérabilité (4 US, 6 SP, 100% DONE V1)
+### Groupe 8 — i18n & Interopérabilité (5 US, 9 SP — 4 DONE + 1 à démarrer)
 
 > **Batch 1 (4 US, 6 SP) — DONE PR #393** : US-2113 + US-2114 + US-2116 + US-2123 scaffold.
 
@@ -359,8 +359,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2114 | Règles fiscales par pays (CountryTaxRule, date-bounded, overlap-rejected) | 1 | ✅ DONE |
 | US-2116 | Réglementation santé par pays (HealthcareRegulation : RPPS/ADELI/INS/HDS/RGPD/MSSANTE) | 1 | ✅ DONE |
 | US-2123 | HL7 FHIR R4 scaffold (FhirInteroperability + FhirAllowedSystem + retry queue + AES-256-GCM payload + SSRF guard + DPA allowlist + kill-switch) | 3 | ✅ DONE |
+| [US-2112b](../UserStory/pro-user-stories/13-multi-pays-i18n/US-2112b-preference-langue-utilisateur.md) | Préférence de langue utilisateur — switcher sur écrans non-auth + persistance `User.language` en base + alerte de confirmation si langue session ≠ préférence au login (follow-up US-2112) | 3 | 🆕 À démarrer |
 
 > Note : US-2124 (DMP), US-2125 (MSSanté backend), US-2126 (INSi), US-2127 (PSC) reclassées V2 (bloqué procurement ANS / Mailiz / Apicrypt) — voir section V2 ci-dessous.
+>
+> **US-2112b** (V1, 3 SP) ajoutée le 2026-06-09 : US-2112 (moteur i18n) est DONE mais le `LocaleSwitcher` n'est exposé sur aucun écran de l'app vivante, la langue n'est pas persistée en base (colonne `User.language` déjà présente mais non câblée), et aucun écart langue-session/préférence n'est signalé au login. 3 AC : (1) switcher sur écrans non authentifiés, (2) changement persisté en base via Settings, (3) alerte de confirmation au login.
 
 ### Groupe 9 — Admin & Ops (4 US, 100% DONE V1)
 
