@@ -28,6 +28,7 @@ import Link from "next/link"
 
 export default function LoginPage() {
   const t = useTranslations("auth")
+  const tCommon = useTranslations("common")
   const { login, isLoading, error, setError } = useAuth()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -86,11 +87,12 @@ export default function LoginPage() {
     }
   }
 
+  // i18n-3 — countdown localisé : unités + chiffres rendus dans la locale active
+  // via la clé ICU `auth.lockoutCountdown` (ex. AR → « ٤ د ٢٤ ث »).
   function formatLockoutTime(seconds: number): string {
-    const min = Math.floor(seconds / 60)
+    const minutes = Math.floor(seconds / 60)
     const sec = seconds % 60
-    if (min > 0) return `${min}min ${sec.toString().padStart(2, "0")}s`
-    return `${sec}s`
+    return t("lockoutCountdown", { minutes, seconds: sec })
   }
 
   return (
@@ -117,6 +119,7 @@ export default function LoginPage() {
             severity="warning"
             title={error}
             dismissible
+            dismissLabel={tCommon("alertClose")}
             onDismiss={() => setError(null)}
           />
         </div>

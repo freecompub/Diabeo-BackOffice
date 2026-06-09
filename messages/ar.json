@@ -28,7 +28,8 @@
     "hourShort": "{count}س",
     "dayShort": "{count}ي",
     "noEvent": "لا توجد أحداث",
-    "eventCount": "{count} حدث(أحداث)"
+    "eventCount": "{count} حدث(أحداث)",
+    "alertClose": "إغلاق التنبيه"
   },
   "nav": {
     "dashboard": "لوحة القيادة",
@@ -154,7 +155,8 @@
     "resetPasswordButton": "إرسال الرابط",
     "resetPasswordSending": "جاري الإرسال...",
     "resetPasswordSuccess": "إذا كان هناك حساب بهذا العنوان، فقد تم إرسال بريد إعادة التعيين.",
-    "resetPasswordBack": "العودة إلى تسجيل الدخول"
+    "resetPasswordBack": "العودة إلى تسجيل الدخول",
+    "lockoutCountdown": "{minutes, plural, =0 {{seconds} ث} other {# د {seconds} ث}}"
   },
   "dashboard": {
     "title": "لوحة القيادة",

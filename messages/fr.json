@@ -28,7 +28,8 @@
     "hourShort": "{count}h",
     "dayShort": "{count}j",
     "noEvent": "aucun evenement",
-    "eventCount": "{count} evenement(s)"
+    "eventCount": "{count} evenement(s)",
+    "alertClose": "Fermer l'alerte"
   },
   "nav": {
     "dashboard": "Tableau de bord",
@@ -154,7 +155,8 @@
     "resetPasswordButton": "Envoyer le lien",
     "resetPasswordSending": "Envoi en cours...",
     "resetPasswordSuccess": "Si un compte existe avec cette adresse, un e-mail de reinitialisation a ete envoye.",
-    "resetPasswordBack": "Retour a la connexion"
+    "resetPasswordBack": "Retour a la connexion",
+    "lockoutCountdown": "{minutes, plural, =0 {{seconds} s} other {# min {seconds} s}}"
   },
   "dashboard": {
     "title": "Tableau de bord",
