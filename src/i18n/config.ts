@@ -19,6 +19,22 @@ export function isRtlLocale(locale: Locale): boolean {
 
 export const LOCALE_COOKIE = "diabeo_locale"
 
+/**
+ * Étiquettes BCP-47 par locale applicative, pour les API d'internationalisation
+ * natives du navigateur (`Intl`, `toLocaleTimeString`, …). La locale `en` est
+ * mappée sur `en-GB` (format 24 h, cohérent avec l'usage hospitalier FR/DZ).
+ */
+export const LOCALE_BCP47: Record<Locale, string> = {
+  fr: "fr-FR",
+  en: "en-GB",
+  ar: "ar",
+}
+
+/** Résout l'étiquette BCP-47 d'une locale (fallback : défaut applicatif). */
+export function bcp47(locale: string): string {
+  return LOCALE_BCP47[locale as Locale] ?? LOCALE_BCP47[defaultLocale]
+}
+
 /** Durée de vie du cookie de locale : 1 an (préférence stable). */
 export const LOCALE_COOKIE_MAX_AGE_S = 365 * 24 * 60 * 60
 

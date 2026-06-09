@@ -333,8 +333,13 @@ export type PatientAtRiskItem = {
   patientFirstName: string
   pathology: string | null
   reason: RiskReason
-  /** Free-form metric label (e.g. "4 hypos / 7j", "12 jours sans saisie"). */
+  /** Free-form metric label (e.g. "4 hypos / 7j", "12 jours sans saisie").
+   * Kept for non-localized consumers (e.g. nurse recall list). The medecin
+   * dashboard localizes via {@link PatientAtRiskItem.metricValue} + i18n. */
   metricLabel: string
+  /** Raw count behind {@link PatientAtRiskItem.metricLabel} (hypos or days),
+   * so the client can render a locale-aware label (i18n dashboard médecin). */
+  metricValue: number
   /** Higher = more critical. Used for sort. */
   score: number
 }
@@ -426,6 +431,7 @@ export const patientsAtRiskQuery = {
           pathology: null,
           reason: "recentHypos",
           metricLabel: `${count} hypos / 7j`,
+          metricValue: count,
           score: 100 + count, // 3+ hypos = base 103
         })
       }
@@ -452,6 +458,7 @@ export const patientsAtRiskQuery = {
           pathology: null,
           reason: "silentMonitoring",
           metricLabel: `${days} j sans saisie`,
+          metricValue: days,
           score: 50 + Math.min(50, days), // capped contribution
         })
       }
@@ -514,6 +521,7 @@ export const patientsAtRiskQuery = {
         pathology: p?.pathology ?? null,
         reason: t.reason,
         metricLabel: t.metricLabel,
+        metricValue: t.metricValue,
         score: t.score,
       }
     })

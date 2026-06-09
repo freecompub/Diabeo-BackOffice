@@ -7,7 +7,7 @@
 "use client"
 
 import { MetricCard } from "@/components/diabeo/MetricCard"
-import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { NurseKpiCard } from "@/lib/services/nurse-dashboard.service"
 
@@ -40,7 +40,7 @@ export function NurseKpiSection() {
           Impossible de charger les KPI.
         </p>
       )}
-      {isStale && <div className="mb-2"><StaleBanner /></div>}
+      {isStale && <div className="mb-2"><StaleBanner message={STALE_MESSAGE_FR} /></div>}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {(loading && items.length === 0
           ? defaultCodes.map((code) => ({ code, value: 0, unit: null }))

@@ -7,24 +7,16 @@
 
 "use client"
 
+import { useLocale, useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { bcp47 } from "@/i18n/config"
 import type { UrgencyItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: UrgencyItem[] }
-
-const ALERT_LABELS: Record<string, string> = {
-  severe_hypo: "Hypoglycémie sévère",
-  hypo: "Hypoglycémie",
-  hyper: "Hyperglycémie",
-  severe_hyper: "Hyperglycémie sévère",
-  ketone_dka: "Cétoacidose",
-  ketone_moderate: "Cétones modérées",
-  manual: "Alerte manuelle",
-}
 
 const SEVERITY_VARIANT: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   info: "secondary",
@@ -33,6 +25,8 @@ const SEVERITY_VARIANT: Record<string, "default" | "secondary" | "destructive" |
 }
 
 export function EmergencyCard() {
+  const t = useTranslations("dashboard.medecin")
+  const locale = useLocale()
   const { data, error, loading, lastUpdatedAt, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/urgencies",
     30_000,
@@ -46,13 +40,22 @@ export function EmergencyCard() {
     <DiabeoCard className="border-s-4 border-s-glycemia-critical" role="region" aria-labelledby="card-urgencies-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="card-urgencies-title" className="text-base font-semibold text-glycemia-critical">
-          Urgences en cours
+          {t("urgencies.title")}
         </h2>
         <span className="text-xs text-muted-foreground">
-          {lastUpdatedAt ? `MAJ ${new Date(lastUpdatedAt).toLocaleTimeString("fr-FR")}` : "—"}
+          {/* "Last update" is a CLIENT-relative wall clock (when this browser
+              last polled) → formatted in the viewer's own timezone, unlike
+              AppointmentCard.formatHour which pins Europe/Paris for the
+              cabinet-anchored clinical appointment time. Number format follows
+              the active locale. */}
+          {lastUpdatedAt
+            ? t("lastUpdate", {
+                time: new Date(lastUpdatedAt).toLocaleTimeString(bcp47(locale)),
+              })
+            : "—"}
         </span>
       </header>
-      {isStale && <StaleBanner />}
+      {isStale && <StaleBanner message={t("stale")} />}
 
       {/* code-review M1 — separate live regions :
             - "polite" announces transitions (loading/empty/error) without
@@ -60,22 +63,22 @@ export function EmergencyCard() {
             - "assertive" on the count below interrupts for new urgencies. */}
       <div className="px-4 pb-1" role="status" aria-live="polite">
         {loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">Chargement…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
         {hasError && (
-          <p className="text-sm text-glycemia-critical">Impossible de charger les urgences.</p>
+          <p className="text-sm text-glycemia-critical">{t("urgencies.error")}</p>
         )}
         {!loading && !hasError && items.length === 0 && (
           <DiabeoEmptyState
             variant="noData"
-            title="Aucune urgence"
-            message="Patients stables sur le portefeuille."
+            title={t("urgencies.emptyTitle")}
+            message={t("urgencies.emptyMessage")}
           />
         )}
       </div>
       <div className="px-4 pb-4">
         <p className="sr-only" role="alert" aria-live="assertive">
-          {items.length > 0 ? `${items.length} urgence${items.length > 1 ? "s" : ""} en cours` : ""}
+          {items.length > 0 ? t("urgencies.countAnnounce", { count: items.length }) : ""}
         </p>
         {items.length > 0 && (
           <ul className="space-y-2">
@@ -85,10 +88,12 @@ export function EmergencyCard() {
                 className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
               >
                 <Badge variant={SEVERITY_VARIANT[u.severity] ?? "default"}>
-                  {ALERT_LABELS[u.alertType] ?? u.alertType}
+                  {t.has(`urgencies.alert.${u.alertType}`)
+                    ? t(`urgencies.alert.${u.alertType}`)
+                    : u.alertType}
                 </Badge>
                 <span className="flex-1 truncate text-sm font-medium">
-                  {u.patientFirstName || "Patient"}
+                  {u.patientFirstName || t("patientFallback")}
                   {u.pathology ? ` · ${u.pathology}` : ""}
                 </span>
                 <span className="text-xs text-muted-foreground">

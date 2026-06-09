@@ -10,6 +10,7 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCard"
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
@@ -22,9 +23,11 @@ export default async function MedecinDashboardPage() {
   const role = headersList.get("x-user-role")
   if (!role || !ALLOWED_ROLES.has(role)) redirect("/login")
 
+  const t = await getTranslations("dashboard.medecin")
+
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="text-2xl font-semibold">Tableau de bord médecin</h1>
+      <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <EmergencyCard />
         <AppointmentCard />
