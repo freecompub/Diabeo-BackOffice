@@ -225,6 +225,7 @@
 | US-2266 | Email médecin sur alerte critique | MVP | 3 | [#345](https://github.com/freecompub/Diabeo-BackOffice/issues/345) | ✅ DONE PR #349 |
 | US-2267 | Migrations Prisma versionnées | V1 + `blocker-pre-prod` | 5 | [#346](https://github.com/freecompub/Diabeo-BackOffice/issues/346) | ✅ DONE PR #352 — pre-prod blocker LEVÉ |
 | US-2268 | Convention `auditLog.resourceId` normalisée | V1 | 8 | [#347](https://github.com/freecompub/Diabeo-BackOffice/issues/347) | ✅ DONE PR #353 |
+| [US-2269](../UserStory/pro-user-stories/18-admin-systeme/US-2269-design-system-source-de-verite-anti-drift.md) | Design system : source de tokens unique importable (charts inclus) + gate CI anti-drift (interdit hex/couleurs brutes) + parité doc↔code | V1 | 5 | — | 🆕 À démarrer — audit : ~80 hex en dur + ~487 classes couleur brutes |
 
 **PR #349** — US-2265 + US-2266 livrés (5 SP MVP). 1102 tests verts, branch coverage maintenue, 3 agents re-review (READY/FIX-MEDIUM tous résolus avant merge).
 **PR #348** mergée — Spec markdown des 4 US + issues GitHub + items board #2.
