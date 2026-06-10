@@ -1,9 +1,32 @@
+import { randomUUID } from "crypto"
 import { getFcm } from "@/lib/firebase/admin"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { logger } from "@/lib/logger"
+import { isDevMocked } from "@/lib/mocks/dev-mock"
 import type { PushPlatform } from "@prisma/client"
 import type { AuditContext } from "./patient.service"
+
+/**
+ * US-2270 — file d'attente mémoire des push en mode dev mocké (Firebase absent).
+ * Permet d'inspecter ce qui « aurait été envoyé » (QA / tests) sans FCM réel.
+ */
+interface MockedPush {
+  token: string
+  platform: PushPlatform
+  title: string
+  body: string
+  at: string
+}
+const pushStubLog: MockedPush[] = []
+/** Renvoie les push capturés par le stub (mode dev mocké). */
+export function getPushLog(): readonly MockedPush[] {
+  return pushStubLog
+}
+/** Vide le journal des push stub. Test-only. */
+export function _clearPushLog(): void {
+  pushStubLog.length = 0
+}
 
 const MAX_RETRIES = 3
 const RETRY_DELAY_MS = 1000
@@ -77,6 +100,11 @@ async function sendWithRetry(
   platform: PushPlatform,
   idempotencyKey: string,
 ): Promise<{ messageId?: string; error?: string }> {
+  // US-2270 — dev mocké : push capturé en mémoire, jamais envoyé (jamais en prod).
+  if (isDevMocked("FIREBASE_SERVICE_ACCOUNT_KEY")) {
+    pushStubLog.push({ token, platform, title: payload.title, body: payload.body, at: new Date().toISOString() })
+    return { messageId: `mock-${randomUUID()}` }
+  }
   const fcm = getFcm()
 
   const dataPayload = {

@@ -42,6 +42,12 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
     throw new Error("File not found for scan")
   }
 
+  // US-2270 — dev mocké : antivirus neutralisé de façon déterministe (clean),
+  // même si ClamAV est installé localement. Jamais en production.
+  if (process.env.NODE_ENV !== "production" && process.env.MOCK_ANTIVIRUS === "true") {
+    return { scanned: false, clean: true, viruses: [] }
+  }
+
   const clam = await getClamAV()
 
   if (!clam) {
