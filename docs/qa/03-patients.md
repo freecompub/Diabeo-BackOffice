@@ -36,7 +36,7 @@ via `PatientService → HealthcareService`. Patients soft-deleted exclus.
 |---|---|---|---|
 | Recherche par nom | (demo : filtre client) · réel : `GET /api/patients/search?search=…` | liste filtrée | **lecture** · audit READ (`resourceId:"search"`) · `Cache-Control: no-store` · match **HMAC exact** sur `firstnameHmac`/`lastnameHmac` |
 | Filtre pathologie | (demo : filtre client) | bouton actif + liste filtrée | aucun |
-| Clic ligne | — | `/patients/{id}` | (déclenche le détail) |
+| Clic ligne (ou Entrée/Espace) | `POST /api/consultation/open` | **ouvre le workspace de consultation en overlay** (US-2018b) ; **aucune navigation**, l'URL reste `/patients` | INSERT jeton éphémère Redis + audit READ/PATIENT (`metadata.patientId`) — voir section « Consultation patient » ci-dessous |
 | Clic « Ajouter patient » | — | `/patients/new` | aucun |
 
 ### Scénarios (Gherkin)
@@ -78,6 +78,81 @@ Feature: Liste des patients
 
 ---
 
+## Écran : Consultation patient — overlay éphémère (`/patients` → overlay) 🟢
+
+**Rôle / RBAC** : NURSE+ (DOCTOR/NURSE/ADMIN). VIEWER n'y accède jamais (il n'a
+pas la liste pro). **Statut impl.** : 🟢 Réel ([US-2018b](../UserStory/pro-user-stories/02-patients/US-2018b-consultation-patient-overlay-ephemere.md), PR #523).
+
+> Depuis la liste, un clic ouvre un **workspace patient en overlay** (drawer,
+> extensible plein écran) avec une **référence patient éphémère** : aucun id
+> patient dans l'URL (reste `/patients`), jeton serveur `cTok` (en-tête
+> `x-consultation-token`) **non partageable**, détruit à la fermeture.
+
+### Affichage attendu
+
+| Élément | État attendu |
+|---|---|
+| Drawer | panneau latéral (bouton **Agrandir** → plein écran) ; sidebar + header **grisés/inertes** dessous |
+| Bandeau éphémère | « Consultation éphémère — référence détruite à la fermeture » (texte coral lisible) |
+| En-tête patient | initiales (décoratives) + nom + pathologie · `role="dialog"` `aria-modal` |
+| Onglets (horizontaux) | Vue d'ensemble · Profil glycémique · Glycémie · Traitements · Documents (clavier ←/→/Home/End) |
+| Boutons | Agrandir/Réduire · Fermer (✕) |
+| URL | reste `/patients` (aucun id patient) |
+
+### Actions & effets
+
+| Action | Endpoint | Effet visuel | Effet base |
+|---|---|---|---|
+| Ouvrir (clic ligne) | `POST /api/consultation/open` `{patientRef}` (publicRef UUID) | drawer s'ouvre, sidebar inerte | jeton `cTok` (Redis, TTL 15 min glissant, plafond 60 min, lié à {user,patient}) · audit READ/PATIENT (`metadata.patientId, kind=consultation.open`) |
+| Charger un onglet | `GET /api/{patient,analytics/*,cgm,patient/insulin-settings,documents}` **en-tête `x-consultation-token`** | données réelles du patient | lecture santé auditée · **id patient jamais dans l'URL** (résolu serveur via jeton) |
+| Agrandir / Réduire | — (client) | drawer ↔ plein écran | aucun |
+| Fermer (✕ / clic dehors / Échap) | `POST /api/consultation/close` | overlay disparaît, focus rendu à la ligne | jeton **détruit** (non rejouable) ; sidebar réactivée |
+
+### Scénarios (Gherkin)
+
+```gherkin
+Feature: Consultation patient en overlay éphémère
+
+  Scenario: ouvrir un patient depuis la liste
+    Given je suis connecté en tant que "DOCTOR" sur "/patients"
+    When je clique une ligne patient
+    Then un overlay s'ouvre avec les onglets du dossier
+    And l'URL reste "/patients" (aucun id patient)
+    # Effet base: POST /api/consultation/open → cTok (Redis) + audit READ/PATIENT(metadata.patientId)
+
+  Scenario: la consultation n'est pas partageable par URL
+    Given une consultation ouverte
+    When je copie l'URL de la page
+    Then l'URL est "/patients" et ne mène à aucun patient
+
+  Scenario: F5 referme la consultation (référence éphémère)
+    Given une consultation ouverte
+    When je rafraîchis la page
+    Then je reviens à la liste "/patients" (overlay fermé)
+    # Effet base: cTok détruit (sendBeacon /api/consultation/close) ou expiré (TTL) — non rejouable
+
+  Scenario: les 5 onglets chargent les vraies données via le jeton
+    Given une consultation ouverte
+    When j'ouvre l'onglet "Profil glycémique"
+    Then les métriques (moyenne/GMI/TIR/hypos) s'affichent
+    # Effet base: GET /api/analytics/* avec en-tête x-consultation-token (pas de ?patientId dans l'URL)
+
+  Scenario: un VIEWER n'accède jamais à la consultation pro
+    Given je suis connecté en tant que "VIEWER"
+    When je vais sur "/patients"
+    Then je suis redirigé vers "/patient/dashboard" (pas de liste, pas d'overlay)
+```
+
+### Cas limites
+
+- **Jeton lié à l'utilisateur** : un `cTok` présenté par un autre utilisateur est refusé (anti-partage) ; fermer le jeton d'autrui est un no-op (pas de DoS inter-utilisateur).
+- **Single-active** : ouvrir un 2e patient invalide le jeton du 1er.
+- **Jeton expiré** (TTL glissant 15 min dépassé, ou plafond absolu 60 min) → l'onglet affiche l'état d'erreur ; rouvrir le patient.
+- **Patient hors portefeuille** : `open` renvoie 404 neutre (même réponse qu'un patient inexistant — anti-énumération).
+- **Conversion glycémie** : `valueGl` (g/L) → mg/dL via `glToMgdl` (× 100), jamais × 18.
+
+---
+
 ## Écran : Détail patient (`/patients/[id]`) 🟡
 
 **Rôle / RBAC** : NURSE+ avec `canAccessPatient(user, role, patientId)`. 403
@@ -85,6 +160,11 @@ Feature: Liste des patients
 `invalidPatientId` si non numérique.
 **Statut impl.** : 🟡 DEMO_DATA pour l'affichage · 🟢 `GET /api/patients/[id]`,
 `PUT/PATCH /api/patient/objectives` réels.
+
+> ℹ️ Depuis [US-2018b](../UserStory/pro-user-stories/02-patients/US-2018b-consultation-patient-overlay-ephemere.md) (PR #523), le **clic depuis la liste**
+> n'ouvre plus cette page mais le **workspace de consultation en overlay**
+> (section ci-dessus). Cette page reste accessible par URL directe (fallback,
+> encore en données démo pour certains onglets) — chemin secondaire.
 
 ### Affichage attendu
 
