@@ -8,9 +8,10 @@
  * dur (anti-drift).
  *
  * ⚠️ NE PAS DIVERGER de `src/styles/tokens.css` : `tests/unit/design-tokens.test.ts`
- * vérifie que chaque entrée de {@link COLOR_TOKEN_CSS} égale la variable
- * `--diabeo-*` correspondante du CSS (gate CI). Toute modif d'une couleur DOIT
- * se faire dans les deux (ou la CI échoue).
+ * vérifie la parité **bidirectionnelle** — chaque entrée de {@link COLOR_TOKEN_CSS}
+ * égale la variable `--diabeo-*` du CSS (TS→CSS) ET toute variable hex du CSS a
+ * un pendant ici (CSS→TS). Toute modif/ajout/suppression d'une couleur DOIT se
+ * faire dans les deux fichiers (ou la CI échoue).
  *
  * @see src/styles/tokens.css — source CSS consommée par Tailwind @theme
  * @see docs/design-system/colors.md — documentation
@@ -117,13 +118,21 @@ export function color<K extends ColorTokenName>(name: K): (typeof COLOR_TOKEN_CS
  * Applique une opacité à une couleur hex de token → `rgba(r,g,b,a)`. Évite les
  * `rgba(...)` en dur qui dupliquent un token (anti-drift pour les bandes/halos
  * de charts). Ex. `withAlpha(tokens.brand.primary[600], 0.12)`.
+ *
+ * Défensif : n'accepte qu'un hex **6 chiffres** (`#RRGGBB`, le format de tous
+ * les tokens) — lève sur une entrée invalide plutôt que d'émettre un
+ * `rgba(NaN, …)` silencieux. `alpha` est clampé dans `[0, 1]`.
  */
 export function withAlpha(hex: string, alpha: number): string {
   const h = hex.replace("#", "")
+  if (!/^[0-9a-fA-F]{6}$/.test(h)) {
+    throw new Error(`withAlpha: hex 6 chiffres attendu, reçu "${hex}"`)
+  }
+  const a = Math.min(1, Math.max(0, alpha))
   const r = parseInt(h.slice(0, 2), 16)
   const g = parseInt(h.slice(2, 4), 16)
   const b = parseInt(h.slice(4, 6), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  return `rgba(${r}, ${g}, ${b}, ${a})`
 }
 
 const C = COLOR_TOKEN_CSS

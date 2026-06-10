@@ -16,7 +16,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { tokens } from "@/design-system/tokens"
+import { tokens, withAlpha } from "@/design-system/tokens"
 
 /** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
  *  preference change re-applies to the animation prop. */
@@ -202,7 +202,8 @@ export function AgpPercentileChart({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
         <span className="flex items-center gap-1">
           <span
-            className="w-3 h-1 bg-teal-700 inline-block"
+            className="w-3 h-1 inline-block"
+            style={{ backgroundColor: tokens.brand.primary[700] }}
             aria-label="Ligne médiane (50ème percentile)"
             role="img"
           />
@@ -210,7 +211,8 @@ export function AgpPercentileChart({
         </span>
         <span className="flex items-center gap-1">
           <span
-            className="w-3 h-3 bg-teal-600/30 inline-block"
+            className="w-3 h-3 inline-block"
+            style={{ backgroundColor: withAlpha(tokens.brand.primary[600], 0.28) }}
             aria-label="Bande percentile 25-75 (teinte moyenne)"
             role="img"
           />
@@ -218,7 +220,8 @@ export function AgpPercentileChart({
         </span>
         <span className="flex items-center gap-1">
           <span
-            className="w-3 h-3 bg-teal-500/15 inline-block"
+            className="w-3 h-3 inline-block"
+            style={{ backgroundColor: withAlpha(tokens.brand.primary[600], 0.12) }}
             aria-label="Bande percentile 10-90 (teinte claire)"
             role="img"
           />
@@ -226,7 +229,8 @@ export function AgpPercentileChart({
         </span>
         <span className="flex items-center gap-1">
           <span
-            className="w-3 h-3 bg-emerald-500/15 inline-block"
+            className="w-3 h-3 inline-block"
+            style={{ backgroundColor: withAlpha(tokens.glycemia.normal, 0.08) }}
             aria-label="Zone glycémique cible"
             role="img"
           />
