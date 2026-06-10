@@ -336,6 +336,7 @@ describe("patientService.listByDoctor", () => {
         patient: {
           select: {
             id: true,
+            publicRef: true, // US-2018b — ouverture consultation sans id dans l'URL
             pathology: true,
             user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
           },

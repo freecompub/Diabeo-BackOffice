@@ -291,7 +291,8 @@
     "gdDescription": "Pregnancy-related",
     "loading": "Loading…",
     "loadError": "Could not load the patient list.",
-    "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team."
+    "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team.",
+    "openConsultation": "Open {name}'s consultation"
   },
   "patient": {
     "overview": "Overview",
@@ -1125,5 +1126,48 @@
     "continueAction": "Continue in {lang}",
     "revertAction": "Switch back to {lang}",
     "dismiss": "Dismiss alert"
+  },
+  "consultation": {
+    "loading": "Loading…",
+    "loadError": "Unable to load this data.",
+    "ephemeralNotice": "Ephemeral consultation — reference destroyed on close, not shareable.",
+    "breadcrumbRoot": "Patients",
+    "close": "Close",
+    "expand": "Expand",
+    "collapse": "Collapse",
+    "tabsLabel": "Patient record sections",
+    "yearsShort": "yrs",
+    "tabs": {
+      "overview": "Overview",
+      "glycemicProfile": "Glycemic profile",
+      "glycemia": "Glucose",
+      "treatment": "Treatments",
+      "documents": "Documents"
+    },
+    "pathology": {
+      "DT1": "T1D",
+      "DT2": "T2D",
+      "GD": "Gestational diabetes"
+    },
+    "overview": {
+      "identity": "Identity",
+      "pathology": "Condition",
+      "age": "Age",
+      "referent": "Referent",
+      "objectives": "Glycemic targets",
+      "objectivesStatus": "Targets",
+      "configured": "Configured",
+      "notSet": "Not set"
+    },
+    "glycemia": {
+      "title": "Glucose profile (24 h)"
+    },
+    "treatment": {
+      "isf": "Insulin sensitivity (ISF)",
+      "icr": "Carb ratio (ICR)",
+      "basal": "Basal rate",
+      "none": "No settings"
+    },
+    "openedAnnounce": "{name}'s consultation opened"
   }
 }

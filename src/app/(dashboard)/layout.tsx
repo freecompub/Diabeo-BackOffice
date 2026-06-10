@@ -8,6 +8,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NavigationShell, type UserRole } from "@/components/diabeo/NavigationShell"
+import { ConsultationProvider } from "@/components/diabeo/consultation/ConsultationContext"
 
 const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
 
@@ -38,11 +39,15 @@ export default async function DashboardLayout({
   }
 
   return (
-    <NavigationShell
-      pageTitle="Diabeo"
-      userRole={userRole}
-    >
-      {children}
-    </NavigationShell>
+    // US-2018b — le provider enveloppe tout le shell : la consultation rend la
+    // sidebar/le header inertes et monte le drawer patient par-dessus.
+    <ConsultationProvider>
+      <NavigationShell
+        pageTitle="Diabeo"
+        userRole={userRole}
+      >
+        {children}
+      </NavigationShell>
+    </ConsultationProvider>
   )
 }

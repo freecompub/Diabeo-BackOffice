@@ -291,7 +291,8 @@
     "gdDescription": "Lie a la grossesse",
     "loading": "Chargement…",
     "loadError": "Impossible de charger la liste des patients.",
-    "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique."
+    "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique.",
+    "openConsultation": "Ouvrir la consultation de {name}"
   },
   "patient": {
     "overview": "Vue d'ensemble",
@@ -1125,5 +1126,48 @@
     "continueAction": "Continuer en {lang}",
     "revertAction": "Revenir à {lang}",
     "dismiss": "Fermer l'alerte"
+  },
+  "consultation": {
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger ces données.",
+    "ephemeralNotice": "Consultation éphémère — référence détruite à la fermeture, non partageable.",
+    "breadcrumbRoot": "Patients",
+    "close": "Fermer",
+    "expand": "Agrandir",
+    "collapse": "Réduire",
+    "tabsLabel": "Sections du dossier patient",
+    "yearsShort": "ans",
+    "tabs": {
+      "overview": "Vue d'ensemble",
+      "glycemicProfile": "Profil glycémique",
+      "glycemia": "Glycémie",
+      "treatment": "Traitements",
+      "documents": "Documents"
+    },
+    "pathology": {
+      "DT1": "DT1",
+      "DT2": "DT2",
+      "GD": "Diabète gestationnel"
+    },
+    "overview": {
+      "identity": "Identité",
+      "pathology": "Pathologie",
+      "age": "Âge",
+      "referent": "Référent",
+      "objectives": "Objectifs glycémiques",
+      "objectivesStatus": "Objectifs",
+      "configured": "Configurés",
+      "notSet": "Non définis"
+    },
+    "glycemia": {
+      "title": "Profil glycémique (24 h)"
+    },
+    "treatment": {
+      "isf": "Facteur de sensibilité (ISF)",
+      "icr": "Ratio glucides (ICR)",
+      "basal": "Débit basal",
+      "none": "Aucun paramètre"
+    },
+    "openedAnnounce": "Consultation de {name} ouverte"
   }
 }
