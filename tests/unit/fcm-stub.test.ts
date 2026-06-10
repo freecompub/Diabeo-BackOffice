@@ -60,4 +60,26 @@ describe("fcmService.sendToUser — mode dev mocké", () => {
     expect(res).toEqual({ sent: 0, failed: 0, results: [] })
     expect(getPushLog()).toHaveLength(0)
   })
+
+  it("accumule les push successifs dans le buffer", async () => {
+    findManyMock.mockResolvedValue([
+      { id: "reg-1", pushToken: "tok-1", platform: "web", userId: 1, isActive: true },
+    ])
+    await fcmService.sendToUser({ userId: 1, senderId: 1, title: "A", body: "1" })
+    await fcmService.sendToUser({ userId: 1, senderId: 1, title: "B", body: "2" })
+    const log = getPushLog()
+    expect(log).toHaveLength(2)
+    expect(log.map((p) => p.title)).toEqual(["A", "B"])
+  })
+
+  it("MOCK_MODE=true stube même si une clé Firebase est présente", async () => {
+    vi.stubEnv("MOCK_MODE", "true")
+    vi.stubEnv("FIREBASE_SERVICE_ACCOUNT_KEY", "present")
+    findManyMock.mockResolvedValue([
+      { id: "reg-1", pushToken: "tok-1", platform: "web", userId: 1, isActive: true },
+    ])
+    const res = await fcmService.sendToUser({ userId: 1, senderId: 1, title: "x", body: "y" })
+    expect(res.sent).toBe(1)
+    expect(getFcmMock).not.toHaveBeenCalled()
+  })
 })

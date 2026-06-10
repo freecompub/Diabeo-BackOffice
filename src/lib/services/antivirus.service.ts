@@ -3,6 +3,7 @@ import { existsSync } from "fs"
 import { writeFile, rm, mkdtemp } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
+import { isMockFlagOn } from "@/lib/mocks/dev-mock"
 
 let clamInstance: NodeClam | null = null
 
@@ -43,8 +44,8 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
   }
 
   // US-2270 — dev mocké : antivirus neutralisé de façon déterministe (clean),
-  // même si ClamAV est installé localement. Jamais en production.
-  if (process.env.NODE_ENV !== "production" && process.env.MOCK_ANTIVIRUS === "true") {
+  // même si ClamAV est installé localement. Jamais en production (gate partagé).
+  if (isMockFlagOn("MOCK_ANTIVIRUS")) {
     return { scanned: false, clean: true, viruses: [] }
   }
 

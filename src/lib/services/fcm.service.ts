@@ -1,4 +1,3 @@
-import { randomUUID } from "crypto"
 import { getFcm } from "@/lib/firebase/admin"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
@@ -11,20 +10,23 @@ import type { AuditContext } from "./patient.service"
  * US-2270 — file d'attente mémoire des push en mode dev mocké (Firebase absent).
  * Permet d'inspecter ce qui « aurait été envoyé » (QA / tests) sans FCM réel.
  */
-interface MockedPush {
+export interface MockedPush {
   token: string
   platform: PushPlatform
   title: string
   body: string
   at: string
 }
+/** Borne du buffer (ring) : évite toute croissance non bornée en dev long-running. */
+const PUSH_LOG_MAX = 500
 const pushStubLog: MockedPush[] = []
 /** Renvoie les push capturés par le stub (mode dev mocké). */
 export function getPushLog(): readonly MockedPush[] {
   return pushStubLog
 }
-/** Vide le journal des push stub. Test-only. */
+/** Vide le journal des push stub. Test/dev uniquement (no-op en prod). */
 export function _clearPushLog(): void {
+  if (process.env.NODE_ENV === "production") return
   pushStubLog.length = 0
 }
 
@@ -103,7 +105,8 @@ async function sendWithRetry(
   // US-2270 — dev mocké : push capturé en mémoire, jamais envoyé (jamais en prod).
   if (isDevMocked("FIREBASE_SERVICE_ACCOUNT_KEY")) {
     pushStubLog.push({ token, platform, title: payload.title, body: payload.body, at: new Date().toISOString() })
-    return { messageId: `mock-${randomUUID()}` }
+    if (pushStubLog.length > PUSH_LOG_MAX) pushStubLog.shift() // ring-buffer
+    return { messageId: `mock-${crypto.randomUUID()}` }
   }
   const fcm = getFcm()
 
