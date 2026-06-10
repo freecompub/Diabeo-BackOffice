@@ -11,8 +11,11 @@ import { resolvePatientId } from "@/lib/access-control"
 import { resolveConsultation } from "@/lib/services/consultation.service"
 import type { Role } from "@prisma/client"
 
-/** En-tête portant le jeton de consultation éphémère (US-2018b). */
-export const CONSULTATION_TOKEN_HEADER = "x-consultation-token"
+// Re-export pour les appelants serveur historiques. La constante VIT dans un
+// module client-safe isolé (`./consultation-token`) pour éviter de tirer ce
+// module serveur (Prisma/Redis) dans le bundle navigateur via les composants.
+export { CONSULTATION_TOKEN_HEADER } from "./consultation-token"
+import { CONSULTATION_TOKEN_HEADER } from "./consultation-token"
 
 const patientIdSchema = z.coerce.number().int().positive().optional()
 

@@ -9,7 +9,8 @@
  */
 
 import { useEffect, useState } from "react"
-import { CONSULTATION_TOKEN_HEADER } from "@/lib/auth/query-helpers"
+// Module client-safe (PAS query-helpers, qui tirerait Prisma/Redis côté client).
+import { CONSULTATION_TOKEN_HEADER } from "@/lib/auth/consultation-token"
 
 interface State<T> {
   data: T | null
