@@ -1,4 +1,5 @@
 ---
+model: sonnet
 description: Lance la campagne QA Diabeo. Sans argument = boucle complète (tous les domaines × FR/AR × Chrome/Safari/Firefox) avec archivage horodaté par navigateur et langue. Avec argument = restreint au domaine/langue indiqué.
 argument-hint: "[domaine] [langue]  — vide = matrice complète"
 ---

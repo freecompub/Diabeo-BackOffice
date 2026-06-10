@@ -2,6 +2,7 @@
 name: qa-domain-runner
 description: Exécute une campagne QA complète sur l'app Diabeo en boucle automatique sur TOUS les domaines (auth, dashboards, patients, etc.), pour les langues FR et AR et les navigateurs Chrome/Safari/Firefox (un par moteur : Blink/WebKit/Gecko), en pilotant un navigateur interactif, puis archive les preuves dans une arborescence horodatée par navigateur et langue. Use when the user wants to run/replay QA tests, execute the full QA matrix, execute Gherkin scenarios from docs/qa, test a screen or domain in the browser, or produce QA execution reports. Triggers : "lance la QA", "rejoue les tests QA", "teste tous les domaines", "/qa".
 license: MIT
+model: sonnet
 metadata:
   author: Diabeo
   version: "2.0.0"
