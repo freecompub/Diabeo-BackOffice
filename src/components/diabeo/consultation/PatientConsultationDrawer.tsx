@@ -84,8 +84,10 @@ export function PatientConsultationDrawer({
           expanded ? "w-full" : "w-full sm:w-[88%] lg:w-[76%]",
         )}
       >
-        {/* Bandeau éphémère */}
-        <p className="flex items-center gap-2 border-b border-[var(--color-glycemia-high)]/30 bg-[color-mix(in_srgb,var(--color-glycemia-high)_8%,transparent)] px-4 py-1.5 text-xs font-medium text-[var(--color-glycemia-high)]">
+        {/* Bandeau éphémère — texte coral-700 (couleur « alerte » du DS) pour un
+            contraste AA sur le fond ambré pâle (l'ambre #F59E0B en texte ne
+            passait pas, ~2:1 ; review a11y). L'accent ambré reste sur la pastille. */}
+        <p className="flex items-center gap-2 border-b border-[var(--color-glycemia-high)]/30 bg-[color-mix(in_srgb,var(--color-glycemia-high)_8%,transparent)] px-4 py-1.5 text-xs font-medium text-[var(--color-coral-700)]">
           <span
             className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-glycemia-high)]"
             aria-hidden="true"
@@ -95,7 +97,10 @@ export function PatientConsultationDrawer({
 
         {/* En-tête patient */}
         <header className="flex items-center gap-3 border-b border-border px-4 py-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm font-semibold text-teal-700">
+          <span
+            aria-hidden="true"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-50 text-sm font-semibold text-teal-700"
+          >
             {patient.name.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "?"}
           </span>
           <div className="min-w-0 flex-1">
@@ -113,7 +118,7 @@ export function PatientConsultationDrawer({
           <button
             type="button"
             onClick={onToggleExpanded}
-            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted"
+            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
             aria-label={expanded ? t("collapse") : t("expand")}
           >
             {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -121,7 +126,7 @@ export function PatientConsultationDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted"
+            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
             aria-label={t("close")}
           >
             <X className="h-4 w-4" />
@@ -145,9 +150,11 @@ export function PatientConsultationDrawer({
               onClick={() => setActive(key)}
               onKeyDown={(e) => onTabKeyDown(e, i)}
               className={cn(
-                "whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
+                "whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",
                 active === key
-                  ? "border-teal-600 font-semibold text-teal-600"
+                  // teal-700 (≥4.5:1) au lieu de teal-600 (~3.7:1) pour le texte
+                  // d'onglet actif (text-sm normal) — review a11y.
+                  ? "border-teal-600 font-semibold text-teal-700"
                   : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >

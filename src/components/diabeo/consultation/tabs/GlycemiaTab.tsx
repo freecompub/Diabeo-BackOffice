@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
+import { glToMgdl } from "@/lib/statistics"
 import { useConsultationData } from "../useConsultationData"
 import { TabError, TabLoading } from "./TabState"
 
@@ -31,7 +32,9 @@ export function GlycemiaTab({ cTok }: { cTok: string }) {
           hour: "2-digit",
           minute: "2-digit",
         }),
-        glucose: Math.round(Number(e.valueGl) * 18),
+        // `valueGl` en g/L → mg/dL via le helper clinique partagé (× 100, PAS
+        // × 18 qui est mmol/L→mg/dL — bug corrigé, review #523 C1).
+        glucose: Math.round(glToMgdl(Number(e.valueGl))),
       })),
     [data],
   )

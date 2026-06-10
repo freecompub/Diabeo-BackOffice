@@ -5,9 +5,12 @@
  * Émet et résout une **référence patient éphémère** (jeton opaque `cTok`) le
  * temps qu'un professionnel garde le workspace patient ouvert. Propriétés :
  *
- * - **Aucun id patient dans l'URL** : le client ne manipule que `publicRef`
- *   (UUID opaque) à l'ouverture, puis le jeton `cTok` (en-tête XHR) pour lire
- *   les données. L'`id` patient interne ne quitte jamais le serveur.
+ * - **Aucun id patient dans l'URL** (barre d'adresse / historique / partage) :
+ *   le client ouvre via `publicRef` (UUID opaque) puis lit via le jeton `cTok`
+ *   (en-tête XHR). L'id interne n'apparaît jamais dans une URL navigateur — il
+ *   reste néanmoins présent dans le payload JSON de `GET /api/patients` (clé de
+ *   liste), ce qui est sans incidence sur la menace visée ici (énumération par
+ *   l'URL) car l'accès reste gaté par `canAccessPatient`.
  * - **Non partageable** : `cTok` est lié à l'utilisateur émetteur ; présenté par
  *   un autre utilisateur, il est refusé.
  * - **Éphémère / non rejouable** : TTL court glissant (rafraîchi à chaque lecture),
