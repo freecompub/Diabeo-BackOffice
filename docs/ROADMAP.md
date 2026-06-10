@@ -202,6 +202,29 @@
 |----|-------|--------|---------------|
 | US-2171 | Base médicamenteuse BDPM | DONE | `bdpm.service.ts`, `atc.service.ts`, modèles Prisma |
 
+### Domaine 24 — QA & Environnement de test (13 US, 41 SP, 🆕 À démarrer)
+
+> Rendre l'app exécutable **offline & déterministe** + fixtures couvrant **tous
+> les états** des 12 domaines QA (`docs/qa/`). Voir
+> [README](../UserStory/pro-user-stories/24-qa-test-environment/README.md).
+> **US-2270 (socle)** est prérequis de toutes les autres.
+
+| US | Titre | SP | Statut |
+|----|-------|---:|--------|
+| [US-2270](../UserStory/pro-user-stories/24-qa-test-environment/US-2270-socle-dev-mocke.md) | Socle dev mocké (stubs email/firebase/antivirus + redis revocation fallback + `.env.mock.dev`) | 5 | 🆕 |
+| [US-2271](../UserStory/pro-user-stories/24-qa-test-environment/US-2271-fixtures-qa-auth.md) | Fixtures 01-auth (MFA, suspendu/archivé, verrouillé) | 3 | 🆕 |
+| [US-2272](../UserStory/pro-user-stories/24-qa-test-environment/US-2272-fixtures-qa-dashboards.md) | Fixtures 02-dashboards (à-risque, urgences, KPI) | 3 | 🆕 |
+| [US-2273](../UserStory/pro-user-stories/24-qa-test-environment/US-2273-fixtures-qa-patients.md) | Fixtures 03-patients (états vides, soft-delete) | 2 | 🆕 |
+| [US-2274](../UserStory/pro-user-stories/24-qa-test-environment/US-2274-fixtures-qa-appointments.md) | Fixtures 04-appointments (statuts, conflits, indispo) | 3 | 🆕 |
+| [US-2275](../UserStory/pro-user-stories/24-qa-test-environment/US-2275-fixtures-qa-settings.md) | Fixtures 05-settings (RGPD, langue, unités) | 2 | 🆕 |
+| [US-2276](../UserStory/pro-user-stories/24-qa-test-environment/US-2276-fixtures-qa-admin.md) | Fixtures 06-admin (délégations, data breach, fiscalité) | 3 | 🆕 |
+| [US-2277](../UserStory/pro-user-stories/24-qa-test-environment/US-2277-fixtures-qa-analytics.md) | Fixtures 07-analytics (multi-patients, données insuffisantes) | 3 | 🆕 |
+| [US-2278](../UserStory/pro-user-stories/24-qa-test-environment/US-2278-fixtures-qa-admin-ops.md) | Fixtures 08-admin-ops (backups, system-health, cron) | 3 | 🆕 |
+| [US-2279](../UserStory/pro-user-stories/24-qa-test-environment/US-2279-fixtures-qa-compliance-billing.md) | Fixtures 09-compliance-billing (cycle facture, relances, RGPD) | 3 | 🆕 |
+| [US-2280](../UserStory/pro-user-stories/24-qa-test-environment/US-2280-fixtures-qa-devices-documents-events.md) | Fixtures 10-devices-documents-events (upload/scan, appairage) | 5 | 🆕 |
+| [US-2281](../UserStory/pro-user-stories/24-qa-test-environment/US-2281-fixtures-qa-clinical.md) | Fixtures 11-clinical (propositions, bolus, alertes) | 5 | 🆕 |
+| [US-2282](../UserStory/pro-user-stories/24-qa-test-environment/US-2282-fixtures-qa-communication.md) | Fixtures 12-communication (push, livraison, annonces) | 3 | 🆕 |
+
 ### Mirror MVP (9 US — DONE PR #343)
 
 | US | Titre | Statut | Domaine |
