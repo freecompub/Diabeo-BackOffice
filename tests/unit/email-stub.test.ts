@@ -30,7 +30,7 @@ describe("emailService.send — mode dev mocké", () => {
     })
     expect(res.sent).toBe(true)
     expect(res.id).toBeDefined()
-    expect(res.id!).toMatch(/^mock-/)
+    expect(res.id).toMatch(/^mock-/)
 
     // HDS/RGPD : ni le destinataire ni le sujet ne doivent apparaître dans les logs.
     const logged = infoMock.mock.calls.flat().map(String).join(" ")

@@ -143,14 +143,14 @@ const REMINDER_I18N: Record<"fr" | "en" | "ar", ReminderI18n> = {
   },
 }
 
-interface SendEmailInput {
+export interface SendEmailInput {
   to: string
   subject: string
   html: string
   text?: string
 }
 
-interface EmailResult {
+export interface EmailResult {
   sent: boolean
   id?: string
   error?: string

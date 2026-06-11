@@ -3,6 +3,7 @@ import { existsSync } from "fs"
 import { writeFile, rm, mkdtemp } from "fs/promises"
 import { join } from "path"
 import { tmpdir } from "os"
+import { logger } from "@/lib/logger"
 import { isMockFlagOn } from "@/lib/mocks/dev-mock"
 
 let clamInstance: NodeClam | null = null
@@ -27,7 +28,7 @@ async function getClamAV(): Promise<NodeClam | null> {
     })
     return clamInstance
   } catch {
-    console.warn("[antivirus] ClamAV not available — scans will be skipped")
+    logger.warn("antivirus", "ClamAV not available — scans will be skipped")
     return null
   }
 }
@@ -63,7 +64,8 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
     const isClean = result.isInfected === false
 
     if (!isClean) {
-      console.error("[antivirus] INFECTED file detected:", result.viruses?.join(", "))
+      // Noms de signatures virales (pas de PII) — gardés en clair pour le SOC.
+      logger.error("antivirus", `INFECTED file detected: ${result.viruses?.join(", ") ?? "unknown"}`)
     }
 
     return {
@@ -73,7 +75,7 @@ export async function scanFile(filePath: string): Promise<ScanResult> {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error"
-    console.error("[antivirus] Scan failed:", msg)
+    logger.error("antivirus", `Scan failed: ${msg}`)
     return { scanned: false, clean: false, viruses: ["SCAN_ERROR"] }
   }
 }

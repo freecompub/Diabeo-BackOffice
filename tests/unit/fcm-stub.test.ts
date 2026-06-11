@@ -25,7 +25,7 @@ vi.mock("@/lib/db/client", () => ({
 vi.mock("@/lib/firebase/admin", () => ({ getFcm: getFcmMock }))
 vi.mock("@/lib/services/audit.service", () => ({ auditService: { log: auditMock } }))
 
-import { fcmService, getPushLog, _clearPushLog } from "@/lib/services/fcm.service"
+import { fcmService, getPushLog, _clearPushLog, type MockedPush } from "@/lib/services/fcm.service"
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -70,6 +70,30 @@ describe("fcmService.sendToUser — mode dev mocké", () => {
     const log = getPushLog()
     expect(log).toHaveLength(2)
     expect(log.map((p) => p.title)).toEqual(["A", "B"])
+  })
+
+  it("borne le buffer à 500 (ring-buffer FIFO, pas de croissance non bornée)", async () => {
+    findManyMock.mockResolvedValue([
+      { id: "reg-1", pushToken: "tok-1", platform: "web", userId: 1, isActive: true },
+    ])
+    // 501 envois → la 1re entrée doit avoir été évincée (shift), taille plafonnée.
+    for (let i = 0; i < 501; i++) {
+      await fcmService.sendToUser({ userId: 1, senderId: 1, title: `n-${i}`, body: "x" })
+    }
+    const log = getPushLog()
+    expect(log).toHaveLength(500)
+    expect(log[0].title).toBe("n-1") // n-0 évincé
+    expect(log[log.length - 1].title).toBe("n-500")
+  })
+
+  it("getPushLog() renvoie une copie défensive (mutation sans effet sur le buffer)", async () => {
+    findManyMock.mockResolvedValue([
+      { id: "reg-1", pushToken: "tok-1", platform: "web", userId: 1, isActive: true },
+    ])
+    await fcmService.sendToUser({ userId: 1, senderId: 1, title: "A", body: "1" })
+    const snapshot = getPushLog() as MockedPush[]
+    snapshot.push({ token: "x", platform: "web", title: "INJECTED", body: "z", at: "" })
+    expect(getPushLog()).toHaveLength(1) // le buffer interne n'a pas bougé
   })
 
   it("MOCK_MODE=true stube même si une clé Firebase est présente", async () => {

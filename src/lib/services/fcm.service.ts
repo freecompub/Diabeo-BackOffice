@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto"
 import { getFcm } from "@/lib/firebase/admin"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
@@ -15,14 +16,22 @@ export interface MockedPush {
   platform: PushPlatform
   title: string
   body: string
+  /** Payload de données (templateId, variables) — utile pour l'inspection QA. */
+  data?: Record<string, string>
   at: string
 }
 /** Borne du buffer (ring) : évite toute croissance non bornée en dev long-running. */
 const PUSH_LOG_MAX = 500
 const pushStubLog: MockedPush[] = []
-/** Renvoie les push capturés par le stub (mode dev mocké). */
+/**
+ * Renvoie une **copie** des push capturés par le stub (mode dev mocké).
+ *
+ * ⚠️ Le contenu (`title`/`body`/`token`) peut être nominatif/PII : ce buffer est
+ * **dev/QA uniquement** et ne doit JAMAIS être sérialisé vers une route API, même
+ * en dev (aucune ACL). La copie empêche toute mutation du buffer interne via cast.
+ */
 export function getPushLog(): readonly MockedPush[] {
-  return pushStubLog
+  return [...pushStubLog]
 }
 /** Vide le journal des push stub. Test/dev uniquement (no-op en prod). */
 export function _clearPushLog(): void {
@@ -47,7 +56,7 @@ const INVALID_TOKEN_CODES = new Set([
   "messaging/invalid-registration-token",
 ])
 
-interface SendInput {
+export interface SendInput {
   userId: number
   /**
    * Acteur qui déclenche l'envoi. `null` accepté pour les acteurs système
@@ -61,7 +70,7 @@ interface SendInput {
   data?: Record<string, string>
 }
 
-interface SendResult {
+export interface SendResult {
   sent: number
   failed: number
   results: { registrationId: string; platform: PushPlatform; status: "sent" | "failed"; error?: string }[]
@@ -104,9 +113,21 @@ async function sendWithRetry(
 ): Promise<{ messageId?: string; error?: string }> {
   // US-2270 — dev mocké : push capturé en mémoire, jamais envoyé (jamais en prod).
   if (isDevMocked("FIREBASE_SERVICE_ACCOUNT_KEY")) {
-    pushStubLog.push({ token, platform, title: payload.title, body: payload.body, at: new Date().toISOString() })
-    if (pushStubLog.length > PUSH_LOG_MAX) pushStubLog.shift() // ring-buffer
-    return { messageId: `mock-${crypto.randomUUID()}` }
+    // Defense-in-depth : ne JAMAIS écrire de PII dans le buffer en prod, même si
+    // le gate était contourné (le gate isDevMocked l'exclut déjà — ceinture +
+    // bretelles, cohérent avec _clearPushLog).
+    if (process.env.NODE_ENV !== "production") {
+      pushStubLog.push({
+        token,
+        platform,
+        title: payload.title,
+        body: payload.body,
+        data: payload.data,
+        at: new Date().toISOString(),
+      })
+      if (pushStubLog.length > PUSH_LOG_MAX) pushStubLog.shift() // ring-buffer
+    }
+    return { messageId: `mock-${randomUUID()}` }
   }
   const fcm = getFcm()
 
@@ -177,7 +198,7 @@ export const fcmService = {
       return { sent: 0, failed: 0, results: [] }
     }
 
-    const idempotencyKey = crypto.randomUUID()
+    const idempotencyKey = randomUUID()
 
     const sendPromises = registrations.map(async (reg) => {
       const { messageId, error } = await sendWithRetry(

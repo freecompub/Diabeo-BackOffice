@@ -293,8 +293,13 @@ pnpm dev --env-file .env.mock.dev         # (ou sourcer le fichier)
 ```
 
 ### Ce qui bascule en stub/fallback (jamais en production)
-Gate : `src/lib/mocks/dev-mock.ts` (`isDevMocked(key)` → vrai si `NODE_ENV≠production`
-et (`MOCK_MODE=true` ou clé du service absente)).
+Gate : `src/lib/mocks/dev-mock.ts`. Un stub ne s'active **que** si `NODE_ENV` vaut
+`development` ou `test` (`isDevMocked` : + `MOCK_MODE=true` ou clé du service absente).
+**Fail-safe** : tout autre `NODE_ENV` — production, **staging** (le VPS de recette
+tourne en `NODE_ENV=production` + `APP_ENV=staging`), ou `NODE_ENV` absent/inconnu —
+refuse le mock. Donc **la recette utilise les vrais services** (Resend, FCM, ClamAV).
+Au boot prod, `assertRequiredEnv()` **refuse même de démarrer** si un `MOCK_MODE`/
+`MOCK_ANTIVIRUS=true` résiduel traîne dans la config (defense-in-depth).
 
 | Service | Comportement offline | Inspection |
 |---|---|---|
