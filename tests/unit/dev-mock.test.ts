@@ -5,7 +5,7 @@
 /** Tests — gate du mode dev mocké (US-2270). */
 
 import { describe, it, expect, vi, afterEach } from "vitest"
-import { isDevMocked, isMockFlagOn } from "@/lib/mocks/dev-mock"
+import { isDevMocked, isMockFlagOn, isFlagTrue } from "@/lib/mocks/dev-mock"
 
 afterEach(() => vi.unstubAllEnvs())
 
@@ -102,5 +102,34 @@ describe("isMockFlagOn", () => {
     vi.stubEnv("MOCK_MODE", "")
     vi.stubEnv("MOCK_ANTIVIRUS", "")
     expect(isMockFlagOn("MOCK_ANTIVIRUS")).toBe(false)
+  })
+
+  it("env test + flag=true → actif (asymétrie assumée vs isDevMocked)", () => {
+    vi.stubEnv("NODE_ENV", "test")
+    vi.stubEnv("MOCK_ANTIVIRUS", "true")
+    expect(isMockFlagOn("MOCK_ANTIVIRUS")).toBe(true)
+  })
+
+  it("capte les variantes de casse/format (TRUE, 1, yes)", () => {
+    vi.stubEnv("NODE_ENV", "development")
+    vi.stubEnv("MOCK_MODE", "")
+    for (const v of ["TRUE", "True", " true ", "1", "yes", "YES"]) {
+      vi.stubEnv("MOCK_ANTIVIRUS", v)
+      expect(isMockFlagOn("MOCK_ANTIVIRUS")).toBe(true)
+    }
+  })
+})
+
+describe("isFlagTrue", () => {
+  it("vrai pour true/1/yes insensible à la casse et aux espaces", () => {
+    for (const v of ["true", "TRUE", " True ", "1", "yes", "YES"]) {
+      expect(isFlagTrue(v)).toBe(true)
+    }
+  })
+
+  it("faux pour absent/vide/valeurs non vraies", () => {
+    for (const v of [undefined, "", "false", "0", "no", "off", "2"]) {
+      expect(isFlagTrue(v)).toBe(false)
+    }
   })
 })

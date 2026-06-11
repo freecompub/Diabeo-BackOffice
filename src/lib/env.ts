@@ -26,6 +26,7 @@
  */
 
 import { createPrivateKey, createPublicKey } from "node:crypto"
+import { isFlagTrue } from "@/lib/mocks/dev-mock"
 
 interface EnvSpec {
   name: string
@@ -346,8 +347,10 @@ export function assertRequiredEnv(): void {
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser
   // silencieusement.
   if (process.env.NODE_ENV === "production") {
-    const leakedMockFlags = ["MOCK_MODE", "MOCK_ANTIVIRUS"].filter(
-      (key) => process.env[key] === "true",
+    // isFlagTrue (partagé avec le gate dev-mock) capte aussi TRUE/1/yes : une
+    // faute de casse ne doit pas échapper au signal de misconfig.
+    const leakedMockFlags = ["MOCK_MODE", "MOCK_ANTIVIRUS"].filter((key) =>
+      isFlagTrue(process.env[key]),
     )
     if (leakedMockFlags.length > 0) {
       throw new Error(

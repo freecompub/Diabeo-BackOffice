@@ -90,10 +90,21 @@ describe("fcmService.sendToUser — mode dev mocké", () => {
     findManyMock.mockResolvedValue([
       { id: "reg-1", pushToken: "tok-1", platform: "web", userId: 1, isActive: true },
     ])
-    await fcmService.sendToUser({ userId: 1, senderId: 1, title: "A", body: "1" })
+    await fcmService.sendToUser({
+      userId: 1,
+      senderId: 1,
+      title: "A",
+      body: "1",
+      data: { templateId: "t1" },
+    })
     const snapshot = getPushLog() as MockedPush[]
+    // (a) ajout d'élément au tableau retourné → sans effet
     snapshot.push({ token: "x", platform: "web", title: "INJECTED", body: "z", at: "" })
-    expect(getPushLog()).toHaveLength(1) // le buffer interne n'a pas bougé
+    // (b) mutation de l'objet `data` d'un élément capturé → sans effet (deep-clone)
+    snapshot[0].data!["injected"] = "x"
+    const after = getPushLog()
+    expect(after).toHaveLength(1)
+    expect(after[0].data).toEqual({ templateId: "t1" }) // pas de clé "injected"
   })
 
   it("MOCK_MODE=true stube même si une clé Firebase est présente", async () => {

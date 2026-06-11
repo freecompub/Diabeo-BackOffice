@@ -24,16 +24,20 @@ export interface MockedPush {
 const PUSH_LOG_MAX = 500
 const pushStubLog: MockedPush[] = []
 /**
- * Renvoie une **copie** des push capturés par le stub (mode dev mocké).
+ * Renvoie une **copie défensive** des push capturés par le stub (mode dev mocké).
  *
  * ⚠️ Le contenu (`title`/`body`/`token`) peut être nominatif/PII : ce buffer est
  * **dev/QA uniquement** et ne doit JAMAIS être sérialisé vers une route API, même
- * en dev (aucune ACL). La copie empêche toute mutation du buffer interne via cast.
+ * en dev (aucune ACL). La copie (incluant un clone de `data`) empêche toute
+ * mutation du buffer interne via la valeur retournée.
  */
 export function getPushLog(): readonly MockedPush[] {
-  return [...pushStubLog]
+  return pushStubLog.map((p) => ({ ...p, data: p.data ? { ...p.data } : undefined }))
 }
-/** Vide le journal des push stub. Test/dev uniquement (no-op en prod). */
+/**
+ * Vide le journal des push stub. Test/dev uniquement (no-op en prod).
+ * @internal — exposé pour les tests ; ne pas appeler depuis le code applicatif.
+ */
 export function _clearPushLog(): void {
   if (process.env.NODE_ENV === "production") return
   pushStubLog.length = 0
@@ -113,9 +117,10 @@ async function sendWithRetry(
 ): Promise<{ messageId?: string; error?: string }> {
   // US-2270 — dev mocké : push capturé en mémoire, jamais envoyé (jamais en prod).
   if (isDevMocked("FIREBASE_SERVICE_ACCOUNT_KEY")) {
-    // Defense-in-depth : ne JAMAIS écrire de PII dans le buffer en prod, même si
-    // le gate était contourné (le gate isDevMocked l'exclut déjà — ceinture +
-    // bretelles, cohérent avec _clearPushLog).
+    // Defense-in-depth (HDS) : garde volontairement redondante. `isDevMocked`
+    // exclut déjà la prod, donc cette branche est normalement inatteignable en
+    // prod — on la garde comme 2ᵉ verrou pour qu'aucune PII n'atterrisse dans le
+    // buffer mémoire si le gate venait à régresser (cohérent avec _clearPushLog).
     if (process.env.NODE_ENV !== "production") {
       pushStubLog.push({
         token,

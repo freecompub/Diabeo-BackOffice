@@ -33,9 +33,21 @@ function isMockableEnv(): boolean {
   return process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test"
 }
 
+/**
+ * Interprète une variable d'env comme un booléen « vrai » (`true`/`1`/`yes`,
+ * insensible à la casse et aux espaces). Mutualisé pour qu'une faute de frappe
+ * (`MOCK_MODE=TRUE`, `MOCK_ANTIVIRUS=1`) ne puisse PAS diverger entre le gate
+ * runtime et le fail-fast de boot (`assertRequiredEnv`) — une telle valeur doit
+ * remonter comme misconfig en prod plutôt que d'être silencieusement ignorée.
+ */
+export function isFlagTrue(value: string | undefined): boolean {
+  if (!value) return false
+  return ["true", "1", "yes"].includes(value.trim().toLowerCase())
+}
+
 export function isDevMocked(credEnvKey: string): boolean {
   if (!isMockableEnv()) return false
-  if (process.env.MOCK_MODE === "true") return true
+  if (isFlagTrue(process.env.MOCK_MODE)) return true
   if (process.env.NODE_ENV === "development") return !process.env[credEnvKey]
   return false // test sans MOCK_MODE → vrai chemin (les tests mockent les clients)
 }
@@ -48,5 +60,5 @@ export function isDevMocked(credEnvKey: string): boolean {
  */
 export function isMockFlagOn(flagEnvKey: string): boolean {
   if (!isMockableEnv()) return false
-  return process.env.MOCK_MODE === "true" || process.env[flagEnvKey] === "true"
+  return isFlagTrue(process.env.MOCK_MODE) || isFlagTrue(process.env[flagEnvKey])
 }
