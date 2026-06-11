@@ -26,6 +26,7 @@
  */
 
 import { createPrivateKey, createPublicKey } from "node:crypto"
+import { isFlagTrue } from "@/lib/mocks/dev-mock"
 
 interface EnvSpec {
   name: string
@@ -341,6 +342,23 @@ export function assertRequiredEnv(): void {
   assertSpecs(REQUIRED_FULL)
   // US-2123 — fail-fast on misconfigured FHIR feature flag.
   assertOptionalBoolean("FHIR_ENABLED")
+  // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
+  // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
+  // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser
+  // silencieusement.
+  if (process.env.NODE_ENV === "production") {
+    // isFlagTrue (partagé avec le gate dev-mock) capte aussi TRUE/1/yes : une
+    // faute de casse ne doit pas échapper au signal de misconfig.
+    const leakedMockFlags = ["MOCK_MODE", "MOCK_ANTIVIRUS"].filter((key) =>
+      isFlagTrue(process.env[key]),
+    )
+    if (leakedMockFlags.length > 0) {
+      throw new Error(
+        `Mock flags forbidden in production: ${leakedMockFlags.join(", ")}=true. ` +
+          "Remove them from the production environment (cf. src/lib/mocks/dev-mock.ts).",
+      )
+    }
+  }
 }
 
 /**

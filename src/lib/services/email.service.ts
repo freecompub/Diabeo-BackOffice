@@ -1,5 +1,7 @@
+import { randomUUID } from "crypto"
 import { Resend } from "resend"
 import { logger } from "@/lib/logger"
+import { isDevMocked } from "@/lib/mocks/dev-mock"
 
 function escapeHtml(str: string): string {
   return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#x27;")
@@ -141,14 +143,14 @@ const REMINDER_I18N: Record<"fr" | "en" | "ar", ReminderI18n> = {
   },
 }
 
-interface SendEmailInput {
+export interface SendEmailInput {
   to: string
   subject: string
   html: string
   text?: string
 }
 
-interface EmailResult {
+export interface EmailResult {
   sent: boolean
   id?: string
   error?: string
@@ -156,6 +158,12 @@ interface EmailResult {
 
 export const emailService = {
   async send(input: SendEmailInput): Promise<EmailResult> {
+    // US-2270 — dev mocké : email non envoyé, succès simulé (jamais en prod).
+    // (Pas de destinataire/sujet dans les logs — PII.)
+    if (isDevMocked("RESEND_API_KEY")) {
+      logger.info("email", "STUB dev — email non envoyé (mode mocké)")
+      return { sent: true, id: `mock-${randomUUID()}` }
+    }
     try {
       const client = getClient()
       const { data, error } = await client.emails.send({

@@ -232,4 +232,31 @@ describe("assertRequiredEnv", () => {
     expect(() => assertRequiredEnv()).not.toThrow()
     expect(() => assertRequiredEnv()).not.toThrow()
   })
+
+  // US-2270 — defense-in-depth : un flag de mock résiduel en prod doit refuser
+  // le boot (misconfig tracée plutôt que neutralisée silencieusement).
+  it("rejects MOCK_MODE=true in production", () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("MOCK_MODE", "true")
+    expect(() => assertRequiredEnv()).toThrow(/Mock flags forbidden in production/)
+  })
+
+  it("rejects MOCK_ANTIVIRUS=true in production", () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("MOCK_ANTIVIRUS", "true")
+    expect(() => assertRequiredEnv()).toThrow(/MOCK_ANTIVIRUS/)
+  })
+
+  it("catches case/format variants (TRUE, 1) in production", () => {
+    vi.stubEnv("NODE_ENV", "production")
+    vi.stubEnv("MOCK_MODE", "TRUE")
+    expect(() => assertRequiredEnv()).toThrow(/Mock flags forbidden in production/)
+  })
+
+  it("does NOT reject mock flags outside production", () => {
+    vi.stubEnv("NODE_ENV", "development")
+    vi.stubEnv("MOCK_MODE", "true")
+    vi.stubEnv("MOCK_ANTIVIRUS", "true")
+    expect(() => assertRequiredEnv()).not.toThrow()
+  })
 })

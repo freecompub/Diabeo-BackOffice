@@ -277,3 +277,42 @@ dans `docker-compose.yml` (mais alors aussi dans `.env`).
 - Roadmap : [docs/ROADMAP.md](./ROADMAP.md)
 - Migrations Prisma : [docs/runbook/migrations.md](./runbook/migrations.md)
 - Partitioning CGM (à activer quand le volume justifie) : [docs/runbook/postgres-partitioning.md](./runbook/postgres-partitioning.md)
+
+---
+
+## 🧪 Mode dev mocké complet (offline, pour la QA) — US-2270
+
+Pour faire tourner l'app **sans aucun service externe** (email, push, Redis
+cloud) — utile pour dérouler la QA de façon déterministe :
+
+```bash
+cp .env.mock.dev.example .env.mock.dev   # gitignoré ; ajuster les clés JWT
+docker compose --profile local up        # PostgreSQL + MinIO (S3 local)
+pnpm prisma db seed                       # données de test
+pnpm dev --env-file .env.mock.dev         # (ou sourcer le fichier)
+```
+
+### Ce qui bascule en stub/fallback (jamais en production)
+Gate : `src/lib/mocks/dev-mock.ts`. Un stub ne s'active **que** si `NODE_ENV` vaut
+`development` ou `test` (`isDevMocked` : + `MOCK_MODE=true` ou clé du service absente).
+**Fail-safe** : tout autre `NODE_ENV` — production, **staging** (le VPS de recette
+tourne en `NODE_ENV=production` + `APP_ENV=staging`), ou `NODE_ENV` absent/inconnu —
+refuse le mock. Donc **la recette utilise les vrais services** (Resend, FCM, ClamAV).
+Au boot prod, `assertRequiredEnv()` **refuse même de démarrer** si un `MOCK_MODE`/
+`MOCK_ANTIVIRUS=true` résiduel traîne dans la config (defense-in-depth).
+
+| Service | Comportement offline | Inspection |
+|---|---|---|
+| **Email (Resend)** | `emailService.send()` loggue + renvoie `{sent:true, id:"mock-…"}` | logs |
+| **Push (Firebase)** | capturé dans une file mémoire, jamais envoyé | `getPushLog()` (fcm.service) |
+| **Antivirus (ClamAV)** | `MOCK_ANTIVIRUS=true` → `{scanned:false, clean:true}` | — |
+| **S3 documents** | redirigé vers **MinIO** (`OVH_S3_ENDPOINT=localhost:9000`) | console MinIO |
+| **Redis cache / idempotency** | fallback `Map` mémoire (déjà en place) | — |
+
+### Limite connue (offline)
+La **révocation de session** (`src/lib/auth/revocation.ts`) est vérifiée en
+**runtime Edge** : un fallback mémoire Node ne serait pas atteignable et l'archi
+a justement abandonné le `Map` pour le cross-runtime. Offline, la révocation est
+donc un **no-op** — le logout vide le cookie client, mais le JWT reste
+techniquement valide jusqu'à expiration. Acceptable en dev/QA ; en prod, Redis
+(Upstash) est requis.
