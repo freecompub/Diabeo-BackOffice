@@ -1244,6 +1244,32 @@
       "confirmDesc": "The backup will start immediately (status: pending → running). Estimated duration: 2-15 minutes depending on DB size. The operation is recorded in the audit log.",
       "cancel": "Cancel",
       "confirmTrigger": "Trigger"
+    },
+    "cabinetsList": {
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "listUnavailable": "List unavailable",
+      "retry": "Retry",
+      "noMatch": "No practice matches the search.",
+      "empty": "No practice recorded.",
+      "smsEnabled": "SMS enabled ({credits} credits)",
+      "noManager": "No manager"
+    },
+    "usersList": {
+      "roleLabel": "Role:",
+      "allRoles": "All roles",
+      "statusLabel": "Status:",
+      "allStatuses": "All statuses",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "updating": "Updating results…",
+      "listUnavailable": "List unavailable",
+      "retry": "Retry",
+      "noMatch": "No user matches the search.",
+      "empty": "No user.",
+      "createdLine": "{email} · Created on {date}",
+      "tooMany": "More than 100 users match. Narrow the filters to reduce the list.",
+      "paginationNote": "Cursor pagination V1.5 — truncated display."
     }
   },
   "dashboardCards": {

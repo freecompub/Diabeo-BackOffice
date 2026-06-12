@@ -1244,6 +1244,32 @@
       "confirmDesc": "Le backup démarrera immédiatement (status: pending → running). Durée estimée : 2-15 minutes selon taille DB. L'opération est tracée dans le journal d'audit.",
       "cancel": "Annuler",
       "confirmTrigger": "Déclencher"
+    },
+    "cabinetsList": {
+      "refresh": "Actualiser",
+      "loading": "Chargement…",
+      "listUnavailable": "Liste indisponible",
+      "retry": "Réessayer",
+      "noMatch": "Aucun cabinet ne correspond à la recherche.",
+      "empty": "Aucun cabinet enregistré.",
+      "smsEnabled": "SMS activé ({credits} crédits)",
+      "noManager": "Pas de manager"
+    },
+    "usersList": {
+      "roleLabel": "Rôle :",
+      "allRoles": "Tous les rôles",
+      "statusLabel": "Statut :",
+      "allStatuses": "Tous les statuts",
+      "refresh": "Actualiser",
+      "loading": "Chargement…",
+      "updating": "Mise à jour des résultats…",
+      "listUnavailable": "Liste indisponible",
+      "retry": "Réessayer",
+      "noMatch": "Aucun utilisateur ne correspond à la recherche.",
+      "empty": "Aucun utilisateur.",
+      "createdLine": "{email} · Créé le {date}",
+      "tooMany": "Plus de 100 utilisateurs correspondent. Affiner les filtres pour réduire la liste.",
+      "paginationNote": "Pagination cursor V1.5 — affichage tronqué."
     }
   },
   "dashboardCards": {

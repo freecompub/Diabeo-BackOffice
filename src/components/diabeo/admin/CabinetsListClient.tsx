@@ -14,6 +14,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import Link from "next/link"
 import {
   AlertCircle,
@@ -44,6 +45,7 @@ function getTypeLabel(type: ServiceType | string): string {
 }
 
 export function CabinetsListClient() {
+  const t = useTranslations("admin.cabinetsList")
   const [cabinets, setCabinets] = useState<HealthcareServiceListItem[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -119,13 +121,13 @@ export function CabinetsListClient() {
         </div>
         <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchCabinets()}>
           <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
-          Actualiser
+          {t("refresh")}
         </DiabeoButton>
       </div>
 
       {state === "loading" && cabinets.length === 0 && (
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          Chargement…
+          {t("loading")}
         </p>
       )}
 
@@ -133,11 +135,11 @@ export function CabinetsListClient() {
         <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
-            Liste indisponible
+            {t("listUnavailable")}
           </p>
           {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchCabinets()} className="mt-2">
-            Réessayer
+            {t("retry")}
           </DiabeoButton>
         </div>
       )}
@@ -146,7 +148,7 @@ export function CabinetsListClient() {
         <div className="rounded-md border border-dashed p-8 text-center">
           <Building2 className="size-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">
-            {query ? "Aucun cabinet ne correspond à la recherche." : "Aucun cabinet enregistré."}
+            {query ? t("noMatch") : t("empty")}
           </p>
         </div>
       )}
@@ -168,12 +170,12 @@ export function CabinetsListClient() {
                     </Badge>
                     {cabinet.smsEnabled && (
                       <Badge variant="default" className="text-[10px]">
-                        SMS activé ({cabinet.smsCreditBalance} crédits)
+                        {t("smsEnabled", { credits: cabinet.smsCreditBalance })}
                       </Badge>
                     )}
                     {cabinet.managerId === null && (
                       <Badge variant="destructive" className="text-[10px]">
-                        Pas de manager
+                        {t("noManager")}
                       </Badge>
                     )}
                   </div>
