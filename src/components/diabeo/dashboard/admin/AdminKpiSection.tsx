@@ -5,6 +5,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import { MetricCard } from "@/components/diabeo/MetricCard"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
@@ -20,6 +21,7 @@ const KPI_LABELS: Record<AdminKpiCard["code"], string> = {
 }
 
 export function AdminKpiSection() {
+  const t = useTranslations("dashboardCards")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/kpi",
     5 * 60_000,
@@ -32,11 +34,11 @@ export function AdminKpiSection() {
   return (
     <section aria-labelledby="admin-kpi-title">
       <h2 id="admin-kpi-title" className="mb-3 text-base font-semibold">
-        Vue globale
+        {t("adminKpiTitle")}
       </h2>
       {hasError && (
         <p className="mb-2 text-sm text-glycemia-critical">
-          Impossible de charger les indicateurs clés (KPI).
+          {t("kpiLoadError")}
         </p>
       )}
       {isStale && <div className="mb-2"><StaleBanner message={STALE_MESSAGE_FR} /></div>}

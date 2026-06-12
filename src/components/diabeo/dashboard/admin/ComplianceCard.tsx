@@ -5,6 +5,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
@@ -34,6 +35,7 @@ function backupAgeDays(d: Date | string | null): number | null {
 }
 
 export function ComplianceCard() {
+  const t = useTranslations("dashboardCards")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/compliance",
     5 * 60_000,
@@ -46,47 +48,47 @@ export function ComplianceCard() {
     <DiabeoCard role="region" aria-labelledby="admin-compliance-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="admin-compliance-title" className="text-base font-semibold">
-          Conformité hébergeur de données de santé (HDS)
+          {t("compliance.title")}
         </h2>
       </header>
       {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
       <div className="px-4 pb-4">
         {loading && item === null && (
-          <p className="text-sm text-muted-foreground">Chargement…</p>
+          <p className="text-sm text-muted-foreground">{t("compliance.loading")}</p>
         )}
         {hasError && (
           <p className="text-sm text-glycemia-critical">
-            Impossible de charger la conformité.
+            {t("compliance.loadError")}
           </p>
         )}
         {item && (
           <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <dt className="text-xs text-muted-foreground">Dernier backup</dt>
+              <dt className="text-xs text-muted-foreground">{t("compliance.lastBackup")}</dt>
               <dd className="flex items-center gap-2 text-sm">
                 <span>{formatDate(item.lastBackupAt)}</span>
                 {backupStale && (
-                  <Badge variant="destructive">Stale ({backupAge}j)</Badge>
+                  <Badge variant="destructive">{t("compliance.stale", { days: backupAge })}</Badge>
                 )}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Audit 24h</dt>
+              <dt className="text-xs text-muted-foreground">{t("compliance.audit24h")}</dt>
               <dd className="text-lg font-semibold">{item.auditEventsLast24h}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Backups échec (30j)</dt>
+              <dt className="text-xs text-muted-foreground">{t("compliance.failedBackups")}</dt>
               <dd className="flex items-center gap-2 text-lg font-semibold">
                 {item.failedBackupsLast30d}
                 {item.failedBackupsLast30d > 0 && (
-                  <Badge variant="destructive">Alerte</Badge>
+                  <Badge variant="destructive">{t("compliance.alert")}</Badge>
                 )}
               </dd>
             </div>
           </dl>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Demandes au titre du Règlement général sur la protection des données (RGPD) (US-2413) à venir en V3.
+          {t("compliance.rgpdNote")}
         </p>
       </div>
     </DiabeoCard>

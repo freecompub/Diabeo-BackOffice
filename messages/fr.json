@@ -1226,5 +1226,21 @@
       "title": "Utilisateurs",
       "subtitle": "Gestion des comptes utilisateurs (admins, médecins, infirmier·ères, patients). Cliquer pour détail + actions suspension/archivage."
     }
+  },
+  "dashboardCards": {
+    "kpiLoadError": "Impossible de charger les indicateurs clés (KPI).",
+    "adminKpiTitle": "Vue globale",
+    "nurseKpiTitle": "Ma journée",
+    "compliance": {
+      "title": "Conformité hébergeur de données de santé (HDS)",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger la conformité.",
+      "lastBackup": "Dernier backup",
+      "stale": "Stale ({days}j)",
+      "audit24h": "Audit 24h",
+      "failedBackups": "Backups échec (30j)",
+      "alert": "Alerte",
+      "rgpdNote": "Demandes au titre du Règlement général sur la protection des données (RGPD) (US-2413) à venir en V3."
+    }
   }
 }

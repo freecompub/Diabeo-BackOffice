@@ -1226,5 +1226,21 @@
       "title": "Users",
       "subtitle": "Management of user accounts (admins, doctors, nurses, patients). Click for detail + suspension/archival actions."
     }
+  },
+  "dashboardCards": {
+    "kpiLoadError": "Could not load key performance indicators (KPI).",
+    "adminKpiTitle": "Overview",
+    "nurseKpiTitle": "My day",
+    "compliance": {
+      "title": "Health data hosting (HDS) compliance",
+      "loading": "Loading…",
+      "loadError": "Could not load compliance.",
+      "lastBackup": "Last backup",
+      "stale": "Stale ({days}d)",
+      "audit24h": "Audit 24h",
+      "failedBackups": "Failed backups (30d)",
+      "alert": "Alert",
+      "rgpdNote": "General Data Protection Regulation (GDPR) requests (US-2413) coming in V3."
+    }
   }
 }
