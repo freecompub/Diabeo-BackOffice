@@ -249,6 +249,25 @@ describe("<PatientCombobox>", () => {
     expect(alert.textContent).toContain("patientListError")
   })
 
+  it("searching state : recherche backend en vol → hint 'patientSearching', pas de faux 'aucun résultat'", () => {
+    // base (sans search) peuplée + non-loading ; instance search en vol (loading)
+    // pour une saisie qui ne matche encore rien → anti-flicker : on n'affiche
+    // PAS "patientNoResults" tant que le fetch peut remonter un patient >50.
+    mockUsePatientList.mockImplementation((args: { search?: string }) =>
+      args?.search
+        ? { items: [], loading: true, error: null, refetch: vi.fn() }
+        : { items: baseItems, loading: false, error: null, refetch: vi.fn() },
+    )
+    render(<PatientCombobox id="test-combobox" value={null} onChange={vi.fn()} />)
+
+    fireEvent.change(screen.getByRole("combobox"), {
+      target: { value: "Inexistant" },
+    })
+
+    expect(document.body.textContent).toContain("patientSearching")
+    expect(document.body.textContent).not.toContain("patientNoResults")
+  })
+
   it("autoComplete='off' + spellCheck=false (anti history input + anti spell check PHI)", () => {
     render(<PatientCombobox id="test-combobox" value={null} onChange={vi.fn()} />)
     const input = screen.getByRole("combobox")

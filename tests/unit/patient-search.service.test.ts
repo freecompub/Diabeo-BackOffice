@@ -81,6 +81,22 @@ describe("patientService.search", () => {
     expect(call.where.OR).toEqual([{ id: { in: [7] } }])
   })
 
+  it("SECURITY — un token `#id` ne contourne PAS le scope RBAC (id-in top-level ANDé)", async () => {
+    // Un PS sonde `#99` alors que son périmètre = [1, 2]. Le match `#id` est
+    // dans `where.OR`, mais `where.id = { in: accessibleIds }` reste top-level
+    // → Prisma applique `id ∈ [1,2] AND (… OR id ∈ [99])` : #99 hors périmètre
+    // ne peut pas être exfiltré.
+    await patientService.search(
+      { search: "#99", accessibleIds: [1, 2] },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    // Scope top-level conservé (ANDé avec le OR).
+    expect(call.where.id).toEqual({ in: [1, 2] })
+    // La branche id de la recherche existe mais reste contrainte par le scope.
+    expect(call.where.OR).toEqual([{ id: { in: [99] } }])
+  })
+
   it("filters out patients without gdprConsent + shareWithProviders (H1)", async () => {
     await patientService.search(
       { accessibleIds: [1] },
