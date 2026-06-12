@@ -37,7 +37,7 @@ export function NurseKpiSection() {
       </h2>
       {hasError && (
         <p className="mb-2 text-sm text-glycemia-critical">
-          Impossible de charger les KPI.
+          Impossible de charger les indicateurs clés (KPI).
         </p>
       )}
       {isStale && <div className="mb-2"><StaleBanner message={STALE_MESSAGE_FR} /></div>}

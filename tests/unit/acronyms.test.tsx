@@ -33,9 +33,13 @@ const messages = Object.fromEntries(
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 /**
- * Vérifie CHAQUE occurrence de `code` (mot entier) dans `value`. Une occurrence
- * est tolérée si elle est exactement « (CODE) », ou précédée de « — » / « / ».
- * Retourne true si une occurrence NUE subsiste.
+ * Vérifie CHAQUE occurrence de `code` (mot entier) dans `value`. Formes
+ * explicitées TOLÉRÉES (sinon = nu) :
+ *   - « (CODE) »  : code entre parenthèses (préfixe « ( », suffixe « ) ») ;
+ *   - « — CODE »  : code précédé d'un tiret cadratin + espace ;
+ *   - « / CODE »  : code précédé d'un slash + espace (ex. « ... / ADA »).
+ * Toute autre occurrence (ex. « CODE », « (CODE-7j) », « CODE, ») est NUE.
+ * Retourne true si une occurrence nue subsiste.
  */
 function hasBareOccurrence(value: string, code: string): boolean {
   const re = new RegExp(`\\b${esc(code)}\\b`, "g")
@@ -111,28 +115,43 @@ describe("garde anti-acronyme nu — JSX hardcodé (.tsx)", () => {
     return out
   }
 
-  it("aucun acronyme nu dans le texte/props JSX (hors commentaires)", () => {
+  /** Neutralise tout ce qui n'est PAS du texte client statique : commentaires
+   *  (`/* *\/`, `{/* *\/}`, `//`), expressions JSX `{…}` (itératif → neutralise
+   *  les `=>`/`>` du code), et les éléments `<Acronym …>…</Acronym>` (déjà
+   *  conformes par construction). Préserve les `\n` pour le calcul de ligne. */
+  function stripNonText(src: string): string {
+    const blank = (m: string) => m.replace(/[^\n]/g, " ")
+    let s = src
+      .replace(/\/\*[\s\S]*?\*\//g, blank) // block + JSDoc
+      .replace(/\{\s*\/\*[\s\S]*?\*\/\s*\}/g, blank) // {/* */}
+      .replace(/\/\/[^\n]*/g, blank) // // ...
+      .replace(/<Acronym\b[^>]*\/>/g, blank) // <Acronym ... />
+      .replace(/<Acronym\b[\s\S]*?<\/Acronym>/g, blank) // <Acronym>...</Acronym>
+    let prev
+    do {
+      prev = s
+      s = s.replace(/\{[^{}]*\}/g, blank) // expressions JSX (itératif)
+    } while (s !== prev)
+    return s
+  }
+
+  it("aucun acronyme nu dans le texte/props JSX (multi-ligne, hors commentaires/expressions)", () => {
     const offenders: string[] = []
     for (const file of listTsx(resolve(ROOT, "src"))) {
-      const lines = readFileSync(file, "utf8").split("\n")
-      lines.forEach((line, i) => {
-        const trimmed = line.trim()
-        // Ignorer les lignes de commentaire (JSDoc `*`, `//`, `/* */`).
-        if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) return
-        // Une ligne portant déjà <Acronym code="X"> est explicitée.
-        const segments = [
-          ...[...line.matchAll(/>([^<>{}]*?)</g)].map((m) => m[1]),
-          ...[...line.matchAll(/(?:label|title|placeholder|aria-label)="([^"]*)"/g)].map((m) => m[1]),
-        ]
-        for (const seg of segments) {
-          for (const code of SCAN) {
-            if (line.includes(`code="${code}"`)) continue
-            if (hasBareOccurrence(seg, code)) {
-              offenders.push(`${file.replace(ROOT + "/", "")}:${i + 1} [${code}] ${seg.trim().slice(0, 50)}`)
-            }
+      const src = stripNonText(readFileSync(file, "utf8"))
+      const segments = [
+        // texte JSX entre `>` et `<` (multi-ligne : `[^<>]` matche le `\n`).
+        ...[...src.matchAll(/>([^<>]+)</g)].map((m) => ({ seg: m[1], idx: m.index ?? 0 })),
+        ...[...src.matchAll(/(?:label|title|placeholder|aria-label)="([^"]*)"/g)].map((m) => ({ seg: m[1], idx: m.index ?? 0 })),
+      ]
+      for (const { seg, idx } of segments) {
+        for (const code of SCAN) {
+          if (hasBareOccurrence(seg, code)) {
+            const line = src.slice(0, idx).split("\n").length
+            offenders.push(`${file.replace(ROOT + "/", "")}:${line} [${code}] ${seg.replace(/\s+/g, " ").trim().slice(0, 50)}`)
           }
         }
-      })
+      }
     }
     expect(offenders, `acronymes nus en JSX:\n${offenders.join("\n")}`).toEqual([])
   })

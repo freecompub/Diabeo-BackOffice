@@ -13,6 +13,13 @@
  * ne pas utiliser ce composant : écrire « Libellé (ACRONYME) » directement dans
  * la chaîne traduite.
  *
+ * **Accessibilité (WCAG 1.4.13 — Content on Hover or Focus)** : l'infobulle
+ * apparaît au survol ET au focus clavier (`tabIndex={0}`), reste affichée tant
+ * que le déclencheur est survolé/focus (hoverable + persistante) et se ferme via
+ * `Échap` — comportements fournis par le `Tooltip` base-ui. L'`aria-label`
+ * « Libellé (ACRONYME) » (cohérent avec la forme inline) porte l'expansion aux
+ * lecteurs d'écran tout en conservant l'acronyme.
+ *
  * @example
  *   <Acronym code="TIR" />            // → "TIR" + infobulle "Temps dans la cible"
  *   <Acronym code="TIR">TIR moyen</Acronym>  // libellé déclencheur custom

@@ -55,6 +55,7 @@ import {
 } from "@/lib/types/user-admin"
 import { extractApiError, type ParsedApiError } from "@/lib/ui/api-error"
 import { AdminPhiBanner } from "./AdminPhiBanner"
+import { Acronym } from "@/components/diabeo/Acronym"
 
 type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 
@@ -242,7 +243,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
           {user.mfaEnabled && (
             <Badge variant="secondary">
               <ShieldCheck className="size-3 mr-0.5" aria-hidden="true" />
-              MFA activé
+              <Acronym code="MFA" /> activé
             </Badge>
           )}
         </div>
@@ -287,7 +288,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
             >
               <AlertTriangle className="size-3.5 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
               <span>
-                Promotion vers ADMIN désactivée : MFA requise pour les comptes à privilèges (HDS ANS référentiel).
+                Promotion vers ADMIN désactivée : authentification multifacteur (MFA) requise pour les comptes à privilèges (référentiel hébergeur de données de santé — HDS, ANS).
                 L&apos;utilisateur doit d&apos;abord activer MFA dans ses paramètres.
               </span>
             </p>
