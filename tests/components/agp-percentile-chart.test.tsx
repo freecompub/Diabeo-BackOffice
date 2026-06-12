@@ -36,7 +36,7 @@ describe("AgpPercentileChart", () => {
   it("renders the empty-state when slot count < minSlots", () => {
     render(<AgpPercentileChart slots={makeSlots(5)} minSlots={12} />)
     expect(screen.getByText(/Données insuffisantes/i)).toBeTruthy()
-    expect(screen.getByText(/Portez le capteur CGM/i)).toBeTruthy()
+    expect(screen.getByText(/Portez le capteur de glucose en continu \(CGM\)/i)).toBeTruthy()
   })
 
   it("renders the chart figure when slot count >= minSlots", () => {

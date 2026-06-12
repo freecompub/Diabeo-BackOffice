@@ -290,7 +290,7 @@ export function SystemHealthClient() {
           />
           <MetricCard
             icon={Activity}
-            label="CGM lag (minutes)"
+            label="Latence du capteur de glucose en continu (CGM), en minutes"
             value={snapshot.metrics.cgmLagMinutes !== null ? `${snapshot.metrics.cgmLagMinutes} min` : "—"}
             highlight={(snapshot.metrics.cgmLagMinutes ?? 0) > 30}
             highlightReason="Retard d'ingestion CGM > 30 min — vérifier worker MyDiabby."

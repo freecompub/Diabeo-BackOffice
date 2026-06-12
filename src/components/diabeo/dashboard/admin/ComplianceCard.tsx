@@ -46,7 +46,7 @@ export function ComplianceCard() {
     <DiabeoCard role="region" aria-labelledby="admin-compliance-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="admin-compliance-title" className="text-base font-semibold">
-          Conformité HDS
+          Conformité hébergeur de données de santé (HDS)
         </h2>
       </header>
       {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
@@ -86,7 +86,7 @@ export function ComplianceCard() {
           </dl>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          RGPD requests (US-2413) à venir en V3.
+          Demandes au titre du Règlement général sur la protection des données (RGPD) (US-2413) à venir en V3.
         </p>
       </div>
     </DiabeoCard>

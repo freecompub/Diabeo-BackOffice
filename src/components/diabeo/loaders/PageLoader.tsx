@@ -66,7 +66,7 @@ export function PageLoader({
 
         <div className="flex items-center gap-1.5 text-[0.65rem] font-medium uppercase tracking-wider text-teal-700">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-600 animate-pulse" />
-          HDS · AES-256-GCM
+          Hébergeur de données de santé (HDS) · AES-256-GCM
         </div>
       </div>
 

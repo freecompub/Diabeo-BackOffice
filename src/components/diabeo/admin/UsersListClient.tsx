@@ -37,6 +37,7 @@ import {
 } from "@/lib/types/user-admin"
 import { extractApiError } from "@/lib/ui/api-error"
 import { AdminPhiBanner } from "./AdminPhiBanner"
+import { Acronym } from "@/components/diabeo/Acronym"
 
 type AsyncState = "idle" | "loading" | "success" | "error"
 
@@ -220,7 +221,7 @@ export function UsersListClient() {
                     {user.mfaEnabled && (
                       <Badge variant="secondary" className="text-[10px]">
                         <ShieldCheck className="size-3 mr-0.5" aria-hidden="true" />
-                        MFA
+                        <Acronym code="MFA" />
                       </Badge>
                     )}
                   </div>

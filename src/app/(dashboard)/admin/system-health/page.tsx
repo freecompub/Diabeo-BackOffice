@@ -20,7 +20,7 @@ export default async function SystemHealthPage() {
       <header>
         <h1 className="text-2xl font-semibold">Santé système</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          État temps-réel des composants critiques (DB, Redis, CGM, backups).
+          État temps-réel des composants critiques (DB, Redis, mesure du glucose en continu (CGM), backups).
           Refresh automatique toutes les 60s.
         </p>
       </header>

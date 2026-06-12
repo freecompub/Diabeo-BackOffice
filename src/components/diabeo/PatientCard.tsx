@@ -3,6 +3,7 @@
 import { cn } from "@/lib/utils"
 import { GlycemiaValue, type GlycemiaThresholds } from "./GlycemiaValue"
 import { ClinicalBadge, type Pathology } from "./ClinicalBadge"
+import { Acronym } from "./Acronym"
 
 export interface PatientCardProps {
   /** Patient display name (already decrypted) */
@@ -162,7 +163,9 @@ export function PatientCard({
         <div className="text-right">
           {tirPercentage !== undefined && (
             <div className="mb-1">
-              <p className="text-xs text-muted-foreground">TIR</p>
+              <p className="text-xs text-muted-foreground">
+                <Acronym code="TIR" />
+              </p>
               <p
                 className={cn(
                   "text-lg font-bold tabular-nums",

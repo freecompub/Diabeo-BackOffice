@@ -243,7 +243,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
                 : `Délai CNIL 72h : ${breach.cnilDeadlineHoursRemaining}h restantes`}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              RGPD Art. 33 — notification CNIL obligatoire sous 72h après détection (severity high/critical).
+              Règlement général sur la protection des données (RGPD), Art. 33 — notification CNIL obligatoire sous 72h après détection (severity high/critical).
             </p>
           </div>
         </div>
@@ -342,7 +342,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       {allowedTransitions.length > 0 && (
         <section className="rounded-md border p-4 space-y-3" aria-labelledby="workflow-section">
           <h2 id="workflow-section" className="font-semibold">
-            Workflow FSM (RGPD Art. 33)
+            Workflow FSM (Règlement général sur la protection des données — RGPD, Art. 33)
           </h2>
           <p className="text-xs text-muted-foreground">
             Statut actuel : <strong>{STATUS_LABELS[breach.status]}</strong>. Transitions autorisées :
