@@ -1170,5 +1170,32 @@
       "none": "لا توجد إعدادات"
     },
     "openedAnnounce": "تم فتح استشارة {name}"
+  },
+  "adminDashboard": {
+    "pageTitle": "لوحة تحكم المسؤول",
+    "globalViewTitle": "نظرة عامة",
+    "kpiLoadError": "تعذّر تحميل مؤشرات الأداء.",
+    "kpiCabinets": "العيادات",
+    "kpiMembers": "أعضاء الفريق",
+    "kpiActivePatients": "المرضى النشطون (14 يوم)",
+    "kpiAuditEvents": "أحداث التدقيق (7 أيام)",
+    "billingTitle": "الفوترة المعلّقة",
+    "billingPending": "{count} معلّق",
+    "billingLoading": "جارٍ التحميل…",
+    "billingLoadError": "تعذّر تحميل بيانات الفوترة.",
+    "billingEligible": "إجمالي المؤهّلين",
+    "billingUnbilled": "غير مُفوتَر",
+    "billingRecent": "مُفوتَر (30 يوم)",
+    "billingAmount": "المبلغ غير المُفوتَر",
+    "billingAmountNote": "(تقريبي)",
+    "billingHeuristic": "تقديري: استشارات عن بُعد مكتملة بدون فاتورة. جدول الفوترة الرسمي قادم (US-2107).",
+    "complianceTitle": "الامتثال HDS",
+    "complianceLoading": "جارٍ التحميل…",
+    "complianceLoadError": "تعذّر تحميل بيانات الامتثال.",
+    "complianceLastBackup": "آخر نسخة احتياطية",
+    "complianceNoBackup": "لا توجد نسخة احتياطية",
+    "complianceAudit24h": "تدقيق 24 ساعة",
+    "complianceBackupsFailed": "نسخ احتياطية فاشلة (30 يوم)",
+    "complianceRgpdPlaceholder": "طلبات RGPD (US-2413) قادمة في V3."
   }
 }

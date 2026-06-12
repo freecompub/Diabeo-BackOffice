@@ -77,7 +77,15 @@ export const glycemiaService = {
       metadata: { from: from.toISOString(), to: to.toISOString(), count: entries.length },
     })
 
-    return entries
+    return entries.map((e) => ({
+      id: e.id.toString(),           // BigInt → string
+      patientId: e.patientId,
+      valueGl: Number(e.valueGl),    // Decimal → number
+      timestamp: e.timestamp.toISOString(),
+      isManual: e.isManual,
+      deviceId: e.deviceId ?? null,
+      createdAt: e.createdAt.toISOString(),
+    }))
   },
 
   /**

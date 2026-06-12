@@ -5,6 +5,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import { MetricCard } from "@/components/diabeo/MetricCard"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
@@ -12,14 +13,8 @@ import type { AdminKpiCard } from "@/lib/services/admin-dashboard.service"
 
 type ApiResponse = { items: AdminKpiCard[] }
 
-const KPI_LABELS: Record<AdminKpiCard["code"], string> = {
-  totalCabinets: "Cabinets",
-  totalStaff: "Membres équipe",
-  totalActivePatients: "Patients actifs (14j)",
-  auditEventsLast7d: "Événements audit (7j)",
-}
-
 export function AdminKpiSection() {
+  const t = useTranslations("adminDashboard")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/kpi",
     5 * 60_000,
@@ -29,14 +24,20 @@ export function AdminKpiSection() {
   const defaultCodes: AdminKpiCard["code"][] = [
     "totalCabinets", "totalStaff", "totalActivePatients", "auditEventsLast7d",
   ]
+  const KPI_LABELS: Record<AdminKpiCard["code"], string> = {
+    totalCabinets: t("kpiCabinets"),
+    totalStaff: t("kpiMembers"),
+    totalActivePatients: t("kpiActivePatients"),
+    auditEventsLast7d: t("kpiAuditEvents"),
+  }
   return (
     <section aria-labelledby="admin-kpi-title">
       <h2 id="admin-kpi-title" className="mb-3 text-base font-semibold">
-        Vue globale
+        {t("globalViewTitle")}
       </h2>
       {hasError && (
         <p className="mb-2 text-sm text-glycemia-critical">
-          Impossible de charger les KPI.
+          {t("kpiLoadError")}
         </p>
       )}
       {isStale && <div className="mb-2"><StaleBanner message={STALE_MESSAGE_FR} /></div>}

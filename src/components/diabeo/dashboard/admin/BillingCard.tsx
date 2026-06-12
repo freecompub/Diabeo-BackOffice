@@ -8,6 +8,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
@@ -25,6 +26,7 @@ function formatEuros(cents: number): string {
 }
 
 export function BillingCard() {
+  const t = useTranslations("adminDashboard")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/billing",
     10 * 60_000,
@@ -36,20 +38,20 @@ export function BillingCard() {
     <DiabeoCard role="region" aria-labelledby="admin-billing-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="admin-billing-title" className="text-base font-semibold">
-          Facturation à traiter
+          {t("billingTitle")}
         </h2>
         <span className="text-xs text-muted-foreground">
-          {item ? `${item.unbilledCount} en attente` : "—"}
+          {item ? t("billingPending", { count: item.unbilledCount }) : "—"}
         </span>
       </header>
       {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
       <div className="px-4 pb-4">
         {loading && item === null && (
-          <p className="text-sm text-muted-foreground">Chargement…</p>
+          <p className="text-sm text-muted-foreground">{t("billingLoading")}</p>
         )}
         {hasError && (
           <p className="text-sm text-glycemia-critical">
-            Impossible de charger la facturation.
+            {t("billingLoadError")}
           </p>
         )}
         {item && (
@@ -58,24 +60,24 @@ export function BillingCard() {
             aria-live="polite"
           >
             <div>
-              <dt className="text-xs text-muted-foreground">Éligibles total</dt>
+              <dt className="text-xs text-muted-foreground">{t("billingEligible")}</dt>
               <dd className="text-lg font-semibold">{item.totalEligible}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Non facturés</dt>
+              <dt className="text-xs text-muted-foreground">{t("billingUnbilled")}</dt>
               <dd className="text-lg font-semibold text-glycemia-high">
                 {item.unbilledCount}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Facturés (30j)</dt>
+              <dt className="text-xs text-muted-foreground">{t("billingRecent")}</dt>
               <dd className="text-lg font-semibold text-glycemia-normal">
                 {item.recentlyBilled}
               </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">
-                Montant non facturé <span className="opacity-60">(arrondi)</span>
+                {t("billingAmount")} <span className="opacity-60">{t("billingAmountNote")}</span>
               </dt>
               <dd className="text-lg font-semibold">
                 {formatEuros(item.unbilledAmountCents)}
@@ -84,8 +86,7 @@ export function BillingCard() {
           </dl>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          Heuristique : téléconsultations complétées sans acte facturé.
-          Table facturation formelle à venir (US-2107).
+          {t("billingHeuristic")}
         </p>
       </div>
     </DiabeoCard>

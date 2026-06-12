@@ -94,8 +94,15 @@ export async function middleware(request: NextRequest) {
     return res
   }
 
-  // Skip login page (public)
+  // Auth pages — public for unauthenticated users; redirect authenticated ones to root
+  // (role-router at "/" sends them to their proper dashboard).
   if (pathname === "/login" || pathname === "/reset-password") {
+    const cookieToken = request.cookies.get("diabeo_token")?.value
+    if (cookieToken) {
+      // Token present — redirect to role-router; it'll send them to their dashboard
+      // or back to /login if the token turns out to be expired/invalid.
+      return NextResponse.redirect(new URL("/", request.url))
+    }
     return NextResponse.next()
   }
 
