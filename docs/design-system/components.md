@@ -382,8 +382,18 @@ All Phase 11 components:
 All user-facing text must use `useTranslations()` from next-intl. Common namespaces:
 
 - `"common"` — generic labels (Save, Cancel, Loading, etc.)
+- `"glossary"` — acronym → full label map, consumed by `<Acronym>` (see below)
 - `"period"` — PeriodSelector options (oneWeek, twoWeeks, oneMonth, threeMonths)
 - `"nav"` — NavigationShell items (dashboard, patients, medications, analytics, documents, users)
 - `"clinical"` — clinical terminology (hypo, hyperglycemia, TIR, etc.)
 - `"errors"` — error messages and descriptions
 - `"validation"` — form field validation messages
+
+### Acronyms — `<Acronym>` + `glossary`
+
+No bare acronym in client-facing display. Render component-level acronyms with
+`<Acronym code="TIR" />` (acronym + tooltip from the `glossary` namespace); for
+acronyms embedded in a sentence use the inline `"Full label (ACRONYM)"` form.
+See `docs/i18n.md` §"Acronyms in client-facing display" for the full rule and
+exceptions (`RDV` → "Rendez-vous", `MAJ` → "Mise à jour", technical acronyms
+left as-is).

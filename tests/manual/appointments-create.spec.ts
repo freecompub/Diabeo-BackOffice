@@ -75,7 +75,7 @@ test.describe("/appointments — création nouveau RDV", () => {
     await expect(page.locator(".sx__week-grid")).toBeVisible({
       timeout: 15_000,
     })
-    const openCreateButton = page.getByRole("button", { name: "+ Nouveau RDV" })
+    const openCreateButton = page.getByRole("button", { name: "+ Nouveau rendez-vous" })
     await expect(openCreateButton).toBeEnabled()
 
     // ─── Ouverture du modal ──────────────────────────────────────────
@@ -110,7 +110,7 @@ test.describe("/appointments — création nouveau RDV", () => {
         && res.request().method() === "POST",
       { timeout: 10_000 },
     )
-    const submitButton = dialog.getByRole("button", { name: "Créer le RDV" })
+    const submitButton = dialog.getByRole("button", { name: "Créer le rendez-vous" })
     await expect(submitButton).toBeEnabled()
     await submitButton.click()
 

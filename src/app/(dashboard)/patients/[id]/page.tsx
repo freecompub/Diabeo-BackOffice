@@ -20,6 +20,7 @@ import {
   ClinicalBadge,
   StatCard,
 } from "@/components/diabeo"
+import { Acronym } from "@/components/diabeo/Acronym"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
@@ -192,7 +193,7 @@ export default function PatientDetailPage() {
               {/* TIR Donut */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">TIR (7 jours)</CardTitle>
+                  <CardTitle className="text-base"><Acronym code="TIR" /> (7 jours)</CardTitle>
                 </CardHeader>
                 <CardContent className="flex justify-center">
                   <TirDonut
@@ -252,11 +253,11 @@ export default function PatientDetailPage() {
                     <p className="mt-1 font-medium">{patient.insulinSettings.basalRate}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">ICR moyen</span>
+                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ICR" /> moyen</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.icr}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">ISF moyen</span>
+                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ISF" /> moyen</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.isf}</p>
                   </div>
                 </div>

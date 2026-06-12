@@ -77,6 +77,28 @@ Glycémie critique  : #EF4444  (rouge)
 - Accessibilité obligatoire : ARIA labels sur tous les éléments interactifs
 - Responsive : mobile-first, mais le backoffice est principalement desktop
 
+### 🔤 Acronymes dans l'affichage client — JAMAIS d'acronyme nu
+
+Tout acronyme **visible par l'utilisateur** (médical, réglementaire, métier) doit être
+explicité. Deux formats, selon le contexte de rendu :
+
+1. **Acronyme + infobulle** (préféré) quand l'acronyme est rendu par un composant :
+   utiliser `<Acronym code="TIR" />` (`components/diabeo/Acronym.tsx`) — affiche
+   l'acronyme et le libellé complet en `Tooltip`. Le libellé vit dans le namespace
+   i18n `glossary` (FR/EN/AR), source unique.
+2. **« Libellé (ACRONYME) »** inline quand l'acronyme est dans une chaîne de texte
+   (phrase, alerte, description) où une infobulle n'est pas posable. Ex :
+   « Temps dans la cible (TIR) », « Hôpital de jour (HDJ) ».
+
+**Exceptions** :
+- `RDV` → toujours **« Rendez-vous »** (libellé seul, pas d'acronyme).
+- `MAJ` → toujours **« Mise à jour »** (libellé seul).
+- Acronymes **techniques universels** (`PDF`, `CSV`, `PNG/JPG`, `API`, `USB`, `JSON`)
+  et **noms de produits** (`G7`…) : laissés tels quels.
+
+Règle valable sur **les 3 langues** (`messages/fr|en|ar.json`). Tout nouvel acronyme
+affiché → ajouter son libellé dans `glossary` avant de l'utiliser.
+
 ---
 
 ## 🔐 Règles de sécurité — NON NÉGOCIABLES
