@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import i18next from "eslint-plugin-i18next";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -67,6 +68,31 @@ const eslintConfig = defineConfig([
           selector: "Literal[value=/^#[0-9a-fA-F]{3,8}$/]",
           message:
             "Couleur hex en dur interdite (US-2269 anti-drift). Importez `tokens` depuis @/design-system/tokens (charts/SVG) ou utilisez une classe Tailwind sémantique (var(--color-*)).",
+        },
+      ],
+    },
+  },
+  // PROTOTYPE (US-2117 suite) — interdit le texte JSX brut hors i18n.
+  // `mode: jsx-text-only` = uniquement le contenu textuel des balises (faible
+  // bruit) ; en `warn` pour mesurer l'ampleur avant d'éventuellement gater la CI.
+  // Exclut `components/ui` (shadcn) et `app/(patient)/loading|error` si besoin.
+  {
+    files: ["src/**/*.tsx"],
+    ignores: ["src/components/ui/**"],
+    plugins: { i18next },
+    rules: {
+      "i18next/no-literal-string": [
+        "warn",
+        {
+          mode: "jsx-text-only",
+          // Contenus non traduisibles : chemins/identifiants dans <code>/<pre>,
+          // initiales d'avatar, etc.
+          "jsx-components": { exclude: ["Trans", "code", "pre"] },
+          words: {
+            // Ignore les segments sans lettre (chiffres/ponctuation/séparateurs)
+            // et les caractères uniques (initiales d'avatar « D », « M »…).
+            exclude: ["^[\\s\\d!-/:-@[-`{-~]+$", "^.$"],
+          },
         },
       ],
     },
