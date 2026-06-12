@@ -28,6 +28,7 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { LocaleSwitcher } from "./LocaleSwitcher"
+import { Logo } from "./brand/Logo"
 
 interface NavItem {
   href: string
@@ -129,17 +130,12 @@ export function Sidebar() {
 
   return (
     <aside
-      className="flex h-screen w-64 flex-col border-e border-[var(--color-border)] bg-white"
+      className="flex h-screen w-64 flex-col border-e border-border bg-white"
       aria-label="Navigation principale"
     >
       {/* Logo */}
-      <div className="flex h-16 items-center gap-3 border-b border-[var(--color-border)] px-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[var(--color-primary)]">
-          <span className="text-sm font-bold text-white">D</span>
-        </div>
-        <span className="text-lg font-semibold text-[var(--color-foreground)]">
-          Diabeo
-        </span>
+      <div className="flex h-16 items-center border-b border-border px-6">
+        <Logo variant="full" size={28} />
       </div>
 
       {/* Navigation */}
@@ -153,8 +149,8 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-[var(--color-primary-50)] text-[var(--color-primary)]"
-                  : "text-[var(--color-muted-foreground)] hover:bg-[var(--color-muted)] hover:text-[var(--color-foreground)]",
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
               )}
               aria-current={isActive ? "page" : undefined}
             >
@@ -166,15 +162,15 @@ export function Sidebar() {
       </nav>
 
       {/* Locale switcher (US-2112) */}
-      <div className="border-t border-[var(--color-border)] p-3">
+      <div className="border-t border-border p-3">
         <LocaleSwitcher />
       </div>
 
       {/* Logout */}
-      <div className="border-t border-[var(--color-border)] p-3">
+      <div className="border-t border-border p-3">
         <button
           onClick={logout}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-[var(--color-muted-foreground)] transition-colors hover:bg-red-50 hover:text-red-600"
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
           aria-label={t("logout")}
         >
           <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />

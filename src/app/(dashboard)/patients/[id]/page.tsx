@@ -148,29 +148,29 @@ export default function PatientDetailPage() {
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">{t("pathology")}</span>
+                      <span className="text-muted-foreground">{t("pathology")}</span>
                       <div className="mt-1">
                         <ClinicalBadge type="pathology" value={patient.pathology} />
                       </div>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">{t("diagnostic")}</span>
+                      <span className="text-muted-foreground">{t("diagnostic")}</span>
                       <p className="mt-1 font-medium">{patient.diagYear}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">{t("sex")}</span>
+                      <span className="text-muted-foreground">{t("sex")}</span>
                       <p className="mt-1 font-medium">{patient.sex === "F" ? t("female") : t("male")}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">{t("age")}</span>
+                      <span className="text-muted-foreground">{t("age")}</span>
                       <p className="mt-1 font-medium">{t("ageValue", { age: patient.age })}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">{t("referentDoctor")}</span>
+                      <span className="text-muted-foreground">{t("referentDoctor")}</span>
                       <p className="mt-1 font-medium">{patient.referent}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">{t("avgGlucose14d")}</span>
+                      <span className="text-muted-foreground">{t("avgGlucose14d")}</span>
                       <div className="mt-1">
                         <GlycemiaValue value={patient.avgGlucoseMgdl} unit="mg/dL" size="sm" />
                       </div>
@@ -180,7 +180,7 @@ export default function PatientDetailPage() {
                   <Separator className="my-4" />
 
                   <div className="text-sm">
-                    <span className="text-[var(--color-muted-foreground)]">{t("glycemicObjectives")}</span>
+                    <span className="text-muted-foreground">{t("glycemicObjectives")}</span>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Badge variant="outline">
                         {t("targetBadge", {
@@ -246,27 +246,27 @@ export default function PatientDetailPage() {
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">{t("method")}</span>
+                    <span className="text-muted-foreground">{t("method")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.delivery}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">{t("pump")}</span>
+                    <span className="text-muted-foreground">{t("pump")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.pump}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">{t("bolusInsulin")}</span>
+                    <span className="text-muted-foreground">{t("bolusInsulin")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.bolusInsulin}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">{t("avgBasalRate")}</span>
+                    <span className="text-muted-foreground">{t("avgBasalRate")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.basalRate}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ICR" /> {t("average")}</span>
+                    <span className="text-muted-foreground"><Acronym code="ICR" /> {t("average")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.icr}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ISF" /> {t("average")}</span>
+                    <span className="text-muted-foreground"><Acronym code="ISF" /> {t("average")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.isf}</p>
                   </div>
                 </div>
@@ -281,7 +281,7 @@ export default function PatientDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-[var(--color-muted-foreground)]">
+                <p className="text-sm text-muted-foreground">
                   {t("noComplementaryTreatment")}
                 </p>
               </CardContent>
@@ -298,7 +298,7 @@ export default function PatientDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-[var(--color-muted-foreground)]">
+                <p className="text-sm text-muted-foreground">
                   {t("noDocument")}
                 </p>
               </CardContent>

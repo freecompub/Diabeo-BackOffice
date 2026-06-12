@@ -139,7 +139,7 @@ export function LocaleSwitcher({ variant = "full", persist = true }: Props) {
         <select
           id={SELECT_ID}
           aria-label={t("changeLanguage")}
-          className="rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+          className="rounded-md border border-border bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
           value={currentLocale}
           onChange={handleChange}
           disabled={pending}
@@ -158,7 +158,7 @@ export function LocaleSwitcher({ variant = "full", persist = true }: Props) {
     <div className="flex items-center gap-2">
       {liveRegion}
       <Languages
-        className="h-4 w-4 text-[var(--color-muted-foreground)]"
+        className="h-4 w-4 text-muted-foreground"
         aria-hidden="true"
       />
       <label htmlFor={SELECT_ID} className="sr-only">
@@ -166,7 +166,7 @@ export function LocaleSwitcher({ variant = "full", persist = true }: Props) {
       </label>
       <select
         id={SELECT_ID}
-        className="rounded-md border border-[var(--color-border)] bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+        className="rounded-md border border-border bg-transparent px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
         value={currentLocale}
         onChange={handleChange}
         disabled={pending}

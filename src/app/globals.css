@@ -124,6 +124,80 @@
   --shadow-diabeo-warning: var(--diabeo-shadow-warning);
   --shadow-diabeo-success: var(--diabeo-shadow-success);
   --shadow-diabeo-primary: var(--diabeo-shadow-primary);
+
+  /* ---------------------------------------------------------------------------
+   * Diabeo Design System: Typography scale
+   * Câblés sur les tokens `--diabeo-text-*` (`src/styles/tokens.css`) pour que
+   * `text-xs`/`text-sm`/`text-base`/etc. utilisent l'échelle Diabeo (13px de
+   * base au lieu de 14px Tailwind) — sans quoi `docs/design-system/tokens.md`
+   * ment sur l'effet des classes.
+   * ---------------------------------------------------------------------------*/
+  --text-xs: var(--diabeo-text-xs);
+  --text-sm: var(--diabeo-text-sm);
+  --text-base: var(--diabeo-text-base);
+  --text-md: var(--diabeo-text-md);
+  --text-lg: var(--diabeo-text-lg);
+  --text-xl: var(--diabeo-text-xl);
+  --text-2xl: var(--diabeo-text-2xl);
+  --text-3xl: var(--diabeo-text-3xl);
+  --text-4xl: var(--diabeo-text-4xl);
+
+  /* --- Diabeo Design System: Line heights --- */
+  --leading-tight: var(--diabeo-leading-tight);
+  --leading-snug: var(--diabeo-leading-snug);
+  --leading-normal: var(--diabeo-leading-normal);
+  --leading-relaxed: var(--diabeo-leading-relaxed);
+
+  /* --- Diabeo Design System: Letter spacing --- */
+  --tracking-tight: var(--diabeo-tracking-tight);
+  --tracking-normal: var(--diabeo-tracking-normal);
+  --tracking-wide: var(--diabeo-tracking-wide);
+
+  /* ---------------------------------------------------------------------------
+   * Diabeo Design System: Radius scale
+   * Câblés sur `--diabeo-radius-*`. Override des valeurs shadcn (`calc(var(--radius)*0.6)`)
+   * par les valeurs explicites Diabeo (`4px/8px/10px/12px/16px`) — cohérence
+   * avec docs/design-system/tokens.md §4.
+   * ---------------------------------------------------------------------------*/
+  --radius-none: var(--diabeo-radius-none);
+  --radius-sm: var(--diabeo-radius-sm);
+  --radius-md: var(--diabeo-radius-md);
+  --radius-lg: var(--diabeo-radius-lg);
+  --radius-xl: var(--diabeo-radius-xl);
+  --radius-2xl: var(--diabeo-radius-2xl);
+  --radius-full: var(--diabeo-radius-full);
+
+  /* ---------------------------------------------------------------------------
+   * Diabeo Design System: Animation duration + easing
+   * Câblés pour que `duration-fast`/`ease-out`/etc. utilisent les valeurs
+   * Diabeo (100ms/200ms/300ms/500ms + courbes spring) au lieu des defaults
+   * Tailwind (150ms/300ms/700ms).
+   * ---------------------------------------------------------------------------*/
+  --animate-duration-fast: var(--diabeo-duration-fast);
+  --animate-duration-normal: var(--diabeo-duration-normal);
+  --animate-duration-slow: var(--diabeo-duration-slow);
+  --animate-duration-slower: var(--diabeo-duration-slower);
+  --ease-default: var(--diabeo-ease-default);
+  --ease-in: var(--diabeo-ease-in);
+  --ease-out: var(--diabeo-ease-out);
+  --ease-in-out: var(--diabeo-ease-in-out);
+  --ease-spring: var(--diabeo-ease-spring);
+
+  /* ---------------------------------------------------------------------------
+   * Diabeo Design System: Z-index scale
+   * Câblés sur `--diabeo-z-*`. Classes `z-sticky`/`z-header`/`z-modal`/
+   * `z-critical-alert` deviennent utilisables (vs `z-10`/`z-50` numériques
+   * qui n'expriment pas l'intent sémantique).
+   * ---------------------------------------------------------------------------*/
+  --z-index-base: var(--diabeo-z-base);
+  --z-index-dropdown: var(--diabeo-z-dropdown);
+  --z-index-sticky: var(--diabeo-z-sticky);
+  --z-index-header: var(--diabeo-z-header);
+  --z-index-overlay: var(--diabeo-z-overlay);
+  --z-index-modal: var(--diabeo-z-modal);
+  --z-index-popover: var(--diabeo-z-popover);
+  --z-index-toast: var(--diabeo-z-toast);
+  --z-index-critical-alert: var(--diabeo-z-critical-alert);
 }
 
 :root {

@@ -139,7 +139,7 @@ export function LocaleReconciliationBanner() {
             type="button"
             onClick={handleRevert}
             disabled={busy}
-            className="rounded-md border border-[var(--color-border)] bg-transparent px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-teal-600"
+            className="rounded-md border border-border bg-transparent px-3 py-1.5 text-sm font-medium hover:bg-muted disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-teal-600"
           >
             {t("revertAction", { lang: preferenceLabel })}
           </button>

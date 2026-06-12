@@ -18,6 +18,17 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Diabeo Backoffice",
   description: "Backoffice de gestion de l'insulinothérapie — Diabeo",
+  // Icons sont aussi générés via `src/app/icon.tsx` + `src/app/apple-icon.tsx`
+  // (convention App Router). On déclare explicitement ici pour permettre les
+  // shortcuts/PWA et garder une seule source de vérité visible.
+  icons: {
+    icon: [
+      { url: "/icon", type: "image/png", sizes: "32x32" },
+      { url: "/logo.svg", type: "image/svg+xml" },
+    ],
+    apple: { url: "/apple-icon", type: "image/png", sizes: "180x180" },
+    shortcut: "/icon",
+  },
 };
 
 export default async function RootLayout({

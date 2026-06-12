@@ -98,7 +98,7 @@ export default function MedicationsPage() {
         {/* Search bar */}
         <div className="relative max-w-xl">
           <Search
-            className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]"
+            className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
             aria-hidden="true"
           />
           <Input
@@ -110,14 +110,14 @@ export default function MedicationsPage() {
           />
           {isLoading && (
             <Loader2
-              className="absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-[var(--color-muted-foreground)]"
+              className="absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground"
               aria-hidden="true"
             />
           )}
         </div>
 
         {/* Source info */}
-        <div className="flex items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
           <span>
             {t("source")}
@@ -131,7 +131,7 @@ export default function MedicationsPage() {
         {/* Results */}
         {results.length > 0 && (
           <div className="space-y-3">
-            <p className="text-sm text-[var(--color-muted-foreground)]">
+            <p className="text-sm text-muted-foreground">
               {t("resultCount", { count: results.length })}
             </p>
             {results.map((med) => (
@@ -140,15 +140,15 @@ export default function MedicationsPage() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <Pill className="h-4 w-4 text-[var(--color-primary)]" aria-hidden="true" />
-                        <h3 className="font-semibold text-[var(--color-foreground)]">
+                        <Pill className="h-4 w-4 text-primary" aria-hidden="true" />
+                        <h3 className="font-semibold text-foreground">
                           {med.denomination}
                         </h3>
                       </div>
 
                       {/* DCI / Substances actives */}
                       {med.compositions.length > 0 && (
-                        <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+                        <p className="mt-1 text-sm text-muted-foreground">
                           {t("dci", {
                             substances: med.compositions
                               .map((c) =>
@@ -160,13 +160,13 @@ export default function MedicationsPage() {
                       )}
 
                       {/* Form + Route */}
-                      <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         {med.formePharma}
                       </p>
 
                       {/* Titulaire */}
                       {med.titulaires && (
-                        <p className="mt-1 text-xs text-[var(--color-muted-foreground)]">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           {med.titulaires}
                         </p>
                       )}
@@ -181,7 +181,7 @@ export default function MedicationsPage() {
                                 key={pres.codeCIP13}
                                 className="flex items-center justify-between text-xs"
                               >
-                                <span className="text-[var(--color-muted-foreground)]">
+                                <span className="text-muted-foreground">
                                   {t("cip", {
                                     code: pres.codeCIP13,
                                     label: pres.libelle,
@@ -215,7 +215,7 @@ export default function MedicationsPage() {
 
                   {/* ATC code */}
                   {med.atcCode && (
-                    <div className="mt-2 text-xs text-[var(--color-muted-foreground)]">
+                    <div className="mt-2 text-xs text-muted-foreground">
                       {t("atc", { code: med.atcCode })}
                     </div>
                   )}
@@ -228,7 +228,7 @@ export default function MedicationsPage() {
         {/* Empty state */}
         {hasSearched && !isLoading && results.length === 0 && (
           <div
-            className="py-12 text-center text-[var(--color-muted-foreground)]"
+            className="py-12 text-center text-muted-foreground"
             role="status"
             aria-live="polite"
           >
@@ -240,7 +240,7 @@ export default function MedicationsPage() {
 
         {/* Initial state */}
         {!hasSearched && (
-          <div className="py-12 text-center text-[var(--color-muted-foreground)]">
+          <div className="py-12 text-center text-muted-foreground">
             <Pill className="mx-auto mb-3 h-8 w-8 opacity-30" aria-hidden="true" />
             <p>{t("initialTitle")}</p>
             <p className="mt-1 text-xs">{t("initialHint")}</p>

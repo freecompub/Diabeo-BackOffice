@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 type LogoVariant = "full" | "mark" | "mono" | "inverse"
 type LogoProps = {
@@ -9,6 +10,18 @@ type LogoProps = {
 }
 
 const TITLE = "Diabeo — Supervision de l'insulinothérapie"
+
+// Couleurs depuis le design system (US-2269) — JAMAIS de hex hardcodés.
+// `tokens.brand.primary[600]` = teal principal, `[700]` = teal foncé pour
+// le gradient drop, `secondary[500]` = coral pour le point de données live.
+const COLOR = {
+  primaryLight: tokens.brand.primary[50],
+  primary: tokens.brand.primary[600],
+  primaryDark: tokens.brand.primary[700],
+  secondary: tokens.brand.secondary[500],
+  textPrimary: tokens.neutral[800],
+  white: tokens.white,
+} as const
 
 export function Logo({
   variant = "full",
@@ -33,10 +46,13 @@ export function LogoMark({
   title?: string
   tone?: "default" | "mono" | "inverse"
 }) {
-  const drop = tone === "inverse" ? "#FFFFFF" : tone === "mono" ? "currentColor" : "#0D9488"
-  const dropShadow = tone === "inverse" ? "#F0FDFA" : tone === "mono" ? "currentColor" : "#0F766E"
-  const wave = tone === "inverse" ? "#0D9488" : tone === "mono" ? "#FFFFFF" : "#FFFFFF"
-  const dot = tone === "mono" ? "currentColor" : "#F97316"
+  const drop =
+    tone === "inverse" ? COLOR.white : tone === "mono" ? "currentColor" : COLOR.primary
+  const dropShadow =
+    tone === "inverse" ? COLOR.primaryLight : tone === "mono" ? "currentColor" : COLOR.primaryDark
+  const wave =
+    tone === "inverse" ? COLOR.primary : tone === "mono" ? COLOR.white : COLOR.white
+  const dot = tone === "mono" ? "currentColor" : COLOR.secondary
 
   return (
     <svg
@@ -94,7 +110,7 @@ function LogoWordmark({
   tone?: "default" | "mono" | "inverse"
 }) {
   const text =
-    tone === "inverse" ? "#FFFFFF" : tone === "mono" ? "currentColor" : "#1F2937"
+    tone === "inverse" ? COLOR.white : tone === "mono" ? "currentColor" : COLOR.textPrimary
   return (
     <span
       className={cn("inline-flex items-center gap-2", className)}

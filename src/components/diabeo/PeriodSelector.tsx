@@ -125,11 +125,11 @@ export function PeriodSelector({
               // Transition — 200ms matching --diabeo-duration-normal
               "transition-colors duration-200 ease-[cubic-bezier(0.4,0,0.2,1)]",
               // Focus ring — visible for keyboard navigation (WCAG 2.1 §2.4.7)
-              "focus-visible:ring-2 focus-visible:ring-teal-600 focus-visible:ring-offset-1",
+              "focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1",
               // Selected vs unselected visual states
               isSelected
-                ? "bg-teal-600 text-white"
-                : "bg-transparent text-gray-600 hover:bg-teal-50"
+                ? "bg-primary text-primary-foreground"
+                : "bg-transparent text-muted-foreground hover:bg-primary/10"
             )}
           >
             {t(labelKey as Parameters<typeof t>[0])}

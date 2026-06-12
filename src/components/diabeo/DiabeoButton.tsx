@@ -47,7 +47,7 @@ const diabeoButtonVariants = cva(
     "transition-all duration-[var(--diabeo-duration-normal)]",
     "outline-none select-none",
     // Focus ring — teal-600 per medical-grade focus policy
-    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
     // Disabled state
     "disabled:pointer-events-none disabled:opacity-50",
     // Icon sizing
@@ -61,7 +61,7 @@ const diabeoButtonVariants = cva(
          * Use for: Save, Confirm, Submit actions.
          */
         diabeoPrimary:
-          "bg-teal-600 text-white hover:bg-teal-700 active:bg-teal-800",
+          "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
 
         /**
          * diabeoSecondary — Secondary call-to-action (coral).
@@ -75,14 +75,14 @@ const diabeoButtonVariants = cva(
          * Use for: Cancel, tertiary links, supplementary actions.
          */
         diabeoTertiary:
-          "bg-transparent text-teal-600 border-teal-600 hover:bg-teal-50 active:bg-teal-100",
+          "bg-transparent text-primary border-primary hover:bg-primary/10 active:bg-primary/15",
 
         /**
          * diabeoDestructive — Destructive irreversible action (red).
          * Use for: Delete, revoke, hard resets. Always confirm before.
          */
         diabeoDestructive:
-          "bg-red-500 text-white hover:bg-red-600 active:bg-red-700",
+          "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80",
 
         /**
          * diabeoGhost — No background, subtle hover.

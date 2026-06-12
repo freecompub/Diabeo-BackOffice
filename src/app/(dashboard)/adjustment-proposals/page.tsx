@@ -173,17 +173,17 @@ export default function AdjustmentProposalsPage() {
             <p
               role="status"
               aria-live="polite"
-              className="py-8 text-center text-sm text-[var(--color-muted-foreground)]"
+              className="py-8 text-center text-sm text-muted-foreground"
             >
               {tCommon("loading")}
             </p>
           ) : proposals.length === 0 ? (
-            <p className="py-8 text-center text-sm text-[var(--color-muted-foreground)]">
+            <p className="py-8 text-center text-sm text-muted-foreground">
               {tCommon("noResults")}
             </p>
           ) : (
             <ul
-              className="divide-y divide-[var(--color-border)]"
+              className="divide-y divide-border"
               aria-label={tAdj("listAria")}
             >
               {proposals.map((p) => {
@@ -202,7 +202,7 @@ export default function AdjustmentProposalsPage() {
                           {fmt.relativeTime(p.createdAt)}
                         </Badge>
                       </div>
-                      <p className="text-sm text-[var(--color-foreground)]">
+                      <p className="text-sm text-foreground">
                         {/* `t.rich` permet d'injecter `<bdi>` autour du
                             patient ID — préserve la lecture LTR du nombre
                             même quand la phrase entière est rendue en RTL. */}
@@ -212,7 +212,7 @@ export default function AdjustmentProposalsPage() {
                           num: (chunks) => <bdi>{chunks}</bdi>,
                         })}
                       </p>
-                      <p className="text-sm text-[var(--color-muted-foreground)]">
+                      <p className="text-sm text-muted-foreground">
                         {/* `<bdi>` isole les nombres (latn) en contexte RTL : "1.27 → 1.45"
                             doit rester lu LTR même en arabe pour éviter toute
                             inversion clinique trompeuse. */}

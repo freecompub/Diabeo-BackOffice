@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -136,7 +137,7 @@ function RadarChartSVG({
             cy={CENTER}
             r={r}
             fill="none"
-            stroke="#e5e7eb"
+            stroke={tokens.neutral[200]}
             strokeWidth={1}
           />
         )
@@ -154,7 +155,7 @@ function RadarChartSVG({
               y1={CENTER}
               x2={outer.x}
               y2={outer.y}
-              stroke="#d1d5db"
+              stroke={tokens.neutral[300]}
               strokeWidth={1}
             />
             <text
@@ -163,7 +164,7 @@ function RadarChartSVG({
               textAnchor="middle"
               dominantBaseline="central"
               fontSize={11}
-              fill="#6b7280"
+              fill={tokens.neutral[500]}
               fontWeight={500}
             >
               {dayLabels[i]}
@@ -223,7 +224,7 @@ function RadarChartSVG({
                   width={56}
                   height={22}
                   rx={4}
-                  fill="#1f2937"
+                  fill={tokens.neutral[800]}
                 />
                 <text
                   x={x}
@@ -252,8 +253,8 @@ function RadarChartSVG({
 function RadarSkeleton() {
   return (
     <div className="flex flex-col items-center gap-4 py-6">
-      <div className="h-[320px] w-[320px] animate-pulse rounded-full bg-gray-100" />
-      <div className="h-4 w-48 animate-pulse rounded bg-gray-100" />
+      <div className="h-[320px] w-[320px] animate-pulse rounded-full bg-muted" />
+      <div className="h-4 w-48 animate-pulse rounded bg-muted" />
     </div>
   )
 }
@@ -277,9 +278,11 @@ export default function RadarPage() {
 
   // Metric display config
   const metricConfig: Record<MetricKey, { unit: string; maxValue: number; color: string; stroke: string }> = {
-    tir: { unit: "%", maxValue: 100, color: "#0d9488", stroke: "#0d9488" },
-    averageGlucose: { unit: "mg/dL", maxValue: 300, color: "#f97316", stroke: "#f97316" },
-    cv: { unit: "%", maxValue: 60, color: "#8b5cf6", stroke: "#8b5cf6" },
+    tir: { unit: "%", maxValue: 100, color: tokens.brand.primary[600], stroke: tokens.brand.primary[600] },
+    averageGlucose: { unit: "mg/dL", maxValue: 300, color: tokens.brand.secondary[500], stroke: tokens.brand.secondary[500] },
+    // cv — violet hors palette → tokens.pathology.DT1 (#7C3AED) : couleur officielle
+    // de la pathologie DT1 dans le design system, violet le plus proche disponible
+    cv: { unit: "%", maxValue: 60, color: tokens.pathology.DT1, stroke: tokens.pathology.DT1 },
   }
 
   // ── Fetch radar data ────────────────────────────────────────────────────────
@@ -429,7 +432,7 @@ export default function RadarPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm" aria-label={t("dataTableLabel")}>
                 <thead>
-                  <tr className="border-b border-gray-200">
+                  <tr className="border-b border-border">
                     <th
                       scope="col"
                       className="py-2 pe-4 text-start text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -455,8 +458,8 @@ export default function RadarPage() {
                     <tr
                       key={p.day}
                       className={cn(
-                        "border-b border-gray-100 last:border-0",
-                        i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                        "border-b border-border last:border-0",
+                        i % 2 === 0 ? "bg-card" : "bg-muted/50"
                       )}
                     >
                       <td className="py-2 pe-4 font-medium text-foreground">
@@ -482,7 +485,7 @@ export default function RadarPage() {
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="border-t-2 border-gray-200">
+                  <tr className="border-t-2 border-border">
                     <td className="py-2 pe-4 text-xs font-semibold text-muted-foreground">
                       {t("tableAverage")}
                     </td>

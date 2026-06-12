@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server"
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 // ⚠️ SERVER-ONLY : ces loaders sont des Server Components `async`
 // (getTranslations). Ils ne peuvent PAS être rendus comme enfants d'un
@@ -46,7 +47,7 @@ export async function PageLoader({
               cy="40"
               r="32"
               fill="none"
-              stroke="#E6FFFA"
+              stroke={tokens.brand.primary[50]}
               strokeWidth="4"
             />
             <circle
@@ -54,7 +55,7 @@ export async function PageLoader({
               cy="40"
               r="32"
               fill="none"
-              stroke="#0D9488"
+              stroke={tokens.brand.primary[600]}
               strokeWidth="4"
               strokeLinecap="round"
               strokeDasharray="50 200"
@@ -62,7 +63,7 @@ export async function PageLoader({
             />
             <path
               d="M40 20 C 28 32, 28 45, 40 55 C 52 45, 52 32, 40 20 Z"
-              fill="#0D9488"
+              fill={tokens.brand.primary[600]}
               className="loader-drop"
             />
           </svg>

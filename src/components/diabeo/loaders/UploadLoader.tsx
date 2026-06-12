@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 type UploadStatus = "pending" | "uploading" | "scanning" | "encrypting" | "done" | "error"
 
@@ -136,13 +137,13 @@ function UploadRing({ pct, status }: { pct: number; status: UploadStatus }) {
   return (
     <div className="relative h-12 w-12 flex-shrink-0">
       <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90" aria-hidden>
-        <circle cx="24" cy="24" r={r} fill="none" stroke="#F3F4F6" strokeWidth="4" />
+        <circle cx="24" cy="24" r={r} fill="none" stroke={tokens.neutral[100]} strokeWidth="4" />
         <circle
           cx="24"
           cy="24"
           r={r}
           fill="none"
-          stroke={isError ? "#EF4444" : isDone ? "#10B981" : "#0D9488"}
+          stroke={isError ? tokens.semantic.error : isDone ? tokens.semantic.success : tokens.brand.primary[600]}
           strokeWidth="4"
           strokeLinecap="round"
           strokeDasharray={c}

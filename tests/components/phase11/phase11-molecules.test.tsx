@@ -106,13 +106,17 @@ describe("DiabeoButton", () => {
   it("applies variant classes for diabeoPrimary", () => {
     render(<DiabeoButton variant="diabeoPrimary">Primary</DiabeoButton>)
     const button = screen.getByRole("button")
-    expect(button.classList.contains("bg-teal-600")).toBe(true)
+    // Migration design system : `bg-teal-600` (Tailwind brut) → `bg-primary`
+    // (classe sémantique mappée vers --color-primary = teal-600).
+    expect(button.classList.contains("bg-primary")).toBe(true)
   })
 
   it("applies variant classes for diabeoDestructive", () => {
     render(<DiabeoButton variant="diabeoDestructive">Delete</DiabeoButton>)
     const button = screen.getByRole("button")
-    expect(button.classList.contains("bg-red-500")).toBe(true)
+    // Migration design system : `bg-red-500` (Tailwind brut) → `bg-destructive`
+    // (classe sémantique shadcn alignée sur --diabeo-error).
+    expect(button.classList.contains("bg-destructive")).toBe(true)
   })
 })
 

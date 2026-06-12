@@ -18,7 +18,7 @@ export function TabLoading() {
 export function TabError() {
   const t = useTranslations("consultation")
   return (
-    <p className="py-8 text-center text-sm text-[var(--color-glycemia-critical)]" role="alert">
+    <p className="py-8 text-center text-sm text-glycemia-critical" role="alert">
       {t("loadError")}
     </p>
   )
