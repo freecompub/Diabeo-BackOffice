@@ -1241,6 +1241,18 @@
       "failedBackups": "Backups échec (30j)",
       "alert": "Alerte",
       "rgpdNote": "Demandes au titre du Règlement général sur la protection des données (RGPD) (US-2413) à venir en V3."
+    },
+    "billing": {
+      "title": "Facturation à traiter",
+      "pending": "{count} en attente",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger la facturation.",
+      "totalEligible": "Éligibles total",
+      "unbilled": "Non facturés",
+      "billed30d": "Facturés (30j)",
+      "unbilledAmount": "Montant non facturé",
+      "rounded": "(arrondi)",
+      "heuristicNote": "Heuristique : téléconsultations complétées sans acte facturé. Table facturation formelle à venir (US-2107)."
     }
   }
 }

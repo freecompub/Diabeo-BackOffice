@@ -1241,6 +1241,18 @@
       "failedBackups": "Failed backups (30d)",
       "alert": "Alert",
       "rgpdNote": "General Data Protection Regulation (GDPR) requests (US-2413) coming in V3."
+    },
+    "billing": {
+      "title": "Billing to process",
+      "pending": "{count} pending",
+      "loading": "Loading…",
+      "loadError": "Could not load billing.",
+      "totalEligible": "Total eligible",
+      "unbilled": "Unbilled",
+      "billed30d": "Billed (30d)",
+      "unbilledAmount": "Unbilled amount",
+      "rounded": "(rounded)",
+      "heuristicNote": "Heuristic: completed teleconsultations without a billed act. Formal billing table coming (US-2107)."
     }
   }
 }
