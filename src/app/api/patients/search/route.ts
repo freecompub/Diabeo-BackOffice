@@ -77,17 +77,26 @@ export async function GET(req: NextRequest) {
         ),
       )
     }
-    const rlIp = await checkApiRateLimit(
-      `ip:${ctx.ipAddress ?? "unknown-ip"}`,
-      RATE_LIMITS.patientDataReadIp,
-    )
-    if (!rlIp.allowed) {
-      return setPatientsSearchSecurityHeaders(
-        NextResponse.json(
-          { error: "rateLimitExceeded" },
-          { status: 429, headers: { "Retry-After": String(rlIp.retryAfterSec) } },
-        ),
+    // Bucket per-IP : on SKIP quand l'IP n'est pas résolue (`extractRequestContext`
+    // renvoie la sentinelle "unknown"). Sinon toutes les requêtes sans
+    // `x-forwarded-for` (proxy contourné, health-checks) tomberaient dans UN
+    // seul bucket partagé `ip:unknown` → DoS auto-infligé (revue round 3). Le
+    // bucket per-user reste appliqué dans tous les cas. NB : l'IP vient du hop
+    // XFF le plus à gauche (spoofable) — durcissement transverse suivi dans
+    // docs/security/xff-trusted-proxy.md.
+    if (ctx.ipAddress && ctx.ipAddress !== "unknown") {
+      const rlIp = await checkApiRateLimit(
+        `ip:${ctx.ipAddress}`,
+        RATE_LIMITS.patientDataReadIp,
       )
+      if (!rlIp.allowed) {
+        return setPatientsSearchSecurityHeaders(
+          NextResponse.json(
+            { error: "rateLimitExceeded" },
+            { status: 429, headers: { "Retry-After": String(rlIp.retryAfterSec) } },
+          ),
+        )
+      }
     }
 
     const parsed = querySchema.safeParse(

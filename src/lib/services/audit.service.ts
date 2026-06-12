@@ -327,6 +327,10 @@ export function extractRequestContext(req: Request): {
   requestId: string
 } {
   const headers = req.headers
+  // ⚠️ Le hop XFF le plus à gauche est client-contrôlé (spoofable) → l'IP
+  // résolue ici n'est pas fiable derrière un proxy (rate-limit per-IP évadable
+  // + IP audit spoofable). Durcissement transverse (résolution depuis le hop de
+  // confiance) tracké dans docs/security/xff-trusted-proxy.md. Pré-existant.
   const ipAddress =
     headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
     headers.get("x-real-ip") ??

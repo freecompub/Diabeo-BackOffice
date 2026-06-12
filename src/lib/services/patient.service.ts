@@ -169,12 +169,18 @@ const LIST_BY_DOCTOR_WARN_AT = 1000
  * consentement explicite n'a pas la même base légale que l'identifier dans le
  * portefeuille de son propre soignant. Cf. DPIA patient-search.
  */
-const PROVIDER_VISIBLE_USER_WHERE: Prisma.UserWhereInput = {
-  OR: [
+// `Object.freeze` (deep) — la constante est partagée par référence entre
+// `search` et `listByDoctor` ; on gèle (objet + tableau `OR`) pour qu'un futur
+// `.OR.push(...)` échoue bruyamment au runtime au lieu de corrompre
+// silencieusement les deux surfaces (revue round 3). Le cast final efface le
+// `readonly` côté types (Prisma attend un tableau mutable) ; seule la garde
+// runtime importe ici.
+const PROVIDER_VISIBLE_USER_WHERE = Object.freeze({
+  OR: Object.freeze([
     { privacySettings: null },
     { privacySettings: { gdprConsent: true, shareWithProviders: true } },
-  ],
-}
+  ]),
+}) as Prisma.UserWhereInput
 
 const DECRYPT_WARN_WINDOW_MS = 60_000
 const DECRYPT_SUPPRESSED_CAP = 10_000_000
