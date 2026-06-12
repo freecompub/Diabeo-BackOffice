@@ -760,7 +760,14 @@ export function AppointmentCalendar({
             : t("calendarMainLabel")
         }
         aria-busy={isInitialLoading}
-        className="rounded-lg border border-border bg-card overflow-hidden min-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        // `isolate` — confine le stacking context du calendrier. L'en-tête sticky
+        // de Schedule-X (`.sx__week-header`, z-index 100) dépassait le z-index 50
+        // de l'overlay du modal shadcn (`<Dialog>` "Nouveau rendez-vous", rendu
+        // sur la même page) → l'axe des dates / bandeau "événements journée"
+        // transperçaient le modal par le haut. En isolant ici, le z-index 100
+        // reste interne au calendrier ; l'overlay (z-50, portalé au body) repasse
+        // au-dessus. Fix non-invasif (impossible de modifier components/ui/dialog).
+        className="isolate rounded-lg border border-border bg-card overflow-hidden min-h-[640px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         tabIndex={-1}
       >
         <ScheduleXCalendar calendarApp={calendar} />
