@@ -8,7 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   AlertCircle,
   CheckCircle2,
@@ -51,6 +51,7 @@ const COUNTRY_CODE_RE = /^[A-Z]{2}$/
 
 export function TaxRulesClient() {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.taxRules")
   const [countryCode, setCountryCode] = useState<string>("FR")
   const [taxType, setTaxType] = useState<TaxType>("VAT")
   // Fix M6 round 1 — getLocalIsoDate (vs new Date().toISOString() UTC).
@@ -115,10 +116,10 @@ export function TaxRulesClient() {
     <>
       {/* Form recherche */}
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="search-section">
-        <h2 id="search-section" className="text-lg font-semibold">Rechercher un taux actif</h2>
+        <h2 id="search-section" className="text-lg font-semibold">{t("searchTitle")}</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
           <label className="flex flex-col gap-1 text-sm">
-            <span>Pays (ISO 3166-1 alpha-2)</span>
+            <span>{t("country")}</span>
             {/* Fix M5 round 1 — input libre + datalist suggestions. */}
             <input
               type="text"
@@ -139,19 +140,19 @@ export function TaxRulesClient() {
             </datalist>
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span>Type de taxe</span>
+            <span>{t("taxType")}</span>
             <select
               value={taxType}
               onChange={(e) => setTaxType(e.target.value as TaxType)}
               className="rounded-md border bg-background px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
-              {TAX_TYPES.map((t) => (
-                <option key={t} value={t}>{TAX_TYPE_LABELS_FR[t]}</option>
+              {TAX_TYPES.map((tax) => (
+                <option key={tax} value={tax}>{TAX_TYPE_LABELS_FR[tax]}</option>
               ))}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            <span>Date</span>
+            <span>{t("date")}</span>
             <input
               type="date"
               value={date}
@@ -162,7 +163,7 @@ export function TaxRulesClient() {
           <div className="flex items-end">
             <DiabeoButton onClick={() => void fetchRule()} disabled={state === "loading" || !isCountryValid} className="w-full">
               <Search className="size-4 mr-1" aria-hidden="true" />
-              {state === "loading" ? "Recherche…" : "Rechercher"}
+              {state === "loading" ? t("searching") : t("search")}
             </DiabeoButton>
           </div>
         </div>
@@ -172,7 +173,7 @@ export function TaxRulesClient() {
       {state === "loading" && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
           <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-          Chargement…
+          {t("loading")}
         </div>
       )}
 
@@ -180,7 +181,7 @@ export function TaxRulesClient() {
         <div role="alert" tabIndex={-1} ref={errorRef} className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
-            Erreur
+            {t("error")}
           </p>
           <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>
         </div>
@@ -189,7 +190,12 @@ export function TaxRulesClient() {
       {state === "not_found" && (
         <div role="status" aria-live="polite" className="rounded-md border border-dashed p-6 text-center text-sm">
           <p className="text-muted-foreground">
-            Aucun taux actif pour <strong>{countryCode}</strong> / <strong>{TAX_TYPE_LABELS_FR[taxType]}</strong> au {date}.
+            {t.rich("notFound", {
+              strong: (c) => <strong>{c}</strong>,
+              country: countryCode,
+              type: TAX_TYPE_LABELS_FR[taxType],
+              date,
+            })}
           </p>
         </div>
       )}
@@ -198,7 +204,7 @@ export function TaxRulesClient() {
         <section className="rounded-md border p-4 space-y-3" aria-labelledby="result-section">
           <h2 id="result-section" className="text-lg font-semibold flex items-center gap-2">
             <CheckCircle2 className="size-5 text-primary" aria-hidden="true" />
-            Taux actif trouvé
+            {t("resultFound")}
           </h2>
           <div className="flex items-center gap-3 mb-2">
             <Percent className="size-8 text-primary" aria-hidden="true" />

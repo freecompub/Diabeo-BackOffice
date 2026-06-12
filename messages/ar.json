@@ -1216,11 +1216,33 @@
     },
     "systemHealth": {
       "title": "صحة النظام",
-      "subtitle": "الحالة الفورية للمكونات الحرجة (DB، Redis، المراقبة المستمرة للجلوكوز (CGM)، النسخ الاحتياطية). تحديث تلقائي كل 60 ثانية."
+      "subtitle": "الحالة الفورية للمكونات الحرجة (DB، Redis، المراقبة المستمرة للجلوكوز (CGM)، النسخ الاحتياطية). تحديث تلقائي كل 60 ثانية.",
+      "loadingSnapshot": "جارٍ تحميل لقطة صحة النظام…",
+      "snapshotUnavailable": "اللقطة غير متوفرة",
+      "retry": "إعادة المحاولة",
+      "overallStatus": "الحالة العامة",
+      "lastCheck": "آخر فحص {time}",
+      "resumeAuto": "استئناف تلقائي",
+      "pauseAuto": "إيقاف تلقائي",
+      "refresh": "تحديث",
+      "components": "المكونات",
+      "metrics": "المقاييس",
+      "alertPrefix": "تنبيه: ",
+      "thresholdExceeded": "تم تجاوز الحد."
     },
     "taxRules": {
       "title": "القواعد الضريبية",
-      "subtitle": "تحديد معدل الضريبة النشط لبلد + نوع الضريبة في تاريخ محدد. للقراءة فقط iter 5 — الإنشاء/التعديل عبر عمليات الخلفية (راجع <code>docs/runbook/tax-rules.md</code>)."
+      "subtitle": "تحديد معدل الضريبة النشط لبلد + نوع الضريبة في تاريخ محدد. للقراءة فقط iter 5 — الإنشاء/التعديل عبر عمليات الخلفية (راجع <code>docs/runbook/tax-rules.md</code>).",
+      "searchTitle": "البحث عن معدل نشط",
+      "country": "البلد (ISO 3166-1 alpha-2)",
+      "taxType": "نوع الضريبة",
+      "date": "التاريخ",
+      "searching": "جارٍ البحث…",
+      "search": "بحث",
+      "loading": "جارٍ التحميل…",
+      "error": "خطأ",
+      "notFound": "لا يوجد معدل نشط لـ <strong>{country}</strong> / <strong>{type}</strong> في {date}.",
+      "resultFound": "تم العثور على معدل نشط"
     },
     "users": {
       "title": "المستخدمون",
@@ -1270,6 +1292,22 @@
       "createdLine": "{email} · أُنشئ في {date}",
       "tooMany": "أكثر من 100 مستخدم مطابق. ضيّق عوامل التصفية لتقليل القائمة.",
       "paginationNote": "ترقيم المؤشر V1.5 — عرض مقتطع."
+    },
+    "invoicesList": {
+      "statusLabel": "الحالة:",
+      "allStatuses": "كل الحالات",
+      "filterHelp": "اختر حالة لتصفية قائمة الفواتير.",
+      "refresh": "تحديث",
+      "loading": "جارٍ التحميل…",
+      "listUnavailable": "القائمة غير متوفرة",
+      "retry": "إعادة المحاولة",
+      "empty": "لا توجد فاتورة مسجلة.",
+      "draft": "مسودة #{id}",
+      "issuedOn": "صدرت في {date}",
+      "patient": "مريض #{id}",
+      "cabinet": "عيادة #{id}",
+      "tooMany": "أكثر من 100 فاتورة مطابقة. ضيّق تصفية الحالة لتقليل القائمة.",
+      "paginationNote": "ترقيم المؤشر V1.5 — مقتطع إلى أحدث 100."
     }
   },
   "dashboardCards": {

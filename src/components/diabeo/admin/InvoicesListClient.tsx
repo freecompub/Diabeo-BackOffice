@@ -9,7 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   AlertCircle,
   ChevronRight,
@@ -35,6 +35,7 @@ type AsyncState = "idle" | "loading" | "success" | "error"
 
 export function InvoicesListClient() {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.invoicesList")
   const [invoices, setInvoices] = useState<InvoiceDTOClient[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -97,7 +98,7 @@ export function InvoicesListClient() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <label className="flex items-center gap-1 text-sm">
           <Filter className="size-4 text-muted-foreground" aria-hidden="true" />
-          <span className="text-muted-foreground">Statut :</span>
+          <span className="text-muted-foreground">{t("statusLabel")}</span>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as InvoiceStatus | "all")}
@@ -105,34 +106,34 @@ export function InvoicesListClient() {
             aria-label="Filtrer par statut"
             aria-describedby="filter-status-help"
           >
-            <option value="all">Tous les statuts</option>
+            <option value="all">{t("allStatuses")}</option>
             {Object.entries(INVOICE_STATUS_LABELS_FR).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
           </select>
           <span id="filter-status-help" className="sr-only">
-            Sélectionnez un statut pour filtrer la liste des factures.
+            {t("filterHelp")}
           </span>
         </label>
         <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchInvoices()}>
           <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
-          Actualiser
+          {t("refresh")}
         </DiabeoButton>
       </div>
 
       {state === "loading" && invoices.length === 0 && (
-        <p className="text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
+        <p className="text-sm text-muted-foreground" aria-live="polite">{t("loading")}</p>
       )}
 
       {state === "error" && invoices.length === 0 && (
         <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
-            Liste indisponible
+            {t("listUnavailable")}
           </p>
           {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchInvoices()} className="mt-2">
-            Réessayer
+            {t("retry")}
           </DiabeoButton>
         </div>
       )}
@@ -140,7 +141,7 @@ export function InvoicesListClient() {
       {state === "success" && invoices.length === 0 && (
         <div className="rounded-md border border-dashed p-8 text-center">
           <FileText className="size-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">Aucune facture enregistrée.</p>
+          <p className="text-sm text-muted-foreground">{t("empty")}</p>
         </div>
       )}
 
@@ -156,7 +157,7 @@ export function InvoicesListClient() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium">
-                      {invoice.number ?? `Brouillon #${invoice.id}`}
+                      {invoice.number ?? t("draft", { id: invoice.id })}
                     </span>
                     <Badge variant={getInvoiceStatusVariant(invoice.status)} className="text-[10px]">
                       {getInvoiceStatusLabel(invoice.status)}
@@ -167,12 +168,12 @@ export function InvoicesListClient() {
                   </div>
                   <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-3">
                     {invoice.issuedAt && (
-                      <span>Émise le {formatDate(invoice.issuedAt, locale, { withTime: false })}</span>
+                      <span>{t("issuedOn", { date: formatDate(invoice.issuedAt, locale, { withTime: false }) })}</span>
                     )}
                     {invoice.patientId !== null && (
-                      <span>Patient #{invoice.patientId}</span>
+                      <span>{t("patient", { id: invoice.patientId })}</span>
                     )}
-                    <span>Cabinet #{invoice.cabinetId}</span>
+                    <span>{t("cabinet", { id: invoice.cabinetId })}</span>
                   </div>
                 </div>
                 <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
@@ -187,9 +188,9 @@ export function InvoicesListClient() {
         <div role="note" className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm flex items-start gap-2">
           <AlertCircle className="size-4 text-orange-700 shrink-0 mt-0.5" aria-hidden="true" />
           <p className="text-orange-800">
-            Plus de 100 factures correspondent. Affiner le filtre statut pour réduire la liste.
+            {t("tooMany")}
             <span className="block text-xs opacity-80 mt-0.5">
-              Pagination cursor V1.5 — affichage tronqué aux 100 plus récentes.
+              {t("paginationNote")}
             </span>
           </p>
         </div>

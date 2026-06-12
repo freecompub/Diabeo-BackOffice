@@ -1216,11 +1216,33 @@
     },
     "systemHealth": {
       "title": "Santé système",
-      "subtitle": "État temps-réel des composants critiques (DB, Redis, mesure du glucose en continu (CGM), backups). Refresh automatique toutes les 60s."
+      "subtitle": "État temps-réel des composants critiques (DB, Redis, mesure du glucose en continu (CGM), backups). Refresh automatique toutes les 60s.",
+      "loadingSnapshot": "Chargement du snapshot santé système…",
+      "snapshotUnavailable": "Snapshot indisponible",
+      "retry": "Réessayer",
+      "overallStatus": "Statut global",
+      "lastCheck": "Dernière vérification {time}",
+      "resumeAuto": "Reprendre auto",
+      "pauseAuto": "Pause auto",
+      "refresh": "Actualiser",
+      "components": "Composants",
+      "metrics": "Métriques",
+      "alertPrefix": "Alerte : ",
+      "thresholdExceeded": "Seuil dépassé."
     },
     "taxRules": {
       "title": "Règles fiscales",
-      "subtitle": "Résolution du taux fiscal actif pour un pays + type de taxe à une date donnée. Lecture seule iter 5 — création/modification via backend opérations (cf. <code>docs/runbook/tax-rules.md</code>)."
+      "subtitle": "Résolution du taux fiscal actif pour un pays + type de taxe à une date donnée. Lecture seule iter 5 — création/modification via backend opérations (cf. <code>docs/runbook/tax-rules.md</code>).",
+      "searchTitle": "Rechercher un taux actif",
+      "country": "Pays (ISO 3166-1 alpha-2)",
+      "taxType": "Type de taxe",
+      "date": "Date",
+      "searching": "Recherche…",
+      "search": "Rechercher",
+      "loading": "Chargement…",
+      "error": "Erreur",
+      "notFound": "Aucun taux actif pour <strong>{country}</strong> / <strong>{type}</strong> au {date}.",
+      "resultFound": "Taux actif trouvé"
     },
     "users": {
       "title": "Utilisateurs",
@@ -1270,6 +1292,22 @@
       "createdLine": "{email} · Créé le {date}",
       "tooMany": "Plus de 100 utilisateurs correspondent. Affiner les filtres pour réduire la liste.",
       "paginationNote": "Pagination cursor V1.5 — affichage tronqué."
+    },
+    "invoicesList": {
+      "statusLabel": "Statut :",
+      "allStatuses": "Tous les statuts",
+      "filterHelp": "Sélectionnez un statut pour filtrer la liste des factures.",
+      "refresh": "Actualiser",
+      "loading": "Chargement…",
+      "listUnavailable": "Liste indisponible",
+      "retry": "Réessayer",
+      "empty": "Aucune facture enregistrée.",
+      "draft": "Brouillon #{id}",
+      "issuedOn": "Émise le {date}",
+      "patient": "Patient #{id}",
+      "cabinet": "Cabinet #{id}",
+      "tooMany": "Plus de 100 factures correspondent. Affiner le filtre statut pour réduire la liste.",
+      "paginationNote": "Pagination cursor V1.5 — affichage tronqué aux 100 plus récentes."
     }
   },
   "dashboardCards": {
