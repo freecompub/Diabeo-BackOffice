@@ -1197,6 +1197,8 @@
     "complianceAudit24h": "Audit 24h",
     "complianceBackupsFailed": "Backups échec (30j)",
     "complianceRgpdPlaceholder": "RGPD requests (US-2413) à venir en V3.",
-    "stale": "Données obsolètes — rafraîchissement en attente."
+    "stale": "Données obsolètes — rafraîchissement en attente.",
+    "staleBadge": "Obsolète ({days, plural, one {# jour} other {# jours}})",
+    "alertBadge": "Alerte"
   }
 }

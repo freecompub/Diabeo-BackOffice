@@ -25,7 +25,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { ChevronLeft, ChevronRight, RefreshCw, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -103,9 +103,20 @@ function getWeekDays(weekStart: Date): Date[] {
   })
 }
 
-/** Format ISO date string "YYYY-MM-DD" */
+/**
+ * Format ISO date string "YYYY-MM-DD" en heure LOCALE (pas UTC).
+ *
+ * `Date.toISOString()` convertit en UTC : pour un user UTC+2 été, une date
+ * créée à minuit local (`setHours(0,0,0,0)`) devient `22:00 UTC` la veille,
+ * `.split("T")[0]` retourne donc la VEILLE → décalage d'un jour dans les
+ * buckets. On reconstruit la chaîne via les composantes locales pour rester
+ * cohérent avec `getWeekStart()` qui travaille en local time.
+ */
 function toIsoDate(date: Date): string {
-  return date.toISOString().split("T")[0]!
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, "0")
+  const d = String(date.getDate()).padStart(2, "0")
+  return `${y}-${m}-${d}`
 }
 
 /** Format week range title e.g. "31 Mar - 6 Avr 2026" */
@@ -146,16 +157,25 @@ function computeTir(points: GlucoseDataPoint[]): number | null {
 }
 
 /** Group flat CGM entries into per-day GlucoseDataPoint arrays */
-function groupByDay(entries: CgmEntry[], days: Date[]): Map<string, GlucoseDataPoint[]> {
+function groupByDay(
+  entries: CgmEntry[],
+  days: Date[],
+  locale: string,
+): Map<string, GlucoseDataPoint[]> {
   const map = new Map<string, GlucoseDataPoint[]>()
   for (const day of days) {
     map.set(toIsoDate(day), [])
   }
+  // Hoiste le formatter en dehors de la boucle : potentiellement 2016
+  // entries/semaine (288 lectures CGM × 7 jours @ 5 min) → recréer un
+  // Intl.DateTimeFormat à chaque entry est gaspilleur.
+  const timeFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" })
   for (const entry of entries) {
     const ts = new Date(entry.timestamp)
+    if (Number.isNaN(ts.getTime())) continue
     const key = toIsoDate(ts)
     if (map.has(key)) {
-      const time = ts.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+      const time = timeFmt.format(ts)
       // valueGl en g/L → mg/dL : × 100 (jamais × 18, voir CLAUDE.md).
       map.get(key)!.push({ time, timestamp: ts, glucose: Math.round(entry.valueGl * 100) })
     }
@@ -213,6 +233,7 @@ function ComingSoon({ tab }: { tab: WeeklyTab }) {
 export default function WeeklyPage() {
   const t = useTranslations("weekly")
   const tCommon = useTranslations("common")
+  const locale = useLocale()
 
   const [activeTab, setActiveTab] = useState<WeeklyTab>("semainier")
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date()))
@@ -234,7 +255,6 @@ export default function WeeklyPage() {
     setPageState("loading")
 
     const weekDays = getWeekDays(start)
-    const from = toIsoDate(start)
     const end = new Date(start)
     end.setDate(end.getDate() + 6)
     end.setHours(23, 59, 59, 999)
@@ -251,7 +271,11 @@ export default function WeeklyPage() {
         return
       }
 
-      const entries = (await res.json()) as CgmEntry[]
+      const payload = (await res.json()) as unknown
+      // Defense-in-depth : si le serveur renvoie autre chose qu'un array (ex:
+      // `{ error: "..." }` malgré res.ok à cause d'un middleware), on ne plante
+      // pas dans `groupByDay` (for..of throw sur non-iterable).
+      const entries: CgmEntry[] = Array.isArray(payload) ? (payload as CgmEntry[]) : []
 
       if (entries.length === 0) {
         setDays(weekDays.map((date) => ({
@@ -265,7 +289,7 @@ export default function WeeklyPage() {
         return
       }
 
-      const grouped = groupByDay(entries, weekDays)
+      const grouped = groupByDay(entries, weekDays, locale)
       const dayDataArray: DayData[] = weekDays.map((date) => {
         const glucoseData = grouped.get(toIsoDate(date)) ?? []
         return {
@@ -289,9 +313,7 @@ export default function WeeklyPage() {
     } catch {
       setPageState("error")
     }
-    // Suppress unused variable warning — `from` is kept for clarity
-    void from
-  }, [])
+  }, [locale])
 
   useEffect(() => {
     let cancelled = false

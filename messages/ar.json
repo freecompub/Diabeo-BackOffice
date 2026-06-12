@@ -1197,6 +1197,8 @@
     "complianceAudit24h": "تدقيق 24 ساعة",
     "complianceBackupsFailed": "نسخ احتياطية فاشلة (30 يوم)",
     "complianceRgpdPlaceholder": "طلبات RGPD (US-2413) قادمة في V3.",
-    "stale": "بيانات قديمة — تحديث قيد الانتظار."
+    "stale": "بيانات قديمة — تحديث قيد الانتظار.",
+    "staleBadge": "قديمة ({days, plural, zero {# يوم} one {# يوم} two {يومان} few {# أيام} many {# يوماً} other {# يوم}})",
+    "alertBadge": "تنبيه"
   }
 }

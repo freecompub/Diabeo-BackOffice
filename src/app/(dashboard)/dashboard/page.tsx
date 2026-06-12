@@ -30,7 +30,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { useRouter } from "next/navigation"
 import { Plus, RefreshCw } from "lucide-react"
 
 import { DataSummaryGrid } from "@/components/diabeo/widgets/DataSummaryGrid"
@@ -98,13 +99,28 @@ interface CgmEntry {
 // Helper: authenticated fetch
 // ---------------------------------------------------------------------------
 
-async function apiFetch<T>(url: string): Promise<T | null> {
+/**
+ * Résultat d'un appel API : data si OK, sinon discriminant pour distinguer
+ * une expiration de session (401) d'une autre erreur (500, 404, etc.). Le
+ * caller doit traiter `unauthorized: true` en redirigeant vers /login —
+ * un `null` brut piégeait l'utilisateur dans un état error avec bouton
+ * « Réessayer » qui ne marche jamais.
+ */
+type ApiResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; unauthorized: boolean }
+
+async function apiFetch<T>(url: string, signal?: AbortSignal): Promise<ApiResult<T>> {
   const res = await fetch(url, {
     credentials: "include",
     headers: { "X-Requested-With": "XMLHttpRequest" },
+    signal,
   })
-  if (!res.ok) return null
-  return res.json() as Promise<T>
+  if (!res.ok) {
+    return { ok: false, unauthorized: res.status === 401 }
+  }
+  const data = (await res.json()) as T
+  return { ok: true, data }
 }
 
 // ---------------------------------------------------------------------------
@@ -189,6 +205,8 @@ function buildCgmDateRange(period: TimePeriod): { from: string; to: string } {
 export default function GlycemiaDashboardPage() {
   const t = useTranslations("dashboard")
   const tCommon = useTranslations("common")
+  const locale = useLocale()
+  const router = useRouter()
 
   // Period state — default 14 days
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.TwoWeeks)
@@ -205,6 +223,10 @@ export default function GlycemiaDashboardPage() {
 
   // Auto-refresh interval ref (cleanup on unmount)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // AbortController courant — annule la requête précédente quand l'utilisateur
+  // change rapidement de période, sinon la réponse lente de l'ancienne période
+  // peut écraser celle de la nouvelle (race condition silencieuse).
+  const abortRef = useRef<AbortController | null>(null)
 
   // ---------------------------------------------------------------------------
   // Fetch all dashboard data
@@ -213,6 +235,11 @@ export default function GlycemiaDashboardPage() {
   const fetchAll = useCallback(
     async (opts?: { silent?: boolean }) => {
       const silent = opts?.silent ?? false
+
+      // Annule la requête en vol avant d'en lancer une nouvelle.
+      abortRef.current?.abort()
+      const controller = new AbortController()
+      abortRef.current = controller
 
       if (!silent) setLoading(true)
       else setIsRefreshing(true)
@@ -225,49 +252,79 @@ export default function GlycemiaDashboardPage() {
 
         const [profile, tir, hypo, cgm] = await Promise.all([
           apiFetch<GlycemicProfileApiResponse>(
-            `/api/analytics/glycemic-profile?period=${apiPeriod}`
+            `/api/analytics/glycemic-profile?period=${apiPeriod}`,
+            controller.signal,
           ),
           apiFetch<TimeInRangeApiResponse>(
-            `/api/analytics/time-in-range?period=${apiPeriod}`
+            `/api/analytics/time-in-range?period=${apiPeriod}`,
+            controller.signal,
           ),
           apiFetch<HypoglycemiaApiResponse>(
-            `/api/analytics/hypoglycemia?period=${apiPeriod}`
+            `/api/analytics/hypoglycemia?period=${apiPeriod}`,
+            controller.signal,
           ),
           apiFetch<CgmEntry[]>(
-            `/api/cgm?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+            `/api/cgm?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+            controller.signal,
           ),
         ])
 
+        // Aborted (newer fetch in flight) → drop ce cycle silencieusement.
+        if (controller.signal.aborted) return
+
+        // Session expirée (401 sur n'importe quel endpoint) → relog. Sans
+        // cette branche, l'utilisateur restait coincé en error state avec
+        // un bouton « Réessayer » qui re-faisait des 401.
+        const results = [profile, tir, hypo, cgm]
+        if (results.some((r) => !r.ok && r.unauthorized)) {
+          router.push("/login")
+          return
+        }
+
         // At least one API call must have returned data; otherwise treat as error
-        if (profile === null && tir === null && hypo === null && cgm === null) {
+        if (results.every((r) => !r.ok)) {
           setError(true)
           return
         }
 
-        // Build WidgetData from API responses
-        setWidgetData(buildWidgetData(profile, tir, hypo))
+        // Build WidgetData from API responses (helpers attendent null si missing).
+        setWidgetData(
+          buildWidgetData(
+            profile.ok ? profile.data : null,
+            tir.ok ? tir.data : null,
+            hypo.ok ? hypo.data : null,
+          ),
+        )
 
         // Map CGM entries to chart data points.
         // L'API retourne un tableau plat (pas d'enveloppe `{ data }`).
         // valueGl en g/L → mg/dL : × 100 (jamais × 18, voir CLAUDE.md).
-        const points: GlucoseDataPoint[] = (cgm ?? []).map((entry) => {
-          const ts = new Date(entry.timestamp)
-          return {
-            time: ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
-            timestamp: ts,
-            glucose: Math.round(entry.valueGl * 100),
-          }
-        })
+        const cgmEntries: CgmEntry[] = cgm.ok && Array.isArray(cgm.data) ? cgm.data : []
+        const points: GlucoseDataPoint[] = cgmEntries
+          .map((entry) => {
+            const ts = new Date(entry.timestamp)
+            if (Number.isNaN(ts.getTime())) return null
+            return {
+              time: ts.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
+              timestamp: ts,
+              glucose: Math.round(entry.valueGl * 100),
+            }
+          })
+          .filter((p): p is GlucoseDataPoint => p !== null)
 
         setGlucoseData(points)
-      } catch {
+      } catch (e) {
+        // AbortError = nouveau fetch en route, ne pas afficher d'erreur.
+        if (e instanceof DOMException && e.name === "AbortError") return
         setError(true)
       } finally {
-        setLoading(false)
-        setIsRefreshing(false)
+        if (!controller.signal.aborted) {
+          setLoading(false)
+          setIsRefreshing(false)
+        }
       }
     },
-    [period]
+    [period, locale, router],
   )
 
   // ---------------------------------------------------------------------------

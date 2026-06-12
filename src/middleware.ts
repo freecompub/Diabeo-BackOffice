@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { jwtVerify, importSPKI } from "jose"
 import { isSessionRevoked } from "@/lib/auth/revocation"
+import { JWT_VERIFY_OPTIONS } from "@/lib/auth/jwt-constants"
 
 let cachedPublicKey: CryptoKey | null = null
 
@@ -53,6 +54,25 @@ function resolveRequestId(incoming: string | null): string {
   return generateRequestId()
 }
 
+/**
+ * Efface le cookie `diabeo_token` (token expiré ou session révoquée) puis
+ * laisse passer la requête. Les attributs sont alignés sur ceux que pose
+ * `api/auth/login/route.ts` et `api/auth/logout/route.ts` (path=/, secure
+ * en prod, sameSite strict, httpOnly) — sans quoi le browser ne matche pas
+ * la cookie originale et la boucle persiste.
+ */
+function clearTokenAndContinue(headers: Headers): NextResponse {
+  const res = NextResponse.next({ request: { headers } })
+  res.cookies.set("diabeo_token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 0,
+  })
+  return res
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -97,32 +117,44 @@ export async function middleware(request: NextRequest) {
   // Auth pages — public for unauthenticated users; redirect authenticated ones
   // to root (role-router at "/" sends them to their proper dashboard).
   //
-  // ⚠️ Code-review fix : on DOIT vérifier la validité du JWT avant de rediriger.
-  // Un simple `if (cookieToken)` cause une boucle infinie sur cookie expiré :
+  // Vérification JWT + révocation Redis nécessaires AVANT de rediriger, sans
+  // quoi un cookie expiré OU une session révoquée déclenche une boucle :
   //   /login → cookie présent → redirect "/"
-  //   "/"    → JWT expiré → catch → redirect "/login"
+  //   "/"    → JWT invalide/révoqué → catch → redirect "/login"
   //   /login → cookie toujours présent → redirect "/" → ERR_TOO_MANY_REDIRECTS
-  // On efface le cookie expiré/invalide pour briser la boucle.
+  // On efface le cookie en cas d'échec pour briser la boucle.
   if (pathname === "/login" || pathname === "/reset-password") {
     const cookieToken = request.cookies.get("diabeo_token")?.value
     if (!cookieToken) return NextResponse.next()
     try {
       const key = await getPublicKey()
-      await jwtVerify(cookieToken, key, {
-        algorithms: ["RS256"],
-        issuer: "diabeo-backoffice",
-        audience: "diabeo-hc",
-      })
+      const { payload } = await jwtVerify(cookieToken, key, JWT_VERIFY_OPTIONS)
+      // Révocation Redis : sans ce check, un user kické par l'admin reste
+      // bloqué dans une boucle /login ↔ / (les routes protégées
+      // redirigeront vers /login, ramenant ici).
+      const sid = typeof payload.sid === "string" ? payload.sid : undefined
+      if (sid && (await isSessionRevoked(sid))) {
+        return clearTokenAndContinue(request.headers)
+      }
       // Token valide → l'utilisateur est authentifié, on l'envoie vers son
-      // dashboard. La vérification de révocation Redis est intentionnellement
-      // skippée ici : c'est un redirect UX, pas un accès à des PHI.
+      // dashboard.
       return NextResponse.redirect(new URL("/", request.url))
-    } catch {
+    } catch (error) {
       // Token expiré/invalide → effacer le cookie et laisser passer vers /login.
-      // Sans le delete, on rebondit indéfiniment entre /login et /.
-      const res = NextResponse.next()
-      res.cookies.delete("diabeo_token")
-      return res
+      // ERR_JWT_EXPIRED = routine (TTL 15min), on n'inonde pas les logs.
+      // Tout le reste (PEM corrompu, JWT_PUBLIC_KEY manquante, signature
+      // invalide) doit être logué pour l'audit HDS / OWASP A09.
+      const code = error instanceof Error && "code" in error
+        ? (error as Error & { code: string }).code
+        : undefined
+      if (code !== "ERR_JWT_EXPIRED") {
+        console.warn("[middleware] auth-page JWT verify failed", {
+          requestId,
+          pathname,
+          code: code ?? (error instanceof Error ? error.name : "unknown"),
+        })
+      }
+      return clearTokenAndContinue(request.headers)
     }
   }
 
@@ -143,11 +175,7 @@ export async function middleware(request: NextRequest) {
 
   try {
     const key = await getPublicKey()
-    const { payload } = await jwtVerify(token, key, {
-      algorithms: ["RS256"],
-      issuer: "diabeo-backoffice",
-      audience: "diabeo-hc",
-    })
+    const { payload } = await jwtVerify(token, key, JWT_VERIFY_OPTIONS)
 
     // Check session revocation via Upstash Redis
     const sid = typeof payload.sid === "string" ? payload.sid : undefined

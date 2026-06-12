@@ -8,9 +8,27 @@
  */
 
 import { prisma } from "@/lib/db/client"
-import { PeriodType, type Prisma } from "@prisma/client"
+import { PeriodType, Prisma } from "@prisma/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
+
+/**
+ * Coerce un Prisma.Decimal | null en `number | null` JSON-safe.
+ * `Prisma.Decimal.toJSON()` sérialise en STRING (par défaut), ce qui casse
+ * le contrat client iOS qui attend des `number`. Mêmes contraintes que
+ * `src/lib/db/decimal.ts:decimalToNumber` mais qui gère le `null` pass-through
+ * (les modèles glycemia ont beaucoup de Decimal nullables).
+ */
+function dec(v: Prisma.Decimal | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null
+  if (v instanceof Prisma.Decimal) return v.toNumber()
+  return Number(v)
+}
+
+/** Idem pour les Date Prisma → string ISO. */
+function iso(d: Date | null | undefined): string | null {
+  return d ? d.toISOString() : null
+}
 
 /** Max query period to prevent performance issues */
 const MAX_PERIOD_DAYS = 30
@@ -120,7 +138,32 @@ export const glycemiaService = {
       metadata: { count: entries.length },
     })
 
-    return entries
+    // DTO sérialisé : Decimal → number, Date → string ISO. Sans ce mapping,
+    // `NextResponse.json` sérialise les Decimal en STRING (Prisma.Decimal.toJSON)
+    // et casse le contrat client (iOS attend number).
+    return entries.map((e) => ({
+      id: e.id,
+      patientId: e.patientId,
+      date: e.date.toISOString(),
+      time: iso(e.time),
+      isProfessional: e.isProfessional,
+      glycemiaGl: dec(e.glycemiaGl),
+      glycemiaMgdl: dec(e.glycemiaMgdl),
+      weight: dec(e.weight),
+      hba1c: dec(e.hba1c),
+      ketones: dec(e.ketones),
+      bpSystolic: e.bpSystolic,
+      bpDiastolic: e.bpDiastolic,
+      bolus: dec(e.bolus),
+      bolusCorr: dec(e.bolusCorr),
+      basal: dec(e.basal),
+      insulinDevice: e.insulinDevice,
+      carb: e.carb,
+      mealDescription: e.mealDescription,
+      mealFullStarchy: e.mealFullStarchy,
+      mealProtein: e.mealProtein,
+      createdAt: e.createdAt.toISOString(),
+    }))
   },
 
   /**
@@ -148,8 +191,22 @@ export const glycemiaService = {
       metadata: { patientId },
     })
 
-    const grouped = new Map<PeriodType, typeof averages>()
-    for (const avg of averages) {
+    // DTO sérialisé : Decimal → number, Date → string ISO. AverageData a
+    // `glycemia` et `glycemia1h` en Decimal(4,2).
+    const mapped = averages.map((a) => ({
+      id: a.id,
+      patientId: a.patientId,
+      periodType: a.periodType,
+      mealType: a.mealType,
+      glycemia: dec(a.glycemia),
+      color: a.color,
+      glycemia1h: dec(a.glycemia1h),
+      color1h: a.color1h,
+      updatedAt: a.updatedAt.toISOString(),
+    }))
+
+    const grouped = new Map<PeriodType, typeof mapped>()
+    for (const avg of mapped) {
       const list = grouped.get(avg.periodType) ?? []
       list.push(avg)
       grouped.set(avg.periodType, list)
@@ -195,7 +252,16 @@ export const glycemiaService = {
       metadata: { patientId },
     })
 
-    return entries
+    // DTO sérialisé : Decimal(6,2) sur `flow`. `hour` est Json donc déjà
+    // JSON-safe (les valeurs internes au tableau sont des number).
+    return entries.map((e) => ({
+      id: e.id,
+      patientId: e.patientId,
+      date: e.date.toISOString(),
+      flow: dec(e.flow),
+      hour: e.hour,
+      createdAt: e.createdAt.toISOString(),
+    }))
   },
 
   /**
@@ -238,7 +304,17 @@ export const glycemiaService = {
       metadata: { patientId },
     })
 
-    return entries
+    // DTO sérialisé : pas de Decimal ici mais Date(timestamp) → string ISO
+    // pour cohérence (sinon JSON.stringify produit du format ISO mais on
+    // garde le contrôle explicite du contrat).
+    return entries.map((e) => ({
+      id: e.id,
+      patientId: e.patientId,
+      timestamp: e.timestamp.toISOString(),
+      eventType: e.eventType,
+      data: e.data,
+      createdAt: e.createdAt.toISOString(),
+    }))
   },
 
   /**

@@ -1170,5 +1170,35 @@
       "none": "No settings"
     },
     "openedAnnounce": "{name}'s consultation opened"
+  },
+  "adminDashboard": {
+    "pageTitle": "Admin dashboard",
+    "globalViewTitle": "Global view",
+    "kpiLoadError": "Unable to load KPIs.",
+    "kpiCabinets": "Cabinets",
+    "kpiMembers": "Team members",
+    "kpiActivePatients": "Active patients (14d)",
+    "kpiAuditEvents": "Audit events (7d)",
+    "billingTitle": "Billing pending",
+    "billingPending": "{count} pending",
+    "billingLoading": "Loading…",
+    "billingLoadError": "Unable to load billing data.",
+    "billingEligible": "Total eligible",
+    "billingUnbilled": "Unbilled",
+    "billingRecent": "Billed (30d)",
+    "billingAmount": "Unbilled amount",
+    "billingAmountNote": "(rounded)",
+    "billingHeuristic": "Heuristic: completed teleconsultations without invoiced act. Formal billing table coming (US-2107).",
+    "complianceTitle": "HDS compliance",
+    "complianceLoading": "Loading…",
+    "complianceLoadError": "Unable to load compliance data.",
+    "complianceLastBackup": "Last backup",
+    "complianceNoBackup": "No backup",
+    "complianceAudit24h": "Audit 24h",
+    "complianceBackupsFailed": "Backups failed (30d)",
+    "complianceRgpdPlaceholder": "RGPD requests (US-2413) coming in V3.",
+    "stale": "Data outdated — refresh pending.",
+    "staleBadge": "Stale ({days, plural, one {# day} other {# days}})",
+    "alertBadge": "Alert"
   }
 }

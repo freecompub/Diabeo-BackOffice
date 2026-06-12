@@ -35,7 +35,17 @@ import { glycemiaService } from "@/lib/services/glycemia.service"
 describe("glycemiaService", () => {
   describe("getCgmEntries", () => {
     it("returns CGM entries within date range", async () => {
-      const entries = [{ id: BigInt(1), patientId: 1, valueGl: 1.2, timestamp: new Date() }]
+      // Mock data must include createdAt: the service now serialises the
+      // entry to a DTO (BigInt → string, Decimal → number, Date → ISO).
+      const entries = [{
+        id: BigInt(1),
+        patientId: 1,
+        valueGl: 1.2,
+        timestamp: new Date(),
+        isManual: false,
+        deviceId: null,
+        createdAt: new Date(),
+      }]
       prismaMock.cgmEntry.findMany.mockResolvedValue(entries as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 
@@ -44,6 +54,9 @@ describe("glycemiaService", () => {
       const result = await glycemiaService.getCgmEntries(1, from, to, 1)
 
       expect(result).toHaveLength(1)
+      // BigInt is serialised to string and Decimal to number — JSON-safe contract.
+      expect(typeof result[0].id).toBe("string")
+      expect(typeof result[0].valueGl).toBe("number")
     })
 
     it("throws when period exceeds 30 days", async () => {
@@ -79,9 +92,10 @@ describe("glycemiaService", () => {
     it("groups averages by period type", async () => {
       // Prisma enum with @map: TS-side values are `current`, `d7`, `d30`;
       // the @map target (`7d`/`30d`) is only the DB column content.
+      // Mocks include updatedAt: the service now serialises Date → ISO string.
       prismaMock.averageData.findMany.mockResolvedValue([
-        { id: 1, patientId: 1, periodType: "current", mealType: "breakfast" },
-        { id: 2, patientId: 1, periodType: "d7", mealType: "breakfast" },
+        { id: 1, patientId: 1, periodType: "current", mealType: "breakfast", glycemia: null, color: null, glycemia1h: null, color1h: null, updatedAt: new Date() },
+        { id: 2, patientId: 1, periodType: "d7", mealType: "breakfast", glycemia: null, color: null, glycemia1h: null, color1h: null, updatedAt: new Date() },
       ] as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 

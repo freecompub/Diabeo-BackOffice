@@ -48,7 +48,10 @@ export function AdminKpiSection() {
         ).map((k) => (
           <MetricCard
             key={k.code}
-            title={KPI_LABELS[k.code]}
+            // Fallback `k.code` si l'API renvoie un code inattendu (ex: ajout
+            // backend non répercuté en front) — évite d'afficher "undefined"
+            // en titre et dans l'aria-label du screen reader.
+            title={KPI_LABELS[k.code] ?? k.code}
             value={k.value}
             unit={k.unit ?? undefined}
             loading={loading && items.length === 0}

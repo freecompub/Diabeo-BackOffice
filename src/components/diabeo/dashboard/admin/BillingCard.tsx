@@ -12,6 +12,8 @@ import { useTranslations, useLocale } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { formatCurrency } from "@/lib/intl/formatters"
+import type { Locale } from "@/i18n/config"
 import type { BillingMetric } from "@/lib/services/admin-dashboard.service"
 
 type ApiResponse = { item: BillingMetric }
@@ -19,17 +21,16 @@ type ApiResponse = { item: BillingMetric }
 // code-review M4 (re-review) — keep round-euro display for a glance-able
 //   KPI ; UI labels the value "arrondi" so an auditor doesn't reconcile
 //   the rounded display against the cents in the DB.
-// La devise reste EUR (data center OVH Paris, comptabilité française). Seul
-// le format (séparateurs, position du symbole) suit la locale utilisateur.
-function formatEuros(cents: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
-    style: "currency", currency: "EUR", maximumFractionDigits: 0,
-  }).format(cents / 100)
+// La devise reste EUR (data center OVH Paris, comptabilité française). Le
+// format (séparateurs, position du symbole) suit la locale utilisateur via
+// le helper canonique `formatCurrency` qui mappe `en → en-GB`, `ar → ar-MA`.
+function formatEuros(cents: number, locale: Locale): string {
+  return formatCurrency(cents / 100, locale, { currency: "EUR", decimals: 0 })
 }
 
 export function BillingCard() {
   const t = useTranslations("adminDashboard")
-  const locale = useLocale()
+  const locale = useLocale() as Locale
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/billing",
     10 * 60_000,

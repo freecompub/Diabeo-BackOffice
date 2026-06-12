@@ -10,6 +10,8 @@ import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { formatDate as formatDateIntl } from "@/lib/intl/formatters"
+import type { Locale } from "@/i18n/config"
 import type { ComplianceSnapshot } from "@/lib/services/admin-dashboard.service"
 
 type ApiResponse = { item: ComplianceSnapshot }
@@ -20,16 +22,24 @@ type ApiResponse = { item: ComplianceSnapshot }
 const STALE_BACKUP_DAYS = 2
 
 /**
- * Formate une date selon la locale utilisateur. La timezone reste figée à
- * `Europe/Paris` car les backups/audits sont opérés depuis l'infra OVH GRA :
- * l'horodatage forensique doit refléter l'heure locale du data center,
- * indépendamment de la locale de l'admin (qui peut être en AR ou EN).
+ * Formate une date selon la locale utilisateur via le helper canonique
+ * `lib/intl/formatters`. Le helper mappe la locale courte (`fr|en|ar`) vers
+ * le tag BCP-47 attendu (`fr-FR|en-GB|ar-MA`) — un audit HDS lit donc
+ * `12/06/2026 14:14` (en-GB) plutôt que `06/12/2026 02:14 PM` (en-US implicite).
+ *
+ * La timezone reste figée à `Europe/Paris` car les backups/audits sont opérés
+ * depuis l'infra OVH GRA : l'horodatage forensique doit refléter l'heure
+ * locale du data center, indépendamment de la locale de l'admin.
  */
-function formatDate(d: Date | string | null, locale: string, fallback: string): string {
+function formatBackupDate(
+  d: Date | string | null,
+  locale: Locale,
+  fallback: string,
+): string {
   if (!d) return fallback
-  return new Date(d).toLocaleString(locale, {
-    day: "2-digit", month: "2-digit", year: "numeric",
-    hour: "2-digit", minute: "2-digit",
+  return formatDateIntl(d, locale, {
+    style: "short",
+    withTime: true,
     timeZone: "Europe/Paris",
   })
 }
@@ -42,7 +52,7 @@ function backupAgeDays(d: Date | string | null): number | null {
 
 export function ComplianceCard() {
   const t = useTranslations("adminDashboard")
-  const locale = useLocale()
+  const locale = useLocale() as Locale
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/compliance",
     5 * 60_000,
@@ -73,9 +83,9 @@ export function ComplianceCard() {
             <div>
               <dt className="text-xs text-muted-foreground">{t("complianceLastBackup")}</dt>
               <dd className="flex items-center gap-2 text-sm">
-                <span>{formatDate(item.lastBackupAt, locale, t("complianceNoBackup"))}</span>
-                {backupStale && (
-                  <Badge variant="destructive">Stale ({backupAge}j)</Badge>
+                <span>{formatBackupDate(item.lastBackupAt, locale, t("complianceNoBackup"))}</span>
+                {backupStale && backupAge !== null && (
+                  <Badge variant="destructive">{t("staleBadge", { days: backupAge })}</Badge>
                 )}
               </dd>
             </div>
@@ -88,7 +98,7 @@ export function ComplianceCard() {
               <dd className="flex items-center gap-2 text-lg font-semibold">
                 {item.failedBackupsLast30d}
                 {item.failedBackupsLast30d > 0 && (
-                  <Badge variant="destructive">Alerte</Badge>
+                  <Badge variant="destructive">{t("alertBadge")}</Badge>
                 )}
               </dd>
             </div>
