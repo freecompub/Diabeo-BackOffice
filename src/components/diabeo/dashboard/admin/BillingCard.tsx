@@ -8,7 +8,7 @@
 
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
@@ -19,14 +19,15 @@ type ApiResponse = { item: BillingMetric }
 // code-review M4 (re-review) — keep round-euro display for a glance-able
 //   KPI ; UI labels the value "arrondi" so an auditor doesn't reconcile
 //   the rounded display against the cents in the DB.
-function formatEuros(cents: number): string {
-  return new Intl.NumberFormat("fr-FR", {
+function formatEuros(cents: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency", currency: "EUR", maximumFractionDigits: 0,
   }).format(cents / 100)
 }
 
 export function BillingCard() {
   const t = useTranslations("dashboardCards.billing")
+  const locale = useLocale()
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/billing",
     10 * 60_000,
@@ -80,7 +81,7 @@ export function BillingCard() {
                 {t("unbilledAmount")} <span className="opacity-60">{t("rounded")}</span>
               </dt>
               <dd className="text-lg font-semibold">
-                {formatEuros(item.unbilledAmountCents)}
+                {formatEuros(item.unbilledAmountCents, locale)}
               </dd>
             </div>
           </dl>
