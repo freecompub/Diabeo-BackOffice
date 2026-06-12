@@ -6,18 +6,11 @@
  * `Logo` (`src/components/diabeo/brand/Logo.tsx`) — goutte teal avec onde CGM
  * blanche + point de données coral.
  *
- * Couleurs depuis `src/design-system/tokens.ts` (anti-drift design system).
+ * Le glyph SVG est factorisé dans `render-glyph.tsx` (partagé avec apple-icon).
  */
 
 import { ImageResponse } from "next/og"
-import { tokens } from "@/design-system/tokens"
-import {
-  DROP_PATH,
-  WAVE_PATH,
-  DOT,
-  GLYPH_TRANSFORM,
-  STROKE_WIDTH,
-} from "@/components/diabeo/brand/logo-paths"
+import { renderGlyphForOg } from "@/components/diabeo/brand/render-glyph"
 
 export const size = { width: 32, height: 32 }
 export const contentType = "image/png"
@@ -31,49 +24,7 @@ export const revalidate = false
 
 export default function Icon() {
   return new ImageResponse(
-    (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: tokens.brand.primary[600],
-          borderRadius: 6,
-        }}
-      >
-        <svg
-          viewBox="0 0 48 48"
-          width={28}
-          height={28}
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <g transform={GLYPH_TRANSFORM}>
-            {/* Glucose drop */}
-            <path d={DROP_PATH} fill={tokens.white} />
-            {/* CGM wave */}
-            <path
-              d={WAVE_PATH}
-              fill="none"
-              stroke={tokens.brand.primary[600]}
-              strokeWidth={STROKE_WIDTH.wave}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            {/* Live data point */}
-            <circle
-              cx={DOT.cx}
-              cy={DOT.cy}
-              r={DOT.r}
-              fill={tokens.brand.secondary[500]}
-              stroke={tokens.brand.primary[600]}
-              strokeWidth={STROKE_WIDTH.dotOutline}
-            />
-          </g>
-        </svg>
-      </div>
-    ),
+    renderGlyphForOg({ outerSize: 32, innerSize: 28, borderRadius: 6 }),
     size,
   )
 }

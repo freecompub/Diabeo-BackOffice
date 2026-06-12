@@ -105,6 +105,11 @@ export const COLOR_TOKEN_CSS = {
   "gd-bg": "#FDF2F8",
   // Pur blanc — fonds de masquage des bandes de charts (≠ neutral-50 #FAFAFA).
   "white": "#FFFFFF",
+  // Hover / active shades (dark-mode safe — rebindable via CSS var)
+  "primary-hover": "#0F766E",       // teal-700, identique à primary-700
+  "primary-active": "#115E59",      // teal-800
+  "destructive-hover": "#B91C1C",   // red-700
+  "destructive-active": "#991B1B",  // red-800
 } as const
 
 export type ColorTokenName = keyof typeof COLOR_TOKEN_CSS

@@ -106,6 +106,12 @@
    * 4. COLOR TOKENS — Semantic (status, feedback)
    * ---------------------------------------------------------------- */
 
+  /* Hover / active shades — utilisés par DiabeoButton (dark-mode safe) */
+  --diabeo-primary-hover: #0F766E;      /* teal-700 */
+  --diabeo-primary-active: #115E59;     /* teal-800 */
+  --diabeo-destructive-hover: #B91C1C;  /* red-700 */
+  --diabeo-destructive-active: #991B1B; /* red-800 */
+
   --diabeo-success: #10B981;
   --diabeo-success-bg: #ECFDF5;
   --diabeo-success-border: #A7F3D0;

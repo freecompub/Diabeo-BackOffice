@@ -104,6 +104,12 @@
   --color-pathology-gd: var(--diabeo-gd);
   --color-pathology-gd-bg: var(--diabeo-gd-bg);
 
+  /* --- Diabeo Design System: Hover/active states (dark-mode safe) --- */
+  --color-primary-hover: var(--diabeo-primary-hover);
+  --color-primary-active: var(--diabeo-primary-active);
+  --color-destructive-hover: var(--diabeo-destructive-hover);
+  --color-destructive-active: var(--diabeo-destructive-active);
+
   /* --- Diabeo Design System: Semantic feedback --- */
   --color-feedback-success: var(--diabeo-success);
   --color-feedback-success-bg: var(--diabeo-success-bg);
@@ -183,19 +189,19 @@
    * (ci-dessous) plutôt que comme namespace nu — Tailwind n'a pas de convention
    * `DEFAULT` côté CSS pour ce préfixe.
    *
-   * Pour piloter le timing function PAR DÉFAUT de toutes les transitions
-   * (`transition-colors` sans `ease-*` explicite), on override aussi
-   * `--default-transition-timing-function` ci-dessous.
+   * INTENTIONNELLEMENT opt-in : on ne surcharge PAS `--default-transition-duration`
+   * ni `--default-transition-timing-function`. Cela évite de changer le timing de
+   * tous les composants shadcn/ui (immutables) qui utilisent `transition`,
+   * `transition-colors`, etc. sans modificateur explicite.
+   *
+   * Les composants Diabeo qui veulent la durée/easing maison utilisent les
+   * utilities nommées : `duration-fast`, `duration-normal`, `duration-slow`,
+   * `duration-slower`, `ease-default` — toutes câblées via `@utility` ci-dessous.
    * ---------------------------------------------------------------------------*/
   --ease-in: var(--diabeo-ease-in);
   --ease-out: var(--diabeo-ease-out);
   --ease-in-out: var(--diabeo-ease-in-out);
   --ease-spring: var(--diabeo-ease-spring);
-
-  /* Override des defaults Tailwind 4 pour les transitions/animations sans
-   * modificateur explicite (`transition`, `transition-colors`, ...). */
-  --default-transition-duration: var(--diabeo-duration-normal);
-  --default-transition-timing-function: var(--diabeo-ease-default);
 }
 
 /* -----------------------------------------------------------------------------
@@ -220,7 +226,10 @@
 
 @utility ease-default     { transition-timing-function: var(--diabeo-ease-default); }
 
-@utility z-base            { z-index: var(--diabeo-z-base); }
+/* z-base = `z-index: auto` (équivalent au flow normal). Volontairement PAS
+ * `var(--diabeo-z-base)` qui vaudrait 0 et créerait un stacking context —
+ * un dropdown enfant `z-dropdown` serait alors piégé dans ce context. */
+@utility z-base            { z-index: auto; }
 @utility z-dropdown        { z-index: var(--diabeo-z-dropdown); }
 @utility z-sticky          { z-index: var(--diabeo-z-sticky); }
 @utility z-header          { z-index: var(--diabeo-z-header); }

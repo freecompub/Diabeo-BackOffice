@@ -1,3 +1,6 @@
+"use client"
+
+import { useId } from "react"
 import { cn } from "@/lib/utils"
 import { tokens } from "@/design-system/tokens"
 import {
@@ -5,7 +8,8 @@ import {
   WAVE_PATH,
   DOT,
   GLYPH_TRANSFORM,
-  STROKE_WIDTH,
+  WAVE_STROKE_WIDTH,
+  DOT_OUTLINE_STROKE_WIDTH,
 } from "./logo-paths"
 
 type LogoVariant = "full" | "mark" | "mono" | "inverse"
@@ -56,6 +60,10 @@ export function LogoMark({
   // Variant `mono` doit utiliser `currentColor` partout pour suivre la couleur
   // du parent (impression noir-et-blanc, mode high-contrast, PDF d'export
   // patient). Le wave en blanc hardcodé serait invisible sur fond clair.
+  // useId() garantit un ID unique par instance de LogoMark dans la page —
+  // évite les ID SVG dupliqués quand plusieurs logos coexistent (HTML invalid).
+  const gradientId = useId()
+
   const drop =
     tone === "inverse" ? COLOR.white : tone === "mono" ? "currentColor" : COLOR.primary
   const dropShadow =
@@ -75,7 +83,7 @@ export function LogoMark({
     >
       <title>{title}</title>
       <defs>
-        <linearGradient id="diabeo-drop" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor={drop} />
           <stop offset="100%" stopColor={dropShadow} />
         </linearGradient>
@@ -84,25 +92,27 @@ export function LogoMark({
         {/* Glucose drop */}
         <path
           d={DROP_PATH}
-          fill={tone === "default" ? "url(#diabeo-drop)" : drop}
+          fill={tone === "default" ? `url(#${gradientId})` : drop}
         />
         {/* CGM wave */}
         <path
           d={WAVE_PATH}
           fill="none"
           stroke={wave}
-          strokeWidth={STROKE_WIDTH.wave}
+          strokeWidth={WAVE_STROKE_WIDTH}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Live data point */}
+        {/* Live data point.
+          * En mode `mono`, fill et wave valent tous deux `currentColor` →
+          * le stroke serait invisible (même couleur que le fill). On le désactive. */}
         <circle
           cx={DOT.cx}
           cy={DOT.cy}
           r={DOT.r}
           fill={dot}
-          stroke={wave}
-          strokeWidth={STROKE_WIDTH.dotOutline}
+          stroke={tone === "mono" ? "none" : wave}
+          strokeWidth={tone === "mono" ? 0 : DOT_OUTLINE_STROKE_WIDTH}
         />
       </g>
     </svg>

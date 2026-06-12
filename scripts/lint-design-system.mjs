@@ -17,15 +17,23 @@
 
 import fs from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 // ─── Baseline ────────────────────────────────────────────────────────────────
 // Baseline établie au 2026-06-12 (premier run post-migration PR #536).
-// Ne doit qu'augmenter si des tokens sont ajoutés. Réduire à chaque batch de migration.
-const BASELINE_VIOLATIONS = 298
+// Le script ratchet : `process.exit(1)` aussi quand violations < baseline,
+// avec un message demandant de mettre à jour la constante. Le diff PR
+// verrouille le gain dans l'historique git.
+const BASELINE_VIOLATIONS = 296
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
-const SRC_ROOT = path.resolve(process.cwd(), "src")
+// Résolution des chemins ancrée sur la POSITION DU SCRIPT (pas le cwd) — sans
+// quoi un run depuis un sous-dossier (Husky monorepo, lint-staged custom)
+// casse les exclusions. `import.meta.url` est l'URL du script .mjs.
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url))
+const REPO_ROOT = path.resolve(SCRIPT_DIR, "..")
+const SRC_ROOT = path.join(REPO_ROOT, "src")
 
 /**
  * Dossiers et fichiers exclus du lint.
@@ -110,6 +118,8 @@ function isExcluded(filePath) {
 
 /**
  * Liste récursivement tous les fichiers d'un dossier.
+ * Skip les dossiers exclus AVANT de descendre — sans quoi on parse les ~500
+ * fichiers shadcn `components/ui/` pour les jeter après (perte ~2×).
  */
 function walkDir(dir, files = []) {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -118,6 +128,8 @@ function walkDir(dir, files = []) {
     if (entry.isDirectory()) {
       // Ignorer node_modules, .next, graphify-out
       if (["node_modules", ".next", ".git", "graphify-out"].includes(entry.name)) continue
+      // Skip directly les dossiers exclus
+      if (EXCLUDED_DIRS.has(fullPath)) continue
       walkDir(fullPath, files)
     } else if (entry.isFile()) {
       const ext = path.extname(entry.name)
@@ -214,9 +226,31 @@ if (allViolations.length > BASELINE_VIOLATIONS) {
     console.error(`    → ${v.context}`)
   })
   process.exit(1)
+} else if (allViolations.length < BASELINE_VIOLATIONS) {
+  // Ratchet — quand on supprime des violations, on FORCE la baseline à
+  // descendre via un échec explicite. Sans ça, la baseline reste figée à
+  // 298 indéfiniment et un futur dev peut réintroduire des violations
+  // supprimées sans alarme (cf. code review pass 3, finding #2).
+  //
+  // Le contributeur doit éditer ce fichier pour amener BASELINE_VIOLATIONS
+  // à la nouvelle valeur basse — le diff est visible en PR, donc le gain
+  // est consigné dans l'historique git.
+  console.error(
+    `\x1b[33m⚠️  Design system : ${allViolations.length} violation(s) < baseline ${BASELINE_VIOLATIONS}.\x1b[0m`,
+  )
+  console.error(
+    `\x1b[33m   Le nombre de violations a diminué — c'est bien ! Mais la baseline\x1b[0m`,
+  )
+  console.error(
+    `\x1b[33m   doit être mise à jour pour verrouiller ce gain. Édite :\x1b[0m`,
+  )
+  console.error(
+    `\x1b[33m     scripts/lint-design-system.mjs → BASELINE_VIOLATIONS = ${allViolations.length}\x1b[0m`,
+  )
+  process.exit(1)
 } else {
   console.log(
-    `\x1b[32m✅ Design system OK : ${allViolations.length} violation(s) (≤ baseline ${BASELINE_VIOLATIONS})\x1b[0m`,
+    `\x1b[32m✅ Design system OK : ${allViolations.length} violation(s) (= baseline ${BASELINE_VIOLATIONS})\x1b[0m`,
   )
   process.exit(0)
 }

@@ -28,8 +28,8 @@ export const DOT = { cx: 37, cy: 28, r: 2.4 } as const
 /** Rotation du glyph entier autour du centre du viewBox (look dynamique). */
 export const GLYPH_TRANSFORM = "rotate(-6 24 24)"
 
-/** Largeur de trait standard pour l'onde et le contour du dot. */
-export const STROKE_WIDTH = {
-  wave: 2.4,
-  dotOutline: 1,
-} as const
+/** Largeur de trait de l'onde CGM. */
+export const WAVE_STROKE_WIDTH = 2.4
+
+/** Largeur du contour du dot (point de données live). */
+export const DOT_OUTLINE_STROKE_WIDTH = 1

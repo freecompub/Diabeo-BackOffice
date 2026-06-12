@@ -44,7 +44,9 @@ const diabeoButtonVariants = cva(
     "inline-flex shrink-0 items-center justify-center gap-2",
     "rounded-lg border border-transparent",
     "text-sm font-medium whitespace-nowrap",
-    "transition-all duration-[var(--diabeo-duration-normal)]",
+    // transition-colors cible background-color, border-color, color uniquement —
+    // pas de re-layout. duration-normal = @utility Diabeo (200ms).
+    "transition-colors duration-normal",
     "outline-none select-none",
     // Focus ring — teal-600 per medical-grade focus policy
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
@@ -67,7 +69,7 @@ const diabeoButtonVariants = cva(
          * `docs/design-system/tokens.md` §1 qui prescrit teal-700 pour hover.
          */
         diabeoPrimary:
-          "bg-primary text-primary-foreground hover:bg-teal-700 active:bg-teal-800",
+          "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active",
 
         /**
          * diabeoSecondary — Secondary call-to-action (coral).
@@ -94,7 +96,7 @@ const diabeoButtonVariants = cva(
          * opacités sur destructive — même rationnel que `diabeoPrimary`.
          */
         diabeoDestructive:
-          "bg-destructive text-destructive-foreground hover:bg-red-700 active:bg-red-800",
+          "bg-destructive text-destructive-foreground hover:bg-destructive-hover active:bg-destructive-active",
 
         /**
          * diabeoGhost — No background, subtle hover.

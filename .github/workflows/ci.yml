@@ -265,3 +265,6 @@ jobs:
 
       - name: TypeScript type check
         run: pnpm exec tsc --noEmit
+
+      - name: Design system anti-drift lint
+        run: pnpm lint:design-system

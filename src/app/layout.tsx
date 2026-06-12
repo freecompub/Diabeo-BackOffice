@@ -18,17 +18,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Diabeo Backoffice",
   description: "Backoffice de gestion de l'insulinothérapie — Diabeo",
-  // L'icône PNG 32×32 (`/icon`) et l'apple-touch-icon (`/apple-icon`) sont
-  // AUTOMATIQUEMENT injectés en `<link rel>` par Next.js depuis les fichiers
-  // de convention `src/app/icon.tsx` + `src/app/apple-icon.tsx`. Pas la peine
-  // de les redéclarer ici (ça produirait des doublons dans le `<head>`).
-  //
-  // On ajoute uniquement les éléments NON couverts par la convention :
-  //  - Un favicon SVG vectoriel comme alternative (sera préféré par les
-  //    browsers modernes — vector, infiniment scalable, ~600 octets).
-  icons: {
-    icon: { url: "/logo.svg", type: "image/svg+xml" },
-  },
+  // Les icônes sont AUTOMATIQUEMENT injectées par Next.js via les fichiers de
+  // convention : `src/app/icon.tsx` (PNG 32×32 → `<link rel="icon">`) et
+  // `src/app/apple-icon.tsx` (PNG 180×180 → `<link rel="apple-touch-icon">`).
+  // Ne PAS déclarer `icons:` ici — cela produirait des doublons dans le `<head>`.
+  // `public/logo.svg` a été supprimé (Fix #5) : les hex hardcodés driftaient
+  // par rapport à tokens.ts ; le PNG généré par icon.tsx est suffisant.
 };
 
 export default async function RootLayout({

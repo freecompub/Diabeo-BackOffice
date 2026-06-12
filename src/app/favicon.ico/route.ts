@@ -16,5 +16,9 @@ export function GET(req: NextRequest) {
   // 308 Permanent Redirect → préserve la méthode (GET) et permet aux browsers
   // de cacher la redirection. Coût runtime minimal : pas d'I/O, juste l'écho
   // d'un header `Location` calculé via l'origin de la requête.
-  return NextResponse.redirect(new URL("/icon", req.url), 308)
+  const response = NextResponse.redirect(new URL("/icon", req.url), 308)
+  // Cache un an (immutable) : les browsers cachent la redirection au lieu de
+  // refaire le probe `/favicon.ico` → `/icon` à chaque session.
+  response.headers.set("Cache-Control", "public, max-age=31536000, immutable")
+  return response
 }
