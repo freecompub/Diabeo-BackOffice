@@ -31,7 +31,7 @@ export default async function DataBreachesPage() {
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Registre des violations détectées. Délai de notification CNIL :
-          72h après détection (Art. 33 du Règlement général sur la protection des données, RGPD).
+          72h après détection (Art. 33 du Règlement général sur la protection des données — RGPD).
         </p>
       </header>
       <DataBreachesListClient />

@@ -4,28 +4,52 @@
  * Convention « jamais d'acronyme nu » (US-2117, cf. CLAUDE.md §Acronymes).
  * Couvre :
  *   - complétude du namespace i18n `glossary` dans les 3 langues (FR/EN/AR) ;
- *   - garde anti-régression : aucun acronyme nu dans les valeurs i18n affichées
- *     (hors forme « (CODE) » / « — CODE » / « / CODE ») ;
+ *   - garde anti-régression PAR OCCURRENCE : chaque occurrence d'un acronyme,
+ *     dans les valeurs i18n ET dans le JSX (`.tsx`), doit être explicitée
+ *     (forme « (CODE) » / « — CODE » / « / CODE ») ;
  *   - exceptions RDV/MAJ totalement remplacés (libellé seul) ;
  *   - rendu du composant <Acronym> (acronyme visible + libellé en aria-label).
  */
 
 import { describe, it, expect, vi } from "vitest"
-import { readFileSync } from "fs"
-import { resolve } from "path"
+import { readFileSync, readdirSync } from "fs"
+import { resolve, join } from "path"
 import { ACRONYM_CODES } from "@/components/diabeo/Acronym"
 
+const ROOT = process.cwd()
 const LOCALES = ["fr", "en", "ar"] as const
 type Locale = (typeof LOCALES)[number]
+
+// GDPR = variante anglaise de RGPD ; GMI/percentiles couverts par ACRONYM_CODES.
+const SCAN = [...ACRONYM_CODES, "GDPR"]
 
 const messages = Object.fromEntries(
   LOCALES.map((l) => [
     l,
-    JSON.parse(readFileSync(resolve(process.cwd(), "messages", `${l}.json`), "utf8")),
+    JSON.parse(readFileSync(resolve(ROOT, "messages", `${l}.json`), "utf8")),
   ]),
 ) as Record<Locale, Record<string, unknown>>
 
-/** Parcourt toutes les valeurs string d'un objet i18n, en sautant `glossary`. */
+const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+/**
+ * Vérifie CHAQUE occurrence de `code` (mot entier) dans `value`. Une occurrence
+ * est tolérée si elle est exactement « (CODE) », ou précédée de « — » / « / ».
+ * Retourne true si une occurrence NUE subsiste.
+ */
+function hasBareOccurrence(value: string, code: string): boolean {
+  const re = new RegExp(`\\b${esc(code)}\\b`, "g")
+  let m: RegExpExecArray | null
+  while ((m = re.exec(value)) !== null) {
+    const before = value.slice(Math.max(0, m.index - 2), m.index)
+    const after = value.slice(m.index + code.length, m.index + code.length + 1)
+    const wrappedParen = before.endsWith("(") && after === ")"
+    const dashForm = before === "— " || before === "/ "
+    if (!wrappedParen && !dashForm) return true
+  }
+  return false
+}
+
 function collectStrings(obj: Record<string, unknown>): string[] {
   const out: string[] = []
   const walk = (x: unknown) => {
@@ -50,22 +74,13 @@ describe("glossary — complétude i18n (3 langues)", () => {
   }
 })
 
-describe("garde anti-acronyme nu (valeurs i18n affichées)", () => {
-  // GDPR = variante anglaise de RGPD (affichée en EN).
-  const SCAN = [...ACRONYM_CODES, "GDPR"]
-
+describe("garde anti-acronyme nu — valeurs i18n (par occurrence)", () => {
   for (const locale of LOCALES) {
-    it(`${locale} : aucun acronyme nu`, () => {
+    it(`${locale} : aucune occurrence nue`, () => {
       const offenders: string[] = []
       for (const value of collectStrings(messages[locale])) {
         for (const code of SCAN) {
-          const re = new RegExp(`\\b${code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`)
-          if (!re.test(value)) continue
-          const ok =
-            value.includes(`(${code})`) ||
-            value.includes(`— ${code}`) ||
-            value.includes(`/ ${code}`)
-          if (!ok) offenders.push(`[${code}] ${value}`)
+          if (hasBareOccurrence(value, code)) offenders.push(`[${code}] ${value}`)
         }
       }
       expect(offenders, `acronymes nus:\n${offenders.join("\n")}`).toEqual([])
@@ -84,20 +99,61 @@ describe("exceptions — RDV/MAJ remplacés par le libellé seul", () => {
   }
 })
 
+describe("garde anti-acronyme nu — JSX hardcodé (.tsx)", () => {
+  // Liste récursive des .tsx sous src/ (hors composant Acronym lui-même).
+  function listTsx(dir: string): string[] {
+    const out: string[] = []
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, e.name)
+      if (e.isDirectory()) out.push(...listTsx(p))
+      else if (e.name.endsWith(".tsx") && e.name !== "Acronym.tsx") out.push(p)
+    }
+    return out
+  }
+
+  it("aucun acronyme nu dans le texte/props JSX (hors commentaires)", () => {
+    const offenders: string[] = []
+    for (const file of listTsx(resolve(ROOT, "src"))) {
+      const lines = readFileSync(file, "utf8").split("\n")
+      lines.forEach((line, i) => {
+        const trimmed = line.trim()
+        // Ignorer les lignes de commentaire (JSDoc `*`, `//`, `/* */`).
+        if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) return
+        // Une ligne portant déjà <Acronym code="X"> est explicitée.
+        const segments = [
+          ...[...line.matchAll(/>([^<>{}]*?)</g)].map((m) => m[1]),
+          ...[...line.matchAll(/(?:label|title|placeholder|aria-label)="([^"]*)"/g)].map((m) => m[1]),
+        ]
+        for (const seg of segments) {
+          for (const code of SCAN) {
+            if (line.includes(`code="${code}"`)) continue
+            if (hasBareOccurrence(seg, code)) {
+              offenders.push(`${file.replace(ROOT + "/", "")}:${i + 1} [${code}] ${seg.trim().slice(0, 50)}`)
+            }
+          }
+        }
+      })
+    }
+    expect(offenders, `acronymes nus en JSX:\n${offenders.join("\n")}`).toEqual([])
+  })
+})
+
 vi.mock("next-intl", () => ({
   useTranslations: () => (k: string) =>
     (({ TIR: "Temps dans la cible" }) as Record<string, string>)[k] ?? k,
 }))
 
 describe("<Acronym>", () => {
-  it("affiche l'acronyme + le libellé complet (aria-label)", async () => {
+  it("affiche l'acronyme + le libellé complet (aria-label), focusable au clavier", async () => {
     const { render, screen } = await import("@testing-library/react")
     const { Acronym } = await import("@/components/diabeo/Acronym")
 
     render(<Acronym code="TIR" />)
 
-    const trigger = screen.getByRole("button")
-    expect(trigger.textContent).toBe("TIR")
+    const trigger = screen.getByText("TIR")
     expect(trigger.getAttribute("aria-label")).toBe("Temps dans la cible (TIR)")
+    // <abbr> sémantique (pas un <button>) + atteignable au clavier.
+    expect(trigger.tagName.toLowerCase()).toBe("abbr")
+    expect(trigger.getAttribute("tabindex")).toBe("0")
   })
 })

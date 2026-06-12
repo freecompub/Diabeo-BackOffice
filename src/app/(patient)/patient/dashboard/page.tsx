@@ -299,7 +299,7 @@ export default function PatientDashboardPage() {
             loading={metricsState.loading}
           />
           <MetricCard
-            title="HbA1c estimée"
+            title="Hémoglobine glyquée (HbA1c) estimée"
             value={profile ? profile.metrics.gmi.toFixed(1) : "—"}
             unit="%"
             status="info"

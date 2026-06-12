@@ -11,6 +11,7 @@
     "AGP": "Ambulatory glucose profile",
     "HbA1c": "Glycated hemoglobin",
     "CV": "Coefficient of variation",
+    "GMI": "Glucose management indicator",
     "DT1": "Type 1 diabetes",
     "DT2": "Type 2 diabetes",
     "GD": "Gestational diabetes",
@@ -425,7 +426,7 @@
     "hba1c": "Estimated glycated hemoglobin (HbA1c) is calculated from continuous glucose monitoring (CGM) data. It gives an indication of glycemic control over the past 3 months.",
     "hypoEvents": "Number of detected hypoglycemic episodes. An episode is defined as a glucose reading below {threshold} mg/dL (American Diabetes Association / ADA reference, generic value — your personal targets may differ).",
     "timeInRange": "Time in Range (TIR) represents the percentage of time spent between {targetMin} and {targetMax} mg/dL (American Diabetes Association / ADA reference, generic value — your personal targets may differ). The recommended target is >= 70%.",
-    "cv": "The coefficient of variation (CV) measures glycemic variability. A CV < 36% is considered stable.",
+    "cv": "The coefficient of variation (CV) measures glycemic variability. A value below 36% is considered stable.",
     "standardDeviation": "Standard deviation measures the dispersion of glucose values around the mean."
   },
   "emptyState": {

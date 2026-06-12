@@ -38,7 +38,7 @@ import {
 export const ACRONYM_CODES = [
   // Médical
   "TIR", "CGM", "BGM", "IOB", "FSI", "RIG", "ISF", "ICR",
-  "AGP", "HbA1c", "CV", "DT1", "DT2", "GD", "ADA",
+  "AGP", "HbA1c", "CV", "GMI", "DT1", "DT2", "GD", "ADA",
   // Réglementaire
   "RGPD", "HDS", "MFA", "INS", "NIRPP",
   // Métier
@@ -69,11 +69,16 @@ export function Acronym({ code, children, className }: AcronymProps) {
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger
-          type="button"
-          // `aria-label` porte le libellé complet pour les lecteurs d'écran ;
-          // `cursor-help` + soulignement pointillé signalent l'infobulle au survol.
+          // Rendu en `<abbr>` (élément natif "abréviation + expansion") plutôt
+          // qu'un `<button>` : sémantiquement correct pour un acronyme NON
+          // actionnable (revue a11y PR #534). `tabIndex={0}` → l'infobulle reste
+          // atteignable au clavier (WCAG 1.4.13). `aria-label` porte le libellé
+          // complet aux lecteurs d'écran ; `cursor-help` + soulignement pointillé
+          // signalent l'infobulle au survol.
+          render={<abbr />}
+          tabIndex={0}
           aria-label={`${label} (${code})`}
-          className={`cursor-help underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 ${className ?? ""}`}
+          className={`cursor-help underline decoration-dotted decoration-muted-foreground/70 underline-offset-2 ${className ?? ""}`}
         >
           {children ?? code}
         </TooltipTrigger>

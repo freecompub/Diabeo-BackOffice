@@ -110,19 +110,19 @@ export default function PatientDetailPage() {
                 variant="success"
               />
               <StatCard
-                label="TIR (7j)"
+                label="Temps dans la cible (TIR) — 7j"
                 value={`${patient.tir.inRange}%`}
                 icon={<TrendingUp className="h-5 w-5" />}
                 variant={patient.tir.inRange >= 70 ? "success" : "warning"}
               />
               <StatCard
-                label="GMI"
+                label="Indicateur de gestion du glucose (GMI)"
                 value={`${patient.gmi}%`}
                 icon={<Heart className="h-5 w-5" />}
                 variant="default"
               />
               <StatCard
-                label="CV"
+                label="Coefficient de variation (CV)"
                 value={`${patient.cv}%`}
                 icon={<Clock className="h-5 w-5" />}
                 variant={patient.cv <= 36 ? "success" : "warning"}

@@ -93,8 +93,9 @@ explicité. Deux formats, selon le contexte de rendu :
 **Exceptions** :
 - `RDV` → toujours **« Rendez-vous »** (libellé seul, pas d'acronyme).
 - `MAJ` → toujours **« Mise à jour »** (libellé seul).
-- Acronymes **techniques universels** (`PDF`, `CSV`, `PNG/JPG`, `API`, `USB`, `JSON`)
-  et **noms de produits** (`G7`…) : laissés tels quels.
+- Acronymes **techniques universels** (`PDF`, `CSV`, `PNG/JPG`, `API`, `USB`, `JSON`),
+  **noms de produits** (`G7`…) et **notation statistique de percentiles**
+  (`P10`/`P25`/`P50`/`P75`/`P90` des graphes AGP) : laissés tels quels.
 
 Règle valable sur **les 3 langues** (`messages/fr|en|ar.json`). Tout nouvel acronyme
 affiché → ajouter son libellé dans `glossary` avant de l'utiliser.
