@@ -526,6 +526,7 @@
     "patientListError": "Could not load patient list.",
     "patientSelected": "Patient selected",
     "patientNoResults": "No patient matches your search.",
+    "patientSearching": "Searching…",
     "patientHint": "{count, plural, =0 {No patient available} one {1 patient available} other {# patients available}}",
     "scopeMissingChooseFirst": "Please select a practice member first to create an appointment.",
     "dndErrorConflict": "Target slot already taken — appointment reverted to original position.",

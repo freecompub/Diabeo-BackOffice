@@ -873,25 +873,49 @@ export const patientService = {
       return { items: [], nextCursor: null as number | null }
     }
 
-    const userFilter: Prisma.UserWhereInput | undefined = input.search?.trim()
-      // hmacField internally normalizes (lowercase + trim).
-      ? (() => {
-          const hmac = hmacField(input.search!)
-          return { OR: [{ firstnameHmac: hmac }, { lastnameHmac: hmac }] }
-        })()
-      : undefined
+    // Recherche autocomplete patient. Les noms étant chiffrés, le HMAC est un
+    // match EXACT par token : impossible de faire un "LIKE %fragment%". On
+    // découpe donc la saisie en tokens (mots) et on matche chaque token COMPLET
+    // contre `firstnameHmac` OU `lastnameHmac` (`in` HMAC déterministe,
+    // hmacField normalise lowercase+trim). Sémantique OR volontairement large
+    // (surensemble affiné côté client) : taper "Jean Dupont" remonte les Jean
+    // ET les Dupont, le combobox filtre ensuite. Les tokens `#42`
+    // (désambiguïsation homonymes émise par `<PatientCombobox>`) sont résolus
+    // en match direct sur l'`id` patient — toujours borné par le scope RBAC
+    // `accessibleIds` ci-dessous (le `id: { in }` top-level reste ANDé).
+    const searchOr = ((): Prisma.PatientWhereInput[] | undefined => {
+      const raw = input.search?.trim()
+      if (!raw) return undefined
+      const tokens = raw.split(/\s+/).filter(Boolean)
+      const idTokens = tokens
+        .filter((tok) => /^#\d+$/.test(tok))
+        .map((tok) => Number(tok.slice(1)))
+        .filter((n) => Number.isSafeInteger(n) && n > 0)
+      const nameHmacs = [
+        ...new Set(
+          tokens.filter((tok) => !/^#\d+$/.test(tok)).map((tok) => hmacField(tok)),
+        ),
+      ]
+      const or: Prisma.PatientWhereInput[] = []
+      if (nameHmacs.length > 0) {
+        or.push({ user: { firstnameHmac: { in: nameHmacs } } })
+        or.push({ user: { lastnameHmac: { in: nameHmacs } } })
+      }
+      if (idTokens.length > 0) {
+        or.push({ id: { in: idTokens } })
+      }
+      return or.length > 0 ? or : undefined
+    })()
 
     const where: Prisma.PatientWhereInput = {
       deletedAt: null,
       // H1 — exclude patients who revoked sharing or never accepted GDPR.
       // Matches the same filter applied in `population-analytics.service`
       // (RGPD Art. 7.3 — revocation effective on all aggregations).
-      user: {
-        privacySettings: { gdprConsent: true, shareWithProviders: true },
-        ...(userFilter ?? {}),
-      },
+      user: { privacySettings: { gdprConsent: true, shareWithProviders: true } },
       ...(input.accessibleIds !== null && { id: { in: input.accessibleIds } }),
       ...(input.pathology && { pathology: input.pathology }),
+      ...(searchOr && { OR: searchOr }),
     }
 
     const items = await prisma.patient.findMany({

@@ -30,15 +30,55 @@ describe("patientService.search", () => {
     expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
   })
 
-  it("uses OR on firstnameHmac/lastnameHmac when search is provided", async () => {
+  it("uses OR on firstnameHmac/lastnameHmac (in) when a single name token is provided", async () => {
     await patientService.search(
       { search: "Dupont", accessibleIds: null },
       9,
     )
     const call = prismaMock.patient.findMany.mock.calls[0][0] as any
-    expect(call.where.user.OR).toHaveLength(2)
-    expect(call.where.user.OR[0]).toHaveProperty("firstnameHmac")
-    expect(call.where.user.OR[1]).toHaveProperty("lastnameHmac")
+    // La recherche est portée par `where.OR` (patient-level), pas `where.user`.
+    expect(call.where.OR).toHaveLength(2)
+    expect(call.where.OR[0].user.firstnameHmac.in).toHaveLength(1)
+    expect(call.where.OR[1].user.lastnameHmac.in).toHaveLength(1)
+    // `where.user` ne porte que le filtre privacy (consentement RGPD).
+    expect(call.where.user).toEqual({
+      privacySettings: { gdprConsent: true, shareWithProviders: true },
+    })
+  })
+
+  it("tokenise une saisie multi-mots → un HMAC par mot dans le `in`", async () => {
+    await patientService.search(
+      { search: "Jean Dupont", accessibleIds: null },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.where.OR).toHaveLength(2)
+    // 2 mots distincts → 2 HMAC sur firstnameHmac ET lastnameHmac.
+    expect(call.where.OR[0].user.firstnameHmac.in).toHaveLength(2)
+    expect(call.where.OR[1].user.lastnameHmac.in).toHaveLength(2)
+  })
+
+  it("résout un token `#id` (désambiguïsation homonymes) en match direct sur l'id", async () => {
+    await patientService.search(
+      { search: "Jean Martin #42", accessibleIds: null },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    // 2 branches noms + 1 branche id.
+    expect(call.where.OR).toHaveLength(3)
+    const idBranch = call.where.OR.find((b: any) => b.id)
+    expect(idBranch).toEqual({ id: { in: [42] } })
+    // Les mots-noms ne contiennent jamais le token `#42`.
+    expect(call.where.OR[0].user.firstnameHmac.in).toHaveLength(2)
+  })
+
+  it("token `#id` seul → uniquement la branche id (pas de HMAC vide)", async () => {
+    await patientService.search(
+      { search: "#7", accessibleIds: null },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.where.OR).toEqual([{ id: { in: [7] } }])
   })
 
   it("filters out patients without gdprConsent + shareWithProviders (H1)", async () => {

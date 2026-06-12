@@ -526,6 +526,7 @@
     "patientListError": "تعذر تحميل قائمة المرضى.",
     "patientSelected": "تم اختيار المريض",
     "patientNoResults": "لا يوجد مريض يطابق بحثك.",
+    "patientSearching": "جارٍ البحث…",
     "patientHint": "{count, plural, =0 {لا يوجد مريض متاح} one {مريض واحد متاح} two {مريضان متاحان} few {# مرضى متاحون} many {# مريضاً متاحاً} other {# مريض متاح}}",
     "scopeMissingChooseFirst": "يرجى اختيار عضو العيادة أولاً لإنشاء موعد.",
     "dndErrorConflict": "الموعد المستهدف محجوز بالفعل — تمت إعادة الموعد إلى موقعه الأصلي.",
