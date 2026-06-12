@@ -98,7 +98,7 @@ export const glycemiaService = {
     return entries.map((e) => ({
       id: e.id.toString(),           // BigInt → string
       patientId: e.patientId,
-      valueGl: Number(e.valueGl),    // Decimal → number
+      valueGl: dec(e.valueGl),       // Decimal → number (helper adapter-safe)
       timestamp: e.timestamp.toISOString(),
       isManual: e.isManual,
       deviceId: e.deviceId ?? null,

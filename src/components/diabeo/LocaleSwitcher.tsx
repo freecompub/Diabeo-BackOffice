@@ -98,7 +98,13 @@ export function LocaleSwitcher({ variant = "full", persist = true }: Props) {
         // Authentifié : persiste la préférence en base + cookie (AC-2).
         const res = await fetch("/api/account/locale", {
           method: "PUT",
-          headers: { "Content-Type": "application/json" },
+          // X-Requested-With requis par la protection CSRF du middleware
+          // (sinon 403 csrfMissing → la langue ne se persiste jamais, US-2112b AC-2).
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          credentials: "include",
           body: JSON.stringify({ locale: next }),
         })
         if (!res.ok) throw new Error(`HTTP ${res.status}`)

@@ -87,7 +87,12 @@ export function LocaleReconciliationBanner() {
     try {
       const res = await fetch("/api/account/locale", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        // X-Requested-With requis par la protection CSRF du middleware
+        // (sinon 403 csrfMissing → la réconciliation de langue échoue).
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
         credentials: "include",
         body: JSON.stringify({ locale: status.active }),
       })

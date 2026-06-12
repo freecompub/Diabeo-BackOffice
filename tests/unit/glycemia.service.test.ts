@@ -28,6 +28,7 @@
  * - BigInt primary keys on CgmEntry serialized correctly in the response
  */
 import { describe, it, expect } from "vitest"
+import { Prisma } from "@prisma/client"
 import { prismaMock } from "../helpers/prisma-mock"
 
 import { glycemiaService } from "@/lib/services/glycemia.service"
@@ -40,7 +41,9 @@ describe("glycemiaService", () => {
       const entries = [{
         id: BigInt(1),
         patientId: 1,
-        valueGl: 1.2,
+        // Vraie Decimal Prisma (g/L, 2 décimales) pour exercer le chemin
+        // Decimal → number et VÉRIFIER qu'aucune précision n'est perdue.
+        valueGl: new Prisma.Decimal("1.26"),
         timestamp: new Date(),
         isManual: false,
         deviceId: null,
@@ -54,9 +57,12 @@ describe("glycemiaService", () => {
       const result = await glycemiaService.getCgmEntries(1, from, to, 1)
 
       expect(result).toHaveLength(1)
-      // BigInt is serialised to string and Decimal to number — JSON-safe contract.
+      // BigInt → string + Decimal → number — JSON-safe contract.
       expect(typeof result[0].id).toBe("string")
+      expect(result[0].id).toBe("1")
       expect(typeof result[0].valueGl).toBe("number")
+      // Intégrité clinique : la glycémie n'est ni tronquée ni arrondie.
+      expect(result[0].valueGl).toBe(1.26)
     })
 
     it("throws when period exceeds 30 days", async () => {

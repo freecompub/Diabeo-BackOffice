@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server"
 import { jwtVerify, importSPKI } from "jose"
 import { isSessionRevoked } from "@/lib/auth/revocation"
 import { JWT_VERIFY_OPTIONS } from "@/lib/auth/jwt-constants"
+import { ROLE_TO_HOME, isKnownRoleString } from "@/lib/auth/role-home"
 
 let cachedPublicKey: CryptoKey | null = null
 
@@ -136,9 +137,18 @@ export async function middleware(request: NextRequest) {
       if (sid && (await isSessionRevoked(sid))) {
         return clearTokenAndContinue(request.headers)
       }
-      // Token valide → l'utilisateur est authentifié, on l'envoie vers son
-      // dashboard.
-      return NextResponse.redirect(new URL("/", request.url))
+      // Token valide → l'utilisateur est authentifié, on l'envoie DIRECTEMENT
+      // vers le home de son rôle (PAS vers "/" : "/" n'est pas dans le matcher,
+      // donc le middleware n'y tourne pas, `x-user-role` n'est jamais posé, et
+      // le role-router à "/" renverrait vers /login → boucle infinie même avec
+      // un token VALIDE — cf. incident CRIT-1 PR #426). `ROLE_TO_HOME` mappe
+      // vers /medecin /infirmier /admin /patient/dashboard, tous instrumentés.
+      const role = typeof payload.role === "string" ? payload.role : null
+      if (isKnownRoleString(role)) {
+        return NextResponse.redirect(new URL(ROLE_TO_HOME[role], request.url))
+      }
+      // Rôle inconnu/absent du token → ne pas boucler sur "/", effacer le cookie.
+      return clearTokenAndContinue(request.headers)
     } catch (error) {
       // Token expiré/invalide → effacer le cookie et laisser passer vers /login.
       // ERR_JWT_EXPIRED = routine (TTL 15min), on n'inonde pas les logs.
