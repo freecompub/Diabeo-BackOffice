@@ -1308,6 +1308,29 @@
       "cabinet": "Cabinet #{id}",
       "tooMany": "Plus de 100 factures correspondent. Affiner le filtre statut pour réduire la liste.",
       "paginationNote": "Pagination cursor V1.5 — affichage tronqué aux 100 plus récentes."
+    },
+    "userDetail": {
+      "loading": "Chargement…",
+      "loadError": "Erreur de chargement",
+      "backToList": "Retour à la liste",
+      "mfaActivated": "activé",
+      "detailsTitle": "Détails",
+      "actionsTitle": "Actions",
+      "actionsNote": "Modification du rôle ou du statut tracée dans l'audit log immuable. Anti-lockout : impossible de retirer le dernier ADMIN (backend Serializable).",
+      "changeRole": "Changer le rôle",
+      "adminMfaWarning": "Promotion vers ADMIN désactivée : authentification multifacteur (MFA) requise pour les comptes à privilèges (référentiel hébergeur de données de santé — HDS, ANS). L'utilisateur doit d'abord activer MFA dans ses paramètres.",
+      "setRole": "Définir le rôle : {from} → {to}",
+      "changeStatus": "Changer le statut",
+      "archiveWarning": "L'archivage révoque tous les tokens JWT et déconnecte l'utilisateur immédiatement.",
+      "setStatus": "Statut : {from} → {to}",
+      "actionDone": "Action effectuée.",
+      "confirmRoleTitle": "Changer le rôle vers {role} ?",
+      "confirmStatusTitle": "Changer le statut vers {status} ?",
+      "archiveConfirmWarning": "L'archivage révoque tous les tokens JWT — l'utilisateur sera déconnecté immédiatement.",
+      "adminPromoteWarning": "Promotion vers ADMIN = accès complet plateforme.",
+      "auditNote": "Action tracée dans l'audit log immuable.",
+      "cancel": "Annuler",
+      "confirm": "Confirmer"
     }
   },
   "dashboardCards": {

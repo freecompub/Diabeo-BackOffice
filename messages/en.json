@@ -1308,6 +1308,29 @@
       "cabinet": "Practice #{id}",
       "tooMany": "More than 100 invoices match. Narrow the status filter to reduce the list.",
       "paginationNote": "Cursor pagination V1.5 — truncated to the 100 most recent."
+    },
+    "userDetail": {
+      "loading": "Loading…",
+      "loadError": "Loading error",
+      "backToList": "Back to list",
+      "mfaActivated": "enabled",
+      "detailsTitle": "Details",
+      "actionsTitle": "Actions",
+      "actionsNote": "Role or status changes are recorded in the immutable audit log. Anti-lockout: the last ADMIN cannot be removed (Serializable backend).",
+      "changeRole": "Change role",
+      "adminMfaWarning": "Promotion to ADMIN disabled: multi-factor authentication (MFA) required for privileged accounts (health data hosting — HDS, ANS reference). The user must first enable MFA in their settings.",
+      "setRole": "Set role: {from} → {to}",
+      "changeStatus": "Change status",
+      "archiveWarning": "Archiving revokes all JWT tokens and signs the user out immediately.",
+      "setStatus": "Status: {from} → {to}",
+      "actionDone": "Action completed.",
+      "confirmRoleTitle": "Change role to {role}?",
+      "confirmStatusTitle": "Change status to {status}?",
+      "archiveConfirmWarning": "Archiving revokes all JWT tokens — the user will be signed out immediately.",
+      "adminPromoteWarning": "Promotion to ADMIN = full platform access.",
+      "auditNote": "Action recorded in the immutable audit log.",
+      "cancel": "Cancel",
+      "confirm": "Confirm"
     }
   },
   "dashboardCards": {

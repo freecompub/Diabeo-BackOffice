@@ -1308,6 +1308,29 @@
       "cabinet": "عيادة #{id}",
       "tooMany": "أكثر من 100 فاتورة مطابقة. ضيّق تصفية الحالة لتقليل القائمة.",
       "paginationNote": "ترقيم المؤشر V1.5 — مقتطع إلى أحدث 100."
+    },
+    "userDetail": {
+      "loading": "جارٍ التحميل…",
+      "loadError": "خطأ في التحميل",
+      "backToList": "العودة إلى القائمة",
+      "mfaActivated": "مفعّلة",
+      "detailsTitle": "التفاصيل",
+      "actionsTitle": "إجراءات",
+      "actionsNote": "يتم تسجيل تغييرات الدور أو الحالة في سجل التدقيق غير القابل للتعديل. مانع الإقفال: لا يمكن إزالة آخر مسؤول ADMIN (خلفية Serializable).",
+      "changeRole": "تغيير الدور",
+      "adminMfaWarning": "تعطيل الترقية إلى ADMIN: المصادقة متعددة العوامل (MFA) مطلوبة للحسابات ذات الامتيازات (مرجع استضافة البيانات الصحية — HDS، ANS). يجب على المستخدم أولاً تفعيل MFA في إعداداته.",
+      "setRole": "تعيين الدور: {from} ← {to}",
+      "changeStatus": "تغيير الحالة",
+      "archiveWarning": "تؤدي الأرشفة إلى إبطال جميع رموز JWT وتسجيل خروج المستخدم فوراً.",
+      "setStatus": "الحالة: {from} ← {to}",
+      "actionDone": "تم تنفيذ الإجراء.",
+      "confirmRoleTitle": "تغيير الدور إلى {role}؟",
+      "confirmStatusTitle": "تغيير الحالة إلى {status}؟",
+      "archiveConfirmWarning": "تؤدي الأرشفة إلى إبطال جميع رموز JWT — سيتم تسجيل خروج المستخدم فوراً.",
+      "adminPromoteWarning": "الترقية إلى ADMIN = وصول كامل للمنصة.",
+      "auditNote": "تم تسجيل الإجراء في سجل التدقيق غير القابل للتعديل.",
+      "cancel": "إلغاء",
+      "confirm": "تأكيد"
     }
   },
   "dashboardCards": {
