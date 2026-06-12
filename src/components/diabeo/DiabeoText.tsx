@@ -48,8 +48,8 @@ const textVariants = cva("", {
       chartAxis: "text-xs font-normal leading-normal font-mono tabular-nums",
     },
     color: {
-      /** Teal brand primary (#0D9488) */
-      primary: "text-teal-600",
+      /** Teal brand primary (#0D9488) — token sémantique via @theme `--color-primary` */
+      primary: "text-primary",
       /** Coral accent — WCAG compliant darker shade for normal text (#C2410C, 7.8:1) */
       secondary: "text-coral-700",
       /** Gray muted foreground (#6B7280) */

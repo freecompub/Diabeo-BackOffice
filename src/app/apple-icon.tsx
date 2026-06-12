@@ -10,9 +10,21 @@
 
 import { ImageResponse } from "next/og"
 import { tokens } from "@/design-system/tokens"
+import {
+  DROP_PATH,
+  WAVE_PATH,
+  DOT,
+  GLYPH_TRANSFORM,
+  STROKE_WIDTH,
+} from "@/components/diabeo/brand/logo-paths"
 
 export const size = { width: 180, height: 180 }
 export const contentType = "image/png"
+
+// Statique au build — voir le rationnel dans `src/app/icon.tsx`. Pour
+// l'apple-icon 180×180, le coût d'une régénération est ~32× celui du PNG 32×32.
+export const dynamic = "force-static"
+export const revalidate = false
 
 export default function AppleIcon() {
   return new ImageResponse(
@@ -34,26 +46,23 @@ export default function AppleIcon() {
           height={140}
           xmlns="http://www.w3.org/2000/svg"
         >
-          <g transform="rotate(-6 24 24)">
+          <g transform={GLYPH_TRANSFORM}>
+            <path d={DROP_PATH} fill={tokens.white} />
             <path
-              d="M24 3 C 33 14, 40 22, 40 29 A 16 16 0 1 1 8 29 C 8 22, 15 14, 24 3 Z"
-              fill={tokens.white}
-            />
-            <path
-              d="M11 30 C 14 24, 18 24, 21 30 C 24 36, 28 36, 31 30 C 33 26, 35 26, 37 28"
+              d={WAVE_PATH}
               fill="none"
               stroke={tokens.brand.primary[600]}
-              strokeWidth={2.4}
+              strokeWidth={STROKE_WIDTH.wave}
               strokeLinecap="round"
               strokeLinejoin="round"
             />
             <circle
-              cx={37}
-              cy={28}
-              r={2.4}
+              cx={DOT.cx}
+              cy={DOT.cy}
+              r={DOT.r}
               fill={tokens.brand.secondary[500]}
               stroke={tokens.brand.primary[600]}
-              strokeWidth={1}
+              strokeWidth={STROKE_WIDTH.dotOutline}
             />
           </g>
         </svg>

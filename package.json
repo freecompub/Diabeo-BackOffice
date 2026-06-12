@@ -15,7 +15,8 @@
     "test:e2e:setup": "./scripts/test-e2e.sh",
     "test:all": "vitest run && playwright test",
     "bdd:gen": "bddgen --config playwright.bdd.config.ts",
-    "bdd:test": "bddgen --config playwright.bdd.config.ts && playwright test --config playwright.bdd.config.ts"
+    "bdd:test": "bddgen --config playwright.bdd.config.ts && playwright test --config playwright.bdd.config.ts",
+    "lint:design-system": "node scripts/lint-design-system.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1041.0",

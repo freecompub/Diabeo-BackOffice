@@ -18,16 +18,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Diabeo Backoffice",
   description: "Backoffice de gestion de l'insulinothérapie — Diabeo",
-  // Icons sont aussi générés via `src/app/icon.tsx` + `src/app/apple-icon.tsx`
-  // (convention App Router). On déclare explicitement ici pour permettre les
-  // shortcuts/PWA et garder une seule source de vérité visible.
+  // L'icône PNG 32×32 (`/icon`) et l'apple-touch-icon (`/apple-icon`) sont
+  // AUTOMATIQUEMENT injectés en `<link rel>` par Next.js depuis les fichiers
+  // de convention `src/app/icon.tsx` + `src/app/apple-icon.tsx`. Pas la peine
+  // de les redéclarer ici (ça produirait des doublons dans le `<head>`).
+  //
+  // On ajoute uniquement les éléments NON couverts par la convention :
+  //  - Un favicon SVG vectoriel comme alternative (sera préféré par les
+  //    browsers modernes — vector, infiniment scalable, ~600 octets).
   icons: {
-    icon: [
-      { url: "/icon", type: "image/png", sizes: "32x32" },
-      { url: "/logo.svg", type: "image/svg+xml" },
-    ],
-    apple: { url: "/apple-icon", type: "image/png", sizes: "180x180" },
-    shortcut: "/icon",
+    icon: { url: "/logo.svg", type: "image/svg+xml" },
   },
 };
 

@@ -1,5 +1,12 @@
 import { cn } from "@/lib/utils"
 import { tokens } from "@/design-system/tokens"
+import {
+  DROP_PATH,
+  WAVE_PATH,
+  DOT,
+  GLYPH_TRANSFORM,
+  STROKE_WIDTH,
+} from "./logo-paths"
 
 type LogoVariant = "full" | "mark" | "mono" | "inverse"
 type LogoProps = {
@@ -46,12 +53,15 @@ export function LogoMark({
   title?: string
   tone?: "default" | "mono" | "inverse"
 }) {
+  // Variant `mono` doit utiliser `currentColor` partout pour suivre la couleur
+  // du parent (impression noir-et-blanc, mode high-contrast, PDF d'export
+  // patient). Le wave en blanc hardcodé serait invisible sur fond clair.
   const drop =
     tone === "inverse" ? COLOR.white : tone === "mono" ? "currentColor" : COLOR.primary
   const dropShadow =
     tone === "inverse" ? COLOR.primaryLight : tone === "mono" ? "currentColor" : COLOR.primaryDark
   const wave =
-    tone === "inverse" ? COLOR.primary : tone === "mono" ? COLOR.white : COLOR.white
+    tone === "inverse" ? COLOR.primary : tone === "mono" ? "currentColor" : COLOR.white
   const dot = tone === "mono" ? "currentColor" : COLOR.secondary
 
   return (
@@ -70,29 +80,30 @@ export function LogoMark({
           <stop offset="100%" stopColor={dropShadow} />
         </linearGradient>
       </defs>
-      <g transform="rotate(-6 24 24)">
+      <g transform={GLYPH_TRANSFORM}>
         {/* Glucose drop */}
         <path
-          d="M24 3
-             C 33 14, 40 22, 40 29
-             A 16 16 0 1 1 8 29
-             C 8 22, 15 14, 24 3 Z"
+          d={DROP_PATH}
           fill={tone === "default" ? "url(#diabeo-drop)" : drop}
         />
         {/* CGM wave */}
         <path
-          d="M11 30
-             C 14 24, 18 24, 21 30
-             C 24 36, 28 36, 31 30
-             C 33 26, 35 26, 37 28"
+          d={WAVE_PATH}
           fill="none"
           stroke={wave}
-          strokeWidth="2.4"
+          strokeWidth={STROKE_WIDTH.wave}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         {/* Live data point */}
-        <circle cx="37" cy="28" r="2.4" fill={dot} stroke={wave} strokeWidth="1" />
+        <circle
+          cx={DOT.cx}
+          cy={DOT.cy}
+          r={DOT.r}
+          fill={dot}
+          stroke={wave}
+          strokeWidth={STROKE_WIDTH.dotOutline}
+        />
       </g>
     </svg>
   )

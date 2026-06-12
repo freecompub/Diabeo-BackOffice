@@ -113,7 +113,8 @@ describe("DiabeoText", () => {
     const { container } = render(
       <DiabeoText color="primary">Teal text</DiabeoText>
     )
-    expect(container.firstElementChild?.classList.contains("text-teal-600")).toBe(true)
+    // Migration design system : `text-teal-600` (Tailwind brut) → `text-primary` (token sémantique)
+    expect(container.firstElementChild?.classList.contains("text-primary")).toBe(true)
   })
 })
 

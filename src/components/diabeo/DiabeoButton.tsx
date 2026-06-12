@@ -59,9 +59,15 @@ const diabeoButtonVariants = cva(
         /**
          * diabeoPrimary — Main call-to-action (teal).
          * Use for: Save, Confirm, Submit actions.
+         *
+         * Hover/active : shades plus sombres (teal-700, teal-800) plutôt que
+         * opacités sur teal-600. Sur fond clair (`--background` ~#FAFAFA), un
+         * `bg-primary/90` éclaircit (compositing avec le blanc) — l'effet
+         * attendu d'un hover est l'inverse : aller vers le sombre. Aligné sur
+         * `docs/design-system/tokens.md` §1 qui prescrit teal-700 pour hover.
          */
         diabeoPrimary:
-          "bg-primary text-primary-foreground hover:bg-primary/90 active:bg-primary/80",
+          "bg-primary text-primary-foreground hover:bg-teal-700 active:bg-teal-800",
 
         /**
          * diabeoSecondary — Secondary call-to-action (coral).
@@ -73,6 +79,9 @@ const diabeoButtonVariants = cva(
         /**
          * diabeoTertiary — Low-emphasis action (transparent/teal).
          * Use for: Cancel, tertiary links, supplementary actions.
+         *
+         * Ici on garde `bg-primary/10 → bg-primary/15` car c'est un fond
+         * tinted, pas un fond opaque qu'on cherche à assombrir au hover.
          */
         diabeoTertiary:
           "bg-transparent text-primary border-primary hover:bg-primary/10 active:bg-primary/15",
@@ -80,9 +89,12 @@ const diabeoButtonVariants = cva(
         /**
          * diabeoDestructive — Destructive irreversible action (red).
          * Use for: Delete, revoke, hard resets. Always confirm before.
+         *
+         * Hover/active : shades plus sombres (red-700, red-800) plutôt que
+         * opacités sur destructive — même rationnel que `diabeoPrimary`.
          */
         diabeoDestructive:
-          "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:bg-destructive/80",
+          "bg-destructive text-destructive-foreground hover:bg-red-700 active:bg-red-800",
 
         /**
          * diabeoGhost — No background, subtle hover.

@@ -127,10 +127,17 @@
 
   /* ---------------------------------------------------------------------------
    * Diabeo Design System: Typography scale
-   * Câblés sur les tokens `--diabeo-text-*` (`src/styles/tokens.css`) pour que
-   * `text-xs`/`text-sm`/`text-base`/etc. utilisent l'échelle Diabeo (13px de
-   * base au lieu de 14px Tailwind) — sans quoi `docs/design-system/tokens.md`
-   * ment sur l'effet des classes.
+   *
+   * Namespace `--text-*` reconnu par Tailwind 4 (cf.
+   * `node_modules/tailwindcss/theme.css:347-372`). Chaque variable génère
+   * une utility `text-{name}` (font-size).
+   *
+   * Effet sur l'échelle :
+   *  - `text-sm` passe de 0.875rem (14px Tailwind 4) à 0.8125rem (13px Diabeo).
+   *  - `text-base` reste à 0.875rem (14px) — Diabeo overridé par 14px vs 16px
+   *    Tailwind 4 default. À noter : `text-md` (1rem = 16px) est ajouté en plus
+   *    de la grille Tailwind standard (qui passe directement de `base` à `lg`).
+   *  - Cf. `docs/design-system/tokens.md` §2.
    * ---------------------------------------------------------------------------*/
   --text-xs: var(--diabeo-text-xs);
   --text-sm: var(--diabeo-text-sm);
@@ -142,22 +149,23 @@
   --text-3xl: var(--diabeo-text-3xl);
   --text-4xl: var(--diabeo-text-4xl);
 
-  /* --- Diabeo Design System: Line heights --- */
+  /* --- Line heights — namespace `--leading-*` reconnu par Tailwind 4 --- */
   --leading-tight: var(--diabeo-leading-tight);
   --leading-snug: var(--diabeo-leading-snug);
   --leading-normal: var(--diabeo-leading-normal);
   --leading-relaxed: var(--diabeo-leading-relaxed);
 
-  /* --- Diabeo Design System: Letter spacing --- */
+  /* --- Letter spacing — namespace `--tracking-*` reconnu par Tailwind 4 --- */
   --tracking-tight: var(--diabeo-tracking-tight);
   --tracking-normal: var(--diabeo-tracking-normal);
   --tracking-wide: var(--diabeo-tracking-wide);
 
   /* ---------------------------------------------------------------------------
    * Diabeo Design System: Radius scale
-   * Câblés sur `--diabeo-radius-*`. Override des valeurs shadcn (`calc(var(--radius)*0.6)`)
-   * par les valeurs explicites Diabeo (`4px/8px/10px/12px/16px`) — cohérence
-   * avec docs/design-system/tokens.md §4.
+   *
+   * Namespace `--radius-*` reconnu par Tailwind 4. Override des valeurs shadcn
+   * (`calc(var(--radius)*N)`) par les valeurs explicites Diabeo (4/8/10/12/16px)
+   * — cohérence avec `docs/design-system/tokens.md` §4.
    * ---------------------------------------------------------------------------*/
   --radius-none: var(--diabeo-radius-none);
   --radius-sm: var(--diabeo-radius-sm);
@@ -168,37 +176,59 @@
   --radius-full: var(--diabeo-radius-full);
 
   /* ---------------------------------------------------------------------------
-   * Diabeo Design System: Animation duration + easing
-   * Câblés pour que `duration-fast`/`ease-out`/etc. utilisent les valeurs
-   * Diabeo (100ms/200ms/300ms/500ms + courbes spring) au lieu des defaults
-   * Tailwind (150ms/300ms/700ms).
+   * Diabeo Design System: Easing
+   *
+   * Namespace `--ease-*` reconnu par Tailwind 4 (theme.css:434-436). Génère
+   * `ease-{name}`. Note : `--ease-default` est utilisé via `@utility ease-default`
+   * (ci-dessous) plutôt que comme namespace nu — Tailwind n'a pas de convention
+   * `DEFAULT` côté CSS pour ce préfixe.
+   *
+   * Pour piloter le timing function PAR DÉFAUT de toutes les transitions
+   * (`transition-colors` sans `ease-*` explicite), on override aussi
+   * `--default-transition-timing-function` ci-dessous.
    * ---------------------------------------------------------------------------*/
-  --animate-duration-fast: var(--diabeo-duration-fast);
-  --animate-duration-normal: var(--diabeo-duration-normal);
-  --animate-duration-slow: var(--diabeo-duration-slow);
-  --animate-duration-slower: var(--diabeo-duration-slower);
-  --ease-default: var(--diabeo-ease-default);
   --ease-in: var(--diabeo-ease-in);
   --ease-out: var(--diabeo-ease-out);
   --ease-in-out: var(--diabeo-ease-in-out);
   --ease-spring: var(--diabeo-ease-spring);
 
-  /* ---------------------------------------------------------------------------
-   * Diabeo Design System: Z-index scale
-   * Câblés sur `--diabeo-z-*`. Classes `z-sticky`/`z-header`/`z-modal`/
-   * `z-critical-alert` deviennent utilisables (vs `z-10`/`z-50` numériques
-   * qui n'expriment pas l'intent sémantique).
-   * ---------------------------------------------------------------------------*/
-  --z-index-base: var(--diabeo-z-base);
-  --z-index-dropdown: var(--diabeo-z-dropdown);
-  --z-index-sticky: var(--diabeo-z-sticky);
-  --z-index-header: var(--diabeo-z-header);
-  --z-index-overlay: var(--diabeo-z-overlay);
-  --z-index-modal: var(--diabeo-z-modal);
-  --z-index-popover: var(--diabeo-z-popover);
-  --z-index-toast: var(--diabeo-z-toast);
-  --z-index-critical-alert: var(--diabeo-z-critical-alert);
+  /* Override des defaults Tailwind 4 pour les transitions/animations sans
+   * modificateur explicite (`transition`, `transition-colors`, ...). */
+  --default-transition-duration: var(--diabeo-duration-normal);
+  --default-transition-timing-function: var(--diabeo-ease-default);
 }
+
+/* -----------------------------------------------------------------------------
+ * Diabeo Design System: Utilities custom — duration-*, z-*
+ *
+ * Tailwind 4 n'expose PAS de namespace `--animate-duration-*` ou `--z-index-*`
+ * qui génèrerait `duration-fast`, `z-sticky`, etc. (les utilities `duration-N`
+ * et `z-N` sont intégrales/fonctionnelles — uniquement bare integers/arbitrary
+ * values).
+ *
+ * `@utility` (Tailwind 4) permet de créer des utility classes nommées qui
+ * lisent les CSS vars Diabeo. C'est l'API officielle pour étendre les
+ * conventions Tailwind avec des tokens sémantiques métier.
+ *
+ * Cf. https://tailwindcss.com/docs/adding-custom-styles#adding-custom-utilities
+ * ---------------------------------------------------------------------------*/
+
+@utility duration-fast    { transition-duration: var(--diabeo-duration-fast); }
+@utility duration-normal  { transition-duration: var(--diabeo-duration-normal); }
+@utility duration-slow    { transition-duration: var(--diabeo-duration-slow); }
+@utility duration-slower  { transition-duration: var(--diabeo-duration-slower); }
+
+@utility ease-default     { transition-timing-function: var(--diabeo-ease-default); }
+
+@utility z-base            { z-index: var(--diabeo-z-base); }
+@utility z-dropdown        { z-index: var(--diabeo-z-dropdown); }
+@utility z-sticky          { z-index: var(--diabeo-z-sticky); }
+@utility z-header          { z-index: var(--diabeo-z-header); }
+@utility z-overlay         { z-index: var(--diabeo-z-overlay); }
+@utility z-modal           { z-index: var(--diabeo-z-modal); }
+@utility z-popover         { z-index: var(--diabeo-z-popover); }
+@utility z-toast           { z-index: var(--diabeo-z-toast); }
+@utility z-critical-alert  { z-index: var(--diabeo-z-critical-alert); }
 
 :root {
   /* Palette "Serenite Active" -- Diabeo */

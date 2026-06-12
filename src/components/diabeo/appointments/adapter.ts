@@ -40,7 +40,7 @@
  */
 
 import { Temporal } from "temporal-polyfill"
-import { tokens } from "@/design-system/tokens"
+import { tokens, COLOR_TOKEN_CSS } from "@/design-system/tokens"
 import type { AppointmentListItem } from "./useAppointments"
 
 export interface ScheduleXEvent {
@@ -283,8 +283,8 @@ export const APPOINTMENT_CALENDARS = {
   pendingValidation: {
     colorName: "pendingValidation",
     lightColors: {
-      main: tokens.glycemia.high, // amber-500 (F59E0B)
-      container: "#FEF3C7", // amber-100 — pas d'équivalent token exact
+      main: tokens.glycemia.high, // amber-500 (#F59E0B)
+      container: COLOR_TOKEN_CSS["glycemia-high-bg"], // #FFFBEB (amber-50-ish, le plus proche dispo)
       onContainer: "#78350F", // amber-900 — pas d'équivalent token exact
     },
   },
@@ -292,7 +292,7 @@ export const APPOINTMENT_CALENDARS = {
     colorName: "confirmed",
     lightColors: {
       main: tokens.glycemia.normal, // emerald-500 / in-range glycemia (#10B981)
-      container: "#D1FAE5", // emerald-100 — pas d'équivalent token exact
+      container: COLOR_TOKEN_CSS["glycemia-normal-bg"], // #ECFDF5 (emerald-50-ish, le plus proche dispo)
       onContainer: "#064E3B", // emerald-900 — pas d'équivalent token exact
     },
   },
@@ -300,7 +300,7 @@ export const APPOINTMENT_CALENDARS = {
     colorName: "cancelled",
     lightColors: {
       main: tokens.semantic.error, // red-500 (#EF4444)
-      container: "#FEE2E2", // red-100 — pas d'équivalent token exact
+      container: COLOR_TOKEN_CSS["glycemia-critical-bg"], // #FEE2E2 (red-100-ish)
       onContainer: "#7F1D1D", // red-900 — pas d'équivalent token exact
     },
   },
@@ -316,7 +316,7 @@ export const APPOINTMENT_CALENDARS = {
     colorName: "noShow",
     lightColors: {
       main: tokens.glycemia.veryLow, // red-700 / very-low glycemia critical (#991B1B)
-      container: "#FEF2F2", // red-50 — pas d'équivalent token exact
+      container: COLOR_TOKEN_CSS["glycemia-very-low-bg"], // #FEF2F2 (red-50-ish)
       onContainer: "#7F1D1D", // red-900 — pas d'équivalent token exact
     },
   },
