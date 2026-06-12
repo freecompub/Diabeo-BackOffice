@@ -129,7 +129,7 @@ export function AgpPercentileChart({
         <p className="font-medium text-gray-700 mb-1">
           Données insuffisantes
         </p>
-        <p>Portez le capteur CGM au moins 3 jours pour générer un profil AGP.</p>
+        <p>Portez le capteur de glucose en continu (CGM) au moins 3 jours pour générer un profil glycémique ambulatoire (AGP).</p>
       </div>
     )
   }

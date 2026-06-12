@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/dialog"
 import { formatRelativeTime } from "@/lib/intl/formatters"
 import type { Locale } from "@/i18n/config"
+import { Acronym } from "@/components/diabeo/Acronym"
 
 interface SessionDTO {
   id: string
@@ -259,7 +260,7 @@ export function SessionsSection() {
                         {session.mfaVerified && (
                           <Badge variant="secondary" className="text-[10px]">
                             <ShieldCheck className="size-3 mr-0.5" aria-hidden="true" />
-                            MFA
+                            <Acronym code="MFA" />
                           </Badge>
                         )}
                       </div>

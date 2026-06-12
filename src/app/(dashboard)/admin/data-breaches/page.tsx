@@ -26,10 +26,12 @@ export default async function DataBreachesPage() {
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
       <header>
-        <h1 className="text-2xl font-semibold">Violations de données (RGPD Art. 33)</h1>
+        <h1 className="text-2xl font-semibold">
+          Violations de données — Règlement général sur la protection des données (RGPD), Art. 33
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Registre des violations détectées. Délai de notification CNIL :
-          72h après détection (Art. 33 RGPD).
+          72h après détection (Art. 33 du Règlement général sur la protection des données — RGPD).
         </p>
       </header>
       <DataBreachesListClient />
