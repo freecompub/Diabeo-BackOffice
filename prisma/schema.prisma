@@ -291,87 +291,87 @@ enum EmergencyAlertActionType {
 // ═══════════════════════════════════════════════════════════════
 
 model User {
-  id                       Int        @id @default(autoincrement())
+  id                       Int               @id @default(autoincrement())
   email                    String // chiffre AES-256-GCM en production
-  emailHmac                String     @unique @map("email_hmac") // HMAC-SHA256 pour lookup unique
-  passwordHash             String     @map("password_hash")
+  emailHmac                String            @unique @map("email_hmac") // HMAC-SHA256 pour lookup unique
+  passwordHash             String            @map("password_hash")
   title                    String? // 'M.' | 'Mme' | 'Dr' | 'Prof'
   firstname                String? // chiffre
-  firstnameHmac            String?    @map("firstname_hmac") // HMAC-SHA256 pour recherche
+  firstnameHmac            String?           @map("firstname_hmac") // HMAC-SHA256 pour recherche
   firstnames               String? // chiffre
-  usedFirstname            String?    @map("used_firstname") // chiffre
+  usedFirstname            String?           @map("used_firstname") // chiffre
   lastname                 String? // chiffre
-  lastnameHmac             String?    @map("lastname_hmac") // HMAC-SHA256 pour recherche
-  usedLastname             String?    @map("used_lastname") // chiffre
-  birthday                 DateTime?  @db.Date // NON chiffre — type DATE natif PG, stocke en clair (cf. src/types/user.ts). Donnee directe : classification a documenter en DPIA (F9 review).
+  lastnameHmac             String?           @map("lastname_hmac") // HMAC-SHA256 pour recherche
+  usedLastname             String?           @map("used_lastname") // chiffre
+  birthday                 DateTime?         @db.Date // NON chiffre — type DATE natif PG, stocke en clair (cf. src/types/user.ts). Donnee directe : classification a documenter en DPIA (F9 review).
   sex                      Sex?
-  codeBirthPlace           String?    @map("code_birth_place") // chiffre
-  timezone                 String?    @default("Europe/Paris")
+  codeBirthPlace           String?           @map("code_birth_place") // chiffre
+  timezone                 String?           @default("Europe/Paris")
   phone                    String? // chiffre
   address1                 String? // chiffre
   address2                 String? // chiffre
   cp                       String? // chiffre
   city                     String? // chiffre
-  country                  String?    @db.Char(2)
+  country                  String?           @db.Char(2)
   pic                      String?
-  language                 Language?  @default(fr)
-  role                     Role       @default(VIEWER)
+  language                 Language?         @default(fr)
+  role                     Role              @default(VIEWER)
   /// US-2148 — Statut compte (active/suspended/archived). Suspension bloque
   /// le login dans /api/auth/login (vérification post-bcrypt).
-  status                   UserStatus @default(active)
+  status                   UserStatus        @default(active)
   /// US-2148 — Date de suspension/archivage. Set au moment de la transition.
-  statusChangedAt          DateTime?  @map("status_changed_at") @db.Timestamptz()
+  statusChangedAt          DateTime?         @map("status_changed_at") @db.Timestamptz()
   /// US-2148 — User-ID de l'admin ayant effectué la transition (audit + rollback).
   /// FK Restrict : empêche la suppression DELETE d'un admin qui a effectué des
   /// transitions. RGPD Art. 17 utilise l'anonymisation (non-DELETE) — la trace
   /// reste en colonne, le user est anonymisé via `deletion.service`.
-  statusChangedBy          Int?       @map("status_changed_by")
-  mfaSecret                String?    @map("mfa_secret")
-  mfaEnabled               Boolean    @default(false) @map("mfa_enabled")
+  statusChangedBy          Int?              @map("status_changed_by")
+  mfaSecret                String?           @map("mfa_secret")
+  mfaEnabled               Boolean           @default(false) @map("mfa_enabled")
   /// Last accepted TOTP time step (RFC 6238 T counter). Prevents replay of
   /// a code within its ±1 step window. Set atomically on successful verify.
-  mfaLastUsedStep          Int?       @map("mfa_last_used_step")
-  hasSignedTerms           Boolean    @default(false) @map("has_signed_terms")
-  profileComplete          Boolean    @default(false) @map("profile_complete")
-  needDataPolicyUpdate     Boolean    @default(false) @map("need_data_policy_update")
-  dataPolicyUpdate         DateTime?  @map("data_policy_update")
-  needPasswordUpdate       Boolean    @default(false) @map("need_password_update")
-  needOnboarding           Boolean    @default(false) @map("need_onboarding")
-  debug                    Boolean    @default(false)
+  mfaLastUsedStep          Int?              @map("mfa_last_used_step")
+  hasSignedTerms           Boolean           @default(false) @map("has_signed_terms")
+  profileComplete          Boolean           @default(false) @map("profile_complete")
+  needDataPolicyUpdate     Boolean           @default(false) @map("need_data_policy_update")
+  dataPolicyUpdate         DateTime?         @map("data_policy_update")
+  needPasswordUpdate       Boolean           @default(false) @map("need_password_update")
+  needOnboarding           Boolean           @default(false) @map("need_onboarding")
+  debug                    Boolean           @default(false)
   nirpp                    String? // chiffre — TRES SENSIBLE
-  nirppType                String?    @map("nirpp_type") // 'nir' | 'nia' | 'nir_key'
-  nirppPolicyholder        String?    @map("nirpp_policyholder") // chiffre
-  nirppPolicyholderType    String?    @map("nirpp_policyholder_type")
+  nirppType                String?           @map("nirpp_type") // 'nir' | 'nia' | 'nir_key'
+  nirppPolicyholder        String?           @map("nirpp_policyholder") // chiffre
+  nirppPolicyholderType    String?           @map("nirpp_policyholder_type")
   oid                      String? // interne — jamais expose
   ins                      String? // Identite Nationale de Sante, chiffre AES-256-GCM
   /// US-2026 — HMAC-SHA256 hex de l'INS plaintext (lookup unique anti-
   /// doublon RNIPP). NULL si pas d'INS renseigne. UNIQUE index avec
   /// NULLS DISTINCT (PG 16 default — plusieurs NULL autorises).
   /// Aligne `TEXT` avec emailHmac/firstnameHmac/lastnameHmac (M4 review).
-  insHmac                  String?    @map("ins_hmac")
+  insHmac                  String?           @map("ins_hmac")
   /// US-2026 C1 review — Statut de qualite INS conforme Referentiel ANS v3.
   /// V1 force `saisi_non_verifie` (INSi reste V2 US-2126 procurement-bloque).
   insQualityStatus         InsQualityStatus? @map("ins_quality_status")
   /// US-2026 C1 review — Timestamp de set INS (forensique HDS Art. L.1111-8).
-  insSetAt                 DateTime?  @map("ins_set_at") @db.Timestamptz()
+  insSetAt                 DateTime?         @map("ins_set_at") @db.Timestamptz()
   /// US-2026 H5 review — User qui a saisi l'INS (FK SetNull si anonymisation
   /// RGPD du saisisseur). Permet "INS saisi par DOCTOR.123 vs VIEWER auto".
   /// Index partiel `users_ins_set_by_user_id_idx WHERE ins_set_by_user_id
   /// IS NOT NULL` defini en SQL uniquement (Prisma ne supporte pas partial
   /// WHERE dans `@@index` cote schema — cf. messaging.thread idem).
-  insSetByUserId           Int?       @map("ins_set_by_user_id")
+  insSetByUserId           Int?              @map("ins_set_by_user_id")
   /// US-2026 C1 review — Hash SHA-256 des traits d'identite au moment du
   /// set (nom+prenom+dob+sex+lieu naissance). Permet de detecter qu'un
   /// trait a change post-set (declenche re-verification INSi futur V2).
-  insTraitsHash            String?    @map("ins_traits_hash")
-  intercomHash             String?    @map("intercom_hash") // interne — jamais expose
-  deploymentKey            String?    @map("deployment_key") // interne — jamais expose
+  insTraitsHash            String?           @map("ins_traits_hash")
+  intercomHash             String?           @map("intercom_hash") // interne — jamais expose
+  deploymentKey            String?           @map("deployment_key") // interne — jamais expose
   pro                      String? // interne
-  photoUrl                 String?    @map("photo_url") @db.VarChar(500)
-  displayModalTlsMutual    Boolean    @default(false) @map("display_modal_tls_mutual")
-  displayModalTlsMandatory Boolean    @default(false) @map("display_modal_tls_mandatory")
-  createdAt                DateTime   @default(now()) @map("created_at")
-  updatedAt                DateTime   @updatedAt @map("updated_at")
+  photoUrl                 String?           @map("photo_url") @db.VarChar(500)
+  displayModalTlsMutual    Boolean           @default(false) @map("display_modal_tls_mutual")
+  displayModalTlsMandatory Boolean           @default(false) @map("display_modal_tls_mandatory")
+  createdAt                DateTime          @default(now()) @map("created_at")
+  updatedAt                DateTime          @updatedAt @map("updated_at")
 
   // Relations
   patient                           Patient?
@@ -444,14 +444,20 @@ model User {
   insSetByUser                      User?                             @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
   insSetForUsers                    User[]                            @relation("InsSetter")
 
-  @@index([createdAt])
-  @@index([firstnameHmac, lastnameHmac])
-  /// US-2148 — supporte le count anti-lockout `count(active ADMIN)` et le
-  /// filtre admin de la liste users.
-  @@index([status, role])
   /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
   /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
   @@unique([insHmac], map: "users_ins_hmac_key")
+  @@index([createdAt])
+  @@index([firstnameHmac, lastnameHmac])
+  /// PR #531 — recherche patient tokenisée : la branche `lastnameHmac = ANY(...)`
+  /// (sans contrainte sur firstnameHmac) ne peut PAS utiliser l'index composite
+  /// ci-dessus (lastnameHmac est la 2e colonne). Index dédié pour éviter le
+  /// seq-scan sur `users`. firstnameHmac reste couvert par l'index composite
+  /// (colonne de tête).
+  @@index([lastnameHmac])
+  /// US-2148 — supporte le count anti-lockout `count(active ADMIN)` et le
+  /// filtre admin de la liste users.
+  @@index([status, role])
   @@map("users")
 }
 
@@ -476,13 +482,13 @@ model Account {
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique @map("session_token")
-  userId       Int      @map("user_id")
-  expires      DateTime
+  id                String    @id @default(cuid())
+  sessionToken      String    @unique @map("session_token")
+  userId            Int       @map("user_id")
+  expires           DateTime
   /// True if this session was created via MFA challenge. HDS forensics:
   /// "which live sessions were second-factor-verified vs password-only".
-  mfaVerified  Boolean  @default(false) @map("mfa_verified")
+  mfaVerified       Boolean   @default(false) @map("mfa_verified")
   /// Plan B follow-up A2 — Step-up MFA freshness timestamp. Bumped à chaque
   /// MFA challenge réussi (login OU step-up). `requireFreshMfa` exige que ce
   /// timestamp soit < `STEP_UP_WINDOW_SECONDS` (5min) pour les actions
@@ -492,11 +498,11 @@ model Session {
   /// US-2007 (Groupe 9) — metadata pour la vue "Sessions multiples" UI :
   /// le user identifie chaque session par device/localisation et peut
   /// la révoquer. Pas de PHI — IP et UA déjà persistés en AuditLog.
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
-  ipAddress    String?  @map("ip_address") @db.VarChar(45)
-  userAgent    String?  @map("user_agent") @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  ipAddress         String?   @map("ip_address") @db.VarChar(45)
+  userAgent         String?   @map("user_agent") @db.VarChar(500)
   /// Dernière activité (bumpé à chaque vérification token).
-  lastSeenAt   DateTime @default(now()) @map("last_seen_at") @db.Timestamptz()
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at") @db.Timestamptz()
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -670,10 +676,10 @@ model Patient {
   /// US-2076 scope A — Messages liés au patient (pivot audit US-2268).
   messages               Message[]
 
-  @@index([deletedAt])
   /// US-2076bis-V2 (Issue #442) — lookup `publicRef → patientId` interne
   /// (résolve quand UI envoie ref opaque). UNIQUE empêche collision UUID v4.
   @@unique([publicRef], map: "patients_public_ref_key")
+  @@index([deletedAt])
   @@map("patients")
 }
 
@@ -1509,16 +1515,16 @@ model SupportedDevice {
 
   /// Unicité par (brand, model, category) : un même device n'a qu'une entrée.
   @@unique([brand, model, category])
-  /// Index pour search par brand + category (UI filter pairing).
-  /// CI drift fix — `map:` explicite car migration originale a nommé l'index
-  /// `_active_idx` (vs Prisma auto-name `_is_active_idx`).
-  @@index([category, isActive], map: "supported_devices_category_active_idx")
   /// CR L4 / HSA L3 — model_identifier unique quand renseigné
   /// (USB VID:PID ou BLE UUID = identifiant matériel global). PG défaut
   /// NULLS DISTINCT permet multiples NULL (legacy devices).
   /// (Prisma auto-name = `supported_devices_model_identifier_key` —
   /// L6 round 2 review : `map:` redondant retiré.)
   @@unique([modelIdentifier])
+  /// Index pour search par brand + category (UI filter pairing).
+  /// CI drift fix — `map:` explicite car migration originale a nommé l'index
+  /// `_active_idx` (vs Prisma auto-name `_is_active_idx`).
+  @@index([category, isActive], map: "supported_devices_category_active_idx")
   @@map("supported_devices")
 }
 
@@ -1540,44 +1546,44 @@ model DeviceDataSync {
 // ═══════════════════════════════════════════════════════════════
 
 model HealthcareService {
-  id            Int         @id @default(autoincrement())
-  name          String      @db.VarChar(255)
-  establishment String?     @db.VarChar(255)
+  id               Int         @id @default(autoincrement())
+  name             String      @db.VarChar(255)
+  establishment    String?     @db.VarChar(255)
   /// US-2117 — Adresse complète (chiffrée AES-256-GCM si contient des PII
   /// identifiables ; ici champ de rue donc plain). Utile pour annuaire,
   /// envoi documents postaux, etc.
-  addressLine1  String?     @map("address_line1") @db.VarChar(255)
-  addressLine2  String?     @map("address_line2") @db.VarChar(255)
-  postalCode    String?     @map("postal_code") @db.VarChar(10)
-  city          String?     @db.VarChar(100)
-  country       String?     @db.Char(2)
+  addressLine1     String?     @map("address_line1") @db.VarChar(255)
+  addressLine2     String?     @map("address_line2") @db.VarChar(255)
+  postalCode       String?     @map("postal_code") @db.VarChar(10)
+  city             String?     @db.VarChar(100)
+  country          String?     @db.Char(2)
   /// US-2117 — Coordonnées de contact (publiques cabinet).
-  phone         String?     @db.VarChar(30)
-  email         String?     @db.VarChar(255)
-  website       String?     @db.VarChar(500)
+  phone            String?     @db.VarChar(30)
+  email            String?     @db.VarChar(255)
+  website          String?     @db.VarChar(500)
   /// US-2117 — Horaires d'ouverture format JSON :
   /// { mon: [["09:00","12:00"],["14:00","18:00"]], tue: [...], ..., sun: [] }
   /// Tableau vide = fermé. Validation côté service (Zod).
-  openingHours  Json?       @map("opening_hours")
+  openingHours     Json?       @map("opening_hours")
   /// US-2117 — Spécialités cliniques (libellés libres ou codes CIM).
   /// Ex: ["diabetologie", "endocrinologie", "pediatrie"]. Cardinalité 0-N.
-  specialties   String[]    @default([])
+  specialties      String[]    @default([])
   /// US-2117 — Capacité (lits / box / postes consultation). Optionnel.
-  capacity      Int?
+  capacity         Int?
   /// US-2117 — Manager responsable (User backoffice). Différent du référent
   /// patient (qui est par patient). Le manager voit tous les patients du
   /// service via PatientService (relation existante).
-  managerId     Int?        @map("manager_id")
+  managerId        Int?        @map("manager_id")
   /// `Restrict` cohérent avec le reste du schéma (statusChangedBy, BackupLog.triggeredBy) :
   /// la suppression d'un User manager d'un service échoue côté DB, forçant un
   /// admin à réassigner explicitement avant deletion. Évite l'orphelinage silencieux
   /// d'une structure dont le manager a été supprimé.
-  manager       User?       @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: Restrict)
-  noVideos      Boolean     @default(false) @map("no_videos")
-  noFood        Boolean     @default(false) @map("no_food")
-  logo          String?     @db.VarChar(500)
+  manager          User?       @relation("HealthcareServiceManager", fields: [managerId], references: [id], onDelete: Restrict)
+  noVideos         Boolean     @default(false) @map("no_videos")
+  noFood           Boolean     @default(false) @map("no_food")
+  logo             String?     @db.VarChar(500)
   /// US-2118 — Type de structure (cabinet, hôpital, praticien libéral).
-  type          ServiceType @default(clinic)
+  type             ServiceType @default(clinic)
   /// US-2118 — Numéro RPPS (11 digits) / ADELI (9 digits) pour praticiens
   /// libéraux. Validation Luhn + format côté service. Optionnel pour
   /// cabinets / hôpitaux.
@@ -1587,22 +1593,22 @@ model HealthcareService {
   /// contrainte unique inline rejetterait la création du nouveau cabinet
   /// avant suppression de l'ancien. La validation business (warning
   /// "RPPS déjà utilisé") est appliquée au service layer si besoin futur.
-  licenseNumber String?     @map("license_number") @db.VarChar(11)
+  licenseNumber    String?     @map("license_number") @db.VarChar(11)
   /// Groupe 7 Batch 1 — Mentions légales obligatoires sur facture FR
   /// (art. 242 nonies A CGI, art. L441-9 Code de commerce). Stockés sur
   /// HealthcareService pour snapshot atomique à l'issuance Invoice.
   /// SIRET = 14 digits, validation Luhn côté service (US-2118 patron).
-  siret         String?     @db.VarChar(14)
+  siret            String?     @db.VarChar(14)
   /// Numéro TVA intracommunautaire (FR : FR + 2 cipher + SIREN = 13 chars).
-  tvaIntra      String?     @map("tva_intra") @db.VarChar(15)
+  tvaIntra         String?     @map("tva_intra") @db.VarChar(15)
   /// IBAN pour paiement par virement (US-2102). Standard ISO 13616.
-  iban          String?     @db.VarChar(34)
+  iban             String?     @db.VarChar(34)
   /// US-2506 V1 mock — Feature flag SMS active par cabinet (admin toggle).
   /// Real provider (Twilio/OVH) reportee V3 sous US-2506bis.
-  smsEnabled        Boolean @default(false) @map("sms_enabled")
+  smsEnabled       Boolean     @default(false) @map("sms_enabled")
   /// US-2506 V1 mock — Credits SMS prepayes (decrement par envoi reussi).
   /// Alerte ops si <10. Mock V1 = on n'achete pas vraiment.
-  smsCreditBalance  Int     @default(0) @map("sms_credit_balance")
+  smsCreditBalance Int         @default(0) @map("sms_credit_balance")
 
   members                    HealthcareMember[]
   patientServices            PatientService[]
@@ -3172,19 +3178,19 @@ enum InvoiceReminderStatus {
 }
 
 model InvoiceReminder {
-  id             Int                  @id @default(autoincrement())
-  invoiceId      Int                  @map("invoice_id")
+  id             Int                   @id @default(autoincrement())
+  invoiceId      Int                   @map("invoice_id")
   step           InvoiceReminderStep
-  sentAt         DateTime             @default(now()) @map("sent_at") @db.Timestamptz()
+  sentAt         DateTime              @default(now()) @map("sent_at") @db.Timestamptz()
   status         InvoiceReminderStatus @default(sent)
   /// Email destinataire chiffre AES-256-GCM (base64) — forensique sans
   /// exposer mail patient en clair en BDD. Optional car certaines step
   /// `skipped` arrivent avant qu'on ait pu dechiffrer.
-  sentToEnc      String?              @map("sent_to_enc")
+  sentToEnc      String?               @map("sent_to_enc")
   /// ID Resend (data.id) — debug rebonds via Resend dashboard.
-  emailMessageId String?              @map("email_message_id") @db.VarChar(100)
+  emailMessageId String?               @map("email_message_id") @db.VarChar(100)
   /// Message d'erreur Resend (pas de PHI — code/timeout). Cap 500 chars.
-  errorMessage   String?              @map("error_message") @db.VarChar(500)
+  errorMessage   String?               @map("error_message") @db.VarChar(500)
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
@@ -3420,25 +3426,25 @@ enum SmsStatus {
 /// par defaut). V3 = real Twilio/OVH (status=sent/failed). Le mock est
 /// utilise par US-2502 pour les rappels RDV J-1.
 model SmsLog {
-  id                  Int       @id @default(autoincrement())
-  cabinetId           Int       @map("cabinet_id")
+  id                Int       @id @default(autoincrement())
+  cabinetId         Int       @map("cabinet_id")
   /// Numero destinataire chiffre AES-256-GCM base64 (defensive vs dump
   /// BDD). Optional pour status='skipped' (avant decryption).
-  toEnc               String?   @map("to_enc")
+  toEnc             String?   @map("to_enc")
   /// Apercu 120 premiers chars du message (forensique sans plaintext
   /// complet contre leak PHI).
-  messageExcerpt      String?   @map("message_excerpt") @db.VarChar(120)
-  status              SmsStatus @default(mock)
+  messageExcerpt    String?   @map("message_excerpt") @db.VarChar(120)
+  status            SmsStatus @default(mock)
   /// Provider : 'mock' (V1) | 'twilio' (V3) | 'ovh' (V3).
-  provider            String    @default("mock") @db.VarChar(30)
+  provider          String    @default("mock") @db.VarChar(30)
   /// ID Twilio/OVH si real ; UUID mock-* si V1.
-  providerMessageId   String?   @map("provider_message_id") @db.VarChar(100)
+  providerMessageId String?   @map("provider_message_id") @db.VarChar(100)
   /// Cout en credits (1 SMS standard = 1 credit V1).
-  creditCost          Int       @default(1) @map("credit_cost")
-  errorMessage        String?   @map("error_message") @db.VarChar(500)
-  sentAt              DateTime  @default(now()) @map("sent_at") @db.Timestamptz()
+  creditCost        Int       @default(1) @map("credit_cost")
+  errorMessage      String?   @map("error_message") @db.VarChar(500)
+  sentAt            DateTime  @default(now()) @map("sent_at") @db.Timestamptz()
   /// Contexte d'envoi : 'appointment_reminder' (US-2502) | futurs.
-  contextKind         String    @map("context_kind") @db.VarChar(50)
+  contextKind       String    @map("context_kind") @db.VarChar(50)
 
   /// M7 round 2 — Restrict pour préserver l'historique audit SMS forensique
   /// (HealthcareService n'est jamais hard-deleted en pratique, mais CASCADE
@@ -3486,20 +3492,20 @@ enum AppointmentReminderStatus {
 /// Idempotence absolue : `@@unique([appointmentId, channel, step])`
 /// empeche envoi double si cron rejoue.
 model AppointmentReminder {
-  id                  Int                          @id @default(autoincrement())
-  appointmentId       Int                          @map("appointment_id")
-  channel             AppointmentReminderChannel
-  step                AppointmentReminderStep
+  id                Int                        @id @default(autoincrement())
+  appointmentId     Int                        @map("appointment_id")
+  channel           AppointmentReminderChannel
+  step              AppointmentReminderStep
   /// M6 round 2 — default `skipped` (vs `sent` trompeur). Le caller doit
   /// marquer explicitement `sent` après envoi réussi (defense-in-depth
   /// si bulk insert futur omet le statut).
-  status              AppointmentReminderStatus    @default(skipped)
-  sentAt              DateTime                     @default(now()) @map("sent_at") @db.Timestamptz()
+  status            AppointmentReminderStatus  @default(skipped)
+  sentAt            DateTime                   @default(now()) @map("sent_at") @db.Timestamptz()
   /// Destinataire chiffre AES-256-GCM (email pour channel=email, phone
   /// pour channel=sms, fcmToken pour channel=push).
-  sentToEnc           String?                      @map("sent_to_enc")
-  providerMessageId   String?                      @map("provider_message_id") @db.VarChar(100)
-  errorMessage        String?                      @map("error_message") @db.VarChar(500)
+  sentToEnc         String?                    @map("sent_to_enc")
+  providerMessageId String?                    @map("provider_message_id") @db.VarChar(100)
+  errorMessage      String?                    @map("error_message") @db.VarChar(500)
 
   appointment Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
 

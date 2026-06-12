@@ -148,6 +148,40 @@ function localDecryptField(value: string): string {
 const LIST_BY_DOCTOR_MAX = 2000
 const LIST_BY_DOCTOR_WARN_AT = 1000
 
+/**
+ * Prédicat de visibilité "côté soignant" partagé par `listByDoctor` et `search`
+ * (review round 2 — HSA M : éviter la divergence accidentelle entre deux
+ * surfaces qui doivent appliquer la MÊME règle de consentement).
+ *
+ * ⚠️ DPIA — posture *fail-open* sur l'absence de row `UserPrivacySettings` :
+ *   - OR (pas encore de row)  → patient nouvellement créé, wizard de
+ *     consentement pas encore passé : il DOIT rester visible/trouvable par le
+ *     soignant de son portefeuille (sinon le PS qui vient de le créer ne peut
+ *     ni le consulter ni lui poser un RDV). RGPD Art. 6.1.b/9.2.h — base légale
+ *     "prise en charge", pas le consentement Art. 7.
+ *   - OR (gdprConsent && shareWithProviders confirmés) → opt-in explicite.
+ *   - L'opt-out explicite (row présente avec un flag false) tombe dans aucune
+ *     branche → EXCLU (Art. 21 honoré dès qu'une row existe).
+ *
+ * ⚠️ NE PAS réutiliser pour l'AGRÉGATION population (`population-analytics`,
+ * `consent.ts`, `team-workflow`) qui sont délibérément *fail-closed* (absence
+ * de row = pas de consentement) : agréger des données d'un patient sans
+ * consentement explicite n'a pas la même base légale que l'identifier dans le
+ * portefeuille de son propre soignant. Cf. DPIA patient-search.
+ */
+// `Object.freeze` (deep) — la constante est partagée par référence entre
+// `search` et `listByDoctor` ; on gèle (objet + tableau `OR`) pour qu'un futur
+// `.OR.push(...)` échoue bruyamment au runtime au lieu de corrompre
+// silencieusement les deux surfaces (revue round 3). Le cast final efface le
+// `readonly` côté types (Prisma attend un tableau mutable) ; seule la garde
+// runtime importe ici.
+const PROVIDER_VISIBLE_USER_WHERE = Object.freeze({
+  OR: Object.freeze([
+    { privacySettings: null },
+    { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+  ]),
+}) as Prisma.UserWhereInput
+
 const DECRYPT_WARN_WINDOW_MS = 60_000
 const DECRYPT_SUPPRESSED_CAP = 10_000_000
 /**
@@ -873,25 +907,64 @@ export const patientService = {
       return { items: [], nextCursor: null as number | null }
     }
 
-    const userFilter: Prisma.UserWhereInput | undefined = input.search?.trim()
-      // hmacField internally normalizes (lowercase + trim).
-      ? (() => {
-          const hmac = hmacField(input.search!)
-          return { OR: [{ firstnameHmac: hmac }, { lastnameHmac: hmac }] }
-        })()
-      : undefined
+    // Recherche autocomplete patient. Les noms étant chiffrés, le HMAC est un
+    // match EXACT par token : impossible de faire un "LIKE %fragment%". On
+    // découpe donc la saisie en tokens (mots) et on matche chaque token COMPLET
+    // contre `firstnameHmac` OU `lastnameHmac` (`in` HMAC déterministe,
+    // hmacField normalise lowercase+trim). Sémantique OR volontairement large
+    // (surensemble affiné côté client) : taper "Jean Dupont" remonte les Jean
+    // ET les Dupont, le combobox filtre ensuite. Les tokens `#42`
+    // (désambiguïsation homonymes émise par `<PatientCombobox>`) sont résolus
+    // en match direct sur l'`id` patient — toujours borné par le scope RBAC
+    // `accessibleIds` ci-dessous (le `id: { in }` top-level reste ANDé).
+    const searchOr = ((): Prisma.PatientWhereInput[] | undefined => {
+      const raw = input.search?.trim()
+      if (!raw) return undefined
+      const allTokens = raw.split(/\s+/).filter(Boolean)
+      // Les tokens `#id` (désambiguïsation homonymes) sont extraits AVANT tout
+      // cap — sinon un `#42` en fin de saisie multi-mots serait silencieusement
+      // perdu (review round 2 LOW-2). Bornés à 8 par défense en profondeur.
+      const idTokens = allTokens
+        .filter((tok) => /^#\d+$/.test(tok))
+        .map((tok) => Number(tok.slice(1)))
+        .filter((n) => Number.isSafeInteger(n) && n > 0)
+        .slice(0, 8)
+      // Cap défensif sur les tokens-NOMS : input déjà borné à 100 car. par Zod
+      // (route), mais on évite tout HMAC-SHA256 × N non borné + `IN` qui gonfle
+      // sur un endpoint PHI. 8 mots couvrent un nom composé large.
+      const nameHmacs = [
+        ...new Set(
+          allTokens
+            .filter((tok) => !/^#\d+$/.test(tok))
+            .slice(0, 8)
+            .map((tok) => hmacField(tok)),
+        ),
+      ]
+      const or: Prisma.PatientWhereInput[] = []
+      if (nameHmacs.length > 0) {
+        or.push({ user: { firstnameHmac: { in: nameHmacs } } })
+        or.push({ user: { lastnameHmac: { in: nameHmacs } } })
+      }
+      if (idTokens.length > 0) {
+        or.push({ id: { in: idTokens } })
+      }
+      return or.length > 0 ? or : undefined
+    })()
 
+    // Note perf (review round 2 — backlog) : `where.user` (consentement) +
+    // `where.OR[].user` (HMAC noms) génèrent 2-3 sous-requêtes `EXISTS`
+    // indépendantes sur `users`. SQL correct ; invisible à l'échelle POC, mais
+    // à surveiller > 50k users (cf. ROADMAP scaling). Pas d'N+1 (`include`
+    // reste un JOIN batché unique).
     const where: Prisma.PatientWhereInput = {
       deletedAt: null,
-      // H1 — exclude patients who revoked sharing or never accepted GDPR.
-      // Matches the same filter applied in `population-analytics.service`
-      // (RGPD Art. 7.3 — revocation effective on all aggregations).
-      user: {
-        privacySettings: { gdprConsent: true, shareWithProviders: true },
-        ...(userFilter ?? {}),
-      },
+      // Consentement RGPD — règle partagée avec `listByDoctor` (cf.
+      // PROVIDER_VISIBLE_USER_WHERE + sa note DPIA). Fail-open sur l'absence de
+      // row ; opt-out explicite honoré.
+      user: PROVIDER_VISIBLE_USER_WHERE,
       ...(input.accessibleIds !== null && { id: { in: input.accessibleIds } }),
       ...(input.pathology && { pathology: input.pathology }),
+      ...(searchOr && { OR: searchOr }),
     }
 
     const items = await prisma.patient.findMany({
@@ -903,6 +976,11 @@ export const patientService = {
           select: { id: true, firstname: true, lastname: true },
         },
       },
+      // NB pagination : avec une branche `#id` dans le `OR`, le résultat n'est
+      // pas une fenêtre triée *stricte* (un patient ciblé par `#id` est inclus
+      // quelle que soit sa position vs le curseur). Pas de perte ni de doublon
+      // (le curseur exclut un seul id via skip:1) — l'autocomplete consomme la
+      // 1re page sans paginer. Comportement assumé, documenté ici.
       orderBy: { id: "desc" },
       take: limit + 1,
       ...(input.cursor && { cursor: { id: input.cursor }, skip: 1 }),
@@ -966,21 +1044,11 @@ export const patientService = {
         pro: { userId: doctorUserId },
         patient: {
           deletedAt: null,
-          // HSA H1 + review round 2 C1 — RGPD Art. 7.3 (révocation) tout en
-          // respectant le défaut implicite : un patient nouvellement créé n'a
-          // PAS encore de row UserPrivacySettings (pas créée par le wizard) →
-          // il doit rester visible (sinon le PS qui le crée ne le voit jamais
-          // dans son portefeuille). Pattern aligné PR #418 round 3 :
-          //   OR (no settings row yet) (opt-out explicit not yet expressed)
-          //   OR (gdprConsent && shareWithProviders)  (opt-in confirmé)
-          // L'opt-out Art. 21 (révocation explicite via /api/account/privacy)
-          // est honoré dès qu'une row existe avec un flag false.
-          user: {
-            OR: [
-              { privacySettings: null },
-              { privacySettings: { gdprConsent: true, shareWithProviders: true } },
-            ],
-          },
+          // HSA H1 + review round 2 — règle de visibilité soignant partagée
+          // avec `search` (cf. PROVIDER_VISIBLE_USER_WHERE + sa note DPIA).
+          // Fail-open sur l'absence de row (patient nouvellement créé) ;
+          // opt-out explicite Art. 21 honoré dès qu'une row existe.
+          user: PROVIDER_VISIBLE_USER_WHERE,
         },
       },
       select: {

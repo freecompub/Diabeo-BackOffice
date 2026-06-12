@@ -13,7 +13,7 @@
  *   - aria-required + aria-invalid (FE-15/16)
  *   - Loading state
  *   - Error state (role=alert)
- *   - useDeferredValue debouncing (smoke — vérifie pas de setState in effect)
+ *   - useDeferredValue (différé, PAS un debounce) — smoke : pas de setState in effect
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
@@ -66,6 +66,72 @@ afterEach(() => {
 })
 
 describe("<PatientCombobox>", () => {
+  it("REGRESSION — la recherche backend AUGMENTE la liste base, ne la vide pas", () => {
+    // Le endpoint /api/patients/search fait un match HMAC EXACT : un fragment
+    // ("Jea") ne matche personne. AVANT le fix, ce résultat vide remplaçait la
+    // liste → faux "Aucun patient ne correspond" + input disabled. Désormais la
+    // recherche AUGMENTE une liste base stable (merge dédupliqué).
+    mockUsePatientList.mockImplementation((args: { search?: string }) =>
+      args?.search
+        ? // backend HMAC exact : vide sur un fragment "Jea"
+          { items: [], loading: false, error: null, refetch: vi.fn() }
+        : // liste base (sans search) : reste peuplée
+          { items: baseItems, loading: false, error: null, refetch: vi.fn() },
+    )
+    // `mockClear()` — l'historique d'appels s'accumule sur tout le fichier
+    // (afterEach restoreAllMocks ne vide pas .mock.calls) ; on isole pour que
+    // l'assertion finale porte sur CE rendu, pas un appel d'un test précédent.
+    mockUsePatientList.mockClear()
+
+    render(<PatientCombobox id="cb" value={null} onChange={vi.fn()} />)
+    const input = screen.getByRole("combobox") as HTMLInputElement
+
+    fireEvent.change(input, { target: { value: "Jea" } })
+
+    // L'input n'est jamais désactivé par la recherche complémentaire.
+    expect(input.disabled).toBe(false)
+    // La liste base n'est PAS vidée : les options "Jean*" restent filtrées.
+    const labels = Array.from(
+      document.querySelectorAll("#cb-options option"),
+    ).map((o) => (o as HTMLOptionElement).value)
+    expect(labels).toContain("Jean Durand #1")
+    expect(labels).toContain("Jean Martin #42")
+    // Pas de faux "aucun patient".
+    expect(document.body.textContent).not.toContain("patientNoResults")
+
+    // La liste base reste fetchée indépendamment de la frappe (instance sans search).
+    expect(
+      mockUsePatientList.mock.calls.some(
+        (c) => (c[0] as { enabled: boolean; search?: string }).enabled === true
+          && (c[0] as { search?: string }).search === undefined,
+      ),
+    ).toBe(true)
+  })
+
+  it("MERGE — un patient hors des 50 premiers, remonté par la recherche, devient sélectionnable", () => {
+    // base = 50 premiers (sans #99) ; search exact "Zoé Xavier" → remonte #99.
+    const extra = { id: 99, firstname: "Zoé", lastname: "Xavier" }
+    mockUsePatientList.mockImplementation((args: { search?: string }) =>
+      args?.search
+        ? { items: [extra], loading: false, error: null, refetch: vi.fn() }
+        : { items: baseItems, loading: false, error: null, refetch: vi.fn() },
+    )
+    const onChange = vi.fn()
+    render(<PatientCombobox id="cb" value={null} onChange={onChange} />)
+    const input = screen.getByRole("combobox")
+
+    // L'option mergée apparaît dans la datalist.
+    fireEvent.change(input, { target: { value: "Zoé Xavier" } })
+    const labels = Array.from(
+      document.querySelectorAll("#cb-options option"),
+    ).map((o) => (o as HTMLOptionElement).value)
+    expect(labels).toContain("Zoé Xavier #99")
+
+    // Sélection du label complet → onChange remonte l'id mergé.
+    fireEvent.change(input, { target: { value: "Zoé Xavier #99" } })
+    expect(onChange).toHaveBeenCalledWith(99, "Zoé Xavier #99")
+  })
+
   it("render initial : input + datalist + hint count total backend (FE-9)", () => {
     const onChange = vi.fn()
     render(<PatientCombobox id="test-combobox" value={null} onChange={onChange} />)
@@ -140,7 +206,7 @@ describe("<PatientCombobox>", () => {
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "Inexistant" } })
 
-    // Le hint affiche "patientNoResults" via role=status
+    // Le hint affiche "patientNoResults" dans la région aria-live="polite"
     expect(document.body.textContent).toContain("patientNoResults")
   })
 
@@ -185,6 +251,42 @@ describe("<PatientCombobox>", () => {
     const alert = screen.getByRole("alert")
     expect(alert).toBeTruthy()
     expect(alert.textContent).toContain("patientListError")
+  })
+
+  it("searching state : recherche backend en vol → aria-busy sur l'input + pas de faux 'aucun résultat'", () => {
+    // base (sans search) peuplée + non-loading ; instance search en vol (loading)
+    // pour une saisie qui ne matche encore rien → anti-flicker : on n'affiche
+    // PAS "patientNoResults" tant que le fetch peut remonter un patient >50, et
+    // l'état "occupé" est porté par aria-busy (pas un texte annoncé par frappe).
+    mockUsePatientList.mockImplementation((args: { search?: string }) =>
+      args?.search
+        ? { items: [], loading: true, error: null, refetch: vi.fn() }
+        : { items: baseItems, loading: false, error: null, refetch: vi.fn() },
+    )
+    render(<PatientCombobox id="test-combobox" value={null} onChange={vi.fn()} />)
+    const input = screen.getByRole("combobox")
+
+    fireEvent.change(input, { target: { value: "Inexistant" } })
+
+    expect(input.getAttribute("aria-busy")).toBe("true")
+    expect(document.body.textContent).toContain("patientSearching")
+    expect(document.body.textContent).not.toContain("patientNoResults")
+  })
+
+  it("min-length : une saisie d'1 caractère ne déclenche PAS la recherche backend", () => {
+    // Anti-flooding endpoint PHI : l'instance de recherche reste désactivée
+    // (enabled:false, search:undefined) sous le seuil MIN_BACKEND_SEARCH_LEN.
+    // `mockClear()` — l'historique d'appels s'accumule sur tout le fichier
+    // (afterEach restoreAllMocks ne vide pas .mock.calls).
+    mockUsePatientList.mockClear()
+    render(<PatientCombobox id="test-combobox" value={null} onChange={vi.fn()} />)
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "J" } })
+
+    // Aucun appel du hook avec un `search` défini pour une saisie d'1 caractère.
+    const searchCalls = mockUsePatientList.mock.calls.filter(
+      (c) => (c[0] as { search?: string }).search !== undefined,
+    )
+    expect(searchCalls).toHaveLength(0)
   })
 
   it("autoComplete='off' + spellCheck=false (anti history input + anti spell check PHI)", () => {

@@ -1,15 +1,22 @@
 /**
- * US-2019 — Recherche patient (full-text exact match sur HMAC + filtres).
+ * US-2019 — Recherche patient (HMAC tokenisé + filtres).
  *
  * Query params:
- *  - `search`     — nom OU prénom EXACT (case-insensitive). HMAC déterministe
- *                   sur User.firstnameHmac / User.lastnameHmac.
+ *  - `search`     — nom et/ou prénom. La saisie est **tokenisée par mot** côté
+ *                   service : chaque token COMPLET est matché par HMAC exact sur
+ *                   User.firstnameHmac / lastnameHmac (les noms chiffrés ne
+ *                   permettent pas de `LIKE %fragment%`). Un token `#<id>`
+ *                   résout directement l'id patient (désambiguïsation homonymes).
  *  - `pathology`  — DT1 / DT2 / GD (exact match).
  *  - `cursor`     — id patient (pagination).
  *  - `limit`      — page size (1..50, défaut 25).
  *
  * Scoping RBAC : ADMIN voit tout, DOCTOR/NURSE limités aux patients de leurs
- * services, VIEWER → own patient. Le `search` ne contourne JAMAIS la scope.
+ * services, VIEWER → own patient. Le `search` ne contourne JAMAIS la scope
+ * (le `id IN accessibleIds` top-level est ANDé avec le OR de recherche).
+ *
+ * Rate-limit : `patientDataRead` (60/60s/user, fail-open) — endpoint PHI
+ * (noms déchiffrés) appelé par l'autocomplete + recherche `#id` énumérable.
  *
  * Audit : `READ` sur `PATIENT` (`resourceId="search"`) avec le count + flags.
  */
@@ -18,6 +25,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Pathology } from "@prisma/client"
 import { requireRole, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { patientService } from "@/lib/services/patient.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
@@ -53,6 +61,43 @@ export async function GET(req: NextRequest) {
   try {
     const user = requireRole(req, "NURSE")
     const ctx = extractRequestContext(req)
+
+    // Rate-limit endpoint PHI (aligné /analytics, /glycemia, /meal-photos).
+    // Borne l'énumération `#1 #2 #3…` + la récolte de noms déchiffrés au débit
+    // d'un autocomplete légitime. Double bucket per-user + per-IP (cohérent
+    // avec les autres endpoints exfil-sensibles) : le per-IP couvre le fan-out
+    // credential-stuffing depuis un seul hôte. Fail-open — la confidentialité
+    // repose sur le RBAC `accessibleIds`, pas le limiter.
+    const rlUser = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
+    if (!rlUser.allowed) {
+      return setPatientsSearchSecurityHeaders(
+        NextResponse.json(
+          { error: "rateLimitExceeded" },
+          { status: 429, headers: { "Retry-After": String(rlUser.retryAfterSec) } },
+        ),
+      )
+    }
+    // Bucket per-IP : on SKIP quand l'IP n'est pas résolue (`extractRequestContext`
+    // renvoie la sentinelle "unknown"). Sinon toutes les requêtes sans
+    // `x-forwarded-for` (proxy contourné, health-checks) tomberaient dans UN
+    // seul bucket partagé `ip:unknown` → DoS auto-infligé (revue round 3). Le
+    // bucket per-user reste appliqué dans tous les cas. NB : l'IP vient du hop
+    // XFF le plus à gauche (spoofable) — durcissement transverse suivi dans
+    // docs/security/xff-trusted-proxy.md.
+    if (ctx.ipAddress && ctx.ipAddress !== "unknown") {
+      const rlIp = await checkApiRateLimit(
+        `ip:${ctx.ipAddress}`,
+        RATE_LIMITS.patientDataReadIp,
+      )
+      if (!rlIp.allowed) {
+        return setPatientsSearchSecurityHeaders(
+          NextResponse.json(
+            { error: "rateLimitExceeded" },
+            { status: 429, headers: { "Retry-After": String(rlIp.retryAfterSec) } },
+          ),
+        )
+      }
+    }
 
     const parsed = querySchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams.entries()),

@@ -1,0 +1,17 @@
+-- PR #531 (US-2500) — Index dédié sur users.lastname_hmac.
+--
+-- La recherche patient tokenisée (patient.service → search) génère la branche
+-- `lastname_hmac = ANY($1)` SANS contrainte sur firstname_hmac. L'index composite
+-- existant "users_firstname_hmac_lastname_hmac_idx" ne peut PAS la servir
+-- (lastname_hmac est la 2e colonne) → seq scan sur "users". Cet index dédié
+-- rétablit un lookup indexé. firstname_hmac reste couvert par l'index composite
+-- (colonne de tête).
+--
+-- IF NOT EXISTS : idempotence si la migration est rejouée à la main (runbook
+-- incident) ; `migrate deploy` reste idempotent via son journal.
+-- Pas de CONCURRENTLY : `prisma migrate deploy` enveloppe chaque migration dans
+-- UNE transaction où `CREATE INDEX CONCURRENTLY` est interdit. Env non peuplé
+-- (ADR US-2267) → lock de build négligeable. Pour un env DÉJÀ peuplé : pré-créer
+-- l'index hors-bande en CONCURRENTLY (cf. docs/runbook/migrations.md) AVANT le
+-- deploy, le IF NOT EXISTS le sautera ensuite.
+CREATE INDEX IF NOT EXISTS "users_lastname_hmac_idx" ON "users"("lastname_hmac");
