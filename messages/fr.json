@@ -1225,6 +1225,25 @@
     "users": {
       "title": "Utilisateurs",
       "subtitle": "Gestion des comptes utilisateurs (admins, médecins, infirmier·ères, patients). Cliquer pour détail + actions suspension/archivage."
+    },
+    "backupsList": {
+      "statusLabel": "Statut :",
+      "all": "Tous",
+      "refresh": "Actualiser",
+      "trigger": "Déclencher backup",
+      "triggerSuccess": "Backup déclenché (status: pending). Le worker le consommera bientôt.",
+      "loading": "Chargement…",
+      "listUnavailable": "Liste indisponible",
+      "retry": "Réessayer",
+      "empty": "Aucun backup enregistré.",
+      "started": "Démarré {date}",
+      "duration": "Durée : {duration}",
+      "byUser": "Par utilisateur #{id}",
+      "seeError": "⚠ Voir l'erreur",
+      "confirmTitle": "Déclencher un backup PostgreSQL ?",
+      "confirmDesc": "Le backup démarrera immédiatement (status: pending → running). Durée estimée : 2-15 minutes selon taille DB. L'opération est tracée dans le journal d'audit.",
+      "cancel": "Annuler",
+      "confirmTrigger": "Déclencher"
     }
   },
   "dashboardCards": {

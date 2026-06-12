@@ -1225,6 +1225,25 @@
     "users": {
       "title": "Users",
       "subtitle": "Management of user accounts (admins, doctors, nurses, patients). Click for detail + suspension/archival actions."
+    },
+    "backupsList": {
+      "statusLabel": "Status:",
+      "all": "All",
+      "refresh": "Refresh",
+      "trigger": "Trigger backup",
+      "triggerSuccess": "Backup triggered (status: pending). The worker will pick it up shortly.",
+      "loading": "Loading…",
+      "listUnavailable": "List unavailable",
+      "retry": "Retry",
+      "empty": "No backup recorded.",
+      "started": "Started {date}",
+      "duration": "Duration: {duration}",
+      "byUser": "By user #{id}",
+      "seeError": "⚠ View error",
+      "confirmTitle": "Trigger a PostgreSQL backup?",
+      "confirmDesc": "The backup will start immediately (status: pending → running). Estimated duration: 2-15 minutes depending on DB size. The operation is recorded in the audit log.",
+      "cancel": "Cancel",
+      "confirmTrigger": "Trigger"
     }
   },
   "dashboardCards": {
