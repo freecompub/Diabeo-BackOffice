@@ -100,6 +100,19 @@ explicité. Deux formats, selon le contexte de rendu :
 Règle valable sur **les 3 langues** (`messages/fr|en|ar.json`). Tout nouvel acronyme
 affiché → ajouter son libellé dans `glossary` avant de l'utiliser.
 
+### 🌐 Texte affiché via i18n — mais JAMAIS les logs
+
+Tout **texte visible par l'utilisateur** doit passer par `next-intl` (`{t("clé")}` /
+`getTranslations`), pas en dur dans le JSX. Garde-fou : règle ESLint
+`i18next/no-literal-string` (`warn`, `mode: jsx-text-only`, hors `components/ui`).
+
+**Exclusion stricte — on n'internationalise JAMAIS un log.** Les messages de
+`console.*`, `logger.*`, les erreurs techniques/dev, les messages d'exception
+internes et les identifiants/clés restent des **chaînes littérales** (ils servent
+au debug/SOC, pas à l'utilisateur ; les traduire casserait le grep des logs et la
+corrélation incident). La règle `jsx-text-only` ne les flague pas — ne pas les
+ajouter aux fichiers `messages/*.json`.
+
 ---
 
 ## 🔐 Règles de sécurité — NON NÉGOCIABLES
