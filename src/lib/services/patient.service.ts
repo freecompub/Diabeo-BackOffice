@@ -148,6 +148,34 @@ function localDecryptField(value: string): string {
 const LIST_BY_DOCTOR_MAX = 2000
 const LIST_BY_DOCTOR_WARN_AT = 1000
 
+/**
+ * Prédicat de visibilité "côté soignant" partagé par `listByDoctor` et `search`
+ * (review round 2 — HSA M : éviter la divergence accidentelle entre deux
+ * surfaces qui doivent appliquer la MÊME règle de consentement).
+ *
+ * ⚠️ DPIA — posture *fail-open* sur l'absence de row `UserPrivacySettings` :
+ *   - OR (pas encore de row)  → patient nouvellement créé, wizard de
+ *     consentement pas encore passé : il DOIT rester visible/trouvable par le
+ *     soignant de son portefeuille (sinon le PS qui vient de le créer ne peut
+ *     ni le consulter ni lui poser un RDV). RGPD Art. 6.1.b/9.2.h — base légale
+ *     "prise en charge", pas le consentement Art. 7.
+ *   - OR (gdprConsent && shareWithProviders confirmés) → opt-in explicite.
+ *   - L'opt-out explicite (row présente avec un flag false) tombe dans aucune
+ *     branche → EXCLU (Art. 21 honoré dès qu'une row existe).
+ *
+ * ⚠️ NE PAS réutiliser pour l'AGRÉGATION population (`population-analytics`,
+ * `consent.ts`, `team-workflow`) qui sont délibérément *fail-closed* (absence
+ * de row = pas de consentement) : agréger des données d'un patient sans
+ * consentement explicite n'a pas la même base légale que l'identifier dans le
+ * portefeuille de son propre soignant. Cf. DPIA patient-search.
+ */
+const PROVIDER_VISIBLE_USER_WHERE: Prisma.UserWhereInput = {
+  OR: [
+    { privacySettings: null },
+    { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+  ],
+}
+
 const DECRYPT_WARN_WINDOW_MS = 60_000
 const DECRYPT_SUPPRESSED_CAP = 10_000_000
 /**
@@ -886,18 +914,24 @@ export const patientService = {
     const searchOr = ((): Prisma.PatientWhereInput[] | undefined => {
       const raw = input.search?.trim()
       if (!raw) return undefined
-      // Cap défensif sur le nombre de tokens. L'input est déjà borné à 100 car.
-      // par Zod (route), mais on évite tout HMAC-SHA256 × N non borné + `IN`
-      // qui gonfle sur un endpoint PHI. 8 tokens couvrent largement un nom
-      // composé ("Jean-Pierre De La Fontaine #42").
-      const tokens = raw.split(/\s+/).filter(Boolean).slice(0, 8)
-      const idTokens = tokens
+      const allTokens = raw.split(/\s+/).filter(Boolean)
+      // Les tokens `#id` (désambiguïsation homonymes) sont extraits AVANT tout
+      // cap — sinon un `#42` en fin de saisie multi-mots serait silencieusement
+      // perdu (review round 2 LOW-2). Bornés à 8 par défense en profondeur.
+      const idTokens = allTokens
         .filter((tok) => /^#\d+$/.test(tok))
         .map((tok) => Number(tok.slice(1)))
         .filter((n) => Number.isSafeInteger(n) && n > 0)
+        .slice(0, 8)
+      // Cap défensif sur les tokens-NOMS : input déjà borné à 100 car. par Zod
+      // (route), mais on évite tout HMAC-SHA256 × N non borné + `IN` qui gonfle
+      // sur un endpoint PHI. 8 mots couvrent un nom composé large.
       const nameHmacs = [
         ...new Set(
-          tokens.filter((tok) => !/^#\d+$/.test(tok)).map((tok) => hmacField(tok)),
+          allTokens
+            .filter((tok) => !/^#\d+$/.test(tok))
+            .slice(0, 8)
+            .map((tok) => hmacField(tok)),
         ),
       ]
       const or: Prisma.PatientWhereInput[] = []
@@ -911,20 +945,17 @@ export const patientService = {
       return or.length > 0 ? or : undefined
     })()
 
+    // Note perf (review round 2 — backlog) : `where.user` (consentement) +
+    // `where.OR[].user` (HMAC noms) génèrent 2-3 sous-requêtes `EXISTS`
+    // indépendantes sur `users`. SQL correct ; invisible à l'échelle POC, mais
+    // à surveiller > 50k users (cf. ROADMAP scaling). Pas d'N+1 (`include`
+    // reste un JOIN batché unique).
     const where: Prisma.PatientWhereInput = {
       deletedAt: null,
-      // RGPD Art. 7.3 (révocation) + défaut implicite — ALIGNÉ sur `listByDoctor`
-      // (HSA H1 + PR #418 round 3) : un patient nouvellement créé n'a PAS encore
-      // de row `UserPrivacySettings` → il doit rester trouvable (sinon le PS qui
-      // vient de le créer ne le voit dans son portefeuille mais pas au combobox
-      // RDV). L'opt-out explicite (row présente avec un flag false) reste honoré.
-      //   OR (pas encore de row)  OR (gdprConsent && shareWithProviders confirmés)
-      user: {
-        OR: [
-          { privacySettings: null },
-          { privacySettings: { gdprConsent: true, shareWithProviders: true } },
-        ],
-      },
+      // Consentement RGPD — règle partagée avec `listByDoctor` (cf.
+      // PROVIDER_VISIBLE_USER_WHERE + sa note DPIA). Fail-open sur l'absence de
+      // row ; opt-out explicite honoré.
+      user: PROVIDER_VISIBLE_USER_WHERE,
       ...(input.accessibleIds !== null && { id: { in: input.accessibleIds } }),
       ...(input.pathology && { pathology: input.pathology }),
       ...(searchOr && { OR: searchOr }),
@@ -1007,21 +1038,11 @@ export const patientService = {
         pro: { userId: doctorUserId },
         patient: {
           deletedAt: null,
-          // HSA H1 + review round 2 C1 — RGPD Art. 7.3 (révocation) tout en
-          // respectant le défaut implicite : un patient nouvellement créé n'a
-          // PAS encore de row UserPrivacySettings (pas créée par le wizard) →
-          // il doit rester visible (sinon le PS qui le crée ne le voit jamais
-          // dans son portefeuille). Pattern aligné PR #418 round 3 :
-          //   OR (no settings row yet) (opt-out explicit not yet expressed)
-          //   OR (gdprConsent && shareWithProviders)  (opt-in confirmé)
-          // L'opt-out Art. 21 (révocation explicite via /api/account/privacy)
-          // est honoré dès qu'une row existe avec un flag false.
-          user: {
-            OR: [
-              { privacySettings: null },
-              { privacySettings: { gdprConsent: true, shareWithProviders: true } },
-            ],
-          },
+          // HSA H1 + review round 2 — règle de visibilité soignant partagée
+          // avec `search` (cf. PROVIDER_VISIBLE_USER_WHERE + sa note DPIA).
+          // Fail-open sur l'absence de row (patient nouvellement créé) ;
+          // opt-out explicite Art. 21 honoré dès qu'une row existe.
+          user: PROVIDER_VISIBLE_USER_WHERE,
         },
       },
       select: {

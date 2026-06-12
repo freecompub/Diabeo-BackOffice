@@ -60,21 +60,35 @@ const querySchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = requireRole(req, "NURSE")
+    const ctx = extractRequestContext(req)
 
-    // Rate-limit endpoint PHI (aligné avec /analytics, /glycemia, /meal-photos).
+    // Rate-limit endpoint PHI (aligné /analytics, /glycemia, /meal-photos).
     // Borne l'énumération `#1 #2 #3…` + la récolte de noms déchiffrés au débit
-    // d'un autocomplete légitime. Fail-open (availability-first) via le bucket.
-    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
-    if (!rl.allowed) {
+    // d'un autocomplete légitime. Double bucket per-user + per-IP (cohérent
+    // avec les autres endpoints exfil-sensibles) : le per-IP couvre le fan-out
+    // credential-stuffing depuis un seul hôte. Fail-open — la confidentialité
+    // repose sur le RBAC `accessibleIds`, pas le limiter.
+    const rlUser = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
+    if (!rlUser.allowed) {
       return setPatientsSearchSecurityHeaders(
         NextResponse.json(
           { error: "rateLimitExceeded" },
-          { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+          { status: 429, headers: { "Retry-After": String(rlUser.retryAfterSec) } },
         ),
       )
     }
-
-    const ctx = extractRequestContext(req)
+    const rlIp = await checkApiRateLimit(
+      `ip:${ctx.ipAddress ?? "unknown-ip"}`,
+      RATE_LIMITS.patientDataReadIp,
+    )
+    if (!rlIp.allowed) {
+      return setPatientsSearchSecurityHeaders(
+        NextResponse.json(
+          { error: "rateLimitExceeded" },
+          { status: 429, headers: { "Retry-After": String(rlIp.retryAfterSec) } },
+        ),
+      )
+    }
 
     const parsed = querySchema.safeParse(
       Object.fromEntries(req.nextUrl.searchParams.entries()),

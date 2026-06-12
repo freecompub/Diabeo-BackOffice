@@ -158,6 +158,19 @@ export const RATE_LIMITS = {
     max: 60,
     failMode: "open",
   } satisfies ApiRateLimitConfig,
+  /**
+   * PR #531 — recherche patient par IP : 120 req/60 s. Double le quota user
+   * (autocomplete + recherche `#id`) pour ne pas pénaliser plusieurs PS
+   * légitimes derrière un même NAT cabinet, tout en bornant un fan-out
+   * credential-stuffing depuis un seul hôte. Fail-open (cohérent patientDataRead
+   * — la confidentialité repose sur le RBAC `accessibleIds`, pas le limiter).
+   */
+  patientDataReadIp: {
+    bucket: "patient-data-read-ip",
+    windowSec: 60,
+    max: 120,
+    failMode: "open",
+  } satisfies ApiRateLimitConfig,
   /** Export RGPD per user: 3 req/h. Fail-closed — HDS data-exfiltration guard. */
   exportUser: {
     bucket: "export-rgpd-user",

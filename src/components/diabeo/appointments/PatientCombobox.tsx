@@ -195,9 +195,16 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
         // Recherche complémentaire en vol → `aria-busy` (état "occupé") plutôt
         // qu'un texte annoncé à chaque frappe dans le live region (revue a11y).
         aria-busy={searching ? "true" : undefined}
+        // `aria-controls` vers la datalist : compense l'absence d'aria-expanded
+        // (impossible sur `<input list>` natif — l'ouverture est gérée par le
+        // navigateur, non détectable en JS). Revue a11y round 2.
+        aria-controls={`${id}-options`}
         className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
         placeholder={t("patientPlaceholder")}
-        aria-describedby={error ? `${id}-error ${id}-help` : `${id}-help`}
+        // `aria-describedby` STABLE (help seul) : l'erreur est déjà annoncée par
+        // sa région `role="alert"` (assertive). Éviter de basculer 1↔2 ids
+        // (référence ARIA orpheline au démontage de l'erreur — revue a11y r2).
+        aria-describedby={`${id}-help`}
       />
       <datalist id={`${id}-options`}>
         {filtered.map((p) => (
@@ -205,24 +212,24 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
         ))}
       </datalist>
 
-      {/* Erreur — région ASSERTIVE dédiée (role=alert). Sortie du live region
-          "polite" ci-dessous pour éviter le conflit d'assertivité d'un alert
-          imbriqué dans un polite (revue a11y PR #531). N'apparaît que sur
-          échec de la liste BASE. */}
+      {/* Erreur — région ASSERTIVE dédiée (role=alert), hors du live region
+          "polite" (évite l'alert imbriqué dans un polite — revue a11y r1).
+          Annoncée d'elle-même à l'apparition ; pas référencée par
+          aria-describedby (évite la référence orpheline au démontage — r2). */}
       {error && (
-        <p id={`${id}-error`} role="alert" className="text-xs text-red-600">
+        <p role="alert" className="text-xs text-red-600">
           {t("patientListError")}
         </p>
       )}
 
-      {/* Statut/hint — région POLITE atomique, états STABLES uniquement. Le
-          "searching" transitoire reste visible mais `aria-hidden` (non annoncé :
-          c'est `aria-busy` sur l'input qui porte l'info pour les SR). */}
+      {/* Statut/hint — région POLITE. PAS `aria-atomic` (sinon chaque mutation
+          relit toute la région → sur-annonce sur les transitions — revue a11y
+          r2). Le "searching" transitoire reste visible mais `aria-hidden`
+          (l'info SR est portée par `aria-busy` sur l'input). */}
       <p
         id={`${id}-help`}
         className="text-xs text-muted-foreground"
         aria-live="polite"
-        aria-atomic="true"
       >
         {loading && t("loading")}
         {searching && !loading && !error && (

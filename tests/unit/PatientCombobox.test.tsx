@@ -13,7 +13,7 @@
  *   - aria-required + aria-invalid (FE-15/16)
  *   - Loading state
  *   - Error state (role=alert)
- *   - useDeferredValue debouncing (smoke — vérifie pas de setState in effect)
+ *   - useDeferredValue (différé, PAS un debounce) — smoke : pas de setState in effect
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
@@ -78,6 +78,10 @@ describe("<PatientCombobox>", () => {
         : // liste base (sans search) : reste peuplée
           { items: baseItems, loading: false, error: null, refetch: vi.fn() },
     )
+    // `mockClear()` — l'historique d'appels s'accumule sur tout le fichier
+    // (afterEach restoreAllMocks ne vide pas .mock.calls) ; on isole pour que
+    // l'assertion finale porte sur CE rendu, pas un appel d'un test précédent.
+    mockUsePatientList.mockClear()
 
     render(<PatientCombobox id="cb" value={null} onChange={vi.fn()} />)
     const input = screen.getByRole("combobox") as HTMLInputElement
@@ -202,7 +206,7 @@ describe("<PatientCombobox>", () => {
 
     fireEvent.change(screen.getByRole("combobox"), { target: { value: "Inexistant" } })
 
-    // Le hint affiche "patientNoResults" via role=status
+    // Le hint affiche "patientNoResults" dans la région aria-live="polite"
     expect(document.body.textContent).toContain("patientNoResults")
   })
 
