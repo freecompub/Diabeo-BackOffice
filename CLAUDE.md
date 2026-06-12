@@ -77,6 +77,79 @@ Glycémie critique  : #EF4444  (rouge)
 - Accessibilité obligatoire : ARIA labels sur tous les éléments interactifs
 - Responsive : mobile-first, mais le backoffice est principalement desktop
 
+### 🎨 Toujours utiliser le design system — JAMAIS de hex hardcodés ni de Tailwind brut
+
+**Règle non négociable** pour TOUT développement UI (composant React, page,
+template SVG, chart Recharts, email HTML). La source de vérité est triple :
+
+- `src/design-system/tokens.ts` — couleurs JS pour Recharts/SVG (`tokens.brand.primary[600]`, `tokens.glycemia.normal`, etc.)
+- `src/styles/tokens.css` — variables CSS `--diabeo-*` (couleurs, spacing, radius, typo, z-index, transitions)
+- `src/app/globals.css` `@theme inline` — mapping vers les classes Tailwind sémantiques
+
+**✅ TOUJOURS** :
+
+```tsx
+// Classes Tailwind sémantiques (shadcn + design system Diabeo)
+<button className="bg-primary text-primary-foreground hover:bg-primary/90">Connexion</button>
+<div className="bg-muted text-muted-foreground border-border">…</div>
+<p className="text-glycemia-critical">Glycémie en hyper</p>
+<Badge className="bg-feedback-warning">Stale</Badge>
+
+// JS pour Recharts/SVG → import depuis le module tokens
+import { tokens } from "@/design-system/tokens"
+<Line stroke={tokens.brand.primary[600]} />
+<Cell fill={tokens.glycemia.normal} />
+```
+
+**❌ JAMAIS** :
+
+```tsx
+// Tailwind brut par numéro (contournement du design system)
+<button className="bg-teal-600 hover:bg-teal-700">…</button>  // ❌ → bg-primary
+<div className="bg-red-500">Erreur</div>                       // ❌ → bg-destructive
+<p className="text-gray-500">…</p>                             // ❌ → text-muted-foreground
+<span className="border-blue-300">…</span>                     // ❌ pas dans la palette Diabeo
+
+// CSS vars en `arbitrary-value` (interdit explicitement par docs/design-system/tokens.md)
+<div className="bg-[var(--color-primary)]">…</div>             // ❌ → bg-primary
+<p className="text-[var(--color-muted-foreground)]">…</p>       // ❌ → text-muted-foreground
+
+// Hex hardcodés en JSX/SVG/style inline
+<svg fill="#0D9488" />                                          // ❌ → fill={tokens.brand.primary[600]}
+<div style={{ color: "#F97316" }}>…</div>                       // ❌ → text-secondary
+<Line stroke="#10B981" />                                       // ❌ → stroke={tokens.glycemia.normal}
+
+// Valeurs arbitraires (sauf justification documentée)
+<div className="mt-[17px] text-[13.5px]">…</div>               // ❌ → mt-4 + text-sm
+```
+
+**Logos / branding** : utiliser le composant `<Logo />` ou `<LogoMark />` de
+`src/components/diabeo/brand/Logo.tsx` (variants `full`/`mark`/`mono`/`inverse`).
+**JAMAIS** un `<div bg-teal-600><span>D</span></div>` improvisé.
+
+**Exceptions tolérées** (uniquement quand documentées par un commentaire) :
+- Hex sans équivalent token précis dans un mapping de couleurs métier (ex:
+  `appointments/adapter.ts` pour des shades amber-100/900). Toujours commenter
+  « pas d'équivalent token » à côté.
+- `text-white` natif Tailwind sur un fond coloré (alternatif : `text-primary-foreground`).
+- Templates **email HTML** (`src/lib/services/email.service.ts`) : inline CSS
+  acceptable car contexte non-React, mais préférer extraire les couleurs vers
+  une constante locale qui reflète `tokens.ts`.
+
+**Tokens disponibles** (extrait — voir `docs/design-system/` pour la liste exhaustive) :
+- Couleurs : `bg-primary`, `bg-secondary`, `bg-muted`, `bg-card`, `bg-background`, `bg-foreground`, `bg-destructive`, `bg-border`, `bg-teal-{50..950}`, `bg-coral-{50..950}`, `bg-glycemia-{very-low,low,normal,high,very-high,critical}{,-bg,-border}`, `bg-feedback-{success,warning,error,info}{,-bg}`, `bg-tir-{very-low,low,in-range,high,very-high}`, `bg-pathology-{dt1,dt2,gd}{,-bg}`
+- Opacité : `bg-primary/10`, `text-destructive/80` (syntaxe Tailwind 4 native)
+- Spacing : `p-{0..24}`, `gap-{0..24}` (échelle 4px Diabeo)
+- Radius : `rounded-{sm,md,lg,xl,2xl,full}`
+- Z-index : `z-{base,dropdown,sticky,header,overlay,modal,popover,toast,critical-alert}`
+- Transitions : `duration-{fast,normal,slow,slower}`, `ease-{default,in,out,in-out,spring}`
+- Shadows : `shadow-diabeo-{xs,sm,md,lg,xl,critical,warning,success,primary}`
+
+**Avant de hardcoder** : grep le token (ex: `grep "primary-600" src/styles/tokens.css`)
+ou demander la classe sémantique équivalente. Si vraiment aucun token ne convient
+→ proposer son ajout dans `tokens.ts` + `tokens.css` + `globals.css` AVANT de
+hardcoder, jamais l'inverse.
+
 ### 🔤 Acronymes dans l'affichage client — JAMAIS d'acronyme nu
 
 Tout acronyme **visible par l'utilisateur** (médical, réglementaire, métier) doit être
@@ -484,6 +557,15 @@ au prochain `--update` tant que les fichiers source n'ont pas bougé.
   - Le contournement "c'est juste de la doc, la CI ne s'applique pas" est interdit : la CI valide aussi la doc (markdown lint, lien rot), et le PR audit trail est nécessaire pour la traçabilité HDS/ANS.
 - supprimer une feature sans le consentement explicite de l'utilisateur
 - on ne developpe pas les applications android et ios
+- **Hardcoder des couleurs ou des classes Tailwind brutes** dans un composant UI
+  - Interdit : `bg-teal-600`, `text-red-500`, `border-gray-200`, `"#0D9488"`,
+    `style={{ color: "#F97316" }}`, `bg-[var(--color-primary)]`
+  - Toujours : classes sémantiques du design system (`bg-primary`,
+    `text-destructive`, `text-muted-foreground`, `border-border`) ou
+    `tokens.X` depuis `@/design-system/tokens` pour les SVG/Recharts.
+  - Cf. section « 🎨 Toujours utiliser le design system » ci-dessus.
+- Improviser un logo en JSX (`<div bg-teal-600><span>D</span></div>`) au lieu
+  d'utiliser le composant `<Logo />` / `<LogoMark />` (`components/diabeo/brand/Logo.tsx`)
 - **Supprimer le dossier `graphify-out/`** (knowledge graph local, gitignoré).
   - Il est coûteux à régénérer (~plusieurs M tokens d'extraction sémantique) et sert de carte du code pour les requêtes `/graphify`.
   - Ne jamais le `rm -rf` même pour "faire de la place" ou "nettoyer" : seuls les fichiers temporaires `graphify-out/.graphify_*` (intermédiaires de pipeline) peuvent être nettoyés ; `graph.json`, `graph.html`, `GRAPH_REPORT.md` et `cache/` doivent être préservés.
@@ -500,6 +582,7 @@ au prochain `--update` tant que les fichiers source n'ont pas bougé.
 - [ ] Tests unitaires pour la logique métier ajoutée (couverture ≥ 80%)
 - [ ] Types TypeScript stricts (pas de `any`)
 - [ ] Composants accessibles (ARIA labels)
+- [ ] **Design system respecté** : aucun hex hardcodé, aucun Tailwind brut par numéro (`bg-teal-600`, `text-red-500`), aucun `bg-[var(--color-X)]` — uniquement les classes sémantiques (`bg-primary`, `text-destructive`, `text-muted-foreground`…) ou `tokens.X` pour les SVG/Recharts
 
 ---
 
