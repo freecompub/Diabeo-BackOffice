@@ -40,9 +40,13 @@ describe("patientService.search", () => {
     expect(call.where.OR).toHaveLength(2)
     expect(call.where.OR[0].user.firstnameHmac.in).toHaveLength(1)
     expect(call.where.OR[1].user.lastnameHmac.in).toHaveLength(1)
-    // `where.user` ne porte que le filtre privacy (consentement RGPD).
+    // `where.user` ne porte que le filtre privacy (consentement RGPD), aligné
+    // sur listByDoctor : OR (pas de row) OR (consentement confirmé).
     expect(call.where.user).toEqual({
-      privacySettings: { gdprConsent: true, shareWithProviders: true },
+      OR: [
+        { privacySettings: null },
+        { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+      ],
     })
   })
 
@@ -97,15 +101,51 @@ describe("patientService.search", () => {
     expect(call.where.OR).toEqual([{ id: { in: [99] } }])
   })
 
-  it("filters out patients without gdprConsent + shareWithProviders (H1)", async () => {
+  it("filters consent (H1) en autorisant les patients sans row privacySettings (aligné listByDoctor)", async () => {
     await patientService.search(
       { accessibleIds: [1] },
       9,
     )
     const call = prismaMock.patient.findMany.mock.calls[0][0] as any
-    expect(call.where.user.privacySettings).toEqual({
-      gdprConsent: true, shareWithProviders: true,
-    })
+    // OR (pas encore de row — patient fraîchement créé) OR (consentement confirmé).
+    // Un patient avec une row présente mais un flag false reste exclu (opt-out).
+    expect(call.where.user.OR).toEqual([
+      { privacySettings: null },
+      { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+    ])
+  })
+
+  it("cap défensif : au-delà de 8 tokens, seuls les 8 premiers sont matchés", async () => {
+    // 10 mots distincts → tokenisation tronquée à 8 → 8 HMAC max dans le `in`.
+    await patientService.search(
+      { search: "a b c d e f g h i j", accessibleIds: null },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.where.OR[0].user.firstnameHmac.in).toHaveLength(8)
+    expect(call.where.OR[1].user.lastnameHmac.in).toHaveLength(8)
+  })
+
+  it("fallback : saisie blancs-only → pas de branche `OR` de recherche", async () => {
+    await patientService.search(
+      { search: "   ", accessibleIds: [1] },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.where.OR).toBeUndefined()
+  })
+
+  it("fallback : `#id` non-safe-integer → token ignoré, pas de branche `OR`", async () => {
+    // `#99999999999999999999` matche /^#\d+$/ (donc exclu des noms) mais échoue
+    // Number.isSafeInteger → idTokens vide → searchOr undefined (liste scopée
+    // renvoyée, JAMAIS hors scope car `id IN accessibleIds` reste top-level).
+    await patientService.search(
+      { search: "#99999999999999999999", accessibleIds: [1] },
+      9,
+    )
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.where.OR).toBeUndefined()
+    expect(call.where.id).toEqual({ in: [1] })
   })
 
   it("response trims to id/firstname/lastname (data-minimization)", async () => {

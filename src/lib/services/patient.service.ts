@@ -886,7 +886,11 @@ export const patientService = {
     const searchOr = ((): Prisma.PatientWhereInput[] | undefined => {
       const raw = input.search?.trim()
       if (!raw) return undefined
-      const tokens = raw.split(/\s+/).filter(Boolean)
+      // Cap défensif sur le nombre de tokens. L'input est déjà borné à 100 car.
+      // par Zod (route), mais on évite tout HMAC-SHA256 × N non borné + `IN`
+      // qui gonfle sur un endpoint PHI. 8 tokens couvrent largement un nom
+      // composé ("Jean-Pierre De La Fontaine #42").
+      const tokens = raw.split(/\s+/).filter(Boolean).slice(0, 8)
       const idTokens = tokens
         .filter((tok) => /^#\d+$/.test(tok))
         .map((tok) => Number(tok.slice(1)))
@@ -909,10 +913,18 @@ export const patientService = {
 
     const where: Prisma.PatientWhereInput = {
       deletedAt: null,
-      // H1 — exclude patients who revoked sharing or never accepted GDPR.
-      // Matches the same filter applied in `population-analytics.service`
-      // (RGPD Art. 7.3 — revocation effective on all aggregations).
-      user: { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+      // RGPD Art. 7.3 (révocation) + défaut implicite — ALIGNÉ sur `listByDoctor`
+      // (HSA H1 + PR #418 round 3) : un patient nouvellement créé n'a PAS encore
+      // de row `UserPrivacySettings` → il doit rester trouvable (sinon le PS qui
+      // vient de le créer ne le voit dans son portefeuille mais pas au combobox
+      // RDV). L'opt-out explicite (row présente avec un flag false) reste honoré.
+      //   OR (pas encore de row)  OR (gdprConsent && shareWithProviders confirmés)
+      user: {
+        OR: [
+          { privacySettings: null },
+          { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+        ],
+      },
       ...(input.accessibleIds !== null && { id: { in: input.accessibleIds } }),
       ...(input.pathology && { pathology: input.pathology }),
       ...(searchOr && { OR: searchOr }),
@@ -927,6 +939,11 @@ export const patientService = {
           select: { id: true, firstname: true, lastname: true },
         },
       },
+      // NB pagination : avec une branche `#id` dans le `OR`, le résultat n'est
+      // pas une fenêtre triée *stricte* (un patient ciblé par `#id` est inclus
+      // quelle que soit sa position vs le curseur). Pas de perte ni de doublon
+      // (le curseur exclut un seul id via skip:1) — l'autocomplete consomme la
+      // 1re page sans paginer. Comportement assumé, documenté ici.
       orderBy: { id: "desc" },
       take: limit + 1,
       ...(input.cursor && { cursor: { id: input.cursor }, skip: 1 }),

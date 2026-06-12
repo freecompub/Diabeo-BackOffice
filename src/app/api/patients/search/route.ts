@@ -1,15 +1,22 @@
 /**
- * US-2019 — Recherche patient (full-text exact match sur HMAC + filtres).
+ * US-2019 — Recherche patient (HMAC tokenisé + filtres).
  *
  * Query params:
- *  - `search`     — nom OU prénom EXACT (case-insensitive). HMAC déterministe
- *                   sur User.firstnameHmac / User.lastnameHmac.
+ *  - `search`     — nom et/ou prénom. La saisie est **tokenisée par mot** côté
+ *                   service : chaque token COMPLET est matché par HMAC exact sur
+ *                   User.firstnameHmac / lastnameHmac (les noms chiffrés ne
+ *                   permettent pas de `LIKE %fragment%`). Un token `#<id>`
+ *                   résout directement l'id patient (désambiguïsation homonymes).
  *  - `pathology`  — DT1 / DT2 / GD (exact match).
  *  - `cursor`     — id patient (pagination).
  *  - `limit`      — page size (1..50, défaut 25).
  *
  * Scoping RBAC : ADMIN voit tout, DOCTOR/NURSE limités aux patients de leurs
- * services, VIEWER → own patient. Le `search` ne contourne JAMAIS la scope.
+ * services, VIEWER → own patient. Le `search` ne contourne JAMAIS la scope
+ * (le `id IN accessibleIds` top-level est ANDé avec le OR de recherche).
+ *
+ * Rate-limit : `patientDataRead` (60/60s/user, fail-open) — endpoint PHI
+ * (noms déchiffrés) appelé par l'autocomplete + recherche `#id` énumérable.
  *
  * Audit : `READ` sur `PATIENT` (`resourceId="search"`) avec le count + flags.
  */
@@ -18,6 +25,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { Pathology } from "@prisma/client"
 import { requireRole, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { patientService } from "@/lib/services/patient.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
@@ -52,6 +60,20 @@ const querySchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = requireRole(req, "NURSE")
+
+    // Rate-limit endpoint PHI (aligné avec /analytics, /glycemia, /meal-photos).
+    // Borne l'énumération `#1 #2 #3…` + la récolte de noms déchiffrés au débit
+    // d'un autocomplete légitime. Fail-open (availability-first) via le bucket.
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
+    if (!rl.allowed) {
+      return setPatientsSearchSecurityHeaders(
+        NextResponse.json(
+          { error: "rateLimitExceeded" },
+          { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+        ),
+      )
+    }
+
     const ctx = extractRequestContext(req)
 
     const parsed = querySchema.safeParse(

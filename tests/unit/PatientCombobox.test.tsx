@@ -249,23 +249,40 @@ describe("<PatientCombobox>", () => {
     expect(alert.textContent).toContain("patientListError")
   })
 
-  it("searching state : recherche backend en vol → hint 'patientSearching', pas de faux 'aucun résultat'", () => {
+  it("searching state : recherche backend en vol → aria-busy sur l'input + pas de faux 'aucun résultat'", () => {
     // base (sans search) peuplée + non-loading ; instance search en vol (loading)
     // pour une saisie qui ne matche encore rien → anti-flicker : on n'affiche
-    // PAS "patientNoResults" tant que le fetch peut remonter un patient >50.
+    // PAS "patientNoResults" tant que le fetch peut remonter un patient >50, et
+    // l'état "occupé" est porté par aria-busy (pas un texte annoncé par frappe).
     mockUsePatientList.mockImplementation((args: { search?: string }) =>
       args?.search
         ? { items: [], loading: true, error: null, refetch: vi.fn() }
         : { items: baseItems, loading: false, error: null, refetch: vi.fn() },
     )
     render(<PatientCombobox id="test-combobox" value={null} onChange={vi.fn()} />)
+    const input = screen.getByRole("combobox")
 
-    fireEvent.change(screen.getByRole("combobox"), {
-      target: { value: "Inexistant" },
-    })
+    fireEvent.change(input, { target: { value: "Inexistant" } })
 
+    expect(input.getAttribute("aria-busy")).toBe("true")
     expect(document.body.textContent).toContain("patientSearching")
     expect(document.body.textContent).not.toContain("patientNoResults")
+  })
+
+  it("min-length : une saisie d'1 caractère ne déclenche PAS la recherche backend", () => {
+    // Anti-flooding endpoint PHI : l'instance de recherche reste désactivée
+    // (enabled:false, search:undefined) sous le seuil MIN_BACKEND_SEARCH_LEN.
+    // `mockClear()` — l'historique d'appels s'accumule sur tout le fichier
+    // (afterEach restoreAllMocks ne vide pas .mock.calls).
+    mockUsePatientList.mockClear()
+    render(<PatientCombobox id="test-combobox" value={null} onChange={vi.fn()} />)
+    fireEvent.change(screen.getByRole("combobox"), { target: { value: "J" } })
+
+    // Aucun appel du hook avec un `search` défini pour une saisie d'1 caractère.
+    const searchCalls = mockUsePatientList.mock.calls.filter(
+      (c) => (c[0] as { search?: string }).search !== undefined,
+    )
+    expect(searchCalls).toHaveLength(0)
   })
 
   it("autoComplete='off' + spellCheck=false (anti history input + anti spell check PHI)", () => {

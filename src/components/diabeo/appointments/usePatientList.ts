@@ -7,8 +7,14 @@
  * US-2500-UI iter 6 — alimente le `<PatientCombobox>` autocomplete.
  *
  * **Stratégie** : fetch `limit=50` initial (cabinet typique < 50 patients
- * actifs), filtrage côté client par nom/prénom. Si > 50 patients, le user
- * tape le nom EXACT pour déclencher un fetch ciblé (param `search` HMAC).
+ * actifs), filtrage côté client par nom/prénom. Si > 50 patients, taper un
+ * nom/prénom **complet** déclenche un fetch ciblé : le backend tokenise la
+ * saisie et matche chaque mot par HMAC exact (`search`), cf. patient.service.
+ *
+ * **Usage** : `<PatientCombobox>` instancie ce hook DEUX fois — une liste
+ * "base" (`enabled:true`, sans `search`) fetchée une fois, et une instance de
+ * recherche complémentaire (`search` débouncé) dont les résultats sont mergés
+ * à la base. Chaque instance gère son propre `AbortController`.
  *
  * Endpoint : `GET /api/patients/search?limit=50` (US-2019).
  * Réponse : `{ items: [{ id, user: { firstname, lastname, ... } }], nextCursor }`.

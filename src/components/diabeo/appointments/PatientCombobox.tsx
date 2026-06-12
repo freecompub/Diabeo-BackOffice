@@ -83,6 +83,12 @@ function normalize(s: string): string {
   return s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase()
 }
 
+/**
+ * Longueur minimale avant de solliciter la recherche backend complémentaire.
+ * Évite de marteler un endpoint PHI sur chaque 1re lettre (revue PR #531).
+ */
+const MIN_BACKEND_SEARCH_LEN = 2
+
 export function PatientCombobox({ id, value, onChange, disabled }: PatientComboboxProps) {
   const t = useTranslations("appointments")
   const [inputValue, setInputValue] = useState("")
@@ -98,13 +104,16 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
   // ── Recherche backend complémentaire (cabinets > 50 patients) ──────────
   // Un patient absent des 50 premiers devient trouvable en tapant son nom OU
   // prénom COMPLET (le backend tokenise + matche par HMAC exact, cf.
-  // patient.service → search). Débounce via `useDeferredValue` (React 19). Ses
-  // résultats AUGMENTENT la liste (merge ci-dessous) au lieu de la remplacer :
-  //   - pas de collapse de la liste base,
-  //   - input jamais désactivé par cette recherche (seul `base.loading` gate),
-  //   - la sélection reste possible (le patient surfacé reste dans `items`).
+  // patient.service → search). Ses résultats AUGMENTENT la liste (merge
+  // ci-dessous) au lieu de la remplacer → pas de collapse, sélection préservée.
+  //
+  // ⚠️ `useDeferredValue` n'est PAS un debounce réseau : il diffère seulement la
+  // priorité de RENDU, donc le fetch part dès que la valeur déférée se stabilise.
+  // On gate sur `MIN_BACKEND_SEARCH_LEN` pour ne pas frapper l'endpoint PHI sur
+  // chaque 1re lettre ; `usePatientList` annule la requête précédente
+  // (AbortController) à chaque changement de `search`.
   const deferredSearch = useDeferredValue(inputValue.trim())
-  const searchActive = deferredSearch.length > 0
+  const searchActive = deferredSearch.length >= MIN_BACKEND_SEARCH_LEN
   const search = usePatientList({
     enabled: searchActive,
     search: searchActive ? deferredSearch : undefined,
@@ -120,7 +129,11 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
   }, [base.items, search.items])
 
   const loading = base.loading
-  const error = base.error ?? search.error
+  // Seul l'échec de la liste BASE bloque. Un échec de la recherche
+  // complémentaire (token bizarre → 500) ne doit PAS transformer un combobox
+  // fonctionnel en bandeau d'erreur : il se traduit juste par une absence
+  // d'augmentation (revue PR #531).
+  const error = base.error
   const searching = searchActive && search.loading
 
   // Filtre client-side fallback (utile pour les 50 premiers sans search backend).
@@ -155,10 +168,10 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
 
   // Fix FE-7 round 1 review PR #434 — états distincts du hint :
   //   - loading → "Chargement…"
-  //   - error → role=alert
-  //   - searching → recherche backend complémentaire en cours (anti-flicker :
-  //     on n'affiche pas "aucun résultat" tant qu'un fetch peut encore remonter
-  //     un patient hors des 50 premiers)
+  //   - error → région role=alert dédiée (séparée du live region polite)
+  //   - searching → recherche complémentaire en vol : signalée via `aria-busy`
+  //     sur l'input (PAS annoncée en texte, anti-spam SR) + anti-flicker (on
+  //     n'affiche pas "aucun résultat" tant qu'un fetch peut remonter un >50)
   //   - no-results (user a tapé + filter vide) → "Aucun patient trouvé"
   //   - selected (value !== null) → "Patient sélectionné"
   //   - idle (default) → "X patient(s) disponible(s)" avec total backend
@@ -179,36 +192,51 @@ export function PatientCombobox({ id, value, onChange, disabled }: PatientCombob
         spellCheck={false}
         aria-required="true"
         aria-invalid={value === null && isSearching ? "true" : undefined}
+        // Recherche complémentaire en vol → `aria-busy` (état "occupé") plutôt
+        // qu'un texte annoncé à chaque frappe dans le live region (revue a11y).
+        aria-busy={searching ? "true" : undefined}
         className="border border-input rounded-md p-2 text-sm bg-background disabled:opacity-50"
         placeholder={t("patientPlaceholder")}
-        aria-describedby={`${id}-help`}
+        aria-describedby={error ? `${id}-error ${id}-help` : `${id}-help`}
       />
       <datalist id={`${id}-options`}>
         {filtered.map((p) => (
           <option key={p.id} value={patientLabel(p)} />
         ))}
       </datalist>
-      <p id={`${id}-help`} className="text-xs text-muted-foreground" aria-live="polite">
+
+      {/* Erreur — région ASSERTIVE dédiée (role=alert). Sortie du live region
+          "polite" ci-dessous pour éviter le conflit d'assertivité d'un alert
+          imbriqué dans un polite (revue a11y PR #531). N'apparaît que sur
+          échec de la liste BASE. */}
+      {error && (
+        <p id={`${id}-error`} role="alert" className="text-xs text-red-600">
+          {t("patientListError")}
+        </p>
+      )}
+
+      {/* Statut/hint — région POLITE atomique, états STABLES uniquement. Le
+          "searching" transitoire reste visible mais `aria-hidden` (non annoncé :
+          c'est `aria-busy` sur l'input qui porte l'info pour les SR). */}
+      <p
+        id={`${id}-help`}
+        className="text-xs text-muted-foreground"
+        aria-live="polite"
+        aria-atomic="true"
+      >
         {loading && t("loading")}
-        {error && (
-          <span role="alert" className="text-red-600">
-            {t("patientListError")}
-          </span>
-        )}
         {searching && !loading && !error && (
-          <span role="status">{t("patientSearching")}</span>
+          <span aria-hidden="true">{t("patientSearching")}</span>
         )}
         {noResults && (
-          <span role="status" className="text-amber-700">
-            {t("patientNoResults")}
-          </span>
+          <span className="text-amber-700">{t("patientNoResults")}</span>
         )}
         {!loading && !error && !searching && !noResults && (
           value !== null
             ? t("patientSelected")
             // Fix FE-9 round 1 review PR #434 — count NON-filtré (`items.length`)
-            // pour ne pas mentir : "50 patients disponibles" reflète le total
-            // backend, pas le filtre client-side trompeur.
+            // pour ne pas mentir : reflète le total chargé (base ∪ recherche),
+            // pas le filtre client-side trompeur.
             : t("patientHint", { count: items.length })
         )}
       </p>
