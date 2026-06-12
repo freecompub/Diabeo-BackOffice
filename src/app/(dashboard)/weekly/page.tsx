@@ -53,7 +53,12 @@ interface WeeklyStats {
 
 interface CgmEntry {
   timestamp: string
-  glucoseValue: number
+  /**
+   * Valeur CGM en g/L (Decimal côté Prisma, sérialisée en number par le
+   * service). Convertie en mg/dL via `* 100` pour l'affichage chart
+   * (jamais `* 18` — voir CLAUDE.md `glToMgdl`).
+   */
+  valueGl: number
 }
 
 type PageState = "idle" | "loading" | "error" | "success" | "empty"
@@ -151,7 +156,8 @@ function groupByDay(entries: CgmEntry[], days: Date[]): Map<string, GlucoseDataP
     const key = toIsoDate(ts)
     if (map.has(key)) {
       const time = ts.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
-      map.get(key)!.push({ time, timestamp: ts, glucose: entry.glucoseValue })
+      // valueGl en g/L → mg/dL : × 100 (jamais × 18, voir CLAUDE.md).
+      map.get(key)!.push({ time, timestamp: ts, glucose: Math.round(entry.valueGl * 100) })
     }
   }
   return map

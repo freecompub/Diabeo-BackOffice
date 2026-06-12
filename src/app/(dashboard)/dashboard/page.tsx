@@ -84,12 +84,14 @@ interface HypoglycemiaApiResponse {
   lastEvent?: string | null
 }
 
-interface CgmApiResponse {
-  data?: Array<{
-    time: string
-    timestamp: string
-    glucoseValue: number
-  }>
+/**
+ * `GET /api/cgm` retourne un tableau plat de `CgmEntry` (DTO sérialisé) —
+ * pas d'enveloppe `{ data: [...] }`. `valueGl` est en g/L, à convertir
+ * en mg/dL via `× 100` (jamais `× 18`, voir CLAUDE.md `glToMgdl`).
+ */
+interface CgmEntry {
+  timestamp: string
+  valueGl: number
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +233,7 @@ export default function GlycemiaDashboardPage() {
           apiFetch<HypoglycemiaApiResponse>(
             `/api/analytics/hypoglycemia?period=${apiPeriod}`
           ),
-          apiFetch<CgmApiResponse>(
+          apiFetch<CgmEntry[]>(
             `/api/cgm?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
           ),
         ])
@@ -245,13 +247,17 @@ export default function GlycemiaDashboardPage() {
         // Build WidgetData from API responses
         setWidgetData(buildWidgetData(profile, tir, hypo))
 
-        // Map CGM entries to chart data points
-        const points: GlucoseDataPoint[] =
-          cgm?.data?.map((entry) => ({
-            time: entry.time,
-            timestamp: new Date(entry.timestamp),
-            glucose: entry.glucoseValue,
-          })) ?? []
+        // Map CGM entries to chart data points.
+        // L'API retourne un tableau plat (pas d'enveloppe `{ data }`).
+        // valueGl en g/L → mg/dL : × 100 (jamais × 18, voir CLAUDE.md).
+        const points: GlucoseDataPoint[] = (cgm ?? []).map((entry) => {
+          const ts = new Date(entry.timestamp)
+          return {
+            time: ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+            timestamp: ts,
+            glucose: Math.round(entry.valueGl * 100),
+          }
+        })
 
         setGlucoseData(points)
       } catch {

@@ -8,9 +8,9 @@
 
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
-import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { BillingMetric } from "@/lib/services/admin-dashboard.service"
 
@@ -19,14 +19,17 @@ type ApiResponse = { item: BillingMetric }
 // code-review M4 (re-review) — keep round-euro display for a glance-able
 //   KPI ; UI labels the value "arrondi" so an auditor doesn't reconcile
 //   the rounded display against the cents in the DB.
-function formatEuros(cents: number): string {
-  return new Intl.NumberFormat("fr-FR", {
+// La devise reste EUR (data center OVH Paris, comptabilité française). Seul
+// le format (séparateurs, position du symbole) suit la locale utilisateur.
+function formatEuros(cents: number, locale: string): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency", currency: "EUR", maximumFractionDigits: 0,
   }).format(cents / 100)
 }
 
 export function BillingCard() {
   const t = useTranslations("adminDashboard")
+  const locale = useLocale()
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/billing",
     10 * 60_000,
@@ -44,7 +47,7 @@ export function BillingCard() {
           {item ? t("billingPending", { count: item.unbilledCount }) : "—"}
         </span>
       </header>
-      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
+      {isStale && <StaleBanner message={t("stale")} />}
       <div className="px-4 pb-4">
         {loading && item === null && (
           <p className="text-sm text-muted-foreground">{t("billingLoading")}</p>
@@ -80,7 +83,7 @@ export function BillingCard() {
                 {t("billingAmount")} <span className="opacity-60">{t("billingAmountNote")}</span>
               </dt>
               <dd className="text-lg font-semibold">
-                {formatEuros(item.unbilledAmountCents)}
+                {formatEuros(item.unbilledAmountCents, locale)}
               </dd>
             </div>
           </dl>

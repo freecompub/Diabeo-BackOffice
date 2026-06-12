@@ -1196,6 +1196,7 @@
     "complianceNoBackup": "Aucun backup",
     "complianceAudit24h": "Audit 24h",
     "complianceBackupsFailed": "Backups échec (30j)",
-    "complianceRgpdPlaceholder": "RGPD requests (US-2413) à venir en V3."
+    "complianceRgpdPlaceholder": "RGPD requests (US-2413) à venir en V3.",
+    "stale": "Données obsolètes — rafraîchissement en attente."
   }
 }

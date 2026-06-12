@@ -5,9 +5,9 @@
 
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
-import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { ComplianceSnapshot } from "@/lib/services/admin-dashboard.service"
@@ -19,9 +19,15 @@ type ApiResponse = { item: ComplianceSnapshot }
 //   is older than this many days.
 const STALE_BACKUP_DAYS = 2
 
-function formatDate(d: Date | string | null, fallback: string): string {
+/**
+ * Formate une date selon la locale utilisateur. La timezone reste figée à
+ * `Europe/Paris` car les backups/audits sont opérés depuis l'infra OVH GRA :
+ * l'horodatage forensique doit refléter l'heure locale du data center,
+ * indépendamment de la locale de l'admin (qui peut être en AR ou EN).
+ */
+function formatDate(d: Date | string | null, locale: string, fallback: string): string {
   if (!d) return fallback
-  return new Date(d).toLocaleString("fr-FR", {
+  return new Date(d).toLocaleString(locale, {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
     timeZone: "Europe/Paris",
@@ -36,6 +42,7 @@ function backupAgeDays(d: Date | string | null): number | null {
 
 export function ComplianceCard() {
   const t = useTranslations("adminDashboard")
+  const locale = useLocale()
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/compliance",
     5 * 60_000,
@@ -51,7 +58,7 @@ export function ComplianceCard() {
           {t("complianceTitle")}
         </h2>
       </header>
-      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
+      {isStale && <StaleBanner message={t("stale")} />}
       <div className="px-4 pb-4">
         {loading && item === null && (
           <p className="text-sm text-muted-foreground">{t("complianceLoading")}</p>
@@ -66,7 +73,7 @@ export function ComplianceCard() {
             <div>
               <dt className="text-xs text-muted-foreground">{t("complianceLastBackup")}</dt>
               <dd className="flex items-center gap-2 text-sm">
-                <span>{formatDate(item.lastBackupAt, t("complianceNoBackup"))}</span>
+                <span>{formatDate(item.lastBackupAt, locale, t("complianceNoBackup"))}</span>
                 {backupStale && (
                   <Badge variant="destructive">Stale ({backupAge}j)</Badge>
                 )}

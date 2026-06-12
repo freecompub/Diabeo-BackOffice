@@ -94,16 +94,36 @@ export async function middleware(request: NextRequest) {
     return res
   }
 
-  // Auth pages — public for unauthenticated users; redirect authenticated ones to root
-  // (role-router at "/" sends them to their proper dashboard).
+  // Auth pages — public for unauthenticated users; redirect authenticated ones
+  // to root (role-router at "/" sends them to their proper dashboard).
+  //
+  // ⚠️ Code-review fix : on DOIT vérifier la validité du JWT avant de rediriger.
+  // Un simple `if (cookieToken)` cause une boucle infinie sur cookie expiré :
+  //   /login → cookie présent → redirect "/"
+  //   "/"    → JWT expiré → catch → redirect "/login"
+  //   /login → cookie toujours présent → redirect "/" → ERR_TOO_MANY_REDIRECTS
+  // On efface le cookie expiré/invalide pour briser la boucle.
   if (pathname === "/login" || pathname === "/reset-password") {
     const cookieToken = request.cookies.get("diabeo_token")?.value
-    if (cookieToken) {
-      // Token present — redirect to role-router; it'll send them to their dashboard
-      // or back to /login if the token turns out to be expired/invalid.
+    if (!cookieToken) return NextResponse.next()
+    try {
+      const key = await getPublicKey()
+      await jwtVerify(cookieToken, key, {
+        algorithms: ["RS256"],
+        issuer: "diabeo-backoffice",
+        audience: "diabeo-hc",
+      })
+      // Token valide → l'utilisateur est authentifié, on l'envoie vers son
+      // dashboard. La vérification de révocation Redis est intentionnellement
+      // skippée ici : c'est un redirect UX, pas un accès à des PHI.
       return NextResponse.redirect(new URL("/", request.url))
+    } catch {
+      // Token expiré/invalide → effacer le cookie et laisser passer vers /login.
+      // Sans le delete, on rebondit indéfiniment entre /login et /.
+      const res = NextResponse.next()
+      res.cookies.delete("diabeo_token")
+      return res
     }
-    return NextResponse.next()
   }
 
   // Extract token from Authorization header (API) or cookie (browser pages)
@@ -236,5 +256,13 @@ export const config = {
      * de /patient/* à /messages/*).
      */
     "/messages/:path*",
+    /**
+     * Pages auth — sans cette entrée le guard `pathname === "/login"` est
+     * dead code et un utilisateur authentifié peut afficher le formulaire.
+     * Le middleware fait redirect "/" si le JWT cookie est valide, ou
+     * efface le cookie + next() si expiré (anti-boucle).
+     */
+    "/login",
+    "/reset-password",
   ],
 }
