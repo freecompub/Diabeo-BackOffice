@@ -6,21 +6,21 @@
  */
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { TaxRulesClient } from "@/components/diabeo/admin/TaxRulesClient"
 
 export default async function TaxRulesPage() {
   const headersList = await headers()
   const role = headersList.get("x-user-role")
   if (role !== "ADMIN") redirect("/")
+  const t = await getTranslations("admin")
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
       <header>
-        <h1 className="text-2xl font-semibold">Règles fiscales</h1>
+        <h1 className="text-2xl font-semibold">{t("taxRules.title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Résolution du taux fiscal actif pour un pays + type de taxe à une
-          date donnée. Lecture seule iter 5 — création/modification via
-          backend opérations (cf. <code>docs/runbook/tax-rules.md</code>).
+          {t.rich("taxRules.subtitle", { code: (c) => <code>{c}</code> })}
         </p>
       </header>
       <TaxRulesClient />

@@ -14,6 +14,7 @@
  */
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { DataBreachesListClient } from "@/components/diabeo/admin/DataBreachesListClient"
 
 export default async function DataBreachesPage() {
@@ -22,16 +23,14 @@ export default async function DataBreachesPage() {
   // UX guard server-side fast bounce ; authorization réelle dans /api/admin/*
   // (auditedRequireRole ADMIN). Cf. /admin/page.tsx pattern.
   if (role !== "ADMIN") redirect("/")
+  const t = await getTranslations("admin")
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
       <header>
-        <h1 className="text-2xl font-semibold">
-          Violations de données — Règlement général sur la protection des données (RGPD), Art. 33
-        </h1>
+        <h1 className="text-2xl font-semibold">{t("dataBreaches.title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Registre des violations détectées. Délai de notification CNIL :
-          72h après détection (Art. 33 du Règlement général sur la protection des données — RGPD).
+          {t("dataBreaches.subtitle")}
         </p>
       </header>
       <DataBreachesListClient />

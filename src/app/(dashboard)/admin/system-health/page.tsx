@@ -8,20 +8,21 @@
  */
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { SystemHealthClient } from "@/components/diabeo/admin/SystemHealthClient"
 
 export default async function SystemHealthPage() {
   const headersList = await headers()
   const role = headersList.get("x-user-role")
   if (role !== "ADMIN") redirect("/")
+  const t = await getTranslations("admin")
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
       <header>
-        <h1 className="text-2xl font-semibold">Santé système</h1>
+        <h1 className="text-2xl font-semibold">{t("systemHealth.title")}</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          État temps-réel des composants critiques (DB, Redis, mesure du glucose en continu (CGM), backups).
-          Refresh automatique toutes les 60s.
+          {t("systemHealth.subtitle")}
         </p>
       </header>
       <SystemHealthClient />

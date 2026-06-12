@@ -1196,5 +1196,35 @@
       "none": "No settings"
     },
     "openedAnnounce": "{name}'s consultation opened"
+  },
+  "admin": {
+    "backups": {
+      "title": "PostgreSQL backups",
+      "subtitle": "Database (DB) backup history + manual trigger. Daily automatic backup via cron (see <code>docs/runbook/postgres-backup.md</code>)."
+    },
+    "cabinets": {
+      "title": "Practices and facilities",
+      "subtitle": "List of medical practices + hospital facilities. Click to manage settings + SMS V1 mock configuration."
+    },
+    "dataBreaches": {
+      "title": "Data breaches — General Data Protection Regulation (GDPR), Art. 33",
+      "subtitle": "Registry of detected breaches. CNIL notification deadline: 72h after detection (Art. 33 of the General Data Protection Regulation — GDPR)."
+    },
+    "invoices": {
+      "title": "Invoices",
+      "subtitle": "History of issued invoices + drafts. Click for detail and PDF download."
+    },
+    "systemHealth": {
+      "title": "System health",
+      "subtitle": "Real-time status of critical components (DB, Redis, continuous glucose monitoring (CGM), backups). Auto-refresh every 60s."
+    },
+    "taxRules": {
+      "title": "Tax rules",
+      "subtitle": "Resolution of the active tax rate for a country + tax type on a given date. Read-only iter 5 — creation/modification via backend operations (see <code>docs/runbook/tax-rules.md</code>)."
+    },
+    "users": {
+      "title": "Users",
+      "subtitle": "Management of user accounts (admins, doctors, nurses, patients). Click for detail + suspension/archival actions."
+    }
   }
 }
