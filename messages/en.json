@@ -668,8 +668,8 @@
     "statInsulin": "Insulin",
     "dailyChartsLabel": "Daily charts for the week",
     "dayAvgGlucose": "{value} mg/dL",
-    "tirBadge": "TIR {percent}%",
-    "dayReadings": "{count} read."
+    "dayReadings": "{count} read.",
+    "tirBadgeValue": "{percent}%"
   },
   "events": {
     "pageTitle": "New Event",

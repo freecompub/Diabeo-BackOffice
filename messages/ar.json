@@ -668,8 +668,8 @@
     "statInsulin": "الأنسولين",
     "dailyChartsLabel": "المخططات اليومية للأسبوع",
     "dayAvgGlucose": "{value} mg/dL",
-    "tirBadge": "TIR {percent}%",
-    "dayReadings": "{count} قراءة"
+    "dayReadings": "{count} قراءة",
+    "tirBadgeValue": "{percent}%"
   },
   "events": {
     "pageTitle": "حدث جديد",

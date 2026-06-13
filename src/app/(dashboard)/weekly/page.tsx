@@ -33,6 +33,7 @@ import { bcp47 } from "@/i18n/config"
 import { GlycemiaEvolutionChart } from "@/components/diabeo/charts/GlycemiaEvolutionChart"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
+import { Acronym } from "@/components/diabeo/Acronym"
 import type { GlucoseDataPoint } from "@/components/diabeo/charts/types"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -572,7 +573,7 @@ export default function WeeklyPage() {
                               : "bg-red-50 text-red-700"
                         )}
                       >
-                        {t("tirBadge", { percent: day.tirPercent })}
+                        <Acronym code="TIR" /> {t("tirBadgeValue", { percent: day.tirPercent })}
                       </span>
                     )}
                     <span className="text-gray-300">
