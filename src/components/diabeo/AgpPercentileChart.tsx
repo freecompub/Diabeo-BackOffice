@@ -47,6 +47,7 @@ import {
   Tooltip,
 } from "recharts"
 import { type AgpSlot } from "@/lib/statistics"
+import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
 
 // H4 (re-review) — import the canonical AgpSlot type from statistics.ts to
 // avoid shape-drift. Re-exported here as `AgpSlotPoint` for backward-compat
@@ -78,8 +79,8 @@ const USER_VISIBLE_KEYS = new Set(["p10", "p25", "p50", "p75", "p90"])
 
 export function AgpPercentileChart({
   slots,
-  targetLowMgdl = 70,
-  targetHighMgdl = 180,
+  targetLowMgdl = G.TARGET_LOW,
+  targetHighMgdl = G.TARGET_HIGH,
   minSlots = 12, // ≈ 3h of capture across the day
   height = 280,
 }: AgpPercentileChartProps) {

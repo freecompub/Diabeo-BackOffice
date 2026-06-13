@@ -2,6 +2,7 @@
 
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
+import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
 
 /**
  * Glycemia zone classification based on international consensus.
@@ -50,12 +51,13 @@ export interface GlycemiaValueProps {
   showBackground?: boolean
 }
 
+// Dérivé de la source unique `glycemia-thresholds.ts` (par signification clinique).
 const DEFAULT_THRESHOLDS: Required<GlycemiaThresholds> = {
-  veryLow: 54,
-  low: 70,
-  high: 180,
-  veryHigh: 250,
-  critical: 400,
+  veryLow: G.SEVERE_HYPO,
+  low: G.TARGET_LOW,
+  high: G.TARGET_HIGH,
+  veryHigh: G.SEVERE_HYPER,
+  critical: G.CRITICAL_HIGH,
 }
 
 /**
