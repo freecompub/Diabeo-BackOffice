@@ -9,6 +9,8 @@
  */
 
 import { useState, useCallback, useRef } from "react"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47 } from "@/i18n/config"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -33,6 +35,8 @@ interface MedicationResult {
 }
 
 export default function MedicationsPage() {
+  const t = useTranslations("medications")
+  const locale = useLocale()
   const [query, setQuery] = useState("")
   const [results, setResults] = useState<MedicationResult[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -86,8 +90,8 @@ export default function MedicationsPage() {
   return (
     <>
       <DashboardHeader
-        title="Médicaments"
-        subtitle="Base de Données Publique des Médicaments — ANSM"
+        title={t("title")}
+        subtitle={t("subtitle")}
       />
 
       <div className="space-y-4 p-6">
@@ -98,11 +102,11 @@ export default function MedicationsPage() {
             aria-hidden="true"
           />
           <Input
-            placeholder="Rechercher par nom, DCI ou code CIP..."
+            placeholder={t("searchPlaceholder")}
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
             className="ps-10"
-            aria-label="Rechercher un médicament"
+            aria-label={t("searchAriaLabel")}
           />
           {isLoading && (
             <Loader2
@@ -116,8 +120,11 @@ export default function MedicationsPage() {
         <div className="flex items-center gap-2 text-xs text-[var(--color-muted-foreground)]">
           <Info className="h-3.5 w-3.5" aria-hidden="true" />
           <span>
-            Source : BDPM — ANSM (Licence Ouverte 2.0)
-            {lastImportDate && ` — Dernière mise à jour : ${new Date(lastImportDate).toLocaleDateString("fr-FR")}`}
+            {t("source")}
+            {lastImportDate &&
+              t("lastUpdate", {
+                date: new Date(lastImportDate).toLocaleDateString(bcp47(locale)),
+              })}
           </span>
         </div>
 
@@ -125,7 +132,7 @@ export default function MedicationsPage() {
         {results.length > 0 && (
           <div className="space-y-3">
             <p className="text-sm text-[var(--color-muted-foreground)]">
-              {results.length} résultat{results.length > 1 ? "s" : ""}
+              {t("resultCount", { count: results.length })}
             </p>
             {results.map((med) => (
               <Card key={med.codeCIS}>
@@ -142,9 +149,13 @@ export default function MedicationsPage() {
                       {/* DCI / Substances actives */}
                       {med.compositions.length > 0 && (
                         <p className="mt-1 text-sm text-[var(--color-muted-foreground)]">
-                          DCI : {med.compositions.map((c) =>
-                            c.dosage ? `${c.substance} ${c.dosage}` : c.substance
-                          ).join(" + ")}
+                          {t("dci", {
+                            substances: med.compositions
+                              .map((c) =>
+                                c.dosage ? `${c.substance} ${c.dosage}` : c.substance,
+                              )
+                              .join(" + "),
+                          })}
                         </p>
                       )}
 
@@ -171,7 +182,10 @@ export default function MedicationsPage() {
                                 className="flex items-center justify-between text-xs"
                               >
                                 <span className="text-[var(--color-muted-foreground)]">
-                                  CIP : {pres.codeCIP13} — {pres.libelle}
+                                  {t("cip", {
+                                    code: pres.codeCIP13,
+                                    label: pres.libelle,
+                                  })}
                                 </span>
                                 <div className="flex items-center gap-2">
                                   {pres.tauxRemb && (
@@ -202,7 +216,7 @@ export default function MedicationsPage() {
                   {/* ATC code */}
                   {med.atcCode && (
                     <div className="mt-2 text-xs text-[var(--color-muted-foreground)]">
-                      ATC : {med.atcCode}
+                      {t("atc", { code: med.atcCode })}
                     </div>
                   )}
                 </CardContent>
@@ -219,10 +233,8 @@ export default function MedicationsPage() {
             aria-live="polite"
           >
             <Pill className="mx-auto mb-3 h-8 w-8 opacity-30" aria-hidden="true" />
-            <p>Aucun médicament trouvé pour « {query} »</p>
-            <p className="mt-1 text-xs">
-              Essayez avec le nom commercial, la DCI ou le code CIP
-            </p>
+            <p>{t("emptyTitle", { query })}</p>
+            <p className="mt-1 text-xs">{t("emptyHint")}</p>
           </div>
         )}
 
@@ -230,10 +242,8 @@ export default function MedicationsPage() {
         {!hasSearched && (
           <div className="py-12 text-center text-[var(--color-muted-foreground)]">
             <Pill className="mx-auto mb-3 h-8 w-8 opacity-30" aria-hidden="true" />
-            <p>Recherchez un médicament par nom, DCI ou code CIP</p>
-            <p className="mt-1 text-xs">
-              Minimum 2 caractères — Aucun conseil médical
-            </p>
+            <p>{t("initialTitle")}</p>
+            <p className="mt-1 text-xs">{t("initialHint")}</p>
           </div>
         )}
       </div>

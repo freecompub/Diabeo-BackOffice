@@ -57,6 +57,22 @@
     "eventCount": "{count} evenement(s)",
     "alertClose": "Fermer l'alerte"
   },
+  "medications": {
+    "title": "Médicaments",
+    "subtitle": "Base de Données Publique des Médicaments (BDPM) — Agence nationale de sécurité du médicament (ANSM)",
+    "searchPlaceholder": "Rechercher par nom, substance active (DCI) ou code de présentation (CIP)...",
+    "searchAriaLabel": "Rechercher un médicament",
+    "source": "Source : Base de Données Publique des Médicaments (BDPM) — Agence nationale de sécurité du médicament (ANSM) (Licence Ouverte 2.0)",
+    "lastUpdate": " — Mise à jour : {date}",
+    "resultCount": "{count, plural, one {# résultat} other {# résultats}}",
+    "dci": "Substance active (DCI) : {substances}",
+    "cip": "Code de présentation (CIP) : {code} — {label}",
+    "atc": "Classification thérapeutique (ATC) : {code}",
+    "emptyTitle": "Aucun médicament trouvé pour « {query} »",
+    "emptyHint": "Essayez avec le nom commercial, la substance active (DCI) ou le code de présentation (CIP)",
+    "initialTitle": "Recherchez un médicament par nom, substance active (DCI) ou code de présentation (CIP)",
+    "initialHint": "Minimum 2 caractères — Aucun conseil médical"
+  },
   "nav": {
     "dashboard": "Tableau de bord",
     "patients": "Patients",
@@ -462,7 +478,8 @@
     "agpRange": "Plage 10e-90e",
     "agpLegendMedian": "Mediane",
     "agpLegendIqr": "P25-P75",
-    "agpLegendRange": "P10-P90"
+    "agpLegendRange": "P10-P90",
+    "unitMgdl": "mg/dL"
   },
   "appointments": {
     "pageTitle": "Rendez-vous",
@@ -627,7 +644,10 @@
     "statTirTarget": "objectif >= 70%",
     "statReadings": "Lectures",
     "statInsulin": "Insuline",
-    "dailyChartsLabel": "Graphiques journaliers de la semaine"
+    "dailyChartsLabel": "Graphiques journaliers de la semaine",
+    "dayAvgGlucose": "{value} mg/dL",
+    "tirBadge": "TIR {percent}%",
+    "dayReadings": "{count} lect."
   },
   "events": {
     "pageTitle": "Nouvel evenement",
@@ -816,7 +836,8 @@
     "resetConfirmDescription": "Toutes les plages de facteur de sensibilité à l'insuline (FSI) et de ratio insuline/glucides (RIG) seront supprimées. Cette action ne peut pas être annulée.",
     "resetConfirm": "Oui, reinitialiser",
     "hourCovered": "couvert",
-    "hourNotCovered": "non couvert"
+    "hourNotCovered": "non couvert",
+    "hourAxisTick": "{hour}h"
   },
   "radar": {
     "title": "Graphique radar",
@@ -1695,5 +1716,10 @@
     "subtotalExTax": "Sous-total HT",
     "taxAmount": "TVA",
     "totalInclTax": "Total TTC"
+  },
+  "audit": {
+    "title": "Consultation audit",
+    "description": "Backend audit log immuable opérationnel (US-2011 / US-2268) mais l'interface de consultation n'est pas encore livrée. L'API <code>/api/admin/audit-logs</code> accepte les filtres (userId, resource, action, from, to).",
+    "comingSoon": "Bientôt disponible"
   }
 }

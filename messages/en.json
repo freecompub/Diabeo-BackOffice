@@ -57,6 +57,22 @@
     "eventCount": "{count} event(s)",
     "alertClose": "Dismiss alert"
   },
+  "medications": {
+    "title": "Medications",
+    "subtitle": "Public Database of Medicines (BDPM) — French National Agency for Medicines Safety (ANSM)",
+    "searchPlaceholder": "Search by name, active substance (DCI) or presentation code (CIP)...",
+    "searchAriaLabel": "Search for a medication",
+    "source": "Source: Public Database of Medicines (BDPM) — French National Agency for Medicines Safety (ANSM) (Open Licence 2.0)",
+    "lastUpdate": " — Updated: {date}",
+    "resultCount": "{count, plural, one {# result} other {# results}}",
+    "dci": "Active substance (DCI): {substances}",
+    "cip": "Presentation code (CIP): {code} — {label}",
+    "atc": "Therapeutic classification (ATC): {code}",
+    "emptyTitle": "No medication found for “{query}”",
+    "emptyHint": "Try the brand name, the active substance (DCI) or the presentation code (CIP)",
+    "initialTitle": "Search for a medication by name, active substance (DCI) or presentation code (CIP)",
+    "initialHint": "Minimum 2 characters — No medical advice"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "patients": "Patients",
@@ -462,7 +478,8 @@
     "agpRange": "10th-90th range",
     "agpLegendMedian": "Median",
     "agpLegendIqr": "P25-P75",
-    "agpLegendRange": "P10-P90"
+    "agpLegendRange": "P10-P90",
+    "unitMgdl": "mg/dL"
   },
   "appointments": {
     "pageTitle": "Appointments",
@@ -627,7 +644,10 @@
     "statTirTarget": "target >= 70%",
     "statReadings": "Readings",
     "statInsulin": "Insulin",
-    "dailyChartsLabel": "Daily charts for the week"
+    "dailyChartsLabel": "Daily charts for the week",
+    "dayAvgGlucose": "{value} mg/dL",
+    "tirBadge": "TIR {percent}%",
+    "dayReadings": "{count} read."
   },
   "events": {
     "pageTitle": "New Event",
@@ -816,7 +836,8 @@
     "resetConfirmDescription": "All insulin sensitivity factor (ISF) and insulin-to-carb ratio (ICR) slots will be deleted. This action cannot be undone.",
     "resetConfirm": "Yes, reset",
     "hourCovered": "covered",
-    "hourNotCovered": "not covered"
+    "hourNotCovered": "not covered",
+    "hourAxisTick": "{hour}h"
   },
   "radar": {
     "title": "Radar Chart",
@@ -1695,5 +1716,10 @@
     "subtotalExTax": "Subtotal excl. tax",
     "taxAmount": "VAT",
     "totalInclTax": "Total incl. tax"
+  },
+  "audit": {
+    "title": "Audit consultation",
+    "description": "Immutable backend audit log is operational (US-2011 / US-2268) but the consultation interface is not yet delivered. The <code>/api/admin/audit-logs</code> API accepts filters (userId, resource, action, from, to).",
+    "comingSoon": "Coming soon"
   }
 }

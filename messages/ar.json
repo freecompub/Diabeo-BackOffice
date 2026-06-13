@@ -57,6 +57,22 @@
     "eventCount": "{count} حدث(أحداث)",
     "alertClose": "إغلاق التنبيه"
   },
+  "medications": {
+    "title": "الأدوية",
+    "subtitle": "قاعدة البيانات العامة للأدوية (BDPM) — الوكالة الوطنية لسلامة الأدوية (ANSM)",
+    "searchPlaceholder": "ابحث بالاسم أو المادة الفعّالة (DCI) أو رمز العرض (CIP)...",
+    "searchAriaLabel": "البحث عن دواء",
+    "source": "المصدر: قاعدة البيانات العامة للأدوية (BDPM) — الوكالة الوطنية لسلامة الأدوية (ANSM) (الرخصة المفتوحة 2.0)",
+    "lastUpdate": " — آخر تحديث: {date}",
+    "resultCount": "{count, plural, zero {لا نتائج} one {نتيجة واحدة} two {نتيجتان} few {# نتائج} many {# نتيجة} other {# نتيجة}}",
+    "dci": "المادة الفعّالة (DCI): {substances}",
+    "cip": "رمز العرض (CIP): {code} — {label}",
+    "atc": "التصنيف العلاجي (ATC): {code}",
+    "emptyTitle": "لا يوجد دواء مطابق لـ «{query}»",
+    "emptyHint": "جرّب الاسم التجاري أو المادة الفعّالة (DCI) أو رمز العرض (CIP)",
+    "initialTitle": "ابحث عن دواء بالاسم أو المادة الفعّالة (DCI) أو رمز العرض (CIP)",
+    "initialHint": "حرفان كحد أدنى — لا تقدّم أي نصيحة طبية"
+  },
   "nav": {
     "dashboard": "لوحة القيادة",
     "patients": "المرضى",
@@ -462,7 +478,8 @@
     "agpRange": "نطاق P10-P90",
     "agpLegendMedian": "الوسيط",
     "agpLegendIqr": "P25-P75",
-    "agpLegendRange": "P10-P90"
+    "agpLegendRange": "P10-P90",
+    "unitMgdl": "mg/dL"
   },
   "appointments": {
     "pageTitle": "المواعيد",
@@ -627,7 +644,10 @@
     "statTirTarget": "الهدف >= 70%",
     "statReadings": "القراءات",
     "statInsulin": "الأنسولين",
-    "dailyChartsLabel": "المخططات اليومية للأسبوع"
+    "dailyChartsLabel": "المخططات اليومية للأسبوع",
+    "dayAvgGlucose": "{value} mg/dL",
+    "tirBadge": "TIR {percent}%",
+    "dayReadings": "{count} قراءة"
   },
   "events": {
     "pageTitle": "حدث جديد",
@@ -816,7 +836,8 @@
     "resetConfirmDescription": "سيتم حذف جميع فترات عامل حساسية الأنسولين (ISF) ونسبة الأنسولين إلى الكربوهيدرات (ICR). لا يمكن التراجع عن هذا الإجراء.",
     "resetConfirm": "نعم، إعادة التعيين",
     "hourCovered": "مغطى",
-    "hourNotCovered": "غير مغطى"
+    "hourNotCovered": "غير مغطى",
+    "hourAxisTick": "{hour}س"
   },
   "radar": {
     "title": "المخطط الراداري",
@@ -1695,5 +1716,10 @@
     "subtotalExTax": "المجموع الفرعي دون ضريبة",
     "taxAmount": "ضريبة القيمة المضافة",
     "totalInclTax": "الإجمالي شامل الضريبة"
+  },
+  "audit": {
+    "title": "استعراض سجل التدقيق",
+    "description": "سجل التدقيق غير القابل للتعديل في الخادم يعمل (US-2011 / US-2268) لكن واجهة الاستعراض لم تُسلَّم بعد. واجهة برمجة التطبيقات <code>/api/admin/audit-logs</code> تقبل عوامل التصفية (userId, resource, action, from, to).",
+    "comingSoon": "قريبًا"
   }
 }

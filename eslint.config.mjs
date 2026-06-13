@@ -91,7 +91,9 @@ const eslintConfig = defineConfig([
           words: {
             // Ignore les segments sans lettre (chiffres/ponctuation/séparateurs)
             // et les caractères uniques (initiales d'avatar « D », « M »…).
-            exclude: ["^[\\s\\d!-/:-@[-`{-~]+$", "^.$"],
+            // Notation statistique de percentiles AGP (P10/P25/P50/P75/P90) :
+            // exception documentée CLAUDE.md (laissée telle quelle, identique 3 langues).
+            exclude: ["^[\\s\\d!-/:-@[-`{-~]+$", "^.$", "^P(10|25|50|75|90)$"],
           },
         },
       ],
