@@ -72,17 +72,18 @@ const eslintConfig = defineConfig([
       ],
     },
   },
-  // PROTOTYPE (US-2117 suite) — interdit le texte JSX brut hors i18n.
-  // `mode: jsx-text-only` = uniquement le contenu textuel des balises (faible
-  // bruit) ; en `warn` pour mesurer l'ampleur avant d'éventuellement gater la CI.
-  // Exclut `components/ui` (shadcn) et `app/(patient)/loading|error` si besoin.
+  // US-2117 — interdit le texte JSX brut hors i18n (cause racine des acronymes
+  // nus + chaînes non traduites en EN/AR). `mode: jsx-text-only` = uniquement le
+  // contenu textuel des balises. Migration terminée (lots 1-13, FR/EN/AR) → la
+  // règle passe en `error` : gate CI dur contre toute régression de texte codé
+  // en dur. Exclut `components/ui` (shadcn auto-généré).
   {
     files: ["src/**/*.tsx"],
     ignores: ["src/components/ui/**"],
     plugins: { i18next },
     rules: {
       "i18next/no-literal-string": [
-        "warn",
+        "error",
         {
           mode: "jsx-text-only",
           // Contenus non traduisibles : chemins/identifiants dans <code>/<pre>,
