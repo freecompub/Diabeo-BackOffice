@@ -132,9 +132,9 @@ function formatDate(date: Date, locale: string): string {
 
 /** Derive capture rate badge color */
 function captureRateColor(rate: number): string {
-  if (rate >= 70) return "text-success bg-success-bg"
-  if (rate >= 50) return "text-warning bg-warning-bg"
-  return "text-error bg-error-bg"
+  if (rate >= 70) return "text-success-fg bg-success-bg"
+  if (rate >= 50) return "text-warning-fg bg-warning-bg"
+  return "text-error-fg bg-error-bg"
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -285,10 +285,10 @@ export default function AnalyticsPage() {
         >
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <div>
-            <p className="text-sm font-medium text-warning">
+            <p className="text-sm font-medium text-warning-fg">
               {t("insufficientDataTitle")}
             </p>
-            <p className="mt-0.5 text-xs text-warning">
+            <p className="mt-0.5 text-xs text-warning-fg">
               {t("insufficientDataMessage", { rate: Math.round(captureRate) })}
             </p>
           </div>

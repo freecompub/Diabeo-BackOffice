@@ -90,13 +90,18 @@
   --color-glycemia-critical-bg: var(--diabeo-glycemia-critical-bg);
 
   /* --- Diabeo Design System: Feedback colors (status) --- */
+  /* `-fg` = couleur de texte foncée (contraste WCAG AA sur le `-bg`) ; la
+     couleur de base vive reste pour icônes/bordures/points. */
   --color-success: var(--diabeo-success);
+  --color-success-fg: var(--diabeo-success-fg);
   --color-success-bg: var(--diabeo-success-bg);
   --color-success-border: var(--diabeo-success-border);
   --color-warning: var(--diabeo-warning);
+  --color-warning-fg: var(--diabeo-warning-fg);
   --color-warning-bg: var(--diabeo-warning-bg);
   --color-warning-border: var(--diabeo-warning-border);
   --color-error: var(--diabeo-error);
+  --color-error-fg: var(--diabeo-error-fg);
   --color-error-bg: var(--diabeo-error-bg);
   --color-error-border: var(--diabeo-error-border);
   --color-info: var(--diabeo-info);
