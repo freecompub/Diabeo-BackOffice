@@ -137,7 +137,15 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     const entries = await glycemiaService.getGlycemiaEntries(
       patientId, parsed.data.from, parsed.data.to, user.id, ctx,
     )
-    return NextResponse.json(entries.map(serializeEntry))
+    // Le service retourne déjà un DTO sérialisé (Decimal → number, Date → ISO).
+    // On déchiffre uniquement `mealDescription` (chiffré AES-256-GCM en base
+    // pour la confidentialité PII — ne doit JAMAIS sortir en base64 brut).
+    return NextResponse.json(
+      entries.map((e) => ({
+        ...e,
+        mealDescription: e.mealDescription === null ? null : safeDecryptField(e.mealDescription),
+      })),
+    )
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"

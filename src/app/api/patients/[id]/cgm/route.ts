@@ -48,14 +48,9 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
     const entries = await glycemiaService.getCgmEntries(patientId, parsed.data.from, parsed.data.to, user.id, ctx)
 
-    // Serialize BigInt id + Decimal valueGl for JSON
-    const serialized = entries.map((e) => ({
-      ...e,
-      id: String(e.id),
-      valueGl: Number(e.valueGl),
-    }))
-
-    return NextResponse.json(serialized)
+    // `getCgmEntries` retourne déjà un DTO sérialisé (id:string, valueGl:number,
+    // timestamp:string). Pas besoin de re-mapper BigInt/Decimal ici.
+    return NextResponse.json(entries)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"
