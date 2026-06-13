@@ -6,8 +6,8 @@
  * Tests for the Insulin Therapy Settings page — P1 ISF/ICR clinical bounds.
  *
  * Clinical safety context:
- * - ISF (Insulin Sensitivity Factor) range: 0.20-1.00 g/L/U
- * - ICR (Insulin-to-Carb Ratio) range: 5-20 g/U
+ * - ISF (Insulin Sensitivity Factor) range: 0.10-1.00 g/L/U (clinical-bounds.ts)
+ * - ICR (Insulin-to-Carb Ratio) range: 3.0-30.0 g/U (clinical-bounds.ts)
  * - Target glucose range: 60-250 mg/dL
  * - Values outside these ranges could lead to dangerous insulin dosing
  *
@@ -256,7 +256,7 @@ describe("InsulinTherapyPage", () => {
 
   // ── ISF slot validation ─────────────────────────────────────────────────
 
-  it("ISF slot validation: value < 0.20 shows error", async () => {
+  it("ISF slot validation: value < 0.10 shows error", async () => {
     await renderAndWaitForLoad()
 
     // Open the ISF add slot dialog
@@ -267,10 +267,10 @@ describe("InsulinTherapyPage", () => {
       expect(screen.getByTestId("dialog")).toBeTruthy()
     })
 
-    // Enter an ISF value below the minimum
+    // Enter an ISF value below the clinical minimum (ISF_GL_MIN = 0.10)
     const valueInput = screen.getByLabelText("insulinTherapy.isf.valueLabel")
     await userEvent.clear(valueInput)
-    await userEvent.type(valueInput, "0.10")
+    await userEvent.type(valueInput, "0.05")
 
     // Click confirm
     const confirmButton = screen.getByText("common.confirm")
@@ -305,7 +305,7 @@ describe("InsulinTherapyPage", () => {
 
   // ── ICR slot validation ─────────────────────────────────────────────────
 
-  it("ICR slot validation: value < 5 shows error", async () => {
+  it("ICR slot validation: value < 3 shows error", async () => {
     await renderAndWaitForLoad()
 
     const addIcrButton = screen.getByText("insulinTherapy.icr.addSlot")
@@ -315,9 +315,10 @@ describe("InsulinTherapyPage", () => {
       expect(screen.getByTestId("dialog")).toBeTruthy()
     })
 
+    // Below the clinical minimum (ICR_MIN = 3.0)
     const valueInput = screen.getByLabelText("insulinTherapy.icr.valueLabel")
     await userEvent.clear(valueInput)
-    await userEvent.type(valueInput, "3")
+    await userEvent.type(valueInput, "2")
 
     const confirmButton = screen.getByText("common.confirm")
     fireEvent.click(confirmButton)
@@ -327,7 +328,7 @@ describe("InsulinTherapyPage", () => {
     })
   })
 
-  it("ICR slot validation: value > 20 shows error", async () => {
+  it("ICR slot validation: value > 30 shows error", async () => {
     await renderAndWaitForLoad()
 
     const addIcrButton = screen.getByText("insulinTherapy.icr.addSlot")
@@ -337,9 +338,10 @@ describe("InsulinTherapyPage", () => {
       expect(screen.getByTestId("dialog")).toBeTruthy()
     })
 
+    // Above the clinical maximum (ICR_MAX = 30.0)
     const valueInput = screen.getByLabelText("insulinTherapy.icr.valueLabel")
     await userEvent.clear(valueInput)
-    await userEvent.type(valueInput, "25")
+    await userEvent.type(valueInput, "35")
 
     const confirmButton = screen.getByText("common.confirm")
     fireEvent.click(confirmButton)

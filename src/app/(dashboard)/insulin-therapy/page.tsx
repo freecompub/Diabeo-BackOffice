@@ -45,6 +45,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { cn } from "@/lib/utils"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -426,8 +427,10 @@ export default function InsulinTherapyPage() {
   const validateSlotValue = (val: string, type: "isf" | "icr"): boolean => {
     const n = parseFloat(val)
     if (isNaN(n)) return false
-    if (type === "isf") return n >= 0.2 && n <= 1.0
-    return n >= 5.0 && n <= 20.0
+    // Bornes = source de vérité clinique (clinical-bounds.ts), pas de copie UI
+    // (évite le drift : l'UI rejetait des valeurs cliniquement valides, US-2117 suite).
+    if (type === "isf") return n >= CLINICAL_BOUNDS.ISF_GL_MIN && n <= CLINICAL_BOUNDS.ISF_GL_MAX
+    return n >= CLINICAL_BOUNDS.ICR_MIN && n <= CLINICAL_BOUNDS.ICR_MAX
   }
 
   const handleSaveSlot = async () => {
