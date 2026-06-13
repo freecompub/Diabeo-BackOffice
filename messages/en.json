@@ -821,7 +821,7 @@
       "noSlotsMessage": "Add at least one time slot to enable correction calculations.",
       "timelineLabel": "Insulin sensitivity factor (ISF) 24h timeline — covered slots",
       "valueLabel": "Sensitivity factor (g/L/U)",
-      "valueHint": "Value between 0.20 and 1.00 g/L/U"
+      "valueHint": "Value between 0.10 and 1.00 g/L/U"
     },
     "icr": {
       "title": "Insulin-to-Carb Ratio (ICR)",
@@ -831,7 +831,7 @@
       "noSlotsMessage": "Add at least one time slot to enable meal calculations.",
       "timelineLabel": "Insulin-to-carb ratio (ICR) 24h timeline — covered slots",
       "valueLabel": "Ratio (g/U)",
-      "valueHint": "Value between 5.0 and 20.0 g/U",
+      "valueHint": "Value between 3.0 and 30.0 g/U",
       "mealLabel": "Meal label (optional)",
       "mealLabelHint": "E.g.: Breakfast, Lunch, Dinner"
     },
@@ -849,8 +849,8 @@
     "slotStartHour": "Start hour (0-23)",
     "slotEndHour": "End hour (1-24)",
     "slotHourError": "End hour must be greater than start hour",
-    "isfValueError": "Insulin sensitivity factor (ISF) must be between 0.20 and 1.00 g/L/U",
-    "icrValueError": "Insulin-to-carb ratio (ICR) must be between 5.0 and 20.0 g/U",
+    "isfValueError": "Insulin sensitivity factor (ISF) must be between 0.10 and 1.00 g/L/U",
+    "icrValueError": "Insulin-to-carb ratio (ICR) must be between 3.0 and 30.0 g/U",
     "editSlot": "Edit this slot",
     "deleteSlot": "Delete this slot",
     "resetToDefaults": "Reset to defaults",

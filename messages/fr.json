@@ -821,7 +821,7 @@
       "noSlotsMessage": "Ajoutez au moins une plage horaire pour activer le calcul de correction.",
       "timelineLabel": "Timeline 24h facteur de sensibilité à l'insuline (FSI) — plages couvertes",
       "valueLabel": "Facteur de sensibilité (g/L/U)",
-      "valueHint": "Valeur entre 0,20 et 1,00 g/L/U"
+      "valueHint": "Valeur entre 0,10 et 1,00 g/L/U"
     },
     "icr": {
       "title": "Ratio insuline-glucides (RIG)",
@@ -831,7 +831,7 @@
       "noSlotsMessage": "Ajoutez au moins une plage horaire pour activer le calcul de repas.",
       "timelineLabel": "Timeline 24h ratio insuline/glucides (RIG) — plages couvertes",
       "valueLabel": "Ratio (g/U)",
-      "valueHint": "Valeur entre 5,0 et 20,0 g/U",
+      "valueHint": "Valeur entre 3,0 et 30,0 g/U",
       "mealLabel": "Intitule du repas (optionnel)",
       "mealLabelHint": "Ex : Petit-dejeuner, Dejeuner, Diner"
     },
@@ -849,8 +849,8 @@
     "slotStartHour": "Heure de debut (0-23)",
     "slotEndHour": "Heure de fin (1-24)",
     "slotHourError": "L'heure de fin doit etre superieure a l'heure de debut",
-    "isfValueError": "Le facteur de sensibilite a l'insuline (FSI) doit etre entre 0,20 et 1,00 g/L/U",
-    "icrValueError": "Le ratio insuline/glucides (RIG) doit etre entre 5,0 et 20,0 g/U",
+    "isfValueError": "Le facteur de sensibilite a l'insuline (FSI) doit etre entre 0,10 et 1,00 g/L/U",
+    "icrValueError": "Le ratio insuline/glucides (RIG) doit etre entre 3,0 et 30,0 g/U",
     "editSlot": "Modifier cette plage",
     "deleteSlot": "Supprimer cette plage",
     "resetToDefaults": "Réinitialiser aux valeurs par défaut",
