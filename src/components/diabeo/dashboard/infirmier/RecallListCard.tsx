@@ -9,6 +9,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
@@ -19,13 +20,15 @@ import type { RecallItem } from "@/lib/services/nurse-dashboard.service"
 
 type ApiResponse = { items: RecallItem[] }
 
-const REASON_META: Record<RecallItem["reason"], { label: string; variant: "destructive" | "outline" | "secondary" }> = {
-  silentMonitoring: { label: "Silence saisie", variant: "outline" },
-  appointmentUnconfirmed: { label: "RDV non confirmé", variant: "destructive" },
-  neverSynced: { label: "Jamais synchronisé", variant: "secondary" },
+/** Reason → i18n key + badge variant (label translated at render). */
+const REASON_META: Record<RecallItem["reason"], { labelKey: string; variant: "destructive" | "outline" | "secondary" }> = {
+  silentMonitoring: { labelKey: "reasonSilentMonitoring", variant: "outline" },
+  appointmentUnconfirmed: { labelKey: "reasonAppointmentUnconfirmed", variant: "destructive" },
+  neverSynced: { labelKey: "reasonNeverSynced", variant: "secondary" },
 }
 
 export function RecallListCard() {
+  const t = useTranslations("dashboardCards.nurseRecall")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/infirmier/recall-list",
     120_000,
@@ -36,25 +39,25 @@ export function RecallListCard() {
     <DiabeoCard role="region" aria-labelledby="card-recall-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="card-recall-title" className="text-base font-semibold">
-          Relances en attente
+          {t("title")}
         </h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
       </header>
       {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (
-          <p className="text-sm text-muted-foreground">Chargement…</p>
+          <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
         {hasError && (
           <p className="text-sm text-glycemia-critical">
-            Impossible de charger les relances.
+            {t("loadError")}
           </p>
         )}
         {!loading && !hasError && items.length === 0 && (
           <DiabeoEmptyState
             variant="noData"
-            title="Aucune relance"
-            message="Portefeuille à jour."
+            title={t("emptyTitle")}
+            message={t("emptyMessage")}
           />
         )}
         {items.length > 0 && (
@@ -71,28 +74,28 @@ export function RecallListCard() {
                     {(r.patientFirstName || "?").charAt(0).toUpperCase()}
                   </span>
                   <span className="flex-1 truncate text-sm font-medium">
-                    {r.patientFirstName || "Patient"}
+                    {r.patientFirstName || t("patientFallback")}
                     {r.pathology ? ` · ${r.pathology}` : ""}
                   </span>
-                  <Badge variant={meta.variant}>{meta.label}</Badge>
+                  <Badge variant={meta.variant}>{t(meta.labelKey)}</Badge>
                   <span className="text-xs text-muted-foreground">{r.metricLabel}</span>
                   {phoneSafe && (
                     <>
                       <a
                         href={`tel:${phoneSafe}`}
                         className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
-                        aria-label={`Appeler ${r.patientFirstName || "le patient"}`}
+                        aria-label={t("callAria", { name: r.patientFirstName || t("patientGeneric") })}
                       >
                         <Phone size={12} aria-hidden="true" />
-                        Appeler
+                        {t("call")}
                       </a>
                       <a
                         href={`sms:${phoneSafe}`}
                         className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
-                        aria-label={`Envoyer un SMS à ${r.patientFirstName || "le patient"}`}
+                        aria-label={t("smsAria", { name: r.patientFirstName || t("patientGeneric") })}
                       >
                         <MessageSquare size={12} aria-hidden="true" />
-                        SMS
+                        {t("sms")}
                       </a>
                     </>
                   )}

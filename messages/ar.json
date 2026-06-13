@@ -1394,7 +1394,51 @@
   },
   "dashboardCards": {
     "kpiLoadError": "تعذر تحميل مؤشرات الأداء الرئيسية (KPI).",
-    "nurseKpiTitle": "يومي"
+    "nurseKpiTitle": "يومي",
+    "nurseRecall": {
+      "title": "المتابعات المعلّقة",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل المتابعات.",
+      "emptyTitle": "لا توجد متابعات",
+      "emptyMessage": "المحفظة محدّثة.",
+      "patientFallback": "مريض",
+      "patientGeneric": "المريض",
+      "call": "اتصال",
+      "sms": "SMS",
+      "callAria": "الاتصال بـ {name}",
+      "smsAria": "إرسال رسالة نصية إلى {name}",
+      "reasonSilentMonitoring": "غياب الإدخال",
+      "reasonAppointmentUnconfirmed": "موعد غير مؤكّد",
+      "reasonNeverSynced": "لم تتم المزامنة قط"
+    },
+    "nurseTeamInbox": {
+      "title": "تنسيق الفريق",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل التفويضات.",
+      "emptyTitle": "صندوق الوارد فارغ",
+      "emptyMessage": "لا يوجد تفويض جارٍ.",
+      "patientFallback": "مريض",
+      "directionIncoming": "واردة",
+      "directionOutgoing": "صادرة",
+      "statusPending": "قيد الانتظار",
+      "statusApproved": "مقبولة",
+      "statusRejected": "مرفوضة",
+      "statusExpired": "منتهية"
+    },
+    "nurseTodo": {
+      "title": "مهام اليوم",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل قائمة المهام.",
+      "emptyTitle": "لا توجد مهام",
+      "emptyMessage": "لا شيء للقيام به في المحفظة اليوم.",
+      "patientFallback": "مريض",
+      "kindPrepareAppointment": "موعد",
+      "kindValidateEvent": "إدخال",
+      "kindObserveProposal": "اقتراح"
+    },
+    "nursePage": {
+      "title": "لوحة تحكم الممرّض"
+    }
   },
   "patientDetail": {
     "tabsAriaLabel": "أقسام ملف المريض",

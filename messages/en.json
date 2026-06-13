@@ -1394,7 +1394,51 @@
   },
   "dashboardCards": {
     "kpiLoadError": "Could not load key performance indicators (KPI).",
-    "nurseKpiTitle": "My day"
+    "nurseKpiTitle": "My day",
+    "nurseRecall": {
+      "title": "Pending follow-ups",
+      "loading": "Loading…",
+      "loadError": "Unable to load follow-ups.",
+      "emptyTitle": "No follow-ups",
+      "emptyMessage": "Portfolio up to date.",
+      "patientFallback": "Patient",
+      "patientGeneric": "the patient",
+      "call": "Call",
+      "sms": "SMS",
+      "callAria": "Call {name}",
+      "smsAria": "Send an SMS to {name}",
+      "reasonSilentMonitoring": "No entries",
+      "reasonAppointmentUnconfirmed": "Unconfirmed appointment",
+      "reasonNeverSynced": "Never synced"
+    },
+    "nurseTeamInbox": {
+      "title": "Team coordination",
+      "loading": "Loading…",
+      "loadError": "Unable to load delegations.",
+      "emptyTitle": "Empty inbox",
+      "emptyMessage": "No delegation in progress.",
+      "patientFallback": "Patient",
+      "directionIncoming": "Incoming",
+      "directionOutgoing": "Outgoing",
+      "statusPending": "Pending",
+      "statusApproved": "Approved",
+      "statusRejected": "Rejected",
+      "statusExpired": "Expired"
+    },
+    "nurseTodo": {
+      "title": "Today's to-do",
+      "loading": "Loading…",
+      "loadError": "Unable to load the to-do list.",
+      "emptyTitle": "No tasks",
+      "emptyMessage": "Nothing to do in the portfolio today.",
+      "patientFallback": "Patient",
+      "kindPrepareAppointment": "Appointment",
+      "kindValidateEvent": "Entry",
+      "kindObserveProposal": "Proposal"
+    },
+    "nursePage": {
+      "title": "Nurse dashboard"
+    }
   },
   "patientDetail": {
     "tabsAriaLabel": "Patient record sections",

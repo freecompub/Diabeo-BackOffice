@@ -1394,7 +1394,51 @@
   },
   "dashboardCards": {
     "kpiLoadError": "Impossible de charger les indicateurs clés (KPI).",
-    "nurseKpiTitle": "Ma journée"
+    "nurseKpiTitle": "Ma journée",
+    "nurseRecall": {
+      "title": "Relances en attente",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les relances.",
+      "emptyTitle": "Aucune relance",
+      "emptyMessage": "Portefeuille à jour.",
+      "patientFallback": "Patient",
+      "patientGeneric": "le patient",
+      "call": "Appeler",
+      "sms": "SMS",
+      "callAria": "Appeler {name}",
+      "smsAria": "Envoyer un SMS à {name}",
+      "reasonSilentMonitoring": "Silence saisie",
+      "reasonAppointmentUnconfirmed": "Rendez-vous non confirmé",
+      "reasonNeverSynced": "Jamais synchronisé"
+    },
+    "nurseTeamInbox": {
+      "title": "Coordination équipe",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les délégations.",
+      "emptyTitle": "Inbox vide",
+      "emptyMessage": "Aucune délégation en cours.",
+      "patientFallback": "Patient",
+      "directionIncoming": "Entrante",
+      "directionOutgoing": "Sortante",
+      "statusPending": "En attente",
+      "statusApproved": "Approuvée",
+      "statusRejected": "Refusée",
+      "statusExpired": "Expirée"
+    },
+    "nurseTodo": {
+      "title": "To-do du jour",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger la to-do.",
+      "emptyTitle": "Aucune tâche",
+      "emptyMessage": "Rien à faire sur le portefeuille aujourd'hui.",
+      "patientFallback": "Patient",
+      "kindPrepareAppointment": "Rendez-vous",
+      "kindValidateEvent": "Saisie",
+      "kindObserveProposal": "Proposition"
+    },
+    "nursePage": {
+      "title": "Tableau de bord infirmier"
+    }
   },
   "patientDetail": {
     "tabsAriaLabel": "Sections du dossier patient",
