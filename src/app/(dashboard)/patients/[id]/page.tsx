@@ -13,6 +13,7 @@
  */
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import {
   GlycemiaValue,
@@ -79,6 +80,7 @@ const DEMO_CGM = Array.from({ length: 288 }, (_, i) => {
 })
 
 export default function PatientDetailPage() {
+  const t = useTranslations("patientDetail")
   const [activeTab, setActiveTab] = useState("overview")
   const patient = DEMO_PATIENT
 
@@ -86,16 +88,20 @@ export default function PatientDetailPage() {
     <>
       <DashboardHeader
         title={patient.name}
-        subtitle={`${patient.pathology} — ${patient.age} ans — Suivi par ${patient.referent}`}
+        subtitle={t("subtitle", {
+          pathology: patient.pathology,
+          age: patient.age,
+          referent: patient.referent,
+        })}
       />
 
       <div className="p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="mb-6" aria-label="Sections du dossier patient">
-            <TabsTrigger value="overview">Vue d&apos;ensemble</TabsTrigger>
-            <TabsTrigger value="glycemia">Glycemie</TabsTrigger>
-            <TabsTrigger value="treatment">Traitements</TabsTrigger>
-            <TabsTrigger value="documents">Documents</TabsTrigger>
+          <TabsList className="mb-6" aria-label={t("tabsAriaLabel")}>
+            <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger>
+            <TabsTrigger value="glycemia">{t("tabGlycemia")}</TabsTrigger>
+            <TabsTrigger value="treatment">{t("tabTreatment")}</TabsTrigger>
+            <TabsTrigger value="documents">{t("tabDocuments")}</TabsTrigger>
           </TabsList>
 
           {/* ── Overview Tab ──────────────────────────────── */}
@@ -103,26 +109,26 @@ export default function PatientDetailPage() {
             {/* KPI row */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard
-                label="Glycemie actuelle"
+                label={t("kpiCurrentGlucose")}
                 value={String(patient.lastGlucoseMgdl)}
                 unit="mg/dL"
                 icon={<Activity className="h-5 w-5" />}
                 variant="success"
               />
               <StatCard
-                label="Temps dans la cible (TIR) — 7j"
+                label={t("kpiTir7d")}
                 value={`${patient.tir.inRange}%`}
                 icon={<TrendingUp className="h-5 w-5" />}
                 variant={patient.tir.inRange >= 70 ? "success" : "warning"}
               />
               <StatCard
-                label="Indicateur de gestion du glucose (GMI)"
+                label={t("kpiGmi")}
                 value={`${patient.gmi}%`}
                 icon={<Heart className="h-5 w-5" />}
                 variant="default"
               />
               <StatCard
-                label="Coefficient de variation (CV)"
+                label={t("kpiCv")}
                 value={`${patient.cv}%`}
                 icon={<Clock className="h-5 w-5" />}
                 variant={patient.cv <= 36 ? "success" : "warning"}
@@ -136,35 +142,35 @@ export default function PatientDetailPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <User className="h-4 w-4" aria-hidden="true" />
-                    Profil patient
+                    {t("profileTitle")}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Pathologie</span>
+                      <span className="text-[var(--color-muted-foreground)]">{t("pathology")}</span>
                       <div className="mt-1">
                         <ClinicalBadge type="pathology" value={patient.pathology} />
                       </div>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Diagnostic</span>
+                      <span className="text-[var(--color-muted-foreground)]">{t("diagnostic")}</span>
                       <p className="mt-1 font-medium">{patient.diagYear}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Sexe</span>
-                      <p className="mt-1 font-medium">{patient.sex === "F" ? "Femme" : "Homme"}</p>
+                      <span className="text-[var(--color-muted-foreground)]">{t("sex")}</span>
+                      <p className="mt-1 font-medium">{patient.sex === "F" ? t("female") : t("male")}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Age</span>
-                      <p className="mt-1 font-medium">{patient.age} ans</p>
+                      <span className="text-[var(--color-muted-foreground)]">{t("age")}</span>
+                      <p className="mt-1 font-medium">{t("ageValue", { age: patient.age })}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Medecin referent</span>
+                      <span className="text-[var(--color-muted-foreground)]">{t("referentDoctor")}</span>
                       <p className="mt-1 font-medium">{patient.referent}</p>
                     </div>
                     <div>
-                      <span className="text-[var(--color-muted-foreground)]">Glycemie moyenne (14j)</span>
+                      <span className="text-[var(--color-muted-foreground)]">{t("avgGlucose14d")}</span>
                       <div className="mt-1">
                         <GlycemiaValue value={patient.avgGlucoseMgdl} unit="mg/dL" size="sm" />
                       </div>
@@ -174,16 +180,19 @@ export default function PatientDetailPage() {
                   <Separator className="my-4" />
 
                   <div className="text-sm">
-                    <span className="text-[var(--color-muted-foreground)]">Objectifs glycemiques</span>
+                    <span className="text-[var(--color-muted-foreground)]">{t("glycemicObjectives")}</span>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Badge variant="outline">
-                        Cible : {patient.objectives.targetLow}–{patient.objectives.targetHigh} mg/dL
+                        {t("targetBadge", {
+                          low: patient.objectives.targetLow,
+                          high: patient.objectives.targetHigh,
+                        })}
                       </Badge>
                       <Badge variant="outline">
-                        TIR cible : {patient.objectives.tirTarget}%
+                        {t("tirTargetBadge", { target: patient.objectives.tirTarget })}
                       </Badge>
                       <Badge variant="outline">
-                        Hypo max : {patient.objectives.hypoTarget}%
+                        {t("hypoMaxBadge", { target: patient.objectives.hypoTarget })}
                       </Badge>
                     </div>
                   </div>
@@ -193,7 +202,7 @@ export default function PatientDetailPage() {
               {/* TIR Donut */}
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base"><Acronym code="TIR" /> (7 jours)</CardTitle>
+                  <CardTitle className="text-base"><Acronym code="TIR" /> {t("tirDonutPeriod")}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex justify-center">
                   <TirDonut
@@ -212,7 +221,7 @@ export default function PatientDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Activity className="h-4 w-4" aria-hidden="true" />
-                  Profil glycemique (24h)
+                  {t("glycemicProfile24h")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -231,33 +240,33 @@ export default function PatientDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Syringe className="h-4 w-4" aria-hidden="true" />
-                  Configuration insulinotherapie
+                  {t("insulinConfigTitle")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">Methode</span>
+                    <span className="text-[var(--color-muted-foreground)]">{t("method")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.delivery}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">Pompe</span>
+                    <span className="text-[var(--color-muted-foreground)]">{t("pump")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.pump}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">Insuline bolus</span>
+                    <span className="text-[var(--color-muted-foreground)]">{t("bolusInsulin")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.bolusInsulin}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]">Debit basal moyen</span>
+                    <span className="text-[var(--color-muted-foreground)]">{t("avgBasalRate")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.basalRate}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ICR" /> moyen</span>
+                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ICR" /> {t("average")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.icr}</p>
                   </div>
                   <div>
-                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ISF" /> moyen</span>
+                    <span className="text-[var(--color-muted-foreground)]"><Acronym code="ISF" /> {t("average")}</span>
                     <p className="mt-1 font-medium">{patient.insulinSettings.isf}</p>
                   </div>
                 </div>
@@ -268,12 +277,12 @@ export default function PatientDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Pill className="h-4 w-4" aria-hidden="true" />
-                  Traitements associes
+                  {t("associatedTreatmentsTitle")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-[var(--color-muted-foreground)]">
-                  Aucun traitement complementaire enregistre
+                  {t("noComplementaryTreatment")}
                 </p>
               </CardContent>
             </Card>
@@ -285,12 +294,12 @@ export default function PatientDetailPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Calendar className="h-4 w-4" aria-hidden="true" />
-                  Documents medicaux
+                  {t("medicalDocumentsTitle")}
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <p className="text-sm text-[var(--color-muted-foreground)]">
-                  Aucun document enregistre
+                  {t("noDocument")}
                 </p>
               </CardContent>
             </Card>

@@ -17,14 +17,11 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+
+vi.mock("next-intl", async () =>
+  (await import("../helpers/nextIntlMock")).makeNextIntlMock())
 import { render, screen, waitFor } from "@testing-library/react"
 import PatientDashboardPage from "@/app/(patient)/patient/dashboard/page"
-
-// next-intl is imported transitively via NavigationShell — stub it here so
-// the page renders standalone without an IntlProvider in tests.
-vi.mock("next-intl", () => ({
-  useTranslations: () => (k: string) => k,
-}))
 
 // Recharts uses ResizeObserver which is absent from jsdom.
 beforeEach(() => {

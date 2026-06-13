@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   Activity,
   AlertCircle,
@@ -79,6 +79,7 @@ const COMPONENT_META: Record<
 
 export function SystemHealthClient() {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.systemHealth")
   const [snapshot, setSnapshot] = useState<SystemHealthDTO | null>(null)
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -172,7 +173,7 @@ export function SystemHealthClient() {
   if (state === "loading" && !snapshot) {
     return (
       <p className="text-sm text-muted-foreground" aria-live="polite">
-        Chargement du snapshot santé système…
+        {t("loadingSnapshot")}
       </p>
     )
   }
@@ -182,11 +183,11 @@ export function SystemHealthClient() {
       <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3">
         <p className="font-medium text-destructive flex items-center gap-2">
           <AlertCircle className="size-4" aria-hidden="true" />
-          Snapshot indisponible
+          {t("snapshotUnavailable")}
         </p>
         {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
         <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchSnapshot()} className="mt-2">
-          Réessayer
+          {t("retry")}
         </DiabeoButton>
       </div>
     )
@@ -198,7 +199,7 @@ export function SystemHealthClient() {
     <>
       {/* Statut global + refresh manuel + pause toggle */}
       <section className="flex flex-wrap items-center justify-between gap-3 rounded-md border p-4" aria-labelledby="health-overall">
-        <h2 id="health-overall" className="sr-only">Statut global</h2>
+        <h2 id="health-overall" className="sr-only">{t("overallStatus")}</h2>
         <div className="flex items-center gap-3">
           <StatusIcon
             kind="component"
@@ -206,7 +207,7 @@ export function SystemHealthClient() {
             className="size-8"
           />
           <div>
-            <p className="text-sm text-muted-foreground">Statut global</p>
+            <p className="text-sm text-muted-foreground">{t("overallStatus")}</p>
             <div className="flex items-center gap-2">
               <span className="text-xl font-semibold">
                 {OVERALL_STATUS_LABELS_FR[snapshot.status]}
@@ -219,7 +220,7 @@ export function SystemHealthClient() {
         </div>
         <div className="flex items-center gap-3">
           <p className="text-xs text-muted-foreground">
-            Dernière vérification {formatRelativeTime(snapshot.checkedAt, locale)}
+            {t("lastCheck", { time: formatRelativeTime(snapshot.checkedAt, locale) })}
           </p>
           {/* Fix C1 round 1 — bouton pause/reprendre auto-refresh (WCAG 2.2.1). */}
           <DiabeoButton
@@ -230,18 +231,18 @@ export function SystemHealthClient() {
             aria-label={isPaused ? "Reprendre l'actualisation automatique" : "Mettre en pause l'actualisation automatique"}
           >
             {isPaused ? <Play className="size-3.5 mr-1" aria-hidden="true" /> : <Pause className="size-3.5 mr-1" aria-hidden="true" />}
-            {isPaused ? "Reprendre auto" : "Pause auto"}
+            {isPaused ? t("resumeAuto") : t("pauseAuto")}
           </DiabeoButton>
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchSnapshot()}>
             <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
-            Actualiser
+            {t("refresh")}
           </DiabeoButton>
         </div>
       </section>
 
       {/* Composants */}
       <section aria-labelledby="health-components" className="space-y-2">
-        <h2 id="health-components" className="text-lg font-semibold">Composants</h2>
+        <h2 id="health-components" className="text-lg font-semibold">{t("components")}</h2>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {(Object.entries(snapshot.components) as Array<[keyof SystemHealthDTO["components"], ComponentStatus]>).map(
             ([key, status]) => {
@@ -274,7 +275,7 @@ export function SystemHealthClient() {
 
       {/* Métriques */}
       <section aria-labelledby="health-metrics" className="space-y-2">
-        <h2 id="health-metrics" className="text-lg font-semibold">Métriques</h2>
+        <h2 id="health-metrics" className="text-lg font-semibold">{t("metrics")}</h2>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <MetricCard
             icon={Users}
@@ -325,6 +326,7 @@ function MetricCard({
   highlight?: boolean
   highlightReason?: string
 }) {
+  const t = useTranslations("admin.systemHealth")
   return (
     <div
       className={`rounded-md border p-3 ${
@@ -342,8 +344,8 @@ function MetricCard({
         <p className="mt-1.5 text-xs text-orange-700 flex items-start gap-1">
           <AlertTriangle className="size-3.5 shrink-0 mt-0.5" aria-hidden="true" />
           <span>
-            <span className="sr-only">Alerte : </span>
-            Seuil dépassé.
+            <span className="sr-only">{t("alertPrefix")}</span>
+            {t("thresholdExceeded")}
             {highlightReason && <span className="block opacity-80">{highlightReason}</span>}
           </span>
         </p>

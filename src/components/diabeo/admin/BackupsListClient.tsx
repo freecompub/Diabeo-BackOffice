@@ -22,7 +22,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   AlertCircle,
   CheckCircle2,
@@ -103,6 +103,7 @@ function capitalize(s: string): string {
 
 export function BackupsListClient() {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.backupsList")
   const [backups, setBackups] = useState<BackupLogDTO[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -202,14 +203,14 @@ export function BackupsListClient() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 text-sm">
-            <span className="text-muted-foreground">Statut :</span>
+            <span className="text-muted-foreground">{t("statusLabel")}</span>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as BackupStatus | "all")}
               className="rounded-md border bg-background px-2 py-1 text-sm"
               aria-label="Filtrer par statut backup"
             >
-              <option value="all">Tous</option>
+              <option value="all">{t("all")}</option>
               {Object.entries(BACKUP_STATUS_LABELS_FR).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -227,11 +228,11 @@ export function BackupsListClient() {
         <div className="flex items-center gap-2">
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchBackups()}>
             <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
-            Actualiser
+            {t("refresh")}
           </DiabeoButton>
           <DiabeoButton onClick={() => setShowTriggerConfirm(true)} disabled={triggerState === "loading"}>
             <Plus className="size-4 mr-1" aria-hidden="true" />
-            Déclencher backup
+            {t("trigger")}
           </DiabeoButton>
         </div>
       </div>
@@ -249,14 +250,14 @@ export function BackupsListClient() {
         <div role="status" aria-live="polite" className="rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
           <p className="flex items-center gap-2 text-primary">
             <CheckCircle2 className="size-4" aria-hidden="true" />
-            Backup déclenché (status: pending). Le worker le consommera bientôt.
+            {t("triggerSuccess")}
           </p>
         </div>
       )}
 
       {state === "loading" && backups.length === 0 && (
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          Chargement…
+          {t("loading")}
         </p>
       )}
 
@@ -264,11 +265,11 @@ export function BackupsListClient() {
         <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
-            Liste indisponible
+            {t("listUnavailable")}
           </p>
           {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchBackups()} className="mt-2">
-            Réessayer
+            {t("retry")}
           </DiabeoButton>
         </div>
       )}
@@ -276,7 +277,7 @@ export function BackupsListClient() {
       {state === "success" && backups.length === 0 && (
         <div className="rounded-md border border-dashed p-8 text-center">
           <HardDrive className="size-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">Aucun backup enregistré.</p>
+          <p className="text-sm text-muted-foreground">{t("empty")}</p>
         </div>
       )}
 
@@ -312,10 +313,10 @@ export function BackupsListClient() {
                   <div className="text-xs text-muted-foreground mt-1 flex flex-wrap gap-3">
                     <span className="flex items-center gap-1">
                       <Clock className="size-3" aria-hidden="true" />
-                      Démarré {formatDate(backup.startedAt, locale, { withTime: true })}
+                      {t("started", { date: formatDate(backup.startedAt, locale, { withTime: true }) })}
                     </span>
                     {backup.completedAt && (
-                      <span>Durée : {formatDuration(backup.durationMs)}</span>
+                      <span>{t("duration", { duration: formatDuration(backup.durationMs) })}</span>
                     )}
                     {backup.sizeBytes !== null && (
                       <span className="flex items-center gap-1">
@@ -326,13 +327,13 @@ export function BackupsListClient() {
                     {backup.triggeredBy !== null && (
                       // TODO V2 (Issue #456) — remplacer User #ID séquentiel par
                       // staff.publicRef UUID opaque (anti-énumération).
-                      <span>Par User #{backup.triggeredBy}</span>
+                      <span>{t("byUser", { id: backup.triggeredBy })}</span>
                     )}
                   </div>
                   {backup.errorMessage && (
                     // Fix A11y M3 round 1 — expandable details (vs overflow horizontal).
                     <details className="text-xs text-destructive mt-1.5">
-                      <summary className="cursor-pointer font-medium">⚠ Voir l&apos;erreur</summary>
+                      <summary className="cursor-pointer font-medium">{t("seeError")}</summary>
                       <pre className="mt-1 whitespace-pre-wrap break-words rounded bg-destructive/5 p-2 max-h-32 overflow-auto">
                         {backup.errorMessage}
                       </pre>
@@ -349,19 +350,17 @@ export function BackupsListClient() {
       <Dialog open={showTriggerConfirm} onOpenChange={(open) => { if (!open) setShowTriggerConfirm(false) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Déclencher un backup PostgreSQL ?</DialogTitle>
+            <DialogTitle>{t("confirmTitle")}</DialogTitle>
             <DialogDescription>
-              Le backup démarrera immédiatement (status: pending → running). Durée
-              estimée : 2-15 minutes selon taille DB. L&apos;opération est tracée
-              dans le journal d&apos;audit.
+              {t("confirmDesc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DiabeoButton variant="diabeoTertiary" onClick={() => setShowTriggerConfirm(false)}>
-              Annuler
+              {t("cancel")}
             </DiabeoButton>
             <DiabeoButton onClick={() => void executeTrigger()}>
-              Déclencher
+              {t("confirmTrigger")}
             </DiabeoButton>
           </DialogFooter>
         </DialogContent>

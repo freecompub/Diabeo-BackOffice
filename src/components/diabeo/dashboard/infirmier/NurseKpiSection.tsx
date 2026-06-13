@@ -6,6 +6,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import { MetricCard } from "@/components/diabeo/MetricCard"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
@@ -14,13 +15,14 @@ import type { NurseKpiCard } from "@/lib/services/nurse-dashboard.service"
 type ApiResponse = { items: NurseKpiCard[] }
 
 const KPI_LABELS: Record<NurseKpiCard["code"], string> = {
-  rdvToPrepare: "RDV à préparer",
+  rdvToPrepare: "Rendez-vous à préparer",
   eventsToValidate: "Événements à valider",
   openUrgencies: "Urgences observées",
   proposalsPending: "Propositions à connaître",
 }
 
 export function NurseKpiSection() {
+  const t = useTranslations("dashboardCards")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/infirmier/kpi",
     60_000,
@@ -33,11 +35,11 @@ export function NurseKpiSection() {
   return (
     <section aria-labelledby="nurse-kpi-title">
       <h2 id="nurse-kpi-title" className="mb-3 text-base font-semibold">
-        Ma journée
+        {t("nurseKpiTitle")}
       </h2>
       {hasError && (
         <p className="mb-2 text-sm text-glycemia-critical">
-          Impossible de charger les indicateurs clés (KPI).
+          {t("kpiLoadError")}
         </p>
       )}
       {isStale && <div className="mb-2"><StaleBanner message={STALE_MESSAGE_FR} /></div>}

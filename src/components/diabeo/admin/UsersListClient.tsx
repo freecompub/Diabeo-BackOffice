@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   AlertCircle,
   ChevronRight,
@@ -43,6 +43,7 @@ type AsyncState = "idle" | "loading" | "success" | "error"
 
 export function UsersListClient() {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.usersList")
   const [users, setUsers] = useState<AdminUserDTOClient[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -131,14 +132,14 @@ export function UsersListClient() {
           />
         </div>
         <label className="flex items-center gap-1 text-sm">
-          <span className="text-muted-foreground">Rôle :</span>
+          <span className="text-muted-foreground">{t("roleLabel")}</span>
           <select
             value={filterRole}
             onChange={(e) => setFilterRole(e.target.value as Role | "all")}
             className="rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Filtrer par rôle"
           >
-            <option value="all">Tous les rôles</option>
+            <option value="all">{t("allRoles")}</option>
             {/* Fix H4 round 1 — ROLES_ORDERED iter stable (hiérarchique). */}
             {ROLES_ORDERED.map((r) => (
               <option key={r} value={r}>{ROLE_LABELS_FR[r]}</option>
@@ -146,14 +147,14 @@ export function UsersListClient() {
           </select>
         </label>
         <label className="flex items-center gap-1 text-sm">
-          <span className="text-muted-foreground">Statut :</span>
+          <span className="text-muted-foreground">{t("statusLabel")}</span>
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as UserStatus | "all")}
             className="rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label="Filtrer par statut"
           >
-            <option value="all">Tous les statuts</option>
+            <option value="all">{t("allStatuses")}</option>
             {USER_STATUSES_ORDERED.map((s) => (
               <option key={s} value={s}>{USER_STATUS_LABELS_FR[s]}</option>
             ))}
@@ -161,12 +162,12 @@ export function UsersListClient() {
         </label>
         <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchUsers()}>
           <RefreshCw className="size-3.5 mr-1" aria-hidden="true" />
-          Actualiser
+          {t("refresh")}
         </DiabeoButton>
       </div>
 
       {state === "loading" && users.length === 0 && (
-        <p className="text-sm text-muted-foreground" aria-live="polite">Chargement…</p>
+        <p className="text-sm text-muted-foreground" aria-live="polite">{t("loading")}</p>
       )}
 
       {/* Fix H5 round 1 — indicateur loading même si liste déjà affichée
@@ -174,7 +175,7 @@ export function UsersListClient() {
       {state === "loading" && users.length > 0 && (
         <p className="text-xs text-muted-foreground flex items-center gap-1" aria-live="polite">
           <RefreshCw className="size-3 motion-safe:animate-spin" aria-hidden="true" />
-          Mise à jour des résultats…
+          {t("updating")}
         </p>
       )}
 
@@ -182,11 +183,11 @@ export function UsersListClient() {
         <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
-            Liste indisponible
+            {t("listUnavailable")}
           </p>
           {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchUsers()} className="mt-2">
-            Réessayer
+            {t("retry")}
           </DiabeoButton>
         </div>
       )}
@@ -195,7 +196,7 @@ export function UsersListClient() {
         <div className="rounded-md border border-dashed p-8 text-center">
           <UserCircle2 className="size-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
           <p className="text-sm text-muted-foreground">
-            {query ? "Aucun utilisateur ne correspond à la recherche." : "Aucun utilisateur."}
+            {query ? t("noMatch") : t("empty")}
           </p>
         </div>
       )}
@@ -226,7 +227,7 @@ export function UsersListClient() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-1 truncate">
-                    {user.email ?? "—"} · Créé le {formatDate(user.createdAt, locale, { withTime: false })}
+                    {t("createdLine", { email: user.email ?? "—", date: formatDate(user.createdAt, locale, { withTime: false }) })}
                   </p>
                 </div>
                 <ChevronRight className="size-4 text-muted-foreground shrink-0 mt-1" aria-hidden="true" />
@@ -241,9 +242,9 @@ export function UsersListClient() {
         <div role="status" aria-live="polite" className="rounded-md border border-orange-300 bg-orange-50 p-3 text-sm flex items-start gap-2">
           <AlertCircle className="size-4 text-orange-700 shrink-0 mt-0.5" aria-hidden="true" />
           <p className="text-orange-800">
-            Plus de 100 utilisateurs correspondent. Affiner les filtres pour réduire la liste.
+            {t("tooMany")}
             <span className="block text-xs opacity-80 mt-0.5">
-              Pagination cursor V1.5 — affichage tronqué.
+              {t("paginationNote")}
             </span>
           </p>
         </div>

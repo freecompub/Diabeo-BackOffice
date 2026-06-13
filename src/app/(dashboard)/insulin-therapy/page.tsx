@@ -117,7 +117,7 @@ function HourTimeline({
       {covered.map((active, hour) => (
         <div
           key={hour}
-          title={`${hour}h`}
+          title={t("hourAxisTick", { hour })}
           className={cn(
             "h-4 flex-1 rounded-sm transition-colors",
             active ? colorClass : "bg-gray-200"
@@ -656,11 +656,11 @@ export default function InsulinTherapyPage() {
                 label={t("isf.timelineLabel")}
               />
               <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>0h</span>
-                <span>6h</span>
-                <span>12h</span>
-                <span>18h</span>
-                <span>24h</span>
+                <span>{t("hourAxisTick", { hour: 0 })}</span>
+                <span>{t("hourAxisTick", { hour: 6 })}</span>
+                <span>{t("hourAxisTick", { hour: 12 })}</span>
+                <span>{t("hourAxisTick", { hour: 18 })}</span>
+                <span>{t("hourAxisTick", { hour: 24 })}</span>
               </div>
             </div>
 
@@ -715,11 +715,11 @@ export default function InsulinTherapyPage() {
                 label={t("icr.timelineLabel")}
               />
               <div className="flex justify-between text-[10px] text-muted-foreground">
-                <span>0h</span>
-                <span>6h</span>
-                <span>12h</span>
-                <span>18h</span>
-                <span>24h</span>
+                <span>{t("hourAxisTick", { hour: 0 })}</span>
+                <span>{t("hourAxisTick", { hour: 6 })}</span>
+                <span>{t("hourAxisTick", { hour: 12 })}</span>
+                <span>{t("hourAxisTick", { hour: 18 })}</span>
+                <span>{t("hourAxisTick", { hour: 24 })}</span>
               </div>
             </div>
 

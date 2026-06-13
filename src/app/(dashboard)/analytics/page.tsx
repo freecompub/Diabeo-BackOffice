@@ -22,7 +22,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47 } from "@/i18n/config"
 import {
   AreaChart,
   Area,
@@ -140,6 +141,7 @@ function captureRateColor(rate: number): string {
 export default function AnalyticsPage() {
   const t = useTranslations("analytics")
   const tCommon = useTranslations("common")
+  const locale = useLocale()
 
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.TwoWeeks)
   const [pageState, setPageState] = useState<PageState>("idle")
@@ -260,7 +262,7 @@ export default function AnalyticsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900">{t("title")}</h1>
           <p className="mt-0.5 text-sm text-gray-500">
-            {formatDate(dateRange[0], "fr-FR")} — {formatDate(dateRange[1], "fr-FR")}
+            {formatDate(dateRange[0], bcp47(locale))} — {formatDate(dateRange[1], bcp47(locale))}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -398,7 +400,7 @@ export default function AnalyticsPage() {
                         return (
                           <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg text-xs space-y-0.5">
                             <p className="font-semibold text-gray-900">{slot.time}</p>
-                            <p className="text-teal-700">{t("agpMedian")}: <strong>{slot.median}</strong> mg/dL</p>
+                            <p className="text-teal-700">{t("agpMedian")}: <strong>{slot.median}</strong> {t("unitMgdl")}</p>
                             <p className="text-teal-500">{t("agpIqr")}: {slot.p25}–{slot.p75}</p>
                             <p className="text-teal-300">{t("agpRange")}: {slot.p10}–{slot.p90}</p>
                           </div>

@@ -20,7 +20,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { AlertCircle, AlertTriangle, Clock, Plus, ShieldAlert } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { Badge } from "@/components/ui/badge"
@@ -47,6 +47,7 @@ type AsyncState = "idle" | "loading" | "success" | "error"
 
 export function DataBreachesListClient() {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.dataBreachesList")
   const [breaches, setBreaches] = useState<DataBreachDTO[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -113,14 +114,14 @@ export function DataBreachesListClient() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <label className="flex items-center gap-1 text-sm">
-            <span className="text-muted-foreground">Statut :</span>
+            <span className="text-muted-foreground">{t("statusLabel")}</span>
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value as DataBreachStatus | "all")}
               className="rounded-md border bg-background px-2 py-1 text-sm"
               aria-label="Filtrer par statut"
             >
-              <option value="all">Tous</option>
+              <option value="all">{t("all")}</option>
               {Object.entries(STATUS_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -129,14 +130,14 @@ export function DataBreachesListClient() {
             </select>
           </label>
           <label className="flex items-center gap-1 text-sm">
-            <span className="text-muted-foreground">Sévérité :</span>
+            <span className="text-muted-foreground">{t("severityLabel")}</span>
             <select
               value={filterSeverity}
               onChange={(e) => setFilterSeverity(e.target.value as DataBreachSeverity | "all")}
               className="rounded-md border bg-background px-2 py-1 text-sm"
               aria-label="Filtrer par sévérité"
             >
-              <option value="all">Toutes</option>
+              <option value="all">{t("allSeverities")}</option>
               {Object.entries(SEVERITY_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
@@ -147,13 +148,13 @@ export function DataBreachesListClient() {
         </div>
         <DiabeoButton onClick={() => setShowDeclareDialog(true)}>
           <Plus className="size-4 mr-1" aria-hidden="true" />
-          Déclarer une violation
+          {t("declare")}
         </DiabeoButton>
       </div>
 
       {state === "loading" && (
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          Chargement…
+          {t("loading")}
         </p>
       )}
 
@@ -161,11 +162,11 @@ export function DataBreachesListClient() {
         <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3 text-sm">
           <p className="font-medium text-destructive flex items-center gap-2">
             <AlertCircle className="size-4" aria-hidden="true" />
-            Impossible de charger les violations
+            {t("loadError")}
           </p>
           {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
           <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void fetchBreaches()} className="mt-2">
-            Réessayer
+            {t("retry")}
           </DiabeoButton>
         </div>
       )}
@@ -173,7 +174,7 @@ export function DataBreachesListClient() {
       {state === "success" && breaches.length === 0 && (
         <div className="rounded-md border border-dashed p-8 text-center">
           <ShieldAlert className="size-8 text-muted-foreground mx-auto mb-2" aria-hidden="true" />
-          <p className="text-sm text-muted-foreground">Aucune violation enregistrée.</p>
+          <p className="text-sm text-muted-foreground">{t("empty")}</p>
         </div>
       )}
 
@@ -204,7 +205,7 @@ export function DataBreachesListClient() {
                       </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Détectée le {formatDate(breach.detectedAt, locale, { withTime: true })}
+                      {t("detectedOn", { date: formatDate(breach.detectedAt, locale, { withTime: true }) })}
                     </p>
                     {breach.cnilDeadlineHoursRemaining !== null && breach.status !== "notified_cnil" && breach.status !== "notified_users" && breach.status !== "closed" && (
                       <p
@@ -222,8 +223,8 @@ export function DataBreachesListClient() {
                           <Clock className="size-3.5" aria-hidden="true" />
                         )}
                         {breach.cnilDeadlineExceeded
-                          ? "Délai CNIL 72h dépassé"
-                          : `Délai CNIL : ${breach.cnilDeadlineHoursRemaining}h restantes`}
+                          ? t("cnilExceeded")
+                          : t("cnilRemaining", { hours: breach.cnilDeadlineHoursRemaining })}
                       </p>
                     )}
                   </div>
@@ -258,6 +259,7 @@ function DeclareDialog({
   onClose: () => void
   onCreated: () => void
 }) {
+  const t = useTranslations("admin.dataBreachesList")
   const [severity, setSeverity] = useState<DataBreachSeverity>("medium")
   const [title, setTitle] = useState("")
   const [description, setDescription] = useState("")
@@ -327,14 +329,14 @@ function DeclareDialog({
         <DialogContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <DialogHeader>
-              <DialogTitle>Déclarer une violation de données</DialogTitle>
+              <DialogTitle>{t("declareTitle")}</DialogTitle>
               <DialogDescription>
-                ⚠️ NE PAS INCLURE de PHI/PII dans le titre (anti-fuite audit logs).
+                {t("declareWarning")}
               </DialogDescription>
             </DialogHeader>
 
             <label className="flex flex-col gap-1 text-sm">
-              <span>Sévérité</span>
+              <span>{t("severity")}</span>
               <select
                 value={severity}
                 onChange={(e) => setSeverity(e.target.value as DataBreachSeverity)}
@@ -351,7 +353,7 @@ function DeclareDialog({
 
             <label className="flex flex-col gap-1 text-sm">
               <span>
-                Titre <span className="text-destructive" aria-label="requis">*</span>
+                {t("titleLabel")} <span className="text-destructive" aria-label="requis">*</span>
               </span>
               <input
                 type="text"
@@ -365,12 +367,12 @@ function DeclareDialog({
               />
               {/* Fix M7 round 1 — char count visible (WCAG 3.3.2). */}
               <span id="declare-title-count" className="text-xs text-muted-foreground">
-                {title.length} / 200 caractères
+                {t("titleCount", { count: title.length })}
               </span>
             </label>
 
             <label className="flex flex-col gap-1 text-sm">
-              <span>Description (optionnel)</span>
+              <span>{t("descLabel")}</span>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -380,26 +382,26 @@ function DeclareDialog({
                 aria-describedby="declare-desc-count"
               />
               <span id="declare-desc-count" className="text-xs text-muted-foreground">
-                {description.length} / 5000 caractères
+                {t("descCount", { count: description.length })}
               </span>
             </label>
 
             {submitState === "error" && submitError && (
               <p role="alert" className="text-sm text-destructive flex items-center gap-2">
                 <AlertCircle className="size-4" aria-hidden="true" />
-                Erreur : {submitError}
+                {t("submitErrorPrefix", { error: submitError })}
               </p>
             )}
 
             <DialogFooter>
               <DiabeoButton type="button" variant="diabeoTertiary" onClick={handleCloseAttempt}>
-                Annuler
+                {t("cancel")}
               </DiabeoButton>
               <DiabeoButton
                 type="submit"
                 disabled={submitState === "loading" || title.trim().length === 0}
               >
-                {submitState === "loading" ? "Création…" : "Déclarer (status=brouillon)"}
+                {submitState === "loading" ? t("creating") : t("submit")}
               </DiabeoButton>
             </DialogFooter>
           </form>
@@ -410,14 +412,14 @@ function DeclareDialog({
       <Dialog open={showDirtyConfirm} onOpenChange={(open) => { if (!open) setShowDirtyConfirm(false) }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Abandonner les modifications ?</DialogTitle>
+            <DialogTitle>{t("discardTitle")}</DialogTitle>
             <DialogDescription>
-              Le titre et la description saisis seront perdus. Cette action n&apos;est pas réversible.
+              {t("discardDesc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DiabeoButton variant="diabeoTertiary" onClick={() => setShowDirtyConfirm(false)}>
-              Continuer la saisie
+              {t("continueEditing")}
             </DiabeoButton>
             <DiabeoButton
               variant="diabeoDestructive"
@@ -426,7 +428,7 @@ function DeclareDialog({
                 onClose()
               }}
             >
-              Abandonner
+              {t("discard")}
             </DiabeoButton>
           </DialogFooter>
         </DialogContent>

@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   AlertCircle,
   ArrowLeft,
@@ -29,9 +29,9 @@ import { formatDate } from "@/lib/intl/formatters"
 import type { Locale } from "@/i18n/config"
 import {
   type InvoiceWithItemsDTOClient,
-  getInvoiceStatusLabel,
   getInvoiceStatusVariant,
-  getPaymentMethodLabel,
+  isInvoiceStatus,
+  isPaymentMethod,
   formatAmount,
 } from "@/lib/types/invoice-admin"
 import { extractApiError } from "@/lib/ui/api-error"
@@ -40,6 +40,7 @@ type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 
 export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
   const locale = useLocale() as Locale
+  const t = useTranslations("invoiceDetail")
   const [invoice, setInvoice] = useState<InvoiceWithItemsDTOClient | null>(null)
   const [state, setState] = useState<AsyncState>("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -75,9 +76,9 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
       if (err instanceof Error && err.name === "AbortError") return
       if (!mountedRef.current) return
       setState("error")
-      setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
+      setErrorMessage(err instanceof Error ? err.message : t("networkError"))
     }
-  }, [invoiceId])
+  }, [invoiceId, t])
 
   useEffect(() => {
     mountedRef.current = true
@@ -115,15 +116,15 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
     } catch (err) {
       if (!mountedRef.current) return
       setPdfGenState("error")
-      setPdfError(err instanceof Error ? err.message : "Erreur réseau")
+      setPdfError(err instanceof Error ? err.message : t("networkError"))
     }
-  }, [invoiceId])
+  }, [invoiceId, t])
 
   if (state === "loading" && !invoice) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
         <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-        Chargement…
+        {t("loading")}
       </div>
     )
   }
@@ -140,7 +141,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
       >
         <p className="font-medium text-destructive flex items-center gap-2">
           <AlertCircle className="size-4" aria-hidden="true" />
-          Erreur de chargement
+          {t("loadError")}
         </p>
         {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
         <Link
@@ -148,7 +149,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Retour à la liste
+          {t("backToList")}
         </Link>
       </div>
     )
@@ -161,24 +162,24 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
 
   return (
     <>
-      <nav aria-label="Fil d'Ariane">
+      <nav aria-label={t("breadcrumbLabel")}>
         <Link
           href="/admin/invoices"
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 rounded"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Retour à la liste
+          {t("backToList")}
         </Link>
       </nav>
 
       <header className="space-y-1">
         <h1 className="text-2xl font-semibold flex items-center gap-2">
           <FileText className="size-6" aria-hidden="true" />
-          {invoice.number ?? `Brouillon #${invoice.id}`}
+          {invoice.number ?? t("draftTitle", { id: invoice.id })}
         </h1>
         <div className="flex items-center gap-2 flex-wrap mt-1">
           <Badge variant={getInvoiceStatusVariant(invoice.status)}>
-            {getInvoiceStatusLabel(invoice.status)}
+            {isInvoiceStatus(invoice.status) ? t(`status.${invoice.status}`) : invoice.status}
           </Badge>
           <Badge variant="outline">{invoice.countryCode}</Badge>
         </div>
@@ -190,17 +191,17 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
         aria-labelledby="pdf-section"
         aria-describedby={!canDownload ? "pdf-disabled-help" : undefined}
       >
-        <h2 id="pdf-section" className="text-lg font-semibold">PDF</h2>
+        <h2 id="pdf-section" className="text-lg font-semibold">{t("pdfSectionTitle")}</h2>
         {!canDownload ? (
           // Fix M6 round 1 — aria-describedby pointe vers explication state disabled.
           <p id="pdf-disabled-help" className="text-sm text-muted-foreground">
-            Le PDF n&apos;est disponible que pour les factures émises. Émettre la facture pour générer.
+            {t("pdfUnavailable")}
           </p>
         ) : (
           <div className="flex items-center flex-wrap gap-3">
             <DiabeoButton variant="diabeoTertiary" onClick={() => void generatePdf()} disabled={pdfGenState === "saving"}>
               <RefreshCw className="size-4 mr-1" aria-hidden="true" />
-              {pdfGenState === "saving" ? "Génération…" : "Régénérer PDF"}
+              {pdfGenState === "saving" ? t("pdfGenerating") : t("pdfRegenerate")}
             </DiabeoButton>
             {/* Fix H1 + H4 round 1 review PR #460 :
                 - `referrerPolicy="no-referrer"` : pas de leak ID séquentiel via Referer
@@ -211,12 +212,14 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
               target="_blank"
               rel="noopener noreferrer"
               referrerPolicy="no-referrer"
-              aria-label={`Télécharger PDF de la facture ${invoice.number ?? `brouillon ${invoice.id}`} (nouvel onglet)`}
+              aria-label={t("pdfDownloadAriaLabel", {
+                number: invoice.number ?? t("draftTitle", { id: invoice.id }),
+              })}
               className="inline-flex items-center gap-1 rounded-md bg-primary text-primary-foreground px-3 py-2 text-sm font-medium hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
             >
               <Download className="size-4" aria-hidden="true" />
-              Télécharger PDF
-              <span aria-hidden="true" className="text-xs opacity-75 ml-0.5">(nouvel onglet)</span>
+              {t("pdfDownload")}
+              <span aria-hidden="true" className="text-xs opacity-75 ml-0.5">{t("newTab")}</span>
             </a>
           </div>
         )}
@@ -224,7 +227,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
           <div role="status" aria-live="polite" className="rounded-md border border-primary/20 bg-primary/5 p-2 text-sm">
             <p className="flex items-center gap-2 text-primary">
               <CheckCircle2 className="size-4" aria-hidden="true" />
-              PDF généré. Cliquer Télécharger.
+              {t("pdfSuccess")}
             </p>
           </div>
         )}
@@ -238,41 +241,41 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
 
       {/* Détails */}
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="detail-section">
-        <h2 id="detail-section" className="text-lg font-semibold">Détails</h2>
+        <h2 id="detail-section" className="text-lg font-semibold">{t("detailsSectionTitle")}</h2>
         <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <Field label="Cabinet">#{invoice.cabinetId}</Field>
+          <Field label={t("fieldCabinet")}>#{invoice.cabinetId}</Field>
           {invoice.patientId !== null && (
-            <Field label="Patient">#{invoice.patientId}</Field>
+            <Field label={t("fieldPatient")}>#{invoice.patientId}</Field>
           )}
-          <Field label="Devise">{invoice.currency}</Field>
-          <Field label="Pays">{invoice.countryCode}</Field>
+          <Field label={t("fieldCurrency")}>{invoice.currency}</Field>
+          <Field label={t("fieldCountry")}>{invoice.countryCode}</Field>
           {invoice.paymentMethod && (
-            <Field label="Mode de paiement">
-              {getPaymentMethodLabel(invoice.paymentMethod)}
+            <Field label={t("fieldPaymentMethod")}>
+              {isPaymentMethod(invoice.paymentMethod) ? t(`paymentMethod.${invoice.paymentMethod}`) : invoice.paymentMethod}
             </Field>
           )}
           {invoice.issuedAt && (
-            <Field label="Émise le">{formatDate(invoice.issuedAt, locale, { withTime: true })}</Field>
+            <Field label={t("fieldIssuedAt")}>{formatDate(invoice.issuedAt, locale, { withTime: true })}</Field>
           )}
           {invoice.paidAt && (
-            <Field label="Payée le">{formatDate(invoice.paidAt, locale, { withTime: true })}</Field>
+            <Field label={t("fieldPaidAt")}>{formatDate(invoice.paidAt, locale, { withTime: true })}</Field>
           )}
           {invoice.cancelledAt && (
-            <Field label="Annulée le">{formatDate(invoice.cancelledAt, locale, { withTime: true })}</Field>
+            <Field label={t("fieldCancelledAt")}>{formatDate(invoice.cancelledAt, locale, { withTime: true })}</Field>
           )}
           {invoice.refundedAt && (
-            <Field label="Remboursée le">{formatDate(invoice.refundedAt, locale, { withTime: true })}</Field>
+            <Field label={t("fieldRefundedAt")}>{formatDate(invoice.refundedAt, locale, { withTime: true })}</Field>
           )}
-          <Field label="Créée par">User #{invoice.createdBy}</Field>
-          <Field label="Créée le">{formatDate(invoice.createdAt, locale, { withTime: true })}</Field>
+          <Field label={t("fieldCreatedBy")}>{t("userRef", { id: invoice.createdBy })}</Field>
+          <Field label={t("fieldCreatedAt")}>{formatDate(invoice.createdAt, locale, { withTime: true })}</Field>
         </dl>
       </section>
 
       {/* Lignes facture */}
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="items-section">
-        <h2 id="items-section" className="text-lg font-semibold">Lignes</h2>
+        <h2 id="items-section" className="text-lg font-semibold">{t("linesSectionTitle")}</h2>
         {invoice.items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Aucune ligne enregistrée.</p>
+          <p className="text-sm text-muted-foreground">{t("noLines")}</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -280,11 +283,11 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
                 {/* Fix C1 + A11y CRITICAL round 1 review PR #460 — scope="col"
                     pour mapping screen-reader headers→cellules (WCAG 1.3.1). */}
                 <tr className="border-b text-left text-xs text-muted-foreground">
-                  <th scope="col" className="py-2 pr-3 font-medium">Description</th>
-                  <th scope="col" className="py-2 px-3 font-medium text-right">Qté</th>
-                  <th scope="col" className="py-2 px-3 font-medium text-right">Prix unit. HT</th>
-                  <th scope="col" className="py-2 px-3 font-medium text-right">TVA</th>
-                  <th scope="col" className="py-2 pl-3 font-medium text-right">Total TTC</th>
+                  <th scope="col" className="py-2 pr-3 font-medium">{t("colDescription")}</th>
+                  <th scope="col" className="py-2 px-3 font-medium text-right">{t("colQty")}</th>
+                  <th scope="col" className="py-2 px-3 font-medium text-right">{t("colUnitPriceExTax")}</th>
+                  <th scope="col" className="py-2 px-3 font-medium text-right">{t("colTax")}</th>
+                  <th scope="col" className="py-2 pl-3 font-medium text-right">{t("colTotalInclTax")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -309,7 +312,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
                     SR mapping (les chiffres totaux sont la ligne associée). */}
                 <tr className="border-t-2">
                   <th scope="row" colSpan={3} className="py-2 pr-3 text-right font-medium text-muted-foreground">
-                    Sous-total HT
+                    {t("subtotalExTax")}
                   </th>
                   <td colSpan={2} className="py-2 pl-3 text-right tabular-nums">
                     {formatAmount(subtotalCents, invoice.currency, locale)}
@@ -317,7 +320,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
                 </tr>
                 <tr>
                   <th scope="row" colSpan={3} className="py-2 pr-3 text-right font-medium text-muted-foreground">
-                    TVA
+                    {t("taxAmount")}
                   </th>
                   <td colSpan={2} className="py-2 pl-3 text-right tabular-nums">
                     {formatAmount(invoice.taxCents, invoice.currency, locale)}
@@ -325,7 +328,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
                 </tr>
                 <tr className="border-t">
                   <th scope="row" colSpan={3} className="py-2 pr-3 text-right font-semibold">
-                    Total TTC
+                    {t("totalInclTax")}
                   </th>
                   <td colSpan={2} className="py-2 pl-3 text-right tabular-nums font-semibold">
                     {formatAmount(invoice.totalCents, invoice.currency, locale)}

@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 
 /**
@@ -36,7 +37,8 @@ export interface TirDonutProps {
 
 interface ZoneConfig {
   key: keyof TirData
-  label: string
+  /** i18n key in the `tir` namespace (translated at render). */
+  labelKey: string
   color: string
   /** tailwind text color class for legend */
   textClass: string
@@ -46,35 +48,35 @@ interface ZoneConfig {
 const ZONES: ZoneConfig[] = [
   {
     key: "veryLow",
-    label: "Tres bas (<54)",
+    labelKey: "zoneVeryLow",
     color: "var(--diabeo-tir-very-low)",
     textClass: "text-tir-very-low",
     target: "<1%",
   },
   {
     key: "low",
-    label: "Bas (54-69)",
+    labelKey: "zoneLow",
     color: "var(--diabeo-tir-low)",
     textClass: "text-tir-low",
     target: "<4%",
   },
   {
     key: "inRange",
-    label: "Cible (70-180)",
+    labelKey: "zoneInRange",
     color: "var(--diabeo-tir-in-range)",
     textClass: "text-tir-in-range",
     target: ">70%",
   },
   {
     key: "high",
-    label: "Eleve (181-250)",
+    labelKey: "zoneHigh",
     color: "var(--diabeo-tir-high)",
     textClass: "text-tir-high",
     target: "<25%",
   },
   {
     key: "veryHigh",
-    label: "Tres eleve (>250)",
+    labelKey: "zoneVeryHigh",
     color: "var(--diabeo-tir-very-high)",
     textClass: "text-tir-very-high",
     target: "<5%",
@@ -102,6 +104,7 @@ export function TirDonut({
   showLegend = true,
   className,
 }: TirDonutProps) {
+  const t = useTranslations("tir")
   const radius = (size - strokeWidth) / 2
   const circumference = 2 * Math.PI * radius
   const center = size / 2
@@ -134,7 +137,7 @@ export function TirDonut({
   })
 
   const ariaDescription = ZONES.map(
-    (z) => `${z.label}: ${data[z.key].toFixed(1)}%`
+    (z) => `${t(z.labelKey)}: ${data[z.key].toFixed(1)}%`
   ).join(", ")
 
   return (
@@ -144,7 +147,7 @@ export function TirDonut({
         height={size}
         viewBox={`0 0 ${size} ${size}`}
         role="img"
-        aria-label={`Temps dans la cible: ${data.inRange.toFixed(1)}%. ${ariaDescription}`}
+        aria-label={t("ariaSummary", { percent: data.inRange.toFixed(1), breakdown: ariaDescription })}
         className="transform -rotate-90"
       >
         {/* Background circle */}
@@ -173,7 +176,7 @@ export function TirDonut({
               strokeLinecap="butt"
             >
               <title>
-                {segment.label}: {segment.percentage.toFixed(1)}%
+                {t(segment.labelKey)}: {segment.percentage.toFixed(1)}%
               </title>
             </circle>
           ) : null
@@ -191,7 +194,7 @@ export function TirDonut({
             {Math.round(data.inRange)}%
           </span>
           <span className="text-xs text-muted-foreground">
-            dans la cible
+            {t("inTargetCenter")}
           </span>
         </div>
       )}
@@ -200,7 +203,7 @@ export function TirDonut({
       {showLegend && (
         <div
           className="grid grid-cols-1 gap-1 text-xs w-full max-w-[200px]"
-          aria-label="Legende des zones de glycemie"
+          aria-label={t("legendAria")}
         >
           {ZONES.map((zone) => (
             <div
@@ -213,7 +216,7 @@ export function TirDonut({
                   style={{ backgroundColor: zone.color }}
                   aria-hidden="true"
                 />
-                <span className="text-muted-foreground">{zone.label}</span>
+                <span className="text-muted-foreground">{t(zone.labelKey)}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="font-medium text-foreground tabular-nums">

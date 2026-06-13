@@ -16,6 +16,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { tokens, withAlpha } from "@/design-system/tokens"
 
 /** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
@@ -74,13 +75,6 @@ function formatHour(minutes: number): string {
 
 /** M7/L3 — narrow keys + module-scope (allocated once, not per render). */
 const USER_VISIBLE_KEYS = new Set(["p10", "p25", "p50", "p75", "p90"])
-const PERCENTILE_LABELS = {
-  p10: "10ᵉ percentile",
-  p25: "25ᵉ percentile",
-  p50: "Médiane",
-  p75: "75ᵉ percentile",
-  p90: "90ᵉ percentile",
-} as const satisfies Record<"p10" | "p25" | "p50" | "p75" | "p90", string>
 
 export function AgpPercentileChart({
   slots,
@@ -92,6 +86,16 @@ export function AgpPercentileChart({
   // All hooks must be called BEFORE any conditional return (Rules of Hooks).
   // H7 / L1 (re-review) — listener-based hook reacts to runtime preference change.
   const prefersReducedMotion = useReducedMotion()
+  const t = useTranslations("agpPercentileChart")
+
+  /** Built inside component so translations are reactive to locale changes. */
+  const percentileLabels: Record<"p10" | "p25" | "p50" | "p75" | "p90", string> = {
+    p10: t("p10"),
+    p25: t("p25"),
+    p50: t("median"),
+    p75: t("p75"),
+    p90: t("p90"),
+  }
 
   // Build chart data: stacked Areas need cumulative deltas, but Recharts
   // supports value pairs via Area with `stackId`. We derive bands as raw
@@ -127,15 +131,15 @@ export function AgpPercentileChart({
         style={{ height }}
       >
         <p className="font-medium text-gray-700 mb-1">
-          Données insuffisantes
+          {t("emptyTitle")}
         </p>
-        <p>Portez le capteur de glucose en continu (CGM) au moins 3 jours pour générer un profil glycémique ambulatoire (AGP).</p>
+        <p>{t("emptyDescription")}</p>
       </div>
     )
   }
 
   return (
-    <div className="w-full" role="figure" aria-label="Profil ambulatoire de glycémie sur 7 jours">
+    <div className="w-full" role="figure" aria-label={t("figureAriaLabel")}>
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={data} margin={{ top: 10, right: 12, bottom: 24, left: 12 }}>
           <CartesianGrid strokeDasharray="3 3" stroke={tokens.neutral[200]} />
@@ -188,7 +192,7 @@ export function AgpPercentileChart({
               const key = String(name)
               if (!USER_VISIBLE_KEYS.has(key)) return null as never
               const n = typeof value === "number" ? value : Number(value)
-              const label = PERCENTILE_LABELS[key as keyof typeof PERCENTILE_LABELS] ?? key
+              const label = percentileLabels[key as keyof typeof percentileLabels] ?? key
               return [
                 Number.isFinite(n) ? `${Math.round(n)} mg/dL` : "—",
                 label,
@@ -204,37 +208,37 @@ export function AgpPercentileChart({
           <span
             className="w-3 h-1 inline-block"
             style={{ backgroundColor: tokens.brand.primary[700] }}
-            aria-label="Ligne médiane (50ème percentile)"
+            aria-label={t("legendMedianAriaLabel")}
             role="img"
           />
-          Médiane
+          {t("legendMedian")}
         </span>
         <span className="flex items-center gap-1">
           <span
             className="w-3 h-3 inline-block"
             style={{ backgroundColor: withAlpha(tokens.brand.primary[600], 0.28) }}
-            aria-label="Bande percentile 25-75 (teinte moyenne)"
+            aria-label={t("legendBand2575AriaLabel")}
             role="img"
           />
-          25-75 %
+          {t("legendBand2575")}
         </span>
         <span className="flex items-center gap-1">
           <span
             className="w-3 h-3 inline-block"
             style={{ backgroundColor: withAlpha(tokens.brand.primary[600], 0.12) }}
-            aria-label="Bande percentile 10-90 (teinte claire)"
+            aria-label={t("legendBand1090AriaLabel")}
             role="img"
           />
-          10-90 %
+          {t("legendBand1090")}
         </span>
         <span className="flex items-center gap-1">
           <span
             className="w-3 h-3 inline-block"
             style={{ backgroundColor: withAlpha(tokens.glycemia.normal, 0.08) }}
-            aria-label="Zone glycémique cible"
+            aria-label={t("legendTargetAriaLabel")}
             role="img"
           />
-          Cible {targetLowMgdl}-{targetHighMgdl} mg/dL
+          {t("legendTarget", { low: targetLowMgdl, high: targetHighMgdl })}
         </span>
       </div>
 
@@ -242,28 +246,27 @@ export function AgpPercentileChart({
           Pattern aligned with CgmChart.tsx — required in a medical app. */}
       <table className="sr-only">
         <caption>
-          Profil ambulatoire de glycémie — valeurs par tranche de 15 minutes
-          sur 7 jours. Cible {targetLowMgdl}-{targetHighMgdl} mg/dL.
+          {t("tableCaption", { low: targetLowMgdl, high: targetHighMgdl })}
         </caption>
         <thead>
           <tr>
-            <th scope="col">Heure</th>
-            <th scope="col">10ᵉ percentile</th>
-            <th scope="col">25ᵉ percentile</th>
-            <th scope="col">Médiane</th>
-            <th scope="col">75ᵉ percentile</th>
-            <th scope="col">90ᵉ percentile</th>
+            <th scope="col">{t("colHour")}</th>
+            <th scope="col">{t("p10")}</th>
+            <th scope="col">{t("p25")}</th>
+            <th scope="col">{t("median")}</th>
+            <th scope="col">{t("p75")}</th>
+            <th scope="col">{t("p90")}</th>
           </tr>
         </thead>
         <tbody>
           {data.map((row) => (
             <tr key={row.minute}>
               <th scope="row">{row.hour}</th>
-              <td>{Math.round(row.p10)} mg/dL</td>
-              <td>{Math.round(row.p25)} mg/dL</td>
-              <td>{Math.round(row.p50)} mg/dL</td>
-              <td>{Math.round(row.p75)} mg/dL</td>
-              <td>{Math.round(row.p90)} mg/dL</td>
+              <td>{t("valueMgdl", { value: Math.round(row.p10) })}</td>
+              <td>{t("valueMgdl", { value: Math.round(row.p25) })}</td>
+              <td>{t("valueMgdl", { value: Math.round(row.p50) })}</td>
+              <td>{t("valueMgdl", { value: Math.round(row.p75) })}</td>
+              <td>{t("valueMgdl", { value: Math.round(row.p90) })}</td>
             </tr>
           ))}
         </tbody>

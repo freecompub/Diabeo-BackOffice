@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import i18next from "eslint-plugin-i18next";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
@@ -67,6 +68,46 @@ const eslintConfig = defineConfig([
           selector: "Literal[value=/^#[0-9a-fA-F]{3,8}$/]",
           message:
             "Couleur hex en dur interdite (US-2269 anti-drift). Importez `tokens` depuis @/design-system/tokens (charts/SVG) ou utilisez une classe Tailwind sémantique (var(--color-*)).",
+        },
+      ],
+    },
+  },
+  // US-2117 — interdit le texte JSX brut hors i18n (cause racine des acronymes
+  // nus + chaînes non traduites en EN/AR). `mode: jsx-text-only` = uniquement le
+  // contenu textuel des balises. Migration terminée (lots 1-13, FR/EN/AR) → la
+  // règle passe en `error` : gate CI dur contre toute régression de texte codé
+  // en dur. Exclut `components/ui` (shadcn auto-généré).
+  {
+    files: ["src/**/*.tsx"],
+    ignores: ["src/components/ui/**"],
+    plugins: { i18next },
+    rules: {
+      "i18next/no-literal-string": [
+        "error",
+        {
+          mode: "jsx-text-only",
+          // Contenus non traduisibles : chemins/identifiants dans <code>/<pre>,
+          // initiales d'avatar, etc.
+          "jsx-components": { exclude: ["Trans", "code", "pre"] },
+          words: {
+            // Ignore les segments sans lettre (chiffres/ponctuation/séparateurs)
+            // et les caractères uniques (initiales d'avatar « D », « M »…).
+            exclude: [
+              "^[\\s\\d!-/:-@[-`{-~]+$",
+              "^.$",
+              // Séparateurs typographiques (tiret cadratin/demi, point médian,
+              // puce) utilisés entre des {t()} — non traduisibles.
+              "^[\\s—–·•]+$",
+              // Notation statistique de percentiles AGP : exception documentée
+              // CLAUDE.md (laissée telle quelle, identique dans les 3 langues).
+              "^P(10|25|50|75|90)$",
+              // Unités de mesure (cliniques + anthropométriques) : universelles,
+              // identiques dans les 3 langues, même classe d'exception que mg/dL.
+              "^(mg/dL|mmol/L|g/L|U/h|kg|lbs|cm|in)$",
+              // Nom de produit (CLAUDE.md : noms de produits laissés tels quels).
+              "^Diabeo$",
+            ],
+          },
         },
       ],
     },

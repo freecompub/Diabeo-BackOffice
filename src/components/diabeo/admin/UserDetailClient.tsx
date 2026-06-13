@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import {
   AlertCircle,
   AlertTriangle,
@@ -66,6 +66,7 @@ type PendingAction =
 
 export function UserDetailClient({ userId }: { userId: number }) {
   const locale = useLocale() as Locale
+  const t = useTranslations("admin.userDetail")
   const [user, setUser] = useState<AdminUserDTOClient | null>(null)
   const [state, setState] = useState<AsyncState>("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -182,7 +183,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
         <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />
-        Chargement…
+        {t("loading")}
       </div>
     )
   }
@@ -197,7 +198,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
       >
         <p className="font-medium text-destructive flex items-center gap-2">
           <AlertCircle className="size-4" aria-hidden="true" />
-          Erreur de chargement
+          {t("loadError")}
         </p>
         {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
         <Link
@@ -205,7 +206,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Retour à la liste
+          {t("backToList")}
         </Link>
       </div>
     )
@@ -228,7 +229,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 rounded"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Retour à la liste
+          {t("backToList")}
         </Link>
       </nav>
 
@@ -243,7 +244,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
           {user.mfaEnabled && (
             <Badge variant="secondary">
               <ShieldCheck className="size-3 mr-0.5" aria-hidden="true" />
-              <Acronym code="MFA" /> activé
+              <Acronym code="MFA" /> {t("mfaActivated")}
             </Badge>
           )}
         </div>
@@ -251,7 +252,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
 
       {/* Détails */}
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="detail-section">
-        <h2 id="detail-section" className="text-lg font-semibold">Détails</h2>
+        <h2 id="detail-section" className="text-lg font-semibold">{t("detailsTitle")}</h2>
         <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
           <Field label="Email">{user.email ?? "—"}</Field>
           <Field label="Prénom">{user.firstname ?? "—"}</Field>
@@ -270,15 +271,14 @@ export function UserDetailClient({ userId }: { userId: number }) {
 
       {/* Actions */}
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="actions-section">
-        <h2 id="actions-section" className="text-lg font-semibold">Actions</h2>
+        <h2 id="actions-section" className="text-lg font-semibold">{t("actionsTitle")}</h2>
         <p className="text-xs text-muted-foreground">
-          Modification du rôle ou du statut tracée dans l&apos;audit log immuable.
-          Anti-lockout : impossible de retirer le dernier ADMIN (backend Serializable).
+          {t("actionsNote")}
         </p>
 
         {/* Rôle */}
         <div className="space-y-2">
-          <h3 className="text-sm font-medium" id="role-section-heading">Changer le rôle</h3>
+          <h3 className="text-sm font-medium" id="role-section-heading">{t("changeRole")}</h3>
           {/* Fix H2 round 1 (HSA) — warning visible MFA required ADMIN. */}
           {!canPromoteToAdmin && (
             <p
@@ -287,10 +287,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
               className="text-xs text-amber-900 bg-amber-50 border border-amber-300 rounded p-2 flex items-start gap-1"
             >
               <AlertTriangle className="size-3.5 text-amber-700 shrink-0 mt-0.5" aria-hidden="true" />
-              <span>
-                Promotion vers ADMIN désactivée : authentification multifacteur (MFA) requise pour les comptes à privilèges (référentiel hébergeur de données de santé — HDS, ANS).
-                L&apos;utilisateur doit d&apos;abord activer MFA dans ses paramètres.
-              </span>
+              <span>{t("adminMfaWarning")}</span>
             </p>
           )}
           <div className="flex flex-wrap gap-2" role="group" aria-labelledby="role-section-heading">
@@ -307,7 +304,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
                   // Fix M1 + L5 round 1 — libellé explicite + aria-describedby warning.
                   aria-describedby={isAdminPromote && !canPromoteToAdmin ? "admin-mfa-warning" : undefined}
                 >
-                  Définir le rôle : {ROLE_LABELS_FR[user.role]} → {ROLE_LABELS_FR[r]}
+                  {t("setRole", { from: ROLE_LABELS_FR[user.role], to: ROLE_LABELS_FR[r] })}
                 </DiabeoButton>
               )
             })}
@@ -316,10 +313,10 @@ export function UserDetailClient({ userId }: { userId: number }) {
 
         {/* Status */}
         <div className="space-y-2">
-          <h3 className="text-sm font-medium" id="status-section-heading">Changer le statut</h3>
+          <h3 className="text-sm font-medium" id="status-section-heading">{t("changeStatus")}</h3>
           {/* Fix M1 round 1 — aria-describedby pointe vers warning archivage. */}
           <p id="archive-warning" className="sr-only">
-            L&apos;archivage révoque tous les tokens JWT et déconnecte l&apos;utilisateur immédiatement.
+            {t("archiveWarning")}
           </p>
           <div className="flex flex-wrap gap-2" role="group" aria-labelledby="status-section-heading">
             {otherStatuses.map((s) => (
@@ -331,7 +328,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
                 disabled={actionState === "saving"}
                 aria-describedby={s === "archived" ? "archive-warning" : undefined}
               >
-                Statut : {USER_STATUS_LABELS_FR[user.status]} → {USER_STATUS_LABELS_FR[s]}
+                {t("setStatus", { from: USER_STATUS_LABELS_FR[user.status], to: USER_STATUS_LABELS_FR[s] })}
               </DiabeoButton>
             ))}
           </div>
@@ -348,7 +345,7 @@ export function UserDetailClient({ userId }: { userId: number }) {
           <div role="status" aria-live="polite" className="rounded-md border border-primary/20 bg-primary/5 p-2 text-sm">
             <p className="flex items-center gap-2 text-primary">
               <CheckCircle2 className="size-4" aria-hidden="true" />
-              Action effectuée.
+              {t("actionDone")}
             </p>
           </div>
         )}
@@ -359,8 +356,8 @@ export function UserDetailClient({ userId }: { userId: number }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {pending?.type === "role" && `Changer le rôle vers ${ROLE_LABELS_FR[pending.newRole]} ?`}
-              {pending?.type === "status" && `Changer le statut vers ${USER_STATUS_LABELS_FR[pending.newStatus]} ?`}
+              {pending?.type === "role" && t("confirmRoleTitle", { role: ROLE_LABELS_FR[pending.newRole] })}
+              {pending?.type === "status" && t("confirmStatusTitle", { status: USER_STATUS_LABELS_FR[pending.newStatus] })}
             </DialogTitle>
             <DialogDescription>
               {pending?.type === "status" && pending.newStatus === "archived" && (
@@ -368,30 +365,30 @@ export function UserDetailClient({ userId }: { userId: number }) {
                 // (vs raw emoji que SR rendent inconsistant entre lecteurs).
                 <span className="block font-semibold text-destructive">
                   <span aria-label="Attention" role="img" className="mr-1">⚠</span>
-                  L&apos;archivage révoque tous les tokens JWT — l&apos;utilisateur sera déconnecté immédiatement.
+                  {t("archiveConfirmWarning")}
                 </span>
               )}
               {pending?.type === "role" && pending.newRole === "ADMIN" && (
                 <span className="block">
                   <span aria-label="Attention" role="img" className="mr-1">⚠</span>
-                  Promotion vers ADMIN = accès complet plateforme.
+                  {t("adminPromoteWarning")}
                 </span>
               )}
               <span className="block mt-2 text-xs">
-                Action tracée dans l&apos;audit log immuable.
+                {t("auditNote")}
               </span>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DiabeoButton variant="diabeoTertiary" onClick={() => setPending(null)}>
-              Annuler
+              {t("cancel")}
             </DiabeoButton>
             <DiabeoButton
               variant={pending?.type === "status" && pending.newStatus === "archived" ? "diabeoDestructive" : "diabeoPrimary"}
               onClick={() => void executeAction()}
             >
               <CheckCircle2 className="size-4 mr-1" aria-hidden="true" />
-              Confirmer
+              {t("confirm")}
             </DiabeoButton>
           </DialogFooter>
         </DialogContent>

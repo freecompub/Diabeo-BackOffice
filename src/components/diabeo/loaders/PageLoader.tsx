@@ -1,4 +1,10 @@
+import { getTranslations } from "next-intl/server"
 import { cn } from "@/lib/utils"
+
+// ⚠️ SERVER-ONLY : ces loaders sont des Server Components `async`
+// (getTranslations). Ils ne peuvent PAS être rendus comme enfants d'un
+// Client Component ("use client"). Pour un fallback côté client, créer une
+// variante dédiée avec `useTranslations`.
 
 type PageLoaderProps = {
   label?: string
@@ -7,12 +13,15 @@ type PageLoaderProps = {
   className?: string
 }
 
-export function PageLoader({
-  label = "Chargement sécurisé en cours",
-  sublabel = "Vérification du chiffrement & des droits d'accès…",
+export async function PageLoader({
+  label,
+  sublabel,
   fullscreen = true,
   className,
 }: PageLoaderProps) {
+  const t = await getTranslations("loader")
+  const resolvedLabel = label ?? t("defaultLabel")
+  const resolvedSublabel = sublabel ?? t("defaultSublabel")
   return (
     <div
       role="status"
@@ -60,13 +69,13 @@ export function PageLoader({
         </div>
 
         <div className="space-y-1">
-          <div className="text-sm font-semibold text-ink-900">{label}</div>
-          <div className="text-xs text-ink-500">{sublabel}</div>
+          <div className="text-sm font-semibold text-ink-900">{resolvedLabel}</div>
+          <div className="text-xs text-ink-500">{resolvedSublabel}</div>
         </div>
 
         <div className="flex items-center gap-1.5 text-[0.65rem] font-medium uppercase tracking-wider text-teal-700">
           <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-600 animate-pulse" />
-          Hébergeur de données de santé (HDS) · AES-256-GCM
+          {t("securityBadge")}
         </div>
       </div>
 
@@ -94,7 +103,9 @@ export function PageLoader({
   )
 }
 
-export function InlinePageLoader({ label = "Chargement…" }: { label?: string }) {
+export async function InlinePageLoader({ label }: { label?: string }) {
+  const t = await getTranslations("loader")
+  const resolvedLabel = label ?? t("inlineDefaultLabel")
   return (
     <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-ink-500">
       <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin text-teal-600" aria-hidden>
@@ -107,7 +118,7 @@ export function InlinePageLoader({ label = "Chargement…" }: { label?: string }
           strokeLinecap="round"
         />
       </svg>
-      <span>{label}</span>
+      <span>{resolvedLabel}</span>
     </div>
   )
 }

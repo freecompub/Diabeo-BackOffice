@@ -20,6 +20,7 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { FileText } from "lucide-react"
 import { isKnownRoleString, resolveHomeForRole } from "@/lib/auth/role-home"
 
@@ -30,6 +31,8 @@ export default async function AuditStubPage() {
   if (!isKnownRoleString(role)) redirect("/login")
   if (role !== "ADMIN") redirect(resolveHomeForRole(role))
 
+  const t = await getTranslations("audit")
+
   return (
     <main className="flex min-h-[calc(100vh-8rem)] flex-col items-center justify-center gap-6 p-8 text-center">
       <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-50">
@@ -37,17 +40,20 @@ export default async function AuditStubPage() {
       </div>
       <div className="max-w-md space-y-2">
         <h1 className="text-2xl font-semibold text-foreground">
-          Consultation audit
+          {t("title")}
         </h1>
         <p className="text-sm text-muted-foreground">
-          Backend audit log immuable opérationnel (US-2011 / US-2268) mais
-          l&apos;interface de consultation n&apos;est pas encore livrée. L&apos;API{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs">/api/admin/audit-logs</code>{" "}
-          accepte les filtres (userId, resource, action, from, to).
+          {t.rich("description", {
+            code: (chunks) => (
+              <code className="rounded bg-muted px-1.5 py-0.5 text-xs">
+                {chunks}
+              </code>
+            ),
+          })}
         </p>
       </div>
       <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-900">
-        Bientôt disponible
+        {t("comingSoon")}
       </span>
     </main>
   )

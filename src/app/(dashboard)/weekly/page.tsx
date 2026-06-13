@@ -29,9 +29,11 @@ import { useTranslations, useLocale } from "next-intl"
 import { ChevronLeft, ChevronRight, RefreshCw, Clock } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+import { bcp47 } from "@/i18n/config"
 import { GlycemiaEvolutionChart } from "@/components/diabeo/charts/GlycemiaEvolutionChart"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
+import { Acronym } from "@/components/diabeo/Acronym"
 import type { GlucoseDataPoint } from "@/components/diabeo/charts/types"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -124,14 +126,15 @@ function formatWeekTitle(weekStart: Date, locale: string): string {
   const weekEnd = new Date(weekStart)
   weekEnd.setDate(weekEnd.getDate() + 6)
 
-  const startLabel = weekStart.toLocaleDateString(locale, { day: "numeric", month: "short" })
-  const endLabel = weekEnd.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })
+  const tag = bcp47(locale)
+  const startLabel = weekStart.toLocaleDateString(tag, { day: "numeric", month: "short" })
+  const endLabel = weekEnd.toLocaleDateString(tag, { day: "numeric", month: "short", year: "numeric" })
   return `${startLabel} – ${endLabel}`
 }
 
 /** Format a single day label e.g. "Lun 31" */
 function formatDayLabel(date: Date, locale: string): string {
-  return date.toLocaleDateString(locale, { weekday: "short", day: "numeric" })
+  return date.toLocaleDateString(bcp47(locale), { weekday: "short", day: "numeric" })
 }
 
 /** Check if two dates represent the same calendar day */
@@ -169,7 +172,7 @@ function groupByDay(
   // Hoiste le formatter en dehors de la boucle : potentiellement 2016
   // entries/semaine (288 lectures CGM × 7 jours @ 5 min) → recréer un
   // Intl.DateTimeFormat à chaque entry est gaspilleur.
-  const timeFmt = new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit" })
+  const timeFmt = new Intl.DateTimeFormat(bcp47(locale), { hour: "2-digit", minute: "2-digit" })
   for (const entry of entries) {
     const ts = new Date(entry.timestamp)
     if (Number.isNaN(ts.getTime())) continue
@@ -437,7 +440,7 @@ export default function WeeklyPage() {
 
           <div className="text-center">
             <p className="text-sm font-semibold text-gray-900">
-              {formatWeekTitle(weekStart, "fr-FR")}
+              {formatWeekTitle(weekStart, locale)}
             </p>
             {isCurrentWeek && (
               <p className="text-xs text-teal-600 font-medium">{t("currentWeek")}</p>
@@ -553,11 +556,11 @@ export default function WeeklyPage() {
                 {/* Day header */}
                 <div className="mb-2 flex items-center justify-between px-1">
                   <span className="text-xs font-semibold capitalize text-gray-700">
-                    {formatDayLabel(day.date, "fr-FR")}
+                    {formatDayLabel(day.date, locale)}
                   </span>
                   <div className="flex items-center gap-2 text-[11px] text-gray-400">
                     {day.avgGlucose != null && (
-                      <span>{day.avgGlucose} mg/dL</span>
+                      <span>{t("dayAvgGlucose", { value: day.avgGlucose })}</span>
                     )}
                     {day.tirPercent != null && (
                       <span
@@ -570,10 +573,12 @@ export default function WeeklyPage() {
                               : "bg-red-50 text-red-700"
                         )}
                       >
-                        TIR {day.tirPercent}%
+                        <Acronym code="TIR" /> {t("tirBadgeValue", { percent: day.tirPercent })}
                       </span>
                     )}
-                    <span className="text-gray-300">{day.readingsCount} lect.</span>
+                    <span className="text-gray-300">
+                      {t("dayReadings", { count: day.readingsCount })}
+                    </span>
                   </div>
                 </div>
 
