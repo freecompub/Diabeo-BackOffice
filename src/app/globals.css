@@ -89,6 +89,20 @@
   --color-glycemia-critical: var(--diabeo-glycemia-critical);
   --color-glycemia-critical-bg: var(--diabeo-glycemia-critical-bg);
 
+  /* --- Diabeo Design System: Feedback colors (status) --- */
+  --color-success: var(--diabeo-success);
+  --color-success-bg: var(--diabeo-success-bg);
+  --color-success-border: var(--diabeo-success-border);
+  --color-warning: var(--diabeo-warning);
+  --color-warning-bg: var(--diabeo-warning-bg);
+  --color-warning-border: var(--diabeo-warning-border);
+  --color-error: var(--diabeo-error);
+  --color-error-bg: var(--diabeo-error-bg);
+  --color-error-border: var(--diabeo-error-border);
+  --color-info: var(--diabeo-info);
+  --color-info-bg: var(--diabeo-info-bg);
+  --color-info-border: var(--diabeo-info-border);
+
   /* --- Diabeo Design System: TIR zone colors --- */
   --color-tir-very-low: var(--diabeo-tir-very-low);
   --color-tir-low: var(--diabeo-tir-low);

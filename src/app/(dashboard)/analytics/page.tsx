@@ -132,9 +132,9 @@ function formatDate(date: Date, locale: string): string {
 
 /** Derive capture rate badge color */
 function captureRateColor(rate: number): string {
-  if (rate >= 70) return "text-emerald-600 bg-emerald-50"
-  if (rate >= 50) return "text-amber-600 bg-amber-50"
-  return "text-red-600 bg-red-50"
+  if (rate >= 70) return "text-success bg-success-bg"
+  if (rate >= 50) return "text-warning bg-warning-bg"
+  return "text-error bg-error-bg"
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -281,14 +281,14 @@ export default function AnalyticsPage() {
       {pageState === "insufficientData" && profileData && (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3"
+          className="flex items-start gap-3 rounded-lg border border-warning-border bg-warning-bg px-4 py-3"
         >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <div>
-            <p className="text-sm font-medium text-amber-800">
+            <p className="text-sm font-medium text-warning">
               {t("insufficientDataTitle")}
             </p>
-            <p className="mt-0.5 text-xs text-amber-700">
+            <p className="mt-0.5 text-xs text-warning">
               {t("insufficientDataMessage", { rate: Math.round(captureRate) })}
             </p>
           </div>
@@ -466,7 +466,7 @@ export default function AnalyticsPage() {
                   {t("agpLegendIqr")}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-5 rounded-sm bg-teal-600/08" />
+                  <span className="inline-block h-3 w-5 rounded-sm bg-teal-600/[0.08]" />
                   {t("agpLegendRange")}
                 </span>
               </div>

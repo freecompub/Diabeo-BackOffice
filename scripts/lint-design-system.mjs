@@ -20,11 +20,13 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 // ─── Baseline ────────────────────────────────────────────────────────────────
-// Baseline établie au 2026-06-12 (premier run post-migration PR #536).
+// Baseline établie au 2026-06-12 (premier run post-migration PR #536 = 296),
+// ratchetée à 285 après migration des palettes feedback de /analytics vers
+// les tokens sémantiques (success/warning/error).
 // Le script ratchet : `process.exit(1)` aussi quand violations < baseline,
 // avec un message demandant de mettre à jour la constante. Le diff PR
 // verrouille le gain dans l'historique git.
-const BASELINE_VIOLATIONS = 296
+const BASELINE_VIOLATIONS = 285
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -228,8 +230,8 @@ if (allViolations.length > BASELINE_VIOLATIONS) {
   process.exit(1)
 } else if (allViolations.length < BASELINE_VIOLATIONS) {
   // Ratchet — quand on supprime des violations, on FORCE la baseline à
-  // descendre via un échec explicite. Sans ça, la baseline reste figée à
-  // 298 indéfiniment et un futur dev peut réintroduire des violations
+  // descendre via un échec explicite. Sans ça, la baseline reste figée
+  // indéfiniment et un futur dev peut réintroduire des violations
   // supprimées sans alarme (cf. code review pass 3, finding #2).
   //
   // Le contributeur doit éditer ce fichier pour amener BASELINE_VIOLATIONS
