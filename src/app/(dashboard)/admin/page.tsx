@@ -7,6 +7,7 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { AdminKpiSection } from "@/components/diabeo/dashboard/admin/AdminKpiSection"
 import { BillingCard } from "@/components/diabeo/dashboard/admin/BillingCard"
 import { ComplianceCard } from "@/components/diabeo/dashboard/admin/ComplianceCard"
@@ -22,9 +23,11 @@ export default async function AdminDashboardPage() {
   //   was misleading (caller IS logged in, just role-mismatched).
   if (role !== "ADMIN") redirect("/")
 
+  const t = await getTranslations()
+
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="text-2xl font-semibold">Tableau de bord administrateur</h1>
+      <h1 className="text-2xl font-semibold">{t("adminDashboard.pageTitle")}</h1>
       <AdminKpiSection />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BillingCard />

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { jwtVerify, importSPKI } from "jose"
 import { isSessionRevoked } from "@/lib/auth/revocation"
+import { JWT_VERIFY_OPTIONS } from "@/lib/auth/jwt-constants"
+import { ROLE_TO_HOME, isKnownRoleString } from "@/lib/auth/role-home"
 
 let cachedPublicKey: CryptoKey | null = null
 
@@ -53,6 +55,25 @@ function resolveRequestId(incoming: string | null): string {
   return generateRequestId()
 }
 
+/**
+ * Efface le cookie `diabeo_token` (token expiré ou session révoquée) puis
+ * laisse passer la requête. Les attributs sont alignés sur ceux que pose
+ * `api/auth/login/route.ts` et `api/auth/logout/route.ts` (path=/, secure
+ * en prod, sameSite strict, httpOnly) — sans quoi le browser ne matche pas
+ * la cookie originale et la boucle persiste.
+ */
+function clearTokenAndContinue(headers: Headers): NextResponse {
+  const res = NextResponse.next({ request: { headers } })
+  res.cookies.set("diabeo_token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 0,
+  })
+  return res
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -94,9 +115,57 @@ export async function middleware(request: NextRequest) {
     return res
   }
 
-  // Skip login page (public)
+  // Auth pages — public for unauthenticated users; redirect authenticated ones
+  // to root (role-router at "/" sends them to their proper dashboard).
+  //
+  // Vérification JWT + révocation Redis nécessaires AVANT de rediriger, sans
+  // quoi un cookie expiré OU une session révoquée déclenche une boucle :
+  //   /login → cookie présent → redirect "/"
+  //   "/"    → JWT invalide/révoqué → catch → redirect "/login"
+  //   /login → cookie toujours présent → redirect "/" → ERR_TOO_MANY_REDIRECTS
+  // On efface le cookie en cas d'échec pour briser la boucle.
   if (pathname === "/login" || pathname === "/reset-password") {
-    return NextResponse.next()
+    const cookieToken = request.cookies.get("diabeo_token")?.value
+    if (!cookieToken) return NextResponse.next()
+    try {
+      const key = await getPublicKey()
+      const { payload } = await jwtVerify(cookieToken, key, JWT_VERIFY_OPTIONS)
+      // Révocation Redis : sans ce check, un user kické par l'admin reste
+      // bloqué dans une boucle /login ↔ / (les routes protégées
+      // redirigeront vers /login, ramenant ici).
+      const sid = typeof payload.sid === "string" ? payload.sid : undefined
+      if (sid && (await isSessionRevoked(sid))) {
+        return clearTokenAndContinue(request.headers)
+      }
+      // Token valide → l'utilisateur est authentifié, on l'envoie DIRECTEMENT
+      // vers le home de son rôle (PAS vers "/" : "/" n'est pas dans le matcher,
+      // donc le middleware n'y tourne pas, `x-user-role` n'est jamais posé, et
+      // le role-router à "/" renverrait vers /login → boucle infinie même avec
+      // un token VALIDE — cf. incident CRIT-1 PR #426). `ROLE_TO_HOME` mappe
+      // vers /medecin /infirmier /admin /patient/dashboard, tous instrumentés.
+      const role = typeof payload.role === "string" ? payload.role : null
+      if (isKnownRoleString(role)) {
+        return NextResponse.redirect(new URL(ROLE_TO_HOME[role], request.url))
+      }
+      // Rôle inconnu/absent du token → ne pas boucler sur "/", effacer le cookie.
+      return clearTokenAndContinue(request.headers)
+    } catch (error) {
+      // Token expiré/invalide → effacer le cookie et laisser passer vers /login.
+      // ERR_JWT_EXPIRED = routine (TTL 15min), on n'inonde pas les logs.
+      // Tout le reste (PEM corrompu, JWT_PUBLIC_KEY manquante, signature
+      // invalide) doit être logué pour l'audit HDS / OWASP A09.
+      const code = error instanceof Error && "code" in error
+        ? (error as Error & { code: string }).code
+        : undefined
+      if (code !== "ERR_JWT_EXPIRED") {
+        console.warn("[middleware] auth-page JWT verify failed", {
+          requestId,
+          pathname,
+          code: code ?? (error instanceof Error ? error.name : "unknown"),
+        })
+      }
+      return clearTokenAndContinue(request.headers)
+    }
   }
 
   // Extract token from Authorization header (API) or cookie (browser pages)
@@ -116,11 +185,7 @@ export async function middleware(request: NextRequest) {
 
   try {
     const key = await getPublicKey()
-    const { payload } = await jwtVerify(token, key, {
-      algorithms: ["RS256"],
-      issuer: "diabeo-backoffice",
-      audience: "diabeo-hc",
-    })
+    const { payload } = await jwtVerify(token, key, JWT_VERIFY_OPTIONS)
 
     // Check session revocation via Upstash Redis
     const sid = typeof payload.sid === "string" ? payload.sid : undefined
@@ -229,5 +294,13 @@ export const config = {
      * de /patient/* à /messages/*).
      */
     "/messages/:path*",
+    /**
+     * Pages auth — sans cette entrée le guard `pathname === "/login"` est
+     * dead code et un utilisateur authentifié peut afficher le formulaire.
+     * Le middleware fait redirect "/" si le JWT cookie est valide, ou
+     * efface le cookie + next() si expiré (anti-boucle).
+     */
+    "/login",
+    "/reset-password",
   ],
 }

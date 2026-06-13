@@ -81,7 +81,10 @@ export function ConsultationProvider({ children }: { children: React.ReactNode }
       // à une navigation immédiate.
       void fetch("/api/consultation/close", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+        },
         credentials: "same-origin",
         keepalive: true,
         body: JSON.stringify({ cTok: tok }),
@@ -114,7 +117,10 @@ export function ConsultationProvider({ children }: { children: React.ReactNode }
       if (prev) {
         void fetch("/api/consultation/close", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
           credentials: "same-origin",
           keepalive: true,
           body: JSON.stringify({ cTok: prev }),
@@ -123,7 +129,10 @@ export function ConsultationProvider({ children }: { children: React.ReactNode }
       try {
         const res = await fetch("/api/consultation/open", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
           credentials: "same-origin",
           body: JSON.stringify({ patientRef: next.publicRef }),
         })

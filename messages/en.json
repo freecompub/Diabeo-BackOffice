@@ -1197,6 +1197,36 @@
     },
     "openedAnnounce": "{name}'s consultation opened"
   },
+  "adminDashboard": {
+    "pageTitle": "Admin dashboard",
+    "globalViewTitle": "Global view",
+    "kpiLoadError": "Unable to load KPIs.",
+    "kpiCabinets": "Cabinets",
+    "kpiMembers": "Team members",
+    "kpiActivePatients": "Active patients (14d)",
+    "kpiAuditEvents": "Audit events (7d)",
+    "billingTitle": "Billing pending",
+    "billingPending": "{count} pending",
+    "billingLoading": "Loading…",
+    "billingLoadError": "Unable to load billing data.",
+    "billingEligible": "Total eligible",
+    "billingUnbilled": "Unbilled",
+    "billingRecent": "Billed (30d)",
+    "billingAmount": "Unbilled amount",
+    "billingAmountNote": "(rounded)",
+    "billingHeuristic": "Heuristic: completed teleconsultations without invoiced act. Formal billing table coming (US-2107).",
+    "complianceTitle": "Health data hosting (HDS) compliance",
+    "complianceLoading": "Loading…",
+    "complianceLoadError": "Unable to load compliance data.",
+    "complianceLastBackup": "Last backup",
+    "complianceNoBackup": "No backup",
+    "complianceAudit24h": "Audit 24h",
+    "complianceBackupsFailed": "Backups failed (30d)",
+    "complianceRgpdPlaceholder": "General Data Protection Regulation (RGPD) requests (US-2413) coming in V3.",
+    "stale": "Data outdated — refresh pending.",
+    "staleBadge": "Stale ({days, plural, one {# day} other {# days}})",
+    "alertBadge": "Alert"
+  },
   "admin": {
     "backups": {
       "title": "PostgreSQL backups",
@@ -1318,7 +1348,7 @@
       "actionsTitle": "Actions",
       "actionsNote": "Role or status changes are recorded in the immutable audit log. Anti-lockout: the last ADMIN cannot be removed (Serializable backend).",
       "changeRole": "Change role",
-      "adminMfaWarning": "Promotion to ADMIN disabled: multi-factor authentication (MFA) required for privileged accounts (health data hosting — HDS, ANS reference). The user must first enable MFA in their settings.",
+      "adminMfaWarning": "Promotion to ADMIN disabled: multi-factor authentication (MFA) required for privileged accounts (health data hosting — HDS, ANS reference). The user must first enable multi-factor authentication in their settings.",
       "setRole": "Set role: {from} → {to}",
       "changeStatus": "Change status",
       "archiveWarning": "Archiving revokes all JWT tokens and signs the user out immediately.",
@@ -1364,30 +1394,6 @@
   },
   "dashboardCards": {
     "kpiLoadError": "Could not load key performance indicators (KPI).",
-    "adminKpiTitle": "Overview",
-    "nurseKpiTitle": "My day",
-    "compliance": {
-      "title": "Health data hosting (HDS) compliance",
-      "loading": "Loading…",
-      "loadError": "Could not load compliance.",
-      "lastBackup": "Last backup",
-      "stale": "Stale ({days}d)",
-      "audit24h": "Audit 24h",
-      "failedBackups": "Failed backups (30d)",
-      "alert": "Alert",
-      "rgpdNote": "General Data Protection Regulation (GDPR) requests (US-2413) coming in V3."
-    },
-    "billing": {
-      "title": "Billing to process",
-      "pending": "{count} pending",
-      "loading": "Loading…",
-      "loadError": "Could not load billing.",
-      "totalEligible": "Total eligible",
-      "unbilled": "Unbilled",
-      "billed30d": "Billed (30d)",
-      "unbilledAmount": "Unbilled amount",
-      "rounded": "(rounded)",
-      "heuristicNote": "Heuristic: completed teleconsultations without a billed act. Formal billing table coming (US-2107)."
-    }
+    "nurseKpiTitle": "My day"
   }
 }

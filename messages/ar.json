@@ -1197,6 +1197,36 @@
     },
     "openedAnnounce": "تم فتح استشارة {name}"
   },
+  "adminDashboard": {
+    "pageTitle": "لوحة تحكم المسؤول",
+    "globalViewTitle": "نظرة عامة",
+    "kpiLoadError": "تعذّر تحميل مؤشرات الأداء.",
+    "kpiCabinets": "العيادات",
+    "kpiMembers": "أعضاء الفريق",
+    "kpiActivePatients": "المرضى النشطون (14 يوم)",
+    "kpiAuditEvents": "أحداث التدقيق (7 أيام)",
+    "billingTitle": "الفوترة المعلّقة",
+    "billingPending": "{count} معلّق",
+    "billingLoading": "جارٍ التحميل…",
+    "billingLoadError": "تعذّر تحميل بيانات الفوترة.",
+    "billingEligible": "إجمالي المؤهّلين",
+    "billingUnbilled": "غير مُفوتَر",
+    "billingRecent": "مُفوتَر (30 يوم)",
+    "billingAmount": "المبلغ غير المُفوتَر",
+    "billingAmountNote": "(تقريبي)",
+    "billingHeuristic": "تقديري: استشارات عن بُعد مكتملة بدون فاتورة. جدول الفوترة الرسمي قادم (US-2107).",
+    "complianceTitle": "الامتثال لمستضيف بيانات صحية (HDS)",
+    "complianceLoading": "جارٍ التحميل…",
+    "complianceLoadError": "تعذّر تحميل بيانات الامتثال.",
+    "complianceLastBackup": "آخر نسخة احتياطية",
+    "complianceNoBackup": "لا توجد نسخة احتياطية",
+    "complianceAudit24h": "تدقيق 24 ساعة",
+    "complianceBackupsFailed": "نسخ احتياطية فاشلة (30 يوم)",
+    "complianceRgpdPlaceholder": "طلبات النظام العام لحماية البيانات (RGPD) (US-2413) قادمة في V3.",
+    "stale": "بيانات قديمة — تحديث قيد الانتظار.",
+    "staleBadge": "قديمة ({days, plural, zero {# يوم} one {# يوم} two {يومان} few {# أيام} many {# يوماً} other {# يوم}})",
+    "alertBadge": "تنبيه"
+  },
   "admin": {
     "backups": {
       "title": "نسخ PostgreSQL الاحتياطية",
@@ -1318,7 +1348,7 @@
       "actionsTitle": "إجراءات",
       "actionsNote": "يتم تسجيل تغييرات الدور أو الحالة في سجل التدقيق غير القابل للتعديل. مانع الإقفال: لا يمكن إزالة آخر مسؤول ADMIN (خلفية Serializable).",
       "changeRole": "تغيير الدور",
-      "adminMfaWarning": "تعطيل الترقية إلى ADMIN: المصادقة متعددة العوامل (MFA) مطلوبة للحسابات ذات الامتيازات (مرجع استضافة البيانات الصحية — HDS، ANS). يجب على المستخدم أولاً تفعيل MFA في إعداداته.",
+      "adminMfaWarning": "تعطيل الترقية إلى ADMIN: المصادقة متعددة العوامل (MFA) مطلوبة للحسابات ذات الامتيازات (مرجع استضافة البيانات الصحية — HDS، ANS). يجب على المستخدم أولاً تفعيل المصادقة متعددة العوامل في إعداداته.",
       "setRole": "تعيين الدور: {from} ← {to}",
       "changeStatus": "تغيير الحالة",
       "archiveWarning": "تؤدي الأرشفة إلى إبطال جميع رموز JWT وتسجيل خروج المستخدم فوراً.",
@@ -1364,30 +1394,6 @@
   },
   "dashboardCards": {
     "kpiLoadError": "تعذر تحميل مؤشرات الأداء الرئيسية (KPI).",
-    "adminKpiTitle": "نظرة عامة",
-    "nurseKpiTitle": "يومي",
-    "compliance": {
-      "title": "امتثال استضافة البيانات الصحية (HDS)",
-      "loading": "جارٍ التحميل…",
-      "loadError": "تعذر تحميل الامتثال.",
-      "lastBackup": "آخر نسخة احتياطية",
-      "stale": "قديم ({days}ي)",
-      "audit24h": "تدقيق 24 ساعة",
-      "failedBackups": "نسخ احتياطية فاشلة (30ي)",
-      "alert": "تنبيه",
-      "rgpdNote": "طلبات النظام العام لحماية البيانات (RGPD) (US-2413) قادمة في V3."
-    },
-    "billing": {
-      "title": "الفوترة المعلقة",
-      "pending": "{count} قيد الانتظار",
-      "loading": "جارٍ التحميل…",
-      "loadError": "تعذر تحميل الفوترة.",
-      "totalEligible": "إجمالي المؤهلين",
-      "unbilled": "غير مفوترة",
-      "billed30d": "مفوترة (30ي)",
-      "unbilledAmount": "المبلغ غير المفوتر",
-      "rounded": "(مقرّب)",
-      "heuristicNote": "إرشادي: استشارات عن بُعد مكتملة دون فعل مفوتر. جدول فوترة رسمي قادم (US-2107)."
-    }
+    "nurseKpiTitle": "يومي"
   }
 }

@@ -8,10 +8,12 @@
 
 "use client"
 
-import { useLocale, useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
-import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { formatCurrency } from "@/lib/intl/formatters"
+import type { Locale } from "@/i18n/config"
 import type { BillingMetric } from "@/lib/services/admin-dashboard.service"
 
 type ApiResponse = { item: BillingMetric }
@@ -19,15 +21,16 @@ type ApiResponse = { item: BillingMetric }
 // code-review M4 (re-review) — keep round-euro display for a glance-able
 //   KPI ; UI labels the value "arrondi" so an auditor doesn't reconcile
 //   the rounded display against the cents in the DB.
-function formatEuros(cents: number, locale: string): string {
-  return new Intl.NumberFormat(locale, {
-    style: "currency", currency: "EUR", maximumFractionDigits: 0,
-  }).format(cents / 100)
+// La devise reste EUR (data center OVH Paris, comptabilité française). Le
+// format (séparateurs, position du symbole) suit la locale utilisateur via
+// le helper canonique `formatCurrency` qui mappe `en → en-GB`, `ar → ar-MA`.
+function formatEuros(cents: number, locale: Locale): string {
+  return formatCurrency(cents / 100, locale, { currency: "EUR", decimals: 0 })
 }
 
 export function BillingCard() {
-  const t = useTranslations("dashboardCards.billing")
-  const locale = useLocale()
+  const t = useTranslations("adminDashboard")
+  const locale = useLocale() as Locale
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/admin/billing",
     10 * 60_000,
@@ -39,20 +42,20 @@ export function BillingCard() {
     <DiabeoCard role="region" aria-labelledby="admin-billing-title">
       <header className="flex items-center justify-between px-4 pt-4">
         <h2 id="admin-billing-title" className="text-base font-semibold">
-          {t("title")}
+          {t("billingTitle")}
         </h2>
         <span className="text-xs text-muted-foreground">
-          {item ? t("pending", { count: item.unbilledCount }) : "—"}
+          {item ? t("billingPending", { count: item.unbilledCount }) : "—"}
         </span>
       </header>
-      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
+      {isStale && <StaleBanner message={t("stale")} />}
       <div className="px-4 pb-4">
         {loading && item === null && (
-          <p className="text-sm text-muted-foreground">{t("loading")}</p>
+          <p className="text-sm text-muted-foreground">{t("billingLoading")}</p>
         )}
         {hasError && (
           <p className="text-sm text-glycemia-critical">
-            {t("loadError")}
+            {t("billingLoadError")}
           </p>
         )}
         {item && (
@@ -61,24 +64,24 @@ export function BillingCard() {
             aria-live="polite"
           >
             <div>
-              <dt className="text-xs text-muted-foreground">{t("totalEligible")}</dt>
+              <dt className="text-xs text-muted-foreground">{t("billingEligible")}</dt>
               <dd className="text-lg font-semibold">{item.totalEligible}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">{t("unbilled")}</dt>
+              <dt className="text-xs text-muted-foreground">{t("billingUnbilled")}</dt>
               <dd className="text-lg font-semibold text-glycemia-high">
                 {item.unbilledCount}
               </dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">{t("billed30d")}</dt>
+              <dt className="text-xs text-muted-foreground">{t("billingRecent")}</dt>
               <dd className="text-lg font-semibold text-glycemia-normal">
                 {item.recentlyBilled}
               </dd>
             </div>
             <div>
               <dt className="text-xs text-muted-foreground">
-                {t("unbilledAmount")} <span className="opacity-60">{t("rounded")}</span>
+                {t("billingAmount")} <span className="opacity-60">{t("billingAmountNote")}</span>
               </dt>
               <dd className="text-lg font-semibold">
                 {formatEuros(item.unbilledAmountCents, locale)}
@@ -87,7 +90,7 @@ export function BillingCard() {
           </dl>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          {t("heuristicNote")}
+          {t("billingHeuristic")}
         </p>
       </div>
     </DiabeoCard>

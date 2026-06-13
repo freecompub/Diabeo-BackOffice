@@ -1,8 +1,13 @@
 import { SignJWT, jwtVerify, importPKCS8, importSPKI } from "jose"
 import { randomUUID } from "node:crypto"
 import type { Role } from "@prisma/client"
+import { JWT_ALG, JWT_ISSUER, JWT_AUDIENCE, JWT_VERIFY_OPTIONS } from "./jwt-constants"
 
-const ALG = "RS256"
+// Aliases historiques — la source de vérité est `jwt-constants.ts`. Garder
+// les noms courts ici évite de réécrire toutes les utilisations internes.
+const ALG = JWT_ALG
+const ISSUER = JWT_ISSUER
+const AUDIENCE = JWT_AUDIENCE
 const TOKEN_EXPIRY = "15m" // Short-lived JWT — defense-in-depth against token theft (HR-4)
 const MFA_PENDING_EXPIRY = "5m" // MFA challenge window — user must complete OTP quickly
 /**
@@ -18,8 +23,6 @@ const MFA_PENDING_EXPIRY = "5m" // MFA challenge window — user must complete O
  */
 const PATIENT_INVITE_EXPIRY_MS = 15 * 60_000
 const PATIENT_INVITE_EXPIRY = `${PATIENT_INVITE_EXPIRY_MS / 60_000}m`
-const ISSUER = "diabeo-backoffice"
-const AUDIENCE = "diabeo-hc"
 const AUDIENCE_MFA = "diabeo-mfa-pending"
 const AUDIENCE_PATIENT_INVITE = "diabeo-patient-invite"
 
@@ -104,11 +107,7 @@ export async function signJwt(payload: JWTSignPayload): Promise<string> {
 
 export async function verifyJwt(token: string): Promise<JWTPayload> {
   const key = await getPublicKey()
-  const { payload } = await jwtVerify(token, key, {
-    algorithms: [ALG],
-    issuer: ISSUER,
-    audience: AUDIENCE,
-  })
+  const { payload } = await jwtVerify(token, key, JWT_VERIFY_OPTIONS)
   return validatePayload(payload)
 }
 
