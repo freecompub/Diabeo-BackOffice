@@ -1,6 +1,7 @@
 "use client"
 
 import { useTranslations } from "next-intl"
+import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
 
 /**
  * CGM Chart — US-803.
@@ -42,8 +43,8 @@ interface CgmChartProps {
 
 export function CgmChart({
   data,
-  targetLow = 70,
-  targetHigh = 180,
+  targetLow = G.TARGET_LOW,
+  targetHigh = G.TARGET_HIGH,
   height = 320,
 }: CgmChartProps) {
   const t = useTranslations("cgmChart")
@@ -78,13 +79,13 @@ export function CgmChart({
             strokeWidth={1}
           />
           <ReferenceLine
-            y={54}
+            y={G.SEVERE_HYPO}
             stroke="var(--color-glycemia-very-low)"
             strokeDasharray="2 2"
             strokeWidth={1}
           />
           <ReferenceLine
-            y={250}
+            y={G.SEVERE_HYPER}
             stroke="var(--color-glycemia-very-high)"
             strokeDasharray="2 2"
             strokeWidth={1}
@@ -99,7 +100,7 @@ export function CgmChart({
           />
 
           <YAxis
-            domain={[40, 400]}
+            domain={[G.CRITICAL_LOW, G.CRITICAL_HIGH]}
             tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--color-border)" }}
@@ -175,17 +176,17 @@ export function CgmChart({
 
 /** Maps a glucose value to its i18n zone key (translated at the call site). */
 function getZoneLabelKey(value: number, low: number, high: number): string {
-  if (value < 54) return "zoneVeryLow"
+  if (value < G.SEVERE_HYPO) return "zoneVeryLow"
   if (value < low) return "zoneLow"
   if (value <= high) return "zoneNormal"
-  if (value <= 250) return "zoneHigh"
+  if (value <= G.SEVERE_HYPER) return "zoneHigh"
   return "zoneVeryHigh"
 }
 
 function getGlucoseColor(value: number, low: number, high: number): string {
-  if (value < 54) return "var(--color-glycemia-very-low)"
+  if (value < G.SEVERE_HYPO) return "var(--color-glycemia-very-low)"
   if (value < low) return "var(--color-glycemia-low)"
   if (value <= high) return "var(--color-glycemia-normal)"
-  if (value <= 250) return "var(--color-glycemia-high)"
+  if (value <= G.SEVERE_HYPER) return "var(--color-glycemia-high)"
   return "var(--color-glycemia-very-high)"
 }

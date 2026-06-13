@@ -3,6 +3,8 @@
  * Used by GlycemiaEvolutionChart, ChartSummary, HypoglycemiaCounter, etc.
  */
 
+import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
+
 export interface GlucoseDataPoint {
   time: string
   timestamp: Date
@@ -38,15 +40,16 @@ export interface GlycemiaThresholds {
   veryHigh: number
 }
 
+// Dérivé de la source unique `glycemia-thresholds.ts` (par signification clinique).
 export const DEFAULT_THRESHOLDS: GlycemiaThresholds = {
-  criticalLow: 40,
-  veryLow: 54,
-  low: 70,
-  targetMin: 70,
-  targetMax: 180,
-  high: 250,
-  veryHigh: 400,
-  criticalHigh: 400,
+  criticalLow: G.CRITICAL_LOW,
+  veryLow: G.SEVERE_HYPO,
+  low: G.TARGET_LOW,
+  targetMin: G.TARGET_LOW,
+  targetMax: G.TARGET_HIGH,
+  high: G.SEVERE_HYPER,
+  veryHigh: G.CRITICAL_HIGH,
+  criticalHigh: G.CRITICAL_HIGH,
 }
 
 export interface ChartDisplayOptions {
