@@ -1,6 +1,11 @@
 import { getTranslations } from "next-intl/server"
 import { cn } from "@/lib/utils"
 
+// ⚠️ SERVER-ONLY : ces loaders sont des Server Components `async`
+// (getTranslations). Ils ne peuvent PAS être rendus comme enfants d'un
+// Client Component ("use client"). Pour un fallback côté client, créer une
+// variante dédiée avec `useTranslations`.
+
 type PageLoaderProps = {
   label?: string
   sublabel?: string

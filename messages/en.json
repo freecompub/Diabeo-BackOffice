@@ -1380,7 +1380,8 @@
       "patient": "Patient #{id}",
       "cabinet": "Practice #{id}",
       "tooMany": "More than 100 invoices match. Narrow the status filter to reduce the list.",
-      "paginationNote": "Cursor pagination V1.5 — truncated to the 100 most recent."
+      "paginationNote": "Cursor pagination V1.5 — truncated to the 100 most recent.",
+      "filterStatusAria": "Filter by status"
     },
     "userDetail": {
       "loading": "Loading…",
@@ -1737,7 +1738,20 @@
     "colTotalInclTax": "Total incl. tax",
     "subtotalExTax": "Subtotal excl. tax",
     "taxAmount": "VAT",
-    "totalInclTax": "Total incl. tax"
+    "totalInclTax": "Total incl. tax",
+    "status": {
+      "draft": "Draft",
+      "issued": "Issued",
+      "paid": "Paid",
+      "cancelled": "Cancelled",
+      "refunded": "Refunded"
+    },
+    "paymentMethod": {
+      "stripe": "Card (Stripe)",
+      "bank_transfer": "Bank transfer",
+      "cash": "Cash",
+      "other": "Other"
+    }
   },
   "audit": {
     "title": "Audit consultation",

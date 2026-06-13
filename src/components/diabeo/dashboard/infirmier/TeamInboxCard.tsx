@@ -7,12 +7,13 @@
 
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { bcp47 } from "@/i18n/config"
 import type { TeamInboxItem } from "@/lib/services/nurse-dashboard.service"
 
 type ApiResponse = { items: TeamInboxItem[] }
@@ -32,8 +33,8 @@ const STATUS_LABEL_KEY: Record<string, string> = {
   expired: "statusExpired",
 }
 
-function formatDate(d: Date | string): string {
-  return new Date(d).toLocaleString("fr-FR", {
+function formatDate(d: Date | string, locale: string): string {
+  return new Date(d).toLocaleString(bcp47(locale), {
     day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
     timeZone: "Europe/Paris",
   })
@@ -41,6 +42,7 @@ function formatDate(d: Date | string): string {
 
 export function TeamInboxCard() {
   const t = useTranslations("dashboardCards.nurseTeamInbox")
+  const locale = useLocale()
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/infirmier/team-inbox",
     60_000,
@@ -95,7 +97,7 @@ export function TeamInboxCard() {
                   {m.action} · {m.patientFirstName || t("patientFallback")}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {formatDate(m.createdAt)}
+                  {formatDate(m.createdAt, locale)}
                 </span>
               </li>
             ))}

@@ -1380,7 +1380,8 @@
       "patient": "مريض #{id}",
       "cabinet": "عيادة #{id}",
       "tooMany": "أكثر من 100 فاتورة مطابقة. ضيّق تصفية الحالة لتقليل القائمة.",
-      "paginationNote": "ترقيم المؤشر V1.5 — مقتطع إلى أحدث 100."
+      "paginationNote": "ترقيم المؤشر V1.5 — مقتطع إلى أحدث 100.",
+      "filterStatusAria": "تصفية حسب الحالة"
     },
     "userDetail": {
       "loading": "جارٍ التحميل…",
@@ -1737,7 +1738,20 @@
     "colTotalInclTax": "الإجمالي شامل الضريبة",
     "subtotalExTax": "المجموع الفرعي دون ضريبة",
     "taxAmount": "ضريبة القيمة المضافة",
-    "totalInclTax": "الإجمالي شامل الضريبة"
+    "totalInclTax": "الإجمالي شامل الضريبة",
+    "status": {
+      "draft": "مسودة",
+      "issued": "صادرة",
+      "paid": "مدفوعة",
+      "cancelled": "ملغاة",
+      "refunded": "مُستردة"
+    },
+    "paymentMethod": {
+      "stripe": "بطاقة (Stripe)",
+      "bank_transfer": "تحويل بنكي",
+      "cash": "نقدًا",
+      "other": "أخرى"
+    }
   },
   "audit": {
     "title": "استعراض سجل التدقيق",

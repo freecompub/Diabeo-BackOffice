@@ -24,9 +24,9 @@ import type { Locale } from "@/i18n/config"
 import {
   type InvoiceDTOClient,
   type InvoiceStatus,
-  INVOICE_STATUS_LABELS_FR,
-  getInvoiceStatusLabel,
+  INVOICE_STATUS_ORDER,
   getInvoiceStatusVariant,
+  isInvoiceStatus,
   formatAmount,
 } from "@/lib/types/invoice-admin"
 import { extractApiError } from "@/lib/ui/api-error"
@@ -36,6 +36,8 @@ type AsyncState = "idle" | "loading" | "success" | "error"
 export function InvoicesListClient() {
   const locale = useLocale() as Locale
   const t = useTranslations("admin.invoicesList")
+  // Libellés de statut : source unique partagée avec la page de détail.
+  const tInvoice = useTranslations("invoiceDetail")
   const [invoices, setInvoices] = useState<InvoiceDTOClient[]>([])
   const [state, setState] = useState<AsyncState>("idle")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -103,12 +105,12 @@ export function InvoicesListClient() {
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value as InvoiceStatus | "all")}
             className="rounded-md border bg-background px-2 py-1 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
-            aria-label="Filtrer par statut"
+            aria-label={t("filterStatusAria")}
             aria-describedby="filter-status-help"
           >
             <option value="all">{t("allStatuses")}</option>
-            {Object.entries(INVOICE_STATUS_LABELS_FR).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+            {INVOICE_STATUS_ORDER.map((value) => (
+              <option key={value} value={value}>{tInvoice(`status.${value}`)}</option>
             ))}
           </select>
           <span id="filter-status-help" className="sr-only">
@@ -160,7 +162,7 @@ export function InvoicesListClient() {
                       {invoice.number ?? t("draft", { id: invoice.id })}
                     </span>
                     <Badge variant={getInvoiceStatusVariant(invoice.status)} className="text-[10px]">
-                      {getInvoiceStatusLabel(invoice.status)}
+                      {isInvoiceStatus(invoice.status) ? tInvoice(`status.${invoice.status}`) : invoice.status}
                     </Badge>
                     <span className="text-sm font-medium ml-auto">
                       {formatAmount(invoice.totalCents, invoice.currency, locale)}

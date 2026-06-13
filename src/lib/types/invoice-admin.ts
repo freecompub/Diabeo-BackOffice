@@ -9,8 +9,10 @@
  *   - H2 : `formatAmount` currency minor units via Intl.NumberFormat
  *     `resolvedOptions().maximumFractionDigits` (gère JPY/KRW 0 décimale,
  *     TND/BHD 3 décimales — pas hardcoded /100)
- *   - M2 : `getInvoiceStatusLabel` + `getPaymentMethodLabel` helpers avec
- *     warning dev si drift backend (cohérent fix L1 PR #459 ServiceType)
+ *   - M2 : libellés statut/mode de paiement internationalisés (next-intl,
+ *     namespace `invoiceDetail.status.*` / `.paymentMethod.*`, FR/EN/AR) —
+ *     traduits au rendu via clé dynamique gardée par `isInvoiceStatus` /
+ *     `isPaymentMethod`. Seuls le variant de badge et l'ordre restent ici.
  */
 
 export type InvoiceStatus = "draft" | "issued" | "paid" | "cancelled" | "refunded"
@@ -70,16 +72,19 @@ export interface InvoiceWithItemsDTOClient extends InvoiceDTOClient {
 }
 
 // ─────────────────────────────────────────────────────────────
-// Labels FR + variants
+// Variants de badge + ordre d'affichage
 // ─────────────────────────────────────────────────────────────
+//
+// Les LIBELLÉS (statut / mode de paiement) ne vivent plus ici : ils sont
+// internationalisés (next-intl) dans le namespace `invoiceDetail` (sous-clés
+// `status.*` / `paymentMethod.*`, FR/EN/AR) et traduits au rendu via une clé
+// dynamique gardée par `isInvoiceStatus` / `isPaymentMethod`. Voir
+// InvoiceDetailClient / InvoicesListClient.
 
-export const INVOICE_STATUS_LABELS_FR: Record<InvoiceStatus, string> = {
-  draft: "Brouillon",
-  issued: "Émise",
-  paid: "Payée",
-  cancelled: "Annulée",
-  refunded: "Remboursée",
-}
+/** Ordre canonique des statuts (filtres, itérations UI). */
+export const INVOICE_STATUS_ORDER: readonly InvoiceStatus[] = [
+  "draft", "issued", "paid", "cancelled", "refunded",
+]
 
 export type BadgeVariant = "default" | "secondary" | "destructive" | "outline"
 
@@ -89,33 +94,6 @@ export const INVOICE_STATUS_VARIANT: Record<InvoiceStatus, BadgeVariant> = {
   paid: "default",
   cancelled: "destructive",
   refunded: "destructive",
-}
-
-export const PAYMENT_METHOD_LABELS_FR: Record<PaymentMethod, string> = {
-  stripe: "Carte (Stripe)",
-  bank_transfer: "Virement bancaire",
-  cash: "Espèces",
-  other: "Autre",
-}
-
-/**
- * Fix M2 round 1 — defense-in-depth + warning dev si backend ajoute
- * un statut sans mise à jour UI (cohérent pattern PR #459 ServiceType).
- */
-export function getInvoiceStatusLabel(status: InvoiceStatus | string): string {
-  if (isInvoiceStatus(status)) return INVOICE_STATUS_LABELS_FR[status]
-  if (process.env.NODE_ENV !== "production") {
-    console.warn(`[invoice-admin] Unknown InvoiceStatus: ${status}`)
-  }
-  return status
-}
-
-export function getPaymentMethodLabel(method: PaymentMethod | string): string {
-  if (isPaymentMethod(method)) return PAYMENT_METHOD_LABELS_FR[method]
-  if (process.env.NODE_ENV !== "production") {
-    console.warn(`[invoice-admin] Unknown PaymentMethod: ${method}`)
-  }
-  return method
 }
 
 export function getInvoiceStatusVariant(status: InvoiceStatus | string): BadgeVariant {

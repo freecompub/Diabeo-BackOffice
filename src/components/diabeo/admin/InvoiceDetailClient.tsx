@@ -29,9 +29,9 @@ import { formatDate } from "@/lib/intl/formatters"
 import type { Locale } from "@/i18n/config"
 import {
   type InvoiceWithItemsDTOClient,
-  getInvoiceStatusLabel,
   getInvoiceStatusVariant,
-  getPaymentMethodLabel,
+  isInvoiceStatus,
+  isPaymentMethod,
   formatAmount,
 } from "@/lib/types/invoice-admin"
 import { extractApiError } from "@/lib/ui/api-error"
@@ -179,7 +179,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
         </h1>
         <div className="flex items-center gap-2 flex-wrap mt-1">
           <Badge variant={getInvoiceStatusVariant(invoice.status)}>
-            {getInvoiceStatusLabel(invoice.status)}
+            {isInvoiceStatus(invoice.status) ? t(`status.${invoice.status}`) : invoice.status}
           </Badge>
           <Badge variant="outline">{invoice.countryCode}</Badge>
         </div>
@@ -251,7 +251,7 @@ export function InvoiceDetailClient({ invoiceId }: { invoiceId: number }) {
           <Field label={t("fieldCountry")}>{invoice.countryCode}</Field>
           {invoice.paymentMethod && (
             <Field label={t("fieldPaymentMethod")}>
-              {getPaymentMethodLabel(invoice.paymentMethod)}
+              {isPaymentMethod(invoice.paymentMethod) ? t(`paymentMethod.${invoice.paymentMethod}`) : invoice.paymentMethod}
             </Field>
           )}
           {invoice.issuedAt && (

@@ -1380,7 +1380,8 @@
       "patient": "Patient #{id}",
       "cabinet": "Cabinet #{id}",
       "tooMany": "Plus de 100 factures correspondent. Affiner le filtre statut pour réduire la liste.",
-      "paginationNote": "Pagination cursor V1.5 — affichage tronqué aux 100 plus récentes."
+      "paginationNote": "Pagination cursor V1.5 — affichage tronqué aux 100 plus récentes.",
+      "filterStatusAria": "Filtrer par statut"
     },
     "userDetail": {
       "loading": "Chargement…",
@@ -1737,7 +1738,20 @@
     "colTotalInclTax": "Total TTC",
     "subtotalExTax": "Sous-total HT",
     "taxAmount": "TVA",
-    "totalInclTax": "Total TTC"
+    "totalInclTax": "Total TTC",
+    "status": {
+      "draft": "Brouillon",
+      "issued": "Émise",
+      "paid": "Payée",
+      "cancelled": "Annulée",
+      "refunded": "Remboursée"
+    },
+    "paymentMethod": {
+      "stripe": "Carte (Stripe)",
+      "bank_transfer": "Virement bancaire",
+      "cash": "Espèces",
+      "other": "Autre"
+    }
   },
   "audit": {
     "title": "Consultation audit",
