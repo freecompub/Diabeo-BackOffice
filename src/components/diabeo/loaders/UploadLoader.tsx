@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 type UploadStatus = "pending" | "uploading" | "scanning" | "encrypting" | "done" | "error"
 
@@ -46,7 +47,7 @@ export function UploadLoader({
       aria-busy={isActive}
       className={cn(
         "rounded-xl border bg-white p-4",
-        isError ? "border-red-200" : isDone ? "border-emerald-200" : "border-ink-100",
+        isError ? "border-feedback-error/30" : isDone ? "border-feedback-success/30" : "border-ink-100",
         className,
       )}
     >
@@ -65,9 +66,9 @@ export function UploadLoader({
                 <span
                   className={cn(
                     "font-medium",
-                    isError && "text-red-600",
-                    isDone && "text-emerald-600",
-                    !isError && !isDone && "text-teal-700",
+                    isError && "text-feedback-error",
+                    isDone && "text-feedback-success",
+                    !isError && !isDone && "text-primary",
                   )}
                 >
                   {STAGE_LABEL[status]}
@@ -92,7 +93,7 @@ export function UploadLoader({
             <div
               className={cn(
                 "h-full rounded-full transition-all duration-300",
-                isError ? "bg-red-500" : isDone ? "bg-emerald-500" : "bg-teal-600",
+                isError ? "bg-feedback-error" : isDone ? "bg-feedback-success" : "bg-primary",
                 isActive && "upload-stripes",
               )}
               style={{ width: `${isDone ? 100 : pct}%` }}
@@ -136,13 +137,13 @@ function UploadRing({ pct, status }: { pct: number; status: UploadStatus }) {
   return (
     <div className="relative h-12 w-12 flex-shrink-0">
       <svg viewBox="0 0 48 48" className="h-12 w-12 -rotate-90" aria-hidden>
-        <circle cx="24" cy="24" r={r} fill="none" stroke="#F3F4F6" strokeWidth="4" />
+        <circle cx="24" cy="24" r={r} fill="none" stroke={tokens.neutral[100]} strokeWidth="4" />
         <circle
           cx="24"
           cy="24"
           r={r}
           fill="none"
-          stroke={isError ? "#EF4444" : isDone ? "#10B981" : "#0D9488"}
+          stroke={isError ? tokens.semantic.error : isDone ? tokens.semantic.success : tokens.brand.primary[600]}
           strokeWidth="4"
           strokeLinecap="round"
           strokeDasharray={c}
@@ -152,15 +153,15 @@ function UploadRing({ pct, status }: { pct: number; status: UploadStatus }) {
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
         {isDone ? (
-          <svg viewBox="0 0 24 24" className="h-5 w-5 text-emerald-600" aria-hidden>
+          <svg viewBox="0 0 24 24" className="h-5 w-5 text-feedback-success" aria-hidden>
             <path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : isError ? (
-          <svg viewBox="0 0 24 24" className="h-5 w-5 text-red-600" aria-hidden>
+          <svg viewBox="0 0 24 24" className="h-5 w-5 text-feedback-error" aria-hidden>
             <path d="M12 9v4m0 4h.01M5 20h14a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0L3.3 17A2 2 0 0 0 5 20Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         ) : (
-          <span className="text-[0.65rem] font-bold text-teal-700 font-mono">{pct}%</span>
+          <span className="text-[0.65rem] font-bold text-primary font-mono">{pct}%</span>
         )}
       </div>
     </div>
@@ -188,8 +189,8 @@ function UploadStages({ status }: { status: UploadStatus }) {
             <span
               className={cn(
                 "inline-flex h-4 w-4 items-center justify-center rounded-full border text-[0.55rem] font-bold transition-colors",
-                passed && "border-emerald-500 bg-emerald-500 text-white",
-                active && "border-teal-600 bg-teal-50 text-teal-700 ring-2 ring-teal-200",
+                passed && "border-feedback-success bg-feedback-success text-white",
+                active && "border-primary bg-primary/10 text-primary ring-2 ring-primary/20",
                 !passed && !active && "border-ink-300 bg-white text-ink-300",
               )}
             >
@@ -198,8 +199,8 @@ function UploadStages({ status }: { status: UploadStatus }) {
             <span
               className={cn(
                 "text-[0.65rem] font-medium",
-                passed && "text-emerald-700",
-                active && "text-teal-700",
+                passed && "text-feedback-success",
+                active && "text-primary",
                 !passed && !active && "text-ink-300",
               )}
             >

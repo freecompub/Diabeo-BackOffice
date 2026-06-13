@@ -44,10 +44,12 @@ const diabeoButtonVariants = cva(
     "inline-flex shrink-0 items-center justify-center gap-2",
     "rounded-lg border border-transparent",
     "text-sm font-medium whitespace-nowrap",
-    "transition-all duration-[var(--diabeo-duration-normal)]",
+    // transition-colors cible background-color, border-color, color uniquement —
+    // pas de re-layout. duration-normal = @utility Diabeo (200ms).
+    "transition-colors duration-normal",
     "outline-none select-none",
     // Focus ring — teal-600 per medical-grade focus policy
-    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",
+    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
     // Disabled state
     "disabled:pointer-events-none disabled:opacity-50",
     // Icon sizing
@@ -59,9 +61,15 @@ const diabeoButtonVariants = cva(
         /**
          * diabeoPrimary — Main call-to-action (teal).
          * Use for: Save, Confirm, Submit actions.
+         *
+         * Hover/active : shades plus sombres (teal-700, teal-800) plutôt que
+         * opacités sur teal-600. Sur fond clair (`--background` ~#FAFAFA), un
+         * `bg-primary/90` éclaircit (compositing avec le blanc) — l'effet
+         * attendu d'un hover est l'inverse : aller vers le sombre. Aligné sur
+         * `docs/design-system/tokens.md` §1 qui prescrit teal-700 pour hover.
          */
         diabeoPrimary:
-          "bg-teal-600 text-white hover:bg-teal-700 active:bg-teal-800",
+          "bg-primary text-primary-foreground hover:bg-primary-hover active:bg-primary-active",
 
         /**
          * diabeoSecondary — Secondary call-to-action (coral).
@@ -73,16 +81,22 @@ const diabeoButtonVariants = cva(
         /**
          * diabeoTertiary — Low-emphasis action (transparent/teal).
          * Use for: Cancel, tertiary links, supplementary actions.
+         *
+         * Ici on garde `bg-primary/10 → bg-primary/15` car c'est un fond
+         * tinted, pas un fond opaque qu'on cherche à assombrir au hover.
          */
         diabeoTertiary:
-          "bg-transparent text-teal-600 border-teal-600 hover:bg-teal-50 active:bg-teal-100",
+          "bg-transparent text-primary border-primary hover:bg-primary/10 active:bg-primary/15",
 
         /**
          * diabeoDestructive — Destructive irreversible action (red).
          * Use for: Delete, revoke, hard resets. Always confirm before.
+         *
+         * Hover/active : shades plus sombres (red-700, red-800) plutôt que
+         * opacités sur destructive — même rationnel que `diabeoPrimary`.
          */
         diabeoDestructive:
-          "bg-red-500 text-white hover:bg-red-600 active:bg-red-700",
+          "bg-destructive text-destructive-foreground hover:bg-destructive-hover active:bg-destructive-active",
 
         /**
          * diabeoGhost — No background, subtle hover.

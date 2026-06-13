@@ -1,5 +1,6 @@
 import { getTranslations } from "next-intl/server"
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 
 // ⚠️ SERVER-ONLY : ces loaders sont des Server Components `async`
 // (getTranslations). Ils ne peuvent PAS être rendus comme enfants d'un
@@ -46,7 +47,7 @@ export async function PageLoader({
               cy="40"
               r="32"
               fill="none"
-              stroke="#E6FFFA"
+              stroke={tokens.brand.primary[50]}
               strokeWidth="4"
             />
             <circle
@@ -54,7 +55,7 @@ export async function PageLoader({
               cy="40"
               r="32"
               fill="none"
-              stroke="#0D9488"
+              stroke={tokens.brand.primary[600]}
               strokeWidth="4"
               strokeLinecap="round"
               strokeDasharray="50 200"
@@ -62,7 +63,7 @@ export async function PageLoader({
             />
             <path
               d="M40 20 C 28 32, 28 45, 40 55 C 52 45, 52 32, 40 20 Z"
-              fill="#0D9488"
+              fill={tokens.brand.primary[600]}
               className="loader-drop"
             />
           </svg>
@@ -73,8 +74,8 @@ export async function PageLoader({
           <div className="text-xs text-ink-500">{resolvedSublabel}</div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-[0.65rem] font-medium uppercase tracking-wider text-teal-700">
-          <span className="inline-block h-1.5 w-1.5 rounded-full bg-teal-600 animate-pulse" />
+        <div className="flex items-center gap-1.5 text-[0.65rem] font-medium uppercase tracking-wider text-primary">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
           {t("securityBadge")}
         </div>
       </div>
@@ -108,7 +109,7 @@ export async function InlinePageLoader({ label }: { label?: string }) {
   const resolvedLabel = label ?? t("inlineDefaultLabel")
   return (
     <div role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-ink-500">
-      <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin text-teal-600" aria-hidden>
+      <svg viewBox="0 0 24 24" className="h-4 w-4 animate-spin text-primary" aria-hidden>
         <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="3" />
         <path
           d="M21 12a9 9 0 0 0-9-9"

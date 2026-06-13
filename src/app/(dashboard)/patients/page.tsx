@@ -181,7 +181,7 @@ export default function PatientsPage() {
         {decryptIncidentDetected && (
           <div
             role="alert"
-            className="rounded-md border border-[var(--color-danger)] bg-[color-mix(in_srgb,var(--color-danger)_8%,transparent)] px-4 py-3 text-sm text-[var(--color-danger)]"
+            className="rounded-md border border-destructive bg-destructive/10 px-4 py-3 text-sm text-destructive"
           >
             {t("decryptIncident")}
           </div>
@@ -190,7 +190,7 @@ export default function PatientsPage() {
         {/* Search, Filters & New Patient */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative flex-1 sm:max-w-sm">
-            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--color-muted-foreground)]" aria-hidden="true" />
+            <Search className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
               placeholder={t("searchPlaceholder")}
               aria-label={t("searchPlaceholder")}
@@ -206,8 +206,8 @@ export default function PatientsPage() {
                 onClick={() => setPathologyFilter(value)}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   pathologyFilter === value
-                    ? "bg-[var(--color-primary)] text-white"
-                    : "bg-[var(--color-muted)] text-[var(--color-muted-foreground)] hover:bg-[var(--color-primary-100)]"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-primary/15"
                 }`}
                 aria-pressed={pathologyFilter === value}
               >
@@ -245,7 +245,7 @@ export default function PatientsPage() {
                   <TableRow>
                     <TableCell
                       colSpan={7}
-                      className="py-12 text-center text-[var(--color-muted-foreground)]"
+                      className="py-12 text-center text-muted-foreground"
                       role="status"
                       aria-live="polite"
                     >
@@ -258,7 +258,7 @@ export default function PatientsPage() {
                   <TableRow>
                     <TableCell
                       colSpan={7}
-                      className="py-8 text-center text-[var(--color-danger)]"
+                      className="py-8 text-center text-destructive"
                       role="alert"
                     >
                       {t("loadError")}
@@ -287,25 +287,25 @@ export default function PatientsPage() {
                         openPatient()
                       }
                     }}
-                    className="cursor-pointer hover:bg-[var(--color-muted)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+                    className="cursor-pointer hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                     aria-label={t("openConsultation", { name: patient.name })}
                   >
                     <TableCell>
-                      <span className="font-medium text-[var(--color-foreground)]">
+                      <span className="font-medium text-foreground">
                         {patient.name}
                       </span>
                     </TableCell>
                     <TableCell>
                       <ClinicalBadge type="pathology" value={patient.pathology} />
                     </TableCell>
-                    <TableCell className="text-[var(--color-muted-foreground)]">
+                    <TableCell className="text-muted-foreground">
                       {patient.age !== null ? t("years", { age: patient.age }) : "—"}
                     </TableCell>
                     <TableCell>
                       {patient.lastGlucoseMgdl !== null ? (
                         <GlycemiaValue value={patient.lastGlucoseMgdl} unit="mg/dL" size="sm" />
                       ) : (
-                        <span className="text-sm text-[var(--color-muted-foreground)]">—</span>
+                        <span className="text-sm text-muted-foreground">—</span>
                       )}
                     </TableCell>
                     <TableCell>
@@ -318,17 +318,17 @@ export default function PatientsPage() {
                           />
                         </div>
                       ) : (
-                        <span className="text-sm text-[var(--color-muted-foreground)]">—</span>
+                        <span className="text-sm text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-[var(--color-muted-foreground)]">
+                    <TableCell className="text-sm text-muted-foreground">
                       {patient.lastSync}
                     </TableCell>
                     <TableCell>
                       {/* La ligne entière est le déclencheur (role=button) ;
                           chevron purement décoratif. */}
                       <ChevronRight
-                        className="h-4 w-4 text-[var(--color-muted-foreground)] rtl:rotate-180"
+                        className="h-4 w-4 text-muted-foreground rtl:rotate-180"
                         aria-hidden="true"
                       />
                     </TableCell>
@@ -339,7 +339,7 @@ export default function PatientsPage() {
                   <TableRow>
                     <TableCell
                       colSpan={7}
-                      className="py-8 text-center text-[var(--color-muted-foreground)]"
+                      className="py-8 text-center text-muted-foreground"
                       role="status"
                       aria-live="polite"
                     >

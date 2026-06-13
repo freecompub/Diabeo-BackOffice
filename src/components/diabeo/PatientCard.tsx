@@ -117,7 +117,7 @@ export function PatientCard({
           <div
             className={cn(
               "flex h-9 w-9 shrink-0 items-center justify-center",
-              "rounded-full bg-teal-100 text-teal-700",
+              "rounded-full bg-primary/15 text-primary",
               "text-sm font-semibold"
             )}
             aria-hidden="true"

@@ -86,10 +86,12 @@ export function PatientConsultationDrawer({
       >
         {/* Bandeau éphémère — texte coral-700 (couleur « alerte » du DS) pour un
             contraste AA sur le fond ambré pâle (l'ambre #F59E0B en texte ne
-            passait pas, ~2:1 ; review a11y). L'accent ambré reste sur la pastille. */}
-        <p className="flex items-center gap-2 border-b border-[var(--color-glycemia-high)]/30 bg-[color-mix(in_srgb,var(--color-glycemia-high)_8%,transparent)] px-4 py-1.5 text-xs font-medium text-[var(--color-coral-700)]">
+            passait pas, ~2:1 ; review a11y). L'accent ambré reste sur la pastille.
+            `text-coral-700` est mappé via `@theme inline` dans `globals.css`
+            (--color-coral-700 → --diabeo-secondary-700). */}
+        <p className="flex items-center gap-2 border-b border-glycemia-high/30 bg-glycemia-high/10 px-4 py-1.5 text-xs font-medium text-coral-700">
           <span
-            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--color-glycemia-high)]"
+            className="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-glycemia-high"
             aria-hidden="true"
           />
           {t("ephemeralNotice")}

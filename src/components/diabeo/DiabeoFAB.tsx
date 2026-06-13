@@ -44,9 +44,9 @@ export interface DiabeoFABProps {
 
 const variantClasses: Record<FabVariant, string> = {
   primary: [
-    "bg-teal-600 hover:bg-teal-700 active:bg-teal-800",
+    "bg-primary hover:bg-primary/90 active:bg-primary/80",
     "shadow-diabeo-primary",
-    "focus-visible:outline-teal-600",
+    "focus-visible:outline-primary",
   ].join(" "),
   secondary: [
     "bg-coral-500 hover:bg-coral-600 active:bg-coral-700",

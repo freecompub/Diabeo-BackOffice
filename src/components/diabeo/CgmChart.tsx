@@ -114,8 +114,8 @@ export function CgmChart({
               const point = payload[0].payload as CgmDataPoint
               const color = getGlucoseColor(point.glucose, targetLow, targetHigh)
               return (
-                <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card,white)] px-3 py-2 shadow-md">
-                  <p className="text-xs text-[var(--color-muted-foreground)]">{point.time}</p>
+                <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-md">
+                  <p className="text-xs text-muted-foreground">{point.time}</p>
                   <p className="text-sm font-semibold" style={{ color }}>
                     {t("tooltipValue", { value: point.glucose })}
                   </p>
@@ -136,17 +136,17 @@ export function CgmChart({
       </ResponsiveContainer>
 
       {/* Legend */}
-      <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-[var(--color-muted-foreground)]">
+      <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-normal)]" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-normal" />
           {t("legendTarget", { low: targetLow, high: targetHigh })}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-high)]" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-high" />
           {t("legendHigh", { high: targetHigh })}
         </span>
         <span className="flex items-center gap-1.5">
-          <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-low)]" />
+          <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-low" />
           {t("legendLow", { low: targetLow })}
         </span>
       </div>

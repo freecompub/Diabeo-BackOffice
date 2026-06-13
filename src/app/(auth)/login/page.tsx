@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { AlertBanner } from "@/components/diabeo"
 import { DiabeoTextField } from "@/components/diabeo/DiabeoTextField"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
+import { LogoMark } from "@/components/diabeo/brand/Logo"
 import Link from "next/link"
 
 export default function LoginPage() {
@@ -99,8 +100,8 @@ export default function LoginPage() {
     <div data-testid="login-screen">
       {/* Logo */}
       <div className="mb-8 flex flex-col items-center gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-600 shadow-lg">
-          <span className="text-2xl font-bold text-white">D</span>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg">
+          <LogoMark size={36} title={t("welcome")} tone="inverse" />
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-foreground">

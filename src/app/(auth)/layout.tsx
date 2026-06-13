@@ -15,7 +15,7 @@ export default function AuthLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-screen flex-col bg-[var(--color-background)] px-4">
+    <div className="flex min-h-screen flex-col bg-background px-4">
       <div className="flex justify-end pt-4">
         <LocaleSwitcher persist={false} variant="compact" />
       </div>

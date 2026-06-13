@@ -202,11 +202,11 @@ function DiabeoReadonlyField({
           onClick={handleCopy}
           aria-label={`Copier ${label}`}
           className={cn(
-            "w-full rounded-lg bg-gray-50 px-3 py-2.5 text-left",
+            "w-full rounded-lg bg-muted px-3 py-2.5 text-left",
             "border border-transparent",
             "transition-colors duration-150",
-            "hover:bg-gray-100 hover:border-gray-200",
-            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",
+            "hover:bg-muted/80 hover:border-border",
+            "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
             "cursor-copy"
           )}
         >
@@ -230,7 +230,7 @@ function DiabeoReadonlyField({
   return (
     <div
       className={cn(
-        "rounded-lg bg-gray-50 px-3 py-2.5",
+        "rounded-lg bg-muted px-3 py-2.5",
         className
       )}
     >

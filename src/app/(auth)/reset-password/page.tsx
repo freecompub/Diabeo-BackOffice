@@ -25,6 +25,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { DiabeoTextField } from "@/components/diabeo/DiabeoTextField"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { AlertBanner } from "@/components/diabeo"
+import { LogoMark } from "@/components/diabeo/brand/Logo"
 import { cn } from "@/lib/utils"
 
 export default function ResetPasswordPage() {
@@ -61,8 +62,8 @@ export default function ResetPasswordPage() {
     <div data-testid="reset-password-screen">
       {/* Logo */}
       <div className="mb-8 flex flex-col items-center gap-3">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-600 shadow-lg">
-          <span className="text-2xl font-bold text-white">D</span>
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary shadow-lg">
+          <LogoMark size={36} title={t("resetPassword")} tone="inverse" />
         </div>
         <div className="text-center">
           <h1 className="text-2xl font-semibold text-foreground">

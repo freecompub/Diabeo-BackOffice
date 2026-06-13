@@ -38,6 +38,7 @@ import { AlertTriangle, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 import { PeriodSelector, TimePeriod } from "@/components/diabeo/PeriodSelector"
+import { tokens } from "@/design-system/tokens"
 import { DataSummaryGrid } from "@/components/diabeo/widgets/DataSummaryGrid"
 import { TimeInRangeChart } from "@/components/diabeo/charts/TimeInRangeChart"
 import { HypoglycemiaCounter } from "@/components/diabeo/charts/HypoglycemiaCounter"
@@ -131,9 +132,9 @@ function formatDate(date: Date, locale: string): string {
 
 /** Derive capture rate badge color */
 function captureRateColor(rate: number): string {
-  if (rate >= 70) return "text-emerald-600 bg-emerald-50"
-  if (rate >= 50) return "text-amber-600 bg-amber-50"
-  return "text-red-600 bg-red-50"
+  if (rate >= 70) return "text-success-fg bg-success-bg"
+  if (rate >= 50) return "text-warning-fg bg-warning-bg"
+  return "text-error-fg bg-error-bg"
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -260,15 +261,15 @@ export default function AnalyticsPage() {
       {/* ── Page header ─────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">{t("title")}</h1>
-          <p className="mt-0.5 text-sm text-gray-500">
+          <h1 className="text-xl font-bold text-foreground">{t("title")}</h1>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {formatDate(dateRange[0], bcp47(locale))} — {formatDate(dateRange[1], bcp47(locale))}
           </p>
         </div>
         <div className="flex items-center gap-3">
           {pageState === "loading" && (
             <RefreshCw
-              className="h-4 w-4 animate-spin text-teal-600"
+              className="h-4 w-4 animate-spin text-primary"
               aria-label={tCommon("loading")}
             />
           )}
@@ -280,14 +281,14 @@ export default function AnalyticsPage() {
       {pageState === "insufficientData" && profileData && (
         <div
           role="alert"
-          className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3"
+          className="flex items-start gap-3 rounded-lg border border-warning-border bg-warning-bg px-4 py-3"
         >
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" aria-hidden="true" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden="true" />
           <div>
-            <p className="text-sm font-medium text-amber-800">
+            <p className="text-sm font-medium text-warning-fg">
               {t("insufficientDataTitle")}
             </p>
-            <p className="mt-0.5 text-xs text-amber-700">
+            <p className="mt-0.5 text-xs text-warning-fg">
               {t("insufficientDataMessage", { rate: Math.round(captureRate) })}
             </p>
           </div>
@@ -305,7 +306,7 @@ export default function AnalyticsPage() {
       {/* ── Data capture indicator ────────────────────────────────────────────── */}
       {(pageState === "success" || pageState === "insufficientData") && (
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">{t("captureRate")}:</span>
+          <span className="text-sm text-muted-foreground">{t("captureRate")}:</span>
           <span
             className={cn(
               "inline-flex items-center rounded-full px-2.5 py-0.5 text-sm font-semibold",
@@ -316,7 +317,7 @@ export default function AnalyticsPage() {
             {Math.round(captureRate)}%
           </span>
           {captureRate < 70 && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {t("captureRateTarget")}
             </span>
           )}
@@ -327,12 +328,12 @@ export default function AnalyticsPage() {
       <DiabeoCard variant="elevated" padding="md">
         <div className="space-y-3">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">{t("agpTitle")}</h2>
-            <p className="mt-0.5 text-xs text-gray-500">{t("agpSubtitle")}</p>
+            <h2 className="text-sm font-semibold text-foreground">{t("agpTitle")}</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">{t("agpSubtitle")}</p>
           </div>
 
           {pageState === "loading" ? (
-            <div className="h-[280px] animate-pulse rounded-lg bg-gray-100" aria-busy="true" />
+            <div className="h-[280px] animate-pulse rounded-lg bg-muted" aria-busy="true" />
           ) : agpData.length === 0 ? (
             <DiabeoEmptyState variant="noData" />
           ) : (
@@ -350,44 +351,44 @@ export default function AnalyticsPage() {
                     <defs>
                       {/* p10–p90: lightest band */}
                       <linearGradient id="agpBandOuter" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0D9488" stopOpacity={0.08} />
-                        <stop offset="100%" stopColor="#0D9488" stopOpacity={0.08} />
+                        <stop offset="0%" stopColor={tokens.brand.primary[600]} stopOpacity={0.08} />
+                        <stop offset="100%" stopColor={tokens.brand.primary[600]} stopOpacity={0.08} />
                       </linearGradient>
                       {/* p25–p75: darker band */}
                       <linearGradient id="agpBandInner" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#0D9488" stopOpacity={0.2} />
-                        <stop offset="100%" stopColor="#0D9488" stopOpacity={0.2} />
+                        <stop offset="0%" stopColor={tokens.brand.primary[600]} stopOpacity={0.2} />
+                        <stop offset="100%" stopColor={tokens.brand.primary[600]} stopOpacity={0.2} />
                       </linearGradient>
                     </defs>
 
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={tokens.neutral[200]} vertical={false} />
 
                     {/* Target range band (70–180 mg/dL) */}
                     <defs>
                       <linearGradient id="targetRange" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10B981" stopOpacity={0.06} />
-                        <stop offset="100%" stopColor="#10B981" stopOpacity={0.06} />
+                        <stop offset="0%" stopColor={tokens.glycemia.normal} stopOpacity={0.06} />
+                        <stop offset="100%" stopColor={tokens.glycemia.normal} stopOpacity={0.06} />
                       </linearGradient>
                     </defs>
 
                     {/* Threshold reference lines */}
-                    <ReferenceLine y={70} stroke="#F59E0B" strokeDasharray="4 4" strokeWidth={1} />
-                    <ReferenceLine y={180} stroke="#F59E0B" strokeDasharray="4 4" strokeWidth={1} />
-                    <ReferenceLine y={54} stroke="#EF4444" strokeDasharray="2 2" strokeWidth={1} />
-                    <ReferenceLine y={250} stroke="#EF4444" strokeDasharray="2 2" strokeWidth={1} />
+                    <ReferenceLine y={70} stroke={tokens.glycemia.high} strokeDasharray="4 4" strokeWidth={1} />
+                    <ReferenceLine y={180} stroke={tokens.glycemia.high} strokeDasharray="4 4" strokeWidth={1} />
+                    <ReferenceLine y={54} stroke={tokens.semantic.error} strokeDasharray="2 2" strokeWidth={1} />
+                    <ReferenceLine y={250} stroke={tokens.semantic.error} strokeDasharray="2 2" strokeWidth={1} />
 
                     <XAxis
                       dataKey="time"
-                      tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                      tick={{ fontSize: 11, fill: tokens.neutral[400] }}
                       tickLine={false}
-                      axisLine={{ stroke: "#E5E7EB" }}
+                      axisLine={{ stroke: tokens.neutral[200] }}
                       interval={11}
                     />
                     <YAxis
                       domain={[40, 350]}
-                      tick={{ fontSize: 11, fill: "#9CA3AF" }}
+                      tick={{ fontSize: 11, fill: tokens.neutral[400] }}
                       tickLine={false}
-                      axisLine={{ stroke: "#E5E7EB" }}
+                      axisLine={{ stroke: tokens.neutral[200] }}
                       width={36}
                       unit=" "
                     />
@@ -398,11 +399,11 @@ export default function AnalyticsPage() {
                         const slot = payload[0]?.payload as AgpSlot
                         if (!slot) return null
                         return (
-                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-lg text-xs space-y-0.5">
-                            <p className="font-semibold text-gray-900">{slot.time}</p>
-                            <p className="text-teal-700">{t("agpMedian")}: <strong>{slot.median}</strong> {t("unitMgdl")}</p>
-                            <p className="text-teal-500">{t("agpIqr")}: {slot.p25}–{slot.p75}</p>
-                            <p className="text-teal-300">{t("agpRange")}: {slot.p10}–{slot.p90}</p>
+                          <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-lg text-xs space-y-0.5">
+                            <p className="font-semibold text-foreground">{slot.time}</p>
+                            <p className="text-primary">{t("agpMedian")}: <strong>{slot.median}</strong> {t("unitMgdl")}</p>
+                            <p className="text-primary/70">{t("agpIqr")}: {slot.p25}–{slot.p75}</p>
+                            <p className="text-primary/40">{t("agpRange")}: {slot.p10}–{slot.p90}</p>
                           </div>
                         )
                       }}
@@ -420,7 +421,7 @@ export default function AnalyticsPage() {
                       type="monotone"
                       dataKey="p10"
                       stroke="none"
-                      fill="#FFFFFF"
+                      fill={tokens.white}
                       stackId="1"
                     />
 
@@ -436,7 +437,7 @@ export default function AnalyticsPage() {
                       type="monotone"
                       dataKey="p25"
                       stroke="none"
-                      fill="#FFFFFF"
+                      fill={tokens.white}
                       stackId="2"
                     />
 
@@ -444,18 +445,18 @@ export default function AnalyticsPage() {
                     <Area
                       type="monotone"
                       dataKey="median"
-                      stroke="#0D9488"
+                      stroke={tokens.brand.primary[600]}
                       strokeWidth={2}
                       fill="none"
                       dot={false}
-                      activeDot={{ r: 4, fill: "#0D9488", stroke: "white", strokeWidth: 2 }}
+                      activeDot={{ r: 4, fill: tokens.brand.primary[600], stroke: tokens.white, strokeWidth: 2 }}
                     />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
 
               {/* AGP legend */}
-              <div className="flex flex-wrap justify-center gap-4 text-xs text-gray-500">
+              <div className="flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1.5">
                   <span className="inline-block h-0.5 w-5 bg-teal-600" />
                   {t("agpLegendMedian")}
@@ -465,7 +466,7 @@ export default function AnalyticsPage() {
                   {t("agpLegendIqr")}
                 </span>
                 <span className="flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-5 rounded-sm bg-teal-600/08" />
+                  <span className="inline-block h-3 w-5 rounded-sm bg-teal-600/[0.08]" />
                   {t("agpLegendRange")}
                 </span>
               </div>
@@ -507,7 +508,7 @@ export default function AnalyticsPage() {
         {/* Time In Range */}
         <DiabeoCard variant="elevated" padding="md">
           {pageState === "loading" ? (
-            <div className="h-48 animate-pulse rounded-lg bg-gray-100" aria-busy="true" />
+            <div className="h-48 animate-pulse rounded-lg bg-muted" aria-busy="true" />
           ) : (
             <TimeInRangeChart data={tirChartData} />
           )}
@@ -516,7 +517,7 @@ export default function AnalyticsPage() {
         {/* Hypoglycemia */}
         <DiabeoCard variant="elevated" padding="md">
           {pageState === "loading" ? (
-            <div className="h-48 animate-pulse rounded-lg bg-gray-100" aria-busy="true" />
+            <div className="h-48 animate-pulse rounded-lg bg-muted" aria-busy="true" />
           ) : (
             <HypoglycemiaCounter data={hypoChartData} />
           )}

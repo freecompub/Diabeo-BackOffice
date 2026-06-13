@@ -85,12 +85,15 @@ export const COLOR_TOKEN_CSS = {
   "tir-very-high": "#F97316",
   // Semantic
   "success": "#10B981",
+  "success-fg": "#047857",
   "success-bg": "#ECFDF5",
   "success-border": "#A7F3D0",
   "warning": "#F59E0B",
+  "warning-fg": "#B45309",
   "warning-bg": "#FFFBEB",
   "warning-border": "#FDE68A",
   "error": "#EF4444",
+  "error-fg": "#B91C1C",
   "error-bg": "#FEF2F2",
   "error-border": "#FCA5A5",
   "info": "#3B82F6",
@@ -105,6 +108,11 @@ export const COLOR_TOKEN_CSS = {
   "gd-bg": "#FDF2F8",
   // Pur blanc — fonds de masquage des bandes de charts (≠ neutral-50 #FAFAFA).
   "white": "#FFFFFF",
+  // Hover / active shades (dark-mode safe — rebindable via CSS var)
+  "primary-hover": "#0F766E",       // teal-700, identique à primary-700
+  "primary-active": "#115E59",      // teal-800
+  "destructive-hover": "#B91C1C",   // red-700
+  "destructive-active": "#991B1B",  // red-800
 } as const
 
 export type ColorTokenName = keyof typeof COLOR_TOKEN_CSS

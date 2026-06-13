@@ -167,9 +167,9 @@ function DiabeoToggle({
           "rounded-full border-2 border-transparent",
           "transition-colors duration-200 ease-in-out",
           // Track color
-          checked ? "bg-teal-600" : "bg-gray-300",
+          checked ? "bg-primary" : "bg-muted",
           // Focus ring
-          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",
+          "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
           // Disabled cursor
           disabled && "cursor-not-allowed"
         )}

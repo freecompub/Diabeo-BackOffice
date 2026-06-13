@@ -94,7 +94,7 @@ export default function DevicePairingWizardPage() {
         <DashboardHeader title={tWiz("title")} />
         <Card>
           <CardContent className="py-8 text-center">
-            <p className="text-sm text-[var(--color-muted-foreground)]">
+            <p className="text-sm text-muted-foreground">
               {tWiz("noPatient")}
             </p>
             <Button
@@ -204,7 +204,7 @@ export default function DevicePairingWizardPage() {
                 </Badge>
                 <span
                   className={
-                    i === step ? "font-medium" : "text-[var(--color-muted-foreground)]"
+                    i === step ? "font-medium" : "text-muted-foreground"
                   }
                 >
                   {tWiz(`stepLabel.${labelKey}`)}
@@ -312,7 +312,7 @@ export default function DevicePairingWizardPage() {
           {step === 2 && (
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">
+                <dt className="text-muted-foreground">
                   {tWiz("summary.category")}
                 </dt>
                 <dd className="font-medium">
@@ -320,7 +320,7 @@ export default function DevicePairingWizardPage() {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">
+                <dt className="text-muted-foreground">
                   {tWiz("summary.brandModel")}
                 </dt>
                 <dd className="font-medium">
@@ -328,7 +328,7 @@ export default function DevicePairingWizardPage() {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">
+                <dt className="text-muted-foreground">
                   {tWiz("summary.sn")}
                 </dt>
                 <dd className="font-mono text-xs">
@@ -336,7 +336,7 @@ export default function DevicePairingWizardPage() {
                 </dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-[var(--color-muted-foreground)]">
+                <dt className="text-muted-foreground">
                   {tWiz("summary.connection")}
                 </dt>
                 <dd className="font-medium">

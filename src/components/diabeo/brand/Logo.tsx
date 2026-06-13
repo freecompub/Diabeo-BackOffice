@@ -1,4 +1,16 @@
+"use client"
+
+import { useId } from "react"
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
+import {
+  DROP_PATH,
+  WAVE_PATH,
+  DOT,
+  GLYPH_TRANSFORM,
+  WAVE_STROKE_WIDTH,
+  DOT_OUTLINE_STROKE_WIDTH,
+} from "./logo-paths"
 
 type LogoVariant = "full" | "mark" | "mono" | "inverse"
 type LogoProps = {
@@ -9,6 +21,18 @@ type LogoProps = {
 }
 
 const TITLE = "Diabeo — Supervision de l'insulinothérapie"
+
+// Couleurs depuis le design system (US-2269) — JAMAIS de hex hardcodés.
+// `tokens.brand.primary[600]` = teal principal, `[700]` = teal foncé pour
+// le gradient drop, `secondary[500]` = coral pour le point de données live.
+const COLOR = {
+  primaryLight: tokens.brand.primary[50],
+  primary: tokens.brand.primary[600],
+  primaryDark: tokens.brand.primary[700],
+  secondary: tokens.brand.secondary[500],
+  textPrimary: tokens.neutral[800],
+  white: tokens.white,
+} as const
 
 export function Logo({
   variant = "full",
@@ -33,10 +57,20 @@ export function LogoMark({
   title?: string
   tone?: "default" | "mono" | "inverse"
 }) {
-  const drop = tone === "inverse" ? "#FFFFFF" : tone === "mono" ? "currentColor" : "#0D9488"
-  const dropShadow = tone === "inverse" ? "#F0FDFA" : tone === "mono" ? "currentColor" : "#0F766E"
-  const wave = tone === "inverse" ? "#0D9488" : tone === "mono" ? "#FFFFFF" : "#FFFFFF"
-  const dot = tone === "mono" ? "currentColor" : "#F97316"
+  // Variant `mono` doit utiliser `currentColor` partout pour suivre la couleur
+  // du parent (impression noir-et-blanc, mode high-contrast, PDF d'export
+  // patient). Le wave en blanc hardcodé serait invisible sur fond clair.
+  // useId() garantit un ID unique par instance de LogoMark dans la page —
+  // évite les ID SVG dupliqués quand plusieurs logos coexistent (HTML invalid).
+  const gradientId = useId()
+
+  const drop =
+    tone === "inverse" ? COLOR.white : tone === "mono" ? "currentColor" : COLOR.primary
+  const dropShadow =
+    tone === "inverse" ? COLOR.primaryLight : tone === "mono" ? "currentColor" : COLOR.primaryDark
+  const wave =
+    tone === "inverse" ? COLOR.primary : tone === "mono" ? "currentColor" : COLOR.white
+  const dot = tone === "mono" ? "currentColor" : COLOR.secondary
 
   return (
     <svg
@@ -49,34 +83,37 @@ export function LogoMark({
     >
       <title>{title}</title>
       <defs>
-        <linearGradient id="diabeo-drop" x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor={drop} />
           <stop offset="100%" stopColor={dropShadow} />
         </linearGradient>
       </defs>
-      <g transform="rotate(-6 24 24)">
+      <g transform={GLYPH_TRANSFORM}>
         {/* Glucose drop */}
         <path
-          d="M24 3
-             C 33 14, 40 22, 40 29
-             A 16 16 0 1 1 8 29
-             C 8 22, 15 14, 24 3 Z"
-          fill={tone === "default" ? "url(#diabeo-drop)" : drop}
+          d={DROP_PATH}
+          fill={tone === "default" ? `url(#${gradientId})` : drop}
         />
         {/* CGM wave */}
         <path
-          d="M11 30
-             C 14 24, 18 24, 21 30
-             C 24 36, 28 36, 31 30
-             C 33 26, 35 26, 37 28"
+          d={WAVE_PATH}
           fill="none"
           stroke={wave}
-          strokeWidth="2.4"
+          strokeWidth={WAVE_STROKE_WIDTH}
           strokeLinecap="round"
           strokeLinejoin="round"
         />
-        {/* Live data point */}
-        <circle cx="37" cy="28" r="2.4" fill={dot} stroke={wave} strokeWidth="1" />
+        {/* Live data point.
+          * En mode `mono`, fill et wave valent tous deux `currentColor` →
+          * le stroke serait invisible (même couleur que le fill). On le désactive. */}
+        <circle
+          cx={DOT.cx}
+          cy={DOT.cy}
+          r={DOT.r}
+          fill={dot}
+          stroke={tone === "mono" ? "none" : wave}
+          strokeWidth={tone === "mono" ? 0 : DOT_OUTLINE_STROKE_WIDTH}
+        />
       </g>
     </svg>
   )
@@ -94,7 +131,7 @@ function LogoWordmark({
   tone?: "default" | "mono" | "inverse"
 }) {
   const text =
-    tone === "inverse" ? "#FFFFFF" : tone === "mono" ? "currentColor" : "#1F2937"
+    tone === "inverse" ? COLOR.white : tone === "mono" ? "currentColor" : COLOR.textPrimary
   return (
     <span
       className={cn("inline-flex items-center gap-2", className)}

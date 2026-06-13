@@ -43,6 +43,7 @@ import {
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
+import { Logo, LogoMark } from "@/components/diabeo/brand/Logo"
 import {
   UnreadCountProvider,
   useUnreadCountFromContext,
@@ -267,7 +268,7 @@ function SidebarNav({
               "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative",
               collapsed && "justify-center px-2",
               isActive
-                ? "bg-teal-50 text-teal-600"
+                ? "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
             aria-current={isActive ? "page" : undefined}
@@ -277,7 +278,7 @@ function SidebarNav({
               {showBadge && collapsed && (
                 // Mode collapsed : badge en overlay sur l'icône (top-right corner).
                 <span
-                  className="absolute -top-1 -end-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-red-700 px-1 text-[10px] font-semibold leading-none text-white"
+                  className="absolute -top-1 -end-1 flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-destructive px-1 text-[10px] font-semibold leading-none text-destructive-foreground"
                   aria-hidden="true"
                 >
                   {badgeDisplay}
@@ -290,7 +291,7 @@ function SidebarNav({
                 {showBadge && (
                   // Mode expanded : badge inline à droite.
                   <span
-                    className="ms-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-red-700 px-1.5 text-xs font-semibold text-white"
+                    className="ms-auto inline-flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-destructive px-1.5 text-xs font-semibold text-destructive-foreground"
                     aria-hidden="true"
                   >
                     {badgeDisplay}
@@ -362,7 +363,7 @@ function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
               ) : (
                 <Link
                   href={item.href}
-                  className="hover:text-teal-600 transition-colors"
+                  className="hover:text-primary transition-colors"
                 >
                   {item.label}
                 </Link>
@@ -470,14 +471,11 @@ export function NavigationShell({
           aria-label="Navigation principale"
         >
           {/* Logo */}
-          <div className="flex h-16 items-center gap-3 border-b border-border px-4">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-teal-600">
-              <span className="text-sm font-bold text-white">D</span>
-            </div>
-            {!collapsed && (
-              <span className="text-lg font-semibold text-foreground">
-                Diabeo
-              </span>
+          <div className="flex h-16 items-center border-b border-border px-4">
+            {collapsed ? (
+              <LogoMark size={32} />
+            ) : (
+              <Logo variant="full" size={28} />
             )}
           </div>
 
@@ -491,7 +489,7 @@ export function NavigationShell({
           <div className="border-t border-border p-2">
             <button
               onClick={() => toggleCollapsedCookie(!collapsed)}
-              className="flex w-full items-center justify-center rounded-lg p-2 text-gray-400 hover:bg-muted hover:text-gray-600 transition-colors"
+              className="flex w-full items-center justify-center rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
               aria-label={collapsed ? tNav("expandSidebar") : tNav("collapseSidebar")}
             >
               {collapsed ? (
@@ -507,7 +505,7 @@ export function NavigationShell({
             <button
               onClick={logout}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-red-50 hover:text-red-600",
+                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
                 collapsed && "justify-center px-2"
               )}
               aria-label={t("common.logout")}
@@ -522,13 +520,8 @@ export function NavigationShell({
         <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
           <SheetContent side="left" className="w-64 p-0" showCloseButton={false}>
             <SheetTitle className="sr-only">{tNav("navigation")}</SheetTitle>
-            <div className="flex h-16 items-center gap-3 border-b border-border px-6">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-teal-600">
-                <span className="text-sm font-bold text-white">D</span>
-              </div>
-              <span className="text-lg font-semibold text-foreground">
-                Diabeo
-              </span>
+            <div className="flex h-16 items-center border-b border-border px-6">
+              <Logo variant="full" size={28} />
             </div>
             <SidebarNav
               items={filteredItems}
@@ -542,7 +535,7 @@ export function NavigationShell({
                   closeMobile()
                   logout()
                 }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-red-50 hover:text-red-600"
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 aria-label={t("common.logout")}
               >
                 <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
@@ -604,7 +597,7 @@ export function NavigationShell({
                   aria-label={t("nav.profile")}
                 >
                   <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-teal-100 text-teal-700 text-xs font-medium">
+                    <AvatarFallback className="bg-primary/15 text-primary text-xs font-medium">
                       {initials}
                     </AvatarFallback>
                   </Avatar>
@@ -633,7 +626,7 @@ export function NavigationShell({
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={logout}
-                    className="text-red-600 focus:text-red-600"
+                    className="text-destructive focus:text-destructive"
                   >
                     <LogOut className="h-4 w-4" />
                     {t("common.logout")}

@@ -40,6 +40,7 @@
  */
 
 import { Temporal } from "temporal-polyfill"
+import { tokens, COLOR_TOKEN_CSS } from "@/design-system/tokens"
 import type { AppointmentListItem } from "./useAppointments"
 
 export interface ScheduleXEvent {
@@ -274,58 +275,58 @@ export const APPOINTMENT_CALENDARS = {
   scheduled: {
     colorName: "scheduled",
     lightColors: {
-      main: "#0D9488", // teal-600 (primary)
-      container: "#CCFBF1", // teal-100
-      onContainer: "#134E4A", // teal-900
+      main: tokens.brand.primary[600], // teal-600 (primary)
+      container: tokens.brand.primary[100], // teal-100
+      onContainer: tokens.brand.primary[900], // teal-900
     },
   },
   pendingValidation: {
     colorName: "pendingValidation",
     lightColors: {
-      main: "#F59E0B", // amber-500
-      container: "#FEF3C7", // amber-100
-      onContainer: "#78350F", // amber-900
+      main: tokens.glycemia.high, // amber-500 (#F59E0B)
+      container: COLOR_TOKEN_CSS["glycemia-high-bg"], // #FFFBEB (amber-50-ish, le plus proche dispo)
+      onContainer: "#78350F", // amber-900 — pas d'équivalent token exact
     },
   },
   confirmed: {
     colorName: "confirmed",
     lightColors: {
-      main: "#10B981", // emerald-500 (in-range glycemia)
-      container: "#D1FAE5", // emerald-100
-      onContainer: "#064E3B", // emerald-900
+      main: tokens.glycemia.normal, // emerald-500 / in-range glycemia (#10B981)
+      container: COLOR_TOKEN_CSS["glycemia-normal-bg"], // #ECFDF5 (emerald-50-ish, le plus proche dispo)
+      onContainer: "#064E3B", // emerald-900 — pas d'équivalent token exact
     },
   },
   cancelled: {
     colorName: "cancelled",
     lightColors: {
-      main: "#EF4444", // red-500
-      container: "#FEE2E2", // red-100
-      onContainer: "#7F1D1D", // red-900
+      main: tokens.semantic.error, // red-500 (#EF4444)
+      container: COLOR_TOKEN_CSS["glycemia-critical-bg"], // #FEE2E2 (red-100-ish)
+      onContainer: "#7F1D1D", // red-900 — pas d'équivalent token exact
     },
   },
   completed: {
     colorName: "completed",
     lightColors: {
-      main: "#6B7280", // gray-500
-      container: "#F3F4F6", // gray-100
-      onContainer: "#111827", // gray-900
+      main: tokens.neutral[500], // gray-500 (#6B7280)
+      container: tokens.neutral[100], // gray-100 (#F3F4F6)
+      onContainer: tokens.neutral[900], // gray-900 (#111827)
     },
   },
   noShow: {
     colorName: "noShow",
     lightColors: {
-      main: "#991B1B", // red-700 (very-low glycemia critical)
-      container: "#FEF2F2", // red-50
-      onContainer: "#7F1D1D", // red-900
+      main: tokens.glycemia.veryLow, // red-700 / very-low glycemia critical (#991B1B)
+      container: COLOR_TOKEN_CSS["glycemia-very-low-bg"], // #FEF2F2 (red-50-ish)
+      onContainer: "#7F1D1D", // red-900 — pas d'équivalent token exact
     },
   },
   // Fix M-3 — RDV sans heure (hour=null), visuellement distinct.
   unscheduled: {
     colorName: "unscheduled",
     lightColors: {
-      main: "#9CA3AF", // gray-400 (less prominent)
-      container: "#F3F4F6", // gray-100
-      onContainer: "#374151", // gray-700
+      main: tokens.neutral[400], // gray-400 (less prominent) (#9CA3AF)
+      container: tokens.neutral[100], // gray-100 (#F3F4F6)
+      onContainer: tokens.neutral[700], // gray-700 (#374151)
     },
   },
 } as const
