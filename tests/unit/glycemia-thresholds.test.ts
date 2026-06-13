@@ -7,21 +7,23 @@
  * page insulinothérapie) ferait afficher des zones erronées à des seuils
  * différents selon le composant — confusion clinique potentielle.
  *
- * Ce test fige les valeurs de consensus (tout changement devient explicite en
- * revue) ET vérifie que les formes consommatrices dérivent bien de la source
- * (pas de re-hardcode).
+ * Ce test (1) fige les valeurs de consensus — tout changement devient explicite
+ * en revue —, et (2) vérifie que CHAQUE forme consommatrice **dérive réellement**
+ * de la source : dérivation d'objet (charts/types) ET dérivation de comportement
+ * (GlycemiaValue.getGlycemiaZone, dont les bornes par défaut doivent coller à la
+ * source). Pas de scan d'import (contournable) : on teste l'usage effectif.
  */
 
 import { describe, it, expect } from "vitest"
-import { readFileSync } from "fs"
-import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
+import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
 import { DEFAULT_THRESHOLDS as CHART_DEFAULTS } from "@/components/diabeo/charts/types"
+import { getGlycemiaZone } from "@/components/diabeo/GlycemiaValue"
 
 describe("glycemia-thresholds — source de vérité", () => {
   it("fige les seuils de consensus ADA/ATTD (mg/dL)", () => {
     // Toute modification de ces valeurs doit être délibérée et validée
     // cliniquement (medical-domain-validator).
-    expect(GLYCEMIA_THRESHOLDS_MGDL).toEqual({
+    expect(G).toEqual({
       CRITICAL_LOW: 40,
       SEVERE_HYPO: 54,
       TARGET_LOW: 70,
@@ -32,7 +34,6 @@ describe("glycemia-thresholds — source de vérité", () => {
   })
 
   it("charts/types.DEFAULT_THRESHOLDS dérive de la source (pas de copie)", () => {
-    const G = GLYCEMIA_THRESHOLDS_MGDL
     expect(CHART_DEFAULTS).toEqual({
       criticalLow: G.CRITICAL_LOW,
       veryLow: G.SEVERE_HYPO,
@@ -45,20 +46,18 @@ describe("glycemia-thresholds — source de vérité", () => {
     })
   })
 
-  it("aucune régression de magie : les composants glycémie importent la source", () => {
-    // Garde structurel léger : si un composant ré-hardcode les seuils au lieu
-    // d'importer la source, ce test signale le risque de drift.
-    const files = [
-      "src/components/diabeo/CgmChart.tsx",
-      "src/components/diabeo/GlycemiaValue.tsx",
-      "src/components/diabeo/AgpPercentileChart.tsx",
-      "src/components/diabeo/charts/types.ts",
-    ]
-    for (const f of files) {
-      const src = readFileSync(f, "utf8")
-      expect(src, `${f} doit importer glycemia-thresholds`).toContain(
-        "@/lib/glycemia-thresholds",
-      )
-    }
+  it("GlycemiaValue.getGlycemiaZone classe aux bornes de la source (dérivation de comportement)", () => {
+    // Les bornes par défaut de GlycemiaValue doivent coller à la source : on
+    // sonde de part et d'autre de chaque seuil. Un re-hardcode divergent (ex.
+    // veryLow=50 au lieu de 54) ferait échouer ces assertions.
+    expect(getGlycemiaZone(G.SEVERE_HYPO - 1)).toBe("very-low") // < 54
+    expect(getGlycemiaZone(G.SEVERE_HYPO)).toBe("low") // 54 → hypo niveau 1
+    expect(getGlycemiaZone(G.TARGET_LOW)).toBe("normal") // 70 → cible basse
+    expect(getGlycemiaZone(G.TARGET_HIGH)).toBe("normal") // 180 → cible haute
+    expect(getGlycemiaZone(G.TARGET_HIGH + 1)).toBe("high") // 181 → hyper niveau 1
+    expect(getGlycemiaZone(G.SEVERE_HYPER)).toBe("high") // 250 (limite)
+    expect(getGlycemiaZone(G.SEVERE_HYPER + 1)).toBe("very-high") // 251 → hyper niveau 2
+    expect(getGlycemiaZone(G.CRITICAL_HIGH)).toBe("very-high") // 400 (limite)
+    expect(getGlycemiaZone(G.CRITICAL_HIGH + 1)).toBe("critical") // 401 → danger
   })
 })

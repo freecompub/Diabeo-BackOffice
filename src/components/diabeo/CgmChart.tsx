@@ -100,7 +100,7 @@ export function CgmChart({
           />
 
           <YAxis
-            domain={[40, 400]}
+            domain={[G.CRITICAL_LOW, G.CRITICAL_HIGH]}
             tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--color-border)" }}

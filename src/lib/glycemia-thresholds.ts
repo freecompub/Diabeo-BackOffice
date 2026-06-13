@@ -27,7 +27,7 @@ export const GLYCEMIA_THRESHOLDS_MGDL = {
   CRITICAL_LOW: 40,
   /** < this → severe hypoglycemia. */
   SEVERE_HYPO: 54,
-  /** in-range lower bound (severe→/hypo below). */
+  /** in-range lower bound (hypoglycemia below). */
   TARGET_LOW: 70,
   /** in-range upper bound (hyper above). */
   TARGET_HIGH: 180,

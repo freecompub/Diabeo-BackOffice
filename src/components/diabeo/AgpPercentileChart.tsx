@@ -154,8 +154,10 @@ export function AgpPercentileChart({
             tick={{ fontSize: 11 }}
           />
           <YAxis
-            domain={[40, 300]}
-            ticks={[40, 70, 140, 180, 250]}
+            // Seuils dérivés de la source unique ; 300 (headroom) et 140 (tick
+            // médian) sont purement graphiques, donc gardés littéraux.
+            domain={[G.CRITICAL_LOW, 300]}
+            ticks={[G.CRITICAL_LOW, G.TARGET_LOW, 140, G.TARGET_HIGH, G.SEVERE_HYPER]}
             stroke={tokens.neutral[500]}
             tick={{ fontSize: 11 }}
             label={{
