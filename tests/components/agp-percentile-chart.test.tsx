@@ -14,7 +14,10 @@
  *  - presence of chart elements (legend, recharts container) when data is valid
  */
 
-import { describe, it, expect } from "vitest"
+import { describe, it, expect, vi } from "vitest"
+
+vi.mock("next-intl", async () =>
+  (await import("../helpers/nextIntlMock")).makeNextIntlMock())
 import { render, screen } from "@testing-library/react"
 import {
   AgpPercentileChart,

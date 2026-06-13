@@ -11,6 +11,9 @@
  */
 
 import { describe, it, expect, vi } from "vitest"
+
+vi.mock("next-intl", async () =>
+  (await import("../helpers/nextIntlMock")).makeNextIntlMock())
 import { render, screen, fireEvent } from "@testing-library/react"
 import { QuickActionsPanel } from "@/components/diabeo/QuickActionsPanel"
 
