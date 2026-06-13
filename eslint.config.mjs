@@ -91,9 +91,21 @@ const eslintConfig = defineConfig([
           words: {
             // Ignore les segments sans lettre (chiffres/ponctuation/séparateurs)
             // et les caractères uniques (initiales d'avatar « D », « M »…).
-            // Notation statistique de percentiles AGP (P10/P25/P50/P75/P90) :
-            // exception documentée CLAUDE.md (laissée telle quelle, identique 3 langues).
-            exclude: ["^[\\s\\d!-/:-@[-`{-~]+$", "^.$", "^P(10|25|50|75|90)$"],
+            exclude: [
+              "^[\\s\\d!-/:-@[-`{-~]+$",
+              "^.$",
+              // Séparateurs typographiques (tiret cadratin/demi, point médian,
+              // puce) utilisés entre des {t()} — non traduisibles.
+              "^[\\s—–·•]+$",
+              // Notation statistique de percentiles AGP : exception documentée
+              // CLAUDE.md (laissée telle quelle, identique dans les 3 langues).
+              "^P(10|25|50|75|90)$",
+              // Unités de mesure (cliniques + anthropométriques) : universelles,
+              // identiques dans les 3 langues, même classe d'exception que mg/dL.
+              "^(mg/dL|mmol/L|g/L|U/h|kg|lbs|cm|in)$",
+              // Nom de produit (CLAUDE.md : noms de produits laissés tels quels).
+              "^Diabeo$",
+            ],
           },
         },
       ],

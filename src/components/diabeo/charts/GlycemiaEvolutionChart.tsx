@@ -264,7 +264,7 @@ export function GlycemiaEvolutionChart({
                             ],
                         }}
                       >
-                        {point.glucose} mg/dL — {getZoneLabel(point.glucose)}
+                        {t("tooltipGlucoseValue", { value: point.glucose })} — {getZoneLabel(point.glucose)}
                       </p>
                     )}
                     {point.bolusAmount != null && (

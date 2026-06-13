@@ -374,7 +374,7 @@ export function AppointmentCreateModal({
               aria-describedby="create-motif-help"
             />
             <p id="create-motif-help" className="text-xs text-muted-foreground">
-              {motif.length} / 200 · {t("motifEncryptedNote")}
+              {t("motifCounter", { count: motif.length, max: 200 })} · {t("motifEncryptedNote")}
             </p>
           </div>
 

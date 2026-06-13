@@ -334,13 +334,22 @@
     "loading": "جارٍ التحميل…",
     "loadError": "تعذّر تحميل قائمة المرضى.",
     "decryptIncident": "تعذّر عرض هويات المرضى — تم الإبلاغ عن حادثة تقنية. اتصل بالفريق التقني.",
-    "openConsultation": "فتح استشارة {name}"
+    "openConsultation": "فتح استشارة {name}",
+    "ageYears": "{age} سنة",
+    "stepProgress": "الخطوة {step} من {total} — {section}"
   },
   "patient": {
     "overview": "نظرة عامة",
     "glycemia": "سكر الدم",
     "treatments": "العلاجات",
-    "documents": "الوثائق"
+    "documents": "الوثائق",
+    "quickActions": {
+      "title": "إجراءات سريعة",
+      "logGlucose": "تسجيل قياس السكر",
+      "addMeal": "إضافة وجبة",
+      "calculateBolus": "حساب جرعة الأنسولين",
+      "exportReport": "تصدير تقرير"
+    }
   },
   "glycemia": {
     "veryLow": "منخفض جداً",
@@ -384,7 +393,8 @@
     "noHypo": "لا توجد نوبات نقص سكر",
     "hour": "الساعة",
     "glucoseMgdl": "سكر الدم (mg/dL)",
-    "zoneLabel": "المنطقة"
+    "zoneLabel": "المنطقة",
+    "tooltipGlucoseValue": "{value} mg/dL"
   },
   "tir": {
     "title": "الوقت ضمن الهدف",
@@ -394,7 +404,15 @@
     "veryLow": "منخفض جداً",
     "low": "منخفض",
     "high": "مرتفع",
-    "veryHigh": "مرتفع جداً"
+    "veryHigh": "مرتفع جداً",
+    "zoneVeryLow": "منخفض جدًا (<54)",
+    "zoneLow": "منخفض (54-69)",
+    "zoneInRange": "الهدف (70-180)",
+    "zoneHigh": "مرتفع (181-250)",
+    "zoneVeryHigh": "مرتفع جدًا (>250)",
+    "inTargetCenter": "ضمن الهدف",
+    "ariaSummary": "الوقت ضمن النطاق: {percent}%. {breakdown}",
+    "legendAria": "مفتاح نطاقات السكر"
   },
   "insulin": {
     "basal": "قاعدي",
@@ -627,7 +645,11 @@
       "notAllowed": "غير مسموح لك بقبول هذا البديل.",
       "network": "انقطع الاتصال بالشبكة. تحقق من الاتصال وأعد المحاولة."
     },
-    "lastSync": "آخر مزامنة في {time}"
+    "lastSync": "آخر مزامنة في {time}",
+    "errorBoundaryTitle": "خطأ في تحميل التقويم",
+    "errorBoundaryBody": "حدث خطأ أثناء عرض تقويم المواعيد. إذا استمرت المشكلة، يُرجى الاتصال بالدعم الفني.",
+    "errorRef": "المرجع: {ref}",
+    "motifCounter": "{count} / {max}"
   },
   "weekly": {
     "title": "العرض الأسبوعي",
@@ -1721,5 +1743,11 @@
     "title": "استعراض سجل التدقيق",
     "description": "سجل التدقيق غير القابل للتعديل في الخادم يعمل (US-2011 / US-2268) لكن واجهة الاستعراض لم تُسلَّم بعد. واجهة برمجة التطبيقات <code>/api/admin/audit-logs</code> تقبل عوامل التصفية (userId, resource, action, from, to).",
     "comingSoon": "قريبًا"
+  },
+  "loader": {
+    "defaultLabel": "جارٍ التحميل الآمن",
+    "defaultSublabel": "التحقق من التشفير وحقوق الوصول…",
+    "securityBadge": "مُستضيف بيانات صحية (HDS) · AES-256-GCM",
+    "inlineDefaultLabel": "جارٍ التحميل…"
   }
 }

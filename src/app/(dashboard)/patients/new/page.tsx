@@ -95,7 +95,11 @@ export default function NewPatientPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-ink-900">{t("newPatient")}</h1>
         <p className="text-sm text-ink-500 mt-1">
-          {t("step")} {step} {t("of")} 2 — {step === 1 ? t("identity") : t("pathology")}
+          {t("stepProgress", {
+            step,
+            total: 2,
+            section: step === 1 ? t("identity") : t("pathology"),
+          })}
         </p>
         <div
           className="flex gap-2 mt-3"

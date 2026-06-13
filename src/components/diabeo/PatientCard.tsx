@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 import { GlycemiaValue, type GlycemiaThresholds } from "./GlycemiaValue"
 import { ClinicalBadge, type Pathology } from "./ClinicalBadge"
@@ -85,6 +86,7 @@ export function PatientCard({
   onClick,
   className,
 }: PatientCardProps) {
+  const t = useTranslations("patients")
   const isInteractive = !!onClick
   const Component = isInteractive ? "button" : "div"
 
@@ -132,7 +134,7 @@ export function PatientCard({
               {name}
             </p>
             {age !== undefined && (
-              <p className="text-xs text-muted-foreground">{age} ans</p>
+              <p className="text-xs text-muted-foreground">{t("ageYears", { age })}</p>
             )}
           </div>
         </div>
@@ -144,7 +146,7 @@ export function PatientCard({
         {/* Latest glucose */}
         <div>
           <p className="text-xs text-muted-foreground mb-0.5">
-            Derniere glycemie
+            {t("colLastGlucose")}
           </p>
           {latestGlucose !== undefined ? (
             <GlycemiaValue
@@ -188,7 +190,7 @@ export function PatientCard({
       {!isActive && (
         <div className="absolute top-2 end-2">
           <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-            Inactif
+            {t("inactive")}
           </span>
         </div>
       )}

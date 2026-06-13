@@ -334,13 +334,22 @@
     "loading": "Chargement…",
     "loadError": "Impossible de charger la liste des patients.",
     "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique.",
-    "openConsultation": "Ouvrir la consultation de {name}"
+    "openConsultation": "Ouvrir la consultation de {name}",
+    "ageYears": "{age} ans",
+    "stepProgress": "Étape {step} sur {total} — {section}"
   },
   "patient": {
     "overview": "Vue d'ensemble",
     "glycemia": "Glycémie",
     "treatments": "Traitements",
-    "documents": "Documents"
+    "documents": "Documents",
+    "quickActions": {
+      "title": "Actions rapides",
+      "logGlucose": "Saisir une glycémie",
+      "addMeal": "Ajouter un repas",
+      "calculateBolus": "Calculer un bolus",
+      "exportReport": "Exporter un rapport"
+    }
   },
   "glycemia": {
     "veryLow": "Tres basse",
@@ -384,7 +393,8 @@
     "noHypo": "Aucune hypoglycemie",
     "hour": "Heure",
     "glucoseMgdl": "Glycemie (mg/dL)",
-    "zoneLabel": "Zone"
+    "zoneLabel": "Zone",
+    "tooltipGlucoseValue": "{value} mg/dL"
   },
   "tir": {
     "title": "Temps dans la cible",
@@ -394,7 +404,15 @@
     "veryLow": "Tres bas",
     "low": "Bas",
     "high": "Haut",
-    "veryHigh": "Tres haut"
+    "veryHigh": "Tres haut",
+    "zoneVeryLow": "Très bas (<54)",
+    "zoneLow": "Bas (54-69)",
+    "zoneInRange": "Cible (70-180)",
+    "zoneHigh": "Élevé (181-250)",
+    "zoneVeryHigh": "Très élevé (>250)",
+    "inTargetCenter": "dans la cible",
+    "ariaSummary": "Temps dans la cible : {percent}%. {breakdown}",
+    "legendAria": "Légende des zones de glycémie"
   },
   "insulin": {
     "basal": "Basale",
@@ -627,7 +645,11 @@
       "notAllowed": "Vous n'êtes pas autorisé à accepter cette alternative.",
       "network": "Connexion réseau interrompue. Vérifiez votre connexion et réessayez."
     },
-    "lastSync": "dernière synchronisation à {time}"
+    "lastSync": "dernière synchronisation à {time}",
+    "errorBoundaryTitle": "Erreur de chargement du calendrier",
+    "errorBoundaryBody": "Une erreur s'est produite lors de l'affichage du calendrier des rendez-vous. Si le problème persiste, contactez le support technique.",
+    "errorRef": "Réf : {ref}",
+    "motifCounter": "{count} / {max}"
   },
   "weekly": {
     "title": "Vue hebdomadaire",
@@ -1721,5 +1743,11 @@
     "title": "Consultation audit",
     "description": "Backend audit log immuable opérationnel (US-2011 / US-2268) mais l'interface de consultation n'est pas encore livrée. L'API <code>/api/admin/audit-logs</code> accepte les filtres (userId, resource, action, from, to).",
     "comingSoon": "Bientôt disponible"
+  },
+  "loader": {
+    "defaultLabel": "Chargement sécurisé en cours",
+    "defaultSublabel": "Vérification du chiffrement & des droits d'accès…",
+    "securityBadge": "Hébergeur de données de santé (HDS) · AES-256-GCM",
+    "inlineDefaultLabel": "Chargement…"
   }
 }

@@ -334,13 +334,22 @@
     "loading": "Loading…",
     "loadError": "Could not load the patient list.",
     "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team.",
-    "openConsultation": "Open {name}'s consultation"
+    "openConsultation": "Open {name}'s consultation",
+    "ageYears": "{age} y.o.",
+    "stepProgress": "Step {step} of {total} — {section}"
   },
   "patient": {
     "overview": "Overview",
     "glycemia": "Glycemia",
     "treatments": "Treatments",
-    "documents": "Documents"
+    "documents": "Documents",
+    "quickActions": {
+      "title": "Quick actions",
+      "logGlucose": "Log a glucose reading",
+      "addMeal": "Add a meal",
+      "calculateBolus": "Calculate a bolus",
+      "exportReport": "Export a report"
+    }
   },
   "glycemia": {
     "veryLow": "Very low",
@@ -384,7 +393,8 @@
     "noHypo": "No hypoglycemia events",
     "hour": "Hour",
     "glucoseMgdl": "Glucose (mg/dL)",
-    "zoneLabel": "Zone"
+    "zoneLabel": "Zone",
+    "tooltipGlucoseValue": "{value} mg/dL"
   },
   "tir": {
     "title": "Time in Range",
@@ -394,7 +404,15 @@
     "veryLow": "Very low",
     "low": "Low",
     "high": "High",
-    "veryHigh": "Very high"
+    "veryHigh": "Very high",
+    "zoneVeryLow": "Very low (<54)",
+    "zoneLow": "Low (54-69)",
+    "zoneInRange": "Target (70-180)",
+    "zoneHigh": "High (181-250)",
+    "zoneVeryHigh": "Very high (>250)",
+    "inTargetCenter": "in target",
+    "ariaSummary": "Time in range: {percent}%. {breakdown}",
+    "legendAria": "Glucose zones legend"
   },
   "insulin": {
     "basal": "Basal",
@@ -627,7 +645,11 @@
       "notAllowed": "You are not allowed to accept this alternative.",
       "network": "Network connection interrupted. Check your connection and retry."
     },
-    "lastSync": "last sync at {time}"
+    "lastSync": "last sync at {time}",
+    "errorBoundaryTitle": "Calendar loading error",
+    "errorBoundaryBody": "An error occurred while displaying the appointments calendar. If the problem persists, contact technical support.",
+    "errorRef": "Ref: {ref}",
+    "motifCounter": "{count} / {max}"
   },
   "weekly": {
     "title": "Weekly View",
@@ -1721,5 +1743,11 @@
     "title": "Audit consultation",
     "description": "Immutable backend audit log is operational (US-2011 / US-2268) but the consultation interface is not yet delivered. The <code>/api/admin/audit-logs</code> API accepts filters (userId, resource, action, from, to).",
     "comingSoon": "Coming soon"
+  },
+  "loader": {
+    "defaultLabel": "Secure loading in progress",
+    "defaultSublabel": "Verifying encryption & access rights…",
+    "securityBadge": "Health Data Host (HDS) · AES-256-GCM",
+    "inlineDefaultLabel": "Loading…"
   }
 }

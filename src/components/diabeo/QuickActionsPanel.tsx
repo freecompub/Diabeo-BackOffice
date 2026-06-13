@@ -14,6 +14,7 @@
 
 "use client"
 
+import { useTranslations } from "next-intl"
 import {
   Droplet, Utensils, Syringe, FileDown, type LucideIcon,
 } from "lucide-react"
@@ -30,25 +31,25 @@ export interface QuickActionsPanelProps {
 
 interface ActionDef {
   id: QuickAction
-  label: string
+  /** i18n key in the `patient.quickActions` namespace (translated at render). */
+  labelKey: string
   icon: LucideIcon
 }
 
-// Labels live here for now ; once i18n integration lands in the patient
-// area, replace with `useTranslations("patient.quickActions")` keys.
 const ACTIONS: readonly ActionDef[] = [
-  { id: "logGlucose", label: "Saisir une glycémie", icon: Droplet },
-  { id: "addMeal", label: "Ajouter un repas", icon: Utensils },
-  { id: "calculateBolus", label: "Calculer un bolus", icon: Syringe },
-  { id: "exportReport", label: "Exporter un rapport", icon: FileDown },
+  { id: "logGlucose", labelKey: "logGlucose", icon: Droplet },
+  { id: "addMeal", labelKey: "addMeal", icon: Utensils },
+  { id: "calculateBolus", labelKey: "calculateBolus", icon: Syringe },
+  { id: "exportReport", labelKey: "exportReport", icon: FileDown },
 ] as const
 
 export function QuickActionsPanel({ onAction }: QuickActionsPanelProps) {
+  const t = useTranslations("patient.quickActions")
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">Actions rapides</h3>
+      <h3 className="text-sm font-semibold text-gray-700 mb-3">{t("title")}</h3>
       <div className="flex flex-col gap-2">
-        {ACTIONS.map(({ id, label, icon: Icon }) => (
+        {ACTIONS.map(({ id, labelKey, icon: Icon }) => (
           <button
             key={id}
             type="button"
@@ -63,7 +64,7 @@ export function QuickActionsPanel({ onAction }: QuickActionsPanelProps) {
             {/* C3 (re-review) — visible <span> carries the accessible name,
                 aria-label removed to avoid screen-reader double-read. */}
             <Icon className="w-5 h-5 text-teal-700" aria-hidden="true" />
-            <span>{label}</span>
+            <span>{t(labelKey)}</span>
           </button>
         ))}
       </div>
