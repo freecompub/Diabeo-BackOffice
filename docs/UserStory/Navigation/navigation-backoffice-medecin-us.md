@@ -1,0 +1,239 @@
+# Série Navigation Backoffice — Médecin (révisée, **sans IA**)
+
+> **Périmètre :** Diabeo BackOffice (clinique), persona **`DOCTOR`** prioritaire (RBAC pour les autres rôles) — **Format B léger**
+> **Support visuel :** `docs/mockups/navigation.html` (maquette autoportante, 4 écrans)
+>
+> **Baselines référencées (non redéfinies) :**
+> `BASELINE-RBAC` (scope serveur par route + relation) · `BASELINE-AUDIT` (`AuditLog` immuable) ·
+> `BASELINE-DESIGN` (« Sérénité Active » : teal `#0D9488`, coral `#F97316`, statuts `#10B981/#F59E0B/#EF4444`, **tokens texte `-fg` foncés pour contraste AA**) ·
+> `BASELINE-I18N` (FR/AR + RTL) · `BASELINE-CLINICAL-SAFETY` (**aucun calcul clinique côté frontend** ; seuils issus de la **source unique** `clinical-bounds.ts` / `glycemia-thresholds.ts`) · `BASELINE-ENCOUNTER` (modèle `Encounter`, addendum append-only).
+>
+> **Décisions actées (cette révision) :**
+> - **D1** — La home du médecin est une **worklist de tri** (« Ma journée »), pas une simple liste de patients.
+> - **D2** — **Palette de commande `Ctrl/Cmd-K`** dans le périmètre de la série (accès n°1 au patient).
+> - **D3** — **Facturation & Administration hors sidebar clinique** (espace dédié), pas dans la nav médecin.
+> - **D4 — ZÉRO IA sur ces fonctionnalités.** Tout est déterministe : l'ex-« résumé LLM » devient un **tableau de bord calculé serveur** ; l'ex-« compte rendu LLM » devient un **éditeur rédigé par le PS**. Aucune inférence (cloud ou auto-hébergée) dans cette série.
+>
+> **Modèle de navigation : 2 systèmes** (au lieu de 3) — *global* (sidebar maigre + `Ctrl-K` + worklist) et *patient* (barre de contexte + onglets + mode revue, qui partagent le contexte patient).
+
+---
+
+## US-NAV-BO-001 — Navigation globale (sidebar maigre + transitions)
+
+### 👤 En tant que
+PS authentifié (`DOCTOR` / `NURSE` / `VIEWER` / `ADMIN`).
+
+### 🎯 Je veux / Afin de
+Une barre latérale persistante et **épurée** pour atteindre les destinations principales sans bruit, et garder l'espace au contenu clinique.
+
+### 📌 Description fonctionnelle
+- Sidebar gauche persistante sur toutes les pages, **destinations seulement** : Ma journée · Patients · Agenda · Messagerie · Documents · Analytics · Paramètres.
+- Items **filtrés par rôle (RBAC serveur)** — un item non autorisé **n'est pas rendu** (jamais masqué côté client).
+- Élément actif mis en évidence (teal `#0D9488`) **+ icône + surbrillance** (jamais la couleur seule).
+- Transitions **client-side** (Next.js 16 App Router / RSC) — pas de full reload.
+- Sur écran étroit : repli automatique en **drawer** (focus-trap, `Esc` ferme, retour de focus au déclencheur).
+- **RTL (AR)** : sidebar et drawer basculent à droite ; iconographie directionnelle (chevrons, retour) inversée.
+
+### 🔒 Items & visibilité par rôle
+| Section | DOCTOR | NURSE | VIEWER | ADMIN |
+|---|---|---|---|---|
+| Ma journée | ✅ | ✅ | ✅ (RO) | — |
+| Patients | ✅ | ✅ | ✅ (RO) | selon affectation |
+| Agenda | ✅ | ✅ | ✅ (RO) | — |
+| Messagerie | ✅ | ✅ | ⚠️ RO | — |
+| Documents | ✅ | ✅ | ✅ (RO) | — |
+| Analytics | ✅ | ⚠️ restreint | ✅ (RO) | ✅ |
+| Paramètres | ✅ | ✅ | ✅ | ✅ |
+
+> **Facturation** et **Administration (utilisateurs, tenant)** ne sont **pas** dans la sidebar clinique (**D3**) — espace dédié, hors périmètre de cette série.
+
+### ✔️ Critères d'acceptation
+- Sidebar visible partout ; chaque destination autorisée atteinte en 1 clic.
+- État actif distinct (couleur **+** icône **+** surbrillance) ; contenu mis à jour **sans full reload**.
+- Item non autorisé absent du DOM (vérifié par rôle).
+- Repli auto sous le breakpoint étroit ; drawer accessible clavier (ouverture, `Tab` piégé, `Esc`, retour focus).
+- Libellés/icônes FR/AR ; rendu RTL correct (sens, côté, chevrons).
+- Cibles : **≥ 24px (AA, desktop)** ; **≥ 44px** en contexte tactile (tablette).
+
+### 🧩 Règles métier
+- Le filtrage des items est **serveur** (jamais une simple classe `hidden`).
+- La sidebar reste maigre : toute nouvelle entrée doit être une **destination**, pas une action.
+
+---
+
+## US-NAV-BO-002 — Palette de commande & recherche rapide (`Ctrl/Cmd-K`)
+
+### 👤 En tant que
+PS authentifié cherchant à atteindre un patient ou une section le plus vite possible.
+
+### 🎯 Je veux / Afin de
+Une palette ouvrable au clavier pour **sauter à un patient** (de mon périmètre) ou **à une section** en une action, sans parcourir la hiérarchie.
+
+### 📌 Description fonctionnelle
+- Ouverture par `Ctrl/Cmd-K` (et via le champ de recherche du top header).
+- Deux familles de résultats : **Patients de mon périmètre** (recherche **scopée serveur**) et **Aller à** (sections autorisées).
+- Navigation clavier complète (`↑`/`↓`, `↵` ouvrir, `Esc` fermer), focus géré (retour au déclencheur à la fermeture).
+- Résultats patients = **métadonnées non-PII** d'identification (nom d'affichage, âge, pathologie, drapeau d'alerte) — pas de donnée de santé détaillée dans la liste.
+
+### ✔️ Critères d'acceptation
+- `Ctrl/Cmd-K` ouvre/ferme la palette partout ; entièrement utilisable au clavier (rôle dialog, focus piégé, `Esc`).
+- La recherche patient ne retourne **que le périmètre** du PS (filtrage serveur, jamais client).
+- Sélectionner un patient ouvre son dossier ; l'**accès au patient est journalisé** (`AuditLog`) à l'ouverture effective.
+- « Aller à » ne propose que des sections autorisées par le rôle.
+- FR/AR, RTL correct (alignement, sens de saisie).
+
+### 🧩 Règles métier
+- Recherche **scopée serveur** sur le périmètre (équipe / tenant).
+- La liste de résultats n'expose **aucune PII de santé** (uniquement identité + drapeau) ; le détail n'est chargé qu'à l'ouverture du dossier (cf. US-005).
+- `AuditLog` sur **ouverture de patient**, pas sur la frappe de recherche.
+
+### ⚠️ Points ouverts
+- Raccourcis secondaires de type « G puis J » (aller à Ma journée) : périmètre V1 ou V2 ?
+
+---
+
+## US-NAV-BO-003 — « Ma journée » (worklist de tri du médecin)
+
+### 👤 En tant que
+`DOCTOR` (déclinaison `NURSE` selon périmètre) au début ou au cours de sa journée.
+
+### 🎯 Je veux / Afin de
+Une **file de tri** qui me montre d'emblée qui a besoin de moi, pour prioriser sans ouvrir les dossiers un par un.
+
+### 📌 Description fonctionnelle
+Page d'accueil = sections de tri, chacune **calculée serveur, déterministe** :
+1. **Alertes glycémiques** (hypo &lt;54 / hyper &gt;250 / TIR bas) — drapeaux issus de la **source unique de seuils**.
+2. **Propositions d'ajustement en attente** (workflow `AdjustmentProposal`).
+3. **Rendez-vous du jour**.
+4. **Relances en attente** (silence saisie, RDV non confirmé, jamais synchronisé).
+5. **Messages non lus** (périmètre HDS).
+- Chaque ligne → ouverture du patient/contexte en 1 clic.
+- Statuts via les **tokens feedback** (`-fg` foncés, contraste AA) ; jamais la couleur seule (chip + libellé).
+
+### ✔️ Critères d'acceptation
+- Home du médecin = worklist (pas une liste brute) ; chaque section affiche un compteur.
+- Tous les drapeaux/seuils proviennent du **serveur** et de la **source unique** (`clinical-bounds.ts` / `glycemia-thresholds.ts`) — aucun calcul front.
+- Chaque item ouvre le bon contexte (dossier / proposition / RDV / message) en 1 clic, avec audit d'accès si donnée de santé.
+- Sections vides → état vide explicite (pas d'erreur).
+- FR/AR + RTL ; contraste AA des statuts vérifié.
+
+### 🧩 Règles métier
+- Périmètre **serveur** uniquement (patients de l'équipe / tenant).
+- **Aucune IA** : tri, drapeaux et compteurs sont déterministes.
+- Les seuils d'alerte sont **versionnés** (traçabilité de la règle ayant produit le drapeau).
+
+### ⚠️ Points ouverts
+- Personnalisation de l'ordre des sections par PS : V1 (fixe) ou V2 (configurable) ?
+
+---
+
+## US-NAV-BO-004 — Barre de contexte patient & switcher
+
+### 👤 En tant que
+PS ayant ouvert un dossier patient.
+
+### 🎯 Je veux / Afin de
+Garder le **contexte patient** visible en permanence et **changer de patient** sans repasser par la liste, pour fluidifier les allers-retours.
+
+### 📌 Description fonctionnelle
+- Barre persistante en haut du contexte patient : **identité** (nom, âge, pathologie, drapeaux d'alerte), **fil d'Ariane**, **retour** (Ma journée / liste), **actions rapides** (Nouvelle consultation, Message).
+- **Switcher patient** : récemment vus / épinglés (toujours **scopé serveur**).
+- Partagée par le dossier (onglets) **et** le mode revue → évite un 3ᵉ système de nav.
+
+### ✔️ Critères d'acceptation
+- Le contexte patient (identité + drapeaux) reste visible sur tous les onglets et en mode revue.
+- Le switcher ne propose que des patients du **périmètre** ; changer de patient journalise l'accès au nouveau patient.
+- « Nouvelle consultation » ouvre/reprend un `Encounter` (cf. US-006).
+- Drapeaux d'alerte cohérents avec « Ma journée » (même source serveur).
+- FR/AR + RTL (ordre identité, sens du fil d'Ariane, position du switcher).
+
+### 🧩 Règles métier
+- Le switcher et le « récemment vus » sont **scopés serveur** ; aucune fuite hors périmètre.
+- L'identité affichée est de la PII : déchiffrement **serveur**, accès **audité**.
+
+---
+
+## US-NAV-BO-005 — Navigation interne du dossier patient (onglets-routes)
+
+### 👤 En tant que
+PS consultant la fiche d'un patient de son périmètre.
+
+### 🎯 Je veux / Afin de
+Naviguer entre les sections du dossier via des **onglets** deep-linkables, pour atteindre vite la donnée pertinente et partager/retrouver une vue précise.
+
+### 📌 Description fonctionnelle
+Onglets : **Glycémie · Traitement · Dispositifs · Mode de vie · Documents · Historique · Messages**.
+- Onglets **sticky** au scroll, **implémentés comme des routes** (segments d'URL) → deep-link + `back`/`forward` cohérents.
+- Chargement **paresseux par onglet** via API sécurisée ; **déchiffrement PII serveur**.
+- Skeletons au chargement ; état actif `aria-current="page"`.
+
+### ✔️ Critères d'acceptation
+- Onglets accessibles **au clavier** (`Tab`/`Entrée` primaire, `aria-current`, focus visible) ; le comportement `back`/`forward` = historique d'onglets (pas de conflit avec un modèle `tablist` à flèches).
+- Onglet actif mis en évidence ; données chargées dynamiquement avec skeleton (`aria-busy`).
+- Onglets restent visibles en scrollant.
+- **Audit au niveau donnée** : l'`AuditLog` se déclenche à l'**accès à la PII déchiffrée côté API**, **pas** au simple rendu d'onglet → pas de double-log sur `back`/`forward`, pas de sur-audit.
+- `VIEWER` : tous les onglets en **lecture seule**.
+- FR/AR + RTL (ordre/sens des onglets, sticky).
+
+### 🧩 Règles métier
+- Données sensibles via API sécurisée ; **aucune statistique clinique calculée côté frontend** (TIR, moyennes, CV, GMI → projection serveur).
+- **Préchargement = métadonnées non-PII uniquement** ; la PII reste **lazy + auditée** (respect de la minimisation).
+- **Glycémie** : courbes + stats issues de CGM/relevés (pré-calculé serveur).
+- **Documents** : pipeline upload/extraction PDF (MinIO) ; **Messages** : messagerie périmètre HDS.
+- **Historique** : présentation **append-only** (addendum, jamais de modification du contenu finalisé).
+
+### ⚠️ Points ouverts
+- **Onglet Historique** — seuil de « changement cliniquement significatif » : ce qui crée une entrée d'historique vs une simple mise à jour (question d'historisation RGPD). À cadrer avec `medical-domain-validator`.
+
+---
+
+## US-NAV-BO-006 — Mode revue de consultation (**sans IA**)
+
+### 👤 En tant que
+`DOCTOR` en consultation (accès `NURSE` selon type d'entretien — à valider).
+
+### 🎯 Je veux / Afin de
+Un mode « revue » structuré en étapes pour analyser la situation et décider en sécurité — **entièrement déterministe**.
+
+### 📌 Description fonctionnelle
+Vue focalisée du dossier (réutilise la barre de contexte patient), menu d'étapes vertical :
+1. **Résumé (données)** — **tableau de bord calculé serveur** : TIR, moyenne, CV, GMI, **points d'alerte** (seuils versionnés), derniers changements. *Aucune prose générée, aucune IA.*
+2. **Analyse glycémie** · 3. **Analyse traitement** · 4. **Mode de vie** — vues des onglets existants.
+5. **Décisions médicales** — **workflow `AdjustmentProposal` existant** (proposition d'ajustement bolus **calcul déterministe backend**, bornes de sécurité, aperçu d'audit, **validation PS**).
+6. **Compte rendu** — **éditeur structuré rédigé par le médecin** (gabarits de champs ; valeurs déterministes **insérées** automatiquement, jamais générées), enregistré en **addendum immuable** référençant la **version des données**.
+
+- Ouverture depuis la fiche patient ; retour fiche en 1 clic.
+- **Navigation libre** entre étapes, ordre logique conservé ; « Décisions » et « Compte rendu » en **soft-gating** (accessibles, mais signalent de revoir les étapes amont).
+- Données **préchargées** (projection, **métadonnées non-PII**) pour limiter la latence.
+
+### ✔️ Critères d'acceptation
+- Étape active mise en évidence (`aria-current="step"`) ; passage d'étape **sans rechargement**.
+- L'ouverture du mode **crée ou reprend** un `Encounter` et journalise dans `AuditLog`.
+- L'étape 1 n'affiche que des valeurs **calculées serveur** (vérifiable : aucune stat calculée front).
+- L'étape 5 réutilise le workflow d'ajustement existant (proposition → bornes → validation/refus PS).
+- Le compte rendu peut être **enregistré en addendum immuable** et **référence la version des données** sur laquelle il s'appuie.
+- **Aucun appel d'inférence** (cloud ou auto-hébergé) dans tout le mode.
+- FR/AR + RTL (sens du stepper, soft-gating).
+
+### 🧩 Règles métier — sécurité clinique (critique)
+- **Aucune IA dans cette série** (décision **D4**). Toute valeur clinique vient du **graphe d'orchestration déterministe** backend.
+- Décisions médicales = workflow de **proposition d'ajustement bolus** existant (bornes `clinical-bounds.ts` + aperçu d'audit + acceptation explicite PS).
+- Étapes navigables librement, mais « Décisions » et « Compte rendu » **consomment** les étapes amont (soft-gating, non bloquant).
+- Le compte rendu finalisé est **append-only** (addendum) ; jamais de modification rétroactive.
+
+### ⚠️ Points ouverts
+1. **Frontière `Encounter`** — création (`encounterId` obligatoire) vs reprise d'un entretien ouvert (nullable) ; comportement en cas de **timeout de session HDS** au milieu d'une revue (brouillon persistant ?). Bloque l'historisation.
+2. **Revue `NURSE`** — types autorisés (éducation/suivi) vs réservés `DOCTOR` (décision thérapeutique). → validation médecin.
+3. **Gabarits de compte rendu** — jeu de gabarits V1 (générique) vs par type de consultation.
+
+---
+
+## 🔗 Dépendances transverses
+Projections de lecture (constantes, stats glycémiques) · **source unique de seuils** (`clinical-bounds.ts` / `glycemia-thresholds.ts`) · modèle `Encounter` + addendum · workflow `AdjustmentProposal` · pipeline documents (MinIO) · messagerie HDS · composants nav existants (`Sidebar`, `NavigationShell`) · baselines listées en tête.
+
+## 🧭 Synthèse des écarts vs la proposition initiale
+- **3 systèmes de nav → 2** (l'« entretien » devient une vue partageant le contexte patient).
+- **Ajout** : worklist « Ma journée » (US-003) + palette `Ctrl-K` (US-002) + barre de contexte/switcher (US-004).
+- **Suppression de l'IA** : ex-étapes LLM (résumé, compte rendu) → déterministes.
+- **Audit** déplacé au niveau **donnée** (API), pas au rendu d'onglet ; **préchargement** limité aux métadonnées non-PII.
+- **Facturation/Administration** sorties de la nav clinique.
