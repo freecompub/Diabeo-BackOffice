@@ -905,7 +905,8 @@ export default function InsulinTherapyPage() {
                   : t("icr.valueLabel")
               }
               type="number"
-              step="0.01"
+              // ISF affiché à 2 décimales (0,01) ; ICR à 1 décimale (0,1).
+              step={slotDialog.type === "isf" ? "0.01" : "0.1"}
               value={slotValue}
               onChange={(e) => setSlotValue(e.target.value)}
               hint={
