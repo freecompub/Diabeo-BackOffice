@@ -81,9 +81,9 @@ export function InvoicesListClient() {
       if (err instanceof Error && err.name === "AbortError") return
       if (seq !== fetchSeqRef.current || !mountedRef.current) return
       setState("error")
-      setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
+      setErrorMessage(err instanceof Error ? err.message : t("networkError"))
     }
-  }, [filterStatus])
+  }, [filterStatus, t])
 
   useEffect(() => {
     mountedRef.current = true
@@ -148,7 +148,7 @@ export function InvoicesListClient() {
       )}
 
       {invoices.length > 0 && (
-        <ul className="space-y-2" aria-label="Liste des factures">
+        <ul className="space-y-2" aria-label={t("listAria")}>
           {invoices.map((invoice) => (
             <li key={invoice.id} className="rounded-md border">
               <Link

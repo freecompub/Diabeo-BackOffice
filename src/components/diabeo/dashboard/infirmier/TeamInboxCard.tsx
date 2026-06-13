@@ -96,9 +96,12 @@ export function TeamInboxCard() {
                 <span className="flex-1 truncate text-sm">
                   {m.action} · {m.patientFirstName || t("patientFallback")}
                 </span>
-                <span className="text-xs text-muted-foreground">
+                <time
+                  className="text-xs text-muted-foreground"
+                  dateTime={new Date(m.createdAt).toISOString()}
+                >
                   {formatDate(m.createdAt, locale)}
-                </span>
+                </time>
               </li>
             ))}
           </ul>

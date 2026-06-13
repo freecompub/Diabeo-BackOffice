@@ -1381,7 +1381,9 @@
       "cabinet": "عيادة #{id}",
       "tooMany": "أكثر من 100 فاتورة مطابقة. ضيّق تصفية الحالة لتقليل القائمة.",
       "paginationNote": "ترقيم المؤشر V1.5 — مقتطع إلى أحدث 100.",
-      "filterStatusAria": "تصفية حسب الحالة"
+      "filterStatusAria": "تصفية حسب الحالة",
+      "networkError": "خطأ في الشبكة",
+      "listAria": "قائمة الفواتير"
     },
     "userDetail": {
       "loading": "جارٍ التحميل…",

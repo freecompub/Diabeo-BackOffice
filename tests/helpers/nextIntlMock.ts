@@ -16,6 +16,7 @@
  *     (await import("../helpers/nextIntlMock")).makeNextIntlMock())
  */
 
+import { createElement, Fragment, type ReactNode } from "react"
 import frMessages from "../../messages/fr.json"
 
 type Dict = Record<string, unknown>
@@ -41,12 +42,33 @@ export function makeNextIntlMock() {
       if (typeof raw !== "string") return namespace ? `${namespace}.${key}` : key
       return interpolate(raw, params)
     }
-    // t.rich : version simplifiée — concatène le texte des chunks.
-    t.rich = (key: string, tags?: Record<string, (chunks?: unknown) => unknown>) => {
+    // t.rich : invoque réellement les callbacks de balises (comme next-intl)
+    // au lieu de stripper le contenu — un test sur du contenu rich obtient
+    // ainsi le vrai rendu (élément React du tag), pas du faux positif.
+    t.rich = (
+      key: string,
+      tags?: Record<string, (chunks?: ReactNode) => ReactNode>,
+    ): ReactNode => {
       const raw = resolve(namespace, key)
       if (typeof raw !== "string") return namespace ? `${namespace}.${key}` : key
-      // Retire les balises <tag>…</tag> en gardant le contenu textuel.
-      return raw.replace(/<(\w+)>(.*?)<\/\1>/g, "$2").replace(/<(\w+)\s*\/>/g, "")
+      const parts: ReactNode[] = []
+      const re = /<(\w+)>(.*?)<\/\1>|<(\w+)\s*\/>/g
+      let last = 0
+      let m: RegExpExecArray | null
+      while ((m = re.exec(raw)) !== null) {
+        if (m.index > last) parts.push(raw.slice(last, m.index))
+        const tag = m[1] ?? m[3]
+        const inner = m[2] // undefined pour les balises auto-fermantes
+        const fn = tags?.[tag]
+        parts.push(fn ? fn(inner) : (inner ?? ""))
+        last = re.lastIndex
+      }
+      if (last < raw.length) parts.push(raw.slice(last))
+      return createElement(
+        Fragment,
+        null,
+        ...parts.map((p, i) => createElement(Fragment, { key: i }, p)),
+      )
     }
     return t
   }

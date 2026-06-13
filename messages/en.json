@@ -1381,7 +1381,9 @@
       "cabinet": "Practice #{id}",
       "tooMany": "More than 100 invoices match. Narrow the status filter to reduce the list.",
       "paginationNote": "Cursor pagination V1.5 — truncated to the 100 most recent.",
-      "filterStatusAria": "Filter by status"
+      "filterStatusAria": "Filter by status",
+      "networkError": "Network error",
+      "listAria": "Invoice list"
     },
     "userDetail": {
       "loading": "Loading…",
