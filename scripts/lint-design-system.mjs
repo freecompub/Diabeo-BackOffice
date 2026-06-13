@@ -86,7 +86,11 @@ const tailwindPattern = new RegExp(
 
 /**
  * Pattern 2 : CSS vars en arbitrary-value Tailwind dans les fichiers TSX/TS.
- * Ex: `bg-[var(--color-...)]` — à remplacer par une classe Tailwind sémantique.
+ * Ex : une classe "bg-" avec arbitrary-value "var(--color-NAME)" entre crochets
+ * — à remplacer par une classe Tailwind sémantique.
+ * NB : ne PAS écrire l'exemple sous forme de classe complète littérale ici —
+ * Tailwind v4 scanne ce fichier et génèrerait du CSS invalide à partir d'un
+ * placeholder comme "...".
  */
 const cssVarArbitraryPattern = /\[var\(--color-/g
 
