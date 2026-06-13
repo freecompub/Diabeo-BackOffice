@@ -15,6 +15,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useTranslations } from "next-intl"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 import {
   AgpPercentileChart,
@@ -80,16 +81,12 @@ const INITIAL_STATE: SectionState = { loading: true, error: null }
 /** Known API error codes — narrow to catch typos at compile time (M6). */
 type KnownApiErrorCode = "gdprConsentRequired" | "invalidPatientId" | "notFound"
 
-function describeError(status: number, code?: KnownApiErrorCode | string): string {
-  if (status === 403 && code === "gdprConsentRequired") {
-    return "Acceptez la politique de confidentialité dans vos préférences pour visualiser vos données."
-  }
-  if (status === 403) {
-    return "Accès refusé. Reconnectez-vous ou contactez votre médecin."
-  }
-  if (status === 401) return "Session expirée. Reconnectez-vous."
-  if (status >= 500) return "Service temporairement indisponible. Réessayez dans un instant."
-  return "Impossible de charger cette section."
+function describeErrorKey(status: number, code?: KnownApiErrorCode | string): string {
+  if (status === 403 && code === "gdprConsentRequired") return "errorGdprConsent"
+  if (status === 403) return "errorForbidden"
+  if (status === 401) return "errorSessionExpired"
+  if (status >= 500) return "errorServiceUnavailable"
+  return "errorLoadSection"
 }
 
 /** Fetch + parse a single endpoint into a discriminated union. Module-scope
@@ -105,16 +102,17 @@ async function fetchSection<T>(
         const body = (await res.json()) as { error?: string }
         code = body.error
       } catch { /* not JSON */ }
-      return { ok: false, error: describeError(res.status, code) }
+      return { ok: false, error: describeErrorKey(res.status, code) }
     }
     const data = (await res.json()) as T
     return { ok: true, data }
   } catch {
-    return { ok: false, error: "Vérifiez votre connexion réseau." }
+    return { ok: false, error: "errorNetworkCheck" }
   }
 }
 
 export default function PatientDashboardPage() {
+  const t = useTranslations("patientDashboard")
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.OneWeek)
   const [cgmPoints, setCgmPoints] = useState<{ time: string; glucose: number }[]>([])
   const [profile, setProfile] = useState<GlycemicProfileResponse | null>(null)
@@ -166,7 +164,7 @@ export default function PatientDashboardPage() {
       setCgmState({ loading: false, error: null })
     } else {
       const err = cgmSettled.status === "fulfilled" && !cgmSettled.value.ok
-        ? cgmSettled.value.error : "Vérifiez votre connexion réseau."
+        ? cgmSettled.value.error : "errorNetworkCheck"
       setCgmState({ loading: false, error: err })
     }
 
@@ -176,7 +174,7 @@ export default function PatientDashboardPage() {
       setMetricsState({ loading: false, error: null })
     } else {
       const err = metricsSettled.status === "fulfilled" && !metricsSettled.value.ok
-        ? metricsSettled.value.error : "Vérifiez votre connexion réseau."
+        ? metricsSettled.value.error : "errorNetworkCheck"
       setMetricsState({ loading: false, error: err })
     }
 
@@ -186,7 +184,7 @@ export default function PatientDashboardPage() {
       setAgpState({ loading: false, error: null })
     } else {
       const err = agpSettled.status === "fulfilled" && !agpSettled.value.ok
-        ? agpSettled.value.error : "Vérifiez votre connexion réseau."
+        ? agpSettled.value.error : "errorNetworkCheck"
       setAgpState({ loading: false, error: err })
     }
   }, [cgmRange, apiPeriod])
@@ -216,12 +214,12 @@ export default function PatientDashboardPage() {
     if (toastTimerRef.current !== null) {
       window.clearTimeout(toastTimerRef.current)
     }
-    setToast("Bientôt disponible")
+    setToast(t("comingSoon"))
     toastTimerRef.current = window.setTimeout(() => {
       setToast(null)
       toastTimerRef.current = null
     }, 2500)
-  }, [])
+  }, [t])
   useEffect(() => () => {
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current)
   }, [])
@@ -238,9 +236,9 @@ export default function PatientDashboardPage() {
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">Mon tableau de bord</h1>
+          <h1 className="text-2xl font-semibold text-gray-900">{t("pageTitle")}</h1>
           <p className="text-sm text-gray-600 mt-1">
-            Aperçu des {days} derniers jours.
+            {t("periodSubtitle", { days })}
           </p>
         </div>
         <PeriodSelector selectedPeriod={period} onPeriodSelected={setPeriod} />
@@ -260,17 +258,17 @@ export default function PatientDashboardPage() {
       {/* US-3361 — 24h CGM section + 4 KPI metrics. */}
       <section aria-labelledby="glycemia-section" className="space-y-4">
         <h2 id="glycemia-section" className="text-lg font-medium text-gray-800">
-          Glycémie sur 24 h
+          {t("glycemiaSectionTitle")}
         </h2>
         {metricsState.error && (
           // C5 — actionable error → role="alert" (assertive) per WCAG 4.1.3.
           <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
-            {metricsState.error}
+            {t(metricsState.error)}
           </div>
         )}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <MetricCard
-            title="Temps dans la cible"
+            title={t("metricTir")}
             value={tirPct !== undefined ? `${Math.round(tirPct)}` : "—"}
             unit="%"
             status={
@@ -281,14 +279,14 @@ export default function PatientDashboardPage() {
             loading={metricsState.loading}
           />
           <MetricCard
-            title="Glycémie moyenne"
+            title={t("metricAvgGlucose")}
             value={profile ? `${Math.round(profile.metrics.averageGlucoseMgdl)}` : "—"}
             unit="mg/dL"
             status="info"
             loading={metricsState.loading}
           />
           <MetricCard
-            title="Variabilité (CV)"
+            title={t("metricCv")}
             value={profile ? `${profile.metrics.coefficientOfVariation.toFixed(1)}` : "—"}
             unit="%"
             status={
@@ -299,7 +297,7 @@ export default function PatientDashboardPage() {
             loading={metricsState.loading}
           />
           <MetricCard
-            title="Indicateur de gestion du glucose (GMI)"
+            title={t("metricGmi")}
             value={profile ? profile.metrics.gmi.toFixed(1) : "—"}
             unit="%"
             status="info"
@@ -308,7 +306,7 @@ export default function PatientDashboardPage() {
         </div>
         {cgmState.error ? (
           <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
-            {cgmState.error}
+            {t(cgmState.error)}
           </div>
         ) : (
           <DiabeoCard variant="elevated" padding="md">
@@ -320,11 +318,11 @@ export default function PatientDashboardPage() {
       {/* US-3362 — AGP 7d résumé. */}
       <section aria-labelledby="agp-section" className="space-y-3">
         <h2 id="agp-section" className="text-lg font-medium text-gray-800">
-          Profil ambulatoire (AGP)
+          {t("agpSectionTitle")}
         </h2>
         {agpState.error ? (
           <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
-            {agpState.error}
+            {t(agpState.error)}
           </div>
         ) : (
           <DiabeoCard variant="elevated" padding="md">
@@ -335,7 +333,7 @@ export default function PatientDashboardPage() {
 
       {/* US-3363 — Quick actions side panel. */}
       <section aria-labelledby="quick-section">
-        <h2 id="quick-section" className="sr-only">Actions rapides</h2>
+        <h2 id="quick-section" className="sr-only">{t("quickActionsTitle")}</h2>
         <DiabeoCard variant="elevated" padding="md">
           <QuickActionsPanel onAction={handleQuickAction} />
         </DiabeoCard>

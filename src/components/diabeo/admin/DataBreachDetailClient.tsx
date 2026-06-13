@@ -16,9 +16,10 @@
 
 import { useCallback, useEffect, useState } from "react"
 import Link from "next/link"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { AlertCircle, AlertTriangle, ArrowLeft, ChevronRight, Clock, Loader2 } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
+import { Acronym } from "@/components/diabeo/Acronym"
 import { Badge } from "@/components/ui/badge"
 import {
   Dialog,
@@ -33,8 +34,6 @@ import type { Locale } from "@/i18n/config"
 import {
   type DataBreachStatus,
   type DataBreachDTOClient as DataBreachDTO,
-  SEVERITY_LABELS_FR as SEVERITY_LABELS,
-  STATUS_LABELS_FR as STATUS_LABELS,
   SEVERITY_VARIANT,
 } from "@/lib/types/data-breach"
 
@@ -42,6 +41,7 @@ type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 
 export function DataBreachDetailClient({ breachId }: { breachId: number }) {
   const locale = useLocale() as Locale
+  const t = useTranslations("dataBreachDetail")
   const [breach, setBreach] = useState<DataBreachDTO | null>(null)
   const [state, setState] = useState<AsyncState>("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -62,7 +62,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       const res = await fetch(`/api/admin/data-breaches/${breachId}`, { credentials: "include" })
       if (!res.ok) {
         setState("error")
-        setErrorMessage(res.status === 404 ? "Violation introuvable" : `HTTP ${res.status}`)
+        setErrorMessage(res.status === 404 ? t("errorNotFound") : `HTTP ${res.status}`)
         return
       }
       const data = (await res.json()) as { breach?: DataBreachDTO }
@@ -75,9 +75,9 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       setState("success")
     } catch (err) {
       setState("error")
-      setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
+      setErrorMessage(err instanceof Error ? err.message : t("errorNetwork"))
     }
-  }, [breachId])
+  }, [breachId, t])
 
   useEffect(() => {
     void fetchBreach()
@@ -109,9 +109,9 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       }
     } catch (err) {
       setState("error")
-      setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
+      setErrorMessage(err instanceof Error ? err.message : t("errorNetwork"))
     }
-  }, [breach, breachId, draftDescription, draftRemediation, draftCnilCase, fetchBreach])
+  }, [breach, breachId, draftDescription, draftRemediation, draftCnilCase, fetchBreach, t])
 
   // Fix L8 round 1 — validation inline `usersNotifiedCount` (vs alert natif).
   const usersNotifiedParsed = Number.parseInt(usersNotified, 10)
@@ -156,22 +156,22 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
         if (res.ok) {
           await fetchBreach()
         } else {
-          setErrorMessage(`Transition refusée (HTTP ${res.status})`)
+          setErrorMessage(t("errorTransitionRefused", { status: res.status }))
         }
       } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : "Erreur réseau")
+        setErrorMessage(err instanceof Error ? err.message : t("errorNetwork"))
       } finally {
         setTransitionPending(null)
       }
     },
-    [breachId, usersNotifiedParsed, fetchBreach],
+    [breachId, usersNotifiedParsed, fetchBreach, t],
   )
 
   if (state === "loading") {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground" aria-live="polite">
         <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        Chargement…
+        {t("loading")}
       </div>
     )
   }
@@ -181,7 +181,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       <div role="alert" className="rounded-md border border-destructive/20 bg-destructive/10 p-3">
         <p className="font-medium text-destructive flex items-center gap-2">
           <AlertCircle className="size-4" aria-hidden="true" />
-          Erreur de chargement
+          {t("errorLoadingHeading")}
         </p>
         {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
         <Link
@@ -189,7 +189,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
         >
           <ArrowLeft className="size-4" aria-hidden="true" />
-          Retour à la liste
+          {t("backToList")}
         </Link>
       </div>
     )
@@ -206,16 +206,16 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
-        Retour à la liste
+        {t("backToList")}
       </Link>
 
       <header className="space-y-2">
         <h1 className="text-2xl font-semibold">{breach.title}</h1>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant={SEVERITY_VARIANT[breach.severity]}>
-            {SEVERITY_LABELS[breach.severity]}
+            {t(`severity.${breach.severity}`)}
           </Badge>
-          <Badge variant="outline">{STATUS_LABELS[breach.status]}</Badge>
+          <Badge variant="outline">{t(`status.${breach.status}`)}</Badge>
         </div>
       </header>
 
@@ -239,11 +239,13 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
           <div className="text-sm">
             <p className="font-medium">
               {breach.cnilDeadlineExceeded
-                ? "Délai CNIL 72h DÉPASSÉ"
-                : `Délai CNIL 72h : ${breach.cnilDeadlineHoursRemaining}h restantes`}
+                ? t("cnilDeadlineExceeded")
+                : t("cnilDeadlineRemaining", { hours: breach.cnilDeadlineHoursRemaining })}
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              Règlement général sur la protection des données (RGPD), Art. 33 — notification CNIL obligatoire sous 72h après détection (severity high/critical).
+              {t.rich("cnilDeadlineDescription", {
+                rgpd: () => <Acronym code="RGPD" />,
+              })}
             </p>
           </div>
         </div>
@@ -252,21 +254,24 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       {/* Détails */}
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="detail-section">
         <h2 id="detail-section" className="font-semibold">
-          Détails
+          {t("sectionDetails")}
         </h2>
         <dl className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-          <Field label="Détectée le">{formatDate(breach.detectedAt, locale, { withTime: true })}</Field>
-          <Field label="Déclarée par">User #{breach.declaredBy ?? "—"}</Field>
+          <Field label={t("fieldDetectedAt")}>{formatDate(breach.detectedAt, locale, { withTime: true })}</Field>
+          <Field label={t("fieldDeclaredBy")}>{t("fieldDeclaredByValue", { id: breach.declaredBy ?? t("emptyDash") })}</Field>
           {breach.cnilNotifiedAt && (
-            <Field label="Notifiée CNIL le">{formatDate(breach.cnilNotifiedAt, locale, { withTime: true })}</Field>
+            <Field label={t("fieldCnilNotifiedAt")}>{formatDate(breach.cnilNotifiedAt, locale, { withTime: true })}</Field>
           )}
           {breach.usersNotifiedAt && (
-            <Field label="Utilisateurs notifiés le">
-              {formatDate(breach.usersNotifiedAt, locale, { withTime: true })} ({breach.usersNotifiedCount} users)
+            <Field label={t("fieldUsersNotifiedAt")}>
+              {t("fieldUsersNotifiedAtValue", {
+                date: formatDate(breach.usersNotifiedAt, locale, { withTime: true }),
+                count: breach.usersNotifiedCount,
+              })}
             </Field>
           )}
           {breach.closedAt && (
-            <Field label="Clôturée le">{formatDate(breach.closedAt, locale, { withTime: true })}</Field>
+            <Field label={t("fieldClosedAt")}>{formatDate(breach.closedAt, locale, { withTime: true })}</Field>
           )}
         </dl>
       </section>
@@ -275,18 +280,18 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       <section className="rounded-md border p-4 space-y-3" aria-labelledby="editable-section">
         <div className="flex items-center justify-between">
           <h2 id="editable-section" className="font-semibold">
-            Champs chiffrés (description, remédiation, dossier CNIL)
+            {t("sectionEditableHeading")}
           </h2>
           {!editing && breach.status !== "closed" && (
             <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => setEditing(true)}>
-              Modifier
+              {t("buttonEdit")}
             </DiabeoButton>
           )}
         </div>
         {editing ? (
           <>
             <label className="flex flex-col gap-1 text-sm">
-              <span>Description</span>
+              <span>{t("fieldDescription")}</span>
               <textarea
                 value={draftDescription}
                 onChange={(e) => setDraftDescription(e.target.value)}
@@ -295,7 +300,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span>Remédiation</span>
+              <span>{t("fieldRemediation")}</span>
               <textarea
                 value={draftRemediation}
                 onChange={(e) => setDraftRemediation(e.target.value)}
@@ -304,35 +309,35 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              <span>N° dossier CNIL</span>
+              <span>{t("fieldCnilCaseNumber")}</span>
               <input
                 type="text"
                 value={draftCnilCase}
                 onChange={(e) => setDraftCnilCase(e.target.value)}
                 className="rounded-md border bg-background px-3 py-2"
                 maxLength={64}
-                placeholder="Ex: CNIL-2026-XXX"
+                placeholder={t("placeholderCnilCase")}
               />
             </label>
             <div className="flex justify-end gap-2 pt-2">
               <DiabeoButton variant="diabeoTertiary" onClick={() => setEditing(false)}>
-                Annuler
+                {t("buttonCancel")}
               </DiabeoButton>
               <DiabeoButton onClick={() => void handleSave()} disabled={state === "saving"}>
-                {state === "saving" ? "Enregistrement…" : "Enregistrer"}
+                {state === "saving" ? t("buttonSaving") : t("buttonSave")}
               </DiabeoButton>
             </div>
           </>
         ) : (
           <dl className="space-y-3 text-sm">
-            <Field label="Description">
-              {breach.description ?? <span className="text-muted-foreground italic">—</span>}
+            <Field label={t("fieldDescription")}>
+              {breach.description ?? <span className="text-muted-foreground italic">{t("emptyDash")}</span>}
             </Field>
-            <Field label="Remédiation">
-              {breach.remediation ?? <span className="text-muted-foreground italic">—</span>}
+            <Field label={t("fieldRemediation")}>
+              {breach.remediation ?? <span className="text-muted-foreground italic">{t("emptyDash")}</span>}
             </Field>
-            <Field label="N° dossier CNIL">
-              {breach.cnilCaseNumber ?? <span className="text-muted-foreground italic">—</span>}
+            <Field label={t("fieldCnilCaseNumber")}>
+              {breach.cnilCaseNumber ?? <span className="text-muted-foreground italic">{t("emptyDash")}</span>}
             </Field>
           </dl>
         )}
@@ -342,14 +347,19 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
       {allowedTransitions.length > 0 && (
         <section className="rounded-md border p-4 space-y-3" aria-labelledby="workflow-section">
           <h2 id="workflow-section" className="font-semibold">
-            Workflow FSM (Règlement général sur la protection des données — RGPD, Art. 33)
+            {t.rich("sectionWorkflowHeading", {
+              rgpd: () => <Acronym code="RGPD" />,
+            })}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Statut actuel : <strong>{STATUS_LABELS[breach.status]}</strong>. Transitions autorisées :
+            {t.rich("workflowCurrentStatus", {
+              status: t(`status.${breach.status}`),
+              strong: (chunks) => <strong>{chunks}</strong>,
+            })}
           </p>
           {allowedTransitions.includes("notified_users") && (
             <label className="flex flex-col gap-1 text-sm">
-              <span>Nombre d&apos;utilisateurs notifiés (requis pour transition &quot;Utilisateurs notifiés&quot;)</span>
+              <span>{t("usersNotifiedLabel")}</span>
               <input
                 type="number"
                 min={0}
@@ -357,14 +367,14 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
                 value={usersNotified}
                 onChange={(e) => setUsersNotified(e.target.value)}
                 className="rounded-md border bg-background px-3 py-2 max-w-[200px]"
-                placeholder="Ex: 1500"
+                placeholder={t("placeholderUsersNotified")}
                 aria-describedby="users-notified-help"
                 aria-invalid={usersNotified !== "" && !isUsersNotifiedValid}
               />
               {/* Fix L8 round 1 — validation inline (vs alert natif). */}
               {usersNotified !== "" && !isUsersNotifiedValid && (
                 <span id="users-notified-help" className="text-xs text-destructive" role="alert">
-                  Entier ≥ 0 requis.
+                  {t("usersNotifiedError")}
                 </span>
               )}
             </label>
@@ -380,9 +390,9 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
                   onClick={() => requestTransition(to)}
                   disabled={transitionPending !== null || disabledForUsers}
                 >
-                  {transitionPending === to ? "…" : (
+                  {transitionPending === to ? t("transitionPending") : (
                     <>
-                      {STATUS_LABELS[to]}
+                      {t(`status.${to}`)}
                       <ChevronRight className="size-3.5 ml-1" aria-hidden="true" />
                     </>
                   )}
@@ -411,19 +421,21 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {confirmTransition && `Transition vers "${STATUS_LABELS[confirmTransition]}"`}
+              {confirmTransition && t("dialogTransitionTitle", { status: t(`status.${confirmTransition}`) })}
             </DialogTitle>
             <DialogDescription>
-              Action tracée dans le journal d&apos;audit immuable (forensique CNIL/ANS).
-              {(confirmTransition === "notified_cnil"
-                || confirmTransition === "notified_users"
-                || confirmTransition === "closed") &&
-                " Cette transition est irréversible."}
+              {t.rich("dialogTransitionDescription", {
+                irreversible: (confirmTransition === "notified_cnil"
+                  || confirmTransition === "notified_users"
+                  || confirmTransition === "closed")
+                  ? () => <span>{" "}{t("dialogTransitionIrreversible")}</span>
+                  : () => null,
+              })}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DiabeoButton variant="diabeoTertiary" onClick={() => setConfirmTransition(null)}>
-              Annuler
+              {t("buttonCancel")}
             </DiabeoButton>
             <DiabeoButton
               variant={confirmTransition === "closed" ? "diabeoDestructive" : "diabeoPrimary"}
@@ -431,7 +443,7 @@ export function DataBreachDetailClient({ breachId }: { breachId: number }) {
                 if (confirmTransition) void executeTransition(confirmTransition)
               }}
             >
-              Confirmer la transition
+              {t("buttonConfirmTransition")}
             </DiabeoButton>
           </DialogFooter>
         </DialogContent>

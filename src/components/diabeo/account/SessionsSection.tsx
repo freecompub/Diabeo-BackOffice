@@ -18,7 +18,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useLocale } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { Monitor, Smartphone, Tablet, Trash2, ShieldCheck, AlertCircle } from "lucide-react"
 import { DiabeoButton } from "@/components/diabeo/DiabeoButton"
 import { DiabeoFormSection } from "@/components/diabeo/DiabeoFormSection"
@@ -72,6 +72,7 @@ function summarizeUserAgent(ua: string | null): string {
 }
 
 export function SessionsSection() {
+  const t = useTranslations("sessionsSection")
   const locale = useLocale() as Locale
   const [sessions, setSessions] = useState<SessionDTO[]>([])
   const [state, setState] = useState<AsyncState>("idle")
@@ -196,12 +197,12 @@ export function SessionsSection() {
 
   return (
     <DiabeoFormSection
-      title="Sessions actives"
-      description="Liste des appareils connectés à votre compte. Révoquez les sessions suspectes ou anciennes."
+      title={t("title")}
+      description={t("description")}
     >
       {state === "loading" && (
         <p className="text-sm text-muted-foreground" aria-live="polite">
-          Chargement des sessions…
+          {t("loading")}
         </p>
       )}
 
@@ -212,7 +213,7 @@ export function SessionsSection() {
         >
           <AlertCircle className="size-4 text-destructive shrink-0 mt-0.5" aria-hidden="true" />
           <div>
-            <p className="font-medium text-destructive">Impossible de charger les sessions</p>
+            <p className="font-medium text-destructive">{t("loadError")}</p>
             {errorMessage && (
               <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>
             )}
@@ -222,19 +223,19 @@ export function SessionsSection() {
               onClick={() => void fetchSessions()}
               className="mt-2"
             >
-              Réessayer
+              {t("retry")}
             </DiabeoButton>
           </div>
         </div>
       )}
 
       {state === "success" && sessions.length === 0 && (
-        <p className="text-sm text-muted-foreground">Aucune session active.</p>
+        <p className="text-sm text-muted-foreground">{t("empty")}</p>
       )}
 
       {state === "success" && sessions.length > 0 && (
         <>
-          <ul className="space-y-2" aria-label="Sessions actives">
+          <ul className="space-y-2" aria-label={t("title")}>
             {sessions.map((session) => {
               const DeviceIcon = getDeviceIcon(session.userAgent)
               const isRevoking = revokingIds.has(session.id)
@@ -254,7 +255,7 @@ export function SessionsSection() {
                         </span>
                         {session.isCurrent && (
                           <Badge variant="default" className="text-[10px]">
-                            Cette session
+                            {t("currentSession")}
                           </Badge>
                         )}
                         {session.mfaVerified && (
@@ -265,7 +266,7 @@ export function SessionsSection() {
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-1">
-                        {session.ipAddress ?? "IP inconnue"} · Dernière activité {formatRelativeTime(session.lastSeenAt, locale)}
+                        {session.ipAddress ?? t("unknownIp")} · {t("lastActivity")} {formatRelativeTime(session.lastSeenAt, locale)}
                       </p>
                     </div>
                   </div>
@@ -275,10 +276,10 @@ export function SessionsSection() {
                       size="sm"
                       onClick={() => setPendingConfirm(session.id)}
                       disabled={isRevoking}
-                      aria-label={`Révoquer la session ${summarizeUserAgent(session.userAgent)}`}
+                      aria-label={t("revokeAriaLabel", { device: summarizeUserAgent(session.userAgent) })}
                     >
                       <Trash2 className="size-3.5 mr-1" aria-hidden="true" />
-                      {isRevoking ? "Révocation…" : "Révoquer"}
+                      {isRevoking ? t("revoking") : t("revoke")}
                     </DiabeoButton>
                   )}
                 </li>
@@ -289,7 +290,7 @@ export function SessionsSection() {
           {otherSessionsCount > 0 && (
             <div className="flex items-center justify-between pt-3 mt-3 border-t">
               <p className="text-sm text-muted-foreground">
-                {otherSessionsCount} {otherSessionsCount > 1 ? "autres sessions" : "autre session"}
+                {t("otherSessionsCount", { count: otherSessionsCount })}
               </p>
               <DiabeoButton
                 variant="diabeoTertiary"
@@ -298,10 +299,10 @@ export function SessionsSection() {
                 disabled={revokeAllState === "loading"}
               >
                 {revokeAllState === "loading"
-                  ? "Révocation…"
+                  ? t("revoking")
                   : revokeAllState === "success"
-                  ? "✓ Révoquées"
-                  : "Révoquer toutes les autres"}
+                  ? t("revokedSuccess")
+                  : t("revokeAllOthers")}
               </DiabeoButton>
             </div>
           )}
@@ -327,21 +328,21 @@ export function SessionsSection() {
           <DialogHeader>
             <DialogTitle>
               {pendingConfirm === "all"
-                ? "Révoquer toutes les autres sessions ?"
-                : "Révoquer cette session ?"}
+                ? t("confirmRevokeAllTitle")
+                : t("confirmRevokeOneTitle")}
             </DialogTitle>
             <DialogDescription>
               {pendingConfirm === "all"
-                ? "Tous vos autres appareils (téléphone, autre PC) seront déconnectés immédiatement."
-                : "L'appareil sera déconnecté immédiatement."}
+                ? t("confirmRevokeAllDesc")
+                : t("confirmRevokeOneDesc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <DiabeoButton variant="diabeoTertiary" onClick={() => setPendingConfirm(null)}>
-              Annuler
+              {t("cancel")}
             </DiabeoButton>
             <DiabeoButton variant="diabeoDestructive" onClick={handleConfirmAccept}>
-              Confirmer la révocation
+              {t("confirmRevoke")}
             </DiabeoButton>
           </DialogFooter>
         </DialogContent>

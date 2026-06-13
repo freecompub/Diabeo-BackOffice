@@ -1,5 +1,7 @@
 "use client"
 
+import { useTranslations } from "next-intl"
+
 /**
  * CGM Chart — US-803.
  *
@@ -44,10 +46,11 @@ export function CgmChart({
   targetHigh = 180,
   height = 320,
 }: CgmChartProps) {
+  const t = useTranslations("cgmChart")
   return (
     <div
       role="img"
-      aria-label={`Graphique glycemique — ${data.length} mesures, cible ${targetLow}-${targetHigh} mg/dL`}
+      aria-label={t("figureAriaLabel", { count: data.length, low: targetLow, high: targetHigh })}
     >
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -113,7 +116,7 @@ export function CgmChart({
                 <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card,white)] px-3 py-2 shadow-md">
                   <p className="text-xs text-[var(--color-muted-foreground)]">{point.time}</p>
                   <p className="text-sm font-semibold" style={{ color }}>
-                    {point.glucose} mg/dL
+                    {t("tooltipValue", { value: point.glucose })}
                   </p>
                 </div>
               )
@@ -135,25 +138,25 @@ export function CgmChart({
       <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-[var(--color-muted-foreground)]">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-normal)]" />
-          Cible ({targetLow}–{targetHigh})
+          {t("legendTarget", { low: targetLow, high: targetHigh })}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-high)]" />
-          Élevé (&gt;{targetHigh})
+          {t("legendHigh", { high: targetHigh })}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-[var(--color-glycemia-low)]" />
-          Bas (&lt;{targetLow})
+          {t("legendLow", { low: targetLow })}
         </span>
       </div>
 
       {/* Accessible data table for screen readers (sr-only) */}
-      <table className="sr-only" aria-label="Données glycémiques détaillées">
+      <table className="sr-only" aria-label={t("tableAriaLabel")}>
         <thead>
           <tr>
-            <th scope="col">Heure</th>
-            <th scope="col">Glycémie (mg/dL)</th>
-            <th scope="col">Zone</th>
+            <th scope="col">{t("colTime")}</th>
+            <th scope="col">{t("colGlucose")}</th>
+            <th scope="col">{t("colZone")}</th>
           </tr>
         </thead>
         <tbody>
@@ -161,7 +164,7 @@ export function CgmChart({
             <tr key={point.time}>
               <td>{point.time}</td>
               <td>{point.glucose}</td>
-              <td>{getZoneLabel(point.glucose, targetLow, targetHigh)}</td>
+              <td>{t(getZoneLabelKey(point.glucose, targetLow, targetHigh))}</td>
             </tr>
           ))}
         </tbody>
@@ -170,12 +173,13 @@ export function CgmChart({
   )
 }
 
-function getZoneLabel(value: number, low: number, high: number): string {
-  if (value < 54) return "Hypo sévère"
-  if (value < low) return "Hypo"
-  if (value <= high) return "Normal"
-  if (value <= 250) return "Élevé"
-  return "Hyper sévère"
+/** Maps a glucose value to its i18n zone key (translated at the call site). */
+function getZoneLabelKey(value: number, low: number, high: number): string {
+  if (value < 54) return "zoneVeryLow"
+  if (value < low) return "zoneLow"
+  if (value <= high) return "zoneNormal"
+  if (value <= 250) return "zoneHigh"
+  return "zoneVeryHigh"
 }
 
 function getGlucoseColor(value: number, low: number, high: number): string {
