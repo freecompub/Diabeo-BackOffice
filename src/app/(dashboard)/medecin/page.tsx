@@ -21,6 +21,8 @@ import { KpiSection } from "@/components/diabeo/dashboard/medecin/KpiSection"
 import { RecallListCard } from "@/components/diabeo/dashboard/infirmier/RecallListCard"
 // US-2602 (Ma journée) incr. 2 — Propositions d'ajustement en attente.
 import { PendingProposalsCard } from "@/components/diabeo/dashboard/medecin/PendingProposalsCard"
+// US-2602 (Ma journée) incr. 3 — Messages non lus (liste).
+import { UnreadMessagesCard } from "@/components/diabeo/dashboard/medecin/UnreadMessagesCard"
 
 const ALLOWED_ROLES = new Set(["DOCTOR", "NURSE", "ADMIN"])
 
@@ -43,6 +45,7 @@ export default async function MedecinDashboardPage() {
         <RecallListCard />
         <PendingProposalsCard />
       </div>
+      <UnreadMessagesCard />
       <KpiSection />
     </main>
   )

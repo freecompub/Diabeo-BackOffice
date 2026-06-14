@@ -1470,6 +1470,16 @@
       "valueTransition": "{from} ← {to}",
       "changeAria": "تغيّر بنسبة {percent}٪"
     },
+    "medecinMessages": {
+      "title": "رسائل غير مقروءة",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل الرسائل.",
+      "emptyTitle": "لا توجد رسائل غير مقروءة",
+      "emptyMessage": "صندوق الوارد محدّث.",
+      "previewFallback": "(رسالة مشفّرة)",
+      "unreadAria": "{count, plural, zero {# رسالة غير مقروءة} one {# رسالة غير مقروءة} two {# رسالتان غير مقروءتين} few {# رسائل غير مقروءة} many {# رسالة غير مقروءة} other {# رسالة غير مقروءة}}",
+      "openThread": "فتح المحادثة"
+    },
     "nurseTeamInbox": {
       "title": "تنسيق الفريق",
       "loading": "جارٍ التحميل…",

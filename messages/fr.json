@@ -1470,6 +1470,16 @@
       "valueTransition": "{from} → {to}",
       "changeAria": "Variation de {percent} %"
     },
+    "medecinMessages": {
+      "title": "Messages non lus",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les messages.",
+      "emptyTitle": "Aucun message non lu",
+      "emptyMessage": "Boîte de réception à jour.",
+      "previewFallback": "(message chiffré)",
+      "unreadAria": "{count, plural, one {# message non lu} other {# messages non lus}}",
+      "openThread": "Ouvrir la conversation"
+    },
     "nurseTeamInbox": {
       "title": "Coordination équipe",
       "loading": "Chargement…",

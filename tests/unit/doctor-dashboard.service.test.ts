@@ -18,13 +18,22 @@ import { prismaMock } from "../helpers/prisma-mock"
 vi.mock("@/lib/access-control", () => ({
   getAccessiblePatientIds: vi.fn(),
 }))
+// Isolate `unreadThreadsQuery` from the heavy messaging service (pepper/env,
+// redis, encryption) — only `listThreads` + the bounds constant are consumed.
+vi.mock("@/lib/services/messaging.service", () => ({
+  messagingService: { listThreads: vi.fn() },
+  MESSAGING_BOUNDS: { MAX_THREADS_PER_QUERY: 100 },
+}))
 import {
   urgenciesQuery, appointmentsQuery,
   patientsAtRiskQuery, kpisQuery, pendingProposalsQuery,
+  unreadThreadsQuery,
 } from "@/lib/services/doctor-dashboard.service"
 import { getAccessiblePatientIds } from "@/lib/access-control"
+import { messagingService } from "@/lib/services/messaging.service"
 
 const mockedAccessible = vi.mocked(getAccessiblePatientIds)
+const mockedListThreads = vi.mocked(messagingService.listThreads)
 // Prisma's `groupBy` has a complex generic signature that defeats
 // vitest-mock-extended's deep auto-mock typing ; cast once here so test
 // `mockResolvedValue` calls type-check under CI's stricter tsc.
@@ -42,7 +51,10 @@ const pm = prismaMock as unknown as {
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   mockedAccessible.mockReset()
+  mockedListThreads.mockReset()
 })
+
+const CTX = { ipAddress: "127.0.0.1", userAgent: "test", requestId: "req-1" }
 
 // ─── US-2401 urgencies ───────────────────────────────────────────────────
 
@@ -402,5 +414,45 @@ describe("pendingProposalsQuery (US-2602)", () => {
       && d.metadata?.kind === "dashboard.medecin.pendingProposals",
     )
     expect(perPatient).toBeDefined()
+  })
+})
+
+// ─── US-2602 unread threads ──────────────────────────────────────────────
+
+describe("unreadThreadsQuery (US-2602)", () => {
+  const thread = (key: string, unread: number, at: string) => ({
+    conversationKey: key, otherUserId: 42, patientPublicRef: "ab12cd34",
+    lastMessage: {
+      id: `m-${key}`, fromUserId: 42, bodyPreview: "Bonjour",
+      bodyPreviewTruncated: false, createdAt: new Date(at), isRead: false,
+    },
+    unreadCount: unread,
+  })
+
+  it("calls listThreads with poll trigger (coalesced audit)", async () => {
+    mockedListThreads.mockResolvedValue([] as any)
+    await unreadThreadsQuery.forCaller(1, CTX as any)
+    expect(mockedListThreads).toHaveBeenCalledWith(1, CTX, 100, "poll")
+  })
+
+  it("keeps only threads with unreadCount > 0 and maps the shape", async () => {
+    mockedListThreads.mockResolvedValue([
+      thread("k1", 2, "2026-06-12T10:00:00Z"),
+      thread("k2", 0, "2026-06-12T09:00:00Z"), // read → dropped
+    ] as any)
+    const out = await unreadThreadsQuery.forCaller(1, CTX as any)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      conversationKey: "k1", otherUserId: 42, patientPublicRef: "ab12cd34",
+      preview: "Bonjour", previewTruncated: false, unreadCount: 2,
+    })
+  })
+
+  it("caps the list at 5 threads", async () => {
+    mockedListThreads.mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => thread(`k${i}`, 1, "2026-06-12T10:00:00Z")) as any,
+    )
+    const out = await unreadThreadsQuery.forCaller(1, CTX as any)
+    expect(out).toHaveLength(5)
   })
 })

@@ -29,6 +29,7 @@ import {
 import { prisma } from "@/lib/db/client"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { auditService, type AuditContext } from "./audit.service"
+import { messagingService, MESSAGING_BOUNDS } from "./messaging.service"
 import { safeDecryptField } from "@/lib/crypto/fields"
 import type { Role } from "@prisma/client"
 
@@ -751,5 +752,49 @@ export const pendingProposalsQuery = {
       changePercent: Number(r.changePercent),
       createdAt: r.createdAt,
     }))
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2602 (Ma journée) — Messages non lus (liste)
+// ─────────────────────────────────────────────────────────────
+
+export type UnreadThreadItem = {
+  conversationKey: string
+  otherUserId: number
+  /** Réf. patient opaque (8 chars) si le thread contextualise un patient. */
+  patientPublicRef: string | null
+  preview: string
+  previewTruncated: boolean
+  unreadCount: number
+  lastMessageAt: Date
+}
+
+const UNREAD_THREADS_LIMIT = 5
+
+/**
+ * Threads avec au moins un message non lu pour le caller, triés par
+ * récence (top {@link UNREAD_THREADS_LIMIT}). Réutilise
+ * `messagingService.listThreads` avec le trigger `"poll"` (audit coalescé —
+ * pas de pollution `audit_logs` sur le polling 60s de la carte dashboard).
+ * Déterministe : aucune génération de contenu côté frontend.
+ */
+export const unreadThreadsQuery = {
+  async forCaller(userId: number, ctx: AuditContext): Promise<UnreadThreadItem[]> {
+    const threads = await messagingService.listThreads(
+      userId, ctx, MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY, "poll",
+    )
+    return threads
+      .filter((t) => t.unreadCount > 0)
+      .slice(0, UNREAD_THREADS_LIMIT)
+      .map((t) => ({
+        conversationKey: t.conversationKey,
+        otherUserId: t.otherUserId,
+        patientPublicRef: t.patientPublicRef,
+        preview: t.lastMessage.bodyPreview,
+        previewTruncated: t.lastMessage.bodyPreviewTruncated,
+        unreadCount: t.unreadCount,
+        lastMessageAt: t.lastMessage.createdAt,
+      }))
   },
 }

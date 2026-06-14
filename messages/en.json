@@ -1470,6 +1470,16 @@
       "valueTransition": "{from} → {to}",
       "changeAria": "{percent}% change"
     },
+    "medecinMessages": {
+      "title": "Unread messages",
+      "loading": "Loading…",
+      "loadError": "Unable to load messages.",
+      "emptyTitle": "No unread messages",
+      "emptyMessage": "Inbox up to date.",
+      "previewFallback": "(encrypted message)",
+      "unreadAria": "{count, plural, one {# unread message} other {# unread messages}}",
+      "openThread": "Open conversation"
+    },
     "nurseTeamInbox": {
       "title": "Team coordination",
       "loading": "Loading…",
