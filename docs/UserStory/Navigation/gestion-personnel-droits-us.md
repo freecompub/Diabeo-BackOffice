@@ -4,7 +4,7 @@
 > **Baselines :** `BASELINE-RBAC` · `BASELINE-AUDIT` (immuable) · `BASELINE-DESIGN` · `BASELINE-I18N` (FR/AR + RTL).
 >
 > **Modèle d'accès — 2 axes indépendants, portés par le `User`, scopés organisation :**
-> - **Q1 — Capacité clinique** (voir les **données de santé**, Art. 9 RGPD) : `DOCTOR`/`NURSE`/`VIEWER`. **Gated sur la qualité de professionnel de santé vérifiée (RPPS/ADELI)**. **Jamais octroyable par un admin** (ni auto-octroyable).
+> - **Q1 — Capacité clinique** (voir les **données de santé**, Art. 9 RGPD) : `DOCTOR`/`NURSE`/`VIEWER`. **Gated sur une « qualité PS vérifiée »** — capacité **abstraite**, dont la **méthode de vérification dépend du pays** (FR : RPPS/ADELI ; autres : vérification manuelle). **Jamais octroyable par un admin** (ni auto-octroyable).
 > - **Q2 — Capacité de gestion cabinet** : gérer le **personnel + les droits** et la **facturation/paiements**. **N'ouvre AUCUN accès aux données de santé.**
 >
 > **Distinguer 3 « admins » :** `SYSTEM_ADMIN` (ops Diabeo, hors cabinet) ≠ **org-admin** (Q2, gère son cabinet) ≠ rôle clinique.
@@ -54,12 +54,24 @@ Gérer **les membres de mon cabinet/équipe et leurs droits** (qui peut soigner,
 - **Cabinet de groupe** : isolation par défaut — un membre clinique ne voit que **ses** patients ; une **secrétaire partagée** est scopée (par médecin ou par service) et **sans** données de santé.
 - Données **membres/financières ≠ données de santé** (régime distinct).
 
+## 🌍 Vérification de la « qualité PS » — par pays (multi-marché FR / DZ)
+La porte d'accès clinique (Q1) repose sur une capacité **abstraite « qualité PS vérifiée »**, **indépendante du pays**. La **méthode** pour l'obtenir est **pluggable** :
+
+| Pays | Méthode | Statut |
+|---|---|---|
+| **France** | Manuelle (justificatif) en V1 → **API RPPS / Annuaire Santé gratuite** en V2 | optimisable |
+| **Algérie** | **Manuelle** (inscription à l'Ordre des médecins algérien / diplôme) | pas d'API équivalente |
+| Autres | Manuelle par défaut | — |
+
+- ⚠️ Le RPPS est **franco-français** : il ne valide **que** les soignants enregistrés en France. La **vérification manuelle est le socle permanent** ; l'API RPPS est une **optimisation FR** branchée par-dessus.
+- On ne stocke **pas** un « champ RPPS » mais une **preuve d'enregistrement générique** : `{ pays, type (RPPS/Ordre/diplôme…), numéro, méthode, vérifié_par, date }`, **auditée**.
+
 ## 🧱 Impacts modèle (note, à cadrer avec prisma-specialist)
 - Aujourd'hui : `Role` global plat (`ADMIN/DOCTOR/NURSE/VIEWER`) ; `HealthcareService.managerId` = simple pointeur ; `HealthcareMember` sans rôle/permission.
-- Cible : **appartenance scopée avec capacités** (ex. `HealthcareMembership { userId, scope(serviceId/équipe), clinicalRole?, canManage: bool }`) + **qualité PS vérifiée** sur `User` (champ RPPS/ADELI + statut de vérification). Renommer `ADMIN` → `SYSTEM_ADMIN` pour lever l'ambiguïté.
+- Cible : **appartenance scopée avec capacités** (ex. `HealthcareMembership { userId, scope(serviceId/équipe), clinicalRole?, canManage: bool }`) + **preuve d'enregistrement PS générique** (ex. `ProfessionalRegistration { userId, country, scheme(RPPS/ADELI/Ordre/diplôme…), number, method, verifiedBy, verifiedAt }`) — **pas** un champ « RPPS » en dur (multi-pays). Renommer `ADMIN` → `SYSTEM_ADMIN` pour lever l'ambiguïté.
 
 ## ⚠️ Points ouverts
-1. **Vérification RPPS/ADELI** : manuelle (justificatif) en V1 vs intégration **Annuaire Santé / RPPS** (API) en V2 ?
+1. **Vérification de la qualité PS** — **décidé** : manuelle (justificatif) comme **socle permanent multi-pays** ; **API RPPS gratuite branchée en V2 pour la France uniquement** (l'Algérie et les autres restent en manuel, faute d'API équivalente).
 2. **Bootstrap établissement** (hôpital) : qui crée le **tout premier** org-admin (vs self-serve libéral) ?
 3. **Délégation de Q2** : un org-admin peut-il créer **un autre** org-admin, ou seulement le **propriétaire** du cabinet ? (limiter la prolifération d'admins).
 4. **Secrétaire partagée en cabinet de groupe** : scope **par médecin** ou **par service** ? (impacte l'isolation patient).
