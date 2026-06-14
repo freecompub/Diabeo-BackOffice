@@ -22,10 +22,12 @@ Administrer la **structure de la plateforme** — créer/gérer les **établisse
 
 ## 🔒 Frontière d'accès (critique)
 - **`SYSTEM_ADMIN` n'accède PAS aux données de santé** des patients (Art. 9). Il administre **structures + comptes + config**, **jamais** le dossier clinique en clair. *(Diabeo = hébergeur/éditeur : séparation hébergeur ↔ accès soignant.)*
+  - ⚠️ **Effectif en V4** (dépend de **F1** — découplage accès PHI / rôle plateforme). **D'ici là (V1-V3) : risque accepté** — l'`ADMIN` conserve l'accès PHI ; mesure transitoire : pas de rôle plateforme confié à un non-soignant (cf. US-ACCESS-001 §Phasage).
 - Il **n'octroie pas** la qualité PS « par décret » : il **valide une preuve** (manuelle) ou la délègue à l'API (FR) ; un compte sans preuve ne reçoit pas d'accès clinique, même via `SYSTEM_ADMIN`.
 
 ## ✔️ Critères d'acceptation
-- Espace `SYSTEM_ADMIN` accessible **uniquement** à ce rôle (filtrage serveur ; absent du DOM sinon) ; **MFA fort obligatoire**.
+- Espace `SYSTEM_ADMIN` accessible **uniquement** à ce rôle (filtrage serveur ; absent du DOM sinon) ; **MFA forte obligatoire (V4 — SMS exclu, appli TOTP ou clé/passkey ; F9)**.
+- **Session unique (V1)** : un seul token valide à la fois pour ce rôle (cf. US-ACCESS-001 §Session unique).
 - Créer un établissement puis **inviter son premier org-admin** fonctionne de bout en bout (l'org-admin reçoit l'invitation et obtient Q2 sur **ce** scope).
 - La recherche de personnel est **cross-tenant** mais n'expose **aucune donnée de santé** patient (uniquement comptes/appartenances/capacités).
 - Régler la politique de vérification d'un tenant prend effet (résolution `tenant > pays > environnement`, fail-secure) et est **borné + audité**.

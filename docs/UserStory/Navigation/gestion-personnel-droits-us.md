@@ -89,5 +89,16 @@ La vérification de la qualité PS peut être **assouplie** pour démarrer (pilo
 4. **Secrétaire partagée en cabinet de groupe** : scope **par médecin** ou **par service** ? (impacte l'isolation patient).
 5. **Responsable de traitement (RGPD)** : libéral/cabinet de groupe = contrôleurs distincts ; hôpital = établissement contrôleur — formaliser pour le partage par défaut.
 
+## 🔑 Session unique (mono-session) — **V1**
+- **Tous les rôles backoffice** (`DOCTOR`, `NURSE`, `VIEWER`, org-admin, `SYSTEM_ADMIN`) : **une seule session active / un seul token valide à la fois**. Une nouvelle connexion **invalide la session précédente** (le dernier appareil connecté « gagne »).
+- **Exception : le `PATIENT`** — **multi-appareils autorisés** (plusieurs sessions simultanées).
+- **Bénéfices** : empêche le **partage de compte**, réduit la fenêtre d'un **token volé**, et **simplifie la révocation immédiate** (un seul `sid` à invalider — soutient F7).
+- **Implémentation** : à la connexion d'un rôle backoffice, **révoquer la session précédente** (infra `revocation`/`Session` existante).
+
+## 🗺️ Phasage (suite audit sécurité)
+- **V1** : **session unique** (ci-dessus) ; **F3** (octroi Q1 gated strictement sur état `vérifié`) ; **F5** (garde-fous `provisoire` : `expiresAt` obligatoire borné + interdit prod par défaut + DPIA) ; **F8** (champ `scope`/`tenantId` d'audit + actions canoniques) ; **F15** (invitations single-use anti-énumération). *(proposition de phasage — à confirmer pour F2/F4/F6/F7 qui conditionnent le modèle de capacités)*
+- **V4** : **F1** (découpler l'accès PHI du rôle plateforme — refonte RBAC, abandon `ROLE_HIERARCHY` linéaire) ; **MFA forte obligatoire** (`SYSTEM_ADMIN` + admin principal, **SMS exclu** — appli TOTP ou clé/passkey) (F9).
+- ⚠️ **Risque accepté V1-V3 (report de F1)** : tant que F1 n'est pas livré, `ADMIN`/`SYSTEM_ADMIN` **conserve l'accès aux données de santé** → la garantie « hébergeur sans PHI » (US-SYSADMIN-001) **n'est pas effective avant la V4**. **Mesure transitoire** : ne confier aucun rôle plateforme à un **non-soignant** avant la V4 (ou l'encadrer par procédure documentée).
+
 ## 🔗 Dépendances
 Socle de **US-NAV-BO-007** (bloc gestion, V1) et **US-NAV-BO-008** (bascule mode, V3) · `User`/`Role` · `HealthcareService`/`HealthcareMember` · `AuditLog` · baselines en tête.
