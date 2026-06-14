@@ -9,12 +9,13 @@
 
 "use client"
 
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
-import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
+import { bcp47 } from "@/i18n/config"
 import type { PendingProposalItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: PendingProposalItem[] }
@@ -26,6 +27,13 @@ const PARAM_LABEL_KEY: Record<PendingProposalItem["parameterType"], string> = {
   insulinToCarbRatio: "paramInsulinToCarbRatio",
 }
 
+/** parameterType → clé i18n de l'unité (lève l'ambiguïté clinique des valeurs). */
+const PARAM_UNIT_KEY: Record<PendingProposalItem["parameterType"], string> = {
+  basalRate: "unitBasalRate",
+  insulinSensitivityFactor: "unitInsulinSensitivityFactor",
+  insulinToCarbRatio: "unitInsulinToCarbRatio",
+}
+
 /** Variante du badge selon l'ampleur de la variation (déterministe, |%|). */
 function changeVariant(percent: number): "destructive" | "secondary" {
   return Math.abs(percent) >= 20 ? "destructive" : "secondary"
@@ -33,6 +41,11 @@ function changeVariant(percent: number): "destructive" | "secondary" {
 
 export function PendingProposalsCard() {
   const t = useTranslations("dashboardCards.medecinProposals")
+  const locale = useLocale()
+  // Décimales bornées (max 2) — suffisant cliniquement (incrément basal 0.05,
+  // ISF 0.01, ICR 0.1) et évite d'afficher le bruit Decimal(8,4).
+  const fmt = (n: number) =>
+    n.toLocaleString(bcp47(locale), { maximumFractionDigits: 2 })
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/pending-proposals",
     60_000,
@@ -47,7 +60,7 @@ export function PendingProposalsCard() {
         </h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
       </header>
-      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
+      {isStale && <StaleBanner message={t("stale")} />}
       <div className="px-4 pb-4">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("loading")}</p>
@@ -84,7 +97,9 @@ export function PendingProposalsCard() {
                     </span>
                   </span>
                   <span className="text-xs tabular-nums text-foreground">
-                    {t("valueTransition", { from: p.currentValue, to: p.proposedValue })}
+                    {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })}
+                    {" "}
+                    {t(PARAM_UNIT_KEY[p.parameterType])}
                   </span>
                   <Badge
                     variant={changeVariant(p.changePercent)}

@@ -15,7 +15,8 @@ export async function GET(req: NextRequest) {
   try {
     const user = await auditedRequireRole(req, "NURSE", ctx, "ADJUSTMENT_PROPOSAL", "0")
     const items = await pendingProposalsQuery.forCaller(user.id, user.role, user.id, ctx)
-    return NextResponse.json({ items })
+    // PHI (prénom patient déchiffré) — pas de cache proxy intermédiaire.
+    return NextResponse.json({ items }, { headers: { "Cache-Control": "no-store, private" } })
   } catch (e) {
     if (e instanceof AuthError) return NextResponse.json({ error: e.message }, { status: e.status })
     return mapErrorToResponse(e, "dashboard/medecin/pending-proposals GET", ctx.requestId)

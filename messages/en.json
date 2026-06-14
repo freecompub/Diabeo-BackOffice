@@ -1469,7 +1469,11 @@
       "paramInsulinSensitivityFactor": "Insulin sensitivity factor (ISF)",
       "paramInsulinToCarbRatio": "Insulin-to-carb ratio (ICR)",
       "valueTransition": "{from} → {to}",
-      "changeAria": "{percent}% change"
+      "changeAria": "{percent}% change",
+      "stale": "Data is stale — refresh pending.",
+      "unitBasalRate": "U/h",
+      "unitInsulinSensitivityFactor": "g/L/U",
+      "unitInsulinToCarbRatio": "g/U"
     },
     "medecinMessages": {
       "title": "Unread messages",
@@ -1479,7 +1483,7 @@
       "emptyMessage": "Inbox up to date.",
       "previewFallback": "(encrypted message)",
       "unreadAria": "{count, plural, one {# unread message} other {# unread messages}}",
-      "openThread": "Open conversation"
+      "stale": "Data is stale — refresh pending."
     },
     "nurseTeamInbox": {
       "title": "Team coordination",

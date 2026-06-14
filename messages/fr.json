@@ -1469,7 +1469,11 @@
       "paramInsulinSensitivityFactor": "Facteur de sensibilité à l'insuline (ISF)",
       "paramInsulinToCarbRatio": "Ratio insuline/glucides (ICR)",
       "valueTransition": "{from} → {to}",
-      "changeAria": "Variation de {percent} %"
+      "changeAria": "Variation de {percent} %",
+      "stale": "Données obsolètes — rafraîchissement en attente.",
+      "unitBasalRate": "U/h",
+      "unitInsulinSensitivityFactor": "g/L/U",
+      "unitInsulinToCarbRatio": "g/U"
     },
     "medecinMessages": {
       "title": "Messages non lus",
@@ -1479,7 +1483,7 @@
       "emptyMessage": "Boîte de réception à jour.",
       "previewFallback": "(message chiffré)",
       "unreadAria": "{count, plural, one {# message non lu} other {# messages non lus}}",
-      "openThread": "Ouvrir la conversation"
+      "stale": "Données obsolètes — rafraîchissement en attente."
     },
     "nurseTeamInbox": {
       "title": "Coordination équipe",

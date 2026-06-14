@@ -1469,7 +1469,11 @@
       "paramInsulinSensitivityFactor": "عامل حساسية الأنسولين (ISF)",
       "paramInsulinToCarbRatio": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
       "valueTransition": "{from} ← {to}",
-      "changeAria": "تغيّر بنسبة {percent}٪"
+      "changeAria": "تغيّر بنسبة {percent}٪",
+      "stale": "البيانات قديمة — في انتظار التحديث.",
+      "unitBasalRate": "U/h",
+      "unitInsulinSensitivityFactor": "g/L/U",
+      "unitInsulinToCarbRatio": "g/U"
     },
     "medecinMessages": {
       "title": "رسائل غير مقروءة",
@@ -1479,7 +1483,7 @@
       "emptyMessage": "صندوق الوارد محدّث.",
       "previewFallback": "(رسالة مشفّرة)",
       "unreadAria": "{count, plural, zero {# رسالة غير مقروءة} one {# رسالة غير مقروءة} two {# رسالتان غير مقروءتين} few {# رسائل غير مقروءة} many {# رسالة غير مقروءة} other {# رسالة غير مقروءة}}",
-      "openThread": "فتح المحادثة"
+      "stale": "البيانات قديمة — في انتظار التحديث."
     },
     "nurseTeamInbox": {
       "title": "تنسيق الفريق",
