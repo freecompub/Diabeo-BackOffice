@@ -13,9 +13,11 @@ import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { Acronym, type AcronymCode } from "@/components/diabeo/Acronym"
 import { Badge } from "@/components/ui/badge"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import { bcp47 } from "@/i18n/config"
+import { convertGlucoseFromGl, type GlucoseUnit } from "@/lib/conversions"
 import type { PendingProposalItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: PendingProposalItem[] }
@@ -27,14 +29,45 @@ const PARAM_LABEL_KEY: Record<PendingProposalItem["parameterType"], string> = {
   insulinToCarbRatio: "paramInsulinToCarbRatio",
 }
 
-/** parameterType → clé i18n de l'unité (lève l'ambiguïté clinique des valeurs). */
-const PARAM_UNIT_KEY: Record<PendingProposalItem["parameterType"], string> = {
-  basalRate: "unitBasalRate",
-  insulinSensitivityFactor: "unitInsulinSensitivityFactor",
-  insulinToCarbRatio: "unitInsulinToCarbRatio",
+/** Unité d'affichage de l'ISF selon l'unité de glycémie de l'appelant. */
+const ISF_UNIT_KEY: Record<GlucoseUnit, string> = {
+  "g/L": "unitIsfGl",
+  "mg/dL": "unitIsfMgdl",
+  "mmol/L": "unitIsfMmol",
 }
 
-/** Variante du badge selon l'ampleur de la variation (déterministe, |%|). */
+/** Pathologies connues du glossaire (`Acronym`) — garde-fou de typage. */
+const PATHOLOGY_CODES = new Set<AcronymCode>(["DT1", "DT2", "GD"])
+const asPathologyCode = (p: string | null): AcronymCode | null =>
+  p && PATHOLOGY_CODES.has(p as AcronymCode) ? (p as AcronymCode) : null
+
+/**
+ * Valeurs d'affichage + clé d'unité par proposition. L'ISF est stocké en g/L
+ * et converti vers l'unité de glycémie de l'appelant (g/L/U, mg/dL/U,
+ * mmol/L/U) ; basal (U/h) et ICR (g/U) sont indépendants de l'unité glycémie.
+ */
+function displayFor(p: PendingProposalItem): { from: number; to: number; unitKey: string } {
+  if (p.parameterType === "insulinSensitivityFactor") {
+    return {
+      from: convertGlucoseFromGl(p.currentValue, p.glucoseUnit),
+      to: convertGlucoseFromGl(p.proposedValue, p.glucoseUnit),
+      unitKey: ISF_UNIT_KEY[p.glucoseUnit],
+    }
+  }
+  return {
+    from: p.currentValue,
+    to: p.proposedValue,
+    unitKey: p.parameterType === "basalRate" ? "unitBasalRate" : "unitInsulinToCarbRatio",
+  }
+}
+
+/**
+ * Variante du badge selon l'ampleur de la variation. `changePercent` est
+ * borné à ±20 % en amont (clamp de l'algorithme de génération, cf.
+ * proposal-algorithm.ts) : `>= 20` signale donc l'ajustement maximal qu'un
+ * pas de titration propose — pas une valeur arbitraire. Indice visuel pur,
+ * aucune action clinique déclenchée ici.
+ */
 function changeVariant(percent: number): "destructive" | "secondary" {
   return Math.abs(percent) >= 20 ? "destructive" : "secondary"
 }
@@ -79,6 +112,8 @@ export function PendingProposalsCard() {
           <ul className="space-y-2">
             {items.map((p) => {
               const pct = Math.round(p.changePercent)
+              const pathologyCode = asPathologyCode(p.pathology)
+              const { from, to, unitKey } = displayFor(p)
               return (
                 <li
                   key={p.id}
@@ -87,19 +122,24 @@ export function PendingProposalsCard() {
                   <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-semibold">
                     {(p.patientFirstName || "?").charAt(0).toUpperCase()}
                   </span>
-                  <span className="flex flex-1 flex-col truncate">
+                  <span className="flex min-w-0 flex-1 flex-col">
                     <span className="truncate text-sm font-medium">
                       {p.patientFirstName || t("patientFallback")}
-                      {p.pathology ? ` · ${p.pathology}` : ""}
+                      {pathologyCode && (
+                        <>
+                          {" · "}
+                          <Acronym code={pathologyCode} />
+                        </>
+                      )}
                     </span>
                     <span className="truncate text-xs text-muted-foreground">
                       {t(PARAM_LABEL_KEY[p.parameterType])}
                     </span>
                   </span>
                   <span className="text-xs tabular-nums text-foreground">
-                    {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })}
+                    {t("valueTransition", { from: fmt(from), to: fmt(to) })}
                     {" "}
-                    {t(PARAM_UNIT_KEY[p.parameterType])}
+                    {t(unitKey)}
                   </span>
                   <Badge
                     variant={changeVariant(p.changePercent)}

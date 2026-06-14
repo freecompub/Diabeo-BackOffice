@@ -1472,8 +1472,10 @@
       "changeAria": "تغيّر بنسبة {percent}٪",
       "stale": "البيانات قديمة — في انتظار التحديث.",
       "unitBasalRate": "U/h",
-      "unitInsulinSensitivityFactor": "g/L/U",
-      "unitInsulinToCarbRatio": "g/U"
+      "unitInsulinToCarbRatio": "g/U",
+      "unitIsfGl": "g/L/U",
+      "unitIsfMgdl": "mg/dL/U",
+      "unitIsfMmol": "mmol/L/U"
     },
     "medecinMessages": {
       "title": "رسائل غير مقروءة",

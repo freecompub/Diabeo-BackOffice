@@ -31,6 +31,7 @@ import { getAccessiblePatientIds } from "@/lib/access-control"
 import { auditService, type AuditContext } from "./audit.service"
 import { messagingService, MESSAGING_BOUNDS } from "./messaging.service"
 import { safeDecryptField } from "@/lib/crypto/fields"
+import type { GlucoseUnit } from "@/lib/conversions"
 import type { Role } from "@prisma/client"
 
 // ─────────────────────────────────────────────────────────────
@@ -689,9 +690,23 @@ export type PendingProposalItem = {
   proposedValue: number
   changePercent: number
   createdAt: Date
+  /**
+   * Unité de glycémie préférée de l'APPELANT (médecin), pas du patient — sert
+   * à afficher l'ISF dans la bonne unité (g/L/U, mg/dL/U ou mmol/L/U). Les
+   * valeurs `currentValue`/`proposedValue` restent en g/L (stockage canonique) ;
+   * la conversion d'affichage est faite côté carte.
+   */
+  glucoseUnit: GlucoseUnit
 }
 
 const PENDING_PROPOSALS_LIMIT = 5
+
+/** Code `unitGlycemia` (UserUnitPreferences) → unité d'affichage glycémie.
+ *  3:g/L 4:mg/dL 5:mmol/L. Défaut (préf. absente) = mg/dL, cohérent avec les
+ *  autres cartes du dashboard médecin (EmergencyCard). */
+function glucoseUnitFromCode(code: number | undefined): GlucoseUnit {
+  return code === 3 ? "g/L" : code === 5 ? "mmol/L" : "mg/dL"
+}
 
 /**
  * Liste les propositions d'ajustement **en attente** du portefeuille du caller
@@ -725,6 +740,15 @@ export const pendingProposalsQuery = {
       take: PENDING_PROPOSALS_LIMIT,
     })
 
+    // Unité d'affichage ISF = préférence glycémie de l'appelant (lookup unique
+    // indexé). Évité quand il n'y a aucune ligne à afficher.
+    const prefRow = rows.length
+      ? await prisma.userUnitPreferences.findUnique({
+          where: { userId }, select: { unitGlycemia: true },
+        })
+      : null
+    const glucoseUnit = glucoseUnitFromCode(prefRow?.unitGlycemia)
+
     // Audit : résumé + pivot par patient (PHI : prénom déchiffré exposé).
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "ADJUSTMENT_PROPOSAL",
@@ -751,6 +775,7 @@ export const pendingProposalsQuery = {
       proposedValue: Number(r.proposedValue),
       changePercent: Number(r.changePercent),
       createdAt: r.createdAt,
+      glucoseUnit,
     }))
   },
 }

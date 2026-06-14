@@ -1472,8 +1472,10 @@
       "changeAria": "{percent}% change",
       "stale": "Data is stale — refresh pending.",
       "unitBasalRate": "U/h",
-      "unitInsulinSensitivityFactor": "g/L/U",
-      "unitInsulinToCarbRatio": "g/U"
+      "unitInsulinToCarbRatio": "g/U",
+      "unitIsfGl": "g/L/U",
+      "unitIsfMgdl": "mg/dL/U",
+      "unitIsfMmol": "mmol/L/U"
     },
     "medecinMessages": {
       "title": "Unread messages",
