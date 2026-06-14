@@ -32,14 +32,14 @@ Prouver et maintenir la qualité PS de façon **fiable et multi-pays**, afin que
 - États **distincts** : `provisoire` (flag tenant) ≠ `vérifié` (preuve) — on ne ment pas sur le statut.
 - Le **justificatif** est une donnée personnelle → chiffré, **rétention bornée**, purge après usage selon politique.
 
-## ⚠️ Points ouverts
-1. **Cadence de re-vérification** (manuel) : 12 / 24 mois ? Source de radiation FR (Annuaire) en V2.
-2. **Intégration API RPPS** (V2) : périmètre, gestion des pannes (fallback manuel).
-3. **Rétention du justificatif** (RGPD) : durée, purge, base légale.
+## ⚠️ Points ouverts → décisions (2026-06-14)
+1. **Cadence de re-vérification** — **reportée en V4** (la vérification est en pause ; V1 = auto-vérifié).
+2. **Résilience API RPPS** — **décidé** : en cas de panne de l'API, l'inscription est **présumée valide 15 jours** avec **relance automatique** de la vérification ; **au-delà de 15 j sans succès → bascule en vérification manuelle**.
+3. **Rétention du justificatif** (RGPD) — **reportée en V4** (durée, purge, base légale).
 
 ## 🗺️ Roadmap
-- **V1** : vérification **manuelle** multi-pays + cycle de vie complet (états, expiration, retrait Q1).
-- **V2** : **API RPPS / Annuaire Santé** (France uniquement) branchée par-dessus.
+- **V1** : ⚠️ **pas de vérification** — toutes les inscriptions sont **considérées vérifiées** (cf. risque accepté US-ACCESS-001 + alerte ROADMAP). Cette US **n'est pas livrée en V1**.
+- **V4** : **workflow de vérification complet** — manuel multi-pays **+ API RPPS / Annuaire Santé (FR)** + cycle de vie (états, expiration, retrait Q1) + cadence de re-vérification + rétention. Résilience API : règle des 15 j (ci-dessus).
 
 ## 🔗 Dépendances
 `US-ACCESS-001` · `US-SYSADMIN-001` · `ProfessionalRegistration` (US-TECH-SEC-003) · `AuditLog`.

@@ -83,17 +83,18 @@ La vérification de la qualité PS peut être **assouplie** pour démarrer (pilo
 - Cible : **appartenance scopée avec capacités** (ex. `HealthcareMembership { userId, scope(serviceId/équipe), clinicalRole?, canManage: bool }`) + **preuve d'enregistrement PS générique** (ex. `ProfessionalRegistration { userId, country, scheme(RPPS/ADELI/Ordre/diplôme…), number, method, verifiedBy, verifiedAt }`) — **pas** un champ « RPPS » en dur (multi-pays). Renommer `ADMIN` → `SYSTEM_ADMIN` pour lever l'ambiguïté.
 
 ## ⚠️ Points ouverts
-1. **Vérification de la qualité PS** — **décidé** : manuelle (justificatif) comme **socle permanent multi-pays** ; **API RPPS gratuite branchée en V2 pour la France uniquement** (l'Algérie et les autres restent en manuel, faute d'API équivalente).
-2. **Bootstrap établissement** (hôpital) : qui crée le **tout premier** org-admin (vs self-serve libéral) ?
-3. **Délégation de Q2** — **décidé (option C)** : deux niveaux — **admin principal** (peut déléguer Q2) vs **admin délégué** (Q2 opérationnel, **sans** re-délégation). Le propriétaire/bootstrap est principal. *(Reste à préciser : un principal peut-il nommer un autre principal, ou seulement des délégués ?)*
-4. **Secrétaire partagée en cabinet de groupe** : scope **par médecin** ou **par service** ? (impacte l'isolation patient).
-5. **Responsable de traitement (RGPD)** : libéral/cabinet de groupe = contrôleurs distincts ; hôpital = établissement contrôleur — formaliser pour le partage par défaut.
+1. **Vérification de la qualité PS** — **décidé** : **V1 = toutes les inscriptions sont considérées vérifiées (aucun contrôle)** ; le workflow de vérification réel est **reporté en V4** (cf. US-ACCESS-002). ⚠️ **Risque accepté V1** — aucune barrière d'accès clinique en V1 (onboarding maîtrisé + DPIA ; cf. alerte ROADMAP).
+2. **Bootstrap établissement** (hôpital) — **décidé** : le **1ᵉʳ org-admin est créé par l'admin Diabeo (`SYSTEM_ADMIN`)** pour le moment (self-serve hôpital plus tard).
+3. **Délégation de Q2** — **décidé** : un **admin principal ne nomme QUE des délégués** (jamais un autre principal). Seul le **propriétaire** (bootstrap) est principal ; un second principal nécessite une action `SYSTEM_ADMIN` / transfert de propriété.
+4. **Secrétaire partagée en cabinet de groupe** — **décidé : PAS de secrétaire partagée.** Un membre de gestion est **scopé à un seul périmètre** (un médecin / un service) → isolation simplifiée.
+5. **Responsable de traitement (RGPD)** — **décidé : formalisé.** Libéral / cabinet de groupe = **contrôleurs distincts** (chacun ses patients) ; hôpital = **établissement contrôleur**. Conditionne le partage par défaut.
 
 ## 🔑 Session unique (mono-session) — **V1**
 - **Tous les rôles backoffice** (`DOCTOR`, `NURSE`, `VIEWER`, org-admin, `SYSTEM_ADMIN`) : **une seule session active / un seul token valide à la fois**. Une nouvelle connexion **invalide la session précédente** (le dernier appareil connecté « gagne »).
 - **Exception : le `PATIENT`** — **multi-appareils autorisés** (plusieurs sessions simultanées).
 - **Bénéfices** : empêche le **partage de compte**, réduit la fenêtre d'un **token volé**, et **simplifie la révocation immédiate** (un seul `sid` à invalider — soutient F7).
 - **Implémentation** : à la connexion d'un rôle backoffice, **révoquer la session précédente** (infra `revocation`/`Session` existante).
+- **Timeout d'inactivité (V1)** : déconnexion automatique après inactivité pour les rôles backoffice (renforcé pour `SYSTEM_ADMIN` / admin principal). Les **durées token/session sont réévaluées en V1** (aujourd'hui : JWT 15 min, session 24 h).
 
 ## 🗺️ Phasage (suite audit sécurité)
 - **V1** : **session unique** (ci-dessus) ; **socle de capacités** — **F2** (modèle Tenant + table politique, défaut `requis` codé en dur), **F4** (`HealthcareMembership` N-N + capacités + `ProfessionalRegistration`), **F6** (isolation cabinet de groupe par référent + responsable de traitement), **F7** (révocation **immédiate de capacité** : capacités relues en base, **pas figées dans le JWT 15 min**) ; **F3** (octroi Q1 gated strictement sur état `vérifié`) ; **F5** (garde-fous `provisoire` : `expiresAt` obligatoire borné + interdit prod par défaut + DPIA) ; **F8** (champ `scope`/`tenantId` d'audit + actions canoniques) ; **F15** (invitations single-use anti-énumération).

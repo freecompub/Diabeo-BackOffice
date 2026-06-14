@@ -42,10 +42,10 @@ Administrer la **structure de la plateforme** — créer/gérer les **établisse
 - **Moindre privilège + traçabilité** : rôle à fort pouvoir → MFA fort, audit exhaustif, idéalement break-glass pour les actions les plus sensibles.
 
 ## ⚠️ Points ouverts
-1. **Accès support à un tenant** : faut-il une **impersonation/support tracée** (et jamais d'accès PHI en clair) ? À cadrer avec `healthcare-security-auditor`.
-2. **Qui crée les `SYSTEM_ADMIN`** (et combien) — provisioning interne Diabeo, séparation des tâches.
-3. **Suppression/anonymisation d'un établissement** : RGPD (rétention, données liées) — process dédié.
-4. **Renommage `ADMIN` → `SYSTEM_ADMIN`** dans l'enum `Role` (cohérence corpus) — à planifier (migration).
+1. **Accès support à un tenant** — **décidé** : cible = **support sans accès PHI** (impersonation tracée, jamais de données de santé en clair), mais **reporté en V4** ; **en V1-V3 l'accès reste total** (cohérent avec le report de F1).
+2. **Qui crée les `SYSTEM_ADMIN`** — **décidé** : **par l'admin Diabeo** pour le moment (provisioning interne ; séparation des tâches à formaliser plus tard).
+3. **Suppression / anonymisation d'un établissement** — **décidé** : **sur demande officielle uniquement, aucune interface** (process ops + RGPD rétention/données liées).
+4. **Renommage `ADMIN` → `SYSTEM_ADMIN`** — planifié en **V4** (avec F1, US-TECH-SEC-001).
 
 ## 🔗 Dépendances
 `US-ACCESS-001` (modèle d'accès + vérification + politique) · `HealthcareService` / `User` / `Role` · `AuditLog` · sous-série « Gestion cabinet » (US-NAV-BO-007/008) · baselines en tête.
