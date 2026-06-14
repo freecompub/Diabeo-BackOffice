@@ -237,3 +237,109 @@ Projections de lecture (constantes, stats glycémiques) · **source unique de se
 - **Suppression de l'IA** : ex-étapes LLM (résumé, compte rendu) → déterministes.
 - **Audit** déplacé au niveau **donnée** (API), pas au rendu d'onglet ; **préchargement** limité aux métadonnées non-PII.
 - **Facturation/Administration** sorties de la nav clinique.
+
+---
+
+# Sous-série « Gestion cabinet » (accès administratif)
+
+> **Modèle d'accès — 2 axes indépendants** (porté par le `User`, scopé organisation) :
+> - **Q1 — Capacité clinique** (voir les **données de santé**, Art. 9 RGPD) : `DOCTOR`/`NURSE`/`VIEWER`. **Gated sur la qualité de PS vérifiée (RPPS/ADELI)** ; **jamais auto-octroyable** par un admin.
+> - **Q2 — Capacité de gestion cabinet** (gérer **droits d'équipe + facturation/paiements**) : **grant administratif org-scopé**. **N'ouvre AUCUN accès aux données de santé.**
+>
+> Une personne cumule, ou non, les deux axes. Personas de référence :
+> | Persona | Q1 (santé) | Q2 (gestion) |
+> |---|---|---|
+> | Médecin libéral (solo) | ✅ | ✅ |
+> | Secrétaire médicale | ❌ | ✅ |
+> | Médecin salarié | ✅ | ❌ |
+> | Gestionnaire de cabinet (non-soignant) | ❌ | ✅ |
+>
+> **Classes de données** : la gestion donne accès à la **PII administrative** (identité, coordonnées, ligne de facturation) **sans** les **données de santé** (glycémie, traitement). La facturation FR étant per-patient, la secrétaire voit l'**identité** du patient pour facturer, jamais son dossier clinique.
+>
+> ⚠️ **Dépendance bloquante** : ces 2 US présupposent le **modèle de capacités Q1/Q2 org-scopé** (à spécifier dans une US d'accès dédiée — `US-ACCESS-xxx`) : grant administratif, scope (cabinet / équipe), gating RPPS, non-auto-élévation, audit des octrois. Sans lui, la nav de gestion n'a rien à filtrer.
+>
+> **Roadmap : Variante A (US-NAV-BO-007) en V1 · Variante B (US-NAV-BO-008) en V3.**
+
+---
+
+## US-NAV-BO-007 — Bloc « Gestion cabinet » dans la sidebar (**Variante A — V1**)
+
+### 👤 En tant que
+`User` ayant la **capacité de gestion cabinet** (Q2 = true) — médecin libéral, secrétaire médicale, gestionnaire non-soignant.
+
+### 🎯 Je veux / Afin de
+Retrouver les fonctions de gestion (équipe/droits, facturation, paiements, paramètres cabinet) dans **un bloc dédié de la sidebar**, séparé du soin, pour administrer mon cabinet sans me perdre.
+
+### 📌 Description fonctionnelle
+- La sidebar se compose de **deux blocs indépendants**, chacun affiché selon sa capacité :
+  - **Bloc clinique** (si **Q1**) : Ma journée, Patients, Agenda, Messagerie, Documents, Analytics (cf. US-NAV-BO-001).
+  - **Bloc gestion** (si **Q2**), sous un séparateur **« — GESTION — »** : Gestion de l'équipe & droits · Facturation · Paiements · Paramètres du cabinet.
+- L'utilisateur voit **l'union de ses blocs autorisés** ; un bloc non autorisé **n'est pas rendu** (DOM, pas CSS).
+- Cas mono-capacité gérés nativement : secrétaire (Q2 seul) ne voit **que** le bloc gestion ; médecin salarié (Q1 seul) ne voit **que** le bloc clinique.
+- Bloc gestion **groupé et isolé** dès la V1 (prépare la bascule B sans refonte).
+- FR/AR + RTL (séparateur, ordre, côté).
+
+### 🔒 Items du bloc gestion par capacité
+| Item | Q2 (gestion) | Donnée manipulée |
+|---|---|---|
+| Gestion de l'équipe & droits | ✅ | comptes/membres, grants (PII admin) |
+| Facturation | ✅ | factures, identité patient (PII admin) — **pas** de donnée de santé |
+| Paiements | ✅ | données financières |
+| Paramètres du cabinet | ✅ | config établissement/service |
+
+### ✔️ Critères d'acceptation
+- Bloc gestion rendu **si et seulement si Q2 = true** (vérifié serveur ; absent du DOM sinon).
+- Bloc clinique rendu **si et seulement si Q1 = true** — secrétaire (Q2 seul) : aucun item clinique, **aucun accès dossier patient**.
+- Les items de gestion **n'exposent aucune donnée de santé** ; la facturation n'affiche que l'**identité** patient nécessaire.
+- Séparateur « — GESTION — » visible quand le bloc est présent ; états actif/hover conformes design (couleur **+** icône **+** surbrillance).
+- FR/AR + RTL corrects.
+- Repli drawer (cf. US-001) couvre aussi le bloc gestion.
+
+### 🧩 Règles métier
+- **2 axes orthogonaux** : afficher le bloc gestion dépend **uniquement** de Q2, jamais du rôle clinique.
+- Filtrage **serveur** (jamais `hidden` côté client).
+- **Aucune élévation** : la présence du bloc gestion ne donne **jamais** accès aux données de santé ; l'accès clinique reste gated RPPS.
+- **Audit** (BASELINE-AUDIT) : toute action de gestion sensible (octroi/révocation de droit, accès facture/paiement) est journalisée.
+- Données **financières ≠ données de santé** : régime et écran distincts.
+
+### ⚠️ Points ouverts
+- Sous-périmètre des grants en gestion (qui peut octroyer quoi, à qui) → relève de l'US d'accès `US-ACCESS-xxx`.
+
+---
+
+## US-NAV-BO-008 — Bascule « Mode soin ⇄ Mode gestion » (**Variante B — V3**)
+
+### 👤 En tant que
+`User` **à double casquette** (Q1 **et** Q2 = true) — typiquement le **médecin libéral**.
+
+### 🎯 Je veux / Afin de
+Basculer entre un **espace Soin** et un **espace Gestion**, chacun avec sa navigation focalisée, pour séparer nettement mes deux casquettes et réduire la charge mentale.
+
+### 📌 Description fonctionnelle
+- **Bascule « Mode soin ⇄ Mode gestion »** (en tête de sidebar) :
+  - **Affichée uniquement si Q1 ET Q2** (double casquette).
+  - **Mono-capacité → pas de bascule** : entrée directe dans l'unique espace (secrétaire → Gestion ; salarié → Soin).
+- Chaque mode = une **nav focalisée** (groupes de routes `(soin)` / `(gestion)`), séparation visuelle soin (clinique) / gestion (finance).
+- **Mode courant mémorisé** ; **deep-link par espace** ; `back/forward` cohérents au sein d'un mode.
+- Surcouche **non destructive** au-dessus de la Variante A (blocs déjà isolés en V1).
+- FR/AR + RTL (position de la bascule, sens).
+
+### ✔️ Critères d'acceptation
+- La bascule n'apparaît **que** pour les profils double-casquette ; mono-capacité : aucun toggle, atterrissage direct dans le bon espace.
+- Basculer change l'espace de nav **sans full reload** ; le mode est **persistant** (retour ultérieur dans le même mode) et **deep-linkable**.
+- Le **Mode gestion n'expose aucune donnée de santé** ; le **Mode soin** garde le périmètre clinique (US-001 à 006).
+- `back/forward` cohérents dans un mode ; RTL correct.
+- Audit inchangé (les actions sensibles restent journalisées quel que soit le mode).
+
+### 🧩 Règles métier
+- **Mêmes 2 axes** que la Variante A ; B est une **surcouche de présentation**, pas un nouveau modèle de droits.
+- Séparation visuelle **données de santé / données financières** matérialisée par les deux modes.
+- A reste la base : si B est désactivé, l'app retombe sur A (blocs dans une sidebar unique).
+
+### ⚠️ Points ouverts
+- Persistance du mode : par session, par appareil, ou préférence serveur ?
+- Comportement d'un **deep-link Soin** reçu alors que l'utilisateur était en mode Gestion (et inversement).
+
+### 🗺️ Roadmap
+- **V1** : Variante A (US-NAV-BO-007) — coût minimal, blocs isolés.
+- **V3** : Variante B (US-NAV-BO-008) — bascule + routing par mode, par-dessus A.
