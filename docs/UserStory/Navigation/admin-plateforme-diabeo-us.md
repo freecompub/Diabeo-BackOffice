@@ -49,3 +49,34 @@ Administrer la **structure de la plateforme** — créer/gérer les **établisse
 
 ## 🔗 Dépendances
 `US-ACCESS-001` (modèle d'accès + vérification + politique) · `HealthcareService` / `User` / `Role` · `AuditLog` · sous-série « Gestion cabinet » (US-NAV-BO-007/008) · baselines en tête.
+
+---
+
+## US-SYSADMIN-002 — Support / impersonation sans accès aux données de santé (**V4**)
+
+### 👤 En tant que
+Support / `SYSTEM_ADMIN` Diabeo intervenant sur un tenant.
+
+### 🎯 Je veux / Afin de
+Diagnostiquer un problème client **sans jamais accéder aux données de santé**, de façon **tracée et bornée**, afin de respecter la séparation hébergeur ↔ soignant.
+
+### 📌 Description fonctionnelle
+- Accès support à un tenant **sans déchiffrement PHI** : vues techniques / structure / config, données **dé-identifiées**.
+- Si « voir comme le client » est nécessaire : **impersonation explicite, consentie, bornée, auditée** (`SUPPORT_IMPERSONATION_START/END`), **jamais de PHI en clair**, **alerting SOC**.
+
+### ✔️ Critères d'acceptation
+- **Aucun accès aux données de santé** patient via le support (test : masqué/403).
+- Impersonation **tracée** (début/fin), **bornée**, **auditée** + alerting.
+- **MFA forte** requise.
+
+### 🧩 Règles métier
+- Séparation **hébergeur ↔ soignant** ; moindre privilège ; break-glass distinct.
+
+### ⚠️ Points ouverts
+- Périmètre exact de l'impersonation ; base de consentement.
+
+### 🗺️ Roadmap
+- **V4** (cf. F1). **V1-V3** : accès total = **risque accepté** (US-SYSADMIN-001 §Frontière d'accès).
+
+### 🔗 Dépendances
+`US-SYSADMIN-001` · `US-TECH-SEC-001` (F1) · `AuditLog`.

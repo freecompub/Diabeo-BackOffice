@@ -74,3 +74,32 @@ En tant qu'**auditeur HDS/CNIL**, je veux une traçabilité **complète et filtr
 
 ## 🔗 Dépendances
 `US-ACCESS-001` · `US-ACCESS-002` · `prisma/schema.prisma` (`Role`, `HealthcareService/Member`, `AuditLog`, `Session`) · `src/lib/auth/*` · `src/lib/access-control.ts` · `src/lib/org-access.ts`.
+
+---
+
+## US-TECH-SEC-007 — Sécurité de session (mono-session + timeout + durées) (**V1**)
+
+### 👤 En tant que
+Équipe sécurité / système.
+
+### 🎯 Je veux / Afin de
+Durcir les sessions backoffice (session unique, timeout d'inactivité, durées adaptées), afin de limiter le risque de **compte partagé** ou de **token volé**.
+
+### 📌 Description fonctionnelle
+- **Mono-session** : un seul token valide à la fois pour **tout rôle backoffice** ; **exception `PATIENT`** (multi-appareils). *(consolidé depuis US-ACCESS-001)*
+- **Timeout d'inactivité** : déconnexion automatique après inactivité, **renforcé** pour `SYSTEM_ADMIN` / admin principal.
+- **Durées token/session réévaluées** (aujourd'hui JWT 15 min, session 24 h) — session plus courte envisagée pour les rôles à fort pouvoir.
+
+### ✔️ Critères d'acceptation
+- Nouvelle connexion backoffice **invalide la session précédente** ; `PATIENT` exempté.
+- Inactivité → **déconnexion auto** (seuil configurable, plus court pour rôles à fort pouvoir).
+- Durées documentées/ajustées ; **révocation immédiate** (lien US-TECH-SEC-005 / F7).
+
+### 🧩 Règles métier
+- **Fail-closed** ; réutilise l'infra `revocation` / `Session` existante.
+
+### ⚠️ Points ouverts
+- Seuils exacts de timeout ; durée de session des rôles à fort pouvoir.
+
+### 🔗 Dépendances
+`US-ACCESS-001` (mono-session) · `US-TECH-SEC-005` (révocation) · `src/lib/auth/*`.

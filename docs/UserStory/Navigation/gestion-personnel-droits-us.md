@@ -103,3 +103,34 @@ La vérification de la qualité PS peut être **assouplie** pour démarrer (pilo
 
 ## 🔗 Dépendances
 Socle de **US-NAV-BO-007** (bloc gestion, V1) et **US-NAV-BO-008** (bascule mode, V3) · `User`/`Role` · `HealthcareService`/`HealthcareMember` · `AuditLog` · baselines en tête.
+
+---
+
+## US-ACCESS-003 — Clôture / anonymisation d'un établissement (process RGPD)
+
+### 👤 En tant que
+`SYSTEM_ADMIN` (Diabeo), **sur demande officielle** d'un établissement.
+
+### 🎯 Je veux / Afin de
+Clôturer ou anonymiser un établissement **uniquement sur demande officielle**, afin de respecter le RGPD (effacement) **sans** perdre les obligations de conservation (audit, HDS).
+
+### 📌 Description fonctionnelle
+- **Aucune interface self-serve** : déclenché par **demande officielle** (process ops documenté).
+- Étapes : vérification de la demande → **gel des accès** → **anonymisation / rétention** des données liées (membres, facturation, etc.) → purge selon politique.
+- Données de santé patients : selon **rétention légale** (soft-delete / anonymisation, jamais de perte d'`AuditLog`).
+
+### ✔️ Critères d'acceptation
+- **Pas de bouton « supprimer établissement »** dans l'UI ; opération réservée à un **process tracé**.
+- L'anonymisation respecte la rétention légale **et conserve l'`AuditLog`** (immuable).
+- Toute l'opération est **auditée** (acteur, établissement, demande, horodatage).
+
+### 🧩 Règles métier
+- **RGPD** : arbitrage droit à l'effacement ↔ obligations de conservation HDS.
+- Cohérent avec le **soft-delete patient** existant (anonymisation chiffrée par trigger PG).
+
+### ⚠️ Points ouverts
+- **Durées de rétention** par type de donnée (membres / facturation / santé).
+- Articulation précise avec le soft-delete patient et l'immutabilité audit.
+
+### 🔗 Dépendances
+`US-SYSADMIN-001` · `AuditLog` (immuable) · soft-delete patient (`patient.service`).

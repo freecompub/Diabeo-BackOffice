@@ -343,3 +343,67 @@ Basculer entre un **espace Soin** et un **espace Gestion**, chacun avec sa navig
 ### 🗺️ Roadmap
 - **V1** : Variante A (US-NAV-BO-007) — coût minimal, blocs isolés.
 - **V3** : Variante B (US-NAV-BO-008) — bascule + routing par mode, par-dessus A.
+
+---
+
+## US-NAV-BO-009 — Historique du dossier patient (**V2**)
+
+### 👤 En tant que
+PS consultant le dossier d'un patient de son périmètre.
+
+### 🎯 Je veux / Afin de
+Voir l'**historique chronologique des changements cliniquement significatifs**, en **append-only**, afin de comprendre l'évolution du patient et tracer les décisions.
+
+### 📌 Description fonctionnelle
+- Vue chronologique des **changements cliniquement significatifs** : config insuline (ISF/ICR/basale/cible), traitements, objectifs glycémiques, comptes rendus / `Encounter`, propositions d'ajustement validées, événements clés.
+- **Append-only** : chaque entrée est **immuable** ; jamais de réécriture ; une correction = **nouvelle entrée (addendum)**.
+- Chaque entrée : horodatage, **auteur**, type, **lien vers la source** (Encounter / compte rendu / config) + référence de la **version des données**.
+- Filtres (type / période / auteur).
+
+### ✔️ Critères d'acceptation
+- Vue chronologique lisible ; entrées **immuables** ; correction = nouvelle entrée.
+- Chaque accès à l'historique (donnée de santé) → **`AuditLog`**.
+- Lien depuis une entrée vers sa source.
+- `VIEWER` lecture seule ; FR/AR + RTL.
+
+### 🧩 Règles métier
+- Présentation **append-only** (cohérent `BASELINE-ENCOUNTER`).
+- **Ce qui crée une entrée** vs simple mise à jour = **seuil de « changement cliniquement significatif »**, **serveur + versionné**.
+- Aucune donnée recalculée côté frontend.
+
+### ⚠️ Points ouverts
+- **Seuil exact** de significativité → à cadrer avec `medical-domain-validator`.
+- Profondeur de rétention / d'affichage.
+
+### 🔗 Dépendances
+US-NAV-BO-005 (onglet) · `Encounter` + addendum · `AdjustmentProposal` · `AuditLog`.
+
+---
+
+## US-NAV-BO-010 — Modèles de compte rendu personnalisés (**V2**)
+
+### 👤 En tant que
+`DOCTOR` rédigeant des comptes rendus.
+
+### 🎯 Je veux / Afin de
+Définir et réutiliser **mes propres modèles** de compte rendu (en plus du générique), afin de gagner du temps sur mes consultations récurrentes.
+
+### 📌 Description fonctionnelle
+- Rappel V1 (US-NAV-BO-006) : **modèle générique pré-rempli**.
+- V2 : le médecin **crée / édite / supprime ses propres modèles** (sections, champs, texte type) ; valeurs déterministes insérées via **placeholders**.
+- Sélection du modèle à l'ouverture du compte rendu ; **modèle par défaut**.
+
+### ✔️ Critères d'acceptation
+- CRUD des modèles **persistés par médecin** ; sélection à la rédaction ; placeholders déterministes préservés.
+- Le compte rendu final reste un **addendum immuable** (US-NAV-BO-006).
+- **Aucune génération IA** ; FR/AR.
+
+### 🧩 Règles métier
+- Les modèles sont des **gabarits de texte/champs**, sans calcul clinique ; valeurs **insérées**, jamais générées.
+
+### ⚠️ Points ouverts
+- Partage des modèles **au niveau cabinet** vs strictement perso.
+- Gabarits **par type de consultation** (lié).
+
+### 🔗 Dépendances
+US-NAV-BO-006 (compte rendu) · `Encounter` + addendum.
