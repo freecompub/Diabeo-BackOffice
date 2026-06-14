@@ -20,7 +20,7 @@ vi.mock("@/lib/access-control", () => ({
 }))
 import {
   urgenciesQuery, appointmentsQuery,
-  patientsAtRiskQuery, kpisQuery,
+  patientsAtRiskQuery, kpisQuery, pendingProposalsQuery,
 } from "@/lib/services/doctor-dashboard.service"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 
@@ -35,7 +35,7 @@ const pm = prismaMock as unknown as {
   cgmEntry: { findMany: any; count: any; groupBy: any }
   appointment: { findMany: any }
   patient: { findMany: any }
-  adjustmentProposal: { count: any }
+  adjustmentProposal: { count: any; findMany: any }
   auditLog: { create: any }
 }
 
@@ -342,6 +342,64 @@ describe("patientsAtRiskQuery summary audit (healthcare M2)", () => {
     const perPatient = calls.find((d) =>
       d.metadata?.patientId === 10
       && d.metadata?.kind === "dashboard.medecin.patientsAtRisk",
+    )
+    expect(perPatient).toBeDefined()
+  })
+})
+
+// ─── US-2602 pending proposals ───────────────────────────────────────────
+
+describe("pendingProposalsQuery (US-2602)", () => {
+  it("returns [] when caller has empty portfolio", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await pendingProposalsQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toEqual([])
+    expect(pm.adjustmentProposal.findMany).not.toHaveBeenCalled()
+  })
+
+  it("filters status=pending and maps Decimal → number", async () => {
+    mockedAccessible.mockResolvedValue([10, 20])
+    pm.adjustmentProposal.findMany.mockResolvedValue([
+      {
+        id: "p1", patientId: 10, parameterType: "basalRate",
+        currentValue: 1.2, proposedValue: 1.0, changePercent: -16.67,
+        createdAt: new Date("2026-06-10T08:00:00Z"),
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+    ] as any)
+    const out = await pendingProposalsQuery.forCaller(1, "DOCTOR", 1)
+    const where = pm.adjustmentProposal.findMany.mock.calls[0]![0].where
+    expect(where.status).toBe("pending")
+    expect(where.patientId).toEqual({ in: [10, 20] })
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      id: "p1", patientId: 10, parameterType: "basalRate",
+      currentValue: 1.2, proposedValue: 1.0, patientFirstName: "",
+    })
+    expect(typeof out[0]!.changePercent).toBe("number")
+  })
+
+  it("audits a summary row (resourceId=0) and a per-patient pivot row", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    pm.adjustmentProposal.findMany.mockResolvedValue([
+      {
+        id: "p1", patientId: 10, parameterType: "insulinToCarbRatio",
+        currentValue: 10, proposedValue: 12, changePercent: 20,
+        createdAt: new Date(), patient: { id: 10, pathology: "DT2", user: { firstname: null } },
+      },
+    ] as any)
+    await pendingProposalsQuery.forCaller(1, "DOCTOR", 1)
+    const calls = prismaMock.auditLog.create.mock.calls.map((c) => (c[0].data as any))
+    const summary = calls.find((d) =>
+      d.resourceId === "0"
+      && d.resource === "ADJUSTMENT_PROPOSAL"
+      && d.metadata?.kind === "dashboard.medecin.pendingProposals"
+      && d.metadata?.count === 1,
+    )
+    expect(summary).toBeDefined()
+    const perPatient = calls.find((d) =>
+      d.metadata?.patientId === 10
+      && d.metadata?.kind === "dashboard.medecin.pendingProposals",
     )
     expect(perPatient).toBeDefined()
   })

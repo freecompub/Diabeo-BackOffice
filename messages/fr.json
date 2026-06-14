@@ -1457,6 +1457,19 @@
       "reasonAppointmentUnconfirmed": "Rendez-vous non confirmé",
       "reasonNeverSynced": "Jamais synchronisé"
     },
+    "medecinProposals": {
+      "title": "Propositions en attente",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les propositions.",
+      "emptyTitle": "Aucune proposition",
+      "emptyMessage": "Aucun ajustement à examiner.",
+      "patientFallback": "Patient",
+      "paramBasalRate": "Débit basal",
+      "paramInsulinSensitivityFactor": "Facteur de sensibilité à l'insuline (ISF)",
+      "paramInsulinToCarbRatio": "Ratio insuline/glucides (ICR)",
+      "valueTransition": "{from} → {to}",
+      "changeAria": "Variation de {percent} %"
+    },
     "nurseTeamInbox": {
       "title": "Coordination équipe",
       "loading": "Chargement…",

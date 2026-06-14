@@ -1457,6 +1457,19 @@
       "reasonAppointmentUnconfirmed": "موعد غير مؤكّد",
       "reasonNeverSynced": "لم تتم المزامنة قط"
     },
+    "medecinProposals": {
+      "title": "المقترحات قيد الانتظار",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل المقترحات.",
+      "emptyTitle": "لا توجد مقترحات",
+      "emptyMessage": "لا يوجد تعديل للمراجعة.",
+      "patientFallback": "مريض",
+      "paramBasalRate": "المعدل القاعدي",
+      "paramInsulinSensitivityFactor": "عامل حساسية الأنسولين (ISF)",
+      "paramInsulinToCarbRatio": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
+      "valueTransition": "{from} ← {to}",
+      "changeAria": "تغيّر بنسبة {percent}٪"
+    },
     "nurseTeamInbox": {
       "title": "تنسيق الفريق",
       "loading": "جارٍ التحميل…",

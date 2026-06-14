@@ -22,6 +22,8 @@ import {
   EmergencyAlertType,
   EmergencyAlertSeverity,
   AppointmentStatus,
+  ProposalStatus,
+  type AdjustableParameter,
   type Prisma,
 } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
@@ -669,5 +671,85 @@ export const kpisQuery = {
         delta: null, trend: null, unit: null,
       },
     ]
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2602 (Ma journée) — Propositions d'ajustement en attente (liste)
+// ─────────────────────────────────────────────────────────────
+
+export type PendingProposalItem = {
+  id: string
+  patientId: number
+  patientFirstName: string
+  pathology: string | null
+  parameterType: AdjustableParameter
+  currentValue: number
+  proposedValue: number
+  changePercent: number
+  createdAt: Date
+}
+
+const PENDING_PROPOSALS_LIMIT = 5
+
+/**
+ * Liste les propositions d'ajustement **en attente** du portefeuille du caller
+ * (déterministe ; `AdjustmentProposal` produites par le graphe d'orchestration
+ * backend, jamais par le frontend). Scopé via `getAccessiblePatientIds`.
+ */
+export const pendingProposalsQuery = {
+  async forCaller(
+    userId: number, role: Role,
+    auditUserId: number, ctx?: AuditContext,
+  ): Promise<PendingProposalItem[]> {
+    const ids = await getAccessiblePatientIds(userId, role)
+    const scope = patientScopeWhere(ids)
+    if (scope === null) return []
+    // `scope` porte déjà `patient: { deletedAt: null }` — ne pas le redéclarer.
+    const where: Prisma.AdjustmentProposalWhereInput = {
+      ...scope,
+      status: ProposalStatus.pending,
+    }
+    const rows = await prisma.adjustmentProposal.findMany({
+      where,
+      include: {
+        patient: {
+          select: {
+            id: true, pathology: true,
+            user: { select: { firstname: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: PENDING_PROPOSALS_LIMIT,
+    })
+
+    // Audit : résumé + pivot par patient (PHI : prénom déchiffré exposé).
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "ADJUSTMENT_PROPOSAL",
+      resourceId: "0",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { kind: "dashboard.medecin.pendingProposals", count: rows.length },
+    })
+    await Promise.allSettled(rows.map((r) =>
+      auditService.log({
+        userId: auditUserId, action: "READ", resource: "ADJUSTMENT_PROPOSAL",
+        resourceId: r.id,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { patientId: r.patientId, kind: "dashboard.medecin.pendingProposals" },
+      }),
+    ))
+
+    return rows.map((r) => ({
+      id: r.id,
+      patientId: r.patientId,
+      patientFirstName: safeDecryptField(r.patient.user.firstname ?? "") ?? "",
+      pathology: r.patient.pathology,
+      parameterType: r.parameterType,
+      currentValue: Number(r.currentValue),
+      proposedValue: Number(r.proposedValue),
+      changePercent: Number(r.changePercent),
+      createdAt: r.createdAt,
+    }))
   },
 }

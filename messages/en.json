@@ -1457,6 +1457,19 @@
       "reasonAppointmentUnconfirmed": "Unconfirmed appointment",
       "reasonNeverSynced": "Never synced"
     },
+    "medecinProposals": {
+      "title": "Pending proposals",
+      "loading": "Loading…",
+      "loadError": "Unable to load proposals.",
+      "emptyTitle": "No proposals",
+      "emptyMessage": "No adjustment to review.",
+      "patientFallback": "Patient",
+      "paramBasalRate": "Basal rate",
+      "paramInsulinSensitivityFactor": "Insulin sensitivity factor (ISF)",
+      "paramInsulinToCarbRatio": "Insulin-to-carb ratio (ICR)",
+      "valueTransition": "{from} → {to}",
+      "changeAria": "{percent}% change"
+    },
     "nurseTeamInbox": {
       "title": "Team coordination",
       "loading": "Loading…",
