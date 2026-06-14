@@ -21,7 +21,8 @@ Gérer **les membres de mon cabinet/équipe et leurs droits** (qui peut soigner,
 - **Liste des membres** de mon **périmètre** (cabinet/équipe) : nom, statut (*actif / invité / révoqué*), **capacités** (rôle clinique Q1 + gestion Q2), qualité PS vérifiée (oui/non).
 - **Inviter / ajouter un membre** : par e-mail → crée ou rattache un `User` ; affecte au **scope** (cabinet/équipe).
 - **Attribuer les capacités** :
-  - **Q2 (gestion)** : octroyable par un org-admin **dans son scope**.
+  - **Q2 (gestion)** : octroyable **uniquement par un admin principal** (voir ci-dessous), **dans son scope**.
+  - **Deux niveaux de Q2** : **admin principal** (Q2 + droit de **déléguer** Q2) vs **admin délégué** (Q2 **opérationnel** : gère équipe/facturation, mais **ne peut pas créer d'autres admins**). Le **propriétaire** du cabinet (bootstrap libéral) est admin **principal** par défaut.
   - **Q1 (clinique)** : **pas un simple interrupteur** — n'est attribuable **que** si le membre a une **qualité PS vérifiée (RPPS/ADELI)**. Sinon : attribution **bloquée** (état « vérification requise »), **aucun accès aux données de santé** entre-temps.
 - **Révoquer** un membre ou une capacité : **effet immédiat** (accès coupé, sessions invalidées). Les données déjà créées par le membre restent (append-only / audit).
 - Chaque action sensible est **journalisée** (qui, quoi, sur qui, quand, scope).
@@ -31,7 +32,7 @@ Gérer **les membres de mon cabinet/équipe et leurs droits** (qui peut soigner,
 |---|---|---|---|---|
 | Voir la liste des membres | ✅ (son scope) | ❌ | ✅ (son scope) | ✅ |
 | Inviter / révoquer un membre | ✅ | ❌ | ✅ | ✅ |
-| Octroyer **Q2 (gestion)** | ✅ (selon point ouvert #3) | ❌ | ✅ (selon #3) | ✅ |
+| Octroyer **Q2 (gestion)** | ✅ **si admin principal** · ❌ si délégué | ❌ | ❌ (délégué par défaut) | ✅ |
 | Octroyer **Q1 (clinique)** | ✅ **uniquement à un PS vérifié** | ❌ | ✅ **uniquement à un PS vérifié** | ✅ (idem) |
 | S'auto-octroyer Q1 | ❌ **interdit** | — | ❌ | ❌ |
 
@@ -47,6 +48,7 @@ Gérer **les membres de mon cabinet/équipe et leurs droits** (qui peut soigner,
 
 ## 🧩 Règles métier
 - **2 axes orthogonaux** : Q1 (clinique, PHI) et Q2 (gestion) s'attribuent **indépendamment**.
+- **Délégation de Q2 contrôlée** : seul un **admin principal** (ou `SYSTEM_ADMIN`) peut octroyer Q2 ; un **admin délégué** n'a **pas** le droit de re-déléguer → limite la prolifération d'admins et le rayon d'impact d'un compte compromis.
 - **Q2 n'ouvre jamais les données de santé.** Q1 est **gated RPPS** et **jamais octroyable par la voie admin** (la gestion *associe* une qualité PS vérifiée, elle ne la *crée* pas).
 - **Séparation des pouvoirs / non-auto-élévation** : impossible de se donner à soi-même un accès clinique.
 - **Scope obligatoire** : tout grant est rattaché à un périmètre (cabinet / équipe) ; pas de droit « global » via cet écran (le global = `SYSTEM_ADMIN`, hors périmètre).
@@ -83,7 +85,7 @@ La vérification de la qualité PS peut être **assouplie** pour démarrer (pilo
 ## ⚠️ Points ouverts
 1. **Vérification de la qualité PS** — **décidé** : manuelle (justificatif) comme **socle permanent multi-pays** ; **API RPPS gratuite branchée en V2 pour la France uniquement** (l'Algérie et les autres restent en manuel, faute d'API équivalente).
 2. **Bootstrap établissement** (hôpital) : qui crée le **tout premier** org-admin (vs self-serve libéral) ?
-3. **Délégation de Q2** : un org-admin peut-il créer **un autre** org-admin, ou seulement le **propriétaire** du cabinet ? (limiter la prolifération d'admins).
+3. **Délégation de Q2** — **décidé (option C)** : deux niveaux — **admin principal** (peut déléguer Q2) vs **admin délégué** (Q2 opérationnel, **sans** re-délégation). Le propriétaire/bootstrap est principal. *(Reste à préciser : un principal peut-il nommer un autre principal, ou seulement des délégués ?)*
 4. **Secrétaire partagée en cabinet de groupe** : scope **par médecin** ou **par service** ? (impacte l'isolation patient).
 5. **Responsable de traitement (RGPD)** : libéral/cabinet de groupe = contrôleurs distincts ; hôpital = établissement contrôleur — formaliser pour le partage par défaut.
 
