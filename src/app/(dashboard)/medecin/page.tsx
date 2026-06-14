@@ -15,6 +15,10 @@ import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCa
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
 import { KpiSection } from "@/components/diabeo/dashboard/medecin/KpiSection"
+// US-2602 (Ma journée) incr. 1 — Relances en attente. Réutilise la query
+// infirmier (`nurseRecallQuery`, scopée au portefeuille de l'appelant) + la
+// route `/api/dashboard/infirmier/recall-list` (minRole NURSE → DOCTOR éligible).
+import { RecallListCard } from "@/components/diabeo/dashboard/infirmier/RecallListCard"
 
 const ALLOWED_ROLES = new Set(["DOCTOR", "NURSE", "ADMIN"])
 
@@ -33,6 +37,7 @@ export default async function MedecinDashboardPage() {
         <AppointmentCard />
       </div>
       <PatientsAtRiskCard />
+      <RecallListCard />
       <KpiSection />
     </main>
   )
