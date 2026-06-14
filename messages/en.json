@@ -98,6 +98,17 @@
     "devices": "Devices",
     "messages": "Messages"
   },
+  "commandPalette": {
+    "ariaLabel": "Command palette",
+    "placeholder": "Search a patient or a section…",
+    "goToGroup": "Go to",
+    "patientsGroup": "Patients",
+    "loading": "Searching…",
+    "noResults": "No result",
+    "minCharsHint": "Type at least 2 characters to search a patient.",
+    "hint": "↑↓ to navigate · ↵ to open · Esc to close",
+    "openPatientAria": "Open {name}'s record"
+  },
   "messages": {
     "pageTitle": "Messages",
     "pageSubtitle": "Communicate with your patients and practice members.",

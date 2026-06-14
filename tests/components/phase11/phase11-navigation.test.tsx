@@ -23,6 +23,14 @@ import { usePathname } from "next/navigation"
 
 vi.mock("next/navigation", () => ({
   usePathname: vi.fn(() => "/dashboard"),
+  useRouter: vi.fn(() => ({ push: vi.fn() })),
+}))
+
+// US-2601 — la palette (Ctrl-K) est montée dans NavigationShell mais hors
+// périmètre de ces tests (nav items / RBAC) ; on la neutralise pour éviter de
+// tirer Dialog base-ui + le fetch de recherche patient.
+vi.mock("@/components/diabeo/CommandPalette", () => ({
+  CommandPalette: () => null,
 }))
 
 vi.mock("@/hooks/use-auth", () => ({

@@ -49,6 +49,7 @@ import {
   useUnreadCountFromContext,
 } from "@/components/diabeo/messaging/UnreadCountContext"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
+import { CommandPalette } from "@/components/diabeo/CommandPalette"
 import { LocaleReconciliationBanner } from "@/components/diabeo/LocaleReconciliationBanner"
 import {
   Sheet,
@@ -468,6 +469,8 @@ export function NavigationShell({
   return (
     <UnreadCountProvider skip={!hasBadgeItem}>
     <TooltipProvider delay={300}>
+      {/* US-2601 — Palette de commande Ctrl/Cmd-K (staff uniquement). */}
+      {variant === "pro" && <CommandPalette userRole={userRole} />}
       <div className="flex h-screen overflow-hidden bg-[var(--background)]">
         {/* Desktop sidebar */}
         <aside

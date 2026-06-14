@@ -98,6 +98,17 @@
     "devices": "Appareils",
     "messages": "Messagerie"
   },
+  "commandPalette": {
+    "ariaLabel": "Palette de commande",
+    "placeholder": "Rechercher un patient ou une section…",
+    "goToGroup": "Aller à",
+    "patientsGroup": "Patients",
+    "loading": "Recherche…",
+    "noResults": "Aucun résultat",
+    "minCharsHint": "Tapez au moins 2 caractères pour rechercher un patient.",
+    "hint": "↑↓ pour naviguer · ↵ pour ouvrir · Échap pour fermer",
+    "openPatientAria": "Ouvrir le dossier de {name}"
+  },
   "messages": {
     "pageTitle": "Messagerie",
     "pageSubtitle": "Échangez avec vos patients et collègues du cabinet.",
