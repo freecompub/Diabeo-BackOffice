@@ -1,8 +1,12 @@
 /**
- * US-2400 — Dashboard médecin (page conteneur).
+ * US-2400 / US-2602 — « Ma journée » (dashboard médecin, page conteneur).
  *
- * Layout responsive : 1 col mobile, 2 col grid lg+. Urgences + RDV top row
- * (parallel), Patients à suivre row 2 full-width, KPI section row 3.
+ * Vue jour du médecin. Layout responsive (1 col mobile, 2 col lg+) :
+ *   1. Urgences + Rendez-vous du jour (row 2 col)
+ *   2. Patients à suivre (full-width)
+ *   3. Relances en attente + Propositions d'ajustement en attente (row 2 col)
+ *   4. Messages non lus (full-width)
+ *   5. Indicateurs clés (KPI) du cabinet
  *
  * Server-side guard : redirect non-DOCTOR/NURSE/ADMIN to login. The
  * (dashboard)/layout.tsx already redirects VIEWER → /patient/dashboard.

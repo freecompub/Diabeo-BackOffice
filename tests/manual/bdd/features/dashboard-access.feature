@@ -5,7 +5,7 @@ Fonctionnalité: Accès au tableau de bord médecin selon le rôle
   Scénario: un DOCTOR accède à son tableau de bord
     Étant donné que je suis connecté en tant que "DOCTOR"
     Quand je vais sur "/medecin"
-    Alors je vois le titre "Tableau de bord médecin"
+    Alors je vois le titre "Ma journée"
     # Effet base attendu : AUCUN (écran en lecture seule)
 
   Scénario: un VIEWER est redirigé hors du tableau de bord médecin

@@ -75,6 +75,7 @@
   },
   "nav": {
     "dashboard": "Tableau de bord",
+    "dashboardMedecin": "Ma journée",
     "patients": "Patients",
     "appointments": "Rendez-vous",
     "users": "Utilisateurs",
@@ -215,7 +216,7 @@
     "errorLoadingData": "Impossible de charger les donnees de glycemie",
     "newEventAriaLabel": "Ouvrir le formulaire de saisie d'un nouvel evenement",
     "medecin": {
-      "pageTitle": "Tableau de bord médecin",
+      "pageTitle": "Ma journée",
       "lastUpdate": "Mise à jour {time}",
       "loading": "Chargement…",
       "stale": "Données obsolètes — rafraîchissement en attente.",

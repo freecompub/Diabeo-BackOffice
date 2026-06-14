@@ -75,6 +75,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "dashboardMedecin": "My day",
     "patients": "Patients",
     "appointments": "Appointments",
     "users": "Users",
@@ -215,7 +216,7 @@
     "errorLoadingData": "Unable to load glycemia data",
     "newEventAriaLabel": "Open new event form",
     "medecin": {
-      "pageTitle": "Doctor dashboard",
+      "pageTitle": "My day",
       "lastUpdate": "Updated {time}",
       "loading": "Loading…",
       "stale": "Stale data — refresh pending.",

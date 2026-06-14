@@ -75,6 +75,7 @@
   },
   "nav": {
     "dashboard": "لوحة القيادة",
+    "dashboardMedecin": "يومي",
     "patients": "المرضى",
     "appointments": "المواعيد",
     "users": "المستخدمون",
@@ -215,7 +216,7 @@
     "errorLoadingData": "تعذر تحميل بيانات الجلوكوز",
     "newEventAriaLabel": "فتح نموذج حدث جديد",
     "medecin": {
-      "pageTitle": "لوحة تحكم الطبيب",
+      "pageTitle": "يومي",
       "lastUpdate": "آخر تحديث {time}",
       "loading": "جارٍ التحميل…",
       "stale": "بيانات قديمة — في انتظار التحديث.",
