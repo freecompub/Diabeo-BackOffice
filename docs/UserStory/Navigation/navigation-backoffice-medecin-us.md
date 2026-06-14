@@ -256,7 +256,7 @@ Projections de lecture (constantes, stats glycémiques) · **source unique de se
 >
 > **Classes de données** : la gestion donne accès à la **PII administrative** (identité, coordonnées, ligne de facturation) **sans** les **données de santé** (glycémie, traitement). La facturation FR étant per-patient, la secrétaire voit l'**identité** du patient pour facturer, jamais son dossier clinique.
 >
-> ⚠️ **Dépendance bloquante** : ces 2 US présupposent le **modèle de capacités Q1/Q2 org-scopé** (à spécifier dans une US d'accès dédiée — `US-ACCESS-xxx`) : grant administratif, scope (cabinet / équipe), gating RPPS, non-auto-élévation, audit des octrois. Sans lui, la nav de gestion n'a rien à filtrer.
+> ⚠️ **Dépendance bloquante** : ces 2 US présupposent le **modèle de capacités Q1/Q2 org-scopé** (à spécifier dans une US d'accès dédiée — `US-ACCESS-001 (`gestion-personnel-droits-us.md`)`) : grant administratif, scope (cabinet / équipe), gating RPPS, non-auto-élévation, audit des octrois. Sans lui, la nav de gestion n'a rien à filtrer.
 >
 > **Roadmap : Variante A (US-NAV-BO-007) en V1 · Variante B (US-NAV-BO-008) en V3.**
 
@@ -303,7 +303,7 @@ Retrouver les fonctions de gestion (équipe/droits, facturation, paiements, para
 - Données **financières ≠ données de santé** : régime et écran distincts.
 
 ### ⚠️ Points ouverts
-- Sous-périmètre des grants en gestion (qui peut octroyer quoi, à qui) → relève de l'US d'accès `US-ACCESS-xxx`.
+- Sous-périmètre des grants en gestion (qui peut octroyer quoi, à qui) → relève de l'US d'accès `US-ACCESS-001 (`gestion-personnel-droits-us.md`)`.
 
 ---
 
