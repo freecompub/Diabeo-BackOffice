@@ -1,8 +1,8 @@
-# US-BILLING-001 — Facturation & Paiements (espace gestion) — **V4**
+# US-2622 — Facturation & Paiements (espace gestion) — **V4**
 
-> **Périmètre :** contenu de l'espace **Gestion cabinet** (item « Facturation » / « Paiements » de US-NAV-BO-007). **Format B léger.**
+> **Périmètre :** contenu de l'espace **Gestion cabinet** (item « Facturation » / « Paiements » de US-2606). **Format B léger.**
 > **Baselines :** `BASELINE-RBAC` · `BASELINE-AUDIT` · `BASELINE-DESIGN` · `BASELINE-I18N` (FR/AR + RTL).
-> **Dépend de :** `US-ACCESS-001` (capacité Q2) · `US-TECH-SEC-001` (séparation PHI) · existant `invoice-admin` / `BillingCard`.
+> **Dépend de :** `US-2610` (capacité Q2) · `US-2615` (séparation PHI) · existant `invoice-admin` / `BillingCard`.
 > **Roadmap : V4.**
 
 ## 👤 En tant que
@@ -35,4 +35,4 @@ Gérer les **factures et paiements** de mon cabinet, **selon le marché** (Franc
 3. Périmètre exact V4 vs existant à reprendre.
 
 ## 🔗 Dépendances
-`US-NAV-BO-007` (item nav) · `US-ACCESS-001` (Q2) · `US-TECH-SEC-001` (séparation PHI) · `invoice-admin` existant · `AuditLog`.
+`US-2606` (item nav) · `US-2610` (Q2) · `US-2615` (séparation PHI) · `invoice-admin` existant · `AuditLog`.

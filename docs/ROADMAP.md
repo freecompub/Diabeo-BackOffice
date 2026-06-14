@@ -11,7 +11,7 @@
 
 > **Mise à jour 2026-06-14 — Série Navigation & Accès Backoffice (cadrage, design-stage)** : nouvelle série issue d'une session de design (branche `docs/nav-mockups`, maquette `docs/mockups/navigation.html`). **23 US** : navigation médecin (sans IA), sous-série « Gestion cabinet » (modèle d'accès **2 axes** Q1 clinique / Q2 gestion), admin plateforme Diabeo, vérification PS multi-pays, et **6 prérequis techniques** issus d'un audit `healthcare-security-auditor`. ⚠️ **Non renumérotées dans le corpus US-2xxx, non estimées en SP → NON comptées dans le tableau de stats ci-dessus** (design-stage). Détail par version : section **« Série Navigation & Accès Backoffice »** en bas de doc. Phasage clé : socle de capacités (F2/F4/F6/F7/F8) + vérif PS manuelle + mono-session en **V1** ; bascule mode gestion en **V3** ; découplage accès PHI/rôle plateforme (F1) + MFA forte + facturation en **V4**. Risque accepté V1-V3 : `ADMIN` garde l'accès PHI tant que F1 (V4) non livré.
 
-> 🚨 **ALERTE V1 — pas de garde-fou d'accès clinique (décision produit 2026-06-14)** : en V1, **toutes les inscriptions sont considérées vérifiées** (vérification PS reportée en V4) **et** F1 (découplage accès PHI / rôle plateforme) est en V4. **Conséquence** : en **V1-V3, aucune barrière « qualité PS » ne contrôle l'accès aux données de santé** — quiconque a un rôle clinique (ou `ADMIN`) accède au PHI. **Acceptable uniquement en lancement contrôlé / pilote** : onboarding **restreint à des soignants connus** + **DPIA obligatoire** avant toute donnée patient réelle. À lever en V4 (US-ACCESS-002 + US-TECH-SEC-001).
+> 🚨 **ALERTE V1 — pas de garde-fou d'accès clinique (décision produit 2026-06-14)** : en V1, **toutes les inscriptions sont considérées vérifiées** (vérification PS reportée en V4) **et** F1 (découplage accès PHI / rôle plateforme) est en V4. **Conséquence** : en **V1-V3, aucune barrière « qualité PS » ne contrôle l'accès aux données de santé** — quiconque a un rôle clinique (ou `ADMIN`) accède au PHI. **Acceptable uniquement en lancement contrôlé / pilote** : onboarding **restreint à des soignants connus** + **DPIA obligatoire** avant toute donnée patient réelle. À lever en V4 (US-2611 + US-2615).
 
 ---
 
@@ -636,43 +636,43 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 ### V1
 | US | Titre |
 |----|-------|
-| US-NAV-BO-001 | Navigation globale (sidebar maigre, RBAC serveur, RTL, drawer) |
-| US-NAV-BO-002 | Palette de commande `Ctrl/Cmd-K` (recherche patient scopée, audit ouverture) |
-| US-NAV-BO-003 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) |
-| US-NAV-BO-004 | Barre de contexte patient + switcher |
-| US-NAV-BO-005 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) |
-| US-NAV-BO-006 | Mode revue de consultation (**sans IA**) |
-| US-NAV-BO-007 | Bloc « Gestion cabinet » dans la sidebar (Variante A) |
-| US-ACCESS-001 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session |
-| US-SYSADMIN-001 | Admin plateforme Diabeo (établissements, personnel, bootstrap, politique vérif) ⚠️ garantie « sans PHI » effective en V4 (dép. F1) |
-| US-TECH-SEC-002 | (F2) Modèle Tenant + politique de vérification fail-secure |
-| US-TECH-SEC-003 | (F4) `HealthcareMembership` N-N + capacités + `ProfessionalRegistration` |
-| US-TECH-SEC-004 | (F6) Isolation patient en cabinet de groupe (référent) |
-| US-TECH-SEC-005 | (F7) Révocation immédiate de capacité (capacités hors JWT) |
-| US-TECH-SEC-006 | (F8) Couverture d'audit du socle (scope/tenantId + actions canoniques) |
-| US-TECH-SEC-007 | Sécurité de session (mono-session + timeout d'inactivité + durées token/session) |
+| US-2600 | Navigation globale (sidebar maigre, RBAC serveur, RTL, drawer) |
+| US-2601 | Palette de commande `Ctrl/Cmd-K` (recherche patient scopée, audit ouverture) |
+| US-2602 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) |
+| US-2603 | Barre de contexte patient + switcher |
+| US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) |
+| US-2605 | Mode revue de consultation (**sans IA**) |
+| US-2606 | Bloc « Gestion cabinet » dans la sidebar (Variante A) |
+| US-2610 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session |
+| US-2613 | Admin plateforme Diabeo (établissements, personnel, bootstrap, politique vérif) ⚠️ garantie « sans PHI » effective en V4 (dép. F1) |
+| US-2616 | (F2) Modèle Tenant + politique de vérification fail-secure |
+| US-2617 | (F4) `HealthcareMembership` N-N + capacités + `ProfessionalRegistration` |
+| US-2618 | (F6) Isolation patient en cabinet de groupe (référent) |
+| US-2619 | (F7) Révocation immédiate de capacité (capacités hors JWT) |
+| US-2620 | (F8) Couverture d'audit du socle (scope/tenantId + actions canoniques) |
+| US-2621 | Sécurité de session (mono-session + timeout d'inactivité + durées token/session) |
 
 ### V2
 | US | Titre |
 |----|-------|
-| US-NAV-BO-009 | Historique du dossier patient (chrono append-only, seuil de changement significatif) |
-| US-NAV-BO-010 | Modèles de compte rendu personnalisés du médecin |
+| US-2608 | Historique du dossier patient (chrono append-only, seuil de changement significatif) |
+| US-2609 | Modèles de compte rendu personnalisés du médecin |
 
 ### V3
 | US | Titre |
 |----|-------|
-| US-NAV-BO-008 | Bascule « Mode soin ⇄ Mode gestion » (Variante B) |
+| US-2607 | Bascule « Mode soin ⇄ Mode gestion » (Variante B) |
 
 ### V4
 | US | Titre |
 |----|-------|
-| US-ACCESS-002 | Vérification de la qualité PS — workflow complet (manuel + API RPPS FR + cycle de vie + cadence + rétention) |
-| US-TECH-SEC-001 | (F1) Découpler l'accès PHI du rôle plateforme + renommage `ADMIN`→`SYSTEM_ADMIN` |
-| US-BILLING-001 | Facturation & Paiements (espace gestion, Q2, sans PHI, marché FR/DZ) |
-| US-SYSADMIN-002 | Support / impersonation sans accès aux données de santé |
+| US-2611 | Vérification de la qualité PS — workflow complet (manuel + API RPPS FR + cycle de vie + cadence + rétention) |
+| US-2615 | (F1) Découpler l'accès PHI du rôle plateforme + renommage `ADMIN`→`SYSTEM_ADMIN` |
+| US-2622 | Facturation & Paiements (espace gestion, Q2, sans PHI, marché FR/DZ) |
+| US-2614 | Support / impersonation sans accès aux données de santé |
 | (règle) MFA forte obligatoire | `SYSTEM_ADMIN` + admin principal — SMS exclu (F9) |
 
-> **Process (hors version)** : **US-ACCESS-003** — clôture / anonymisation d'un établissement **sur demande officielle** (aucune interface, RGPD rétention + audit conservé).
+> **Process (hors version)** : **US-2612** — clôture / anonymisation d'un établissement **sur demande officielle** (aucune interface, RGPD rétention + audit conservé).
 
 ### Points ouverts (à trancher avant planification)
 - Secrétaire partagée en cabinet de groupe : scope par médecin ou par service ?

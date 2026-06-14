@@ -1,8 +1,8 @@
-# US-ACCESS-002 — Vérification de la qualité de professionnel de santé
+# US-2611 — Vérification de la qualité de professionnel de santé
 
 > **Périmètre :** socle d'accès — établit et maintient la **« qualité PS vérifiée »** qui conditionne l'accès clinique (Q1). **Format B léger.**
 > **Baselines :** `BASELINE-RBAC` · `BASELINE-AUDIT` (immuable) · `BASELINE-I18N` (FR/AR) · chiffrement AES-256-GCM (justificatifs).
-> **Dépend de :** `US-ACCESS-001` (modèle 2 axes, états, politique fail-secure) · `US-SYSADMIN-001` (back-office de validation).
+> **Dépend de :** `US-2610` (modèle 2 axes, états, politique fail-secure) · `US-2613` (back-office de validation).
 
 ## 👤 En tant que
 - Le **professionnel** (ou l'**org-admin** pour son compte) qui **soumet** une preuve d'enregistrement.
@@ -15,7 +15,7 @@ Prouver et maintenir la qualité PS de façon **fiable et multi-pays**, afin que
 - **Soumission de preuve** : identifiant pro (FR : RPPS/ADELI · DZ : n° Ordre / diplôme · autres) + **justificatif** (chiffré).
 - **Stratégie par pays (pluggable)** : FR = **manuel V1 → API RPPS/Annuaire Santé V2** · DZ/autres = **manuel** (pas d'API).
 - **Validation / rejet** par `SYSTEM_ADMIN` (back-office) → met à jour l'**état**.
-- **Cycle de vie de l'état** : `en_attente` → `vérifié` | `refusé` ; `provisoire` (via politique tenant, US-ACCESS-001) ; `expiré` ; `révoqué`.
+- **Cycle de vie de l'état** : `en_attente` → `vérifié` | `refusé` ; `provisoire` (via politique tenant, US-2610) ; `expiré` ; `révoqué`.
 - **Expiration / re-vérification** (F11) : `expiresAt`/`reviewDueAt` sur la preuve ; **retrait automatique de Q1** à expiration, révocation (radiation) ou rejet.
 
 ## ✔️ Critères d'acceptation
@@ -38,8 +38,8 @@ Prouver et maintenir la qualité PS de façon **fiable et multi-pays**, afin que
 3. **Rétention du justificatif** (RGPD) — **reportée en V4** (durée, purge, base légale).
 
 ## 🗺️ Roadmap
-- **V1** : ⚠️ **pas de vérification** — toutes les inscriptions sont **considérées vérifiées** (cf. risque accepté US-ACCESS-001 + alerte ROADMAP). Cette US **n'est pas livrée en V1**.
+- **V1** : ⚠️ **pas de vérification** — toutes les inscriptions sont **considérées vérifiées** (cf. risque accepté US-2610 + alerte ROADMAP). Cette US **n'est pas livrée en V1**.
 - **V4** : **workflow de vérification complet** — manuel multi-pays **+ API RPPS / Annuaire Santé (FR)** + cycle de vie (états, expiration, retrait Q1) + cadence de re-vérification + rétention. Résilience API : règle des 15 j (ci-dessus).
 
 ## 🔗 Dépendances
-`US-ACCESS-001` · `US-SYSADMIN-001` · `ProfessionalRegistration` (US-TECH-SEC-003) · `AuditLog`.
+`US-2610` · `US-2613` · `ProfessionalRegistration` (US-2617) · `AuditLog`.

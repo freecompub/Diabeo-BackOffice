@@ -1,6 +1,6 @@
-# US-ACCESS-001 — Gestion du personnel & des droits (cabinet / équipe)
+# US-2610 — Gestion du personnel & des droits (cabinet / équipe)
 
-> **Périmètre :** Diabeo BackOffice — **socle d'accès** dont dépend la sous-série « Gestion cabinet » (US-NAV-BO-007 / 008). **Format B léger.**
+> **Périmètre :** Diabeo BackOffice — **socle d'accès** dont dépend la sous-série « Gestion cabinet » (US-2606 / US-2607). **Format B léger.**
 > **Baselines :** `BASELINE-RBAC` · `BASELINE-AUDIT` (immuable) · `BASELINE-DESIGN` · `BASELINE-I18N` (FR/AR + RTL).
 >
 > **Modèle d'accès — 2 axes indépendants, portés par le `User`, scopés organisation :**
@@ -83,7 +83,7 @@ La vérification de la qualité PS peut être **assouplie** pour démarrer (pilo
 - Cible : **appartenance scopée avec capacités** (ex. `HealthcareMembership { userId, scope(serviceId/équipe), clinicalRole?, canManage: bool }`) + **preuve d'enregistrement PS générique** (ex. `ProfessionalRegistration { userId, country, scheme(RPPS/ADELI/Ordre/diplôme…), number, method, verifiedBy, verifiedAt }`) — **pas** un champ « RPPS » en dur (multi-pays). Renommer `ADMIN` → `SYSTEM_ADMIN` pour lever l'ambiguïté.
 
 ## ⚠️ Points ouverts
-1. **Vérification de la qualité PS** — **décidé** : **V1 = toutes les inscriptions sont considérées vérifiées (aucun contrôle)** ; le workflow de vérification réel est **reporté en V4** (cf. US-ACCESS-002). ⚠️ **Risque accepté V1** — aucune barrière d'accès clinique en V1 (onboarding maîtrisé + DPIA ; cf. alerte ROADMAP).
+1. **Vérification de la qualité PS** — **décidé** : **V1 = toutes les inscriptions sont considérées vérifiées (aucun contrôle)** ; le workflow de vérification réel est **reporté en V4** (cf. US-2611). ⚠️ **Risque accepté V1** — aucune barrière d'accès clinique en V1 (onboarding maîtrisé + DPIA ; cf. alerte ROADMAP).
 2. **Bootstrap établissement** (hôpital) — **décidé** : le **1ᵉʳ org-admin est créé par l'admin Diabeo (`SYSTEM_ADMIN`)** pour le moment (self-serve hôpital plus tard).
 3. **Délégation de Q2** — **décidé** : un **admin principal ne nomme QUE des délégués** (jamais un autre principal). Seul le **propriétaire** (bootstrap) est principal ; un second principal nécessite une action `SYSTEM_ADMIN` / transfert de propriété.
 4. **Secrétaire partagée en cabinet de groupe** — **décidé : PAS de secrétaire partagée.** Un membre de gestion est **scopé à un seul périmètre** (un médecin / un service) → isolation simplifiée.
@@ -99,14 +99,14 @@ La vérification de la qualité PS peut être **assouplie** pour démarrer (pilo
 ## 🗺️ Phasage (suite audit sécurité)
 - **V1** : **session unique** (ci-dessus) ; **socle de capacités** — **F2** (modèle Tenant + table politique, défaut `requis` codé en dur), **F4** (`HealthcareMembership` N-N + capacités + `ProfessionalRegistration`), **F6** (isolation cabinet de groupe par référent + responsable de traitement), **F7** (révocation **immédiate de capacité** : capacités relues en base, **pas figées dans le JWT 15 min**) ; **F3** (octroi Q1 gated strictement sur état `vérifié`) ; **F5** (garde-fous `provisoire` : `expiresAt` obligatoire borné + interdit prod par défaut + DPIA) ; **F8** (champ `scope`/`tenantId` d'audit + actions canoniques) ; **F15** (invitations single-use anti-énumération).
 - **V4** : **F1** (découpler l'accès PHI du rôle plateforme — refonte RBAC, abandon `ROLE_HIERARCHY` linéaire) ; **MFA forte obligatoire** (`SYSTEM_ADMIN` + admin principal, **SMS exclu** — appli TOTP ou clé/passkey) (F9).
-- ⚠️ **Risque accepté V1-V3 (report de F1)** : tant que F1 n'est pas livré, `ADMIN`/`SYSTEM_ADMIN` **conserve l'accès aux données de santé** → la garantie « hébergeur sans PHI » (US-SYSADMIN-001) **n'est pas effective avant la V4**. **Mesure transitoire** : ne confier aucun rôle plateforme à un **non-soignant** avant la V4 (ou l'encadrer par procédure documentée).
+- ⚠️ **Risque accepté V1-V3 (report de F1)** : tant que F1 n'est pas livré, `ADMIN`/`SYSTEM_ADMIN` **conserve l'accès aux données de santé** → la garantie « hébergeur sans PHI » (US-2613) **n'est pas effective avant la V4**. **Mesure transitoire** : ne confier aucun rôle plateforme à un **non-soignant** avant la V4 (ou l'encadrer par procédure documentée).
 
 ## 🔗 Dépendances
-Socle de **US-NAV-BO-007** (bloc gestion, V1) et **US-NAV-BO-008** (bascule mode, V3) · `User`/`Role` · `HealthcareService`/`HealthcareMember` · `AuditLog` · baselines en tête.
+Socle de **US-2606** (bloc gestion, V1) et **US-2607** (bascule mode, V3) · `User`/`Role` · `HealthcareService`/`HealthcareMember` · `AuditLog` · baselines en tête.
 
 ---
 
-## US-ACCESS-003 — Clôture / anonymisation d'un établissement (process RGPD)
+## US-2612 — Clôture / anonymisation d'un établissement (process RGPD)
 
 ### 👤 En tant que
 `SYSTEM_ADMIN` (Diabeo), **sur demande officielle** d'un établissement.
@@ -133,4 +133,4 @@ Clôturer ou anonymiser un établissement **uniquement sur demande officielle**,
 - Articulation précise avec le soft-delete patient et l'immutabilité audit.
 
 ### 🔗 Dépendances
-`US-SYSADMIN-001` · `AuditLog` (immuable) · soft-delete patient (`patient.service`).
+`US-2613` · `AuditLog` (immuable) · soft-delete patient (`patient.service`).
