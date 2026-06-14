@@ -66,6 +66,16 @@ La porte d'accès clinique (Q1) repose sur une capacité **abstraite « qualité
 - ⚠️ Le RPPS est **franco-français** : il ne valide **que** les soignants enregistrés en France. La **vérification manuelle est le socle permanent** ; l'API RPPS est une **optimisation FR** branchée par-dessus.
 - On ne stocke **pas** un « champ RPPS » mais une **preuve d'enregistrement générique** : `{ pays, type (RPPS/Ordre/diplôme…), numéro, méthode, vérifié_par, date }`, **auditée**.
 
+## 🚦 Mode d'application de la vérification (politique fail-secure)
+La vérification de la qualité PS peut être **assouplie** pour démarrer (pilote, marché sans process), mais **jamais par défaut ouverte**.
+
+- **Deux modes** : `requis` (porte ON) · `provisoire` (accès clinique autorisé sans preuve, le temps du ramp-up).
+- **Résolution serveur, fail-secure** : `tenant > pays > environnement`, **défaut = `requis`** partout (si rien n'est posé → requis). La **prod est `requis`** par défaut quoi qu'il arrive.
+- **Réglé par `SYSTEM_ADMIN` (Diabeo), par tenant/pays — JAMAIS par l'org-admin** (sinon auto-bypass de la porte clinique, cf. règle de non-auto-élévation). **Audité et borné dans le temps.**
+- **États distincts** : un compte passé en mode provisoire est marqué **`provisoire`**, **jamais `vérifié`** → on peut resserrer plus tard et savoir qui doit encore fournir une preuve.
+- **« Forcer la vérification »** = `SYSTEM_ADMIN` repasse un tenant en `requis` : les comptes `provisoire` doivent obtenir une vraie preuve pour conserver l'accès clinique.
+- ⚠️ Le mode `provisoire` sur de **vraies** données patients doit être couvert (pilote documenté / DPIA) — ce n'est pas un contournement de conformité en prod réelle.
+
 ## 🧱 Impacts modèle (note, à cadrer avec prisma-specialist)
 - Aujourd'hui : `Role` global plat (`ADMIN/DOCTOR/NURSE/VIEWER`) ; `HealthcareService.managerId` = simple pointeur ; `HealthcareMember` sans rôle/permission.
 - Cible : **appartenance scopée avec capacités** (ex. `HealthcareMembership { userId, scope(serviceId/équipe), clinicalRole?, canManage: bool }`) + **preuve d'enregistrement PS générique** (ex. `ProfessionalRegistration { userId, country, scheme(RPPS/ADELI/Ordre/diplôme…), number, method, verifiedBy, verifiedAt }`) — **pas** un champ « RPPS » en dur (multi-pays). Renommer `ADMIN` → `SYSTEM_ADMIN` pour lever l'ambiguïté.
