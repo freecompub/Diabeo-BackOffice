@@ -1,0 +1,136 @@
+# US-2610 — Gestion du personnel & des droits (cabinet / équipe)
+
+> **Périmètre :** Diabeo BackOffice — **socle d'accès** dont dépend la sous-série « Gestion cabinet » (US-2606 / US-2607). **Format B léger.**
+> **Baselines :** `BASELINE-RBAC` · `BASELINE-AUDIT` (immuable) · `BASELINE-DESIGN` · `BASELINE-I18N` (FR/AR + RTL).
+>
+> **Modèle d'accès — 2 axes indépendants, portés par le `User`, scopés organisation :**
+> - **Q1 — Capacité clinique** (voir les **données de santé**, Art. 9 RGPD) : `DOCTOR`/`NURSE`/`VIEWER`. **Gated sur une « qualité PS vérifiée »** — capacité **abstraite**, dont la **méthode de vérification dépend du pays** (FR : RPPS/ADELI ; autres : vérification manuelle). **Jamais octroyable par un admin** (ni auto-octroyable).
+> - **Q2 — Capacité de gestion cabinet** : gérer le **personnel + les droits** et la **facturation/paiements**. **N'ouvre AUCUN accès aux données de santé.**
+>
+> **Distinguer 3 « admins » :** `SYSTEM_ADMIN` (ops Diabeo, hors cabinet) ≠ **org-admin** (Q2, gère son cabinet) ≠ rôle clinique.
+
+---
+
+## 👤 En tant que
+`User` titulaire de la **capacité de gestion cabinet (Q2)** dans son périmètre — **médecin libéral** (son cabinet), **gestionnaire de cabinet** non-soignant, ou **org-admin** d'un établissement.
+
+## 🎯 Je veux / Afin de
+Gérer **les membres de mon cabinet/équipe et leurs droits** (qui peut soigner, qui peut gérer), afin que chacun ait **le minimum d'accès nécessaire**, en sécurité et de façon traçable.
+
+## 📌 Description fonctionnelle
+- **Liste des membres** de mon **périmètre** (cabinet/équipe) : nom, statut (*actif / invité / révoqué*), **capacités** (rôle clinique Q1 + gestion Q2), qualité PS vérifiée (oui/non).
+- **Inviter / ajouter un membre** : par e-mail → crée ou rattache un `User` ; affecte au **scope** (cabinet/équipe).
+- **Attribuer les capacités** :
+  - **Q2 (gestion)** : octroyable **uniquement par un admin principal** (voir ci-dessous), **dans son scope**.
+  - **Deux niveaux de Q2** : **admin principal** (Q2 + droit de **déléguer** Q2) vs **admin délégué** (Q2 **opérationnel** : gère équipe/facturation, mais **ne peut pas créer d'autres admins**). Le **propriétaire** du cabinet (bootstrap libéral) est admin **principal** par défaut.
+  - **Q1 (clinique)** : **pas un simple interrupteur** — n'est attribuable **que** si le membre a une **qualité PS vérifiée (RPPS/ADELI)**. Sinon : attribution **bloquée** (état « vérification requise »), **aucun accès aux données de santé** entre-temps.
+- **Révoquer** un membre ou une capacité : **effet immédiat** (accès coupé, sessions invalidées). Les données déjà créées par le membre restent (append-only / audit).
+- Chaque action sensible est **journalisée** (qui, quoi, sur qui, quand, scope).
+
+## 🔒 Qui peut faire quoi
+| Action | org-admin (Q2) dans son scope | Médecin sans Q2 | Secrétaire (Q2 seul) | SYSTEM_ADMIN |
+|---|---|---|---|---|
+| Voir la liste des membres | ✅ (son scope) | ❌ | ✅ (son scope) | ✅ |
+| Inviter / révoquer un membre | ✅ | ❌ | ✅ | ✅ |
+| Octroyer **Q2 (gestion)** | ✅ **si admin principal** · ❌ si délégué | ❌ | ❌ (délégué par défaut) | ✅ |
+| Octroyer **Q1 (clinique)** | ✅ **uniquement à un PS vérifié** | ❌ | ✅ **uniquement à un PS vérifié** | ✅ (idem) |
+| S'auto-octroyer Q1 | ❌ **interdit** | — | ❌ | ❌ |
+
+## ✔️ Critères d'acceptation
+- La gestion n'est accessible **qu'avec Q2** (filtrage **serveur**) ; un membre sans Q2 n'y accède pas.
+- L'org-admin ne voit/gère **que les membres de son scope** (cabinet/équipe) — jamais au-delà.
+- **Attribuer un rôle clinique (Q1) est refusé** si la qualité PS n'est pas vérifiée → état « vérification requise », **zéro accès aux données de santé** tant que non vérifié.
+- **Aucune auto-élévation** : un org-admin **ne peut pas** s'attribuer Q1 (ni à lui-même via un compte qu'il contrôle sans qualité PS).
+- **Révocation immédiate** : un membre révoqué perd l'accès aussitôt (sessions invalidées) ; ses données passées subsistent.
+- **Audit** (BASELINE-AUDIT) : invitation, octroi, révocation, changement de capacité, changement de scope → entrée `AuditLog` immuable (acteur, cible, capacité, scope, horodatage).
+- L'écran expose de la **PII des membres** (nom, e-mail, RPPS) → accès lui-même contrôlé + audité ; **aucune donnée de santé** ici.
+- FR/AR + RTL.
+
+## 🧩 Règles métier
+- **2 axes orthogonaux** : Q1 (clinique, PHI) et Q2 (gestion) s'attribuent **indépendamment**.
+- **Délégation de Q2 contrôlée** : seul un **admin principal** (ou `SYSTEM_ADMIN`) peut octroyer Q2 ; un **admin délégué** n'a **pas** le droit de re-déléguer → limite la prolifération d'admins et le rayon d'impact d'un compte compromis.
+- **Q2 n'ouvre jamais les données de santé.** Q1 est **gated RPPS** et **jamais octroyable par la voie admin** (la gestion *associe* une qualité PS vérifiée, elle ne la *crée* pas).
+- **Séparation des pouvoirs / non-auto-élévation** : impossible de se donner à soi-même un accès clinique.
+- **Scope obligatoire** : tout grant est rattaché à un périmètre (cabinet / équipe) ; pas de droit « global » via cet écran (le global = `SYSTEM_ADMIN`, hors périmètre).
+- **Bootstrap libéral** : à la création de compte, le libéral **auto-crée son cabinet** et devient **org-admin (Q2)** de ce cabinet ; son **accès clinique (Q1)** est débloqué par sa **vérification RPPS**, pas par le grant admin.
+- **Cabinet de groupe** : isolation par défaut — un membre clinique ne voit que **ses** patients ; une **secrétaire partagée** est scopée (par médecin ou par service) et **sans** données de santé.
+- Données **membres/financières ≠ données de santé** (régime distinct).
+
+## 🌍 Vérification de la « qualité PS » — par pays (multi-marché FR / DZ)
+La porte d'accès clinique (Q1) repose sur une capacité **abstraite « qualité PS vérifiée »**, **indépendante du pays**. La **méthode** pour l'obtenir est **pluggable** :
+
+| Pays | Méthode | Statut |
+|---|---|---|
+| **France** | Manuelle (justificatif) en V1 → **API RPPS / Annuaire Santé gratuite** en V2 | optimisable |
+| **Algérie** | **Manuelle** (inscription à l'Ordre des médecins algérien / diplôme) | pas d'API équivalente |
+| Autres | Manuelle par défaut | — |
+
+- ⚠️ Le RPPS est **franco-français** : il ne valide **que** les soignants enregistrés en France. La **vérification manuelle est le socle permanent** ; l'API RPPS est une **optimisation FR** branchée par-dessus.
+- On ne stocke **pas** un « champ RPPS » mais une **preuve d'enregistrement générique** : `{ pays, type (RPPS/Ordre/diplôme…), numéro, méthode, vérifié_par, date }`, **auditée**.
+
+## 🚦 Mode d'application de la vérification (politique fail-secure)
+La vérification de la qualité PS peut être **assouplie** pour démarrer (pilote, marché sans process), mais **jamais par défaut ouverte**.
+
+- **Deux modes** : `requis` (porte ON) · `provisoire` (accès clinique autorisé sans preuve, le temps du ramp-up).
+- **Résolution serveur, fail-secure** : `tenant > pays > environnement`, **défaut = `requis`** partout (si rien n'est posé → requis). La **prod est `requis`** par défaut quoi qu'il arrive.
+- **Réglé par `SYSTEM_ADMIN` (Diabeo), par tenant/pays — JAMAIS par l'org-admin** (sinon auto-bypass de la porte clinique, cf. règle de non-auto-élévation). **Audité et borné dans le temps.**
+- **États distincts** : un compte passé en mode provisoire est marqué **`provisoire`**, **jamais `vérifié`** → on peut resserrer plus tard et savoir qui doit encore fournir une preuve.
+- **« Forcer la vérification »** = `SYSTEM_ADMIN` repasse un tenant en `requis` : les comptes `provisoire` doivent obtenir une vraie preuve pour conserver l'accès clinique.
+- ⚠️ Le mode `provisoire` sur de **vraies** données patients doit être couvert (pilote documenté / DPIA) — ce n'est pas un contournement de conformité en prod réelle.
+
+## 🧱 Impacts modèle (note, à cadrer avec prisma-specialist)
+- Aujourd'hui : `Role` global plat (`ADMIN/DOCTOR/NURSE/VIEWER`) ; `HealthcareService.managerId` = simple pointeur ; `HealthcareMember` sans rôle/permission.
+- Cible : **appartenance scopée avec capacités** (ex. `HealthcareMembership { userId, scope(serviceId/équipe), clinicalRole?, canManage: bool }`) + **preuve d'enregistrement PS générique** (ex. `ProfessionalRegistration { userId, country, scheme(RPPS/ADELI/Ordre/diplôme…), number, method, verifiedBy, verifiedAt }`) — **pas** un champ « RPPS » en dur (multi-pays). Renommer `ADMIN` → `SYSTEM_ADMIN` pour lever l'ambiguïté.
+
+## ⚠️ Points ouverts
+1. **Vérification de la qualité PS** — **décidé** : **V1 = toutes les inscriptions sont considérées vérifiées (aucun contrôle)** ; le workflow de vérification réel est **reporté en V4** (cf. US-2611). ⚠️ **Risque accepté V1** — aucune barrière d'accès clinique en V1 (onboarding maîtrisé + DPIA ; cf. alerte ROADMAP).
+2. **Bootstrap établissement** (hôpital) — **décidé** : le **1ᵉʳ org-admin est créé par l'admin Diabeo (`SYSTEM_ADMIN`)** pour le moment (self-serve hôpital plus tard).
+3. **Délégation de Q2** — **décidé** : un **admin principal ne nomme QUE des délégués** (jamais un autre principal). Seul le **propriétaire** (bootstrap) est principal ; un second principal nécessite une action `SYSTEM_ADMIN` / transfert de propriété.
+4. **Secrétaire partagée en cabinet de groupe** — **décidé : PAS de secrétaire partagée.** Un membre de gestion est **scopé à un seul périmètre** (un médecin / un service) → isolation simplifiée.
+5. **Responsable de traitement (RGPD)** — **décidé : formalisé.** Libéral / cabinet de groupe = **contrôleurs distincts** (chacun ses patients) ; hôpital = **établissement contrôleur**. Conditionne le partage par défaut.
+
+## 🔑 Session unique (mono-session) — **V1**
+- **Tous les rôles backoffice** (`DOCTOR`, `NURSE`, `VIEWER`, org-admin, `SYSTEM_ADMIN`) : **une seule session active / un seul token valide à la fois**. Une nouvelle connexion **invalide la session précédente** (le dernier appareil connecté « gagne »).
+- **Exception : le `PATIENT`** — **multi-appareils autorisés** (plusieurs sessions simultanées).
+- **Bénéfices** : empêche le **partage de compte**, réduit la fenêtre d'un **token volé**, et **simplifie la révocation immédiate** (un seul `sid` à invalider — soutient F7).
+- **Implémentation** : à la connexion d'un rôle backoffice, **révoquer la session précédente** (infra `revocation`/`Session` existante).
+- **Timeout d'inactivité (V1)** : déconnexion automatique après inactivité pour les rôles backoffice (renforcé pour `SYSTEM_ADMIN` / admin principal). Les **durées token/session sont réévaluées en V1** (aujourd'hui : JWT 15 min, session 24 h).
+
+## 🗺️ Phasage (suite audit sécurité)
+- **V1** : **session unique** (ci-dessus) ; **socle de capacités** — **F2** (modèle Tenant + table politique, défaut `requis` codé en dur), **F4** (`HealthcareMembership` N-N + capacités + `ProfessionalRegistration`), **F6** (isolation cabinet de groupe par référent + responsable de traitement), **F7** (révocation **immédiate de capacité** : capacités relues en base, **pas figées dans le JWT 15 min**) ; **F3** (octroi Q1 gated strictement sur état `vérifié`) ; **F5** (garde-fous `provisoire` : `expiresAt` obligatoire borné + interdit prod par défaut + DPIA) ; **F8** (champ `scope`/`tenantId` d'audit + actions canoniques) ; **F15** (invitations single-use anti-énumération).
+- **V4** : **F1** (découpler l'accès PHI du rôle plateforme — refonte RBAC, abandon `ROLE_HIERARCHY` linéaire) ; **MFA forte obligatoire** (`SYSTEM_ADMIN` + admin principal, **SMS exclu** — appli TOTP ou clé/passkey) (F9).
+- ⚠️ **Risque accepté V1-V3 (report de F1)** : tant que F1 n'est pas livré, `ADMIN`/`SYSTEM_ADMIN` **conserve l'accès aux données de santé** → la garantie « hébergeur sans PHI » (US-2613) **n'est pas effective avant la V4**. **Mesure transitoire** : ne confier aucun rôle plateforme à un **non-soignant** avant la V4 (ou l'encadrer par procédure documentée).
+
+## 🔗 Dépendances
+Socle de **US-2606** (bloc gestion, V1) et **US-2607** (bascule mode, V3) · `User`/`Role` · `HealthcareService`/`HealthcareMember` · `AuditLog` · baselines en tête.
+
+---
+
+## US-2612 — Clôture / anonymisation d'un établissement (process RGPD)
+
+### 👤 En tant que
+`SYSTEM_ADMIN` (Diabeo), **sur demande officielle** d'un établissement.
+
+### 🎯 Je veux / Afin de
+Clôturer ou anonymiser un établissement **uniquement sur demande officielle**, afin de respecter le RGPD (effacement) **sans** perdre les obligations de conservation (audit, HDS).
+
+### 📌 Description fonctionnelle
+- **Aucune interface self-serve** : déclenché par **demande officielle** (process ops documenté).
+- Étapes : vérification de la demande → **gel des accès** → **anonymisation / rétention** des données liées (membres, facturation, etc.) → purge selon politique.
+- Données de santé patients : selon **rétention légale** (soft-delete / anonymisation, jamais de perte d'`AuditLog`).
+
+### ✔️ Critères d'acceptation
+- **Pas de bouton « supprimer établissement »** dans l'UI ; opération réservée à un **process tracé**.
+- L'anonymisation respecte la rétention légale **et conserve l'`AuditLog`** (immuable).
+- Toute l'opération est **auditée** (acteur, établissement, demande, horodatage).
+
+### 🧩 Règles métier
+- **RGPD** : arbitrage droit à l'effacement ↔ obligations de conservation HDS.
+- Cohérent avec le **soft-delete patient** existant (anonymisation chiffrée par trigger PG).
+
+### ⚠️ Points ouverts
+- **Durées de rétention** par type de donnée (membres / facturation / santé).
+- Articulation précise avec le soft-delete patient et l'immutabilité audit.
+
+### 🔗 Dépendances
+`US-2613` · `AuditLog` (immuable) · soft-delete patient (`patient.service`).

@@ -9,6 +9,10 @@
 > Précédente mise à jour : 2026-05-15 — Groupe 6 Activité physique livré (PR #407, 3 US US-2059/2060/2061, ~7 SP). Étend `DiabetesEvent` avec 7 colonnes typées (activityIntensity / activitySteps / activityDistanceM / activityCalories / activityHeartRateAvg / activitySource / externalSyncId) + 2 enums `ActivityIntensity` (light/moderate/intense) + `ActivitySource` (manual/healthkit/google_fit/health_connect) + 6 CHECK constraints `NOT VALID + VALIDATE` (zero-downtime) + UNIQUE PARTIAL `(activitySource, externalSyncId) WHERE externalSyncId IS NOT NULL` (idempotence sync). Service `activity.service.ts` (list/create/update/delete/bulkSync) avec **comment chiffré AES-256-GCM** symétrique `eventsService` (anti data-corruption cross-service) + Zod whitelist 10 codes (`walk/run/bike/swim/hike/yoga/elliptical/rowing/strength/other`) + bornes cliniques (HR 30-250, steps ≤100k, distance ≤300km, duration ≤24h, eventDate ∈ [-2y, +5min]) + sensor entries immutables (PUT/DELETE bloqués si `activitySource ≠ manual` → forensique préservée). **bulkSync** via `createManyAndReturn` Prisma 7 atomic (1 query race-free, dedup PG ON CONFLICT) + audit metadata `insertedIds[]` granulaire + transaction timeout 30s. 5 routes `/api/patients/[id]/activity[/activityId|/sync]` (NURSE+ cabinet / VIEWER own) + `requireGdprConsent` RGPD Art. 9 + `assertJsonContentType` 415 + `assertBodySize` 413 (1MB/200KB/5MB). Helper `auditService.accessDenied` émis sur `ActivityAccessError` (US-2265 burst detection). AuditResource enum +1 : `ACTIVITY`. **3 rounds review** code-reviewer : 40 findings (29 round-1 + 7 round-2 + 4 round-3) — 0 résiduel Critical/High/Medium. Script backfill `scripts/backfill-encrypt-event-comments.ts` (dry-run + --apply, audit per-row). Doc runbook `docs/runbook/infra-body-limits.md` (nginx/Traefik/OVH LB caps). V1 74 → 77 DONE (55%). Total 142/292 → 145/292 (50%). 1782/1782 tests verts. ⚠️ V2 follow-ups : OpenAPI doc `activityType` write/read asymmetry, advisory lock concurrent sync (theoretical), partitioning `diabetes_events` si volume > 50M rows.
 > Total : **268 US** (217 pro + 51 mirror) · MVP completion : **100%** (63/63 DONE — scope original)
 
+> **Mise à jour 2026-06-14 — Série Navigation & Accès Backoffice (cadrage, design-stage)** : nouvelle série issue d'une session de design (branche `docs/nav-mockups`, maquette `docs/mockups/navigation.html`). **23 US** : navigation médecin (sans IA), sous-série « Gestion cabinet » (modèle d'accès **2 axes** Q1 clinique / Q2 gestion), admin plateforme Diabeo, vérification PS multi-pays, et **6 prérequis techniques** issus d'un audit `healthcare-security-auditor`. ⚠️ **Non renumérotées dans le corpus US-2xxx, non estimées en SP → NON comptées dans le tableau de stats ci-dessus** (design-stage). Détail par version : section **« Série Navigation & Accès Backoffice »** en bas de doc. Phasage clé : socle de capacités (F2/F4/F6/F7/F8) + vérif PS manuelle + mono-session en **V1** ; bascule mode gestion en **V3** ; découplage accès PHI/rôle plateforme (F1) + MFA forte + facturation en **V4**. Risque accepté V1-V3 : `ADMIN` garde l'accès PHI tant que F1 (V4) non livré.
+
+> 🚨 **ALERTE V1 — pas de garde-fou d'accès clinique (décision produit 2026-06-14)** : en V1, **toutes les inscriptions sont considérées vérifiées** (vérification PS reportée en V4) **et** F1 (découplage accès PHI / rôle plateforme) est en V4. **Conséquence** : en **V1-V3, aucune barrière « qualité PS » ne contrôle l'accès aux données de santé** — quiconque a un rôle clinique (ou `ADMIN`) accède au PHI. **Acceptable uniquement en lancement contrôlé / pilote** : onboarding **restreint à des soignants connus** + **DPIA obligatoire** avant toute donnée patient réelle. À lever en V4 (US-2611 + US-2615).
+
 ---
 
 ## Taux de réalisation
@@ -621,6 +625,60 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2192+ | Signatures eIDAS qualifiées |
 | US-2206+ | Transmission e-prescription nationale |
 | US-2800 | Algorithme détection patients à risque (TIR critique, alertes répétées, gap CGM, etc.) — décision session Samir 2026-05-13 |
+
+---
+
+## Série Navigation & Accès Backoffice (cadrage — design-stage, à renuméroter)
+
+> Source : branche `docs/nav-mockups` · maquette `docs/mockups/navigation.html` · US dans `docs/UserStory/Navigation/`.
+> **Numérotation provisoire** (US-NAV-BO / US-ACCESS / US-SYSADMIN / US-TECH-SEC / US-BILLING) — à intégrer au corpus US-2xxx + estimer en SP avant planification. **Non comptées dans le tableau de stats global.**
+
+### V1
+| US | Titre |
+|----|-------|
+| US-2600 | Navigation globale (sidebar maigre, RBAC serveur, RTL, drawer) |
+| US-2601 | Palette de commande `Ctrl/Cmd-K` (recherche patient scopée, audit ouverture) |
+| US-2602 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) |
+| US-2603 | Barre de contexte patient + switcher |
+| US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) |
+| US-2605 | Mode revue de consultation (**sans IA**) |
+| US-2606 | Bloc « Gestion cabinet » dans la sidebar (Variante A) |
+| US-2610 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session |
+| US-2613 | Admin plateforme Diabeo (établissements, personnel, bootstrap, politique vérif) ⚠️ garantie « sans PHI » effective en V4 (dép. F1) |
+| US-2616 | (F2) Modèle Tenant + politique de vérification fail-secure |
+| US-2617 | (F4) `HealthcareMembership` N-N + capacités + `ProfessionalRegistration` |
+| US-2618 | (F6) Isolation patient en cabinet de groupe (référent) |
+| US-2619 | (F7) Révocation immédiate de capacité (capacités hors JWT) |
+| US-2620 | (F8) Couverture d'audit du socle (scope/tenantId + actions canoniques) |
+| US-2621 | Sécurité de session (mono-session + timeout d'inactivité + durées token/session) |
+
+### V2
+| US | Titre |
+|----|-------|
+| US-2608 | Historique du dossier patient (chrono append-only, seuil de changement significatif) |
+| US-2609 | Modèles de compte rendu personnalisés du médecin |
+
+### V3
+| US | Titre |
+|----|-------|
+| US-2607 | Bascule « Mode soin ⇄ Mode gestion » (Variante B) |
+
+### V4
+| US | Titre |
+|----|-------|
+| US-2611 | Vérification de la qualité PS — workflow complet (manuel + API RPPS FR + cycle de vie + cadence + rétention) |
+| US-2615 | (F1) Découpler l'accès PHI du rôle plateforme + renommage `ADMIN`→`SYSTEM_ADMIN` |
+| US-2622 | Facturation & Paiements (espace gestion, Q2, sans PHI, marché FR/DZ) |
+| US-2614 | Support / impersonation sans accès aux données de santé |
+| (règle) MFA forte obligatoire | `SYSTEM_ADMIN` + admin principal — SMS exclu (F9) |
+
+> **Process (hors version)** : **US-2612** — clôture / anonymisation d'un établissement **sur demande officielle** (aucune interface, RGPD rétention + audit conservé).
+
+### Points ouverts (à trancher avant planification)
+- Secrétaire partagée en cabinet de groupe : scope par médecin ou par service ?
+- Responsable de traitement RGPD (libéral/groupe vs hôpital).
+- Cadence de re-vérification PS · rétention du justificatif (RGPD).
+- Prestataire de paiement (FR/DZ) · timeout d'inactivité des rôles à fort pouvoir.
 
 ---
 

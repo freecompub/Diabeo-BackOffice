@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diabeo BackOffice — Maquettes Navigation Médecin</title>
+<style>
+  :root{
+    /* Sérénité Active */
+    --teal:#0D9488; --teal-700:#0F766E; --teal-50:#F0FDFA; --teal-100:#CCFBF1;
+    --coral:#F97316;
+    --bg:#FAFAFA; --surface:#FFFFFF; --muted:#F3F4F6; --border:#E5E7EB;
+    --ink:#1F2937; --ink-soft:#6B7280; --ink-faint:#9CA3AF;
+    /* feedback (tokens -fg foncés = texte AA) */
+    --success:#10B981; --success-fg:#047857; --success-bg:#ECFDF5; --success-bd:#A7F3D0;
+    --warning:#F59E0B; --warning-fg:#B45309; --warning-bg:#FFFBEB; --warning-bd:#FDE68A;
+    --error:#EF4444;   --error-fg:#B91C1C;   --error-bg:#FEF2F2;   --error-bd:#FCA5A5;
+    /* glycémie */
+    --g-vlow:#DC2626; --g-low:#EF4444; --g-normal:#10B981; --g-high:#F59E0B; --g-vhigh:#F97316;
+    --radius:12px; --radius-sm:8px;
+    --shadow:0 1px 2px rgba(16,24,40,.06),0 1px 3px rgba(16,24,40,.10);
+    --shadow-lg:0 10px 30px rgba(16,24,40,.12);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.45}
+  button{font:inherit;cursor:pointer}
+  .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+  /* ---- Switcher de maquette ---- */
+  .toolbar{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:10px 16px;background:#0b3b38;color:#fff}
+  .toolbar b{font-weight:700;margin-right:8px}
+  .toolbar .seg{display:flex;gap:4px;background:rgba(255,255,255,.10);padding:4px;border-radius:10px}
+  .toolbar .seg button{border:0;background:transparent;color:#cdeae6;padding:6px 12px;border-radius:7px;font-weight:600}
+  .toolbar .seg button.on{background:#fff;color:#0b3b38}
+  .toolbar .hint{margin-left:auto;color:#9fd4cd;font-size:12.5px}
+  kbd{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.25);border-radius:5px;padding:1px 6px;font-size:11.5px}
+
+  /* ---- Shell ---- */
+  .shell{display:grid;grid-template-columns:232px 1fr;min-height:calc(100vh - 46px)}
+  .side{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 10px;gap:2px}
+  .brand{display:flex;align-items:center;gap:10px;padding:6px 8px 14px}
+  .brand .logo{width:28px;height:28px;border-radius:8px;background:var(--teal);display:grid;place-items:center;color:#fff;font-weight:800}
+  .brand .name{font-weight:800;letter-spacing:-.3px}
+  .nav-group{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);padding:14px 10px 6px}
+  .nav a{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:9px;color:var(--ink-soft);text-decoration:none;font-weight:600}
+  .nav a .ic{width:18px;text-align:center;opacity:.8}
+  .nav a:hover{background:var(--muted);color:var(--ink)}
+  .nav a.active{background:var(--teal-50);color:var(--teal-700)}
+  .nav a.active .ic{opacity:1}
+  .nav a .badge{margin-left:auto;background:var(--coral);color:#fff;border-radius:999px;font-size:11px;padding:1px 7px;font-weight:700}
+  .side .spacer{flex:1}
+  .side .me{display:flex;align-items:center;gap:10px;padding:8px;border-top:1px solid var(--border);margin-top:6px}
+  .avatar{width:30px;height:30px;border-radius:50%;background:var(--teal-100);color:var(--teal-700);display:grid;place-items:center;font-weight:700}
+
+  .main{display:flex;flex-direction:column;min-width:0}
+  .topbar{height:56px;display:flex;align-items:center;gap:14px;padding:0 22px;background:var(--surface);border-bottom:1px solid var(--border)}
+  .topbar h1{font-size:16px;margin:0;font-weight:800}
+  .search{display:flex;align-items:center;gap:8px;background:var(--muted);border:1px solid var(--border);border-radius:9px;padding:7px 11px;color:var(--ink-soft);min-width:340px}
+  .search kbd{background:#fff;border:1px solid var(--border);color:var(--ink-soft)}
+  .top-actions{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--ink-soft)}
+  .iconbtn{width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:#fff;display:grid;place-items:center;position:relative}
+  .iconbtn .dot{position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--coral);border:2px solid #fff}
+  .content{padding:22px;overflow:auto}
+
+  /* ---- Cards ---- */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card .hd{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--border)}
+  .card .hd h2{font-size:14px;margin:0;font-weight:800}
+  .card .hd .count{color:var(--ink-faint);font-weight:700}
+  .card .bd{padding:8px 8px}
+  .grid{display:grid;gap:16px}
+  .muted{color:var(--ink-soft)}
+  .chip{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700;border:1px solid transparent}
+  .chip.err{background:var(--error-bg);color:var(--error-fg);border-color:var(--error-bd)}
+  .chip.warn{background:var(--warning-bg);color:var(--warning-fg);border-color:var(--warning-bd)}
+  .chip.ok{background:var(--success-bg);color:var(--success-fg);border-color:var(--success-bd)}
+  .chip.info{background:var(--teal-50);color:var(--teal-700);border-color:var(--teal-100)}
+  .row{display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:9px}
+  .row:hover{background:var(--muted)}
+  .row + .row{border-top:1px solid var(--border)}
+  .row .pavatar{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;flex:0 0 auto}
+  .row .pname{font-weight:700}
+  .row .psub{color:var(--ink-soft);font-size:12.5px}
+  .row .grow{flex:1;min-width:0}
+  .row .when{color:var(--ink-faint);font-size:12px;white-space:nowrap}
+  .btn{border:1px solid var(--border);background:#fff;border-radius:8px;padding:7px 12px;font-weight:700;color:var(--ink)}
+  .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--teal-700)}
+  .btn.sm{padding:5px 9px;font-size:12.5px}
+
+  /* ---- KPI ---- */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow)}
+  .kpi .lab{color:var(--ink-soft);font-size:12.5px;font-weight:600}
+  .kpi .val{font-size:26px;font-weight:800;letter-spacing:-.5px;margin-top:6px}
+  .kpi .val small{font-size:13px;color:var(--ink-faint);font-weight:600}
+  .kpi.good{border-left:3px solid var(--success)}
+  .kpi.warn{border-left:3px solid var(--warning)}
+  .kpi.info{border-left:3px solid var(--teal)}
+
+  /* ---- Patient context bar ---- */
+  .pbar{display:flex;align-items:center;gap:14px;padding:12px 22px;background:#fff;border-bottom:1px solid var(--border)}
+  .pbar .back{color:var(--teal-700);font-weight:700;text-decoration:none}
+  .pbar .crumbs{color:var(--ink-faint);font-size:12.5px}
+  .pbar .switch{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .pillsel{display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:999px;padding:5px 10px 5px 6px;background:#fff;font-weight:700}
+  /* ---- Tabs as routes ---- */
+  .tabs{position:sticky;top:0;display:flex;gap:2px;padding:0 22px;background:#fff;border-bottom:1px solid var(--border);z-index:5}
+  .tabs a{padding:13px 14px;color:var(--ink-soft);text-decoration:none;font-weight:700;border-bottom:2px solid transparent;display:inline-flex;gap:8px;align-items:center}
+  .tabs a:hover{color:var(--ink)}
+  .tabs a[aria-current]{color:var(--teal-700);border-bottom-color:var(--teal)}
+  .tabs a .lock{font-size:11px;color:var(--ink-faint)}
+
+  /* ---- Review steps ---- */
+  .review{display:grid;grid-template-columns:248px 1fr;gap:0;min-height:100%}
+  .steps{border-right:1px solid var(--border);background:#fff;padding:16px 12px}
+  .steps .t{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint);padding:4px 10px 10px}
+  .step{display:flex;align-items:center;gap:11px;padding:10px;border-radius:9px;color:var(--ink-soft);font-weight:700;text-decoration:none}
+  .step .n{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border);display:grid;place-items:center;font-size:12px;color:var(--ink-faint);flex:0 0 auto}
+  .step.done .n{background:var(--success-bg);border-color:var(--success-bd);color:var(--success-fg)}
+  .step.active{background:var(--teal-50);color:var(--teal-700)}
+  .step.active .n{border-color:var(--teal);color:var(--teal-700)}
+  .step.soft{opacity:.7}
+  .step.soft .n{border-style:dashed}
+  .reviewbody{padding:22px;overflow:auto}
+
+  /* ---- charts ---- */
+  .legend{display:flex;gap:16px;flex-wrap:wrap;color:var(--ink-soft);font-size:12.5px;margin-top:10px}
+  .sw{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+  /* ---- command palette ---- */
+  .overlay{position:fixed;inset:0;background:rgba(17,24,39,.45);display:none;align-items:flex-start;justify-content:center;z-index:60;padding-top:90px}
+  .overlay.show{display:flex}
+  .palette{width:620px;max-width:92vw;background:#fff;border-radius:14px;box-shadow:var(--shadow-lg);overflow:hidden}
+  .palette .pin{display:flex;align-items:center;gap:10px;padding:15px 16px;border-bottom:1px solid var(--border)}
+  .palette .pin input{border:0;outline:0;font-size:16px;flex:1;color:var(--ink)}
+  .palette .grp{padding:8px 14px 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink-faint)}
+  .palette .opt{display:flex;align-items:center;gap:12px;padding:10px 14px;cursor:pointer}
+  .palette .opt.sel,.palette .opt:hover{background:var(--teal-50)}
+  .palette .opt .k{margin-left:auto;color:var(--ink-faint);font-size:12px}
+  .palette .ft{padding:9px 14px;border-top:1px solid var(--border);color:var(--ink-faint);font-size:12px;display:flex;gap:14px}
+
+  .note{margin:0 0 16px;padding:10px 14px;border:1px dashed var(--teal-100);background:var(--teal-50);color:var(--teal-700);border-radius:10px;font-size:12.5px;font-weight:600}
+  .view{display:none}
+  .view.on{display:block}
+  h3.sec{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-faint);margin:4px 0 12px}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <b>Maquette nav médecin</b>
+  <div class="seg" role="tablist" aria-label="Écrans">
+    <button class="on" data-v="journee" role="tab">Ma journée</button>
+    <button data-v="dossier" role="tab">Dossier patient</button>
+    <button data-v="revue" role="tab">Mode revue (sans IA)</button>
+  </div>
+  <span class="hint">Appuie sur <kbd>Ctrl</kbd>+<kbd>K</kbd> pour la palette de commande · sans IA · FR (RTL non illustré)</span>
+</div>
+
+<!-- =================== SHELL COMMUN =================== -->
+<div class="shell">
+  <!-- Sidebar maigre -->
+  <aside class="side">
+    <div class="brand"><span class="logo">D</span><span class="name">Diabeo</span></div>
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#" class="active" data-home><span class="ic">◴</span> Ma journée <span class="badge">7</span></a>
+      <a href="#" data-toggle="dossier" onclick="go('dossier');return false"><span class="ic">👥</span> Patients</a>
+      <a href="#"><span class="ic">▦</span> Agenda</a>
+      <a href="#"><span class="ic">✉</span> Messagerie <span class="badge">3</span></a>
+      <a href="#"><span class="ic">▤</span> Documents</a>
+      <a href="#"><span class="ic">📈</span> Analytics</a>
+      <div class="nav-group">Compte</div>
+      <a href="#"><span class="ic">⚙</span> Paramètres</a>
+    </nav>
+    <div class="spacer"></div>
+    <p class="muted" style="font-size:11.5px;padding:0 10px">Facturation &amp; Administration : espace dédié, hors nav clinique.</p>
+    <div class="me"><span class="avatar">CM</span><div><div style="font-weight:700">Dr C. Martin</div><div class="muted" style="font-size:12px">Diabétologue · DOCTOR</div></div></div>
+  </aside>
+
+  <div class="main">
+
+    <!-- ========== VUE 1 : MA JOURNÉE ========== -->
+    <section class="view on" id="v-journee">
+      <header class="topbar">
+        <h1>Ma journée</h1>
+        <div class="search" role="button" onclick="openPalette()"><span>🔎</span> Rechercher un patient, une section…<kbd style="margin-left:auto">Ctrl K</kbd></div>
+        <div class="top-actions">
+          <button class="iconbtn" title="Notifications"><span>🔔</span><span class="dot"></span></button>
+        </div>
+      </header>
+      <div class="content">
+        <p class="note">Couche 0 — la home du médecin = file de tri (serveur, déterministe, seuils issus de la source unique). Pas une simple liste de patients.</p>
+        <div class="grid" style="grid-template-columns:1fr 1fr">
+
+          <div class="card" style="grid-column:1/-1">
+            <div class="hd"><span class="chip err">●</span><h2>Alertes glycémiques</h2><span class="count">3</span><span class="muted" style="margin-left:auto;font-size:12px">calcul serveur · seuils clinical-bounds</span></div>
+            <div class="bd">
+              <div class="row">
+                <span class="pavatar" style="background:var(--error-bg);color:var(--error-fg)">AB</span>
+                <div class="grow"><div class="pname">Amina B. · 14 ans · DT1</div><div class="psub">2 hypo &lt;54 mg/dL ces 24 h · TIR 41 %</div></div>
+                <span class="chip err">Hypo sévère</span><span class="chip warn">TIR bas</span>
+                <button class="btn sm primary" onclick="go('dossier')">Ouvrir</button>
+              </div>
+              <div class="row">
+                <span class="pavatar" style="background:var(--warning-bg);color:var(--warning-fg)">MT</span>
+                <div class="grow"><div class="pname">Marc T. · 58 ans · DT2</div><div class="psub">Hyperglycémies répétées &gt;250 · GMI 8,4 %</div></div>
+                <span class="chip warn">Hyper</span>
+                <button class="btn sm" onclick="go('dossier')">Ouvrir</button>
+              </div>
+              <div class="row">
+                <span class="pavatar" style="background:var(--warning-bg);color:var(--warning-fg)">SL</span>
+                <div class="grow"><div class="pname">Sofia L. · 31 ans · DG</div><div class="psub">Variabilité élevée · CV 44 %</div></div>
+                <span class="chip warn">CV élevé</span>
+                <button class="btn sm" onclick="go('dossier')">Ouvrir</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="hd"><span class="chip info">●</span><h2>Propositions d'ajustement</h2><span class="count">2</span></div>
+            <div class="bd">
+              <div class="row">
+                <div class="grow"><div class="pname">Amina B.</div><div class="psub">Bolus déjeuner · ICR 12 → 10 g/U <span class="chip info" style="margin-left:6px">déterministe</span></div></div>
+                <button class="btn sm primary">Revoir</button>
+              </div>
+              <div class="row">
+                <div class="grow"><div class="pname">Karim D.</div><div class="psub">Basale nuit · −0,1 U/h</div></div>
+                <button class="btn sm">Revoir</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="hd"><span class="chip info">●</span><h2>Rendez-vous du jour</h2><span class="count">4</span></div>
+            <div class="bd">
+              <div class="row"><span class="when">09:00</span><div class="grow"><div class="pname">Marc T.</div><div class="psub">Téléconsultation · suivi trimestriel</div></div><button class="btn sm">Préparer</button></div>
+              <div class="row"><span class="when">10:30</span><div class="grow"><div class="pname">Sofia L.</div><div class="psub">Présentiel · grossesse</div></div><button class="btn sm">Préparer</button></div>
+              <div class="row"><span class="when">14:00</span><div class="grow"><div class="pname">Amina B.</div><div class="psub">Présentiel · ajustement</div></div><button class="btn sm">Préparer</button></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="hd"><span class="chip warn">●</span><h2>Relances en attente</h2><span class="count">5</span></div>
+            <div class="bd">
+              <div class="row"><div class="grow"><div class="pname">Yanis M.</div><div class="psub">Jamais synchronisé depuis l'invitation</div></div><span class="chip warn">Silence saisie</span></div>
+              <div class="row"><div class="grow"><div class="pname">Léa F.</div><div class="psub">Rendez-vous non confirmé</div></div><span class="chip err">RDV non confirmé</span></div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="hd"><span class="chip ok">●</span><h2>Messages non lus</h2><span class="count">3</span></div>
+            <div class="bd">
+              <div class="row"><div class="grow"><div class="pname">Amina B.</div><div class="psub">« J'ai eu un malaise ce matin… »</div></div><span class="when">il y a 1 h</span></div>
+              <div class="row"><div class="grow"><div class="pname">Karim D.</div><div class="psub">Question sur le capteur</div></div><span class="when">il y a 3 h</span></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== VUE 2 : DOSSIER PATIENT ========== -->
+    <section class="view" id="v-dossier">
+      <header class="topbar">
+        <h1>Dossier patient</h1>
+        <div class="search" role="button" onclick="openPalette()"><span>🔎</span> Rechercher…<kbd style="margin-left:auto">Ctrl K</kbd></div>
+        <div class="top-actions"><button class="iconbtn"><span>🔔</span><span class="dot"></span></button></div>
+      </header>
+
+      <!-- Barre de contexte patient -->
+      <div class="pbar">
+        <a href="#" class="back" onclick="go('journee');return false">‹ Ma journée</a>
+        <span class="pavatar" style="background:var(--error-bg);color:var(--error-fg);width:30px;height:30px">AB</span>
+        <div>
+          <div style="font-weight:800">Amina B. <span class="chip err" style="margin-left:6px">Hypo sévère</span> <span class="chip warn">TIR bas</span></div>
+          <div class="crumbs">14 ans · DT1 · suivie depuis 2021 · Dr C. Martin</div>
+        </div>
+        <div class="switch">
+          <button class="btn sm">↔ Changer de patient</button>
+          <button class="btn sm primary" onclick="go('revue')">▶ Nouvelle consultation</button>
+        </div>
+      </div>
+
+      <!-- Onglets = routes -->
+      <nav class="tabs" aria-label="Sections du dossier">
+        <a href="#" aria-current="page">🩸 Glycémie</a>
+        <a href="#">💉 Traitement</a>
+        <a href="#">📟 Dispositifs</a>
+        <a href="#">🏃 Mode de vie</a>
+        <a href="#">▤ Documents</a>
+        <a href="#">🕓 Historique</a>
+        <a href="#">✉ Messages <span class="badge">1</span></a>
+      </nav>
+
+      <div class="content">
+        <p class="note">Couche 3 — onglets deep-linkables (URL + back/forward), chargés à la demande. L'audit se déclenche à l'accès à la donnée déchiffrée côté API, pas au rendu de l'onglet.</p>
+
+        <div class="kpis" style="margin-bottom:16px">
+          <div class="kpi warn"><div class="lab">Temps dans la cible (TIR)</div><div class="val">41<small> %</small></div></div>
+          <div class="kpi info"><div class="lab">Glycémie moyenne</div><div class="val">172<small> mg/dL</small></div></div>
+          <div class="kpi warn"><div class="lab">Variabilité (CV)</div><div class="val">38<small> %</small></div></div>
+          <div class="kpi info"><div class="lab">Indicateur de gestion (GMI)</div><div class="val">7,6<small> %</small></div></div>
+        </div>
+
+        <div class="grid" style="grid-template-columns:2fr 1fr">
+          <div class="card">
+            <div class="hd"><h2>Profil ambulatoire (AGP) — 14 j</h2><span class="muted" style="margin-left:auto;font-size:12px">P10/P25/P50/P75/P90</span></div>
+            <div class="bd" style="padding:16px">
+              <svg viewBox="0 0 520 180" width="100%" height="180" role="img" aria-label="Profil ambulatoire de glycémie sur 14 jours">
+                <rect x="38" y="40" width="470" height="70" fill="var(--success-bg)"/>
+                <line x1="38" y1="40" x2="508" y2="40" stroke="var(--g-normal)" stroke-dasharray="4 4"/>
+                <line x1="38" y1="110" x2="508" y2="110" stroke="var(--g-low)" stroke-dasharray="4 4"/>
+                <path d="M38,120 C120,95 180,70 250,80 C330,92 420,60 508,72 L508,150 C420,135 330,150 250,140 C180,132 120,150 38,150 Z" fill="var(--teal-100)" opacity=".7"/>
+                <path d="M38,108 C120,88 180,72 250,82 C330,92 420,70 508,80" fill="none" stroke="var(--teal)" stroke-width="2.5"/>
+                <text x="6" y="44" font-size="10" fill="var(--ink-faint)">180</text>
+                <text x="10" y="114" font-size="10" fill="var(--ink-faint)">70</text>
+                <text x="38" y="172" font-size="10" fill="var(--ink-faint)">0h</text>
+                <text x="476" y="172" font-size="10" fill="var(--ink-faint)">24h</text>
+              </svg>
+              <div class="legend">
+                <span><span class="sw" style="background:var(--teal)"></span>Médiane (P50)</span>
+                <span><span class="sw" style="background:var(--teal-100)"></span>P25–P75 / P10–P90</span>
+                <span><span class="sw" style="background:var(--success-bg);border:1px solid var(--success-bd)"></span>Cible 70–180 mg/dL</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="hd"><h2>Répartition (TIR)</h2></div>
+            <div class="bd" style="padding:16px;display:flex;gap:16px;align-items:center">
+              <svg viewBox="0 0 120 120" width="120" height="120" aria-label="Temps dans la cible : 41%">
+                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--muted)" stroke-width="16"/>
+                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--g-vhigh)" stroke-width="16" stroke-dasharray="30 271" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--g-high)" stroke-width="16" stroke-dasharray="45 256" stroke-dashoffset="-30" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--g-normal)" stroke-width="16" stroke-dasharray="124 177" stroke-dashoffset="-75" transform="rotate(-90 60 60)"/>
+                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--g-low)" stroke-width="16" stroke-dasharray="22 279" stroke-dashoffset="-199" transform="rotate(-90 60 60)"/>
+                <text x="60" y="58" text-anchor="middle" font-size="22" font-weight="800" fill="var(--ink)">41%</text>
+                <text x="60" y="74" text-anchor="middle" font-size="9" fill="var(--ink-soft)">dans la cible</text>
+              </svg>
+              <div style="font-size:12.5px">
+                <div><span class="sw" style="background:var(--g-vhigh)"></span>Très élevé 10%</div>
+                <div><span class="sw" style="background:var(--g-high)"></span>Élevé 15%</div>
+                <div><span class="sw" style="background:var(--g-normal)"></span>Cible 41%</div>
+                <div><span class="sw" style="background:var(--g-low)"></span>Bas 7%</div>
+                <div><span class="sw" style="background:var(--g-vlow)"></span>Très bas &lt;1%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== VUE 3 : MODE REVUE (sans IA) ========== -->
+    <section class="view" id="v-revue">
+      <header class="topbar">
+        <h1>Consultation — Amina B.</h1>
+        <span class="chip info" style="margin-left:4px">Encounter #4821 · ouvert</span>
+        <div class="top-actions"><button class="btn sm" onclick="go('dossier')">‹ Retour au dossier</button></div>
+      </header>
+
+      <div class="review">
+        <nav class="steps" aria-label="Étapes de la consultation">
+          <div class="t">Revue structurée</div>
+          <a href="#" class="step active"><span class="n">1</span> Résumé (données)</a>
+          <a href="#" class="step"><span class="n">2</span> Analyse glycémie</a>
+          <a href="#" class="step"><span class="n">3</span> Analyse traitement</a>
+          <a href="#" class="step"><span class="n">4</span> Mode de vie</a>
+          <a href="#" class="step soft" title="Consomme les étapes amont"><span class="n">5</span> Décisions médicales <span class="lock" style="margin-left:auto">⊘ revoir d'abord</span></a>
+          <a href="#" class="step soft" title="Consomme les étapes amont"><span class="n">6</span> Compte rendu <span class="lock" style="margin-left:auto">⊘</span></a>
+          <div class="t" style="margin-top:14px">Aucun module IA</div>
+          <p class="muted" style="font-size:12px;padding:0 10px">Synthèse = valeurs calculées serveur. Compte rendu = rédigé par le médecin. Décisions = workflow d'ajustement déterministe.</p>
+        </nav>
+
+        <div class="reviewbody">
+          <p class="note">Couche 4 — même structure en étapes qu'avant, mais <b>sans IA</b> : l'étape 1 est un tableau de bord déterministe, l'étape 6 un éditeur rédigé par le PS. Navigation libre, « Décisions » et « Compte rendu » en soft-gating.</p>
+
+          <h3 class="sec">Étape 1 — Résumé (calculé serveur, période : 14 derniers jours)</h3>
+          <div class="kpis" style="margin-bottom:16px">
+            <div class="kpi warn"><div class="lab">Temps dans la cible (TIR)</div><div class="val">41<small> %</small></div></div>
+            <div class="kpi info"><div class="lab">Glycémie moyenne</div><div class="val">172<small> mg/dL</small></div></div>
+            <div class="kpi warn"><div class="lab">Variabilité (CV)</div><div class="val">38<small> %</small></div></div>
+            <div class="kpi info"><div class="lab">Indicateur de gestion (GMI)</div><div class="val">7,6<small> %</small></div></div>
+          </div>
+
+          <div class="grid" style="grid-template-columns:1fr 1fr">
+            <div class="card">
+              <div class="hd"><span class="chip err">●</span><h2>Points d'alerte</h2><span class="muted" style="margin-left:auto;font-size:12px">seuils versionnés</span></div>
+              <div class="bd">
+                <div class="row"><span class="chip err">Hypo sévère</span><div class="grow psub">2 épisodes &lt;54 mg/dL · les 12 &amp; 13/06, ~03 h</div></div>
+                <div class="row"><span class="chip warn">TIR bas</span><div class="grow psub">41 % (cible ≥ 70 %)</div></div>
+                <div class="row"><span class="chip warn">Hyper post-prandiale</span><div class="grow psub">déjeuner · récurrent 5/14 j</div></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="hd"><span class="chip info">●</span><h2>Derniers changements</h2></div>
+              <div class="bd">
+                <div class="row"><span class="when">02/06</span><div class="grow psub">ICR déjeuner 13 → 12 g/U (Dr Martin)</div></div>
+                <div class="row"><span class="when">20/05</span><div class="grow psub">Capteur G7 — nouvelle pose</div></div>
+                <div class="row"><span class="when">15/05</span><div class="grow psub">Basale nuit 0,55 → 0,50 U/h</div></div>
+              </div>
+            </div>
+          </div>
+
+          <h3 class="sec" style="margin-top:22px">Étape 5 — Décisions (aperçu) : proposition déterministe</h3>
+          <div class="card">
+            <div class="bd" style="padding:16px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+              <div style="flex:1;min-width:220px">
+                <div style="font-weight:800">Bolus déjeuner — ICR 12 → 10 g/U</div>
+                <div class="psub">Calcul backend déterministe · bornes : ICR 3,0–30,0 g/U ✓ · justifié par hyper post-prandiale récurrente</div>
+              </div>
+              <span class="chip ok">Dans les bornes</span>
+              <button class="btn">Rejeter</button>
+              <button class="btn primary">Valider la proposition</button>
+            </div>
+          </div>
+
+          <h3 class="sec" style="margin-top:22px">Étape 6 — Compte rendu (rédigé par le médecin)</h3>
+          <div class="card">
+            <div class="bd" style="padding:16px">
+              <div class="muted" style="font-size:12px;margin-bottom:8px">Gabarit · les valeurs en <span class="chip info">surbrillance</span> sont insérées automatiquement (déterministes), le texte est de vous.</div>
+              <div style="border:1px solid var(--border);border-radius:8px;padding:14px;background:#fff">
+                <p>Suivi à 3 mois. <span class="chip info">TIR 41 %</span>, <span class="chip info">GMI 7,6 %</span>. Persistance d'hypoglycémies nocturnes (<span class="chip info">2 épisodes &lt;54</span>) et d'hyperglycémies post-prandiales du déjeuner.</p>
+                <p style="color:var(--ink-faint)">▌ Conduite tenue : ajustement de l'ICR déjeuner à 10 g/U (proposition validée). Renforcement de l'éducation sur…</p>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:12px;align-items:center">
+                <span class="muted" style="font-size:12px">Enregistré en <b>addendum immuable</b> · réf. données : snapshot du 13/06 14:02</span>
+                <button class="btn" style="margin-left:auto">Enregistrer le brouillon</button>
+                <button class="btn primary">Finaliser (addendum)</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<!-- =================== PALETTE Ctrl-K =================== -->
+<div class="overlay" id="overlay" onclick="if(event.target===this)closePalette()">
+  <div class="palette" role="dialog" aria-label="Palette de commande">
+    <div class="pin"><span>🔎</span><input id="palinput" placeholder="Rechercher un patient (périmètre) ou aller à une section…" autocomplete="off"/><kbd>Esc</kbd></div>
+    <div class="grp">Patients de mon périmètre</div>
+    <div class="opt sel" onclick="go('dossier')"><span class="pavatar" style="width:26px;height:26px;background:var(--error-bg);color:var(--error-fg)">AB</span><div><div style="font-weight:700">Amina B.</div><div class="psub">14 ans · DT1 · Hypo sévère</div></div><span class="k">↵ ouvrir</span></div>
+    <div class="opt" onclick="go('dossier')"><span class="pavatar" style="width:26px;height:26px;background:var(--warning-bg);color:var(--warning-fg)">MT</span><div><div style="font-weight:700">Marc T.</div><div class="psub">58 ans · DT2</div></div></div>
+    <div class="grp">Aller à</div>
+    <div class="opt" onclick="go('journee')"><span class="ic">◴</span> Ma journée <span class="k">G puis J</span></div>
+    <div class="opt"><span class="ic">▦</span> Agenda</div>
+    <div class="opt"><span class="ic">✉</span> Messagerie</div>
+    <div class="ft"><span><kbd>↑</kbd><kbd>↓</kbd> naviguer</span><span><kbd>↵</kbd> ouvrir</span><span>recherche scopée serveur · accès patient audité</span></div>
+  </div>
+</div>
+
+<script>
+  function go(v){
+    document.querySelectorAll('.view').forEach(s=>s.classList.remove('on'));
+    document.getElementById('v-'+v).classList.add('on');
+    document.querySelectorAll('.toolbar .seg button').forEach(b=>b.classList.toggle('on', b.dataset.v===v));
+    closePalette(); window.scrollTo(0,0);
+  }
+  document.querySelectorAll('.toolbar .seg button').forEach(b=>b.onclick=()=>go(b.dataset.v));
+  function openPalette(){document.getElementById('overlay').classList.add('show');setTimeout(()=>document.getElementById('palinput').focus(),30)}
+  function closePalette(){document.getElementById('overlay').classList.remove('show')}
+  document.addEventListener('keydown',e=>{
+    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openPalette()}
+    if(e.key==='Escape')closePalette();
+  });
+</script>
+</body>
+</html>
