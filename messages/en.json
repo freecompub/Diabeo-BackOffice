@@ -75,6 +75,7 @@
   },
   "nav": {
     "dashboard": "Dashboard",
+    "dashboardMedecin": "My day",
     "patients": "Patients",
     "appointments": "Appointments",
     "users": "Users",
@@ -215,7 +216,7 @@
     "errorLoadingData": "Unable to load glycemia data",
     "newEventAriaLabel": "Open new event form",
     "medecin": {
-      "pageTitle": "Doctor dashboard",
+      "pageTitle": "My day",
       "lastUpdate": "Updated {time}",
       "loading": "Loading…",
       "stale": "Stale data — refresh pending.",
@@ -1456,6 +1457,35 @@
       "reasonSilentMonitoring": "No entries",
       "reasonAppointmentUnconfirmed": "Unconfirmed appointment",
       "reasonNeverSynced": "Never synced"
+    },
+    "medecinProposals": {
+      "title": "Pending proposals",
+      "loading": "Loading…",
+      "loadError": "Unable to load proposals.",
+      "emptyTitle": "No proposals",
+      "emptyMessage": "No adjustment to review.",
+      "patientFallback": "Patient",
+      "paramBasalRate": "Basal rate",
+      "paramInsulinSensitivityFactor": "Insulin sensitivity factor (ISF)",
+      "paramInsulinToCarbRatio": "Insulin-to-carb ratio (ICR)",
+      "valueTransition": "{from} → {to}",
+      "changeAria": "{percent}% change",
+      "stale": "Data is stale — refresh pending.",
+      "unitBasalRate": "U/h",
+      "unitInsulinToCarbRatio": "g/U",
+      "unitIsfGl": "g/L/U",
+      "unitIsfMgdl": "mg/dL/U",
+      "unitIsfMmol": "mmol/L/U"
+    },
+    "medecinMessages": {
+      "title": "Unread messages",
+      "loading": "Loading…",
+      "loadError": "Unable to load messages.",
+      "emptyTitle": "No unread messages",
+      "emptyMessage": "Inbox up to date.",
+      "previewFallback": "(encrypted message)",
+      "unreadAria": "{count, plural, one {# unread message} other {# unread messages}}",
+      "stale": "Data is stale — refresh pending."
     },
     "nurseTeamInbox": {
       "title": "Team coordination",

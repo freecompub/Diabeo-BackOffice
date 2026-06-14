@@ -75,6 +75,7 @@
   },
   "nav": {
     "dashboard": "Tableau de bord",
+    "dashboardMedecin": "Ma journée",
     "patients": "Patients",
     "appointments": "Rendez-vous",
     "users": "Utilisateurs",
@@ -215,7 +216,7 @@
     "errorLoadingData": "Impossible de charger les donnees de glycemie",
     "newEventAriaLabel": "Ouvrir le formulaire de saisie d'un nouvel evenement",
     "medecin": {
-      "pageTitle": "Tableau de bord médecin",
+      "pageTitle": "Ma journée",
       "lastUpdate": "Mise à jour {time}",
       "loading": "Chargement…",
       "stale": "Données obsolètes — rafraîchissement en attente.",
@@ -1456,6 +1457,35 @@
       "reasonSilentMonitoring": "Silence saisie",
       "reasonAppointmentUnconfirmed": "Rendez-vous non confirmé",
       "reasonNeverSynced": "Jamais synchronisé"
+    },
+    "medecinProposals": {
+      "title": "Propositions en attente",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les propositions.",
+      "emptyTitle": "Aucune proposition",
+      "emptyMessage": "Aucun ajustement à examiner.",
+      "patientFallback": "Patient",
+      "paramBasalRate": "Débit basal",
+      "paramInsulinSensitivityFactor": "Facteur de sensibilité à l'insuline (ISF)",
+      "paramInsulinToCarbRatio": "Ratio insuline/glucides (ICR)",
+      "valueTransition": "{from} → {to}",
+      "changeAria": "Variation de {percent} %",
+      "stale": "Données obsolètes — rafraîchissement en attente.",
+      "unitBasalRate": "U/h",
+      "unitInsulinToCarbRatio": "g/U",
+      "unitIsfGl": "g/L/U",
+      "unitIsfMgdl": "mg/dL/U",
+      "unitIsfMmol": "mmol/L/U"
+    },
+    "medecinMessages": {
+      "title": "Messages non lus",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les messages.",
+      "emptyTitle": "Aucun message non lu",
+      "emptyMessage": "Boîte de réception à jour.",
+      "previewFallback": "(message chiffré)",
+      "unreadAria": "{count, plural, one {# message non lu} other {# messages non lus}}",
+      "stale": "Données obsolètes — rafraîchissement en attente."
     },
     "nurseTeamInbox": {
       "title": "Coordination équipe",

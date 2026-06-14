@@ -75,6 +75,7 @@
   },
   "nav": {
     "dashboard": "لوحة القيادة",
+    "dashboardMedecin": "يومي",
     "patients": "المرضى",
     "appointments": "المواعيد",
     "users": "المستخدمون",
@@ -215,7 +216,7 @@
     "errorLoadingData": "تعذر تحميل بيانات الجلوكوز",
     "newEventAriaLabel": "فتح نموذج حدث جديد",
     "medecin": {
-      "pageTitle": "لوحة تحكم الطبيب",
+      "pageTitle": "يومي",
       "lastUpdate": "آخر تحديث {time}",
       "loading": "جارٍ التحميل…",
       "stale": "بيانات قديمة — في انتظار التحديث.",
@@ -1456,6 +1457,35 @@
       "reasonSilentMonitoring": "غياب الإدخال",
       "reasonAppointmentUnconfirmed": "موعد غير مؤكّد",
       "reasonNeverSynced": "لم تتم المزامنة قط"
+    },
+    "medecinProposals": {
+      "title": "المقترحات قيد الانتظار",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل المقترحات.",
+      "emptyTitle": "لا توجد مقترحات",
+      "emptyMessage": "لا يوجد تعديل للمراجعة.",
+      "patientFallback": "مريض",
+      "paramBasalRate": "المعدل القاعدي",
+      "paramInsulinSensitivityFactor": "عامل حساسية الأنسولين (ISF)",
+      "paramInsulinToCarbRatio": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
+      "valueTransition": "{from} ← {to}",
+      "changeAria": "تغيّر بنسبة {percent}٪",
+      "stale": "البيانات قديمة — في انتظار التحديث.",
+      "unitBasalRate": "U/h",
+      "unitInsulinToCarbRatio": "g/U",
+      "unitIsfGl": "g/L/U",
+      "unitIsfMgdl": "mg/dL/U",
+      "unitIsfMmol": "mmol/L/U"
+    },
+    "medecinMessages": {
+      "title": "رسائل غير مقروءة",
+      "loading": "جارٍ التحميل…",
+      "loadError": "تعذّر تحميل الرسائل.",
+      "emptyTitle": "لا توجد رسائل غير مقروءة",
+      "emptyMessage": "صندوق الوارد محدّث.",
+      "previewFallback": "(رسالة مشفّرة)",
+      "unreadAria": "{count, plural, zero {# رسالة غير مقروءة} one {# رسالة غير مقروءة} two {# رسالتان غير مقروءتين} few {# رسائل غير مقروءة} many {# رسالة غير مقروءة} other {# رسالة غير مقروءة}}",
+      "stale": "البيانات قديمة — في انتظار التحديث."
     },
     "nurseTeamInbox": {
       "title": "تنسيق الفريق",

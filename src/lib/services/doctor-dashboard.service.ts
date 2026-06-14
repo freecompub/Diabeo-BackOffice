@@ -22,12 +22,16 @@ import {
   EmergencyAlertType,
   EmergencyAlertSeverity,
   AppointmentStatus,
+  ProposalStatus,
+  type AdjustableParameter,
   type Prisma,
 } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { auditService, type AuditContext } from "./audit.service"
+import { messagingService, MESSAGING_BOUNDS } from "./messaging.service"
 import { safeDecryptField } from "@/lib/crypto/fields"
+import type { GlucoseUnit } from "@/lib/conversions"
 import type { Role } from "@prisma/client"
 
 // ─────────────────────────────────────────────────────────────
@@ -669,5 +673,153 @@ export const kpisQuery = {
         delta: null, trend: null, unit: null,
       },
     ]
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2602 (Ma journée) — Propositions d'ajustement en attente (liste)
+// ─────────────────────────────────────────────────────────────
+
+export type PendingProposalItem = {
+  id: string
+  patientId: number
+  patientFirstName: string
+  pathology: string | null
+  parameterType: AdjustableParameter
+  currentValue: number
+  proposedValue: number
+  changePercent: number
+  createdAt: Date
+  /**
+   * Unité de glycémie préférée de l'APPELANT (médecin), pas du patient — sert
+   * à afficher l'ISF dans la bonne unité (g/L/U, mg/dL/U ou mmol/L/U). Les
+   * valeurs `currentValue`/`proposedValue` restent en g/L (stockage canonique) ;
+   * la conversion d'affichage est faite côté carte.
+   */
+  glucoseUnit: GlucoseUnit
+}
+
+const PENDING_PROPOSALS_LIMIT = 5
+
+/** Code `unitGlycemia` (UserUnitPreferences) → unité d'affichage glycémie.
+ *  3:g/L 4:mg/dL 5:mmol/L. Défaut (préf. absente) = mg/dL, cohérent avec les
+ *  autres cartes du dashboard médecin (EmergencyCard). */
+function glucoseUnitFromCode(code: number | undefined): GlucoseUnit {
+  return code === 3 ? "g/L" : code === 5 ? "mmol/L" : "mg/dL"
+}
+
+/**
+ * Liste les propositions d'ajustement **en attente** du portefeuille du caller
+ * (déterministe ; `AdjustmentProposal` produites par le graphe d'orchestration
+ * backend, jamais par le frontend). Scopé via `getAccessiblePatientIds`.
+ */
+export const pendingProposalsQuery = {
+  async forCaller(
+    userId: number, role: Role,
+    auditUserId: number, ctx?: AuditContext,
+  ): Promise<PendingProposalItem[]> {
+    const ids = await getAccessiblePatientIds(userId, role)
+    const scope = patientScopeWhere(ids)
+    if (scope === null) return []
+    // `scope` porte déjà `patient: { deletedAt: null }` — ne pas le redéclarer.
+    const where: Prisma.AdjustmentProposalWhereInput = {
+      ...scope,
+      status: ProposalStatus.pending,
+    }
+    const rows = await prisma.adjustmentProposal.findMany({
+      where,
+      include: {
+        patient: {
+          select: {
+            id: true, pathology: true,
+            user: { select: { firstname: true } },
+          },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: PENDING_PROPOSALS_LIMIT,
+    })
+
+    // Unité d'affichage ISF = préférence glycémie de l'appelant (lookup unique
+    // indexé). Évité quand il n'y a aucune ligne à afficher.
+    const prefRow = rows.length
+      ? await prisma.userUnitPreferences.findUnique({
+          where: { userId }, select: { unitGlycemia: true },
+        })
+      : null
+    const glucoseUnit = glucoseUnitFromCode(prefRow?.unitGlycemia)
+
+    // Audit : résumé + pivot par patient (PHI : prénom déchiffré exposé).
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "ADJUSTMENT_PROPOSAL",
+      resourceId: "0",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { kind: "dashboard.medecin.pendingProposals", count: rows.length },
+    })
+    await Promise.allSettled(rows.map((r) =>
+      auditService.log({
+        userId: auditUserId, action: "READ", resource: "ADJUSTMENT_PROPOSAL",
+        resourceId: r.id,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { patientId: r.patientId, kind: "dashboard.medecin.pendingProposals" },
+      }),
+    ))
+
+    return rows.map((r) => ({
+      id: r.id,
+      patientId: r.patientId,
+      patientFirstName: safeDecryptField(r.patient.user.firstname ?? "") ?? "",
+      pathology: r.patient.pathology,
+      parameterType: r.parameterType,
+      currentValue: Number(r.currentValue),
+      proposedValue: Number(r.proposedValue),
+      changePercent: Number(r.changePercent),
+      createdAt: r.createdAt,
+      glucoseUnit,
+    }))
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2602 (Ma journée) — Messages non lus (liste)
+// ─────────────────────────────────────────────────────────────
+
+export type UnreadThreadItem = {
+  conversationKey: string
+  otherUserId: number
+  /** Réf. patient opaque (8 chars) si le thread contextualise un patient. */
+  patientPublicRef: string | null
+  preview: string
+  previewTruncated: boolean
+  unreadCount: number
+  lastMessageAt: Date
+}
+
+const UNREAD_THREADS_LIMIT = 5
+
+/**
+ * Threads avec au moins un message non lu pour le caller, triés par
+ * récence (top {@link UNREAD_THREADS_LIMIT}). Réutilise
+ * `messagingService.listThreads` avec le trigger `"poll"` (audit coalescé —
+ * pas de pollution `audit_logs` sur le polling 60s de la carte dashboard).
+ * Déterministe : aucune génération de contenu côté frontend.
+ */
+export const unreadThreadsQuery = {
+  async forCaller(userId: number, ctx: AuditContext): Promise<UnreadThreadItem[]> {
+    const threads = await messagingService.listThreads(
+      userId, ctx, MESSAGING_BOUNDS.MAX_THREADS_PER_QUERY, "poll",
+    )
+    return threads
+      .filter((t) => t.unreadCount > 0)
+      .slice(0, UNREAD_THREADS_LIMIT)
+      .map((t) => ({
+        conversationKey: t.conversationKey,
+        otherUserId: t.otherUserId,
+        patientPublicRef: t.patientPublicRef,
+        preview: t.lastMessage.bodyPreview,
+        previewTruncated: t.lastMessage.bodyPreviewTruncated,
+        unreadCount: t.unreadCount,
+        lastMessageAt: t.lastMessage.createdAt,
+      }))
   },
 }

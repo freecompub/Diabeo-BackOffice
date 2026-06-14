@@ -18,13 +18,22 @@ import { prismaMock } from "../helpers/prisma-mock"
 vi.mock("@/lib/access-control", () => ({
   getAccessiblePatientIds: vi.fn(),
 }))
+// Isolate `unreadThreadsQuery` from the heavy messaging service (pepper/env,
+// redis, encryption) — only `listThreads` + the bounds constant are consumed.
+vi.mock("@/lib/services/messaging.service", () => ({
+  messagingService: { listThreads: vi.fn() },
+  MESSAGING_BOUNDS: { MAX_THREADS_PER_QUERY: 100 },
+}))
 import {
   urgenciesQuery, appointmentsQuery,
-  patientsAtRiskQuery, kpisQuery,
+  patientsAtRiskQuery, kpisQuery, pendingProposalsQuery,
+  unreadThreadsQuery,
 } from "@/lib/services/doctor-dashboard.service"
 import { getAccessiblePatientIds } from "@/lib/access-control"
+import { messagingService } from "@/lib/services/messaging.service"
 
 const mockedAccessible = vi.mocked(getAccessiblePatientIds)
+const mockedListThreads = vi.mocked(messagingService.listThreads)
 // Prisma's `groupBy` has a complex generic signature that defeats
 // vitest-mock-extended's deep auto-mock typing ; cast once here so test
 // `mockResolvedValue` calls type-check under CI's stricter tsc.
@@ -35,14 +44,18 @@ const pm = prismaMock as unknown as {
   cgmEntry: { findMany: any; count: any; groupBy: any }
   appointment: { findMany: any }
   patient: { findMany: any }
-  adjustmentProposal: { count: any }
+  adjustmentProposal: { count: any; findMany: any }
+  userUnitPreferences: { findUnique: any }
   auditLog: { create: any }
 }
 
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   mockedAccessible.mockReset()
+  mockedListThreads.mockReset()
 })
+
+const CTX = { ipAddress: "127.0.0.1", userAgent: "test", requestId: "req-1" }
 
 // ─── US-2401 urgencies ───────────────────────────────────────────────────
 
@@ -344,5 +357,124 @@ describe("patientsAtRiskQuery summary audit (healthcare M2)", () => {
       && d.metadata?.kind === "dashboard.medecin.patientsAtRisk",
     )
     expect(perPatient).toBeDefined()
+  })
+})
+
+// ─── US-2602 pending proposals ───────────────────────────────────────────
+
+describe("pendingProposalsQuery (US-2602)", () => {
+  it("returns [] when caller has empty portfolio", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const out = await pendingProposalsQuery.forCaller(1, "DOCTOR", 1)
+    expect(out).toEqual([])
+    expect(pm.adjustmentProposal.findMany).not.toHaveBeenCalled()
+  })
+
+  it("filters status=pending and maps Decimal → number", async () => {
+    mockedAccessible.mockResolvedValue([10, 20])
+    pm.adjustmentProposal.findMany.mockResolvedValue([
+      {
+        id: "p1", patientId: 10, parameterType: "basalRate",
+        currentValue: 1.2, proposedValue: 1.0, changePercent: -16.67,
+        createdAt: new Date("2026-06-10T08:00:00Z"),
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+    ] as any)
+    pm.userUnitPreferences.findUnique.mockResolvedValue({ unitGlycemia: 4 }) // mg/dL
+    const out = await pendingProposalsQuery.forCaller(1, "DOCTOR", 1)
+    const where = pm.adjustmentProposal.findMany.mock.calls[0]![0].where
+    expect(where.status).toBe("pending")
+    expect(where.patientId).toEqual({ in: [10, 20] })
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      id: "p1", patientId: 10, parameterType: "basalRate",
+      currentValue: 1.2, proposedValue: 1.0, patientFirstName: "",
+      glucoseUnit: "mg/dL",
+    })
+    expect(typeof out[0]!.changePercent).toBe("number")
+  })
+
+  it("resolves caller glucose unit from preferences (code → unit; default mg/dL)", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    const row = [{
+      id: "p1", patientId: 10, parameterType: "insulinSensitivityFactor",
+      currentValue: 0.5, proposedValue: 0.55, changePercent: 10,
+      createdAt: new Date(), patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+    }]
+    // code 3 → g/L
+    pm.adjustmentProposal.findMany.mockResolvedValue(row as any)
+    pm.userUnitPreferences.findUnique.mockResolvedValue({ unitGlycemia: 3 })
+    expect((await pendingProposalsQuery.forCaller(1, "DOCTOR", 1))[0]!.glucoseUnit).toBe("g/L")
+    // code 5 → mmol/L
+    pm.userUnitPreferences.findUnique.mockResolvedValue({ unitGlycemia: 5 })
+    expect((await pendingProposalsQuery.forCaller(1, "DOCTOR", 1))[0]!.glucoseUnit).toBe("mmol/L")
+    // no preference row → mg/dL default
+    pm.userUnitPreferences.findUnique.mockResolvedValue(null)
+    expect((await pendingProposalsQuery.forCaller(1, "DOCTOR", 1))[0]!.glucoseUnit).toBe("mg/dL")
+  })
+
+  it("audits a summary row (resourceId=0) and a per-patient pivot row", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    pm.adjustmentProposal.findMany.mockResolvedValue([
+      {
+        id: "p1", patientId: 10, parameterType: "insulinToCarbRatio",
+        currentValue: 10, proposedValue: 12, changePercent: 20,
+        createdAt: new Date(), patient: { id: 10, pathology: "DT2", user: { firstname: null } },
+      },
+    ] as any)
+    await pendingProposalsQuery.forCaller(1, "DOCTOR", 1)
+    const calls = prismaMock.auditLog.create.mock.calls.map((c) => (c[0].data as any))
+    const summary = calls.find((d) =>
+      d.resourceId === "0"
+      && d.resource === "ADJUSTMENT_PROPOSAL"
+      && d.metadata?.kind === "dashboard.medecin.pendingProposals"
+      && d.metadata?.count === 1,
+    )
+    expect(summary).toBeDefined()
+    const perPatient = calls.find((d) =>
+      d.metadata?.patientId === 10
+      && d.metadata?.kind === "dashboard.medecin.pendingProposals",
+    )
+    expect(perPatient).toBeDefined()
+  })
+})
+
+// ─── US-2602 unread threads ──────────────────────────────────────────────
+
+describe("unreadThreadsQuery (US-2602)", () => {
+  const thread = (key: string, unread: number, at: string) => ({
+    conversationKey: key, otherUserId: 42, patientPublicRef: "ab12cd34",
+    lastMessage: {
+      id: `m-${key}`, fromUserId: 42, bodyPreview: "Bonjour",
+      bodyPreviewTruncated: false, createdAt: new Date(at), isRead: false,
+    },
+    unreadCount: unread,
+  })
+
+  it("calls listThreads with poll trigger (coalesced audit)", async () => {
+    mockedListThreads.mockResolvedValue([] as any)
+    await unreadThreadsQuery.forCaller(1, CTX as any)
+    expect(mockedListThreads).toHaveBeenCalledWith(1, CTX, 100, "poll")
+  })
+
+  it("keeps only threads with unreadCount > 0 and maps the shape", async () => {
+    mockedListThreads.mockResolvedValue([
+      thread("k1", 2, "2026-06-12T10:00:00Z"),
+      thread("k2", 0, "2026-06-12T09:00:00Z"), // read → dropped
+    ] as any)
+    const out = await unreadThreadsQuery.forCaller(1, CTX as any)
+    expect(out).toHaveLength(1)
+    expect(out[0]).toMatchObject({
+      conversationKey: "k1", otherUserId: 42, patientPublicRef: "ab12cd34",
+      preview: "Bonjour", previewTruncated: false, unreadCount: 2,
+    })
+  })
+
+  it("caps the list at 5 threads", async () => {
+    mockedListThreads.mockResolvedValue(
+      Array.from({ length: 8 }, (_, i) => thread(`k${i}`, 1, "2026-06-12T10:00:00Z")) as any,
+    )
+    const out = await unreadThreadsQuery.forCaller(1, CTX as any)
+    expect(out).toHaveLength(5)
   })
 })

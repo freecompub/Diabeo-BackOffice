@@ -438,7 +438,14 @@ export function NavigationShell({
     .filter((item) => hasRoleAccess(userRole, item.minRole))
     .map((item) =>
       item.href === HOME_HREF_MARKER
-        ? { ...item, href: resolveHomeForRole(userRole) }
+        ? {
+            ...item,
+            href: resolveHomeForRole(userRole),
+            // US-2602 (Ma journée) — le home médecin est libellé « Ma journée »
+            // (vue jour : urgences, RDV, relances, propositions, messages).
+            // Les autres rôles gardent « Tableau de bord » (libellé générique).
+            labelKey: userRole === "DOCTOR" ? "dashboardMedecin" : item.labelKey,
+          }
         : item,
     )
 

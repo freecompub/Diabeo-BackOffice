@@ -1,8 +1,12 @@
 /**
- * US-2400 — Dashboard médecin (page conteneur).
+ * US-2400 / US-2602 — « Ma journée » (dashboard médecin, page conteneur).
  *
- * Layout responsive : 1 col mobile, 2 col grid lg+. Urgences + RDV top row
- * (parallel), Patients à suivre row 2 full-width, KPI section row 3.
+ * Vue jour du médecin. Layout responsive (1 col mobile, 2 col lg+) :
+ *   1. Urgences + Rendez-vous du jour (row 2 col)
+ *   2. Patients à suivre (full-width)
+ *   3. Relances en attente + Propositions d'ajustement en attente (row 2 col)
+ *   4. Messages non lus (full-width)
+ *   5. Indicateurs clés (KPI) du cabinet
  *
  * Server-side guard : redirect non-DOCTOR/NURSE/ADMIN to login. The
  * (dashboard)/layout.tsx already redirects VIEWER → /patient/dashboard.
@@ -15,6 +19,14 @@ import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCa
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
 import { KpiSection } from "@/components/diabeo/dashboard/medecin/KpiSection"
+// US-2602 (Ma journée) incr. 1 — Relances en attente. Réutilise la query
+// infirmier (`nurseRecallQuery`, scopée au portefeuille de l'appelant) + la
+// route `/api/dashboard/infirmier/recall-list` (minRole NURSE → DOCTOR éligible).
+import { RecallListCard } from "@/components/diabeo/dashboard/infirmier/RecallListCard"
+// US-2602 (Ma journée) incr. 2 — Propositions d'ajustement en attente.
+import { PendingProposalsCard } from "@/components/diabeo/dashboard/medecin/PendingProposalsCard"
+// US-2602 (Ma journée) incr. 3 — Messages non lus (liste).
+import { UnreadMessagesCard } from "@/components/diabeo/dashboard/medecin/UnreadMessagesCard"
 
 const ALLOWED_ROLES = new Set(["DOCTOR", "NURSE", "ADMIN"])
 
@@ -33,6 +45,11 @@ export default async function MedecinDashboardPage() {
         <AppointmentCard />
       </div>
       <PatientsAtRiskCard />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <RecallListCard />
+        <PendingProposalsCard />
+      </div>
+      <UnreadMessagesCard />
       <KpiSection />
     </main>
   )
