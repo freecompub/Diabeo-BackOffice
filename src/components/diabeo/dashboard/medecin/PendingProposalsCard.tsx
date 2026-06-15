@@ -29,11 +29,17 @@ const PARAM_LABEL_KEY: Record<PendingProposalItem["parameterType"], string> = {
   insulinToCarbRatio: "paramInsulinToCarbRatio",
 }
 
-/** Unité d'affichage de l'ISF selon l'unité de glycémie de l'appelant. */
-const ISF_UNIT_KEY: Record<GlucoseUnit, string> = {
-  "g/L": "unitIsfGl",
-  "mg/dL": "unitIsfMgdl",
-  "mmol/L": "unitIsfMmol",
+/** Clés du namespace i18n `insulinUnits` (source unique des libellés d'unités). */
+type InsulinUnitKey = "isfGl" | "isfMgdl" | "isfMmol" | "icr" | "basal"
+
+/**
+ * Unité d'affichage de l'ISF selon l'unité de glycémie de l'appelant.
+ * Clés du namespace `insulinUnits` (source unique partagée avec le dossier).
+ */
+const ISF_UNIT_KEY: Record<GlucoseUnit, InsulinUnitKey> = {
+  "g/L": "isfGl",
+  "mg/dL": "isfMgdl",
+  "mmol/L": "isfMmol",
 }
 
 /** Pathologies connues du glossaire (`Acronym`) — garde-fou de typage. */
@@ -46,7 +52,7 @@ const asPathologyCode = (p: string | null): AcronymCode | null =>
  * et converti vers l'unité de glycémie de l'appelant (g/L/U, mg/dL/U,
  * mmol/L/U) ; basal (U/h) et ICR (g/U) sont indépendants de l'unité glycémie.
  */
-function displayFor(p: PendingProposalItem): { from: number; to: number; unitKey: string } {
+function displayFor(p: PendingProposalItem): { from: number; to: number; unitKey: InsulinUnitKey } {
   if (p.parameterType === "insulinSensitivityFactor") {
     return {
       from: convertGlucoseFromGl(p.currentValue, p.glucoseUnit),
@@ -57,7 +63,7 @@ function displayFor(p: PendingProposalItem): { from: number; to: number; unitKey
   return {
     from: p.currentValue,
     to: p.proposedValue,
-    unitKey: p.parameterType === "basalRate" ? "unitBasalRate" : "unitInsulinToCarbRatio",
+    unitKey: p.parameterType === "basalRate" ? "basal" : "icr",
   }
 }
 
@@ -74,6 +80,8 @@ function changeVariant(percent: number): "destructive" | "secondary" {
 
 export function PendingProposalsCard() {
   const t = useTranslations("dashboardCards.medecinProposals")
+  // Libellés d'unités : source unique partagée avec le dossier patient.
+  const tUnits = useTranslations("insulinUnits")
   const locale = useLocale()
   // Décimales bornées (max 2) — suffisant cliniquement (incrément basal 0.05,
   // ISF 0.01, ICR 0.1) et évite d'afficher le bruit Decimal(8,4).
@@ -139,7 +147,7 @@ export function PendingProposalsCard() {
                   <span className="text-xs tabular-nums text-foreground">
                     {t("valueTransition", { from: fmt(from), to: fmt(to) })}
                     {" "}
-                    {t(unitKey)}
+                    {tUnits(unitKey)}
                   </span>
                   <Badge
                     variant={changeVariant(p.changePercent)}
