@@ -19,12 +19,12 @@ export async function GET(req: NextRequest, { params }: Params) {
 
     const { id } = await params
     const docId = parseInt(id, 10)
-    if (isNaN(docId) || docId <= 0)
+    if (Number.isNaN(docId) || docId <= 0)
       return NextResponse.json({ error: "invalidId" }, { status: 400 })
 
     const patientIdParam = req.nextUrl.searchParams.get("patientId")
     const parsedPid = patientIdParam ? parseInt(patientIdParam, 10) : undefined
-    if (patientIdParam && (isNaN(parsedPid!) || parsedPid! <= 0))
+    if (patientIdParam && (Number.isNaN(parsedPid!) || parsedPid! <= 0))
       return NextResponse.json({ error: "invalidPatientId" }, { status: 400 })
 
     const patientId = await resolvePatientId(user.id, user.role, parsedPid)

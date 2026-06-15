@@ -3,7 +3,7 @@
  */
 
 /**
- * Tests — PatientDetailClient (câblage données patient, Phase 1).
+ * Tests — PatientDetailClient (câblage données patient, Phases 1-4).
  *
  * Vérifie le rendu/branchement client (valeurs serveur affichées telles
  * quelles, état « pas de CGM », onglets non câblés en « bientôt disponible ») ;
