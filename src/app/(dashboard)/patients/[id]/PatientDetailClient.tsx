@@ -362,10 +362,26 @@ export function PatientDetailClient({
                         </p>
                       </div>
                     )}
-                    {data.treatment.pump && (
+                    {/* Pompe affichée uniquement si la méthode déclarée est « pompe »
+                        (cohérence : ne pas présenter un device appairé comme la voie
+                        active pour un patient sous stylo). Méthode pompe sans device
+                        → « aucune pompe appairée ». */}
+                    {data.treatment.deliveryMethod === "pump" && (
                       <div>
                         <span className="text-muted-foreground">{t("pumpModelLabel")}</span>
-                        <p className="mt-1 font-medium">{data.treatment.pump.label}</p>
+                        {data.treatment.pump ? (
+                          <p className="mt-1 font-medium">
+                            {data.treatment.pump.label}
+                            {data.treatment.pump.syncStale && (
+                              <span className="font-normal text-warning-fg">
+                                {" · "}
+                                {t("pumpSyncStale")}
+                              </span>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="mt-1 font-medium text-muted-foreground">{t("noPairedPump")}</p>
+                        )}
                       </div>
                     )}
                     {data.treatment.isfSlots.length > 0 && (

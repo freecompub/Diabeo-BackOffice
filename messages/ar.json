@@ -1561,6 +1561,8 @@
     "method": "الطريقة",
     "bolusInsulinLabel": "أنسولين البلعة",
     "pumpModelLabel": "طراز المضخة",
+    "noPairedPump": "لا توجد مضخة مقترنة",
+    "pumpSyncStale": "مزامنة قديمة",
     "pump": "المضخة",
     "bolusInsulin": "أنسولين الجرعة",
     "avgBasalRate": "متوسط المعدل القاعدي",

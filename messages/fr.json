@@ -1561,6 +1561,8 @@
     "method": "Méthode",
     "bolusInsulinLabel": "Insuline bolus",
     "pumpModelLabel": "Modèle de pompe",
+    "noPairedPump": "Aucune pompe appairée",
+    "pumpSyncStale": "synchronisation ancienne",
     "pump": "Pompe",
     "bolusInsulin": "Insuline bolus",
     "avgBasalRate": "Débit basal moyen",

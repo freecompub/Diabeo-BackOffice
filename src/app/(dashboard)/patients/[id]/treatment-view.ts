@@ -99,9 +99,12 @@ export type Slot = { range: string; value: number }
 export type BasalSlot = { range: string; rate: number }
 export type TreatmentItem = { id: number; name: string | null; posology: string | null }
 /** Insuline bolus active (nom commercial du catalogue + DCI + posologie). */
-export type BolusInsulin = { name: string; genericName: string | null; dosage: string | null }
-/** Pompe à insuline active (libellé « marque modèle »). */
-export type Pump = { label: string }
+export type BolusInsulin = { name: string; genericName: string; dosage: string | null }
+/** Pompe à insuline active (libellé « marque modèle » + fraîcheur de synchro). */
+export type Pump = { label: string; syncStale: boolean }
+
+/** Au-delà → la dernière synchro pompe est jugée ancienne (indice non bloquant). */
+export const PUMP_SYNC_STALE_AFTER_DAYS = 7
 
 export type TreatmentView = {
   hasSettings: boolean
@@ -123,8 +126,11 @@ type SettingsInput = {
   carbRatios: { startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
   basalConfiguration: { pumpSlots: { startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
   bolusInsulin?: {
+    usage?: string | null
+    isActive?: boolean | null
+    endDate?: Date | string | null
     dosage?: string | null
-    insulinCatalog?: { displayName: string; genericName?: string | null } | null
+    insulinCatalog?: { displayName: string; genericName: string } | null
   } | null
 } | null
 
@@ -139,40 +145,58 @@ type DeviceInput = {
   name?: string | null
   model?: string | null
   revokedAt?: Date | string | null
+  lastSyncAt?: Date | string | null
   createdAt?: Date | string | null
 }
 
+const ms = (d: Date | string | null | undefined): number => (d ? new Date(d).getTime() : 0)
+
 /**
- * Pompe à insuline active du patient : device `insulinPump` non révoqué le plus
- * récent. Libellé « marque modèle » (repli sur le nom), null si aucune pompe.
+ * Pompe à insuline active du patient : device `insulinPump` non révoqué, retenu
+ * par fraîcheur de synchro (`lastSyncAt`, repli `createdAt`). Libellé « marque
+ * modèle » (repli sur le nom). `syncStale` si dernière synchro absente ou
+ * au-delà de {@link PUMP_SYNC_STALE_AFTER_DAYS}. null si aucune pompe.
  */
-function derivePump(devices: DeviceInput[]): Pump | null {
+function derivePump(devices: DeviceInput[], now: Date): Pump | null {
   const active = devices
     .filter((d) => d.category === "insulinPump" && (d.revokedAt === null || d.revokedAt === undefined))
-    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+    .sort((a, b) => (ms(b.lastSyncAt) || ms(b.createdAt)) - (ms(a.lastSyncAt) || ms(a.createdAt)))
   const d = active[0]
   if (!d) return null
   const label = [d.brand, d.model].filter((x): x is string => Boolean(x && x.trim())).join(" ").trim()
     || d.name?.trim()
     || ""
-  return label ? { label } : null
+  if (!label) return null
+  const lastSync = ms(d.lastSyncAt)
+  const syncStale = lastSync === 0 || now.getTime() - lastSync > PUMP_SYNC_STALE_AFTER_DAYS * 86_400_000
+  return { label, syncStale }
 }
 
 export function buildTreatmentView(
   settings: SettingsInput,
   treatments: TreatmentInput[],
   devices: DeviceInput[] = [],
+  now: Date = new Date(),
 ): TreatmentView {
   const isf = settings?.sensitivityFactors ?? []
   const icr = settings?.carbRatios ?? []
   const basal = settings?.basalConfiguration?.pumpSlots ?? []
 
-  const catalog = settings?.bolusInsulin?.insulinCatalog
+  // Garde « bolus réellement actif » : on n'affiche l'insuline bolus que si
+  // l'enregistrement lié est actif, non terminé, et d'usage bolus (ou mixte) —
+  // évite d'afficher une prescription périmée ou une basale mal-étiquetée.
+  const bi = settings?.bolusInsulin
+  const bolusUsable =
+    bi != null &&
+    bi.isActive !== false &&
+    (bi.endDate == null || ms(bi.endDate) > now.getTime()) &&
+    (bi.usage == null || bi.usage === "bolus" || bi.usage === "both")
+  const catalog = bolusUsable ? bi?.insulinCatalog : null
   const bolusInsulin: BolusInsulin | null = catalog
     ? {
         name: catalog.displayName,
-        genericName: catalog.genericName ?? null,
-        dosage: settings?.bolusInsulin?.dosage ?? null,
+        genericName: catalog.genericName,
+        dosage: bi?.dosage ?? null,
       }
     : null
 
@@ -180,7 +204,7 @@ export function buildTreatmentView(
     hasSettings: settings !== null,
     deliveryMethod: settings?.deliveryMethod ?? null,
     bolusInsulin,
-    pump: derivePump(devices),
+    pump: derivePump(devices, now),
     isfSlots: isf.map((s) => ({
       range: hourRange(s.startHour, s.endHour),
       value: num(s.sensitivityFactorGl),
