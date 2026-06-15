@@ -124,9 +124,8 @@ secret → pas de fuite d'énumération nouvelle. Posture acceptée.
   clinique frontend. Aucune IA.
 - Audit per-source (ADR #18) **avec pivot `metadata.patientId`** :
   `READ PATIENT` (getById), `READ ANALYTICS`, `READ INSULIN_THERAPY`,
-  `READ MEDICAL_DOCUMENT` (+ `download`, `operation:"download"`).
-  ⚠️ `READ CGM_ENTRY` est audité avec `resourceId=patientId` mais **sans** le
-  pivot `metadata.patientId` (cf. §6 — à harmoniser).
+  `READ MEDICAL_DOCUMENT` (+ `download`, `operation:"download"`),
+  `READ CGM_ENTRY`, `READ GLYCEMIA_ENTRY`, `READ BOLUS_LOG` — pivot harmonisé.
 - Headers ANSSI RGS §4.5 : `/patients` ajouté à `PHI_PATH_PREFIXES` (no-store,
   no-referrer, nosniff) ; téléchargement durci (CSP `default-src 'none'`,
   `X-Frame-Options DENY`).
@@ -149,8 +148,8 @@ secret → pas de fuite d'énumération nouvelle. Posture acceptée.
 - `Treatment.*` en clair (§3.3).
 - Sur-blocage possible du VIEWER sur `glycemia` GET (admet VIEWER mais applique
   `patientShareConsent`) — à investiguer/exempter.
-- Pivot `metadata.patientId` absent sur `READ CGM_ENTRY`/`GLYCEMIA_ENTRY` et
-  `getBolusLogs` (forensique OK via `resourceId`, à harmoniser).
+- ✅ Pivot `metadata.patientId` sur `READ CGM_ENTRY`/`GLYCEMIA_ENTRY`/`BOLUS_LOG`
+  — **harmonisé** (PR audit pivot).
 - Plancher capteur 0.40 g/L exclut les hypo sévères des agrégats.
 - Cibles consensus non spécifiques grossesse (GD).
 - Sur-déchiffrement `email` dans `getById` (minimisation Art. 5.1.c).

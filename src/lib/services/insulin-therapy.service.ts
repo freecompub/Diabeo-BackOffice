@@ -362,6 +362,9 @@ export const insulinTherapyService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      // ADR #18 — pivot per-patient pour getByPatient (forensique CNIL/ANS).
+      metadata: { patientId },
     })
 
     return logs
@@ -376,6 +379,8 @@ export const insulinTherapyService = {
         action: "READ",
         resource: "BOLUS_LOG",
         resourceId: id,
+        // ADR #18 — `resourceId` est l'id du log ; pivot patient via metadata.
+        metadata: { patientId: log.patientId },
       })
     }
 

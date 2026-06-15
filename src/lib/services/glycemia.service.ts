@@ -92,7 +92,9 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
-      metadata: { from: from.toISOString(), to: to.toISOString(), count: entries.length },
+      requestId: ctx?.requestId,
+      // ADR #18 — pivot per-patient pour getByPatient (forensique CNIL/ANS).
+      metadata: { patientId, from: from.toISOString(), to: to.toISOString(), count: entries.length },
     })
 
     return entries.map((e) => ({
@@ -135,7 +137,9 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
-      metadata: { count: entries.length },
+      requestId: ctx?.requestId,
+      // ADR #18 — pivot per-patient pour getByPatient (forensique CNIL/ANS).
+      metadata: { patientId, count: entries.length },
     })
 
     // DTO sérialisé : Decimal → number, Date → string ISO. Sans ce mapping,

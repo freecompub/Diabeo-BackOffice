@@ -129,11 +129,10 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** : une hypo sévère < 40 mg/dL
   exclue par le plancher peut laisser un relevé bénin plus ancien passer pour le
   « dernier relevé » sans déclencher `stale`. À traiter avec l'item plancher.
-- **[Audit] `metadata.patientId` sur READ CGM_ENTRY / GLYCEMIA_ENTRY** :
-  `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
-  forensics OK via resourceId, à harmoniser (services pré-existants).
-  (INSULIN_THERAPY corrigé en Phase 3.) Idem `getBolusLogs`/`getBolusLogById`
-  (`insulin-therapy.service.ts`) — pivot ADR #18 + requestId à ajouter.
+- ✅ **[Audit] Pivot `metadata.patientId` harmonisé** (FAIT) : ajouté sur
+  `READ CGM_ENTRY` / `GLYCEMIA_ENTRY` (`glycemia.service`) et `READ BOLUS_LOG`
+  (`getBolusLogs`/`getBolusLogById`, `insulin-therapy.service`), + `requestId`.
+  (INSULIN_THERAPY l'avait déjà via Phase 3.)
 - **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) : colonnes non
   chiffrées (≠ identité/medicalData). Chiffrer ou documenter le risque accepté
   en DPIA (schéma pré-existant).
