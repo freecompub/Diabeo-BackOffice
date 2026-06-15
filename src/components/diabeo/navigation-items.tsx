@@ -100,6 +100,14 @@ export const sidebarNavItems: NavItem[] = SIDEBAR_ORDER.map((href) =>
   navItems.find((item) => item.href === href),
 ).filter((item): item is NavItem => item !== undefined)
 
+// Garde anti-drift : un href de `SIDEBAR_ORDER` introuvable dans `navItems`
+// (typo, route renommée d'un seul côté) doit échouer FORT au boot, pas
+// produire silencieusement une sidebar tronquée (cf. revue PR #542).
+if (sidebarNavItems.length !== SIDEBAR_ORDER.length) {
+  const missing = SIDEBAR_ORDER.filter((h) => !navItems.some((i) => i.href === h))
+  throw new Error(`navigation-items: SIDEBAR_ORDER href(s) absent(s) de navItems: ${missing.join(", ")}`)
+}
+
 /** Patient self-service nav (VIEWER, layout `(patient)`). */
 export const patientNavItems: NavItem[] = [
   { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },

@@ -92,11 +92,13 @@ function getNavLinks(container: HTMLElement): HTMLAnchorElement[] {
     "/admin",
     "/patient/dashboard",
     "/patients",
-    "/medications",
+    "/appointments", // US-2600 sidebar maigre (gated minRole NURSE)
+    "/messages", // US-2600 sidebar maigre (gated minRole NURSE)
+    "/medications", // hors sidebar US-2600 — sert de check négatif
     "/analytics",
     "/documents",
-    "/admin/users",
-    "/audit",
+    "/admin/users", // hors sidebar US-2600 — check négatif
+    "/audit", // hors sidebar US-2600 — check négatif
     "/settings",
   ]
   return Array.from(allLinks).filter((a) => navPaths.includes(a.getAttribute("href") || ""))
@@ -132,57 +134,62 @@ describe("NavigationShell", () => {
   // Rendez-vous · Messagerie · Documents · Analytics · Paramètres). Les sections
   // hors sidebar (Médicaments, Administration : Users/Audit…) ne sont PLUS dans
   // la sidebar pour AUCUN rôle ; elles restent joignables via la palette Ctrl-K
-  // (US-2601) / l'espace admin dédié (US-2613). Le helper getUniqueNavHrefs
-  // compte le sous-ensemble de la sidebar présent dans sa whitelist :
-  // home + /patients + /documents + /analytics + /settings = 5 pour tout rôle.
+  // (US-2601) / l'espace admin dédié (US-2613). Le gating minRole est exercé
+  // ici (VIEWER < NURSE → pas de Rendez-vous/Messagerie) ET dans
+  // command-palette.test.tsx (Users/Audit ADMIN-only côté palette).
   describe("RBAC — navigation item filtering (slim sidebar US-2600)", () => {
-    it("VIEWER : sidebar maigre, pas d'items admin ni Médicaments", () => {
+    // VIEWER+variant=pro n'existe pas en prod (VIEWER → variant=patient) ; cas
+    // conservé pour vérifier le gating minRole sur la sidebar maigre.
+    it("VIEWER : Rendez-vous/Messagerie filtrés (minRole NURSE), pas d'admin", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="VIEWER">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(5)
+      expect(hrefs).toHaveLength(5) // 7 destinations − /appointments − /messages
+      expect(hrefs).not.toContain("/appointments")
+      expect(hrefs).not.toContain("/messages")
       expect(hrefs).not.toContain("/admin/users")
-      expect(hrefs).not.toContain("/audit")
       expect(hrefs).not.toContain("/medications")
     })
 
-    it("NURSE : sidebar maigre, pas d'items admin ni Médicaments", () => {
+    it("NURSE : 7 destinations (avec Rendez-vous + Messagerie), pas d'admin ni Médicaments", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="NURSE">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(5)
+      expect(hrefs).toHaveLength(7)
+      expect(hrefs).toContain("/appointments")
+      expect(hrefs).toContain("/messages")
       expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
       expect(hrefs).not.toContain("/medications")
     })
 
-    it("DOCTOR : sidebar maigre, pas d'items admin ni Médicaments", () => {
+    it("DOCTOR : 7 destinations, pas d'items admin ni Médicaments", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="DOCTOR">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(5)
+      expect(hrefs).toHaveLength(7)
       expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
       expect(hrefs).not.toContain("/medications")
     })
 
-    it("ADMIN : sidebar maigre — Users/Audit déplacés hors sidebar (US-2600/US-2613)", () => {
+    it("ADMIN : 7 destinations — Users/Audit déplacés hors sidebar (US-2600/US-2613)", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="ADMIN">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(5)
+      expect(hrefs).toHaveLength(7)
       // Administration retirée de la sidebar clinique (joignable via palette /
       // futur espace admin) — ne doit plus apparaître ici.
       expect(hrefs).not.toContain("/admin/users")
