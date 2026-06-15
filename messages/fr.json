@@ -1572,7 +1572,9 @@
     "kpiTir14d": "Temps dans la cible (TIR) — 14j",
     "lowCaptureWarning": "Capture de glycémie continue (CGM) insuffisante ({rate} %) — statistiques à interpréter avec prudence.",
     "sharingDisabledTitle": "Partage désactivé",
-    "sharingDisabledDesc": "Ce patient a désactivé le partage de ses données avec les soignants."
+    "sharingDisabledDesc": "Ce patient a désactivé le partage de ses données avec les soignants.",
+    "lastReading": "Dernière glycémie",
+    "lastReadingAt": "à {time}"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

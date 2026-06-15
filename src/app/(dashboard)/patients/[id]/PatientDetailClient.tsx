@@ -16,6 +16,7 @@ import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/d
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
+import { CgmChart } from "@/components/diabeo/CgmChart"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
@@ -48,6 +49,12 @@ export type PatientDetailData = {
     /** Capture CGM < 70 % → stats non représentatives (caveat clinique). */
     insufficientCapture: boolean
   } | null
+  /** Série CGM 24h (déjà mappée serveur : mg/dL + heure Europe/Paris). */
+  glycemia: {
+    points: { time: string; glucose: number }[]
+    lastReadingMgdl: number | null
+    lastReadingAt: string | null
+  }
 }
 
 export function PatientDetailClient({
@@ -239,10 +246,54 @@ export function PatientDetailClient({
             </div>
           </TabsContent>
 
-          {/* ── Glycémie / Traitements / Documents (phases suivantes) ── */}
-          <TabsContent value="glycemia">
-            <ComingSoon t={t} />
+          {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}
+          <TabsContent value="glycemia" className="space-y-6">
+            {data.glycemia.points.length > 0 ? (
+              <>
+                {data.glycemia.lastReadingMgdl !== null && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Activity className="h-4 w-4" aria-hidden="true" />
+                        {t("lastReading")}
+                        {data.glycemia.lastReadingAt && (
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {t("lastReadingAt", { time: data.glycemia.lastReadingAt })}
+                          </span>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <GlycemiaValue value={data.glycemia.lastReadingMgdl} unit="mg/dL" />
+                    </CardContent>
+                  </Card>
+                )}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Activity className="h-4 w-4" aria-hidden="true" />
+                      {t("glycemicProfile24h")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CgmChart
+                      data={data.glycemia.points}
+                      targetLow={objectives.targetLowMgdl}
+                      targetHigh={objectives.targetHighMgdl}
+                    />
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="py-10">
+                  <DiabeoEmptyState variant="noData" title={t("tabGlycemia")} message={t("noCgmData")} />
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
+
+          {/* ── Traitements / Documents (phases suivantes) ── */}
           <TabsContent value="treatment">
             <ComingSoon t={t} />
           </TabsContent>

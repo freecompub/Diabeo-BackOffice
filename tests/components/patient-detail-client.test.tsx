@@ -45,6 +45,9 @@ vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({
     <div data-testid="empty">{title} — {message}</div>
   ),
 }))
+vi.mock("@/components/diabeo/CgmChart", () => ({
+  CgmChart: ({ data }: { data: unknown[] }) => <div data-testid="cgm-chart">{data.length} pts</div>,
+}))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
 
@@ -65,6 +68,14 @@ const baseData: PatientDetailData = {
     readingCount: 1200,
     captureRate: 92,
     insufficientCapture: false,
+  },
+  glycemia: {
+    points: [
+      { time: "08:00", glucose: 120 },
+      { time: "08:05", glucose: 130 },
+    ],
+    lastReadingMgdl: 130,
+    lastReadingAt: "08:05",
   },
 }
 
@@ -95,11 +106,18 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getAllByText("Pas de données de glycémie continue (CGM) sur la période.").length).toBeGreaterThan(0)
   })
 
-  it("renders « coming soon » for the not-yet-wired tabs", () => {
+  it("renders the CGM chart + last reading (Phase 2) and « coming soon » only for the 2 remaining tabs", () => {
     render(<PatientDetailClient data={baseData} />)
-    // Glycémie + Traitements + Documents → 3 états vides
-    expect(screen.getAllByTestId("empty")).toHaveLength(3)
-    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(3)
+    // Glycémie câblée : graphe (2 pts) + dernière glycémie
+    expect(screen.getByTestId("cgm-chart").textContent).toBe("2 pts")
+    expect(screen.getByText("Dernière glycémie")).toBeTruthy()
+    // Reste : Traitements + Documents → 2 états « bientôt disponible »
+    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(2)
+  })
+
+  it("shows an empty Glycémie state when there is no CGM series", () => {
+    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null } }} />)
+    expect(screen.queryByTestId("cgm-chart")).toBeNull()
   })
 
   it("renders the sharing-disabled state (no PHI) when consent is withdrawn", () => {

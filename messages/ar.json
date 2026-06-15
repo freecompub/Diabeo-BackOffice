@@ -1572,7 +1572,9 @@
     "kpiTir14d": "الوقت ضمن النطاق (TIR) — 14 يومًا",
     "lowCaptureWarning": "التقاط الغلوكوز المستمر (CGM) غير كافٍ ({rate}%) — فسّر الإحصاءات بحذر.",
     "sharingDisabledTitle": "المشاركة معطّلة",
-    "sharingDisabledDesc": "عطّل هذا المريض مشاركة بياناته مع مقدّمي الرعاية."
+    "sharingDisabledDesc": "عطّل هذا المريض مشاركة بياناته مع مقدّمي الرعاية.",
+    "lastReading": "آخر قياس سكر",
+    "lastReadingAt": "عند {time}"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",

@@ -1572,7 +1572,9 @@
     "kpiTir14d": "Time in range (TIR) — 14d",
     "lowCaptureWarning": "Insufficient continuous glucose (CGM) capture ({rate}%) — interpret statistics with caution.",
     "sharingDisabledTitle": "Sharing disabled",
-    "sharingDisabledDesc": "This patient has disabled sharing their data with care providers."
+    "sharingDisabledDesc": "This patient has disabled sharing their data with care providers.",
+    "lastReading": "Last glucose",
+    "lastReadingAt": "at {time}"
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",
