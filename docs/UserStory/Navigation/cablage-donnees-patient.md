@@ -58,8 +58,12 @@
   - Onglets Glycémie / Traitements / Documents → **état vide « bientôt disponible »**.
   - Middleware : `/patients` ajouté à la liste `no-store` (PHI en SSR).
   - Suppression de `DEMO_PATIENT` / `DEMO_CGM`.
-- [ ] **Phase 2 — Onglet Glycémie** : graphe CGM réel (`/api/patients/[id]/cgm`),
-  + KPI « glycémie actuelle » (dernier relevé).
+- [x] **Phase 2 — Onglet Glycémie** (PR #544) : graphe CGM réel (24h, série
+  `glycemiaService.getCgmEntries` mappée serveur g/L→mg/dL + heure Europe/Paris,
+  audité READ CGM_ENTRY) + « dernière glycémie » (dernier relevé, `GlycemiaValue`
+  color-codé **sur les cibles patient** `cgm.low/ok`, + **signal de fraîcheur**
+  « relevé ancien » si > 30 min — revue clinique). Mapping pur extrait
+  (`glycemia-view.ts`, unit-testé). État vide si pas de série.
 - [ ] **Phase 3 — Onglet Traitements** : réglages insuline réels
   (`insulinTherapyService.getSettings`, route si nécessaire) + traitements associés.
 - [ ] **Phase 4 — Onglet Documents** : documents médicaux réels (MinIO).
@@ -103,3 +107,9 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   (minimisation Art. 5.1.c) — méthode de lecture allégée pour la page.
 - **[Perf] Double lookup patient** : la garde consentement fait un `findFirst`
   léger puis `getById` en refait un complet — fusionnable.
+- **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** : une hypo sévère < 40 mg/dL
+  exclue par le plancher peut laisser un relevé bénin plus ancien passer pour le
+  « dernier relevé » sans déclencher `stale`. À traiter avec l'item plancher.
+- **[Audit] `metadata.patientId` sur READ CGM_ENTRY** : `glycemiaService.getCgmEntries`
+  met `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
+  forensics OK via resourceId, à harmoniser (service pré-existant).

@@ -16,6 +16,8 @@ import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/d
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
+import { CgmChart } from "@/components/diabeo/CgmChart"
+import type { GlycemiaView } from "./glycemia-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
@@ -48,6 +50,8 @@ export type PatientDetailData = {
     /** Capture CGM < 70 % → stats non représentatives (caveat clinique). */
     insufficientCapture: boolean
   } | null
+  /** Série CGM 24h (déjà mappée serveur : mg/dL + heure Europe/Paris + fraîcheur). */
+  glycemia: GlycemiaView
 }
 
 export function PatientDetailClient({
@@ -239,10 +243,68 @@ export function PatientDetailClient({
             </div>
           </TabsContent>
 
-          {/* ── Glycémie / Traitements / Documents (phases suivantes) ── */}
-          <TabsContent value="glycemia">
-            <ComingSoon t={t} />
+          {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}
+          <TabsContent value="glycemia" className="space-y-6">
+            {data.glycemia.points.length > 0 ? (
+              <>
+                {data.glycemia.lastReadingMgdl !== null && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <Activity className="h-4 w-4" aria-hidden="true" />
+                        {t("lastReading")}
+                        {data.glycemia.lastReadingAt && (
+                          <span className="text-xs font-normal text-muted-foreground">
+                            {t("lastReadingAt", { time: data.glycemia.lastReadingAt })}
+                            {data.glycemia.lastReadingAgeMin !== null && (
+                              <> · {ageLabel(t, data.glycemia.lastReadingAgeMin)}</>
+                            )}
+                          </span>
+                        )}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {/* Pastille couleur sur les MÊMES cibles que le graphe (cgm.low/ok) ;
+                          les zones sévères (54/250) restent les seuils physiologiques. */}
+                      <GlycemiaValue
+                        value={data.glycemia.lastReadingMgdl}
+                        unit="mg/dL"
+                        thresholds={{ low: objectives.targetLowMgdl, high: objectives.targetHighMgdl }}
+                      />
+                      {data.glycemia.stale && (
+                        <p role="status" className="text-xs text-warning-fg">
+                          {t("staleReadingNote")}
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                )}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Activity className="h-4 w-4" aria-hidden="true" />
+                      {t("glycemicProfile24h")}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <CgmChart
+                      data={data.glycemia.points}
+                      targetLow={objectives.targetLowMgdl}
+                      targetHigh={objectives.targetHighMgdl}
+                    />
+                  </CardContent>
+                </Card>
+              </>
+            ) : (
+              <Card>
+                <CardContent className="py-10">
+                  <DiabeoEmptyState variant="noData" title={t("tabGlycemia")} message={t("noCgmData")} />
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
+
+          {/* ── Traitements / Documents (phases suivantes) ── */}
           <TabsContent value="treatment">
             <ComingSoon t={t} />
           </TabsContent>
@@ -253,6 +315,11 @@ export function PatientDetailClient({
       </div>
     </>
   )
+}
+
+/** Âge du dernier relevé en libellé relatif (< 60 min → minutes, sinon heures). */
+function ageLabel(t: ReturnType<typeof useTranslations>, ageMin: number): string {
+  return ageMin < 60 ? t("agoMinutes", { n: ageMin }) : t("agoHours", { n: Math.floor(ageMin / 60) })
 }
 
 function ComingSoon({ t }: { t: ReturnType<typeof useTranslations> }) {

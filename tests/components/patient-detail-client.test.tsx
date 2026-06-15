@@ -30,7 +30,9 @@ vi.mock("@/components/diabeo", () => ({
   ),
   TirDonut: () => <div data-testid="tir-donut" />,
   ClinicalBadge: ({ value }: { value: string }) => <span data-testid="pathology">{value}</span>,
-  GlycemiaValue: ({ value }: { value: number }) => <span data-testid="glyc">{value}</span>,
+  GlycemiaValue: ({ value, thresholds }: { value: number; thresholds?: { low?: number; high?: number } }) => (
+    <span data-testid="glyc" data-low={thresholds?.low} data-high={thresholds?.high}>{value}</span>
+  ),
 }))
 vi.mock("@/components/diabeo/DashboardHeader", () => ({
   DashboardHeader: ({ title, subtitle }: { title: string; subtitle: string }) => (
@@ -44,6 +46,9 @@ vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({
   DiabeoEmptyState: ({ title, message }: { title: string; message: string }) => (
     <div data-testid="empty">{title} — {message}</div>
   ),
+}))
+vi.mock("@/components/diabeo/CgmChart", () => ({
+  CgmChart: ({ data }: { data: unknown[] }) => <div data-testid="cgm-chart">{data.length} pts</div>,
 }))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
@@ -65,6 +70,16 @@ const baseData: PatientDetailData = {
     readingCount: 1200,
     captureRate: 92,
     insufficientCapture: false,
+  },
+  glycemia: {
+    points: [
+      { time: "08:00", glucose: 120 },
+      { time: "08:05", glucose: 130 },
+    ],
+    lastReadingMgdl: 130,
+    lastReadingAt: "08:05",
+    lastReadingAgeMin: 3,
+    stale: false,
   },
 }
 
@@ -95,11 +110,36 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getAllByText("Pas de données de glycémie continue (CGM) sur la période.").length).toBeGreaterThan(0)
   })
 
-  it("renders « coming soon » for the not-yet-wired tabs", () => {
+  it("renders the CGM chart + last reading (Phase 2) and « coming soon » only for the 2 remaining tabs", () => {
     render(<PatientDetailClient data={baseData} />)
-    // Glycémie + Traitements + Documents → 3 états vides
-    expect(screen.getAllByTestId("empty")).toHaveLength(3)
-    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(3)
+    // Glycémie câblée : graphe (2 pts) + dernière glycémie
+    expect(screen.getByTestId("cgm-chart").textContent).toBe("2 pts")
+    expect(screen.getByText("Dernière glycémie")).toBeTruthy()
+    // Reste : Traitements + Documents → 2 états « bientôt disponible »
+    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(2)
+  })
+
+  it("shows an empty Glycémie state when there is no CGM series", () => {
+    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false } }} />)
+    expect(screen.queryByTestId("cgm-chart")).toBeNull()
+  })
+
+  it("color-codes the last reading with the patient's target thresholds (not defaults)", () => {
+    render(<PatientDetailClient data={baseData} />)
+    // Le relevé « dernière glycémie » passe les cibles patient (vs la moyenne
+    // d'aperçu qui n'en passe pas) → au moins un GlycemiaValue porte 70/180.
+    const withThresholds = screen.getAllByTestId("glyc").find((n) => n.getAttribute("data-low") === "70")
+    expect(withThresholds).toBeTruthy()
+    expect(withThresholds!.getAttribute("data-high")).toBe("180")
+  })
+
+  it("shows a staleness note when the last reading is old", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, glycemia: { ...baseData.glycemia, lastReadingAgeMin: 540, stale: true } }}
+      />,
+    )
+    expect(screen.getByText(/Relevé ancien/)).toBeTruthy()
   })
 
   it("renders the sharing-disabled state (no PHI) when consent is withdrawn", () => {
