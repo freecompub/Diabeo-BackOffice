@@ -3,27 +3,28 @@
  *
  * Reçoit les données déjà résolues/auditées par le Server Component parent
  * (`page.tsx`). Ne fait AUCUN calcul clinique : rend les valeurs serveur.
- * Phase 1 : onglet « Vue d'ensemble » câblé ; Glycémie / Traitements /
- * Documents → état « bientôt disponible » (phases suivantes).
+ * Les 4 onglets (Vue d'ensemble, Glycémie, Traitements, Documents) sont câblés.
  */
 
 "use client"
 
 import { useState, type ReactNode } from "react"
-import { useTranslations } from "next-intl"
+import { useLocale, useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
+import { bcp47 } from "@/i18n/config"
 import type { GlycemiaView } from "./glycemia-view"
 import type { TreatmentView } from "./treatment-view"
+import type { DocumentItem } from "./document-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Clock, Heart, Pill, Syringe, TrendingUp, User } from "lucide-react"
+import { Activity, Clock, Download, FileText, Heart, Pill, Syringe, TrendingUp, User } from "lucide-react"
 
 export type PatientDetailData = {
   id: number
@@ -55,6 +56,18 @@ export type PatientDetailData = {
   glycemia: GlycemiaView
   /** Réglages insuline (par créneau) + traitements associés. */
   treatment: TreatmentView
+  /** Documents médicaux (métadonnées ; téléchargement via route sécurisée). */
+  documents: DocumentItem[]
+}
+
+/** category enum → clé i18n du libellé. */
+const DOC_CATEGORY_KEY: Record<string, string> = {
+  general: "docCatGeneral",
+  forDoctor: "docCatForDoctor",
+  personal: "docCatPersonal",
+  prescription: "docCatPrescription",
+  labResults: "docCatLabResults",
+  other: "docCatOther",
 }
 
 export function PatientDetailClient({
@@ -65,6 +78,7 @@ export function PatientDetailClient({
   sharingDisabled?: boolean
 }) {
   const t = useTranslations("patientDetail")
+  const locale = useLocale()
   const [activeTab, setActiveTab] = useState("overview")
 
   // Consentement retiré : aucune donnée patient rendue (cf. page.tsx).
@@ -369,9 +383,50 @@ export function PatientDetailClient({
             </Card>
           </TabsContent>
 
-          {/* ── Documents (phase suivante) ── */}
-          <TabsContent value="documents">
-            <ComingSoon t={t} />
+          {/* ── Documents (câblé — Phase 4) ─────────────────── */}
+          <TabsContent value="documents" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <FileText className="h-4 w-4" aria-hidden="true" />
+                  {t("medicalDocumentsTitle")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.documents.length > 0 ? (
+                  <ul className="space-y-2 text-sm">
+                    {data.documents.map((doc) => (
+                      <li
+                        key={doc.id}
+                        className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
+                      >
+                        <FileText size={16} aria-hidden="true" className="shrink-0 text-muted-foreground" />
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate font-medium">{doc.title}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {doc.category ? t(DOC_CATEGORY_KEY[doc.category] ?? "uncategorized") : t("uncategorized")}
+                            {" · "}
+                            {new Date(doc.dateIso).toLocaleDateString(bcp47(locale), {
+                              day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris",
+                            })}
+                            {doc.size && ` · ${doc.size.value} ${t(doc.size.unitKey)}`}
+                          </span>
+                        </span>
+                        <a
+                          href={`/api/documents/${doc.id}/download?patientId=${data.id}`}
+                          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
+                        >
+                          <Download size={14} aria-hidden="true" />
+                          {t("download")}
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("noDocument")}</p>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
@@ -411,12 +466,3 @@ function ageLabel(t: ReturnType<typeof useTranslations>, ageMin: number): string
   return ageMin < 60 ? t("agoMinutes", { n: ageMin }) : t("agoHours", { n: Math.floor(ageMin / 60) })
 }
 
-function ComingSoon({ t }: { t: ReturnType<typeof useTranslations> }) {
-  return (
-    <Card>
-      <CardContent className="py-10">
-        <DiabeoEmptyState variant="noData" title={t("comingSoon")} message={t("comingSoonDesc")} />
-      </CardContent>
-    </Card>
-  )
-}

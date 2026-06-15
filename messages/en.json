@@ -1565,8 +1565,6 @@
     "noComplementaryTreatment": "No complementary treatment recorded",
     "medicalDocumentsTitle": "Medical documents",
     "noDocument": "No document recorded",
-    "comingSoon": "Coming soon",
-    "comingSoonDesc": "This section will be wired to real data soon.",
     "noCgmData": "No continuous glucose (CGM) data for the period.",
     "patientFallback": "Patient",
     "kpiTir14d": "Time in range (TIR) — 14d",
@@ -1584,7 +1582,18 @@
     "basalLabel": "Basal rate",
     "unitIsf": "g/L/U",
     "unitIcr": "g/U",
-    "unitBasal": "U/h"
+    "unitBasal": "U/h",
+    "download": "Download",
+    "uncategorized": "Uncategorized",
+    "sizeBytes": "B",
+    "sizeKb": "KB",
+    "sizeMb": "MB",
+    "docCatGeneral": "General",
+    "docCatForDoctor": "For the doctor",
+    "docCatPersonal": "Personal",
+    "docCatPrescription": "Prescription",
+    "docCatLabResults": "Lab results",
+    "docCatOther": "Other"
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

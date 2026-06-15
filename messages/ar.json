@@ -1565,8 +1565,6 @@
     "noComplementaryTreatment": "لا يوجد علاج تكميلي مسجّل",
     "medicalDocumentsTitle": "المستندات الطبية",
     "noDocument": "لا يوجد مستند مسجّل",
-    "comingSoon": "قريبًا",
-    "comingSoonDesc": "سيتم ربط هذا القسم بالبيانات الحقيقية قريبًا.",
     "noCgmData": "لا توجد بيانات الغلوكوز المستمر (CGM) للفترة.",
     "patientFallback": "مريض",
     "kpiTir14d": "الوقت ضمن النطاق (TIR) — 14 يومًا",
@@ -1584,7 +1582,18 @@
     "basalLabel": "المعدل القاعدي",
     "unitIsf": "g/L/U",
     "unitIcr": "g/U",
-    "unitBasal": "U/h"
+    "unitBasal": "U/h",
+    "download": "تنزيل",
+    "uncategorized": "بدون فئة",
+    "sizeBytes": "بايت",
+    "sizeKb": "ك.ب",
+    "sizeMb": "م.ب",
+    "docCatGeneral": "عام",
+    "docCatForDoctor": "للطبيب",
+    "docCatPersonal": "شخصي",
+    "docCatPrescription": "وصفة طبية",
+    "docCatLabResults": "نتائج المختبر",
+    "docCatOther": "أخرى"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",
