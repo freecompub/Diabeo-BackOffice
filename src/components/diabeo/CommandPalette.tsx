@@ -2,19 +2,23 @@
  * US-2601 (Navigation) — Palette de commande & recherche rapide (Ctrl/Cmd-K).
  *
  * Ouverture globale au clavier (Ctrl/Cmd-K) ; deux familles de résultats :
- *   - « Aller à » : sections autorisées par le rôle (filtrage client cosmétique,
- *     les pages restent protégées serveur par leur propre guard RBAC).
- *   - « Patients » : recherche **scopée serveur** via `/api/patients/search`
- *     (RBAC `accessibleIds`, rate-limit, audit `READ PATIENT`). La liste n'expose
- *     que l'identité (nom) + pathologie — aucune donnée de santé détaillée.
+ *   - « Aller à » : destinations dérivées de la source unique `navItems`
+ *     (`navigation-items`), filtrées par rôle (mêmes gates que la sidebar) +
+ *     par la saisie. Navigation client-side.
+ *   - « Patients » : à l'ouverture, on charge une fois le portefeuille
+ *     accessible (limit 50, `/api/patients/search` — RBAC, rate-limit, audit)
+ *     et on **filtre en sous-chaîne côté client** (vrai type-ahead). Pour les
+ *     cabinets > 50 patients, une recherche serveur **exacte** (HMAC token,
+ *     ≥ 2 car.) complète la liste de base. La liste n'expose que l'identité
+ *     (nom) + pathologie (libellé complet) — aucune donnée de santé détaillée.
  *
  * Sélectionner un patient ouvre son dossier (`/patients/[id]`) — l'accès est
- * journalisé par la page dossier elle-même + par la recherche. Déterministe :
- * aucune inférence, aucun calcul clinique côté frontend.
+ * journalisé par la page dossier + par la recherche. Déterministe : aucune IA.
  *
- * A11y : `Dialog` (base-ui) fournit le focus-trap, `Esc`, le retour de focus et
- * `role=dialog`. La saisie est un `combobox` lié à un `listbox`
- * (`aria-activedescendant`) ; navigation `↑/↓/↵`. RTL hérité du `dir` document.
+ * A11y : `Dialog` base-ui (focus-trap, `Esc`, retour focus, `initialFocus` sur
+ * l'input). Saisie `combobox` (`aria-autocomplete="list"`) liée à un `listbox`
+ * (`aria-activedescendant`) ; nav `↑/↓/↵`. État actif signalé hors-couleur
+ * (graisse). RTL hérité du `dir` document (icônes de section non directionnelles).
  */
 
 "use client"
@@ -22,88 +26,92 @@
 import { useCallback, useDeferredValue, useEffect, useId, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Search, ArrowRight, User } from "lucide-react"
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Acronym, type AcronymCode } from "@/components/diabeo/Acronym"
+import { Search, User } from "lucide-react"
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { resolveHomeForRole, type KnownRole } from "@/lib/auth/role-home"
+import {
+  navItems,
+  hasRoleAccess,
+  HOME_HREF_MARKER,
+  type UserRole,
+  type NavItem,
+} from "@/components/diabeo/navigation-items"
 
-type UserRole = "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
+/** Pathologies connues du glossaire (libellé complet affiché, pas l'acronyme nu). */
+const PATHOLOGY_CODES = new Set(["DT1", "DT2", "GD"])
 
-const ROLE_HIERARCHY: Record<UserRole, number> = { ADMIN: 4, DOCTOR: 3, NURSE: 2, VIEWER: 1 }
+const MIN_EXACT_QUERY = 2
+const PATIENT_RESULTS_CAP = 8
+const BASE_LIST_LIMIT = 50
 
-/** Sentinelle : résolue vers le home rôle-spécifique au render. */
-const HOME_MARKER = "__home__"
+type PatientHit = { id: number; name: string; pathologyLabel: string | null }
 
-type Destination = { href: string; navKey: string; minRole?: UserRole }
+type RawPatient = {
+  id: number
+  pathology: string | null
+  user: { firstname: string | null; lastname: string | null }
+}
 
-/** Sidebar maigre (US-2600) — destinations seulement, filtrées par rôle. */
-const DESTINATIONS: Destination[] = [
-  { href: HOME_MARKER, navKey: "dashboard" },
-  { href: "/patients", navKey: "patients" },
-  { href: "/appointments", navKey: "appointments", minRole: "NURSE" },
-  { href: "/messages", navKey: "messages", minRole: "NURSE" },
-  { href: "/documents", navKey: "documents" },
-  { href: "/analytics", navKey: "analytics" },
-  { href: "/settings", navKey: "settings" },
-]
-
-const PATHOLOGY_CODES = new Set<AcronymCode>(["DT1", "DT2", "GD"])
-const asPathologyCode = (p: string | null): AcronymCode | null =>
-  p && PATHOLOGY_CODES.has(p as AcronymCode) ? (p as AcronymCode) : null
-
-const MIN_PATIENT_QUERY = 2
-const PATIENT_SEARCH_LIMIT = 8
-
-type PatientHit = { id: number; name: string; pathology: string | null }
-
-type Entry =
-  | { kind: "dest"; id: string; href: string; label: string }
-  | { kind: "patient"; id: string; patientId: number; name: string; pathology: string | null }
+type DestEntry = { kind: "dest"; id: string; href: string; label: string; icon: NavItem["icon"] }
+type PatientEntry = { kind: "patient"; id: string; patientId: number; name: string; pathologyLabel: string | null }
+type Entry = DestEntry | PatientEntry
 
 export function CommandPalette({ userRole }: { userRole: UserRole }) {
   const t = useTranslations("commandPalette")
   const tNav = useTranslations("nav")
+  const tGlossary = useTranslations("glossary")
   const router = useRouter()
   const baseId = useId()
 
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
-  const [patients, setPatients] = useState<PatientHit[]>([])
-  const [loading, setLoading] = useState(false)
+  const [basePatients, setBasePatients] = useState<PatientHit[]>([])
+  const [exactHits, setExactHits] = useState<PatientHit[]>([])
+  const [searching, setSearching] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-  const abortRef = useRef<AbortController | null>(null)
+  const baseAbortRef = useRef<AbortController | null>(null)
+  const exactAbortRef = useRef<AbortController | null>(null)
 
   const deferredQuery = useDeferredValue(query)
 
-  // Ref miroir de `open` pour le listener clavier (évite une closure périmée
-  // et tout setState synchrone dans un effet).
+  const pathologyLabel = useCallback(
+    (code: string | null): string | null =>
+      code && PATHOLOGY_CODES.has(code) ? tGlossary(code as Parameters<typeof tGlossary>[0]) : null,
+    [tGlossary],
+  )
+  const toHit = useCallback(
+    (p: RawPatient): PatientHit => ({
+      id: p.id,
+      name: `${p.user.firstname ?? ""} ${p.user.lastname ?? ""}`.trim(),
+      pathologyLabel: pathologyLabel(p.pathology),
+    }),
+    [pathologyLabel],
+  )
+
+  // Ref miroir de `open` pour le listener clavier (closure non périmée).
   const openRef = useRef(open)
   useEffect(() => {
     openRef.current = open
   }, [open])
 
-  // Ouverture/reset/fermeture — handler d'évènement (pas d'effet) : setState
-  // ici est légitime (réagit à une action), contrairement au corps d'un effet.
+  // Ouverture/reset/fermeture — handler d'évènement (setState légitime).
   const handleOpenChange = useCallback((next: boolean) => {
     setOpen(next)
     if (next) {
       setQuery("")
       setActiveIndex(0)
-      setPatients([])
+      setExactHits([])
     } else {
-      abortRef.current?.abort()
+      baseAbortRef.current?.abort()
+      exactAbortRef.current?.abort()
     }
   }, [])
 
-  // Ouverture/fermeture globale Ctrl/Cmd-K.
+  // Ctrl/Cmd-K global.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault()
         handleOpenChange(!openRef.current)
       }
@@ -112,87 +120,107 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
     return () => document.removeEventListener("keydown", onKeyDown)
   }, [handleOpenChange])
 
-  // Recherche patient scopée serveur (≥ 2 caractères), annulable. Quand la
-  // saisie est trop courte ou la palette fermée, on annule sans setState
-  // synchrone — le rendu des patients est gardé par `showPatients`.
+  // Liste de base (portefeuille accessible, scopée serveur) chargée une fois à
+  // l'ouverture — sert au filtrage sous-chaîne côté client.
   useEffect(() => {
-    const q = deferredQuery.trim()
-    if (!open || q.length < MIN_PATIENT_QUERY) {
-      abortRef.current?.abort()
+    if (!open) {
+      baseAbortRef.current?.abort()
       return
     }
-    abortRef.current?.abort()
     const ctrl = new AbortController()
-    abortRef.current = ctrl
-    // Tout le setState (y compris `loading=true`) vit dans cette fonction async,
-    // pas dans le corps synchrone de l'effet (règle react-hooks/set-state-in-effect).
+    baseAbortRef.current = ctrl
     const run = async () => {
-      setLoading(true)
       try {
-        const params = new URLSearchParams({ search: q, limit: String(PATIENT_SEARCH_LIMIT) })
+        const res = await fetch(`/api/patients/search?limit=${BASE_LIST_LIMIT}`, {
+          credentials: "include",
+          signal: ctrl.signal,
+        })
+        if (!res.ok) throw new Error(String(res.status))
+        const data: { items?: RawPatient[] } = await res.json()
+        setBasePatients((Array.isArray(data.items) ? data.items : []).map(toHit))
+      } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") return
+        setBasePatients([])
+      }
+    }
+    void run()
+    return () => ctrl.abort()
+  }, [open, toHit])
+
+  // Recherche serveur EXACTE (HMAC token) en complément — couvre les cabinets
+  // > 50 patients où la cible n'est pas dans la liste de base.
+  useEffect(() => {
+    const q = deferredQuery.trim()
+    if (!open || q.length < MIN_EXACT_QUERY) {
+      exactAbortRef.current?.abort()
+      return
+    }
+    const ctrl = new AbortController()
+    exactAbortRef.current = ctrl
+    const run = async () => {
+      setSearching(true)
+      try {
+        const params = new URLSearchParams({ search: q, limit: String(PATIENT_RESULTS_CAP) })
         const res = await fetch(`/api/patients/search?${params.toString()}`, {
           credentials: "include",
           signal: ctrl.signal,
         })
         if (!res.ok) throw new Error(String(res.status))
-        const data: {
-          items?: Array<{ id: number; pathology: string | null; user: { firstname: string | null; lastname: string | null } }>
-        } = await res.json()
-        const items = Array.isArray(data.items) ? data.items : []
-        setPatients(
-          items.map((p) => ({
-            id: p.id,
-            name: `${p.user.firstname ?? ""} ${p.user.lastname ?? ""}`.trim(),
-            pathology: p.pathology,
-          })),
-        )
-        setLoading(false)
+        const data: { items?: RawPatient[] } = await res.json()
+        setExactHits((Array.isArray(data.items) ? data.items : []).map(toHit))
+        setSearching(false)
       } catch (err) {
         if ((err as { name?: string })?.name === "AbortError") return
-        setPatients([])
-        setLoading(false)
+        setExactHits([])
+        setSearching(false)
       }
     }
     void run()
     return () => ctrl.abort()
-  }, [deferredQuery, open])
+  }, [deferredQuery, open, toHit])
 
-  // Destinations filtrées par rôle + par la saisie (match libellé).
-  const destinations = useMemo<Entry[]>(() => {
+  // Destinations : source unique `navItems`, filtrées par rôle puis par saisie.
+  const destinations = useMemo<DestEntry[]>(() => {
     const q = query.trim().toLowerCase()
-    return DESTINATIONS.filter((d) => !d.minRole || ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[d.minRole])
-      .map((d) => {
+    return navItems
+      .filter((item) => hasRoleAccess(userRole, item.minRole))
+      .map((item) => {
         const label =
-          d.navKey === "dashboard" && userRole === "DOCTOR" ? tNav("dashboardMedecin") : tNav(d.navKey)
-        const href = d.href === HOME_MARKER ? resolveHomeForRole(userRole as KnownRole) : d.href
-        return { kind: "dest" as const, id: `${baseId}-dest-${d.navKey}`, href, label }
+          item.labelKey === "dashboard" && userRole === "DOCTOR"
+            ? tNav("dashboardMedecin")
+            : tNav(item.labelKey)
+        const href = item.href === HOME_HREF_MARKER ? resolveHomeForRole(userRole as KnownRole) : item.href
+        return { kind: "dest" as const, id: `${baseId}-dest-${item.labelKey}`, href, label, icon: item.icon }
       })
       .filter((e) => !q || e.label.toLowerCase().includes(q))
   }, [query, userRole, tNav, baseId])
 
-  // Gate d'affichage des patients : saisie ≥ seuil (le state `patients`/`loading`
-  // peut être périmé après un retour sous le seuil — on s'appuie sur ce drapeau
-  // plutôt que sur un reset synchrone dans l'effet de recherche).
-  const showPatients = open && deferredQuery.trim().length >= MIN_PATIENT_QUERY
+  // Patients : filtrage sous-chaîne de la liste de base ∪ résultats exacts,
+  // dédupliqués (id), cappés. Dérivé à chaque rendu → jamais de reliquat périmé.
+  const patientEntries = useMemo<PatientEntry[]>(() => {
+    const q = query.trim().toLowerCase()
+    if (!q) return []
+    const fromBase = basePatients.filter((p) => p.name.toLowerCase().includes(q))
+    const seen = new Set<number>()
+    const merged: PatientHit[] = []
+    for (const p of [...fromBase, ...exactHits]) {
+      if (seen.has(p.id)) continue
+      seen.add(p.id)
+      merged.push(p)
+      if (merged.length >= PATIENT_RESULTS_CAP) break
+    }
+    return merged.map((p) => ({
+      kind: "patient" as const,
+      id: `${baseId}-pat-${p.id}`,
+      patientId: p.id,
+      name: p.name || t("unnamedPatient"),
+      pathologyLabel: p.pathologyLabel,
+    }))
+  }, [query, basePatients, exactHits, baseId, t])
 
-  const patientEntries = useMemo<Entry[]>(
-    () =>
-      showPatients
-        ? patients.map((p) => ({
-            kind: "patient" as const,
-            id: `${baseId}-pat-${p.id}`,
-            patientId: p.id,
-            name: p.name || t("patientsGroup"),
-            pathology: p.pathology,
-          }))
-        : [],
-    [showPatients, patients, baseId, t],
-  )
+  const entries = useMemo<Entry[]>(() => [...destinations, ...patientEntries], [destinations, patientEntries])
 
-  const entries = useMemo(() => [...destinations, ...patientEntries], [destinations, patientEntries])
-
-  // Index actif borné par dérivation (pas d'effet) — la liste rétrécit quand la
-  // saisie affine les résultats ; on clamp à la lecture plutôt qu'en state.
+  // Index actif borné par dérivation (la liste rétrécit pendant la frappe).
   const clampedActive = entries.length === 0 ? -1 : Math.min(activeIndex, entries.length - 1)
 
   const activate = useCallback(
@@ -209,10 +237,10 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
       if (entries.length === 0) return
       if (e.key === "ArrowDown") {
         e.preventDefault()
-        setActiveIndex((i) => (i + 1) % entries.length)
+        setActiveIndex((i) => ((i < 0 ? 0 : i) + 1) % entries.length)
       } else if (e.key === "ArrowUp") {
         e.preventDefault()
-        setActiveIndex((i) => (i - 1 + entries.length) % entries.length)
+        setActiveIndex((i) => ((i < 0 ? 0 : i) - 1 + entries.length) % entries.length)
       } else if (e.key === "Enter") {
         e.preventDefault()
         activate(entries[clampedActive])
@@ -222,16 +250,20 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
   )
 
   const q = query.trim()
-  const showMinCharsHint = q.length > 0 && q.length < MIN_PATIENT_QUERY
+  const showPatients = q.length > 0
   const listboxId = `${baseId}-listbox`
   const activeId = entries[clampedActive]?.id
+  const rowClass = (active: boolean) =>
+    `flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm ${
+      active ? "bg-accent font-medium text-accent-foreground" : "hover:bg-muted"
+    }`
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
+        initialFocus={inputRef}
         className="top-[12%] max-w-lg translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-lg"
-        aria-label={t("ariaLabel")}
       >
         <DialogTitle className="sr-only">{t("ariaLabel")}</DialogTitle>
 
@@ -240,16 +272,17 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
           <input
             ref={inputRef}
             type="text"
-            autoFocus
             value={query}
             onChange={(e) => {
               setQuery(e.target.value)
               setActiveIndex(0)
+              setExactHits([])
             }}
             onKeyDown={onKeyDown}
             placeholder={t("placeholder")}
             aria-label={t("placeholder")}
             role="combobox"
+            aria-autocomplete="list"
             aria-expanded={entries.length > 0}
             aria-controls={listboxId}
             aria-activedescendant={activeId}
@@ -257,7 +290,7 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
           />
         </div>
 
-        <ul id={listboxId} role="listbox" aria-label={t("ariaLabel")} className="max-h-80 overflow-y-auto p-2">
+        <ul id={listboxId} role="listbox" aria-label={t("resultsAria")} className="max-h-80 overflow-y-auto p-2">
           {destinations.length > 0 && (
             <li role="presentation" className="px-2 py-1 text-xs font-medium text-muted-foreground">
               {t("goToGroup")}
@@ -266,18 +299,19 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
           {destinations.map((e) => {
             const idx = entries.indexOf(e)
             const active = idx === clampedActive
+            const Icon = e.icon
             return (
               <li
                 key={e.id}
                 id={e.id}
                 role="option"
                 aria-selected={active}
-                onMouseEnter={() => setActiveIndex(idx)}
+                aria-label={t("navigateToAria", { section: e.label })}
                 onClick={() => activate(e)}
-                className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm ${active ? "bg-accent text-accent-foreground" : ""}`}
+                className={rowClass(active)}
               >
-                <ArrowRight size={14} aria-hidden="true" className="text-muted-foreground" />
-                <span className="flex-1 truncate">{e.kind === "dest" ? e.label : ""}</span>
+                <Icon size={14} aria-hidden="true" className="text-muted-foreground" />
+                <span className="flex-1 truncate">{e.label}</span>
               </li>
             )
           })}
@@ -288,39 +322,38 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
             </li>
           )}
           {patientEntries.map((e) => {
-            if (e.kind !== "patient") return null
             const idx = entries.indexOf(e)
             const active = idx === clampedActive
-            const code = asPathologyCode(e.pathology)
+            const aria = e.pathologyLabel
+              ? `${t("openPatientAria", { name: e.name })} · ${e.pathologyLabel}`
+              : t("openPatientAria", { name: e.name })
             return (
               <li
                 key={e.id}
                 id={e.id}
                 role="option"
                 aria-selected={active}
-                aria-label={t("openPatientAria", { name: e.name })}
-                onMouseEnter={() => setActiveIndex(idx)}
+                aria-label={aria}
                 onClick={() => activate(e)}
-                className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm ${active ? "bg-accent text-accent-foreground" : ""}`}
+                className={rowClass(active)}
               >
                 <User size={14} aria-hidden="true" className="text-muted-foreground" />
                 <span className="flex-1 truncate">{e.name}</span>
-                {code && <Acronym code={code} />}
+                {e.pathologyLabel && (
+                  <span aria-hidden="true" className="shrink-0 text-xs text-muted-foreground">
+                    {e.pathologyLabel}
+                  </span>
+                )}
               </li>
             )
           })}
 
-          {loading && showPatients && (
+          {searching && showPatients && (
             <li role="presentation" className="px-2 py-3 text-sm text-muted-foreground">
               {t("loading")}
             </li>
           )}
-          {showMinCharsHint && (
-            <li role="presentation" className="px-2 py-3 text-sm text-muted-foreground">
-              {t("minCharsHint")}
-            </li>
-          )}
-          {!(loading && showPatients) && !showMinCharsHint && entries.length === 0 && (
+          {!searching && entries.length === 0 && (
             <li role="presentation" className="px-2 py-3 text-sm text-muted-foreground">
               {t("noResults")}
             </li>

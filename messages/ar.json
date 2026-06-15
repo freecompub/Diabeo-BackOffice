@@ -105,9 +105,11 @@
     "patientsGroup": "المرضى",
     "loading": "جارٍ البحث…",
     "noResults": "لا نتيجة",
-    "minCharsHint": "اكتب حرفين على الأقل للبحث عن مريض.",
     "hint": "↑↓ للتنقل · ↵ للفتح · Esc للإغلاق",
-    "openPatientAria": "فتح ملف {name}"
+    "openPatientAria": "فتح ملف {name}",
+    "navigateToAria": "الانتقال إلى {section}",
+    "resultsAria": "النتائج",
+    "unnamedPatient": "ملف بلا اسم"
   },
   "messages": {
     "pageTitle": "المراسلة",

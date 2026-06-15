@@ -19,27 +19,14 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
 import {
-  LayoutDashboard,
-  Users,
   Settings,
-  FileText,
   LogOut,
-  Activity,
-  Pill,
   Menu,
   ChevronLeft,
   ChevronRight,
   Bell,
   RefreshCw,
   User,
-  Download,
-  CalendarDays,
-  Syringe,
-  Smartphone,
-  Home,
-  CalendarClock,
-  MessageSquare,
-  type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
@@ -49,6 +36,14 @@ import {
   useUnreadCountFromContext,
 } from "@/components/diabeo/messaging/UnreadCountContext"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
+import {
+  navItems,
+  patientNavItems,
+  hasRoleAccess,
+  HOME_HREF_MARKER,
+  type NavItem,
+  type UserRole,
+} from "@/components/diabeo/navigation-items"
 import { CommandPalette } from "@/components/diabeo/CommandPalette"
 import { LocaleReconciliationBanner } from "@/components/diabeo/LocaleReconciliationBanner"
 import {
@@ -72,27 +67,6 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 // --- Types ---
-
-type UserRole = "ADMIN" | "DOCTOR" | "NURSE" | "VIEWER"
-
-interface NavItem {
-  href: string
-  labelKey: string
-  icon: LucideIcon
-  minRole?: UserRole
-  /**
-   * US-2076-UI iter 1 — affiche un badge dynamique unread count via
-   * `useUnreadCount()`. Activé uniquement sur `/messages` pour le moment.
-   * Polling 60s + pause sur tab hidden + refetch sur visibilitychange.
-   *
-   * **Single global count (Fix M7 round 1 review PR #440)** : tous les
-   * items avec `showUnreadBadge=true` partagent LA MÊME source
-   * `/api/messages/unread-count`. Si V2 nécessite des badges différents
-   * (ex: notifications cabinet ≠ messages patients), créer un
-   * `useNotificationCount` séparé avec un nouveau Context.
-   */
-  showUnreadBadge?: boolean
-}
 
 interface BreadcrumbItem {
   label: string
@@ -121,90 +95,9 @@ interface NavigationShellProps {
 }
 
 // --- Constants ---
-
-const ROLE_HIERARCHY: Record<UserRole, number> = {
-  VIEWER: 0,
-  NURSE: 1,
-  DOCTOR: 2,
-  ADMIN: 3,
-}
-
-/**
- * Marker sentinel pour `NavItem.href` : résolu dynamiquement vers le home
- * rôle-spécifique au render (DOCTOR → /medecin, NURSE → /infirmier, etc.).
- *
- * Fix CRIT-1 round 2 review PR #426 — Le pattern précédent `href: "/"`
- * dépendait du role-router serveur qui était cassé par `src/app/page.tsx`
- * (supprimé). Le marker permet de garder une nav statique tout en
- * dispatchant côté client selon le `userRole` prop.
- *
- * Mapping centralisé : `@/lib/auth/role-home` (SoT partagée).
- */
-const HOME_HREF_MARKER = "__home__"
-
-/**
- * Pro nav (DOCTOR / NURSE / ADMIN).
- *
- * Fix #11.b/#11.c (session 2026-05-22) :
- *   - 1er item `href: HOME_HREF_MARKER` — résolu vers `/medecin` / `/infirmier`
- *     / `/admin` selon le role courant.
- *   - `/admin/users` et `/audit` ADMIN-only. `/admin/users` = UI réelle
- *     (US-2148) ; `/users` n'est plus qu'une redirection legacy (anomalie A5).
- */
-const navItems: NavItem[] = [
-  { href: HOME_HREF_MARKER, labelKey: "dashboard", icon: LayoutDashboard },
-  { href: "/patients", labelKey: "patients", icon: Users },
-  // US-2500-UI — Calendrier RDV pro (issue #428, spec docs/UserStory/.../23-rdv/).
-  // Fix L-2 round 2 review — `CalendarClock` (vs `CalendarDays` partagé avec /weekly)
-  // pour distinguer visuellement dans la sidebar collapsed (icône seule).
-  { href: "/appointments", labelKey: "appointments", icon: CalendarClock, minRole: "NURSE" },
-  // US-2076-UI iter 1 — Messagerie pro (issue #429). Badge unread count
-  // dynamique via useUnreadCount() polling 60s. Gated NURSE+ (backend
-  // /api/messages route accepte tout user authentifié + GDPR consent
-  // mais la page pro est destinée aux praticiens uniquement).
-  { href: "/messages", labelKey: "messages", icon: MessageSquare, minRole: "NURSE", showUnreadBadge: true },
-  { href: "/medications", labelKey: "medications", icon: Pill },
-  { href: "/analytics", labelKey: "analytics", icon: Activity },
-  { href: "/weekly", labelKey: "weekly", icon: CalendarDays },
-  { href: "/insulin-therapy", labelKey: "insulinTherapy", icon: Syringe, minRole: "NURSE" },
-  { href: "/devices", labelKey: "devices", icon: Smartphone },
-  { href: "/documents", labelKey: "documents", icon: FileText },
-  { href: "/import", labelKey: "import", icon: Download, minRole: "DOCTOR" },
-  { href: "/admin/users", labelKey: "users", icon: Users, minRole: "ADMIN" },
-  { href: "/audit", labelKey: "audit", icon: FileText, minRole: "ADMIN" },
-  { href: "/settings", labelKey: "settings", icon: Settings },
-]
-
-/**
- * Patient self-service nav (VIEWER, layout `(patient)`).
- *
- * #10 (session 2026-05-22) — Batch 1 US-3356 ne livre que la page
- * `/patient/dashboard` ; les items nav sont limités aux routes
- * réellement implémentées pour qu'un clic ne tombe jamais sur 404.
- * Futures sections (glycémie/événements/RDV/profil/préférences) à
- * ajouter ici quand les pages correspondantes atterriront en Batch 2+.
- *
- * #3 (session 2026-05-22) — Déclaré dans ce client component pour
- * éviter de passer une référence `LucideIcon` à travers la boundary
- * RSC depuis `(patient)/layout.tsx`.
- */
-const patientNavItems: NavItem[] = [
-  { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
-  // US-2500-UI iter 12 — UI patient "Mes RDV" : vue read-only des RDV
-  // du patient connecté + bouton "Accepter alternative" si propAlt set.
-  // Fix L1 round 1 review PR #438 — `CalendarClock` cohérent avec sidebar pro
-  // (vs `CalendarDays` réservé /weekly côté pro).
-  { href: "/patient/appointments", labelKey: "appointments", icon: CalendarClock },
-  // US-3356 extension — /settings is the single page shared across all roles.
-  // VIEWER sees it in the patient sidebar (patient-only sections: medicalData,
-  // administrative, dayMoments, privacy) ; PS roles access it via the pro sidebar.
-  { href: "/settings", labelKey: "settings", icon: Settings },
-]
-
-function hasRoleAccess(userRole: UserRole, minRole?: UserRole): boolean {
-  if (!minRole) return true
-  return ROLE_HIERARCHY[userRole] >= ROLE_HIERARCHY[minRole]
-}
+// Définitions de nav (UserRole, NavItem, navItems, patientNavItems,
+// ROLE_HIERARCHY, hasRoleAccess, HOME_HREF_MARKER) extraites dans
+// `./navigation-items` — source unique partagée avec `CommandPalette` (US-2601).
 
 // --- Sidebar Content ---
 
@@ -660,4 +553,5 @@ export function NavigationShell({
   )
 }
 
-export type { NavigationShellProps, BreadcrumbItem, UserRole, NavItem }
+export type { NavigationShellProps, BreadcrumbItem }
+export type { UserRole, NavItem }

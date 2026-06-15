@@ -105,9 +105,11 @@
     "patientsGroup": "Patients",
     "loading": "Recherche…",
     "noResults": "Aucun résultat",
-    "minCharsHint": "Tapez au moins 2 caractères pour rechercher un patient.",
     "hint": "↑↓ pour naviguer · ↵ pour ouvrir · Échap pour fermer",
-    "openPatientAria": "Ouvrir le dossier de {name}"
+    "openPatientAria": "Ouvrir le dossier de {name}",
+    "navigateToAria": "Aller à {section}",
+    "resultsAria": "Résultats",
+    "unnamedPatient": "Dossier sans nom"
   },
   "messages": {
     "pageTitle": "Messagerie",
