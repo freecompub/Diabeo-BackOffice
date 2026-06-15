@@ -65,6 +65,15 @@ describe("glycemiaService", () => {
       expect(result[0].valueGl).toBe(1.26)
     })
 
+    it("audits READ CGM_ENTRY with the metadata.patientId pivot (ADR #18)", async () => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue([] as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      await glycemiaService.getCgmEntries(42, new Date("2026-03-01"), new Date("2026-03-10"), 1)
+      const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(audit.resource).toBe("CGM_ENTRY")
+      expect(audit.metadata.patientId).toBe(42)
+    })
+
     it("throws when period exceeds 30 days", async () => {
       const from = new Date("2026-01-01")
       const to = new Date("2026-03-01")
