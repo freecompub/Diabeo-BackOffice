@@ -1537,7 +1537,6 @@
     "tabDocuments": "Documents",
     "subtitle": "{pathology} — {age} ans — Suivi par {referent}",
     "kpiCurrentGlucose": "Glycémie actuelle",
-    "kpiTir7d": "Temps dans la cible (TIR) — 14j",
     "kpiGmi": "Indicateur de gestion du glucose (GMI)",
     "kpiCv": "Coefficient de variation (CV)",
     "profileTitle": "Profil patient",
@@ -1569,7 +1568,11 @@
     "comingSoon": "Bientôt disponible",
     "comingSoonDesc": "Cette section sera câblée aux données réelles prochainement.",
     "noCgmData": "Pas de données de glycémie continue (CGM) sur la période.",
-    "patientFallback": "Patient"
+    "patientFallback": "Patient",
+    "kpiTir14d": "Temps dans la cible (TIR) — 14j",
+    "lowCaptureWarning": "Capture de glycémie continue (CGM) insuffisante ({rate} %) — statistiques à interpréter avec prudence.",
+    "sharingDisabledTitle": "Partage désactivé",
+    "sharingDisabledDesc": "Ce patient a désactivé le partage de ses données avec les soignants."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

@@ -49,10 +49,14 @@
 
 ## Phases
 
-- [ ] **Phase 1 — Garde d'accès + audit + RSC + onglet « Vue d'ensemble »**
-  - Conversion RSC, `canAccessPatient` → `notFound()`, audit via services.
+- [x] **Phase 1 — Garde d'accès + audit + RSC + onglet « Vue d'ensemble »** (PR #543)
+  - Conversion RSC, `canAccessPatient` → audit `accessDenied` + `notFound()`, audit via services.
+  - **Garde consentement `shareWithProviders`** ajoutée (opt-out → état « partage désactivé », aucune PII déchiffrée) — cohérence avec routes cgm/analytics.
   - KPIs (moyenne, TIR, GMI, CV) + carte profil + objectifs + donut TIR — **réels**.
+  - Cible affichée = `cgm.low/ok` (mêmes bornes que le calcul TIR serveur).
+  - Caveat si capture CGM < 70 % (`warning`/`captureRate` du service).
   - Onglets Glycémie / Traitements / Documents → **état vide « bientôt disponible »**.
+  - Middleware : `/patients` ajouté à la liste `no-store` (PHI en SSR).
   - Suppression de `DEMO_PATIENT` / `DEMO_CGM`.
 - [ ] **Phase 2 — Onglet Glycémie** : graphe CGM réel (`/api/patients/[id]/cgm`),
   + KPI « glycémie actuelle » (dernier relevé).
@@ -60,12 +64,15 @@
   (`insulinTherapyService.getSettings`, route si nécessaire) + traitements associés.
 - [ ] **Phase 4 — Onglet Documents** : documents médicaux réels (MinIO).
 
-## Points de vigilance (revue)
+## Points de vigilance (revue) — tranchés en Phase 1
 
-- **Consentement `shareWithProviders`** : `getById` ne le filtre pas (accès PS =
-  base légale Art. 9.2.h). À arbitrer avec `healthcare-security-auditor` : faut-il
-  gater l'affichage si le patient a explicitement retiré le partage ? (cohérence
-  avec les routes `cgm`/`analytics` qui le vérifient.)
-- **404 vs 403** : accès refusé → `notFound()` (uniforme, anti-énumération).
-- **Capture CGM nulle** : si `readingCount === 0`, l'onglet affiche un état
-  « pas de données » plutôt que des stats à 0/NaN.
+- **Consentement `shareWithProviders`** : ✅ **gaté** au niveau page (opt-out →
+  état « partage désactivé », aucune PII déchiffrée). Décision : on honore
+  l'opposition Art. 21 comme les routes `cgm`/`analytics` (revue HSA).
+- **404 vs 403** : ✅ accès refusé → audit `accessDenied` + `notFound()` (uniforme,
+  anti-énumération + détection d'abus US-2265).
+- **Capture CGM** : ✅ `readingCount === 0` → état « pas de données » ; capture
+  < 70 % → caveat clinique (stats non représentatives).
+- **Reste (LOW, suivi)** : `getById` sur-déchiffre `email` + relations non
+  affichées (minimisation Art. 5.1.c) — méthode allégée à envisager ; plancher
+  capteur 0.40 g/L de l'analytics à documenter (pré-existant, hors PR).

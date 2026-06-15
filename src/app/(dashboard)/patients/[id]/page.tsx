@@ -5,30 +5,33 @@
  * profil + objectifs + stats glycémiques (TIR/GMI/CV/moyenne) RÉELS, scopés
  * serveur, PII déchiffrée serveur, accès audité (ADR #18). Les onglets Glycémie /
  * Traitements / Documents arrivent dans les phases suivantes (état « bientôt
- * disponible » en attendant — jamais de données démo).
+ * disponible » — jamais de données démo).
  *
  * Sécurité :
- *  - `canAccessPatient` (RBAC : ADMIN / DOCTOR-NURSE via service / VIEWER self) ;
- *    accès refusé → `notFound()` (404 uniforme, anti-énumération).
- *  - Aucune statistique clinique calculée côté frontend : tout vient des
- *    projections serveur (`analyticsService.glycemicProfile`).
+ *  - `canAccessPatient` (RBAC) ; refus → audit `accessDenied` + `notFound()`
+ *    (404 uniforme, anti-énumération + détection d'abus US-2265).
+ *  - Garde consentement `shareWithProviders` (cohérence avec routes cgm/analytics) :
+ *    opt-out explicite du patient → aucune donnée rendue (PHI non déchiffrée).
+ *  - Aucune statistique clinique calculée côté frontend (projections serveur).
  */
 
 import { headers } from "next/headers"
 import { notFound, redirect } from "next/navigation"
 import type { Role } from "@prisma/client"
+import { prisma } from "@/lib/db/client"
 import { patientService } from "@/lib/services/patient.service"
 import { analyticsService } from "@/lib/services/analytics.service"
+import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
-import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { PatientDetailClient, type PatientDetailData } from "./PatientDetailClient"
 
-// Période d'agrégation de la vue d'ensemble (jours). Bornée < 90j (analytics).
+// Période d'agrégation de la vue d'ensemble. Bornée < 90j (analytics).
 const OVERVIEW_PERIOD = "14d"
 // Cibles consensus ADA/EASD (identiques pour tous les patients, pas des champs
-// patient) — TIR ≥ 70 %, temps < 70 mg/dL ≤ 4 %.
+// patient) — TIR ≥ 70 %, temps < 70 mg/dL ≤ 4 %, CV ≤ 36 % (stabilité glycémique).
 const CONSENSUS_TIR_TARGET_PCT = 70
 const CONSENSUS_HYPO_MAX_PCT = 4
+const CONSENSUS_CV_MAX_PCT = 36
 
 function computeAge(birthday: Date | null | undefined, now: Date): number | null {
   if (!birthday) return null
@@ -52,14 +55,41 @@ export default async function PatientDetailPage({
   const role = h.get("x-user-role") as Role | null
   if (!userId || !Number.isInteger(userId) || !role) redirect("/login")
 
-  // Garde d'accès — refus = 404 uniforme (ne révèle pas l'existence du patient).
-  const allowed = await canAccessPatient(userId, role, patientId)
-  if (!allowed) notFound()
-
   const ctx = {
     ipAddress: (h.get("x-forwarded-for")?.split(",")[0] ?? "").trim() || "unknown",
     userAgent: h.get("user-agent") || "unknown",
     requestId: h.get("x-request-id") || "rsc-patient-detail",
+  }
+
+  // Garde d'accès (RBAC). NB : un VIEWER n'atteint jamais cette route — le
+  // layout (dashboard) le redirige vers /patient/dashboard ; la branche VIEWER
+  // de canAccessPatient est donc inerte ici (défense en profondeur).
+  const allowed = await canAccessPatient(userId, role, patientId)
+  if (!allowed) {
+    // Tentative hors périmètre → trace SOC (détection d'énumération US-2265)
+    // AVANT le 404 uniforme.
+    await auditService.accessDenied({
+      userId, resource: "PATIENT", resourceId: String(patientId),
+      ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+      metadata: { patientId, surface: "patient-detail-page" },
+    })
+    notFound()
+  }
+
+  // Garde consentement `shareWithProviders` AVANT tout déchiffrement PII
+  // (cohérence avec /api/patients/[id]/cgm et /analytics). Fail-open si pas de
+  // row (patient récent). Opt-out → aucune donnée rendue.
+  const base = await prisma.patient.findFirst({
+    where: { id: patientId, deletedAt: null },
+    select: { userId: true },
+  })
+  if (!base) notFound()
+  const privacy = await prisma.userPrivacySettings.findUnique({
+    where: { userId: base.userId },
+    select: { shareWithProviders: true },
+  })
+  if (privacy && !privacy.shareWithProviders) {
+    return <PatientDetailClient data={null} sharingDisabled />
   }
 
   // Profil (PII déchiffrée serveur) + objectifs + référent — audité (READ PATIENT).
@@ -71,11 +101,10 @@ export default async function PatientDetailPage({
 
   const now = new Date()
   const cgmObj = patient.cgmObjectives
-  const targetLowMgdl = cgmObj ? Math.round(Number(cgmObj.titrLow) * 100) : GLYCEMIA_THRESHOLDS_MGDL.TARGET_LOW
-  const targetHighMgdl = cgmObj ? Math.round(Number(cgmObj.titrHigh) * 100) : GLYCEMIA_THRESHOLDS_MGDL.TARGET_HIGH
-
-  const referentName =
-    patient.referent?.pro?.name ?? patient.patientServices?.[0]?.service?.name ?? null
+  // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok),
+  // pas titrLow/titrHigh (qui peuvent diverger). Défaut 70/180 si pas d'objectif.
+  const targetLowMgdl = cgmObj ? Math.round(Number(cgmObj.low) * 100) : 70
+  const targetHighMgdl = cgmObj ? Math.round(Number(cgmObj.ok) * 100) : 180
 
   const fullName = `${patient.user.firstname ?? ""} ${patient.user.lastname ?? ""}`.trim()
 
@@ -86,12 +115,14 @@ export default async function PatientDetailPage({
     sex: patient.user.sex ?? null,
     pathology: patient.pathology ?? null,
     diagYear: patient.medicalData?.yearDiag ?? null,
-    referent: referentName,
+    // Référent = médecin référent uniquement (le libellé est « Médecin référent »).
+    referent: patient.referent?.pro?.name ?? null,
     objectives: {
       targetLowMgdl,
       targetHighMgdl,
       tirTargetPct: CONSENSUS_TIR_TARGET_PCT,
       hypoMaxPct: CONSENSUS_HYPO_MAX_PCT,
+      cvMaxPct: CONSENSUS_CV_MAX_PCT,
     },
     stats:
       profile.readingCount > 0
@@ -99,7 +130,6 @@ export default async function PatientDetailPage({
             avgGlucoseMgdl: profile.metrics.averageGlucoseMgdl,
             gmi: profile.metrics.gmi,
             cv: profile.metrics.coefficientOfVariation,
-            // analytics.tir (severeHypo/hypo/inRange/elevated/hyper) → TirData.
             tir: {
               veryLow: profile.tir.severeHypo,
               low: profile.tir.hypo,
@@ -108,6 +138,10 @@ export default async function PatientDetailPage({
               veryHigh: profile.tir.hyper,
             },
             readingCount: profile.readingCount,
+            captureRate: profile.captureRate,
+            // Sécurité clinique : sous 70 % de capture CGM, GMI/TIR/moyenne ne
+            // sont pas représentatifs (consensus ADA/EASD) → caveat UI.
+            insufficientCapture: profile.warning === "insufficientCgmCapture",
           }
         : null,
   }

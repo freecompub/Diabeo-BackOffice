@@ -1537,7 +1537,6 @@
     "tabDocuments": "Documents",
     "subtitle": "{pathology} — {age} y.o. — Followed by {referent}",
     "kpiCurrentGlucose": "Current glucose",
-    "kpiTir7d": "Time in range (TIR) — 14d",
     "kpiGmi": "Glucose management indicator (GMI)",
     "kpiCv": "Coefficient of variation (CV)",
     "profileTitle": "Patient profile",
@@ -1569,7 +1568,11 @@
     "comingSoon": "Coming soon",
     "comingSoonDesc": "This section will be wired to real data soon.",
     "noCgmData": "No continuous glucose (CGM) data for the period.",
-    "patientFallback": "Patient"
+    "patientFallback": "Patient",
+    "kpiTir14d": "Time in range (TIR) — 14d",
+    "lowCaptureWarning": "Insufficient continuous glucose (CGM) capture ({rate}%) — interpret statistics with caution.",
+    "sharingDisabledTitle": "Sharing disabled",
+    "sharingDisabledDesc": "This patient has disabled sharing their data with care providers."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

@@ -1537,7 +1537,6 @@
     "tabDocuments": "المستندات",
     "subtitle": "{pathology} — {age} سنة — متابعة من {referent}",
     "kpiCurrentGlucose": "سكر الدم الحالي",
-    "kpiTir7d": "الوقت ضمن النطاق (TIR) — 14 يومًا",
     "kpiGmi": "مؤشر إدارة الجلوكوز (GMI)",
     "kpiCv": "معامل التغاير (CV)",
     "profileTitle": "ملف المريض",
@@ -1569,7 +1568,11 @@
     "comingSoon": "قريبًا",
     "comingSoonDesc": "سيتم ربط هذا القسم بالبيانات الحقيقية قريبًا.",
     "noCgmData": "لا توجد بيانات الغلوكوز المستمر (CGM) للفترة.",
-    "patientFallback": "مريض"
+    "patientFallback": "مريض",
+    "kpiTir14d": "الوقت ضمن النطاق (TIR) — 14 يومًا",
+    "lowCaptureWarning": "التقاط الغلوكوز المستمر (CGM) غير كافٍ ({rate}%) — فسّر الإحصاءات بحذر.",
+    "sharingDisabledTitle": "المشاركة معطّلة",
+    "sharingDisabledDesc": "عطّل هذا المريض مشاركة بياناته مع مقدّمي الرعاية."
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",

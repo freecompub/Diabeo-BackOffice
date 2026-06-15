@@ -35,6 +35,7 @@ export type PatientDetailData = {
     targetHighMgdl: number
     tirTargetPct: number
     hypoMaxPct: number
+    cvMaxPct: number
   }
   /** Stats glycémiques calculées serveur ; `null` si aucune donnée CGM. */
   stats: {
@@ -43,12 +44,41 @@ export type PatientDetailData = {
     cv: number
     tir: TirData
     readingCount: number
+    captureRate: number
+    /** Capture CGM < 70 % → stats non représentatives (caveat clinique). */
+    insufficientCapture: boolean
   } | null
 }
 
-export function PatientDetailClient({ data }: { data: PatientDetailData }) {
+export function PatientDetailClient({
+  data,
+  sharingDisabled = false,
+}: {
+  data: PatientDetailData | null
+  sharingDisabled?: boolean
+}) {
   const t = useTranslations("patientDetail")
   const [activeTab, setActiveTab] = useState("overview")
+
+  // Consentement retiré : aucune donnée patient rendue (cf. page.tsx).
+  if (sharingDisabled || !data) {
+    return (
+      <>
+        <DashboardHeader title={t("patientFallback")} subtitle="" />
+        <div className="p-6">
+          <Card>
+            <CardContent className="py-10">
+              <DiabeoEmptyState
+                variant="noData"
+                title={t("sharingDisabledTitle")}
+                message={t("sharingDisabledDesc")}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      </>
+    )
+  }
 
   const name = data.name || t("patientFallback")
   const sexLabel = data.sex === "F" ? t("female") : data.sex === "M" ? t("male") : "—"
@@ -76,6 +106,14 @@ export function PatientDetailClient({ data }: { data: PatientDetailData }) {
 
           {/* ── Vue d'ensemble (câblée) ─────────────────────── */}
           <TabsContent value="overview" className="space-y-6">
+            {stats?.insufficientCapture && (
+              <p
+                role="status"
+                className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
+              >
+                {t("lowCaptureWarning", { rate: Math.round(stats.captureRate) })}
+              </p>
+            )}
             {stats ? (
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <StatCard
@@ -86,7 +124,7 @@ export function PatientDetailClient({ data }: { data: PatientDetailData }) {
                   variant="default"
                 />
                 <StatCard
-                  label={t("kpiTir7d")}
+                  label={t("kpiTir14d")}
                   value={`${Math.round(stats.tir.inRange)}%`}
                   icon={<TrendingUp className="h-5 w-5" />}
                   variant={stats.tir.inRange >= objectives.tirTargetPct ? "success" : "warning"}
@@ -101,7 +139,7 @@ export function PatientDetailClient({ data }: { data: PatientDetailData }) {
                   label={t("kpiCv")}
                   value={`${stats.cv}%`}
                   icon={<Clock className="h-5 w-5" />}
-                  variant={stats.cv <= 36 ? "success" : "warning"}
+                  variant={stats.cv <= objectives.cvMaxPct ? "success" : "warning"}
                 />
               </div>
             ) : (

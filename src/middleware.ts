@@ -231,7 +231,9 @@ export async function middleware(request: NextRequest) {
     // arrivent (PR #438 patient module + PR #440 messaging).
     // #475 — `/settings` affiche des PII (nom/naissance) et, pour un patient,
     // NIRPP/INS/données médicales : même posture no-store que les autres pages.
-    const PHI_PATH_PREFIXES = ["/patient/", "/messages/", "/messages", "/settings/", "/settings"]
+    // `/patients` (pluriel, dossier patient pro) rend du PHI déchiffré en SSR
+    // depuis le câblage données réelles (Phase 1) → même posture no-store.
+    const PHI_PATH_PREFIXES = ["/patient/", "/patients/", "/patients", "/messages/", "/messages", "/settings/", "/settings"]
     if (PHI_PATH_PREFIXES.some((p) => pathname === p || pathname.startsWith(p))) {
       res.headers.set("Cache-Control", "no-store, no-cache, must-revalidate, private")
       res.headers.set("Pragma", "no-cache")

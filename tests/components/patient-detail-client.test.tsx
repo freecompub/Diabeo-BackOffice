@@ -56,13 +56,15 @@ const baseData: PatientDetailData = {
   pathology: "DT1",
   diagYear: 2015,
   referent: "Dr House",
-  objectives: { targetLowMgdl: 70, targetHighMgdl: 180, tirTargetPct: 70, hypoMaxPct: 4 },
+  objectives: { targetLowMgdl: 70, targetHighMgdl: 180, tirTargetPct: 70, hypoMaxPct: 4, cvMaxPct: 36 },
   stats: {
     avgGlucoseMgdl: 158,
     gmi: 7.1,
     cv: 34.2,
     tir: { veryLow: 1, low: 3, inRange: 75, high: 17, veryHigh: 4 },
     readingCount: 1200,
+    captureRate: 92,
+    insufficientCapture: false,
   },
 }
 
@@ -98,6 +100,22 @@ describe("PatientDetailClient (Phase 1)", () => {
     // Glycémie + Traitements + Documents → 3 états vides
     expect(screen.getAllByTestId("empty")).toHaveLength(3)
     expect(screen.getAllByText(/Bientôt disponible/).length).toBe(3)
+  })
+
+  it("renders the sharing-disabled state (no PHI) when consent is withdrawn", () => {
+    render(<PatientDetailClient data={null} sharingDisabled />)
+    expect(screen.getByText(/Partage désactivé/)).toBeTruthy()
+    expect(screen.queryByTestId("stat")).toBeNull()
+    expect(screen.queryByText("Jean Dupont")).toBeNull()
+  })
+
+  it("shows the low-CGM-capture caveat when capture is insufficient", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, stats: { ...baseData.stats!, captureRate: 35, insufficientCapture: true } }}
+      />,
+    )
+    expect(screen.getByText(/\(CGM\) insuffisante \(35 %\)/)).toBeTruthy()
   })
 
   it("degrades gracefully on missing profile fields (fallbacks)", () => {
