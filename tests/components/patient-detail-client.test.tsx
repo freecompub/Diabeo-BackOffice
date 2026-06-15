@@ -85,8 +85,11 @@ const baseData: PatientDetailData = {
     hasSettings: true,
     deliveryMethod: "pump",
     isfSlots: [{ range: "00h–06h", value: 0.3 }],
+    isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [{ range: "00h–06h", value: 10 }],
+    icrCoverage: { hasGap: false, hasOverlap: false },
     basalSlots: [{ range: "00:00–06:00", rate: 0.8 }],
+    basalCoverage: { hasGap: false, hasOverlap: false },
     treatments: [{ id: 1, name: "Metformine", posology: "850 mg x2/j" }],
   },
   documents: [
@@ -149,6 +152,21 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getByText("10 g/U")).toBeTruthy() // créneau ICR
     expect(screen.getByText("0.8 U/h")).toBeTruthy() // créneau basal
     expect(screen.getByText("Metformine")).toBeTruthy()
+    // Couverture saine → aucune note de garde-fou.
+    expect(screen.queryByText(/Couverture incomplète/)).toBeNull()
+    expect(screen.queryByText(/se chevauchent/)).toBeNull()
+  })
+
+  it("surfaces the slot-coverage guard note when ISF slots leave a 24h gap", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, isfCoverage: { hasGap: true, hasOverlap: false } },
+        }}
+      />,
+    )
+    expect(screen.getByText(/Couverture incomplète sur 24 h/)).toBeTruthy()
   })
 
   it("shows the no-insulin-settings state when none are recorded", () => {

@@ -137,9 +137,12 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) : colonnes non
   chiffrées (≠ identité/medicalData). Chiffrer ou documenter le risque accepté
   en DPIA (schéma pré-existant).
-- **[Clinique] Créneaux ISF/ICR/basal — gaps/overlaps non signalés** : la vue
-  affiche les créneaux verbatim sans alerter si la couverture 24h n'est pas
-  contiguë. Indice visuel non bloquant à envisager.
+- ✅ **[Clinique] Créneaux ISF/ICR/basal — gaps/overlaps signalés** (FAIT) :
+  garde-fou structurel non bloquant. `analyzeSlotCoverage` (`treatment-view.ts`,
+  pur, balayage minute par minute avec passage minuit) calcule `hasGap`/`hasOverlap`
+  par famille ; `PatientDetailClient` affiche une note `text-warning-fg` sous la
+  liste de créneaux (i18n FR/EN/AR). Purement informatif (couverture horaire), pas
+  un calcul clinique.
 - **[Produit] Insuline bolus (nom) + modèle pompe** : nécessitent join
   catalogue/device — à ajouter à l'onglet Traitements.
 - **[i18n] Clé unité ISF dupliquée** : `dashboardCards.medecinProposals.unitIsfGl`
