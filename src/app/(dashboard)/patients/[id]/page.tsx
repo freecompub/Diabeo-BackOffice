@@ -22,10 +22,12 @@ import { prisma } from "@/lib/db/client"
 import { patientService } from "@/lib/services/patient.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
+import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
 import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { buildGlycemiaView } from "./glycemia-view"
+import { buildTreatmentView } from "./treatment-view"
 import { PatientDetailClient, type PatientDetailData } from "./PatientDetailClient"
 
 // Période d'agrégation de la vue d'ensemble. Bornée < 90j (analytics).
@@ -110,6 +112,11 @@ export default async function PatientDetailPage({
   const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const cgmEntries = await glycemiaService.getCgmEntries(patientId, from24h, now, userId, ctx)
   const glycemiaView = buildGlycemiaView(cgmEntries, now)
+
+  // Phase 3 — Onglet Traitements : réglages insuline réels (audité
+  // READ INSULIN_THERAPY) + traitements associés (déjà chargés via getById).
+  const insulinSettings = await insulinTherapyService.getSettings(patientId, userId, ctx)
+  const treatmentView = buildTreatmentView(insulinSettings, patient.treatments ?? [])
   const cgmObj = patient.cgmObjectives
   // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok),
   // pas titrLow/titrHigh (qui peuvent diverger). Défaut 70/180 si pas d'objectif.
@@ -167,6 +174,7 @@ export default async function PatientDetailPage({
           }
         : null,
     glycemia: glycemiaView,
+    treatment: treatmentView,
   }
 
   return <PatientDetailClient data={data} />

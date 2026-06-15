@@ -64,8 +64,13 @@
   color-codé **sur les cibles patient** `cgm.low/ok`, + **signal de fraîcheur**
   « relevé ancien » si > 30 min — revue clinique). Mapping pur extrait
   (`glycemia-view.ts`, unit-testé). État vide si pas de série.
-- [ ] **Phase 3 — Onglet Traitements** : réglages insuline réels
-  (`insulinTherapyService.getSettings`, route si nécessaire) + traitements associés.
+- [x] **Phase 3 — Onglet Traitements** (PR #545) : réglages insuline réels
+  (`insulinTherapyService.getSettings`, audité READ INSULIN_THERAPY, derrière la
+  garde accès+consentement) — méthode (pompe/manuel) + config **par créneau**
+  ISF (g/L/U) / ICR (g/U) / basal (U/h), pas de moyenne lossy — + traitements
+  associés (`getById.treatments`, soft-deleted filtrés). Mapping pur
+  `treatment-view.ts` (unit-testé). Insuline bolus/modèle pompe (catalogue/
+  device) → backlog. État vide si pas de réglages.
 - [ ] **Phase 4 — Onglet Documents** : documents médicaux réels (MinIO).
 
 ## Points de vigilance (revue) — tranchés en Phase 1

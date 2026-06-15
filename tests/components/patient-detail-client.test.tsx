@@ -81,6 +81,14 @@ const baseData: PatientDetailData = {
     lastReadingAgeMin: 3,
     stale: false,
   },
+  treatment: {
+    hasSettings: true,
+    deliveryMethod: "pump",
+    isfSlots: [{ range: "00h–06h", value: 0.3 }],
+    icrSlots: [{ range: "00h–06h", value: 10 }],
+    basalSlots: [{ range: "00:00–06:00", rate: 0.8 }],
+    treatments: [{ id: 1, name: "Metformine", posology: "850 mg x2/j" }],
+  },
 }
 
 describe("PatientDetailClient (Phase 1)", () => {
@@ -110,13 +118,31 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getAllByText("Pas de données de glycémie continue (CGM) sur la période.").length).toBeGreaterThan(0)
   })
 
-  it("renders the CGM chart + last reading (Phase 2) and « coming soon » only for the 2 remaining tabs", () => {
+  it("renders the CGM chart + last reading (Phase 2) and « coming soon » only for Documents", () => {
     render(<PatientDetailClient data={baseData} />)
     // Glycémie câblée : graphe (2 pts) + dernière glycémie
     expect(screen.getByTestId("cgm-chart").textContent).toBe("2 pts")
     expect(screen.getByText("Dernière glycémie")).toBeTruthy()
-    // Reste : Traitements + Documents → 2 états « bientôt disponible »
-    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(2)
+    // Reste : seul Documents → 1 état « bientôt disponible »
+    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(1)
+  })
+
+  it("renders the Traitements tab (Phase 3) — delivery, ISF/ICR/basal slots, treatments", () => {
+    render(<PatientDetailClient data={baseData} />)
+    expect(screen.getByText("Pompe à insuline")).toBeTruthy()
+    expect(screen.getByText("0.3 g/L/U")).toBeTruthy() // créneau ISF
+    expect(screen.getByText("10 g/U")).toBeTruthy() // créneau ICR
+    expect(screen.getByText("0.8 U/h")).toBeTruthy() // créneau basal
+    expect(screen.getByText("Metformine")).toBeTruthy()
+  })
+
+  it("shows the no-insulin-settings state when none are recorded", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, treatment: { ...baseData.treatment, hasSettings: false, isfSlots: [], icrSlots: [], basalSlots: [] } }}
+      />,
+    )
+    expect(screen.getByText("Aucun réglage d'insulinothérapie enregistré.")).toBeTruthy()
   })
 
   it("shows an empty Glycémie state when there is no CGM series", () => {

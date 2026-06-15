@@ -9,7 +9,7 @@
 
 "use client"
 
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
@@ -18,11 +18,12 @@ import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 import type { GlycemiaView } from "./glycemia-view"
+import type { TreatmentView } from "./treatment-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
 import { Badge } from "@/components/ui/badge"
-import { Activity, Clock, Heart, TrendingUp, User } from "lucide-react"
+import { Activity, Clock, Heart, Pill, Syringe, TrendingUp, User } from "lucide-react"
 
 export type PatientDetailData = {
   id: number
@@ -52,6 +53,8 @@ export type PatientDetailData = {
   } | null
   /** Série CGM 24h (déjà mappée serveur : mg/dL + heure Europe/Paris + fraîcheur). */
   glycemia: GlycemiaView
+  /** Réglages insuline (par créneau) + traitements associés. */
+  treatment: TreatmentView
 }
 
 export function PatientDetailClient({
@@ -304,16 +307,102 @@ export function PatientDetailClient({
             )}
           </TabsContent>
 
-          {/* ── Traitements / Documents (phases suivantes) ── */}
-          <TabsContent value="treatment">
-            <ComingSoon t={t} />
+          {/* ── Traitements (câblé — Phase 3) ───────────────── */}
+          <TabsContent value="treatment" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Syringe className="h-4 w-4" aria-hidden="true" />
+                  {t("insulinConfigTitle")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.treatment.hasSettings ? (
+                  <div className="space-y-4 text-sm">
+                    <div>
+                      <span className="text-muted-foreground">{t("method")}</span>
+                      <p className="mt-1 font-medium">
+                        {data.treatment.deliveryMethod === "pump" ? t("deliveryPump") : t("deliveryManual")}
+                      </p>
+                    </div>
+                    {data.treatment.isfSlots.length > 0 && (
+                      <SlotList label={<Acronym code="ISF" />} unit={t("unitIsf")} slots={data.treatment.isfSlots} />
+                    )}
+                    {data.treatment.icrSlots.length > 0 && (
+                      <SlotList label={<Acronym code="ICR" />} unit={t("unitIcr")} slots={data.treatment.icrSlots} />
+                    )}
+                    {data.treatment.basalSlots.length > 0 && (
+                      <SlotList
+                        label={t("basalLabel")}
+                        unit={t("unitBasal")}
+                        slots={data.treatment.basalSlots.map((b) => ({ range: b.range, value: b.rate }))}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("noInsulinSettings")}</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Pill className="h-4 w-4" aria-hidden="true" />
+                  {t("associatedTreatmentsTitle")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {data.treatment.treatments.length > 0 ? (
+                  <ul className="space-y-2 text-sm">
+                    {data.treatment.treatments.map((tr) => (
+                      <li key={tr.id} className="rounded-md border border-border bg-card px-3 py-2">
+                        <span className="font-medium">{tr.name || "—"}</span>
+                        {tr.posology && <span className="text-muted-foreground"> · {tr.posology}</span>}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-sm text-muted-foreground">{t("noComplementaryTreatment")}</p>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
+
+          {/* ── Documents (phase suivante) ── */}
           <TabsContent value="documents">
             <ComingSoon t={t} />
           </TabsContent>
         </Tabs>
       </div>
     </>
+  )
+}
+
+/** Liste de créneaux horaires « plage · valeur unité » (ISF / ICR / basal). */
+function SlotList({
+  label,
+  unit,
+  slots,
+}: {
+  label: ReactNode
+  unit: string
+  slots: { range: string; value: number }[]
+}) {
+  return (
+    <div>
+      <span className="text-muted-foreground">{label}</span>
+      <ul className="mt-1 space-y-1">
+        {slots.map((s, i) => (
+          <li key={`${s.range}-${i}`} className="flex justify-between tabular-nums">
+            <span className="text-muted-foreground">{s.range}</span>
+            <span className="font-medium">
+              {s.value} {unit}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   )
 }
 
