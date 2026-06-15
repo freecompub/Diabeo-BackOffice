@@ -1563,6 +1563,7 @@
     "pumpModelLabel": "Pump model",
     "noPairedPump": "No paired pump",
     "pumpSyncStale": "stale sync",
+    "bolusInconsistentNote": "Bolus insulin configured but inconsistent (inactive, ended, or non-bolus usage) — please review.",
     "pump": "Pump",
     "bolusInsulin": "Bolus insulin",
     "avgBasalRate": "Average basal rate",

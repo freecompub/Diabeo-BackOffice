@@ -85,6 +85,7 @@ const baseData: PatientDetailData = {
     hasSettings: true,
     deliveryMethod: "pump",
     bolusInsulin: { name: "Humalog", genericName: "insulin lispro", dosage: "6-8U avant repas" },
+    bolusInconsistent: false,
     pump: { label: "Medtronic 780G", syncStale: false },
     isfSlots: [{ range: "00h–06h", value: 0.3 }],
     isfCoverage: { hasGap: false, hasOverlap: false },
@@ -178,6 +179,18 @@ describe("PatientDetailClient (Phase 1)", () => {
       />,
     )
     expect(screen.getByText("Aucune pompe appairée")).toBeTruthy()
+  })
+
+  it("surfaces a bolus-inconsistency note when the FK is set but not displayable", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, bolusInsulin: null, bolusInconsistent: true },
+        }}
+      />,
+    )
+    expect(screen.getByText(/configurée mais incohérente/)).toBeTruthy()
   })
 
   it("flags a stale pump sync", () => {

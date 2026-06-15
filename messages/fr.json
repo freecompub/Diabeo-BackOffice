@@ -1563,6 +1563,7 @@
     "pumpModelLabel": "Modèle de pompe",
     "noPairedPump": "Aucune pompe appairée",
     "pumpSyncStale": "synchronisation ancienne",
+    "bolusInconsistentNote": "Insuline bolus configurée mais incohérente (inactive, terminée ou usage non-bolus) — à vérifier.",
     "pump": "Pompe",
     "bolusInsulin": "Insuline bolus",
     "avgBasalRate": "Débit basal moyen",

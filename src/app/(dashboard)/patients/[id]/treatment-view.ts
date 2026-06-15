@@ -106,10 +106,19 @@ export type Pump = { label: string; syncStale: boolean }
 /** Au-delà → la dernière synchro pompe est jugée ancienne (indice non bloquant). */
 export const PUMP_SYNC_STALE_AFTER_DAYS = 7
 
+const DAY_MS = 86_400_000
+
 export type TreatmentView = {
   hasSettings: boolean
   deliveryMethod: InsulinDelivery | null
   bolusInsulin: BolusInsulin | null
+  /**
+   * FK insuline bolus renseignée mais l'enregistrement lié n'est pas affichable
+   * comme bolus actif (inactif / terminé / usage non-bolus) → incohérence de
+   * données à signaler (vs `bolusInsulin == null && !bolusInconsistent` = aucune
+   * insuline bolus configurée). Indice non bloquant côté UI.
+   */
+  bolusInconsistent: boolean
   pump: Pump | null
   isfSlots: Slot[] // g/L/U
   isfCoverage: SlotCoverage
@@ -189,7 +198,9 @@ export function buildTreatmentView(
   const bolusUsable =
     bi != null &&
     bi.isActive !== false &&
-    (bi.endDate == null || ms(bi.endDate) > now.getTime()) &&
+    // `endDate` est date-only (@db.Date, minuit) → inclusif du jour entier :
+    // une insuline finissant « aujourd'hui » reste affichée toute la journée.
+    (bi.endDate == null || ms(bi.endDate) + DAY_MS > now.getTime()) &&
     (bi.usage == null || bi.usage === "bolus" || bi.usage === "both")
   const catalog = bolusUsable ? bi?.insulinCatalog : null
   const bolusInsulin: BolusInsulin | null = catalog
@@ -204,6 +215,8 @@ export function buildTreatmentView(
     hasSettings: settings !== null,
     deliveryMethod: settings?.deliveryMethod ?? null,
     bolusInsulin,
+    // FK renseignée mais non affichable → incohérence à signaler.
+    bolusInconsistent: bi != null && !bolusUsable,
     pump: derivePump(devices, now),
     isfSlots: isf.map((s) => ({
       range: hourRange(s.startHour, s.endHour),

@@ -362,6 +362,17 @@ export function PatientDetailClient({
                         </p>
                       </div>
                     )}
+                    {/* FK bolus renseignée mais incohérente (inactive / terminée /
+                        usage non-bolus) → indice non bloquant pour ne pas laisser
+                        croire à l'absence d'insuline bolus (revue PR #554). */}
+                    {data.treatment.bolusInconsistent && (
+                      <div>
+                        <span className="text-muted-foreground">{t("bolusInsulinLabel")}</span>
+                        <p role="status" className="mt-1 text-xs text-warning-fg">
+                          {t("bolusInconsistentNote")}
+                        </p>
+                      </div>
+                    )}
                     {/* Pompe affichée uniquement si la méthode déclarée est « pompe »
                         (cohérence : ne pas présenter un device appairé comme la voie
                         active pour un patient sous stylo). Méthode pompe sans device
