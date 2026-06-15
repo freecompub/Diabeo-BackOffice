@@ -53,7 +53,7 @@ ou si la row `UserPrivacySettings` est **absente**.
 **Delta de comportement vs l'état antérieur** : `cgm`/`analytics`/page/`download`
 faisaient auparavant un check inline **fail-open** (`shareWithProviders` seul ;
 absence de row = accès autorisé). Le durcissement aligne ces 4 surfaces sur les
-~25 autres routes per-patient (glycemia, heatmap, agp, tags, referent…).
+~21 autres routes per-patient (glycemia, heatmap, agp, tags, referent…).
 
 **Conséquence** : un patient **sans consentement RGPD enregistré** (ex. dossier
 fraîchement créé, parcours de consentement non terminé) ou ayant **révoqué le
