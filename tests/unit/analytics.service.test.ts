@@ -86,6 +86,28 @@ describe("analyticsService", () => {
       expect(result.quality).toBeDefined()
       expect(result.thresholds).toBeDefined()
     })
+
+    it("uses tighter GD defaults (63–140 mg/dL) when no CGM objective + GD pathology", async () => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(100) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "GD" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await analyticsService.timeInRange(1, "14d", 1)
+      expect(result.thresholds.low).toBe(0.63)
+      expect(result.thresholds.ok).toBe(1.4)
+    })
+
+    it("uses generic defaults (70–180 mg/dL) when no CGM objective + DT1/DT2", async () => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(100) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await analyticsService.timeInRange(1, "14d", 1)
+      expect(result.thresholds.low).toBe(0.7)
+      expect(result.thresholds.ok).toBe(1.8)
+    })
   })
 
   describe("agp", () => {

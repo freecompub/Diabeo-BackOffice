@@ -119,9 +119,10 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   hypo sévères au plancher des agrégats (mean/CV/TIR severeHypo) — sous-estime la
   charge hypoglycémique. Inclure les relevés clampés au plancher dans le bucket
   severe-hypo.
-- **[Clinique] Cibles spécifiques grossesse (GD)** : les cibles consensus
-  (70/180, TIR 70 %, hypo 4 %, CV 36 %) sont DT1/DT2 ; seeder des cibles GD plus
-  strictes (TIR 63–140) côté `cgmObjective`.
+- ✅ **[Clinique] Cibles spécifiques grossesse (GD)** (FAIT) : à défaut
+  d'objectif CGM, `analyticsService` (TIR/donut) ET le badge cible du dossier
+  utilisent désormais `getCgmDefaults(pathology)` → GD = 63–140 mg/dL (Battelino
+  2019) au lieu de 70–180. Badge et calcul restent cohérents (même source).
 - **[RGPD] `getById` sur-déchiffre** `email` + relations non affichées
   (minimisation Art. 5.1.c) — méthode de lecture allégée pour la page.
 - **[Perf] Double lookup patient** : la garde consentement fait un `findFirst`
