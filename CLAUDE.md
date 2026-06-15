@@ -389,9 +389,11 @@ const CLINICAL_BOUNDS = {
 }
 
 // Formule : findSlotForHour(settings.sensitivityFactors, hour)
-// Les slots ISF/ICR sont triés par startHour ascendant
-// Sélection : premier slot où startHour <= heure actuelle
-// Fallback : dernier slot du tableau
+// Sélection : premier slot dont l'intervalle [startHour, endHour) contient `hour`
+// (intervalle demi-ouvert ; passage minuit géré si startHour > endHour)
+// Aucune correspondance → renvoie undefined → l'appelant LÈVE ("No ISF/ICR slot
+// found for current hour"). Fail-closed : pas de fallback, jamais de dose calculée
+// sur une heure non couverte par la config.
 
 // Calcul final :
 // Bolus repas     = carbsGrams / icr.gramsPerUnit
@@ -422,17 +424,19 @@ async calculateBolus(input: BolusInput, auditUserId: number): Promise<BolusResul
 // InsulinSensitivityFactor, CarbRatio, PumpBasalSlot utilisent Time (pas Timestamp)
 // Time = "HH:MM:SS" pour heure du jour — stockage léger, pas timezone
 
-const findSlotForHour = (
-  slots: { startHour: number; value: number }[],
-  hour: number
-): { value: number } | null => {
-  // Slots triés par startHour DESC (24h → 0h)
-  // On prend le premier slot où startHour <= hour
-  const slot = slots
-    .sort((a, b) => b.startHour - a.startHour)
-    .find(s => s.startHour <= hour)
-  return slot ?? slots[slots.length - 1]  // Fallback : 00:00
-}
+// ⚠️ Source de vérité = insulin.service.ts (findSlotForHour). Sélection par
+// intervalle demi-ouvert [startHour, endHour), avec gestion du passage minuit.
+// AUCUN fallback : une heure non couverte renvoie undefined et l'appelant lève
+// ("No ISF/ICR slot found for current hour") → calcul de bolus fail-closed.
+const findSlotForHour = <T extends { startHour: number; endHour: number }>(
+  slots: T[],
+  hour: number,
+): T | undefined =>
+  slots.find((s) =>
+    s.startHour <= s.endHour
+      ? hour >= s.startHour && hour < s.endHour       // intervalle normal
+      : hour >= s.startHour || hour < s.endHour,       // passage minuit (22h → 6h)
+  )
 ```
 
 ### Services avec transactions Prisma 7

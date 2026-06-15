@@ -1110,11 +1110,14 @@ Facteur de sensibilité insuline (ISF) par tranche horaire.
 - `INDEX(settingsId, startHour)` — lookup rapide pour heure courante
 
 **Règles métier**:
-- Slots ordonnés par `startHour` ascendant (00:00 → 23:00)
-- Sélection: premier slot où `startHour <= heure_courante`
-- Fallback: dernier slot (minuit)
+- Sélection (`findSlotForHour`, `insulin.service.ts`): premier slot dont
+  l'intervalle demi-ouvert `[startHour, endHour)` contient l'heure courante
+  (passage minuit géré si `startHour > endHour`)
+- **Pas de fallback**: heure non couverte → `undefined` → l'appelant lève
+  ("No ISF slot found for current hour"). Calcul de bolus fail-closed.
 - **Validation clinique**: ISF ∈ [0.10, 1.00] g/L/U (voir `CLINICAL_BOUNDS` dans `src/lib/clinical-bounds.ts`)
-- ❌ **TODO**: Empêcher chevauchements horaires
+- **Anti-chevauchement** (HR-2): rejeté au write-path via `hasTimeSlotOverlap`
+  (`insulin-therapy.service.ts`) — un nouveau slot recouvrant un slot existant lève.
 
 ---
 

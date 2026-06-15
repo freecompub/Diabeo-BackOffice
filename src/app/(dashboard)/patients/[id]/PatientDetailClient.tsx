@@ -463,7 +463,7 @@ function SlotList({
   unit: string
   slots: { range: string; value: number }[]
   coverage?: SlotCoverage
-  /** "ratio" = ISF/ICR (trou rattrapé par fallback) ; "basal" = pompe (24 h requis). */
+  /** "ratio" = ISF/ICR (trou = config à vérifier) ; "basal" = pompe (24 h requis). */
   family?: "ratio" | "basal"
 }) {
   const t = useTranslations("patientDetail")
@@ -481,7 +481,8 @@ function SlotList({
         ))}
       </ul>
       {/* Garde-fou structurel non bloquant (lignes indépendantes). Trou : pour
-          ISF/ICR la sélection retombe sur le dernier créneau (fallback) → simple
+          ISF/ICR une heure non couverte est gérée fail-closed au calcul de bolus
+          (findSlotForHour → undefined → l'appelant lève), donc ici simple
           « config à vérifier » ; pour le basal pompe une heure non couverte est
           plus significative. Chevauchement : déjà rejeté au write-path ISF/ICR,
           donc canari d'intégrité (donnée legacy/import). */}
