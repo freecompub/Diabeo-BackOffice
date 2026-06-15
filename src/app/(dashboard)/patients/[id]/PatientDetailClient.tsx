@@ -342,6 +342,59 @@ export function PatientDetailClient({
                         {data.treatment.deliveryMethod === "pump" ? t("deliveryPump") : t("deliveryManual")}
                       </p>
                     </div>
+                    {data.treatment.bolusInsulin && (
+                      <div>
+                        <span className="text-muted-foreground">{t("bolusInsulinLabel")}</span>
+                        <p className="mt-1 font-medium">
+                          {data.treatment.bolusInsulin.name}
+                          {data.treatment.bolusInsulin.genericName && (
+                            <span className="font-normal text-muted-foreground">
+                              {" · "}
+                              {data.treatment.bolusInsulin.genericName}
+                            </span>
+                          )}
+                          {data.treatment.bolusInsulin.dosage && (
+                            <span className="font-normal text-muted-foreground">
+                              {" · "}
+                              {data.treatment.bolusInsulin.dosage}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {/* FK bolus renseignée mais incohérente (inactive / terminée /
+                        usage non-bolus) → indice non bloquant pour ne pas laisser
+                        croire à l'absence d'insuline bolus (revue PR #554). */}
+                    {data.treatment.bolusInconsistent && (
+                      <div>
+                        <span className="text-muted-foreground">{t("bolusInsulinLabel")}</span>
+                        <p role="status" className="mt-1 text-xs text-warning-fg">
+                          {t("bolusInconsistentNote")}
+                        </p>
+                      </div>
+                    )}
+                    {/* Pompe affichée uniquement si la méthode déclarée est « pompe »
+                        (cohérence : ne pas présenter un device appairé comme la voie
+                        active pour un patient sous stylo). Méthode pompe sans device
+                        → « aucune pompe appairée ». */}
+                    {data.treatment.deliveryMethod === "pump" && (
+                      <div>
+                        <span className="text-muted-foreground">{t("pumpModelLabel")}</span>
+                        {data.treatment.pump ? (
+                          <p className="mt-1 font-medium">
+                            {data.treatment.pump.label}
+                            {data.treatment.pump.syncStale && (
+                              <span className="font-normal text-warning-fg">
+                                {" · "}
+                                {t("pumpSyncStale")}
+                              </span>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="mt-1 font-medium text-muted-foreground">{t("noPairedPump")}</p>
+                        )}
+                      </div>
+                    )}
                     {data.treatment.isfSlots.length > 0 && (
                       <SlotList
                         label={<Acronym code="ISF" />}

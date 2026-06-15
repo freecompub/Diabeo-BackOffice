@@ -84,6 +84,9 @@ const baseData: PatientDetailData = {
   treatment: {
     hasSettings: true,
     deliveryMethod: "pump",
+    bolusInsulin: { name: "Humalog", genericName: "insulin lispro", dosage: "6-8U avant repas" },
+    bolusInconsistent: false,
+    pump: { label: "Medtronic 780G", syncStale: false },
     isfSlots: [{ range: "00h–06h", value: 0.3 }],
     isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [{ range: "00h–06h", value: 10 }],
@@ -151,7 +154,55 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getByText("0.3 g/L/U")).toBeTruthy() // créneau ISF
     expect(screen.getByText("10 g/U")).toBeTruthy() // créneau ICR
     expect(screen.getByText("0.8 U/h")).toBeTruthy() // créneau basal
+    expect(screen.getByText("Humalog", { exact: false })).toBeTruthy() // insuline bolus
+    expect(screen.getByText("Medtronic 780G")).toBeTruthy() // modèle pompe
     expect(screen.getByText("Metformine")).toBeTruthy()
+  })
+
+  it("hides the pump row for a manual (pen) delivery method", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, deliveryMethod: "manual" },
+        }}
+      />,
+    )
+    expect(screen.queryByText("Medtronic 780G")).toBeNull()
+    expect(screen.queryByText("Modèle de pompe")).toBeNull()
+  })
+
+  it("shows « aucune pompe appairée » when delivery is pump but no device is paired", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, treatment: { ...baseData.treatment, pump: null } }}
+      />,
+    )
+    expect(screen.getByText("Aucune pompe appairée")).toBeTruthy()
+  })
+
+  it("surfaces a bolus-inconsistency note when the FK is set but not displayable", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, bolusInsulin: null, bolusInconsistent: true },
+        }}
+      />,
+    )
+    expect(screen.getByText(/configurée mais incohérente/)).toBeTruthy()
+  })
+
+  it("flags a stale pump sync", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, pump: { label: "Tandem t:slim X2", syncStale: true } },
+        }}
+      />,
+    )
+    expect(screen.getByText(/synchronisation ancienne/)).toBeTruthy()
     // Couverture saine → aucune note de garde-fou.
     expect(screen.queryByText(/non contigus/)).toBeNull()
     expect(screen.queryByText(/se chevauchent/)).toBeNull()

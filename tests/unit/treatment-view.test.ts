@@ -31,10 +31,93 @@ describe("buildTreatmentView", () => {
     expect(v.basalCoverage).toEqual({ hasGap: true, hasOverlap: false })
   })
 
+  const NOW = new Date("2026-06-15T12:00:00.000Z")
+
+  it("maps bolus insulin (catalog displayName/genericName + dosage) and active pump model", () => {
+    const v = buildTreatmentView(
+      {
+        deliveryMethod: "pump",
+        sensitivityFactors: [],
+        carbRatios: [],
+        basalConfiguration: null,
+        bolusInsulin: {
+          usage: "bolus",
+          isActive: true,
+          endDate: null,
+          dosage: "6-8U avant repas",
+          insulinCatalog: { displayName: "Humalog", genericName: "insulin lispro" },
+        },
+      },
+      [],
+      [
+        // Pompe révoquée → ignorée ; pompe active retenue par fraîcheur de synchro.
+        { category: "insulinPump", brand: "Roche", model: "Insight", revokedAt: "2025-01-01T00:00:00.000Z", createdAt: "2024-01-01T00:00:00.000Z" },
+        { category: "insulinPump", brand: "Medtronic", model: "780G", revokedAt: null, lastSyncAt: "2026-06-15T08:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+        { category: "cgm", brand: "Dexcom", model: "G7", revokedAt: null, createdAt: "2026-02-01T00:00:00.000Z" },
+      ],
+      NOW,
+    )
+    expect(v.bolusInsulin).toEqual({ name: "Humalog", genericName: "insulin lispro", dosage: "6-8U avant repas" })
+    expect(v.pump).toEqual({ label: "Medtronic 780G", syncStale: false })
+  })
+
+  it("selects the pump with the freshest lastSyncAt and flags stale sync (> 7j or never)", () => {
+    const v = buildTreatmentView(
+      { deliveryMethod: "pump", sensitivityFactors: [], carbRatios: [], basalConfiguration: null },
+      [],
+      [
+        { category: "insulinPump", brand: "Tandem", model: "t:slim X2", revokedAt: null, lastSyncAt: "2026-05-01T00:00:00.000Z", createdAt: "2026-04-01T00:00:00.000Z" },
+        { category: "insulinPump", brand: "Roche", model: "Insight", revokedAt: null, lastSyncAt: "2026-03-01T00:00:00.000Z", createdAt: "2026-06-10T00:00:00.000Z" },
+      ],
+      NOW,
+    )
+    // lastSyncAt 2026-05-01 (> 7j avant NOW) gagne sur createdAt récent ; stale.
+    expect(v.pump).toEqual({ label: "Tandem t:slim X2", syncStale: true })
+  })
+
+  it("falls back to device name when brand/model are absent, ignores non-pump devices", () => {
+    const v = buildTreatmentView(
+      { deliveryMethod: "manual", sensitivityFactors: [], carbRatios: [], basalConfiguration: null },
+      [],
+      [
+        { category: "cgm", brand: "Dexcom", model: "G7", revokedAt: null, createdAt: "2026-02-01T00:00:00.000Z" },
+        { category: "insulinPump", brand: null, model: null, name: "YpsoPump", revokedAt: null, lastSyncAt: "2026-06-15T09:00:00.000Z", createdAt: "2026-01-01T00:00:00.000Z" },
+      ],
+      NOW,
+    )
+    expect(v.bolusInsulin).toBeNull()
+    expect(v.pump).toEqual({ label: "YpsoPump", syncStale: false })
+  })
+
+  it("suppresses bolus insulin (and flags inconsistency) when inactive, ended, or non-bolus usage", () => {
+    const cat = { displayName: "Humalog", genericName: "insulin lispro" }
+    const base = { deliveryMethod: "pump" as const, sensitivityFactors: [], carbRatios: [], basalConfiguration: null }
+    // isActive false → supprimé + signalé incohérent
+    const inactive = buildTreatmentView({ ...base, bolusInsulin: { usage: "bolus", isActive: false, insulinCatalog: cat } }, [], [], NOW)
+    expect(inactive.bolusInsulin).toBeNull()
+    expect(inactive.bolusInconsistent).toBe(true)
+    // endDate dans le passé → supprimé + incohérent
+    expect(buildTreatmentView({ ...base, bolusInsulin: { usage: "bolus", isActive: true, endDate: "2026-01-01T00:00:00.000Z", insulinCatalog: cat } }, [], [], NOW).bolusInsulin).toBeNull()
+    // usage basal → ne pas étiqueter « bolus »
+    expect(buildTreatmentView({ ...base, bolusInsulin: { usage: "basal", isActive: true, insulinCatalog: cat } }, [], [], NOW).bolusInsulin).toBeNull()
+    // usage both → accepté (et cohérent)
+    const both = buildTreatmentView({ ...base, bolusInsulin: { usage: "both", isActive: true, endDate: null, insulinCatalog: cat } }, [], [], NOW)
+    expect(both.bolusInsulin).toEqual({ name: "Humalog", genericName: "insulin lispro", dosage: null })
+    expect(both.bolusInconsistent).toBe(false)
+    // endDate = aujourd'hui (date-only minuit) → reste affiché tout le jour (inclusif)
+    const today = buildTreatmentView({ ...base, bolusInsulin: { usage: "bolus", isActive: true, endDate: "2026-06-15T00:00:00.000Z", insulinCatalog: cat } }, [], [], NOW)
+    expect(today.bolusInsulin).not.toBeNull()
+    expect(today.bolusInconsistent).toBe(false)
+    // aucune FK bolus → ni insuline ni incohérence
+    expect(buildTreatmentView(base, [], [], NOW).bolusInconsistent).toBe(false)
+  })
+
   it("handles no settings (null) gracefully", () => {
     const v = buildTreatmentView(null, [])
     expect(v.hasSettings).toBe(false)
     expect(v.deliveryMethod).toBeNull()
+    expect(v.bolusInsulin).toBeNull()
+    expect(v.pump).toBeNull()
     expect(v.isfSlots).toEqual([])
     expect(v.basalSlots).toEqual([])
     // Aucun créneau → pas de garde-fou déclenché.

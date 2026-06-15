@@ -54,6 +54,19 @@ export const insulinTherapyService = {
         sensitivityFactors: { orderBy: { startHour: "asc" } },
         carbRatios: { orderBy: { startHour: "asc" } },
         basalConfiguration: { include: { pumpSlots: { orderBy: { startTime: "asc" } } } },
+        // Insuline bolus active → nom commercial (catalogue) pour l'onglet Traitements.
+        // `select` (pas `include`) — minimisation RGPD : ne charge PAS les `notes`
+        // chiffrées ni `prescribedBy`. Inclut usage/isActive/endDate pour la garde
+        // « bolus réellement actif » côté vue (anti staleness / mis-typed FK).
+        bolusInsulin: {
+          select: {
+            usage: true,
+            isActive: true,
+            endDate: true,
+            dosage: true,
+            insulinCatalog: { select: { displayName: true, genericName: true } },
+          },
+        },
       },
     })
 

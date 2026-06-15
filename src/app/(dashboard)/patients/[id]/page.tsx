@@ -113,7 +113,8 @@ export default async function PatientDetailPage({
   // Phase 3 — Onglet Traitements : réglages insuline réels (audité
   // READ INSULIN_THERAPY) + traitements associés (déjà chargés via getById).
   const insulinSettings = await insulinTherapyService.getSettings(patientId, userId, ctx)
-  const treatmentView = buildTreatmentView(insulinSettings, patient.treatments ?? [])
+  // `patient.devices` (chargé par getById) → pompe active dans l'onglet Traitements.
+  const treatmentView = buildTreatmentView(insulinSettings, patient.treatments ?? [], patient.devices ?? [], now)
 
   // Phase 4 — Onglet Documents : documents médicaux (audité READ MEDICAL_DOCUMENT,
   // scopé serveur, `fileUrl` omis). Téléchargement via /api/documents/[id]/download.
