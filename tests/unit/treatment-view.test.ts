@@ -44,11 +44,14 @@ describe("buildTreatmentView", () => {
     expect(v.basalSlots).toEqual([])
   })
 
-  it("lists active treatments and filters soft-deleted ones", () => {
+  it("lists all associated treatments (Treatment has no soft-delete)", () => {
     const v = buildTreatmentView(null, [
       { id: 1, name: "Metformine", posology: "850 mg x2/j" },
-      { id: 2, name: "Ancien", posology: null, deletedAt: new Date("2026-01-01") },
+      { id: 2, name: "Autre", posology: null },
     ])
-    expect(v.treatments).toEqual([{ id: 1, name: "Metformine", posology: "850 mg x2/j" }])
+    expect(v.treatments).toEqual([
+      { id: 1, name: "Metformine", posology: "850 mg x2/j" },
+      { id: 2, name: "Autre", posology: null },
+    ])
   })
 })

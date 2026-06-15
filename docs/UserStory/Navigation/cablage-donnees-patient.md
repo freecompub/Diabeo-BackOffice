@@ -115,6 +115,17 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** : une hypo sévère < 40 mg/dL
   exclue par le plancher peut laisser un relevé bénin plus ancien passer pour le
   « dernier relevé » sans déclencher `stale`. À traiter avec l'item plancher.
-- **[Audit] `metadata.patientId` sur READ CGM_ENTRY** : `glycemiaService.getCgmEntries`
-  met `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
-  forensics OK via resourceId, à harmoniser (service pré-existant).
+- **[Audit] `metadata.patientId` sur READ CGM_ENTRY / GLYCEMIA_ENTRY** :
+  `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
+  forensics OK via resourceId, à harmoniser (services pré-existants).
+  (INSULIN_THERAPY corrigé en Phase 3.)
+- **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) : colonnes non
+  chiffrées (≠ identité/medicalData). Chiffrer ou documenter le risque accepté
+  en DPIA (schéma pré-existant).
+- **[Clinique] Créneaux ISF/ICR/basal — gaps/overlaps non signalés** : la vue
+  affiche les créneaux verbatim sans alerter si la couverture 24h n'est pas
+  contiguë. Indice visuel non bloquant à envisager.
+- **[Produit] Insuline bolus (nom) + modèle pompe** : nécessitent join
+  catalogue/device — à ajouter à l'onglet Traitements.
+- **[i18n] Clé unité ISF dupliquée** : `dashboardCards.medecinProposals.unitIsfGl`
+  ≈ `patientDetail.unitIsf` (« g/L/U ») — consolider une source unique.

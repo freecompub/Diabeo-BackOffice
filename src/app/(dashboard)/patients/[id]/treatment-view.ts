@@ -43,7 +43,9 @@ type SettingsInput = {
   basalConfiguration: { pumpSlots: { startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
 } | null
 
-type TreatmentInput = { id: number; name: string | null; posology: string | null; deletedAt?: Date | null }
+// NB : le modèle `Treatment` n'a PAS de soft-delete (`deletedAt`) — il est
+// hard-deleted en cascade depuis `Patient`. On liste donc tous les enregistrements.
+type TreatmentInput = { id: number; name: string | null; posology: string | null }
 
 export function buildTreatmentView(
   settings: SettingsInput,
@@ -64,8 +66,6 @@ export function buildTreatmentView(
       range: `${hhmm(p.startTime)}–${hhmm(p.endTime)}`,
       rate: num(p.rate),
     })),
-    treatments: treatments
-      .filter((t) => !t.deletedAt)
-      .map((t) => ({ id: t.id, name: t.name, posology: t.posology })),
+    treatments: treatments.map((t) => ({ id: t.id, name: t.name, posology: t.posology })),
   }
 }
