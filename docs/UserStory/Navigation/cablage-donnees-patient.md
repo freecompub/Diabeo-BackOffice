@@ -73,6 +73,33 @@
   anti-énumération + détection d'abus US-2265).
 - **Capture CGM** : ✅ `readingCount === 0` → état « pas de données » ; capture
   < 70 % → caveat clinique (stats non représentatives).
-- **Reste (LOW, suivi)** : `getById` sur-déchiffre `email` + relations non
-  affichées (minimisation Art. 5.1.c) — méthode allégée à envisager ; plancher
-  capteur 0.40 g/L de l'analytics à documenter (pré-existant, hors PR).
+- **Reste (LOW, suivi)** : voir backlog ci-dessous.
+
+## Backlog / suivi (relevé en revue PR #543, non bloquant — patterns partagés)
+
+Items pré-existants ou transverses, hors périmètre de la Phase 1 — à traiter
+dans des tickets dédiés, pas dans le câblage des onglets.
+
+- **[Sécu] Convergence des sémantiques de consentement** : 2 implémentations
+  coexistent — `patientShareConsent()` (`src/lib/consent.ts`, **fail-closed** +
+  gate `gdprConsent`) vs le check inline **fail-open** des routes
+  `/api/patients/[id]/cgm` et `/analytics` (que la page Phase 1 réplique pour
+  cohérence). Faire converger toutes les lectures PHI sur un seul helper, décision
+  documentée en DPIA.
+- **[Sécu] Audit de l'accès « partage désactivé »** : la branche opt-out ne
+  trace rien (parité avec cgm/analytics) — envisager une ligne `accessDenied`
+  `kind: "sharingDisabled"` pour la traçabilité HDS.
+- **[Sécu] XFF spoofable** : `ctx.ipAddress` = 1er hop `x-forwarded-for`
+  (client-contrôlable) ; durcissement transverse — cf.
+  `docs/security/xff-trusted-proxy.md`. Réutiliser `extractRequestContext`.
+- **[Clinique] Plancher capteur 0.40 g/L** (`analytics.service.ts`) exclut les
+  hypo sévères au plancher des agrégats (mean/CV/TIR severeHypo) — sous-estime la
+  charge hypoglycémique. Inclure les relevés clampés au plancher dans le bucket
+  severe-hypo.
+- **[Clinique] Cibles spécifiques grossesse (GD)** : les cibles consensus
+  (70/180, TIR 70 %, hypo 4 %, CV 36 %) sont DT1/DT2 ; seeder des cibles GD plus
+  strictes (TIR 63–140) côté `cgmObjective`.
+- **[RGPD] `getById` sur-déchiffre** `email` + relations non affichées
+  (minimisation Art. 5.1.c) — méthode de lecture allégée pour la page.
+- **[Perf] Double lookup patient** : la garde consentement fait un `findFirst`
+  léger puis `getById` en refait un complet — fusionnable.
