@@ -95,12 +95,13 @@
 Items pré-existants ou transverses, hors périmètre de la Phase 1 — à traiter
 dans des tickets dédiés, pas dans le câblage des onglets.
 
-- **[Sécu] Convergence des sémantiques de consentement** : 2 implémentations
-  coexistent — `patientShareConsent()` (`src/lib/consent.ts`, **fail-closed** +
-  gate `gdprConsent`) vs le check inline **fail-open** des routes
-  `/api/patients/[id]/cgm` et `/analytics` (que la page Phase 1 réplique pour
-  cohérence). Faire converger toutes les lectures PHI sur un seul helper, décision
-  documentée en DPIA.
+- ✅ **[Sécu] Convergence des sémantiques de consentement** (FAIT) : les 4
+  outliers (page dossier, routes `cgm`/`analytics`, route `download`) convergés
+  sur `patientShareConsent` (**fail-closed** + `gdprConsent` + `shareWithProviders`),
+  alignés sur les ~18 autres routes per-patient. **Delta de comportement** : un
+  patient sans consentement RGPD / sans partage / sans row privacy est désormais
+  bloqué sur ces surfaces (404 si inexistant, 403/état « partage désactivé »
+  sinon) — durcissement cohérent avec le reste de l'app. À refléter au DPIA.
 - **[Sécu] Audit de l'accès « partage désactivé »** : la branche opt-out ne
   trace rien (parité avec cgm/analytics) — envisager une ligne `accessDenied`
   `kind: "sharingDisabled"` pour la traçabilité HDS.

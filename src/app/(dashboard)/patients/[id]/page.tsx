@@ -17,7 +17,7 @@
 import { headers } from "next/headers"
 import { notFound, redirect } from "next/navigation"
 import type { Role } from "@prisma/client"
-import { prisma } from "@/lib/db/client"
+import { patientShareConsent } from "@/lib/consent"
 import { patientService } from "@/lib/services/patient.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
@@ -82,19 +82,14 @@ export default async function PatientDetailPage({
     notFound()
   }
 
-  // Garde consentement `shareWithProviders` AVANT tout déchiffrement PII
-  // (cohérence avec /api/patients/[id]/cgm et /analytics). Fail-open si pas de
-  // row (patient récent). Opt-out → aucune donnée rendue.
-  const base = await prisma.patient.findFirst({
-    where: { id: patientId, deletedAt: null },
-    select: { userId: true },
-  })
-  if (!base) notFound()
-  const privacy = await prisma.userPrivacySettings.findUnique({
-    where: { userId: base.userId },
-    select: { shareWithProviders: true },
-  })
-  if (privacy && !privacy.shareWithProviders) {
+  // Garde consentement patient AVANT tout déchiffrement PII — source unique
+  // `patientShareConsent` (gdprConsent + shareWithProviders, fail-closed),
+  // cohérent avec toutes les routes per-patient. Patient inexistant → 404
+  // uniforme ; consentement/partage absent → état « partage désactivé »
+  // (aucune PII déchiffrée).
+  const consent = await patientShareConsent(patientId)
+  if (!consent.ok) {
+    if (consent.status === 404) notFound()
     return <PatientDetailClient data={null} sharingDisabled />
   }
 
