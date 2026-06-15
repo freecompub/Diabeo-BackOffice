@@ -1537,7 +1537,7 @@
     "tabDocuments": "المستندات",
     "subtitle": "{pathology} — {age} سنة — متابعة من {referent}",
     "kpiCurrentGlucose": "سكر الدم الحالي",
-    "kpiTir7d": "الوقت ضمن النطاق (TIR) — ٧ أيام",
+    "kpiTir7d": "الوقت ضمن النطاق (TIR) — 14 يومًا",
     "kpiGmi": "مؤشر إدارة الجلوكوز (GMI)",
     "kpiCv": "معامل التغاير (CV)",
     "profileTitle": "ملف المريض",
@@ -1554,7 +1554,7 @@
     "targetBadge": "الهدف: {low}–{high} mg/dL",
     "tirTargetBadge": "الهدف (TIR): {target}%",
     "hypoMaxBadge": "أقصى هبوط: {target}%",
-    "tirDonutPeriod": "(٧ أيام)",
+    "tirDonutPeriod": "(14 يومًا)",
     "glycemicProfile24h": "ملف سكر الدم (٢٤ ساعة)",
     "insulinConfigTitle": "إعداد العلاج بالأنسولين",
     "method": "الطريقة",
@@ -1565,7 +1565,11 @@
     "associatedTreatmentsTitle": "العلاجات المرتبطة",
     "noComplementaryTreatment": "لا يوجد علاج تكميلي مسجّل",
     "medicalDocumentsTitle": "المستندات الطبية",
-    "noDocument": "لا يوجد مستند مسجّل"
+    "noDocument": "لا يوجد مستند مسجّل",
+    "comingSoon": "قريبًا",
+    "comingSoonDesc": "سيتم ربط هذا القسم بالبيانات الحقيقية قريبًا.",
+    "noCgmData": "لا توجد بيانات الغلوكوز المستمر (CGM) للفترة.",
+    "patientFallback": "مريض"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",
