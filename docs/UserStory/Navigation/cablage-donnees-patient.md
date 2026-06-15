@@ -102,6 +102,12 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   patient sans consentement RGPD / sans partage / sans row privacy est désormais
   bloqué sur ces surfaces (404 si inexistant, 403/état « partage désactivé »
   sinon) — durcissement cohérent avec le reste de l'app. À refléter au DPIA.
+- **[Sécu, à investiguer] Route `glycemia` GET — sur-blocage self-service** :
+  cette route admet un VIEWER (`requireAuth`, pas `requireRole`) MAIS appelle
+  `patientShareConsent` (qui vérifie `shareWithProviders`) — un patient lisant
+  SA propre glycémie avec `shareWithProviders=false` serait bloqué à tort.
+  Confirmer si la route est réellement atteinte par un VIEWER ; si oui, exempter
+  le VIEWER (comme la route download). Pré-existant (relevé revue PR #547).
 - **[Sécu] Audit de l'accès « partage désactivé »** : la branche opt-out ne
   trace rien (parité avec cgm/analytics) — envisager une ligne `accessDenied`
   `kind: "sharingDisabled"` pour la traçabilité HDS.
