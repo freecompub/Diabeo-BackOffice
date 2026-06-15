@@ -84,6 +84,8 @@ const baseData: PatientDetailData = {
   treatment: {
     hasSettings: true,
     deliveryMethod: "pump",
+    bolusInsulin: { name: "Humalog", genericName: "insulin lispro", dosage: "6-8U avant repas" },
+    pump: { label: "Medtronic 780G" },
     isfSlots: [{ range: "00h–06h", value: 0.3 }],
     isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [{ range: "00h–06h", value: 10 }],
@@ -151,6 +153,8 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getByText("0.3 g/L/U")).toBeTruthy() // créneau ISF
     expect(screen.getByText("10 g/U")).toBeTruthy() // créneau ICR
     expect(screen.getByText("0.8 U/h")).toBeTruthy() // créneau basal
+    expect(screen.getByText("Humalog", { exact: false })).toBeTruthy() // insuline bolus
+    expect(screen.getByText("Medtronic 780G")).toBeTruthy() // modèle pompe
     expect(screen.getByText("Metformine")).toBeTruthy()
     // Couverture saine → aucune note de garde-fou.
     expect(screen.queryByText(/non contigus/)).toBeNull()

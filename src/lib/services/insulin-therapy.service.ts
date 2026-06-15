@@ -54,6 +54,8 @@ export const insulinTherapyService = {
         sensitivityFactors: { orderBy: { startHour: "asc" } },
         carbRatios: { orderBy: { startHour: "asc" } },
         basalConfiguration: { include: { pumpSlots: { orderBy: { startTime: "asc" } } } },
+        // Insuline bolus active → nom commercial (catalogue) pour l'onglet Traitements.
+        bolusInsulin: { include: { insulinCatalog: true } },
       },
     })
 

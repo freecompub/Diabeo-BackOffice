@@ -98,10 +98,16 @@ export function analyzeSlotCoverage(
 export type Slot = { range: string; value: number }
 export type BasalSlot = { range: string; rate: number }
 export type TreatmentItem = { id: number; name: string | null; posology: string | null }
+/** Insuline bolus active (nom commercial du catalogue + DCI + posologie). */
+export type BolusInsulin = { name: string; genericName: string | null; dosage: string | null }
+/** Pompe à insuline active (libellé « marque modèle »). */
+export type Pump = { label: string }
 
 export type TreatmentView = {
   hasSettings: boolean
   deliveryMethod: InsulinDelivery | null
+  bolusInsulin: BolusInsulin | null
+  pump: Pump | null
   isfSlots: Slot[] // g/L/U
   isfCoverage: SlotCoverage
   icrSlots: Slot[] // g/U
@@ -116,23 +122,65 @@ type SettingsInput = {
   sensitivityFactors: { startHour: number; endHour: number; sensitivityFactorGl: DecimalLike }[]
   carbRatios: { startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
   basalConfiguration: { pumpSlots: { startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
+  bolusInsulin?: {
+    dosage?: string | null
+    insulinCatalog?: { displayName: string; genericName?: string | null } | null
+  } | null
 } | null
 
 // NB : le modèle `Treatment` n'a PAS de soft-delete (`deletedAt`) — il est
 // hard-deleted en cascade depuis `Patient`. On liste donc tous les enregistrements.
 type TreatmentInput = { id: number; name: string | null; posology: string | null }
 
+// Sous-ensemble de `PatientDevice` nécessaire pour identifier la pompe active.
+type DeviceInput = {
+  category?: string | null
+  brand?: string | null
+  name?: string | null
+  model?: string | null
+  revokedAt?: Date | string | null
+  createdAt?: Date | string | null
+}
+
+/**
+ * Pompe à insuline active du patient : device `insulinPump` non révoqué le plus
+ * récent. Libellé « marque modèle » (repli sur le nom), null si aucune pompe.
+ */
+function derivePump(devices: DeviceInput[]): Pump | null {
+  const active = devices
+    .filter((d) => d.category === "insulinPump" && (d.revokedAt === null || d.revokedAt === undefined))
+    .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+  const d = active[0]
+  if (!d) return null
+  const label = [d.brand, d.model].filter((x): x is string => Boolean(x && x.trim())).join(" ").trim()
+    || d.name?.trim()
+    || ""
+  return label ? { label } : null
+}
+
 export function buildTreatmentView(
   settings: SettingsInput,
   treatments: TreatmentInput[],
+  devices: DeviceInput[] = [],
 ): TreatmentView {
   const isf = settings?.sensitivityFactors ?? []
   const icr = settings?.carbRatios ?? []
   const basal = settings?.basalConfiguration?.pumpSlots ?? []
 
+  const catalog = settings?.bolusInsulin?.insulinCatalog
+  const bolusInsulin: BolusInsulin | null = catalog
+    ? {
+        name: catalog.displayName,
+        genericName: catalog.genericName ?? null,
+        dosage: settings?.bolusInsulin?.dosage ?? null,
+      }
+    : null
+
   return {
     hasSettings: settings !== null,
     deliveryMethod: settings?.deliveryMethod ?? null,
+    bolusInsulin,
+    pump: derivePump(devices),
     isfSlots: isf.map((s) => ({
       range: hourRange(s.startHour, s.endHour),
       value: num(s.sensitivityFactorGl),

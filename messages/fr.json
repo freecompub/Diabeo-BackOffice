@@ -1559,6 +1559,8 @@
     "glycemicProfile24h": "Profil glycémique (24h)",
     "insulinConfigTitle": "Configuration insulinothérapie",
     "method": "Méthode",
+    "bolusInsulinLabel": "Insuline bolus",
+    "pumpModelLabel": "Modèle de pompe",
     "pump": "Pompe",
     "bolusInsulin": "Insuline bolus",
     "avgBasalRate": "Débit basal moyen",

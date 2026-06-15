@@ -342,6 +342,32 @@ export function PatientDetailClient({
                         {data.treatment.deliveryMethod === "pump" ? t("deliveryPump") : t("deliveryManual")}
                       </p>
                     </div>
+                    {data.treatment.bolusInsulin && (
+                      <div>
+                        <span className="text-muted-foreground">{t("bolusInsulinLabel")}</span>
+                        <p className="mt-1 font-medium">
+                          {data.treatment.bolusInsulin.name}
+                          {data.treatment.bolusInsulin.genericName && (
+                            <span className="font-normal text-muted-foreground">
+                              {" · "}
+                              {data.treatment.bolusInsulin.genericName}
+                            </span>
+                          )}
+                          {data.treatment.bolusInsulin.dosage && (
+                            <span className="font-normal text-muted-foreground">
+                              {" · "}
+                              {data.treatment.bolusInsulin.dosage}
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    )}
+                    {data.treatment.pump && (
+                      <div>
+                        <span className="text-muted-foreground">{t("pumpModelLabel")}</span>
+                        <p className="mt-1 font-medium">{data.treatment.pump.label}</p>
+                      </div>
+                    )}
                     {data.treatment.isfSlots.length > 0 && (
                       <SlotList
                         label={<Acronym code="ISF" />}

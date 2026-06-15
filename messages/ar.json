@@ -1559,6 +1559,8 @@
     "glycemicProfile24h": "ملف سكر الدم (٢٤ ساعة)",
     "insulinConfigTitle": "إعداد العلاج بالأنسولين",
     "method": "الطريقة",
+    "bolusInsulinLabel": "أنسولين البلعة",
+    "pumpModelLabel": "طراز المضخة",
     "pump": "المضخة",
     "bolusInsulin": "أنسولين الجرعة",
     "avgBasalRate": "متوسط المعدل القاعدي",

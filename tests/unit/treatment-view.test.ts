@@ -31,10 +31,49 @@ describe("buildTreatmentView", () => {
     expect(v.basalCoverage).toEqual({ hasGap: true, hasOverlap: false })
   })
 
+  it("maps bolus insulin (catalog displayName/genericName + dosage) and active pump model", () => {
+    const v = buildTreatmentView(
+      {
+        deliveryMethod: "pump",
+        sensitivityFactors: [],
+        carbRatios: [],
+        basalConfiguration: null,
+        bolusInsulin: {
+          dosage: "6-8U avant repas",
+          insulinCatalog: { displayName: "Humalog", genericName: "insulin lispro" },
+        },
+      },
+      [],
+      [
+        // Pompe révoquée → ignorée ; pompe active la plus récente retenue.
+        { category: "insulinPump", brand: "Roche", model: "Insight", revokedAt: "2025-01-01T00:00:00.000Z", createdAt: "2024-01-01T00:00:00.000Z" },
+        { category: "insulinPump", brand: "Medtronic", model: "780G", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+        { category: "cgm", brand: "Dexcom", model: "G7", revokedAt: null, createdAt: "2026-02-01T00:00:00.000Z" },
+      ],
+    )
+    expect(v.bolusInsulin).toEqual({ name: "Humalog", genericName: "insulin lispro", dosage: "6-8U avant repas" })
+    expect(v.pump).toEqual({ label: "Medtronic 780G" })
+  })
+
+  it("falls back to device name when brand/model are absent, ignores non-pump devices", () => {
+    const v = buildTreatmentView(
+      { deliveryMethod: "manual", sensitivityFactors: [], carbRatios: [], basalConfiguration: null },
+      [],
+      [
+        { category: "cgm", brand: "Dexcom", model: "G7", revokedAt: null, createdAt: "2026-02-01T00:00:00.000Z" },
+        { category: "insulinPump", brand: null, model: null, name: "YpsoPump", revokedAt: null, createdAt: "2026-01-01T00:00:00.000Z" },
+      ],
+    )
+    expect(v.bolusInsulin).toBeNull()
+    expect(v.pump).toEqual({ label: "YpsoPump" })
+  })
+
   it("handles no settings (null) gracefully", () => {
     const v = buildTreatmentView(null, [])
     expect(v.hasSettings).toBe(false)
     expect(v.deliveryMethod).toBeNull()
+    expect(v.bolusInsulin).toBeNull()
+    expect(v.pump).toBeNull()
     expect(v.isfSlots).toEqual([])
     expect(v.basalSlots).toEqual([])
     // Aucun créneau → pas de garde-fou déclenché.

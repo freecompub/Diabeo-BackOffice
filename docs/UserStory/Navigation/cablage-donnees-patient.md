@@ -143,8 +143,12 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   par famille ; `PatientDetailClient` affiche une note `text-warning-fg` sous la
   liste de créneaux (i18n FR/EN/AR). Purement informatif (couverture horaire), pas
   un calcul clinique.
-- **[Produit] Insuline bolus (nom) + modèle pompe** : nécessitent join
-  catalogue/device — à ajouter à l'onglet Traitements.
+- ✅ **[Produit] Insuline bolus (nom) + modèle pompe** (FAIT) : onglet
+  Traitements. Insuline bolus = `getSettings` augmenté
+  (`bolusInsulin → insulinCatalog.displayName/genericName` + posologie).
+  Pompe = device `insulinPump` actif (non révoqué) le plus récent depuis
+  `patient.devices` (déjà chargé), libellé « marque modèle » (repli sur le nom).
+  Dérivations pures dans `treatment-view.ts` (unit-testé). i18n FR/EN/AR.
 - ✅ **[i18n] Clés d'unités insuline dédupliquées** (FAIT) : nouveau namespace
   top-level `insulinUnits` (`isfGl`/`isfMgdl`/`isfMmol`/`icr`/`basal`) = source
   unique. `PatientDetailClient` et `PendingProposalsCard` y réfèrent ; les clés
