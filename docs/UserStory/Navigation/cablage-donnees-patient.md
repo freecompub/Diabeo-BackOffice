@@ -136,3 +136,9 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   catalogue/device — à ajouter à l'onglet Traitements.
 - **[i18n] Clé unité ISF dupliquée** : `dashboardCards.medecinProposals.unitIsfGl`
   ≈ `patientDetail.unitIsf` (« g/L/U ») — consolider une source unique.
+- **[Sécu] Route download — `documentNotFound` vs `patientNotFound`** : 2 chaînes
+  d'erreur 404 distinctes (oracle d'énumération mineur) — uniformiser en `notFound`
+  neutre (Phase 4 a déjà ajouté la garde consentement `shareWithProviders` PRO).
+- **[Sécu] Convergence consentement download/list** : la garde `shareWithProviders`
+  PRO est désormais sur la route download ET la liste, mais via des checks inline ;
+  à converger sur le helper unique (cf. item « convergence des sémantiques »).

@@ -1,11 +1,10 @@
 /**
  * Dossier patient (`/patients/[id]`) — Server Component.
  *
- * Câblage données réelles, Phase 1 (cf. docs/UserStory/Navigation/cablage-donnees-patient.md) :
- * profil + objectifs + stats glycémiques (TIR/GMI/CV/moyenne) RÉELS, scopés
- * serveur, PII déchiffrée serveur, accès audité (ADR #18). Les onglets Glycémie /
- * Traitements / Documents arrivent dans les phases suivantes (état « bientôt
- * disponible » — jamais de données démo).
+ * Câblage données réelles (cf. docs/UserStory/Navigation/cablage-donnees-patient.md) :
+ * les 4 onglets (Vue d'ensemble, Glycémie, Traitements, Documents) sont sur
+ * données RÉELLES, scopées serveur, PII déchiffrée serveur, accès audité
+ * (ADR #18). Plus aucune donnée démo.
  *
  * Sécurité :
  *  - `canAccessPatient` (RBAC) ; refus → audit `accessDenied` + `notFound()`

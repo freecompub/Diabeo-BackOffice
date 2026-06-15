@@ -133,7 +133,8 @@ describe("PatientDetailClient (Phase 1)", () => {
     render(<PatientDetailClient data={baseData} />)
     expect(screen.getByText("Compte rendu HDJ")).toBeTruthy()
     const dl = screen.getByText("Télécharger").closest("a")
-    expect(dl?.getAttribute("href")).toBe("/api/documents/7/download")
+    // doit porter le patientId pour la résolution de scope côté route (pro)
+    expect(dl?.getAttribute("href")).toBe("/api/documents/7/download?patientId=42")
   })
 
   it("shows the empty Documents state when there are none", () => {

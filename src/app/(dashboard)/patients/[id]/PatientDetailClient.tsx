@@ -3,8 +3,7 @@
  *
  * Reçoit les données déjà résolues/auditées par le Server Component parent
  * (`page.tsx`). Ne fait AUCUN calcul clinique : rend les valeurs serveur.
- * Phase 1 : onglet « Vue d'ensemble » câblé ; Glycémie / Traitements /
- * Documents → état « bientôt disponible » (phases suivantes).
+ * Les 4 onglets (Vue d'ensemble, Glycémie, Traitements, Documents) sont câblés.
  */
 
 "use client"
@@ -414,7 +413,7 @@ export function PatientDetailClient({
                           </span>
                         </span>
                         <a
-                          href={`/api/documents/${doc.id}/download`}
+                          href={`/api/documents/${doc.id}/download?patientId=${data.id}`}
                           className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
                         >
                           <Download size={14} aria-hidden="true" />
