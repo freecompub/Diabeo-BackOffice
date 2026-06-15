@@ -151,7 +151,8 @@ secret → pas de fuite d'énumération nouvelle. Posture acceptée.
 - ✅ Pivot `metadata.patientId` sur `READ CGM_ENTRY`/`GLYCEMIA_ENTRY`/`BOLUS_LOG`
   — **harmonisé** (PR audit pivot).
 - Plancher capteur 0.40 g/L exclut les hypo sévères des agrégats.
-- Cibles consensus non spécifiques grossesse (GD).
+- ✅ Cibles grossesse (GD) — défauts pathology-aware (63–140) sur le calcul TIR
+  et le badge (`getCgmDefaults`). **Résolu.**
 - Sur-déchiffrement `email` dans `getById` (minimisation Art. 5.1.c).
 
 ## 7. Validations à obtenir

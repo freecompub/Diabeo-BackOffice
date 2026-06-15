@@ -11,12 +11,12 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./audit.service"
+import { getCgmDefaults } from "./objectives.service"
 import {
   mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation,
   computeTir, assessTirQuality, computeAgp, detectHypoEpisodes,
   cgmCaptureRate,
   ANALYTICS_WARNINGS,
-  DEFAULT_CGM_THRESHOLDS,
   type AnalyticsWarning,
   type CgmThresholds,
 } from "@/lib/statistics"
@@ -91,7 +91,18 @@ async function getPatientCgmValues(patientId: number, days: number) {
  */
 async function getPatientThresholds(patientId: number): Promise<CgmThresholds> {
   const cgm = await prisma.cgmObjective.findUnique({ where: { patientId } })
-  if (!cgm) return DEFAULT_CGM_THRESHOLDS
+  if (!cgm) {
+    // Pas d'objectif CGM configuré → défauts **pathology-aware** : la grossesse
+    // (GD) impose une cible plus stricte (63–140 mg/dL, Battelino 2019) que les
+    // 70–180 génériques. Sans ça, le TIR d'une patiente GD serait évalué sur une
+    // plage trop large (faux rassurement). Cf. `getCgmDefaults`.
+    const patient = await prisma.patient.findUnique({
+      where: { id: patientId },
+      select: { pathology: true },
+    })
+    const d = getCgmDefaults(patient?.pathology ?? undefined)
+    return { veryLow: d.veryLow, low: d.low, ok: d.ok, high: d.high }
+  }
   return {
     veryLow: Number(cgm.veryLow),
     low: Number(cgm.low),

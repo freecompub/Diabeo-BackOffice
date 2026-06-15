@@ -26,6 +26,7 @@ import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { documentService } from "@/lib/services/document.service"
 import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
+import { getCgmDefaults } from "@/lib/services/objectives.service"
 import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { buildGlycemiaView } from "./glycemia-view"
 import { buildTreatmentView } from "./treatment-view"
@@ -119,10 +120,13 @@ export default async function PatientDetailPage({
   // scopé serveur, `fileUrl` omis). Téléchargement via /api/documents/[id]/download.
   const documents = buildDocumentView(await documentService.list(patientId, role, userId, ctx))
   const cgmObj = patient.cgmObjectives
-  // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok),
-  // pas titrLow/titrHigh (qui peuvent diverger). Défaut 70/180 si pas d'objectif.
-  const rawLowMgdl = cgmObj ? Math.round(Number(cgmObj.low) * 100) : GLYCEMIA_THRESHOLDS_MGDL.TARGET_LOW
-  const rawHighMgdl = cgmObj ? Math.round(Number(cgmObj.ok) * 100) : GLYCEMIA_THRESHOLDS_MGDL.TARGET_HIGH
+  // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok).
+  // À défaut d'objectif, défauts **pathology-aware** (`getCgmDefaults`) — mêmes
+  // que `analyticsService` → badge cohérent avec le donut (GD : 63–140, sinon
+  // 70–180). g/L → mg/dL (×100).
+  const cgmDefaults = getCgmDefaults(patient.pathology ?? undefined)
+  const rawLowMgdl = Math.round(Number(cgmObj?.low ?? cgmDefaults.low) * 100)
+  const rawHighMgdl = Math.round(Number(cgmObj?.ok ?? cgmDefaults.high) * 100)
   // Défense en profondeur (affichage) : garder la cible strictement DANS les
   // zones sévères (54 < low < high < 250) pour que la pastille couleur de
   // `GlycemiaValue` ne dégénère jamais. La config est déjà bornée par
