@@ -89,6 +89,9 @@ const baseData: PatientDetailData = {
     basalSlots: [{ range: "00:00–06:00", rate: 0.8 }],
     treatments: [{ id: 1, name: "Metformine", posology: "850 mg x2/j" }],
   },
+  documents: [
+    { id: 7, title: "Compte rendu HDJ", category: "labResults", dateIso: "2026-06-01T09:00:00.000Z", size: { value: 1.2, unitKey: "sizeMb" } },
+  ],
 }
 
 describe("PatientDetailClient (Phase 1)", () => {
@@ -118,13 +121,24 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getAllByText("Pas de données de glycémie continue (CGM) sur la période.").length).toBeGreaterThan(0)
   })
 
-  it("renders the CGM chart + last reading (Phase 2) and « coming soon » only for Documents", () => {
+  it("renders the CGM chart + last reading (Phase 2) — all tabs now wired (no « coming soon »)", () => {
     render(<PatientDetailClient data={baseData} />)
-    // Glycémie câblée : graphe (2 pts) + dernière glycémie
     expect(screen.getByTestId("cgm-chart").textContent).toBe("2 pts")
     expect(screen.getByText("Dernière glycémie")).toBeTruthy()
-    // Reste : seul Documents → 1 état « bientôt disponible »
-    expect(screen.getAllByText(/Bientôt disponible/).length).toBe(1)
+    // Tous les onglets sont câblés → plus aucun état « bientôt disponible »
+    expect(screen.queryByText(/Bientôt disponible/)).toBeNull()
+  })
+
+  it("renders the Documents tab (Phase 4) — title, category, size, download link", () => {
+    render(<PatientDetailClient data={baseData} />)
+    expect(screen.getByText("Compte rendu HDJ")).toBeTruthy()
+    const dl = screen.getByText("Télécharger").closest("a")
+    expect(dl?.getAttribute("href")).toBe("/api/documents/7/download")
+  })
+
+  it("shows the empty Documents state when there are none", () => {
+    render(<PatientDetailClient data={{ ...baseData, documents: [] }} />)
+    expect(screen.getByText(/Aucun document/)).toBeTruthy()
   })
 
   it("renders the Traitements tab (Phase 3) — delivery, ISF/ICR/basal slots, treatments", () => {

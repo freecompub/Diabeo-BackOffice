@@ -23,11 +23,13 @@ import { patientService } from "@/lib/services/patient.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
+import { documentService } from "@/lib/services/document.service"
 import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
 import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { buildGlycemiaView } from "./glycemia-view"
 import { buildTreatmentView } from "./treatment-view"
+import { buildDocumentView } from "./document-view"
 import { PatientDetailClient, type PatientDetailData } from "./PatientDetailClient"
 
 // Période d'agrégation de la vue d'ensemble. Bornée < 90j (analytics).
@@ -117,6 +119,10 @@ export default async function PatientDetailPage({
   // READ INSULIN_THERAPY) + traitements associés (déjà chargés via getById).
   const insulinSettings = await insulinTherapyService.getSettings(patientId, userId, ctx)
   const treatmentView = buildTreatmentView(insulinSettings, patient.treatments ?? [])
+
+  // Phase 4 — Onglet Documents : documents médicaux (audité READ MEDICAL_DOCUMENT,
+  // scopé serveur, `fileUrl` omis). Téléchargement via /api/documents/[id]/download.
+  const documents = buildDocumentView(await documentService.list(patientId, role, userId, ctx))
   const cgmObj = patient.cgmObjectives
   // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok),
   // pas titrLow/titrHigh (qui peuvent diverger). Défaut 70/180 si pas d'objectif.
@@ -175,6 +181,7 @@ export default async function PatientDetailPage({
         : null,
     glycemia: glycemiaView,
     treatment: treatmentView,
+    documents,
   }
 
   return <PatientDetailClient data={data} />

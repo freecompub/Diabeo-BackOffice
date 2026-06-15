@@ -1565,8 +1565,6 @@
     "noComplementaryTreatment": "Aucun traitement complémentaire enregistré",
     "medicalDocumentsTitle": "Documents médicaux",
     "noDocument": "Aucun document enregistré",
-    "comingSoon": "Bientôt disponible",
-    "comingSoonDesc": "Cette section sera câblée aux données réelles prochainement.",
     "noCgmData": "Pas de données de glycémie continue (CGM) sur la période.",
     "patientFallback": "Patient",
     "kpiTir14d": "Temps dans la cible (TIR) — 14j",
@@ -1584,7 +1582,18 @@
     "basalLabel": "Débit basal",
     "unitIsf": "g/L/U",
     "unitIcr": "g/U",
-    "unitBasal": "U/h"
+    "unitBasal": "U/h",
+    "download": "Télécharger",
+    "uncategorized": "Sans catégorie",
+    "sizeBytes": "o",
+    "sizeKb": "Ko",
+    "sizeMb": "Mo",
+    "docCatGeneral": "Général",
+    "docCatForDoctor": "Pour le médecin",
+    "docCatPersonal": "Personnel",
+    "docCatPrescription": "Ordonnance",
+    "docCatLabResults": "Résultats de laboratoire",
+    "docCatOther": "Autre"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

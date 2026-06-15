@@ -71,7 +71,13 @@
   associés (`getById.treatments`, soft-deleted filtrés). Mapping pur
   `treatment-view.ts` (unit-testé). Insuline bolus/modèle pompe (catalogue/
   device) → backlog. État vide si pas de réglages.
-- [ ] **Phase 4 — Onglet Documents** : documents médicaux réels (MinIO).
+- [x] **Phase 4 — Onglet Documents** (PR #546) : liste documents médicaux réels
+  via `documentService.list` (scopé serveur — VIEWER ne voit que `patientShare`,
+  `fileUrl` omis, audité READ MEDICAL_DOCUMENT, derrière la garde accès+
+  consentement). Affiche titre / catégorie / date / taille + **téléchargement**
+  via `/api/documents/[id]/download` (auth + scope + ClamAV serveur). Mapping pur
+  `document-view.ts` (unit-testé). État vide « Aucun document ». **Chantier
+  câblage données patient terminé.**
 
 ## Points de vigilance (revue) — tranchés en Phase 1
 
