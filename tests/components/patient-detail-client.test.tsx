@@ -153,11 +153,11 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getByText("0.8 U/h")).toBeTruthy() // créneau basal
     expect(screen.getByText("Metformine")).toBeTruthy()
     // Couverture saine → aucune note de garde-fou.
-    expect(screen.queryByText(/Couverture incomplète/)).toBeNull()
+    expect(screen.queryByText(/non contigus/)).toBeNull()
     expect(screen.queryByText(/se chevauchent/)).toBeNull()
   })
 
-  it("surfaces the slot-coverage guard note when ISF slots leave a 24h gap", () => {
+  it("surfaces a fallback-tolerant gap note for ISF/ICR slots (not a basal one)", () => {
     render(
       <PatientDetailClient
         data={{
@@ -166,7 +166,33 @@ describe("PatientDetailClient (Phase 1)", () => {
         }}
       />,
     )
-    expect(screen.getByText(/Couverture incomplète sur 24 h/)).toBeTruthy()
+    // Copie ratio (ISF) : « non contigus », pas la copie basale.
+    expect(screen.getByText(/Créneaux non contigus sur 24 h/)).toBeTruthy()
+    expect(screen.queryByText(/Couverture basale incomplète/)).toBeNull()
+  })
+
+  it("surfaces the stronger basal-coverage note when pump basal slots leave a gap", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, basalCoverage: { hasGap: true, hasOverlap: false } },
+        }}
+      />,
+    )
+    expect(screen.getByText(/Couverture basale incomplète sur 24 h/)).toBeTruthy()
+  })
+
+  it("surfaces the overlap note independently of gaps", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, icrCoverage: { hasGap: false, hasOverlap: true } },
+        }}
+      />,
+    )
+    expect(screen.getByText(/se chevauchent/)).toBeTruthy()
   })
 
   it("shows the no-insulin-settings state when none are recorded", () => {
