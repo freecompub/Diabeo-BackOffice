@@ -30,7 +30,9 @@ vi.mock("@/components/diabeo", () => ({
   ),
   TirDonut: () => <div data-testid="tir-donut" />,
   ClinicalBadge: ({ value }: { value: string }) => <span data-testid="pathology">{value}</span>,
-  GlycemiaValue: ({ value }: { value: number }) => <span data-testid="glyc">{value}</span>,
+  GlycemiaValue: ({ value, thresholds }: { value: number; thresholds?: { low?: number; high?: number } }) => (
+    <span data-testid="glyc" data-low={thresholds?.low} data-high={thresholds?.high}>{value}</span>
+  ),
 }))
 vi.mock("@/components/diabeo/DashboardHeader", () => ({
   DashboardHeader: ({ title, subtitle }: { title: string; subtitle: string }) => (
@@ -76,6 +78,8 @@ const baseData: PatientDetailData = {
     ],
     lastReadingMgdl: 130,
     lastReadingAt: "08:05",
+    lastReadingAgeMin: 3,
+    stale: false,
   },
 }
 
@@ -116,8 +120,26 @@ describe("PatientDetailClient (Phase 1)", () => {
   })
 
   it("shows an empty Glycémie state when there is no CGM series", () => {
-    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null } }} />)
+    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false } }} />)
     expect(screen.queryByTestId("cgm-chart")).toBeNull()
+  })
+
+  it("color-codes the last reading with the patient's target thresholds (not defaults)", () => {
+    render(<PatientDetailClient data={baseData} />)
+    // Le relevé « dernière glycémie » passe les cibles patient (vs la moyenne
+    // d'aperçu qui n'en passe pas) → au moins un GlycemiaValue porte 70/180.
+    const withThresholds = screen.getAllByTestId("glyc").find((n) => n.getAttribute("data-low") === "70")
+    expect(withThresholds).toBeTruthy()
+    expect(withThresholds!.getAttribute("data-high")).toBe("180")
+  })
+
+  it("shows a staleness note when the last reading is old", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, glycemia: { ...baseData.glycemia, lastReadingAgeMin: 540, stale: true } }}
+      />,
+    )
+    expect(screen.getByText(/Relevé ancien/)).toBeTruthy()
   })
 
   it("renders the sharing-disabled state (no PHI) when consent is withdrawn", () => {

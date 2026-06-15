@@ -24,6 +24,7 @@ import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
+import { buildGlycemiaView } from "./glycemia-view"
 import { PatientDetailClient, type PatientDetailData } from "./PatientDetailClient"
 
 // Période d'agrégation de la vue d'ensemble. Bornée < 90j (analytics).
@@ -103,20 +104,11 @@ export default async function PatientDetailPage({
   const now = new Date()
 
   // Phase 2 — Onglet Glycémie : série CGM des dernières 24h (audité READ CGM_ENTRY).
-  // valueGl (g/L) → mg/dL (×100) ; horodatage formaté serveur (Europe/Paris) pour
-  // un rendu déterministe (pas de mismatch d'hydratation).
+  // Mapping déterministe (g/L→mg/dL, heure Europe/Paris, fraîcheur) extrait dans
+  // `buildGlycemiaView` (pur, unit-testé).
   const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  const cgmEntries = (await glycemiaService.getCgmEntries(patientId, from24h, now, userId, ctx))
-    // La requête exclut déjà valueGl null (CHECK gte/lte), mais on borne le type.
-    .filter((e): e is typeof e & { valueGl: number } => e.valueGl !== null)
-  const timeFmt = new Intl.DateTimeFormat("fr-FR", {
-    hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris", hour12: false,
-  })
-  const cgmPoints = cgmEntries.map((e) => ({
-    time: timeFmt.format(new Date(e.timestamp)),
-    glucose: Math.round(e.valueGl * 100),
-  }))
-  const lastEntry = cgmEntries.length > 0 ? cgmEntries[cgmEntries.length - 1]! : null
+  const cgmEntries = await glycemiaService.getCgmEntries(patientId, from24h, now, userId, ctx)
+  const glycemiaView = buildGlycemiaView(cgmEntries, now)
   const cgmObj = patient.cgmObjectives
   // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok),
   // pas titrLow/titrHigh (qui peuvent diverger). Défaut 70/180 si pas d'objectif.
@@ -161,11 +153,7 @@ export default async function PatientDetailPage({
             insufficientCapture: profile.warning === "insufficientCgmCapture",
           }
         : null,
-    glycemia: {
-      points: cgmPoints,
-      lastReadingMgdl: lastEntry ? Math.round(lastEntry.valueGl * 100) : null,
-      lastReadingAt: lastEntry ? timeFmt.format(new Date(lastEntry.timestamp)) : null,
-    },
+    glycemia: glycemiaView,
   }
 
   return <PatientDetailClient data={data} />

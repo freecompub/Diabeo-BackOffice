@@ -1574,7 +1574,10 @@
     "sharingDisabledTitle": "Sharing disabled",
     "sharingDisabledDesc": "This patient has disabled sharing their data with care providers.",
     "lastReading": "Last glucose",
-    "lastReadingAt": "at {time}"
+    "lastReadingAt": "at {time}",
+    "agoMinutes": "{n} min ago",
+    "agoHours": "{n} h ago",
+    "staleReadingNote": "Old reading — may not reflect the current state."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

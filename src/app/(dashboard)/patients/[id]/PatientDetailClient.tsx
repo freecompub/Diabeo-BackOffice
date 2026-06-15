@@ -17,6 +17,7 @@ import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
+import type { GlycemiaView } from "./glycemia-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"
@@ -49,12 +50,8 @@ export type PatientDetailData = {
     /** Capture CGM < 70 % → stats non représentatives (caveat clinique). */
     insufficientCapture: boolean
   } | null
-  /** Série CGM 24h (déjà mappée serveur : mg/dL + heure Europe/Paris). */
-  glycemia: {
-    points: { time: string; glucose: number }[]
-    lastReadingMgdl: number | null
-    lastReadingAt: string | null
-  }
+  /** Série CGM 24h (déjà mappée serveur : mg/dL + heure Europe/Paris + fraîcheur). */
+  glycemia: GlycemiaView
 }
 
 export function PatientDetailClient({
@@ -259,12 +256,26 @@ export function PatientDetailClient({
                         {data.glycemia.lastReadingAt && (
                           <span className="text-xs font-normal text-muted-foreground">
                             {t("lastReadingAt", { time: data.glycemia.lastReadingAt })}
+                            {data.glycemia.lastReadingAgeMin !== null && (
+                              <> · {ageLabel(t, data.glycemia.lastReadingAgeMin)}</>
+                            )}
                           </span>
                         )}
                       </CardTitle>
                     </CardHeader>
-                    <CardContent>
-                      <GlycemiaValue value={data.glycemia.lastReadingMgdl} unit="mg/dL" />
+                    <CardContent className="space-y-2">
+                      {/* Pastille couleur sur les MÊMES cibles que le graphe (cgm.low/ok) ;
+                          les zones sévères (54/250) restent les seuils physiologiques. */}
+                      <GlycemiaValue
+                        value={data.glycemia.lastReadingMgdl}
+                        unit="mg/dL"
+                        thresholds={{ low: objectives.targetLowMgdl, high: objectives.targetHighMgdl }}
+                      />
+                      {data.glycemia.stale && (
+                        <p role="status" className="text-xs text-warning-fg">
+                          {t("staleReadingNote")}
+                        </p>
+                      )}
                     </CardContent>
                   </Card>
                 )}
@@ -304,6 +315,11 @@ export function PatientDetailClient({
       </div>
     </>
   )
+}
+
+/** Âge du dernier relevé en libellé relatif (< 60 min → minutes, sinon heures). */
+function ageLabel(t: ReturnType<typeof useTranslations>, ageMin: number): string {
+  return ageMin < 60 ? t("agoMinutes", { n: ageMin }) : t("agoHours", { n: Math.floor(ageMin / 60) })
 }
 
 function ComingSoon({ t }: { t: ReturnType<typeof useTranslations> }) {

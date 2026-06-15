@@ -61,7 +61,9 @@
 - [x] **Phase 2 — Onglet Glycémie** (PR #544) : graphe CGM réel (24h, série
   `glycemiaService.getCgmEntries` mappée serveur g/L→mg/dL + heure Europe/Paris,
   audité READ CGM_ENTRY) + « dernière glycémie » (dernier relevé, `GlycemiaValue`
-  color-codé). Cibles du graphe = `cgm.low/ok`. État vide si pas de série.
+  color-codé **sur les cibles patient** `cgm.low/ok`, + **signal de fraîcheur**
+  « relevé ancien » si > 30 min — revue clinique). Mapping pur extrait
+  (`glycemia-view.ts`, unit-testé). État vide si pas de série.
 - [ ] **Phase 3 — Onglet Traitements** : réglages insuline réels
   (`insulinTherapyService.getSettings`, route si nécessaire) + traitements associés.
 - [ ] **Phase 4 — Onglet Documents** : documents médicaux réels (MinIO).

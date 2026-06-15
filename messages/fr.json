@@ -1574,7 +1574,10 @@
     "sharingDisabledTitle": "Partage désactivé",
     "sharingDisabledDesc": "Ce patient a désactivé le partage de ses données avec les soignants.",
     "lastReading": "Dernière glycémie",
-    "lastReadingAt": "à {time}"
+    "lastReadingAt": "à {time}",
+    "agoMinutes": "il y a {n} min",
+    "agoHours": "il y a {n} h",
+    "staleReadingNote": "Relevé ancien — peut ne pas refléter l'état actuel."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",
