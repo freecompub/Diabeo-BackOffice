@@ -128,53 +128,67 @@ describe("NavigationShell", () => {
     vi.mocked(usePathname).mockReturnValue("/dashboard")
   })
 
-  describe("RBAC — navigation item filtering", () => {
-    it("VIEWER sees 6 nav items (no Users, no Audit)", () => {
+  // US-2600 — Sidebar maigre : destinations seulement (Ma journée · Patients ·
+  // Rendez-vous · Messagerie · Documents · Analytics · Paramètres). Les sections
+  // hors sidebar (Médicaments, Administration : Users/Audit…) ne sont PLUS dans
+  // la sidebar pour AUCUN rôle ; elles restent joignables via la palette Ctrl-K
+  // (US-2601) / l'espace admin dédié (US-2613). Le helper getUniqueNavHrefs
+  // compte le sous-ensemble de la sidebar présent dans sa whitelist :
+  // home + /patients + /documents + /analytics + /settings = 5 pour tout rôle.
+  describe("RBAC — navigation item filtering (slim sidebar US-2600)", () => {
+    it("VIEWER : sidebar maigre, pas d'items admin ni Médicaments", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="VIEWER">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(6)
+      expect(hrefs).toHaveLength(5)
       expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
+      expect(hrefs).not.toContain("/medications")
     })
 
-    it("NURSE sees 6 nav items (no Users, no Audit)", () => {
+    it("NURSE : sidebar maigre, pas d'items admin ni Médicaments", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="NURSE">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(6)
+      expect(hrefs).toHaveLength(5)
       expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
+      expect(hrefs).not.toContain("/medications")
     })
 
-    it("DOCTOR sees 6 nav items (no Users, no Audit)", () => {
+    it("DOCTOR : sidebar maigre, pas d'items admin ni Médicaments", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="DOCTOR">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(6)
+      expect(hrefs).toHaveLength(5)
       expect(hrefs).not.toContain("/admin/users")
       expect(hrefs).not.toContain("/audit")
+      expect(hrefs).not.toContain("/medications")
     })
 
-    it("ADMIN sees 8 nav items (includes Users + Audit)", () => {
+    it("ADMIN : sidebar maigre — Users/Audit déplacés hors sidebar (US-2600/US-2613)", () => {
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="ADMIN">
           <div>content</div>
         </NavigationShell>
       )
       const hrefs = getUniqueNavHrefs(container)
-      expect(hrefs).toHaveLength(8)
-      expect(hrefs).toContain("/admin/users")
-      expect(hrefs).toContain("/audit")
+      expect(hrefs).toHaveLength(5)
+      // Administration retirée de la sidebar clinique (joignable via palette /
+      // futur espace admin) — ne doit plus apparaître ici.
+      expect(hrefs).not.toContain("/admin/users")
+      expect(hrefs).not.toContain("/audit")
+      expect(hrefs).toContain("/patients")
+      expect(hrefs).toContain("/analytics")
     })
   })
 

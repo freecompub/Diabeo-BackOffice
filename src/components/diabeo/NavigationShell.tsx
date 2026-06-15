@@ -37,7 +37,7 @@ import {
 } from "@/components/diabeo/messaging/UnreadCountContext"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
-  navItems,
+  sidebarNavItems,
   patientNavItems,
   hasRoleAccess,
   HOME_HREF_MARKER,
@@ -327,7 +327,9 @@ export function NavigationShell({
   )
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const sourceItems = variant === "patient" ? patientNavItems : navItems
+  // US-2600 — sidebar maigre côté pro (sous-ensemble destinations) ; la palette
+  // Ctrl-K (CommandPalette) garde l'accès à toutes les sections autorisées.
+  const sourceItems = variant === "patient" ? patientNavItems : sidebarNavItems
   const filteredItems = sourceItems
     .filter((item) => hasRoleAccess(userRole, item.minRole))
     .map((item) =>
