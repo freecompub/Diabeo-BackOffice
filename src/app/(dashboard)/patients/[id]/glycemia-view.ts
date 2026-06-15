@@ -23,6 +23,10 @@ export type GlycemiaView = {
   stale: boolean
 }
 
+// Invariant : TZ + locale FIXES (heure clinique FR). Instancié une fois au
+// chargement du module pour la perf + le déterminisme serveur. Ne pas rendre
+// dépendant de l'utilisateur sans déplacer l'instanciation dans la fonction
+// (sinon ce singleton servirait la mauvaise zone).
 const timeFmt = new Intl.DateTimeFormat("fr-FR", {
   hour: "2-digit",
   minute: "2-digit",

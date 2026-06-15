@@ -24,6 +24,7 @@ import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
+import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { buildGlycemiaView } from "./glycemia-view"
 import { PatientDetailClient, type PatientDetailData } from "./PatientDetailClient"
 
@@ -112,8 +113,20 @@ export default async function PatientDetailPage({
   const cgmObj = patient.cgmObjectives
   // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok),
   // pas titrLow/titrHigh (qui peuvent diverger). Défaut 70/180 si pas d'objectif.
-  const targetLowMgdl = cgmObj ? Math.round(Number(cgmObj.low) * 100) : 70
-  const targetHighMgdl = cgmObj ? Math.round(Number(cgmObj.ok) * 100) : 180
+  const rawLowMgdl = cgmObj ? Math.round(Number(cgmObj.low) * 100) : GLYCEMIA_THRESHOLDS_MGDL.TARGET_LOW
+  const rawHighMgdl = cgmObj ? Math.round(Number(cgmObj.ok) * 100) : GLYCEMIA_THRESHOLDS_MGDL.TARGET_HIGH
+  // Défense en profondeur (affichage) : garder la cible strictement DANS les
+  // zones sévères (54 < low < high < 250) pour que la pastille couleur de
+  // `GlycemiaValue` ne dégénère jamais. La config est déjà bornée par
+  // `clinical-bounds.ts` — ce clamp ne se déclenche pas en pratique.
+  const targetLowMgdl = Math.min(
+    Math.max(rawLowMgdl, GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO + 1),
+    GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPER - 2,
+  )
+  const targetHighMgdl = Math.min(
+    Math.max(rawHighMgdl, targetLowMgdl + 1),
+    GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPER - 1,
+  )
 
   const fullName = `${patient.user.firstname ?? ""} ${patient.user.lastname ?? ""}`.trim()
 

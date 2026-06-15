@@ -1575,8 +1575,8 @@
     "sharingDisabledDesc": "عطّل هذا المريض مشاركة بياناته مع مقدّمي الرعاية.",
     "lastReading": "آخر قياس سكر",
     "lastReadingAt": "عند {time}",
-    "agoMinutes": "قبل {n} دقيقة",
-    "agoHours": "قبل {n} ساعة",
+    "agoMinutes": "قبل {n, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتان} few {# دقائق} many {# دقيقة} other {# دقيقة}}",
+    "agoHours": "قبل {n, plural, zero {# ساعة} one {ساعة واحدة} two {ساعتان} few {# ساعات} many {# ساعة} other {# ساعة}}",
     "staleReadingNote": "قياس قديم — قد لا يعكس الحالة الحالية."
   },
   "patientDashboard": {

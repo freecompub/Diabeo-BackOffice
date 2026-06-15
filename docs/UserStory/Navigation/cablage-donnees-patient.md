@@ -107,3 +107,9 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   (minimisation Art. 5.1.c) — méthode de lecture allégée pour la page.
 - **[Perf] Double lookup patient** : la garde consentement fait un `findFirst`
   léger puis `getById` en refait un complet — fusionnable.
+- **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** : une hypo sévère < 40 mg/dL
+  exclue par le plancher peut laisser un relevé bénin plus ancien passer pour le
+  « dernier relevé » sans déclencher `stale`. À traiter avec l'item plancher.
+- **[Audit] `metadata.patientId` sur READ CGM_ENTRY** : `glycemiaService.getCgmEntries`
+  met `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
+  forensics OK via resourceId, à harmoniser (service pré-existant).
