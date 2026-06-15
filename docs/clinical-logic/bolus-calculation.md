@@ -50,7 +50,7 @@
 
 ## Selections des creneaux horaires
 
-Les parametres ISF, ICR et basal sont definis par creneaux horaires (0-23h). La selection se fait par `findSlotForHour` :
+Les parametres ISF, ICR et basal sont definis par creneaux horaires (0-23h). La selection se fait par `findSlotForHour`, sur intervalle demi-ouvert `[startHour, endHour)` :
 
 ```typescript
 // Support du passage minuit (ex: 22h -> 6h)
@@ -60,6 +60,14 @@ if (startHour <= endHour) {
   return hour >= startHour || hour < endHour
 }
 ```
+
+**Securite clinique (fail-closed)** : si aucun creneau ne couvre l'heure
+courante, `findSlotForHour` renvoie `undefined` et l'appelant **leve** une
+erreur (`"No ISF/ICR slot found for current hour"`) **avant** tout calcul de
+dose. Aucun fallback, aucune dose calculee sur une heure non couverte par la
+configuration. Les chevauchements de creneaux sont par ailleurs rejetes a
+l'ecriture (HR-2, `hasTimeSlotOverlap`), garantissant l'unicite du creneau
+selectionne.
 
 ## Analytics glycemiques
 

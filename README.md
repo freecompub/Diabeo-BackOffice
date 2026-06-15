@@ -417,16 +417,19 @@ Cappage final     = min(recommendedDose, MAX_SINGLE_BOLUS)
 ISF, ICR, et profils basaux sont organisés par **slots horaires** (Time : "HH:MM:SS") :
 
 ```typescript
-const findSlotForHour = (
-  slots: { startHour: number; value: number }[],
-  hour: number
-): { value: number } => {
-  // Slots triés DESC (24h -> 0h)
-  // Sélectionner premier slot où startHour <= hour
-  return slots
-    .sort((a, b) => b.startHour - a.startHour)
-    .find(s => s.startHour <= hour) ?? slots[slots.length - 1]
-}
+// ⚠️ Source de vérité = src/lib/services/insulin.service.ts (findSlotForHour).
+// Sélection par intervalle demi-ouvert [startHour, endHour), passage minuit géré.
+// AUCUN fallback : une heure non couverte renvoie undefined et l'appelant lève
+// ("No ISF/ICR slot found for current hour") → calcul de bolus fail-closed.
+const findSlotForHour = <T extends { startHour: number; endHour: number }>(
+  slots: T[],
+  hour: number,
+): T | undefined =>
+  slots.find((s) =>
+    s.startHour <= s.endHour
+      ? hour >= s.startHour && hour < s.endHour       // intervalle normal
+      : hour >= s.startHour || hour < s.endHour,       // passage minuit (22h -> 6h)
+  )
 ```
 
 ### Transactions Prisma 7
