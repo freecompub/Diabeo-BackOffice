@@ -1483,12 +1483,7 @@
       "paramInsulinToCarbRatio": "Insulin-to-carb ratio (ICR)",
       "valueTransition": "{from} → {to}",
       "changeAria": "{percent}% change",
-      "stale": "Data is stale — refresh pending.",
-      "unitBasalRate": "U/h",
-      "unitInsulinToCarbRatio": "g/U",
-      "unitIsfGl": "g/L/U",
-      "unitIsfMgdl": "mg/dL/U",
-      "unitIsfMmol": "mmol/L/U"
+      "stale": "Data is stale — refresh pending."
     },
     "medecinMessages": {
       "title": "Unread messages",
@@ -1528,6 +1523,13 @@
     "nursePage": {
       "title": "Nurse dashboard"
     }
+  },
+  "insulinUnits": {
+    "isfGl": "g/L/U",
+    "isfMgdl": "mg/dL/U",
+    "isfMmol": "mmol/L/U",
+    "icr": "g/U",
+    "basal": "U/h"
   },
   "patientDetail": {
     "tabsAriaLabel": "Patient record sections",
@@ -1583,9 +1585,6 @@
     "slotGapNoteBasal": "Incomplete basal coverage over 24 h — configuration to review.",
     "slotOverlapNote": "Overlapping slots — configuration to review.",
     "basalLabel": "Basal rate",
-    "unitIsf": "g/L/U",
-    "unitIcr": "g/U",
-    "unitBasal": "U/h",
     "download": "Download",
     "uncategorized": "Uncategorized",
     "sizeBytes": "B",

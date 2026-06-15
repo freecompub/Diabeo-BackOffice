@@ -78,6 +78,9 @@ export function PatientDetailClient({
   sharingDisabled?: boolean
 }) {
   const t = useTranslations("patientDetail")
+  // Libellés d'unités de paramètres insuline : source unique partagée avec la
+  // carte « propositions » (namespace `insulinUnits`).
+  const tUnits = useTranslations("insulinUnits")
   const locale = useLocale()
   const [activeTab, setActiveTab] = useState("overview")
 
@@ -342,7 +345,7 @@ export function PatientDetailClient({
                     {data.treatment.isfSlots.length > 0 && (
                       <SlotList
                         label={<Acronym code="ISF" />}
-                        unit={t("unitIsf")}
+                        unit={tUnits("isfGl")}
                         slots={data.treatment.isfSlots}
                         coverage={data.treatment.isfCoverage}
                         family="ratio"
@@ -351,7 +354,7 @@ export function PatientDetailClient({
                     {data.treatment.icrSlots.length > 0 && (
                       <SlotList
                         label={<Acronym code="ICR" />}
-                        unit={t("unitIcr")}
+                        unit={tUnits("icr")}
                         slots={data.treatment.icrSlots}
                         coverage={data.treatment.icrCoverage}
                         family="ratio"
@@ -360,7 +363,7 @@ export function PatientDetailClient({
                     {data.treatment.basalSlots.length > 0 && (
                       <SlotList
                         label={t("basalLabel")}
-                        unit={t("unitBasal")}
+                        unit={tUnits("basal")}
                         slots={data.treatment.basalSlots.map((b) => ({ range: b.range, value: b.rate }))}
                         coverage={data.treatment.basalCoverage}
                         family="basal"

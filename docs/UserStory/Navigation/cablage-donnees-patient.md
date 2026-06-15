@@ -145,8 +145,12 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   un calcul clinique.
 - **[Produit] Insuline bolus (nom) + modèle pompe** : nécessitent join
   catalogue/device — à ajouter à l'onglet Traitements.
-- **[i18n] Clé unité ISF dupliquée** : `dashboardCards.medecinProposals.unitIsfGl`
-  ≈ `patientDetail.unitIsf` (« g/L/U ») — consolider une source unique.
+- ✅ **[i18n] Clés d'unités insuline dédupliquées** (FAIT) : nouveau namespace
+  top-level `insulinUnits` (`isfGl`/`isfMgdl`/`isfMmol`/`icr`/`basal`) = source
+  unique. `PatientDetailClient` et `PendingProposalsCard` y réfèrent ; les clés
+  dupliquées `patientDetail.unitIsf|unitIcr|unitBasal` et
+  `medecinProposals.unitIsfGl|unitIsfMgdl|unitIsfMmol|unitBasalRate|unitInsulinToCarbRatio`
+  sont supprimées (FR/EN/AR). Symboles universels → identiques dans les 3 langues.
 - **[Sécu] Route download — `documentNotFound` vs `patientNotFound`** : 2 chaînes
   d'erreur 404 distinctes (oracle d'énumération mineur) — uniformiser en `notFound`
   neutre (Phase 4 a déjà ajouté la garde consentement `shareWithProviders` PRO).

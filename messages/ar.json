@@ -1483,12 +1483,7 @@
       "paramInsulinToCarbRatio": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
       "valueTransition": "{from} ← {to}",
       "changeAria": "تغيّر بنسبة {percent}٪",
-      "stale": "البيانات قديمة — في انتظار التحديث.",
-      "unitBasalRate": "U/h",
-      "unitInsulinToCarbRatio": "g/U",
-      "unitIsfGl": "g/L/U",
-      "unitIsfMgdl": "mg/dL/U",
-      "unitIsfMmol": "mmol/L/U"
+      "stale": "البيانات قديمة — في انتظار التحديث."
     },
     "medecinMessages": {
       "title": "رسائل غير مقروءة",
@@ -1528,6 +1523,13 @@
     "nursePage": {
       "title": "لوحة تحكم الممرّض"
     }
+  },
+  "insulinUnits": {
+    "isfGl": "g/L/U",
+    "isfMgdl": "mg/dL/U",
+    "isfMmol": "mmol/L/U",
+    "icr": "g/U",
+    "basal": "U/h"
   },
   "patientDetail": {
     "tabsAriaLabel": "أقسام ملف المريض",
@@ -1583,9 +1585,6 @@
     "slotGapNoteBasal": "تغطية قاعدية غير كاملة على مدار 24 ساعة — يُرجى مراجعة الإعدادات.",
     "slotOverlapNote": "فترات متداخلة — يُرجى مراجعة الإعدادات.",
     "basalLabel": "المعدل القاعدي",
-    "unitIsf": "g/L/U",
-    "unitIcr": "g/U",
-    "unitBasal": "U/h",
     "download": "تنزيل",
     "uncategorized": "بدون فئة",
     "sizeBytes": "بايت",
