@@ -85,8 +85,11 @@ const baseData: PatientDetailData = {
     hasSettings: true,
     deliveryMethod: "pump",
     isfSlots: [{ range: "00h–06h", value: 0.3 }],
+    isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [{ range: "00h–06h", value: 10 }],
+    icrCoverage: { hasGap: false, hasOverlap: false },
     basalSlots: [{ range: "00:00–06:00", rate: 0.8 }],
+    basalCoverage: { hasGap: false, hasOverlap: false },
     treatments: [{ id: 1, name: "Metformine", posology: "850 mg x2/j" }],
   },
   documents: [
@@ -149,6 +152,47 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getByText("10 g/U")).toBeTruthy() // créneau ICR
     expect(screen.getByText("0.8 U/h")).toBeTruthy() // créneau basal
     expect(screen.getByText("Metformine")).toBeTruthy()
+    // Couverture saine → aucune note de garde-fou.
+    expect(screen.queryByText(/non contigus/)).toBeNull()
+    expect(screen.queryByText(/se chevauchent/)).toBeNull()
+  })
+
+  it("surfaces a fallback-tolerant gap note for ISF/ICR slots (not a basal one)", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, isfCoverage: { hasGap: true, hasOverlap: false } },
+        }}
+      />,
+    )
+    // Copie ratio (ISF) : « non contigus », pas la copie basale.
+    expect(screen.getByText(/Créneaux non contigus sur 24 h/)).toBeTruthy()
+    expect(screen.queryByText(/Couverture basale incomplète/)).toBeNull()
+  })
+
+  it("surfaces the stronger basal-coverage note when pump basal slots leave a gap", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, basalCoverage: { hasGap: true, hasOverlap: false } },
+        }}
+      />,
+    )
+    expect(screen.getByText(/Couverture basale incomplète sur 24 h/)).toBeTruthy()
+  })
+
+  it("surfaces the overlap note independently of gaps", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          treatment: { ...baseData.treatment, icrCoverage: { hasGap: false, hasOverlap: true } },
+        }}
+      />,
+    )
+    expect(screen.getByText(/se chevauchent/)).toBeTruthy()
   })
 
   it("shows the no-insulin-settings state when none are recorded", () => {

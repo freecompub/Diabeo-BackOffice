@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { buildTreatmentView } from "@/app/(dashboard)/patients/[id]/treatment-view"
+import { buildTreatmentView, analyzeSlotCoverage } from "@/app/(dashboard)/patients/[id]/treatment-view"
 
 describe("buildTreatmentView", () => {
   it("maps delivery method + per-slot ISF/ICR/basal (Decimal-like → number)", () => {
@@ -26,6 +26,9 @@ describe("buildTreatmentView", () => {
     expect(v.isfSlots).toEqual([{ range: "00h–06h", value: 0.3 }])
     expect(v.icrSlots).toEqual([{ range: "00h–06h", value: 10 }])
     expect(v.basalSlots).toEqual([{ range: "00:00–06:00", rate: 0.8 }])
+    // Un seul créneau 00–06 → trou sur le reste de la journée (garde-fou).
+    expect(v.isfCoverage).toEqual({ hasGap: true, hasOverlap: false })
+    expect(v.basalCoverage).toEqual({ hasGap: true, hasOverlap: false })
   })
 
   it("handles no settings (null) gracefully", () => {
@@ -34,6 +37,27 @@ describe("buildTreatmentView", () => {
     expect(v.deliveryMethod).toBeNull()
     expect(v.isfSlots).toEqual([])
     expect(v.basalSlots).toEqual([])
+    // Aucun créneau → pas de garde-fou déclenché.
+    expect(v.isfCoverage).toEqual({ hasGap: false, hasOverlap: false })
+    expect(v.icrCoverage).toEqual({ hasGap: false, hasOverlap: false })
+    expect(v.basalCoverage).toEqual({ hasGap: false, hasOverlap: false })
+  })
+
+  it("flags a full 24h continuous cover as clean (no gap, no overlap)", () => {
+    const v = buildTreatmentView(
+      {
+        deliveryMethod: "manual",
+        sensitivityFactors: [
+          { startHour: 0, endHour: 8, sensitivityFactorGl: "0.30" },
+          { startHour: 8, endHour: 22, sensitivityFactorGl: "0.40" },
+          { startHour: 22, endHour: 24, sensitivityFactorGl: "0.35" },
+        ],
+        carbRatios: [],
+        basalConfiguration: null,
+      },
+      [],
+    )
+    expect(v.isfCoverage).toEqual({ hasGap: false, hasOverlap: false })
   })
 
   it("handles manual delivery (no pump basal config)", () => {
@@ -54,5 +78,62 @@ describe("buildTreatmentView", () => {
       { id: 1, name: "Metformine", posology: "850 mg x2/j" },
       { id: 2, name: "Autre", posology: null },
     ])
+  })
+})
+
+describe("analyzeSlotCoverage", () => {
+  it("reports no gap/overlap for a full continuous 24h cover", () => {
+    expect(
+      analyzeSlotCoverage([
+        { start: 0, end: 480 },
+        { start: 480, end: 1320 },
+        { start: 1320, end: 1440 },
+      ]),
+    ).toEqual({ hasGap: false, hasOverlap: false })
+  })
+
+  it("detects a gap when a window is left uncovered", () => {
+    // 00:00–06:00 puis 08:00–24:00 → trou 06:00–08:00.
+    expect(
+      analyzeSlotCoverage([
+        { start: 0, end: 360 },
+        { start: 480, end: 1440 },
+      ]),
+    ).toEqual({ hasGap: true, hasOverlap: false })
+  })
+
+  it("detects an overlap between two windows", () => {
+    // 00:00–10:00 et 08:00–24:00 se chevauchent 08:00–10:00 (et couvrent 24h).
+    expect(
+      analyzeSlotCoverage([
+        { start: 0, end: 600 },
+        { start: 480, end: 1440 },
+      ]),
+    ).toEqual({ hasGap: false, hasOverlap: true })
+  })
+
+  it("handles a window crossing midnight (end <= start)", () => {
+    // 22:00–06:00 (passe minuit) + 06:00–22:00 → couverture complète sans trou.
+    expect(
+      analyzeSlotCoverage([
+        { start: 1320, end: 360 },
+        { start: 360, end: 1320 },
+      ]),
+    ).toEqual({ hasGap: false, hasOverlap: false })
+  })
+
+  it("ignores degenerate zero-length slots", () => {
+    expect(analyzeSlotCoverage([{ start: 600, end: 600 }])).toEqual({
+      hasGap: false,
+      hasOverlap: false,
+    })
+  })
+
+  it("clamps out-of-range minute values into [0,1440]", () => {
+    // end=1500 borné à 1440 ; couvre tout → pas de trou.
+    expect(analyzeSlotCoverage([{ start: 0, end: 1500 }])).toEqual({
+      hasGap: false,
+      hasOverlap: false,
+    })
   })
 })

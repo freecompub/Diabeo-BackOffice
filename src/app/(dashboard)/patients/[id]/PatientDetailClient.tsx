@@ -18,7 +18,7 @@ import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 import { bcp47 } from "@/i18n/config"
 import type { GlycemiaView } from "./glycemia-view"
-import type { TreatmentView } from "./treatment-view"
+import type { TreatmentView, SlotCoverage } from "./treatment-view"
 import type { DocumentItem } from "./document-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -340,16 +340,30 @@ export function PatientDetailClient({
                       </p>
                     </div>
                     {data.treatment.isfSlots.length > 0 && (
-                      <SlotList label={<Acronym code="ISF" />} unit={t("unitIsf")} slots={data.treatment.isfSlots} />
+                      <SlotList
+                        label={<Acronym code="ISF" />}
+                        unit={t("unitIsf")}
+                        slots={data.treatment.isfSlots}
+                        coverage={data.treatment.isfCoverage}
+                        family="ratio"
+                      />
                     )}
                     {data.treatment.icrSlots.length > 0 && (
-                      <SlotList label={<Acronym code="ICR" />} unit={t("unitIcr")} slots={data.treatment.icrSlots} />
+                      <SlotList
+                        label={<Acronym code="ICR" />}
+                        unit={t("unitIcr")}
+                        slots={data.treatment.icrSlots}
+                        coverage={data.treatment.icrCoverage}
+                        family="ratio"
+                      />
                     )}
                     {data.treatment.basalSlots.length > 0 && (
                       <SlotList
                         label={t("basalLabel")}
                         unit={t("unitBasal")}
                         slots={data.treatment.basalSlots.map((b) => ({ range: b.range, value: b.rate }))}
+                        coverage={data.treatment.basalCoverage}
+                        family="basal"
                       />
                     )}
                   </div>
@@ -439,11 +453,17 @@ function SlotList({
   label,
   unit,
   slots,
+  coverage,
+  family,
 }: {
   label: ReactNode
   unit: string
   slots: { range: string; value: number }[]
+  coverage?: SlotCoverage
+  /** "ratio" = ISF/ICR (trou rattrapé par fallback) ; "basal" = pompe (24 h requis). */
+  family?: "ratio" | "basal"
 }) {
+  const t = useTranslations("patientDetail")
   return (
     <div>
       <span className="text-muted-foreground">{label}</span>
@@ -457,6 +477,21 @@ function SlotList({
           </li>
         ))}
       </ul>
+      {/* Garde-fou structurel non bloquant (lignes indépendantes). Trou : pour
+          ISF/ICR la sélection retombe sur le dernier créneau (fallback) → simple
+          « config à vérifier » ; pour le basal pompe une heure non couverte est
+          plus significative. Chevauchement : déjà rejeté au write-path ISF/ICR,
+          donc canari d'intégrité (donnée legacy/import). */}
+      {coverage?.hasGap && (
+        <p role="status" className="mt-1 text-xs text-warning-fg">
+          {family === "basal" ? t("slotGapNoteBasal") : t("slotGapNote")}
+        </p>
+      )}
+      {coverage?.hasOverlap && (
+        <p role="status" className="mt-1 text-xs text-warning-fg">
+          {t("slotOverlapNote")}
+        </p>
+      )}
     </div>
   )
 }
