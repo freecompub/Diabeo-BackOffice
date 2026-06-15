@@ -91,6 +91,58 @@ describe("glycemiaService", () => {
     })
   })
 
+  describe("getLatestCgmFreshness", () => {
+    const from = new Date("2026-03-01")
+    const to = new Date("2026-03-10")
+
+    it("classifies a below-floor most-recent raw reading (severe hypo / sensor LOW)", async () => {
+      prismaMock.cgmEntry.findFirst.mockResolvedValue({
+        timestamp: new Date("2026-03-10T08:00:00.000Z"),
+        valueGl: new Prisma.Decimal("0.35"), // 35 mg/dL < plancher 0.40
+      } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await glycemiaService.getLatestCgmFreshness(1, from, to, 1)
+      expect(r).toEqual({
+        timestamp: "2026-03-10T08:00:00.000Z",
+        belowFloor: true,
+        aboveCeiling: false,
+      })
+    })
+
+    it("returns null when there is no reading in the window", async () => {
+      prismaMock.cgmEntry.findFirst.mockResolvedValue(null)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      expect(await glycemiaService.getLatestCgmFreshness(1, from, to, 1)).toBeNull()
+    })
+
+    it("does not classify an in-range most-recent reading", async () => {
+      prismaMock.cgmEntry.findFirst.mockResolvedValue({
+        timestamp: new Date("2026-03-10T09:00:00.000Z"),
+        valueGl: new Prisma.Decimal("1.20"),
+      } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      const r = await glycemiaService.getLatestCgmFreshness(1, from, to, 1)
+      expect(r).toEqual({ timestamp: "2026-03-10T09:00:00.000Z", belowFloor: false, aboveCeiling: false })
+    })
+
+    it("audits READ CGM_ENTRY with the patientId pivot + freshness purpose", async () => {
+      prismaMock.cgmEntry.findFirst.mockResolvedValue(null)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      await glycemiaService.getLatestCgmFreshness(42, from, to, 1)
+      const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(audit.resource).toBe("CGM_ENTRY")
+      expect(audit.metadata.patientId).toBe(42)
+      expect(audit.metadata.purpose).toBe("cgm-freshness-signal")
+    })
+
+    it("enforces the 30-day max period", async () => {
+      await expect(
+        glycemiaService.getLatestCgmFreshness(1, new Date("2026-01-01"), new Date("2026-03-01"), 1),
+      ).rejects.toThrow("Period cannot exceed 30 days")
+    })
+  })
+
   describe("getGlycemiaEntries", () => {
     it("returns glycemia entries", async () => {
       prismaMock.glycemiaEntry.findMany.mockResolvedValue([])

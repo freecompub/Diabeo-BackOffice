@@ -265,6 +265,19 @@ export function PatientDetailClient({
 
           {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}
           <TabsContent value="glycemia" className="space-y-6">
+            {/* Sécurité clinique : un relevé plus récent que l'affiché est hors
+                plage et a été exclu de la série (hypo sévère < 40 / capteur
+                LOW-HIGH) → bannière prioritaire, même sans relevé affichable. */}
+            {data.glycemia.recentOutOfRange && (
+              <p
+                role="status"
+                className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
+              >
+                {data.glycemia.recentOutOfRange === "low"
+                  ? t("recentOutOfRangeLow")
+                  : t("recentOutOfRangeHigh")}
+              </p>
+            )}
             {data.glycemia.points.length > 0 ? (
               <>
                 {data.glycemia.lastReadingMgdl !== null && (

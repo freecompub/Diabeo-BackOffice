@@ -108,7 +108,10 @@ export default async function PatientDetailPage({
   // `buildGlycemiaView` (pur, unit-testé).
   const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const cgmEntries = await glycemiaService.getCgmEntries(patientId, from24h, now, userId, ctx)
-  const glycemiaView = buildGlycemiaView(cgmEntries, now)
+  // Signal de fraîcheur « brut » : détecte un relevé plus récent hors plage
+  // (hypo sévère < 40 / capteur LOW-HIGH) exclu de la série affichée.
+  const latestRaw = await glycemiaService.getLatestCgmFreshness(patientId, from24h, now, userId, ctx)
+  const glycemiaView = buildGlycemiaView(cgmEntries, now, latestRaw)
 
   // Phase 3 — Onglet Traitements : réglages insuline réels (audité
   // READ INSULIN_THERAPY) + traitements associés (déjà chargés via getById).

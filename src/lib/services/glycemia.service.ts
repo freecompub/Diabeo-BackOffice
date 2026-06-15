@@ -109,6 +109,51 @@ export const glycemiaService = {
   },
 
   /**
+   * Relevé CGM le plus récent dans la fenêtre, SANS filtre de valeur (inclut
+   * donc les valeurs hors plage affichable : < 0.40 g/L = hypo sévère possible /
+   * capteur LOW, ou > 5.00 g/L = capteur HIGH).
+   *
+   * Sécurité clinique (revue PR #544/#554) : `getCgmEntries` exclut ces valeurs,
+   * ce qui peut faire passer un relevé bénin plus ancien pour le « dernier
+   * relevé ». Ce signal permet de croiser la fraîcheur et d'alerter si un relevé
+   * plus récent que l'affiché est hors plage (cf. `buildGlycemiaView`).
+   *
+   * @returns `{ timestamp, belowFloor, aboveCeiling }` ou null si aucun relevé.
+   */
+  async getLatestCgmFreshness(
+    patientId: number, from: Date, to: Date,
+    auditUserId: number, ctx?: AuditContext,
+  ) {
+    enforceMaxPeriod(from, to)
+
+    const latest = await prisma.cgmEntry.findFirst({
+      where: { patientId, timestamp: { gte: from, lte: to } },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true, valueGl: true },
+    })
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "CGM_ENTRY",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      // ADR #18 — pivot per-patient ; signal de fraîcheur (relevé brut le + récent).
+      metadata: { patientId, purpose: "cgm-freshness-signal" },
+    })
+
+    if (!latest) return null
+    const v = dec(latest.valueGl) ?? 0
+    return {
+      timestamp: latest.timestamp.toISOString(),
+      belowFloor: v < CGM_MIN_GL,
+      aboveCeiling: v > CGM_MAX_GL,
+    }
+  },
+
+  /**
    * Get manual glycemia (point-of-care) readings for a patient.
    * @async
    * @param {number} patientId - Patient ID

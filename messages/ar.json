@@ -1583,6 +1583,8 @@
     "agoMinutes": "قبل {n, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتان} few {# دقائق} many {# دقيقة} other {# دقيقة}}",
     "agoHours": "قبل {n, plural, zero {# ساعة} one {ساعة واحدة} two {ساعتان} few {# ساعات} many {# ساعة} other {# ساعة}}",
     "staleReadingNote": "قياس قديم — قد لا يعكس الحالة الحالية.",
+    "recentOutOfRangeLow": "يوجد قياس أحدث خارج النطاق القابل للعرض (احتمال هبوط سكر حاد < 40 mg/dL أو مستشعر «LOW») — يُرجى فحص المريض.",
+    "recentOutOfRangeHigh": "يوجد قياس أحدث خارج النطاق القابل للعرض (> 500 mg/dL أو مستشعر «HIGH») — يُرجى فحص المريض.",
     "deliveryPump": "مضخة الأنسولين",
     "deliveryManual": "قلم / يدوي",
     "noInsulinSettings": "لا توجد إعدادات علاج بالأنسولين مسجّلة.",

@@ -41,5 +41,50 @@ describe("buildGlycemiaView", () => {
     expect(v.lastReadingMgdl).toBeNull()
     expect(v.lastReadingAgeMin).toBeNull()
     expect(v.stale).toBe(false)
+    expect(v.recentOutOfRange).toBeNull()
+  })
+
+  it("flags recentOutOfRange=low when a more recent below-floor reading was excluded", () => {
+    // Dernier relevé affiché bénin à -10 min ; relevé brut hors plancher à -2 min.
+    const v = buildGlycemiaView(
+      [{ valueGl: 0.9, timestamp: iso(10) }],
+      NOW,
+      { timestamp: iso(2), belowFloor: true, aboveCeiling: false },
+    )
+    expect(v.lastReadingMgdl).toBe(90) // l'affiché reste le bénin
+    expect(v.recentOutOfRange).toBe("low")
+  })
+
+  it("flags recentOutOfRange even when there is NO displayable reading", () => {
+    const v = buildGlycemiaView([], NOW, { timestamp: iso(3), belowFloor: true, aboveCeiling: false })
+    expect(v.points).toEqual([])
+    expect(v.recentOutOfRange).toBe("low")
+  })
+
+  it("flags recentOutOfRange=high for an above-ceiling most-recent raw reading", () => {
+    const v = buildGlycemiaView(
+      [{ valueGl: 1.1, timestamp: iso(15) }],
+      NOW,
+      { timestamp: iso(1), belowFloor: false, aboveCeiling: true },
+    )
+    expect(v.recentOutOfRange).toBe("high")
+  })
+
+  it("does NOT flag when the out-of-range raw reading is OLDER than the displayed one", () => {
+    const v = buildGlycemiaView(
+      [{ valueGl: 1.1, timestamp: iso(2) }],
+      NOW,
+      { timestamp: iso(30), belowFloor: true, aboveCeiling: false },
+    )
+    expect(v.recentOutOfRange).toBeNull()
+  })
+
+  it("does NOT flag when the most-recent raw reading is in range", () => {
+    const v = buildGlycemiaView(
+      [{ valueGl: 1.1, timestamp: iso(5) }],
+      NOW,
+      { timestamp: iso(1), belowFloor: false, aboveCeiling: false },
+    )
+    expect(v.recentOutOfRange).toBeNull()
   })
 })

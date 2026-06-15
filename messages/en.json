@@ -1583,6 +1583,8 @@
     "agoMinutes": "{n} min ago",
     "agoHours": "{n} h ago",
     "staleReadingNote": "Old reading — may not reflect the current state.",
+    "recentOutOfRangeLow": "A more recent reading is out of displayable range (possible severe hypoglycemia < 40 mg/dL or sensor \"LOW\") — check the patient.",
+    "recentOutOfRangeHigh": "A more recent reading is out of displayable range (> 500 mg/dL or sensor \"HIGH\") — check the patient.",
     "deliveryPump": "Insulin pump",
     "deliveryManual": "Pen / manual",
     "noInsulinSettings": "No insulin therapy settings recorded.",
