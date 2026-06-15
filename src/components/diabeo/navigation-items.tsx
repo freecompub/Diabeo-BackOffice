@@ -78,6 +78,36 @@ export const navItems: NavItem[] = [
   { href: "/settings", labelKey: "settings", icon: Settings },
 ]
 
+/**
+ * Sidebar maigre (US-2600, décisions D1/D3) — **destinations seulement**,
+ * sous-ensemble ORDONNÉ de la source canonique `navItems` (pas de liste
+ * dupliquée → pas de drift). Les sections hors sidebar (Médicaments,
+ * Dispositifs, Insulinothérapie, Weekly, Import, Administration…) ne sont PAS
+ * supprimées : elles restent joignables via la palette Ctrl-K (US-2601), et
+ * rejoindront les onglets du dossier patient (US-2604) / l'espace admin dédié
+ * (US-2613). La palette consomme toujours `navItems` complet.
+ */
+const SIDEBAR_ORDER: string[] = [
+  HOME_HREF_MARKER, // Ma journée
+  "/patients",
+  "/appointments", // Rendez-vous
+  "/messages", // Messagerie
+  "/documents",
+  "/analytics",
+  "/settings", // Paramètres
+]
+export const sidebarNavItems: NavItem[] = SIDEBAR_ORDER.map((href) =>
+  navItems.find((item) => item.href === href),
+).filter((item): item is NavItem => item !== undefined)
+
+// Garde anti-drift : un href de `SIDEBAR_ORDER` introuvable dans `navItems`
+// (typo, route renommée d'un seul côté) doit échouer FORT au boot, pas
+// produire silencieusement une sidebar tronquée (cf. revue PR #542).
+if (sidebarNavItems.length !== SIDEBAR_ORDER.length) {
+  const missing = SIDEBAR_ORDER.filter((h) => !navItems.some((i) => i.href === h))
+  throw new Error(`navigation-items: SIDEBAR_ORDER href(s) absent(s) de navItems: ${missing.join(", ")}`)
+}
+
 /** Patient self-service nav (VIEWER, layout `(patient)`). */
 export const patientNavItems: NavItem[] = [
   { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },

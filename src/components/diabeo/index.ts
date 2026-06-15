@@ -31,8 +31,6 @@ export type { StatCardProps, TrendDirection } from "./StatCard"
 
 export { CgmChart } from "./CgmChart"
 
-export { Sidebar } from "./Sidebar"
-
 export { DashboardHeader } from "./DashboardHeader"
 
 export { ClinicalBadge } from "./ClinicalBadge"

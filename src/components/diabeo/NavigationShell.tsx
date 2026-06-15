@@ -37,7 +37,7 @@ import {
 } from "@/components/diabeo/messaging/UnreadCountContext"
 import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
-  navItems,
+  sidebarNavItems,
   patientNavItems,
   hasRoleAccess,
   HOME_HREF_MARKER,
@@ -159,7 +159,8 @@ function SidebarNav({
             href={item.href}
             onClick={onItemClick}
             className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative",
+              // min-h-11 (44px) — cible tactile WCAG 2.5.5 (tablette) ; ≥ 24px desktop OK.
+              "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative",
               collapsed && "justify-center px-2",
               isActive
                 ? "bg-primary/10 text-primary"
@@ -327,7 +328,9 @@ export function NavigationShell({
   )
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const sourceItems = variant === "patient" ? patientNavItems : navItems
+  // US-2600 — sidebar maigre côté pro (sous-ensemble destinations) ; la palette
+  // Ctrl-K (CommandPalette) garde l'accès à toutes les sections autorisées.
+  const sourceItems = variant === "patient" ? patientNavItems : sidebarNavItems
   const filteredItems = sourceItems
     .filter((item) => hasRoleAccess(userRole, item.minRole))
     .map((item) =>
@@ -408,7 +411,7 @@ export function NavigationShell({
             <button
               onClick={logout}
               className={cn(
-                "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
+                "flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive",
                 collapsed && "justify-center px-2"
               )}
               aria-label={t("common.logout")}
@@ -438,7 +441,7 @@ export function NavigationShell({
                   closeMobile()
                   logout()
                 }}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                 aria-label={t("common.logout")}
               >
                 <LogOut className="h-5 w-5 shrink-0" aria-hidden="true" />
