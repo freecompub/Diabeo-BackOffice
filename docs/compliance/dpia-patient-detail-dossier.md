@@ -16,7 +16,7 @@ consentement** (PR #547) sur le helper unique `patientShareConsent`.
 | `User.firstname / lastname` | PII | oui (AES-256-GCM) | en-tête / vue d'ensemble |
 | `User.birthday` (→ âge), `User.sex` | PII | non chiffré (low entropy) | vue d'ensemble |
 | `Patient.pathology` (DT1/DT2/GD) | **Art. 9 — santé** | non chiffré | vue d'ensemble |
-| `PatientMedicalData.yearDiag`, référent | PII / santé | déchiffré (medicalData) | vue d'ensemble |
+| `PatientMedicalData.yearDiag` (Int **en clair**), référent (nom PS) | PII / santé | non chiffré (`history*`/`diabetDiscovery` chiffrés mais **non affichés**) | vue d'ensemble |
 | TIR / GMI / CV / moyenne glycémique (projection) | **Art. 9 — santé** | calcul **serveur** (`analyticsService`) | vue d'ensemble |
 | Série CGM 24h (valeurs glycémie) | **Art. 9 — santé** | conversion serveur g/L→mg/dL | glycémie |
 | Réglages insuline (ISF/ICR/basal par créneau) | **Art. 9 — santé** | non chiffré | traitements |
@@ -26,6 +26,10 @@ consentement** (PR #547) sur le helper unique `patientShareConsent`.
 
 **Jamais exposé au client** : `User.email/phone/nirpp/ins`, l'URL S3/MinIO
 (`MedicalDocument.fileUrl` retiré par `serializeDoc`), les blobs chiffrés.
+
+> ⚠️ Minimisation (Art. 5.1.c) : `patientService.getById` **déchiffre `email`
+> en mémoire serveur** à chaque chargement du dossier, mais ne le projette PAS
+> vers le client (jamais sur le réseau). Sur-déchiffrement à corriger (cf. §6).
 
 ## 2. Bases légales
 
@@ -57,11 +61,19 @@ partage** devient **invisible côté PRO** sur tout le dossier détaillé (404 s
 patient inexistant/soft-deleted ; sinon état « partage désactivé », aucune PII
 déchiffrée). Conforme RGPD Art. 7.3 (révocation effective immédiate).
 
+**⚠️ Asymétrie liste ↔ détail (à acter)** : la **liste/recherche**
+(`listByDoctor`/`search`, cf. `dpia-patients-list.md`) reste **fail-open**
+(`PROVIDER_VISIBLE_USER_WHERE` : absence de row privacy = patient visible),
+tandis que le **dossier détaillé** est désormais **fail-closed**. Conséquence
+UX : un patient sans row/consentement apparaît dans le portefeuille du PS, mais
+le clic ouvre un dossier **« partage désactivé » vide** (aucune PII).
+
 **Décision DPO requise** : valider que la base légale Art. 9.2.h (soin) soit
 **subordonnée** au `gdprConsent`+`shareWithProviders` du patient sur le dossier
-PRO. Risque opérationnel à acter : un PS ne voit pas un patient tant que le
-consentement n'est pas saisi → prévoir que le parcours de création/consentement
-pose la row `UserPrivacySettings` avec les flags adéquats.
+PRO, malgré l'asymétrie ci-dessus. Risque opérationnel à acter : un PS ne voit
+pas le contenu d'un patient tant que le consentement n'est pas saisi → prévoir
+que le parcours de création/consentement pose la row `UserPrivacySettings` avec
+les flags adéquats.
 
 ### 3.2 Exemption VIEWER sur le téléchargement de documents
 
@@ -71,8 +83,17 @@ soignants**, pas l'auto-accès du sujet. Le VIEWER reste borné à ses propres
 documents : `resolvePatientId` force son `patientId` (pas d'IDOR) et
 `documentService.download` applique `MedicalDocument.patientShare`.
 
-**Décision DPO requise** : valider que l'opt-out `shareWithProviders` ne bloque
-jamais l'auto-accès du patient (Art. 15).
+**⚠️ Gate `requireGdprConsent(user.id)` en amont** : la route download appelle
+`requireGdprConsent(user.id)` (consentement **de l'appelant**) pour **tous les
+rôles, VIEWER inclus**, AVANT l'exemption ci-dessus. Donc un VIEWER qui n'a pas
+posé son propre `gdprConsent=true` est **bloqué de ses propres documents**
+(403 `gdprConsentRequired`) — tension avec Art. 15 (droit d'accès). Sémantique
+« consent de l'appelant vs du sujet » à revoir (TODO V1.5 documenté dans
+`src/lib/gdpr.ts`).
+
+**Décision DPO requise** : (a) confirmer que l'opt-out `shareWithProviders` ne
+bloque jamais l'auto-accès du patient (Art. 15) ; (b) arbitrer le gate
+`requireGdprConsent(self)` qui peut, lui, bloquer l'auto-accès.
 
 ### 3.3 `Treatment.name / posology` en clair (Art. 9)
 
@@ -101,12 +122,16 @@ secret → pas de fuite d'énumération nouvelle. Posture acceptée.
   pas de PHI en URL (ids numériques uniquement) ; `fileUrl` jamais transmis.
 - Toutes statistiques cliniques **calculées serveur** (TIR/GMI/CV) — zéro calcul
   clinique frontend. Aucune IA.
-- Audit per-source avec pivot `metadata.patientId` (ADR #18) :
-  `READ PATIENT` (getById), `READ ANALYTICS`, `READ CGM_ENTRY`,
-  `READ INSULIN_THERAPY`, `READ MEDICAL_DOCUMENT`, + `download` audité.
+- Audit per-source (ADR #18) **avec pivot `metadata.patientId`** :
+  `READ PATIENT` (getById), `READ ANALYTICS`, `READ INSULIN_THERAPY`,
+  `READ MEDICAL_DOCUMENT` (+ `download`, `operation:"download"`).
+  ⚠️ `READ CGM_ENTRY` est audité avec `resourceId=patientId` mais **sans** le
+  pivot `metadata.patientId` (cf. §6 — à harmoniser).
 - Headers ANSSI RGS §4.5 : `/patients` ajouté à `PHI_PATH_PREFIXES` (no-store,
   no-referrer, nosniff) ; téléchargement durci (CSP `default-src 'none'`,
-  `X-Frame-Options DENY`, ClamAV serveur).
+  `X-Frame-Options DENY`).
+- Antivirus **ClamAV à l'upload** (`documentService.upload`) — les blobs stockés
+  sont scannés à l'ingestion ; **pas** de scan au download.
 - Caveat clinique « capture CGM < 70 % » + signal de fraîcheur sur le dernier
   relevé (sécurité d'interprétation).
 

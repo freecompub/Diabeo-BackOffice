@@ -9,8 +9,9 @@
  * Sécurité :
  *  - `canAccessPatient` (RBAC) ; refus → audit `accessDenied` + `notFound()`
  *    (404 uniforme, anti-énumération + détection d'abus US-2265).
- *  - Garde consentement `shareWithProviders` (cohérence avec routes cgm/analytics) :
- *    opt-out explicite du patient → aucune donnée rendue (PHI non déchiffrée).
+ *  - Garde consentement `patientShareConsent` (gdprConsent + shareWithProviders,
+ *    fail-closed ; cohérent avec les routes per-patient) : consentement/partage
+ *    absent → aucune donnée rendue (PHI non déchiffrée).
  *  - Aucune statistique clinique calculée côté frontend (projections serveur).
  */
 
