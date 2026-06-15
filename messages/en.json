@@ -1537,7 +1537,6 @@
     "tabDocuments": "Documents",
     "subtitle": "{pathology} — {age} y.o. — Followed by {referent}",
     "kpiCurrentGlucose": "Current glucose",
-    "kpiTir7d": "Time in range (TIR) — 7d",
     "kpiGmi": "Glucose management indicator (GMI)",
     "kpiCv": "Coefficient of variation (CV)",
     "profileTitle": "Patient profile",
@@ -1554,7 +1553,7 @@
     "targetBadge": "Target: {low}–{high} mg/dL",
     "tirTargetBadge": "Target (TIR): {target}%",
     "hypoMaxBadge": "Max hypo: {target}%",
-    "tirDonutPeriod": "(7 days)",
+    "tirDonutPeriod": "(14 days)",
     "glycemicProfile24h": "Glycemic profile (24h)",
     "insulinConfigTitle": "Insulin therapy configuration",
     "method": "Method",
@@ -1565,7 +1564,15 @@
     "associatedTreatmentsTitle": "Associated treatments",
     "noComplementaryTreatment": "No complementary treatment recorded",
     "medicalDocumentsTitle": "Medical documents",
-    "noDocument": "No document recorded"
+    "noDocument": "No document recorded",
+    "comingSoon": "Coming soon",
+    "comingSoonDesc": "This section will be wired to real data soon.",
+    "noCgmData": "No continuous glucose (CGM) data for the period.",
+    "patientFallback": "Patient",
+    "kpiTir14d": "Time in range (TIR) — 14d",
+    "lowCaptureWarning": "Insufficient continuous glucose (CGM) capture ({rate}%) — interpret statistics with caution.",
+    "sharingDisabledTitle": "Sharing disabled",
+    "sharingDisabledDesc": "This patient has disabled sharing their data with care providers."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",
