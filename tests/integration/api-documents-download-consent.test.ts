@@ -1,23 +1,17 @@
 /**
- * @description Phase 4 — garde consentement `shareWithProviders` sur
- * `/api/documents/[id]/download` (frontière de sécu ajoutée en réponse à la
- * revue PR #546). Vérifie : PRO + opt-out → 404 (et pas de stream) ; PRO sans
- * row privacy → fail-open ; VIEWER → non gaté (accès à ses propres documents).
+ * @description Garde consentement sur `/api/documents/[id]/download` (frontière
+ * de sécu, revue PR #546 ; convergée sur `patientShareConsent`). Vérifie :
+ * PRO + consentement refusé → bloqué sans stream ; PRO + ok → sert ;
+ * VIEWER → non gaté (accès à ses propres documents).
  */
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import { NextRequest } from "next/server"
 
-const prismaMock = {
-  patient: { findFirst: vi.fn() },
-  userPrivacySettings: { findUnique: vi.fn() },
-}
-vi.mock("@/lib/db/client", () => ({ prisma: prismaMock }))
-
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: vi.fn().mockResolvedValue(true) }))
+vi.mock("@/lib/access-control", () => ({ resolvePatientId: vi.fn().mockResolvedValue(42) }))
 
-vi.mock("@/lib/access-control", () => ({
-  resolvePatientId: vi.fn().mockResolvedValue(42),
-}))
+const consentMock = vi.fn()
+vi.mock("@/lib/consent", () => ({ patientShareConsent: consentMock }))
 
 const downloadMock = vi.fn()
 vi.mock("@/lib/services/document.service", () => ({
@@ -40,36 +34,34 @@ function makeReq(role: string, docId = "7", patientId = "42"): NextRequest {
   })
 }
 const params = (id: string) => ({ params: Promise.resolve({ id }) })
-
 const okDownload = () =>
   downloadMock.mockResolvedValue({ body: "PDF", contentType: "application/pdf", contentLength: 3, fileName: "doc.pdf" })
 
 beforeEach(() => {
   vi.clearAllMocks()
-  prismaMock.patient.findFirst.mockResolvedValue({ userId: 99 })
 })
 
 describe("GET /api/documents/[id]/download — garde consentement", () => {
-  it("PRO + patient opt-out (shareWithProviders=false) → 404, pas de stream", async () => {
-    prismaMock.userPrivacySettings.findUnique.mockResolvedValue({ shareWithProviders: false })
+  it("PRO + consentement refusé → bloqué (403), pas de stream", async () => {
+    consentMock.mockResolvedValue({ ok: false, status: 403, error: "sharingDisabled" })
     const res = await GET(makeReq("DOCTOR"), params("7"))
-    expect(res.status).toBe(404)
+    expect(res.status).toBe(403)
     expect(downloadMock).not.toHaveBeenCalled()
   })
 
-  it("PRO + pas de préférence (fail-open) → sert le document", async () => {
-    prismaMock.userPrivacySettings.findUnique.mockResolvedValue(null)
+  it("PRO + consentement OK → sert le document", async () => {
+    consentMock.mockResolvedValue({ ok: true })
     okDownload()
     const res = await GET(makeReq("NURSE"), params("7"))
     expect(res.status).toBe(200)
     expect(downloadMock).toHaveBeenCalled()
   })
 
-  it("VIEWER → non gaté par shareWithProviders (accès à ses propres documents)", async () => {
+  it("VIEWER → non gaté par le consentement provider (accès à ses propres documents)", async () => {
     okDownload()
     const res = await GET(makeReq("VIEWER"), params("7"))
     expect(res.status).toBe(200)
-    expect(prismaMock.userPrivacySettings.findUnique).not.toHaveBeenCalled()
+    expect(consentMock).not.toHaveBeenCalled()
     expect(downloadMock).toHaveBeenCalled()
   })
 })

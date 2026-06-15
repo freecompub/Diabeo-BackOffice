@@ -3,7 +3,7 @@ import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { canAccessPatient } from "@/lib/access-control"
-import { prisma } from "@/lib/db/client"
+import { patientShareConsent } from "@/lib/consent"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
@@ -45,13 +45,12 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    // Check shareWithProviders
-    const patient = await prisma.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { userId: true } })
-    if (!patient) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
-    const privacy = await prisma.userPrivacySettings.findUnique({ where: { userId: patient.userId } })
-    if (privacy && !privacy.shareWithProviders) {
-      return NextResponse.json({ error: "sharingDisabled" }, { status: 403 })
+    // Consentement patient (gdprConsent + shareWithProviders) — source unique
+    // `patientShareConsent` (fail-closed), cohérent avec les autres routes
+    // per-patient (glycemia, heatmap, agp…).
+    const consent = await patientShareConsent(patientId)
+    if (!consent.ok) {
+      return NextResponse.json({ error: consent.error }, { status: consent.status })
     }
 
     const result = await analyticsService.glycemicProfile(patientId, parsed.data.period, user.id, ctx)
