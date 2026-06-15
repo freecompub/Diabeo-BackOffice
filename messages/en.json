@@ -1577,7 +1577,14 @@
     "lastReadingAt": "at {time}",
     "agoMinutes": "{n} min ago",
     "agoHours": "{n} h ago",
-    "staleReadingNote": "Old reading — may not reflect the current state."
+    "staleReadingNote": "Old reading — may not reflect the current state.",
+    "deliveryPump": "Insulin pump",
+    "deliveryManual": "Pen / manual",
+    "noInsulinSettings": "No insulin therapy settings recorded.",
+    "basalLabel": "Basal rate",
+    "unitIsf": "g/L/U",
+    "unitIcr": "g/U",
+    "unitBasal": "U/h"
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

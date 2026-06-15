@@ -1577,7 +1577,14 @@
     "lastReadingAt": "à {time}",
     "agoMinutes": "il y a {n} min",
     "agoHours": "il y a {n} h",
-    "staleReadingNote": "Relevé ancien — peut ne pas refléter l'état actuel."
+    "staleReadingNote": "Relevé ancien — peut ne pas refléter l'état actuel.",
+    "deliveryPump": "Pompe à insuline",
+    "deliveryManual": "Stylo / manuel",
+    "noInsulinSettings": "Aucun réglage d'insulinothérapie enregistré.",
+    "basalLabel": "Débit basal",
+    "unitIsf": "g/L/U",
+    "unitIcr": "g/U",
+    "unitBasal": "U/h"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

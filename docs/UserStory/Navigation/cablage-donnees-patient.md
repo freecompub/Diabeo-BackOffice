@@ -64,8 +64,13 @@
   color-codé **sur les cibles patient** `cgm.low/ok`, + **signal de fraîcheur**
   « relevé ancien » si > 30 min — revue clinique). Mapping pur extrait
   (`glycemia-view.ts`, unit-testé). État vide si pas de série.
-- [ ] **Phase 3 — Onglet Traitements** : réglages insuline réels
-  (`insulinTherapyService.getSettings`, route si nécessaire) + traitements associés.
+- [x] **Phase 3 — Onglet Traitements** (PR #545) : réglages insuline réels
+  (`insulinTherapyService.getSettings`, audité READ INSULIN_THERAPY, derrière la
+  garde accès+consentement) — méthode (pompe/manuel) + config **par créneau**
+  ISF (g/L/U) / ICR (g/U) / basal (U/h), pas de moyenne lossy — + traitements
+  associés (`getById.treatments`, soft-deleted filtrés). Mapping pur
+  `treatment-view.ts` (unit-testé). Insuline bolus/modèle pompe (catalogue/
+  device) → backlog. État vide si pas de réglages.
 - [ ] **Phase 4 — Onglet Documents** : documents médicaux réels (MinIO).
 
 ## Points de vigilance (revue) — tranchés en Phase 1
@@ -110,6 +115,18 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** : une hypo sévère < 40 mg/dL
   exclue par le plancher peut laisser un relevé bénin plus ancien passer pour le
   « dernier relevé » sans déclencher `stale`. À traiter avec l'item plancher.
-- **[Audit] `metadata.patientId` sur READ CGM_ENTRY** : `glycemiaService.getCgmEntries`
-  met `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
-  forensics OK via resourceId, à harmoniser (service pré-existant).
+- **[Audit] `metadata.patientId` sur READ CGM_ENTRY / GLYCEMIA_ENTRY** :
+  `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
+  forensics OK via resourceId, à harmoniser (services pré-existants).
+  (INSULIN_THERAPY corrigé en Phase 3.) Idem `getBolusLogs`/`getBolusLogById`
+  (`insulin-therapy.service.ts`) — pivot ADR #18 + requestId à ajouter.
+- **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) : colonnes non
+  chiffrées (≠ identité/medicalData). Chiffrer ou documenter le risque accepté
+  en DPIA (schéma pré-existant).
+- **[Clinique] Créneaux ISF/ICR/basal — gaps/overlaps non signalés** : la vue
+  affiche les créneaux verbatim sans alerter si la couverture 24h n'est pas
+  contiguë. Indice visuel non bloquant à envisager.
+- **[Produit] Insuline bolus (nom) + modèle pompe** : nécessitent join
+  catalogue/device — à ajouter à l'onglet Traitements.
+- **[i18n] Clé unité ISF dupliquée** : `dashboardCards.medecinProposals.unitIsfGl`
+  ≈ `patientDetail.unitIsf` (« g/L/U ») — consolider une source unique.

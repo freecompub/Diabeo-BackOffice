@@ -1577,7 +1577,14 @@
     "lastReadingAt": "عند {time}",
     "agoMinutes": "قبل {n, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتان} few {# دقائق} many {# دقيقة} other {# دقيقة}}",
     "agoHours": "قبل {n, plural, zero {# ساعة} one {ساعة واحدة} two {ساعتان} few {# ساعات} many {# ساعة} other {# ساعة}}",
-    "staleReadingNote": "قياس قديم — قد لا يعكس الحالة الحالية."
+    "staleReadingNote": "قياس قديم — قد لا يعكس الحالة الحالية.",
+    "deliveryPump": "مضخة الأنسولين",
+    "deliveryManual": "قلم / يدوي",
+    "noInsulinSettings": "لا توجد إعدادات علاج بالأنسولين مسجّلة.",
+    "basalLabel": "المعدل القاعدي",
+    "unitIsf": "g/L/U",
+    "unitIcr": "g/U",
+    "unitBasal": "U/h"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",

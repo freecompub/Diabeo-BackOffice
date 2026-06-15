@@ -64,6 +64,9 @@ export const insulinTherapyService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      // US-2268 / ADR #18 — pivot pour la forensique per-patient (getByPatient).
+      metadata: { patientId },
     })
 
     return settings
