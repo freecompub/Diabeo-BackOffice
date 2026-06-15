@@ -1,7 +1,8 @@
 /**
  * Tests du mapping pur réglages insuline + traitements → vue dossier (Phase 3).
  * Couvre : créneaux ISF/ICR (g/L/U, g/U), basal (U/h + heures Time), méthode,
- * absence de réglages, filtrage des traitements soft-deleted.
+ * absence de réglages, listing des traitements associés (le modèle Treatment
+ * n'a pas de soft-delete — tous les enregistrements sont listés).
  */
 
 import { describe, it, expect } from "vitest"

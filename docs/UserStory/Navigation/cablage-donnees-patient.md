@@ -118,7 +118,8 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[Audit] `metadata.patientId` sur READ CGM_ENTRY / GLYCEMIA_ENTRY** :
   `resourceId=patientId` mais pas le pivot `metadata.patientId` (ADR #18) —
   forensics OK via resourceId, à harmoniser (services pré-existants).
-  (INSULIN_THERAPY corrigé en Phase 3.)
+  (INSULIN_THERAPY corrigé en Phase 3.) Idem `getBolusLogs`/`getBolusLogById`
+  (`insulin-therapy.service.ts`) — pivot ADR #18 + requestId à ajouter.
 - **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) : colonnes non
   chiffrées (≠ identité/medicalData). Chiffrer ou documenter le risque accepté
   en DPIA (schéma pré-existant).
