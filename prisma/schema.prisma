@@ -693,7 +693,7 @@ model PatientMedicalData {
   insulinYear         Int?     @map("insulin_year")
   insulinPump         Boolean? @map("insulin_pump")
   pathology           String?  @db.VarChar(100)
-  diabetDiscovery     String?  @map("diabet_discovery")
+  diabetDiscovery     String?  @map("diabet_discovery") // chiffre
   tabac               Boolean?
   alcool              Boolean?
   historyMedical      String?  @map("history_medical") // chiffre

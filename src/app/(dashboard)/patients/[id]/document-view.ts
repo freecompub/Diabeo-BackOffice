@@ -4,7 +4,8 @@
  * Aucune dépendance RSC/Prisma. La liste vient déjà scopée + auditée + sans
  * `fileUrl` (omis par le service) — ici on ne fait que projeter les champs
  * d'affichage + formater la taille de fichier. Le téléchargement passe par la
- * route `/api/documents/[id]/download` (auth + scope + ClamAV côté serveur).
+ * route `/api/documents/[id]/download` (auth + scope serveur ; fichiers scannés
+ * ClamAV à l'upload, pas au download).
  */
 
 export type DocSize = { value: number; unitKey: "sizeBytes" | "sizeKb" | "sizeMb" } | null

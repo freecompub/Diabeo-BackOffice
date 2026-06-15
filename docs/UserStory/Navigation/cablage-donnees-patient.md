@@ -101,7 +101,8 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   alignés sur les ~18 autres routes per-patient. **Delta de comportement** : un
   patient sans consentement RGPD / sans partage / sans row privacy est désormais
   bloqué sur ces surfaces (404 si inexistant, 403/état « partage désactivé »
-  sinon) — durcissement cohérent avec le reste de l'app. À refléter au DPIA.
+  sinon) — durcissement cohérent avec le reste de l'app. **DPIA rédigé** :
+  `docs/compliance/dpia-patient-detail-dossier.md` (validations DPO/RSSI à obtenir).
 - **[Sécu, à investiguer] Route `glycemia` GET — sur-blocage self-service** :
   cette route admet un VIEWER (`requireAuth`, pas `requireRole`) MAIS appelle
   `patientShareConsent` (qui vérifie `shareWithProviders`) — un patient lisant
