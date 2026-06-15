@@ -98,6 +98,19 @@
     "devices": "الأجهزة",
     "messages": "المراسلة"
   },
+  "commandPalette": {
+    "ariaLabel": "لوحة الأوامر",
+    "placeholder": "ابحث عن مريض أو قسم…",
+    "goToGroup": "الانتقال إلى",
+    "patientsGroup": "المرضى",
+    "loading": "جارٍ البحث…",
+    "noResults": "لا نتيجة",
+    "hint": "↑↓ للتنقل · ↵ للفتح · Esc للإغلاق",
+    "openPatientAria": "فتح ملف {name}",
+    "navigateToAria": "الانتقال إلى {section}",
+    "resultsAria": "النتائج",
+    "unnamedPatient": "ملف بلا اسم"
+  },
   "messages": {
     "pageTitle": "المراسلة",
     "pageSubtitle": "تواصل مع مرضاك وزملائك في العيادة.",
