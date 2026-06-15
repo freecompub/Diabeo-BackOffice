@@ -96,8 +96,8 @@ async function getPatientThresholds(patientId: number): Promise<CgmThresholds> {
     // (GD) impose une cible plus stricte (63–140 mg/dL, Battelino 2019) que les
     // 70–180 génériques. Sans ça, le TIR d'une patiente GD serait évalué sur une
     // plage trop large (faux rassurement). Cf. `getCgmDefaults`.
-    const patient = await prisma.patient.findUnique({
-      where: { id: patientId },
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null },
       select: { pathology: true },
     })
     const d = getCgmDefaults(patient?.pathology ?? undefined)

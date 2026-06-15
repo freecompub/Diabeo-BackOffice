@@ -90,7 +90,7 @@ describe("analyticsService", () => {
     it("uses tighter GD defaults (63–140 mg/dL) when no CGM objective + GD pathology", async () => {
       prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(100) as any)
       prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
-      prismaMock.patient.findUnique.mockResolvedValue({ pathology: "GD" } as any)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "GD" } as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 
       const result = await analyticsService.timeInRange(1, "14d", 1)
@@ -101,7 +101,7 @@ describe("analyticsService", () => {
     it("uses generic defaults (70–180 mg/dL) when no CGM objective + DT1/DT2", async () => {
       prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(100) as any)
       prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
-      prismaMock.patient.findUnique.mockResolvedValue({ pathology: "DT1" } as any)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 
       const result = await analyticsService.timeInRange(1, "14d", 1)

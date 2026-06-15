@@ -26,8 +26,7 @@ import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { documentService } from "@/lib/services/document.service"
 import { auditService } from "@/lib/services/audit.service"
 import { canAccessPatient } from "@/lib/access-control"
-import { getCgmDefaults } from "@/lib/services/objectives.service"
-import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
+import { resolveTargetRangeMgdl } from "./overview-targets"
 import { buildGlycemiaView } from "./glycemia-view"
 import { buildTreatmentView } from "./treatment-view"
 import { buildDocumentView } from "./document-view"
@@ -119,25 +118,12 @@ export default async function PatientDetailPage({
   // Phase 4 — Onglet Documents : documents médicaux (audité READ MEDICAL_DOCUMENT,
   // scopé serveur, `fileUrl` omis). Téléchargement via /api/documents/[id]/download.
   const documents = buildDocumentView(await documentService.list(patientId, role, userId, ctx))
-  const cgmObj = patient.cgmObjectives
-  // Cible affichée = MÊMES bornes que le calcul TIR serveur (cgm.low / cgm.ok).
-  // À défaut d'objectif, défauts **pathology-aware** (`getCgmDefaults`) — mêmes
-  // que `analyticsService` → badge cohérent avec le donut (GD : 63–140, sinon
-  // 70–180). g/L → mg/dL (×100).
-  const cgmDefaults = getCgmDefaults(patient.pathology ?? undefined)
-  const rawLowMgdl = Math.round(Number(cgmObj?.low ?? cgmDefaults.low) * 100)
-  const rawHighMgdl = Math.round(Number(cgmObj?.ok ?? cgmDefaults.high) * 100)
-  // Défense en profondeur (affichage) : garder la cible strictement DANS les
-  // zones sévères (54 < low < high < 250) pour que la pastille couleur de
-  // `GlycemiaValue` ne dégénère jamais. La config est déjà bornée par
-  // `clinical-bounds.ts` — ce clamp ne se déclenche pas en pratique.
-  const targetLowMgdl = Math.min(
-    Math.max(rawLowMgdl, GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO + 1),
-    GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPER - 2,
-  )
-  const targetHighMgdl = Math.min(
-    Math.max(rawHighMgdl, targetLowMgdl + 1),
-    GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPER - 1,
+  // Plage cible affichée = bornes TIR (cgm.low/ok), défauts pathology-aware,
+  // clampée dans les zones sévères. Helper serveur testé (overview-targets) →
+  // badge cohérent avec le donut/TIR (cf. revue PR #550).
+  const { targetLowMgdl, targetHighMgdl } = resolveTargetRangeMgdl(
+    patient.cgmObjectives,
+    patient.pathology,
   )
 
   const fullName = `${patient.user.firstname ?? ""} ${patient.user.lastname ?? ""}`.trim()
