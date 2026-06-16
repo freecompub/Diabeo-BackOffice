@@ -30,10 +30,6 @@ const MAX_PERIOD_DAYS = 90
 /** Max period per window for `compare` (two windows = 90d total, perf-safe). */
 const MAX_COMPARE_PERIOD_DAYS = 45
 
-// Plage valide des agrégats CGM (0.20–6.00 g/L) — SOURCE UNIQUE partagée avec
-// population-analytics via `clinical-bounds.ts` (voir le JSDoc là-bas pour la
-// distinction affichage vs agrégats). Importée pour éviter toute dérive.
-
 /**
  * Parse period string (e.g., "14d" → 14 days).
  * @private
