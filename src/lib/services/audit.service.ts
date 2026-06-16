@@ -95,6 +95,7 @@ export type AuditResource =
   | "BOLUS_LOG"
   | "ADJUSTMENT_PROPOSAL"
   | "MEDICAL_DOCUMENT"
+  | "PINNED_PATIENT"
   | "SESSION"
   | "MYDIABBY_CREDENTIAL"
   | "MEDICATION"
