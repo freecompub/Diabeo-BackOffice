@@ -1531,6 +1531,27 @@
     "icr": "g/U",
     "basal": "U/h"
   },
+  "patientContextBar": {
+    "backToWorklist": "Back to My day",
+    "ageValue": "{age} y.o.",
+    "referentValue": "Ref.: {referent}",
+    "flagUrgency": "Active urgency",
+    "flagHypos": "{count, plural, one {# hypo / 7 d} other {# hypos / 7 d}}",
+    "flagSilent": "No data",
+    "message": "Message",
+    "switch": "Switch patient",
+    "switcherTitle": "Switch patient",
+    "searchPlaceholder": "Search a patient (exact name)…",
+    "resultsLabel": "Results",
+    "pinnedLabel": "Pinned",
+    "recentLabel": "Recently viewed",
+    "noRecent": "No recently viewed record.",
+    "noResults": "No patient found.",
+    "loading": "Searching…",
+    "pin": "Pin",
+    "unpin": "Unpin",
+    "unnamed": "Patient"
+  },
   "patientDetail": {
     "tabsAriaLabel": "Patient record sections",
     "tabOverview": "Overview",

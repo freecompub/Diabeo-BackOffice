@@ -1531,6 +1531,27 @@
     "icr": "g/U",
     "basal": "U/h"
   },
+  "patientContextBar": {
+    "backToWorklist": "العودة إلى يومي",
+    "ageValue": "{age} سنة",
+    "referentValue": "الطبيب المرجعي: {referent}",
+    "flagUrgency": "حالة طارئة جارية",
+    "flagHypos": "{count, plural, zero {لا نقص سكر / 7 أيام} one {نقص سكر واحد / 7 أيام} two {نقصا سكر / 7 أيام} few {# حالات نقص سكر / 7 أيام} many {# حالة نقص سكر / 7 أيام} other {# نقص سكر / 7 أيام}}",
+    "flagSilent": "لا توجد قياسات",
+    "message": "رسالة",
+    "switch": "تغيير المريض",
+    "switcherTitle": "تغيير المريض",
+    "searchPlaceholder": "ابحث عن مريض (الاسم الدقيق)…",
+    "resultsLabel": "النتائج",
+    "pinnedLabel": "المثبّتون",
+    "recentLabel": "المعروضون مؤخرًا",
+    "noRecent": "لا يوجد ملف تمت مراجعته مؤخرًا.",
+    "noResults": "لم يُعثر على مريض.",
+    "loading": "جارٍ البحث…",
+    "pin": "تثبيت",
+    "unpin": "إلغاء التثبيت",
+    "unnamed": "مريض"
+  },
   "patientDetail": {
     "tabsAriaLabel": "أقسام ملف المريض",
     "tabOverview": "نظرة عامة",

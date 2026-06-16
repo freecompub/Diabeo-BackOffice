@@ -39,6 +39,11 @@ vi.mock("@/components/diabeo/DashboardHeader", () => ({
     <header><h1>{title}</h1><p>{subtitle}</p></header>
   ),
 }))
+// Barre de contexte (US-2603) stubée : le switcher tire useRouter/fetch, hors
+// périmètre de ce test (couverte par ses propres tests + tests de route).
+vi.mock("@/components/diabeo/patient/PatientContextBar", () => ({
+  PatientContextBar: ({ name }: { name: string }) => <header><h1>{name}</h1></header>,
+}))
 vi.mock("@/components/diabeo/Acronym", () => ({
   Acronym: ({ code }: { code: string }) => <abbr>{code}</abbr>,
 }))
@@ -55,6 +60,8 @@ import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/p
 
 const baseData: PatientDetailData = {
   id: 42,
+  publicRef: "ref-42",
+  flags: { recentHypos: false, hypoCount: 0, silentMonitoring: false, silentDays: null, openUrgency: false },
   name: "Jean Dupont",
   age: 34,
   sex: "F",
