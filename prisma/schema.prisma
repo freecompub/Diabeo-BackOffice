@@ -446,6 +446,9 @@ model User {
   /// US-2603 — switcher patient : dossiers récemment vus / épinglés par ce PS.
   recentlyViewedPatients            RecentlyViewedPatient[]
   pinnedPatients                    PinnedPatient[]
+  /// US-2605 — séances de revue ouvertes + comptes rendus rédigés par ce PS.
+  encountersOpened                  Encounter[]                       @relation("EncounterOpener")
+  consultationReportsAuthored       ConsultationReportAddendum[]      @relation("ConsultationReportAuthor")
 
   /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
   /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
@@ -681,6 +684,9 @@ model Patient {
   /// US-2603 — switcher patient : entrées « récemment vu » / « épinglé » par les PS.
   recentlyViewedBy       RecentlyViewedPatient[]
   pinnedBy               PinnedPatient[]
+  /// US-2605 — séances de revue de consultation + comptes rendus immuables.
+  encounters             Encounter[]
+  consultationReports    ConsultationReportAddendum[]
 
   /// US-2076bis-V2 (Issue #442) — lookup `publicRef → patientId` interne
   /// (résolve quand UI envoie ref opaque). UNIQUE empêche collision UUID v4.
@@ -1883,6 +1889,8 @@ model Appointment {
   member            HealthcareMember?     @relation(fields: [memberId], references: [id], onDelete: SetNull)
   /// US-2068 — Notes consultation rattachées
   consultationNotes ConsultationNote[]
+  /// US-2605 — séances de revue de consultation rattachées (optionnel).
+  encounters        Encounter[]
   /// US-2072 — Acte facturable si téléconsult
   teleconsultActe   TeleconsultationActe?
   /// US-2502 — Journal rappels envoyes (J-2 email / J-1 SMS / J-0 push).
@@ -2440,6 +2448,68 @@ model ConsultationNote {
 
   @@index([patientId, createdAt])
   @@map("consultation_notes")
+}
+
+/// US-2605 — Statut d'une séance de revue de consultation.
+enum EncounterStatus {
+  draft // revue en cours / brouillon de compte rendu conservé
+  completed // compte rendu finalisé (addendum émis)
+  abandoned // séance close sans finalisation
+}
+
+/// US-2605 — Séance de revue de consultation (mode revue, sans IA). Crée/reprend
+/// un brouillon par (patient, PS) borné au jour (TZ cabinet). Le brouillon de
+/// compte rendu (`draftReportEnc`) est conservé en cas d'interruption ; la
+/// finalisation émet un `ConsultationReportAddendum` immuable.
+model Encounter {
+  id             Int             @id @default(autoincrement())
+  patientId      Int             @map("patient_id")
+  appointmentId  Int?            @map("appointment_id")
+  openedById     Int             @map("opened_by_id")
+  status         EncounterStatus @default(draft)
+  openedAt       DateTime        @default(now()) @map("opened_at") @db.Timestamptz()
+  closedAt       DateTime?       @map("closed_at") @db.Timestamptz()
+  /// Brouillon de compte rendu chiffré AES-256-GCM (base64). Null si vide.
+  draftReportEnc String?         @map("draft_report_enc")
+  /// Ancrage léger « version des données » du Résumé : période + instant de calcul.
+  period         String?         @db.VarChar(10)
+  dataAsOf       DateTime?       @map("data_as_of") @db.Timestamptz()
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patient     Patient                      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointment Appointment?                 @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  openedBy    User                         @relation("EncounterOpener", fields: [openedById], references: [id], onDelete: Restrict)
+  reports     ConsultationReportAddendum[]
+
+  @@index([patientId, openedById, status])
+  @@index([patientId, createdAt])
+  @@map("encounters")
+}
+
+/// US-2605 — Compte rendu de consultation IMMUABLE (addendum append-only).
+/// `content` chiffré AES-256-GCM (base64). Immuabilité forcée par trigger PG
+/// (cf. `prisma/sql/consultation_report_immutability.sql`) : aucun UPDATE (sauf
+/// soft-delete RGPD `deletedAt`), aucun DELETE. Référence la version des données
+/// (`period` + `dataAsOf`) sur laquelle le compte rendu s'appuie.
+model ConsultationReportAddendum {
+  id          Int       @id @default(autoincrement())
+  encounterId Int       @map("encounter_id")
+  patientId   Int       @map("patient_id")
+  authorId    Int       @map("author_id")
+  content     String // chiffré base64
+  period      String    @db.VarChar(10)
+  dataAsOf    DateTime  @map("data_as_of") @db.Timestamptz()
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz()
+
+  encounter Encounter @relation(fields: [encounterId], references: [id], onDelete: Restrict)
+  patient   Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  author    User      @relation("ConsultationReportAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, createdAt])
+  @@index([encounterId])
+  @@map("consultation_report_addenda")
 }
 
 /// US-2083 — Demande de délégation IDE → DOCTOR pour une action clinique
