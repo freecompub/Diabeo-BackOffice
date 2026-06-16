@@ -117,6 +117,34 @@ Remplace l'ancienne formule eA1c par consensus international 2019.
 
 70% de capture sur la periode analysee est requis (consensus ADA 2019). En dessous, un warning `insufficientCgmCapture` est emis.
 
+### Plancher d'affichage CGM & signal de fraichesse (securite clinique)
+
+`getCgmEntries` exclut les valeurs hors plage capteur affichable : `< 0.40 g/L`
+(40 mg/dL) et `> 5.00 g/L` (500 mg/dL). **Attention** : la BDD stocke une plage
+plus large (`CHECK 0.20-6.00 g/L`, `cgm_partitioning.sql`). Une valeur numerique
+mesuree entre **0.20 et 0.40 g/L est donc une hypoglycemie severe reelle**, pas
+seulement un artefact « LOW » capteur.
+
+Risque : un releve hors plage **recent** (hypo severe / capteur LOW) exclu de la
+serie peut laisser un releve benin plus ancien passer pour le « dernier releve »
+sans declencher `stale` -> fausse reassurance.
+
+Garde-fou (`src/lib/cgm-freshness.ts`, `glycemiaService.getLatestCgmFreshness`) :
+le releve brut le plus recent (sans filtre de valeur) est croise avec le dernier
+releve affiche. S'il est hors plage **et plus recent** (ou s'il n'y a aucun
+releve affichable), un caveat est leve : `recentOutOfRange = "low" | "high"`.
+
+- Affichage : dossier medecin (onglet Glycemie), dashboard patient, et header
+  HTTP additif `X-CGM-Recent-Out-Of-Range` sur `/api/cgm` et
+  `/api/patients/[id]/cgm`.
+- Consigne patient (LOW) : confirmer au doigt (BGM) avant d'agir + auto-traiter
+  si confirme. Variante HIGH : confirmer au doigt uniquement (jamais d'incitation
+  a une correction insuline non supervisee).
+- **Limitation connue** : le caveat ne distingue pas encore une valeur numerique
+  sous-plancher (20-40 mg/dL, hypo mesuree) d'un flag « LOW » capteur. L'action
+  (confirmer au doigt) est correcte dans les deux cas. Les analytics/TIR ne sont
+  pas modifies (les valeurs hors plage restent exclues des agregats).
+
 ## Propositions d'ajustement
 
 ### Algorithme

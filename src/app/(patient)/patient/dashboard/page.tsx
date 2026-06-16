@@ -28,6 +28,7 @@ import {
 } from "@/components/diabeo/PeriodSelector"
 import { QuickActionsPanel, type QuickAction } from "@/components/diabeo/QuickActionsPanel"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
+import { CGM_RECENT_OOR_HEADER } from "@/lib/cgm-freshness"
 
 /**
  * H5 — exhaustive lookup. Adding a new TimePeriod yields a compile error.
@@ -93,7 +94,7 @@ function describeErrorKey(status: number, code?: KnownApiErrorCode | string): st
  *  so it is testable without rendering the page (M3). */
 async function fetchSection<T>(
   url: string,
-): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
+): Promise<{ ok: true; data: T; headers: Headers } | { ok: false; error: string }> {
   try {
     const res = await fetch(url, { credentials: "include" })
     if (!res.ok) {
@@ -105,7 +106,7 @@ async function fetchSection<T>(
       return { ok: false, error: describeErrorKey(res.status, code) }
     }
     const data = (await res.json()) as T
-    return { ok: true, data }
+    return { ok: true, data, headers: res.headers }
   } catch {
     return { ok: false, error: "errorNetworkCheck" }
   }
@@ -115,6 +116,10 @@ export default function PatientDashboardPage() {
   const t = useTranslations("patientDashboard")
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.OneWeek)
   const [cgmPoints, setCgmPoints] = useState<{ time: string; glucose: number }[]>([])
+  // Sécurité clinique : un relevé hors plage plus récent que l'affiché a été
+  // exclu de la série (hypo sévère < 40 / capteur LOW-HIGH) — signal lu dans le
+  // header `X-CGM-Recent-Out-Of-Range` de /api/cgm (cf. cgm-freshness).
+  const [cgmRecentOutOfRange, setCgmRecentOutOfRange] = useState<"low" | "high" | null>(null)
   const [profile, setProfile] = useState<GlycemicProfileResponse | null>(null)
   const [agpSlots, setAgpSlots] = useState<AgpSlotPoint[]>([])
   const [cgmState, setCgmState] = useState<SectionState>(INITIAL_STATE)
@@ -161,6 +166,8 @@ export default function PatientDashboardPage() {
           glucose: Math.round(e.valueGl * 100),
         })),
       )
+      const oor = cgmSettled.value.headers.get(CGM_RECENT_OOR_HEADER)
+      setCgmRecentOutOfRange(oor === "low" || oor === "high" ? oor : null)
       setCgmState({ loading: false, error: null })
     } else {
       const err = cgmSettled.status === "fulfilled" && !cgmSettled.value.ok
@@ -260,6 +267,17 @@ export default function PatientDashboardPage() {
         <h2 id="glycemia-section" className="text-lg font-medium text-gray-800">
           {t("glycemiaSectionTitle")}
         </h2>
+        {/* Sécurité clinique : un relevé hors plage plus récent que l'affiché a
+            été exclu (hypo sévère < 40 / capteur LOW-HIGH) → alerte prioritaire. */}
+        {cgmRecentOutOfRange && (
+          // LOW = urgence actionnable (assertif) ; HIGH = poli (cf. revue PR #555).
+          <div
+            role={cgmRecentOutOfRange === "low" ? "alert" : "status"}
+            className="rounded-md border border-feedback-warning bg-warning-bg p-3 text-sm text-warning-fg"
+          >
+            {cgmRecentOutOfRange === "low" ? t("cgmRecentOutOfRangeLow") : t("cgmRecentOutOfRangeHigh")}
+          </div>
+        )}
         {metricsState.error && (
           // C5 — actionable error → role="alert" (assertive) per WCAG 4.1.3.
           <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">

@@ -5,6 +5,7 @@ import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { CGM_RECENT_OOR_HEADER, recentOutOfRangeFrom } from "@/lib/cgm-freshness"
 
 const querySchema = z.object({
   from: z.coerce.date(),
@@ -42,7 +43,17 @@ export async function GET(req: NextRequest) {
       patientId, parsed.data.from, parsed.data.to, user.id, ctx,
     )
 
-    return NextResponse.json(entries)
+    // Signal de fraîcheur (sécurité clinique) en HEADER additif — body inchangé
+    // (tableau plat) pour ne pas casser iOS ni les consommateurs in-repo.
+    // Fail-soft sur le signal secondaire.
+    const latestRaw = await glycemiaService
+      .getLatestCgmFreshness(patientId, parsed.data.from, parsed.data.to, user.id, ctx)
+      .catch(() => null)
+    const recentOutOfRange = recentOutOfRangeFrom(entries.at(-1)?.timestamp ?? null, latestRaw)
+
+    return NextResponse.json(entries, {
+      headers: { [CGM_RECENT_OOR_HEADER]: recentOutOfRange ?? "none" },
+    })
   } catch (error) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })

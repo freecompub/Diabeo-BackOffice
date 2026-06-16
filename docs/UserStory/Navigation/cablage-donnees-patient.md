@@ -127,9 +127,25 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   (minimisation Art. 5.1.c) — méthode de lecture allégée pour la page.
 - **[Perf] Double lookup patient** : la garde consentement fait un `findFirst`
   léger puis `getById` en refait un complet — fusionnable.
-- **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** : une hypo sévère < 40 mg/dL
-  exclue par le plancher peut laisser un relevé bénin plus ancien passer pour le
-  « dernier relevé » sans déclencher `stale`. À traiter avec l'item plancher.
+- ✅ **[Clinique] Plancher 0.40 ↔ fraîcheur (Phase 2)** (FAIT) : nouvelle méthode
+  `glycemiaService.getLatestCgmFreshness` (relevé brut le plus récent dans la
+  fenêtre, SANS filtre de valeur, classé `belowFloor`/`aboveCeiling`, audité).
+  `buildGlycemiaView` croise ce signal : si un relevé hors plage (< 40 mg/dL hypo
+  sévère / capteur LOW, ou > 500 capteur HIGH) est **plus récent** que l'affiché
+  (ou s'il n'y a aucun relevé affichable), `recentOutOfRange` = `"low"`/`"high"`.
+  Bannière d'alerte prioritaire (`role="alert"`) sur l'onglet Glycémie (même
+  sans série). Helper de croisement partagé `src/lib/cgm-freshness.ts`
+  (`recentOutOfRangeFrom`, dépendance-free). i18n FR/EN/AR. Ne modifie pas les
+  analytics/TIR (item plancher agrégats ci-dessus reste ouvert). Service
+  fail-closed (valueGl null → suspect) ; appel fail-soft côté page (n'altère
+  jamais le rendu du dossier).
+  **Étendu (revue PR #555, choix « tout étendre »)** : signal exposé en HEADER
+  additif `X-CGM-Recent-Out-Of-Range` (`low`/`high`/`none`) sur `/api/cgm` et
+  `/api/patients/[id]/cgm` — body inchangé (tableau plat) → **zéro casse** iOS ni
+  consommateurs in-repo. **Dashboard patient** (`(patient)/patient/dashboard`)
+  lit ce header et affiche la même bannière (surface la plus à risque : pas de
+  clinicien dans la boucle). Export RGPD `/api/userdata` hors périmètre (dump
+  historique, pas un « état courant »).
 - ✅ **[Audit] Pivot `metadata.patientId` harmonisé** (FAIT) : ajouté sur
   `READ CGM_ENTRY` / `GLYCEMIA_ENTRY` (`glycemia.service`) et `READ BOLUS_LOG`
   (`getBolusLogs`/`getBolusLogById`, `insulin-therapy.service`), + `requestId`.

@@ -80,6 +80,7 @@ const baseData: PatientDetailData = {
     lastReadingAt: "08:05",
     lastReadingAgeMin: 3,
     stale: false,
+    recentOutOfRange: null,
   },
   treatment: {
     hasSettings: true,
@@ -256,8 +257,43 @@ describe("PatientDetailClient (Phase 1)", () => {
   })
 
   it("shows an empty Glycémie state when there is no CGM series", () => {
-    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false } }} />)
+    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false, recentOutOfRange: null } }} />)
     expect(screen.queryByTestId("cgm-chart")).toBeNull()
+  })
+
+  it("surfaces the severe-hypo caveat when a more recent out-of-range reading was excluded", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, glycemia: { ...baseData.glycemia, recentOutOfRange: "low" } }}
+      />,
+    )
+    expect(screen.getByText(/hors plage affichable/)).toBeTruthy()
+    expect(screen.getByText(/hypoglycémie sévère/)).toBeTruthy()
+    // LOW = urgence actionnable → annonce assertive (role="alert"), pas "status".
+    expect(screen.getByRole("alert").textContent).toMatch(/hypoglycémie sévère/)
+  })
+
+  it("uses a polite role=status for the HIGH out-of-range caveat (non seconde-critique)", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, glycemia: { ...baseData.glycemia, recentOutOfRange: "high" } }}
+      />,
+    )
+    // HIGH = important mais non urgent → role="status" (poli), jamais "alert".
+    expect(screen.getByRole("status").textContent).toMatch(/hors plage affichable/)
+    expect(screen.queryByRole("alert")).toBeNull()
+  })
+
+  it("shows the caveat even with no displayable CGM series (most dangerous case)", () => {
+    render(
+      <PatientDetailClient
+        data={{
+          ...baseData,
+          glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false, recentOutOfRange: "low" },
+        }}
+      />,
+    )
+    expect(screen.getByText(/hors plage affichable/)).toBeTruthy()
   })
 
   it("color-codes the last reading with the patient's target thresholds (not defaults)", () => {

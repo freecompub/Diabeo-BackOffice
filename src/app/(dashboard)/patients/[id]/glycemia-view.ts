@@ -11,6 +11,10 @@
 /** Seuil de fraîcheur du « dernier relevé » (minutes). Au-delà → `stale`. */
 export const CGM_STALE_AFTER_MIN = 30
 
+import { recentOutOfRangeFrom, type LatestRawSignal } from "@/lib/cgm-freshness"
+
+export type { LatestRawSignal }
+
 export type CgmEntryLite = { valueGl: number | null; timestamp: string }
 
 export type GlycemiaView = {
@@ -21,6 +25,14 @@ export type GlycemiaView = {
   lastReadingAgeMin: number | null
   /** Dernier relevé plus ancien que {@link CGM_STALE_AFTER_MIN}. */
   stale: boolean
+  /**
+   * Un relevé PLUS RÉCENT que celui affiché est hors plage affichable et a donc
+   * été exclu de la série : `"low"` (< 40 mg/dL — hypo sévère possible / capteur
+   * LOW) ou `"high"` (> 500 mg/dL — capteur HIGH). `null` sinon. Sécurité
+   * clinique : évite qu'un relevé bénin plus ancien masque une hypo sévère
+   * récente sans signal.
+   */
+  recentOutOfRange: "low" | "high" | null
 }
 
 // Invariant : TZ + locale FIXES (heure clinique FR). Instancié une fois au
@@ -36,7 +48,11 @@ const timeFmt = new Intl.DateTimeFormat("fr-FR", {
 
 const toMgdl = (gl: number): number => Math.round(gl * 100)
 
-export function buildGlycemiaView(entries: CgmEntryLite[], now: Date): GlycemiaView {
+export function buildGlycemiaView(
+  entries: CgmEntryLite[],
+  now: Date,
+  latestRaw?: LatestRawSignal | null,
+): GlycemiaView {
   // valueGl null déjà exclu par la requête (CHECK gte/lte) — on borne le type.
   const valid = entries.filter((e): e is CgmEntryLite & { valueGl: number } => e.valueGl !== null)
   const points = valid.map((e) => ({
@@ -47,11 +63,16 @@ export function buildGlycemiaView(entries: CgmEntryLite[], now: Date): GlycemiaV
   const lastReadingAgeMin = last
     ? Math.max(0, Math.round((now.getTime() - new Date(last.timestamp).getTime()) / 60_000))
     : null
+
   return {
     points,
     lastReadingMgdl: last ? toMgdl(last.valueGl) : null,
     lastReadingAt: last ? timeFmt.format(new Date(last.timestamp)) : null,
     lastReadingAgeMin,
     stale: lastReadingAgeMin !== null && lastReadingAgeMin > CGM_STALE_AFTER_MIN,
+    // Croisement fraîcheur (source unique `recentOutOfRangeFrom`) : relevé hors
+    // plage plus récent que l'affiché (ou aucun relevé affichable) → hypo sévère
+    // / capteur masqué.
+    recentOutOfRange: recentOutOfRangeFrom(last?.timestamp ?? null, latestRaw),
   }
 }

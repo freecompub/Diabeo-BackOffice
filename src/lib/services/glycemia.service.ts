@@ -11,6 +11,7 @@ import { prisma } from "@/lib/db/client"
 import { PeriodType, Prisma } from "@prisma/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
+import type { LatestRawSignal } from "@/lib/cgm-freshness"
 
 /**
  * Coerce un Prisma.Decimal | null en `number | null` JSON-safe.
@@ -106,6 +107,62 @@ export const glycemiaService = {
       deviceId: e.deviceId ?? null,
       createdAt: e.createdAt.toISOString(),
     }))
+  },
+
+  /**
+   * Relevé CGM le plus récent dans la fenêtre, SANS filtre de valeur (inclut
+   * donc les valeurs hors plage affichable : < 0.40 g/L = hypo sévère possible /
+   * capteur LOW, ou > 5.00 g/L = capteur HIGH).
+   *
+   * Sécurité clinique (revue PR #544/#554) : `getCgmEntries` exclut ces valeurs,
+   * ce qui peut faire passer un relevé bénin plus ancien pour le « dernier
+   * relevé ». Ce signal permet de croiser la fraîcheur et d'alerter si un relevé
+   * plus récent que l'affiché est hors plage (cf. `buildGlycemiaView`).
+   *
+   * NB bornes : la BDD stocke jusqu'à 0.20–6.00 g/L (CHECK `cgm_partitioning.sql`)
+   * alors que l'affichage filtre 0.40–5.00. Une valeur numérique 0.20–0.40 est
+   * donc un relevé réel sous le plancher (hypo sévère probable), pas qu'un
+   * artefact « LOW » capteur.
+   *
+   * @returns `{ timestamp, belowFloor, aboveCeiling }` ou null si aucun relevé.
+   */
+  async getLatestCgmFreshness(
+    patientId: number, from: Date, to: Date,
+    auditUserId: number, ctx?: AuditContext,
+  ): Promise<LatestRawSignal | null> {
+    enforceMaxPeriod(from, to)
+
+    const latest = await prisma.cgmEntry.findFirst({
+      where: { patientId, timestamp: { gte: from, lte: to } },
+      orderBy: { timestamp: "desc" },
+      select: { timestamp: true, valueGl: true },
+    })
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "CGM_ENTRY",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      // ADR #18 — pivot per-patient ; signal de fraîcheur (relevé brut le + récent).
+      metadata: { patientId, purpose: "cgm-freshness-signal" },
+    })
+
+    if (!latest) return null
+    const v = dec(latest.valueGl)
+    // `valueGl` est NOT NULL en base → `v` est toujours un number ; le garde
+    // null est du fail-closed défensif (valeur inconnue = traitée comme suspecte
+    // sous le plancher, jamais « rassurante »).
+    if (v === null) {
+      return { timestamp: latest.timestamp.toISOString(), belowFloor: true, aboveCeiling: false }
+    }
+    return {
+      timestamp: latest.timestamp.toISOString(),
+      belowFloor: v < CGM_MIN_GL,
+      aboveCeiling: v > CGM_MAX_GL,
+    }
   },
 
   /**
