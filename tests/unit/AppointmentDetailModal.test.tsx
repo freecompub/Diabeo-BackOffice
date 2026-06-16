@@ -775,7 +775,13 @@ describe("<AppointmentDetailModal>", () => {
 
       const dateInput = screen.getByLabelText("dateLabel") as HTMLInputElement
       const timeInput = screen.getByLabelText("hourLabel") as HTMLInputElement
-      fireEvent.change(dateInput, { target: { value: "2026-06-15" } })
+      // Le champ date du form 'Déplacer' a `min={today}` et jsdom applique
+      // rangeUnderflow au submit — une date codée en dur dans le passé (relatif
+      // à l'horloge) bloque le submit et le PUT n'est jamais émis. Date calculée
+      // dans le futur pour ne pas être une time-bomb (était "2026-06-15", cassé
+      // une fois l'horloge passée ce jour). Cf. même correctif sur proposeAlt.
+      const futureDate = new Date(Date.now() + 14 * 86_400_000).toISOString().split("T")[0]
+      fireEvent.change(dateInput, { target: { value: futureDate } })
       fireEvent.change(timeInput, { target: { value: "11:00" } })
       fireEvent.click(screen.getByText("actionConfirmMove"))
 
@@ -785,7 +791,7 @@ describe("<AppointmentDetailModal>", () => {
           expect.objectContaining({
             method: "PUT",
             // Backend PUT accepte {date, hour} séparé (vs ISO Z proposeAlt).
-            body: JSON.stringify({ date: "2026-06-15", hour: "11:00" }),
+            body: JSON.stringify({ date: futureDate, hour: "11:00" }),
           }),
         )
       })
