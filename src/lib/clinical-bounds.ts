@@ -38,3 +38,23 @@ export const CLINICAL_BOUNDS = {
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
+
+/**
+ * Plage de valeurs CGM **physiologiquement valides** (g/L) pour les AGRÉGATS
+ * (moyenne, CV, GMI, TIR, AGP, épisodes hypo — par patient ET cohorte).
+ *
+ * SOURCE UNIQUE — utilisée par `analytics.service.ts` ET
+ * `population-analytics.service.ts`. Alignée sur le CHECK base
+ * (`value_gl BETWEEN 0.20 AND 6.00`, `prisma/sql/cgm_partitioning.sql`) — vérifié
+ * par `tests/unit/clinical-bounds.test.ts`.
+ *
+ * ⚠️ DIFFÉRENT du plancher d'AFFICHAGE de la série (0.40–5.00 g/L,
+ * `glycemia.service.getCgmEntries`). Les agrégats incluent les hypo sévères
+ * réelles mesurées sous le plancher d'affichage (0.20–0.40 g/L) : sinon le bucket
+ * `severeHypo` du TIR et le compteur cohorte `criticalHypoCount` sous-estiment la
+ * charge hypoglycémique (consensus ADA/Battelino : tout relevé CGM valide compte).
+ */
+export const CGM_AGGREGATE_RANGE_GL = {
+  MIN: 0.20,
+  MAX: 6.00,
+} as const

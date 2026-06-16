@@ -21,6 +21,7 @@ import {
   type CgmThresholds,
 } from "@/lib/statistics"
 import { decimalToNumber } from "@/lib/db/decimal"
+import { CGM_AGGREGATE_RANGE_GL } from "@/lib/clinical-bounds"
 
 /** Warn if CGM capture rate below this % */
 const MIN_CAPTURE_RATE = 70 // percent
@@ -47,9 +48,14 @@ function parsePeriod(period: string): number {
 }
 
 /**
- * Fetch CGM values for an explicit window. Centralizes the sensor-range filter
- * (0.40-5.00 g/L) and the Decimal→number coercion (uses .toNumber() to avoid
- * the silent precision loss flagged in the project backlog).
+ * Fetch CGM values for an explicit window. Centralizes the valid-range filter
+ * for AGGREGATES (`CGM_AGGREGATE_RANGE_GL` = 0.20–6.00 g/L, la plage
+ * physiologique valide en base) et la coercion Decimal→number (`.toNumber()`
+ * pour éviter la perte de précision silencieuse).
+ *
+ * NB : on inclut volontairement les hypo sévères mesurées sous le plancher
+ * d'affichage (0.20–0.40 g/L) — sinon `severeHypo`/moyenne/CV sous-estiment la
+ * charge hypoglycémique (cf. `CGM_AGGREGATE_RANGE_GL` dans clinical-bounds).
  * @private
  */
 async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
@@ -57,7 +63,7 @@ async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
     where: {
       patientId,
       timestamp: { gte: from, lte: to },
-      valueGl: { gte: 0.40, lte: 5.00 },
+      valueGl: { gte: CGM_AGGREGATE_RANGE_GL.MIN, lte: CGM_AGGREGATE_RANGE_GL.MAX },
     },
     orderBy: { timestamp: "asc" },
     select: { valueGl: true, timestamp: true },

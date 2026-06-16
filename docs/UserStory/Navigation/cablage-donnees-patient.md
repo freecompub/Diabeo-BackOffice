@@ -115,10 +115,22 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[Sécu] XFF spoofable** : `ctx.ipAddress` = 1er hop `x-forwarded-for`
   (client-contrôlable) ; durcissement transverse — cf.
   `docs/security/xff-trusted-proxy.md`. Réutiliser `extractRequestContext`.
-- **[Clinique] Plancher capteur 0.40 g/L** (`analytics.service.ts`) exclut les
-  hypo sévères au plancher des agrégats (mean/CV/TIR severeHypo) — sous-estime la
-  charge hypoglycémique. Inclure les relevés clampés au plancher dans le bucket
-  severe-hypo.
+- ✅ **[Clinique] Plancher capteur dans les agrégats** (FAIT) : `analytics.service`
+  ET `population-analytics.service` filtraient les agrégats (mean/CV/GMI/TIR/AGP/
+  épisodes + cohorte `criticalHypoCount`) au plancher d'affichage `0.40–5.00`,
+  excluant les hypo sévères réelles (0.20–0.40 g/L) → sous-estime la charge
+  hypoglycémique. Les deux services utilisent désormais la plage **physiologique
+  valide** `0.20–6.00` via une **constante partagée** `CGM_AGGREGATE_RANGE_GL`
+  (`clinical-bounds.ts`, anti-dérive testée vs le CHECK base) → les hypo sévères
+  sous-plancher comptent dans `severeHypo`/`criticalHypoCount` et baissent la
+  moyenne (consensus ADA/Battelino). La **série graphique** garde le plancher
+  d'affichage 0.40–5.00 + caveat de fraîcheur (PR #555). Doc :
+  `docs/clinical-logic/bolus-calculation.md`.
+- **[Clinique/UX] Annotation graphe relevés sous-plancher** : la série affichée
+  s'arrête à 0.40 mais le TIR/donut peut reporter du `severeHypo` (agrégats
+  0.20–6.00) → discordance visuelle possible pour le clinicien. Envisager une
+  annotation « N relevés sous le plancher d'affichage — comptés dans le TIR »
+  (LOW, relevé revue PR #557, non bloquant).
 - ✅ **[Clinique] Cibles spécifiques grossesse (GD)** (FAIT) : à défaut
   d'objectif CGM, `analyticsService` (TIR/donut) ET le badge cible du dossier
   utilisent désormais `getCgmDefaults(pathology)` → GD = 63–140 mg/dL (Battelino
