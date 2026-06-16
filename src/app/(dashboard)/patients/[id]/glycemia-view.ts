@@ -33,6 +33,12 @@ export type GlycemiaView = {
    * récente sans signal.
    */
   recentOutOfRange: "low" | "high" | null
+  /**
+   * Nombre de relevés de la fenêtre exclus de la série affichée (hors plancher
+   * 0.40 / plafond 5.00) mais **comptés dans les statistiques** (TIR/moyenne) —
+   * annotation graphe pour réconcilier la courbe et le TIR (cf. revue PR #557).
+   */
+  outOfDisplayRangeCount: number
 }
 
 // Invariant : TZ + locale FIXES (heure clinique FR). Instancié une fois au
@@ -74,5 +80,6 @@ export function buildGlycemiaView(
     // plage plus récent que l'affiché (ou aucun relevé affichable) → hypo sévère
     // / capteur masqué.
     recentOutOfRange: recentOutOfRangeFrom(last?.timestamp ?? null, latestRaw),
+    outOfDisplayRangeCount: (latestRaw?.belowFloorCount ?? 0) + (latestRaw?.aboveCeilingCount ?? 0),
   }
 }

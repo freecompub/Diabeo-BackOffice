@@ -119,9 +119,16 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     }
 
-    const consent = await patientShareConsent(patientId)
-    if (!consent.ok) {
-      return NextResponse.json({ error: consent.error }, { status: consent.status })
+    // `shareWithProviders` régit le partage avec les SOIGNANTS, pas l'accès du
+    // patient à ses propres données. Un VIEWER (self-service, scope vérifié par
+    // `canAccessPatient`) ne doit donc PAS être bloqué par `patientShareConsent`
+    // (son `gdprConsent` est déjà vérifié via `requireGdprConsent` ci-dessus).
+    // Cohérent avec la route download. Sécu/backlog PR #547.
+    if (user.role !== "VIEWER") {
+      const consent = await patientShareConsent(patientId)
+      if (!consent.ok) {
+        return NextResponse.json({ error: consent.error }, { status: consent.status })
+      }
     }
 
     const parsed = listQuerySchema.safeParse(

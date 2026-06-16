@@ -98,4 +98,17 @@ describe("buildGlycemiaView", () => {
     )
     expect(v.recentOutOfRange).toBeNull()
   })
+
+  it("sums out-of-display-range counts (below + above) for the chart annotation", () => {
+    const v = buildGlycemiaView(
+      [{ valueGl: 1.1, timestamp: iso(5) }],
+      NOW,
+      { timestamp: iso(5), belowFloor: false, aboveCeiling: false, belowFloorCount: 3, aboveCeilingCount: 2 },
+    )
+    expect(v.outOfDisplayRangeCount).toBe(5)
+  })
+
+  it("defaults outOfDisplayRangeCount to 0 when no signal / no counts", () => {
+    expect(buildGlycemiaView([{ valueGl: 1.1, timestamp: iso(5) }], NOW).outOfDisplayRangeCount).toBe(0)
+  })
 })

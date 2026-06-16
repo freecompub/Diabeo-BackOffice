@@ -127,7 +127,9 @@ export const glycemiaService = {
    * donc un relevé réel sous le plancher (hypo sévère probable), pas qu'un
    * artefact « LOW » capteur.
    *
-   * @returns `{ timestamp, belowFloor, aboveCeiling }` ou null si aucun relevé.
+   * @returns `{ timestamp, belowFloor, aboveCeiling, belowFloorCount, aboveCeilingCount }`
+   *   ou null si aucun relevé. Les `*Count` = relevés de la fenêtre exclus de la
+   *   série d'affichage (annotation graphe).
    */
   async getLatestCgmFreshness(
     patientId: number, from: Date, to: Date,
@@ -135,11 +137,22 @@ export const glycemiaService = {
   ): Promise<LatestRawSignal | null> {
     enforceMaxPeriod(from, to)
 
-    const latest = await prisma.cgmEntry.findFirst({
-      where: { patientId, timestamp: { gte: from, lte: to } },
-      orderBy: { timestamp: "desc" },
-      select: { timestamp: true, valueGl: true },
-    })
+    // Un seul read logique (audité une fois) : relevé brut le plus récent +
+    // décompte des relevés hors plage d'affichage (sous plancher / au-dessus
+    // plafond) dans la fenêtre.
+    const [latest, belowFloorCount, aboveCeilingCount] = await Promise.all([
+      prisma.cgmEntry.findFirst({
+        where: { patientId, timestamp: { gte: from, lte: to } },
+        orderBy: { timestamp: "desc" },
+        select: { timestamp: true, valueGl: true },
+      }),
+      prisma.cgmEntry.count({
+        where: { patientId, timestamp: { gte: from, lte: to }, valueGl: { lt: CGM_MIN_GL } },
+      }),
+      prisma.cgmEntry.count({
+        where: { patientId, timestamp: { gte: from, lte: to }, valueGl: { gt: CGM_MAX_GL } },
+      }),
+    ])
 
     await auditService.log({
       userId: auditUserId,
@@ -159,12 +172,18 @@ export const glycemiaService = {
     // null est du fail-closed défensif (valeur inconnue = traitée comme suspecte
     // sous le plancher, jamais « rassurante »).
     if (v === null) {
-      return { timestamp: latest.timestamp.toISOString(), belowFloor: true, aboveCeiling: false }
+      return {
+        timestamp: latest.timestamp.toISOString(),
+        belowFloor: true, aboveCeiling: false,
+        belowFloorCount, aboveCeilingCount,
+      }
     }
     return {
       timestamp: latest.timestamp.toISOString(),
       belowFloor: v < CGM_MIN_GL,
       aboveCeiling: v > CGM_MAX_GL,
+      belowFloorCount,
+      aboveCeilingCount,
     }
   },
 

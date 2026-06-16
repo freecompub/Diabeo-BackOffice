@@ -22,11 +22,12 @@ import { fileURLToPath } from "node:url"
 // ─── Baseline ────────────────────────────────────────────────────────────────
 // Baseline établie au 2026-06-12 (premier run post-migration PR #536 = 296),
 // ratchetée à 285 après migration des palettes feedback de /analytics vers
-// les tokens sémantiques (success/warning/error).
+// les tokens sémantiques (success/warning/error), puis à 272 après nettoyage
+// des classes brutes (amber/teal/gray) du dashboard patient.
 // Le script ratchet : `process.exit(1)` aussi quand violations < baseline,
 // avec un message demandant de mettre à jour la constante. Le diff PR
 // verrouille le gain dans l'historique git.
-const BASELINE_VIOLATIONS = 285
+const BASELINE_VIOLATIONS = 272
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
