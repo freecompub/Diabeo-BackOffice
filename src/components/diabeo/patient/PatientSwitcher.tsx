@@ -19,7 +19,7 @@ import { useTranslations } from "next-intl"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
 import { Star, ArrowLeftRight } from "lucide-react"
 
-type PatientRef = { id: number; publicRef: string; name: string; pathology: string | null }
+type PatientRef = { id: number; name: string; pathology: string | null }
 type RawSearch = { id: number; pathology: string | null; user: { firstname: string | null; lastname: string | null } }
 
 const MIN_QUERY = 2
@@ -82,7 +82,6 @@ export function PatientSwitcher({ currentPatientId }: { currentPatientId: number
         setResults(
           (Array.isArray(data.items) ? data.items : []).map((p) => ({
             id: p.id,
-            publicRef: "",
             name: `${p.user.firstname ?? ""} ${p.user.lastname ?? ""}`.trim(),
             pathology: p.pathology,
           })),
@@ -131,28 +130,37 @@ export function PatientSwitcher({ currentPatientId }: { currentPatientId: number
 
   const showSearch = query.trim().length >= MIN_QUERY
 
-  const renderRow = (p: PatientRef) => (
-    <li key={p.id} className="flex items-center gap-1">
-      <button
-        type="button"
-        onClick={() => goTo(p.id)}
-        disabled={p.id === currentPatientId}
-        className="flex min-w-0 flex-1 items-center justify-between rounded-md px-3 py-2 text-start text-sm hover:bg-muted disabled:opacity-50 disabled:hover:bg-transparent"
-      >
-        <span className="truncate font-medium">{p.name || t("unnamed")}</span>
-        {p.pathology && <span className="ms-2 shrink-0 text-xs text-muted-foreground">{p.pathology}</span>}
-      </button>
-      <button
-        type="button"
-        onClick={() => togglePin(p.id)}
-        aria-pressed={pinnedIds.has(p.id)}
-        aria-label={pinnedIds.has(p.id) ? t("unpin") : t("pin")}
-        className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-      >
-        <Star className={`h-4 w-4 ${pinnedIds.has(p.id) ? "fill-current text-secondary" : ""}`} aria-hidden="true" />
-      </button>
-    </li>
-  )
+  const renderRow = (p: PatientRef) => {
+    const isCurrent = p.id === currentPatientId
+    const isPinned = pinnedIds.has(p.id)
+    return (
+      <li key={p.id} className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => goTo(p.id)}
+          disabled={isCurrent}
+          // a11y 1.4.3 : état désactivé via `text-muted-foreground` (≥ 4.5:1),
+          // PAS `opacity-50` (qui tomberait à ~3:1).
+          className="flex min-w-0 flex-1 items-center justify-between rounded-md px-3 py-2 text-start text-sm hover:bg-muted disabled:cursor-default disabled:text-muted-foreground disabled:hover:bg-transparent"
+        >
+          <span className="truncate font-medium">{p.name || t("unnamed")}</span>
+          {p.pathology && <span className="ms-2 shrink-0 text-xs text-muted-foreground">{p.pathology}</span>}
+        </button>
+        <button
+          type="button"
+          onClick={() => togglePin(p.id)}
+          disabled={isCurrent}
+          aria-pressed={isPinned}
+          aria-label={isPinned ? t("unpin") : t("pin")}
+          className="rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-default disabled:opacity-40"
+        >
+          {/* a11y 1.4.1 : l'état épinglé est signalé par la FORME (étoile pleine
+              `fill-current` vs contour), pas seulement la couleur. */}
+          <Star className={`h-4 w-4 ${isPinned ? "fill-current text-secondary" : ""}`} aria-hidden="true" />
+        </button>
+      </li>
+    )
+  }
 
   return (
     <>
@@ -180,10 +188,12 @@ export function PatientSwitcher({ currentPatientId }: { currentPatientId: number
 
           <div className="max-h-80 overflow-y-auto">
             {showSearch ? (
-              <section aria-label={t("resultsLabel")}>
-                {searching && <p className="px-3 py-2 text-sm text-muted-foreground">{t("loading")}</p>}
+              // a11y 4.1.3 : états recherche/aucun résultat annoncés (live region
+              // polite + aria-busy).
+              <section aria-label={t("resultsLabel")} aria-live="polite" aria-busy={searching}>
+                {searching && <p role="status" className="px-3 py-2 text-sm text-muted-foreground">{t("loading")}</p>}
                 {!searching && results.length === 0 && (
-                  <p className="px-3 py-2 text-sm text-muted-foreground">{t("noResults")}</p>
+                  <p role="status" className="px-3 py-2 text-sm text-muted-foreground">{t("noResults")}</p>
                 )}
                 <ul className="space-y-0.5">{results.map(renderRow)}</ul>
               </section>
