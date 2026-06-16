@@ -41,6 +41,7 @@ import {
   type TirResult,
 } from "@/lib/statistics"
 import { decimalToNumber } from "@/lib/db/decimal"
+import { CGM_AGGREGATE_RANGE_GL } from "@/lib/clinical-bounds"
 
 /** Capture-rate threshold below which the patient is excluded from population metrics. */
 const MIN_CAPTURE_RATE = 30
@@ -159,7 +160,11 @@ async function computePatientMetric(
     where: {
       patientId,
       timestamp: { gte: from, lte: to },
-      valueGl: { gte: 0.40, lte: 5.00 },
+      // Agrégats cohorte : plage valide complète (0.20–6.00) — SOURCE UNIQUE
+      // partagée avec analytics.service. Inclut les hypo sévères sous le plancher
+      // d'affichage pour que `criticalHypoCount` / `severeHypo` cohorte ne les
+      // sous-comptent pas (cf. clinical-bounds.CGM_AGGREGATE_RANGE_GL).
+      valueGl: { gte: CGM_AGGREGATE_RANGE_GL.MIN, lte: CGM_AGGREGATE_RANGE_GL.MAX },
     },
     orderBy: { timestamp: "asc" },
     select: { valueGl: true, timestamp: true },

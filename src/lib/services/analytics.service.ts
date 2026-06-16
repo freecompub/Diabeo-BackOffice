@@ -21,6 +21,7 @@ import {
   type CgmThresholds,
 } from "@/lib/statistics"
 import { decimalToNumber } from "@/lib/db/decimal"
+import { CGM_AGGREGATE_RANGE_GL } from "@/lib/clinical-bounds"
 
 /** Warn if CGM capture rate below this % */
 const MIN_CAPTURE_RATE = 70 // percent
@@ -29,22 +30,9 @@ const MAX_PERIOD_DAYS = 90
 /** Max period per window for `compare` (two windows = 90d total, perf-safe). */
 const MAX_COMPARE_PERIOD_DAYS = 45
 
-/**
- * Plage de valeurs CGM **physiologiquement valides** pour les AGRÉGATS
- * (moyenne, CV, GMI, TIR, AGP, épisodes hypo) — alignée sur le CHECK base
- * (`value_gl BETWEEN 0.20 AND 6.00`, `cgm_partitioning.sql`).
- *
- * ⚠️ DIFFÉRENT du plancher d'AFFICHAGE de la série (0.40–5.00 g/L,
- * `glycemia.service.getCgmEntries`). Les agrégats doivent inclure les hypo
- * sévères réelles mesurées sous le plancher d'affichage (0.20–0.40 g/L) et les
- * hyper extrêmes (5.00–6.00) : sinon le bucket `severeHypo` du TIR et la
- * moyenne/CV **sous-estiment la charge hypoglycémique** (consensus ADA/Battelino —
- * tout relevé CGM valide compte dans le TIR ; les valeurs « LOW » capteur sont
- * comptées dans la zone la plus basse). La série graphique, elle, reste filtrée
- * au plancher d'affichage + caveat de fraîcheur (PR #555).
- */
-const CGM_AGG_MIN_GL = 0.20
-const CGM_AGG_MAX_GL = 6.00
+// Plage valide des agrégats CGM (0.20–6.00 g/L) — SOURCE UNIQUE partagée avec
+// population-analytics via `clinical-bounds.ts` (voir le JSDoc là-bas pour la
+// distinction affichage vs agrégats). Importée pour éviter toute dérive.
 
 /**
  * Parse period string (e.g., "14d" → 14 days).
@@ -65,13 +53,13 @@ function parsePeriod(period: string): number {
 
 /**
  * Fetch CGM values for an explicit window. Centralizes the valid-range filter
- * for AGGREGATES ({@link CGM_AGG_MIN_GL}–{@link CGM_AGG_MAX_GL} = 0.20–6.00 g/L,
- * la plage physiologique valide en base) et la coercion Decimal→number
- * (`.toNumber()` pour éviter la perte de précision silencieuse).
+ * for AGGREGATES (`CGM_AGGREGATE_RANGE_GL` = 0.20–6.00 g/L, la plage
+ * physiologique valide en base) et la coercion Decimal→number (`.toNumber()`
+ * pour éviter la perte de précision silencieuse).
  *
  * NB : on inclut volontairement les hypo sévères mesurées sous le plancher
  * d'affichage (0.20–0.40 g/L) — sinon `severeHypo`/moyenne/CV sous-estiment la
- * charge hypoglycémique (cf. {@link CGM_AGG_MIN_GL}).
+ * charge hypoglycémique (cf. `CGM_AGGREGATE_RANGE_GL` dans clinical-bounds).
  * @private
  */
 async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
@@ -79,7 +67,7 @@ async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
     where: {
       patientId,
       timestamp: { gte: from, lte: to },
-      valueGl: { gte: CGM_AGG_MIN_GL, lte: CGM_AGG_MAX_GL },
+      valueGl: { gte: CGM_AGGREGATE_RANGE_GL.MIN, lte: CGM_AGGREGATE_RANGE_GL.MAX },
     },
     orderBy: { timestamp: "asc" },
     select: { valueGl: true, timestamp: true },

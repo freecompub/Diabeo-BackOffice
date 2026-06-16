@@ -2,6 +2,9 @@
  * @module glycemia.service
  * @description Glucose data access — CGM entries, glycemia readings, insulin flow, pump events.
  * All reads enforce 30-day max period for performance. CGM values validated (0.40-5.00 g/L).
+ * NB: 0.40-5.00 is the DISPLAY floor (rendered series). Les AGRÉGATS (TIR/mean/CV…)
+ * utilisent une plage plus large 0.20-6.00 — voir `analytics.service` +
+ * `clinical-bounds.CGM_AGGREGATE_RANGE_GL`.
  * All reads logged for HDS audit trail.
  * @see CLAUDE.md#glycemia — CGM data model
  * @see Prisma schema — CgmEntry, GlycemiaEntry, AverageData, InsulinFlowEntry, PumpEvent models
