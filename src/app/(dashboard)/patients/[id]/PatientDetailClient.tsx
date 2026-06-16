@@ -270,7 +270,9 @@ export function PatientDetailClient({
                 LOW-HIGH) → bannière prioritaire, même sans relevé affichable. */}
             {data.glycemia.recentOutOfRange && (
               <p
-                role="alert"
+                // LOW = urgence actionnable (assertif) ; HIGH = important mais
+                // non seconde-critique (poli) — cf. revue clinique PR #555.
+                role={data.glycemia.recentOutOfRange === "low" ? "alert" : "status"}
                 className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
               >
                 {data.glycemia.recentOutOfRange === "low"

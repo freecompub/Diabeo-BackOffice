@@ -16,8 +16,7 @@
  */
 export type LatestRawSignal = { timestamp: string; belowFloor: boolean; aboveCeiling: boolean }
 
-/** Valeur du header HTTP exposant le signal (`"none"` = pas de relevé masqué). */
-export type RecentOutOfRangeHeader = "low" | "high" | "none"
+/** Header HTTP exposant le signal (valeurs `"low"`/`"high"`/`"none"`). */
 export const CGM_RECENT_OOR_HEADER = "X-CGM-Recent-Out-Of-Range"
 
 /**

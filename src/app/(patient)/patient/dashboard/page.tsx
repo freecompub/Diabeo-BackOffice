@@ -270,7 +270,11 @@ export default function PatientDashboardPage() {
         {/* Sécurité clinique : un relevé hors plage plus récent que l'affiché a
             été exclu (hypo sévère < 40 / capteur LOW-HIGH) → alerte prioritaire. */}
         {cgmRecentOutOfRange && (
-          <div role="alert" className="rounded-md border border-feedback-warning bg-warning-bg p-3 text-sm text-warning-fg">
+          // LOW = urgence actionnable (assertif) ; HIGH = poli (cf. revue PR #555).
+          <div
+            role={cgmRecentOutOfRange === "low" ? "alert" : "status"}
+            className="rounded-md border border-feedback-warning bg-warning-bg p-3 text-sm text-warning-fg"
+          >
             {cgmRecentOutOfRange === "low" ? t("cgmRecentOutOfRangeLow") : t("cgmRecentOutOfRangeHigh")}
           </div>
         )}
