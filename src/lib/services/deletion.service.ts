@@ -166,6 +166,58 @@ export async function deleteUserAccount(
       await tx.patientAdministrative.deleteMany({ where: { patientId } })
       await tx.patientPregnancy.deleteMany({ where: { patientId } })
 
+      // US-2605 — Mode revue de consultation.
+      // (1) Brouillons d'`Encounter` : purge du PHI de travail (`draftReportEnc`).
+      // État transitoire, pas un acte médical à conserver. La row reste (FK
+      // Restrict depuis les comptes rendus retenus + valeur d'audit de session).
+      // Le patient est soft-deleted (UPDATE), donc aucune CASCADE ne s'enclenche
+      // sur ces tables — nettoyage explicite requis.
+      const anonymisedEncounters = await tx.encounter.updateMany({
+        where: { patientId, draftReportEnc: { not: null } },
+        data: { draftReportEnc: null },
+      })
+      if (anonymisedEncounters.count > 0) {
+        await auditService.logWithTx(tx, {
+          userId,
+          action: "UPDATE",
+          resource: "ENCOUNTER",
+          resourceId: `patient:${patientId}`,
+          ipAddress,
+          userAgent,
+          metadata: {
+            kind: "user.account.deletion.encounterDraftsAnonymised",
+            patientId,
+            encounterCount: anonymisedEncounters.count,
+            reason: "rgpd_art17_draft_phi_anonymisation",
+          },
+        })
+      }
+
+      // (2) Comptes rendus finalisés : acte médical → conservation au titre du
+      // dossier médical (CSP R.1112-7, 20 ans). RGPD Art. 17.3.b dispense
+      // l'effacement (obligation légale). Immuables (trigger PG) : non
+      // supprimables de toute façon. On audite la rétention pour traçabilité
+      // Art. 30 (même pattern que les factures conservées ci-dessous).
+      const retainedReportCount = await tx.consultationReportAddendum.count({
+        where: { patientId, deletedAt: null },
+      })
+      if (retainedReportCount > 0) {
+        await auditService.logWithTx(tx, {
+          userId,
+          action: "DELETE",
+          resource: "CONSULTATION_REPORT",
+          resourceId: `patient:${patientId}`,
+          ipAddress,
+          userAgent,
+          metadata: {
+            kind: "user.account.deletion.consultationReportsRetained",
+            patientId,
+            reportCount: retainedReportCount,
+            reason: "CSP_R1112_7_medical_record_20y_retention",
+          },
+        })
+      }
+
       // HSA H-1 review round 1 — Invoices NON purgées (obligation comptable
       // CGI L.123-22 + L.102-B LPF : conservation 10 ans factures). RGPD
       // Art. 17.3.b dispense l'effacement pour ces données spécifiques.

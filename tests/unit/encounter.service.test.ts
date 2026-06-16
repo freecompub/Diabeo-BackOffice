@@ -94,6 +94,13 @@ describe("encounterService.saveDraft", () => {
     pm.encounter.findUnique.mockResolvedValue(ENC({ status: "completed" }))
     await expect(encounterService.saveDraft(7, 1, "x")).rejects.toMatchObject({ code: "invalidState" })
   })
+
+  it("nulls the draft column when content is empty (no ciphertext of '')", async () => {
+    pm.encounter.findUnique.mockResolvedValue(ENC())
+    pm.encounter.update.mockResolvedValue(ENC())
+    await encounterService.saveDraft(7, 1, "")
+    expect(pm.encounter.update.mock.calls[0][0].data.draftReportEnc).toBeNull()
+  })
 })
 
 describe("encounterService.finalizeReport", () => {
@@ -126,6 +133,14 @@ describe("encounterService.finalizeReport", () => {
       encounterService.finalizeReport(7, 1, "x", { period: "14d", dataAsOf: new Date() }),
     ).rejects.toMatchObject({ code: "invalidState" })
   })
+
+  it("rejects an empty/whitespace report before any write (invalidState)", async () => {
+    await expect(
+      encounterService.finalizeReport(7, 1, "   ", { period: "14d", dataAsOf: new Date() }),
+    ).rejects.toMatchObject({ code: "invalidState" })
+    expect(pm.encounter.findUnique).not.toHaveBeenCalled()
+    expect(pm.consultationReportAddendum.create).not.toHaveBeenCalled()
+  })
 })
 
 describe("encounterService.listReports", () => {
@@ -133,7 +148,7 @@ describe("encounterService.listReports", () => {
     pm.consultationReportAddendum.findMany.mockResolvedValue([
       { id: 1, encounterId: 7, content: "enc:body", period: "14d", dataAsOf: new Date("2026-06-16T10:00:00Z"), createdAt: new Date("2026-06-16T10:05:00Z") },
     ])
-    const out = await encounterService.listReports(42, 1)
+    const out = await encounterService.listReports(42, 1, "DOCTOR")
     expect(out[0].content).toBe("dec:body")
     expect(out[0].period).toBe("14d")
     const where = pm.consultationReportAddendum.findMany.mock.calls[0][0].where
@@ -141,5 +156,11 @@ describe("encounterService.listReports", () => {
     const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(audit.action).toBe("READ")
     expect(audit.resource).toBe("CONSULTATION_REPORT")
+  })
+
+  it("throws forbidden when the caller cannot access the patient", async () => {
+    mockedAccess.mockResolvedValue(false)
+    await expect(encounterService.listReports(42, 1, "NURSE")).rejects.toBeInstanceOf(EncounterError)
+    expect(pm.consultationReportAddendum.findMany).not.toHaveBeenCalled()
   })
 })

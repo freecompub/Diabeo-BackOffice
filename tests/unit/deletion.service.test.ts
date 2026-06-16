@@ -159,6 +159,9 @@ describe("deleteUserAccount", () => {
       // US-2108 round 2 — anonymisation invoice reminders.
       invoiceReminder: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       patientPregnancy: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      // US-2605 — purge brouillons encounter + rétention comptes rendus.
+      encounter: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      consultationReportAddendum: { count: vi.fn().mockResolvedValue(0) },
       patient: { update: vi.fn().mockResolvedValue({ id: 10, deletedAt: new Date() }) },
       healthcareMember: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
       healthcareService: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },

@@ -19,21 +19,7 @@ import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import { canAccessPatient } from "@/lib/access-control"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
-
-const CABINET_TIMEZONE = "Europe/Paris"
-
-/** Début du jour courant en TZ cabinet (borne « aujourd'hui » pour le resume). */
-function startOfTodayCabinet(now = new Date()): Date {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CABINET_TIMEZONE,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    timeZoneName: "longOffset",
-  })
-  const parts = fmt.formatToParts(now)
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
-  const offset = get("timeZoneName").replace(/^GMT/, "") || "+00:00"
-  return new Date(`${get("year")}-${get("month")}-${get("day")}T00:00:00${offset}`)
-}
+import { startOfTodayCabinet } from "@/lib/cabinet-time"
 
 /** Erreur typée → mappée en statut HTTP par les routes. */
 export class EncounterError extends Error {
@@ -118,7 +104,9 @@ export const encounterService = {
 
     await prisma.encounter.update({
       where: { id: encounterId },
-      data: { draftReportEnc: encryptField(content) },
+      // Un brouillon vide remet la colonne à NULL plutôt que d'y stocker le
+      // chiffré d'une chaîne vide (cohérence avec « pas de brouillon »).
+      data: { draftReportEnc: content ? encryptField(content) : null },
     })
     await auditService.log({
       userId, action: "UPDATE", resource: "ENCOUNTER", resourceId: String(encounterId),
@@ -137,6 +125,10 @@ export const encounterService = {
     content: string, anchor: { period: string; dataAsOf: Date },
     ctx?: AuditContext,
   ): Promise<{ reportId: number; patientId: number }> {
+    // Un compte rendu finalisé est un acte médical immuable : refuser le vide
+    // (le contenu est requis NOT NULL ; un addendum vide n'aurait aucun sens).
+    if (!content.trim()) throw new EncounterError("invalidState")
+
     const enc = await prisma.encounter.findUnique({ where: { id: encounterId } })
     if (!enc) throw new EncounterError("notFound")
     if (enc.openedById !== userId) throw new EncounterError("forbidden")
@@ -173,11 +165,16 @@ export const encounterService = {
 
   /**
    * Liste les comptes rendus finalisés (non soft-deleted) d'un patient.
-   * Déchiffrement serveur fail-soft (un contenu corrompu → null, jamais d'erreur).
+   * Accès vérifié par `canAccessPatient` (défense en profondeur, en plus du RBAC
+   * de la route). Déchiffrement serveur fail-soft (contenu corrompu → null).
    */
   async listReports(
-    patientId: number, userId: number, ctx?: AuditContext,
+    patientId: number, userId: number, role: Role, ctx?: AuditContext,
   ): Promise<ReportItem[]> {
+    if (!(await canAccessPatient(userId, role, patientId))) {
+      throw new EncounterError("forbidden")
+    }
+
     const rows = await prisma.consultationReportAddendum.findMany({
       where: { patientId, deletedAt: null },
       orderBy: { createdAt: "desc" },
