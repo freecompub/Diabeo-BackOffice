@@ -29,6 +29,11 @@ export class EncounterError extends Error {
   }
 }
 
+/** Statut HTTP correspondant à un code `EncounterError` (mapping route). */
+export function encounterErrorStatus(code: EncounterError["code"]): number {
+  return code === "forbidden" ? 403 : code === "notFound" ? 404 : 409
+}
+
 export type EncounterDraft = {
   id: number
   patientId: number
