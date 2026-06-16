@@ -27,7 +27,7 @@ vi.mock("@/lib/services/messaging.service", () => ({
 import {
   urgenciesQuery, appointmentsQuery,
   patientsAtRiskQuery, kpisQuery, pendingProposalsQuery,
-  unreadThreadsQuery,
+  unreadThreadsQuery, getPatientFlags,
 } from "@/lib/services/doctor-dashboard.service"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { messagingService } from "@/lib/services/messaging.service"
@@ -476,5 +476,56 @@ describe("unreadThreadsQuery (US-2602)", () => {
     )
     const out = await unreadThreadsQuery.forCaller(1, CTX as any)
     expect(out).toHaveLength(5)
+  })
+})
+
+// ─── US-2603 getPatientFlags (drapeaux mono-patient, source unique) ──────────
+
+describe("getPatientFlags (US-2603)", () => {
+  const pmf = prismaMock as unknown as {
+    emergencyAlert: { count: any }
+    cgmEntry: { aggregate: any }
+  }
+
+  it("flags recentHypos at the shared threshold (≥3 hypos/7j)", async () => {
+    // Ordre Promise.all : count(open-urgency), count(hypos), aggregate(cgm).
+    pmf.emergencyAlert.count.mockResolvedValueOnce(0).mockResolvedValueOnce(3)
+    pmf.cgmEntry.aggregate.mockResolvedValue({ _max: { timestamp: new Date() } })
+
+    const f = await getPatientFlags(42)
+    expect(f.recentHypos).toBe(true)
+    expect(f.hypoCount).toBe(3)
+    expect(f.openUrgency).toBe(false)
+    expect(f.silentMonitoring).toBe(false)
+  })
+
+  it("does NOT flag recentHypos below threshold (2 hypos)", async () => {
+    pmf.emergencyAlert.count.mockResolvedValueOnce(0).mockResolvedValueOnce(2)
+    pmf.cgmEntry.aggregate.mockResolvedValue({ _max: { timestamp: new Date() } })
+    const f = await getPatientFlags(42)
+    expect(f.recentHypos).toBe(false)
+  })
+
+  it("flags silentMonitoring when last CGM older than the silent cutoff (and never)", async () => {
+    pmf.emergencyAlert.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0)
+    const old = new Date(Date.now() - 10 * 86_400_000) // 10 j > 5 j
+    pmf.cgmEntry.aggregate.mockResolvedValue({ _max: { timestamp: old } })
+    const f = await getPatientFlags(42)
+    expect(f.silentMonitoring).toBe(true)
+    expect(f.silentDays).toBe(10)
+
+    // Aucun relevé → silent, silentDays null.
+    pmf.emergencyAlert.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0)
+    pmf.cgmEntry.aggregate.mockResolvedValue({ _max: { timestamp: null } })
+    const f2 = await getPatientFlags(42)
+    expect(f2.silentMonitoring).toBe(true)
+    expect(f2.silentDays).toBeNull()
+  })
+
+  it("flags openUrgency when an open/acknowledged alert exists", async () => {
+    pmf.emergencyAlert.count.mockResolvedValueOnce(1).mockResolvedValueOnce(0)
+    pmf.cgmEntry.aggregate.mockResolvedValue({ _max: { timestamp: new Date() } })
+    const f = await getPatientFlags(42)
+    expect(f.openUrgency).toBe(true)
   })
 })

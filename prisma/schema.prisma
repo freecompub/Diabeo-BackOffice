@@ -443,6 +443,9 @@ model User {
   // US-2026 H5 review — Forensique : qui a saisi cet INS / pour qui.
   insSetByUser                      User?                             @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
   insSetForUsers                    User[]                            @relation("InsSetter")
+  /// US-2603 — switcher patient : dossiers récemment vus / épinglés par ce PS.
+  recentlyViewedPatients            RecentlyViewedPatient[]
+  pinnedPatients                    PinnedPatient[]
 
   /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
   /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
@@ -675,12 +678,48 @@ model Patient {
   invoices               Invoice[]
   /// US-2076 scope A — Messages liés au patient (pivot audit US-2268).
   messages               Message[]
+  /// US-2603 — switcher patient : entrées « récemment vu » / « épinglé » par les PS.
+  recentlyViewedBy       RecentlyViewedPatient[]
+  pinnedBy               PinnedPatient[]
 
   /// US-2076bis-V2 (Issue #442) — lookup `publicRef → patientId` interne
   /// (résolve quand UI envoie ref opaque). UNIQUE empêche collision UUID v4.
   @@unique([publicRef], map: "patients_public_ref_key")
   @@index([deletedAt])
   @@map("patients")
+}
+
+/// US-2603 — Dossiers patients récemment consultés par un PS (switcher de
+/// contexte). Un upsert par (user, patient) met à jour `viewedAt`. Scopé au
+/// périmètre du PS à la lecture (intersection `getAccessiblePatientIds`).
+model RecentlyViewedPatient {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  patientId Int      @map("patient_id")
+  viewedAt  DateTime @default(now()) @map("viewed_at") @db.Timestamptz()
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, patientId])
+  @@index([userId, viewedAt(sort: Desc)])
+  @@map("recently_viewed_patients")
+}
+
+/// US-2603 — Dossiers patients épinglés par un PS (switcher de contexte).
+/// Toggle on/off ; scopé au périmètre du PS à la lecture.
+model PinnedPatient {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  patientId Int      @map("patient_id")
+  pinnedAt  DateTime @default(now()) @map("pinned_at") @db.Timestamptz()
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  patient Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, patientId])
+  @@index([userId, pinnedAt(sort: Desc)])
+  @@map("pinned_patients")
 }
 
 model PatientMedicalData {

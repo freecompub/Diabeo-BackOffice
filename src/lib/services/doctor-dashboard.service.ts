@@ -533,6 +533,65 @@ export const patientsAtRiskQuery = {
 }
 
 // ─────────────────────────────────────────────────────────────
+// US-2603 — Drapeaux d'alerte mono-patient (barre de contexte)
+// ─────────────────────────────────────────────────────────────
+
+/** Drapeaux d'alerte d'UN patient pour la barre de contexte (US-2603). */
+export type PatientFlags = {
+  /** ≥ {@link HYPO_THRESHOLD_7D} hypos sur 7 j. */
+  recentHypos: boolean
+  hypoCount: number
+  /** Aucune saisie CGM depuis ≥ {@link SILENT_DAYS} jours (ou jamais). */
+  silentMonitoring: boolean
+  /** Jours depuis le dernier relevé CGM ; null si aucun relevé. */
+  silentDays: number | null
+  /** Urgence en cours (open/acknowledged). */
+  openUrgency: boolean
+}
+
+/**
+ * Drapeaux d'alerte d'un patient pour la barre de contexte (US-2603).
+ *
+ * SOURCE UNIQUE des seuils/prédicats partagée avec « Ma journée »
+ * (`patientsAtRiskQuery`/`urgenciesQuery`) — mêmes constantes
+ * {@link HYPO_THRESHOLD_7D}/{@link SILENT_DAYS}, mêmes types d'alerte → pas de
+ * dérive entre la worklist cohorte et la barre mono-patient.
+ *
+ * L'appelant a déjà vérifié l'accès (`canAccessPatient`) et l'audit READ PATIENT
+ * (via `patientService.getById`) couvre la consultation — pas d'audit dédié ici
+ * (signal dérivé : comptes/horodatage, aucune PHI).
+ */
+export async function getPatientFlags(patientId: number): Promise<PatientFlags> {
+  const now = new Date()
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
+  const silentCutoff = new Date(now.getTime() - SILENT_DAYS * 86_400_000)
+  const [openUrgencyCount, hypoCount, latestCgm] = await Promise.all([
+    prisma.emergencyAlert.count({
+      where: {
+        patientId,
+        status: { in: [EmergencyAlertStatus.open, EmergencyAlertStatus.acknowledged] },
+      },
+    }),
+    prisma.emergencyAlert.count({
+      where: {
+        patientId,
+        alertType: { in: [EmergencyAlertType.hypo, EmergencyAlertType.severe_hypo] },
+        triggeredAt: { gte: sevenDaysAgo },
+      },
+    }),
+    prisma.cgmEntry.aggregate({ where: { patientId }, _max: { timestamp: true } }),
+  ])
+  const last = latestCgm._max.timestamp
+  return {
+    recentHypos: hypoCount >= HYPO_THRESHOLD_7D,
+    hypoCount,
+    silentMonitoring: last == null || last < silentCutoff,
+    silentDays: last ? Math.floor((now.getTime() - last.getTime()) / 86_400_000) : null,
+    openUrgency: openUrgencyCount > 0,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
 // US-2404 — KPI cabinet 14j
 // ─────────────────────────────────────────────────────────────
 
