@@ -269,6 +269,19 @@ describe("PatientDetailClient (Phase 1)", () => {
     )
     expect(screen.getByText(/hors plage affichable/)).toBeTruthy()
     expect(screen.getByText(/hypoglycémie sévère/)).toBeTruthy()
+    // LOW = urgence actionnable → annonce assertive (role="alert"), pas "status".
+    expect(screen.getByRole("alert").textContent).toMatch(/hypoglycémie sévère/)
+  })
+
+  it("uses a polite role=status for the HIGH out-of-range caveat (non seconde-critique)", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, glycemia: { ...baseData.glycemia, recentOutOfRange: "high" } }}
+      />,
+    )
+    // HIGH = important mais non urgent → role="status" (poli), jamais "alert".
+    expect(screen.getByRole("status").textContent).toMatch(/hors plage affichable/)
+    expect(screen.queryByRole("alert")).toBeNull()
   })
 
   it("shows the caveat even with no displayable CGM series (most dangerous case)", () => {

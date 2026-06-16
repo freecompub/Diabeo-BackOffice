@@ -126,11 +126,24 @@ describe("Patient Dashboard (US-3356)", () => {
     })
   })
 
-  it("surfaces the severe-hypo caveat when /api/cgm flags a recent out-of-range reading", async () => {
+  it("surfaces the severe-hypo caveat (assertive role=alert) when /api/cgm flags a recent LOW", async () => {
     mockApi({ cgmRecentOutOfRange: "low" })
     render(<PatientDashboardPage />)
     await waitFor(() => {
-      expect(screen.getByText(/hors plage affichable/i)).toBeTruthy()
+      const banner = screen.getByText(/hors plage affichable/i)
+      expect(banner).toBeTruthy()
+      // LOW = urgence actionnable → role="alert" (assertif).
+      expect(banner.getAttribute("role")).toBe("alert")
+    })
+  })
+
+  it("uses a polite role=status for a recent HIGH out-of-range reading", async () => {
+    mockApi({ cgmRecentOutOfRange: "high" })
+    render(<PatientDashboardPage />)
+    await waitFor(() => {
+      const banner = screen.getByText(/hors plage affichable/i)
+      // HIGH = non seconde-critique → role="status" (poli).
+      expect(banner.getAttribute("role")).toBe("status")
     })
   })
 
