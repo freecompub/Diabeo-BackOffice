@@ -11,6 +11,7 @@
 import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
+import { PatientContextBar, type ContextFlags } from "@/components/diabeo/patient/PatientContextBar"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -28,7 +29,11 @@ import { Activity, Clock, Download, FileText, Heart, Pill, Syringe, TrendingUp, 
 
 export type PatientDetailData = {
   id: number
+  /** UUID opaque (anti-énumération) pour le switcher. */
+  publicRef: string
   name: string
+  /** Drapeaux d'alerte de la barre de contexte (cohérents « Ma journée »). */
+  flags: ContextFlags
   age: number | null
   sex: "M" | "F" | "X" | null
   pathology: string | null
@@ -110,13 +115,13 @@ export function PatientDetailClient({
 
   return (
     <>
-      <DashboardHeader
-        title={name}
-        subtitle={t("subtitle", {
-          pathology: data.pathology ?? "—",
-          age: data.age ?? "—",
-          referent: data.referent ?? "—",
-        })}
+      <PatientContextBar
+        patientId={data.id}
+        name={name}
+        age={data.age}
+        pathology={data.pathology}
+        referent={data.referent}
+        flags={data.flags}
       />
 
       <div className="p-6">

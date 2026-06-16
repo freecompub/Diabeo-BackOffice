@@ -1531,6 +1531,27 @@
     "icr": "g/U",
     "basal": "U/h"
   },
+  "patientContextBar": {
+    "backToWorklist": "Retour à Ma journée",
+    "ageValue": "{age} ans",
+    "referentValue": "Réf. : {referent}",
+    "flagUrgency": "Urgence en cours",
+    "flagHypos": "{count, plural, one {# hypo / 7 j} other {# hypos / 7 j}}",
+    "flagSilent": "Sans saisie",
+    "message": "Message",
+    "switch": "Changer de patient",
+    "switcherTitle": "Changer de patient",
+    "searchPlaceholder": "Rechercher un patient (nom exact)…",
+    "resultsLabel": "Résultats",
+    "pinnedLabel": "Épinglés",
+    "recentLabel": "Récemment vus",
+    "noRecent": "Aucun dossier récemment consulté.",
+    "noResults": "Aucun patient trouvé.",
+    "loading": "Recherche…",
+    "pin": "Épingler",
+    "unpin": "Désépingler",
+    "unnamed": "Patient"
+  },
   "patientDetail": {
     "tabsAriaLabel": "Sections du dossier patient",
     "tabOverview": "Vue d'ensemble",

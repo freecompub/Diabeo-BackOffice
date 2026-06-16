@@ -25,6 +25,8 @@ import { glycemiaService } from "@/lib/services/glycemia.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { documentService } from "@/lib/services/document.service"
 import { auditService } from "@/lib/services/audit.service"
+import { getPatientFlags } from "@/lib/services/doctor-dashboard.service"
+import { recentPatientsService } from "@/lib/services/recent-patients.service"
 import { canAccessPatient } from "@/lib/access-control"
 import { resolveTargetRangeMgdl } from "./overview-targets"
 import { buildGlycemiaView } from "./glycemia-view"
@@ -106,8 +108,24 @@ export default async function PatientDetailPage({
   const patient = await patientService.getById(patientId, userId, ctx)
   if (!patient) notFound()
 
+  // US-2603 — enregistre la consultation du dossier (switcher « récemment vus »).
+  // Fail-soft : un échec ne doit JAMAIS casser le rendu du dossier ; réservé aux
+  // PS (un VIEWER n'atteint pas cette route — défense en profondeur).
+  if (role !== "VIEWER") {
+    void recentPatientsService.recordView(userId, patientId).catch((e) => {
+      console.error("[patient-detail] recordView failed", e instanceof Error ? e.message : e)
+    })
+  }
+
   // Stats glycémiques — projection serveur (audité READ ANALYTICS).
   const profile = await analyticsService.glycemicProfile(patientId, OVERVIEW_PERIOD, userId, ctx)
+
+  // US-2603 — drapeaux d'alerte de la barre de contexte (source unique « Ma
+  // journée »). Fail-soft : signal secondaire, ne casse pas le dossier.
+  const flags = await getPatientFlags(patientId).catch((e) => {
+    console.error("[patient-detail] getPatientFlags failed", e instanceof Error ? e.message : e)
+    return null
+  })
 
   const now = new Date()
 
@@ -149,7 +167,9 @@ export default async function PatientDetailPage({
 
   const data: PatientDetailData = {
     id: patient.id,
+    publicRef: patient.publicRef,
     name: fullName,
+    flags: flags ?? { recentHypos: false, hypoCount: 0, silentMonitoring: false, silentDays: null, openUrgency: false },
     age: computeAge(patient.user.birthday ?? null, now),
     sex: patient.user.sex ?? null,
     pathology: patient.pathology ?? null,
