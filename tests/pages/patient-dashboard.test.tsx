@@ -40,6 +40,7 @@ afterEach(() => {
 function mockApi(opts?: {
   cgmStatus?: number
   cgmBody?: unknown
+  cgmRecentOutOfRange?: "low" | "high" | "none"
   profileStatus?: number
   profileBody?: unknown
   agpStatus?: number
@@ -66,8 +67,9 @@ function mockApi(opts?: {
   vi.spyOn(global, "fetch").mockImplementation(async (input) => {
     const url = String(input)
     if (url.startsWith("/api/cgm")) {
-      return new Response(JSON.stringify(cgmEntries),
-        { status: opts?.cgmStatus ?? 200, headers: { "content-type": "application/json" } })
+      const headers: Record<string, string> = { "content-type": "application/json" }
+      if (opts?.cgmRecentOutOfRange) headers["X-CGM-Recent-Out-Of-Range"] = opts.cgmRecentOutOfRange
+      return new Response(JSON.stringify(cgmEntries), { status: opts?.cgmStatus ?? 200, headers })
     }
     if (url.startsWith("/api/analytics/glycemic-profile")) {
       return new Response(JSON.stringify(profile),
@@ -122,6 +124,23 @@ describe("Patient Dashboard (US-3356)", () => {
     await waitFor(() => {
       expect(screen.getByText(/Acceptez la politique de confidentialité/i)).toBeTruthy()
     })
+  })
+
+  it("surfaces the severe-hypo caveat when /api/cgm flags a recent out-of-range reading", async () => {
+    mockApi({ cgmRecentOutOfRange: "low" })
+    render(<PatientDashboardPage />)
+    await waitFor(() => {
+      expect(screen.getByText(/hors plage affichable/i)).toBeTruthy()
+    })
+  })
+
+  it("does NOT show the caveat when the CGM freshness header is 'none'", async () => {
+    mockApi({ cgmRecentOutOfRange: "none" })
+    render(<PatientDashboardPage />)
+    await waitFor(() => {
+      expect(screen.getByText("135")).toBeTruthy() // page loaded
+    })
+    expect(screen.queryByText(/hors plage affichable/i)).toBeNull()
   })
 
   it("C1 — does NOT wrap content in <main> (NavigationShell provides it)", () => {

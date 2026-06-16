@@ -1,7 +1,9 @@
 /**
  * Tests du mapping pur CGM → vue dossier patient (Phase 2).
  * Couvre : conversion g/L→mg/dL, sélection du dernier relevé (ordre asc),
- * exclusion valueGl null, calcul d'âge + drapeau `stale`.
+ * exclusion valueGl null, calcul d'âge + drapeau `stale`, et le croisement de
+ * fraîcheur `recentOutOfRange` (hypo sévère / capteur masqué plus récent que
+ * l'affiché — low/high, plus récent vs plus ancien vs égal, sans série).
  */
 
 import { describe, it, expect } from "vitest"
@@ -84,6 +86,15 @@ describe("buildGlycemiaView", () => {
       [{ valueGl: 1.1, timestamp: iso(5) }],
       NOW,
       { timestamp: iso(1), belowFloor: false, aboveCeiling: false },
+    )
+    expect(v.recentOutOfRange).toBeNull()
+  })
+
+  it("does NOT flag when the out-of-range raw reading shares the displayed timestamp (strict newer)", () => {
+    const v = buildGlycemiaView(
+      [{ valueGl: 1.1, timestamp: iso(5) }],
+      NOW,
+      { timestamp: iso(5), belowFloor: true, aboveCeiling: false },
     )
     expect(v.recentOutOfRange).toBeNull()
   })

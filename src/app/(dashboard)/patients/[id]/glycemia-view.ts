@@ -11,14 +11,11 @@
 /** Seuil de fraîcheur du « dernier relevé » (minutes). Au-delà → `stale`. */
 export const CGM_STALE_AFTER_MIN = 30
 
-export type CgmEntryLite = { valueGl: number | null; timestamp: string }
+import { recentOutOfRangeFrom, type LatestRawSignal } from "@/lib/cgm-freshness"
 
-/**
- * Signal de fraîcheur « brut » : relevé CGM le plus récent dans la fenêtre, AVANT
- * le filtre de plage capteur (cf. `glycemiaService.getLatestCgmFreshness`).
- * Permet de détecter qu'un relevé plus récent que l'affiché est hors plage.
- */
-export type LatestRawSignal = { timestamp: string; belowFloor: boolean; aboveCeiling: boolean }
+export type { LatestRawSignal }
+
+export type CgmEntryLite = { valueGl: number | null; timestamp: string }
 
 export type GlycemiaView = {
   points: { time: string; glucose: number }[]
@@ -67,23 +64,15 @@ export function buildGlycemiaView(
     ? Math.max(0, Math.round((now.getTime() - new Date(last.timestamp).getTime()) / 60_000))
     : null
 
-  // Croisement fraîcheur : si le relevé brut le plus récent est hors plage ET
-  // plus récent que le dernier relevé affiché (ou s'il n'y a aucun relevé
-  // affichable), on signale l'hypo sévère / capteur LOW-HIGH masqué.
-  let recentOutOfRange: "low" | "high" | null = null
-  if (latestRaw && (latestRaw.belowFloor || latestRaw.aboveCeiling)) {
-    const lastShownMs = last ? new Date(last.timestamp).getTime() : Number.NEGATIVE_INFINITY
-    if (new Date(latestRaw.timestamp).getTime() > lastShownMs) {
-      recentOutOfRange = latestRaw.belowFloor ? "low" : "high"
-    }
-  }
-
   return {
     points,
     lastReadingMgdl: last ? toMgdl(last.valueGl) : null,
     lastReadingAt: last ? timeFmt.format(new Date(last.timestamp)) : null,
     lastReadingAgeMin,
     stale: lastReadingAgeMin !== null && lastReadingAgeMin > CGM_STALE_AFTER_MIN,
-    recentOutOfRange,
+    // Croisement fraîcheur (source unique `recentOutOfRangeFrom`) : relevé hors
+    // plage plus récent que l'affiché (ou aucun relevé affichable) → hypo sévère
+    // / capteur masqué.
+    recentOutOfRange: recentOutOfRangeFrom(last?.timestamp ?? null, latestRaw),
   }
 }

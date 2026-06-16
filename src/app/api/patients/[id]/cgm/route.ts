@@ -5,6 +5,7 @@ import { canAccessPatient } from "@/lib/access-control"
 import { patientShareConsent } from "@/lib/consent"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { CGM_RECENT_OOR_HEADER, recentOutOfRangeFrom } from "@/lib/cgm-freshness"
 
 type RouteParams = { params: Promise<{ id: string }> }
 
@@ -47,9 +48,19 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
     const entries = await glycemiaService.getCgmEntries(patientId, parsed.data.from, parsed.data.to, user.id, ctx)
 
+    // Signal de fraîcheur (sécurité clinique) exposé en HEADER additif — le body
+    // reste un tableau plat (contrat iOS + consommateurs in-repo inchangé).
+    // Fail-soft : une erreur du signal secondaire ne casse pas la réponse.
+    const latestRaw = await glycemiaService
+      .getLatestCgmFreshness(patientId, parsed.data.from, parsed.data.to, user.id, ctx)
+      .catch(() => null)
+    const recentOutOfRange = recentOutOfRangeFrom(entries.at(-1)?.timestamp ?? null, latestRaw)
+
     // `getCgmEntries` retourne déjà un DTO sérialisé (id:string, valueGl:number,
     // timestamp:string). Pas besoin de re-mapper BigInt/Decimal ici.
-    return NextResponse.json(entries)
+    return NextResponse.json(entries, {
+      headers: { [CGM_RECENT_OOR_HEADER]: recentOutOfRange ?? "none" },
+    })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"

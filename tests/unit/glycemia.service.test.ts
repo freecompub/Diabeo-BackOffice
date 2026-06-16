@@ -116,6 +116,16 @@ describe("glycemiaService", () => {
       expect(await glycemiaService.getLatestCgmFreshness(1, from, to, 1)).toBeNull()
     })
 
+    it("fail-closed: a null valueGl (impossible today, NOT NULL col) is treated as below floor", async () => {
+      prismaMock.cgmEntry.findFirst.mockResolvedValue({
+        timestamp: new Date("2026-03-10T07:00:00.000Z"),
+        valueGl: null,
+      } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      const r = await glycemiaService.getLatestCgmFreshness(1, from, to, 1)
+      expect(r).toEqual({ timestamp: "2026-03-10T07:00:00.000Z", belowFloor: true, aboveCeiling: false })
+    })
+
     it("does not classify an in-range most-recent reading", async () => {
       prismaMock.cgmEntry.findFirst.mockResolvedValue({
         timestamp: new Date("2026-03-10T09:00:00.000Z"),
