@@ -115,10 +115,15 @@ dans des tickets dédiés, pas dans le câblage des onglets.
 - **[Sécu] XFF spoofable** : `ctx.ipAddress` = 1er hop `x-forwarded-for`
   (client-contrôlable) ; durcissement transverse — cf.
   `docs/security/xff-trusted-proxy.md`. Réutiliser `extractRequestContext`.
-- **[Clinique] Plancher capteur 0.40 g/L** (`analytics.service.ts`) exclut les
-  hypo sévères au plancher des agrégats (mean/CV/TIR severeHypo) — sous-estime la
-  charge hypoglycémique. Inclure les relevés clampés au plancher dans le bucket
-  severe-hypo.
+- ✅ **[Clinique] Plancher capteur dans les agrégats** (FAIT) : `analytics.service`
+  filtrait les agrégats (mean/CV/GMI/TIR/AGP/épisodes) au plancher d'affichage
+  `0.40–5.00`, excluant les hypo sévères réelles (0.20–0.40 g/L) → sous-estime la
+  charge hypoglycémique. Le helper `getPatientCgmRange` utilise désormais la plage
+  **physiologique valide** `0.20–6.00` (= CHECK base, constantes `CGM_AGG_MIN_GL`/
+  `CGM_AGG_MAX_GL`) → les hypo sévères sous-plancher comptent dans `severeHypo` et
+  baissent la moyenne (consensus ADA/Battelino). La **série graphique** garde le
+  plancher d'affichage 0.40–5.00 + caveat de fraîcheur (PR #555). Doc :
+  `docs/clinical-logic/bolus-calculation.md`.
 - ✅ **[Clinique] Cibles spécifiques grossesse (GD)** (FAIT) : à défaut
   d'objectif CGM, `analyticsService` (TIR/donut) ET le badge cible du dossier
   utilisent désormais `getCgmDefaults(pathology)` → GD = 63–140 mg/dL (Battelino

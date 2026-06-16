@@ -142,8 +142,21 @@ releve affichable), un caveat est leve : `recentOutOfRange = "low" | "high"`.
   a une correction insuline non supervisee).
 - **Limitation connue** : le caveat ne distingue pas encore une valeur numerique
   sous-plancher (20-40 mg/dL, hypo mesuree) d'un flag « LOW » capteur. L'action
-  (confirmer au doigt) est correcte dans les deux cas. Les analytics/TIR ne sont
-  pas modifies (les valeurs hors plage restent exclues des agregats).
+  (confirmer au doigt) est correcte dans les deux cas.
+
+#### Agregats : plage valide complete (0.20-6.00 g/L)
+
+Distinction importante entre **affichage** et **agregats** :
+
+- **Serie graphique** (`getCgmEntries`) : plancher d'affichage 0.40-5.00 g/L +
+  caveat de fraicheur ci-dessus.
+- **Agregats** (`analytics.service` : moyenne, CV, GMI, TIR, AGP, episodes hypo) :
+  plage **physiologique valide** 0.20-6.00 g/L (= CHECK base), constantes
+  `CGM_AGG_MIN_GL` / `CGM_AGG_MAX_GL`. Les hypo severes reelles mesurees sous le
+  plancher d'affichage (0.20-0.40) sont donc **comptees** (bucket `severeHypo` du
+  TIR, et baissent la moyenne) — sinon la charge hypoglycemique serait
+  **sous-estimee** (consensus ADA/Battelino : tout releve CGM valide compte dans
+  le TIR ; les valeurs « LOW » capteur sont comptees dans la zone la plus basse).
 
 ## Propositions d'ajustement
 

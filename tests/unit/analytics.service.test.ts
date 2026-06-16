@@ -72,6 +72,33 @@ describe("analyticsService", () => {
       const result = await analyticsService.glycemicProfile(1, "14d", 1)
       expect(result.warning).toBe("insufficientCgmCapture")
     })
+
+    it("aggregates over the FULL valid range (0.20–6.00 g/L), not the display floor", async () => {
+      // Sécurité clinique : les hypo sévères réelles sous le plancher d'affichage
+      // (0.20–0.40 g/L) doivent compter dans la moyenne/CV/TIR severeHypo.
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(50) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      await analyticsService.glycemicProfile(1, "14d", 1)
+
+      const where = prismaMock.cgmEntry.findMany.mock.calls.at(-1)![0]!.where as any
+      expect(where.valueGl).toEqual({ gte: 0.2, lte: 6.0 })
+    })
+
+    it("counts a real sub-display-floor reading (0.25 g/L) in the severeHypo TIR bucket", async () => {
+      // 25 mg/dL : exclu autrefois par le filtre 0.40 → desormais compté severeHypo.
+      prismaMock.cgmEntry.findMany.mockResolvedValue([
+        { valueGl: 0.25, timestamp: new Date() },
+        { valueGl: 1.2, timestamp: new Date() },
+      ] as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const result = await analyticsService.glycemicProfile(1, "14d", 1)
+      // veryLow défaut = 0.54 → 0.25 < 0.54 → severeHypo. 1/2 = 50 %.
+      expect(result.tir.severeHypo).toBe(50)
+    })
   })
 
   describe("timeInRange", () => {

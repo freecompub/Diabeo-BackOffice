@@ -30,6 +30,23 @@ const MAX_PERIOD_DAYS = 90
 const MAX_COMPARE_PERIOD_DAYS = 45
 
 /**
+ * Plage de valeurs CGM **physiologiquement valides** pour les AGRÉGATS
+ * (moyenne, CV, GMI, TIR, AGP, épisodes hypo) — alignée sur le CHECK base
+ * (`value_gl BETWEEN 0.20 AND 6.00`, `cgm_partitioning.sql`).
+ *
+ * ⚠️ DIFFÉRENT du plancher d'AFFICHAGE de la série (0.40–5.00 g/L,
+ * `glycemia.service.getCgmEntries`). Les agrégats doivent inclure les hypo
+ * sévères réelles mesurées sous le plancher d'affichage (0.20–0.40 g/L) et les
+ * hyper extrêmes (5.00–6.00) : sinon le bucket `severeHypo` du TIR et la
+ * moyenne/CV **sous-estiment la charge hypoglycémique** (consensus ADA/Battelino —
+ * tout relevé CGM valide compte dans le TIR ; les valeurs « LOW » capteur sont
+ * comptées dans la zone la plus basse). La série graphique, elle, reste filtrée
+ * au plancher d'affichage + caveat de fraîcheur (PR #555).
+ */
+const CGM_AGG_MIN_GL = 0.20
+const CGM_AGG_MAX_GL = 6.00
+
+/**
  * Parse period string (e.g., "14d" → 14 days).
  * @private
  * @param {string} period - Period format "Nd" (e.g., "14d", "30d")
@@ -47,9 +64,14 @@ function parsePeriod(period: string): number {
 }
 
 /**
- * Fetch CGM values for an explicit window. Centralizes the sensor-range filter
- * (0.40-5.00 g/L) and the Decimal→number coercion (uses .toNumber() to avoid
- * the silent precision loss flagged in the project backlog).
+ * Fetch CGM values for an explicit window. Centralizes the valid-range filter
+ * for AGGREGATES ({@link CGM_AGG_MIN_GL}–{@link CGM_AGG_MAX_GL} = 0.20–6.00 g/L,
+ * la plage physiologique valide en base) et la coercion Decimal→number
+ * (`.toNumber()` pour éviter la perte de précision silencieuse).
+ *
+ * NB : on inclut volontairement les hypo sévères mesurées sous le plancher
+ * d'affichage (0.20–0.40 g/L) — sinon `severeHypo`/moyenne/CV sous-estiment la
+ * charge hypoglycémique (cf. {@link CGM_AGG_MIN_GL}).
  * @private
  */
 async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
@@ -57,7 +79,7 @@ async function getPatientCgmRange(patientId: number, from: Date, to: Date) {
     where: {
       patientId,
       timestamp: { gte: from, lte: to },
-      valueGl: { gte: 0.40, lte: 5.00 },
+      valueGl: { gte: CGM_AGG_MIN_GL, lte: CGM_AGG_MAX_GL },
     },
     orderBy: { timestamp: "asc" },
     select: { valueGl: true, timestamp: true },
