@@ -143,6 +143,9 @@ export const recentPatientsService = {
       select: { id: true },
     })
     if (!already) {
+      // Check-then-write non atomique : 2 épinglages concourants du MÊME PS
+      // pourraient dépasser le plafond de +1. Course bénigne (mono-acteur,
+      // plafond purement défensif) — pas de transaction pour cette borne souple.
       const count = await prisma.pinnedPatient.count({ where: { userId } })
       if (count >= PINNED_CAP) return { ok: false, reason: "pinnedLimitReached" }
     }

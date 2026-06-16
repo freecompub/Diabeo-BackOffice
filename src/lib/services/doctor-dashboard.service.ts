@@ -566,6 +566,9 @@ export async function getPatientFlags(patientId: number): Promise<PatientFlags> 
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86_400_000)
   const silentCutoff = new Date(now.getTime() - SILENT_DAYS * 86_400_000)
   const [openUrgencyCount, hypoCount, latestCgm] = await Promise.all([
+    // NB : compte TOUTES les sévérités d'alerte en cours (≠ `urgenciesQuery` qui
+    // surface les critiques en tête) — pour la barre, toute urgence ouverte est un
+    // drapeau. Choix produit assumé, pas une dérive vs la worklist.
     prisma.emergencyAlert.count({
       where: {
         patientId,

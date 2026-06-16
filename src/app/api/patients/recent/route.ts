@@ -28,14 +28,30 @@ export async function GET(req: NextRequest) {
     const user = requireRole(req, "NURSE")
     const ctx = extractRequestContext(req)
 
-    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
-    if (!rl.allowed) {
+    // Double bucket per-user + per-IP (réponse = noms PII déchiffrés), aligné sur
+    // /patients/search. Fail-open — la confidentialité repose sur le scope RBAC.
+    const rlUser = await checkApiRateLimit(String(user.id), RATE_LIMITS.patientDataRead)
+    if (!rlUser.allowed) {
       return setNoStore(
         NextResponse.json(
           { error: "rateLimitExceeded" },
-          { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+          { status: 429, headers: { "Retry-After": String(rlUser.retryAfterSec) } },
         ),
       )
+    }
+    // Per-IP : SKIP quand l'IP n'est pas résolue ("unknown") pour éviter un
+    // bucket partagé `ip:unknown` (DoS auto-infligé). XFF spoofable — durcissement
+    // transverse suivi dans docs/security/xff-trusted-proxy.md.
+    if (ctx.ipAddress && ctx.ipAddress !== "unknown") {
+      const rlIp = await checkApiRateLimit(`ip:${ctx.ipAddress}`, RATE_LIMITS.patientDataReadIp)
+      if (!rlIp.allowed) {
+        return setNoStore(
+          NextResponse.json(
+            { error: "rateLimitExceeded" },
+            { status: 429, headers: { "Retry-After": String(rlIp.retryAfterSec) } },
+          ),
+        )
+      }
     }
 
     const result = await recentPatientsService.listRecentAndPinned(

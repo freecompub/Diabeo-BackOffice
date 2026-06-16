@@ -20,9 +20,10 @@ vi.mock("@/lib/services/recent-patients.service", () => ({
   recentPatientsService: { pin: pinMock, unpin: unpinMock, listRecentAndPinned: listMock },
 }))
 
+const rateLimitMock = vi.fn()
 vi.mock("@/lib/auth/api-rate-limit", () => ({
-  checkApiRateLimit: vi.fn().mockResolvedValue({ allowed: true }),
-  RATE_LIMITS: { patientDataRead: {} },
+  checkApiRateLimit: rateLimitMock,
+  RATE_LIMITS: { patientDataRead: {}, patientDataReadIp: {} },
 }))
 
 const findFirstMock = vi.fn()
@@ -50,6 +51,7 @@ beforeEach(() => {
   findFirstMock.mockResolvedValue({ id: 42 }) // patient alive by default
   canAccessMock.mockResolvedValue(true)
   consentMock.mockResolvedValue({ ok: true })
+  rateLimitMock.mockResolvedValue({ allowed: true })
 })
 
 describe("POST /api/patients/[id]/pin", () => {
@@ -73,11 +75,14 @@ describe("POST /api/patients/[id]/pin", () => {
     expect(pinMock).not.toHaveBeenCalled()
   })
 
-  it("sharing disabled → blocked with consent status, no pin", async () => {
+  it("sharing disabled → blocked with consent status, no pin, NO accessDenied", async () => {
     consentMock.mockResolvedValue({ ok: false, status: 403, error: "sharingDisabled" })
     const res = await POST(req("NURSE"), params("42"))
     expect(res?.status).toBe(403)
     expect(pinMock).not.toHaveBeenCalled()
+    // Un refus de consentement n'est PAS un accès refusé (accessDenied réservé
+    // au hors-périmètre, pour ne pas polluer la détection d'abus US-2265).
+    expect(accessDeniedMock).not.toHaveBeenCalled()
   })
 
   it("happy path → pins (200)", async () => {
@@ -117,6 +122,19 @@ describe("GET /api/patients/recent", () => {
       new NextRequest(new URL("/api/patients/recent", "http://test.local"), { headers }),
     )
     expect(res?.status).toBe(403)
+    expect(listMock).not.toHaveBeenCalled()
+  })
+
+  it("rate-limited → 429 with no-store, no service call", async () => {
+    rateLimitMock.mockResolvedValue({ allowed: false, retryAfterSec: 30 })
+    const headers = new Headers()
+    headers.set("x-user-id", "1")
+    headers.set("x-user-role", "NURSE")
+    const res = await GET_RECENT(
+      new NextRequest(new URL("/api/patients/recent", "http://test.local"), { headers }),
+    )
+    expect(res?.status).toBe(429)
+    expect(res?.headers.get("Cache-Control")).toContain("no-store")
     expect(listMock).not.toHaveBeenCalled()
   })
 
