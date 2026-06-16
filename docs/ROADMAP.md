@@ -636,11 +636,11 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 ### V1
 | US | Titre |
 |----|-------|
-| US-2600 | Navigation globale (sidebar maigre, RBAC serveur, RTL, drawer) |
-| US-2601 | Palette de commande `Ctrl/Cmd-K` (recherche patient scopée, audit ouverture) |
-| US-2602 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) |
+| US-2600 | Navigation globale (sidebar maigre, RBAC serveur, RTL, drawer) — ✅ DONE (PR #542) |
+| US-2601 | Palette de commande `Ctrl/Cmd-K` (recherche patient scopée, audit ouverture) — ✅ DONE (PR #541) |
+| US-2602 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) — ✅ DONE (PR #540) |
 | US-2603 | Barre de contexte patient + switcher |
-| US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) |
+| US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) — ✅ DONE (chantier câblage données patient, PR #543→#546 — 4 onglets sur données réelles, scopées/auditées ; enrichi #554–#558) |
 | US-2605 | Mode revue de consultation (**sans IA**) |
 | US-2606 | Bloc « Gestion cabinet » dans la sidebar (Variante A) |
 | US-2610 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session |
