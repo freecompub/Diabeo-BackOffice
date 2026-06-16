@@ -39,6 +39,7 @@ PR backoffice isolée.
 | Compromission BDD (dump) | `name`/`posology` lisibles en clair | Chiffrement at-rest disque (pgcrypto/infra), accès BDD restreint, audit |
 | Accès applicatif non autorisé | — | RBAC + `canAccessPatient` + `patientShareConsent` (fail-closed) + audit `READ` |
 | Exfiltration via API | `Treatment` n'est exposé que derrière la garde accès+consentement du dossier, jamais en liste cohorte |
+| Auto-export RGPD (Art. 20) | `export.service.generateUserExport` renvoie `Treatment` **au sujet lui-même** (ses propres données, gardé par l'auth de la route d'export) — accès self-service voulu, pas une fuite |
 
 **Gravité** : modérée (nom de traitement = sensible mais moins ré-identifiant que
 identité/INS, déjà chiffrés). **Vraisemblance** : faible (défense en profondeur).
