@@ -327,6 +327,14 @@ export function PatientDetailClient({
                       targetLow={objectives.targetLowMgdl}
                       targetHigh={objectives.targetHighMgdl}
                     />
+                    {/* Réconcilie courbe ↔ stats : les relevés hors plage
+                        d'affichage ne sont pas tracés mais comptent dans le TIR
+                        (cf. revue PR #557). */}
+                    {data.glycemia.outOfDisplayRangeCount > 0 && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {t("outOfDisplayRangeNote", { count: data.glycemia.outOfDisplayRangeCount })}
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               </>

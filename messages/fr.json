@@ -1585,6 +1585,7 @@
     "staleReadingNote": "Relevé ancien — peut ne pas refléter l'état actuel.",
     "recentOutOfRangeLow": "Un relevé plus récent est hors plage affichable (hypoglycémie sévère < 40 mg/dL possible ou capteur « LOW ») — vérifier le patient.",
     "recentOutOfRangeHigh": "Un relevé plus récent est hors plage affichable (> 500 mg/dL ou capteur « HIGH ») — vérifier le patient.",
+    "outOfDisplayRangeNote": "{count, plural, one {# relevé hors plage d'affichage sur la période — compté dans les statistiques (TIR).} other {# relevés hors plage d'affichage sur la période — comptés dans les statistiques (TIR).}}",
     "deliveryPump": "Pompe à insuline",
     "deliveryManual": "Stylo / manuel",
     "noInsulinSettings": "Aucun réglage d'insulinothérapie enregistré.",

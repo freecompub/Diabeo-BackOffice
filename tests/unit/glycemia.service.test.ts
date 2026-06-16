@@ -95,11 +95,13 @@ describe("glycemiaService", () => {
     const from = new Date("2026-03-01")
     const to = new Date("2026-03-10")
 
-    it("classifies a below-floor most-recent raw reading (severe hypo / sensor LOW)", async () => {
+    it("classifies a below-floor most-recent raw reading + counts out-of-range (severe hypo / sensor LOW)", async () => {
       prismaMock.cgmEntry.findFirst.mockResolvedValue({
         timestamp: new Date("2026-03-10T08:00:00.000Z"),
         valueGl: new Prisma.Decimal("0.35"), // 35 mg/dL < plancher 0.40
       } as any)
+      // belowFloorCount=2 puis aboveCeilingCount=0 (ordre des count dans Promise.all).
+      prismaMock.cgmEntry.count.mockResolvedValueOnce(2 as any).mockResolvedValueOnce(0 as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 
       const r = await glycemiaService.getLatestCgmFreshness(1, from, to, 1)
@@ -107,11 +109,14 @@ describe("glycemiaService", () => {
         timestamp: "2026-03-10T08:00:00.000Z",
         belowFloor: true,
         aboveCeiling: false,
+        belowFloorCount: 2,
+        aboveCeilingCount: 0,
       })
     })
 
     it("returns null when there is no reading in the window", async () => {
       prismaMock.cgmEntry.findFirst.mockResolvedValue(null)
+      prismaMock.cgmEntry.count.mockResolvedValue(0 as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
       expect(await glycemiaService.getLatestCgmFreshness(1, from, to, 1)).toBeNull()
     })
@@ -121,23 +126,35 @@ describe("glycemiaService", () => {
         timestamp: new Date("2026-03-10T07:00:00.000Z"),
         valueGl: null,
       } as any)
+      prismaMock.cgmEntry.count.mockResolvedValue(0 as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
       const r = await glycemiaService.getLatestCgmFreshness(1, from, to, 1)
-      expect(r).toEqual({ timestamp: "2026-03-10T07:00:00.000Z", belowFloor: true, aboveCeiling: false })
+      expect(r).toEqual({
+        timestamp: "2026-03-10T07:00:00.000Z",
+        belowFloor: true, aboveCeiling: false,
+        belowFloorCount: 0, aboveCeilingCount: 0,
+      })
     })
 
-    it("does not classify an in-range most-recent reading", async () => {
+    it("does not classify an in-range most-recent reading; surfaces out-of-range counts", async () => {
       prismaMock.cgmEntry.findFirst.mockResolvedValue({
         timestamp: new Date("2026-03-10T09:00:00.000Z"),
         valueGl: new Prisma.Decimal("1.20"),
       } as any)
+      // 1 relevé sous plancher + 1 au-dessus plafond ailleurs dans la fenêtre.
+      prismaMock.cgmEntry.count.mockResolvedValueOnce(1 as any).mockResolvedValueOnce(1 as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
       const r = await glycemiaService.getLatestCgmFreshness(1, from, to, 1)
-      expect(r).toEqual({ timestamp: "2026-03-10T09:00:00.000Z", belowFloor: false, aboveCeiling: false })
+      expect(r).toEqual({
+        timestamp: "2026-03-10T09:00:00.000Z",
+        belowFloor: false, aboveCeiling: false,
+        belowFloorCount: 1, aboveCeilingCount: 1,
+      })
     })
 
     it("audits READ CGM_ENTRY with the patientId pivot + freshness purpose", async () => {
       prismaMock.cgmEntry.findFirst.mockResolvedValue(null)
+      prismaMock.cgmEntry.count.mockResolvedValue(0 as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
       await glycemiaService.getLatestCgmFreshness(42, from, to, 1)
       const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any

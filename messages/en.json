@@ -1585,6 +1585,7 @@
     "staleReadingNote": "Old reading — may not reflect the current state.",
     "recentOutOfRangeLow": "A more recent reading is out of displayable range (possible severe hypoglycemia < 40 mg/dL or sensor \"LOW\") — check the patient.",
     "recentOutOfRangeHigh": "A more recent reading is out of displayable range (> 500 mg/dL or sensor \"HIGH\") — check the patient.",
+    "outOfDisplayRangeNote": "{count, plural, one {# reading out of display range over the period — counted in the statistics (TIR).} other {# readings out of display range over the period — counted in the statistics (TIR).}}",
     "deliveryPump": "Insulin pump",
     "deliveryManual": "Pen / manual",
     "noInsulinSettings": "No insulin therapy settings recorded.",

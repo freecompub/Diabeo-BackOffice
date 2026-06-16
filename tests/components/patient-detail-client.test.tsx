@@ -81,6 +81,7 @@ const baseData: PatientDetailData = {
     lastReadingAgeMin: 3,
     stale: false,
     recentOutOfRange: null,
+    outOfDisplayRangeCount: 0,
   },
   treatment: {
     hasSettings: true,
@@ -134,6 +135,17 @@ describe("PatientDetailClient (Phase 1)", () => {
     expect(screen.getByText("Dernière glycémie")).toBeTruthy()
     // Tous les onglets sont câblés → plus aucun état « bientôt disponible »
     expect(screen.queryByText(/Bientôt disponible/)).toBeNull()
+    // Aucun relevé hors plage → pas d'annotation.
+    expect(screen.queryByText(/hors plage d'affichage/)).toBeNull()
+  })
+
+  it("annotates the chart when readings were excluded from the display range (counted in TIR)", () => {
+    render(
+      <PatientDetailClient
+        data={{ ...baseData, glycemia: { ...baseData.glycemia, outOfDisplayRangeCount: 3 } }}
+      />,
+    )
+    expect(screen.getByText(/hors plage d'affichage/)).toBeTruthy()
   })
 
   it("renders the Documents tab (Phase 4) — title, category, size, download link", () => {
@@ -257,7 +269,7 @@ describe("PatientDetailClient (Phase 1)", () => {
   })
 
   it("shows an empty Glycémie state when there is no CGM series", () => {
-    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false, recentOutOfRange: null } }} />)
+    render(<PatientDetailClient data={{ ...baseData, glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false, recentOutOfRange: null, outOfDisplayRangeCount: 0 } }} />)
     expect(screen.queryByTestId("cgm-chart")).toBeNull()
   })
 
@@ -289,7 +301,7 @@ describe("PatientDetailClient (Phase 1)", () => {
       <PatientDetailClient
         data={{
           ...baseData,
-          glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false, recentOutOfRange: "low" },
+          glycemia: { points: [], lastReadingMgdl: null, lastReadingAt: null, lastReadingAgeMin: null, stale: false, recentOutOfRange: "low", outOfDisplayRangeCount: 0 },
         }}
       />,
     )

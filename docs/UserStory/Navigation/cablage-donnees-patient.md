@@ -103,15 +103,16 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   bloqué sur ces surfaces (404 si inexistant, 403/état « partage désactivé »
   sinon) — durcissement cohérent avec le reste de l'app. **DPIA rédigé** :
   `docs/compliance/dpia-patient-detail-dossier.md` (validations DPO/RSSI à obtenir).
-- **[Sécu, à investiguer] Route `glycemia` GET — sur-blocage self-service** :
-  cette route admet un VIEWER (`requireAuth`, pas `requireRole`) MAIS appelle
-  `patientShareConsent` (qui vérifie `shareWithProviders`) — un patient lisant
-  SA propre glycémie avec `shareWithProviders=false` serait bloqué à tort.
-  Confirmer si la route est réellement atteinte par un VIEWER ; si oui, exempter
-  le VIEWER (comme la route download). Pré-existant (relevé revue PR #547).
-- **[Sécu] Audit de l'accès « partage désactivé »** : la branche opt-out ne
-  trace rien (parité avec cgm/analytics) — envisager une ligne `accessDenied`
-  `kind: "sharingDisabled"` pour la traçabilité HDS.
+- ✅ **[Sécu] Route `glycemia` GET — sur-blocage self-service** (FAIT) : le GET
+  exemptait à tort un VIEWER lisant SA propre glycémie via `patientShareConsent`
+  (`shareWithProviders` régit le partage SOIGNANTS, pas l'accès du patient à ses
+  données ; son `gdprConsent` est déjà vérifié en amont). La garde
+  `patientShareConsent` est désormais conditionnée à `user.role !== "VIEWER"`
+  (cohérent avec la route download).
+- ✅ **[Sécu] Audit de l'accès « partage désactivé »** (FAIT) : la branche opt-out
+  du dossier (`page.tsx`) émet désormais `auditService.accessDenied`
+  (`metadata.kind: "sharingDisabled"`) — distingue un refus de partage d'un 404,
+  traçabilité HDS.
 - **[Sécu] XFF spoofable** : `ctx.ipAddress` = 1er hop `x-forwarded-for`
   (client-contrôlable) ; durcissement transverse — cf.
   `docs/security/xff-trusted-proxy.md`. Réutiliser `extractRequestContext`.
@@ -126,11 +127,12 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   moyenne (consensus ADA/Battelino). La **série graphique** garde le plancher
   d'affichage 0.40–5.00 + caveat de fraîcheur (PR #555). Doc :
   `docs/clinical-logic/bolus-calculation.md`.
-- **[Clinique/UX] Annotation graphe relevés sous-plancher** : la série affichée
-  s'arrête à 0.40 mais le TIR/donut peut reporter du `severeHypo` (agrégats
-  0.20–6.00) → discordance visuelle possible pour le clinicien. Envisager une
-  annotation « N relevés sous le plancher d'affichage — comptés dans le TIR »
-  (LOW, relevé revue PR #557, non bloquant).
+- ✅ **[Clinique/UX] Annotation graphe relevés sous-plancher** (FAIT) :
+  `getLatestCgmFreshness` renvoie désormais `belowFloorCount`/`aboveCeilingCount`
+  (relevés de la fenêtre exclus de la série) ; `buildGlycemiaView` les somme dans
+  `outOfDisplayRangeCount` ; le dossier affiche une note sous le graphe
+  « N relevés hors plage d'affichage — comptés dans les statistiques (TIR) »
+  (i18n FR/EN/AR, ICU plural). Réconcilie courbe ↔ TIR.
 - ✅ **[Clinique] Cibles spécifiques grossesse (GD)** (FAIT) : à défaut
   d'objectif CGM, `analyticsService` (TIR/donut) ET le badge cible du dossier
   utilisent désormais `getCgmDefaults(pathology)` → GD = 63–140 mg/dL (Battelino
@@ -162,9 +164,13 @@ dans des tickets dédiés, pas dans le câblage des onglets.
   `READ CGM_ENTRY` / `GLYCEMIA_ENTRY` (`glycemia.service`) et `READ BOLUS_LOG`
   (`getBolusLogs`/`getBolusLogById`, `insulin-therapy.service`), + `requestId`.
   (INSULIN_THERAPY l'avait déjà via Phase 3.)
-- **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) : colonnes non
-  chiffrées (≠ identité/medicalData). Chiffrer ou documenter le risque accepté
-  en DPIA (schéma pré-existant).
+- ✅ **[RGPD] `Treatment.name`/`posology` en clair** (Art. 9) — **documenté en
+  DPIA** (`docs/compliance/dpia-treatment-plaintext.md`). Le chiffrement at-rest
+  n'est PAS appliqué côté backoffice seul : `Treatment` est écrit **exclusivement
+  par iOS** (aucun chemin d'écriture backoffice), donc chiffrer unilatéralement
+  casserait la cohérence inter-dépôts. Chiffrement effectif = **prérequis de
+  coordination iOS** (ticket inter-dépôts) ; risque résiduel accepté documenté
+  (RBAC + consentement + audit + chiffrement disque) à arbitrer DPO/RSSI.
 - ✅ **[Clinique] Créneaux ISF/ICR/basal — gaps/overlaps signalés** (FAIT) :
   garde-fou structurel non bloquant. `analyzeSlotCoverage` (`treatment-view.ts`,
   pur, balayage minute par minute avec passage minuit) calcule `hasGap`/`hasOverlap`

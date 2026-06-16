@@ -243,8 +243,8 @@ export default function PatientDashboardPage() {
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">{t("pageTitle")}</h1>
-          <p className="text-sm text-gray-600 mt-1">
+          <h1 className="text-2xl font-semibold text-foreground">{t("pageTitle")}</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             {t("periodSubtitle", { days })}
           </p>
         </div>
@@ -256,7 +256,7 @@ export default function PatientDashboardPage() {
           role="status"
           aria-live="polite"
           aria-atomic="true"
-          className="rounded-md border border-teal-200 bg-teal-50 text-teal-900 p-2 text-sm"
+          className="rounded-md border border-primary/20 bg-primary/10 text-primary p-2 text-sm"
         >
           {toast}
         </div>
@@ -264,7 +264,7 @@ export default function PatientDashboardPage() {
 
       {/* US-3361 — 24h CGM section + 4 KPI metrics. */}
       <section aria-labelledby="glycemia-section" className="space-y-4">
-        <h2 id="glycemia-section" className="text-lg font-medium text-gray-800">
+        <h2 id="glycemia-section" className="text-lg font-medium text-foreground">
           {t("glycemiaSectionTitle")}
         </h2>
         {/* Sécurité clinique : un relevé hors plage plus récent que l'affiché a
@@ -280,7 +280,7 @@ export default function PatientDashboardPage() {
         )}
         {metricsState.error && (
           // C5 — actionable error → role="alert" (assertive) per WCAG 4.1.3.
-          <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
+          <div role="alert" className="rounded-md border border-feedback-warning bg-warning-bg text-warning-fg p-3 text-sm">
             {t(metricsState.error)}
           </div>
         )}
@@ -323,7 +323,7 @@ export default function PatientDashboardPage() {
           />
         </div>
         {cgmState.error ? (
-          <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
+          <div role="alert" className="rounded-md border border-feedback-warning bg-warning-bg text-warning-fg p-3 text-sm">
             {t(cgmState.error)}
           </div>
         ) : (
@@ -335,11 +335,11 @@ export default function PatientDashboardPage() {
 
       {/* US-3362 — AGP 7d résumé. */}
       <section aria-labelledby="agp-section" className="space-y-3">
-        <h2 id="agp-section" className="text-lg font-medium text-gray-800">
+        <h2 id="agp-section" className="text-lg font-medium text-foreground">
           {t("agpSectionTitle")}
         </h2>
         {agpState.error ? (
-          <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 text-amber-900 p-3 text-sm">
+          <div role="alert" className="rounded-md border border-feedback-warning bg-warning-bg text-warning-fg p-3 text-sm">
             {t(agpState.error)}
           </div>
         ) : (
