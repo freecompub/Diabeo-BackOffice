@@ -244,6 +244,46 @@ export const emailService = {
     })
   },
 
+  /**
+   * US-2610 — Invitation d'un membre de cabinet. Réutilise le flux set-password
+   * (`/reset-password/<token>`, VerificationToken 1h). Aucun PHI ; HTML inline CSS
+   * (contexte email, exception documentée CLAUDE.md).
+   */
+  async sendStaffInvitation(email: string, token: string): Promise<EmailResult> {
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.diabeo.fr"
+    const setupUrl = `${baseUrl}/reset-password/${token}`
+    return this.send({
+      to: email,
+      subject: "Diabeo — Invitation à rejoindre un cabinet",
+      html: `
+        <div style="font-family: 'Figtree', system-ui, sans-serif; max-width: 560px; margin: 0 auto; padding: 32px;">
+          <div style="text-align: center; margin-bottom: 24px;">
+            <h1 style="color: #0D9488; font-size: 24px; margin: 0;">Diabeo</h1>
+          </div>
+          <h2 style="color: #1F2937; font-size: 18px;">Invitation à rejoindre un cabinet</h2>
+          <p style="color: #6B7280; line-height: 1.6;">
+            Vous avez été invité(e) à rejoindre un cabinet sur Diabeo. Cliquez sur le
+            bouton ci-dessous pour définir votre mot de passe et activer votre accès.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${escapeHtml(setupUrl)}" style="background: #0D9488; color: #fff; padding: 12px 32px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+              Activer mon compte
+            </a>
+          </div>
+          <p style="color: #9CA3AF; font-size: 13px; line-height: 1.5;">
+            Ce lien expire dans 1 heure. Si vous n'attendiez pas cette invitation, ignorez cet email.
+          </p>
+          <hr style="border: none; border-top: 1px solid #E5E7EB; margin: 24px 0;" />
+          <p style="color: #9CA3AF; font-size: 12px; text-align: center;">
+            Diabeo — Supervision de l'insulinothérapie<br/>
+            Hébergement HDS certifié — OVHcloud GRA
+          </p>
+        </div>
+      `,
+      text: `Invitation à rejoindre un cabinet Diabeo\n\nActivez votre compte : ${setupUrl}\n\nCe lien expire dans 1 heure.`,
+    })
+  },
+
   async sendProposalNotification(email: string, action: "accepted" | "rejected"): Promise<EmailResult> {
     const actionFr = action === "accepted" ? "acceptée" : "refusée"
     return this.send({

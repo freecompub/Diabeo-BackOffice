@@ -1,0 +1,317 @@
+/**
+ * @module org-membership.service
+ * @description US-2610 — Gestion du personnel & des droits d'un cabinet (service).
+ *
+ * Modèle 2 axes (cf. `capabilities.ts`) : **Q1 clinique** (`clinicalRole`, accès PHI)
+ * et **Q2 gestion** (`canManage` opérationnel / `isPrincipalAdmin` = Q2 + droit de
+ * déléguer Q2). Les capacités vivent sur `HealthcareMembership` (N-N user↔service).
+ *
+ * Règles (BASELINE-RBAC / US-2610) :
+ *  - Accès à la gestion = **Q2** dans le scope (ADMIN bypass V1).
+ *  - Octroi/retrait **Q2** (`canManage`) = **admin principal** (ou ADMIN).
+ *  - `isPrincipalAdmin` octroyable **par ADMIN uniquement** (un principal ne nomme
+ *    que des délégués, pas d'autres principaux).
+ *  - **Q1 octroyable en V1** (« considéré vérifié » ; durci en V4 sur preuve PS).
+ *  - **Non-auto-élévation** : on ne modifie pas ses propres capacités.
+ *  - **Révocation immédiate** (F7) : bump `authVersion` + `invalidateAllUserSessions`.
+ *  - Scope obligatoire : un org-admin ne gère QUE son/ses service(s).
+ *
+ * ⚠️ V1 : pas de rôle plateforme « gestionnaire non-soignant » (découplage = F1/V4).
+ * Un membre invité est un utilisateur **clinique** (`DOCTOR`/`NURSE`). La secrétaire
+ * pure Q2-seule est reportée V4. `ADMIN` garde le bypass PHI (risque V1 accepté).
+ */
+
+import { randomBytes, randomUUID } from "crypto"
+import { hash as bcryptHash } from "bcryptjs"
+import type { Role } from "@prisma/client"
+import { prisma } from "@/lib/db/client"
+import { auditService } from "./audit.service"
+import type { AuditContext } from "./audit.service"
+import { emailService } from "./email.service"
+import { invalidateAllUserSessions } from "@/lib/auth/session"
+import { canManageOrg, isPrincipalAdmin } from "@/lib/capabilities"
+import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+import { hmacEmail, hmacField } from "@/lib/crypto/hmac"
+import { logger } from "@/lib/logger"
+
+/** Erreur typée → mappée en statut HTTP par les routes. */
+export class OrgMembershipError extends Error {
+  constructor(
+    public code:
+      | "forbidden"
+      | "notFound"
+      | "invalidState"
+      | "selfElevation"
+      | "lastPrincipalAdmin"
+      | "emailExists",
+  ) {
+    super(code)
+    this.name = "OrgMembershipError"
+  }
+}
+
+/** Statut HTTP correspondant à un code `OrgMembershipError`. */
+export function orgMembershipErrorStatus(code: OrgMembershipError["code"]): number {
+  if (code === "forbidden") return 403
+  if (code === "notFound") return 404
+  return 409 // invalidState / selfElevation / lastPrincipalAdmin / emailExists
+}
+
+/** Seuls DOCTOR/NURSE sont des capacités cliniques valides (Q1). */
+const CLINICAL_ROLES: ReadonlySet<Role> = new Set<Role>(["DOCTOR", "NURSE"])
+
+export type MemberView = {
+  userId: number
+  firstname: string | null
+  lastname: string | null
+  email: string | null
+  status: string
+  clinicalRole: Role | null
+  canManage: boolean
+  isPrincipalAdmin: boolean
+  /** V1 — toute inscription est « considérée vérifiée » (workflow PS réel = V4). */
+  psVerified: boolean
+}
+
+export type CapabilityInput = {
+  clinicalRole?: Role | null
+  canManage?: boolean
+  isPrincipalAdmin?: boolean
+}
+
+/** Accès à la gestion = Q2 dans le scope (ADMIN bypass V1). */
+async function assertCanManage(callerId: number, role: Role, serviceId: number): Promise<void> {
+  if (role === "ADMIN") return
+  if (!(await canManageOrg(callerId, serviceId))) throw new OrgMembershipError("forbidden")
+}
+
+/** Octroi Q2 (`canManage`) réservé admin principal (ou ADMIN). */
+async function assertPrincipal(callerId: number, role: Role, serviceId: number): Promise<void> {
+  if (role === "ADMIN") return
+  if (!(await isPrincipalAdmin(callerId, serviceId))) throw new OrgMembershipError("forbidden")
+}
+
+export const orgMembershipService = {
+  /** Liste les membres du service (capacités + PII déchiffrée). Gated Q2. */
+  async listMembers(
+    callerId: number, role: Role, serviceId: number, ctx?: AuditContext,
+  ): Promise<MemberView[]> {
+    await assertCanManage(callerId, role, serviceId)
+
+    const rows = await prisma.healthcareMembership.findMany({
+      where: { serviceId },
+      select: {
+        userId: true, clinicalRole: true, canManage: true, isPrincipalAdmin: true,
+        user: { select: { firstname: true, lastname: true, email: true, status: true } },
+      },
+      orderBy: { userId: "asc" },
+    })
+
+    await auditService.log({
+      userId: callerId, action: "READ", resource: "HEALTHCARE_MEMBERSHIP",
+      resourceId: String(serviceId), scopeServiceId: serviceId,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { count: rows.length },
+    })
+
+    return rows.map((r) => ({
+      userId: r.userId,
+      firstname: safeDecryptField(r.user.firstname),
+      lastname: safeDecryptField(r.user.lastname),
+      email: safeDecryptField(r.user.email),
+      status: r.user.status,
+      clinicalRole: r.clinicalRole,
+      canManage: r.canManage,
+      isPrincipalAdmin: r.isPrincipalAdmin,
+      psVerified: true, // V1
+    }))
+  },
+
+  /**
+   * Invite/rattache un membre au service. User existant → rattache ; sinon crée
+   * le User (clinique) + token set-password single-use + email d'invitation.
+   */
+  async inviteMember(
+    callerId: number, role: Role, serviceId: number,
+    input: { email: string; firstName?: string; lastName?: string } & CapabilityInput,
+    ctx?: AuditContext,
+  ): Promise<{ userId: number; invitedNewUser: boolean }> {
+    await assertCanManage(callerId, role, serviceId)
+    // Octroi Q2 à l'invitation : mêmes gardes que setCapabilities.
+    if (input.canManage) await assertPrincipal(callerId, role, serviceId)
+    if (input.isPrincipalAdmin && role !== "ADMIN") throw new OrgMembershipError("forbidden")
+    if (input.clinicalRole && !CLINICAL_ROLES.has(input.clinicalRole)) {
+      throw new OrgMembershipError("invalidState")
+    }
+
+    const emailHmac = hmacEmail(input.email)
+    const existing = await prisma.user.findUnique({ where: { emailHmac }, select: { id: true } })
+
+    let resetToken: string | null = null
+    const result = await prisma.$transaction(async (tx) => {
+      let targetUserId: number
+      let invitedNewUser = false
+
+      if (existing) {
+        targetUserId = existing.id
+        const dup = await tx.healthcareMembership.findUnique({
+          where: { userId_serviceId: { userId: targetUserId, serviceId } },
+          select: { id: true },
+        })
+        if (dup) throw new OrgMembershipError("invalidState") // déjà membre
+      } else {
+        // Nouveau membre = utilisateur clinique en V1 → clinicalRole requis.
+        if (!input.clinicalRole) throw new OrgMembershipError("invalidState")
+        const tempPasswordHash = await bcryptHash(randomBytes(32).toString("base64url"), 12)
+        resetToken = randomUUID()
+        const user = await tx.user.create({
+          data: {
+            email: encryptField(input.email),
+            emailHmac,
+            passwordHash: tempPasswordHash,
+            ...(input.firstName && { firstname: encryptField(input.firstName), firstnameHmac: hmacField(input.firstName) }),
+            ...(input.lastName && { lastname: encryptField(input.lastName), lastnameHmac: hmacField(input.lastName) }),
+            role: input.clinicalRole,
+            status: "active",
+            language: "fr",
+            needPasswordUpdate: true,
+            needOnboarding: true,
+          },
+          select: { id: true },
+        })
+        targetUserId = user.id
+        invitedNewUser = true
+        await tx.verificationToken.deleteMany({ where: { identifier: emailHmac } })
+        await tx.verificationToken.create({
+          data: { identifier: emailHmac, token: resetToken, expires: new Date(Date.now() + 3600_000) },
+        })
+      }
+
+      await tx.healthcareMembership.create({
+        data: {
+          userId: targetUserId, serviceId,
+          clinicalRole: input.clinicalRole ?? null,
+          canManage: input.canManage ?? false,
+          isPrincipalAdmin: input.isPrincipalAdmin ?? false,
+        },
+      })
+
+      await auditService.logWithTx(tx, {
+        userId: callerId, action: "INVITATION_SENT", resource: "ORG_INVITATION",
+        resourceId: String(targetUserId), scopeServiceId: serviceId,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: {
+          invitedNewUser,
+          clinicalRole: input.clinicalRole ?? null,
+          canManage: input.canManage ?? false,
+          isPrincipalAdmin: input.isPrincipalAdmin ?? false,
+        },
+      })
+
+      return { userId: targetUserId, invitedNewUser }
+    })
+
+    // Hors transaction : email d'invitation (nouveau user) — best-effort.
+    if (result.invitedNewUser && resetToken) {
+      void emailService.sendStaffInvitation(input.email, resetToken).catch((err) => {
+        logger.error("org-membership", "Failed to send staff invitation email", {}, err)
+      })
+    }
+
+    return result
+  },
+
+  /**
+   * Modifie les capacités d'un membre. Q2 (`canManage`) = principal-admin ;
+   * `isPrincipalAdmin` = ADMIN ; Q1 (`clinicalRole`) = V1. Non-auto-élévation.
+   * Révocation/octroi immédiat (bump authVersion + invalidate sessions).
+   */
+  async setCapabilities(
+    callerId: number, role: Role, targetUserId: number, serviceId: number,
+    caps: CapabilityInput, ctx?: AuditContext,
+  ): Promise<void> {
+    await assertCanManage(callerId, role, serviceId)
+    if (targetUserId === callerId) throw new OrgMembershipError("selfElevation")
+    if (caps.canManage !== undefined) await assertPrincipal(callerId, role, serviceId)
+    if (caps.isPrincipalAdmin !== undefined && role !== "ADMIN") throw new OrgMembershipError("forbidden")
+    if (caps.clinicalRole && !CLINICAL_ROLES.has(caps.clinicalRole)) {
+      throw new OrgMembershipError("invalidState")
+    }
+
+    const membership = await prisma.healthcareMembership.findUnique({
+      where: { userId_serviceId: { userId: targetUserId, serviceId } },
+      select: { id: true },
+    })
+    if (!membership) throw new OrgMembershipError("notFound")
+
+    await prisma.$transaction(async (tx) => {
+      await tx.healthcareMembership.update({
+        where: { userId_serviceId: { userId: targetUserId, serviceId } },
+        data: {
+          ...(caps.clinicalRole !== undefined && { clinicalRole: caps.clinicalRole }),
+          ...(caps.canManage !== undefined && { canManage: caps.canManage }),
+          ...(caps.isPrincipalAdmin !== undefined && { isPrincipalAdmin: caps.isPrincipalAdmin }),
+        },
+      })
+      // F7 — effet immédiat : bump authVersion (rejet refresh) ; invalidate sessions ci-dessous.
+      await tx.user.update({ where: { id: targetUserId }, data: { authVersion: { increment: 1 } } })
+
+      await auditService.logWithTx(tx, {
+        userId: callerId, action: "CAPABILITY_GRANTED", resource: "HEALTHCARE_MEMBERSHIP",
+        resourceId: String(targetUserId), scopeServiceId: serviceId,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        newValue: {
+          ...(caps.clinicalRole !== undefined && { clinicalRole: caps.clinicalRole }),
+          ...(caps.canManage !== undefined && { canManage: caps.canManage }),
+          ...(caps.isPrincipalAdmin !== undefined && { isPrincipalAdmin: caps.isPrincipalAdmin }),
+        },
+      })
+    })
+
+    await invalidateAllUserSessions(targetUserId).catch((err) => {
+      logger.error("org-membership", "Failed to invalidate sessions after capability change", {}, err)
+    })
+  },
+
+  /**
+   * Retire un membre du service (appartenance supprimée). Données déjà créées
+   * conservées (append-only). Anti-self-lockout : le dernier admin principal ne
+   * peut pas se retirer. Révocation immédiate.
+   */
+  async revokeMember(
+    callerId: number, role: Role, targetUserId: number, serviceId: number, ctx?: AuditContext,
+  ): Promise<void> {
+    await assertCanManage(callerId, role, serviceId)
+
+    const membership = await prisma.healthcareMembership.findUnique({
+      where: { userId_serviceId: { userId: targetUserId, serviceId } },
+      select: { id: true, isPrincipalAdmin: true },
+    })
+    if (!membership) throw new OrgMembershipError("notFound")
+
+    // Anti-self-lockout : ne pas retirer le dernier admin principal du service.
+    if (membership.isPrincipalAdmin) {
+      const otherPrincipals = await prisma.healthcareMembership.count({
+        where: { serviceId, isPrincipalAdmin: true, userId: { not: targetUserId } },
+      })
+      if (otherPrincipals === 0) throw new OrgMembershipError("lastPrincipalAdmin")
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.healthcareMembership.delete({
+        where: { userId_serviceId: { userId: targetUserId, serviceId } },
+      })
+      await tx.user.update({ where: { id: targetUserId }, data: { authVersion: { increment: 1 } } })
+      await auditService.logWithTx(tx, {
+        userId: callerId, action: "CAPABILITY_REVOKED", resource: "HEALTHCARE_MEMBERSHIP",
+        resourceId: String(targetUserId), scopeServiceId: serviceId,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { kind: "memberRemoved" },
+      })
+    })
+
+    await invalidateAllUserSessions(targetUserId).catch((err) => {
+      logger.error("org-membership", "Failed to invalidate sessions after member revoke", {}, err)
+    })
+  },
+}
