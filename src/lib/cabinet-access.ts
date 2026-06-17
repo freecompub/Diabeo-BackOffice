@@ -42,6 +42,10 @@ export async function requireCabinetManagementAccess(
   if (!userId || !Number.isInteger(userId) || !role) redirect("/login")
 
   // Garde Q2 : ADMIN passe ; sinon il faut la capacité de gestion sur CE service.
+  // NB : pour un ADMIN, on ne vérifie PAS l'existence du cabinet ici — un id de
+  // format valide mais inexistant est confirmé en aval (le service/API renvoie
+  // notFound/erreur). Pour un non-ADMIN, `canManageOrg` false couvre à la fois
+  // « cabinet inexistant » et « hors de mon périmètre » → 404 uniforme.
   if (role !== "ADMIN" && !(await canManageOrg(userId, cabinetId))) {
     notFound() // 404 uniforme (anti-énumération du périmètre cabinet)
   }

@@ -64,10 +64,10 @@ describe("CabinetInvoicesClient", () => {
     await waitFor(() => expect(screen.getByTestId("empty")).toBeTruthy())
   })
 
-  it("erreur → alerte + « réessayer » refait l'appel", async () => {
+  it("erreur 5xx (transitoire) → alerte + « réessayer » refait l'appel", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce({ ok: false, status: 403, json: () => Promise.resolve({ error: "forbidden" }) })
+      .mockResolvedValueOnce({ ok: false, status: 500, json: () => Promise.resolve({ error: "serverError" }) })
       .mockResolvedValueOnce({ ok: true, json: () => Promise.resolve({ items: INVOICES }) })
     vi.stubGlobal("fetch", fetchMock)
     render(<CabinetInvoicesClient cabinetId={9} mode="billing" />)
@@ -75,5 +75,14 @@ describe("CabinetInvoicesClient", () => {
     fireEvent.click(screen.getByRole("button", { name: "Réessayer" }))
     await waitFor(() => expect(screen.getByText("F-2026-001")).toBeTruthy())
     expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it("erreur 4xx (403, déterministe) → alerte SANS « réessayer » (pas de boucle)", async () => {
+    vi.stubGlobal("fetch", vi.fn(() =>
+      Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: "forbidden" }) }),
+    ))
+    render(<CabinetInvoicesClient cabinetId={9} mode="billing" />)
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
+    expect(screen.queryByRole("button", { name: "Réessayer" })).toBeNull()
   })
 })

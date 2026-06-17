@@ -61,6 +61,9 @@ export function CabinetInvoicesClient({
   const [rows, setRows] = useState<InvoiceRow[]>([])
   const [state, setState] = useState<AsyncState>("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  // 4xx (403/404…) = erreur d'autorisation/déterministe → réessayer est inutile
+  // (boucle). On n'offre « Réessayer » que sur 5xx / erreurs réseau (transitoires).
+  const [retryable, setRetryable] = useState(false)
   // `reloadKey` re-déclenche l'effet sur « réessayer » sans setState synchrone
   // dans l'effet (pattern canonique React : tout setState après l'await).
   const [reloadKey, setReloadKey] = useState(0)
@@ -84,6 +87,8 @@ export function CabinetInvoicesClient({
         if (ignore) return
         if (!res.ok) {
           setErrorMessage((await extractApiError(res)).message)
+          // 4xx → non rejouable ; 5xx → transitoire, on autorise « Réessayer ».
+          setRetryable(res.status >= 500)
           setState("error")
           return
         }
@@ -94,6 +99,7 @@ export function CabinetInvoicesClient({
       } catch (err) {
         if (ignore || controller.signal.aborted) return
         setErrorMessage(err instanceof Error ? err.message : loadErrorMessage)
+        setRetryable(true) // erreur réseau → transitoire
         setState("error")
       }
     })()
@@ -131,13 +137,15 @@ export function CabinetInvoicesClient({
           className="flex flex-wrap items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive"
         >
           <span>{errorMessage ?? t("loadError")}</span>
-          <button
-            type="button"
-            onClick={retry}
-            className="rounded-md border border-destructive/40 px-2 py-1 font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
-          >
-            {t("retry")}
-          </button>
+          {retryable && (
+            <button
+              type="button"
+              onClick={retry}
+              className="inline-flex min-h-11 items-center rounded-md border border-destructive/40 px-3 py-2 font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+            >
+              {t("retry")}
+            </button>
+          )}
         </div>
       )}
 

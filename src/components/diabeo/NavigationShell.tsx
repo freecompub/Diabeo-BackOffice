@@ -252,18 +252,14 @@ function SidebarNav({
       {hasManagement && (
         <>
           {collapsed ? (
-            <div
-              className="my-2 border-t border-border"
-              role="separator"
-              aria-label={t("gestionSection")}
-            />
+            // Mode replié : pas de libellé visible → simple divider visuel.
+            <div className="my-2 border-t border-border" role="separator" />
           ) : (
-            <div
-              className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground"
-              role="separator"
-            >
+            // Mode étendu : vrai titre de section (pas un `role="separator"`
+            // porteur de texte, sémantiquement ambigu pour les lecteurs d'écran).
+            <h2 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               {t("gestionSection")}
-            </div>
+            </h2>
           )}
           <ul className="space-y-1" aria-label={t("gestionSection")}>
             {managementItems!.map((item) => (

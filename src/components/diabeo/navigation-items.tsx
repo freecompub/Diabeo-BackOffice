@@ -128,6 +128,13 @@ export const patientNavItems: NavItem[] = [
  *
  * Axe orthogonal au rôle clinique : ces items n'ouvrent AUCUN accès aux données de
  * santé (PII admin uniquement) → pas de `minRole`, le gating est porté par Q2 seul.
+ *
+ * ⚠️ Source de vérité du **routage** : ces `href` doivent matcher les routes
+ * d'atterrissage `src/app/(dashboard)/cabinet/{team,billing,payments,settings}/`,
+ * elles-mêmes mappées vers les segments per-id par `SECTION_SEGMENT`
+ * (`CabinetManagementLanding.tsx`, ex. `team → members`). Tout renommage de route
+ * doit toucher les trois (href ici + dossier de page + `SECTION_SEGMENT`) ; le test
+ * `phase11-navigation` vérifie la présence des 4 href dans la sidebar Q2.
  */
 export const managementNavItems: NavItem[] = [
   { href: "/cabinet/team", labelKey: "gestionTeam", icon: UsersRound },

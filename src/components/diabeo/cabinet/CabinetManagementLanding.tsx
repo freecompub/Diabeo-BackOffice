@@ -82,7 +82,9 @@ export async function CabinetManagementLanding({
               <span className="flex items-center gap-2">
                 <span>{scope.serviceName}</span>
                 {scope.isPrincipalAdmin && (
-                  <Badge className="gap-1 bg-primary/10 text-primary">
+                  // `variant="secondary"` (et non `bg-primary/10 text-primary`) :
+                  // contraste AA conforme + cohérent avec MembersManagementClient.
+                  <Badge variant="secondary" className="gap-1">
                     <ShieldCheck className="size-3" aria-hidden="true" />
                     {t("principalBadge")}
                   </Badge>

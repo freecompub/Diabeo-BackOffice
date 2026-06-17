@@ -49,9 +49,13 @@ export default defineConfig({
     testTimeout: 10000,
   },
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "next-intl": path.resolve(__dirname, "src/__mocks__/next-intl.ts"),
-    },
+    // Forme tableau : le `find` de `next-intl` est une **regex exacte** (`/^next-intl$/`)
+    // — sinon l'alias chaîne capture aussi les sous-chemins (`next-intl/server`) et les
+    // réécrit vers `<mock>/server` inexistant. Le bare `next-intl` reste mocké ; les
+    // sous-chemins (`next-intl/server`) résolvent le vrai paquet (mockable par test).
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      { find: /^next-intl$/, replacement: path.resolve(__dirname, "src/__mocks__/next-intl.ts") },
+    ],
   },
 })
