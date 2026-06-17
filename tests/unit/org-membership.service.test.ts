@@ -183,6 +183,16 @@ describe("setCapabilities", () => {
       orgMembershipService.setCapabilities(1, "ADMIN", 5, 9, { isPrincipalAdmin: true, canManage: false }),
     ).rejects.toMatchObject({ code: "invalidState" })
   })
+
+  it("no-op (capacité déjà en place) → ni écriture, ni bump, ni invalidation, ni audit", async () => {
+    pm.healthcareMembership.findUnique.mockResolvedValue({
+      id: 1, clinicalRole: "DOCTOR", canManage: true, isPrincipalAdmin: false,
+    })
+    await orgMembershipService.setCapabilities(1, "DOCTOR", 5, 9, { canManage: true }) // déjà true
+    expect(pm.healthcareMembership.update).not.toHaveBeenCalled()
+    expect(pm.user.update).not.toHaveBeenCalled()
+    expect(invalidateAllUserSessions).not.toHaveBeenCalled()
+  })
 })
 
 describe("revokeMember", () => {

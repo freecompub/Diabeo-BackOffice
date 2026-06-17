@@ -261,9 +261,18 @@ export const orgMembershipService = {
 
     const membership = await prisma.healthcareMembership.findUnique({
       where: { userId_serviceId: { userId: targetUserId, serviceId } },
-      select: { id: true, isPrincipalAdmin: true },
+      select: { id: true, clinicalRole: true, canManage: true, isPrincipalAdmin: true },
     })
     if (!membership) throw new OrgMembershipError("notFound")
+
+    // LOW (review) — court-circuit no-op : si les capacités demandées sont déjà en
+    // place, ne rien faire (pas de bump authVersion, pas d'invalidation de session,
+    // pas de ligne d'audit) → évite un force-logout / bruit d'audit par PATCH vide.
+    const changed =
+      (norm.clinicalRole !== undefined && norm.clinicalRole !== membership.clinicalRole) ||
+      (norm.canManage !== undefined && norm.canManage !== membership.canManage) ||
+      (norm.isPrincipalAdmin !== undefined && norm.isPrincipalAdmin !== membership.isPrincipalAdmin)
+    if (!changed) return
 
     // HIGH (review) — anti-lockout symétrique : ne pas retirer `isPrincipalAdmin`
     // du DERNIER admin principal du service (sinon plus personne ne peut octroyer Q2).

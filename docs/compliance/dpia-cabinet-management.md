@@ -57,6 +57,14 @@ octroyer/révoquer capacités Q1/Q2, retirer un membre) + routes `/api/cabinet/[
 - **Pas de rôle « gestionnaire non-soignant »** (F1/V4) : en V1 un membre géré est un
   utilisateur clinique (`DOCTOR`/`NURSE`). La **secrétaire pure Q2-seule** est reportée V4.
 - **`ADMIN` bypass PHI** : inchangé (V4 / F1).
+- **TOCTOU anti-lockout** (backlog) : le décompte « autres principaux » est lu **hors
+  transaction** ; deux rétrogradations/retraits concurrents de deux principaux distincts
+  pourraient théoriquement passer tous les deux et laisser le service sans principal.
+  Race très étroite (action d'admin manuelle). **Parade réelle** = contrainte DB
+  (index partiel / trigger « ≥ 1 principal par service ») → durcissement ultérieur.
+- **No-op court-circuité** : un `PATCH` de capacités déjà en place ne déclenche ni
+  écriture, ni bump `authVersion`, ni invalidation de session, ni audit (évite un
+  force-logout / bruit d'audit par requête sémantiquement vide).
 - **Rattachement d'un user existant** : un principal peut rattacher un compte Diabeo
   **existant** (par email) à son service avec une capacité clinique → l'utilisateur gagne
   l'accès PHI du service **sans notification** en V1 (l'action est **auditée**
