@@ -1,12 +1,18 @@
 /**
+ * @vitest-environment jsdom
+ */
+
+/**
  * Test suite : CabinetManagementLanding (US-2606 — atterrissage cabinet-agnostique
  * du bloc « Gestion »).
  *
  * Couvre la résolution du périmètre Q2 : ADMIN → espace plateforme ; 0 cabinet →
  * notFound ; 1 cabinet → redirection directe (avec mapping section→segment, ex.
- * `team → members`) ; N cabinets → sélecteur (élément rendu, pas de throw).
+ * `team → members`) ; N cabinets → sélecteur (rendu : un lien par cabinet vers
+ * la section, badge admin principal le cas échéant).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen } from "@testing-library/react"
 
 const headersGet = vi.fn<(key: string) => string | null>()
 vi.mock("next/headers", () => ({
@@ -38,7 +44,12 @@ vi.mock("next-intl/server", () => ({
 }))
 
 vi.mock("@/components/ui/badge", () => ({
-  Badge: ({ children }: { children: React.ReactNode }) => children,
+  Badge: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
+}))
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => (
+    <a href={href}>{children}</a>
+  ),
 }))
 
 import { CabinetManagementLanding } from "@/components/diabeo/cabinet/CabinetManagementLanding"
@@ -81,13 +92,20 @@ describe("CabinetManagementLanding", () => {
     })
   })
 
-  it("N cabinets → rend le sélecteur (pas de redirection)", async () => {
+  it("N cabinets → rend le sélecteur (un lien par cabinet vers la section)", async () => {
     getManagementScopes.mockResolvedValue([
       { serviceId: 9, serviceName: "Nord", isPrincipalAdmin: true },
       { serviceId: 7, serviceName: "Sud", isPrincipalAdmin: false },
     ])
     const el = await CabinetManagementLanding({ section: "settings" })
-    expect(el).toBeTruthy()
-    expect((el as { type?: unknown }).type).toBeDefined()
+    render(el)
+    // Un lien par cabinet, ciblant le segment de la section (settings).
+    const nord = screen.getByText("Nord").closest("a")
+    const sud = screen.getByText("Sud").closest("a")
+    expect(nord?.getAttribute("href")).toBe("/cabinet/9/settings")
+    expect(sud?.getAttribute("href")).toBe("/cabinet/7/settings")
+    // Badge « admin principal » uniquement pour le cabinet où isPrincipalAdmin.
+    const badges = screen.getAllByText("cabinetMgmt.principalBadge")
+    expect(badges).toHaveLength(1)
   })
 })
