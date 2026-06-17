@@ -449,6 +449,13 @@ model User {
   /// US-2605 — séances de revue ouvertes + comptes rendus rédigés par ce PS.
   encountersOpened                  Encounter[]                       @relation("EncounterOpener")
   consultationReportsAuthored       ConsultationReportAddendum[]      @relation("ConsultationReportAuthor")
+  /// US-2610/F4 — appartenances scopées (N-N user↔service) porteuses des capacités Q1/Q2.
+  memberships                       HealthcareMembership[]
+  /// F4 — preuves d'enregistrement PS (multi-pays) + preuves vérifiées par ce PS.
+  professionalRegistrations         ProfessionalRegistration[]        @relation("RegistrationSubject")
+  professionalRegistrationsVerified ProfessionalRegistration[]        @relation("RegistrationVerifier")
+  /// F2 — politiques de vérification posées par ce SYSTEM_ADMIN.
+  verificationPoliciesSet           VerificationPolicy[]              @relation("VerificationPolicySetter")
 
   /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
   /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
@@ -1654,8 +1661,14 @@ model HealthcareService {
   /// US-2506 V1 mock — Credits SMS prepayes (decrement par envoi reussi).
   /// Alerte ops si <10. Mock V1 = on n'achete pas vraiment.
   smsCreditBalance Int         @default(0) @map("sms_credit_balance")
+  /// US-2616/F2 — Tenant (organisation racine) d'isolation. 1 cabinet libéral =
+  /// 1 tenant ; 1 hôpital = 1 tenant à N services. Nullable le temps du backfill.
+  tenantId         Int?        @map("tenant_id")
+  tenant           Tenant?     @relation(fields: [tenantId], references: [id], onDelete: SetNull)
 
   members                    HealthcareMember[]
+  /// US-2617/F4 — appartenances scopées (N-N) porteuses des capacités Q1/Q2.
+  memberships                HealthcareMembership[]
   patientServices            PatientService[]
   referents                  PatientReferent[]
   /// US-2022 — Tags (catégorisation libre) appartenant à ce cabinet.
@@ -1683,7 +1696,117 @@ model HealthcareService {
   /// d'un sequential scan. Préventif : à 1000+ services, le scan devient
   /// notable lors de la recherche par spécialité.
   @@index([specialties], type: Gin)
+  @@index([tenantId])
   @@map("healthcare_services")
+}
+
+/// US-2616/F2 — Tenant (organisation racine) : frontière d'isolation + responsable
+/// de traitement RGPD. `country` exploitable pour la résolution de la politique de
+/// vérification (`tenant > pays > environnement`). Modèle léger V1 : promu depuis
+/// `HealthcareService` (1 tenant ↔ 1..N services).
+model Tenant {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  /// Code pays ISO-3166-1 alpha-2 (FR, DZ, …) — pilote la méthode de vérification PS.
+  country   String?  @db.Char(2)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  services           HealthcareService[]
+  verificationPolicies VerificationPolicy[]
+
+  @@index([country])
+  @@map("tenants")
+}
+
+/// US-2616/F2 — Mode d'application de la vérification « qualité PS » (porte Q1).
+enum VerificationMode {
+  /// Porte ON : accès clinique gated sur une preuve PS vérifiée.
+  required
+  /// Accès clinique autorisé sans preuve, le temps du ramp-up (pilote borné, DPIA).
+  provisional
+}
+
+/// US-2616/F2 — Table de politique de vérification. Résolue serveur dans l'ordre
+/// `tenant > pays > environnement`, **défaut `required` codé en dur** (fail-secure).
+/// Réglée par `SYSTEM_ADMIN` uniquement (jamais l'org-admin) ; `provisional` borné
+/// (`expiresAt` obligatoire) + audité.
+model VerificationPolicy {
+  id        Int              @id @default(autoincrement())
+  /// Cible : un tenant précis (prioritaire) OU un pays (fallback). Les deux nulls =
+  /// politique « environnement » (rare ; le défaut codé en dur reste `required`).
+  tenantId  Int?             @map("tenant_id")
+  country   String?          @db.Char(2)
+  mode      VerificationMode
+  /// Obligatoire si `mode = provisional` (garde-fou borné) — appliqué au service layer.
+  expiresAt DateTime?        @map("expires_at") @db.Timestamptz()
+  setById   Int              @map("set_by_id")
+  setAt     DateTime         @default(now()) @map("set_at") @db.Timestamptz()
+
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  setBy  User    @relation("VerificationPolicySetter", fields: [setById], references: [id], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([country])
+  @@map("verification_policies")
+}
+
+/// US-2617/F4 — Appartenance scopée user↔service (N-N), porteuse des **capacités**
+/// orthogonales : Q1 clinique (`clinicalRole`, gated sur qualité PS vérifiée) et Q2
+/// gestion (`canManage` opérationnel, `isPrincipalAdmin` = Q2 + droit de déléguer Q2).
+/// Distincte de `HealthcareMember` (profil praticien : RDV/booking/référents) qu'on
+/// ne touche pas. Lue en base à chaque requête sensible (prépare F7, hors JWT).
+model HealthcareMembership {
+  id              Int      @id @default(autoincrement())
+  userId          Int      @map("user_id")
+  serviceId       Int      @map("service_id")
+  /// Q1 — capacité clinique scopée (null = aucun accès PHI via ce scope).
+  clinicalRole    Role?    @map("clinical_role")
+  /// Q2 — gestion opérationnelle (personnel/facturation). N'ouvre AUCUN PHI.
+  canManage       Boolean  @default(false) @map("can_manage")
+  /// Q2 — admin principal (peut déléguer Q2). Le propriétaire bootstrap l'est.
+  isPrincipalAdmin Boolean @default(false) @map("is_principal_admin")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  service HealthcareService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, serviceId])
+  @@index([serviceId])
+  @@map("healthcare_memberships")
+}
+
+/// US-2617/F4 — Statut d'une preuve d'enregistrement PS.
+enum RegistrationStatus {
+  unverified
+  verified
+  /// Accès clinique accordé en mode provisoire (jamais `verified` : on peut resserrer).
+  provisional
+}
+
+/// US-2617/F4 — Preuve d'enregistrement PS **générique multi-pays** (pas de champ
+/// « RPPS » en dur). FR : RPPS/ADELI (API V2) ; DZ/autres : manuel (Ordre/diplôme).
+/// La gate clinique Q1 s'appuie sur `status = verified` (ou `provisional` borné).
+model ProfessionalRegistration {
+  id           Int                @id @default(autoincrement())
+  userId       Int                @map("user_id")
+  /// Pays de l'enregistrement (ISO-3166-1 alpha-2).
+  country      String             @db.Char(2)
+  /// Schéma d'enregistrement : "RPPS" / "ADELI" / "Ordre" / "diplome" / …
+  scheme       String             @db.VarChar(40)
+  number       String?            @db.VarChar(64)
+  /// Méthode d'obtention : "manual" / "rpps_api" / …
+  method       String             @db.VarChar(40)
+  status       RegistrationStatus @default(unverified)
+  verifiedById Int?               @map("verified_by_id")
+  verifiedAt   DateTime?          @map("verified_at") @db.Timestamptz()
+  expiresAt    DateTime?          @map("expires_at") @db.Timestamptz()
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz()
+
+  user       User  @relation("RegistrationSubject", fields: [userId], references: [id], onDelete: Cascade)
+  verifiedBy User? @relation("RegistrationVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@map("professional_registrations")
 }
 
 model HealthcareMember {
@@ -2145,6 +2268,12 @@ model AuditLog {
   /// Correlation ID (HDS §IV.3) joining this audit row to stderr log lines.
   /// Assigned by middleware; nullable for events emitted outside the HTTP path.
   requestId  String?  @map("request_id") @db.VarChar(64)
+  /// US-2620/F8 — Scope structuré de l'action (forensics filtrable par
+  /// organisation). `tenantId` = frontière d'isolation ; `scopeServiceId` =
+  /// service concerné. Nullables (événements hors-scope : login, cron, système).
+  /// JAMAIS de PHI/PII de santé ici (réfs/ids uniquement, cf. ADR #18).
+  tenantId       Int?  @map("tenant_id")
+  scopeServiceId Int?  @map("scope_service_id")
   metadata   Json     @default("{}")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
@@ -2154,6 +2283,7 @@ model AuditLog {
   @@index([resource, resourceId, createdAt])
   @@index([createdAt])
   @@index([requestId])
+  @@index([tenantId, createdAt])
   @@map("audit_logs")
 }
 
