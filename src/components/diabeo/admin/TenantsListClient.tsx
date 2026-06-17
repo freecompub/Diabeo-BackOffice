@@ -44,6 +44,9 @@ export function TenantsListClient() {
   const [createOpen, setCreateOpen] = useState(false)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
+  // Dépendance d'effet stable : capter le message (string stable) plutôt que `t`
+  // (référence recréée à chaque render → refetch en boucle).
+  const loadErrorMessage = t("loadError")
 
   const fetchTenants = useCallback(async () => {
     abortRef.current?.abort()
@@ -66,10 +69,10 @@ export function TenantsListClient() {
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
       if (!mountedRef.current) return
-      setErrorMessage(err instanceof Error ? err.message : t("loadError"))
+      setErrorMessage(err instanceof Error ? err.message : loadErrorMessage)
       setState("error")
     }
-  }, [t])
+  }, [loadErrorMessage])
 
   useEffect(() => {
     mountedRef.current = true

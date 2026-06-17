@@ -33,6 +33,9 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
   const [busy, setBusy] = useState(false)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
+  // Dépendance d'effet stable : capter le message (string stable) plutôt que `t`
+  // (référence recréée à chaque render → refetch en boucle).
+  const loadErrorMessage = t("loadError")
 
   const load = useCallback(async () => {
     abortRef.current?.abort()
@@ -62,10 +65,10 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") return
       if (!mountedRef.current) return
-      setErrorMessage(err instanceof Error ? err.message : t("loadError"))
+      setErrorMessage(err instanceof Error ? err.message : loadErrorMessage)
       setState("error")
     }
-  }, [tenantId, t])
+  }, [tenantId, loadErrorMessage])
 
   useEffect(() => {
     mountedRef.current = true
@@ -160,7 +163,7 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
         <>
           <h1 className="text-2xl font-semibold">{tenant.name}</h1>
 
-          {feedback && <p role="status" className="text-sm text-feedback-success">{feedback}</p>}
+          {feedback && <p role="status" className="text-sm text-success-fg">{feedback}</p>}
           {errorMessage && (
             <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {errorMessage}
@@ -209,6 +212,7 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
                   id="assign-service"
                   value={selectedService}
                   onChange={(e) => setSelectedService(e.target.value)}
+                  aria-describedby="assign-note-help"
                   className="min-w-64 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <option value="">{t("assignSelect")}</option>
@@ -221,7 +225,7 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
                 {t("assignSubmit")}
               </DiabeoButton>
             </div>
-            <p className="text-xs text-muted-foreground">{t("assignNote")}</p>
+            <p id="assign-note-help" className="text-xs text-muted-foreground">{t("assignNote")}</p>
           </div>
         </>
       )}

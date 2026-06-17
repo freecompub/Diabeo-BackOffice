@@ -98,7 +98,7 @@ export function BootstrapClient() {
         <p className="mt-1 text-sm text-muted-foreground">{t("bootstrapSubtitle")}</p>
       </header>
 
-      {feedback && <p role="status" className="text-sm text-feedback-success">{feedback}</p>}
+      {feedback && <p role="status" className="text-sm text-success-fg">{feedback}</p>}
       {error && (
         <div role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {error}
