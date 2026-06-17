@@ -28,6 +28,12 @@ cette frontière entre médecins d'un même cabinet de groupe.
   était déjà référent, mais `canAccessPatient`/`getAccessiblePatientIds` étaient
   service-larges → un médecin pouvait accéder en per-patient à un patient hors de son
   portefeuille). F6 ferme cette sur-exposition.
+  - **Portée du rétrécissement** : comme tous les consommateurs cross-patient dérivent
+    leur périmètre de `getAccessiblePatientIds`, le shift s'applique **au-delà de la
+    liste/du dossier** — les **worklists du tableau de bord médecin** (urgences,
+    silencieux, propositions, RDV) et la **cohorte d'appareils** (device supervision /
+    sync) d'un DOCTOR se réduisent à ses patients référents. Comportement **voulu**
+    (un médecin pilote ses patients), à acter explicitement.
 - **2.2 — NURSE conserve le périmètre service (décision actée)** : le référent étant un
   médecin, isoler l'infirmier par référent le priverait de tout patient. En V1 l'infirmier
   garde l'accès aux patients de son/ses service(s) (workflow préservé). **Résidu** : dans
@@ -58,6 +64,10 @@ cette frontière entre médecins d'un même cabinet de groupe.
   **Fail-closed assumé** (sécurité > disponibilité).
 - **Infirmier partagé** (cabinet de groupe) voit tous les médecins du service (§2.2).
 - **ADMIN PHI** : inchangé, V4 (F1).
+- **Suivi ops (backlog PR4)** : (a) **rapport post-backfill** — lister les patients à
+  plusieurs `PatientService` (le référent dérivé prend le lien le plus ancien, à
+  reconfirmer) ; (b) **rapport patients orphelins** (sans référent) sur un écran admin,
+  pour rendre l'affectation actionnable plutôt que silencieuse. Codés en PR4 (gestion).
 
 ## 5. Tests
 

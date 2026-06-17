@@ -16,6 +16,14 @@ import { prisma } from "@/lib/db/client"
 import type { Role } from "@prisma/client"
 
 /**
+ * Borne de sécurité sur le périmètre cross-patient (anti-OOM + parité avec
+ * `LIST_BY_DOCTOR_MAX` de patient.service). Au-delà, l'IN-list devient énorme ;
+ * les consommateurs (dashboards/cohortes) devront paginer. Cap volontairement
+ * généreux : un portefeuille > 5000 patients est un cabinet atypique.
+ */
+const ACCESSIBLE_IDS_MAX = 5000
+
+/**
  * Check if a user can access a given patient's data — role-based access control.
  * - ADMIN: all non-deleted patients
  * - DOCTOR/NURSE: patients via healthcare service (PatientService → HealthcareService → HealthcareMember)
@@ -152,6 +160,7 @@ export async function getAccessiblePatientIds(
     const refs = await prisma.patientReferent.findMany({
       where: { patient: { deletedAt: null }, pro: { userId } },
       select: { patientId: true },
+      take: ACCESSIBLE_IDS_MAX,
     })
     return refs.map((r) => r.patientId)
   }
@@ -166,6 +175,7 @@ export async function getAccessiblePatientIds(
     },
     select: { patientId: true },
     distinct: ["patientId"],
+    take: ACCESSIBLE_IDS_MAX,
   })
   return links.map((l) => l.patientId)
 }

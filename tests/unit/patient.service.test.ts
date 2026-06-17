@@ -381,6 +381,63 @@ describe("patientService.listByDoctor", () => {
   })
 })
 
+describe("patientService.listByService (NURSE — F6 service scope)", () => {
+  it("returns patients of services the nurse is a member of (deduped, capped, consent-filtered)", async () => {
+    const { encrypt } = await import("@/lib/crypto/health-data")
+    prismaMock.patient.findMany.mockResolvedValue([
+      {
+        id: 11, publicRef: "ref-11", pathology: "DT2",
+        user: {
+          id: 21,
+          firstname: Buffer.from(encrypt("Anne")).toString("base64"),
+          lastname: Buffer.from(encrypt("Leroy")).toString("base64"),
+          birthday: new Date("1985-03-02T00:00:00.000Z"),
+        },
+      },
+    ] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const result = await patientService.listByService(7, 1)
+
+    const call = prismaMock.patient.findMany.mock.calls[0][0] as any
+    expect(call.take).toBe(2000)
+    expect(call.where).toMatchObject({
+      deletedAt: null,
+      patientServices: { some: { service: { members: { some: { userId: 7 } } } } },
+    })
+    // Filtre consentement partagé (PROVIDER_VISIBLE_USER_WHERE).
+    expect(call.where.user.OR).toEqual([
+      { privacySettings: null },
+      { privacySettings: { gdprConsent: true, shareWithProviders: true } },
+    ])
+    expect(result).toHaveLength(1)
+    expect(result[0].id).toBe(11)
+    expect(result[0].user.firstname).toBe("Anne")
+    expect(result[0].user.birthday).toBe("1985-03-02")
+    // Audit scope=service.
+    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(audit.metadata).toMatchObject({ nurseUserId: 7, scope: "service" })
+  })
+})
+
+describe("patientService.listForCaller (dispatch par rôle — F6)", () => {
+  it("NURSE → listByService (périmètre service)", async () => {
+    prismaMock.patient.findMany.mockResolvedValue([] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    await patientService.listForCaller(7, "NURSE", 7)
+    expect(prismaMock.patient.findMany).toHaveBeenCalled()
+    expect(prismaMock.patientReferent.findMany).not.toHaveBeenCalled()
+  })
+
+  it("DOCTOR → listByDoctor (référent)", async () => {
+    prismaMock.patientReferent.findMany.mockResolvedValue([] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    await patientService.listForCaller(5, "DOCTOR", 5)
+    expect(prismaMock.patientReferent.findMany).toHaveBeenCalled()
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
+  })
+})
+
 describe("patientService.delete (soft delete)", () => {
   it("performs soft delete and anonymizes user data", async () => {
     let capturedUserUpdate: any = null
