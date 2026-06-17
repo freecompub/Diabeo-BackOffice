@@ -10,8 +10,9 @@ import { loginAs } from "./helpers/auth"
  *
  * Prerequisites: the test database is seeded with the standard data
  * (prisma/seed.ts). The seed creates 5 patients linked via PatientReferent
- * to `memberDoctor` (Dr Sophie Martin). `memberNurse` (Marie Dupont IDE)
- * has no PatientReferent rows by default — nurse sees the empty state.
+ * to `memberDoctor` (Dr Sophie Martin) AND via PatientService to the shared
+ * "Service Diabétologie". US-2618/F6 : le DOCTOR voit ses patients référents ;
+ * le NURSE (`memberNurse`, membre du service) voit les patients du service.
  */
 test.describe("Patients list — /patients (real API connection)", () => {
   test("DOCTOR → sees the 5 seeded patients with real names", async ({
@@ -38,7 +39,7 @@ test.describe("Patients list — /patients (real API connection)", () => {
     await expect(page.getByText("Gestationnel").first()).toBeVisible()
   })
 
-  test("NURSE → sees empty list (no PatientReferent in seed)", async ({
+  test("NURSE → sees the service's patients (F6 service scope)", async ({
     page,
     context,
     request,
@@ -46,14 +47,13 @@ test.describe("Patients list — /patients (real API connection)", () => {
     await loginAs(context, request, "nurse")
     await page.goto("/patients")
 
-    // The seed only wires PatientReferent to memberDoctor. memberNurse has
-    // none → listByDoctor() returns []. The table shows the empty-state row.
-    // Once a nurse referent seed is added (V1.5), this test should mirror
-    // the DOCTOR assertions above.
-    // Locale-agnostic match: fr "Aucun patient trouve" or en "No patients found".
-    await expect(
-      page.getByText(/Aucun patient trouv|No patients found/).first(),
-    ).toBeVisible({ timeout: 10_000 })
+    // US-2618/F6 : un infirmier n'est pas référent, mais garde le périmètre
+    // SERVICE — il voit les patients du/des service(s) dont il est membre.
+    // `memberNurse` est membre du "Service Diabétologie" qui porte les 5 patients.
+    const rows = page.locator("table tbody tr")
+    await expect(rows).toHaveCount(5, { timeout: 10_000 })
+    await expect(page.getByText("Jean Durand")).toBeVisible()
+    await expect(page.getByText("Amélie Rousseau")).toBeVisible()
   })
 
   test("VIEWER (patient) → redirected away from the pro patient list", async ({

@@ -28,13 +28,13 @@ const PHI_RESPONSE_HEADERS = {
  *
  * Returns `PatientListItemDto[]` for all roles (single common contract):
  * - VIEWER (patient role): single-element array with their own patient summary.
- * - NURSE / DOCTOR / ADMIN: portfolio via PatientReferent links (patients
- *   explicitly assigned to a HealthcareMember linked to this user). Filters
- *   out patients who have revoked `gdprConsent` or `shareWithProviders`
- *   (RGPD Art. 7.3 effective revocation).
- *
- * ADMINs who are not also a HealthcareMember see an empty array here; broader
- * patient access for them goes through admin-specific endpoints.
+ * - DOCTOR / ADMIN: portfolio via **PatientReferent** (US-2618/F6 — only patients
+ *   for whom this user is the médecin référent).
+ * - NURSE: **service scope** (patients of HealthcareServices this user is a member
+ *   of) — an infirmier assists the cabinet's doctors (F6 decision).
+ * All pro roles filter out patients who revoked `gdprConsent`/`shareWithProviders`
+ * (RGPD Art. 7.3). ADMINs who are not a HealthcareMember see an empty array here;
+ * broader access goes through admin-specific endpoints.
  */
 export async function GET(req: NextRequest) {
   try {
@@ -45,7 +45,9 @@ export async function GET(req: NextRequest) {
       const own = await patientService.getOwnSummary(patientId, user.id, extractRequestContext(req))
       return NextResponse.json(own ? [own] : [], { headers: PHI_RESPONSE_HEADERS })
     }
-    const patients = await patientService.listByDoctor(user.id, user.id)
+    // F6 — DOCTOR : référent ; NURSE : périmètre service ; ADMIN : référent (liste
+    // vide si non-membre, accès large via endpoints admin).
+    const patients = await patientService.listForCaller(user.id, user.role, user.id)
     return NextResponse.json(patients, { headers: PHI_RESPONSE_HEADERS })
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

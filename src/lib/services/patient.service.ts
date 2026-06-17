@@ -19,7 +19,7 @@ import { auditService, extractRequestContext } from "./audit.service"
 import type { PatientListItemDto } from "@/lib/dto/patient"
 import { logger } from "@/lib/logger"
 import { Prisma } from "@prisma/client"
-import type { Pathology, Sex, PatientMedicalData } from "@prisma/client"
+import type { Pathology, Sex, PatientMedicalData, Role } from "@prisma/client"
 
 /**
  * Audit context extracted from request headers (IP, User-Agent).
@@ -375,6 +375,37 @@ function encryptMedicalInput(input: MedicalDataUpdateInput): Prisma.PatientMedic
     }
   }
   return result as Prisma.PatientMedicalDataUpdateInput
+}
+
+/** Sélection minimale partagée par les listes de portefeuille (référent / service). */
+const PATIENT_LIST_SELECT = {
+  id: true,
+  publicRef: true,
+  pathology: true,
+  user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
+} as const
+
+type PatientListRow = {
+  id: number
+  publicRef: string
+  pathology: Pathology
+  user: { id: number; firstname: string | null; lastname: string | null; birthday: Date | null }
+}
+
+/** Map d'une ligne patient → DTO de liste (déchiffrement fail-soft, date-only). */
+function toPatientListItem(p: PatientListRow): PatientListItemDto {
+  return {
+    id: p.id,
+    publicRef: p.publicRef,
+    pathology: p.pathology,
+    user: {
+      id: p.user.id,
+      firstname: safeDecrypt(p.user.firstname),
+      lastname: safeDecrypt(p.user.lastname),
+      // HSA L4 — date-only (YYYY-MM-DD) pour éviter la dérive timezone navigateur.
+      birthday: p.user.birthday?.toISOString().slice(0, 10) ?? null,
+    },
+  }
 }
 
 /**
@@ -1051,18 +1082,8 @@ export const patientService = {
           user: PROVIDER_VISIBLE_USER_WHERE,
         },
       },
-      select: {
-        patient: {
-          select: {
-            id: true,
-            publicRef: true, // US-2018b — ouverture consultation sans id dans l'URL
-            pathology: true,
-            // HSA L1 — `birthday` contractualisé côté DTO pour le calcul d'âge
-            // côté UI (cf. PatientListItemDto). À conserver dans la DPIA.
-            user: { select: { id: true, firstname: true, lastname: true, birthday: true } },
-          },
-        },
-      },
+      // US-2018b publicRef + HSA L1 birthday — sélection partagée (PATIENT_LIST_SELECT).
+      select: { patient: { select: PATIENT_LIST_SELECT } },
     })
 
     if (referents.length >= LIST_BY_DOCTOR_WARN_AT) {
@@ -1084,20 +1105,54 @@ export const patientService = {
       metadata: { doctorUserId, count: referents.length, capped: referents.length === LIST_BY_DOCTOR_MAX },
     })
 
-    return referents.map((r) => ({
-      id: r.patient.id,
-      publicRef: r.patient.publicRef,
-      pathology: r.patient.pathology,
-      user: {
-        id: r.patient.user.id,
-        firstname: safeDecrypt(r.patient.user.firstname),
-        lastname: safeDecrypt(r.patient.user.lastname),
-        // HSA L4 — date-only (YYYY-MM-DD) au lieu d'ISO complet : évite la
-        // dérive timezone côté navigateur (un patient né le 15/05 à 00:00 UTC
-        // apparaîtrait né le 14/05 dans un navigateur Hawaii).
-        birthday: r.patient.user.birthday?.toISOString().slice(0, 10) ?? null,
+    return referents.map((r) => toPatientListItem(r.patient))
+  },
+
+  /**
+   * US-2618/F6 — Liste du portefeuille d'un INFIRMIER : **périmètre service**
+   * (patients d'un `HealthcareService` dont l'infirmier est membre), pas le
+   * référent (un infirmier n'est pas référent). Même DTO/cap/consentement que
+   * `listByDoctor`.
+   */
+  async listByService(nurseUserId: number, auditUserId: number): Promise<PatientListItemDto[]> {
+    const patients = await prisma.patient.findMany({
+      take: LIST_BY_DOCTOR_MAX,
+      where: {
+        deletedAt: null,
+        user: PROVIDER_VISIBLE_USER_WHERE,
+        patientServices: { some: { service: { members: { some: { userId: nurseUserId } } } } },
       },
-    }))
+      select: PATIENT_LIST_SELECT,
+    })
+
+    if (patients.length >= LIST_BY_DOCTOR_WARN_AT) {
+      logger.warn("patient.service", "listByService approaching cap — paginate soon", {
+        nurseUserId,
+        count: patients.length,
+        cap: LIST_BY_DOCTOR_MAX,
+      })
+    }
+
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "PATIENT",
+      resourceId: "list",
+      metadata: { nurseUserId, scope: "service", count: patients.length, capped: patients.length === LIST_BY_DOCTOR_MAX },
+    })
+
+    return patients.map(toPatientListItem)
+  },
+
+  /**
+   * US-2618/F6 — Liste du portefeuille selon le rôle de l'appelant :
+   * `NURSE` → périmètre service (`listByService`) ; `DOCTOR`/`ADMIN` → référent
+   * (`listByDoctor`, un ADMIN non-membre obtient une liste vide — accès large via
+   * endpoints admin). `VIEWER` est géré en amont (route, propre dossier).
+   */
+  async listForCaller(userId: number, role: Role, auditUserId: number): Promise<PatientListItemDto[]> {
+    if (role === "NURSE") return this.listByService(userId, auditUserId)
+    return this.listByDoctor(userId, auditUserId)
   },
 
   /**

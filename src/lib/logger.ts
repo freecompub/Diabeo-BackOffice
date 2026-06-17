@@ -58,6 +58,14 @@ const ALLOWED_CONTEXT_KEYS = new Set<string>([
   "cabinetId",
   // Plan B follow-up A1 round 2 — idempotency RGPD Art. 17 purge count.
   "deletedCount",
+  // patient.service — cap/audit metadata des listes portefeuille (référent / service).
+  // Étaient déclarés dans LogContext mais absents de l'allow-list → strippés à
+  // l'émission (code-reviewer n1). Ajout pour qu'ils apparaissent réellement.
+  "doctorUserId",
+  "nurseUserId",
+  "count",
+  "cap",
+  "scope",
 ])
 
 export interface LogContext {
@@ -94,6 +102,8 @@ export interface LogContext {
   count?: number
   cap?: number
   doctorUserId?: number
+  /** patient.service F6 — listByService cap warning (périmètre infirmier). */
+  nurseUserId?: number
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"

@@ -128,7 +128,7 @@ describe("supportedDeviceService.create", () => {
 
 describe("deviceLifecycleService.revoke", () => {
   it("revokes device (cabinet PS)", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue({ id: 10, revokedAt: null } as any)
     prismaMock.patientDevice.updateMany.mockResolvedValue({ count: 1 } as any)
     const out = await deviceLifecycleService.revoke(
@@ -148,7 +148,7 @@ describe("deviceLifecycleService.revoke", () => {
   })
 
   it("idempotent : revoke 2× = alreadyRevoked=true (no DB write)", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue({
       id: 10, revokedAt: new Date("2026-01-01"),
     } as any)
@@ -158,7 +158,7 @@ describe("deviceLifecycleService.revoke", () => {
   })
 
   it("404 si device n'appartient pas au patient", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue(null)
     await expect(
       deviceLifecycleService.revoke(42, 99, "x", 9, "DOCTOR", ctx),
@@ -166,7 +166,7 @@ describe("deviceLifecycleService.revoke", () => {
   })
 
   it("403 si DOCTOR pas membre du cabinet du patient", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue(null)
+    prismaMock.patientReferent.findFirst.mockResolvedValue(null)
     await expect(
       deviceLifecycleService.revoke(42, 10, "x", 9, "DOCTOR", ctx),
     ).rejects.toBeInstanceOf(DeviceLifecycleAccessError)
@@ -224,7 +224,7 @@ describe("deviceLifecycleService.revoke", () => {
   })
 
   it("atomic CAS — race lost (updateMany count=0) = alreadyRevoked=true", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue({ id: 10, revokedAt: null } as any)
     prismaMock.patientDevice.updateMany.mockResolvedValue({ count: 0 } as any)
     const out = await deviceLifecycleService.revoke(42, 10, "x", 9, "DOCTOR", ctx)
@@ -232,7 +232,7 @@ describe("deviceLifecycleService.revoke", () => {
   })
 
   it("audit kind=device.revoked + pivot patientId", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue({ id: 10, revokedAt: null } as any)
     prismaMock.patientDevice.updateMany.mockResolvedValue({ count: 1 } as any)
     await deviceLifecycleService.revoke(42, 10, "Replaced", 9, "DOCTOR", ctx)
@@ -248,7 +248,7 @@ describe("deviceLifecycleService.revoke", () => {
 
 describe("deviceLifecycleService.listHistory", () => {
   it("lists all devices (active + revoked) for cabinet member, tri createdAt DESC", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     // Round 2 : tri sur createdAt strict — ordre fourni par Prisma (mock).
     prismaMock.patientDevice.findMany.mockResolvedValue([
       { id: 2, patientId: 42, brand: "Abbott", model: "FreeStyle 3", category: "cgm",
@@ -268,7 +268,7 @@ describe("deviceLifecycleService.listHistory", () => {
   })
 
   it("403 si pas membre cabinet", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue(null)
+    prismaMock.patientReferent.findFirst.mockResolvedValue(null)
     await expect(
       deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx),
     ).rejects.toBeInstanceOf(DeviceLifecycleAccessError)
@@ -280,7 +280,7 @@ describe("deviceLifecycleService.listHistory", () => {
   })
 
   it("includeRevoked=false filter actifs only", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, { includeRevoked: false })
     const where = prismaMock.patientDevice.findMany.mock.calls[0]![0]!.where as any
@@ -288,7 +288,7 @@ describe("deviceLifecycleService.listHistory", () => {
   })
 
   it("audit kind=device.history + resourceId=list + pivot patientId + count", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([
       { id: 1, patientId: 42, brand: null, model: null, category: null,
         sn: null, date: null, revokedAt: null, revokedBy: null, revokedReasonEnc: null,
@@ -320,7 +320,7 @@ describe("deviceLifecycleService.listHistory", () => {
 
   // CR C2 — PS+ reçoit revokedReason déchiffré (ou null si decrypt fail).
   it("CR C2 — DOCTOR voit le champ revokedReason (déchiffré)", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     const fakeEnc = Buffer.from("fake").toString("base64")
     prismaMock.patientDevice.findMany.mockResolvedValue([
       { id: 1, patientId: 42, brand: null, model: null, category: null,
@@ -339,7 +339,7 @@ describe("deviceLifecycleService.listHistory", () => {
   it("CR M6 — encrypt→decrypt roundtrip réel : DOCTOR voit reason déchiffrée", async () => {
     const { encryptField } = await import("@/lib/crypto/fields")
     const realCiphertext = encryptField("Remplacé suite à dysfonctionnement")
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([
       { id: 1, patientId: 42, brand: null, model: null, category: null,
         sn: null, date: null,
@@ -375,7 +375,7 @@ describe("deviceLifecycleService.listHistory", () => {
   // id unique = keyset valide. Le tri "révoqués en premier" est abandonné
   // pour préserver l'intégrité de la pagination.
   it("H1 round 2 — orderBy simplifié (createdAt, id) DESC", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx)
     const orderBy = prismaMock.patientDevice.findMany.mock.calls[0]![0]!.orderBy as any
@@ -385,7 +385,7 @@ describe("deviceLifecycleService.listHistory", () => {
   })
 
   it("limit capped at MAX_HISTORY_PAGE", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, { limit: 9999 })
     // take = limit + 1 pour détection hasMore.
@@ -395,7 +395,7 @@ describe("deviceLifecycleService.listHistory", () => {
 
   // HSA L1 review — cursor pagination.
   it("HSA L1 — cursor pagination : nextCursor non-null si hasMore", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     // Retourne 3 rows pour limit=2 (limit+1=3 → hasMore=true).
     prismaMock.patientDevice.findMany.mockResolvedValue([
       { id: 100, patientId: 42, brand: null, model: null, category: null,
@@ -414,7 +414,7 @@ describe("deviceLifecycleService.listHistory", () => {
   })
 
   it("HSA L1 — cursor passe `cursor: {id}` + `skip: 1` à Prisma", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, { cursorId: 50 })
     const call = prismaMock.patientDevice.findMany.mock.calls[0]![0]!
@@ -424,7 +424,7 @@ describe("deviceLifecycleService.listHistory", () => {
 
   // I2 round 2 review — cursor pointant sur un id inexistant → items vide.
   it("I2 round 2 — cursor inexistant (999999) → items: [], nextCursor: null", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     const out = await deviceLifecycleService.listHistory(42, 9, "DOCTOR", ctx, {
       cursorId: 999999,
@@ -435,7 +435,7 @@ describe("deviceLifecycleService.listHistory", () => {
 
   // CR L3 review — audit revoke metadata contient brand/model.
   it("CR L3 — audit revoke metadata contient brand+model du device", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as any)
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as any)
     prismaMock.patientDevice.findFirst.mockResolvedValue({
       id: 10, revokedAt: null, brand: "Dexcom", model: "G7",
     } as any)

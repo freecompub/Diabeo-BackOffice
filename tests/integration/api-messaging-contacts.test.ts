@@ -29,7 +29,7 @@ vi.mock("@/lib/gdpr", () => ({
 }))
 vi.mock("@/lib/services/patient.service", () => ({
   patientService: {
-    listByDoctor: vi.fn(),
+    listForCaller: vi.fn(),
   },
 }))
 vi.mock("@/lib/services/messaging.service", () => ({
@@ -91,7 +91,7 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
   it("happy path : filter canMessage → 2 contacts messageables", async () => {
     vi.mocked(requireRole).mockReturnValue({ id: 1, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
-    vi.mocked(patientService.listByDoctor).mockResolvedValue([
+    vi.mocked(patientService.listForCaller).mockResolvedValue([
       { id: 100, pathology: "DT1", user: { id: 1000, firstname: null, lastname: null, birthday: null } },
       { id: 200, pathology: "DT2", user: { id: 2000, firstname: null, lastname: null, birthday: null } },
       { id: 300, pathology: "DT1", user: { id: 3000, firstname: null, lastname: null, birthday: null } },
@@ -119,7 +119,7 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
   it("Cache-Control no-store + private (anti-cache préférences)", async () => {
     vi.mocked(requireRole).mockReturnValue({ id: 1, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
-    vi.mocked(patientService.listByDoctor).mockResolvedValue([])
+    vi.mocked(patientService.listForCaller).mockResolvedValue([])
     const res = await GET(makeReq())
     expect(res.headers.get("Cache-Control")).toBe("no-store, private")
   })
@@ -127,7 +127,7 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
   it("Audit log emit avec metadata.kind + portfolioSize + messageable", async () => {
     vi.mocked(requireRole).mockReturnValue({ id: 42, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
-    vi.mocked(patientService.listByDoctor).mockResolvedValue([
+    vi.mocked(patientService.listForCaller).mockResolvedValue([
       { id: 1, pathology: "DT1", user: { id: 100, firstname: null, lastname: null, birthday: null } },
       { id: 2, pathology: "DT1", user: { id: 200, firstname: null, lastname: null, birthday: null } },
     ] as never)
@@ -159,7 +159,7 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
       pathology: "DT1",
       user: { id: (i + 1) * 10, firstname: null, lastname: null, birthday: null },
     }))
-    vi.mocked(patientService.listByDoctor).mockResolvedValue(bigList as never)
+    vi.mocked(patientService.listForCaller).mockResolvedValue(bigList as never)
     vi.mocked(canMessage).mockResolvedValue({ allowed: true, patientId: 1 })
 
     const res = await GET(makeReq())
@@ -179,7 +179,7 @@ describe("GET /api/messaging/contacts (Fix HSA H2 round 1 PR #444)", () => {
   it("canMessage throw → skip silencieusement (UX dégradée vs 500)", async () => {
     vi.mocked(requireRole).mockReturnValue({ id: 1, role: "NURSE" } as never)
     vi.mocked(requireGdprConsent).mockResolvedValue(true)
-    vi.mocked(patientService.listByDoctor).mockResolvedValue([
+    vi.mocked(patientService.listForCaller).mockResolvedValue([
       { id: 1, pathology: "DT1", user: { id: 100, firstname: null, lastname: null, birthday: null } },
       { id: 2, pathology: "DT1", user: { id: 200, firstname: null, lastname: null, birthday: null } },
     ] as never)

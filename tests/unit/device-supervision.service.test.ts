@@ -49,8 +49,8 @@ describe("listByPatient (US-2243)", () => {
       .rejects.toBeInstanceOf(DeviceSupervisionAccessError)
   })
 
-  it("DOCTOR without PatientService link — throws", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue(null)
+  it("DOCTOR without referent link — throws (F6)", async () => {
+    prismaMock.patientReferent.findFirst.mockResolvedValue(null)
     await expect(deviceSupervisionService.listByPatient(42, 9, "DOCTOR"))
       .rejects.toBeInstanceOf(DeviceSupervisionAccessError)
   })
@@ -136,8 +136,8 @@ describe("listCohort (US-2243)", () => {
     expect((call.where as any).patientId).toBeUndefined()
   })
 
-  it("DOCTOR cohort = patients via PatientService", async () => {
-    prismaMock.patientService.findMany.mockResolvedValue([
+  it("DOCTOR cohort = patients via PatientReferent (F6)", async () => {
+    prismaMock.patientReferent.findMany.mockResolvedValue([
       { patientId: 42 }, { patientId: 99 },
     ] as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
@@ -194,7 +194,7 @@ describe("listCohort (US-2243)", () => {
 
   // M4 — scope=scoped pour DOCTOR/NURSE avec accessibleCount.
   it("M4 — audit metadata.scope='scoped' + accessibleCount pour DOCTOR", async () => {
-    prismaMock.patientService.findMany.mockResolvedValue([
+    prismaMock.patientReferent.findMany.mockResolvedValue([
       { patientId: 42 }, { patientId: 99 },
     ] as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
@@ -322,7 +322,7 @@ describe("NEW-M2 — listCohort soft-cap accessible 2000 patients", () => {
   it("audit metadata.accessibleTruncated=true quand > 2000 patients", async () => {
     // Mock DOCTOR avec 3000 patients accessibles → cap à 2000.
     const ids = Array.from({ length: 3000 }, (_, i) => ({ patientId: i + 1 }))
-    prismaMock.patientService.findMany.mockResolvedValue(ids as any)
+    prismaMock.patientReferent.findMany.mockResolvedValue(ids as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceSupervisionService.listCohort({}, 9, "DOCTOR")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
@@ -334,7 +334,7 @@ describe("NEW-M2 — listCohort soft-cap accessible 2000 patients", () => {
 
   it("audit metadata.accessibleTruncated absent quand ≤ 2000", async () => {
     const ids = Array.from({ length: 1500 }, (_, i) => ({ patientId: i + 1 }))
-    prismaMock.patientService.findMany.mockResolvedValue(ids as any)
+    prismaMock.patientReferent.findMany.mockResolvedValue(ids as any)
     prismaMock.patientDevice.findMany.mockResolvedValue([] as any)
     await deviceSupervisionService.listCohort({}, 9, "DOCTOR")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
