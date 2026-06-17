@@ -41,4 +41,19 @@ describe("access foundations PR1 — migration additive + backfill", () => {
     // Ré-exécution sûre.
     expect(sql).toContain('ON CONFLICT ("user_id", "service_id") DO NOTHING')
   })
+
+  it("clinical_role mappé uniquement pour DOCTOR/NURSE (VIEWER/ADMIN → NULL)", () => {
+    // Anti-régression : ne pas réintroduire un rôle plateforme/patient comme
+    // capacité clinique scopée (cf. revue HSA).
+    expect(sql).toMatch(/CASE WHEN u\."role" IN \('DOCTOR', 'NURSE'\) THEN u\."role" ELSE NULL END\)::"Role"/)
+  })
+
+  it("garde-fous DB CHECK sur verification_policies (scope + provisional borné)", () => {
+    expect(sql).toContain('CHECK ("tenant_id" IS NOT NULL OR "country" IS NOT NULL)')
+    expect(sql).toMatch(/CHECK \("mode" <> 'provisional' OR "expires_at" IS NOT NULL\)/)
+  })
+
+  it("index forensics scopé service sur audit_logs (F8)", () => {
+    expect(sql).toContain('"audit_logs_scope_service_id_created_at_idx"')
+  })
 })
