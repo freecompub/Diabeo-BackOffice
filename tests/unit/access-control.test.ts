@@ -90,18 +90,71 @@ describe("canAccessPatient", () => {
     expect(result).toBe(false)
   })
 
-  it("DOCTOR can access patient from their service", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue({
-      id: 1, patientId: 5, serviceId: 1, joinedAt: new Date(),
-    } as never)
+  // US-2618/F6 — DOCTOR isolé par médecin référent (PatientReferent.pro.userId).
+  it("DOCTOR can access a patient they are the referent of", async () => {
+    prismaMock.patientReferent.findFirst.mockResolvedValue({ id: 1 } as never)
     const result = await canAccessPatient(10, "DOCTOR", 5)
     expect(result).toBe(true)
+    // Vérifie qu'on interroge bien le référent (pas le service) pour un DOCTOR.
+    expect(prismaMock.patientReferent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ patientId: 5, pro: { userId: 10 } }) }),
+    )
   })
 
-  it("DOCTOR cannot access patient outside their service", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue(null)
-    const result = await canAccessPatient(10, "DOCTOR", 5)
+  it("DOCTOR cannot access a patient of another doctor in the same service (F6)", async () => {
+    // Médecin B n'est pas le référent → aucune row référent pour (patient, B).
+    prismaMock.patientReferent.findFirst.mockResolvedValue(null)
+    const result = await canAccessPatient(99, "DOCTOR", 5)
     expect(result).toBe(false)
+    // F6 : on ne retombe PAS sur l'appartenance au service pour un DOCTOR.
+    expect(prismaMock.patientService.findFirst).not.toHaveBeenCalled()
+  })
+
+  // NURSE garde le périmètre service (inchangé).
+  it("NURSE can access a patient of their service", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue({ id: 1 } as never)
+    const result = await canAccessPatient(20, "NURSE", 5)
+    expect(result).toBe(true)
+    expect(prismaMock.patientReferent.findFirst).not.toHaveBeenCalled()
+  })
+
+  it("NURSE cannot access a patient outside their service", async () => {
+    prismaMock.patientService.findFirst.mockResolvedValue(null)
+    const result = await canAccessPatient(20, "NURSE", 5)
+    expect(result).toBe(false)
+  })
+})
+
+describe("getAccessiblePatientIds", () => {
+  let getAccessiblePatientIds: typeof import("@/lib/access-control").getAccessiblePatientIds
+
+  beforeEach(async () => {
+    getAccessiblePatientIds = (await import("@/lib/access-control")).getAccessiblePatientIds
+  })
+
+  it("ADMIN → null (no restriction)", async () => {
+    expect(await getAccessiblePatientIds(1, "ADMIN")).toBeNull()
+  })
+
+  it("DOCTOR → referent-scoped patient IDs (F6)", async () => {
+    prismaMock.patientReferent.findMany.mockResolvedValue([
+      { patientId: 5 }, { patientId: 7 },
+    ] as never)
+    const ids = await getAccessiblePatientIds(10, "DOCTOR")
+    expect(ids).toEqual([5, 7])
+    expect(prismaMock.patientReferent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ pro: { userId: 10 } }) }),
+    )
+    expect(prismaMock.patientService.findMany).not.toHaveBeenCalled()
+  })
+
+  it("NURSE → service-scoped patient IDs (unchanged)", async () => {
+    prismaMock.patientService.findMany.mockResolvedValue([
+      { patientId: 5 }, { patientId: 6 },
+    ] as never)
+    const ids = await getAccessiblePatientIds(20, "NURSE")
+    expect(ids).toEqual([5, 6])
+    expect(prismaMock.patientReferent.findMany).not.toHaveBeenCalled()
   })
 })
 

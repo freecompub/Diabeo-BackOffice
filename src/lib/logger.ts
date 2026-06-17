@@ -94,6 +94,8 @@ export interface LogContext {
   count?: number
   cap?: number
   doctorUserId?: number
+  /** patient.service F6 — listByService cap warning (périmètre infirmier). */
+  nurseUserId?: number
 }
 
 const IS_PRODUCTION = process.env.NODE_ENV === "production"

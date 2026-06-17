@@ -1,8 +1,14 @@
 /**
  * @module access-control
- * @description Patient access control — RBAC enforcement by role and healthcare service links.
- * Prevents unauthorized data access. All patient reads should check access first.
- * ADMIN unrestricted, DOCTOR/NURSE via healthcare service, VIEWER = own patient only.
+ * @description Patient access control — RBAC enforcement by role.
+ * - ADMIN : unrestricted (bypass PHI — risque V1 accepté, levé en V4 / F1).
+ * - DOCTOR : **isolé par médecin référent** (US-2618/F6) — un médecin ne voit
+ *   QUE ses patients (`PatientReferent.pro.userId`), pas tous ceux du service.
+ *   Responsable de traitement RGPD : médecins = contrôleurs distincts.
+ * - NURSE : **périmètre service** (`PatientService → HealthcareService.members`) —
+ *   l'infirmier assiste les médecins de son/ses service(s) (workflow préservé V1).
+ * - VIEWER : propre dossier uniquement.
+ * Exclut toujours les patients soft-deleted.
  * @see CLAUDE.md#rbac — Role-based access control
  */
 
@@ -46,7 +52,17 @@ export async function canAccessPatient(
     return !!patient
   }
 
-  // DOCTOR / NURSE — check via PatientService → HealthcareService → HealthcareMember
+  // DOCTOR — F6 : isolé par médecin référent (PatientReferent.pro.userId).
+  if (role === "DOCTOR") {
+    const ref = await prisma.patientReferent.findFirst({
+      where: { patientId, patient: { deletedAt: null }, pro: { userId } },
+      select: { id: true },
+    })
+    return !!ref
+  }
+
+  // NURSE (rôle clinique non-DOCTOR) — périmètre service (inchangé) :
+  // PatientService → HealthcareService → HealthcareMember.
   const link = await prisma.patientService.findFirst({
     where: {
       patientId,
@@ -55,6 +71,7 @@ export async function canAccessPatient(
         members: { some: { userId } },
       },
     },
+    select: { id: true },
   })
   return !!link
 }
@@ -111,8 +128,10 @@ export async function resolvePatientId(
  *
  * - ADMIN → returns null (caller may query without restriction).
  * - VIEWER → returns [own patient id] or [] if none.
- * - DOCTOR/NURSE → returns the patient IDs of every PatientService where
- *   the caller is a member, excluding soft-deleted patients.
+ * - DOCTOR → **referent-scoped** (US-2618/F6) : patient IDs where the caller is
+ *   the médecin référent (`PatientReferent.pro.userId`), soft-deleted excluded.
+ * - NURSE → **service-scoped** (unchanged) : patient IDs of every PatientService
+ *   whose HealthcareService has the caller as a member.
  *
  * The caller MUST treat `null` as "no restriction" and an array as a hard
  * IN-list filter (empty array → no rows).
@@ -128,6 +147,16 @@ export async function getAccessiblePatientIds(
     return own ? [own] : []
   }
 
+  // DOCTOR — F6 : périmètre référent (un patient = un référent, pas de distinct).
+  if (role === "DOCTOR") {
+    const refs = await prisma.patientReferent.findMany({
+      where: { patient: { deletedAt: null }, pro: { userId } },
+      select: { patientId: true },
+    })
+    return refs.map((r) => r.patientId)
+  }
+
+  // NURSE — périmètre service (inchangé).
   const links = await prisma.patientService.findMany({
     where: {
       patient: { deletedAt: null },

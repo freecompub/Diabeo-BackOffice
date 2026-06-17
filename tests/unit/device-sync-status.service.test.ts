@@ -85,7 +85,7 @@ describe("getStatus (US-2244)", () => {
   })
 
   it("DOCTOR without link — throws", async () => {
-    prismaMock.patientService.findFirst.mockResolvedValue(null)
+    prismaMock.patientReferent.findFirst.mockResolvedValue(null)
     await expect(deviceSyncStatusService.getStatus(42, 9, "DOCTOR"))
       .rejects.toBeInstanceOf(SyncStatusAccessError)
   })
@@ -123,8 +123,8 @@ describe("cohortStatus (US-2244)", () => {
     expect(call.where.patientId).toBeUndefined()
   })
 
-  it("DOCTOR cohort = patients via PatientService", async () => {
-    prismaMock.patientService.findMany.mockResolvedValue([
+  it("DOCTOR cohort = patients via PatientReferent (F6)", async () => {
+    prismaMock.patientReferent.findMany.mockResolvedValue([
       { patientId: 42 }, { patientId: 99 },
     ] as any)
     pmGroupBy.mockResolvedValue([] as any)
@@ -187,7 +187,7 @@ describe("cohortStatus (US-2244)", () => {
 
   // H3 (review re-1 PR #408) — patients sans device apparaissent comme never_synced.
   it("H3 — DOCTOR cohort inclut les patients sans device (never_synced)", async () => {
-    prismaMock.patientService.findMany.mockResolvedValue([
+    prismaMock.patientReferent.findMany.mockResolvedValue([
       { patientId: 42 }, { patientId: 99 }, { patientId: 100 },
     ] as any)
     // groupBy ne retourne que les patients ayant ≥1 device.
@@ -203,7 +203,7 @@ describe("cohortStatus (US-2244)", () => {
   })
 
   it("H3 — audit scope=scoped + accessibleCount pour DOCTOR", async () => {
-    prismaMock.patientService.findMany.mockResolvedValue([
+    prismaMock.patientReferent.findMany.mockResolvedValue([
       { patientId: 42 }, { patientId: 99 },
     ] as any)
     pmGroupBy.mockResolvedValue([] as any)
@@ -219,7 +219,7 @@ describe("cohortStatus (US-2244)", () => {
   it("NEW-M2 — audit accessibleTruncated=true quand DOCTOR > 2000 patients", async () => {
     // 3000 patients accessibles → cap à 2000 côté enumeration.
     const ids = Array.from({ length: 3000 }, (_, i) => ({ patientId: i + 1 }))
-    prismaMock.patientService.findMany.mockResolvedValue(ids as any)
+    prismaMock.patientReferent.findMany.mockResolvedValue(ids as any)
     pmGroupBy.mockResolvedValue([] as any)
     await deviceSyncStatusService.cohortStatus({}, 9, "DOCTOR")
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any

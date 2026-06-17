@@ -53,8 +53,9 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
     }
 
-    // 1. Fetch portefeuille patients du PS (déjà décrypté).
-    const patients = await patientService.listByDoctor(user.id, user.id)
+    // 1. Fetch portefeuille patients du PS (déjà décrypté). F6 — DOCTOR : référent ;
+    //    NURSE : périmètre service (cohérent avec /api/patients et l'enforcement).
+    const patients = await patientService.listForCaller(user.id, user.role, user.id)
 
     // 2. Filter via canMessage — cap N pour éviter DoS si portefeuille
     //    énorme (>>50 patients par PS = cabinet atypique, V1.5 paginer).
