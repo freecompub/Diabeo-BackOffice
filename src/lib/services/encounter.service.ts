@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import { canAccessPatient } from "@/lib/access-control"
+import { patientShareConsent } from "@/lib/consent"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { startOfTodayCabinet } from "@/lib/cabinet-time"
 
@@ -27,6 +28,35 @@ export class EncounterError extends Error {
     super(code)
     this.name = "EncounterError"
   }
+}
+
+/** Statut HTTP correspondant à un code `EncounterError` (mapping route). */
+export function encounterErrorStatus(code: EncounterError["code"]): number {
+  return code === "forbidden" ? 403 : code === "notFound" ? 404 : 409
+}
+
+/**
+ * Trace SOC d'un refus d'accès sur une séance (UNAUTHORIZED + détection de burst
+ * US-2265). Pivot `metadata.patientId` (ADR #18). `surface` = l'opération tentée,
+ * `kind` = le motif du refus (notOwner / accessRevoked / sharingDisabled).
+ */
+async function auditEncounterDenied(args: {
+  userId: number
+  encounterId: number
+  patientId: number
+  surface: "saveDraft" | "finalize"
+  kind: "notOwner" | "accessRevoked" | "sharingDisabled"
+  ctx?: AuditContext
+}): Promise<void> {
+  await auditService.accessDenied({
+    userId: args.userId,
+    resource: "ENCOUNTER",
+    resourceId: String(args.encounterId),
+    ipAddress: args.ctx?.ipAddress,
+    userAgent: args.ctx?.userAgent,
+    requestId: args.ctx?.requestId,
+    metadata: { patientId: args.patientId, surface: args.surface, kind: args.kind },
+  })
 }
 
 export type EncounterDraft = {
@@ -95,11 +125,21 @@ export const encounterService = {
    * de la séance, tant qu'elle est en brouillon.
    */
   async saveDraft(
-    encounterId: number, userId: number, content: string, ctx?: AuditContext,
+    encounterId: number, userId: number, role: Role, content: string, ctx?: AuditContext,
   ): Promise<void> {
     const enc = await prisma.encounter.findUnique({ where: { id: encounterId } })
     if (!enc) throw new EncounterError("notFound")
-    if (enc.openedById !== userId) throw new EncounterError("forbidden")
+    if (enc.openedById !== userId) {
+      await auditEncounterDenied({ userId, encounterId, patientId: enc.patientId, surface: "saveDraft", kind: "notOwner", ctx })
+      throw new EncounterError("forbidden")
+    }
+    // Re-vérifie l'accès patient (RGPD Art. 7.3) : une séance peut être longue —
+    // l'accès a pu être révoqué (désassignation / retrait de partage) depuis
+    // l'ouverture. Fail-closed : pas d'écriture sur un patient devenu hors périmètre.
+    if (!(await canAccessPatient(userId, role, enc.patientId))) {
+      await auditEncounterDenied({ userId, encounterId, patientId: enc.patientId, surface: "saveDraft", kind: "accessRevoked", ctx })
+      throw new EncounterError("forbidden")
+    }
     if (enc.status !== "draft") throw new EncounterError("invalidState")
 
     await prisma.encounter.update({
@@ -121,7 +161,7 @@ export const encounterService = {
    * Réservé au propriétaire de la séance en brouillon (RBAC NURSE+ côté route).
    */
   async finalizeReport(
-    encounterId: number, userId: number,
+    encounterId: number, userId: number, role: Role,
     content: string, anchor: { period: string; dataAsOf: Date },
     ctx?: AuditContext,
   ): Promise<{ reportId: number; patientId: number }> {
@@ -131,7 +171,23 @@ export const encounterService = {
 
     const enc = await prisma.encounter.findUnique({ where: { id: encounterId } })
     if (!enc) throw new EncounterError("notFound")
-    if (enc.openedById !== userId) throw new EncounterError("forbidden")
+    if (enc.openedById !== userId) {
+      await auditEncounterDenied({ userId, encounterId, patientId: enc.patientId, surface: "finalize", kind: "notOwner", ctx })
+      throw new EncounterError("forbidden")
+    }
+    // Re-vérifie l'accès AVANT d'émettre l'addendum IMMUABLE (révocation possible
+    // pendant une séance longue, RGPD Art. 7.3). Fail-closed.
+    if (!(await canAccessPatient(userId, role, enc.patientId))) {
+      await auditEncounterDenied({ userId, encounterId, patientId: enc.patientId, surface: "finalize", kind: "accessRevoked", ctx })
+      throw new EncounterError("forbidden")
+    }
+    // Garde consentement (gdprConsent + shareWithProviders, fail-closed) — un
+    // compte rendu immuable ne doit pas être figé pour un patient ayant retiré
+    // son partage entre l'ouverture et la finalisation.
+    if (!(await patientShareConsent(enc.patientId)).ok) {
+      await auditEncounterDenied({ userId, encounterId, patientId: enc.patientId, surface: "finalize", kind: "sharingDisabled", ctx })
+      throw new EncounterError("forbidden")
+    }
     if (enc.status !== "draft") throw new EncounterError("invalidState")
 
     return prisma.$transaction(async (tx) => {

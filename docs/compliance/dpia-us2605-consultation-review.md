@@ -81,10 +81,16 @@ sous-jacentes.
 ## 4. Mesures techniques en place (PR1)
 
 - Accès `canAccessPatient` (défense en profondeur) **avant** lecture/écriture sur
-  `openOrResume` et `listReports` ; refus → `EncounterError("forbidden")` (mappé par
-  les routes PR2 + `auditService.accessDenied`).
+  `openOrResume`, `saveDraft`, `finalizeReport` et `listReports` ; refus →
+  `EncounterError("forbidden")` (mappé par les routes + `auditService.accessDenied`).
 - Propriétaire-only sur `saveDraft`/`finalizeReport` (le PS qui a ouvert la séance) ;
-  écriture refusée hors statut `draft`.
+  écriture refusée hors statut `draft`. **Re-vérification de l'accès** (`canAccessPatient`)
+  sur `saveDraft`/`finalizeReport` + **re-vérification du consentement**
+  (`patientShareConsent`, fail-closed) avant l'émission de l'addendum **immuable** :
+  une séance pouvant être longue, un retrait d'accès/partage entre l'ouverture et la
+  finalisation est honoré (RGPD Art. 7.3). Chaque refus (`notOwner` / `accessRevoked`
+  / `sharingDisabled`) émet un audit `accessDenied` (UNAUTHORIZED + détection de
+  burst US-2265, pivot `metadata.patientId`).
 - Contenus chiffrés **AES-256-GCM** (`@/lib/crypto/fields`) ; lecture fail-soft.
 - `finalizeReport` atomique (`$transaction`) : addendum + clôture séance + brouillon
   vidé + 2 audits pivot (`CREATE CONSULTATION_REPORT`, `UPDATE ENCOUNTER`).
@@ -103,17 +109,31 @@ sous-jacentes.
   statique du trigger (présent dans migration + copie de référence ; soft-delete non
   gelé). Enforcement réel vérifié en base (`pg_trigger`).
 
-## 6. Risques résiduels / à traiter en PR2
+## 6. Livré en PR2 (route + stepper UI) & risques résiduels
 
+**Livré en PR2** :
+- Route RSC `/patients/[id]/review` : mêmes gardes que le dossier (`canAccessPatient`
+  → `accessDenied` + `notFound` ; `patientShareConsent` fail-closed). Routes API
+  `POST /api/encounters`, `PATCH …/draft`, `POST …/finalize` toutes **NURSE+**
+  (`requireRole`) ; décision thérapeutique (accept/reject) **DOCTOR-only** (routes
+  `adjustment-proposals` existantes + masquage UI via `canDecide`).
+- **Ancrage serveur-autoritaire** : `period`/`dataAsOf` du compte rendu sont posés
+  **par la route finalize** (constante `REVIEW_PERIOD` + instant serveur), jamais
+  par le client — anti-falsification de la version des données (§3.3 résolu).
+- **Rappel d'ancrage dans le corps** : l'UI affiche « Données glycémiques calculées
+  sur les {N} derniers jours (au {date}) » dans l'éditeur ET le compte rendu
+  finalisé (honnêteté clinique, §3.3).
+
+**Risques résiduels** :
 - **Race resume** (m2) : pas d'unique partiel « brouillon du jour » (fragile/TZ) ;
   find-or-create transactionnel, doublon rare bénin (finalize en clôt un ; sweep
   `abandoned` ultérieur).
-- **Gouvernance NURSE** (MEDIUM medical) : `content` est en texte libre ; un NURSE
-  pourrait y écrire un contenu à tonalité thérapeutique. À encadrer en PR2
-  (label/avertissement ; `reportType` éducation/suivi vs thérapeutique → V2).
-- **Garde route** : `listReports` doit aussi être gardé RBAC à la route (PR2), en
-  plus de la défense en profondeur en service.
-- **Rappel d'ancrage dans le corps** (§3.3) : à implémenter dans l'UI (PR2).
+- **Gouvernance NURSE** (MEDIUM medical) : `content` reste un texte libre ; un NURSE
+  peut finaliser un compte rendu. Encadrement plus fin (`reportType` éducation/suivi
+  vs thérapeutique, validation médecin) → V2.
+- **Historique des comptes rendus** : `listReports` (service, gardé `canAccessPatient`)
+  n'est pas encore exposé par une route/écran — à câbler quand l'historique sera
+  affiché (la garde RBAC route s'ajoutera alors, en plus de la défense en profondeur).
 
 ## 7. Validations à obtenir
 
@@ -126,5 +146,6 @@ sous-jacentes.
 
 ---
 
-*Dernière mise à jour : 2026-06-16 — DPIA initiale US-2605 (PR1 : modèles + service +
-immuabilité + intégration RGPD Art. 17).*
+*Dernière mise à jour : 2026-06-16 — DPIA US-2605 : PR1 (modèles + service +
+immuabilité + RGPD Art. 17) puis PR2 (route `/review` + routes API encounters +
+stepper, ancrage serveur-autoritaire, rappel d'ancrage UI).*

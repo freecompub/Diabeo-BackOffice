@@ -641,7 +641,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2602 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) — ✅ DONE (PR #540) |
 | US-2603 | Barre de contexte patient + switcher — ✅ DONE (backend PR #560 : modèles recently-viewed/pinned + service scopé + endpoints ; UI PR #561 : barre persistante + switcher récents/épinglés) |
 | US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) — ✅ DONE (chantier câblage données patient, PR #543→#546 — 4 onglets sur données réelles, scopées/auditées ; enrichi #554–#558) |
-| US-2605 | Mode revue de consultation (**sans IA**) |
+| US-2605 | Mode revue de consultation (**sans IA**) — ✅ DONE (backend PR #562 : modèles `Encounter` + `ConsultationReportAddendum` immuable [trigger PG], service `encounterService`, intégration RGPD Art. 17, DPIA ; UI PR2 : route `/patients/[id]/review` + routes API encounters + stepper vertical 6 étapes [Résumé / Glycémie / Traitement / Mode de vie placeholder V1 / Décisions DOCTOR-only / Compte rendu → addendum ancré `period`+`dataAsOf`], i18n FR/EN/AR). Clôt la sous-série « navigation médecin V1 ». |
 | US-2606 | Bloc « Gestion cabinet » dans la sidebar (Variante A) |
 | US-2610 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session |
 | US-2613 | Admin plateforme Diabeo (établissements, personnel, bootstrap, politique vérif) ⚠️ garantie « sans PHI » effective en V4 (dép. F1) |
