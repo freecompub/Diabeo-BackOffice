@@ -1786,6 +1786,9 @@ enum RegistrationStatus {
   verified
   /// Accès clinique accordé en mode provisoire (jamais `verified` : on peut resserrer).
   provisional
+  /// US-2613 — preuve PS examinée puis **refusée** par un SYSTEM_ADMIN (distinct de
+  /// `unverified` = jamais soumise). N'ouvre aucun accès clinique.
+  rejected
 }
 
 /// US-2617/F4 — Preuve d'enregistrement PS **générique multi-pays** (pas de champ
