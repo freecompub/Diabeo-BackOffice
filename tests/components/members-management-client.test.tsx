@@ -69,9 +69,26 @@ describe("MembersManagementClient", () => {
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         "/api/cabinet/9/members/3",
-        expect.objectContaining({ method: "PATCH", body: JSON.stringify({ canManage: true }) }),
+        expect.objectContaining({
+          method: "PATCH",
+          body: JSON.stringify({ canManage: true }),
+          // CSRF — le middleware exige ce header sur les mutations (régression 403 sinon).
+          headers: expect.objectContaining({ "x-requested-with": "XMLHttpRequest" }),
+        }),
       ),
     )
+  })
+
+  it("erreur de mutation → message d'alerte (pas d'échec silencieux)", async () => {
+    vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) =>
+      (init?.method ?? "GET") === "GET"
+        ? Promise.resolve({ ok: true, json: () => Promise.resolve({ members: MEMBERS }) })
+        : Promise.resolve({ ok: false, status: 403, json: () => Promise.resolve({ error: "forbidden" }) }),
+    ))
+    render(<MembersManagementClient cabinetId={9} />)
+    await waitFor(() => expect(screen.getByText("Marie Dupont")).toBeTruthy())
+    fireEvent.click(screen.getByRole("button", { name: "Octroyer la gestion" }))
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
   })
 
   it("retire un membre (dialog → DELETE)", async () => {

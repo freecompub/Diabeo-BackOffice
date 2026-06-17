@@ -25,11 +25,9 @@ type MemberView = {
   firstname: string | null
   lastname: string | null
   email: string | null
-  status: string
   clinicalRole: "DOCTOR" | "NURSE" | null
   canManage: boolean
   isPrincipalAdmin: boolean
-  psVerified: boolean
 }
 
 type AsyncState = "idle" | "loading" | "success" | "error"
@@ -95,10 +93,13 @@ export function MembersManagementClient({ cabinetId }: { cabinetId: number }) {
       })
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
       await fetchMembers()
+    } catch (err) {
+      // Erreur réseau (rejet) : surfacer un message plutôt que d'avaler l'échec.
+      if (mountedRef.current) setErrorMessage(err instanceof Error ? err.message : t("loadError"))
     } finally {
       if (mountedRef.current) setBusyUserId(null)
     }
-  }, [cabinetId, fetchMembers])
+  }, [cabinetId, fetchMembers, t])
 
   const confirmRevoke = useCallback(async () => {
     if (!revokeTarget) return
@@ -114,16 +115,18 @@ export function MembersManagementClient({ cabinetId }: { cabinetId: number }) {
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
       setRevokeTarget(null)
       await fetchMembers()
+    } catch (err) {
+      if (mountedRef.current) setErrorMessage(err instanceof Error ? err.message : t("loadError"))
     } finally {
       if (mountedRef.current) setBusyUserId(null)
     }
-  }, [cabinetId, fetchMembers, revokeTarget])
+  }, [cabinetId, fetchMembers, revokeTarget, t])
 
   const displayName = (m: MemberView) =>
     [m.firstname, m.lastname].filter(Boolean).join(" ") || m.email || `#${m.userId}`
 
   return (
-    <section className="flex flex-col gap-6" aria-labelledby="members-title">
+    <section className="flex flex-col gap-6" aria-labelledby="members-title" aria-busy={state === "loading"}>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 id="members-title" className="text-2xl font-semibold">{t("title")}</h1>
@@ -147,8 +150,8 @@ export function MembersManagementClient({ cabinetId }: { cabinetId: number }) {
         </p>
       )}
 
-      {state === "loading" && members.length === 0 && (
-        <p className="text-sm text-muted-foreground">{t("loading")}</p>
+      {state === "loading" && (
+        <p role="status" className="text-sm text-muted-foreground">{t("loading")}</p>
       )}
 
       {state === "success" && members.length === 0 && (
@@ -278,6 +281,8 @@ function InviteDialog({
       reset()
       onOpenChange(false)
       onInvited()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("loadError"))
     } finally {
       setBusy(false)
     }
@@ -291,27 +296,32 @@ function InviteDialog({
           <DialogDescription>{t("inviteDesc")}</DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1 text-sm">
+          <label htmlFor="invite-email" className="flex flex-col gap-1 text-sm">
             <span className="text-muted-foreground">{t("inviteEmail")}</span>
             <input
-              type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              id="invite-email" type="email" required aria-required="true"
+              value={email} onChange={(e) => setEmail(e.target.value)}
               className="rounded-md border border-border bg-background px-3 py-2 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
               autoComplete="off"
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label htmlFor="invite-role" className="flex flex-col gap-1 text-sm">
             <span className="text-muted-foreground">{t("inviteRole")}</span>
             <select
-              value={clinicalRole}
+              id="invite-role" value={clinicalRole}
               onChange={(e) => setClinicalRole(e.target.value as "DOCTOR" | "NURSE")}
-              className="rounded-md border border-border bg-background px-3 py-2"
+              className="rounded-md border border-border bg-background px-3 py-2 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
             >
               <option value="DOCTOR">{t("roleDoctor")}</option>
               <option value="NURSE">{t("roleNurse")}</option>
             </select>
           </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={canManage} onChange={(e) => setCanManage(e.target.checked)} />
+          <label htmlFor="invite-can-manage" className="flex items-center gap-2 text-sm">
+            <input
+              id="invite-can-manage" type="checkbox"
+              checked={canManage} onChange={(e) => setCanManage(e.target.checked)}
+              className="focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+            />
             <span>{t("inviteCanManage")}</span>
           </label>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
