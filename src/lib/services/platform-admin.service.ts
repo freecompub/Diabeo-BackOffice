@@ -108,6 +108,14 @@ export const platformAdminService = {
    * établissement existant. Refuse si l'établissement a déjà un admin principal
    * (utiliser la gestion cabinet normale au-delà du premier). Délègue la création
    * user + invitation single-use + capacités à `orgMembershipService.inviteMember`.
+   *
+   * ⚠️ Le garde « premier principal » est **best-effort** (sémantique d'amorçage),
+   * PAS un invariant DB : le modèle autorise **plusieurs** admins principaux par
+   * service (délégation via `setCapabilities`, anti-lockout qui compte « les autres
+   * principaux »). On n'ajoute donc PAS d'index unique partiel « un seul principal »
+   * (il casserait la délégation légitime). Conséquence : deux bootstraps concurrents
+   * pourraient tous deux réussir → deux principaux. Sans gravité (les deux octrois
+   * sont légitimes, surface ADMIN-only, réversible via `revokeMember`). Documenté DPIA.
    */
   async bootstrapOrgAdmin(
     serviceId: number,

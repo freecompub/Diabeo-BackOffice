@@ -14,7 +14,7 @@ vi.mock("@/lib/crypto/fields", () => ({
 import { psRegistrationService, PsRegistrationError } from "@/lib/services/ps-registration.service"
 
 const pm = prismaMock as unknown as {
-  professionalRegistration: { findMany: any; findUnique: any; update: any }
+  professionalRegistration: { findMany: any; findUnique: any; updateMany: any }
   auditLog: { create: any }
   $transaction: any
 }
@@ -55,11 +55,12 @@ describe("decide", () => {
       .rejects.toMatchObject({ code: "invalidState" })
   })
 
-  it("validation → status verified + verifiedBy/At + audit PS_PROOF_VALIDATED", async () => {
+  it("validation → updateMany gardé status=unverified + audit PS_PROOF_VALIDATED", async () => {
     pm.professionalRegistration.findUnique.mockResolvedValue({ id: 1, userId: 5, status: "unverified" })
+    pm.professionalRegistration.updateMany.mockResolvedValue({ count: 1 })
     await psRegistrationService.decide(1, "verified", 42, undefined, NOW)
-    expect(pm.professionalRegistration.update.mock.calls[0][0]).toMatchObject({
-      where: { id: 1 },
+    expect(pm.professionalRegistration.updateMany.mock.calls[0][0]).toMatchObject({
+      where: { id: 1, status: "unverified" }, // garde atomique anti-double-décision
       data: { status: "verified", verifiedById: 42, verifiedAt: NOW },
     })
     expect(pm.auditLog.create.mock.calls[0][0].data.action).toBe("PS_PROOF_VALIDATED")
@@ -67,8 +68,17 @@ describe("decide", () => {
 
   it("refus → status rejected + audit PS_PROOF_REJECTED", async () => {
     pm.professionalRegistration.findUnique.mockResolvedValue({ id: 2, userId: 6, status: "unverified" })
+    pm.professionalRegistration.updateMany.mockResolvedValue({ count: 1 })
     await psRegistrationService.decide(2, "rejected", 42, undefined, NOW)
-    expect(pm.professionalRegistration.update.mock.calls[0][0].data.status).toBe("rejected")
+    expect(pm.professionalRegistration.updateMany.mock.calls[0][0].data.status).toBe("rejected")
     expect(pm.auditLog.create.mock.calls[0][0].data.action).toBe("PS_PROOF_REJECTED")
+  })
+
+  it("course concurrente (updateMany count=0) → invalidState, pas d'audit", async () => {
+    pm.professionalRegistration.findUnique.mockResolvedValue({ id: 3, userId: 7, status: "unverified" })
+    pm.professionalRegistration.updateMany.mockResolvedValue({ count: 0 })
+    await expect(psRegistrationService.decide(3, "verified", 42, undefined, NOW))
+      .rejects.toMatchObject({ code: "invalidState" })
+    expect(pm.auditLog.create).not.toHaveBeenCalled()
   })
 })

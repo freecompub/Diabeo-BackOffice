@@ -119,13 +119,6 @@ export const verificationPolicyService = {
     if (!hasTenant && !hasCountry) throw new VerificationPolicyError("targetRequired")
     if (hasTenant && hasCountry) throw new VerificationPolicyError("targetAmbiguous")
 
-    if (hasTenant) {
-      const tenant = await prisma.tenant.findUnique({
-        where: { id: input.tenantId! }, select: { id: true },
-      })
-      if (!tenant) throw new VerificationPolicyError("tenantNotFound")
-    }
-
     // Invariants `provisional` (fail-secure, miroir de la résolution).
     if (input.mode === "provisional") {
       if (!input.expiresAt || input.expiresAt <= now) {
@@ -139,6 +132,15 @@ export const verificationPolicyService = {
     const expiresAt = input.mode === "provisional" ? input.expiresAt! : null
 
     const created = await prisma.$transaction(async (tx) => {
+      // Existence du tenant vérifiée **dans** la transaction (pas de TOCTOU :
+      // un tenant supprimé entre le check et l'insert ferait échouer la création).
+      if (hasTenant) {
+        const tenant = await tx.tenant.findUnique({
+          where: { id: input.tenantId! }, select: { id: true },
+        })
+        if (!tenant) throw new VerificationPolicyError("tenantNotFound")
+      }
+
       const row = await tx.verificationPolicy.create({
         data: {
           tenantId: hasTenant ? input.tenantId! : null,

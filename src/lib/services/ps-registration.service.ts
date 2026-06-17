@@ -94,14 +94,19 @@ export const psRegistrationService = {
       select: { id: true, userId: true, status: true },
     })
     if (!reg) throw new PsRegistrationError("notFound")
-    // Idempotence/garde d'état : on ne re-statue pas une preuve déjà tranchée.
+    // Garde d'état rapide (UX) ; la garde **atomique** est dans la transaction.
     if (reg.status !== "unverified") throw new PsRegistrationError("invalidState")
 
     await prisma.$transaction(async (tx) => {
-      await tx.professionalRegistration.update({
-        where: { id: registrationId },
+      // Anti-double-décision : `updateMany` avec garde `status = unverified` →
+      // si une décision concurrente a déjà tranché entre le findUnique et ici,
+      // `count = 0` → on annule (rollback, pas d'audit), au lieu d'écraser.
+      const res = await tx.professionalRegistration.updateMany({
+        where: { id: registrationId, status: "unverified" },
         data: { status: decision, verifiedById: auditUserId, verifiedAt: now },
       })
+      if (res.count === 0) throw new PsRegistrationError("invalidState")
+
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: decision === "verified" ? "PS_PROOF_VALIDATED" : "PS_PROOF_REJECTED",

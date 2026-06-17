@@ -70,6 +70,14 @@ canoniques du socle (US-2620) : `CREATE`/`UPDATE` (TENANT, HEALTHCARE_SERVICE),
    (route existante) et le bootstrap de l'admin sont deux appels distincts ; un échec du
    bootstrap laisse un établissement sans admin principal (récupérable : ré-invoquer le
    bootstrap). Pas de perte de données, pas d'accès indu.
+6. **Course concurrente de bootstrap (deux admins principaux)** : le garde « premier
+   org-admin uniquement » est **best-effort** (lu hors transaction, sans contrainte DB).
+   Deux bootstraps simultanés sur le même établissement peuvent produire **deux** admins
+   principaux. **Volontairement non bloqué** : le modèle d'accès **autorise plusieurs**
+   admins principaux par service (délégation `setCapabilities`, anti-lockout comptant les
+   autres principaux) — un index unique « un seul principal » casserait cette délégation.
+   Les deux octrois sont légitimes (Q2 + droit de déléguer), surface **ADMIN-only**, rare,
+   réversible via `revokeMember`. Aucun accès indu, aucune escalade.
 
 ## 5. Conformité
 
