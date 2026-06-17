@@ -24,6 +24,11 @@ octroyer/révoquer capacités Q1/Q2, retirer un membre) + routes `/api/cabinet/[
 - **Octroi/retrait Q2** (`canManage`) = **admin principal** (ou ADMIN).
 - **`isPrincipalAdmin`** = **ADMIN uniquement** (un principal ne nomme que des délégués
   → limite la prolifération d'admins et le rayon d'un compte compromis).
+- **Cohérence d'état** : `isPrincipalAdmin = true ⇒ canManage = true` (forcé ; la combinaison
+  `isPrincipalAdmin:true + canManage:false` est rejetée `invalidState`).
+- **Anti-lockout symétrique** : on ne peut pas retirer le **dernier** admin principal d'un
+  service — ni par **retrait** (`revokeMember`) ni par **rétrogradation** (`setCapabilities`
+  `isPrincipalAdmin:false`) → `lastPrincipalAdmin`.
 - **Q1** (`clinicalRole`, PHI) = **octroyable en V1** (« considéré vérifié » ; cf. §4).
 - **Non-auto-élévation** : on ne modifie pas ses propres capacités (`selfElevation`).
 - **Anti-self-lockout** : le dernier admin principal d'un service ne peut pas être retiré.
@@ -52,6 +57,17 @@ octroyer/révoquer capacités Q1/Q2, retirer un membre) + routes `/api/cabinet/[
 - **Pas de rôle « gestionnaire non-soignant »** (F1/V4) : en V1 un membre géré est un
   utilisateur clinique (`DOCTOR`/`NURSE`). La **secrétaire pure Q2-seule** est reportée V4.
 - **`ADMIN` bypass PHI** : inchangé (V4 / F1).
+- **Rattachement d'un user existant** : un principal peut rattacher un compte Diabeo
+  **existant** (par email) à son service avec une capacité clinique → l'utilisateur gagne
+  l'accès PHI du service **sans notification** en V1 (l'action est **auditée**
+  `INVITATION_SENT`). Sa PII n'est jamais modifiée. **Backlog** : email de notification au
+  rattachement + endpoint de **renvoi d'invitation** (email d'activation échoué → compte
+  orphelin, récupérable via reset-password public). Accepté V1.
+- **Oracle d'énumération** : la réponse POST est **neutre** (`{ ok: true }`, ni `userId`
+  ni `invitedNewUser`) → pas de signal explicite d'existence d'email. **Résidu** : une
+  légère différence de **timing** (création user/bcrypt sur un nouvel email) reste
+  observable par un appelant **Q2 authentifié** ; acceptée V1 (acteur authentifié + gated Q2
+  + rate-limit auth). À égaliser si besoin (padding) en durcissement ultérieur.
 
 ## 5. Tests (PR4a)
 

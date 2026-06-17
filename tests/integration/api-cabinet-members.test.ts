@@ -73,11 +73,11 @@ describe("GET /api/cabinet/[id]/members", () => {
 })
 
 describe("POST /api/cabinet/[id]/members (invite)", () => {
-  it("invite → 201", async () => {
+  it("invite → 201 réponse NEUTRE (anti-énumération : pas d'userId/invitedNewUser)", async () => {
     inviteMember.mockResolvedValue({ userId: 50, invitedNewUser: true })
     const res = await POST(req("/api/cabinet/9/members", "POST", { email: "n@x.fr", clinicalRole: "NURSE" }), p("9"))
     expect(res.status).toBe(201)
-    expect(await res.json()).toMatchObject({ userId: 50 })
+    expect(await res.json()).toEqual({ ok: true })
   })
   it("corps invalide (email) → 400", async () => {
     const res = await POST(req("/api/cabinet/9/members", "POST", { email: "nope" }), p("9"))

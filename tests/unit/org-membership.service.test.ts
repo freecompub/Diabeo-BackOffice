@@ -158,6 +158,31 @@ describe("setCapabilities", () => {
     await expect(orgMembershipService.setCapabilities(1, "ADMIN", 5, 9, { clinicalRole: "DOCTOR" }))
       .rejects.toMatchObject({ code: "notFound" })
   })
+
+  it("rétrograder le DERNIER admin principal → lastPrincipalAdmin (HIGH review)", async () => {
+    pm.healthcareMembership.findUnique.mockResolvedValue({ id: 1, isPrincipalAdmin: true })
+    pm.healthcareMembership.count.mockResolvedValue(0) // aucun autre principal
+    await expect(orgMembershipService.setCapabilities(1, "ADMIN", 5, 9, { isPrincipalAdmin: false }))
+      .rejects.toMatchObject({ code: "lastPrincipalAdmin" })
+    expect(pm.healthcareMembership.update).not.toHaveBeenCalled()
+  })
+
+  it("cohérence : isPrincipalAdmin=true force canManage=true", async () => {
+    pm.healthcareMembership.findUnique.mockResolvedValue({ id: 1, isPrincipalAdmin: false })
+    pm.healthcareMembership.update.mockResolvedValue({})
+    pm.user.update.mockResolvedValue({})
+    await orgMembershipService.setCapabilities(1, "ADMIN", 5, 9, { isPrincipalAdmin: true })
+    expect(pm.healthcareMembership.update.mock.calls[0][0].data).toMatchObject({
+      isPrincipalAdmin: true, canManage: true,
+    })
+  })
+
+  it("cohérence : isPrincipalAdmin=true + canManage=false → invalidState", async () => {
+    pm.healthcareMembership.findUnique.mockResolvedValue({ id: 1, isPrincipalAdmin: false })
+    await expect(
+      orgMembershipService.setCapabilities(1, "ADMIN", 5, 9, { isPrincipalAdmin: true, canManage: false }),
+    ).rejects.toMatchObject({ code: "invalidState" })
+  })
 })
 
 describe("revokeMember", () => {

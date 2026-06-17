@@ -16,6 +16,7 @@ import {
   orgMembershipErrorStatus,
 } from "@/lib/services/org-membership.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 function parseId(id: string): number | null {
   const n = Number(id)
@@ -37,7 +38,7 @@ function mapError(error: unknown): NextResponse {
   if (error instanceof OrgMembershipError) {
     return NextResponse.json({ error: error.code }, { status: orgMembershipErrorStatus(error.code) })
   }
-  console.error("[cabinet/members/:userId]", error instanceof Error ? error.message : error)
+  logger.error("api/cabinet/members/:userId", "request failed", {}, error)
   return NextResponse.json({ error: "serverError" }, { status: 500 })
 }
 

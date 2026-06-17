@@ -60,6 +60,18 @@ export function orgMembershipErrorStatus(code: OrgMembershipError["code"]): numb
 /** Seuls DOCTOR/NURSE sont des capacités cliniques valides (Q1). */
 const CLINICAL_ROLES: ReadonlySet<Role> = new Set<Role>(["DOCTOR", "NURSE"])
 
+/**
+ * Cohérence d'état : un admin principal a **forcément** la gestion (Q2). On force
+ * `canManage = true` quand `isPrincipalAdmin = true`, et on rejette la combinaison
+ * incohérente `isPrincipalAdmin:true + canManage:false` (review HSA LOW).
+ */
+function normalizeCaps(caps: CapabilityInput): CapabilityInput {
+  if (caps.isPrincipalAdmin === true && caps.canManage === false) {
+    throw new OrgMembershipError("invalidState")
+  }
+  return caps.isPrincipalAdmin === true ? { ...caps, canManage: true } : caps
+}
+
 export type MemberView = {
   userId: number
   firstname: string | null
@@ -138,9 +150,14 @@ export const orgMembershipService = {
   ): Promise<{ userId: number; invitedNewUser: boolean }> {
     await assertCanManage(callerId, role, serviceId)
     // Octroi Q2 à l'invitation : mêmes gardes que setCapabilities.
-    if (input.canManage) await assertPrincipal(callerId, role, serviceId)
     if (input.isPrincipalAdmin && role !== "ADMIN") throw new OrgMembershipError("forbidden")
-    if (input.clinicalRole && !CLINICAL_ROLES.has(input.clinicalRole)) {
+    const caps = normalizeCaps({
+      clinicalRole: input.clinicalRole,
+      canManage: input.canManage,
+      isPrincipalAdmin: input.isPrincipalAdmin,
+    })
+    if (caps.canManage) await assertPrincipal(callerId, role, serviceId)
+    if (caps.clinicalRole && !CLINICAL_ROLES.has(caps.clinicalRole)) {
       throw new OrgMembershipError("invalidState")
     }
 
@@ -153,6 +170,9 @@ export const orgMembershipService = {
       let invitedNewUser = false
 
       if (existing) {
+        // Rattachement d'un user existant : on NE modifie PAS sa PII (firstName/
+        // lastName ignorés volontairement — son identité lui appartient) ni son
+        // mot de passe ; on crée seulement l'appartenance au service.
         targetUserId = existing.id
         const dup = await tx.healthcareMembership.findUnique({
           where: { userId_serviceId: { userId: targetUserId, serviceId } },
@@ -161,7 +181,7 @@ export const orgMembershipService = {
         if (dup) throw new OrgMembershipError("invalidState") // déjà membre
       } else {
         // Nouveau membre = utilisateur clinique en V1 → clinicalRole requis.
-        if (!input.clinicalRole) throw new OrgMembershipError("invalidState")
+        if (!caps.clinicalRole) throw new OrgMembershipError("invalidState")
         const tempPasswordHash = await bcryptHash(randomBytes(32).toString("base64url"), 12)
         resetToken = randomUUID()
         const user = await tx.user.create({
@@ -171,7 +191,7 @@ export const orgMembershipService = {
             passwordHash: tempPasswordHash,
             ...(input.firstName && { firstname: encryptField(input.firstName), firstnameHmac: hmacField(input.firstName) }),
             ...(input.lastName && { lastname: encryptField(input.lastName), lastnameHmac: hmacField(input.lastName) }),
-            role: input.clinicalRole,
+            role: caps.clinicalRole,
             status: "active",
             language: "fr",
             needPasswordUpdate: true,
@@ -190,9 +210,9 @@ export const orgMembershipService = {
       await tx.healthcareMembership.create({
         data: {
           userId: targetUserId, serviceId,
-          clinicalRole: input.clinicalRole ?? null,
-          canManage: input.canManage ?? false,
-          isPrincipalAdmin: input.isPrincipalAdmin ?? false,
+          clinicalRole: caps.clinicalRole ?? null,
+          canManage: caps.canManage ?? false,
+          isPrincipalAdmin: caps.isPrincipalAdmin ?? false,
         },
       })
 
@@ -202,9 +222,9 @@ export const orgMembershipService = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: {
           invitedNewUser,
-          clinicalRole: input.clinicalRole ?? null,
-          canManage: input.canManage ?? false,
-          isPrincipalAdmin: input.isPrincipalAdmin ?? false,
+          clinicalRole: caps.clinicalRole ?? null,
+          canManage: caps.canManage ?? false,
+          isPrincipalAdmin: caps.isPrincipalAdmin ?? false,
         },
       })
 
@@ -232,25 +252,35 @@ export const orgMembershipService = {
   ): Promise<void> {
     await assertCanManage(callerId, role, serviceId)
     if (targetUserId === callerId) throw new OrgMembershipError("selfElevation")
-    if (caps.canManage !== undefined) await assertPrincipal(callerId, role, serviceId)
     if (caps.isPrincipalAdmin !== undefined && role !== "ADMIN") throw new OrgMembershipError("forbidden")
-    if (caps.clinicalRole && !CLINICAL_ROLES.has(caps.clinicalRole)) {
+    const norm = normalizeCaps(caps)
+    if (norm.canManage !== undefined) await assertPrincipal(callerId, role, serviceId)
+    if (norm.clinicalRole && !CLINICAL_ROLES.has(norm.clinicalRole)) {
       throw new OrgMembershipError("invalidState")
     }
 
     const membership = await prisma.healthcareMembership.findUnique({
       where: { userId_serviceId: { userId: targetUserId, serviceId } },
-      select: { id: true },
+      select: { id: true, isPrincipalAdmin: true },
     })
     if (!membership) throw new OrgMembershipError("notFound")
+
+    // HIGH (review) — anti-lockout symétrique : ne pas retirer `isPrincipalAdmin`
+    // du DERNIER admin principal du service (sinon plus personne ne peut octroyer Q2).
+    if (norm.isPrincipalAdmin === false && membership.isPrincipalAdmin) {
+      const otherPrincipals = await prisma.healthcareMembership.count({
+        where: { serviceId, isPrincipalAdmin: true, userId: { not: targetUserId } },
+      })
+      if (otherPrincipals === 0) throw new OrgMembershipError("lastPrincipalAdmin")
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.healthcareMembership.update({
         where: { userId_serviceId: { userId: targetUserId, serviceId } },
         data: {
-          ...(caps.clinicalRole !== undefined && { clinicalRole: caps.clinicalRole }),
-          ...(caps.canManage !== undefined && { canManage: caps.canManage }),
-          ...(caps.isPrincipalAdmin !== undefined && { isPrincipalAdmin: caps.isPrincipalAdmin }),
+          ...(norm.clinicalRole !== undefined && { clinicalRole: norm.clinicalRole }),
+          ...(norm.canManage !== undefined && { canManage: norm.canManage }),
+          ...(norm.isPrincipalAdmin !== undefined && { isPrincipalAdmin: norm.isPrincipalAdmin }),
         },
       })
       // F7 — effet immédiat : bump authVersion (rejet refresh) ; invalidate sessions ci-dessous.
@@ -261,9 +291,9 @@ export const orgMembershipService = {
         resourceId: String(targetUserId), scopeServiceId: serviceId,
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         newValue: {
-          ...(caps.clinicalRole !== undefined && { clinicalRole: caps.clinicalRole }),
-          ...(caps.canManage !== undefined && { canManage: caps.canManage }),
-          ...(caps.isPrincipalAdmin !== undefined && { isPrincipalAdmin: caps.isPrincipalAdmin }),
+          ...(norm.clinicalRole !== undefined && { clinicalRole: norm.clinicalRole }),
+          ...(norm.canManage !== undefined && { canManage: norm.canManage }),
+          ...(norm.isPrincipalAdmin !== undefined && { isPrincipalAdmin: norm.isPrincipalAdmin }),
         },
       })
     })
