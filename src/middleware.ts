@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { jwtVerify, importSPKI } from "jose"
 import { isSessionRevoked } from "@/lib/auth/revocation"
-import { slideActivity, inactivityWindowSeconds } from "@/lib/auth/activity"
+import { slideActivity, peekActivity, inactivityWindowSeconds } from "@/lib/auth/activity"
 import { JWT_VERIFY_OPTIONS } from "@/lib/auth/jwt-constants"
 import { ROLE_TO_HOME, isKnownRoleString } from "@/lib/auth/role-home"
 
@@ -163,6 +163,15 @@ export async function middleware(request: NextRequest) {
       // vers /medecin /infirmier /admin /patient/dashboard, tous instrumentés.
       const role = typeof payload.role === "string" ? payload.role : null
       if (isKnownRoleString(role)) {
+        // US-2621 — ne pas re-router vers le home un backoffice dont la session
+        // est inactive (token encore valide mais fenêtre expirée) : on PEEK sans
+        // rafraîchir (une visite de /login ne doit pas prolonger l'inactivité) →
+        // sinon « flash connecté » + hop inutile avant la coupure côté route.
+        const sid2 = typeof payload.sid === "string" ? payload.sid : undefined
+        const w = inactivityWindowSeconds(role)
+        if (sid2 && w !== null && (await peekActivity(sid2)) === "timedOut") {
+          return clearTokenAndContinue(request.headers)
+        }
         return NextResponse.redirect(new URL(ROLE_TO_HOME[role], request.url))
       }
       // Rôle inconnu/absent du token → ne pas boucler sur "/", effacer le cookie.

@@ -16,13 +16,15 @@ vi.mock("@/lib/auth/redis-client", () => ({
   REDIS_APP_PREFIX: "test:",
 }))
 
+const get = vi.fn()
+
 import {
-  inactivityWindowSeconds, startActivity, slideActivity, clearActivity,
+  inactivityWindowSeconds, startActivity, slideActivity, peekActivity, clearActivity,
 } from "@/lib/auth/activity"
 
 beforeEach(() => {
   vi.clearAllMocks()
-  client = { set, del }
+  client = { set, del, get } as never
 })
 
 describe("inactivityWindowSeconds", () => {
@@ -68,6 +70,23 @@ describe("slideActivity", () => {
   it("Redis non configuré (dev/test) → active (check ignoré)", async () => {
     client = null
     expect(await slideActivity("sid1", 1800)).toBe("active")
+  })
+})
+
+describe("peekActivity (sans slide)", () => {
+  it("clé présente (GET non-null) → active, sans rafraîchir la fenêtre", async () => {
+    get.mockResolvedValue("1")
+    expect(await peekActivity("sid1")).toBe("active")
+    expect(get).toHaveBeenCalledWith("test:sess:sid1")
+    expect(set).not.toHaveBeenCalled() // peek ne prolonge PAS l'inactivité
+  })
+  it("clé absente (GET null) → timedOut", async () => {
+    get.mockResolvedValue(null)
+    expect(await peekActivity("sid1")).toBe("timedOut")
+  })
+  it("erreur Redis → timedOut (fail-closed)", async () => {
+    get.mockRejectedValue(new Error("redis down"))
+    expect(await peekActivity("sid1")).toBe("timedOut")
   })
 })
 

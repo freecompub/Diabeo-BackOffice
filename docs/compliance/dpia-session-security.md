@@ -20,11 +20,15 @@ aucun Prisma). Conséquence des choix :
 ## 2. F7 — révocation immédiate de capacité/rôle (US-2619)
 
 - `User.authVersion` (défaut 1) recopié dans le claim JWT `av`. Tout changement de
-  droits/statut **bumpe** `authVersion` (`bumpAuthVersion` / inline dans
-  `userManagementService.updateRole` & `setStatus`).
+  droits/statut **bumpe** `authVersion` (incrément inline dans la même `user.update`
+  que `userManagementService.updateRole` & `setStatus`).
 - **Effet immédiat** : à chaque changement, les sessions actives sont **révoquées**
   (`invalidateAllUserSessions` → Redis `revoked:<sid>` + `sess:<sid>` effacés) → la
-  requête suivante est refusée par le middleware (≤ 1 requête, pas 15 min).
+  requête suivante est refusée par le middleware (≤ 1 requête). ⚠️ Cette immédiateté
+  « ≤ 1 requête » est **conditionnée au succès de l'écriture Redis** : si elle échoue
+  (outage), le middleware (qui n'interroge pas la DB) laisse passer le token jusqu'au
+  prochain refresh. La **borne garantie** est donc le refresh (≤ 15 min), ci-dessous.
+  Tout échec d'écriture est loggé (alerting ops du window dégradé).
 - **Filet de sécurité** : si un `sid` échappe à la révocation (Redis momentanément KO
   à l'écriture), le **refresh** rejette un token dont `av ≠ User.authVersion`
   (`authVersionStale`) et un compte `status ≠ active` (`accountSuspended`).
@@ -75,9 +79,10 @@ changement de droits pendant la grâce est rattrapé au refresh (`av`/statut).
 - `tests/unit/activity.test.ts` (fenêtres par rôle ; slide active/timedOut/fail-closed ;
   start/clear ; Redis off → skip).
 - `tests/unit/jwt.test.ts` (claim `av` ; back-compat token legacy → `av=0`).
-- `tests/unit/auth-version.test.ts` (`bumpAuthVersion`).
 - `tests/unit/user-management.service.test.ts` (bump `authVersion` + révocation sessions
   sur updateRole/setStatus).
+- `tests/integration/middleware-inactivity.test.ts` (timeout page → redirect /login +
+  cookie effacé ; anti-boucle).
 - `tests/integration/api-auth-refresh.test.ts` (révoqué / suspendu / `av` périmé / nominal).
 - Non-régression : suite complète verte (login/mfa/logout/middleware inclus).
 

@@ -395,8 +395,12 @@ export const userManagementService = {
     )
 
     // Step 2 — Revoke live JWTs in Redis (outside the transaction).
-    // Best-effort : if Redis is down, the session DB rows are already gone
-    // so a session-validating middleware would still reject. Logged for ops.
+    // ⚠️ Le middleware Edge enforce via Redis (révocation + activité), PAS via la
+    // DB : si l'ÉCRITURE Redis échoue ici, le token reste utilisable sur les routes
+    // protégées jusqu'au prochain `/api/auth/refresh` (où `av`/statut le rejettent),
+    // soit ≤ 15 min. La suppression DB des sessions n'est donc PAS un filet pour le
+    // middleware (seulement pour le refresh). On logue tout échec pour alerter ops
+    // (fenêtre dégradée), authVersion étant la borne garantie.
     if (result.revokedSids.length > 0) {
       await Promise.all(
         result.revokedSids.flatMap((sid) => [
@@ -406,7 +410,11 @@ export const userManagementService = {
             }, err)
           }),
           // US-2621 — ferme aussi la fenêtre d'activité du sid révoqué.
-          clearActivity(sid).catch(() => {}),
+          clearActivity(sid).catch((err) => {
+            logger.error("user-mgmt", "Failed to clear activity window in Redis", {
+              userId: auditUserId,
+            }, err)
+          }),
         ]),
       )
     }

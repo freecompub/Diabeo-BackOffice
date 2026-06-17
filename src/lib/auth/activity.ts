@@ -63,6 +63,25 @@ export async function slideActivity(sid: string, windowSeconds: number): Promise
   }
 }
 
+/**
+ * Lit l'état de la fenêtre **sans la rafraîchir** (GET) — pour des points qui ne
+ * doivent pas compter comme « activité » (ex. la page `/login`). Évite qu'une
+ * visite de `/login` ne prolonge l'inactivité (pas de slide).
+ * @returns `timedOut` si la clé n'existe plus **ou** sur erreur Redis (fail-closed) ;
+ *          `active` sinon, ou si Redis non configuré (dev/test).
+ */
+export async function peekActivity(sid: string): Promise<ActivityResult> {
+  const client = getRedis()
+  if (!client) return "active" // non configuré (dev/test) → check ignoré
+  try {
+    const res = await client.get(`${ACTIVITY_PREFIX}${sid}`)
+    return res === null ? "timedOut" : "active"
+  } catch {
+    console.error("[activity] Redis unavailable — failing closed (peek treated as timed out)")
+    return "timedOut"
+  }
+}
+
 /** Supprime la fenêtre d'activité (logout). No-op si Redis off / erreur. */
 export async function clearActivity(sid: string): Promise<void> {
   const client = getRedis()
