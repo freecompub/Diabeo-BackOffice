@@ -34,6 +34,13 @@ export interface JWTSignPayload {
   role: Role
   platform: "hc"
   sid: string
+  /**
+   * US-2619/F7 — Version d'authentification. Recopiée de `User.authVersion` à
+   * l'émission ; comparée au refresh (Node) à la valeur en base. Un changement
+   * de droits/statut **bump** `authVersion` → les tokens antérieurs sont rejetés
+   * au refresh (en plus de la révocation Redis immédiate côté session).
+   */
+  av: number
 }
 
 /** Full payload returned after verifying a JWT (includes jose-set fields) */
@@ -86,7 +93,11 @@ function validatePayload(payload: Record<string, unknown>): JWTPayload {
   if (!Number.isFinite(exp) || exp <= 0) {
     throw new Error("Missing token expiration")
   }
-  return { sub, role: role as Role, platform: "hc", sid: payload.sid, exp }
+  // Back-compat : un token pré-PR2 sans `av` → 0 (forcé à se réémettre au refresh,
+  // car User.authVersion vaut ≥ 1).
+  const avRaw = Number(payload.av)
+  const av = Number.isInteger(avRaw) && avRaw >= 0 ? avRaw : 0
+  return { sub, role: role as Role, platform: "hc", sid: payload.sid, av, exp }
 }
 
 export async function signJwt(payload: JWTSignPayload): Promise<string> {
@@ -95,6 +106,7 @@ export async function signJwt(payload: JWTSignPayload): Promise<string> {
     role: payload.role,
     platform: payload.platform,
     sid: payload.sid,
+    av: payload.av,
   })
     .setProtectedHeader({ alg: ALG })
     .setSubject(String(payload.sub))

@@ -326,6 +326,11 @@ model User {
   /// transitions. RGPD Art. 17 utilise l'anonymisation (non-DELETE) — la trace
   /// reste en colonne, le user est anonymisé via `deletion.service`.
   statusChangedBy          Int?              @map("status_changed_by")
+  /// US-2619/F7 — Version d'authentification. Bumpée à chaque changement de
+  /// droits/statut (rôle, suspension, capacités). Recopiée dans le claim JWT `av` ;
+  /// le refresh (Node) rejette un token dont `av` ≠ `authVersion` → invalide les
+  /// tokens antérieurs (en plus de la révocation Redis immédiate des sessions).
+  authVersion              Int               @default(1) @map("auth_version")
   mfaSecret                String?           @map("mfa_secret")
   mfaEnabled               Boolean           @default(false) @map("mfa_enabled")
   /// Last accepted TOTP time step (RFC 6238 T counter). Prevents replay of

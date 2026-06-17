@@ -15,24 +15,11 @@
  * exploited to bypass session invalidation for healthcare data access.
  */
 
-import { Redis } from "@upstash/redis"
+import { getRedis, REDIS_APP_PREFIX, _resetRedisForTesting } from "./redis-client"
 
-/** Environment-scoped prefix to avoid key collisions in shared Redis instances */
-const APP_PREFIX = process.env.REDIS_KEY_PREFIX ?? "diabeo:prod:"
-const REVOCATION_PREFIX = `${APP_PREFIX}revoked:`
+const REVOCATION_PREFIX = `${REDIS_APP_PREFIX}revoked:`
 const DEFAULT_TTL_SECONDS = 24 * 3600 // 24h — matches JWT max lifetime
 const MIN_REVOCATION_TTL_SECONDS = 60 // minimum revocation window (clock drift safety)
-
-let redis: Redis | null = null
-
-function getRedis(): Redis | null {
-  if (redis) return redis
-  const url = process.env.UPSTASH_REDIS_REST_URL
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) return null
-  redis = new Redis({ url, token })
-  return redis
-}
 
 /**
  * Mark a session as revoked in Redis.
@@ -86,5 +73,5 @@ export async function isSessionRevoked(sid: string): Promise<boolean> {
  * @internal
  */
 export function _resetForTesting(): void {
-  redis = null
+  _resetRedisForTesting()
 }

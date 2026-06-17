@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/client"
 import { randomBytes } from "crypto"
 import { revokeSession } from "./revocation"
+import { clearActivity } from "./activity"
 
 const SESSION_DURATION_HOURS = 24
 
@@ -79,6 +80,10 @@ export async function invalidateAllUserSessions(userId: number) {
     where: { userId },
     select: { id: true },
   })
-  await Promise.all(sessions.map((s) => revokeSession(s.id)))
+  // Révoque (Redis) + ferme la fenêtre d'activité (US-2621) de chaque session
+  // AVANT la suppression DB → les JWT existants sont rejetés immédiatement.
+  await Promise.all(
+    sessions.flatMap((s) => [revokeSession(s.id), clearActivity(s.id)]),
+  )
   return prisma.session.deleteMany({ where: { userId } })
 }

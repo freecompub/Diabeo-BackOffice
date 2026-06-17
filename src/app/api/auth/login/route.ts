@@ -6,6 +6,10 @@ import {
   signJwt,
   signMfaPendingToken,
   createSession,
+  invalidateAllUserSessions,
+  isBackofficeRole,
+  startActivity,
+  inactivityWindowSeconds,
   checkRateLimit,
   recordFailedAttempt,
   clearAttempts,
@@ -60,7 +64,7 @@ export async function POST(req: NextRequest) {
       where: { emailHmac: emailHash },
       select: {
         id: true, passwordHash: true, role: true,
-        mfaEnabled: true, status: true, language: true,
+        mfaEnabled: true, status: true, language: true, authVersion: true,
       },
     })
 
@@ -177,16 +181,27 @@ export async function POST(req: NextRequest) {
     // Success — clear rate limit, create session, sign JWT
     await clearAttempts(emailHash)
 
+    // US-2621 — mono-session backoffice : la nouvelle connexion invalide les
+    // précédentes (dernier appareil gagne). `VIEWER` (patient) exempté.
+    if (isBackofficeRole(user.role)) {
+      await invalidateAllUserSessions(user.id)
+    }
+
     const session = await createSession(user.id, {
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
     })
+
+    // US-2621 — ouvre la fenêtre d'activité (timeout d'inactivité glissant Redis).
+    const window = inactivityWindowSeconds(user.role)
+    if (window !== null) await startActivity(session.id, window)
 
     const token = await signJwt({
       sub: user.id,
       role: user.role,
       platform: "hc",
       sid: session.id,
+      av: user.authVersion,
     })
 
     await auditService.log({

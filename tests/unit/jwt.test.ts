@@ -52,6 +52,7 @@ describe("JWT signing and verification", () => {
     role: "DOCTOR" as const,
     platform: "hc" as const,
     sid: "session-abc-123",
+    av: 1,
   }
 
   describe("signJwt + verifyJwt roundtrip", () => {
@@ -67,6 +68,19 @@ describe("JWT signing and verification", () => {
       expect(verified.role).toBe("DOCTOR")
       expect(verified.platform).toBe("hc")
       expect(verified.sid).toBe("session-abc-123")
+      expect(verified.av).toBe(1) // US-2619/F7 — claim authVersion préservé
+    })
+
+    it("defaults av to 0 for a legacy token signed without the claim (back-compat)", async () => {
+      // Simule un token pré-PR2 : on signe sans `av` via le chemin bas niveau.
+      const { SignJWT, importPKCS8 } = await import("jose")
+      const key = await importPKCS8(privateKeyPem, "RS256")
+      const legacy = await new SignJWT({ role: "DOCTOR", platform: "hc", sid: "s1" })
+        .setProtectedHeader({ alg: "RS256" })
+        .setSubject("42").setIssuer("diabeo-backoffice").setAudience("diabeo-hc")
+        .setIssuedAt().setExpirationTime("15m").sign(key)
+      const verified = await verifyJwt(legacy)
+      expect(verified.av).toBe(0)
     })
 
     it("includes exp field in verified payload", async () => {
