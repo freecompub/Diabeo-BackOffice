@@ -41,7 +41,7 @@ export async function PATCH(
     }
 
     const ctx = extractRequestContext(req)
-    await encounterService.saveDraft(encounterId, user.id, parsed.data.content, ctx)
+    await encounterService.saveDraft(encounterId, user.id, user.role, parsed.data.content, ctx)
     return NextResponse.json({ ok: true })
   } catch (error) {
     if (error instanceof AuthError) {

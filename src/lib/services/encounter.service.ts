@@ -18,6 +18,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import { canAccessPatient } from "@/lib/access-control"
+import { patientShareConsent } from "@/lib/consent"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { startOfTodayCabinet } from "@/lib/cabinet-time"
 
@@ -100,11 +101,17 @@ export const encounterService = {
    * de la séance, tant qu'elle est en brouillon.
    */
   async saveDraft(
-    encounterId: number, userId: number, content: string, ctx?: AuditContext,
+    encounterId: number, userId: number, role: Role, content: string, ctx?: AuditContext,
   ): Promise<void> {
     const enc = await prisma.encounter.findUnique({ where: { id: encounterId } })
     if (!enc) throw new EncounterError("notFound")
     if (enc.openedById !== userId) throw new EncounterError("forbidden")
+    // Re-vérifie l'accès patient (RGPD Art. 7.3) : une séance peut être longue —
+    // l'accès a pu être révoqué (désassignation / retrait de partage) depuis
+    // l'ouverture. Fail-closed : pas d'écriture sur un patient devenu hors périmètre.
+    if (!(await canAccessPatient(userId, role, enc.patientId))) {
+      throw new EncounterError("forbidden")
+    }
     if (enc.status !== "draft") throw new EncounterError("invalidState")
 
     await prisma.encounter.update({
@@ -126,7 +133,7 @@ export const encounterService = {
    * Réservé au propriétaire de la séance en brouillon (RBAC NURSE+ côté route).
    */
   async finalizeReport(
-    encounterId: number, userId: number,
+    encounterId: number, userId: number, role: Role,
     content: string, anchor: { period: string; dataAsOf: Date },
     ctx?: AuditContext,
   ): Promise<{ reportId: number; patientId: number }> {
@@ -137,6 +144,17 @@ export const encounterService = {
     const enc = await prisma.encounter.findUnique({ where: { id: encounterId } })
     if (!enc) throw new EncounterError("notFound")
     if (enc.openedById !== userId) throw new EncounterError("forbidden")
+    // Re-vérifie l'accès AVANT d'émettre l'addendum IMMUABLE (révocation possible
+    // pendant une séance longue, RGPD Art. 7.3). Fail-closed.
+    if (!(await canAccessPatient(userId, role, enc.patientId))) {
+      throw new EncounterError("forbidden")
+    }
+    // Garde consentement (gdprConsent + shareWithProviders, fail-closed) — un
+    // compte rendu immuable ne doit pas être figé pour un patient ayant retiré
+    // son partage entre l'ouverture et la finalisation.
+    if (!(await patientShareConsent(enc.patientId)).ok) {
+      throw new EncounterError("forbidden")
+    }
     if (enc.status !== "draft") throw new EncounterError("invalidState")
 
     return prisma.$transaction(async (tx) => {

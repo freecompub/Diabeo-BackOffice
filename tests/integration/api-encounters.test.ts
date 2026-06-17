@@ -103,11 +103,11 @@ describe("POST /api/encounters (open/resume)", () => {
 describe("PATCH /api/encounters/[id]/draft", () => {
   const params = { params: Promise.resolve({ id: "12" }) }
 
-  it("sauvegarde le brouillon → 200", async () => {
+  it("sauvegarde le brouillon → 200 (rôle threadé pour re-check accès)", async () => {
     saveDraft.mockResolvedValue(undefined)
     const res = await draftRoute(json("/api/encounters/12/draft", "PATCH", { content: "wip" }), params)
     expect(res.status).toBe(200)
-    expect(saveDraft).toHaveBeenCalledWith(12, 7, "wip", expect.any(Object))
+    expect(saveDraft).toHaveBeenCalledWith(12, 7, "NURSE", "wip", expect.any(Object))
   })
 
   it("id invalide → 400", async () => {
@@ -144,7 +144,8 @@ describe("POST /api/encounters/[id]/finalize", () => {
     )
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ reportId: 99 })
-    const [, , content, anchor] = finalizeReport.mock.calls[0]
+    const [, , role, content, anchor] = finalizeReport.mock.calls[0]
+    expect(role).toBe("NURSE")
     expect(content).toBe("CR")
     expect(anchor.period).toBe("14d") // REVIEW_PERIOD serveur, pas "999d"
     expect(anchor.dataAsOf).toBeInstanceOf(Date)
@@ -160,5 +161,18 @@ describe("POST /api/encounters/[id]/finalize", () => {
     finalizeReport.mockRejectedValue(new EncounterError("invalidState"))
     const res = await finalizeRoute(json("/api/encounters/12/finalize", "POST", { content: "CR" }), params)
     expect(res.status).toBe(409)
+  })
+
+  it("séance absente → 404 (EncounterError notFound)", async () => {
+    finalizeReport.mockRejectedValue(new EncounterError("notFound"))
+    const res = await finalizeRoute(json("/api/encounters/12/finalize", "POST", { content: "CR" }), params)
+    expect(res.status).toBe(404)
+  })
+
+  it("erreur inattendue → 500 serverError (pas de fuite)", async () => {
+    finalizeReport.mockRejectedValue(new Error("boom"))
+    const res = await finalizeRoute(json("/api/encounters/12/finalize", "POST", { content: "CR" }), params)
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({ error: "serverError" })
   })
 })

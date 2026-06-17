@@ -81,10 +81,14 @@ sous-jacentes.
 ## 4. Mesures techniques en place (PR1)
 
 - Accès `canAccessPatient` (défense en profondeur) **avant** lecture/écriture sur
-  `openOrResume` et `listReports` ; refus → `EncounterError("forbidden")` (mappé par
-  les routes PR2 + `auditService.accessDenied`).
+  `openOrResume`, `saveDraft`, `finalizeReport` et `listReports` ; refus →
+  `EncounterError("forbidden")` (mappé par les routes + `auditService.accessDenied`).
 - Propriétaire-only sur `saveDraft`/`finalizeReport` (le PS qui a ouvert la séance) ;
-  écriture refusée hors statut `draft`.
+  écriture refusée hors statut `draft`. **Re-vérification de l'accès** (`canAccessPatient`)
+  sur `saveDraft`/`finalizeReport` + **re-vérification du consentement**
+  (`patientShareConsent`, fail-closed) avant l'émission de l'addendum **immuable** :
+  une séance pouvant être longue, un retrait d'accès/partage entre l'ouverture et la
+  finalisation est honoré (RGPD Art. 7.3).
 - Contenus chiffrés **AES-256-GCM** (`@/lib/crypto/fields`) ; lecture fail-soft.
 - `finalizeReport` atomique (`$transaction`) : addendum + clôture séance + brouillon
   vidé + 2 audits pivot (`CREATE CONSULTATION_REPORT`, `UPDATE ENCOUNTER`).

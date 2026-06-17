@@ -25,6 +25,7 @@ import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 import { bcp47 } from "@/i18n/config"
+import { PROPOSAL_MAJOR_CHANGE_PCT } from "@/lib/review-constants"
 import type { GlycemiaView } from "../glycemia-view"
 import type { TreatmentView } from "../treatment-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -399,7 +400,6 @@ function SlotBlock({ label, unit, slots }: { label: ReactNode; unit: string; slo
 /* ── Étape 5 — Décisions médicales ────────────────────────────────── */
 function DecisionsStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
-  const tParam = useTranslations("review")
   const tUnits = useTranslations("insulinUnits")
   const locale = useLocale()
   const fmt = (n: number) => n.toLocaleString(bcp47(locale), { maximumFractionDigits: 2 })
@@ -450,12 +450,12 @@ function DecisionsStep({ data }: { data: ReviewData }) {
             {items.map((p) => (
               <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
                 <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-medium">{tParam(PARAM_LABEL_KEY[p.parameterType])}</span>
+                  <span className="text-sm font-medium">{t(PARAM_LABEL_KEY[p.parameterType])}</span>
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(PARAM_UNIT_KEY[p.parameterType])}
                   </span>
                 </span>
-                <Badge variant={Math.abs(p.changePercent) >= 20 ? "destructive" : "secondary"}>
+                <Badge variant={Math.abs(p.changePercent) >= PROPOSAL_MAJOR_CHANGE_PCT ? "destructive" : "secondary"}>
                   {p.changePercent > 0 ? `+${Math.round(p.changePercent)}` : Math.round(p.changePercent)}&nbsp;%
                 </Badge>
                 {data.canDecide && (
@@ -489,6 +489,13 @@ function ReportStep({ data }: { data: ReviewData }) {
   const [finalizeError, setFinalizeError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // `dirty` : n'autosave qu'après une vraie modification (pas au montage d'un
+  // brouillon repris → évite une ligne d'audit HDS « fantôme »).
+  const dirty = useRef(false)
+  // Séquencement des autosaves : annule la requête en vol + ignore les réponses
+  // périmées (ordre d'arrivée ≠ ordre d'émission sur réseau lent).
+  const saveCtrl = useRef<AbortController | null>(null)
+  const saveSeq = useRef(0)
 
   const anchorLabel = t("anchorNote", {
     days: data.anchor.periodDays,
@@ -498,33 +505,49 @@ function ReportStep({ data }: { data: ReviewData }) {
   })
 
   const saveDraft = useCallback(async (value: string) => {
+    saveCtrl.current?.abort()
+    const ctrl = new AbortController()
+    saveCtrl.current = ctrl
+    const seq = ++saveSeq.current
     setSaveState("saving")
     try {
       const res = await fetch(`/api/encounters/${data.encounterId}/draft`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: value }),
+        signal: ctrl.signal,
       })
+      if (seq !== saveSeq.current) return // réponse périmée → ignorée
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setSaveState("saved")
     } catch {
+      if (ctrl.signal.aborted || seq !== saveSeq.current) return // annulée/périmée
       setSaveState("error")
     }
   }, [data.encounterId])
 
   // Autosave debounced (1.5s) tant que le compte rendu n'est pas finalisé.
   useEffect(() => {
-    if (finalized) return
+    if (finalized || !dirty.current) return
     if (timer.current) clearTimeout(timer.current)
     timer.current = setTimeout(() => { void saveDraft(content) }, 1500)
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [content, finalized, saveDraft])
 
+  const onChange = (value: string) => {
+    dirty.current = true
+    setContent(value)
+  }
+
   const finalize = async () => {
     if (!content.trim()) return
     setBusy(true)
     setFinalizeError(null)
+    // Coupe tout autosave (timer + requête en vol) : un PATCH tardif arriverait
+    // après la clôture (rejeté 409) et peindrait un faux « échec d'enregistrement ».
     if (timer.current) clearTimeout(timer.current)
+    saveSeq.current++ // invalide toute réponse d'autosave encore en vol
+    saveCtrl.current?.abort()
     try {
       const res = await fetch(`/api/encounters/${data.encounterId}/finalize`, {
         method: "POST",
@@ -572,7 +595,7 @@ function ReportStep({ data }: { data: ReviewData }) {
         <textarea
           id="review-report"
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
           rows={10}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           placeholder={t("reportPlaceholder")}

@@ -133,6 +133,45 @@ describe("ReviewClient", () => {
     await waitFor(() => expect(screen.getByText(/finalisé et immuable/)).toBeTruthy())
   })
 
+  it("décision en échec : message d'erreur + proposition conservée", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })))
+    render(<ReviewClient data={BASE} />)
+    fireEvent.click(screen.getByRole("button", { name: "Accepter" }))
+    await waitFor(() => expect(screen.getByText(/n'a pas pu être enregistrée/)).toBeTruthy())
+    // Retrait optimiste seulement en cas de succès : la proposition reste listée.
+    expect(screen.getByRole("button", { name: "Accepter" })).toBeTruthy()
+  })
+
+  it("n'autosave PAS au montage d'un brouillon repris (pas de PATCH fantôme, M1)", () => {
+    vi.useFakeTimers()
+    try {
+      render(<ReviewClient data={BASE} />)
+      vi.advanceTimersByTime(2000)
+      expect(fetch).not.toHaveBeenCalledWith(
+        "/api/encounters/12/draft",
+        expect.anything(),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("autosave le brouillon après modification (PATCH draft)", () => {
+    vi.useFakeTimers()
+    try {
+      render(<ReviewClient data={BASE} />)
+      const ta = screen.getByLabelText(/Synthèse/)
+      fireEvent.change(ta, { target: { value: "texte modifié" } })
+      vi.advanceTimersByTime(1500)
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/encounters/12/draft",
+        expect.objectContaining({ method: "PATCH" }),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it("partage désactivé : aucune donnée patient, état vide", () => {
     render(<ReviewClient data={null} sharingDisabled />)
     expect(screen.getByTestId("empty")).toBeTruthy()

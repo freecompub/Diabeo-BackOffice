@@ -47,7 +47,7 @@ export async function POST(
 
     const ctx = extractRequestContext(req)
     const result = await encounterService.finalizeReport(
-      encounterId, user.id, parsed.data.content,
+      encounterId, user.id, user.role, parsed.data.content,
       // Ancrage serveur-autoritaire (anti-falsification de la version des données).
       { period: REVIEW_PERIOD, dataAsOf: new Date() },
       ctx,

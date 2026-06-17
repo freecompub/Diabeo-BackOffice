@@ -13,6 +13,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 vi.mock("@/lib/access-control", () => ({ canAccessPatient: vi.fn() }))
+vi.mock("@/lib/consent", () => ({ patientShareConsent: vi.fn() }))
 vi.mock("@/lib/crypto/fields", () => ({
   encryptField: (v: string) => `enc:${v}`,
   safeDecryptField: (v: string | null) => (v ? v.replace(/^enc:/, "dec:") : v),
@@ -20,8 +21,10 @@ vi.mock("@/lib/crypto/fields", () => ({
 
 import { encounterService, EncounterError } from "@/lib/services/encounter.service"
 import { canAccessPatient } from "@/lib/access-control"
+import { patientShareConsent } from "@/lib/consent"
 
 const mockedAccess = vi.mocked(canAccessPatient)
+const mockedConsent = vi.mocked(patientShareConsent)
 const pm = prismaMock as unknown as {
   encounter: { findFirst: any; findUnique: any; create: any; update: any }
   consultationReportAddendum: { create: any; findMany: any }
@@ -33,6 +36,8 @@ beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
   mockedAccess.mockReset()
   mockedAccess.mockResolvedValue(true)
+  mockedConsent.mockReset()
+  mockedConsent.mockResolvedValue({ ok: true } as any)
   // $transaction(cb) → exécute le callback avec le mock comme `tx`.
   pm.$transaction.mockImplementation((cb: any) => cb(prismaMock))
 })
@@ -77,7 +82,7 @@ describe("encounterService.saveDraft", () => {
   it("encrypts + saves the draft for the owner, audits UPDATE", async () => {
     pm.encounter.findUnique.mockResolvedValue(ENC())
     pm.encounter.update.mockResolvedValue(ENC())
-    await encounterService.saveDraft(7, 1, "mon brouillon")
+    await encounterService.saveDraft(7, 1, "DOCTOR", "mon brouillon")
     expect(pm.encounter.update.mock.calls[0][0].data.draftReportEnc).toBe("enc:mon brouillon")
     const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(audit.action).toBe("UPDATE")
@@ -86,19 +91,26 @@ describe("encounterService.saveDraft", () => {
 
   it("rejects a non-owner (forbidden)", async () => {
     pm.encounter.findUnique.mockResolvedValue(ENC({ openedById: 999 }))
-    await expect(encounterService.saveDraft(7, 1, "x")).rejects.toMatchObject({ code: "forbidden" })
+    await expect(encounterService.saveDraft(7, 1, "DOCTOR", "x")).rejects.toMatchObject({ code: "forbidden" })
+    expect(pm.encounter.update).not.toHaveBeenCalled()
+  })
+
+  it("rejects the owner if access was revoked mid-session (forbidden, no write)", async () => {
+    pm.encounter.findUnique.mockResolvedValue(ENC())
+    mockedAccess.mockResolvedValue(false)
+    await expect(encounterService.saveDraft(7, 1, "DOCTOR", "x")).rejects.toMatchObject({ code: "forbidden" })
     expect(pm.encounter.update).not.toHaveBeenCalled()
   })
 
   it("rejects when not a draft (invalidState)", async () => {
     pm.encounter.findUnique.mockResolvedValue(ENC({ status: "completed" }))
-    await expect(encounterService.saveDraft(7, 1, "x")).rejects.toMatchObject({ code: "invalidState" })
+    await expect(encounterService.saveDraft(7, 1, "DOCTOR", "x")).rejects.toMatchObject({ code: "invalidState" })
   })
 
   it("nulls the draft column when content is empty (no ciphertext of '')", async () => {
     pm.encounter.findUnique.mockResolvedValue(ENC())
     pm.encounter.update.mockResolvedValue(ENC())
-    await encounterService.saveDraft(7, 1, "")
+    await encounterService.saveDraft(7, 1, "DOCTOR", "")
     expect(pm.encounter.update.mock.calls[0][0].data.draftReportEnc).toBeNull()
   })
 })
@@ -110,7 +122,7 @@ describe("encounterService.finalizeReport", () => {
     pm.encounter.update.mockResolvedValue(ENC({ status: "completed" }))
     const dataAsOf = new Date("2026-06-16T10:00:00Z")
 
-    const r = await encounterService.finalizeReport(7, 1, "compte rendu", { period: "14d", dataAsOf })
+    const r = await encounterService.finalizeReport(7, 1, "DOCTOR", "compte rendu", { period: "14d", dataAsOf })
 
     expect(r).toEqual({ reportId: 55, patientId: 42 })
     const created = pm.consultationReportAddendum.create.mock.calls[0][0].data
@@ -125,18 +137,33 @@ describe("encounterService.finalizeReport", () => {
   it("rejects finalize by a non-owner and when not a draft", async () => {
     pm.encounter.findUnique.mockResolvedValue(ENC({ openedById: 999 }))
     await expect(
-      encounterService.finalizeReport(7, 1, "x", { period: "14d", dataAsOf: new Date() }),
+      encounterService.finalizeReport(7, 1, "DOCTOR", "x", { period: "14d", dataAsOf: new Date() }),
     ).rejects.toMatchObject({ code: "forbidden" })
 
     pm.encounter.findUnique.mockResolvedValue(ENC({ status: "abandoned" }))
     await expect(
-      encounterService.finalizeReport(7, 1, "x", { period: "14d", dataAsOf: new Date() }),
+      encounterService.finalizeReport(7, 1, "DOCTOR", "x", { period: "14d", dataAsOf: new Date() }),
     ).rejects.toMatchObject({ code: "invalidState" })
+  })
+
+  it("rejects finalize if access revoked or sharing withdrawn (no immutable write)", async () => {
+    pm.encounter.findUnique.mockResolvedValue(ENC())
+    mockedAccess.mockResolvedValue(false)
+    await expect(
+      encounterService.finalizeReport(7, 1, "DOCTOR", "CR", { period: "14d", dataAsOf: new Date() }),
+    ).rejects.toMatchObject({ code: "forbidden" })
+
+    mockedAccess.mockResolvedValue(true)
+    mockedConsent.mockResolvedValue({ ok: false, status: 403, error: "sharingDisabled" } as any)
+    await expect(
+      encounterService.finalizeReport(7, 1, "DOCTOR", "CR", { period: "14d", dataAsOf: new Date() }),
+    ).rejects.toMatchObject({ code: "forbidden" })
+    expect(pm.consultationReportAddendum.create).not.toHaveBeenCalled()
   })
 
   it("rejects an empty/whitespace report before any write (invalidState)", async () => {
     await expect(
-      encounterService.finalizeReport(7, 1, "   ", { period: "14d", dataAsOf: new Date() }),
+      encounterService.finalizeReport(7, 1, "DOCTOR", "   ", { period: "14d", dataAsOf: new Date() }),
     ).rejects.toMatchObject({ code: "invalidState" })
     expect(pm.encounter.findUnique).not.toHaveBeenCalled()
     expect(pm.consultationReportAddendum.create).not.toHaveBeenCalled()
