@@ -79,6 +79,22 @@ export type AuditAction =
    * forensique faussée ("le médecin a-t-il reçu l'alerte ?" → réponse honnête).
    */
   | "EMAIL_SUBMITTED"
+  /**
+   * Socle d'accès (US-2610 / F8) — set canonique des actions sensibles du socle.
+   * Octroi/révocation de capacité Q1/Q2, politique de vérification, invitations,
+   * preuve PS, désactivation établissement, bootstrap org-admin, passage provisoire.
+   */
+  | "CAPABILITY_GRANTED"
+  | "CAPABILITY_REVOKED"
+  | "VERIFICATION_POLICY_CHANGED"
+  | "VERIFICATION_PROVISIONAL_SET"
+  | "INVITATION_SENT"
+  | "INVITATION_CONSUMED"
+  | "INVITATION_REVOKED"
+  | "PS_PROOF_VALIDATED"
+  | "PS_PROOF_REJECTED"
+  | "ESTABLISHMENT_DEACTIVATED"
+  | "ORG_ADMIN_BOOTSTRAPPED"
 
 /**
  * Audit resource type — describes what was acted upon.
@@ -230,6 +246,13 @@ export type AuditResource =
    * capture le compteur supprimé pour aggregation cross-pods. Aucun PHI.
    */
   | "ENCRYPTION_FAILURE"
+  /** Socle d'accès (US-2616/2617/2620) — organisation, appartenance scopée,
+   *  politique de vérification, preuve PS, invitation. */
+  | "TENANT"
+  | "HEALTHCARE_MEMBERSHIP"
+  | "VERIFICATION_POLICY"
+  | "PROFESSIONAL_REGISTRATION"
+  | "ORG_INVITATION"
 
 /**
  * Audit log entry — parameters for logging an action.
@@ -262,6 +285,13 @@ export interface AuditLogEntry {
   userAgent?: string
   /** Correlation ID (HDS §IV.3) to join this audit row with stderr log lines. */
   requestId?: string
+  /**
+   * US-2620/F8 — Scope structuré (forensics filtrable par organisation). JAMAIS
+   * de PHI/PII de santé (réfs/ids uniquement). Optionnels : hors-scope = login,
+   * cron, événements système.
+   */
+  tenantId?: number | null
+  scopeServiceId?: number | null
   metadata?: Prisma.InputJsonValue
 }
 
@@ -310,6 +340,8 @@ export function createAuditData(entry: AuditLogEntry): Prisma.AuditLogUncheckedC
     ipAddress: entry.ipAddress ?? null,
     userAgent: entry.userAgent ?? null,
     requestId: entry.requestId ?? null,
+    tenantId: entry.tenantId ?? null,
+    scopeServiceId: entry.scopeServiceId ?? null,
     metadata: entry.metadata ?? {},
   }
 }

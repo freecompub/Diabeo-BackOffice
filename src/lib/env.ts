@@ -342,6 +342,10 @@ export function assertRequiredEnv(): void {
   assertSpecs(REQUIRED_FULL)
   // US-2123 — fail-fast on misconfigured FHIR feature flag.
   assertOptionalBoolean("FHIR_ENABLED")
+  // Socle d'accès (F2) — flag pilote ouvrant le mode `provisional` de la porte
+  // clinique en prod. Fail-fast sur valeur malformée : une faute de saisie ne
+  // doit pas désactiver silencieusement le pilote (cf. capabilities.pilotAllowed).
+  assertOptionalBoolean("VERIFICATION_ALLOW_PILOT")
   // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
   // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser
