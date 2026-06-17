@@ -643,7 +643,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) — ✅ DONE (chantier câblage données patient, PR #543→#546 — 4 onglets sur données réelles, scopées/auditées ; enrichi #554–#558) |
 | US-2605 | Mode revue de consultation (**sans IA**) — ✅ DONE (backend PR #562 : modèles `Encounter` + `ConsultationReportAddendum` immuable [trigger PG], service `encounterService`, intégration RGPD Art. 17, DPIA ; UI PR2 : route `/patients/[id]/review` + routes API encounters + stepper vertical 6 étapes [Résumé / Glycémie / Traitement / Mode de vie placeholder V1 / Décisions DOCTOR-only / Compte rendu → addendum ancré `period`+`dataAsOf`], i18n FR/EN/AR). Clôt la sous-série « navigation médecin V1 ». |
 | US-2606 | Bloc « Gestion cabinet » dans la sidebar (Variante A) |
-| US-2610 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session |
+| US-2610 | Gestion du personnel & des droits — socle 2 axes (Q1/Q2), délégation, mono-session — ✅ DONE (PR4a #567 backend : `org-membership.service` invite/octroi/révocation Q1/Q2, principal-only, anti-lockout, révocation immédiate, invitation single-use ; PR4b écran de gestion des membres FR/EN/AR). Mono-session = PR2 #565. ⚠️ V1 : Q1 « considéré vérifié » (vérif PS réelle = V4) ; gestionnaire pur Q2 = V4 (F1). |
 | US-2613 | Admin plateforme Diabeo (établissements, personnel, bootstrap, politique vérif) ⚠️ garantie « sans PHI » effective en V4 (dép. F1) |
 | US-2616 | (F2) Modèle Tenant + politique de vérification fail-secure |
 | US-2617 | (F4) `HealthcareMembership` N-N + capacités + `ProfessionalRegistration` |
