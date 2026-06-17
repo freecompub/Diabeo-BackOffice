@@ -12,7 +12,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, fireEvent, waitFor } from "@testing-library/react"
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 
 vi.mock("next-intl", async () => (await import("../helpers/nextIntlMock")).makeNextIntlMock())
 
@@ -167,6 +167,30 @@ describe("ReviewClient", () => {
         "/api/encounters/12/draft",
         expect.objectContaining({ method: "PATCH" }),
       )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("finalize coupe l'autosave en vol : pas de faux « échec » d'enregistrement (M2/M3)", async () => {
+    let rejectDraft!: (e: unknown) => void
+    const draftPromise = new Promise((_, rej) => { rejectDraft = rej })
+    vi.stubGlobal("fetch", vi.fn((url: string) =>
+      url.includes("/draft")
+        ? draftPromise // autosave reste en vol
+        : Promise.resolve({ ok: true, json: () => Promise.resolve({}) }), // finalize OK
+    ))
+    vi.useFakeTimers()
+    try {
+      render(<ReviewClient data={BASE} />)
+      const ta = screen.getByLabelText(/Synthèse/)
+      fireEvent.change(ta, { target: { value: "modif" } })
+      await act(async () => { vi.advanceTimersByTime(1500) }) // autosave parti (in-flight)
+      await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Finaliser le compte rendu" })) })
+      // L'autosave annulé se résout tardivement en échec → doit être IGNORÉ.
+      await act(async () => { rejectDraft(new Error("aborted")); await Promise.resolve() })
+      expect(screen.queryByText(/Échec de l'enregistrement/)).toBeNull()
+      expect(screen.getByText(/finalisé et immuable/)).toBeTruthy()
     } finally {
       vi.useRealTimers()
     }

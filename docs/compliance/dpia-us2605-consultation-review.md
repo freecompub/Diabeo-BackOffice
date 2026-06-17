@@ -88,7 +88,9 @@ sous-jacentes.
   sur `saveDraft`/`finalizeReport` + **re-vérification du consentement**
   (`patientShareConsent`, fail-closed) avant l'émission de l'addendum **immuable** :
   une séance pouvant être longue, un retrait d'accès/partage entre l'ouverture et la
-  finalisation est honoré (RGPD Art. 7.3).
+  finalisation est honoré (RGPD Art. 7.3). Chaque refus (`notOwner` / `accessRevoked`
+  / `sharingDisabled`) émet un audit `accessDenied` (UNAUTHORIZED + détection de
+  burst US-2265, pivot `metadata.patientId`).
 - Contenus chiffrés **AES-256-GCM** (`@/lib/crypto/fields`) ; lecture fail-soft.
 - `finalizeReport` atomique (`$transaction`) : addendum + clôture séance + brouillon
   vidé + 2 audits pivot (`CREATE CONSULTATION_REPORT`, `UPDATE ENCOUNTER`).

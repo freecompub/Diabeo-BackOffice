@@ -95,11 +95,14 @@ describe("encounterService.saveDraft", () => {
     expect(pm.encounter.update).not.toHaveBeenCalled()
   })
 
-  it("rejects the owner if access was revoked mid-session (forbidden, no write)", async () => {
+  it("rejects the owner if access was revoked mid-session (forbidden, no write, SOC audit)", async () => {
     pm.encounter.findUnique.mockResolvedValue(ENC())
     mockedAccess.mockResolvedValue(false)
     await expect(encounterService.saveDraft(7, 1, "DOCTOR", "x")).rejects.toMatchObject({ code: "forbidden" })
     expect(pm.encounter.update).not.toHaveBeenCalled()
+    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(audit.action).toBe("UNAUTHORIZED")
+    expect(audit.metadata).toMatchObject({ patientId: 42, surface: "saveDraft", kind: "accessRevoked" })
   })
 
   it("rejects when not a draft (invalidState)", async () => {
@@ -159,6 +162,9 @@ describe("encounterService.finalizeReport", () => {
       encounterService.finalizeReport(7, 1, "DOCTOR", "CR", { period: "14d", dataAsOf: new Date() }),
     ).rejects.toMatchObject({ code: "forbidden" })
     expect(pm.consultationReportAddendum.create).not.toHaveBeenCalled()
+    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(audit.action).toBe("UNAUTHORIZED")
+    expect(audit.metadata).toMatchObject({ patientId: 42, surface: "finalize", kind: "sharingDisabled" })
   })
 
   it("rejects an empty/whitespace report before any write (invalidState)", async () => {
