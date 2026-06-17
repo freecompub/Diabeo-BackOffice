@@ -418,6 +418,21 @@ describe("patientService.listByService (NURSE — F6 service scope)", () => {
     const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(audit.metadata).toMatchObject({ nurseUserId: 7, scope: "service" })
   })
+
+  it("audit metadata.capped=true quand on atteint le cap (2000)", async () => {
+    // Renvoie exactement LIST_BY_DOCTOR_MAX lignes → capped flag à true.
+    const rows = Array.from({ length: 2000 }, (_, i) => ({
+      id: i + 1, publicRef: `r-${i}`, pathology: "DT1",
+      user: { id: i + 1, firstname: null, lastname: null, birthday: null },
+    }))
+    prismaMock.patient.findMany.mockResolvedValue(rows as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    await patientService.listByService(7, 1)
+
+    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+    expect(audit.metadata).toMatchObject({ scope: "service", count: 2000, capped: true })
+  })
 })
 
 describe("patientService.listForCaller (dispatch par rôle — F6)", () => {
@@ -433,6 +448,15 @@ describe("patientService.listForCaller (dispatch par rôle — F6)", () => {
     prismaMock.patientReferent.findMany.mockResolvedValue([] as any)
     prismaMock.auditLog.create.mockResolvedValue({} as any)
     await patientService.listForCaller(5, "DOCTOR", 5)
+    expect(prismaMock.patientReferent.findMany).toHaveBeenCalled()
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
+  })
+
+  it("ADMIN → listByDoctor (référent ; liste vide si non-membre, by-design)", async () => {
+    prismaMock.patientReferent.findMany.mockResolvedValue([] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    const r = await patientService.listForCaller(1, "ADMIN", 1)
+    expect(r).toEqual([])
     expect(prismaMock.patientReferent.findMany).toHaveBeenCalled()
     expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
   })

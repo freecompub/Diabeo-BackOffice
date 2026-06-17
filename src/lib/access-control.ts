@@ -16,10 +16,13 @@ import { prisma } from "@/lib/db/client"
 import type { Role } from "@prisma/client"
 
 /**
- * Borne de sécurité sur le périmètre cross-patient (anti-OOM + parité avec
- * `LIST_BY_DOCTOR_MAX` de patient.service). Au-delà, l'IN-list devient énorme ;
- * les consommateurs (dashboards/cohortes) devront paginer. Cap volontairement
- * généreux : un portefeuille > 5000 patients est un cabinet atypique.
+ * Borne de sécurité sur le périmètre cross-patient (anti-OOM). Au-delà, l'IN-list
+ * devient énorme ; les consommateurs (dashboards/cohortes) devront paginer. Cap
+ * volontairement plus élevé que `LIST_BY_DOCTOR_MAX` (2000) de patient.service :
+ * ici la requête ne projette que `{ patientId }` (légère), vs la liste qui
+ * déchiffre + mappe un DTO par ligne. Un portefeuille > 5000 patients reste
+ * un cabinet atypique. Troncature **fail-closed** (des patients deviennent
+ * inaccessibles, jamais sur-exposés).
  */
 const ACCESSIBLE_IDS_MAX = 5000
 
