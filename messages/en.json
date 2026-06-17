@@ -96,7 +96,13 @@
     "weekly": "Weekly",
     "insulinTherapy": "Insulin Therapy",
     "devices": "Devices",
-    "messages": "Messages"
+    "messages": "Messages",
+    "mainMenu": "Main menu",
+    "gestionSection": "Management",
+    "gestionTeam": "Team & permissions",
+    "gestionBilling": "Billing",
+    "gestionPayments": "Payments",
+    "gestionSettings": "Practice settings"
   },
   "commandPalette": {
     "ariaLabel": "Command palette",
@@ -1960,5 +1966,32 @@
     "inviteRole": "Clinical role",
     "inviteCanManage": "Also grant management capability (team & billing)",
     "inviteSubmit": "Send invitation"
+  },
+  "cabinetMgmt": {
+    "pickerTitle": "Practice management",
+    "pickerSubtitle": "Choose the practice for “{section}”.",
+    "principalBadge": "Principal admin",
+    "backToManagement": "Back to management",
+    "loading": "Loading…",
+    "loadError": "Unable to load data.",
+    "retry": "Retry",
+    "billingTitle": "Billing",
+    "billingSubtitle": "Practice invoice ledger (no health data).",
+    "paymentsTitle": "Payments",
+    "paymentsSubtitle": "Collected practice invoices (no health data).",
+    "invoicesEmptyTitle": "No invoices",
+    "billingEmptyMessage": "No invoice has been created for this practice yet.",
+    "paymentsEmptyMessage": "No collected invoices yet.",
+    "colNumber": "Number",
+    "colPatient": "Patient",
+    "colAmount": "Amount",
+    "colStatus": "Status",
+    "colDate": "Date",
+    "colPaidAt": "Collected on",
+    "status_draft": "Draft",
+    "status_issued": "Issued",
+    "status_paid": "Paid",
+    "status_cancelled": "Cancelled",
+    "status_refunded": "Refunded"
   }
 }

@@ -39,6 +39,7 @@ import { resolveHomeForRole } from "@/lib/auth/role-home"
 import {
   sidebarNavItems,
   patientNavItems,
+  managementNavItems,
   hasRoleAccess,
   HOME_HREF_MARKER,
   type NavItem,
@@ -92,6 +93,13 @@ interface NavigationShellProps {
    * références `LucideIcon` ne peut pas être sérialisé entre RSC et CC.
    */
   variant?: "pro" | "patient"
+  /**
+   * US-2606 — capacité de gestion cabinet (Q2). Résolue **serveur** dans le
+   * layout (`hasManagementCapability`). Quand `true` (et variant `pro`), la
+   * sidebar rend le bloc « Gestion cabinet » sous un séparateur. Défaut `false`
+   * (fail-safe : pas de bloc gestion si la capacité n'a pas pu être résolue).
+   */
+  canManageOrg?: boolean
 }
 
 // --- Constants ---
@@ -103,11 +111,18 @@ interface NavigationShellProps {
 
 function SidebarNav({
   items,
+  managementItems,
   pathname,
   collapsed,
   onItemClick,
 }: {
   items: NavItem[]
+  /**
+   * US-2606 — items du bloc « Gestion cabinet » (Q2). Rendus sous un séparateur
+   * « — GESTION — » quand non vide ; le parent ne les passe que si Q2 = true
+   * (gating serveur). Pas de badge non-lu sur ces items (PII admin, pas de soin).
+   */
+  managementItems?: NavItem[]
   pathname: string
   collapsed: boolean
   onItemClick?: () => void
@@ -128,9 +143,7 @@ function SidebarNav({
   const unreadCount = ctx?.count ?? 0
   const unreadError = ctx?.error ?? null
 
-  return (
-    <nav className="flex-1 space-y-1 px-3 py-4" aria-label="Menu principal">
-      {items.map((item) => {
+  const renderItem = (item: NavItem) => {
         const isActive =
           pathname === item.href || pathname.startsWith(`${item.href}/`)
         const label = t(item.labelKey)
@@ -221,7 +234,40 @@ function SidebarNav({
         }
 
         return <div key={item.href}>{linkEl}</div>
-      })}
+  }
+
+  const hasManagement = !!managementItems && managementItems.length > 0
+
+  return (
+    <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4" aria-label={t("mainMenu")}>
+      {/* Bloc clinique (Q1) — cf. US-2600. */}
+      <ul className="space-y-1">
+        {items.map((item) => (
+          <li key={item.href}>{renderItem(item)}</li>
+        ))}
+      </ul>
+
+      {/* US-2606 — Bloc « Gestion cabinet » (Q2) : séparateur + items, rendu
+          uniquement si le parent a passé des managementItems (gating serveur). */}
+      {hasManagement && (
+        <>
+          {collapsed ? (
+            // Mode replié : pas de libellé visible → simple divider visuel.
+            <div className="my-2 border-t border-border" role="separator" />
+          ) : (
+            // Mode étendu : vrai titre de section (pas un `role="separator"`
+            // porteur de texte, sémantiquement ambigu pour les lecteurs d'écran).
+            <h2 className="px-3 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              {t("gestionSection")}
+            </h2>
+          )}
+          <ul className="space-y-1" aria-label={t("gestionSection")}>
+            {managementItems!.map((item) => (
+              <li key={item.href}>{renderItem(item)}</li>
+            ))}
+          </ul>
+        </>
+      )}
     </nav>
   )
 }
@@ -315,6 +361,7 @@ export function NavigationShell({
   userName,
   onRefresh,
   variant = "pro",
+  canManageOrg = false,
 }: NavigationShellProps) {
   const t = useTranslations()
   const tNav = useTranslations("nav")
@@ -350,6 +397,11 @@ export function NavigationShell({
   // visible n'a `showUnreadBadge=true` (économise un fetch /api/messages/
   // unread-count sur tous les rôles qui n'ont pas accès à /messages).
   const hasBadgeItem = filteredItems.some((it) => it.showUnreadBadge)
+
+  // US-2606 — bloc « Gestion cabinet » : uniquement côté pro et si Q2 (gating
+  // serveur via `canManageOrg`). `undefined` => SidebarNav ne rend pas le bloc.
+  const managementItems =
+    variant === "pro" && canManageOrg ? managementNavItems : undefined
 
   const closeMobile = useCallback(() => setMobileOpen(false), [])
 
@@ -387,6 +439,7 @@ export function NavigationShell({
 
           <SidebarNav
             items={filteredItems}
+            managementItems={managementItems}
             pathname={pathname}
             collapsed={collapsed}
           />
@@ -431,6 +484,7 @@ export function NavigationShell({
             </div>
             <SidebarNav
               items={filteredItems}
+              managementItems={managementItems}
               pathname={pathname}
               collapsed={false}
               onItemClick={closeMobile}

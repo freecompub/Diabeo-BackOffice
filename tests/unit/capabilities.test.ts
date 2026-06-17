@@ -15,11 +15,12 @@ import { prismaMock } from "../helpers/prisma-mock"
 
 import {
   getMemberships, clinicalCapability, canManageOrg, isPrincipalAdmin,
+  getManagementScopes, hasManagementCapability,
   resolveVerificationPolicy,
 } from "@/lib/capabilities"
 
 const pm = prismaMock as unknown as {
-  healthcareMembership: { findMany: any; findUnique: any }
+  healthcareMembership: { findMany: any; findUnique: any; findFirst: any }
   verificationPolicy: { findFirst: any }
 }
 
@@ -59,6 +60,39 @@ describe("capabilities — lecture des capacités scopées (N-N)", () => {
     expect(await isPrincipalAdmin(5, 9)).toBe(true)
     pm.healthcareMembership.findUnique.mockResolvedValueOnce(null)
     expect(await isPrincipalAdmin(5, 9)).toBe(false)
+  })
+})
+
+describe("capabilities — périmètre de gestion Q2 (US-2606)", () => {
+  it("getManagementScopes mappe service.name + isPrincipalAdmin, filtré canManage", async () => {
+    pm.healthcareMembership.findMany.mockResolvedValueOnce([
+      { serviceId: 9, isPrincipalAdmin: true, service: { name: "Cabinet Nord" } },
+      { serviceId: 4, isPrincipalAdmin: false, service: { name: "Cabinet Sud" } },
+    ])
+    const scopes = await getManagementScopes(5)
+    expect(scopes).toEqual([
+      { serviceId: 9, serviceName: "Cabinet Nord", isPrincipalAdmin: true },
+      { serviceId: 4, serviceName: "Cabinet Sud", isPrincipalAdmin: false },
+    ])
+    // Strictement membership-driven : where canManage=true (pas de bypass ADMIN).
+    expect(pm.healthcareMembership.findMany.mock.calls[0][0]).toMatchObject({
+      where: { userId: 5, canManage: true },
+    })
+  })
+
+  it("getManagementScopes → [] si aucun service managé", async () => {
+    pm.healthcareMembership.findMany.mockResolvedValueOnce([])
+    expect(await getManagementScopes(5)).toEqual([])
+  })
+
+  it("hasManagementCapability vrai ssi ≥ 1 membership canManage", async () => {
+    pm.healthcareMembership.findFirst.mockResolvedValueOnce({ id: 1 })
+    expect(await hasManagementCapability(5)).toBe(true)
+    expect(pm.healthcareMembership.findFirst.mock.calls[0][0]).toMatchObject({
+      where: { userId: 5, canManage: true },
+    })
+    pm.healthcareMembership.findFirst.mockResolvedValueOnce(null)
+    expect(await hasManagementCapability(5)).toBe(false)
   })
 })
 

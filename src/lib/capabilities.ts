@@ -52,6 +52,46 @@ export async function isPrincipalAdmin(userId: number, serviceId: number): Promi
   return m?.isPrincipalAdmin ?? false
 }
 
+/** Un scope de gestion (Q2) : le service managé + son libellé d'affichage. */
+export type ManagementScope = {
+  serviceId: number
+  serviceName: string
+  isPrincipalAdmin: boolean
+}
+
+/**
+ * Liste les services où le user a la **capacité de gestion (Q2)** — base de la
+ * sous-série « Gestion cabinet » (US-2606). Strictement membership-driven
+ * (`canManage = true`) : orthogonal au rôle clinique, **sans bypass ADMIN**
+ * (l'ADMIN plateforme gère via `/admin/cabinets`, pas via le bloc gestion).
+ * Trié par nom pour un picker stable.
+ */
+export async function getManagementScopes(userId: number): Promise<ManagementScope[]> {
+  const rows = await prisma.healthcareMembership.findMany({
+    where: { userId, canManage: true },
+    select: { serviceId: true, isPrincipalAdmin: true, service: { select: { name: true } } },
+    orderBy: { service: { name: "asc" } },
+  })
+  return rows.map((r) => ({
+    serviceId: r.serviceId,
+    serviceName: r.service.name,
+    isPrincipalAdmin: r.isPrincipalAdmin,
+  }))
+}
+
+/**
+ * Le user a-t-il la capacité de gestion (Q2) sur **au moins un** service ?
+ * Gate d'affichage du bloc « Gestion » de la sidebar (US-2606) — résolu serveur,
+ * jamais côté client (le bloc est absent du DOM, pas masqué en CSS).
+ */
+export async function hasManagementCapability(userId: number): Promise<boolean> {
+  const m = await prisma.healthcareMembership.findFirst({
+    where: { userId, canManage: true },
+    select: { id: true },
+  })
+  return m !== null
+}
+
 export type VerificationMode = "required" | "provisional"
 export type ResolvedVerification = {
   mode: VerificationMode

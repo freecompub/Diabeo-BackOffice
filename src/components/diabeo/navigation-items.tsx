@@ -21,6 +21,10 @@ import {
   Home,
   CalendarClock,
   MessageSquare,
+  UsersRound,
+  Receipt,
+  CreditCard,
+  Building2,
   type LucideIcon,
 } from "lucide-react"
 
@@ -113,4 +117,28 @@ export const patientNavItems: NavItem[] = [
   { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
   { href: "/patient/appointments", labelKey: "appointments", icon: CalendarClock },
   { href: "/settings", labelKey: "settings", icon: Settings },
+]
+
+/**
+ * US-2606 — Bloc « Gestion cabinet » (Variante A). Destinations **cabinet-agnostiques**
+ * (sans `[id]`) : chaque route résout le scope managé du caller serveur (1 → direct,
+ * N → sélecteur). Rendu **uniquement si Q2** (`canManageOrg`), sous un séparateur
+ * « — GESTION — ». Groupé/isolé dès la V1 pour préparer la bascule B (US-2607) sans
+ * refonte. Labels dans le namespace nav (`gestion*`). Aucun acronyme nu.
+ *
+ * Axe orthogonal au rôle clinique : ces items n'ouvrent AUCUN accès aux données de
+ * santé (PII admin uniquement) → pas de `minRole`, le gating est porté par Q2 seul.
+ *
+ * ⚠️ Source de vérité du **routage** : ces `href` doivent matcher les routes
+ * d'atterrissage `src/app/(dashboard)/cabinet/{team,billing,payments,settings}/`,
+ * elles-mêmes mappées vers les segments per-id par `SECTION_SEGMENT`
+ * (`CabinetManagementLanding.tsx`, ex. `team → members`). Tout renommage de route
+ * doit toucher les trois (href ici + dossier de page + `SECTION_SEGMENT`) ; le test
+ * `phase11-navigation` vérifie la présence des 4 href dans la sidebar Q2.
+ */
+export const managementNavItems: NavItem[] = [
+  { href: "/cabinet/team", labelKey: "gestionTeam", icon: UsersRound },
+  { href: "/cabinet/billing", labelKey: "gestionBilling", icon: Receipt },
+  { href: "/cabinet/payments", labelKey: "gestionPayments", icon: CreditCard },
+  { href: "/cabinet/settings", labelKey: "gestionSettings", icon: Building2 },
 ]

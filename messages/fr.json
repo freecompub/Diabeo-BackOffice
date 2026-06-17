@@ -96,7 +96,13 @@
     "weekly": "Semainier",
     "insulinTherapy": "Insulinothérapie",
     "devices": "Appareils",
-    "messages": "Messagerie"
+    "messages": "Messagerie",
+    "mainMenu": "Menu principal",
+    "gestionSection": "Gestion",
+    "gestionTeam": "Gestion de l'équipe & droits",
+    "gestionBilling": "Facturation",
+    "gestionPayments": "Paiements",
+    "gestionSettings": "Paramètres du cabinet"
   },
   "commandPalette": {
     "ariaLabel": "Palette de commande",
@@ -1960,5 +1966,32 @@
     "inviteRole": "Rôle clinique",
     "inviteCanManage": "Donner aussi la capacité de gestion (équipe & facturation)",
     "inviteSubmit": "Envoyer l'invitation"
+  },
+  "cabinetMgmt": {
+    "pickerTitle": "Gestion cabinet",
+    "pickerSubtitle": "Choisissez le cabinet pour « {section} ».",
+    "principalBadge": "Admin principal",
+    "backToManagement": "Retour à la gestion",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger les données.",
+    "retry": "Réessayer",
+    "billingTitle": "Facturation",
+    "billingSubtitle": "Registre des factures du cabinet (sans données de santé).",
+    "paymentsTitle": "Paiements",
+    "paymentsSubtitle": "Factures encaissées du cabinet (sans données de santé).",
+    "invoicesEmptyTitle": "Aucune facture",
+    "billingEmptyMessage": "Aucune facture n'a encore été créée pour ce cabinet.",
+    "paymentsEmptyMessage": "Aucune facture encaissée pour le moment.",
+    "colNumber": "Numéro",
+    "colPatient": "Patient",
+    "colAmount": "Montant",
+    "colStatus": "Statut",
+    "colDate": "Date",
+    "colPaidAt": "Encaissée le",
+    "status_draft": "Brouillon",
+    "status_issued": "Émise",
+    "status_paid": "Payée",
+    "status_cancelled": "Annulée",
+    "status_refunded": "Remboursée"
   }
 }
