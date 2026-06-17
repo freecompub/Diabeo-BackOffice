@@ -5,6 +5,7 @@ import {
   invalidateSession,
 } from "@/lib/auth"
 import { revokeSession } from "@/lib/auth/revocation"
+import { clearActivity } from "@/lib/auth/activity"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 export async function POST(req: NextRequest) {
@@ -27,6 +28,7 @@ export async function POST(req: NextRequest) {
     const ctx = extractRequestContext(req)
 
     await invalidateSession(payload.sid)
+    await clearActivity(payload.sid) // US-2621 — ferme la fenêtre d'activité.
     const ttlSeconds = payload.exp - Math.floor(Date.now() / 1000)
     const revoked = await revokeSession(payload.sid, ttlSeconds)
 

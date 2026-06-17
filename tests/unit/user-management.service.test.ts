@@ -158,7 +158,7 @@ describe("userManagementService", () => {
       expect(r.changed).toBe(false)
     })
 
-    it("allows demotion when other active ADMINs exist", async () => {
+    it("allows demotion when other active ADMINs exist + bumps authVersion + revokes sessions", async () => {
       const mockTx = {
         user: {
           findUnique: vi.fn().mockResolvedValue({ role: "ADMIN", status: "active" }),
@@ -168,9 +168,17 @@ describe("userManagementService", () => {
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as never)
+      // F7 — post-tx invalidateAllUserSessions lit la vraie prisma (sessions).
+      prismaMock.session.findMany.mockResolvedValue([] as never)
+      prismaMock.session.deleteMany.mockResolvedValue({ count: 0 } as never)
       const r = await userManagementService.updateRole(1, "DOCTOR", 99)
       expect(r.role).toBe("DOCTOR")
-      expect(mockTx.user.update).toHaveBeenCalled()
+      // US-2619/F7 — la mise à jour bumpe authVersion (invalide les JWT antérieurs).
+      expect(mockTx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { role: "DOCTOR", authVersion: { increment: 1 } } }),
+      )
+      // Effet immédiat : les sessions actives sont révoquées après la transaction.
+      expect(prismaMock.session.deleteMany).toHaveBeenCalledWith({ where: { userId: 1 } })
     })
   })
 
@@ -237,6 +245,12 @@ describe("userManagementService", () => {
         select: { id: true },
       })
       expect(deleteManySpy).toHaveBeenCalledWith({ where: { userId: 1 } })
+      // US-2619/F7 — la suspension bumpe aussi authVersion.
+      expect(mockTx.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ authVersion: { increment: 1 } }),
+        }),
+      )
     })
 
     it("does NOT invalidate sessions on reactivation (suspended → active)", async () => {

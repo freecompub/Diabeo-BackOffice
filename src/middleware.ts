@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import type { NextRequest } from "next/server"
 import { jwtVerify, importSPKI } from "jose"
 import { isSessionRevoked } from "@/lib/auth/revocation"
+import { slideActivity, inactivityWindowSeconds } from "@/lib/auth/activity"
 import { JWT_VERIFY_OPTIONS } from "@/lib/auth/jwt-constants"
 import { ROLE_TO_HOME, isKnownRoleString } from "@/lib/auth/role-home"
 
@@ -64,6 +65,23 @@ function resolveRequestId(incoming: string | null): string {
  */
 function clearTokenAndContinue(headers: Headers): NextResponse {
   const res = NextResponse.next({ request: { headers } })
+  res.cookies.set("diabeo_token", "", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 0,
+  })
+  return res
+}
+
+/**
+ * US-2621 — Sur timeout d'inactivité d'une page protégée : redirige vers /login
+ * en **effaçant le cookie**. Sans l'effacement, le bloc /login reverrait un JWT
+ * encore valide (non expiré/non révoqué) et redirigerait vers le home → boucle.
+ */
+function clearTokenAndRedirectLogin(request: NextRequest): NextResponse {
+  const res = NextResponse.redirect(new URL("/login", request.url))
   res.cookies.set("diabeo_token", "", {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -194,6 +212,26 @@ export async function middleware(request: NextRequest) {
         return NextResponse.json({ error: "sessionRevoked" }, { status: 401 })
       }
       return NextResponse.redirect(new URL("/login", request.url))
+    }
+
+    // US-2621 — timeout d'inactivité (session glissante Redis). Rôles backoffice
+    // uniquement (`VIEWER` patient non soumis → fenêtre `null`). La fenêtre est
+    // rafraîchie à chaque requête ; si elle a expiré (inactivité) → accès coupé.
+    const roleStr = typeof payload.role === "string" ? payload.role : ""
+    const inactivityWindow = inactivityWindowSeconds(roleStr)
+    if (sid && inactivityWindow !== null) {
+      const activity = await slideActivity(sid, inactivityWindow)
+      if (activity === "timedOut") {
+        if (pathname.startsWith("/api/")) {
+          const res = NextResponse.json({ error: "sessionInactivityTimeout" }, { status: 401 })
+          res.cookies.set("diabeo_token", "", {
+            httpOnly: true, secure: process.env.NODE_ENV === "production",
+            sameSite: "strict", path: "/", maxAge: 0,
+          })
+          return res
+        }
+        return clearTokenAndRedirectLogin(request)
+      }
     }
 
     const requestHeaders = new Headers(request.headers)

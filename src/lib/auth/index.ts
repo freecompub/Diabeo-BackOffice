@@ -3,13 +3,20 @@ import { hasMinRole } from "./rbac"
 
 export { signJwt, verifyJwt, verifyJwtAllowExpired, signMfaPendingToken, verifyMfaPendingToken } from "./jwt"
 export type { JWTPayload, JWTSignPayload, MfaPendingPayload } from "./jwt"
-export { hasMinRole } from "./rbac"
+export { hasMinRole, isBackofficeRole } from "./rbac"
 export {
   createSession,
   getSession,
   invalidateSession,
   invalidateAllUserSessions,
 } from "./session"
+export {
+  startActivity,
+  slideActivity,
+  clearActivity,
+  inactivityWindowSeconds,
+} from "./activity"
+export type { ActivityResult } from "./activity"
 export {
   checkRateLimit,
   recordFailedAttempt,

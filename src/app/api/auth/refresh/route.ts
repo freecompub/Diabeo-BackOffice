@@ -36,14 +36,26 @@ export async function POST(req: NextRequest) {
     // appeler Prisma, donc refresh est le checkpoint Node naturel.
     void touchSession(session.id)
 
-    // Fetch current user role (may have changed since token was issued)
+    // Fetch current user role/status/authVersion (may have changed since issue).
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, role: true },
+      select: { id: true, role: true, status: true, authVersion: true },
     })
 
     if (!user) {
       return NextResponse.json({ error: "userNotFound" }, { status: 401 })
+    }
+
+    // US-2148 / F7 — re-valide le statut au refresh (le middleware Edge ne lit pas
+    // la base) : un compte suspendu/archivé après l'émission ne peut plus rafraîchir.
+    if (user.status !== "active") {
+      return NextResponse.json({ error: "accountSuspended" }, { status: 401 })
+    }
+
+    // US-2619/F7 — révocation immédiate des droits : un token dont `av` est
+    // antérieur à `User.authVersion` (rôle/statut/capacités changés) est refusé.
+    if (payload.av !== user.authVersion) {
+      return NextResponse.json({ error: "authVersionStale" }, { status: 401 })
     }
 
     const newToken = await signJwt({
@@ -51,6 +63,7 @@ export async function POST(req: NextRequest) {
       role: user.role,
       platform: "hc",
       sid: session.id,
+      av: user.authVersion,
     })
 
     const ctx = extractRequestContext(req)

@@ -21,6 +21,10 @@ import {
   signJwt,
   verifyMfaPendingToken,
   createSession,
+  invalidateAllUserSessions,
+  isBackofficeRole,
+  startActivity,
+  inactivityWindowSeconds,
   checkRateLimit,
   recordFailedAttempt,
   clearAttempts,
@@ -64,7 +68,7 @@ export async function POST(req: NextRequest) {
 
     const user = await prisma.user.findUnique({
       where: { id: pending.sub },
-      select: { id: true, role: true, mfaEnabled: true, language: true },
+      select: { id: true, role: true, mfaEnabled: true, language: true, authVersion: true },
     })
     if (!user || !user.mfaEnabled) {
       // User deleted or MFA disabled between login and challenge — reject.
@@ -91,16 +95,24 @@ export async function POST(req: NextRequest) {
     // Tag the session as MFA-verified so HDS forensics can tell second-factor
     // sessions apart from password-only ones.
     await clearAttempts(rateLimitKey)
+    // US-2621 — mono-session backoffice (dernier appareil gagne) ; VIEWER exempté.
+    if (isBackofficeRole(user.role)) {
+      await invalidateAllUserSessions(user.id)
+    }
     const session = await createSession(user.id, {
       mfaVerified: true,
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
     })
+    // US-2621 — ouvre la fenêtre d'activité (timeout d'inactivité glissant).
+    const window = inactivityWindowSeconds(user.role)
+    if (window !== null) await startActivity(session.id, window)
     const token = await signJwt({
       sub: user.id,
       role: user.role,
       platform: "hc",
       sid: session.id,
+      av: user.authVersion,
     })
 
     await auditService.log({

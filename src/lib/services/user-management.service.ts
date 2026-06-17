@@ -22,6 +22,8 @@ import { Prisma } from "@prisma/client"
 import { safeDecryptField } from "@/lib/crypto/fields"
 import { hmacField } from "@/lib/crypto/hmac"
 import { revokeSession } from "@/lib/auth/revocation"
+import { clearActivity } from "@/lib/auth/activity"
+import { invalidateAllUserSessions } from "@/lib/auth/session"
 import { auditService } from "./audit.service"
 import { logger } from "@/lib/logger"
 import type { AuditContext } from "./audit.service"
@@ -234,7 +236,7 @@ export const userManagementService = {
     // Serializable isolation prevents the anti-lockout count from being
     // racy under concurrent admin actions (two admins demoting the two
     // last admins simultaneously could both pass `count === 0` check).
-    return prisma.$transaction(
+    const result = await prisma.$transaction(
       async (tx) => {
         const current = await tx.user.findUnique({
           where: { id: targetUserId },
@@ -257,7 +259,8 @@ export const userManagementService = {
 
         const updated = await tx.user.update({
           where: { id: targetUserId },
-          data: { role: newRole },
+          // US-2619/F7 — bump authVersion : invalide les JWT antérieurs au refresh.
+          data: { role: newRole, authVersion: { increment: 1 } },
           select: { id: true, role: true },
         })
 
@@ -277,6 +280,18 @@ export const userManagementService = {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     )
+
+    // US-2619/F7 — effet immédiat : révoque les sessions actives (Redis + activité)
+    // pour forcer une réémission de JWT avec le nouveau rôle (best-effort, hors tx).
+    if (result.changed) {
+      await invalidateAllUserSessions(targetUserId).catch((err) => {
+        logger.error("user-mgmt", "Failed to invalidate sessions after role change", {
+          userId: auditUserId,
+        }, err)
+      })
+    }
+
+    return result
   },
 
   /**
@@ -335,6 +350,9 @@ export const userManagementService = {
             status: newStatus,
             statusChangedAt: new Date(),
             statusChangedBy: auditUserId,
+            // US-2619/F7 — bump authVersion : un token émis avant la suspension
+            // est rejeté au refresh (en plus de la révocation des sessions).
+            authVersion: { increment: 1 },
           },
           select: { id: true, status: true, statusChangedAt: true },
         })
@@ -381,13 +399,15 @@ export const userManagementService = {
     // so a session-validating middleware would still reject. Logged for ops.
     if (result.revokedSids.length > 0) {
       await Promise.all(
-        result.revokedSids.map((sid) =>
+        result.revokedSids.flatMap((sid) => [
           revokeSession(sid, SESSION_REVOKE_TTL_S).catch((err) => {
             logger.error("user-mgmt", "Failed to revoke session in Redis", {
               userId: auditUserId,
             }, err)
           }),
-        ),
+          // US-2621 — ferme aussi la fenêtre d'activité du sid révoqué.
+          clearActivity(sid).catch(() => {}),
+        ]),
       )
     }
 
