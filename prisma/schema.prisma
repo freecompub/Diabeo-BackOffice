@@ -2284,6 +2284,7 @@ model AuditLog {
   @@index([createdAt])
   @@index([requestId])
   @@index([tenantId, createdAt])
+  @@index([scopeServiceId, createdAt])
   @@map("audit_logs")
 }
 

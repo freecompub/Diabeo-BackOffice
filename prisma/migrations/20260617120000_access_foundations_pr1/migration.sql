@@ -96,6 +96,9 @@ CREATE INDEX "professional_registrations_user_id_idx" ON "professional_registrat
 CREATE INDEX "audit_logs_tenant_id_created_at_idx" ON "audit_logs"("tenant_id", "created_at");
 
 -- CreateIndex
+CREATE INDEX "audit_logs_scope_service_id_created_at_idx" ON "audit_logs"("scope_service_id", "created_at");
+
+-- CreateIndex
 CREATE INDEX "healthcare_services_tenant_id_idx" ON "healthcare_services"("tenant_id");
 
 -- AddForeignKey
@@ -120,6 +123,22 @@ ALTER TABLE "professional_registrations" ADD CONSTRAINT "professional_registrati
 ALTER TABLE "professional_registrations" ADD CONSTRAINT "professional_registrations_verified_by_id_fkey" FOREIGN KEY ("verified_by_id") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- ═══════════════════════════════════════════════════════════════
+-- Garde-fous DB (défense en profondeur, non modélisés par Prisma → pas de drift).
+-- ═══════════════════════════════════════════════════════════════
+
+-- Une politique doit cibler un tenant OU un pays (jamais « env-wide » non scopée :
+-- une ligne (NULL, NULL) provisional serait inatteignable mais ambiguë → interdite).
+ALTER TABLE "verification_policies"
+  ADD CONSTRAINT "verification_policies_scope_check"
+  CHECK ("tenant_id" IS NOT NULL OR "country" IS NOT NULL);
+
+-- `provisional` exige une borne temporelle (`expires_at`) — empêche un INSERT manuel
+-- d'exprimer un mode provisoire non borné (le résolveur dégrade déjà en `required`).
+ALTER TABLE "verification_policies"
+  ADD CONSTRAINT "verification_policies_provisional_bounded_check"
+  CHECK ("mode" <> 'provisional' OR "expires_at" IS NOT NULL);
+
+-- ═══════════════════════════════════════════════════════════════
 -- Backfill (sans perte, comportement inchangé). Idempotent.
 -- ═══════════════════════════════════════════════════════════════
 
@@ -137,12 +156,18 @@ BEGIN
 END $$;
 
 -- (2) F4 — appartenance miroir depuis HealthcareMember (accès actuel implicite) :
---     clinical_role = User.role ; can_manage / is_principal_admin = manager du service.
---     ON CONFLICT : ré-exécution sûre (aucun doublon (user, service)).
+--     clinical_role = User.role MAIS uniquement pour un rôle clinique (DOCTOR/NURSE) ;
+--     VIEWER/ADMIN → NULL (pas une capacité clinique scopée — évite d'encoder un rôle
+--     plateforme/patient comme accès PHI de cabinet, prépare proprement F6/F7).
+--     can_manage / is_principal_admin = manager du service (garde-fou `IS NOT NULL`
+--     pour ne pas produire un NULL sur ces colonnes NOT NULL).
+--     INNER JOIN users/services : l'intégrité référentielle FK garantit que tout
+--     membre (user_id/service_id non nuls) référence des lignes existantes — aucune
+--     ligne valide n'est donc silencieusement omise. ON CONFLICT : ré-exécution sûre.
 INSERT INTO "healthcare_memberships" ("user_id", "service_id", "clinical_role", "can_manage", "is_principal_admin")
 SELECT hm."user_id",
        hm."service_id",
-       u."role",
+       (CASE WHEN u."role" IN ('DOCTOR', 'NURSE') THEN u."role" ELSE NULL END)::"Role",
        (hs."manager_id" IS NOT NULL AND hs."manager_id" = hm."user_id") AS can_manage,
        (hs."manager_id" IS NOT NULL AND hs."manager_id" = hm."user_id") AS is_principal_admin
 FROM "healthcare_members" hm

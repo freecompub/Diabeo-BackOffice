@@ -15,6 +15,7 @@
 
 import type { Role, HealthcareMembership } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
+import { getEnvBoolean } from "@/lib/env"
 
 /** Toutes les appartenances scopées d'un user (capacités Q1/Q2 par service). */
 export async function getMemberships(userId: number): Promise<HealthcareMembership[]> {
@@ -58,9 +59,10 @@ export type ResolvedVerification = {
   source: "tenant" | "country" | "default"
 }
 
-/** `provisional` honoré seulement si un flag pilote explicite est posé (prod). */
+/** `provisional` honoré seulement si un flag pilote explicite est posé (prod).
+ *  Lu via `getEnvBoolean` (source unique env.ts) plutôt qu'un compare brut. */
 function pilotAllowed(): boolean {
-  return process.env.VERIFICATION_ALLOW_PILOT === "true"
+  return getEnvBoolean("VERIFICATION_ALLOW_PILOT") === true
 }
 
 /**

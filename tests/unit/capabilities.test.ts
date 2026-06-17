@@ -49,6 +49,10 @@ describe("capabilities — lecture des capacités scopées (N-N)", () => {
   it("canManageOrg / isPrincipalAdmin renvoient des booléens (false par défaut)", async () => {
     pm.healthcareMembership.findUnique.mockResolvedValueOnce({ canManage: true })
     expect(await canManageOrg(5, 9)).toBe(true)
+    // Lookup par la clé composite (userId, serviceId).
+    expect(pm.healthcareMembership.findUnique.mock.calls[0][0]).toMatchObject({
+      where: { userId_serviceId: { userId: 5, serviceId: 9 } },
+    })
     pm.healthcareMembership.findUnique.mockResolvedValueOnce(null)
     expect(await canManageOrg(5, 9)).toBe(false)
     pm.healthcareMembership.findUnique.mockResolvedValueOnce({ isPrincipalAdmin: true })
@@ -112,5 +116,14 @@ describe("resolveVerificationPolicy — fail-secure", () => {
       .mockResolvedValueOnce({ mode: "provisional", expiresAt: FUTURE })
     expect(await resolveVerificationPolicy({ tenantId: 1, country: "FR" }, NOW))
       .toEqual({ mode: "provisional", source: "country" })
+  })
+
+  it("la branche pays dégrade AUSSI en prod sans flag (garde partagée)", async () => {
+    vi.stubEnv("NODE_ENV", "production")
+    pm.verificationPolicy.findFirst
+      .mockResolvedValueOnce(null) // pas de politique tenant
+      .mockResolvedValueOnce({ mode: "provisional", expiresAt: FUTURE })
+    expect(await resolveVerificationPolicy({ tenantId: 1, country: "FR" }, NOW))
+      .toEqual({ mode: "required", source: "country" })
   })
 })
