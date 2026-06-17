@@ -290,6 +290,54 @@ describe("NavigationShell", () => {
     })
   })
 
+  // US-2606 — Bloc « Gestion cabinet » (Q2). Rendu SSI `canManageOrg` (gating
+  // serveur) ET variant pro. 4 destinations cabinet-agnostiques. Le rôle
+  // clinique est orthogonal : un DOCTOR sans Q2 ne voit pas le bloc.
+  describe("US-2606 — bloc Gestion cabinet (Q2)", () => {
+    const GESTION_HREFS = [
+      "/cabinet/team",
+      "/cabinet/billing",
+      "/cabinet/payments",
+      "/cabinet/settings",
+    ]
+
+    it("canManageOrg=true → rend les 4 items + séparateur GESTION", () => {
+      const { container } = render(
+        <NavigationShell pageTitle="Dashboard" userRole="DOCTOR" canManageOrg>
+          <div>content</div>
+        </NavigationShell>
+      )
+      for (const href of GESTION_HREFS) {
+        expect(container.querySelector(`a[href="${href}"]`)).toBeTruthy()
+      }
+      // Séparateur libellé (mock i18n → clé namespacée).
+      expect(screen.getAllByText("nav.gestionSection").length).toBeGreaterThanOrEqual(1)
+    })
+
+    it("canManageOrg absent (défaut) → aucun item gestion (absent du DOM)", () => {
+      const { container } = render(
+        <NavigationShell pageTitle="Dashboard" userRole="DOCTOR">
+          <div>content</div>
+        </NavigationShell>
+      )
+      for (const href of GESTION_HREFS) {
+        expect(container.querySelector(`a[href="${href}"]`)).toBeNull()
+      }
+      expect(screen.queryByText("nav.gestionSection")).toBeNull()
+    })
+
+    it("variant patient → pas de bloc gestion même si canManageOrg", () => {
+      const { container } = render(
+        <NavigationShell pageTitle="Dashboard" userRole="VIEWER" variant="patient" canManageOrg>
+          <div>content</div>
+        </NavigationShell>
+      )
+      for (const href of GESTION_HREFS) {
+        expect(container.querySelector(`a[href="${href}"]`)).toBeNull()
+      }
+    })
+  })
+
   describe("user avatar", () => {
     it("renders user initials from userName", () => {
       render(

@@ -96,7 +96,13 @@
     "weekly": "الجدول الأسبوعي",
     "insulinTherapy": "العلاج بالأنسولين",
     "devices": "الأجهزة",
-    "messages": "المراسلة"
+    "messages": "المراسلة",
+    "mainMenu": "القائمة الرئيسية",
+    "gestionSection": "الإدارة",
+    "gestionTeam": "إدارة الفريق والصلاحيات",
+    "gestionBilling": "الفوترة",
+    "gestionPayments": "المدفوعات",
+    "gestionSettings": "إعدادات العيادة"
   },
   "commandPalette": {
     "ariaLabel": "لوحة الأوامر",
@@ -1960,5 +1966,32 @@
     "inviteRole": "الدور السريري",
     "inviteCanManage": "منح صلاحية الإدارة أيضًا (الفريق والفوترة)",
     "inviteSubmit": "إرسال الدعوة"
+  },
+  "cabinetMgmt": {
+    "pickerTitle": "إدارة العيادة",
+    "pickerSubtitle": "اختر العيادة لـ «{section}».",
+    "principalBadge": "المسؤول الرئيسي",
+    "backToManagement": "العودة إلى الإدارة",
+    "loading": "جارٍ التحميل…",
+    "loadError": "تعذّر تحميل البيانات.",
+    "retry": "إعادة المحاولة",
+    "billingTitle": "الفوترة",
+    "billingSubtitle": "سجل فواتير العيادة (دون بيانات صحية).",
+    "paymentsTitle": "المدفوعات",
+    "paymentsSubtitle": "فواتير العيادة المحصّلة (دون بيانات صحية).",
+    "invoicesEmptyTitle": "لا توجد فواتير",
+    "billingEmptyMessage": "لم تُنشأ أي فاتورة لهذه العيادة بعد.",
+    "paymentsEmptyMessage": "لا توجد فواتير محصّلة بعد.",
+    "colNumber": "الرقم",
+    "colPatient": "المريض",
+    "colAmount": "المبلغ",
+    "colStatus": "الحالة",
+    "colDate": "التاريخ",
+    "colPaidAt": "حُصّلت في",
+    "status_draft": "مسودة",
+    "status_issued": "صادرة",
+    "status_paid": "مدفوعة",
+    "status_cancelled": "ملغاة",
+    "status_refunded": "مُستردّة"
   }
 }

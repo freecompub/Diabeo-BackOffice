@@ -9,6 +9,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NavigationShell, type UserRole } from "@/components/diabeo/NavigationShell"
 import { ConsultationProvider } from "@/components/diabeo/consultation/ConsultationContext"
+import { hasManagementCapability } from "@/lib/capabilities"
 
 const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
 
@@ -38,6 +39,16 @@ export default async function DashboardLayout({
     redirect("/patient/dashboard")
   }
 
+  // US-2606 — capacité de gestion cabinet (Q2) résolue **serveur** : le bloc
+  // « Gestion » de la sidebar n'est rendu que si l'utilisateur a `canManage`
+  // sur ≥ 1 service (absent du DOM sinon, jamais masqué CSS). Orthogonal au
+  // rôle clinique. `x-user-id` injecté par le middleware JWT.
+  const rawUserId = headersList.get("x-user-id")
+  const userId = rawUserId ? Number(rawUserId) : NaN
+  const canManageOrg = Number.isInteger(userId) && userId > 0
+    ? await hasManagementCapability(userId)
+    : false
+
   return (
     // US-2018b — le provider enveloppe tout le shell : la consultation rend la
     // sidebar/le header inertes et monte le drawer patient par-dessus.
@@ -45,6 +56,7 @@ export default async function DashboardLayout({
       <NavigationShell
         pageTitle="Diabeo"
         userRole={userRole}
+        canManageOrg={canManageOrg}
       >
         {children}
       </NavigationShell>

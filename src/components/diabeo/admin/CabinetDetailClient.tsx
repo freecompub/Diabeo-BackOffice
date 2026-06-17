@@ -58,8 +58,22 @@ type AsyncState = "idle" | "loading" | "saving" | "success" | "error"
 // Composant principal
 // ---------------------------------------------------------------------------
 
-export function CabinetDetailClient({ cabinetId }: { cabinetId: number }) {
+export function CabinetDetailClient({
+  cabinetId,
+  backHref = "/admin/cabinets",
+  backLabel,
+}: {
+  cabinetId: number
+  /**
+   * US-2606 — destination du lien retour. Défaut `/admin/cabinets` (espace
+   * plateforme ADMIN) ; l'espace gestion cabinet (Q2) passe `/cabinet/team`.
+   */
+  backHref?: string
+  /** Libellé du lien retour (résolu côté appelant). Défaut : `t("backToList")`. */
+  backLabel?: string
+}) {
   const t = useTranslations("cabinetDetail")
+  const backText = backLabel ?? t("backToList")
   const [settings, setSettings] = useState<CabinetSettingsDTO | null>(null)
   const [sms, setSms] = useState<SmsConfigDTO | null>(null)
   const [state, setState] = useState<AsyncState>("loading")
@@ -139,11 +153,11 @@ export function CabinetDetailClient({ cabinetId }: { cabinetId: number }) {
         </p>
         {errorMessage && <p className="text-xs text-muted-foreground mt-1">{errorMessage}</p>}
         <Link
-          href="/admin/cabinets"
+          href={backHref}
           className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-2"
         >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          {t("backToList")}
+          <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
+          {backText}
         </Link>
       </div>
     )
@@ -154,11 +168,11 @@ export function CabinetDetailClient({ cabinetId }: { cabinetId: number }) {
       {/* Fix A11y L2 round 1 — wrap dans <nav> breadcrumb landmark. */}
       <nav aria-label={t("breadcrumbNav")}>
         <Link
-          href="/admin/cabinets"
+          href={backHref}
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 rounded"
         >
-          <ArrowLeft className="size-4" aria-hidden="true" />
-          {t("backToList")}
+          <ArrowLeft className="size-4 rtl:rotate-180" aria-hidden="true" />
+          {backText}
         </Link>
       </nav>
 
