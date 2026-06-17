@@ -88,7 +88,7 @@ export function MembersManagementClient({ cabinetId }: { cabinetId: number }) {
       const res = await fetch(`/api/cabinet/${cabinetId}/members/${m.userId}`, {
         method: "PATCH",
         credentials: "include",
-        headers: { "Content-Type": "application/json", "x-requested-with": "XMLHttpRequest" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
         body: JSON.stringify({ canManage: !m.canManage }),
       })
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
@@ -110,7 +110,7 @@ export function MembersManagementClient({ cabinetId }: { cabinetId: number }) {
       const res = await fetch(`/api/cabinet/${cabinetId}/members/${userId}`, {
         method: "DELETE",
         credentials: "include",
-        headers: { "x-requested-with": "XMLHttpRequest" },
+        headers: { "X-Requested-With": "XMLHttpRequest" },
       })
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
       setRevokeTarget(null)
@@ -264,6 +264,11 @@ function InviteDialog({
   const [canManage, setCanManage] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
 
   const reset = () => { setEmail(""); setClinicalRole("DOCTOR"); setCanManage(false); setError(null) }
 
@@ -274,17 +279,18 @@ function InviteDialog({
       const res = await fetch(`/api/cabinet/${cabinetId}/members`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json", "x-requested-with": "XMLHttpRequest" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
         body: JSON.stringify({ email, clinicalRole, canManage }),
       })
+      if (!mountedRef.current) return
       if (!res.ok) { setError((await extractApiError(res)).message); return }
       reset()
       onOpenChange(false)
       onInvited()
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("loadError"))
+      if (mountedRef.current) setError(err instanceof Error ? err.message : t("loadError"))
     } finally {
-      setBusy(false)
+      if (mountedRef.current) setBusy(false)
     }
   }
 

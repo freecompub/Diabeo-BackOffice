@@ -38,8 +38,8 @@ vi.mock("@/components/ui/badge", () => ({
 import { MembersManagementClient } from "@/components/diabeo/cabinet/MembersManagementClient"
 
 const MEMBERS = [
-  { userId: 2, firstname: "Sophie", lastname: "Martin", email: "s@x.fr", status: "active", clinicalRole: "DOCTOR", canManage: true, isPrincipalAdmin: true, psVerified: true },
-  { userId: 3, firstname: "Marie", lastname: "Dupont", email: "m@x.fr", status: "active", clinicalRole: "NURSE", canManage: false, isPrincipalAdmin: false, psVerified: true },
+  { userId: 2, firstname: "Sophie", lastname: "Martin", email: "s@x.fr", clinicalRole: "DOCTOR", canManage: true, isPrincipalAdmin: true },
+  { userId: 3, firstname: "Marie", lastname: "Dupont", email: "m@x.fr", clinicalRole: "NURSE", canManage: false, isPrincipalAdmin: false },
 ]
 
 function mockFetchOk(members = MEMBERS) {
@@ -73,7 +73,7 @@ describe("MembersManagementClient", () => {
           method: "PATCH",
           body: JSON.stringify({ canManage: true }),
           // CSRF — le middleware exige ce header sur les mutations (régression 403 sinon).
-          headers: expect.objectContaining({ "x-requested-with": "XMLHttpRequest" }),
+          headers: expect.objectContaining({ "X-Requested-With": "XMLHttpRequest" }),
         }),
       ),
     )
