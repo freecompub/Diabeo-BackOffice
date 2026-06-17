@@ -27,6 +27,7 @@ export function BootstrapClient() {
   const [lastName, setLastName] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [listError, setListError] = useState(false)
   const [feedback, setFeedback] = useState<string | null>(null)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
@@ -35,15 +36,19 @@ export function BootstrapClient() {
     abortRef.current?.abort()
     const controller = new AbortController()
     abortRef.current = controller
+    if (mountedRef.current) setListError(false)
     try {
       const res = await fetch("/api/admin/healthcare-services?limit=100", {
         credentials: "include", signal: controller.signal,
       })
-      if (!mountedRef.current || !res.ok) return
+      if (!mountedRef.current) return
+      if (!res.ok) { setListError(true); return }
       const data = (await res.json()) as { items?: EstablishmentOption[] }
       if (mountedRef.current) setEstablishments(data.items ?? [])
-    } catch {
-      // Liste indisponible : le champ reste vide, l'admin peut réessayer (non bloquant).
+    } catch (err) {
+      // Liste indisponible → on le signale (cul-de-sac sinon : select vide + bouton grisé).
+      if (err instanceof Error && err.name === "AbortError") return
+      if (mountedRef.current) setListError(true)
     }
   }, [])
 
@@ -99,6 +104,18 @@ export function BootstrapClient() {
           {error}
         </div>
       )}
+      {listError && (
+        <div role="alert" className="flex flex-wrap items-center gap-3 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          <span>{t("establishmentsUnavailable")}</span>
+          <button
+            type="button"
+            onClick={() => void loadEstablishments()}
+            className="inline-flex min-h-11 items-center rounded-md border border-destructive/40 px-3 py-2 font-medium hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
+          >
+            {t("retry")}
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col gap-4 rounded-lg border border-border p-4">
         <div className="flex flex-col gap-1">
@@ -122,6 +139,7 @@ export function BootstrapClient() {
           <input
             id="bs-email"
             type="email"
+            autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             aria-required="true"
@@ -147,6 +165,7 @@ export function BootstrapClient() {
             <label htmlFor="bs-first" className="text-sm font-medium">{t("bootstrapFirstName")}</label>
             <input
               id="bs-first"
+              autoComplete="given-name"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               className="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
@@ -156,6 +175,7 @@ export function BootstrapClient() {
             <label htmlFor="bs-last" className="text-sm font-medium">{t("bootstrapLastName")}</label>
             <input
               id="bs-last"
+              autoComplete="family-name"
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
               className="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"

@@ -30,6 +30,7 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
   const [country, setCountry] = useState("")
   const [selectedService, setSelectedService] = useState("")
   const [feedback, setFeedback] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
   const mountedRef = useRef(true)
   const abortRef = useRef<AbortController | null>(null)
 
@@ -68,7 +69,6 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
 
   useEffect(() => {
     mountedRef.current = true
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial (idiome admin detail, cf. CabinetDetailClient)
     void load()
     return () => {
       mountedRef.current = false
@@ -76,7 +76,22 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
     }
   }, [load])
 
+  // Refetch silencieux du tenant (nom/pays/serviceCount) sans repasser en
+  // `state="loading"` → ne démonte pas le formulaire, préserve l'annonce
+  // `role="status"` (cf. review M2). Non bloquant en cas d'échec.
+  const refreshTenant = async () => {
+    try {
+      const res = await fetch(`/api/admin/tenants/${tenantId}`, { credentials: "include" })
+      if (!mountedRef.current || !res.ok) return
+      const detail = (await res.json()) as TenantDetail
+      if (mountedRef.current) setTenant(detail)
+    } catch {
+      // refresh best-effort — l'état affiché reste cohérent jusqu'au prochain chargement.
+    }
+  }
+
   const save = async () => {
+    setBusy(true)
     setFeedback(null)
     setErrorMessage(null)
     try {
@@ -91,14 +106,17 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
       setFeedback(t("saved"))
     } catch (err) {
       if (mountedRef.current) setErrorMessage(err instanceof Error ? err.message : t("loadError"))
+    } finally {
+      if (mountedRef.current) setBusy(false)
     }
   }
 
   const assign = async () => {
-    setFeedback(null)
-    setErrorMessage(null)
     const serviceId = Number(selectedService)
     if (!Number.isInteger(serviceId) || serviceId <= 0) return
+    setBusy(true)
+    setFeedback(null)
+    setErrorMessage(null)
     try {
       const res = await fetch(`/api/admin/tenants/${tenantId}/services`, {
         method: "POST",
@@ -110,9 +128,11 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
       setSelectedService("")
       setFeedback(t("assignDone"))
-      void load()
+      await refreshTenant()
     } catch (err) {
       if (mountedRef.current) setErrorMessage(err instanceof Error ? err.message : t("loadError"))
+    } finally {
+      if (mountedRef.current) setBusy(false)
     }
   }
 
@@ -165,12 +185,13 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
                 maxLength={2}
+                pattern="[A-Za-z]{2}"
                 placeholder={t("tenantCountryPlaceholder")}
                 className="w-24 rounded-md border border-input bg-background px-3 py-2 text-sm uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </div>
             <div>
-              <DiabeoButton variant="diabeoPrimary" size="sm" onClick={() => void save()} disabled={name.trim().length < 2}>
+              <DiabeoButton variant="diabeoPrimary" size="sm" onClick={() => void save()} disabled={busy || name.trim().length < 2}>
                 <Save className="mr-1 size-4" aria-hidden="true" />
                 {t("save")}
               </DiabeoButton>
@@ -196,10 +217,11 @@ export function TenantDetailClient({ tenantId }: { tenantId: number }) {
                   ))}
                 </select>
               </div>
-              <DiabeoButton variant="diabeoSecondary" size="sm" onClick={() => void assign()} disabled={!selectedService}>
+              <DiabeoButton variant="diabeoSecondary" size="sm" onClick={() => void assign()} disabled={busy || !selectedService}>
                 {t("assignSubmit")}
               </DiabeoButton>
             </div>
+            <p className="text-xs text-muted-foreground">{t("assignNote")}</p>
           </div>
         </>
       )}

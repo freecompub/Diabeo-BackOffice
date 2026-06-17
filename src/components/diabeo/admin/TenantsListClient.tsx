@@ -212,6 +212,7 @@ function CreateTenantDialog({
               value={country}
               onChange={(e) => setCountry(e.target.value)}
               maxLength={2}
+              pattern="[A-Za-z]{2}"
               placeholder={t("tenantCountryPlaceholder")}
               className="w-24 rounded-md border border-input bg-background px-3 py-2 text-sm uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             />
