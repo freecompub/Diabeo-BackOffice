@@ -8,6 +8,8 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
+import Link from "next/link"
+import { ChevronRight, ShieldCheck } from "lucide-react"
 import { AdminKpiSection } from "@/components/diabeo/dashboard/admin/AdminKpiSection"
 import { BillingCard } from "@/components/diabeo/dashboard/admin/BillingCard"
 import { ComplianceCard } from "@/components/diabeo/dashboard/admin/ComplianceCard"
@@ -33,6 +35,18 @@ export default async function AdminDashboardPage() {
         <BillingCard />
         <ComplianceCard />
       </div>
+      {/* US-2613 — entrée vers l'espace administration plateforme (SYSTEM_ADMIN). */}
+      <Link
+        href="/admin/platform"
+        className="flex min-h-11 items-center gap-3 rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <ShieldCheck className="size-6 shrink-0 text-primary" aria-hidden="true" />
+        <div className="flex-1">
+          <span className="font-medium">{t("platformAdmin.hubTitle")}</span>
+          <p className="mt-1 text-sm text-muted-foreground">{t("platformAdmin.hubSubtitle")}</p>
+        </div>
+        <ChevronRight className="size-4 shrink-0 text-muted-foreground rtl:rotate-180" aria-hidden="true" />
+      </Link>
     </main>
   )
 }
