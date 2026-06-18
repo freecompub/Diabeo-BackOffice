@@ -1032,7 +1032,7 @@
     "listAria": "Liste des propositions en attente",
     "valueChanged": "Valeur changee de {from} a {to}",
     "loadingMore": "Chargement en cours",
-    "rowError": "Echec de l'action sur cette proposition. Reessayer.",
+    "rowError": "Échec de l'action sur cette proposition. Réessayer.",
     "parameter": {
       "insulinSensitivityFactor": "Facteur de sensibilité (FSI)",
       "insulinToCarbRatio": "Ratio I/G (RIG)",
@@ -1082,7 +1082,7 @@
       "sn": "N° serie",
       "connection": "Connexion"
     },
-    "submitError": "Echec de l'enregistrement de l'appareil. Reessayer."
+    "submitError": "Échec de l'enregistrement de l'appareil. Réessayer."
   },
   "localeSwitcher": {
     "switchedAnnounce": "Langue changee. La page va se recharger."
