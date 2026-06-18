@@ -12,7 +12,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import Link from "next/link"
-import { Building, Building2, UserPlus, ChevronRight } from "lucide-react"
+import { Building, Building2, UserPlus, ShieldCheck, BadgeCheck, Users, ChevronRight } from "lucide-react"
 
 export default async function PlatformAdminHubPage() {
   const role = (await headers()).get("x-user-role")
@@ -24,6 +24,9 @@ export default async function PlatformAdminHubPage() {
     { href: "/admin/tenants", labelKey: "hubTenants", descKey: "hubTenantsDesc", Icon: Building },
     { href: "/admin/cabinets", labelKey: "hubEstablishments", descKey: "hubEstablishmentsDesc", Icon: Building2 },
     { href: "/admin/platform/bootstrap", labelKey: "hubBootstrap", descKey: "hubBootstrapDesc", Icon: UserPlus },
+    { href: "/admin/platform/verification-policies", labelKey: "hubPolicies", descKey: "hubPoliciesDesc", Icon: ShieldCheck },
+    { href: "/admin/platform/ps-registrations", labelKey: "hubPs", descKey: "hubPsDesc", Icon: BadgeCheck },
+    { href: "/admin/platform/personnel", labelKey: "hubPersonnel", descKey: "hubPersonnelDesc", Icon: Users },
   ] as const
 
   return (
