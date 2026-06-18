@@ -11,7 +11,7 @@
  * **Aucune donnée de santé** : PII admin + capacités/scope uniquement.
  */
 
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { Search } from "lucide-react"
 import type { Role } from "@prisma/client"
@@ -45,23 +45,37 @@ export function PersonnelClient() {
   const [feedback, setFeedback] = useState<string | null>(null)
   const loadErrorMessage = t("loadError")
   const mountedRef = useRef(true)
+  const abortRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      abortRef.current?.abort()
+    }
+  }, [])
 
   const userName = (u: { firstname: string | null; lastname: string | null; id: number }) =>
     [u.firstname, u.lastname].filter(Boolean).join(" ") || `#${u.id}`
 
   const search = useCallback(async () => {
     if (query.trim().length < 2) return
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setSearching(true)
     setErrorMessage(null)
     setFeedback(null)
     setPersonnel(null)
+    setResults(null) // évite d'afficher des résultats périmés sous une erreur de re-recherche
     try {
-      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(query.trim())}&limit=20`, { credentials: "include" })
+      const res = await fetch(`/api/admin/users?search=${encodeURIComponent(query.trim())}&limit=20`, { credentials: "include", signal: controller.signal })
       if (!mountedRef.current) return
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
       const data = (await res.json()) as { items?: UserResult[] }
       if (mountedRef.current) setResults(data.items ?? [])
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       if (mountedRef.current) setErrorMessage(err instanceof Error ? err.message : loadErrorMessage)
     } finally {
       if (mountedRef.current) setSearching(false)
@@ -69,15 +83,19 @@ export function PersonnelClient() {
   }, [query, loadErrorMessage])
 
   const loadPersonnel = useCallback(async (userId: number) => {
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
     setErrorMessage(null)
     setFeedback(null)
     try {
-      const res = await fetch(`/api/admin/platform/personnel/${userId}`, { credentials: "include" })
+      const res = await fetch(`/api/admin/platform/personnel/${userId}`, { credentials: "include", signal: controller.signal })
       if (!mountedRef.current) return
       if (!res.ok) { setErrorMessage((await extractApiError(res)).message); return }
       const data = (await res.json()) as Personnel
       if (mountedRef.current) setPersonnel(data)
     } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") return
       if (mountedRef.current) setErrorMessage(err instanceof Error ? err.message : loadErrorMessage)
     }
   }, [loadErrorMessage])
@@ -208,7 +226,7 @@ export function PersonnelClient() {
                         </div>
                       </td>
                       <td className="px-4 py-2 text-end">
-                        <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void revoke(personnel.user.id, m.serviceId)} disabled={busyServiceId === m.serviceId}>
+                        <DiabeoButton variant="diabeoTertiary" size="default" onClick={() => void revoke(personnel.user.id, m.serviceId)} disabled={busyServiceId === m.serviceId}>
                           {t("personnelRevoke")}
                         </DiabeoButton>
                       </td>

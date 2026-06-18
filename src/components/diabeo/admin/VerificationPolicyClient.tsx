@@ -156,6 +156,7 @@ export function VerificationPolicyClient() {
                 min={1}
                 value={tenantId}
                 onChange={(e) => setTenantId(e.target.value)}
+                aria-required="true"
                 className="w-28 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </div>
@@ -168,6 +169,7 @@ export function VerificationPolicyClient() {
                 onChange={(e) => setCountry(e.target.value)}
                 maxLength={2}
                 pattern="[A-Za-z]{2}"
+                aria-required="true"
                 placeholder={t("tenantCountryPlaceholder")}
                 className="w-24 rounded-md border border-input bg-background px-3 py-2 text-sm uppercase focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
@@ -195,13 +197,14 @@ export function VerificationPolicyClient() {
                 type="datetime-local"
                 value={expiresAt}
                 onChange={(e) => setExpiresAt(e.target.value)}
+                aria-required="true"
                 aria-describedby="vp-expires-help"
                 className="rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
               />
             </div>
           )}
 
-          <DiabeoButton variant="diabeoPrimary" size="sm" onClick={() => void submit()} disabled={!canSubmit}>
+          <DiabeoButton variant="diabeoPrimary" size="default" onClick={() => void submit()} disabled={!canSubmit}>
             <ShieldCheck className="mr-1 size-4" aria-hidden="true" />
             {t("policySetSubmit")}
           </DiabeoButton>

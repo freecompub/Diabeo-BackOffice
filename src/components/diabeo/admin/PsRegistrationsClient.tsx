@@ -137,10 +137,10 @@ export function PsRegistrationsClient() {
                   <td className="px-4 py-2 text-muted-foreground">{r.number ?? "—"}</td>
                   <td className="px-4 py-2">
                     <div className="flex justify-end gap-2">
-                      <DiabeoButton variant="diabeoPrimary" size="sm" onClick={() => void decide(r.id, "verified")} disabled={busyId === r.id}>
+                      <DiabeoButton variant="diabeoPrimary" size="default" onClick={() => void decide(r.id, "verified")} disabled={busyId === r.id}>
                         {t("psValidate")}
                       </DiabeoButton>
-                      <DiabeoButton variant="diabeoTertiary" size="sm" onClick={() => void decide(r.id, "rejected")} disabled={busyId === r.id}>
+                      <DiabeoButton variant="diabeoTertiary" size="default" onClick={() => void decide(r.id, "rejected")} disabled={busyId === r.id}>
                         {t("psReject")}
                       </DiabeoButton>
                     </div>
