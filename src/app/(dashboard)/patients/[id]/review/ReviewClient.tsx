@@ -154,6 +154,8 @@ export function ReviewClient({
         pathology={data.patient.pathology}
         referent={data.patient.referent}
         flags={data.patient.flags}
+        backHref={`/patients/${data.patient.id}`}
+        backLabelKey="backToDossier"
       />
 
       <div className="p-6">

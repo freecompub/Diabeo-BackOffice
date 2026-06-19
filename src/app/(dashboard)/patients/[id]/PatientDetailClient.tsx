@@ -122,6 +122,7 @@ export function PatientDetailClient({
         pathology={data.pathology}
         referent={data.referent}
         flags={data.flags}
+        showStartConsultation
       />
 
       <div className="p-6">

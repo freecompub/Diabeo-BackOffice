@@ -1541,6 +1541,8 @@
   },
   "patientContextBar": {
     "backToWorklist": "العودة إلى يومي",
+    "backToDossier": "العودة إلى الملف",
+    "startConsultation": "استشارة جديدة",
     "ageValue": "{age} سنة",
     "referentValue": "الطبيب المرجعي: {referent}",
     "flagUrgency": "حالة طارئة جارية",

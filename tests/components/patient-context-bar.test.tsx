@@ -70,6 +70,39 @@ describe("PatientContextBar (US-2603)", () => {
     expect(screen.getByText(/hypo/)).toBeTruthy()
     expect(screen.getByText(/Sans saisie/)).toBeTruthy()
   })
+
+  // US-2624 — pont Dossier ↔ Consultation.
+  it("dossier : affiche « Nouvelle consultation » → /patients/[id]/review", () => {
+    render(
+      <PatientContextBar patientId={42} name="Jean Dupont" age={34} pathology="DT1" referent={null} flags={NO_FLAGS} showStartConsultation />,
+    )
+    const link = screen.getByRole("link", { name: /Nouvelle consultation/ })
+    expect(link.getAttribute("href")).toBe("/patients/42/review")
+  })
+
+  it("par défaut (consultation) : pas de lanceur « Nouvelle consultation »", () => {
+    render(
+      <PatientContextBar patientId={42} name="Jean Dupont" age={34} pathology="DT1" referent={null} flags={NO_FLAGS} />,
+    )
+    expect(screen.queryByRole("link", { name: /Nouvelle consultation/ })).toBeNull()
+  })
+
+  it("consultation : retour pointe sur le dossier (backHref + backToDossier)", () => {
+    render(
+      <PatientContextBar
+        patientId={42}
+        name="Jean Dupont"
+        age={34}
+        pathology="DT1"
+        referent={null}
+        flags={NO_FLAGS}
+        backHref="/patients/42"
+        backLabelKey="backToDossier"
+      />,
+    )
+    const back = screen.getByLabelText(/Retour au dossier/)
+    expect(back.getAttribute("href")).toBe("/patients/42")
+  })
 })
 
 describe("PatientSwitcher (US-2603)", () => {
