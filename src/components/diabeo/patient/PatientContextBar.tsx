@@ -49,8 +49,8 @@ export function PatientContextBar({
   showStartConsultation?: boolean
   /** Destination du retour (défaut « Ma journée » ; la consultation passe le dossier). */
   backHref?: string
-  /** Clé i18n du libellé/aria du retour (défaut `backToWorklist`). */
-  backLabelKey?: string
+  /** Clé i18n du libellé/aria du retour (union fermée → contrat vérifié à la compilation). */
+  backLabelKey?: "backToWorklist" | "backToDossier"
 }) {
   const t = useTranslations("patientContextBar")
 
@@ -65,7 +65,7 @@ export function PatientContextBar({
       <div className="flex min-w-0 items-center gap-3">
         <Link
           href={backHref}
-          aria-label={t(backLabelKey as Parameters<typeof t>[0])}
+          aria-label={t(backLabelKey)}
           className="rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
         >
           <ArrowLeft className="h-5 w-5 rtl:rotate-180" aria-hidden="true" />
