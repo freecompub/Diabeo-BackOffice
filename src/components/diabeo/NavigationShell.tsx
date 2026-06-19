@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Bell,
   RefreshCw,
+  Search,
   User,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -374,6 +375,8 @@ export function NavigationShell({
     () => false,
   )
   const [mobileOpen, setMobileOpen] = useState(false)
+  // US-2623 — ouverture contrôlée de la palette depuis le bouton de recherche visible.
+  const [searchOpen, setSearchOpen] = useState(false)
 
   // US-2600 — sidebar maigre côté pro (sous-ensemble destinations) ; la palette
   // Ctrl-K (CommandPalette) garde l'accès à toutes les sections autorisées.
@@ -418,7 +421,9 @@ export function NavigationShell({
     <UnreadCountProvider skip={!hasBadgeItem}>
     <TooltipProvider delay={300}>
       {/* US-2601 — Palette de commande Ctrl/Cmd-K (staff uniquement). */}
-      {variant === "pro" && <CommandPalette userRole={userRole} />}
+      {variant === "pro" && (
+        <CommandPalette userRole={userRole} open={searchOpen} onOpenChange={setSearchOpen} />
+      )}
       <div className="flex h-screen overflow-hidden bg-[var(--background)]">
         {/* Desktop sidebar */}
         <aside
@@ -531,6 +536,23 @@ export function NavigationShell({
             </div>
 
             <div className="flex items-center gap-2">
+              {/* US-2623 — déclencheur de recherche visible (ouvre la palette
+                  US-2601). Desktop : barre « Rechercher… ⌘K » ; mobile : loupe.
+                  Staff uniquement (la palette n'existe qu'en variant `pro`). */}
+              {variant === "pro" && (
+                <button
+                  onClick={() => setSearchOpen(true)}
+                  className="flex min-h-11 items-center gap-2 rounded-lg p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:min-w-56 md:justify-start md:border md:border-border md:px-3"
+                  aria-label={tNav("search")}
+                >
+                  <Search className="h-5 w-5 shrink-0" aria-hidden="true" />
+                  <span className="hidden flex-1 text-start text-sm md:inline">{tNav("search")}</span>
+                  <kbd className="hidden rounded border border-border px-1.5 py-0.5 text-xs md:inline" aria-hidden="true">
+                    {tNav("searchShortcut")}
+                  </kbd>
+                </button>
+              )}
+
               {/* Refresh button */}
               {onRefresh && (
                 <button

@@ -102,7 +102,9 @@
     "gestionTeam": "إدارة الفريق والصلاحيات",
     "gestionBilling": "الفوترة",
     "gestionPayments": "المدفوعات",
-    "gestionSettings": "إعدادات العيادة"
+    "gestionSettings": "إعدادات العيادة",
+    "search": "بحث…",
+    "searchShortcut": "Ctrl K"
   },
   "commandPalette": {
     "ariaLabel": "لوحة الأوامر",

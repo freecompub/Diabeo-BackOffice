@@ -102,7 +102,9 @@
     "gestionTeam": "Gestion de l'équipe & droits",
     "gestionBilling": "Facturation",
     "gestionPayments": "Paiements",
-    "gestionSettings": "Paramètres du cabinet"
+    "gestionSettings": "Paramètres du cabinet",
+    "search": "Rechercher…",
+    "searchShortcut": "Ctrl K"
   },
   "commandPalette": {
     "ariaLabel": "Palette de commande",

@@ -338,6 +338,28 @@ describe("NavigationShell", () => {
     })
   })
 
+  // US-2623 — bouton de recherche visible dans le header (ouvre la palette).
+  // Staff (variant `pro`) uniquement ; absent pour l'espace patient.
+  describe("US-2623 — bouton de recherche header", () => {
+    it("pro : le bouton de recherche est rendu (aria-label nav.search)", () => {
+      render(
+        <NavigationShell pageTitle="Dashboard" userRole="DOCTOR">
+          <div>content</div>
+        </NavigationShell>
+      )
+      expect(screen.getByRole("button", { name: "nav.search" })).toBeTruthy()
+    })
+
+    it("patient : pas de bouton de recherche", () => {
+      render(
+        <NavigationShell pageTitle="Dashboard" userRole="VIEWER" variant="patient">
+          <div>content</div>
+        </NavigationShell>
+      )
+      expect(screen.queryByRole("button", { name: "nav.search" })).toBeNull()
+    })
+  })
+
   describe("user avatar", () => {
     it("renders user initials from userName", () => {
       render(

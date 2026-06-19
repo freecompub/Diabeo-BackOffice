@@ -102,7 +102,9 @@
     "gestionTeam": "Team & permissions",
     "gestionBilling": "Billing",
     "gestionPayments": "Payments",
-    "gestionSettings": "Practice settings"
+    "gestionSettings": "Practice settings",
+    "search": "Search…",
+    "searchShortcut": "Ctrl K"
   },
   "commandPalette": {
     "ariaLabel": "Command palette",
