@@ -14,9 +14,14 @@
     --paper:#FAF8F4; --paper-2:#F3EFE8; --surface:#FFFFFF;
     --ink:#22201C; --ink-soft:#6B655C; --ink-faint:#A39C90;
     --line:#EAE5DC; --line-soft:#F2EEE6;
-    /* glycémie */
-    --g-vlow:#DC2626; --g-low:#F87171; --g-in:#10B981; --g-high:#F59E0B; --g-vhigh:#EA580C;
+    /* glycémie — codes graphiques alignés sur docs/design-system/mockups.html */
+    --g-vlow:#DC2626; --g-low:#EF4444; --g-in:#10B981; --g-high:#F59E0B; --g-vhigh:#EA580C;
     --in-bg:#ECFDF5; --in-bd:#A7F3D0; --in-fg:#047857;
+    --cgm:#0D9488; --cgm-area:rgba(13,148,136,.08);          /* courbe CGM = teal */
+    --target-band:rgba(16,185,129,.08); --target-line:#10B981; /* bande cible vert émeraude */
+    --crit-top:rgba(220,38,38,.04); --crit-bot:rgba(220,38,38,.05); /* zones critiques */
+    --grid:#F3F4F6; --axis:#6B7280;                           /* grille + labels */
+    --ev-meal:#EA580C; --ev-bolus:#F59E0B;                    /* marqueurs repas / bolus */
     --shadow-sm:0 1px 2px rgba(34,32,28,.05),0 1px 3px rgba(34,32,28,.07);
     --shadow:0 8px 24px -8px rgba(34,32,28,.14),0 3px 8px -3px rgba(34,32,28,.08);
     --shadow-pop:0 18px 48px -16px rgba(194,65,12,.30);
@@ -181,42 +186,54 @@
         </div>
         <div class="chartwrap">
           <svg viewBox="0 0 760 250" width="100%" height="250" role="img" aria-label="Glycémie d'aujourd'hui, de minuit à maintenant. Valeur actuelle 124 mg/dL, dans la cible.">
-            <!-- zone nuit -->
-            <rect x="56" y="20" width="170" height="180" fill="#00000005"/>
-            <!-- bande cible 70–180 -->
-            <rect x="56" y="78" width="680" height="74" fill="var(--in-bg)"/>
-            <line x1="56" y1="78" x2="736" y2="78" stroke="var(--in-bd)" stroke-dasharray="5 5"/>
-            <line x1="56" y1="152" x2="736" y2="152" stroke="var(--in-bd)" stroke-dasharray="5 5"/>
-            <!-- libellés Y -->
-            <text x="18" y="44" font-size="11" fill="var(--ink-faint)" class="mono">250</text>
-            <text x="26" y="82" font-size="11" fill="var(--ink-faint)" class="mono">180</text>
-            <text x="30" y="156" font-size="11" fill="var(--ink-faint)" class="mono">70</text>
-            <text x="34" y="196" font-size="11" fill="var(--ink-faint)" class="mono">40</text>
-            <!-- courbe du jour -->
-            <path d="M56,150 C100,160 130,168 160,158 C195,146 215,120 250,128 C290,138 305,165 340,150 C380,132 405,96 445,104 C485,112 505,150 545,142 C585,135 605,118 645,112 C680,107 705,118 724,120"
-                  fill="none" stroke="var(--coral-700)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-            <!-- marqueurs d'événements saisis (repas / insuline / activité) -->
-            <g font-size="10" class="mono" fill="var(--ink-faint)">
-              <g transform="translate(160,206)"><circle r="11" cy="-2" fill="var(--coral-50)" stroke="var(--coral-100)"/><path d="M-4,-6 v8 M0,-6 v8 M4,-6 v8" stroke="var(--coral-700)" stroke-width="1.4" stroke-linecap="round"/><text x="0" y="16" text-anchor="middle">08:00</text></g>
-              <g transform="translate(340,206)"><circle r="11" cy="-2" fill="var(--coral-50)" stroke="var(--coral-100)"/><path d="M-3,3 a3,3 0 1 0 6,0 c0,-3 -3,-7 -3,-7 s-3,4 -3,7" fill="var(--coral-700)" stroke="none"/><text x="0" y="16" text-anchor="middle">12:30</text></g>
-              <g transform="translate(545,206)"><circle r="11" cy="-2" fill="var(--coral-50)" stroke="var(--coral-100)"/><path d="M-5,2 h3 l1,-4 2,7 1,-3 h3" stroke="var(--coral-700)" stroke-width="1.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><text x="0" y="16" text-anchor="middle">18:30</text></g>
+            <!-- zones critiques (rouge très léger) -->
+            <rect x="56" y="24" width="680" height="22" fill="var(--crit-top)"/>
+            <rect x="56" y="178" width="680" height="22" fill="var(--crit-bot)"/>
+            <!-- bande cible 70–180 (vert émeraude) -->
+            <rect x="56" y="78" width="680" height="74" fill="var(--target-band)"/>
+            <line x1="56" y1="78" x2="736" y2="78" stroke="var(--target-line)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="56" y1="152" x2="736" y2="152" stroke="var(--target-line)" stroke-width="1" stroke-dasharray="2 3"/>
+            <!-- grille -->
+            <g stroke="var(--grid)" stroke-width="1">
+              <line x1="56" y1="46" x2="736" y2="46"/><line x1="56" y1="115" x2="736" y2="115"/>
+              <line x1="226" y1="24" x2="226" y2="200"/><line x1="396" y1="24" x2="396" y2="200"/><line x1="566" y1="24" x2="566" y2="200"/>
             </g>
-            <!-- point courant (pulse) -->
-            <circle cx="724" cy="120" r="5" class="pp" fill="var(--g-in)"/>
-            <circle cx="724" cy="120" r="5.5" fill="var(--g-in)" stroke="#fff" stroke-width="2.5"/>
+            <!-- libellés Y -->
+            <g font-size="11" class="mono" fill="var(--axis)">
+              <text x="18" y="44">250</text><text x="26" y="82">180</text><text x="30" y="156">70</text><text x="34" y="196">40</text>
+            </g>
+            <!-- aire (teal 8%) -->
+            <path d="M56,150 C100,160 130,168 160,158 C195,146 215,120 250,128 C290,138 305,165 340,150 C380,132 405,96 445,104 C485,112 505,150 545,142 C585,135 605,118 645,112 C680,107 705,118 724,120 L724,200 L56,200 Z"
+                  fill="var(--cgm-area)" stroke="none"/>
+            <!-- courbe du jour (teal) -->
+            <path d="M56,150 C100,160 130,168 160,158 C195,146 215,120 250,128 C290,138 305,165 340,150 C380,132 405,96 445,104 C485,112 505,150 545,142 C585,135 605,118 645,112 C680,107 705,118 724,120"
+                  fill="none" stroke="var(--cgm)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- marqueurs d'événements saisis (Repas = corail, Bolus = ambre) -->
+            <circle cx="160" cy="158" r="5.5" fill="var(--ev-meal)" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="128" r="5.5" fill="var(--ev-bolus)" stroke="#fff" stroke-width="2"/>
+            <circle cx="545" cy="142" r="5.5" fill="var(--ev-meal)" stroke="#fff" stroke-width="2"/>
+            <g font-size="10" class="mono" fill="var(--axis)">
+              <text x="160" y="222" text-anchor="middle">repas 08:00</text>
+              <text x="250" y="222" text-anchor="middle">bolus</text>
+              <text x="545" y="222" text-anchor="middle">repas 18:30</text>
+            </g>
+            <!-- point courant (pulse) — teal -->
+            <circle cx="724" cy="120" r="5" class="pp" fill="var(--cgm)"/>
+            <circle cx="724" cy="120" r="5.5" fill="var(--cgm)" stroke="#fff" stroke-width="2.5"/>
             <text x="724" y="104" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)" class="mono">124</text>
             <!-- libellés X -->
-            <g font-size="10" class="mono" fill="var(--ink-faint)">
-              <text x="56" y="234">0 h</text><text x="226" y="234" text-anchor="middle">6 h</text>
-              <text x="396" y="234" text-anchor="middle">12 h</text><text x="566" y="234" text-anchor="middle">18 h</text>
-              <text x="724" y="234" text-anchor="end">maintenant</text>
+            <g font-size="10" class="mono" fill="var(--axis)">
+              <text x="56" y="240">0 h</text><text x="226" y="240" text-anchor="middle">6 h</text>
+              <text x="396" y="240" text-anchor="middle">12 h</text><text x="566" y="240" text-anchor="middle">18 h</text>
+              <text x="724" y="240" text-anchor="end">maintenant</text>
             </g>
           </svg>
         </div>
         <div class="legend">
-          <span><span class="sw" style="background:var(--coral-700)"></span>Ma glycémie</span>
-          <span><span class="sw" style="background:var(--in-bg);border:1px solid var(--in-bd)"></span>Cible 70–180 mg/dL</span>
-          <span><span class="sw" style="background:var(--coral-50);border:1px solid var(--coral-100)"></span>Mes saisies (repas · insuline · activité)</span>
+          <span><span class="sw" style="background:var(--cgm)"></span>Ma glycémie</span>
+          <span><span class="sw" style="background:rgba(16,185,129,.3)"></span>Cible 70–180 mg/dL</span>
+          <span><span class="sw" style="background:var(--ev-meal)"></span>Repas</span>
+          <span><span class="sw" style="background:var(--ev-bolus)"></span>Bolus / insuline</span>
         </div>
         <div class="tir">
           <div class="tirbar" aria-label="Répartition du temps : 62% dans la cible">
