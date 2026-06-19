@@ -23,12 +23,14 @@
     --shadow:0 4px 14px -4px rgba(26,42,46,.12),0 2px 6px -2px rgba(26,42,46,.08);
     --shadow-lg:0 24px 60px -20px rgba(26,42,46,.28);
     --r:14px; --r-sm:10px; --r-xs:8px;
-    /* accent par rôle (réassigné via [data-role]) */
-    --accent:var(--teal-700); --accent-soft:var(--teal-50); --accent-line:var(--teal-100);
+    /* accent par rôle (réassigné via [data-role]).
+       --accent      = TEXTE d'état actif (teinte foncée, lisibilité AA ≥4.5:1)
+       --accent-brand= couleur de MARQUE (logo, barre active, boutons) = teal-600 #0D9488 */
+    --accent:var(--teal-700); --accent-brand:var(--teal-600); --accent-soft:var(--teal-50); --accent-line:var(--teal-100);
   }
-  [data-role="nurse"]{ --accent:#1D6F8B; --accent-soft:#EAF6FB; --accent-line:#CDE9F3; }
-  [data-role="admin"]{ --accent:#33474E; --accent-soft:#EEF1F2; --accent-line:#D7DEDF; }
-  [data-role="patient"]{ --accent:#C2410C; --accent-soft:var(--coral-50); --accent-line:#FED7AA; }
+  [data-role="nurse"]{ --accent:#155E78; --accent-brand:#1D6F8B; --accent-soft:#EAF6FB; --accent-line:#CDE9F3; }
+  [data-role="admin"]{ --accent:#2B3B41; --accent-brand:#33474E; --accent-soft:#EEF1F2; --accent-line:#D7DEDF; }
+  [data-role="patient"]{ --accent:#C2410C; --accent-brand:#EA580C; --accent-soft:var(--coral-50); --accent-line:#FED7AA; }
 
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
@@ -102,7 +104,7 @@
     background:var(--coral);color:#fff;border-radius:999px;padding:1px 7px;box-shadow:0 1px 2px rgba(234,88,12,.4)}
   .nav a.active{background:var(--accent-soft);color:var(--accent)}
   .nav a.active .ic{opacity:1}
-  .nav a.active::before{content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:4px;height:22px;border-radius:0 4px 4px 0;background:var(--accent)}
+  .nav a.active::before{content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:4px;height:22px;border-radius:0 4px 4px 0;background:var(--accent-brand)}
 
   .side .grow{flex:1}
   .hint{margin:8px 8px 10px;padding:10px 12px;border:1px dashed var(--accent-line);background:var(--accent-soft);

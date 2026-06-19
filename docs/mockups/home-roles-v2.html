@@ -1,0 +1,417 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diabeo — Proposition « Home » par rôle (v2)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#0D9488; --teal-600:#0D9488; --teal-700:#0F766E; --teal-800:#115E59; --teal-50:#F0FDFA; --teal-100:#CCFBF1;
+    --coral:#F97316; --coral-50:#FFF4ED;
+    --paper:#FAFAF7; --paper-2:#F4F2EC; --surface:#FFFFFF;
+    --ink:#1A2A2E; --ink-soft:#586A6B; --ink-faint:#9AA8A6;
+    --line:#E7E4DB; --line-soft:#EFEDE6;
+    --success:#047857; --success-bg:#ECFDF5; --success-bd:#A7F3D0;
+    --warn:#B45309; --warn-bg:#FFFBEB; --warn-bd:#FDE68A;
+    --err:#B91C1C; --err-bg:#FEF2F2; --err-bd:#FCA5A5;
+    --info:#1D6F8B; --info-bg:#EAF6FB; --info-bd:#CDE9F3;
+    --gv:#10B981; --gh:#F59E0B; --gvh:#F97316; --gl:#EF4444; --gvl:#DC2626;
+    --shadow-sm:0 1px 2px rgba(26,42,46,.05),0 1px 3px rgba(26,42,46,.07);
+    --shadow:0 4px 14px -4px rgba(26,42,46,.12),0 2px 6px -2px rgba(26,42,46,.08);
+    --r:16px; --r-sm:11px; --r-xs:8px;
+    --accent:var(--teal-700); --accent-soft:var(--teal-50); --accent-line:var(--teal-100); --accent-brand:var(--teal-600);
+  }
+  [data-role="nurse"]{ --accent:#155E78; --accent-soft:#EAF6FB; --accent-line:#CDE9F3; --accent-brand:#1D6F8B; }
+  [data-role="admin"]{ --accent:#2B3B41; --accent-soft:#EEF1F2; --accent-line:#D7DEDF; --accent-brand:#33474E; }
+  [data-role="patient"]{ --accent:#C2410C; --accent-soft:var(--coral-50); --accent-line:#FED7AA; --accent-brand:#EA580C; }
+
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"Hanken Grotesk",system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
+  button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+  .mono{font-family:"Spline Sans Mono",monospace;font-feature-settings:"tnum"}
+
+  /* deck */
+  .deck{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 22px;background:linear-gradient(100deg,#0c3b38,#0f4f49);color:#eafaf7;box-shadow:0 1px 0 rgba(0,0,0,.2)}
+  .deck .tag{font-family:"Fraunces",serif;font-weight:600;font-size:15px}
+  .deck .tag em{color:#7fe0d3;font-style:normal}
+  .seg{display:flex;gap:3px;background:rgba(255,255,255,.08);padding:4px;border-radius:12px;border:1px solid rgba(255,255,255,.10)}
+  .seg button{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:9px;color:#bfe6e0;font-weight:600;font-size:13px;transition:.18s}
+  .seg button .ph{width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.7}
+  .seg button:hover{color:#fff;background:rgba(255,255,255,.06)}
+  .seg button.on{background:#fff;color:#0c3b38}
+  .seg button[data-r="medecin"].on{color:#0F766E}.seg button[data-r="nurse"].on{color:#155E78}.seg button[data-r="admin"].on{color:#2B3B41}.seg button[data-r="patient"].on{color:#C2410C}
+  .deck .meta{margin-left:auto;font-size:12.5px;color:#8fd0c8}
+
+  /* shell */
+  .shell{position:relative;z-index:2;display:grid;grid-template-columns:240px 1fr;height:calc(100vh - 49px);overflow:hidden}
+  .side{display:flex;flex-direction:column;gap:2px;padding:18px 14px 14px;background:linear-gradient(180deg,var(--surface),var(--paper-2));border-right:1px solid var(--line);overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 14px}
+  .brand .logo{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:#fff;font-family:"Fraunces",serif;font-weight:700;font-size:17px;background:linear-gradient(145deg,var(--teal-600),var(--teal-800));box-shadow:0 4px 12px -3px color-mix(in srgb,var(--teal-700) 55%,transparent)}
+  .brand .nm{font-family:"Fraunces",serif;font-weight:600;font-size:19px;letter-spacing:-.2px}
+  .grp{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.14em;color:var(--ink-faint);padding:14px 12px 6px}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav a{position:relative;display:flex;align-items:center;gap:11px;min-height:40px;padding:0 12px;border-radius:10px;color:var(--ink-soft);text-decoration:none;font-weight:600;font-size:13px;transition:.16s}
+  .nav a .ic svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .nav a:hover{background:var(--paper-2);color:var(--ink)}
+  .nav a.active{background:var(--accent-soft);color:var(--accent)}
+  .nav a.active::before{content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:4px;height:20px;border-radius:0 4px 4px 0;background:var(--accent-brand)}
+  .nav a .badge{margin-left:auto;font-family:"Spline Sans Mono",monospace;font-size:10.5px;background:var(--coral);color:#fff;border-radius:999px;padding:1px 7px}
+  .side .grow{flex:1}
+  .me{display:flex;align-items:center;gap:10px;padding:9px;border-top:1px solid var(--line);margin-top:4px}
+  .me .av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+  .me .who b{font-weight:700;font-size:12.5px;display:block}
+  .me .role{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)}
+
+  /* main */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .top{flex:0 0 64px;display:flex;align-items:center;gap:16px;padding:0 28px;background:rgba(255,255,255,.82);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .search{display:flex;align-items:center;gap:10px;min-width:280px;max-width:380px;flex:1;background:var(--paper-2);border:1px solid var(--line);border-radius:11px;padding:9px 12px;color:var(--ink-soft);cursor:text}
+  .search svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2}
+  .search .ph{flex:1;font-size:13px}
+  .search kbd{font-family:"Spline Sans Mono",monospace;font-size:10.5px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:2px 7px;color:var(--ink-faint)}
+  .top .right{margin-left:auto;display:flex;align-items:center;gap:9px}
+  .iconbtn{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;position:relative;color:var(--ink-soft)}
+  .iconbtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .iconbtn .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--coral);border:2px solid #fff}
+  .canvas{flex:1;min-height:0;overflow:auto;padding:28px 32px 48px}
+
+  /* greeting */
+  .greet{margin:0 0 22px}
+  .greet h1{font-family:"Fraunces",serif;font-weight:600;font-size:32px;letter-spacing:-.5px;margin:0}
+  .greet p{margin:6px 0 0;color:var(--ink-soft);font-size:14.5px}
+  .greet .hl{color:var(--accent);font-weight:700}
+
+  /* kpi band */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;box-shadow:var(--shadow-sm);position:relative;overflow:hidden;transition:.2s}
+  .kpi::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent-brand);opacity:.9}
+  .kpi.warn::after{background:var(--gh)} .kpi.err::after{background:var(--gl)} .kpi.ok::after{background:var(--gv)}
+  .kpi:hover{box-shadow:var(--shadow);transform:translateY(-2px)}
+  .kpi .k{font-size:11.5px;font-weight:600;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}
+  .kpi .v{font-family:"Fraunces",serif;font-weight:600;font-size:32px;letter-spacing:-.5px;margin-top:8px}
+  .kpi .v small{font-family:"Hanken Grotesk";font-size:13px;color:var(--ink-faint);font-weight:600}
+  .kpi .d{margin-top:7px;font-size:12px;color:var(--ink-faint)}
+
+  /* grid + cards */
+  .grid{display:grid;gap:18px}
+  .col2{grid-template-columns:1fr 1fr}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-sm);overflow:hidden}
+  .card .hd{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line-soft)}
+  .card .hd h2{font-family:"Fraunces",serif;font-weight:600;font-size:16px;margin:0;letter-spacing:-.2px}
+  .card .hd .count{font-family:"Spline Sans Mono",monospace;font-size:12px;color:var(--ink-faint)}
+  .card .hd .more{margin-left:auto;font-size:12px;color:var(--accent);font-weight:600;text-decoration:none}
+  .card .bd{padding:6px}
+  .dot-i{width:9px;height:9px;border-radius:50%;flex:0 0 auto}
+  .dot-i.err{background:var(--gl)}.dot-i.warn{background:var(--gh)}.dot-i.info{background:var(--info)}.dot-i.ok{background:var(--gv)}
+
+  .row{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;transition:background .15s}
+  .row:hover{background:var(--paper-2)}
+  .row+.row{border-top:1px solid var(--line-soft)}
+  .pav{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:12.5px;flex:0 0 auto}
+  .grow{flex:1;min-width:0}
+  .nm2{font-weight:700;font-size:13.5px}
+  .sub{color:var(--ink-soft);font-size:12.5px;margin-top:1px}
+  .when{font-family:"Spline Sans Mono",monospace;color:var(--ink-faint);font-size:12px;white-space:nowrap}
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;border:1px solid transparent;white-space:nowrap}
+  .pill.err{background:var(--err-bg);color:var(--err);border-color:var(--err-bd)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn-bd)}
+  .pill.ok{background:var(--success-bg);color:var(--success);border-color:var(--success-bd)}
+  .pill.info{background:var(--info-bg);color:var(--info);border-color:var(--info-bd)}
+  .pill.acc{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 13px;font-weight:700;font-size:12.5px;color:var(--ink);transition:.15s}
+  .btn:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent)}
+  .btn.primary{background:var(--accent-brand);border-color:var(--accent-brand);color:#fff}
+  .btn.primary:hover{filter:brightness(1.06)}
+  .btn.sm{padding:5px 10px;font-size:12px}
+
+  .full{grid-column:1/-1}
+  .only{display:none}
+  [data-role="medecin"] .r-medecin{display:block} [data-role="medecin"] .nav-medecin{display:flex}
+  [data-role="nurse"] .r-nurse{display:block} [data-role="nurse"] .nav-nurse{display:flex}
+  [data-role="admin"] .r-admin{display:block} [data-role="admin"] .nav-admin{display:flex}
+  [data-role="patient"] .r-patient{display:block} [data-role="patient"] .nav-patient{display:flex}
+
+  /* patient hero ring */
+  .hero{display:grid;grid-template-columns:auto 1fr;gap:24px;align-items:center;background:linear-gradient(120deg,var(--accent-soft),var(--surface));border:1px solid var(--accent-line);border-radius:20px;padding:24px 26px;margin-bottom:22px}
+  .hero .big{font-family:"Fraunces",serif;font-size:22px;font-weight:600}
+  .hero .msg{color:var(--ink-soft);margin-top:4px;max-width:46ch}
+  .ring{width:132px;height:132px}
+  .progress{height:9px;border-radius:999px;background:var(--paper-2);overflow:hidden;margin-top:8px}
+  .progress > i{display:block;height:100%;border-radius:999px;background:var(--accent-brand)}
+
+  .feed .row .ic2 svg{width:16px;height:16px;stroke:var(--ink-faint);fill:none;stroke-width:1.9}
+  .note{font-size:12.5px;color:var(--ink-faint);margin:10px 4px 0}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  .canvas .greet,.canvas .kpis,.canvas .grid,.canvas .hero{animation:rise .4s cubic-bezier(.2,.7,.2,1) both}
+  .canvas .kpis{animation-delay:.04s}.canvas .grid{animation-delay:.08s}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body data-role="medecin">
+
+<div class="deck">
+  <span class="tag">Diabeo — <em>Home v2</em> · proposition par rôle</span>
+  <div class="seg" role="tablist" aria-label="Rôle">
+    <button class="on" data-r="medecin"><span class="ph"></span>Médecin</button>
+    <button data-r="nurse"><span class="ph"></span>Infirmier</button>
+    <button data-r="admin"><span class="ph"></span>Admin</button>
+    <button data-r="patient"><span class="ph"></span>Patient</button>
+  </div>
+  <span class="meta">maquette statique · contenu illustratif</span>
+</div>
+
+<div class="shell">
+  <!-- sidebar (contexte) -->
+  <aside class="side">
+    <div class="brand"><span class="logo">D</span><span class="nm">Diabeo</span></div>
+    <nav class="nav nav-medecin nav-nurse only">
+      <a href="#" class="active"><span class="ic">${ICON.home}</span><span data-homelbl>Ma journée</span></a>
+      <a href="#"><span class="ic">${ICON.users}</span>Patients</a>
+      <a href="#"><span class="ic">${ICON.cal}</span>Rendez-vous</a>
+      <a href="#"><span class="ic">${ICON.msg}</span>Messagerie<span class="badge">3</span></a>
+      <a href="#"><span class="ic">${ICON.doc}</span>Documents</a>
+      <a href="#"><span class="ic">${ICON.chart}</span>Analytics</a>
+    </nav>
+    <nav class="nav nav-admin only">
+      <a href="#" class="active"><span class="ic">${ICON.grid}</span>Tableau de bord</a>
+      <a href="#"><span class="ic">${ICON.building}</span>Organisations</a>
+      <a href="#"><span class="ic">${ICON.hospital}</span>Établissements</a>
+      <a href="#"><span class="ic">${ICON.team}</span>Personnel</a>
+      <a href="#"><span class="ic">${ICON.badge}</span>Validation PS<span class="badge">4</span></a>
+    </nav>
+    <nav class="nav nav-patient only">
+      <a href="#" class="active"><span class="ic">${ICON.heart}</span>Accueil</a>
+      <a href="#"><span class="ic">${ICON.cal}</span>Mes rendez-vous</a>
+      <a href="#"><span class="ic">${ICON.doc}</span>Mes documents</a>
+      <a href="#"><span class="ic">${ICON.msg}</span>Mes messages<span class="badge">1</span></a>
+    </nav>
+    <div class="grow"></div>
+    <div class="me"><span class="av" data-av>CM</span><span class="who"><b data-name>Dr C. Martin</b><span class="role" data-rolechip>Médecin</span></span></div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <div class="search only r-medecin r-nurse r-admin" style="display:flex">${ICON.search}<span class="ph">Rechercher un patient, une section…</span><kbd>Ctrl K</kbd></div>
+      <div class="right"><button class="iconbtn" aria-label="Notifications">${ICON.bell}<span class="dot"></span></button></div>
+    </header>
+
+    <div class="canvas">
+
+      <!-- ══════ MÉDECIN — Ma journée ══════ -->
+      <div class="only r-medecin">
+        <div class="greet"><h1>Bonjour, Dr Martin</h1><p>Lundi 19 juin · <span class="hl">7 patients à trier</span> · 3 alertes prioritaires · file calculée serveur.</p></div>
+        <section class="grid">
+          <div class="card full">
+            <div class="hd"><span class="dot-i err"></span><h2>Alertes glycémiques</h2><span class="count">3</span><a class="more" href="#">Tout voir</a></div>
+            <div class="bd">
+              <div class="row"><span class="pav" style="background:var(--err-bg);color:var(--err)">AB</span><div class="grow"><div class="nm2">Amina B. · 14 ans · DT1</div><div class="sub">2 hypo &lt;54 mg/dL ces 24 h · TIR 41 %</div></div><span class="pill err">Hypo sévère</span><span class="pill warn">TIR bas</span><button class="btn primary sm">Ouvrir</button></div>
+              <div class="row"><span class="pav" style="background:var(--warn-bg);color:var(--warn)">MT</span><div class="grow"><div class="nm2">Marc T. · 58 ans · DT2</div><div class="sub">Hyper répétées &gt;250 · GMI 8,4 %</div></div><span class="pill warn">Hyper</span><button class="btn sm">Ouvrir</button></div>
+              <div class="row"><span class="pav" style="background:var(--warn-bg);color:var(--warn)">SL</span><div class="grow"><div class="nm2">Sofia L. · 31 ans · DG</div><div class="sub">Variabilité élevée · CV 44 %</div></div><span class="pill warn">CV élevé</span><button class="btn sm">Ouvrir</button></div>
+            </div>
+          </div>
+          <div class="grid col2 full" style="grid-template-columns:1fr 1fr">
+            <div class="card">
+              <div class="hd"><span class="dot-i info"></span><h2>Propositions d'ajustement</h2><span class="count">2</span></div>
+              <div class="bd">
+                <div class="row"><div class="grow"><div class="nm2">Amina B.</div><div class="sub">Bolus déjeuner · ICR 12 → 10 g/U</div></div><span class="pill acc">déterministe</span><button class="btn primary sm">Revoir</button></div>
+                <div class="row"><div class="grow"><div class="nm2">Karim D.</div><div class="sub">Basale nuit · −0,1 U/h</div></div><button class="btn sm">Revoir</button></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="hd"><span class="dot-i info"></span><h2>Rendez-vous du jour</h2><span class="count">4</span></div>
+              <div class="bd">
+                <div class="row"><span class="when">09:00</span><div class="grow"><div class="nm2">Marc T.</div><div class="sub">Téléconsultation · suivi</div></div><button class="btn sm">Préparer</button></div>
+                <div class="row"><span class="when">10:30</span><div class="grow"><div class="nm2">Sofia L.</div><div class="sub">Présentiel · grossesse</div></div><button class="btn sm">Préparer</button></div>
+                <div class="row"><span class="when">14:00</span><div class="grow"><div class="nm2">Amina B.</div><div class="sub">Présentiel · ajustement</div></div><button class="btn sm">Préparer</button></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="hd"><span class="dot-i warn"></span><h2>Relances en attente</h2><span class="count">5</span></div>
+              <div class="bd">
+                <div class="row"><div class="grow"><div class="nm2">Yanis M.</div><div class="sub">Jamais synchronisé depuis l'invitation</div></div><span class="pill warn">Silence saisie</span></div>
+                <div class="row"><div class="grow"><div class="nm2">Léa F.</div><div class="sub">Rendez-vous non confirmé</div></div><span class="pill err">RDV à confirmer</span></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="hd"><span class="dot-i ok"></span><h2>Messages non lus</h2><span class="count">3</span></div>
+              <div class="bd">
+                <div class="row"><span class="pav" style="background:var(--err-bg);color:var(--err)">AB</span><div class="grow"><div class="nm2">Amina B.</div><div class="sub">« J'ai eu un malaise ce matin… »</div></div><span class="when">il y a 1 h</span></div>
+                <div class="row"><span class="pav" style="background:var(--teal-50);color:var(--teal-700)">KD</span><div class="grow"><div class="nm2">Karim D.</div><div class="sub">Question sur le capteur</div></div><span class="when">il y a 3 h</span></div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══════ INFIRMIER — Tableau de bord ══════ -->
+      <div class="only r-nurse">
+        <div class="greet"><h1>Bonjour, M. Dupont</h1><p>Service Diabétologie · <span class="hl">28 patients suivis</span> · périmètre service.</p></div>
+        <div class="kpis">
+          <div class="kpi"><div class="k">Patients du service</div><div class="v">28</div><div class="d">12 vus cette semaine</div></div>
+          <div class="kpi warn"><div class="k">RDV à préparer</div><div class="v">6</div><div class="d">aujourd'hui</div></div>
+          <div class="kpi"><div class="k">Messages à traiter</div><div class="v">2</div><div class="d">non lus</div></div>
+          <div class="kpi"><div class="k">Documents à classer</div><div class="v">3</div><div class="d">déposés hier</div></div>
+        </div>
+        <section class="grid col2">
+          <div class="card">
+            <div class="hd"><span class="dot-i info"></span><h2>Mes tâches du jour</h2><span class="count">5</span></div>
+            <div class="bd">
+              <div class="row"><span class="dot-i warn"></span><div class="grow"><div class="nm2">Préparer la téléconsultation de Marc T.</div><div class="sub">09:00 · synthèse + dernières glycémies</div></div><button class="btn sm">Faire</button></div>
+              <div class="row"><span class="dot-i info"></span><div class="grow"><div class="nm2">Relancer Yanis M.</div><div class="sub">jamais synchronisé</div></div><button class="btn sm">Relancer</button></div>
+              <div class="row"><span class="dot-i info"></span><div class="grow"><div class="nm2">Classer 3 documents</div><div class="sub">comptes rendus déposés</div></div><button class="btn sm">Classer</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="hd"><span class="dot-i info"></span><h2>Rendez-vous à préparer</h2><span class="count">6</span></div>
+            <div class="bd">
+              <div class="row"><span class="when">09:00</span><div class="grow"><div class="nm2">Marc T.</div><div class="sub">Téléconsultation</div></div><button class="btn primary sm">Préparer</button></div>
+              <div class="row"><span class="when">10:30</span><div class="grow"><div class="nm2">Sofia L.</div><div class="sub">Présentiel · grossesse</div></div><button class="btn sm">Préparer</button></div>
+              <div class="row"><span class="when">11:15</span><div class="grow"><div class="nm2">Karim D.</div><div class="sub">Présentiel · capteur</div></div><button class="btn sm">Préparer</button></div>
+            </div>
+          </div>
+          <div class="card full">
+            <div class="hd"><span class="dot-i ok"></span><h2>Patients récemment vus</h2><a class="more" href="#">Ouvrir la liste</a></div>
+            <div class="bd">
+              <div class="row"><span class="pav" style="background:var(--info-bg);color:var(--info)">AM</span><div class="grow"><div class="nm2">Alice M. · 22 ans · DT1</div><div class="sub">TIR 68 % · stable</div></div><span class="pill ok">à jour</span></div>
+              <div class="row"><span class="pav" style="background:var(--info-bg);color:var(--info)">BD</span><div class="grow"><div class="nm2">Bob D. · 47 ans · DT2</div><div class="sub">dernière synchro il y a 2 j</div></div><span class="pill warn">à surveiller</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══════ ADMIN — Plateforme ══════ -->
+      <div class="only r-admin">
+        <div class="greet"><h1>Administration plateforme</h1><p>14 organisations · 37 établissements · <span class="hl">sans accès aux données de santé</span>.</p></div>
+        <div class="kpis">
+          <div class="kpi"><div class="k">Organisations</div><div class="v">14</div><div class="d">FR · DZ</div></div>
+          <div class="kpi"><div class="k">Établissements</div><div class="v">37</div><div class="d">3 sans admin</div></div>
+          <div class="kpi warn"><div class="k">Preuves PS en attente</div><div class="v">4</div><div class="d">à valider</div></div>
+          <div class="kpi ok"><div class="k">Politiques de vérif.</div><div class="v">9</div><div class="d">fail-secure</div></div>
+        </div>
+        <section class="grid col2">
+          <div class="card">
+            <div class="hd"><span class="dot-i warn"></span><h2>Établissements sans admin</h2><span class="count">3</span></div>
+            <div class="bd">
+              <div class="row"><span class="pav" style="background:var(--accent-soft);color:var(--accent)">CN</span><div class="grow"><div class="nm2">Cabinet Nord</div><div class="sub">Lille · libéral</div></div><button class="btn primary sm">Bootstrap</button></div>
+              <div class="row"><span class="pav" style="background:var(--accent-soft);color:var(--accent)">HS</span><div class="grow"><div class="nm2">Hôpital Sud</div><div class="sub">Marseille · établissement</div></div><button class="btn sm">Bootstrap</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="hd"><span class="dot-i warn"></span><h2>Preuves PS à valider</h2><span class="count">4</span></div>
+            <div class="bd">
+              <div class="row"><div class="grow"><div class="nm2">Marie Curie</div><div class="sub">FR · RPPS · 10100000001</div></div><button class="btn primary sm">Valider</button><button class="btn sm">Refuser</button></div>
+              <div class="row"><div class="grow"><div class="nm2">Ahmed B.</div><div class="sub">DZ · Ordre · manuel</div></div><button class="btn primary sm">Valider</button><button class="btn sm">Refuser</button></div>
+            </div>
+          </div>
+          <div class="card feed">
+            <div class="hd"><span class="dot-i info"></span><h2>Dernières actions (audit)</h2><a class="more" href="#">Journal</a></div>
+            <div class="bd">
+              <div class="row"><span class="ic2">${ICON.shield}</span><div class="grow"><div class="nm2">Politique de vérification posée</div><div class="sub">Cabinet Nord · requis</div></div><span class="when">14:02</span></div>
+              <div class="row"><span class="ic2">${ICON.team}</span><div class="grow"><div class="nm2">Org-admin invité</div><div class="sub">Hôpital Est · Dr Leroy</div></div><span class="when">11:48</span></div>
+              <div class="row"><span class="ic2">${ICON.badge}</span><div class="grow"><div class="nm2">Preuve PS validée</div><div class="sub">M. Lefèvre · FR</div></div><span class="when">09:30</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="hd"><span class="dot-i ok"></span><h2>Santé système</h2></div>
+            <div class="bd">
+              <div class="row"><div class="grow"><div class="nm2">Base PostgreSQL</div></div><span class="pill ok">opérationnel</span></div>
+              <div class="row"><div class="grow"><div class="nm2">Stockage objets (OVH)</div></div><span class="pill ok">opérationnel</span></div>
+              <div class="row"><div class="grow"><div class="nm2">File de notifications</div></div><span class="pill warn">latence</span></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ══════ PATIENT — Accueil ══════ -->
+      <div class="only r-patient">
+        <div class="greet"><h1>Bonjour Amina</h1><p>Voici votre semaine en un coup d'œil.</p></div>
+        <div class="hero">
+          <svg class="ring" viewBox="0 0 120 120" aria-label="Temps dans la cible : 62 %">
+            <circle cx="60" cy="60" r="50" fill="none" stroke="var(--paper-2)" stroke-width="13"/>
+            <circle cx="60" cy="60" r="50" fill="none" stroke="var(--accent-brand)" stroke-width="13" stroke-linecap="round" stroke-dasharray="195 314" transform="rotate(-90 60 60)"/>
+            <text x="60" y="57" text-anchor="middle" font-family="Fraunces,serif" font-size="26" font-weight="600" fill="var(--ink)">62%</text>
+            <text x="60" y="74" text-anchor="middle" font-size="9.5" fill="var(--ink-soft)">dans la cible</text>
+          </svg>
+          <div>
+            <div class="big">Belle progression cette semaine</div>
+            <p class="msg">Votre temps dans la cible est passé de 54 % à <b>62 %</b>. Continuez ainsi — votre équipe suit vos données.</p>
+            <div class="progress"><i style="width:62%"></i></div>
+          </div>
+        </div>
+        <section class="grid col2">
+          <div class="card">
+            <div class="hd"><span class="dot-i info"></span><h2>Prochain rendez-vous</h2></div>
+            <div class="bd">
+              <div class="row"><span class="when">24 juin</span><div class="grow"><div class="nm2">Dr C. Martin</div><div class="sub">Téléconsultation · 14:00</div></div><button class="btn primary sm">Rejoindre</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="hd"><span class="dot-i ok"></span><h2>Message de votre équipe</h2><span class="count">1</span></div>
+            <div class="bd">
+              <div class="row"><span class="pav" style="background:var(--accent-soft);color:var(--accent)">CM</span><div class="grow"><div class="nm2">Dr C. Martin</div><div class="sub">« Vos nuits sont meilleures, on en parle jeudi. »</div></div><button class="btn sm">Lire</button></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="hd"><span class="dot-i info"></span><h2>Mon capteur</h2></div>
+            <div class="bd">
+              <div class="row"><div class="grow"><div class="nm2">Dexcom G7</div><div class="sub">posé il y a 4 jours · 6 j restants</div></div><span class="pill ok">actif</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="hd"><span class="dot-i ok"></span><h2>Mes objectifs</h2></div>
+            <div class="bd" style="padding:14px 16px">
+              <div class="sub" style="margin-bottom:4px">Temps dans la cible — objectif 70 %</div>
+              <div class="progress"><i style="width:62%"></i></div>
+              <div class="sub" style="margin:12px 0 4px">Jours avec saisie — 6 / 7</div>
+              <div class="progress"><i style="width:86%"></i></div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const ICON={
+  home:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>',
+  users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3 3 0 0 1 0 5.6"/><path d="M17 19a5 5 0 0 0-2.5-4.3"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>',
+  msg:'<svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-4 3.5v-3.5H4z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24"><path d="M6 3.5h8l4 4V20.5H6z"/><path d="M13.5 3.7V8h4.2M9 12.5h6M9 16h6"/></svg>',
+  chart:'<svg viewBox="0 0 24 24"><path d="M4 19.5V4M4 19.5h16"/><path d="M8 16l3.5-4 3 2.5L20 8"/></svg>',
+  grid:'<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>',
+  building:'<svg viewBox="0 0 24 24"><path d="M5 20.5V4.5h9v16M14 9h5v11.5M3.5 20.5h17M8 8h3M8 12h3"/></svg>',
+  hospital:'<svg viewBox="0 0 24 24"><path d="M4 20.5V6.5h16v14M3 20.5h18M12 9v5M9.5 11.5h5"/></svg>',
+  team:'<svg viewBox="0 0 24 24"><circle cx="8" cy="8" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3 19a5 5 0 0 1 10 0M14 19a4.5 4.5 0 0 1 7-3.7"/></svg>',
+  badge:'<svg viewBox="0 0 24 24"><circle cx="12" cy="9.5" r="5"/><path d="m9.4 12.2-1.6 8 4.2-2.2 4.2 2.2-1.6-8M9.7 9.4l1.7 1.7 3-3.2"/></svg>',
+  shield:'<svg viewBox="0 0 24 24"><path d="M12 3.2 19 6v5c0 4.5-3 8-7 9.8C8 19 5 15.5 5 11V6z"/><path d="M9.2 12l2 2 3.6-3.8"/></svg>',
+  heart:'<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.3-9.2-8.6C1.2 7.9 3.4 5 6.4 5c1.9 0 3.2 1 3.6 1.8C12 5 13 5 15.6 5c3 0 5.2 2.9 3.6 6.4C19 15.7 12 20 12 20z"/></svg>',
+  bell:'<svg viewBox="0 0 24 24"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6 2 6H5s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>',
+  search:'<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-3.6-3.6"/></svg>',
+};
+document.body.innerHTML=document.body.innerHTML.replace(/\$\{ICON\.(\w+)\}/g,(_,k)=>ICON[k]||'');
+const CFG={
+  medecin:{name:"Dr C. Martin",av:"CM",chip:"Médecin",home:"Ma journée"},
+  nurse:{name:"M. Dupont",av:"MD",chip:"Infirmier",home:"Tableau de bord"},
+  admin:{name:"Ops Diabeo",av:"OD",chip:"Admin",home:"Tableau de bord"},
+  patient:{name:"Amina B.",av:"AB",chip:"Patient",home:"Accueil"},
+};
+function setRole(r){
+  document.body.setAttribute("data-role",r);const c=CFG[r];
+  const set=(s,v)=>{const e=document.querySelector(s);if(e)e.textContent=v};
+  set("[data-name]",c.name);set("[data-av]",c.av);set("[data-rolechip]",c.chip);set("[data-homelbl]",c.home);
+  document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('on',b.dataset.r===r));
+  document.querySelector('.canvas').scrollTo(0,0);
+}
+document.querySelectorAll('.seg button').forEach(b=>b.onclick=()=>setRole(b.dataset.r));
+setRole('medecin');
+</script>
+</body>
+</html>
