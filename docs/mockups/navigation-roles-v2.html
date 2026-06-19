@@ -265,15 +265,12 @@
     <header class="top">
       <h1><span data-title>Ma journée</span><span class="sub" data-subtitle>Lundi 19 juin · 7 patients à trier</span></h1>
 
-      <!-- barre de recherche visible (médecin / infirmier / admin) -->
+      <!-- barre de recherche visible — staff uniquement (médecin / infirmier / admin).
+           Le patient n'a pas de recherche (espace self-service restreint). -->
       <div class="search only r-medecin r-nurse r-admin" role="button" tabindex="0" aria-label="Rechercher">
         ${ICON.search}
         <span class="ph" data-searchph>Rechercher un patient, une section…</span>
         <kbd>Ctrl K</kbd>
-      </div>
-      <!-- patient : pas de palette, accès direct simple -->
-      <div class="search only r-patient" role="button" tabindex="0" aria-label="Rechercher" style="max-width:300px">
-        ${ICON.search}<span class="ph">Rechercher dans mon espace…</span>
       </div>
 
       <div class="acts">
