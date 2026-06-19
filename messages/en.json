@@ -1541,6 +1541,8 @@
   },
   "patientContextBar": {
     "backToWorklist": "Back to My day",
+    "backToDossier": "Back to record",
+    "startConsultation": "New consultation",
     "ageValue": "{age} y.o.",
     "referentValue": "Ref.: {referent}",
     "flagUrgency": "Active urgency",
