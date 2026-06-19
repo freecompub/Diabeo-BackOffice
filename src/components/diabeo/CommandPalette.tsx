@@ -113,19 +113,27 @@ export function CommandPalette({
     openRef.current = open
   }, [open])
 
-  // Ouverture/reset/fermeture — handler d'évènement (setState légitime).
+  // Ouverture/fermeture — handler d'évènement. Le **reset** n'est PAS ici : le
+  // bouton header (US-2623) ouvre via le parent (`setSearchOpen`) sans passer par
+  // ce handler. Le reset vit donc dans un effet sur `open` (cf. ci-dessous) →
+  // slate propre quelle que soit la source d'ouverture (bouton, Ctrl-K, parent).
   const handleOpenChange = useCallback((next: boolean) => {
     if (!isControlled) setInternalOpen(next)
     onOpenChange?.(next)
-    if (next) {
-      setQuery("")
-      setActiveIndex(0)
-      setExactHits([])
-    } else {
+    if (!next) {
       baseAbortRef.current?.abort()
       exactAbortRef.current?.abort()
     }
   }, [isControlled, onOpenChange])
+
+  // Reset à CHAQUE ouverture, indépendamment de la source (handleOpenChange ou
+  // ouverture contrôlée par le parent). Idempotent à la fermeture (no-op).
+  useEffect(() => {
+    if (!open) return
+    setQuery("")
+    setActiveIndex(0)
+    setExactHits([])
+  }, [open])
 
   // Ctrl/Cmd-K global.
   useEffect(() => {

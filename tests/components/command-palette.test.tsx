@@ -129,4 +129,15 @@ describe("CommandPalette — ouverture contrôlée (US-2623)", () => {
     openWithCtrlK()
     expect(onOpenChange).toHaveBeenCalledWith(true)
   })
+
+  it("réinitialise la saisie à chaque ré-ouverture contrôlée (LOW #3)", () => {
+    const { rerender } = render(<CommandPalette userRole="DOCTOR" open onOpenChange={vi.fn()} />)
+    const input = screen.getByRole("combobox") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "Dupont" } })
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("Dupont")
+    // Fermeture puis ré-ouverture via la prop `open` (chemin bouton header).
+    rerender(<CommandPalette userRole="DOCTOR" open={false} onOpenChange={vi.fn()} />)
+    rerender(<CommandPalette userRole="DOCTOR" open onOpenChange={vi.fn()} />)
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("")
+  })
 })
