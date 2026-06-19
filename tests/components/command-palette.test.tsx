@@ -113,3 +113,31 @@ describe("CommandPalette (US-2601)", () => {
     expect(push).toHaveBeenCalledWith("/medecin")
   })
 })
+
+// US-2623 — ouverture contrôlée (le bouton header du NavigationShell pilote `open`).
+describe("CommandPalette — ouverture contrôlée (US-2623)", () => {
+  it("affiche le dialog quand open=true, rien quand open=false", () => {
+    const { rerender } = render(<CommandPalette userRole="DOCTOR" open={false} onOpenChange={vi.fn()} />)
+    expect(screen.queryByTestId("dialog")).toBeNull()
+    rerender(<CommandPalette userRole="DOCTOR" open onOpenChange={vi.fn()} />)
+    expect(screen.getByTestId("dialog")).toBeTruthy()
+  })
+
+  it("Ctrl/Cmd-K notifie le parent via onOpenChange (mode contrôlé)", () => {
+    const onOpenChange = vi.fn()
+    render(<CommandPalette userRole="DOCTOR" open={false} onOpenChange={onOpenChange} />)
+    openWithCtrlK()
+    expect(onOpenChange).toHaveBeenCalledWith(true)
+  })
+
+  it("réinitialise la saisie à chaque ré-ouverture contrôlée (LOW #3)", () => {
+    const { rerender } = render(<CommandPalette userRole="DOCTOR" open onOpenChange={vi.fn()} />)
+    const input = screen.getByRole("combobox") as HTMLInputElement
+    fireEvent.change(input, { target: { value: "Dupont" } })
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("Dupont")
+    // Fermeture puis ré-ouverture via la prop `open` (chemin bouton header).
+    rerender(<CommandPalette userRole="DOCTOR" open={false} onOpenChange={vi.fn()} />)
+    rerender(<CommandPalette userRole="DOCTOR" open onOpenChange={vi.fn()} />)
+    expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("")
+  })
+})

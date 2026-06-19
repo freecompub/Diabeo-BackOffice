@@ -56,14 +56,32 @@ type DestEntry = { kind: "dest"; id: string; href: string; label: string; icon: 
 type PatientEntry = { kind: "patient"; id: string; patientId: number; name: string; pathologyLabel: string | null }
 type Entry = DestEntry | PatientEntry
 
-export function CommandPalette({ userRole }: { userRole: UserRole }) {
+export function CommandPalette({
+  userRole,
+  open: controlledOpen,
+  onOpenChange,
+}: {
+  userRole: UserRole
+  /**
+   * US-2623 — ouverture **contrôlée** optionnelle : permet au header
+   * (`NavigationShell`) d'ouvrir la palette via un bouton visible. Si non
+   * fournie, la palette gère son ouverture en interne (rétro-compat). Le
+   * raccourci `Ctrl/Cmd-K` fonctionne dans les deux modes.
+   */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+}) {
   const t = useTranslations("commandPalette")
   const tNav = useTranslations("nav")
   const tGlossary = useTranslations("glossary")
   const router = useRouter()
   const baseId = useId()
 
-  const [open, setOpen] = useState(false)
+  // Ouverture contrôlée (prop) OU interne (rétro-compat). `isControlled` fige le
+  // mode pour la durée de vie du composant (le parent fournit ou non la prop).
+  const [internalOpen, setInternalOpen] = useState(false)
+  const isControlled = controlledOpen !== undefined
+  const open = isControlled ? controlledOpen : internalOpen
   const [query, setQuery] = useState("")
   const [activeIndex, setActiveIndex] = useState(0)
   const [basePatients, setBasePatients] = useState<PatientHit[]>([])
@@ -95,18 +113,27 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
     openRef.current = open
   }, [open])
 
-  // Ouverture/reset/fermeture — handler d'évènement (setState légitime).
+  // Ouverture/fermeture — handler d'évènement. Le **reset** n'est PAS ici : le
+  // bouton header (US-2623) ouvre via le parent (`setSearchOpen`) sans passer par
+  // ce handler. Le reset vit donc dans un effet sur `open` (cf. ci-dessous) →
+  // slate propre quelle que soit la source d'ouverture (bouton, Ctrl-K, parent).
   const handleOpenChange = useCallback((next: boolean) => {
-    setOpen(next)
-    if (next) {
-      setQuery("")
-      setActiveIndex(0)
-      setExactHits([])
-    } else {
+    if (!isControlled) setInternalOpen(next)
+    onOpenChange?.(next)
+    if (!next) {
       baseAbortRef.current?.abort()
       exactAbortRef.current?.abort()
     }
-  }, [])
+  }, [isControlled, onOpenChange])
+
+  // Reset à CHAQUE ouverture, indépendamment de la source (handleOpenChange ou
+  // ouverture contrôlée par le parent). Idempotent à la fermeture (no-op).
+  useEffect(() => {
+    if (!open) return
+    setQuery("")
+    setActiveIndex(0)
+    setExactHits([])
+  }, [open])
 
   // Ctrl/Cmd-K global.
   useEffect(() => {
@@ -226,10 +253,10 @@ export function CommandPalette({ userRole }: { userRole: UserRole }) {
   const activate = useCallback(
     (entry: Entry | undefined) => {
       if (!entry) return
-      setOpen(false)
+      handleOpenChange(false)
       router.push(entry.kind === "dest" ? entry.href : `/patients/${entry.patientId}`)
     },
-    [router],
+    [router, handleOpenChange],
   )
 
   const onKeyDown = useCallback(

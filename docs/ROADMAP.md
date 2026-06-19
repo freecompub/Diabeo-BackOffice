@@ -638,6 +638,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 |----|-------|
 | US-2600 | Navigation globale (sidebar maigre, RBAC serveur, RTL, drawer) — ✅ DONE (PR #542) |
 | US-2601 | Palette de commande `Ctrl/Cmd-K` (recherche patient scopée, audit ouverture) — ✅ DONE (PR #541) |
+| US-2623 | Barre de recherche **visible** (déclencheur de la palette US-2601) — 🚧 corrige la découvrabilité/tactile : bouton header « 🔍 Rechercher… ⌘K » (desktop) / icône loupe (mobile) ouvrant la palette existante (ouverture contrôlée, zéro logique de recherche dupliquée) ; staff `pro` only, a11y (≥44px, aria-label, focus), i18n FR/EN/AR + RTL. |
 | US-2602 | « Ma journée » — worklist de tri médecin (déterministe, seuils source unique) — ✅ DONE (PR #540) |
 | US-2603 | Barre de contexte patient + switcher — ✅ DONE (backend PR #560 : modèles recently-viewed/pinned + service scopé + endpoints ; UI PR #561 : barre persistante + switcher récents/épinglés) |
 | US-2604 | Onglets-routes du dossier (deep-link, audit niveau donnée, prefetch non-PII) — ✅ DONE (chantier câblage données patient, PR #543→#546 — 4 onglets sur données réelles, scopées/auditées ; enrichi #554–#558) |
