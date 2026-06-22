@@ -154,3 +154,25 @@ resolvePatientId(userId, role, patientIdParam?):
   VIEWER  → retourne son propre patientId
   Pro     → verifie canAccessPatient sur patientIdParam
 ```
+
+## Deviations d'audit acceptees
+
+### Lecture du nom d'affichage de soi-meme (non auditee)
+
+`userService.getOwnDisplayName(sessionUserId)` dechiffre `firstname`/`lastname`
+(PII chiffree AES-256-GCM) **sans ecrire d'entree d'audit**, contrairement a
+`getProfile` (lecture complete + auditee).
+
+**Justification (deviation a la regle CLAUDE.md « auditService.log() pour chaque
+acces a une donnee de sante »)** : le nom d'un utilisateur est une **PII
+d'identite, pas une donnee de sante (PHI)** — il ne revele aucune information
+clinique. Cette lecture sert uniquement a afficher a l'utilisateur **son propre
+nom** (avatar du shell, greeting du tableau de bord) et s'execute a **chaque
+chargement de page** ; l'auditer noierait le journal et degraderait sa valeur
+forensique.
+
+**Garde-fou** : la methode est nommee `getOwnDisplayName` et documentee
+« self-read only » — `sessionUserId` DOIT etre l'id du caller authentifie
+(`x-user-id`). Tout besoin de nom **cross-utilisateur** doit passer par
+`getProfile` (audite). Couverture test : `tests/unit/user.service.test.ts`
+verifie qu'aucun audit n'est emis.

@@ -10,7 +10,7 @@ import { redirect } from "next/navigation"
 import { NavigationShell, type UserRole } from "@/components/diabeo/NavigationShell"
 import { ConsultationProvider } from "@/components/diabeo/consultation/ConsultationContext"
 import { hasManagementCapability } from "@/lib/capabilities"
-import { userService } from "@/lib/services/user.service"
+import { getCurrentUserDisplayName } from "@/lib/auth/current-user-name"
 
 const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
 
@@ -48,12 +48,12 @@ export default async function DashboardLayout({
   const userId = rawUserId ? Number(rawUserId) : NaN
   const hasUserId = Number.isInteger(userId) && userId > 0
 
-  // US-26xx — nom affiché dans le shell (avatar/initiales). getDisplayName est
-  // léger et non-audité (cf. user.service). Parallélisé avec la capacité de
-  // gestion pour éviter un waterfall.
+  // US-26xx — nom affiché dans le shell (avatar/initiales). Lookup léger,
+  // non-audité, request-cached (cf. getCurrentUserDisplayName) → dédupliqué
+  // avec un éventuel appel côté page. Parallélisé avec la capacité de gestion.
   const [canManageOrg, displayName] = await Promise.all([
     hasUserId ? hasManagementCapability(userId) : Promise.resolve(false),
-    hasUserId ? userService.getDisplayName(userId) : Promise.resolve(null),
+    hasUserId ? getCurrentUserDisplayName(userId) : Promise.resolve(null),
   ])
   const userName =
     [displayName?.firstname, displayName?.lastname].filter(Boolean).join(" ") ||

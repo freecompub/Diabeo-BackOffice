@@ -16,7 +16,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getLocale, getTranslations } from "next-intl/server"
 import { CABINET_TIMEZONE } from "@/lib/cabinet-time"
-import { userService } from "@/lib/services/user.service"
+import { getCurrentUserDisplayName } from "@/lib/auth/current-user-name"
 import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCard"
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
@@ -59,17 +59,21 @@ export default async function MedecinDashboardPage() {
       ? today.charAt(0).toUpperCase() + today.slice(1)
       : today
 
-  // Greeting nominatif (« Bonjour, Dr Martin »). getDisplayName est léger et
-  // non-audité. On préfère « {titre} {nom} » (ex. « Dr Martin »), sinon le
-  // prénom. Si le nom est introuvable, le sous-titre se réduit à la date.
+  // Greeting nominatif (« Bonjour, Dr Martin »). Lookup self léger, non-audité,
+  // request-cached (dédupe avec le layout). On préfère « {titre} {nom} » (ex.
+  // « Dr Martin »), sinon le prénom ; date seule si le nom est introuvable.
   const rawUserId = headersList.get("x-user-id")
   const userId = rawUserId ? Number(rawUserId) : NaN
   const name =
     Number.isInteger(userId) && userId > 0
-      ? await userService.getDisplayName(userId)
+      ? await getCurrentUserDisplayName(userId)
       : null
+  // Le titre (« Dr », « Mme »…) est un libellé FR non localisé → on ne le
+  // préfixe qu'en fr/en ; les autres locales (ar) affichent le nom seul pour
+  // éviter un honorifique latin dans un greeting traduit.
+  const useTitle = locale === "fr" || locale === "en"
   const greetingName = name?.lastname
-    ? `${name.title ? `${name.title} ` : ""}${name.lastname}`
+    ? `${useTitle && name.title ? `${name.title} ` : ""}${name.lastname}`
     : (name?.firstname ?? null)
   const subtitle = greetingName
     ? `${t("greeting", { name: greetingName })} · ${todayLabel}`
