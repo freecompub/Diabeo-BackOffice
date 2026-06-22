@@ -1265,6 +1265,8 @@
   },
   "adminDashboard": {
     "pageTitle": "Admin dashboard",
+    "greeting": "Hello, {name}",
+    "hdsScope": "Administrator scope: no access to patients' health data — Health Data Hosting (HDS) segregation.",
     "globalViewTitle": "Global view",
     "kpiLoadError": "Unable to load KPIs.",
     "kpiCabinets": "Cabinets",

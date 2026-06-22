@@ -64,7 +64,7 @@ export function ComplianceCard() {
   return (
     <DiabeoCard role="region" aria-labelledby="admin-compliance-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="admin-compliance-title" className="text-base font-semibold">
+        <h2 id="admin-compliance-title" className="font-display text-base font-semibold">
           {t("complianceTitle")}
         </h2>
       </header>

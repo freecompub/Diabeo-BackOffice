@@ -41,7 +41,7 @@ export function BillingCard() {
   return (
     <DiabeoCard role="region" aria-labelledby="admin-billing-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="admin-billing-title" className="text-base font-semibold">
+        <h2 id="admin-billing-title" className="font-display text-base font-semibold">
           {t("billingTitle")}
         </h2>
         <span className="text-xs text-muted-foreground">

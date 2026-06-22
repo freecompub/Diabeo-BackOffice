@@ -1265,6 +1265,8 @@
   },
   "adminDashboard": {
     "pageTitle": "Tableau de bord administrateur",
+    "greeting": "Bonjour, {name}",
+    "hdsScope": "Périmètre administrateur : aucun accès aux données de santé des patients (cloisonnement Hébergeur de Données de Santé, HDS).",
     "globalViewTitle": "Vue globale",
     "kpiLoadError": "Impossible de charger les indicateurs clés (KPI).",
     "kpiCabinets": "Cabinets",
