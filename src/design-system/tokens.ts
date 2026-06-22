@@ -106,6 +106,18 @@ export const COLOR_TOKEN_CSS = {
   "dt2-bg": "#EFF6FF",
   "gd": "#EC4899",
   "gd-bg": "#FDF2F8",
+  // Role accents (Home dashboards). Doctor & Patient réutilisent le teal
+  // (primary-*) ; seuls Nurse (indigo) et Admin (slate) introduisent de
+  // nouvelles teintes. Chrome de rôle UNIQUEMENT — jamais un sens clinique.
+  // Contraste WCAG AA texte normal vérifié (voir docs/design-system/colors.md).
+  "role-nurse": "#3E63A8",          // fill / brand
+  "role-nurse-text": "#2E4C84",     // texte sur clair — AA ≥8:1
+  "role-nurse-soft": "#EEF3FB",     // fond teinté
+  "role-nurse-line": "#D5E0F2",     // bordure teintée
+  "role-admin": "#33474E",
+  "role-admin-text": "#2B3B41",
+  "role-admin-soft": "#EEF1F2",
+  "role-admin-line": "#D7DEDF",
   // Pur blanc — fonds de masquage des bandes de charts (≠ neutral-50 #FAFAFA).
   "white": "#FFFFFF",
   // Hover / active shades (dark-mode safe — rebindable via CSS var)
@@ -185,6 +197,17 @@ export const tokens = {
   },
   pathology: {
     DT1: C["dt1"], DT2: C["dt2"], GD: C["gd"],
+  },
+  /** Accents par rôle (Home). Doctor/Patient = teal (brand.primary). */
+  role: {
+    nurse: {
+      brand: C["role-nurse"], text: C["role-nurse-text"],
+      soft: C["role-nurse-soft"], line: C["role-nurse-line"],
+    },
+    admin: {
+      brand: C["role-admin"], text: C["role-admin-text"],
+      soft: C["role-admin-soft"], line: C["role-admin-line"],
+    },
   },
   /** Pur blanc (#FFFFFF) — fonds de masquage des bandes de charts. */
   white: C["white"],

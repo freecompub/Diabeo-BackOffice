@@ -62,6 +62,15 @@
   --color-teal-900: var(--diabeo-primary-900);
   --color-teal-950: var(--diabeo-primary-950);
 
+  /* --- Diabeo Design System: Role accent (resolves per [data-role]) ---
+     Usage: bg-role, text-role-text, bg-role-soft, border-role-line.
+     Defaults to teal (doctor/patient); nurse=indigo, admin=slate.
+     Kept separate from shadcn's --color-accent on purpose. */
+  --color-role: var(--role-accent);
+  --color-role-text: var(--role-accent-text);
+  --color-role-soft: var(--role-accent-soft);
+  --color-role-line: var(--role-accent-line);
+
   /* --- Diabeo Design System: Coral secondary scale --- */
   --color-coral-50: var(--diabeo-secondary-50);
   --color-coral-100: var(--diabeo-secondary-100);
