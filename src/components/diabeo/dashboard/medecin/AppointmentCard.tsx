@@ -45,7 +45,7 @@ export function AppointmentCard() {
   return (
     <DiabeoCard role="region" aria-labelledby="card-appointments-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-appointments-title" className="text-base font-semibold">
+        <h2 id="card-appointments-title" className="font-display text-base font-semibold">
           {t("appointments.title")}
         </h2>
         <span className="text-xs text-muted-foreground">

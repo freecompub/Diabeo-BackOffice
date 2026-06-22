@@ -38,7 +38,7 @@ export function RecallListCard() {
   return (
     <DiabeoCard role="region" aria-labelledby="card-recall-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-recall-title" className="text-base font-semibold">
+        <h2 id="card-recall-title" className="font-display text-base font-semibold">
           {t("title")}
         </h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
