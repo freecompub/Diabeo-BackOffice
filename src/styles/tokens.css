@@ -143,6 +143,32 @@
   --diabeo-gd-bg: #FDF2F8;
 
   /* ----------------------------------------------------------------
+   * 5b. COLOR TOKENS — Role accents (Home dashboards)
+   *   Doctor & Patient reuse the teal brand (primary-*). Only Nurse
+   *   (indigo) and Admin (slate) add new hues. These drive role chrome
+   *   ONLY (active nav, greeting, primary CTA, focus ring) — never
+   *   clinical / pathology / feedback meaning.
+   *   Contrast: all pass WCAG AA for normal text. Colorblind sim still
+   *   recommended. See docs/design-system/colors.md.
+   * ---------------------------------------------------------------- */
+  --diabeo-role-nurse: #3E63A8;
+  --diabeo-role-nurse-text: #2E4C84;
+  --diabeo-role-nurse-soft: #EEF3FB;
+  --diabeo-role-nurse-line: #D5E0F2;
+  --diabeo-role-admin: #33474E;
+  --diabeo-role-admin-text: #2B3B41;
+  --diabeo-role-admin-soft: #EEF1F2;
+  --diabeo-role-admin-line: #D7DEDF;
+
+  /* Active role accent — defaults to teal (doctor/patient). Switched by
+     [data-role="nurse"|"admin"] on the dashboard shell (see end of file).
+     NB: distinct from shadcn's --accent (do not hijack it). */
+  --role-accent: var(--diabeo-primary-600);
+  --role-accent-text: var(--diabeo-primary-700);
+  --role-accent-soft: var(--diabeo-primary-50);
+  --role-accent-line: var(--diabeo-primary-100);
+
+  /* ----------------------------------------------------------------
    * 6. TYPOGRAPHY TOKENS
    * ---------------------------------------------------------------- */
 
@@ -267,4 +293,21 @@
   --diabeo-glucose-target-max: 180;  /* mg/dL */
   --diabeo-glucose-high: 250;        /* mg/dL */
   --diabeo-glucose-very-high: 400;   /* mg/dL */
+}
+
+/* ------------------------------------------------------------------
+ * Role accent switch — set data-role on the dashboard shell element.
+ * Doctor/Patient inherit the teal default from :root above.
+ * ------------------------------------------------------------------ */
+[data-role="nurse"] {
+  --role-accent: var(--diabeo-role-nurse);
+  --role-accent-text: var(--diabeo-role-nurse-text);
+  --role-accent-soft: var(--diabeo-role-nurse-soft);
+  --role-accent-line: var(--diabeo-role-nurse-line);
+}
+[data-role="admin"] {
+  --role-accent: var(--diabeo-role-admin);
+  --role-accent-text: var(--diabeo-role-admin-text);
+  --role-accent-soft: var(--diabeo-role-admin-soft);
+  --role-accent-line: var(--diabeo-role-admin-line);
 }
