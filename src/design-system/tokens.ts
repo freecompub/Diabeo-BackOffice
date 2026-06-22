@@ -120,6 +120,15 @@ export const COLOR_TOKEN_CSS = {
   "role-admin-line": "#D7DEDF",
   // Pur blanc — fonds de masquage des bandes de charts (≠ neutral-50 #FAFAFA).
   "white": "#FFFFFF",
+  // Warm surfaces (editorial) — back the shadcn base tokens. Clinical/brand
+  // colors unaffected. Voir docs/design-system/colors.md §Warm Surfaces.
+  "paper": "#FAFAF7",
+  "paper-2": "#F4F2EC",
+  "ink": "#1A2A2E",
+  "ink-soft": "#586A6B",
+  "ink-faint": "#9AA8A6",
+  "line": "#E7E4DB",
+  "line-soft": "#EFEDE6",
   // Hover / active shades (dark-mode safe — rebindable via CSS var)
   "primary-hover": "#0F766E",       // teal-700, identique à primary-700
   "primary-active": "#115E59",      // teal-800
@@ -211,4 +220,10 @@ export const tokens = {
   },
   /** Pur blanc (#FFFFFF) — fonds de masquage des bandes de charts. */
   white: C["white"],
+  /** Surfaces chaudes (editorial) — fonds/texte/lignes. */
+  surface: {
+    paper: C["paper"], paper2: C["paper-2"], ink: C["ink"],
+    inkSoft: C["ink-soft"], inkFaint: C["ink-faint"],
+    line: C["line"], lineSoft: C["line-soft"],
+  },
 } as const
