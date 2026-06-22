@@ -21,7 +21,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NavigationShell } from "@/components/diabeo/NavigationShell"
 import { isKnownRoleString, resolveHomeForRole } from "@/lib/auth/role-home"
-import { getCurrentUserDisplayName } from "@/lib/auth/current-user-name"
+import { getShellUserName } from "@/lib/auth/current-user-name"
 
 export default async function PatientLayout({
   children,
@@ -45,15 +45,7 @@ export default async function PatientLayout({
 
   // Nom affiché dans le shell (avatar/initiales) — lookup self léger,
   // non-audité, request-cached. Corrige les initiales « U » de l'espace patient.
-  const rawUserId = headersList.get("x-user-id")
-  const userId = rawUserId ? Number(rawUserId) : NaN
-  const displayName =
-    Number.isInteger(userId) && userId > 0
-      ? await getCurrentUserDisplayName(userId)
-      : null
-  const userName =
-    [displayName?.firstname, displayName?.lastname].filter(Boolean).join(" ") ||
-    undefined
+  const userName = await getShellUserName(headersList)
 
   return (
     <NavigationShell
