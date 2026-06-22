@@ -108,6 +108,68 @@ The neutral palette (gray) is used for text, borders, backgrounds, and structura
 
 ---
 
+## Warm Surfaces (Editorial direction)
+
+> **Adopted — code migration pending** (same status as the typography switch).
+> The "Home v3" mockups replace the cool neutral *surfaces and ink* with a warm,
+> paper-toned set. This affects **only** backgrounds, ink, and structural lines.
+> Clinical glycemia colors, pathology badges, feedback colors, and the teal/coral
+> brand are **unchanged** — they keep their exact meaning and values.
+
+| Token | Hex | Replaces | Usage |
+|-------|-----|----------|-------|
+| `--diabeo-paper` | `#FAFAF7` | neutral-50 `#FAFAFA` | Page background |
+| `--diabeo-paper-2` | `#F4F2EC` | neutral-100 `#F3F4F6` | Card secondary bg, muted fills |
+| `--diabeo-surface` | `#FFFFFF` | white | Cards, panels |
+| `--diabeo-ink` | `#1A2A2E` | neutral-800 `#1F2937` | Primary text |
+| `--diabeo-ink-soft` | `#586A6B` | neutral-500 `#6B7280` | Secondary text |
+| `--diabeo-ink-faint` | `#9AA8A6` | neutral-400 `#9CA3AF` | Hints, placeholders |
+| `--diabeo-line` | `#E7E4DB` | neutral-200 `#E5E7EB` | Borders, dividers |
+| `--diabeo-line-soft` | `#EFEDE6` | — | Subtle inner dividers |
+
+These warm-paper/ink values are the **single source of truth** shared by both
+mockups (`home-roles-v3.html` and `home-patient-v2.html`). The earlier patient
+mockup used a browner variant (`#FAF8F4` / `#22201C`); it was reconciled to the
+values above so the editorial language is identical across roles.
+
+---
+
+## Role Accent Colors
+
+The Home dashboards differentiate user spaces with a per-role accent. The accent
+drives **only** chrome that carries no clinical meaning: active nav state, the
+greeting highlight, avatar tint, primary buttons, and section focus rings.
+
+> **Rule — accents never override meaning.** A role accent must never be used
+> for glycemia zones, pathology badges, or feedback (success/warn/error). Those
+> keep their fixed semantic colors regardless of the active role. Color reserved
+> for meaning still wins (WCAG 1.4.1 + clinical-accuracy principle above).
+
+| Role | `--accent` (text) | `--accent-brand` (fill) | `--accent-soft` (bg) | `--accent-line` |
+|------|------|------|------|------|
+| DOCTOR (`medecin`) | `#0F766E` | `#0D9488` | `#F0FDFA` | `#CCFBF1` |
+| NURSE (`nurse`) | `#2E4C84` | `#3E63A8` | `#EEF3FB` | `#D5E0F2` |
+| ADMIN (`admin`) | `#2B3B41` | `#33474E` | `#EEF1F2` | `#D7DEDF` |
+| PATIENT (`patient`) | `#0F766E` | `#0D9488` | `#F0FDFA` | `#CCFBF1` |
+
+### Collision fixes (vs the v2 mockup)
+
+- **NURSE** was `#1D6F8B` in v2 — that **is** the `--info` color, and it sat
+  close to DT2 pathology blue (`#2563EB`). Moved to a muted indigo (`#3E63A8`)
+  that is distinct from both info-teal and DT2 royal-blue.
+- **PATIENT** was coral-dominant in v2. Coral is the non-clinical secondary and
+  must never read as a clinical signal, so the patient space is now
+  **teal-dominant** and coral is demoted to alert/accent only.
+- DOCTOR and PATIENT intentionally share teal — they are different spaces (staff
+  vs self-service), never shown side by side.
+
+> ⚠️ **Validation pending before code adoption (2b).** The NURSE indigo
+> (`#3E63A8` on warm paper, `#2E4C84` for text) must be checked for WCAG AA
+> contrast and validated under protanopia/deuteranopia simulators — it sits in a
+> hue range near several other blues in the palette.
+
+---
+
 ## Usage Rules
 
 1. **Never use color as the sole indicator**: Always pair with an icon, label, or pattern. (WCAG 1.4.1)

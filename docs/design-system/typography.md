@@ -8,22 +8,43 @@ type hierarchy must guide their eyes without ambiguity.
 
 ## Font Families
 
-### Geist Sans (Primary)
+> **Editorial direction (adopted — code migration pending).** The "Home v3"
+> mockups (`docs/mockups/home-roles-v3.html`, `home-patient-v2.html`) adopt an
+> editorial type system: a serif for display, a humanist sans for UI, and a
+> mono for numerics. This is the target direction. **The shipped app still runs
+> Geist Sans / Geist Mono** (`src/app/layout.tsx`); the swap is gated on a
+> webfont-performance check (three families is heavier than Geist's two — subset
+> and self-host before shipping). Until then, treat Geist as the running
+> fallback and the trio below as the design intent.
 
-The default font for all UI text. Geist is a clean, modern sans-serif designed
-for user interfaces. It has excellent readability at small sizes and a
-professional, clinical feel.
+### Fraunces (Display / Headings)
+
+A variable optical-size serif used for page titles, card titles (H2/H3), KPI
+values, and the greeting. Fraunces gives the product a warmer, more human voice
+than a pure UI sans while staying highly legible. Use weight **600** for
+headings (700 reads too heavy at display sizes).
+
+```
+font-family: var(--diabeo-font-display);   /* "Fraunces", serif */
+Tailwind:    font-display
+```
+
+### Hanken Grotesk (Primary / UI)
+
+The default font for all UI text — body, labels, navigation, buttons. A humanist
+grotesque with excellent readability at the 14px base size and a professional,
+calm feel appropriate for a clinical tool.
 
 ```
 font-family: var(--diabeo-font-sans);
 Tailwind:    font-sans
 ```
 
-### Geist Mono (Numeric Data)
+### Spline Sans Mono (Numeric Data)
 
-Used for glucose values, dosages, timestamps, and any tabular numeric data.
-Monospaced numerals prevent layout shifts when values change and improve
-scanability in data-dense contexts.
+Used for glucose values, dosages, timestamps, percentages (TIR), and any tabular
+numeric data. Monospaced tabular numerals prevent layout shifts when values
+change and improve scanability in data-dense contexts.
 
 ```
 font-family: var(--diabeo-font-mono);
@@ -57,9 +78,11 @@ healthcare professionals need to see more information simultaneously.
 
 ### Headings
 
-- Page titles use H1 (`text-3xl font-bold`). One per page.
-- Section headings use H2 (`text-2xl font-semibold`).
-- Card and widget titles use H3 (`text-xl font-semibold`).
+- Headings and KPI values render in **Fraunces** (`font-display`) at weight
+  **600** — not the UI sans. This is the one place the serif appears.
+- Page titles use H1 (`text-3xl`, Fraunces 600). One per page.
+- Section headings use H2 (`text-2xl`, Fraunces 600).
+- Card and widget titles use H3 (`text-xl`, Fraunces 600).
 - Never skip heading levels (H1 -> H3 without H2).
 
 ### Body Text

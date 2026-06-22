@@ -264,3 +264,43 @@ When no data is available, show a clear empty state:
 
 The backoffice is primarily a desktop application, but must remain functional
 on tablets for bedside consultation.
+
+---
+
+## 10. Home / Dashboard by Role
+
+Each role lands on a purpose-built home. They share one shell (sidebar + top
+bar + canvas, see §1) and one component vocabulary (greeting, KPI band, cards,
+rows), but the **information architecture is role-specific** — the layout is the
+differentiator, not just the accent color (§Role Accent in `colors.md`).
+Reference mockups: `docs/mockups/home-roles-v3.html` and `home-patient-v2.html`.
+
+### Shared building blocks
+
+- **Greeting** — `Fraunces` H1 + one summary line. The summary highlights the
+  single most actionable number for the role (`text-accent font-bold`).
+- **KPI band** — up to 4 `StatCard`s, each with a 3px left accent rail. Use the
+  glycemia/feedback color on the rail only when the KPI *is* clinical/at-risk.
+- **Cards** — header (icon dot + Fraunces H3 + count + "more" link) over a list
+  of rows. Rows and KPIs are interactive: `cursor-pointer`, hover bg, and a
+  visible `:focus-visible` ring (keyboard parity is mandatory).
+
+### Per-role layout intent
+
+| Role | Intent | Top-of-page | Notable |
+|------|--------|-------------|---------|
+| **DOCTOR** — *Ma journée* | Triage-first | Full-width **Glycemic alerts** (severity-ordered) — no KPI band, alerts come first | Then proposals · today's appts · recalls · unread messages |
+| **NURSE** — *Tableau de bord* | Task-first | KPI band, then **Tasks (excl. appointments)** beside **Appointments to prepare** | Tasks must not duplicate appointment-prep rows |
+| **ADMIN** — *Plateforme* | Governance-first | KPI band + explicit **HDS scope banner** | "No access to patient health data" stated as a banner, not buried; audit feed + system health |
+| **PATIENT** — *Accueil* | Graph-first | **Today's glycemia chart** with 70–180 target band + TIR ring/strip | Teal-dominant; primary action = log entry; coral only for alerts/meal markers |
+
+### Rules
+
+- **DOCTOR home leads with risk, not metrics** — the alert list is the first
+  thing on screen; KPIs (if any) come after triage.
+- **ADMIN never renders PHI** — the home shows org/establishment governance,
+  PS-proof validation, audit, and system health only. The HDS scope banner is
+  required (matches the server-side `ADMIN`-only guard).
+- **PATIENT is graph-first and reassuring** — open on the day's curve and TIR,
+  then quick log actions, then secondary context (next appt, message, sensor).
+- Differentiate roles by **content + layout first**, accent color second.
