@@ -215,7 +215,11 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
               )}
             </div>
 
-            {/* Value row */}
+            {/* Value row — valeur en Fraunces (font-display, chargé en 600 →
+                font-semibold ; font-bold/700 ferait un fallback). tabular-nums
+                est best-effort : le cut statique Fraunces 600 peut ne pas
+                exposer `tnum`, donc largeur non strictement garantie (KPI en
+                polling). Cf. docs/design-system/typography.md §Numeric Data. */}
             <div className="flex items-baseline gap-1 mt-1">
               <span className="font-display text-3xl font-semibold text-foreground tabular-nums">
                 {value}

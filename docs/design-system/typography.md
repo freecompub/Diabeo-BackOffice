@@ -61,8 +61,8 @@ healthcare professionals need to see more information simultaneously.
 
 | Level | Size | Weight | Line Height | Tailwind | Usage |
 |-------|------|--------|-------------|----------|-------|
-| Display | 36px / 2.25rem | 700 | 1.25 | `text-4xl font-bold` | Dashboard hero KPIs |
-| H1 | 30px / 1.875rem | 700 | 1.25 | `text-3xl font-bold` | Page titles |
+| Display | 36px / 2.25rem | 600 | 1.25 | `font-display text-4xl font-semibold` | Dashboard hero KPIs |
+| H1 | 30px / 1.875rem | 600 | 1.25 | `font-display text-3xl font-semibold` | Page titles |
 | H2 | 24px / 1.5rem | 600 | 1.25 | `text-2xl font-semibold` | Section headings |
 | H3 | 20px / 1.25rem | 600 | 1.375 | `text-xl font-semibold` | Card titles |
 | H4 | 18px / 1.125rem | 600 | 1.375 | `text-lg font-semibold` | Subsection headings |
@@ -90,13 +90,23 @@ healthcare professionals need to see more information simultaneously.
 - Default body text is 14px. This is intentional for desktop dashboards.
 - Use `font-medium` (500) for labels, navigation items, and form labels.
 - Use `font-semibold` (600) for emphasized inline text.
-- Never use `font-bold` (700) for body text -- reserve for headings and KPIs.
+- Never use `font-bold` (700) for body text.
+- Headings, page titles and dashboard KPI values render in the **Fraunces
+  display face** (`font-display`) at **600** (`font-semibold`) — the serif is
+  loaded only at weight 600, so `font-bold`/700 would fall back. `font-bold`
+  (700) stays reserved for inline numeric data in the mono face (below).
 
 ### Numeric Data
 
-- Glucose values: `tabular-nums font-bold` -- always monospaced with bold weight.
-- Dosages (insulin units): `tabular-nums font-semibold`.
-- Percentages (TIR): `tabular-nums font-bold`.
+- **KPI / display values** (MetricCard, hero numbers) render in the Fraunces
+  display face at `font-semibold` (600) — not 700 (serif is 600-only). The
+  `MetricCard` value also carries `tabular-nums` (best-effort: the static
+  Fraunces 600 cut may not expose `tnum`, so treat it as decorative there).
+- Glucose values (inline, mono): `font-mono tabular-nums font-bold` -- Spline
+  Sans Mono has genuine tabular figures; bold is available on the mono face.
+- Dosages (insulin units): `font-mono tabular-nums font-semibold`.
+- Percentages (TIR) inline: `font-mono tabular-nums font-bold` (mono). In a KPI
+  card, the percentage follows the KPI rule above (Fraunces 600).
 - Timestamps: `text-xs text-muted-foreground`.
 - Always use `tabular-nums` (or `font-mono`) for numbers that may update or appear in columns -- this prevents layout shifts.
 
