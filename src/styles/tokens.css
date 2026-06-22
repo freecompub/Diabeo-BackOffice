@@ -57,6 +57,17 @@
   /* Pure white — chart band masking (distinct from neutral-50 #FAFAFA) */
   --diabeo-white: #FFFFFF;
 
+  /* Warm surfaces (editorial direction) — back the shadcn base tokens
+     (--background/--card/--border…). Clinical/glycemia/brand colors are
+     unaffected. See docs/design-system/colors.md §Warm Surfaces. */
+  --diabeo-paper: #FAFAF7;        /* page background */
+  --diabeo-paper-2: #F4F2EC;      /* muted/secondary fills */
+  --diabeo-ink: #1A2A2E;          /* primary text */
+  --diabeo-ink-soft: #586A6B;     /* secondary text */
+  --diabeo-ink-faint: #9AA8A6;    /* hints/placeholders */
+  --diabeo-line: #E7E4DB;         /* borders/dividers */
+  --diabeo-line-soft: #EFEDE6;    /* subtle inner dividers */
+
   /* ----------------------------------------------------------------
    * 2. COLOR TOKENS — Glycemia (clinical)
    * ---------------------------------------------------------------- */
@@ -172,8 +183,11 @@
    * 6. TYPOGRAPHY TOKENS
    * ---------------------------------------------------------------- */
 
-  --diabeo-font-sans: var(--font-geist-sans, "Geist", ui-sans-serif, system-ui, -apple-system, sans-serif);
-  --diabeo-font-mono: var(--font-geist-mono, "Geist Mono", ui-monospace, "Cascadia Code", monospace);
+  /* Editorial trio (see docs/design-system/typography.md). next/font sets the
+     --font-* variables in layout.tsx ; the literal names are SSR fallbacks. */
+  --diabeo-font-display: var(--font-fraunces, "Fraunces", ui-serif, Georgia, serif);
+  --diabeo-font-sans: var(--font-hanken, "Hanken Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif);
+  --diabeo-font-mono: var(--font-spline, "Spline Sans Mono", ui-monospace, "Cascadia Code", monospace);
 
   /* Font sizes — rem scale */
   --diabeo-text-xs: 0.75rem;         /* 12px */

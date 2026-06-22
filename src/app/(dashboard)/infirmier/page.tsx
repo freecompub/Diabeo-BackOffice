@@ -27,7 +27,7 @@ export default async function InfirmierDashboardPage() {
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="text-2xl font-semibold">{t("title")}</h1>
+      <h1 className="font-display text-2xl font-semibold">{t("title")}</h1>
       <NurseKpiSection />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TodoListCard />

@@ -39,7 +39,7 @@ export default async function MedecinDashboardPage() {
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="text-2xl font-semibold">{t("pageTitle")}</h1>
+      <h1 className="font-display text-2xl font-semibold">{t("pageTitle")}</h1>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <EmergencyCard />
         <AppointmentCard />

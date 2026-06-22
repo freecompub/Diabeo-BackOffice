@@ -29,7 +29,7 @@ export default async function AdminDashboardPage() {
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="text-2xl font-semibold">{t("adminDashboard.pageTitle")}</h1>
+      <h1 className="font-display text-2xl font-semibold">{t("adminDashboard.pageTitle")}</h1>
       <AdminKpiSection />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BillingCard />

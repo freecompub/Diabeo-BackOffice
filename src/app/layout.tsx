@@ -1,18 +1,32 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Fraunces, Hanken_Grotesk, Spline_Sans_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import { isRtlLocale, type Locale } from "@/i18n/config";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Direction éditoriale (docs/design-system/typography.md). next/font self-host
+// + subset automatiquement (pas de requête Google au runtime). display:swap
+// évite le FOIT. Fraunces = titres/KPI ; Hanken = UI ; Spline Mono = chiffres.
+const hankenSans = Hanken_Grotesk({
+  variable: "--font-hanken",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const splineMono = Spline_Sans_Mono({
+  variable: "--font-spline",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const fraunces = Fraunces({
+  variable: "--font-fraunces",
+  subsets: ["latin"],
+  display: "swap",
+  // La typo n'utilise Fraunces qu'en 600 (titres/KPI) — un seul cut statique
+  // au lieu du variable complet, pour limiter le poids. Voir typography.md.
+  weight: ["600"],
 });
 
 export const metadata: Metadata = {
@@ -39,7 +53,7 @@ export default async function RootLayout({
     <html
       lang={locale}
       dir={dir}
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${hankenSans.variable} ${splineMono.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <NextIntlClientProvider locale={locale} messages={messages}>
