@@ -10,6 +10,7 @@ import { redirect } from "next/navigation"
 import { NavigationShell, type UserRole } from "@/components/diabeo/NavigationShell"
 import { ConsultationProvider } from "@/components/diabeo/consultation/ConsultationContext"
 import { hasManagementCapability } from "@/lib/capabilities"
+import { userService } from "@/lib/services/user.service"
 
 const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
 
@@ -45,9 +46,18 @@ export default async function DashboardLayout({
   // rôle clinique. `x-user-id` injecté par le middleware JWT.
   const rawUserId = headersList.get("x-user-id")
   const userId = rawUserId ? Number(rawUserId) : NaN
-  const canManageOrg = Number.isInteger(userId) && userId > 0
-    ? await hasManagementCapability(userId)
-    : false
+  const hasUserId = Number.isInteger(userId) && userId > 0
+
+  // US-26xx — nom affiché dans le shell (avatar/initiales). getDisplayName est
+  // léger et non-audité (cf. user.service). Parallélisé avec la capacité de
+  // gestion pour éviter un waterfall.
+  const [canManageOrg, displayName] = await Promise.all([
+    hasUserId ? hasManagementCapability(userId) : Promise.resolve(false),
+    hasUserId ? userService.getDisplayName(userId) : Promise.resolve(null),
+  ])
+  const userName =
+    [displayName?.firstname, displayName?.lastname].filter(Boolean).join(" ") ||
+    undefined
 
   return (
     // US-2018b — le provider enveloppe tout le shell : la consultation rend la
@@ -56,6 +66,7 @@ export default async function DashboardLayout({
       <NavigationShell
         pageTitle="Diabeo"
         userRole={userRole}
+        userName={userName}
         canManageOrg={canManageOrg}
       >
         {children}

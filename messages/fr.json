@@ -238,6 +238,7 @@
     "newEventAriaLabel": "Ouvrir le formulaire de saisie d'un nouvel evenement",
     "medecin": {
       "pageTitle": "Ma journée",
+      "greeting": "Bonjour, {name}",
       "lastUpdate": "Mise à jour {time}",
       "loading": "Chargement…",
       "stale": "Données obsolètes — rafraîchissement en attente.",

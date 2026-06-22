@@ -62,6 +62,30 @@ function isEncryptedField(field: string): field is EncryptedUserField {
  */
 export const userService = {
   /**
+   * Lightweight display-name lookup for UI chrome (shell avatar, greeting).
+   * Selects + decrypts ONLY title/firstname/lastname — not the full profile —
+   * and writes NO audit entry: rendering one's own name in the UI is not a PHI
+   * access and runs on every dashboard load (auditing it would flood the
+   * trail). Use {@link getProfile} when a full, audited read is required.
+   * @param {number} userId - User ID (own id from the JWT middleware header).
+   * @returns name parts (decrypted) or null if not found.
+   */
+  async getDisplayName(
+    userId: number,
+  ): Promise<{ title: string | null; firstname: string | null; lastname: string | null } | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { title: true, firstname: true, lastname: true },
+    })
+    if (!user) return null
+    return {
+      title: user.title,
+      firstname: safeDecryptField(user.firstname),
+      lastname: safeDecryptField(user.lastname),
+    }
+  },
+
+  /**
    * Get user profile with all encrypted fields decrypted.
    * Logs READ audit entry.
    * @async
