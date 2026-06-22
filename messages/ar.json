@@ -1530,7 +1530,8 @@
       "kindObserveProposal": "اقتراح"
     },
     "nursePage": {
-      "title": "لوحة تحكم الممرّض"
+      "title": "لوحة تحكم الممرّض",
+      "greeting": "مرحبًا، {name}"
     }
   },
   "insulinUnits": {

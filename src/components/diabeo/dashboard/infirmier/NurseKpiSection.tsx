@@ -34,7 +34,7 @@ export function NurseKpiSection() {
   ]
   return (
     <section aria-labelledby="nurse-kpi-title">
-      <h2 id="nurse-kpi-title" className="mb-3 text-base font-semibold">
+      <h2 id="nurse-kpi-title" className="mb-3 font-display text-base font-semibold">
         {t("nurseKpiTitle")}
       </h2>
       {hasError && (

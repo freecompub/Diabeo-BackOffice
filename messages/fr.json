@@ -1530,7 +1530,8 @@
       "kindObserveProposal": "Proposition"
     },
     "nursePage": {
-      "title": "Tableau de bord infirmier"
+      "title": "Tableau de bord infirmier",
+      "greeting": "Bonjour, {name}"
     }
   },
   "insulinUnits": {
