@@ -122,7 +122,7 @@ function MetricCardSkeleton() {
   return (
     <div className="space-y-2" aria-busy="true" aria-label={t("loading")}>
       <Skeleton className="h-3.5 w-24" />
-      <Skeleton className="h-8 w-16" />
+      <Skeleton className="h-9 w-20" />
       <Skeleton className="h-3 w-12" />
     </div>
   )
@@ -170,9 +170,12 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
         clickable={isClickable}
         onClick={onClick}
         className={cn(
-          // Inline-start border accent when status is set
-          status && "border-s-4",
-          status && statusBorderClasses[status],
+          // Rail inline-start : couleur clinique du status si défini, sinon
+          // l'accent de rôle (--color-role, résolu par [data-role] sur le
+          // shell). Donne la « bande KPI » éditoriale des mockups Home v3.
+          // Le status (clinique) prime toujours sur l'accent de rôle.
+          "border-s-4",
+          status ? statusBorderClasses[status] : "border-s-role",
           className
         )}
         role={isClickable ? "button" : "region"}
@@ -199,7 +202,7 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
           <>
             {/* Top row: title + icon */}
             <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-medium text-muted-foreground truncate">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground truncate">
                 {title}
               </p>
               {icon && (
@@ -214,7 +217,7 @@ export const MetricCard = forwardRef<HTMLDivElement, MetricCardProps>(
 
             {/* Value row */}
             <div className="flex items-baseline gap-1 mt-1">
-              <span className="text-2xl font-bold text-foreground tabular-nums">
+              <span className="font-display text-3xl font-semibold text-foreground tabular-nums">
                 {value}
               </span>
               {unit && (
