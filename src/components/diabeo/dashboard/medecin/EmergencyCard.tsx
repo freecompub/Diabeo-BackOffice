@@ -39,7 +39,7 @@ export function EmergencyCard() {
   return (
     <DiabeoCard className="border-s-4 border-s-glycemia-critical" role="region" aria-labelledby="card-urgencies-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-urgencies-title" className="text-base font-semibold text-glycemia-critical">
+        <h2 id="card-urgencies-title" className="font-display text-base font-semibold text-glycemia-critical">
           {t("urgencies.title")}
         </h2>
         <span className="text-xs text-muted-foreground">

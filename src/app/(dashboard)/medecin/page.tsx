@@ -14,7 +14,8 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { getTranslations } from "next-intl/server"
+import { getLocale, getTranslations } from "next-intl/server"
+import { CABINET_TIMEZONE } from "@/lib/cabinet-time"
 import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCard"
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
@@ -37,9 +38,34 @@ export default async function MedecinDashboardPage() {
 
   const t = await getTranslations("dashboard.medecin")
 
+  // Greeting éditorial (mockup Home v3) : titre Fraunces + date localisée.
+  // La date est une valeur formatée (non un littéral JSX) — pas de clé i18n
+  // requise ; Intl gère la locale active.
+  // timeZone épinglé à Europe/Paris (CABINET_TIMEZONE) comme tout le reste du
+  // code horaire : sinon `new Date()` se résout en zone serveur (VPS UTC) et
+  // affiche le mauvais jour entre 22 h et minuit heure de Paris.
+  const locale = await getLocale()
+  const today = new Intl.DateTimeFormat(locale, {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: CABINET_TIMEZONE,
+  }).format(new Date())
+  // FR/EN rendent le jour de la semaine en minuscule en début de phrase → on
+  // capitalise. Inutile/incorrect pour d'autres scripts (ar) → restreint.
+  const todayLabel =
+    locale === "fr" || locale === "en"
+      ? today.charAt(0).toUpperCase() + today.slice(1)
+      : today
+
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="font-display text-2xl font-semibold">{t("pageTitle")}</h1>
+      <header>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          {t("pageTitle")}
+        </h1>
+        <p className="mt-1 text-sm text-muted-foreground">{todayLabel}</p>
+      </header>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <EmergencyCard />
         <AppointmentCard />

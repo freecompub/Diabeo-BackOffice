@@ -325,3 +325,10 @@
   --role-accent-soft: var(--diabeo-role-admin-soft);
   --role-accent-line: var(--diabeo-role-admin-line);
 }
+
+/* Fraunces n'a pas de glyphes arabes : en arabe, les titres (font-display)
+   retombent sur la police UI (Hanken) plutôt qu'un serif système, pour
+   garder une typographie cohérente fr/en/ar. App-wide via le lang du <html>. */
+[lang="ar"] {
+  --diabeo-font-display: var(--diabeo-font-sans);
+}

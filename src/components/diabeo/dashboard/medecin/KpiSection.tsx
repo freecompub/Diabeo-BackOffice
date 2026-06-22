@@ -31,7 +31,7 @@ export function KpiSection() {
 
   return (
     <section aria-labelledby="kpi-section-title">
-      <h2 id="kpi-section-title" className="mb-3 text-base font-semibold">
+      <h2 id="kpi-section-title" className="mb-3 font-display text-base font-semibold">
         {t("kpi.title")}
       </h2>
       {hasError && (

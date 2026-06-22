@@ -39,7 +39,7 @@ export function PatientsAtRiskCard() {
   return (
     <DiabeoCard role="region" aria-labelledby="card-risk-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-risk-title" className="text-base font-semibold">
+        <h2 id="card-risk-title" className="font-display text-base font-semibold">
           {t("risk.title")}
         </h2>
         <span className="text-xs text-muted-foreground">

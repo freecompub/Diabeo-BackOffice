@@ -96,7 +96,7 @@ export function PendingProposalsCard() {
   return (
     <DiabeoCard role="region" aria-labelledby="card-proposals-title">
       <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-proposals-title" className="text-base font-semibold">
+        <h2 id="card-proposals-title" className="font-display text-base font-semibold">
           {t("title")}
         </h2>
         <span className="text-xs text-muted-foreground">{items.length}</span>
