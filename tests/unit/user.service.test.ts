@@ -86,6 +86,57 @@ describe("userService", () => {
     })
   })
 
+  describe("getOwnDisplayName", () => {
+    it("returns decrypted name parts WITHOUT writing an audit log", async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        title: "Dr",
+        firstname: Buffer.from("ENC:Camille").toString("base64"),
+        lastname: Buffer.from("ENC:Martin").toString("base64"),
+      } as never)
+      // Security invariant : self-display reads are deliberately un-audited.
+      vi.mocked(prismaMock.auditLog.create).mockClear()
+
+      const result = await userService.getOwnDisplayName(7)
+
+      expect(result).toEqual({ title: "Dr", firstname: "Camille", lastname: "Martin" })
+      expect(prismaMock.auditLog.create).not.toHaveBeenCalled()
+    })
+
+    it("selects only title/firstname/lastname (data minimization)", async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        title: "Mme",
+        firstname: Buffer.from("ENC:Alice").toString("base64"),
+        lastname: Buffer.from("ENC:Durand").toString("base64"),
+      } as never)
+
+      await userService.getOwnDisplayName(7)
+
+      const call = prismaMock.user.findUnique.mock.calls.at(-1)![0]
+      expect(call).toEqual({
+        where: { id: 7 },
+        select: { title: true, firstname: true, lastname: true },
+      })
+    })
+
+    it("returns null for a non-existent user", async () => {
+      prismaMock.user.findUnique.mockResolvedValue(null)
+      expect(await userService.getOwnDisplayName(999)).toBeNull()
+    })
+
+    it("degrades gracefully when a field fails to decrypt", async () => {
+      prismaMock.user.findUnique.mockResolvedValue({
+        title: null,
+        firstname: "corrupted-not-a-valid-cipher",
+        lastname: Buffer.from("ENC:Martin").toString("base64"),
+      } as never)
+
+      const result = await userService.getOwnDisplayName(7)
+
+      // safeDecryptField swallows the error → null, never throws or leaks.
+      expect(result).toEqual({ title: null, firstname: null, lastname: "Martin" })
+    })
+  })
+
   describe("updateProfile", () => {
     it("encrypts fields and updates in transaction", async () => {
       const mockTx = {

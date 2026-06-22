@@ -238,6 +238,7 @@
     "newEventAriaLabel": "فتح نموذج حدث جديد",
     "medecin": {
       "pageTitle": "يومي",
+      "greeting": "مرحبًا، {name}",
       "lastUpdate": "آخر تحديث {time}",
       "loading": "جارٍ التحميل…",
       "stale": "بيانات قديمة — في انتظار التحديث.",

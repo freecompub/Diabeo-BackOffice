@@ -16,6 +16,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getLocale, getTranslations } from "next-intl/server"
 import { CABINET_TIMEZONE } from "@/lib/cabinet-time"
+import { getCurrentUserDisplayName } from "@/lib/auth/current-user-name"
 import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCard"
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
@@ -58,13 +59,33 @@ export default async function MedecinDashboardPage() {
       ? today.charAt(0).toUpperCase() + today.slice(1)
       : today
 
+  // Greeting nominatif (« Bonjour, Dr Martin »). Lookup self léger, non-audité,
+  // request-cached (dédupe avec le layout). On préfère « {titre} {nom} » (ex.
+  // « Dr Martin »), sinon le prénom ; date seule si le nom est introuvable.
+  const rawUserId = headersList.get("x-user-id")
+  const userId = rawUserId ? Number(rawUserId) : NaN
+  const name =
+    Number.isInteger(userId) && userId > 0
+      ? await getCurrentUserDisplayName(userId)
+      : null
+  // Le titre (« Dr », « Mme »…) est un libellé FR non localisé → on ne le
+  // préfixe qu'en fr/en ; les autres locales (ar) affichent le nom seul pour
+  // éviter un honorifique latin dans un greeting traduit.
+  const useTitle = locale === "fr" || locale === "en"
+  const greetingName = name?.lastname
+    ? `${useTitle && name.title ? `${name.title} ` : ""}${name.lastname}`
+    : (name?.firstname ?? null)
+  const subtitle = greetingName
+    ? `${t("greeting", { name: greetingName })} · ${todayLabel}`
+    : todayLabel
+
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
       <header>
         <h1 className="font-display text-3xl font-semibold tracking-tight">
           {t("pageTitle")}
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{todayLabel}</p>
+        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
       </header>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <EmergencyCard />

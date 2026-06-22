@@ -238,6 +238,7 @@
     "newEventAriaLabel": "Open new event form",
     "medecin": {
       "pageTitle": "My day",
+      "greeting": "Hello, {name}",
       "lastUpdate": "Updated {time}",
       "loading": "Loading…",
       "stale": "Stale data — refresh pending.",

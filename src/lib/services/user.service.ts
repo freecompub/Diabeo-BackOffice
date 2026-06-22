@@ -62,6 +62,38 @@ function isEncryptedField(field: string): field is EncryptedUserField {
  */
 export const userService = {
   /**
+   * Lightweight SELF display-name lookup for UI chrome (shell avatar, greeting).
+   * Selects + decrypts ONLY title/firstname/lastname — not the full profile —
+   * and writes NO audit entry: rendering one's OWN name in the UI is identity
+   * PII (not health data / PHI) and runs on every dashboard load — auditing it
+   * would flood the trail and degrade its forensic value.
+   *
+   * ⚠️ SECURITY — self-read only. `sessionUserId` MUST be the authenticated
+   * caller's own id (from the `x-user-id` JWT-middleware header). NEVER pass
+   * another subject's id here: this path is deliberately un-audited, so a
+   * cross-user read would be an untraceable PII disclosure (anti-HDS/CNIL).
+   * Any cross-user display-name need MUST go through {@link getProfile}, which
+   * is audited.
+   *
+   * @param {number} sessionUserId - The authenticated caller's OWN user id.
+   * @returns name parts (decrypted) or null if not found.
+   */
+  async getOwnDisplayName(
+    sessionUserId: number,
+  ): Promise<{ title: string | null; firstname: string | null; lastname: string | null } | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: sessionUserId },
+      select: { title: true, firstname: true, lastname: true },
+    })
+    if (!user) return null
+    return {
+      title: user.title,
+      firstname: safeDecryptField(user.firstname),
+      lastname: safeDecryptField(user.lastname),
+    }
+  },
+
+  /**
    * Get user profile with all encrypted fields decrypted.
    * Logs READ audit entry.
    * @async
