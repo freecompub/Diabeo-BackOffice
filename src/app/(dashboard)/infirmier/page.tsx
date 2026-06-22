@@ -11,6 +11,7 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
+import { DashboardGreeting } from "@/components/diabeo/dashboard/DashboardGreeting"
 import { NurseKpiSection } from "@/components/diabeo/dashboard/infirmier/NurseKpiSection"
 import { TodoListCard } from "@/components/diabeo/dashboard/infirmier/TodoListCard"
 import { TeamInboxCard } from "@/components/diabeo/dashboard/infirmier/TeamInboxCard"
@@ -27,7 +28,10 @@ export default async function InfirmierDashboardPage() {
 
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <h1 className="font-display text-2xl font-semibold">{t("title")}</h1>
+      <DashboardGreeting
+        title={t("title")}
+        greeting={(name) => t("greeting", { name })}
+      />
       <NurseKpiSection />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <TodoListCard />

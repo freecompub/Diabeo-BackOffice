@@ -1530,7 +1530,8 @@
       "kindObserveProposal": "Proposal"
     },
     "nursePage": {
-      "title": "Nurse dashboard"
+      "title": "Nurse dashboard",
+      "greeting": "Hello, {name}"
     }
   },
   "insulinUnits": {
