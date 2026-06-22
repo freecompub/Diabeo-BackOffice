@@ -177,7 +177,7 @@ function SidebarNav({
               "flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors relative",
               collapsed && "justify-center px-2",
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-role-soft text-role-text"
                 : "text-muted-foreground hover:bg-muted hover:text-foreground"
             )}
             aria-current={isActive ? "page" : undefined}
@@ -417,6 +417,18 @@ export function NavigationShell({
         .slice(0, 2)
     : "U"
 
+  // Accent par rôle (design-system §Role Accent). Pose `data-role` sur la
+  // racine du shell → résout --role-accent* (teal par défaut, nurse=indigo,
+  // admin=slate). Doctor & patient retombent sur le teal par défaut.
+  const roleSlug =
+    variant === "patient" || userRole === "VIEWER"
+      ? "patient"
+      : userRole === "ADMIN"
+        ? "admin"
+        : userRole === "NURSE"
+          ? "nurse"
+          : "doctor"
+
   return (
     <UnreadCountProvider skip={!hasBadgeItem}>
     <TooltipProvider delay={300}>
@@ -424,7 +436,7 @@ export function NavigationShell({
       {variant === "pro" && (
         <CommandPalette userRole={userRole} open={searchOpen} onOpenChange={setSearchOpen} />
       )}
-      <div className="flex h-screen overflow-hidden bg-[var(--background)]">
+      <div data-role={roleSlug} className="flex h-screen overflow-hidden bg-[var(--background)]">
         {/* Desktop sidebar */}
         <aside
           className={cn(
