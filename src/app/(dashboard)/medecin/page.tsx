@@ -14,9 +14,8 @@
 
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
-import { getLocale, getTranslations } from "next-intl/server"
-import { CABINET_TIMEZONE } from "@/lib/cabinet-time"
-import { getCurrentUserDisplayName } from "@/lib/auth/current-user-name"
+import { getTranslations } from "next-intl/server"
+import { DashboardGreeting } from "@/components/diabeo/dashboard/DashboardGreeting"
 import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCard"
 import { AppointmentCard } from "@/components/diabeo/dashboard/medecin/AppointmentCard"
 import { PatientsAtRiskCard } from "@/components/diabeo/dashboard/medecin/PatientsAtRiskCard"
@@ -39,54 +38,12 @@ export default async function MedecinDashboardPage() {
 
   const t = await getTranslations("dashboard.medecin")
 
-  // Greeting éditorial (mockup Home v3) : titre Fraunces + date localisée.
-  // La date est une valeur formatée (non un littéral JSX) — pas de clé i18n
-  // requise ; Intl gère la locale active.
-  // timeZone épinglé à Europe/Paris (CABINET_TIMEZONE) comme tout le reste du
-  // code horaire : sinon `new Date()` se résout en zone serveur (VPS UTC) et
-  // affiche le mauvais jour entre 22 h et minuit heure de Paris.
-  const locale = await getLocale()
-  const today = new Intl.DateTimeFormat(locale, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    timeZone: CABINET_TIMEZONE,
-  }).format(new Date())
-  // FR/EN rendent le jour de la semaine en minuscule en début de phrase → on
-  // capitalise. Inutile/incorrect pour d'autres scripts (ar) → restreint.
-  const todayLabel =
-    locale === "fr" || locale === "en"
-      ? today.charAt(0).toUpperCase() + today.slice(1)
-      : today
-
-  // Greeting nominatif (« Bonjour, Dr Martin »). Lookup self léger, non-audité,
-  // request-cached (dédupe avec le layout). On préfère « {titre} {nom} » (ex.
-  // « Dr Martin »), sinon le prénom ; date seule si le nom est introuvable.
-  const rawUserId = headersList.get("x-user-id")
-  const userId = rawUserId ? Number(rawUserId) : NaN
-  const name =
-    Number.isInteger(userId) && userId > 0
-      ? await getCurrentUserDisplayName(userId)
-      : null
-  // Le titre (« Dr », « Mme »…) est un libellé FR non localisé → on ne le
-  // préfixe qu'en fr/en ; les autres locales (ar) affichent le nom seul pour
-  // éviter un honorifique latin dans un greeting traduit.
-  const useTitle = locale === "fr" || locale === "en"
-  const greetingName = name?.lastname
-    ? `${useTitle && name.title ? `${name.title} ` : ""}${name.lastname}`
-    : (name?.firstname ?? null)
-  const subtitle = greetingName
-    ? `${t("greeting", { name: greetingName })} · ${todayLabel}`
-    : todayLabel
-
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6">
-      <header>
-        <h1 className="font-display text-3xl font-semibold tracking-tight">
-          {t("pageTitle")}
-        </h1>
-        <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
-      </header>
+      <DashboardGreeting
+        title={t("pageTitle")}
+        greeting={(name) => t("greeting", { name })}
+      />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <EmergencyCard />
         <AppointmentCard />
