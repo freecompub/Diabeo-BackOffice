@@ -11,9 +11,10 @@
   :root{
     --teal:#0D9488; --teal-700:#0F766E; --teal-50:#F0FDFA;
     --coral:#EA580C; --coral-700:#C2410C; --coral-50:#FFF4ED; --coral-100:#FFE4D2;
-    --paper:#FAF8F4; --paper-2:#F3EFE8; --surface:#FFFFFF;
-    --ink:#22201C; --ink-soft:#6B655C; --ink-faint:#A39C90;
-    --line:#EAE5DC; --line-soft:#F2EEE6;
+    /* palette chaude unifiée avec home-roles-v3.html (source unique) */
+    --paper:#FAFAF7; --paper-2:#F4F2EC; --surface:#FFFFFF;
+    --ink:#1A2A2E; --ink-soft:#586A6B; --ink-faint:#9AA8A6;
+    --line:#E7E4DB; --line-soft:#EFEDE6;
     /* glycémie — codes graphiques alignés sur docs/design-system/mockups.html */
     --g-vlow:#DC2626; --g-low:#EF4444; --g-in:#10B981; --g-high:#F59E0B; --g-vhigh:#EA580C;
     --in-bg:#ECFDF5; --in-bd:#A7F3D0; --in-fg:#047857;
@@ -37,6 +38,8 @@
   body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E")}
   button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
   .mono{font-family:"Spline Sans Mono",monospace;font-feature-settings:"tnum"}
+  /* a11y — focus visible partout (parité avec home-roles-v3.html) */
+  a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent-brand);outline-offset:2px;border-radius:9px}
 
   .deck{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:11px 22px;background:linear-gradient(100deg,#0c3b38,#0f4f49);color:#eafaf7}
   .deck .tag{font-family:"Fraunces",serif;font-weight:600;font-size:15px}
@@ -118,7 +121,8 @@
 
   /* secondaire */
   .sec{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}
-  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:13px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:13px;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s}
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent-line)}
   .card .ci{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--paper-2);color:var(--ink-soft)}
   .card .ci svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
   .card .t{font-size:12px;color:var(--ink-soft)}
@@ -274,9 +278,9 @@
 
       <!-- secondaire (contexte, discret) -->
       <div class="sec">
-        <div class="card"><span class="ci">${ICON.cal}</span><div><div class="t">Prochain rendez-vous</div><div class="v">24 juin · 14:00</div></div><span class="go">Voir</span></div>
-        <div class="card"><span class="ci">${ICON.msg}</span><div><div class="t">Message de Dr Martin</div><div class="v">« Vos nuits s'améliorent »</div></div><span class="go">Lire</span></div>
-        <div class="card"><span class="ci">${ICON.sensor}</span><div><div class="t">Mon capteur</div><div class="v">G7 · 6 j restants</div></div><span class="pill">actif</span></div>
+        <div class="card" tabindex="0" role="link"><span class="ci">${ICON.cal}</span><div><div class="t">Prochain rendez-vous</div><div class="v">24 juin · 14:00</div></div><span class="go">Voir</span></div>
+        <div class="card" tabindex="0" role="link"><span class="ci">${ICON.msg}</span><div><div class="t">Message de Dr Martin</div><div class="v">« Vos nuits s'améliorent »</div></div><span class="go">Lire</span></div>
+        <div class="card" tabindex="0" role="link"><span class="ci">${ICON.sensor}</span><div><div class="t">Mon capteur</div><div class="v">G7 · 6 j restants</div></div><span class="pill">actif</span></div>
       </div>
 
     </div>
