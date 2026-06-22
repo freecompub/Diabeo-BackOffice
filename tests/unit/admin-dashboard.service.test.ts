@@ -170,3 +170,62 @@ describe("complianceQuery", () => {
     expect((call.where as any).completedAt).toEqual({ not: null })
   })
 })
+
+// ─── Garde du claim du bandeau admin (PR #583) ──────────────────────
+// Le bandeau affirme « aucune donnée de santé de patient n'est présentée ici ».
+// Ces tests verrouillent la véracité : les 3 requêtes du dashboard ne renvoient
+// que des agrégats (nombres / Date / statut backup), jamais un champ PHI
+// (nom patient, glycémie, donnée clinique déchiffrée). Un futur ajout de champ
+// PHI au payload casserait ces tests et donc le claim.
+
+describe("admin dashboard exposes only aggregates — no PHI (banner claim guard)", () => {
+  it("KPI cards carry only an aggregate numeric value", async () => {
+    prismaMock.healthcareService.count.mockResolvedValue(1)
+    prismaMock.user.findMany.mockResolvedValue([{ id: 1 }] as any)
+    prismaMock.healthcareMember.count.mockResolvedValue(1)
+    pm.$queryRaw.mockResolvedValue([{ count: BigInt(1) }] as any)
+    prismaMock.auditLog.count.mockResolvedValue(1)
+
+    const out = await adminKpiQuery.forCaller(1)
+
+    for (const card of out) {
+      expect(typeof card.value).toBe("number") // aggregate count, never PHI
+      expect(Object.keys(card).sort()).toEqual(["code", "unit", "value"])
+    }
+  })
+
+  it("billing metrics are all numeric aggregates", async () => {
+    prismaMock.appointment.count.mockResolvedValue(1)
+    prismaMock.teleconsultationActe.count
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(0)
+    pm.teleconsultationActe.aggregate.mockResolvedValue({
+      _sum: { amountCents: 100 },
+    } as any)
+
+    const out = await billingMetricsQuery.forCaller(1)
+
+    for (const value of Object.values(out)) {
+      expect(typeof value).toBe("number")
+    }
+  })
+
+  it("compliance snapshot exposes only counts/timestamp/backup-status", async () => {
+    const d = new Date("2026-05-14T03:00:00Z")
+    prismaMock.backupLog.findFirst.mockResolvedValue({
+      completedAt: d, status: BackupStatus.completed,
+    } as any)
+    prismaMock.auditLog.count.mockResolvedValue(5)
+    prismaMock.backupLog.count.mockResolvedValue(0)
+
+    const out = await complianceQuery.forCaller(1)
+
+    expect(typeof out.auditEventsLast24h).toBe("number")
+    expect(typeof out.failedBackupsLast30d).toBe("number")
+    expect(out.lastBackupAt === null || out.lastBackupAt instanceof Date).toBe(true)
+    // No patient-scoped field — only backup/audit governance data.
+    expect(Object.keys(out).sort()).toEqual(
+      ["auditEventsLast24h", "failedBackupsLast30d", "lastBackupAt", "lastBackupStatus"].sort(),
+    )
+  })
+})

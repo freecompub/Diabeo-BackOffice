@@ -34,14 +34,17 @@ export default async function AdminDashboardPage() {
         title={t("adminDashboard.pageTitle")}
         greeting={(name) => t("adminDashboard.greeting", { name })}
       />
-      {/* US-2410 — périmètre HDS explicite : l'admin n'accède jamais aux
-          données de santé des patients (cloisonnement réglementaire). */}
+      {/* US-2410 — périmètre de l'ÉCRAN admin : ce tableau de bord ne présente
+          que des agrégats gouvernance/facturation/audit (aucun PHI affiché —
+          cf. admin-dashboard.service). NB : claim volontairement scopé à
+          l'écran, pas au rôle ADMIN (qui conserve un bypass PHI V1 connu,
+          access-control.ts). Ne PAS réintroduire une affirmation rôle-large. */}
       <div
         role="note"
-        className="flex items-start gap-2.5 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+        className="flex items-start gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
       >
         <ShieldCheck className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
-        <p>{t("adminDashboard.hdsScope")}</p>
+        <p>{t("adminDashboard.scopeNotice")}</p>
       </div>
       <AdminKpiSection />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
