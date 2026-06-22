@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diabeo — Home Patient (graphique du jour + actions)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#0D9488; --teal-700:#0F766E; --teal-50:#F0FDFA;
+    --coral:#EA580C; --coral-700:#C2410C; --coral-50:#FFF4ED; --coral-100:#FFE4D2;
+    /* palette chaude unifiée avec home-roles-v3.html (source unique) */
+    --paper:#FAFAF7; --paper-2:#F4F2EC; --surface:#FFFFFF;
+    --ink:#1A2A2E; --ink-soft:#586A6B; --ink-faint:#9AA8A6;
+    --line:#E7E4DB; --line-soft:#EFEDE6;
+    /* glycémie — codes graphiques alignés sur docs/design-system/mockups.html */
+    --g-vlow:#DC2626; --g-low:#EF4444; --g-in:#10B981; --g-high:#F59E0B; --g-vhigh:#EA580C;
+    --in-bg:#ECFDF5; --in-bd:#A7F3D0; --in-fg:#047857;
+    --cgm:#0D9488; --cgm-area:rgba(13,148,136,.08);          /* courbe CGM = teal */
+    --target-band:rgba(16,185,129,.08); --target-line:#10B981; /* bande cible vert émeraude */
+    --crit-top:rgba(220,38,38,.04); --crit-bot:rgba(220,38,38,.05); /* zones critiques */
+    --grid:#F3F4F6; --axis:#6B7280;                           /* grille + labels */
+    --ev-meal:#EA580C; --ev-bolus:#F59E0B;                    /* marqueurs repas / bolus */
+    --shadow-sm:0 1px 2px rgba(34,32,28,.05),0 1px 3px rgba(34,32,28,.07);
+    --shadow:0 8px 24px -8px rgba(34,32,28,.14),0 3px 8px -3px rgba(34,32,28,.08);
+    --shadow-pop:0 18px 48px -16px rgba(13,148,136,.30);
+    --teal-100:#CCFBF1;
+    --r:18px; --r-sm:13px;
+    /* Patient = teal-dominant (primaire DS, apaisant). Le corail reste réservé
+       aux alertes et au marqueur « repas » du graphique — jamais dominant. */
+    --accent:var(--teal-700); --accent-soft:var(--teal-50); --accent-line:var(--teal-100); --accent-brand:var(--teal);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"Hanken Grotesk",system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14.5px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.03'/%3E%3C/svg%3E")}
+  button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+  .mono{font-family:"Spline Sans Mono",monospace;font-feature-settings:"tnum"}
+  /* a11y — focus visible partout (parité avec home-roles-v3.html) */
+  a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent-brand);outline-offset:2px;border-radius:9px}
+
+  .deck{position:sticky;top:0;z-index:40;display:flex;align-items:center;gap:12px;padding:11px 22px;background:linear-gradient(100deg,#0c3b38,#0f4f49);color:#eafaf7}
+  .deck .tag{font-family:"Fraunces",serif;font-weight:600;font-size:15px}
+  .deck .tag em{color:#7fe0d3;font-style:normal}
+  .deck .meta{margin-left:auto;font-size:12.5px;color:#8fd0c8}
+
+  .shell{position:relative;z-index:2;display:grid;grid-template-columns:236px 1fr;height:calc(100vh - 45px);overflow:hidden}
+  .side{display:flex;flex-direction:column;gap:3px;padding:18px 14px;background:linear-gradient(180deg,var(--surface),var(--paper-2));border-right:1px solid var(--line);overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 16px}
+  .brand .logo{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:#fff;font-family:"Fraunces",serif;font-weight:700;font-size:18px;background:linear-gradient(145deg,var(--teal),var(--teal-700));box-shadow:0 4px 12px -3px rgba(13,148,136,.45)}
+  .brand .nm{font-family:"Fraunces",serif;font-weight:600;font-size:20px}
+  .brand .nm small{display:block;font-family:"Hanken Grotesk";font-weight:600;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);margin-top:-2px}
+  .nav{display:flex;flex-direction:column;gap:3px}
+  .nav a{position:relative;display:flex;align-items:center;gap:12px;min-height:48px;padding:0 13px;border-radius:13px;color:var(--ink-soft);text-decoration:none;font-weight:600;font-size:15px;transition:.16s}
+  .nav a svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .nav a:hover{background:var(--paper-2);color:var(--ink)}
+  .nav a.active{background:var(--accent-soft);color:var(--accent)}
+  .nav a.active::before{content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:4px;height:24px;border-radius:0 4px 4px 0;background:var(--accent-brand)}
+  .nav a .badge{margin-left:auto;font-family:"Spline Sans Mono",monospace;font-size:11px;background:var(--coral);color:#fff;border-radius:999px;padding:1px 8px}
+  .side .grow{flex:1}
+  .me{display:flex;align-items:center;gap:11px;padding:10px;border-top:1px solid var(--line);margin-top:6px}
+  .me .av{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+  .me b{font-size:13.5px}.me .r{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)}
+
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .top{flex:0 0 64px;display:flex;align-items:center;gap:14px;padding:0 30px;background:rgba(255,255,255,.8);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .top h1{font-family:"Fraunces",serif;font-weight:600;font-size:22px;margin:0}
+  .top .right{margin-left:auto;display:flex;gap:9px}
+  .iconbtn{width:42px;height:42px;border-radius:12px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;position:relative;color:var(--ink-soft)}
+  .iconbtn svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .iconbtn .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--coral);border:2px solid #fff}
+  .canvas{flex:1;min-height:0;overflow:auto;padding:26px 32px 56px;max-width:1080px;width:100%;margin:0 auto}
+
+  /* ─── statut glycémie « maintenant » ─── */
+  .now{display:flex;align-items:flex-end;gap:18px;margin:2px 0 18px}
+  .now .lead{font-family:"Fraunces",serif;font-size:24px;font-weight:600}
+  .now .lead span{color:var(--ink-soft);font-family:"Hanken Grotesk";font-size:14px;font-weight:500;display:block;margin-top:2px}
+  .now .reading{margin-left:auto;display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 20px;box-shadow:var(--shadow-sm)}
+  .now .reading .val{font-family:"Spline Sans Mono",monospace;font-weight:700;font-size:38px;letter-spacing:-1px;line-height:1;color:var(--g-in)}
+  .now .reading .u{font-family:"Hanken Grotesk";font-size:13px;color:var(--ink-faint);font-weight:600}
+  .now .reading .tr{display:flex;flex-direction:column;font-size:12px;color:var(--ink-soft)}
+  .now .reading .tr b{font-size:14px;color:var(--in-fg)}
+  .trend{font-family:"Spline Sans Mono",monospace}
+
+  /* ─── carte graphique du jour (héros) ─── */
+  .chartcard{background:var(--surface);border:1px solid var(--line);border-radius:22px;box-shadow:var(--shadow);overflow:hidden}
+  .chartcard .hd{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line-soft)}
+  .chartcard .hd h2{font-family:"Fraunces",serif;font-weight:600;font-size:18px;margin:0}
+  .scope{margin-left:auto;display:flex;gap:3px;background:var(--paper-2);padding:4px;border-radius:11px}
+  .scope button{padding:6px 14px;border-radius:8px;font-weight:700;font-size:12.5px;color:var(--ink-soft)}
+  .scope button.on{background:#fff;color:var(--accent);box-shadow:var(--shadow-sm)}
+  .chartwrap{padding:14px 16px 6px}
+  .legend{display:flex;flex-wrap:wrap;gap:18px;padding:4px 22px 16px;font-size:12.5px;color:var(--ink-soft)}
+  .legend .sw{display:inline-block;width:12px;height:12px;border-radius:4px;margin-right:7px;vertical-align:-2px}
+
+  /* TIR strip */
+  .tir{display:flex;align-items:center;gap:16px;padding:14px 22px;border-top:1px solid var(--line-soft);background:var(--paper-2)}
+  .tirbar{flex:1;display:flex;height:14px;border-radius:999px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(0,0,0,.04)}
+  .tirbar i{display:block;height:100%}
+  .tir .pct{font-family:"Fraunces",serif;font-weight:600;font-size:22px}
+  .tir .pct small{font-family:"Hanken Grotesk";font-size:12px;color:var(--ink-soft);font-weight:600;display:block;margin-top:-2px}
+
+  /* ─── ACTIONS (le cœur) ─── */
+  .actions-h{display:flex;align-items:baseline;gap:10px;margin:26px 2px 12px}
+  .actions-h h2{font-family:"Fraunces",serif;font-weight:600;font-size:19px;margin:0}
+  .actions-h span{color:var(--ink-soft);font-size:13px}
+  .actions{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+  .act{display:flex;flex-direction:column;align-items:flex-start;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 16px;text-align:left;transition:transform .16s,box-shadow .16s,border-color .16s;cursor:pointer;min-height:118px}
+  .act:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--accent-line)}
+  .act:active{transform:translateY(-1px)}
+  .act .ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+  .act .ico svg{width:23px;height:23px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .act .lbl{font-weight:700;font-size:14.5px}
+  .act .hint{font-size:12px;color:var(--ink-faint);margin-top:-6px}
+  .act.primary{background:linear-gradient(150deg,var(--teal),var(--teal-700));border-color:transparent;color:#fff;box-shadow:var(--shadow-pop)}
+  .act.primary .ico{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.28);color:#fff}
+  .act.primary .hint{color:rgba(255,255,255,.85)}
+  .act.primary:hover{filter:brightness(1.04)}
+
+  /* secondaire */
+  .sec{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:24px}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow-sm);display:flex;align-items:center;gap:13px;cursor:pointer;transition:transform .16s,box-shadow .16s,border-color .16s}
+  .card:hover{transform:translateY(-2px);box-shadow:var(--shadow);border-color:var(--accent-line)}
+  .card .ci{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;background:var(--paper-2);color:var(--ink-soft)}
+  .card .ci svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .card .t{font-size:12px;color:var(--ink-soft)}
+  .card .v{font-weight:700;font-size:15px;margin-top:1px}
+  .card .go{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--accent)}
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11px;font-weight:700;background:var(--in-bg);color:var(--in-fg);border:1px solid var(--in-bd)}
+
+  /* pulse du point courant */
+  @keyframes pulse{0%{r:5;opacity:.5}70%{r:13;opacity:0}100%{opacity:0}}
+  .pp{animation:pulse 2.2s ease-out infinite}
+  @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+  .now,.chartcard,.actions-h,.actions,.sec{animation:rise .5s cubic-bezier(.2,.7,.2,1) both}
+  .chartcard{animation-delay:.05s}.actions-h{animation-delay:.1s}.actions{animation-delay:.14s}.sec{animation-delay:.2s}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  @media (max-width:880px){.actions{grid-template-columns:repeat(2,1fr)}.sec{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<div class="deck">
+  <span class="tag">Diabeo — <em>Home Patient</em> · graphique du jour + actions</span>
+  <span class="meta">maquette statique · mobile-friendly</span>
+</div>
+
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="logo">D</span><span class="nm">Diabeo<small>Mon espace</small></span></div>
+    <nav class="nav">
+      <a href="#" class="active">${ICON.heart} Accueil</a>
+      <a href="#">${ICON.chart} Mes courbes</a>
+      <a href="#">${ICON.cal} Mes rendez-vous</a>
+      <a href="#">${ICON.msg} Mes messages<span class="badge">1</span></a>
+      <a href="#">${ICON.doc} Mes documents</a>
+    </nav>
+    <div class="grow"></div>
+    <div class="me"><span class="av">AB</span><span><b>Amina B.</b><div class="r">Patient</div></span></div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <h1>Bonjour Amina</h1>
+      <div class="right"><button class="iconbtn" aria-label="Notifications">${ICON.bell}<span class="dot"></span></button></div>
+    </header>
+
+    <div class="canvas">
+
+      <!-- statut maintenant -->
+      <div class="now">
+        <div class="lead">Votre journée<span>Lundi 19 juin · capteur connecté</span></div>
+        <div class="reading">
+          <div><div class="val">124</div></div>
+          <div>
+            <div class="u">mg/dL</div>
+            <div class="tr"><b>Dans la cible</b><span class="trend">→ stable</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ░░ GRAPHIQUE DU JOUR (héros) ░░ -->
+      <section class="chartcard">
+        <div class="hd">
+          <h2>Mon graphique du jour</h2>
+          <div class="scope">
+            <button class="on">Aujourd'hui</button>
+            <button>7 jours</button>
+            <button>14 jours</button>
+          </div>
+        </div>
+        <div class="chartwrap">
+          <svg viewBox="0 0 760 250" width="100%" height="250" role="img" aria-label="Glycémie d'aujourd'hui, de minuit à maintenant. Valeur actuelle 124 mg/dL, dans la cible.">
+            <!-- zones critiques (rouge très léger) -->
+            <rect x="56" y="24" width="680" height="22" fill="var(--crit-top)"/>
+            <rect x="56" y="178" width="680" height="22" fill="var(--crit-bot)"/>
+            <!-- bande cible 70–180 (vert émeraude) -->
+            <rect x="56" y="78" width="680" height="74" fill="var(--target-band)"/>
+            <line x1="56" y1="78" x2="736" y2="78" stroke="var(--target-line)" stroke-width="1" stroke-dasharray="2 3"/>
+            <line x1="56" y1="152" x2="736" y2="152" stroke="var(--target-line)" stroke-width="1" stroke-dasharray="2 3"/>
+            <!-- grille -->
+            <g stroke="var(--grid)" stroke-width="1">
+              <line x1="56" y1="46" x2="736" y2="46"/><line x1="56" y1="115" x2="736" y2="115"/>
+              <line x1="226" y1="24" x2="226" y2="200"/><line x1="396" y1="24" x2="396" y2="200"/><line x1="566" y1="24" x2="566" y2="200"/>
+            </g>
+            <!-- libellés Y -->
+            <g font-size="11" class="mono" fill="var(--axis)">
+              <text x="18" y="44">250</text><text x="26" y="82">180</text><text x="30" y="156">70</text><text x="34" y="196">40</text>
+            </g>
+            <!-- aire (teal 8%) -->
+            <path d="M56,150 C100,160 130,168 160,158 C195,146 215,120 250,128 C290,138 305,165 340,150 C380,132 405,96 445,104 C485,112 505,150 545,142 C585,135 605,118 645,112 C680,107 705,118 724,120 L724,200 L56,200 Z"
+                  fill="var(--cgm-area)" stroke="none"/>
+            <!-- courbe du jour (teal) -->
+            <path d="M56,150 C100,160 130,168 160,158 C195,146 215,120 250,128 C290,138 305,165 340,150 C380,132 405,96 445,104 C485,112 505,150 545,142 C585,135 605,118 645,112 C680,107 705,118 724,120"
+                  fill="none" stroke="var(--cgm)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- marqueurs d'événements saisis (Repas = corail, Bolus = ambre) -->
+            <circle cx="160" cy="158" r="5.5" fill="var(--ev-meal)" stroke="#fff" stroke-width="2"/>
+            <circle cx="250" cy="128" r="5.5" fill="var(--ev-bolus)" stroke="#fff" stroke-width="2"/>
+            <circle cx="545" cy="142" r="5.5" fill="var(--ev-meal)" stroke="#fff" stroke-width="2"/>
+            <g font-size="10" class="mono" fill="var(--axis)">
+              <text x="160" y="222" text-anchor="middle">repas 08:00</text>
+              <text x="250" y="222" text-anchor="middle">bolus</text>
+              <text x="545" y="222" text-anchor="middle">repas 18:30</text>
+            </g>
+            <!-- point courant (pulse) — teal -->
+            <circle cx="724" cy="120" r="5" class="pp" fill="var(--cgm)"/>
+            <circle cx="724" cy="120" r="5.5" fill="var(--cgm)" stroke="#fff" stroke-width="2.5"/>
+            <text x="724" y="104" text-anchor="middle" font-size="12" font-weight="700" fill="var(--ink)" class="mono">124</text>
+            <!-- libellés X -->
+            <g font-size="10" class="mono" fill="var(--axis)">
+              <text x="56" y="240">0 h</text><text x="226" y="240" text-anchor="middle">6 h</text>
+              <text x="396" y="240" text-anchor="middle">12 h</text><text x="566" y="240" text-anchor="middle">18 h</text>
+              <text x="724" y="240" text-anchor="end">maintenant</text>
+            </g>
+          </svg>
+        </div>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--cgm)"></span>Ma glycémie</span>
+          <span><span class="sw" style="background:rgba(16,185,129,.3)"></span>Cible 70–180 mg/dL</span>
+          <span><span class="sw" style="background:var(--ev-meal)"></span>Repas</span>
+          <span><span class="sw" style="background:var(--ev-bolus)"></span>Bolus / insuline</span>
+        </div>
+        <div class="tir">
+          <div class="tirbar" aria-label="Répartition du temps : 62% dans la cible">
+            <i style="width:6%;background:var(--g-vlow)"></i><i style="width:9%;background:var(--g-low)"></i>
+            <i style="width:62%;background:var(--g-in)"></i><i style="width:16%;background:var(--g-high)"></i><i style="width:7%;background:var(--g-vhigh)"></i>
+          </div>
+          <div class="pct">62 %<small>dans la cible</small></div>
+        </div>
+      </section>
+
+      <!-- ░░ ACTIONS SUR LE GRAPHIQUE ░░ -->
+      <div class="actions-h"><h2>Que voulez-vous noter ?</h2><span>vos saisies apparaissent sur la courbe</span></div>
+      <div class="actions">
+        <button class="act primary">
+          <span class="ico">${ICON.calc}</span>
+          <span><span class="lbl">Calculer un bolus</span><div class="hint">suggestion · jamais automatique</div></span>
+        </button>
+        <button class="act">
+          <span class="ico">${ICON.meal}</span>
+          <span><span class="lbl">Un repas</span><div class="hint">glucides</div></span>
+        </button>
+        <button class="act">
+          <span class="ico">${ICON.syringe}</span>
+          <span><span class="lbl">De l'insuline</span><div class="hint">dose injectée</div></span>
+        </button>
+        <button class="act">
+          <span class="ico">${ICON.drop}</span>
+          <span><span class="lbl">Une glycémie</span><div class="hint">saisie manuelle</div></span>
+        </button>
+        <button class="act">
+          <span class="ico">${ICON.run}</span>
+          <span><span class="lbl">Une activité</span><div class="hint">sport, marche…</div></span>
+        </button>
+      </div>
+
+      <!-- secondaire (contexte, discret) -->
+      <div class="sec">
+        <div class="card" tabindex="0" role="link"><span class="ci">${ICON.cal}</span><div><div class="t">Prochain rendez-vous</div><div class="v">24 juin · 14:00</div></div><span class="go">Voir</span></div>
+        <div class="card" tabindex="0" role="link"><span class="ci">${ICON.msg}</span><div><div class="t">Message de Dr Martin</div><div class="v">« Vos nuits s'améliorent »</div></div><span class="go">Lire</span></div>
+        <div class="card" tabindex="0" role="link"><span class="ci">${ICON.sensor}</span><div><div class="t">Mon capteur</div><div class="v">G7 · 6 j restants</div></div><span class="pill">actif</span></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const ICON={
+  heart:'<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.3-9.2-8.6C1.2 7.9 3.4 5 6.4 5c1.9 0 3.2 1 3.6 1.8C12 5 13 5 15.6 5c3 0 5.2 2.9 3.6 6.4C19 15.7 12 20 12 20z"/></svg>',
+  chart:'<svg viewBox="0 0 24 24"><path d="M4 19.5V4M4 19.5h16"/><path d="M7 15l3.5-5 3 2.5L20 7"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>',
+  msg:'<svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-4 3.5v-3.5H4z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24"><path d="M6 3.5h8l4 4V20.5H6z"/><path d="M13.5 3.7V8h4.2M9 12.5h6M9 16h6"/></svg>',
+  bell:'<svg viewBox="0 0 24 24"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6 2 6H5s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>',
+  calc:'<svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M8 7h8M8 11h2M12 11h2M16 11h0M8 14.5h2M12 14.5h2M16 14.5h0M8 18h2M12 18h6"/></svg>',
+  meal:'<svg viewBox="0 0 24 24"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 11v10M17 3c-1.6 0-2.5 1.8-2.5 4s.9 4 2.5 4m0-8v18"/></svg>',
+  syringe:'<svg viewBox="0 0 24 24"><path d="m14 4 6 6M17 7 7.5 16.5 4 20l3.5-.5L8 19M9 12l3 3M6.5 14.5l3 3M16.5 5.5l2 2"/></svg>',
+  drop:'<svg viewBox="0 0 24 24"><path d="M12 3.5C12 3.5 6 10 6 14a6 6 0 0 0 12 0c0-4-6-10.5-6-10.5z"/></svg>',
+  run:'<svg viewBox="0 0 24 24"><circle cx="15" cy="5" r="2"/><path d="m9 21 2-5-3-3 1.5-4 3 2 3 1M6 13l2-5 4-1"/></svg>',
+  sensor:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4.5 4.5a11 11 0 0 0 0 15M19.5 4.5a11 11 0 0 1 0 15"/></svg>',
+};
+document.body.innerHTML=document.body.innerHTML.replace(/\$\{ICON\.(\w+)\}/g,(_,k)=>ICON[k]||'');
+</script>
+</body>
+</html>
