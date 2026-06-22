@@ -32,7 +32,7 @@ export function AdminKpiSection() {
   }
   return (
     <section aria-labelledby="admin-kpi-title">
-      <h2 id="admin-kpi-title" className="mb-3 text-base font-semibold">
+      <h2 id="admin-kpi-title" className="mb-3 font-display text-base font-semibold">
         {t("globalViewTitle")}
       </h2>
       {hasError && (

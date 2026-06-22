@@ -1265,6 +1265,8 @@
   },
   "adminDashboard": {
     "pageTitle": "Tableau de bord administrateur",
+    "greeting": "Bonjour, {name}",
+    "scopeNotice": "Cet espace d'administration n'affiche que des indicateurs de gouvernance, de facturation et d'audit — aucune donnée de santé de patient n'y est présentée.",
     "globalViewTitle": "Vue globale",
     "kpiLoadError": "Impossible de charger les indicateurs clés (KPI).",
     "kpiCabinets": "Cabinets",
