@@ -243,7 +243,7 @@ export default function PatientDashboardPage() {
     <div className="space-y-6">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">{t("pageTitle")}</h1>
+          <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">{t("pageTitle")}</h1>
           <p className="text-sm text-muted-foreground mt-1">
             {t("periodSubtitle", { days })}
           </p>
@@ -264,7 +264,7 @@ export default function PatientDashboardPage() {
 
       {/* US-3361 — 24h CGM section + 4 KPI metrics. */}
       <section aria-labelledby="glycemia-section" className="space-y-4">
-        <h2 id="glycemia-section" className="text-lg font-medium text-foreground">
+        <h2 id="glycemia-section" className="font-display text-lg font-semibold text-foreground">
           {t("glycemiaSectionTitle")}
         </h2>
         {/* Sécurité clinique : un relevé hors plage plus récent que l'affiché a
@@ -335,7 +335,7 @@ export default function PatientDashboardPage() {
 
       {/* US-3362 — AGP 7d résumé. */}
       <section aria-labelledby="agp-section" className="space-y-3">
-        <h2 id="agp-section" className="text-lg font-medium text-foreground">
+        <h2 id="agp-section" className="font-display text-lg font-semibold text-foreground">
           {t("agpSectionTitle")}
         </h2>
         {agpState.error ? (

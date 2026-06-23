@@ -10,7 +10,7 @@ import { redirect } from "next/navigation"
 import { NavigationShell, type UserRole } from "@/components/diabeo/NavigationShell"
 import { ConsultationProvider } from "@/components/diabeo/consultation/ConsultationContext"
 import { hasManagementCapability } from "@/lib/capabilities"
-import { getCurrentUserDisplayName } from "@/lib/auth/current-user-name"
+import { getShellUserName } from "@/lib/auth/current-user-name"
 
 const VALID_ROLES: UserRole[] = ["ADMIN", "DOCTOR", "NURSE", "VIEWER"]
 
@@ -49,15 +49,13 @@ export default async function DashboardLayout({
   const hasUserId = Number.isInteger(userId) && userId > 0
 
   // US-26xx — nom affiché dans le shell (avatar/initiales). Lookup léger,
-  // non-audité, request-cached (cf. getCurrentUserDisplayName) → dédupliqué
-  // avec un éventuel appel côté page. Parallélisé avec la capacité de gestion.
-  const [canManageOrg, displayName] = await Promise.all([
+  // non-audité, request-cached → dédupliqué avec un éventuel appel côté page.
+  // Parallélisé avec la capacité de gestion (getShellUserName gère lui-même
+  // l'absence d'id → undefined).
+  const [canManageOrg, userName] = await Promise.all([
     hasUserId ? hasManagementCapability(userId) : Promise.resolve(false),
-    hasUserId ? getCurrentUserDisplayName(userId) : Promise.resolve(null),
+    getShellUserName(headersList),
   ])
-  const userName =
-    [displayName?.firstname, displayName?.lastname].filter(Boolean).join(" ") ||
-    undefined
 
   return (
     // US-2018b — le provider enveloppe tout le shell : la consultation rend la
