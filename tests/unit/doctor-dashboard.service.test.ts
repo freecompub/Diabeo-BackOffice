@@ -123,6 +123,13 @@ describe("appointmentsQuery (US-2402)", () => {
     expect(out[0]!.location).toBe("video")
     const callArg = prismaMock.appointment.findMany.mock.calls[0]![0]
     expect(callArg!.take).toBe(3)
+    // Régression bug RDV du jour : la colonne `Appointment.date` (@db.Date)
+    // DOIT être comparée à des bornes minuit-UTC (date-only). `todayBounds`
+    // (timestamptz Paris) donnerait 22h/23h UTC → Prisma tronque et exclut le
+    // jour courant. `getUTCHours()===0` distingue le fix du bug (tz-indépendant).
+    const gte = (callArg!.where as { date: { gte: Date } }).date.gte
+    expect(gte.getUTCHours()).toBe(0)
+    expect(gte.toISOString().endsWith("T00:00:00.000Z")).toBe(true)
   })
 })
 

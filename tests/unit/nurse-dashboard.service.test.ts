@@ -60,6 +60,13 @@ describe("nurseKpiQuery (US-2406)", () => {
     expect(byCode.proposalsPending).toBe(2)
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(meta.metadata.kind).toBe("dashboard.infirmier.kpi")
+    // Régression : `appointment.date` (@db.Date) → bornes date-only (minuit
+    // UTC) ; `diabetesEvent.createdAt` (timestamptz) → bornes décalées TZ
+    // cabinet (≠ minuit UTC). Verrouille la séparation chirurgicale du fix.
+    const apptWhere = prismaMock.appointment.count.mock.calls[0]![0]!.where as { date: { gte: Date } }
+    expect(apptWhere.date.gte.getUTCHours()).toBe(0)
+    const evtWhere = prismaMock.diabetesEvent.count.mock.calls[0]![0]!.where as { createdAt: { gte: Date } }
+    expect(evtWhere.createdAt.gte.getUTCHours()).not.toBe(0)
   })
 })
 
@@ -97,6 +104,9 @@ describe("nurseTodoQuery (US-2407)", () => {
     expect(out).toHaveLength(3)
     expect(out[0]!.kind).toBe("prepareAppointment") // highest score
     expect(out[2]!.kind).toBe("observeProposal")    // lowest score (read-only)
+    // Régression : todo appointment.date (@db.Date) → bornes minuit-UTC.
+    const apptWhere = prismaMock.appointment.findMany.mock.calls[0]![0]!.where as { date: { gte: Date } }
+    expect(apptWhere.date.gte.getUTCHours()).toBe(0)
   })
 })
 
