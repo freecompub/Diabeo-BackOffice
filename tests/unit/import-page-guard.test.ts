@@ -1,16 +1,19 @@
 /**
  * Test suite: garde de rôle de la page /import (server component).
  *
- * Comportement testé : `/import` est réservé au médecin (et ADMIN par
- * hiérarchie, mirroir de l'API `requireRole(req,"DOCTOR")` min-role). Un NURSE
- * (ou une absence de header rôle) doit être redirigé — sinon il atteignait la
- * page par URL directe (la nav la masque seulement) et tombait sur une UI en
- * cul-de-sac (403 à l'action). Bug RBAC détecté à l'audit d'accès par rôle.
+ * Comportement testé : `/import` est réservé aux rôles ≥ DOCTOR (DOCTOR + ADMIN
+ * par hiérarchie, miroir de l'API `requireRole(req,"DOCTOR")` min-role). NURSE,
+ * VIEWER, rôle inconnu et absence de header doivent être redirigés (fail-closed)
+ * — sinon la page était atteignable par URL directe (la nav la masque
+ * seulement). Bug RBAC détecté à l'audit d'accès par rôle.
+ *
+ * Le mock `redirect` n'interrompt pas l'exécution (le vrai `redirect()` de Next
+ * lève `NEXT_REDIRECT`) ; on vérifie la **décision** du garde : `redirect("/")`
+ * appelé pour les rôles refusés, jamais pour DOCTOR/ADMIN.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 
-// vi.hoisted : ces valeurs sont remontées au-dessus des vi.mock (sinon les
-// factories ne peuvent pas y accéder — hoisting vitest).
+// vi.hoisted : remonté au-dessus des vi.mock (les factories y accèdent).
 const h = vi.hoisted(() => ({
   role: "NURSE" as string | null,
   redirectMock: vi.fn(),
@@ -25,14 +28,14 @@ import ImportPage from "@/app/(dashboard)/import/page"
 describe("ImportPage — garde de rôle serveur", () => {
   beforeEach(() => h.redirectMock.mockClear())
 
-  it("redirige un NURSE (feature DOCTOR-only)", async () => {
-    h.role = "NURSE"
-    await ImportPage()
-    expect(h.redirectMock).toHaveBeenCalledWith("/")
-  })
-
-  it("redirige si aucun header de rôle", async () => {
-    h.role = null
+  it.each([
+    ["NURSE", "NURSE"],
+    ["VIEWER", "VIEWER"],
+    ["un rôle inconnu", "SUPERUSER"],
+    ["une chaîne vide", ""],
+    ["aucun header", null],
+  ])("redirige %s (fail-closed)", async (_label, value) => {
+    h.role = value
     await ImportPage()
     expect(h.redirectMock).toHaveBeenCalledWith("/")
   })
