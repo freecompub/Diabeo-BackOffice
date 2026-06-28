@@ -36,6 +36,7 @@ import { prisma } from "@/lib/db/client"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { auditService, type AuditContext } from "./audit.service"
 import { safeDecryptField } from "@/lib/crypto/fields"
+import { todayBounds, todayDateBounds } from "@/lib/cabinet-time"
 import type { Role } from "@prisma/client"
 
 // ─────────────────────────────────────────────────────────────
@@ -57,60 +58,13 @@ function patientScopeWhere(
 
 const CABINET_TIMEZONE = "Europe/Paris"
 
-/**
- * code-review H3 (re-review) — return [start, end) for "today" in the
- * cabinet timezone, **as UTC instants** that correctly correspond to
- * Paris midnight boundaries (incl. DST).
- *
- * Earlier impl built `${YYYY-MM-DD}T00:00:00Z` which is UTC midnight of
- * the Paris-local date string — off by the Paris→UTC offset (1h CET /
- * 2h CEST). For `@db.Date` columns this happens to work (only date
- * portion compared) but for `@db.Timestamptz()` columns (DiabetesEvent.createdAt,
- * EmergencyAlert.triggeredAt) the filter silently excludes events from
- * the first 1-2h of the Paris day.
- *
- * Fix : extract the live offset via `longOffset` Intl part, embed it
- * in the ISO literal, let JS parse correctly to UTC.
- */
-function todayBounds(now = new Date()): { start: Date; end: Date } {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CABINET_TIMEZONE,
-    year: "numeric", month: "2-digit", day: "2-digit",
-    timeZoneName: "longOffset",
-  })
-  const parts = fmt.formatToParts(now)
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
-  const year = get("year")
-  const month = get("month")
-  const day = get("day")
-  // `longOffset` → "GMT+02:00" / "GMT-05:00" ; ISO literal accepts ±HH:MM.
-  const offset = get("timeZoneName").replace(/^GMT/, "") || "+00:00"
-  const start = new Date(`${year}-${month}-${day}T00:00:00${offset}`)
-  const end = new Date(start)
-  end.setUTCDate(end.getUTCDate() + 1)
-  return { start, end }
-}
-
-/**
- * Bornes date-only du jour calendaire cabinet, pour la colonne `@db.Date`
- * `Appointment.date`. {@link todayBounds} (timestamptz décalé en TZ cabinet)
- * est correct pour les colonnes timestamptz (createdAt/triggeredAt) mais, sur
- * une colonne `Date`, Prisma tronque ses bornes décalées et **exclut le jour
- * courant** (minuit Paris = 22:00Z la veille). Ici les bornes sont à minuit
- * UTC du jour cabinet → troncature correcte. Cf. cabinet-time#todayDateBounds.
- */
-function todayDateBounds(now = new Date()): { start: Date; end: Date } {
-  const fmt = new Intl.DateTimeFormat("en-CA", {
-    timeZone: CABINET_TIMEZONE,
-    year: "numeric", month: "2-digit", day: "2-digit",
-  })
-  const parts = fmt.formatToParts(now)
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
-  const start = new Date(`${get("year")}-${get("month")}-${get("day")}T00:00:00.000Z`)
-  const end = new Date(start)
-  end.setUTCDate(end.getUTCDate() + 1)
-  return { start, end }
-}
+// Bornes « aujourd'hui » importées de @/lib/cabinet-time (source unique testée,
+// cf. cabinet-time.test.ts) :
+//  - todayBounds()      → timestamptz décalés TZ cabinet, pour les colonnes
+//    @db.Timestamptz (DiabetesEvent.createdAt, EmergencyAlert.triggeredAt).
+//  - todayDateBounds()  → minuit UTC du jour cabinet, pour la colonne @db.Date
+//    Appointment.date (sinon Prisma tronque les bornes décalées et exclut le
+//    jour courant). Plus de copie locale → plus de dérive.
 
 // ─────────────────────────────────────────────────────────────
 // US-2406 — KPI "Ma journée"
