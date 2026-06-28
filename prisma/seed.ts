@@ -8,6 +8,15 @@ import {
   BasalConfigType,
   GlucoseTargetPreset,
   DayMomentType,
+  EmergencyAlertType,
+  EmergencyAlertSeverity,
+  EmergencyAlertStatus,
+  AdjustableParameter,
+  ConfidenceLevel,
+  AdjustmentReason,
+  ProposalStatus,
+  AppointmentStatus,
+  BackupStatus,
 } from "@prisma/client"
 import { PrismaPg } from "@prisma/adapter-pg"
 import { hash as bcryptHash } from "bcryptjs"
@@ -1115,6 +1124,74 @@ async function main() {
   }
 
   console.log("Unit definitions seeded:", units.length)
+
+  // ─── 12.bis Données démo dashboards (Home v3 peuplés — dev/QA only) ─────
+  // Peuple les cartes staff (urgences, propositions, RDV du jour, backups) pour
+  // refléter les mockups peuplés. Idempotent (guards de présence). PHI fictif.
+  {
+    // Dates relatives à maintenant (et non figées) : VOULU — les cartes démo
+    // doivent paraître « live » (alertes « il y a 2 h », RDV du jour), comme le
+    // bloc 9.ter (dateAtOffset). Cf. SEED_CONSENT_DATE/baseDate qui, eux, sont
+    // figés car corrélés à des tests E2E — ce n'est pas le cas ici.
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000)
+
+    // Urgences glycémiques ouvertes — carte médecin « Urgences en cours ».
+    if ((await prisma.emergencyAlert.count()) === 0) {
+      await prisma.emergencyAlert.createMany({
+        data: [
+          { patientId: patientDT1.id, alertType: EmergencyAlertType.severe_hypo, severity: EmergencyAlertSeverity.critical, status: EmergencyAlertStatus.open, glucoseValueMgdl: 48, triggeredAt: hoursAgo(2) },
+          { patientId: patientDT2.id, alertType: EmergencyAlertType.hyper, severity: EmergencyAlertSeverity.warning, status: EmergencyAlertStatus.open, glucoseValueMgdl: 268, triggeredAt: hoursAgo(5) },
+          { patientId: patientGD.id, alertType: EmergencyAlertType.hyper, severity: EmergencyAlertSeverity.warning, status: EmergencyAlertStatus.open, glucoseValueMgdl: 252, triggeredAt: hoursAgo(9) },
+        ],
+      })
+      console.log("  ✓ 3 emergency alerts seeded")
+    }
+
+    // Propositions d'ajustement en attente — carte « Propositions en attente ».
+    if ((await prisma.adjustmentProposal.count({ where: { status: ProposalStatus.pending } })) === 0) {
+      await prisma.adjustmentProposal.createMany({
+        data: [
+          { patientId: patientDT1.id, parameterType: AdjustableParameter.insulinToCarbRatio, currentValue: 12, proposedValue: 10, changePercent: -16.67, confidence: ConfidenceLevel.high, reason: AdjustmentReason.icrTooLow, supportingEvents: 14, totalEventsConsidered: 18, status: ProposalStatus.pending, carbRatioSlotStart: 12, carbRatioSlotEnd: 14, analysisPeriod: "14d", dataQuality: "good" },
+          { patientId: patientDT2.id, parameterType: AdjustableParameter.basalRate, currentValue: 0.9, proposedValue: 0.8, changePercent: -11.11, confidence: ConfidenceLevel.medium, reason: AdjustmentReason.basalTooHigh, supportingEvents: 9, totalEventsConsidered: 12, status: ProposalStatus.pending, timeSlotStartHour: 0, timeSlotEndHour: 6, analysisPeriod: "14d", dataQuality: "moderate" },
+        ],
+      })
+      console.log("  ✓ 2 adjustment proposals seeded")
+    }
+
+    // RDV du jour — carte « Rendez-vous du jour ». Statut `scheduled` requis :
+    // la query du dashboard filtre status ∈ {scheduled, pending_validation}
+    // (confirmed/completed exclus). Guard idempotent : `date` est une colonne
+    // @db.Date → comparaison date-only (auto-cohérente avec l'insert ci-dessous,
+    // pas de doublon au re-seed du même jour).
+    const todayDate = new Date()
+    todayDate.setHours(0, 0, 0, 0)
+    const timeAtDay = (h: number, m = 0) =>
+      new Date(`1970-01-01T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`)
+    const todayApptCount = await prisma.appointment.count({
+      where: { memberId: memberDoctor.id, date: todayDate },
+    })
+    if (todayApptCount === 0) {
+      await prisma.appointment.createMany({
+        data: [
+          { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: todayDate, hour: timeAtDay(9, 0), durationMinutes: 30, location: "video", status: AppointmentStatus.scheduled },
+          { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: todayDate, hour: timeAtDay(10, 30), durationMinutes: 30, location: "in_person", status: AppointmentStatus.scheduled },
+          { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: todayDate, hour: timeAtDay(14, 0), durationMinutes: 30, location: "in_person", status: AppointmentStatus.scheduled },
+        ],
+      })
+      console.log("  ✓ 3 today appointments seeded")
+    }
+
+    // Backups — carte admin « Conformité HDS » (1 OK récent + 1 échec récent).
+    if ((await prisma.backupLog.count()) === 0) {
+      await prisma.backupLog.createMany({
+        data: [
+          { backupRef: "seed-backup-ok-1", status: BackupStatus.completed, startedAt: hoursAgo(8), completedAt: new Date(hoursAgo(8).getTime() + 95_000), sizeBytes: BigInt(734_003_200), durationMs: 95_000, location: "ovh://diabeo-backups/daily" },
+          { backupRef: "seed-backup-fail-1", status: BackupStatus.failed, startedAt: hoursAgo(32), errorMessage: "S3 timeout (seed demo)" },
+        ],
+      })
+      console.log("  ✓ 2 backup logs seeded")
+    }
+  }
 
   // ─── 13. Audit log entry for seed ─────────────────────────
 
