@@ -1116,6 +1116,66 @@ async function main() {
 
   console.log("Unit definitions seeded:", units.length)
 
+  // ─── 12.bis Données démo dashboards (Home v3 peuplés — dev/QA only) ─────
+  // Peuple les cartes staff (urgences, propositions, RDV du jour, backups) pour
+  // refléter les mockups peuplés. Idempotent (guards de présence). PHI fictif.
+  {
+    const hoursAgo = (h: number) => new Date(Date.now() - h * 3_600_000)
+
+    // Urgences glycémiques ouvertes — carte médecin « Urgences en cours ».
+    if ((await prisma.emergencyAlert.count()) === 0) {
+      await prisma.emergencyAlert.createMany({
+        data: [
+          { patientId: patientDT1.id, alertType: "severe_hypo", severity: "critical", status: "open", glucoseValueMgdl: 48, triggeredAt: hoursAgo(2) },
+          { patientId: patientDT2.id, alertType: "hyper", severity: "warning", status: "open", glucoseValueMgdl: 268, triggeredAt: hoursAgo(5) },
+          { patientId: patientGD.id, alertType: "hyper", severity: "warning", status: "open", glucoseValueMgdl: 252, triggeredAt: hoursAgo(9) },
+        ],
+      })
+      console.log("  ✓ 3 emergency alerts seeded")
+    }
+
+    // Propositions d'ajustement en attente — carte « Propositions en attente ».
+    if ((await prisma.adjustmentProposal.count({ where: { status: "pending" } })) === 0) {
+      await prisma.adjustmentProposal.createMany({
+        data: [
+          { patientId: patientDT1.id, parameterType: "insulinToCarbRatio", currentValue: 12, proposedValue: 10, changePercent: -16.67, confidence: "high", reason: "icrTooLow", supportingEvents: 14, totalEventsConsidered: 18, status: "pending", carbRatioSlotStart: 12, carbRatioSlotEnd: 14, analysisPeriod: "14d", dataQuality: "good" },
+          { patientId: patientDT2.id, parameterType: "basalRate", currentValue: 0.9, proposedValue: 0.8, changePercent: -11.11, confidence: "medium", reason: "basalTooHigh", supportingEvents: 9, totalEventsConsidered: 12, status: "pending", timeSlotStartHour: 0, timeSlotEndHour: 6, analysisPeriod: "14d", dataQuality: "moderate" },
+        ],
+      })
+      console.log("  ✓ 2 adjustment proposals seeded")
+    }
+
+    // RDV du jour — carte « Rendez-vous du jour » (guard sur la date du jour).
+    const todayDate = new Date()
+    todayDate.setHours(0, 0, 0, 0)
+    const timeAtDay = (h: number, m = 0) =>
+      new Date(`1970-01-01T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`)
+    const todayApptCount = await prisma.appointment.count({
+      where: { memberId: memberDoctor.id, date: todayDate },
+    })
+    if (todayApptCount === 0) {
+      await prisma.appointment.createMany({
+        data: [
+          { patientId: patientDT2.id, memberId: memberDoctor.id, type: "diabeto", date: todayDate, hour: timeAtDay(9, 0), durationMinutes: 30, location: "video", status: "confirmed" },
+          { patientId: patientGD.id, memberId: memberDoctor.id, type: "diabeto", date: todayDate, hour: timeAtDay(10, 30), durationMinutes: 30, location: "in_person", status: "confirmed" },
+          { patientId: patientDT1.id, memberId: memberDoctor.id, type: "diabeto", date: todayDate, hour: timeAtDay(14, 0), durationMinutes: 30, location: "in_person", status: "scheduled" },
+        ],
+      })
+      console.log("  ✓ 3 today appointments seeded")
+    }
+
+    // Backups — carte admin « Conformité HDS » (1 OK récent + 1 échec récent).
+    if ((await prisma.backupLog.count()) === 0) {
+      await prisma.backupLog.createMany({
+        data: [
+          { backupRef: "seed-backup-ok-1", status: "completed", startedAt: hoursAgo(8), completedAt: new Date(hoursAgo(8).getTime() + 95_000), sizeBytes: BigInt(734_003_200), durationMs: 95_000, location: "ovh://diabeo-backups/daily" },
+          { backupRef: "seed-backup-fail-1", status: "failed", startedAt: hoursAgo(32), errorMessage: "S3 timeout (seed demo)" },
+        ],
+      })
+      console.log("  ✓ 2 backup logs seeded")
+    }
+  }
+
   // ─── 13. Audit log entry for seed ─────────────────────────
 
   await prisma.auditLog.create({
