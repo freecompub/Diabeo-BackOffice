@@ -43,7 +43,9 @@ vi.mock("next/navigation", () => ({
 // Import the page under test AFTER mocks are in place
 // ---------------------------------------------------------------------------
 
-import MyDiabbyPage from "@/app/(dashboard)/import/page"
+// La page `import/page.tsx` est désormais un server component (garde de rôle) ;
+// l'UI testée ici vit dans le client `ImportClient`.
+import { ImportClient as MyDiabbyPage } from "@/app/(dashboard)/import/ImportClient"
 
 // ---------------------------------------------------------------------------
 // Test fixtures
