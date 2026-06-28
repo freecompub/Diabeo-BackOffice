@@ -1,10 +1,12 @@
 "use client"
 
 /**
- * MyDiabby Import Page — US-WEB-210
+ * MyDiabby Import — UI client (US-WEB-210).
  *
- * DOCTOR-only, staging-only feature that allows connecting a MyDiabby account
- * and synchronising patient data into the Diabeo backoffice.
+ * Réservé aux rôles ≥ DOCTOR (DOCTOR + ADMIN par hiérarchie ; cf. le garde
+ * serveur dans page.tsx et `requireRole(req,"DOCTOR")` côté API). Staging-only.
+ * Permet de connecter un compte MyDiabby et de synchroniser les données
+ * patient dans le backoffice Diabeo.
  *
  * State machine:
  *   loading    → fetches accounts list on mount
