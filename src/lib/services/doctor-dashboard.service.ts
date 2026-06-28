@@ -31,7 +31,7 @@ import { getAccessiblePatientIds } from "@/lib/access-control"
 import { auditService, type AuditContext } from "./audit.service"
 import { messagingService, MESSAGING_BOUNDS } from "./messaging.service"
 import { safeDecryptField } from "@/lib/crypto/fields"
-import { todayBounds } from "@/lib/cabinet-time"
+import { todayDateBounds } from "@/lib/cabinet-time"
 import type { GlucoseUnit } from "@/lib/conversions"
 import type { Role } from "@prisma/client"
 
@@ -229,7 +229,10 @@ export const appointmentsQuery = {
     const ids = await getAccessiblePatientIds(userId, role)
     const scope = patientScopeWhere(ids)
     if (scope === null) return []
-    const { start, end } = todayBounds()
+    // `Appointment.date` est une colonne @db.Date → bornes date-only (sinon
+    // les bornes timestamptz de todayBounds sont tronquées et excluent le jour
+    // courant en TZ cabinet). Cf. todayDateBounds.
+    const { start, end } = todayDateBounds()
     // code-review H1 (re-review) — `scope` already carries
     //   `patient: { deletedAt: null }` ; don't override it here. Adding a
     //   literal `patient:` below would silently drop any future sub-filter
