@@ -44,3 +44,24 @@ export function todayBounds(now = new Date()): { start: Date; end: Date } {
   end.setUTCDate(end.getUTCDate() + 1)
   return { start, end }
 }
+
+/**
+ * Bornes [start, end) **date-only** du jour calendaire cabinet, pour comparer
+ * une colonne `@db.Date` (ex. `Appointment.date`).
+ *
+ * ⚠️ NE PAS utiliser {@link todayBounds} sur une colonne `@db.Date` : ses
+ * bornes sont des `timestamptz` décalés en TZ cabinet (ex. minuit Paris =
+ * 22:00Z la veille). Prisma tronque ces valeurs à la date pour comparer une
+ * colonne `Date`, ce qui donne `[veille, aujourd'hui)` et **exclut le jour
+ * courant** dès que la TZ cabinet est à l'est d'UTC (toujours, à Paris).
+ *
+ * Ici les bornes sont à **minuit UTC** du jour calendaire cabinet, donc la
+ * troncature Prisma rend les bonnes dates : `[aujourd'hui, demain)`.
+ */
+export function todayDateBounds(now = new Date()): { start: Date; end: Date } {
+  const { year, month, day } = cabinetDateParts(now)
+  const start = new Date(`${year}-${month}-${day}T00:00:00.000Z`)
+  const end = new Date(start)
+  end.setUTCDate(end.getUTCDate() + 1)
+  return { start, end }
+}

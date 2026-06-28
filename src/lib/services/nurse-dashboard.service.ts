@@ -91,6 +91,27 @@ function todayBounds(now = new Date()): { start: Date; end: Date } {
   return { start, end }
 }
 
+/**
+ * Bornes date-only du jour calendaire cabinet, pour la colonne `@db.Date`
+ * `Appointment.date`. {@link todayBounds} (timestamptz décalé en TZ cabinet)
+ * est correct pour les colonnes timestamptz (createdAt/triggeredAt) mais, sur
+ * une colonne `Date`, Prisma tronque ses bornes décalées et **exclut le jour
+ * courant** (minuit Paris = 22:00Z la veille). Ici les bornes sont à minuit
+ * UTC du jour cabinet → troncature correcte. Cf. cabinet-time#todayDateBounds.
+ */
+function todayDateBounds(now = new Date()): { start: Date; end: Date } {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: CABINET_TIMEZONE,
+    year: "numeric", month: "2-digit", day: "2-digit",
+  })
+  const parts = fmt.formatToParts(now)
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ""
+  const start = new Date(`${get("year")}-${get("month")}-${get("day")}T00:00:00.000Z`)
+  const end = new Date(start)
+  end.setUTCDate(end.getUTCDate() + 1)
+  return { start, end }
+}
+
 // ─────────────────────────────────────────────────────────────
 // US-2406 — KPI "Ma journée"
 // ─────────────────────────────────────────────────────────────
@@ -118,12 +139,14 @@ export const nurseKpiQuery = {
       return zero
     }
     const { start, end } = todayBounds()
+    // Appointment.date = @db.Date → bornes date-only (cf. todayDateBounds).
+    const { start: dayStart, end: dayEnd } = todayDateBounds()
     const [rdvToPrepare, eventsToValidate, openUrgencies, proposalsPending]
       = await Promise.all([
         prisma.appointment.count({
           where: {
             ...scope,
-            date: { gte: start, lt: end },
+            date: { gte: dayStart, lt: dayEnd },
             status: { in: [AppointmentStatus.scheduled, AppointmentStatus.pending_validation] },
           },
         }),
@@ -203,6 +226,8 @@ export const nurseTodoQuery = {
     const scope = patientScopeWhere(ids)
     if (scope === null) return []
     const { start, end } = todayBounds()
+    // Appointment.date = @db.Date → bornes date-only (cf. todayDateBounds).
+    const { start: dayStart, end: dayEnd } = todayDateBounds()
 
     const include = {
       patient: {
@@ -217,7 +242,7 @@ export const nurseTodoQuery = {
       prisma.appointment.findMany({
         where: {
           ...scope,
-          date: { gte: start, lt: end },
+          date: { gte: dayStart, lt: dayEnd },
           status: { in: [AppointmentStatus.scheduled, AppointmentStatus.pending_validation] },
         },
         include,
