@@ -91,8 +91,9 @@ export function DashboardRow({
 /**
  * Bouton-lien d'action d'une ligne (« Ouvrir », « Préparer », « Revoir »…).
  * `variant="primary"` = action mise en avant (1ʳᵉ ligne du mockup) : fond
- * accent de rôle + `text-white` (exception design system tolérée sur fond
- * coloré). Cible tactile ≥ 28px de haut, focus visible hérité du shell.
+ * `role-text` (ton accent foncé, primary-700) + `text-white` → contraste WCAG
+ * AA ≥4.5:1 pour tous les rôles (le ton accent de base primary-600 échouait sur
+ * le teal médecin). Cible tactile ≥ 28px de haut, focus visible hérité du shell.
  */
 export function DashboardRowAction({
   href,
@@ -112,7 +113,7 @@ export function DashboardRowAction({
       className={cn(
         "inline-flex h-7 items-center rounded-md px-2.5 text-xs font-bold transition-colors",
         variant === "primary"
-          ? "bg-role text-white hover:brightness-105"
+          ? "bg-role-text text-white hover:brightness-110"
           : "border border-border bg-card text-foreground hover:bg-role-soft hover:text-role-text",
       )}
     >

@@ -12,7 +12,7 @@
 import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
-import { StaleBanner, STALE_MESSAGE_FR } from "@/components/diabeo/dashboard/medecin/StaleBanner"
+import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
 import { DashboardCardHeader } from "@/components/diabeo/dashboard/DashboardCardHeader"
 import {
   DashboardRow,
@@ -53,10 +53,10 @@ export function RecallListCard() {
       <DashboardCardHeader
         titleId="card-recall-title"
         title={t("title")}
-        dot="warning"
+        dot={items.length > 0 ? "warning" : "success"}
         count={items.length}
       />
-      {isStale && <StaleBanner message={STALE_MESSAGE_FR} />}
+      {isStale && <StaleBanner message={t("stale")} />}
       <div className="px-4 pb-4 pt-2">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("loading")}</p>

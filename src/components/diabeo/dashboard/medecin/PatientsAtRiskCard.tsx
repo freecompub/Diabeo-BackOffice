@@ -54,7 +54,7 @@ export function PatientsAtRiskCard() {
       <DashboardCardHeader
         titleId="card-risk-title"
         title={t("risk.title")}
-        dot="warning"
+        dot={items.length > 0 ? "warning" : "success"}
         count={items.length}
         more={{ href: "/patients", label: t("urgencies.seeAll") }}
       />

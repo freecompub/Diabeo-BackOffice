@@ -24,15 +24,18 @@ export type DashboardPillVariant =
   | "dt2"
   | "gd"
 
+// Texte = ton `-fg` foncé (WCAG AA ≥4.5:1 sur le `-bg`) ; bordure = ton de base
+// (vif) à faible opacité. JAMAIS le ton vif en texte sur fond clair (contraste
+// insuffisant — cf. audit a11y).
 const VARIANT_CLASSES: Record<DashboardPillVariant, string> = {
-  error: "bg-feedback-error-bg text-feedback-error border-feedback-error/25",
-  warning: "bg-feedback-warning-bg text-feedback-warning border-feedback-warning/25",
-  success: "bg-feedback-success-bg text-feedback-success border-feedback-success/25",
-  info: "bg-feedback-info-bg text-feedback-info border-feedback-info/25",
+  error: "bg-feedback-error-bg text-feedback-error-fg border-feedback-error/25",
+  warning: "bg-feedback-warning-bg text-feedback-warning-fg border-feedback-warning/25",
+  success: "bg-feedback-success-bg text-feedback-success-fg border-feedback-success/25",
+  info: "bg-feedback-info-bg text-feedback-info-fg border-feedback-info/25",
   accent: "bg-role-soft text-role-text border-role-line",
-  dt1: "bg-pathology-dt1-bg text-pathology-dt1 border-pathology-dt1/25",
-  dt2: "bg-pathology-dt2-bg text-pathology-dt2 border-pathology-dt2/25",
-  gd: "bg-pathology-gd-bg text-pathology-gd border-pathology-gd/25",
+  dt1: "bg-pathology-dt1-bg text-pathology-dt1-fg border-pathology-dt1/25",
+  dt2: "bg-pathology-dt2-bg text-pathology-dt2-fg border-pathology-dt2/25",
+  gd: "bg-pathology-gd-bg text-pathology-gd-fg border-pathology-gd/25",
 }
 
 export interface DashboardPillProps {

@@ -47,10 +47,21 @@ export default async function MedecinDashboardPage() {
 
   // Compteurs de triage du sous-titre (mockup Home v3). Count-only, scopé au
   // portefeuille de l'appelant ; n'audite qu'une ligne récapitulative.
+  // Contexte réseau renseigné (IP/UA/requestId) pour la traçabilité HDS/ANS,
+  // au même titre que les routes API (cf. extractRequestContext). XFF/realIP
+  // restent best-effort derrière proxy (cf. docs/security/xff-trusted-proxy.md).
   const userId = Number(headersList.get("x-user-id"))
+  const auditCtx = {
+    ipAddress:
+      headersList.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+      headersList.get("x-real-ip") ??
+      "unknown",
+    userAgent: headersList.get("user-agent") ?? "unknown",
+    requestId: headersList.get("x-request-id") ?? "no-request-id",
+  }
   const triage =
     Number.isInteger(userId) && userId > 0
-      ? await triageSummaryQuery.forCaller(userId, role as Role, userId)
+      ? await triageSummaryQuery.forCaller(userId, role as Role, userId, auditCtx)
       : { patientsToTriage: 0, priorityAlerts: 0 }
   const subtitleExtra =
     triage.patientsToTriage > 0 || triage.priorityAlerts > 0 ? (

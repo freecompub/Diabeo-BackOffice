@@ -261,7 +261,8 @@
         "seeAll": "عرض الكل",
         "open": "فتح",
         "openAria": "فتح ملف {name}",
-        "tirLow": "منخفض"
+        "tirLow": "منخفض",
+        "tirSubTarget": "دون الهدف"
       },
       "appointments": {
         "title": "مواعيد اليوم",
@@ -1491,7 +1492,8 @@
       "smsAria": "إرسال رسالة نصية إلى {name}",
       "reasonSilentMonitoring": "غياب الإدخال",
       "reasonAppointmentUnconfirmed": "موعد غير مؤكّد",
-      "reasonNeverSynced": "لم تتم المزامنة قط"
+      "reasonNeverSynced": "لم تتم المزامنة قط",
+      "stale": "بيانات قديمة — في انتظار التحديث."
     },
     "medecinProposals": {
       "title": "المقترحات قيد الانتظار",

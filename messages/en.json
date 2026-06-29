@@ -261,7 +261,8 @@
         "seeAll": "See all",
         "open": "Open",
         "openAria": "Open {name}'s record",
-        "tirLow": "low"
+        "tirLow": "low",
+        "tirSubTarget": "below target"
       },
       "appointments": {
         "title": "Today's appointments",
@@ -1491,7 +1492,8 @@
       "smsAria": "Send an SMS to {name}",
       "reasonSilentMonitoring": "No entries",
       "reasonAppointmentUnconfirmed": "Unconfirmed appointment",
-      "reasonNeverSynced": "Never synced"
+      "reasonNeverSynced": "Never synced",
+      "stale": "Stale data — refresh pending."
     },
     "medecinProposals": {
       "title": "Pending proposals",

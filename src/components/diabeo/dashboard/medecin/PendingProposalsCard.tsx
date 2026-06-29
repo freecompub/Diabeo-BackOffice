@@ -149,7 +149,7 @@ export function PendingProposalsCard() {
                     <>
                       <DashboardPill variant="accent">{t("deterministic")}</DashboardPill>
                       <DashboardPill
-                        variant={changeVariant(p.changePercent)}
+                        variant={changeVariant(pct)}
                         aria-label={t("changeAria", { percent: pct })}
                       >
                         {pct > 0 ? `+${pct}` : pct}&nbsp;%

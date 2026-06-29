@@ -30,6 +30,9 @@ import { prisma } from "@/lib/db/client"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { auditService, type AuditContext } from "./audit.service"
 import { messagingService, MESSAGING_BOUNDS } from "./messaging.service"
+import { getCgmDefaults } from "./objectives.service"
+import { cgmCaptureRate } from "@/lib/statistics"
+import { DASHBOARD_TIR } from "@/lib/clinical-bounds"
 import { safeDecryptField } from "@/lib/crypto/fields"
 import { todayDateBounds } from "@/lib/cabinet-time"
 import type { GlucoseUnit } from "@/lib/conversions"
@@ -88,9 +91,13 @@ export const CRITICALITY_ORDER: Record<EmergencyAlertType, number> = {
 
 // CgmEntry stores `valueGl` in g/L. Thresholds : 70 mg/dL = 0.70 g/L,
 // 180 mg/dL = 1.80 g/L (1 g/L = 100 mg/dL). Standard TIR window per ATTD 2019.
-// Partagé entre le TIR par patient (Alertes, US-2401) et le KPI cabinet (US-2404).
+// Utilisés par le KPI cabinet (US-2404, moyenne cohorte, non pathology-aware).
+// Le TIR par patient (Alertes) dérive ses bornes de `getCgmDefaults` (GD-aware).
 const TIR_LOW_GL = 0.70
 const TIR_HIGH_GL = 1.80
+
+/** Fenêtre du TIR par patient (Alertes) — 14 j, standard ATTD 2019. */
+const DASHBOARD_TIR_WINDOW_DAYS = 14
 
 // ─────────────────────────────────────────────────────────────
 // US-2401 — Urgencies in progress
@@ -184,35 +191,63 @@ export const urgenciesQuery = {
       .slice(0, URGENCY_LIMIT)
 
     // TIR par patient (14 j) pour les patients en alerte (≤ URGENCY_LIMIT).
-    // Mêmes seuils/fenêtre que le KPI cabinet (TIR_LOW_GL/TIR_HIGH_GL,
-    // déclarés plus bas — accessibles ici car le corps de fonction ne
-    // s'exécute qu'à l'appel, après initialisation des consts module).
-    // 2 groupBy bornés par `patientId IN (…)` → coût négligeable au polling 30s.
+    // Bornes de cible ADAPTÉES À LA PATHOLOGIE (`getCgmDefaults` : GD 0,63–1,40
+    // g/L vs 0,70–1,80 adulte) — cohérent avec analytics/objectives.service,
+    // évite un faux rassurement en diabète gestationnel. Plancher de suffisance
+    // (`cgmCaptureRate` ≥ DASHBOARD_TIR.MIN_CAPTURE_RATE) : pas de TIR publié sur
+    // un échantillon trop maigre (faux « TIR bas » / faux « bon TIR »).
+    // Requêtes bornées par `patientId IN (…)` (≤ 5) + ≤ 2 jeux de bornes.
+    type TirGroup = { patientId: number; _count: { patientId: number } }
     const alertPatientIds = sorted.map((r) => r.patientId)
-    const tirSince = new Date(Date.now() - 14 * 86_400_000)
-    const [tirTotals, tirInRange] = alertPatientIds.length
-      ? await Promise.all([
-          prisma.cgmEntry.groupBy({
-            by: ["patientId"],
-            where: { patientId: { in: alertPatientIds }, timestamp: { gte: tirSince } },
-            _count: { patientId: true },
-          }),
+    const tirSince = new Date(Date.now() - DASHBOARD_TIR_WINDOW_DAYS * 86_400_000)
+    // Regroupe les patients par bornes de cible (adulte vs GD) pour borner le
+    // nombre de requêtes in-range quel que soit le mix de pathologies.
+    const tirBoundGroups = new Map<string, { low: number; high: number; ids: number[] }>()
+    for (const r of sorted) {
+      const d = getCgmDefaults(r.patient.pathology ?? undefined)
+      const key = `${d.titrLow}-${d.titrHigh}`
+      const g = tirBoundGroups.get(key) ?? { low: d.titrLow, high: d.titrHigh, ids: [] }
+      g.ids.push(r.patientId)
+      tirBoundGroups.set(key, g)
+    }
+    const tirGroupList = [...tirBoundGroups.values()]
+    let tirTotals: TirGroup[] = []
+    let tirInRangeGroups: TirGroup[][] = []
+    if (alertPatientIds.length) {
+      const tirResults = await Promise.all([
+        prisma.cgmEntry.groupBy({
+          by: ["patientId"],
+          where: { patientId: { in: alertPatientIds }, timestamp: { gte: tirSince } },
+          _count: { patientId: true },
+        }),
+        ...tirGroupList.map((g) =>
           prisma.cgmEntry.groupBy({
             by: ["patientId"],
             where: {
-              patientId: { in: alertPatientIds },
+              patientId: { in: g.ids },
               timestamp: { gte: tirSince },
-              valueGl: { gte: TIR_LOW_GL, lte: TIR_HIGH_GL },
+              valueGl: { gte: g.low, lte: g.high },
             },
             _count: { patientId: true },
           }),
-        ])
-      : [[], []]
+        ),
+      ])
+      tirTotals = tirResults[0] as TirGroup[]
+      tirInRangeGroups = tirResults.slice(1) as TirGroup[][]
+    }
     const tirTotalByPatient = new Map(tirTotals.map((g) => [g.patientId, g._count.patientId]))
-    const tirInRangeByPatient = new Map(tirInRange.map((g) => [g.patientId, g._count.patientId]))
+    const tirInRangeByPatient = new Map<number, number>()
+    for (const grp of tirInRangeGroups) {
+      for (const g of grp) tirInRangeByPatient.set(g.patientId, g._count.patientId)
+    }
     const tirPercentFor = (patientId: number): number | null => {
       const total = tirTotalByPatient.get(patientId) ?? 0
       if (total === 0) return null
+      // Suffisance : sous le plancher de capture, le TIR n'est pas représentatif
+      // → on ne publie rien (l'UI masque alors le TIR et la pill).
+      if (cgmCaptureRate(total, DASHBOARD_TIR_WINDOW_DAYS) < DASHBOARD_TIR.MIN_CAPTURE_RATE) {
+        return null
+      }
       const inRange = tirInRangeByPatient.get(patientId) ?? 0
       return Math.round((inRange / total) * 1000) / 10
     }
@@ -232,6 +267,10 @@ export const urgenciesQuery = {
         metadata: {
           patientId: r.patientId,
           kind: "dashboard.medecin.urgencies",
+          // Marqueur de l'agrégat CGM restitué (TIR 14 j) — sans valeur de
+          // santé. Trace, pour la reconstitution forensique, qu'une donnée
+          // dérivée du CGM a été consultée à cet instant (HDS/ANS).
+          derived: ["tir14d"],
         },
       }),
     ))

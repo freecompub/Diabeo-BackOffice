@@ -28,6 +28,7 @@ import {
 import { Acronym } from "@/components/diabeo/Acronym"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import { bcp47 } from "@/i18n/config"
+import { DASHBOARD_TIR } from "@/lib/clinical-bounds"
 import type { UrgencyItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: UrgencyItem[] }
@@ -45,12 +46,12 @@ const SEVERITY_PILL: Record<string, DashboardPillVariant> = {
   info: "info",
 }
 
-/** En dessous de ce TIR (%), on signale « TIR bas » (ATTD : cible ≥ 70 %). */
-const TIR_LOW_THRESHOLD = 50
-
 export function EmergencyCard() {
   const t = useTranslations("dashboard.medecin")
   const locale = useLocale()
+  // Nombres localisés (séparateurs/chiffres selon la locale active, ex. AR).
+  const fmt = (n: number, opts?: Intl.NumberFormatOptions) =>
+    n.toLocaleString(bcp47(locale), opts)
   const { data, error, loading, lastUpdatedAt, isStale } = usePollingFetch<ApiResponse>(
     "/api/dashboard/medecin/urgencies",
     30_000,
@@ -65,7 +66,7 @@ export function EmergencyCard() {
       <DashboardCardHeader
         titleId="card-urgencies-title"
         title={t("urgencies.title")}
-        dot="error"
+        dot={items.length > 0 ? "error" : "success"}
         count={items.length}
         more={{ href: "/patients", label: t("urgencies.seeAll") }}
         trailing={
@@ -111,11 +112,21 @@ export function EmergencyCard() {
               const name = u.patientFirstName || t("patientFallback")
               const valueText =
                 u.glucoseValueMgdl !== null
-                  ? `${u.glucoseValueMgdl} mg/dL`
+                  ? `${fmt(u.glucoseValueMgdl)} mg/dL`
                   : u.ketoneValueMmol !== null
-                  ? `${u.ketoneValueMmol} mmol/L`
+                  ? `${fmt(u.ketoneValueMmol, { maximumFractionDigits: 2 })} mmol/L`
                   : null
-              const tirLow = u.tirPercent !== null && u.tirPercent < TIR_LOW_THRESHOLD
+              // Bi-palier (cible ATTD ≥ 70 %) : < 50 % = « TIR bas » (rouge),
+              // 50–70 % = « sous-cible » (ambre). `null` (pas de capteur / data
+              // insuffisante) → aucune pill.
+              const tirState =
+                u.tirPercent === null
+                  ? null
+                  : u.tirPercent < DASHBOARD_TIR.LOW_PERCENT
+                  ? "low"
+                  : u.tirPercent < DASHBOARD_TIR.TARGET_PERCENT
+                  ? "subTarget"
+                  : null
               const alertLabel = t.has(`urgencies.alert.${u.alertType}`)
                 ? t(`urgencies.alert.${u.alertType}`)
                 : u.alertType
@@ -141,7 +152,8 @@ export function EmergencyCard() {
                         {u.tirPercent !== null && (
                           <>
                             {valueText ? " · " : ""}
-                            <Acronym code="TIR" className="cursor-help" /> {u.tirPercent} %
+                            <Acronym code="TIR" className="cursor-help" />{" "}
+                            {fmt(u.tirPercent, { maximumFractionDigits: 1 })} %
                           </>
                         )}
                       </span>
@@ -152,13 +164,13 @@ export function EmergencyCard() {
                       <DashboardPill variant={SEVERITY_PILL[u.severity] ?? "info"}>
                         {alertLabel}
                       </DashboardPill>
-                      {tirLow && (
-                        <DashboardPill variant="warning">
+                      {tirState && (
+                        <DashboardPill variant={tirState === "low" ? "error" : "warning"}>
                           <Acronym
                             code="TIR"
                             className="cursor-help no-underline decoration-transparent"
                           />{" "}
-                          {t("urgencies.tirLow")}
+                          {t(tirState === "low" ? "urgencies.tirLow" : "urgencies.tirSubTarget")}
                         </DashboardPill>
                       )}
                       <DashboardRowAction
