@@ -1,29 +1,42 @@
 /**
  * US-2403 — Patients à suivre (médecin). Top 3 par score on-demand.
- * Polling 5min. DOCTOR-only (jugement clinique).
+ * Polling 5min. DOCTOR-only (jugement clinique). Lignes « Home v3 » : avatar
+ * teinté par motif, pathologie, métrique, pill motif + action « Ouvrir ».
  */
 
 "use client"
 
-import Link from "next/link"
 import { useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
-import { Badge } from "@/components/ui/badge"
+import { DashboardCardHeader } from "@/components/diabeo/dashboard/DashboardCardHeader"
+import {
+  DashboardRow,
+  DashboardAvatar,
+  DashboardRowAction,
+  type DashboardAvatarTint,
+} from "@/components/diabeo/dashboard/DashboardRow"
+import {
+  DashboardPill,
+  PathologyPill,
+  type DashboardPillVariant,
+} from "@/components/diabeo/dashboard/DashboardPill"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import type { PatientAtRiskItem } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: PatientAtRiskItem[] }
 
-// Visual variant per risk reason (non-textual — labels are localized via i18n).
-// Mirrors `RiskReason` (doctor-dashboard.service.ts) : only the reasons the
-// service actually emits. `tirDrop` was dropped server-side (code-review L6),
-// so it is intentionally absent here — re-add it alongside the type + i18n keys
-// if/when the service reintroduces it.
-const REASON_VARIANT: Record<string, "destructive" | "outline" | "secondary"> = {
-  recentHypos: "destructive",
-  silentMonitoring: "outline",
+// Motif de suivi → teinte avatar + variante pill (libellés localisés via i18n,
+// jamais portés par la seule couleur). `tirDrop` resté absent côté service
+// (code-review L6) — réintroduire ici si la query le réémet un jour.
+const REASON_TINT: Record<string, DashboardAvatarTint> = {
+  recentHypos: "error",
+  silentMonitoring: "warning",
+}
+const REASON_PILL: Record<string, DashboardPillVariant> = {
+  recentHypos: "error",
+  silentMonitoring: "warning",
 }
 
 export function PatientsAtRiskCard() {
@@ -38,17 +51,16 @@ export function PatientsAtRiskCard() {
 
   return (
     <DiabeoCard role="region" aria-labelledby="card-risk-title">
-      <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-risk-title" className="font-display text-base font-semibold">
-          {t("risk.title")}
-        </h2>
-        <span className="text-xs text-muted-foreground">
-          {t("risk.top", { count: items.length || 0 })}
-        </span>
-      </header>
+      <DashboardCardHeader
+        titleId="card-risk-title"
+        title={t("risk.title")}
+        dot="warning"
+        count={items.length}
+        more={{ href: "/patients", label: t("urgencies.seeAll") }}
+      />
       {isStale && <StaleBanner message={t("stale")} />}
 
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 pt-2">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
@@ -65,7 +77,7 @@ export function PatientsAtRiskCard() {
         {items.length > 0 && (
           <ul className="space-y-2">
             {items.map((p) => {
-              const variant = REASON_VARIANT[p.reason] ?? "outline"
+              const name = p.patientFirstName || t("patientFallback")
               const reasonLabel = t.has(`risk.reason.${p.reason}`)
                 ? t(`risk.reason.${p.reason}`)
                 : p.reason
@@ -73,23 +85,35 @@ export function PatientsAtRiskCard() {
                 ? t(`risk.metric.${p.reason}`, { count: p.metricValue })
                 : p.metricLabel
               return (
-                <li
+                <DashboardRow
                   key={p.patientId}
-                  className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
-                >
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-                    {(p.patientFirstName || "?").charAt(0).toUpperCase()}
-                  </span>
-                  <Link
-                    href={`/patients/${p.patientId}`}
-                    className="flex-1 truncate text-sm font-medium hover:underline"
-                  >
-                    {p.patientFirstName || t("patientFallback")}
-                    {p.pathology ? ` · ${p.pathology}` : ""}
-                  </Link>
-                  <Badge variant={variant}>{reasonLabel}</Badge>
-                  <span className="text-xs text-muted-foreground">{metricLabel}</span>
-                </li>
+                  leading={
+                    <DashboardAvatar
+                      initials={name.charAt(0).toUpperCase()}
+                      tint={REASON_TINT[p.reason] ?? "neutral"}
+                    />
+                  }
+                  title={
+                    <span className="flex items-center gap-2">
+                      {name}
+                      <PathologyPill pathology={p.pathology} />
+                    </span>
+                  }
+                  sub={metricLabel}
+                  trailing={
+                    <>
+                      <DashboardPill variant={REASON_PILL[p.reason] ?? "info"}>
+                        {reasonLabel}
+                      </DashboardPill>
+                      <DashboardRowAction
+                        href={`/patients/${p.patientId}`}
+                        aria-label={t("urgencies.openAria", { name })}
+                      >
+                        {t("urgencies.open")}
+                      </DashboardRowAction>
+                    </>
+                  }
+                />
               )
             })}
           </ul>

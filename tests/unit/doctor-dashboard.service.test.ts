@@ -51,6 +51,10 @@ const pm = prismaMock as unknown as {
 
 beforeEach(() => {
   prismaMock.auditLog.create.mockResolvedValue({} as any)
+  // US-2401 — le TIR par patient des urgences fait 2 `cgmEntry.groupBy`.
+  // Défaut sûr (aucune mesure → tirPercent null) ; les tests qui valident le
+  // TIR le surchargent via `pm.cgmEntry.groupBy.mockResolvedValue(...)`.
+  pm.cgmEntry.groupBy.mockResolvedValue([] as any)
   mockedAccessible.mockReset()
   mockedListThreads.mockReset()
 })
@@ -97,6 +101,56 @@ describe("urgenciesQuery (US-2401)", () => {
     await urgenciesQuery.forCaller(1, "DOCTOR", 1)
     const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
     expect(meta.metadata.kind).toBe("dashboard.medecin.urgencies")
+  })
+
+  it("computes per-patient TIR (in-range / total, %), null when no CGM", async () => {
+    mockedAccessible.mockResolvedValue([10, 20])
+    const now = new Date("2026-05-14T10:00:00Z")
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([
+      {
+        id: 1, patientId: 10, alertType: EmergencyAlertType.hypo,
+        severity: EmergencyAlertSeverity.warning, status: EmergencyAlertStatus.open,
+        triggeredAt: now, glucoseValueMgdl: null, ketoneValueMmol: null,
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+      {
+        id: 2, patientId: 20, alertType: EmergencyAlertType.hyper,
+        severity: EmergencyAlertSeverity.warning, status: EmergencyAlertStatus.open,
+        triggeredAt: now, glucoseValueMgdl: null, ketoneValueMmol: null,
+        patient: { id: 20, pathology: "DT2", user: { firstname: null } },
+      },
+    ] as any)
+    // 1st groupBy = totals, 2nd groupBy = in-range. Patient 10 : 100 / 41 → 41 %.
+    // Patient 20 : 80 total, absent from in-range → 0 %. No row for unknown = null.
+    pm.cgmEntry.groupBy
+      .mockResolvedValueOnce([
+        { patientId: 10, _count: { patientId: 100 } },
+        { patientId: 20, _count: { patientId: 80 } },
+      ] as any)
+      .mockResolvedValueOnce([
+        { patientId: 10, _count: { patientId: 41 } },
+      ] as any)
+    const out = await urgenciesQuery.forCaller(1, "DOCTOR", 1)
+    const p10 = out.find((u) => u.patientId === 10)!
+    const p20 = out.find((u) => u.patientId === 20)!
+    expect(p10.tirPercent).toBe(41)
+    expect(p20.tirPercent).toBe(0)
+  })
+
+  it("returns tirPercent null for a patient with no CGM rows in window", async () => {
+    mockedAccessible.mockResolvedValue([10])
+    const now = new Date("2026-05-14T10:00:00Z")
+    prismaMock.emergencyAlert.findMany.mockResolvedValue([
+      {
+        id: 1, patientId: 10, alertType: EmergencyAlertType.hypo,
+        severity: EmergencyAlertSeverity.warning, status: EmergencyAlertStatus.open,
+        triggeredAt: now, glucoseValueMgdl: null, ketoneValueMmol: null,
+        patient: { id: 10, pathology: "DT1", user: { firstname: null } },
+      },
+    ] as any)
+    // beforeEach default = [] for both groupBy calls → no totals → null.
+    const out = await urgenciesQuery.forCaller(1, "DOCTOR", 1)
+    expect(out[0]!.tirPercent).toBeNull()
   })
 })
 

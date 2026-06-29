@@ -86,6 +86,12 @@ export const CRITICALITY_ORDER: Record<EmergencyAlertType, number> = {
   manual: 6,
 }
 
+// CgmEntry stores `valueGl` in g/L. Thresholds : 70 mg/dL = 0.70 g/L,
+// 180 mg/dL = 1.80 g/L (1 g/L = 100 mg/dL). Standard TIR window per ATTD 2019.
+// Partagé entre le TIR par patient (Alertes, US-2401) et le KPI cabinet (US-2404).
+const TIR_LOW_GL = 0.70
+const TIR_HIGH_GL = 1.80
+
 // ─────────────────────────────────────────────────────────────
 // US-2401 — Urgencies in progress
 // ─────────────────────────────────────────────────────────────
@@ -102,6 +108,14 @@ export type UrgencyItem = {
   /** First-name only (privacy on dashboard) — empty string if decryption fails. */
   patientFirstName: string
   pathology: string | null
+  /**
+   * Temps dans la cible (TIR) du patient sur 14 j, en %, arrondi 0,1 (même
+   * fenêtre/seuils que le KPI cabinet : CgmEntry `valueGl` ∈ [0,70 ; 1,80] g/L).
+   * `null` quand aucune mesure CGM sur la fenêtre (pas de TIR fabriqué — évite
+   * un faux « TIR bas » sur un patient sans capteur). Alimente la pill « TIR
+   * bas » de la carte Alertes (mockup Home v3 §médecin).
+   */
+  tirPercent: number | null
 }
 
 const URGENCY_LIMIT = 5
@@ -169,6 +183,40 @@ export const urgenciesQuery = {
       })
       .slice(0, URGENCY_LIMIT)
 
+    // TIR par patient (14 j) pour les patients en alerte (≤ URGENCY_LIMIT).
+    // Mêmes seuils/fenêtre que le KPI cabinet (TIR_LOW_GL/TIR_HIGH_GL,
+    // déclarés plus bas — accessibles ici car le corps de fonction ne
+    // s'exécute qu'à l'appel, après initialisation des consts module).
+    // 2 groupBy bornés par `patientId IN (…)` → coût négligeable au polling 30s.
+    const alertPatientIds = sorted.map((r) => r.patientId)
+    const tirSince = new Date(Date.now() - 14 * 86_400_000)
+    const [tirTotals, tirInRange] = alertPatientIds.length
+      ? await Promise.all([
+          prisma.cgmEntry.groupBy({
+            by: ["patientId"],
+            where: { patientId: { in: alertPatientIds }, timestamp: { gte: tirSince } },
+            _count: { patientId: true },
+          }),
+          prisma.cgmEntry.groupBy({
+            by: ["patientId"],
+            where: {
+              patientId: { in: alertPatientIds },
+              timestamp: { gte: tirSince },
+              valueGl: { gte: TIR_LOW_GL, lte: TIR_HIGH_GL },
+            },
+            _count: { patientId: true },
+          }),
+        ])
+      : [[], []]
+    const tirTotalByPatient = new Map(tirTotals.map((g) => [g.patientId, g._count.patientId]))
+    const tirInRangeByPatient = new Map(tirInRange.map((g) => [g.patientId, g._count.patientId]))
+    const tirPercentFor = (patientId: number): number | null => {
+      const total = tirTotalByPatient.get(patientId) ?? 0
+      if (total === 0) return null
+      const inRange = tirInRangeByPatient.get(patientId) ?? 0
+      return Math.round((inRange / total) * 1000) / 10
+    }
+
     // code-review M2 (re-review) — summary + per-patient pivot.
     await auditService.log({
       userId: auditUserId, action: "READ", resource: "EMERGENCY_ALERT",
@@ -199,7 +247,57 @@ export const urgenciesQuery = {
       ketoneValueMmol: r.ketoneValueMmol?.toNumber() ?? null,
       patientFirstName: safeDecryptField(r.patient.user.firstname ?? "") ?? "",
       pathology: r.patient.pathology,
+      tirPercent: tirPercentFor(r.patientId),
     }))
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// Sous-titre « Ma journée » — compteurs de triage (mockup Home v3)
+// ─────────────────────────────────────────────────────────────
+
+export type TriageSummary = {
+  /** Patients distincts du portefeuille avec ≥ 1 alerte ouverte/acquittée. */
+  patientsToTriage: number
+  /** Alertes prioritaires (sévérité critique) ouvertes/acquittées. */
+  priorityAlerts: number
+}
+
+/**
+ * Compteurs légers pour le sous-titre du greeting médecin. Count-only (aucune
+ * lecture de PHI ligne-à-ligne) → UN seul audit récapitulatif, contrairement à
+ * `urgenciesQuery` qui pivote chaque alerte. Scopé au portefeuille de
+ * l'appelant comme toutes les autres queries du dashboard.
+ */
+export const triageSummaryQuery = {
+  async forCaller(
+    userId: number, role: Role,
+    auditUserId: number, ctx?: AuditContext,
+  ): Promise<TriageSummary> {
+    const ids = await getAccessiblePatientIds(userId, role)
+    const scope = patientScopeWhere(ids)
+    if (scope === null) return { patientsToTriage: 0, priorityAlerts: 0 }
+    const baseWhere = {
+      ...scope,
+      status: { in: [EmergencyAlertStatus.open, EmergencyAlertStatus.acknowledged] },
+    }
+    const [distinctPatients, priorityAlerts] = await Promise.all([
+      prisma.emergencyAlert.findMany({
+        where: baseWhere,
+        distinct: ["patientId"],
+        select: { patientId: true },
+      }),
+      prisma.emergencyAlert.count({
+        where: { ...baseWhere, severity: EmergencyAlertSeverity.critical },
+      }),
+    ])
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "EMERGENCY_ALERT",
+      resourceId: "0",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { kind: "dashboard.medecin.triageSummary" },
+    })
+    return { patientsToTriage: distinctPatients.length, priorityAlerts }
   },
 }
 
@@ -577,11 +675,6 @@ export type KpiCard = {
   trend: "up" | "down" | "flat" | null
   unit: string | null
 }
-
-// CgmEntry stores `valueGl` in g/L. Thresholds : 70 mg/dL = 0.70 g/L,
-// 180 mg/dL = 1.80 g/L (1 g/L = 100 mg/dL). Standard TIR window per ATTD 2019.
-const TIR_LOW_GL = 0.70
-const TIR_HIGH_GL = 1.80
 
 export const kpisQuery = {
   async forCaller(

@@ -257,7 +257,11 @@
           "ketone_dka": "Ketoacidosis",
           "ketone_moderate": "Moderate ketones",
           "manual": "Manual alert"
-        }
+        },
+        "seeAll": "See all",
+        "open": "Open",
+        "openAria": "Open {name}'s record",
+        "tirLow": "low"
       },
       "appointments": {
         "title": "Today's appointments",
@@ -268,7 +272,10 @@
         "video": "Video",
         "inPerson": "In person",
         "imminent": "imminent",
-        "imminentAria": "{hour} — imminent"
+        "imminentAria": "{hour} — imminent",
+        "agenda": "Schedule",
+        "prepare": "Prepare",
+        "prepareAria": "Prepare {name}'s appointment"
       },
       "risk": {
         "title": "Patients to watch",
@@ -292,6 +299,10 @@
         "avgTir": "Average time in range (TIR) — 14d",
         "weekUrgencies": "Emergencies (7d)",
         "pendingProposals": "Pending proposals"
+      },
+      "triage": {
+        "patientsToTriage": "{count, plural, one {# patient to triage} other {# patients to triage}}",
+        "priorityAlerts": "{count, plural, =0 {no priority alerts} one {# priority alert} other {# priority alerts}}"
       }
     }
   },
@@ -1494,7 +1505,10 @@
       "paramInsulinToCarbRatio": "Insulin-to-carb ratio (ICR)",
       "valueTransition": "{from} → {to}",
       "changeAria": "{percent}% change",
-      "stale": "Data is stale — refresh pending."
+      "stale": "Data is stale — refresh pending.",
+      "deterministic": "deterministic",
+      "review": "Review",
+      "reviewAria": "Review {name}'s proposal"
     },
     "medecinMessages": {
       "title": "Unread messages",
@@ -1504,7 +1518,9 @@
       "emptyMessage": "Inbox up to date.",
       "previewFallback": "(encrypted message)",
       "unreadAria": "{count, plural, one {# unread message} other {# unread messages}}",
-      "stale": "Data is stale — refresh pending."
+      "stale": "Data is stale — refresh pending.",
+      "seeAll": "See all",
+      "read": "Read"
     },
     "nurseTeamInbox": {
       "title": "Team coordination",

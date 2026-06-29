@@ -13,8 +13,17 @@ import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
-import { Acronym, type AcronymCode } from "@/components/diabeo/Acronym"
-import { Badge } from "@/components/ui/badge"
+import { DashboardCardHeader } from "@/components/diabeo/dashboard/DashboardCardHeader"
+import {
+  DashboardRow,
+  DashboardAvatar,
+  DashboardRowAction,
+} from "@/components/diabeo/dashboard/DashboardRow"
+import {
+  DashboardPill,
+  PathologyPill,
+  type DashboardPillVariant,
+} from "@/components/diabeo/dashboard/DashboardPill"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import { bcp47 } from "@/i18n/config"
 import { convertGlucoseFromGl, type GlucoseUnit } from "@/lib/conversions"
@@ -41,11 +50,6 @@ const ISF_UNIT_KEY: Record<GlucoseUnit, InsulinUnitKey> = {
   "mg/dL": "isfMgdl",
   "mmol/L": "isfMmol",
 }
-
-/** Pathologies connues du glossaire (`Acronym`) — garde-fou de typage. */
-const PATHOLOGY_CODES = new Set<AcronymCode>(["DT1", "DT2", "GD"])
-const asPathologyCode = (p: string | null): AcronymCode | null =>
-  p && PATHOLOGY_CODES.has(p as AcronymCode) ? (p as AcronymCode) : null
 
 /**
  * Valeurs d'affichage + clé d'unité par proposition. L'ISF est stocké en g/L
@@ -74,8 +78,8 @@ function displayFor(p: PendingProposalItem): { from: number; to: number; unitKey
  * pas de titration propose — pas une valeur arbitraire. Indice visuel pur,
  * aucune action clinique déclenchée ici.
  */
-function changeVariant(percent: number): "destructive" | "secondary" {
-  return Math.abs(percent) >= 20 ? "destructive" : "secondary"
+function changeVariant(percent: number): DashboardPillVariant {
+  return Math.abs(percent) >= 20 ? "warning" : "accent"
 }
 
 export function PendingProposalsCard() {
@@ -95,14 +99,14 @@ export function PendingProposalsCard() {
   const hasError = error !== null && data === null
   return (
     <DiabeoCard role="region" aria-labelledby="card-proposals-title">
-      <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-proposals-title" className="font-display text-base font-semibold">
-          {t("title")}
-        </h2>
-        <span className="text-xs text-muted-foreground">{items.length}</span>
-      </header>
+      <DashboardCardHeader
+        titleId="card-proposals-title"
+        title={t("title")}
+        dot="info"
+        count={items.length}
+      />
       {isStale && <StaleBanner message={t("stale")} />}
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 pt-2">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
@@ -118,44 +122,48 @@ export function PendingProposalsCard() {
         )}
         {items.length > 0 && (
           <ul className="space-y-2">
-            {items.map((p) => {
+            {items.map((p, index) => {
               const pct = Math.round(p.changePercent)
-              const pathologyCode = asPathologyCode(p.pathology)
               const { from, to, unitKey } = displayFor(p)
+              const name = p.patientFirstName || t("patientFallback")
               return (
-                <li
+                <DashboardRow
                   key={p.id}
-                  className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
-                >
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-semibold">
-                    {(p.patientFirstName || "?").charAt(0).toUpperCase()}
-                  </span>
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate text-sm font-medium">
-                      {p.patientFirstName || t("patientFallback")}
-                      {pathologyCode && (
-                        <>
-                          {" · "}
-                          <Acronym code={pathologyCode} />
-                        </>
-                      )}
+                  leading={
+                    <DashboardAvatar initials={name.charAt(0).toUpperCase()} tint="accent" />
+                  }
+                  title={
+                    <span className="flex items-center gap-2">
+                      {name}
+                      <PathologyPill pathology={p.pathology} />
                     </span>
-                    <span className="truncate text-xs text-muted-foreground">
+                  }
+                  sub={
+                    <span className="tabular-nums">
                       {t(PARAM_LABEL_KEY[p.parameterType])}
+                      {" · "}
+                      {t("valueTransition", { from: fmt(from), to: fmt(to) })} {tUnits(unitKey)}
                     </span>
-                  </span>
-                  <span className="text-xs tabular-nums text-foreground">
-                    {t("valueTransition", { from: fmt(from), to: fmt(to) })}
-                    {" "}
-                    {tUnits(unitKey)}
-                  </span>
-                  <Badge
-                    variant={changeVariant(p.changePercent)}
-                    aria-label={t("changeAria", { percent: pct })}
-                  >
-                    {pct > 0 ? `+${pct}` : pct}&nbsp;%
-                  </Badge>
-                </li>
+                  }
+                  trailing={
+                    <>
+                      <DashboardPill variant="accent">{t("deterministic")}</DashboardPill>
+                      <DashboardPill
+                        variant={changeVariant(p.changePercent)}
+                        aria-label={t("changeAria", { percent: pct })}
+                      >
+                        {pct > 0 ? `+${pct}` : pct}&nbsp;%
+                      </DashboardPill>
+                      <DashboardRowAction
+                        href={`/patients/${p.patientId}/review`}
+                        variant={index === 0 ? "primary" : "default"}
+                        aria-label={t("reviewAria", { name })}
+                      >
+                        {t("review")}
+                      </DashboardRowAction>
+                    </>
+                  }
+                />
               )
             })}
           </ul>
