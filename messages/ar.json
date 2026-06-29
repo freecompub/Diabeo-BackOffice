@@ -257,7 +257,12 @@
           "ketone_dka": "حماض كيتوني",
           "ketone_moderate": "كيتونات معتدلة",
           "manual": "تنبيه يدوي"
-        }
+        },
+        "seeAll": "عرض الكل",
+        "open": "فتح",
+        "openAria": "فتح ملف {name}",
+        "tirLow": "منخفض",
+        "tirSubTarget": "دون الهدف"
       },
       "appointments": {
         "title": "مواعيد اليوم",
@@ -268,7 +273,10 @@
         "video": "مكالمة فيديو",
         "inPerson": "حضوري",
         "imminent": "وشيك",
-        "imminentAria": "{hour} — وشيك"
+        "imminentAria": "{hour} — وشيك",
+        "agenda": "الأجندة",
+        "prepare": "تحضير",
+        "prepareAria": "تحضير موعد {name}"
       },
       "risk": {
         "title": "مرضى للمتابعة",
@@ -292,6 +300,10 @@
         "avgTir": "متوسط النطاق المستهدف (14 يومًا)",
         "weekUrgencies": "حالات طارئة (7 أيام)",
         "pendingProposals": "مقترحات معلّقة"
+      },
+      "triage": {
+        "patientsToTriage": "{count, plural, =0 {0 مريض للفرز} other {# مريض للفرز}}",
+        "priorityAlerts": "{count, plural, =0 {لا تنبيهات ذات أولوية} other {# تنبيه ذو أولوية}}"
       }
     }
   },
@@ -1480,7 +1492,8 @@
       "smsAria": "إرسال رسالة نصية إلى {name}",
       "reasonSilentMonitoring": "غياب الإدخال",
       "reasonAppointmentUnconfirmed": "موعد غير مؤكّد",
-      "reasonNeverSynced": "لم تتم المزامنة قط"
+      "reasonNeverSynced": "لم تتم المزامنة قط",
+      "stale": "بيانات قديمة — في انتظار التحديث."
     },
     "medecinProposals": {
       "title": "المقترحات قيد الانتظار",
@@ -1494,7 +1507,10 @@
       "paramInsulinToCarbRatio": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
       "valueTransition": "{from} ← {to}",
       "changeAria": "تغيّر بنسبة {percent}٪",
-      "stale": "البيانات قديمة — في انتظار التحديث."
+      "stale": "البيانات قديمة — في انتظار التحديث.",
+      "deterministic": "حتمي",
+      "review": "مراجعة",
+      "reviewAria": "مراجعة اقتراح {name}"
     },
     "medecinMessages": {
       "title": "رسائل غير مقروءة",
@@ -1504,7 +1520,9 @@
       "emptyMessage": "صندوق الوارد محدّث.",
       "previewFallback": "(رسالة مشفّرة)",
       "unreadAria": "{count, plural, zero {# رسالة غير مقروءة} one {# رسالة غير مقروءة} two {# رسالتان غير مقروءتين} few {# رسائل غير مقروءة} many {# رسالة غير مقروءة} other {# رسالة غير مقروءة}}",
-      "stale": "البيانات قديمة — في انتظار التحديث."
+      "stale": "البيانات قديمة — في انتظار التحديث.",
+      "seeAll": "عرض الكل",
+      "read": "قراءة"
     },
     "nurseTeamInbox": {
       "title": "تنسيق الفريق",

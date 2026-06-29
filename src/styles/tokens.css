@@ -139,6 +139,7 @@
   --diabeo-error-border: #FCA5A5;
 
   --diabeo-info: #3B82F6;
+  --diabeo-info-fg: #1D4ED8; /* texte sur info-bg — WCAG AA ≥4.5:1 (blue-700) */
   --diabeo-info-bg: #EFF6FF;
   --diabeo-info-border: #BFDBFE;
 
@@ -147,10 +148,13 @@
    * ---------------------------------------------------------------- */
 
   --diabeo-dt1: #7C3AED;             /* Violet — Diabetes Type 1 */
+  --diabeo-dt1-fg: #6D28D9;          /* texte sur dt1-bg — WCAG AA (violet-700) */
   --diabeo-dt1-bg: #F5F3FF;
   --diabeo-dt2: #2563EB;             /* Blue — Diabetes Type 2 */
+  --diabeo-dt2-fg: #1D4ED8;          /* texte sur dt2-bg — WCAG AA (blue-700) */
   --diabeo-dt2-bg: #EFF6FF;
   --diabeo-gd: #EC4899;              /* Pink — Gestational Diabetes */
+  --diabeo-gd-fg: #BE185D;           /* texte sur gd-bg — WCAG AA (pink-700) */
   --diabeo-gd-bg: #FDF2F8;
 
   /* ----------------------------------------------------------------

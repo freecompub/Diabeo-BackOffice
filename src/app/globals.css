@@ -126,11 +126,16 @@
   --color-tir-very-high: var(--diabeo-tir-very-high);
 
   /* --- Diabeo Design System: Pathology colors --- */
+  /* `-fg` = texte foncé (contraste WCAG AA sur le `-bg`) ; le ton de base
+     (vif) reste réservé aux dots/bordures. */
   --color-pathology-dt1: var(--diabeo-dt1);
+  --color-pathology-dt1-fg: var(--diabeo-dt1-fg);
   --color-pathology-dt1-bg: var(--diabeo-dt1-bg);
   --color-pathology-dt2: var(--diabeo-dt2);
+  --color-pathology-dt2-fg: var(--diabeo-dt2-fg);
   --color-pathology-dt2-bg: var(--diabeo-dt2-bg);
   --color-pathology-gd: var(--diabeo-gd);
+  --color-pathology-gd-fg: var(--diabeo-gd-fg);
   --color-pathology-gd-bg: var(--diabeo-gd-bg);
 
   /* --- Diabeo Design System: Hover/active states (dark-mode safe) --- */
@@ -140,13 +145,19 @@
   --color-destructive-active: var(--diabeo-destructive-active);
 
   /* --- Diabeo Design System: Semantic feedback --- */
+  /* `-fg` = texte foncé (contraste WCAG AA ≥4.5:1 sur le `-bg`) ; le ton de
+     base (vif) reste pour les dots/bordures, pas pour du texte sur `-bg`. */
   --color-feedback-success: var(--diabeo-success);
+  --color-feedback-success-fg: var(--diabeo-success-fg);
   --color-feedback-success-bg: var(--diabeo-success-bg);
   --color-feedback-warning: var(--diabeo-warning);
+  --color-feedback-warning-fg: var(--diabeo-warning-fg);
   --color-feedback-warning-bg: var(--diabeo-warning-bg);
   --color-feedback-error: var(--diabeo-error);
+  --color-feedback-error-fg: var(--diabeo-error-fg);
   --color-feedback-error-bg: var(--diabeo-error-bg);
   --color-feedback-info: var(--diabeo-info);
+  --color-feedback-info-fg: var(--diabeo-info-fg);
   --color-feedback-info-bg: var(--diabeo-info-bg);
 
   /* --- Diabeo Design System: Shadows --- */

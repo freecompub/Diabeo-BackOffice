@@ -58,3 +58,26 @@ export const CGM_AGGREGATE_RANGE_GL = {
   MIN: 0.20,
   MAX: 6.00,
 } as const
+
+/**
+ * Paliers du **temps dans la cible (TIR)** affiché sur le dashboard médecin
+ * (carte Alertes, US-2401). Source unique partagée entre le service (calcul,
+ * plancher de suffisance) et l'UI client (`EmergencyCard`, paliers de pill).
+ *
+ * - `TARGET_PERCENT` (≥ 70 %) : cible internationale ATTD/Battelino 2019. Sous
+ *   ce seuil → « sous-cible » (ambre).
+ * - `LOW_PERCENT` (< 50 %) : contrôle franchement insuffisant → « TIR bas »
+ *   (rouge). Les **bornes glycémiques** de la cible sont, elles, adaptées à la
+ *   pathologie (GD 0,63–1,40 g/L vs 0,70–1,80) via `getCgmDefaults` — ce module
+ *   ne porte QUE les paliers en pourcentage (indépendants de la pathologie).
+ * - `MIN_CAPTURE_RATE` (%) : plancher de suffisance de données (aligné sur
+ *   `population-analytics`) en deçà duquel le TIR n'est pas publié (trompeur sur
+ *   un échantillon trop maigre) → la carte n'affiche alors ni TIR ni pill.
+ *
+ * Module sans dépendance serveur → importable côté client sans fuite Prisma.
+ */
+export const DASHBOARD_TIR = {
+  TARGET_PERCENT: 70,
+  LOW_PERCENT: 50,
+  MIN_CAPTURE_RATE: 30,
+} as const

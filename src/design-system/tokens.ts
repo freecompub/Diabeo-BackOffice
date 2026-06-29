@@ -97,14 +97,18 @@ export const COLOR_TOKEN_CSS = {
   "error-bg": "#FEF2F2",
   "error-border": "#FCA5A5",
   "info": "#3B82F6",
+  "info-fg": "#1D4ED8",
   "info-bg": "#EFF6FF",
   "info-border": "#BFDBFE",
   // Pathology badges
   "dt1": "#7C3AED",
+  "dt1-fg": "#6D28D9",
   "dt1-bg": "#F5F3FF",
   "dt2": "#2563EB",
+  "dt2-fg": "#1D4ED8",
   "dt2-bg": "#EFF6FF",
   "gd": "#EC4899",
+  "gd-fg": "#BE185D",
   "gd-bg": "#FDF2F8",
   // Role accents (Home dashboards). Doctor & Patient réutilisent le teal
   // (primary-*) ; seuls Nurse (indigo) et Admin (slate) introduisent de

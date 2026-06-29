@@ -13,7 +13,9 @@ import { useLocale, useTranslations } from "next-intl"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { StaleBanner } from "@/components/diabeo/dashboard/medecin/StaleBanner"
-import { Badge } from "@/components/ui/badge"
+import { DashboardCardHeader } from "@/components/diabeo/dashboard/DashboardCardHeader"
+import { DashboardRow, DashboardRowAction } from "@/components/diabeo/dashboard/DashboardRow"
+import { DashboardPill } from "@/components/diabeo/dashboard/DashboardPill"
 import { Mail } from "lucide-react"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import { bcp47 } from "@/i18n/config"
@@ -39,14 +41,15 @@ export function UnreadMessagesCard() {
   const hasError = error !== null && data === null
   return (
     <DiabeoCard role="region" aria-labelledby="card-messages-title">
-      <header className="flex items-center justify-between px-4 pt-4">
-        <h2 id="card-messages-title" className="font-display text-base font-semibold">
-          {t("title")}
-        </h2>
-        <span className="text-xs text-muted-foreground">{items.length}</span>
-      </header>
+      <DashboardCardHeader
+        titleId="card-messages-title"
+        title={t("title")}
+        dot="success"
+        count={items.length}
+        more={{ href: "/messages", label: t("seeAll") }}
+      />
       {isStale && <StaleBanner message={t("stale")} />}
-      <div className="px-4 pb-4">
+      <div className="px-4 pb-4 pt-2">
         {loading && items.length === 0 && (
           <p className="text-sm text-muted-foreground">{t("loading")}</p>
         )}
@@ -67,27 +70,34 @@ export function UnreadMessagesCard() {
                 ? `${m.preview}${m.previewTruncated ? "…" : ""}`
                 : t("previewFallback")
               return (
-                <li
+                <DashboardRow
                   key={m.conversationKey}
-                  className="flex items-center gap-3 rounded-md border border-border bg-card px-3 py-2"
-                >
-                  <span
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted"
-                    aria-hidden="true"
-                  >
-                    <Mail size={14} />
-                  </span>
-                  <span className="flex-1 truncate text-sm">{preview}</span>
-                  <Badge variant="destructive" aria-label={t("unreadAria", { count: m.unreadCount })}>
-                    {m.unreadCount}
-                  </Badge>
-                  <time
-                    className="text-xs text-muted-foreground"
-                    dateTime={new Date(m.lastMessageAt).toISOString()}
-                  >
-                    {formatDate(m.lastMessageAt, locale)}
-                  </time>
-                </li>
+                  leading={
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-foreground"
+                      aria-hidden="true"
+                    >
+                      <Mail size={15} />
+                    </span>
+                  }
+                  title={preview}
+                  sub={
+                    <time dateTime={new Date(m.lastMessageAt).toISOString()}>
+                      {formatDate(m.lastMessageAt, locale)}
+                    </time>
+                  }
+                  trailing={
+                    <>
+                      <DashboardPill
+                        variant="error"
+                        aria-label={t("unreadAria", { count: m.unreadCount })}
+                      >
+                        {m.unreadCount}
+                      </DashboardPill>
+                      <DashboardRowAction href="/messages">{t("read")}</DashboardRowAction>
+                    </>
+                  }
+                />
               )
             })}
           </ul>

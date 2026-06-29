@@ -9,6 +9,12 @@ interface DashboardGreetingProps {
   title: string
   /** Formats the greeting for a name, e.g. `(n) => t("greeting", { name: n })`. */
   greeting: (name: string) => string
+  /**
+   * Contenu additionnel appondu au sous-titre après « · » (ex. compteurs de
+   * triage du médecin : « 7 patients à trier · 3 alertes prioritaires »).
+   * Optionnel — les autres rôles gardent « {greeting} · {date} ».
+   */
+  subtitleExtra?: React.ReactNode
 }
 
 /**
@@ -27,6 +33,7 @@ interface DashboardGreetingProps {
 export async function DashboardGreeting({
   title,
   greeting,
+  subtitleExtra,
 }: DashboardGreetingProps) {
   const locale = await getLocale()
   const today = new Intl.DateTimeFormat(locale, {
@@ -57,7 +64,10 @@ export async function DashboardGreeting({
       <h1 className="font-display text-3xl font-semibold tracking-tight">
         {title}
       </h1>
-      <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {subtitle}
+        {subtitleExtra && <> · {subtitleExtra}</>}
+      </p>
     </header>
   )
 }

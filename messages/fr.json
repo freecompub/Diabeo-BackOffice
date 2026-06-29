@@ -257,7 +257,12 @@
           "ketone_dka": "Cétoacidose",
           "ketone_moderate": "Cétones modérées",
           "manual": "Alerte manuelle"
-        }
+        },
+        "seeAll": "Tout voir",
+        "open": "Ouvrir",
+        "openAria": "Ouvrir le dossier de {name}",
+        "tirLow": "bas",
+        "tirSubTarget": "sous-cible"
       },
       "appointments": {
         "title": "Rendez-vous du jour",
@@ -268,7 +273,10 @@
         "video": "Visio",
         "inPerson": "Présence",
         "imminent": "imminent",
-        "imminentAria": "{hour} — imminent"
+        "imminentAria": "{hour} — imminent",
+        "agenda": "Agenda",
+        "prepare": "Préparer",
+        "prepareAria": "Préparer le rendez-vous de {name}"
       },
       "risk": {
         "title": "Patients à suivre",
@@ -292,6 +300,10 @@
         "avgTir": "Temps dans la cible (TIR) — moyenne (14 j)",
         "weekUrgencies": "Urgences (7j)",
         "pendingProposals": "Propositions en attente"
+      },
+      "triage": {
+        "patientsToTriage": "{count, plural, one {# patient à trier} other {# patients à trier}}",
+        "priorityAlerts": "{count, plural, =0 {aucune alerte prioritaire} one {# alerte prioritaire} other {# alertes prioritaires}}"
       }
     }
   },
@@ -1480,7 +1492,8 @@
       "smsAria": "Envoyer un SMS à {name}",
       "reasonSilentMonitoring": "Silence saisie",
       "reasonAppointmentUnconfirmed": "Rendez-vous non confirmé",
-      "reasonNeverSynced": "Jamais synchronisé"
+      "reasonNeverSynced": "Jamais synchronisé",
+      "stale": "Données obsolètes — rafraîchissement en attente."
     },
     "medecinProposals": {
       "title": "Propositions en attente",
@@ -1494,7 +1507,10 @@
       "paramInsulinToCarbRatio": "Ratio insuline/glucides (ICR)",
       "valueTransition": "{from} → {to}",
       "changeAria": "Variation de {percent} %",
-      "stale": "Données obsolètes — rafraîchissement en attente."
+      "stale": "Données obsolètes — rafraîchissement en attente.",
+      "deterministic": "déterministe",
+      "review": "Revoir",
+      "reviewAria": "Revoir la proposition de {name}"
     },
     "medecinMessages": {
       "title": "Messages non lus",
@@ -1504,7 +1520,9 @@
       "emptyMessage": "Boîte de réception à jour.",
       "previewFallback": "(message chiffré)",
       "unreadAria": "{count, plural, one {# message non lu} other {# messages non lus}}",
-      "stale": "Données obsolètes — rafraîchissement en attente."
+      "stale": "Données obsolètes — rafraîchissement en attente.",
+      "seeAll": "Tout voir",
+      "read": "Lire"
     },
     "nurseTeamInbox": {
       "title": "Coordination équipe",
