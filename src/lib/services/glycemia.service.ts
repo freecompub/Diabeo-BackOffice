@@ -15,6 +15,7 @@ import { PeriodType, Prisma } from "@prisma/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import type { LatestRawSignal } from "@/lib/cgm-freshness"
+import { HBA1C_STALE_DAYS } from "@/lib/clinical-bounds"
 
 /**
  * Coerce un Prisma.Decimal | null en `number | null` JSON-safe.
@@ -271,6 +272,7 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
       metadata: { patientId },
     })
 
@@ -299,6 +301,61 @@ export const glycemiaService = {
       current: grouped.get(PeriodType.current) ?? [],
       avg7d: grouped.get(PeriodType.d7) ?? [],
       avg30d: grouped.get(PeriodType.d30) ?? [],
+    }
+  },
+
+  /**
+   * US-2631 (socle BGM) — dernier HbA1c **de laboratoire** saisi pour le patient
+   * (valeur + date + ancienneté). Alimente le bandeau « HbA1c (labo) » du mode
+   * BGM (où GMI/eA1c CGM sont invalides). `null` si aucun HbA1c saisi.
+   *
+   * Expose `ageDays` + `stale` (> `HBA1C_STALE_DAYS`) : l'HbA1c reflète ~8–12
+   * semaines ; une valeur de plus de ~180 j est caduque comme contrôle courant.
+   * La valeur reste retournée (informative si datée), mais l'UI doit afficher la
+   * date et avertir/griser quand `stale` (revue medical-domain-validator).
+   *
+   * Lit `GlycemiaEntry.hba1c` (Decimal). Audit READ GLYCEMIA_ENTRY (PHI).
+   * `opts.skipAudit` : à n'utiliser QUE si l'appelant (route/composite) écrit
+   * lui-même une ligne d'audit patient-scoped couvrant cette lecture — sinon
+   * lecture de PHI non tracée (interdit HDS).
+   */
+  async getLastHba1c(
+    patientId: number,
+    auditUserId: number,
+    ctx?: AuditContext,
+    opts?: { skipAudit?: boolean },
+  ): Promise<{ value: number; date: string; ageDays: number; stale: boolean } | null> {
+    const row = await prisma.glycemiaEntry.findFirst({
+      where: { patientId, hba1c: { not: null } },
+      orderBy: [{ date: "desc" }, { time: "desc" }],
+      select: { hba1c: true, date: true },
+    })
+
+    // On audite l'ACCÈS (la requête PHI a été exécutée) même si aucun HbA1c
+    // n'est enregistré — on trace la tentative de lecture, pas la présence de
+    // donnée. Cohérent avec `bgmStats` (audit avant de connaître le résultat).
+    if (!opts?.skipAudit) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: { patientId, kind: "lastHba1c" },
+      })
+    }
+
+    const value = dec(row?.hba1c)
+    if (row == null || value == null) return null
+
+    const ageDays = Math.floor((Date.now() - row.date.getTime()) / 86_400_000)
+    return {
+      value,
+      date: row.date.toISOString(),
+      ageDays,
+      stale: ageDays > HBA1C_STALE_DAYS,
     }
   },
 
@@ -332,6 +389,7 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
       metadata: { patientId },
     })
 
@@ -384,6 +442,7 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
       metadata: { patientId },
     })
 
@@ -432,6 +491,7 @@ export const glycemiaService = {
         resourceId: String(event.id),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
         metadata: { eventType: input.eventType },
       })
 
@@ -478,6 +538,7 @@ export const glycemiaService = {
         resourceId: String(id),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
       })
 
       return { deleted: true }

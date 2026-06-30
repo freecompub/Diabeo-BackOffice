@@ -14,7 +14,10 @@
 
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
-import { CLINICAL_BOUNDS, CGM_AGGREGATE_RANGE_GL } from "@/lib/clinical-bounds"
+import {
+  CLINICAL_BOUNDS, CGM_AGGREGATE_RANGE_GL,
+  DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS,
+} from "@/lib/clinical-bounds"
 
 describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
   it("matche exactement les valeurs documentées dans CLAUDE.md", () => {
@@ -59,5 +62,25 @@ describe("CGM_AGGREGATE_RANGE_GL — anti-drift vs DB CHECK", () => {
   it("englobe strictement le plancher d'affichage 0.40–5.00 (agrégats ⊃ série)", () => {
     expect(CGM_AGGREGATE_RANGE_GL.MIN).toBeLessThan(0.4)
     expect(CGM_AGGREGATE_RANGE_GL.MAX).toBeGreaterThan(5.0)
+  })
+})
+
+describe("DASHBOARD_TIR / AGP_SUFFICIENCY / HBA1C_STALE_DAYS — anti-drift (fiche patient)", () => {
+  it("fige les paliers TIR dashboard (US-2625)", () => {
+    expect(DASHBOARD_TIR).toEqual({ TARGET_PERCENT: 70, LOW_PERCENT: 50, MIN_CAPTURE_RATE: 30 })
+  })
+
+  it("fige les seuils de suffisance AGP (US-2631, ATTD/Battelino)", () => {
+    expect(AGP_SUFFICIENCY).toEqual({ MIN_DAYS: 14, MIN_CAPTURE_RATE: 70, MIN_SLOT_READINGS: 5 })
+  })
+
+  it("fige la péremption HbA1c labo (US-2631, ~6 mois)", () => {
+    expect(HBA1C_STALE_DAYS).toBe(180)
+  })
+
+  it("invariants : cible TIR > plancher ; suffisance bornée", () => {
+    expect(DASHBOARD_TIR.TARGET_PERCENT).toBeGreaterThan(DASHBOARD_TIR.LOW_PERCENT)
+    expect(AGP_SUFFICIENCY.MIN_SLOT_READINGS).toBeGreaterThanOrEqual(5)
+    expect(AGP_SUFFICIENCY.MIN_DAYS).toBeGreaterThanOrEqual(14)
   })
 })

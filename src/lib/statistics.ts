@@ -199,6 +199,13 @@ export interface AgpSlot {
   p50: number
   p75: number
   p90: number
+  /**
+   * Nombre de relevés agrégés dans ce slot de 15 min (socle suffisance,
+   * US-2631). La vue masque la bande P10–P90 quand `count <
+   * AGP_SUFFICIENCY.MIN_SLOT_READINGS` (percentiles non représentatifs). Champ
+   * additif : les consommateurs existants l'ignorent.
+   */
+  count: number
 }
 
 /**
@@ -247,6 +254,7 @@ export function computeAgp(
       p50: percentile(sorted, 50),
       p75: percentile(sorted, 75),
       p90: percentile(sorted, 90),
+      count: values.length,
     }
   })
 }

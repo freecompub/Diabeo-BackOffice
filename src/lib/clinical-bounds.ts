@@ -81,3 +81,40 @@ export const DASHBOARD_TIR = {
   LOW_PERCENT: 50,
   MIN_CAPTURE_RATE: 30,
 } as const
+
+/**
+ * Seuils de **suffisance de données pour l'AGP** (profil ambulatoire) — socle
+ * fiche patient US-2631. Consensus ATTD/Battelino 2019 : un AGP fiable exige
+ * ≥ 14 jours de données et ≥ 70 % de capture ; une fenêtre plus courte reste
+ * « indicative ». Au niveau d'un slot de 15 min, sous `MIN_SLOT_READINGS`
+ * relevés les percentiles externes (P10/P90) sont du bruit d'échantillonnage →
+ * la vue ne doit PAS tracer de bande (médiane seule ou trou). Le service expose
+ * le `count` par slot (`computeAgp`) ; la décision de masquage est portée par la
+ * vue (US-2635) à partir de ce seuil.
+ *
+ * Module sans dépendance serveur → importable côté client (vue AGP) sans fuite.
+ */
+export const AGP_SUFFICIENCY = {
+  /** Fenêtre minimale recommandée (jours) ; en deçà = « indicatif ». */
+  MIN_DAYS: 14,
+  /** Capture minimale (%) pour un AGP représentatif (cf. analytics MIN_CAPTURE_RATE). */
+  MIN_CAPTURE_RATE: 70,
+  /**
+   * Relevés minimum par slot de 15 min avant de tracer la bande P10–P90. À 3
+   * relevés, P10/P90 (interpolés) sont ~les extrêmes de l'échantillon, donc
+   * encore bruités (revue medical-domain-validator) ; 5 est un plancher
+   * défendable pour une bande crédible sans masquer excessivement (un slot bien
+   * couvert sur 14 j à 70 % a ~25–30 relevés). Reste un seuil minimal — la vue
+   * (US-2635) peut graduer davantage le masquage.
+   */
+  MIN_SLOT_READINGS: 5,
+} as const
+
+/**
+ * Péremption clinique d'un HbA1c de **laboratoire** (jours). L'HbA1c reflète la
+ * glycémie moyenne des ~8–12 dernières semaines ; au-delà de ~180 j la valeur
+ * est caduque comme indicateur de contrôle courant. `getLastHba1c` expose
+ * `ageDays` + `stale` (> ce seuil) ; la valeur reste affichée mais datée/avertie
+ * (mode BGM, où GMI/eA1c CGM sont invalides).
+ */
+export const HBA1C_STALE_DAYS = 180

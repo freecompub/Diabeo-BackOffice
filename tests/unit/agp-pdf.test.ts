@@ -18,7 +18,7 @@ import { generateAgpPdf } from "@/lib/pdf/agp-report"
 function buildAgp() {
   return Array.from({ length: 96 }, (_, i) => ({
     timeMinutes: i * 15,
-    p10: 0.7, p25: 0.9, p50: 1.2, p75: 1.6, p90: 2.0,
+    p10: 0.7, p25: 0.9, p50: 1.2, p75: 1.6, p90: 2.0, count: 30,
   }))
 }
 
