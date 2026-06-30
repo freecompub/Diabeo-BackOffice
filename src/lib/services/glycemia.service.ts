@@ -272,6 +272,7 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
       metadata: { patientId },
     })
 
@@ -330,6 +331,9 @@ export const glycemiaService = {
       select: { hba1c: true, date: true },
     })
 
+    // On audite l'ACCÈS (la requête PHI a été exécutée) même si aucun HbA1c
+    // n'est enregistré — on trace la tentative de lecture, pas la présence de
+    // donnée. Cohérent avec `bgmStats` (audit avant de connaître le résultat).
     if (!opts?.skipAudit) {
       await auditService.log({
         userId: auditUserId,
@@ -385,6 +389,7 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
       metadata: { patientId },
     })
 
@@ -437,6 +442,7 @@ export const glycemiaService = {
       resourceId: String(patientId),
       ipAddress: ctx?.ipAddress,
       userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
       metadata: { patientId },
     })
 
@@ -485,6 +491,7 @@ export const glycemiaService = {
         resourceId: String(event.id),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
         metadata: { eventType: input.eventType },
       })
 
@@ -531,6 +538,7 @@ export const glycemiaService = {
         resourceId: String(id),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
       })
 
       return { deleted: true }
