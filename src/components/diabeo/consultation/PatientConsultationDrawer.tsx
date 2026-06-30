@@ -106,7 +106,7 @@ export function PatientConsultationDrawer({
                 // Focalisé par programme à l'ouverture (gestion du focus WCAG
                 // 2.4.3). Indicateur visible au focus clavier (WCAG 2.4.7) —
                 // même style d'outline que les boutons du drawer.
-                className="truncate rounded-sm text-base font-semibold text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+                className="truncate rounded-sm text-base font-semibold text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 {patient.name}
               </h2>
@@ -119,7 +119,7 @@ export function PatientConsultationDrawer({
           <button
             type="button"
             onClick={onToggleExpanded}
-            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             aria-label={expanded ? t("collapse") : t("expand")}
           >
             {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -127,7 +127,7 @@ export function PatientConsultationDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
+            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
             aria-label={t("close")}
           >
             <X className="h-4 w-4" />
