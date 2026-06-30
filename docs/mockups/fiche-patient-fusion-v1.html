@@ -1,0 +1,874 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Diabeo — Fiche patient (fusion page + drawer) · v1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --teal:#0D9488; --teal-600:#0D9488; --teal-700:#0F766E; --teal-800:#115E59; --teal-50:#F0FDFA; --teal-100:#CCFBF1;
+    --coral:#EA580C; --coral-700:#C2410C; --coral-50:#FFF4ED;
+    --paper:#FAFAF7; --paper-2:#F4F2EC; --surface:#FFFFFF;
+    --ink:#1A2A2E; --ink-soft:#586A6B; --ink-faint:#9AA8A6;
+    --line:#E7E4DB; --line-soft:#EFEDE6;
+    --success:#047857; --success-bg:#ECFDF5; --success-bd:#A7F3D0;
+    --warn:#B45309; --warn-bg:#FFFBEB; --warn-bd:#FDE68A;
+    --err:#B91C1C; --err-bg:#FEF2F2; --err-bd:#FCA5A5;
+    --info:#1D4ED8; --info-bg:#EFF6FF; --info-bd:#BFDBFE;
+    /* glycémie — sens clinique fixe */
+    --gvl:#991B1B; --gl:#EF4444; --gv:#10B981; --gh:#F59E0B; --gvh:#EF4444; --gcrit:#DC2626;
+    /* zones TIR (donut/AGP) */
+    --tir-vlow:#991B1B; --tir-low:#EF4444; --tir-in:#10B981; --tir-high:#F59E0B; --tir-vhigh:#EA580C;
+    /* pathologies */
+    --dt1:#6D28D9; --dt1-bg:#F5F3FF; --dt2:#1D4ED8; --dt2-bg:#EFF6FF; --gd:#BE185D; --gd-bg:#FDF2F8;
+    --shadow-sm:0 1px 2px rgba(26,42,46,.05),0 1px 3px rgba(26,42,46,.07);
+    --shadow:0 4px 14px -4px rgba(26,42,46,.12),0 2px 6px -2px rgba(26,42,46,.08);
+    --shadow-xl:0 24px 60px -12px rgba(26,42,46,.35);
+    --r:16px; --r-sm:11px; --r-xs:8px;
+    --accent:#0F766E; --accent-soft:#F0FDFA; --accent-line:#CCFBF1; --accent-brand:#0D9488;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{font-family:"Hanken Grotesk",system-ui,sans-serif;background:var(--paper);color:var(--ink);font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.035'/%3E%3C/svg%3E")}
+  button{font:inherit;cursor:pointer;border:0;background:none;color:inherit}
+  .mono{font-family:"Spline Sans Mono",monospace;font-feature-settings:"tnum"}
+  a:focus-visible,button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent-brand);outline-offset:2px;border-radius:9px}
+
+  /* deck (démo seulement) */
+  .deck{position:sticky;top:0;z-index:60;display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 22px;background:linear-gradient(100deg,#0c3b38,#0f4f49);color:#eafaf7;box-shadow:0 1px 0 rgba(0,0,0,.2)}
+  .deck .tag{font-family:"Fraunces",serif;font-weight:600;font-size:15px}
+  .deck .tag em{color:#7fe0d3;font-style:normal}
+  .seg{display:flex;gap:3px;background:rgba(255,255,255,.08);padding:4px;border-radius:12px;border:1px solid rgba(255,255,255,.10)}
+  .seg button{display:flex;align-items:center;gap:8px;padding:7px 14px;border-radius:9px;color:#bfe6e0;font-weight:600;font-size:13px;transition:.18s}
+  .seg button:hover{color:#fff;background:rgba(255,255,255,.06)}
+  .seg button.on{background:#fff;color:#0c3b38}
+  .deck .meta{margin-left:auto;font-size:12.5px;color:#8fd0c8}
+
+  /* shell */
+  .shell{position:relative;z-index:2;display:grid;grid-template-columns:240px 1fr;height:calc(100vh - 49px);overflow:hidden}
+  .side{display:flex;flex-direction:column;gap:2px;padding:18px 14px 14px;background:linear-gradient(180deg,var(--surface),var(--paper-2));border-right:1px solid var(--line);overflow-y:auto}
+  .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 14px}
+  .brand .logo{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:#fff;font-family:"Fraunces",serif;font-weight:700;font-size:17px;background:linear-gradient(145deg,var(--teal-600),var(--teal-800));box-shadow:0 4px 12px -3px color-mix(in srgb,var(--teal-700) 55%,transparent)}
+  .brand .nm{font-family:"Fraunces",serif;font-weight:600;font-size:19px;letter-spacing:-.2px}
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav a{position:relative;display:flex;align-items:center;gap:11px;min-height:40px;padding:0 12px;border-radius:10px;color:var(--ink-soft);text-decoration:none;font-weight:600;font-size:13px;transition:.16s}
+  .nav a .ic svg{width:17px;height:17px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+  .nav a:hover{background:var(--paper-2);color:var(--ink)}
+  .nav a.active{background:var(--accent-soft);color:var(--accent)}
+  .nav a.active::before{content:"";position:absolute;left:-14px;top:50%;transform:translateY(-50%);width:4px;height:20px;border-radius:0 4px 4px 0;background:var(--accent-brand)}
+  .nav a .badge{margin-left:auto;font-family:"Spline Sans Mono",monospace;font-size:10.5px;background:var(--coral);color:#fff;border-radius:999px;padding:1px 7px}
+  .side .grow{flex:1}
+  .me{display:flex;align-items:center;gap:10px;padding:9px;border-top:1px solid var(--line);margin-top:4px}
+  .me .av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-weight:700;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line)}
+  .me .who b{font-weight:700;font-size:12.5px;display:block}
+  .me .role{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--accent)}
+
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0}
+  .top{flex:0 0 64px;display:flex;align-items:center;gap:16px;padding:0 28px;background:rgba(255,255,255,.82);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .crumb{display:flex;align-items:center;gap:8px;color:var(--ink-soft);font-size:13px;font-weight:600}
+  .crumb a{color:var(--ink-soft);text-decoration:none}.crumb a:hover{color:var(--accent)}
+  .crumb svg{width:15px;height:15px;stroke:var(--ink-faint);fill:none;stroke-width:2}
+  .top .right{margin-left:auto;display:flex;align-items:center;gap:9px}
+  .iconbtn{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:#fff;display:grid;place-items:center;position:relative;color:var(--ink-soft)}
+  .iconbtn svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .iconbtn .dot{position:absolute;top:9px;right:10px;width:8px;height:8px;border-radius:50%;background:var(--coral);border:2px solid #fff}
+  .canvas{flex:1;min-height:0;overflow:auto;background:var(--paper)}
+
+  /* ===== Fiche patient (contenu réutilisé en page OU drawer) ===== */
+  .fiche{display:flex;flex-direction:column;min-height:0}
+  /* bandeau éphémère — visible uniquement en mode drawer */
+  .ephem{display:none;align-items:center;gap:8px;border-bottom:1px solid color-mix(in srgb,var(--gh) 30%,transparent);background:color-mix(in srgb,var(--gh) 10%,transparent);padding:7px 18px;font-size:12px;font-weight:600;color:var(--coral-700)}
+  .ephem i{width:7px;height:7px;border-radius:50%;background:var(--gh)}
+
+  /* context bar (sticky) */
+  .ctx{position:sticky;top:0;z-index:20;display:flex;align-items:center;gap:14px;padding:14px 24px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+  .ctx .pav{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-weight:700;font-size:16px;background:var(--accent-soft);color:var(--accent);border:1px solid var(--accent-line);flex:0 0 auto}
+  .ctx .who{min-width:0}
+  .ctx .who h1{font-family:"Fraunces",serif;font-weight:600;font-size:22px;letter-spacing:-.3px;margin:0;line-height:1.1}
+  .ctx .who .sub{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px;color:var(--ink-soft);font-size:12.5px}
+  .ctx .flags{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-left:6px}
+  .ctx .actions{margin-left:auto;display:flex;align-items:center;gap:9px;flex:0 0 auto}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--ink-soft)}
+  .chip svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.9}
+
+  .pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 10px;font-size:11px;font-weight:700;border:1px solid transparent;white-space:nowrap}
+  .pill.err{background:var(--err-bg);color:var(--err);border-color:var(--err-bd)}
+  .pill.warn{background:var(--warn-bg);color:var(--warn);border-color:var(--warn-bd)}
+  .pill.ok{background:var(--success-bg);color:var(--success);border-color:var(--success-bd)}
+  .pill.info{background:var(--info-bg);color:var(--info);border-color:var(--info-bd)}
+  .pill.acc{background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)}
+  .pill.dt1{background:var(--dt1-bg);color:var(--dt1);border-color:color-mix(in srgb,var(--dt1) 30%,transparent)}
+  .pill.dt2{background:var(--dt2-bg);color:var(--dt2);border-color:color-mix(in srgb,var(--dt2) 30%,transparent)}
+  .pill.gd{background:var(--gd-bg);color:var(--gd);border-color:color-mix(in srgb,var(--gd) 30%,transparent)}
+
+  .btn{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 14px;font-weight:700;font-size:12.5px;color:var(--ink);transition:.15s;min-height:40px}
+  .btn svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:2}
+  .btn:hover{border-color:var(--accent-line);background:var(--accent-soft);color:var(--accent)}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(1.1)}
+  .btn.icon{padding:0;width:40px;justify-content:center}
+
+  /* tabs */
+  .tabs{display:flex;gap:2px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--line);overflow-x:auto;position:sticky;top:75px;z-index:15}
+  .ctx + .tabs{top:75px}
+  .tab{white-space:nowrap;border:0;border-bottom:2px solid transparent;background:none;padding:13px 14px;font-size:13.5px;font-weight:600;color:var(--ink-soft);transition:.15s}
+  .tab:hover{color:var(--ink)}
+  .tab.on{border-bottom-color:var(--accent-brand);color:var(--accent);font-weight:700}
+  .tab .n{font-family:"Spline Sans Mono",monospace;font-size:10.5px;color:var(--ink-faint);margin-left:5px}
+
+  .body{padding:24px;display:flex;flex-direction:column;gap:18px}
+  .panel{display:none;flex-direction:column;gap:18px}
+  .panel.on{display:flex;animation:rise .35s cubic-bezier(.2,.7,.2,1) both}
+  @keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  /* cards / stats */
+  .grid{display:grid;gap:16px}
+  .k4{grid-template-columns:repeat(4,1fr)}
+  .c23{grid-template-columns:2fr 1fr}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow-sm)}
+  .card .hd{display:flex;align-items:center;gap:9px;padding:15px 18px;border-bottom:1px solid var(--line-soft)}
+  .card .hd svg{width:16px;height:16px;stroke:var(--ink-soft);fill:none;stroke-width:1.9}
+  .card .hd h2{font-family:"Fraunces",serif;font-weight:600;font-size:16px;margin:0;letter-spacing:-.2px}
+  .card .hd h2 .n{font-family:"Spline Sans Mono",monospace;font-size:11px;color:var(--ink-faint);font-weight:600;margin-left:6px}
+  .card .bd{padding:18px}
+  /* sélecteur de période (AGP) */
+  .pseg{margin-left:auto;display:flex;gap:2px;background:var(--paper-2);border:1px solid var(--line);border-radius:10px;padding:3px}
+  .pseg button{padding:5px 11px;border-radius:7px;font-size:12px;font-weight:600;color:var(--ink-soft);transition:.15s;min-height:30px}
+  .pseg button:hover{color:var(--ink)}
+  .pseg button.on{background:#fff;color:var(--accent);box-shadow:var(--shadow-sm)}
+  /* bandeau de statistiques glucométriques (AGP) */
+  .agpstats{display:grid;grid-template-columns:repeat(5,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:18px}
+  .agpstats .it{background:var(--surface);padding:12px 14px}
+  .agpstats .lbl{display:block;font-size:11px;font-weight:600;color:var(--ink-soft)}
+  .agpstats .val{display:block;margin-top:5px;font-family:"Fraunces",serif;font-weight:600;font-size:20px;letter-spacing:-.3px}
+  .agpstats .val small{font-family:"Hanken Grotesk";font-size:12px;color:var(--ink-faint);font-weight:600}
+  @media (max-width:1040px){.agpstats{grid-template-columns:repeat(2,1fr)}}
+
+  .stat{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;box-shadow:var(--shadow-sm);overflow:hidden}
+  .stat::after{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--accent-brand)}
+  .stat.ok::after{background:var(--gv)} .stat.warn::after{background:var(--gh)} .stat.err::after{background:var(--gl)}
+  .stat .k{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.05em}
+  .stat .k svg{width:14px;height:14px;stroke:var(--ink-faint);fill:none;stroke-width:1.9}
+  .stat .v{font-family:"Fraunces",serif;font-weight:600;font-size:30px;letter-spacing:-.5px;margin-top:8px}
+  .stat .v small{font-family:"Hanken Grotesk";font-size:13px;color:var(--ink-faint);font-weight:600}
+  .stat .d{margin-top:5px;font-size:11.5px;color:var(--ink-faint)}
+
+  /* profile grid */
+  .prof{display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px}
+  .prof .lbl{color:var(--ink-soft);font-size:11.5px}
+  .prof .val{font-weight:700;margin-top:3px}
+  .obj{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+  .obj .pill{background:#fff;border-color:var(--line);color:var(--ink-soft)}
+  .sep{height:1px;background:var(--line-soft);margin:16px 0}
+
+  /* donut */
+  .donut-wrap{display:flex;flex-direction:column;align-items:center;gap:12px;padding:6px}
+  .legend{display:flex;flex-direction:column;gap:6px;width:100%;font-size:12px}
+  .legend .row{display:flex;align-items:center;gap:8px}
+  .legend i{width:10px;height:10px;border-radius:3px;flex:0 0 auto}
+  .legend .pct{margin-left:auto;font-family:"Spline Sans Mono",monospace;color:var(--ink)}
+
+  /* charts */
+  .chart svg{width:100%;display:block}
+  .chart .cap{margin-top:8px;font-size:11.5px;color:var(--ink-faint)}
+  .last{display:flex;align-items:center;gap:14px}
+  .last .big{font-family:"Fraunces",serif;font-size:34px;font-weight:600;letter-spacing:-.5px}
+  .last .u{color:var(--ink-faint);font-size:14px;font-weight:600}
+
+  /* slot lists */
+  .slot{margin-top:4px}
+  .slot h3{font-size:12px;font-weight:700;color:var(--ink-soft);margin:0 0 6px}
+  .slot ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:3px}
+  .slot li{display:flex;justify-content:space-between;font-family:"Spline Sans Mono",monospace;font-size:12.5px;padding:3px 0;border-bottom:1px dashed var(--line-soft)}
+  .slot li .rg{color:var(--ink-soft)} .slot li .vl{font-weight:600}
+
+  /* doc list */
+  .doc{display:flex;align-items:center;gap:12px;padding:11px 12px;border:1px solid var(--line);border-radius:11px}
+  .doc + .doc{margin-top:8px}
+  .doc .fi{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;background:var(--paper-2);color:var(--ink-soft);flex:0 0 auto}
+  .doc .fi svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.9}
+  .doc .grow{flex:1;min-width:0}
+  .doc .nm2{font-weight:700;font-size:13.5px}
+  .doc .meta{font-size:11.5px;color:var(--ink-faint);margin-top:1px}
+
+  .note{display:flex;gap:8px;align-items:flex-start;border:1px solid var(--warn-bd);background:var(--warn-bg);color:var(--warn);border-radius:11px;padding:10px 14px;font-size:12.5px;font-weight:600}
+  .note svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;flex:0 0 auto;margin-top:1px}
+
+  /* ===== mode DRAWER ===== */
+  body[data-mode="drawer"] .scrim{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.32)}
+  body[data-mode="drawer"] .fiche{position:fixed;inset-block:0;inset-inline-end:0;z-index:50;width:76%;max-width:1040px;background:var(--surface);box-shadow:var(--shadow-xl);border-left:1px solid var(--line);overflow:auto}
+  body[data-mode="drawer"] .ephem{display:flex}
+  body[data-mode="drawer"] .ctx,body[data-mode="drawer"] .tabs{position:static}
+  body[data-mode="page"] .scrim{display:none}
+  body[data-mode="page"] .drawer-only{display:none}
+  body[data-mode="drawer"] .page-only{display:none}
+  /* source de données : CGM (capteur) vs BGM (capillaire, sans capteur) */
+  body[data-cgm="cgm"] .bgm-only{display:none!important}
+  body[data-cgm="bgm"] .cgm-only{display:none!important}
+  /* vue : moyenne (courbe agrégée) vs tableau journalier (1 ligne/jour) */
+  body[data-view="avg"] .view-daily{display:none!important}
+  body[data-view="daily"] .view-avg{display:none!important}
+  .hd-tools{margin-left:auto;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .hd-tools .pseg{margin-left:0}
+  /* carnet glycémique (BGM) */
+  .carnet{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+  .carnet th,.carnet td{padding:9px 12px;text-align:center;border-bottom:1px solid var(--line-soft)}
+  .carnet th{font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.04em}
+  .carnet td:first-child,.carnet th:first-child{text-align:left;font-weight:600}
+  .carnet .g{font-family:"Spline Sans Mono",monospace;font-weight:600;border-radius:7px;padding:3px 8px}
+  .g.gv{background:var(--success-bg);color:var(--success)} .g.gh{background:var(--warn-bg);color:var(--warn)} .g.gl{background:var(--err-bg);color:var(--err)} .g.na{color:var(--ink-faint)}
+  /* tendances de repas (modèle LibreView) */
+  .delta{font-family:"Spline Sans Mono",monospace;font-weight:600;color:var(--ink-soft)}
+  .delta.hi{color:var(--warn)} .delta.dn{color:var(--err)}
+  .carnet .pill{font-size:10.5px;padding:2px 8px}
+  /* Tendances de repas — mini-graphes par moment (modèle LibreView) */
+  .meal-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  .meal-card{border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;background:var(--surface);box-shadow:var(--shadow-sm)}
+  .mc-hd{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+  .mc-hd b{font-family:"Fraunces",serif;font-weight:600;font-size:15px}
+  .mc-hd .rg{font-family:"Spline Sans Mono",monospace;font-size:11px;color:var(--ink-faint)}
+  .meal-card svg{width:100%;height:150px;display:block}
+  .mc-stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-soft)}
+  .mc-stats .v{font-family:"Spline Sans Mono",monospace;font-weight:600;color:var(--ink)}
+  @media (max-width:1040px){.meal-grid{grid-template-columns:1fr}}
+  /* tableau journalier repas : colonnes groupées avant/après, dense */
+  .scrollx{overflow-x:auto}
+  /* grille complète : chaque sous-colonne (Avant/Après/Repas/Bolus) est délimitée */
+  .carnet.daily th,.carnet.daily td{padding:7px 9px;font-size:12.5px;border-right:1px solid var(--line-soft)}
+  .carnet.daily th:last-child,.carnet.daily td:last-child{border-right:0}
+  .carnet.daily thead tr:first-child th{border-bottom:1px solid var(--line)}
+  .carnet.daily thead tr:first-child th{text-align:center}
+  .carnet.daily .grp{border-left:2px solid var(--line)}
+  .carnet.daily td:first-child,.carnet.daily thead th:first-child{background:var(--paper-2);font-weight:600}
+  /* journal des repas (1 ligne/repas, groupé par jour) */
+  .carnet.logbook td:first-child{vertical-align:middle;font-weight:600;background:var(--paper-2)}
+  .carnet.logbook tr.dayend td{border-bottom:1.5px solid var(--line)}
+
+  @media (max-width:1040px){.k4{grid-template-columns:repeat(2,1fr)}.c23{grid-template-columns:1fr}.prof{grid-template-columns:1fr}}
+</style>
+</head>
+<body data-mode="page" data-cgm="cgm" data-view="avg">
+
+<div class="deck">
+  <span class="tag">Diabeo — <em>Fiche patient fusionnée</em> · page + drawer unifiés</span>
+  <div class="seg" role="tablist" aria-label="Mode de présentation">
+    <button class="on" data-m="page" aria-selected="true">Page pleine</button>
+    <button data-m="drawer" aria-selected="false">Drawer consultation</button>
+  </div>
+  <div class="seg" role="tablist" aria-label="Source de données">
+    <button class="on" data-cgm="cgm" aria-selected="true">CGM (capteur)</button>
+    <button data-cgm="bgm" aria-selected="false">BGM (sans capteur)</button>
+  </div>
+  <span class="meta">maquette statique · contenu illustratif (anonymisé)</span>
+</div>
+
+<div class="shell">
+  <!-- sidebar -->
+  <aside class="side">
+    <div class="brand"><span class="logo">D</span><span class="nm">Diabeo</span></div>
+    <nav class="nav" aria-label="Navigation principale">
+      <a href="#"><span class="ic" data-i="home"></span>Ma journée</a>
+      <a href="#" class="active"><span class="ic" data-i="users"></span>Patients</a>
+      <a href="#"><span class="ic" data-i="cal"></span>Rendez-vous</a>
+      <a href="#"><span class="ic" data-i="msg"></span>Messagerie<span class="badge">3</span></a>
+      <a href="#"><span class="ic" data-i="doc"></span>Documents</a>
+      <a href="#"><span class="ic" data-i="chart"></span>Analytics</a>
+    </nav>
+    <div class="grow"></div>
+    <div class="me"><span class="av">CM</span><span class="who"><b>Dr C. Martin</b><span class="role">Médecin</span></span></div>
+  </aside>
+
+  <div class="main">
+    <header class="top">
+      <nav class="crumb" aria-label="Fil d'ariane">
+        <a href="#">Patients</a><span data-i="chev"></span><span style="color:var(--ink)">Amina B.</span>
+      </nav>
+      <div class="right"><button class="iconbtn" aria-label="Notifications (1 non lue)"><span data-i="bell"></span><span class="dot"></span></button></div>
+    </header>
+
+    <div class="canvas">
+      <div class="scrim" aria-hidden="true"></div>
+
+      <!-- ============ FICHE (identique page/drawer) ============ -->
+      <section class="fiche" role="region" aria-label="Fiche patient">
+
+        <!-- bandeau éphémère (drawer only) -->
+        <p class="ephem"><i></i>Consultation éphémère — aucune donnée n'est conservée à la fermeture.</p>
+
+        <!-- context bar -->
+        <div class="ctx">
+          <span class="pav" aria-hidden="true">AB</span>
+          <div class="who">
+            <h1>Amina B.</h1>
+            <div class="sub">
+              <span class="pill dt1">DT1</span>
+              <span>14 ans · F</span>
+              <span class="chip"><span data-i="user"></span>Réf. Dr C. Martin</span>
+              <span class="flags">
+                <span class="pill err">Hypo &lt;54 (24 h)</span>
+                <span class="pill warn cgm-only">TIR sous-cible</span>
+                <span class="pill ok cgm-only">Capteur actif · 6 j</span>
+                <span class="pill info bgm-only">Sans capteur · BGM</span>
+              </span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="btn primary"><span data-i="play"></span>Nouvelle consultation</button>
+            <button class="btn page-only"><span data-i="msg"></span>Message</button>
+            <button class="btn icon drawer-only" aria-label="Plein écran"><span data-i="expand"></span></button>
+            <button class="btn icon drawer-only" aria-label="Fermer" id="closeDrawer"><span data-i="x"></span></button>
+          </div>
+        </div>
+
+        <!-- tabs -->
+        <div class="tabs" role="tablist" aria-label="Sections de la fiche">
+          <button class="tab on" data-t="overview" role="tab" aria-selected="true">Vue d'ensemble</button>
+          <button class="tab" data-t="glycemia" role="tab" aria-selected="false">Glycémie</button>
+          <button class="tab" data-t="agp" role="tab" aria-selected="false"><span class="cgm-only">Profil glycémique <span class="n">AGP</span></span><span class="bgm-only">Carnet glycémique</span></button>
+          <button class="tab" data-t="meals" role="tab" aria-selected="false">Tendances de repas</button>
+          <button class="tab" data-t="treatment" role="tab" aria-selected="false">Traitements</button>
+          <button class="tab" data-t="documents" role="tab" aria-selected="false">Documents <span class="n">4</span></button>
+        </div>
+
+        <div class="body">
+
+          <!-- ===== Vue d'ensemble ===== -->
+          <div class="panel on" data-p="overview" role="tabpanel">
+            <div class="note bgm-only" style="border-color:var(--info-bd);background:var(--info-bg);color:var(--info)"><span data-i="info"></span>Patient sans capteur — indicateurs basés sur la glycémie capillaire (BGM). TIR, GMI et profil AGP (CGM) sont remplacés par leurs équivalents BGM.</div>
+            <div class="grid k4">
+              <div class="stat"><div class="k"><span data-i="activity"></span>Glycémie moy.</div><div class="v">142<small> mg/dL</small></div><div class="d">14 derniers jours</div></div>
+              <!-- CGM : TIR (temps) — BGM : % de relevés en cible -->
+              <div class="stat warn cgm-only"><div class="k"><span data-i="trend"></span>Temps dans la cible (TIR)</div><div class="v">62<small> %</small></div><div class="d">objectif ≥ 70 %</div></div>
+              <div class="stat warn bgm-only"><div class="k"><span data-i="trend"></span>Relevés en cible</div><div class="v">58<small> %</small></div><div class="d">% des relevés · ≠ temps</div></div>
+              <!-- CGM : GMI — BGM : HbA1c labo -->
+              <div class="stat cgm-only"><div class="k"><span data-i="heart"></span>GMI</div><div class="v">6,9<small> %</small></div><div class="d">indicateur de gestion</div></div>
+              <div class="stat bgm-only"><div class="k"><span data-i="heart"></span>HbA1c (labo)</div><div class="v">7,1<small> %</small></div><div class="d">prélèvement 02/06/2026</div></div>
+              <div class="stat ok"><div class="k"><span data-i="clock"></span>Variabilité (CV)</div><div class="v">38<small> %</small></div><div class="d">objectif ≤ 36 % · limite</div></div>
+            </div>
+
+            <div class="grid c23">
+              <div class="card">
+                <div class="hd"><span data-i="user"></span><h2>Profil</h2></div>
+                <div class="bd">
+                  <div class="prof">
+                    <div><div class="lbl">Pathologie</div><div class="val"><span class="pill dt1">DT1</span></div></div>
+                    <div><div class="lbl">Diagnostic</div><div class="val">2019</div></div>
+                    <div><div class="lbl">Sexe</div><div class="val">Féminin</div></div>
+                    <div><div class="lbl">Âge</div><div class="val">14 ans</div></div>
+                    <div><div class="lbl">Médecin référent</div><div class="val">Dr C. Martin</div></div>
+                    <div><div class="lbl">Glycémie moy. (14 j)</div><div class="val mono">142 mg/dL</div></div>
+                  </div>
+                  <div class="sep"></div>
+                  <div class="lbl">Objectifs glycémiques</div>
+                  <div class="obj">
+                    <span class="pill">Cible 70–180 mg/dL</span>
+                    <span class="pill">TIR ≥ 70 %</span>
+                    <span class="pill">Hypo &lt; 4 %</span>
+                    <span class="pill">CV ≤ 36 %</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="card cgm-only">
+                <div class="hd"><span data-i="trend"></span><h2>Temps dans la cible</h2></div>
+                <div class="bd">
+                  <div class="donut-wrap">
+                    <svg viewBox="0 0 120 120" width="150" height="150" role="img" aria-label="Répartition du temps dans la cible : 62 % en cible">
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--paper-2)" stroke-width="15"/>
+                      <!-- segments (somme=314 ≈ 2πr) : vhigh 5% / high 18% / in 62% / low 12% / vlow 3% -->
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--tir-in)"   stroke-width="15" stroke-dasharray="195 314" transform="rotate(-90 60 60)"/>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--tir-high)"  stroke-width="15" stroke-dasharray="57 314" stroke-dashoffset="-195" transform="rotate(-90 60 60)"/>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--tir-vhigh)" stroke-width="15" stroke-dasharray="16 314" stroke-dashoffset="-252" transform="rotate(-90 60 60)"/>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--tir-low)"   stroke-width="15" stroke-dasharray="38 314" stroke-dashoffset="-268" transform="rotate(-90 60 60)"/>
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="var(--tir-vlow)"  stroke-width="15" stroke-dasharray="9 314"  stroke-dashoffset="-306" transform="rotate(-90 60 60)"/>
+                      <text x="60" y="57" text-anchor="middle" font-family="Fraunces,serif" font-size="24" font-weight="600" fill="var(--ink)">62%</text>
+                      <text x="60" y="74" text-anchor="middle" font-size="9" fill="var(--ink-soft)">en cible</text>
+                    </svg>
+                    <div class="legend">
+                      <div class="row"><i style="background:var(--tir-vhigh)"></i>Très haute (&gt;250)<span class="pct">5 %</span></div>
+                      <div class="row"><i style="background:var(--tir-high)"></i>Haute (180–250)<span class="pct">18 %</span></div>
+                      <div class="row"><i style="background:var(--tir-in)"></i>En cible (70–180)<span class="pct">62 %</span></div>
+                      <div class="row"><i style="background:var(--tir-low)"></i>Basse (54–70)<span class="pct">12 %</span></div>
+                      <div class="row"><i style="background:var(--tir-vlow)"></i>Très basse (&lt;54)<span class="pct">3 %</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BGM : répartition des RELEVÉS (pas du temps) -->
+              <div class="card bgm-only">
+                <div class="hd"><span data-i="trend"></span><h2>Répartition des relevés</h2></div>
+                <div class="bd">
+                  <div class="legend">
+                    <div class="row"><i style="background:var(--tir-high)"></i>Hyper (&gt;180)<span class="pct">31 %</span></div>
+                    <div class="row"><i style="background:var(--tir-in)"></i>En cible (70–180)<span class="pct">58 %</span></div>
+                    <div class="row"><i style="background:var(--tir-low)"></i>Hypo (&lt;70)<span class="pct">11 %</span></div>
+                  </div>
+                  <div style="display:flex;height:14px;border-radius:999px;overflow:hidden;margin-top:14px">
+                    <span style="width:31%;background:var(--tir-high)"></span>
+                    <span style="width:58%;background:var(--tir-in)"></span>
+                    <span style="width:11%;background:var(--tir-low)"></span>
+                  </div>
+                  <p class="cap" style="margin-top:10px">% des <strong>relevés</strong> capillaires (≠ temps dans la cible) · 48 relevés sur 14 j.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Glycémie (courbe du jour) ===== -->
+          <div class="panel" data-p="glycemia" role="tabpanel">
+            <div class="card">
+              <div class="hd"><span data-i="activity"></span><h2>Dernier relevé</h2></div>
+              <div class="bd">
+                <div class="last">
+                  <span class="big" style="color:var(--gv)">88</span><span class="u">mg/dL</span>
+                  <span class="pill ok">En cible</span>
+                  <span class="chip" style="margin-left:auto"><span data-i="clock"></span>il y a 6 min · 14:02</span>
+                </div>
+              </div>
+            </div>
+            <!-- CGM : courbe continue 24 h -->
+            <div class="card cgm-only">
+              <div class="hd"><span data-i="activity"></span><h2>Profil glycémique — 24 h</h2></div>
+              <div class="bd chart">
+                <svg viewBox="0 0 600 180" preserveAspectRatio="none" aria-label="Courbe de glycémie sur 24 heures, majoritairement dans la cible">
+                  <rect x="0" y="60" width="600" height="70" fill="var(--teal-50)"/>
+                  <line x1="0" y1="60" x2="600" y2="60" stroke="var(--teal-100)"/>
+                  <line x1="0" y1="130" x2="600" y2="130" stroke="var(--teal-100)"/>
+                  <path d="M0,110 C40,100 70,60 110,66 C150,72 180,150 220,140 C260,128 290,52 330,60 C370,70 400,96 440,92 C480,88 520,58 560,72 L600,76"
+                        fill="none" stroke="var(--accent-brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle cx="600" cy="76" r="4.5" fill="var(--accent-brand)"/>
+                </svg>
+                <div class="cap">Bande teal = cible 70–180 mg/dL · 3 relevés hors plage d'affichage exclus de la courbe (comptés dans le TIR).</div>
+              </div>
+            </div>
+            <!-- BGM : nuage de points (pas de ligne continue) -->
+            <div class="card bgm-only">
+              <div class="hd"><span data-i="activity"></span><h2>Relevés capillaires — dernières 24 h</h2></div>
+              <div class="bd chart">
+                <svg viewBox="0 0 600 180" aria-label="Relevés glycémiques capillaires ponctuels sur 24 heures">
+                  <rect x="0" y="60" width="600" height="70" fill="var(--teal-50)"/>
+                  <line x1="0" y1="60" x2="600" y2="60" stroke="var(--teal-100)"/>
+                  <line x1="0" y1="130" x2="600" y2="130" stroke="var(--teal-100)"/>
+                  <!-- points ponctuels : matin/midi/soir/coucher -->
+                  <circle cx="70"  cy="118" r="5" fill="var(--tir-in)"/>
+                  <circle cx="150" cy="48"  r="5" fill="var(--tir-high)"/>
+                  <circle cx="250" cy="96"  r="5" fill="var(--tir-in)"/>
+                  <circle cx="330" cy="140" r="5" fill="var(--tir-low)"/>
+                  <circle cx="430" cy="78"  r="5" fill="var(--tir-in)"/>
+                  <circle cx="520" cy="58"  r="5" fill="var(--tir-high)"/>
+                  <circle cx="580" cy="104" r="5" fill="var(--tir-in)"/>
+                  <text x="2" y="174" font-family="Spline Sans Mono,monospace" font-size="9" fill="var(--ink-faint)">00h</text>
+                  <text x="290" y="174" font-family="Spline Sans Mono,monospace" font-size="9" fill="var(--ink-faint)">12h</text>
+                  <text x="572" y="174" font-family="Spline Sans Mono,monospace" font-size="9" fill="var(--ink-faint)">24h</text>
+                </svg>
+                <div class="cap">Relevés <strong>ponctuels</strong> (pas de tracé continu sans capteur) · 7 relevés sur 24 h · couleur = zone (hypo / cible / hyper).</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Profil glycémique AGP (onglet hérité du drawer) ===== -->
+          <div class="panel" data-p="agp" role="tabpanel">
+            <div class="note cgm-only"><span data-i="info"></span>Profil ambulatoire (AGP) — médiane + intervalles P10–P90 / P25–P75 sur une journée type. Onglet repris du drawer de consultation, désormais disponible aussi en page.</div>
+            <div class="note bgm-only" style="border-color:var(--info-bd);background:var(--info-bg);color:var(--info)"><span data-i="info"></span>Sans capteur, le profil ambulatoire (AGP) n'est pas calculable. Affichage en <strong>carnet glycémique</strong> : moyenne des relevés capillaires par moment de la journée.</div>
+            <div class="card">
+              <div class="hd">
+                <span data-i="chart"></span>
+                <h2><span class="cgm-only">AGP — journée type</span><span class="bgm-only">Carnet — journée type</span> <span class="n" id="agp-window">14 j</span></h2>
+                <div class="hd-tools">
+                  <!-- sélecteur de période -->
+                  <div class="pseg" role="tablist" aria-label="Période du profil glycémique">
+                    <button data-period="7" role="tab" aria-selected="false">1 semaine</button>
+                    <button class="on" data-period="14" role="tab" aria-selected="true">2 semaines</button>
+                    <button data-period="30" role="tab" aria-selected="false">1 mois</button>
+                    <button data-period="90" role="tab" aria-selected="false">3 mois</button>
+                  </div>
+                  <!-- sélecteur de vue -->
+                  <div class="pseg" role="tablist" aria-label="Type de vue">
+                    <button class="on" data-view="avg" role="tab" aria-selected="true">Moyenne</button>
+                    <button data-view="daily" role="tab" aria-selected="false">Tableau journalier</button>
+                  </div>
+                </div>
+              </div>
+              <div class="bd chart">
+                <div class="agpstats">
+                  <div class="it"><span class="lbl">Moyenne glycémique</span><span class="val" id="st-mean"></span></div>
+                  <div class="it"><span class="lbl"><span class="cgm-only">HbA1c estimée</span><span class="bgm-only">HbA1c (labo)</span></span><span class="val" id="st-a1c"></span></div>
+                  <div class="it"><span class="lbl">Coefficient de variation (CV)</span><span class="val" id="st-cv"></span></div>
+                  <div class="it"><span class="lbl">Écart type</span><span class="val" id="st-sd"></span></div>
+                  <div class="it"><span class="lbl"><span class="cgm-only">Données capturées</span><span class="bgm-only">Fréquence de mesure</span></span><span class="val" id="st-cap"></span></div>
+                </div>
+                <svg class="cgm-only view-avg" viewBox="0 0 600 220" aria-label="Profil glycémique ambulatoire : médiane et percentiles sur une journée type">
+                  <rect x="0" y="78" width="600" height="74" fill="var(--teal-50)"/>
+                  <line x1="0" y1="78" x2="600" y2="78" stroke="var(--teal-100)"/>
+                  <line x1="0" y1="152" x2="600" y2="152" stroke="var(--teal-100)"/>
+                  <path id="agp-p1090" d="" fill="color-mix(in srgb,var(--accent-brand) 12%,transparent)"/>
+                  <path id="agp-p2575" d="" fill="color-mix(in srgb,var(--accent-brand) 22%,transparent)"/>
+                  <path id="agp-median" d="" fill="none" stroke="var(--accent-brand)" stroke-width="2.5"/>
+                  <text x="2" y="214" font-family="Spline Sans Mono,monospace" font-size="9" fill="var(--ink-faint)">00h</text>
+                  <text x="290" y="214" font-family="Spline Sans Mono,monospace" font-size="9" fill="var(--ink-faint)">12h</text>
+                  <text x="572" y="214" font-family="Spline Sans Mono,monospace" font-size="9" fill="var(--ink-faint)">24h</text>
+                </svg>
+                <!-- BGM : carnet (moyenne par moment de la journée) -->
+                <table class="carnet bgm-only view-avg">
+                  <thead><tr><th>Moment</th><th>Avant repas</th><th>Après repas</th><th>Relevés</th></tr></thead>
+                  <tbody>
+                    <tr><td>Nuit</td><td><span class="g gv">112</span></td><td><span class="g na">—</span></td><td class="mono">9</td></tr>
+                    <tr><td>Matin</td><td><span class="g gv">128</span></td><td><span class="g gh">196</span></td><td class="mono">14</td></tr>
+                    <tr><td>Midi</td><td><span class="g gv">141</span></td><td><span class="g gh">188</span></td><td class="mono">12</td></tr>
+                    <tr><td>Soir</td><td><span class="g gv">134</span></td><td><span class="g gl">63</span></td><td class="mono">13</td></tr>
+                  </tbody>
+                </table>
+                <div class="cap view-avg" id="agp-cap"></div>
+
+                <!-- VUE TABLEAU JOURNALIER (1 ligne par jour) -->
+                <div class="view-daily">
+                  <table class="carnet daily">
+                    <thead><tr><th>Jour</th><th>Moyenne</th><th>En cible</th><th>Min</th><th>Max</th><th>Relevés</th></tr></thead>
+                    <tbody>
+                      <tr><td>Jeu 26/06</td><td class="mono">138</td><td><span class="g gh">66 %</span></td><td class="mono">58</td><td class="mono">214</td><td class="mono">274</td></tr>
+                      <tr><td>Mer 25/06</td><td class="mono">145</td><td><span class="g gh">61 %</span></td><td class="mono">64</td><td class="mono">238</td><td class="mono">270</td></tr>
+                      <tr><td>Mar 24/06</td><td class="mono">133</td><td><span class="g gv">71 %</span></td><td class="mono">61</td><td class="mono">198</td><td class="mono">279</td></tr>
+                      <tr><td>Lun 23/06</td><td class="mono">151</td><td><span class="g gl">55 %</span></td><td class="mono">72</td><td class="mono">252</td><td class="mono">268</td></tr>
+                      <tr><td>Dim 22/06</td><td class="mono">129</td><td><span class="g gv">74 %</span></td><td class="mono">55</td><td class="mono">186</td><td class="mono">281</td></tr>
+                      <tr><td>Sam 21/06</td><td class="mono">142</td><td><span class="g gh">63 %</span></td><td class="mono">60</td><td class="mono">221</td><td class="mono">276</td></tr>
+                      <tr><td>Ven 20/06</td><td class="mono">148</td><td><span class="g gh">58 %</span></td><td class="mono">68</td><td class="mono">244</td><td class="mono">272</td></tr>
+                      <tr><td>Jeu 19/06</td><td class="mono">136</td><td><span class="g gh">68 %</span></td><td class="mono">59</td><td class="mono">205</td><td class="mono">277</td></tr>
+                    </tbody>
+                  </table>
+                  <p class="cap" style="margin-top:12px">Une ligne par jour · 8 jours les plus récents de la période. « En cible » = part dans 70–180 mg/dL (CGM : du temps ; BGM : des relevés).</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Tendances de repas (modèle LibreView « Mealtime Patterns ») ===== -->
+          <div class="panel" data-p="meals" role="tabpanel">
+            <div class="card">
+              <div class="hd">
+                <span data-i="meal"></span>
+                <h2>Tendances de repas <span class="n" id="meal-window">14 j</span></h2>
+                <div class="hd-tools">
+                  <div class="pseg" role="tablist" aria-label="Période des tendances de repas">
+                    <button data-period="7" role="tab" aria-selected="false">1 semaine</button>
+                    <button class="on" data-period="14" role="tab" aria-selected="true">2 semaines</button>
+                    <button data-period="30" role="tab" aria-selected="false">1 mois</button>
+                    <button data-period="90" role="tab" aria-selected="false">3 mois</button>
+                  </div>
+                  <div class="pseg" role="tablist" aria-label="Type de vue (repas)">
+                    <button class="on" data-view="avg" role="tab" aria-selected="true">Moyenne</button>
+                    <button data-view="daily" role="tab" aria-selected="false">Tableau journalier</button>
+                  </div>
+                </div>
+              </div>
+              <div class="bd">
+                <div class="view-avg">
+                <p class="cap" style="margin:0 0 14px">Glycémie moyenne <strong>alignée sur l'heure du repas</strong> (−1 h → +3 h), par moment de la journée. Bande teal = cible 70–180 mg/dL ; trait pointillé = heure du repas ; point = pic après repas.</p>
+                <div class="meal-grid">
+
+                  <!-- Matin -->
+                  <div class="meal-card">
+                    <div class="mc-hd"><b>Matin</b><span class="rg">04:00 – 10:00</span></div>
+                    <svg viewBox="0 0 260 150" aria-label="Repas du matin : pic après repas élevé (196 mg/dL)">
+                      <rect x="30" y="54" width="220" height="40" fill="var(--teal-50)"/>
+                      <line x1="30" y1="54" x2="250" y2="54" stroke="var(--teal-100)"/>
+                      <line x1="30" y1="94" x2="250" y2="94" stroke="var(--teal-100)"/>
+                      <line x1="90" y1="14" x2="90" y2="120" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="3 3"/>
+                      <path d="M30,77 L70,76 L90,77 C110,70 130,52 150,49 C180,46 210,58 250,65" fill="none" stroke="var(--accent-brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="150" cy="49" r="4" fill="var(--gh)"/>
+                      <text x="38" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">−1 h</text>
+                      <text x="76" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" font-weight="700" fill="var(--ink-soft)">Repas</text>
+                      <text x="118" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+1 h</text>
+                      <text x="158" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+2 h</text>
+                      <text x="198" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+3 h</text>
+                    </svg>
+                    <div class="mc-stats"><span>Avant <span class="v">118</span></span><span>Pic après <span class="v">196</span></span><span>Variation <span class="delta hi">+78</span></span></div>
+                  </div>
+
+                  <!-- Midi -->
+                  <div class="meal-card">
+                    <div class="mc-hd"><b>Midi</b><span class="rg">10:00 – 16:00</span></div>
+                    <svg viewBox="0 0 260 150" aria-label="Repas du midi : pic après repas 182 mg/dL">
+                      <rect x="30" y="54" width="220" height="40" fill="var(--teal-50)"/>
+                      <line x1="30" y1="54" x2="250" y2="54" stroke="var(--teal-100)"/>
+                      <line x1="30" y1="94" x2="250" y2="94" stroke="var(--teal-100)"/>
+                      <line x1="90" y1="14" x2="90" y2="120" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="3 3"/>
+                      <path d="M30,71 L90,71 C115,66 135,55 150,53 C185,52 215,60 250,63" fill="none" stroke="var(--accent-brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="150" cy="53" r="4" fill="var(--gh)"/>
+                      <text x="38" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">−1 h</text>
+                      <text x="76" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" font-weight="700" fill="var(--ink-soft)">Repas</text>
+                      <text x="118" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+1 h</text>
+                      <text x="158" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+2 h</text>
+                      <text x="198" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+3 h</text>
+                    </svg>
+                    <div class="mc-stats"><span>Avant <span class="v">134</span></span><span>Pic après <span class="v">182</span></span><span>Variation <span class="delta">+48</span></span></div>
+                  </div>
+
+                  <!-- Soir -->
+                  <div class="meal-card">
+                    <div class="mc-hd"><b>Soir</b><span class="rg">16:00 – 22:00</span></div>
+                    <svg viewBox="0 0 260 150" aria-label="Repas du soir : pic après repas 178 mg/dL">
+                      <rect x="30" y="54" width="220" height="40" fill="var(--teal-50)"/>
+                      <line x1="30" y1="54" x2="250" y2="54" stroke="var(--teal-100)"/>
+                      <line x1="30" y1="94" x2="250" y2="94" stroke="var(--teal-100)"/>
+                      <line x1="90" y1="14" x2="90" y2="120" stroke="var(--ink-faint)" stroke-width="1" stroke-dasharray="3 3"/>
+                      <path d="M30,68 L90,69 C118,64 138,57 150,55 C185,55 215,61 250,65" fill="none" stroke="var(--accent-brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="150" cy="55" r="4" fill="var(--accent-brand)"/>
+                      <text x="38" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">−1 h</text>
+                      <text x="76" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" font-weight="700" fill="var(--ink-soft)">Repas</text>
+                      <text x="118" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+1 h</text>
+                      <text x="158" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+2 h</text>
+                      <text x="198" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">+3 h</text>
+                    </svg>
+                    <div class="mc-stats"><span>Avant <span class="v">141</span></span><span>Pic après <span class="v">178</span></span><span>Variation <span class="delta">+37</span></span></div>
+                  </div>
+
+                  <!-- Nuit -->
+                  <div class="meal-card">
+                    <div class="mc-hd"><b>Nuit</b><span class="rg">22:00 – 04:00</span></div>
+                    <svg viewBox="0 0 260 150" aria-label="Nuit : glycémie stable, pas de repas">
+                      <rect x="30" y="54" width="220" height="40" fill="var(--teal-50)"/>
+                      <line x1="30" y1="54" x2="250" y2="54" stroke="var(--teal-100)"/>
+                      <line x1="30" y1="94" x2="250" y2="94" stroke="var(--teal-100)"/>
+                      <path d="M30,77 L90,76 C130,74 170,73 210,74 L250,75" fill="none" stroke="var(--accent-brand)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      <text x="38" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">22 h</text>
+                      <text x="120" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">01 h</text>
+                      <text x="200" y="138" font-family="Spline Sans Mono,monospace" font-size="8.5" fill="var(--ink-faint)">04 h</text>
+                    </svg>
+                    <div class="mc-stats"><span>Début <span class="v">120</span></span><span>Fin <span class="v">124</span></span><span class="pill ok">Stable</span></div>
+                  </div>
+
+                </div>
+                <p class="cap" style="margin-top:14px">« Pic après repas » = maximum glycémique dans les 3 h. Une montée &gt; 60 mg/dL (point ambre) oriente l'ajustement du <strong>ratio glucides (ICR)</strong> du créneau — ici, le matin.</p>
+                </div><!-- /view-avg -->
+
+                <!-- VUE TABLEAU JOURNALIER (1 jour/ligne · Matin/Midi/Soir × Avant/Après/Repas/Bolus) -->
+                <div class="view-daily">
+                  <p class="cap" style="margin:0 0 12px">Par jour et par repas : glycémie <strong>Avant</strong> / <strong>Après</strong>, glucides du <strong>Repas</strong> (g) et dose de <strong>Bolus</strong> (U). Vert = en cible (70–180) · ambre = hyper (&gt; 180) · rouge = hypo (&lt; 70).</p>
+                  <div class="scrollx">
+                  <table class="carnet daily">
+                    <thead>
+                      <tr><th rowspan="2">Jour</th><th colspan="4">Matin</th><th colspan="4" class="grp">Midi</th><th colspan="4" class="grp">Soir</th></tr>
+                      <tr><th>Avant</th><th>Après</th><th>Repas</th><th>Bolus</th><th class="grp">Avant</th><th>Après</th><th>Repas</th><th>Bolus</th><th class="grp">Avant</th><th>Après</th><th>Repas</th><th>Bolus</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Jeu 26/06</td>
+                        <td><span class="g gv">112</span></td><td><span class="g gh">201</span></td><td class="mono">65</td><td class="mono">8,0</td>
+                        <td class="grp"><span class="g gv">138</span></td><td><span class="g gv">176</span></td><td class="mono">70</td><td class="mono">7,0</td>
+                        <td class="grp"><span class="g gv">134</span></td><td><span class="g gv">168</span></td><td class="mono">80</td><td class="mono">7,5</td></tr>
+                      <tr><td>Mer 25/06</td>
+                        <td><span class="g gv">121</span></td><td><span class="g gh">214</span></td><td class="mono">70</td><td class="mono">8,0</td>
+                        <td class="grp"><span class="g gv">142</span></td><td><span class="g gh">188</span></td><td class="mono">65</td><td class="mono">6,5</td>
+                        <td class="grp"><span class="g gv">140</span></td><td><span class="g gv">179</span></td><td class="mono">75</td><td class="mono">7,0</td></tr>
+                      <tr><td>Mar 24/06</td>
+                        <td><span class="g gv">109</span></td><td><span class="g gh">188</span></td><td class="mono">60</td><td class="mono">7,5</td>
+                        <td class="grp"><span class="g gv">130</span></td><td><span class="g gv">165</span></td><td class="mono">68</td><td class="mono">6,5</td>
+                        <td class="grp"><span class="g gv">131</span></td><td><span class="g gv">158</span></td><td class="mono">72</td><td class="mono">7,0</td></tr>
+                      <tr><td>Lun 23/06</td>
+                        <td><span class="g gv">128</span></td><td><span class="g gh">232</span></td><td class="mono">75</td><td class="mono">8,5</td>
+                        <td class="grp"><span class="g gv">151</span></td><td><span class="g gh">196</span></td><td class="mono">70</td><td class="mono">7,0</td>
+                        <td class="grp"><span class="g gv">145</span></td><td><span class="g gh">184</span></td><td class="mono">78</td><td class="mono">7,5</td></tr>
+                      <tr><td>Dim 22/06</td>
+                        <td><span class="g gv">105</span></td><td><span class="g gv">176</span></td><td class="mono">58</td><td class="mono">7,0</td>
+                        <td class="grp"><span class="g gv">129</span></td><td><span class="g gv">170</span></td><td class="mono">62</td><td class="mono">6,0</td>
+                        <td class="grp"><span class="g gv">138</span></td><td><span class="g gv">162</span></td><td class="mono">70</td><td class="mono">6,5</td></tr>
+                      <tr><td>Sam 21/06</td>
+                        <td><span class="g gv">118</span></td><td><span class="g gh">205</span></td><td class="mono">68</td><td class="mono">8,0</td>
+                        <td class="grp"><span class="g gv">134</span></td><td><span class="g gh">181</span></td><td class="mono">66</td><td class="mono">6,5</td>
+                        <td class="grp"><span class="g gv">141</span></td><td><span class="g gv">174</span></td><td class="mono">74</td><td class="mono">7,0</td></tr>
+                    </tbody>
+                  </table>
+                  </div>
+                  <p class="cap" style="margin-top:12px">Une ligne par jour · 6 jours récents · « Repas » = glucides (g), « Bolus » = insuline rapide (U). Le matin : après-repas le plus haut malgré un bolus conforme → piste ICR du matin.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Traitements ===== -->
+          <div class="panel" data-p="treatment" role="tabpanel">
+            <div class="card">
+              <div class="hd"><span data-i="syringe"></span><h2>Configuration insuline</h2></div>
+              <div class="bd">
+                <div class="prof" style="grid-template-columns:1fr 1fr 1fr">
+                  <div><div class="lbl">Méthode</div><div class="val">Pompe</div></div>
+                  <div><div class="lbl">Insuline bolus</div><div class="val">NovoRapid · 100 U/mL</div></div>
+                  <div><div class="lbl">Pompe</div><div class="val">Tandem t:slim X2</div></div>
+                </div>
+                <div class="sep"></div>
+                <div class="grid" style="grid-template-columns:repeat(3,1fr)">
+                  <div class="slot">
+                    <h3>Facteur de sensibilité (ISF)</h3>
+                    <ul>
+                      <li><span class="rg">00:00–06:00</span><span class="vl">0,45 g/L/U</span></li>
+                      <li><span class="rg">06:00–12:00</span><span class="vl">0,40 g/L/U</span></li>
+                      <li><span class="rg">12:00–24:00</span><span class="vl">0,50 g/L/U</span></li>
+                    </ul>
+                  </div>
+                  <div class="slot">
+                    <h3>Ratio glucides (ICR)</h3>
+                    <ul>
+                      <li><span class="rg">00:00–11:00</span><span class="vl">12 g/U</span></li>
+                      <li><span class="rg">11:00–15:00</span><span class="vl">10 g/U</span></li>
+                      <li><span class="rg">15:00–24:00</span><span class="vl">12 g/U</span></li>
+                    </ul>
+                  </div>
+                  <div class="slot">
+                    <h3>Débit basal</h3>
+                    <ul>
+                      <li><span class="rg">00:00–04:00</span><span class="vl">0,55 U/h</span></li>
+                      <li><span class="rg">04:00–10:00</span><span class="vl">0,80 U/h</span></li>
+                      <li><span class="rg">10:00–24:00</span><span class="vl">0,65 U/h</span></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="hd"><span data-i="pill"></span><h2>Traitements associés</h2></div>
+              <div class="bd">
+                <div class="doc"><span class="fi"><span data-i="pill"></span></span><div class="grow"><div class="nm2">Vitamine D</div><div class="meta">1 ampoule / mois</div></div></div>
+                <div class="doc"><span class="fi"><span data-i="pill"></span></span><div class="grow"><div class="nm2">Lévothyrox 50 µg</div><div class="meta">1 cp / jour à jeun</div></div></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== Documents ===== -->
+          <div class="panel" data-p="documents" role="tabpanel">
+            <div class="card">
+              <div class="hd"><span data-i="doc"></span><h2>Documents médicaux</h2></div>
+              <div class="bd">
+                <div class="doc"><span class="fi"><span data-i="doc"></span></span><div class="grow"><div class="nm2">Compte rendu consultation</div><div class="meta">Compte rendu · 22/06/2026 · 248 Ko</div></div><button class="btn"><span data-i="dl"></span>Télécharger</button></div>
+                <div class="doc"><span class="fi"><span data-i="doc"></span></span><div class="grow"><div class="nm2">Bilan biologique HbA1c</div><div class="meta">Résultats labo · 02/06/2026 · 112 Ko</div></div><button class="btn"><span data-i="dl"></span>Télécharger</button></div>
+                <div class="doc"><span class="fi"><span data-i="doc"></span></span><div class="grow"><div class="nm2">Ordonnance insuline</div><div class="meta">Prescription · 22/06/2026 · 96 Ko</div></div><button class="btn"><span data-i="dl"></span>Télécharger</button></div>
+                <div class="doc"><span class="fi"><span data-i="doc"></span></span><div class="grow"><div class="nm2">Export CGM 14 jours</div><div class="meta">Pour le médecin · 21/06/2026 · 1,2 Mo</div></div><button class="btn"><span data-i="dl"></span>Télécharger</button></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+const ICON={
+  home:'<svg viewBox="0 0 24 24"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>',
+  users:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3 3 0 0 1 0 5.6"/><path d="M17 19a5 5 0 0 0-2.5-4.3"/></svg>',
+  cal:'<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15" rx="2.5"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/></svg>',
+  msg:'<svg viewBox="0 0 24 24"><path d="M4 5.5h16v10H9l-4 3.5v-3.5H4z"/></svg>',
+  doc:'<svg viewBox="0 0 24 24"><path d="M6 3.5h8l4 4V20.5H6z"/><path d="M13.5 3.7V8h4.2M9 12.5h6M9 16h6"/></svg>',
+  chart:'<svg viewBox="0 0 24 24"><path d="M4 19.5V4M4 19.5h16"/><path d="M8 16l3.5-4 3 2.5L20 8"/></svg>',
+  bell:'<svg viewBox="0 0 24 24"><path d="M7 9a5 5 0 0 1 10 0c0 5 2 6 2 6H5s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></svg>',
+  chev:'<svg viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></svg>',
+  user:'<svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>',
+  play:'<svg viewBox="0 0 24 24"><path d="M7 5l12 7-12 7z"/></svg>',
+  expand:'<svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>',
+  x:'<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>',
+  activity:'<svg viewBox="0 0 24 24"><path d="M3 12h4l3 8 4-16 3 8h4"/></svg>',
+  trend:'<svg viewBox="0 0 24 24"><path d="M3 17l6-6 4 4 7-7"/><path d="M17 8h4v4"/></svg>',
+  heart:'<svg viewBox="0 0 24 24"><path d="M12 20s-7-4.3-9.2-8.6C1.2 7.9 3.4 5 6.4 5c1.9 0 3.2 1 3.6 1.8C12 5 13 5 15.6 5c3 0 5.2 2.9 3.6 6.4C19 15.7 12 20 12 20z"/></svg>',
+  clock:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>',
+  syringe:'<svg viewBox="0 0 24 24"><path d="m18 2 4 4M16 4l4 4M14 6l4 4-8 8H6v-4z"/><path d="m9 13 2 2"/></svg>',
+  pill:'<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(45 12 12)"/><path d="M9 9l6 6"/></svg>',
+  info:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>',
+  dl:'<svg viewBox="0 0 24 24"><path d="M12 4v10m0 0 4-4m-4 4-4-4M5 19h14"/></svg>',
+  meal:'<svg viewBox="0 0 24 24"><path d="M5 3v6M8 3v6M6.5 3v6M6.5 9v12"/><path d="M16 3c-1.2 1-2 2.8-2 5 0 1.7.8 3 2 3.5V21"/></svg>',
+};
+document.querySelectorAll('[data-i]').forEach(e=>{e.innerHTML=ICON[e.dataset.i]||''});
+
+// helper : active un bouton dans son propre segment (segments indépendants)
+function segPick(btn){btn.closest('.seg').querySelectorAll('button').forEach(x=>{const on=x===btn;x.classList.toggle('on',on);x.setAttribute('aria-selected',on)});}
+// mode page / drawer
+document.querySelectorAll('.seg button[data-m]').forEach(b=>b.onclick=()=>{document.body.dataset.mode=b.dataset.m;segPick(b);});
+// source CGM / BGM
+document.querySelectorAll('.seg button[data-cgm]').forEach(b=>b.onclick=()=>{document.body.dataset.cgm=b.dataset.cgm;segPick(b);renderAgp(currentPeriod);});
+// drawer close → repasse en page (démo)
+document.getElementById('closeDrawer').onclick=()=>document.querySelector('.seg button[data-m="page"]').click();
+document.querySelector('.scrim').onclick=()=>document.querySelector('.seg button[data-m="page"]').click();
+
+// tabs
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>{const on=x===t;x.classList.toggle('on',on);x.setAttribute('aria-selected',on)});
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('on',p.dataset.p===t.dataset.t));
+});
+
+// ===== AGP : sélecteur de période (2 sem / 1 mois / 3 mois) =====
+// Plus la fenêtre est longue, plus les bandes de percentiles s'élargissent
+// (variabilité agrégée) et plus la médiane se lisse. Données illustratives.
+const AGP={
+  "7":{
+    window:"7 j", readings:"624 relevés · fenêtre courte",
+    mean:'138<small> mg/dL</small>', a1c:'6,4<small> %</small>', cv:'36<small> %</small>', sd:'50<small> mg/dL</small>', cap:'91,0<small> %</small>',
+    p1090:"M0,146 C80,128 140,76 220,90 C300,104 360,48 440,76 C520,104 560,120 600,112 L600,174 C560,170 520,162 440,146 C360,130 300,164 220,150 C140,138 80,170 0,176 Z",
+    p2575:"M0,138 C80,124 140,96 220,102 C300,108 360,78 440,94 C520,110 560,120 600,115 L600,148 C560,148 520,144 440,134 C360,124 300,140 220,132 C140,126 80,148 0,154 Z",
+    median:"M0,147 C80,135 140,104 220,114 C300,124 360,92 440,110 C520,128 560,131 600,125"
+  },
+  "14":{
+    window:"14 j", readings:"1 248 relevés",
+    mean:'142<small> mg/dL</small>', a1c:'6,6<small> %</small>', cv:'38<small> %</small>', sd:'54<small> mg/dL</small>', cap:'92,0<small> %</small>',
+    p1090:"M0,150 C80,130 140,70 220,86 C300,102 360,40 440,70 C520,100 560,120 600,110 L600,178 C560,174 520,166 440,148 C360,130 300,168 220,154 C140,140 80,174 0,180 Z",
+    p2575:"M0,140 C80,124 140,92 220,100 C300,108 360,72 440,90 C520,108 560,120 600,114 L600,150 C560,150 520,146 440,134 C360,122 300,140 220,132 C140,124 80,150 0,156 Z",
+    median:"M0,148 C80,134 140,100 220,112 C300,124 360,86 440,108 C520,128 560,132 600,126"
+  },
+  "30":{
+    window:"30 j", readings:"2 640 relevés",
+    mean:'145<small> mg/dL</small>', a1c:'6,7<small> %</small>', cv:'39<small> %</small>', sd:'57<small> mg/dL</small>', cap:'88,0<small> %</small>',
+    p1090:"M0,156 C80,132 140,60 220,80 C300,100 360,32 440,64 C520,96 560,124 600,116 L600,184 C560,180 520,172 440,154 C360,136 300,176 220,160 C140,144 80,182 0,188 Z",
+    p2575:"M0,142 C80,122 140,86 220,96 C300,106 360,66 440,86 C520,106 560,122 600,116 L600,152 C560,152 520,148 440,136 C360,124 300,144 220,134 C140,124 80,154 0,160 Z",
+    median:"M0,149 C80,133 140,96 220,110 C300,124 360,82 440,106 C520,130 560,134 600,128"
+  },
+  "90":{
+    window:"90 j", readings:"7 920 relevés",
+    mean:'148<small> mg/dL</small>', a1c:'6,8<small> %</small>', cv:'40<small> %</small>', sd:'59<small> mg/dL</small>', cap:'85,0<small> %</small>',
+    p1090:"M0,162 C80,134 140,52 220,74 C300,96 360,26 440,58 C520,90 560,128 600,120 L600,188 C560,184 520,176 440,158 C360,140 300,182 220,164 C140,148 80,186 0,192 Z",
+    p2575:"M0,144 C80,120 140,80 220,92 C300,104 360,60 440,82 C520,104 560,124 600,118 L600,154 C560,154 520,150 440,138 C360,126 300,148 220,136 C140,124 80,158 0,164 Z",
+    median:"M0,150 C80,132 140,92 220,108 C300,124 360,78 440,104 C520,131 560,136 600,130"
+  }
+};
+// équivalents BGM par période : bien moins de relevés, exprimés en fréquence/jour.
+const AGP_BGM={
+  "7": {readings:"29 relevés",  freq:'4,1<small> /jour</small>'},
+  "14":{readings:"48 relevés",  freq:'3,4<small> /jour</small>'},
+  "30":{readings:"92 relevés",  freq:'3,0<small> /jour</small>'},
+  "90":{readings:"256 relevés", freq:'2,8<small> /jour</small>'},
+};
+const A1C_LABO='7,1<small> %</small>'; // HbA1c de laboratoire (constante, dernier prélèvement)
+let currentPeriod="14";
+const agpWin=document.getElementById('agp-window');
+const agpCap=document.getElementById('agp-cap');
+function renderAgp(p){
+  currentPeriod=p;
+  const d=AGP[p];
+  const bgm=document.body.dataset.cgm==='bgm';
+  document.getElementById('agp-p1090').setAttribute('d',d.p1090);
+  document.getElementById('agp-p2575').setAttribute('d',d.p2575);
+  document.getElementById('agp-median').setAttribute('d',d.median);
+  document.getElementById('st-mean').innerHTML=d.mean;
+  document.getElementById('st-a1c').innerHTML=bgm?A1C_LABO:d.a1c;
+  document.getElementById('st-cv').innerHTML=d.cv;
+  document.getElementById('st-sd').innerHTML=d.sd;
+  document.getElementById('st-cap').innerHTML=bgm?AGP_BGM[p].freq:d.cap;
+  agpWin.textContent=d.window;
+  const mw=document.getElementById('meal-window'); if(mw)mw.textContent=d.window;
+  agpCap.textContent=bgm
+    ? `Carnet : moyenne des relevés capillaires par moment de la journée · ${AGP_BGM[p].readings} sur ${d.window} · cible 70–180 mg/dL.`
+    : `Médiane (trait), P25–P75 (bande foncée), P10–P90 (bande claire) · cible 70–180 mg/dL · ${d.readings}.`;
+}
+// synchronise TOUS les segments d'un même type (période ou vue), présents sur
+// plusieurs onglets — une période/vue unique pour toute la fiche.
+function syncSeg(attr,val){document.querySelectorAll('.pseg button[data-'+attr+']').forEach(x=>{const on=x.dataset[attr]===val;x.classList.toggle('on',on);x.setAttribute('aria-selected',on)});}
+// sélecteur de période (1s / 2s / 1m / 3m)
+document.querySelectorAll('.pseg button[data-period]').forEach(b=>b.onclick=()=>{syncSeg('period',b.dataset.period);renderAgp(b.dataset.period);});
+// sélecteur de vue (Moyenne / Tableau journalier) — global via body[data-view]
+document.querySelectorAll('.pseg button[data-view]').forEach(b=>b.onclick=()=>{document.body.dataset.view=b.dataset.view;syncSeg('view',b.dataset.view);});
+renderAgp("14"); // défaut
+</script>
+</body>
+</html>

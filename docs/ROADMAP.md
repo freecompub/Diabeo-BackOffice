@@ -1,5 +1,7 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
+> **Mise à jour 2026-06-30 — EPIC US-2630 Fiche patient unifiée (cadrage design-stage)** : maquette `docs/mockups/fiche-patient-fusion-v1.html` (branche `design/fiche-patient-fusion`) fusionnant la page dossier `/patients/[id]` et le drawer de consultation (US-2018b) en un composant unique, + AGP percentiles, sélecteurs période/vue, **Tendances de repas** (mini-courbes alignées + journal repas avant/après/glucides/bolus), adaptation **CGM ⇄ BGM**. Cadrée par **4 revues expertes** (architecture/découpage, domaine médical, sécurité HDS, données/backend) → **epic + 11 US (US-2631→2641)** avec garde-fous cliniques (pathology-aware GD, suffisance AGP, mealtime, GMI≠HbA1c) et HDS (lazy-load, anti-énumération drawer, audit par agrégat, texte libre repas) en AC. **Aucune migration Prisma**. Voir section **« Série Fiche patient unifiée »**. *Non comptée dans les stats globales (design-stage).*
+
 > **Mise à jour 2026-06-29 — US-2625 Home médecin (maquette Home v3 + TIR par patient)** : refonte triage-first de `/medecin` alignée sur `docs/mockups/home-roles-v3.html` (Alertes pleine largeur en tête → grille 2×2 → Patients à suivre + KPI conservés) ; 3 primitives partagées (DashboardCardHeader/Row/Pill) ; **TIR par patient** sur les alertes — pathology-aware (GD 0,63–1,40 vs adulte 0,70–1,80 via `getCgmDefaults`), plancher de suffisance (`cgmCaptureRate ≥ 30 %` → `null`), bi-palier <50 % « TIR bas » / 50–70 % « sous-cible » (paliers centralisés `clinical-bounds.DASHBOARD_TIR`) ; sous-titre triage (`triageSummaryQuery` count-only, 1 audit + contexte réseau) ; contraste WCAG AA (tokens `-fg`). Revue multi-agents (code-reviewer + healthcare-security-auditor + medical-domain-validator + accessibility-tester) = **GO**. tsc/eslint/build verts, suite unitaire verte. **Suivi** : US-2626 (BUG RDV `@db.Time`, V1), US-2627 + US-2628 (TECH-DEBT TIR, V2). Affine US-2602. *Non comptée dans les stats globales (série Navigation, design-stage).*
 
 > Précédente mise à jour : 2026-05-15 (post-PR #409) — Reclassification V1→V2 (15 US) : décision Samir de déplacer en V2 toutes les US bloquées par procurement externe (ANS / Mailiz / Sentry / Stripe / Medtronic / partenaire bancaire DZ) ou par dépendances internes V3 (US-2150/US-2200), pour clarifier le scope V1 livrable sans dépendance non maîtrisée. **US reclassées** : US-2031 (Medtronic), US-2041 (Pattern AI), US-2077 (MSSanté UX, dep US-2125), US-2104 (Abonnement DZ), US-2106 (Stripe webhooks), US-2109 (Remboursements), US-2124 (DMP), US-2125 (MSSanté backend), US-2126 (INSi), US-2127 (PSC), US-2153 (Logs), US-2164 (APM), US-2165 (Error tracking), US-2411 (KPI cabinet admin), US-2413 (Conformité RGPD admin). **Impact stats** : V1 141→126 (% DONE 59→66), V2 58→73. Total 292 inchangé. Cf. tableau V1 + V2 ci-dessous.
@@ -687,6 +689,32 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 - Responsable de traitement RGPD (libéral/groupe vs hôpital).
 - Cadence de re-vérification PS · rétention du justificatif (RGPD).
 - Prestataire de paiement (FR/DZ) · timeout d'inactivité des rôles à fort pouvoir.
+
+---
+
+## Série Fiche patient unifiée (cadrage — design-stage)
+
+> Source : branche `design/fiche-patient-fusion` · maquette `docs/mockups/fiche-patient-fusion-v1.html` · US dans `docs/UserStory/fiche-patient-fusion/`.
+> Cadrée par 4 revues expertes (architecture/découpage, domaine médical, sécurité HDS, données/backend). **Non comptée dans le tableau de stats global** (design-stage). Aucune migration Prisma requise (réutilise `analytics`/`food-monitoring`/`DiabetesEvent`).
+> **Epic US-2630** — fusionner la page dossier `/patients/[id]` et le drawer de consultation (US-2018b) en un composant présentational unique (rendu page **ET** drawer, sans unifier le modèle d'accès), et enrichir : onglets unifiés, sélecteurs **période** (1s/2s/1m/3m) + **vue** (Moyenne/Tableau journalier), **AGP** percentiles, **Tendances de repas** (mini-courbes alignées + journal repas avant/après/glucides/bolus), adaptation **CGM ⇄ BGM**.
+> 🔴 Garde-fous bloquants intégrés en AC : **pathology-aware** (cible GD 63–140 sinon faux rassurement), **suffisance AGP** (≥14j/70 %, min relevés/slot), définition **mealtime** (borne au repas suivant), **GMI ≠ « HbA1c estimée »**, suggestions non prescriptives (`AdjustmentProposal`) ; HDS : **lazy-load par onglet**, drawer sans id en URL (`cTok`), audit par agrégat sans PHI, texte libre repas chiffré/masqué.
+
+| US | Titre | Type | Dépend de | Taille |
+|----|-------|------|-----------|--------|
+| US-2630 | **EPIC** — Fiche patient unifiée (page + drawer) + analytics enrichies | — | — | — |
+| US-2631 | Socle données : suffisance + cibles pathology-aware + helpers backend *(prérequis)* | back | — | M |
+| US-2632 | Composant présentational `<PatientRecord>` + contrat de données | front | — | M |
+| US-2633 | `PatientContextBar` page/drawer + adaptateur drawer | front/sécu | 2632 | L |
+| US-2634 | Sélecteur de période (1s/2s/1m/3m) synchronisé + `PatientRecordContext` | front/back | 2632 | M |
+| US-2635 | Onglet AGP (percentiles) + bandeau stats glucométriques | front/back | 2631, 2634 | M |
+| US-2636 | Vue Tableau journalier (1 ligne/jour) + service `dailyStats` | front/back | 2631, 2634 | M |
+| US-2637 | Onglet Tendances de repas (mini-courbes alignées + journal repas) | front/back | 2631, 2636 | L |
+| US-2638 | Détection CGM/BGM + adaptation Vue d'ensemble & Glycémie | front/back | 2631 | L |
+| US-2639 | BGM : AGP→Carnet + carnet repas + HbA1c labo | front/back | 2635, 2637, 2638 | M |
+| US-2640 | Toggle page ⇄ drawer + nav + décommission anciens onglets drawer | front | 2633, 2635, 2637, 2638 | M |
+| US-2641 | Durcissement transverse : tokens, i18n/glossaire, a11y, audit/perf, lazy-load | transverse | 2635→2639 | M |
+
+> Chemin critique : `2631 → 2632 → 2633` (fin de la divergence) → `2634 → 2635 → 2636` → `2637` → `2638 → 2639` (BGM, le plus risqué) → `2640 → 2641`.
 
 ---
 
