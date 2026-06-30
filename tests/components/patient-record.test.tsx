@@ -3,7 +3,8 @@
  */
 
 /**
- * Tests — PatientDetailClient (câblage données patient, Phases 1-4).
+ * Tests — PatientRecord (présentational) + son adaptateur page PatientDetailClient
+ * (câblage données patient, Phases 1-4).
  *
  * Vérifie le rendu/branchement client (valeurs serveur affichées telles
  * quelles, état « pas de CGM », onglets non câblés en « bientôt disponible ») ;
@@ -57,6 +58,7 @@ vi.mock("@/components/diabeo/CgmChart", () => ({
 }))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
+import { PatientRecord } from "@/components/diabeo/patient/PatientRecord"
 
 const baseData: PatientDetailData = {
   id: 42,
@@ -109,7 +111,7 @@ const baseData: PatientDetailData = {
   ],
 }
 
-describe("PatientDetailClient (Phase 1)", () => {
+describe("PatientRecord — via adaptateur page PatientDetailClient (Phase 1)", () => {
   it("renders the patient name + server-computed KPIs", () => {
     render(<PatientDetailClient data={baseData} />)
     expect(screen.getByText("Jean Dupont")).toBeTruthy()
@@ -161,6 +163,19 @@ describe("PatientDetailClient (Phase 1)", () => {
     const dl = screen.getByText("Télécharger").closest("a")
     // doit porter le patientId pour la résolution de scope côté route (pro)
     expect(dl?.getAttribute("href")).toBe("/api/documents/7/download?patientId=42")
+  })
+
+  // US-2632 — <PatientRecord> ne construit pas l'URL lui-même : il délègue au
+  // contrat `documentHref` (le drawer fournira une variante `cTok`).
+  it("delegates the document link to the documentHref contract (drawer-ready)", () => {
+    render(
+      <PatientRecord
+        data={baseData}
+        documentHref={(id) => `/cTok/documents/${id}`}
+      />,
+    )
+    const dl = screen.getByText("Télécharger").closest("a")
+    expect(dl?.getAttribute("href")).toBe("/cTok/documents/7")
   })
 
   it("shows the empty Documents state when there are none", () => {
