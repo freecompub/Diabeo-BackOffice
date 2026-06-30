@@ -86,8 +86,11 @@ export default async function PatientDetailPage({
   if (!data) notFound()
 
   // US-2603 — enregistre la consultation du dossier (switcher « récemment vus »).
-  // Fail-soft : un échec ne casse jamais le rendu ; réservé aux PS (VIEWER n'atteint
-  // pas cette route — défense en profondeur).
+  // Placement APRÈS l'assemblage volontaire : on n'enregistre une consultation
+  // que si le dossier a réellement pu être projeté (si un agrégat lève, le throw
+  // remonte avant et aucune « consultation » fantôme n'est tracée).
+  // Fail-soft : un échec d'enregistrement ne casse jamais le rendu ; réservé aux
+  // PS (VIEWER n'atteint pas cette route — défense en profondeur).
   if (role !== "VIEWER") {
     void recentPatientsService.recordView(userId, patientId).catch((e) => {
       console.error("[patient-detail] recordView failed", e instanceof Error ? e.message : e)
