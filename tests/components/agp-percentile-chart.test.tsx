@@ -32,6 +32,7 @@ function makeSlots(count: number): AgpSlotPoint[] {
     p50: 1.1,
     p75: 1.4,
     p90: 1.8,
+    count: 30,
   }))
 }
 

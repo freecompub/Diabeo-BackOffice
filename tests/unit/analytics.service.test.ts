@@ -204,4 +204,65 @@ describe("analyticsService", () => {
       expect(result.dayCount).toBe(2)             // 2 distinct days still counted
     })
   })
+
+  // ─── US-2631 socle fiche patient ─────────────────────────────────────────
+  describe("glycemicProfile — socle US-2631 (stdDev + cible pathology-aware)", () => {
+    it("exposes stdDevMgdl and pathology-aware targetRangeMgdl (adulte 70–180)", async () => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(200, 1.3) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await analyticsService.glycemicProfile(1, "14d", 1)
+      expect(typeof r.metrics.stdDevMgdl).toBe("number")
+      expect(r.metrics.stdDevMgdl).toBeGreaterThanOrEqual(0)
+      expect(r.targetRangeMgdl).toEqual({ low: 70, high: 180 })
+    })
+
+    it("uses GD target range (63–140) for a gestational diabetes patient", async () => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(200, 1.0) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "GD" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await analyticsService.glycemicProfile(1, "14d", 1)
+      expect(r.targetRangeMgdl).toEqual({ low: 63, high: 140 })
+    })
+  })
+
+  describe("bgmStats — socle US-2631 (% relevés en cible ≠ TIR)", () => {
+    it("computes % in target + readings/day, pathology-aware, audited", async () => {
+      // 4 relevés capillaires (g/L) sur 14 j : 3 en cible [0.70,1.80], 1 hyper.
+      prismaMock.glycemiaEntry.findMany.mockResolvedValue([
+        { glycemiaGl: d(1.10), glycemiaMgdl: null },
+        { glycemiaGl: d(0.95), glycemiaMgdl: null },
+        { glycemiaGl: d(1.60), glycemiaMgdl: null },
+        { glycemiaGl: d(2.20), glycemiaMgdl: null }, // hyper
+      ] as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await analyticsService.bgmStats(1, "14d", 1)
+      expect(r.total).toBe(4)
+      expect(r.inRangePercent).toBe(75) // 3/4
+      expect(r.readingsPerDay).toBe(0.3) // 4/14 arrondi 0.1
+      expect(r.targetRangeMgdl).toEqual({ low: 70, high: 180 })
+      // audité READ GLYCEMIA_ENTRY kind=bgmStats
+      const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(meta.resource).toBe("GLYCEMIA_ENTRY")
+      expect(meta.metadata.kind).toBe("bgmStats")
+    })
+
+    it("returns inRangePercent null when no usable reading", async () => {
+      prismaMock.glycemiaEntry.findMany.mockResolvedValue([] as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await analyticsService.bgmStats(1, "14d", 1)
+      expect(r.total).toBe(0)
+      expect(r.inRangePercent).toBeNull()
+    })
+  })
 })

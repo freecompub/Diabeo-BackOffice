@@ -223,4 +223,34 @@ describe("glycemiaService", () => {
       expect(result).toEqual([])
     })
   })
+
+  // ─── US-2631 socle BGM — dernier HbA1c labo ──────────────────────────────
+  describe("getLastHba1c", () => {
+    it("returns the most recent non-null HbA1c with its date, audited", async () => {
+      prismaMock.glycemiaEntry.findFirst.mockResolvedValue({
+        hba1c: new Prisma.Decimal("7.10"),
+        date: new Date("2026-06-02T00:00:00Z"),
+      } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await glycemiaService.getLastHba1c(1, 1)
+      expect(r).toEqual({ value: 7.1, date: "2026-06-02T00:00:00.000Z" })
+      const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(meta.resource).toBe("GLYCEMIA_ENTRY")
+      expect(meta.metadata.kind).toBe("lastHba1c")
+    })
+
+    it("returns null when no HbA1c recorded", async () => {
+      prismaMock.glycemiaEntry.findFirst.mockResolvedValue(null as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      expect(await glycemiaService.getLastHba1c(1, 1)).toBeNull()
+    })
+
+    it("skips audit when skipAudit is set", async () => {
+      prismaMock.glycemiaEntry.findFirst.mockResolvedValue(null as any)
+      prismaMock.auditLog.create.mockClear()
+      await glycemiaService.getLastHba1c(1, 1, undefined, { skipAudit: true })
+      expect(prismaMock.auditLog.create).not.toHaveBeenCalled()
+    })
+  })
 })

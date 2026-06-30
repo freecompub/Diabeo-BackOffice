@@ -176,6 +176,9 @@ describe("statistics", () => {
       const agp = computeAgp(entries)
       expect(agp[0].p50).toBe(1.0)
       expect(agp[0].p10).toBe(1.0)
+      // US-2631 — count par slot (signal de suffisance) : 10 ici, 0 ailleurs.
+      expect(agp[0].count).toBe(10)
+      expect(agp[1].count).toBe(0)
     })
 
     it("bins to slot 0 regardless of server TZ (Europe/Paris pinned)", () => {

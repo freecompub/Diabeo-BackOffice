@@ -13,7 +13,7 @@ import { auditService } from "./audit.service"
 import type { AuditContext } from "./audit.service"
 import { getCgmDefaults } from "./objectives.service"
 import {
-  mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation,
+  mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation, stddev,
   computeTir, assessTirQuality, computeAgp, detectHypoEpisodes,
   cgmCaptureRate,
   ANALYTICS_WARNINGS,
@@ -148,6 +148,8 @@ export const analyticsService = {
     const avgGl = mean(values)
     const avgMgdl = glToMgdl(avgGl)
     const cv = coefficientOfVariation(values)
+    // Écart type (SD) en mg/dL — socle US-2631 (bandeau stats AGP).
+    const sdMgdl = glToMgdl(stddev(values))
     const tir = computeTir(values, thresholds)
     const quality = assessTirQuality(tir, cv)
     const gmi = glucoseManagementIndicator(avgMgdl)
@@ -176,15 +178,95 @@ export const analyticsService = {
       warning: (captureRate < MIN_CAPTURE_RATE
         ? ANALYTICS_WARNINGS.INSUFFICIENT_CGM_CAPTURE
         : undefined) as AnalyticsWarning | undefined,
+      // Cible **pathology-aware** exposée au rendu (socle US-2631) : la vue
+      // dessine la bande / colore avec CES bornes (GD 63–140 vs adulte 70–180),
+      // jamais des constantes 70–180 en dur. `low`/`ok` = bornes basse/haute de
+      // la cible (thresholds en g/L → mg/dL).
+      targetRangeMgdl: {
+        low: Math.round(glToMgdl(thresholds.low)),
+        high: Math.round(glToMgdl(thresholds.ok)),
+      },
       metrics: {
         averageGlucoseGl: Math.round(avgGl * 100) / 100,
         averageGlucoseMgdl: Math.round(avgMgdl),
         gmi: Math.round(gmi * 10) / 10,
         coefficientOfVariation: Math.round(cv * 10) / 10,
+        stdDevMgdl: Math.round(sdMgdl),
         quality,
       },
       tir,
       readingCount: entryCount,
+    }
+  },
+
+  /**
+   * US-2631 (socle BGM) — statistiques de glycémie **capillaire (BGM)** pour un
+   * patient sans capteur. Lit `GlycemiaEntry` (jamais `CgmEntry`).
+   *
+   * ⚠️ `inRangePercent` est un **% de relevés en cible**, PAS un TIR (temps) :
+   * les relevés capillaires ne sont pas répartis uniformément dans le temps
+   * (mesurés autour des repas/symptômes) → biais d'échantillonnage, non
+   * comparable au TIR CGM ni inter-patient. L'UI doit le libeller distinctement.
+   * Cible **pathology-aware** via `getPatientThresholds` (GD 63–140 vs 70–180).
+   */
+  async bgmStats(
+    patientId: number,
+    period: string,
+    auditUserId: number,
+    ctx?: AuditContext,
+    opts?: { skipAudit?: boolean },
+  ) {
+    const days = parsePeriod(period)
+    const since = new Date(Date.now() - days * 24 * 3600_000)
+    const thresholds = await getPatientThresholds(patientId)
+
+    const rows = await prisma.glycemiaEntry.findMany({
+      where: {
+        patientId,
+        date: { gte: since },
+        OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
+      },
+      select: { glycemiaGl: true, glycemiaMgdl: true },
+    })
+
+    // Valeur en g/L (préfère `glycemiaGl`, sinon mg/dL → g/L), filtrée sur la
+    // plage physiologique valide comme les autres agrégats.
+    const valuesGl = rows
+      .map((r) => {
+        if (r.glycemiaGl != null) return decimalToNumber(r.glycemiaGl)
+        if (r.glycemiaMgdl != null) return decimalToNumber(r.glycemiaMgdl) / 100
+        return NaN
+      })
+      .filter(
+        (v) => Number.isFinite(v) && v >= CGM_AGGREGATE_RANGE_GL.MIN && v <= CGM_AGGREGATE_RANGE_GL.MAX,
+      )
+
+    const total = valuesGl.length
+    const inRange = valuesGl.filter((v) => v >= thresholds.low && v <= thresholds.ok).length
+
+    if (!opts?.skipAudit) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: { patientId, kind: "bgmStats", period: `${days}d` },
+      })
+    }
+
+    return {
+      period: { days },
+      total,
+      // % de relevés en cible (≠ TIR). `null` si aucun relevé exploitable.
+      inRangePercent: total > 0 ? Math.round((inRange / total) * 1000) / 10 : null,
+      readingsPerDay: Math.round((total / days) * 10) / 10,
+      targetRangeMgdl: {
+        low: Math.round(glToMgdl(thresholds.low)),
+        high: Math.round(glToMgdl(thresholds.ok)),
+      },
     }
   },
 

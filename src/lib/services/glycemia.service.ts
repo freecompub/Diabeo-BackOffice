@@ -303,6 +303,43 @@ export const glycemiaService = {
   },
 
   /**
+   * US-2631 (socle BGM) — dernier HbA1c **de laboratoire** saisi pour le patient
+   * (valeur + date du relevé). Alimente le bandeau « HbA1c (labo) » du mode BGM
+   * (où GMI/eA1c CGM sont invalides). `null` si aucun HbA1c saisi.
+   *
+   * Lit `GlycemiaEntry.hba1c` (Decimal). Audit READ GLYCEMIA_ENTRY (PHI) ;
+   * `skipAudit` quand l'appelant trace déjà le flux composite.
+   */
+  async getLastHba1c(
+    patientId: number,
+    auditUserId: number,
+    ctx?: AuditContext,
+    opts?: { skipAudit?: boolean },
+  ): Promise<{ value: number; date: string } | null> {
+    const row = await prisma.glycemiaEntry.findFirst({
+      where: { patientId, hba1c: { not: null } },
+      orderBy: [{ date: "desc" }, { time: "desc" }],
+      select: { hba1c: true, date: true },
+    })
+
+    if (!opts?.skipAudit) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId, kind: "lastHba1c" },
+      })
+    }
+
+    return row?.hba1c != null
+      ? { value: Number(row.hba1c), date: row.date.toISOString() }
+      : null
+  },
+
+  /**
    * Get insulin administration flow (daily insulin summary).
    * @async
    * @param {number} patientId - Patient ID
