@@ -103,7 +103,10 @@ export function PatientConsultationDrawer({
                 id="consultation-title"
                 ref={headingRef}
                 tabIndex={-1}
-                className="truncate text-base font-semibold text-foreground outline-none"
+                // Focalisé par programme à l'ouverture (gestion du focus WCAG
+                // 2.4.3). Indicateur visible au focus clavier (WCAG 2.4.7) —
+                // même style d'outline que les boutons du drawer.
+                className="truncate rounded-sm text-base font-semibold text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600"
               >
                 {patient.name}
               </h2>

@@ -1240,38 +1240,14 @@
     "close": "إغلاق",
     "expand": "تكبير",
     "collapse": "تصغير",
-    "tabsLabel": "أقسام ملف المريض",
     "yearsShort": "سنة",
     "tabs": {
-      "overview": "نظرة عامة",
-      "glycemicProfile": "الملف السكري",
-      "glycemia": "سكر الدم",
-      "treatment": "العلاجات",
-      "documents": "المستندات"
+      "glycemicProfile": "الملف السكري"
     },
     "pathology": {
       "DT1": "داء السكري من النوع الأول (DT1)",
       "DT2": "داء السكري من النوع الثاني (DT2)",
       "GD": "سكري الحمل (GD)"
-    },
-    "overview": {
-      "identity": "الهوية",
-      "pathology": "المرض",
-      "age": "العمر",
-      "referent": "الطبيب المرجعي",
-      "objectives": "الأهداف السكرية",
-      "objectivesStatus": "الأهداف",
-      "configured": "مُعدّة",
-      "notSet": "غير محدّدة"
-    },
-    "glycemia": {
-      "title": "ملف سكر الدم (24 ساعة)"
-    },
-    "treatment": {
-      "isf": "عامل الحساسية (ISF)",
-      "icr": "نسبة الكربوهيدرات (ICR)",
-      "basal": "المعدل القاعدي",
-      "none": "لا توجد إعدادات"
     },
     "openedAnnounce": "تم فتح استشارة {name}"
   },

@@ -16,15 +16,10 @@ import { useTranslations } from "next-intl"
 import { ArrowLeft, MessageSquare, Stethoscope } from "lucide-react"
 import { PatientSwitcher } from "./PatientSwitcher"
 import { PatientAlertFlags } from "./PatientAlertFlags"
-
-/** Drapeaux d'alerte sérialisables (miroir de `PatientFlags` serveur). */
-export type ContextFlags = {
-  recentHypos: boolean
-  hypoCount: number
-  silentMonitoring: boolean
-  silentDays: number | null
-  openUrgency: boolean
-}
+// `ContextFlags` vit dans le module neutre (casse le cycle de type avec
+// `PatientAlertFlags`) ; ré-exporté ici pour rétro-compat des imports existants.
+import type { ContextFlags } from "./patient-record-views"
+export type { ContextFlags }
 
 export function PatientContextBar({
   patientId,

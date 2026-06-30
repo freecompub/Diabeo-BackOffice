@@ -12,6 +12,20 @@
 import type { LatestRawSignal } from "@/lib/cgm-freshness"
 export type { LatestRawSignal }
 
+// ── Drapeaux d'alerte « Ma journée » ─────────────────────────────────────────
+/**
+ * Drapeaux d'alerte sérialisables (miroir de `PatientFlags` serveur). Logé ici
+ * (module neutre) plutôt que dans `PatientContextBar` pour casser le cycle de
+ * type `PatientContextBar` ↔ `PatientAlertFlags` (US-2633).
+ */
+export type ContextFlags = {
+  recentHypos: boolean
+  hypoCount: number
+  silentMonitoring: boolean
+  silentDays: number | null
+  openUrgency: boolean
+}
+
 // ── Glycémie (série CGM) ─────────────────────────────────────────────────────
 export type CgmEntryLite = { valueGl: number | null; timestamp: string }
 

@@ -15,7 +15,8 @@
 
 import { useTranslations } from "next-intl"
 import { AlertTriangle, Activity, ZapOff } from "lucide-react"
-import type { ContextFlags } from "./PatientContextBar"
+// Source neutre (pas `./PatientContextBar`) → pas de cycle de type.
+import type { ContextFlags } from "./patient-record-views"
 
 export function PatientAlertFlags({ flags }: { flags: ContextFlags }) {
   const t = useTranslations("patientContextBar")

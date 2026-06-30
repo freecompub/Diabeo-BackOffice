@@ -20,7 +20,7 @@
 import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
-import { PatientContextBar, type ContextFlags } from "@/components/diabeo/patient/PatientContextBar"
+import { PatientContextBar } from "@/components/diabeo/patient/PatientContextBar"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -30,7 +30,7 @@ import { bcp47 } from "@/i18n/config"
 // DTO de vue depuis le module neutre co-localisé (US-2632) → composant
 // autoportant, aucun import du dossier de route.
 import type {
-  GlycemiaView, TreatmentView, SlotCoverage, DocumentItem,
+  GlycemiaView, TreatmentView, SlotCoverage, DocumentItem, ContextFlags,
 } from "./patient-record-views"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"

@@ -1240,38 +1240,14 @@
     "close": "Close",
     "expand": "Expand",
     "collapse": "Collapse",
-    "tabsLabel": "Patient record sections",
     "yearsShort": "yrs",
     "tabs": {
-      "overview": "Overview",
-      "glycemicProfile": "Glycemic profile",
-      "glycemia": "Glucose",
-      "treatment": "Treatments",
-      "documents": "Documents"
+      "glycemicProfile": "Glycemic profile"
     },
     "pathology": {
       "DT1": "Type 1 diabetes (T1D)",
       "DT2": "Type 2 diabetes (T2D)",
       "GD": "Gestational diabetes (GD)"
-    },
-    "overview": {
-      "identity": "Identity",
-      "pathology": "Condition",
-      "age": "Age",
-      "referent": "Referent",
-      "objectives": "Glycemic targets",
-      "objectivesStatus": "Targets",
-      "configured": "Configured",
-      "notSet": "Not set"
-    },
-    "glycemia": {
-      "title": "Glucose profile (24 h)"
-    },
-    "treatment": {
-      "isf": "Insulin sensitivity (ISF)",
-      "icr": "Carb ratio (ICR)",
-      "basal": "Basal rate",
-      "none": "No settings"
     },
     "openedAnnounce": "{name}'s consultation opened"
   },
