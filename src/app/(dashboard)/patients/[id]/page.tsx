@@ -68,13 +68,14 @@ export default async function PatientDetailPage({
   const consent = await patientShareConsent(patientId)
   if (!consent.ok) {
     if (consent.status === 404) notFound()
-    // Traçabilité HDS : l'accès refusé pour « partage désactivé » (opt-out Art. 21
-    // / gdprConsent absent) est désormais audité (auparavant silencieux) — permet
-    // de distinguer un refus de partage d'un simple 404.
+    // Traçabilité HDS : l'accès refusé pour « partage désactivé » (opt-out Art. 21)
+    // ou « consentement absent » (gdprConsent) est audité — permet de distinguer
+    // un refus de partage d'un simple 404. `kind` = motif exact (sharingDisabled /
+    // patientConsentMissing), aligné sur la route /api/patients/record.
     await auditService.accessDenied({
       userId, resource: "PATIENT", resourceId: String(patientId),
       ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
-      metadata: { patientId, surface: "patient-detail-page", kind: "sharingDisabled" },
+      metadata: { patientId, surface: "patient-detail-page", kind: consent.error },
     })
     return <PatientDetailClient data={null} sharingDisabled />
   }

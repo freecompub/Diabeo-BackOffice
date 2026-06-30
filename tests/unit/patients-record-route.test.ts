@@ -147,7 +147,9 @@ describe("GET /api/patients/record", () => {
     expect(await r.json()).toEqual({ error: "sharingDisabled" })
     expect(mBuild).not.toHaveBeenCalled()
     expect(mDenied).toHaveBeenCalledTimes(1)
-    expect((mDenied.mock.calls[0]![0] as any).metadata).toMatchObject({ kind: "sharingDisabled", surface: "api" })
+    const arg = mDenied.mock.calls[0]![0] as any
+    expect(arg.resourceId).toBe("42") // pivot forensique ADR#18
+    expect(arg.metadata).toMatchObject({ patientId: 42, kind: "sharingDisabled", surface: "api" })
   })
 
   it("blocks a patient with missing GDPR consent (patientConsentMissing, fail-closed)", async () => {
@@ -155,7 +157,7 @@ describe("GET /api/patients/record", () => {
     const r = await GET(makeReq())
     expect(r.status).toBe(403)
     expect(await r.json()).toEqual({ error: "patientConsentMissing" })
-    expect((mDenied.mock.calls[0]![0] as any).metadata).toMatchObject({ kind: "patientConsentMissing" })
+    expect((mDenied.mock.calls[0]![0] as any).metadata).toMatchObject({ patientId: 42, kind: "patientConsentMissing" })
   })
 
   it("does not audit a sharing-consent 404 (patient soft-deleted at consent check)", async () => {

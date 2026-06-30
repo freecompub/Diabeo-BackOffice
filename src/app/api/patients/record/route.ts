@@ -22,6 +22,7 @@ import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientShareConsent } from "@/lib/consent"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 import { buildPatientRecordData } from "@/app/(dashboard)/patients/[id]/build-patient-record"
 
 export async function GET(req: NextRequest) {
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
             ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
             metadata: { surface: "api", kind: "patientRecord" },
           })
-          .catch((err) => console.error("[patients/record] accessDenied audit failed", err instanceof Error ? err.message : err))
+          .catch((err) => logger.error("audit", "[patients/record] accessDenied audit failed", {}, err))
       }
       return NextResponse.json({ error: e.message }, { status: e.status })
     }
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
           ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
           metadata: { surface: "api", kind: "patientRecord" },
         })
-        .catch((err) => console.error("[patients/record] rateLimited audit failed", err instanceof Error ? err.message : err))
+        .catch((err) => logger.error("audit", "[patients/record] rateLimited audit failed", {}, err))
       return NextResponse.json(
         { error: "rateLimitExceeded" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
             ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
             metadata: { surface: "api", kind: "patientRecord", reason: res.error },
           })
-          .catch((err) => console.error("[patients/record] accessDenied audit failed", err instanceof Error ? err.message : err))
+          .catch((err) => logger.error("audit", "[patients/record] accessDenied audit failed", {}, err))
       }
       return NextResponse.json(
         { error: res.error },
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
             ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
             metadata: { patientId, surface: "api", kind: consent.error },
           })
-          .catch((err) => console.error("[patients/record] sharing accessDenied audit failed", err instanceof Error ? err.message : err))
+          .catch((err) => logger.error("audit", "[patients/record] sharing accessDenied audit failed", {}, err))
       }
       return NextResponse.json({ error: consent.error }, { status: consent.status })
     }
@@ -124,7 +125,7 @@ export async function GET(req: NextRequest) {
         ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
         metadata: { patientId, kind: "patientRecord", surface: "api" },
       })
-      .catch((e) => console.error("[patients/record] surface audit failed", e instanceof Error ? e.message : e))
+      .catch((e) => logger.error("audit", "[patients/record] surface audit failed", {}, e))
 
     return NextResponse.json(data)
   } catch (error) {
