@@ -132,8 +132,9 @@ export async function GET(req: NextRequest) {
     if (error instanceof AuthError) {
       return NextResponse.json({ error: error.message }, { status: error.status })
     }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[patients/record GET]", msg)
+    // logger.error redacte la PHI éventuelle du message d'erreur (≠ console.error
+    // brut) — pertinent sur une route qui assemble des données de santé.
+    logger.error("api", "[patients/record GET] handler error", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
