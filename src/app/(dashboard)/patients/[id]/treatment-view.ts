@@ -7,7 +7,14 @@
  * Decimal→number ; bornes horaires formatées. Aucun calcul clinique.
  */
 
-export type InsulinDelivery = "pump" | "manual"
+// Types de vue dans un module neutre (US-2632) : ré-exportés pour les
+// consommateurs + importés (ceux utilisés par les helpers/builder ci-dessous).
+export type {
+  InsulinDelivery, SlotCoverage, Slot, BasalSlot, TreatmentItem, BolusInsulin, Pump, TreatmentView,
+} from "@/components/diabeo/patient/patient-record-views"
+import type {
+  InsulinDelivery, SlotCoverage, BolusInsulin, Pump, TreatmentView,
+} from "@/components/diabeo/patient/patient-record-views"
 
 type DecimalLike = number | string | { toString(): string }
 const num = (x: DecimalLike): number => Number(x)
@@ -29,19 +36,6 @@ function timeToMinutes(t: Date | string): number | null {
   const m = /T(\d{2}):(\d{2})/.exec(iso)
   if (!m) return null
   return Number(m[1]) * 60 + Number(m[2])
-}
-
-/**
- * Garde-fou structurel (PAS clinique) sur la couverture horaire d'une famille
- * de créneaux. Détecte les trous (heures de la journée sans aucun créneau) et
- * les chevauchements (heures couvertes par ≥ 2 créneaux). Purement informatif :
- * une config saine couvre 0–24 h en continu, sans recouvrement.
- */
-export type SlotCoverage = {
-  /** Au moins une minute de la journée n'est couverte par aucun créneau. */
-  hasGap: boolean
-  /** Au moins deux créneaux se recouvrent. */
-  hasOverlap: boolean
 }
 
 const MINUTES_PER_DAY = 1440
@@ -95,39 +89,11 @@ export function analyzeSlotCoverage(
   return { hasGap, hasOverlap }
 }
 
-export type Slot = { range: string; value: number }
-export type BasalSlot = { range: string; rate: number }
-export type TreatmentItem = { id: number; name: string | null; posology: string | null }
-/** Insuline bolus active (nom commercial du catalogue + DCI + posologie). */
-export type BolusInsulin = { name: string; genericName: string; dosage: string | null }
-/** Pompe à insuline active (libellé « marque modèle » + fraîcheur de synchro). */
-export type Pump = { label: string; syncStale: boolean }
-
 /** Au-delà → la dernière synchro pompe est jugée ancienne (indice non bloquant). */
 export const PUMP_SYNC_STALE_AFTER_DAYS = 7
 
 const DAY_MS = 86_400_000
 
-export type TreatmentView = {
-  hasSettings: boolean
-  deliveryMethod: InsulinDelivery | null
-  bolusInsulin: BolusInsulin | null
-  /**
-   * FK insuline bolus renseignée mais l'enregistrement lié n'est pas affichable
-   * comme bolus actif (inactif / terminé / usage non-bolus) → incohérence de
-   * données à signaler (vs `bolusInsulin == null && !bolusInconsistent` = aucune
-   * insuline bolus configurée). Indice non bloquant côté UI.
-   */
-  bolusInconsistent: boolean
-  pump: Pump | null
-  isfSlots: Slot[] // g/L/U
-  isfCoverage: SlotCoverage
-  icrSlots: Slot[] // g/U
-  icrCoverage: SlotCoverage
-  basalSlots: BasalSlot[] // U/h (pompe)
-  basalCoverage: SlotCoverage
-  treatments: TreatmentItem[]
-}
 
 type SettingsInput = {
   deliveryMethod: InsulinDelivery

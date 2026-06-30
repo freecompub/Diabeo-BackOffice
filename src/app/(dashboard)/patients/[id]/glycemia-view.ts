@@ -11,35 +11,17 @@
 /** Seuil de fraîcheur du « dernier relevé » (minutes). Au-delà → `stale`. */
 export const CGM_STALE_AFTER_MIN = 30
 
-import { recentOutOfRangeFrom, type LatestRawSignal } from "@/lib/cgm-freshness"
+import { recentOutOfRangeFrom } from "@/lib/cgm-freshness"
 
-export type { LatestRawSignal }
-
-export type CgmEntryLite = { valueGl: number | null; timestamp: string }
-
-export type GlycemiaView = {
-  points: { time: string; glucose: number }[]
-  lastReadingMgdl: number | null
-  lastReadingAt: string | null
-  /** Âge du dernier relevé en minutes (null si aucun relevé). */
-  lastReadingAgeMin: number | null
-  /** Dernier relevé plus ancien que {@link CGM_STALE_AFTER_MIN}. */
-  stale: boolean
-  /**
-   * Un relevé PLUS RÉCENT que celui affiché est hors plage affichable et a donc
-   * été exclu de la série : `"low"` (< 40 mg/dL — hypo sévère possible / capteur
-   * LOW) ou `"high"` (> 500 mg/dL — capteur HIGH). `null` sinon. Sécurité
-   * clinique : évite qu'un relevé bénin plus ancien masque une hypo sévère
-   * récente sans signal.
-   */
-  recentOutOfRange: "low" | "high" | null
-  /**
-   * Nombre de relevés de la fenêtre exclus de la série affichée (hors plancher
-   * 0.40 / plafond 5.00) mais **comptés dans les statistiques** (TIR/moyenne) —
-   * annotation graphe pour réconcilier la courbe et le TIR (cf. revue PR #557).
-   */
-  outOfDisplayRangeCount: number
-}
+// Types de vue dans un module neutre (US-2632) : ré-exportés pour les
+// consommateurs (`PatientRecord`, `ReviewClient`, tests), et importés ci-dessous
+// par le builder. Sens de dépendance app→components.
+export type {
+  LatestRawSignal, CgmEntryLite, GlycemiaView,
+} from "@/components/diabeo/patient/patient-record-views"
+import type {
+  LatestRawSignal, CgmEntryLite, GlycemiaView,
+} from "@/components/diabeo/patient/patient-record-views"
 
 // Invariant : TZ + locale FIXES (heure clinique FR). Instancié une fois au
 // chargement du module pour la perf + le déterminisme serveur. Ne pas rendre

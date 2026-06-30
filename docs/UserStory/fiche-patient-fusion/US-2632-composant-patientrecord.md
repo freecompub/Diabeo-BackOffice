@@ -18,3 +18,22 @@ Socle de la fusion : extraire le rendu des onglets de `PatientDetailClient` vers
 
 ## Risques
 Bien isoler le contrat (il porte toute l'évolutivité : drawer, BGM, période, vue). Couvre archi US-A.
+
+---
+
+## ✅ Implémentation (livrée — PR #607)
+
+- **`src/components/diabeo/patient/PatientRecord.tsx`** — composant présentational (en-tête + onglets Vue d'ensemble · Glycémie · Traitements · Documents, état actuel), piloté par le DTO `PatientRecordData`. Props `PatientRecordProps` : `{ data, sharingDisabled?, documentHref }`. Les onglets AGP / Tendances de repas seront ajoutés en US-2635 / US-2637.
+- **`src/components/diabeo/patient/patient-record-views.ts`** (nouveau) — module **neutre** portant les **types de vue** (`GlycemiaView`, `TreatmentView`, `SlotCoverage`, `DocumentItem`…). Les builders serveur co-localisés à la route (`glycemia-view` / `treatment-view` / `document-view`) les **ré-exportent** : sens de dépendance `app/ → components/`, composant autoportant (suite revue — finding M1).
+- **`PatientDetailClient.tsx`** — adaptateur **page** mince : câble `<PatientRecord>` + fournit `documentHref` (`?patientId=`). Re-exporte `PatientDetailData` (= `PatientRecordData`) → `page.tsx` inchangé.
+- **Contrat de liens** : le composant ne fabrique **aucune URL portant l'id patient** ; le téléchargement passe par `documentHref` (drawer = jeton `cTok` en US-2633). ⚠️ `PatientContextBar` (rendu par `PatientRecord`) construit encore en interne `/patients/[id]/review` et `/messages?patientId=` → leur passage à un contrat opaque relève d'**US-2633** (documenté dans l'en-tête du composant).
+
+### Revue
+Revue multi-agents (code-reviewer + healthcare-security-auditor) : **GO**, refactor à comportement constant, anti-énumération préparé. Findings M1 (couplage `components→app` → module de types neutre), M2 (commentaire surstaté → nuancé), L1 (`?? ""` documenté), L3 (test renommé `patient-record.test.tsx`) corrigés.
+
+### Reste à venir (US suivantes)
+- Onglets **AGP** (US-2635) / **Tendances de repas** (US-2637), **migration tokens** des nouvelles viz (AC-4 s'applique à ce moment-là — le code extrait était déjà tokenisé).
+- **Onglet actif contrôlable** (URL-driven) + extensibilité de la liste d'onglets : à introduire avec US-2634 (période/vue).
+
+### Vérifications
+`tsc` ✓ · `eslint` ✓ · `pnpm build` ✓ · suite verte (parité + contrat `documentHref` testé).

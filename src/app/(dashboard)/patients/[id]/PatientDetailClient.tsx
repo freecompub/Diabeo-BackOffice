@@ -27,6 +27,10 @@ export function PatientDetailClient({
     <PatientRecord
       data={data}
       sharingDisabled={sharingDisabled}
+      // Mode page : le scope est résolu côté route via `patientId` en query.
+      // `data?.id ?? ""` est défensif et inatteignable en pratique — quand
+      // `data` est null, l'onglet Documents n'est pas rendu et `documentHref`
+      // n'est jamais invoqué.
       documentHref={(docId) => `/api/documents/${docId}/download?patientId=${data?.id ?? ""}`}
     />
   )

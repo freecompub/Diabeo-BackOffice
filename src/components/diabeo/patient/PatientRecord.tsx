@@ -6,9 +6,13 @@
  * la source : la page le câble via une projection RSC (`PatientDetailClient`),
  * le drawer le câblera via `cTok` (US-2633).
  *
- * Le composant ne construit **aucune URL portant l'id patient** : les liens qui
- * en dépendent (téléchargement de document) passent par le contrat `documentHref`
- * fourni par l'adaptateur (page = `?patientId=`, drawer = jeton).
+ * Les liens construits **dans ce composant** ne portent pas l'id patient : le
+ * téléchargement de document passe par le contrat `documentHref` fourni par
+ * l'adaptateur (page = `?patientId=`, drawer = jeton `cTok`).
+ *
+ * ⚠️ `PatientContextBar` (rendu ici) construit encore en interne des liens
+ * porteurs de l'id patient (`/patients/[id]/review`, `/messages?patientId=`) ;
+ * leur passage à un contrat opaque pour le mode drawer est traité en **US-2633**.
  */
 
 "use client"
@@ -23,11 +27,11 @@ import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 import { bcp47 } from "@/i18n/config"
-// Types de vue co-localisés avec la page (server builders) ; imports type-only
-// (effacés au build → pas de couplage runtime app→components).
-import type { GlycemiaView } from "@/app/(dashboard)/patients/[id]/glycemia-view"
-import type { TreatmentView, SlotCoverage } from "@/app/(dashboard)/patients/[id]/treatment-view"
-import type { DocumentItem } from "@/app/(dashboard)/patients/[id]/document-view"
+// DTO de vue depuis le module neutre co-localisé (US-2632) → composant
+// autoportant, aucun import du dossier de route.
+import type {
+  GlycemiaView, TreatmentView, SlotCoverage, DocumentItem,
+} from "./patient-record-views"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Separator } from "@/components/ui/separator"

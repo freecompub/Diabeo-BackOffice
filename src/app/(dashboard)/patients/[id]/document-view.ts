@@ -8,7 +8,9 @@
  * ClamAV à l'upload, pas au download).
  */
 
-export type DocSize = { value: number; unitKey: "sizeBytes" | "sizeKb" | "sizeMb" } | null
+// Types de vue dans un module neutre (US-2632) : ré-exportés + importés ci-dessous.
+export type { DocSize, DocumentItem } from "@/components/diabeo/patient/patient-record-views"
+import type { DocSize, DocumentItem } from "@/components/diabeo/patient/patient-record-views"
 
 const KB = 1024
 const MB = 1024 * 1024
@@ -19,14 +21,6 @@ export function formatDocSize(bytes: number | null | undefined): DocSize {
   if (bytes < KB) return { value: bytes, unitKey: "sizeBytes" }
   if (bytes < MB) return { value: Math.round((bytes / KB) * 10) / 10, unitKey: "sizeKb" }
   return { value: Math.round((bytes / MB) * 10) / 10, unitKey: "sizeMb" }
-}
-
-export type DocumentItem = {
-  id: number
-  title: string
-  category: string | null
-  dateIso: string
-  size: DocSize
 }
 
 type RawDoc = {

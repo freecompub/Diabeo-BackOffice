@@ -3,7 +3,8 @@
  */
 
 /**
- * Tests — PatientDetailClient (câblage données patient, Phases 1-4).
+ * Tests — PatientRecord (présentational) + son adaptateur page PatientDetailClient
+ * (câblage données patient, Phases 1-4).
  *
  * Vérifie le rendu/branchement client (valeurs serveur affichées telles
  * quelles, état « pas de CGM », onglets non câblés en « bientôt disponible ») ;
@@ -110,7 +111,7 @@ const baseData: PatientDetailData = {
   ],
 }
 
-describe("PatientDetailClient (Phase 1)", () => {
+describe("PatientRecord — via adaptateur page PatientDetailClient (Phase 1)", () => {
   it("renders the patient name + server-computed KPIs", () => {
     render(<PatientDetailClient data={baseData} />)
     expect(screen.getByText("Jean Dupont")).toBeTruthy()
