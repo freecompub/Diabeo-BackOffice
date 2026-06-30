@@ -20,7 +20,7 @@
 import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
-import { PatientContextBar, type ContextFlags } from "@/components/diabeo/patient/PatientContextBar"
+import { PatientContextBar } from "@/components/diabeo/patient/PatientContextBar"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -30,7 +30,7 @@ import { bcp47 } from "@/i18n/config"
 // DTO de vue depuis le module neutre co-localisé (US-2632) → composant
 // autoportant, aucun import du dossier de route.
 import type {
-  GlycemiaView, TreatmentView, SlotCoverage, DocumentItem,
+  GlycemiaView, TreatmentView, SlotCoverage, DocumentItem, ContextFlags,
 } from "./patient-record-views"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -90,16 +90,33 @@ export interface PatientRecordProps {
   data: PatientRecordData | null
   sharingDisabled?: boolean
   /**
-   * Construit l'URL de téléchargement d'un document (le composant n'embarque
-   * pas l'id patient lui-même). Page → `?patientId=`, drawer → jeton `cTok`.
+   * Mode de rendu. `page` (défaut) : chrome plein écran (barre de contexte).
+   * `drawer` : intégré au drawer de consultation éphémère — pas de
+   * `PatientContextBar` (l'en-tête du drawer porte l'identité + les drapeaux),
+   * pas de lien porteur d'id patient.
    */
-  documentHref: (docId: number) => string
+  variant?: "page" | "drawer"
+  /**
+   * Construit l'URL de téléchargement d'un document (le composant n'embarque
+   * pas l'id patient lui-même). Page → `?patientId=`. **Optionnel** : en mode
+   * drawer (jeton `cTok` en en-tête, non plaçable dans un `href`), on omet ce
+   * contrat et les documents sont listés sans lien de téléchargement.
+   */
+  documentHref?: (docId: number) => string
+  /**
+   * Onglet supplémentaire « Profil glycémique » injecté par l'adaptateur drawer
+   * (contenu câblé via `cTok`). Inséré après « Vue d'ensemble ». En attendant
+   * l'onglet AGP unifié (US-2634).
+   */
+  glycemicProfileSlot?: { label: string; content: ReactNode }
 }
 
 export function PatientRecord({
   data,
   sharingDisabled = false,
+  variant = "page",
   documentHref,
+  glycemicProfileSlot,
 }: PatientRecordProps) {
   const t = useTranslations("patientDetail")
   // Libellés d'unités de paramètres insuline : source unique partagée avec la
@@ -108,12 +125,13 @@ export function PatientRecord({
   const locale = useLocale()
   const [activeTab, setActiveTab] = useState("overview")
 
-  // Consentement retiré : aucune donnée patient rendue (cf. page.tsx).
+  // Consentement retiré : aucune donnée patient rendue (cf. page.tsx). En mode
+  // drawer, l'en-tête est porté par le drawer → pas de DashboardHeader.
   if (sharingDisabled || !data) {
     return (
       <>
-        <DashboardHeader title={t("patientFallback")} subtitle="" />
-        <div className="p-6">
+        {variant === "page" && <DashboardHeader title={t("patientFallback")} subtitle="" />}
+        <div className={variant === "drawer" ? "" : "p-6"}>
           <Card>
             <CardContent className="py-10">
               <DiabeoEmptyState
@@ -134,20 +152,28 @@ export function PatientRecord({
 
   return (
     <>
-      <PatientContextBar
-        patientId={data.id}
-        name={name}
-        age={data.age}
-        pathology={data.pathology}
-        referent={data.referent}
-        flags={data.flags}
-        showStartConsultation
-      />
+      {/* Mode page : barre de contexte plein écran (liens porteurs d'id patient).
+          Mode drawer : omise — l'en-tête du drawer porte l'identité + les
+          drapeaux, et aucun lien d'id ne doit fuiter (anti-énumération). */}
+      {variant === "page" && (
+        <PatientContextBar
+          patientId={data.id}
+          name={name}
+          age={data.age}
+          pathology={data.pathology}
+          referent={data.referent}
+          flags={data.flags}
+          showStartConsultation
+        />
+      )}
 
-      <div className="p-6">
+      <div className={variant === "drawer" ? "" : "p-6"}>
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6" aria-label={t("tabsAriaLabel")}>
             <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger>
+            {glycemicProfileSlot && (
+              <TabsTrigger value="glycemicProfile">{glycemicProfileSlot.label}</TabsTrigger>
+            )}
             <TabsTrigger value="glycemia">{t("tabGlycemia")}</TabsTrigger>
             <TabsTrigger value="treatment">{t("tabTreatment")}</TabsTrigger>
             <TabsTrigger value="documents">{t("tabDocuments")}</TabsTrigger>
@@ -287,6 +313,13 @@ export function PatientRecord({
               </Card>
             </div>
           </TabsContent>
+
+          {/* ── Profil glycémique (injecté par le drawer via cTok — US-2633) ── */}
+          {glycemicProfileSlot && (
+            <TabsContent value="glycemicProfile" className="space-y-6">
+              {glycemicProfileSlot.content}
+            </TabsContent>
+          )}
 
           {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}
           <TabsContent value="glycemia" className="space-y-6">
@@ -530,13 +563,19 @@ export function PatientRecord({
                             {doc.size && ` · ${doc.size.value} ${t(doc.size.unitKey)}`}
                           </span>
                         </span>
-                        <a
-                          href={documentHref(doc.id)}
-                          className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
-                        >
-                          <Download size={14} aria-hidden="true" />
-                          {t("download")}
-                        </a>
+                        {/* Lien de téléchargement uniquement si un contrat
+                            d'URL est fourni (mode page). En mode drawer, le
+                            scope passe par le jeton `cTok` en en-tête, non
+                            plaçable dans un `href` → document listé sans lien. */}
+                        {documentHref && (
+                          <a
+                            href={documentHref(doc.id)}
+                            className="inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
+                          >
+                            <Download size={14} aria-hidden="true" />
+                            {t("download")}
+                          </a>
+                        )}
                       </li>
                     ))}
                   </ul>

@@ -1240,38 +1240,14 @@
     "close": "Fermer",
     "expand": "Agrandir",
     "collapse": "Réduire",
-    "tabsLabel": "Sections du dossier patient",
     "yearsShort": "ans",
     "tabs": {
-      "overview": "Vue d'ensemble",
-      "glycemicProfile": "Profil glycémique",
-      "glycemia": "Glycémie",
-      "treatment": "Traitements",
-      "documents": "Documents"
+      "glycemicProfile": "Profil glycémique"
     },
     "pathology": {
       "DT1": "Diabète de type 1 (DT1)",
       "DT2": "Diabète de type 2 (DT2)",
       "GD": "Diabète gestationnel (GD)"
-    },
-    "overview": {
-      "identity": "Identité",
-      "pathology": "Pathologie",
-      "age": "Âge",
-      "referent": "Référent",
-      "objectives": "Objectifs glycémiques",
-      "objectivesStatus": "Objectifs",
-      "configured": "Configurés",
-      "notSet": "Non définis"
-    },
-    "glycemia": {
-      "title": "Profil glycémique (24 h)"
-    },
-    "treatment": {
-      "isf": "Facteur de sensibilité (ISF)",
-      "icr": "Ratio glucides (ICR)",
-      "basal": "Débit basal",
-      "none": "Aucun paramètre"
     },
     "openedAnnounce": "Consultation de {name} ouverte"
   },
