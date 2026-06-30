@@ -226,18 +226,37 @@ describe("glycemiaService", () => {
 
   // ─── US-2631 socle BGM — dernier HbA1c labo ──────────────────────────────
   describe("getLastHba1c", () => {
-    it("returns the most recent non-null HbA1c with its date, audited", async () => {
+    it("returns the most recent non-null HbA1c with value/date/age, audited (+requestId)", async () => {
+      // Date récente → non périmé. (ageDays calculé vs maintenant, non figé.)
+      const recent = new Date(Date.now() - 20 * 86_400_000)
       prismaMock.glycemiaEntry.findFirst.mockResolvedValue({
         hba1c: new Prisma.Decimal("7.10"),
-        date: new Date("2026-06-02T00:00:00Z"),
+        date: recent,
       } as any)
       prismaMock.auditLog.create.mockResolvedValue({} as any)
 
+      const r = await glycemiaService.getLastHba1c(1, 1, {
+        ipAddress: "127.0.0.1", userAgent: "t", requestId: "req-1",
+      } as any)
+      expect(r!.value).toBe(7.1)
+      expect(r!.date).toBe(recent.toISOString())
+      expect(r!.ageDays).toBeGreaterThanOrEqual(19)
+      expect(r!.stale).toBe(false)
+      const data = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(data.resource).toBe("GLYCEMIA_ENTRY")
+      expect(data.requestId).toBe("req-1")
+      expect(data.metadata.kind).toBe("lastHba1c")
+    })
+
+    it("flags an old HbA1c as stale (> 180 days)", async () => {
+      prismaMock.glycemiaEntry.findFirst.mockResolvedValue({
+        hba1c: new Prisma.Decimal("6.50"),
+        date: new Date(Date.now() - 400 * 86_400_000),
+      } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
       const r = await glycemiaService.getLastHba1c(1, 1)
-      expect(r).toEqual({ value: 7.1, date: "2026-06-02T00:00:00.000Z" })
-      const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-      expect(meta.resource).toBe("GLYCEMIA_ENTRY")
-      expect(meta.metadata.kind).toBe("lastHba1c")
+      expect(r!.stale).toBe(true)
+      expect(r!.ageDays).toBeGreaterThan(180)
     })
 
     it("returns null when no HbA1c recorded", async () => {

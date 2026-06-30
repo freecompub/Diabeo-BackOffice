@@ -62,7 +62,7 @@ function mockApi(opts?: {
   }
   const agp = opts?.agpBody ?? Array.from({ length: 20 }, (_, i) => ({
     timeMinutes: i * 15,
-    p10: 0.7, p25: 0.9, p50: 1.1, p75: 1.4, p90: 1.8,
+    p10: 0.7, p25: 0.9, p50: 1.1, p75: 1.4, p90: 1.8, count: 30,
   }))
   vi.spyOn(global, "fetch").mockImplementation(async (input) => {
     const url = String(input)

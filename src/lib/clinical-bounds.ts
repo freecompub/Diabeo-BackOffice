@@ -99,6 +99,22 @@ export const AGP_SUFFICIENCY = {
   MIN_DAYS: 14,
   /** Capture minimale (%) pour un AGP représentatif (cf. analytics MIN_CAPTURE_RATE). */
   MIN_CAPTURE_RATE: 70,
-  /** Relevés minimum par slot de 15 min avant de tracer la bande P10–P90. */
-  MIN_SLOT_READINGS: 3,
+  /**
+   * Relevés minimum par slot de 15 min avant de tracer la bande P10–P90. À 3
+   * relevés, P10/P90 (interpolés) sont ~les extrêmes de l'échantillon, donc
+   * encore bruités (revue medical-domain-validator) ; 5 est un plancher
+   * défendable pour une bande crédible sans masquer excessivement (un slot bien
+   * couvert sur 14 j à 70 % a ~25–30 relevés). Reste un seuil minimal — la vue
+   * (US-2635) peut graduer davantage le masquage.
+   */
+  MIN_SLOT_READINGS: 5,
 } as const
+
+/**
+ * Péremption clinique d'un HbA1c de **laboratoire** (jours). L'HbA1c reflète la
+ * glycémie moyenne des ~8–12 dernières semaines ; au-delà de ~180 j la valeur
+ * est caduque comme indicateur de contrôle courant. `getLastHba1c` expose
+ * `ageDays` + `stale` (> ce seuil) ; la valeur reste affichée mais datée/avertie
+ * (mode BGM, où GMI/eA1c CGM sont invalides).
+ */
+export const HBA1C_STALE_DAYS = 180

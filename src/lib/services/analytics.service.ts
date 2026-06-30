@@ -208,6 +208,10 @@ export const analyticsService = {
    * (mesurés autour des repas/symptômes) → biais d'échantillonnage, non
    * comparable au TIR CGM ni inter-patient. L'UI doit le libeller distinctement.
    * Cible **pathology-aware** via `getPatientThresholds` (GD 63–140 vs 70–180).
+   *
+   * `opts.skipAudit` : à n'utiliser QUE si l'appelant (route/composite) écrit
+   * lui-même une ligne d'audit patient-scoped couvrant cette lecture — sinon
+   * c'est une lecture de PHI non tracée (interdit HDS).
    */
   async bgmStats(
     patientId: number,
@@ -217,20 +221,26 @@ export const analyticsService = {
     opts?: { skipAudit?: boolean },
   ) {
     const days = parsePeriod(period)
-    const since = new Date(Date.now() - days * 24 * 3600_000)
+    const now = new Date()
+    const since = new Date(now.getTime() - days * 24 * 3600_000)
     const thresholds = await getPatientThresholds(patientId)
 
     const rows = await prisma.glycemiaEntry.findMany({
       where: {
         patientId,
-        date: { gte: since },
+        // Borne haute = maintenant : écarte les saisies datées dans le futur
+        // (erreur de saisie) qui fausseraient total/%/fréquence.
+        date: { gte: since, lte: now },
         OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
       },
       select: { glycemiaGl: true, glycemiaMgdl: true },
     })
 
     // Valeur en g/L (préfère `glycemiaGl`, sinon mg/dL → g/L), filtrée sur la
-    // plage physiologique valide comme les autres agrégats.
+    // plage physiologique valide comme les autres agrégats. NB : ce filtre
+    // écarte aussi les extrêmes « LO/HI » du lecteur (< 0,20 / > 6,00 g/L) —
+    // cohérent avec les agrégats CGM et le rejet des valeurs d'erreur capteur ;
+    // impact négligeable (rareté), tracé ici pour transparence (revue médicale).
     const valuesGl = rows
       .map((r) => {
         if (r.glycemiaGl != null) return decimalToNumber(r.glycemiaGl)

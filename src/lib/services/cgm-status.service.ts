@@ -21,6 +21,10 @@ const RECENT_CGM_DAYS = 14
 export const cgmStatusService = {
   async patientHasCgm(patientId: number): Promise<boolean> {
     const now = new Date()
+    // Capteur CGM « actif » = expiration future. Un device CGM dont
+    // `sensorExpiresAt` est NULL (inconnu) n'est volontairement PAS considéré
+    // actif ici (sémantique Prisma `gt` exclut NULL) : il retombe sur le
+    // fallback « CGM récent < 14 j », qui reflète l'usage réel. Fail-closed.
     const activeSensor = await prisma.patientDevice.findFirst({
       where: {
         patientId,
