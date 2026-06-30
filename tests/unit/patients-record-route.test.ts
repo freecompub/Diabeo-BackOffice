@@ -29,7 +29,7 @@ vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: vi.fn() }))
 vi.mock("@/lib/consent", () => ({ patientShareConsent: vi.fn() }))
 vi.mock("@/lib/auth/query-helpers", () => ({ resolvePatientIdFromQuery: vi.fn() }))
 vi.mock("@/lib/services/audit.service", () => ({
-  auditService: { log: vi.fn(), accessDenied: vi.fn() },
+  auditService: { log: vi.fn(), accessDenied: vi.fn(), rateLimited: vi.fn() },
   extractRequestContext: vi.fn(() => ({ ipAddress: "i", userAgent: "u", requestId: "r" })),
 }))
 vi.mock("@/app/(dashboard)/patients/[id]/build-patient-record", () => ({
@@ -57,6 +57,7 @@ const mResolve = vi.mocked(resolvePatientIdFromQuery)
 const mBuild = vi.mocked(buildPatientRecordData)
 const mLog = vi.mocked(auditService.log)
 const mDenied = vi.mocked(auditService.accessDenied)
+const mRateLimited = vi.mocked(auditService.rateLimited)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -68,6 +69,7 @@ beforeEach(() => {
   mBuild.mockResolvedValue({ id: 42, name: "X" } as any)
   mLog.mockResolvedValue(undefined as any)
   mDenied.mockResolvedValue(undefined as any)
+  mRateLimited.mockResolvedValue(undefined as any)
 })
 
 describe("GET /api/patients/record", () => {
@@ -89,15 +91,18 @@ describe("GET /api/patients/record", () => {
     const r = await GET(makeReq())
     expect(r.status).toBe(403)
     expect(mDenied).toHaveBeenCalledTimes(1)
+    expect((mDenied.mock.calls[0]![0] as any).resourceId).toBe("record")
   })
 
-  it("429 when rate limited (before any patient resolution)", async () => {
+  it("429 when rate limited → audits RATE_LIMITED, no resolution/projection", async () => {
     mRate.mockResolvedValue({ allowed: false, retryAfterSec: 30 } as any)
     const r = await GET(makeReq())
     expect(r.status).toBe(429)
     expect(r.headers.get("Retry-After")).toBe("30")
+    expect(mRateLimited).toHaveBeenCalledTimes(1)
     expect(mResolve).not.toHaveBeenCalled()
     expect(mBuild).not.toHaveBeenCalled()
+    expect(mLog).not.toHaveBeenCalled() // pas de ligne « surface » sur échec
   })
 
   it("403 when the caller has no GDPR consent (before any patient resolution)", async () => {
@@ -116,7 +121,7 @@ describe("GET /api/patients/record", () => {
     expect(mDenied).not.toHaveBeenCalled()
   })
 
-  it("404 (uniform) on access denied / no patient → audits accessDenied (US-2265)", async () => {
+  it("404 (uniform) on access denied / no patient via ?patientId= → audits the raw id (US-2265)", async () => {
     mResolve.mockResolvedValue({ error: "patientNotFound" } as any)
     const r = await GET(makeReq("99"))
     expect(r.status).toBe(404)
@@ -124,15 +129,40 @@ describe("GET /api/patients/record", () => {
     expect(mDenied).toHaveBeenCalledTimes(1)
     const arg = mDenied.mock.calls[0]![0] as any
     expect(arg.resourceId).toBe("99")
-    expect(arg.metadata).toMatchObject({ surface: "api", kind: "patientRecord" })
+    expect(arg.metadata).toMatchObject({ surface: "api", kind: "patientRecord", reason: "patientNotFound" })
+    expect(mLog).not.toHaveBeenCalled() // pas de ligne « surface » sur échec
   })
 
-  it("blocks a patient who opted out of provider sharing (patientShareConsent fail-closed)", async () => {
+  it("404 on the cTok drawer path (no ?patientId=) → audits resourceId 'unknown'", async () => {
+    mResolve.mockResolvedValue({ error: "patientNotFound" } as any)
+    const r = await GET(makeReq()) // pas de ?patientId= → résolution par jeton
+    expect(r.status).toBe(404)
+    expect((mDenied.mock.calls[0]![0] as any).resourceId).toBe("unknown")
+  })
+
+  it("blocks a patient who opted out of provider sharing → 403 + audits accessDenied", async () => {
     mShare.mockResolvedValue({ ok: false, status: 403, error: "sharingDisabled" } as any)
     const r = await GET(makeReq())
     expect(r.status).toBe(403)
     expect(await r.json()).toEqual({ error: "sharingDisabled" })
     expect(mBuild).not.toHaveBeenCalled()
+    expect(mDenied).toHaveBeenCalledTimes(1)
+    expect((mDenied.mock.calls[0]![0] as any).metadata).toMatchObject({ kind: "sharingDisabled", surface: "api" })
+  })
+
+  it("blocks a patient with missing GDPR consent (patientConsentMissing, fail-closed)", async () => {
+    mShare.mockResolvedValue({ ok: false, status: 403, error: "patientConsentMissing" } as any)
+    const r = await GET(makeReq())
+    expect(r.status).toBe(403)
+    expect(await r.json()).toEqual({ error: "patientConsentMissing" })
+    expect((mDenied.mock.calls[0]![0] as any).metadata).toMatchObject({ kind: "patientConsentMissing" })
+  })
+
+  it("does not audit a sharing-consent 404 (patient soft-deleted at consent check)", async () => {
+    mShare.mockResolvedValue({ ok: false, status: 404, error: "patientNotFound" } as any)
+    const r = await GET(makeReq())
+    expect(r.status).toBe(404)
+    expect(mDenied).not.toHaveBeenCalled()
   })
 
   it("404 (uniform) when the patient record cannot be built (deleted patient)", async () => {

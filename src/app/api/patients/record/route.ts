@@ -34,11 +34,13 @@ export async function GET(req: NextRequest) {
     if (e instanceof AuthError) {
       const u = getAuthUser(req)
       if (u && e.status === 403) {
-        await auditService.accessDenied({
-          userId: u.id, resource: "PATIENT", resourceId: "record",
-          ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
-          metadata: { surface: "api", kind: "patientRecord" },
-        })
+        await auditService
+          .accessDenied({
+            userId: u.id, resource: "PATIENT", resourceId: "record",
+            ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+            metadata: { surface: "api", kind: "patientRecord" },
+          })
+          .catch((err) => console.error("[patients/record] accessDenied audit failed", err instanceof Error ? err.message : err))
       }
       return NextResponse.json({ error: e.message }, { status: e.status })
     }
@@ -48,6 +50,15 @@ export async function GET(req: NextRequest) {
   try {
     const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.analytics)
     if (!rl.allowed) {
+      // Saturation rate-limit auditée (US-2265 — burst detection : ADMIN compromis
+      // / boucle UI). Fail-soft, sans PHI. Action RATE_LIMITED ≠ UNAUTHORIZED.
+      await auditService
+        .rateLimited({
+          userId: user.id, resource: "PATIENT", resourceId: "record",
+          ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+          metadata: { surface: "api", kind: "patientRecord" },
+        })
+        .catch((err) => console.error("[patients/record] rateLimited audit failed", err instanceof Error ? err.message : err))
       return NextResponse.json(
         { error: "rateLimitExceeded" },
         { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
@@ -65,12 +76,14 @@ export async function GET(req: NextRequest) {
       // `?patientId=` brut récupéré best-effort pour le forensic ; jamais de PHI.
       if (res.error === "patientNotFound") {
         const raw = req.nextUrl.searchParams.get("patientId")
-        await auditService.accessDenied({
-          userId: user.id, resource: "PATIENT",
-          resourceId: raw && /^\d+$/.test(raw) ? raw : "unknown",
-          ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
-          metadata: { surface: "api", kind: "patientRecord", reason: res.error },
-        })
+        await auditService
+          .accessDenied({
+            userId: user.id, resource: "PATIENT",
+            resourceId: raw && /^\d+$/.test(raw) ? raw : "unknown",
+            ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+            metadata: { surface: "api", kind: "patientRecord", reason: res.error },
+          })
+          .catch((err) => console.error("[patients/record] accessDenied audit failed", err instanceof Error ? err.message : err))
       }
       return NextResponse.json(
         { error: res.error },
@@ -84,6 +97,19 @@ export async function GET(req: NextRequest) {
     // partage n'est pas exposé, même à un PS RBAC-autorisé.
     const consent = await patientShareConsent(patientId)
     if (!consent.ok) {
+      // Symétrie avec la page RSC (page.tsx) : un refus de partage du SUJET
+      // (opt-out Art. 21 / gdprConsent absent) est tracé pour le distinguer d'un
+      // simple 404. Le cas 404 (patient absent/soft-deleted) reste silencieux
+      // (déjà couvert, uniforme). Fail-soft, sans PHI.
+      if (consent.status === 403) {
+        await auditService
+          .accessDenied({
+            userId: user.id, resource: "PATIENT", resourceId: String(patientId),
+            ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+            metadata: { patientId, surface: "api", kind: consent.error },
+          })
+          .catch((err) => console.error("[patients/record] sharing accessDenied audit failed", err instanceof Error ? err.message : err))
+      }
       return NextResponse.json({ error: consent.error }, { status: consent.status })
     }
 
