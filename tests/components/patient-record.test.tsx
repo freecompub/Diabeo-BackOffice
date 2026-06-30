@@ -374,3 +374,37 @@ describe("PatientRecord — via adaptateur page PatientDetailClient (Phase 1)", 
     expect(screen.queryByTestId("pathology")).toBeNull() // pas de badge si pathologie absente
   })
 })
+
+describe("PatientRecord — variant drawer (US-2633)", () => {
+  it("omits PatientContextBar (no id-bearing chrome) but keeps the tab content", () => {
+    render(<PatientRecord data={baseData} variant="drawer" />)
+    // En mode page, le nom vient de PatientContextBar (mocké) ; en drawer il
+    // est absent (l'en-tête du drawer le porte, hors de ce composant).
+    expect(screen.queryByText("Jean Dupont")).toBeNull()
+    // Les KPI serveur restent rendus (contenu des onglets présent).
+    expect(screen.getAllByTestId("stat").length).toBeGreaterThan(0)
+  })
+
+  it("injects the glycemic-profile tab when a slot is provided", () => {
+    render(
+      <PatientRecord
+        data={baseData}
+        variant="drawer"
+        glycemicProfileSlot={{ label: "Profil glycémique", content: <div data-testid="profile-slot">AGP</div> }}
+      />,
+    )
+    expect(screen.getByText("Profil glycémique")).toBeTruthy()
+    expect(screen.getByTestId("profile-slot")).toBeTruthy()
+  })
+
+  it("lists documents WITHOUT a download link when no documentHref is given (cTok mode)", () => {
+    render(<PatientRecord data={baseData} variant="drawer" />)
+    expect(screen.getByText("Compte rendu HDJ")).toBeTruthy()
+    expect(screen.queryByRole("link")).toBeNull()
+  })
+
+  it("renders a download link only when documentHref is provided (page contract)", () => {
+    render(<PatientRecord data={baseData} documentHref={(id) => `/dl/${id}`} />)
+    expect(screen.getByRole("link").getAttribute("href")).toBe("/dl/7")
+  })
+})

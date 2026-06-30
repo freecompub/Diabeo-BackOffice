@@ -13,8 +13,9 @@
 
 import Link from "next/link"
 import { useTranslations } from "next-intl"
-import { ArrowLeft, MessageSquare, AlertTriangle, Activity, ZapOff, Stethoscope } from "lucide-react"
+import { ArrowLeft, MessageSquare, Stethoscope } from "lucide-react"
 import { PatientSwitcher } from "./PatientSwitcher"
+import { PatientAlertFlags } from "./PatientAlertFlags"
 
 /** Drapeaux d'alerte sérialisables (miroir de `PatientFlags` serveur). */
 export type ContextFlags = {
@@ -73,25 +74,8 @@ export function PatientContextBar({
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             <h1 className="truncate text-lg font-semibold text-foreground">{name}</h1>
-            {/* Drapeaux d'alerte — cohérents avec « Ma journée ». */}
-            {flags.openUrgency && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-feedback-error bg-error-bg px-2 py-0.5 text-xs font-medium text-error-fg">
-                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-                {t("flagUrgency")}
-              </span>
-            )}
-            {flags.recentHypos && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-feedback-warning bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning-fg">
-                <Activity className="h-3 w-3" aria-hidden="true" />
-                {t("flagHypos", { count: flags.hypoCount })}
-              </span>
-            )}
-            {flags.silentMonitoring && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-feedback-warning bg-warning-bg px-2 py-0.5 text-xs font-medium text-warning-fg">
-                <ZapOff className="h-3 w-3" aria-hidden="true" />
-                {t("flagSilent")}
-              </span>
-            )}
+            {/* Drapeaux d'alerte — cohérents avec « Ma journée » (source partagée). */}
+            <PatientAlertFlags flags={flags} />
           </div>
           <p className="truncate text-sm text-muted-foreground">{subtitleParts.join(" · ")}</p>
         </div>

@@ -1,28 +1,31 @@
 "use client"
 
 /**
- * US-2018b — Drawer de consultation patient (workspace éphémère).
+ * US-2018b / US-2633 — Drawer de consultation patient (workspace éphémère).
  *
- * Panneau latéral (extensible plein écran) ouvert par-dessus la liste. Navigation
- * interne par onglets horizontaux. `role="dialog"` + `aria-modal` ; le reste de
- * l'app est rendu `inert` par le `ConsultationProvider`, ce qui piège
- * naturellement le focus clavier dans le drawer (pas de trap manuel à maintenir).
+ * Panneau latéral (extensible plein écran) ouvert par-dessus la liste.
+ * `role="dialog"` + `aria-modal` ; le reste de l'app est rendu `inert` par le
+ * `ConsultationProvider`, ce qui piège naturellement le focus clavier dans le
+ * drawer (pas de trap manuel à maintenir).
+ *
+ * US-2633 — le contenu est désormais le **composant unifié** `<PatientRecord>`
+ * (même rendu que la page `/patients/[id]`), alimenté par `GET
+ * /api/patients/record` via le jeton éphémère `cTok` (en-tête
+ * `x-consultation-token`, aucun id patient en URL). L'onglet « Profil
+ * glycémique » est injecté (câblé `cTok`) en attendant l'AGP unifié (US-2634).
+ * Les drapeaux d'alerte (« Ma journée ») sont remontés dans l'en-tête du drawer.
  */
 
-import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { useEffect, useRef } from "react"
 import { useTranslations } from "next-intl"
 import { Maximize2, Minimize2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { PatientRecord, type PatientRecordData } from "@/components/diabeo/patient/PatientRecord"
+import { PatientAlertFlags } from "@/components/diabeo/patient/PatientAlertFlags"
 import type { ConsultationPatient } from "./ConsultationContext"
-import { OverviewTab } from "./tabs/OverviewTab"
+import { useConsultationData } from "./useConsultationData"
 import { GlycemicProfileTab } from "./tabs/GlycemicProfileTab"
-import { GlycemiaTab } from "./tabs/GlycemiaTab"
-import { TreatmentTab } from "./tabs/TreatmentTab"
-import { DocumentsTab } from "./tabs/DocumentsTab"
-
-type TabKey = "overview" | "glycemicProfile" | "glycemia" | "treatment" | "documents"
-
-const TABS: TabKey[] = ["overview", "glycemicProfile", "glycemia", "treatment", "documents"]
+import { TabError, TabLoading } from "./tabs/TabState"
 
 interface Props {
   patient: ConsultationPatient
@@ -40,27 +43,15 @@ export function PatientConsultationDrawer({
   onToggleExpanded,
 }: Props) {
   const t = useTranslations("consultation")
-  const [active, setActive] = useState<TabKey>("overview")
   const headingRef = useRef<HTMLHeadingElement>(null)
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  // Récupération du dossier unifié via le jeton éphémère (aucun id en URL).
+  const { data, loading, error } = useConsultationData<PatientRecordData>("/api/patients/record", cTok)
 
   // Déplace le focus dans le drawer à l'ouverture (WCAG — gestion du focus).
   useEffect(() => {
     headingRef.current?.focus()
   }, [])
-
-  // Navigation clavier des onglets (pattern WAI-ARIA Tabs) : ←/→/Home/End.
-  function onTabKeyDown(e: ReactKeyboardEvent, index: number) {
-    let next = index
-    if (e.key === "ArrowRight") next = (index + 1) % TABS.length
-    else if (e.key === "ArrowLeft") next = (index - 1 + TABS.length) % TABS.length
-    else if (e.key === "Home") next = 0
-    else if (e.key === "End") next = TABS.length - 1
-    else return
-    e.preventDefault()
-    setActive(TABS[next])
-    tabRefs.current[next]?.focus()
-  }
 
   const ageLabel = patient.age !== null ? `${patient.age} ${t("yearsShort")}` : null
   const subtitle = [`${t(`pathology.${patient.pathology}`)}`, ageLabel].filter(Boolean).join(" · ")
@@ -107,14 +98,19 @@ export function PatientConsultationDrawer({
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-xs text-muted-foreground">{t("breadcrumbRoot")}</p>
-            <h2
-              id="consultation-title"
-              ref={headingRef}
-              tabIndex={-1}
-              className="truncate text-base font-semibold text-foreground outline-none"
-            >
-              {patient.name}
-            </h2>
+            <div className="flex items-center gap-2">
+              <h2
+                id="consultation-title"
+                ref={headingRef}
+                tabIndex={-1}
+                className="truncate text-base font-semibold text-foreground outline-none"
+              >
+                {patient.name}
+              </h2>
+              {/* Drapeaux d'alerte « Ma journée » — remontés ici en mode drawer
+                  (source partagée avec PatientContextBar), dispo dès le fetch. */}
+              {data && <PatientAlertFlags flags={data.flags} />}
+            </div>
             <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
           </div>
           <button
@@ -135,49 +131,24 @@ export function PatientConsultationDrawer({
           </button>
         </header>
 
-        {/* Onglets — roving tabindex + flèches (pattern WAI-ARIA Tabs) */}
-        <div role="tablist" aria-label={t("tabsLabel")} className="flex gap-1 overflow-x-auto border-b border-border px-3 pt-2">
-          {TABS.map((key, i) => (
-            <button
-              key={key}
-              id={`ctab-${key}`}
-              role="tab"
-              type="button"
-              aria-selected={active === key}
-              aria-controls={`cpanel-${key}`}
-              tabIndex={active === key ? 0 : -1}
-              ref={(el) => {
-                tabRefs.current[i] = el
+        {/* Contenu — dossier unifié (mêmes onglets que la page) + onglet profil
+            glycémique injecté via cTok. Les onglets/clavier sont gérés par le
+            composant (Tabs Radix). */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {loading ? (
+            <TabLoading />
+          ) : error || !data ? (
+            <TabError />
+          ) : (
+            <PatientRecord
+              data={data}
+              variant="drawer"
+              glycemicProfileSlot={{
+                label: t("tabs.glycemicProfile"),
+                content: <GlycemicProfileTab cTok={cTok} />,
               }}
-              onClick={() => setActive(key)}
-              onKeyDown={(e) => onTabKeyDown(e, i)}
-              className={cn(
-                "whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600",
-                active === key
-                  // teal-700 (≥4.5:1) au lieu de teal-600 (~3.7:1) pour le texte
-                  // d'onglet actif (text-sm normal) — review a11y.
-                  ? "border-teal-600 font-semibold text-teal-700"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t(`tabs.${key}`)}
-            </button>
-          ))}
-        </div>
-
-        {/* Contenu de l'onglet actif */}
-        <div
-          role="tabpanel"
-          id={`cpanel-${active}`}
-          aria-labelledby={`ctab-${active}`}
-          tabIndex={0}
-          className="flex-1 overflow-y-auto p-4"
-        >
-          {active === "overview" && <OverviewTab cTok={cTok} />}
-          {active === "glycemicProfile" && <GlycemicProfileTab cTok={cTok} />}
-          {active === "glycemia" && <GlycemiaTab cTok={cTok} />}
-          {active === "treatment" && <TreatmentTab cTok={cTok} />}
-          {active === "documents" && <DocumentsTab cTok={cTok} />}
+            />
+          )}
         </div>
 
         {/* Annonce d'ouverture pour lecteurs d'écran (WCAG 4.1.3). */}
