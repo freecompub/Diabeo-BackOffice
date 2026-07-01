@@ -19,8 +19,16 @@
 
 import { useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
+import { cn } from "@/lib/utils"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { PatientContextBar } from "@/components/diabeo/patient/PatientContextBar"
+import { PeriodSelector } from "@/components/diabeo/patient/PeriodSelector"
+import {
+  usePeriodAnalytics,
+  usePatientRecordContext,
+  PERIOD_LABEL_KEY,
+  SEED_PERIOD,
+} from "@/components/diabeo/patient/PatientRecordContext"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -76,6 +84,37 @@ export type PatientRecordData = {
   documents: DocumentItem[]
 }
 
+/**
+ * Mappe la réponse `/api/analytics/glycemic-profile` sur la forme `stats` du DTO
+ * (US-2634 — re-fetch période). Miroir EXACT du mapping serveur de
+ * `buildPatientRecordData` ; `null` si aucune donnée CGM sur la fenêtre.
+ */
+function mapProfileToStats(raw: unknown): PatientRecordData["stats"] {
+  const p = raw as {
+    readingCount: number
+    captureRate: number
+    warning?: string
+    metrics: { averageGlucoseMgdl: number; gmi: number; coefficientOfVariation: number }
+    tir: { severeHypo: number; hypo: number; inRange: number; elevated: number; hyper: number }
+  }
+  if (!p || p.readingCount <= 0) return null
+  return {
+    avgGlucoseMgdl: p.metrics.averageGlucoseMgdl,
+    gmi: p.metrics.gmi,
+    cv: p.metrics.coefficientOfVariation,
+    tir: {
+      veryLow: p.tir.severeHypo,
+      low: p.tir.hypo,
+      inRange: p.tir.inRange,
+      high: p.tir.elevated,
+      veryHigh: p.tir.hyper,
+    },
+    readingCount: p.readingCount,
+    captureRate: p.captureRate,
+    insufficientCapture: p.warning === "insufficientCgmCapture",
+  }
+}
+
 /** category enum → clé i18n du libellé. */
 const DOC_CATEGORY_KEY: Record<string, string> = {
   general: "docCatGeneral",
@@ -125,6 +164,22 @@ export function PatientRecord({
   const locale = useLocale()
   const [activeTab, setActiveTab] = useState("overview")
 
+  // US-2634 — KPI « Vue d'ensemble » pilotés par la période sélectionnée.
+  // Amorce = projection serveur 14 j (`data.stats`) ; re-fetch debounced si la
+  // période change (hook no-op hors provider / à l'amorce → pas de flicker).
+  // Appelé inconditionnellement (règles des hooks) AVANT tout early-return.
+  const recordCtx = usePatientRecordContext()
+  const liveStats = usePeriodAnalytics({
+    seed: data?.stats ?? null,
+    endpoint: "/api/analytics/glycemic-profile",
+    map: mapProfileToStats,
+  })
+  // Libellé = période RÉELLEMENT affichée (`valuePeriod`), jamais la période
+  // demandée : sur erreur/chargement, la donnée d'amorce ne doit jamais porter
+  // le libellé d'une autre fenêtre (faux rassurement clinique, revue #610).
+  const periodLabel = t(PERIOD_LABEL_KEY[liveStats.valuePeriod])
+  const requestedLabel = t(PERIOD_LABEL_KEY[recordCtx?.period ?? SEED_PERIOD])
+
   // Consentement retiré : aucune donnée patient rendue (cf. page.tsx). En mode
   // drawer, l'en-tête est porté par le drawer → pas de DashboardHeader.
   if (sharingDisabled || !data) {
@@ -148,7 +203,15 @@ export function PatientRecord({
 
   const name = data.name || t("patientFallback")
   const sexLabel = data.sex === "F" ? t("female") : data.sex === "M" ? t("male") : "—"
-  const { stats, objectives } = data
+  const { objectives } = data
+  // Stats pilotées par la période (US-2634) — `liveStats.value` = amorce serveur
+  // 14 j tant que la période n'a pas changé, sinon retour re-fetché.
+  const stats = liveStats.value
+  const statsLoading = liveStats.loading
+  const statsError = liveStats.error
+  // GMI/statistiques non représentatifs sous 14 j (consensus AGP) — caveat
+  // affiché même si la capture est bonne (revue médicale #610).
+  const shortWindow = liveStats.valuePeriod === "7d"
 
   return (
     <>
@@ -181,6 +244,39 @@ export function PatientRecord({
 
           {/* ── Vue d'ensemble (câblée) ─────────────────────── */}
           <TabsContent value="overview" className="space-y-6">
+            {/* Sélecteur de période (US-2634) — synchronisé entre onglets via
+                le contexte ; pilote les KPI ci-dessous (re-fetch debounced). */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span id="period-selector-label" className="text-sm font-medium text-muted-foreground">
+                {t("periodSelectorLabel")}
+              </span>
+              <PeriodSelector labelledBy="period-selector-label" />
+            </div>
+            {/* Annonce lecteurs d'écran du (re)chargement des KPI (WCAG 4.1.3).
+                En erreur, on n'annonce PAS « mis à jour » : le bandeau role=alert
+                ci-dessous porte le message (pas de double annonce trompeuse). */}
+            <p className="sr-only" role="status" aria-live="polite">
+              {statsLoading ? t("periodLoading") : statsError ? "" : t("periodLoaded", { period: periodLabel })}
+            </p>
+            {/* Échec de re-fetch : la donnée affichée est retombée sur l'amorce
+                (`periodLabel`) — on le signale, jamais un libellé trompeur. */}
+            {statsError && (
+              <p
+                role="alert"
+                className="rounded-md border border-feedback-error bg-error-bg px-4 py-2 text-sm text-error-fg"
+              >
+                {t("periodRefetchError", { requested: requestedLabel, shown: periodLabel })}
+              </p>
+            )}
+            {/* Représentativité : fenêtre < 14 j → GMI/stats indicatifs. */}
+            {stats && shortWindow && (
+              <p
+                role="status"
+                className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
+              >
+                {t("shortWindowCaveat")}
+              </p>
+            )}
             {stats?.insufficientCapture && (
               <p
                 role="status"
@@ -190,28 +286,34 @@ export function PatientRecord({
               </p>
             )}
             {stats ? (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div
+                aria-busy={statsLoading}
+                className={cn(
+                  "grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
+                  statsLoading && "opacity-60",
+                )}
+              >
                 <StatCard
-                  label={t("avgGlucose14d")}
+                  label={t("avgGlucosePeriod", { period: periodLabel })}
                   value={String(stats.avgGlucoseMgdl)}
                   unit="mg/dL"
                   icon={<Activity className="h-5 w-5" />}
                   variant="default"
                 />
                 <StatCard
-                  label={t("kpiTir14d")}
+                  label={t("kpiTirPeriod", { period: periodLabel })}
                   value={`${Math.round(stats.tir.inRange)}%`}
                   icon={<TrendingUp className="h-5 w-5" />}
                   variant={stats.tir.inRange >= objectives.tirTargetPct ? "success" : "warning"}
                 />
                 <StatCard
-                  label={t("kpiGmi")}
+                  label={t("kpiGmiPeriod", { period: periodLabel })}
                   value={`${stats.gmi}%`}
                   icon={<Heart className="h-5 w-5" />}
                   variant="default"
                 />
                 <StatCard
-                  label={t("kpiCv")}
+                  label={t("kpiCvPeriod", { period: periodLabel })}
                   value={`${stats.cv}%`}
                   icon={<Clock className="h-5 w-5" />}
                   variant={stats.cv <= objectives.cvMaxPct ? "success" : "warning"}
@@ -264,7 +366,7 @@ export function PatientRecord({
                       <p className="mt-1 font-medium">{data.referent ?? "—"}</p>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">{t("avgGlucose14d")}</span>
+                      <span className="text-muted-foreground">{t("avgGlucosePeriod", { period: periodLabel })}</span>
                       <div className="mt-1">
                         {stats ? (
                           <GlycemiaValue value={stats.avgGlucoseMgdl} unit="mg/dL" size="sm" />
@@ -300,7 +402,7 @@ export function PatientRecord({
               <Card>
                 <CardHeader>
                   <CardTitle className="text-base">
-                    <Acronym code="TIR" /> {t("tirDonutPeriod")}
+                    <Acronym code="TIR" /> {t("tirDonutPeriodLabel", { period: periodLabel })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="flex justify-center">

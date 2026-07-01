@@ -16,12 +16,17 @@
  * Les drapeaux d'alerte (« Ma journée ») sont remontés dans l'en-tête du drawer.
  */
 
-import { useEffect, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
 import { useTranslations } from "next-intl"
 import { Maximize2, Minimize2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { CONSULTATION_TOKEN_HEADER } from "@/lib/auth/consultation-token"
 import { PatientRecord, type PatientRecordData } from "@/components/diabeo/patient/PatientRecord"
 import { PatientAlertFlags } from "@/components/diabeo/patient/PatientAlertFlags"
+import {
+  PatientRecordProvider,
+  type AnalyticsFetcher,
+} from "@/components/diabeo/patient/PatientRecordContext"
 import type { ConsultationPatient } from "./ConsultationContext"
 import { useConsultationData } from "./useConsultationData"
 import { GlycemicProfileTab } from "./tabs/GlycemicProfileTab"
@@ -47,6 +52,18 @@ export function PatientConsultationDrawer({
 
   // Récupération du dossier unifié via le jeton éphémère (aucun id en URL).
   const { data, loading, error } = useConsultationData<PatientRecordData>("/api/patients/record", cTok)
+
+  // Transport analytique mode drawer (US-2634) : jeton en en-tête, aucun id en
+  // URL — re-fetch des KPI à la période sans casser l'anti-énumération.
+  const fetchAnalytics = useCallback<AnalyticsFetcher>(
+    (endpoint, params, init) =>
+      fetch(`${endpoint}?${new URLSearchParams(params).toString()}`, {
+        credentials: "same-origin",
+        headers: { [CONSULTATION_TOKEN_HEADER]: cTok },
+        signal: init?.signal,
+      }),
+    [cTok],
+  )
 
   // Déplace le focus dans le drawer à l'ouverture (WCAG — gestion du focus).
   useEffect(() => {
@@ -143,14 +160,16 @@ export function PatientConsultationDrawer({
           ) : error || !data ? (
             <TabError />
           ) : (
-            <PatientRecord
-              data={data}
-              variant="drawer"
-              glycemicProfileSlot={{
-                label: t("tabs.glycemicProfile"),
-                content: <GlycemicProfileTab cTok={cTok} />,
-              }}
-            />
+            <PatientRecordProvider fetchAnalytics={fetchAnalytics} seedPeriod="14d">
+              <PatientRecord
+                data={data}
+                variant="drawer"
+                glycemicProfileSlot={{
+                  label: t("tabs.glycemicProfile"),
+                  content: <GlycemicProfileTab cTok={cTok} />,
+                }}
+              />
+            </PatientRecordProvider>
           )}
         </div>
 

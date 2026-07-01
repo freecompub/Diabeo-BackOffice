@@ -314,7 +314,10 @@ describe("PatientRecord — via adaptateur page PatientDetailClient (Phase 1)", 
       />,
     )
     // HIGH = important mais non urgent → role="status" (poli), jamais "alert".
-    expect(screen.getByRole("status").textContent).toMatch(/hors plage affichable/)
+    // (Plusieurs role=status coexistent — dont la live-region de période ; on
+    // cible le caveat par son texte.)
+    const caveat = screen.getByText(/hors plage affichable/)
+    expect(caveat.getAttribute("role")).toBe("status")
     expect(screen.queryByRole("alert")).toBeNull()
   })
 
