@@ -206,8 +206,10 @@ export interface PeriodResourceState<T> {
 export function usePeriodResource<T>(args: {
   endpoint: string
   map: (raw: unknown) => T
+  /** Paramètre `source` optionnel (ex. `"bgm"`) ajouté à la requête. */
+  source?: string
 }): PeriodResourceState<T> {
-  const { endpoint } = args
+  const { endpoint, source } = args
   const ctx = usePatientRecordContext()
   const period = ctx?.period ?? SEED_PERIOD
 
@@ -230,7 +232,7 @@ export function usePeriodResource<T>(args: {
     const timer = setTimeout(() => {
       setState((s) => ({ ...s, loading: true, error: false }))
       ctx
-        .fetchAnalytics(endpoint, { period }, { signal: ctrl.signal })
+        .fetchAnalytics(endpoint, source ? { period, source } : { period }, { signal: ctrl.signal })
         .then(async (res) => {
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           return res.json() as Promise<unknown>
@@ -245,7 +247,7 @@ export function usePeriodResource<T>(args: {
       clearTimeout(timer)
       ctrl.abort()
     }
-  }, [ctx, period, endpoint])
+  }, [ctx, period, endpoint, source])
 
   // Hors provider → état vide stable (sans setState en effet).
   return ctx ? state : { data: null, loading: false, error: false, valuePeriod: null }

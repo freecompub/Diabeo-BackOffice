@@ -25,10 +25,11 @@ const querySchema = z.object({
     .regex(/^[1-9]\d{0,1}d$/)
     .refine((s) => parseInt(s, 10) <= 90, { message: "Period max 90 days" })
     .default("14d"),
-  // Revue #613 : BGM restreint pour l'instant. La reconstruction d'instant BGM
-  // (`GlycemiaEntry.date` + `time` mural → instant réel, DST-aware) n'est pas
-  // encore correcte et fausserait l'alignement au repas. Exposition BGM = US-2639.
-  source: z.enum(["cgm"]).default("cgm"),
+  // BGM exposé (US-2639) : la reconstruction d'instant BGM en espace heure-murale
+  // locale (`meal-trends.service` `localWallMs`/`matchMs`) rend l'appariement
+  // pré/post DST-safe (levée de la restriction #613). En BGM, l'UI n'affiche que
+  // le CARNET avant/après (journal), jamais les courbes alignées interpolées.
+  source: z.enum(["cgm", "bgm"]).default("cgm"),
 })
 
 export async function GET(req: NextRequest) {

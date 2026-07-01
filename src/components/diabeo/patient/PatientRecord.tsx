@@ -490,7 +490,7 @@ export function PatientRecord({
 
           {/* ── Tendances de repas (US-2637, natif page + drawer) ──────── */}
           <TabsContent value="mealTrends" className="space-y-6">
-            <PatientMealTrendsTab />
+            <PatientMealTrendsTab dataSource={data.dataSource} />
           </TabsContent>
 
           {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}
