@@ -1664,7 +1664,8 @@
     "dailyColInTarget": "% en cible",
     "dailyColMin": "Min",
     "dailyColMax": "Max",
-    "dailyColCount": "Relevés"
+    "dailyColCount": "Relevés",
+    "viewAnnounce": "Vue active : {view}"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

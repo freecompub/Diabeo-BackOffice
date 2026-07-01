@@ -28,6 +28,7 @@ import {
   usePeriodResource,
   usePatientRecordContext,
   PERIOD_LABEL_KEY,
+  VIEW_LABEL_KEY,
   SEED_PERIOD,
   type RecordPeriod,
 } from "./PatientRecordContext"
@@ -133,6 +134,11 @@ export function PatientAgpTab({
         </span>
         <ViewSelector labelledBy="agp-view-label" />
       </div>
+      {/* Annonce du changement de vue aux lecteurs d'écran (WCAG 4.1.3) — le
+          contenu du panneau change au basculement moyenne ⇄ tableau. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {t("viewAnnounce", { view: t(VIEW_LABEL_KEY[view]) })}
+      </p>
     </div>
   )
 

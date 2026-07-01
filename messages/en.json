@@ -1664,7 +1664,8 @@
     "dailyColInTarget": "% in target",
     "dailyColMin": "Min",
     "dailyColMax": "Max",
-    "dailyColCount": "Readings"
+    "dailyColCount": "Readings",
+    "viewAnnounce": "Active view: {view}"
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

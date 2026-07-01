@@ -426,19 +426,26 @@ export const analyticsService = {
 
     const rows =
       source === "bgm"
-        ? await prisma.$queryRaw<RawDailyRow[]>`
-            SELECT to_char(date, 'YYYY-MM-DD') AS day,
-                   AVG(glycemia_gl)::float8 AS avg_gl,
-                   MIN(glycemia_gl)::float8 AS min_gl,
-                   MAX(glycemia_gl)::float8 AS max_gl,
+        ? // Revue #612 : (1) `${from}::date` — sinon `date >= timestamptz`
+          // caste la COLONNE (premier jour exclu + index inutilisable) ;
+          // (2) COALESCE `glycemia_gl` / `glycemia_mgdl` (relevés mg/dL-only,
+          // cf. `bgmStats`) ; (3) filtre plage physiologique `CGM_AGGREGATE_
+          // RANGE_GL` (les valeurs LO/HI lecteur ne polluent pas min/max).
+          await prisma.$queryRaw<RawDailyRow[]>`
+            SELECT to_char(day, 'YYYY-MM-DD') AS day,
+                   AVG(v)::float8 AS avg_gl,
+                   MIN(v)::float8 AS min_gl,
+                   MAX(v)::float8 AS max_gl,
                    COUNT(*)::int AS n,
-                   COUNT(*) FILTER (
-                     WHERE glycemia_gl >= ${thresholds.low} AND glycemia_gl <= ${thresholds.ok}
-                   )::int AS in_target
-            FROM glycemia_entries
-            WHERE patient_id = ${patientId}
-              AND date >= ${from} AND date <= ${to}
-              AND glycemia_gl IS NOT NULL
+                   COUNT(*) FILTER (WHERE v >= ${thresholds.low} AND v <= ${thresholds.ok})::int AS in_target
+            FROM (
+              SELECT date AS day, COALESCE(glycemia_gl, glycemia_mgdl / 100.0) AS v
+              FROM glycemia_entries
+              WHERE patient_id = ${patientId}
+                AND date >= ${from}::date AND date <= ${to}::date
+                AND (glycemia_gl IS NOT NULL OR glycemia_mgdl IS NOT NULL)
+            ) s
+            WHERE v >= ${CGM_AGGREGATE_RANGE_GL.MIN} AND v <= ${CGM_AGGREGATE_RANGE_GL.MAX}
             GROUP BY day
             ORDER BY day DESC
             LIMIT 90`

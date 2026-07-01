@@ -1664,7 +1664,8 @@
     "dailyColInTarget": "٪ ضمن النطاق",
     "dailyColMin": "الأدنى",
     "dailyColMax": "الأعلى",
-    "dailyColCount": "القراءات"
+    "dailyColCount": "القراءات",
+    "viewAnnounce": "العرض النشط: {view}"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",
