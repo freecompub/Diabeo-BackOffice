@@ -63,6 +63,11 @@ vi.mock("@/components/diabeo/patient/PatientAgpTab", () => ({
     <div data-testid="agp-tab" data-low={targetLowMgdl} data-high={targetHighMgdl}>AGP</div>
   ),
 }))
+// Onglet Tendances de repas (US-2637) stubé : il fetche via cTok/?patientId
+// (couvert par son propre test + le test service).
+vi.mock("@/components/diabeo/patient/PatientMealTrendsTab", () => ({
+  PatientMealTrendsTab: () => <div data-testid="meal-trends-tab">Meal trends</div>,
+}))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
 import { PatientRecord } from "@/components/diabeo/patient/PatientRecord"

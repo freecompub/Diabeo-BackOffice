@@ -24,6 +24,7 @@ import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { PatientContextBar } from "@/components/diabeo/patient/PatientContextBar"
 import { PeriodSelector } from "@/components/diabeo/patient/PeriodSelector"
 import { PatientAgpTab } from "@/components/diabeo/patient/PatientAgpTab"
+import { PatientMealTrendsTab } from "@/components/diabeo/patient/PatientMealTrendsTab"
 import {
   usePeriodAnalytics,
   usePatientRecordContext,
@@ -229,6 +230,7 @@ export function PatientRecord({
           <TabsList className="mb-6" aria-label={t("tabsAriaLabel")}>
             <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger>
             <TabsTrigger value="glycemicProfile">{t("tabGlycemicProfile")}</TabsTrigger>
+            <TabsTrigger value="mealTrends">{t("tabMealTrends")}</TabsTrigger>
             <TabsTrigger value="glycemia">{t("tabGlycemia")}</TabsTrigger>
             <TabsTrigger value="treatment">{t("tabTreatment")}</TabsTrigger>
             <TabsTrigger value="documents">{t("tabDocuments")}</TabsTrigger>
@@ -414,6 +416,11 @@ export function PatientRecord({
               targetLowMgdl={objectives.targetLowMgdl}
               targetHighMgdl={objectives.targetHighMgdl}
             />
+          </TabsContent>
+
+          {/* ── Tendances de repas (US-2637, natif page + drawer) ──────── */}
+          <TabsContent value="mealTrends" className="space-y-6">
+            <PatientMealTrendsTab />
           </TabsContent>
 
           {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}

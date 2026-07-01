@@ -14,6 +14,7 @@ import type { InsulinDeliveryMethod } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { findSlotForHour } from "@/lib/insulin-slots"
 import { assertNever } from "@/lib/utils/assert-never"
 import { logger } from "@/lib/logger"
 
@@ -294,28 +295,9 @@ export const insulinService = {
   },
 }
 
-/**
- * Find the active time slot for a given hour, supporting midnight crossing.
- * If slot.startHour > slot.endHour (e.g., 22:00 → 06:00), wraps around midnight.
- * Used by ISF/ICR slot selection — called at bolus calculation time.
- * @private
- * @template T - Slot type with startHour and endHour
- * @param {Array<T>} slots - Sorted slots by startHour
- * @param {number} hour - Hour of day (0-23)
- * @returns {T | undefined} Matching slot or undefined if no match
- */
-function findSlotForHour<T extends { startHour: number; endHour: number }>(
-  slots: T[],
-  hour: number,
-): T | undefined {
-  return slots.find((s) => {
-    if (s.startHour <= s.endHour) {
-      return hour >= s.startHour && hour < s.endHour
-    }
-    // Midnight crossing (e.g., 22h -> 6h)
-    return hour >= s.startHour || hour < s.endHour
-  })
-}
+// `findSlotForHour` — extraite dans `@/lib/insulin-slots` (module pur, source de
+// vérité unique ADR #11) pour réutilisation par les tendances de repas (US-2637)
+// sans duplication. Ré-exportée ci-dessous pour rétro-compat des appelants.
 
 /**
  * Device-aware dose rounding per delivery precision.
