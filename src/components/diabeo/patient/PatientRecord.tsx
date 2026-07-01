@@ -27,6 +27,7 @@ import { PatientAgpTab } from "@/components/diabeo/patient/PatientAgpTab"
 import { PatientMealTrendsTab } from "@/components/diabeo/patient/PatientMealTrendsTab"
 import { PatientBgmOverview } from "@/components/diabeo/patient/PatientBgmOverview"
 import { PatientBgmScatter } from "@/components/diabeo/patient/PatientBgmScatter"
+import { PatientBgmCarnet } from "@/components/diabeo/patient/PatientBgmCarnet"
 import {
   usePeriodAnalytics,
   usePatientRecordContext,
@@ -257,7 +258,10 @@ export function PatientRecord({
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6" aria-label={t("tabsAriaLabel")}>
             <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger>
-            <TabsTrigger value="glycemicProfile">{t("tabGlycemicProfile")}</TabsTrigger>
+            {/* AC-1 US-2639 : « carnet », jamais « AGP », pour un patient BGM. */}
+            <TabsTrigger value="glycemicProfile">
+              {data.dataSource === "bgm" ? t("tabGlycemicProfileBgm") : t("tabGlycemicProfile")}
+            </TabsTrigger>
             <TabsTrigger value="mealTrends">{t("tabMealTrends")}</TabsTrigger>
             <TabsTrigger value="glycemia">{t("tabGlycemia")}</TabsTrigger>
             <TabsTrigger value="treatment">{t("tabTreatment")}</TabsTrigger>
@@ -472,16 +476,10 @@ export function PatientRecord({
           <TabsContent value="glycemicProfile" className="space-y-6">
             {/* AGP = percentiles CGM (temps) → non calculable en capillaire.
                 Fail-closed : message explicite, jamais de faux profil. */}
+            {/* Sans capteur : l'AGP (percentiles CGM) n'est pas calculable →
+                carnet capillaire par moment de la journée (US-2639, AC-1). */}
             {data.dataSource === "bgm" ? (
-              <Card>
-                <CardContent className="py-10">
-                  <DiabeoEmptyState
-                    variant="noData"
-                    title={t("tabGlycemicProfile")}
-                    message={t("agpNotAvailableBgm")}
-                  />
-                </CardContent>
-              </Card>
+              <PatientBgmCarnet />
             ) : (
               <PatientAgpTab
                 targetLowMgdl={objectives.targetLowMgdl}

@@ -1703,7 +1703,14 @@
     "bgmScatterAria": "Scatter plot of capillary glucose readings, by time of day",
     "bgmScatterSummary": "{total} capillary readings in the period, of which {inTarget} in target.",
     "bgmScatterTitle": "Capillary readings (scatter plot)",
-    "agpNotAvailableBgm": "The ambulatory glucose profile (AGP) requires continuous sensor (CGM) data — not available for a capillary blood glucose patient."
+    "agpNotAvailableBgm": "The ambulatory glucose profile (AGP) requires continuous sensor (CGM) data — not available for a capillary blood glucose patient.",
+    "tabGlycemicProfileBgm": "Glucose logbook",
+    "carnetLoading": "Loading logbook…",
+    "carnetError": "Unable to load the glucose logbook.",
+    "carnetBanner": "Capillary logbook — average readings by time of day (no sensor, no continuous ambulatory profile).",
+    "carnetReadings": "{count} readings",
+    "carnetInsufficient": "Insufficient data",
+    "carnetCaveat": "Averages of capillary readings (uneven sampling) — interpret with the reading count, not comparable to time in range."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

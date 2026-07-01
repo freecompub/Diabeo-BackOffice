@@ -77,6 +77,9 @@ vi.mock("@/components/diabeo/patient/PatientBgmOverview", () => ({
 vi.mock("@/components/diabeo/patient/PatientBgmScatter", () => ({
   PatientBgmScatter: ({ points }: { points: unknown[] }) => <div data-testid="bgm-scatter">{points.length} pts</div>,
 }))
+vi.mock("@/components/diabeo/patient/PatientBgmCarnet", () => ({
+  PatientBgmCarnet: () => <div data-testid="bgm-carnet">BGM carnet</div>,
+}))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
 import { PatientRecord } from "@/components/diabeo/patient/PatientRecord"
@@ -182,9 +185,9 @@ describe("PatientRecord — via adaptateur page PatientDetailClient (Phase 1)", 
     // Vue d'ensemble BGM montée à la place des KPI CGM ; aucun donut TIR-temps.
     expect(screen.getByTestId("bgm-overview")).toBeTruthy()
     expect(screen.queryByTestId("tir-donut")).toBeNull()
-    // AGP fail-closed : message « non disponible en capillaire », pas d'onglet AGP.
+    // Onglet Profil : carnet capillaire (US-2639) à la place de l'AGP CGM.
     expect(screen.queryByTestId("agp-tab")).toBeNull()
-    expect(screen.getByText(/profil ambulatoire glycémique \(AGP\)/)).toBeTruthy()
+    expect(screen.getByTestId("bgm-carnet")).toBeTruthy()
     // Onglet Glycémie : nuage de points capillaires (2 pts), pas de courbe CGM.
     expect(screen.getByTestId("bgm-scatter").textContent).toBe("2 pts")
     expect(screen.queryByTestId("cgm-chart")).toBeNull()

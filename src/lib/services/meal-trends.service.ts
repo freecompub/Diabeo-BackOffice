@@ -28,6 +28,7 @@ import { decimalToNumber } from "@/lib/db/decimal"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 import { getCgmDefaults } from "@/lib/services/objectives.service"
 import { CGM_AGGREGATE_RANGE_GL, MEAL_TREND } from "@/lib/clinical-bounds"
+import { DAY_MOMENTS, momentForHour, momentBoundsFrom, type DayMoment } from "@/lib/day-moments"
 
 const CLINICAL_TZ = "Europe/Paris"
 const DAY_MS = 24 * 3600_000
@@ -36,18 +37,9 @@ const MIN_MS = 60_000
 const VALID_MIN_MGDL = CGM_AGGREGATE_RANGE_GL.MIN * 100
 const VALID_MAX_MGDL = CGM_AGGREGATE_RANGE_GL.MAX * 100
 
-/** Moments affichés (le `custom` d'`UserDayMoment` est rabattu sur son heure). */
-export type MealMoment = "morning" | "noon" | "evening" | "night"
-const MOMENTS: readonly MealMoment[] = ["morning", "noon", "evening", "night"] as const
-
-/** Défauts si le patient n'a pas de `UserDayMoment` : Nuit 22–04 / Matin 04–10 /
- *  Midi 10–16 / Soir 16–22 (bornes en heures locales). */
-const DEFAULT_MOMENT_BOUNDS: Record<MealMoment, { start: number; end: number }> = {
-  night: { start: 22, end: 4 },
-  morning: { start: 4, end: 10 },
-  noon: { start: 10, end: 16 },
-  evening: { start: 16, end: 22 },
-}
+/** Moments affichés — source unique `@/lib/day-moments`. */
+export type MealMoment = DayMoment
+const MOMENTS = DAY_MOMENTS
 
 interface Reading { t: number; mgdl: number } // t = epoch ms
 
@@ -111,15 +103,6 @@ function localDay(ms: number): string {
   return dayFmt.format(new Date(ms)) // en-CA → ISO
 }
 
-/** Rattache une heure locale à un moment via les bornes du patient (ou défauts). */
-function momentForHour(hour: number, bounds: Record<MealMoment, { start: number; end: number }>): MealMoment {
-  for (const m of MOMENTS) {
-    const { start, end } = bounds[m]
-    const inSlot = start <= end ? hour >= start && hour < end : hour >= start || hour < end
-    if (inSlot) return m
-  }
-  return "night" // filet (les 4 moments couvrent 24 h)
-}
 
 /** Dernier relevé dans `(min, max]` le plus proche de `max` (ou `null`). */
 function lastReadingIn(readings: Reading[], min: number, max: number): number | null {
@@ -164,13 +147,7 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
     where: { user: { patient: { id: patientId } } },
     select: { type: true, startTime: true, endTime: true },
   })
-  const bounds = { ...DEFAULT_MOMENT_BOUNDS }
-  for (const dm of dayMoments) {
-    const m = dm.type as MealMoment
-    if (m in bounds) {
-      bounds[m] = { start: dm.startTime.getUTCHours(), end: dm.endTime.getUTCHours() }
-    }
-  }
+  const bounds = momentBoundsFrom(dayMoments)
 
   // Repas insuline (ancres) — numérique uniquement, pas de texte libre.
   const meals = await prisma.diabetesEvent.findMany({
