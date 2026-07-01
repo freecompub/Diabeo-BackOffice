@@ -170,6 +170,63 @@ describe("mealtimePattern.mealTrends", () => {
     expect(journal[0]).toMatchObject({ moment: "noon", dayIso: "2026-06-25", preMgdl: 100, postMgdl: 160, carbs: 45, bolus: 6 })
   })
 
+  it("BGM winter (UTC+1): pairs by wall-clock without a fixed +2h offset — US-2639 B1", async () => {
+    // Repas à 11:00 UTC le 2026-01-15 (HIVER Paris UTC+1 → 12:00 mural → Midi).
+    const meal = { id: "w1", eventDate: new Date("2026-01-15T11:00:00Z"), carbohydrates: 40, bolusDose: 5 }
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([meal] as any)
+      .mockResolvedValueOnce([{ eventDate: meal.eventDate }] as any)
+    const day = new Date("2026-01-15T00:00:00Z")
+    const wall = (h: number, m: number) => new Date(Date.UTC(1970, 0, 1, h, m))
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([
+      { date: day, time: wall(11, 50), glycemiaGl: 1.0, glycemiaMgdl: null }, // pré mural −10
+      { date: day, time: wall(14, 0), glycemiaGl: 1.5, glycemiaMgdl: null }, // post mural +120
+    ] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { journal } = await mealtimePattern.mealTrends(42, "90d", 1, undefined, { source: "bgm" })
+    // Appariement mural correct en hiver (UTC+1) — prouve l'absence d'offset codé en dur.
+    expect(journal[0]).toMatchObject({ moment: "noon", dayIso: "2026-01-15", preMgdl: 100, postMgdl: 150 })
+  })
+
+  it("BGM cross-midnight: post reading on the next calendar day is matched — US-2639 B1", async () => {
+    // Repas à 21:30 UTC (été → 23:30 mural → Nuit) ; post PPG 2 h = 01:30 le lendemain.
+    const meal = { id: "n1", eventDate: new Date("2026-06-25T21:30:00Z"), carbohydrates: 30, bolusDose: 4 }
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([meal] as any)
+      .mockResolvedValueOnce([{ eventDate: meal.eventDate }] as any)
+    const wall = (h: number, m: number) => new Date(Date.UTC(1970, 0, 1, h, m))
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([
+      { date: new Date("2026-06-25T00:00:00Z"), time: wall(23, 20), glycemiaGl: 1.0, glycemiaMgdl: null }, // pré (J, mural 23:20)
+      { date: new Date("2026-06-26T00:00:00Z"), time: wall(1, 30), glycemiaGl: 2.0, glycemiaMgdl: null }, // post (J+1, mural 01:30 = +120)
+    ] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { journal } = await mealtimePattern.mealTrends(42, "30d", 1, undefined, { source: "bgm" })
+    expect(journal[0]).toMatchObject({ moment: "night", preMgdl: 100, postMgdl: 200 })
+  })
+
+  it("BGM: no aligned curve is emitted by the service (AC-2 guaranteed server-side) — US-2639 B3", async () => {
+    const meal = { id: "c1", eventDate: new Date("2026-06-25T10:00:00Z"), carbohydrates: 45, bolusDose: 6 }
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([meal] as any)
+      .mockResolvedValueOnce([{ eventDate: meal.eventDate }] as any)
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([
+      { date: new Date("2026-06-25T00:00:00Z"), time: new Date(Date.UTC(1970, 0, 1, 11, 50)), glycemiaGl: 1.0, glycemiaMgdl: null },
+    ] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { curve } = await mealtimePattern.mealTrends(42, "14d", 1, undefined, { source: "bgm" })
+    expect(curve.source).toBe("bgm")
+    expect(curve.moments).toEqual([]) // aucune courbe alignée en BGM
+  })
+
   it("audits READ DIABETES_EVENT with period/source, NO clinical value in metadata", async () => {
     const meals = [noonMeal(1)]
     setup(meals, readingsFor(meals))

@@ -201,13 +201,15 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
         const gl = r.glycemiaGl !== null ? decimalToNumber(r.glycemiaGl) : null
         const mgdl = gl !== null ? gl * 100 : r.glycemiaMgdl !== null ? decimalToNumber(r.glycemiaMgdl) : null
         if (mgdl === null) return null
+        // Relevé sans heure (`time` NULL) → aucune heure murale exploitable pour
+        // l'appariement au repas → exclu (revue #617 B2 : sinon il retomberait à
+        // minuit et apparierait spurieusement un repas proche de minuit).
+        if (!r.time) return null
         // `time` = heure MURALE locale (Time sans fuseau) ; `date` = jour
         // calendaire. On les combine en **espace heure-murale locale** (même
         // base que `matchMs` des repas en BGM → appariement pré/post correct).
         const d = new Date(r.date)
-        const t = r.time
-          ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), t2h(r.time), t2m(r.time))
-          : d.getTime()
+        const t = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), t2h(r.time), t2m(r.time))
         return { t, mgdl }
       })
       .filter((x): x is Reading => x !== null && x.mgdl >= VALID_MIN_MGDL && x.mgdl <= VALID_MAX_MGDL)
@@ -286,6 +288,11 @@ export const mealtimePattern = {
 
 /** Projection « courbes alignées » à partir du contexte chargé (pure). */
 function computeAligned(c: MealContext, days: number, source: "cgm" | "bgm"): AlignedCurveResult {
+    // BGM (US-2639) : pas de courbe alignée — relevés capillaires épars, la vue
+    // n'affiche que le carnet avant/après. On garantit AC-2 « pas de courbe
+    // interpolée » AU NIVEAU SERVICE (revue #617 B3), pas seulement côté UI.
+    if (source === "bgm") return { period: { days }, source, moments: [] }
+
     // Buckets par moment : offset(min) → [valeurs].
     const perMoment = new Map<MealMoment, { buckets: Map<number, number[]>; pre: number[]; post: number[]; peak: number[] }>()
     for (const m of MOMENTS) perMoment.set(m, { buckets: new Map(), pre: [], post: [], peak: [] })
