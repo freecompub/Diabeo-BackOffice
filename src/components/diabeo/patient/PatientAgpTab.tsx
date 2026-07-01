@@ -28,10 +28,13 @@ import {
   usePeriodResource,
   usePatientRecordContext,
   PERIOD_LABEL_KEY,
+  VIEW_LABEL_KEY,
   SEED_PERIOD,
   type RecordPeriod,
 } from "./PatientRecordContext"
 import { PeriodSelector } from "./PeriodSelector"
+import { ViewSelector } from "./ViewSelector"
+import { PatientDailyTable } from "./PatientDailyTable"
 import {
   Tooltip,
   TooltipContent,
@@ -114,42 +117,35 @@ export function PatientAgpTab({
   // l'ancienne fenêtre) → on le signale, jamais silencieusement (revue #611).
   const refetchError = (agp.error || stats.error) && !!agp.data
 
-  // Sélecteur de période — synchronisé avec les autres onglets via le contexte.
-  const selector = (
-    <div className="flex flex-wrap items-center justify-between gap-2">
-      <span id="agp-period-label" className="text-sm font-medium text-muted-foreground">
-        {t("periodSelectorLabel")}
-      </span>
-      <PeriodSelector labelledBy="agp-period-label" />
+  const view = recordCtx?.view ?? "average"
+
+  // Sélecteurs période + vue — synchronisés entre onglets via le contexte.
+  const selectors = (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span id="agp-period-label" className="text-sm font-medium text-muted-foreground">
+          {t("periodSelectorLabel")}
+        </span>
+        <PeriodSelector labelledBy="agp-period-label" />
+      </div>
+      <div className="flex items-center gap-2">
+        <span id="agp-view-label" className="text-sm font-medium text-muted-foreground">
+          {t("viewSelectorLabel")}
+        </span>
+        <ViewSelector labelledBy="agp-view-label" />
+      </div>
+      {/* Annonce du changement de vue aux lecteurs d'écran (WCAG 4.1.3) — le
+          contenu du panneau change au basculement moyenne ⇄ tableau. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {t("viewAnnounce", { view: t(VIEW_LABEL_KEY[view]) })}
+      </p>
     </div>
   )
 
-  if (agp.loading && !agp.data) {
-    return (
-      <div className="space-y-4">
-        {selector}
-        <p role="status" className="py-10 text-center text-sm text-muted-foreground">
-          {t("agpLoading")}
-        </p>
-      </div>
-    )
-  }
-  if (!agp.data) {
-    return (
-      <div className="space-y-4">
-        {selector}
-        <p role="alert" className="rounded-md border border-feedback-error bg-error-bg px-4 py-3 text-sm text-error-fg">
-          {t("agpError")}
-        </p>
-      </div>
-    )
-  }
-
-  const slots = maskSparseAgpSlots(agp.data, AGP_SUFFICIENCY.MIN_SLOT_READINGS)
-
-  return (
-    <div className="space-y-4">
-      {selector}
+  // Résumé période (erreur re-fetch + notes de suffisance + bandeau stats) —
+  // affiché dans les deux vues (moyenne/AGP et tableau journalier).
+  const summary = (
+    <>
       {/* Échec de re-fetch : la donnée affichée reste la fenêtre précédente
           (`shownLabel`) — on l'annonce, jamais un libellé trompeur. */}
       {refetchError && (
@@ -157,7 +153,6 @@ export function PatientAgpTab({
           {t("periodRefetchError", { requested: requestedLabel, shown: shownLabel })}
         </p>
       )}
-      {/* Notes de suffisance / inertie (US-2631/2635). */}
       {shownPeriod === "7d" && (
         <p role="status" className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg">
           {t("agp7dNote")}
@@ -173,23 +168,58 @@ export function PatientAgpTab({
           {t("lowCaptureWarning", { rate: Math.round(stats.data.captureRate) })}
         </p>
       )}
-
-      {/* Bandeau stats glucométriques — masqué si aucune donnée CGM sur la
-          fenêtre (pas de « 0 mg/dL / GMI 0 % » trompeur). */}
+      {/* Bandeau stats — masqué si aucune donnée CGM (pas de « 0 mg/dL »). */}
       {stats.data && stats.data.readingCount > 0 && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <AgpStat label={t("agpStatAvg")} value={`${stats.data.avgMgdl} mg/dL`} />
-          <AgpStat
-            label={t("agpStatGmi")}
-            value={`${stats.data.gmi}%`}
-            tooltip={t("agpGmiTooltip")}
-          />
+          <AgpStat label={t("agpStatGmi")} value={`${stats.data.gmi}%`} tooltip={t("agpGmiTooltip")} />
           <AgpStat label={t("agpStatCv")} value={`${stats.data.cv}%`} />
           <AgpStat label={t("agpStatSd")} value={`${stats.data.sdMgdl} mg/dL`} />
           <AgpStat label={t("agpStatCapture")} value={`${Math.round(stats.data.captureRate)}%`} />
         </dl>
       )}
+    </>
+  )
 
+  // ── Vue « Tableau journalier » (US-2636) — indépendante de l'état AGP. ──
+  if (view === "daily") {
+    return (
+      <div className="space-y-4">
+        {selectors}
+        {summary}
+        <PatientDailyTable />
+      </div>
+    )
+  }
+
+  // ── Vue « Moyenne » (AGP percentile). ──
+  if (agp.loading && !agp.data) {
+    return (
+      <div className="space-y-4">
+        {selectors}
+        <p role="status" className="py-10 text-center text-sm text-muted-foreground">
+          {t("agpLoading")}
+        </p>
+      </div>
+    )
+  }
+  if (!agp.data) {
+    return (
+      <div className="space-y-4">
+        {selectors}
+        <p role="alert" className="rounded-md border border-feedback-error bg-error-bg px-4 py-3 text-sm text-error-fg">
+          {t("agpError")}
+        </p>
+      </div>
+    )
+  }
+
+  const slots = maskSparseAgpSlots(agp.data, AGP_SUFFICIENCY.MIN_SLOT_READINGS)
+
+  return (
+    <div className="space-y-4">
+      {selectors}
+      {summary}
       {/* Profil percentile 24 h — bande cible pathology-aware. `aria-busy` +
           opacité pendant un re-fetch (cohérent « Vue d'ensemble », WCAG 4.1.3). */}
       <div

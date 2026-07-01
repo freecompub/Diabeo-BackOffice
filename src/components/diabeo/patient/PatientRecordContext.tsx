@@ -20,6 +20,16 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 export type RecordPeriod = "7d" | "14d" | "30d" | "90d"
 export const RECORD_PERIODS: readonly RecordPeriod[] = ["7d", "14d", "30d", "90d"] as const
 
+/** Vue des onglets analytiques (US-2636) : agrégat (AGP) vs 1 ligne/jour. */
+export type RecordView = "average" | "daily"
+export const RECORD_VIEWS: readonly RecordView[] = ["average", "daily"] as const
+
+/** Clé i18n du libellé de chaque vue (namespace `patientDetail`). */
+export const VIEW_LABEL_KEY: Record<RecordView, string> = {
+  average: "viewAverage",
+  daily: "viewDaily",
+}
+
 /**
  * Période d'amorce (RSC). **DOIT** rester synchrone avec `OVERVIEW_PERIOD` de
  * `build-patient-record.ts` (projection serveur) : la fiche est rendue sur cette
@@ -54,6 +64,9 @@ export type AnalyticsFetcher = (
 interface PatientRecordContextValue {
   period: RecordPeriod
   setPeriod: (p: RecordPeriod) => void
+  /** Vue analytique partagée (moyenne/AGP vs tableau journalier) — US-2636. */
+  view: RecordView
+  setView: (v: RecordView) => void
   fetchAnalytics: AnalyticsFetcher
   /** Période de l'amorce serveur (pas de re-fetch tant que `period` y est égal). */
   seedPeriod: RecordPeriod
@@ -76,9 +89,10 @@ export function PatientRecordProvider({
   children: React.ReactNode
 }) {
   const [period, setPeriod] = useState<RecordPeriod>(seedPeriod)
+  const [view, setView] = useState<RecordView>("average")
   const value = useMemo<PatientRecordContextValue>(
-    () => ({ period, setPeriod, fetchAnalytics, seedPeriod }),
-    [period, fetchAnalytics, seedPeriod],
+    () => ({ period, setPeriod, view, setView, fetchAnalytics, seedPeriod }),
+    [period, view, fetchAnalytics, seedPeriod],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

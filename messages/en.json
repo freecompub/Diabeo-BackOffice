@@ -1651,7 +1651,21 @@
     "agpStatCv": "Coefficient of variation (CV)",
     "agpStatSd": "Standard deviation",
     "agpStatCapture": "Data captured",
-    "agpGmiTooltip": "≠ lab glycated haemoglobin (HbA1c) — a difference is expected."
+    "agpGmiTooltip": "≠ lab glycated haemoglobin (HbA1c) — a difference is expected.",
+    "viewSelectorLabel": "View",
+    "viewAverage": "Average",
+    "viewDaily": "Daily table",
+    "dailyLoading": "Loading daily table…",
+    "dailyError": "Unable to load the daily table.",
+    "dailyEmpty": "No data for the selected period.",
+    "dailyTableCaption": "Daily glucose statistics (average, % in target, min, max, reading count)",
+    "dailyColDay": "Day",
+    "dailyColAvg": "Average",
+    "dailyColInTarget": "% in target",
+    "dailyColMin": "Min",
+    "dailyColMax": "Max",
+    "dailyColCount": "Readings",
+    "viewAnnounce": "Active view: {view}"
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

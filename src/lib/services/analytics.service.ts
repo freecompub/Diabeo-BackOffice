@@ -117,6 +117,28 @@ async function getPatientThresholds(patientId: number): Promise<CgmThresholds> {
   }
 }
 
+/** Ligne brute renvoyée par la requête d'agrégation journalière (US-2636). */
+interface RawDailyRow {
+  day: string
+  avg_gl: number
+  min_gl: number
+  max_gl: number
+  n: number
+  in_target: number
+}
+
+/** Statistique journalière projetée (mg/dL) — 1 ligne par jour (US-2636). */
+export interface DailyStat {
+  /** Jour calendaire Europe/Paris, ISO `YYYY-MM-DD`. */
+  day: string
+  avgMgdl: number
+  minMgdl: number
+  maxMgdl: number
+  count: number
+  /** % de relevés du jour en cible pathology-aware (`[low, ok]`). */
+  inTargetPct: number
+}
+
 /**
  * Analytics service — glycemic metrics and trends.
  * @namespace analyticsService
@@ -363,6 +385,95 @@ export const analyticsService = {
     }
 
     return computeAgp(withTimestamp)
+  },
+
+  /**
+   * US-2636 — Statistiques **journalières** (1 ligne par jour calendaire
+   * Europe/Paris) : moyenne, min, max, nombre de relevés, % en cible.
+   *
+   * Perf (AC-3) : agrégation **en base** (`GROUP BY` sur la journée locale),
+   * bornée par l'index `[patientId, timestamp]` (CGM) / `[patientId, date]`
+   * (BGM) et plafonnée à 90 lignes — jamais de chargement de 90 j en mémoire.
+   * % en cible **pathology-aware** (AC-1) : bornes `[low, ok]` du patient (g/L),
+   * GD 63–140 vs 70–180. Projection serveur pure (AC-2) : le front n'affiche
+   * que ces lignes déjà triées desc.
+   */
+  async dailyStats(
+    patientId: number,
+    period: string,
+    auditUserId: number,
+    ctx?: AuditContext,
+    opts?: { source?: "cgm" | "bgm"; skipAudit?: boolean },
+  ): Promise<DailyStat[]> {
+    const days = parsePeriod(period)
+    const to = new Date()
+    const from = new Date(to.getTime() - days * 24 * 3600_000)
+    const thresholds = await getPatientThresholds(patientId) // g/L, pathology-aware
+    const source = opts?.source ?? "cgm"
+
+    if (!opts?.skipAudit) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "ANALYTICS",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: { patientId, kind: "dailyStats", period, windowDays: days, source },
+      })
+    }
+
+    const rows =
+      source === "bgm"
+        ? // Revue #612 : (1) `${from}::date` — sinon `date >= timestamptz`
+          // caste la COLONNE (premier jour exclu + index inutilisable) ;
+          // (2) COALESCE `glycemia_gl` / `glycemia_mgdl` (relevés mg/dL-only,
+          // cf. `bgmStats`) ; (3) filtre plage physiologique `CGM_AGGREGATE_
+          // RANGE_GL` (les valeurs LO/HI lecteur ne polluent pas min/max).
+          await prisma.$queryRaw<RawDailyRow[]>`
+            SELECT to_char(day, 'YYYY-MM-DD') AS day,
+                   AVG(v)::float8 AS avg_gl,
+                   MIN(v)::float8 AS min_gl,
+                   MAX(v)::float8 AS max_gl,
+                   COUNT(*)::int AS n,
+                   COUNT(*) FILTER (WHERE v >= ${thresholds.low} AND v <= ${thresholds.ok})::int AS in_target
+            FROM (
+              SELECT date AS day, COALESCE(glycemia_gl, glycemia_mgdl / 100.0) AS v
+              FROM glycemia_entries
+              WHERE patient_id = ${patientId}
+                AND date >= ${from}::date AND date <= ${to}::date
+                AND (glycemia_gl IS NOT NULL OR glycemia_mgdl IS NOT NULL)
+            ) s
+            WHERE v >= ${CGM_AGGREGATE_RANGE_GL.MIN} AND v <= ${CGM_AGGREGATE_RANGE_GL.MAX}
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT 90`
+        : await prisma.$queryRaw<RawDailyRow[]>`
+            SELECT to_char((timestamp AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS day,
+                   AVG(value_gl)::float8 AS avg_gl,
+                   MIN(value_gl)::float8 AS min_gl,
+                   MAX(value_gl)::float8 AS max_gl,
+                   COUNT(*)::int AS n,
+                   COUNT(*) FILTER (
+                     WHERE value_gl >= ${thresholds.low} AND value_gl <= ${thresholds.ok}
+                   )::int AS in_target
+            FROM cgm_entries
+            WHERE patient_id = ${patientId}
+              AND timestamp >= ${from} AND timestamp <= ${to}
+              AND value_gl >= ${CGM_AGGREGATE_RANGE_GL.MIN} AND value_gl <= ${CGM_AGGREGATE_RANGE_GL.MAX}
+            GROUP BY day
+            ORDER BY day DESC
+            LIMIT 90`
+
+    return rows.map((r) => ({
+      day: r.day,
+      avgMgdl: Math.round(glToMgdl(r.avg_gl)),
+      minMgdl: Math.round(glToMgdl(r.min_gl)),
+      maxMgdl: Math.round(glToMgdl(r.max_gl)),
+      count: r.n,
+      inTargetPct: r.n > 0 ? Math.round((r.in_target / r.n) * 100) : 0,
+    }))
   },
 
   /**
