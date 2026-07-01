@@ -193,6 +193,9 @@ export function PatientRecord({
     seed: data?.stats ?? null,
     endpoint: "/api/analytics/glycemic-profile",
     map: mapProfileToStats,
+    // Fail-closed US-2638 : pas de re-fetch CGM pour un patient BGM (les KPI BGM
+    // ont leur propre hook sur /api/analytics/bgm-stats).
+    enabled: data?.dataSource === "cgm",
   })
   // Libellé = période RÉELLEMENT affichée (`valuePeriod`), jamais la période
   // demandée : sur erreur/chargement, la donnée d'amorce ne doit jamais porter
@@ -273,10 +276,14 @@ export function PatientRecord({
             </div>
             {/* Annonce lecteurs d'écran du (re)chargement des KPI (WCAG 4.1.3).
                 En erreur, on n'annonce PAS « mis à jour » : le bandeau role=alert
-                ci-dessous porte le message (pas de double annonce trompeuse). */}
-            <p className="sr-only" role="status" aria-live="polite">
-              {statsLoading ? t("periodLoading") : statsError ? "" : t("periodLoaded", { period: periodLabel })}
-            </p>
+                ci-dessous porte le message (pas de double annonce trompeuse).
+                CGM uniquement : en BGM, `PatientBgmOverview` porte son propre état
+                (le hook CGM est neutralisé → cette annonce serait trompeuse). */}
+            {data.dataSource === "cgm" && (
+              <p className="sr-only" role="status" aria-live="polite">
+                {statsLoading ? t("periodLoading") : statsError ? "" : t("periodLoaded", { period: periodLabel })}
+              </p>
+            )}
             {/* Fail-closed (US-2638) : patient sans capteur → KPI capillaires
                 (jamais TIR-temps/GMI). Sinon, KPI CGM pilotés par la période. */}
             {data.dataSource === "bgm" ? (
@@ -401,18 +408,22 @@ export function PatientRecord({
                       <span className="text-muted-foreground">{t("referentDoctor")}</span>
                       <p className="mt-1 font-medium">{data.referent ?? "—"}</p>
                     </div>
-                    <div>
-                      <span className="text-muted-foreground">{t("avgGlucosePeriod", { period: periodLabel })}</span>
-                      <div className="mt-1">
-                        {stats ? (
-                          <GlycemiaValue value={stats.avgGlucoseMgdl} unit="mg/dL" size="sm" />
-                        ) : data.bgm?.avgMgdl != null ? (
-                          <GlycemiaValue value={data.bgm.avgMgdl} unit="mg/dL" size="sm" />
-                        ) : (
-                          <span className="font-medium">—</span>
-                        )}
+                    {/* Moyenne CGM uniquement : en BGM, la moyenne des relevés est
+                        déjà dans la vue d'ensemble capillaire (et son libellé de
+                        période dérive du hook CGM neutralisé → à ne pas afficher
+                        ici pour éviter une valeur mal-fenêtrée, revue #615 A2). */}
+                    {data.dataSource === "cgm" && (
+                      <div>
+                        <span className="text-muted-foreground">{t("avgGlucosePeriod", { period: periodLabel })}</span>
+                        <div className="mt-1">
+                          {stats ? (
+                            <GlycemiaValue value={stats.avgGlucoseMgdl} unit="mg/dL" size="sm" />
+                          ) : (
+                            <span className="font-medium">—</span>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    )}
                   </div>
 
                   <Separator className="my-4" />
