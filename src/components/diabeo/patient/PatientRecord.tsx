@@ -252,9 +252,11 @@ export function PatientRecord({
               </span>
               <PeriodSelector labelledBy="period-selector-label" />
             </div>
-            {/* Annonce lecteurs d'écran du (re)chargement des KPI (WCAG 4.1.3). */}
+            {/* Annonce lecteurs d'écran du (re)chargement des KPI (WCAG 4.1.3).
+                En erreur, on n'annonce PAS « mis à jour » : le bandeau role=alert
+                ci-dessous porte le message (pas de double annonce trompeuse). */}
             <p className="sr-only" role="status" aria-live="polite">
-              {statsLoading ? t("periodLoading") : t("periodLoaded", { period: periodLabel })}
+              {statsLoading ? t("periodLoading") : statsError ? "" : t("periodLoaded", { period: periodLabel })}
             </p>
             {/* Échec de re-fetch : la donnée affichée est retombée sur l'amorce
                 (`periodLabel`) — on le signale, jamais un libellé trompeur. */}
