@@ -1241,9 +1241,6 @@
     "expand": "Agrandir",
     "collapse": "Réduire",
     "yearsShort": "ans",
-    "tabs": {
-      "glycemicProfile": "Profil glycémique"
-    },
     "pathology": {
       "DT1": "Diabète de type 1 (DT1)",
       "DT2": "Diabète de type 2 (DT2)",
@@ -1643,7 +1640,18 @@
     "periodLoading": "Mise à jour des statistiques…",
     "periodLoaded": "Statistiques mises à jour sur {period}.",
     "periodRefetchError": "Échec du chargement pour « {requested} » — affichage sur {shown}.",
-    "shortWindowCaveat": "Fenêtre inférieure à 14 jours : l'indicateur de gestion du glucose (GMI) et les statistiques sont indicatifs (sous le seuil de représentativité)."
+    "shortWindowCaveat": "Fenêtre inférieure à 14 jours : l'indicateur de gestion du glucose (GMI) et les statistiques sont indicatifs (sous le seuil de représentativité).",
+    "tabGlycemicProfile": "Profil glycémique (AGP)",
+    "agpLoading": "Chargement du profil glycémique…",
+    "agpError": "Impossible de charger le profil glycémique.",
+    "agp7dNote": "Fenêtre de 7 jours : profil indicatif (sous le seuil de représentativité de 14 jours).",
+    "agp90dNote": "Fenêtre de 90 jours : peut masquer un ajustement thérapeutique récent.",
+    "agpStatAvg": "Glycémie moyenne",
+    "agpStatGmi": "Indicateur de gestion du glucose (GMI)",
+    "agpStatCv": "Coefficient de variation (CV)",
+    "agpStatSd": "Écart type",
+    "agpStatCapture": "Données capturées",
+    "agpGmiTooltip": "≠ hémoglobine glyquée de laboratoire (HbA1c) — un écart est attendu."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

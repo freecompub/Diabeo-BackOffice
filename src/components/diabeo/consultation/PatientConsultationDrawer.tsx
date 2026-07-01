@@ -29,7 +29,6 @@ import {
 } from "@/components/diabeo/patient/PatientRecordContext"
 import type { ConsultationPatient } from "./ConsultationContext"
 import { useConsultationData } from "./useConsultationData"
-import { GlycemicProfileTab } from "./tabs/GlycemicProfileTab"
 import { TabError, TabLoading } from "./tabs/TabState"
 
 interface Props {
@@ -161,14 +160,9 @@ export function PatientConsultationDrawer({
             <TabError />
           ) : (
             <PatientRecordProvider fetchAnalytics={fetchAnalytics} seedPeriod="14d">
-              <PatientRecord
-                data={data}
-                variant="drawer"
-                glycemicProfileSlot={{
-                  label: t("tabs.glycemicProfile"),
-                  content: <GlycemicProfileTab cTok={cTok} />,
-                }}
-              />
+              {/* Onglet AGP « Profil glycémique » désormais natif dans
+                  PatientRecord (US-2635), piloté par la période du contexte. */}
+              <PatientRecord data={data} variant="drawer" />
             </PatientRecordProvider>
           )}
         </div>
