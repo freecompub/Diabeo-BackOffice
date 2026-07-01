@@ -1683,7 +1683,13 @@
     "mealColBefore": "قبل",
     "mealColAfter": "بعد",
     "mealColCarbs": "كربوهيدرات",
-    "mealColBolus": "جرعة"
+    "mealColBolus": "جرعة",
+    "mealOffsetMeal": "وجبة",
+    "mealOffsetHours": "{h} س",
+    "mealCurveAria": "منحنى متوسط السكر لفترة {moment}، محاذاة على وقت الوجبة",
+    "mealCurveTableCaption": "متوسط السكر لكل شريحة 15 دقيقة حول الوجبة — {moment}",
+    "mealColOffset": "الإزاحة عن الوجبة",
+    "mealColAvg": "متوسط السكر"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",

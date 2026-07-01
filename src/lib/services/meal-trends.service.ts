@@ -7,8 +7,9 @@
  *    moyenne alignée sur l'heure du repas (t=0), tranches de 15 min sur
  *    [−60, +180] + moyennes pré / après (PPG 2 h) / pic.
  *  - `dailyJournal` : 1 entrée par repas (jour × moment) avec pré, après (PPG
- *    2 h), glucides, bolus — **numérique uniquement** (le texte libre repas
- *    n'est jamais exposé, AC-6 « non exposé »).
+ *    2 h), glucides, bolus — **numérique uniquement** : le texte libre repas
+ *    (`DiabetesEvent.comment`, `GlycemiaEntry.mealDescription`) n'est **jamais
+ *    lu ni sélectionné** par cette projection (AC-6 « non exposé »).
  *
  * Définitions cliniques : validées par `medical-domain-validator` (cf. US-2637).
  * Points de sécurité appliqués : unité **mg/dL** canonique interne ; heure locale
@@ -152,8 +153,11 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
     select: { pathology: true, pregnancyMode: true },
   })
   const pathology = (patient?.pathology ?? undefined) as Pathology | undefined
+  // Revue #613 : le durcissement post-prandial grossesse s'applique aussi à une
+  // patiente `pregnancyMode` NON typée GD (sinon plafond 180 au lieu de 140 →
+  // sous-alerte dans la population la plus critique). On force les cibles GD.
   const isPregnancy = patient?.pregnancyMode === true || pathology === "GD"
-  const thresholds = getCgmDefaults(pathology) // g/L
+  const thresholds = getCgmDefaults(isPregnancy ? "GD" : pathology) // g/L
 
   const dayMoments = await prisma.userDayMoment.findMany({
     where: { user: { patient: { id: patientId } } },
@@ -174,7 +178,7 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
       eventTypes: { has: DiabetesEventType.insulinMeal },
       eventDate: { gte: fromDate, lte: toDate },
     },
-    select: { id: true, eventDate: true, glycemiaValue: true, carbohydrates: true, bolusDose: true },
+    select: { id: true, eventDate: true, carbohydrates: true, bolusDose: true },
     orderBy: { eventDate: "asc" },
   })
 
@@ -294,10 +298,14 @@ function computeAligned(c: MealContext, days: number, source: "cgm" | "bgm"): Al
       const winEnd = excursionWindowEnd(t0, c.carbTimes)
       const windowMin = (winEnd - t0) / MIN_MS
       // Pic non évaluable si fenêtre tronquée (< 90 min) — jamais un pic bas trompeur.
-      const peak = windowMin >= MEAL_TREND.EXCURSION_MIN_WINDOW_MIN
-        ? maxReadingIn(c.readings, t0, winEnd)
+      // Pic ET post PPG 2 h invalidés si la fenêtre est tronquée par un apport
+      // glucidique intercurrent (< 90 min) — sinon on attribuerait au repas
+      // indexé une excursion appartenant au snack suivant (revue #613, M-1).
+      const evaluable = windowMin >= MEAL_TREND.EXCURSION_MIN_WINDOW_MIN
+      const peak = evaluable ? maxReadingIn(c.readings, t0, winEnd) : null
+      const post2h = evaluable
+        ? closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS)
         : null
-      const post2h = closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS)
 
       // Repas apparié pour la courbe = pré ET (post OU pic) réels.
       if (pre !== null && (post2h !== null || peak !== null)) {

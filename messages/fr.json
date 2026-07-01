@@ -1683,7 +1683,13 @@
     "mealColBefore": "Avant",
     "mealColAfter": "Après",
     "mealColCarbs": "Gluc.",
-    "mealColBolus": "Bolus"
+    "mealColBolus": "Bolus",
+    "mealOffsetMeal": "repas",
+    "mealOffsetHours": "{h} h",
+    "mealCurveAria": "Courbe glycémique moyenne du {moment}, alignée sur l'heure du repas",
+    "mealCurveTableCaption": "Glycémie moyenne par tranche de 15 min autour du repas — {moment}",
+    "mealColOffset": "Décalage au repas",
+    "mealColAvg": "Glycémie moyenne"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

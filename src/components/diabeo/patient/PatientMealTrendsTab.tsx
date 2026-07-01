@@ -115,14 +115,14 @@ export function PatientMealTrendsTab() {
                 <tr className="border-b border-border text-xs text-muted-foreground">
                   <th scope="col" rowSpan={2} className="py-1 pe-3 text-left align-bottom font-medium">{t("dailyColDay")}</th>
                   {JOURNAL_MOMENTS.map((m) => (
-                    <th key={m} scope="colgroup" colSpan={4} className="border-s border-border py-1 text-center font-medium">
+                    <th key={m} id={`mg-${m}`} scope="colgroup" colSpan={4} className="border-s border-border py-1 text-center font-medium">
                       {t(`meal_${m}`)}
                     </th>
                   ))}
                 </tr>
                 <tr className="border-b border-border text-[11px] text-muted-foreground">
                   {JOURNAL_MOMENTS.map((m) => (
-                    <SubHeaders key={m} t={t} />
+                    <SubHeaders key={m} t={t} moment={m} />
                   ))}
                 </tr>
               </thead>
@@ -132,12 +132,9 @@ export function PatientMealTrendsTab() {
                   return (
                     <tr key={day} className="border-b border-border/60 tabular-nums">
                       <th scope="row" className="py-1 pe-3 text-left font-normal text-foreground">{fmtDay(day)}</th>
-                      {JOURNAL_MOMENTS.map((m) => {
-                        const meal = row[m]
-                        return (
-                          <MomentCells key={m} meal={meal ?? null} cell={cell} />
-                        )
-                      })}
+                      {JOURNAL_MOMENTS.map((m) => (
+                        <MomentCells key={m} moment={m} meal={row[m] ?? null} cell={cell} />
+                      ))}
                     </tr>
                   )
                 })}
@@ -150,24 +147,44 @@ export function PatientMealTrendsTab() {
   )
 }
 
-function SubHeaders({ t }: { t: ReturnType<typeof useTranslations> }) {
+const SUBCOLS = ["before", "after", "carbs", "bolus"] as const
+
+function SubHeaders({ t, moment }: { t: ReturnType<typeof useTranslations>; moment: Moment }) {
+  const keys = { before: "mealColBefore", after: "mealColAfter", carbs: "mealColCarbs", bolus: "mealColBolus" } as const
   return (
     <>
-      <th scope="col" className="border-s border-border px-1 py-1 text-right font-normal">{t("mealColBefore")}</th>
-      <th scope="col" className="px-1 py-1 text-right font-normal">{t("mealColAfter")}</th>
-      <th scope="col" className="px-1 py-1 text-right font-normal">{t("mealColCarbs")}</th>
-      <th scope="col" className="px-1 py-1 text-right font-normal">{t("mealColBolus")}</th>
+      {SUBCOLS.map((sc, i) => (
+        <th
+          key={sc}
+          id={`sh-${moment}-${sc}`}
+          scope="col"
+          className={`px-1 py-1 text-right font-normal${i === 0 ? " border-s border-border" : ""}`}
+        >
+          {t(keys[sc])}
+        </th>
+      ))}
     </>
   )
 }
 
-function MomentCells({ meal, cell }: { meal: JournalMeal | null; cell: (v: number | null) => string }) {
+/** Cellules d'un moment ; chaque `td` associe le groupe (moment) ET la
+ *  sous-colonne via `headers` (WCAG 1.3.1 — tables à en-têtes multi-niveaux). */
+function MomentCells({ moment, meal, cell }: { moment: Moment; meal: JournalMeal | null; cell: (v: number | null) => string }) {
+  const vals: Record<(typeof SUBCOLS)[number], number | null> = {
+    before: meal?.preMgdl ?? null, after: meal?.postMgdl ?? null,
+    carbs: meal?.carbs ?? null, bolus: meal?.bolus ?? null,
+  }
   return (
     <>
-      <td className="border-s border-border px-1 py-1 text-right">{cell(meal?.preMgdl ?? null)}</td>
-      <td className="px-1 py-1 text-right">{cell(meal?.postMgdl ?? null)}</td>
-      <td className="px-1 py-1 text-right text-muted-foreground">{cell(meal?.carbs ?? null)}</td>
-      <td className="px-1 py-1 text-right text-muted-foreground">{cell(meal?.bolus ?? null)}</td>
+      {SUBCOLS.map((sc, i) => (
+        <td
+          key={sc}
+          headers={`mg-${moment} sh-${moment}-${sc}`}
+          className={`px-1 py-1 text-right${i === 0 ? " border-s border-border" : ""}${sc === "carbs" || sc === "bolus" ? " text-muted-foreground" : ""}`}
+        >
+          {cell(vals[sc])}
+        </td>
+      ))}
     </>
   )
 }

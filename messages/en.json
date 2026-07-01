@@ -1683,7 +1683,13 @@
     "mealColBefore": "Before",
     "mealColAfter": "After",
     "mealColCarbs": "Carbs",
-    "mealColBolus": "Bolus"
+    "mealColBolus": "Bolus",
+    "mealOffsetMeal": "meal",
+    "mealOffsetHours": "{h} h",
+    "mealCurveAria": "Average glucose curve for {moment}, aligned to meal time",
+    "mealCurveTableCaption": "Average glucose per 15-min bucket around the meal — {moment}",
+    "mealColOffset": "Offset from meal",
+    "mealColAvg": "Average glucose"
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

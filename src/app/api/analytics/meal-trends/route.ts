@@ -25,7 +25,10 @@ const querySchema = z.object({
     .regex(/^[1-9]\d{0,1}d$/)
     .refine((s) => parseInt(s, 10) <= 90, { message: "Period max 90 days" })
     .default("14d"),
-  source: z.enum(["cgm", "bgm"]).default("cgm"),
+  // Revue #613 : BGM restreint pour l'instant. La reconstruction d'instant BGM
+  // (`GlycemiaEntry.date` + `time` mural → instant réel, DST-aware) n'est pas
+  // encore correcte et fausserait l'alignement au repas. Exposition BGM = US-2639.
+  source: z.enum(["cgm"]).default("cgm"),
 })
 
 export async function GET(req: NextRequest) {

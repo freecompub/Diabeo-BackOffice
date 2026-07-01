@@ -91,6 +91,36 @@ describe("mealtimePattern.mealTrends", () => {
     expect(journal[2].mealId).toBe("m3")
   })
 
+  it("invalidates peak AND post when an intercurrent carb intake truncates the window (< 90 min) — M-1", async () => {
+    const meals = [noonMeal(1), noonMeal(2), noonMeal(3)]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    // 2e findMany = apports glucidiques : un snack à t0+60 tronque chaque fenêtre.
+    const snacks = meals.map((m) => ({ eventDate: new Date(m._t0 + 60 * MIN) }))
+    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce(meals as any).mockResolvedValueOnce(snacks as any)
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readingsFor(meals) as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { curve } = await mealtimePattern.mealTrends(42, "14d", 1)
+    const noon = curve.moments.find((m) => m.moment === "noon")!
+    // Fenêtre 60 min < 90 → ni pic ni post → repas non appariés → insuffisant.
+    expect(noon.insufficient).toBe(true)
+  })
+
+  it("applies GD-strict post-prandial ceiling for a pregnant patient NOT typed GD (M-3)", async () => {
+    const meals = [noonMeal(1), noonMeal(2), noonMeal(3)]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: true } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce(meals as any).mockResolvedValueOnce([] as any)
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readingsFor(meals) as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { curve } = await mealtimePattern.mealTrends(42, "14d", 1)
+    const noon = curve.moments.find((m) => m.moment === "noon")!
+    expect(noon.targetHighMgdl).toBe(140) // grossesse → cibles GD malgré pathology DT1
+    expect(noon.highExcursion).toBe(true) // post 150 > 140
+  })
+
   it("audits READ DIABETES_EVENT with period/source, NO clinical value in metadata", async () => {
     const meals = [noonMeal(1)]
     setup(meals, readingsFor(meals))
