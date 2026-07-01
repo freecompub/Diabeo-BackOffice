@@ -142,6 +142,34 @@ describe("mealtimePattern.mealTrends", () => {
     expect(noon.highExcursion).toBe(true) // post 150 > 140
   })
 
+  it("BGM: matches pre/post capillary readings in local wall-clock space (DST-safe) — US-2639", async () => {
+    // Repas à 10:00 UTC le 2026-06-25 (été Paris UTC+2 → 12:00 mural → Midi).
+    const meal = {
+      id: "b1",
+      eventDate: new Date("2026-06-25T10:00:00Z"),
+      carbohydrates: 45,
+      bolusDose: 6,
+    }
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([meal] as any)
+      .mockResolvedValueOnce([{ eventDate: meal.eventDate }] as any) // apports glucidiques
+    // Relevés capillaires : date (jour) + time (heure MURALE locale).
+    const day = new Date("2026-06-25T00:00:00Z")
+    const wall = (h: number, m: number) => new Date(Date.UTC(1970, 0, 1, h, m))
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([
+      { date: day, time: wall(11, 50), glycemiaGl: 1.0, glycemiaMgdl: null }, // pré (mural −10 min)
+      { date: day, time: wall(14, 0), glycemiaGl: 1.6, glycemiaMgdl: null }, // post PPG 2 h (mural +120)
+    ] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { journal } = await mealtimePattern.mealTrends(42, "30d", 1, undefined, { source: "bgm" })
+    expect(journal).toHaveLength(1)
+    // Appariement mural correct malgré l'offset Paris (pas de décalage de 2 h).
+    expect(journal[0]).toMatchObject({ moment: "noon", dayIso: "2026-06-25", preMgdl: 100, postMgdl: 160, carbs: 45, bolus: 6 })
+  })
+
   it("audits READ DIABETES_EVENT with period/source, NO clinical value in metadata", async () => {
     const meals = [noonMeal(1)]
     setup(meals, readingsFor(meals))

@@ -34,12 +34,15 @@ interface MealTrendsData {
   journal: JournalMeal[]
 }
 
-export function PatientMealTrendsTab() {
+export function PatientMealTrendsTab({ dataSource = "cgm" }: { dataSource?: "cgm" | "bgm" }) {
   const t = useTranslations("patientDetail")
   const locale = useLocale()
+  const isBgm = dataSource === "bgm"
   const { data, loading, error } = usePeriodResource<MealTrendsData>({
     endpoint: "/api/analytics/meal-trends",
     map: (raw) => raw as MealTrendsData,
+    // BGM : carnet avant/après (journal) sur relevés capillaires — pas de courbe.
+    source: isBgm ? "bgm" : undefined,
   })
 
   const selector = (
@@ -94,13 +97,21 @@ export function PatientMealTrendsTab() {
     <div className="space-y-6">
       {selector}
 
-      {/* Mini-courbes par moment. */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {CURVE_ORDER.map((m) => {
-          const c = curveByMoment.get(m)
-          return c ? <MealMomentCurve key={m} curve={c} /> : null
-        })}
-      </div>
+      {isBgm ? (
+        /* BGM (US-2639) : carnet capillaire avant/après uniquement — pas de
+           courbe alignée interpolée (relevés capillaires épars). */
+        <p role="status" className="rounded-md border border-feedback-info/25 bg-feedback-info-bg px-4 py-2 text-sm text-feedback-info-fg">
+          {t("mealBgmBanner")}
+        </p>
+      ) : (
+        /* Mini-courbes par moment (CGM). */
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {CURVE_ORDER.map((m) => {
+            const c = curveByMoment.get(m)
+            return c ? <MealMomentCurve key={m} curve={c} /> : null
+          })}
+        </div>
+      )}
 
       {/* Journal repas. */}
       <div>

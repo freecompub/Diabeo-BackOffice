@@ -34,10 +34,10 @@ const DATA = {
 }
 const okJson = (d: unknown): Response => ({ ok: true, json: async () => d }) as unknown as Response
 
-function renderTab(fetcher: AnalyticsFetcher) {
+function renderTab(fetcher: AnalyticsFetcher, dataSource: "cgm" | "bgm" = "cgm") {
   return render(
     <PatientRecordProvider fetchAnalytics={fetcher} seedPeriod="14d">
-      <PatientMealTrendsTab />
+      <PatientMealTrendsTab dataSource={dataSource} />
     </PatientRecordProvider>,
   )
 }
@@ -64,5 +64,20 @@ describe("PatientMealTrendsTab (US-2637)", () => {
   it("surfaces an error state when the fetch fails", async () => {
     renderTab(() => Promise.reject(new Error("boom")))
     await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
+  })
+
+  it("BGM: renders the capillary logbook (journal) only — no aligned curves (US-2639)", async () => {
+    const fetchSpy = vi.fn(() => Promise.resolve(okJson(DATA)))
+    renderTab(fetchSpy, "bgm")
+    await waitFor(() => expect(screen.getByRole("table")).toBeTruthy())
+    // Bannière carnet capillaire + journal, mais AUCUNE mini-courbe.
+    expect(screen.getByText(/Carnet capillaire/)).toBeTruthy()
+    expect(screen.queryByTestId("curve-noon")).toBeNull()
+    // Le fetch a demandé source=bgm.
+    expect(fetchSpy).toHaveBeenCalledWith(
+      "/api/analytics/meal-trends",
+      expect.objectContaining({ source: "bgm" }),
+      expect.any(Object),
+    )
   })
 })

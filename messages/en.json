@@ -1710,7 +1710,8 @@
     "carnetReadings": "{count} readings",
     "carnetInsufficient": "Insufficient data",
     "carnetCaveat": "Averages of capillary readings (uneven sampling) — interpret with the reading count, not comparable to time in range.",
-    "carnetTitle": "Glucose logbook by time of day"
+    "carnetTitle": "Glucose logbook by time of day",
+    "mealBgmBanner": "Capillary logbook — pre/post-meal glucose from capillary readings (no sensor, no continuous curve)."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

@@ -103,6 +103,21 @@ function localDay(ms: number): string {
   return dayFmt.format(new Date(ms)) // en-CA → ISO
 }
 
+/**
+ * Instant en **espace heure-murale locale** (Europe/Paris projeté comme si UTC),
+ * pour apparier des relevés BGM (`date` + `time` mural, sans instant réel) à un
+ * repas (`Timestamptz`). En travaillant meal ET relevés dans ce même espace
+ * mural, l'écart pré/post est correct et **DST-safe** sur la courte fenêtre du
+ * repas (US-2639 — corrige le décalage de fuseau reporté de la revue #613).
+ */
+function localWallMs(ms: number): number {
+  const [y, mo, d] = localDay(ms).split("-").map(Number)
+  const p = partsFmt.formatToParts(new Date(ms))
+  const h = Number(p.find((x) => x.type === "hour")?.value ?? "0") % 24
+  const min = Number(p.find((x) => x.type === "minute")?.value ?? "0")
+  return Date.UTC(y, mo - 1, d, h, min)
+}
+
 
 /** Dernier relevé dans `(min, max]` le plus proche de `max` (ou `null`). */
 function lastReadingIn(readings: Reading[], min: number, max: number): number | null {
@@ -149,8 +164,13 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
   })
   const bounds = momentBoundsFrom(dayMoments)
 
+  // Base temporelle d'APPARIEMENT repas↔relevé : instant réel en CGM, heure
+  // murale locale en BGM (relevés sans instant réel). moment/jour restent, eux,
+  // dérivés de l'instant réel du repas (`localHour`/`localDay`).
+  const toMatchMs = (instantMs: number) => (source === "bgm" ? localWallMs(instantMs) : instantMs)
+
   // Repas insuline (ancres) — numérique uniquement, pas de texte libre.
-  const meals = await prisma.diabetesEvent.findMany({
+  const mealRows = await prisma.diabetesEvent.findMany({
     where: {
       patientId,
       eventTypes: { has: DiabetesEventType.insulinMeal },
@@ -159,6 +179,7 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
     select: { id: true, eventDate: true, carbohydrates: true, bolusDose: true },
     orderBy: { eventDate: "asc" },
   })
+  const meals = mealRows.map((m) => ({ ...m, matchMs: toMatchMs(m.eventDate.getTime()) }))
 
   // Tout apport glucidique (repas OU snack) pour borner la fenêtre d'excursion.
   const carbEvents = await prisma.diabetesEvent.findMany({
@@ -166,7 +187,7 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
     select: { eventDate: true },
     orderBy: { eventDate: "asc" },
   })
-  const carbTimes = carbEvents.map((e) => e.eventDate.getTime())
+  const carbTimes = carbEvents.map((e) => toMatchMs(e.eventDate.getTime()))
 
   // Relevés (mg/dL canonique), plage agrégat valide.
   let readings: Reading[]
@@ -180,7 +201,9 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
         const gl = r.glycemiaGl !== null ? decimalToNumber(r.glycemiaGl) : null
         const mgdl = gl !== null ? gl * 100 : r.glycemiaMgdl !== null ? decimalToNumber(r.glycemiaMgdl) : null
         if (mgdl === null) return null
-        // date (jour) + time (heure locale) → instant. `time` est un Time UTC.
+        // `time` = heure MURALE locale (Time sans fuseau) ; `date` = jour
+        // calendaire. On les combine en **espace heure-murale locale** (même
+        // base que `matchMs` des repas en BGM → appariement pré/post correct).
         const d = new Date(r.date)
         const t = r.time
           ? Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), t2h(r.time), t2m(r.time))
@@ -268,8 +291,10 @@ function computeAligned(c: MealContext, days: number, source: "cgm" | "bgm"): Al
     for (const m of MOMENTS) perMoment.set(m, { buckets: new Map(), pre: [], post: [], peak: [] })
 
     for (const meal of c.meals) {
-      const t0 = meal.eventDate.getTime()
-      const moment = momentForHour(localHour(t0), c.bounds)
+      // Appariement relevés dans la base `matchMs` (réel CGM / mural BGM) ;
+      // moment dérivé de l'instant réel du repas.
+      const t0 = meal.matchMs
+      const moment = momentForHour(localHour(meal.eventDate.getTime()), c.bounds)
       const agg = perMoment.get(moment)!
 
       const pre = lastReadingIn(c.readings, t0 - MEAL_TREND.PRE_WINDOW_MIN * MIN_MS, t0)
@@ -338,7 +363,9 @@ function computeAligned(c: MealContext, days: number, source: "cgm" | "bgm"): Al
 /** Projection « journal repas » à partir du contexte chargé (pure). */
 function computeJournal(c: MealContext): JournalMeal[] {
     const out: JournalMeal[] = c.meals.map((meal) => {
-      const t0 = meal.eventDate.getTime()
+      // Appariement dans la base `matchMs` ; jour/moment via l'instant réel.
+      const t0 = meal.matchMs
+      const realMs = meal.eventDate.getTime()
       const pre = lastReadingIn(c.readings, t0 - MEAL_TREND.PRE_WINDOW_MIN * MIN_MS, t0)
       // Post PPG 2 h — invalidée si un apport glucidique tombe avant t0+90.
       const winEnd = excursionWindowEnd(t0, c.carbTimes)
@@ -347,8 +374,8 @@ function computeJournal(c: MealContext): JournalMeal[] {
         : null
       return {
         mealId: meal.id,
-        dayIso: localDay(t0),
-        moment: momentForHour(localHour(t0), c.bounds),
+        dayIso: localDay(realMs),
+        moment: momentForHour(localHour(realMs), c.bounds),
         preMgdl: pre,
         postMgdl: post,
         carbs: meal.carbohydrates !== null ? decimalToNumber(meal.carbohydrates) : null,

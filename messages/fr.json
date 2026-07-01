@@ -1710,7 +1710,8 @@
     "carnetReadings": "{count} relevés",
     "carnetInsufficient": "Données insuffisantes",
     "carnetCaveat": "Moyennes de relevés capillaires (échantillonnage non uniforme) — à interpréter avec le nombre de relevés, non comparable à un temps dans la cible.",
-    "carnetTitle": "Carnet glycémique par moment"
+    "carnetTitle": "Carnet glycémique par moment",
+    "mealBgmBanner": "Carnet capillaire — glycémie avant/après repas sur relevés capillaires (sans capteur, pas de courbe continue)."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",
