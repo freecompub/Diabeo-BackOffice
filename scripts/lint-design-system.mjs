@@ -27,7 +27,7 @@ import { fileURLToPath } from "node:url"
 // Le script ratchet : `process.exit(1)` aussi quand violations < baseline,
 // avec un message demandant de mettre à jour la constante. Le diff PR
 // verrouille le gain dans l'historique git.
-const BASELINE_VIOLATIONS = 272
+const BASELINE_VIOLATIONS = 268
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
