@@ -27,6 +27,7 @@ vi.mock("@/lib/services/analytics.service", () => ({
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: vi.fn(() => ({ ipAddress: "i", userAgent: "u", requestId: "r" })),
 }))
+vi.mock("@/lib/audit/analytics-helpers", () => ({ auditAnalyticsAccessDenied: vi.fn() }))
 
 import { GET } from "@/app/api/analytics/glycemic-profile/route"
 import { requireAuth } from "@/lib/auth"
@@ -35,14 +36,17 @@ import { requireGdprConsent } from "@/lib/gdpr"
 import { patientShareConsent } from "@/lib/consent"
 import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { analyticsService } from "@/lib/services/analytics.service"
+import { auditAnalyticsAccessDenied } from "@/lib/audit/analytics-helpers"
 
-const makeReq = () => ({ nextUrl: { searchParams: new URLSearchParams({ period: "30d" }) } }) as any
+const makeReq = (period = "30d") =>
+  ({ nextUrl: { searchParams: new URLSearchParams({ period }) } }) as any
 const mAuth = vi.mocked(requireAuth)
 const mRate = vi.mocked(checkApiRateLimit)
 const mGdpr = vi.mocked(requireGdprConsent)
 const mShare = vi.mocked(patientShareConsent)
 const mResolve = vi.mocked(resolvePatientIdFromQuery)
 const mProfile = vi.mocked(analyticsService.glycemicProfile)
+const mDenied = vi.mocked(auditAnalyticsAccessDenied)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -68,5 +72,21 @@ describe("GET /api/analytics/glycemic-profile — patientShareConsent gate", () 
     expect(r.status).toBe(200)
     expect(mShare).toHaveBeenCalledWith(42)
     expect(mProfile).toHaveBeenCalledWith(42, "30d", 1, expect.any(Object))
+  })
+
+  it("audits accessDenied on out-of-scope resolution (US-2265)", async () => {
+    mResolve.mockResolvedValue({ error: "patientNotFound" } as any)
+    const r = await GET(makeReq())
+    expect(r.status).toBe(404)
+    expect(mDenied).toHaveBeenCalledTimes(1)
+    expect(mShare).not.toHaveBeenCalled()
+  })
+
+  it("validates the period (400) BEFORE reading share consent (no DB round-trip)", async () => {
+    const r = await GET(makeReq("bogus"))
+    expect(r.status).toBe(400)
+    expect(await r.json()).toEqual({ error: "validationFailed" })
+    expect(mShare).not.toHaveBeenCalled()
+    expect(mProfile).not.toHaveBeenCalled()
   })
 })

@@ -20,6 +20,14 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 export type RecordPeriod = "7d" | "14d" | "30d" | "90d"
 export const RECORD_PERIODS: readonly RecordPeriod[] = ["7d", "14d", "30d", "90d"] as const
 
+/**
+ * Période d'amorce (RSC). **DOIT** rester synchrone avec `OVERVIEW_PERIOD` de
+ * `build-patient-record.ts` (projection serveur) : la fiche est rendue sur cette
+ * fenêtre côté serveur, aucun re-fetch tant que la période sélectionnée y est
+ * égale. Source unique côté client (adaptateurs page/drawer + défaut provider).
+ */
+export const SEED_PERIOD: RecordPeriod = "14d"
+
 /** Clé i18n du libellé court de chaque période (namespace `patientDetail`).
  * Source unique partagée par le sélecteur et les libellés de KPI (cohérence). */
 export const PERIOD_LABEL_KEY: Record<RecordPeriod, string> = {
@@ -60,7 +68,7 @@ export function usePatientRecordContext(): PatientRecordContextValue | null {
 
 export function PatientRecordProvider({
   fetchAnalytics,
-  seedPeriod = "14d",
+  seedPeriod = SEED_PERIOD,
   children,
 }: {
   fetchAnalytics: AnalyticsFetcher
@@ -75,25 +83,40 @@ export function PatientRecordProvider({
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
+export interface PeriodAnalyticsState<T> {
+  value: T
+  loading: boolean
+  error: boolean
+  /**
+   * Période à laquelle correspond RÉELLEMENT `value` (≠ période demandée pendant
+   * un chargement ou après une erreur). L'appelant DOIT libeller la donnée avec
+   * CETTE période — jamais la période demandée — pour ne jamais afficher une
+   * fenêtre sous le libellé d'une autre (sécurité clinique, revue #610).
+   */
+  valuePeriod: RecordPeriod
+}
+
 /**
  * Re-fetch analytique piloté par la période courante. Renvoie l'amorce serveur
- * (`seed`) tant que `period === seedPeriod` ou hors provider — aucun fetch, pas
- * de flicker (AC-2). Sinon : debounce → fetch abortable → `map` du retour brut.
- * En erreur, retombe sur l'amorce (le seed reste un repère valide).
+ * (`seed`, `valuePeriod = seedPeriod`) tant que `period === seedPeriod` ou hors
+ * provider — aucun fetch, pas de flicker (AC-2). Sinon : debounce → fetch
+ * abortable → `map` du retour brut (`valuePeriod = période demandée`). En
+ * erreur : retombe sur l'amorce ET `valuePeriod = seedPeriod` (la donnée
+ * affichée reste étiquetable correctement) + `error = true`.
  */
 export function usePeriodAnalytics<T>(args: {
   seed: T
   endpoint: string
   map: (raw: unknown) => T
-}): { value: T; loading: boolean; error: boolean } {
+}): PeriodAnalyticsState<T> {
   const { seed, endpoint } = args
   const ctx = usePatientRecordContext()
-  const period = ctx?.period ?? "14d"
-  const seedPeriod = ctx?.seedPeriod ?? "14d"
+  const period = ctx?.period ?? SEED_PERIOD
+  const seedPeriod = ctx?.seedPeriod ?? SEED_PERIOD
   const atSeed = !ctx || period === seedPeriod
 
-  const [state, setState] = useState<{ value: T; loading: boolean; error: boolean }>({
-    value: seed, loading: false, error: false,
+  const [state, setState] = useState<PeriodAnalyticsState<T>>({
+    value: seed, loading: false, error: false, valuePeriod: seedPeriod,
   })
 
   // Refs : `map`/`seed` sont des closures recréées à chaque rendu — les garder
@@ -109,10 +132,12 @@ export function usePeriodAnalytics<T>(args: {
 
   useEffect(() => {
     if (atSeed || !ctx) {
-      setState({ value: seedRef.current, loading: false, error: false })
+      setState({ value: seedRef.current, loading: false, error: false, valuePeriod: seedPeriod })
       return
     }
     const ctrl = new AbortController()
+    // Chargement : on conserve `valuePeriod` précédent (la donnée affichée reste
+    // celle d'avant, correctement étiquetée) — pas de flicker.
     setState((s) => ({ ...s, loading: true, error: false }))
     const timer = setTimeout(() => {
       ctx
@@ -121,17 +146,21 @@ export function usePeriodAnalytics<T>(args: {
           if (!res.ok) throw new Error(`HTTP ${res.status}`)
           return res.json() as Promise<unknown>
         })
-        .then((raw) => setState({ value: mapRef.current(raw), loading: false, error: false }))
+        .then((raw) =>
+          setState({ value: mapRef.current(raw), loading: false, error: false, valuePeriod: period }),
+        )
         .catch((e: unknown) => {
           if (e instanceof DOMException && e.name === "AbortError") return
-          setState({ value: seedRef.current, loading: false, error: true })
+          // Échec : on retombe sur l'amorce ET on ré-étiquette la donnée à
+          // `seedPeriod` (jamais des stats d'amorce sous le libellé demandé).
+          setState({ value: seedRef.current, loading: false, error: true, valuePeriod: seedPeriod })
         })
     }, DEBOUNCE_MS)
     return () => {
       clearTimeout(timer)
       ctrl.abort()
     }
-  }, [ctx, period, atSeed, endpoint])
+  }, [ctx, period, atSeed, seedPeriod, endpoint])
 
   return state
 }

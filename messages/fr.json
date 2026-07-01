@@ -1583,7 +1583,6 @@
     "targetBadge": "Cible : {low}–{high} mg/dL",
     "tirTargetBadge": "Cible (TIR) : {target}%",
     "hypoMaxBadge": "Hypo max : {target}%",
-    "tirDonutPeriod": "(14 jours)",
     "glycemicProfile24h": "Profil glycémique (24h)",
     "insulinConfigTitle": "Configuration insulinothérapie",
     "method": "Méthode",
@@ -1638,7 +1637,13 @@
     "periodSelectorLabel": "Période d'analyse",
     "avgGlucosePeriod": "Glycémie moyenne ({period})",
     "kpiTirPeriod": "Temps dans la cible (TIR) — {period}",
-    "tirDonutPeriodLabel": "({period})"
+    "tirDonutPeriodLabel": "({period})",
+    "kpiGmiPeriod": "Indicateur de gestion du glucose (GMI) — {period}",
+    "kpiCvPeriod": "Coefficient de variation (CV) — {period}",
+    "periodLoading": "Mise à jour des statistiques…",
+    "periodLoaded": "Statistiques mises à jour sur {period}.",
+    "periodRefetchError": "Échec du chargement pour « {requested} » — affichage sur {shown}.",
+    "shortWindowCaveat": "Fenêtre inférieure à 14 jours : l'indicateur de gestion du glucose (GMI) et les statistiques sont indicatifs (sous le seuil de représentativité)."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

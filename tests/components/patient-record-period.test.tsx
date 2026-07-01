@@ -25,7 +25,7 @@ import {
 import { PeriodSelector } from "@/components/diabeo/patient/PeriodSelector"
 
 function Harness() {
-  const { value, loading } = usePeriodAnalytics<string>({
+  const { value, loading, error, valuePeriod } = usePeriodAnalytics<string>({
     seed: "SEED",
     endpoint: "/api/analytics/glycemic-profile",
     map: (raw) => (raw as { v: string }).v,
@@ -34,6 +34,8 @@ function Harness() {
     <>
       <span data-testid="value">{value}</span>
       <span data-testid="loading">{loading ? "1" : "0"}</span>
+      <span data-testid="error">{error ? "1" : "0"}</span>
+      <span data-testid="valuePeriod">{valuePeriod}</span>
       <PeriodSelector />
     </>
   )
@@ -85,6 +87,32 @@ describe("usePeriodAnalytics + PeriodSelector (US-2634)", () => {
       expect.objectContaining({ signal: expect.anything() }),
     )
     expect(screen.getByRole("radio", { name: "1 mois" }).getAttribute("aria-checked")).toBe("true")
+  })
+
+  it("on fetch failure: reverts to seed, flags error, and re-labels the value to seedPeriod (never the requested period)", async () => {
+    // HTTP échoué → l'UI ne doit PAS présenter la donnée d'amorce comme celle de
+    // la période demandée (faux rassurement clinique, revue #610).
+    const fetcher = vi.fn<AnalyticsFetcher>().mockResolvedValue({ ok: false, status: 500 } as unknown as Response)
+    renderWith(fetcher)
+
+    fireEvent.click(screen.getByRole("radio", { name: "3 mois" })) // 90 j demandé
+    await waitFor(() => expect(screen.getByTestId("error").textContent).toBe("1"))
+    // Donnée retombée sur l'amorce, ré-étiquetée à seedPeriod (14 j), pas 90 j.
+    expect(screen.getByTestId("value").textContent).toBe("SEED")
+    expect(screen.getByTestId("valuePeriod").textContent).toBe("14d")
+    expect(screen.getByTestId("loading").textContent).toBe("0")
+  })
+
+  it("tracks valuePeriod = requested period only after a SUCCESSFUL fetch", async () => {
+    const fetcher = vi.fn<AnalyticsFetcher>().mockResolvedValue(okResponse("FETCHED"))
+    renderWith(fetcher)
+    expect(screen.getByTestId("valuePeriod").textContent).toBe("14d") // amorce
+
+    fireEvent.click(screen.getByRole("radio", { name: "1 mois" })) // 30 j
+    // Pendant le chargement, la donnée affichée reste l'amorce → valuePeriod=14d.
+    expect(screen.getByTestId("valuePeriod").textContent).toBe("14d")
+    await waitFor(() => expect(screen.getByTestId("value").textContent).toBe("FETCHED"))
+    expect(screen.getByTestId("valuePeriod").textContent).toBe("30d")
   })
 
   it("returns to the seed (no new fetch) when the period goes back to seedPeriod", async () => {

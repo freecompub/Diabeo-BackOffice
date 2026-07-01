@@ -19,7 +19,7 @@ import {
   usePatientRecordContext,
 } from "./PatientRecordContext"
 
-export function PeriodSelector() {
+export function PeriodSelector({ labelledBy }: { labelledBy?: string } = {}) {
   const t = useTranslations("patientDetail")
   const ctx = usePatientRecordContext()
   const refs = useRef<Array<HTMLButtonElement | null>>([])
@@ -43,7 +43,10 @@ export function PeriodSelector() {
   return (
     <div
       role="radiogroup"
-      aria-label={t("periodSelectorLabel")}
+      // Libellé associé (aria-labelledby) quand un libellé visible existe déjà
+      // (évite la redondance visible + aria-label) ; sinon libellé propre.
+      aria-labelledby={labelledBy}
+      aria-label={labelledBy ? undefined : t("periodSelectorLabel")}
       className="inline-flex items-center gap-1 rounded-lg border border-border bg-muted/40 p-1"
     >
       {RECORD_PERIODS.map((p, i) => {

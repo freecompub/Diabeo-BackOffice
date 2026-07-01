@@ -27,6 +27,7 @@ import {
   usePeriodAnalytics,
   usePatientRecordContext,
   PERIOD_LABEL_KEY,
+  SEED_PERIOD,
 } from "@/components/diabeo/patient/PatientRecordContext"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
@@ -173,7 +174,11 @@ export function PatientRecord({
     endpoint: "/api/analytics/glycemic-profile",
     map: mapProfileToStats,
   })
-  const periodLabel = t(PERIOD_LABEL_KEY[recordCtx?.period ?? "14d"])
+  // Libellé = période RÉELLEMENT affichée (`valuePeriod`), jamais la période
+  // demandée : sur erreur/chargement, la donnée d'amorce ne doit jamais porter
+  // le libellé d'une autre fenêtre (faux rassurement clinique, revue #610).
+  const periodLabel = t(PERIOD_LABEL_KEY[liveStats.valuePeriod])
+  const requestedLabel = t(PERIOD_LABEL_KEY[recordCtx?.period ?? SEED_PERIOD])
 
   // Consentement retiré : aucune donnée patient rendue (cf. page.tsx). En mode
   // drawer, l'en-tête est porté par le drawer → pas de DashboardHeader.
@@ -203,6 +208,10 @@ export function PatientRecord({
   // 14 j tant que la période n'a pas changé, sinon retour re-fetché.
   const stats = liveStats.value
   const statsLoading = liveStats.loading
+  const statsError = liveStats.error
+  // GMI/statistiques non représentatifs sous 14 j (consensus AGP) — caveat
+  // affiché même si la capture est bonne (revue médicale #610).
+  const shortWindow = liveStats.valuePeriod === "7d"
 
   return (
     <>
@@ -238,9 +247,34 @@ export function PatientRecord({
             {/* Sélecteur de période (US-2634) — synchronisé entre onglets via
                 le contexte ; pilote les KPI ci-dessous (re-fetch debounced). */}
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-sm font-medium text-muted-foreground">{t("periodSelectorLabel")}</span>
-              <PeriodSelector />
+              <span id="period-selector-label" className="text-sm font-medium text-muted-foreground">
+                {t("periodSelectorLabel")}
+              </span>
+              <PeriodSelector labelledBy="period-selector-label" />
             </div>
+            {/* Annonce lecteurs d'écran du (re)chargement des KPI (WCAG 4.1.3). */}
+            <p className="sr-only" role="status" aria-live="polite">
+              {statsLoading ? t("periodLoading") : t("periodLoaded", { period: periodLabel })}
+            </p>
+            {/* Échec de re-fetch : la donnée affichée est retombée sur l'amorce
+                (`periodLabel`) — on le signale, jamais un libellé trompeur. */}
+            {statsError && (
+              <p
+                role="alert"
+                className="rounded-md border border-feedback-error bg-error-bg px-4 py-2 text-sm text-error-fg"
+              >
+                {t("periodRefetchError", { requested: requestedLabel, shown: periodLabel })}
+              </p>
+            )}
+            {/* Représentativité : fenêtre < 14 j → GMI/stats indicatifs. */}
+            {stats && shortWindow && (
+              <p
+                role="status"
+                className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
+              >
+                {t("shortWindowCaveat")}
+              </p>
+            )}
             {stats?.insufficientCapture && (
               <p
                 role="status"
@@ -271,13 +305,13 @@ export function PatientRecord({
                   variant={stats.tir.inRange >= objectives.tirTargetPct ? "success" : "warning"}
                 />
                 <StatCard
-                  label={t("kpiGmi")}
+                  label={t("kpiGmiPeriod", { period: periodLabel })}
                   value={`${stats.gmi}%`}
                   icon={<Heart className="h-5 w-5" />}
                   variant="default"
                 />
                 <StatCard
-                  label={t("kpiCv")}
+                  label={t("kpiCvPeriod", { period: periodLabel })}
                   value={`${stats.cv}%`}
                   icon={<Clock className="h-5 w-5" />}
                   variant={stats.cv <= objectives.cvMaxPct ? "success" : "warning"}

@@ -1583,7 +1583,6 @@
     "targetBadge": "الهدف: {low}–{high} mg/dL",
     "tirTargetBadge": "الهدف (TIR): {target}%",
     "hypoMaxBadge": "أقصى هبوط: {target}%",
-    "tirDonutPeriod": "(14 يومًا)",
     "glycemicProfile24h": "ملف سكر الدم (٢٤ ساعة)",
     "insulinConfigTitle": "إعداد العلاج بالأنسولين",
     "method": "الطريقة",
@@ -1638,7 +1637,13 @@
     "periodSelectorLabel": "فترة التحليل",
     "avgGlucosePeriod": "متوسط سكر الدم ({period})",
     "kpiTirPeriod": "الوقت ضمن النطاق (TIR) — {period}",
-    "tirDonutPeriodLabel": "({period})"
+    "tirDonutPeriodLabel": "({period})",
+    "kpiGmiPeriod": "مؤشر إدارة الغلوكوز (GMI) — {period}",
+    "kpiCvPeriod": "معامل التغاير (CV) — {period}",
+    "periodLoading": "جارٍ تحديث الإحصائيات…",
+    "periodLoaded": "تم تحديث الإحصائيات على {period}.",
+    "periodRefetchError": "تعذّر تحميل «{requested}» — عرض {shown}.",
+    "shortWindowCaveat": "نافذة أقل من 14 يومًا: مؤشر إدارة الغلوكوز (GMI) والإحصائيات إرشادية (دون عتبة التمثيلية)."
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",
