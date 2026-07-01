@@ -120,6 +120,18 @@ export const AGP_SUFFICIENCY = {
 export const HBA1C_STALE_DAYS = 180
 
 /**
+ * US-2639 — Carnet BGM (moyenne par moment de la journée, patient sans capteur).
+ * Plancher de suffisance : sous `MIN_READINGS_PER_MOMENT` relevés capillaires
+ * sur la fenêtre, la moyenne d'un moment n'est PAS publiée (« données
+ * insuffisantes ») — une moyenne sur 1–2 relevés est du bruit, trompeuse au lit
+ * du patient. Cohérent avec le principe de suffisance de l'AGP/TIR (revue
+ * medical-domain-validator).
+ */
+export const BGM_CARNET = {
+  MIN_READINGS_PER_MOMENT: 3,
+} as const
+
+/**
  * US-2637 — Tendances de repas (définitions cliniques validées par
  * `medical-domain-validator`). Durées en minutes, relatives à l'heure du repas
  * `t0`.

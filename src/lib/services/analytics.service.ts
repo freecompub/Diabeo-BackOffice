@@ -21,7 +21,8 @@ import {
   type CgmThresholds,
 } from "@/lib/statistics"
 import { decimalToNumber } from "@/lib/db/decimal"
-import { CGM_AGGREGATE_RANGE_GL } from "@/lib/clinical-bounds"
+import { CGM_AGGREGATE_RANGE_GL, BGM_CARNET } from "@/lib/clinical-bounds"
+import { DAY_MOMENTS, momentForHour, momentBoundsFrom } from "@/lib/day-moments"
 
 /** Warn if CGM capture rate below this % */
 const MIN_CAPTURE_RATE = 70 // percent
@@ -315,6 +316,94 @@ export const analyticsService = {
         high: Math.round(glToMgdl(thresholds.ok)),
       },
       points,
+    }
+  },
+
+  /**
+   * US-2639 — **Carnet BGM** : moyenne des relevés capillaires par moment de la
+   * journée (Nuit / Matin / Midi / Soir). Remplace l'AGP (non calculable sans
+   * capteur). Rattachement au moment par **heure locale murale** (colonne `Time`,
+   * pas d'instant réel → pas de souci de fuseau). Moyenne d'un moment publiée
+   * seulement si ≥ `BGM_CARNET.MIN_READINGS_PER_MOMENT` relevés (sinon « données
+   * insuffisantes » — jamais une moyenne sur 1–2 relevés). Seuils pathology-aware.
+   * Lecture `READ GLYCEMIA_ENTRY` auditée (metadata sans valeur clinique).
+   */
+  async bgmDailyPatternByMoment(
+    patientId: number,
+    period: string,
+    auditUserId: number,
+    ctx?: AuditContext,
+    opts?: { skipAudit?: boolean },
+  ) {
+    const days = parsePeriod(period)
+    const now = new Date()
+    const since = new Date(now.getTime() - days * 24 * 3600_000)
+    const thresholds = await getPatientThresholds(patientId)
+
+    const dayMoments = await prisma.userDayMoment.findMany({
+      where: { user: { patient: { id: patientId } } },
+      select: { type: true, startTime: true, endTime: true },
+    })
+    const bounds = momentBoundsFrom(dayMoments)
+
+    const rows = await prisma.glycemiaEntry.findMany({
+      where: {
+        patientId,
+        date: { gte: since, lte: now },
+        time: { not: null },
+        OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
+      },
+      select: { glycemiaGl: true, glycemiaMgdl: true, time: true },
+    })
+
+    if (!opts?.skipAudit) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: { patientId, kind: "bgmDailyPattern", period: `${days}d` },
+      })
+    }
+
+    // Regroupement par moment (heure murale locale), valeurs mg/dL dans la plage
+    // physiologique valide (comme les autres agrégats).
+    const perMoment = new Map<(typeof DAY_MOMENTS)[number], number[]>()
+    for (const m of DAY_MOMENTS) perMoment.set(m, [])
+    for (const r of rows) {
+      const gl =
+        r.glycemiaGl != null
+          ? decimalToNumber(r.glycemiaGl)
+          : r.glycemiaMgdl != null
+            ? decimalToNumber(r.glycemiaMgdl) / 100
+            : NaN
+      if (!Number.isFinite(gl) || gl < CGM_AGGREGATE_RANGE_GL.MIN || gl > CGM_AGGREGATE_RANGE_GL.MAX) continue
+      if (!r.time) continue
+      const hour = r.time.getUTCHours() + r.time.getUTCMinutes() / 60
+      perMoment.get(momentForHour(hour, bounds))!.push(glToMgdl(gl))
+    }
+
+    const moments = DAY_MOMENTS.map((moment) => {
+      const vals = perMoment.get(moment)!
+      const insufficient = vals.length < BGM_CARNET.MIN_READINGS_PER_MOMENT
+      return {
+        moment,
+        count: vals.length,
+        insufficient,
+        avgMgdl: insufficient ? null : Math.round(mean(vals)),
+      }
+    })
+
+    return {
+      period: { days },
+      targetRangeMgdl: {
+        low: Math.round(glToMgdl(thresholds.low)),
+        high: Math.round(glToMgdl(thresholds.ok)),
+      },
+      moments,
     }
   },
 

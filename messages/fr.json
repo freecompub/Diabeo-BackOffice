@@ -1703,7 +1703,14 @@
     "bgmScatterAria": "Nuage de points des glycémies capillaires, par heure du jour",
     "bgmScatterSummary": "{total} relevés capillaires sur la période, dont {inTarget} en cible.",
     "bgmScatterTitle": "Relevés capillaires (nuage de points)",
-    "agpNotAvailableBgm": "Le profil ambulatoire glycémique (AGP) nécessite des données de capteur en continu (CGM) — non disponible pour un patient en glycémie capillaire."
+    "tabGlycemicProfileBgm": "Carnet glycémique",
+    "carnetLoading": "Chargement du carnet…",
+    "carnetError": "Impossible de charger le carnet glycémique.",
+    "carnetBanner": "Carnet capillaire — moyenne des relevés par moment de la journée (sans capteur, pas de profil ambulatoire continu).",
+    "carnetReadings": "{count} relevés",
+    "carnetInsufficient": "Données insuffisantes",
+    "carnetCaveat": "Moyennes de relevés capillaires (échantillonnage non uniforme) — à interpréter avec le nombre de relevés, non comparable à un temps dans la cible.",
+    "carnetTitle": "Carnet glycémique par moment"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",
