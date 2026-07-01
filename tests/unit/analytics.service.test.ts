@@ -136,6 +136,42 @@ describe("analyticsService", () => {
     })
   })
 
+  describe("dailyStats — US-2636 (1 ligne/jour)", () => {
+    it("maps raw daily rows → mg/dL + % en cible, audite kind=dailyStats + période", async () => {
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      ;(prismaMock.$queryRaw as any).mockResolvedValue([
+        { day: "2026-07-01", avg_gl: 1.5, min_gl: 0.7, max_gl: 2.4, n: 288, in_target: 216 },
+      ])
+
+      const res = await analyticsService.dailyStats(1, "30d", 1, {
+        ipAddress: "i", userAgent: "u", requestId: "r",
+      })
+
+      // g/L → mg/dL (×100), % en cible = in_target/n.
+      expect(res).toEqual([
+        { day: "2026-07-01", avgMgdl: 150, minMgdl: 70, maxMgdl: 240, count: 288, inTargetPct: 75 },
+      ])
+      const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(audit.action).toBe("READ")
+      expect(audit.metadata).toMatchObject({ kind: "dailyStats", period: "30d", windowDays: 30, source: "cgm" })
+      expect(JSON.stringify(audit.metadata)).not.toMatch(/glucose|mgdl/i)
+    })
+
+    it("queries GlycemiaEntry (BGM) when source=bgm", async () => {
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1" } as any)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      ;(prismaMock.$queryRaw as any).mockResolvedValue([])
+
+      const res = await analyticsService.dailyStats(1, "14d", 1, undefined, { source: "bgm" })
+      expect(res).toEqual([])
+      const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(audit.metadata).toMatchObject({ kind: "dailyStats", source: "bgm" })
+    })
+  })
+
   describe("timeInRange", () => {
     it("returns TIR with quality assessment", async () => {
       prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(500) as any)

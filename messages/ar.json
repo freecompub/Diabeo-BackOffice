@@ -1651,7 +1651,20 @@
     "agpStatCv": "معامل التغاير (CV)",
     "agpStatSd": "الانحراف المعياري",
     "agpStatCapture": "البيانات الملتقطة",
-    "agpGmiTooltip": "≠ الخضاب السكري المخبري (HbA1c) — يُتوقّع وجود فرق."
+    "agpGmiTooltip": "≠ الخضاب السكري المخبري (HbA1c) — يُتوقّع وجود فرق.",
+    "viewSelectorLabel": "العرض",
+    "viewAverage": "المتوسط",
+    "viewDaily": "جدول يومي",
+    "dailyLoading": "جارٍ تحميل الجدول اليومي…",
+    "dailyError": "تعذّر تحميل الجدول اليومي.",
+    "dailyEmpty": "لا توجد بيانات للفترة المحددة.",
+    "dailyTableCaption": "إحصائيات السكر اليومية (المتوسط، النسبة ضمن النطاق، الأدنى، الأعلى، عدد القراءات)",
+    "dailyColDay": "اليوم",
+    "dailyColAvg": "المتوسط",
+    "dailyColInTarget": "٪ ضمن النطاق",
+    "dailyColMin": "الأدنى",
+    "dailyColMax": "الأعلى",
+    "dailyColCount": "القراءات"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",

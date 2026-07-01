@@ -1651,7 +1651,20 @@
     "agpStatCv": "Coefficient de variation (CV)",
     "agpStatSd": "Écart type",
     "agpStatCapture": "Données capturées",
-    "agpGmiTooltip": "≠ hémoglobine glyquée de laboratoire (HbA1c) — un écart est attendu."
+    "agpGmiTooltip": "≠ hémoglobine glyquée de laboratoire (HbA1c) — un écart est attendu.",
+    "viewSelectorLabel": "Vue",
+    "viewAverage": "Moyenne",
+    "viewDaily": "Tableau journalier",
+    "dailyLoading": "Chargement du tableau journalier…",
+    "dailyError": "Impossible de charger le tableau journalier.",
+    "dailyEmpty": "Aucune donnée sur la période sélectionnée.",
+    "dailyTableCaption": "Statistiques glycémiques par jour (moyenne, % en cible, min, max, nombre de relevés)",
+    "dailyColDay": "Jour",
+    "dailyColAvg": "Moyenne",
+    "dailyColInTarget": "% en cible",
+    "dailyColMin": "Min",
+    "dailyColMax": "Max",
+    "dailyColCount": "Relevés"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",
