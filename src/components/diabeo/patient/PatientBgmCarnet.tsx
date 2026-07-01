@@ -19,7 +19,8 @@ import { DAY_MOMENTS, type DayMoment } from "@/lib/day-moments"
 
 interface CarnetData {
   period: { days: number }
-  targetRangeMgdl: { low: number; high: number }
+  /** Seuils pathology-aware (mg/dL) — bande cible + zones sévères pour la couleur. */
+  targetRangeMgdl: { veryLow: number; low: number; high: number; veryHigh: number }
   moments: { moment: DayMoment; count: number; insufficient: boolean; avgMgdl: number | null }[]
 }
 
@@ -59,7 +60,8 @@ export function PatientBgmCarnet() {
   }
 
   const byMoment = new Map(data.moments.map((m) => [m.moment, m]))
-  const thresholds = { low: data.targetRangeMgdl.low, high: data.targetRangeMgdl.high }
+  // Coloration entièrement pathology-aware (zones sévères incluses, US-2641 B).
+  const thresholds = data.targetRangeMgdl
 
   return (
     <div className="space-y-4">

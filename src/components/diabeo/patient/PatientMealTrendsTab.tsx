@@ -14,16 +14,16 @@ import { bcp47 } from "@/i18n/config"
 import { usePeriodResource } from "./PatientRecordContext"
 import { PeriodSelector } from "./PeriodSelector"
 import { MealMomentCurve, type MomentCurveView } from "./MealMomentCurve"
+import { DAY_MOMENTS, type DayMoment } from "@/lib/day-moments"
 
-type Moment = "morning" | "noon" | "evening" | "night"
-const CURVE_ORDER: Moment[] = ["morning", "noon", "evening", "night"]
+const CURVE_ORDER = DAY_MOMENTS
 /** Colonnes du journal (les 3 repas principaux ; la nuit est rare au journal). */
-const JOURNAL_MOMENTS: Moment[] = ["morning", "noon", "evening"]
+const JOURNAL_MOMENTS: DayMoment[] = ["morning", "noon", "evening"]
 
 interface JournalMeal {
   mealId: string
   dayIso: string
-  moment: Moment
+  moment: DayMoment
   preMgdl: number | null
   postMgdl: number | null
   carbs: number | null
@@ -76,7 +76,7 @@ export function PatientMealTrendsTab({ dataSource = "cgm" }: { dataSource?: "cgm
   const curveByMoment = new Map(data.curve.moments.map((m) => [m.moment, m]))
   // Journal groupé par jour (desc) → { day → { moment → meal } }.
   const days: string[] = []
-  const grid = new Map<string, Partial<Record<Moment, JournalMeal>>>()
+  const grid = new Map<string, Partial<Record<DayMoment, JournalMeal>>>()
   for (const meal of data.journal) {
     if (!grid.has(meal.dayIso)) {
       grid.set(meal.dayIso, {})
@@ -160,7 +160,7 @@ export function PatientMealTrendsTab({ dataSource = "cgm" }: { dataSource?: "cgm
 
 const SUBCOLS = ["before", "after", "carbs", "bolus"] as const
 
-function SubHeaders({ t, moment }: { t: ReturnType<typeof useTranslations>; moment: Moment }) {
+function SubHeaders({ t, moment }: { t: ReturnType<typeof useTranslations>; moment: DayMoment }) {
   const keys = { before: "mealColBefore", after: "mealColAfter", carbs: "mealColCarbs", bolus: "mealColBolus" } as const
   return (
     <>
@@ -180,7 +180,7 @@ function SubHeaders({ t, moment }: { t: ReturnType<typeof useTranslations>; mome
 
 /** Cellules d'un moment ; chaque `td` associe le groupe (moment) ET la
  *  sous-colonne via `headers` (WCAG 1.3.1 — tables à en-têtes multi-niveaux). */
-function MomentCells({ moment, meal, cell }: { moment: Moment; meal: JournalMeal | null; cell: (v: number | null) => string }) {
+function MomentCells({ moment, meal, cell }: { moment: DayMoment; meal: JournalMeal | null; cell: (v: number | null) => string }) {
   const vals: Record<(typeof SUBCOLS)[number], number | null> = {
     before: meal?.preMgdl ?? null, after: meal?.postMgdl ?? null,
     carbs: meal?.carbs ?? null, bolus: meal?.bolus ?? null,

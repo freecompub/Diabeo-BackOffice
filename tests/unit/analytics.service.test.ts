@@ -318,7 +318,7 @@ describe("analyticsService", () => {
       expect(r.total).toBe(4)
       expect(r.inRangePercent).toBe(75) // 3/4
       expect(r.readingsPerDay).toBe(0.3) // 4/14 arrondi 0.1
-      expect(r.targetRangeMgdl).toEqual({ low: 70, high: 180 })
+      expect(r.targetRangeMgdl).toMatchObject({ low: 70, high: 180 }) // + veryLow/veryHigh (US-2641 L1)
       // audité READ GLYCEMIA_ENTRY kind=bgmStats
       const meta = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
       expect(meta.resource).toBe("GLYCEMIA_ENTRY")

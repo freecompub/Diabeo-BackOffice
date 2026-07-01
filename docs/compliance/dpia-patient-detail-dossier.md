@@ -153,6 +153,18 @@ secret → pas de fuite d'énumération nouvelle. Posture acceptée.
 - Plancher capteur 0.40 g/L exclut les hypo sévères des agrégats.
 - ✅ Cibles grossesse (GD) — défauts pathology-aware (63–140) sur le calcul TIR
   et le badge (`getCgmDefaults`). **Résolu.**
+- ⚠️ **Inférence du mode grossesse depuis la cible exposée (US-2641)** — depuis
+  l'unification `getPatientThresholds` `pregnancyMode`-aware, une patiente
+  `pregnancyMode` (même non typée GD) reçoit une cible stricte 63–140 dans les
+  agrégats de la fiche. Un PS peut donc **inférer l'état de grossesse** (donnée
+  Art. 9) depuis la cible affichée. **Risque résiduel accepté** : diffusion
+  limitée aux soignants **déjà autorisés** (RBAC + `requireGdprConsent` +
+  `patientShareConsent` + opt-out sujet), la cible est nécessaire au rendu
+  clinique (base légale = prise en charge, Art. 9.2.h), et l'inférence n'entre
+  **dans aucun log d'audit** (`pregnancyMode` lu uniquement en interne pour les
+  seuils, jamais restitué en metadata). Aucune minimisation supplémentaire
+  praticable sans dégrader la sécurité clinique (la cible EST une information de
+  soin).
 - Sur-déchiffrement `email` dans `getById` (minimisation Art. 5.1.c).
 
 ## 7. Validations à obtenir
@@ -166,5 +178,7 @@ secret → pas de fuite d'énumération nouvelle. Posture acceptée.
 
 ---
 
-*Dernière mise à jour : 2026-06-15 — suite à la livraison du câblage dossier
-patient (PR #543→#546) et de la convergence consentement (PR #547).*
+*Dernière mise à jour : 2026-07-01 — épopée fiche patient unifiée (US-2630,
+PR #608→#619) : ajout du risque résiduel « inférence du mode grossesse depuis la
+cible » (§6, US-2641). Précédemment : câblage dossier (PR #543→#546),
+convergence consentement (PR #547).*
