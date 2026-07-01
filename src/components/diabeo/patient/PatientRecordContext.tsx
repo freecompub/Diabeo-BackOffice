@@ -165,6 +165,72 @@ export function usePeriodAnalytics<T>(args: {
   return state
 }
 
+export interface PeriodResourceState<T> {
+  data: T | null
+  loading: boolean
+  error: boolean
+  /** Période à laquelle correspond `data` (null tant qu'aucun succès). L'appelant
+   * DOIT libeller la donnée avec CETTE période (cohérence donnée/étiquette). */
+  valuePeriod: RecordPeriod | null
+}
+
+/**
+ * Re-fetch analytique **sans amorce serveur** (onglets lazy : AGP, tableau
+ * journalier…), piloté par la période. Fetch au montage ET à chaque changement
+ * de période (debounced, abortable). Contrairement à `usePeriodAnalytics`, aucun
+ * `seed` : `data` est `null` jusqu'au premier succès. En erreur, conserve la
+ * donnée précédente (peut être `null`) + `error=true` ; `valuePeriod` reste la
+ * dernière période chargée avec succès → jamais une donnée sous un mauvais
+ * libellé de période.
+ */
+export function usePeriodResource<T>(args: {
+  endpoint: string
+  map: (raw: unknown) => T
+}): PeriodResourceState<T> {
+  const { endpoint } = args
+  const ctx = usePatientRecordContext()
+  const period = ctx?.period ?? SEED_PERIOD
+
+  const [state, setState] = useState<PeriodResourceState<T>>({
+    data: null, loading: true, error: false, valuePeriod: null,
+  })
+
+  const mapRef = useRef(args.map)
+  useEffect(() => {
+    mapRef.current = args.map
+  })
+
+  useEffect(() => {
+    // Hors provider (défensif ; inatteignable en pratique — page et drawer
+    // montent toujours le Provider) : pas de fetch. Cf. retour statique plus bas.
+    if (!ctx) return
+    const ctrl = new AbortController()
+    // `loading:true` posé dans le timer (après debounce) — évite un setState
+    // synchrone en corps d'effet ; l'état initial est déjà `loading:true`.
+    const timer = setTimeout(() => {
+      setState((s) => ({ ...s, loading: true, error: false }))
+      ctx
+        .fetchAnalytics(endpoint, { period }, { signal: ctrl.signal })
+        .then(async (res) => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`)
+          return res.json() as Promise<unknown>
+        })
+        .then((raw) => setState({ data: mapRef.current(raw), loading: false, error: false, valuePeriod: period }))
+        .catch((e: unknown) => {
+          if (e instanceof DOMException && e.name === "AbortError") return
+          setState((s) => ({ data: s.data, loading: false, error: true, valuePeriod: s.valuePeriod }))
+        })
+    }, DEBOUNCE_MS)
+    return () => {
+      clearTimeout(timer)
+      ctrl.abort()
+    }
+  }, [ctx, period, endpoint])
+
+  // Hors provider → état vide stable (sans setState en effet).
+  return ctx ? state : { data: null, loading: false, error: false, valuePeriod: null }
+}
+
 /**
  * Construit un `AnalyticsFetcher` pour le **mode page** : id patient en query
  * (`?patientId=`, le scope est résolu serveur via `canAccessPatient`). L'id est

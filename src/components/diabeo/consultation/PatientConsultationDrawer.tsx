@@ -11,8 +11,9 @@
  * US-2633 — le contenu est désormais le **composant unifié** `<PatientRecord>`
  * (même rendu que la page `/patients/[id]`), alimenté par `GET
  * /api/patients/record` via le jeton éphémère `cTok` (en-tête
- * `x-consultation-token`, aucun id patient en URL). L'onglet « Profil
- * glycémique » est injecté (câblé `cTok`) en attendant l'AGP unifié (US-2634).
+ * `x-consultation-token`, aucun id patient en URL). Tous les onglets — dont
+ * « Profil glycémique (AGP) », natif depuis US-2635 — sont pilotés par le
+ * contexte (période) et fetchent via le transport injecté (cTok en drawer).
  * Les drapeaux d'alerte (« Ma journée ») sont remontés dans l'en-tête du drawer.
  */
 
@@ -29,7 +30,6 @@ import {
 } from "@/components/diabeo/patient/PatientRecordContext"
 import type { ConsultationPatient } from "./ConsultationContext"
 import { useConsultationData } from "./useConsultationData"
-import { GlycemicProfileTab } from "./tabs/GlycemicProfileTab"
 import { TabError, TabLoading } from "./tabs/TabState"
 
 interface Props {
@@ -151,8 +151,8 @@ export function PatientConsultationDrawer({
           </button>
         </header>
 
-        {/* Contenu — dossier unifié (mêmes onglets que la page) + onglet profil
-            glycémique injecté via cTok. Les onglets/clavier sont gérés par le
+        {/* Contenu — dossier unifié (mêmes onglets que la page, dont l'AGP
+            natif US-2635, fetch période via cTok). Onglets/clavier gérés par le
             composant (Tabs Radix). */}
         <div className="flex-1 overflow-y-auto p-4">
           {loading ? (
@@ -161,14 +161,9 @@ export function PatientConsultationDrawer({
             <TabError />
           ) : (
             <PatientRecordProvider fetchAnalytics={fetchAnalytics} seedPeriod="14d">
-              <PatientRecord
-                data={data}
-                variant="drawer"
-                glycemicProfileSlot={{
-                  label: t("tabs.glycemicProfile"),
-                  content: <GlycemicProfileTab cTok={cTok} />,
-                }}
-              />
+              {/* Onglet AGP « Profil glycémique » désormais natif dans
+                  PatientRecord (US-2635), piloté par la période du contexte. */}
+              <PatientRecord data={data} variant="drawer" />
             </PatientRecordProvider>
           )}
         </div>

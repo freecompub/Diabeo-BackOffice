@@ -56,6 +56,13 @@ vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({
 vi.mock("@/components/diabeo/CgmChart", () => ({
   CgmChart: ({ data }: { data: unknown[] }) => <div data-testid="cgm-chart">{data.length} pts</div>,
 }))
+// Onglet AGP (US-2635) stubé : il fetche via cTok/?patientId (couvert par son
+// propre test). Ici on vérifie seulement qu'il est monté avec les cibles.
+vi.mock("@/components/diabeo/patient/PatientAgpTab", () => ({
+  PatientAgpTab: ({ targetLowMgdl, targetHighMgdl }: { targetLowMgdl: number; targetHighMgdl: number }) => (
+    <div data-testid="agp-tab" data-low={targetLowMgdl} data-high={targetHighMgdl}>AGP</div>
+  ),
+}))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
 import { PatientRecord } from "@/components/diabeo/patient/PatientRecord"
@@ -388,16 +395,14 @@ describe("PatientRecord — variant drawer (US-2633)", () => {
     expect(screen.getAllByTestId("stat").length).toBeGreaterThan(0)
   })
 
-  it("injects the glycemic-profile tab when a slot is provided", () => {
-    render(
-      <PatientRecord
-        data={baseData}
-        variant="drawer"
-        glycemicProfileSlot={{ label: "Profil glycémique", content: <div data-testid="profile-slot">AGP</div> }}
-      />,
-    )
-    expect(screen.getByText("Profil glycémique")).toBeTruthy()
-    expect(screen.getByTestId("profile-slot")).toBeTruthy()
+  it("renders the native AGP tab (US-2635) with pathology-aware target bounds", () => {
+    render(<PatientRecord data={baseData} variant="drawer" />)
+    // Onglet natif présent (plus de slot injecté).
+    expect(screen.getByText("Profil glycémique (AGP)")).toBeTruthy()
+    // Cibles pathology-aware transmises au chart (adulte 70–180 ici).
+    const agp = screen.getByTestId("agp-tab")
+    expect(agp.getAttribute("data-low")).toBe("70")
+    expect(agp.getAttribute("data-high")).toBe("180")
   })
 
   it("lists documents WITHOUT a download link when no documentHref is given (cTok mode)", () => {

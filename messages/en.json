@@ -1241,9 +1241,6 @@
     "expand": "Expand",
     "collapse": "Collapse",
     "yearsShort": "yrs",
-    "tabs": {
-      "glycemicProfile": "Glycemic profile"
-    },
     "pathology": {
       "DT1": "Type 1 diabetes (T1D)",
       "DT2": "Type 2 diabetes (T2D)",
@@ -1643,7 +1640,18 @@
     "periodLoading": "Updating statistics…",
     "periodLoaded": "Statistics updated over {period}.",
     "periodRefetchError": "Failed to load “{requested}” — showing {shown}.",
-    "shortWindowCaveat": "Window under 14 days: the Glucose Management Indicator (GMI) and statistics are indicative (below the representativeness threshold)."
+    "shortWindowCaveat": "Window under 14 days: the Glucose Management Indicator (GMI) and statistics are indicative (below the representativeness threshold).",
+    "tabGlycemicProfile": "Glucose profile (AGP)",
+    "agpLoading": "Loading glucose profile…",
+    "agpError": "Unable to load the glucose profile.",
+    "agp7dNote": "7-day window: indicative profile (below the 14-day representativeness threshold).",
+    "agp90dNote": "90-day window: may mask a recent therapeutic adjustment.",
+    "agpStatAvg": "Average glucose",
+    "agpStatGmi": "Glucose management indicator (GMI)",
+    "agpStatCv": "Coefficient of variation (CV)",
+    "agpStatSd": "Standard deviation",
+    "agpStatCapture": "Data captured",
+    "agpGmiTooltip": "≠ lab glycated haemoglobin (HbA1c) — a difference is expected."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",

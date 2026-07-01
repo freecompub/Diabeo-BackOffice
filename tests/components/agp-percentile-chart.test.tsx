@@ -21,8 +21,19 @@ vi.mock("next-intl", async () =>
 import { render, screen } from "@testing-library/react"
 import {
   AgpPercentileChart,
+  agpTooltipValue,
   type AgpSlotPoint,
 } from "@/components/diabeo/AgpPercentileChart"
+
+describe("agpTooltipValue (US-2635 — pas de « 0 mg/dL » sur créneau vide)", () => {
+  it("returns « — » for null/undefined/non-finite (empty slot), mg/dL otherwise", () => {
+    expect(agpTooltipValue(null)).toBe("—")
+    expect(agpTooltipValue(undefined)).toBe("—")
+    expect(agpTooltipValue(Number.NaN)).toBe("—")
+    expect(agpTooltipValue(120.4)).toBe("120 mg/dL")
+    expect(agpTooltipValue(0)).toBe("0 mg/dL") // 0 réel reste 0 (jamais atteint pour un slot vide → null)
+  })
+})
 
 function makeSlots(count: number): AgpSlotPoint[] {
   return Array.from({ length: count }, (_, i) => ({
@@ -75,6 +86,23 @@ describe("AgpPercentileChart", () => {
     expect(table).toBeTruthy()
     // 20 rows + 1 header
     expect(table?.querySelectorAll("tbody tr").length).toBe(20)
+  })
+
+  it("US-2635 — empty-state when POPULATED slots < minSlots even if length is 96", () => {
+    // 96 slots (comme computeAgp) mais seulement 3 renseignés → insuffisant.
+    const slots: AgpSlotPoint[] = Array.from({ length: 96 }, (_, i) => ({
+      timeMinutes: i * 15, p10: 0, p25: 0, p50: 0, p75: 0, p90: 0, count: i < 3 ? 30 : 0,
+    }))
+    render(<AgpPercentileChart slots={slots} minSlots={12} />)
+    expect(screen.getByText(/Données insuffisantes/i)).toBeTruthy()
+  })
+
+  it("US-2635 — a slot with count=0 renders « — » in the sr-only table (no 0 mg/dL)", () => {
+    const slots = makeSlots(20)
+    slots[0] = { ...slots[0], count: 0 } // créneau sans relevé
+    const { container } = render(<AgpPercentileChart slots={slots} />)
+    const firstRow = container.querySelector("table.sr-only tbody tr")
+    expect(firstRow?.textContent).toContain("—")
   })
 
   it("C2 (re-review) — legend swatches have aria-label", () => {

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { PatientContextBar } from "@/components/diabeo/patient/PatientContextBar"
 import { PeriodSelector } from "@/components/diabeo/patient/PeriodSelector"
+import { PatientAgpTab } from "@/components/diabeo/patient/PatientAgpTab"
 import {
   usePeriodAnalytics,
   usePatientRecordContext,
@@ -142,12 +143,6 @@ export interface PatientRecordProps {
    * contrat et les documents sont listés sans lien de téléchargement.
    */
   documentHref?: (docId: number) => string
-  /**
-   * Onglet supplémentaire « Profil glycémique » injecté par l'adaptateur drawer
-   * (contenu câblé via `cTok`). Inséré après « Vue d'ensemble ». En attendant
-   * l'onglet AGP unifié (US-2634).
-   */
-  glycemicProfileSlot?: { label: string; content: ReactNode }
 }
 
 export function PatientRecord({
@@ -155,7 +150,6 @@ export function PatientRecord({
   sharingDisabled = false,
   variant = "page",
   documentHref,
-  glycemicProfileSlot,
 }: PatientRecordProps) {
   const t = useTranslations("patientDetail")
   // Libellés d'unités de paramètres insuline : source unique partagée avec la
@@ -234,9 +228,7 @@ export function PatientRecord({
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-6" aria-label={t("tabsAriaLabel")}>
             <TabsTrigger value="overview">{t("tabOverview")}</TabsTrigger>
-            {glycemicProfileSlot && (
-              <TabsTrigger value="glycemicProfile">{glycemicProfileSlot.label}</TabsTrigger>
-            )}
+            <TabsTrigger value="glycemicProfile">{t("tabGlycemicProfile")}</TabsTrigger>
             <TabsTrigger value="glycemia">{t("tabGlycemia")}</TabsTrigger>
             <TabsTrigger value="treatment">{t("tabTreatment")}</TabsTrigger>
             <TabsTrigger value="documents">{t("tabDocuments")}</TabsTrigger>
@@ -416,12 +408,13 @@ export function PatientRecord({
             </div>
           </TabsContent>
 
-          {/* ── Profil glycémique (injecté par le drawer via cTok — US-2633) ── */}
-          {glycemicProfileSlot && (
-            <TabsContent value="glycemicProfile" className="space-y-6">
-              {glycemicProfileSlot.content}
-            </TabsContent>
-          )}
+          {/* ── Profil glycémique (AGP — US-2635, natif page + drawer) ──────── */}
+          <TabsContent value="glycemicProfile" className="space-y-6">
+            <PatientAgpTab
+              targetLowMgdl={objectives.targetLowMgdl}
+              targetHighMgdl={objectives.targetHighMgdl}
+            />
+          </TabsContent>
 
           {/* ── Glycémie (câblée — Phase 2) ─────────────────── */}
           <TabsContent value="glycemia" className="space-y-6">
