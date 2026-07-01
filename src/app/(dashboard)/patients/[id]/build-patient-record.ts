@@ -18,6 +18,7 @@ import { patientService } from "@/lib/services/patient.service"
 import type { AuditContext } from "@/lib/services/patient.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
+import { cgmStatusService } from "@/lib/services/cgm-status.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { documentService } from "@/lib/services/document.service"
 import { getPatientFlags } from "@/lib/services/doctor-dashboard.service"
@@ -57,8 +58,10 @@ export async function buildPatientRecordData(
   const patient = await patientService.getById(patientId, userId, ctx)
   if (!patient) return null
 
-  // Stats glycémiques — projection serveur (audité READ ANALYTICS).
-  const profile = await analyticsService.glycemicProfile(patientId, OVERVIEW_PERIOD, userId, ctx)
+  // Détection capteur (US-2638) — fail-closed : un patient SANS CGM bascule en
+  // présentation BGM (jamais de TIR-temps/GMI/AGP, trompeurs en capillaire).
+  const hasCgm = await cgmStatusService.patientHasCgm(patientId)
+  const dataSource: "cgm" | "bgm" = hasCgm ? "cgm" : "bgm"
 
   // Drapeaux d'alerte de la barre de contexte (source « Ma journée »). Fail-soft.
   const flags = await getPatientFlags(patientId).catch((e) => {
@@ -68,17 +71,58 @@ export async function buildPatientRecordData(
 
   const now = new Date()
 
-  // Onglet Glycémie : série CGM 24h (audité READ CGM_ENTRY) + signal de fraîcheur
-  // « brut » (fail-soft — ne casse jamais l'assemblage).
-  const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
-  const [cgmEntries, latestRaw] = await Promise.all([
-    glycemiaService.getCgmEntries(patientId, from24h, now, userId, ctx),
-    glycemiaService.getLatestCgmFreshness(patientId, from24h, now, userId, ctx).catch((e) => {
-      console.error("[build-patient-record] getLatestCgmFreshness failed", e instanceof Error ? e.message : e)
-      return null
-    }),
-  ])
-  const glycemiaView = buildGlycemiaView(cgmEntries, now, latestRaw)
+  let stats: PatientRecordData["stats"] = null
+  let bgm: PatientRecordData["bgm"] = null
+  let glycemiaView
+
+  if (dataSource === "cgm") {
+    // Vue CGM : stats agrégées (READ ANALYTICS) + série 24h (READ CGM_ENTRY).
+    const profile = await analyticsService.glycemicProfile(patientId, OVERVIEW_PERIOD, userId, ctx)
+    stats =
+      profile.readingCount > 0
+        ? {
+            avgGlucoseMgdl: profile.metrics.averageGlucoseMgdl,
+            gmi: profile.metrics.gmi,
+            cv: profile.metrics.coefficientOfVariation,
+            tir: {
+              veryLow: profile.tir.severeHypo,
+              low: profile.tir.hypo,
+              inRange: profile.tir.inRange,
+              high: profile.tir.elevated,
+              veryHigh: profile.tir.hyper,
+            },
+            readingCount: profile.readingCount,
+            captureRate: profile.captureRate,
+            insufficientCapture: profile.warning === "insufficientCgmCapture",
+          }
+        : null
+    const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+    const [cgmEntries, latestRaw] = await Promise.all([
+      glycemiaService.getCgmEntries(patientId, from24h, now, userId, ctx),
+      glycemiaService.getLatestCgmFreshness(patientId, from24h, now, userId, ctx).catch((e) => {
+        console.error("[build-patient-record] getLatestCgmFreshness failed", e instanceof Error ? e.message : e)
+        return null
+      }),
+    ])
+    glycemiaView = buildGlycemiaView(cgmEntries, now, latestRaw)
+  } else {
+    // Vue BGM (capillaire) : % en cible + moyenne + fréquence (READ GLYCEMIA_ENTRY)
+    // et HbA1c LABO datée (jamais un GMI/eA1c). `stats` CGM reste `null`
+    // (fail-closed). Aucune lecture CGM (série 24h vide).
+    const [bgmStats, hba1c] = await Promise.all([
+      analyticsService.bgmStats(patientId, OVERVIEW_PERIOD, userId, ctx),
+      glycemiaService.getLastHba1c(patientId, userId, ctx),
+    ])
+    bgm = {
+      avgMgdl: bgmStats.avgMgdl,
+      inRangePercent: bgmStats.inRangePercent,
+      readingsPerDay: bgmStats.readingsPerDay,
+      targetRangeMgdl: bgmStats.targetRangeMgdl,
+      hba1c,
+      points: bgmStats.points,
+    }
+    glycemiaView = buildGlycemiaView([], now, null)
+  }
 
   // Onglet Traitements : réglages insuline réels (audité READ INSULIN_THERAPY).
   const insulinSettings = await insulinTherapyService.getSettings(patientId, userId, ctx)
@@ -112,24 +156,9 @@ export async function buildPatientRecordData(
       hypoMaxPct: CONSENSUS_HYPO_MAX_PCT,
       cvMaxPct: CONSENSUS_CV_MAX_PCT,
     },
-    stats:
-      profile.readingCount > 0
-        ? {
-            avgGlucoseMgdl: profile.metrics.averageGlucoseMgdl,
-            gmi: profile.metrics.gmi,
-            cv: profile.metrics.coefficientOfVariation,
-            tir: {
-              veryLow: profile.tir.severeHypo,
-              low: profile.tir.hypo,
-              inRange: profile.tir.inRange,
-              high: profile.tir.elevated,
-              veryHigh: profile.tir.hyper,
-            },
-            readingCount: profile.readingCount,
-            captureRate: profile.captureRate,
-            insufficientCapture: profile.warning === "insufficientCgmCapture",
-          }
-        : null,
+    stats,
+    dataSource,
+    bgm,
     glycemia: glycemiaView,
     treatment: treatmentView,
     documents,

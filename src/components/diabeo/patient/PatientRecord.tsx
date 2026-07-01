@@ -78,6 +78,29 @@ export type PatientRecordData = {
     /** Capture CGM < 70 % → stats non représentatives (caveat clinique). */
     insufficientCapture: boolean
   } | null
+  /**
+   * Source de données de la fiche (US-2638) — dérivée de la présence d'un
+   * capteur (`patientHasCgm`). En `bgm` (glycémie capillaire), la fiche bascule
+   * de présentation : jamais d'indicateur CGM-only (TIR-temps, GMI, AGP) qui
+   * serait trompeur. Fail-closed.
+   */
+  dataSource: "cgm" | "bgm"
+  /**
+   * Stats capillaires — présent UNIQUEMENT si `dataSource === "bgm"` (sinon
+   * `null`). Substitutions : **% de relevés en cible** (≠ TIR-temps, biais
+   * d'échantillonnage) · **HbA1c labo** datée (≠ GMI/eA1c, jamais calculé en
+   * BGM) · **fréquence** (relevés/jour, ≠ taux de capture) · **nuage de points**
+   * (≠ courbe continue). Seuils pathology-aware (US-2631).
+   */
+  bgm: {
+    avgMgdl: number | null
+    inRangePercent: number | null
+    readingsPerDay: number
+    targetRangeMgdl: { low: number; high: number }
+    hba1c: { value: number; date: string; ageDays: number; stale: boolean } | null
+    /** Nuage modal-day : heure du jour (min) × mg/dL. */
+    points: { timeMinutes: number; mgdl: number }[]
+  } | null
   /** Série CGM 24h (déjà mappée serveur : mg/dL + heure Europe/Paris + fraîcheur). */
   glycemia: GlycemiaView
   /** Réglages insuline (par créneau) + traitements associés. */
