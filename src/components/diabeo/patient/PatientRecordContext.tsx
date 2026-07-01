@@ -122,12 +122,18 @@ export function usePeriodAnalytics<T>(args: {
   seed: T
   endpoint: string
   map: (raw: unknown) => T
+  /**
+   * `false` neutralise le re-fetch (reste sur l'amorce). Sert au fail-closed
+   * US-2638 : ne PAS interroger l'endpoint CGM pour un patient BGM (fetch +
+   * audit `READ ANALYTICS` superflus). Défaut : `true`.
+   */
+  enabled?: boolean
 }): PeriodAnalyticsState<T> {
-  const { seed, endpoint } = args
+  const { seed, endpoint, enabled = true } = args
   const ctx = usePatientRecordContext()
   const period = ctx?.period ?? SEED_PERIOD
   const seedPeriod = ctx?.seedPeriod ?? SEED_PERIOD
-  const atSeed = !ctx || period === seedPeriod
+  const atSeed = !ctx || period === seedPeriod || !enabled
 
   const [state, setState] = useState<PeriodAnalyticsState<T>>({
     value: seed, loading: false, error: false, valuePeriod: seedPeriod,

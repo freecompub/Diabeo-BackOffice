@@ -68,6 +68,15 @@ vi.mock("@/components/diabeo/patient/PatientAgpTab", () => ({
 vi.mock("@/components/diabeo/patient/PatientMealTrendsTab", () => ({
   PatientMealTrendsTab: () => <div data-testid="meal-trends-tab">Meal trends</div>,
 }))
+// Vue/nuage BGM (US-2638 slice B) stubés : ils fetchent (usePeriodAnalytics) /
+// tirent recharts — couverts par leurs propres tests. Ici on vérifie le
+// BRANCHEMENT fail-closed selon dataSource.
+vi.mock("@/components/diabeo/patient/PatientBgmOverview", () => ({
+  PatientBgmOverview: () => <div data-testid="bgm-overview">BGM overview</div>,
+}))
+vi.mock("@/components/diabeo/patient/PatientBgmScatter", () => ({
+  PatientBgmScatter: ({ points }: { points: unknown[] }) => <div data-testid="bgm-scatter">{points.length} pts</div>,
+}))
 
 import { PatientDetailClient, type PatientDetailData } from "@/app/(dashboard)/patients/[id]/PatientDetailClient"
 import { PatientRecord } from "@/components/diabeo/patient/PatientRecord"
@@ -150,6 +159,35 @@ describe("PatientRecord — via adaptateur page PatientDetailClient (Phase 1)", 
     expect(screen.queryByTestId("stat")).toBeNull()
     expect(screen.queryByTestId("tir-donut")).toBeNull()
     expect(screen.getAllByText("Pas de données de glycémie continue (CGM) sur la période.").length).toBeGreaterThan(0)
+  })
+
+  it("BGM patient: fail-closed presentation (no TIR/GMI/donut/AGP), BGM overview + scatter", () => {
+    const bgmData = {
+      ...baseData,
+      dataSource: "bgm" as const,
+      stats: null,
+      bgm: {
+        avgMgdl: 145,
+        inRangePercent: 58,
+        readingsPerDay: 3.2,
+        targetRangeMgdl: { low: 70, high: 180 },
+        hba1c: { value: 7.4, date: "2026-05-01T00:00:00.000Z", ageDays: 60, stale: false },
+        points: [
+          { timeMinutes: 480, mgdl: 120 },
+          { timeMinutes: 720, mgdl: 200 },
+        ],
+      },
+    }
+    render(<PatientDetailClient data={bgmData} />)
+    // Vue d'ensemble BGM montée à la place des KPI CGM ; aucun donut TIR-temps.
+    expect(screen.getByTestId("bgm-overview")).toBeTruthy()
+    expect(screen.queryByTestId("tir-donut")).toBeNull()
+    // AGP fail-closed : message « non disponible en capillaire », pas d'onglet AGP.
+    expect(screen.queryByTestId("agp-tab")).toBeNull()
+    expect(screen.getByText(/profil ambulatoire glycémique \(AGP\)/)).toBeTruthy()
+    // Onglet Glycémie : nuage de points capillaires (2 pts), pas de courbe CGM.
+    expect(screen.getByTestId("bgm-scatter").textContent).toBe("2 pts")
+    expect(screen.queryByTestId("cgm-chart")).toBeNull()
   })
 
   it("renders the CGM chart + last reading (Phase 2) — all tabs now wired (no « coming soon »)", () => {
