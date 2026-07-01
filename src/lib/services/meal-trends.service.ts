@@ -129,11 +129,12 @@ function lastReadingIn(readings: Reading[], min: number, max: number): number | 
   }
   return best?.mgdl ?? null
 }
-/** Relevé le plus proche de `center` dans `[center−tol, center+tol]` (ou `null`). */
-function closestReading(readings: Reading[], center: number, tol: number): number | null {
+/** Relevé le plus proche de `center` dans `[center−tol, center+tol]`, borné à
+ *  `maxT` (fin de la fenêtre d'excursion — ne pas capter un relevé post-snack). */
+function closestReading(readings: Reading[], center: number, tol: number, maxT: number): number | null {
   let best: Reading | null = null
   for (const r of readings) {
-    if (r.t >= center - tol && r.t <= center + tol) {
+    if (r.t >= center - tol && r.t <= center + tol && r.t <= maxT) {
       if (best === null || Math.abs(r.t - center) < Math.abs(best.t - center)) best = r
     }
   }
@@ -303,8 +304,11 @@ function computeAligned(c: MealContext, days: number, source: "cgm" | "bgm"): Al
       // indexé une excursion appartenant au snack suivant (revue #613, M-1).
       const evaluable = windowMin >= MEAL_TREND.EXCURSION_MIN_WINDOW_MIN
       const peak = evaluable ? maxReadingIn(c.readings, t0, winEnd) : null
+      // `winEnd` borne aussi le post PPG 2 h : un relevé après un snack
+      // intercurrent (fenêtre tronquée partielle 90–180 min) n'est pas capté
+      // (cohérent avec le bornage du pic — revue #613, R1).
       const post2h = evaluable
-        ? closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS)
+        ? closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS, winEnd)
         : null
 
       // Repas apparié pour la courbe = pré ET (post OU pic) réels.
@@ -312,8 +316,11 @@ function computeAligned(c: MealContext, days: number, source: "cgm" | "bgm"): Al
         agg.pre.push(pre)
         if (post2h !== null) agg.post.push(post2h)
         if (peak !== null) agg.peak.push(peak)
-        // Relevés alignés t−t0 ∈ [−60, +180] → buckets de 15 min.
+        // Relevés alignés t−t0 ∈ [−60, +180] → buckets de 15 min. Bornés à
+        // `winEnd` : au-delà du prochain apport glucidique, les relevés
+        // appartiennent au repas suivant (R1) — pas de contamination de la queue.
         for (const r of c.readings) {
+          if (r.t > winEnd) continue
           const off = (r.t - t0) / MIN_MS
           if (off < MEAL_TREND.ALIGN_START_MIN || off > MEAL_TREND.ALIGN_END_MIN) continue
           const b = Math.floor(off / MEAL_TREND.BUCKET_SIZE_MIN) * MEAL_TREND.BUCKET_SIZE_MIN
@@ -359,7 +366,7 @@ function computeJournal(c: MealContext): JournalMeal[] {
       // Post PPG 2 h — invalidée si un apport glucidique tombe avant t0+90.
       const winEnd = excursionWindowEnd(t0, c.carbTimes)
       const post = (winEnd - t0) / MIN_MS >= MEAL_TREND.EXCURSION_MIN_WINDOW_MIN
-        ? closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS)
+        ? closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS, winEnd)
         : null
       return {
         mealId: meal.id,

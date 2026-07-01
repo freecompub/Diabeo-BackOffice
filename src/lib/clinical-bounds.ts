@@ -141,9 +141,9 @@ export const MEAL_TREND = {
    *  `t0 + 120` dans `[t0 + 90, t0 + 150]`. */
   POST_2H_CENTER_MIN: 120,
   POST_2H_TOL_MIN: 30,
-  /** GD/grossesse : PPG 1 h additionnelle (`t0 + 60` dans `[t0 + 40, t0 + 80]`). */
-  POST_1H_CENTER_MIN: 60,
-  POST_1H_TOL_MIN: 20,
+  // NB : la PPG 1 h additionnelle grossesse (cible ACOG 1 h < 140) n'est pas
+  // encore calculée — reportée à US-2639 (durcissement grossesse/BGM). Le
+  // plafond post-prandial GD (140) est déjà appliqué à la PPG 2 h.
   /** Plancher d'affichage : < 3 repas appariés → « données insuffisantes ». */
   MIN_PAIRED_MEALS: 3,
   /** Courbe alignée : tranches de 15 min sur `[−60, +180]`, marqueur d'un bucket

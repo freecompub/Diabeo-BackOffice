@@ -120,7 +120,7 @@ export function PatientMealTrendsTab() {
                     </th>
                   ))}
                 </tr>
-                <tr className="border-b border-border text-[11px] text-muted-foreground">
+                <tr className="border-b border-border text-xs text-muted-foreground">
                   {JOURNAL_MOMENTS.map((m) => (
                     <SubHeaders key={m} t={t} moment={m} />
                   ))}

@@ -107,6 +107,27 @@ describe("mealtimePattern.mealTrends", () => {
     expect(noon.insufficient).toBe(true)
   })
 
+  it("bounds post PPG 2h AND aligned buckets by winEnd on partial truncation (90–180 min) — R1", async () => {
+    const meals = [noonMeal(1), noonMeal(2), noonMeal(3)]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    // Snack à t0+100 → fenêtre 100 min (≥ 90 → évaluable) mais tronquée.
+    const snacks = meals.map((m) => ({ eventDate: new Date(m._t0 + 100 * MIN) }))
+    prismaMock.diabetesEvent.findMany.mockResolvedValueOnce(meals as any).mockResolvedValueOnce(snacks as any)
+    // Relevés : pré (−10, 1.0), pic (+60, 1.8), et post-snack (+120, 2.5) APRÈS winEnd.
+    const readings = meals.flatMap((m) => [cgm(m._t0, -10, 1.0), cgm(m._t0, 60, 1.8), cgm(m._t0, 120, 2.5)])
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readings as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const { curve } = await mealtimePattern.mealTrends(42, "14d", 1)
+    const noon = curve.moments.find((m) => m.moment === "noon")!
+    expect(noon.pairedMeals).toBe(3) // pré + pic
+    expect(noon.avgPeakMgdl).toBe(180) // pic dans (t0, t0+100]
+    // Le relevé post-snack (t0+120, 250) est APRÈS winEnd → ni post ni bucket.
+    expect(noon.avgPostMgdl).toBeNull()
+    expect(noon.buckets.map((b) => b.offsetMin)).not.toContain(120)
+  })
+
   it("applies GD-strict post-prandial ceiling for a pregnant patient NOT typed GD (M-3)", async () => {
     const meals = [noonMeal(1), noonMeal(2), noonMeal(3)]
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: true } as any)
