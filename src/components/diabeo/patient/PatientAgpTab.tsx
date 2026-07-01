@@ -89,6 +89,15 @@ export function maskSparseAgpSlots(slots: AgpSlot[], minReadings: number): AgpSl
   )
 }
 
+/**
+ * Onglet « Profil glycémique » (mode CGM) : sélecteurs période + vue, bandeau
+ * stats, et bascule AGP (percentiles) ⇄ Tableau journalier. Lazy, fetch via
+ * `usePeriodResource`. Empty-states de suffisance (< 14 j / capture faible).
+ *
+ * @param props.targetLowMgdl - Borne basse de la cible (pathology-aware) — bande AGP.
+ * @param props.targetHighMgdl - Borne haute de la cible (pathology-aware) — bande AGP.
+ * @returns L'onglet AGP (average) ou le tableau journalier selon la vue.
+ */
 export function PatientAgpTab({
   targetLowMgdl,
   targetHighMgdl,

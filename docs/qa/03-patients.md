@@ -3,12 +3,14 @@
 Écrans : `/patients`, `/patients/[id]`, `/patients/new`.
 Voir [conventions](README.md#3-conventions--légende).
 
-> ⚠️ **Important QA** : les écrans **liste** et **détail** affichent actuellement
-> des **DEMO_DATA** synthétiques (`src/app/(dashboard)/patients/page.tsx`,
-> `.../[id]/page.tsx`). Les routes API réelles existent et sont testables au
-> niveau **contrat** (auth, RBAC, chiffrement, audit), mais l'UI ne les consomme
-> pas encore. → Tester en 2 volets : *affichage (demo)* et *contrat API (réel)*.
-> Le **wizard de création** (`/patients/new`), lui, appelle la **vraie** API.
+> ⚠️ **Important QA** : l'écran **liste** (`/patients`) affiche encore des
+> **DEMO_DATA** synthétiques pour l'affichage (route `GET /api/patients/search`
+> réelle au niveau contrat). Le **wizard de création** (`/patients/new`) appelle
+> la **vraie** API.
+> ✅ **Le détail `/patients/[id]` est désormais RÉEL** : c'est la **fiche patient
+> unifiée** `<PatientRecord>` (epic US-2630, livrée), qui consomme les vraies
+> routes analytics + le DTO serveur. Sa QA détaillée (CGM/BGM, AGP/carnet,
+> tendances de repas, drawer) est dans [`13-fiche-patient.md`](13-fiche-patient.md).
 
 ---
 

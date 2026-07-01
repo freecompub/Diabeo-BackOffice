@@ -18,10 +18,12 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 
 /** Périodes supportées (cf. `analyticsService.parsePeriod` — 7/14/30/90 j). */
 export type RecordPeriod = "7d" | "14d" | "30d" | "90d"
+/** Périodes sélectionnables, dans l'ordre d'affichage du sélecteur. */
 export const RECORD_PERIODS: readonly RecordPeriod[] = ["7d", "14d", "30d", "90d"] as const
 
 /** Vue des onglets analytiques (US-2636) : agrégat (AGP) vs 1 ligne/jour. */
 export type RecordView = "average" | "daily"
+/** Vues sélectionnables, dans l'ordre d'affichage du sélecteur. */
 export const RECORD_VIEWS: readonly RecordView[] = ["average", "daily"] as const
 
 /** Clé i18n du libellé de chaque vue (namespace `patientDetail`). */
@@ -79,6 +81,17 @@ export function usePatientRecordContext(): PatientRecordContextValue | null {
   return useContext(Ctx)
 }
 
+/**
+ * Fournit l'état période/vue + le transport analytique **injecté** à tout le
+ * sous-arbre de la fiche (partagé entre page et drawer).
+ *
+ * @param props.fetchAnalytics - Adaptateur de transport ({@link AnalyticsFetcher})
+ *   fourni par l'appelant : `?patientId` en mode page, en-tête `cTok` en drawer.
+ *   Le composant ne construit ainsi jamais d'URL porteuse d'id (anti-énumération).
+ * @param props.seedPeriod - Période d'amorce (défaut `"14d"`) = celle de la
+ *   projection serveur initiale ; les hooks re-fetchent au-delà.
+ * @param props.children - Sous-arbre de la fiche.
+ */
 export function PatientRecordProvider({
   fetchAnalytics,
   seedPeriod = SEED_PERIOD,
@@ -97,6 +110,7 @@ export function PatientRecordProvider({
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
 
+/** État renvoyé par {@link usePeriodAnalytics} (donnée amorcée + fenêtrée). */
 export interface PeriodAnalyticsState<T> {
   value: T
   loading: boolean
@@ -185,6 +199,7 @@ export function usePeriodAnalytics<T>(args: {
   return state
 }
 
+/** État renvoyé par {@link usePeriodResource} (donnée lazy, sans amorce). */
 export interface PeriodResourceState<T> {
   data: T | null
   loading: boolean

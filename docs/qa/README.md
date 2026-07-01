@@ -46,6 +46,7 @@ Les tests sont joués **soit par un humain** (le tableau + les `Then` suffisent)
 | [`10-devices-documents-events.md`](10-devices-documents-events.md) | `/devices`, `/devices/pair`, `/documents`, `/events/new` |
 | [`11-clinical.md`](11-clinical.md) | `/insulin-therapy`, `/adjustment-proposals`, `/medications`, `/import` |
 | [`12-communication.md`](12-communication.md) | `/messages`, `/patient/appointments`, `/users` (legacy) |
+| [`13-fiche-patient.md`](13-fiche-patient.md) | Fiche patient unifiée `<PatientRecord>` (page `/patients/[id]` + drawer) — CGM/BGM, AGP/carnet, tendances de repas |
 
 ## 2bis. Anomalies relevées (à trier par l'équipe)
 

@@ -34,6 +34,14 @@ interface MealTrendsData {
   journal: JournalMeal[]
 }
 
+/**
+ * Onglet « Tendances de repas », lazy et piloté par la période.
+ *
+ * @param props.dataSource - `"cgm"` (défaut) : 4 mini-courbes alignées + journal.
+ *   `"bgm"` : fetch `source=bgm` + **carnet avant/après** (journal seul, pas de
+ *   courbe interpolée) + bannière capillaire.
+ * @returns L'onglet Tendances de repas (états loading/error/empty inclus).
+ */
 export function PatientMealTrendsTab({ dataSource = "cgm" }: { dataSource?: "cgm" | "bgm" }) {
   const t = useTranslations("patientDetail")
   const locale = useLocale()

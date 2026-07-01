@@ -8,7 +8,9 @@
  * (heures MURALES locales, colonne `Time` sans fuseau).
  */
 
+/** Un des quatre moments de la journée. */
 export type DayMoment = "morning" | "noon" | "evening" | "night"
+/** Les quatre moments, dans l'ordre d'affichage (Matin → Nuit). */
 export const DAY_MOMENTS: readonly DayMoment[] = ["morning", "noon", "evening", "night"] as const
 
 /** Défauts si le patient n'a pas de `UserDayMoment` : Nuit 22–04 / Matin 04–10 /

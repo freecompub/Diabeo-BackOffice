@@ -1,6 +1,6 @@
 # Roadmap Diabeo Backoffice — User Stories intégrées
 
-> **Mise à jour 2026-06-30 — EPIC US-2630 Fiche patient unifiée (cadrage design-stage)** : maquette `docs/mockups/fiche-patient-fusion-v1.html` (branche `design/fiche-patient-fusion`) fusionnant la page dossier `/patients/[id]` et le drawer de consultation (US-2018b) en un composant unique, + AGP percentiles, sélecteurs période/vue, **Tendances de repas** (mini-courbes alignées + journal repas avant/après/glucides/bolus), adaptation **CGM ⇄ BGM**. Cadrée par **4 revues expertes** (architecture/découpage, domaine médical, sécurité HDS, données/backend) → **epic + 11 US (US-2631→2641)** avec garde-fous cliniques (pathology-aware GD, suffisance AGP, mealtime, GMI≠HbA1c) et HDS (lazy-load, anti-énumération drawer, audit par agrégat, texte libre repas) en AC. **Aucune migration Prisma**. Voir section **« Série Fiche patient unifiée »**. *Non comptée dans les stats globales (design-stage).*
+> **Mise à jour 2026-07-01 — ✅ EPIC US-2630 Fiche patient unifiée LIVRÉE (11/11)** : composant unique `<PatientRecord variant="page"|"drawer">` fusionnant la page dossier `/patients/[id]` et le drawer de consultation (US-2018b), + AGP percentiles, sélecteurs période/vue, **Tendances de repas** (mini-courbes alignées + journal repas avant/après/glucides/bolus), adaptation **CGM ⇄ BGM** (carnet BGM par moment, carnet repas capillaire), toggle drawer⇄page. **11 US mergées (PR #608→#619)**, chacune passée par une revue multi-agents (code + medical + HDS + a11y) et une **gate finale PASS** (medical/HDS/a11y). Garde-fous cliniques (pathology-aware GD + grossesse, suffisance AGP, mealtime, GMI≠HbA1c) et HDS (lazy-load, anti-énumération drawer, audit par agrégat, texte libre repas jamais lu) tenus. **Aucune migration Prisma**. Voir `docs/architecture/fiche-patient-unifiee.md` + section **« Série Fiche patient unifiée »**.
 
 > **Mise à jour 2026-06-29 — US-2625 Home médecin (maquette Home v3 + TIR par patient)** : refonte triage-first de `/medecin` alignée sur `docs/mockups/home-roles-v3.html` (Alertes pleine largeur en tête → grille 2×2 → Patients à suivre + KPI conservés) ; 3 primitives partagées (DashboardCardHeader/Row/Pill) ; **TIR par patient** sur les alertes — pathology-aware (GD 0,63–1,40 vs adulte 0,70–1,80 via `getCgmDefaults`), plancher de suffisance (`cgmCaptureRate ≥ 30 %` → `null`), bi-palier <50 % « TIR bas » / 50–70 % « sous-cible » (paliers centralisés `clinical-bounds.DASHBOARD_TIR`) ; sous-titre triage (`triageSummaryQuery` count-only, 1 audit + contexte réseau) ; contraste WCAG AA (tokens `-fg`). Revue multi-agents (code-reviewer + healthcare-security-auditor + medical-domain-validator + accessibility-tester) = **GO**. tsc/eslint/build verts, suite unitaire verte. **Suivi** : US-2626 (BUG RDV `@db.Time`, V1), US-2627 + US-2628 (TECH-DEBT TIR, V2). Affine US-2602. *Non comptée dans les stats globales (série Navigation, design-stage).*
 
@@ -692,29 +692,31 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 ---
 
-## Série Fiche patient unifiée (cadrage — design-stage)
+## Série Fiche patient unifiée (✅ LIVRÉE — 2026-07-01)
 
 > Source : branche `design/fiche-patient-fusion` · maquette `docs/mockups/fiche-patient-fusion-v1.html` · US dans `docs/UserStory/fiche-patient-fusion/`.
-> Cadrée par 4 revues expertes (architecture/découpage, domaine médical, sécurité HDS, données/backend). **Non comptée dans le tableau de stats global** (design-stage). Aucune migration Prisma requise (réutilise `analytics`/`food-monitoring`/`DiabetesEvent`).
+> Cadrée par 4 revues expertes (architecture/découpage, domaine médical, sécurité HDS, données/backend). **✅ Livrée 11/11 US** (PR #608→#619, 2026-07-01). Aucune migration Prisma (réutilise `analytics`/`food-monitoring`/`DiabetesEvent`). Doc : `docs/architecture/fiche-patient-unifiee.md` · QA : `docs/qa/13-fiche-patient.md`.
 > **Epic US-2630** — fusionner la page dossier `/patients/[id]` et le drawer de consultation (US-2018b) en un composant présentational unique (rendu page **ET** drawer, sans unifier le modèle d'accès), et enrichir : onglets unifiés, sélecteurs **période** (1s/2s/1m/3m) + **vue** (Moyenne/Tableau journalier), **AGP** percentiles, **Tendances de repas** (mini-courbes alignées + journal repas avant/après/glucides/bolus), adaptation **CGM ⇄ BGM**.
 > 🔴 Garde-fous bloquants intégrés en AC : **pathology-aware** (cible GD 63–140 sinon faux rassurement), **suffisance AGP** (≥14j/70 %, min relevés/slot), définition **mealtime** (borne au repas suivant), **GMI ≠ « HbA1c estimée »**, suggestions non prescriptives (`AdjustmentProposal`) ; HDS : **lazy-load par onglet**, drawer sans id en URL (`cTok`), audit par agrégat sans PHI, texte libre repas chiffré/masqué.
 
-| US | Titre | Type | Dépend de | Taille |
-|----|-------|------|-----------|--------|
-| US-2630 | **EPIC** — Fiche patient unifiée (page + drawer) + analytics enrichies | — | — | — |
-| US-2631 | Socle données : suffisance + cibles pathology-aware + helpers backend *(prérequis)* | back | — | M |
-| US-2632 | Composant présentational `<PatientRecord>` + contrat de données | front | — | M |
-| US-2633 | `PatientContextBar` page/drawer + adaptateur drawer | front/sécu | 2632 | L |
-| US-2634 | Sélecteur de période (1s/2s/1m/3m) synchronisé + `PatientRecordContext` | front/back | 2632 | M |
-| US-2635 | Onglet AGP (percentiles) + bandeau stats glucométriques | front/back | 2631, 2634 | M |
-| US-2636 | Vue Tableau journalier (1 ligne/jour) + service `dailyStats` | front/back | 2631, 2634 | M |
-| US-2637 | Onglet Tendances de repas (mini-courbes alignées + journal repas) | front/back | 2631, 2636 | L |
-| US-2638 | Détection CGM/BGM + adaptation Vue d'ensemble & Glycémie | front/back | 2631 | L |
-| US-2639 | BGM : AGP→Carnet + carnet repas + HbA1c labo | front/back | 2635, 2637, 2638 | M |
-| US-2640 | Toggle page ⇄ drawer + nav + décommission anciens onglets drawer | front | 2633, 2635, 2637, 2638 | M |
-| US-2641 | Durcissement transverse : tokens, i18n/glossaire, a11y, audit/perf, lazy-load | transverse | 2635→2639 | M |
+| US | Titre | Type | Dépend de | Taille | Statut |
+|----|-------|------|-----------|--------|--------|
+| US-2630 | **EPIC** — Fiche patient unifiée (page + drawer) + analytics enrichies | — | — | — | ✅ **DONE** (#608→#619) |
+| US-2631 | Socle données : suffisance + cibles pathology-aware + helpers backend *(prérequis)* | back | — | M | ✅ DONE |
+| US-2632 | Composant présentational `<PatientRecord>` + contrat de données | front | — | M | ✅ DONE |
+| US-2633 | `PatientContextBar` page/drawer + adaptateur drawer | front/sécu | 2632 | L | ✅ DONE (#608, #609) |
+| US-2634 | Sélecteur de période (1s/2s/1m/3m) synchronisé + `PatientRecordContext` | front/back | 2632 | M | ✅ DONE (#610) |
+| US-2635 | Onglet AGP (percentiles) + bandeau stats glucométriques | front/back | 2631, 2634 | M | ✅ DONE (#611) |
+| US-2636 | Vue Tableau journalier (1 ligne/jour) + service `dailyStats` | front/back | 2631, 2634 | M | ✅ DONE (#612) |
+| US-2637 | Onglet Tendances de repas (mini-courbes alignées + journal repas) | front/back | 2631, 2636 | L | ✅ DONE (#613) |
+| US-2638 | Détection CGM/BGM + adaptation Vue d'ensemble & Glycémie | front/back | 2631 | L | ✅ DONE (#614, #615) |
+| US-2639 | BGM : AGP→Carnet + carnet repas + HbA1c labo | front/back | 2635, 2637, 2638 | M | ✅ DONE (#616, #617) |
+| US-2640 | Toggle page ⇄ drawer + nav + décommission anciens onglets drawer | front | 2633, 2635, 2637, 2638 | M | ✅ DONE (#618) |
+| US-2641 | Durcissement transverse : tokens, i18n/glossaire, a11y, audit/perf, lazy-load | transverse | 2635→2639 | M | ✅ DONE (#619) |
 
-> Chemin critique : `2631 → 2632 → 2633` (fin de la divergence) → `2634 → 2635 → 2636` → `2637` → `2638 → 2639` (BGM, le plus risqué) → `2640 → 2641`.
+> Chemin critique (respecté) : `2631 → 2632 → 2633` (fin de la divergence) → `2634 → 2635 → 2636` → `2637` → `2638 → 2639` (BGM, le plus risqué) → `2640 → 2641`.
+>
+> **Suivi (tickets différés, non bloquants)** : PPG 1 h grossesse · sur-fetch `/agp` en vue daily · granularité audit `GLYCEMIA_ENTRY`/`CGM_ENTRY` · `showZoneLabel` autres usages de `GlycemiaValue` · contrastes design-system (gate axe-core CI).
 
 ---
 

@@ -17,6 +17,7 @@ import {
 } from "recharts"
 import { tokens } from "@/design-system/tokens"
 
+/** Point du nuage capillaire : heure du jour (minutes locales) × glycémie (mg/dL). */
 export interface BgmScatterPoint {
   timeMinutes: number
   mgdl: number
@@ -24,6 +25,17 @@ export interface BgmScatterPoint {
 
 const fmtHour = (m: number) => `${Math.floor(m / 60)}h`
 
+/**
+ * Nuage de points capillaires (modal-day) — remplace la courbe continue CGM en
+ * mode BGM. Aucune interpolation (relevés discrets positionnés par heure locale).
+ *
+ * @param props.points - Relevés `{timeMinutes, mgdl}` sur la période. Vide →
+ *   empty-state « aucun relevé ».
+ * @param props.targetLowMgdl - Borne basse de la cible (pathology-aware) — bande cible.
+ * @param props.targetHighMgdl - Borne haute de la cible (pathology-aware) — bande cible
+ *   ET dénominateur du décompte « en cible » du résumé sr-only.
+ * @returns Un `role="figure"` (scatter recharts) + un résumé textuel sr-only.
+ */
 export function PatientBgmScatter({
   points,
   targetLowMgdl,
