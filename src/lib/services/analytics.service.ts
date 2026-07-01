@@ -100,14 +100,18 @@ async function getPatientThresholds(patientId: number): Promise<CgmThresholds> {
   const cgm = await prisma.cgmObjective.findUnique({ where: { patientId } })
   if (!cgm) {
     // Pas d'objectif CGM configuré → défauts **pathology-aware** : la grossesse
-    // (GD) impose une cible plus stricte (63–140 mg/dL, Battelino 2019) que les
-    // 70–180 génériques. Sans ça, le TIR d'une patiente GD serait évalué sur une
-    // plage trop large (faux rassurement). Cf. `getCgmDefaults`.
+    // impose une cible plus stricte (63–140 mg/dL, ACOG/Battelino 2019) que les
+    // 70–180 génériques. Sans ça, le TIR/carnet serait évalué sur une plage trop
+    // large (faux rassurement). US-2641 : le durcissement grossesse s'applique
+    // aussi à une patiente `pregnancyMode` NON typée GD — cohérent avec
+    // `meal-trends` (#613 M-3), unifié ici pour tous les agrégats. Cf.
+    // `getCgmDefaults`.
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, deletedAt: null },
-      select: { pathology: true },
+      select: { pathology: true, pregnancyMode: true },
     })
-    const d = getCgmDefaults(patient?.pathology ?? undefined)
+    const isPregnancy = patient?.pregnancyMode === true || patient?.pathology === "GD"
+    const d = getCgmDefaults(isPregnancy ? "GD" : (patient?.pathology ?? undefined))
     return { veryLow: d.veryLow, low: d.low, ok: d.ok, high: d.high }
   }
   return {
@@ -399,9 +403,14 @@ export const analyticsService = {
 
     return {
       period: { days },
+      // Bande cible {low, high} + zones sévères {veryLow, veryHigh} — toutes
+      // pathology-aware (US-2641 : coloration GD complète du carnet, `high` de
+      // CgmThresholds = seuil d'hyper, `ok` = plafond de cible).
       targetRangeMgdl: {
+        veryLow: Math.round(glToMgdl(thresholds.veryLow)),
         low: Math.round(glToMgdl(thresholds.low)),
         high: Math.round(glToMgdl(thresholds.ok)),
+        veryHigh: Math.round(glToMgdl(thresholds.high)),
       },
       moments,
     }

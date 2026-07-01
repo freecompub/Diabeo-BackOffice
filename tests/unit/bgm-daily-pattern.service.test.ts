@@ -47,10 +47,23 @@ describe("analyticsService.bgmDailyPatternByMoment (US-2639)", () => {
     expect(night.insufficient).toBe(true)
   })
 
-  it("exposes pathology-aware target range (GD 63–140)", async () => {
+  it("exposes pathology-aware thresholds incl. severe zones (GD 63–140)", async () => {
     setup([bgm(8, 1.0), bgm(8, 1.1), bgm(8, 1.2)], "GD")
     const res = await analyticsService.bgmDailyPatternByMoment(42, "14d", 1)
-    expect(res.targetRangeMgdl).toEqual({ low: 63, high: 140 })
+    expect(res.targetRangeMgdl).toMatchObject({ low: 63, high: 140 })
+    // Zones sévères pathology-aware pour la couleur (US-2641 B).
+    expect(res.targetRangeMgdl.veryLow).toBeLessThan(63)
+    expect(res.targetRangeMgdl.veryHigh).toBeGreaterThan(140)
+  })
+
+  it("applies GD-strict target for a pregnant patient NOT typed GD (US-2641 A)", async () => {
+    prismaMock.cgmObjective.findUnique.mockResolvedValue(null as any)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: true } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([bgm(8, 1.0), bgm(8, 1.1), bgm(8, 1.2)] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    const res = await analyticsService.bgmDailyPatternByMoment(42, "14d", 1)
+    expect(res.targetRangeMgdl).toMatchObject({ low: 63, high: 140 }) // cibles GD malgré DT1
   })
 
   it("audits READ GLYCEMIA_ENTRY without any clinical value in metadata (AC-5)", async () => {
