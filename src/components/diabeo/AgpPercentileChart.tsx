@@ -77,6 +77,15 @@ function formatHour(minutes: number): string {
 /** M7/L3 — narrow keys + module-scope (allocated once, not per render). */
 const USER_VISIBLE_KEYS = new Set(["p10", "p25", "p50", "p75", "p90"])
 
+/**
+ * Valeur d'infobulle AGP. Sécurité clinique (US-2635) : un créneau sans relevé
+ * porte `null` → « — », jamais « 0 mg/dL » (`Number(null) === 0` serait fini).
+ * Défense en profondeur indépendante du `filterNull` par défaut de Recharts.
+ */
+export function agpTooltipValue(value: unknown): string {
+  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)} mg/dL` : "—"
+}
+
 export function AgpPercentileChart({
   slots,
   targetLowMgdl = G.TARGET_LOW,
@@ -137,12 +146,11 @@ export function AgpPercentileChart({
     return (
       <div
         role="status"
-        className="flex flex-col items-center justify-center text-center
-                   border border-dashed border-gray-300 rounded-lg
-                   p-6 text-sm text-gray-600"
+        className="flex flex-col items-center justify-center rounded-lg border
+                   border-dashed border-border p-6 text-center text-sm text-muted-foreground"
         style={{ height }}
       >
-        <p className="font-medium text-gray-700 mb-1">
+        <p className="mb-1 font-medium text-foreground">
           {t("emptyTitle")}
         </p>
         <p>{t("emptyDescription")}</p>
@@ -208,19 +216,15 @@ export function AgpPercentileChart({
             formatter={(value, name) => {
               const key = String(name)
               if (!USER_VISIBLE_KEYS.has(key)) return null as never
-              const n = typeof value === "number" ? value : Number(value)
               const label = percentileLabels[key as keyof typeof percentileLabels] ?? key
-              return [
-                Number.isFinite(n) ? `${Math.round(n)} mg/dL` : "—",
-                label,
-              ]
+              return [agpTooltipValue(value), label]
             }}
             labelFormatter={(m) => formatHour(m as number)}
             contentStyle={{ fontSize: 12 }}
           />
         </ComposedChart>
       </ResponsiveContainer>
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-gray-600">
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="flex items-center gap-1">
           <span
             className="w-3 h-1 inline-block"

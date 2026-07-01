@@ -21,8 +21,19 @@ vi.mock("next-intl", async () =>
 import { render, screen } from "@testing-library/react"
 import {
   AgpPercentileChart,
+  agpTooltipValue,
   type AgpSlotPoint,
 } from "@/components/diabeo/AgpPercentileChart"
+
+describe("agpTooltipValue (US-2635 — pas de « 0 mg/dL » sur créneau vide)", () => {
+  it("returns « — » for null/undefined/non-finite (empty slot), mg/dL otherwise", () => {
+    expect(agpTooltipValue(null)).toBe("—")
+    expect(agpTooltipValue(undefined)).toBe("—")
+    expect(agpTooltipValue(Number.NaN)).toBe("—")
+    expect(agpTooltipValue(120.4)).toBe("120 mg/dL")
+    expect(agpTooltipValue(0)).toBe("0 mg/dL") // 0 réel reste 0 (jamais atteint pour un slot vide → null)
+  })
+})
 
 function makeSlots(count: number): AgpSlotPoint[] {
   return Array.from({ length: count }, (_, i) => ({
