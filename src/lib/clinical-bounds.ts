@@ -118,3 +118,38 @@ export const AGP_SUFFICIENCY = {
  * (mode BGM, où GMI/eA1c CGM sont invalides).
  */
 export const HBA1C_STALE_DAYS = 180
+
+/**
+ * US-2637 — Tendances de repas (définitions cliniques validées par
+ * `medical-domain-validator`). Durées en minutes, relatives à l'heure du repas
+ * `t0`.
+ *
+ * ⚠️ Les **plafonds absolus** post-prandiaux ne sont PAS ici : ils dérivent de
+ * `getCgmDefaults(pathology)` (pathology-aware, GD 63–140 vs 70–180) — source
+ * unique. La **plage de relevés valides** = `CGM_AGGREGATE_RANGE_GL` (0.20–6.00),
+ * PAS le plancher d'affichage (sinon une hypo post-prandiale sévère serait
+ * invisible dans l'excursion).
+ */
+export const MEAL_TREND = {
+  /** Pré-repas = dernier relevé dans `[t0 − 30 min, t0]`. */
+  PRE_WINDOW_MIN: 30,
+  /** Fenêtre d'excursion plafonnée à 3 h (bornée au prochain apport glucidique). */
+  EXCURSION_MAX_MIN: 180,
+  /** Sous cette durée de fenêtre → pic « non évaluable » (jamais un pic tronqué). */
+  EXCURSION_MIN_WINDOW_MIN: 90,
+  /** « Après » = glycémie post-prandiale (PPG) 2 h : relevé le plus proche de
+   *  `t0 + 120` dans `[t0 + 90, t0 + 150]`. */
+  POST_2H_CENTER_MIN: 120,
+  POST_2H_TOL_MIN: 30,
+  // NB : la PPG 1 h additionnelle grossesse (cible ACOG 1 h < 140) n'est pas
+  // encore calculée — reportée à US-2639 (durcissement grossesse/BGM). Le
+  // plafond post-prandial GD (140) est déjà appliqué à la PPG 2 h.
+  /** Plancher d'affichage : < 3 repas appariés → « données insuffisantes ». */
+  MIN_PAIRED_MEALS: 3,
+  /** Courbe alignée : tranches de 15 min sur `[−60, +180]`, marqueur d'un bucket
+   *  seulement si ≥ 3 relevés y contribuent (sinon trou, pas d'interpolation). */
+  BUCKET_SIZE_MIN: 15,
+  BUCKET_MIN_READINGS: 3,
+  ALIGN_START_MIN: -60,
+  ALIGN_END_MIN: 180,
+} as const
