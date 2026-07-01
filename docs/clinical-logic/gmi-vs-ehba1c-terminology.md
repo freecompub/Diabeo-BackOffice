@@ -32,10 +32,12 @@ sur une valeur GMI a été relabellée **« Indicateur de gestion du glucose (GM
 ## Décision transverse à arbitrer (hors PR #534)
 
 Les autres surfaces patient (`HbA1cWidget`, `DataSummaryGrid`, namespace i18n
-`education.hba1c`, `GlycemicProfileTab` qui mappe explicitement `gmi → hba1c` avec le
-commentaire « GMI = équivalent moderne de l'HbA1c estimée ») utilisent encore le cadrage
-« HbA1c estimée (eHbA1c) » — avec le disclaimer « valeur estimée, pas un résultat de
-laboratoire ». **Unifier toute l'app sur la terminologie GMI** (recommandation ADA) est
+`education.hba1c`) utilisent encore le cadrage « HbA1c estimée (eHbA1c) » — avec le
+disclaimer « valeur estimée, pas un résultat de laboratoire ».
+*(L'ancien onglet de consultation `GlycemicProfileTab` a été supprimé en US-2635 :
+l'onglet AGP unifié (`PatientAgpTab`) libelle désormais « Indicateur de gestion du
+glucose (GMI) », jamais « HbA1c estimée » — cf. AC-1.)*
+**Unifier toute l'app sur la terminologie GMI** (recommandation ADA) est
 une **décision produit + clinique** à valider avant exécution :
 
 1. Soit **tout migrer vers « GMI »** (cohérent avec ADA et la vue pro).

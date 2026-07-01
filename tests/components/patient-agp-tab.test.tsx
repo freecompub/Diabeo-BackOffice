@@ -43,6 +43,7 @@ const slot = (count: number, base = 1.2): AgpSlot => ({
 
 const PROFILE = {
   captureRate: 92,
+  readingCount: 1200,
   metrics: { averageGlucoseMgdl: 158, gmi: 7.1, coefficientOfVariation: 34.2, stdDevMgdl: 52 },
 }
 
@@ -105,8 +106,42 @@ describe("PatientAgpTab (US-2635)", () => {
   })
 
   it("surfaces the low-capture warning when capture < 70 %", async () => {
-    renderTab({ profile: { captureRate: 40, warning: "insufficientCgmCapture", metrics: PROFILE.metrics } })
+    renderTab({ profile: { captureRate: 40, readingCount: 100, warning: "insufficientCgmCapture", metrics: PROFILE.metrics } })
     await screen.findByTestId("agp-chart")
     await waitFor(() => expect(screen.getByText(/\(CGM\) insuffisante/)).toBeTruthy())
+  })
+
+  it("hides the stats banner when there is no CGM data (readingCount = 0) — no « 0 mg/dL »", async () => {
+    renderTab({ profile: { captureRate: 0, readingCount: 0, metrics: { averageGlucoseMgdl: 0, gmi: 0, coefficientOfVariation: 0, stdDevMgdl: 0 } } })
+    await screen.findByTestId("agp-chart")
+    await waitFor(() =>
+      expect(screen.queryByText("Indicateur de gestion du glucose (GMI)")).toBeNull(),
+    )
+  })
+
+  it("surfaces a re-fetch error banner when the stats endpoint fails (data already shown)", async () => {
+    const fetcher: AnalyticsFetcher = (endpoint) =>
+      endpoint.includes("/agp")
+        ? Promise.resolve(okJson([slot(30)]))
+        : Promise.reject(new Error("boom")) // glycemic-profile KO
+    render(
+      <PatientRecordProvider fetchAnalytics={fetcher} seedPeriod="14d">
+        <PatientAgpTab targetLowMgdl={70} targetHighMgdl={180} />
+      </PatientRecordProvider>,
+    )
+    // Le chart (agp) s'affiche, mais l'échec des stats est signalé (jamais muet).
+    await screen.findByTestId("agp-chart")
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy())
+  })
+
+  it("shows the AGP error state when the AGP endpoint fails on first load", async () => {
+    const fetcher: AnalyticsFetcher = () => Promise.reject(new Error("down"))
+    render(
+      <PatientRecordProvider fetchAnalytics={fetcher} seedPeriod="14d">
+        <PatientAgpTab targetLowMgdl={70} targetHighMgdl={180} />
+      </PatientRecordProvider>,
+    )
+    await waitFor(() => expect(screen.getByText(/Impossible de charger le profil/)).toBeTruthy())
+    expect(screen.queryByTestId("agp-chart")).toBeNull()
   })
 })

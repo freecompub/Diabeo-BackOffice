@@ -77,6 +77,23 @@ describe("AgpPercentileChart", () => {
     expect(table?.querySelectorAll("tbody tr").length).toBe(20)
   })
 
+  it("US-2635 — empty-state when POPULATED slots < minSlots even if length is 96", () => {
+    // 96 slots (comme computeAgp) mais seulement 3 renseignés → insuffisant.
+    const slots: AgpSlotPoint[] = Array.from({ length: 96 }, (_, i) => ({
+      timeMinutes: i * 15, p10: 0, p25: 0, p50: 0, p75: 0, p90: 0, count: i < 3 ? 30 : 0,
+    }))
+    render(<AgpPercentileChart slots={slots} minSlots={12} />)
+    expect(screen.getByText(/Données insuffisantes/i)).toBeTruthy()
+  })
+
+  it("US-2635 — a slot with count=0 renders « — » in the sr-only table (no 0 mg/dL)", () => {
+    const slots = makeSlots(20)
+    slots[0] = { ...slots[0], count: 0 } // créneau sans relevé
+    const { container } = render(<AgpPercentileChart slots={slots} />)
+    const firstRow = container.querySelector("table.sr-only tbody tr")
+    expect(firstRow?.textContent).toContain("—")
+  })
+
   it("C2 (re-review) — legend swatches have aria-label", () => {
     const { container } = render(<AgpPercentileChart slots={makeSlots(20)} />)
     const labelled = container.querySelectorAll('[role="img"][aria-label]')

@@ -103,26 +103,37 @@ export function AgpPercentileChart({
   // mg/dL pairs and rely on layered Areas for the visual bands.
   // M4 (re-review) — Math.max(0, …) clamp guards against inverted percentiles
   // from upstream stats bugs ; a negative slice would visually "eat" the floor.
-  const data = useMemo(() => slots.map((s) => ({
-    minute: s.timeMinutes,
-    hour: formatHour(s.timeMinutes),
-    p10: glToMgdl(s.p10),
-    p25: glToMgdl(s.p25),
-    p50: glToMgdl(s.p50),
-    p75: glToMgdl(s.p75),
-    p90: glToMgdl(s.p90),
-    bandLow: Math.max(0, glToMgdl(s.p25 - s.p10)),
-    bandMid: Math.max(0, glToMgdl(s.p75 - s.p25)),
-    bandHigh: Math.max(0, glToMgdl(s.p90 - s.p75)),
-    floor: glToMgdl(s.p10),
-  })), [slots])
+  // Sécurité clinique (US-2635) : un créneau SANS relevé (`count === 0`) ne doit
+  // PAS contribuer un point à 0 mg/dL (`percentile([]) → 0`) — sinon la médiane
+  // plonge à 0 (fausse hypoglycémie visuelle). On le rend `null` → Recharts
+  // rompt la ligne/bande (gap) au lieu de la tirer à zéro.
+  const data = useMemo(() => slots.map((s) => {
+    const empty = s.count === 0
+    return {
+      minute: s.timeMinutes,
+      hour: formatHour(s.timeMinutes),
+      p10: empty ? null : glToMgdl(s.p10),
+      p25: empty ? null : glToMgdl(s.p25),
+      p50: empty ? null : glToMgdl(s.p50),
+      p75: empty ? null : glToMgdl(s.p75),
+      p90: empty ? null : glToMgdl(s.p90),
+      bandLow: empty ? null : Math.max(0, glToMgdl(s.p25 - s.p10)),
+      bandMid: empty ? null : Math.max(0, glToMgdl(s.p75 - s.p25)),
+      bandHigh: empty ? null : Math.max(0, glToMgdl(s.p90 - s.p75)),
+      floor: empty ? null : glToMgdl(s.p10),
+    }
+  }), [slots])
 
   /** Recharts uses internal dataKeys (`bandLow/bandMid/bandHigh/floor`) for
    *  the stacked-area trick. Filter them out of the tooltip + show only the
    *  user-meaningful percentiles. (M5 re-review.) */
 
   // Empty-state check runs AFTER hooks (Rules of Hooks compliance).
-  if (slots.length < minSlots) {
+  // US-2635 : basé sur les slots RÉELLEMENT renseignés (`count > 0`), pas sur
+  // `slots.length` (toujours 96) — sinon un patient sans CGM verrait un graphe
+  // plat à 0 au lieu de l'état vide.
+  const populatedCount = slots.reduce((n, s) => (s.count > 0 ? n + 1 : n), 0)
+  if (populatedCount < minSlots) {
     return (
       <div
         role="status"
@@ -154,10 +165,13 @@ export function AgpPercentileChart({
             tick={{ fontSize: 11 }}
           />
           <YAxis
-            // Seuils dérivés de la source unique ; 300 (headroom) et 140 (tick
-            // médian) sont purement graphiques, donc gardés littéraux.
+            // Graduations **pathology-aware** (US-2635) : les bornes cibles
+            // patient (GD 63–140 vs 70–180) marquent l'axe, pas des constantes
+            // ADA. 300 (headroom) reste purement graphique.
             domain={[G.CRITICAL_LOW, 300]}
-            ticks={[G.CRITICAL_LOW, G.TARGET_LOW, 140, G.TARGET_HIGH, G.SEVERE_HYPER]}
+            ticks={Array.from(
+              new Set([G.CRITICAL_LOW, targetLowMgdl, targetHighMgdl, G.SEVERE_HYPER]),
+            ).sort((a, b) => a - b)}
             stroke={tokens.neutral[500]}
             tick={{ fontSize: 11 }}
             label={{
@@ -262,16 +276,21 @@ export function AgpPercentileChart({
           </tr>
         </thead>
         <tbody>
-          {data.map((row) => (
-            <tr key={row.minute}>
-              <th scope="row">{row.hour}</th>
-              <td>{t("valueMgdl", { value: Math.round(row.p10) })}</td>
-              <td>{t("valueMgdl", { value: Math.round(row.p25) })}</td>
-              <td>{t("valueMgdl", { value: Math.round(row.p50) })}</td>
-              <td>{t("valueMgdl", { value: Math.round(row.p75) })}</td>
-              <td>{t("valueMgdl", { value: Math.round(row.p90) })}</td>
-            </tr>
-          ))}
+          {data.map((row) => {
+            // Créneau sans relevé (percentiles null) → « — » (pas de 0 trompeur).
+            const cell = (v: number | null) =>
+              v === null ? "—" : t("valueMgdl", { value: Math.round(v) })
+            return (
+              <tr key={row.minute}>
+                <th scope="row">{row.hour}</th>
+                <td>{cell(row.p10)}</td>
+                <td>{cell(row.p25)}</td>
+                <td>{cell(row.p50)}</td>
+                <td>{cell(row.p75)}</td>
+                <td>{cell(row.p90)}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
