@@ -614,6 +614,7 @@ au prochain `--update` tant que les fichiers source n'ont pas bougé.
 | 18 | `auditLog.resourceId` plat + `metadata.patientId` pivot (US-2268) | Forensics CNIL/ANS impossible avec composite. GIN index partiel garantit < 100ms à 10M logs. Helper `getByPatient` retrouve tous les events patient-scoped. |
 | 19 | Prisma 7 driver adapter `@prisma/adapter-pg` | Prisma 7 a supprimé l'engine "library" — `new PrismaClient()` exige désormais un driver adapter ou `accelerateUrl`. `node-postgres` (pg) élimine le binaire Rust, améliore cold-start serverless. Voir `src/lib/db/client.ts` et `prisma/seed.ts`. |
 | 20 | Early-fail env validation au boot (`src/lib/env.ts` + `instrumentation.ts`) | Sans ça, un secret manquant produit un 503 mystérieux au login. `assertRequiredEnv()` (serveur) + `assertSeedEnv()` (seed) crashent avec un message clair pointant vers `docs/local-development.md` §3. |
+| 21 | Fiche patient unifiée `<PatientRecord>` — 1 composant présentational, 2 transports (page `?patientId` / drawer `cTok`) (epic US-2630) | Supprime la divergence page bespoke ⇄ onglets drawer bespoke. Le composant ne construit jamais d'URL porteuse d'id (anti-énumération) : `fetchAnalytics` injecté par le contexte. Modes CGM/BGM **fail-closed** (gating sur `dataSource`, pas sur l'absence de données). Voir `docs/architecture/fiche-patient-unifiee.md`. |
 
 ---
 
