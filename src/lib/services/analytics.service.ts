@@ -168,7 +168,9 @@ export const analyticsService = {
         userAgent: ctx?.userAgent,
 
         requestId: ctx?.requestId,
-        metadata: { patientId, kind: "profile" },
+        // US-2634 — fenêtre lue tracée (poids forensique : 90 j ≠ 7 j) ; jamais
+        // de valeur clinique dans metadata.
+        metadata: { patientId, kind: "profile", period, windowDays: days },
       })
     }
 

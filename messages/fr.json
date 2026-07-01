@@ -1579,7 +1579,6 @@
     "age": "Âge",
     "ageValue": "{age} ans",
     "referentDoctor": "Médecin référent",
-    "avgGlucose14d": "Glycémie moyenne (14j)",
     "glycemicObjectives": "Objectifs glycémiques",
     "targetBadge": "Cible : {low}–{high} mg/dL",
     "tirTargetBadge": "Cible (TIR) : {target}%",
@@ -1603,7 +1602,6 @@
     "noDocument": "Aucun document enregistré",
     "noCgmData": "Pas de données de glycémie continue (CGM) sur la période.",
     "patientFallback": "Patient",
-    "kpiTir14d": "Temps dans la cible (TIR) — 14j",
     "lowCaptureWarning": "Capture de glycémie continue (CGM) insuffisante ({rate} %) — statistiques à interpréter avec prudence.",
     "sharingDisabledTitle": "Partage désactivé",
     "sharingDisabledDesc": "Ce patient a désactivé le partage de ses données avec les soignants.",
@@ -1632,7 +1630,15 @@
     "docCatPersonal": "Personnel",
     "docCatPrescription": "Ordonnance",
     "docCatLabResults": "Résultats de laboratoire",
-    "docCatOther": "Autre"
+    "docCatOther": "Autre",
+    "period7d": "1 sem.",
+    "period14d": "2 sem.",
+    "period30d": "1 mois",
+    "period90d": "3 mois",
+    "periodSelectorLabel": "Période d'analyse",
+    "avgGlucosePeriod": "Glycémie moyenne ({period})",
+    "kpiTirPeriod": "Temps dans la cible (TIR) — {period}",
+    "tirDonutPeriodLabel": "({period})"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

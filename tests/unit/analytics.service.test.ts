@@ -101,6 +101,41 @@ describe("analyticsService", () => {
     })
   })
 
+  describe("glycemicProfile — US-2634 (période interactive + audit fenêtre)", () => {
+    // AC-4 : parsePeriod accepte 7/14/30/90 j (le sélecteur de fiche).
+    it.each([
+      ["7d", 7],
+      ["14d", 14],
+      ["30d", 30],
+      ["90d", 90],
+    ])("parses %s into %i days", async (period, days) => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(50) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      const r = await analyticsService.glycemicProfile(1, period as string, 1)
+      expect(r.period.days).toBe(days)
+    })
+
+    // AC-3 : la fenêtre lue figure dans metadata (poids forensique 90 j ≠ 7 j),
+    // sans aucune valeur clinique.
+    it("records the read window (period/windowDays) in audit metadata — no clinical value", async () => {
+      prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(50) as any)
+      prismaMock.cgmObjective.findUnique.mockResolvedValue(null)
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+      await analyticsService.glycemicProfile(1, "30d", 1, {
+        ipAddress: "i", userAgent: "u", requestId: "r",
+      })
+
+      const data = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
+      expect(data.action).toBe("READ")
+      expect(data.metadata).toMatchObject({ kind: "profile", period: "30d", windowDays: 30 })
+      // Aucune valeur glycémique dans l'audit.
+      expect(JSON.stringify(data.metadata)).not.toMatch(/glucose|mgdl|tir|gmi/i)
+    })
+  })
+
   describe("timeInRange", () => {
     it("returns TIR with quality assessment", async () => {
       prismaMock.cgmEntry.findMany.mockResolvedValue(mockCgmEntries(500) as any)

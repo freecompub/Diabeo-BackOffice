@@ -1579,7 +1579,6 @@
     "age": "العمر",
     "ageValue": "{age} سنة",
     "referentDoctor": "الطبيب المرجعي",
-    "avgGlucose14d": "متوسط سكر الدم (١٤ يومًا)",
     "glycemicObjectives": "أهداف سكر الدم",
     "targetBadge": "الهدف: {low}–{high} mg/dL",
     "tirTargetBadge": "الهدف (TIR): {target}%",
@@ -1603,7 +1602,6 @@
     "noDocument": "لا يوجد مستند مسجّل",
     "noCgmData": "لا توجد بيانات الغلوكوز المستمر (CGM) للفترة.",
     "patientFallback": "مريض",
-    "kpiTir14d": "الوقت ضمن النطاق (TIR) — 14 يومًا",
     "lowCaptureWarning": "التقاط الغلوكوز المستمر (CGM) غير كافٍ ({rate}%) — فسّر الإحصاءات بحذر.",
     "sharingDisabledTitle": "المشاركة معطّلة",
     "sharingDisabledDesc": "عطّل هذا المريض مشاركة بياناته مع مقدّمي الرعاية.",
@@ -1632,7 +1630,15 @@
     "docCatPersonal": "شخصي",
     "docCatPrescription": "وصفة طبية",
     "docCatLabResults": "نتائج المختبر",
-    "docCatOther": "أخرى"
+    "docCatOther": "أخرى",
+    "period7d": "أسبوع",
+    "period14d": "أسبوعان",
+    "period30d": "شهر",
+    "period90d": "3 أشهر",
+    "periodSelectorLabel": "فترة التحليل",
+    "avgGlucosePeriod": "متوسط سكر الدم ({period})",
+    "kpiTirPeriod": "الوقت ضمن النطاق (TIR) — {period}",
+    "tirDonutPeriodLabel": "({period})"
   },
   "patientDashboard": {
     "pageTitle": "لوحة التحكم الخاصة بي",

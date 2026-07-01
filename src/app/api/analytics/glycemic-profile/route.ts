@@ -4,6 +4,7 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
+import { patientShareConsent } from "@/lib/consent"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
@@ -31,6 +32,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 })
     }
     const patientId = res.patientId
+
+    // Opt-out du SUJET (fail-closed) — aligné sur heatmap/compare/agp et le
+    // garde-fou de l'épopée fiche patient (US-2630) : pas d'exposition d'un
+    // patient en opt-out de partage, même à un PS RBAC-autorisé.
+    const consent = await patientShareConsent(patientId)
+    if (!consent.ok) return NextResponse.json({ error: consent.error }, { status: consent.status })
 
     const params = Object.fromEntries(req.nextUrl.searchParams.entries())
     const parsed = querySchema.safeParse(params)
