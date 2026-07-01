@@ -16,18 +16,33 @@ import {
 } from "recharts"
 import { tokens } from "@/design-system/tokens"
 
+/** Projection serveur d'une courbe de moment (déjà agrégée, buckets ≥ 3 relevés). */
 export interface MomentCurveView {
   moment: "morning" | "noon" | "evening" | "night"
+  /** Nb de repas appariés contribuant à la courbe (< 3 → `insufficient`). */
   pairedMeals: number
   insufficient: boolean
+  /** Points alignés t−t0 (min) × moyenne (mg/dL) ; trous = pas d'interpolation. */
   buckets: { offsetMin: number; avgMgdl: number }[]
   avgPreMgdl: number | null
+  /** Moyenne PPG 2 h (« après »). */
   avgPostMgdl: number | null
   avgPeakMgdl: number | null
+  /** Plafond post-prandial pathology-aware (mg/dL). */
   targetHighMgdl: number
+  /** `avgPost` > plafond → flag descriptif (jamais prescriptif). */
   highExcursion: boolean
 }
 
+/**
+ * Mini-courbe glycémique moyenne d'un moment (repas aligné à t=0), read-only.
+ *
+ * @param props.curve - Projection serveur du moment ({@link MomentCurveView}) :
+ *   buckets moyennés, moyennes pré/après/pic, plafond pathology-aware, flag
+ *   d'excursion. `insufficient` → empty-state « données insuffisantes ».
+ * @returns Un `role="figure"` (courbe recharts + bande cible + repas à t=0) avec
+ *   alternative sr-only, ou l'empty-state sous 3 repas appariés.
+ */
 export function MealMomentCurve({ curve }: { curve: MomentCurveView }) {
   const t = useTranslations("patientDetail")
   const momentLabel = t(`meal_${curve.moment}`)

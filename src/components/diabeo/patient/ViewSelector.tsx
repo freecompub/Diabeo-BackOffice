@@ -17,6 +17,13 @@ import {
   usePatientRecordContext,
 } from "./PatientRecordContext"
 
+/**
+ * Sélecteur de vue (Moyenne/AGP ⇄ Tableau journalier) — `radiogroup` accessible
+ * au clavier, synchronisé via `PatientRecordContext`. `null` hors provider.
+ *
+ * @param props.labelledBy - `id` de l'étiquette visible associée (`aria-labelledby`).
+ * @returns Le groupe de segments de vue, ou `null` hors contexte.
+ */
 export function ViewSelector({ labelledBy }: { labelledBy?: string } = {}) {
   const t = useTranslations("patientDetail")
   const ctx = usePatientRecordContext()

@@ -24,6 +24,15 @@ interface DailyStat {
   inTargetPct: number
 }
 
+/**
+ * Vue « Tableau journalier » (1 ligne/jour) de l'onglet Profil glycémique.
+ *
+ * Sans props : lazy, pilotée par la période via `usePeriodResource` sur
+ * `/api/analytics/daily-stats`. Rend une table accessible (min/moy/max, TIR,
+ * relevés par jour), états loading/error/empty inclus.
+ *
+ * @returns Le tableau journalier.
+ */
 export function PatientDailyTable() {
   const t = useTranslations("patientDetail")
   const locale = useLocale()

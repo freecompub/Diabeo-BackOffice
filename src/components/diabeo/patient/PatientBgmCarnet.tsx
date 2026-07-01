@@ -24,6 +24,16 @@ interface CarnetData {
   moments: { moment: DayMoment; count: number; insufficient: boolean; avgMgdl: number | null }[]
 }
 
+/**
+ * Carnet glycémique capillaire par moment de la journée (remplace l'AGP en BGM).
+ *
+ * Sans props : lazy, pilotée par la période via `usePeriodResource` sur
+ * `/api/analytics/bgm-daily-pattern` (l'onglet est démonté quand inactif). Rend
+ * une moyenne colorée pathology-aware par moment (Nuit/Matin/Midi/Soir), ou
+ * « données insuffisantes » sous le plancher de relevés.
+ *
+ * @returns L'onglet Carnet (sélecteur période + grille 4 moments + caveat).
+ */
 export function PatientBgmCarnet() {
   const t = useTranslations("patientDetail")
   const { data, loading, error } = usePeriodResource<CarnetData>({

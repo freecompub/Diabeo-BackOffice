@@ -29,6 +29,15 @@ type Bgm = NonNullable<PatientRecordData["bgm"]>
 // Glycémie depuis l'amorce, pas ici — on ne le re-fetch donc pas).
 type BgmPeriodView = Pick<Bgm, "avgMgdl" | "inRangePercent" | "readingsPerDay" | "targetRangeMgdl">
 
+/**
+ * Vue d'ensemble d'un patient **BGM** (glycémie capillaire).
+ *
+ * @param props.bgm - Bloc BGM du DTO (`PatientRecordData["bgm"]`, non-null) :
+ *   moyenne, % en cible, fréquence, HbA1c labo, points modal-day. Les KPI sont
+ *   re-fetchés par période via `/api/analytics/bgm-stats` ; l'HbA1c (valeur
+ *   unique non fenêtrée) vient de l'amorce serveur.
+ * @returns Le bloc KPI capillaires + caveats de la vue d'ensemble en mode BGM.
+ */
 export function PatientBgmOverview({ bgm }: { bgm: Bgm }) {
   const t = useTranslations("patientDetail")
   const locale = useLocale()

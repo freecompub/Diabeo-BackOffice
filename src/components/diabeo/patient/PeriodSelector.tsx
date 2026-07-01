@@ -19,6 +19,13 @@ import {
   usePatientRecordContext,
 } from "./PatientRecordContext"
 
+/**
+ * Sélecteur de période (7j/14j/30j/90j) — `radiogroup` accessible au clavier,
+ * synchronisé via `PatientRecordContext`. `null` hors provider.
+ *
+ * @param props.labelledBy - `id` de l'étiquette visible associée (`aria-labelledby`).
+ * @returns Le groupe de segments de période, ou `null` hors contexte.
+ */
 export function PeriodSelector({ labelledBy }: { labelledBy?: string } = {}) {
   const t = useTranslations("patientDetail")
   const ctx = usePatientRecordContext()
