@@ -1246,7 +1246,8 @@
       "DT2": "Type 2 diabetes (T2D)",
       "GD": "Gestational diabetes (GD)"
     },
-    "openedAnnounce": "{name}'s consultation opened"
+    "openedAnnounce": "{name}'s consultation opened",
+    "openAsPage": "Open as full page"
   },
   "adminDashboard": {
     "pageTitle": "Admin dashboard",

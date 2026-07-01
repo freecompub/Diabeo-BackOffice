@@ -1246,7 +1246,8 @@
       "DT2": "Diabète de type 2 (DT2)",
       "GD": "Diabète gestationnel (GD)"
     },
-    "openedAnnounce": "Consultation de {name} ouverte"
+    "openedAnnounce": "Consultation de {name} ouverte",
+    "openAsPage": "Ouvrir en page plein écran"
   },
   "adminDashboard": {
     "pageTitle": "Tableau de bord administrateur",
