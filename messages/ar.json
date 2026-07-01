@@ -1246,7 +1246,8 @@
       "DT2": "داء السكري من النوع الثاني (DT2)",
       "GD": "سكري الحمل (GD)"
     },
-    "openedAnnounce": "تم فتح استشارة {name}"
+    "openedAnnounce": "تم فتح استشارة {name}",
+    "openAsPage": "فتح كصفحة كاملة"
   },
   "adminDashboard": {
     "pageTitle": "لوحة تحكم المسؤول",

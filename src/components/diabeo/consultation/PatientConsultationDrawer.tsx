@@ -18,8 +18,9 @@
  */
 
 import { useCallback, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
-import { Maximize2, Minimize2, X } from "lucide-react"
+import { ExternalLink, Maximize2, Minimize2, X } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { CONSULTATION_TOKEN_HEADER } from "@/lib/auth/consultation-token"
 import { PatientRecord, type PatientRecordData } from "@/components/diabeo/patient/PatientRecord"
@@ -48,10 +49,21 @@ export function PatientConsultationDrawer({
   onToggleExpanded,
 }: Props) {
   const t = useTranslations("consultation")
+  const router = useRouter()
   const headingRef = useRef<HTMLHeadingElement>(null)
 
   // Récupération du dossier unifié via le jeton éphémère (aucun id en URL).
   const { data, loading, error } = useConsultationData<PatientRecordData>("/api/patients/record", cTok)
+
+  // US-2640 — bascule drawer → page plein écran. On quitte le drawer (fermeture
+  // + révocation cTok côté provider) pour la route autorisée `/patients/[id]`
+  // (gardée par `canAccessPatient`). L'id vient du DTO résolu serveur (pas
+  // d'énumération) et n'apparaît en URL qu'en mode page, jamais dans le drawer.
+  const openAsPage = useCallback(() => {
+    if (!data) return
+    onClose()
+    router.push(`/patients/${data.id}`)
+  }, [data, onClose, router])
 
   // Transport analytique mode drawer (US-2634) : jeton en en-tête, aucun id en
   // URL — re-fetch des KPI à la période sans casser l'anti-énumération.
@@ -133,6 +145,17 @@ export function PatientConsultationDrawer({
             </div>
             <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
           </div>
+          {/* Bascule vers la page plein écran (dispo une fois le dossier chargé). */}
+          {data && (
+            <button
+              type="button"
+              onClick={openAsPage}
+              className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              aria-label={t("openAsPage")}
+            >
+              <ExternalLink className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={onToggleExpanded}
