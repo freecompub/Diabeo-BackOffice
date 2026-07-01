@@ -1689,7 +1689,21 @@
     "mealCurveAria": "Courbe glycémique moyenne du {moment}, alignée sur l'heure du repas",
     "mealCurveTableCaption": "Glycémie moyenne par tranche de 15 min autour du repas — {moment}",
     "mealColOffset": "Décalage au repas",
-    "mealColAvg": "Glycémie moyenne"
+    "mealColAvg": "Glycémie moyenne",
+    "bgmModeBanner": "Mode glycémie capillaire (BGM) — sans capteur en continu, les indicateurs continus (temps dans la cible, indice de gestion du glucose, profil ambulatoire) ne s'appliquent pas.",
+    "bgmAvgLabel": "Moyenne des relevés · {period}",
+    "bgmInRangeLabel": "Relevés en cible · {period}",
+    "bgmFrequencyLabel": "Fréquence · {period}",
+    "bgmPerDay": "/jour",
+    "bgmHba1cLabel": "Hémoglobine glyquée (HbA1c) labo",
+    "bgmInRangeCaveat": "% de relevés en cible — à distinguer du temps dans la cible : les relevés capillaires ne sont pas répartis uniformément (biais d'échantillonnage), non comparable au temps passé ni entre patients.",
+    "bgmHba1cDated": "Mesurée en laboratoire le {date}",
+    "bgmHba1cStale": "valeur ancienne (plus de 180 jours)",
+    "bgmNoReadings": "Aucun relevé capillaire sur la période.",
+    "bgmScatterAria": "Nuage de points des glycémies capillaires, par heure du jour",
+    "bgmScatterSummary": "{total} relevés capillaires sur la période, dont {inTarget} en cible.",
+    "bgmScatterTitle": "Relevés capillaires (nuage de points)",
+    "agpNotAvailableBgm": "Le profil ambulatoire glycémique (AGP) nécessite des données de capteur en continu (CGM) — non disponible pour un patient en glycémie capillaire."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

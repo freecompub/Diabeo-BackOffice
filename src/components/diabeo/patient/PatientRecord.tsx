@@ -25,6 +25,8 @@ import { PatientContextBar } from "@/components/diabeo/patient/PatientContextBar
 import { PeriodSelector } from "@/components/diabeo/patient/PeriodSelector"
 import { PatientAgpTab } from "@/components/diabeo/patient/PatientAgpTab"
 import { PatientMealTrendsTab } from "@/components/diabeo/patient/PatientMealTrendsTab"
+import { PatientBgmOverview } from "@/components/diabeo/patient/PatientBgmOverview"
+import { PatientBgmScatter } from "@/components/diabeo/patient/PatientBgmScatter"
 import {
   usePeriodAnalytics,
   usePatientRecordContext,
@@ -275,77 +277,94 @@ export function PatientRecord({
             <p className="sr-only" role="status" aria-live="polite">
               {statsLoading ? t("periodLoading") : statsError ? "" : t("periodLoaded", { period: periodLabel })}
             </p>
-            {/* Échec de re-fetch : la donnée affichée est retombée sur l'amorce
-                (`periodLabel`) — on le signale, jamais un libellé trompeur. */}
-            {statsError && (
-              <p
-                role="alert"
-                className="rounded-md border border-feedback-error bg-error-bg px-4 py-2 text-sm text-error-fg"
-              >
-                {t("periodRefetchError", { requested: requestedLabel, shown: periodLabel })}
-              </p>
-            )}
-            {/* Représentativité : fenêtre < 14 j → GMI/stats indicatifs. */}
-            {stats && shortWindow && (
-              <p
-                role="status"
-                className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
-              >
-                {t("shortWindowCaveat")}
-              </p>
-            )}
-            {stats?.insufficientCapture && (
-              <p
-                role="status"
-                className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
-              >
-                {t("lowCaptureWarning", { rate: Math.round(stats.captureRate) })}
-              </p>
-            )}
-            {stats ? (
-              <div
-                aria-busy={statsLoading}
-                className={cn(
-                  "grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
-                  statsLoading && "opacity-60",
-                )}
-              >
-                <StatCard
-                  label={t("avgGlucosePeriod", { period: periodLabel })}
-                  value={String(stats.avgGlucoseMgdl)}
-                  unit="mg/dL"
-                  icon={<Activity className="h-5 w-5" />}
-                  variant="default"
-                />
-                <StatCard
-                  label={t("kpiTirPeriod", { period: periodLabel })}
-                  value={`${Math.round(stats.tir.inRange)}%`}
-                  icon={<TrendingUp className="h-5 w-5" />}
-                  variant={stats.tir.inRange >= objectives.tirTargetPct ? "success" : "warning"}
-                />
-                <StatCard
-                  label={t("kpiGmiPeriod", { period: periodLabel })}
-                  value={`${stats.gmi}%`}
-                  icon={<Heart className="h-5 w-5" />}
-                  variant="default"
-                />
-                <StatCard
-                  label={t("kpiCvPeriod", { period: periodLabel })}
-                  value={`${stats.cv}%`}
-                  icon={<Clock className="h-5 w-5" />}
-                  variant={stats.cv <= objectives.cvMaxPct ? "success" : "warning"}
-                />
-              </div>
+            {/* Fail-closed (US-2638) : patient sans capteur → KPI capillaires
+                (jamais TIR-temps/GMI). Sinon, KPI CGM pilotés par la période. */}
+            {data.dataSource === "bgm" ? (
+              data.bgm ? (
+                <PatientBgmOverview bgm={data.bgm} />
+              ) : (
+                <Card>
+                  <CardContent className="py-6">
+                    <p className="text-sm text-muted-foreground">{t("bgmNoReadings")}</p>
+                  </CardContent>
+                </Card>
+              )
             ) : (
-              <Card>
-                <CardContent className="py-6">
-                  <p className="text-sm text-muted-foreground">{t("noCgmData")}</p>
-                </CardContent>
-              </Card>
+              <>
+                {/* Échec de re-fetch : la donnée affichée est retombée sur l'amorce
+                    (`periodLabel`) — on le signale, jamais un libellé trompeur. */}
+                {statsError && (
+                  <p
+                    role="alert"
+                    className="rounded-md border border-feedback-error bg-error-bg px-4 py-2 text-sm text-error-fg"
+                  >
+                    {t("periodRefetchError", { requested: requestedLabel, shown: periodLabel })}
+                  </p>
+                )}
+                {/* Représentativité : fenêtre < 14 j → GMI/stats indicatifs. */}
+                {stats && shortWindow && (
+                  <p
+                    role="status"
+                    className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
+                  >
+                    {t("shortWindowCaveat")}
+                  </p>
+                )}
+                {stats?.insufficientCapture && (
+                  <p
+                    role="status"
+                    className="rounded-md border border-feedback-warning bg-warning-bg px-4 py-2 text-sm text-warning-fg"
+                  >
+                    {t("lowCaptureWarning", { rate: Math.round(stats.captureRate) })}
+                  </p>
+                )}
+                {stats ? (
+                  <div
+                    aria-busy={statsLoading}
+                    className={cn(
+                      "grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 lg:grid-cols-4",
+                      statsLoading && "opacity-60",
+                    )}
+                  >
+                    <StatCard
+                      label={t("avgGlucosePeriod", { period: periodLabel })}
+                      value={String(stats.avgGlucoseMgdl)}
+                      unit="mg/dL"
+                      icon={<Activity className="h-5 w-5" />}
+                      variant="default"
+                    />
+                    <StatCard
+                      label={t("kpiTirPeriod", { period: periodLabel })}
+                      value={`${Math.round(stats.tir.inRange)}%`}
+                      icon={<TrendingUp className="h-5 w-5" />}
+                      variant={stats.tir.inRange >= objectives.tirTargetPct ? "success" : "warning"}
+                    />
+                    <StatCard
+                      label={t("kpiGmiPeriod", { period: periodLabel })}
+                      value={`${stats.gmi}%`}
+                      icon={<Heart className="h-5 w-5" />}
+                      variant="default"
+                    />
+                    <StatCard
+                      label={t("kpiCvPeriod", { period: periodLabel })}
+                      value={`${stats.cv}%`}
+                      icon={<Clock className="h-5 w-5" />}
+                      variant={stats.cv <= objectives.cvMaxPct ? "success" : "warning"}
+                    />
+                  </div>
+                ) : (
+                  <Card>
+                    <CardContent className="py-6">
+                      <p className="text-sm text-muted-foreground">{t("noCgmData")}</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
             )}
 
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <Card className="lg:col-span-2">
+              {/* En BGM, pas de donut TIR-temps → le profil occupe la largeur. */}
+              <Card className={data.dataSource === "bgm" ? "lg:col-span-3" : "lg:col-span-2"}>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <User className="h-4 w-4" aria-hidden="true" />
@@ -387,6 +406,8 @@ export function PatientRecord({
                       <div className="mt-1">
                         {stats ? (
                           <GlycemiaValue value={stats.avgGlucoseMgdl} unit="mg/dL" size="sm" />
+                        ) : data.bgm?.avgMgdl != null ? (
+                          <GlycemiaValue value={data.bgm.avgMgdl} unit="mg/dL" size="sm" />
                         ) : (
                           <span className="font-medium">—</span>
                         )}
@@ -416,29 +437,46 @@ export function PatientRecord({
                 </CardContent>
               </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">
-                    <Acronym code="TIR" /> {t("tirDonutPeriodLabel", { period: periodLabel })}
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="flex justify-center">
-                  {stats ? (
-                    <TirDonut data={stats.tir} size={180} showLegend />
-                  ) : (
-                    <p className="py-8 text-sm text-muted-foreground">{t("noCgmData")}</p>
-                  )}
-                </CardContent>
-              </Card>
+              {/* Donut TIR-temps : indicateur CGM-only → masqué en BGM. */}
+              {data.dataSource === "cgm" && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">
+                      <Acronym code="TIR" /> {t("tirDonutPeriodLabel", { period: periodLabel })}
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex justify-center">
+                    {stats ? (
+                      <TirDonut data={stats.tir} size={180} showLegend />
+                    ) : (
+                      <p className="py-8 text-sm text-muted-foreground">{t("noCgmData")}</p>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
 
           {/* ── Profil glycémique (AGP — US-2635, natif page + drawer) ──────── */}
           <TabsContent value="glycemicProfile" className="space-y-6">
-            <PatientAgpTab
-              targetLowMgdl={objectives.targetLowMgdl}
-              targetHighMgdl={objectives.targetHighMgdl}
-            />
+            {/* AGP = percentiles CGM (temps) → non calculable en capillaire.
+                Fail-closed : message explicite, jamais de faux profil. */}
+            {data.dataSource === "bgm" ? (
+              <Card>
+                <CardContent className="py-10">
+                  <DiabeoEmptyState
+                    variant="noData"
+                    title={t("tabGlycemicProfile")}
+                    message={t("agpNotAvailableBgm")}
+                  />
+                </CardContent>
+              </Card>
+            ) : (
+              <PatientAgpTab
+                targetLowMgdl={objectives.targetLowMgdl}
+                targetHighMgdl={objectives.targetHighMgdl}
+              />
+            )}
           </TabsContent>
 
           {/* ── Tendances de repas (US-2637, natif page + drawer) ──────── */}
@@ -463,7 +501,25 @@ export function PatientRecord({
                   : t("recentOutOfRangeHigh")}
               </p>
             )}
-            {data.glycemia.points.length > 0 ? (
+            {data.dataSource === "bgm" ? (
+              /* Patient sans capteur : nuage de points capillaires (modal-day),
+                 pas de courbe continue CGM (US-2638). */
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <Activity className="h-4 w-4" aria-hidden="true" />
+                    {t("bgmScatterTitle")}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <PatientBgmScatter
+                    points={data.bgm?.points ?? []}
+                    targetLowMgdl={objectives.targetLowMgdl}
+                    targetHighMgdl={objectives.targetHighMgdl}
+                  />
+                </CardContent>
+              </Card>
+            ) : data.glycemia.points.length > 0 ? (
               <>
                 {data.glycemia.lastReadingMgdl !== null && (
                   <Card>

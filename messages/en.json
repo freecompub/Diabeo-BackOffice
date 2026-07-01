@@ -1689,7 +1689,21 @@
     "mealCurveAria": "Average glucose curve for {moment}, aligned to meal time",
     "mealCurveTableCaption": "Average glucose per 15-min bucket around the meal — {moment}",
     "mealColOffset": "Offset from meal",
-    "mealColAvg": "Average glucose"
+    "mealColAvg": "Average glucose",
+    "bgmModeBanner": "Capillary blood glucose mode (BGM) — without a continuous sensor, continuous indicators (time in range, glucose management indicator, ambulatory profile) do not apply.",
+    "bgmAvgLabel": "Readings average · {period}",
+    "bgmInRangeLabel": "Readings in target · {period}",
+    "bgmFrequencyLabel": "Frequency · {period}",
+    "bgmPerDay": "/day",
+    "bgmHba1cLabel": "Lab glycated haemoglobin (HbA1c)",
+    "bgmInRangeCaveat": "% of readings in target — distinct from time in range: capillary readings are not evenly distributed (sampling bias), not comparable to time nor across patients.",
+    "bgmHba1cDated": "Measured in lab on {date}",
+    "bgmHba1cStale": "old value (over 180 days)",
+    "bgmNoReadings": "No capillary readings in the period.",
+    "bgmScatterAria": "Scatter plot of capillary glucose readings, by time of day",
+    "bgmScatterSummary": "{total} capillary readings in the period, of which {inTarget} in target.",
+    "bgmScatterTitle": "Capillary readings (scatter plot)",
+    "agpNotAvailableBgm": "The ambulatory glucose profile (AGP) requires continuous sensor (CGM) data — not available for a capillary blood glucose patient."
   },
   "patientDashboard": {
     "pageTitle": "My dashboard",
