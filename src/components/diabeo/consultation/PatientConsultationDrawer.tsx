@@ -41,6 +41,10 @@ interface Props {
   onToggleExpanded: () => void
 }
 
+/** Bouton-icône d'en-tête — cible tactile 44×44 (WCAG 2.5.5, revue #618 C2). */
+const ICON_BTN =
+  "inline-flex min-h-11 min-w-11 items-center justify-center rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+
 export function PatientConsultationDrawer({
   patient,
   cTok,
@@ -145,12 +149,13 @@ export function PatientConsultationDrawer({
             </div>
             <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
           </div>
-          {/* Bascule vers la page plein écran (dispo une fois le dossier chargé). */}
-          {data && (
+          {/* Bascule vers la page plein écran (dispo une fois le dossier chargé
+              SANS erreur — sinon le contenu affiche TabError, pas de dossier). */}
+          {data && !error && (
             <button
               type="button"
               onClick={openAsPage}
-              className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+              className={ICON_BTN}
               aria-label={t("openAsPage")}
             >
               <ExternalLink className="h-4 w-4" />
@@ -159,7 +164,7 @@ export function PatientConsultationDrawer({
           <button
             type="button"
             onClick={onToggleExpanded}
-            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className={ICON_BTN}
             aria-label={expanded ? t("collapse") : t("expand")}
           >
             {expanded ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
@@ -167,7 +172,7 @@ export function PatientConsultationDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-md border border-border p-2 text-muted-foreground hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            className={ICON_BTN}
             aria-label={t("close")}
           >
             <X className="h-4 w-4" />

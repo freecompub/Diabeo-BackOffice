@@ -59,4 +59,11 @@ describe("PatientConsultationDrawer — toggle to page (US-2640)", () => {
     renderDrawer()
     expect(screen.queryByLabelText("Ouvrir en page plein écran")).toBeNull()
   })
+
+  it("hides the toggle on a fetch error (content shows the error, not the record)", () => {
+    // Même si `data` restait renseigné, une erreur masque la bascule (C2 revue #618).
+    useConsultationData.mockReturnValue({ data: { id: 42, flags: {} }, loading: false, error: true })
+    renderDrawer()
+    expect(screen.queryByLabelText("Ouvrir en page plein écran")).toBeNull()
+  })
 })
