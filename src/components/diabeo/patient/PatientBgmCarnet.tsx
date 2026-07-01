@@ -15,14 +15,12 @@ import { useTranslations } from "next-intl"
 import { usePeriodResource } from "./PatientRecordContext"
 import { PeriodSelector } from "./PeriodSelector"
 import { GlycemiaValue } from "@/components/diabeo"
-
-type Moment = "morning" | "noon" | "evening" | "night"
-const MOMENT_ORDER: Moment[] = ["morning", "noon", "evening", "night"]
+import { DAY_MOMENTS, type DayMoment } from "@/lib/day-moments"
 
 interface CarnetData {
   period: { days: number }
   targetRangeMgdl: { low: number; high: number }
-  moments: { moment: Moment; count: number; insufficient: boolean; avgMgdl: number | null }[]
+  moments: { moment: DayMoment; count: number; insufficient: boolean; avgMgdl: number | null }[]
 }
 
 export function PatientBgmCarnet() {
@@ -66,11 +64,13 @@ export function PatientBgmCarnet() {
   return (
     <div className="space-y-4">
       {selector}
+      {/* Titre de section (hiérarchie : ancre les h4 des moments — WCAG 1.3.1). */}
+      <h3 className="text-base font-semibold text-foreground">{t("carnetTitle")}</h3>
       <p role="status" className="rounded-md border border-feedback-info/25 bg-feedback-info-bg px-4 py-2 text-sm text-feedback-info-fg">
         {t("carnetBanner")}
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {MOMENT_ORDER.map((m) => {
+        {DAY_MOMENTS.map((m) => {
           const cell = byMoment.get(m)
           return (
             <div key={m} className="rounded-lg border border-border bg-card p-4">
@@ -78,7 +78,7 @@ export function PatientBgmCarnet() {
               <div className="mt-2">
                 {cell && !cell.insufficient && cell.avgMgdl !== null ? (
                   <>
-                    <GlycemiaValue value={cell.avgMgdl} unit="mg/dL" thresholds={thresholds} size="sm" />
+                    <GlycemiaValue value={cell.avgMgdl} unit="mg/dL" thresholds={thresholds} size="sm" showZoneLabel />
                     <p className="mt-1 text-xs text-muted-foreground">{t("carnetReadings", { count: cell.count })}</p>
                   </>
                 ) : (

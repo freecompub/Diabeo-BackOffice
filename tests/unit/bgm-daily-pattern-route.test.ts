@@ -1,5 +1,5 @@
 /**
- * Test — GET /api/analytics/bgm-daily-pattern : gardes US-2638 (garde-fou épopée). Opt-out du
+ * Test — GET /api/analytics/bgm-daily-pattern : gardes US-2639 (garde-fou épopée). Opt-out du
  * sujet (`patientShareConsent`), trace d'accès refusé (US-2265), et validation
  * Zod avant lecture consentement. Alignée sur glycemic-profile.
  */
@@ -52,7 +52,7 @@ beforeEach(() => {
   mPat.mockResolvedValue([] as any)
 })
 
-describe("GET /api/analytics/bgm-daily-pattern — gardes US-2638", () => {
+describe("GET /api/analytics/bgm-daily-pattern — gardes US-2639", () => {
   it("blocks a patient who opted out of provider sharing (before projection)", async () => {
     mShare.mockResolvedValue({ ok: false, status: 403, error: "sharingDisabled" } as any)
     const r = await GET(makeReq())
