@@ -73,7 +73,7 @@ export async function buildPatientRecordData(
 
   let stats: PatientRecordData["stats"] = null
   let bgm: PatientRecordData["bgm"] = null
-  let glycemiaView
+  let glycemiaView: ReturnType<typeof buildGlycemiaView>
 
   if (dataSource === "cgm") {
     // Vue CGM : stats agrégées (READ ANALYTICS) + série 24h (READ CGM_ENTRY).
