@@ -257,7 +257,7 @@ export const analyticsService = {
         date: { gte: since, lte: now },
         OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
       },
-      select: { glycemiaGl: true, glycemiaMgdl: true },
+      select: { glycemiaGl: true, glycemiaMgdl: true, time: true },
     })
 
     // Valeur en g/L (préfère `glycemiaGl`, sinon mg/dL → g/L), filtrée sur la
@@ -265,15 +265,24 @@ export const analyticsService = {
     // écarte aussi les extrêmes « LO/HI » du lecteur (< 0,20 / > 6,00 g/L) —
     // cohérent avec les agrégats CGM et le rejet des valeurs d'erreur capteur ;
     // impact négligeable (rareté), tracé ici pour transparence (revue médicale).
-    const valuesGl = rows
+    const valid = rows
       .map((r) => {
-        if (r.glycemiaGl != null) return decimalToNumber(r.glycemiaGl)
-        if (r.glycemiaMgdl != null) return decimalToNumber(r.glycemiaMgdl) / 100
-        return NaN
+        const gl = r.glycemiaGl != null
+          ? decimalToNumber(r.glycemiaGl)
+          : r.glycemiaMgdl != null ? decimalToNumber(r.glycemiaMgdl) / 100 : NaN
+        // `time` est une heure MURALE locale (Time sans fuseau) → minutes du jour.
+        const timeMinutes = r.time ? r.time.getUTCHours() * 60 + r.time.getUTCMinutes() : null
+        return { gl, timeMinutes }
       })
-      .filter(
-        (v) => Number.isFinite(v) && v >= CGM_AGGREGATE_RANGE_GL.MIN && v <= CGM_AGGREGATE_RANGE_GL.MAX,
-      )
+      .filter((x) => Number.isFinite(x.gl) && x.gl >= CGM_AGGREGATE_RANGE_GL.MIN && x.gl <= CGM_AGGREGATE_RANGE_GL.MAX)
+
+    const valuesGl = valid.map((x) => x.gl)
+    // Nuage de points (modal-day) : relevés positionnés par heure du jour — la
+    // vue BGM remplace la courbe continue CGM par ce nuage (US-2638). Points
+    // sans heure exclus (pas de position fiable).
+    const points = valid
+      .filter((x) => x.timeMinutes !== null)
+      .map((x) => ({ timeMinutes: x.timeMinutes as number, mgdl: Math.round(glToMgdl(x.gl)) }))
 
     const total = valuesGl.length
     const inRange = valuesGl.filter((v) => v >= thresholds.low && v <= thresholds.ok).length
@@ -294,6 +303,10 @@ export const analyticsService = {
     return {
       period: { days },
       total,
+      // Moyenne des relevés capillaires (mg/dL) — `null` si aucun relevé. NB :
+      // moyenne de relevés BGM (échantillonnage non uniforme), PAS une moyenne
+      // pondérée dans le temps comme en CGM. Jamais utilisée pour un GMI/eA1c.
+      avgMgdl: total > 0 ? Math.round(glToMgdl(mean(valuesGl))) : null,
       // % de relevés en cible (≠ TIR). `null` si aucun relevé exploitable.
       inRangePercent: total > 0 ? Math.round((inRange / total) * 1000) / 10 : null,
       readingsPerDay: Math.round((total / days) * 10) / 10,
@@ -301,6 +314,7 @@ export const analyticsService = {
         low: Math.round(glToMgdl(thresholds.low)),
         high: Math.round(glToMgdl(thresholds.ok)),
       },
+      points,
     }
   },
 

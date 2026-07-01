@@ -92,6 +92,8 @@ const baseData: PatientDetailData = {
     captureRate: 92,
     insufficientCapture: false,
   },
+  dataSource: "cgm",
+  bgm: null,
   glycemia: {
     points: [
       { time: "08:00", glucose: 120 },
