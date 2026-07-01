@@ -99,7 +99,7 @@ export type PatientRecordData = {
     avgMgdl: number | null
     inRangePercent: number | null
     readingsPerDay: number
-    targetRangeMgdl: { low: number; high: number }
+    targetRangeMgdl: { veryLow: number; low: number; high: number; veryHigh: number }
     hba1c: { value: number; date: string; ageDays: number; stale: boolean } | null
     /** Nuage modal-day : heure du jour (min) × mg/dL. */
     points: { timeMinutes: number; mgdl: number }[]

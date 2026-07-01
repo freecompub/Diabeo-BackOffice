@@ -315,9 +315,13 @@ export const analyticsService = {
       // % de relevés en cible (≠ TIR). `null` si aucun relevé exploitable.
       inRangePercent: total > 0 ? Math.round((inRange / total) * 1000) / 10 : null,
       readingsPerDay: Math.round((total / days) * 10) / 10,
+      // Bande cible + zones sévères, toutes pathology-aware — même forme que
+      // `bgmDailyPatternByMoment` (US-2641 L1 : contrat uniforme entre agrégats BGM).
       targetRangeMgdl: {
+        veryLow: Math.round(glToMgdl(thresholds.veryLow)),
         low: Math.round(glToMgdl(thresholds.low)),
         high: Math.round(glToMgdl(thresholds.ok)),
+        veryHigh: Math.round(glToMgdl(thresholds.high)),
       },
       points,
     }

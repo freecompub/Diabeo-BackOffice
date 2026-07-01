@@ -25,7 +25,7 @@ const BGM = {
   avgMgdl: 145,
   inRangePercent: 58,
   readingsPerDay: 3.2,
-  targetRangeMgdl: { low: 70, high: 180 },
+  targetRangeMgdl: { veryLow: 54, low: 70, high: 180, veryHigh: 250 },
   hba1c: { value: 7.4, date: "2026-05-01T00:00:00.000Z", ageDays: 60, stale: false },
   points: [{ timeMinutes: 480, mgdl: 120 }],
 }
