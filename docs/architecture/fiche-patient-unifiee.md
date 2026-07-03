@@ -2,15 +2,28 @@
 
 > Epic **US-2630** — livrée 2026-07-01 (US-2631→2641, PR #608→#619). Aucune
 > migration Prisma. Ce document décrit l'architecture **telle que livrée**.
+>
+> **MAJ US-2642 (2026-07-03)** — Unification du point d'entrée : la **liste
+> patients** ouvre désormais la **page plein écran `/patients/[id]`**, comme les
+> cartes du dashboard médecin (elle n'ouvre plus le drawer éphémère). Le **drawer
+> client** (`ConsultationContext` / `PatientConsultationDrawer` / `useConsultationData`)
+> est retiré. Les **endpoints serveur `cTok`** (`/api/consultation/open|close`,
+> `/api/patients/record`) et la branche `cTok` de `resolveConsultation` restent en
+> place ; leur décommission (access-control santé partagé) est suivie dans un
+> ticket dédié avec revue `healthcare-security-auditor`. Les sections ci-dessous
+> décrivant le mode `drawer` valent donc pour l'**historique** de l'epic.
 
 ## 1. Objectif
 
 Un **composant présentational unique** `<PatientRecord>` rend le dossier patient
-à l'identique dans **deux points d'entrée** :
+à l'identique. Depuis **US-2642**, le **seul point d'entrée actif** est :
 
-- **Page** — route `/patients/[id]` (RSC gardé par `canAccessPatient`).
-- **Drawer de consultation** — workspace éphémère par-dessus la liste (US-2018b),
-  sans id patient en URL (jeton `cTok`).
+- **Page** — route `/patients/[id]` (RSC gardé par `canAccessPatient`), atteinte
+  aussi bien depuis la **liste patients** que depuis les **cartes du dashboard**.
+
+> _Historique (US-2630→2641)_ : un second point d'entrée existait — le **drawer de
+> consultation** éphémère par-dessus la liste (US-2018b), sans id en URL (jeton
+> `cTok`). Retiré côté client en US-2642.
 
 ```
 <PatientRecord variant="page" | "drawer" data={PatientRecordData} />

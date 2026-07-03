@@ -369,7 +369,7 @@
     "loading": "Chargement…",
     "loadError": "Impossible de charger la liste des patients.",
     "decryptIncident": "Identités patient indisponibles — incident technique signalé. Contactez l'équipe technique.",
-    "openConsultation": "Ouvrir la consultation de {name}",
+    "openRecord": "Ouvrir la fiche de {name}",
     "ageYears": "{age} ans",
     "stepProgress": "Étape {step} sur {total} — {section}"
   },

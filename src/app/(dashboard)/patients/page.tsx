@@ -10,7 +10,9 @@
  *   (their portfolio). ADMINs without a HealthcareMember see an empty list.
  *
  * UI features: search by name, filter by pathology (DT1/DT2/GD). A row click
- * opens the patient's ephemeral consultation overlay (US-2018b) — no id in URL.
+ * navigates to the full-screen patient record `/patients/[id]` (US-2642) — the
+ * same entry point as the doctor dashboard cards. Access is gated server-side by
+ * `canAccessPatient`; the id in the URL is not a data leak (already in payload).
  * Clinical metrics (last glucose, TIR, sync) are placeholders — they require
  * CGM rollup queries that this page does not yet issue.
  */
@@ -31,16 +33,14 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, ChevronRight, UserPlus, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { useConsultation } from "@/components/diabeo/consultation/ConsultationContext"
 import type { PatientListItemDto } from "@/lib/dto/patient"
 
 type Pathology = "DT1" | "DT2" | "GD"
 
 interface PatientRow {
   id: number
-  /** UUID opaque pour ouvrir la consultation sans exposer l'id (US-2018b). */
-  publicRef: string
   name: string
   pathology: Pathology
   age: number | null
@@ -76,7 +76,6 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
   const name = `${first} ${last}`.trim() || `Patient #${p.id}`
   return {
     id: p.id,
-    publicRef: p.publicRef,
     name,
     pathology: p.pathology,
     age: ageFromBirthday(p.user.birthday),
@@ -87,7 +86,7 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
 }
 
 export default function PatientsPage() {
-  const { open } = useConsultation()
+  const router = useRouter()
   const t = useTranslations("patients")
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
@@ -266,15 +265,10 @@ export default function PatientsPage() {
                   </TableRow>
                 )}
                 {!loading && !error && filtered.map((patient) => {
-                  // US-2018b — ouvre la consultation éphémère (overlay) sans
-                  // exposer l'id : aucune navigation d'URL, on passe le publicRef.
-                  const openPatient = () =>
-                    open({
-                      publicRef: patient.publicRef,
-                      name: patient.name,
-                      pathology: patient.pathology,
-                      age: patient.age,
-                    })
+                  // US-2642 — ouvre la fiche patient plein écran `/patients/[id]`,
+                  // même point d'entrée que les cartes du dashboard médecin.
+                  // L'accès est gardé côté serveur (`canAccessPatient`) + audité.
+                  const openPatient = () => router.push(`/patients/${patient.id}`)
                   return (
                   <TableRow
                     key={patient.id}
@@ -288,7 +282,7 @@ export default function PatientsPage() {
                       }
                     }}
                     className="cursor-pointer hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    aria-label={t("openConsultation", { name: patient.name })}
+                    aria-label={t("openRecord", { name: patient.name })}
                   >
                     <TableCell>
                       <span className="font-medium text-foreground">

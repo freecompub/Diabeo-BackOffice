@@ -369,7 +369,7 @@
     "loading": "جارٍ التحميل…",
     "loadError": "تعذّر تحميل قائمة المرضى.",
     "decryptIncident": "تعذّر عرض هويات المرضى — تم الإبلاغ عن حادثة تقنية. اتصل بالفريق التقني.",
-    "openConsultation": "فتح استشارة {name}",
+    "openRecord": "فتح ملف {name}",
     "ageYears": "{age} سنة",
     "stepProgress": "الخطوة {step} من {total} — {section}"
   },

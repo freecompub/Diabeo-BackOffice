@@ -75,4 +75,39 @@ test.describe("Patients list — /patients (real API connection)", () => {
     await expect(page.getByText("Lucas Petit")).not.toBeVisible()
     await expect(page.getByText("Amélie Rousseau")).not.toBeVisible()
   })
+
+  test("DOCTOR → clic sur une ligne ouvre la fiche plein écran /patients/[id] (US-2642)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    // US-2642 — la liste ouvre désormais la MÊME page que les cartes du
+    // dashboard médecin : la route autorisée `/patients/[id]` (gate serveur
+    // `canAccessPatient`), et non plus le drawer éphémère `cTok`.
+    await loginAs(context, request, "doctor")
+    await page.goto("/patients")
+
+    const firstRow = page.locator("table tbody tr").first()
+    await expect(firstRow).toBeVisible({ timeout: 10_000 })
+
+    await firstRow.click()
+    await expect(page).toHaveURL(/\/patients\/\d+$/, { timeout: 10_000 })
+  })
+
+  test("DOCTOR → navigation clavier (Entrée) sur une ligne ouvre /patients/[id] (a11y)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/patients")
+
+    const firstRow = page.locator("table tbody tr").first()
+    await expect(firstRow).toBeVisible({ timeout: 10_000 })
+
+    // La ligne est focusable (role=button, tabIndex=0) et s'active au clavier.
+    await firstRow.focus()
+    await page.keyboard.press("Enter")
+    await expect(page).toHaveURL(/\/patients\/\d+$/, { timeout: 10_000 })
+  })
 })
