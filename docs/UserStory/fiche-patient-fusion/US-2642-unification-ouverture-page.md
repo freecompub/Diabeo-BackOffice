@@ -34,9 +34,15 @@ identique au dashboard.
 
 ## Périmètre livré
 
-- `src/app/(dashboard)/patients/page.tsx` : `open({publicRef,…})` → `router.push(`/patients/${id}`)`.
-  Suppression de `useConsultation` et du champ mort `publicRef` de `PatientRow`.
-  A11y conservée (ligne `role="button"`, `tabIndex=0`, Entrée/Espace, `aria-label`).
+- `src/app/(dashboard)/patients/page.tsx` : `open({publicRef,…})` (drawer) → **vrai
+  lien** `<Link href="/patients/[id]">` « étiré » (`after:absolute after:inset-0`)
+  dans la cellule nom → toute la ligne cliquable, avec prefetch + clic-milieu /
+  « ouvrir dans un nouvel onglet » + sémantique lien (a11y). Suppression de
+  `useConsultation`, `useRouter` et du champ mort `publicRef` de `PatientRow`.
+  Focus visible au niveau ligne via `focus-within`.
+- `src/app/(dashboard)/patients/[id]/page.tsx` : ajout d'une ligne d'audit
+  « surface » (`surface: "patient-detail-page"`) sur le chemin succès, en parité
+  avec `/api/patients/record` (`surface: "api"`) — traçabilité CNIL/ANS.
 - `messages/{fr,en,ar}.json` : clé `patients.openConsultation` → `patients.openRecord`
   (« Ouvrir la fiche de {name} »).
 - `src/app/(dashboard)/layout.tsx` : `ConsultationProvider` démonté.

@@ -94,7 +94,7 @@ test.describe("Patients list — /patients (real API connection)", () => {
     await expect(page).toHaveURL(/\/patients\/\d+$/, { timeout: 10_000 })
   })
 
-  test("DOCTOR → navigation clavier (Entrée) sur une ligne ouvre /patients/[id] (a11y)", async ({
+  test("DOCTOR → navigation clavier (Entrée) sur le lien de la ligne ouvre /patients/[id] (a11y)", async ({
     page,
     context,
     request,
@@ -102,11 +102,12 @@ test.describe("Patients list — /patients (real API connection)", () => {
     await loginAs(context, request, "doctor")
     await page.goto("/patients")
 
-    const firstRow = page.locator("table tbody tr").first()
-    await expect(firstRow).toBeVisible({ timeout: 10_000 })
+    // US-2642 — la ligne porte un vrai lien « étiré » (sémantique lien, pas
+    // bouton) : c'est lui qui est focusable et s'active nativement au clavier.
+    const firstRowLink = page.locator("table tbody tr").first().getByRole("link").first()
+    await expect(firstRowLink).toBeVisible({ timeout: 10_000 })
 
-    // La ligne est focusable (role=button, tabIndex=0) et s'active au clavier.
-    await firstRow.focus()
+    await firstRowLink.focus()
     await page.keyboard.press("Enter")
     await expect(page).toHaveURL(/\/patients\/\d+$/, { timeout: 10_000 })
   })

@@ -33,7 +33,6 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, ChevronRight, UserPlus, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import type { PatientListItemDto } from "@/lib/dto/patient"
 
@@ -86,7 +85,6 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
 }
 
 export default function PatientsPage() {
-  const router = useRouter()
   const t = useTranslations("patients")
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
@@ -264,30 +262,26 @@ export default function PatientsPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {!loading && !error && filtered.map((patient) => {
-                  // US-2642 — ouvre la fiche patient plein écran `/patients/[id]`,
-                  // même point d'entrée que les cartes du dashboard médecin.
-                  // L'accès est gardé côté serveur (`canAccessPatient`) + audité.
-                  const openPatient = () => router.push(`/patients/${patient.id}`)
-                  return (
+                {!loading && !error && filtered.map((patient) => (
+                  // US-2642 — la ligne ouvre la fiche plein écran `/patients/[id]`
+                  // via un VRAI lien (parité cartes dashboard : prefetch, clic-milieu
+                  // / « ouvrir dans un nouvel onglet », sémantique lien pour lecteurs
+                  // d'écran). Le lien « étiré » (`after:absolute after:inset-0`) rend
+                  // toute la ligne cliquable ; l'accès reste gardé serveur
+                  // (`canAccessPatient`) + audité, l'id en URL n'est pas une fuite
+                  // (déjà présent dans le payload `/api/patients`).
                   <TableRow
                     key={patient.id}
-                    role="button"
-                    tabIndex={0}
-                    onClick={openPatient}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault()
-                        openPatient()
-                      }
-                    }}
-                    className="cursor-pointer hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
-                    aria-label={t("openRecord", { name: patient.name })}
+                    className="relative cursor-pointer hover:bg-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
                   >
                     <TableCell>
-                      <span className="font-medium text-foreground">
+                      <Link
+                        href={`/patients/${patient.id}`}
+                        aria-label={t("openRecord", { name: patient.name })}
+                        className="font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-none"
+                      >
                         {patient.name}
-                      </span>
+                      </Link>
                     </TableCell>
                     <TableCell>
                       <ClinicalBadge type="pathology" value={patient.pathology} />
@@ -327,8 +321,7 @@ export default function PatientsPage() {
                       />
                     </TableCell>
                   </TableRow>
-                  )
-                })}
+                ))}
                 {!loading && !error && filtered.length === 0 && (
                   <TableRow>
                     <TableCell
