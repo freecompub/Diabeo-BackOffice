@@ -9,10 +9,13 @@
  * - NURSE / DOCTOR / ADMIN: sees patients linked via PatientReferent
  *   (their portfolio). ADMINs without a HealthcareMember see an empty list.
  *
- * UI features: search by name, filter by pathology (DT1/DT2/GD). A row click
- * navigates to the full-screen patient record `/patients/[id]` (US-2642) — the
- * same entry point as the doctor dashboard cards. Access is gated server-side by
- * `canAccessPatient`; the id in the URL is not a data leak (already in payload).
+ * UI features: search by name, filter by pathology (DT1/DT2/GD). Each row's name
+ * cell is a real `<Link>` with a "stretched link" overlay (`::after` on the
+ * relative `<tr>`) that makes the WHOLE row navigate to the full-screen record
+ * `/patients/[id]` (US-2642) — the same entry point as the doctor dashboard cards,
+ * with prefetch, open-in-new-tab and native link keyboard/SR semantics. Access is
+ * gated server-side by `canAccessPatient`; the id in the URL is not a data leak
+ * (already present in the `/api/patients` payload).
  * Clinical metrics (last glucose, TIR, sync) are placeholders — they require
  * CGM rollup queries that this page does not yet issue.
  */
@@ -266,19 +269,28 @@ export default function PatientsPage() {
                   // US-2642 — la ligne ouvre la fiche plein écran `/patients/[id]`
                   // via un VRAI lien (parité cartes dashboard : prefetch, clic-milieu
                   // / « ouvrir dans un nouvel onglet », sémantique lien pour lecteurs
-                  // d'écran). Le lien « étiré » (`after:absolute after:inset-0`) rend
-                  // toute la ligne cliquable ; l'accès reste gardé serveur
-                  // (`canAccessPatient`) + audité, l'id en URL n'est pas une fuite
-                  // (déjà présent dans le payload `/api/patients`).
+                  // d'écran). Le nom EST le texte du lien (accessible name = nom, pas
+                  // de verbe redondant répété en navigation-liens).
+                  //
+                  // Lien « étiré » (`after:absolute after:inset-0`) : rend TOUTE la
+                  // ligne cliquable. ⚠️ Dépend du `<tr>` en `position:relative` comme
+                  // bloc conteneur (OK navigateurs evergreen — cible desktop du
+                  // backoffice). Ne PAS déplacer `relative` sur une cellule : sinon
+                  // l'overlay retomberait sur le conteneur `<table>` (lui aussi
+                  // `relative`, cf. ui/table.tsx) et couvrirait toute la table.
+                  // L'overlay masque les autres cellules → une future cellule
+                  // interactive devrait passer `relative z-10`. Focus visible porté
+                  // par le lien lui-même (outline fiable sur `<a>`, ≠ sur `<tr>`).
+                  // Accès gardé serveur (`canAccessPatient`) + audité ; l'id en URL
+                  // n'est pas une fuite (déjà présent dans le payload `/api/patients`).
                   <TableRow
                     key={patient.id}
-                    className="relative cursor-pointer hover:bg-muted focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-primary"
+                    className="relative cursor-pointer hover:bg-muted"
                   >
                     <TableCell>
                       <Link
                         href={`/patients/${patient.id}`}
-                        aria-label={t("openRecord", { name: patient.name })}
-                        className="font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-none"
+                        className="font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         {patient.name}
                       </Link>
@@ -313,8 +325,8 @@ export default function PatientsPage() {
                       {patient.lastSync}
                     </TableCell>
                     <TableCell>
-                      {/* La ligne entière est le déclencheur (role=button) ;
-                          chevron purement décoratif. */}
+                      {/* La ligne entière est cliquable via le lien étiré de la
+                          cellule nom ; chevron purement décoratif. */}
                       <ChevronRight
                         className="h-4 w-4 text-muted-foreground rtl:rotate-180"
                         aria-hidden="true"

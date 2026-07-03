@@ -369,7 +369,6 @@
     "loading": "Loading…",
     "loadError": "Could not load the patient list.",
     "decryptIncident": "Patient identities unavailable — technical incident reported. Contact the technical team.",
-    "openRecord": "Open {name}'s record",
     "ageYears": "{age} y.o.",
     "stepProgress": "Step {step} of {total} — {section}"
   },

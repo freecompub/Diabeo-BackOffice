@@ -35,16 +35,20 @@ identique au dashboard.
 ## Périmètre livré
 
 - `src/app/(dashboard)/patients/page.tsx` : `open({publicRef,…})` (drawer) → **vrai
-  lien** `<Link href="/patients/[id]">` « étiré » (`after:absolute after:inset-0`)
-  dans la cellule nom → toute la ligne cliquable, avec prefetch + clic-milieu /
-  « ouvrir dans un nouvel onglet » + sémantique lien (a11y). Suppression de
-  `useConsultation`, `useRouter` et du champ mort `publicRef` de `PatientRow`.
-  Focus visible au niveau ligne via `focus-within`.
+  lien** `<Link href="/patients/[id]">` « étiré » (`after:absolute after:inset-0`
+  sur la `<tr>` en `relative`) dans la cellule nom → toute la ligne cliquable, avec
+  prefetch + clic-milieu / « ouvrir dans un nouvel onglet » + sémantique lien.
+  Suppression de `useConsultation`, `useRouter` et du champ mort `publicRef`.
+  **A11y (revue)** : le **nom est le texte du lien** (accessible name = nom, pas
+  d'`aria-label` verbeux répété) ; **focus visible porté par le lien** lui-même
+  (`focus-visible:outline-*`, fiable sur `<a>` contrairement à un `focus-within`
+  sur `<tr>`).
 - `src/app/(dashboard)/patients/[id]/page.tsx` : ajout d'une ligne d'audit
   « surface » (`surface: "patient-detail-page"`) sur le chemin succès, en parité
   avec `/api/patients/record` (`surface: "api"`) — traçabilité CNIL/ANS.
-- `messages/{fr,en,ar}.json` : clé `patients.openConsultation` → `patients.openRecord`
-  (« Ouvrir la fiche de {name} »).
+- `messages/{fr,en,ar}.json` : clé `patients.openConsultation` **supprimée**
+  (l'ancien libellé d'action du drawer). Aucune clé de remplacement — le nom du
+  patient sert de texte de lien (accessible name).
 - `src/app/(dashboard)/layout.tsx` : `ConsultationProvider` démonté.
 - Suppression : `consultation/{ConsultationContext,PatientConsultationDrawer}.tsx`,
   `consultation/useConsultationData.ts`, `consultation/tabs/TabState.tsx`,
@@ -57,7 +61,9 @@ identique au dashboard.
 - **AC-2** ✅ Parité liste ⇄ dashboard : même route, même composant, même gate
   d'accès, même ligne d'audit.
 - **AC-3** ✅ Accès hors périmètre → `notFound()` (gate `canAccessPatient` inchangé).
-- **AC-4** ✅ A11y : ligne focusable clavier, `aria-label` explicite.
+- **AC-4** ✅ A11y : lien focusable au clavier avec focus visible (outline porté par
+  le `<a>`), sémantique lien native (Entrée, clic-milieu/nouvel-onglet) ; nom = texte
+  du lien (WCAG 1.3.1/2.4.7/4.1.2).
 - **AC-5** ✅ Suppression du dead code **client** sans régression (typecheck, lint,
   tests serveur `cTok` + i18n-parity verts). Décommission serveur = ticket dédié.
 
