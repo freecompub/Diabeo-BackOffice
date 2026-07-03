@@ -9,13 +9,14 @@
  * - NURSE / DOCTOR / ADMIN: sees patients linked via PatientReferent
  *   (their portfolio). ADMINs without a HealthcareMember see an empty list.
  *
- * UI features: search by name, filter by pathology (DT1/DT2/GD). Each row's name
- * cell is a real `<Link>` with a "stretched link" overlay (`::after` on the
- * relative `<tr>`) that makes the WHOLE row navigate to the full-screen record
- * `/patients/[id]` (US-2642) — the same entry point as the doctor dashboard cards,
- * with prefetch, open-in-new-tab and native link keyboard/SR semantics. Access is
- * gated server-side by `canAccessPatient`; the id in the URL is not a data leak
- * (already present in the `/api/patients` payload).
+ * UI features: search by name, filter by pathology (DT1/DT2/GD). Navigation to the
+ * full-screen record `/patients/[id]` (US-2642, same entry point as the doctor
+ * dashboard cards) uses two layers: the name cell is a real `<Link>` (keyboard/SR
+ * semantics, prefetch, open-in-new-tab) — the AT-supported control — and the row
+ * has an `onClick` for mouse convenience (whole-row click), redundant with the link
+ * so it carries no role/tabIndex. Access is gated server-side by `canAccessPatient`;
+ * the id in the URL is not a data leak (already present in the `/api/patients`
+ * payload).
  * Clinical metrics (last glucose, TIR, sync) are placeholders — they require
  * CGM rollup queries that this page does not yet issue.
  */
@@ -36,6 +37,7 @@ import {
 import { Card, CardContent } from "@/components/ui/card"
 import { Search, ChevronRight, UserPlus, Loader2 } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import type { PatientListItemDto } from "@/lib/dto/patient"
 
@@ -88,6 +90,7 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
 }
 
 export default function PatientsPage() {
+  const router = useRouter()
   const t = useTranslations("patients")
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
@@ -265,32 +268,36 @@ export default function PatientsPage() {
                     </TableCell>
                   </TableRow>
                 )}
-                {!loading && !error && filtered.map((patient) => (
-                  // US-2642 — la ligne ouvre la fiche plein écran `/patients/[id]`
-                  // via un VRAI lien (parité cartes dashboard : prefetch, clic-milieu
-                  // / « ouvrir dans un nouvel onglet », sémantique lien pour lecteurs
-                  // d'écran). Le nom EST le texte du lien (accessible name = nom, pas
-                  // de verbe redondant répété en navigation-liens).
-                  //
-                  // Lien « étiré » (`after:absolute after:inset-0`) : rend TOUTE la
-                  // ligne cliquable. ⚠️ Dépend du `<tr>` en `position:relative` comme
-                  // bloc conteneur (OK navigateurs evergreen — cible desktop du
-                  // backoffice). Ne PAS déplacer `relative` sur une cellule : sinon
-                  // l'overlay retomberait sur le conteneur `<table>` (lui aussi
-                  // `relative`, cf. ui/table.tsx) et couvrirait toute la table.
-                  // L'overlay masque les autres cellules → une future cellule
-                  // interactive devrait passer `relative z-10`. Focus visible porté
-                  // par le lien lui-même (outline fiable sur `<a>`, ≠ sur `<tr>`).
+                {!loading && !error && filtered.map((patient) => {
+                  // US-2642 — la fiche s'ouvre en page plein écran `/patients/[id]`
+                  // (même route que les cartes du dashboard). Deux couches
+                  // complémentaires, volontairement :
+                  //  • le NOM est un VRAI <Link> → contrôle supporté par les technos
+                  //    d'assistance : focus clavier, sémantique lien, prefetch,
+                  //    clic-milieu / « ouvrir dans un nouvel onglet ». Le nom EST le
+                  //    texte du lien (accessible name = nom, pas de verbe redondant).
+                  //  • la LIGNE porte un `onClick` → confort souris (toute la ligne
+                  //    cliquable). Simple enrichissement pointeur REDONDANT avec le
+                  //    lien : donc SANS `role`/`tabIndex` (les utilisateurs clavier/SR
+                  //    passent par le lien, seul contrôle exposé à l'AT). Le lien
+                  //    `stopPropagation` pour éviter une double navigation.
+                  // NB : on n'utilise PAS de lien « étiré » (`::after inset-0`) — le
+                  // `<tr position:relative>` n'est pas un bloc conteneur fiable (la
+                  // CI l'a prouvé : le centre de ligne n'était pas couvert).
                   // Accès gardé serveur (`canAccessPatient`) + audité ; l'id en URL
                   // n'est pas une fuite (déjà présent dans le payload `/api/patients`).
+                  const openPatient = () => router.push(`/patients/${patient.id}`)
+                  return (
                   <TableRow
                     key={patient.id}
-                    className="relative cursor-pointer hover:bg-muted"
+                    onClick={openPatient}
+                    className="cursor-pointer hover:bg-muted"
                   >
                     <TableCell>
                       <Link
                         href={`/patients/${patient.id}`}
-                        className="font-medium text-foreground after:absolute after:inset-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-medium text-foreground hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
                       >
                         {patient.name}
                       </Link>
@@ -325,15 +332,16 @@ export default function PatientsPage() {
                       {patient.lastSync}
                     </TableCell>
                     <TableCell>
-                      {/* La ligne entière est cliquable via le lien étiré de la
-                          cellule nom ; chevron purement décoratif. */}
+                      {/* La ligne entière est cliquable (onClick de la ligne) ;
+                          chevron purement décoratif. */}
                       <ChevronRight
                         className="h-4 w-4 text-muted-foreground rtl:rotate-180"
                         aria-hidden="true"
                       />
                     </TableCell>
                   </TableRow>
-                ))}
+                  )
+                })}
                 {!loading && !error && filtered.length === 0 && (
                   <TableRow>
                     <TableCell
