@@ -75,4 +75,43 @@ test.describe("Patients list — /patients (real API connection)", () => {
     await expect(page.getByText("Lucas Petit")).not.toBeVisible()
     await expect(page.getByText("Amélie Rousseau")).not.toBeVisible()
   })
+
+  test("DOCTOR → clic sur le nom (lien) ouvre la fiche plein écran /patients/[id] (US-2642)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    // US-2642 — la liste ouvre désormais la MÊME page que les cartes du
+    // dashboard médecin : la route autorisée `/patients/[id]` (gate serveur
+    // `canAccessPatient`), et non plus le drawer éphémère `cTok`. Le nom de
+    // chaque ligne est un vrai <Link> — contrôle exposé à l'AT et à la souris ;
+    // c'est ce qu'on assert ici. (Le clic « pleine ligne » via l'onClick de la
+    // <tr> est un confort souris redondant, non gaté par E2E.)
+    await loginAs(context, request, "doctor")
+    await page.goto("/patients")
+
+    const firstRowLink = page.locator("table tbody tr").first().getByRole("link").first()
+    await expect(firstRowLink).toBeVisible({ timeout: 10_000 })
+
+    await firstRowLink.click()
+    await expect(page).toHaveURL(/\/patients\/\d+$/, { timeout: 10_000 })
+  })
+
+  test("DOCTOR → navigation clavier (Entrée) sur le lien de la ligne ouvre /patients/[id] (a11y)", async ({
+    page,
+    context,
+    request,
+  }) => {
+    await loginAs(context, request, "doctor")
+    await page.goto("/patients")
+
+    // US-2642 — le nom de la ligne est un vrai lien (sémantique lien, pas
+    // bouton) : il est focusable et s'active nativement au clavier (Entrée).
+    const firstRowLink = page.locator("table tbody tr").first().getByRole("link").first()
+    await expect(firstRowLink).toBeVisible({ timeout: 10_000 })
+
+    await firstRowLink.focus()
+    await page.keyboard.press("Enter")
+    await expect(page).toHaveURL(/\/patients\/\d+$/, { timeout: 10_000 })
+  })
 })

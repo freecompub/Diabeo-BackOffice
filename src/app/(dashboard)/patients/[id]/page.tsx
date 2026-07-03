@@ -86,6 +86,19 @@ export default async function PatientDetailPage({
   const data = await buildPatientRecordData(patientId, role, userId, ctx)
   if (!data) notFound()
 
+  // US-2642 — ligne d'audit « surface » (sans PHI), parité avec
+  // `/api/patients/record` (`surface: "api"`) : le READ PATIENT générique de
+  // `getById` ne porte que `patientId` ; cette ligne distingue une consultation
+  // plein-écran (`patient-detail-page`) d'un autre appelant `getById` pour la
+  // forensique CNIL/ANS. Fail-soft : un échec ne casse pas le rendu déjà audité.
+  await auditService
+    .log({
+      userId, action: "READ", resource: "PATIENT", resourceId: String(patientId),
+      ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId,
+      metadata: { patientId, kind: "patientRecord", surface: "patient-detail-page" },
+    })
+    .catch((e) => console.error("[patient-detail] surface audit failed", e instanceof Error ? e.message : e))
+
   // US-2603 — enregistre la consultation du dossier (switcher « récemment vus »).
   // Placement APRÈS l'assemblage volontaire : on n'enregistre une consultation
   // que si le dossier a réellement pu être projeté (si un agrégat lève, le throw

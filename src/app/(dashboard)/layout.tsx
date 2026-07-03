@@ -8,7 +8,6 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { NavigationShell, type UserRole } from "@/components/diabeo/NavigationShell"
-import { ConsultationProvider } from "@/components/diabeo/consultation/ConsultationContext"
 import { hasManagementCapability } from "@/lib/capabilities"
 import { getShellUserName } from "@/lib/auth/current-user-name"
 
@@ -58,17 +57,17 @@ export default async function DashboardLayout({
   ])
 
   return (
-    // US-2018b — le provider enveloppe tout le shell : la consultation rend la
-    // sidebar/le header inertes et monte le drawer patient par-dessus.
-    <ConsultationProvider>
-      <NavigationShell
-        pageTitle="Diabeo"
-        userRole={userRole}
-        userName={userName}
-        canManageOrg={canManageOrg}
-      >
-        {children}
-      </NavigationShell>
-    </ConsultationProvider>
+    // US-2642 — la fiche patient s'ouvre désormais en page plein écran
+    // `/patients/[id]` (liste + dashboard). Le drawer de consultation éphémère
+    // n'est plus monté ; sa décommission serveur (endpoints cTok) est suivie
+    // dans un ticket dédié (revue healthcare-security-auditor).
+    <NavigationShell
+      pageTitle="Diabeo"
+      userRole={userRole}
+      userName={userName}
+      canManageOrg={canManageOrg}
+    >
+      {children}
+    </NavigationShell>
   )
 }
