@@ -31,11 +31,11 @@
 | D6 | Feature **treatment-mode-aware** : 3 modes (voir §4). L'algorithme d'ajustement couvre les 3. |
 | D7 | **Interdiction absolue** : proposer/ajuster automatiquement une **posologie orale ou GLP-1** (frontière dispositif médical MDR/IEC 62304). Mode non-insuliné = orientation, pas dosage. |
 
-> ⚠️ **Point à reconfirmer** : lors de la décision D2/D3, l'option retenue indique
-> « validé par un **DOCTOR** », alors qu'un échange précédent évoquait « médecin **ou**
-> infirmier ». **Le validateur (accept/reject) est-il DOCTOR only, ou NURSE+DOCTOR ?**
-> Défaut retenu dans cette US : **DOCTOR only valide** (autorité clinique), NURSE peut
-> proposer. À trancher avant US-2649.
+> ✅ **Verrouillé (décision utilisateur)** : le validateur (accept/reject) est **DOCTOR
+> only** — et plus précisément **rôle exactement DOCTOR** (pas `hasMinRole`, donc **ADMIN
+> exclu** : rôle technique, non clinicien) **+ `canAccessPatient`**. NURSE et patient
+> **proposent** uniquement. Un DOCTOR édite en direct (D1) et n'a pas à passer par une
+> proposition.
 
 ## 3. Constat technique (ce qui bloque aujourd'hui)
 
@@ -149,8 +149,78 @@ toute extension d'`AdjustableParameter` **doit** ajouter sa borne dans `CLINICAL
 - `architect-reviewer` (extension `AdjustmentProposal` vs nouvel objet pour le mode c).
 - `prisma-specialist` (migration provenance + dose fixe structurée + enum).
 
+## 12. Revue archi + HDS — changements **imposés** (source unique)
+
+> Consolidé des revues `architect-reviewer` (B/A/N) et `healthcare-security-auditor`
+> (CRITICAL/HIGH/MEDIUM/LOW). **Ces points ne sont pas optionnels** — chaque sous-US
+> renvoie ici.
+
+### 🔴 Bloquants / CRITICAL
+1. **Provenance = enum `ProposalSource` (`ALGORITHM|PATIENT|NURSE|DOCTOR`)**, pas `Role`.
+   `proposedByUserId` **nullable** + `CHECK` DB (`ALGORITHM → userId IS NULL` ; sinon NOT NULL).
+   **Toujours dérivé serveur** (`session.user.id/role`), jamais lu du body (anti-usurpation).
+   Backfill des lignes existantes → `ALGORITHM`. *(US-2646)*
+2. **Union taguée sur `AdjustmentProposal`** (pas de sous-typage) : rendre `supportingEvents`,
+   `confidence`, `analysisPeriod`, `dataQuality`, `averageObservedValue` **nullable** +
+   `CHECK` conditionnel `source=ALGORITHM → supportingEvents & confidence NOT NULL`. *(US-2646)*
+3. **`fixedDose` atomique en US-2646** : enum `AdjustableParameter.fixedDose` **+** bornes
+   `CLINICAL_BOUNDS` (min/max/cap absolus U) **+** branche `validateProposedValue` **+** test,
+   livrés **ensemble**. **Ne PAS** ajouter `glucoseTarget` à l'enum (la cible = **édition directe
+   DOCTOR** sur `GlucoseTarget`/`CgmObjective`, jamais une proposition). *(US-2646)*
+4. **Table dédiée `FixedDoseSlot`** (`patientInsulinId`, `moment`, `valueU`…) — **pas**
+   `BasalConfiguration` (basal-only, 2 moments, 1:1 settings). **Pas de backfill auto** du texte
+   libre `PatientInsulin.dosage` (fourchettes non parsables) → **structuration opt-in par un PS**. *(US-2646)*
+5. **Objet distinct mode (c)** : nouveau `ClinicalReviewFlag` (`patientId`, `type`, `status`,
+   `createdBy` nullable, `resolvedBy`) — **défini en US-2646**. Le mode (c) ne crée **jamais**
+   d'`AdjustmentProposal` de dose. *(US-2646 + US-2651)*
+6. **Transport d'ÉCRITURE injecté** symétrique à `fetchAnalytics` (`mutate(endpoint, body)`),
+   identité résolue par l'adaptateur (jamais l'URL construite par le composant → anti-énumération).
+   **Éditeur `variant="page"` uniquement** : un `x-consultation-token` de **lecture** (drawer) ne doit
+   **jamais** autoriser une écriture insuline (escalade de privilège) → fail-closed. Capability
+   descriptor serveur `{ mode, canEditDirect, canPropose }`. *(US-2648)*
+7. **RBAC écriture directe** (CRITICAL HDS) : les routes `POST/PATCH /api/insulin-therapy/*` sont
+   aujourd'hui `requireRole(NURSE)` (hiérarchique → NURSE écrit en direct). Les passer à **DOCTOR
+   exact** ; NURSE → **403** et doit passer par l'endpoint de proposition. Re-routage **serveur**,
+   pas UI. Test E2E : `NURSE PATCH insulin-therapy/*` → 403. *(US-2648)*
+8. **Validation = DOCTOR exact + `canAccessPatient`** (MEDIUM HDS) : `requireRole(DOCTOR)` laisse
+   passer **ADMIN** → exclure. `accept/reject` : rôle exact DOCTOR, jamais l'UI. *(US-2649b)*
+
+### 🟠 À intégrer
+- **`treatmentMode` dérivé = source de vérité** ; le gate d'écriture **re-dérive dans la même
+  transaction** (Prisma 7 sans `$use()` → pas de recalcul middleware fiable). `Patient.treatmentMode`
+  persisté = **cache d'affichage** recalculé en transaction, **jamais** l'autorité (fail-**closed**).
+  Migration : **pas** de défaut global `basalBolus` ; backfill via détection (DT1 jamais `nonInsulin`). *(US-2646/2647)*
+- **Scinder US-2649** : **2649a** (primitive `createProposal` : provenance serveur, bornes-à-la-création,
+  anti-spam, `validateProposedValue` étendu) livrée **avant US-2648** ; **2649b** (notifications + UI
+  `/adjustment-proposals` + accept/reject mode-aware) après 2648/2651. Corriger les `dépend de` (2649 dépend
+  aussi de 2647 et 2651). *(dépendances)*
+- **`accept()` sûr** : `updateMany` silencieux → vérifier `count === 1` (sinon rollback + « slot introuvable »).
+  **Re-lire la valeur courante** au moment de l'accept, revalider le delta vs `currentValue` figée ; drift →
+  refus d'auto-application, re-saisie médecin. `applyImmediately` **forcé `false`** pour `source != DOCTOR`.
+  `validateProposedValue` **à la création ET à l'accept** (double gate). *(US-2649)*
+- **Justification patient = champ dédié chiffré** `AdjustmentProposal.proposerComment` (AES-256-GCM),
+  **pas** `AdjustmentProposalAck.comment` (qui est la réponse patient post-décision, 1:1). *(US-2646/2650)*
+- **Self-service patient own-id strict** : résolution **exclusive** `getOwnPatientId(user.id)` ; **aucun**
+  `?patientId`, **aucun** `x-consultation-token` sur les routes patient ; Zod **sans** `patientId`. Re-scoper
+  `/api/patient/insulin-settings`. Test : VIEWER visant un autre id / avec token → toujours son dossier. *(US-2650)*
+
+### 🟡 Nits (à ne pas perdre)
+- **Audit sans PHI** : `resourceId=proposalId` + `metadata={patientId, proposedByRole}` ; **jamais** de
+  dose/valeur en clair dans log/notif/URL. Notif push = corps générique + `data={type, proposalId}`,
+  détails via API auth. *(US-2649b)*
+- **Anti-spam serveur** : index unique partiel PG « 1 `pending` max par (patientId, parameterType, slot)
+  `WHERE status='pending'` » + cooldown 72 h. *(US-2649a)*
+- **Redirect `/insulin-therapy` role-branché** (DOCTOR/NURSE → fiche ; VIEWER → route patient). *(US-2648/2650)*
+- **Réutiliser le mapper pur `treatment-view.ts`** pour la détection (ratios complets, gap/overlap). *(US-2647)*
+- **`MAX_CHANGE_PERCENT=20`** en dur → remonter dans `CLINICAL_BOUNDS`. *(US-2651)*
+- **`InsulinSummary`** : vérifier absence de fuite import client/serveur avant montage `(patient)`. *(US-2650)*
+- **ADR #21** devient « 1 composant présentational, **N transports** » (ajout own-id patient) ; **DPIA** :
+  documenter les doses numériques en clair (calculabilité → at-rest pgcrypto + RBAC). *(US-2652)*
+
 ---
 
-*Source de la synthèse clinique : agent `medical-domain-validator` (fichiers cités : `prisma/schema.prisma`,
-`src/lib/clinical-bounds.ts`, `src/lib/proposal-algorithm.ts`, `src/lib/services/adjustment.service.ts`,
-`src/lib/services/insulin.service.ts`, `src/app/(dashboard)/patients/[id]/treatment-view.ts`).*
+*Sources : agents `medical-domain-validator`, `architect-reviewer`, `healthcare-security-auditor`
+(fichiers cités : `prisma/schema.prisma`, `src/lib/clinical-bounds.ts`, `src/lib/proposal-algorithm.ts`,
+`src/lib/services/adjustment.service.ts`, `src/lib/auth/{rbac,query-helpers}.ts`, `src/lib/access-control.ts`,
+`src/app/api/insulin-therapy/*`, `src/app/api/adjustment-proposals/[id]/{accept,reject}/route.ts`,
+`src/components/diabeo/patient/PatientRecordContext.tsx`, `treatment-view.ts`).*

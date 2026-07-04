@@ -30,3 +30,18 @@ et `PatientInsulin.dosage` est du texte libre non calculable.
 - Valider avec `prisma-specialist` + `architect-reviewer` (réutiliser `AdjustmentProposal` vs objet dédié
   pour le mode non-insuliné — cf. US-2651, le mode (c) ne porte **pas** de posologie).
 - Alignement iOS si le modèle bouge (`swift-expert`).
+
+## Révision post-revue (archi + HDS) — voir épic §12
+
+**Impacts majeurs (bloquants) :**
+- Provenance = enum **`ProposalSource` (`ALGORITHM|PATIENT|NURSE|DOCTOR`)**, `proposedByUserId` **nullable** + `CHECK` (`ALGORITHM→null`) ; **dérivé serveur**, jamais du body ; backfill lignes existantes → `ALGORITHM` (§12.1).
+- **Union taguée** : rendre `supportingEvents`/`confidence`/`analysisPeriod`/`dataQuality`/`averageObservedValue` **nullable** + `CHECK` `source=ALGORITHM → supportingEvents & confidence NOT NULL` (§12.2).
+- **`fixedDose` atomique** : enum + bornes `CLINICAL_BOUNDS` + branche `validateProposedValue` + test **dans cette US** ; **ne pas** ajouter `glucoseTarget` (cible = édition directe DOCTOR) (§12.3).
+- **Table `FixedDoseSlot`** dédiée (pas `BasalConfiguration`) ; **pas de backfill auto** du texte libre → structuration **opt-in PS** (§12.4). AC-3 reformulé.
+- **`ClinicalReviewFlag`** (mode c) défini ici (§12.5).
+- **`Patient.treatmentMode`** = cache d'affichage, source de vérité = dérivée ; migration **sans** défaut `basalBolus`, backfill fail-closed (DT1 jamais `nonInsulin`).
+- **`proposerComment`** chiffré AES-256-GCM sur `AdjustmentProposal` (justification patient) ; FK `proposedByUserId` onDelete documenté.
+- ✅ **Arbitrage clinique tranché (utilisateur)** : `FixedDoseSlot.valueU` = **valeur numérique unique**
+  par moment (matin/midi/soir/nuit). Le soignant fixe une valeur lors de la structuration (ex. « 6-8U »
+  → 7U) ; le texte libre `PatientInsulin.dosage` d'origine est **conservé en note d'affichage**. Base
+  claire pour l'ajustement mode (b) (proposer ± 1–2 U bornés). Pas de fourchette min/max.

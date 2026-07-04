@@ -24,3 +24,7 @@ insuline ni d'ajustement de dose).
 
 ## Notes
 - Les patients oraux/GLP-1 (module médicaments, Phase 10) relèvent du mode (c).
+
+## Révision post-revue (archi) — voir épic §12
+- `treatmentMode` **dérivé = source de vérité** ; le **gate d'écriture re-dérive dans la même transaction** (fail-closed), jamais la colonne persistée (§12 « à intégrer »).
+- **Réutiliser le mapper pur `treatment-view.ts`** (ratios complets, `hasGap`/`hasOverlap`) pour une définition unique de « ratios complets » (§12 nit).

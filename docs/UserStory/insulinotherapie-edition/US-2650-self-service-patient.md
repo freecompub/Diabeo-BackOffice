@@ -30,3 +30,8 @@ Paramètres ; les API `/api/insulin-therapy/*` **bloquent VIEWER** ; `/insulin-t
 ## Notes
 - Réutiliser le composant orphelin `InsulinSummary` (mis en conformité design-system) pour la vue de synthèse.
 - L'endpoint `/api/patient/insulin-settings` existant (lecture) est à **re-scoper own-id** ou remplacer.
+
+## Révision post-revue (HDS + archi) — voir épic §12
+- **Own-id strict** : résolution **exclusive** `getOwnPatientId(user.id)` ; **aucun** `?patientId`, **aucun** `x-consultation-token` sur les routes patient ; Zod **sans** `patientId`. Re-scoper `/api/patient/insulin-settings` (§12 « à intégrer », HIGH IDOR). Test VIEWER visant un autre id/token → son dossier.
+- Justification patient → champ **`proposerComment`** chiffré (pas `Ack.comment`) (§12).
+- `InsulinSummary` : vérifier **absence de fuite import client/serveur** avant montage `(patient)` (§12 nit).

@@ -30,3 +30,12 @@ explicitement. L'écran de validation existe déjà (`/adjustment-proposals`) ma
 
 ## Notes
 - Réutiliser `AdjustmentProposalActualization` (US-2066) pour le suivi d'effet si pertinent.
+
+## Révision post-revue (archi + HDS) — SCINDÉE, voir épic §12
+**US-2649 est scindée** (le cycle 2648⇄2649 doit être cassé) :
+- **US-2649a (socle create)** — primitive `createProposal` : provenance **dérivée serveur**, **bornes vérifiées à la création**, `validateProposedValue` étendu (`fixedDose`), **anti-spam** (index unique partiel PG `WHERE status='pending'` + cooldown 72 h). Livrée **avant US-2648**.
+- **US-2649b (surface)** — notifications push **sans PHI** (`data={type, proposalId}`, corps générique) + UI `/adjustment-proposals` (surfacée) + **accept/reject mode-aware**. Après 2648/2651.
+- **`accept()` sûr** : `count === 1` obligatoire (TOCTOU `updateMany`), **re-lecture valeur courante** + revalidation delta vs `currentValue` figée (drift → refus auto), double gate `validateProposedValue` (create + accept), `applyImmediately=false` si `source != DOCTOR` (§12).
+- **Validation = DOCTOR exact + `canAccessPatient`** (ADMIN exclu) (§12.8).
+- **Audit sans PHI** : `resourceId=proposalId`, `metadata={patientId, proposedByRole}` ; jamais la dose (§12 nit).
+- Dépendances corrigées : dépend aussi de **2647** et **2651**.
