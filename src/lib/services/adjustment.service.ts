@@ -11,8 +11,31 @@ import { auditService } from "./audit.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
+import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
-import type { ProposalStatus, Prisma } from "@prisma/client"
+import type {
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource,
+} from "@prisma/client"
+
+/** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
+type HumanProposerRole = Extract<ProposalSource, "patient" | "nurse" | "doctor">
+
+/** Entrée STRUCTURÉE d'une proposition humaine (US-2649a). La provenance est
+ *  dérivée du `proposer` authentifié, jamais du corps de requête (anti-usurpation). */
+export type CreateProposalInput = {
+  patientId: number
+  parameterType: AdjustableParameter
+  currentValue: number
+  proposedValue: number
+  reason: AdjustmentReason
+  timeSlotStartHour?: number | null
+  timeSlotEndHour?: number | null
+  carbRatioSlotStart?: number | null
+  carbRatioSlotEnd?: number | null
+  pumpBasalSlotId?: string | null
+  /** Justification texte libre — chiffrée AES-256-GCM au stockage. */
+  proposerComment?: string | null
+}
 
 /**
  * Validate proposed parameter value against clinical bounds.
@@ -120,6 +143,97 @@ export const adjustmentService = {
         resourceId: proposal.id,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+      })
+
+      return proposal
+    })
+  },
+
+  /**
+   * US-2649a — Créer une proposition d'ajustement **humaine** (patient / infirmier /
+   * médecin) depuis une entrée structurée. Garde-fous imposés SERVEUR :
+   *  - provenance dérivée du `proposer` authentifié (jamais du body) ;
+   *  - bornes cliniques vérifiées **à la création** (pas seulement à l'accept) ;
+   *  - pour un PATIENT : sens interdit (jamais de baisse de basale/dose fixe) + cap
+   *    de variation resserré (dose fixe en U, ratios en %) ;
+   *  - anti-spam : 1 proposition `pending` max par (patient, paramètre, créneau) ;
+   *  - métriques moteur (`confidence`/`supportingEvents`) NULLES (proposition humaine) ;
+   *  - `proposerComment` chiffré ; jamais auto-appliqué (`status=pending`).
+   */
+  async createProposal(
+    input: CreateProposalInput,
+    proposer: { userId: number; role: HumanProposerRole },
+    ctx?: AuditContext,
+  ) {
+    const { patientId, parameterType, currentValue, proposedValue } = input
+
+    // 1. Bornes cliniques dures — rejet à la création.
+    if (!validateProposedValue(parameterType, proposedValue)) {
+      throw new Error("valueOutOfBounds")
+    }
+
+    const delta = proposedValue - currentValue
+    const changePercent = currentValue !== 0 ? (delta / currentValue) * 100 : 0
+
+    // 2. Garde-fous PATIENT (une demande, pas une titration).
+    if (proposer.role === "patient") {
+      if ((parameterType === "basalRate" || parameterType === "fixedDose") && delta < 0) {
+        throw new Error("patientDecreaseForbidden")
+      }
+      const overCap =
+        parameterType === "fixedDose"
+          ? Math.abs(delta) > INSULIN_BOUNDS.FIXED_DOSE_PATIENT_MAX_DELTA_U
+          : Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT
+      if (overCap) throw new Error("patientDeltaTooLarge")
+    }
+
+    // 3. Anti-spam : une seule proposition PENDING par (patient, paramètre, créneau).
+    const existing = await prisma.adjustmentProposal.findFirst({
+      where: {
+        patientId,
+        parameterType,
+        status: "pending",
+        timeSlotStartHour: input.timeSlotStartHour ?? null,
+        carbRatioSlotStart: input.carbRatioSlotStart ?? null,
+        pumpBasalSlotId: input.pumpBasalSlotId ?? null,
+      },
+      select: { id: true },
+    })
+    if (existing) throw new Error("duplicatePendingProposal")
+
+    // 4. Création — provenance DÉRIVÉE serveur ; jamais appliqué.
+    return prisma.$transaction(async (tx) => {
+      const proposal = await tx.adjustmentProposal.create({
+        data: {
+          patientId,
+          parameterType,
+          currentValue,
+          proposedValue,
+          changePercent,
+          reason: input.reason,
+          source: proposer.role,
+          proposedByUserId: proposer.userId,
+          proposerComment: input.proposerComment != null ? encryptField(input.proposerComment) : null,
+          confidence: null,
+          supportingEvents: null,
+          status: "pending",
+          timeSlotStartHour: input.timeSlotStartHour ?? null,
+          timeSlotEndHour: input.timeSlotEndHour ?? null,
+          carbRatioSlotStart: input.carbRatioSlotStart ?? null,
+          carbRatioSlotEnd: input.carbRatioSlotEnd ?? null,
+          pumpBasalSlotId: input.pumpBasalSlotId ?? null,
+        },
+      })
+
+      // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose.
+      await auditService.logWithTx(tx, {
+        userId: proposer.userId,
+        action: "CREATE",
+        resource: "ADJUSTMENT_PROPOSAL",
+        resourceId: proposal.id,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId, proposedByRole: proposer.role },
       })
 
       return proposal
