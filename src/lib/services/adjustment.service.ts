@@ -29,11 +29,13 @@ function validateProposedValue(parameterType: string, value: number): boolean {
       return value >= INSULIN_BOUNDS.ICR_MIN && value <= INSULIN_BOUNDS.ICR_MAX
     case "basalRate":
       return value >= INSULIN_BOUNDS.BASAL_MIN && value <= INSULIN_BOUNDS.BASAL_MAX
-    // US-2646 — dose fixe (mode « doses simples »). Bornes absolues ; le cap de
-    // variation (delta) et le sens interdit patient sont vérifiés à la création
-    // (service), pas ici (borne de valeur uniquement).
+    // US-2646 — dose fixe (mode « doses simples »). SEUL le plancher de sanité bloque
+    // (dose ≤ 0 / < 0,5 U invalide). PAS de plafond bloquant : une basale fixe peut
+    // dépasser 25 U ; le dépassement des seuils théoriques (FIXED_BOLUS/BASAL_WARN_U)
+    // déclenche un AVERTISSEMENT au service, pas un rejet. Delta/sens interdit patient
+    // vérifiés à la création (service), pas ici.
     case "fixedDose":
-      return value >= INSULIN_BOUNDS.FIXED_DOSE_MIN && value <= INSULIN_BOUNDS.FIXED_DOSE_MAX
+      return value >= INSULIN_BOUNDS.FIXED_DOSE_MIN
     default:
       return false
   }
@@ -152,6 +154,13 @@ export const adjustmentService = {
 
         if (!validateProposedValue(proposal.parameterType, proposed)) {
           throw new Error("valueOutOfBounds")
+        }
+
+        // US-2646 — l'écriture d'une dose fixe (fixed_dose_slots) est câblée en
+        // US-2647/2649. Tant qu'elle ne l'est pas, on REFUSE l'application immédiate
+        // (fail-closed) plutôt que de renvoyer un faux `applied: true` sur un no-op.
+        if (proposal.parameterType === "fixedDose") {
+          throw new Error("fixedDoseApplyNotImplemented")
         }
 
         if (proposal.parameterType === "insulinSensitivityFactor" && proposal.timeSlotStartHour != null) {

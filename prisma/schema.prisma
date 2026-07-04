@@ -115,7 +115,9 @@ enum TreatmentMode {
   nonInsulin
 }
 
-// US-2646 — moment d'une dose fixe (mode b).
+// US-2646 — moment d'une dose fixe (mode b). Enum distinct de `DayMomentType`
+// (qui porte un `custom` sans objet pour une dose fixe) : une dose fixe se répartit
+// sur 4 moments fixes (matin/midi/soir/nuit), jamais sur un moment personnalisé.
 enum DoseMoment {
   morning
   noon
