@@ -35,6 +35,23 @@ export const CLINICAL_BOUNDS = {
   INSULIN_ACTION_MAX: 5.0,
   /** Pump basal increment in U/h */
   PUMP_BASAL_INCREMENT: 0.05,
+  /**
+   * US-2646 — Dose fixe par moment (mode « doses simples »), en unités.
+   * `FIXED_DOSE_MIN` = plancher absolu de sanité (bloquant : pas de dose ≤ 0 ; pas
+   * < 0,5 U = pas des stylos demi-unité). PAS de plafond BLOQUANT : une basale fixe
+   * peut légitimement dépasser 25 U (DT2 insulino-résistant, dégludec/glargine U-300
+   * jusqu'à ~80 U). À la place, seuils d'AVERTISSEMENT théoriques par type — ils
+   * déclenchent un warning (au service), jamais un rejet :
+   *   - `FIXED_BOLUS_WARN_U` : dose fixe prandiale au-delà de laquelle on alerte.
+   *   - `FIXED_BASAL_WARN_U`  : dose fixe basale au-delà de laquelle on alerte.
+   * `FIXED_DOSE_MAX_DELTA_U` = variation max par ajustement (titration lente) ;
+   * `FIXED_DOSE_PATIENT_MAX_DELTA_U` = cap PATIENT resserré (une demande, pas une titration).
+   */
+  FIXED_DOSE_MIN: 0.5,
+  FIXED_BOLUS_WARN_U: 25.0,
+  FIXED_BASAL_WARN_U: 80.0,
+  FIXED_DOSE_MAX_DELTA_U: 2.0,
+  FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

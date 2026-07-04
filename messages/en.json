@@ -1483,7 +1483,8 @@
       "stale": "Data is stale — refresh pending.",
       "deterministic": "deterministic",
       "review": "Review",
-      "reviewAria": "Review {name}'s proposal"
+      "reviewAria": "Review {name}'s proposal",
+      "paramFixedDose": "Fixed dose"
     },
     "medecinMessages": {
       "title": "Unread messages",
@@ -1532,7 +1533,8 @@
     "isfMgdl": "mg/dL/U",
     "isfMmol": "mmol/L/U",
     "icr": "g/U",
-    "basal": "U/h"
+    "basal": "U/h",
+    "u": "U"
   },
   "patientContextBar": {
     "backToWorklist": "Back to My day",
@@ -2015,7 +2017,8 @@
     "finalize": "Finalize report",
     "finalizeError": "Finalization failed. Please retry.",
     "finalizedTitle": "Report finalized",
-    "finalizedNote": "This report is finalized and immutable (it can no longer be edited)."
+    "finalizedNote": "This report is finalized and immutable (it can no longer be edited).",
+    "paramFixedDose": "Fixed dose"
   },
   "cabinetMembers": {
     "title": "Cabinet personnel & rights",

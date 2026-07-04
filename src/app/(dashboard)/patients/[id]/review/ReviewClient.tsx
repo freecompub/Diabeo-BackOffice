@@ -44,7 +44,8 @@ export type ReviewProposalItem = {
   proposedValue: number
   changePercent: number
   reason: string
-  confidence: string
+  // US-2646 — nullable : une proposition humaine (patient/infirmier) n'a pas de confiance moteur.
+  confidence: string | null
   timeSlotStartHour: number | null
   timeSlotEndHour: number | null
   createdAt: string
@@ -94,13 +95,15 @@ const PARAM_LABEL_KEY: Record<AdjustableParameter, string> = {
   basalRate: "paramBasalRate",
   insulinSensitivityFactor: "paramInsulinSensitivityFactor",
   insulinToCarbRatio: "paramInsulinToCarbRatio",
+  fixedDose: "paramFixedDose",
 }
 
 /** parameterType → clé d'unité (namespace `insulinUnits`). ISF stocké en g/L. */
-const PARAM_UNIT_KEY: Record<AdjustableParameter, "isfGl" | "icr" | "basal"> = {
+const PARAM_UNIT_KEY: Record<AdjustableParameter, "isfGl" | "icr" | "basal" | "u"> = {
   insulinSensitivityFactor: "isfGl",
   insulinToCarbRatio: "icr",
   basalRate: "basal",
+  fixedDose: "u",
 }
 
 const STEPS = [

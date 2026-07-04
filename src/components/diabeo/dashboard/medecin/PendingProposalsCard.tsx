@@ -36,10 +36,11 @@ const PARAM_LABEL_KEY: Record<PendingProposalItem["parameterType"], string> = {
   basalRate: "paramBasalRate",
   insulinSensitivityFactor: "paramInsulinSensitivityFactor",
   insulinToCarbRatio: "paramInsulinToCarbRatio",
+  fixedDose: "paramFixedDose",
 }
 
 /** Clés du namespace i18n `insulinUnits` (source unique des libellés d'unités). */
-type InsulinUnitKey = "isfGl" | "isfMgdl" | "isfMmol" | "icr" | "basal"
+type InsulinUnitKey = "isfGl" | "isfMgdl" | "isfMmol" | "icr" | "basal" | "u"
 
 /**
  * Unité d'affichage de l'ISF selon l'unité de glycémie de l'appelant.
@@ -67,7 +68,12 @@ function displayFor(p: PendingProposalItem): { from: number; to: number; unitKey
   return {
     from: p.currentValue,
     to: p.proposedValue,
-    unitKey: p.parameterType === "basalRate" ? "basal" : "icr",
+    unitKey:
+      p.parameterType === "basalRate"
+        ? "basal"
+        : p.parameterType === "fixedDose"
+          ? "u" // US-2646 — dose fixe exprimée en unités (jamais g/U)
+          : "icr",
   }
 }
 
