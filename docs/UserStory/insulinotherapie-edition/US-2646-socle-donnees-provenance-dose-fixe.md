@@ -41,4 +41,7 @@ et `PatientInsulin.dosage` est du texte libre non calculable.
 - **`ClinicalReviewFlag`** (mode c) défini ici (§12.5).
 - **`Patient.treatmentMode`** = cache d'affichage, source de vérité = dérivée ; migration **sans** défaut `basalBolus`, backfill fail-closed (DT1 jamais `nonInsulin`).
 - **`proposerComment`** chiffré AES-256-GCM sur `AdjustmentProposal` (justification patient) ; FK `proposedByUserId` onDelete documenté.
-- ⚠️ **Arbitrage clinique ouvert** : `FixedDoseSlot.valueU` = **valeur unique** ou **min/max** (fourchette « 6-8U ») ? À trancher avec `medical-domain-validator` avant migration.
+- ✅ **Arbitrage clinique tranché (utilisateur)** : `FixedDoseSlot.valueU` = **valeur numérique unique**
+  par moment (matin/midi/soir/nuit). Le soignant fixe une valeur lors de la structuration (ex. « 6-8U »
+  → 7U) ; le texte libre `PatientInsulin.dosage` d'origine est **conservé en note d'affichage**. Base
+  claire pour l'ajustement mode (b) (proposer ± 1–2 U bornés). Pas de fourchette min/max.
