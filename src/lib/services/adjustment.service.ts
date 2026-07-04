@@ -11,8 +11,30 @@ import { auditService } from "./audit.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
+import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
-import type { ProposalStatus, Prisma } from "@prisma/client"
+import type {
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource,
+} from "@prisma/client"
+
+/** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
+type HumanProposerRole = Extract<ProposalSource, "patient" | "nurse" | "doctor">
+
+/** Entrée STRUCTURÉE d'une proposition humaine (US-2649a). La provenance est
+ *  dérivée du `proposer` authentifié, jamais du corps de requête (anti-usurpation). */
+export type CreateProposalInput = {
+  patientId: number
+  parameterType: AdjustableParameter
+  proposedValue: number
+  reason: AdjustmentReason
+  timeSlotStartHour?: number | null
+  timeSlotEndHour?: number | null
+  carbRatioSlotStart?: number | null
+  carbRatioSlotEnd?: number | null
+  pumpBasalSlotId?: string | null
+  /** Justification texte libre — chiffrée AES-256-GCM au stockage. */
+  proposerComment?: string | null
+}
 
 /**
  * Validate proposed parameter value against clinical bounds.
@@ -38,6 +60,83 @@ function validateProposedValue(parameterType: string, value: number): boolean {
       return value >= INSULIN_BOUNDS.FIXED_DOSE_MIN
     default:
       return false
+  }
+}
+
+/**
+ * US-2649a — valeur COURANTE de confiance d'un paramètre, lue **serveur** depuis la
+ * config réelle du patient (jamais du body → garde-fous ininviolables) et **scopée
+ * patient** (anti-IDOR : le créneau doit appartenir au patient).
+ * @throws `slotRequired` (créneau manquant), `currentValueNotFound` (créneau absent /
+ *   autre patient), `fixedDoseNotWired` (dose fixe non câblée — pas de discriminateur
+ *   de moment sur AdjustmentProposal, cf. US-2648/2649b).
+ */
+async function resolveCurrentValue(
+  patientId: number,
+  parameterType: AdjustableParameter,
+  input: CreateProposalInput,
+): Promise<number> {
+  switch (parameterType) {
+    case "insulinSensitivityFactor": {
+      if (input.timeSlotStartHour == null) throw new Error("slotRequired")
+      const row = await prisma.insulinSensitivityFactor.findFirst({
+        where: { settings: { patientId }, startHour: input.timeSlotStartHour },
+        select: { sensitivityFactorGl: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.sensitivityFactorGl)
+    }
+    case "insulinToCarbRatio": {
+      if (input.carbRatioSlotStart == null) throw new Error("slotRequired")
+      const row = await prisma.carbRatio.findFirst({
+        where: { settings: { patientId }, startHour: input.carbRatioSlotStart },
+        select: { gramsPerUnit: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.gramsPerUnit)
+    }
+    case "basalRate": {
+      if (!input.pumpBasalSlotId) throw new Error("slotRequired")
+      const row = await prisma.pumpBasalSlot.findFirst({
+        where: { id: input.pumpBasalSlotId, basalConfig: { settings: { patientId } } },
+        select: { rate: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.rate)
+    }
+    // Dose fixe : AdjustmentProposal n'a pas de colonne « moment » → impossible de cibler
+    // /dédupliquer une FixedDoseSlot. Fail-closed jusqu'au câblage UI + discriminateur.
+    case "fixedDose":
+      throw new Error("fixedDoseNotWired")
+    default:
+      throw new Error("unsupportedParameter")
+  }
+}
+
+/**
+ * US-2649a — ne conserve que le(s) discriminateur(s) de créneau PERTINENT(s) pour le
+ * paramètre (les autres à `null`). Garantit que le pré-check ET l'index anti-spam ne
+ * portent que le discriminateur réellement validé par `resolveCurrentValue` : sinon un
+ * champ de créneau parasite (ex. un `pumpBasalSlotId` attaché à une proposition ISF)
+ * ferait varier le tuple d'unicité et permettrait des doublons `pending`.
+ */
+function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposalInput) {
+  const empty = {
+    timeSlotStartHour: null as number | null,
+    timeSlotEndHour: null as number | null,
+    carbRatioSlotStart: null as number | null,
+    carbRatioSlotEnd: null as number | null,
+    pumpBasalSlotId: null as string | null,
+  }
+  switch (parameterType) {
+    case "insulinSensitivityFactor":
+      return { ...empty, timeSlotStartHour: input.timeSlotStartHour ?? null, timeSlotEndHour: input.timeSlotEndHour ?? null }
+    case "insulinToCarbRatio":
+      return { ...empty, carbRatioSlotStart: input.carbRatioSlotStart ?? null, carbRatioSlotEnd: input.carbRatioSlotEnd ?? null }
+    case "basalRate":
+      return { ...empty, pumpBasalSlotId: input.pumpBasalSlotId ?? null }
+    default:
+      return empty
   }
 }
 
@@ -124,6 +223,126 @@ export const adjustmentService = {
 
       return proposal
     })
+  },
+
+  /**
+   * US-2649a — Créer une proposition d'ajustement **humaine** (patient / infirmier /
+   * médecin) depuis une entrée structurée. Garde-fous imposés SERVEUR :
+   *  - provenance dérivée du `proposer` authentifié (jamais du body) ;
+   *  - bornes cliniques vérifiées **à la création** (pas seulement à l'accept) ;
+   *  - pour un PATIENT : sens interdit (jamais de baisse de basale/dose fixe) + cap
+   *    de variation resserré (dose fixe en U, ratios en %) ;
+   *  - anti-spam : 1 proposition `pending` max par (patient, paramètre, créneau) ;
+   *  - métriques moteur (`confidence`/`supportingEvents`) NULLES (proposition humaine) ;
+   *  - `proposerComment` chiffré ; jamais auto-appliqué (`status=pending`).
+   */
+  async createProposal(
+    input: CreateProposalInput,
+    proposer: { userId: number; role: HumanProposerRole },
+    ctx?: AuditContext,
+  ) {
+    const { patientId, parameterType, proposedValue } = input
+
+    // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept).
+    if (!validateProposedValue(parameterType, proposedValue)) {
+      throw new Error("valueOutOfBounds")
+    }
+
+    // 2. Valeur COURANTE de CONFIANCE, lue serveur (jamais du body) et scopée patient.
+    //    Rejette fixedDose (non câblé) + créneau introuvable/d'un autre patient.
+    const currentValue = await resolveCurrentValue(patientId, parameterType, input)
+
+    const delta = proposedValue - currentValue
+    const rawPct = currentValue !== 0 ? (delta / currentValue) * 100 : 0
+    // Clamp à la précision de la colonne `Decimal(5,2)` (±999.99) — évite un numeric
+    // overflow Postgres (ex. basale 0.05→5.0 = 9900 %) → insert 500. ⚠️ La valeur stockée
+    // peut donc être saturée : l'UI de validation (US-2649b) DOIT recalculer/afficher
+    // « > 999 % » depuis `currentValue`/`proposedValue` (stockés exacts), pas s'y fier.
+    const changePercent = Math.max(-999.99, Math.min(999.99, rawPct))
+
+    // Discriminateurs de créneau NORMALISÉS par paramètre (les parasites → null) :
+    // évite qu'un champ non pertinent varie le tuple anti-spam (pré-check + index).
+    const slot = slotFieldsFor(parameterType, input)
+
+    // 3. Garde-fous PATIENT (sur l'écart de confiance ; une demande, pas une titration).
+    if (proposer.role === "patient") {
+      // basalRate : jamais de BAISSE (risque hyper/cétose silencieuse). NB : on N'applique
+      // PAS « no-decrease » à ISF/ICR — MONTER l'ISF/ICR RÉDUIT la dose (direction plus sûre) ;
+      // les deux sens y sont seulement bornés en amplitude (raffinement min/abs → US-2652).
+      if (parameterType === "basalRate" && delta < 0) {
+        throw new Error("patientDecreaseForbidden")
+      }
+      if (Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT) {
+        throw new Error("patientDeltaTooLarge")
+      }
+    }
+
+    // 4. Anti-spam — pré-check (chemin rapide). L'unicité RÉELLE (course TOCTOU) est
+    //    garantie par l'index unique partiel `adjustment_proposals_one_pending_per_slot`
+    //    (`WHERE status='pending'`, migration 20260705100000) → P2002 ci-dessous.
+    const existing = await prisma.adjustmentProposal.findFirst({
+      where: {
+        patientId,
+        parameterType,
+        status: "pending",
+        timeSlotStartHour: slot.timeSlotStartHour,
+        carbRatioSlotStart: slot.carbRatioSlotStart,
+        pumpBasalSlotId: slot.pumpBasalSlotId,
+      },
+      select: { id: true },
+    })
+    if (existing) throw new Error("duplicatePendingProposal")
+
+    // 5. Création — provenance DÉRIVÉE serveur ; métriques moteur nulles ; jamais appliqué.
+    //    ⚠️ La primitive fait confiance à `proposer` ; la ROUTE appelante (US-2648/2650) DOIT
+    //    imposer : (1) `canAccessPatient(user, patientId)` ; (2) un patient ne propose que sur
+    //    SON dossier (session.patientId === patientId) ; (3) `proposer.role` mappé depuis le
+    //    rôle de SESSION (jamais du body ; rejeter ADMIN/VIEWER) ; (4) politique `proposerComment`
+    //    (le renvoyer/pas dans le DTO — c'est du ciphertext, à ne pas exposer au client).
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const proposal = await tx.adjustmentProposal.create({
+          data: {
+            patientId,
+            parameterType,
+            currentValue,
+            proposedValue,
+            changePercent,
+            reason: input.reason,
+            source: proposer.role,
+            proposedByUserId: proposer.userId,
+            proposerComment: input.proposerComment != null ? encryptField(input.proposerComment) : null,
+            confidence: null,
+            supportingEvents: null,
+            status: "pending",
+            ...slot,
+          },
+        })
+
+        // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose.
+        await auditService.logWithTx(tx, {
+          userId: proposer.userId,
+          action: "CREATE",
+          resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: proposal.id,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: proposer.role },
+        })
+
+        return proposal
+      })
+    } catch (e) {
+      // Course TOCTOU rattrapée par l'index partiel `adjustment_proposals_one_pending_per_slot`.
+      // On ne re-mappe QUE cette contrainte-là (pas n'importe quel P2002) pour ne pas masquer
+      // un futur conflit d'unicité sans rapport.
+      const err = e as { code?: string; meta?: { target?: unknown } }
+      const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
+      if (err.code === "P2002" && target.includes("one_pending")) {
+        throw new Error("duplicatePendingProposal")
+      }
+      throw e
+    }
   },
 
   /** Accept a proposal — optionally apply the change */

@@ -45,3 +45,9 @@ Les bornes `fixedDose` **naissent en US-2646** (atomique). Cette US = **vérific
 ## Reports de la revue code+migration (PR #638 / US-2646) — à fermer ici
 - **DPIA** : documenter que `fixed_dose_slots.value_u` **et** `clinical_review_flags.type` (health-adjacent : un flag `tirBelowTarget`/`hba1cStale` implique une préoccupation clinique) reposent sur le chiffrement **at-rest (pgcrypto) + RBAC**, pas sur l'AES-GCM applicatif (contrainte de calculabilité). Étendre la note DPIA au-delà des seules doses. *(HDS LOW)*
 - **Vérifier** que les caps delta dose fixe + les seuils d'avertissement par type (routés basal/bolus) sont bien enforced (implémentés en US-2649) et couverts par des tests de cas limites. *(medical)*
+
+## Reports de la revue clinique US-2649a (PR #642) — à raffiner ici
+- **Caps `min(%, absolu)` par paramètre** : le cap patient actuel est en % seul (`PATIENT_MAX_CHANGE_PERCENT=10`), inadapté aux extrêmes (minuscule sur petit ISF, énorme sur grosse basale ; ±1 U trop permissif sur dose pédiatrique). Ajouter des pas absolus par paramètre (ISF ≈ 0.05 g/L·U, ICR ≈ 1 g/U, basal ≈ 0.10 U/h) et `min(%, abs)`.
+- **Flag `riskDirection` (hypo/hyper)** : ne PAS « cap-and-hide » la direction hypo (baisse ISF/ICR, hausse basale/dose) — la calculer et la **surfacer au médecin** dans l'UI de validation (US-2649b).
+- **Dose fixe basal vs bolus** : bloquer *toute* baisse est trop rigide — une baisse de **bolus** fixe pour hypo est légitime ; distinguer basal (no-decrease) / bolus (baisse capée).
+- **Gate pathologie** : bloquer/assouplir les propositions **patient** en GD/grossesse et pédiatrie (cibles plus strictes, clinicien requis) — la primitive est pathology-blind par design.

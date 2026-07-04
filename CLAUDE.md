@@ -391,6 +391,7 @@ const CLINICAL_BOUNDS = {
   FIXED_BASAL_WARN_U: 80.0,      // U — seuil d'AVERTISSEMENT basale fixe (non bloquant)
   FIXED_DOSE_MAX_DELTA_U: 2.0,   // U — variation max par ajustement (titration lente)
   FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0, // U — cap patient resserré (< moteur)
+  PATIENT_MAX_CHANGE_PERCENT: 10, // % — cap variation proposition PATIENT sur ratios (US-2649)
 }
 
 // Formule : findSlotForHour(settings.sensitivityFactors, hour)

@@ -52,6 +52,13 @@ export const CLINICAL_BOUNDS = {
   FIXED_BASAL_WARN_U: 80.0,
   FIXED_DOSE_MAX_DELTA_U: 2.0,
   FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
+  /**
+   * US-2649 — cap de variation d'une proposition **PATIENT** pour les ratios
+   * (ISF/ICR/basal), en %. Strictement plus strict que le moteur (± 20 %) : une
+   * demande patient est un pas, pas une titration. (La dose fixe patient est
+   * bornée en unités : `FIXED_DOSE_PATIENT_MAX_DELTA_U`.)
+   */
+  PATIENT_MAX_CHANGE_PERCENT: 10,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
