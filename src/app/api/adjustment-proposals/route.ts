@@ -82,7 +82,10 @@ export async function POST(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    // ADMIN = rôle technique, non clinicien → ne propose pas.
+    // ADMIN = rôle technique, non clinicien → ne PROPOSE pas (une proposition émane
+    // d'une identité clinique patient/nurse/doctor). NB : l'écriture DIRECTE de config
+    // insuline reste ouverte à ADMIN via requireRole(DOCTOR, hiérarchique) — c'est le
+    // bypass PHI V1 ASSUMÉ (cf. access-control.ts, levé en V4/F1), pas une incohérence.
     if (user.role === "ADMIN") return NextResponse.json({ error: "forbidden" }, { status: 403 })
 
     const body: unknown = await req.json().catch(() => null)

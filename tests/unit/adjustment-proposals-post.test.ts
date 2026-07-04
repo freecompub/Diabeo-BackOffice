@@ -92,6 +92,24 @@ describe("POST /api/adjustment-proposals", () => {
     expect(mocks.createProposal).not.toHaveBeenCalled()
   })
 
+  it("DOCTOR : rôle proposeur 'doctor' (les caps patient ne doivent PAS s'appliquer)", async () => {
+    mocks.requireAuth.mockReturnValue({ id: 30, role: "DOCTOR" })
+    const res = await POST(reqWith(isfBody))
+    expect(res.status).toBe(201)
+    expect(mocks.createProposal).toHaveBeenCalledWith(
+      expect.objectContaining({ patientId: 5 }),
+      { userId: 30, role: "doctor" },
+      expect.anything(),
+    )
+  })
+
+  it("consentement RGPD absent → 403, aucune création", async () => {
+    mocks.requireGdprConsent.mockResolvedValue(false)
+    const res = await POST(reqWith(isfBody))
+    expect(res.status).toBe(403)
+    expect(mocks.createProposal).not.toHaveBeenCalled()
+  })
+
   it("corps invalide (parameterType manquant) → 400", async () => {
     const res = await POST(reqWith({ proposedValue: 0.52, reason: "manualAdjustment" }))
     expect(res.status).toBe(400)
