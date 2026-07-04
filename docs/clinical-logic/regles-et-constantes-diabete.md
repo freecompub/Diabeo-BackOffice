@@ -111,6 +111,7 @@ Source : `adjustmentService.createProposal` (`src/lib/services/adjustment.servic
 | **Cap patient** | Ratios ≤ `PATIENT_MAX_CHANGE_PERCENT` (10 %) ; dose fixe ≤ `FIXED_DOSE_PATIENT_MAX_DELTA_U` (1 U). |
 | **Anti-spam** | 1 proposition `pending` max par (patient, paramètre, créneau) — index unique partiel `adjustment_proposals_one_pending_per_slot`. |
 | **Frontière dispositif médical** | Mode non-insuliné : **aucune posologie** médicamenteuse orale/GLP-1 proposée (`ClinicalReviewFlag` = orientation, jamais une dose). |
+| **RBAC édition / proposition (US-2648a)** | Écriture **directe** de la config insuline = **DOCTOR** (autorité clinique). NURSE / patient → **proposition** `POST /api/adjustment-proposals` (validée par un médecin). ADMIN rejeté. Rôle proposeur dérivé de la **session** ; accès via `resolvePatientId` (VIEWER→son dossier / pro→`canAccessPatient`) ; réponse sans `proposerComment`. Routes : `src/app/api/insulin-therapy/*` (DOCTOR) + `src/app/api/adjustment-proposals` (POST). |
 
 ## 7. Invariants transverses fail-closed
 

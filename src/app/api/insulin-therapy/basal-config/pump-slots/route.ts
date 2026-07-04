@@ -72,11 +72,11 @@ export async function GET(req: NextRequest) {
 
 /**
  * POST /api/insulin-therapy/basal-config/pump-slots
- * Create a new pump basal slot. Requires NURSE+ role.
+ * Create a new pump basal slot. DOCTOR only (US-2648a) — NURSE/patient via proposition.
  */
 export async function POST(req: NextRequest) {
   try {
-    const user = requireRole(req, "NURSE")
+    const user = requireRole(req, "DOCTOR")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
@@ -126,11 +126,11 @@ export async function POST(req: NextRequest) {
 
 /**
  * DELETE /api/insulin-therapy/basal-config/pump-slots?id=
- * Delete a pump basal slot by UUID. Requires NURSE+ role.
+ * Delete a pump basal slot by UUID. DOCTOR only (US-2648a).
  */
 export async function DELETE(req: NextRequest) {
   try {
-    const user = requireRole(req, "NURSE")
+    const user = requireRole(req, "DOCTOR")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) {
       return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

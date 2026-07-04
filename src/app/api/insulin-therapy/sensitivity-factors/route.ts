@@ -36,9 +36,9 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    // US-SEC-001 (HIGH): NURSE+ required. ISF values feed calculateBolus —
-    // VIEWER (the patient) cannot self-modify dose-driving parameters.
-    const user = requireRole(req, "NURSE")
+    // US-2648a — écriture DIRECTE réservée au DOCTOR. ISF pilote calculateBolus ;
+    // NURSE/patient passent par une proposition validée (POST /api/adjustment-proposals).
+    const user = requireRole(req, "DOCTOR")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 

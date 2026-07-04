@@ -39,10 +39,10 @@ export async function GET(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
-    // US-SEC-001 (HIGH): NURSE+ required. VIEWER (the patient themselves)
-    // must NOT mutate parameters consumed by calculateBolus — see CLAUDE.md
-    // RBAC table and docs/security/audit-2026-04-15.md.
-    const user = requireRole(req, "NURSE")
+    // US-2648a — écriture DIRECTE réservée au DOCTOR (autorité clinique). Un NURSE
+    // ou un patient passe désormais par une PROPOSITION (POST /api/adjustment-proposals,
+    // validée par un médecin). VIEWER/NURSE en écriture directe → 403. (Anc. US-SEC-001.)
+    const user = requireRole(req, "DOCTOR")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 

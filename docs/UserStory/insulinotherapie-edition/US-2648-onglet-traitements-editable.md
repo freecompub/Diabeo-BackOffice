@@ -38,3 +38,11 @@ l'onglet devient l'éditeur (une seule vérité, cohérent US-2630/US-2604).
 - **Éditeur `variant="page"` uniquement** — jamais en contexte drawer/`x-consultation-token` (escalade de privilège), fail-closed. Capability descriptor serveur `{mode, canEditDirect, canPropose}` (§12.6).
 - 🔴 **CRITICAL HDS** : passer les routes `POST/PATCH /api/insulin-therapy/*` de `requireRole(NURSE)` à **DOCTOR exact** ; NURSE → **403** + endpoint de proposition. Re-routage **serveur**. Test E2E `NURSE PATCH → 403` (§12.7).
 - Redirect `/insulin-therapy` **role-branché** (DOCTOR/NURSE → fiche ; VIEWER → route patient) (§12 nit).
+
+## US-2648a (livré) — socle backend RBAC + route de proposition
+Tranche backend (débloque le front US-2648b) :
+- 🔴 **CRITICAL HDS résolu** : `POST/PUT/DELETE /api/insulin-therapy/*` (settings, sensitivity-factors, carb-ratios, basal-config, pump-slots) passés de `requireRole(NURSE)` à **`requireRole(DOCTOR)`** — NURSE en écriture directe → **403**.
+- **`POST /api/adjustment-proposals`** (route de proposition NURSE/patient/DOCTOR) : ferme les obligations route de US-2649a — accès via `resolvePatientId` (VIEWER→son dossier / pro→`canAccessPatient`), rôle proposeur **dérivé session** (ADMIN→403), réponse **sans `proposerComment`**, mapping erreurs métier→HTTP (422/400/404/409). `fixedDose` exclu du schéma.
+- Tests : 8 (route POST) + RBAC. Catalogue diabète §6 mis à jour.
+
+**Reste US-2648b (front)** : onglet Traitements éditable dans `<PatientRecord>` (transport `mutate` injecté, `variant="page"` only), capability descriptor serveur `{mode, canEditDirect, canPropose}`, redirect `/insulin-therapy` role-branché, `refreshTreatmentMode(tx)` writer, E2E `NURSE→403` + `NURSE save→proposition`.

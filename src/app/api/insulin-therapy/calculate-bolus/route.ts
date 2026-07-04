@@ -20,8 +20,9 @@ export async function POST(req: NextRequest) {
     // calculation is a pure read-model simulation — it produces a
     // recommendation that ADR #13 forbids from being auto-injected;
     // the patient must explicitly accept before any insulin delivery.
-    // The dose-driving parameters (ISF/ICR/settings) are NURSE+ guarded
-    // separately in /sensitivity-factors, /carb-ratios, /settings.
+    // The dose-driving parameters (ISF/ICR/settings) are DOCTOR-guarded (direct
+    // write) separately in /sensitivity-factors, /carb-ratios, /settings ; NURSE/
+    // patient proposent via /api/adjustment-proposals (US-2648a).
     const user = requireAuth(req)
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
