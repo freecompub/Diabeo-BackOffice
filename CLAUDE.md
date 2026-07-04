@@ -579,11 +579,41 @@ au prochain `--update` tant que les fichiers source n'ont pas bougé.
 - **Supprimer le dossier `graphify-out/`** (knowledge graph local, gitignoré).
   - Il est coûteux à régénérer (~plusieurs M tokens d'extraction sémantique) et sert de carte du code pour les requêtes `/graphify`.
   - Ne jamais le `rm -rf` même pour "faire de la place" ou "nettoyer" : seuls les fichiers temporaires `graphify-out/.graphify_*` (intermédiaires de pipeline) peuvent être nettoyés ; `graph.json`, `graph.html`, `GRAPH_REPORT.md` et `cache/` doivent être préservés.
+- **Livrer une tâche sans sa documentation / sa JSDoc** (voir section « 📚 Documentation & règles métier »).
+- **Ajouter/modifier une constante, un intervalle, un seuil ou une règle métier DIABÈTE sans l'inscrire** dans `docs/clinical-logic/regles-et-constantes-diabete.md` (catalogue de référence unique).
 
 ---
 
+## 📚 Documentation & règles métier — OBLIGATOIRE
+
+**Non négociable, à chaque tâche réalisée** (feature, fix, refacto — pas seulement les « grosses ») :
+
+1. **Documentation + JSDoc à jour dans la MÊME PR.** Tout code ajouté/modifié doit être
+   documenté : **JSDoc** sur chaque composant, hook, service, fonction utilitaire (rôle,
+   params, retours, erreurs, comportements critiques) ; et la **documentation** impactée
+   (`docs/`, `README`, runbooks, ADR, `CLAUDE.md`) mise à jour. Une tâche n'est **pas
+   terminée** tant que sa doc/JSDoc ne l'est pas. Exclusion : on n'internationalise ni ne
+   documente les *logs* comme s'ils étaient de la doc utilisateur (cf. règle i18n/logs).
+
+2. **Toute règle métier DIABÈTE est répertoriée dans le document de référence
+   technico-fonctionnel** : **`docs/clinical-logic/regles-et-constantes-diabete.md`**.
+   - **Toutes les constantes, tous les intervalles, tous les seuils cliniques** (bornes
+     insuline, zones glycémiques, plages de suffisance, fenêtres temporelles, caps, etc.)
+     doivent y figurer — valeur + sens clinique + fichier source — **dans la même PR** que
+     leur ajout/modification.
+     - La **source de vérité reste le code** (ex. `src/lib/clinical-bounds.ts`) ; ce document
+       est le **catalogue fonctionnel** unique, gardé synchrone (verrou anti-drift :
+       `tests/unit/clinical-bounds.test.ts`).
+   - Toute **règle de décision clinique** (calcul de bolus, sélection de créneau,
+     détection de mode, garde-fous de proposition, invariants fail-closed, frontière
+     dispositif médical…) doit y être décrite ou y renvoyer.
+   - Ne **jamais** disséminer une constante/règle clinique sans l'inscrire au catalogue :
+     un futur soignant/dev doit trouver **toutes** les règles diabète à un seul endroit.
+
 ## ✅ Checklist avant chaque PR
 
+- [ ] **Documentation + JSDoc à jour** (composants/hooks/services/fonctions) dans la même PR
+- [ ] **Règles/constantes/intervalles diabète** répertoriés dans `docs/clinical-logic/regles-et-constantes-diabete.md`
 - [ ] Authentification + autorisation par rôle sur toutes les nouvelles API Routes
 - [ ] Données patients chiffrées avant insertion, déchiffrées uniquement à la lecture
 - [ ] `auditService.log()` appelé pour chaque accès à une donnée de santé
