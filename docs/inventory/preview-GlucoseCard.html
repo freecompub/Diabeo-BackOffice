@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orphelin — GlucoseCard</title>
+<style>
+  :root{
+    --primary:#0D9488; --primary-500:#14B8A6; --primary-700:#0F766E; --primary-100:#CCFBF1; --primary-50:#F0FDFA;
+    --coral:#F97316; --coral-600:#EA580C;
+    --g-verylow:#991B1B; --g-verylow-bg:#FEF2F2; --g-verylow-bd:#FECACA;
+    --g-low:#EF4444; --g-low-bg:#FEF2F2; --g-low-bd:#FCA5A5;
+    --g-normal:#10B981; --g-normal-bg:#ECFDF5; --g-normal-bd:#A7F3D0;
+    --g-high:#F59E0B; --g-high-bg:#FFFBEB; --g-high-bd:#FDE68A;
+    --g-veryhigh:#EF4444; --g-veryhigh-bg:#FEF2F2; --g-veryhigh-bd:#FECACA;
+    --g-critical:#DC2626; --g-critical-bg:#FEE2E2; --g-critical-bd:#F87171;
+    --fg:#1F2937; --muted-fg:#6B7280; --ink-300:#D1D5DB; --ink-200:#E5E7EB; --ink-100:#F3F4F6;
+    --bg:#FAFAFA; --card:#FFFFFF; --border:#E5E7EB; --muted:#F3F4F6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+  .meta{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:9999px;border:1px solid transparent}
+  .badge.orphan{background:#FEF2F2;color:#B91C1C;border-color:#FCA5A5}
+  .badge.barrel{background:var(--primary-50);color:var(--primary-700);border-color:var(--primary-100)}
+  .badge.phase{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+  .badge.ds{background:#FFFBEB;color:#B45309;border-color:#FDE68A}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  .path{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--muted-fg);background:var(--muted);padding:3px 8px;border-radius:6px;margin-bottom:14px}
+  .desc{font-size:15px;color:var(--fg);margin:0 0 16px}
+  dl.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;font-size:13.5px}
+  dl.facts dt{color:var(--muted-fg);font-weight:600}
+  dl.facts dd{margin:0;color:var(--fg)}
+  .warn{margin:16px 0 0;font-size:12.5px;color:var(--muted-fg);background:var(--muted);border-left:3px solid var(--ink-300);padding:8px 12px;border-radius:0 8px 8px 0}
+  .stage{margin-top:24px}
+  .stage h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-fg);margin:28px 0 12px}
+  .surface{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+  .variant-note{font-size:12px;color:var(--muted-fg);margin:6px 0 0}
+  /* utilitaires réutilisables pour reproduire les composants */
+  .diabeo-card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 12px rgba(16,24,40,.08)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .pulse{animation:pulse 1.6s ease-in-out infinite}
+  @media (prefers-color-scheme:dark){
+    body{background:#0b0f14;color:#e5e7eb}
+    .meta,.surface,.diabeo-card{background:#111826;border-color:#1f2a37}
+    .path,.warn{background:#0f1620}
+  }
+  /* --- GlucoseCard specifics --- */
+  .gcard{position:relative;overflow:hidden;padding:16px 16px 16px 0;min-width:220px;flex:1 1 240px}
+  .gcard .accent{position:absolute;inset:0 auto 0 0;width:4px}
+  .gcard .body{padding-left:16px}
+  .gcard .zone{font-size:12px;font-weight:500;color:var(--muted-fg);margin:0 0 4px}
+  .gcard .valrow{display:flex;align-items:baseline;gap:8px}
+  .gcard .val{font-size:2.5rem;font-weight:700;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .gcard .unit{font-size:14px;font-weight:400;color:var(--muted-fg)}
+  .gcard .trend{font-size:1.5rem;font-weight:700;line-height:1;align-self:center}
+  .gcard .footer{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+  .gcard time{font-size:12px;color:var(--muted-fg)}
+  .gcard .source{margin-left:auto;font-size:12px;font-weight:500;color:var(--muted-fg);background:var(--muted);padding:2px 8px;border-radius:9999px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="meta">
+    <div class="badges">
+      <span class="badge orphan">● ORPHELIN — jamais monté</span>
+      <span class="badge barrel">barrel ✅</span>
+    </div>
+    <h1>GlucoseCard</h1>
+    <span class="path">src/components/diabeo/GlucoseCard.tsx</span>
+    <p class="desc">Carte d'une mesure glycémique unique : valeur colorée par zone clinique, flèche de tendance CGM, horodatage relatif, badge appareil source, et bande d'accent couleur-zone à gauche.</p>
+    <dl class="facts">
+      <dt>Route / usage prévu</dt><dd>Dashboards (patient/pro) — affichage de la dernière glycémie.</dd>
+      <dt>Origine</dt><dd>Socle composants Diabeo (jamais monté)</dd>
+      <dt>Barrel <code>@/components/diabeo</code></dt><dd>✅ réexporté</dd>
+      <dt>Conformité design-system</dt><dd>Utilise des tokens sémantiques (text-glycemia-*, bg-glycemia-*-bg) — a priori conforme.</dd>
+    </dl>
+    <p class="warn">⚠️ Reproduction <strong>statique fidèle</strong> (HTML/CSS avec les tokens réels du design system) — ce n'est pas le composant React monté. i18n rendu en français d'exemple ; données factices.</p>
+  </header>
+  <main class="stage">
+    <h2>Variantes</h2>
+    <div class="surface">
+      <div class="row">
+        <!-- Normale -->
+        <div class="diabeo-card gcard" role="region" aria-label="Glycémie 110 mg/dL, Normale, Stable, mesure il y a 5 min">
+          <div class="accent" style="background:var(--g-normal-bg)" aria-hidden="true"></div>
+          <div class="body">
+            <p class="zone">Normale</p>
+            <div class="valrow">
+              <span class="val" style="color:var(--g-normal)">110</span>
+              <span class="unit">mg/dL</span>
+              <span class="trend" style="color:var(--g-normal)" aria-label="Stable">→</span>
+            </div>
+            <div class="footer">
+              <time datetime="2026-07-04T10:00:00Z">il y a 5 min</time>
+              <span class="source">Dexcom G7</span>
+            </div>
+          </div>
+        </div>
+        <!-- Critique -->
+        <div class="diabeo-card gcard pulse" role="alert" aria-label="Glycémie 52 mg/dL, Hypoglycémie sévère, En chute rapide, mesure à l'instant">
+          <div class="accent" style="background:var(--g-critical-bg)" aria-hidden="true"></div>
+          <div class="body">
+            <p class="zone">Hypoglycémie sévère</p>
+            <div class="valrow">
+              <span class="val" style="color:var(--g-critical)">52</span>
+              <span class="unit">mg/dL</span>
+              <span class="trend" style="color:var(--g-low)" aria-label="En chute rapide">↓↓</span>
+            </div>
+            <div class="footer">
+              <time datetime="2026-07-04T10:05:00Z">à l'instant</time>
+              <span class="source">FreeStyle Libre 3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <p class="variant-note">Gauche : zone normale (bande + valeur en vert émeraude, tendance stable). Droite : zone critique (<code>role="alert"</code>, animation <code>animate-clinical-pulse</code>, tendance en chute rapide).</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

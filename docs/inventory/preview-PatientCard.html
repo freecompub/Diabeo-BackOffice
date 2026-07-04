@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orphelin — PatientCard</title>
+<style>
+  :root{
+    --primary:#0D9488; --primary-500:#14B8A6; --primary-700:#0F766E; --primary-100:#CCFBF1; --primary-50:#F0FDFA;
+    --coral:#F97316; --coral-600:#EA580C;
+    --g-verylow:#991B1B; --g-verylow-bg:#FEF2F2; --g-verylow-bd:#FECACA;
+    --g-low:#EF4444; --g-low-bg:#FEF2F2; --g-low-bd:#FCA5A5;
+    --g-normal:#10B981; --g-normal-bg:#ECFDF5; --g-normal-bd:#A7F3D0;
+    --g-high:#F59E0B; --g-high-bg:#FFFBEB; --g-high-bd:#FDE68A;
+    --g-veryhigh:#EF4444; --g-veryhigh-bg:#FEF2F2; --g-veryhigh-bd:#FECACA;
+    --g-critical:#DC2626; --g-critical-bg:#FEE2E2; --g-critical-bd:#F87171;
+    --fg:#1F2937; --muted-fg:#6B7280; --ink-300:#D1D5DB; --ink-200:#E5E7EB; --ink-100:#F3F4F6;
+    --bg:#FAFAFA; --card:#FFFFFF; --border:#E5E7EB; --muted:#F3F4F6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+  .meta{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:9999px;border:1px solid transparent}
+  .badge.orphan{background:#FEF2F2;color:#B91C1C;border-color:#FCA5A5}
+  .badge.barrel{background:var(--primary-50);color:var(--primary-700);border-color:var(--primary-100)}
+  .badge.phase{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+  .badge.ds{background:#FFFBEB;color:#B45309;border-color:#FDE68A}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  .path{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--muted-fg);background:var(--muted);padding:3px 8px;border-radius:6px;margin-bottom:14px}
+  .desc{font-size:15px;color:var(--fg);margin:0 0 16px}
+  dl.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;font-size:13.5px}
+  dl.facts dt{color:var(--muted-fg);font-weight:600}
+  dl.facts dd{margin:0;color:var(--fg)}
+  .warn{margin:16px 0 0;font-size:12.5px;color:var(--muted-fg);background:var(--muted);border-left:3px solid var(--ink-300);padding:8px 12px;border-radius:0 8px 8px 0}
+  .stage{margin-top:24px}
+  .stage h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-fg);margin:28px 0 12px}
+  .surface{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+  .variant-note{font-size:12px;color:var(--muted-fg);margin:6px 0 0}
+  /* utilitaires réutilisables pour reproduire les composants */
+  .diabeo-card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 12px rgba(16,24,40,.08)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .pulse{animation:pulse 1.6s ease-in-out infinite}
+  @media (prefers-color-scheme:dark){
+    body{background:#0b0f14;color:#e5e7eb}
+    .meta,.surface,.diabeo-card{background:#111826;border-color:#1f2a37}
+    .path,.warn{background:#0f1620}
+  }
+  /* --- reproduction PatientCard --- */
+  .pcard{width:100%;max-width:320px;padding:16px}
+  .pcard.interactive{cursor:pointer;transition:box-shadow .2s ease-out,border-color .2s ease-out}
+  .pcard.interactive:hover{border-color:var(--primary-500);box-shadow:0 8px 20px rgba(13,148,136,.16)}
+  .pc-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}
+  .pc-id{display:flex;align-items:center;gap:10px;min-width:0}
+  .pc-avatar{display:flex;height:36px;width:36px;flex:0 0 36px;align-items:center;justify-content:center;border-radius:9999px;background:var(--primary-100);color:var(--primary-700);font-size:14px;font-weight:600}
+  .pc-name{font-size:14px;font-weight:600;color:var(--fg);margin:0;line-height:1.2}
+  .pc-age{font-size:12px;color:var(--muted-fg);margin:0}
+  .pc-badge{flex:0 0 auto;font-size:12px;font-weight:600;padding:3px 10px;border-radius:9999px;background:var(--primary-50);color:var(--primary-700);border:1px solid var(--primary-100)}
+  .pc-metrics{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}
+  .pc-metric-lbl{font-size:12px;color:var(--muted-fg);margin:0 0 2px}
+  .pc-glucose{font-size:18px;font-weight:700;color:var(--g-normal);line-height:1}
+  .pc-glucose .u{font-size:12px;font-weight:400;color:var(--muted-fg);margin-left:3px}
+  .pc-right{text-align:right}
+  .pc-tir{font-size:18px;font-weight:700;color:var(--g-normal);line-height:1;margin:0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="meta">
+    <div class="badges">
+      <span class="badge orphan">● ORPHELIN — jamais monté</span>
+      <span class="badge barrel">barrel ✅</span>
+    </div>
+    <h1>PatientCard</h1>
+    <span class="path">src/components/diabeo/PatientCard.tsx</span>
+    <p class="desc">Carte de résumé patient : avatar initiales, nom, âge, badge pathologie (DT1/DT2/GD), dernière glycémie et TIR coloré. Cliquable (rendue &lt;button&gt;) ou statique (&lt;div&gt;).</p>
+    <dl class="facts">
+      <dt>Route / usage prévu</dt><dd>Grille/liste patients (/patients), sélecteurs de patient, dashboards équipe.</dd>
+      <dt>Origine</dt><dd>Socle composants Diabeo (jamais monté)</dd>
+      <dt>Barrel <code>@/components/diabeo</code></dt><dd>✅ réexporté (avec PatientCardProps)</dd>
+      <dt>Conformité design-system</dt><dd>Tokens sémantiques (text-foreground, text-muted-foreground, text-glycemia-*) — a priori conforme.</dd>
+    </dl>
+    <p class="warn">⚠️ Reproduction <strong>statique fidèle</strong> (HTML/CSS avec les tokens réels du design system) — ce n'est pas le composant React monté. i18n rendu en français d'exemple ; données factices.</p>
+  </header>
+  <main class="stage">
+    <h2>État statique (rendu &lt;div&gt;)</h2>
+    <div class="surface">
+      <div class="row">
+        <div class="diabeo-card pcard">
+          <div class="pc-head">
+            <div class="pc-id">
+              <div class="pc-avatar" aria-hidden="true">JD</div>
+              <div>
+                <p class="pc-name">Jean Durand</p>
+                <p class="pc-age">42 ans</p>
+              </div>
+            </div>
+            <span class="pc-badge">DT1</span>
+          </div>
+          <div class="pc-metrics">
+            <div>
+              <p class="pc-metric-lbl">Dernière glycémie</p>
+              <span class="pc-glucose">128<span class="u">mg/dL</span></span>
+            </div>
+            <div class="pc-right">
+              <p class="pc-metric-lbl">TIR</p>
+              <p class="pc-tir">74%</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h2>État interactif (rendu &lt;button&gt;, onClick)</h2>
+    <div class="surface">
+      <div class="row">
+        <button type="button" class="diabeo-card pcard interactive" style="text-align:left;font:inherit;color:inherit">
+          <div class="pc-head">
+            <div class="pc-id">
+              <div class="pc-avatar" aria-hidden="true">JD</div>
+              <div>
+                <p class="pc-name">Jean Durand</p>
+                <p class="pc-age">42 ans</p>
+              </div>
+            </div>
+            <span class="pc-badge">DT1</span>
+          </div>
+          <div class="pc-metrics">
+            <div>
+              <p class="pc-metric-lbl">Dernière glycémie</p>
+              <span class="pc-glucose">128<span class="u">mg/dL</span></span>
+            </div>
+            <div class="pc-right">
+              <p class="pc-metric-lbl">TIR</p>
+              <p class="pc-tir">74%</p>
+            </div>
+          </div>
+        </button>
+      </div>
+      <p class="variant-note">Survolez la carte : bordure primary + ombre au hover (illustre <code>onClick</code>, curseur pointeur, focus visible teal).</p>
+    </div>
+  </main>
+</div>
+</body>
+</html>

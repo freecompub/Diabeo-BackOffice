@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orphelin — InsulinSummary</title>
+<style>
+  :root{
+    --primary:#0D9488; --primary-500:#14B8A6; --primary-700:#0F766E; --primary-100:#CCFBF1; --primary-50:#F0FDFA;
+    --coral:#F97316; --coral-600:#EA580C;
+    --g-verylow:#991B1B; --g-verylow-bg:#FEF2F2; --g-verylow-bd:#FECACA;
+    --g-low:#EF4444; --g-low-bg:#FEF2F2; --g-low-bd:#FCA5A5;
+    --g-normal:#10B981; --g-normal-bg:#ECFDF5; --g-normal-bd:#A7F3D0;
+    --g-high:#F59E0B; --g-high-bg:#FFFBEB; --g-high-bd:#FDE68A;
+    --g-veryhigh:#EF4444; --g-veryhigh-bg:#FEF2F2; --g-veryhigh-bd:#FECACA;
+    --g-critical:#DC2626; --g-critical-bg:#FEE2E2; --g-critical-bd:#F87171;
+    --fg:#1F2937; --muted-fg:#6B7280; --ink-300:#D1D5DB; --ink-200:#E5E7EB; --ink-100:#F3F4F6;
+    --bg:#FAFAFA; --card:#FFFFFF; --border:#E5E7EB; --muted:#F3F4F6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--fg);background:var(--bg);line-height:1.5}
+  .wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+  .meta{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:9999px;border:1px solid transparent}
+  .badge.orphan{background:#FEF2F2;color:#B91C1C;border-color:#FCA5A5}
+  .badge.barrel{background:var(--primary-50);color:var(--primary-700);border-color:var(--primary-100)}
+  .badge.phase{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+  .badge.ds{background:#FFFBEB;color:#B45309;border-color:#FDE68A}
+  h1{font-size:26px;margin:0 0 4px;letter-spacing:-.01em}
+  .path{display:inline-block;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;color:var(--muted-fg);background:var(--muted);padding:3px 8px;border-radius:6px;margin-bottom:14px}
+  .desc{font-size:15px;color:var(--fg);margin:0 0 16px}
+  dl.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;font-size:13.5px}
+  dl.facts dt{color:var(--muted-fg);font-weight:600}
+  dl.facts dd{margin:0;color:var(--fg)}
+  .warn{margin:16px 0 0;font-size:12.5px;color:var(--muted-fg);background:var(--muted);border-left:3px solid var(--ink-300);padding:8px 12px;border-radius:0 8px 8px 0}
+  .stage{margin-top:24px}
+  .stage h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted-fg);margin:28px 0 12px}
+  .surface{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+  .row{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}
+  .variant-note{font-size:12px;color:var(--muted-fg);margin:6px 0 0}
+  /* utilitaires réutilisables pour reproduire les composants */
+  .diabeo-card{background:var(--card);border:1px solid var(--border);border-radius:12px;box-shadow:0 4px 12px rgba(16,24,40,.08)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+  .pulse{animation:pulse 1.6s ease-in-out infinite}
+  @media (prefers-color-scheme:dark){
+    body{background:#0b0f14;color:#e5e7eb}
+    .meta,.surface,.diabeo-card{background:#111826;border-color:#1f2a37}
+    .path,.warn{background:#0f1620}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="meta">
+    <div class="badges">
+      <span class="badge orphan">● ORPHELIN — jamais monté</span>
+      <span class="badge barrel">barrel ✅</span><span class="badge phase">Phase 11</span><span class="badge ds">design-system ⚠️</span>
+    </div>
+    <h1>InsulinSummary</h1>
+    <span class="path">src/components/diabeo/charts/InsulinSummary.tsx</span>
+    <p class="desc">Donut « basal vs bolus » + carte total « X.X U » + légende %. Reçoit des agrégats déjà calculés (type InsulinSummaryData) — ne fetch/calcule rien.</p>
+    <dl class="facts">
+      <dt>Route / usage prévu</dt><dd>Vue insulinothérapie <strong>côté patient</strong> (dashboard patient ou futur /patient/insulin*) — <strong>inexistante à ce jour</strong>.</dd>
+      <dt>Origine</dt><dd>Socle « Phase 11 — Web App Patient » (commit 8da436e)</dd>
+      <dt>Barrel <code>@/components/diabeo</code></dt><dd>✅ réexporté par le barrel</dd>
+      <dt>Conformité design-system</dt><dd>⚠️ non conforme US-2269 (text-gray-*, bg-gray-900, fill Recharts <code>var(--color-teal-500)</code>) — à migrer vers les tokens avant réemploi.</dd>
+    </dl>
+    <p class="warn">⚠️ Reproduction <strong>statique fidèle</strong> (HTML/CSS avec les tokens réels du design system) — ce n'est pas le composant React monté. i18n rendu en français d'exemple ; données factices.</p>
+  </header>
+  <main class="stage">
+    <h2>Aperçu du widget</h2>
+    <div class="surface">
+      <div style="max-width:340px">
+        <h4 style="font-size:14px;font-weight:500;color:var(--fg);margin:0 0 12px">Insuline — total</h4>
+        <div class="row" style="align-items:center;gap:16px;flex-wrap:nowrap">
+          <!-- Donut (pie chart innerRadius 22 / outerRadius 36) -->
+          <div style="width:80px;height:80px;flex-shrink:0;border-radius:9999px;
+                      background:conic-gradient(var(--primary) 0% 60%, var(--coral) 60% 100%);
+                      -webkit-mask:radial-gradient(circle 22px at 50% 50%,transparent 98%,#000 100%);
+                      mask:radial-gradient(circle 22px at 50% 50%,transparent 98%,#000 100%)">
+          </div>
+          <!-- Totals -->
+          <div style="flex:1">
+            <p style="margin:0 0 4px;font-size:24px;line-height:1.1;font-weight:700;color:var(--fg)">
+              34.2<span style="font-size:14px;font-weight:400;color:var(--muted-fg);margin-inline-start:4px">U</span>
+            </p>
+            <div style="display:flex;align-items:center;gap:12px;font-size:12px;color:var(--muted-fg)">
+              <span style="display:flex;align-items:center;gap:4px">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:var(--primary-500)"></span>
+                Basal 60%
+              </span>
+              <span style="display:flex;align-items:center;gap:4px">
+                <span style="display:inline-block;width:8px;height:8px;border-radius:9999px;background:var(--coral)"></span>
+                Bolus 40%
+              </span>
+            </div>
+          </div>
+        </div>
+        <p class="variant-note">Données d'exemple : total 34.2 U — basal 20.5 U (60%) · bolus 13.7 U (40%).</p>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>
