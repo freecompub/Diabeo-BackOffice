@@ -713,7 +713,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2639 | BGM : AGP→Carnet + carnet repas + HbA1c labo | front/back | 2635, 2637, 2638 | M | ✅ DONE (#616, #617) |
 | US-2640 | Toggle page ⇄ drawer + nav + décommission anciens onglets drawer | front | 2633, 2635, 2637, 2638 | M | ✅ DONE (#618) |
 | US-2641 | Durcissement transverse : tokens, i18n/glossaire, a11y, audit/perf, lazy-load | transverse | 2635→2639 | M | ✅ DONE (#619) |
-| US-2642 | Unification ouverture fiche : liste → page `/patients/[id]` (retrait drawer client, lien étiré a11y, audit surface) | front | 2640 | S | 🔄 EN REVUE (PR #623, issue #621) |
+| US-2642 | Unification ouverture fiche : liste → page `/patients/[id]` (retrait drawer client, lien a11y, audit surface) | front | 2640 | S | ✅ DONE (#623) |
 | US-2643 | [TECH-DEBT/SEC] Décommission serveur du transport `cTok` (endpoints + branche `resolveConsultation`) | back/sécurité | 2642 | M | ⏳ TODO (#622) |
 | US-2644 | [A11Y/SEC] Durcissement `/patients/[id]` : focus post-navigation + headers `no-store`/`no-referrer` | front | 2642 | S | ⏳ TODO (#624) |
 
