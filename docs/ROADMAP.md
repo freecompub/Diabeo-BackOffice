@@ -723,6 +723,29 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 >
 > **Suivi (tickets différés, non bloquants)** : PPG 1 h grossesse · sur-fetch `/agp` en vue daily · granularité audit `GLYCEMIA_ENTRY`/`CGM_ENTRY` · `showZoneLabel` autres usages de `GlycemiaValue` · contrastes design-system (gate axe-core CI).
 
+### Série Édition insulinothérapie multi-mode (épic US-2645)
+
+> **Épic US-2645** — éditer l'insulinothérapie **dans la fiche patient** (DOCTOR édite en direct,
+> NURSE/patient → **proposition** validée par un médecin, jamais auto-appliquée), **self-service patient**
+> (lecture + proposer via la nav), et **algorithme d'ajustement `treatment-mode-aware`** couvrant les 3 modes :
+> basal-bolus/pompe, **doses simples/fixes**, et **non insuliné**. Garde-fou réglementaire : aucune posologie
+> médicamenteuse auto en mode non-insuliné (frontière dispositif médical). Spéc ancrée sur `medical-domain-validator`.
+> Voir `docs/UserStory/insulinotherapie-edition/`.
+
+| US | Titre | Périmètre | Dépend de | Taille | Statut |
+|----|-------|-----------|-----------|--------|--------|
+| US-2645 | **EPIC** — Édition insulinothérapie multi-mode (fiche + self-service, propose→valide) | front/back/migration | — | XL | 🟡 SPEC (#628) |
+| US-2646 | Socle données : provenance proposition + dose fixe structurée + enum + `treatmentMode` | back/migration | — | M | ⏳ TODO (#629) |
+| US-2647 | Détection du mode de traitement (a/b/c) + gating fail-closed | back | 2646 | S/M | ⏳ TODO (#630) |
+| US-2648 | Onglet Traitements éditable (fiche) : DOCTOR direct / NURSE→proposition | front/back | 2646, 2647 | L | ⏳ TODO (#631) |
+| US-2649 | Flux proposition → validation (provenance, notif, UI `/adjustment-proposals`) | front/back | 2646 | L | ⏳ TODO (#632) |
+| US-2650 | Self-service patient : route `(patient)` + nav + lecture + proposer | front/back | 2648, 2649 | L | ⏳ TODO (#633) |
+| US-2651 | Algorithme d'ajustement multi-mode (basal-bolus / doses fixes / non insuliné) | back | 2646, 2647 | L | ⏳ TODO (#634) |
+| US-2652 | Garde-fous cliniques + i18n/acronymes + design-system + tests + docs | transverse | 2646→2651 | M | ⏳ TODO (#635) |
+
+> Chemin critique : `2646 → 2647 → {2648, 2651} → 2649 → 2650 → 2652`.
+> ⚠️ À reconfirmer avant dev : validateur des propositions **DOCTOR only** vs **NURSE+DOCTOR** (défaut : DOCTOR only).
+
 ---
 
 ## Effort restant MVP
