@@ -6,9 +6,15 @@
 >
 > **Généré le** : 2026-07-04 · **Méthode** : scan statique (`grep` des noms d'export /
 > des chemins de route dans `src/`, hors fichier définissant, barrels `index.ts`, tests
-> et backend `api/`). ⚠️ Un composant chargé dynamiquement (`next/dynamic`, string) ou
-> une route liée par un `href` **construit** (template `/admin/${slug}`) peut être un
-> faux positif — vérifier avant suppression.
+> et backend `api/`). Scan **étendu** à tout `src/components` + `src/hooks` (hors `ui/`) :
+> confirme les **mêmes 9** — aucun orphelin hors `diabeo/`, aucun hook orphelin, aucune
+> primitive `ui/` inutilisée. ⚠️ Un composant chargé dynamiquement (`next/dynamic`,
+> string) ou une route liée par un `href` **construit** (template `/admin/${slug}`) peut
+> être un faux positif — vérifier avant suppression.
+>
+> **🖼️ Prévisualisations visuelles** : ouvrir **[`orphelins-galerie.html`](orphelins-galerie.html)**
+> (galerie) — une page HTML statique par orphelin (`preview-*.html`), reproduction fidèle
+> avec les tokens réels du design system (thème clair/sombre auto).
 
 ---
 
@@ -26,9 +32,9 @@ Web App Patient** (`8da436e`), livré avant les écrans qui devaient les consomm
 | `PatientCard` | `PatientCard.tsx` | Carte de résumé patient (nom déchiffré + méta). | Grille/liste patients (`/patients`), sélecteurs, dashboards équipe. | ✅ |
 | `MetricLabel` | `MetricLabel.tsx` | Métrique compacte (libellé au-dessus, valeur en dessous) « lisible d'un coup d'œil ». | Widgets de dashboard, stat cards, panneaux de synthèse clinique. | ✅ |
 | `DiabeoText` | `DiabeoText.tsx` | Composant **typographie** à variants (tokens « Sérénité Active »), enrobe les éléments sémantiques HTML. | Transverse — partout où l'on veut une typo tokenisée plutôt que des classes brutes. | ✅ |
-| `ChartLoader` | `loaders/ChartLoader.tsx` | Skeleton de **chargement de graphe** (variants `line`/`agp`/`bars`/`donut`). | Fallback `Suspense`/état loading des charts (dashboards, `/patients/[id]`, `/analytics`). | à vérifier |
-| `UploadLoader` | `loaders/UploadLoader.tsx` | Loader de **progression d'upload** (états `pending→uploading→scanning→encrypting→done→error`). | Flux d'upload de documents (`/documents`, `MedicalDocument` + ClamAV). | à vérifier |
-| `PageLoader` / `InlinePageLoader` | `loaders/PageLoader.tsx` | Skeletons de page **Server-Only** (`async` + `getTranslations`) — ⚠️ ne peuvent PAS être enfants d'un Client Component. | `loading.tsx` de route / fallback `Suspense` serveur. | à vérifier |
+| `ChartLoader` | `loaders/ChartLoader.tsx` | Skeleton de **chargement de graphe** (variants `line`/`agp`/`bars`/`donut`). | Fallback `Suspense`/état loading des charts (dashboards, `/patients/[id]`, `/analytics`). | ❌ hors barrel |
+| `UploadLoader` | `loaders/UploadLoader.tsx` | Loader de **progression d'upload** (états `pending→uploading→scanning→encrypting→done→error`). | Flux d'upload de documents (`/documents`, `MedicalDocument` + ClamAV). | ❌ hors barrel |
+| `PageLoader` / `InlinePageLoader` | `loaders/PageLoader.tsx` | Skeletons de page **Server-Only** (`async` + `getTranslations`) — ⚠️ ne peuvent PAS être enfants d'un Client Component. | `loading.tsx` de route / fallback `Suspense` serveur. | ❌ hors barrel |
 
 **Note conformité design-system** : plusieurs de ces composants (au moins `InsulinSummary`)
 sont **antérieurs au durcissement US-2269** et utilisent des classes brutes

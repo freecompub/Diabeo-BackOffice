@@ -1,0 +1,41 @@
+<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Route orpheline — /analytics/radar</title><style>:root{--primary:#0D9488;--primary-50:#F0FDFA;--primary-100:#CCFBF1;--primary-700:#0F766E;--fg:#1F2937;--muted-fg:#6B7280;--ink-300:#D1D5DB;--bg:#FAFAFA;--card:#FFFFFF;--border:#E5E7EB;--muted:#F3F4F6}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:var(--fg);background:var(--bg);line-height:1.5}
+.wrap{max-width:920px;margin:0 auto;padding:32px 20px 64px}
+.meta{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:24px 28px;box-shadow:0 1px 3px rgba(16,24,40,.06)}
+.badges{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.badge{font-size:12px;font-weight:600;padding:3px 10px;border-radius:9999px;border:1px solid transparent}
+.badge.orphan{background:#FEF2F2;color:#B91C1C;border-color:#FCA5A5}
+.badge.route{background:#EFF6FF;color:#1D4ED8;border-color:#BFDBFE}
+.badge.role{background:var(--primary-50);color:var(--primary-700);border-color:var(--primary-100)}
+h1{font-size:26px;margin:0 0 12px;letter-spacing:-.01em}
+.desc{font-size:15px;margin:0 0 16px}
+dl.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:0;font-size:13.5px}
+dl.facts dt{color:var(--muted-fg);font-weight:600}dl.facts dd{margin:0}
+code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:var(--muted);padding:2px 6px;border-radius:5px}
+.stage{margin-top:24px}
+.browser{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(16,24,40,.08)}
+.bar{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--muted);border-bottom:1px solid var(--border)}
+.dot{width:11px;height:11px;border-radius:50%}
+.u{flex:1;margin-left:8px;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:5px 12px;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;color:var(--muted-fg)}
+.viewport{padding:48px 28px;text-align:center;color:var(--muted-fg)}
+.viewport .ph{display:inline-flex;flex-direction:column;align-items:center;gap:10px}
+.viewport svg{opacity:.5}
+.warn{margin:16px 0 0;font-size:12.5px;color:var(--muted-fg);background:var(--muted);border-left:3px solid var(--ink-300);padding:8px 12px;border-radius:0 8px 8px 0}
+@media (prefers-color-scheme:dark){body{background:#0b0f14;color:#e5e7eb}.meta,.browser{background:#111826;border-color:#1f2a37}.bar,.u,.warn,code{background:#0f1620}}</style></head><body><div class="wrap">
+<header class="meta">
+<div class="badges"><span class="badge orphan">● PAGE ORPHELINE — 0 lien UI entrant</span><span class="badge route">route</span><span class="badge role">DOCTOR / NURSE</span></div>
+<h1>Analytics — Radar</h1>
+<p class="desc">Vue radar analytique (sous-page de /analytics).</p>
+<dl class="facts">
+<dt>Route</dt><dd><code>/analytics/radar</code> · <code>src/app/(dashboard)/analytics/radar/page.tsx</code></dd>
+<dt>Backend API</dt><dd>—</dd>
+<dt>Rôle</dt><dd>DOCTOR / NURSE</dd>
+<dt>Pourquoi orpheline</dt><dd>Aucun onglet ni lien depuis <code>/analytics</code>.</dd>
+</dl>
+<p class="warn">⚠️ Une <strong>page</strong> réelle dépend du back-end, de l'auth et de données patient — non reproductible en HTML statique. Cette fiche décrit la route et son point d'entrée manquant.</p>
+</header>
+<main class="stage"><div class="browser">
+<div class="bar"><span class="dot" style="background:#F87171"></span><span class="dot" style="background:#FBBF24"></span><span class="dot" style="background:#34D399"></span><span class="u">app.diabeo.fr/analytics/radar</span></div>
+<div class="viewport"><div class="ph"><svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/><path d="M8 14h8"/></svg><div>Page existante — atteignable seulement en tapant l'URL</div><div style="font-size:12px">(aucun bouton / lien / entrée de nav ne mène ici)</div></div></div>
+</div></main>
+</div></body></html>
