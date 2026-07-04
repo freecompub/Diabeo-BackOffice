@@ -41,3 +41,7 @@ Les bornes `fixedDose` **naissent en US-2646** (atomique). Cette US = **vérific
 - **Chiffrement** effectif de `proposerComment`/notes (test AES-256-GCM, jamais en clair log/notif/URL).
 - **DPIA** : documenter les doses numériques en clair (calculabilité → at-rest pgcrypto + RBAC).
 - **ADR** : #21 → « 1 composant présentational, **N transports** » (ajout own-id patient) ; nouvel ADR provenance `AdjustmentProposal` (union taguée + `ProposalSource`).
+
+## Reports de la revue code+migration (PR #638 / US-2646) — à fermer ici
+- **DPIA** : documenter que `fixed_dose_slots.value_u` **et** `clinical_review_flags.type` (health-adjacent : un flag `tirBelowTarget`/`hba1cStale` implique une préoccupation clinique) reposent sur le chiffrement **at-rest (pgcrypto) + RBAC**, pas sur l'AES-GCM applicatif (contrainte de calculabilité). Étendre la note DPIA au-delà des seules doses. *(HDS LOW)*
+- **Vérifier** que les caps delta dose fixe + les seuils d'avertissement par type (routés basal/bolus) sont bien enforced (implémentés en US-2649) et couverts par des tests de cas limites. *(medical)*

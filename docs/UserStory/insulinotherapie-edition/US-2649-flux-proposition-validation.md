@@ -39,3 +39,12 @@ explicitement. L'écran de validation existe déjà (`/adjustment-proposals`) ma
 - **Validation = DOCTOR exact + `canAccessPatient`** (ADMIN exclu) (§12.8).
 - **Audit sans PHI** : `resourceId=proposalId`, `metadata={patientId, proposedByRole}` ; jamais la dose (§12 nit).
 - Dépendances corrigées : dépend aussi de **2647** et **2651**.
+
+## Reports de la revue code+migration (PR #638 / US-2646) — à fermer ici
+Invariants laissés volontairement « ouverts » par le socle, à fermer côté service :
+- **Provenance dérivée serveur** (2649a) : `source` + `proposedByUserId` depuis la **session**, jamais du body (anti-usurpation). **Nuller** `confidence`/`supportingEvents` quand `source != algorithm` (le CHECK DB ne l'impose pas). *(HDS MEDIUM, prisma)*
+- **Audit à la création** (2649b, **bloquant**) : enregistrer l'auteur (`metadata={patientId, proposedByRole}`) **dès la création** — sinon la suppression RGPD (FK SetNull) perd le lien forensique. *(HDS HIGH-dépendance)*
+- **Affichage basé sur `source`, pas `confidence`** (2649b) : ne jamais rendre une proposition non-`algorithm` comme « moteur » (une `confidence` bidon ne doit pas tromper le médecin qui valide). *(HDS LOW — sécurité clinique)*
+- **Notif sans PHI** : `data={type, proposalId}`, corps générique (déjà prévu).
+- **Index unique partiel** : `clinical_review_flags(patient_id, type) WHERE status='open'` (précédent `emergency_alerts_one_live_per_type`) pour éviter le spam de flags. *(prisma)*
+- **Écriture `fixedDose` dans `accept()`** : aujourd'hui **fail-closed** (throw `fixedDoseApplyNotImplemented`) → câbler l'écriture réelle dans `fixed_dose_slots` ; **activer les caps delta** (`FIXED_DOSE_MAX_DELTA_U` / `FIXED_DOSE_PATIENT_MAX_DELTA_U`, inertes au socle) ; **router les seuils d'avertissement** (`FIXED_BOLUS_WARN_U` / `FIXED_BASAL_WARN_U`) selon `PatientInsulin.usage` (basal vs bolus). *(code-review + medical)*

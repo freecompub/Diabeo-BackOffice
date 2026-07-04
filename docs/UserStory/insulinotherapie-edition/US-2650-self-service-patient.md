@@ -35,3 +35,6 @@ Paramètres ; les API `/api/insulin-therapy/*` **bloquent VIEWER** ; `/insulin-t
 - **Own-id strict** : résolution **exclusive** `getOwnPatientId(user.id)` ; **aucun** `?patientId`, **aucun** `x-consultation-token` sur les routes patient ; Zod **sans** `patientId`. Re-scoper `/api/patient/insulin-settings` (§12 « à intégrer », HIGH IDOR). Test VIEWER visant un autre id/token → son dossier.
 - Justification patient → champ **`proposerComment`** chiffré (pas `Ack.comment`) (§12).
 - `InsulinSummary` : vérifier **absence de fuite import client/serveur** avant montage `(patient)` (§12 nit).
+
+## Reports de la revue code+migration (PR #638 / US-2646) — à fermer ici
+- **Chiffrement `proposer_comment`** (**CRITIQUE dès la 1ʳᵉ écriture patient**) : la justification patient (texte libre) est un `TEXT` en clair au socle → `encrypt()` AES-256-GCM à l'écriture, `decrypt()` en lecture autorisée uniquement ; **jamais** en clair (log/notif/URL). Test asserttant le format ciphertext (IV‖TAG‖CT base64). *(HDS)*
