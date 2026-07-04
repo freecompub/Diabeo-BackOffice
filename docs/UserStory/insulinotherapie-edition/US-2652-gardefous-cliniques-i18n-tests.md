@@ -34,3 +34,10 @@ et garantir conformité (clinique, HDS, a11y, i18n, design-system).
 
 ## Notes
 - Réviser l'inventaire orphelins : `InsulinSummary` et `/insulin-therapy` (redirigée) sortent du statut orphelin.
+
+## Révision post-revue — RECENTRÉE hardening (voir épic §12)
+Les bornes `fixedDose` **naissent en US-2646** (atomique). Cette US = **vérification/durcissement** :
+- Cas limites (grossesse/DG, pédiatrie cap **absolu U** + co-signature, DT1 jamais mode c, rénal/âgé, config incohérente) + **sens interdit patient appliqué serveur**.
+- **Chiffrement** effectif de `proposerComment`/notes (test AES-256-GCM, jamais en clair log/notif/URL).
+- **DPIA** : documenter les doses numériques en clair (calculabilité → at-rest pgcrypto + RBAC).
+- **ADR** : #21 → « 1 composant présentational, **N transports** » (ajout own-id patient) ; nouvel ADR provenance `AdjustmentProposal` (union taguée + `ProposalSource`).

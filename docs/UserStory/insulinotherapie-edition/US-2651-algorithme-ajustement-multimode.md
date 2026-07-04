@@ -31,3 +31,8 @@ doses fixes (b) et non-insuliné (c) — **sans jamais franchir la ligne du dosa
 
 ## Notes
 - Le mode (c) **ne réutilise pas** `AdjustmentProposal` pour porter une dose — objet flag/tâche distinct.
+
+## Révision post-revue (archi + HDS) — voir épic §12
+- **Refus serveur** de toute `AdjustmentProposal` de dose si `treatmentMode=nonInsulin` ; mode (c) → `ClinicalReviewFlag` (défini US-2646), jamais une proposition de dose (§12.5, MDR).
+- Remonter **`MAX_CHANGE_PERCENT=20`** (en dur) dans `CLINICAL_BOUNDS` (source unique testée) (§12 nit).
+- Application `fixedDose` mode-aware côté `accept` (dépendance vers US-2649b).

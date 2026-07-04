@@ -32,3 +32,9 @@ l'onglet devient l'éditeur (une seule vérité, cohérent US-2630/US-2604).
 
 ## Notes
 - Bornes cliniques appliquées serveur (inchangé) ; l'UI n'assouplit jamais les bornes.
+
+## Révision post-revue (archi + HDS) — voir épic §12
+- **Transport d'ÉCRITURE injecté** (`mutate`) symétrique à `fetchAnalytics` ; identité résolue par l'adaptateur (anti-énumération) (§12.6).
+- **Éditeur `variant="page"` uniquement** — jamais en contexte drawer/`x-consultation-token` (escalade de privilège), fail-closed. Capability descriptor serveur `{mode, canEditDirect, canPropose}` (§12.6).
+- 🔴 **CRITICAL HDS** : passer les routes `POST/PATCH /api/insulin-therapy/*` de `requireRole(NURSE)` à **DOCTOR exact** ; NURSE → **403** + endpoint de proposition. Re-routage **serveur**. Test E2E `NURSE PATCH → 403` (§12.7).
+- Redirect `/insulin-therapy` **role-branché** (DOCTOR/NURSE → fiche ; VIEWER → route patient) (§12 nit).
