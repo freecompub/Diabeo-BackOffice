@@ -48,3 +48,14 @@ Invariants laissés volontairement « ouverts » par le socle, à fermer côté 
 - **Notif sans PHI** : `data={type, proposalId}`, corps générique (déjà prévu).
 - **Index unique partiel** : `clinical_review_flags(patient_id, type) WHERE status='open'` (précédent `emergency_alerts_one_live_per_type`) pour éviter le spam de flags. *(prisma)*
 - **Écriture `fixedDose` dans `accept()`** : aujourd'hui **fail-closed** (throw `fixedDoseApplyNotImplemented`) → câbler l'écriture réelle dans `fixed_dose_slots` ; **activer les caps delta** (`FIXED_DOSE_MAX_DELTA_U` / `FIXED_DOSE_PATIENT_MAX_DELTA_U`, inertes au socle) ; **router les seuils d'avertissement** (`FIXED_BOLUS_WARN_U` / `FIXED_BASAL_WARN_U`) selon `PatientInsulin.usage` (basal vs bolus). *(code-review + medical)*
+
+## Reports de la revue US-2649a (PR #642) — obligations & suites
+**Fermé par US-2649a** : provenance dérivée serveur, `currentValue` **dérivé serveur** (garde-fous ininviolables), bornes à la création, `changePercent` clampé (anti-overflow), anti-spam (index partiel `prisma/sql/adjustment_proposal_one_pending.sql` + P2002), `proposerComment` chiffré, audit sans PHI, `fixedDose` **rejeté** (fail-closed).
+
+**Obligations ROUTE (US-2648/2650, bloquantes)** — la primitive fait confiance à l'appelant :
+- `canAccessPatient(user, patientId)` + un **patient ne propose que sur SON dossier** (session.patientId === input.patientId).
+- Mapper le **rôle session → `patient|nurse|doctor`** (rejeter ADMIN/VIEWER en 400).
+- **Ne pas renvoyer `proposerComment`** (ciphertext) dans la réponse API (strip DTO).
+- **Appliquer l'index partiel** `prisma/sql/adjustment_proposal_one_pending.sql` en prod + **rate-limit** des créations patient.
+
+**fixedDose** — pour dé-rejeter la dose fixe : ajouter un **discriminateur de moment** sur `AdjustmentProposal` (ou objet dédié) + câbler `FixedDoseSlot` (US-2648/2649b).

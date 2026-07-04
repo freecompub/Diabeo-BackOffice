@@ -25,7 +25,6 @@ type HumanProposerRole = Extract<ProposalSource, "patient" | "nurse" | "doctor">
 export type CreateProposalInput = {
   patientId: number
   parameterType: AdjustableParameter
-  currentValue: number
   proposedValue: number
   reason: AdjustmentReason
   timeSlotStartHour?: number | null
@@ -61,6 +60,56 @@ function validateProposedValue(parameterType: string, value: number): boolean {
       return value >= INSULIN_BOUNDS.FIXED_DOSE_MIN
     default:
       return false
+  }
+}
+
+/**
+ * US-2649a — valeur COURANTE de confiance d'un paramètre, lue **serveur** depuis la
+ * config réelle du patient (jamais du body → garde-fous ininviolables) et **scopée
+ * patient** (anti-IDOR : le créneau doit appartenir au patient).
+ * @throws `slotRequired` (créneau manquant), `currentValueNotFound` (créneau absent /
+ *   autre patient), `fixedDoseNotWired` (dose fixe non câblée — pas de discriminateur
+ *   de moment sur AdjustmentProposal, cf. US-2648/2649b).
+ */
+async function resolveCurrentValue(
+  patientId: number,
+  parameterType: AdjustableParameter,
+  input: CreateProposalInput,
+): Promise<number> {
+  switch (parameterType) {
+    case "insulinSensitivityFactor": {
+      if (input.timeSlotStartHour == null) throw new Error("slotRequired")
+      const row = await prisma.insulinSensitivityFactor.findFirst({
+        where: { settings: { patientId }, startHour: input.timeSlotStartHour },
+        select: { sensitivityFactorGl: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.sensitivityFactorGl)
+    }
+    case "insulinToCarbRatio": {
+      if (input.carbRatioSlotStart == null) throw new Error("slotRequired")
+      const row = await prisma.carbRatio.findFirst({
+        where: { settings: { patientId }, startHour: input.carbRatioSlotStart },
+        select: { gramsPerUnit: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.gramsPerUnit)
+    }
+    case "basalRate": {
+      if (!input.pumpBasalSlotId) throw new Error("slotRequired")
+      const row = await prisma.pumpBasalSlot.findFirst({
+        where: { id: input.pumpBasalSlotId, basalConfig: { settings: { patientId } } },
+        select: { rate: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.rate)
+    }
+    // Dose fixe : AdjustmentProposal n'a pas de colonne « moment » → impossible de cibler
+    // /dédupliquer une FixedDoseSlot. Fail-closed jusqu'au câblage UI + discriminateur.
+    case "fixedDose":
+      throw new Error("fixedDoseNotWired")
+    default:
+      throw new Error("unsupportedParameter")
   }
 }
 
@@ -165,29 +214,39 @@ export const adjustmentService = {
     proposer: { userId: number; role: HumanProposerRole },
     ctx?: AuditContext,
   ) {
-    const { patientId, parameterType, currentValue, proposedValue } = input
+    const { patientId, parameterType, proposedValue } = input
 
-    // 1. Bornes cliniques dures — rejet à la création.
+    // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept).
     if (!validateProposedValue(parameterType, proposedValue)) {
       throw new Error("valueOutOfBounds")
     }
 
-    const delta = proposedValue - currentValue
-    const changePercent = currentValue !== 0 ? (delta / currentValue) * 100 : 0
+    // 2. Valeur COURANTE de CONFIANCE, lue serveur (jamais du body) et scopée patient.
+    //    Rejette fixedDose (non câblé) + créneau introuvable/d'un autre patient.
+    const currentValue = await resolveCurrentValue(patientId, parameterType, input)
 
-    // 2. Garde-fous PATIENT (une demande, pas une titration).
+    const delta = proposedValue - currentValue
+    const rawPct = currentValue !== 0 ? (delta / currentValue) * 100 : 0
+    // Clamp à la précision de la colonne `Decimal(5,2)` (±999.99) — évite un numeric
+    // overflow Postgres (ex. basale 0.05→5.0 = 9900 %) → insert 500.
+    const changePercent = Math.max(-999.99, Math.min(999.99, rawPct))
+
+    // 3. Garde-fous PATIENT (sur l'écart de confiance ; une demande, pas une titration).
     if (proposer.role === "patient") {
-      if ((parameterType === "basalRate" || parameterType === "fixedDose") && delta < 0) {
+      // basalRate : jamais de BAISSE (risque hyper/cétose silencieuse). NB : on N'applique
+      // PAS « no-decrease » à ISF/ICR — MONTER l'ISF/ICR RÉDUIT la dose (direction plus sûre) ;
+      // les deux sens y sont seulement bornés en amplitude (raffinement min/abs → US-2652).
+      if (parameterType === "basalRate" && delta < 0) {
         throw new Error("patientDecreaseForbidden")
       }
-      const overCap =
-        parameterType === "fixedDose"
-          ? Math.abs(delta) > INSULIN_BOUNDS.FIXED_DOSE_PATIENT_MAX_DELTA_U
-          : Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT
-      if (overCap) throw new Error("patientDeltaTooLarge")
+      if (Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT) {
+        throw new Error("patientDeltaTooLarge")
+      }
     }
 
-    // 3. Anti-spam : une seule proposition PENDING par (patient, paramètre, créneau).
+    // 4. Anti-spam — pré-check (chemin rapide). L'unicité RÉELLE (course TOCTOU) est
+    //    garantie par l'index unique partiel `WHERE status='pending'`
+    //    (prisma/sql/adjustment_proposal_one_pending.sql) → P2002 ci-dessous.
     const existing = await prisma.adjustmentProposal.findFirst({
       where: {
         patientId,
@@ -201,43 +260,51 @@ export const adjustmentService = {
     })
     if (existing) throw new Error("duplicatePendingProposal")
 
-    // 4. Création — provenance DÉRIVÉE serveur ; jamais appliqué.
-    return prisma.$transaction(async (tx) => {
-      const proposal = await tx.adjustmentProposal.create({
-        data: {
-          patientId,
-          parameterType,
-          currentValue,
-          proposedValue,
-          changePercent,
-          reason: input.reason,
-          source: proposer.role,
-          proposedByUserId: proposer.userId,
-          proposerComment: input.proposerComment != null ? encryptField(input.proposerComment) : null,
-          confidence: null,
-          supportingEvents: null,
-          status: "pending",
-          timeSlotStartHour: input.timeSlotStartHour ?? null,
-          timeSlotEndHour: input.timeSlotEndHour ?? null,
-          carbRatioSlotStart: input.carbRatioSlotStart ?? null,
-          carbRatioSlotEnd: input.carbRatioSlotEnd ?? null,
-          pumpBasalSlotId: input.pumpBasalSlotId ?? null,
-        },
-      })
+    // 5. Création — provenance DÉRIVÉE serveur ; métriques moteur nulles ; jamais appliqué.
+    //    ⚠️ Le contrôle d'accès (canAccessPatient + patient sur SON dossier) est du ressort
+    //    de la ROUTE appelante (US-2648/2650) — la primitive fait confiance à `proposer`.
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const proposal = await tx.adjustmentProposal.create({
+          data: {
+            patientId,
+            parameterType,
+            currentValue,
+            proposedValue,
+            changePercent,
+            reason: input.reason,
+            source: proposer.role,
+            proposedByUserId: proposer.userId,
+            proposerComment: input.proposerComment != null ? encryptField(input.proposerComment) : null,
+            confidence: null,
+            supportingEvents: null,
+            status: "pending",
+            timeSlotStartHour: input.timeSlotStartHour ?? null,
+            timeSlotEndHour: input.timeSlotEndHour ?? null,
+            carbRatioSlotStart: input.carbRatioSlotStart ?? null,
+            carbRatioSlotEnd: input.carbRatioSlotEnd ?? null,
+            pumpBasalSlotId: input.pumpBasalSlotId ?? null,
+          },
+        })
 
-      // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose.
-      await auditService.logWithTx(tx, {
-        userId: proposer.userId,
-        action: "CREATE",
-        resource: "ADJUSTMENT_PROPOSAL",
-        resourceId: proposal.id,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        metadata: { patientId, proposedByRole: proposer.role },
-      })
+        // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose.
+        await auditService.logWithTx(tx, {
+          userId: proposer.userId,
+          action: "CREATE",
+          resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: proposal.id,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: proposer.role },
+        })
 
-      return proposal
-    })
+        return proposal
+      })
+    } catch (e) {
+      // Course TOCTOU rattrapée par l'index partiel (violation d'unicité).
+      if ((e as { code?: string }).code === "P2002") throw new Error("duplicatePendingProposal")
+      throw e
+    }
   },
 
   /** Accept a proposal — optionally apply the change */
