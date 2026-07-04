@@ -1483,7 +1483,8 @@
       "stale": "البيانات قديمة — في انتظار التحديث.",
       "deterministic": "حتمي",
       "review": "مراجعة",
-      "reviewAria": "مراجعة اقتراح {name}"
+      "reviewAria": "مراجعة اقتراح {name}",
+      "paramFixedDose": "جرعة ثابتة"
     },
     "medecinMessages": {
       "title": "رسائل غير مقروءة",
@@ -1532,7 +1533,8 @@
     "isfMgdl": "mg/dL/U",
     "isfMmol": "mmol/L/U",
     "icr": "g/U",
-    "basal": "U/h"
+    "basal": "U/h",
+    "u": "U"
   },
   "patientContextBar": {
     "backToWorklist": "العودة إلى يومي",
@@ -2015,7 +2017,8 @@
     "finalize": "إنهاء التقرير",
     "finalizeError": "فشل الإنهاء. أعد المحاولة.",
     "finalizedTitle": "تم إنهاء التقرير",
-    "finalizedNote": "هذا التقرير نهائي وغير قابل للتعديل (لا يمكن تغييره بعد الآن)."
+    "finalizedNote": "هذا التقرير نهائي وغير قابل للتعديل (لا يمكن تغييره بعد الآن).",
+    "paramFixedDose": "جرعة ثابتة"
   },
   "cabinetMembers": {
     "title": "أعضاء العيادة والصلاحيات",

@@ -386,6 +386,10 @@ const CLINICAL_BOUNDS = {
   INSULIN_ACTION_MIN: 3.5,       // heures (durée d'action analogues rapides)
   INSULIN_ACTION_MAX: 5.0,       // heures
   PUMP_BASAL_INCREMENT: 0.05,    // U/h
+  FIXED_DOSE_MIN: 0.5,           // U — dose fixe par moment (mode doses simples, US-2646)
+  FIXED_DOSE_MAX: 25.0,          // U — plafond dose fixe (≤ MAX_SINGLE_BOLUS)
+  FIXED_DOSE_MAX_DELTA_U: 2.0,   // U — variation max par ajustement (titration lente)
+  FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0, // U — cap patient resserré (< moteur)
 }
 
 // Formule : findSlotForHour(settings.sensitivityFactors, hour)

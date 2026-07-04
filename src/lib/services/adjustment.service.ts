@@ -29,6 +29,11 @@ function validateProposedValue(parameterType: string, value: number): boolean {
       return value >= INSULIN_BOUNDS.ICR_MIN && value <= INSULIN_BOUNDS.ICR_MAX
     case "basalRate":
       return value >= INSULIN_BOUNDS.BASAL_MIN && value <= INSULIN_BOUNDS.BASAL_MAX
+    // US-2646 — dose fixe (mode « doses simples »). Bornes absolues ; le cap de
+    // variation (delta) et le sens interdit patient sont vérifiés à la création
+    // (service), pas ici (borne de valeur uniquement).
+    case "fixedDose":
+      return value >= INSULIN_BOUNDS.FIXED_DOSE_MIN && value <= INSULIN_BOUNDS.FIXED_DOSE_MAX
     default:
       return false
   }

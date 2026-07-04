@@ -36,6 +36,11 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       INSULIN_ACTION_MIN: 3.5,
       INSULIN_ACTION_MAX: 5.0,
       PUMP_BASAL_INCREMENT: 0.05,
+      // US-2646 — dose fixe (mode « doses simples »)
+      FIXED_DOSE_MIN: 0.5,
+      FIXED_DOSE_MAX: 25.0,
+      FIXED_DOSE_MAX_DELTA_U: 2.0,
+      FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
     })
   })
 
@@ -46,6 +51,15 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
     expect(CLINICAL_BOUNDS.BASAL_MIN).toBeLessThan(CLINICAL_BOUNDS.BASAL_MAX)
     expect(CLINICAL_BOUNDS.TARGET_MIN_MGDL).toBeLessThan(CLINICAL_BOUNDS.TARGET_MAX_MGDL)
     expect(CLINICAL_BOUNDS.INSULIN_ACTION_MIN).toBeLessThan(CLINICAL_BOUNDS.INSULIN_ACTION_MAX)
+  })
+
+  it("US-2646 — dose fixe : bornes cohérentes et cap patient ≤ cap moteur", () => {
+    expect(CLINICAL_BOUNDS.FIXED_DOSE_MIN).toBeGreaterThan(0)
+    expect(CLINICAL_BOUNDS.FIXED_DOSE_MIN).toBeLessThan(CLINICAL_BOUNDS.FIXED_DOSE_MAX)
+    // le plafond d'une dose fixe ne dépasse jamais le cap bolus unique
+    expect(CLINICAL_BOUNDS.FIXED_DOSE_MAX).toBeLessThanOrEqual(CLINICAL_BOUNDS.MAX_SINGLE_BOLUS)
+    // cap de variation patient strictement plus strict que le cap moteur
+    expect(CLINICAL_BOUNDS.FIXED_DOSE_PATIENT_MAX_DELTA_U).toBeLessThan(CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U)
   })
 })
 

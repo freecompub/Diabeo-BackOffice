@@ -96,6 +96,44 @@ enum AdjustableParameter {
   basalRate
   insulinSensitivityFactor
   insulinToCarbRatio
+  // US-2646 — dose fixe par moment (mode « doses simples »). Borne dans CLINICAL_BOUNDS + validateProposedValue.
+  fixedDose
+}
+
+// US-2646 — provenance d'une AdjustmentProposal (union taguée).
+enum ProposalSource {
+  algorithm
+  patient
+  nurse
+  doctor
+}
+
+// US-2646 — mode de traitement (cache d'affichage ; source de vérité = dérivée US-2647).
+enum TreatmentMode {
+  basalBolus
+  fixedDose
+  nonInsulin
+}
+
+// US-2646 — moment d'une dose fixe (mode b).
+enum DoseMoment {
+  morning
+  noon
+  evening
+  night
+}
+
+// US-2646 — type de flag d'orientation (mode non-insuliné ; jamais une posologie).
+enum ClinicalReviewFlagType {
+  reviewInConsultation
+  hba1cStale
+  tirBelowTarget
+  observance
+}
+
+enum ClinicalReviewFlagStatus {
+  open
+  resolved
 }
 
 enum AdjustmentReason {
@@ -109,6 +147,9 @@ enum AdjustmentReason {
   icrTooHigh
   icrCorrect
   insufficientData
+  // US-2646 — propositions humaines (non issues du moteur diagnostique).
+  patientRequested
+  manualAdjustment
 }
 
 enum ConfidenceLevel {
@@ -394,6 +435,9 @@ model User {
   pushScheduled                     PushScheduledNotification[]
   auditLogs                         AuditLog[]
   reviewedProposals                 AdjustmentProposal[]              @relation("ReviewedBy")
+  proposedAdjustments               AdjustmentProposal[]              @relation("ProposedBy")
+  reviewFlagsCreated                ClinicalReviewFlag[]              @relation("ReviewFlagCreatedBy")
+  reviewFlagsResolved               ClinicalReviewFlag[]              @relation("ReviewFlagResolvedBy")
   prescribedInsulins                PatientInsulin[]                  @relation("PrescribedInsulins")
   mydiabbyCredential                MyDiabbyCredential?
   acknowledgedAlerts                EmergencyAlert[]                  @relation("AlertAcknowledger")
@@ -626,6 +670,12 @@ model Patient {
   /// pour permettre activation rapide sans saisir DPA, puis synchronisation
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
   pregnancyMode Boolean   @default(false) @map("pregnancy_mode")
+  /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
+  /// d'affichage : la source de vérité reste la config (settings/insulines),
+  /// re-dérivée en transaction au gate d'écriture (US-2647). NULL = non encore
+  /// résolu → dériver à la lecture (fail-closed : jamais d'édition insuline sur
+  /// un mode inconnu).
+  treatmentMode TreatmentMode? @map("treatment_mode")
   /// US-2076bis-V2 (Issue #442) — UUID v4 opaque pour anonymisation UI
   /// (ThreadList messagerie + future Patient list). Élimine timing oracle
   /// énumération `patient.id` séquentiel (ANSSI / RGPD Art. 5.1.f). Le
@@ -651,6 +701,7 @@ model Patient {
   insulinTherapySettings InsulinTherapySettings?
   bolusCalculationLogs   BolusCalculationLog[]
   adjustmentProposals    AdjustmentProposal[]
+  clinicalReviewFlags    ClinicalReviewFlag[]
   cgmEntries             CgmEntry[]
   glycemiaEntries        GlycemiaEntry[]
   diabetesEvents         DiabetesEvent[]
@@ -1095,6 +1146,7 @@ model PatientInsulin {
   prescriber     User?                    @relation("PrescribedInsulins", fields: [prescribedBy], references: [id], onDelete: SetNull)
   bolusSettings  InsulinTherapySettings[] @relation("BolusInsulinSettings")
   basalSettings  InsulinTherapySettings[] @relation("BasalInsulinSettings")
+  fixedDoseSlots FixedDoseSlot[]
 
   @@index([patientId, isActive])
   @@index([patientId, insulinCatalogId])
@@ -1265,9 +1317,18 @@ model AdjustmentProposal {
   currentValue          Decimal             @map("current_value") @db.Decimal(8, 4)
   proposedValue         Decimal             @map("proposed_value") @db.Decimal(8, 4)
   changePercent         Decimal             @map("change_percent") @db.Decimal(5, 2)
-  confidence            ConfidenceLevel
+  // US-2646 — provenance de la proposition (union taguée sur une seule table).
+  // `algorithm` = généré par le moteur (proposedByUserId NULL) ; patient/nurse/doctor
+  // = proposition humaine (proposedByUserId NOT NULL). Dérivé serveur, jamais du body.
+  // Contrainte CHECK (migration) : algorithm ⇔ userId NULL & supportingEvents/confidence NOT NULL.
+  source                ProposalSource      @default(algorithm)
+  proposedByUserId      Int?                @map("proposed_by_user_id")
+  // Justification texte libre d'une proposition patient — chiffrée AES-256-GCM (base64). Jamais en clair (log/notif/URL).
+  proposerComment       String?             @map("proposer_comment")
+  // Nullable depuis US-2646 : une proposition humaine n'a ni confidence ni supportingEvents (métriques moteur).
+  confidence            ConfidenceLevel?
   reason                AdjustmentReason
-  supportingEvents      Int                 @map("supporting_events")
+  supportingEvents      Int?                @map("supporting_events")
   totalEventsConsidered Int?                @map("total_events_considered")
   excludedEvents        Int?                @map("excluded_events")
   averageObservedValue  Decimal?            @map("average_observed_value") @db.Decimal(8, 4)
@@ -1285,6 +1346,9 @@ model AdjustmentProposal {
 
   patient       Patient                          @relation(fields: [patientId], references: [id], onDelete: Cascade)
   reviewer      User?                            @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  // US-2646 — auteur de la proposition (patient/nurse/doctor). onDelete: SetNull pour
+  // préserver la ligne (traçabilité) après suppression RGPD de l'auteur ; le rôle reste porté par `source`.
+  proposer      User?                            @relation("ProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
   pumpBasalSlot PumpBasalSlot?                   @relation(fields: [pumpBasalSlotId], references: [id])
   /// US-2065 — accusé patient (1:1).
   ack           AdjustmentProposalAck?
@@ -1293,6 +1357,46 @@ model AdjustmentProposal {
 
   @@index([patientId, status, createdAt])
   @@map("adjustment_proposals")
+}
+
+// US-2646 — dose fixe structurée par moment (mode « doses simples »). Base
+// NUMÉRIQUE de l'ajustement mode (b). `valueU` = valeur unique par moment
+// (arbitrage clinique : pas de fourchette). Le texte libre `PatientInsulin.dosage`
+// reste l'affichage d'origine ; cette table est la valeur calculable.
+model FixedDoseSlot {
+  id               String     @id @default(uuid())
+  patientInsulinId Int        @map("patient_insulin_id")
+  moment           DoseMoment
+  valueU           Decimal    @map("value_u") @db.Decimal(5, 2)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime   @updatedAt @map("updated_at") @db.Timestamptz()
+
+  patientInsulin PatientInsulin @relation(fields: [patientInsulinId], references: [id], onDelete: Cascade)
+
+  @@unique([patientInsulinId, moment])
+  @@index([patientInsulinId])
+  @@map("fixed_dose_slots")
+}
+
+// US-2646 — flag d'orientation clinique (mode non-insuliné). Objet DISTINCT
+// d'AdjustmentProposal : ne porte JAMAIS de posologie (frontière dispositif
+// médical, D7). `createdBy` NULL = généré par algorithme.
+model ClinicalReviewFlag {
+  id         String                   @id @default(uuid())
+  patientId  Int                      @map("patient_id")
+  type       ClinicalReviewFlagType
+  status     ClinicalReviewFlagStatus @default(open)
+  createdBy  Int?                     @map("created_by")
+  resolvedBy Int?                     @map("resolved_by")
+  createdAt  DateTime                 @default(now()) @map("created_at") @db.Timestamptz()
+  resolvedAt DateTime?                @map("resolved_at") @db.Timestamptz()
+
+  patient  Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  creator  User?   @relation("ReviewFlagCreatedBy", fields: [createdBy], references: [id], onDelete: SetNull)
+  resolver User?   @relation("ReviewFlagResolvedBy", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([patientId, status])
+  @@map("clinical_review_flags")
 }
 
 // ═══════════════════════════════════════════════════════════════

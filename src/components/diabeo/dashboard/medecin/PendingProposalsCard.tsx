@@ -36,6 +36,7 @@ const PARAM_LABEL_KEY: Record<PendingProposalItem["parameterType"], string> = {
   basalRate: "paramBasalRate",
   insulinSensitivityFactor: "paramInsulinSensitivityFactor",
   insulinToCarbRatio: "paramInsulinToCarbRatio",
+  fixedDose: "paramFixedDose",
 }
 
 /** Clés du namespace i18n `insulinUnits` (source unique des libellés d'unités). */

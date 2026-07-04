@@ -35,6 +35,17 @@ export const CLINICAL_BOUNDS = {
   INSULIN_ACTION_MAX: 5.0,
   /** Pump basal increment in U/h */
   PUMP_BASAL_INCREMENT: 0.05,
+  /**
+   * US-2646 — Dose fixe par moment (mode « doses simples »), en unités.
+   * `FIXED_DOSE_MIN`/`MAX` = bornes absolues d'une dose fixe unitaire (plancher > 0
+   * pour éviter une dose nulle qui casserait la couverture ; plafond = `MAX_SINGLE_BOLUS`).
+   * `FIXED_DOSE_MAX_DELTA_U` = variation absolue maximale par ajustement (titration lente).
+   * `FIXED_DOSE_PATIENT_MAX_DELTA_U` = cap PATIENT resserré (une demande, pas une titration).
+   */
+  FIXED_DOSE_MIN: 0.5,
+  FIXED_DOSE_MAX: 25.0,
+  FIXED_DOSE_MAX_DELTA_U: 2.0,
+  FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

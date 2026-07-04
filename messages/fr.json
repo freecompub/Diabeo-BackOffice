@@ -1483,7 +1483,8 @@
       "stale": "Données obsolètes — rafraîchissement en attente.",
       "deterministic": "déterministe",
       "review": "Revoir",
-      "reviewAria": "Revoir la proposition de {name}"
+      "reviewAria": "Revoir la proposition de {name}",
+      "paramFixedDose": "Dose fixe"
     },
     "medecinMessages": {
       "title": "Messages non lus",
@@ -1532,7 +1533,8 @@
     "isfMgdl": "mg/dL/U",
     "isfMmol": "mmol/L/U",
     "icr": "g/U",
-    "basal": "U/h"
+    "basal": "U/h",
+    "u": "U"
   },
   "patientContextBar": {
     "backToWorklist": "Retour à Ma journée",
@@ -2015,7 +2017,8 @@
     "finalize": "Finaliser le compte rendu",
     "finalizeError": "La finalisation a échoué. Réessayez.",
     "finalizedTitle": "Compte rendu finalisé",
-    "finalizedNote": "Ce compte rendu est finalisé et immuable (il ne peut plus être modifié)."
+    "finalizedNote": "Ce compte rendu est finalisé et immuable (il ne peut plus être modifié).",
+    "paramFixedDose": "Dose fixe"
   },
   "cabinetMembers": {
     "title": "Personnel & droits du cabinet",
