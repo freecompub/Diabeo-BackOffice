@@ -15,8 +15,8 @@ export type {
 import type {
   InsulinDelivery, BolusInsulin, Pump, TreatmentView,
 } from "@/components/diabeo/patient/patient-record-views"
-// US-2647 — analyse de couverture extraite vers lib (réutilisable back, hors pages).
-import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
+// US-2647 — analyse de couverture + parsing Time extraits vers lib (réutilisable back, hors pages).
+import { analyzeSlotCoverage, timeToMinutes } from "@/lib/insulin/slot-coverage"
 
 type DecimalLike = number | string | { toString(): string }
 const num = (x: DecimalLike): number => Number(x)
@@ -31,14 +31,6 @@ function hhmm(t: Date | string): string {
 
 const hourRange = (startHour: number, endHour: number): string =>
   `${String(startHour).padStart(2, "0")}h–${String(endHour).padStart(2, "0")}h`
-
-/** "Time" Prisma → minutes dans [0,1440] (HH:MM). `null` si non parsable. */
-function timeToMinutes(t: Date | string): number | null {
-  const iso = typeof t === "string" ? t : t.toISOString()
-  const m = /T(\d{2}):(\d{2})/.exec(iso)
-  if (!m) return null
-  return Number(m[1]) * 60 + Number(m[2])
-}
 
 // US-2647 — `analyzeSlotCoverage` déplacé vers `@/lib/insulin/slot-coverage`
 // (réutilisable côté back, hors pages). Ré-exporté pour les consommateurs existants.

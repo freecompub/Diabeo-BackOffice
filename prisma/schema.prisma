@@ -673,10 +673,10 @@ model Patient {
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
   pregnancyMode Boolean   @default(false) @map("pregnancy_mode")
   /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
-  /// d'affichage : la source de vérité reste la config (settings/insulines),
-  /// re-dérivée en transaction au gate d'écriture (US-2647). NULL = non encore
-  /// résolu → dériver à la lecture (fail-closed : jamais d'édition insuline sur
-  /// un mode inconnu).
+  /// d'affichage/filtrage UNIQUEMENT. ⚠️ NE PAS lire cette colonne brute pour une
+  /// décision logique : source de vérité = `resolveTreatmentMode()` (US-2647, dérivé
+  /// à la lecture). Writer du cache = gate d'écriture US-2648 (recalcul en transaction).
+  /// NULL tant qu'aucun writer ne l'a peuplé (inerte, aucun reader aujourd'hui).
   treatmentMode TreatmentMode? @map("treatment_mode")
   /// US-2076bis-V2 (Issue #442) — UUID v4 opaque pour anonymisation UI
   /// (ThreadList messagerie + future Patient list). Élimine timing oracle

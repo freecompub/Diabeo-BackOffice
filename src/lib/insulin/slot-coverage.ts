@@ -9,6 +9,17 @@
 /** Résultat : la plage 24 h a-t-elle un trou (minute non couverte) / un chevauchement. */
 export type SlotCoverage = { hasGap: boolean; hasOverlap: boolean }
 
+/**
+ * "Time" Prisma (`@db.Time`, sans TZ) → minutes dans [0,1440]. `null` si non parsable.
+ * Utilisé pour convertir des créneaux basaux pompe (startTime/endTime) avant `analyzeSlotCoverage`.
+ */
+export function timeToMinutes(t: Date | string): number | null {
+  const iso = typeof t === "string" ? t : t.toISOString()
+  const m = /T(\d{2}):(\d{2})/.exec(iso)
+  if (!m) return null
+  return Number(m[1]) * 60 + Number(m[2])
+}
+
 const MINUTES_PER_DAY = 1440
 
 /** Borne une valeur de minutes dans [0,1440]. */
