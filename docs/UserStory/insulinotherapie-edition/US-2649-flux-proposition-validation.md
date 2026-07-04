@@ -1,0 +1,32 @@
+# US-2649 — Flux proposition → validation : provenance, notifications, UI de validation
+
+> 📌 Épic US-2645 · front + back · Taille **L** · dépend de : US-2646
+
+## Contexte
+Une proposition (patient ou infirmier) doit **notifier** le médecin et être **validée/rejetée**
+explicitement. L'écran de validation existe déjà (`/adjustment-proposals`) mais est **orphelin**
+(cf. `docs/inventory/composants-orphelins.md`) ; le service push existe (`push.service.ts`).
+
+## Périmètre
+- **Création de proposition** avec provenance (`proposedByRole`, `proposedByUserId`, US-2646),
+  `status=pending`, bornes **rejetées à la création** (`validateProposedValue` étendu), `applyImmediately`
+  **désactivé** pour non-DOCTOR.
+- **Notification** au(x) médecin(s) référent(s)/équipe via `push.service.ts` (+ éventuel in-app),
+  sans PHI dans le payload.
+- **UI de validation** : **surfacer `/adjustment-proposals`** (entrée de nav pro / badge « à valider »
+  sur la fiche) ; liste `pending` avec accept/reject, lien fiche, provenance affichée (patient vs infirmier),
+  motif + justification (`AdjustmentProposalAck.comment`).
+- **accept()** applique la valeur (mode-aware : ISF/ICR/basal **ou** dose fixe), re-vérifie les bornes,
+  écrit `reviewedBy`/`reviewedAt`, audite ; **reject()** clôt sans appliquer, audite. Accusé patient
+  (`AdjustmentProposalAck`) sur décision.
+- **Validateur = DOCTOR** (défaut D2/D3 — à reconfirmer : NURSE peut-il valider ?).
+
+## Critères d'acceptation
+- **AC-1** Une proposition patient/infirmier crée une `pending` auditée avec provenance ; jamais appliquée seule.
+- **AC-2** Le médecin reçoit une **notification** (sans PHI) et voit la proposition dans `/adjustment-proposals`.
+- **AC-3** accept → valeur appliquée (mode-aware) + re-check bornes + audit `reviewedBy` ; reject → aucun effet + audit.
+- **AC-4** Anti-spam : 1 `pending` max par paramètre/slot + cooldown (72 h) respecté.
+- **AC-5** `/adjustment-proposals` accessible via nav (n'est plus orpheline).
+
+## Notes
+- Réutiliser `AdjustmentProposalActualization` (US-2066) pour le suivi d'effet si pertinent.
