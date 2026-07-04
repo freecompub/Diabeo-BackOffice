@@ -10,6 +10,8 @@
  */
 
 import type { LatestRawSignal } from "@/lib/cgm-freshness"
+// US-2647 — SlotCoverage : source de vérité unique dans lib (avec `analyzeSlotCoverage`).
+import type { SlotCoverage } from "@/lib/insulin/slot-coverage"
 export type { LatestRawSignal }
 
 // ── Drapeaux d'alerte « Ma journée » ─────────────────────────────────────────
@@ -60,12 +62,8 @@ export type InsulinDelivery = "pump" | "manual"
  * Garde-fou structurel (PAS clinique) sur la couverture horaire d'une famille
  * de créneaux : trous (heures non couvertes) et chevauchements (≥ 2 créneaux).
  */
-export type SlotCoverage = {
-  /** Au moins une minute de la journée n'est couverte par aucun créneau. */
-  hasGap: boolean
-  /** Au moins deux créneaux se recouvrent. */
-  hasOverlap: boolean
-}
+// US-2647 — `SlotCoverage` ré-exporté depuis lib (importé en tête) pour les consommateurs de la vue.
+export type { SlotCoverage }
 
 export type Slot = { range: string; value: number }
 export type BasalSlot = { range: string; rate: number }

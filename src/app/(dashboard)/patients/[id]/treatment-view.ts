@@ -13,8 +13,10 @@ export type {
   InsulinDelivery, SlotCoverage, Slot, BasalSlot, TreatmentItem, BolusInsulin, Pump, TreatmentView,
 } from "@/components/diabeo/patient/patient-record-views"
 import type {
-  InsulinDelivery, SlotCoverage, BolusInsulin, Pump, TreatmentView,
+  InsulinDelivery, BolusInsulin, Pump, TreatmentView,
 } from "@/components/diabeo/patient/patient-record-views"
+// US-2647 — analyse de couverture + parsing Time extraits vers lib (réutilisable back, hors pages).
+import { analyzeSlotCoverage, timeToMinutes } from "@/lib/insulin/slot-coverage"
 
 type DecimalLike = number | string | { toString(): string }
 const num = (x: DecimalLike): number => Number(x)
@@ -30,64 +32,9 @@ function hhmm(t: Date | string): string {
 const hourRange = (startHour: number, endHour: number): string =>
   `${String(startHour).padStart(2, "0")}h–${String(endHour).padStart(2, "0")}h`
 
-/** "Time" Prisma → minutes dans [0,1440] (HH:MM). `null` si non parsable. */
-function timeToMinutes(t: Date | string): number | null {
-  const iso = typeof t === "string" ? t : t.toISOString()
-  const m = /T(\d{2}):(\d{2})/.exec(iso)
-  if (!m) return null
-  return Number(m[1]) * 60 + Number(m[2])
-}
-
-const MINUTES_PER_DAY = 1440
-
-/** Borne une valeur de minutes dans [0,1440]. */
-const clampMin = (m: number): number => Math.min(Math.max(Math.round(m), 0), MINUTES_PER_DAY)
-
-/**
- * Analyse la couverture sur 24 h d'intervalles `[start,end)` exprimés en minutes.
- * Les intervalles qui « passent minuit » (end ≤ start) sont découpés en deux.
- * Balayage minute par minute (≤ n × 1440) — robuste pour trou + chevauchement.
- *
- * NB : un intervalle `start === end` est traité comme dégénéré (longueur nulle)
- * et ignoré — y compris l'encodage « plein jour » `HH:00 → HH:00`. En pratique
- * la couverture 24 h est exprimée par des créneaux contigus (ou un `00–24` /
- * `endHour=24`), jamais par un slot bouclant sur lui-même.
- */
-export function analyzeSlotCoverage(
-  raw: { start: number; end: number }[],
-): SlotCoverage {
-  // Découpe en segments dans [0,1440), en gérant le passage minuit.
-  const segments: { start: number; end: number }[] = []
-  for (const r of raw) {
-    const s = clampMin(r.start)
-    const e = clampMin(r.end)
-    if (s === e) continue // créneau dégénéré → ignoré (ni trou ni chevauchement)
-    if (e > s) {
-      segments.push({ start: s, end: e })
-    } else {
-      segments.push({ start: s, end: MINUTES_PER_DAY })
-      if (e > 0) segments.push({ start: 0, end: e })
-    }
-  }
-  if (segments.length === 0) return { hasGap: false, hasOverlap: false }
-
-  const cover = new Uint8Array(MINUTES_PER_DAY)
-  let hasOverlap = false
-  for (const seg of segments) {
-    for (let m = seg.start; m < seg.end; m++) {
-      if (cover[m]! > 0) hasOverlap = true
-      cover[m]!++
-    }
-  }
-  let hasGap = false
-  for (let m = 0; m < MINUTES_PER_DAY; m++) {
-    if (cover[m] === 0) {
-      hasGap = true
-      break
-    }
-  }
-  return { hasGap, hasOverlap }
-}
+// US-2647 — `analyzeSlotCoverage` déplacé vers `@/lib/insulin/slot-coverage`
+// (réutilisable côté back, hors pages). Ré-exporté pour les consommateurs existants.
+export { analyzeSlotCoverage }
 
 /** Au-delà → la dernière synchro pompe est jugée ancienne (indice non bloquant). */
 export const PUMP_SYNC_STALE_AFTER_DAYS = 7
