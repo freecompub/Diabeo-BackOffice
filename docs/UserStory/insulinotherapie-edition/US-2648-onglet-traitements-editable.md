@@ -46,3 +46,11 @@ Tranche backend (débloque le front US-2648b) :
 - Tests : 8 (route POST) + RBAC. Catalogue diabète §6 mis à jour.
 
 **Reste US-2648b (front)** : onglet Traitements éditable dans `<PatientRecord>` (transport `mutate` injecté, `variant="page"` only), capability descriptor serveur `{mode, canEditDirect, canPropose}`, redirect `/insulin-therapy` role-branché, `refreshTreatmentMode(tx)` writer, E2E `NURSE→403` + `NURSE save→proposition`.
+
+### US-2648b (en cours) — slice 1 : capability descriptor
+- `src/lib/insulin/edit-capability.ts` — `deriveEditCapability(role, {mode,coherent})` **pur** (sans dépendance serveur → importable client) : `canEditDirect` / `canPropose` + `editableParameters` **par mode** (fail-closed : `basalBolus`+cohérent → ISF/ICR/basal ; sinon vide).
+- `treatmentModeService.getInsulinEditCapability(role, patientId)` (résout le mode en base).
+- `GET /api/insulin-therapy/capability?patientId=` — accès `resolvePatientId`, aucune valeur de dose renvoyée.
+- Tests : 12 (matrice rôle×mode + route). Catalogue §6 mis à jour.
+
+**Reste 2648b** : onglet Traitements éditable dans `<PatientRecord>` (formulaires ISF/ICR/basal, transport `mutate` injecté, `variant=page`), branchement direct-write (DOCTOR) vs proposition (NURSE/patient), redirect `/insulin-therapy` role-branché, `refreshTreatmentMode(tx)` writer, E2E.

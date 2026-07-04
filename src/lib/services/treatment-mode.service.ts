@@ -20,10 +20,11 @@
  * combiner `{mode, coherent}` (mode `basalBolus` exige `coherent`, les autres ont leurs règles).
  */
 
-import type { Pathology, BasalConfigType, TreatmentMode } from "@prisma/client"
+import type { Pathology, BasalConfigType, TreatmentMode, Role } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { insulinService } from "@/lib/services/insulin.service"
 import { analyzeSlotCoverage, timeToMinutes } from "@/lib/insulin/slot-coverage"
+import { deriveEditCapability, type InsulinEditCapability } from "@/lib/insulin/edit-capability"
 
 export type TreatmentModeResult = {
   mode: TreatmentMode
@@ -139,4 +140,18 @@ export async function resolveTreatmentMode(patientId: number): Promise<Treatment
   })
 }
 
-export const treatmentModeService = { deriveTreatmentMode, resolveTreatmentMode }
+/**
+ * US-2648b — Résout le **capability descriptor** d'édition insuline pour un (rôle, patient) :
+ * mode de traitement (lu en base) + capacités RBAC + paramètres éditables. Pilote l'UI de
+ * l'onglet Traitements ; n'autorise rien par lui-même (le RBAC réel est aux routes, US-2648a).
+ *
+ * @param role Rôle de session.
+ * @param patientId Patient déjà résolu/autorisé par la route (`resolvePatientId`).
+ * @throws `patientNotFound` si le patient n'existe pas (via `resolveTreatmentMode`).
+ */
+export async function getInsulinEditCapability(role: Role, patientId: number): Promise<InsulinEditCapability> {
+  const modeResult = await resolveTreatmentMode(patientId)
+  return deriveEditCapability(role, modeResult)
+}
+
+export const treatmentModeService = { deriveTreatmentMode, resolveTreatmentMode, getInsulinEditCapability }
