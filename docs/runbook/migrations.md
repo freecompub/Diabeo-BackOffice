@@ -176,6 +176,8 @@ SELECT proname FROM pg_proc WHERE proname = 'audit_log_apply_retention';
 SELECT conname FROM pg_constraint WHERE conname = 'chk_basal_config_type_fields';
 -- Index unique partiel emergency
 SELECT indexname FROM pg_indexes WHERE indexname = 'emergency_alerts_one_live_per_type';
+-- Index unique partiel anti-spam propositions (US-2649a, migration 20260705100000)
+SELECT indexname FROM pg_indexes WHERE indexname = 'adjustment_proposals_one_pending_per_slot';
 EOF
 ```
 

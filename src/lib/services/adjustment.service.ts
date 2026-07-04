@@ -114,6 +114,33 @@ async function resolveCurrentValue(
 }
 
 /**
+ * US-2649a — ne conserve que le(s) discriminateur(s) de créneau PERTINENT(s) pour le
+ * paramètre (les autres à `null`). Garantit que le pré-check ET l'index anti-spam ne
+ * portent que le discriminateur réellement validé par `resolveCurrentValue` : sinon un
+ * champ de créneau parasite (ex. un `pumpBasalSlotId` attaché à une proposition ISF)
+ * ferait varier le tuple d'unicité et permettrait des doublons `pending`.
+ */
+function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposalInput) {
+  const empty = {
+    timeSlotStartHour: null as number | null,
+    timeSlotEndHour: null as number | null,
+    carbRatioSlotStart: null as number | null,
+    carbRatioSlotEnd: null as number | null,
+    pumpBasalSlotId: null as string | null,
+  }
+  switch (parameterType) {
+    case "insulinSensitivityFactor":
+      return { ...empty, timeSlotStartHour: input.timeSlotStartHour ?? null, timeSlotEndHour: input.timeSlotEndHour ?? null }
+    case "insulinToCarbRatio":
+      return { ...empty, carbRatioSlotStart: input.carbRatioSlotStart ?? null, carbRatioSlotEnd: input.carbRatioSlotEnd ?? null }
+    case "basalRate":
+      return { ...empty, pumpBasalSlotId: input.pumpBasalSlotId ?? null }
+    default:
+      return empty
+  }
+}
+
+/**
  * Adjustment proposal service — CRUD and review workflow.
  * @namespace adjustmentService
  */
@@ -228,8 +255,14 @@ export const adjustmentService = {
     const delta = proposedValue - currentValue
     const rawPct = currentValue !== 0 ? (delta / currentValue) * 100 : 0
     // Clamp à la précision de la colonne `Decimal(5,2)` (±999.99) — évite un numeric
-    // overflow Postgres (ex. basale 0.05→5.0 = 9900 %) → insert 500.
+    // overflow Postgres (ex. basale 0.05→5.0 = 9900 %) → insert 500. ⚠️ La valeur stockée
+    // peut donc être saturée : l'UI de validation (US-2649b) DOIT recalculer/afficher
+    // « > 999 % » depuis `currentValue`/`proposedValue` (stockés exacts), pas s'y fier.
     const changePercent = Math.max(-999.99, Math.min(999.99, rawPct))
+
+    // Discriminateurs de créneau NORMALISÉS par paramètre (les parasites → null) :
+    // évite qu'un champ non pertinent varie le tuple anti-spam (pré-check + index).
+    const slot = slotFieldsFor(parameterType, input)
 
     // 3. Garde-fous PATIENT (sur l'écart de confiance ; une demande, pas une titration).
     if (proposer.role === "patient") {
@@ -245,24 +278,27 @@ export const adjustmentService = {
     }
 
     // 4. Anti-spam — pré-check (chemin rapide). L'unicité RÉELLE (course TOCTOU) est
-    //    garantie par l'index unique partiel `WHERE status='pending'`
-    //    (prisma/sql/adjustment_proposal_one_pending.sql) → P2002 ci-dessous.
+    //    garantie par l'index unique partiel `adjustment_proposals_one_pending_per_slot`
+    //    (`WHERE status='pending'`, migration 20260705100000) → P2002 ci-dessous.
     const existing = await prisma.adjustmentProposal.findFirst({
       where: {
         patientId,
         parameterType,
         status: "pending",
-        timeSlotStartHour: input.timeSlotStartHour ?? null,
-        carbRatioSlotStart: input.carbRatioSlotStart ?? null,
-        pumpBasalSlotId: input.pumpBasalSlotId ?? null,
+        timeSlotStartHour: slot.timeSlotStartHour,
+        carbRatioSlotStart: slot.carbRatioSlotStart,
+        pumpBasalSlotId: slot.pumpBasalSlotId,
       },
       select: { id: true },
     })
     if (existing) throw new Error("duplicatePendingProposal")
 
     // 5. Création — provenance DÉRIVÉE serveur ; métriques moteur nulles ; jamais appliqué.
-    //    ⚠️ Le contrôle d'accès (canAccessPatient + patient sur SON dossier) est du ressort
-    //    de la ROUTE appelante (US-2648/2650) — la primitive fait confiance à `proposer`.
+    //    ⚠️ La primitive fait confiance à `proposer` ; la ROUTE appelante (US-2648/2650) DOIT
+    //    imposer : (1) `canAccessPatient(user, patientId)` ; (2) un patient ne propose que sur
+    //    SON dossier (session.patientId === patientId) ; (3) `proposer.role` mappé depuis le
+    //    rôle de SESSION (jamais du body ; rejeter ADMIN/VIEWER) ; (4) politique `proposerComment`
+    //    (le renvoyer/pas dans le DTO — c'est du ciphertext, à ne pas exposer au client).
     try {
       return await prisma.$transaction(async (tx) => {
         const proposal = await tx.adjustmentProposal.create({
@@ -279,11 +315,7 @@ export const adjustmentService = {
             confidence: null,
             supportingEvents: null,
             status: "pending",
-            timeSlotStartHour: input.timeSlotStartHour ?? null,
-            timeSlotEndHour: input.timeSlotEndHour ?? null,
-            carbRatioSlotStart: input.carbRatioSlotStart ?? null,
-            carbRatioSlotEnd: input.carbRatioSlotEnd ?? null,
-            pumpBasalSlotId: input.pumpBasalSlotId ?? null,
+            ...slot,
           },
         })
 
@@ -301,8 +333,14 @@ export const adjustmentService = {
         return proposal
       })
     } catch (e) {
-      // Course TOCTOU rattrapée par l'index partiel (violation d'unicité).
-      if ((e as { code?: string }).code === "P2002") throw new Error("duplicatePendingProposal")
+      // Course TOCTOU rattrapée par l'index partiel `adjustment_proposals_one_pending_per_slot`.
+      // On ne re-mappe QUE cette contrainte-là (pas n'importe quel P2002) pour ne pas masquer
+      // un futur conflit d'unicité sans rapport.
+      const err = e as { code?: string; meta?: { target?: unknown } }
+      const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
+      if (err.code === "P2002" && target.includes("one_pending")) {
+        throw new Error("duplicatePendingProposal")
+      }
       throw e
     }
   },

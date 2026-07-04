@@ -152,10 +152,59 @@ describe("createProposal — fixedDose non câblé & anti-spam", () => {
     expect(mocks.create).not.toHaveBeenCalled()
   })
 
-  it("course TOCTOU : violation d'index (P2002) → duplicatePendingProposal", async () => {
+  it("course TOCTOU : violation de l'index anti-spam (P2002) → duplicatePendingProposal", async () => {
     mocks.create.mockImplementation(() => {
-      throw Object.assign(new Error("unique"), { code: "P2002" })
+      throw Object.assign(new Error("unique"), {
+        code: "P2002",
+        meta: { target: ["adjustment_proposals_one_pending_per_slot"] },
+      })
     })
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).rejects.toThrow("duplicatePendingProposal")
+  })
+
+  it("P2002 d'une AUTRE contrainte n'est PAS masqué en duplicate", async () => {
+    mocks.create.mockImplementation(() => {
+      throw Object.assign(new Error("unique"), { code: "P2002", meta: { target: ["some_other_unique"] } })
+    })
+    await expect(adjustmentService.createProposal(isf(0.52), nurse)).rejects.not.toThrow("duplicatePendingProposal")
+  })
+})
+
+describe("createProposal — dérivation ICR/basal & normalisation créneau", () => {
+  it("ICR : currentValue dérivé de carbRatio", async () => {
+    mocks.icrFindFirst.mockResolvedValue({ gramsPerUnit: 10 })
+    await adjustmentService.createProposal(
+      { patientId: 5, parameterType: "insulinToCarbRatio", proposedValue: 11, reason: "manualAdjustment", carbRatioSlotStart: 8, carbRatioSlotEnd: 12 },
+      nurse,
+    )
+    expect(mocks.icrFindFirst).toHaveBeenCalledTimes(1)
+    expect(mocks.create.mock.calls[0]![0].data).toMatchObject({ currentValue: 10, parameterType: "insulinToCarbRatio" })
+  })
+
+  it("basal : créneau introuvable → currentValueNotFound", async () => {
+    mocks.basalFindFirst.mockResolvedValue(null)
+    await expect(
+      adjustmentService.createProposal(
+        { patientId: 5, parameterType: "basalRate", proposedValue: 1.1, reason: "manualAdjustment", pumpBasalSlotId: "slotX" },
+        nurse,
+      ),
+    ).rejects.toThrow("currentValueNotFound")
+  })
+
+  it("créneau manquant → slotRequired (avant tout accès DB d'anti-spam)", async () => {
+    await expect(
+      adjustmentService.createProposal(
+        { patientId: 5, parameterType: "insulinSensitivityFactor", proposedValue: 0.52, reason: "manualAdjustment" },
+        nurse,
+      ),
+    ).rejects.toThrow("slotRequired")
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it("A — discriminateur parasite (pumpBasalSlotId sur une proposition ISF) forcé à null", async () => {
+    await adjustmentService.createProposal({ ...isf(0.52), pumpBasalSlotId: "parasite" }, nurse)
+    const data = mocks.create.mock.calls[0]![0].data
+    expect(data.pumpBasalSlotId).toBeNull()
+    expect(data.timeSlotStartHour).toBe(8)
   })
 })
