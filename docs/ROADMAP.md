@@ -736,7 +736,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 |----|-------|-----------|-----------|--------|--------|
 | US-2645 | **EPIC** — Édition insulinothérapie multi-mode (fiche + self-service, propose→valide) | front/back/migration | — | XL | 🟡 SPEC (#628) |
 | US-2646 | Socle données : provenance proposition + dose fixe structurée + enum + `treatmentMode` | back/migration | — | M | ✅ DONE (#638) |
-| US-2647 | Détection du mode de traitement (a/b/c) + gating fail-closed | back | 2646 | S/M | ⏳ TODO (#630) |
+| US-2647 | Détection du mode de traitement (a/b/c) + gating fail-closed | back | 2646 | S/M | 🔄 EN REVUE (PR #641, #630) |
 | US-2648 | Onglet Traitements éditable (fiche) : DOCTOR direct / NURSE→proposition | front/back | 2646, 2647 | L | ⏳ TODO (#631) |
 | US-2649 | Flux proposition → validation (provenance, notif, UI `/adjustment-proposals`) | front/back | 2646 | L | ⏳ TODO (#632) |
 | US-2650 | Self-service patient : route `(patient)` + nav + lecture + proposer | front/back | 2648, 2649 | L | ⏳ TODO (#633) |
