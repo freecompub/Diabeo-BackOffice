@@ -249,6 +249,44 @@ export const adjustmentService = {
     return proposals
   },
 
+  /**
+   * US-2649b — valeur COURANTE **LIVE** du créneau d'une proposition (re-lecture serveur au
+   * moment de la revue), pour signaler au médecin si la config a changé depuis la proposition
+   * (le `currentValue` stocké est un snapshot de création). Renvoie `null` si le créneau a
+   * disparu/bougé (ISF/ICR par heure, basal par id) ou n'est pas résoluble → l'UI n'affiche
+   * alors pas de comparaison. Réutilise la lecture scopée patient de `resolveCurrentValue`.
+   */
+  async liveCurrentValue(
+    patientId: number,
+    proposal: {
+      parameterType: AdjustableParameter
+      timeSlotStartHour: number | null
+      carbRatioSlotStart: number | null
+      pumpBasalSlotId: string | null
+    },
+  ): Promise<number | null> {
+    try {
+      return await resolveCurrentValue(patientId, proposal.parameterType, {
+        patientId,
+        parameterType: proposal.parameterType,
+        proposedValue: 0,
+        reason: "manualAdjustment",
+        timeSlotStartHour: proposal.timeSlotStartHour,
+        carbRatioSlotStart: proposal.carbRatioSlotStart,
+        pumpBasalSlotId: proposal.pumpBasalSlotId,
+      })
+    } catch (err) {
+      // Cas ATTENDUS (créneau absent/non résoluble) → null silencieux. Une erreur INATTENDUE
+      // (panne DB, etc.) est loguée : sans ça, un échec de lecture masquerait l'avertissement
+      // « config modifiée » sans trace (observabilité).
+      const expected =
+        err instanceof Error &&
+        ["slotRequired", "currentValueNotFound", "fixedDoseNotWired"].includes(err.message)
+      if (!expected) logger.error("adjustment", "liveCurrentValue read failed", { patientId }, err)
+      return null
+    }
+  },
+
   /** Get summary counts by status */
   async summary(patientId: number) {
     const [pending, accepted, rejected, expired] = await Promise.all([
@@ -447,6 +485,17 @@ export const adjustmentService = {
         // (fail-closed) plutôt que de renvoyer un faux `applied: true` sur un no-op.
         if (proposal.parameterType === "fixedDose") {
           throw new Error("fixedDoseApplyNotImplemented")
+        }
+
+        // US-2649b — COMPARE-AND-SWAP (garde d'accès concurrent). `proposedValue` est une
+        // valeur ABSOLUE calculée sur la base `currentValue` (snapshot de création). Si le
+        // créneau a bougé depuis (édition médecin, autre proposition acceptée), l'appliquer
+        // sur-corrige (ex. base descendue à 0.7 pour une hypo, proposition absolue 1.2 → +71 %).
+        // Fail-closed : on REFUSE et on invite à régénérer une proposition sur la vraie base.
+        // `null` (créneau disparu) est laissé aux gardes d'apply ci-dessous (…SlotNotFound).
+        const liveBase = await adjustmentService.liveCurrentValue(proposal.patientId, proposal)
+        if (liveBase !== null && liveBase !== Number(proposal.currentValue)) {
+          throw new Error("baselineMoved")
         }
 
         if (proposal.parameterType === "insulinSensitivityFactor" && proposal.timeSlotStartHour != null) {

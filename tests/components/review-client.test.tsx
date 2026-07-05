@@ -82,7 +82,7 @@ const BASE: ReviewData = {
   },
   proposals: [
     {
-      id: "p1", parameterType: "basalRate", source: "patient", currentValue: 1.0, proposedValue: 1.2,
+      id: "p1", parameterType: "basalRate", source: "patient", currentValue: 1.0, liveCurrentValue: 1.0, proposedValue: 1.2,
       changePercent: 20, reason: "trend", confidence: "high",
       timeSlotStartHour: null, timeSlotEndHour: null, createdAt: "2026-06-15T00:00:00.000Z",
     },
@@ -106,6 +106,27 @@ describe("ReviewClient", () => {
     // source=patient → « Demande patient » ; basal 1.0→1.2 (plus d'insuline) → « Risque hypo ».
     expect(screen.getByText("Demande patient")).toBeTruthy()
     expect(screen.getByText("Risque hypo")).toBeTruthy()
+  })
+
+  it("valeur live == snapshot → pas d'alerte, Accepter actif", () => {
+    render(<ReviewClient data={BASE} />) // liveCurrentValue 1.0 == currentValue 1.0
+    expect(screen.queryByText(/Valeur actuelle réelle/)).toBeNull()
+    expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("valeur live ≠ snapshot → alerte bloquante + Accepter désactivé (US-2649b)", () => {
+    const stale = { ...BASE, proposals: [{ ...BASE.proposals[0]!, liveCurrentValue: 0.85 }] }
+    render(<ReviewClient data={stale} />)
+    // Valeur live réellement affichée (interpolation), pas seulement le libellé.
+    expect(screen.getByText(/Valeur actuelle réelle/).textContent).toContain("85")
+    expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("créneau live introuvable (null) → alerte + Accepter désactivé (US-2649b)", () => {
+    const vanished = { ...BASE, proposals: [{ ...BASE.proposals[0]!, liveCurrentValue: null }] }
+    render(<ReviewClient data={vanished} />)
+    expect(screen.getByText(/introuvable/)).toBeTruthy()
+    expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(true)
   })
 
   it("médecin : accepter une proposition appelle la route et la retire de la liste", async () => {
