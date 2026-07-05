@@ -1044,6 +1044,16 @@
     "acceptedComment": "Valide",
     "rejectedComment": "Refuse",
     "listAria": "Liste des propositions en attente",
+    "source": {
+      "algorithm": "Algorithme",
+      "patient": "Demande patient",
+      "nurse": "Infirmier",
+      "doctor": "Médecin"
+    },
+    "risk": {
+      "hypo": "Risque hypo",
+      "hyper": "Risque hyper"
+    },
     "valueChanged": "Valeur changee de {from} a {to}",
     "loadingMore": "Chargement en cours",
     "rowError": "Échec de l'action sur cette proposition. Réessayer.",

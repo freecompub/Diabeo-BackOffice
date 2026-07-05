@@ -1044,6 +1044,16 @@
     "acceptedComment": "Validated",
     "rejectedComment": "Rejected",
     "listAria": "List of pending proposals",
+    "source": {
+      "algorithm": "Algorithm",
+      "patient": "Patient request",
+      "nurse": "Nurse",
+      "doctor": "Doctor"
+    },
+    "risk": {
+      "hypo": "Hypo risk",
+      "hyper": "Hyper risk"
+    },
     "valueChanged": "Value changed from {from} to {to}",
     "loadingMore": "Loading",
     "rowError": "Action failed on this proposal. Please retry.",
