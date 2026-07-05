@@ -171,8 +171,7 @@ describe("createProposal — bornes, overflow, garde-fous patient", () => {
     // Preuve du gate de rôle : la requête cooldown (`status != pending`) n'est JAMAIS émise
     // pour un nurse (seule l'anti-spam `status: "pending"` l'est).
     const cooldownQueries = mocks.adjFindFirst.mock.calls.filter(
-      ([arg]: [{ where?: { status?: unknown } }]) =>
-        JSON.stringify(arg?.where?.status) === JSON.stringify({ not: "pending" }),
+      (call) => JSON.stringify(call[0]?.where?.status) === JSON.stringify({ not: "pending" }),
     )
     expect(cooldownQueries).toHaveLength(0)
   })
@@ -181,8 +180,7 @@ describe("createProposal — bornes, overflow, garde-fous patient", () => {
     mocks.adjFindFirst.mockResolvedValue(null) // ni cooldown ni pending → passe
     await adjustmentService.createProposal(isf(0.52), patient)
     const cooldownQueries = mocks.adjFindFirst.mock.calls.filter(
-      ([arg]: [{ where?: { status?: unknown } }]) =>
-        JSON.stringify(arg?.where?.status) === JSON.stringify({ not: "pending" }),
+      (call) => JSON.stringify(call[0]?.where?.status) === JSON.stringify({ not: "pending" }),
     )
     expect(cooldownQueries).toHaveLength(1)
   })
