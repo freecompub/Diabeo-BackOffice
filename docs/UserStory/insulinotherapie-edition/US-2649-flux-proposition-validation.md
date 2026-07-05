@@ -88,3 +88,17 @@ Enrichit `/adjustment-proposals` (file de revue) avec des findings différés :
 - Tests : +4 (push référent, no-self-notify, pas de référent, best-effort sur échec push).
 
 **Reste US-2649b** : confiance basée sur `source` (UI) ; valeur LIVE affichée à l'accept.
+
+#### US-2649b slice 4 : provenance + risque sur le VRAI écran de revue (ReviewClient)
+Diagnostic : la page `/adjustment-proposals` enrichie en #652 est **orpheline** (aucun lien
+de navigation, 404 pour un médecin car fetch sans `patientId` — vestige US-2047). Le **vrai
+écran de revue** est `/patients/[id]/review` (`ReviewClient`, per-patient, câblé depuis
+`PendingProposalsCard`).
+- `ReviewProposalItem` += `source` ; `review/page.tsx` le fournit (`adjustmentService.list`).
+- `ReviewClient` (étape Décisions) : badge **provenance** (« demande patient » mis en avant) +
+  badge **direction de risque** (`deriveRiskDirection`, hypo ambre) à côté du %variation — ferme
+  le finding « fiabilité basée sur `source`, pas `confidence` » là où le médecin décide.
+- i18n `adjustments.source/risk` réutilisées (#652).
+
+**Suivi** : (1) supprimer la page orpheline `/adjustment-proposals` (dead code) — à confirmer ;
+(2) **valeur LIVE** du créneau à l'accept (re-lecture serveur, N requêtes) — non fait ici.

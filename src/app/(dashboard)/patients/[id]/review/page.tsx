@@ -132,6 +132,7 @@ export default async function PatientReviewPage({
   const proposals: ReviewProposalItem[] = pending.map((p) => ({
     id: p.id,
     parameterType: p.parameterType,
+    source: p.source,
     currentValue: Number(p.currentValue),
     proposedValue: Number(p.proposedValue),
     changePercent: Number(p.changePercent),

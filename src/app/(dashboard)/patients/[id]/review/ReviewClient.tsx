@@ -16,7 +16,8 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
-import type { AdjustableParameter } from "@prisma/client"
+import type { AdjustableParameter, ProposalSource } from "@prisma/client"
+import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { PatientContextBar, type ContextFlags } from "@/components/diabeo/patient/PatientContextBar"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
@@ -40,6 +41,8 @@ import {
 export type ReviewProposalItem = {
   id: string
   parameterType: AdjustableParameter
+  /** Provenance dérivée serveur (US-2649b) — pilote l'affichage de fiabilité (≠ confidence moteur). */
+  source: ProposalSource
   currentValue: number
   proposedValue: number
   changePercent: number
@@ -406,6 +409,7 @@ function SlotBlock({ label, unit, slots }: { label: ReactNode; unit: string; slo
 function DecisionsStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
   const tUnits = useTranslations("insulinUnits")
+  const tAdj = useTranslations("adjustments")
   const locale = useLocale()
   const fmt = (n: number) => n.toLocaleString(bcp47(locale), { maximumFractionDigits: 2 })
 
@@ -463,6 +467,20 @@ function DecisionsStep({ data }: { data: ReviewData }) {
                 <Badge variant={Math.abs(p.changePercent) >= PROPOSAL_MAJOR_CHANGE_PCT ? "destructive" : "secondary"}>
                   {p.changePercent > 0 ? `+${Math.round(p.changePercent)}` : Math.round(p.changePercent)}&nbsp;%
                 </Badge>
+                {/* US-2649b — provenance (fiabilité ≠ confidence moteur) : « demande patient » mise en avant. */}
+                <Badge variant={p.source === "patient" ? "default" : "outline"}>{tAdj(`source.${p.source}`)}</Badge>
+                {/* Direction de risque : l'hypo (plus d'insuline) signalée en ambre. */}
+                {(() => {
+                  const risk = deriveRiskDirection(p.parameterType, p.currentValue, p.proposedValue)
+                  return risk === "none" ? null : (
+                    <Badge
+                      variant="outline"
+                      className={risk === "hypo" ? "border-feedback-warning text-feedback-warning" : "text-muted-foreground"}
+                    >
+                      {tAdj(`risk.${risk}`)}
+                    </Badge>
+                  )
+                })()}
                 {data.canDecide && (
                   <span className="flex gap-2">
                     <Button size="sm" variant="default" disabled={busyId === p.id} onClick={() => decide(p.id, "accept")}>
