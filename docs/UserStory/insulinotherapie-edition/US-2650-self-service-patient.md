@@ -72,3 +72,17 @@ UI lecture/proposer mode-aware · `InsulinSummary` (conformité DS + fuite clien
 **Reste US-2650** : UI « proposer » sur la page patient (réutilise `InsulinProposalDialog` +
 `PatientRecordProvider`/`usePagePatientMutator`) · `InsulinSummary` (conformité DS) · redirect
 `/insulin-therapy` VIEWER (aujourd'hui `(dashboard)/layout` bounce déjà VIEWER → `/patient/dashboard`).
+
+#### Corrections revue slice 2 (PR #658) — a11y + minimisation RGPD
+- **A (a11y critical)** : contraste — alerte « indisponible » en `text-feedback-warning-fg` (≥ 4.5:1).
+- **B (a11y high)** : titres de section ISF/ICR/basal/bolus en vrais `<h2>` (hiérarchie SR, WCAG 1.3.1).
+- **C (RGPD Art. 5, code + HDS)** : `getById` (déchiffrait identité + antécédents) remplacé par
+  `patientService.getTreatments` (fetch minimal des traitements, audité, sans déchiffrement PII) →
+  supprime aussi le double-audit PATIENT.
+- **D (a11y)** : `role="alert"` statique → `role="status"`.
+- **E** : try/catch autour de l'assemblage → dégradation gracieuse vers l'alerte « indisponible ».
+- **F** : tests — assertions ICR + bolus + présence de `<h2>` + carte bolus absente sans bolus.
+
+**Confirmé sain** : fuite client/serveur CLEAN (type-only, modules purs) · own-id strict · pas de
+PHI vers le client. **Différé (follow-up)** : extraire `buildTreatmentView` dans `src/lib/insulin/`
+(smell cross-route-group, non bloquant).

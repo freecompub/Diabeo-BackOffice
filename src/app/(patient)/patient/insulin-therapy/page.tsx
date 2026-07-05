@@ -71,12 +71,18 @@ export default async function PatientInsulinTherapyPage() {
       .catch(() => { /* fire-and-forget */ })
   }
 
-  // Assemblage LECTURE (mêmes services que la fiche pro, scopés au dossier propre).
+  // Assemblage LECTURE minimal (RGPD Art. 5) : settings + traitements uniquement — jamais
+  // `getById` (qui déchiffrerait identité + antécédents inutiles ici). Try/catch → dégradation
+  // gracieuse vers l'alerte « indisponible » (jamais de 500 ni de stack au patient).
   let treatmentView: ReturnType<typeof buildTreatmentView> | null = null
   if (patientId !== null) {
-    const settings = await insulinTherapyService.getSettings(patientId, userId, ctx)
-    const patient = await patientService.getById(patientId, userId, ctx)
-    treatmentView = buildTreatmentView(settings, patient?.treatments ?? [], [])
+    try {
+      const settings = await insulinTherapyService.getSettings(patientId, userId, ctx)
+      const treatments = await patientService.getTreatments(patientId, userId, ctx)
+      treatmentView = buildTreatmentView(settings, treatments, [])
+    } catch {
+      treatmentView = null
+    }
   }
 
   return (
@@ -96,7 +102,7 @@ export default async function PatientInsulinTherapyPage() {
 
       <div id="patient-insulin-content">
         {treatmentView === null ? (
-          <div role="alert" className="rounded-md border border-feedback-warning bg-feedback-warning-bg p-4 text-sm text-feedback-warning">
+          <div role="status" className="rounded-md border border-feedback-warning bg-feedback-warning-bg p-4 text-sm text-feedback-warning-fg">
             {t("unavailable")}
           </div>
         ) : (

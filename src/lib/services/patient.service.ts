@@ -761,6 +761,30 @@ export const patientService = {
   },
 
   /**
+   * Lecture MINIMALE des traitements d'un patient (US-2650). Data-minimization RGPD
+   * Art. 5 : ne fetch/déchiffre QUE les traitements — à préférer à `getById` quand
+   * l'appelant n'a pas besoin de l'identité civile ni des antécédents (ex. page patient
+   * self-service insulinothérapie). Lecture santé auditée (pivot `patientId`, pas de PHI).
+   * @param {number} patientId - Dossier ciblé (déjà résolu/autorisé par l'appelant, ex. own-id).
+   * @param {number} auditUserId - Utilisateur effectuant la lecture (piste d'audit).
+   * @param {AuditContext} [ctx] - Contexte requête.
+   * @returns {Promise<Array>} Traitements du patient.
+   */
+  async getTreatments(patientId: number, auditUserId: number, ctx?: AuditContext) {
+    const treatments = await prisma.treatment.findMany({ where: { patientId } })
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "PATIENT",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      metadata: { patientId, kind: "treatments" },
+    })
+    return treatments
+  },
+
+  /**
    * Get patient by associated user ID — convenience method.
    * Delegates to getById after resolving patientId from userId.
    * @async

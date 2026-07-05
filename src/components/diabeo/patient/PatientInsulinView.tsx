@@ -20,7 +20,7 @@
 import { useTranslations } from "next-intl"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import type { TreatmentView, Slot, BasalSlot } from "@/components/diabeo/patient/patient-record-views"
 
 /** Une liste de créneaux en lecture seule (range · valeur unité). */
@@ -68,7 +68,7 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
       {data.bolusInsulin && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t("bolusInsulin")}</CardTitle>
+            <h2 className="text-base font-semibold">{t("bolusInsulin")}</h2>
           </CardHeader>
           <CardContent className="text-sm">
             <span className="font-medium">{data.bolusInsulin.name}</span>
@@ -79,9 +79,9 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <h2 className="text-base font-semibold">
             <Acronym code="ISF" /> — {t("isfTitle")}
-          </CardTitle>
+          </h2>
         </CardHeader>
         <CardContent>
           <SlotRows slots={isf} unit={tUnits("isfGl")} emptyLabel={t("noSlots")} />
@@ -90,9 +90,9 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">
+          <h2 className="text-base font-semibold">
             <Acronym code="ICR" /> — {t("icrTitle")}
-          </CardTitle>
+          </h2>
         </CardHeader>
         <CardContent>
           <SlotRows slots={icr} unit={tUnits("icr")} emptyLabel={t("noSlots")} />
@@ -101,7 +101,7 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{t("basalTitle")}</CardTitle>
+          <h2 className="text-base font-semibold">{t("basalTitle")}</h2>
         </CardHeader>
         <CardContent>
           <SlotRows slots={basal} unit={tUnits("basal")} emptyLabel={t("noSlots")} />
