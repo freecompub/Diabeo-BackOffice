@@ -31,9 +31,11 @@ import { PatientBgmCarnet } from "@/components/diabeo/patient/PatientBgmCarnet"
 import {
   usePeriodAnalytics,
   usePatientRecordContext,
+  useInsulinCapability,
   PERIOD_LABEL_KEY,
   SEED_PERIOD,
 } from "@/components/diabeo/patient/PatientRecordContext"
+import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -190,6 +192,8 @@ export function PatientRecord({
   // période change (hook no-op hors provider / à l'amorce → pas de flicker).
   // Appelé inconditionnellement (règles des hooks) AVANT tout early-return.
   const recordCtx = usePatientRecordContext()
+  // US-2648b — capability d'édition insuline (mode + capacités), pour l'onglet Traitements.
+  const insulinCapability = useInsulinCapability()
   const liveStats = usePeriodAnalytics({
     seed: data?.stats ?? null,
     endpoint: "/api/analytics/glycemic-profile",
@@ -597,6 +601,11 @@ export function PatientRecord({
 
           {/* ── Traitements (câblé — Phase 3) ───────────────── */}
           <TabsContent value="treatment" className="space-y-6">
+            {/* US-2648b — bandeau capability (mode + état d'éditabilité). Silencieux
+                tant que le descripteur n'est pas chargé / hors provider. */}
+            {insulinCapability.capability && (
+              <InsulinEditBanner capability={insulinCapability.capability} />
+            )}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-base">

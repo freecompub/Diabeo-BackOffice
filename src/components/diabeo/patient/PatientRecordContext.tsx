@@ -15,6 +15,7 @@
  */
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
+import type { InsulinEditCapability } from "@/lib/insulin/edit-capability"
 
 /** Périodes supportées (cf. `analyticsService.parsePeriod` — 7/14/30/90 j). */
 export type RecordPeriod = "7d" | "14d" | "30d" | "90d"
@@ -285,4 +286,51 @@ export function usePagePatientFetcher(patientId: number): AnalyticsFetcher {
     },
     [patientId],
   )
+}
+
+/** État renvoyé par {@link useInsulinCapability}. */
+export interface InsulinCapabilityState {
+  capability: InsulinEditCapability | null
+  loading: boolean
+  error: boolean
+}
+
+/**
+ * US-2648b — Récupère le **capability descriptor** d'édition insuline via le
+ * transport INJECTÉ (id-less) : `GET /api/insulin-therapy/capability` (l'adaptateur
+ * ajoute l'identité — anti-énumération, comme les endpoints analytiques). Fetch au
+ * montage, abortable ; indépendant de la période. Hors provider (tests) → état vide.
+ *
+ * Le descripteur pilote l'UI (mode, `canEditDirect`/`canPropose`, `editableParameters`,
+ * `blockedReason`) ; il n'autorise rien — le RBAC réel est aux routes (US-2648a).
+ */
+export function useInsulinCapability(): InsulinCapabilityState {
+  const ctx = usePatientRecordContext()
+  const [state, setState] = useState<InsulinCapabilityState>({
+    capability: null,
+    loading: true,
+    error: false,
+  })
+
+  useEffect(() => {
+    // Hors provider (défensif ; inatteignable en pratique) : pas de fetch. Cf. retour
+    // statique plus bas (évite un setState synchrone en corps d'effet).
+    if (!ctx) return
+    const ctrl = new AbortController()
+    ctx
+      .fetchAnalytics("/api/insulin-therapy/capability", {}, { signal: ctrl.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json() as Promise<InsulinEditCapability>
+      })
+      .then((cap) => setState({ capability: cap, loading: false, error: false }))
+      .catch((e: unknown) => {
+        if (e instanceof DOMException && e.name === "AbortError") return
+        setState({ capability: null, loading: false, error: true })
+      })
+    return () => ctrl.abort()
+  }, [ctx])
+
+  // Hors provider → état vide stable (sans setState en effet).
+  return ctx ? state : { capability: null, loading: false, error: false }
 }
