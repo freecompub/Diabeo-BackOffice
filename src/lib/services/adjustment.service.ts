@@ -9,6 +9,7 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import { treatmentModeService } from "./treatment-mode.service"
+import { clinicalReviewFlagService } from "./clinical-review-flag.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
@@ -350,7 +351,33 @@ export const adjustmentService = {
     //    « à revoir en consultation »), jamais d'une AdjustmentProposal. Mode dérivé SERVEUR
     //    (source de vérité, fail-closed : un DT1 n'est jamais classé nonInsulin).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
-    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+    if (mode === "nonInsulin") {
+      // Tracer CHAQUE tentative refusée (y compris les répétitions malgré le flag idempotent →
+      // observabilité d'une insistance/détresse croissante). Action distincte PROPOSAL_REFUSED,
+      // aucune dose. Best-effort : un échec d'audit ne convertit pas le refus MDR en acceptation.
+      await auditService
+        .log({
+          userId: proposer.userId,
+          action: "PROPOSAL_REFUSED",
+          resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: proposer.role, reason: "nonInsulinNoDose" },
+        })
+        .catch((err) => logger.error("adjustment", "audit refused attempt failed", { patientId }, err))
+
+      // L'intention d'un PATIENT non insuliné ne doit pas être un cul-de-sac silencieux : on
+      // lève un flag d'orientation (« à revoir en consultation ») pour le soignant. Idempotent
+      // (anti-spam) + best-effort (un échec de flag ne change pas le refus MDR). Aucune posologie
+      // dans le flag. Un clinicien (nurse/doctor) agit directement → pas de flag pour eux.
+      if (proposer.role === "patient") {
+        await clinicalReviewFlagService
+          .raise(patientId, "reviewInConsultation", proposer.userId, ctx)
+          .catch((err) => logger.error("adjustment", "raise review flag failed", { patientId }, err))
+      }
+      throw new Error("nonInsulinNoDose")
+    }
 
     // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept).
     if (!validateProposedValue(parameterType, proposedValue)) {

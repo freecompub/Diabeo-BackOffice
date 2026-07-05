@@ -63,6 +63,10 @@ export type AuditAction =
   | "BOLUS_CALCULATED"
   | "PROPOSAL_ACCEPTED"
   | "PROPOSAL_REJECTED"
+  /** US-2651 — tentative de proposition REFUSÉE à la création (frontière MDR nonInsulin, bornes).
+   *  Distincte de PROPOSAL_REJECTED (décision médecin) pour garder les requêtes forensiques
+   *  propres + tracer les tentatives répétées malgré le flag idempotent. Jamais de dose. */
+  | "PROPOSAL_REFUSED"
   /** US-2083 — Decision on a delegation request (distinct from PROPOSAL_* on
    *  AdjustmentProposal to keep forensic queries clean — review PR #390 C5). */
   | "DELEGATION_APPROVED"
@@ -110,6 +114,7 @@ export type AuditResource =
   | "INSULIN_THERAPY"
   | "BOLUS_LOG"
   | "ADJUSTMENT_PROPOSAL"
+  | "CLINICAL_REVIEW_FLAG"
   | "MEDICAL_DOCUMENT"
   | "PINNED_PATIENT"
   | "ENCOUNTER"

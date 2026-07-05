@@ -19,9 +19,11 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     basalFindFirst: vi.fn(),
     create: vi.fn((args: { data: Record<string, unknown> }) => ({ id: "p1", ...args.data })),
     logWithTx: vi.fn(),
+    auditLog: vi.fn(),
     referentFindFirst: vi.fn(),
     sendToUser: vi.fn(),
     resolveTreatmentMode: vi.fn(),
+    raiseFlag: vi.fn(),
   }
   return {
     mocks: m,
@@ -37,10 +39,15 @@ const { prismaMock, mocks } = vi.hoisted(() => {
   }
 })
 vi.mock("@/lib/db/client", () => ({ prisma: prismaMock }))
-vi.mock("@/lib/services/audit.service", () => ({ auditService: { logWithTx: mocks.logWithTx } }))
+vi.mock("@/lib/services/audit.service", () => ({
+  auditService: { logWithTx: mocks.logWithTx, log: mocks.auditLog },
+}))
 vi.mock("@/lib/services/fcm.service", () => ({ fcmService: { sendToUser: mocks.sendToUser } }))
 vi.mock("@/lib/services/treatment-mode.service", () => ({
   treatmentModeService: { resolveTreatmentMode: mocks.resolveTreatmentMode },
+}))
+vi.mock("@/lib/services/clinical-review-flag.service", () => ({
+  clinicalReviewFlagService: { raise: mocks.raiseFlag },
 }))
 vi.mock("@/lib/crypto/fields", () => ({
   encryptField: (s: string) => `enc(${s})`,
@@ -75,6 +82,8 @@ beforeEach(() => {
   mocks.referentFindFirst.mockResolvedValue({ pro: { userId: 99 } }) // médecin référent
   mocks.sendToUser.mockResolvedValue({ sent: 1 })
   mocks.resolveTreatmentMode.mockResolvedValue({ mode: "basalBolus", coherent: true }) // patient insuliné par défaut
+  mocks.raiseFlag.mockResolvedValue({ flagId: "f1", created: true })
+  mocks.auditLog.mockResolvedValue(undefined)
 })
 
 describe("createProposal — provenance & currentValue serveur", () => {
@@ -100,11 +109,35 @@ describe("createProposal — provenance & currentValue serveur", () => {
     expect(Object.keys(audit.metadata)).toEqual(["patientId", "proposedByRole"])
   })
 
-  it("patient NON INSULINÉ (mode nonInsulin) → nonInsulinNoDose (frontière MDR, US-2651)", async () => {
+  it("mode nonInsulin → nonInsulinNoDose, aucune écriture (frontière MDR, US-2651)", async () => {
     mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).rejects.toThrow("nonInsulinNoDose")
-    // Aucune proposition créée (refus fail-fast avant toute écriture).
     expect(mocks.create).not.toHaveBeenCalled()
+    // Un clinicien (nurse) agit directement → aucun flag d'orientation levé.
+    expect(mocks.raiseFlag).not.toHaveBeenCalled()
+    // Mais la tentative refusée EST tracée (observabilité), sans dose.
+    expect(mocks.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "PROPOSAL_REFUSED",
+        metadata: expect.objectContaining({ reason: "nonInsulinNoDose", proposedByRole: "nurse" }),
+      }),
+    )
+  })
+
+  it("PATIENT nonInsulin → tentative tracée + flag d'orientation levé, puis refus", async () => {
+    mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
+    await expect(adjustmentService.createProposal(isf(0.52), patient)).rejects.toThrow("nonInsulinNoDose")
+    expect(mocks.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "PROPOSAL_REFUSED", metadata: expect.objectContaining({ proposedByRole: "patient" }) }),
+    )
+    expect(mocks.raiseFlag).toHaveBeenCalledWith(5, "reviewInConsultation", patient.userId, undefined)
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it("PATIENT nonInsulin : un échec du flag ne masque pas le refus (best-effort)", async () => {
+    mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
+    mocks.raiseFlag.mockRejectedValue(new Error("db down"))
+    await expect(adjustmentService.createProposal(isf(0.52), patient)).rejects.toThrow("nonInsulinNoDose")
   })
 
   it("proposerComment chiffré au stockage", async () => {

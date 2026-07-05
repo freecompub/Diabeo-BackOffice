@@ -53,3 +53,31 @@ doses fixes (b) et non-insuliné (c) — **sans jamais franchir la ligne du dosa
   remonter l'intention à l'équipe. Slice dédiée (lignée US-2646).
 - **C (Low)** : `accept`/apply est sûr **par construction** (nonInsulin n'a aucun créneau → `…SlotNotFound`) ;
   re-check `resolveTreatmentMode` explicite = défense en profondeur optionnelle (non requise).
+
+### Slice 2 — flag d'orientation à la tentative patient nonInsulin (mode c / suivi B)
+Ferme le finding Medium B de la revue de #661 (l'intention du patient non insuliné était un
+cul-de-sac silencieux).
+- **`clinicalReviewFlagService.raise(patientId, type, createdBy, ctx)`** (nouveau) : lève un
+  `ClinicalReviewFlag` (objet DISTINCT d'`AdjustmentProposal`, **jamais de posologie** — frontière MDR),
+  **idempotent** (aucun doublon si un flag `open` du même type existe → anti-spam). Audit CREATE sans PHI.
+- `createProposal` : un **PATIENT** non insuliné → lève `reviewInConsultation` (best-effort, idempotent)
+  **puis** refuse (`nonInsulinNoDose`). Un clinicien (nurse/doctor) agit directement → pas de flag.
+- Audit : nouvelle ressource `CLINICAL_REVIEW_FLAG`. Tests : +4 (création, idempotence, patient→flag,
+  best-effort sur échec).
+
+**Reste US-2651** : router `generateProposals` par mode · `analyzeFixedDose*` (mode b). **Suivi** :
+surface UI des flags côté dashboard soignant (slice dédiée).
+
+#### Corrections revue slice 2 (PR #662)
+Revues code + medical + HDS : **frontière MDR intacte** (aucune dose dans le flag, à toutes les
+couches), **PHI-free**, **own-scoped** (IDOR impossible), RGPD gaté.
+- **A (code+HDS Medium)** : `createdBy ?? 0` → **`?? null`** (le sentinel 0 viole la FK `users.id` ;
+  audit.service impose `null` pour un acteur système).
+- **B (medical+HDS Medium)** : **chaque tentative refusée est auditée** (`PROPOSAL_REFUSED`, action
+  distincte de `PROPOSAL_REJECTED`, sans dose) → les 2ᵉ…Nᵉ tentatives d'un patient (insistance) sont
+  désormais **traçables** malgré le flag idempotent.
+- **C (HDS Low)** : JSDoc corrigée (seule la création est auditée ; le skip idempotent ne l'est pas).
+
+**Suivis tracés** : (1) **intention spécifique** — capturer le `parameterType` visé en métadonnée
+**non-dosante** (schema change, medical Medium) ; (2) **surface UI des flags** (dashboard soignant —
+sans elle le « dead-end » n'est fermé qu'à moitié) ; (3) TOCTOU (index partiel unique) + rate-limit POST (LOW).
