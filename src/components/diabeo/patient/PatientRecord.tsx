@@ -36,6 +36,8 @@ import {
   SEED_PERIOD,
 } from "@/components/diabeo/patient/PatientRecordContext"
 import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
+import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
+import type { ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -682,6 +684,12 @@ export function PatientRecord({
                         slots={data.treatment.isfSlots}
                         coverage={data.treatment.isfCoverage}
                         family="ratio"
+                        propose={
+                          insulinCapability.capability?.canPropose &&
+                          insulinCapability.capability.editableParameters.includes("insulinSensitivityFactor")
+                            ? { parameterType: "insulinSensitivityFactor", paramLabel: t("proposalParamIsf") }
+                            : undefined
+                        }
                       />
                     )}
                     {data.treatment.icrSlots.length > 0 && (
@@ -691,6 +699,12 @@ export function PatientRecord({
                         slots={data.treatment.icrSlots}
                         coverage={data.treatment.icrCoverage}
                         family="ratio"
+                        propose={
+                          insulinCapability.capability?.canPropose &&
+                          insulinCapability.capability.editableParameters.includes("insulinToCarbRatio")
+                            ? { parameterType: "insulinToCarbRatio", paramLabel: t("proposalParamIcr") }
+                            : undefined
+                        }
                       />
                     )}
                     {data.treatment.basalSlots.length > 0 && (
@@ -797,13 +811,16 @@ function SlotList({
   slots,
   coverage,
   family,
+  propose,
 }: {
   label: ReactNode
   unit: string
-  slots: { range: string; value: number }[]
+  slots: { range: string; value: number; startHour?: number; endHour?: number }[]
   coverage?: SlotCoverage
   /** "ratio" = ISF/ICR (trou = config à vérifier) ; "basal" = pompe (24 h requis). */
   family?: "ratio" | "basal"
+  /** US-2648b — si fourni, un bouton « Proposer » par créneau ADRESSABLE (NURSE/patient). */
+  propose?: { parameterType: ProposableParameter; paramLabel: string }
 }) {
   const t = useTranslations("patientDetail")
   return (
@@ -811,11 +828,21 @@ function SlotList({
       <span className="text-muted-foreground">{label}</span>
       <ul className="mt-1 space-y-1">
         {slots.map((s, i) => (
-          <li key={`${s.range}-${i}`} className="flex justify-between tabular-nums">
+          <li key={`${s.range}-${i}`} className="flex items-center justify-between gap-2 tabular-nums">
             <span className="text-muted-foreground">{s.range}</span>
-            <span className="font-medium">
-              {s.value} {unit}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="font-medium">
+                {s.value} {unit}
+              </span>
+              {propose && s.startHour !== undefined && s.endHour !== undefined && (
+                <InsulinProposalDialog
+                  parameterType={propose.parameterType}
+                  paramLabel={propose.paramLabel}
+                  slot={{ range: s.range, value: s.value, startHour: s.startHour, endHour: s.endHour }}
+                  unit={unit}
+                />
+              )}
+            </div>
           </li>
         ))}
       </ul>

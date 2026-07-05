@@ -132,6 +132,8 @@ export function buildTreatmentView(
     bolusInconsistent: bi != null && !bolusUsable,
     pump: derivePump(devices, now),
     isfSlots: isf.map((s) => ({
+      startHour: s.startHour,
+      endHour: s.endHour,
       range: hourRange(s.startHour, s.endHour),
       value: num(s.sensitivityFactorGl),
     })),
@@ -139,6 +141,8 @@ export function buildTreatmentView(
       isf.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })),
     ),
     icrSlots: icr.map((c) => ({
+      startHour: c.startHour,
+      endHour: c.endHour,
       range: hourRange(c.startHour, c.endHour),
       value: num(c.gramsPerUnit),
     })),

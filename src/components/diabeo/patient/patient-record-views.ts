@@ -65,7 +65,12 @@ export type InsulinDelivery = "pump" | "manual"
 // US-2647 — `SlotCoverage` ré-exporté depuis lib (importé en tête) pour les consommateurs de la vue.
 export type { SlotCoverage }
 
-export type Slot = { range: string; value: number }
+/**
+ * Créneau horaire ISF/ICR. `startHour`/`endHour` exposés (US-2648b) pour rendre le
+ * créneau ADRESSABLE (proposition d'ajustement ciblée sur le bon slot) — `range` reste
+ * le libellé d'affichage.
+ */
+export type Slot = { range: string; value: number; startHour: number; endHour: number }
 export type BasalSlot = { range: string; rate: number }
 export type TreatmentItem = { id: number; name: string | null; posology: string | null }
 /** Insuline bolus active (nom commercial du catalogue + DCI + posologie). */
