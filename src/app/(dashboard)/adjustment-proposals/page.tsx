@@ -27,7 +27,8 @@ import { Badge } from "@/components/ui/badge"
 import { CheckCircle2, XCircle, Clock, RefreshCw } from "lucide-react"
 import { useFormatters } from "@/hooks/useFormatters"
 import { useTranslations } from "next-intl"
-import type { AdjustableParameter, ProposalStatus } from "@prisma/client"
+import type { AdjustableParameter, ProposalStatus, ProposalSource } from "@prisma/client"
+import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 
 /**
  * Aligné sur `model AdjustmentProposal` (prisma/schema.prisma:1030) :
@@ -43,6 +44,9 @@ interface Proposal {
   patientId: number
   parameterType: AdjustableParameter
   reason: string
+  /** Provenance dérivée serveur (algorithm/patient/nurse/doctor) — pilote l'affichage
+   *  de confiance (US-2649b) : humain ≠ moteur, `patient` distingué. */
+  source: ProposalSource
   currentValue: string
   proposedValue: string
   status: ProposalStatus
@@ -189,6 +193,8 @@ export default function AdjustmentProposalsPage() {
               {proposals.map((p) => {
                 const rowError = rowErrors.get(p.id)
                 const parameterLabel = tAdj(`parameter.${p.parameterType}`)
+                // US-2649b — sens du risque (surface l'hypo au médecin, pas de cap-and-hide).
+                const risk = deriveRiskDirection(p.parameterType, Number(p.currentValue), Number(p.proposedValue))
                 return (
                   <li
                     key={p.id}
@@ -197,6 +203,20 @@ export default function AdjustmentProposalsPage() {
                     <div className="flex-1 space-y-1">
                       <div className="flex items-center gap-2">
                         <Badge variant="secondary">{parameterLabel}</Badge>
+                        {/* Provenance : « demande patient » mise en avant (default),
+                            soignant/médecin/algorithme en outline. */}
+                        <Badge variant={p.source === "patient" ? "default" : "outline"}>
+                          {tAdj(`source.${p.source}`)}
+                        </Badge>
+                        {/* Sens du risque : l'hypo (plus d'insuline) est signalée en ambre. */}
+                        {risk !== "none" && (
+                          <Badge
+                            variant="outline"
+                            className={risk === "hypo" ? "border-feedback-warning text-feedback-warning" : "text-muted-foreground"}
+                          >
+                            {tAdj(`risk.${risk}`)}
+                          </Badge>
+                        )}
                         <Badge variant="outline" className="text-xs">
                           <Clock className="me-1 h-3 w-3" aria-hidden="true" />
                           {fmt.relativeTime(p.createdAt)}

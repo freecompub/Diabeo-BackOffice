@@ -1044,6 +1044,16 @@
     "acceptedComment": "مُصدَّق",
     "rejectedComment": "مرفوض",
     "listAria": "قائمة الاقتراحات قيد الانتظار",
+    "source": {
+      "algorithm": "خوارزمية",
+      "patient": "طلب المريض",
+      "nurse": "ممرض",
+      "doctor": "طبيب"
+    },
+    "risk": {
+      "hypo": "خطر نقص السكر",
+      "hyper": "خطر ارتفاع السكر"
+    },
     "valueChanged": "تغيرت القيمة من {from} إلى {to}",
     "loadingMore": "جاري التحميل",
     "rowError": "فشل تنفيذ الإجراء على هذا الاقتراح. حاول مرة أخرى.",

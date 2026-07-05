@@ -59,3 +59,16 @@ Invariants laissés volontairement « ouverts » par le socle, à fermer côté 
 - **Appliquer l'index partiel** `prisma/sql/adjustment_proposal_one_pending.sql` en prod + **rate-limit** des créations patient.
 
 **fixedDose** — pour dé-rejeter la dose fixe : ajouter un **discriminateur de moment** sur `AdjustmentProposal` (ou objet dédié) + câbler `FixedDoseSlot` (US-2648/2649b).
+
+## US-2649b (en cours) — slice 1 : provenance & direction de risque à la revue médecin
+Enrichit `/adjustment-proposals` (file de revue) avec des findings différés :
+- **Badge provenance** (`source`) : « demande patient » mis en avant (default), soignant/médecin/algorithme en outline — le médecin voit immédiatement l'origine (finding US-2648b : `source=patient` ≠ `reason`).
+- **Badge direction de risque** : `deriveRiskDirection` (pur, testé) surface l'**hypo** (ambre) vs hyper — plus de cap-and-hide (finding clinique US-2649a). Catalogue §6.
+- i18n `adjustments.source.*` / `adjustments.risk.*` (fr/en/ar). Tests : 5.
+
+**Reste US-2649b** : confiance basée sur `source` (pas `confidence`) dans l'UI ; **débit/valeur LIVE** à l'accept (pas le snapshot) + re-scoping patient de l'apply basal ; notifications push (sans PHI) ; ne pas exposer `proposerComment` (ciphertext) dans la réponse GET list.
+
+#### Corrections revue slice 1 (PR #652)
+- **HDS (fermé)** : `proposerComment` (ciphertext) n'est plus émis dans la réponse GET `list` — strippé au **service** (`omit`), donc tout consommateur est protégé (pas seulement la route). Décryptage pour le médecin = tranche future.
+- **fail-closed** : `deriveRiskDirection` renvoie `none` sur un `parameterType` inconnu (pas de verdict deviné) + test.
+- Confirmé clinique : les 4 directions correctes ; magnitude déjà affichée à côté du badge (anti alarm-fatigue).
