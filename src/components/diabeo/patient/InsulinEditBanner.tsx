@@ -26,10 +26,18 @@ export function InsulinEditBanner({ capability }: { capability: InsulinEditCapab
   const { modeKey, note, showRepairHint } = deriveBannerContent(capability)
 
   return (
-    <div className="flex flex-col gap-2" role="status" aria-live="polite">
+    // `role="status"` implique déjà `aria-live="polite"` (annonce unique à l'apparition
+    // asynchrone). Le badge porte un `aria-label` complet (libellé + valeur) pour associer
+    // programmatiquement le libellé au mode (WCAG 1.3.1) ; le libellé visuel est décoratif.
+    // Le sens RTL est géré par `dir=rtl` au niveau `<html>` (layout) — pas de flex-reverse.
+    <div className="flex flex-col gap-2" role="status">
       <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">{t("insulinModeLabel")}</span>
-        <Badge variant="outline">{t(modeKey)}</Badge>
+        <span className="text-xs text-muted-foreground" aria-hidden="true">
+          {t("insulinModeLabel")}
+        </span>
+        <Badge variant="outline" aria-label={`${t("insulinModeLabel")} : ${t(modeKey)}`}>
+          {t(modeKey)}
+        </Badge>
       </div>
 
       {note === "incoherentConfig" && (

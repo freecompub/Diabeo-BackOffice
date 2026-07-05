@@ -306,6 +306,10 @@ export interface InsulinCapabilityState {
  */
 export function useInsulinCapability(): InsulinCapabilityState {
   const ctx = usePatientRecordContext()
+  // La capability est INDÉPENDANTE de la période/vue : on keye l'effet sur le seul
+  // `fetchAnalytics` (mémoïsé par patient, stable) et NON sur `ctx` (recréé à chaque
+  // setPeriod/setView) → évite un re-fetch + un audit READ superflu à chaque toggle.
+  const fetchAnalytics = ctx?.fetchAnalytics
   const [state, setState] = useState<InsulinCapabilityState>({
     capability: null,
     loading: true,
@@ -315,10 +319,9 @@ export function useInsulinCapability(): InsulinCapabilityState {
   useEffect(() => {
     // Hors provider (défensif ; inatteignable en pratique) : pas de fetch. Cf. retour
     // statique plus bas (évite un setState synchrone en corps d'effet).
-    if (!ctx) return
+    if (!fetchAnalytics) return
     const ctrl = new AbortController()
-    ctx
-      .fetchAnalytics("/api/insulin-therapy/capability", {}, { signal: ctrl.signal })
+    fetchAnalytics("/api/insulin-therapy/capability", {}, { signal: ctrl.signal })
       .then(async (res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
         return res.json() as Promise<InsulinEditCapability>
@@ -329,7 +332,7 @@ export function useInsulinCapability(): InsulinCapabilityState {
         setState({ capability: null, loading: false, error: true })
       })
     return () => ctrl.abort()
-  }, [ctx])
+  }, [fetchAnalytics])
 
   // Hors provider → état vide stable (sans setState en effet).
   return ctx ? state : { capability: null, loading: false, error: false }

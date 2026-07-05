@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
-import { resolvePatientId } from "@/lib/access-control"
+import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
@@ -10,8 +10,10 @@ import { auditService, extractRequestContext } from "@/lib/services/audit.servic
  * insuline (US-2648b). Pilote l'onglet Traitements de la fiche : mode de traitement +
  * `canEditDirect` / `canPropose` + `editableParameters` (+ `blockedReason`).
  *
- * Accès : `resolvePatientId` (VIEWER → SON dossier, ignore `patientId` ; pro →
- * `canAccessPatient`). Ne renvoie **aucune** valeur de dose (juste le mode + les capacités).
+ * Accès : `resolvePatientIdFromQuery` — **transport-agnostic** (ADR #21) : page =
+ * `?patientId=` (+ `canAccessPatient`), drawer = en-tête `x-consultation-token` ;
+ * VIEWER → SON dossier. Cohérent avec les 13 routes analytics (le bandeau ne doit pas
+ * disparaître en mode drawer). Ne renvoie **aucune** valeur de dose (mode + capacités).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -19,13 +21,11 @@ export async function GET(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const patientIdParam = req.nextUrl.searchParams.get("patientId")
-    const patientId = await resolvePatientId(
-      user.id,
-      user.role,
-      patientIdParam ? parseInt(patientIdParam, 10) : undefined,
-    )
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
+    if (res.error) {
+      return NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 })
+    }
+    const patientId = res.patientId
 
     const capability = await treatmentModeService.getInsulinEditCapability(user.role, patientId)
 

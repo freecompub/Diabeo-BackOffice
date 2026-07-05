@@ -67,3 +67,9 @@ Tranche backend (débloque le front US-2648b) :
 - i18n fr/en/ar (`patientDetail`). Tests : 5 (matrice bannière).
 
 **Reste 2648b** : formulaires d'édition/proposition (CTA « Modifier » DOCTOR / « Proposer » NURSE-patient → `POST /api/adjustment-proposals`), transport mutation injecté, `refreshTreatmentMode(tx)`, redirect `/insulin-therapy` role-branché, E2E.
+
+#### Corrections revue slice 2a (PR #647)
+- Route capability rendue **transport-agnostic** (`resolvePatientIdFromQuery`) : le bandeau ne disparaît plus en mode drawer (ADR #21).
+- `useInsulinCapability` keyé sur `fetchAnalytics` (stable) : plus de re-fetch ni d'audit READ superflu à chaque changement de période.
+- A11y : association programmatique libellé↔badge (`aria-label`, WCAG 1.3.1) ; `aria-live` redondant retiré. RTL confirmé géré par `dir=rtl` au niveau `<html>` (pas de flex-reverse).
+- **Différé** : état `error` du bandeau (actuellement silencieux) → note « mode indisponible » (non critique, slice ultérieur).
