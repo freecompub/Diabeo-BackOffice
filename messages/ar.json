@@ -1582,7 +1582,7 @@
     "proposalSuccess": "تم إرسال الاقتراح إلى الطبيب للتحقق.",
     "proposalErrorDuplicate": "يوجد اقتراح قيد الانتظار لهذه الفترة بالفعل.",
     "proposalErrorOutOfBounds": "القيمة خارج الحدود السريرية المسموح بها.",
-    "proposalErrorDecreaseForbidden": "لا يُسمح بالتخفيض عبر هذه القناة.",
+    "proposalErrorDecreaseForbidden": "لا يمكن اقتراح تخفيض هنا؛ أبلغ فريق الرعاية (أو سجّل نقص سكر الدم).",
     "proposalErrorDeltaTooLarge": "التغيير كبير جدًا للاقتراح.",
     "proposalErrorValidation": "قيمة غير صالحة.",
     "proposalErrorConsent": "الموافقة مطلوبة.",

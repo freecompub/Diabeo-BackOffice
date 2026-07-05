@@ -156,7 +156,8 @@ export function InsulinProposalDialog({
             label={t("proposalNewValue")}
             type="number"
             inputMode="decimal"
-            step="any"
+            // Basal : incrément pompe (0,05 U/h) → snapping natif + garde ; ISF/ICR : libre.
+            step={parameterType === "basalRate" ? String(CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT) : "any"}
             required
             value={value}
             onChange={(e) => setValue(e.target.value)}

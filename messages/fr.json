@@ -1582,7 +1582,7 @@
     "proposalSuccess": "Proposition envoyée au médecin pour validation.",
     "proposalErrorDuplicate": "Une proposition est déjà en attente pour ce créneau.",
     "proposalErrorOutOfBounds": "Valeur hors des bornes cliniques autorisées.",
-    "proposalErrorDecreaseForbidden": "Une baisse n'est pas autorisée par ce canal.",
+    "proposalErrorDecreaseForbidden": "Une baisse ne peut pas être proposée ici ; signalez-la à votre soignant (ou déclarez une hypoglycémie).",
     "proposalErrorDeltaTooLarge": "Variation trop importante pour une proposition.",
     "proposalErrorValidation": "Valeur invalide.",
     "proposalErrorConsent": "Consentement requis.",
