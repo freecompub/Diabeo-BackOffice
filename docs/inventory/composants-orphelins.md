@@ -53,7 +53,7 @@ bouton) ou à statuer comme abandonnées.
 
 | Route (UI) | Ce qu'elle fait (présumé) | Backend API | Statut |
 |---|---|---|---|
-| `/adjustment-proposals` | Liste des **propositions d'ajustement** de dose (accept/reject DOCTOR). | ✅ `api/adjustment-proposals/*` (GET, accept, reject, summary) | Page + API OK, **0 lien UI**. Sans doute destinée à devenir un onglet/section du dossier patient. |
+| `/adjustment-proposals` | Liste des **propositions d'ajustement** de dose (accept/reject DOCTOR). | ✅ `api/adjustment-proposals/*` (GET, accept, reject, summary) | **0 lien UI** + **404 pour un médecin** : la page fetch `?status=pending` **sans `patientId`** → `resolvePatientId` renvoie null (un pro doit préciser un patient). **Supplantée** par le vrai écran de revue **`/patients/[id]/review`** (`ReviewClient`, per-patient, câblé depuis `PendingProposalsCard`). Vestige US-2047 — candidate à suppression (diagnostic US-2649b, PR #655). |
 | `/analytics/radar` | Vue **radar** analytique (sous-page de `/analytics`). | — | **0 lien UI** — pas d'onglet depuis `/analytics`. |
 | `/events/new` | Création d'un **événement diabète** (`DiabetesEvent`). | — | **0 lien UI** — aucun bouton « nouvel événement » ne l'ouvre. |
 | `/devices/pair` | **Appairage** d'un appareil patient (`PatientDevice`). | — | **0 lien UI** depuis `/devices`. |
