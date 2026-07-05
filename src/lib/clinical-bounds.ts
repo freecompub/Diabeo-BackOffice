@@ -53,6 +53,13 @@ export const CLINICAL_BOUNDS = {
   FIXED_DOSE_MAX_DELTA_U: 2.0,
   FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
   /**
+   * US-2651 — cap de variation MOTEUR (algorithme) d'une proposition automatique, en %.
+   * Toute proposition générée par `proposal-algorithm` est clampée à ± ce %. Source unique
+   * (était en dur dans `proposal-algorithm.ts`, §12 nit US-2651). Le cap PATIENT
+   * (`PATIENT_MAX_CHANGE_PERCENT`) est strictement plus strict (10 % < 20 %).
+   */
+  MAX_CHANGE_PERCENT: 20,
+  /**
    * US-2649 — cap de variation d'une proposition **PATIENT** pour les ratios
    * (ISF/ICR/basal), en %. Strictement plus strict que le moteur (± 20 %) : une
    * demande patient est un pas, pas une titration. (La dose fixe patient est

@@ -160,3 +160,15 @@ acceptée entre-temps), appliquer la valeur absolue **sur-corrige** (ex. base de
 > cooldown retombe alors sur `createdAt`. Sans impact aujourd'hui (aucun code ne fait passer une
 > `AdjustmentProposal` à `expired` — seul `emergency.service` écrit ce statut). À l'implémentation
 > d'un **job d'expiration** des propositions : écrire un timestamp d'expiration et y ancrer le cooldown.
+
+### `MAX_CHANGE_PERCENT` + frontière MDR non-insuliné (US-2651)
+
+| Constante | Valeur | Sens clinique | Source |
+|---|---|---|---|
+| `MAX_CHANGE_PERCENT` | **± 20 %** | Cap de variation **MOTEUR** (algorithme) : toute proposition auto-générée est clampée à ± ce %. Source unique (était en dur dans `proposal-algorithm.ts`). Le cap PATIENT (10 %) reste strictement plus strict. | `src/lib/clinical-bounds.ts` |
+
+- **Frontière dispositif médical (MDR / IEC 62304)** : `adjustmentService.createProposal` **refuse** toute
+  proposition de **dose** si le mode de traitement dérivé serveur est **`nonInsulin`** → `nonInsulinNoDose`
+  (HTTP 422). Un patient non insuliné relève d'un **flag d'orientation** (« à revoir en consultation »),
+  jamais d'une `AdjustmentProposal`. Fail-closed : le mode est **dérivé serveur** (`resolveTreatmentMode`,
+  US-2647) et un DT1 n'est **jamais** classé `nonInsulin`.

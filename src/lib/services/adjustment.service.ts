@@ -8,6 +8,7 @@
 
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import { treatmentModeService } from "./treatment-mode.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
@@ -304,6 +305,12 @@ export const adjustmentService = {
     auditUserId: number,
     ctx?: AuditContext,
   ) {
+    // Frontière MDR (US-2651, §12.5) — MÊME invariant que `createProposal` : cette 2ᵉ primitive
+    // de création ne doit JAMAIS émettre une proposition de dose pour un patient NON INSULINÉ,
+    // quelle que soit la route qui la câblera un jour. Fail-fast avant toute écriture.
+    const { mode } = await treatmentModeService.resolveTreatmentMode(input.patientId)
+    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+
     return prisma.$transaction(async (tx) => {
       const proposal = await tx.adjustmentProposal.create({ data: input })
 
@@ -337,6 +344,13 @@ export const adjustmentService = {
     ctx?: AuditContext,
   ) {
     const { patientId, parameterType, proposedValue } = input
+
+    // 0. Frontière DISPOSITIF MÉDICAL (US-2651, §12.5) : un patient NON INSULINÉ ne reçoit
+    //    JAMAIS de proposition de DOSE. Le mode (c) relève d'un ClinicalReviewFlag (orientation
+    //    « à revoir en consultation »), jamais d'une AdjustmentProposal. Mode dérivé SERVEUR
+    //    (source de vérité, fail-closed : un DT1 n'est jamais classé nonInsulin).
+    const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
+    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
     // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept).
     if (!validateProposedValue(parameterType, proposedValue)) {

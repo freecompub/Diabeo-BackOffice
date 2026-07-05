@@ -21,6 +21,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     logWithTx: vi.fn(),
     referentFindFirst: vi.fn(),
     sendToUser: vi.fn(),
+    resolveTreatmentMode: vi.fn(),
   }
   return {
     mocks: m,
@@ -38,6 +39,9 @@ const { prismaMock, mocks } = vi.hoisted(() => {
 vi.mock("@/lib/db/client", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/services/audit.service", () => ({ auditService: { logWithTx: mocks.logWithTx } }))
 vi.mock("@/lib/services/fcm.service", () => ({ fcmService: { sendToUser: mocks.sendToUser } }))
+vi.mock("@/lib/services/treatment-mode.service", () => ({
+  treatmentModeService: { resolveTreatmentMode: mocks.resolveTreatmentMode },
+}))
 vi.mock("@/lib/crypto/fields", () => ({
   encryptField: (s: string) => `enc(${s})`,
   safeDecryptField: (s: string) => s,
@@ -70,6 +74,7 @@ beforeEach(() => {
   mocks.basalFindFirst.mockResolvedValue({ rate: 1.0 })
   mocks.referentFindFirst.mockResolvedValue({ pro: { userId: 99 } }) // médecin référent
   mocks.sendToUser.mockResolvedValue({ sent: 1 })
+  mocks.resolveTreatmentMode.mockResolvedValue({ mode: "basalBolus", coherent: true }) // patient insuliné par défaut
 })
 
 describe("createProposal — provenance & currentValue serveur", () => {
@@ -93,6 +98,13 @@ describe("createProposal — provenance & currentValue serveur", () => {
     const audit = mocks.logWithTx.mock.calls[0]![1]
     expect(audit).toMatchObject({ action: "CREATE", metadata: { patientId: 5, proposedByRole: "nurse" } })
     expect(Object.keys(audit.metadata)).toEqual(["patientId", "proposedByRole"])
+  })
+
+  it("patient NON INSULINÉ (mode nonInsulin) → nonInsulinNoDose (frontière MDR, US-2651)", async () => {
+    mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
+    await expect(adjustmentService.createProposal(isf(0.52), nurse)).rejects.toThrow("nonInsulinNoDose")
+    // Aucune proposition créée (refus fail-fast avant toute écriture).
+    expect(mocks.create).not.toHaveBeenCalled()
   })
 
   it("proposerComment chiffré au stockage", async () => {

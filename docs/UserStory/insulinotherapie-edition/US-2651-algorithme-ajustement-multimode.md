@@ -36,3 +36,20 @@ doses fixes (b) et non-insuliné (c) — **sans jamais franchir la ligne du dosa
 - **Refus serveur** de toute `AdjustmentProposal` de dose si `treatmentMode=nonInsulin` ; mode (c) → `ClinicalReviewFlag` (défini US-2646), jamais une proposition de dose (§12.5, MDR).
 - Remonter **`MAX_CHANGE_PERCENT=20`** (en dur) dans `CLINICAL_BOUNDS` (source unique testée) (§12 nit).
 - Application `fixedDose` mode-aware côté `accept` (dépendance vers US-2649b).
+
+## Journal d'implémentation
+
+### Slice 1 — frontière MDR nonInsulin + hoist MAX_CHANGE_PERCENT (validé medical)
+- `createProposal` **et** `createManual` refusent une proposition de dose si le mode dérivé serveur est
+  `nonInsulin` → `nonInsulinNoDose` (422). Frontière MDR appliquée aux **deux** primitives de création
+  (medical §A). Fail-closed : un DT1 n'est jamais `nonInsulin` (double garde `pathology==="DT1"` +
+  `hadInsulinEver`) → jamais bloqué à tort.
+- `MAX_CHANGE_PERCENT=20` hoisté vers `CLINICAL_BOUNDS` (source unique testée) ; l'algo le référence.
+- Tests : +2 (createProposal + createManual nonInsulin), anti-drift `MAX_CHANGE_PERCENT`.
+
+**Suivi (revue medical)** :
+- **B (Medium, prioritaire)** : le refus nonInsulin est un cul-de-sac silencieux côté soignant → créer un
+  **`ClinicalReviewFlag`** (« patient non insuliné a tenté une proposition — revoir l'indication ») pour
+  remonter l'intention à l'équipe. Slice dédiée (lignée US-2646).
+- **C (Low)** : `accept`/apply est sûr **par construction** (nonInsulin n'a aucun créneau → `…SlotNotFound`) ;
+  re-check `resolveTreatmentMode` explicite = défense en profondeur optionnelle (non requise).
