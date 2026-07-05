@@ -73,3 +73,12 @@ Tranche backend (débloque le front US-2648b) :
 - `useInsulinCapability` keyé sur `fetchAnalytics` (stable) : plus de re-fetch ni d'audit READ superflu à chaque changement de période.
 - A11y : association programmatique libellé↔badge (`aria-label`, WCAG 1.3.1) ; `aria-live` redondant retiré. RTL confirmé géré par `dir=rtl` au niveau `<html>` (pas de flex-reverse).
 - **Différé** : état `error` du bandeau (actuellement silencieux) → note « mode indisponible » (non critique, slice ultérieur).
+
+### US-2648b (en cours) — slice 2b : flux « Proposer » ISF/ICR
+- Créneaux ISF/ICR rendus **adressables** : `Slot` porte `startHour`/`endHour` (`treatment-view`).
+- Transport de **mutation injecté** : `RecordMutator` + `usePagePatientMutator` (POST id-less, `patientId` ajouté au corps par l'adaptateur page ; `mutate` optionnel → fail-closed hors contexte éditable).
+- `insulin-proposal.ts` (pur, testé) : `mapProposalOutcome` (status→message) + `buildProposalBody` (créneau ISF→`timeSlot*`, ICR→`carbRatioSlot*`, `reason=manualAdjustment`).
+- `InsulinProposalDialog` : bouton « Proposer » par créneau (gated `capability.canPropose` + paramètre éditable) → dialog (nouvelle valeur + commentaire) → `POST /api/adjustment-proposals` → issue annoncée en `aria-live` (doublon/hors-bornes/garde-fou). Jamais appliqué (ADR #13).
+- i18n fr/en/ar. Tests : 12 (mapping + corps).
+
+**Reste 2648b** : proposition **basal** (nécessite `pumpBasalSlotId`), **édition directe DOCTOR** (PUT settings/ISF/ICR), `refreshTreatmentMode(tx)`, redirect `/insulin-therapy` role-branché, transport drawer, E2E.

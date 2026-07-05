@@ -15,6 +15,7 @@ import { PatientRecord, type PatientRecordData } from "@/components/diabeo/patie
 import {
   PatientRecordProvider,
   usePagePatientFetcher,
+  usePagePatientMutator,
 } from "@/components/diabeo/patient/PatientRecordContext"
 
 /** DTO de la fiche patient (alias du contrat présentational, rétro-compat page). */
@@ -32,8 +33,11 @@ export function PatientDetailClient({
   // composant unifié — anti-énumération préservée. `0` est inatteignable (si
   // `data` null, le sélecteur de période n'est pas rendu).
   const fetchAnalytics = usePagePatientFetcher(data?.id ?? 0)
+  // Transport de mutation (US-2648b) : POST avec `patientId` injecté au corps par
+  // l'adaptateur page (le composant ne le connaît pas). Alimente l'UI de proposition.
+  const mutate = usePagePatientMutator(data?.id ?? 0)
   return (
-    <PatientRecordProvider fetchAnalytics={fetchAnalytics} seedPeriod="14d">
+    <PatientRecordProvider fetchAnalytics={fetchAnalytics} mutate={mutate} seedPeriod="14d">
       <PatientRecord
         data={data}
         sharingDisabled={sharingDisabled}

@@ -64,6 +64,18 @@ export type AnalyticsFetcher = (
   init?: { signal?: AbortSignal },
 ) => Promise<Response>
 
+/**
+ * Transport de **mutation** injecté (US-2648b). Le composant fournit un endpoint
+ * (sans identité) + un corps JSON ; l'adaptateur ajoute l'identité (id patient au
+ * corps en mode page, jeton en en-tête en drawer). Anti-énumération : le composant
+ * unifié ne construit jamais d'URL/corps porteur d'un id patient qu'il connaîtrait.
+ */
+export type RecordMutator = (
+  endpoint: string,
+  body: Record<string, unknown>,
+  init?: { signal?: AbortSignal },
+) => Promise<Response>
+
 interface PatientRecordContextValue {
   period: RecordPeriod
   setPeriod: (p: RecordPeriod) => void
@@ -71,6 +83,11 @@ interface PatientRecordContextValue {
   view: RecordView
   setView: (v: RecordView) => void
   fetchAnalytics: AnalyticsFetcher
+  /**
+   * Transport de mutation injecté (US-2648b). Optionnel : absent → l'UI d'édition/
+   * proposition est masquée/désactivée (fail-closed, ex. contexte lecture seule).
+   */
+  mutate?: RecordMutator
   /** Période de l'amorce serveur (pas de re-fetch tant que `period` y est égal). */
   seedPeriod: RecordPeriod
 }
@@ -95,18 +112,21 @@ export function usePatientRecordContext(): PatientRecordContextValue | null {
  */
 export function PatientRecordProvider({
   fetchAnalytics,
+  mutate,
   seedPeriod = SEED_PERIOD,
   children,
 }: {
   fetchAnalytics: AnalyticsFetcher
+  /** Transport de mutation injecté (US-2648b) ; omis → édition/proposition masquée. */
+  mutate?: RecordMutator
   seedPeriod?: RecordPeriod
   children: React.ReactNode
 }) {
   const [period, setPeriod] = useState<RecordPeriod>(seedPeriod)
   const [view, setView] = useState<RecordView>("average")
   const value = useMemo<PatientRecordContextValue>(
-    () => ({ period, setPeriod, view, setView, fetchAnalytics, seedPeriod }),
-    [period, view, fetchAnalytics, seedPeriod],
+    () => ({ period, setPeriod, view, setView, fetchAnalytics, mutate, seedPeriod }),
+    [period, view, fetchAnalytics, mutate, seedPeriod],
   )
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }
@@ -284,6 +304,26 @@ export function usePagePatientFetcher(patientId: number): AnalyticsFetcher {
         signal: init?.signal,
       })
     },
+    [patientId],
+  )
+}
+
+/**
+ * Construit un `RecordMutator` pour le **mode page** : POST JSON avec l'`patientId`
+ * injecté dans le corps (le scope est résolu serveur — pro via `canAccessPatient`,
+ * patient sur son propre dossier). L'id est fourni par l'adaptateur page, pas par le
+ * composant unifié (anti-énumération).
+ */
+export function usePagePatientMutator(patientId: number): RecordMutator {
+  return useCallback<RecordMutator>(
+    (endpoint, body, init) =>
+      fetch(endpoint, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ...body, patientId }),
+        signal: init?.signal,
+      }),
     [patientId],
   )
 }
