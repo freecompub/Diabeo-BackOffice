@@ -57,6 +57,7 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       FIXED_DOSE_MAX_DELTA_U: 2.0,
       FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
       PATIENT_MAX_CHANGE_PERCENT: 10,
+      PATIENT_PROPOSAL_COOLDOWN_HOURS: 24,
     })
   })
 

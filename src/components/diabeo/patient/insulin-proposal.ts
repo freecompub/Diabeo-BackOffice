@@ -35,6 +35,7 @@ const PROPOSAL_ERROR_KEY: Record<string, string> = {
   valueOutOfBounds: "proposalErrorOutOfBounds",
   patientDecreaseForbidden: "proposalErrorDecreaseForbidden",
   patientDeltaTooLarge: "proposalErrorDeltaTooLarge",
+  patientProposalCooldown: "proposalErrorCooldown",
   validationFailed: "proposalErrorValidation",
   gdprConsentRequired: "proposalErrorConsent",
 }

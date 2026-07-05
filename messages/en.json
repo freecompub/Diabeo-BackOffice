@@ -1594,6 +1594,7 @@
     "proposalErrorOutOfBounds": "Value outside the allowed clinical bounds.",
     "proposalErrorDecreaseForbidden": "A decrease can't be proposed here; tell your care team (or report a hypoglycemia).",
     "proposalErrorDeltaTooLarge": "Change too large for a proposal.",
+    "proposalErrorCooldown": "You recently proposed a change to this setting. Try again later; for anything urgent, contact your care team via messaging.",
     "proposalErrorValidation": "Invalid value.",
     "proposalErrorConsent": "Consent required.",
     "proposalErrorGeneric": "Sending failed. Please try again.",

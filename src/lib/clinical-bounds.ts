@@ -59,6 +59,19 @@ export const CLINICAL_BOUNDS = {
    * bornée en unités : `FIXED_DOSE_PATIENT_MAX_DELTA_U`.)
    */
   PATIENT_MAX_CHANGE_PERCENT: 10,
+  /**
+   * US-2650 — Fenêtre de COOLDOWN (heures) entre deux propositions PATIENT sur le MÊME
+   * (patient × paramètre × créneau). Anti-churn : empêche le spam « résolu → re-proposé » et
+   * le bruit de notification relecteur. N'est PAS le gouverneur de titration (le médecin l'est) ;
+   * borne la FRÉQUENCE là où `PATIENT_MAX_CHANGE_PERCENT` borne l'AMPLITUDE — ensemble ils
+   * plafonnent le %/créneau/jour (anti-ratchet). 24 h = unité de décision d'une titration
+   * (l'effet d'un changement ISF/ICR/basal n'est pas jugeable en < 24 h). Décompté depuis la
+   * RÉSOLUTION de la dernière proposition (`reviewedAt`, sinon `createdAt`), TOUS statuts
+   * confondus (y compris `accepted`). PATIENT uniquement (médecin/infirmier non gatés). Canal
+   * NON urgent (jamais auto-appliqué, ADR #13) → ne bloque aucun soin urgent. Garde SERVICE
+   * (pas d'index DB : course à faible enjeu, tout reste gaté médecin).
+   */
+  PATIENT_PROPOSAL_COOLDOWN_HOURS: 24,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

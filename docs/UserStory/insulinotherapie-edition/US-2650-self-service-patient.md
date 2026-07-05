@@ -100,3 +100,13 @@ PHI vers le client. **Différé (follow-up)** : extraire `buildTreatmentView` da
 
 **Cœur de US-2650 complet** (lecture own-id + page + proposer). Reste : `InsulinSummary` (conformité
 DS, cosmétique) · redirect `/insulin-therapy` VIEWER (déjà bounce via `(dashboard)/layout`).
+
+#### Corrections revue slice 3 (PR #659)
+- **A (code, verrou clinique)** : test dédié qui verrouille le mapping créneau → `target`/`parameterType`
+  (ISF→SF+timeSlot, ICR→carbRatio+timeSlot, basal→pumpSlot) — un swap silencieux ciblerait le mauvais réglage.
+- **B (HDS/épic §6, validé medical-domain-validator)** : **cooldown anti-churn** des propositions PATIENT.
+  `PATIENT_PROPOSAL_COOLDOWN_HOURS = 24` (par patient×paramètre×créneau, ancré sur la résolution, tous
+  statuts, PATIENT uniquement, garde service). Erreur `patientProposalCooldown` → 429 ; UI oriente vers la
+  messagerie pour l'urgent. Catalogué + lock anti-drift. Tests : +3 (< 24 h bloqué, > 24 h OK, nurse non gaté).
+- Sécurité confirmée : **IDOR impossible de bout en bout** (VIEWER → son dossier, `body.patientId` jeté) ;
+  fuite client/serveur CLEAN.

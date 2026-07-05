@@ -370,6 +370,30 @@ export const adjustmentService = {
       if (Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT) {
         throw new Error("patientDeltaTooLarge")
       }
+
+      // Cooldown anti-churn (US-2650, épic §6) : une seule proposition patient par (paramètre ×
+      // créneau) toutes les PATIENT_PROPOSAL_COOLDOWN_HOURS, décomptée depuis la RÉSOLUTION de la
+      // dernière (reviewedAt, sinon createdAt) — TOUS statuts (anti-ratchet : borne la FRÉQUENCE
+      // là où le cap 10 % borne l'amplitude). Garde SERVICE (course à faible enjeu, tout reste
+      // gaté médecin) ; médecin/infirmier NON concernés. Canal non urgent (jamais auto-appliqué).
+      const lastResolved = await prisma.adjustmentProposal.findFirst({
+        where: {
+          patientId,
+          parameterType,
+          status: { not: "pending" },
+          timeSlotStartHour: slot.timeSlotStartHour,
+          carbRatioSlotStart: slot.carbRatioSlotStart,
+          pumpBasalSlotId: slot.pumpBasalSlotId,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { reviewedAt: true, createdAt: true },
+      })
+      if (lastResolved) {
+        const freedAt = (lastResolved.reviewedAt ?? lastResolved.createdAt).getTime()
+        if (Date.now() - freedAt < INSULIN_BOUNDS.PATIENT_PROPOSAL_COOLDOWN_HOURS * 3_600_000) {
+          throw new Error("patientProposalCooldown")
+        }
+      }
     }
 
     // 4. Anti-spam — pré-check (chemin rapide). L'unicité RÉELLE (course TOCTOU) est
