@@ -155,3 +155,8 @@ acceptée entre-temps), appliquer la valeur absolue **sur-corrige** (ex. base de
 - **Périmètre** : **PATIENT uniquement** (médecin/infirmier non gatés — ils gèrent la titration).
 - **Garde** : niveau **service** (`adjustmentService.createProposal`), pas d'index DB (course à faible enjeu ; tout reste gaté médecin, ADR #13). Erreur `patientProposalCooldown` → HTTP **429** ; l'UI oriente vers la messagerie pour l'urgent (canal proposition = non urgent).
 - **Sécurité clinique** : ne bloque **aucun soin urgent** (jamais auto-appliqué ; le médecin peut toujours proposer/appliquer pendant le cooldown du patient ; les autres créneaux restent proposables).
+
+> **Suivi (dormant)** — Ancrage `expired` : une proposition `expired` n'a pas de `reviewedAt`, le
+> cooldown retombe alors sur `createdAt`. Sans impact aujourd'hui (aucun code ne fait passer une
+> `AdjustmentProposal` à `expired` — seul `emergency.service` écrit ce statut). À l'implémentation
+> d'un **job d'expiration** des propositions : écrire un timestamp d'expiration et y ancrer le cooldown.

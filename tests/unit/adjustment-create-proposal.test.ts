@@ -165,10 +165,26 @@ describe("createProposal — bornes, overflow, garde-fous patient", () => {
     await expect(adjustmentService.createProposal(isf(0.52), patient)).resolves.toMatchObject({ id: "p1" })
   })
 
-  it("NURSE : jamais gaté par le cooldown patient", async () => {
-    // Pour un nurse, le bloc patient (donc le cooldown) est ignoré → 1er findFirst = anti-spam.
+  it("NURSE : jamais gaté par le cooldown (aucune requête cooldown émise)", async () => {
     mocks.adjFindFirst.mockResolvedValue(null)
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).resolves.toMatchObject({ id: "p1" })
+    // Preuve du gate de rôle : la requête cooldown (`status != pending`) n'est JAMAIS émise
+    // pour un nurse (seule l'anti-spam `status: "pending"` l'est).
+    const cooldownQueries = mocks.adjFindFirst.mock.calls.filter(
+      ([arg]: [{ where?: { status?: unknown } }]) =>
+        JSON.stringify(arg?.where?.status) === JSON.stringify({ not: "pending" }),
+    )
+    expect(cooldownQueries).toHaveLength(0)
+  })
+
+  it("PATIENT : la requête cooldown (status != pending) EST émise", async () => {
+    mocks.adjFindFirst.mockResolvedValue(null) // ni cooldown ni pending → passe
+    await adjustmentService.createProposal(isf(0.52), patient)
+    const cooldownQueries = mocks.adjFindFirst.mock.calls.filter(
+      ([arg]: [{ where?: { status?: unknown } }]) =>
+        JSON.stringify(arg?.where?.status) === JSON.stringify({ not: "pending" }),
+    )
+    expect(cooldownQueries).toHaveLength(1)
   })
 })
 
