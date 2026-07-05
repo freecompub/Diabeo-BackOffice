@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest"
-import { buildTreatmentView, analyzeSlotCoverage } from "@/app/(dashboard)/patients/[id]/treatment-view"
+import { buildTreatmentView, analyzeSlotCoverage } from "@/lib/insulin/treatment-view"
 
 describe("buildTreatmentView", () => {
   it("maps delivery method + per-slot ISF/ICR/basal (Decimal-like → number)", () => {

@@ -24,7 +24,7 @@ import { documentService } from "@/lib/services/document.service"
 import { getPatientFlags } from "@/lib/services/doctor-dashboard.service"
 import { resolveTargetRangeMgdl } from "./overview-targets"
 import { buildGlycemiaView } from "./glycemia-view"
-import { buildTreatmentView } from "./treatment-view"
+import { buildTreatmentView } from "@/lib/insulin/treatment-view"
 import { buildDocumentView } from "./document-view"
 import type { PatientRecordData } from "@/components/diabeo/patient/PatientRecord"
 

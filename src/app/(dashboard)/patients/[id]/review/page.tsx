@@ -30,7 +30,7 @@ import { canAccessPatient } from "@/lib/access-control"
 import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
 import { resolveTargetRangeMgdl } from "../overview-targets"
 import { buildGlycemiaView } from "../glycemia-view"
-import { buildTreatmentView } from "../treatment-view"
+import { buildTreatmentView } from "@/lib/insulin/treatment-view"
 import { ReviewClient, type ReviewData, type ReviewProposalItem } from "./ReviewClient"
 
 // Cibles consensus ADA/EASD (identiques à la vue d'ensemble du dossier).
