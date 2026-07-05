@@ -27,6 +27,9 @@ export async function GET(req: NextRequest) {
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
     // Own-id strict : jamais depuis l'URL/token. `null` (pas de dossier patient) → 404 neutre.
+    // Frontière d'autorisation = `getOwnPatientId` seul (pas de garde de rôle). Invariant dont
+    // dépend l'anti-IDOR : `Patient.userId @unique` → un `user.id` mappe AU PLUS un dossier (le
+    // sien). Si cette cardinalité change un jour, ré-introduire un garde de rôle explicite ici.
     const patientId = await getOwnPatientId(user.id)
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
