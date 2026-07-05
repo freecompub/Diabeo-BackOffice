@@ -101,6 +101,13 @@ describe("ReviewClient", () => {
     expect(screen.getAllByTestId("stat").some((n) => n.textContent?.includes("142"))).toBe(true)
   })
 
+  it("affiche les badges provenance et direction de risque (US-2649b)", () => {
+    render(<ReviewClient data={BASE} />)
+    // source=patient → « Demande patient » ; basal 1.0→1.2 (plus d'insuline) → « Risque hypo ».
+    expect(screen.getByText("Demande patient")).toBeTruthy()
+    expect(screen.getByText("Risque hypo")).toBeTruthy()
+  })
+
   it("médecin : accepter une proposition appelle la route et la retire de la liste", async () => {
     render(<ReviewClient data={BASE} />)
     const accept = screen.getByRole("button", { name: "Accepter" })
