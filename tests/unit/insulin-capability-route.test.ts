@@ -21,7 +21,7 @@ vi.mock("@/lib/auth", () => {
   return { requireAuth: mocks.requireAuth, AuthError }
 })
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: mocks.requireGdprConsent }))
-vi.mock("@/lib/access-control", () => ({ resolvePatientId: mocks.resolvePatientId }))
+vi.mock("@/lib/auth/query-helpers", () => ({ resolvePatientIdFromQuery: mocks.resolvePatientId }))
 vi.mock("@/lib/services/treatment-mode.service", () => ({
   treatmentModeService: { getInsulinEditCapability: mocks.getCapability },
 }))
@@ -39,7 +39,7 @@ beforeEach(() => {
   Object.values(mocks).forEach((m) => m.mockReset())
   mocks.requireAuth.mockReturnValue({ id: 20, role: "NURSE" })
   mocks.requireGdprConsent.mockResolvedValue(true)
-  mocks.resolvePatientId.mockResolvedValue(5)
+  mocks.resolvePatientId.mockResolvedValue({ patientId: 5 })
   mocks.getCapability.mockResolvedValue({
     mode: "basalBolus",
     coherent: true,
@@ -76,10 +76,16 @@ describe("GET /api/insulin-therapy/capability", () => {
     expect(mocks.getCapability).not.toHaveBeenCalled()
   })
 
-  it("accès refusé (resolvePatientId null) → 404", async () => {
-    mocks.resolvePatientId.mockResolvedValue(null)
+  it("accès refusé (patientNotFound) → 404", async () => {
+    mocks.resolvePatientId.mockResolvedValue({ error: "patientNotFound" })
     const res = await GET(reqWith("5"))
     expect(res.status).toBe(404)
     expect(mocks.getCapability).not.toHaveBeenCalled()
+  })
+
+  it("patientId invalide → 400", async () => {
+    mocks.resolvePatientId.mockResolvedValue({ error: "invalidPatientId" })
+    const res = await GET(reqWith("abc"))
+    expect(res.status).toBe(400)
   })
 })

@@ -59,3 +59,17 @@ Tranche backend (débloque le front US-2648b) :
 - **`blockedReason: "incoherentConfig"`** : afficher au **DOCTOR** un chemin **« corriger / configurer »** (écriture directe possible hors gate de cohérence), jamais un cul-de-sac « non éditable ». Cas `{canEditDirect:true, editableParameters:[], blockedReason}` — l'UI doit gérer ce trio (testé).
 - **`blockedReason: "modeNotEditable"` + mode `fixedDose`** : message **clinique honnête** (« titration via votre soignant »), pas « non éditable » sec — la population sous doses fixes ne doit pas être silencieusement bloquée sans canal alternatif explicite.
 - **Follow-up epic** : capability **par créneau** (permettre d'éditer uniquement le slot qui répare l'incohérence) — le gating global est acceptable en slice 1.
+
+### US-2648b (en cours) — slice 2a : bandeau capability dans l'onglet Traitements
+- `useInsulinCapability()` (`PatientRecordContext`) : fetch du capability descriptor via le transport **injecté** (id-less, `GET /api/insulin-therapy/capability`).
+- `InsulinEditBanner` + `deriveBannerContent` (pur, testé) : badge de **mode** + messages d'état portant les **AC UI cliniques** — « configuration à revoir » + indice « corriger » si écriture directe, message honnête « doses fixes / titration via soignant », note non-insuliné.
+- Câblé en tête de l'onglet Traitements de `<PatientRecord>` (silencieux hors provider / tant que non chargé).
+- i18n fr/en/ar (`patientDetail`). Tests : 5 (matrice bannière).
+
+**Reste 2648b** : formulaires d'édition/proposition (CTA « Modifier » DOCTOR / « Proposer » NURSE-patient → `POST /api/adjustment-proposals`), transport mutation injecté, `refreshTreatmentMode(tx)`, redirect `/insulin-therapy` role-branché, E2E.
+
+#### Corrections revue slice 2a (PR #647)
+- Route capability rendue **transport-agnostic** (`resolvePatientIdFromQuery`) : le bandeau ne disparaît plus en mode drawer (ADR #21).
+- `useInsulinCapability` keyé sur `fetchAnalytics` (stable) : plus de re-fetch ni d'audit READ superflu à chaque changement de période.
+- A11y : association programmatique libellé↔badge (`aria-label`, WCAG 1.3.1) ; `aria-live` redondant retiré. RTL confirmé géré par `dir=rtl` au niveau `<html>` (pas de flex-reverse).
+- **Différé** : état `error` du bandeau (actuellement silencieux) → note « mode indisponible » (non critique, slice ultérieur).
