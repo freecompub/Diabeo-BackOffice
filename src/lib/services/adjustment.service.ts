@@ -11,6 +11,7 @@ import { auditService } from "./audit.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
+import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
@@ -43,10 +44,6 @@ export type CreateProposalInput = {
  * @param {number} value - Proposed value
  * @returns {boolean} True if value is within bounds
  */
-/** Vrai si `value` est un multiple de `step` (tolérance flottante). */
-const isOnIncrement = (value: number, step: number): boolean =>
-  Math.abs(value / step - Math.round(value / step)) < 1e-9
-
 function validateProposedValue(parameterType: string, value: number): boolean {
   switch (parameterType) {
     case "insulinSensitivityFactor":
@@ -60,7 +57,7 @@ function validateProposedValue(parameterType: string, value: number): boolean {
       return (
         value >= INSULIN_BOUNDS.BASAL_MIN &&
         value <= INSULIN_BOUNDS.BASAL_MAX &&
-        isOnIncrement(value, INSULIN_BOUNDS.PUMP_BASAL_INCREMENT)
+        isDeliverableBasalRate(value)
       )
     // US-2646 — dose fixe (mode « doses simples »). SEUL le plancher de sanité bloque
     // (dose ≤ 0 / < 0,5 U invalide). PAS de plafond bloquant : une basale fixe peut

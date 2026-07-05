@@ -2,7 +2,8 @@
  * @module /api/insulin-therapy/basal-config/pump-slots
  * @description Pump basal slot routes — GET (list), POST (create), DELETE (remove).
  * US-402 — Pump basal slots define hourly basal rates for insulin pump delivery.
- * Rate validated within clinical bounds (BASAL_MIN: 0.05, BASAL_MAX: 10.0 U/h).
+ * Rate validated within clinical bounds (BASAL_MIN: 0.05, BASAL_MAX: 5.0 U/h) and
+ * constrained to a multiple of PUMP_BASAL_INCREMENT (0.05 U/h) — deliverable on the pump.
  * All operations require auth + GDPR consent + audit logging.
  */
 
@@ -12,6 +13,7 @@ import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
+import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -20,7 +22,12 @@ const createSlotSchema = z.object({
   patientId: z.number().int().positive().optional(),
   startTime: z.string().regex(timeRegex, "Format HH:MM required"),
   endTime: z.string().regex(timeRegex, "Format HH:MM required"),
-  rate: z.number().min(INSULIN_BOUNDS.BASAL_MIN).max(INSULIN_BOUNDS.BASAL_MAX),
+  // Débit PROGRAMMABLE (multiple de l'incrément pompe) — cohérent avec le PATCH et la proposition.
+  rate: z
+    .number()
+    .min(INSULIN_BOUNDS.BASAL_MIN)
+    .max(INSULIN_BOUNDS.BASAL_MAX)
+    .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
 }).refine((d) => d.startTime !== d.endTime, {
   message: "startTime and endTime must be different — a zero-duration slot is invalid",
   path: ["endTime"],
@@ -175,6 +182,51 @@ export async function DELETE(req: NextRequest) {
     }
     const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[pump-slots DELETE]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
+  }
+}
+
+const updatePumpSlotSchema = z.object({
+  id: z.string().uuid(),
+  patientId: z.number().int().positive().optional(),
+  // Débit basal PROGRAMMABLE : multiple de PUMP_BASAL_INCREMENT (0,05 U/h), sinon
+  // non délivrable (cohérent avec la proposition, catalogue §6).
+  rate: z
+    .number()
+    .min(INSULIN_BOUNDS.BASAL_MIN)
+    .max(INSULIN_BOUNDS.BASAL_MAX)
+    .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
+})
+
+/** PATCH — édition DIRECTE du débit d'un créneau basal pompe (US-2648b). DOCTOR only ;
+ *  scopé patient ; débit validé multiple de l'incrément pompe. */
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = requireRole(req, "DOCTOR")
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
+    const parsed = updatePumpSlotSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
+    }
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    const ctx = extractRequestContext(req)
+    try {
+      const result = await insulinTherapyService.updatePumpSlot(parsed.data.id, parsed.data.rate, user.id, patientId, ctx)
+      return NextResponse.json(result)
+    } catch (e) {
+      if (e instanceof Error && e.message === "pumpSlotNotFound") {
+        return NextResponse.json({ error: "pumpSlotNotFound" }, { status: 404 })
+      }
+      throw e
+    }
+  } catch (error) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[pump-slots PATCH]", msg)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

@@ -10,7 +10,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
-import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
 
 /** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
@@ -206,6 +206,32 @@ export const insulinTherapyService = {
     })
   },
 
+  /**
+   * US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ISF. `updateMany`
+   * scopé au patient (via `settings.patientId`) → un id d'un autre patient ne matche
+   * pas (`count === 0` → `isfSlotNotFound`, anti-IDOR). Ne modifie QUE la valeur, pas
+   * les heures (donc pas de re-check de chevauchement). Bornes validées à la route.
+   */
+  async updateIsf(id: string, sensitivityFactorGl: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+    return prisma.$transaction(async (tx) => {
+      const res = await tx.insulinSensitivityFactor.updateMany({
+        where: { id, settings: { patientId } },
+        data: { sensitivityFactorGl, sensitivityFactorMgdl: sensitivityFactorGl * 100 },
+      })
+      if (res.count === 0) throw new Error("isfSlotNotFound")
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `isf:${id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId },
+      })
+      return { updated: true }
+    })
+  },
+
   // --- ICR CRUD ---
   async createIcr(
     settingsId: number,
@@ -260,6 +286,28 @@ export const insulinTherapyService = {
     })
   },
 
+  /** US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ICR. Scopé patient
+   *  (via `settings.patientId`, anti-IDOR). Ne modifie que la valeur. Bornes à la route. */
+  async updateIcr(id: string, gramsPerUnit: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+    return prisma.$transaction(async (tx) => {
+      const res = await tx.carbRatio.updateMany({
+        where: { id, settings: { patientId } },
+        data: { gramsPerUnit },
+      })
+      if (res.count === 0) throw new Error("icrSlotNotFound")
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `icr:${id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId },
+      })
+      return { updated: true }
+    })
+  },
+
   // --- Basal Config ---
   async getBasalConfig(settingsId: number) {
     return prisma.basalConfiguration.findUnique({
@@ -305,6 +353,8 @@ export const insulinTherapyService = {
     if (startHour === endHour && input.startTime === input.endTime) {
       throw new Error("startTime and endTime must be different — a zero-duration slot is invalid")
     }
+    // Débit délivrable (multiple de l'incrément pompe) — garde-fő indépendant du Zod route.
+    if (!isDeliverableBasalRate(input.rate)) throw new Error("rateNotDeliverable")
 
     return prisma.$transaction(async (tx) => {
       // B2 fix: overlap detection — prevents double basal delivery (patient safety)
@@ -352,6 +402,34 @@ export const insulinTherapyService = {
         userAgent: ctx?.userAgent,
       })
       return { deleted: true }
+    })
+  },
+
+  /**
+   * US-2648b — Édition DIRECTE (DOCTOR) du débit d'un créneau basal pompe. Scopé patient
+   * (via `basalConfig.settings.patientId`, anti-IDOR → `pumpSlotNotFound` si autre patient).
+   * Le débit doit être PROGRAMMABLE (multiple de `PUMP_BASAL_INCREMENT`) — validé à la route.
+   */
+  async updatePumpSlot(id: string, rate: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+    // Garde-fő service (défense en profondeur, indépendante du Zod route) : un débit non
+    // délivrable (hors incrément pompe) ne doit jamais être persisté, quel que soit l'appelant.
+    if (!isDeliverableBasalRate(rate)) throw new Error("rateNotDeliverable")
+    return prisma.$transaction(async (tx) => {
+      const res = await tx.pumpBasalSlot.updateMany({
+        where: { id, basalConfig: { settings: { patientId } } },
+        data: { rate },
+      })
+      if (res.count === 0) throw new Error("pumpSlotNotFound")
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `pump:${id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId },
+      })
+      return { updated: true }
     })
   },
 

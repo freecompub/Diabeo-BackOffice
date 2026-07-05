@@ -46,6 +46,9 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
     deleteSettings: vi.fn().mockResolvedValue({ deleted: true }),
     createPumpSlot: vi.fn().mockResolvedValue({ id: "slot-1" }),
     deletePumpSlot: vi.fn().mockResolvedValue({ deleted: true }),
+    updateIsf: vi.fn().mockResolvedValue({ updated: true }),
+    updateIcr: vi.fn().mockResolvedValue({ updated: true }),
+    updatePumpSlot: vi.fn().mockResolvedValue({ updated: true }),
   },
   INSULIN_BOUNDS: {
     INSULIN_ACTION_MIN: 2,
@@ -56,6 +59,7 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
     ICR_MAX: 20.0,
     BASAL_MIN: 0.05,
     BASAL_MAX: 10.0,
+    PUMP_BASAL_INCREMENT: 0.05,
   },
 }))
 vi.mock("@/lib/services/audit.service", () => ({
@@ -63,10 +67,13 @@ vi.mock("@/lib/services/audit.service", () => ({
 }))
 
 const { PUT: settingsPut, DELETE: settingsDelete } = await import("@/app/api/insulin-therapy/settings/route")
-const { POST: isfPost } = await import("@/app/api/insulin-therapy/sensitivity-factors/route")
-const { POST: icrPost } = await import("@/app/api/insulin-therapy/carb-ratios/route")
-const { POST: pumpSlotPost, DELETE: pumpSlotDelete } = await import("@/app/api/insulin-therapy/basal-config/pump-slots/route")
+const { POST: isfPost, PATCH: isfPatch } = await import("@/app/api/insulin-therapy/sensitivity-factors/route")
+const { POST: icrPost, PATCH: icrPatch } = await import("@/app/api/insulin-therapy/carb-ratios/route")
+const { POST: pumpSlotPost, DELETE: pumpSlotDelete, PATCH: pumpSlotPatch } = await import(
+  "@/app/api/insulin-therapy/basal-config/pump-slots/route"
+)
 const { POST: bolusPost } = await import("@/app/api/insulin-therapy/calculate-bolus/route")
+const { insulinTherapyService } = await import("@/lib/services/insulin-therapy.service")
 
 function req(url: string, body: unknown, role: string): NextRequest {
   return new NextRequest(new URL(url), {
@@ -82,7 +89,7 @@ function req(url: string, body: unknown, role: string): NextRequest {
 
 function reqMethod(
   url: string,
-  method: "DELETE" | "PUT",
+  method: "DELETE" | "PUT" | "PATCH",
   role: string,
   body?: Record<string, unknown>,
 ): NextRequest {
@@ -220,6 +227,48 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       // Not 403 — the role guard let the request through. 404 acceptable
       // because mock chain doesn't surface a matching slot.
       expect([200, 404]).toContain(res.status)
+    })
+  })
+
+  // ─────────────────────────────────────────────────────────────────────
+  // US-2648b — PATCH (édition DIRECTE d'un créneau) : DOCTOR only, NURSE/VIEWER 403.
+  // ─────────────────────────────────────────────────────────────────────
+  describe("PATCH /api/insulin-therapy/* (édition directe, DOCTOR only)", () => {
+    const uuid = "123e4567-e89b-42d3-a456-426614174000"
+
+    it("ISF PATCH REJECTS NURSE with 403", async () => {
+      const res = await isfPatch(reqMethod("http://localhost/api/insulin-therapy/sensitivity-factors", "PATCH", "NURSE", { id: uuid, sensitivityFactorGl: 0.5 }))
+      expect(res.status).toBe(403)
+    })
+    it("ISF PATCH accepts DOCTOR", async () => {
+      const res = await isfPatch(reqMethod("http://localhost/api/insulin-therapy/sensitivity-factors", "PATCH", "DOCTOR", { id: uuid, sensitivityFactorGl: 0.5 }))
+      expect(res.status).toBe(200)
+    })
+    it("ICR PATCH REJECTS VIEWER with 403", async () => {
+      const res = await icrPatch(reqMethod("http://localhost/api/insulin-therapy/carb-ratios", "PATCH", "VIEWER", { id: uuid, gramsPerUnit: 10 }))
+      expect(res.status).toBe(403)
+    })
+    it("ICR PATCH accepts DOCTOR", async () => {
+      const res = await icrPatch(reqMethod("http://localhost/api/insulin-therapy/carb-ratios", "PATCH", "DOCTOR", { id: uuid, gramsPerUnit: 10 }))
+      expect(res.status).toBe(200)
+    })
+    it("basal PATCH accepts DOCTOR avec débit sur incrément (0.95)", async () => {
+      const res = await pumpSlotPatch(reqMethod("http://localhost/api/insulin-therapy/basal-config/pump-slots", "PATCH", "DOCTOR", { id: uuid, rate: 0.95 }))
+      expect(res.status).toBe(200)
+    })
+    it("basal PATCH rejette un débit hors incrément (0.37) → 400", async () => {
+      const res = await pumpSlotPatch(reqMethod("http://localhost/api/insulin-therapy/basal-config/pump-slots", "PATCH", "DOCTOR", { id: uuid, rate: 0.37 }))
+      expect(res.status).toBe(400)
+    })
+    it("basal PATCH REJECTS NURSE with 403", async () => {
+      const res = await pumpSlotPatch(reqMethod("http://localhost/api/insulin-therapy/basal-config/pump-slots", "PATCH", "NURSE", { id: uuid, rate: 0.95 }))
+      expect(res.status).toBe(403)
+    })
+
+    it("ISF PATCH d'un créneau hors périmètre (updateMany count=0) → 404 (anti-IDOR)", async () => {
+      vi.mocked(insulinTherapyService.updateIsf).mockRejectedValueOnce(new Error("isfSlotNotFound"))
+      const res = await isfPatch(reqMethod("http://localhost/api/insulin-therapy/sensitivity-factors", "PATCH", "DOCTOR", { id: uuid, sensitivityFactorGl: 0.5 }))
+      expect(res.status).toBe(404)
     })
   })
 

@@ -17,7 +17,21 @@ import { readFileSync } from "node:fs"
 import {
   CLINICAL_BOUNDS, CGM_AGGREGATE_RANGE_GL,
   DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS,
+  isDeliverableBasalRate,
 } from "@/lib/clinical-bounds"
+
+describe("isDeliverableBasalRate — multiple de l'incrément pompe (US-2648b)", () => {
+  it("accepte les multiples de 0,05 sur toute la plage (FP-safe)", () => {
+    for (const v of [0.05, 0.15, 0.35, 0.95, 1.15, 2.85, 5.0]) {
+      expect(isDeliverableBasalRate(v)).toBe(true)
+    }
+  })
+  it("rejette les débits hors incrément (non délivrables)", () => {
+    for (const v of [0.037, 0.37, 0.12, 0.051, 0.025]) {
+      expect(isDeliverableBasalRate(v)).toBe(false)
+    }
+  })
+})
 
 describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
   it("matche exactement les valeurs documentées dans CLAUDE.md", () => {
