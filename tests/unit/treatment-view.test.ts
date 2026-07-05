@@ -13,8 +13,8 @@ describe("buildTreatmentView", () => {
     const v = buildTreatmentView(
       {
         deliveryMethod: "pump",
-        sensitivityFactors: [{ startHour: 0, endHour: 6, sensitivityFactorGl: "0.30" }],
-        carbRatios: [{ startHour: 0, endHour: 6, gramsPerUnit: "10.0" }],
+        sensitivityFactors: [{ id: "isf1", startHour: 0, endHour: 6, sensitivityFactorGl: "0.30" }],
+        carbRatios: [{ id: "icr1", startHour: 0, endHour: 6, gramsPerUnit: "10.0" }],
         basalConfiguration: {
           pumpSlots: [{ id: "b1", startTime: "1970-01-01T00:00:00.000Z", endTime: "1970-01-01T06:00:00.000Z", rate: "0.800" }],
         },
@@ -23,8 +23,8 @@ describe("buildTreatmentView", () => {
     )
     expect(v.hasSettings).toBe(true)
     expect(v.deliveryMethod).toBe("pump")
-    expect(v.isfSlots).toEqual([{ range: "00h–06h", value: 0.3, startHour: 0, endHour: 6 }])
-    expect(v.icrSlots).toEqual([{ range: "00h–06h", value: 10, startHour: 0, endHour: 6 }])
+    expect(v.isfSlots).toEqual([{ id: "isf1", range: "00h–06h", value: 0.3, startHour: 0, endHour: 6 }])
+    expect(v.icrSlots).toEqual([{ id: "icr1", range: "00h–06h", value: 10, startHour: 0, endHour: 6 }])
     expect(v.basalSlots).toEqual([{ range: "00:00–06:00", rate: 0.8, pumpBasalSlotId: "b1" }])
     // Un seul créneau 00–06 → trou sur le reste de la journée (garde-fou).
     expect(v.isfCoverage).toEqual({ hasGap: true, hasOverlap: false })
@@ -131,9 +131,9 @@ describe("buildTreatmentView", () => {
       {
         deliveryMethod: "manual",
         sensitivityFactors: [
-          { startHour: 0, endHour: 8, sensitivityFactorGl: "0.30" },
-          { startHour: 8, endHour: 22, sensitivityFactorGl: "0.40" },
-          { startHour: 22, endHour: 24, sensitivityFactorGl: "0.35" },
+          { id: "a", startHour: 0, endHour: 8, sensitivityFactorGl: "0.30" },
+          { id: "b", startHour: 8, endHour: 22, sensitivityFactorGl: "0.40" },
+          { id: "c", startHour: 22, endHour: 24, sensitivityFactorGl: "0.35" },
         ],
         carbRatios: [],
         basalConfiguration: null,

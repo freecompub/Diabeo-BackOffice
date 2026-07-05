@@ -75,7 +75,7 @@ const BASE: ReviewData = {
   treatment: {
     hasSettings: true, deliveryMethod: "pump", bolusInsulin: { name: "Novorapid", genericName: "aspart", dosage: null },
     bolusInconsistent: false, pump: null,
-    isfSlots: [{ range: "00:00–24:00", value: 0.5, startHour: 0, endHour: 24 }], isfCoverage: { hasGap: false, hasOverlap: false },
+    isfSlots: [{ id: "isf1", range: "00:00–24:00", value: 0.5, startHour: 0, endHour: 24 }], isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [], icrCoverage: { hasGap: false, hasOverlap: false },
     basalSlots: [], basalCoverage: { hasGap: false, hasOverlap: false },
     treatments: [],

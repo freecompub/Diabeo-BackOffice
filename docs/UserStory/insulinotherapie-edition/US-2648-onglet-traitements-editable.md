@@ -121,3 +121,13 @@ create/delete → ajout de l'UPDATE by id :
 - **DRY** : helper `isDeliverableBasalRate()` (`clinical-bounds.ts`, source unique) — utilisé par proposition, édition directe (POST **et** PATCH basal) et garde service (`createPumpSlot`/`updatePumpSlot`). Ferme l'asymétrie POST-sans-incrément (B) + le garde-fő service fail-closed (C).
 - **Audit ISF/ICR PATCH** : `ctx` (IP/User-Agent) threadé (A) — traçabilité HDS de la source, aligné sur `updatePumpSlot`.
 - Test IDOR `count===0 → 404` ajouté (D) ; test du helper `isDeliverableBasalRate` ; header `BASAL_MAX` corrigé 10→5 (E).
+
+### US-2648b (en cours) — slice 2e : UI DOCTOR « Modifier » (édition directe)
+Boucle l'édition directe côté fiche (consomme les routes PATCH de la slice 2d).
+- Créneaux ISF/ICR rendus **adressables par id** (`Slot += id`, exposé via `treatment-view`) — le basal utilise `pumpBasalSlotId`.
+- Transport `mutate` généralisé (méthode `POST`/`PATCH`).
+- `insulin-direct-edit.ts` (pur, testé) : `directEditRequest` (endpoint + champ valeur par paramètre) + `mapDirectEditOutcome`. `PARAM_BOUNDS` mutualisé dans `insulin-proposal.ts`.
+- `InsulinDirectEditDialog` : PATCH immédiat + **`router.refresh()`** (re-projette le Server Component) ; bornes/incrément en indice ; a11y alignée sur la proposition (`finalFocus`, régions live stables, `aria-invalid`).
+- SlotList : bouton **selon la capability** — DOCTOR → « Modifier » (direct) ; NURSE/patient → « Proposer ». i18n fr/en/ar. Tests +10.
+
+**Reste 2648b** : redirect `/insulin-therapy` role-branché, transport drawer, E2E.

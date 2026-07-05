@@ -5,10 +5,18 @@
  * Codes renvoyés par `POST /api/adjustment-proposals` (US-2648a). Séparé du composant
  * pour être testable sans i18n ni fetch.
  */
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import type { EditableParameter } from "@/lib/insulin/edit-capability"
 
 /** Paramètres proposables via l'UI : ISF/ICR (créneau horaire) + basal (créneau pompe). */
 export type ProposableParameter = EditableParameter
+
+/** Bornes cliniques par paramètre (source `CLINICAL_BOUNDS`) — partagées proposition/édition. */
+export const PARAM_BOUNDS: Record<ProposableParameter, { min: number; max: number }> = {
+  insulinSensitivityFactor: { min: CLINICAL_BOUNDS.ISF_GL_MIN, max: CLINICAL_BOUNDS.ISF_GL_MAX },
+  insulinToCarbRatio: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
+  basalRate: { min: CLINICAL_BOUNDS.BASAL_MIN, max: CLINICAL_BOUNDS.BASAL_MAX },
+}
 
 /**
  * Cible d'une proposition : créneau HORAIRE (ISF/ICR, adressé par heure) ou créneau

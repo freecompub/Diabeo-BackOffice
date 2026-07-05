@@ -37,6 +37,7 @@ import {
 } from "@/components/diabeo/patient/PatientRecordContext"
 import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
 import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
+import { InsulinDirectEditDialog } from "@/components/diabeo/patient/InsulinDirectEditDialog"
 import type { ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
@@ -196,6 +197,13 @@ export function PatientRecord({
   const recordCtx = usePatientRecordContext()
   // US-2648b — capability d'édition insuline (mode + capacités), pour l'onglet Traitements.
   const insulinCapability = useInsulinCapability()
+  // Config du bouton d'un créneau selon la capability : DOCTOR → « Modifier » (direct) ;
+  // NURSE/patient → « Proposer ». `undefined` si le paramètre n'est pas éditable (fail-closed).
+  const editModeFor = (param: ProposableParameter, paramLabel: string) => {
+    const cap = insulinCapability.capability
+    if (!cap || !cap.editableParameters.includes(param) || !(cap.canEditDirect || cap.canPropose)) return undefined
+    return { parameterType: param, paramLabel, mode: cap.canEditDirect ? ("direct" as const) : ("propose" as const) }
+  }
   const liveStats = usePeriodAnalytics({
     seed: data?.stats ?? null,
     endpoint: "/api/analytics/glycemic-profile",
@@ -684,12 +692,7 @@ export function PatientRecord({
                         slots={data.treatment.isfSlots}
                         coverage={data.treatment.isfCoverage}
                         family="ratio"
-                        propose={
-                          insulinCapability.capability?.canPropose &&
-                          insulinCapability.capability.editableParameters.includes("insulinSensitivityFactor")
-                            ? { parameterType: "insulinSensitivityFactor", paramLabel: t("proposalParamIsf") }
-                            : undefined
-                        }
+                        edit={editModeFor("insulinSensitivityFactor", t("proposalParamIsf"))}
                       />
                     )}
                     {data.treatment.icrSlots.length > 0 && (
@@ -699,12 +702,7 @@ export function PatientRecord({
                         slots={data.treatment.icrSlots}
                         coverage={data.treatment.icrCoverage}
                         family="ratio"
-                        propose={
-                          insulinCapability.capability?.canPropose &&
-                          insulinCapability.capability.editableParameters.includes("insulinToCarbRatio")
-                            ? { parameterType: "insulinToCarbRatio", paramLabel: t("proposalParamIcr") }
-                            : undefined
-                        }
+                        edit={editModeFor("insulinToCarbRatio", t("proposalParamIcr"))}
                       />
                     )}
                     {data.treatment.basalSlots.length > 0 && (
@@ -718,12 +716,7 @@ export function PatientRecord({
                         }))}
                         coverage={data.treatment.basalCoverage}
                         family="basal"
-                        propose={
-                          insulinCapability.capability?.canPropose &&
-                          insulinCapability.capability.editableParameters.includes("basalRate")
-                            ? { parameterType: "basalRate", paramLabel: t("proposalParamBasal") }
-                            : undefined
-                        }
+                        edit={editModeFor("basalRate", t("proposalParamBasal"))}
                       />
                     )}
                   </div>
@@ -821,16 +814,19 @@ function SlotList({
   slots,
   coverage,
   family,
-  propose,
+  edit,
 }: {
   label: ReactNode
   unit: string
-  slots: { range: string; value: number; startHour?: number; endHour?: number; pumpBasalSlotId?: string }[]
+  slots: { id?: string; range: string; value: number; startHour?: number; endHour?: number; pumpBasalSlotId?: string }[]
   coverage?: SlotCoverage
   /** "ratio" = ISF/ICR (trou = config à vérifier) ; "basal" = pompe (24 h requis). */
   family?: "ratio" | "basal"
-  /** US-2648b — si fourni, un bouton « Proposer » par créneau ADRESSABLE (NURSE/patient). */
-  propose?: { parameterType: ProposableParameter; paramLabel: string }
+  /**
+   * US-2648b — si fourni, un bouton par créneau : `mode:"direct"` → « Modifier » (DOCTOR,
+   * PATCH immédiat) ; `mode:"propose"` → « Proposer » (NURSE/patient, validation médecin).
+   */
+  edit?: { parameterType: ProposableParameter; paramLabel: string; mode: "direct" | "propose" }
 }) {
   const t = useTranslations("patientDetail")
   return (
@@ -845,11 +841,24 @@ function SlotList({
                 {s.value} {unit}
               </span>
               {(() => {
-                if (!propose) return null
-                // Cible adressable selon le paramètre : basal → créneau pompe (id) ;
-                // ISF/ICR → créneau horaire. Rien si le discriminateur manque (fail-closed).
+                if (!edit) return null
+                // Id du créneau : ISF/ICR → `id` ; basal → `pumpBasalSlotId`. Fail-closed si absent.
+                const slotId = edit.parameterType === "basalRate" ? s.pumpBasalSlotId : s.id
+
+                if (edit.mode === "direct") {
+                  return slotId ? (
+                    <InsulinDirectEditDialog
+                      parameterType={edit.parameterType}
+                      paramLabel={edit.paramLabel}
+                      slot={{ id: slotId, range: s.range, value: s.value }}
+                      unit={unit}
+                    />
+                  ) : null
+                }
+
+                // Proposition : cible adressable (créneau horaire ISF/ICR ou pompe basal).
                 const target =
-                  propose.parameterType === "basalRate"
+                  edit.parameterType === "basalRate"
                     ? s.pumpBasalSlotId
                       ? ({ kind: "pumpSlot", pumpBasalSlotId: s.pumpBasalSlotId } as const)
                       : null
@@ -858,8 +867,8 @@ function SlotList({
                       : null
                 return target ? (
                   <InsulinProposalDialog
-                    parameterType={propose.parameterType}
-                    paramLabel={propose.paramLabel}
+                    parameterType={edit.parameterType}
+                    paramLabel={edit.paramLabel}
                     slot={{ range: s.range, value: s.value }}
                     target={target}
                     unit={unit}
