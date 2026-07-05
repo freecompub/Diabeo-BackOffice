@@ -1,48 +1,49 @@
 /**
- * PatientInsulinView — vue LECTURE self-service patient de l'insulinothérapie (US-2650).
+ * PatientInsulinView — vue self-service patient de l'insulinothérapie (US-2650).
  *
  * Composant **présentationnel** (`"use client"`) : reçoit un `TreatmentView` déjà résolu
- * et audité côté serveur (page `(patient)/patient/insulin-therapy`). Il ne fetch rien, ne
- * construit aucune URL porteuse d'id (anti-énumération) et n'expose AUCUNE action d'écriture
- * (le patient PROPOSE via une tranche ultérieure ; jamais d'écriture directe — ADR #13).
+ * et audité côté serveur (page `(patient)/patient/insulin-therapy`). Il ne fetch rien et ne
+ * construit aucune URL porteuse d'id (anti-énumération).
  *
- * Mode-aware (US-2647) :
- *  - **basal/bolus & dose fixe** : `hasSettings=true` → créneaux ISF/ICR + schéma basal.
- *  - **non insuliné** : `hasSettings=false` → état vide informatif (AC-4 : aucune posologie).
+ * Deux modes :
+ *  - **lecture seule** (`canPropose=false`, défaut) : consultation uniquement.
+ *  - **proposer** (`canPropose=true`, sous `PatientRecordProvider` avec un `mutate`) : un
+ *    bouton par créneau ouvre `InsulinProposalDialog` → `POST /api/adjustment-proposals`
+ *    (bornes patient + validation médecin — jamais d'écriture directe, ADR #13).
  *
- * Accessibilité : sections `aria-labelledby`, acronymes explicités (`Acronym` ISF/ICR),
- * valeurs en `tabular-nums`. i18n : namespace `patientInsulin` (+ `insulinUnits`).
+ * Mode-aware (US-2647) : `hasSettings=false` (non insuliné) → état vide, aucune posologie (AC-4).
+ * Accessibilité : titres de section en `<h2>`, acronymes explicités (`Acronym`).
  *
  * @param data Vue traitement résolue serveur (`buildTreatmentView`).
+ * @param canPropose Active l'action « proposer » (nécessite un transport `mutate` en contexte).
  */
 "use client"
 
+import type { ReactNode } from "react"
 import { useTranslations } from "next-intl"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
 import type { TreatmentView, Slot, BasalSlot } from "@/components/diabeo/patient/patient-record-views"
 
-/** Une liste de créneaux en lecture seule (range · valeur unité). */
-function SlotRows({
-  slots,
-  unit,
-  emptyLabel,
-}: {
-  slots: { key: string; range: string; value: number }[]
-  unit: string
-  emptyLabel: string
-}) {
-  if (slots.length === 0) {
+type Row = { key: string; range: string; value: number; action?: ReactNode }
+
+/** Une liste de créneaux en lecture (range · valeur unité), avec action optionnelle. */
+function SlotRows({ rows, unit, emptyLabel }: { rows: Row[]; unit: string; emptyLabel: string }) {
+  if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
   }
   return (
     <ul className="space-y-1">
-      {slots.map((s) => (
-        <li key={s.key} className="flex items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
-          <span className="text-muted-foreground">{s.range}</span>
-          <span className="font-medium tabular-nums">
-            {s.value} <span className="text-muted-foreground">{unit}</span>
+      {rows.map((r) => (
+        <li key={r.key} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
+          <span className="text-muted-foreground">{r.range}</span>
+          <span className="flex items-center gap-3">
+            <span className="font-medium tabular-nums">
+              {r.value} <span className="text-muted-foreground">{unit}</span>
+            </span>
+            {r.action}
           </span>
         </li>
       ))}
@@ -50,7 +51,7 @@ function SlotRows({
   )
 }
 
-export function PatientInsulinView({ data }: { data: TreatmentView }) {
+export function PatientInsulinView({ data, canPropose = false }: { data: TreatmentView; canPropose?: boolean }) {
   const t = useTranslations("patientInsulin")
   const tUnits = useTranslations("insulinUnits")
 
@@ -59,9 +60,50 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
     return <DiabeoEmptyState variant="noData" title={t("title")} message={t("noSettings")} />
   }
 
-  const isf = data.isfSlots.map((s: Slot) => ({ key: s.id, range: s.range, value: s.value }))
-  const icr = data.icrSlots.map((s: Slot) => ({ key: s.id, range: s.range, value: s.value }))
-  const basal = data.basalSlots.map((s: BasalSlot) => ({ key: s.pumpBasalSlotId, range: s.range, value: s.rate }))
+  const isfRows: Row[] = data.isfSlots.map((s: Slot) => ({
+    key: s.id,
+    range: s.range,
+    value: s.value,
+    action: canPropose ? (
+      <InsulinProposalDialog
+        parameterType="insulinSensitivityFactor"
+        paramLabel={t("isfTitle")}
+        slot={{ range: s.range, value: s.value }}
+        target={{ kind: "timeSlot", startHour: s.startHour, endHour: s.endHour }}
+        unit={tUnits("isfGl")}
+      />
+    ) : undefined,
+  }))
+
+  const icrRows: Row[] = data.icrSlots.map((s: Slot) => ({
+    key: s.id,
+    range: s.range,
+    value: s.value,
+    action: canPropose ? (
+      <InsulinProposalDialog
+        parameterType="insulinToCarbRatio"
+        paramLabel={t("icrTitle")}
+        slot={{ range: s.range, value: s.value }}
+        target={{ kind: "timeSlot", startHour: s.startHour, endHour: s.endHour }}
+        unit={tUnits("icr")}
+      />
+    ) : undefined,
+  }))
+
+  const basalRows: Row[] = data.basalSlots.map((s: BasalSlot) => ({
+    key: s.pumpBasalSlotId,
+    range: s.range,
+    value: s.rate,
+    action: canPropose ? (
+      <InsulinProposalDialog
+        parameterType="basalRate"
+        paramLabel={t("basalTitle")}
+        slot={{ range: s.range, value: s.rate }}
+        target={{ kind: "pumpSlot", pumpBasalSlotId: s.pumpBasalSlotId }}
+        unit={tUnits("basal")}
+      />
+    ) : undefined,
+  }))
 
   return (
     <div className="space-y-4">
@@ -84,7 +126,7 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
           </h2>
         </CardHeader>
         <CardContent>
-          <SlotRows slots={isf} unit={tUnits("isfGl")} emptyLabel={t("noSlots")} />
+          <SlotRows rows={isfRows} unit={tUnits("isfGl")} emptyLabel={t("noSlots")} />
         </CardContent>
       </Card>
 
@@ -95,7 +137,7 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
           </h2>
         </CardHeader>
         <CardContent>
-          <SlotRows slots={icr} unit={tUnits("icr")} emptyLabel={t("noSlots")} />
+          <SlotRows rows={icrRows} unit={tUnits("icr")} emptyLabel={t("noSlots")} />
         </CardContent>
       </Card>
 
@@ -104,11 +146,11 @@ export function PatientInsulinView({ data }: { data: TreatmentView }) {
           <h2 className="text-base font-semibold">{t("basalTitle")}</h2>
         </CardHeader>
         <CardContent>
-          <SlotRows slots={basal} unit={tUnits("basal")} emptyLabel={t("noSlots")} />
+          <SlotRows rows={basalRows} unit={tUnits("basal")} emptyLabel={t("noSlots")} />
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground">{t("readonlyHint")}</p>
+      <p className="text-xs text-muted-foreground">{canPropose ? t("proposeHint") : t("readonlyHint")}</p>
     </div>
   )
 }

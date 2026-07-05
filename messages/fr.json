@@ -1594,6 +1594,7 @@
     "proposalErrorOutOfBounds": "Valeur hors des bornes cliniques autorisées.",
     "proposalErrorDecreaseForbidden": "Une baisse ne peut pas être proposée ici ; signalez-la à votre soignant (ou déclarez une hypoglycémie).",
     "proposalErrorDeltaTooLarge": "Variation trop importante pour une proposition.",
+    "proposalErrorCooldown": "Vous avez déjà proposé une modification de ce réglage récemment. Réessayez plus tard ; pour une demande urgente, contactez votre soignant via la messagerie.",
     "proposalErrorValidation": "Valeur invalide.",
     "proposalErrorConsent": "Consentement requis.",
     "proposalErrorGeneric": "Échec de l'envoi. Réessayez.",
@@ -1771,7 +1772,8 @@
     "icrTitle": "Ratio insuline/glucides",
     "basalTitle": "Schéma basal (pompe)",
     "noSlots": "Aucun créneau configuré.",
-    "readonlyHint": "Ces réglages sont en lecture seule. Une proposition de modification passe par la validation de votre soignant."
+    "readonlyHint": "Ces réglages sont en lecture seule. Une proposition de modification passe par la validation de votre soignant.",
+    "proposeHint": "Vous pouvez proposer une modification d'un réglage. Elle sera validée par votre soignant avant toute application."
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

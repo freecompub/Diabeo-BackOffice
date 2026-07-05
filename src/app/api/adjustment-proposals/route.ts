@@ -65,6 +65,7 @@ const ERROR_STATUS: Record<string, number> = {
   fixedDoseNotWired: 400,
   currentValueNotFound: 404,
   duplicatePendingProposal: 409,
+  patientProposalCooldown: 429, // US-2650 — cooldown anti-churn (proposition patient trop rapprochée)
 }
 
 /**

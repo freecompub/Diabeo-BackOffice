@@ -144,3 +144,19 @@ acceptée entre-temps), appliquer la valeur absolue **sur-corrige** (ex. base de
   **bloquée** (bouton désactivé) + alerte rouge (`role="alert"`) ; les badges %variation/risque
   (anchés au snapshot) sont **masqués** (mental model faux). Le médecin doit régénérer une
   proposition sur la vraie base. Source : `src/lib/services/adjustment.service.ts`.
+
+### `PATIENT_PROPOSAL_COOLDOWN_HOURS` — cooldown anti-churn des propositions patient (US-2650)
+
+| Constante | Valeur | Sens clinique | Source |
+|---|---|---|---|
+| `PATIENT_PROPOSAL_COOLDOWN_HOURS` | **24 h** | Délai minimal entre deux propositions **PATIENT** sur le **même (paramètre × créneau)**. Borne la **fréquence** là où `PATIENT_MAX_CHANGE_PERCENT` (10 %) borne l'**amplitude** → plafonne le %/créneau/jour (anti-ratchet). 24 h = unité de décision d'une titration (l'effet d'un changement ISF/ICR/basal n'est pas jugeable en < 24 h). | `src/lib/clinical-bounds.ts` |
+
+- **Décompte** : depuis la **résolution** de la dernière proposition (`reviewedAt`, sinon `createdAt`), **tous statuts** confondus (y compris `accepted`).
+- **Périmètre** : **PATIENT uniquement** (médecin/infirmier non gatés — ils gèrent la titration).
+- **Garde** : niveau **service** (`adjustmentService.createProposal`), pas d'index DB (course à faible enjeu ; tout reste gaté médecin, ADR #13). Erreur `patientProposalCooldown` → HTTP **429** ; l'UI oriente vers la messagerie pour l'urgent (canal proposition = non urgent).
+- **Sécurité clinique** : ne bloque **aucun soin urgent** (jamais auto-appliqué ; le médecin peut toujours proposer/appliquer pendant le cooldown du patient ; les autres créneaux restent proposables).
+
+> **Suivi (dormant)** — Ancrage `expired` : une proposition `expired` n'a pas de `reviewedAt`, le
+> cooldown retombe alors sur `createdAt`. Sans impact aujourd'hui (aucun code ne fait passer une
+> `AdjustmentProposal` à `expired` — seul `emergency.service` écrit ce statut). À l'implémentation
+> d'un **job d'expiration** des propositions : écrire un timestamp d'expiration et y ancrer le cooldown.

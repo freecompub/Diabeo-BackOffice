@@ -149,6 +149,41 @@ describe("createProposal — bornes, overflow, garde-fous patient", () => {
   it("NURSE : variation > 10 % autorisée (cap patient non applicable)", async () => {
     await expect(adjustmentService.createProposal(isf(0.6), nurse)).resolves.toMatchObject({ id: "p1" })
   })
+
+  // US-2650 — cooldown anti-churn (24 h, PATIENT uniquement).
+  it("PATIENT : re-proposition du même créneau < 24 h après résolution → patientProposalCooldown", async () => {
+    // 1er findFirst = requête cooldown → dernière proposition résolue à l'instant.
+    mocks.adjFindFirst.mockResolvedValue({ reviewedAt: new Date(), createdAt: new Date() })
+    await expect(adjustmentService.createProposal(isf(0.52), patient)).rejects.toThrow("patientProposalCooldown")
+  })
+
+  it("PATIENT : dernière proposition résolue > 24 h → autorisée", async () => {
+    const old = new Date(Date.now() - 25 * 3_600_000)
+    mocks.adjFindFirst
+      .mockResolvedValueOnce({ reviewedAt: old, createdAt: old }) // cooldown : expiré
+      .mockResolvedValueOnce(null) // anti-spam : pas de pending
+    await expect(adjustmentService.createProposal(isf(0.52), patient)).resolves.toMatchObject({ id: "p1" })
+  })
+
+  it("NURSE : jamais gaté par le cooldown (aucune requête cooldown émise)", async () => {
+    mocks.adjFindFirst.mockResolvedValue(null)
+    await expect(adjustmentService.createProposal(isf(0.52), nurse)).resolves.toMatchObject({ id: "p1" })
+    // Preuve du gate de rôle : la requête cooldown (`status != pending`) n'est JAMAIS émise
+    // pour un nurse (seule l'anti-spam `status: "pending"` l'est).
+    const cooldownQueries = mocks.adjFindFirst.mock.calls.filter(
+      (call) => JSON.stringify(call[0]?.where?.status) === JSON.stringify({ not: "pending" }),
+    )
+    expect(cooldownQueries).toHaveLength(0)
+  })
+
+  it("PATIENT : la requête cooldown (status != pending) EST émise", async () => {
+    mocks.adjFindFirst.mockResolvedValue(null) // ni cooldown ni pending → passe
+    await adjustmentService.createProposal(isf(0.52), patient)
+    const cooldownQueries = mocks.adjFindFirst.mock.calls.filter(
+      (call) => JSON.stringify(call[0]?.where?.status) === JSON.stringify({ not: "pending" }),
+    )
+    expect(cooldownQueries).toHaveLength(1)
+  })
 })
 
 describe("createProposal — fixedDose non câblé & anti-spam", () => {

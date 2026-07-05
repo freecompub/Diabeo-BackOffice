@@ -25,6 +25,7 @@ vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({
 }))
 
 import { PatientInsulinView } from "@/components/diabeo/patient/PatientInsulinView"
+import { PatientRecordProvider } from "@/components/diabeo/patient/PatientRecordContext"
 
 const BASE: TreatmentView = {
   hasSettings: true,
@@ -59,6 +60,22 @@ describe("PatientInsulinView", () => {
     render(<PatientInsulinView data={{ ...BASE, bolusInsulin: null }} />)
     expect(screen.queryByText("Novorapid")).toBeNull()
     expect(screen.getByText("0.5")).toBeTruthy() // les créneaux restent affichés
+  })
+
+  it("canPropose (transport mutate présent) : un bouton « proposer » par créneau", () => {
+    render(
+      <PatientRecordProvider fetchAnalytics={vi.fn()} mutate={vi.fn()}>
+        <PatientInsulinView data={BASE} canPropose />
+      </PatientRecordProvider>,
+    )
+    // 1 créneau ISF + 1 ICR + 1 basal → au moins 3 déclencheurs de proposition.
+    expect(screen.getAllByRole("button").length).toBeGreaterThanOrEqual(3)
+  })
+
+  it("canPropose SANS transport mutate (lecture seule) : aucun bouton (fail-closed)", () => {
+    // Pas de PatientRecordProvider → InsulinProposalDialog se masque (fail-closed).
+    render(<PatientInsulinView data={BASE} canPropose />)
+    expect(screen.queryByRole("button")).toBeNull()
   })
 
   it("non insuliné (hasSettings=false) : état vide, aucune posologie affichée (AC-4)", () => {
