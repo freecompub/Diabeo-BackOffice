@@ -225,29 +225,35 @@ describe("createProposal — dérivation ICR/basal & normalisation créneau", ()
 })
 
 describe("createProposal — notification du médecin référent (US-2649b)", () => {
-  it("NURSE : push au référent (sans PHi/dose), type proposal_review", async () => {
+  // Notif en fire-and-forget → assertion après drain des microtasks.
+  const tick = () => new Promise((r) => setTimeout(r, 0))
+
+  it("NURSE : push au référent, type proposal_review, AUCUNE dose dans tout le payload", async () => {
     await adjustmentService.createProposal(isf(0.52), nurse)
-    expect(mocks.sendToUser).toHaveBeenCalledTimes(1)
+    await vi.waitFor(() => expect(mocks.sendToUser).toHaveBeenCalledTimes(1))
     const arg = mocks.sendToUser.mock.calls[0]![0]
     expect(arg).toMatchObject({ userId: 99, data: { type: "proposal_review", proposalId: "p1" } })
-    // pas de valeur de dose dans le message
-    expect(`${arg.title} ${arg.body}`).not.toContain("0.52")
+    // Payload COMPLET (title/body/data) sans valeur de dose (0.52) ni currentValue (0.5).
+    expect(JSON.stringify(arg)).not.toContain("0.52")
+    expect(JSON.stringify(arg.data)).not.toContain("0.5")
   })
 
   it("ne se notifie pas soi-même (proposeur = référent)", async () => {
-    // Référent userId 99 ; un DOCTOR proposeur userId 99 → pas de push.
     await adjustmentService.createProposal(isf(0.52), { userId: 99, role: "doctor" })
+    await tick()
     expect(mocks.sendToUser).not.toHaveBeenCalled()
   })
 
   it("pas de référent → pas de push, création OK", async () => {
     mocks.referentFindFirst.mockResolvedValue(null)
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).resolves.toMatchObject({ id: "p1" })
+    await tick()
     expect(mocks.sendToUser).not.toHaveBeenCalled()
   })
 
   it("best-effort : un échec push ne casse pas la création", async () => {
     mocks.sendToUser.mockRejectedValue(new Error("fcm down"))
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).resolves.toMatchObject({ id: "p1" })
+    await tick()
   })
 })

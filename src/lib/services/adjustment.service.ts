@@ -390,9 +390,13 @@ export const adjustmentService = {
         return proposal
       })
 
-      // US-2649b — notifier le médecin RÉFÉRENT qu'une proposition est à revoir. Best-effort
-      // et HORS transaction : un échec push ne doit jamais annuler la création (déjà commitée).
-      await notifyReviewers(patientId, created, ctx).catch(() => {})
+      // US-2649b — notifier le médecin RÉFÉRENT qu'une proposition est à revoir.
+      // FIRE-AND-FORGET : hors transaction ET hors chemin de réponse (le serveur est
+      // persistant, le `.catch` s'exécute) — la 201 ne dépend pas de FCM (retries jusqu'à
+      // ~3 s si dégradé). L'échec (y compris la résolution du référent) est LOGUÉ, pas avalé.
+      void notifyReviewers(patientId, created, ctx).catch((err) =>
+        logger.error("adjustment", "notifyReviewers failed", { patientId }, err),
+      )
 
       return created
     } catch (e) {
