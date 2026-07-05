@@ -11,6 +11,7 @@ const { mocks } = vi.hoisted(() => ({
     requireGdprConsent: vi.fn(),
     resolvePatientId: vi.fn(),
     getCapability: vi.fn(),
+    auditLog: vi.fn(),
   },
 }))
 vi.mock("@/lib/auth", () => {
@@ -23,6 +24,10 @@ vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: mocks.requireGdprConsent }))
 vi.mock("@/lib/access-control", () => ({ resolvePatientId: mocks.resolvePatientId }))
 vi.mock("@/lib/services/treatment-mode.service", () => ({
   treatmentModeService: { getInsulinEditCapability: mocks.getCapability },
+}))
+vi.mock("@/lib/services/audit.service", () => ({
+  auditService: { log: mocks.auditLog },
+  extractRequestContext: () => ({ ipAddress: "1.1.1.1", userAgent: "test", requestId: "r1" }),
 }))
 
 import { GET } from "@/app/api/insulin-therapy/capability/route"
@@ -45,12 +50,23 @@ beforeEach(() => {
 })
 
 describe("GET /api/insulin-therapy/capability", () => {
-  it("200 : renvoie le capability avec le rôle de session", async () => {
+  it("200 : renvoie le capability avec le rôle de session + audit READ", async () => {
     const res = await GET(reqWith("5"))
     expect(res.status).toBe(200)
     const json = await res.json()
     expect(json).toMatchObject({ mode: "basalBolus", canPropose: true })
     expect(mocks.getCapability).toHaveBeenCalledWith("NURSE", 5)
+    // lecture d'une donnée de santé (mode) → auditée, pivot patientId, sans PHI en clair.
+    expect(mocks.auditLog).toHaveBeenCalledWith(
+      expect.objectContaining({ action: "READ", resource: "INSULIN_THERAPY", resourceId: "5", metadata: { patientId: 5, view: "capability" } }),
+    )
+  })
+
+  it("patientNotFound levé par le service (TOCTOU) → 404, pas d'audit", async () => {
+    mocks.getCapability.mockRejectedValue(new Error("patientNotFound"))
+    const res = await GET(reqWith("5"))
+    expect(res.status).toBe(404)
+    expect(mocks.auditLog).not.toHaveBeenCalled()
   })
 
   it("consentement RGPD absent → 403", async () => {

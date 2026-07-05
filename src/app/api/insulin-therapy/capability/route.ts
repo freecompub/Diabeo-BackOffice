@@ -3,6 +3,7 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 /**
  * GET /api/insulin-therapy/capability?patientId= — **capability descriptor** d'édition
@@ -27,6 +28,21 @@ export async function GET(req: NextRequest) {
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     const capability = await treatmentModeService.getInsulinEditCapability(user.role, patientId)
+
+    // Audit READ — la résolution du mode révèle une donnée de santé (patient sous
+    // insuline ou non). Cohérent avec getSettings ; pivot patientId (US-2268/ADR #18).
+    const ctx = extractRequestContext(req)
+    await auditService.log({
+      userId: user.id,
+      action: "READ",
+      resource: "INSULIN_THERAPY",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      metadata: { patientId, view: "capability" },
+    })
+
     return NextResponse.json(capability)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

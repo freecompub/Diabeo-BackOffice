@@ -69,6 +69,15 @@ describe("deriveEditCapability — paramètres éditables par mode (fail-closed)
     expect(c.blockedReason).toBe("modeNotEditable")
   })
 
+  it("DOCTOR + basalBolus INcohérent : trio { canEditDirect:true, editableParameters:[], incoherentConfig }", () => {
+    // Cas à surveiller côté UI (revue clinique) : écriture directe autorisée (réparation
+    // possible via routes DOCTOR) MAIS éditeur guidé masqué → l'UI doit router vers « corriger ».
+    const c = deriveEditCapability("DOCTOR" as Role, basalBolusKo)
+    expect(c.canEditDirect).toBe(true)
+    expect(c.editableParameters).toEqual([])
+    expect(c.blockedReason).toBe("incoherentConfig")
+  })
+
   it("les capacités de rôle sont indépendantes du mode", () => {
     // NURSE garde canPropose même sur un mode non éditable (mais editableParameters vide).
     const c = deriveEditCapability("NURSE" as Role, none)

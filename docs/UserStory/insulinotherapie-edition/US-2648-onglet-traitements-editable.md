@@ -54,3 +54,8 @@ Tranche backend (débloque le front US-2648b) :
 - Tests : 12 (matrice rôle×mode + route). Catalogue §6 mis à jour.
 
 **Reste 2648b** : onglet Traitements éditable dans `<PatientRecord>` (formulaires ISF/ICR/basal, transport `mutate` injecté, `variant=page`), branchement direct-write (DOCTOR) vs proposition (NURSE/patient), redirect `/insulin-therapy` role-branché, `refreshTreatmentMode(tx)` writer, E2E.
+
+#### AC UI du slice React (issus de la revue clinique PR #645)
+- **`blockedReason: "incoherentConfig"`** : afficher au **DOCTOR** un chemin **« corriger / configurer »** (écriture directe possible hors gate de cohérence), jamais un cul-de-sac « non éditable ». Cas `{canEditDirect:true, editableParameters:[], blockedReason}` — l'UI doit gérer ce trio (testé).
+- **`blockedReason: "modeNotEditable"` + mode `fixedDose`** : message **clinique honnête** (« titration via votre soignant »), pas « non éditable » sec — la population sous doses fixes ne doit pas être silencieusement bloquée sans canal alternatif explicite.
+- **Follow-up epic** : capability **par créneau** (permettre d'éditer uniquement le slot qui répare l'incohérence) — le gating global est acceptable en slice 1.
