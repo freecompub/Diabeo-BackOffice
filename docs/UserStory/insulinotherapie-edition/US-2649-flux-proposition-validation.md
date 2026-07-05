@@ -82,3 +82,9 @@ Enrichit `/adjustment-proposals` (file de revue) avec des findings différés :
 ##### Corrections revue slice 2 (PR #653)
 - **Garde fail-closed uniformisé** sur les **3 paramètres** à l'accept : helper `assertRowApplied(count, code)` → ISF/ICR (comme le basal) lèvent `isfSlotNotFound`/`icrSlotNotFound` si le créneau a disparu/bougé entre proposition et accept → **plus de « accepté + appliqué » fantôme** (le rollback annule le statut). Ferme le finding HDS de cohérence (pré-existant, rendu visible par contraste).
 - Tests : +1 (ISF phantom-accept).
+
+#### US-2649b slice 3 : notification du médecin référent à la création
+- `createProposal` notifie le **médecin référent** du patient (push FCM) qu'une proposition est à revoir. **Best-effort et HORS transaction** : un échec push n'annule jamais la création (déjà commitée). Ne se notifie pas soi-même (référent qui propose). **Aucun PHI/dose** dans le message ; `data.type = proposal_review`. Symétrique à `notifyPatient` (accept/reject).
+- Tests : +4 (push référent, no-self-notify, pas de référent, best-effort sur échec push).
+
+**Reste US-2649b** : confiance basée sur `source` (UI) ; valeur LIVE affichée à l'accept.

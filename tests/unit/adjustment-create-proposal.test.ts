@@ -19,6 +19,8 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     basalFindFirst: vi.fn(),
     create: vi.fn((args: { data: Record<string, unknown> }) => ({ id: "p1", ...args.data })),
     logWithTx: vi.fn(),
+    referentFindFirst: vi.fn(),
+    sendToUser: vi.fn(),
   }
   return {
     mocks: m,
@@ -27,6 +29,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
       insulinSensitivityFactor: { findFirst: m.isfFindFirst },
       carbRatio: { findFirst: m.icrFindFirst },
       pumpBasalSlot: { findFirst: m.basalFindFirst },
+      patientReferent: { findFirst: m.referentFindFirst },
       $transaction: async (fn: (tx: unknown) => unknown) =>
         fn({ adjustmentProposal: { create: m.create } }),
     },
@@ -34,7 +37,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
 })
 vi.mock("@/lib/db/client", () => ({ prisma: prismaMock }))
 vi.mock("@/lib/services/audit.service", () => ({ auditService: { logWithTx: mocks.logWithTx } }))
-vi.mock("@/lib/services/fcm.service", () => ({ fcmService: {} }))
+vi.mock("@/lib/services/fcm.service", () => ({ fcmService: { sendToUser: mocks.sendToUser } }))
 vi.mock("@/lib/crypto/fields", () => ({
   encryptField: (s: string) => `enc(${s})`,
   safeDecryptField: (s: string) => s,
@@ -65,6 +68,8 @@ beforeEach(() => {
   mocks.adjFindFirst.mockResolvedValue(null) // pas de doublon
   mocks.isfFindFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 }) // valeur courante de confiance
   mocks.basalFindFirst.mockResolvedValue({ rate: 1.0 })
+  mocks.referentFindFirst.mockResolvedValue({ pro: { userId: 99 } }) // médecin référent
+  mocks.sendToUser.mockResolvedValue({ sent: 1 })
 })
 
 describe("createProposal — provenance & currentValue serveur", () => {
@@ -216,5 +221,33 @@ describe("createProposal — dérivation ICR/basal & normalisation créneau", ()
     const data = mocks.create.mock.calls[0]![0].data
     expect(data.pumpBasalSlotId).toBeNull()
     expect(data.timeSlotStartHour).toBe(8)
+  })
+})
+
+describe("createProposal — notification du médecin référent (US-2649b)", () => {
+  it("NURSE : push au référent (sans PHi/dose), type proposal_review", async () => {
+    await adjustmentService.createProposal(isf(0.52), nurse)
+    expect(mocks.sendToUser).toHaveBeenCalledTimes(1)
+    const arg = mocks.sendToUser.mock.calls[0]![0]
+    expect(arg).toMatchObject({ userId: 99, data: { type: "proposal_review", proposalId: "p1" } })
+    // pas de valeur de dose dans le message
+    expect(`${arg.title} ${arg.body}`).not.toContain("0.52")
+  })
+
+  it("ne se notifie pas soi-même (proposeur = référent)", async () => {
+    // Référent userId 99 ; un DOCTOR proposeur userId 99 → pas de push.
+    await adjustmentService.createProposal(isf(0.52), { userId: 99, role: "doctor" })
+    expect(mocks.sendToUser).not.toHaveBeenCalled()
+  })
+
+  it("pas de référent → pas de push, création OK", async () => {
+    mocks.referentFindFirst.mockResolvedValue(null)
+    await expect(adjustmentService.createProposal(isf(0.52), nurse)).resolves.toMatchObject({ id: "p1" })
+    expect(mocks.sendToUser).not.toHaveBeenCalled()
+  })
+
+  it("best-effort : un échec push ne casse pas la création", async () => {
+    mocks.sendToUser.mockRejectedValue(new Error("fcm down"))
+    await expect(adjustmentService.createProposal(isf(0.52), nurse)).resolves.toMatchObject({ id: "p1" })
   })
 })

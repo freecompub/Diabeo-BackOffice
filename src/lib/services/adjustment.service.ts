@@ -162,6 +162,41 @@ function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposal
  * Adjustment proposal service — CRUD and review workflow.
  * @namespace adjustmentService
  */
+/**
+ * US-2649b — Notifie le médecin RÉFÉRENT du patient qu'une proposition d'ajustement est à
+ * revoir (push FCM). Best-effort et hors transaction (jamais bloquant pour la création). Ne
+ * se notifie pas soi-même (un référent qui propose). Aucun PHI/valeur de dose dans le message.
+ */
+async function notifyReviewers(
+  patientId: number,
+  proposal: { id: string; proposedByUserId: number | null },
+  ctx?: AuditContext,
+): Promise<{ notified: boolean }> {
+  const ref = await prisma.patientReferent.findFirst({
+    where: { patientId, patient: { deletedAt: null } },
+    select: { pro: { select: { userId: true } } },
+  })
+  const reviewerUserId = ref?.pro?.userId
+  if (!reviewerUserId || reviewerUserId === proposal.proposedByUserId) return { notified: false }
+
+  try {
+    const result = await fcmService.sendToUser(
+      {
+        userId: reviewerUserId,
+        senderId: proposal.proposedByUserId ?? reviewerUserId,
+        title: "Nouvelle proposition d'ajustement",
+        body: "Une proposition d'ajustement de traitement est en attente de votre validation.",
+        data: { type: "proposal_review", proposalId: proposal.id },
+      },
+      ctx,
+    )
+    return { notified: result.sent > 0 }
+  } catch (err) {
+    logger.error("adjustment", "Reviewer push notification failed", { patientId }, err)
+    return { notified: false }
+  }
+}
+
 export const adjustmentService = {
   /**
    * List adjustment proposals for a patient with optional filters.
@@ -322,7 +357,7 @@ export const adjustmentService = {
     //    rôle de SESSION (jamais du body ; rejeter ADMIN/VIEWER) ; (4) politique `proposerComment`
     //    (le renvoyer/pas dans le DTO — c'est du ciphertext, à ne pas exposer au client).
     try {
-      return await prisma.$transaction(async (tx) => {
+      const created = await prisma.$transaction(async (tx) => {
         const proposal = await tx.adjustmentProposal.create({
           data: {
             patientId,
@@ -354,6 +389,12 @@ export const adjustmentService = {
 
         return proposal
       })
+
+      // US-2649b — notifier le médecin RÉFÉRENT qu'une proposition est à revoir. Best-effort
+      // et HORS transaction : un échec push ne doit jamais annuler la création (déjà commitée).
+      await notifyReviewers(patientId, created, ctx).catch(() => {})
+
+      return created
     } catch (e) {
       // Course TOCTOU rattrapée par l'index partiel `adjustment_proposals_one_pending_per_slot`.
       // On ne re-mappe QUE cette contrainte-là (pas n'importe quel P2002) pour ne pas masquer
