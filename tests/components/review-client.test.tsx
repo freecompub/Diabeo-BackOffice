@@ -82,7 +82,7 @@ const BASE: ReviewData = {
   },
   proposals: [
     {
-      id: "p1", parameterType: "basalRate", currentValue: 1.0, proposedValue: 1.2,
+      id: "p1", parameterType: "basalRate", source: "patient", currentValue: 1.0, proposedValue: 1.2,
       changePercent: 20, reason: "trend", confidence: "high",
       timeSlotStartHour: null, timeSlotEndHour: null, createdAt: "2026-06-15T00:00:00.000Z",
     },
@@ -99,6 +99,13 @@ describe("ReviewClient", () => {
     expect(screen.getByText("Jean Test")).toBeTruthy()
     // Glycémie moyenne serveur affichée telle quelle.
     expect(screen.getAllByTestId("stat").some((n) => n.textContent?.includes("142"))).toBe(true)
+  })
+
+  it("affiche les badges provenance et direction de risque (US-2649b)", () => {
+    render(<ReviewClient data={BASE} />)
+    // source=patient → « Demande patient » ; basal 1.0→1.2 (plus d'insuline) → « Risque hypo ».
+    expect(screen.getByText("Demande patient")).toBeTruthy()
+    expect(screen.getByText("Risque hypo")).toBeTruthy()
   })
 
   it("médecin : accepter une proposition appelle la route et la retire de la liste", async () => {
