@@ -84,8 +84,11 @@ export function InsulinDirectEditDialog({
       const jb: { error?: string } = await res.json().catch(() => ({}))
       const outcome = mapDirectEditOutcome(res.status, jb.error)
       if (outcome.kind === "success") {
+        setValue("") // vide le champ (parité proposition) → pas de re-PATCH de valeur périmée
         setFeedback({ kind: "success", text: t("directEditSuccess") })
-        router.refresh() // re-projette la fiche pour refléter la valeur appliquée
+        // Différé d'un microtask : laisse la région live annoncer le succès dans ce cycle de
+        // rendu AVANT que le refresh re-projette la fiche (évite de couper l'annonce SR, WCAG 4.1.3).
+        void Promise.resolve().then(() => router.refresh())
       } else {
         setFeedback({ kind: "error", text: t(outcome.messageKey) })
       }
