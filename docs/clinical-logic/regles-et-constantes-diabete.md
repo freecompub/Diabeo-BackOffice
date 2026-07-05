@@ -128,3 +128,19 @@ Source : `adjustmentService.createProposal` (`src/lib/services/adjustment.servic
 *Réviser ce document à chaque ajout/modification de constante, intervalle, seuil ou règle
 métier diabète (obligation `CLAUDE.md`). Source de vérité = code ; valeurs verrouillées par
 `tests/unit/clinical-bounds.test.ts`.*
+
+### Invariant `baselineMoved` — compare-and-swap à l'acceptation (US-2649b)
+
+Une proposition stocke `proposedValue` en valeur **absolue**, calculée sur `currentValue`
+(snapshot de la base au moment de la création). À l'`accept()` avec `applyImmediately`, si la
+valeur **courante réelle** du créneau diffère du snapshot (édition médecin, autre proposition
+acceptée entre-temps), appliquer la valeur absolue **sur-corrige** (ex. base descendue à
+0,7 U/h pour une hypo, proposition absolue 1,2 → +71 % en direction hypo).
+
+- **Garde-fou** : `adjustmentService.accept` re-lit la base live (`liveCurrentValue`) et lève
+  **`baselineMoved`** (fail-closed, rollback) si `live ≠ snapshot` → HTTP **409**. Le créneau
+  disparu (`live === null`) est laissé aux gardes d'apply (`…SlotNotFound`).
+- **UI de revue** (`ReviewClient`) : si `live ≠ snapshot` ou `live === null`, l'acceptation est
+  **bloquée** (bouton désactivé) + alerte rouge (`role="alert"`) ; les badges %variation/risque
+  (anchés au snapshot) sont **masqués** (mental model faux). Le médecin doit régénérer une
+  proposition sur la vraie base. Source : `src/lib/services/adjustment.service.ts`.

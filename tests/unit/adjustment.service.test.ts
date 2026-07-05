@@ -76,6 +76,29 @@ describe("adjustmentService", () => {
       expect(mockTx.insulinSensitivityFactor.updateMany).toHaveBeenCalled()
     })
 
+    // US-2649b — compare-and-swap : la base a bougé depuis la proposition → refuser (fail-closed).
+    it("throws 'baselineMoved' and applies nothing when the live slot moved since the proposal", async () => {
+      // Valeur LIVE (0.99) ≠ snapshot currentValue (0.5) → sur-correction refusée.
+      prismaMock.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.99 } as never)
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor",
+            proposedValue: 0.55, currentValue: 0.5, timeSlotStartHour: 8,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("baselineMoved")
+      // Rollback → le paramètre n'est JAMAIS écrit sur une base déplacée.
+      expect(mockTx.insulinSensitivityFactor.updateMany).not.toHaveBeenCalled()
+    })
+
     it("throws for non-pending proposal", async () => {
       const mockTx = {
         adjustmentProposal: {

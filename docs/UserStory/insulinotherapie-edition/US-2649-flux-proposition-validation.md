@@ -115,3 +115,12 @@ config a pu changer depuis.
 
 US-2649b **complet** : provenance + risque à la revue · durcissement de l'apply · notif référent ·
 valeur live à l'accept.
+
+##### Corrections revue slice 5 (PR #656) — sécurité renforcée
+La revue (code + medical) a révélé un hazard **pré-existant** rendu visible : `accept()`
+appliquait une valeur absolue sans garde d'accès concurrent.
+- **A (CRITICAL)** : compare-and-swap dans `accept()` → `baselineMoved` (409) si la base a bougé.
+- **B/C/D** : UI — Accept **bloqué** + alerte rouge si `live ≠ snapshot` ou `null` ; badges
+  %/risque périmés **masqués** ; message distinct « config modifiée » vs « créneau introuvable ».
+- **E** : erreurs inattendues de `liveCurrentValue` désormais loguées (observabilité).
+- **F** : tests — `baselineMoved`, cas `null`, valeur live réellement affichée. Total +3.

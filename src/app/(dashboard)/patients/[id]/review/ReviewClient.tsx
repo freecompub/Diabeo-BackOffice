@@ -460,51 +460,72 @@ function DecisionsStep({ data }: { data: ReviewData }) {
           <DiabeoEmptyState variant="noData" title={t("decisionsTitle")} message={t("noProposals")} />
         ) : (
           <ul className="space-y-2">
-            {items.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="text-sm font-medium">{t(PARAM_LABEL_KEY[p.parameterType])}</span>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+            {items.map((p) => {
+              // US-2649b — base LIVE vs snapshot. « changed » (≠) ou « unavailable » (créneau
+              // disparu) → la valeur ABSOLUE proposée ne s'applique plus sur la bonne base :
+              // on BLOQUE l'acceptation (le back fail-close aussi via `baselineMoved`) et on
+              // masque les badges %/risque devenus périmés (mental model faux). Régénérer.
+              const changed = p.liveCurrentValue !== null && p.liveCurrentValue !== p.currentValue
+              const unavailable = p.liveCurrentValue === null
+              const blocked = changed || unavailable
+              return (
+                <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="text-sm font-medium">{t(PARAM_LABEL_KEY[p.parameterType])}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+                    </span>
+                    {changed && (
+                      <span role="alert" className="text-xs font-medium tabular-nums text-destructive">
+                        {t("liveValueChanged", { live: fmt(p.liveCurrentValue as number) })}{" "}
+                        {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+                      </span>
+                    )}
+                    {unavailable && (
+                      <span role="alert" className="text-xs font-medium text-destructive">
+                        {t("liveValueUnavailable")}
+                      </span>
+                    )}
                   </span>
-                  {/* US-2649b — la config a changé depuis la proposition : afficher la valeur
-                      RÉELLE actuelle (le snapshot ci-dessus n'est plus à jour). */}
-                  {p.liveCurrentValue !== null && p.liveCurrentValue !== p.currentValue && (
-                    <span role="status" className="text-xs tabular-nums text-warning-fg">
-                      {t("liveValueChanged", { live: fmt(p.liveCurrentValue) })}{" "}
-                      {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+                  {/* Badges %/risque anchés au snapshot → masqués si la base a bougé (trompeurs). */}
+                  {!blocked && (
+                    <Badge variant={Math.abs(p.changePercent) >= PROPOSAL_MAJOR_CHANGE_PCT ? "destructive" : "secondary"}>
+                      {p.changePercent > 0 ? `+${Math.round(p.changePercent)}` : Math.round(p.changePercent)}&nbsp;%
+                    </Badge>
+                  )}
+                  {/* Provenance (fiabilité ≠ confidence moteur) : « demande patient » mise en avant. */}
+                  <Badge variant={p.source === "patient" ? "default" : "outline"}>{tAdj(`source.${p.source}`)}</Badge>
+                  {!blocked &&
+                    (() => {
+                      const risk = deriveRiskDirection(p.parameterType, p.currentValue, p.proposedValue)
+                      return risk === "none" ? null : (
+                        <Badge
+                          variant="outline"
+                          className={risk === "hypo" ? "border-feedback-warning text-feedback-warning" : "text-muted-foreground"}
+                        >
+                          {tAdj(`risk.${risk}`)}
+                        </Badge>
+                      )
+                    })()}
+                  {data.canDecide && (
+                    <span className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="default"
+                        disabled={busyId === p.id || blocked}
+                        title={blocked ? t("acceptBlockedHint") : undefined}
+                        onClick={() => decide(p.id, "accept")}
+                      >
+                        {t("accept")}
+                      </Button>
+                      <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => decide(p.id, "reject")}>
+                        {t("reject")}
+                      </Button>
                     </span>
                   )}
-                </span>
-                <Badge variant={Math.abs(p.changePercent) >= PROPOSAL_MAJOR_CHANGE_PCT ? "destructive" : "secondary"}>
-                  {p.changePercent > 0 ? `+${Math.round(p.changePercent)}` : Math.round(p.changePercent)}&nbsp;%
-                </Badge>
-                {/* US-2649b — provenance (fiabilité ≠ confidence moteur) : « demande patient » mise en avant. */}
-                <Badge variant={p.source === "patient" ? "default" : "outline"}>{tAdj(`source.${p.source}`)}</Badge>
-                {/* Direction de risque : l'hypo (plus d'insuline) signalée en ambre. */}
-                {(() => {
-                  const risk = deriveRiskDirection(p.parameterType, p.currentValue, p.proposedValue)
-                  return risk === "none" ? null : (
-                    <Badge
-                      variant="outline"
-                      className={risk === "hypo" ? "border-feedback-warning text-feedback-warning" : "text-muted-foreground"}
-                    >
-                      {tAdj(`risk.${risk}`)}
-                    </Badge>
-                  )
-                })()}
-                {data.canDecide && (
-                  <span className="flex gap-2">
-                    <Button size="sm" variant="default" disabled={busyId === p.id} onClick={() => decide(p.id, "accept")}>
-                      {t("accept")}
-                    </Button>
-                    <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => decide(p.id, "reject")}>
-                      {t("reject")}
-                    </Button>
-                  </span>
-                )}
-              </li>
-            ))}
+                </li>
+              )
+            })}
           </ul>
         )}
       </CardContent>

@@ -51,6 +51,11 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     if (error instanceof Error && error.message === "valueOutOfBounds") {
       return NextResponse.json({ error: "valueOutOfBounds" }, { status: 400 })
     }
+    // US-2649b — base déplacée depuis la proposition (compare-and-swap) : 409 Conflict,
+    // le client doit régénérer une proposition sur la valeur courante réelle.
+    if (error instanceof Error && error.message === "baselineMoved") {
+      return NextResponse.json({ error: "baselineMoved" }, { status: 409 })
+    }
     logger.error("proposals/accept", "Accept failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
