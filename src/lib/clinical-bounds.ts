@@ -64,6 +64,19 @@ export const CLINICAL_BOUNDS = {
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
 
 /**
+ * US-2648b — Un débit basal est **délivrable** par la pompe s'il est un multiple de
+ * `PUMP_BASAL_INCREMENT` (0,05 U/h). Sinon la valeur passe les bornes mais n'est pas
+ * programmable (arrondi silencieux / profil rejeté). Tolérance flottante `1e-9` (l'erreur
+ * IEEE754 de `value/0.05` sur [0.05, 5.0] est ~2e-14 ≪ 1e-9). Source UNIQUE, utilisée par
+ * la proposition (`adjustment.service`), l'édition directe (routes ISF/ICR/basal) et les
+ * garde-fous service — cf. catalogue `docs/clinical-logic/regles-et-constantes-diabete.md` §6.
+ */
+export function isDeliverableBasalRate(value: number): boolean {
+  const step = CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT
+  return Math.abs(value / step - Math.round(value / step)) < 1e-9
+}
+
+/**
  * Plage de valeurs CGM **physiologiquement valides** (g/L) pour les AGRÉGATS
  * (moyenne, CV, GMI, TIR, AGP, épisodes hypo — par patient ET cohorte).
  *

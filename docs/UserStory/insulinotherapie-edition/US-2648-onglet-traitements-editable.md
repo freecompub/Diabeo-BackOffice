@@ -116,3 +116,8 @@ create/delete → ajout de l'UPDATE by id :
 
 **Reste 2648b** : UI DOCTOR « Modifier » (dialog direct-write + `router.refresh()`), redirect
 `/insulin-therapy` role-branché, transport drawer, E2E.
+
+#### Corrections revue slice 2d (PR #650)
+- **DRY** : helper `isDeliverableBasalRate()` (`clinical-bounds.ts`, source unique) — utilisé par proposition, édition directe (POST **et** PATCH basal) et garde service (`createPumpSlot`/`updatePumpSlot`). Ferme l'asymétrie POST-sans-incrément (B) + le garde-fő service fail-closed (C).
+- **Audit ISF/ICR PATCH** : `ctx` (IP/User-Agent) threadé (A) — traçabilité HDS de la source, aligné sur `updatePumpSlot`.
+- Test IDOR `count===0 → 404` ajouté (D) ; test du helper `isDeliverableBasalRate` ; header `BASAL_MAX` corrigé 10→5 (E).

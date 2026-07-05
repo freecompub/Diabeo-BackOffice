@@ -89,7 +89,13 @@ export async function PATCH(req: NextRequest) {
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     try {
-      const result = await insulinTherapyService.updateIsf(parsed.data.id, parsed.data.sensitivityFactorGl, user.id, patientId)
+      const result = await insulinTherapyService.updateIsf(
+        parsed.data.id,
+        parsed.data.sensitivityFactorGl,
+        user.id,
+        patientId,
+        extractRequestContext(req),
+      )
       return NextResponse.json(result)
     } catch (e) {
       if (e instanceof Error && e.message === "isfSlotNotFound") {

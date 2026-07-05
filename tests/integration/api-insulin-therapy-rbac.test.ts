@@ -73,6 +73,7 @@ const { POST: pumpSlotPost, DELETE: pumpSlotDelete, PATCH: pumpSlotPatch } = awa
   "@/app/api/insulin-therapy/basal-config/pump-slots/route"
 )
 const { POST: bolusPost } = await import("@/app/api/insulin-therapy/calculate-bolus/route")
+const { insulinTherapyService } = await import("@/lib/services/insulin-therapy.service")
 
 function req(url: string, body: unknown, role: string): NextRequest {
   return new NextRequest(new URL(url), {
@@ -262,6 +263,12 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
     it("basal PATCH REJECTS NURSE with 403", async () => {
       const res = await pumpSlotPatch(reqMethod("http://localhost/api/insulin-therapy/basal-config/pump-slots", "PATCH", "NURSE", { id: uuid, rate: 0.95 }))
       expect(res.status).toBe(403)
+    })
+
+    it("ISF PATCH d'un créneau hors périmètre (updateMany count=0) → 404 (anti-IDOR)", async () => {
+      vi.mocked(insulinTherapyService.updateIsf).mockRejectedValueOnce(new Error("isfSlotNotFound"))
+      const res = await isfPatch(reqMethod("http://localhost/api/insulin-therapy/sensitivity-factors", "PATCH", "DOCTOR", { id: uuid, sensitivityFactorGl: 0.5 }))
+      expect(res.status).toBe(404)
     })
   })
 

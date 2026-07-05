@@ -2,7 +2,8 @@
  * @module /api/insulin-therapy/basal-config/pump-slots
  * @description Pump basal slot routes — GET (list), POST (create), DELETE (remove).
  * US-402 — Pump basal slots define hourly basal rates for insulin pump delivery.
- * Rate validated within clinical bounds (BASAL_MIN: 0.05, BASAL_MAX: 10.0 U/h).
+ * Rate validated within clinical bounds (BASAL_MIN: 0.05, BASAL_MAX: 5.0 U/h) and
+ * constrained to a multiple of PUMP_BASAL_INCREMENT (0.05 U/h) — deliverable on the pump.
  * All operations require auth + GDPR consent + audit logging.
  */
 
@@ -12,6 +13,7 @@ import { requireAuth, requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
+import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -20,7 +22,12 @@ const createSlotSchema = z.object({
   patientId: z.number().int().positive().optional(),
   startTime: z.string().regex(timeRegex, "Format HH:MM required"),
   endTime: z.string().regex(timeRegex, "Format HH:MM required"),
-  rate: z.number().min(INSULIN_BOUNDS.BASAL_MIN).max(INSULIN_BOUNDS.BASAL_MAX),
+  // Débit PROGRAMMABLE (multiple de l'incrément pompe) — cohérent avec le PATCH et la proposition.
+  rate: z
+    .number()
+    .min(INSULIN_BOUNDS.BASAL_MIN)
+    .max(INSULIN_BOUNDS.BASAL_MAX)
+    .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
 }).refine((d) => d.startTime !== d.endTime, {
   message: "startTime and endTime must be different — a zero-duration slot is invalid",
   path: ["endTime"],
@@ -188,10 +195,7 @@ const updatePumpSlotSchema = z.object({
     .number()
     .min(INSULIN_BOUNDS.BASAL_MIN)
     .max(INSULIN_BOUNDS.BASAL_MAX)
-    .refine(
-      (v) => Math.abs(v / INSULIN_BOUNDS.PUMP_BASAL_INCREMENT - Math.round(v / INSULIN_BOUNDS.PUMP_BASAL_INCREMENT)) < 1e-9,
-      { message: "rate must be a multiple of the pump increment (0.05 U/h)" },
-    ),
+    .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
 })
 
 /** PATCH — édition DIRECTE du débit d'un créneau basal pompe (US-2648b). DOCTOR only ;
