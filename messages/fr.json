@@ -1760,6 +1760,19 @@
     "carnetTitle": "Carnet glycémique par moment",
     "mealBgmBanner": "Carnet capillaire — glycémie avant/après repas sur relevés capillaires (sans capteur, pas de courbe continue)."
   },
+  "patientInsulin": {
+    "title": "Mon insulinothérapie",
+    "subtitle": "Consultez vos réglages d'insuline. Pour toute modification, proposez un ajustement à votre soignant.",
+    "skipToContent": "Aller au contenu",
+    "unavailable": "Vos réglages d'insuline sont momentanément indisponibles.",
+    "noSettings": "Aucun réglage d'insuline n'est configuré pour votre profil.",
+    "bolusInsulin": "Insuline bolus (repas)",
+    "isfTitle": "Facteur de sensibilité à l'insuline",
+    "icrTitle": "Ratio insuline/glucides",
+    "basalTitle": "Schéma basal (pompe)",
+    "noSlots": "Aucun créneau configuré.",
+    "readonlyHint": "Ces réglages sont en lecture seule. Une proposition de modification passe par la validation de votre soignant."
+  },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",
     "periodSubtitle": "Aperçu des {days} derniers jours.",

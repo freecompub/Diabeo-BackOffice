@@ -1760,6 +1760,19 @@
     "carnetTitle": "Glucose logbook by time of day",
     "mealBgmBanner": "Capillary logbook — pre/post-meal glucose from capillary readings (no sensor, no continuous curve)."
   },
+  "patientInsulin": {
+    "title": "My insulin therapy",
+    "subtitle": "Review your insulin settings. To change anything, propose an adjustment to your care team.",
+    "skipToContent": "Skip to content",
+    "unavailable": "Your insulin settings are temporarily unavailable.",
+    "noSettings": "No insulin settings are configured for your profile.",
+    "bolusInsulin": "Bolus insulin (meals)",
+    "isfTitle": "Insulin sensitivity factor",
+    "icrTitle": "Insulin-to-carb ratio",
+    "basalTitle": "Basal schedule (pump)",
+    "noSlots": "No time slot configured.",
+    "readonlyHint": "These settings are read-only. A change request goes through your care team's validation."
+  },
   "patientDashboard": {
     "pageTitle": "My dashboard",
     "periodSubtitle": "Overview of the last {days} days.",
