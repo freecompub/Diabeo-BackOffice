@@ -1,19 +1,20 @@
 /**
- * Test suite: US-SEC-001 — RBAC on insulin-therapy mutation routes
+ * Test suite: RBAC on insulin-therapy mutation routes (US-2648a, supersedes US-SEC-001)
  *
  * Clinical / security behavior tested:
- * - PUT /api/insulin-therapy/settings, POST /api/insulin-therapy/sensitivity-
- *   factors, and POST /api/insulin-therapy/carb-ratios MUST reject role
- *   VIEWER (the patient themselves) with HTTP 403 forbidden.
- * - NURSE and DOCTOR continue to write successfully.
- * - These parameters feed `insulinService.calculateBolus` — a patient
- *   self-mutating their ISF/ICR could bias dose suggestions toward
- *   hypoglycemia. RBAC is the only guard.
+ * - PUT /api/insulin-therapy/settings, POST /sensitivity-factors, POST /carb-ratios
+ *   and POST/DELETE /basal-config/pump-slots MUST reject role VIEWER (the patient)
+ *   AND role NURSE with HTTP 403 forbidden.
+ * - **US-2648a**: direct writes of dose-driving config are now **DOCTOR only**. A
+ *   NURSE (and a patient) no longer writes directly — they go through a validated
+ *   proposal (POST /api/adjustment-proposals). Only DOCTOR writes directly.
+ * - These parameters feed `insulinService.calculateBolus` — an unqualified self-
+ *   mutation of ISF/ICR could bias dose suggestions toward hypoglycemia.
  *
  * Associated risks:
- * - A regression replacing `requireRole(req, "NURSE")` with `requireAuth(req)`
- *   would re-open the privilege escalation. These tests are the regression
- *   guard for the audit fix landed 2026-04-15.
+ * - A regression relaxing `requireRole(req, "DOCTOR")` back to NURSE (or to
+ *   `requireAuth`) would re-open the privilege escalation. These tests are the
+ *   regression guard (US-SEC-001 audit 2026-04-15, durci par US-2648a).
  */
 
 import { describe, expect, it, vi } from "vitest"
@@ -111,9 +112,9 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       expect(res.status).toBe(403)
     })
 
-    it("accepts NURSE", async () => {
+    it("REJECTS NURSE with 403 (US-2648a — proposition, pas écriture directe)", async () => {
       const res = await settingsPut(req("http://localhost/api/insulin-therapy/settings", validSettingsBody, "NURSE"))
-      expect(res.status).toBe(200)
+      expect(res.status).toBe(403)
     })
 
     it("accepts DOCTOR", async () => {
@@ -128,8 +129,13 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       expect(res.status).toBe(403)
     })
 
-    it("accepts NURSE", async () => {
+    it("REJECTS NURSE with 403 (US-2648a)", async () => {
       const res = await isfPost(req("http://localhost/api/insulin-therapy/sensitivity-factors", validIsfBody, "NURSE"))
+      expect(res.status).toBe(403)
+    })
+
+    it("accepts DOCTOR", async () => {
+      const res = await isfPost(req("http://localhost/api/insulin-therapy/sensitivity-factors", validIsfBody, "DOCTOR"))
       expect(res.status).toBe(201)
     })
   })
@@ -140,8 +146,13 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       expect(res.status).toBe(403)
     })
 
-    it("accepts NURSE", async () => {
+    it("REJECTS NURSE with 403 (US-2648a)", async () => {
       const res = await icrPost(req("http://localhost/api/insulin-therapy/carb-ratios", validIcrBody, "NURSE"))
+      expect(res.status).toBe(403)
+    })
+
+    it("accepts DOCTOR", async () => {
+      const res = await icrPost(req("http://localhost/api/insulin-therapy/carb-ratios", validIcrBody, "DOCTOR"))
       expect(res.status).toBe(201)
     })
   })
@@ -172,7 +183,7 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
     })
   })
 
-  describe("POST + DELETE /api/insulin-therapy/basal-config/pump-slots (NURSE+)", () => {
+  describe("POST + DELETE /api/insulin-therapy/basal-config/pump-slots (DOCTOR only)", () => {
     const validSlot = { startTime: "06:00", endTime: "12:00", rate: 0.95 }
 
     it("POST REJECTS VIEWER with 403", async () => {
@@ -180,8 +191,13 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       expect(res.status).toBe(403)
     })
 
-    it("POST accepts NURSE", async () => {
+    it("POST REJECTS NURSE with 403 (US-2648a)", async () => {
       const res = await pumpSlotPost(req("http://localhost/api/insulin-therapy/basal-config/pump-slots", validSlot, "NURSE"))
+      expect(res.status).toBe(403)
+    })
+
+    it("POST accepts DOCTOR", async () => {
+      const res = await pumpSlotPost(req("http://localhost/api/insulin-therapy/basal-config/pump-slots", validSlot, "DOCTOR"))
       // 201 (created) or 404 (no settings configured for patientId 42 in mock chain) — either way NOT 403
       expect([201, 404]).toContain(res.status)
     })
@@ -192,12 +208,17 @@ describe("US-SEC-001 — insulin-therapy mutation routes RBAC", () => {
       expect(res.status).toBe(403)
     })
 
-    it("DELETE accepts NURSE", async () => {
+    it("DELETE REJECTS NURSE with 403 (US-2648a)", async () => {
       const url = "http://localhost/api/insulin-therapy/basal-config/pump-slots?id=123e4567-e89b-42d3-a456-426614174000&patientId=42"
       const res = await pumpSlotDelete(reqMethod(url, "DELETE", "NURSE"))
+      expect(res.status).toBe(403)
+    })
+
+    it("DELETE accepts DOCTOR", async () => {
+      const url = "http://localhost/api/insulin-therapy/basal-config/pump-slots?id=123e4567-e89b-42d3-a456-426614174000&patientId=42"
+      const res = await pumpSlotDelete(reqMethod(url, "DELETE", "DOCTOR"))
       // Not 403 — the role guard let the request through. 404 acceptable
-      // because mock chain doesn't surface a matching slot. Goal here is
-      // only to assert the role guard does NOT reject NURSE.
+      // because mock chain doesn't surface a matching slot.
       expect([200, 404]).toContain(res.status)
     })
   })

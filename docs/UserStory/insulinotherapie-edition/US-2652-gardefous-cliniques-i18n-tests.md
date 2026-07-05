@@ -51,3 +51,7 @@ Les bornes `fixedDose` **naissent en US-2646** (atomique). Cette US = **vérific
 - **Flag `riskDirection` (hypo/hyper)** : ne PAS « cap-and-hide » la direction hypo (baisse ISF/ICR, hausse basale/dose) — la calculer et la **surfacer au médecin** dans l'UI de validation (US-2649b).
 - **Dose fixe basal vs bolus** : bloquer *toute* baisse est trop rigide — une baisse de **bolus** fixe pour hypo est légitime ; distinguer basal (no-decrease) / bolus (baisse capée).
 - **Gate pathologie** : bloquer/assouplir les propositions **patient** en GD/grossesse et pédiatrie (cibles plus strictes, clinicien requis) — la primitive est pathology-blind par design.
+
+## Reports de la revue US-2648a (PR #644)
+- **Rate-limit création patient-originated** (`POST /api/adjustment-proposals`) : l'index partiel borne le *pending*/slot mais pas le débit create→reject→recreate ni le volume multi-slots. Ajouter un rate-limit via `src/lib/auth/api-rate-limit.ts` sur le POST patient. (Résiduel, non bloquant PR #644.)
+- **Audit des accès refusés** : `resolvePatientId` n'audite pas les 403/404 (cohérent avec le GET voisin). Router les tentatives hors-portefeuille vers l'audit (`accessDenied`) pour la détection d'énumération (US-2265 burst detection).
