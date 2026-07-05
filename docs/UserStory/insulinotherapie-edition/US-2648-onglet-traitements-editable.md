@@ -82,3 +82,9 @@ Tranche backend (débloque le front US-2648b) :
 - i18n fr/en/ar. Tests : 12 (mapping + corps).
 
 **Reste 2648b** : proposition **basal** (nécessite `pumpBasalSlotId`), **édition directe DOCTOR** (PUT settings/ISF/ICR), `refreshTreatmentMode(tx)`, redirect `/insulin-therapy` role-branché, transport drawer, E2E.
+
+#### Corrections revue slice 2b (PR #648)
+- A11y : focus rendu au trigger (`finalFocus`, WCAG 2.4.3) ; `aria-invalid` sur le champ en erreur (3.3.1) ; deux régions live **stables** erreur/succès (4.1.3) ; `aria-describedby` parent retiré (hint préservé).
+- Clinique : **plage autorisée** affichée en indice (`min–max unité` depuis `CLINICAL_BOUNDS`) — évite les typos ; serveur reste l'autorité.
+- Robustesse : signal d'`abort` transmis au `mutate` + annulation à la fermeture (anti-course) ; `maxLength=1000` sur le commentaire.
+- Différé (LOW, tracé) : delta live « vs valeur actuelle » ; affichage « patient requested » côté review médecin (US-2649b).

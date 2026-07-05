@@ -13,8 +13,9 @@
  * seule) — fail-closed. Le RBAC réel est imposé par la route (US-2648a) ; ce composant ne
  * s'affiche que là où la capability l'autorise (`canPropose`).
  */
-import { useId, useState } from "react"
+import { useRef, useState } from "react"
 import { useTranslations } from "next-intl"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import {
   Dialog,
   DialogContent,
@@ -29,6 +30,13 @@ import { usePatientRecordContext } from "@/components/diabeo/patient/PatientReco
 import { buildProposalBody, mapProposalOutcome, type ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
 
 type Feedback = { kind: "error" | "success"; text: string } | null
+
+/** Bornes cliniques par paramètre proposable (source unique `CLINICAL_BOUNDS`) — affichées
+ *  en indice pour éviter les allers-retours de typo (revue clinique). Serveur = autorité. */
+const PARAM_BOUNDS: Record<ProposableParameter, { min: number; max: number }> = {
+  insulinSensitivityFactor: { min: CLINICAL_BOUNDS.ISF_GL_MIN, max: CLINICAL_BOUNDS.ISF_GL_MAX },
+  insulinToCarbRatio: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
+}
 
 export function InsulinProposalDialog({
   parameterType,
@@ -52,13 +60,16 @@ export function InsulinProposalDialog({
   const [comment, setComment] = useState("")
   const [pending, setPending] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
-  const feedbackId = useId()
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const bounds = PARAM_BOUNDS[parameterType]
 
   // Fail-closed : sans transport de mutation injecté, pas de proposition possible.
   const mutate = ctx?.mutate
   if (!mutate) return null
 
   const reset = () => {
+    abortRef.current?.abort() // annule une soumission en vol à la fermeture (anti-course)
     setValue("")
     setComment("")
     setFeedback(null)
@@ -72,6 +83,9 @@ export function InsulinProposalDialog({
       setFeedback({ kind: "error", text: t("proposalErrorValidation") })
       return
     }
+    abortRef.current?.abort()
+    const ctrl = new AbortController()
+    abortRef.current = ctrl
     setPending(true)
     setFeedback(null)
     try {
@@ -84,7 +98,9 @@ export function InsulinProposalDialog({
           endHour: slot.endHour,
           comment: comment.trim() || undefined,
         }),
+        { signal: ctrl.signal },
       )
+      if (ctrl.signal.aborted) return
       const body: { error?: string } = await res.json().catch(() => ({}))
       const outcome = mapProposalOutcome(res.status, body.error)
       if (outcome.kind === "success") {
@@ -95,16 +111,17 @@ export function InsulinProposalDialog({
       } else {
         setFeedback({ kind: "error", text: t(outcome.messageKey) })
       }
-    } catch {
+    } catch (err) {
+      if (err instanceof DOMException && err.name === "AbortError") return
       setFeedback({ kind: "error", text: t("proposalErrorGeneric") })
     } finally {
-      setPending(false)
+      if (!ctrl.signal.aborted) setPending(false)
     }
   }
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button ref={triggerRef} variant="outline" size="sm" onClick={() => setOpen(true)}>
         {t("proposeButton")}
       </Button>
       <Dialog
@@ -114,7 +131,10 @@ export function InsulinProposalDialog({
           if (!o) reset()
         }}
       >
-        <DialogContent>
+        {/* WCAG 2.4.3 — `finalFocus` (prop du Popup) rend le focus au bouton déclencheur
+            à la fermeture : le trigger n'est pas un DialogTrigger, Base UI ne le retrouve
+            pas seul. */}
+        <DialogContent finalFocus={triggerRef}>
         <form onSubmit={submit} className="space-y-4">
           <DialogHeader>
             <DialogTitle>{t("proposalTitle")}</DialogTitle>
@@ -131,22 +151,25 @@ export function InsulinProposalDialog({
             required
             value={value}
             onChange={(e) => setValue(e.target.value)}
-            hint={unit}
-            aria-describedby={feedback ? feedbackId : undefined}
+            // Indice de plage clinique (borne min–max + unité) — évite les typos ;
+            // le serveur reste l'autorité (US-2649a). WCAG 3.3.1 : aria-invalid en erreur.
+            hint={`${bounds.min}–${bounds.max} ${unit}`}
+            aria-invalid={feedback?.kind === "error" || undefined}
           />
           <DiabeoTextField
             label={t("proposalComment")}
             value={comment}
+            maxLength={1000}
             onChange={(e) => setComment(e.target.value)}
           />
 
-          <p
-            id={feedbackId}
-            role={feedback?.kind === "error" ? "alert" : "status"}
-            aria-live={feedback?.kind === "error" ? "assertive" : "polite"}
-            className={`min-h-5 text-sm ${feedback?.kind === "error" ? "text-destructive" : "text-feedback-success"}`}
-          >
-            {feedback?.text ?? ""}
+          {/* WCAG 4.1.3 — deux régions live STABLES (toujours montées), pas de bascule
+              de role/aria-live sur un même nœud : erreur = assertive, succès = polite. */}
+          <p role="alert" aria-live="assertive" className="min-h-5 text-sm text-destructive">
+            {feedback?.kind === "error" ? feedback.text : ""}
+          </p>
+          <p role="status" aria-live="polite" className="text-sm text-feedback-success">
+            {feedback?.kind === "success" ? feedback.text : ""}
           </p>
 
           <DialogFooter>
