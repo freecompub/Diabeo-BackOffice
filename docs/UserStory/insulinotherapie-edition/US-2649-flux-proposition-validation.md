@@ -72,3 +72,9 @@ Enrichit `/adjustment-proposals` (file de revue) avec des findings différés :
 - **HDS (fermé)** : `proposerComment` (ciphertext) n'est plus émis dans la réponse GET `list` — strippé au **service** (`omit`), donc tout consommateur est protégé (pas seulement la route). Décryptage pour le médecin = tranche future.
 - **fail-closed** : `deriveRiskDirection` renvoie `none` sur un `parameterType` inconnu (pas de verdict deviné) + test.
 - Confirmé clinique : les 4 directions correctes ; magnitude déjà affichée à côté du badge (anti alarm-fatigue).
+
+#### US-2649b slice 2 : durcissement de l'apply à l'accept
+- L'application d'une proposition **basale** acceptée est désormais **re-scopée au patient** (`updateMany` sur `id` + `basalConfig.settings.patientId`) comme ISF/ICR — un `pumpBasalSlotId` hors patient ne matche pas (**anti-IDOR défense en profondeur**), `count 0 → pumpSlotNotFound` (fail-closed). Avant : `update` par id seul.
+- Tests : +2 (apply basal scopé + pumpSlotNotFound).
+
+**Reste US-2649b** : confiance basée sur `source` dans l'UI ; valeur LIVE affichée à l'accept ; notifications push.

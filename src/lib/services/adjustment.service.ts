@@ -414,10 +414,17 @@ export const adjustmentService = {
             data: { gramsPerUnit: proposed },
           })
         } else if (proposal.parameterType === "basalRate" && proposal.pumpBasalSlotId) {
-          await tx.pumpBasalSlot.update({
-            where: { id: proposal.pumpBasalSlotId },
+          // Re-scopé au patient de la proposition (défense en profondeur, anti-IDOR) :
+          // un pumpBasalSlotId qui n'appartiendrait pas au patient ne matche pas → count 0
+          // → fail-closed (créneau introuvable), jamais d'écriture cross-patient.
+          const res = await tx.pumpBasalSlot.updateMany({
+            where: {
+              id: proposal.pumpBasalSlotId,
+              basalConfig: { settings: { patientId: proposal.patientId } },
+            },
             data: { rate: proposed },
           })
+          if (res.count === 0) throw new Error("pumpSlotNotFound")
         }
       }
 
