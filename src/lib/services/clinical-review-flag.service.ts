@@ -15,14 +15,14 @@
 
 import { prisma } from "@/lib/db/client"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
-import { logger } from "@/lib/logger"
 import type { ClinicalReviewFlagType } from "@prisma/client"
 
 export const clinicalReviewFlagService = {
   /**
    * Lève un flag d'orientation pour un patient, de manière **IDEMPOTENTE** : si un flag
    * `open` du même `type` existe déjà pour ce patient, aucun nouveau flag n'est créé
-   * (anti-spam — un patient qui ré-essaie ne multiplie pas les flags). Lecture santé auditée.
+   * (anti-spam — un patient qui ré-essaie ne multiplie pas les flags). Seule la CRÉATION est
+   * auditée ; le skip idempotent (simple sonde d'existence non-PHI) n'est pas tracé.
    *
    * @param patientId Dossier concerné (déjà résolu/autorisé par l'appelant).
    * @param type Type de flag (`reviewInConsultation`, `hba1cStale`, `tirBelowTarget`, `observance`).
@@ -47,7 +47,7 @@ export const clinicalReviewFlagService = {
       select: { id: true },
     })
     await auditService.log({
-      userId: createdBy ?? 0,
+      userId: createdBy ?? null, // FK-safe : `null` = acteur système/algorithme (jamais 0, cf. audit.service)
       action: "CREATE",
       resource: "CLINICAL_REVIEW_FLAG",
       resourceId: flag.id,
