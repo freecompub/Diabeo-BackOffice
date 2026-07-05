@@ -1,15 +1,20 @@
 /**
- * US-2018b — GET /api/patient/insulin-settings
+ * GET /api/patient/insulin-settings — lecture SELF-SERVICE PATIENT (US-2650).
  *
- * Expose les paramètres d'insulinothérapie d'un patient (schéma basal, ISF/ICR
- * par créneau, config pompe, IOB) pour l'onglet « Traitements » du workspace.
- * Patient résolu via jeton de consultation (`x-consultation-token`) ou
- * `?patientId=` (cf. `resolvePatientIdFromQuery`). Lecture santé → auditée.
+ * Expose les paramètres d'insulinothérapie (schéma basal, ISF/ICR par créneau,
+ * config pompe, IOB) du patient connecté, pour son espace patient.
+ *
+ * **Own-id STRICT (anti-IDOR / anti-énumération)** : le patient est résolu
+ * EXCLUSIVEMENT depuis `user.id` via `getOwnPatientId` — **aucun** `?patientId`,
+ * **aucun** `x-consultation-token`. Un utilisateur sans dossier patient (pro) →
+ * `getOwnPatientId` renvoie `null` → 404 neutre. Le workspace PRO lit l'insuline
+ * via la fiche `/patients/[id]` (onglet Traitements), pas cette route.
+ * Lecture santé → auditée.
  */
 
 import { NextResponse, type NextRequest } from "next/server"
 import { requireAuth, AuthError } from "@/lib/auth"
-import { resolvePatientIdFromQuery } from "@/lib/auth/query-helpers"
+import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinService } from "@/lib/services/insulin.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
@@ -21,22 +26,24 @@ export async function GET(req: NextRequest) {
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const res = await resolvePatientIdFromQuery(req, user.id, user.role)
-    if (res.error) {
-      return NextResponse.json({ error: res.error }, { status: res.error === "invalidPatientId" ? 400 : 404 })
-    }
+    // Own-id strict : jamais depuis l'URL/token. `null` (pas de dossier patient) → 404 neutre.
+    // Frontière d'autorisation = `getOwnPatientId` seul (pas de garde de rôle). Invariant dont
+    // dépend l'anti-IDOR : `Patient.userId @unique` → un `user.id` mappe AU PLUS un dossier (le
+    // sien). Si cette cardinalité change un jour, ré-introduire un garde de rôle explicite ici.
+    const patientId = await getOwnPatientId(user.id)
+    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     const ctx = extractRequestContext(req)
-    const settings = await insulinService.getSettings(res.patientId)
+    const settings = await insulinService.getSettings(patientId)
 
     await auditService.log({
       userId: user.id,
       action: "READ",
       resource: "PATIENT",
-      resourceId: String(res.patientId),
+      resourceId: String(patientId),
       ipAddress: ctx.ipAddress,
       userAgent: ctx.userAgent,
-      metadata: { patientId: res.patientId, kind: "insulin_settings" },
+      metadata: { patientId, kind: "insulin_settings" },
     })
 
     return NextResponse.json(settings)

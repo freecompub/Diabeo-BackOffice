@@ -38,3 +38,20 @@ Paramètres ; les API `/api/insulin-therapy/*` **bloquent VIEWER** ; `/insulin-t
 
 ## Reports de la revue code+migration (PR #638 / US-2646) — à fermer ici
 - **Chiffrement `proposer_comment`** (**CRITIQUE dès la 1ʳᵉ écriture patient**) : la justification patient (texte libre) est un `TEXT` en clair au socle → `encrypt()` AES-256-GCM à l'écriture, `decrypt()` en lecture autorisée uniquement ; **jamais** en clair (log/notif/URL). Test asserttant le format ciphertext (IV‖TAG‖CT base64). *(HDS)*
+
+---
+## Journal d'implémentation
+
+### Slice 1 — endpoint lecture own-id strict (back, sécurité)
+- `GET /api/patient/insulin-settings` **re-scopé own-id STRICT** : résolution exclusive
+  `getOwnPatientId(user.id)` — **plus** de `resolvePatientIdFromQuery` (donc plus de `?patientId`
+  ni de `x-consultation-token`). Ferme le HIGH IDOR §12 (AC-1). Endpoint sans caller (orphelin
+  US-2018b) → re-scope sûr. Un pro (pas de dossier patient) → `getOwnPatientId` null → 404 neutre ;
+  le workspace pro lit l'insuline via la fiche `/patients/[id]`.
+- Tests : +4 (own-id + audit, **anti-IDOR `?patientId` ignoré**, non-patient → 404, RGPD → 403).
+- **`proposerComment` déjà chiffré** (AES-256-GCM, `encryptField`) + omis des réponses `list` →
+  le CRITICAL « chiffrement proposer_comment » de §Reports est **déjà fermé** (US-2649a).
+
+**Reste US-2650** : endpoint PROPOSE own-id strict (bornes patient) · route `(patient)` + nav +
+UI lecture/proposer mode-aware · `InsulinSummary` (conformité DS + fuite client/serveur) · redirect
+`/insulin-therapy` VIEWER → route patient.
