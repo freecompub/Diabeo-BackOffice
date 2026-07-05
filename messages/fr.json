@@ -1589,6 +1589,7 @@
     "proposalErrorGeneric": "Échec de l'envoi. Réessayez.",
     "proposalParamIsf": "Facteur de sensibilité (ISF)",
     "proposalParamIcr": "Ratio insuline/glucides (ICR)",
+    "proposalParamBasal": "Débit basal",
     "tabDocuments": "Documents",
     "subtitle": "{pathology} — {age} ans — Suivi par {referent}",
     "kpiCurrentGlucose": "Glycémie actuelle",

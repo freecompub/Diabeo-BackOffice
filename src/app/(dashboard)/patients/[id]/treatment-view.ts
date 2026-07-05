@@ -46,7 +46,7 @@ type SettingsInput = {
   deliveryMethod: InsulinDelivery
   sensitivityFactors: { startHour: number; endHour: number; sensitivityFactorGl: DecimalLike }[]
   carbRatios: { startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
-  basalConfiguration: { pumpSlots: { startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
+  basalConfiguration: { pumpSlots: { id: string; startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
   bolusInsulin?: {
     usage?: string | null
     isActive?: boolean | null
@@ -150,6 +150,7 @@ export function buildTreatmentView(
       icr.map((c) => ({ start: c.startHour * 60, end: c.endHour * 60 })),
     ),
     basalSlots: basal.map((p) => ({
+      pumpBasalSlotId: p.id,
       range: `${hhmm(p.startTime)}–${hhmm(p.endTime)}`,
       rate: num(p.rate),
     })),

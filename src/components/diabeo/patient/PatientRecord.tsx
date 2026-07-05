@@ -711,9 +711,19 @@ export function PatientRecord({
                       <SlotList
                         label={t("basalLabel")}
                         unit={tUnits("basal")}
-                        slots={data.treatment.basalSlots.map((b) => ({ range: b.range, value: b.rate }))}
+                        slots={data.treatment.basalSlots.map((b) => ({
+                          range: b.range,
+                          value: b.rate,
+                          pumpBasalSlotId: b.pumpBasalSlotId,
+                        }))}
                         coverage={data.treatment.basalCoverage}
                         family="basal"
+                        propose={
+                          insulinCapability.capability?.canPropose &&
+                          insulinCapability.capability.editableParameters.includes("basalRate")
+                            ? { parameterType: "basalRate", paramLabel: t("proposalParamBasal") }
+                            : undefined
+                        }
                       />
                     )}
                   </div>
@@ -815,7 +825,7 @@ function SlotList({
 }: {
   label: ReactNode
   unit: string
-  slots: { range: string; value: number; startHour?: number; endHour?: number }[]
+  slots: { range: string; value: number; startHour?: number; endHour?: number; pumpBasalSlotId?: string }[]
   coverage?: SlotCoverage
   /** "ratio" = ISF/ICR (trou = config à vérifier) ; "basal" = pompe (24 h requis). */
   family?: "ratio" | "basal"
@@ -834,14 +844,28 @@ function SlotList({
               <span className="font-medium">
                 {s.value} {unit}
               </span>
-              {propose && s.startHour !== undefined && s.endHour !== undefined && (
-                <InsulinProposalDialog
-                  parameterType={propose.parameterType}
-                  paramLabel={propose.paramLabel}
-                  slot={{ range: s.range, value: s.value, startHour: s.startHour, endHour: s.endHour }}
-                  unit={unit}
-                />
-              )}
+              {(() => {
+                if (!propose) return null
+                // Cible adressable selon le paramètre : basal → créneau pompe (id) ;
+                // ISF/ICR → créneau horaire. Rien si le discriminateur manque (fail-closed).
+                const target =
+                  propose.parameterType === "basalRate"
+                    ? s.pumpBasalSlotId
+                      ? ({ kind: "pumpSlot", pumpBasalSlotId: s.pumpBasalSlotId } as const)
+                      : null
+                    : s.startHour !== undefined && s.endHour !== undefined
+                      ? ({ kind: "timeSlot", startHour: s.startHour, endHour: s.endHour } as const)
+                      : null
+                return target ? (
+                  <InsulinProposalDialog
+                    parameterType={propose.parameterType}
+                    paramLabel={propose.paramLabel}
+                    slot={{ range: s.range, value: s.value }}
+                    target={target}
+                    unit={unit}
+                  />
+                ) : null
+              })()}
             </div>
           </li>
         ))}

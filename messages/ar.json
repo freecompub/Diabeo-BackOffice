@@ -1589,6 +1589,7 @@
     "proposalErrorGeneric": "فشل الإرسال. حاول مرة أخرى.",
     "proposalParamIsf": "عامل حساسية الأنسولين (ISF)",
     "proposalParamIcr": "نسبة الأنسولين إلى الكربوهيدرات (ICR)",
+    "proposalParamBasal": "المعدل القاعدي",
     "tabDocuments": "المستندات",
     "subtitle": "{pathology} — {age} سنة — متابعة من {referent}",
     "kpiCurrentGlucose": "سكر الدم الحالي",

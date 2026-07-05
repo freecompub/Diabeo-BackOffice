@@ -27,7 +27,12 @@ import {
 import { Button } from "@/components/ui/button"
 import { DiabeoTextField } from "@/components/diabeo/DiabeoTextField"
 import { usePatientRecordContext } from "@/components/diabeo/patient/PatientRecordContext"
-import { buildProposalBody, mapProposalOutcome, type ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
+import {
+  buildProposalBody,
+  mapProposalOutcome,
+  type ProposableParameter,
+  type ProposalTarget,
+} from "@/components/diabeo/patient/insulin-proposal"
 
 type Feedback = { kind: "error" | "success"; text: string } | null
 
@@ -36,19 +41,24 @@ type Feedback = { kind: "error" | "success"; text: string } | null
 const PARAM_BOUNDS: Record<ProposableParameter, { min: number; max: number }> = {
   insulinSensitivityFactor: { min: CLINICAL_BOUNDS.ISF_GL_MIN, max: CLINICAL_BOUNDS.ISF_GL_MAX },
   insulinToCarbRatio: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
+  basalRate: { min: CLINICAL_BOUNDS.BASAL_MIN, max: CLINICAL_BOUNDS.BASAL_MAX },
 }
 
 export function InsulinProposalDialog({
   parameterType,
   paramLabel,
   slot,
+  target,
   unit,
   onSubmitted,
 }: {
   parameterType: ProposableParameter
   /** Libellé traduit du paramètre (ex. « Facteur de sensibilité (ISF) »). */
   paramLabel: string
-  slot: { range: string; value: number; startHour: number; endHour: number }
+  /** Créneau à afficher (plage + valeur courante). */
+  slot: { range: string; value: number }
+  /** Cible adressable de la proposition (créneau horaire ISF/ICR ou créneau pompe basal). */
+  target: ProposalTarget
   unit: string
   /** Appelé après une proposition acceptée (ex. rafraîchir une liste). */
   onSubmitted?: () => void
@@ -94,8 +104,7 @@ export function InsulinProposalDialog({
         buildProposalBody({
           parameterType,
           proposedValue: proposed,
-          startHour: slot.startHour,
-          endHour: slot.endHour,
+          target,
           comment: comment.trim() || undefined,
         }),
         { signal: ctrl.signal },

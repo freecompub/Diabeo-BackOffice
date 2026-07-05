@@ -1589,6 +1589,7 @@
     "proposalErrorGeneric": "Sending failed. Please try again.",
     "proposalParamIsf": "Insulin sensitivity factor (ISF)",
     "proposalParamIcr": "Insulin-to-carb ratio (ICR)",
+    "proposalParamBasal": "Basal rate",
     "tabDocuments": "Documents",
     "subtitle": "{pathology} — {age} y.o. — Followed by {referent}",
     "kpiCurrentGlucose": "Current glucose",

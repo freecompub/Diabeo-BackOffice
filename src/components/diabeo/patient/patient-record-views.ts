@@ -71,7 +71,8 @@ export type { SlotCoverage }
  * le libellé d'affichage.
  */
 export type Slot = { range: string; value: number; startHour: number; endHour: number }
-export type BasalSlot = { range: string; rate: number }
+/** Créneau basal pompe. `pumpBasalSlotId` exposé (US-2648b) pour la proposition ciblée. */
+export type BasalSlot = { range: string; rate: number; pumpBasalSlotId: string }
 export type TreatmentItem = { id: number; name: string | null; posology: string | null }
 /** Insuline bolus active (nom commercial du catalogue + DCI + posologie). */
 export type BolusInsulin = { name: string; genericName: string; dosage: string | null }
