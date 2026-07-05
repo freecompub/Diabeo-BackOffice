@@ -73,7 +73,7 @@ export type AnalyticsFetcher = (
 export type RecordMutator = (
   endpoint: string,
   body: Record<string, unknown>,
-  init?: { signal?: AbortSignal },
+  init?: { signal?: AbortSignal; method?: "POST" | "PATCH" },
 ) => Promise<Response>
 
 interface PatientRecordContextValue {
@@ -318,7 +318,7 @@ export function usePagePatientMutator(patientId: number): RecordMutator {
   return useCallback<RecordMutator>(
     (endpoint, body, init) =>
       fetch(endpoint, {
-        method: "POST",
+        method: init?.method ?? "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ ...body, patientId }),

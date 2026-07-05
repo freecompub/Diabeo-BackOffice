@@ -70,7 +70,7 @@ export type { SlotCoverage }
  * créneau ADRESSABLE (proposition d'ajustement ciblée sur le bon slot) — `range` reste
  * le libellé d'affichage.
  */
-export type Slot = { range: string; value: number; startHour: number; endHour: number }
+export type Slot = { id: string; range: string; value: number; startHour: number; endHour: number }
 /** Créneau basal pompe. `pumpBasalSlotId` exposé (US-2648b) pour la proposition ciblée. */
 export type BasalSlot = { range: string; rate: number; pumpBasalSlotId: string }
 export type TreatmentItem = { id: number; name: string | null; posology: string | null }

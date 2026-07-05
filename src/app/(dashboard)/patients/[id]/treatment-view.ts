@@ -44,8 +44,8 @@ const DAY_MS = 86_400_000
 
 type SettingsInput = {
   deliveryMethod: InsulinDelivery
-  sensitivityFactors: { startHour: number; endHour: number; sensitivityFactorGl: DecimalLike }[]
-  carbRatios: { startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
+  sensitivityFactors: { id: string; startHour: number; endHour: number; sensitivityFactorGl: DecimalLike }[]
+  carbRatios: { id: string; startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
   basalConfiguration: { pumpSlots: { id: string; startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
   bolusInsulin?: {
     usage?: string | null
@@ -132,6 +132,7 @@ export function buildTreatmentView(
     bolusInconsistent: bi != null && !bolusUsable,
     pump: derivePump(devices, now),
     isfSlots: isf.map((s) => ({
+      id: s.id,
       startHour: s.startHour,
       endHour: s.endHour,
       range: hourRange(s.startHour, s.endHour),
@@ -141,6 +142,7 @@ export function buildTreatmentView(
       isf.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })),
     ),
     icrSlots: icr.map((c) => ({
+      id: c.id,
       startHour: c.startHour,
       endHour: c.endHour,
       range: hourRange(c.startHour, c.endHour),

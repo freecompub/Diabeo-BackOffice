@@ -30,19 +30,12 @@ import { usePatientRecordContext } from "@/components/diabeo/patient/PatientReco
 import {
   buildProposalBody,
   mapProposalOutcome,
+  PARAM_BOUNDS,
   type ProposableParameter,
   type ProposalTarget,
 } from "@/components/diabeo/patient/insulin-proposal"
 
 type Feedback = { kind: "error" | "success"; text: string } | null
-
-/** Bornes cliniques par paramètre proposable (source unique `CLINICAL_BOUNDS`) — affichées
- *  en indice pour éviter les allers-retours de typo (revue clinique). Serveur = autorité. */
-const PARAM_BOUNDS: Record<ProposableParameter, { min: number; max: number }> = {
-  insulinSensitivityFactor: { min: CLINICAL_BOUNDS.ISF_GL_MIN, max: CLINICAL_BOUNDS.ISF_GL_MAX },
-  insulinToCarbRatio: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
-  basalRate: { min: CLINICAL_BOUNDS.BASAL_MIN, max: CLINICAL_BOUNDS.BASAL_MAX },
-}
 
 export function InsulinProposalDialog({
   parameterType,
