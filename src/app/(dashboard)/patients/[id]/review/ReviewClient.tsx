@@ -43,7 +43,11 @@ export type ReviewProposalItem = {
   parameterType: AdjustableParameter
   /** Provenance dérivée serveur (US-2649b) — pilote l'affichage de fiabilité (≠ confidence moteur). */
   source: ProposalSource
+  /** Snapshot de la valeur courante à la CRÉATION de la proposition. */
   currentValue: number
+  /** Valeur courante LIVE re-lue à l'ouverture de la revue (null si créneau introuvable).
+   *  Si ≠ `currentValue`, la config a changé depuis la proposition → l'UI avertit. */
+  liveCurrentValue: number | null
   proposedValue: number
   changePercent: number
   reason: string
@@ -463,6 +467,14 @@ function DecisionsStep({ data }: { data: ReviewData }) {
                   <span className="text-xs tabular-nums text-muted-foreground">
                     {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(PARAM_UNIT_KEY[p.parameterType])}
                   </span>
+                  {/* US-2649b — la config a changé depuis la proposition : afficher la valeur
+                      RÉELLE actuelle (le snapshot ci-dessus n'est plus à jour). */}
+                  {p.liveCurrentValue !== null && p.liveCurrentValue !== p.currentValue && (
+                    <span role="status" className="text-xs tabular-nums text-warning-fg">
+                      {t("liveValueChanged", { live: fmt(p.liveCurrentValue) })}{" "}
+                      {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+                    </span>
+                  )}
                 </span>
                 <Badge variant={Math.abs(p.changePercent) >= PROPOSAL_MAJOR_CHANGE_PCT ? "destructive" : "secondary"}>
                   {p.changePercent > 0 ? `+${Math.round(p.changePercent)}` : Math.round(p.changePercent)}&nbsp;%

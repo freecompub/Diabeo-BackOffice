@@ -2050,6 +2050,7 @@
     "decisionError": "The action could not be saved. Please retry.",
     "noProposals": "No pending proposal.",
     "valueTransition": "{from} → {to}",
+    "liveValueChanged": "⚠ Actual current value: {live} (config changed since the proposal)",
     "accept": "Accept",
     "reject": "Reject",
     "reportTitle": "Consultation report",

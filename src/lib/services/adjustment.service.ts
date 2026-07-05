@@ -249,6 +249,37 @@ export const adjustmentService = {
     return proposals
   },
 
+  /**
+   * US-2649b — valeur COURANTE **LIVE** du créneau d'une proposition (re-lecture serveur au
+   * moment de la revue), pour signaler au médecin si la config a changé depuis la proposition
+   * (le `currentValue` stocké est un snapshot de création). Renvoie `null` si le créneau a
+   * disparu/bougé (ISF/ICR par heure, basal par id) ou n'est pas résoluble → l'UI n'affiche
+   * alors pas de comparaison. Réutilise la lecture scopée patient de `resolveCurrentValue`.
+   */
+  async liveCurrentValue(
+    patientId: number,
+    proposal: {
+      parameterType: AdjustableParameter
+      timeSlotStartHour: number | null
+      carbRatioSlotStart: number | null
+      pumpBasalSlotId: string | null
+    },
+  ): Promise<number | null> {
+    try {
+      return await resolveCurrentValue(patientId, proposal.parameterType, {
+        patientId,
+        parameterType: proposal.parameterType,
+        proposedValue: 0,
+        reason: "manualAdjustment",
+        timeSlotStartHour: proposal.timeSlotStartHour,
+        carbRatioSlotStart: proposal.carbRatioSlotStart,
+        pumpBasalSlotId: proposal.pumpBasalSlotId,
+      })
+    } catch {
+      return null
+    }
+  },
+
   /** Get summary counts by status */
   async summary(patientId: number) {
     const [pending, accepted, rejected, expired] = await Promise.all([

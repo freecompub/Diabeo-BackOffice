@@ -102,3 +102,16 @@ de navigation, 404 pour un médecin car fetch sans `patientId` — vestige US-20
 
 **Suivi** : (1) supprimer la page orpheline `/adjustment-proposals` (dead code) — à confirmer ;
 (2) **valeur LIVE** du créneau à l'accept (re-lecture serveur, N requêtes) — non fait ici.
+
+#### US-2649b slice 5 : valeur LIVE du créneau à la revue
+Dernière tranche. Le `currentValue` affiché à la revue est le **snapshot** de création ; la
+config a pu changer depuis.
+- `adjustmentService.liveCurrentValue(patientId, proposal)` : re-lit la valeur **courante réelle**
+  du créneau (réutilise `resolveCurrentValue`, scopé patient) ; `null` si le créneau a disparu/bougé.
+- `review/page.tsx` la calcule par proposition (Promise.all sur la file `pending`) → `ReviewProposalItem.liveCurrentValue`.
+- `ReviewClient` : si `liveCurrentValue ≠ currentValue`, **avertit** le médecin (« Valeur actuelle
+  réelle : X — config modifiée depuis la proposition ») en ambre. i18n `review.liveValueChanged`.
+- Tests : +3 (badges, avertissement présent/absent).
+
+US-2649b **complet** : provenance + risque à la revue · durcissement de l'apply · notif référent ·
+valeur live à l'accept.

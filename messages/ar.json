@@ -2050,6 +2050,7 @@
     "decisionError": "تعذّر حفظ الإجراء. أعد المحاولة.",
     "noProposals": "لا توجد مقترحات معلّقة.",
     "valueTransition": "{from} ← {to}",
+    "liveValueChanged": "⚠ القيمة الحالية الفعلية: {live} (تغيّرت الإعدادات منذ الاقتراح)",
     "accept": "قبول",
     "reject": "رفض",
     "reportTitle": "تقرير الاستشارة",

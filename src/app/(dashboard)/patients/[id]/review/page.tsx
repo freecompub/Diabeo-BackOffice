@@ -129,19 +129,24 @@ export default async function PatientReviewPage({
 
   // Étape 5 — propositions d'ajustement EN ATTENTE (scopées patient, audité).
   const pending = await adjustmentService.list(patientId, { status: "pending" }, userId, ctx)
-  const proposals: ReviewProposalItem[] = pending.map((p) => ({
-    id: p.id,
-    parameterType: p.parameterType,
-    source: p.source,
-    currentValue: Number(p.currentValue),
-    proposedValue: Number(p.proposedValue),
-    changePercent: Number(p.changePercent),
-    reason: p.reason,
-    confidence: p.confidence,
-    timeSlotStartHour: p.timeSlotStartHour ?? null,
-    timeSlotEndHour: p.timeSlotEndHour ?? null,
-    createdAt: p.createdAt.toISOString(),
-  }))
+  // US-2649b — valeur LIVE du créneau (re-lecture serveur) pour signaler au médecin une
+  // config modifiée depuis la proposition. Lecture par proposition (file `pending` courte).
+  const proposals: ReviewProposalItem[] = await Promise.all(
+    pending.map(async (p) => ({
+      id: p.id,
+      parameterType: p.parameterType,
+      source: p.source,
+      currentValue: Number(p.currentValue),
+      liveCurrentValue: await adjustmentService.liveCurrentValue(patientId, p),
+      proposedValue: Number(p.proposedValue),
+      changePercent: Number(p.changePercent),
+      reason: p.reason,
+      confidence: p.confidence,
+      timeSlotStartHour: p.timeSlotStartHour ?? null,
+      timeSlotEndHour: p.timeSlotEndHour ?? null,
+      createdAt: p.createdAt.toISOString(),
+    })),
+  )
 
   const { targetLowMgdl, targetHighMgdl } = resolveTargetRangeMgdl(
     patient.cgmObjectives,
