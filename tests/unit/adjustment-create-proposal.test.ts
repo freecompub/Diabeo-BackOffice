@@ -103,6 +103,16 @@ describe("createProposal — provenance & currentValue serveur", () => {
 })
 
 describe("createProposal — bornes, overflow, garde-fous patient", () => {
+  it("basal hors incrément pompe (0,37 U/h) → valueOutOfBounds (non délivrable)", async () => {
+    await expect(
+      adjustmentService.createProposal(
+        { patientId: 5, parameterType: "basalRate", proposedValue: 0.37, reason: "manualAdjustment", pumpBasalSlotId: "slot1" },
+        nurse,
+      ),
+    ).rejects.toThrow("valueOutOfBounds")
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
   it("hors bornes → valueOutOfBounds, aucune création", async () => {
     await expect(adjustmentService.createProposal(isf(0.05), nurse)).rejects.toThrow("valueOutOfBounds")
     expect(mocks.create).not.toHaveBeenCalled()

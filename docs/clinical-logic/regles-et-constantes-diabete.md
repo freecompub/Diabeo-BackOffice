@@ -109,6 +109,7 @@ Source : `adjustmentService.createProposal` (`src/lib/services/adjustment.servic
 | **`currentValue` de confiance** | Lu **serveur** depuis la config réelle (jamais du body) → garde-fous ininviolables. |
 | **Sens interdit patient** | Un patient ne peut **baisser** une basale (risque hyper/cétose). ISF/ICR : monter la valeur *réduit* la dose → borné en amplitude seulement. |
 | **Cap patient** | Ratios ≤ `PATIENT_MAX_CHANGE_PERCENT` (10 %) ; dose fixe ≤ `FIXED_DOSE_PATIENT_MAX_DELTA_U` (1 U). |
+| **Incrément basal (US-2648b)** | Un débit basal proposé doit être un **multiple de `PUMP_BASAL_INCREMENT`** (0,05 U/h) — sinon non programmable sur la pompe → rejeté à la création (`validateProposedValue`). Miroir UI : `step="0.05"`. |
 | **Anti-spam** | 1 proposition `pending` max par (patient, paramètre, créneau) — index unique partiel `adjustment_proposals_one_pending_per_slot`. |
 | **Éditabilité par mode (US-2648b)** | Capability `deriveEditCapability(role, {mode,coherent})` : `canEditDirect` (DOCTOR/ADMIN), `canPropose` (DOCTOR/NURSE/patient, ADMIN exclu) ; `editableParameters` = ISF/ICR/basal **si** `basalBolus` **ET** `coherent`, sinon **vide** (`fixedDose`/`nonInsulin`/incohérent → non éditable, fail-closed). Pilote l'UI ; n'autorise rien (RBAC = routes). Source : `src/lib/insulin/edit-capability.ts`. |
 | **Frontière dispositif médical** | Mode non-insuliné : **aucune posologie** médicamenteuse orale/GLP-1 proposée (`ClinicalReviewFlag` = orientation, jamais une dose). |

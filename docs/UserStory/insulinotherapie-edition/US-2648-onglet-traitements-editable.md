@@ -88,3 +88,16 @@ Tranche backend (débloque le front US-2648b) :
 - Clinique : **plage autorisée** affichée en indice (`min–max unité` depuis `CLINICAL_BOUNDS`) — évite les typos ; serveur reste l'autorité.
 - Robustesse : signal d'`abort` transmis au `mutate` + annulation à la fermeture (anti-course) ; `maxLength=1000` sur le commentaire.
 - Différé (LOW, tracé) : delta live « vs valeur actuelle » ; affichage « patient requested » côté review médecin (US-2649b).
+
+### US-2648b (en cours) — slice 2c : proposition BASAL (créneau pompe)
+- `BasalSlot` porte `pumpBasalSlotId` (exposé via `getSettings`/`treatment-view`) → créneau pompe adressable.
+- `ProposalTarget` discriminé (`timeSlot` ISF/ICR | `pumpSlot` basal) ; `buildProposalBody` construit `pumpBasalSlotId` pour le basal. `ProposableParameter` = ISF/ICR/basal.
+- `InsulinProposalDialog` généralisé (slot d'affichage + `target`) ; bornes basal (`BASAL_MIN/MAX`) dans l'indice.
+- SlotList basal : bouton « Proposer » (gated `capability.canPropose` + `basalRate` éditable). i18n `proposalParamBasal`. Tests +1 (corps basal).
+
+**Reste 2648b** : édition directe DOCTOR (PUT), `refreshTreatmentMode(tx)`, redirect role-branché, transport drawer, E2E.
+
+#### Corrections revue slice 2c (PR #649)
+- **Incrément basal (MEDIUM)** : un débit basal proposé doit être multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h) — validé au service (`validateProposedValue` → `valueOutOfBounds`) + `step="0.05"` au form. Catalogue §6 mis à jour. Test ajouté.
+- **Message « baisse interdite »** enrichi (route vers soignant / déclaration hypo) — fr/en/ar.
+- Différés (tracés) : test de rendu du gating basal (mock lourd, non bloquant) ; warning médecin sur gros écart mono-créneau basal (US-2649b) ; hint personnalisé `current ±10%` (nécessite le rôle client) ; débit live à l'accept + re-scoping patient de `pumpBasalSlot.update` (US-2649b).

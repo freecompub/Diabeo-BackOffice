@@ -43,14 +43,25 @@ export type CreateProposalInput = {
  * @param {number} value - Proposed value
  * @returns {boolean} True if value is within bounds
  */
+/** Vrai si `value` est un multiple de `step` (tolérance flottante). */
+const isOnIncrement = (value: number, step: number): boolean =>
+  Math.abs(value / step - Math.round(value / step)) < 1e-9
+
 function validateProposedValue(parameterType: string, value: number): boolean {
   switch (parameterType) {
     case "insulinSensitivityFactor":
       return value >= INSULIN_BOUNDS.ISF_GL_MIN && value <= INSULIN_BOUNDS.ISF_GL_MAX
     case "insulinToCarbRatio":
       return value >= INSULIN_BOUNDS.ICR_MIN && value <= INSULIN_BOUNDS.ICR_MAX
+    // US-2648b — un débit basal doit être PROGRAMMABLE sur la pompe : multiple de
+    // `PUMP_BASAL_INCREMENT` (0,05 U/h). Sinon la valeur passe les bornes mais n'est pas
+    // délivrable (arrondi silencieux / profil rejeté à l'application). Rejet à la création.
     case "basalRate":
-      return value >= INSULIN_BOUNDS.BASAL_MIN && value <= INSULIN_BOUNDS.BASAL_MAX
+      return (
+        value >= INSULIN_BOUNDS.BASAL_MIN &&
+        value <= INSULIN_BOUNDS.BASAL_MAX &&
+        isOnIncrement(value, INSULIN_BOUNDS.PUMP_BASAL_INCREMENT)
+      )
     // US-2646 — dose fixe (mode « doses simples »). SEUL le plancher de sanité bloque
     // (dose ≤ 0 / < 0,5 U invalide). PAS de plafond bloquant : une basale fixe peut
     // dépasser 25 U ; le dépassement des seuils théoriques (FIXED_BOLUS/BASAL_WARN_U)

@@ -33,7 +33,11 @@ describe("mapProposalOutcome", () => {
 describe("buildProposalBody", () => {
   it("ISF → champs timeSlot + reason manualAdjustment (provenance serveur)", () => {
     expect(
-      buildProposalBody({ parameterType: "insulinSensitivityFactor", proposedValue: 0.55, startHour: 8, endHour: 12 }),
+      buildProposalBody({
+        parameterType: "insulinSensitivityFactor",
+        proposedValue: 0.55,
+        target: { kind: "timeSlot", startHour: 8, endHour: 12 },
+      }),
     ).toEqual({
       parameterType: "insulinSensitivityFactor",
       proposedValue: 0.55,
@@ -45,7 +49,12 @@ describe("buildProposalBody", () => {
 
   it("ICR → champs carbRatio + commentaire chiffré côté serveur", () => {
     expect(
-      buildProposalBody({ parameterType: "insulinToCarbRatio", proposedValue: 10, startHour: 8, endHour: 12, comment: "hypos matin" }),
+      buildProposalBody({
+        parameterType: "insulinToCarbRatio",
+        proposedValue: 10,
+        target: { kind: "timeSlot", startHour: 8, endHour: 12 },
+        comment: "hypos matin",
+      }),
     ).toEqual({
       parameterType: "insulinToCarbRatio",
       proposedValue: 10,
@@ -56,8 +65,27 @@ describe("buildProposalBody", () => {
     })
   })
 
+  it("basal → pumpBasalSlotId (créneau pompe adressé par id)", () => {
+    expect(
+      buildProposalBody({
+        parameterType: "basalRate",
+        proposedValue: 0.95,
+        target: { kind: "pumpSlot", pumpBasalSlotId: "slot-uuid" },
+      }),
+    ).toEqual({
+      parameterType: "basalRate",
+      proposedValue: 0.95,
+      reason: "manualAdjustment",
+      pumpBasalSlotId: "slot-uuid",
+    })
+  })
+
   it("sans commentaire → pas de clé proposerComment", () => {
-    const body = buildProposalBody({ parameterType: "insulinSensitivityFactor", proposedValue: 0.5, startHour: 0, endHour: 6 })
+    const body = buildProposalBody({
+      parameterType: "insulinSensitivityFactor",
+      proposedValue: 0.5,
+      target: { kind: "timeSlot", startHour: 0, endHour: 6 },
+    })
     expect(body).not.toHaveProperty("proposerComment")
   })
 })
