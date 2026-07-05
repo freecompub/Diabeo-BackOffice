@@ -116,6 +116,8 @@ if (sidebarNavItems.length !== SIDEBAR_ORDER.length) {
 export const patientNavItems: NavItem[] = [
   { href: "/patient/dashboard", labelKey: "patientHome", icon: Home },
   { href: "/patient/appointments", labelKey: "appointments", icon: CalendarClock },
+  // US-2650 — insulinothérapie self-service (lecture ; proposer en tranche ultérieure).
+  { href: "/patient/insulin-therapy", labelKey: "insulinTherapy", icon: Syringe },
   { href: "/settings", labelKey: "settings", icon: Settings },
 ]
 

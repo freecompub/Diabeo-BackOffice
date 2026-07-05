@@ -55,3 +55,20 @@ Paramètres ; les API `/api/insulin-therapy/*` **bloquent VIEWER** ; `/insulin-t
 **Reste US-2650** : endpoint PROPOSE own-id strict (bornes patient) · route `(patient)` + nav +
 UI lecture/proposer mode-aware · `InsulinSummary` (conformité DS + fuite client/serveur) · redirect
 `/insulin-therapy` VIEWER → route patient.
+
+### Slice 2 — page patient lecture mode-aware + nav (front)
+- **Page serveur** `(patient)/patient/insulin-therapy/page.tsx` (pattern `appointments` :
+  `force-dynamic`, headers, garde rôle + `accessDenied`, `requireGdprConsent`, `getOwnPatientId`
+  own-id strict, message unifié si orphelin). Assemble `buildTreatmentView(getSettings, treatments)`
+  serveur (mêmes services que la fiche pro, scopés au dossier propre) → audité par les services.
+- **Vue lecture** `PatientInsulinView` (présentationnelle, read-only) : ISF/ICR/basal en créneaux,
+  acronymes explicités (`Acronym`), **mode-aware** (non insuliné → état vide, aucune posologie, AC-4).
+  Aucune action d'écriture. Design-system + a11y (`aria-labelledby`, skip-link).
+- **Nav patient** : item « Insulinothérapie » ajouté à `patientNavItems`.
+- i18n namespace `patientInsulin` (fr/en/ar). Tests : +2 (créneaux read-only, état vide non insuliné).
+- **PROPOSE patient déjà couvert** par le POST `/api/adjustment-proposals` (VIEWER own-id via
+  `resolvePatientId`, bornes patient, `proposerComment` chiffré) → pas de nouvel endpoint.
+
+**Reste US-2650** : UI « proposer » sur la page patient (réutilise `InsulinProposalDialog` +
+`PatientRecordProvider`/`usePagePatientMutator`) · `InsulinSummary` (conformité DS) · redirect
+`/insulin-therapy` VIEWER (aujourd'hui `(dashboard)/layout` bounce déjà VIEWER → `/patient/dashboard`).
