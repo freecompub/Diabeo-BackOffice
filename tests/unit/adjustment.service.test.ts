@@ -38,6 +38,12 @@
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
+// US-2651 — createManual/createProposal appellent resolveTreatmentMode (garde MDR nonInsulin).
+// Patient insuliné par défaut ici pour ne pas bloquer les cas nominaux.
+vi.mock("@/lib/services/treatment-mode.service", () => ({
+  treatmentModeService: { resolveTreatmentMode: vi.fn(async () => ({ mode: "basalBolus", coherent: true })) },
+}))
+
 import { adjustmentService } from "@/lib/services/adjustment.service"
 
 describe("adjustmentService", () => {
@@ -254,6 +260,19 @@ describe("adjustmentService", () => {
       } as any, 2)
 
       expect(result.id).toBe("p1")
+    })
+
+    // US-2651 — la frontière MDR s'applique AUSSI à cette 2ᵉ primitive de création.
+    it("patient nonInsulin → nonInsulinNoDose, aucune écriture", async () => {
+      const { treatmentModeService } = await import("@/lib/services/treatment-mode.service")
+      vi.mocked(treatmentModeService.resolveTreatmentMode).mockResolvedValueOnce({ mode: "nonInsulin", coherent: true })
+      const tx = { adjustmentProposal: { create: vi.fn() }, auditLog: { create: vi.fn() } }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(tx)) as any)
+
+      await expect(
+        adjustmentService.createManual({ patientId: 1, parameterType: "insulinSensitivityFactor" } as any, 2),
+      ).rejects.toThrow("nonInsulinNoDose")
+      expect(tx.adjustmentProposal.create).not.toHaveBeenCalled()
     })
   })
 

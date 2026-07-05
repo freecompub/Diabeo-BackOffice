@@ -305,6 +305,12 @@ export const adjustmentService = {
     auditUserId: number,
     ctx?: AuditContext,
   ) {
+    // Frontière MDR (US-2651, §12.5) — MÊME invariant que `createProposal` : cette 2ᵉ primitive
+    // de création ne doit JAMAIS émettre une proposition de dose pour un patient NON INSULINÉ,
+    // quelle que soit la route qui la câblera un jour. Fail-fast avant toute écriture.
+    const { mode } = await treatmentModeService.resolveTreatmentMode(input.patientId)
+    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+
     return prisma.$transaction(async (tx) => {
       const proposal = await tx.adjustmentProposal.create({ data: input })
 
