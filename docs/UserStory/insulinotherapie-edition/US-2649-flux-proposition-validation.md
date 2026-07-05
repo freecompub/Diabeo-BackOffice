@@ -78,3 +78,7 @@ Enrichit `/adjustment-proposals` (file de revue) avec des findings différés :
 - Tests : +2 (apply basal scopé + pumpSlotNotFound).
 
 **Reste US-2649b** : confiance basée sur `source` dans l'UI ; valeur LIVE affichée à l'accept ; notifications push.
+
+##### Corrections revue slice 2 (PR #653)
+- **Garde fail-closed uniformisé** sur les **3 paramètres** à l'accept : helper `assertRowApplied(count, code)` → ISF/ICR (comme le basal) lèvent `isfSlotNotFound`/`icrSlotNotFound` si le créneau a disparu/bougé entre proposition et accept → **plus de « accepté + appliqué » fantôme** (le rollback annule le statut). Ferme le finding HDS de cohérence (pré-existant, rendu visible par contraste).
+- Tests : +1 (ISF phantom-accept).

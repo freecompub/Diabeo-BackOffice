@@ -44,6 +44,16 @@ export type CreateProposalInput = {
  * @param {number} value - Proposed value
  * @returns {boolean} True if value is within bounds
  */
+/**
+ * Garde-fő fail-closed de l'application d'une proposition acceptée : si aucune ligne n'a
+ * été écrite (`count === 0` — créneau supprimé/déplacé ou hors patient entre la proposition
+ * et l'accept), lève `code` → rollback de la transaction, jamais d'« accepté + appliqué »
+ * fantôme. Partagé par les 3 paramètres (ISF/ICR/basal) pour éviter la dérive.
+ */
+function assertRowApplied(count: number, code: string): void {
+  if (count === 0) throw new Error(code)
+}
+
 function validateProposedValue(parameterType: string, value: number): boolean {
   switch (parameterType) {
     case "insulinSensitivityFactor":
@@ -395,7 +405,7 @@ export const adjustmentService = {
         }
 
         if (proposal.parameterType === "insulinSensitivityFactor" && proposal.timeSlotStartHour != null) {
-          await tx.insulinSensitivityFactor.updateMany({
+          const res = await tx.insulinSensitivityFactor.updateMany({
             where: {
               settings: { patientId: proposal.patientId },
               startHour: proposal.timeSlotStartHour,
@@ -405,14 +415,18 @@ export const adjustmentService = {
               sensitivityFactorMgdl: proposed * 100,
             },
           })
+          // Fail-closed : si le créneau a disparu/bougé entre proposition et accept, ne pas
+          // laisser un « accepté + appliqué » fantôme (le médecin croirait la valeur active).
+          assertRowApplied(res.count, "isfSlotNotFound")
         } else if (proposal.parameterType === "insulinToCarbRatio" && proposal.carbRatioSlotStart != null) {
-          await tx.carbRatio.updateMany({
+          const res = await tx.carbRatio.updateMany({
             where: {
               settings: { patientId: proposal.patientId },
               startHour: proposal.carbRatioSlotStart,
             },
             data: { gramsPerUnit: proposed },
           })
+          assertRowApplied(res.count, "icrSlotNotFound")
         } else if (proposal.parameterType === "basalRate" && proposal.pumpBasalSlotId) {
           // Re-scopé au patient de la proposition (défense en profondeur, anti-IDOR) :
           // un pumpBasalSlotId qui n'appartiendrait pas au patient ne matche pas → count 0
@@ -424,7 +438,7 @@ export const adjustmentService = {
             },
             data: { rate: proposed },
           })
-          if (res.count === 0) throw new Error("pumpSlotNotFound")
+          assertRowApplied(res.count, "pumpSlotNotFound")
         }
       }
 

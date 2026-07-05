@@ -137,6 +137,23 @@ describe("adjustmentService", () => {
       )
     })
 
+    it("throws 'isfSlotNotFound' when the ISF slot vanished between propose and accept (no phantom accept)", async () => {
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor", proposedValue: 0.55, timeSlotStartHour: 8,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("isfSlotNotFound")
+    })
+
     it("throws 'pumpSlotNotFound' when the scoped basal slot matches nothing (fail-closed)", async () => {
       const mockTx = {
         adjustmentProposal: {
