@@ -1595,6 +1595,7 @@
     "proposalErrorDecreaseForbidden": "Une baisse ne peut pas être proposée ici ; signalez-la à votre soignant (ou déclarez une hypoglycémie).",
     "proposalErrorDeltaTooLarge": "Variation trop importante pour une proposition.",
     "proposalErrorCooldown": "Vous avez déjà proposé une modification de ce réglage récemment. Réessayez plus tard ; pour une demande urgente, contactez votre soignant via la messagerie.",
+    "proposalErrorNonInsulin": "Votre traitement actuel ne comporte pas d'insuline : aucune proposition de dose n'est possible ici. Parlez-en à votre soignant lors de votre prochaine consultation.",
     "proposalErrorValidation": "Valeur invalide.",
     "proposalErrorConsent": "Consentement requis.",
     "proposalErrorGeneric": "Échec de l'envoi. Réessayez.",

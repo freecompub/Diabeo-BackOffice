@@ -59,6 +59,7 @@ const createSchema = z.object({
 /** Erreurs métier de `createProposal` → statut HTTP (codes stables, sans PHI). */
 const ERROR_STATUS: Record<string, number> = {
   valueOutOfBounds: 422,
+  nonInsulinNoDose: 422, // US-2651 — patient non insuliné : aucune proposition de dose (frontière MDR)
   patientDecreaseForbidden: 422,
   patientDeltaTooLarge: 422,
   slotRequired: 400,

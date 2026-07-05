@@ -36,6 +36,7 @@ const PROPOSAL_ERROR_KEY: Record<string, string> = {
   patientDecreaseForbidden: "proposalErrorDecreaseForbidden",
   patientDeltaTooLarge: "proposalErrorDeltaTooLarge",
   patientProposalCooldown: "proposalErrorCooldown",
+  nonInsulinNoDose: "proposalErrorNonInsulin",
   validationFailed: "proposalErrorValidation",
   gdprConsentRequired: "proposalErrorConsent",
 }

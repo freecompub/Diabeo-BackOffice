@@ -8,6 +8,7 @@
  */
 
 import type { AdjustableParameter, AdjustmentReason, ConfidenceLevel } from "@prisma/client"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 
 /**
  * Adjustment proposal candidate — suggested parameter change with confidence.
@@ -38,8 +39,8 @@ export interface ProposalCandidate {
   averageObservedValue?: number
 }
 
-/** Max change magnitude per proposal — safety cap */
-const MAX_CHANGE_PERCENT = 20 // ±20%
+/** Max change magnitude per proposal — safety cap (source unique : `CLINICAL_BOUNDS`, US-2651). */
+const MAX_CHANGE_PERCENT = CLINICAL_BOUNDS.MAX_CHANGE_PERCENT // ±20%
 
 /**
  * Determine confidence level from supporting event count.

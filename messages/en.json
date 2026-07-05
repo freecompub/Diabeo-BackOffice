@@ -1595,6 +1595,7 @@
     "proposalErrorDecreaseForbidden": "A decrease can't be proposed here; tell your care team (or report a hypoglycemia).",
     "proposalErrorDeltaTooLarge": "Change too large for a proposal.",
     "proposalErrorCooldown": "You recently proposed a change to this setting. Try again later; for anything urgent, contact your care team via messaging.",
+    "proposalErrorNonInsulin": "Your current treatment does not include insulin: no dose proposal is possible here. Discuss it with your care team at your next consultation.",
     "proposalErrorValidation": "Invalid value.",
     "proposalErrorConsent": "Consent required.",
     "proposalErrorGeneric": "Sending failed. Please try again.",
