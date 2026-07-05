@@ -22,6 +22,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     referentFindFirst: vi.fn(),
     sendToUser: vi.fn(),
     resolveTreatmentMode: vi.fn(),
+    raiseFlag: vi.fn(),
   }
   return {
     mocks: m,
@@ -41,6 +42,9 @@ vi.mock("@/lib/services/audit.service", () => ({ auditService: { logWithTx: mock
 vi.mock("@/lib/services/fcm.service", () => ({ fcmService: { sendToUser: mocks.sendToUser } }))
 vi.mock("@/lib/services/treatment-mode.service", () => ({
   treatmentModeService: { resolveTreatmentMode: mocks.resolveTreatmentMode },
+}))
+vi.mock("@/lib/services/clinical-review-flag.service", () => ({
+  clinicalReviewFlagService: { raise: mocks.raiseFlag },
 }))
 vi.mock("@/lib/crypto/fields", () => ({
   encryptField: (s: string) => `enc(${s})`,
@@ -75,6 +79,7 @@ beforeEach(() => {
   mocks.referentFindFirst.mockResolvedValue({ pro: { userId: 99 } }) // médecin référent
   mocks.sendToUser.mockResolvedValue({ sent: 1 })
   mocks.resolveTreatmentMode.mockResolvedValue({ mode: "basalBolus", coherent: true }) // patient insuliné par défaut
+  mocks.raiseFlag.mockResolvedValue({ flagId: "f1", created: true })
 })
 
 describe("createProposal — provenance & currentValue serveur", () => {
@@ -100,11 +105,25 @@ describe("createProposal — provenance & currentValue serveur", () => {
     expect(Object.keys(audit.metadata)).toEqual(["patientId", "proposedByRole"])
   })
 
-  it("patient NON INSULINÉ (mode nonInsulin) → nonInsulinNoDose (frontière MDR, US-2651)", async () => {
+  it("mode nonInsulin → nonInsulinNoDose, aucune écriture (frontière MDR, US-2651)", async () => {
     mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).rejects.toThrow("nonInsulinNoDose")
-    // Aucune proposition créée (refus fail-fast avant toute écriture).
     expect(mocks.create).not.toHaveBeenCalled()
+    // Un clinicien (nurse) agit directement → aucun flag d'orientation levé.
+    expect(mocks.raiseFlag).not.toHaveBeenCalled()
+  })
+
+  it("PATIENT nonInsulin → flag d'orientation levé (intention remontée) puis refus", async () => {
+    mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
+    await expect(adjustmentService.createProposal(isf(0.52), patient)).rejects.toThrow("nonInsulinNoDose")
+    expect(mocks.raiseFlag).toHaveBeenCalledWith(5, "reviewInConsultation", patient.userId, undefined)
+    expect(mocks.create).not.toHaveBeenCalled()
+  })
+
+  it("PATIENT nonInsulin : un échec du flag ne masque pas le refus (best-effort)", async () => {
+    mocks.resolveTreatmentMode.mockResolvedValue({ mode: "nonInsulin", coherent: true })
+    mocks.raiseFlag.mockRejectedValue(new Error("db down"))
+    await expect(adjustmentService.createProposal(isf(0.52), patient)).rejects.toThrow("nonInsulinNoDose")
   })
 
   it("proposerComment chiffré au stockage", async () => {
