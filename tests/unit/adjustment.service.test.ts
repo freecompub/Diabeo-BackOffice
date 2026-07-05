@@ -113,6 +113,63 @@ describe("adjustmentService", () => {
       // Le paramètre insuline n'est JAMAIS appliqué (validation avant updateMany).
       expect(mockTx.insulinSensitivityFactor.updateMany).not.toHaveBeenCalled()
     })
+
+    it("applies a basal proposal via a pump slot SCOPED to the patient (anti-IDOR)", async () => {
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "basalRate", proposedValue: 0.95, pumpBasalSlotId: "slot1",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        pumpBasalSlot: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      const result = await adjustmentService.accept("p1", 2, true)
+      expect(result.applied).toBe(true)
+      expect(mockTx.pumpBasalSlot.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ id: "slot1", basalConfig: { settings: { patientId: 1 } } }),
+        }),
+      )
+    })
+
+    it("throws 'isfSlotNotFound' when the ISF slot vanished between propose and accept (no phantom accept)", async () => {
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor", proposedValue: 0.55, timeSlotStartHour: 8,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("isfSlotNotFound")
+    })
+
+    it("throws 'pumpSlotNotFound' when the scoped basal slot matches nothing (fail-closed)", async () => {
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "basalRate", proposedValue: 0.95, pumpBasalSlotId: "slotX",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        pumpBasalSlot: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("pumpSlotNotFound")
+    })
   })
 
   describe("reject", () => {
@@ -210,14 +267,14 @@ describe("adjustmentService", () => {
           }),
           update: vi.fn().mockResolvedValue({}),
         },
-        pumpBasalSlot: { update: vi.fn().mockResolvedValue({}) },
+        pumpBasalSlot: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await adjustmentService.accept("p3", 2, true)
       expect(result.applied).toBe(true)
-      expect(mockTx.pumpBasalSlot.update).toHaveBeenCalled()
+      expect(mockTx.pumpBasalSlot.updateMany).toHaveBeenCalled()
     })
   })
 
