@@ -23,7 +23,10 @@ export function deriveRiskDirection(
   const delta = proposedValue - currentValue
   if (delta === 0 || !Number.isFinite(delta)) return "none"
   // « Plus d'insuline » = hausse basale/dose fixe, OU baisse ISF/ICR.
-  const moreInsulin =
-    parameterType === "basalRate" || parameterType === "fixedDose" ? delta > 0 : delta < 0
-  return moreInsulin ? "hypo" : "hyper"
+  if (parameterType === "basalRate" || parameterType === "fixedDose") return delta > 0 ? "hypo" : "hyper"
+  if (parameterType === "insulinSensitivityFactor" || parameterType === "insulinToCarbRatio") {
+    return delta < 0 ? "hypo" : "hyper"
+  }
+  // Paramètre inconnu → pas de verdict clinique deviné (fail-closed).
+  return "none"
 }

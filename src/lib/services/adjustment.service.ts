@@ -186,6 +186,10 @@ export const adjustmentService = {
     const proposals = await prisma.adjustmentProposal.findMany({
       where,
       orderBy: { createdAt: "desc" },
+      // HDS — ne JAMAIS émettre le ciphertext `proposerComment` dans la réponse (CLAUDE.md).
+      // Strippé au SERVICE : tout consommateur de `list()` est protégé, pas seulement la route.
+      // Le décryptage pour le médecin relecteur sera une tranche dédiée (US-2649b).
+      omit: { proposerComment: true },
     })
 
     await auditService.log({

@@ -25,4 +25,7 @@ describe("deriveRiskDirection", () => {
     expect(deriveRiskDirection("basalRate", 1.0, 1.0)).toBe("none")
     expect(deriveRiskDirection("insulinToCarbRatio", 10, NaN)).toBe("none")
   })
+  it("paramètre inconnu → none (fail-closed, pas de verdict deviné)", () => {
+    expect(deriveRiskDirection("somethingElse", 1.0, 2.0)).toBe("none")
+  })
 })

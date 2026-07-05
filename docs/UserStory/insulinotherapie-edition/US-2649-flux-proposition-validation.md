@@ -67,3 +67,8 @@ Enrichit `/adjustment-proposals` (file de revue) avec des findings différés :
 - i18n `adjustments.source.*` / `adjustments.risk.*` (fr/en/ar). Tests : 5.
 
 **Reste US-2649b** : confiance basée sur `source` (pas `confidence`) dans l'UI ; **débit/valeur LIVE** à l'accept (pas le snapshot) + re-scoping patient de l'apply basal ; notifications push (sans PHI) ; ne pas exposer `proposerComment` (ciphertext) dans la réponse GET list.
+
+#### Corrections revue slice 1 (PR #652)
+- **HDS (fermé)** : `proposerComment` (ciphertext) n'est plus émis dans la réponse GET `list` — strippé au **service** (`omit`), donc tout consommateur est protégé (pas seulement la route). Décryptage pour le médecin = tranche future.
+- **fail-closed** : `deriveRiskDirection` renvoie `none` sur un `parameterType` inconnu (pas de verdict deviné) + test.
+- Confirmé clinique : les 4 directions correctes ; magnitude déjà affichée à côté du badge (anti alarm-fatigue).
