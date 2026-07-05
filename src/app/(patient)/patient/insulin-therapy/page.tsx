@@ -24,7 +24,7 @@ import { auditService } from "@/lib/services/audit.service"
 import { patientService } from "@/lib/services/patient.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { buildTreatmentView } from "@/app/(dashboard)/patients/[id]/treatment-view"
-import { PatientInsulinView } from "@/components/diabeo/patient/PatientInsulinView"
+import { PatientInsulinClient } from "@/components/diabeo/patient/PatientInsulinClient"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -101,12 +101,12 @@ export default async function PatientInsulinTherapyPage() {
       </header>
 
       <div id="patient-insulin-content">
-        {treatmentView === null ? (
+        {treatmentView !== null && patientId !== null ? (
+          <PatientInsulinClient patientId={patientId} data={treatmentView} />
+        ) : (
           <div role="status" className="rounded-md border border-feedback-warning bg-feedback-warning-bg p-4 text-sm text-feedback-warning-fg">
             {t("unavailable")}
           </div>
-        ) : (
-          <PatientInsulinView data={treatmentView} />
         )}
       </div>
     </main>

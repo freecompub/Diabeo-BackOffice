@@ -86,3 +86,17 @@ UI lecture/proposer mode-aware · `InsulinSummary` (conformité DS + fuite clien
 **Confirmé sain** : fuite client/serveur CLEAN (type-only, modules purs) · own-id strict · pas de
 PHI vers le client. **Différé (follow-up)** : extraire `buildTreatmentView` dans `src/lib/insulin/`
 (smell cross-route-group, non bloquant).
+
+### Slice 3 — UI « proposer » sur la page patient (front)
+- **`PatientInsulinClient`** (hôte client) : `PatientRecordProvider` + `usePagePatientMutator(patientId)`
+  (POST `/api/adjustment-proposals`) + `usePagePatientFetcher(patientId)` (requis par le provider).
+- **`PatientInsulinView`** gagne `canPropose` : un bouton par créneau (ISF/ICR/basal) ouvre
+  **`InsulinProposalDialog`** (réutilisé) → proposition bornée patient, validation médecin (ADR #13).
+  Fail-closed : sans `mutate` en contexte, le dialog se masque (lecture seule).
+- **Sécurité** : la route POST re-résout le patient depuis la SESSION (VIEWER → son dossier,
+  `body.patientId` ignoré) → own-id strict préservé même si l'`id` transite dans le corps.
+- i18n `patientInsulin.proposeHint` (fr/en/ar) ; dialog réutilise le namespace `patientDetail`.
+- Tests : +2 (boutons proposer sous provider ; fail-closed sans transport).
+
+**Cœur de US-2650 complet** (lecture own-id + page + proposer). Reste : `InsulinSummary` (conformité
+DS, cosmétique) · redirect `/insulin-therapy` VIEWER (déjà bounce via `(dashboard)/layout`).
