@@ -101,3 +101,18 @@ Tranche backend (débloque le front US-2648b) :
 - **Incrément basal (MEDIUM)** : un débit basal proposé doit être multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h) — validé au service (`validateProposedValue` → `valueOutOfBounds`) + `step="0.05"` au form. Catalogue §6 mis à jour. Test ajouté.
 - **Message « baisse interdite »** enrichi (route vers soignant / déclaration hypo) — fr/en/ar.
 - Différés (tracés) : test de rendu du gating basal (mock lourd, non bloquant) ; warning médecin sur gros écart mono-créneau basal (US-2649b) ; hint personnalisé `current ±10%` (nécessite le rôle client) ; débit live à l'accept + re-scoping patient de `pumpBasalSlot.update` (US-2649b).
+
+### US-2648b (en cours) — slice 2d : routes UPDATE (édition directe DOCTOR, backend)
+Foundation de l'édition directe (backend-first, comme US-2648a). Le service n'avait que
+create/delete → ajout de l'UPDATE by id :
+- `insulinTherapyService.updateIsf/updateIcr/updatePumpSlot(id, value, userId, patientId)` :
+  `updateMany` **scopé patient** (via `settings.patientId` / `basalConfig.settings.patientId`,
+  anti-IDOR → `*SlotNotFound` si autre patient) ; audit `UPDATE` (pivot patientId) ; ne modifie
+  que la valeur (pas les heures).
+- Routes **PATCH** `sensitivity-factors` / `carb-ratios` / `basal-config/pump-slots` :
+  **DOCTOR only** (NURSE/patient → proposition) ; bornes Zod (`INSULIN_BOUNDS`) ; basal
+  **multiple de `PUMP_BASAL_INCREMENT`** (refine, 400 sinon).
+- Tests : +7 (RBAC PATCH DOCTOR/NURSE/VIEWER + off-increment 400).
+
+**Reste 2648b** : UI DOCTOR « Modifier » (dialog direct-write + `router.refresh()`), redirect
+`/insulin-therapy` role-branché, transport drawer, E2E.

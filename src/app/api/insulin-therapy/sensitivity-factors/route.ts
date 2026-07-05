@@ -64,3 +64,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
+
+const updateIsfSchema = z.object({
+  id: z.string().uuid(),
+  patientId: z.number().int().positive().optional(),
+  sensitivityFactorGl: z.number().min(INSULIN_BOUNDS.ISF_GL_MIN).max(INSULIN_BOUNDS.ISF_GL_MAX),
+})
+
+/**
+ * PATCH — édition DIRECTE de la valeur d'un créneau ISF (US-2648b). DOCTOR only ;
+ * NURSE/patient passent par une proposition. Scopé patient (updateIsf via settings.patientId).
+ */
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = requireRole(req, "DOCTOR")
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
+    const parsed = updateIsfSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
+    }
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    try {
+      const result = await insulinTherapyService.updateIsf(parsed.data.id, parsed.data.sensitivityFactorGl, user.id, patientId)
+      return NextResponse.json(result)
+    } catch (e) {
+      if (e instanceof Error && e.message === "isfSlotNotFound") {
+        return NextResponse.json({ error: "isfSlotNotFound" }, { status: 404 })
+      }
+      throw e
+    }
+  } catch (error) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[sensitivity-factors PATCH]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
+  }
+}

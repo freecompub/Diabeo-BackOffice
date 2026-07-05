@@ -178,3 +178,51 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
+
+const updatePumpSlotSchema = z.object({
+  id: z.string().uuid(),
+  patientId: z.number().int().positive().optional(),
+  // Débit basal PROGRAMMABLE : multiple de PUMP_BASAL_INCREMENT (0,05 U/h), sinon
+  // non délivrable (cohérent avec la proposition, catalogue §6).
+  rate: z
+    .number()
+    .min(INSULIN_BOUNDS.BASAL_MIN)
+    .max(INSULIN_BOUNDS.BASAL_MAX)
+    .refine(
+      (v) => Math.abs(v / INSULIN_BOUNDS.PUMP_BASAL_INCREMENT - Math.round(v / INSULIN_BOUNDS.PUMP_BASAL_INCREMENT)) < 1e-9,
+      { message: "rate must be a multiple of the pump increment (0.05 U/h)" },
+    ),
+})
+
+/** PATCH — édition DIRECTE du débit d'un créneau basal pompe (US-2648b). DOCTOR only ;
+ *  scopé patient ; débit validé multiple de l'incrément pompe. */
+export async function PATCH(req: NextRequest) {
+  try {
+    const user = requireRole(req, "DOCTOR")
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
+    const parsed = updatePumpSlotSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
+    }
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    const ctx = extractRequestContext(req)
+    try {
+      const result = await insulinTherapyService.updatePumpSlot(parsed.data.id, parsed.data.rate, user.id, patientId, ctx)
+      return NextResponse.json(result)
+    } catch (e) {
+      if (e instanceof Error && e.message === "pumpSlotNotFound") {
+        return NextResponse.json({ error: "pumpSlotNotFound" }, { status: 404 })
+      }
+      throw e
+    }
+  } catch (error) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[pump-slots PATCH]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
+  }
+}

@@ -206,6 +206,30 @@ export const insulinTherapyService = {
     })
   },
 
+  /**
+   * US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ISF. `updateMany`
+   * scopé au patient (via `settings.patientId`) → un id d'un autre patient ne matche
+   * pas (`count === 0` → `isfSlotNotFound`, anti-IDOR). Ne modifie QUE la valeur, pas
+   * les heures (donc pas de re-check de chevauchement). Bornes validées à la route.
+   */
+  async updateIsf(id: string, sensitivityFactorGl: number, auditUserId: number, patientId: number) {
+    return prisma.$transaction(async (tx) => {
+      const res = await tx.insulinSensitivityFactor.updateMany({
+        where: { id, settings: { patientId } },
+        data: { sensitivityFactorGl, sensitivityFactorMgdl: sensitivityFactorGl * 100 },
+      })
+      if (res.count === 0) throw new Error("isfSlotNotFound")
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `isf:${id}`,
+        metadata: { patientId },
+      })
+      return { updated: true }
+    })
+  },
+
   // --- ICR CRUD ---
   async createIcr(
     settingsId: number,
@@ -257,6 +281,26 @@ export const insulinTherapyService = {
         resourceId: `icr:${id}`,
       })
       return { deleted: true }
+    })
+  },
+
+  /** US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ICR. Scopé patient
+   *  (via `settings.patientId`, anti-IDOR). Ne modifie que la valeur. Bornes à la route. */
+  async updateIcr(id: string, gramsPerUnit: number, auditUserId: number, patientId: number) {
+    return prisma.$transaction(async (tx) => {
+      const res = await tx.carbRatio.updateMany({
+        where: { id, settings: { patientId } },
+        data: { gramsPerUnit },
+      })
+      if (res.count === 0) throw new Error("icrSlotNotFound")
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `icr:${id}`,
+        metadata: { patientId },
+      })
+      return { updated: true }
     })
   },
 
@@ -352,6 +396,31 @@ export const insulinTherapyService = {
         userAgent: ctx?.userAgent,
       })
       return { deleted: true }
+    })
+  },
+
+  /**
+   * US-2648b — Édition DIRECTE (DOCTOR) du débit d'un créneau basal pompe. Scopé patient
+   * (via `basalConfig.settings.patientId`, anti-IDOR → `pumpSlotNotFound` si autre patient).
+   * Le débit doit être PROGRAMMABLE (multiple de `PUMP_BASAL_INCREMENT`) — validé à la route.
+   */
+  async updatePumpSlot(id: string, rate: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+    return prisma.$transaction(async (tx) => {
+      const res = await tx.pumpBasalSlot.updateMany({
+        where: { id, basalConfig: { settings: { patientId } } },
+        data: { rate },
+      })
+      if (res.count === 0) throw new Error("pumpSlotNotFound")
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `pump:${id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId },
+      })
+      return { updated: true }
     })
   },
 
