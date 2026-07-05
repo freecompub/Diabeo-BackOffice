@@ -2020,6 +2020,21 @@
     "securityBadge": "مُستضيف بيانات صحية (HDS) · AES-256-GCM",
     "inlineDefaultLabel": "جارٍ التحميل…"
   },
+  "reviewFlags": {
+    "title": "للمراجعة في الاستشارة",
+    "stale": "بيانات غير محدّثة",
+    "loading": "جارٍ التحميل…",
+    "loadError": "تعذّر تحميل عناصر المراجعة.",
+    "emptyTitle": "لا شيء للمراجعة",
+    "emptyMessage": "لا يوجد مريض للمراجعة في الاستشارة حالياً.",
+    "patientFallback": "مريض",
+    "review": "فتح",
+    "reviewAria": "فتح ملف {name}",
+    "flagReviewInConsultation": "مراجعة في الاستشارة",
+    "flagHba1cStale": "الهيموغلوبين السكري (HbA1c) للتحديث",
+    "flagTirBelowTarget": "الوقت ضمن النطاق (TIR) تحت الهدف",
+    "flagObservance": "التحقق من الالتزام"
+  },
   "review": {
     "title": "وضع مراجعة الاستشارة",
     "subtitle": "تحليل منظَّم خطوة بخطوة — دون ذكاء اصطناعي.",

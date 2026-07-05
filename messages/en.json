@@ -2020,6 +2020,21 @@
     "securityBadge": "Health Data Host (HDS) · AES-256-GCM",
     "inlineDefaultLabel": "Loading…"
   },
+  "reviewFlags": {
+    "title": "To review in consultation",
+    "stale": "Data not refreshed",
+    "loading": "Loading…",
+    "loadError": "Could not load review items.",
+    "emptyTitle": "Nothing to review",
+    "emptyMessage": "No patient to review in consultation right now.",
+    "patientFallback": "Patient",
+    "review": "Open",
+    "reviewAria": "Open {name}'s record",
+    "flagReviewInConsultation": "Review in consultation",
+    "flagHba1cStale": "Glycated haemoglobin (HbA1c) to refresh",
+    "flagTirBelowTarget": "Time in range (TIR) below target",
+    "flagObservance": "Adherence to check"
+  },
   "review": {
     "title": "Consultation review mode",
     "subtitle": "Structured, step-by-step analysis — no artificial intelligence.",

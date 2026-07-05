@@ -23,6 +23,8 @@ import {
   EmergencyAlertSeverity,
   AppointmentStatus,
   ProposalStatus,
+  ClinicalReviewFlagStatus,
+  type ClinicalReviewFlagType,
   type AdjustableParameter,
   type Prisma,
 } from "@prisma/client"
@@ -939,6 +941,73 @@ export const pendingProposalsQuery = {
       changePercent: Number(r.changePercent),
       createdAt: r.createdAt,
       glucoseUnit,
+    }))
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2651 (mode c) — Flags d'orientation clinique OUVERTS (médecin)
+// ─────────────────────────────────────────────────────────────
+
+export type ReviewFlagItem = {
+  id: string
+  patientId: number
+  patientFirstName: string
+  pathology: string | null
+  type: ClinicalReviewFlagType
+  createdAt: Date
+}
+
+const REVIEW_FLAGS_LIMIT = 10
+
+/**
+ * Liste les `ClinicalReviewFlag` **ouverts** du portefeuille du caller (scope RBAC via
+ * `getAccessiblePatientIds`). Objet d'ORIENTATION distinct d'`AdjustmentProposal` : ne porte
+ * JAMAIS de posologie (frontière dispositif médical). Surface la carte « à revoir » du
+ * dashboard soignant (US-2651). Déterministe ; lecture santé auditée (prénom déchiffré).
+ */
+export const reviewFlagsQuery = {
+  async forCaller(
+    userId: number, role: Role,
+    auditUserId: number, ctx?: AuditContext,
+  ): Promise<ReviewFlagItem[]> {
+    const ids = await getAccessiblePatientIds(userId, role)
+    const scope = patientScopeWhere(ids)
+    if (scope === null) return []
+    const rows = await prisma.clinicalReviewFlag.findMany({
+      where: { ...scope, status: ClinicalReviewFlagStatus.open },
+      include: {
+        patient: {
+          select: { id: true, pathology: true, user: { select: { firstname: true } } },
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: REVIEW_FLAGS_LIMIT,
+    })
+
+    // Audit : résumé + pivot par patient (PHI : prénom déchiffré exposé). Jamais de posologie.
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "CLINICAL_REVIEW_FLAG",
+      resourceId: "0",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { kind: "dashboard.medecin.reviewFlags", count: rows.length },
+    })
+    await Promise.allSettled(rows.map((r) =>
+      auditService.log({
+        userId: auditUserId, action: "READ", resource: "CLINICAL_REVIEW_FLAG",
+        resourceId: r.id,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { patientId: r.patientId, kind: "dashboard.medecin.reviewFlags" },
+      }),
+    ))
+
+    return rows.map((r) => ({
+      id: r.id,
+      patientId: r.patientId,
+      patientFirstName: safeDecryptField(r.patient.user.firstname ?? "") ?? "",
+      pathology: r.patient.pathology,
+      type: r.type,
+      createdAt: r.createdAt,
     }))
   },
 }

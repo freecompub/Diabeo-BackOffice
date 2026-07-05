@@ -2020,6 +2020,21 @@
     "securityBadge": "Hébergeur de données de santé (HDS) · AES-256-GCM",
     "inlineDefaultLabel": "Chargement…"
   },
+  "reviewFlags": {
+    "title": "À revoir en consultation",
+    "stale": "Données non rafraîchies",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger les orientations.",
+    "emptyTitle": "Aucune orientation",
+    "emptyMessage": "Aucun patient à revoir en consultation pour le moment.",
+    "patientFallback": "Patient",
+    "review": "Ouvrir",
+    "reviewAria": "Ouvrir la fiche de {name}",
+    "flagReviewInConsultation": "À revoir en consultation",
+    "flagHba1cStale": "Hémoglobine glyquée (HbA1c) à actualiser",
+    "flagTirBelowTarget": "Temps dans la cible (TIR) sous l'objectif",
+    "flagObservance": "Observance à vérifier"
+  },
   "review": {
     "title": "Mode revue de consultation",
     "subtitle": "Analyse structurée, étape par étape — sans intelligence artificielle.",
