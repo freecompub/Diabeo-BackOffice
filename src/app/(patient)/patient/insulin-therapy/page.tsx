@@ -23,7 +23,7 @@ import { requireGdprConsent } from "@/lib/gdpr"
 import { auditService } from "@/lib/services/audit.service"
 import { patientService } from "@/lib/services/patient.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
-import { buildTreatmentView } from "@/app/(dashboard)/patients/[id]/treatment-view"
+import { buildTreatmentView } from "@/lib/insulin/treatment-view"
 import { PatientInsulinClient } from "@/components/diabeo/patient/PatientInsulinClient"
 
 export const dynamic = "force-dynamic"

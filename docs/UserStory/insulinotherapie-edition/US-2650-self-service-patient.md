@@ -110,3 +110,9 @@ DS, cosmétique) · redirect `/insulin-therapy` VIEWER (déjà bounce via `(dash
   messagerie pour l'urgent. Catalogué + lock anti-drift. Tests : +3 (< 24 h bloqué, > 24 h OK, nurse non gaté).
 - Sécurité confirmée : **IDOR impossible de bout en bout** (VIEWER → son dossier, `body.patientId` jeté) ;
   fuite client/serveur CLEAN.
+
+### Slice 4a — extraction `buildTreatmentView` (dette de revue #658)
+- `treatment-view.ts` déplacé de `src/app/(dashboard)/patients/[id]/` vers **`src/lib/insulin/treatment-view.ts`**
+  (module pur, aucune dépendance RSC/Prisma). Supprime le couplage cross-route-group (une page
+  `(patient)` importait un helper co-localisé `(dashboard)/[id]/`). 5 importeurs mis à jour vers
+  `@/lib/insulin/treatment-view`. **Zéro changement de comportement** (3678 tests inchangés).
