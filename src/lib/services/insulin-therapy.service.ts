@@ -44,7 +44,7 @@ export const insulinTherapyService = {
    * @param {AuditContext} [ctx] - Request context (IP, User-Agent)
    * @returns {Promise<Object | null>} InsulinTherapySettings with all relations or null
    */
-  async getSettings(patientId: number, auditUserId: number, ctx?: AuditContext) {
+  async getSettings(patientId: number, auditUserId: number | null, ctx?: AuditContext) {
     const settings = await prisma.insulinTherapySettings.findUnique({
       where: { patientId },
       include: {

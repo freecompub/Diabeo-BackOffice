@@ -14,6 +14,7 @@
  */
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
+import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import { analyzeIcrSlot } from "@/lib/proposal-algorithm"
@@ -22,6 +23,7 @@ import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, type JournalMeal } from "@/lib/services/meal-trends.service"
 import { getCgmDefaults } from "@/lib/services/objectives.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
@@ -36,6 +38,21 @@ export interface GenerateResult {
   mealsUsable: number
   skipped: string | null
 }
+
+/** Résultat d'un run PORTEFEUILLE (cron) — métriques agrégées, aucune valeur clinique. */
+export interface GenerateAllResult {
+  processed: number
+  created: number
+  errored: number
+  skippedConcurrent: boolean
+}
+
+/** Acteur d'audit du cron = acteur SYSTÈME (`null`, FK-safe) — cohérent avec `createEngineProposal`
+ *  (userId null) et les autres crons. Les lectures (`getSettings`/`dailyJournal`) sont donc attribuées
+ *  au système, pas à un soignant. */
+const CRON_AUDIT_USER_ID: number | null = null
+/** Clé du verrou advisory global (anti double-run OVH + Vercel). */
+const CRON_LOCK_KEY = "proposal-generator-cron"
 
 const EMPTY = (skipped: string): GenerateResult => ({ created: 0, slotsConsidered: 0, mealsUsable: 0, skipped })
 
@@ -79,7 +96,7 @@ export const proposalGeneratorService = {
    * @param ctx Contexte requête (audit).
    * @returns Métriques du run (sans PHI).
    */
-  async generateForPatient(patientId: number, auditUserId: number, ctx?: AuditContext): Promise<GenerateResult> {
+  async generateForPatient(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
     // 0. Mode — seul `basalBolus` a des ratios ICR par créneau à titrer.
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode !== "basalBolus") return EMPTY("mode")
@@ -171,5 +188,64 @@ export const proposalGeneratorService = {
     }
 
     return { created, slotsConsidered, mealsUsable: usable.length, skipped: null }
+  },
+
+  /**
+   * Run PORTEFEUILLE (cron nocturne) : génère les propositions ICR pour tous les patients actifs.
+   * Sous **verrou advisory session** (`withSessionAdvisoryLock`) : anti double-run (OVH + Vercel).
+   * **Isolation per-patient** : une erreur infra sur un patient (`errored++`) n'arrête pas le portefeuille.
+   * Idempotent (anti-spam `one_pending_per_slot`) → sûr même en cas de course. Lectures attribuées à
+   * l'acteur système (`CRON_AUDIT_USER_ID = null`).
+   * @param ctx Contexte requête (audit).
+   * @returns Métriques agrégées ; `skippedConcurrent` si un autre run détient le verrou.
+   */
+  async generateForAllPatients(ctx?: AuditContext): Promise<GenerateAllResult> {
+    const t0 = Date.now()
+    const run = await withSessionAdvisoryLock(CRON_LOCK_KEY, async () => {
+      const patients = await prisma.patient.findMany({
+        where: { deletedAt: null, user: { status: "active" } }, // RGPD : ni supprimés ni comptes inactifs
+        select: { id: true },
+      })
+      let processed = 0
+      let created = 0
+      let errored = 0
+      for (const { id } of patients) {
+        try {
+          const r = await proposalGeneratorService.generateForPatient(id, CRON_AUDIT_USER_ID, ctx)
+          created += r.created
+        } catch (err) {
+          // Isolation : erreur infra (DB/lecture) sur un patient → on compte et on continue.
+          errored++
+          logger.error("proposal-generator", "generateForPatient failed",
+            { patientId: id, failMode: "unexpected" }, err as Error)
+        }
+        processed++
+      }
+      return { processed, created, errored, skippedConcurrent: false }
+    })
+    const durationMs = Date.now() - t0
+
+    // Marqueur d'audit RUN-LEVEL immuable (piste HDS 5 ans, pas un simple log applicatif) — aligné sur
+    // les crons invoice/appointment. Ancre le `requestId` partagé des lectures per-patient (acteur null).
+    // Best-effort : un échec d'audit ne doit pas faire échouer le run.
+    if (run === null) {
+      // Verrou non acquis → un autre run est en cours : skip tracé (cron retry-safe).
+      await auditService.log({
+        userId: CRON_AUDIT_USER_ID, action: "CREATE", resource: "ADJUSTMENT_PROPOSAL", resourceId: "cron",
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { kind: "proposal.generator.cron.skipped_locked", durationMs },
+      }).catch((err) => logger.error("proposal-generator", "cron audit (skipped) failed", { kind: "audit.write.failed" }, err))
+      return { processed: 0, created: 0, errored: 0, skippedConcurrent: true }
+    }
+
+    await auditService.log({
+      userId: CRON_AUDIT_USER_ID, action: "CREATE", resource: "ADJUSTMENT_PROPOSAL", resourceId: "cron",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: {
+        kind: "proposal.generator.cron.run",
+        processed: run.processed, created: run.created, errored: run.errored, durationMs,
+      },
+    }).catch((err) => logger.error("proposal-generator", "cron audit (run) failed", { kind: "audit.write.failed" }, err))
+    return run
   },
 }

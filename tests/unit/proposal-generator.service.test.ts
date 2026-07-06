@@ -20,13 +20,24 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
 }))
+// Verrou advisory : par défaut « acquis » → exécute le travail. Surchargé pour le cas concurrent.
+vi.mock("@/lib/db/cron-lock", () => ({
+  withSessionAdvisoryLock: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+}))
+vi.mock("@/lib/services/audit.service", () => ({
+  auditService: { log: vi.fn().mockResolvedValue(undefined) },
+}))
 
 import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
+import { auditService } from "@/lib/services/audit.service"
 
+const lock = vi.mocked(withSessionAdvisoryLock)
+const auditLog = vi.mocked(auditService.log)
 const mode = vi.mocked(treatmentModeService.resolveTreatmentMode)
 const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
@@ -152,5 +163,65 @@ describe("proposalGeneratorService.generateForPatient", () => {
     expect(createEngine.mock.calls[0]![0]).toMatchObject({
       carbRatioSlotStart: 8, carbRatioSlotEnd: 12, expectedCurrentValue: 12,
     })
+  })
+})
+
+describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("boucle le portefeuille actif (deletedAt null + user actif) → agrège created/processed", async () => {
+    setup() // par patient : basalBolus + 3 repas PPG 2,0 → 1 proposition
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as never)
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res.processed).toBe(2)
+    expect(res.created).toBe(2)
+    expect(res.errored).toBe(0)
+    expect(res.skippedConcurrent).toBe(false)
+    expect(prismaMock.patient.findMany.mock.calls[0]![0]!.where).toMatchObject({
+      deletedAt: null, user: { status: "active" },
+    })
+    // Marqueur d'audit RUN-LEVEL immuable (HDS) : métriques + acteur système null.
+    expect(auditLog).toHaveBeenCalledWith(expect.objectContaining({
+      userId: null, action: "CREATE", resource: "ADJUSTMENT_PROPOSAL", resourceId: "cron",
+      metadata: expect.objectContaining({ kind: "proposal.generator.cron.run", processed: 2, created: 2, errored: 0 }),
+    }))
+  })
+
+  it("verrou non acquis (run concurrent) → skippedConcurrent + audit skipped_locked", async () => {
+    lock.mockResolvedValueOnce(null) // withSessionAdvisoryLock renvoie null
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res.skippedConcurrent).toBe(true)
+    expect(res.processed).toBe(0)
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
+    expect(auditLog).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ kind: "proposal.generator.cron.skipped_locked" }),
+    }))
+  })
+
+  it("portefeuille vide → processed 0, aucune erreur, run tracé", async () => {
+    setup()
+    prismaMock.patient.findMany.mockResolvedValue([] as never)
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res).toMatchObject({ processed: 0, created: 0, errored: 0, skippedConcurrent: false })
+    expect(auditLog).toHaveBeenCalledWith(expect.objectContaining({
+      metadata: expect.objectContaining({ kind: "proposal.generator.cron.run", processed: 0 }),
+    }))
+  })
+
+  it("un patient skippé par mode (fixedDose) ne gonfle PAS errored", async () => {
+    setup({ mode: "fixedDose" }) // generateForPatient renvoie skipped:'mode' sans lever
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as never)
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res).toMatchObject({ processed: 2, created: 0, errored: 0 })
+  })
+
+  it("isolation per-patient : une erreur infra sur un patient n'arrête pas le portefeuille", async () => {
+    setup()
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as never)
+    getSettings.mockRejectedValueOnce(new Error("db down")) // 1er patient échoue, 2e OK
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res.processed).toBe(2)
+    expect(res.errored).toBe(1)
+    expect(res.created).toBe(1)
   })
 })

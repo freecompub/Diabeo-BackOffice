@@ -28,10 +28,16 @@ pivot `metadata.patientId` uniquement).
 
 - **PRO (NURSE/DOCTOR/ADMIN)** : RGPD Art. 9.2.h — prise en charge médicale par
   professionnel soumis au secret. Le mode revue est **réservé aux PRO**.
-- **Sans IA** : aucune logique de décision automatisée (Art. 22 non applicable). Le
-  Résumé est une **projection serveur déterministe** ; les décisions thérapeutiques
-  (étape 5) restent le workflow `AdjustmentProposal` existant (DOCTOR-only, jamais
-  auto-appliqué).
+- **Sans IA (périmètre US-2605)** : le mode revue lui-même n'a **aucune logique de décision
+  automatisée**. Le Résumé est une **projection serveur déterministe** ; les décisions
+  thérapeutiques (étape 5) restent le workflow `AdjustmentProposal` existant (DOCTOR-only,
+  jamais auto-appliqué).
+  > **⚠️ MAJ US-2651** : le **générateur nocturne** de propositions (`AdjustmentProposal` source
+  > `algorithm`) introduit une **génération automatisée systématique** — traitée dans sa propre DPIA
+  > [`dpia-us2651-proposal-generator.md`](./dpia-us2651-proposal-generator.md). Art. 22 **strict reste
+  > non applicable** : chaque proposition est **doctor-gated** (jamais auto-appliquée) → pas d'effet
+  > juridique/significatif sans intervention humaine. Ne pas lire la phrase ci-dessus comme un « pas
+  > d'automatisation » global au niveau plateforme.
 
 ## 3. Décisions de design à valider DPO
 
