@@ -8,6 +8,50 @@
 
 ---
 
+## 0. Glossaire (termes techniques & abréviations)
+
+> À lire d'abord — ce document emploie du vocabulaire clinique et technique. Aucun terme ci-dessous
+> n'est laissé sans définition dans le corps du document.
+
+### Termes techniques & cliniques
+
+| Terme | Définition |
+|---|---|
+| **Nadir** | Point le **plus bas** de la glycémie sur une fenêtre donnée (ici, le creux post-prandial ou nocturne). Une moyenne peut masquer un nadir dangereux → on le fournit explicitement à la garde hypo. |
+| **Bucketing** (repas → créneau) | Regroupement de chaque **repas dans le créneau horaire** (d'ICR) qui couvre son heure, afin d'analyser un ratio par créneau. « Bucket » = seau/panier. |
+| **Deadband** (zone morte) | Plage de glycémie autour de la cible où **aucune proposition** n'est émise (évite de titrer sur du bruit ou sur un patient déjà bien contrôlé). Ici **asymétrique** : bornes haute et basse distinctes. |
+| **Post-prandial** | **Après le repas** (par opposition à « à jeun »). La glycémie post-prandiale est physiologiquement plus haute qu'à jeun, même avec un dosage parfait. |
+| **Titration** | Ajustement **progressif et prudent** d'une dose, par petits pas, jusqu'à l'objectif (d'où les caps ± 20 % / ± 2 U). |
+| **Effet Somogyi** | **Hypo nocturne** suivie d'un **rebond hyperglycémique** au réveil. Piège : la glycémie à jeun est haute alors qu'il y a eu une hypo → augmenter la basale serait dangereux. |
+| **Dawn phenomenon** (phénomène de l'aube) | Montée **physiologique** de la glycémie en fin de nuit (sécrétion hormonale) qui peut élever la moyenne à jeun sans excès d'insuline manquant. |
+| **Fail-closed** | En cas de doute ou de donnée manquante, le système **refuse** (aucune proposition/aucune dose) plutôt que de risquer une valeur erronée. Sécurité par défaut. |
+| **Fail-closed containment** | Variante du bucketing : ne rattacher un moment à un créneau **que s'il y tient entièrement**, sinon on **skip** (pas de mauvaise attribution). |
+| **Snapshot → persist** | Le candidat est calculé sur un **instantané** (snapshot) de la config ; s'il a **dérivé** avant l'enregistrement, on rejette (`baselineMovedAtPersist`). |
+| **Compare-and-swap** (`baselineMoved`) | Vérifier que la **valeur de base n'a pas changé** entre lecture et écriture avant d'appliquer ; sinon on annule. |
+| **Hypo sévère / légère** | Hypoglycémie **niveau 2** (< 0,54 g/L, urgence clinique) / **niveau 1** (0,54–0,70 g/L, à traiter mais moins critique). |
+| **Bolus / basal** | **Bolus** = insuline ponctuelle (repas ou correction). **Basale** = insuline de fond, continue (débit U/h). |
+
+### Abréviations & sigles
+
+| Sigle | Développé | Sens |
+|---|---|---|
+| **ICR** | *Insulin-to-Carb Ratio* | Ratio insuline/glucides — grammes de glucides couverts par 1 unité d'insuline. |
+| **ISF** | *Insulin Sensitivity Factor* | Facteur de sensibilité — baisse de glycémie attendue pour 1 unité d'insuline. |
+| **PPG** | *PostPrandial Glucose* | Glycémie post-prandiale ; ici mesurée **à 2 h** (« PPG 2 h »). |
+| **CGM** | *Continuous Glucose Monitoring* | Mesure du glucose **en continu** (capteur interstitiel). |
+| **BGM** | *Blood Glucose Monitoring* | Glycémie **capillaire** (lecteur au bout du doigt). |
+| **TIR** | *Time In Range* | Temps passé dans la cible glycémique. |
+| **HbA1c** | Hémoglobine glyquée | Reflet de la glycémie moyenne des ~3 derniers mois. |
+| **MDR** | *Medical Device Regulation* | Règlement européen (UE) 2017/745 sur les dispositifs médicaux. |
+| **IEC 62304** | — | Norme du **cycle de vie du logiciel** de dispositif médical. |
+| **GD** | Diabète gestationnel | Diabète de la grossesse (cibles plus strictes). |
+| **DT1 / DT2** | Diabète de type 1 / type 2 | — |
+| **U** / **U/h** | Unité(s) d'insuline | Dose / débit (unités par heure pour la basale). |
+| **g/L** / **mg/dL** | — | Unités de glycémie. **1 g/L = 100 mg/dL**. |
+| **ADA** | *American Diabetes Association* | Source de plusieurs seuils (PPG < 180 mg/dL, etc.). |
+
+---
+
 ## 1. Principe & garde-fous fondamentaux
 
 - Une proposition est une **suggestion**, **JAMAIS** appliquée automatiquement (ADR #13). Format :
