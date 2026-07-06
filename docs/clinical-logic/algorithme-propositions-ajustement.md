@@ -100,12 +100,12 @@ Deux incohérences **clinique↔code** relevées en documentant, **validées et 
 (directions appliquées toutes correctes → **aucun CRITICAL** ; grep confirmé : **aucun consommateur ne
 dérive la direction/dose depuis `reason`** → le libellé n'impacte que l'explication affichée) :
 
-1. **Commentaire ISF (l.98-99) — CORRIGÉ.** L'ancien commentaire était **inversé** ; le **code était
-   correct** (au-dessus de la cible → ISF trop haut → baisse). Commentaire réécrit pour matcher le code.
-2. **Libellés `reason` ICR (l.149) — CORRIGÉ.** La **direction** était correcte mais les **libellés étaient
-   inversés** (`icrTooLow`↔`icrTooHigh`) — ils contredisaient le commentaire correct (l.142-143) et
-   affichaient une mauvaise explication au médecin. Ternaire corrigé + test de verrou ajouté. Sévérité
-   MEDIUM (aucun impact dose ; aucun consommateur ne lit la direction depuis `reason`).
+1. **Commentaire ISF (`analyzeIsfSlot`) — CORRIGÉ.** L'ancien commentaire était **inversé** ; le **code
+   était correct** (au-dessus de la cible → ISF trop haut → baisse). Commentaire réécrit pour matcher le code.
+2. **Libellés `reason` ICR (`analyzeIcrSlot`) — CORRIGÉ.** La **direction** était correcte mais les
+   **libellés étaient inversés** (`icrTooLow`↔`icrTooHigh`) — ils contredisaient le commentaire (correct)
+   de la fonction et affichaient une mauvaise explication au médecin. Ternaire corrigé + test de verrou
+   ajouté. Sévérité MEDIUM (aucun impact dose ; aucun consommateur ne lit la direction depuis `reason`).
 3. **Basal — aucun défaut** (direction + libellé corrects). Seuils (`±20 %`, `≥3 événements`, `≥2 %`, cap
    patient 10 %, cooldown 24 h) **cliniquement défendables** (jamais auto-appliqué, confiance graduée).
 
