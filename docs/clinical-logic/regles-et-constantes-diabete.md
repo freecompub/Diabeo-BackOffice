@@ -243,3 +243,12 @@ fois l'emballement et l'érosion du bon contrôle.
 > proposition basale (leurs ISF/ICR restent proposés). Combler ce trou (paramètre `basalDose` dédié +
 > variante d'analyseur en U/jour + bornes stylo + ciblage de persistance) = **slice dédiée du build**.
 > Détail : `algorithme-propositions-ajustement.md` §4.3.
+
+> **Limite connue — régime hybride pompe + compléments bolus stylo** (validé avec l'utilisateur, US-2651).
+> `InsulinDeliveryMethod` (pump/manual) est un flag patient unique (`InsulinTherapySettings`) : pas de
+> modèle hybride. Le journal repas lit `DiabetesEvent.bolusDose` sans méthode de délivrance → un
+> complément stylo n'est pas distinguable (et vu seulement s'il est loggué). Effet = **sous-détection
+> fail-safe** : un complément stylo qui corrige la PPG masque une déficience du ratio pompe (ICR),
+> et une correction stylo hors calculateur échappe à l'analyse ISF (`BolusCalculationLog`). Risque de
+> sur-proposition faible (≥3 repas + moyenne + garde hypo). À gérer via une méthode de délivrance
+> **par bolus** (pas par patient). Détail : `algorithme-propositions-ajustement.md` §5ter.

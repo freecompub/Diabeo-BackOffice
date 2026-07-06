@@ -210,6 +210,17 @@ containment** (bucketer seulement si le moment entier tient dans un seul crénea
 (`bolus`), ou pré-repas hors bande cible (`preMgdl` — la PPG refléterait une correction, pas l'ICR).
 Les repas avec glucide intercurrent avant t0+90 sont déjà nullés en amont (`computeJournal`).
 
+> **⚠️ Limite connue — régime HYBRIDE (pompe + compléments bolus au stylo).** `InsulinDeliveryMethod`
+> (`pump`/`manual`) est un **flag patient unique** sur `InsulinTherapySettings` : le modèle traite un
+> patient comme pompe **ou** stylo, **pas hybride**. Le journal repas lit `DiabetesEvent.bolusDose`
+> **sans** méthode de délivrance → un **complément stylo** n'est pas distinguable d'un bolus pompe (et
+> n'est vu que s'il a été loggué). Conséquences (surtout **sous-détection = fail-safe**, pas de
+> sur-dosage) : (1) **ICR masqué** — un complément stylo qui ramène la PPG à la cible cache une
+> déficience réelle du ratio pompe → proposition manquée ; (2) **ISF** — une **correction au stylo**
+> hors calculateur n'est pas dans `BolusCalculationLog` → chute glycémique non appariée. Le risque de
+> sur-proposition reste faible (≥ 3 repas + moyenne + garde hypo). **À gérer** quand le régime hybride
+> sera modélisé en première classe (méthode de délivrance **par bolus**, pas par patient) → suivi build.
+
 **Minimum de preuve** — **≥ 3 repas/créneau** (aligné `analyzeIcrSlot` + `BGM_CARNET.MIN_READINGS_PER_MOMENT`),
 sinon fail-closed (aucune proposition).
 
