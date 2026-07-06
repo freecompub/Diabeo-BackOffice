@@ -97,6 +97,14 @@ Base d'erreur relative = écart moyen à la cible. `confidence` = `getConfidence
   - Glycémie post-correction **au-dessus** de la cible → correction trop faible → **ISF trop haut** →
     proposition de **baisse** de l'ISF (`reason = isfTooHigh`).
   - **En dessous** de la cible (sur-correction) → **ISF trop bas** → **hausse** (`reason = isfTooLow`).
+- **Exemples** (ISF courant `0,50` g/L/U, cible `1,00` g/L) :
+  - *Baisse* : 5 post-corrections à `1,60` g/L → `errorPercent = ((1,60−1,00)/1,00)×−100 = −60 %` →
+    clampé `−20 %` → ISF `0,50 → 0,40` (`isfTooHigh`, corrections plus fortes).
+  - *Hausse* : post-corrections moyennes à `0,70` g/L (sur-correction) → `+30 %` → clampé `+20 %` →
+    ISF `0,50 → 0,60` (`isfTooLow`, corrections plus douces).
+  - *Aucune proposition* : moyenne `1,01` g/L → `−1 %` → `|1 %| < 2 %` → `null`.
+  - *Garde hypo* : moyenne `1,60` (⇒ baisse) **mais** un relevé à `0,50` g/L (hypo sévère) → **supprimé**
+    (baisser l'ISF = corriger plus fort = plus d'insuline, direction dangereuse).
 
 ### 4.2 `analyzeIcrSlot(slot, meals[])` — ratio insuline/glucides (ICR)
 - Entrée : glycémies **post-repas** vs cible, pour un créneau horaire.
@@ -105,6 +113,12 @@ Base d'erreur relative = écart moyen à la cible. `confidence` = `getConfidence
   - Post-repas **au-dessus** de la cible → bolus trop faible → **baisse** de l'ICR (plus d'insuline/gramme),
     `reason = icrTooHigh` (l'ICR courant est trop haut).
   - **En dessous** → **hausse** de l'ICR, `reason = icrTooLow`.
+- **Exemples** (ICR courant `10` g/U, cible post-prandiale `1,40` g/L — cf. §5ter pour son choix) :
+  - *Baisse* : PPG 2 h moyenne `1,80` g/L → `((1,80−1,40)/1,40)×−100 = −28,6 %` → clampé `−20 %` →
+    ICR `10 → 8` (`icrTooHigh`, plus d'insuline/gramme).
+  - *Hausse* : PPG moyenne `1,10` g/L → `+21,4 %` → clampé `+20 %` → ICR `10 → 12` (`icrTooLow`).
+  - *Garde hypo* : PPG moyenne `1,80` (⇒ baisse) **mais** deux post-repas à `0,60` et `0,65` g/L
+    (niveau 1 récurrent) → **supprimé** (baisser l'ICR = plus d'insuline).
 
 ### 4.3 `analyzeBasalTrend(fastingValues[], targetGl, currentRate)` — débit basal
 - Entrée : glycémies **à jeun** (pré-petit-déjeuner) vs cible, débit basal courant.
@@ -113,6 +127,13 @@ Base d'erreur relative = écart moyen à la cible. `confidence` = `getConfidence
   - Glycémie à jeun **au-dessus** de la cible (montée nocturne) → basale **trop basse** → **hausse**
     (`reason = basalTooLow`).
   - **En dessous** (chute nocturne) → basale **trop haute** → **baisse** (`reason = basalTooHigh`).
+- **Exemples** (débit courant `0,80` U/h, cible `1,10` g/L) :
+  - *Hausse* : glycémies à jeun moyennes `1,40` g/L → `((1,40−1,10)/1,10)×100 = +27 %` → clampé
+    `+20 %` → `0,80 → 0,96` U/h (`basalTooLow`).
+  - *Baisse* : à jeun moyennes `0,80` g/L → `−27 %` → clampé `−20 %` → `0,80 → 0,64` U/h (`basalTooHigh`).
+  - *Effet Somogyi (garde hypo)* : à jeun moyennes `1,40` (⇒ hausse) **mais** le **nadir** nocturne à
+    3 h vaut `0,45` g/L → **supprimé** (une hausse basale aggraverait l'hypo). ⚠️ N'est capté que si le
+    nadir figure dans `fastingValues` (contrat JSDoc `analyzeBasalTrend`).
 
 > Sortie de chaque analyseur : `ProposalCandidate` (`parameterType, reason, currentValue,
 > proposedValue, changePercent, confidence, supportingEvents, totalEventsConsidered,
@@ -127,6 +148,15 @@ Le mode est **dérivé serveur** (`resolveTreatmentMode`, fail-closed : un DT1 n
 | **(a) basalBolus** | Analyseurs ISF/ICR/basal du §4 (existant). |
 | **(b) fixedDose** | **`analyzeFixedDose(slot, readings)` (livré, pur)** : dose **directe** par **moment** (carnet BGM). Au-dessus de la cible → dose trop basse → hausse (`fixedDoseTooLow`) ; en dessous → baisse (`fixedDoseTooHigh`). Bornée : **plus petit** de ± `FIXED_DOSE_MAX_CHANGE_PERCENT` (10 %) et ± `FIXED_DOSE_MAX_DELTA_U` (2 U) ; plancher `FIXED_DOSE_MIN` (0,5 U) ; arrondi à l'incrément délivrable (0,5 U) — pas nul → aucune proposition. **Cooldown 72 h/moment** (`FIXED_DOSE_COOLDOWN_HOURS`) au câblage du générateur (pas dans l'analyseur pur). **Jamais** : convertir doses fixes → basal-bolus, ni créer ISF/ICR ex nihilo. |
 | **(c) nonInsulin** | **Aucune proposition de dose** (frontière MDR). Uniquement des `ClinicalReviewFlag` d'orientation (« à revoir en consultation », HbA1c périmée, TIR sous cible, observance). La **cible** glycémique reste ajustable **par le médecin** (bornée, plus stricte en `pregnancyMode`). |
+
+- **Exemples mode (b) dose fixe** (dose matin `10` U, cible `1,40` g/L) :
+  - *Hausse* : glycémies du moment moyennes `2,00` g/L → dose trop basse → cap `min(10 % de 10 U ; 2 U) = 1 U`
+    → `10 → 11` U (`fixedDoseTooLow`).
+  - *Baisse* : moyennes `1,00` g/L → `10 → 9` U (`fixedDoseTooHigh`).
+  - *Non ajustable* : dose `3` U → 10 % = `0,3 U` < incrément délivrable `0,5 U` → arrondi nul → `null`
+    (blind spot documenté).
+  - *Mode (c)* : patient sous metformine seule → **aucune** proposition de dose ; un
+    `ClinicalReviewFlag` « à revoir en consultation » peut être levé (jamais une posologie).
 
 ## 5ter. Générateur ICR nocturne (mode a) — spec d'implémentation (validée medical, US-2651)
 
@@ -173,6 +203,18 @@ sinon fail-closed (aucune proposition).
 carbRatioSlotStart, carbRatioSlotEnd })` : re-dérive `currentValue`, re-borne, garde hypo (déjà dans
 l'analyseur), anti-spam, frontière nonInsulin. Cooldown moteur au niveau générateur.
 
+**Cas illustrés** (adulte, créneau ICR `10` g/U, plafond `1,80` / borne basse `1,00` g/L) :
+
+| Cas | PPG 2 h moy. | Décision | Détail |
+|---|---|---|---|
+| **Baisse ICR** (> plafond) | `2,00` g/L | ICR `10 → 8,9` (`icrTooHigh`) | analyseur avec cible = plafond `1,80` → `−11 %`. Plus d'insuline/gramme. |
+| **Hausse ICR** (< borne basse) | `0,85` g/L | ICR `10 → 11,5` (`icrTooLow`) | analyseur avec cible = borne basse `1,00` → `+15 %`. Moins d'insuline. |
+| **Zone morte** (bon contrôle) | `1,40` g/L | **aucune proposition** | entre `1,00` et `1,80` → rien (n'érode pas un bon contrôle). |
+| **Grossesse** (DT1 enceinte) | `1,55` g/L | ICR `10 → …` (baisse) | plafond **`1,40`** (pas 1,80) car `isPregnancy`. **Sans** cette règle, `1,55 < 1,80` aurait donné une **hausse** — dangereux. |
+| **Nadir tardif** (garde hypo) | `1,90` g/L | candidat baisse **supprimé** | un repas a un nadir à 3 h 30 de `0,50` g/L (hypo sévère) → la baisse d'ICR (plus d'insuline) est refusée. Invisible si on ne regarde que la PPG 2 h (`1,70`). |
+| **Bucketing** (mal attribué) | — | mauvais créneau titré | créneaux ICR `[12,18)` et `[18,24)`, moment « soir » `[16,22)` : un repas à **16 h 30** (créneau `[12,18)`) mappé par midpoint `19 h` → titrerait le **mauvais** créneau `[18,24)`. → bucketing à l'**heure réelle**. |
+| **Porte qualité** (exclu) | — | repas écarté | repas sans glucides enregistrés, ou pré-repas `2,20` g/L (le bolus incluait une correction) → la PPG ne reflète pas l'ICR → **exclu** de l'analyse. |
+
 ## 6. Chaîne complète (génération → application)
 
 1. **Génération** (`proposal-algorithm`, pur) → `ProposalCandidate` (déjà clampé ± 20 %, ≥ 3 événements, ≥ 2 %).
@@ -199,6 +241,17 @@ créneau** selon le slot analysé (ISF/ICR → `timeSlot*`/`carbRatio*` ; basal 
 **REJETTE** (`baselineMovedAtPersist`) au lieu de persister une magnitude hors-cap ou un sens inversé
 (le `baselineMoved` de l'accept ne couvre que persist→accept). En défense en profondeur, la cohérence
 `reason` ↔ signe du delta est asservie (`reasonDirectionMismatch`), et `supportingEvents > 0` exigé.
+
+**Exemples de rejet** :
+- *Dérive (`baselineMovedAtPersist`)* : candidat ISF calculé sur snapshot `0,50` → `proposedValue 0,60`
+  (`+20 %`). Entre l'analyse et la persistance, le médecin abaisse l'ISF live à `0,45`. `createEngineProposal`
+  re-dérive `0,45 ≠ 0,50` → **rejeté** (sinon on stockerait `+33 %`, hors cap). Le run suivant ré-analyse
+  sur `0,45`.
+- *Incohérence (`reasonDirectionMismatch`)* : candidat `reason = isfTooLow` (hausse attendue) mais
+  `proposedValue 0,45 < currentValue live 0,50` (baisse) → **rejeté** (l'explication affichée serait fausse
+  et l'application défairait le réglage du médecin).
+- *`supportingEvents = 0`* → **rejeté** (`invalidSupportingEvents`) : une proposition sans événement n'a
+  aucun sens.
 
 ## 7. Validation `medical-domain-validator` (US-2651) — verdicts
 
