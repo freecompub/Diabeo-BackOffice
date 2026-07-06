@@ -252,3 +252,12 @@ fois l'emballement et l'érosion du bon contrôle.
 > et une correction stylo hors calculateur échappe à l'analyse ISF (`BolusCalculationLog`). Risque de
 > sur-proposition faible (≥3 repas + moyenne + garde hypo). À gérer via une méthode de délivrance
 > **par bolus** (pas par patient). Détail : `algorithme-propositions-ajustement.md` §5ter.
+
+> **Suivis build générateur (US-2651, tracés depuis les revues #669)** :
+> - **Nadir ISF** — `analyzeIsfSlot` a le même angle mort que l'ICR (une correction rapide fait son
+>   creux à ~3-4 h, après la glycémie post-correction ponctuelle). Contrat JSDoc ajouté ; le **champ
+>   `nadirGl`** par correction (symétrique de `analyzeIcrSlot`) reste à câbler dans la **slice ISF**.
+> - **Assainissement des zéros CGM** — un `0`/artefact sous le plancher capteur (`CRITICAL_LOW` 0,40 g/L)
+>   dans `nadirGl` supprimerait une proposition légitime (fail-safe mais érosion qualité). La **slice
+>   assemblage** (qui peuplera `nadirGl`) doit **filtrer** les valeurs non physiologiques AVANT
+>   `analyzeIcrSlot` — pas dans l'analyseur (qui traite `0` comme une hypo réelle, à raison).

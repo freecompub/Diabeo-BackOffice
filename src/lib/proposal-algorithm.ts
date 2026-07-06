@@ -110,8 +110,15 @@ export function computeProposedValue(currentValue: number, changePercent: number
  * Analyze ISF (insulin sensitivity factor) effectiveness for a time slot.
  * Detects systematic over/under-correction from post-correction glucose patterns.
  * Only proposes if 3+ events AND change is meaningful (> 2%).
- * @param {Object} slot - ISF slot configuration (startHour, endHour, sensitivityFactorGl)
- * @param {Array<{postGlucoseGl: number, targetGl: number}>} corrections - Post-correction readings and targets
+ *
+ * ⚠️ **Contrat nadir à câbler (US-2651, suivi medical)** : comme l'ICR, une correction d'analogue
+ * rapide fait son creux à ~3-4 h, APRÈS la glycémie post-correction ponctuelle utilisée ici. La garde
+ * hypo ne voit donc pas un creux tardif → angle mort. Quand l'ISF sera relié au générateur, ajouter un
+ * champ `nadirGl` par correction (symétrique de `analyzeIcrSlot`), fourni UNIQUEMENT à la garde hypo,
+ * la moyenne/direction restant sur `postGlucoseGl`. En attendant, l'ISF n'est câblé à aucun générateur.
+ *
+ * @param slot - ISF slot configuration (startHour, endHour, sensitivityFactorGl)
+ * @param corrections - Post-correction readings and targets (postGlucoseGl, targetGl)
  * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeIsfSlot(
