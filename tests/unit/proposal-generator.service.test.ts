@@ -214,6 +214,45 @@ describe("proposalGeneratorService.generateForPatient", () => {
   })
 })
 
+describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsulin)", () => {
+  const DAY = 86_400_000
+  beforeEach(() => vi.clearAllMocks())
+
+  function setupNonInsulin(hba1c: { gly?: Date | null; evt?: Date | null } = {}) {
+    mode.mockResolvedValue({ mode: "nonInsulin", coherent: true } as never)
+    prismaMock.glycemiaEntry.findFirst.mockResolvedValue(hba1c.gly ? ({ date: hba1c.gly } as never) : null)
+    prismaMock.diabetesEvent.findFirst.mockResolvedValue(hba1c.evt ? ({ eventDate: hba1c.evt } as never) : null)
+  }
+
+  it("nonInsulin → route vers les flags d'orientation, JAMAIS une dose (frontière MDR)", async () => {
+    setupNonInsulin({ evt: new Date() }) // HbA1c récente → pas de flag, mais surtout aucune dose
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.created).toBe(0)
+    expect(createEngine).not.toHaveBeenCalled()
+  })
+
+  it("HbA1c absente → flag hba1cStale", async () => {
+    setupNonInsulin({}) // aucune HbA1c
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(1)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
+  })
+
+  it("HbA1c périmée (> 180 j) → flag hba1cStale", async () => {
+    setupNonInsulin({ evt: new Date(Date.now() - 200 * DAY) })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(1)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
+  })
+
+  it("HbA1c récente (< 180 j) → aucun flag", async () => {
+    setupNonInsulin({ gly: new Date(Date.now() - 30 * DAY) })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(0)
+    expect(raiseFlag).not.toHaveBeenCalled()
+  })
+})
+
 describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
   beforeEach(() => vi.clearAllMocks())
 
