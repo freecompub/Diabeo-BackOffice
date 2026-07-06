@@ -186,6 +186,34 @@ describe("proposal-algorithm", () => {
       const r = analyzeIcrSlot(slot, meals) // moyenne basse → icrTooLow (hausse ICR)
       expect(r!.reason).toBe("icrTooLow")
     })
+
+    it("garde HYPO : le NADIR supprime une baisse que la PPG 2 h seule laisserait passer (US-2651)", () => {
+      const meals = [
+        ...Array.from({ length: 5 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.40 })),
+        { postGlucoseGl: 1.70, targetGl: 1.40, nadirGl: 0.50 }, // PPG 2 h saine, mais nadir 3-4 h en hypo sévère
+      ]
+      // avgPost ≈ 1,78 > cible → baisse (icrTooHigh) ; le nadir 0,50 déclenche la garde → supprimé.
+      expect(analyzeIcrSlot(slot, meals)).toBeNull()
+    })
+
+    it("garde HYPO : SANS nadir, la même fenêtre (PPG 2 h saines) n'est PAS supprimée (contrôle)", () => {
+      const meals = [
+        ...Array.from({ length: 5 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.40 })),
+        { postGlucoseGl: 1.70, targetGl: 1.40 }, // pas de nadir → repli sur PPG 2 h (1,70, saine)
+      ]
+      expect(analyzeIcrSlot(slot, meals)!.reason).toBe("icrTooHigh")
+    })
+
+    it("le nadir ne corrompt PAS la moyenne/direction (% identique avec et sans nadir)", () => {
+      const base = Array.from({ length: 5 }, () => ({ postGlucoseGl: 0.80, targetGl: 1.40 }))
+      const withNadir = base.map((m) => ({ ...m, nadirGl: 0.60 }))
+      const r1 = analyzeIcrSlot(slot, base)
+      const r2 = analyzeIcrSlot(slot, withNadir)
+      // sens sûr (hausse icrTooLow) dans les deux cas ; le nadir n'affecte ni la direction ni le %.
+      expect(r1!.reason).toBe("icrTooLow")
+      expect(r2!.reason).toBe("icrTooLow")
+      expect(r2!.changePercent).toBe(r1!.changePercent)
+    })
   })
 
   describe("analyzeBasalTrend", () => {
