@@ -15,7 +15,7 @@
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
-import { CLINICAL_BOUNDS, HBA1C_STALE_DAYS } from "@/lib/clinical-bounds"
+import { CLINICAL_BOUNDS, HBA1C_STALE_DAYS, DASHBOARD_TIR } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
   analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, type ProposalCandidate,
@@ -24,7 +24,7 @@ import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.s
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, type JournalMeal } from "@/lib/services/meal-trends.service"
-import { getCgmDefaults } from "@/lib/services/objectives.service"
+import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
@@ -266,6 +266,20 @@ export const proposalGeneratorService = {
       await clinicalReviewFlagService.raise(patientId, "hba1cStale", auditUserId, ctx)
         .then(() => { flagged++ })
         .catch((err) => logger.error("proposal-generator", "raise hba1cStale failed", { patientId }, err as Error))
+    }
+
+    // tirBelowTarget — TIR sur 14 j < cible (bornes pathology-aware). `null` si capture CGM
+    // insuffisante (pas de flag sur un échantillon maigre) — un non-insuliné en BGM pur n'a pas de TIR.
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null }, select: { pathology: true },
+    })
+    if (patient) {
+      const tir = await objectivesService.computeTirPercent(patientId, patient.pathology)
+      if (tir !== null && tir < DASHBOARD_TIR.TARGET_PERCENT) {
+        await clinicalReviewFlagService.raise(patientId, "tirBelowTarget", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise tirBelowTarget failed", { patientId }, err as Error))
+      }
     }
 
     return { created: 0, flagged, slotsConsidered: 0, mealsUsable: 0, skipped: null }
