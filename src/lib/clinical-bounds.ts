@@ -136,6 +136,14 @@ export const CLINICAL_BOUNDS = {
    * La borne basse (`ICR_PREMEAL_MIN_GL` 0,70) reste valable (seuil hypo grossesse 0,63).
    */
   ICR_PREMEAL_MAX_PREGNANCY_GL: 1.1,
+  /**
+   * US-2653 — pas de **dé-escalade** (en %) déclenché par des hypos post-prandiales **récurrentes**,
+   * indépendamment du deadband sur la moyenne. Monter l'ICR de +10 % ≈ −9 % d'insuline repas — un pas
+   * de titration standard (DAFNE/AACE), volontairement **fixe** (pas de scaling sur la profondeur : un
+   * nadir isolé profond sur-corrigerait). La persistance titre **cumulativement** run après run. Capé
+   * par `MAX_CHANGE_PERCENT`. Déclencheur : `≥ HYPO_LEVEL1_RECURRENCE_MIN` nadirs < niveau-1 (validé medical).
+   */
+  HYPO_DEESCALATION_PERCENT: 10,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

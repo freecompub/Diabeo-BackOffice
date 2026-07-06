@@ -42,6 +42,7 @@ import { describe, it, expect } from "vitest"
 import {
   getConfidenceLevel, clampChangePercent, computeProposedValue,
   analyzeIsfSlot, analyzeIcrSlot, analyzeBasalTrend, analyzeFixedDose,
+  recurrentPostMealHypo, analyzeIcrHypoDeescalation,
 } from "@/lib/proposal-algorithm"
 
 describe("proposal-algorithm", () => {
@@ -213,6 +214,40 @@ describe("proposal-algorithm", () => {
       expect(r1!.reason).toBe("icrTooLow")
       expect(r2!.reason).toBe("icrTooLow")
       expect(r2!.changePercent).toBe(r1!.changePercent)
+    })
+  })
+
+  describe("recurrentPostMealHypo (US-2653)", () => {
+    it("< 3 nadirs → false (échantillon insuffisant)", () => {
+      expect(recurrentPostMealHypo([0.5, 0.6])).toBe(false)
+    })
+    it("≥ 2 nadirs niveau-1 (< 0,70) → true (récurrent)", () => {
+      expect(recurrentPostMealHypo([0.6, 0.65, 1.2])).toBe(true)
+    })
+    it("1 seul nadir niveau-1 → false (non récurrent)", () => {
+      expect(recurrentPostMealHypo([0.65, 1.2, 1.3])).toBe(false)
+    })
+    it("1 sévère ISOLÉ (< 0,54) → false (garde anti-artefact : corroboration exigée)", () => {
+      expect(recurrentPostMealHypo([0.5, 1.2, 1.3])).toBe(false)
+    })
+    it("1 sévère + 1 niveau-1 → true (le sévère compte comme niveau-1 → 2)", () => {
+      expect(recurrentPostMealHypo([0.5, 0.65, 1.2])).toBe(true)
+    })
+  })
+
+  describe("analyzeIcrHypoDeescalation (US-2653)", () => {
+    const slot = { startHour: 12, endHour: 14, gramsPerUnit: 10 }
+    it("hypo récurrente → HAUSSE ICR +10 % (moins d'insuline), icrTooLow", () => {
+      const r = analyzeIcrHypoDeescalation(slot, [0.6, 0.65, 1.2])
+      expect(r).not.toBeNull()
+      expect(r!.reason).toBe("icrTooLow")
+      expect(r!.changePercent).toBe(10)
+      expect(r!.proposedValue).toBe(11) // 10 × 1,10
+      expect(r!.proposedValue).toBeGreaterThan(slot.gramsPerUnit)
+      expect(r!.supportingEvents).toBe(2) // 2 nadirs en hypo
+    })
+    it("hypo non récurrente → null", () => {
+      expect(analyzeIcrHypoDeescalation(slot, [0.65, 1.2, 1.3])).toBeNull()
     })
   })
 

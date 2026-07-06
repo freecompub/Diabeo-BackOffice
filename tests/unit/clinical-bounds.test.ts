@@ -69,6 +69,7 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       ICR_PREMEAL_MIN_GL: 0.7,
       ICR_PREMEAL_MAX_GL: 1.4,
       ICR_PREMEAL_MAX_PREGNANCY_GL: 1.1,
+      HYPO_DEESCALATION_PERCENT: 10,
     })
   })
 
