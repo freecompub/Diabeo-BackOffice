@@ -357,6 +357,27 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
   })
+
+  it("la VALEUR suit le record à la date MAX (récent 7,0 vs vieux 9,0 → prend 7,0, aucun flag)", async () => {
+    // Sources en conflit : carnet récent (30 j, 7,0) + événement vieux (200 j, 9,0). La date max est le
+    // carnet → valeur 7,0 < 8,0 (pas de aboveTarget) ET récent (pas de hba1cStale). Si le code prenait la
+    // valeur MAX (9,0) → aboveTarget à tort ; s'il prenait la date max de l'événement → hba1cStale à tort.
+    mode.mockResolvedValue({ mode: "nonInsulin", coherent: true } as never)
+    prismaMock.glycemiaEntry.findFirst.mockResolvedValue({ date: new Date(Date.now() - 30 * DAY), hba1c: 7.0 } as never)
+    prismaMock.diabetesEvent.findFirst.mockResolvedValue({ eventDate: new Date(Date.now() - 200 * DAY), hba1c: 9.0 } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
+    prismaMock.annexObjective.findUnique.mockResolvedValue(null)
+    vi.spyOn(objectivesService, "computeTirPercent").mockResolvedValue(null)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
+  })
+
+  it("valeur exactement = cible (8,0 == défaut 8,0) → pas de flag (borne stricte >)", async () => {
+    setupNonInsulin({ gly: new Date(), value: 8.0 }, null)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
 })
 
 describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
