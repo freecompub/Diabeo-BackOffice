@@ -287,20 +287,24 @@ export function analyzeIcrSlot(
  * Detects systematic overnight drift (rising = too low, falling = too high).
  * Only proposes if 3+ fasting values AND change is meaningful (> 2%).
  *
- * ⚠️ **Contrat garde-hypo (US-2651, validé medical)** : `fastingValues` DOIT inclure le **nadir
- * glycémique nocturne** (relevé CGM le plus bas de la nuit), pas seulement le pré-petit-déjeuner.
- * Sinon une hypo nocturne à 3 h qui **rebondit** en hyperglycémie au réveil (effet Somogyi) reste
- * invisible et la garde hypo n'empêchera pas une hausse basale dangereuse. À respecter par
- * l'appelant (générateur) lors du câblage.
- * @param {number[]} fastingValues - Pre-breakfast glucose readings (g/L)
- * @param {number} targetGl - Fasting glucose target (g/L)
- * @param {number} currentRate - Current basal rate (U/h)
+ * Contrat garde-hypo (US-2651, validé medical — symétrique de `analyzeIcrSlot`) : la MOYENNE/direction
+ * est pilotée par `fastingValues` (pré-petit-déj), tandis que la garde hypo regarde les **nadirs
+ * NOCTURNES** (`nocturnalNadirs`, creux CGM le plus bas de chaque nuit) quand ils sont fournis — sinon
+ * une hypo à 3 h qui **rebondit** en hyperglycémie au réveil (effet Somogyi) resterait invisible et la
+ * garde n'empêcherait pas une hausse basale dangereuse. Repli sur `fastingValues` si absents. Ne JAMAIS
+ * injecter le nadir dans `fastingValues` (cela biaiserait la moyenne à jeun vers le bas).
+ *
+ * @param fastingValues - Glycémies pré-petit-déjeuner (g/L) — pilotent la moyenne/direction.
+ * @param targetGl - Cible glycémique à jeun (g/L).
+ * @param currentRate - Débit basal courant (U/h).
+ * @param nocturnalNadirs - Creux nocturnes (g/L), optionnels — fournis UNIQUEMENT à la garde hypo.
  * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeBasalTrend(
   fastingValues: number[],
   targetGl: number,
   currentRate: number,
+  nocturnalNadirs?: number[],
 ): ProposalCandidate | null {
   if (fastingValues.length < 3) return null
 
@@ -313,9 +317,11 @@ export function analyzeBasalTrend(
   if (Math.abs(clampedChange) < 2) return null
 
   const proposedValue = computeProposedValue(currentRate, clampedChange)
-  // Garde HYPO : hausser la basale = plus d'insuline → supprimé si une glycémie à jeun de la fenêtre
-  // est en hypo sévère (hypo nocturne masquée par la moyenne du dawn phenomenon).
-  if (hypoBlocksProposal("basalRate", currentRate, proposedValue, fastingValues)) return null
+  // Garde HYPO : hausser la basale = plus d'insuline → supprimé si un creux NOCTURNE est en hypo
+  // (hypo à 3 h masquée par une moyenne à jeun élevée = effet Somogyi). Repli sur `fastingValues`
+  // si les nadirs nocturnes ne sont pas fournis. La moyenne/direction reste sur `fastingValues`.
+  const guardValues = nocturnalNadirs && nocturnalNadirs.length > 0 ? nocturnalNadirs : fastingValues
+  if (hypoBlocksProposal("basalRate", currentRate, proposedValue, guardValues)) return null
 
   const reason: AdjustmentReason = clampedChange > 0 ? "basalTooLow" : "basalTooHigh"
 

@@ -134,8 +134,9 @@ Base d'erreur relative = écart moyen à la cible. `confidence` = `getConfidence
     `+20 %` → `0,80 → 0,96` U/h (`basalTooLow`).
   - *Baisse* : à jeun moyennes `0,80` g/L → `−27 %` → clampé `−20 %` → `0,80 → 0,64` U/h (`basalTooHigh`).
   - *Effet Somogyi (garde hypo)* : à jeun moyennes `1,40` (⇒ hausse) **mais** le **nadir** nocturne à
-    3 h vaut `0,45` g/L → **supprimé** (une hausse basale aggraverait l'hypo). ⚠️ N'est capté que si le
-    nadir figure dans `fastingValues` (contrat JSDoc `analyzeBasalTrend`).
+    3 h vaut `0,45` g/L → **supprimé** (une hausse basale aggraverait l'hypo). ✅ Le nadir est un **param
+    séparé** `nocturnalNadirs` (symétrique de `analyzeIcrSlot`) : il nourrit la garde hypo sans biaiser
+    la moyenne à jeun (repli sur `fastingValues` si absent). Reste à **peupler** au câblage (slice assemblage).
 
 > **⚠️ Portée : basale POMPE uniquement — le stylo/MDI n'est PAS géré (limite connue).**
 > `analyzeBasalTrend` raisonne sur un **débit U/h** et cible un `pumpBasalSlotId`
