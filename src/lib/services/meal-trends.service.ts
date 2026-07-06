@@ -27,7 +27,7 @@ import { prisma } from "@/lib/db/client"
 import { decimalToNumber } from "@/lib/db/decimal"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 import { getCgmDefaults } from "@/lib/services/objectives.service"
-import { CGM_AGGREGATE_RANGE_GL, MEAL_TREND } from "@/lib/clinical-bounds"
+import { CGM_AGGREGATE_RANGE_GL, MEAL_TREND, CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { DAY_MOMENTS, momentForHour, momentBoundsFrom, type DayMoment } from "@/lib/day-moments"
 
 const CLINICAL_TZ = "Europe/Paris"
@@ -74,10 +74,17 @@ export interface JournalMeal {
   mealId: string
   /** Jour calendaire Europe/Paris, `YYYY-MM-DD`. */
   dayIso: string
+  /** Heure locale (0–23, Europe/Paris) de l'instant réel du repas — pour bucketer à l'heure
+   *  exacte sur les créneaux ICR (`findSlotForHour`), pas au moment (US-2651). */
+  localHour: number
   moment: MealMoment
   preMgdl: number | null
   /** Après = PPG 2 h. */
   postMgdl: number | null
+  /** Creux (nadir) glycémique post-prandial en mg/dL sur `[t0, min(prochain glucide, t0+300 min)]`
+   *  — fourni à la garde hypo de `analyzeIcrSlot` (creux à ~3-4 h invisible à la PPG 2 h, US-2651).
+   *  `null` si aucun relevé dans la fenêtre. Déjà borné physiologiquement (≥ 0,20 g/L) par `loadContext`. */
+  nadirMgdl: number | null
   carbs: number | null
   bolus: number | null
 }
@@ -379,12 +386,19 @@ function computeJournal(c: MealContext): JournalMeal[] {
       const post = (winEnd - t0) / MIN_MS >= MEAL_TREND.EXCURSION_MIN_WINDOW_MIN
         ? closestReading(c.readings, t0 + MEAL_TREND.POST_2H_CENTER_MIN * MIN_MS, MEAL_TREND.POST_2H_TOL_MIN * MIN_MS, winEnd)
         : null
+      const lh = localHour(realMs)
+      // Nadir post-prandial : plus bas relevé sur [t0, min(prochain glucide, t0+300 min)]. Fourni à
+      // la garde hypo de l'analyseur ICR (creux à ~3-4 h, après la PPG 2 h). Relevés déjà bornés
+      // physiologiquement (≥ 0,20 g/L) par loadContext → pas de zéro-artefact (suivi LOW #669 résolu).
+      const nadir = minReadingIn(c.readings, t0, nadirWindowEnd(t0, c.carbTimes))
       return {
         mealId: meal.id,
         dayIso: localDay(realMs),
-        moment: momentForHour(localHour(realMs), c.bounds),
+        localHour: lh,
+        moment: momentForHour(lh, c.bounds),
         preMgdl: pre,
         postMgdl: post,
+        nadirMgdl: nadir,
         carbs: meal.carbohydrates !== null ? decimalToNumber(meal.carbohydrates) : null,
         bolus: meal.bolusDose !== null ? decimalToNumber(meal.bolusDose) : null,
       }
@@ -399,6 +413,21 @@ function maxReadingIn(readings: Reading[], min: number, max: number): number | n
   let best: number | null = null
   for (const r of readings) if (r.t > min && r.t <= max && (best === null || r.mgdl > best)) best = r.mgdl
   return best
+}
+/** Plus bas relevé (nadir) dans `(min, max]`, ou `null` si aucun. Miroir de `maxReadingIn`. */
+function minReadingIn(readings: Reading[], min: number, max: number): number | null {
+  let best: number | null = null
+  for (const r of readings) if (r.t > min && r.t <= max && (best === null || r.mgdl < best)) best = r.mgdl
+  return best
+}
+/** Fin de la fenêtre de recherche du nadir post-prandial : `t0 + POSTMEAL_NADIR_WINDOW_MIN`,
+ *  bornée en amont par le prochain apport glucidique (le nadir ne doit pas déborder sur le repas
+ *  suivant). Miroir de `excursionWindowEnd` mais avec la fenêtre nadir (plus longue, ~5 h). */
+function nadirWindowEnd(t0: number, carbTimes: number[]): number {
+  const cap = t0 + CLINICAL_BOUNDS.POSTMEAL_NADIR_WINDOW_MIN * MIN_MS
+  let next = Infinity
+  for (const c of carbTimes) if (c > t0 && c < next) next = c
+  return Math.min(cap, next)
 }
 function mean(a: number[]): number {
   return a.reduce((s, x) => s + x, 0) / a.length
