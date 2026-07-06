@@ -7,8 +7,12 @@
  * @see CLAUDE.md#adjustment-proposals — Proposal generation algorithm
  */
 
-import type { AdjustableParameter, AdjustmentReason, ConfidenceLevel } from "@prisma/client"
-import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import type { AdjustableParameter, AdjustmentReason, ConfidenceLevel, DoseMoment } from "@prisma/client"
+import { CLINICAL_BOUNDS, BGM_CARNET } from "@/lib/clinical-bounds"
+import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
+
+/** Seuil d'hypo SÉVÈRE en g/L (source unique mg/dL ÷ 100). */
+const SEVERE_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO / 100
 
 /**
  * Adjustment proposal candidate — suggested parameter change with confidence.
@@ -205,5 +209,79 @@ export function analyzeBasalTrend(
     supportingEvents: fastingValues.length,
     totalEventsConsidered: fastingValues.length,
     averageObservedValue: Math.round(avgFasting * 10000) / 10000,
+  }
+}
+
+/**
+ * Analyse une DOSE FIXE (mode b, US-2651) pour un **moment** (matin/midi/soir/nuit) à partir de
+ * la tendance glycémique du carnet (BGM). Une dose fixe est une dose **directe** (comme la basale,
+ * PAS un dénominateur) : glycémie systématiquement **au-dessus** de la cible → dose **trop basse**
+ * → hausse ; **en dessous** → dose **trop haute** → baisse.
+ *
+ * **Titration LENTE et bornée** (jamais auto-appliquée — ADR #13) :
+ *  - ≥ `BGM_CARNET.MIN_READINGS_PER_MOMENT` relevés requis, sinon `null` (bruit).
+ *  - Variation = le **plus petit** de ± `FIXED_DOSE_MAX_CHANGE_PERCENT` (10 %) et
+ *    ± `FIXED_DOSE_MAX_DELTA_U` (2 U).
+ *  - **Plancher** absolu `FIXED_DOSE_MIN` (0,5 U). Arrondi à l'incrément délivrable
+ *    `FIXED_DOSE_DELIVERY_INCREMENT_U` (0,5 U) ; pas nul → aucune proposition (non actionnable).
+ *  - **Interdits** (hors périmètre de cette fonction pure) : convertir une dose fixe en
+ *    basal-bolus, créer un ISF/ICR ex nihilo — l'appelant ne route ici qu'un patient `fixedDose`.
+ *
+ * @param slot Dose fixe courante du moment (`{ moment, valueU }`).
+ * @param readings Relevés glycémiques du moment (`postGlucoseGl` vs `targetGl`, g/L).
+ * @returns Proposition `fixedDose` bornée, ou `null` si insuffisant/non actionnable.
+ */
+export function analyzeFixedDose(
+  slot: { moment: DoseMoment; valueU: number },
+  readings: { postGlucoseGl: number; targetGl: number }[],
+): ProposalCandidate | null {
+  if (readings.length < BGM_CARNET.MIN_READINGS_PER_MOMENT) return null
+  // Fail-closed sur l'entrée : dose courante invalide/nulle (sinon `changePercent` = Infinity,
+  // et une dose < plancher n'est pas une base de titration valide). Validé medical US-2651.
+  if (!Number.isFinite(slot.valueU) || slot.valueU < CLINICAL_BOUNDS.FIXED_DOSE_MIN) return null
+
+  const avgPost = readings.reduce((s, r) => s + r.postGlucoseGl, 0) / readings.length
+  const avgTarget = readings.reduce((s, r) => s + r.targetGl, 0) / readings.length
+  if (avgTarget === 0) return null
+
+  // Dose directe : au-dessus de la cible → hausser la dose (sign +, comme la basale).
+  const errorPercent = ((avgPost - avgTarget) / avgTarget) * 100
+  const pctCap = CLINICAL_BOUNDS.FIXED_DOSE_MAX_CHANGE_PERCENT
+  const pctClamped = Math.max(-pctCap, Math.min(pctCap, errorPercent))
+  const deltaFromPct = (slot.valueU * pctClamped) / 100
+  // Le plus petit des deux caps : ± FIXED_DOSE_MAX_DELTA_U (U) ET ± pctCap %.
+  const absCap = CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U
+  const delta = Math.max(-absCap, Math.min(absCap, deltaFromPct))
+
+  // Plancher absolu + arrondi à l'incrément délivrable (demi-unité). NB : l'arrondi s'applique
+  // APRÈS le clamp ± 2 U/± 10 %, donc `effectiveDelta` peut dépasser le cap de ≤ un demi-incrément
+  // (≤ 0,25 U ; ou plus en % sur une très petite dose où l'incrément 0,5 U domine) — inévitable
+  // avec un stylo demi-unité, et sans enjeu sur un ajustement unique gaté médecin.
+  const inc = CLINICAL_BOUNDS.FIXED_DOSE_DELIVERY_INCREMENT_U
+  const proposedRaw = Math.max(CLINICAL_BOUNDS.FIXED_DOSE_MIN, slot.valueU + delta)
+  const proposedValue = Math.round(proposedRaw / inc) * inc
+  const effectiveDelta = proposedValue - slot.valueU
+
+  // Pas arrondi nul (< incrément délivrable) → non actionnable.
+  if (Math.abs(effectiveDelta) < inc) return null
+
+  // Garde HYPO (validé medical US-2651) : ne JAMAIS proposer une HAUSSE si un relevé du moment
+  // est en hypo SÉVÈRE — la moyenne peut masquer une hypo intermittente, et hausser une dose fixe
+  // (sans logique de correction pour rattraper) serait la direction dangereuse. La BAISSE reste
+  // permise (sens sûr).
+  if (effectiveDelta > 0 && readings.some((r) => r.postGlucoseGl < SEVERE_HYPO_GL)) return null
+
+  const reason: AdjustmentReason = effectiveDelta > 0 ? "fixedDoseTooLow" : "fixedDoseTooHigh"
+
+  return {
+    parameterType: "fixedDose",
+    reason,
+    currentValue: slot.valueU,
+    proposedValue,
+    changePercent: Math.round((effectiveDelta / slot.valueU) * 100 * 100) / 100,
+    confidence: getConfidenceLevel(readings.length),
+    supportingEvents: readings.length,
+    totalEventsConsidered: readings.length,
+    averageObservedValue: Math.round(avgPost * 10000) / 10000,
   }
 }

@@ -41,7 +41,7 @@
 import { describe, it, expect } from "vitest"
 import {
   getConfidenceLevel, clampChangePercent, computeProposedValue,
-  analyzeIsfSlot, analyzeIcrSlot, analyzeBasalTrend,
+  analyzeIsfSlot, analyzeIcrSlot, analyzeBasalTrend, analyzeFixedDose,
 } from "@/lib/proposal-algorithm"
 
 describe("proposal-algorithm", () => {
@@ -160,4 +160,67 @@ describe("proposal-algorithm", () => {
       expect(analyzeBasalTrend([1.5], 1.2, 0.8)).toBeNull()
     })
   })
+
+  describe("analyzeFixedDose (mode b, US-2651)", () => {
+    const slot = { moment: "noon" as const, valueU: 20 }
+    const readings = (post: number, n = 6) =>
+      Array.from({ length: n }, () => ({ postGlucoseGl: post, targetGl: 1.2 }))
+
+    it("insuffisant (< 3 relevés) → null", () => {
+      expect(analyzeFixedDose(slot, readings(2.0, 2))).toBeNull()
+    })
+
+    it("glycémie au-dessus de la cible → dose trop basse → HAUSSE bornée (reason fixedDoseTooLow)", () => {
+      const r = analyzeFixedDose(slot, readings(2.0))
+      expect(r).not.toBeNull()
+      expect(r!.parameterType).toBe("fixedDose")
+      expect(r!.reason).toBe("fixedDoseTooLow")
+      // Cap = min(±10 % de 20 = 2 U, ±2 U) → +2 U.
+      expect(r!.proposedValue).toBe(22)
+      expect(r!.changePercent).toBe(10) // +2 U / 20 U = 10 %
+    })
+
+    it("glycémie en dessous de la cible → dose trop haute → BAISSE (reason fixedDoseTooHigh)", () => {
+      const r = analyzeFixedDose(slot, readings(1.0))
+      expect(r!.reason).toBe("fixedDoseTooHigh")
+      expect(r!.proposedValue).toBe(18)
+    })
+
+    it("cap ABSOLU ± 2 U l'emporte sur ± 10 % pour une grosse dose (50 U → +2 U, pas +5 U)", () => {
+      const r = analyzeFixedDose({ moment: "morning", valueU: 50 }, readings(2.0))
+      expect(r!.proposedValue).toBe(52)
+    })
+
+    it("pas arrondi nul (< 0,5 U) → non actionnable → null", () => {
+      // 4 U, PPG à peine au-dessus (1.25 vs 1.2) → delta ≈ 0,17 U → arrondi 0 → null.
+      expect(analyzeFixedDose({ moment: "evening", valueU: 4 }, readings(1.25))).toBeNull()
+    })
+
+    it("garde HYPO : une hypo sévère dans le moment supprime toute HAUSSE → null (US-2651)", () => {
+      const mixed = [
+        { postGlucoseGl: 2.5, targetGl: 1.2 },
+        { postGlucoseGl: 2.6, targetGl: 1.2 },
+        { postGlucoseGl: 2.4, targetGl: 1.2 },
+        { postGlucoseGl: 0.4, targetGl: 1.2 }, // hypo sévère < 0,54 g/L
+      ]
+      expect(analyzeFixedDose(slot, mixed)).toBeNull()
+    })
+
+    it("garde HYPO : la BAISSE reste permise malgré une hypo (sens sûr)", () => {
+      const lowWithHypo = [
+        { postGlucoseGl: 0.9, targetGl: 1.2 },
+        { postGlucoseGl: 0.8, targetGl: 1.2 },
+        { postGlucoseGl: 0.4, targetGl: 1.2 },
+      ]
+      const r = analyzeFixedDose(slot, lowWithHypo)
+      expect(r!.reason).toBe("fixedDoseTooHigh")
+      expect(r!.proposedValue).toBeLessThan(slot.valueU)
+    })
+
+    it("garde ENTRÉE : dose courante nulle ou < plancher → null (pas de division par zéro)", () => {
+      expect(analyzeFixedDose({ moment: "noon", valueU: 0 }, readings(2.0))).toBeNull()
+      expect(analyzeFixedDose({ moment: "noon", valueU: 0.2 }, readings(2.0))).toBeNull()
+    })
+  })
+
 })

@@ -148,6 +148,10 @@ enum AdjustmentReason {
   icrTooLow
   icrTooHigh
   icrCorrect
+  // US-2651 — dose fixe (mode b) : titration par moment sur tendance glycémique.
+  fixedDoseTooLow
+  fixedDoseTooHigh
+  fixedDoseCorrect
   insufficientData
   // US-2646 — propositions humaines (non issues du moteur diagnostique).
   patientRequested

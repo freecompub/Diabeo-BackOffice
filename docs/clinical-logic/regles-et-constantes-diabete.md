@@ -178,3 +178,24 @@ acceptée entre-temps), appliquer la valeur absolue **sur-corrige** (ex. base de
 Le fonctionnement de l'algorithme de **calcul des propositions d'ajustement** (analyseurs ISF/ICR/basal,
 constantes moteur, routage multi-mode a/b/c, frontière MDR, chaîne génération→validation) est décrit
 dans son document dédié : **[`algorithme-propositions-ajustement.md`](./algorithme-propositions-ajustement.md)**.
+
+### Dose fixe — analyseur mode (b) (US-2651)
+
+| Constante | Valeur | Sens clinique | Source |
+|---|---|---|---|
+| `FIXED_DOSE_MAX_CHANGE_PERCENT` | **± 10 %** | Cap moteur d'une proposition de dose fixe (plus strict que ± 20 % basal/bolus : titration plus lente). | `src/lib/clinical-bounds.ts` |
+| `FIXED_DOSE_DELIVERY_INCREMENT_U` | **0,5 U** | Incrément délivrable (demi-unité stylo) ; arrondi de la proposition ; pas nul → non actionnable. | idem |
+| `FIXED_DOSE_COOLDOWN_HOURS` | **72 h** | Cooldown moteur entre 2 propositions de dose fixe sur le même moment (effet jugeable sur ≥ 3 j). Appliqué au **câblage** du générateur. | idem |
+
+`analyzeFixedDose` retient le **plus petit** de ± 10 % et ± `FIXED_DOSE_MAX_DELTA_U` (2 U), plancher
+`FIXED_DOSE_MIN` (0,5 U). Direction = dose **directe** (haut → hausse). Détail : `algorithme-propositions-ajustement.md` §4-5.
+
+**Garde-fous `analyzeFixedDose` (validés medical US-2651)** :
+- **Garde hypo** : aucune proposition de **HAUSSE** si un relevé du moment est en **hypo sévère**
+  (< `GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO` = 0,54 g/L) — la moyenne peut masquer une hypo
+  intermittente. La **baisse** reste permise (sens sûr).
+- **Garde entrée** : dose courante `null`/non finie/< `FIXED_DOSE_MIN` → aucune proposition (fail-closed).
+- **Blind spot connu** : une dose ≤ ~5 U est structurellement non ajustable (10 % < 0,5 U d'incrément) →
+  le moteur reste silencieux (le médecin ajuste manuellement). Fail-safe, non bloquant.
+- **Contrat d'entrée** : `postGlucoseGl` = glycémie d'évaluation du moment (PPG 2 h pour un moment
+  prandial ; à jeun/pré-repas pour une dose de type basal) — à câbler correctement dans le générateur.
