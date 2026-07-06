@@ -249,13 +249,23 @@ export const proposalGeneratorService = {
   async generateOrientationFlags(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
     let flagged = 0
 
-    // Dernière HbA1c = plus récente des deux sources (carnet glycémie + événements).
-    const [gly, evt] = await Promise.all([
+    // Audit HDS : accès aux données de santé (HbA1c, TIR) sous l'acteur système. Best-effort.
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "PATIENT", resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { patientId, kind: "orientation-flags" },
+    }).catch((err) => logger.error("proposal-generator", "orientation-flags audit failed", { patientId }, err as Error))
+
+    // Dernière HbA1c (plus récente des 2 sources) + patient (pathologie/grossesse pour les bornes TIR).
+    const [gly, evt, patient] = await Promise.all([
       prisma.glycemiaEntry.findFirst({
         where: { patientId, hba1c: { not: null } }, orderBy: { date: "desc" }, select: { date: true },
       }),
       prisma.diabetesEvent.findFirst({
         where: { patientId, hba1c: { not: null } }, orderBy: { eventDate: "desc" }, select: { eventDate: true },
+      }),
+      prisma.patient.findFirst({
+        where: { id: patientId, deletedAt: null }, select: { pathology: true, pregnancyMode: true },
       }),
     ])
     const dates = [gly?.date, evt?.eventDate].filter((d): d is Date => d != null)
@@ -268,13 +278,13 @@ export const proposalGeneratorService = {
         .catch((err) => logger.error("proposal-generator", "raise hba1cStale failed", { patientId }, err as Error))
     }
 
-    // tirBelowTarget — TIR sur 14 j < cible (bornes pathology-aware). `null` si capture CGM
+    // tirBelowTarget — TIR sur 14 j < cible (bornes pathology/GROSSESSE-aware). `null` si capture CGM
     // insuffisante (pas de flag sur un échantillon maigre) — un non-insuliné en BGM pur n'a pas de TIR.
-    const patient = await prisma.patient.findFirst({
-      where: { id: patientId, deletedAt: null }, select: { pathology: true },
-    })
     if (patient) {
-      const tir = await objectivesService.computeTirPercent(patientId, patient.pathology)
+      // Aligné sur le chemin ICR : un DT2 ENCEINTE doit être scoré contre les bornes GD (0,63–1,40),
+      // pas les bornes adulte (0,70–1,80), sinon on sous-flague la population la plus à risque.
+      const isPregnancy = patient.pregnancyMode === true || patient.pathology === "GD"
+      const tir = await objectivesService.computeTirPercent(patientId, isPregnancy ? "GD" : patient.pathology)
       if (tir !== null && tir < DASHBOARD_TIR.TARGET_PERCENT) {
         await clinicalReviewFlagService.raise(patientId, "tirBelowTarget", auditUserId, ctx)
           .then(() => { flagged++ })
