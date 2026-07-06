@@ -17,7 +17,10 @@ import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
-import { analyzeIcrSlot } from "@/lib/proposal-algorithm"
+import {
+  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, type ProposalCandidate,
+} from "@/lib/proposal-algorithm"
+import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, type JournalMeal } from "@/lib/services/meal-trends.service"
@@ -34,6 +37,8 @@ const MIN_MEALS_PER_SLOT = 3
 /** Résultat d'un run patient — métriques d'observabilité (aucune valeur clinique). */
 export interface GenerateResult {
   created: number
+  /** US-2653 — flags `highVariabilityPostMeal` levés (cas haute-variabilité, jamais de dose). */
+  flagged: number
   slotsConsidered: number
   mealsUsable: number
   skipped: string | null
@@ -43,6 +48,7 @@ export interface GenerateResult {
 export interface GenerateAllResult {
   processed: number
   created: number
+  flagged: number
   errored: number
   skippedConcurrent: boolean
 }
@@ -54,7 +60,16 @@ const CRON_AUDIT_USER_ID: number | null = null
 /** Clé du verrou advisory global (anti double-run OVH + Vercel). */
 const CRON_LOCK_KEY = "proposal-generator-cron"
 
-const EMPTY = (skipped: string): GenerateResult => ({ created: 0, slotsConsidered: 0, mealsUsable: 0, skipped })
+const EMPTY = (skipped: string): GenerateResult =>
+  ({ created: 0, flagged: 0, slotsConsidered: 0, mealsUsable: 0, skipped })
+
+/** Construit les entrées `analyzeIcrSlot` d'un créneau pour une cible donnée (deadband). */
+const buildIcrMeals = (meals: JournalMeal[], targetGl: number) =>
+  meals.map((m) => ({
+    postGlucoseGl: m.postMgdl! / 100,
+    targetGl,
+    nadirGl: m.nadirMgdl !== null ? m.nadirMgdl / 100 : undefined,
+  }))
 
 /**
  * Un repas est exploitable pour l'ICR si : PPG 2 h mesurée, glucides ET bolus renseignés (> 0), et
@@ -135,28 +150,16 @@ export const proposalGeneratorService = {
       bySlot.set(key, bucket)
     }
 
-    // 5. Par créneau ≥ 3 repas → deadband → analyseur → persistance moteur.
+    // 5. Par créneau ≥ 3 repas → MATRICE DE DÉCISION (§5ter, validée medical US-2653) :
+    //    moyenne PPG × hypo récurrente (nadirs). Deadband et dé-escalade sont mutuellement exclusifs
+    //    par créneau. Cas HAUTE-VARIABILITÉ (moyenne > plafond ET hypos récurrentes) → FLAG de revue,
+    //    JAMAIS une dose (le levier ICR ne corrige pas à la fois le pic et le creux).
     let created = 0
+    let flagged = 0
     let slotsConsidered = 0
-    for (const { slot, meals } of bySlot.values()) {
-      if (meals.length < MIN_MEALS_PER_SLOT) continue
-      slotsConsidered++
 
-      const avgPostGl = mean(meals.map((m) => m.postMgdl! / 100))
-      // Deadband asymétrique : au-dessus du plafond → BAISSE ICR (plus d'insuline) ; en dessous de la
-      // borne basse → HAUSSE ICR (moins d'insuline) ; entre les deux → aucune proposition.
-      let targetGl: number | null = null
-      if (avgPostGl > ceilingGl) targetGl = ceilingGl
-      else if (avgPostGl < lowerGl) targetGl = lowerGl
-      if (targetGl === null) continue
-
-      const candidate = analyzeIcrSlot(slot, meals.map((m) => ({
-        postGlucoseGl: m.postMgdl! / 100,
-        targetGl,
-        nadirGl: m.nadirMgdl !== null ? m.nadirMgdl / 100 : undefined,
-      })))
-      if (!candidate) continue
-
+    // Persiste un candidat (deadband ou dé-escalade). Rejets fail-closed logués + non fatals.
+    const persist = async (candidate: ProposalCandidate, slot: (typeof slots)[number]): Promise<boolean> => {
       try {
         await adjustmentService.createEngineProposal({
           patientId,
@@ -172,10 +175,8 @@ export const proposalGeneratorService = {
           carbRatioSlotStart: slot.startHour,
           carbRatioSlotEnd: slot.endHour,
         }, ctx)
-        created++
+        return true
       } catch (err) {
-        // Rejets ATTENDUS (fail-closed, non fatals) → info + grep SOC ; on continue le portefeuille.
-        // INATTENDU (ex. erreur DB brute) → logger.error SANS interpoler le message (défense PHI, HDS #671).
         const msg = (err as Error).message
         const bucket = `${slot.startHour}-${slot.endHour}`
         if (EXPECTED_SKIP.has(msg)) {
@@ -184,10 +185,41 @@ export const proposalGeneratorService = {
           logger.error("proposal-generator", "unexpected engine proposal error",
             { patientId, bucket, failMode: "unexpected" }, err as Error)
         }
+        return false
       }
     }
 
-    return { created, slotsConsidered, mealsUsable: usable.length, skipped: null }
+    for (const { slot, meals } of bySlot.values()) {
+      if (meals.length < MIN_MEALS_PER_SLOT) continue
+      slotsConsidered++
+
+      const avgPostGl = mean(meals.map((m) => m.postMgdl! / 100))
+      const nadirsGl = meals
+        .map((m) => m.nadirMgdl)
+        .filter((n): n is number => n !== null)
+        .map((n) => n / 100)
+      const recurrentHypo = recurrentPostMealHypo(nadirsGl)
+
+      // Haute variabilité → FLAG d'orientation, pas de dose (intercepté AVANT tout builder).
+      if (avgPostGl > ceilingGl && recurrentHypo) {
+        await clinicalReviewFlagService.raise(patientId, "highVariabilityPostMeal", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise flag failed",
+            { patientId, bucket: `${slot.startHour}-${slot.endHour}` }, err as Error))
+        continue
+      }
+
+      // Sinon : deadband (baisse si > plafond ; hausse si < borne basse) OU, dans la bande, dé-escalade
+      // sur hypos récurrentes (hausse ICR fixe = moins d'insuline).
+      let candidate: ProposalCandidate | null = null
+      if (avgPostGl > ceilingGl) candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, ceilingGl))
+      else if (avgPostGl < lowerGl) candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, lowerGl))
+      else if (recurrentHypo) candidate = analyzeIcrHypoDeescalation(slot, nadirsGl)
+
+      if (candidate && (await persist(candidate, slot))) created++
+    }
+
+    return { created, flagged, slotsConsidered, mealsUsable: usable.length, skipped: null }
   },
 
   /**
@@ -208,11 +240,13 @@ export const proposalGeneratorService = {
       })
       let processed = 0
       let created = 0
+      let flagged = 0
       let errored = 0
       for (const { id } of patients) {
         try {
           const r = await proposalGeneratorService.generateForPatient(id, CRON_AUDIT_USER_ID, ctx)
           created += r.created
+          flagged += r.flagged
         } catch (err) {
           // Isolation : erreur infra (DB/lecture) sur un patient → on compte et on continue.
           errored++
@@ -221,7 +255,7 @@ export const proposalGeneratorService = {
         }
         processed++
       }
-      return { processed, created, errored, skippedConcurrent: false }
+      return { processed, created, flagged, errored, skippedConcurrent: false }
     })
     const durationMs = Date.now() - t0
 
@@ -235,7 +269,7 @@ export const proposalGeneratorService = {
         ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
         metadata: { kind: "proposal.generator.cron.skipped_locked", durationMs },
       }).catch((err) => logger.error("proposal-generator", "cron audit (skipped) failed", { kind: "audit.write.failed" }, err))
-      return { processed: 0, created: 0, errored: 0, skippedConcurrent: true }
+      return { processed: 0, created: 0, flagged: 0, errored: 0, skippedConcurrent: true }
     }
 
     await auditService.log({
@@ -243,7 +277,7 @@ export const proposalGeneratorService = {
       ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
       metadata: {
         kind: "proposal.generator.cron.run",
-        processed: run.processed, created: run.created, errored: run.errored, durationMs,
+        processed: run.processed, created: run.created, flagged: run.flagged, errored: run.errored, durationMs,
       },
     }).catch((err) => logger.error("proposal-generator", "cron audit (run) failed", { kind: "audit.write.failed" }, err))
     return run

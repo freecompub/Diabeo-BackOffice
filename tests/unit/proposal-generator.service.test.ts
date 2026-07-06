@@ -27,6 +27,9 @@ vi.mock("@/lib/db/cron-lock", () => ({
 vi.mock("@/lib/services/audit.service", () => ({
   auditService: { log: vi.fn().mockResolvedValue(undefined) },
 }))
+vi.mock("@/lib/services/clinical-review-flag.service", () => ({
+  clinicalReviewFlagService: { raise: vi.fn().mockResolvedValue({ flagId: "f1", created: true }) },
+}))
 
 import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
@@ -35,9 +38,11 @@ import { mealtimePattern } from "@/lib/services/meal-trends.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { auditService } from "@/lib/services/audit.service"
+import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 
 const lock = vi.mocked(withSessionAdvisoryLock)
 const auditLog = vi.mocked(auditService.log)
+const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const mode = vi.mocked(treatmentModeService.resolveTreatmentMode)
 const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
@@ -98,6 +103,37 @@ describe("proposalGeneratorService.generateForPatient", () => {
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.created).toBe(0)
     expect(createEngine).not.toHaveBeenCalled()
+  })
+
+  it("US-2653 haute variabilité (moyenne > plafond + hypos récurrentes) → FLAG, pas de dose", async () => {
+    setup({ meals: [
+      meal({ postMgdl: 200, nadirMgdl: 60 }), meal({ postMgdl: 200, nadirMgdl: 60 }), meal({ postMgdl: 200, nadirMgdl: 60 }),
+    ] }) // PPG 2,0 > plafond 1,80 MAIS nadirs 0,60 → récurrent
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(1)
+    expect(res.created).toBe(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityPostMeal", 99, undefined)
+    expect(createEngine).not.toHaveBeenCalled()
+  })
+
+  it("US-2653 dans la bande + hypos récurrentes → dé-escalade ICR (hausse +10 %, icrTooLow)", async () => {
+    setup({ meals: [
+      meal({ postMgdl: 140, nadirMgdl: 60 }), meal({ postMgdl: 140, nadirMgdl: 60 }), meal({ postMgdl: 140, nadirMgdl: 60 }),
+    ] }) // PPG 1,40 dans [1,00 ; 1,80] + nadirs 0,60 → dé-escalade
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.created).toBe(1)
+    expect(raiseFlag).not.toHaveBeenCalled()
+    const input = createEngine.mock.calls[0]![0]
+    expect(input.reason).toBe("icrTooLow")
+    expect(input.proposedValue).toBeGreaterThan(10) // hausse ICR = moins d'insuline
+  })
+
+  it("US-2653 dans la bande SANS hypo récurrente → aucune proposition ni flag", async () => {
+    setup({ meals: [meal({ postMgdl: 140 }), meal({ postMgdl: 140 }), meal({ postMgdl: 140 })] }) // nadir défaut 160
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res).toMatchObject({ created: 0, flagged: 0 })
+    expect(createEngine).not.toHaveBeenCalled()
+    expect(raiseFlag).not.toHaveBeenCalled()
   })
 
   it("porte qualité : repas sans glucides / bolus / pré-repas hors bande → exclus", async () => {
