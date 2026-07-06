@@ -740,7 +740,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 | US-2648 | Onglet Traitements éditable (fiche) : DOCTOR direct / NURSE→proposition | front/back | 2646, 2647 | L | ⏳ TODO (#631) |
 | US-2649 | Flux proposition → validation (provenance, notif, UI `/adjustment-proposals`) | front/back | 2646 | L | ⏳ TODO (#632) |
 | US-2650 | Self-service patient : route `(patient)` + nav + lecture + proposer | front/back | 2648, 2649 | L | ⏳ TODO (#633) |
-| US-2651 | Algorithme d'ajustement multi-mode (basal-bolus / doses fixes / non insuliné) | back | 2646, 2647 | L | ⏳ TODO (#634) |
+| US-2651 | Algorithme d'ajustement multi-mode (basal-bolus / doses fixes / non insuliné) | back | 2646, 2647 | L | 🟡 EN COURS — analyseurs + garde hypo + persistance moteur + **générateur ICR de bout en bout + cron** livrés (#666→#672) ; restent ISF/basal/fixedDose/nonInsulin (#634) |
 | US-2652 | Garde-fous cliniques + i18n/acronymes + design-system + tests + docs | transverse | 2646→2651 | M | ⏳ TODO (#635) |
 | US-2653 | Propositions de **dé-escalade sur hypos récurrentes** (nadir-trigger, moins d'insuline) transverse aux 4 analyseurs, indépendant du deadband sur la moyenne | back | 2651 | M/L | 🟡 SPEC |
 

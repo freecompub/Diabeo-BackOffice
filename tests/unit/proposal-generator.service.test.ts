@@ -20,13 +20,19 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
 }))
+// Verrou advisory : par défaut « acquis » → exécute le travail. Surchargé pour le cas concurrent.
+vi.mock("@/lib/db/cron-lock", () => ({
+  withSessionAdvisoryLock: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
+}))
 
 import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 
+const lock = vi.mocked(withSessionAdvisoryLock)
 const mode = vi.mocked(treatmentModeService.resolveTreatmentMode)
 const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
@@ -152,5 +158,40 @@ describe("proposalGeneratorService.generateForPatient", () => {
     expect(createEngine.mock.calls[0]![0]).toMatchObject({
       carbRatioSlotStart: 8, carbRatioSlotEnd: 12, expectedCurrentValue: 12,
     })
+  })
+})
+
+describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  it("boucle le portefeuille actif (deletedAt null + user actif) → agrège created/processed", async () => {
+    setup() // par patient : basalBolus + 3 repas PPG 2,0 → 1 proposition
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as never)
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res.processed).toBe(2)
+    expect(res.created).toBe(2)
+    expect(res.errored).toBe(0)
+    expect(res.skippedConcurrent).toBe(false)
+    expect(prismaMock.patient.findMany.mock.calls[0]![0]!.where).toMatchObject({
+      deletedAt: null, user: { status: "active" },
+    })
+  })
+
+  it("verrou non acquis (run concurrent) → skippedConcurrent, aucun traitement", async () => {
+    lock.mockResolvedValueOnce(null) // withSessionAdvisoryLock renvoie null
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res.skippedConcurrent).toBe(true)
+    expect(res.processed).toBe(0)
+    expect(prismaMock.patient.findMany).not.toHaveBeenCalled()
+  })
+
+  it("isolation per-patient : une erreur infra sur un patient n'arrête pas le portefeuille", async () => {
+    setup()
+    prismaMock.patient.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as never)
+    getSettings.mockRejectedValueOnce(new Error("db down")) // 1er patient échoue, 2e OK
+    const res = await proposalGeneratorService.generateForAllPatients()
+    expect(res.processed).toBe(2)
+    expect(res.errored).toBe(1)
+    expect(res.created).toBe(1)
   })
 })

@@ -255,7 +255,7 @@ type MealContext = Awaited<ReturnType<typeof loadContext>>
 export const mealtimePattern = {
   /** Courbes glycémiques moyennes alignées sur l'heure du repas, par moment. */
   async alignedCurve(
-    patientId: number, period: string, auditUserId: number, ctx?: AuditContext,
+    patientId: number, period: string, auditUserId: number | null, ctx?: AuditContext,
     opts?: { source?: "cgm" | "bgm"; skipAudit?: boolean },
   ): Promise<AlignedCurveResult> {
     const source = opts?.source ?? "cgm"
@@ -267,7 +267,7 @@ export const mealtimePattern = {
 
   /** Journal repas : 1 entrée par repas (jour × moment), numérique. */
   async dailyJournal(
-    patientId: number, period: string, auditUserId: number, ctx?: AuditContext,
+    patientId: number, period: string, auditUserId: number | null, ctx?: AuditContext,
     opts?: { source?: "cgm" | "bgm"; skipAudit?: boolean },
   ): Promise<JournalMeal[]> {
     const source = opts?.source ?? "cgm"
@@ -439,7 +439,7 @@ function parsePeriodDays(period: string): number {
   return n
 }
 async function auditRead(
-  userId: number, patientId: number, period: string, windowDays: number,
+  userId: number | null, patientId: number, period: string, windowDays: number,
   source: string, kind: string, ctx?: AuditContext,
 ) {
   await auditService.log({

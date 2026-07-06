@@ -212,7 +212,12 @@ bolus > 0, pré-repas dans `[ICR_PREMEAL_MIN_GL, ICR_PREMEAL_MAX_GL]`), **bucket
 (`findSlotForHour(carbRatios, localHour)`), calcule la cible par **deadband** (plafond `getCgmDefaults(...).ok`
 / borne basse, `isPregnancy`-aware), lance `analyzeIcrSlot` (avec `nadirGl = nadirMgdl/100`) et persiste via
 `createEngineProposal`. Les rejets fail-closed (baseline dérivée, doublon, sens incohérent, hors bornes)
-sont **logués et non fatals**. **Reste (slice 3)** : le **cron** nocturne (boucle portefeuille + verrou advisory).
+sont **logués et non fatals**. ✅ **Cron en place (slice 3)** : `generateForAllPatients(ctx)` sous **verrou
+advisory session** (`withSessionAdvisoryLock`, anti double-run OVH+Vercel), boucle les patients actifs
+(`deletedAt null` + `user.status active`) avec **isolation per-patient** (une erreur infra n'arrête pas le
+portefeuille), lectures attribuées à l'**acteur système `null`**. Route `GET|POST /api/cron/generate-proposals`
+(Bearer `CRON_SECRET`, audit `cron.auth.failed`, headers ANSSI). Le chemin **ICR est complet** de bout en
+bout ; restent les autres paramètres (ISF/basal/fixedDose) et modes en slices ultérieures.
 
 La **porte qualité pré-repas** est **grossesse-aware** : borne haute resserrée à `ICR_PREMEAL_MAX_PREGNANCY_GL`
 (1,10 g/L) quand `isPregnancy` — sinon un pré-repas déjà élevé pour une enceinte contaminerait le signal ICR.
