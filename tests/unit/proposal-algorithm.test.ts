@@ -180,6 +180,12 @@ describe("proposal-algorithm", () => {
       // Moyenne haute → icrTooHigh (baisser l'ICR = plus d'insuline/gramme) → supprimé par la garde hypo.
       expect(analyzeIcrSlot(slot, meals)).toBeNull()
     })
+
+    it("garde HYPO : hausse ICR (sens sûr, moins d'insuline) permise malgré des hypos", () => {
+      const meals = Array.from({ length: 5 }, () => ({ postGlucoseGl: 0.40, targetGl: 1.20 }))
+      const r = analyzeIcrSlot(slot, meals) // moyenne basse → icrTooLow (hausse ICR)
+      expect(r!.reason).toBe("icrTooLow")
+    })
   })
 
   describe("analyzeBasalTrend", () => {
@@ -206,6 +212,12 @@ describe("proposal-algorithm", () => {
       // Moyenne élevée (dawn phenomenon) mais une hypo nocturne masquée → hausse basale supprimée.
       const fasting = [1.60, 1.55, 1.58, 0.40]
       expect(analyzeBasalTrend(fasting, 1.20, 0.80)).toBeNull()
+    })
+
+    it("garde HYPO : baisse basale (sens sûr, moins d'insuline) permise malgré des hypos", () => {
+      const fasting = [0.50, 0.55, 0.48, 0.52] // moyenne basse → basalTooHigh (baisse)
+      const r = analyzeBasalTrend(fasting, 1.20, 0.80)
+      expect(r!.reason).toBe("basalTooHigh")
     })
   })
 

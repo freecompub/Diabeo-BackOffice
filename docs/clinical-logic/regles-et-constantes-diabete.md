@@ -191,9 +191,10 @@ dans son document dédié : **[`algorithme-propositions-ajustement.md`](./algori
 `FIXED_DOSE_MIN` (0,5 U). Direction = dose **directe** (haut → hausse). Détail : `algorithme-propositions-ajustement.md` §4-5.
 
 **Garde-fous `analyzeFixedDose` (validés medical US-2651)** :
-- **Garde hypo** : aucune proposition de **HAUSSE** si un relevé du moment est en **hypo sévère**
-  (< `GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO` = 0,54 g/L) — la moyenne peut masquer une hypo
-  intermittente. La **baisse** reste permise (sens sûr).
+- **Garde hypo** : aucune proposition de **HAUSSE** en présence d'hypo contre-indiquante ; la **baisse**
+  reste permise (sens sûr). Depuis US-2651, cette garde est **commune aux 4 analyseurs** via
+  `hypoBlocksProposal` et couvre **le sévère (1 relevé) ET le niveau-1 récurrent (≥ 2)** — voir la
+  section « Garde HYPO des analyseurs » ci-dessous (la description sévère-only ici est historique).
 - **Garde entrée** : dose courante `null`/non finie/< `FIXED_DOSE_MIN` → aucune proposition (fail-closed).
 - **Blind spot connu** : une dose ≤ ~5 U est structurellement non ajustable (10 % < 0,5 U d'incrément) →
   le moteur reste silencieux (le médecin ajuste manuellement). Fail-safe, non bloquant.
