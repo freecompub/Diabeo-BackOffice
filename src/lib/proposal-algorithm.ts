@@ -52,7 +52,10 @@ function hypoBlocksProposal(
  */
 export function recurrentPostMealHypo(nadirsGl: number[]): boolean {
   if (nadirsGl.length < 3) return false
-  const level1 = nadirsGl.filter((g) => g < LEVEL1_HYPO_GL).length
+  // `Number.isFinite` d'abord : garde défensif — `null < 0.70` coerce à `true` en JS (null→0) et
+  // fabriquerait une fausse hypo (direction « moins d'insuline »). Le contrat exige des non-nuls,
+  // ce garde en fait une garantie runtime dans une fonction safety-relevant.
+  const level1 = nadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length
   return level1 >= CLINICAL_BOUNDS.HYPO_LEVEL1_RECURRENCE_MIN
 }
 
@@ -83,7 +86,7 @@ export function analyzeIcrHypoDeescalation(
     proposedValue,
     changePercent: CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT,
     confidence: getConfidenceLevel(nadirsGl.length),
-    supportingEvents: nadirsGl.filter((g) => g < LEVEL1_HYPO_GL).length, // nb de nadirs en hypo (> 0)
+    supportingEvents: nadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length, // nb de nadirs en hypo (> 0)
     totalEventsConsidered: nadirsGl.length,
     timeSlotStartHour: slot.startHour,
     timeSlotEndHour: slot.endHour,

@@ -233,6 +233,12 @@ describe("proposal-algorithm", () => {
     it("1 sévère + 1 niveau-1 → true (le sévère compte comme niveau-1 → 2)", () => {
       expect(recurrentPostMealHypo([0.5, 0.65, 1.2])).toBe(true)
     })
+    it("borne exacte 0,70 exclue (< strict) → non compté niveau-1", () => {
+      expect(recurrentPostMealHypo([0.7, 0.7, 1.2])).toBe(false)
+    })
+    it("garde anti-null : un null ne fabrique PAS une hypo (Number.isFinite)", () => {
+      expect(recurrentPostMealHypo([null as unknown as number, null as unknown as number, 1.2])).toBe(false)
+    })
   })
 
   describe("analyzeIcrHypoDeescalation (US-2653)", () => {
