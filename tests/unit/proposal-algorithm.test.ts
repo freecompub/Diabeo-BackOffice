@@ -5,12 +5,11 @@
  * - Confidence level assignment based on the number of qualifying glucose
  *   events: 3–5 events = "low", 6–10 = "medium", >10 = "high"; proposals
  *   below "low" confidence are not generated (insufficient data)
- * - Change percent clamping: ISF and ICR adjustments are capped at ±20% per
- *   proposal cycle to prevent overcorrection; basal rate adjustments are
- *   capped at ±15% to stay within CLINICAL_BOUNDS
+ * - Change percent clamping: ISF, ICR AND basal adjustments are all capped at
+ *   ±20% per proposal cycle (CLINICAL_BOUNDS.MAX_CHANGE_PERCENT) via the shared
+ *   `clampChangePercent` — no per-parameter cap difference
  * - Proposed value computation: applies the clamped percentage change to the
- *   current parameter value and rounds to the appropriate clinical precision
- *   (ISF: 0.01 g/L/U; ICR: 0.5 g/U; basal: 0.05 U/h)
+ *   current value and rounds uniformly to 4 decimals (`computeProposedValue`)
  * - ISF slot analysis: compares post-meal correction outcomes within a time
  *   slot against the glucose target to infer whether the sensitivity factor
  *   should increase or decrease
@@ -116,13 +115,24 @@ describe("proposal-algorithm", () => {
   describe("analyzeIcrSlot", () => {
     const slot = { startHour: 12, endHour: 14, gramsPerUnit: 10 }
 
-    it("detects high post-meal glucose (ICR too high)", () => {
+    it("post-repas au-dessus de la cible → ICR trop haut → baisse (reason icrTooHigh)", () => {
       const meals = Array.from({ length: 6 }, () => ({
         postGlucoseGl: 2.00, targetGl: 1.20,
       }))
       const result = analyzeIcrSlot(slot, meals)
       expect(result).not.toBeNull()
       expect(result!.parameterType).toBe("insulinToCarbRatio")
+      // Direction : baisse de l'ICR (plus d'insuline/gramme).
+      expect(result!.proposedValue).toBeLessThan(slot.gramsPerUnit)
+      // Libellé corrigé (US-2651, validé medical) : l'ICR courant est trop HAUT.
+      expect(result!.reason).toBe("icrTooHigh")
+    })
+
+    it("post-repas en dessous de la cible → ICR trop bas → hausse (reason icrTooLow)", () => {
+      const meals = Array.from({ length: 6 }, () => ({ postGlucoseGl: 0.80, targetGl: 1.20 }))
+      const result = analyzeIcrSlot(slot, meals)
+      expect(result!.proposedValue).toBeGreaterThan(slot.gramsPerUnit)
+      expect(result!.reason).toBe("icrTooLow")
     })
 
     it("returns null with insufficient data", () => {

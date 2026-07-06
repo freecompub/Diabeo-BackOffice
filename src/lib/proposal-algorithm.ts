@@ -95,8 +95,10 @@ export function analyzeIsfSlot(
 
   if (avgTarget === 0) return null
 
-  // If post-correction glucose is consistently above target → ISF too low (needs increase)
-  // If below target → ISF too high (needs decrease)
+  // ISF est un DÉNOMINATEUR (dose = (BG−cible)/ISF), d'où le sign-flip (×−100) :
+  // - post-correction AU-DESSUS de la cible → correction trop faible → ISF trop HAUT → BAISSE (isfTooHigh) ;
+  // - EN DESSOUS (sur-correction) → ISF trop BAS → HAUSSE (isfTooLow).
+  // (Validé medical US-2651 ; l'ancien commentaire était inversé.)
   const errorPercent = ((avgPost - avgTarget) / avgTarget) * -100
   const clampedChange = clampChangePercent(errorPercent)
 
@@ -146,7 +148,11 @@ export function analyzeIcrSlot(
 
   if (Math.abs(clampedChange) < 2) return null
 
-  const reason: AdjustmentReason = clampedChange < 0 ? "icrTooLow" : "icrTooHigh"
+  // ICR est un DÉNOMINATEUR (bolus = glucides/ICR) : baisser l'ICR = plus d'insuline/gramme.
+  // Post-repas AU-DESSUS de la cible → bolus trop faible → ICR trop HAUT → BAISSE (icrTooHigh) ;
+  // EN DESSOUS → ICR trop BAS → HAUSSE (icrTooLow). (Correction validée medical US-2651 : les
+  // libellés étaient inversés — la DIRECTION était correcte, seul le `reason` affiché était faux.)
+  const reason: AdjustmentReason = clampedChange < 0 ? "icrTooHigh" : "icrTooLow"
 
   return {
     parameterType: "insulinToCarbRatio",
