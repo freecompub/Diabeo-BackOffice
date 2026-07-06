@@ -81,3 +81,21 @@ couches), **PHI-free**, **own-scoped** (IDOR impossible), RGPD gaté.
 **Suivis tracés** : (1) **intention spécifique** — capturer le `parameterType` visé en métadonnée
 **non-dosante** (schema change, medical Medium) ; (2) **surface UI des flags** (dashboard soignant —
 sans elle le « dead-end » n'est fermé qu'à moitié) ; (3) TOCTOU (index partiel unique) + rate-limit POST (LOW).
+
+### Slice 3 — surface UI des flags d'orientation (dashboard soignant)
+Ferme le **caveat opérationnel** de la revue medical de #662 (le flag était écrit mais invisible).
+- **`reviewFlagsQuery.forCaller`** (doctor-dashboard.service) : liste les `ClinicalReviewFlag` **ouverts**
+  du portefeuille (scope RBAC `getAccessiblePatientIds`, cap 10, prénom déchiffré, audit READ). Jamais de posologie.
+- **`GET /api/dashboard/medecin/review-flags`** (minRole NURSE, no-store) — miroir de `pending-proposals`.
+- **`ReviewFlagsCard`** (dashboard médecin « Ma journée ») : carte read-only, polling 60 s, renvoie vers
+  `/patients/[id]/review`. i18n `reviewFlags` (fr/en/ar) — `HbA1c`/`TIR` explicités.
+- Tests : +2 (scope RBAC + audit ; portefeuille vide → []).
+
+**Reste US-2651** : router `generateProposals` par mode · mode (b) `analyzeFixedDose*`. **Suivi** :
+`parameterType` intent (non-dosant) dans le flag ; résolution du flag (marquer `resolved`).
+
+##### Corrections revue slice 3 (PR #663)
+- **A (Low)** : commentaire « Grille 2×2 » de `medecin/page.tsx` corrigé (5 cartes désormais).
+- **Suivi B (Low, transverse)** : cap 10 silencieux (comme toute la famille dashboard : propositions
+  cap 5, etc.) → amélioration éventuelle d'un indice « 10+ »/compteur total **transverse** à toutes
+  les cartes (pas propre à celle-ci). Revues code+HDS : surface **scope-safe, PHI minimal, posology-free**.

@@ -33,6 +33,7 @@ import { KpiSection } from "@/components/diabeo/dashboard/medecin/KpiSection"
 import { RecallListCard } from "@/components/diabeo/dashboard/infirmier/RecallListCard"
 // US-2602 (Ma journée) incr. 2 — Propositions d'ajustement en attente.
 import { PendingProposalsCard } from "@/components/diabeo/dashboard/medecin/PendingProposalsCard"
+import { ReviewFlagsCard } from "@/components/diabeo/dashboard/medecin/ReviewFlagsCard"
 // US-2602 (Ma journée) incr. 3 — Messages non lus (liste).
 import { UnreadMessagesCard } from "@/components/diabeo/dashboard/medecin/UnreadMessagesCard"
 
@@ -83,9 +84,11 @@ export default async function MedecinDashboardPage() {
       />
       {/* Carte de triage en tête, pleine largeur (mockup §médecin). */}
       <EmergencyCard />
-      {/* Grille 2×2 : Propositions · Rendez-vous / Relances · Messages. */}
+      {/* Grille 2 colonnes (5 cartes) : Propositions · Flags d'orientation ·
+          Rendez-vous · Relances · Messages. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <PendingProposalsCard />
+        <ReviewFlagsCard />
         <AppointmentCard />
         <RecallListCard />
         <UnreadMessagesCard />

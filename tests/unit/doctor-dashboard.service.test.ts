@@ -27,7 +27,7 @@ vi.mock("@/lib/services/messaging.service", () => ({
 import {
   urgenciesQuery, appointmentsQuery,
   patientsAtRiskQuery, kpisQuery, pendingProposalsQuery,
-  unreadThreadsQuery, getPatientFlags, triageSummaryQuery,
+  unreadThreadsQuery, getPatientFlags, triageSummaryQuery, reviewFlagsQuery,
 } from "@/lib/services/doctor-dashboard.service"
 import { getAccessiblePatientIds } from "@/lib/access-control"
 import { messagingService } from "@/lib/services/messaging.service"
@@ -624,5 +624,33 @@ describe("getPatientFlags (US-2603)", () => {
     pmf.cgmEntry.aggregate.mockResolvedValue({ _max: { timestamp: new Date() } })
     const f = await getPatientFlags(42)
     expect(f.openUrgency).toBe(true)
+  })
+})
+
+describe("reviewFlagsQuery (US-2651 mode c)", () => {
+  it("portefeuille vide → [] (aucune requête)", async () => {
+    mockedAccessible.mockResolvedValue([])
+    const res = await reviewFlagsQuery.forCaller(10, "DOCTOR", 10)
+    expect(res).toEqual([])
+    expect(prismaMock.clinicalReviewFlag.findMany).not.toHaveBeenCalled()
+  })
+
+  it("liste les flags OUVERTS scopés + audit READ (sans posologie)", async () => {
+    mockedAccessible.mockResolvedValue([1, 2])
+    prismaMock.clinicalReviewFlag.findMany.mockResolvedValue([
+      { id: "f1", patientId: 1, type: "reviewInConsultation", createdAt: new Date("2026-07-05T00:00:00Z"),
+        patient: { id: 1, pathology: "DT2", user: { firstname: null } } },
+    ] as never)
+
+    const res = await reviewFlagsQuery.forCaller(10, "DOCTOR", 10)
+
+    expect(res).toHaveLength(1)
+    expect(res[0]).toMatchObject({ id: "f1", patientId: 1, type: "reviewInConsultation", pathology: "DT2" })
+    // Scope RBAC : findMany filtré sur status open + patients accessibles.
+    const where = (prismaMock.clinicalReviewFlag.findMany.mock.calls[0]![0] as any).where
+    expect(where.status).toBe("open")
+    expect(where.patientId).toEqual({ in: [1, 2] })
+    // Audit READ émis (résumé). Jamais de dose dans un flag.
+    expect(prismaMock.auditLog.create).toHaveBeenCalled()
   })
 })
