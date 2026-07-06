@@ -233,11 +233,21 @@ export const AGP_SUFFICIENCY = {
 } as const
 
 /**
- * Péremption clinique d'un HbA1c de **laboratoire** (jours). L'HbA1c reflète la
- * glycémie moyenne des ~8–12 dernières semaines ; au-delà de ~180 j la valeur
- * est caduque comme indicateur de contrôle courant. `getLastHba1c` expose
- * `ageDays` + `stale` (> ce seuil) ; la valeur reste affichée mais datée/avertie
- * (mode BGM, où GMI/eA1c CGM sont invalides).
+ * Péremption clinique d'un HbA1c (jours). L'HbA1c reflète la glycémie moyenne des
+ * ~8–12 dernières semaines. `getLastHba1c` expose `ageDays` + `stale` (> ce seuil).
+ *
+ * ⚠️ **Seuil « stable / à l'objectif ».** 180 j (~6 mois) = intervalle ADA de re-dosage
+ * pour un patient **contrôlé et à la cible**. Pour un diabétique **NON contrôlé** (ou
+ * changement thérapeutique récent), l'ADA recommande **90 j**. Ce seuil unique est donc
+ * volontairement **lâche** : tant que le générateur mode c (US-2651) n'a pas de contexte de
+ * contrôle (le TIR — `tirBelowTarget` — arrive en slice 2), il ne peut distinguer contrôlé de
+ * non-contrôlé sans sur-flaguer tout patient stable. **À rendre conditionnel** (90 j hors-cible /
+ * 180 j à l'objectif) une fois le TIR câblé (validé medical #675).
+ *
+ * **Provenance** : `hba1cStale` lit la **dernière HbA1c enregistrée** (`GlycemiaEntry.hba1c` /
+ * `DiabetesEvent.hba1c`) — valeur **saisie in-app, potentiellement auto-déclarée**, pas
+ * nécessairement vérifiée labo. Suffisant pour un signal de **récence** (flag d'orientation gaté
+ * médecin, non dosant), le soignant voyant la valeur + la date.
  */
 export const HBA1C_STALE_DAYS = 180
 

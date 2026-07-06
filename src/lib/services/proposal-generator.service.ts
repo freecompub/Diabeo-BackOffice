@@ -15,7 +15,7 @@
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
-import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { CLINICAL_BOUNDS, HBA1C_STALE_DAYS } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
   analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, type ProposalCandidate,
@@ -112,8 +112,10 @@ export const proposalGeneratorService = {
    * @returns Métriques du run (sans PHI).
    */
   async generateForPatient(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
-    // 0. Mode — seul `basalBolus` a des ratios ICR par créneau à titrer.
+    // 0. Mode — routage : `nonInsulin` → flags d'orientation (mode c, jamais de dose, frontière MDR) ;
+    //    `basalBolus` → propositions ICR (ci-dessous) ; `fixedDose` → hors scope (slice ultérieure).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
+    if (mode === "nonInsulin") return proposalGeneratorService.generateOrientationFlags(patientId, auditUserId, ctx)
     if (mode !== "basalBolus") return EMPTY("mode")
 
     // 1. Config (créneaux ICR) + patient (pathologie / grossesse pour la cible).
@@ -228,6 +230,45 @@ export const proposalGeneratorService = {
     }
 
     return { created, flagged, slotsConsidered, mealsUsable: usable.length, skipped: null }
+  },
+
+  /**
+   * Mode (c) — patient NON insuliné : **aucune proposition de dose** (frontière MDR / IEC 62304),
+   * uniquement des `ClinicalReviewFlag` d'**orientation** (« à revoir en consultation »).
+   *
+   * Slice 1 : `hba1cStale` — la dernière HbA1c (labo, dans `GlycemiaEntry` ou `DiabetesEvent`) date de
+   * plus de `HBA1C_STALE_DAYS` (180 j), **ou est absente** (un DT2/GD suivi doit avoir une HbA1c
+   * récente). Idempotent (raise dédoublonne un flag ouvert du même type). `tirBelowTarget` et
+   * `observance` = slices ultérieures (nécessitent l'extraction du calcul TIR / une définition observance).
+   *
+   * @param patientId Patient non insuliné.
+   * @param auditUserId Acteur d'audit (système `null` pour le cron).
+   * @param ctx Contexte requête (audit).
+   * @returns Métriques ; `flagged` = nb de flags levés (jamais de dose).
+   */
+  async generateOrientationFlags(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
+    let flagged = 0
+
+    // Dernière HbA1c = plus récente des deux sources (carnet glycémie + événements).
+    const [gly, evt] = await Promise.all([
+      prisma.glycemiaEntry.findFirst({
+        where: { patientId, hba1c: { not: null } }, orderBy: { date: "desc" }, select: { date: true },
+      }),
+      prisma.diabetesEvent.findFirst({
+        where: { patientId, hba1c: { not: null } }, orderBy: { eventDate: "desc" }, select: { eventDate: true },
+      }),
+    ])
+    const dates = [gly?.date, evt?.eventDate].filter((d): d is Date => d != null)
+    const lastHba1c = dates.length ? Math.max(...dates.map((d) => d.getTime())) : null
+    const staleMs = HBA1C_STALE_DAYS * 86_400_000
+
+    if (lastHba1c === null || Date.now() - lastHba1c > staleMs) {
+      await clinicalReviewFlagService.raise(patientId, "hba1cStale", auditUserId, ctx)
+        .then(() => { flagged++ })
+        .catch((err) => logger.error("proposal-generator", "raise hba1cStale failed", { patientId }, err as Error))
+    }
+
+    return { created: 0, flagged, slotsConsidered: 0, mealsUsable: 0, skipped: null }
   },
 
   /**

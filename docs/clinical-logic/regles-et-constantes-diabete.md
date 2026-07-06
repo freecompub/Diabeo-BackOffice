@@ -286,3 +286,15 @@ Déclencheur **indépendant du deadband** : des hypos post-prandiales récurrent
 
 Slices A (prédicat + builder purs) **et** B (matrice dans le générateur + flag `highVariabilityPostMeal`) livrées. Cf.
 `algorithme-propositions-ajustement.md` §5ter.
+
+### Flag d'orientation `hba1cStale` (mode c nonInsulin, US-2651)
+
+`generateOrientationFlags` lève `hba1cStale` si la **dernière HbA1c enregistrée** (plus récente de
+`GlycemiaEntry.hba1c` / `DiabetesEvent.hba1c`) date de > `HBA1C_STALE_DAYS` (180 j) **ou est absente**.
+- **Seuil conditionnel (à venir)** : 180 j = borne ADA « stable / à l'objectif ». Un DT2 **non contrôlé**
+  devrait être re-dosé à **90 j**. Tant que le TIR (`tirBelowTarget`, slice 2) n'est pas câblé, le
+  générateur n'a pas le contexte de contrôle → seuil unique 180 j (faux-négatif possible, jamais de
+  sur-dosage). À rendre conditionnel (90 j hors-cible / 180 j à l'objectif) une fois le TIR disponible.
+- **Provenance** : HbA1c **saisie in-app** (potentiellement auto-déclarée), pas garantie labo — suffisant
+  pour un signal de **récence** (flag gaté médecin, non dosant ; le soignant voit valeur + date).
+- **Cas absent** : un diabétique suivi doit avoir une HbA1c → flag = **vrai positif** (« à réaliser »).
