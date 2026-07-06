@@ -251,6 +251,14 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     expect(res.flagged).toBe(0)
     expect(raiseFlag).not.toHaveBeenCalled()
   })
+
+  it("prend la PLUS RÉCENTE des 2 sources (carnet récent + événement vieux → pas de flag)", async () => {
+    // gly 30 j (récent) + evt 200 j (vieux) → max = 30 j → non périmé. (Math.min → flaguerait à tort.)
+    setupNonInsulin({ gly: new Date(Date.now() - 30 * DAY), evt: new Date(Date.now() - 200 * DAY) })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(0)
+    expect(raiseFlag).not.toHaveBeenCalled()
+  })
 })
 
 describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
