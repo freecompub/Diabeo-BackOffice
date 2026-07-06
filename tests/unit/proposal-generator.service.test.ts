@@ -115,4 +115,42 @@ describe("proposalGeneratorService.generateForPatient", () => {
     expect(res.created).toBe(0)
     expect(res.slotsConsidered).toBe(1) // le créneau a bien été analysé
   })
+
+  it("porte qualité GROSSESSE : pré-repas 1,30 g/L exclu (borne 1,10) là où l'adulte l'accepterait", async () => {
+    const mk = () => [meal({ preMgdl: 130 }), meal({ preMgdl: 130 }), meal({ preMgdl: 130 })] // 1,30 g/L
+    setup({ pregnancyMode: true, meals: mk() })
+    expect((await proposalGeneratorService.generateForPatient(1, 99)).mealsUsable).toBe(0) // 1,30 > 1,10
+
+    vi.clearAllMocks()
+    setup({ pregnancyMode: false, meals: mk() })
+    expect((await proposalGeneratorService.generateForPatient(1, 99)).mealsUsable).toBe(3) // 1,30 ≤ 1,40
+  })
+
+  it("direction HAUSSE : PPG moyenne sous la borne basse → icrTooLow (moins d'insuline)", async () => {
+    setup({ meals: [meal({ postMgdl: 80 }), meal({ postMgdl: 80 }), meal({ postMgdl: 80 })] }) // 0,80 g/L < 1,00
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.created).toBe(1)
+    const input = createEngine.mock.calls[0]![0]
+    expect(input.reason).toBe("icrTooLow")
+    expect(input.proposedValue).toBeGreaterThan(10) // hausse ICR
+  })
+
+  it("bucketing : route au bon créneau à l'heure réelle ; un repas hors créneau est ignoré", async () => {
+    const carbRatios = [
+      { startHour: 8, endHour: 12, gramsPerUnit: 12 },
+      { startHour: 12, endHour: 16, gramsPerUnit: 10 },
+    ]
+    const meals = [
+      meal({ localHour: 9, postMgdl: 200 }), meal({ localHour: 9, postMgdl: 200 }), meal({ localHour: 9, postMgdl: 200 }),
+      meal({ localHour: 20, postMgdl: 200 }), meal({ localHour: 20, postMgdl: 200 }), meal({ localHour: 20, postMgdl: 200 }),
+    ]
+    setup({ carbRatios, meals })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.mealsUsable).toBe(6)
+    expect(res.slotsConsidered).toBe(1) // seul [8,12) a ≥3 repas ; les 20 h ne matchent aucun créneau
+    expect(createEngine).toHaveBeenCalledTimes(1)
+    expect(createEngine.mock.calls[0]![0]).toMatchObject({
+      carbRatioSlotStart: 8, carbRatioSlotEnd: 12, expectedCurrentValue: 12,
+    })
+  })
 })

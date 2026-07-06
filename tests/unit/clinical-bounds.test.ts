@@ -68,6 +68,7 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       POSTMEAL_NADIR_WINDOW_MIN: 300,
       ICR_PREMEAL_MIN_GL: 0.7,
       ICR_PREMEAL_MAX_GL: 1.4,
+      ICR_PREMEAL_MAX_PREGNANCY_GL: 1.1,
     })
   })
 

@@ -43,17 +43,33 @@ const EMPTY = (skipped: string): GenerateResult => ({ created: 0, slotsConsidere
  * Un repas est exploitable pour l'ICR si : PPG 2 h mesurée, glucides ET bolus renseignés (> 0), et
  * pré-repas **dans la bande** (sinon le bolus incluait une correction / sous-dosage → mis-attribution).
  * Le nadir manquant n'est PAS bloquant (la garde hypo repli sur la PPG 2 h).
+ *
+ * La borne HAUTE est **grossesse-aware** : resserrée à `ICR_PREMEAL_MAX_PREGNANCY_GL` (1,10) car la
+ * cible pré-repas d'une enceinte est plus basse — sinon on contaminerait le signal ICR de la
+ * population la plus à risque (validé medical, US-2651). Borne basse inchangée.
  */
-function isMealUsableForIcr(m: JournalMeal): boolean {
+function isMealUsableForIcr(m: JournalMeal, isPregnancy: boolean): boolean {
   if (m.postMgdl === null) return false
   if (m.carbs === null || m.carbs <= 0) return false
   if (m.bolus === null || m.bolus <= 0) return false
   if (m.preMgdl === null) return false
   const preGl = m.preMgdl / 100
-  return preGl >= CLINICAL_BOUNDS.ICR_PREMEAL_MIN_GL && preGl <= CLINICAL_BOUNDS.ICR_PREMEAL_MAX_GL
+  const maxGl = isPregnancy ? CLINICAL_BOUNDS.ICR_PREMEAL_MAX_PREGNANCY_GL : CLINICAL_BOUNDS.ICR_PREMEAL_MAX_GL
+  return preGl >= CLINICAL_BOUNDS.ICR_PREMEAL_MIN_GL && preGl <= maxGl
 }
 
 const mean = (xs: number[]): number => xs.reduce((s, x) => s + x, 0) / xs.length
+
+/**
+ * Codes de rejet ATTENDUS de `createEngineProposal` (fail-closed, non fatals). Tout autre message
+ * est traité comme inattendu : on ne le logue PAS verbatim (défense en profondeur PHI, suivi HDS) —
+ * code générique `"unexpected"` + erreur brute vers `logger.error`.
+ */
+const EXPECTED_SKIP = new Set([
+  "baselineMovedAtPersist", "duplicatePendingProposal", "valueOutOfBounds",
+  "reasonDirectionMismatch", "nonInsulinNoDose", "invalidSupportingEvents",
+  "slotRequired", "currentValueNotFound", "fixedDoseNotWired",
+])
 
 export const proposalGeneratorService = {
   /**
@@ -88,7 +104,7 @@ export const proposalGeneratorService = {
 
     // 3. Repas (14 j, CGM) → portes qualité.
     const journal = await mealtimePattern.dailyJournal(patientId, ANALYSIS_PERIOD, auditUserId, ctx, { source: "cgm" })
-    const usable = journal.filter(isMealUsableForIcr)
+    const usable = journal.filter((m) => isMealUsableForIcr(m, isPregnancy))
 
     // 4. Bucketing par créneau ICR à l'HEURE RÉELLE du repas (pas le moment).
     const slots = carbRatios.map((c) => ({ startHour: c.startHour, endHour: c.endHour, gramsPerUnit: Number(c.gramsPerUnit) }))
@@ -141,11 +157,16 @@ export const proposalGeneratorService = {
         }, ctx)
         created++
       } catch (err) {
-        // Rejets ATTENDUS (fail-closed, non fatals) : baseline dérivée, doublon pending, sens incohérent,
-        // hors bornes, frontière nonInsulin. On les LOGUE (grep SOC) et on continue le portefeuille.
-        logger.info("proposal-generator", "engine proposal skipped", {
-          patientId, bucket: `${slot.startHour}-${slot.endHour}`, failMode: (err as Error).message,
-        })
+        // Rejets ATTENDUS (fail-closed, non fatals) → info + grep SOC ; on continue le portefeuille.
+        // INATTENDU (ex. erreur DB brute) → logger.error SANS interpoler le message (défense PHI, HDS #671).
+        const msg = (err as Error).message
+        const bucket = `${slot.startHour}-${slot.endHour}`
+        if (EXPECTED_SKIP.has(msg)) {
+          logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+        } else {
+          logger.error("proposal-generator", "unexpected engine proposal error",
+            { patientId, bucket, failMode: "unexpected" }, err as Error)
+        }
       }
     }
 

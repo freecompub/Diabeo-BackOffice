@@ -129,6 +129,13 @@ export const CLINICAL_BOUNDS = {
    */
   ICR_PREMEAL_MIN_GL: 0.7,
   ICR_PREMEAL_MAX_GL: 1.4,
+  /**
+   * US-2651 — borne HAUTE pré-repas **grossesse** (g/L). La cible pré-repas d'une patiente enceinte
+   * est plus basse (~0,95 g/L) : un pré-repas à 1,30–1,40 y est **déjà élevé** → contaminerait le
+   * signal ICR (même mode d'échec que le resserrement grossesse évite ailleurs). Resserrée à 1,10.
+   * La borne basse (`ICR_PREMEAL_MIN_GL` 0,70) reste valable (seuil hypo grossesse 0,63).
+   */
+  ICR_PREMEAL_MAX_PREGNANCY_GL: 1.1,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

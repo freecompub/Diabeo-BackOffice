@@ -214,6 +214,17 @@ bolus > 0, pré-repas dans `[ICR_PREMEAL_MIN_GL, ICR_PREMEAL_MAX_GL]`), **bucket
 `createEngineProposal`. Les rejets fail-closed (baseline dérivée, doublon, sens incohérent, hors bornes)
 sont **logués et non fatals**. **Reste (slice 3)** : le **cron** nocturne (boucle portefeuille + verrou advisory).
 
+La **porte qualité pré-repas** est **grossesse-aware** : borne haute resserrée à `ICR_PREMEAL_MAX_PREGNANCY_GL`
+(1,10 g/L) quand `isPregnancy` — sinon un pré-repas déjà élevé pour une enceinte contaminerait le signal ICR.
+
+> **⚠️ Limite connue — deadband sur la MOYENNE, hypo sur le NADIR (→ US-2653).** La décision de proposer
+> (deadband) porte sur la **moyenne** PPG, la garde hypo sur le **nadir**. Un patient **bon en moyenne** mais
+> avec des **hypos post-repas récurrentes** ne reçoit **aucune** proposition : la moyenne (dans le deadband)
+> masque la charge hypo, et le nadir n'est utilisé que comme **frein** (bloquer « plus d'insuline »), jamais
+> comme **déclencheur** d'une **hausse** d'ICR (« moins d'insuline »). C'est de la **sous-action** (sens sûr ;
+> la charge hypo remonte par TIR/alertes/AGP), surtout sensible en grossesse. **Réponse = US-2653** :
+> déclencher une dé-escalade sur nadirs récurrents, transverse aux 4 analyseurs, indépendamment du deadband.
+
 > **⚠️ Caveat clinique — troncature par resucrage (MEDIUM, validé medical).** La fenêtre nadir se termine
 > au **prochain apport glucidique** (anti mis-attribution : la glycémie post-collation ne doit pas être
 > imputée au bolus de ce repas). Mais si le patient **resucre** une hypo naissante (ex. glucide à t0+100),
