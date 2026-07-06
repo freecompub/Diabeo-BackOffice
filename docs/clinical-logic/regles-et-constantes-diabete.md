@@ -321,3 +321,25 @@ fail-loud contre import corrompu) ; sinon **défaut** `HBA1C_HIGH_DEFAULT_PERCEN
 Défaut 8,0 conservateur (évite la fatigue d'alerte sur DT2 bien gérés à 7-7,7 %). **Partition propre** :
 le périmé/absent appartient à `hba1cStale`, le récent-mauvais à `hba1cAboveTarget` — pas de double-signal.
 Comble le patient « silencieux » BGM (sans CGM, TIR null). Libellé neutre (jamais « intensifier »).
+
+### Assemblage à jeun basal `fastingTrend` (US-2651 basal, validé medical #678)
+
+Fenêtres d'assemblage (dans `meal-trends.service`) pour peupler `analyzeBasalTrend` :
+- `PRE_BREAKFAST_WINDOW_MIN` = **90 min** : fenêtre pré-petit-déjeuner du relevé **à jeun** (dernier
+  relevé CGM dans `[petit-déj − 90 min, petit-déj]`).
+- `MAX_NOCTURNAL_WINDOW_MIN` = **720 min (12 h)** : plafond de remontée du jeûne nocturne si aucun
+  apport glucidique du soir n'est identifié — borne l'intervalle inter-prandial `[dernier glucide, petit-déj]`.
+
+Le **nadir nocturne** = min CGM sur cet intervalle (garde hypo Somogyi), **contigu** avec le relevé à
+jeun (les deux se terminent au petit-déjeuner). **Un nadir par nuit**, aligné 1:1 avec les jours (respecte
+les 2 caveats medical #678). Le petit-déjeuner = premier repas du moment « morning » (jour/moment dérivés de l'instant réel `eventDate`).
+
+- `NOCTURNAL_ANCHOR_MIN_CARB_G` = **20 g** : seuil « repas substantiel » pour ancrer le jeûne nocturne.
+  Un **resucrage** d'hypo (petit glucide nocturne) NE tronque PAS la fenêtre nadir (sinon l'hypo qui l'a
+  motivé sortirait de la fenêtre → **garde Somogyi masquée**, validé medical #679). L'ancre = dernier
+  repas ≥ 20 g avant le petit-déj (pas `carbTimes`).
+- **Limite connue** : un patient **sautant le petit-déjeuner** (jeûne intermittent) n'a pas d'ancre de
+  fin de jeûne → aucune entrée à jeun ce jour-là (fail-closed : réduit `supportingEvents`, jamais la
+  direction). Amélioration future possible : ancre de repli à fenêtre fixe.
+- **Suivi câblage (slice 3)** : `FastingDay` est en **mg/dL** ; `analyzeBasalTrend` attend **g/L** → le
+  générateur devra **÷ 100 + filtrer les null** (sinon garde hypo silencieusement désactivée).

@@ -281,3 +281,108 @@ describe("mealtimePattern.mealTrends", () => {
     expect(JSON.stringify(data.metadata)).not.toMatch(/glucose|mgdl|150|180/i)
   })
 })
+
+describe("mealtimePattern.fastingTrend (US-2651 basal)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  /** Petit-déjeuner à 06:00 UTC (→ moment « morning » heure de Paris) sur le jour k. */
+  function breakfast(k: number) {
+    const d = new Date(); d.setUTCHours(6, 0, 0, 0)
+    const t0 = d.getTime() - k * DAY
+    return { id: `b${k}`, eventDate: new Date(t0), glycemiaValue: null, carbohydrates: 45, bolusDose: 6, _t0: t0 }
+  }
+
+  it("à jeun pré-petit-déj + nadir nocturne inter-prandial (fenêtre contiguë, 1/jour)", async () => {
+    const b = breakfast(1)
+    const dinner = b._t0 - 720 * MIN // dîner 12 h avant le petit-déj
+    const readings = [
+      cgm(b._t0, -600, 1.8),  // début de nuit (haut)
+      cgm(b._t0, -300, 0.55), // creux nocturne ~3 h → nadir
+      cgm(b._t0, -30, 1.10),  // pré-petit-déj → à jeun
+    ]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([b] as any) // repas → petit-déj (moment morning)
+      .mockResolvedValueOnce([{ eventDate: new Date(dinner) }, { eventDate: b.eventDate }] as any) // glucides
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readings as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    const days = await mealtimePattern.fastingTrend(42, "14d", 1)
+    expect(days).toHaveLength(1)
+    expect(days[0].fastingMgdl).toBeCloseTo(110)       // dernier relevé pré-petit-déj (1,10 g/L)
+    expect(days[0].nocturnalNadirMgdl).toBeCloseTo(55) // min sur [dîner, petit-déj] (0,55 g/L)
+  })
+
+  it("aucun petit-déjeuner (moment morning) → aucune entrée", async () => {
+    const noon = noonMeal(1) // repas de midi seulement → pas de petit-déj
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([noon] as any)
+      .mockResolvedValueOnce([] as any)
+    prismaMock.cgmEntry.findMany.mockResolvedValue([cgm(noon._t0, -30, 1.2)] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+
+    expect(await mealtimePattern.fastingTrend(42, "14d", 1)).toHaveLength(0)
+  })
+
+  it("un resucrage nocturne ne tronque PAS la fenêtre nadir (ancrage sur le dîner — garde Somogyi)", async () => {
+    const b = breakfast(1)
+    const dinnerMs = b._t0 - 720 * MIN
+    const dinner = { id: "d1", eventDate: new Date(dinnerMs), glycemiaValue: null, carbohydrates: 60, bolusDose: 8, _t0: dinnerMs }
+    const readings = [
+      cgm(b._t0, -300, 0.48), // hypo nocturne (avant le resucrage)
+      cgm(b._t0, -280, 1.30), // remontée post-resucrage
+      cgm(b._t0, -30, 1.60),  // à jeun (rebond Somogyi)
+    ]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([b, dinner] as any) // repas substantiels : petit-déj + dîner
+      .mockResolvedValueOnce([{ eventDate: new Date(b._t0 - 290 * MIN) }] as any) // resucrage (glucide seul)
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readings as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    const days = await mealtimePattern.fastingTrend(42, "14d", 1)
+    // Fenêtre ancrée au DÎNER (−720), pas au resucrage (−290) → capte l'hypo 0,48 (ancien code : 130).
+    expect(days[0].nocturnalNadirMgdl).toBeCloseTo(48)
+  })
+
+  it("aucun repas substantiel avant le petit-déj → fenêtre nadir capée à −12 h", async () => {
+    const b = breakfast(1)
+    const readings = [
+      cgm(b._t0, -800, 0.50), // avant −12 h → hors fenêtre
+      cgm(b._t0, -400, 1.40),
+      cgm(b._t0, -30, 1.50),
+    ]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([b] as any) // seul le petit-déj (pas de dîner substantiel)
+      .mockResolvedValueOnce([] as any)
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readings as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    const days = await mealtimePattern.fastingTrend(42, "14d", 1)
+    expect(days[0].nocturnalNadirMgdl).toBeCloseTo(140) // le −800 (0,50) est exclu par le cap
+  })
+
+  it("BGM : le petit-déj est classé via l'instant RÉEL (eventDate), pas matchMs (Finding 1)", async () => {
+    // Petit-déj à 07:00 UTC (été → 09:00 mural Paris → morning). L'ancien code (moment via matchMs =
+    // 09:00 projeté → localHour 11:00) l'aurait classé hors « morning » → aucune entrée.
+    const meal = { id: "b1", eventDate: new Date("2026-06-25T07:00:00Z"), carbohydrates: 45, bolusDose: 6 }
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([meal] as any)
+      .mockResolvedValueOnce([] as any)
+    const day = new Date("2026-06-25T00:00:00Z")
+    const wall = (h: number, m: number) => new Date(Date.UTC(1970, 0, 1, h, m))
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([
+      { date: day, time: wall(8, 50), glycemiaGl: 1.1, glycemiaMgdl: null }, // pré-petit-déj mural
+    ] as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    const days = await mealtimePattern.fastingTrend(42, "30d", 1, undefined, { source: "bgm" })
+    expect(days).toHaveLength(1) // classé morning via eventDate (ancien code → 0)
+    expect(days[0].fastingMgdl).toBeCloseTo(110)
+  })
+})
