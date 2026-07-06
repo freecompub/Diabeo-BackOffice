@@ -5,7 +5,7 @@
  * (plafond/borne basse), resserrement grossesse, portes qualité (glucides/bolus/pré-repas), bucketing
  * à l'heure réelle, et non-fatalité des rejets fail-closed de `createEngineProposal`.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 vi.mock("@/lib/services/treatment-mode.service", () => ({
