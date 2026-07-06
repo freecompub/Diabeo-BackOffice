@@ -15,7 +15,7 @@
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
-import { CLINICAL_BOUNDS, HBA1C_STALE_DAYS } from "@/lib/clinical-bounds"
+import { CLINICAL_BOUNDS, HBA1C_STALE_DAYS, DASHBOARD_TIR } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
   analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, type ProposalCandidate,
@@ -24,7 +24,7 @@ import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.s
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, type JournalMeal } from "@/lib/services/meal-trends.service"
-import { getCgmDefaults } from "@/lib/services/objectives.service"
+import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
@@ -249,13 +249,23 @@ export const proposalGeneratorService = {
   async generateOrientationFlags(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
     let flagged = 0
 
-    // Dernière HbA1c = plus récente des deux sources (carnet glycémie + événements).
-    const [gly, evt] = await Promise.all([
+    // Audit HDS : accès aux données de santé (HbA1c, TIR) sous l'acteur système. Best-effort.
+    await auditService.log({
+      userId: auditUserId, action: "READ", resource: "PATIENT", resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { patientId, kind: "orientation-flags" },
+    }).catch((err) => logger.error("proposal-generator", "orientation-flags audit failed", { patientId }, err as Error))
+
+    // Dernière HbA1c (plus récente des 2 sources) + patient (pathologie/grossesse pour les bornes TIR).
+    const [gly, evt, patient] = await Promise.all([
       prisma.glycemiaEntry.findFirst({
         where: { patientId, hba1c: { not: null } }, orderBy: { date: "desc" }, select: { date: true },
       }),
       prisma.diabetesEvent.findFirst({
         where: { patientId, hba1c: { not: null } }, orderBy: { eventDate: "desc" }, select: { eventDate: true },
+      }),
+      prisma.patient.findFirst({
+        where: { id: patientId, deletedAt: null }, select: { pathology: true, pregnancyMode: true },
       }),
     ])
     const dates = [gly?.date, evt?.eventDate].filter((d): d is Date => d != null)
@@ -266,6 +276,20 @@ export const proposalGeneratorService = {
       await clinicalReviewFlagService.raise(patientId, "hba1cStale", auditUserId, ctx)
         .then(() => { flagged++ })
         .catch((err) => logger.error("proposal-generator", "raise hba1cStale failed", { patientId }, err as Error))
+    }
+
+    // tirBelowTarget — TIR sur 14 j < cible (bornes pathology/GROSSESSE-aware). `null` si capture CGM
+    // insuffisante (pas de flag sur un échantillon maigre) — un non-insuliné en BGM pur n'a pas de TIR.
+    if (patient) {
+      // Aligné sur le chemin ICR : un DT2 ENCEINTE doit être scoré contre les bornes GD (0,63–1,40),
+      // pas les bornes adulte (0,70–1,80), sinon on sous-flague la population la plus à risque.
+      const isPregnancy = patient.pregnancyMode === true || patient.pathology === "GD"
+      const tir = await objectivesService.computeTirPercent(patientId, isPregnancy ? "GD" : patient.pathology)
+      if (tir !== null && tir < DASHBOARD_TIR.TARGET_PERCENT) {
+        await clinicalReviewFlagService.raise(patientId, "tirBelowTarget", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise tirBelowTarget failed", { patientId }, err as Error))
+      }
     }
 
     return { created: 0, flagged, slotsConsidered: 0, mealsUsable: 0, skipped: null }

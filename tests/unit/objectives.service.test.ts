@@ -145,4 +145,19 @@ describe("objectivesService", () => {
       expect(result.patientId).toBe(1)
     })
   })
+
+  describe("computeTirPercent (US-2651 mode c)", () => {
+    it("capture CGM insuffisante → null (pas de TIR sur échantillon maigre)", async () => {
+      prismaMock.cgmEntry.count.mockResolvedValueOnce(100).mockResolvedValueOnce(50) // 100/14j ≈ 2,5 % < 30 %
+      expect(await objectivesService.computeTirPercent(1, "DT1")).toBeNull()
+    })
+    it("aucune donnée CGM → null", async () => {
+      prismaMock.cgmEntry.count.mockResolvedValueOnce(0).mockResolvedValueOnce(0)
+      expect(await objectivesService.computeTirPercent(1, "DT1")).toBeNull()
+    })
+    it("capture suffisante → TIR % = in-range / total", async () => {
+      prismaMock.cgmEntry.count.mockResolvedValueOnce(2000).mockResolvedValueOnce(1000) // 2000/4032 ≈ 49,6 % ≥ 30 %
+      expect(await objectivesService.computeTirPercent(1, "DT1")).toBe(50)
+    })
+  })
 })

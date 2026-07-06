@@ -8,7 +8,12 @@
 
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
+import { cgmCaptureRate } from "@/lib/statistics"
+import { DASHBOARD_TIR } from "@/lib/clinical-bounds"
 import type { Pathology, Prisma } from "@prisma/client"
+
+/** Fenêtre TIR standard (jours) — aligné dashboard médecin + AGP Battelino. */
+const TIR_WINDOW_DAYS = 14
 
 /**
  * CGM threshold shape — compatible with CgmObjective Decimal fields.
@@ -79,6 +84,38 @@ export function getCgmDefaults(pathology?: Pathology): CgmThresholds {
  * @namespace objectivesService
  */
 export const objectivesService = {
+  /**
+   * Temps dans la cible (TIR) d'un patient sur `windowDays` (défaut 14 j), en %, ou `null` si
+   * la **capture CGM est insuffisante** (< `DASHBOARD_TIR.MIN_CAPTURE_RATE`) ou aucune donnée —
+   * on ne publie pas de TIR sur un échantillon trop maigre (faux « bon/mauvais TIR »).
+   *
+   * Bornes de cible **adaptées à la pathologie** (`getCgmDefaults().titrLow/titrHigh` : GD plus
+   * stricte). Helper par-patient réutilisable (le dashboard médecin a sa version batchée). Lecture
+   * seule, sans audit (l'appelant audite s'il y a lieu).
+   *
+   * @param patientId Patient.
+   * @param pathology Pathologie (pour les bornes de cible) ; `null`/absente → défauts adulte.
+   * @param windowDays Fenêtre d'analyse (défaut 14).
+   * @returns TIR en % (1 décimale), ou `null` si capture insuffisante.
+   */
+  async computeTirPercent(
+    patientId: number,
+    pathology: Pathology | null,
+    windowDays: number = TIR_WINDOW_DAYS,
+  ): Promise<number | null> {
+    const d = getCgmDefaults(pathology ?? undefined)
+    const since = new Date(Date.now() - windowDays * 86_400_000)
+    const [total, inRange] = await Promise.all([
+      prisma.cgmEntry.count({ where: { patientId, timestamp: { gte: since } } }),
+      prisma.cgmEntry.count({
+        where: { patientId, timestamp: { gte: since }, valueGl: { gte: d.titrLow, lte: d.titrHigh } },
+      }),
+    ])
+    if (total === 0) return null
+    if (cgmCaptureRate(total, windowDays) < DASHBOARD_TIR.MIN_CAPTURE_RATE) return null
+    return Math.round((inRange / total) * 1000) / 10
+  },
+
   /**
    * Get all objectives for a patient.
    * Returns defaults if not yet set.

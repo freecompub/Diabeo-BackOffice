@@ -298,3 +298,16 @@ Slices A (prédicat + builder purs) **et** B (matrice dans le générateur + fla
 - **Provenance** : HbA1c **saisie in-app** (potentiellement auto-déclarée), pas garantie labo — suffisant
   pour un signal de **récence** (flag gaté médecin, non dosant ; le soignant voit valeur + date).
 - **Cas absent** : un diabétique suivi doit avoir une HbA1c → flag = **vrai positif** (« à réaliser »).
+
+### Flag `tirBelowTarget` (mode c) + suivi BGM-only (US-2651, validé medical #676)
+
+`tirBelowTarget` : TIR 14 j < `DASHBOARD_TIR.TARGET_PERCENT` (70 %), bornes **pathology/grossesse-aware**
+(`getCgmDefaults(isPregnancy?"GD":pathology).titrLow/titrHigh` — un DT2 **enceinte** est scoré contre
+0,63–1,40, pas 0,70–1,80). `null` si capture CGM < 30 % → pas de flag. Seuil 70 % **plat** (pas
+pathology-aware) : les **bornes** tightenées encodent déjà le consensus grossesse (70 % dans 63–140).
+Helper réutilisable `objectivesService.computeTirPercent`.
+
+> **Suivi (MEDIUM) — gap BGM-only** : un non-insuliné **sans CGM** avec une HbA1c **récente mais mauvaise**
+> ne déclenche **aucun** flag (`hba1cStale` faux = récente, `tirBelowTarget` null = pas de CGM). Trou
+> « patient silencieux ». À combler par un flag **valeur d'HbA1c** (> cible, ex. > 8 %), non-CGM
+> (slice 3, compagnon d'`observance`). Capture 30–70 % : TIR « indicatif » (biais de capture possible).

@@ -5,7 +5,7 @@
  * (plafond/borne basse), resserrement grossesse, portes qualité (glucides/bolus/pré-repas), bucketing
  * à l'heure réelle, et non-fatalité des rejets fail-closed de `createEngineProposal`.
  */
-import { describe, it, expect, beforeEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 vi.mock("@/lib/services/treatment-mode.service", () => ({
@@ -39,6 +39,7 @@ import { adjustmentService } from "@/lib/services/adjustment.service"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { auditService } from "@/lib/services/audit.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
+import { objectivesService } from "@/lib/services/objectives.service"
 
 const lock = vi.mocked(withSessionAdvisoryLock)
 const auditLog = vi.mocked(auditService.log)
@@ -218,10 +219,20 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
   const DAY = 86_400_000
   beforeEach(() => vi.clearAllMocks())
 
-  function setupNonInsulin(hba1c: { gly?: Date | null; evt?: Date | null } = {}) {
+  afterEach(() => vi.restoreAllMocks()) // désinstalle le spy computeTirPercent
+
+  function setupNonInsulin(
+    hba1c: { gly?: Date | null; evt?: Date | null } = {},
+    tir: number | null = null, // TIR retourné par computeTirPercent (null = capture insuffisante)
+    patient: { pathology?: string; pregnancyMode?: boolean } = {},
+  ) {
     mode.mockResolvedValue({ mode: "nonInsulin", coherent: true } as never)
     prismaMock.glycemiaEntry.findFirst.mockResolvedValue(hba1c.gly ? ({ date: hba1c.gly } as never) : null)
     prismaMock.diabetesEvent.findFirst.mockResolvedValue(hba1c.evt ? ({ eventDate: hba1c.evt } as never) : null)
+    prismaMock.patient.findFirst.mockResolvedValue({
+      pathology: patient.pathology ?? "DT2", pregnancyMode: patient.pregnancyMode ?? false,
+    } as never)
+    vi.spyOn(objectivesService, "computeTirPercent").mockResolvedValue(tir)
   }
 
   it("nonInsulin → route vers les flags d'orientation, JAMAIS une dose (frontière MDR)", async () => {
@@ -258,6 +269,46 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.flagged).toBe(0)
     expect(raiseFlag).not.toHaveBeenCalled()
+  })
+
+  it("TIR < 70 % (capture suffisante) → flag tirBelowTarget", async () => {
+    setupNonInsulin({ gly: new Date() }, 55) // HbA1c récente (pas de flag hba1c) + TIR 55 %
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(1)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "tirBelowTarget", 99, undefined)
+  })
+
+  it("TIR ≥ 70 % → aucun flag TIR", async () => {
+    setupNonInsulin({ gly: new Date() }, 75)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "tirBelowTarget", 99, undefined)
+  })
+
+  it("TIR null (capture insuffisante) → aucun flag TIR", async () => {
+    setupNonInsulin({ gly: new Date() }, null)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "tirBelowTarget", 99, undefined)
+  })
+
+  it("DT2 ENCEINTE → TIR scoré contre les bornes GD (pas adulte)", async () => {
+    setupNonInsulin({ gly: new Date() }, 80, { pathology: "DT2", pregnancyMode: true })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    // isPregnancy (pregnancyMode) → bornes GD, pas DT2.
+    expect(vi.mocked(objectivesService.computeTirPercent)).toHaveBeenCalledWith(1, "GD")
+  })
+
+  it("TIR exactement 70 % → aucun flag (borne stricte < 70)", async () => {
+    setupNonInsulin({ gly: new Date() }, 70)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "tirBelowTarget", 99, undefined)
+  })
+
+  it("HbA1c périmée + TIR < 70 → les DEUX flags (flagged = 2)", async () => {
+    setupNonInsulin({ evt: new Date(Date.now() - 200 * DAY) }, 55)
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.flagged).toBe(2)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "tirBelowTarget", 99, undefined)
   })
 })
 
