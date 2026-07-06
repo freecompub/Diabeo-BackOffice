@@ -105,6 +105,12 @@ re-vérif contre la config LIVE) + `changePercent` recalculé, **anti-spam** (`o
 Statut `pending` ; notifie le référent (best-effort). Le générateur fournit les **discriminateurs de
 créneau** selon le slot analysé (ISF/ICR → `timeSlot*`/`carbRatio*` ; basal → `pumpBasalSlotId`).
 
+**Fenêtre snapshot→persist (validé medical)** : le candidat est calculé sur `expectedCurrentValue`
+(snapshot). Si la config a **dérivé** entre l'analyse et la persistance, `createEngineProposal`
+**REJETTE** (`baselineMovedAtPersist`) au lieu de persister une magnitude hors-cap ou un sens inversé
+(le `baselineMoved` de l'accept ne couvre que persist→accept). En défense en profondeur, la cohérence
+`reason` ↔ signe du delta est asservie (`reasonDirectionMismatch`), et `supportingEvents > 0` exigé.
+
 ## 7. Validation `medical-domain-validator` (US-2651) — verdicts
 
 Deux incohérences **clinique↔code** relevées en documentant, **validées et corrigées** dans cette slice

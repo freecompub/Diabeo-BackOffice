@@ -354,8 +354,8 @@ describe("adjustmentService", () => {
 
       const res = await adjustmentService.createEngineProposal({
         patientId: 1, parameterType: "insulinSensitivityFactor", proposedValue: 0.55,
-        reason: "isfTooLow", confidence: "high", supportingEvents: 12, totalEventsConsidered: 12,
-        timeSlotStartHour: 8, timeSlotEndHour: 12,
+        expectedCurrentValue: 0.5, reason: "isfTooLow", confidence: "high", supportingEvents: 12,
+        totalEventsConsidered: 12, timeSlotStartHour: 8, timeSlotEndHour: 12,
       })
 
       expect(res.id).toBe("e1")
@@ -376,9 +376,35 @@ describe("adjustmentService", () => {
       await expect(
         adjustmentService.createEngineProposal({
           patientId: 1, parameterType: "insulinSensitivityFactor", proposedValue: 0.55,
-          reason: "isfTooLow", confidence: "high", supportingEvents: 12, timeSlotStartHour: 8, timeSlotEndHour: 12,
+          expectedCurrentValue: 0.5, reason: "isfTooLow", confidence: "high", supportingEvents: 12,
+          timeSlotStartHour: 8, timeSlotEndHour: 12,
         }),
       ).rejects.toThrow("nonInsulinNoDose")
+    })
+
+    const isfInput = (over: Record<string, unknown>) => ({
+      patientId: 1, parameterType: "insulinSensitivityFactor" as const, proposedValue: 0.55,
+      expectedCurrentValue: 0.5, reason: "isfTooLow" as const, confidence: "high" as const,
+      supportingEvents: 12, timeSlotStartHour: 8, timeSlotEndHour: 12, ...over,
+    })
+
+    it("config dérivée depuis l'analyse (live ≠ expected) → baselineMovedAtPersist", async () => {
+      prismaMock.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 } as never)
+      // candidat calculé sur 0.4, mais la config live est 0.5 → rejet (re-analyse au prochain run).
+      await expect(adjustmentService.createEngineProposal(isfInput({ expectedCurrentValue: 0.4 })))
+        .rejects.toThrow("baselineMovedAtPersist")
+    })
+
+    it("reason ↔ direction incohérents (isfTooLow mais baisse) → reasonDirectionMismatch", async () => {
+      prismaMock.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 } as never)
+      // isfTooLow (hausse attendue) mais proposedValue 0.45 < 0.5 → mismatch.
+      await expect(adjustmentService.createEngineProposal(isfInput({ proposedValue: 0.45 })))
+        .rejects.toThrow("reasonDirectionMismatch")
+    })
+
+    it("supportingEvents ≤ 0 → invalidSupportingEvents", async () => {
+      await expect(adjustmentService.createEngineProposal(isfInput({ supportingEvents: 0 })))
+        .rejects.toThrow("invalidSupportingEvents")
     })
   })
 

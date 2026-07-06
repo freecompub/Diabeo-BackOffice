@@ -28,6 +28,9 @@ export type CreateEngineProposalInput = {
   patientId: number
   parameterType: AdjustableParameter
   proposedValue: number
+  /** `currentValue` du SNAPSHOT sur lequel l'analyseur a calculé `proposedValue` (candidat).
+   *  Sert au compare-and-swap de persistance (rejet si la config a dérivé depuis l'analyse). */
+  expectedCurrentValue: number
   reason: AdjustmentReason
   confidence: ConfidenceLevel
   supportingEvents: number
@@ -76,6 +79,17 @@ export type CreateProposalInput = {
  */
 function assertRowApplied(count: number, code: string): void {
   if (count === 0) throw new Error(code)
+}
+
+/**
+ * Sens clinique impliqué par un `reason` de titration : `*TooLow` ⇒ HAUSSE, `*TooHigh` ⇒ BAISSE.
+ * `null` pour un motif non directionnel (`*Correct`, `insufficientData`, motifs humains). Sert à
+ * vérifier la cohérence `reason` ↔ signe du delta d'une proposition moteur (US-2651).
+ */
+function reasonImpliesIncrease(reason: AdjustmentReason): boolean | null {
+  if (reason.endsWith("TooLow")) return true
+  if (reason.endsWith("TooHigh")) return false
+  return null
 }
 
 function validateProposedValue(parameterType: string, value: number): boolean {
@@ -556,8 +570,11 @@ export const adjustmentService = {
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
-    // 1. Bornes cliniques dures.
+    // 1. Bornes cliniques dures + métriques moteur valides.
     if (!validateProposedValue(parameterType, proposedValue)) throw new Error("valueOutOfBounds")
+    if (!Number.isFinite(input.supportingEvents) || input.supportingEvents <= 0) {
+      throw new Error("invalidSupportingEvents") // une proposition à 0 événement n'a aucun sens
+    }
 
     // 2. `currentValue` re-dérivé SERVEUR (jamais celui du candidat) + `changePercent` recalculé
     //    (borné ± 999,99 pour la colonne Decimal(5,2)). Réutilise les helpers de `createProposal`.
@@ -573,8 +590,28 @@ export const adjustmentService = {
       pumpBasalSlotId: input.pumpBasalSlotId,
     }
     const currentValue = await resolveCurrentValue(patientId, parameterType, asInput)
+
+    // 2b. COMPARE-AND-SWAP de persistance (US-2651, validé medical) : le candidat a été calculé sur
+    //     `expectedCurrentValue` (snapshot). Si la config a DÉRIVÉ depuis l'analyse (médecin qui édite,
+    //     autre proposition acceptée), on REJETTE plutôt que de persister une magnitude hors-cap OU un
+    //     sens inversé (le `baselineMoved` de l'accept ne couvre que persist→accept). Le générateur
+    //     re-analysera sur la nouvelle base au prochain run. Tolérance : bruit float sous la résolution
+    //     Decimal(4). Rejeter, pas re-clamper (le re-clamp rebaserait une analyse périmée).
+    if (Math.abs(currentValue - input.expectedCurrentValue) > 1e-9) {
+      throw new Error("baselineMovedAtPersist")
+    }
+
     const rawPct = currentValue !== 0 ? ((proposedValue - currentValue) / currentValue) * 100 : 0
     const changePercent = Math.max(-999.99, Math.min(999.99, rawPct))
+
+    // 2c. Cohérence `reason` ↔ direction (défense en profondeur : garde aussi un candidat mal formé).
+    //     `*TooLow` doit HAUSSER, `*TooHigh` doit BAISSER — sinon l'explication affichée serait fausse.
+    const wantsIncrease = reasonImpliesIncrease(input.reason)
+    if (wantsIncrease !== null) {
+      const delta = proposedValue - currentValue
+      if (delta === 0 || delta > 0 !== wantsIncrease) throw new Error("reasonDirectionMismatch")
+    }
+
     const slot = slotFieldsFor(parameterType, asInput)
 
     // 3. Anti-spam (pré-check + index partiel unique via P2002 ci-dessous). Pas de garde patient.
