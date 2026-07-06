@@ -340,4 +340,46 @@ describe("adjustmentService", () => {
       expect(result.applied).toBe(false)
     })
   })
+
+  describe("createEngineProposal (US-2651 moteur)", () => {
+    it("crée une proposition ALGORITHM : source algorithm, userId null, métriques non nulles, currentValue re-dérivé", async () => {
+      // currentValue re-lu serveur (ISF 0.5) ≠ du candidat ; changePercent recalculé (0.55 vs 0.5 = +10 %).
+      prismaMock.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 } as never)
+      prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null) // pas de pending
+      const mockTx = {
+        adjustmentProposal: { create: vi.fn().mockResolvedValue({ id: "e1", status: "pending", proposedByUserId: null }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      const res = await adjustmentService.createEngineProposal({
+        patientId: 1, parameterType: "insulinSensitivityFactor", proposedValue: 0.55,
+        reason: "isfTooLow", confidence: "high", supportingEvents: 12, totalEventsConsidered: 12,
+        timeSlotStartHour: 8, timeSlotEndHour: 12,
+      })
+
+      expect(res.id).toBe("e1")
+      const data = mockTx.adjustmentProposal.create.mock.calls[0]![0].data
+      expect(data.source).toBe("algorithm")
+      expect(data.proposedByUserId).toBeNull()
+      expect(data.confidence).toBe("high")
+      expect(data.supportingEvents).toBe(12)
+      expect(Number(data.currentValue)).toBe(0.5) // serveur, pas le candidat
+      expect(Number(data.changePercent)).toBeCloseTo(10)
+      // Audit moteur sans PHI (userId null, pas de dose).
+      expect(mockTx.auditLog.create).toHaveBeenCalled()
+    })
+
+    it("patient nonInsulin → nonInsulinNoDose (frontière MDR)", async () => {
+      const { treatmentModeService } = await import("@/lib/services/treatment-mode.service")
+      vi.mocked(treatmentModeService.resolveTreatmentMode).mockResolvedValueOnce({ mode: "nonInsulin", coherent: true })
+      await expect(
+        adjustmentService.createEngineProposal({
+          patientId: 1, parameterType: "insulinSensitivityFactor", proposedValue: 0.55,
+          reason: "isfTooLow", confidence: "high", supportingEvents: 12, timeSlotStartHour: 8, timeSlotEndHour: 12,
+        }),
+      ).rejects.toThrow("nonInsulinNoDose")
+    })
+  })
+
 })

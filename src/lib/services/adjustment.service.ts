@@ -17,8 +17,30 @@ import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
-  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource,
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel,
 } from "@prisma/client"
+
+/**
+ * Entrée d'une proposition MOTEUR (US-2651) : candidat d'analyseur + discriminateurs de créneau.
+ * Métriques moteur (`confidence`/`supportingEvents`) OBLIGATOIRES (contrainte CHECK `algorithm`).
+ */
+export type CreateEngineProposalInput = {
+  patientId: number
+  parameterType: AdjustableParameter
+  proposedValue: number
+  reason: AdjustmentReason
+  confidence: ConfidenceLevel
+  supportingEvents: number
+  totalEventsConsidered?: number | null
+  averageObservedValue?: number | null
+  analysisPeriod?: string | null
+  dataQuality?: string | null
+  timeSlotStartHour?: number | null
+  timeSlotEndHour?: number | null
+  carbRatioSlotStart?: number | null
+  carbRatioSlotEnd?: number | null
+  pumpBasalSlotId?: string | null
+}
 
 /** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
 type HumanProposerRole = Extract<ProposalSource, "patient" | "nurse" | "doctor">
@@ -506,6 +528,109 @@ export const adjustmentService = {
       // Course TOCTOU rattrapée par l'index partiel `adjustment_proposals_one_pending_per_slot`.
       // On ne re-mappe QUE cette contrainte-là (pas n'importe quel P2002) pour ne pas masquer
       // un futur conflit d'unicité sans rapport.
+      const err = e as { code?: string; meta?: { target?: unknown } }
+      const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
+      if (err.code === "P2002" && target.includes("one_pending")) {
+        throw new Error("duplicatePendingProposal")
+      }
+      throw e
+    }
+  },
+
+  /**
+   * US-2651 — Créer une proposition MOTEUR (générateur nocturne). Distinct de `createProposal`
+   * (humain) : `source = algorithm`, `proposedByUserId = null`, métriques moteur NON nulles
+   * (contrainte CHECK). Reprend les mêmes garde-fous serveur : frontière **nonInsulin** (MDR),
+   * **bornes dures**, `currentValue` **re-dérivé serveur** (le candidat a été calculé sur un
+   * snapshot — on re-vérifie contre la config LIVE) et recompute `changePercent`, **anti-spam**
+   * (index `one_pending_per_slot`). Jamais appliqué (`pending`). Notifie le référent (best-effort).
+   *
+   * @param input Candidat + discriminateurs de créneau (fournis par le générateur selon le slot analysé).
+   * @param ctx Contexte requête (audit).
+   * @returns La proposition créée.
+   */
+  async createEngineProposal(input: CreateEngineProposalInput, ctx?: AuditContext) {
+    const { patientId, parameterType, proposedValue } = input
+
+    // 0. Frontière MDR : jamais de proposition de dose pour un patient non insuliné.
+    const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
+    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+
+    // 1. Bornes cliniques dures.
+    if (!validateProposedValue(parameterType, proposedValue)) throw new Error("valueOutOfBounds")
+
+    // 2. `currentValue` re-dérivé SERVEUR (jamais celui du candidat) + `changePercent` recalculé
+    //    (borné ± 999,99 pour la colonne Decimal(5,2)). Réutilise les helpers de `createProposal`.
+    const asInput: CreateProposalInput = {
+      patientId,
+      parameterType,
+      proposedValue,
+      reason: input.reason,
+      timeSlotStartHour: input.timeSlotStartHour,
+      timeSlotEndHour: input.timeSlotEndHour,
+      carbRatioSlotStart: input.carbRatioSlotStart,
+      carbRatioSlotEnd: input.carbRatioSlotEnd,
+      pumpBasalSlotId: input.pumpBasalSlotId,
+    }
+    const currentValue = await resolveCurrentValue(patientId, parameterType, asInput)
+    const rawPct = currentValue !== 0 ? ((proposedValue - currentValue) / currentValue) * 100 : 0
+    const changePercent = Math.max(-999.99, Math.min(999.99, rawPct))
+    const slot = slotFieldsFor(parameterType, asInput)
+
+    // 3. Anti-spam (pré-check + index partiel unique via P2002 ci-dessous). Pas de garde patient.
+    const existing = await prisma.adjustmentProposal.findFirst({
+      where: {
+        patientId,
+        parameterType,
+        status: "pending",
+        timeSlotStartHour: slot.timeSlotStartHour,
+        carbRatioSlotStart: slot.carbRatioSlotStart,
+        pumpBasalSlotId: slot.pumpBasalSlotId,
+      },
+      select: { id: true },
+    })
+    if (existing) throw new Error("duplicatePendingProposal")
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        const proposal = await tx.adjustmentProposal.create({
+          data: {
+            patientId,
+            parameterType,
+            currentValue,
+            proposedValue,
+            changePercent,
+            reason: input.reason,
+            source: "algorithm",
+            proposedByUserId: null,
+            confidence: input.confidence,
+            supportingEvents: input.supportingEvents,
+            totalEventsConsidered: input.totalEventsConsidered ?? null,
+            averageObservedValue: input.averageObservedValue ?? null,
+            analysisPeriod: input.analysisPeriod ?? null,
+            dataQuality: input.dataQuality ?? null,
+            status: "pending",
+            ...slot,
+          },
+        })
+        // Audit SANS PHI : provenance moteur + pivot patient, jamais la valeur de dose.
+        await auditService.logWithTx(tx, {
+          userId: null,
+          action: "CREATE",
+          resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: proposal.id,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: "algorithm" },
+        })
+        return proposal
+      })
+
+      void notifyReviewers(patientId, created, ctx).catch((err) =>
+        logger.error("adjustment", "notifyReviewers failed", { patientId }, err),
+      )
+      return created
+    } catch (e) {
       const err = e as { code?: string; meta?: { target?: unknown } }
       const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
       if (err.code === "P2002" && target.includes("one_pending")) {
