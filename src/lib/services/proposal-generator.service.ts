@@ -23,6 +23,7 @@ import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, type JournalMeal } from "@/lib/services/meal-trends.service"
 import { getCgmDefaults } from "@/lib/services/objectives.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
@@ -199,6 +200,7 @@ export const proposalGeneratorService = {
    * @returns Métriques agrégées ; `skippedConcurrent` si un autre run détient le verrou.
    */
   async generateForAllPatients(ctx?: AuditContext): Promise<GenerateAllResult> {
+    const t0 = Date.now()
     const run = await withSessionAdvisoryLock(CRON_LOCK_KEY, async () => {
       const patients = await prisma.patient.findMany({
         where: { deletedAt: null, user: { status: "active" } }, // RGPD : ni supprimés ni comptes inactifs
@@ -221,7 +223,29 @@ export const proposalGeneratorService = {
       }
       return { processed, created, errored, skippedConcurrent: false }
     })
-    // Verrou non acquis → un autre run est en cours : skip silencieux (cron retry-safe).
-    return run ?? { processed: 0, created: 0, errored: 0, skippedConcurrent: true }
+    const durationMs = Date.now() - t0
+
+    // Marqueur d'audit RUN-LEVEL immuable (piste HDS 5 ans, pas un simple log applicatif) — aligné sur
+    // les crons invoice/appointment. Ancre le `requestId` partagé des lectures per-patient (acteur null).
+    // Best-effort : un échec d'audit ne doit pas faire échouer le run.
+    if (run === null) {
+      // Verrou non acquis → un autre run est en cours : skip tracé (cron retry-safe).
+      await auditService.log({
+        userId: CRON_AUDIT_USER_ID, action: "CREATE", resource: "ADJUSTMENT_PROPOSAL", resourceId: "cron",
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: { kind: "proposal.generator.cron.skipped_locked", durationMs },
+      }).catch((err) => logger.error("proposal-generator", "cron audit (skipped) failed", { kind: "audit.write.failed" }, err))
+      return { processed: 0, created: 0, errored: 0, skippedConcurrent: true }
+    }
+
+    await auditService.log({
+      userId: CRON_AUDIT_USER_ID, action: "CREATE", resource: "ADJUSTMENT_PROPOSAL", resourceId: "cron",
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: {
+        kind: "proposal.generator.cron.run",
+        processed: run.processed, created: run.created, errored: run.errored, durationMs,
+      },
+    }).catch((err) => logger.error("proposal-generator", "cron audit (run) failed", { kind: "audit.write.failed" }, err))
+    return run
   },
 }
