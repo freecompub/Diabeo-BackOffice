@@ -222,16 +222,19 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
   afterEach(() => vi.restoreAllMocks()) // désinstalle le spy computeTirPercent
 
   function setupNonInsulin(
-    hba1c: { gly?: Date | null; evt?: Date | null } = {},
+    hba1c: { gly?: Date | null; evt?: Date | null; value?: number } = {},
     tir: number | null = null, // TIR retourné par computeTirPercent (null = capture insuffisante)
     patient: { pathology?: string; pregnancyMode?: boolean } = {},
+    objectiveHba1c: number | null = null, // cible individualisée (AnnexObjective)
   ) {
+    const v = hba1c.value ?? 6 // valeur HbA1c par défaut (< 8 → pas de flag aboveTarget)
     mode.mockResolvedValue({ mode: "nonInsulin", coherent: true } as never)
-    prismaMock.glycemiaEntry.findFirst.mockResolvedValue(hba1c.gly ? ({ date: hba1c.gly } as never) : null)
-    prismaMock.diabetesEvent.findFirst.mockResolvedValue(hba1c.evt ? ({ eventDate: hba1c.evt } as never) : null)
+    prismaMock.glycemiaEntry.findFirst.mockResolvedValue(hba1c.gly ? ({ date: hba1c.gly, hba1c: v } as never) : null)
+    prismaMock.diabetesEvent.findFirst.mockResolvedValue(hba1c.evt ? ({ eventDate: hba1c.evt, hba1c: v } as never) : null)
     prismaMock.patient.findFirst.mockResolvedValue({
       pathology: patient.pathology ?? "DT2", pregnancyMode: patient.pregnancyMode ?? false,
     } as never)
+    prismaMock.annexObjective.findUnique.mockResolvedValue(objectiveHba1c !== null ? ({ objectiveHba1c } as never) : null)
     vi.spyOn(objectivesService, "computeTirPercent").mockResolvedValue(tir)
   }
 
@@ -309,6 +312,50 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     expect(res.flagged).toBe(2)
     expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
     expect(raiseFlag).toHaveBeenCalledWith(1, "tirBelowTarget", 99, undefined)
+  })
+
+  it("US-2651 #3b — HbA1c récente 8,5 % sans cible, sans CGM → hba1cAboveTarget (trou BGM comblé)", async () => {
+    setupNonInsulin({ gly: new Date(), value: 8.5 }, null) // récente + TIR null + pas de cible
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
+  })
+
+  it("HbA1c 7,4 % sans cible → pas de flag (< défaut 8,0)", async () => {
+    setupNonInsulin({ gly: new Date(), value: 7.4 }, null)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
+
+  it("cible individualisée 6,5 : 7,4 % > 6,5+0,5 → flag", async () => {
+    setupNonInsulin({ gly: new Date(), value: 7.4 }, null, {}, 6.5)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
+
+  it("cible individualisée 6,5 : 6,9 % dans la marge +0,5 → pas de flag", async () => {
+    setupNonInsulin({ gly: new Date(), value: 6.9 }, null, {}, 6.5)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
+
+  it("HbA1c périmée 9,0 % → hba1cStale, PAS hba1cAboveTarget (le périmé appartient à hba1cStale)", async () => {
+    setupNonInsulin({ evt: new Date(Date.now() - 200 * DAY), value: 9.0 }, null)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cStale", 99, undefined)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
+
+  it("grossesse : 6,4 % sans cible → flag (défaut grossesse 6,0)", async () => {
+    setupNonInsulin({ gly: new Date(), value: 6.4 }, null, { pregnancyMode: true })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
+
+  it("cible importée implausible (53) → ignorée, repli défaut 8,0 (fail-loud) : 9,0 % → flag", async () => {
+    setupNonInsulin({ gly: new Date(), value: 9.0 }, null, {}, 53)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
   })
 })
 

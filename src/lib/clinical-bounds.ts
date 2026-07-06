@@ -252,6 +252,23 @@ export const AGP_SUFFICIENCY = {
 export const HBA1C_STALE_DAYS = 180
 
 /**
+ * US-2651 (mode c) — seuils du flag d'orientation **`hba1cAboveTarget`** (HbA1c récente au-dessus de
+ * la cible → à revoir ; comble le trou BGM-only, validé medical #676). En **%** (unité canonique).
+ *
+ * - `HBA1C_HIGH_DEFAULT_PERCENT` (**8,0 %**) : plancher « clairement au-dessus de la cible » (ADA/AACE)
+ *   quand **aucune cible individualisée** n'est saisie — volontairement conservateur (un DT2 bien géré
+ *   à 7,0–7,7 % ne doit pas saturer la file de revue ; la fatigue d'alerte est un risque en soi).
+ * - `HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT` (**6,0 %**) : plancher **grossesse** (cible ADA < 6 %) —
+ *   sous-flaguer la population la plus à risque serait inacceptable. Utilisé si `isPregnancy` sans cible.
+ * - `HBA1C_TARGET_MARGIN_PERCENT` (**0,5 %**) : marge d'excès **significatif** au-dessus de la cible
+ *   **individualisée** du patient (dépasse le bruit analytique ~± 0,3–0,5 %). Appliquée **uniquement**
+ *   à la cible individualisée, **pas** aux défauts (qui sont déjà la ligne d'excès significatif).
+ */
+export const HBA1C_HIGH_DEFAULT_PERCENT = 8.0
+export const HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT = 6.0
+export const HBA1C_TARGET_MARGIN_PERCENT = 0.5
+
+/**
  * US-2639 — Carnet BGM (moyenne par moment de la journée, patient sans capteur).
  * Plancher de suffisance : sous `MIN_READINGS_PER_MOMENT` relevés capillaires
  * sur la fenêtre, la moyenne d'un moment n'est PAS publiée (« données

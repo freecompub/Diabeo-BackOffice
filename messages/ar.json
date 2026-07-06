@@ -2034,7 +2034,8 @@
     "flagHba1cStale": "الهيموغلوبين السكري (HbA1c) للإجراء أو التحديث",
     "flagTirBelowTarget": "الوقت ضمن النطاق (TIR) تحت الهدف",
     "flagObservance": "التحقق من الالتزام",
-    "flagHighVariabilityPostMeal": "تقلب مرتفع بعد الوجبة (ذروة + نقص سكر الدم)"
+    "flagHighVariabilityPostMeal": "تقلب مرتفع بعد الوجبة (ذروة + نقص سكر الدم)",
+    "flagHba1cAboveTarget": "الهيموغلوبين السكري (HbA1c) فوق الهدف"
   },
   "review": {
     "title": "وضع مراجعة الاستشارة",

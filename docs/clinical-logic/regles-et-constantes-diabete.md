@@ -311,3 +311,13 @@ Helper réutilisable `objectivesService.computeTirPercent`.
 > ne déclenche **aucun** flag (`hba1cStale` faux = récente, `tirBelowTarget` null = pas de CGM). Trou
 > « patient silencieux ». À combler par un flag **valeur d'HbA1c** (> cible, ex. > 8 %), non-CGM
 > (slice 3, compagnon d'`observance`). Capture 30–70 % : TIR « indicatif » (biais de capture possible).
+
+### Flag `hba1cAboveTarget` (mode c, US-2651 — comble le trou BGM-only #3b, validé medical)
+
+Levé si la dernière HbA1c est **récente** (`!isStale`, ≤ `HBA1C_STALE_DAYS`) ET sa **valeur** > cible (%).
+Cible = `AnnexObjective.objectiveHba1c + HBA1C_TARGET_MARGIN_PERCENT (0,5)` si plausible ([4;14], garde
+fail-loud contre import corrompu) ; sinon **défaut** `HBA1C_HIGH_DEFAULT_PERCENT (8,0)` adulte /
+`HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT (6,0)` grossesse (sans marge). Marge = bruit analytique ~± 0,5 %.
+Défaut 8,0 conservateur (évite la fatigue d'alerte sur DT2 bien gérés à 7-7,7 %). **Partition propre** :
+le périmé/absent appartient à `hba1cStale`, le récent-mauvais à `hba1cAboveTarget` — pas de double-signal.
+Comble le patient « silencieux » BGM (sans CGM, TIR null). Libellé neutre (jamais « intensifier »).

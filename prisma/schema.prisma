@@ -134,6 +134,9 @@ enum ClinicalReviewFlagType {
   // US-2653 — forte variabilité post-prandiale (pic + hypo récurrente) : le levier ICR ne corrige
   // pas les deux bouts → orientation revue (timing bolus/composition/IOB/ISF), jamais une dose.
   highVariabilityPostMeal
+  // US-2651 (mode c) — HbA1c RÉCENTE au-dessus de la cible → à revoir. Comble le trou BGM-only
+  // (patient sans CGM à HbA1c récente mais mauvaise). Orientation, jamais une dose.
+  hba1cAboveTarget
 }
 
 enum ClinicalReviewFlagStatus {
