@@ -93,3 +93,9 @@ Ferme le **caveat opérationnel** de la revue medical de #662 (le flag était é
 
 **Reste US-2651** : router `generateProposals` par mode · mode (b) `analyzeFixedDose*`. **Suivi** :
 `parameterType` intent (non-dosant) dans le flag ; résolution du flag (marquer `resolved`).
+
+##### Corrections revue slice 3 (PR #663)
+- **A (Low)** : commentaire « Grille 2×2 » de `medecin/page.tsx` corrigé (5 cartes désormais).
+- **Suivi B (Low, transverse)** : cap 10 silencieux (comme toute la famille dashboard : propositions
+  cap 5, etc.) → amélioration éventuelle d'un indice « 10+ »/compteur total **transverse** à toutes
+  les cartes (pas propre à celle-ci). Revues code+HDS : surface **scope-safe, PHI minimal, posology-free**.

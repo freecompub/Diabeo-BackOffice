@@ -84,7 +84,8 @@ export default async function MedecinDashboardPage() {
       />
       {/* Carte de triage en tête, pleine largeur (mockup §médecin). */}
       <EmergencyCard />
-      {/* Grille 2×2 : Propositions · Rendez-vous / Relances · Messages. */}
+      {/* Grille 2 colonnes (5 cartes) : Propositions · Flags d'orientation ·
+          Rendez-vous · Relances · Messages. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <PendingProposalsCard />
         <ReviewFlagsCard />
