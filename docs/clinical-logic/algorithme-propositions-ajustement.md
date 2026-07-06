@@ -136,7 +136,10 @@ Base d'erreur relative = écart moyen à la cible. `confidence` = `getConfidence
   - *Effet Somogyi (garde hypo)* : à jeun moyennes `1,40` (⇒ hausse) **mais** le **nadir** nocturne à
     3 h vaut `0,45` g/L → **supprimé** (une hausse basale aggraverait l'hypo). ✅ Le nadir est un **param
     séparé** `nocturnalNadirs` (symétrique de `analyzeIcrSlot`) : il nourrit la garde hypo sans biaiser
-    la moyenne à jeun (repli sur `fastingValues` si absent). Reste à **peupler** au câblage (slice assemblage).
+    la moyenne à jeun (repli sur `fastingValues` si absent). ✅ **Assemblage en place** :
+    `mealtimePattern.fastingTrend` → par nuit `{ fastingMgdl (pré-petit-déj), nocturnalNadirMgdl (min CGM
+    sur `[dernier glucide du soir capé −12 h, petit-déj]`) }`, 1:1 avec les jours, fenêtre contiguë.
+    Reste le **générateur basal par créneau pompe** (slice 3, `pumpBasalSlotId`).
 
 > **⚠️ Portée : basale POMPE uniquement — le stylo/MDI n'est PAS géré (limite connue).**
 > `analyzeBasalTrend` raisonne sur un **débit U/h** et cible un `pumpBasalSlotId`

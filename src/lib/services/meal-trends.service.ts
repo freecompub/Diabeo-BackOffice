@@ -89,6 +89,19 @@ export interface JournalMeal {
   bolus: number | null
 }
 
+/**
+ * Tendance à jeun par jour (US-2651 basal) — une entrée par **nuit/jour** (aligné 1:1) :
+ * `fastingMgdl` = dernier relevé pré-petit-déjeuner (pilote la moyenne/direction basale) ;
+ * `nocturnalNadirMgdl` = **min CGM** sur l'intervalle de jeûne nocturne inter-prandial
+ * `[dernier apport glucidique du soir, petit-déjeuner]` (nourrit la garde hypo — effet Somogyi).
+ * Fenêtre **contiguë** avec le relevé à jeun (les deux se terminent au petit-déjeuner). En mg/dL.
+ */
+export interface FastingDay {
+  dayIso: string
+  fastingMgdl: number | null
+  nocturnalNadirMgdl: number | null
+}
+
 // ── Helpers fuseau / moment ──────────────────────────────────────────────────
 
 const partsFmt = new Intl.DateTimeFormat("en-GB", {
@@ -248,9 +261,44 @@ function excursionWindowEnd(t0: number, carbTimes: number[]): number {
   return Math.min(cap, next)
 }
 
-// ── Service ──────────────────────────────────────────────────────────────────
+/** US-2651 basal — fenêtre pré-petit-déjeuner (min) pour le relevé à jeun. */
+const PRE_BREAKFAST_WINDOW_MIN = 90
+/** US-2651 basal — plafond de remontée du jeûne nocturne (min) si aucun apport glucidique du soir
+ *  identifié (patient à jeun) : ~12 h, borne l'intervalle inter-prandial. */
+const MAX_NOCTURNAL_WINDOW_MIN = 720
 
 type MealContext = Awaited<ReturnType<typeof loadContext>>
+
+/**
+ * Tendance à jeun (US-2651 basal). Une entrée par jour ayant un **petit-déjeuner** identifié (premier
+ * repas du moment « morning »). `fastingMgdl` = dernier relevé dans `[petit-déj − 90 min, petit-déj]`.
+ * `nocturnalNadirMgdl` = min CGM sur `[dernier apport glucidique avant le petit-déj (capé à −12 h),
+ * petit-déj]` — intervalle de jeûne nocturne inter-prandial, **contigu** avec le relevé à jeun. Un
+ * élément **par nuit** (aligné 1:1 avec les jours). Trié récent d'abord.
+ */
+function computeFastingTrend(c: MealContext): FastingDay[] {
+  // Petit-déjeuner par jour = premier repas du moment « morning » (le plus tôt).
+  const breakfastByDay = new Map<string, number>()
+  for (const m of c.meals) {
+    if (momentForHour(localHour(m.matchMs), c.bounds) !== "morning") continue
+    const day = localDay(m.matchMs)
+    const prev = breakfastByDay.get(day)
+    if (prev === undefined || m.matchMs < prev) breakfastByDay.set(day, m.matchMs)
+  }
+  const out: FastingDay[] = []
+  for (const [dayIso, breakfastMs] of breakfastByDay) {
+    const fastingMgdl = lastReadingIn(c.readings, breakfastMs - PRE_BREAKFAST_WINDOW_MIN * MIN_MS, breakfastMs)
+    // Dernier apport glucidique AVANT le petit-déj (le dîner/collation du soir) ; borné à −12 h.
+    let lastCarb = -Infinity
+    for (const t of c.carbTimes) if (t < breakfastMs && t > lastCarb) lastCarb = t
+    const nocturnalStart = Math.max(lastCarb, breakfastMs - MAX_NOCTURNAL_WINDOW_MIN * MIN_MS)
+    const nocturnalNadirMgdl = minReadingIn(c.readings, nocturnalStart, breakfastMs)
+    out.push({ dayIso, fastingMgdl, nocturnalNadirMgdl })
+  }
+  return out.sort((a, b) => (a.dayIso < b.dayIso ? 1 : a.dayIso > b.dayIso ? -1 : 0))
+}
+
+// ── Service ──────────────────────────────────────────────────────────────────
 
 export const mealtimePattern = {
   /** Courbes glycémiques moyennes alignées sur l'heure du repas, par moment. */
@@ -275,6 +323,21 @@ export const mealtimePattern = {
     const c = await loadContext(patientId, days, source)
     if (!opts?.skipAudit) await auditRead(auditUserId, patientId, period, days, source, "mealtimeJournal", ctx)
     return computeJournal(c)
+  },
+
+  /**
+   * Tendance à jeun (US-2651 basal) : par jour, glycémie pré-petit-déjeuner + nadir nocturne
+   * inter-prandial (garde hypo Somogyi). Une entrée par nuit, alignée 1:1 avec les jours.
+   */
+  async fastingTrend(
+    patientId: number, period: string, auditUserId: number | null, ctx?: AuditContext,
+    opts?: { source?: "cgm" | "bgm"; skipAudit?: boolean },
+  ): Promise<FastingDay[]> {
+    const source = opts?.source ?? "cgm"
+    const days = parsePeriodDays(period)
+    const c = await loadContext(patientId, days, source)
+    if (!opts?.skipAudit) await auditRead(auditUserId, patientId, period, days, source, "fastingTrend", ctx)
+    return computeFastingTrend(c)
   },
 
   /**
