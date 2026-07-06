@@ -229,6 +229,7 @@ Constantes d'assemblage du **générateur ICR** (spec : `docs/clinical-logic/alg
 | plafond post-prandial (réutilisé) | `getCgmDefaults(pathologie/grossesse).ok` = **1,80** g/L adulte / **1,40** GD-grossesse | PPG 2 h moyenne au-dessus → **baisse** d'ICR (plus d'insuline). |
 | `POSTPRANDIAL_TITRATION_LOW_GL` | **1,0** g/L | PPG 2 h moyenne en dessous → **hausse** d'ICR (moins d'insuline). Entre les deux → aucune proposition. |
 | `POSTPRANDIAL_TITRATION_LOW_PREGNANCY_GL` | **0,9** g/L | Borne basse resserrée en grossesse (`pregnancyMode` ou GD). |
+| `ICR_PREMEAL_MIN_GL` / `ICR_PREMEAL_MAX_GL` | **0,70 / 1,40** g/L | Bande pré-repas d'exploitabilité ICR : hors bande → bolus avec correction (au-dessus) ou sous-dosage (en dessous) → repas exclu (anti mis-attribution). |
 | `POSTMEAL_NADIR_WINDOW_MIN` | **300** min | Fenêtre de recherche du **nadir** post-prandial fourni à la garde hypo (le nadir d'un analogue rapide tombe après le point PPG 2 h). |
 
 **Pourquoi PAS la cible à jeun** : une PPG 2 h est physiologiquement au-dessus de la glycémie à jeun ;

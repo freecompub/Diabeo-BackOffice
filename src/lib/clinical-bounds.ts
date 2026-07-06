@@ -121,6 +121,14 @@ export const CLINICAL_BOUNDS = {
    * hypo tardive resterait invisible et le générateur pourrait baisser l'ICR à tort (hypo profonde).
    */
   POSTMEAL_NADIR_WINDOW_MIN: 300,
+  /**
+   * US-2651 — générateur ICR, **porte qualité pré-repas** (g/L). Un repas n'est retenu pour l'analyse
+   * ICR que si la glycémie **pré-repas** est dans cette bande : au-dessus → le bolus incluait
+   * probablement une **correction** (la PPG ne reflète alors pas le seul ratio glucides) ; en dessous →
+   * le patient a pu sous-doser volontairement. Hors bande → repas exclu (anti mis-attribution).
+   */
+  ICR_PREMEAL_MIN_GL: 0.7,
+  ICR_PREMEAL_MAX_GL: 1.4,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

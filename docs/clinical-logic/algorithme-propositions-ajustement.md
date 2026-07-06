@@ -206,7 +206,13 @@ accepte un champ **`nadirGl` optionnel** par repas, fourni **uniquement** à la 
 `JournalMeal` expose désormais **`localHour`** (heure locale réelle, pour le bucketing) et **`nadirMgdl`**
 = creux CGM sur `[t0, min(prochain glucide, t0+`POSTMEAL_NADIR_WINDOW_MIN`)]`. Les relevés étant déjà
 bornés à ≥ 0,20 g/L par `loadContext`, **aucun zéro-artefact** n'atteint l'analyseur (suivi LOW #669 clos).
-**Reste (slice 2)** : le générateur consomme `localHour` (→ `findSlotForHour`) et `nadirMgdl/100` (→ `nadirGl`).
+✅ **Générateur en place (slice 2)** : `proposalGeneratorService.generateForPatient(patientId, auditUserId, ctx)`
+route sur `basalBolus`, applique les **portes qualité** (`isMealUsableForIcr` : PPG mesurée, glucides &
+bolus > 0, pré-repas dans `[ICR_PREMEAL_MIN_GL, ICR_PREMEAL_MAX_GL]`), **bucketise à l'heure réelle**
+(`findSlotForHour(carbRatios, localHour)`), calcule la cible par **deadband** (plafond `getCgmDefaults(...).ok`
+/ borne basse, `isPregnancy`-aware), lance `analyzeIcrSlot` (avec `nadirGl = nadirMgdl/100`) et persiste via
+`createEngineProposal`. Les rejets fail-closed (baseline dérivée, doublon, sens incohérent, hors bornes)
+sont **logués et non fatals**. **Reste (slice 3)** : le **cron** nocturne (boucle portefeuille + verrou advisory).
 
 > **⚠️ Caveat clinique — troncature par resucrage (MEDIUM, validé medical).** La fenêtre nadir se termine
 > au **prochain apport glucidique** (anti mis-attribution : la glycémie post-collation ne doit pas être
