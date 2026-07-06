@@ -17,8 +17,33 @@ import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
-  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource,
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel,
 } from "@prisma/client"
+
+/**
+ * Entrée d'une proposition MOTEUR (US-2651) : candidat d'analyseur + discriminateurs de créneau.
+ * Métriques moteur (`confidence`/`supportingEvents`) OBLIGATOIRES (contrainte CHECK `algorithm`).
+ */
+export type CreateEngineProposalInput = {
+  patientId: number
+  parameterType: AdjustableParameter
+  proposedValue: number
+  /** `currentValue` du SNAPSHOT sur lequel l'analyseur a calculé `proposedValue` (candidat).
+   *  Sert au compare-and-swap de persistance (rejet si la config a dérivé depuis l'analyse). */
+  expectedCurrentValue: number
+  reason: AdjustmentReason
+  confidence: ConfidenceLevel
+  supportingEvents: number
+  totalEventsConsidered?: number | null
+  averageObservedValue?: number | null
+  analysisPeriod?: string | null
+  dataQuality?: string | null
+  timeSlotStartHour?: number | null
+  timeSlotEndHour?: number | null
+  carbRatioSlotStart?: number | null
+  carbRatioSlotEnd?: number | null
+  pumpBasalSlotId?: string | null
+}
 
 /** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
 type HumanProposerRole = Extract<ProposalSource, "patient" | "nurse" | "doctor">
@@ -54,6 +79,17 @@ export type CreateProposalInput = {
  */
 function assertRowApplied(count: number, code: string): void {
   if (count === 0) throw new Error(code)
+}
+
+/**
+ * Sens clinique impliqué par un `reason` de titration : `*TooLow` ⇒ HAUSSE, `*TooHigh` ⇒ BAISSE.
+ * `null` pour un motif non directionnel (`*Correct`, `insufficientData`, motifs humains). Sert à
+ * vérifier la cohérence `reason` ↔ signe du delta d'une proposition moteur (US-2651).
+ */
+function reasonImpliesIncrease(reason: AdjustmentReason): boolean | null {
+  if (reason.endsWith("TooLow")) return true
+  if (reason.endsWith("TooHigh")) return false
+  return null
 }
 
 function validateProposedValue(parameterType: string, value: number): boolean {
@@ -506,6 +542,132 @@ export const adjustmentService = {
       // Course TOCTOU rattrapée par l'index partiel `adjustment_proposals_one_pending_per_slot`.
       // On ne re-mappe QUE cette contrainte-là (pas n'importe quel P2002) pour ne pas masquer
       // un futur conflit d'unicité sans rapport.
+      const err = e as { code?: string; meta?: { target?: unknown } }
+      const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
+      if (err.code === "P2002" && target.includes("one_pending")) {
+        throw new Error("duplicatePendingProposal")
+      }
+      throw e
+    }
+  },
+
+  /**
+   * US-2651 — Créer une proposition MOTEUR (générateur nocturne). Distinct de `createProposal`
+   * (humain) : `source = algorithm`, `proposedByUserId = null`, métriques moteur NON nulles
+   * (contrainte CHECK). Reprend les mêmes garde-fous serveur : frontière **nonInsulin** (MDR),
+   * **bornes dures**, `currentValue` **re-dérivé serveur** (le candidat a été calculé sur un
+   * snapshot — on re-vérifie contre la config LIVE) et recompute `changePercent`, **anti-spam**
+   * (index `one_pending_per_slot`). Jamais appliqué (`pending`). Notifie le référent (best-effort).
+   *
+   * @param input Candidat + discriminateurs de créneau (fournis par le générateur selon le slot analysé).
+   * @param ctx Contexte requête (audit).
+   * @returns La proposition créée.
+   */
+  async createEngineProposal(input: CreateEngineProposalInput, ctx?: AuditContext) {
+    const { patientId, parameterType, proposedValue } = input
+
+    // 0. Frontière MDR : jamais de proposition de dose pour un patient non insuliné.
+    const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
+    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+
+    // 1. Bornes cliniques dures + métriques moteur valides.
+    if (!validateProposedValue(parameterType, proposedValue)) throw new Error("valueOutOfBounds")
+    if (!Number.isFinite(input.supportingEvents) || input.supportingEvents <= 0) {
+      throw new Error("invalidSupportingEvents") // une proposition à 0 événement n'a aucun sens
+    }
+
+    // 2. `currentValue` re-dérivé SERVEUR (jamais celui du candidat) + `changePercent` recalculé
+    //    (borné ± 999,99 pour la colonne Decimal(5,2)). Réutilise les helpers de `createProposal`.
+    const asInput: CreateProposalInput = {
+      patientId,
+      parameterType,
+      proposedValue,
+      reason: input.reason,
+      timeSlotStartHour: input.timeSlotStartHour,
+      timeSlotEndHour: input.timeSlotEndHour,
+      carbRatioSlotStart: input.carbRatioSlotStart,
+      carbRatioSlotEnd: input.carbRatioSlotEnd,
+      pumpBasalSlotId: input.pumpBasalSlotId,
+    }
+    const currentValue = await resolveCurrentValue(patientId, parameterType, asInput)
+
+    // 2b. COMPARE-AND-SWAP de persistance (US-2651, validé medical) : le candidat a été calculé sur
+    //     `expectedCurrentValue` (snapshot). Si la config a DÉRIVÉ depuis l'analyse (médecin qui édite,
+    //     autre proposition acceptée), on REJETTE plutôt que de persister une magnitude hors-cap OU un
+    //     sens inversé (le `baselineMoved` de l'accept ne couvre que persist→accept). Le générateur
+    //     re-analysera sur la nouvelle base au prochain run. Tolérance : bruit float sous la résolution
+    //     Decimal(4). Rejeter, pas re-clamper (le re-clamp rebaserait une analyse périmée).
+    if (Math.abs(currentValue - input.expectedCurrentValue) > 1e-9) {
+      throw new Error("baselineMovedAtPersist")
+    }
+
+    const rawPct = currentValue !== 0 ? ((proposedValue - currentValue) / currentValue) * 100 : 0
+    const changePercent = Math.max(-999.99, Math.min(999.99, rawPct))
+
+    // 2c. Cohérence `reason` ↔ direction (défense en profondeur : garde aussi un candidat mal formé).
+    //     `*TooLow` doit HAUSSER, `*TooHigh` doit BAISSER — sinon l'explication affichée serait fausse.
+    const wantsIncrease = reasonImpliesIncrease(input.reason)
+    if (wantsIncrease !== null) {
+      const delta = proposedValue - currentValue
+      if (delta === 0 || delta > 0 !== wantsIncrease) throw new Error("reasonDirectionMismatch")
+    }
+
+    const slot = slotFieldsFor(parameterType, asInput)
+
+    // 3. Anti-spam (pré-check + index partiel unique via P2002 ci-dessous). Pas de garde patient.
+    const existing = await prisma.adjustmentProposal.findFirst({
+      where: {
+        patientId,
+        parameterType,
+        status: "pending",
+        timeSlotStartHour: slot.timeSlotStartHour,
+        carbRatioSlotStart: slot.carbRatioSlotStart,
+        pumpBasalSlotId: slot.pumpBasalSlotId,
+      },
+      select: { id: true },
+    })
+    if (existing) throw new Error("duplicatePendingProposal")
+
+    try {
+      const created = await prisma.$transaction(async (tx) => {
+        const proposal = await tx.adjustmentProposal.create({
+          data: {
+            patientId,
+            parameterType,
+            currentValue,
+            proposedValue,
+            changePercent,
+            reason: input.reason,
+            source: "algorithm",
+            proposedByUserId: null,
+            confidence: input.confidence,
+            supportingEvents: input.supportingEvents,
+            totalEventsConsidered: input.totalEventsConsidered ?? null,
+            averageObservedValue: input.averageObservedValue ?? null,
+            analysisPeriod: input.analysisPeriod ?? null,
+            dataQuality: input.dataQuality ?? null,
+            status: "pending",
+            ...slot,
+          },
+        })
+        // Audit SANS PHI : provenance moteur + pivot patient, jamais la valeur de dose.
+        await auditService.logWithTx(tx, {
+          userId: null,
+          action: "CREATE",
+          resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: proposal.id,
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: "algorithm" },
+        })
+        return proposal
+      })
+
+      void notifyReviewers(patientId, created, ctx).catch((err) =>
+        logger.error("adjustment", "notifyReviewers failed", { patientId }, err),
+      )
+      return created
+    } catch (e) {
       const err = e as { code?: string; meta?: { target?: unknown } }
       const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
       if (err.code === "P2002" && target.includes("one_pending")) {

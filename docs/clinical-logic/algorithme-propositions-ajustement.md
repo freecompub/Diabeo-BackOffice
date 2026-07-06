@@ -94,6 +94,23 @@ Le mode est **dérivé serveur** (`resolveTreatmentMode`, fail-closed : un DT1 n
 3. **Validation médecin** (`accept`) — re-vérifie les bornes + **compare-and-swap** (`baselineMoved`)
    si la base a bougé depuis la proposition. Application scopée patient.
 
+## 6bis. Persistance d'une proposition MOTEUR — `createEngineProposal` (US-2651)
+
+`createProposal` est **humain-only** (source patient/nurse/doctor ; viole la contrainte CHECK
+`algorithm`). Le générateur persiste via **`adjustmentService.createEngineProposal(input, ctx)`** :
+`source = algorithm`, `proposedByUserId = null`, métriques moteur (`confidence`/`supportingEvents`)
+**non nulles** (CHECK). Reprend les garde-fous serveur de `createProposal` : frontière **nonInsulin**
+(MDR), **bornes dures**, `currentValue` **re-dérivé serveur** (le candidat est calculé sur un snapshot →
+re-vérif contre la config LIVE) + `changePercent` recalculé, **anti-spam** (`one_pending_per_slot`).
+Statut `pending` ; notifie le référent (best-effort). Le générateur fournit les **discriminateurs de
+créneau** selon le slot analysé (ISF/ICR → `timeSlot*`/`carbRatio*` ; basal → `pumpBasalSlotId`).
+
+**Fenêtre snapshot→persist (validé medical)** : le candidat est calculé sur `expectedCurrentValue`
+(snapshot). Si la config a **dérivé** entre l'analyse et la persistance, `createEngineProposal`
+**REJETTE** (`baselineMovedAtPersist`) au lieu de persister une magnitude hors-cap ou un sens inversé
+(le `baselineMoved` de l'accept ne couvre que persist→accept). En défense en profondeur, la cohérence
+`reason` ↔ signe du delta est asservie (`reasonDirectionMismatch`), et `supportingEvents > 0` exigé.
+
 ## 7. Validation `medical-domain-validator` (US-2651) — verdicts
 
 Deux incohérences **clinique↔code** relevées en documentant, **validées et corrigées** dans cette slice

@@ -199,3 +199,9 @@ dans son document dédié : **[`algorithme-propositions-ajustement.md`](./algori
   le moteur reste silencieux (le médecin ajuste manuellement). Fail-safe, non bloquant.
 - **Contrat d'entrée** : `postGlucoseGl` = glycémie d'évaluation du moment (PPG 2 h pour un moment
   prandial ; à jeun/pré-repas pour une dose de type basal) — à câbler correctement dans le générateur.
+
+> **Suivi PRIORITAIRE (validé medical, à faire AVANT de câbler le générateur mode a)** — Garde HYPO
+> manquante sur `analyzeBasalTrend`/`analyzeIsfSlot`/`analyzeIcrSlot` : seul `analyzeFixedDose` refuse
+> une **hausse** si un relevé est en hypo sévère. Une hypo nocturne masquée par la moyenne pourrait
+> produire une **hausse basale** dangereuse. Mirrorer la garde hypo (< 0,54 g/L) sur ces analyseurs
+> avant de les relier à `createEngineProposal`.
