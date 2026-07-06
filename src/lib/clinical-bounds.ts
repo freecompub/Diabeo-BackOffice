@@ -121,6 +121,21 @@ export const CLINICAL_BOUNDS = {
    * hypo tardive resterait invisible et le générateur pourrait baisser l'ICR à tort (hypo profonde).
    */
   POSTMEAL_NADIR_WINDOW_MIN: 300,
+  /**
+   * US-2651 — générateur ICR, **porte qualité pré-repas** (g/L). Un repas n'est retenu pour l'analyse
+   * ICR que si la glycémie **pré-repas** est dans cette bande : au-dessus → le bolus incluait
+   * probablement une **correction** (la PPG ne reflète alors pas le seul ratio glucides) ; en dessous →
+   * le patient a pu sous-doser volontairement. Hors bande → repas exclu (anti mis-attribution).
+   */
+  ICR_PREMEAL_MIN_GL: 0.7,
+  ICR_PREMEAL_MAX_GL: 1.4,
+  /**
+   * US-2651 — borne HAUTE pré-repas **grossesse** (g/L). La cible pré-repas d'une patiente enceinte
+   * est plus basse (~0,95 g/L) : un pré-repas à 1,30–1,40 y est **déjà élevé** → contaminerait le
+   * signal ICR (même mode d'échec que le resserrement grossesse évite ailleurs). Resserrée à 1,10.
+   * La borne basse (`ICR_PREMEAL_MIN_GL` 0,70) reste valable (seuil hypo grossesse 0,63).
+   */
+  ICR_PREMEAL_MAX_PREGNANCY_GL: 1.1,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

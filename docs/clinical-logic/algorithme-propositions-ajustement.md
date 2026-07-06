@@ -206,7 +206,24 @@ accepte un champ **`nadirGl` optionnel** par repas, fourni **uniquement** à la 
 `JournalMeal` expose désormais **`localHour`** (heure locale réelle, pour le bucketing) et **`nadirMgdl`**
 = creux CGM sur `[t0, min(prochain glucide, t0+`POSTMEAL_NADIR_WINDOW_MIN`)]`. Les relevés étant déjà
 bornés à ≥ 0,20 g/L par `loadContext`, **aucun zéro-artefact** n'atteint l'analyseur (suivi LOW #669 clos).
-**Reste (slice 2)** : le générateur consomme `localHour` (→ `findSlotForHour`) et `nadirMgdl/100` (→ `nadirGl`).
+✅ **Générateur en place (slice 2)** : `proposalGeneratorService.generateForPatient(patientId, auditUserId, ctx)`
+route sur `basalBolus`, applique les **portes qualité** (`isMealUsableForIcr` : PPG mesurée, glucides &
+bolus > 0, pré-repas dans `[ICR_PREMEAL_MIN_GL, ICR_PREMEAL_MAX_GL]`), **bucketise à l'heure réelle**
+(`findSlotForHour(carbRatios, localHour)`), calcule la cible par **deadband** (plafond `getCgmDefaults(...).ok`
+/ borne basse, `isPregnancy`-aware), lance `analyzeIcrSlot` (avec `nadirGl = nadirMgdl/100`) et persiste via
+`createEngineProposal`. Les rejets fail-closed (baseline dérivée, doublon, sens incohérent, hors bornes)
+sont **logués et non fatals**. **Reste (slice 3)** : le **cron** nocturne (boucle portefeuille + verrou advisory).
+
+La **porte qualité pré-repas** est **grossesse-aware** : borne haute resserrée à `ICR_PREMEAL_MAX_PREGNANCY_GL`
+(1,10 g/L) quand `isPregnancy` — sinon un pré-repas déjà élevé pour une enceinte contaminerait le signal ICR.
+
+> **⚠️ Limite connue — deadband sur la MOYENNE, hypo sur le NADIR (→ US-2653).** La décision de proposer
+> (deadband) porte sur la **moyenne** PPG, la garde hypo sur le **nadir**. Un patient **bon en moyenne** mais
+> avec des **hypos post-repas récurrentes** ne reçoit **aucune** proposition : la moyenne (dans le deadband)
+> masque la charge hypo, et le nadir n'est utilisé que comme **frein** (bloquer « plus d'insuline »), jamais
+> comme **déclencheur** d'une **hausse** d'ICR (« moins d'insuline »). C'est de la **sous-action** (sens sûr ;
+> la charge hypo remonte par TIR/alertes/AGP), surtout sensible en grossesse. **Réponse = US-2653** :
+> déclencher une dé-escalade sur nadirs récurrents, transverse aux 4 analyseurs, indépendamment du deadband.
 
 > **⚠️ Caveat clinique — troncature par resucrage (MEDIUM, validé medical).** La fenêtre nadir se termine
 > au **prochain apport glucidique** (anti mis-attribution : la glycémie post-collation ne doit pas être
