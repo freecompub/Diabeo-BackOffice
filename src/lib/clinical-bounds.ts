@@ -104,6 +104,23 @@ export const CLINICAL_BOUNDS = {
    * Seuils : `GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO` (54) / `.TARGET_LOW` (70).
    */
   HYPO_LEVEL1_RECURRENCE_MIN: 2,
+  /**
+   * US-2651 — générateur ICR (mode a), **deadband post-prandial asymétrique** (validé medical).
+   * L'analyse ICR compare la PPG 2 h moyenne à des bornes post-prandiales, PAS à la cible à jeun
+   * (sinon emballement hypo : une PPG est physiologiquement > à jeun). Borne HAUTE (plafond, déclenche
+   * une BAISSE d'ICR = plus d'insuline) = `getCgmDefaults(pathologie/grossesse).ok` (1,80 adulte /
+   * 1,40 GD-grossesse) — réutilisée, pas de constante ici. Bornes BASSES (déclenchent une HAUSSE d'ICR
+   * = moins d'insuline) ci-dessous ; entre les deux → aucune proposition (bon contrôle préservé).
+   */
+  POSTPRANDIAL_TITRATION_LOW_GL: 1.0,
+  POSTPRANDIAL_TITRATION_LOW_PREGNANCY_GL: 0.9,
+  /**
+   * US-2651 — fenêtre (minutes depuis le repas) sur laquelle chercher le **nadir** glycémique
+   * post-prandial à fournir à la garde hypo (le pic d'action d'un analogue rapide tombe à ~3-4 h,
+   * après le point PPG 2 h). Bornée en amont par le prochain apport glucidique. Sans ce nadir, une
+   * hypo tardive resterait invisible et le générateur pourrait baisser l'ICR à tort (hypo profonde).
+   */
+  POSTMEAL_NADIR_WINDOW_MIN: 300,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

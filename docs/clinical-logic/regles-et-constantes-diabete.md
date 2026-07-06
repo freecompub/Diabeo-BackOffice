@@ -219,3 +219,36 @@ d'insuline) reste permis. Ferme le prérequis avant câblage du générateur mod
 - **Contrat basal (Somogyi)** : `analyzeBasalTrend` ne capte l'hypo nocturne masquée que si
   `fastingValues` inclut le **nadir CGM nocturne** (pas seulement le pré-petit-déj) — précondition
   JSDoc à respecter par le générateur au câblage.
+
+### Générateur ICR nocturne — deadband post-prandial & nadir (US-2651, validé medical)
+
+Constantes d'assemblage du **générateur ICR** (spec : `docs/clinical-logic/algorithme-propositions-ajustement.md` §5ter) :
+
+| Constante | Valeur | Sens clinique |
+|---|---|---|
+| plafond post-prandial (réutilisé) | `getCgmDefaults(pathologie/grossesse).ok` = **1,80** g/L adulte / **1,40** GD-grossesse | PPG 2 h moyenne au-dessus → **baisse** d'ICR (plus d'insuline). |
+| `POSTPRANDIAL_TITRATION_LOW_GL` | **1,0** g/L | PPG 2 h moyenne en dessous → **hausse** d'ICR (moins d'insuline). Entre les deux → aucune proposition. |
+| `POSTPRANDIAL_TITRATION_LOW_PREGNANCY_GL` | **0,9** g/L | Borne basse resserrée en grossesse (`pregnancyMode` ou GD). |
+| `POSTMEAL_NADIR_WINDOW_MIN` | **300** min | Fenêtre de recherche du **nadir** post-prandial fourni à la garde hypo (le nadir d'un analogue rapide tombe après le point PPG 2 h). |
+
+**Pourquoi PAS la cible à jeun** : une PPG 2 h est physiologiquement au-dessus de la glycémie à jeun ;
+prendre la cible à jeun (~1,0 g/L) comme référence proposerait des baisses d'ICR systématiques (plus
+d'insuline) chez des patients bien contrôlés → **emballement hypo**. Le deadband asymétrique évite à la
+fois l'emballement et l'érosion du bon contrôle.
+
+> **Limite connue — basale STYLO/MDI non gérée par le générateur** (validé avec l'utilisateur, US-2651).
+> La titration basale automatique ne couvre que `BasalConfigType = pump` (débit U/h → `pumpBasalSlotId`,
+> `AdjustableParameter = basalRate`). Les patients en `single_injection` (dose journalière, type Lantus)
+> ou `split_injection` (matin/soir, type Levemir) — basale en **U**, pas U/h — ne reçoivent **aucune**
+> proposition basale (leurs ISF/ICR restent proposés). Combler ce trou (paramètre `basalDose` dédié +
+> variante d'analyseur en U/jour + bornes stylo + ciblage de persistance) = **slice dédiée du build**.
+> Détail : `algorithme-propositions-ajustement.md` §4.3.
+
+> **Limite connue — régime hybride pompe + compléments bolus stylo** (validé avec l'utilisateur, US-2651).
+> `InsulinDeliveryMethod` (pump/manual) est un flag patient unique (`InsulinTherapySettings`) : pas de
+> modèle hybride. Le journal repas lit `DiabetesEvent.bolusDose` sans méthode de délivrance → un
+> complément stylo n'est pas distinguable (et vu seulement s'il est loggué). Effet = **sous-détection
+> fail-safe** : un complément stylo qui corrige la PPG masque une déficience du ratio pompe (ICR),
+> et une correction stylo hors calculateur échappe à l'analyse ISF (`BolusCalculationLog`). Risque de
+> sur-proposition faible (≥3 repas + moyenne + garde hypo). À gérer via une méthode de délivrance
+> **par bolus** (pas par patient). Détail : `algorithme-propositions-ajustement.md` §5ter.

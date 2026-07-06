@@ -63,6 +63,9 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       PATIENT_MAX_CHANGE_PERCENT: 10,
       PATIENT_PROPOSAL_COOLDOWN_HOURS: 24,
       HYPO_LEVEL1_RECURRENCE_MIN: 2,
+      POSTPRANDIAL_TITRATION_LOW_GL: 1.0,
+      POSTPRANDIAL_TITRATION_LOW_PREGNANCY_GL: 0.9,
+      POSTMEAL_NADIR_WINDOW_MIN: 300,
     })
   })
 
@@ -82,6 +85,15 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
     expect(CLINICAL_BOUNDS.FIXED_BOLUS_WARN_U).toBeLessThan(CLINICAL_BOUNDS.FIXED_BASAL_WARN_U)
     // cap de variation patient strictement plus strict que le cap moteur
     expect(CLINICAL_BOUNDS.FIXED_DOSE_PATIENT_MAX_DELTA_U).toBeLessThan(CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U)
+  })
+
+  it("US-2651 — deadband ICR : borne basse < plafond adulte (1,80), grossesse plus stricte", () => {
+    // borne basse post-prandiale strictement sous le plafond adulte → deadband non vide
+    expect(CLINICAL_BOUNDS.POSTPRANDIAL_TITRATION_LOW_GL).toBeLessThan(1.8)
+    // grossesse plus stricte que l'adulte (borne basse resserrée)
+    expect(CLINICAL_BOUNDS.POSTPRANDIAL_TITRATION_LOW_PREGNANCY_GL)
+      .toBeLessThan(CLINICAL_BOUNDS.POSTPRANDIAL_TITRATION_LOW_GL)
+    expect(CLINICAL_BOUNDS.POSTMEAL_NADIR_WINDOW_MIN).toBeGreaterThan(120) // > le point PPG 2 h
   })
 })
 
