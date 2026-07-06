@@ -110,6 +110,39 @@ describe("proposal-algorithm", () => {
       }))
       expect(analyzeIsfSlot(slot, corrections)).toBeNull()
     })
+
+    it("garde HYPO : baisse ISF supprimée si un post-correction est en hypo sévère (US-2651)", () => {
+      const corrections = [
+        ...Array.from({ length: 5 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.20 })),
+        { postGlucoseGl: 0.40, targetGl: 1.20 }, // hypo sévère < 0,54 g/L
+      ]
+      // Moyenne haute → isfTooHigh (baisser l'ISF = corrections plus fortes = plus d'insuline) → supprimé.
+      expect(analyzeIsfSlot(slot, corrections)).toBeNull()
+    })
+
+    it("garde HYPO : hausse ISF (sens sûr, moins d'insuline) permise malgré des hypos", () => {
+      const corrections = Array.from({ length: 5 }, () => ({ postGlucoseGl: 0.40, targetGl: 1.20 }))
+      const r = analyzeIsfSlot(slot, corrections) // sur-correction → isfTooLow (hausse ISF)
+      expect(r!.reason).toBe("isfTooLow")
+    })
+
+    it("garde HYPO : UN seul relevé niveau-1 (0,54) ne supprime pas la baisse ISF (borne)", () => {
+      const corrections = [
+        ...Array.from({ length: 5 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.20 })),
+        { postGlucoseGl: 0.54, targetGl: 1.20 }, // niveau 1, non sévère, isolé
+      ]
+      const r = analyzeIsfSlot(slot, corrections)
+      expect(r!.reason).toBe("isfTooHigh") // non supprimé
+    })
+
+    it("garde HYPO : DEUX relevés niveau-1 (< 0,70) récurrents suppriment la baisse ISF", () => {
+      const corrections = [
+        ...Array.from({ length: 4 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.20 })),
+        { postGlucoseGl: 0.60, targetGl: 1.20 },
+        { postGlucoseGl: 0.65, targetGl: 1.20 },
+      ]
+      expect(analyzeIsfSlot(slot, corrections)).toBeNull()
+    })
   })
 
   describe("analyzeIcrSlot", () => {
@@ -138,6 +171,15 @@ describe("proposal-algorithm", () => {
     it("returns null with insufficient data", () => {
       expect(analyzeIcrSlot(slot, [])).toBeNull()
     })
+
+    it("garde HYPO : baisse ICR supprimée si un post-repas est en hypo sévère (US-2651)", () => {
+      const meals = [
+        ...Array.from({ length: 5 }, () => ({ postGlucoseGl: 2.00, targetGl: 1.20 })),
+        { postGlucoseGl: 0.40, targetGl: 1.20 },
+      ]
+      // Moyenne haute → icrTooHigh (baisser l'ICR = plus d'insuline/gramme) → supprimé par la garde hypo.
+      expect(analyzeIcrSlot(slot, meals)).toBeNull()
+    })
   })
 
   describe("analyzeBasalTrend", () => {
@@ -158,6 +200,12 @@ describe("proposal-algorithm", () => {
 
     it("returns null with < 3 values", () => {
       expect(analyzeBasalTrend([1.5], 1.2, 0.8)).toBeNull()
+    })
+
+    it("garde HYPO : hausse basale supprimée si une glycémie à jeun est en hypo sévère (US-2651)", () => {
+      // Moyenne élevée (dawn phenomenon) mais une hypo nocturne masquée → hausse basale supprimée.
+      const fasting = [1.60, 1.55, 1.58, 0.40]
+      expect(analyzeBasalTrend(fasting, 1.20, 0.80)).toBeNull()
     })
   })
 

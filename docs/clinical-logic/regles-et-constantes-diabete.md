@@ -200,8 +200,21 @@ dans son document dédié : **[`algorithme-propositions-ajustement.md`](./algori
 - **Contrat d'entrée** : `postGlucoseGl` = glycémie d'évaluation du moment (PPG 2 h pour un moment
   prandial ; à jeun/pré-repas pour une dose de type basal) — à câbler correctement dans le générateur.
 
-> **Suivi PRIORITAIRE (validé medical, à faire AVANT de câbler le générateur mode a)** — Garde HYPO
-> manquante sur `analyzeBasalTrend`/`analyzeIsfSlot`/`analyzeIcrSlot` : seul `analyzeFixedDose` refuse
-> une **hausse** si un relevé est en hypo sévère. Une hypo nocturne masquée par la moyenne pourrait
-> produire une **hausse basale** dangereuse. Mirrorer la garde hypo (< 0,54 g/L) sur ces analyseurs
-> avant de les relier à `createEngineProposal`.
+### Garde HYPO des analyseurs (US-2651, validé medical)
+
+Les **4 analyseurs** (`analyzeIsfSlot`/`analyzeIcrSlot`/`analyzeBasalTrend`/`analyzeFixedDose`) refusent
+toute proposition en **direction « plus d'insuline effective »** (risque hypo) si un relevé de la
+fenêtre est en **hypo SÉVÈRE** (< `GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO` = 0,54 g/L) — la moyenne peut
+masquer une hypo intermittente. Helper commun `hypoBlocksProposal`, direction dérivée de
+`deriveRiskDirection` (hausse basale/dose fixe **ou** baisse ISF/ICR = « hypo »). Le sens sûr (moins
+d'insuline) reste permis. Ferme le prérequis avant câblage du générateur mode a.
+
+**Déclencheurs (validé medical)** :
+- **Hypo sévère (niveau 2, < 0,54 g/L)** : **un seul** relevé suffit (urgence clinique).
+- **Hypo légère (niveau 1, < 0,70 g/L)** : freine aussi mais seulement si **récurrente** —
+  ≥ `HYPO_LEVEL1_RECURRENCE_MIN` (= 2) relevés dans la fenêtre (évite la sur-suppression sur un
+  événement isolé, très courant). Choix délibéré : le niveau 2 seul sur-protégerait moins mais
+  raterait des hypos légères répétées ; le comptage niveau-1 les capture sans bruit.
+- **Contrat basal (Somogyi)** : `analyzeBasalTrend` ne capte l'hypo nocturne masquée que si
+  `fastingValues` inclut le **nadir CGM nocturne** (pas seulement le pré-petit-déj) — précondition
+  JSDoc à respecter par le générateur au câblage.

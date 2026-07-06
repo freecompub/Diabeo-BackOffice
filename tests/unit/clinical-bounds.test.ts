@@ -62,6 +62,7 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       MAX_CHANGE_PERCENT: 20,
       PATIENT_MAX_CHANGE_PERCENT: 10,
       PATIENT_PROPOSAL_COOLDOWN_HOURS: 24,
+      HYPO_LEVEL1_RECURRENCE_MIN: 2,
     })
   })
 

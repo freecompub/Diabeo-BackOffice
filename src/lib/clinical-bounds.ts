@@ -96,6 +96,14 @@ export const CLINICAL_BOUNDS = {
    * (pas d'index DB : course à faible enjeu, tout reste gaté médecin).
    */
   PATIENT_PROPOSAL_COOLDOWN_HOURS: 24,
+  /**
+   * US-2651 — garde HYPO des analyseurs. Une hypo **sévère** (niveau 2, < 0,54 g/L / 54 mg/dL)
+   * suffit (un seul relevé) à supprimer une proposition « plus d'insuline ». Une hypo **légère**
+   * (niveau 1, 0,54–0,70 g/L) freine aussi, mais seulement si **récurrente** : ≥ ce nombre de
+   * relevés niveau-1 dans la fenêtre (évite la sur-suppression sur un événement isolé courant).
+   * Seuils : `GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO` (54) / `.TARGET_LOW` (70).
+   */
+  HYPO_LEVEL1_RECURRENCE_MIN: 2,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
