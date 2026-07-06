@@ -5,6 +5,8 @@
 > **Source de vérité = le code** (`src/lib/proposal-algorithm.ts`, `src/lib/clinical-bounds.ts`,
 > `src/lib/services/adjustment.service.ts`) ; ce document en est le catalogue fonctionnel.
 > **⚠️ US-2651 exige la validation `medical-domain-validator`** (voir §7 « Points à valider »).
+> **📊 Vue d'ensemble visuelle** : [`organigramme-propositions.html`](./organigramme-propositions.html)
+> (organigramme complet mode → analyseurs → gardes → persistance → validation médecin).
 
 ---
 

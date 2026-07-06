@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Organigramme — Algorithme de propositions d'ajustement (Diabeo, US-2651)</title>
+<!--
+  Document technico-fonctionnel autonome (hors app React). Couleurs = palette Diabeo
+  « Sérénité Active » (miroir de src/design-system/tokens.ts) inlinées en variables CSS —
+  exception tolérée pour un fichier HTML de doc, au même titre que les templates email.
+  Source de vérité de l'algorithme : src/lib/proposal-algorithm.ts + adjustment.service.ts.
+  Spec : docs/clinical-logic/algorithme-propositions-ajustement.md
+-->
+<style>
+  :root {
+    --teal: #0D9488;        /* primaire — process/décision */
+    --teal-dark: #0f766e;
+    --coral: #F97316;       /* secondaire — flag/orientation */
+    --green: #10B981;       /* glycémie normale — succès/proposition */
+    --amber: #F59E0B;       /* glycémie haute — garde/avertissement */
+    --red: #EF4444;         /* glycémie critique — rejet/suppression */
+    --ink: #1F2937;
+    --muted: #6B7280;
+    --bg: #FAFAFA;
+    --bg2: #F3F4F6;
+    --border: #E5E7EB;
+    --card: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #F3F4F6; --muted: #9CA3AF; --bg: #111827; --bg2: #1F2937;
+      --border: #374151; --card: #1F2937;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 2rem 1rem 4rem;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--ink); line-height: 1.5;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; color: var(--teal); margin: 0 0 .25rem; }
+  .sub { color: var(--muted); margin: 0 0 1.5rem; font-size: .9rem; }
+  .legend {
+    display: flex; flex-wrap: wrap; gap: .75rem; margin: 0 0 2rem;
+    padding: 1rem; background: var(--bg2); border: 1px solid var(--border); border-radius: 12px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; font-size: .82rem; }
+  .dot { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+  .flow { display: flex; flex-direction: column; align-items: center; gap: 0; }
+  .node {
+    border-radius: 12px; padding: .7rem 1rem; text-align: center; max-width: 640px;
+    border: 2px solid var(--border); background: var(--card); box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    font-size: .9rem;
+  }
+  .node b { display: block; }
+  .node small { color: var(--muted); font-size: .78rem; }
+  .node.start { border-color: var(--teal); background: color-mix(in srgb, var(--teal) 12%, var(--card)); }
+  .node.process { border-color: var(--teal); }
+  .node.decision { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 12%, var(--card)); border-radius: 24px; }
+  .node.reject { border-color: var(--red); background: color-mix(in srgb, var(--red) 12%, var(--card)); color: var(--ink); }
+  .node.flag { border-color: var(--coral); background: color-mix(in srgb, var(--coral) 12%, var(--card)); }
+  .node.success { border-color: var(--green); background: color-mix(in srgb, var(--green) 14%, var(--card)); }
+  .node.doctor { border-color: var(--teal-dark); background: color-mix(in srgb, var(--teal) 8%, var(--card)); }
+  .arrow { width: 2px; height: 26px; background: var(--muted); position: relative; }
+  .arrow::after {
+    content: ""; position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+    border-left: 5px solid transparent; border-right: 5px solid transparent; border-top: 7px solid var(--muted);
+  }
+  .arrow.short { height: 18px; }
+  .lbl { font-size: .72rem; color: var(--muted); background: var(--bg); padding: 0 .3rem; }
+  .branches { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: center; align-items: flex-start; width: 100%; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 0; flex: 1 1 260px; min-width: 240px; }
+  .col > .node { width: 100%; }
+  .stage {
+    width: 100%; max-width: 720px; margin-top: 1.5rem; padding: 1rem 1rem .4rem;
+    border: 1px dashed var(--border); border-radius: 14px; background: color-mix(in srgb, var(--bg2) 60%, transparent);
+  }
+  .stage-title { font-size: .8rem; font-weight: 700; color: var(--teal); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 .8rem; }
+  .stage .flow { gap: 0; }
+  .reject-row { display: flex; align-items: center; gap: .5rem; }
+  .reject-row .arrow-h { width: 30px; height: 2px; background: var(--red); position: relative; }
+  .reject-row .arrow-h::after { content:""; position:absolute; right:0; top:50%; transform:translateY(-50%); border-top:5px solid transparent; border-bottom:5px solid transparent; border-left:7px solid var(--red); }
+  .foot { margin-top: 2.5rem; font-size: .8rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 1rem; }
+  code { background: var(--bg2); padding: .05rem .3rem; border-radius: 4px; font-size: .82em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Algorithme de propositions d'ajustement d'insulinothérapie</h1>
+  <p class="sub">Épic US-2645 / US-2651 · générateur nocturne · une proposition n'est <b>jamais</b> appliquée automatiquement (ADR&nbsp;#13). Source&nbsp;: <code>proposal-algorithm.ts</code> + <code>adjustment.service.ts</code>.</p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--teal)"></i> Processus / entrée</span>
+    <span><i class="dot" style="background:var(--amber)"></i> Décision (garde-fou)</span>
+    <span><i class="dot" style="background:var(--red)"></i> Rejet / suppression (fail-closed)</span>
+    <span><i class="dot" style="background:var(--coral)"></i> Flag d'orientation (pas de dose)</span>
+    <span><i class="dot" style="background:var(--green)"></i> Proposition créée (pending)</span>
+  </div>
+
+  <div class="flow">
+    <div class="node start"><b>Patient éligible</b><small>cron nocturne · portefeuille actif (deletedAt null)</small></div>
+    <div class="arrow"></div>
+    <div class="node decision"><b>resolveTreatmentMode()</b><small>dérivé serveur · fail-closed (un DT1 n'est jamais nonInsulin)</small></div>
+    <div class="arrow"><span class="lbl">selon le mode</span></div>
+
+    <div class="branches">
+      <!-- Mode c -->
+      <div class="col">
+        <div class="node flag"><b>(c) nonInsulin</b><small>frontière MDR / IEC&nbsp;62304</small></div>
+        <div class="arrow short"></div>
+        <div class="node reject"><b>Aucune proposition de dose</b></div>
+        <div class="arrow short"></div>
+        <div class="node flag"><b>ClinicalReviewFlag</b><small>« à revoir en consultation » · HbA1c périmée · TIR sous cible</small></div>
+      </div>
+
+      <!-- Mode b -->
+      <div class="col">
+        <div class="node process"><b>(b) fixedDose</b><small>doses simples · carnet BGM</small></div>
+        <div class="arrow short"></div>
+        <div class="node process"><b>analyzeFixedDose(moment)</b><small>dose directe par moment · cap min(10&nbsp;%, 2&nbsp;U) · plancher 0,5&nbsp;U</small></div>
+      </div>
+
+      <!-- Mode a -->
+      <div class="col">
+        <div class="node process"><b>(a) basalBolus</b><small>basal/bolus complet</small></div>
+        <div class="arrow short"></div>
+        <div class="node process"><b>analyzeIsfSlot · analyzeIcrSlot · analyzeBasalTrend</b><small>par créneau horaire · ICR : deadband post-prandial (§5ter)<br>basal : pompe uniquement (stylo/MDI non géré)</small></div>
+      </div>
+    </div>
+
+    <!-- Étape analyseur (commune a/b) -->
+    <div class="stage">
+      <p class="stage-title">Analyseur (pur) — garde-fous du candidat</p>
+      <div class="flow">
+        <div class="node decision"><b>≥ 3 événements ?</b></div>
+        <div class="reject-row"><span class="lbl">non</span><span class="arrow-h"></span><div class="node reject">null (bruit)</div></div>
+        <div class="arrow short"><span class="lbl">oui</span></div>
+        <div class="node decision"><b>|variation| ≥ 2 % ?</b></div>
+        <div class="reject-row"><span class="lbl">non</span><span class="arrow-h"></span><div class="node reject">null (non actionnable)</div></div>
+        <div class="arrow short"><span class="lbl">oui</span></div>
+        <div class="node process"><b>clamp ± 20 %</b> <small>(MAX_CHANGE_PERCENT)</small></div>
+        <div class="arrow short"></div>
+        <div class="node decision"><b>Garde HYPO</b><small>direction « plus d'insuline » ET hypo sévère (&lt;0,54) ou niveau-1 récurrente (&lt;0,70 ×≥2) ?</small></div>
+        <div class="reject-row"><span class="lbl">oui</span><span class="arrow-h"></span><div class="node reject">supprimé</div></div>
+        <div class="arrow short"><span class="lbl">non</span></div>
+        <div class="node success"><b>ProposalCandidate</b></div>
+      </div>
+    </div>
+
+    <div class="arrow"></div>
+
+    <!-- Étape persistance -->
+    <div class="stage">
+      <p class="stage-title">createEngineProposal — persistance moteur (re-validation serveur)</p>
+      <div class="flow">
+        <div class="node decision"><b>Frontière nonInsulin ?</b></div>
+        <div class="reject-row"><span class="lbl">oui</span><span class="arrow-h"></span><div class="node reject">throw nonInsulinNoDose</div></div>
+        <div class="arrow short"><span class="lbl">non</span></div>
+        <div class="node decision"><b>Bornes dures + supportingEvents &gt; 0 ?</b><small>validateProposedValue</small></div>
+        <div class="reject-row"><span class="lbl">hors bornes</span><span class="arrow-h"></span><div class="node reject">valueOutOfBounds</div></div>
+        <div class="arrow short"><span class="lbl">ok</span></div>
+        <div class="node process"><b>currentValue re-dérivé serveur</b><small>jamais celui du candidat · changePercent recalculé</small></div>
+        <div class="arrow short"></div>
+        <div class="node decision"><b>Config a dérivé depuis l'analyse ?</b><small>|live − expectedCurrentValue| &gt; 0</small></div>
+        <div class="reject-row"><span class="lbl">oui</span><span class="arrow-h"></span><div class="node reject">baselineMovedAtPersist</div></div>
+        <div class="arrow short"><span class="lbl">non</span></div>
+        <div class="node decision"><b>reason ↔ signe du delta cohérents ?</b></div>
+        <div class="reject-row"><span class="lbl">non</span><span class="arrow-h"></span><div class="node reject">reasonDirectionMismatch</div></div>
+        <div class="arrow short"><span class="lbl">oui</span></div>
+        <div class="node decision"><b>Déjà une proposition pending ?</b><small>index one_pending_per_slot</small></div>
+        <div class="reject-row"><span class="lbl">oui</span><span class="arrow-h"></span><div class="node reject">duplicatePendingProposal</div></div>
+        <div class="arrow short"><span class="lbl">non</span></div>
+        <div class="node success"><b>INSERT</b><small>source = algorithm · proposedByUserId = null · status = pending</small></div>
+      </div>
+    </div>
+
+    <div class="arrow"><span class="lbl">best-effort</span></div>
+    <div class="node process"><b>Notification du médecin référent</b></div>
+    <div class="arrow"></div>
+    <div class="node doctor"><b>Validation DOCTOR</b><small>accept / reject · compare-and-swap (baselineMoved) si la base a bougé</small></div>
+    <div class="arrow"><span class="lbl">accept</span></div>
+    <div class="node success"><b>Application scopée patient</b></div>
+  </div>
+
+  <p class="foot">
+    Fail-closed partout : au moindre doute (données manquantes, base dérivée, hors bornes, doublon), on
+    <b>refuse</b> plutôt que de risquer une dose erronée. Limites connues explicites : basale stylo/MDI et
+    régime hybride pompe+stylo (voir la spec). Détails, formules et exemples chiffrés&nbsp;:
+    <code>algorithme-propositions-ajustement.md</code>.
+  </p>
+</div>
+</body>
+</html>
