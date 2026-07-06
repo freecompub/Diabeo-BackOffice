@@ -119,6 +119,22 @@ describe("mealtimePattern.mealTrends", () => {
     expect(journal[0].nadirMgdl).toBe(180) // le creux à +210 (après le glucide) est exclu
   })
 
+  it("le glucide du repas lui-même (à t0) N'effondre PAS la fenêtre nadir (borne > t0 stricte)", async () => {
+    const meal = noonMeal(1)
+    const readings = [cgm(meal._t0, 60, 1.8), cgm(meal._t0, 210, 0.5)]
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([meal] as any)
+      .mockResolvedValueOnce([{ eventDate: meal.eventDate }] as any) // le glucide du repas, à t0
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readings as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+    const { journal } = await mealtimePattern.mealTrends(42, "14d", 1)
+    // Sans le « > t0 » strict, la fenêtre serait [t0, t0] → nadir null. Avec, le glucide à t0 est
+    // ignoré → fenêtre pleine (t0+300) → le creux à +210 est capté.
+    expect(journal[0].nadirMgdl).toBe(50)
+  })
+
   it("invalidates peak AND post when an intercurrent carb intake truncates the window (< 90 min) — M-1", async () => {
     const meals = [noonMeal(1), noonMeal(2), noonMeal(3)]
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)

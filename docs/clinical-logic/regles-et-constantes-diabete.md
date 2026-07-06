@@ -261,3 +261,10 @@ fois l'emballement et l'érosion du bon contrôle.
 >   dans `nadirGl` supprimerait une proposition légitime (fail-safe mais érosion qualité). La **slice
 >   assemblage** (qui peuplera `nadirGl`) doit **filtrer** les valeurs non physiologiques AVANT
 >   `analyzeIcrSlot` — pas dans l'analyseur (qui traite `0` comme une hypo réelle, à raison).
+
+> **Suivi build — détection resucrage (US-2651, tracé depuis la revue medical #670)** : la fenêtre nadir
+> (`nadirWindowEnd`) se termine au prochain apport glucidique. Un **resucrage** d'hypo (glucide pris à
+> cause d'une hypo) peut donc **tronquer la fenêtre AVANT le vrai creux** → la garde hypo sous-protège
+> (autorise une baisse d'ICR = plus d'insuline). Atténué par la pente descendante captée en CGM 5 min.
+> **À faire** : inférer un resucrage (petit glucide, sans bolus, glycémie précédente basse) et le traiter
+> comme un **signal d'hypo** (pas une simple borne). Détail : `algorithme-propositions-ajustement.md` §5ter.

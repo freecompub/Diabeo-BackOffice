@@ -208,6 +208,16 @@ accepte un champ **`nadirGl` optionnel** par repas, fourni **uniquement** à la 
 bornés à ≥ 0,20 g/L par `loadContext`, **aucun zéro-artefact** n'atteint l'analyseur (suivi LOW #669 clos).
 **Reste (slice 2)** : le générateur consomme `localHour` (→ `findSlotForHour`) et `nadirMgdl/100` (→ `nadirGl`).
 
+> **⚠️ Caveat clinique — troncature par resucrage (MEDIUM, validé medical).** La fenêtre nadir se termine
+> au **prochain apport glucidique** (anti mis-attribution : la glycémie post-collation ne doit pas être
+> imputée au bolus de ce repas). Mais si le patient **resucre** une hypo naissante (ex. glucide à t0+100),
+> le **vrai creux** (~t0+120) tombe **après** et est **exclu** → la garde hypo peut sous-protéger (elle
+> autorise alors une baisse d'ICR = plus d'insuline, la direction dangereuse). **Atténuation** : en CGM
+> 5 min, les relevés **pré-resucrage** (déjà sur la pente descendante) restent captés → la garde voit
+> souvent une valeur proche/sous le seuil, juste pas le point le plus bas (d'où MEDIUM, pas HIGH).
+> **Suivi tracé** : traiter un glucide **inférable comme resucrage** (petit glucide, sans bolus, glycémie
+> précédente basse) comme un **signal d'hypo** plutôt qu'une simple borne de troncature.
+
 **Bucketing meal → créneau ICR (MEDIUM/HIGH)** — bucketer à l'**heure réelle** du repas
 (`findSlotForHour(carbRatios, heureLocale)`), **jamais** au midpoint du moment (une frontière de créneau
 peut tomber au milieu d'un moment → mauvaise attribution). Fallback si contraint au moment : **fail-closed
