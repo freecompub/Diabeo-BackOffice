@@ -30,7 +30,7 @@
 | **Fail-closed containment** | Variante du bucketing : ne rattacher un moment à un créneau **que s'il y tient entièrement**, sinon on **skip** (pas de mauvaise attribution). |
 | **Snapshot → persist** | Le candidat est calculé sur un **instantané** (snapshot) de la config ; s'il a **dérivé** avant l'enregistrement, on rejette (`baselineMovedAtPersist`). |
 | **Compare-and-swap** (`baselineMoved`) | Vérifier que la **valeur de base n'a pas changé** entre lecture et écriture avant d'appliquer ; sinon on annule. |
-| **Hypo sévère / légère** | Hypoglycémie **niveau 2** (< 0,54 g/L, urgence clinique) / **niveau 1** (0,54–0,70 g/L, à traiter mais moins critique). |
+| **Hypo sévère / légère** | Ici : hypoglycémie **niveau 2** (< 0,54 g/L / 54 mg/dL, cliniquement significative) / **niveau 1** (0,54–0,70 g/L, à traiter mais moins critique). *Précision* : l'ADA réserve le terme « **severe** » au **niveau 3** (atteinte cognitive nécessitant l'aide d'un tiers, sans seuil chiffré) ; le raccourci « < 54 = sévère » employé ici est la convention usuelle en CGM. |
 | **Bolus / basal** | **Bolus** = insuline ponctuelle (repas ou correction). **Basale** = insuline de fond, continue (débit U/h). |
 
 ### Abréviations & sigles
@@ -202,6 +202,10 @@ rapide tombe à ~3-4 h. Fournir à `hypoBlocksProposal` le **nadir** glycémique
 `[t0, min(prochain glucide, t0 + POSTMEAL_NADIR_WINDOW_MIN=300 min)]`, **pas** seulement la PPG 2 h
 (la *moyenne* qui pilote la direction reste sur la PPG 2 h). `JournalMeal` n'expose ni l'heure ni le
 nadir → **prérequis build** : augmenter l'assemblage (au niveau `DiabetesEvent`/`meal-trends`).
+⚠️ **Changement de signature** : `analyzeIcrSlot` prend aujourd'hui **un seul** tableau `postGlucoseGl`
+servant **à la fois** à la moyenne (direction) **et** à la garde hypo. Fournir le nadir exige un **champ
+distinct** (ex. `nadirGl` par repas) — sinon injecter le nadir dans `postGlucoseGl` **corromprait** la
+moyenne qui pilote la direction. À faire dans la même slice que l'assemblage.
 
 **Bucketing meal → créneau ICR (MEDIUM/HIGH)** — bucketer à l'**heure réelle** du repas
 (`findSlotForHour(carbRatios, heureLocale)`), **jamais** au midpoint du moment (une frontière de créneau
@@ -237,7 +241,7 @@ l'analyseur), anti-spam, frontière nonInsulin. Cooldown moteur au niveau géné
 | **Baisse ICR** (> plafond) | `2,00` g/L | ICR `10 → 8,9` (`icrTooHigh`) | analyseur avec cible = plafond `1,80` → `−11 %`. Plus d'insuline/gramme. |
 | **Hausse ICR** (< borne basse) | `0,85` g/L | ICR `10 → 11,5` (`icrTooLow`) | analyseur avec cible = borne basse `1,00` → `+15 %`. Moins d'insuline. |
 | **Zone morte** (bon contrôle) | `1,40` g/L | **aucune proposition** | entre `1,00` et `1,80` → rien (n'érode pas un bon contrôle). |
-| **Grossesse** (DT1 enceinte) | `1,55` g/L | ICR `10 → …` (baisse) | plafond **`1,40`** (pas 1,80) car `isPregnancy`. **Sans** cette règle, `1,55 < 1,80` aurait donné une **hausse** — dangereux. |
+| **Grossesse** (DT1 enceinte) | `1,55` g/L | ICR `10 → …` (baisse) | plafond **`1,40`** (pas 1,80) car `isPregnancy` → `1,55 > 1,40` → **baisse** (plus d'insuline), correct. **Sans** la règle, les bornes seraient `[1,00 ; 1,80]` → `1,55` tomberait dans la **zone morte → aucune proposition** : on **manquerait** le resserrement nécessaire chez la population la plus à risque (**sous-traitement silencieux**, pas un sur-dosage). |
 | **Nadir tardif** (garde hypo) | `1,90` g/L | candidat baisse **supprimé** | un repas a un nadir à 3 h 30 de `0,50` g/L (hypo sévère) → la baisse d'ICR (plus d'insuline) est refusée. Invisible si on ne regarde que la PPG 2 h (`1,70`). |
 | **Bucketing** (mal attribué) | — | mauvais créneau titré | créneaux ICR `[12,18)` et `[18,24)`, moment « soir » `[16,22)` : un repas à **16 h 30** (créneau `[12,18)`) mappé par midpoint `19 h` → titrerait le **mauvais** créneau `[18,24)`. → bucketing à l'**heure réelle**. |
 | **Porte qualité** (exclu) | — | repas écarté | repas sans glucides enregistrés, ou pré-repas `2,20` g/L (le bolus incluait une correction) → la PPG ne reflète pas l'ICR → **exclu** de l'analyse. |
