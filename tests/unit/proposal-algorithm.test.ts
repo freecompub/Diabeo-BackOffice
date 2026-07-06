@@ -288,6 +288,26 @@ describe("proposal-algorithm", () => {
       const r = analyzeBasalTrend(fasting, 1.20, 0.80)
       expect(r!.reason).toBe("basalTooHigh")
     })
+
+    it("garde HYPO : le NADIR nocturne supprime une hausse que le à-jeun seul laisserait passer (Somogyi)", () => {
+      const fasting = [1.50, 1.55, 1.60] // à jeun HAUT → basalTooLow (hausse) ; effet Somogyi
+      const nadirs = [0.50, 1.30, 1.40] // MAIS un creux nocturne sévère (0,50)
+      expect(analyzeBasalTrend(fasting, 1.20, 0.80, nadirs)).toBeNull() // hausse supprimée
+    })
+
+    it("garde HYPO : SANS nadir nocturne, le même à-jeun haut propose la hausse (contrôle)", () => {
+      const fasting = [1.50, 1.55, 1.60]
+      expect(analyzeBasalTrend(fasting, 1.20, 0.80)!.reason).toBe("basalTooLow")
+    })
+
+    it("le nadir ne corrompt PAS la moyenne/direction (% identique avec et sans nadir)", () => {
+      const fasting = [0.70, 0.72, 0.71] // basalTooHigh (baisse, sens sûr)
+      const r1 = analyzeBasalTrend(fasting, 1.20, 0.80)
+      const r2 = analyzeBasalTrend(fasting, 1.20, 0.80, [0.60, 0.62, 0.61])
+      expect(r1!.reason).toBe("basalTooHigh")
+      expect(r2!.reason).toBe("basalTooHigh")
+      expect(r2!.changePercent).toBe(r1!.changePercent)
+    })
   })
 
   describe("analyzeFixedDose (mode b, US-2651)", () => {
