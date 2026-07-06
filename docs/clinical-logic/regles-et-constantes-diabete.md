@@ -271,8 +271,18 @@ fois l'emballement et l'érosion du bon contrôle.
 > **À faire** : inférer un resucrage (petit glucide, sans bolus, glycémie précédente basse) et le traiter
 > comme un **signal d'hypo** (pas une simple borne). Détail : `algorithme-propositions-ajustement.md` §5ter.
 
-> **Suivi US-2653 — dé-escalade sur hypos récurrentes** : le générateur décide de proposer sur la
-> MOYENNE PPG (deadband) mais la garde hypo agit sur le NADIR. Un patient bon en moyenne mais avec
-> hypos post-repas récurrentes ne reçoit aucune proposition (sous-action, sens sûr). US-2653 ajoutera
-> un déclencheur « nadirs récurrents → moins d'insuline » transverse aux 4 analyseurs. Cf.
-> `algorithme-propositions-ajustement.md` §5ter.
+### Dé-escalade sur hypos récurrentes (US-2653, validé medical)
+
+Déclencheur **indépendant du deadband** : des hypos post-prandiales récurrentes (nadirs) doivent proposer
+**moins d'insuline** même si la moyenne est « normale ».
+
+| Constante / règle | Valeur | Sens clinique |
+|---|---|---|
+| `HYPO_DEESCALATION_PERCENT` | **+10 %** | Pas de dé-escalade ICR (≈ −9 % insuline repas) — pas de titration standard, **fixe** (pas de scaling). Persistance titre **cumulativement**. Capé par `MAX_CHANGE_PERCENT`. |
+| `recurrentPostMealHypo` | **≥ 2 nadirs < 0,70** parmi ≥ 3 | « Récurrent » = corroboration exigée. Plus strict que la garde (qui fire sur 1 sévère isolé) → un artefact capteur seul ne réduit pas l'insuline. |
+
+**Matrice de décision par créneau (chemin ICR)** — moyenne PPG × hypo récurrente :
+- `> plafond` & non → **BAISSE** (deadband) · `> plafond` & **oui** → **flag `highVariabilityPostMeal`** (pas de dose : le levier ICR ne corrige pas pic + creux) · **dans la bande** & oui → **HAUSSE +10 %** (cœur US-2653) · dans la bande & non → rien · `< borne basse` → **HAUSSE** (deadband).
+
+Slice A (prédicat + builder purs) livrée ; slice B = matrice dans le générateur + flag. Cf.
+`algorithme-propositions-ajustement.md` §5ter.

@@ -41,6 +41,59 @@ function hypoBlocksProposal(
 }
 
 /**
+ * US-2653 — détecte une **hypo post-prandiale RÉCURRENTE** sur un créneau (pour DÉCLENCHER une
+ * dé-escalade, pas seulement freiner). Vrai si **≥ `HYPO_LEVEL1_RECURRENCE_MIN` nadirs < niveau-1
+ * (0,70 g/L)** parmi ≥ 3 nadirs disponibles. NB : plus strict que `hypoBlocksProposal` (qui fire sur
+ * UN sévère isolé) — ici **corroboration exigée** : un seul relevé sévère (artefact capteur possible)
+ * ne suffit pas à réduire activement l'insuline (validé medical, garde anti-artefact). Un nadir sévère
+ * (< 0,54) compte aussi comme niveau-1.
+ *
+ * @param nadirsGl Nadirs post-prandiaux (g/L) des repas du créneau, valeurs non nulles uniquement.
+ */
+export function recurrentPostMealHypo(nadirsGl: number[]): boolean {
+  if (nadirsGl.length < 3) return false
+  // `Number.isFinite` d'abord : garde défensif — `null < 0.70` coerce à `true` en JS (null→0) et
+  // fabriquerait une fausse hypo (direction « moins d'insuline »). Le contrat exige des non-nuls,
+  // ce garde en fait une garantie runtime dans une fonction safety-relevant.
+  const level1 = nadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length
+  return level1 >= CLINICAL_BOUNDS.HYPO_LEVEL1_RECURRENCE_MIN
+}
+
+/**
+ * US-2653 — candidat de **dé-escalade ICR** (moins d'insuline/gramme) sur hypos post-prandiales
+ * récurrentes, **indépendant du deadband sur la moyenne**. Pas **fixe** `+HYPO_DEESCALATION_PERCENT`
+ * (validé medical : pas de scaling — la persistance titre cumulativement). Direction HAUSSE = sens sûr
+ * (« hyper ») → jamais bloquée par la garde hypo ; les bornes de `createEngineProposal` suffisent (un
+ * proposedValue > `ICR_MAX` est rejeté à la persistance → skip fail-closed).
+ *
+ * ⚠️ Le cas **haute-variabilité** (moyenne > plafond ET hypos récurrentes) N'est PAS traité ici : c'est
+ * à l'appelant (générateur) de router ce cas vers un **flag de revue**, pas une proposition de dose.
+ *
+ * @param slot Créneau ICR courant.
+ * @param nadirsGl Nadirs post-prandiaux (g/L) du créneau, non nuls.
+ * @returns Candidat de hausse ICR, ou `null` si l'hypo n'est pas récurrente.
+ */
+export function analyzeIcrHypoDeescalation(
+  slot: { startHour: number; endHour: number; gramsPerUnit: number },
+  nadirsGl: number[],
+): ProposalCandidate | null {
+  if (!recurrentPostMealHypo(nadirsGl)) return null
+  const proposedValue = computeProposedValue(slot.gramsPerUnit, CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT)
+  return {
+    parameterType: "insulinToCarbRatio",
+    reason: "icrTooLow", // hausse ICR = moins d'insuline/gramme
+    currentValue: slot.gramsPerUnit,
+    proposedValue,
+    changePercent: CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT,
+    confidence: getConfidenceLevel(nadirsGl.length),
+    supportingEvents: nadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length, // nb de nadirs en hypo (> 0)
+    totalEventsConsidered: nadirsGl.length,
+    timeSlotStartHour: slot.startHour,
+    timeSlotEndHour: slot.endHour,
+  }
+}
+
+/**
  * Adjustment proposal candidate — suggested parameter change with confidence.
  * @typedef {Object} ProposalCandidate
  * @property {AdjustableParameter} parameterType - Parameter to adjust (ISF, ICR, or basal)
