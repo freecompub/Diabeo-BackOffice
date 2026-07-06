@@ -163,13 +163,18 @@ export function analyzeIsfSlot(
  * Analyze ICR (insulin-to-carb ratio) effectiveness for a time slot.
  * Detects systematic post-meal glucose over/under-coverage from carb ratio.
  * Only proposes if 3+ meals AND change is meaningful (> 2%).
- * @param {Object} slot - ICR slot configuration (startHour, endHour, gramsPerUnit)
- * @param {Array<{postGlucoseGl: number, targetGl: number}>} meals - Post-meal readings and targets
+ * Contrat nadir (US-2651, validé medical) : chaque repas porte `postGlucoseGl` (PPG 2 h, g/L) qui
+ * pilote la MOYENNE et la direction, et un `nadirGl` OPTIONNEL (creux post-prandial ~3-4 h) fourni
+ * UNIQUEMENT à la garde hypo (repli sur `postGlucoseGl` si absent). Ne jamais injecter le nadir dans
+ * `postGlucoseGl` : cela corromprait la moyenne. Voir spec section 5ter.
+ *
+ * @param slot - ICR slot configuration (startHour, endHour, gramsPerUnit)
+ * @param meals - Un élément par repas : postGlucoseGl (PPG 2 h), targetGl, et nadirGl optionnel.
  * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeIcrSlot(
   slot: { startHour: number; endHour: number; gramsPerUnit: number },
-  meals: { postGlucoseGl: number; targetGl: number }[],
+  meals: { postGlucoseGl: number; targetGl: number; nadirGl?: number }[],
 ): ProposalCandidate | null {
   if (meals.length < 3) return null
 
@@ -190,9 +195,13 @@ export function analyzeIcrSlot(
   // EN DESSOUS → ICR trop BAS → HAUSSE (icrTooLow). (Correction validée medical US-2651 : les
   // libellés étaient inversés — la DIRECTION était correcte, seul le `reason` affiché était faux.)
   const proposedValue = computeProposedValue(slot.gramsPerUnit, clampedChange)
-  // Garde HYPO : baisser l'ICR = plus d'insuline/gramme → supprimé si un post-repas de la fenêtre
-  // est en hypo sévère (un bolus repas a sur-shooté).
-  if (hypoBlocksProposal("insulinToCarbRatio", slot.gramsPerUnit, proposedValue, meals.map((m) => m.postGlucoseGl))) {
+  // Garde HYPO : baisser l'ICR = plus d'insuline/gramme → supprimé si un creux de la fenêtre est en
+  // hypo (un bolus repas a sur-shooté). ⚠️ La garde regarde le **nadir** post-prandial (`nadirGl`,
+  // creux à ~3-4 h) quand il est fourni — le pic d'action d'un analogue rapide tombe APRÈS la PPG 2 h,
+  // et une moyenne à 2 h peut masquer une hypo tardive (US-2651, validé medical). Repli sur la PPG 2 h
+  // (`postGlucoseGl`) si le nadir n'est pas disponible. La MOYENNE qui pilote la direction reste, elle,
+  // toujours sur `postGlucoseGl` (ci-dessus) — ne JAMAIS injecter le nadir dans `avgPost`.
+  if (hypoBlocksProposal("insulinToCarbRatio", slot.gramsPerUnit, proposedValue, meals.map((m) => m.nadirGl ?? m.postGlucoseGl))) {
     return null
   }
 

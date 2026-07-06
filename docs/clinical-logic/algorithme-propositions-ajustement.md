@@ -200,12 +200,11 @@ population la plus à risque). Répliquer exactement la règle de `meal-trends`.
 **Nadir post-prandial tardif (HIGH)** — la garde hypo ne voit que le point +2 h ; le nadir d'un analogue
 rapide tombe à ~3-4 h. Fournir à `hypoBlocksProposal` le **nadir** glycémique sur
 `[t0, min(prochain glucide, t0 + POSTMEAL_NADIR_WINDOW_MIN=300 min)]`, **pas** seulement la PPG 2 h
-(la *moyenne* qui pilote la direction reste sur la PPG 2 h). `JournalMeal` n'expose ni l'heure ni le
-nadir → **prérequis build** : augmenter l'assemblage (au niveau `DiabetesEvent`/`meal-trends`).
-⚠️ **Changement de signature** : `analyzeIcrSlot` prend aujourd'hui **un seul** tableau `postGlucoseGl`
-servant **à la fois** à la moyenne (direction) **et** à la garde hypo. Fournir le nadir exige un **champ
-distinct** (ex. `nadirGl` par repas) — sinon injecter le nadir dans `postGlucoseGl` **corromprait** la
-moyenne qui pilote la direction. À faire dans la même slice que l'assemblage.
+(la *moyenne* qui pilote la direction reste sur la PPG 2 h). ✅ **Signature en place** : `analyzeIcrSlot`
+accepte désormais un champ **`nadirGl` optionnel** par repas, fourni **uniquement** à la garde hypo
+(repli sur `postGlucoseGl` si absent) — la moyenne/direction reste sur `postGlucoseGl`. **Reste (prérequis
+assemblage)** : `JournalMeal` n'expose ni l'heure réelle ni le nadir → augmenter `meal-trends`/`DiabetesEvent`
+pour **peupler** `nadirGl` (creux CGM sur `[t0, min(prochain glucide, t0+300 min)]`) et l'heure locale.
 
 **Bucketing meal → créneau ICR (MEDIUM/HIGH)** — bucketer à l'**heure réelle** du repas
 (`findSlotForHour(carbRatios, heureLocale)`), **jamais** au midpoint du moment (une frontière de créneau
