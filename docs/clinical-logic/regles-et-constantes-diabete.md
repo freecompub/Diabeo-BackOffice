@@ -235,3 +235,11 @@ Constantes d'assemblage du **générateur ICR** (spec : `docs/clinical-logic/alg
 prendre la cible à jeun (~1,0 g/L) comme référence proposerait des baisses d'ICR systématiques (plus
 d'insuline) chez des patients bien contrôlés → **emballement hypo**. Le deadband asymétrique évite à la
 fois l'emballement et l'érosion du bon contrôle.
+
+> **Limite connue — basale STYLO/MDI non gérée par le générateur** (validé avec l'utilisateur, US-2651).
+> La titration basale automatique ne couvre que `BasalConfigType = pump` (débit U/h → `pumpBasalSlotId`,
+> `AdjustableParameter = basalRate`). Les patients en `single_injection` (dose journalière, type Lantus)
+> ou `split_injection` (matin/soir, type Levemir) — basale en **U**, pas U/h — ne reçoivent **aucune**
+> proposition basale (leurs ISF/ICR restent proposés). Combler ce trou (paramètre `basalDose` dédié +
+> variante d'analyseur en U/jour + bornes stylo + ciblage de persistance) = **slice dédiée du build**.
+> Détail : `algorithme-propositions-ajustement.md` §4.3.

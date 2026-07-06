@@ -135,6 +135,20 @@ Base d'erreur relative = écart moyen à la cible. `confidence` = `getConfidence
     3 h vaut `0,45` g/L → **supprimé** (une hausse basale aggraverait l'hypo). ⚠️ N'est capté que si le
     nadir figure dans `fastingValues` (contrat JSDoc `analyzeBasalTrend`).
 
+> **⚠️ Portée : basale POMPE uniquement — le stylo/MDI n'est PAS géré (limite connue).**
+> `analyzeBasalTrend` raisonne sur un **débit U/h** et cible un `pumpBasalSlotId`
+> (`AdjustableParameter = basalRate`) → il ne couvre que `BasalConfigType = pump`. Les patients
+> **stylo/MDI** — `single_injection` (dose journalière, type Lantus, dans `dailyDose`) ou
+> `split_injection` (matin/soir, type Levemir, dans `morningDose`/`eveningDose`), basale exprimée en
+> **U** et non en U/h — ne reçoivent donc **aucune** proposition basale aujourd'hui (leurs **ISF/ICR
+> restent** proposés). C'est le **même type de trou que `fixedDose`**. Combler ce cas exige :
+> (1) un paramètre/discriminateur dédié (ex. `basalDose` matin/soir/journalier) ; (2) une **variante
+> d'analyseur** titrant en **U/jour** (à jeun → dose lente) et non en U/h ; (3) des **bornes dédiées**
+> (une basale stylo se compte en dizaines d'U — cf. `FIXED_BASAL_WARN_U` = 80 U — pas 0,05–5 U/h) ;
+> (4) le ciblage de persistance (`resolveCurrentValue` lit aujourd'hui `PumpBasalSlot.rate`). La
+> titration d'une basale lente au stylo par la glycémie à jeun étant une pratique standard → **slice
+> dédiée du build (b)**, après le socle ICR.
+
 > Sortie de chaque analyseur : `ProposalCandidate` (`parameterType, reason, currentValue,
 > proposedValue, changePercent, confidence, supportingEvents, totalEventsConsidered,
 > timeSlotStartHour?/EndHour?, averageObservedValue?`).
