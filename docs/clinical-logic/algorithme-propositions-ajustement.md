@@ -81,7 +81,7 @@ Le mode est **dérivé serveur** (`resolveTreatmentMode`, fail-closed : un DT1 n
 | Mode | Logique de proposition |
 |---|---|
 | **(a) basalBolus** | Analyseurs ISF/ICR/basal du §4 (existant). |
-| **(b) fixedDose** | **`analyzeFixedDose*` (à livrer)** : base = tendance glycémique **par moment** (carnet BGM). Proposition de dose fixe **bornée** : cap **absolu** ± 1–2 U ou ± 10 % (le plus petit), plancher/plafond absolu, **cooldown 72 h/moment**. **Jamais** : convertir doses fixes → basal-bolus, ni créer ISF/ICR ex nihilo. |
+| **(b) fixedDose** | **`analyzeFixedDose(slot, readings)` (livré, pur)** : dose **directe** par **moment** (carnet BGM). Au-dessus de la cible → dose trop basse → hausse (`fixedDoseTooLow`) ; en dessous → baisse (`fixedDoseTooHigh`). Bornée : **plus petit** de ± `FIXED_DOSE_MAX_CHANGE_PERCENT` (10 %) et ± `FIXED_DOSE_MAX_DELTA_U` (2 U) ; plancher `FIXED_DOSE_MIN` (0,5 U) ; arrondi à l'incrément délivrable (0,5 U) — pas nul → aucune proposition. **Cooldown 72 h/moment** (`FIXED_DOSE_COOLDOWN_HOURS`) au câblage du générateur (pas dans l'analyseur pur). **Jamais** : convertir doses fixes → basal-bolus, ni créer ISF/ICR ex nihilo. |
 | **(c) nonInsulin** | **Aucune proposition de dose** (frontière MDR). Uniquement des `ClinicalReviewFlag` d'orientation (« à revoir en consultation », HbA1c périmée, TIR sous cible, observance). La **cible** glycémique reste ajustable **par le médecin** (bornée, plus stricte en `pregnancyMode`). |
 
 ## 6. Chaîne complète (génération → application)

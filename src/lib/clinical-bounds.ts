@@ -53,6 +53,23 @@ export const CLINICAL_BOUNDS = {
   FIXED_DOSE_MAX_DELTA_U: 2.0,
   FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
   /**
+   * US-2651 (mode b) — cap de variation MOTEUR d'une proposition de dose fixe, en %.
+   * Plus strict que le moteur basal/bolus (± 20 %) : la titration de dose fixe est plus lente.
+   * La proposition retient le PLUS PETIT de ± ce % et ± `FIXED_DOSE_MAX_DELTA_U` (2 U).
+   */
+  FIXED_DOSE_MAX_CHANGE_PERCENT: 10,
+  /**
+   * US-2651 (mode b) — incrément DÉLIVRABLE d'une dose fixe (arrondi, demi-unité stylo).
+   * Une proposition dont le pas arrondi est nul (< 0,5 U) n'est pas générée (non actionnable).
+   */
+  FIXED_DOSE_DELIVERY_INCREMENT_U: 0.5,
+  /**
+   * US-2651 (mode b) — cooldown (heures) entre deux propositions MOTEUR de dose fixe sur le
+   * MÊME moment (matin/midi/soir/nuit). Anti-churn ; s'applique au câblage du générateur
+   * (pas à l'analyseur pur). L'effet d'un ajustement de dose fixe se juge sur ≥ 3 jours.
+   */
+  FIXED_DOSE_COOLDOWN_HOURS: 72,
+  /**
    * US-2651 — cap de variation MOTEUR (algorithme) d'une proposition automatique, en %.
    * Toute proposition générée par `proposal-algorithm` est clampée à ± ce %. Source unique
    * (était en dur dans `proposal-algorithm.ts`, §12 nit US-2651). Le cap PATIENT
