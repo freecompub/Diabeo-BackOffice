@@ -17,6 +17,7 @@ import { readFileSync } from "node:fs"
 import {
   CLINICAL_BOUNDS, CGM_AGGREGATE_RANGE_GL,
   DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS,
+  HBA1C_HIGH_DEFAULT_PERCENT, HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT, HBA1C_TARGET_MARGIN_PERCENT,
   isDeliverableBasalRate,
 } from "@/lib/clinical-bounds"
 
@@ -128,6 +129,13 @@ describe("DASHBOARD_TIR / AGP_SUFFICIENCY / HBA1C_STALE_DAYS — anti-drift (fic
 
   it("fige la péremption HbA1c labo (US-2631, ~6 mois)", () => {
     expect(HBA1C_STALE_DAYS).toBe(180)
+  })
+
+  it("fige les seuils du flag hba1cAboveTarget (US-2651 mode c, validé medical)", () => {
+    expect(HBA1C_HIGH_DEFAULT_PERCENT).toBe(8.0)
+    expect(HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT).toBe(6.0)
+    expect(HBA1C_TARGET_MARGIN_PERCENT).toBe(0.5)
+    expect(HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT).toBeLessThan(HBA1C_HIGH_DEFAULT_PERCENT)
   })
 
   it("invariants : cible TIR > plancher ; suffisance bornée", () => {

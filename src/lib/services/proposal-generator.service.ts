@@ -15,7 +15,10 @@
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
-import { CLINICAL_BOUNDS, HBA1C_STALE_DAYS, DASHBOARD_TIR } from "@/lib/clinical-bounds"
+import {
+  CLINICAL_BOUNDS, HBA1C_STALE_DAYS, DASHBOARD_TIR,
+  HBA1C_HIGH_DEFAULT_PERCENT, HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT, HBA1C_TARGET_MARGIN_PERCENT,
+} from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
   analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, type ProposalCandidate,
@@ -256,34 +259,57 @@ export const proposalGeneratorService = {
       metadata: { patientId, kind: "orientation-flags" },
     }).catch((err) => logger.error("proposal-generator", "orientation-flags audit failed", { patientId }, err as Error))
 
-    // Dernière HbA1c (plus récente des 2 sources) + patient (pathologie/grossesse pour les bornes TIR).
-    const [gly, evt, patient] = await Promise.all([
+    // Dernière HbA1c (date + VALEUR de la source la plus récente) + patient + cible individualisée.
+    const [gly, evt, patient, annex] = await Promise.all([
       prisma.glycemiaEntry.findFirst({
-        where: { patientId, hba1c: { not: null } }, orderBy: { date: "desc" }, select: { date: true },
+        where: { patientId, hba1c: { not: null } }, orderBy: { date: "desc" }, select: { date: true, hba1c: true },
       }),
       prisma.diabetesEvent.findFirst({
-        where: { patientId, hba1c: { not: null } }, orderBy: { eventDate: "desc" }, select: { eventDate: true },
+        where: { patientId, hba1c: { not: null } }, orderBy: { eventDate: "desc" }, select: { eventDate: true, hba1c: true },
       }),
       prisma.patient.findFirst({
         where: { id: patientId, deletedAt: null }, select: { pathology: true, pregnancyMode: true },
       }),
+      prisma.annexObjective.findUnique({ where: { patientId }, select: { objectiveHba1c: true } }),
     ])
-    const dates = [gly?.date, evt?.eventDate].filter((d): d is Date => d != null)
-    const lastHba1c = dates.length ? Math.max(...dates.map((d) => d.getTime())) : null
+    // Valeur = celle de la source à la date MAX (pas la valeur max) ; égalité → GlycemiaEntry (déterministe).
+    const glyMs = gly?.date.getTime() ?? null
+    const evtMs = evt?.eventDate.getTime() ?? null
+    let lastHba1cMs: number | null = null
+    let lastHba1cValue: number | null = null
+    if (glyMs !== null && (evtMs === null || glyMs >= evtMs)) { lastHba1cMs = glyMs; lastHba1cValue = Number(gly!.hba1c) }
+    else if (evtMs !== null) { lastHba1cMs = evtMs; lastHba1cValue = Number(evt!.hba1c) }
     const staleMs = HBA1C_STALE_DAYS * 86_400_000
+    const isStale = lastHba1cMs === null || Date.now() - lastHba1cMs > staleMs
+    const isPregnancy = patient?.pregnancyMode === true || patient?.pathology === "GD"
 
-    if (lastHba1c === null || Date.now() - lastHba1c > staleMs) {
+    // hba1cStale — dernière HbA1c périmée (> 180 j) OU absente.
+    if (isStale) {
       await clinicalReviewFlagService.raise(patientId, "hba1cStale", auditUserId, ctx)
         .then(() => { flagged++ })
         .catch((err) => logger.error("proposal-generator", "raise hba1cStale failed", { patientId }, err as Error))
     }
 
+    // hba1cAboveTarget — HbA1c RÉCENTE (!isStale) au-dessus de la cible. Comble le trou BGM-only ;
+    // le périmé est possédé par hba1cStale (pas de double-signal). Cible = objectiveHba1c individualisée
+    // (+ marge, si plausible [4;14] — garde fail-loud contre un import corrompu qui masquerait un
+    // patient) SINON défaut (grossesse 6,0 / adulte 8,0 ; sans marge). En %.
+    if (lastHba1cValue !== null && !isStale) {
+      const obj = annex?.objectiveHba1c != null ? Number(annex.objectiveHba1c) : null
+      const target = obj !== null && obj >= 4.0 && obj <= 14.0
+        ? obj + HBA1C_TARGET_MARGIN_PERCENT
+        : (isPregnancy ? HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT : HBA1C_HIGH_DEFAULT_PERCENT)
+      if (lastHba1cValue > target) {
+        await clinicalReviewFlagService.raise(patientId, "hba1cAboveTarget", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise hba1cAboveTarget failed", { patientId }, err as Error))
+      }
+    }
+
     // tirBelowTarget — TIR sur 14 j < cible (bornes pathology/GROSSESSE-aware). `null` si capture CGM
     // insuffisante (pas de flag sur un échantillon maigre) — un non-insuliné en BGM pur n'a pas de TIR.
     if (patient) {
-      // Aligné sur le chemin ICR : un DT2 ENCEINTE doit être scoré contre les bornes GD (0,63–1,40),
-      // pas les bornes adulte (0,70–1,80), sinon on sous-flague la population la plus à risque.
-      const isPregnancy = patient.pregnancyMode === true || patient.pathology === "GD"
+      // Un DT2 ENCEINTE doit être scoré contre les bornes GD (0,63–1,40), pas adulte (0,70–1,80).
       const tir = await objectivesService.computeTirPercent(patientId, isPregnancy ? "GD" : patient.pathology)
       if (tir !== null && tir < DASHBOARD_TIR.TARGET_PERCENT) {
         await clinicalReviewFlagService.raise(patientId, "tirBelowTarget", auditUserId, ctx)
