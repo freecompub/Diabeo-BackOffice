@@ -128,6 +128,18 @@ describe("proposalGeneratorService.generateForPatient", () => {
     expect(input.proposedValue).toBeGreaterThan(10) // hausse ICR = moins d'insuline
   })
 
+  it("US-2653 fallback : moyenne juste sous la borne (deadband < 2 % → null) + hypos récurrentes → dé-escalade", async () => {
+    // PPG 0,99 g/L < borne 1,00 : le deadband donne +1 % → null ; hypos récurrentes → fallback +10 %.
+    setup({ meals: [
+      meal({ postMgdl: 99, nadirMgdl: 60 }), meal({ postMgdl: 99, nadirMgdl: 60 }), meal({ postMgdl: 99, nadirMgdl: 60 }),
+    ] })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.created).toBe(1)
+    const input = createEngine.mock.calls[0]![0]
+    expect(input.reason).toBe("icrTooLow")
+    expect(input.proposedValue).toBe(11) // dé-escalade fixe +10 %, pas le +1 % (null) du deadband
+  })
+
   it("US-2653 dans la bande SANS hypo récurrente → aucune proposition ni flag", async () => {
     setup({ meals: [meal({ postMgdl: 140 }), meal({ postMgdl: 140 }), meal({ postMgdl: 140 })] }) // nadir défaut 160
     const res = await proposalGeneratorService.generateForPatient(1, 99)

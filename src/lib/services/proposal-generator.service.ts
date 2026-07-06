@@ -212,9 +212,17 @@ export const proposalGeneratorService = {
       // Sinon : deadband (baisse si > plafond ; hausse si < borne basse) OU, dans la bande, dé-escalade
       // sur hypos récurrentes (hausse ICR fixe = moins d'insuline).
       let candidate: ProposalCandidate | null = null
-      if (avgPostGl > ceilingGl) candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, ceilingGl))
-      else if (avgPostGl < lowerGl) candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, lowerGl))
-      else if (recurrentHypo) candidate = analyzeIcrHypoDeescalation(slot, nadirsGl)
+      if (avgPostGl > ceilingGl) {
+        candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, ceilingGl)) // baisse (deadband)
+      } else if (avgPostGl < lowerGl) {
+        candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, lowerGl)) // hausse (deadband)
+        // Fallback (validé medical) : moyenne juste sous la borne (deadband < 2 % → null) MAIS hypos
+        // récurrentes → la dé-escalade fixe +10 % (même sens sûr, plus protecteur). Ne pas laisser
+        // ce sliver sans proposition pour un patient à hypos récurrentes.
+        if (!candidate && recurrentHypo) candidate = analyzeIcrHypoDeescalation(slot, nadirsGl)
+      } else if (recurrentHypo) {
+        candidate = analyzeIcrHypoDeescalation(slot, nadirsGl) // in-band + récurrent → hausse +10 %
+      }
 
       if (candidate && (await persist(candidate, slot))) created++
     }

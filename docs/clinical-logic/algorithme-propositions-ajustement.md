@@ -233,7 +233,9 @@ La **porte qualité pré-repas** est **grossesse-aware** : borne haute resserré
 > - `moyenne > plafond` & non-récurrent → **baisse** (deadband) ;
 > - **dans la bande** & récurrent → **`analyzeIcrHypoDeescalation`** (hausse ICR fixe **+10 %** = moins
 >   d'insuline) — comble le trou « bon en moyenne mais hypos récurrentes » ;
-> - dans la bande & non-récurrent → rien ; `< borne basse` → hausse (deadband).
+> - dans la bande & non-récurrent → rien ; `< borne basse` → hausse (deadband), avec **fallback
+>   dé-escalade +10 %** si le deadband est sous le seuil des 2 % (moyenne juste sous la borne) ET hypos
+>   récurrentes (validé medical : ne pas laisser ce sliver sans proposition).
 > Deadband et dé-escalade **mutuellement exclusifs** par créneau. Extension ISF/basal/fixedDose ultérieure
 > (nadir feed **par analyseur** — ne jamais nourrir un nadir post-repas à la basale).
 
