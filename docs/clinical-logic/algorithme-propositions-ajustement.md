@@ -84,6 +84,51 @@ Le mode est **dérivé serveur** (`resolveTreatmentMode`, fail-closed : un DT1 n
 | **(b) fixedDose** | **`analyzeFixedDose(slot, readings)` (livré, pur)** : dose **directe** par **moment** (carnet BGM). Au-dessus de la cible → dose trop basse → hausse (`fixedDoseTooLow`) ; en dessous → baisse (`fixedDoseTooHigh`). Bornée : **plus petit** de ± `FIXED_DOSE_MAX_CHANGE_PERCENT` (10 %) et ± `FIXED_DOSE_MAX_DELTA_U` (2 U) ; plancher `FIXED_DOSE_MIN` (0,5 U) ; arrondi à l'incrément délivrable (0,5 U) — pas nul → aucune proposition. **Cooldown 72 h/moment** (`FIXED_DOSE_COOLDOWN_HOURS`) au câblage du générateur (pas dans l'analyseur pur). **Jamais** : convertir doses fixes → basal-bolus, ni créer ISF/ICR ex nihilo. |
 | **(c) nonInsulin** | **Aucune proposition de dose** (frontière MDR). Uniquement des `ClinicalReviewFlag` d'orientation (« à revoir en consultation », HbA1c périmée, TIR sous cible, observance). La **cible** glycémique reste ajustable **par le médecin** (bornée, plus stricte en `pregnancyMode`). |
 
+## 5ter. Générateur ICR nocturne (mode a) — spec d'implémentation (validée medical, US-2651)
+
+> **Statut** : spec **validée** avant build (`proposalGeneratorService.generateForPatient`, chemin ICR).
+> Les analyseurs sont purs et prêts ; ce qui suit est le **contrat d'assemblage** des données qui les
+> nourrit, corrigé des 6 points relevés par `medical-domain-validator`. **Le générateur qui persiste
+> ne sera câblé qu'une fois ces contrats tenus** — sinon risque d'emballement hypo.
+
+**Source & fenêtre** — `mealtimePattern.dailyJournal(patientId, "14d", …, {source:"cgm"})`. CGM (pas BGM :
+un BGM n'a quasi jamais un relevé pile à +2 h). PPG 2 h en mg/dL → **÷ 100** en g/L. Filtrer `postMgdl null`.
+
+**Cible = post-prandiale, JAMAIS à jeun (CRITICAL)** — nourrir l'analyseur avec la cible à jeun (~1,0 g/L)
+proposerait des **baisses d'ICR systématiques** (plus d'insuline) chez des patients bien contrôlés →
+**emballement vers l'hypo**. Utiliser un **deadband asymétrique** :
+- PPG moyenne **> plafond** `getCgmDefaults(isPregnancy ? "GD" : pathologie).ok` (**1,80** adulte /
+  **1,40** GD-grossesse) → **baisse** d'ICR (plus d'insuline).
+- PPG moyenne **< borne basse** (`POSTPRANDIAL_TITRATION_LOW_GL` = **1,0** ; grossesse
+  `…_PREGNANCY_GL` = **0,9**) → **hausse** d'ICR (moins d'insuline).
+- **Entre les deux → aucune proposition** (bon contrôle préservé).
+
+**Grossesse (HIGH)** — `isPregnancy = patient.pregnancyMode === true || pathologie === "GD"`. Un DT1
+**enceinte** a `pathologie = DT1` → `getCgmDefaults("DT1")` renverrait 1,80 (trop lâche pour la
+population la plus à risque). Répliquer exactement la règle de `meal-trends`.
+
+**Nadir post-prandial tardif (HIGH)** — la garde hypo ne voit que le point +2 h ; le nadir d'un analogue
+rapide tombe à ~3-4 h. Fournir à `hypoBlocksProposal` le **nadir** glycémique sur
+`[t0, min(prochain glucide, t0 + POSTMEAL_NADIR_WINDOW_MIN=300 min)]`, **pas** seulement la PPG 2 h
+(la *moyenne* qui pilote la direction reste sur la PPG 2 h). `JournalMeal` n'expose ni l'heure ni le
+nadir → **prérequis build** : augmenter l'assemblage (au niveau `DiabetesEvent`/`meal-trends`).
+
+**Bucketing meal → créneau ICR (MEDIUM/HIGH)** — bucketer à l'**heure réelle** du repas
+(`findSlotForHour(carbRatios, heureLocale)`), **jamais** au midpoint du moment (une frontière de créneau
+peut tomber au milieu d'un moment → mauvaise attribution). Fallback si contraint au moment : **fail-closed
+containment** (bucketer seulement si le moment entier tient dans un seul créneau, sinon skip).
+
+**Portes qualité (MEDIUM/HIGH)** — exclure un repas si : glucides absents/0 (`carbs`), bolus absent
+(`bolus`), ou pré-repas hors bande cible (`preMgdl` — la PPG refléterait une correction, pas l'ICR).
+Les repas avec glucide intercurrent avant t0+90 sont déjà nullés en amont (`computeJournal`).
+
+**Minimum de preuve** — **≥ 3 repas/créneau** (aligné `analyzeIcrSlot` + `BGM_CARNET.MIN_READINGS_PER_MOMENT`),
+sinon fail-closed (aucune proposition).
+
+**Persistance** — chaque candidat → `createEngineProposal({ …, expectedCurrentValue: candidat.currentValue,
+carbRatioSlotStart, carbRatioSlotEnd })` : re-dérive `currentValue`, re-borne, garde hypo (déjà dans
+l'analyseur), anti-spam, frontière nonInsulin. Cooldown moteur au niveau générateur.
+
 ## 6. Chaîne complète (génération → application)
 
 1. **Génération** (`proposal-algorithm`, pur) → `ProposalCandidate` (déjà clampé ± 20 %, ≥ 3 événements, ≥ 2 %).

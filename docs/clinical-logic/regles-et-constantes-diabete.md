@@ -219,3 +219,19 @@ d'insuline) reste permis. Ferme le prérequis avant câblage du générateur mod
 - **Contrat basal (Somogyi)** : `analyzeBasalTrend` ne capte l'hypo nocturne masquée que si
   `fastingValues` inclut le **nadir CGM nocturne** (pas seulement le pré-petit-déj) — précondition
   JSDoc à respecter par le générateur au câblage.
+
+### Générateur ICR nocturne — deadband post-prandial & nadir (US-2651, validé medical)
+
+Constantes d'assemblage du **générateur ICR** (spec : `docs/clinical-logic/algorithme-propositions-ajustement.md` §5ter) :
+
+| Constante | Valeur | Sens clinique |
+|---|---|---|
+| plafond post-prandial (réutilisé) | `getCgmDefaults(pathologie/grossesse).ok` = **1,80** g/L adulte / **1,40** GD-grossesse | PPG 2 h moyenne au-dessus → **baisse** d'ICR (plus d'insuline). |
+| `POSTPRANDIAL_TITRATION_LOW_GL` | **1,0** g/L | PPG 2 h moyenne en dessous → **hausse** d'ICR (moins d'insuline). Entre les deux → aucune proposition. |
+| `POSTPRANDIAL_TITRATION_LOW_PREGNANCY_GL` | **0,9** g/L | Borne basse resserrée en grossesse (`pregnancyMode` ou GD). |
+| `POSTMEAL_NADIR_WINDOW_MIN` | **300** min | Fenêtre de recherche du **nadir** post-prandial fourni à la garde hypo (le nadir d'un analogue rapide tombe après le point PPG 2 h). |
+
+**Pourquoi PAS la cible à jeun** : une PPG 2 h est physiologiquement au-dessus de la glycémie à jeun ;
+prendre la cible à jeun (~1,0 g/L) comme référence proposerait des baisses d'ICR systématiques (plus
+d'insuline) chez des patients bien contrôlés → **emballement hypo**. Le deadband asymétrique évite à la
+fois l'emballement et l'érosion du bon contrôle.
