@@ -284,5 +284,5 @@ Déclencheur **indépendant du deadband** : des hypos post-prandiales récurrent
 **Matrice de décision par créneau (chemin ICR)** — moyenne PPG × hypo récurrente :
 - `> plafond` & non → **BAISSE** (deadband) · `> plafond` & **oui** → **flag `highVariabilityPostMeal`** (pas de dose : le levier ICR ne corrige pas pic + creux) · **dans la bande** & oui → **HAUSSE +10 %** (cœur US-2653) · dans la bande & non → rien · `< borne basse` → **HAUSSE** (deadband).
 
-Slice A (prédicat + builder purs) livrée ; slice B = matrice dans le générateur + flag. Cf.
+Slices A (prédicat + builder purs) **et** B (matrice dans le générateur + flag `highVariabilityPostMeal`) livrées. Cf.
 `algorithme-propositions-ajustement.md` §5ter.

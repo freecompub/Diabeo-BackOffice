@@ -2033,7 +2033,8 @@
     "flagReviewInConsultation": "مراجعة في الاستشارة",
     "flagHba1cStale": "الهيموغلوبين السكري (HbA1c) للتحديث",
     "flagTirBelowTarget": "الوقت ضمن النطاق (TIR) تحت الهدف",
-    "flagObservance": "التحقق من الالتزام"
+    "flagObservance": "التحقق من الالتزام",
+    "flagHighVariabilityPostMeal": "تقلب مرتفع بعد الوجبة (ذروة + نقص سكر الدم)"
   },
   "review": {
     "title": "وضع مراجعة الاستشارة",

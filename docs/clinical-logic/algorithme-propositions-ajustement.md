@@ -225,13 +225,19 @@ slices ultérieures.
 La **porte qualité pré-repas** est **grossesse-aware** : borne haute resserrée à `ICR_PREMEAL_MAX_PREGNANCY_GL`
 (1,10 g/L) quand `isPregnancy` — sinon un pré-repas déjà élevé pour une enceinte contaminerait le signal ICR.
 
-> **⚠️ Limite connue — deadband sur la MOYENNE, hypo sur le NADIR (→ US-2653).** La décision de proposer
-> (deadband) porte sur la **moyenne** PPG, la garde hypo sur le **nadir**. Un patient **bon en moyenne** mais
-> avec des **hypos post-repas récurrentes** ne reçoit **aucune** proposition : la moyenne (dans le deadband)
-> masque la charge hypo, et le nadir n'est utilisé que comme **frein** (bloquer « plus d'insuline »), jamais
-> comme **déclencheur** d'une **hausse** d'ICR (« moins d'insuline »). C'est de la **sous-action** (sens sûr ;
-> la charge hypo remonte par TIR/alertes/AGP), surtout sensible en grossesse. **Réponse = US-2653** :
-> déclencher une dé-escalade sur nadirs récurrents, transverse aux 4 analyseurs, indépendamment du deadband.
+> **✅ US-2653 (câblé, chemin ICR) — matrice deadband × nadir récurrent.** La décision par créneau combine
+> désormais la **moyenne** PPG (deadband) ET les **nadirs récurrents** (`recurrentPostMealHypo` : ≥ 2 nadirs
+> < 0,70 parmi ≥ 3) :
+> - `moyenne > plafond` & **récurrent** → **flag `highVariabilityPostMeal`** (pic + creux : le levier ICR ne
+>   corrige pas les deux → revue, **jamais** une dose) ;
+> - `moyenne > plafond` & non-récurrent → **baisse** (deadband) ;
+> - **dans la bande** & récurrent → **`analyzeIcrHypoDeescalation`** (hausse ICR fixe **+10 %** = moins
+>   d'insuline) — comble le trou « bon en moyenne mais hypos récurrentes » ;
+> - dans la bande & non-récurrent → rien ; `< borne basse` → hausse (deadband), avec **fallback
+>   dé-escalade +10 %** si le deadband est sous le seuil des 2 % (moyenne juste sous la borne) ET hypos
+>   récurrentes (validé medical : ne pas laisser ce sliver sans proposition).
+> Deadband et dé-escalade **mutuellement exclusifs** par créneau. Extension ISF/basal/fixedDose ultérieure
+> (nadir feed **par analyseur** — ne jamais nourrir un nadir post-repas à la basale).
 
 > **⚠️ Caveat clinique — troncature par resucrage (MEDIUM, validé medical).** La fenêtre nadir se termine
 > au **prochain apport glucidique** (anti mis-attribution : la glycémie post-collation ne doit pas être

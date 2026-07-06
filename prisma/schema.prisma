@@ -131,6 +131,9 @@ enum ClinicalReviewFlagType {
   hba1cStale
   tirBelowTarget
   observance
+  // US-2653 — forte variabilité post-prandiale (pic + hypo récurrente) : le levier ICR ne corrige
+  // pas les deux bouts → orientation revue (timing bolus/composition/IOB/ISF), jamais une dose.
+  highVariabilityPostMeal
 }
 
 enum ClinicalReviewFlagStatus {

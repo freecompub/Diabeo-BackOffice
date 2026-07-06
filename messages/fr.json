@@ -2033,7 +2033,8 @@
     "flagReviewInConsultation": "À revoir en consultation",
     "flagHba1cStale": "Hémoglobine glyquée (HbA1c) à actualiser",
     "flagTirBelowTarget": "Temps dans la cible (TIR) sous l'objectif",
-    "flagObservance": "Observance à vérifier"
+    "flagObservance": "Observance à vérifier",
+    "flagHighVariabilityPostMeal": "Forte variabilité post-repas (pic + hypoglycémie)"
   },
   "review": {
     "title": "Mode revue de consultation",
