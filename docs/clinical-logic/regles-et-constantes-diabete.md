@@ -172,3 +172,9 @@ acceptée entre-temps), appliquer la valeur absolue **sur-corrige** (ex. base de
   (HTTP 422). Un patient non insuliné relève d'un **flag d'orientation** (« à revoir en consultation »),
   jamais d'une `AdjustmentProposal`. Fail-closed : le mode est **dérivé serveur** (`resolveTreatmentMode`,
   US-2647) et un DT1 n'est **jamais** classé `nonInsulin`.
+
+### Algorithme de génération des propositions
+
+Le fonctionnement de l'algorithme de **calcul des propositions d'ajustement** (analyseurs ISF/ICR/basal,
+constantes moteur, routage multi-mode a/b/c, frontière MDR, chaîne génération→validation) est décrit
+dans son document dédié : **[`algorithme-propositions-ajustement.md`](./algorithme-propositions-ajustement.md)**.
