@@ -266,32 +266,47 @@ const PRE_BREAKFAST_WINDOW_MIN = 90
 /** US-2651 basal — plafond de remontée du jeûne nocturne (min) si aucun apport glucidique du soir
  *  identifié (patient à jeun) : ~12 h, borne l'intervalle inter-prandial. */
 const MAX_NOCTURNAL_WINDOW_MIN = 720
+/** US-2651 basal — seuil « repas substantiel » (g) pour ancrer le jeûne nocturne. Un **resucrage**
+ *  d'hypo (petit glucide nocturne) NE doit PAS tronquer la fenêtre nadir : sinon l'hypo qui a motivé
+ *  le resucrage sortirait de la fenêtre → garde Somogyi masquée (validé medical #679). */
+const NOCTURNAL_ANCHOR_MIN_CARB_G = 20
 
 type MealContext = Awaited<ReturnType<typeof loadContext>>
 
 /**
  * Tendance à jeun (US-2651 basal). Une entrée par jour ayant un **petit-déjeuner** identifié (premier
  * repas du moment « morning »). `fastingMgdl` = dernier relevé dans `[petit-déj − 90 min, petit-déj]`.
- * `nocturnalNadirMgdl` = min CGM sur `[dernier apport glucidique avant le petit-déj (capé à −12 h),
- * petit-déj]` — intervalle de jeûne nocturne inter-prandial, **contigu** avec le relevé à jeun. Un
- * élément **par nuit** (aligné 1:1 avec les jours). Trié récent d'abord.
+ * `nocturnalNadirMgdl` = min CGM sur `[dernier REPAS substantiel (≥ seuil) avant le petit-déj, capé
+ * à −12 h ; petit-déj]` — jeûne nocturne inter-prandial. Contigu avec le relevé à jeun **pour une nuit
+ * normale** (un repas < 90 min avant le petit-déj peut raccourcir la fenêtre nadir — nuit « pas vraiment
+ * à jeun »). Un élément **par nuit** (1:1 avec les jours). Trié récent d'abord. Un patient **sautant le
+ * petit-déjeuner** (pas de repas « morning ») → aucune entrée ce jour-là (fail-closed : pas d'ancre de
+ * fin de jeûne ; réduit `supportingEvents`, jamais la direction — limite connue, cf. catalogue).
  */
 function computeFastingTrend(c: MealContext): FastingDay[] {
-  // Petit-déjeuner par jour = premier repas du moment « morning » (le plus tôt).
-  const breakfastByDay = new Map<string, number>()
+  // Petit-déjeuner par jour = premier repas du moment « morning ». Jour/moment dérivés de l'INSTANT
+  // RÉEL (`eventDate`) comme `computeJournal` (cohérence CGM/BGM) ; `matchMs` sert aux fenêtres de relevés.
+  const breakfastByDay = new Map<string, number>() // dayIso (instant réel) → matchMs (fenêtres)
   for (const m of c.meals) {
-    if (momentForHour(localHour(m.matchMs), c.bounds) !== "morning") continue
-    const day = localDay(m.matchMs)
+    const realMs = m.eventDate.getTime()
+    if (momentForHour(localHour(realMs), c.bounds) !== "morning") continue
+    const day = localDay(realMs)
     const prev = breakfastByDay.get(day)
     if (prev === undefined || m.matchMs < prev) breakfastByDay.set(day, m.matchMs)
   }
+  // Ancres du jeûne nocturne = repas SUBSTANTIELS (≥ seuil) — un resucrage d'hypo (petit glucide) ne
+  // doit PAS tronquer la fenêtre nadir, sinon l'hypo qui l'a motivé sortirait de la fenêtre (Somogyi
+  // masquée). On n'utilise donc PAS `c.carbTimes` (tout glucide) mais les repas au-dessus du seuil.
+  const substantialMealMs = c.meals
+    .filter((m) => m.carbohydrates != null && Number(m.carbohydrates) >= NOCTURNAL_ANCHOR_MIN_CARB_G)
+    .map((m) => m.matchMs)
   const out: FastingDay[] = []
   for (const [dayIso, breakfastMs] of breakfastByDay) {
     const fastingMgdl = lastReadingIn(c.readings, breakfastMs - PRE_BREAKFAST_WINDOW_MIN * MIN_MS, breakfastMs)
-    // Dernier apport glucidique AVANT le petit-déj (le dîner/collation du soir) ; borné à −12 h.
-    let lastCarb = -Infinity
-    for (const t of c.carbTimes) if (t < breakfastMs && t > lastCarb) lastCarb = t
-    const nocturnalStart = Math.max(lastCarb, breakfastMs - MAX_NOCTURNAL_WINDOW_MIN * MIN_MS)
+    // Dernier REPAS substantiel avant le petit-déj (dîner/collation) ; borné à −12 h.
+    let lastMeal = -Infinity
+    for (const t of substantialMealMs) if (t < breakfastMs && t > lastMeal) lastMeal = t
+    const nocturnalStart = Math.max(lastMeal, breakfastMs - MAX_NOCTURNAL_WINDOW_MIN * MIN_MS)
     const nocturnalNadirMgdl = minReadingIn(c.readings, nocturnalStart, breakfastMs)
     out.push({ dayIso, fastingMgdl, nocturnalNadirMgdl })
   }

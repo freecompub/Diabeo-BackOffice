@@ -332,4 +332,14 @@ Fenêtres d'assemblage (dans `meal-trends.service`) pour peupler `analyzeBasalTr
 
 Le **nadir nocturne** = min CGM sur cet intervalle (garde hypo Somogyi), **contigu** avec le relevé à
 jeun (les deux se terminent au petit-déjeuner). **Un nadir par nuit**, aligné 1:1 avec les jours (respecte
-les 2 caveats medical #678). Le petit-déjeuner = premier repas du moment « morning ».
+les 2 caveats medical #678). Le petit-déjeuner = premier repas du moment « morning » (jour/moment dérivés de l'instant réel `eventDate`).
+
+- `NOCTURNAL_ANCHOR_MIN_CARB_G` = **20 g** : seuil « repas substantiel » pour ancrer le jeûne nocturne.
+  Un **resucrage** d'hypo (petit glucide nocturne) NE tronque PAS la fenêtre nadir (sinon l'hypo qui l'a
+  motivé sortirait de la fenêtre → **garde Somogyi masquée**, validé medical #679). L'ancre = dernier
+  repas ≥ 20 g avant le petit-déj (pas `carbTimes`).
+- **Limite connue** : un patient **sautant le petit-déjeuner** (jeûne intermittent) n'a pas d'ancre de
+  fin de jeûne → aucune entrée à jeun ce jour-là (fail-closed : réduit `supportingEvents`, jamais la
+  direction). Amélioration future possible : ancre de repli à fenêtre fixe.
+- **Suivi câblage (slice 3)** : `FastingDay` est en **mg/dL** ; `analyzeBasalTrend` attend **g/L** → le
+  générateur devra **÷ 100 + filtrer les null** (sinon garde hypo silencieusement désactivée).
