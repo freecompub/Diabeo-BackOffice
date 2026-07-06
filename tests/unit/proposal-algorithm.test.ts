@@ -177,6 +177,7 @@ describe("proposal-algorithm", () => {
       expect(r!.reason).toBe("fixedDoseTooLow")
       // Cap = min(±10 % de 20 = 2 U, ±2 U) → +2 U.
       expect(r!.proposedValue).toBe(22)
+      expect(r!.changePercent).toBe(10) // +2 U / 20 U = 10 %
     })
 
     it("glycémie en dessous de la cible → dose trop haute → BAISSE (reason fixedDoseTooHigh)", () => {

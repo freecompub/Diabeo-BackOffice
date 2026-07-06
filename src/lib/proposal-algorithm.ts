@@ -253,7 +253,10 @@ export function analyzeFixedDose(
   const absCap = CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U
   const delta = Math.max(-absCap, Math.min(absCap, deltaFromPct))
 
-  // Plancher absolu + arrondi à l'incrément délivrable (demi-unité).
+  // Plancher absolu + arrondi à l'incrément délivrable (demi-unité). NB : l'arrondi s'applique
+  // APRÈS le clamp ± 2 U/± 10 %, donc `effectiveDelta` peut dépasser le cap de ≤ un demi-incrément
+  // (≤ 0,25 U ; ou plus en % sur une très petite dose où l'incrément 0,5 U domine) — inévitable
+  // avec un stylo demi-unité, et sans enjeu sur un ajustement unique gaté médecin.
   const inc = CLINICAL_BOUNDS.FIXED_DOSE_DELIVERY_INCREMENT_U
   const proposedRaw = Math.max(CLINICAL_BOUNDS.FIXED_DOSE_MIN, slot.valueU + delta)
   const proposedValue = Math.round(proposedRaw / inc) * inc
