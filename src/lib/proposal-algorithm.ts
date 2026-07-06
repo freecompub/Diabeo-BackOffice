@@ -10,9 +10,35 @@
 import type { AdjustableParameter, AdjustmentReason, ConfidenceLevel, DoseMoment } from "@prisma/client"
 import { CLINICAL_BOUNDS, BGM_CARNET } from "@/lib/clinical-bounds"
 import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
+import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 
-/** Seuil d'hypo SÉVÈRE en g/L (source unique mg/dL ÷ 100). */
+/** Seuils d'hypo en g/L (source unique mg/dL ÷ 100). Sévère = niveau 2 ; bas = niveau 1. */
 const SEVERE_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO / 100
+const LEVEL1_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.TARGET_LOW / 100
+
+/**
+ * Garde HYPO commune (US-2651, validé medical) : une proposition en direction « plus d'insuline
+ * effective » (risque hypo) est **supprimée** si la fenêtre contient une hypo qui contre-indique
+ * d'augmenter l'insuline. La direction dangereuse par paramètre vient de `deriveRiskDirection`
+ * (hausse basale/dose fixe OU baisse ISF/ICR = « hypo »). La direction sûre (moins d'insuline) reste
+ * toujours permise.
+ *
+ * Déclencheurs (la moyenne peut masquer une hypo intermittente) :
+ *  - **sévère** (niveau 2, < `SEVERE_HYPO_GL`) : **un seul** relevé suffit (urgence clinique) ;
+ *  - **légère** (niveau 1, < `LEVEL1_HYPO_GL`) : seulement si **récurrente** (≥
+ *    `HYPO_LEVEL1_RECURRENCE_MIN` relevés) — évite la sur-suppression sur un événement isolé courant.
+ */
+function hypoBlocksProposal(
+  parameterType: AdjustableParameter,
+  currentValue: number,
+  proposedValue: number,
+  glucosesGl: number[],
+): boolean {
+  if (deriveRiskDirection(parameterType, currentValue, proposedValue) !== "hypo") return false
+  const hasSevere = glucosesGl.some((g) => g < SEVERE_HYPO_GL)
+  const level1Count = glucosesGl.filter((g) => g < LEVEL1_HYPO_GL).length
+  return hasSevere || level1Count >= CLINICAL_BOUNDS.HYPO_LEVEL1_RECURRENCE_MIN
+}
 
 /**
  * Adjustment proposal candidate — suggested parameter change with confidence.
@@ -109,13 +135,20 @@ export function analyzeIsfSlot(
   // Only propose if change is meaningful (> 2%)
   if (Math.abs(clampedChange) < 2) return null
 
+  const proposedValue = computeProposedValue(slot.sensitivityFactorGl, clampedChange)
+  // Garde HYPO : baisser l'ISF = corrections plus fortes (plus d'insuline) → supprimé si une
+  // glycémie post-correction de la fenêtre est en hypo sévère (une correction a sur-shooté).
+  if (hypoBlocksProposal("insulinSensitivityFactor", slot.sensitivityFactorGl, proposedValue, corrections.map((c) => c.postGlucoseGl))) {
+    return null
+  }
+
   const reason: AdjustmentReason = clampedChange > 0 ? "isfTooLow" : "isfTooHigh"
 
   return {
     parameterType: "insulinSensitivityFactor",
     reason,
     currentValue: slot.sensitivityFactorGl,
-    proposedValue: computeProposedValue(slot.sensitivityFactorGl, clampedChange),
+    proposedValue,
     changePercent: Math.round(clampedChange * 100) / 100,
     confidence: getConfidenceLevel(corrections.length),
     supportingEvents: corrections.length,
@@ -156,13 +189,20 @@ export function analyzeIcrSlot(
   // Post-repas AU-DESSUS de la cible → bolus trop faible → ICR trop HAUT → BAISSE (icrTooHigh) ;
   // EN DESSOUS → ICR trop BAS → HAUSSE (icrTooLow). (Correction validée medical US-2651 : les
   // libellés étaient inversés — la DIRECTION était correcte, seul le `reason` affiché était faux.)
+  const proposedValue = computeProposedValue(slot.gramsPerUnit, clampedChange)
+  // Garde HYPO : baisser l'ICR = plus d'insuline/gramme → supprimé si un post-repas de la fenêtre
+  // est en hypo sévère (un bolus repas a sur-shooté).
+  if (hypoBlocksProposal("insulinToCarbRatio", slot.gramsPerUnit, proposedValue, meals.map((m) => m.postGlucoseGl))) {
+    return null
+  }
+
   const reason: AdjustmentReason = clampedChange < 0 ? "icrTooHigh" : "icrTooLow"
 
   return {
     parameterType: "insulinToCarbRatio",
     reason,
     currentValue: slot.gramsPerUnit,
-    proposedValue: computeProposedValue(slot.gramsPerUnit, clampedChange),
+    proposedValue,
     changePercent: Math.round(clampedChange * 100) / 100,
     confidence: getConfidenceLevel(meals.length),
     supportingEvents: meals.length,
@@ -177,6 +217,12 @@ export function analyzeIcrSlot(
  * Analyze basal rate effectiveness from fasting glucose trends.
  * Detects systematic overnight drift (rising = too low, falling = too high).
  * Only proposes if 3+ fasting values AND change is meaningful (> 2%).
+ *
+ * ⚠️ **Contrat garde-hypo (US-2651, validé medical)** : `fastingValues` DOIT inclure le **nadir
+ * glycémique nocturne** (relevé CGM le plus bas de la nuit), pas seulement le pré-petit-déjeuner.
+ * Sinon une hypo nocturne à 3 h qui **rebondit** en hyperglycémie au réveil (effet Somogyi) reste
+ * invisible et la garde hypo n'empêchera pas une hausse basale dangereuse. À respecter par
+ * l'appelant (générateur) lors du câblage.
  * @param {number[]} fastingValues - Pre-breakfast glucose readings (g/L)
  * @param {number} targetGl - Fasting glucose target (g/L)
  * @param {number} currentRate - Current basal rate (U/h)
@@ -197,13 +243,18 @@ export function analyzeBasalTrend(
 
   if (Math.abs(clampedChange) < 2) return null
 
+  const proposedValue = computeProposedValue(currentRate, clampedChange)
+  // Garde HYPO : hausser la basale = plus d'insuline → supprimé si une glycémie à jeun de la fenêtre
+  // est en hypo sévère (hypo nocturne masquée par la moyenne du dawn phenomenon).
+  if (hypoBlocksProposal("basalRate", currentRate, proposedValue, fastingValues)) return null
+
   const reason: AdjustmentReason = clampedChange > 0 ? "basalTooLow" : "basalTooHigh"
 
   return {
     parameterType: "basalRate",
     reason,
     currentValue: currentRate,
-    proposedValue: computeProposedValue(currentRate, clampedChange),
+    proposedValue,
     changePercent: Math.round(clampedChange * 100) / 100,
     confidence: getConfidenceLevel(fastingValues.length),
     supportingEvents: fastingValues.length,
@@ -265,11 +316,10 @@ export function analyzeFixedDose(
   // Pas arrondi nul (< incrément délivrable) → non actionnable.
   if (Math.abs(effectiveDelta) < inc) return null
 
-  // Garde HYPO (validé medical US-2651) : ne JAMAIS proposer une HAUSSE si un relevé du moment
-  // est en hypo SÉVÈRE — la moyenne peut masquer une hypo intermittente, et hausser une dose fixe
-  // (sans logique de correction pour rattraper) serait la direction dangereuse. La BAISSE reste
-  // permise (sens sûr).
-  if (effectiveDelta > 0 && readings.some((r) => r.postGlucoseGl < SEVERE_HYPO_GL)) return null
+  // Garde HYPO (validé medical US-2651) : hausser la dose fixe = plus d'insuline (sans logique de
+  // correction pour rattraper) → supprimé si un relevé du moment est en hypo sévère (la moyenne peut
+  // masquer une hypo intermittente). La BAISSE reste permise. Helper commun aux 4 analyseurs.
+  if (hypoBlocksProposal("fixedDose", slot.valueU, proposedValue, readings.map((r) => r.postGlucoseGl))) return null
 
   const reason: AdjustmentReason = effectiveDelta > 0 ? "fixedDoseTooLow" : "fixedDoseTooHigh"
 
