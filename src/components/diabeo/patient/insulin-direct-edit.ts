@@ -5,14 +5,14 @@
  */
 import type { ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
 
-const ENDPOINT: Record<ProposableParameter, string> = {
+export const ENDPOINT: Record<ProposableParameter, string> = {
   insulinSensitivityFactor: "/api/insulin-therapy/sensitivity-factors",
   insulinToCarbRatio: "/api/insulin-therapy/carb-ratios",
   basalRate: "/api/insulin-therapy/basal-config/pump-slots",
 }
 
-/** Nom du champ de valeur attendu par la route PATCH selon le paramètre. */
-const VALUE_FIELD: Record<ProposableParameter, string> = {
+/** Nom du champ de valeur attendu par les routes PATCH/PUT selon le paramètre. */
+export const VALUE_FIELD: Record<ProposableParameter, string> = {
   insulinSensitivityFactor: "sensitivityFactorGl",
   insulinToCarbRatio: "gramsPerUnit",
   basalRate: "rate",

@@ -38,7 +38,8 @@ import {
 import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
 import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
 import { InsulinDirectEditDialog } from "@/components/diabeo/patient/InsulinDirectEditDialog"
-import type { ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
+import { InsulinSlotSetDialog } from "@/components/diabeo/patient/InsulinSlotSetDialog"
+import { PARAM_BOUNDS, type ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -895,6 +896,31 @@ function SlotList({
           {t("slotOverlapNote")}
         </p>
       )}
+      {/* US-2656 — édition de GROUPE (change les heures + ajoute/supprime), DOCTOR direct, ISF/ICR.
+          mealLabel n'est pas préservé (absent de la vue fiche ; seul la page autonome retirée l'affichait). */}
+      {edit?.mode === "direct" &&
+        family === "ratio" &&
+        edit.parameterType !== "basalRate" &&
+        (() => {
+          const setSlots = slots
+            .filter(
+              (s): s is typeof s & { startHour: number; endHour: number } =>
+                s.startHour !== undefined && s.endHour !== undefined,
+            )
+            .map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: s.value }))
+          if (setSlots.length === 0) return null
+          return (
+            <div className="mt-2">
+              <InsulinSlotSetDialog
+                param={edit.parameterType}
+                paramLabel={edit.paramLabel}
+                unit={unit}
+                initialSlots={setSlots}
+                bounds={PARAM_BOUNDS[edit.parameterType]}
+              />
+            </div>
+          )
+        })()}
     </div>
   )
 }
