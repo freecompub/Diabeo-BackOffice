@@ -452,3 +452,13 @@ pré-dose** qui jugent la dose de ce moment.
 - *Fenêtre `night` (22–04, cross-minuit)* : sur le jour-frontière, `earliest-par-jour` garde le relevé
   ~02-04 h (plus proche du vrai nadir nocturne) et écarte le ~22 h → réduit légèrement N pour la dose
   `evening`, conservateur, **pas de mauvaise direction**. Amélioration future possible (appariement nuit réelle).
+
+### Générateur DOSE FIXE (US-2652 slice 3, LIVRÉ) — `generateFixedDoseProposals`, mode `fixedDose`
+
+Branche dédiée dans `generateForPatient` (`mode === "fixedDose"` → route vers `generateFixedDoseProposals`).
+- Charge les `FixedDoseSlot` (via `patientInsulin`, **pas** `InsulinTherapySettings`). Aucune dose → `EMPTY("noFixedDose")`.
+- Cible : `resolveFastingTarget(glucoseTargets individualisée, isPregnancy)` — pré-prandiale 1,00/0,90, **JAMAIS `titrLow`**.
+- Creux pré-dose par moment : `analyticsService.fixedDoseTrend(patientId, "14d")` (shift Option B).
+- Par moment : `{postGlucoseGl, targetGl}[]` → `analyzeFixedDose(slot, readings)` → `createEngineProposal({ parameterType: "fixedDose", moment })` ; rejets fail-closed non fatals (bucket `fixedDose:<moment>`).
+
+**Générateur multi-levier COMPLET** : ICR + basal + ISF + **fixedDose** de bout en bout, doctor-gated (ADR #13).

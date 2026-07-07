@@ -20,6 +20,9 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
 }))
+vi.mock("@/lib/services/analytics.service", () => ({
+  analyticsService: { fixedDoseTrend: vi.fn() },
+}))
 // Verrou advisory : par défaut « acquis » → exécute le travail. Surchargé pour le cas concurrent.
 vi.mock("@/lib/db/cron-lock", () => ({
   withSessionAdvisoryLock: vi.fn((_key: string, fn: () => Promise<unknown>) => fn()),
@@ -36,6 +39,7 @@ import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { analyticsService } from "@/lib/services/analytics.service"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { auditService } from "@/lib/services/audit.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
@@ -49,6 +53,7 @@ const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
 const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
 const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
+const fixedDoseTrend = vi.mocked(analyticsService.fixedDoseTrend)
 const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 
 /** Repas exploitable par défaut : midi (13 h), glucides/bolus OK, pré-repas 1,0 g/L (en bande). */
@@ -113,10 +118,11 @@ describe("proposalGeneratorService.generateForPatient", () => {
     expect(input.proposedValue).toBeLessThan(10) // baisse ICR
   })
 
-  it("ne fait rien hors mode basalBolus (fixedDose/nonInsulin)", async () => {
-    setup({ mode: "fixedDose" })
+  it("mode fixedDose SANS dose configurée → skipped noFixedDose (aucune proposition)", async () => {
+    mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue([] as never)
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(res.skipped).toBe("mode")
+    expect(res.skipped).toBe("noFixedDose")
     expect(createEngine).not.toHaveBeenCalled()
   })
 
@@ -286,6 +292,65 @@ describe("proposalGeneratorService.generateForPatient — chemin basal (US-2651)
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.skipped).toBe("noCarbRatios") // le early-return ICR gate le chemin basal
     expect(basalCalls()).toHaveLength(0)
+  })
+})
+
+describe("proposalGeneratorService.generateForPatient — mode fixedDose (US-2652)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const fixedCalls = () =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "fixedDose")
+  const emptyTroughs = { morning: [] as number[], noon: [] as number[], evening: [] as number[], night: [] as number[] }
+  function setupFixed(opts: {
+    slots?: { moment: string; valueU: number }[]
+    troughs?: Record<string, number[]>
+    target?: { targetGlucose: number } | null
+    pregnancyMode?: boolean
+    pathology?: string
+  } = {}) {
+    mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue((opts.slots ?? []) as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: opts.pathology ?? "DT2", pregnancyMode: opts.pregnancyMode ?? false } as never)
+    prismaMock.glucoseTarget.findFirst.mockResolvedValue((opts.target ?? null) as never)
+    fixedDoseTrend.mockResolvedValue((opts.troughs ?? emptyTroughs) as never)
+    createEngine.mockResolvedValue({ id: "e1" } as never)
+  }
+
+  it("dose fixe : creux au-dessus de la cible → proposition fixedDoseTooLow (hausse) par moment", async () => {
+    setupFixed({ slots: [{ moment: "morning", valueU: 10 }], troughs: { ...emptyTroughs, morning: [1.8, 1.8, 1.8] } })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const fixed = fixedCalls()
+    expect(fixed).toHaveLength(1)
+    expect(fixed[0]).toMatchObject({ moment: "morning", reason: "fixedDoseTooLow", expectedCurrentValue: 10 })
+  })
+
+  it("< 3 creux dans le moment → aucune proposition (plancher analyseur)", async () => {
+    setupFixed({ slots: [{ moment: "morning", valueU: 10 }], troughs: { ...emptyTroughs, morning: [1.8, 1.8] } })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(fixedCalls()).toHaveLength(0)
+  })
+
+  it("garde hypo : un creux sévère (0,50) supprime la hausse de dose", async () => {
+    setupFixed({ slots: [{ moment: "morning", valueU: 10 }], troughs: { ...emptyTroughs, morning: [1.8, 1.8, 0.5] } })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(fixedCalls()).toHaveLength(0)
+  })
+
+  it("aucune dose fixe configurée → EMPTY(noFixedDose), aucune proposition", async () => {
+    setupFixed({ slots: [] })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.skipped).toBe("noFixedDose")
+    expect(fixedCalls()).toHaveLength(0)
+  })
+
+  it("cible individualisée utilisée (jamais titrLow) : cible 1,30 → creux 1,20 → BAISSE", async () => {
+    setupFixed({
+      slots: [{ moment: "evening", valueU: 12 }],
+      troughs: { ...emptyTroughs, evening: [1.2, 1.2, 1.2] },
+      target: { targetGlucose: 130 }, // 1,30 g/L
+    })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(fixedCalls()[0]).toMatchObject({ moment: "evening", reason: "fixedDoseTooHigh" })
   })
 })
 
@@ -532,8 +597,9 @@ describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
     }))
   })
 
-  it("un patient skippé par mode (fixedDose) ne gonfle PAS errored", async () => {
-    setup({ mode: "fixedDose" }) // generateForPatient renvoie skipped:'mode' sans lever
+  it("un patient fixedDose sans dose ne gonfle PAS errored (skipped noFixedDose proprement)", async () => {
+    setup({ mode: "fixedDose" })
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue([] as never) // aucune dose → EMPTY(noFixedDose), pas d'erreur
     prismaMock.patient.findMany.mockResolvedValue([{ id: 1 }, { id: 2 }] as never)
     const res = await proposalGeneratorService.generateForAllPatients()
     expect(res).toMatchObject({ processed: 2, created: 0, errored: 0 })
