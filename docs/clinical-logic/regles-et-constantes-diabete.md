@@ -343,3 +343,23 @@ les 2 caveats medical #678). Le petit-déjeuner = premier repas du moment « mor
   direction). Amélioration future possible : ancre de repli à fenêtre fixe.
 - **Suivi câblage (slice 3)** : `FastingDay` est en **mg/dL** ; `analyzeBasalTrend` attend **g/L** → le
   générateur devra **÷ 100 + filtrer les null** (sinon garde hypo silencieusement désactivée).
+
+### Générateur basal (US-2651, validé medical) — snapping délivrable + spec slice 3b
+
+**Snapping (slice 3a, livré)** : `analyzeBasalTrend` **arrondit** le débit proposé au multiple de
+`PUMP_BASAL_INCREMENT` (0,05 U/h) le plus proche ; sinon `createEngineProposal` le **rejette**
+(`isDeliverableBasalRate`) → quasi toutes les propositions basales seraient silencieusement droppées.
+Le **sens** (`basalTooLow`/`basalTooHigh`) et la **garde hypo** utilisent la valeur **snappée**. Une
+variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `analyzeFixedDose`.)
+
+**Spec slice 3b (générateur basal, à câbler)** — validé medical :
+- **Scope pompe** (`configType === "pump"` + `pumpSlots`) ; stylo/MDI = dose fixe (autre chemin).
+- **Créneau titré** = celui actif à `NOCTURNAL_TITRATION_REF_HOUR` (**05:00** — action insuline ~05:00 →
+  effet 06:00-08:00 = fasting). Seul le nocturne ; créneaux de jour différés.
+- **Cible à jeun** : `glucoseTargets.targetGlucose/100` clampée `[FASTING_TARGET_MIN_GL 0,80 ;
+  FASTING_TARGET_MAX_GL 1,30]` (grossesse `[0,80 ; FASTING_TARGET_MAX_PREGNANCY_GL 1,00]`), sinon
+  **défaut** `FASTING_TARGET_DEFAULT_GL 1,00` / `FASTING_TARGET_PREGNANCY_GL 0,90`. **JAMAIS `titrLow`**
+  (plancher hypo → sur-titration vers l'hypo).
+- **Deadband** : aucun (basal = titrate-to-target symétrique ; ±2 %/±20 % + garde nadir suffisent).
+- **Coverage guard** : n'autoriser une **hausse** que si ≥ 3 nuits de nadir CGM (sinon Somogyi invisible) ;
+  **baisses** inconditionnelles. `source: "cgm"`.

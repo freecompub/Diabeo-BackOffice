@@ -316,21 +316,29 @@ export function analyzeBasalTrend(
 
   if (Math.abs(clampedChange) < 2) return null
 
-  const proposedValue = computeProposedValue(currentRate, clampedChange)
+  // Snapping DÉLIVRABLE (US-2651 basal, validé medical) : la pompe ne délivre qu'un multiple de
+  // PUMP_BASAL_INCREMENT (0,05 U/h) ; `createEngineProposal` REJETTE un débit non délivrable
+  // (`isDeliverableBasalRate`) → sans snap, quasi toutes les propositions basales seraient
+  // silencieusement droppées (no-op). Mirror `analyzeFixedDose`. Le SENS et la GARDE utilisent la
+  // valeur SNAPPÉE (cohérence avec ce qui est persisté), pas le % pré-snap.
+  const inc = CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT
+  const proposedValue = Math.round(computeProposedValue(currentRate, clampedChange) / inc) * inc
+  if (Math.abs(proposedValue - currentRate) < inc) return null // non actionnable après snap
+
   // Garde HYPO : hausser la basale = plus d'insuline → supprimé si un creux NOCTURNE est en hypo
   // (hypo à 3 h masquée par une moyenne à jeun élevée = effet Somogyi). Repli sur `fastingValues`
   // si les nadirs nocturnes ne sont pas fournis. La moyenne/direction reste sur `fastingValues`.
   const guardValues = nocturnalNadirs && nocturnalNadirs.length > 0 ? nocturnalNadirs : fastingValues
   if (hypoBlocksProposal("basalRate", currentRate, proposedValue, guardValues)) return null
 
-  const reason: AdjustmentReason = clampedChange > 0 ? "basalTooLow" : "basalTooHigh"
+  const reason: AdjustmentReason = proposedValue > currentRate ? "basalTooLow" : "basalTooHigh"
 
   return {
     parameterType: "basalRate",
     reason,
     currentValue: currentRate,
     proposedValue,
-    changePercent: Math.round(clampedChange * 100) / 100,
+    changePercent: Math.round(((proposedValue - currentRate) / currentRate) * 10000) / 100,
     confidence: getConfidenceLevel(fastingValues.length),
     supportingEvents: fastingValues.length,
     totalEventsConsidered: fastingValues.length,

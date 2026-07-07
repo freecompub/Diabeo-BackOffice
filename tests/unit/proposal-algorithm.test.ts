@@ -308,6 +308,19 @@ describe("proposal-algorithm", () => {
       expect(r2!.reason).toBe("basalTooHigh")
       expect(r2!.changePercent).toBe(r1!.changePercent)
     })
+
+    it("snapping délivrable : proposedValue = multiple de 0,05 U/h (US-2651, sinon rejeté à la persistance)", () => {
+      // 0,50 × 1,07 = 0,535 (non délivrable) → snap au multiple de 0,05 le plus proche = 0,55.
+      const r = analyzeBasalTrend([1.07, 1.07, 1.07], 1.0, 0.5)
+      expect(r!.reason).toBe("basalTooLow")
+      expect(r!.proposedValue).toBeCloseTo(0.55) // pas 0,535
+      expect(Math.round(r!.proposedValue / 0.05)).toBeCloseTo(r!.proposedValue / 0.05) // multiple exact
+    })
+
+    it("snapping : variation qui s'arrondit à zéro (< 1 incrément) → null (non actionnable)", () => {
+      // 0,05 × 1,03 = 0,0515 → snap = 0,05 → delta nul → aucune proposition.
+      expect(analyzeBasalTrend([1.03, 1.03, 1.03], 1.0, 0.05)).toBeNull()
+    })
   })
 
   describe("analyzeFixedDose (mode b, US-2651)", () => {
