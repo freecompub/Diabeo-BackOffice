@@ -110,3 +110,66 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
+
+// US-2655 — PUT = remplacement du JEU COMPLET de créneaux ISF (« replace the whole set »).
+const replaceIsfSchema = z.object({
+  patientId: z.number().int().positive().optional(),
+  slots: z
+    .array(
+      z.object({
+        startHour: z.number().int().min(0).max(23),
+        endHour: z.number().int().min(0).max(23),
+        sensitivityFactorGl: z.number().min(INSULIN_BOUNDS.ISF_GL_MIN).max(INSULIN_BOUNDS.ISF_GL_MAX),
+      }),
+    )
+    .min(1),
+})
+
+/** Codes d'erreur du remplacement de groupe → HTTP (stables, sans PHI). */
+const SLOT_SET_ERROR_STATUS: Record<string, number> = {
+  emptySlotSet: 409,
+  zeroDurationSlot: 400,
+  slotOverlap: 409,
+  slotGap: 422,
+  settingsNotFound: 404,
+}
+
+/**
+ * PUT — remplace atomiquement TOUT le jeu de créneaux ISF du patient (US-2655). DOCTOR only,
+ * scopé patient (anti-IDOR). Cohérence re-validée serveur : chevauchement (409), trou (422),
+ * durée nulle (400), jeu vide (409). Les propositions ISF en attente sont supersédées.
+ */
+export async function PUT(req: NextRequest) {
+  try {
+    const user = requireRole(req, "DOCTOR")
+    const hasConsent = await requireGdprConsent(user.id)
+    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
+
+    const parsed = replaceIsfSchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
+    }
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+
+    try {
+      const result = await insulinTherapyService.replaceSlotSet(
+        "isf",
+        patientId,
+        parsed.data.slots.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: s.sensitivityFactorGl })),
+        user.id,
+        extractRequestContext(req),
+      )
+      return NextResponse.json(result)
+    } catch (e) {
+      const status = e instanceof Error ? SLOT_SET_ERROR_STATUS[e.message] : undefined
+      if (status) return NextResponse.json({ error: (e as Error).message }, { status })
+      throw e
+    }
+  } catch (error) {
+    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
+    const msg = error instanceof Error ? error.message : "Unknown error"
+    console.error("[sensitivity-factors PUT]", msg)
+    return NextResponse.json({ error: "serverError" }, { status: 500 })
+  }
+}

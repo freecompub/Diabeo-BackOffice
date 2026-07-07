@@ -175,6 +175,7 @@ enum ProposalStatus {
   accepted
   rejected
   expired
+  superseded // US-2655 — proposition périmée par un remplacement DOCTOR direct du jeu de créneaux
 }
 
 enum DeviceCategory {
@@ -674,14 +675,14 @@ model UiStateSave {
 // ═══════════════════════════════════════════════════════════════
 
 model Patient {
-  id            Int       @id @default(autoincrement())
-  userId        Int       @unique @map("user_id")
+  id            Int            @id @default(autoincrement())
+  userId        Int            @unique @map("user_id")
   pathology     Pathology
   /// Mode grossesse (US-2232) — bascule cibles glycémiques sur defaults GD
   /// (plus stricts — cf. ACOG/ADA). Indépendant de PatientPregnancy.active
   /// pour permettre activation rapide sans saisir DPA, puis synchronisation
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
-  pregnancyMode Boolean   @default(false) @map("pregnancy_mode")
+  pregnancyMode Boolean        @default(false) @map("pregnancy_mode")
   /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
   /// d'affichage/filtrage UNIQUEMENT. ⚠️ NE PAS lire cette colonne brute pour une
   /// décision logique : source de vérité = `resolveTreatmentMode()` (US-2647, dérivé
@@ -694,11 +695,11 @@ model Patient {
   /// `patientId` BDD reste l'identifiant interne pour FK + audit pivot
   /// US-2268 (jamais exposé client UI). Le `publicRef` est stable
   /// (pas de rotation V2 — compromis stabilité historique vs anti-énumération).
-  publicRef     String    @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  createdAt     DateTime  @default(now()) @map("created_at")
-  deletedAt     DateTime? @map("deleted_at")
+  publicRef     String         @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  createdAt     DateTime       @default(now()) @map("created_at")
+  deletedAt     DateTime?      @map("deleted_at")
 
-  user                   User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user                   User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   medicalData            PatientMedicalData?
   administrative         PatientAdministrative?
   pregnancies            PatientPregnancy[]
@@ -1836,7 +1837,7 @@ model Tenant {
   country   String?  @db.Char(2)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
-  services           HealthcareService[]
+  services             HealthcareService[]
   verificationPolicies VerificationPolicy[]
 
   @@index([country])
@@ -1881,16 +1882,16 @@ model VerificationPolicy {
 /// Distincte de `HealthcareMember` (profil praticien : RDV/booking/référents) qu'on
 /// ne touche pas. Lue en base à chaque requête sensible (prépare F7, hors JWT).
 model HealthcareMembership {
-  id              Int      @id @default(autoincrement())
-  userId          Int      @map("user_id")
-  serviceId       Int      @map("service_id")
+  id               Int      @id @default(autoincrement())
+  userId           Int      @map("user_id")
+  serviceId        Int      @map("service_id")
   /// Q1 — capacité clinique scopée (null = aucun accès PHI via ce scope).
-  clinicalRole    Role?    @map("clinical_role")
+  clinicalRole     Role?    @map("clinical_role")
   /// Q2 — gestion opérationnelle (personnel/facturation). N'ouvre AUCUN PHI.
-  canManage       Boolean  @default(false) @map("can_manage")
+  canManage        Boolean  @default(false) @map("can_manage")
   /// Q2 — admin principal (peut déléguer Q2). Le propriétaire bootstrap l'est.
-  isPrincipalAdmin Boolean @default(false) @map("is_principal_admin")
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  isPrincipalAdmin Boolean  @default(false) @map("is_principal_admin")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   user    User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   service HealthcareService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -2381,29 +2382,29 @@ model PushScheduledNotification {
 // ═══════════════════════════════════════════════════════════════
 
 model AuditLog {
-  id         String   @id @default(uuid())
+  id             String   @id @default(uuid())
   /// Nullable pour les événements anonymes (login email inconnu) et les
   /// événements système (cron, worker). FK Restrict empêche la suppression
   /// d'un user qui a des audit logs (RGPD Art. 17 → anonymisation, pas DELETE).
-  userId     Int?     @map("user_id")
-  action     String   @db.VarChar(30)
-  resource   String   @db.VarChar(30)
-  resourceId String?  @map("resource_id")
-  oldValue   Json?    @map("old_value")
-  newValue   Json?    @map("new_value")
-  ipAddress  String?  @map("ip_address") @db.VarChar(45)
-  userAgent  String?  @map("user_agent") @db.VarChar(500)
+  userId         Int?     @map("user_id")
+  action         String   @db.VarChar(30)
+  resource       String   @db.VarChar(30)
+  resourceId     String?  @map("resource_id")
+  oldValue       Json?    @map("old_value")
+  newValue       Json?    @map("new_value")
+  ipAddress      String?  @map("ip_address") @db.VarChar(45)
+  userAgent      String?  @map("user_agent") @db.VarChar(500)
   /// Correlation ID (HDS §IV.3) joining this audit row to stderr log lines.
   /// Assigned by middleware; nullable for events emitted outside the HTTP path.
-  requestId  String?  @map("request_id") @db.VarChar(64)
+  requestId      String?  @map("request_id") @db.VarChar(64)
   /// US-2620/F8 — Scope structuré de l'action (forensics filtrable par
   /// organisation). `tenantId` = frontière d'isolation ; `scopeServiceId` =
   /// service concerné. Nullables (événements hors-scope : login, cron, système).
   /// JAMAIS de PHI/PII de santé ici (réfs/ids uniquement, cf. ADR #18).
-  tenantId       Int?  @map("tenant_id")
-  scopeServiceId Int?  @map("scope_service_id")
-  metadata   Json     @default("{}")
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  tenantId       Int?     @map("tenant_id")
+  scopeServiceId Int?     @map("scope_service_id")
+  metadata       Json     @default("{}")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   user User? @relation(fields: [userId], references: [id], onDelete: Restrict)
 

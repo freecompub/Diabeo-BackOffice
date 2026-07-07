@@ -247,18 +247,18 @@ describe("insulinTherapyService", () => {
   })
 
   describe("deleteIsf / deleteIcr", () => {
-    it("deleteIsf emits a DELETE audit log", async () => {
+    it("deleteIsf est scopé patient (anti-IDOR) et émet un audit DELETE", async () => {
       const txMock = {
-        insulinSensitivityFactor: { delete: vi.fn().mockResolvedValue({}) },
+        insulinSensitivityFactor: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
 
-      const result = await insulinTherapyService.deleteIsf("isf-uuid-1", 42)
+      const result = await insulinTherapyService.deleteIsf("isf-uuid-1", 42, 7)
 
       expect(result).toEqual({ deleted: true })
-      expect(txMock.insulinSensitivityFactor.delete).toHaveBeenCalledWith({
-        where: { id: "isf-uuid-1" },
+      expect(txMock.insulinSensitivityFactor.deleteMany).toHaveBeenCalledWith({
+        where: { id: "isf-uuid-1", settings: { patientId: 7 } },
       })
       expect(txMock.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -271,23 +271,170 @@ describe("insulinTherapyService", () => {
       )
     })
 
-    it("deleteIcr emits a DELETE audit log", async () => {
+    it("deleteIcr est scopé patient (anti-IDOR) et émet un audit DELETE", async () => {
       const txMock = {
-        carbRatio: { delete: vi.fn().mockResolvedValue({}) },
+        carbRatio: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
 
-      const result = await insulinTherapyService.deleteIcr("icr-uuid-1", 42)
+      const result = await insulinTherapyService.deleteIcr("icr-uuid-1", 42, 7)
 
       expect(result).toEqual({ deleted: true })
-      expect(txMock.carbRatio.delete).toHaveBeenCalledWith({
-        where: { id: "icr-uuid-1" },
+      expect(txMock.carbRatio.deleteMany).toHaveBeenCalledWith({
+        where: { id: "icr-uuid-1", settings: { patientId: 7 } },
       })
       expect(txMock.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ resourceId: "icr:icr-uuid-1" }),
         }),
+      )
+    })
+
+    it("deleteIsf sur un créneau d'un autre patient → isfSlotNotFound (count 0, anti-IDOR)", async () => {
+      const txMock = {
+        insulinSensitivityFactor: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
+      await expect(insulinTherapyService.deleteIsf("isf-uuid-1", 42, 999)).rejects.toThrow("isfSlotNotFound")
+      expect(txMock.auditLog.create).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("replaceSlotSet (US-2655 — enregistrement de groupe)", () => {
+    // Profil complet : deux créneaux dont un enjambe minuit (convention seed : endHour ∈ [0,23]).
+    const validIsf = [
+      { startHour: 6, endHour: 22, value: 0.4 },
+      { startHour: 22, endHour: 6, value: 0.6 },
+    ]
+    const mkTx = (over: Record<string, unknown> = {}) => ({
+      insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ id: 3 }) },
+      insulinSensitivityFactor: {
+        findMany: vi.fn().mockResolvedValue([{ startHour: 0, endHour: 24 }]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        createMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+      carbRatio: {
+        findMany: vi.fn().mockResolvedValue([]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 0 }),
+        createMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+      adjustmentProposal: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      ...over,
+    })
+
+    it("jeu vide → emptySlotSet (avant transaction)", async () => {
+      await expect(insulinTherapyService.replaceSlotSet("isf", 7, [], 42)).rejects.toThrow("emptySlotSet")
+    })
+
+    it("durée nulle → zeroDurationSlot", async () => {
+      await expect(
+        insulinTherapyService.replaceSlotSet("isf", 7, [{ startHour: 8, endHour: 8, value: 0.4 }], 42),
+      ).rejects.toThrow("zeroDurationSlot")
+    })
+
+    it("chevauchement → slotOverlap (rien écrit)", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(
+        insulinTherapyService.replaceSlotSet(
+          "isf",
+          7,
+          [
+            { startHour: 6, endHour: 14, value: 0.4 },
+            { startHour: 12, endHour: 22, value: 0.5 },
+            { startHour: 22, endHour: 6, value: 0.6 },
+          ],
+          42,
+        ),
+      ).rejects.toThrow("slotOverlap")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("trou de couverture ISF → slotGap (rien écrit)", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(
+        insulinTherapyService.replaceSlotSet("isf", 7, [{ startHour: 6, endHour: 22, value: 0.4 }], 42), // laisse 22→6
+      ).rejects.toThrow("slotGap")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("settings absent → settingsNotFound (anti-IDOR)", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue(null) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42)).rejects.toThrow("settingsNotFound")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("remplacement ISF valide : delete+createMany scopés settingsId, Time synchronisé, audit from/to", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42)
+
+      expect(res).toEqual({
+        applied: true,
+        count: 2,
+        coverage: { hasGap: false, hasOverlap: false },
+        supersededProposalIds: [],
+      })
+      expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalledWith({ where: { settingsId: 3 } })
+      // Time dérivé de l'heure (dénormalisation synchronisée)
+      const createArg = tx.insulinSensitivityFactor.createMany.mock.calls[0][0]
+      expect(createArg.data[0]).toMatchObject({ settingsId: 3, startHour: 6, endHour: 22, sensitivityFactorGl: 0.4, sensitivityFactorMgdl: 40 })
+      expect((createArg.data[0].startTime as Date).toISOString()).toBe("1970-01-01T06:00:00.000Z")
+      // audit from → to
+      expect(tx.auditLog.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            action: "UPDATE",
+            resourceId: "isf-set:3",
+          }),
+        }),
+      )
+    })
+
+    it("supersède les propositions pending du paramètre (ISF)", async () => {
+      const tx = mkTx({
+        adjustmentProposal: {
+          findMany: vi.fn().mockResolvedValue([{ id: "prop-1" }, { id: "prop-2" }]),
+          updateMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42)
+
+      expect(res.supersededProposalIds).toEqual(["prop-1", "prop-2"])
+      expect(tx.adjustmentProposal.updateMany).toHaveBeenCalledWith({
+        where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending" },
+        data: expect.objectContaining({ status: "superseded", reviewedBy: 42 }),
+      })
+    })
+
+    it("remplacement ICR valide écrit sur la table carbRatio (gramsPerUnit)", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceSlotSet(
+        "icr",
+        7,
+        [
+          { startHour: 6, endHour: 12, value: 8, mealLabel: "PDJ" },
+          { startHour: 12, endHour: 6, value: 12 },
+        ],
+        42,
+      )
+      expect(res.count).toBe(2)
+      expect(tx.carbRatio.deleteMany).toHaveBeenCalledWith({ where: { settingsId: 3 } })
+      const createArg = tx.carbRatio.createMany.mock.calls[0][0]
+      expect(createArg.data[0]).toMatchObject({ settingsId: 3, startHour: 6, endHour: 12, gramsPerUnit: 8, mealLabel: "PDJ" })
+      // supersède les propositions ICR (insulinToCarbRatio)
+      expect(tx.adjustmentProposal.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { patientId: 7, parameterType: "insulinToCarbRatio", status: "pending" } }),
       )
     })
   })
