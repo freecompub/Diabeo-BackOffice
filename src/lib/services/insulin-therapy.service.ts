@@ -417,7 +417,7 @@ export const insulinTherapyService = {
    * @param param - `"isf"` ou `"icr"`.
    * @param patientId - patient scopé (résolu serveur, anti-IDOR).
    * @param slots - jeu complet `{ startHour, endHour, value, mealLabel? }` (value = ISF g/L ou ICR g/U).
-   * @throws emptySlotSet | zeroDurationSlot | slotOverlap | slotGap | settingsNotFound
+   * @throws emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap | settingsNotFound
    */
   async replaceSlotSet(
     param: "isf" | "icr",
