@@ -344,7 +344,9 @@ export function InsulinSlotSetDialog({
                 type="submit"
                 aria-disabled={!submittable}
                 aria-describedby="slot-set-coherence"
-                className={!submittable ? "opacity-50" : undefined}
+                // Paire de tokens muette (AA par construction) plutôt qu'`opacity-50` (qui fond texte
+                // ET fond avec l'arrière-plan → contraste < AA). `cursor-not-allowed` = indice souris.
+                className={!submittable ? "cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted" : undefined}
               >
                 {pending ? t("slotSetSaving") : t("slotSetSubmit")}
               </Button>
