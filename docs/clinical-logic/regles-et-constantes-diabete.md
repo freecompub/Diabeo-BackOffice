@@ -371,3 +371,27 @@ variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `anal
 - **Cible non fasting-scoped** : la cible individualisée lit `glucoseTargets[0]` (1re cible active, pas
   forcément à jeun) ; sûr car clampée `[0,80 ; 1,30]`. Préférer un champ fasting dédié si disponible.
 - **Seuil couverture** `MIN_NADIR_NIGHTS = 3` (constante locale, distincte de `MIN_MEALS_PER_SLOT`).
+
+### Assemblage corrections ISF `correctionTrend` (US-2651 ISF slice 2, validé medical)
+
+Apparie les **corrections propres** (`mealtimePattern.correctionTrend`, CGM only) pour peupler
+`analyzeIsfSlot`. Une correction (`BolusCalculationLog`) n'est retenue que si :
+- **Propreté** : `correctionDose > 0`, pas de repas (`mealBolus == 0`, `inputCarbsGrams` 0/null), **IOB nul**,
+  **non plafonnée** (`wasCapped == false` — sinon dose sous-délivrée → lecture haute → baisse ISF → hypo),
+  **bolus standard** (pas d'étalé/dual-wave), `inputGlucoseGl` connu, `wasDelivered == true`.
+- **Signal** : élévation `inputGlucoseGl − cible ≥ CORRECTION_MIN_ELEVATION_GL` (0,30 g/L) ET
+  `correctionDose ≥ FIXED_DOSE_MIN` (0,5 U).
+- **Confondeurs** : aucun glucide dans `[t0−CORRECTION_COB_LOOKBACK_MIN (180 min), t0)` (COB) ; aucun
+  glucide NI bolus dans `(t0, t0+INSULIN_ACTION_MAX (5 h)]` (repas/insuline empilée).
+
+`postGlucoseGl` = relevé **settled à 5 h** ± `CORRECTION_SETTLE_TOL_MIN` (30 min), **fail-closed** si absent
+(pas de fallback — lire à 5 h et non 3,5 h évite le biais « encore en baisse » vers plus d'insuline).
+`nadirGl` = min CGM sur la fenêtre (garde hypo tardive). Attribution au créneau ISF **appliqué**
+(`localHour(t0)`). Période ISF par défaut = **30 j** (corrections propres rares). Limite connue :
+l'exercice (creux → sens sûr, capté par la garde) n'est pas un gate dur (pas d'intensité dans les données).
+
+**Limites connues (ISF assemblage)** : (1) une correction dont la fenêtre COB `[t0−180 min]` déborde
+avant le début de la fenêtre d'analyse est **exclue** (fail-closed — glucides pré-correction non
+chargés, COB non vérifiable). (2) Les **glucides non loggés** (patient mange sans saisir) ne peuvent
+être exclus par aucun filtre d'événement : limite data intrinsèque de la titration, atténuée par la
+garde nadir (ISF slice 1) + le doctor-gating (ADR #13).

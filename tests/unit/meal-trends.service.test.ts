@@ -386,3 +386,86 @@ describe("mealtimePattern.fastingTrend (US-2651 basal)", () => {
     expect(days[0].fastingMgdl).toBeCloseTo(110)
   })
 })
+
+describe("mealtimePattern.correctionTrend (US-2651 ISF)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  // Correction PROPRE par défaut : BG 2,5 g/L, cible 1,0 (100 mg/dL), 2 U, pas de repas, IOB nul.
+  function bolus(over: Record<string, unknown> = {}) {
+    return {
+      calculatedAt: new Date(), inputGlucoseGl: 2.5, targetGlucoseMgdl: 100, mealBolus: 0,
+      inputCarbsGrams: 0, iobValue: 0, correctionDose: 2.0, wasCapped: false,
+      extendedDurationHours: null, extendedImmediatePct: null, ...over,
+    }
+  }
+  function setupCorr(boluses: unknown[], readings: unknown[], carbEvents: unknown[] = []) {
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: null, pregnancyMode: false } as any)
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any)
+    prismaMock.diabetesEvent.findMany
+      .mockResolvedValueOnce([] as any) // repas (insulinMeal)
+      .mockResolvedValueOnce(carbEvents as any) // glucides
+    prismaMock.cgmEntry.findMany.mockResolvedValue(readings as any)
+    prismaMock.bolusCalculationLog.findMany.mockResolvedValue(boluses as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+  }
+
+  it("correction propre → point ISF (post settled à 5 h + nadir tardif)", async () => {
+    const T0 = Date.now() - 2 * DAY
+    setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)])
+    const pts = await mealtimePattern.correctionTrend(42, "30d", 1)
+    expect(pts).toHaveLength(1)
+    expect(pts[0].targetGl).toBeCloseTo(1.0)
+    expect(pts[0].postGlucoseGl).toBeCloseTo(1.6) // relevé à 5 h
+    expect(pts[0].nadirGl).toBeCloseTo(0.9)       // creux à 3 h
+  })
+
+  it.each([
+    ["repas (mealBolus>0)", { mealBolus: 1 }],
+    ["glucides saisis", { inputCarbsGrams: 20 }],
+    ["IOB résiduel", { iobValue: 0.5 }],
+    ["dose plafonnée (wasCapped)", { wasCapped: true }],
+    ["bolus étalé", { extendedDurationHours: 2 }],
+    ["élévation < 0,30 g/L", { inputGlucoseGl: 1.2 }],
+    ["dose < 0,5 U", { correctionDose: 0.3 }],
+  ])("filtre exclut : %s → aucun point", async (_label, over) => {
+    const T0 = Date.now() - 2 * DAY
+    setupCorr([bolus({ calculatedAt: new Date(T0), ...over })], [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)])
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
+
+  it("confondeur : glucide intra-fenêtre (2 h après) → exclu (repas imputerait une fausse baisse ISF)", async () => {
+    const T0 = Date.now() - 2 * DAY
+    setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)],
+      [{ eventDate: new Date(T0 + 120 * MIN) }])
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
+
+  it("confondeur : COB (glucide 1 h AVANT la correction) → exclu", async () => {
+    const T0 = Date.now() - 2 * DAY
+    setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)],
+      [{ eventDate: new Date(T0 - 60 * MIN) }])
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
+
+  it("confondeur : bolus empilé intra-fenêtre → exclu", async () => {
+    const T0 = Date.now() - 2 * DAY
+    setupCorr(
+      [bolus({ calculatedAt: new Date(T0) }), bolus({ calculatedAt: new Date(T0 + 120 * MIN) })],
+      [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)],
+    )
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
+
+  it("fail-closed : aucun relevé settled à 5 h (± tol) → correction ignorée (pas de fallback)", async () => {
+    const T0 = Date.now() - 2 * DAY
+    setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9)]) // nadir mais pas de post à 5 h
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
+
+  it("fail-closed au bord : correction dans la 1re heure de la fenêtre (COB non vérifiable) → exclue", async () => {
+    // t0 − 180 min déborde avant le début de la fenêtre 30 j → glucides pré-correction non chargés → drop.
+    const T0 = Date.now() - 30 * DAY + 60 * MIN
+    setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)])
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
+})

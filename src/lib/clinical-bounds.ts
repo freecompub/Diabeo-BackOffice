@@ -157,6 +157,17 @@ export const CLINICAL_BOUNDS = {
   FASTING_TARGET_MIN_GL: 0.8,
   FASTING_TARGET_MAX_GL: 1.3,
   FASTING_TARGET_MAX_PREGNANCY_GL: 1.0,
+  /**
+   * US-2651 (ISF) — appariement des CORRECTIONS pour la titration ISF (validé medical). Une correction
+   * n'est exploitable que si elle avait un « travail » mesurable au-dessus du bruit CGM et propre de
+   * tout confondeur : élévation ≥ `CORRECTION_MIN_ELEVATION_GL` (0,30 g/L au-dessus de la cible),
+   * glucides absents dans `[t0−CORRECTION_COB_LOOKBACK_MIN, t0]` (COB) et dans la fenêtre d'action. Le
+   * « résultat » = relevé settled à `INSULIN_ACTION_MAX` (5 h) ± `CORRECTION_SETTLE_TOL_MIN` (fail-closed
+   * si absent). Lire à 5 h (pas 3,5 h) = err vers moins d'insuline. Nadir sur `POSTMEAL_NADIR_WINDOW_MIN`.
+   */
+  CORRECTION_MIN_ELEVATION_GL: 0.3,
+  CORRECTION_SETTLE_TOL_MIN: 30,
+  CORRECTION_COB_LOOKBACK_MIN: 180,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
