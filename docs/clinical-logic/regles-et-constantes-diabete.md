@@ -470,3 +470,22 @@ Branche dédiée dans `generateForPatient` (`mode === "fixedDose"` → route ver
   `[patientId, moment]`). Si un patient avait 2 `PatientInsulin` actifs portant le même moment, le
   `findMany` émettrait 2 candidats ; tout reste **sûr** (`resolveCurrentValue` = `findFirst` + le 2e
   candidat → `duplicatePendingProposal` / `baselineMoved`) → proposition supprimée, **jamais fausse**.
+
+### Flag `observance` (US-2651 mode c, LIVRÉ, validé medical) — « suivi glycémique insuffisant »
+
+4ᵉ flag d'orientation du mode nonInsulin (`generateOrientationFlags`). **Honnêteté du scope** : mesure
+l'**auto-surveillance glycémique** (seule donnée disponible ; pas d'adhésion médicamenteuse ni de présence RDV).
+Libellé UI « Suivi glycémique à vérifier ». Source : `OBSERVANCE` (`clinical-bounds.ts`).
+
+- **Logique either/or** : `observancePoor = !cgmAdequate && bgmCount < seuil`. `cgmAdequate = cgmCount > 0
+  && cgmCaptureRate(cgmCount, 30) ≥ MIN_CGM_CAPTURE_RATE (30 %)`. → un **porteur CGM régulier** (capture ≥ 30 %,
+  un capteur abandonné retombe sous le seuil) OU un **testeur BGM diligent** n'est **jamais** faussement flagué ;
+  seul le double-échec l'est.
+- **Seuils BGM pathology-aware** : `BGM_MIN_READINGS_DEFAULT` = **4 / 30 j** (DT1/DT2, < ~1×/sem) ;
+  `BGM_MIN_READINGS_PREGNANCY` = **30 / 30 j** (GD/grossesse, < ~1×/j — population critique, cible 4×/j).
+- **Garde enrollment** : pas de flag si `patient.createdAt` < `MIN_ENROLLMENT_DAYS` (30 j) — fenêtre pas
+  encore observable (n'accuse pas un patient récemment inscrit).
+- **Fenêtre** `WINDOW_DAYS` = 30 j. **Chevauchement** avec `hba1cStale` acceptable (axes distincts :
+  récence HbA1c vs comportement de suivi ; un patient totalement désengagé déclenche les deux, cohérent).
+- **Direction fail-safe** : orientation-only, idempotent, doctor-gated → seuils **lenients** (err vers NE PAS
+  flaguer, anti fatigue d'alerte). Jamais une dose (frontière MDR).

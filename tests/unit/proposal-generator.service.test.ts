@@ -409,6 +409,9 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     tir: number | null = null, // TIR retourné par computeTirPercent (null = capture insuffisante)
     patient: { pathology?: string; pregnancyMode?: boolean } = {},
     objectiveHba1c: number | null = null, // cible individualisée (AnnexObjective)
+    // observance : par défaut `createdAt` = maintenant → garde enrollment (< 30 j) neutralise le flag
+    // pour les tests des AUTRES flags. Les tests observance passent un createdAt ancien + les comptes.
+    monitoring: { createdAt?: Date; cgmCount?: number; bgmCount?: number } = {},
   ) {
     const v = hba1c.value ?? 6 // valeur HbA1c par défaut (< 8 → pas de flag aboveTarget)
     mode.mockResolvedValue({ mode: "nonInsulin", coherent: true } as never)
@@ -416,8 +419,11 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     prismaMock.diabetesEvent.findFirst.mockResolvedValue(hba1c.evt ? ({ eventDate: hba1c.evt, hba1c: v } as never) : null)
     prismaMock.patient.findFirst.mockResolvedValue({
       pathology: patient.pathology ?? "DT2", pregnancyMode: patient.pregnancyMode ?? false,
+      createdAt: monitoring.createdAt ?? new Date(),
     } as never)
     prismaMock.annexObjective.findUnique.mockResolvedValue(objectiveHba1c !== null ? ({ objectiveHba1c } as never) : null)
+    prismaMock.cgmEntry.count.mockResolvedValue((monitoring.cgmCount ?? 0) as never)
+    prismaMock.glycemiaEntry.count.mockResolvedValue((monitoring.bgmCount ?? 0) as never)
     vi.spyOn(objectivesService, "computeTirPercent").mockResolvedValue(tir)
   }
 
@@ -548,7 +554,7 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     mode.mockResolvedValue({ mode: "nonInsulin", coherent: true } as never)
     prismaMock.glycemiaEntry.findFirst.mockResolvedValue({ date: new Date(Date.now() - 30 * DAY), hba1c: 7.0 } as never)
     prismaMock.diabetesEvent.findFirst.mockResolvedValue({ eventDate: new Date(Date.now() - 200 * DAY), hba1c: 9.0 } as never)
-    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false, createdAt: new Date() } as never)
     prismaMock.annexObjective.findUnique.mockResolvedValue(null)
     vi.spyOn(objectivesService, "computeTirPercent").mockResolvedValue(null)
     await proposalGeneratorService.generateForPatient(1, 99)
@@ -560,6 +566,43 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     setupNonInsulin({ gly: new Date(), value: 8.0 }, null)
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(raiseFlag).not.toHaveBeenCalledWith(1, "hba1cAboveTarget", 99, undefined)
+  })
+
+  // ── observance (US-2651, validé medical) : either/or CGM-capture / comptage BGM + garde enrollment ──
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000)
+
+  it("observance : les DEUX canaux échouent (pas de CGM, 2 BGM, DT2, inscrit 60 j) → flag levé", async () => {
+    setupNonInsulin({ evt: new Date() }, null, {}, null, { createdAt: daysAgo(60), cgmCount: 0, bgmCount: 2 })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "observance", 99, undefined)
+  })
+
+  it("observance : testeur BGM diligent (5 ≥ 4, DT2) → PAS de flag", async () => {
+    setupNonInsulin({ evt: new Date() }, null, {}, null, { createdAt: daysAgo(60), cgmCount: 0, bgmCount: 5 })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "observance", 99, undefined)
+  })
+
+  it("observance : porteur CGM régulier (capture ≥ 30 %) → PAS de flag (jamais faussement flagué)", async () => {
+    setupNonInsulin({ evt: new Date() }, null, {}, null, { createdAt: daysAgo(60), cgmCount: 3000, bgmCount: 0 })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "observance", 99, undefined)
+  })
+
+  it("observance : garde enrollment — patient inscrit depuis 10 j (< 30) → PAS de flag même si tout échoue", async () => {
+    setupNonInsulin({ evt: new Date() }, null, {}, null, { createdAt: daysAgo(10), cgmCount: 0, bgmCount: 0 })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "observance", 99, undefined)
+  })
+
+  it("observance : seuil pathology-aware — GD avec 10 BGM (< 30) → flag ; un DT2 avec 10 (≥ 4) → non", async () => {
+    setupNonInsulin({ evt: new Date() }, null, { pathology: "GD" }, null, { createdAt: daysAgo(60), cgmCount: 0, bgmCount: 10 })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "observance", 99, undefined) // GD exige ≥ 30
+    raiseFlag.mockClear()
+    setupNonInsulin({ evt: new Date() }, null, { pathology: "DT2" }, null, { createdAt: daysAgo(60), cgmCount: 0, bgmCount: 10 })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "observance", 99, undefined) // DT2 : 10 ≥ 4 → observant
   })
 })
 

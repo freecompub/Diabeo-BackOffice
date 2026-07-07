@@ -305,6 +305,24 @@ export const BGM_CARNET = {
 } as const
 
 /**
+ * US-2651 (mode c) — flag d'orientation `observance` = **suivi glycémique insuffisant** d'un patient
+ * NON insuliné (on n'a pas de donnée d'adhésion médicamenteuse ni de présence RDV ; seule la fréquence
+ * d'auto-surveillance est mesurable). Validé medical. Logique **either/or** (ne flague QUE si les DEUX
+ * canaux échouent) pour ne JAMAIS faussement flaguer un porteur CGM ni un testeur BGM diligent :
+ * `observancePoor = !cgmAdequate && !bgmAdequate`, avec `cgmAdequate = capture ≥ MIN_CGM_CAPTURE_RATE`
+ * (un capteur abandonné → capture basse → détecté) et `bgmAdequate = comptage BGM ≥ seuil pathology-aware`.
+ * **Garde enrollment** : pas de flag si le patient est inscrit depuis < `MIN_ENROLLMENT_DAYS` (fenêtre
+ * pas encore observable). Seuils lenients (orientation-only → err vers NE PAS flaguer, anti fatigue d'alerte).
+ */
+export const OBSERVANCE = {
+  WINDOW_DAYS: 30,
+  MIN_CGM_CAPTURE_RATE: 30, // % — aligné sur DASHBOARD_TIR.MIN_CAPTURE_RATE (capture suffisante = observant)
+  BGM_MIN_READINGS_DEFAULT: 4, // DT1/DT2/défaut : < ~1×/semaine sur 30 j = sous-surveillance
+  BGM_MIN_READINGS_PREGNANCY: 30, // GD/grossesse : < ~1×/jour sur 30 j (cible GD = 4×/jour)
+  MIN_ENROLLMENT_DAYS: 30, // ne pas flaguer un patient inscrit depuis moins d'une fenêtre
+} as const
+
+/**
  * US-2637 — Tendances de repas (définitions cliniques validées par
  * `medical-domain-validator`). Durées en minutes, relatives à l'heure du repas
  * `t0`.

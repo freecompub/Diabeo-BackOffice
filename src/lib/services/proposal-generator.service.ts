@@ -23,9 +23,10 @@ import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import {
-  CLINICAL_BOUNDS, HBA1C_STALE_DAYS, DASHBOARD_TIR,
+  CLINICAL_BOUNDS, HBA1C_STALE_DAYS, DASHBOARD_TIR, OBSERVANCE,
   HBA1C_HIGH_DEFAULT_PERCENT, HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT, HBA1C_TARGET_MARGIN_PERCENT,
 } from "@/lib/clinical-bounds"
+import { cgmCaptureRate } from "@/lib/statistics"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
   analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, analyzeBasalTrend, analyzeIsfSlot,
@@ -457,10 +458,12 @@ export const proposalGeneratorService = {
    * Mode (c) — patient NON insuliné : **aucune proposition de dose** (frontière MDR / IEC 62304),
    * uniquement des `ClinicalReviewFlag` d'**orientation** (« à revoir en consultation »).
    *
-   * Slice 1 : `hba1cStale` — la dernière HbA1c (labo, dans `GlycemiaEntry` ou `DiabetesEvent`) date de
-   * plus de `HBA1C_STALE_DAYS` (180 j), **ou est absente** (un DT2/GD suivi doit avoir une HbA1c
-   * récente). Idempotent (raise dédoublonne un flag ouvert du même type). `tirBelowTarget` et
-   * `observance` = slices ultérieures (nécessitent l'extraction du calcul TIR / une définition observance).
+   * 4 flags (tous idempotents — `raise` dédoublonne un flag ouvert du même type) :
+   * - `hba1cStale` : dernière HbA1c (labo) > `HBA1C_STALE_DAYS` (180 j) ou absente.
+   * - `hba1cAboveTarget` : HbA1c RÉCENTE au-dessus de la cible (comble le trou BGM-only).
+   * - `tirBelowTarget` : TIR 14 j < cible (CGM, pathology-aware).
+   * - `observance` : **suivi glycémique insuffisant** (either/or CGM-capture / comptage BGM ; garde
+   *   enrollment ; jamais l'adhésion médicamenteuse, non mesurable — cf. `OBSERVANCE`, validé medical).
    *
    * @param patientId Patient non insuliné.
    * @param auditUserId Acteur d'audit (système `null` pour le cron).
@@ -486,7 +489,7 @@ export const proposalGeneratorService = {
         where: { patientId, hba1c: { not: null } }, orderBy: { eventDate: "desc" }, select: { eventDate: true, hba1c: true },
       }),
       prisma.patient.findFirst({
-        where: { id: patientId, deletedAt: null }, select: { pathology: true, pregnancyMode: true },
+        where: { id: patientId, deletedAt: null }, select: { pathology: true, pregnancyMode: true, createdAt: true },
       }),
       prisma.annexObjective.findUnique({ where: { patientId }, select: { objectiveHba1c: true } }),
     ])
@@ -533,6 +536,28 @@ export const proposalGeneratorService = {
         await clinicalReviewFlagService.raise(patientId, "tirBelowTarget", auditUserId, ctx)
           .then(() => { flagged++ })
           .catch((err) => logger.error("proposal-generator", "raise tirBelowTarget failed", { patientId }, err as Error))
+      }
+    }
+
+    // observance — « suivi glycémique insuffisant » (validé medical). Logique EITHER/OR : ne flague QUE
+    // si les DEUX canaux échouent → jamais un porteur CGM régulier (capture ≥ 30 %, capteur abandonné
+    // détecté) ni un testeur BGM diligent (≥ seuil pathology-aware). Garde enrollment : pas de flag si
+    // le patient est inscrit depuis < une fenêtre (données pas encore observables). Jamais une dose.
+    if (patient) {
+      const enrolledDays = (Date.now() - patient.createdAt.getTime()) / 86_400_000
+      if (enrolledDays >= OBSERVANCE.MIN_ENROLLMENT_DAYS) {
+        const since = new Date(Date.now() - OBSERVANCE.WINDOW_DAYS * 86_400_000)
+        const [cgmCount, bgmCount] = await Promise.all([
+          prisma.cgmEntry.count({ where: { patientId, timestamp: { gte: since } } }),
+          prisma.glycemiaEntry.count({ where: { patientId, date: { gte: since } } }),
+        ])
+        const cgmAdequate = cgmCount > 0 && cgmCaptureRate(cgmCount, OBSERVANCE.WINDOW_DAYS) >= OBSERVANCE.MIN_CGM_CAPTURE_RATE
+        const bgmMin = isPregnancy ? OBSERVANCE.BGM_MIN_READINGS_PREGNANCY : OBSERVANCE.BGM_MIN_READINGS_DEFAULT
+        if (!cgmAdequate && bgmCount < bgmMin) {
+          await clinicalReviewFlagService.raise(patientId, "observance", auditUserId, ctx)
+            .then(() => { flagged++ })
+            .catch((err) => logger.error("proposal-generator", "raise observance failed", { patientId }, err as Error))
+        }
       }
     }
 
