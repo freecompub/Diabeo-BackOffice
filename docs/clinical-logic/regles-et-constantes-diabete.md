@@ -515,3 +515,19 @@ confiance au client) sur l'état **final** :
 - **Profil « une seule valeur sur 24 h »** : s'exprime en **≥ 2 créneaux** de même valeur (ex. `[0,12)`+`[12,0)`).
   Inhérent au résolveur `findSlotForHour` (aucun `[h,h)` ne couvre 24 h) — un mono-créneau reçoit `slotGap` (422),
   fail-closed. À gérer en confort UI (auto-split) côté US-2656.
+
+### Génération de propositions à la demande (US-2658)
+
+Au-delà du run nocturne (cron), un **DOCTOR ou NURSE** peut déclencher la génération pour un patient sur
+une **fenêtre d'analyse choisie**, via `POST /api/patients/[id]/proposals/generate` (`windowDays` ∈ **[2,14]** ;
+hors bornes → 400 `windowOutOfBounds`).
+- **Réutilise le générateur** (`generateForPatient` + paramètre `windowDays`) — aucun nouveau chemin de dose.
+  `windowDays` s'applique aux chemins **ICR / basal / dose fixe** (repas, à-jeun, creux pré-dose) ; l'**ISF
+  garde sa fenêtre 30 j** (corrections propres rares — décision US-2658 §3). Absente (cron) → 14 j inchangé.
+- **Plancher 2 j** : sous les seuils de suffisance (`MIN_MEALS_PER_SLOT` = 3, `MIN_NADIR_NIGHTS` = 3, etc.) le
+  moteur ne propose rien — c'est un **succès** (`created: 0`, `reason`), pas une erreur. **Plafond 14 j** :
+  au-delà, les données ne reflètent plus la titration actuelle (aligné `AGP_SUFFICIENCY.MIN_DAYS`).
+- Tous les garde-fous existants restent actifs (garde hypo, bornes cliniques, anti-empilement
+  `one_pending_per_slot`, frontière MDR `nonInsulin`). **Propose, n'applique jamais** (ADR #13).
+- **RBAC** : DOCTOR/NURSE (min NURSE) ; patient/VIEWER → 403. Scopé patient (anti-IDOR → 404). Audité
+  (`proposal.generator.on_demand` : acteur soignant réel, fenêtre, résultat, sans PHI).

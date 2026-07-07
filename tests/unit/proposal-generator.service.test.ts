@@ -666,3 +666,43 @@ describe("proposalGeneratorService.generateForAllPatients (cron)", () => {
     expect(res.created).toBe(1)
   })
 })
+
+describe("US-2658 — fenêtre d'analyse à la demande (windowDays)", () => {
+  beforeEach(() => vi.clearAllMocks())
+  const fixedDoseTrend = vi.mocked(analyticsService.fixedDoseTrend)
+  const basalCfg = { configType: "pump", pumpSlots: [{ id: "p1", rate: 0.8, startHour: 0, endHour: 6 }] }
+
+  it("windowDays applique `${windowDays}d` à ICR/basal, l'ISF garde 30 j", async () => {
+    setup({
+      basalConfig: basalCfg,
+      glucoseTargets: [{ targetGlucose: 120 }],
+      fasting: [{ fastingMgdl: 110, nocturnalNadirMgdl: 100 }],
+      sensitivityFactors: [{ startHour: 0, endHour: 24, sensitivityFactorGl: 0.5 }],
+      corrections: [],
+    })
+    await proposalGeneratorService.generateForPatient(1, 99, undefined, 4)
+
+    expect(dailyJournal.mock.calls[0]?.[1]).toBe("4d") // ICR → fenêtre choisie
+    expect(fastingTrend.mock.calls[0]?.[1]).toBe("4d") // basal → fenêtre choisie
+    expect(correctionTrend.mock.calls[0]?.[1]).toBe("30d") // ISF → 30 j inchangé (décision §3)
+  })
+
+  it("sans windowDays (cron) → 14 j par défaut (comportement inchangé)", async () => {
+    setup({ basalConfig: basalCfg, glucoseTargets: [{ targetGlucose: 120 }], fasting: [{ fastingMgdl: 110, nocturnalNadirMgdl: 100 }] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(dailyJournal.mock.calls[0]?.[1]).toBe("14d")
+    expect(fastingTrend.mock.calls[0]?.[1]).toBe("14d")
+  })
+
+  it("mode fixedDose : windowDays applique `${windowDays}d` aux creux pré-dose", async () => {
+    mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue([{ moment: "morning", valueU: 10 }] as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
+    prismaMock.glucoseTarget.findFirst.mockResolvedValue(null as never)
+    fixedDoseTrend.mockResolvedValue({} as never)
+    createEngine.mockResolvedValue({ id: "e1" } as never)
+
+    await proposalGeneratorService.generateForPatient(1, 99, undefined, 3)
+    expect(fixedDoseTrend.mock.calls[0]?.[1]).toBe("3d")
+  })
+})

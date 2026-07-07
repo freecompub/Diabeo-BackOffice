@@ -138,19 +138,32 @@ const EXPECTED_SKIP = new Set([
 
 export const proposalGeneratorService = {
   /**
-   * Génère les propositions ICR moteur pour un patient (ne persiste que des `pending`).
+   * Génère les propositions moteur d'un patient (mode-aware : ICR + basal + ISF en `basalBolus` ;
+   * doses simples en `fixedDose` ; flags d'orientation en `nonInsulin`). Ne persiste que des `pending`.
    * @param patientId Patient cible.
-   * @param auditUserId Acteur d'audit (le cron passe un ID système).
+   * @param auditUserId Acteur d'audit (le cron passe un ID système `null`).
    * @param ctx Contexte requête (audit).
+   * @param windowDays US-2658 — fenêtre d'analyse à la demande, bornée [2,14] par l'appelant. Applique
+   *   `${windowDays}d` aux chemins ICR / basal / dose fixe (repas, à-jeun, creux pré-dose). **L'ISF garde
+   *   délibérément sa fenêtre 30 j** (corrections propres rares — décision US-2658 §3). Absente (cron) →
+   *   `ANALYSIS_PERIOD` (14 j), comportement inchangé.
    * @returns Métriques du run (sans PHI).
    */
-  async generateForPatient(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
+  async generateForPatient(
+    patientId: number,
+    auditUserId: number | null,
+    ctx?: AuditContext,
+    windowDays?: number,
+  ): Promise<GenerateResult> {
     // 0. Mode — routage : `nonInsulin` → flags d'orientation (mode c, jamais de dose, frontière MDR) ;
     //    `fixedDose` → titration des doses simples par moment ; `basalBolus` → ICR + basal + ISF (ci-dessous).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") return proposalGeneratorService.generateOrientationFlags(patientId, auditUserId, ctx)
-    if (mode === "fixedDose") return proposalGeneratorService.generateFixedDoseProposals(patientId, auditUserId, ctx)
+    if (mode === "fixedDose") return proposalGeneratorService.generateFixedDoseProposals(patientId, auditUserId, ctx, windowDays)
     if (mode !== "basalBolus") return EMPTY("mode")
+
+    // Fenêtre d'analyse (ICR/basal/dose fixe) : à la demande si fournie, sinon période cron par défaut.
+    const analysisPeriod = windowDays != null ? `${windowDays}d` : ANALYSIS_PERIOD
 
     // 1. Config (créneaux ICR) + patient (pathologie / grossesse pour la cible).
     const settings = await insulinTherapyService.getSettings(patientId, auditUserId, ctx)
@@ -171,7 +184,7 @@ export const proposalGeneratorService = {
       : CLINICAL_BOUNDS.POSTPRANDIAL_TITRATION_LOW_GL
 
     // 3. Repas (14 j, CGM) → portes qualité.
-    const journal = await mealtimePattern.dailyJournal(patientId, ANALYSIS_PERIOD, auditUserId, ctx, { source: "cgm" })
+    const journal = await mealtimePattern.dailyJournal(patientId, analysisPeriod, auditUserId, ctx, { source: "cgm" })
     const usable = journal.filter((m) => isMealUsableForIcr(m, isPregnancy))
 
     // 4. Bucketing par créneau ICR à l'HEURE RÉELLE du repas (pas le moment).
@@ -207,7 +220,7 @@ export const proposalGeneratorService = {
           supportingEvents: candidate.supportingEvents,
           totalEventsConsidered: candidate.totalEventsConsidered,
           averageObservedValue: candidate.averageObservedValue ?? null,
-          analysisPeriod: ANALYSIS_PERIOD,
+          analysisPeriod,
           carbRatioSlotStart: slot.startHour,
           carbRatioSlotEnd: slot.endHour,
         }, ctx)
@@ -282,7 +295,7 @@ export const proposalGeneratorService = {
         const rawTarget = settings?.glucoseTargets?.[0]?.targetGlucose
         const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
         // À jeun (pré-petit-déj) + nadirs nocturnes par nuit. mg/dL → g/L, null filtrés.
-        const fasting = await mealtimePattern.fastingTrend(patientId, ANALYSIS_PERIOD, auditUserId, ctx, { source: "cgm" })
+        const fasting = await mealtimePattern.fastingTrend(patientId, analysisPeriod, auditUserId, ctx, { source: "cgm" })
         const fastingValues = fasting
           .map((f) => f.fastingMgdl)
           .filter((v): v is number => v !== null && Number.isFinite(v))
@@ -307,7 +320,7 @@ export const proposalGeneratorService = {
               supportingEvents: candidate.supportingEvents,
               totalEventsConsidered: candidate.totalEventsConsidered,
               averageObservedValue: candidate.averageObservedValue ?? null,
-              analysisPeriod: ANALYSIS_PERIOD,
+              analysisPeriod,
               pumpBasalSlotId: nocturnalSlot.id,
             }, ctx)
             created++
@@ -395,7 +408,14 @@ export const proposalGeneratorService = {
    * @param ctx Contexte requête (audit).
    * @returns Métriques ; `slotsConsidered` = nb de doses fixes, `created` = propositions générées.
    */
-  async generateFixedDoseProposals(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
+  async generateFixedDoseProposals(
+    patientId: number,
+    auditUserId: number | null,
+    ctx?: AuditContext,
+    windowDays?: number,
+  ): Promise<GenerateResult> {
+    // Fenêtre d'analyse des creux pré-dose : à la demande si fournie (US-2658), sinon 14 j (cron).
+    const analysisPeriod = windowDays != null ? `${windowDays}d` : ANALYSIS_PERIOD
     const fixedSlots = await prisma.fixedDoseSlot.findMany({
       where: { patientInsulin: { patientId } },
       select: { moment: true, valueU: true },
@@ -418,7 +438,7 @@ export const proposalGeneratorService = {
     const targetGl = resolveFastingTarget(targetRow ? Number(targetRow.targetGlucose) / 100 : null, isPregnancy)
 
     // Creux pré-dose par moment (shift Option B, BGM). Période 14 j (réactif, comme le basal).
-    const troughs = await analyticsService.fixedDoseTrend(patientId, ANALYSIS_PERIOD, auditUserId, ctx)
+    const troughs = await analyticsService.fixedDoseTrend(patientId, analysisPeriod, auditUserId, ctx)
 
     let created = 0
     for (const slot of fixedSlots) {
@@ -437,7 +457,7 @@ export const proposalGeneratorService = {
           supportingEvents: candidate.supportingEvents,
           totalEventsConsidered: candidate.totalEventsConsidered,
           averageObservedValue: candidate.averageObservedValue ?? null,
-          analysisPeriod: ANALYSIS_PERIOD,
+          analysisPeriod,
         }, ctx)
         created++
       } catch (err) {
