@@ -408,3 +408,9 @@ garde nadir (ISF slice 1) + le doctor-gating (ADR #13).
 
 **Générateur multi-levier complet** : ICR + basal + ISF de bout en bout (doctor-gated, ADR #13).
 Reste : `fixedDose` (bloqué migration `moment`), mode-c `observance`, activation cron prod.
+
+**Suivi (impact cumulé multi-levier)** : le générateur produit des propositions ICR/basal/ISF
+**indépendantes** (par paramètre, jeux d'événements disjoints — pas de double-titration). Mais accepter
+plusieurs propositions en une session augmente l'insuline totale ; l'écran de revue ne montre pas encore
+d'**impact cumulé**. Atténué par le jugement médecin par-paramètre + les caps ±20 % + one-pending/créneau.
+Enhancement futur de l'écran de revue (non bloquant, validé medical #684).

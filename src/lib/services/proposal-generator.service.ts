@@ -325,6 +325,8 @@ export const proposalGeneratorService = {
     // 7. Chemin ISF (US-2651) — titre chaque créneau ISF par les CORRECTIONS propres appariées.
     // Pas de coverage guard dédié (≠ basal) : `correctionTrend` est CGM-only + fail-closed, donc chaque
     // point a un nadir → la garde hypo d'`analyzeIsfSlot` (baisse ISF = plus d'insuline) suffit (medical #683).
+    // Bord : sous une rareté CGM extrême (trou de ~5 h), `nadirGl` peut être null → la garde se replie
+    // sur `postGlucoseGl` (valeur settled à 5 h). Cas rare (haut à 5 h + hypo nadir = rebond), borné ±20 %.
     const isfSlots = settings?.sensitivityFactors ?? []
     if (isfSlots.length > 0) {
       const corrections = await mealtimePattern.correctionTrend(patientId, ISF_ANALYSIS_PERIOD, auditUserId, ctx)
