@@ -1349,6 +1349,10 @@ model AdjustmentProposal {
   carbRatioSlotStart    Int?                @map("carb_ratio_slot_start") @db.SmallInt
   carbRatioSlotEnd      Int?                @map("carb_ratio_slot_end") @db.SmallInt
   pumpBasalSlotId       String?             @map("pump_basal_slot_id")
+  // US-2646/2652 — discriminateur de créneau pour la DOSE FIXE (mode « doses simples ») : le moment
+  // (morning/noon/evening/night) cible/dédoublonne une `FixedDoseSlot`. Fait partie du tuple d'unicité
+  // anti-spam (index partiel `adjustment_proposals_one_pending_per_slot`).
+  moment                DoseMoment?         @map("moment")
   analysisPeriod        String?             @map("analysis_period") @db.VarChar(10)
   dataQuality           String?             @map("data_quality") @db.VarChar(20)
   status                ProposalStatus      @default(pending)

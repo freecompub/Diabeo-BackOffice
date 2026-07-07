@@ -17,6 +17,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     isfFindFirst: vi.fn(),
     icrFindFirst: vi.fn(),
     basalFindFirst: vi.fn(),
+    fixedDoseFindFirst: vi.fn(),
     create: vi.fn((args: { data: Record<string, unknown> }) => ({ id: "p1", ...args.data })),
     logWithTx: vi.fn(),
     auditLog: vi.fn(),
@@ -32,6 +33,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
       insulinSensitivityFactor: { findFirst: m.isfFindFirst },
       carbRatio: { findFirst: m.icrFindFirst },
       pumpBasalSlot: { findFirst: m.basalFindFirst },
+      fixedDoseSlot: { findFirst: m.fixedDoseFindFirst },
       patientReferent: { findFirst: m.referentFindFirst },
       $transaction: async (fn: (tx: unknown) => unknown) =>
         fn({ adjustmentProposal: { create: m.create } }),
@@ -231,14 +233,48 @@ describe("createProposal — bornes, overflow, garde-fous patient", () => {
   })
 })
 
-describe("createProposal — fixedDose non câblé & anti-spam", () => {
-  it("fixedDose → fixedDoseNotWired (fail-closed)", async () => {
+describe("createProposal — fixedDose (câblé US-2652) & anti-spam", () => {
+  it("fixedDose SANS moment → slotRequired (discriminateur obligatoire)", async () => {
     await expect(
       adjustmentService.createProposal(
         { patientId: 5, parameterType: "fixedDose", proposedValue: 12, reason: "manualAdjustment" },
         nurse,
       ),
-    ).rejects.toThrow("fixedDoseNotWired")
+    ).rejects.toThrow("slotRequired")
+  })
+
+  it("fixedDose avec moment mais slot inexistant → currentValueNotFound (anti-IDOR)", async () => {
+    mocks.fixedDoseFindFirst.mockResolvedValue(null)
+    await expect(
+      adjustmentService.createProposal(
+        { patientId: 5, parameterType: "fixedDose", proposedValue: 12, reason: "manualAdjustment", moment: "morning" },
+        nurse,
+      ),
+    ).rejects.toThrow("currentValueNotFound")
+  })
+
+  it("fixedDose avec moment + slot existant → proposition créée (moment persisté)", async () => {
+    mocks.fixedDoseFindFirst.mockResolvedValue({ valueU: 10 }) // dose courante 10 U
+    await adjustmentService.createProposal(
+      { patientId: 5, parameterType: "fixedDose", proposedValue: 12, reason: "manualAdjustment", moment: "morning" },
+      nurse,
+    )
+    expect(mocks.create).toHaveBeenCalledTimes(1)
+    const data = mocks.create.mock.calls[0]![0].data as Record<string, unknown>
+    expect(data).toMatchObject({ parameterType: "fixedDose", moment: "morning" })
+    expect(data.timeSlotStartHour).toBeNull() // discriminateurs parasites zéroés
+  })
+
+  it("pré-check anti-spam scopé PAR MOMENT (un pending morning ne bloque pas evening)", async () => {
+    mocks.fixedDoseFindFirst.mockResolvedValue({ valueU: 10 })
+    mocks.adjFindFirst.mockResolvedValue(null)
+    await adjustmentService.createProposal(
+      { patientId: 5, parameterType: "fixedDose", proposedValue: 12, reason: "manualAdjustment", moment: "evening" },
+      nurse,
+    )
+    // Le pré-check `existing` (status pending) doit filtrer sur `moment` → sinon morning bloquerait evening.
+    const precheck = mocks.adjFindFirst.mock.calls.find((c) => (c[0] as any)?.where?.status === "pending")
+    expect((precheck?.[0] as any).where).toMatchObject({ moment: "evening" })
   })
 
   it("pending existant (pré-check) → duplicatePendingProposal", async () => {

@@ -17,7 +17,7 @@ import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
-  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel,
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel, DoseMoment,
 } from "@prisma/client"
 
 /**
@@ -43,6 +43,8 @@ export type CreateEngineProposalInput = {
   carbRatioSlotStart?: number | null
   carbRatioSlotEnd?: number | null
   pumpBasalSlotId?: string | null
+  /** Discriminateur de créneau pour la DOSE FIXE (mode « doses simples »). */
+  moment?: DoseMoment | null
 }
 
 /** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
@@ -60,6 +62,8 @@ export type CreateProposalInput = {
   carbRatioSlotStart?: number | null
   carbRatioSlotEnd?: number | null
   pumpBasalSlotId?: string | null
+  /** Discriminateur de créneau pour la DOSE FIXE (mode « doses simples »). */
+  moment?: DoseMoment | null
   /** Justification texte libre — chiffrée AES-256-GCM au stockage. */
   proposerComment?: string | null
 }
@@ -123,9 +127,8 @@ function validateProposedValue(parameterType: string, value: number): boolean {
  * US-2649a — valeur COURANTE de confiance d'un paramètre, lue **serveur** depuis la
  * config réelle du patient (jamais du body → garde-fous ininviolables) et **scopée
  * patient** (anti-IDOR : le créneau doit appartenir au patient).
- * @throws `slotRequired` (créneau manquant), `currentValueNotFound` (créneau absent /
- *   autre patient), `fixedDoseNotWired` (dose fixe non câblée — pas de discriminateur
- *   de moment sur AdjustmentProposal, cf. US-2648/2649b).
+ * @throws `slotRequired` (créneau/`moment` manquant), `currentValueNotFound` (créneau absent /
+ *   autre patient). La dose fixe (US-2652) est ciblée par `moment` (scopée patient via `patientInsulin`).
  */
 async function resolveCurrentValue(
   patientId: number,
@@ -160,10 +163,17 @@ async function resolveCurrentValue(
       if (!row) throw new Error("currentValueNotFound")
       return Number(row.rate)
     }
-    // Dose fixe : AdjustmentProposal n'a pas de colonne « moment » → impossible de cibler
-    // /dédupliquer une FixedDoseSlot. Fail-closed jusqu'au câblage UI + discriminateur.
-    case "fixedDose":
-      throw new Error("fixedDoseNotWired")
+    // Dose fixe (US-2652) : ciblée par `moment` (colonne discriminante sur AdjustmentProposal).
+    // Valeur courante lue SERVEUR depuis la `FixedDoseSlot` du patient (anti-IDOR : scopée patient).
+    case "fixedDose": {
+      if (!input.moment) throw new Error("slotRequired")
+      const row = await prisma.fixedDoseSlot.findFirst({
+        where: { patientInsulin: { patientId }, moment: input.moment },
+        select: { valueU: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.valueU)
+    }
     default:
       throw new Error("unsupportedParameter")
   }
@@ -183,6 +193,7 @@ function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposal
     carbRatioSlotStart: null as number | null,
     carbRatioSlotEnd: null as number | null,
     pumpBasalSlotId: null as string | null,
+    moment: null as DoseMoment | null,
   }
   switch (parameterType) {
     case "insulinSensitivityFactor":
@@ -191,6 +202,8 @@ function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposal
       return { ...empty, carbRatioSlotStart: input.carbRatioSlotStart ?? null, carbRatioSlotEnd: input.carbRatioSlotEnd ?? null }
     case "basalRate":
       return { ...empty, pumpBasalSlotId: input.pumpBasalSlotId ?? null }
+    case "fixedDose":
+      return { ...empty, moment: input.moment ?? null }
     default:
       return empty
   }
@@ -291,7 +304,7 @@ export const adjustmentService = {
    * US-2649b — valeur COURANTE **LIVE** du créneau d'une proposition (re-lecture serveur au
    * moment de la revue), pour signaler au médecin si la config a changé depuis la proposition
    * (le `currentValue` stocké est un snapshot de création). Renvoie `null` si le créneau a
-   * disparu/bougé (ISF/ICR par heure, basal par id) ou n'est pas résoluble → l'UI n'affiche
+   * disparu/bougé (ISF/ICR par heure, basal par id, dose fixe par moment) ou n'est pas résoluble → l'UI n'affiche
    * alors pas de comparaison. Réutilise la lecture scopée patient de `resolveCurrentValue`.
    */
   async liveCurrentValue(
@@ -301,6 +314,9 @@ export const adjustmentService = {
       timeSlotStartHour: number | null
       carbRatioSlotStart: number | null
       pumpBasalSlotId: string | null
+      // US-2652 : sans `moment`, `resolveCurrentValue` lève `slotRequired` pour une dose fixe → CAS
+      // `baselineMoved` inactif (une dose absolue périmée serait écrite). Doit être forwardé.
+      moment: DoseMoment | null
     },
   ): Promise<number | null> {
     try {
@@ -312,6 +328,7 @@ export const adjustmentService = {
         timeSlotStartHour: proposal.timeSlotStartHour,
         carbRatioSlotStart: proposal.carbRatioSlotStart,
         pumpBasalSlotId: proposal.pumpBasalSlotId,
+        moment: proposal.moment,
       })
     } catch (err) {
       // Cas ATTENDUS (créneau absent/non résoluble) → null silencieux. Une erreur INATTENDUE
@@ -319,7 +336,7 @@ export const adjustmentService = {
       // « config modifiée » sans trace (observabilité).
       const expected =
         err instanceof Error &&
-        ["slotRequired", "currentValueNotFound", "fixedDoseNotWired"].includes(err.message)
+        ["slotRequired", "currentValueNotFound"].includes(err.message)
       if (!expected) logger.error("adjustment", "liveCurrentValue read failed", { patientId }, err)
       return null
     }
@@ -461,6 +478,7 @@ export const adjustmentService = {
           timeSlotStartHour: slot.timeSlotStartHour,
           carbRatioSlotStart: slot.carbRatioSlotStart,
           pumpBasalSlotId: slot.pumpBasalSlotId,
+          moment: slot.moment, // US-2652 : cooldown PAR MOMENT (sinon morning bloque evening)
         },
         orderBy: { createdAt: "desc" },
         select: { reviewedAt: true, createdAt: true },
@@ -484,6 +502,7 @@ export const adjustmentService = {
         timeSlotStartHour: slot.timeSlotStartHour,
         carbRatioSlotStart: slot.carbRatioSlotStart,
         pumpBasalSlotId: slot.pumpBasalSlotId,
+        moment: slot.moment, // US-2652 : 1 pending PAR MOMENT (aligne le pré-check sur l'index partiel)
       },
       select: { id: true },
     })
@@ -588,6 +607,7 @@ export const adjustmentService = {
       carbRatioSlotStart: input.carbRatioSlotStart,
       carbRatioSlotEnd: input.carbRatioSlotEnd,
       pumpBasalSlotId: input.pumpBasalSlotId,
+      moment: input.moment, // US-2652 : sans ça, `resolveCurrentValue` lève slotRequired → moteur fixedDose mort
     }
     const currentValue = await resolveCurrentValue(patientId, parameterType, asInput)
 
@@ -623,6 +643,7 @@ export const adjustmentService = {
         timeSlotStartHour: slot.timeSlotStartHour,
         carbRatioSlotStart: slot.carbRatioSlotStart,
         pumpBasalSlotId: slot.pumpBasalSlotId,
+        moment: slot.moment, // US-2652 : 1 pending PAR MOMENT (aligne le pré-check sur l'index partiel)
       },
       select: { id: true },
     })
@@ -707,13 +728,6 @@ export const adjustmentService = {
           throw new Error("valueOutOfBounds")
         }
 
-        // US-2646 — l'écriture d'une dose fixe (fixed_dose_slots) est câblée en
-        // US-2647/2649. Tant qu'elle ne l'est pas, on REFUSE l'application immédiate
-        // (fail-closed) plutôt que de renvoyer un faux `applied: true` sur un no-op.
-        if (proposal.parameterType === "fixedDose") {
-          throw new Error("fixedDoseApplyNotImplemented")
-        }
-
         // US-2649b — COMPARE-AND-SWAP (garde d'accès concurrent). `proposedValue` est une
         // valeur ABSOLUE calculée sur la base `currentValue` (snapshot de création). Si le
         // créneau a bougé depuis (édition médecin, autre proposition acceptée), l'appliquer
@@ -760,6 +774,14 @@ export const adjustmentService = {
             data: { rate: proposed },
           })
           assertRowApplied(res.count, "pumpSlotNotFound")
+        } else if (proposal.parameterType === "fixedDose" && proposal.moment != null) {
+          // Dose fixe (US-2652) — scopée patient via la relation `patientInsulin` (anti-IDOR) : un
+          // moment hors patient ne matche pas → count 0 → fail-closed (créneau introuvable).
+          const res = await tx.fixedDoseSlot.updateMany({
+            where: { patientInsulin: { patientId: proposal.patientId }, moment: proposal.moment },
+            data: { valueU: proposed },
+          })
+          assertRowApplied(res.count, "fixedDoseSlotNotFound")
         }
       }
 
