@@ -5,6 +5,7 @@ import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { handleSlotSetReplace } from "@/lib/insulin/slot-set-replace"
 
 const createIcrSchema = z.object({
   patientId: z.number().int().positive().optional(),
@@ -108,3 +109,24 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }
+
+// US-2655 — PUT = remplacement du JEU COMPLET de créneaux ICR (« replace the whole set »).
+// Zod normalise chaque créneau vers `{ startHour, endHour, value, mealLabel? }` (value = ICR g/U) ;
+// la logique HTTP est mutualisée dans `handleSlotSetReplace`.
+const replaceIcrSchema = z.object({
+  patientId: z.number().int().positive().optional(),
+  slots: z
+    .array(
+      z
+        .object({
+          startHour: z.number().int().min(0).max(23),
+          endHour: z.number().int().min(0).max(23),
+          gramsPerUnit: z.number().min(INSULIN_BOUNDS.ICR_MIN).max(INSULIN_BOUNDS.ICR_MAX),
+          mealLabel: z.string().max(50).optional(),
+        })
+        .transform((s) => ({ startHour: s.startHour, endHour: s.endHour, value: s.gramsPerUnit, mealLabel: s.mealLabel })),
+    )
+    .min(1),
+})
+
+export const PUT = (req: NextRequest) => handleSlotSetReplace(req, "icr", replaceIcrSchema, "[carb-ratios PUT]")

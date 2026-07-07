@@ -489,3 +489,29 @@ Libellé UI « Suivi glycémique à vérifier ». Source : `OBSERVANCE` (`clinic
   récence HbA1c vs comportement de suivi ; un patient totalement désengagé déclenche les deux, cohérent).
 - **Direction fail-safe** : orientation-only, idempotent, doctor-gated → seuils **lenients** (err vers NE PAS
   flaguer, anti fatigue d'alerte). Jamais une dose (frontière MDR).
+
+### Enregistrement d'un GROUPE de créneaux (US-2655, replaceSlotSet)
+
+Restructurer un profil ISF/ICR se fait désormais par **remplacement transactionnel du jeu complet**
+(`insulinTherapyService.replaceSlotSet`), plus ligne par ligne. Invariants **re-validés serveur** (jamais
+confiance au client) sur l'état **final** :
+- **Chevauchement** → rejet dur `slotOverlap` (409) : deux créneaux sur la même minute = double-dose.
+- **Trou de couverture 24 h (ISF/ICR)** → rejet `slotGap` (422) : un bolus doit toujours résoudre un créneau.
+  Applicable ici (contrairement au déplacement mono-créneau) car on valide le set **complet**, sans état
+  transitoire troué. Source unique : `analyzeSlotCoverage` (`src/lib/insulin/slot-coverage.ts`).
+- **Durée nulle** (`startHour === endHour`) → `zeroDurationSlot` ; **jeu vide** → `emptySlotSet` (un profil
+  ne peut finir à 0 créneau).
+- **Convention d'encodage** : `endHour ∈ [0,23]` ; un profil complet **enjambe minuit** via un créneau
+  `startHour > endHour` (ex. ISF `[22,6)`) — pas de `endHour = 24`. Aligné sur le seed et `createIsf`.
+- **Anti-IDOR** : scopé `settings.patientId` ; **fix** de `deleteIsf`/`deleteIcr` (désormais `deleteMany`
+  scopé patient → `isfSlotNotFound`/`icrSlotNotFound`).
+- **Propositions** : les `pending` du même paramètre pour le patient passent **`superseded`** (nouveau statut
+  `ProposalStatus`) — libère l'index `one_pending_per_slot`, pas de collision P2002.
+- **Rôle** : chemin **DOCTOR direct** (PUT `/api/insulin-therapy/{sensitivity-factors,carb-ratios}`). Le chemin
+  proposition (NURSE/patient, garde `proposalAlreadyPending`) est ouvert par US-2657.
+- **Bornes de valeur** : ISF ∈ [`ISF_GL_MIN`, `ISF_GL_MAX`], ICR ∈ [`ICR_MIN`, `ICR_MAX`] — re-vérifiées
+  **dans le service** (`valueOutOfBounds`, 400), pas seulement à la route Zod (défense en profondeur :
+  service sûr même appelé directement). Conversion g/L→mg/dL mutualisée via `glToMgdl` (`src/lib/statistics.ts`).
+- **Profil « une seule valeur sur 24 h »** : s'exprime en **≥ 2 créneaux** de même valeur (ex. `[0,12)`+`[12,0)`).
+  Inhérent au résolveur `findSlotForHour` (aucun `[h,h)` ne couvre 24 h) — un mono-créneau reçoit `slotGap` (422),
+  fail-closed. À gérer en confort UI (auto-split) côté US-2656.

@@ -12,6 +12,16 @@ import type { AuditContext } from "./patient.service"
 import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
+import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
+import { glToMgdl } from "@/lib/statistics"
+
+/**
+ * Dérive la valeur `@db.Time` d'un créneau à partir de son heure entière `[0,23]`.
+ * Source unique de la dénormalisation `startHour/endHour` → `startTime/endTime`
+ * (réutilisée par createIsf/createIcr/replaceSlotSet). `hourToTime(24)` n'est jamais
+ * appelé (endHour borné à 23 ; un profil complet enjambe minuit via `startHour > endHour`).
+ */
+const hourToTime = (h: number): Date => new Date(`1970-01-01T${String(h).padStart(2, "0")}:00:00Z`)
 
 /** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
 export const INSULIN_BOUNDS = CLINICAL_BOUNDS
@@ -34,6 +44,62 @@ export interface BasalConfigInput {
  * Insulin therapy service — settings, ISF/ICR, basal configuration, bolus logs.
  * @namespace insulinTherapyService
  */
+/**
+ * US-2655 — Fin commune du remplacement de groupe (ISF/ICR), dans la transaction :
+ * supersède les propositions `pending` du paramètre (baseline changé → libère `one_pending_per_slot`)
+ * puis journalise l'audit `replaceSet` (`from → to`, sans PHI). Retourne le résumé.
+ */
+async function finishReplaceSet(
+  tx: Prisma.TransactionClient,
+  param: "isf" | "icr",
+  parameterType: "insulinSensitivityFactor" | "insulinToCarbRatio",
+  patientId: number,
+  settingsId: number,
+  before: Array<{ startHour: number; endHour: number }>,
+  slots: Array<{ startHour: number; endHour: number }>,
+  auditUserId: number,
+  coverage: { hasGap: boolean; hasOverlap: boolean },
+  ctx?: AuditContext,
+): Promise<{
+  applied: true
+  count: number
+  coverage: { hasGap: boolean; hasOverlap: boolean }
+  supersededProposalIds: string[]
+}> {
+  // findMany puis updateMany partagent le même `where`. Une proposition `pending` insérée entre les
+  // deux (course TOCTOU) serait supersédée sans figurer dans `supersededProposalIds` (sous-report du
+  // retour) — sans impact sécurité : le statut DB reste correct. Cas extrême pour une action DOCTOR directe.
+  const superseded = await tx.adjustmentProposal.findMany({
+    where: { patientId, parameterType, status: "pending" },
+    select: { id: true },
+  })
+  if (superseded.length > 0) {
+    await tx.adjustmentProposal.updateMany({
+      where: { patientId, parameterType, status: "pending" },
+      data: { status: "superseded", reviewedAt: new Date(), reviewedBy: auditUserId },
+    })
+  }
+  const supersededProposalIds = superseded.map((p) => p.id)
+
+  await auditService.logWithTx(tx, {
+    userId: auditUserId,
+    action: "UPDATE",
+    resource: "INSULIN_THERAPY",
+    resourceId: `${param}-set:${settingsId}`,
+    ipAddress: ctx?.ipAddress,
+    userAgent: ctx?.userAgent,
+    metadata: {
+      patientId,
+      op: "replaceSet",
+      from: before.map((s) => ({ startHour: s.startHour, endHour: s.endHour })),
+      to: slots.map((s) => ({ startHour: s.startHour, endHour: s.endHour })),
+      supersededProposalIds,
+    },
+  })
+
+  return { applied: true as const, count: slots.length, coverage, supersededProposalIds }
+}
+
 export const insulinTherapyService = {
   /**
    * Get full insulin therapy settings with all relations.
@@ -157,7 +223,7 @@ export const insulinTherapyService = {
     },
     auditUserId: number,
   ) {
-    const sensitivityFactorMgdl = input.sensitivityFactorGl * 100
+    const sensitivityFactorMgdl = glToMgdl(input.sensitivityFactorGl)
     if (input.startHour === input.endHour) {
       throw new Error("startHour and endHour must be different — a zero-duration slot is invalid")
     }
@@ -177,8 +243,8 @@ export const insulinTherapyService = {
           settingsId,
           startHour: input.startHour,
           endHour: input.endHour,
-          startTime: new Date(`1970-01-01T${String(input.startHour).padStart(2, "0")}:00:00Z`),
-          endTime: new Date(`1970-01-01T${String(input.endHour).padStart(2, "0")}:00:00Z`),
+          startTime: hourToTime(input.startHour),
+          endTime: hourToTime(input.endHour),
           sensitivityFactorGl: input.sensitivityFactorGl,
           sensitivityFactorMgdl,
         },
@@ -193,14 +259,23 @@ export const insulinTherapyService = {
     })
   },
 
-  async deleteIsf(id: string, auditUserId: number) {
+  /**
+   * US-2655 — Suppression d'un créneau ISF **scopée patient** (anti-IDOR). `deleteMany` sur
+   * `{ id, settings: { patientId } }` : un id d'un autre patient ne matche pas (`count === 0`
+   * → `isfSlotNotFound`), à l'image du pattern anti-IDOR de `updateIsf`.
+   */
+  async deleteIsf(id: string, auditUserId: number, patientId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
-      await tx.insulinSensitivityFactor.delete({ where: { id } })
+      const res = await tx.insulinSensitivityFactor.deleteMany({ where: { id, settings: { patientId } } })
+      if (res.count === 0) throw new Error("isfSlotNotFound")
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
         resourceId: `isf:${id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
       return { deleted: true }
     })
@@ -216,7 +291,7 @@ export const insulinTherapyService = {
     return prisma.$transaction(async (tx) => {
       const res = await tx.insulinSensitivityFactor.updateMany({
         where: { id, settings: { patientId } },
-        data: { sensitivityFactorGl, sensitivityFactorMgdl: sensitivityFactorGl * 100 },
+        data: { sensitivityFactorGl, sensitivityFactorMgdl: glToMgdl(sensitivityFactorGl) },
       })
       if (res.count === 0) throw new Error("isfSlotNotFound")
       await auditService.logWithTx(tx, {
@@ -257,8 +332,8 @@ export const insulinTherapyService = {
           settingsId,
           startHour: input.startHour,
           endHour: input.endHour,
-          startTime: new Date(`1970-01-01T${String(input.startHour).padStart(2, "0")}:00:00Z`),
-          endTime: new Date(`1970-01-01T${String(input.endHour).padStart(2, "0")}:00:00Z`),
+          startTime: hourToTime(input.startHour),
+          endTime: hourToTime(input.endHour),
           gramsPerUnit: input.gramsPerUnit,
           mealLabel: input.mealLabel,
         },
@@ -273,14 +348,19 @@ export const insulinTherapyService = {
     })
   },
 
-  async deleteIcr(id: string, auditUserId: number) {
+  /** US-2655 — Suppression d'un créneau ICR **scopée patient** (anti-IDOR). Symétrique de `deleteIsf`. */
+  async deleteIcr(id: string, auditUserId: number, patientId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
-      await tx.carbRatio.delete({ where: { id } })
+      const res = await tx.carbRatio.deleteMany({ where: { id, settings: { patientId } } })
+      if (res.count === 0) throw new Error("icrSlotNotFound")
       await auditService.logWithTx(tx, {
         userId: auditUserId,
         action: "DELETE",
         resource: "INSULIN_THERAPY",
         resourceId: `icr:${id}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId },
       })
       return { deleted: true }
     })
@@ -305,6 +385,114 @@ export const insulinTherapyService = {
         metadata: { patientId },
       })
       return { updated: true }
+    })
+  },
+
+  /**
+   * US-2655 — Enregistrement transactionnel d'un GROUPE de créneaux (« remplace tout le jeu »).
+   *
+   * Le client envoie le **jeu complet** désiré pour un paramètre (`isf` ou `icr`) ; le serveur le
+   * valide sur l'état **final**, puis remplace atomiquement. Fin de l'édition ligne-à-ligne (qui
+   * traversait des états incohérents transitoires).
+   *
+   * **Invariants (re-validés serveur — jamais confiance au client)** :
+   * - **Chevauchement** → rejet dur `slotOverlap` (risque de double-dose).
+   * - **Trou de couverture 24 h** (ISF/ICR) → rejet `slotGap` — un bolus doit toujours résoudre un créneau.
+   *   (Applicable ici car on valide le jeu FINAL complet, pas un déplacement mono-créneau transitoire.)
+   * - **Durée nulle** (`startHour === endHour`) → `zeroDurationSlot` ; **jeu vide** → `emptySlotSet`.
+   * - Convention d'encodage : `endHour ∈ [0,23]`, un profil complet enjambe minuit via un créneau
+   *   `startHour > endHour` (ex. `[22,6)`), géré par `analyzeSlotCoverage`. Pas de `endHour = 24`.
+   *   Corollaire : une **valeur unique sur 24 h** s'exprime en **≥ 2 créneaux** de même valeur
+   *   (ex. `[0,12)` + `[12,0)`) — inhérent au résolveur `findSlotForHour` (aucun `[h,h)` ne couvre 24 h),
+   *   pas un contournement. Un profil mono-créneau reçoit `slotGap` (422), fail-closed.
+   *
+   * **Anti-IDOR** : scopé `settings.patientId` ; le body ne porte jamais d'`id` de ligne.
+   * **Dénormalisation** : `startHour/endHour` **et** `startTime/endTime` écrits ensemble.
+   * **Propositions** : les `pending` du même `parameterType` pour ce patient sont **supersédées**
+   * (le baseline a changé) — libère l'index `one_pending_per_slot`, pas de collision P2002.
+   *
+   * Réservé au chemin **DOCTOR direct** (application immédiate). Le chemin proposition (NURSE/patient)
+   * est ouvert par US-2657 ; ici la garde `proposalAlreadyPending` n'est pas encore branchée.
+   *
+   * @param param - `"isf"` ou `"icr"`.
+   * @param patientId - patient scopé (résolu serveur, anti-IDOR).
+   * @param slots - jeu complet `{ startHour, endHour, value, mealLabel? }` (value = ISF g/L ou ICR g/U).
+   * @throws emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap | settingsNotFound
+   */
+  async replaceSlotSet(
+    param: "isf" | "icr",
+    patientId: number,
+    slots: Array<{ startHour: number; endHour: number; value: number; mealLabel?: string }>,
+    auditUserId: number,
+    ctx?: AuditContext,
+  ): Promise<{
+    applied: true
+    count: number
+    coverage: { hasGap: boolean; hasOverlap: boolean }
+    supersededProposalIds: string[]
+  }> {
+    // 1. Pré-validation pure (hors DB, fail-fast) sur l'état FINAL.
+    if (slots.length === 0) throw new Error("emptySlotSet")
+    const [valMin, valMax] =
+      param === "isf"
+        ? [CLINICAL_BOUNDS.ISF_GL_MIN, CLINICAL_BOUNDS.ISF_GL_MAX]
+        : [CLINICAL_BOUNDS.ICR_MIN, CLINICAL_BOUNDS.ICR_MAX]
+    for (const s of slots) {
+      if (s.startHour === s.endHour) throw new Error("zeroDurationSlot")
+      // Bornes cliniques de valeur re-vérifiées AUSSI dans le service (défense en profondeur) : le
+      // service reste sûr même appelé directement, pas seulement via la route Zod (US-2655, revue medical).
+      if (s.value < valMin || s.value > valMax) throw new Error("valueOutOfBounds")
+    }
+    const coverage = analyzeSlotCoverage(slots.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })))
+    if (coverage.hasOverlap) throw new Error("slotOverlap")
+    if (coverage.hasGap) throw new Error("slotGap") // ISF/ICR : no-gap strict (le bolus doit résoudre)
+
+    const parameterType = param === "isf" ? "insulinSensitivityFactor" : "insulinToCarbRatio"
+
+    return prisma.$transaction(async (tx) => {
+      // 2a. Scope patient (anti-IDOR) — le settingsId provient du patient, jamais du body.
+      const settings = await tx.insulinTherapySettings.findUnique({ where: { patientId }, select: { id: true } })
+      if (!settings) throw new Error("settingsNotFound")
+      const settingsId = settings.id
+
+      // 2b. Snapshot ancien jeu (audit `from`) + 2c. REPLACE scopé settingsId.
+      if (param === "isf") {
+        const before = await tx.insulinSensitivityFactor.findMany({
+          where: { settingsId },
+          select: { startHour: true, endHour: true },
+        })
+        await tx.insulinSensitivityFactor.deleteMany({ where: { settingsId } })
+        await tx.insulinSensitivityFactor.createMany({
+          data: slots.map((s) => ({
+            settingsId,
+            startHour: s.startHour,
+            endHour: s.endHour,
+            startTime: hourToTime(s.startHour),
+            endTime: hourToTime(s.endHour),
+            sensitivityFactorGl: s.value,
+            sensitivityFactorMgdl: glToMgdl(s.value),
+          })),
+        })
+        return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)
+      } else {
+        const before = await tx.carbRatio.findMany({
+          where: { settingsId },
+          select: { startHour: true, endHour: true },
+        })
+        await tx.carbRatio.deleteMany({ where: { settingsId } })
+        await tx.carbRatio.createMany({
+          data: slots.map((s) => ({
+            settingsId,
+            startHour: s.startHour,
+            endHour: s.endHour,
+            startTime: hourToTime(s.startHour),
+            endTime: hourToTime(s.endHour),
+            gramsPerUnit: s.value,
+            mealLabel: s.mealLabel,
+          })),
+        })
+        return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)
+      }
     })
   },
 
