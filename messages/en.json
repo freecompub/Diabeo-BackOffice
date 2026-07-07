@@ -2033,7 +2033,7 @@
     "flagReviewInConsultation": "Review in consultation",
     "flagHba1cStale": "Glycated haemoglobin (HbA1c) to obtain or refresh",
     "flagTirBelowTarget": "Time in range (TIR) below target",
-    "flagObservance": "Adherence to check",
+    "flagObservance": "Glucose monitoring to check",
     "flagHighVariabilityPostMeal": "High post-meal variability (spike + hypoglycemia)",
     "flagHba1cAboveTarget": "Glycated haemoglobin (HbA1c) above target"
   },

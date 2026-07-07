@@ -16,7 +16,7 @@ import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import {
   CLINICAL_BOUNDS, CGM_AGGREGATE_RANGE_GL,
-  DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS,
+  DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS, OBSERVANCE,
   HBA1C_HIGH_DEFAULT_PERCENT, HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT, HBA1C_TARGET_MARGIN_PERCENT,
   isDeliverableBasalRate,
 } from "@/lib/clinical-bounds"
@@ -145,6 +145,19 @@ describe("DASHBOARD_TIR / AGP_SUFFICIENCY / HBA1C_STALE_DAYS — anti-drift (fic
     expect(HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT).toBe(6.0)
     expect(HBA1C_TARGET_MARGIN_PERCENT).toBe(0.5)
     expect(HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT).toBeLessThan(HBA1C_HIGH_DEFAULT_PERCENT)
+  })
+
+  it("fige les seuils du flag observance (US-2651 mode c, validé medical)", () => {
+    expect(OBSERVANCE).toEqual({
+      WINDOW_DAYS: 30,
+      MIN_CGM_CAPTURE_RATE: 30,
+      BGM_MIN_READINGS_DEFAULT: 4,
+      BGM_MIN_READINGS_PREGNANCY: 30,
+      MIN_ENROLLMENT_DAYS: 30,
+    })
+    // Grossesse plus stricte (population critique) + capture CGM alignée sur le plancher TIR.
+    expect(OBSERVANCE.BGM_MIN_READINGS_PREGNANCY).toBeGreaterThan(OBSERVANCE.BGM_MIN_READINGS_DEFAULT)
+    expect(OBSERVANCE.MIN_CGM_CAPTURE_RATE).toBe(DASHBOARD_TIR.MIN_CAPTURE_RATE)
   })
 
   it("invariants : cible TIR > plancher ; suffisance bornée", () => {
