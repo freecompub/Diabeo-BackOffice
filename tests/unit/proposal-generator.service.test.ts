@@ -352,6 +352,14 @@ describe("proposalGeneratorService.generateForPatient — mode fixedDose (US-265
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(fixedCalls()[0]).toMatchObject({ moment: "evening", reason: "fixedDoseTooHigh" })
   })
+
+  it("patient soft-deleted (findFirst null) → EMPTY(noPatient), aucune proposition (fail-closed RGPD)", async () => {
+    setupFixed({ slots: [{ moment: "morning", valueU: 10 }], troughs: { ...emptyTroughs, morning: [1.8, 1.8, 1.8] } })
+    prismaMock.patient.findFirst.mockResolvedValue(null as never)
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.skipped).toBe("noPatient")
+    expect(fixedCalls()).toHaveLength(0)
+  })
 })
 
 describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)", () => {

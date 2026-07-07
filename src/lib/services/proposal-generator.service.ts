@@ -145,7 +145,7 @@ export const proposalGeneratorService = {
    */
   async generateForPatient(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
     // 0. Mode — routage : `nonInsulin` → flags d'orientation (mode c, jamais de dose, frontière MDR) ;
-    //    `basalBolus` → propositions ICR (ci-dessous) ; `fixedDose` → hors scope (slice ultérieure).
+    //    `fixedDose` → titration des doses simples par moment ; `basalBolus` → ICR + basal + ISF (ci-dessous).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") return proposalGeneratorService.generateOrientationFlags(patientId, auditUserId, ctx)
     if (mode === "fixedDose") return proposalGeneratorService.generateFixedDoseProposals(patientId, auditUserId, ctx)
@@ -405,7 +405,10 @@ export const proposalGeneratorService = {
       where: { id: patientId, deletedAt: null },
       select: { pathology: true, pregnancyMode: true },
     })
-    const isPregnancy = patient?.pregnancyMode === true || patient?.pathology === "GD"
+    // Fail-closed RGPD (ADR #4, symétrie avec le chemin basalBolus) : un patient soft-deleted ne reçoit
+    // aucune proposition moteur (le cron pré-filtre déjà `deletedAt`, mais protège l'appel direct).
+    if (!patient) return EMPTY("noPatient")
+    const isPregnancy = patient.pregnancyMode === true || patient.pathology === "GD"
     // Cible pré-prandiale individualisée si plausible, sinon défaut (JAMAIS titrLow). Scopée patient.
     const targetRow = await prisma.glucoseTarget.findFirst({
       where: { settings: { patientId }, isActive: true },

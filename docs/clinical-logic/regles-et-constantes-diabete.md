@@ -462,3 +462,11 @@ Branche dédiée dans `generateForPatient` (`mode === "fixedDose"` → route ver
 - Par moment : `{postGlucoseGl, targetGl}[]` → `analyzeFixedDose(slot, readings)` → `createEngineProposal({ parameterType: "fixedDose", moment })` ; rejets fail-closed non fatals (bucket `fixedDose:<moment>`).
 
 **Générateur multi-levier COMPLET** : ICR + basal + ISF + **fixedDose** de bout en bout, doctor-gated (ADR #13).
+
+**Limites connues (générateur dose fixe)** :
+- *Garde soft-delete* : `generateFixedDoseProposals` renvoie `EMPTY("noPatient")` si le patient est
+  soft-deleted (fail-closed RGPD, ADR #4 ; symétrie avec le chemin basalBolus).
+- *Edge multi-`PatientInsulin`* : `FixedDoseSlot` est unique sur `[patientInsulinId, moment]` (pas
+  `[patientId, moment]`). Si un patient avait 2 `PatientInsulin` actifs portant le même moment, le
+  `findMany` émettrait 2 candidats ; tout reste **sûr** (`resolveCurrentValue` = `findFirst` + le 2e
+  candidat → `duplicatePendingProposal` / `baselineMoved`) → proposition supprimée, **jamais fausse**.
