@@ -144,6 +144,26 @@ describe("proposal-algorithm", () => {
       ]
       expect(analyzeIsfSlot(slot, corrections)).toBeNull()
     })
+
+    it("garde HYPO : le NADIR post-correction supprime une baisse que le post-correction seul laisserait passer", () => {
+      // Post-corrections toutes HAUTES (correction trop faible → isfTooHigh, baisse) MAIS un creux tardif sévère.
+      const corrections = Array.from({ length: 4 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.20, nadirGl: 0.50 }))
+      expect(analyzeIsfSlot(slot, corrections)).toBeNull() // baisse supprimée par le nadir
+    })
+
+    it("garde HYPO : SANS nadir, les mêmes post-corrections hautes proposent la baisse (contrôle)", () => {
+      const corrections = Array.from({ length: 4 }, () => ({ postGlucoseGl: 1.80, targetGl: 1.20 }))
+      expect(analyzeIsfSlot(slot, corrections)!.reason).toBe("isfTooHigh")
+    })
+
+    it("le nadir ne corrompt PAS la moyenne/direction (% identique avec et sans nadir)", () => {
+      const base = Array.from({ length: 5 }, () => ({ postGlucoseGl: 0.60, targetGl: 1.20 })) // sur-correction → isfTooLow (sens sûr)
+      const r1 = analyzeIsfSlot(slot, base)
+      const r2 = analyzeIsfSlot(slot, base.map((c) => ({ ...c, nadirGl: 0.50 })))
+      expect(r1!.reason).toBe("isfTooLow")
+      expect(r2!.reason).toBe("isfTooLow")
+      expect(r2!.changePercent).toBe(r1!.changePercent)
+    })
   })
 
   describe("analyzeIcrSlot", () => {
