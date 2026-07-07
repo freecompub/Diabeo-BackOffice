@@ -5,6 +5,7 @@ import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { handleSlotSetReplace } from "@/lib/insulin/slot-set-replace"
 
 const createIcrSchema = z.object({
   patientId: z.number().int().positive().optional(),
@@ -110,70 +111,22 @@ export async function PATCH(req: NextRequest) {
 }
 
 // US-2655 — PUT = remplacement du JEU COMPLET de créneaux ICR (« replace the whole set »).
+// Zod normalise chaque créneau vers `{ startHour, endHour, value, mealLabel? }` (value = ICR g/U) ;
+// la logique HTTP est mutualisée dans `handleSlotSetReplace`.
 const replaceIcrSchema = z.object({
   patientId: z.number().int().positive().optional(),
   slots: z
     .array(
-      z.object({
-        startHour: z.number().int().min(0).max(23),
-        endHour: z.number().int().min(0).max(23),
-        gramsPerUnit: z.number().min(INSULIN_BOUNDS.ICR_MIN).max(INSULIN_BOUNDS.ICR_MAX),
-        mealLabel: z.string().max(50).optional(),
-      }),
+      z
+        .object({
+          startHour: z.number().int().min(0).max(23),
+          endHour: z.number().int().min(0).max(23),
+          gramsPerUnit: z.number().min(INSULIN_BOUNDS.ICR_MIN).max(INSULIN_BOUNDS.ICR_MAX),
+          mealLabel: z.string().max(50).optional(),
+        })
+        .transform((s) => ({ startHour: s.startHour, endHour: s.endHour, value: s.gramsPerUnit, mealLabel: s.mealLabel })),
     )
     .min(1),
 })
 
-/** Codes d'erreur du remplacement de groupe ICR → HTTP (stables, sans PHI). */
-const SLOT_SET_ERROR_STATUS: Record<string, number> = {
-  emptySlotSet: 409,
-  zeroDurationSlot: 400,
-  slotOverlap: 409,
-  slotGap: 422,
-  settingsNotFound: 404,
-}
-
-/**
- * PUT — remplace atomiquement TOUT le jeu de créneaux ICR du patient (US-2655). DOCTOR only,
- * scopé patient (anti-IDOR). Cohérence re-validée serveur (chevauchement 409, trou 422, durée
- * nulle 400, jeu vide 409). Les propositions ICR en attente sont supersédées.
- */
-export async function PUT(req: NextRequest) {
-  try {
-    const user = requireRole(req, "DOCTOR")
-    const hasConsent = await requireGdprConsent(user.id)
-    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-
-    const parsed = replaceIcrSchema.safeParse(await req.json())
-    if (!parsed.success) {
-      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
-    }
-    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
-    try {
-      const result = await insulinTherapyService.replaceSlotSet(
-        "icr",
-        patientId,
-        parsed.data.slots.map((s) => ({
-          startHour: s.startHour,
-          endHour: s.endHour,
-          value: s.gramsPerUnit,
-          mealLabel: s.mealLabel,
-        })),
-        user.id,
-        extractRequestContext(req),
-      )
-      return NextResponse.json(result)
-    } catch (e) {
-      const status = e instanceof Error ? SLOT_SET_ERROR_STATUS[e.message] : undefined
-      if (status) return NextResponse.json({ error: (e as Error).message }, { status })
-      throw e
-    }
-  } catch (error) {
-    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[carb-ratios PUT]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
-  }
-}
+export const PUT = (req: NextRequest) => handleSlotSetReplace(req, "icr", replaceIcrSchema, "[carb-ratios PUT]")

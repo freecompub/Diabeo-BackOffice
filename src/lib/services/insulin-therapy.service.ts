@@ -13,6 +13,15 @@ import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/cli
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
+import { glToMgdl } from "@/lib/statistics"
+
+/**
+ * Dérive la valeur `@db.Time` d'un créneau à partir de son heure entière `[0,23]`.
+ * Source unique de la dénormalisation `startHour/endHour` → `startTime/endTime`
+ * (réutilisée par createIsf/createIcr/replaceSlotSet). `hourToTime(24)` n'est jamais
+ * appelé (endHour borné à 23 ; un profil complet enjambe minuit via `startHour > endHour`).
+ */
+const hourToTime = (h: number): Date => new Date(`1970-01-01T${String(h).padStart(2, "0")}:00:00Z`)
 
 /** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
 export const INSULIN_BOUNDS = CLINICAL_BOUNDS
@@ -57,6 +66,9 @@ async function finishReplaceSet(
   coverage: { hasGap: boolean; hasOverlap: boolean }
   supersededProposalIds: string[]
 }> {
+  // findMany puis updateMany partagent le même `where`. Une proposition `pending` insérée entre les
+  // deux (course TOCTOU) serait supersédée sans figurer dans `supersededProposalIds` (sous-report du
+  // retour) — sans impact sécurité : le statut DB reste correct. Cas extrême pour une action DOCTOR directe.
   const superseded = await tx.adjustmentProposal.findMany({
     where: { patientId, parameterType, status: "pending" },
     select: { id: true },
@@ -211,7 +223,7 @@ export const insulinTherapyService = {
     },
     auditUserId: number,
   ) {
-    const sensitivityFactorMgdl = input.sensitivityFactorGl * 100
+    const sensitivityFactorMgdl = glToMgdl(input.sensitivityFactorGl)
     if (input.startHour === input.endHour) {
       throw new Error("startHour and endHour must be different — a zero-duration slot is invalid")
     }
@@ -231,8 +243,8 @@ export const insulinTherapyService = {
           settingsId,
           startHour: input.startHour,
           endHour: input.endHour,
-          startTime: new Date(`1970-01-01T${String(input.startHour).padStart(2, "0")}:00:00Z`),
-          endTime: new Date(`1970-01-01T${String(input.endHour).padStart(2, "0")}:00:00Z`),
+          startTime: hourToTime(input.startHour),
+          endTime: hourToTime(input.endHour),
           sensitivityFactorGl: input.sensitivityFactorGl,
           sensitivityFactorMgdl,
         },
@@ -279,7 +291,7 @@ export const insulinTherapyService = {
     return prisma.$transaction(async (tx) => {
       const res = await tx.insulinSensitivityFactor.updateMany({
         where: { id, settings: { patientId } },
-        data: { sensitivityFactorGl, sensitivityFactorMgdl: sensitivityFactorGl * 100 },
+        data: { sensitivityFactorGl, sensitivityFactorMgdl: glToMgdl(sensitivityFactorGl) },
       })
       if (res.count === 0) throw new Error("isfSlotNotFound")
       await auditService.logWithTx(tx, {
@@ -320,8 +332,8 @@ export const insulinTherapyService = {
           settingsId,
           startHour: input.startHour,
           endHour: input.endHour,
-          startTime: new Date(`1970-01-01T${String(input.startHour).padStart(2, "0")}:00:00Z`),
-          endTime: new Date(`1970-01-01T${String(input.endHour).padStart(2, "0")}:00:00Z`),
+          startTime: hourToTime(input.startHour),
+          endTime: hourToTime(input.endHour),
           gramsPerUnit: input.gramsPerUnit,
           mealLabel: input.mealLabel,
         },
@@ -390,6 +402,9 @@ export const insulinTherapyService = {
    * - **Durée nulle** (`startHour === endHour`) → `zeroDurationSlot` ; **jeu vide** → `emptySlotSet`.
    * - Convention d'encodage : `endHour ∈ [0,23]`, un profil complet enjambe minuit via un créneau
    *   `startHour > endHour` (ex. `[22,6)`), géré par `analyzeSlotCoverage`. Pas de `endHour = 24`.
+   *   Corollaire : une **valeur unique sur 24 h** s'exprime en **≥ 2 créneaux** de même valeur
+   *   (ex. `[0,12)` + `[12,0)`) — inhérent au résolveur `findSlotForHour` (aucun `[h,h)` ne couvre 24 h),
+   *   pas un contournement. Un profil mono-créneau reçoit `slotGap` (422), fail-closed.
    *
    * **Anti-IDOR** : scopé `settings.patientId` ; le body ne porte jamais d'`id` de ligne.
    * **Dénormalisation** : `startHour/endHour` **et** `startTime/endTime` écrits ensemble.
@@ -418,14 +433,20 @@ export const insulinTherapyService = {
   }> {
     // 1. Pré-validation pure (hors DB, fail-fast) sur l'état FINAL.
     if (slots.length === 0) throw new Error("emptySlotSet")
+    const [valMin, valMax] =
+      param === "isf"
+        ? [CLINICAL_BOUNDS.ISF_GL_MIN, CLINICAL_BOUNDS.ISF_GL_MAX]
+        : [CLINICAL_BOUNDS.ICR_MIN, CLINICAL_BOUNDS.ICR_MAX]
     for (const s of slots) {
       if (s.startHour === s.endHour) throw new Error("zeroDurationSlot")
+      // Bornes cliniques de valeur re-vérifiées AUSSI dans le service (défense en profondeur) : le
+      // service reste sûr même appelé directement, pas seulement via la route Zod (US-2655, revue medical).
+      if (s.value < valMin || s.value > valMax) throw new Error("valueOutOfBounds")
     }
     const coverage = analyzeSlotCoverage(slots.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })))
     if (coverage.hasOverlap) throw new Error("slotOverlap")
     if (coverage.hasGap) throw new Error("slotGap") // ISF/ICR : no-gap strict (le bolus doit résoudre)
 
-    const hourToTime = (h: number) => new Date(`1970-01-01T${String(h).padStart(2, "0")}:00:00Z`)
     const parameterType = param === "isf" ? "insulinSensitivityFactor" : "insulinToCarbRatio"
 
     return prisma.$transaction(async (tx) => {
@@ -449,7 +470,7 @@ export const insulinTherapyService = {
             startTime: hourToTime(s.startHour),
             endTime: hourToTime(s.endHour),
             sensitivityFactorGl: s.value,
-            sensitivityFactorMgdl: s.value * 100,
+            sensitivityFactorMgdl: glToMgdl(s.value),
           })),
         })
         return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)

@@ -338,6 +338,21 @@ describe("insulinTherapyService", () => {
       ).rejects.toThrow("zeroDurationSlot")
     })
 
+    it("valeur hors bornes cliniques → valueOutOfBounds (défense en profondeur service)", async () => {
+      // ISF_GL_MAX = 1.00 → 1.5 hors bornes, même en appelant le service directement (sans la route Zod).
+      await expect(
+        insulinTherapyService.replaceSlotSet(
+          "isf",
+          7,
+          [
+            { startHour: 6, endHour: 22, value: 1.5 },
+            { startHour: 22, endHour: 6, value: 0.6 },
+          ],
+          42,
+        ),
+      ).rejects.toThrow("valueOutOfBounds")
+    })
+
     it("chevauchement → slotOverlap (rien écrit)", async () => {
       const tx = mkTx()
       prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))

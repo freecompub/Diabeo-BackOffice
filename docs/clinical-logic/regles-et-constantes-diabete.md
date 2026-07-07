@@ -509,3 +509,9 @@ confiance au client) sur l'état **final** :
   `ProposalStatus`) — libère l'index `one_pending_per_slot`, pas de collision P2002.
 - **Rôle** : chemin **DOCTOR direct** (PUT `/api/insulin-therapy/{sensitivity-factors,carb-ratios}`). Le chemin
   proposition (NURSE/patient, garde `proposalAlreadyPending`) est ouvert par US-2657.
+- **Bornes de valeur** : ISF ∈ [`ISF_GL_MIN`, `ISF_GL_MAX`], ICR ∈ [`ICR_MIN`, `ICR_MAX`] — re-vérifiées
+  **dans le service** (`valueOutOfBounds`, 400), pas seulement à la route Zod (défense en profondeur :
+  service sûr même appelé directement). Conversion g/L→mg/dL mutualisée via `glToMgdl` (`src/lib/statistics.ts`).
+- **Profil « une seule valeur sur 24 h »** : s'exprime en **≥ 2 créneaux** de même valeur (ex. `[0,12)`+`[12,0)`).
+  Inhérent au résolveur `findSlotForHour` (aucun `[h,h)` ne couvre 24 h) — un mono-créneau reçoit `slotGap` (422),
+  fail-closed. À gérer en confort UI (auto-split) côté US-2656.
