@@ -291,4 +291,71 @@ describe("insulinTherapyService", () => {
       )
     })
   })
+
+  describe("updateIsfHours (US-2654 — déplacement atomique des heures)", () => {
+    const mkTx = (findFirst: unknown, findMany: unknown) => ({
+      insulinSensitivityFactor: {
+        findFirst: vi.fn().mockResolvedValue(findFirst),
+        findMany: vi.fn().mockResolvedValue(findMany),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      adjustmentProposal: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+    })
+
+    it("durée nulle → zeroDurationSlot (avant toute transaction)", async () => {
+      await expect(insulinTherapyService.updateIsfHours("x", 8, 8, 42, 7)).rejects.toThrow("zeroDurationSlot")
+    })
+
+    it("créneau absent / autre patient → isfSlotNotFound (anti-IDOR)", async () => {
+      const tx = mkTx(null, [])
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.updateIsfHours("x", 10, 12, 42, 7)).rejects.toThrow("isfSlotNotFound")
+      expect(tx.insulinSensitivityFactor.update).not.toHaveBeenCalled()
+    })
+
+    it("chevauchement avec un voisin → slotOverlapWouldRemain (rejeté, rien écrit)", async () => {
+      const tx = mkTx({ startHour: 8, endHour: 12, settingsId: 3 }, [{ startHour: 12, endHour: 18 }])
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.updateIsfHours("x", 8, 14, 42, 7)).rejects.toThrow("slotOverlapWouldRemain")
+      expect(tx.insulinSensitivityFactor.update).not.toHaveBeenCalled()
+    })
+
+    it("trou de couverture → AVERTISSEMENT non bloquant + Time synchronisé + migration des propositions pending", async () => {
+      const tx = mkTx({ startHour: 8, endHour: 12, settingsId: 3 }, [{ startHour: 0, endHour: 8 }])
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.updateIsfHours("x", 10, 12, 42, 7) // laisse [8,10) + [12,24)
+      expect(res).toEqual({ updated: true, coverageWarning: "coverageGap" })
+      expect(tx.insulinSensitivityFactor.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ startHour: 10, endHour: 12 }) }),
+      )
+      // migration de la clé de créneau des propositions en attente (startHour 8 → 10)
+      expect(tx.adjustmentProposal.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ timeSlotStartHour: 8, status: "pending", parameterType: "insulinSensitivityFactor" }),
+          data: { timeSlotStartHour: 10, timeSlotEndHour: 12 },
+        }),
+      )
+    })
+  })
+
+  describe("updateIcrHours (US-2654)", () => {
+    it("déplacement complet (comble un trou) → aucun avertissement + heures + Time écrits", async () => {
+      const tx = {
+        carbRatio: {
+          findFirst: vi.fn().mockResolvedValue({ startHour: 8, endHour: 9, settingsId: 3 }),
+          findMany: vi.fn().mockResolvedValue([{ startHour: 0, endHour: 8 }, { startHour: 10, endHour: 24 }]),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        adjustmentProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.updateIcrHours("x", 8, 10, 42, 7) // [8,9)→[8,10) comble [9,10)
+      expect(res).toEqual({ updated: true, coverageWarning: undefined })
+      expect(tx.carbRatio.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ startHour: 8, endHour: 10 }) }),
+      )
+    })
+  })
 })

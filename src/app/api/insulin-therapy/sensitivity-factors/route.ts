@@ -65,15 +65,33 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const updateIsfSchema = z.object({
+// PATCH à corps DISCRIMINÉ : édition de la VALEUR (`sensitivityFactorGl`) ou des HEURES
+// (`startHour`/`endHour`, US-2654 — déplacement atomique de créneau). L'une XOR l'autre.
+const updateIsfValueSchema = z.object({
   id: z.string().uuid(),
   patientId: z.number().int().positive().optional(),
   sensitivityFactorGl: z.number().min(INSULIN_BOUNDS.ISF_GL_MIN).max(INSULIN_BOUNDS.ISF_GL_MAX),
 })
+const updateIsfHoursSchema = z.object({
+  id: z.string().uuid(),
+  patientId: z.number().int().positive().optional(),
+  startHour: z.number().int().min(0).max(23),
+  endHour: z.number().int().min(0).max(23),
+})
+const updateIsfSchema = z.union([updateIsfValueSchema, updateIsfHoursSchema])
+
+/** Codes d'erreur métier de la restructuration → statut HTTP (stables, sans PHI). */
+const SLOT_ERROR_STATUS: Record<string, number> = {
+  isfSlotNotFound: 404,
+  zeroDurationSlot: 400,
+  slotOverlapWouldRemain: 409,
+}
 
 /**
- * PATCH — édition DIRECTE de la valeur d'un créneau ISF (US-2648b). DOCTOR only ;
- * NURSE/patient passent par une proposition. Scopé patient (updateIsf via settings.patientId).
+ * PATCH — édition DIRECTE d'un créneau ISF (US-2648b valeur, US-2654 heures). DOCTOR only ;
+ * NURSE/patient passent par une proposition (valeur uniquement). Scopé patient (anti-IDOR).
+ * Déplacer les heures est atomique : **chevauchement rejeté** (409) ; **trou de couverture = avertissement**
+ * non bloquant (`coverageWarning: "coverageGap"` dans la réponse) — le gate read-time `coherent` protège.
  */
 export async function PATCH(req: NextRequest) {
   try {
@@ -89,18 +107,16 @@ export async function PATCH(req: NextRequest) {
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     try {
-      const result = await insulinTherapyService.updateIsf(
-        parsed.data.id,
-        parsed.data.sensitivityFactorGl,
-        user.id,
-        patientId,
-        extractRequestContext(req),
-      )
+      const ctx = extractRequestContext(req)
+      const d = parsed.data
+      const result =
+        "sensitivityFactorGl" in d
+          ? await insulinTherapyService.updateIsf(d.id, d.sensitivityFactorGl, user.id, patientId, ctx)
+          : await insulinTherapyService.updateIsfHours(d.id, d.startHour, d.endHour, user.id, patientId, ctx)
       return NextResponse.json(result)
     } catch (e) {
-      if (e instanceof Error && e.message === "isfSlotNotFound") {
-        return NextResponse.json({ error: "isfSlotNotFound" }, { status: 404 })
-      }
+      const status = e instanceof Error ? SLOT_ERROR_STATUS[e.message] : undefined
+      if (status) return NextResponse.json({ error: (e as Error).message }, { status })
       throw e
     }
   } catch (error) {

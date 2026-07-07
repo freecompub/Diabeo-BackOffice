@@ -66,13 +66,28 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const updateIcrSchema = z.object({
+// PATCH à corps DISCRIMINÉ : VALEUR (`gramsPerUnit`) ou HEURES (`startHour`/`endHour`, US-2654).
+const updateIcrValueSchema = z.object({
   id: z.string().uuid(),
   patientId: z.number().int().positive().optional(),
   gramsPerUnit: z.number().min(INSULIN_BOUNDS.ICR_MIN).max(INSULIN_BOUNDS.ICR_MAX),
 })
+const updateIcrHoursSchema = z.object({
+  id: z.string().uuid(),
+  patientId: z.number().int().positive().optional(),
+  startHour: z.number().int().min(0).max(23),
+  endHour: z.number().int().min(0).max(23),
+})
+const updateIcrSchema = z.union([updateIcrValueSchema, updateIcrHoursSchema])
 
-/** PATCH — édition DIRECTE d'un créneau ICR (US-2648b). DOCTOR only ; scopé patient. */
+/** Codes d'erreur restructuration ICR → HTTP (stables, sans PHI). */
+const SLOT_ERROR_STATUS: Record<string, number> = {
+  icrSlotNotFound: 404,
+  zeroDurationSlot: 400,
+  slotOverlapWouldRemain: 409,
+}
+
+/** PATCH — édition DIRECTE d'un créneau ICR (US-2648b valeur, US-2654 heures atomiques). DOCTOR only ; scopé patient. */
 export async function PATCH(req: NextRequest) {
   try {
     const user = requireRole(req, "DOCTOR")
@@ -87,18 +102,16 @@ export async function PATCH(req: NextRequest) {
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     try {
-      const result = await insulinTherapyService.updateIcr(
-        parsed.data.id,
-        parsed.data.gramsPerUnit,
-        user.id,
-        patientId,
-        extractRequestContext(req),
-      )
+      const ctx = extractRequestContext(req)
+      const d = parsed.data
+      const result =
+        "gramsPerUnit" in d
+          ? await insulinTherapyService.updateIcr(d.id, d.gramsPerUnit, user.id, patientId, ctx)
+          : await insulinTherapyService.updateIcrHours(d.id, d.startHour, d.endHour, user.id, patientId, ctx)
       return NextResponse.json(result)
     } catch (e) {
-      if (e instanceof Error && e.message === "icrSlotNotFound") {
-        return NextResponse.json({ error: "icrSlotNotFound" }, { status: 404 })
-      }
+      const status = e instanceof Error ? SLOT_ERROR_STATUS[e.message] : undefined
+      if (status) return NextResponse.json({ error: (e as Error).message }, { status })
       throw e
     }
   } catch (error) {

@@ -12,6 +12,7 @@ import type { AuditContext } from "./patient.service"
 import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
+import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 
 /** @deprecated Use CLINICAL_BOUNDS from @/lib/clinical-bounds instead */
 export const INSULIN_BOUNDS = CLINICAL_BOUNDS
@@ -305,6 +306,98 @@ export const insulinTherapyService = {
         metadata: { patientId },
       })
       return { updated: true }
+    })
+  },
+
+  /**
+   * US-2654 — Déplacement ATOMIQUE des heures d'un créneau ISF (change la STRUCTURE, pas la valeur).
+   * Réservé DOCTOR (acte thérapeutique, jamais proposé). En **une transaction**, sûr par construction :
+   * 1. charge le créneau **scopé patient** (anti-IDOR — `isfSlotNotFound` sinon) ;
+   * 2. rejette la durée nulle (`zeroDurationSlot`) ;
+   * 3. projette le profil (autres créneaux + celui-ci aux nouvelles heures) et rejette un **chevauchement**
+   *    (`slotOverlapWouldRemain`, self exclu) OU un **trou** de couverture (`slotGapWouldRemain`) — un bolus
+   *    doit toujours résoudre un créneau (invariant validé medical) ;
+   * 4. met à jour `startHour/endHour` **ET** `startTime/endTime` (dénormalisation) ;
+   * 5. **migre** la clé des propositions PENDING (valeur inchangée → baseline valide) ;
+   * 6. audit `from/to`.
+   */
+  async updateIsfHours(id: string, startHour: number, endHour: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+    if (startHour === endHour) throw new Error("zeroDurationSlot")
+    return prisma.$transaction(async (tx) => {
+      const slot = await tx.insulinSensitivityFactor.findFirst({
+        where: { id, settings: { patientId } },
+        select: { startHour: true, endHour: true, settingsId: true },
+      })
+      if (!slot) throw new Error("isfSlotNotFound")
+      const others = await tx.insulinSensitivityFactor.findMany({
+        where: { settingsId: slot.settingsId, id: { not: id } },
+        select: { startHour: true, endHour: true },
+      })
+      // Chevauchement = BLOQUÉ (double-dose, jamais voulu). Trou = AVERTISSEMENT non bloquant : un profil
+      // pavé n'admet aucun déplacement mono-créneau sans état intermédiaire troué ; le gate read-time
+      // `coherent` fail-close déjà (visible) tout usage sur config incohérente (validé medical/archi).
+      if (hasTimeSlotOverlap(others, startHour, endHour)) throw new Error("slotOverlapWouldRemain")
+      const projected = [...others, { startHour, endHour }].map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 }))
+      const coverageWarning = analyzeSlotCoverage(projected).hasGap ? ("coverageGap" as const) : undefined
+      await tx.insulinSensitivityFactor.update({
+        where: { id },
+        data: {
+          startHour, endHour,
+          startTime: new Date(`1970-01-01T${String(startHour).padStart(2, "0")}:00:00Z`),
+          endTime: new Date(`1970-01-01T${String(endHour).padStart(2, "0")}:00:00Z`),
+        },
+      })
+      if (slot.startHour !== startHour) {
+        await tx.adjustmentProposal.updateMany({
+          where: { patientId, parameterType: "insulinSensitivityFactor", timeSlotStartHour: slot.startHour, status: "pending" },
+          data: { timeSlotStartHour: startHour, timeSlotEndHour: endHour },
+        })
+      }
+      await auditService.logWithTx(tx, {
+        userId: auditUserId, action: "UPDATE", resource: "INSULIN_THERAPY", resourceId: `isf:${id}`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId, from: { startHour: slot.startHour, endHour: slot.endHour }, to: { startHour, endHour } },
+      })
+      return { updated: true, coverageWarning }
+    })
+  },
+
+  /** US-2654 — Déplacement atomique des heures d'un créneau ICR (structure). Symétrique de `updateIsfHours`. */
+  async updateIcrHours(id: string, startHour: number, endHour: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+    if (startHour === endHour) throw new Error("zeroDurationSlot")
+    return prisma.$transaction(async (tx) => {
+      const slot = await tx.carbRatio.findFirst({
+        where: { id, settings: { patientId } },
+        select: { startHour: true, endHour: true, settingsId: true },
+      })
+      if (!slot) throw new Error("icrSlotNotFound")
+      const others = await tx.carbRatio.findMany({
+        where: { settingsId: slot.settingsId, id: { not: id } },
+        select: { startHour: true, endHour: true },
+      })
+      if (hasTimeSlotOverlap(others, startHour, endHour)) throw new Error("slotOverlapWouldRemain")
+      const projected = [...others, { startHour, endHour }].map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 }))
+      const coverageWarning = analyzeSlotCoverage(projected).hasGap ? ("coverageGap" as const) : undefined
+      await tx.carbRatio.update({
+        where: { id },
+        data: {
+          startHour, endHour,
+          startTime: new Date(`1970-01-01T${String(startHour).padStart(2, "0")}:00:00Z`),
+          endTime: new Date(`1970-01-01T${String(endHour).padStart(2, "0")}:00:00Z`),
+        },
+      })
+      if (slot.startHour !== startHour) {
+        await tx.adjustmentProposal.updateMany({
+          where: { patientId, parameterType: "insulinToCarbRatio", carbRatioSlotStart: slot.startHour, status: "pending" },
+          data: { carbRatioSlotStart: startHour, carbRatioSlotEnd: endHour },
+        })
+      }
+      await auditService.logWithTx(tx, {
+        userId: auditUserId, action: "UPDATE", resource: "INSULIN_THERAPY", resourceId: `icr:${id}`,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+        metadata: { patientId, from: { startHour: slot.startHour, endHour: slot.endHour }, to: { startHour, endHour } },
+      })
+      return { updated: true, coverageWarning }
     })
   },
 

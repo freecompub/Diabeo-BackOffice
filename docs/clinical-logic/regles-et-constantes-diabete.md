@@ -489,3 +489,22 @@ Libellé UI « Suivi glycémique à vérifier ». Source : `OBSERVANCE` (`clinic
   récence HbA1c vs comportement de suivi ; un patient totalement désengagé déclenche les deux, cohérent).
 - **Direction fail-safe** : orientation-only, idempotent, doctor-gated → seuils **lenients** (err vers NE PAS
   flaguer, anti fatigue d'alerte). Jamais une dose (frontière MDR).
+
+### Déplacement des heures d'un créneau (US-2654, validé medical + archi)
+
+Restructurer l'emploi du temps insuline (heures des créneaux) ≠ titrer (valeur). `insulinTherapyService.updateIsfHours`
+/ `updateIcrHours` : déplacement **atomique** (une transaction), **DOCTOR uniquement** (acte thérapeutique,
+jamais proposé par patient/infirmier — pas de version « bornée »). PATCH à corps discriminé (valeur | heures).
+- **Chevauchement = BLOQUÉ** (`slotOverlapWouldRemain` 409) — double-dose jamais voulue.
+- **Trou de couverture = AVERTISSEMENT non bloquant** (`coverageWarning: "coverageGap"`, pas d'erreur) : un profil
+  parfaitement pavé n'admet aucun déplacement mono-créneau sans état intermédiaire troué ; le gate **read-time**
+  `analyzeSlotCoverage → coherent` fail-close déjà (visible, jamais une dose fausse) tout usage sur config incohérente.
+  L'invariant couverture reste **dérivé à la lecture**, pas un rejet à l'écriture.
+- **Anti-IDOR** : créneau scopé patient (`settings.patientId`) → `isfSlotNotFound`/`icrSlotNotFound`. Durée nulle
+  rejetée (`zeroDurationSlot`). `startHour/endHour` **et** `startTime/endTime` synchronisés (dénormalisation).
+- **Propositions en attente** : au déplacement, la clé de créneau (`timeSlotStartHour`/`carbRatioSlotStart`) est
+  **migrée** vers les nouvelles heures (valeur inchangée → baseline valide).
+
+**Suites** : Slice 2 (DELETE ISF/ICR manquants + fix IDOR `deleteIsf/deleteIcr` + supersède propositions + fix UI
+menteuse de la page autonome) ; Slice 3 (UI dans l'onglet Traitements + retrait de la page autonome). Pump slots :
+delete+recreate existe déjà ; move-hours pompe à ajouter (trou basal = avertissement, fenêtre suspendue légitime).
