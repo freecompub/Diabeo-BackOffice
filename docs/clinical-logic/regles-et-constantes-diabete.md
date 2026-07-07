@@ -395,3 +395,16 @@ avant le début de la fenêtre d'analyse est **exclue** (fail-closed — glucide
 chargés, COB non vérifiable). (2) Les **glucides non loggés** (patient mange sans saisir) ne peuvent
 être exclus par aucun filtre d'événement : limite data intrinsèque de la titration, atténuée par la
 garde nadir (ISF slice 1) + le doctor-gating (ADR #13).
+
+### Générateur ISF (US-2651 ISF slice 3, LIVRÉ) — `generateForPatient`, mode `basalBolus`, après ICR + basal
+
+- `correctionTrend(patientId, ISF_ANALYSIS_PERIOD 30 j)` → corrections propres appariées.
+- Grouper par **créneau ISF appliqué** : `findSlotForHour(sensitivityFactors, point.localHour)`.
+- Par créneau : `analyzeIsfSlot(slot, points)` → `createEngineProposal({ parameterType:
+  "insulinSensitivityFactor", timeSlotStartHour/EndHour })` ; rejets fail-closed non fatals.
+- **Pas de coverage guard dédié** (≠ basal) : `correctionTrend` est CGM-only + fail-closed, donc chaque
+  point a un nadir → la garde hypo d'`analyzeIsfSlot` (baisse ISF = plus d'insuline) suffit. Plancher
+  analyseur = 3 corrections/créneau. Sens : baisse ISF gardée, hausse (moins d'insuline) libre.
+
+**Générateur multi-levier complet** : ICR + basal + ISF de bout en bout (doctor-gated, ADR #13).
+Reste : `fixedDose` (bloqué migration `moment`), mode-c `observance`, activation cron prod.

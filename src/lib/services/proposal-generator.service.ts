@@ -9,10 +9,10 @@
  * `docs/clinical-logic/algorithme-propositions-ajustement.md` §5ter.
  *
  * Périmètre actuel (mode `basalBolus`) : **ICR** (par créneau) + **basal** (`basalRate`, POMPE
- * uniquement, créneau nocturne titré par la glycémie à jeun). `nonInsulin` → uniquement des
- * `ClinicalReviewFlag` d'orientation (mode c). `fixedDose` et le paramètre **ISF** relèvent de slices
- * ultérieures. La frontière MDR (`nonInsulin` → aucune dose) est de toute façon re-imposée par
- * `createEngineProposal`.
+ * uniquement, créneau nocturne titré par la glycémie à jeun) + **ISF** (par créneau, titré par les
+ * corrections propres appariées). `nonInsulin` → uniquement des `ClinicalReviewFlag` d'orientation
+ * (mode c). `fixedDose` relève d'une slice ultérieure. La frontière MDR (`nonInsulin` → aucune dose)
+ * est de toute façon re-imposée par `createEngineProposal`.
  *
  * ⚠️ Le chemin basal est **couplé à l'existence des carb-ratios** : `generateForPatient` renvoie tôt
  * (`EMPTY("noCarbRatios")`) si aucun ICR n'est configuré, donc un patient pompe avec basale mais **sans**
@@ -28,13 +28,13 @@ import {
 } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
-  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, analyzeBasalTrend,
+  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, analyzeBasalTrend, analyzeIsfSlot,
   type ProposalCandidate,
 } from "@/lib/proposal-algorithm"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
-import { mealtimePattern, type JournalMeal } from "@/lib/services/meal-trends.service"
+import { mealtimePattern, type JournalMeal, type CorrectionPoint } from "@/lib/services/meal-trends.service"
 import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
@@ -42,6 +42,8 @@ import type { AuditContext } from "@/lib/services/patient.service"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
 const ANALYSIS_PERIOD = "14d"
+/** US-2651 ISF — période plus longue (30 j) : les corrections propres sont rares (validé medical #683). */
+const ISF_ANALYSIS_PERIOD = "30d"
 /** Minimum de repas appariés par créneau (aligné `analyzeIcrSlot` + `BGM_CARNET.MIN_READINGS_PER_MOMENT`). */
 const MIN_MEALS_PER_SLOT = 3
 /** US-2651 basal — nb minimal de nuits avec un nadir nocturne CGM pour autoriser une HAUSSE basale
@@ -315,6 +317,59 @@ export const proposalGeneratorService = {
               logger.error("proposal-generator", "unexpected engine proposal error",
                 { patientId, bucket, failMode: "unexpected" }, err as Error)
             }
+          }
+        }
+      }
+    }
+
+    // 7. Chemin ISF (US-2651) — titre chaque créneau ISF par les CORRECTIONS propres appariées.
+    // Pas de coverage guard dédié (≠ basal) : `correctionTrend` est CGM-only + fail-closed, donc chaque
+    // point a un nadir → la garde hypo d'`analyzeIsfSlot` (baisse ISF = plus d'insuline) suffit (medical #683).
+    const isfSlots = settings?.sensitivityFactors ?? []
+    if (isfSlots.length > 0) {
+      const corrections = await mealtimePattern.correctionTrend(patientId, ISF_ANALYSIS_PERIOD, auditUserId, ctx)
+      const isfSlotShapes = isfSlots.map((s) => ({
+        startHour: s.startHour, endHour: s.endHour, sensitivityFactorGl: Number(s.sensitivityFactorGl),
+      }))
+      // Grouper les corrections par créneau ISF APPLIQUÉ (heure de la correction).
+      const byIsfSlot = new Map<number, { slot: (typeof isfSlotShapes)[number]; points: CorrectionPoint[] }>()
+      for (const pt of corrections) {
+        const slot = findSlotForHour(isfSlotShapes, pt.localHour)
+        if (!slot) continue
+        const entry = byIsfSlot.get(slot.startHour) ?? { slot, points: [] }
+        entry.points.push(pt)
+        byIsfSlot.set(slot.startHour, entry)
+      }
+      for (const { slot, points } of byIsfSlot.values()) {
+        const candidate = analyzeIsfSlot(
+          slot,
+          points.map((p) => ({ postGlucoseGl: p.postGlucoseGl, targetGl: p.targetGl, nadirGl: p.nadirGl ?? undefined })),
+        )
+        if (!candidate) continue
+        try {
+          await adjustmentService.createEngineProposal({
+            patientId,
+            parameterType: "insulinSensitivityFactor",
+            proposedValue: candidate.proposedValue,
+            expectedCurrentValue: candidate.currentValue,
+            reason: candidate.reason,
+            confidence: candidate.confidence,
+            supportingEvents: candidate.supportingEvents,
+            totalEventsConsidered: candidate.totalEventsConsidered,
+            averageObservedValue: candidate.averageObservedValue ?? null,
+            analysisPeriod: ISF_ANALYSIS_PERIOD,
+            timeSlotStartHour: slot.startHour,
+            timeSlotEndHour: slot.endHour,
+          }, ctx)
+          created++
+        } catch (err) {
+          const msg = (err as Error).message
+          const bucket = `isf:${slot.startHour}-${slot.endHour}`
+          if (EXPECTED_SKIP.has(msg)) {
+            logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+          } else {
+            logger.error("proposal-generator", "unexpected engine proposal error",
+              { patientId, bucket, failMode: "unexpected" }, err as Error)
           }
         }
       }
