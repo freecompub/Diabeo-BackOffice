@@ -1,10 +1,13 @@
 /**
- * @route GET|POST /api/cron/generate-proposals
- * @description US-2651 — Cron entry du générateur de propositions d'ajustement (ICR).
+ * @route POST /api/cron/generate-proposals
+ * @description US-2651 — Cron entry du générateur de propositions d'ajustement (ICR + basal + ISF +
+ *   fixedDose + flags mode c).
  *
  * **Authentification** : Bearer `CRON_SECRET` (env var), pas de JWT user — cron externe
  * (OVHcloud cron / Vercel cron / GitHub Action). `CRON_SECRET` validé par `assertRequiredEnv()`
- * au boot. GET **et** POST acceptés (les crons basiques utilisent souvent GET).
+ * au boot. **POST uniquement** (US-2652 activation prod, aligné sur les crons rappels round 2 H3) :
+ * GET ferait fuiter le `Bearer` dans les access logs Nginx / le header `Referer` CDN / le cache →
+ * `GET` non exporté → Next.js répond **405**. Le scheduler DOIT utiliser `curl -X POST`.
  *
  * **Idempotent + anti double-run** : `generateForAllPatients` prend un verrou advisory session
  * (`withSessionAdvisoryLock`) ; deux runs concurrents (OVH + Vercel) → l'un skip (`skippedConcurrent`).
@@ -12,9 +15,10 @@
  *
  * **Auth failure audit** : un Bearer manquant/faux émet un audit `cron.auth.failed` (burst detection SOC).
  *
- * **Retour** : métriques JSON `{ processed, created, errored, skippedConcurrent }` (aucune PHI).
+ * **Retour** : métriques JSON `{ processed, created, flagged, errored, skippedConcurrent }` (aucune PHI).
  *
  * **Cron schedule recommandé** : `0 2 * * *` (2 h locale — analyse nocturne, hors pics d'usage).
+ * **Runbook** : `docs/runbook/cron-proposal-generator.md` (⚠️ bloqueur pré-prod : signature DPO).
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { timingSafeEqual } from "crypto"
@@ -86,11 +90,8 @@ async function handle(req: NextRequest): Promise<NextResponse> {
   }
 }
 
+// Action mutante (génère des propositions) = POST uniquement (RFC 7231 §4.3.3). `GET` non exporté →
+// Next.js répond 405 → évite le leak de `CRON_SECRET` via access logs / Referer / cache CDN.
 export async function POST(req: NextRequest): Promise<NextResponse> {
-  return handle(req)
-}
-
-// GET accepté aussi (Vercel cron / OVH cron basic utilisent GET).
-export async function GET(req: NextRequest): Promise<NextResponse> {
   return handle(req)
 }
