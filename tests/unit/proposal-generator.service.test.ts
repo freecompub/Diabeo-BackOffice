@@ -15,7 +15,7 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
   insulinTherapyService: { getSettings: vi.fn() },
 }))
 vi.mock("@/lib/services/meal-trends.service", () => ({
-  mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn() },
+  mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn(), correctionTrend: vi.fn() },
 }))
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
@@ -48,6 +48,7 @@ const mode = vi.mocked(treatmentModeService.resolveTreatmentMode)
 const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
 const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
+const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
 const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 
 /** Repas exploitable par défaut : midi (13 h), glucides/bolus OK, pré-repas 1,0 g/L (en bande). */
@@ -67,10 +68,13 @@ function setup(opts: {
   basalConfig?: { configType: string; pumpSlots: { id: string; rate: number; startHour: number; endHour: number }[] }
   glucoseTargets?: { targetGlucose: number }[]
   fasting?: { fastingMgdl: number | null; nocturnalNadirMgdl: number | null }[]
+  sensitivityFactors?: { startHour: number; endHour: number; sensitivityFactorGl: number }[]
+  corrections?: { localHour: number; postGlucoseGl: number; targetGl: number; nadirGl: number | null }[]
 } = {}) {
   mode.mockResolvedValue({ mode: opts.mode ?? "basalBolus", coherent: true } as never)
   getSettings.mockResolvedValue({
     carbRatios: opts.carbRatios ?? [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }],
+    sensitivityFactors: opts.sensitivityFactors ?? [],
     basalConfiguration: opts.basalConfig
       ? {
           configType: opts.basalConfig.configType,
@@ -88,6 +92,7 @@ function setup(opts: {
   } as never)
   dailyJournal.mockResolvedValue((opts.meals ?? [meal(), meal(), meal()]) as never)
   fastingTrend.mockResolvedValue((opts.fasting ?? []) as never)
+  correctionTrend.mockResolvedValue((opts.corrections ?? []) as never)
   createEngine.mockResolvedValue({ id: "e1" } as never)
 }
 
@@ -281,6 +286,42 @@ describe("proposalGeneratorService.generateForPatient — chemin basal (US-2651)
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.skipped).toBe("noCarbRatios") // le early-return ICR gate le chemin basal
     expect(basalCalls()).toHaveLength(0)
+  })
+})
+
+describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const ISF_SLOT = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
+  const isfCalls = () =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "insulinSensitivityFactor")
+  const corrections = (post: number, nadir: number | null, n = 4) =>
+    Array.from({ length: n }, () => ({ localHour: 9, postGlucoseGl: post, targetGl: 1.2, nadirGl: nadir }))
+
+  it("corrections au-dessus de la cible → proposition isfTooHigh (baisse) sur le créneau ISF appliqué", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.8, 1.4) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const isf = isfCalls()
+    expect(isf).toHaveLength(1)
+    expect(isf[0]).toMatchObject({ timeSlotStartHour: 8, timeSlotEndHour: 12, reason: "isfTooHigh", expectedCurrentValue: 0.5 })
+  })
+
+  it("garde hypo : un nadir sévère (0,50) supprime la baisse ISF", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.8, 0.5) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
+  })
+
+  it("< 3 corrections dans le créneau → aucune proposition ISF (plancher analyseur)", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.8, 1.4, 2) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
+  })
+
+  it("aucun créneau ISF configuré → aucune proposition ISF (même avec des corrections)", async () => {
+    setup({ meals: [], sensitivityFactors: [], corrections: corrections(1.8, 1.4) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
   })
 })
 
