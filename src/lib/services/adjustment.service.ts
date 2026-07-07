@@ -127,9 +127,8 @@ function validateProposedValue(parameterType: string, value: number): boolean {
  * US-2649a — valeur COURANTE de confiance d'un paramètre, lue **serveur** depuis la
  * config réelle du patient (jamais du body → garde-fous ininviolables) et **scopée
  * patient** (anti-IDOR : le créneau doit appartenir au patient).
- * @throws `slotRequired` (créneau manquant), `currentValueNotFound` (créneau absent /
- *   autre patient), `fixedDoseNotWired` (dose fixe non câblée — pas de discriminateur
- *   de moment sur AdjustmentProposal, cf. US-2648/2649b).
+ * @throws `slotRequired` (créneau/`moment` manquant), `currentValueNotFound` (créneau absent /
+ *   autre patient). La dose fixe (US-2652) est ciblée par `moment` (scopée patient via `patientInsulin`).
  */
 async function resolveCurrentValue(
   patientId: number,
@@ -305,7 +304,7 @@ export const adjustmentService = {
    * US-2649b — valeur COURANTE **LIVE** du créneau d'une proposition (re-lecture serveur au
    * moment de la revue), pour signaler au médecin si la config a changé depuis la proposition
    * (le `currentValue` stocké est un snapshot de création). Renvoie `null` si le créneau a
-   * disparu/bougé (ISF/ICR par heure, basal par id) ou n'est pas résoluble → l'UI n'affiche
+   * disparu/bougé (ISF/ICR par heure, basal par id, dose fixe par moment) ou n'est pas résoluble → l'UI n'affiche
    * alors pas de comparaison. Réutilise la lecture scopée patient de `resolveCurrentValue`.
    */
   async liveCurrentValue(
@@ -315,6 +314,9 @@ export const adjustmentService = {
       timeSlotStartHour: number | null
       carbRatioSlotStart: number | null
       pumpBasalSlotId: string | null
+      // US-2652 : sans `moment`, `resolveCurrentValue` lève `slotRequired` pour une dose fixe → CAS
+      // `baselineMoved` inactif (une dose absolue périmée serait écrite). Doit être forwardé.
+      moment: DoseMoment | null
     },
   ): Promise<number | null> {
     try {
@@ -326,6 +328,7 @@ export const adjustmentService = {
         timeSlotStartHour: proposal.timeSlotStartHour,
         carbRatioSlotStart: proposal.carbRatioSlotStart,
         pumpBasalSlotId: proposal.pumpBasalSlotId,
+        moment: proposal.moment,
       })
     } catch (err) {
       // Cas ATTENDUS (créneau absent/non résoluble) → null silencieux. Une erreur INATTENDUE
@@ -475,6 +478,7 @@ export const adjustmentService = {
           timeSlotStartHour: slot.timeSlotStartHour,
           carbRatioSlotStart: slot.carbRatioSlotStart,
           pumpBasalSlotId: slot.pumpBasalSlotId,
+          moment: slot.moment, // US-2652 : cooldown PAR MOMENT (sinon morning bloque evening)
         },
         orderBy: { createdAt: "desc" },
         select: { reviewedAt: true, createdAt: true },
@@ -498,6 +502,7 @@ export const adjustmentService = {
         timeSlotStartHour: slot.timeSlotStartHour,
         carbRatioSlotStart: slot.carbRatioSlotStart,
         pumpBasalSlotId: slot.pumpBasalSlotId,
+        moment: slot.moment, // US-2652 : 1 pending PAR MOMENT (aligne le pré-check sur l'index partiel)
       },
       select: { id: true },
     })
@@ -602,6 +607,7 @@ export const adjustmentService = {
       carbRatioSlotStart: input.carbRatioSlotStart,
       carbRatioSlotEnd: input.carbRatioSlotEnd,
       pumpBasalSlotId: input.pumpBasalSlotId,
+      moment: input.moment, // US-2652 : sans ça, `resolveCurrentValue` lève slotRequired → moteur fixedDose mort
     }
     const currentValue = await resolveCurrentValue(patientId, parameterType, asInput)
 
@@ -637,6 +643,7 @@ export const adjustmentService = {
         timeSlotStartHour: slot.timeSlotStartHour,
         carbRatioSlotStart: slot.carbRatioSlotStart,
         pumpBasalSlotId: slot.pumpBasalSlotId,
+        moment: slot.moment, // US-2652 : 1 pending PAR MOMENT (aligne le pré-check sur l'index partiel)
       },
       select: { id: true },
     })

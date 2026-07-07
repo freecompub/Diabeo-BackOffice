@@ -109,6 +109,28 @@ describe("adjustmentService", () => {
       )
     })
 
+    // US-2652 (fix revue) — le CAS baselineMoved DOIT s'appliquer à la dose fixe (avant : inactif car
+    // `moment` non forwardé → resolveCurrentValue levait slotRequired → CAS sauté → dose périmée écrite).
+    it("throws 'baselineMoved' for fixedDose when the live dose drifted since the proposal", async () => {
+      prismaMock.fixedDoseSlot.findFirst.mockResolvedValue({ valueU: 8 } as never) // live 8 ≠ snapshot 10
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "fixedDose", proposedValue: 12, currentValue: 10, moment: "morning",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        fixedDoseSlot: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("baselineMoved")
+      expect(updateMany).not.toHaveBeenCalled() // rollback → dose jamais écrite sur une base déplacée
+    })
+
     // US-2649b — compare-and-swap : la base a bougé depuis la proposition → refuser (fail-closed).
     it("throws 'baselineMoved' and applies nothing when the live slot moved since the proposal", async () => {
       // Valeur LIVE (0.99) ≠ snapshot currentValue (0.5) → sur-correction refusée.

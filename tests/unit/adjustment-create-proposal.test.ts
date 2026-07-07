@@ -265,6 +265,18 @@ describe("createProposal — fixedDose (câblé US-2652) & anti-spam", () => {
     expect(data.timeSlotStartHour).toBeNull() // discriminateurs parasites zéroés
   })
 
+  it("pré-check anti-spam scopé PAR MOMENT (un pending morning ne bloque pas evening)", async () => {
+    mocks.fixedDoseFindFirst.mockResolvedValue({ valueU: 10 })
+    mocks.adjFindFirst.mockResolvedValue(null)
+    await adjustmentService.createProposal(
+      { patientId: 5, parameterType: "fixedDose", proposedValue: 12, reason: "manualAdjustment", moment: "evening" },
+      nurse,
+    )
+    // Le pré-check `existing` (status pending) doit filtrer sur `moment` → sinon morning bloquerait evening.
+    const precheck = mocks.adjFindFirst.mock.calls.find((c) => (c[0] as any)?.where?.status === "pending")
+    expect((precheck?.[0] as any).where).toMatchObject({ moment: "evening" })
+  })
+
   it("pending existant (pré-check) → duplicatePendingProposal", async () => {
     mocks.adjFindFirst.mockResolvedValue({ id: "existing" })
     await expect(adjustmentService.createProposal(isf(0.52), nurse)).rejects.toThrow("duplicatePendingProposal")
