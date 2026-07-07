@@ -452,3 +452,21 @@ pré-dose** qui jugent la dose de ce moment.
 - *Fenêtre `night` (22–04, cross-minuit)* : sur le jour-frontière, `earliest-par-jour` garde le relevé
   ~02-04 h (plus proche du vrai nadir nocturne) et écarte le ~22 h → réduit légèrement N pour la dose
   `evening`, conservateur, **pas de mauvaise direction**. Amélioration future possible (appariement nuit réelle).
+
+### Générateur DOSE FIXE (US-2652 slice 3, LIVRÉ) — `generateFixedDoseProposals`, mode `fixedDose`
+
+Branche dédiée dans `generateForPatient` (`mode === "fixedDose"` → route vers `generateFixedDoseProposals`).
+- Charge les `FixedDoseSlot` (via `patientInsulin`, **pas** `InsulinTherapySettings`). Aucune dose → `EMPTY("noFixedDose")`.
+- Cible : `resolveFastingTarget(glucoseTargets individualisée, isPregnancy)` — pré-prandiale 1,00/0,90, **JAMAIS `titrLow`**.
+- Creux pré-dose par moment : `analyticsService.fixedDoseTrend(patientId, "14d")` (shift Option B).
+- Par moment : `{postGlucoseGl, targetGl}[]` → `analyzeFixedDose(slot, readings)` → `createEngineProposal({ parameterType: "fixedDose", moment })` ; rejets fail-closed non fatals (bucket `fixedDose:<moment>`).
+
+**Générateur multi-levier COMPLET** : ICR + basal + ISF + **fixedDose** de bout en bout, doctor-gated (ADR #13).
+
+**Limites connues (générateur dose fixe)** :
+- *Garde soft-delete* : `generateFixedDoseProposals` renvoie `EMPTY("noPatient")` si le patient est
+  soft-deleted (fail-closed RGPD, ADR #4 ; symétrie avec le chemin basalBolus).
+- *Edge multi-`PatientInsulin`* : `FixedDoseSlot` est unique sur `[patientInsulinId, moment]` (pas
+  `[patientId, moment]`). Si un patient avait 2 `PatientInsulin` actifs portant le même moment, le
+  `findMany` émettrait 2 candidats ; tout reste **sûr** (`resolveCurrentValue` = `findFirst` + le 2e
+  candidat → `duplicatePendingProposal` / `baselineMoved`) → proposition supprimée, **jamais fausse**.

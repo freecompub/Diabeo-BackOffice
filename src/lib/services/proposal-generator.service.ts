@@ -11,8 +11,8 @@
  * Périmètre actuel (mode `basalBolus`) : **ICR** (par créneau) + **basal** (`basalRate`, POMPE
  * uniquement, créneau nocturne titré par la glycémie à jeun) + **ISF** (par créneau, titré par les
  * corrections propres appariées). `nonInsulin` → uniquement des `ClinicalReviewFlag` d'orientation
- * (mode c). `fixedDose` relève d'une slice ultérieure. La frontière MDR (`nonInsulin` → aucune dose)
- * est de toute façon re-imposée par `createEngineProposal`.
+ * (mode c) + **fixedDose** (« doses simples » — chaque dose par moment titrée sur les creux pré-dose).
+ * La frontière MDR (`nonInsulin` → aucune dose) est de toute façon re-imposée par `createEngineProposal`.
  *
  * ⚠️ Le chemin basal est **couplé à l'existence des carb-ratios** : `generateForPatient` renvoie tôt
  * (`EMPTY("noCarbRatios")`) si aucun ICR n'est configuré, donc un patient pompe avec basale mais **sans**
@@ -29,8 +29,9 @@ import {
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
   analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, analyzeBasalTrend, analyzeIsfSlot,
-  type ProposalCandidate,
+  analyzeFixedDose, type ProposalCandidate,
 } from "@/lib/proposal-algorithm"
+import { analyticsService } from "@/lib/services/analytics.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
@@ -144,9 +145,10 @@ export const proposalGeneratorService = {
    */
   async generateForPatient(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
     // 0. Mode — routage : `nonInsulin` → flags d'orientation (mode c, jamais de dose, frontière MDR) ;
-    //    `basalBolus` → propositions ICR (ci-dessous) ; `fixedDose` → hors scope (slice ultérieure).
+    //    `fixedDose` → titration des doses simples par moment ; `basalBolus` → ICR + basal + ISF (ci-dessous).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") return proposalGeneratorService.generateOrientationFlags(patientId, auditUserId, ctx)
+    if (mode === "fixedDose") return proposalGeneratorService.generateFixedDoseProposals(patientId, auditUserId, ctx)
     if (mode !== "basalBolus") return EMPTY("mode")
 
     // 1. Config (créneaux ICR) + patient (pathologie / grossesse pour la cible).
@@ -378,6 +380,77 @@ export const proposalGeneratorService = {
     }
 
     return { created, flagged, slotsConsidered, mealsUsable: usable.length, skipped: null }
+  },
+
+  /**
+   * Mode `fixedDose` (« doses simples ») — titre chaque DOSE FIXE par moment (US-2652). Les creux
+   * pré-dose viennent de `fixedDoseTrend` (shift Option B, BGM). Cible = `resolveFastingTarget`
+   * (pré-prandiale 1,00/0,90, JAMAIS `titrLow`). `analyzeFixedDose` : plancher ≥ 3 relevés, snap 0,5 U,
+   * cap ±10 %/±2 U, **garde hypo** (bloque une hausse sur un creux hypo). Persistance par `moment`
+   * (discriminateur #685). Les `FixedDoseSlot` vivent sur `PatientInsulin` (pas `InsulinTherapySettings`).
+   *
+   * @param patientId Patient en mode doses simples.
+   * @param auditUserId Acteur d'audit (système `null` pour le cron).
+   * @param ctx Contexte requête (audit).
+   * @returns Métriques ; `slotsConsidered` = nb de doses fixes, `created` = propositions générées.
+   */
+  async generateFixedDoseProposals(patientId: number, auditUserId: number | null, ctx?: AuditContext): Promise<GenerateResult> {
+    const fixedSlots = await prisma.fixedDoseSlot.findMany({
+      where: { patientInsulin: { patientId } },
+      select: { moment: true, valueU: true },
+    })
+    if (fixedSlots.length === 0) return EMPTY("noFixedDose")
+
+    const patient = await prisma.patient.findFirst({
+      where: { id: patientId, deletedAt: null },
+      select: { pathology: true, pregnancyMode: true },
+    })
+    // Fail-closed RGPD (ADR #4, symétrie avec le chemin basalBolus) : un patient soft-deleted ne reçoit
+    // aucune proposition moteur (le cron pré-filtre déjà `deletedAt`, mais protège l'appel direct).
+    if (!patient) return EMPTY("noPatient")
+    const isPregnancy = patient.pregnancyMode === true || patient.pathology === "GD"
+    // Cible pré-prandiale individualisée si plausible, sinon défaut (JAMAIS titrLow). Scopée patient.
+    const targetRow = await prisma.glucoseTarget.findFirst({
+      where: { settings: { patientId }, isActive: true },
+      select: { targetGlucose: true },
+    })
+    const targetGl = resolveFastingTarget(targetRow ? Number(targetRow.targetGlucose) / 100 : null, isPregnancy)
+
+    // Creux pré-dose par moment (shift Option B, BGM). Période 14 j (réactif, comme le basal).
+    const troughs = await analyticsService.fixedDoseTrend(patientId, ANALYSIS_PERIOD, auditUserId, ctx)
+
+    let created = 0
+    for (const slot of fixedSlots) {
+      const readings = (troughs[slot.moment] ?? []).map((g) => ({ postGlucoseGl: g, targetGl }))
+      const candidate = analyzeFixedDose({ moment: slot.moment, valueU: Number(slot.valueU) }, readings)
+      if (!candidate) continue
+      try {
+        await adjustmentService.createEngineProposal({
+          patientId,
+          parameterType: "fixedDose",
+          moment: slot.moment,
+          proposedValue: candidate.proposedValue,
+          expectedCurrentValue: candidate.currentValue,
+          reason: candidate.reason,
+          confidence: candidate.confidence,
+          supportingEvents: candidate.supportingEvents,
+          totalEventsConsidered: candidate.totalEventsConsidered,
+          averageObservedValue: candidate.averageObservedValue ?? null,
+          analysisPeriod: ANALYSIS_PERIOD,
+        }, ctx)
+        created++
+      } catch (err) {
+        const msg = (err as Error).message
+        const bucket = `fixedDose:${slot.moment}`
+        if (EXPECTED_SKIP.has(msg)) {
+          logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+        } else {
+          logger.error("proposal-generator", "unexpected engine proposal error",
+            { patientId, bucket, failMode: "unexpected" }, err as Error)
+        }
+      }
+    }
+    return { created, flagged: 0, slotsConsidered: fixedSlots.length, mealsUsable: 0, skipped: null }
   },
 
   /**
