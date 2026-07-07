@@ -355,7 +355,11 @@ interface CorrectionBolus {
  * lire à 5 h évite le biais « encore en baisse » vers plus d'insuline) ; `nadirGl` = min CGM sur la
  * fenêtre. `localHour` = heure de la correction (créneau ISF **appliqué**).
  */
-function computeCorrectionTrend(c: MealContext, boluses: CorrectionBolus[]): CorrectionPoint[] {
+function computeCorrectionTrend(
+  c: MealContext,
+  boluses: CorrectionBolus[],
+  windowStartMs: number,
+): CorrectionPoint[] {
   const B = CLINICAL_BOUNDS
   const MAX_MS = B.INSULIN_ACTION_MAX * 3_600_000
   const TOL_MS = B.CORRECTION_SETTLE_TOL_MIN * MIN_MS
@@ -373,6 +377,9 @@ function computeCorrectionTrend(c: MealContext, boluses: CorrectionBolus[]): Cor
     // Filtre 3 — confondeurs (COB avant + glucide/bolus intra-fenêtre).
     const t0 = b.t
     const windowEnd = t0 + MAX_MS
+    // Fail-closed au BORD : si la fenêtre COB déborde avant le début du chargement, les glucides
+    // pré-correction ne sont pas tous chargés → COB non vérifiable → on drope (symétrie fail-closed).
+    if (t0 - COB_MS < windowStartMs) continue
     if (c.carbTimes.some((ct) => ct >= t0 - COB_MS && ct < t0)) continue
     if (c.carbTimes.some((ct) => ct > t0 && ct <= windowEnd)) continue
     if (bolusTimes.some((bt) => bt > t0 && bt <= windowEnd)) continue
@@ -444,8 +451,9 @@ export const mealtimePattern = {
     const days = parsePeriodDays(period)
     const c = await loadContext(patientId, days, "cgm")
     const to = Date.now()
+    const windowStartMs = to - days * DAY_MS
     const rows = await prisma.bolusCalculationLog.findMany({
-      where: { patientId, wasDelivered: true, calculatedAt: { gte: new Date(to - days * DAY_MS), lte: new Date(to) } },
+      where: { patientId, wasDelivered: true, calculatedAt: { gte: new Date(windowStartMs), lte: new Date(to) } },
       select: {
         calculatedAt: true, inputGlucoseGl: true, targetGlucoseMgdl: true, mealBolus: true,
         inputCarbsGrams: true, iobValue: true, correctionDose: true, wasCapped: true,
@@ -466,7 +474,7 @@ export const mealtimePattern = {
       extendedImmediatePct: b.extendedImmediatePct != null ? decimalToNumber(b.extendedImmediatePct) : null,
     }))
     if (!opts?.skipAudit) await auditRead(auditUserId, patientId, period, days, "cgm", "correctionTrend", ctx)
-    return computeCorrectionTrend(c, boluses)
+    return computeCorrectionTrend(c, boluses, windowStartMs)
   },
 
   /**

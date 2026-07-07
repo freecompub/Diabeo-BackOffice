@@ -461,4 +461,11 @@ describe("mealtimePattern.correctionTrend (US-2651 ISF)", () => {
     setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9)]) // nadir mais pas de post à 5 h
     expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
   })
+
+  it("fail-closed au bord : correction dans la 1re heure de la fenêtre (COB non vérifiable) → exclue", async () => {
+    // t0 − 180 min déborde avant le début de la fenêtre 30 j → glucides pré-correction non chargés → drop.
+    const T0 = Date.now() - 30 * DAY + 60 * MIN
+    setupCorr([bolus({ calculatedAt: new Date(T0) })], [cgm(T0, 180, 0.9), cgm(T0, 300, 1.6)])
+    expect(await mealtimePattern.correctionTrend(42, "30d", 1)).toHaveLength(0)
+  })
 })

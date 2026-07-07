@@ -389,3 +389,9 @@ Apparie les **corrections propres** (`mealtimePattern.correctionTrend`, CGM only
 `nadirGl` = min CGM sur la fenêtre (garde hypo tardive). Attribution au créneau ISF **appliqué**
 (`localHour(t0)`). Période ISF par défaut = **30 j** (corrections propres rares). Limite connue :
 l'exercice (creux → sens sûr, capté par la garde) n'est pas un gate dur (pas d'intensité dans les données).
+
+**Limites connues (ISF assemblage)** : (1) une correction dont la fenêtre COB `[t0−180 min]` déborde
+avant le début de la fenêtre d'analyse est **exclue** (fail-closed — glucides pré-correction non
+chargés, COB non vérifiable). (2) Les **glucides non loggés** (patient mange sans saisir) ne peuvent
+être exclus par aucun filtre d'événement : limite data intrinsèque de la titration, atténuée par la
+garde nadir (ISF slice 1) + le doctor-gating (ADR #13).
