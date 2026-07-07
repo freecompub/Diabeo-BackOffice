@@ -86,6 +86,21 @@ function groupHours(hours: number[]): HourRange[] {
 }
 
 /**
+ * Fusionne une plage finissant à minuit (`endHour === 24`) avec une plage commençant à `0` en une
+ * seule fenêtre **enjambant minuit** (ex. `[23,24)` + `[0,2)` → `[23,2)`), pour un nommage cohérent
+ * (« 23h–02h ») plutôt que deux fenêtres scindées à 00h.
+ */
+function mergeWrap(ranges: HourRange[]): HourRange[] {
+  if (ranges.length < 2) return ranges
+  const first = ranges[0]!
+  const last = ranges[ranges.length - 1]!
+  if (first.startHour === 0 && last.endHour === 24) {
+    return [{ startHour: last.startHour, endHour: first.endHour }, ...ranges.slice(1, -1)]
+  }
+  return ranges
+}
+
+/**
  * Analyse la couverture 24 h du jeu de créneaux : booléens (via `analyzeSlotCoverage`, autorité
  * partagée serveur) + fenêtres trou/chevauchement + lignes à surligner.
  */
@@ -104,8 +119,8 @@ export function describeCoverage(rows: Array<Pick<SlotRow, "key" | "startHour" |
     if (cover[h] === 0) gapHours.push(h)
     else if (cover[h]! >= 2) overlapHours.push(h)
   }
-  const gaps = groupHours(gapHours)
-  const overlaps = groupHours(overlapHours)
+  const gaps = mergeWrap(groupHours(gapHours))
+  const overlaps = mergeWrap(groupHours(overlapHours))
 
   const conflictKeys = new Set<string>()
   const overlapSet = new Set(overlapHours)

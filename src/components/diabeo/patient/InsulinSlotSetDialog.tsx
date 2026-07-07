@@ -14,7 +14,7 @@
  * `canEditDirect` l'autorise. Slice 1 : chemin DOCTOR direct (le chemin proposition patient/infirmier +
  * gating maturité relève d'US-2657).
  */
-import { useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
 import { useRouter } from "next/navigation"
 import { Plus, Trash2, AlertTriangle } from "lucide-react"
@@ -63,8 +63,12 @@ export function InsulinSlotSetDialog({
   const ctx = usePatientRecordContext()
   const mutate = ctx?.mutate
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const addButtonRef = useRef<HTMLButtonElement>(null)
   const abortRef = useRef<AbortController | null>(null)
   const keyCounter = useRef(0)
+
+  // Abort d'un PUT en vol si le composant est démonté (hygiène anti-setState-after-unmount).
+  useEffect(() => () => abortRef.current?.abort(), [])
 
   const [open, setOpen] = useState(false)
   const [rows, setRows] = useState<SlotRow[]>([])
@@ -114,7 +118,12 @@ export function InsulinSlotSetDialog({
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
   const addRow = () =>
     setRows((rs) => [...rs, { key: nextKey(), startHour: 0, endHour: 0, value: "" }])
-  const deleteRow = (key: string) => setRows((rs) => rs.filter((r) => r.key !== key))
+  const deleteRow = (key: string) => {
+    setRows((rs) => rs.filter((r) => r.key !== key))
+    // Après suppression, ramener le focus sur « Ajouter » (élément stable) — évite de perdre le
+    // focus vers le body (WCAG 2.4.3).
+    requestAnimationFrame(() => addButtonRef.current?.focus())
+  }
 
   const clampHour = (raw: string): number => {
     const n = Math.trunc(Number(raw))
@@ -172,7 +181,7 @@ export function InsulinSlotSetDialog({
         }}
       >
         <DialogContent finalFocus={triggerRef} className="max-w-2xl">
-          <form onSubmit={submit} className="space-y-4">
+          <form onSubmit={submit} aria-busy={pending} className="space-y-4">
             <DialogHeader>
               <DialogTitle>{t("slotSetTitle", { param: paramLabel })}</DialogTitle>
               <DialogDescription>{t("slotSetDescription")}</DialogDescription>
@@ -215,9 +224,12 @@ export function InsulinSlotSetDialog({
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((r) => {
+                  {rows.map((r, index) => {
                     const conflict = coverage.conflictKeys.has(r.key)
                     const badValue = validation.invalidValueKeys.has(r.key)
+                    const rowN = t("slotSetRowN", { n: index + 1 })
+                    const conflictId = `slot-conflict-${r.key}`
+                    const describedBy = conflict ? conflictId : undefined
                     return (
                       <tr
                         key={r.key}
@@ -230,7 +242,8 @@ export function InsulinSlotSetDialog({
                             max={23}
                             value={r.startHour}
                             onChange={(e) => updateRow(r.key, { startHour: clampHour(e.target.value) })}
-                            aria-label={t("slotSetColStart")}
+                            aria-label={`${t("slotSetColStart")} — ${rowN}`}
+                            aria-describedby={describedBy}
                             className="w-16 rounded-md border border-input bg-background px-2 py-1 text-foreground"
                           />
                         </td>
@@ -241,7 +254,8 @@ export function InsulinSlotSetDialog({
                             max={23}
                             value={r.endHour}
                             onChange={(e) => updateRow(r.key, { endHour: clampHour(e.target.value) })}
-                            aria-label={t("slotSetColEnd")}
+                            aria-label={`${t("slotSetColEnd")} — ${rowN}`}
+                            aria-describedby={describedBy}
                             className="w-16 rounded-md border border-input bg-background px-2 py-1 text-foreground"
                           />
                         </td>
@@ -250,8 +264,9 @@ export function InsulinSlotSetDialog({
                             inputMode="decimal"
                             value={r.value}
                             onChange={(e) => updateRow(r.key, { value: e.target.value })}
-                            aria-label={t("slotSetColValue", { unit })}
+                            aria-label={`${t("slotSetColValue", { unit })} — ${rowN}`}
                             aria-invalid={badValue}
+                            aria-describedby={describedBy}
                             className={
                               "w-24 rounded-md border bg-background px-2 py-1 text-foreground " +
                               (badValue ? "border-destructive" : "border-input")
@@ -260,10 +275,12 @@ export function InsulinSlotSetDialog({
                         </td>
                         <td className="p-2 text-right">
                           {conflict ? (
-                            <AlertTriangle
-                              className="mr-1 inline size-4 text-destructive"
-                              aria-label={t("slotSetConflictIcon")}
-                            />
+                            <AlertTriangle className="mr-1 inline size-4 text-destructive" aria-hidden="true" />
+                          ) : null}
+                          {conflict ? (
+                            <span id={conflictId} className="sr-only">
+                              {t("slotSetRowInConflict")}
+                            </span>
                           ) : null}
                           <Button
                             type="button"
@@ -282,7 +299,7 @@ export function InsulinSlotSetDialog({
               </table>
             </div>
 
-            <Button type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
+            <Button ref={addButtonRef} type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
               <Plus className="mr-1 size-4" />
               {t("slotSetAddRow")}
             </Button>
@@ -320,7 +337,15 @@ export function InsulinSlotSetDialog({
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
                 {t("slotSetCancel")}
               </Button>
-              <Button type="submit" disabled={!submittable} aria-describedby="slot-set-coherence">
+              {/* `aria-disabled` (pas `disabled`) : le bouton reste focusable → le lecteur d'écran
+                  annonce la raison du blocage via `aria-describedby` (bannière de cohérence). Le
+                  handler `submit` no-op si `!submittable` (garde). */}
+              <Button
+                type="submit"
+                aria-disabled={!submittable}
+                aria-describedby="slot-set-coherence"
+                className={!submittable ? "opacity-50" : undefined}
+              >
                 {pending ? t("slotSetSaving") : t("slotSetSubmit")}
               </Button>
             </DialogFooter>
