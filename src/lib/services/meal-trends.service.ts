@@ -102,6 +102,20 @@ export interface FastingDay {
   nocturnalNadirMgdl: number | null
 }
 
+/**
+ * Correction appariée pour la titration ISF (US-2651) — une **correction propre** (pas de repas, IOB
+ * nul, non plafonnée, standard) dont le résultat est mesurable et non confondu : `postGlucoseGl` =
+ * glycémie settled à `INSULIN_ACTION_MAX` (5 h) (pilote la direction ISF), `nadirGl` = creux sur la
+ * fenêtre d'action (garde hypo tardive), `targetGl` = cible au moment de la correction. `localHour` =
+ * heure locale de la correction (attribution au créneau ISF appliqué). Tout en g/L.
+ */
+export interface CorrectionPoint {
+  localHour: number
+  postGlucoseGl: number
+  targetGl: number
+  nadirGl: number | null
+}
+
 // ── Helpers fuseau / moment ──────────────────────────────────────────────────
 
 const partsFmt = new Intl.DateTimeFormat("en-GB", {
@@ -313,6 +327,69 @@ function computeFastingTrend(c: MealContext): FastingDay[] {
   return out.sort((a, b) => (a.dayIso < b.dayIso ? 1 : a.dayIso > b.dayIso ? -1 : 0))
 }
 
+/** Bolus délivré, numérisé (Decimal → number) pour l'appariement des corrections ISF. */
+interface CorrectionBolus {
+  t: number // instant (ms)
+  correctionDose: number
+  mealBolus: number
+  inputCarbs: number
+  iob: number
+  inputGl: number | null
+  targetGl: number // g/L (targetGlucoseMgdl / 100)
+  wasCapped: boolean
+  extendedDurationHours: number | null
+  extendedImmediatePct: number | null
+}
+
+/**
+ * Appariement des CORRECTIONS pour la titration ISF (US-2651 ISF slice 2, validé medical). Ne retient
+ * qu'une correction **propre** dont le résultat est mesurable et **non confondu** :
+ * - Filtre 1 (propreté) : `correctionDose > 0`, pas de repas (`mealBolus == 0`, `inputCarbs == 0`), IOB
+ *   nul, **non plafonnée** (`wasCapped == false` — une dose plafonnée sous-dose → lecture haute → baisse
+ *   ISF → hypo), **bolus standard** (pas d'étalé/dual-wave), `inputGl` connu.
+ * - Filtre 2 (signal) : élévation `inputGl − targetGl ≥ CORRECTION_MIN_ELEVATION_GL` (0,30 g/L, au-dessus
+ *   du bruit CGM) ET `correctionDose ≥ FIXED_DOSE_MIN` (0,5 U).
+ * - Filtre 3 (confondeurs) : aucun glucide dans `[t0−COB_LOOKBACK, t0)` (COB), aucun glucide NI bolus
+ *   dans `(t0, t0+INSULIN_ACTION_MAX]` (repas/insuline empilée qui fausserait le résultat).
+ * Résultat : `postGlucoseGl` = relevé **settled à 5 h** ± tol (fail-closed si absent — pas de fallback,
+ * lire à 5 h évite le biais « encore en baisse » vers plus d'insuline) ; `nadirGl` = min CGM sur la
+ * fenêtre. `localHour` = heure de la correction (créneau ISF **appliqué**).
+ */
+function computeCorrectionTrend(c: MealContext, boluses: CorrectionBolus[]): CorrectionPoint[] {
+  const B = CLINICAL_BOUNDS
+  const MAX_MS = B.INSULIN_ACTION_MAX * 3_600_000
+  const TOL_MS = B.CORRECTION_SETTLE_TOL_MIN * MIN_MS
+  const COB_MS = B.CORRECTION_COB_LOOKBACK_MIN * MIN_MS
+  const bolusTimes = boluses.map((b) => b.t) // toutes les injections délivrées (source d'empilement)
+  const out: CorrectionPoint[] = []
+  for (const b of boluses) {
+    // Filtre 1 — correction propre.
+    if (b.correctionDose <= 0 || b.mealBolus !== 0 || b.inputCarbs > 0 || b.iob !== 0 || b.wasCapped) continue
+    if (b.extendedDurationHours !== null || (b.extendedImmediatePct !== null && b.extendedImmediatePct !== 100)) continue
+    if (b.inputGl === null) continue
+    // Filtre 2 — signal au-dessus du bruit.
+    if (b.inputGl - b.targetGl < B.CORRECTION_MIN_ELEVATION_GL) continue
+    if (b.correctionDose < B.FIXED_DOSE_MIN) continue
+    // Filtre 3 — confondeurs (COB avant + glucide/bolus intra-fenêtre).
+    const t0 = b.t
+    const windowEnd = t0 + MAX_MS
+    if (c.carbTimes.some((ct) => ct >= t0 - COB_MS && ct < t0)) continue
+    if (c.carbTimes.some((ct) => ct > t0 && ct <= windowEnd)) continue
+    if (bolusTimes.some((bt) => bt > t0 && bt <= windowEnd)) continue
+    // Résultat settled à 5 h ± tol (fail-closed) + nadir sur la fenêtre.
+    const postMgdl = closestReading(c.readings, windowEnd, TOL_MS, windowEnd + TOL_MS)
+    if (postMgdl === null) continue
+    const nadirMgdl = minReadingIn(c.readings, t0, windowEnd)
+    out.push({
+      localHour: localHour(t0),
+      postGlucoseGl: postMgdl / 100,
+      targetGl: b.targetGl,
+      nadirGl: nadirMgdl !== null ? nadirMgdl / 100 : null,
+    })
+  }
+  return out
+}
+
 // ── Service ──────────────────────────────────────────────────────────────────
 
 export const mealtimePattern = {
@@ -353,6 +430,43 @@ export const mealtimePattern = {
     const c = await loadContext(patientId, days, source)
     if (!opts?.skipAudit) await auditRead(auditUserId, patientId, period, days, source, "fastingTrend", ctx)
     return computeFastingTrend(c)
+  },
+
+  /**
+   * Appariement des corrections (US-2651 ISF) : par correction propre, glycémie post-correction settled
+   * + nadir tardif, pour la titration ISF. CGM uniquement (le nadir tardif exige une série continue).
+   * Voir `computeCorrectionTrend` pour les filtres cliniques (propreté / signal / confondeurs).
+   */
+  async correctionTrend(
+    patientId: number, period: string, auditUserId: number | null, ctx?: AuditContext,
+    opts?: { skipAudit?: boolean },
+  ): Promise<CorrectionPoint[]> {
+    const days = parsePeriodDays(period)
+    const c = await loadContext(patientId, days, "cgm")
+    const to = Date.now()
+    const rows = await prisma.bolusCalculationLog.findMany({
+      where: { patientId, wasDelivered: true, calculatedAt: { gte: new Date(to - days * DAY_MS), lte: new Date(to) } },
+      select: {
+        calculatedAt: true, inputGlucoseGl: true, targetGlucoseMgdl: true, mealBolus: true,
+        inputCarbsGrams: true, iobValue: true, correctionDose: true, wasCapped: true,
+        extendedDurationHours: true, extendedImmediatePct: true,
+      },
+      orderBy: { calculatedAt: "asc" },
+    })
+    const boluses: CorrectionBolus[] = rows.map((b) => ({
+      t: b.calculatedAt.getTime(),
+      correctionDose: decimalToNumber(b.correctionDose),
+      mealBolus: decimalToNumber(b.mealBolus),
+      inputCarbs: b.inputCarbsGrams != null ? decimalToNumber(b.inputCarbsGrams) : 0,
+      iob: decimalToNumber(b.iobValue),
+      inputGl: b.inputGlucoseGl != null ? decimalToNumber(b.inputGlucoseGl) : null,
+      targetGl: decimalToNumber(b.targetGlucoseMgdl) / 100,
+      wasCapped: b.wasCapped,
+      extendedDurationHours: b.extendedDurationHours != null ? decimalToNumber(b.extendedDurationHours) : null,
+      extendedImmediatePct: b.extendedImmediatePct != null ? decimalToNumber(b.extendedImmediatePct) : null,
+    }))
+    if (!opts?.skipAudit) await auditRead(auditUserId, patientId, period, days, "cgm", "correctionTrend", ctx)
+    return computeCorrectionTrend(c, boluses)
   },
 
   /**
