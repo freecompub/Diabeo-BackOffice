@@ -15,6 +15,10 @@
  *
  * **Auth failure audit** : un Bearer manquant/faux émet un audit `cron.auth.failed` (burst detection SOC).
  *
+ * **Kill-switch d'activation** (US-2652) : le cron ne s'exécute que si `PROPOSAL_CRON_ENABLED === "true"`
+ * (défaut OFF, vérifié APRÈS auth → 503). Contrôle d'activation DPO-gaté + kill-switch d'incident réel
+ * (vider `CRON_SECRET` casserait le boot via `assertRequiredEnv`).
+ *
  * **Retour** : métriques JSON `{ processed, created, flagged, errored, skippedConcurrent }` (aucune PHI).
  *
  * **Cron schedule recommandé** : `0 2 * * *` (2 h locale — analyse nocturne, hors pics d'usage).
@@ -77,6 +81,16 @@ async function handle(req: NextRequest): Promise<NextResponse> {
     if (!submittedSecret || !constantTimeEqual(submittedSecret, expectedSecret)) {
       await emitAuthFailedAudit(req, ctx)
       return jsonResponse({ error: "unauthorized" }, 401)
+    }
+
+    // Kill-switch d'activation (US-2652) — APRÈS auth (un anonyme reçoit 401, pas l'état d'activation).
+    // Le cron ne tourne que si `PROPOSAL_CRON_ENABLED === "true"` (défaut OFF). Sert de contrôle
+    // d'activation DPO-gaté (ops l'active après signature de la DPIA) ET de kill-switch d'incident
+    // exécutable SANS casser le boot — contrairement à vider `CRON_SECRET` que `assertRequiredEnv`
+    // exige au démarrage (la branche 503 « no-secret » est donc dead code en prod).
+    if (process.env.PROPOSAL_CRON_ENABLED !== "true") {
+      logger.info("cron-generate-proposals", "disabled by PROPOSAL_CRON_ENABLED flag", { statusCode: 503 })
+      return jsonResponse({ error: "cronDisabled" }, 503)
     }
 
     const t0 = Date.now()

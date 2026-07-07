@@ -3,12 +3,19 @@
 > Générateur multi-levier de titration (ICR + basal + ISF + fixedDose + flags mode c).
 > Dernière mise à jour : 2026-07-07 (activation prod).
 
-## 0. ⚠️ Bloqueur pré-prod — signature DPO/RSSI
+## 0. ⚠️ Bloqueur pré-prod — signature DPO/RSSI + flag d'activation
 
-**Ne PAS activer le scheduler avant** la signature de la DPIA `docs/compliance/dpia-us2651-proposal-generator.md`
+**Ne PAS activer avant** la signature de la DPIA `docs/compliance/dpia-us2651-proposal-generator.md`
 par le **DPO** (et RSSI si requis). Le cron accède à des données de santé (glycémie, insuline) sous un
 acteur système (`userId = null`) et produit des propositions cliniques (jamais auto-appliquées, ADR #13,
 gate médecin). Comme US-2108, l'activation est conditionnée à la validation conformité.
+
+**Contrôle d'activation = `PROPOSAL_CRON_ENABLED`** (défaut **OFF**). Tant que la variable n'est pas
+`"true"`, la route répond **503 APRÈS auth** et le générateur n'est **jamais** appelé. Séquence go-live :
+1. DPO signe la DPIA. 2. Ops pose `PROPOSAL_CRON_ENABLED=true` (OVH Vault) + restart. 3. Ops ajoute le
+scheduler (§3). C'est aussi le **kill-switch d'incident** : repasser à `false` (ou retirer la variable)
++ restart désactive le cron **sans casser le boot** — contrairement à vider `CRON_SECRET`, que
+`assertRequiredEnv()` exige au démarrage (la branche 503 « no-secret » est donc dead code en prod).
 
 ## 1. Vue d'ensemble
 

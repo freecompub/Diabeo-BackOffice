@@ -12,7 +12,7 @@ vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 vi.mock("@/lib/services/proposal-generator.service", () => ({
   proposalGeneratorService: {
     generateForAllPatients: vi.fn().mockResolvedValue({
-      processed: 3, created: 2, errored: 0, skippedConcurrent: false,
+      processed: 3, created: 2, flagged: 1, errored: 0, skippedConcurrent: false,
     }),
   },
 }))
@@ -43,16 +43,27 @@ function makeReq(bearer?: string): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.CRON_SECRET = VALID_SECRET
+  process.env.PROPOSAL_CRON_ENABLED = "true" // kill-switch d'activation ON par défaut dans les tests
 })
-afterEach(() => { delete process.env.CRON_SECRET })
+afterEach(() => {
+  delete process.env.CRON_SECRET
+  delete process.env.PROPOSAL_CRON_ENABLED
+})
 
 describe("POST /api/cron/generate-proposals", () => {
   it("200 + métriques si Bearer correct", async () => {
     const res = await POST(makeReq(VALID_SECRET))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toMatchObject({ processed: 3, created: 2, errored: 0, skippedConcurrent: false })
+    expect(body).toMatchObject({ processed: 3, created: 2, flagged: 1, errored: 0, skippedConcurrent: false })
     expect(proposalGeneratorService.generateForAllPatients).toHaveBeenCalledTimes(1)
+  })
+
+  it("503 si PROPOSAL_CRON_ENABLED ≠ true (kill-switch), APRÈS auth (générateur non appelé)", async () => {
+    delete process.env.PROPOSAL_CRON_ENABLED // désactivé
+    const res = await POST(makeReq(VALID_SECRET)) // Bearer VALIDE → mais flag off
+    expect(res.status).toBe(503)
+    expect(proposalGeneratorService.generateForAllPatients).not.toHaveBeenCalled()
   })
 
   it("401 sans header authorization (générateur non appelé)", async () => {
