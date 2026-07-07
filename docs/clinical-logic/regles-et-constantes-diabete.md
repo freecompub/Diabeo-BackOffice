@@ -352,7 +352,7 @@ les 2 caveats medical #678). Le petit-déjeuner = premier repas du moment « mor
 Le **sens** (`basalTooLow`/`basalTooHigh`) et la **garde hypo** utilisent la valeur **snappée**. Une
 variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `analyzeFixedDose`.)
 
-**Spec slice 3b (générateur basal, à câbler)** — validé medical :
+**Générateur basal (slice 3b, LIVRÉ)** — `generateForPatient`, mode `basalBolus`, après le chemin ICR — validé medical :
 - **Scope pompe** (`configType === "pump"` + `pumpSlots`) ; stylo/MDI = dose fixe (autre chemin).
 - **Créneau titré** = celui actif à `NOCTURNAL_TITRATION_REF_HOUR` (**05:00** — action insuline ~05:00 →
   effet 06:00-08:00 = fasting). Seul le nocturne ; créneaux de jour différés.

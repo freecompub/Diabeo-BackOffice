@@ -21,7 +21,8 @@ import {
 } from "@/lib/clinical-bounds"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
-  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, type ProposalCandidate,
+  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, analyzeBasalTrend,
+  type ProposalCandidate,
 } from "@/lib/proposal-algorithm"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
@@ -94,6 +95,20 @@ function isMealUsableForIcr(m: JournalMeal, isPregnancy: boolean): boolean {
 }
 
 const mean = (xs: number[]): number => xs.reduce((s, x) => s + x, 0) / xs.length
+
+/**
+ * Cible à jeun (g/L) pour la titration basale (US-2651, validé medical) : cible individualisée
+ * (`glucoseTargets`) si **plausible** (dans `[FASTING_TARGET_MIN_GL ; max]`, `max` resserré en grossesse),
+ * sinon **défaut** adulte/grossesse. Une cible hors bande (import corrompu) → défaut (fail-loud).
+ * **JAMAIS `titrLow`** (plancher hypo → titrerait la basale vers l'hypo).
+ */
+function resolveFastingTarget(individualizedGl: number | null, isPregnancy: boolean): number {
+  const max = isPregnancy ? CLINICAL_BOUNDS.FASTING_TARGET_MAX_PREGNANCY_GL : CLINICAL_BOUNDS.FASTING_TARGET_MAX_GL
+  if (individualizedGl !== null && individualizedGl >= CLINICAL_BOUNDS.FASTING_TARGET_MIN_GL && individualizedGl <= max) {
+    return individualizedGl
+  }
+  return isPregnancy ? CLINICAL_BOUNDS.FASTING_TARGET_PREGNANCY_GL : CLINICAL_BOUNDS.FASTING_TARGET_DEFAULT_GL
+}
 
 /**
  * Codes de rejet ATTENDUS de `createEngineProposal` (fail-closed, non fatals). Tout autre message
@@ -230,6 +245,66 @@ export const proposalGeneratorService = {
       }
 
       if (candidate && (await persist(candidate, slot))) created++
+    }
+
+    // 6. Chemin BASAL (US-2651, validé medical) — POMPE uniquement. Titre le créneau NOCTURNE actif à
+    // ~05:00 (action insuline ~05:00 → effet 06:00-08:00 = fasting) par la glycémie à jeun. Stylo/MDI
+    // (single/split_injection) = dose fixe (autre chemin). Créneaux de jour différés (limite connue).
+    const basalConfig = settings?.basalConfiguration
+    if (basalConfig?.configType === "pump" && basalConfig.pumpSlots.length > 0) {
+      const pumpSlots = basalConfig.pumpSlots.map((s) => ({
+        id: s.id,
+        rate: Number(s.rate),
+        startHour: s.startTime.getUTCHours(),
+        endHour: s.endTime.getUTCHours(),
+      }))
+      const nocturnalSlot = findSlotForHour(pumpSlots, CLINICAL_BOUNDS.NOCTURNAL_TITRATION_REF_HOUR)
+      if (nocturnalSlot) {
+        // Cible à jeun (JAMAIS titrLow) : individualisée si plausible, sinon défaut adulte/grossesse.
+        const rawTarget = settings?.glucoseTargets?.[0]?.targetGlucose
+        const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
+        // À jeun (pré-petit-déj) + nadirs nocturnes par nuit. mg/dL → g/L, null filtrés.
+        const fasting = await mealtimePattern.fastingTrend(patientId, ANALYSIS_PERIOD, auditUserId, ctx, { source: "cgm" })
+        const fastingValues = fasting
+          .map((f) => f.fastingMgdl)
+          .filter((v): v is number => v !== null && Number.isFinite(v))
+          .map((v) => v / 100)
+        const nocturnalNadirs = fasting
+          .map((f) => f.nocturnalNadirMgdl)
+          .filter((v): v is number => v !== null && Number.isFinite(v))
+          .map((v) => v / 100)
+        const candidate = analyzeBasalTrend(fastingValues, targetGl, nocturnalSlot.rate, nocturnalNadirs)
+        // Coverage guard Somogyi : n'autoriser une HAUSSE que si ≥ MIN_MEALS_PER_SLOT nuits de nadir CGM
+        // (sinon repli fastingValues → hypo 3 h masquée → hausse dangereuse). Baisses inconditionnelles.
+        const isIncrease = candidate?.reason === "basalTooLow"
+        if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_MEALS_PER_SLOT)) {
+          try {
+            await adjustmentService.createEngineProposal({
+              patientId,
+              parameterType: "basalRate",
+              proposedValue: candidate.proposedValue,
+              expectedCurrentValue: candidate.currentValue,
+              reason: candidate.reason,
+              confidence: candidate.confidence,
+              supportingEvents: candidate.supportingEvents,
+              totalEventsConsidered: candidate.totalEventsConsidered,
+              averageObservedValue: candidate.averageObservedValue ?? null,
+              analysisPeriod: ANALYSIS_PERIOD,
+              pumpBasalSlotId: nocturnalSlot.id,
+            }, ctx)
+            created++
+          } catch (err) {
+            const msg = (err as Error).message
+            const bucket = `basal:${nocturnalSlot.startHour}-${nocturnalSlot.endHour}`
+            if (EXPECTED_SKIP.has(msg)) {
+              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+            } else {
+              logger.error("proposal-generator", "unexpected engine proposal error",
+                { patientId, bucket, failMode: "unexpected" }, err as Error)
+            }
+          }
+        }
+      }
     }
 
     return { created, flagged, slotsConsidered, mealsUsable: usable.length, skipped: null }
