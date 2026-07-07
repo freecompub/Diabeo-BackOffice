@@ -144,6 +144,19 @@ export const CLINICAL_BOUNDS = {
    * par `MAX_CHANGE_PERCENT`. Déclencheur : `≥ HYPO_LEVEL1_RECURRENCE_MIN` nadirs < niveau-1 (validé medical).
    */
   HYPO_DEESCALATION_PERCENT: 10,
+  /**
+   * US-2651 (basal) — générateur basal pompe (validé medical). Le créneau titré est celui actif à
+   * `NOCTURNAL_TITRATION_REF_HOUR` (**05:00** — un micro-débit basal à 05:00 agit ~06:00-08:00 = fasting).
+   * Cible à jeun (g/L) : `glucoseTargets` individualisée si dans `[FASTING_TARGET_MIN_GL ; FASTING_TARGET_MAX_GL]`
+   * (grossesse : plafond `FASTING_TARGET_MAX_PREGNANCY_GL`), sinon **défaut** `FASTING_TARGET_DEFAULT_GL`
+   * (grossesse `FASTING_TARGET_PREGNANCY_GL`). ⚠️ **JAMAIS `titrLow`** (plancher hypo → titrerait vers l'hypo).
+   */
+  NOCTURNAL_TITRATION_REF_HOUR: 5,
+  FASTING_TARGET_DEFAULT_GL: 1.0,
+  FASTING_TARGET_PREGNANCY_GL: 0.9,
+  FASTING_TARGET_MIN_GL: 0.8,
+  FASTING_TARGET_MAX_GL: 1.3,
+  FASTING_TARGET_MAX_PREGNANCY_GL: 1.0,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

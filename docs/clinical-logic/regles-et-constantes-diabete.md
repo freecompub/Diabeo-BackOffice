@@ -352,7 +352,7 @@ les 2 caveats medical #678). Le petit-déjeuner = premier repas du moment « mor
 Le **sens** (`basalTooLow`/`basalTooHigh`) et la **garde hypo** utilisent la valeur **snappée**. Une
 variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `analyzeFixedDose`.)
 
-**Spec slice 3b (générateur basal, à câbler)** — validé medical :
+**Générateur basal (slice 3b, LIVRÉ)** — `generateForPatient`, mode `basalBolus`, après le chemin ICR — validé medical :
 - **Scope pompe** (`configType === "pump"` + `pumpSlots`) ; stylo/MDI = dose fixe (autre chemin).
 - **Créneau titré** = celui actif à `NOCTURNAL_TITRATION_REF_HOUR` (**05:00** — action insuline ~05:00 →
   effet 06:00-08:00 = fasting). Seul le nocturne ; créneaux de jour différés.
@@ -363,3 +363,11 @@ variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `anal
 - **Deadband** : aucun (basal = titrate-to-target symétrique ; ±2 %/±20 % + garde nadir suffisent).
 - **Coverage guard** : n'autoriser une **hausse** que si ≥ 3 nuits de nadir CGM (sinon Somogyi invisible) ;
   **baisses** inconditionnelles. `source: "cgm"`.
+
+**Limites connues du générateur basal (slice 3b, tracées en suivi)** :
+- **Couplage ICR** : le chemin basal est gaté derrière l'existence des carb-ratios (`generateForPatient`
+  renvoie tôt `EMPTY("noCarbRatios")`). Un patient pompe avec basale mais sans carb-ratios n'a pas encore
+  de proposition basale (acceptable pour un `basalBolus` bien formé). Découplage à évaluer.
+- **Cible non fasting-scoped** : la cible individualisée lit `glucoseTargets[0]` (1re cible active, pas
+  forcément à jeun) ; sûr car clampée `[0,80 ; 1,30]`. Préférer un champ fasting dédié si disponible.
+- **Seuil couverture** `MIN_NADIR_NIGHTS = 3` (constante locale, distincte de `MIN_MEALS_PER_SLOT`).

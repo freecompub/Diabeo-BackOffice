@@ -15,7 +15,7 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
   insulinTherapyService: { getSettings: vi.fn() },
 }))
 vi.mock("@/lib/services/meal-trends.service", () => ({
-  mealtimePattern: { dailyJournal: vi.fn() },
+  mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn() },
 }))
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
@@ -47,6 +47,7 @@ const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const mode = vi.mocked(treatmentModeService.resolveTreatmentMode)
 const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
+const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
 const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 
 /** Repas exploitable par défaut : midi (13 h), glucides/bolus OK, pré-repas 1,0 g/L (en bande). */
@@ -63,15 +64,30 @@ function setup(opts: {
   pregnancyMode?: boolean
   carbRatios?: { startHour: number; endHour: number; gramsPerUnit: number }[]
   meals?: unknown[]
+  basalConfig?: { configType: string; pumpSlots: { id: string; rate: number; startHour: number; endHour: number }[] }
+  glucoseTargets?: { targetGlucose: number }[]
+  fasting?: { fastingMgdl: number | null; nocturnalNadirMgdl: number | null }[]
 } = {}) {
   mode.mockResolvedValue({ mode: opts.mode ?? "basalBolus", coherent: true } as never)
   getSettings.mockResolvedValue({
     carbRatios: opts.carbRatios ?? [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }],
+    basalConfiguration: opts.basalConfig
+      ? {
+          configType: opts.basalConfig.configType,
+          pumpSlots: opts.basalConfig.pumpSlots.map((s) => ({
+            id: s.id, rate: s.rate,
+            startTime: new Date(Date.UTC(1970, 0, 1, s.startHour)),
+            endTime: new Date(Date.UTC(1970, 0, 1, s.endHour)),
+          })),
+        }
+      : null,
+    glucoseTargets: opts.glucoseTargets ?? [],
   } as never)
   prismaMock.patient.findFirst.mockResolvedValue({
     pathology: opts.pathology ?? "DT1", pregnancyMode: opts.pregnancyMode ?? false,
   } as never)
   dailyJournal.mockResolvedValue((opts.meals ?? [meal(), meal(), meal()]) as never)
+  fastingTrend.mockResolvedValue((opts.fasting ?? []) as never)
   createEngine.mockResolvedValue({ id: "e1" } as never)
 }
 
@@ -212,6 +228,59 @@ describe("proposalGeneratorService.generateForPatient", () => {
     expect(createEngine.mock.calls[0]![0]).toMatchObject({
       carbRatioSlotStart: 8, carbRatioSlotEnd: 12, expectedCurrentValue: 12,
     })
+  })
+})
+
+describe("proposalGeneratorService.generateForPatient — chemin basal (US-2651)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const NOCTURNAL = { id: "noct", rate: 0.8, startHour: 0, endHour: 6 } // couvre 05:00
+  const pump = (pumpSlots = [NOCTURNAL]) => ({ configType: "pump", pumpSlots })
+  const basalCalls = () =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate")
+  const fastingNights = (fastingMgdl: number, nocturnalNadirMgdl: number | null) =>
+    Array.from({ length: 3 }, () => ({ fastingMgdl, nocturnalNadirMgdl }))
+
+  it("pompe : à jeun haut + ≥3 nadirs sûrs → proposition basalRate (hausse) sur le créneau nocturne", async () => {
+    setup({ meals: [], basalConfig: pump(), fasting: fastingNights(150, 120) }) // 1,50 g/L vs défaut 1,00
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const basal = basalCalls()
+    expect(basal).toHaveLength(1)
+    expect(basal[0]).toMatchObject({ pumpBasalSlotId: "noct", reason: "basalTooLow", expectedCurrentValue: 0.8 })
+  })
+
+  it("garde Somogyi : hausse SANS couverture nadir nocturne (< 3 nuits) → supprimée", async () => {
+    setup({ meals: [], basalConfig: pump(), fasting: fastingNights(150, null) }) // aucun nadir CGM
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(basalCalls()).toHaveLength(0)
+  })
+
+  it("baisse (à jeun bas) autorisée même sans couverture nadir (sens sûr)", async () => {
+    setup({ meals: [], basalConfig: pump(), fasting: fastingNights(70, null) }) // 0,70 g/L < défaut 1,00
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const basal = basalCalls()
+    expect(basal).toHaveLength(1)
+    expect(basal[0]).toMatchObject({ reason: "basalTooHigh" })
+  })
+
+  it("stylo/MDI (single_injection) : aucune proposition basalRate (dose fixe = autre chemin)", async () => {
+    setup({ meals: [], basalConfig: { configType: "single_injection", pumpSlots: [] }, fasting: fastingNights(150, 120) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(basalCalls()).toHaveLength(0)
+  })
+
+  it("cible individualisée plausible utilisée (JAMAIS titrLow) : cible 1,20 → à jeun 1,10 devient une BAISSE", async () => {
+    // Avec le défaut 1,00, 1,10 serait une hausse ; la cible individualisée 1,20 (dans la bande) l'inverse.
+    setup({ meals: [], basalConfig: pump(), glucoseTargets: [{ targetGlucose: 120 }], fasting: fastingNights(110, 100) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(basalCalls()[0]).toMatchObject({ reason: "basalTooHigh" })
+  })
+
+  it("couplage ICR (limite connue) : pompe avec basale mais SANS carb-ratios → early-return, aucune proposition basale", async () => {
+    setup({ carbRatios: [], basalConfig: pump(), fasting: fastingNights(150, 120) })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.skipped).toBe("noCarbRatios") // le early-return ICR gate le chemin basal
+    expect(basalCalls()).toHaveLength(0)
   })
 })
 
