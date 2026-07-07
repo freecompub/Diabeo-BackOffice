@@ -2,7 +2,7 @@
  * @description US-2651 — Cron route générateur de propositions : tests d'intégration.
  *
  * Couvre : auth Bearer CRON_SECRET (timing-safe), 503 sans secret, 401 sans/mauvais Bearer,
- * 200 + métriques, GET accepté, audit `cron.auth.failed`, headers ANSSI, ctx audit propagé.
+ * 200 + métriques, GET NON exporté (POST-only anti-leak), audit `cron.auth.failed`, headers ANSSI, ctx audit propagé.
  */
 import { beforeEach, describe, expect, it, vi, afterEach } from "vitest"
 import { NextRequest } from "next/server"
@@ -12,7 +12,7 @@ vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 vi.mock("@/lib/services/proposal-generator.service", () => ({
   proposalGeneratorService: {
     generateForAllPatients: vi.fn().mockResolvedValue({
-      processed: 3, created: 2, errored: 0, skippedConcurrent: false,
+      processed: 3, created: 2, flagged: 1, errored: 0, skippedConcurrent: false,
     }),
   },
 }))
@@ -27,7 +27,10 @@ vi.mock("@/lib/services/audit.service", async (orig) => {
 
 import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
 import { auditService } from "@/lib/services/audit.service"
-const { POST, GET } = await import("@/app/api/cron/generate-proposals/route")
+const routeModule = await import("@/app/api/cron/generate-proposals/route")
+const { POST } = routeModule
+// GET n'est plus exporté (POST-only) → accès via cast, `undefined` attendu (cf. test dédié).
+const GET = (routeModule as Record<string, unknown>).GET
 
 const VALID_SECRET = "test-cron-secret-32-bytes-long-aaa"
 
@@ -40,16 +43,27 @@ function makeReq(bearer?: string): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks()
   process.env.CRON_SECRET = VALID_SECRET
+  process.env.PROPOSAL_CRON_ENABLED = "true" // kill-switch d'activation ON par défaut dans les tests
 })
-afterEach(() => { delete process.env.CRON_SECRET })
+afterEach(() => {
+  delete process.env.CRON_SECRET
+  delete process.env.PROPOSAL_CRON_ENABLED
+})
 
 describe("POST /api/cron/generate-proposals", () => {
   it("200 + métriques si Bearer correct", async () => {
     const res = await POST(makeReq(VALID_SECRET))
     expect(res.status).toBe(200)
     const body = await res.json()
-    expect(body).toMatchObject({ processed: 3, created: 2, errored: 0, skippedConcurrent: false })
+    expect(body).toMatchObject({ processed: 3, created: 2, flagged: 1, errored: 0, skippedConcurrent: false })
     expect(proposalGeneratorService.generateForAllPatients).toHaveBeenCalledTimes(1)
+  })
+
+  it("503 si PROPOSAL_CRON_ENABLED ≠ true (kill-switch), APRÈS auth (générateur non appelé)", async () => {
+    delete process.env.PROPOSAL_CRON_ENABLED // désactivé
+    const res = await POST(makeReq(VALID_SECRET)) // Bearer VALIDE → mais flag off
+    expect(res.status).toBe(503)
+    expect(proposalGeneratorService.generateForAllPatients).not.toHaveBeenCalled()
   })
 
   it("401 sans header authorization (générateur non appelé)", async () => {
@@ -71,8 +85,10 @@ describe("POST /api/cron/generate-proposals", () => {
     expect((await res.json()).error).toBe("cronDisabled")
   })
 
-  it("GET accepté (200) avec Bearer correct", async () => {
-    expect((await GET(makeReq(VALID_SECRET))).status).toBe(200)
+  it("GET NON exporté (POST-only, anti-leak du Bearer → 405 Next.js)", () => {
+    // Durcissement US-2652 (aligné rappels round 2 H3) : un GET ferait fuiter CRON_SECRET dans les
+    // access logs / Referer / cache CDN. `GET` n'est plus exporté → Next.js répond 405.
+    expect(GET).toBeUndefined()
   })
 
   it("émet un audit cron.auth.failed (userId null) sur 401", async () => {
