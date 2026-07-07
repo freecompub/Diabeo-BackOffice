@@ -56,7 +56,11 @@ US-2658 introduit une **fenêtre d'analyse paramétrable** `windowDays ∈ [2 ; 
 1. **ISF conserve sa fenêtre 30 j** même en run à la demande (le paramètre ne borne que ICR/basal/dose fixe) — cohérent avec la rareté du signal ISF, mais l'utilisateur qui choisit « 4 j » ne s'attend peut-être pas à ce que l'ISF regarde 30 j.
 2. **ISF suit la fenêtre choisie**, plafonnée à `windowDays` — plus intuitif, mais sur une fenêtre courte l'ISF ne proposera quasiment jamais rien (trop peu de corrections propres). Fail-closed : pas de risque, mais peu de rendement.
 
-> **Recommandation** : option 1 (ISF garde 30 j), documentée explicitement dans le retour/JSDoc, car le sens du paramètre « fenêtre » est « base d'analyse post-prandiale récente » ; l'ISF est un signal structurellement plus lent. À confirmer medical.
+> **DÉCIDÉ — option 1 : l'ISF conserve sa fenêtre 30 j** même en run à la demande (le paramètre `windowDays`
+> ne borne que ICR / basal / dose fixe). Raison : le sens du paramètre « fenêtre » est « base d'analyse
+> post-prandiale récente » ; l'ISF est un signal structurellement plus lent (corrections propres rares), et
+> le raccourcir reviendrait à l'éteindre. **À rendre explicite dans l'UI** (« la fenêtre s'applique aux repas
+> et au à-jeun ; l'analyse des corrections reste sur 30 jours ») et dans la JSDoc/le retour d'API.
 
 ### Comportement aux bords (et pourquoi c'est correct)
 

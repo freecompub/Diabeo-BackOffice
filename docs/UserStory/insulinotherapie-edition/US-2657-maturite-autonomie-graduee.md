@@ -121,7 +121,22 @@ Règle : **l'auto-application d'un changement insulin-increasing est bloquée** 
 - **une** hypo **sévère** (niveau 2, < 0,54 g/L) sur la fenêtre ⇒ **bloque** ⇒ proposition ;
 - **≥ `HYPO_LEVEL1_RECURRENCE_MIN` (2)** hypos **niveau 1** (0,54–0,70 g/L) ⇒ **bloque** ⇒ proposition.
 
-Un changement insulin-increasing bloqué **ne disparaît pas** : il **retombe en proposition** pour que le médecin décide **en voyant le contexte hypo**. (Les changements insulin-**decreasing** restent enveloppés par C3–C5 mais ne sont pas soumis à la garde hypo — baisser l'insuline ne crée pas d'hypo aiguë ; voir la réserve « sous-dosage » §10.)
+Un changement insulin-increasing bloqué **ne disparaît pas** : il **retombe en proposition** pour que le médecin décide **en voyant le contexte hypo**.
+
+### C6b — **Garde de sens hyper / sous-dosage (baisse d'insuline)** — *décidé (symétrique de C6)*
+
+Miroir de C6 pour la direction **inverse**. Un changement **insulin-decreasing** (hausse d'ICR, hausse d'ISF,
+baisse de débit basal, baisse de dose fixe) auto-appliqué est **bloqué → proposition** dès qu'un **signal
+récent d'hyperglycémie soutenue / risque de cétose** est présent — pour éviter qu'un patient auto-baisse
+trop son insuline et dérive vers l'**hyperglycémie / acidocétose** à moyen terme.
+
+Signal déclencheur (bornes à finaliser avec le medical à l'implémentation, mais la **garde est actée**) :
+- **hyperglycémie persistante** sur la fenêtre (ex. TIR très bas + temps au-dessus de la cible élevé), et/ou
+- **cétonémie/cétonurie** élevée si la donnée est disponible.
+
+Baisser l'insuline ne crée pas d'**hypo aiguë** (d'où l'exclusion de C6), mais le risque hyper/cétose à
+moyen terme justifie une garde propre. L'amplitude reste bornée par C3 et le **cumul par C7** (symétrique,
+sur `|Δ|`). Comme C6 : hors garde ⇒ **proposition** (jamais un rejet silencieux).
 
 ### C7 — Anti-cliquet (fréquence + cumul)
 - **Cooldown** : `AUTO_APPLY_COOLDOWN_HOURS` (72 h) entre deux **auto-applications** sur le **même (patient × paramètre × créneau)** — un ajustement auto-appliqué doit être **observé ≥ 3 jours** avant le suivant (aligné sur `FIXED_DOSE_COOLDOWN_HOURS`). Plus strict que le cooldown de proposition (24 h) : ici il n'y a pas de médecin en boucle pour temporiser.
@@ -243,6 +258,13 @@ Fonctionnalité: Maturité du patient & autonomie graduée avec auto-application
     Quand il tente une hausse de débit basal dans le cap
     Alors l'auto-application est bloquée et retombe en proposition
 
+  Scénario: AC-8b — Garde de sens hyper/sous-dosage (C6b, symétrique) : baisse d'insuline bloquée si hyper soutenue
+    Étant donné un patient "Expert" avec autoApply activé
+    Et un signal récent d'hyperglycémie persistante (ou de cétose) sur la fenêtre
+    Quand il tente une baisse de débit basal (direction insulin-decreasing) dans le cap
+    Alors l'auto-application est BLOQUÉE par la garde hyper (C6b)
+    Et le changement retombe en proposition, avec le contexte hyper/cétose visible du médecin
+
   Scénario: AC-9 — autoApply OFF par défaut bloque l'auto-application même pour un Expert
     Étant donné un patient "Expert" dont le flag autoApply est OFF (défaut)
     Quand il modifie une valeur dans l'enveloppe
@@ -331,6 +353,7 @@ Constantes/règles **réutilisées** (à référencer, pas à redéfinir) :
 - `CLINICAL_BOUNDS` ISF/ICR/basal + planchers dose fixe — bornes absolues **jamais** franchies (C4).
 - `PUMP_BASAL_INCREMENT` (0,05) / `isDeliverableBasalRate`, `FIXED_DOSE_DELIVERY_INCREMENT_U` (0,5) — délivrabilité (C5).
 - Garde HYPO analyseurs : seuils hypo sévère (54 mg/dL) / cible basse (70 mg/dL), `HYPO_LEVEL1_RECURRENCE_MIN` (2) — garde de sens hypo (C6).
+- Garde HYPER (C6b, symétrique) : seuil(s) d'hyperglycémie persistante (TIR très bas / temps au-dessus de la cible) et cétose — **constantes à définir avec le medical à l'implémentation**, puis inscrites au catalogue.
 - `PATIENT_PROPOSAL_COOLDOWN_HOURS` (24 h) — cooldown des propositions (voie non auto-appliquée).
 
 Éléments de modèle de données (à décrire dans le catalogue + schéma) : enum `MaturityLevel { JUNIOR, INTERMEDIATE, EXPERT }`, `Patient.maturityLevel` (défaut `JUNIOR`), `Patient.autoApply` (bool, défaut `false`), rôle/attribut `GOVERNANCE`, actions d'audit `MATURITY_LEVEL_CHANGED`, `AUTO_APPLIED_SETTING`, `AUTO_APPLY_ENVELOPE_FALLBACK`.
@@ -346,10 +369,19 @@ Constantes/règles **réutilisées** (à référencer, pas à redéfinir) :
 
 ---
 
-## 10. Réserves cliniques signalées (pour revue `medical-domain-validator`)
+## 10. Décisions actées (points auparavant ouverts)
 
-1. **C6 (garde de sens hypo)** ne s'applique qu'aux changements *insulin-increasing*. Les changements *insulin-decreasing* sont laissés auto-applicables sans garde hypo (baisser l'insuline ne crée pas d'hypo aiguë) — mais un patient qui *baisse* trop son basal risque une hyperglycémie/acido-cétose à moyen terme. L'anti-cliquet C7 (cumul 15 %/7 j) borne cette dérive ; **à confirmer clinique** si un garde-fou symétrique « sous-dosage » est souhaité.
-2. Valeurs proposées pour `AUTO_APPLY_COOLDOWN_HOURS` (72 h) et `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` (15 %) **à faire valider medical** — calées par cohérence avec les constantes existantes (titration ≥ 3 j, cumul < cap moteur 20 %), pas sur une référence externe formelle.
+1. **Garde de sens symétrique — ADOPTÉE.** C6 (garde hypo) ne couvrait que les hausses d'insuline ; on
+   **ajoute C6b** (garde hyper/sous-dosage) pour les baisses d'insuline, afin de couvrir le risque
+   hyperglycémie/acidocétose à moyen terme. Les **bornes du signal déclencheur** (hyper persistante /
+   cétose) sont à **finaliser avec le medical à l'implémentation**, mais **la garde est décidée**.
+2. **Constantes auto-application — VALIDÉES (proportions OK).** `AUTO_APPLY_COOLDOWN_HOURS` = **72 h** et
+   `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` = **15 %** sont **retenues** (cohérentes avec titration ≥ 3 j
+   et cumul < cap moteur 20 %). Ajustables à la marge lors de la revue medical d'implémentation, mais les
+   ordres de grandeur sont actés.
+3. **Activation de l'auto-application — FEATURE FLAG.** On **construit** l'auto-application et on la met
+   derrière un **feature flag** (le flag per-patient `autoApply`, OFF par défaut, gouverné §5). Le dev livre
+   le harnais ; l'**ouverture** reste une décision **direction médicale + DPO + DPIA** (frontière MDR).
 
 ---
 
