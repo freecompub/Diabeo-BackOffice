@@ -443,3 +443,12 @@ pré-dose** qui jugent la dose de ce moment.
 - **Garde hypo** : déjà dans `analyzeFixedDose` (`hypoBlocksProposal` sur les creux) — avec le shift, les
   creux SONT les nadirs → la garde protège le bon moment. ⚠️ Garde hypo **pathology-AGNOSTIQUE** (seuils
   `SEVERE_HYPO_GL`/`LEVEL1_HYPO_GL` fixes) tandis que la **cible** est pathology-aware.
+
+**Limites connues (assemblage dose fixe, validé medical #686)** :
+- *Earliest-in-window pas garanti pré-prandial pour les fenêtres de JOUR* (`morning→noon`, `noon→evening`) :
+  un relevé post-prandial (ex. 10:30 post-petit-déj) peut être le plus tôt de la fenêtre → `avgPost`
+  biaisé vers le haut → léger nudge de **hausse** de la dose. Borné (caps ±10 %/±2 U, doctor-gated) ;
+  pas de risque hypo (valeurs hautes). Le cas `night→morning` (à jeun) est immunisé.
+- *Fenêtre `night` (22–04, cross-minuit)* : sur le jour-frontière, `earliest-par-jour` garde le relevé
+  ~02-04 h (plus proche du vrai nadir nocturne) et écarte le ~22 h → réduit légèrement N pour la dose
+  `evening`, conservateur, **pas de mauvaise direction**. Amélioration future possible (appariement nuit réelle).
