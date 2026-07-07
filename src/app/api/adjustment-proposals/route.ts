@@ -41,7 +41,8 @@ export async function GET(req: NextRequest) {
 }
 
 // US-2648a — création d'une PROPOSITION humaine (NURSE / patient / DOCTOR).
-// `fixedDose` volontairement absent (non câblé, cf. createProposal). `patientId`
+// `fixedDose` volontairement absent du SCHÉMA HTTP : câblé au niveau service (US-2652, moment +
+// persistance + apply), mais son exposition à l'UI humaine est une slice ultérieure. `patientId`
 // ignoré pour un VIEWER (résolu sur son propre dossier).
 const createSchema = z.object({
   patientId: z.number().int().positive().optional(),
@@ -63,7 +64,6 @@ const ERROR_STATUS: Record<string, number> = {
   patientDecreaseForbidden: 422,
   patientDeltaTooLarge: 422,
   slotRequired: 400,
-  fixedDoseNotWired: 400,
   currentValueNotFound: 404,
   duplicatePendingProposal: 409,
   patientProposalCooldown: 429, // US-2650 — cooldown anti-churn (proposition patient trop rapprochée)

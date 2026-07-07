@@ -131,7 +131,7 @@ function resolveFastingTarget(individualizedGl: number | null, isPregnancy: bool
 const EXPECTED_SKIP = new Set([
   "baselineMovedAtPersist", "duplicatePendingProposal", "valueOutOfBounds",
   "reasonDirectionMismatch", "nonInsulinNoDose", "invalidSupportingEvents",
-  "slotRequired", "currentValueNotFound", "fixedDoseNotWired",
+  "slotRequired", "currentValueNotFound",
 ])
 
 export const proposalGeneratorService = {

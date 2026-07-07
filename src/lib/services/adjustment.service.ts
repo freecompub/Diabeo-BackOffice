@@ -336,7 +336,7 @@ export const adjustmentService = {
       // « config modifiée » sans trace (observabilité).
       const expected =
         err instanceof Error &&
-        ["slotRequired", "currentValueNotFound", "fixedDoseNotWired"].includes(err.message)
+        ["slotRequired", "currentValueNotFound"].includes(err.message)
       if (!expected) logger.error("adjustment", "liveCurrentValue read failed", { patientId }, err)
       return null
     }
