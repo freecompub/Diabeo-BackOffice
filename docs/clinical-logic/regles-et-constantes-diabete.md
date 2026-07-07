@@ -363,3 +363,11 @@ variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `anal
 - **Deadband** : aucun (basal = titrate-to-target symétrique ; ±2 %/±20 % + garde nadir suffisent).
 - **Coverage guard** : n'autoriser une **hausse** que si ≥ 3 nuits de nadir CGM (sinon Somogyi invisible) ;
   **baisses** inconditionnelles. `source: "cgm"`.
+
+**Limites connues du générateur basal (slice 3b, tracées en suivi)** :
+- **Couplage ICR** : le chemin basal est gaté derrière l'existence des carb-ratios (`generateForPatient`
+  renvoie tôt `EMPTY("noCarbRatios")`). Un patient pompe avec basale mais sans carb-ratios n'a pas encore
+  de proposition basale (acceptable pour un `basalBolus` bien formé). Découplage à évaluer.
+- **Cible non fasting-scoped** : la cible individualisée lit `glucoseTargets[0]` (1re cible active, pas
+  forcément à jeun) ; sûr car clampée `[0,80 ; 1,30]`. Préférer un champ fasting dédié si disponible.
+- **Seuil couverture** `MIN_NADIR_NIGHTS = 3` (constante locale, distincte de `MIN_MEALS_PER_SLOT`).

@@ -275,6 +275,13 @@ describe("proposalGeneratorService.generateForPatient — chemin basal (US-2651)
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(basalCalls()[0]).toMatchObject({ reason: "basalTooHigh" })
   })
+
+  it("couplage ICR (limite connue) : pompe avec basale mais SANS carb-ratios → early-return, aucune proposition basale", async () => {
+    setup({ carbRatios: [], basalConfig: pump(), fasting: fastingNights(150, 120) })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.skipped).toBe("noCarbRatios") // le early-return ICR gate le chemin basal
+    expect(basalCalls()).toHaveLength(0)
+  })
 })
 
 describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsulin)", () => {

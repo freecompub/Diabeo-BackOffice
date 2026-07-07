@@ -1,5 +1,5 @@
 /**
- * Générateur de propositions d'ajustement (US-2651, build b — chemin ICR).
+ * Générateur de propositions d'ajustement (US-2651).
  *
  * Orchestre l'assemblage des données → les analyseurs purs (`proposal-algorithm`) → la persistance
  * moteur (`adjustmentService.createEngineProposal`). **Aucune** proposition n'est appliquée : tout
@@ -8,9 +8,16 @@
  * Spec de référence (deadband post-prandial, grossesse, nadir, bucketing, portes qualité) :
  * `docs/clinical-logic/algorithme-propositions-ajustement.md` §5ter.
  *
- * Périmètre de cette slice : **mode `basalBolus` uniquement**, **paramètre ICR uniquement**.
- * `fixedDose`/`nonInsulin` et les autres paramètres (ISF/basal) relèvent de slices ultérieures ;
- * la frontière MDR (`nonInsulin` → aucune dose) est de toute façon re-imposée par `createEngineProposal`.
+ * Périmètre actuel (mode `basalBolus`) : **ICR** (par créneau) + **basal** (`basalRate`, POMPE
+ * uniquement, créneau nocturne titré par la glycémie à jeun). `nonInsulin` → uniquement des
+ * `ClinicalReviewFlag` d'orientation (mode c). `fixedDose` et le paramètre **ISF** relèvent de slices
+ * ultérieures. La frontière MDR (`nonInsulin` → aucune dose) est de toute façon re-imposée par
+ * `createEngineProposal`.
+ *
+ * ⚠️ Le chemin basal est **couplé à l'existence des carb-ratios** : `generateForPatient` renvoie tôt
+ * (`EMPTY("noCarbRatios")`) si aucun ICR n'est configuré, donc un patient pompe avec basale mais **sans**
+ * carb-ratios n'obtient pas (encore) de proposition basale. Acceptable pour un `basalBolus` bien formé
+ * (le bolus repas implique des carb-ratios) ; découplage tracé en suivi.
  */
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
@@ -37,6 +44,10 @@ import type { AuditContext } from "@/lib/services/patient.service"
 const ANALYSIS_PERIOD = "14d"
 /** Minimum de repas appariés par créneau (aligné `analyzeIcrSlot` + `BGM_CARNET.MIN_READINGS_PER_MOMENT`). */
 const MIN_MEALS_PER_SLOT = 3
+/** US-2651 basal — nb minimal de nuits avec un nadir nocturne CGM pour autoriser une HAUSSE basale
+ *  (coverage guard Somogyi ; sans couverture, une hypo 3 h masquée passerait). Découplé de
+ *  `MIN_MEALS_PER_SLOT` (sémantiques distinctes) même si la valeur coïncide. */
+const MIN_NADIR_NIGHTS = 3
 
 /** Résultat d'un run patient — métriques d'observabilité (aucune valeur clinique). */
 export interface GenerateResult {
@@ -261,6 +272,8 @@ export const proposalGeneratorService = {
       const nocturnalSlot = findSlotForHour(pumpSlots, CLINICAL_BOUNDS.NOCTURNAL_TITRATION_REF_HOUR)
       if (nocturnalSlot) {
         // Cible à jeun (JAMAIS titrLow) : individualisée si plausible, sinon défaut adulte/grossesse.
+        // `[0]` = 1re cible active (pas encore fasting-scoped) ; sûr car `resolveFastingTarget` clampe à
+        // `[0,80 ; 1,30]` (jamais vers l'hypo). À préférer un champ fasting dédié si disponible plus tard.
         const rawTarget = settings?.glucoseTargets?.[0]?.targetGlucose
         const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
         // À jeun (pré-petit-déj) + nadirs nocturnes par nuit. mg/dL → g/L, null filtrés.
@@ -277,7 +290,7 @@ export const proposalGeneratorService = {
         // Coverage guard Somogyi : n'autoriser une HAUSSE que si ≥ MIN_MEALS_PER_SLOT nuits de nadir CGM
         // (sinon repli fastingValues → hypo 3 h masquée → hausse dangereuse). Baisses inconditionnelles.
         const isIncrease = candidate?.reason === "basalTooLow"
-        if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_MEALS_PER_SLOT)) {
+        if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_NADIR_NIGHTS)) {
           try {
             await adjustmentService.createEngineProposal({
               patientId,
