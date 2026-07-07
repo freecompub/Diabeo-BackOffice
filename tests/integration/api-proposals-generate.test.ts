@@ -14,15 +14,24 @@ import { NextRequest } from "next/server"
 vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: vi.fn().mockResolvedValue(true) }))
 vi.mock("@/lib/access-control", () => ({ resolvePatientId: vi.fn() }))
+vi.mock("@/lib/auth/api-rate-limit", () => ({
+  checkApiRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 29, retryAfterSec: 60 }),
+  RATE_LIMITS: { analytics: { bucket: "analytics" } },
+}))
 vi.mock("@/lib/services/proposal-generator.service", () => ({
   proposalGeneratorService: { generateForPatient: vi.fn() },
+  ISF_ANALYSIS_WINDOW_DAYS: 30,
 }))
 vi.mock("@/lib/services/audit.service", () => ({
-  auditService: { log: vi.fn().mockResolvedValue(undefined) },
-  extractRequestContext: vi.fn().mockReturnValue({ ipAddress: "127.0.0.1", userAgent: "test" }),
+  auditService: {
+    log: vi.fn().mockResolvedValue(undefined),
+    rateLimited: vi.fn().mockResolvedValue({ rateLimitedRow: {}, burstRow: null }),
+  },
+  extractRequestContext: vi.fn().mockReturnValue({ ipAddress: "127.0.0.1", userAgent: "test", requestId: "r1" }),
 }))
 
 const { POST } = await import("@/app/api/patients/[id]/proposals/generate/route")
+const { checkApiRateLimit } = await import("@/lib/auth/api-rate-limit")
 const { resolvePatientId } = await import("@/lib/access-control")
 const { proposalGeneratorService } = await import("@/lib/services/proposal-generator.service")
 const { auditService } = await import("@/lib/services/audit.service")
@@ -45,6 +54,8 @@ describe("POST /api/patients/[id]/proposals/generate", () => {
     vi.clearAllMocks()
     resolve.mockResolvedValue(42)
     generate.mockResolvedValue({ created: 2, flagged: 0, slotsConsidered: 3, mealsUsable: 6, skipped: null })
+    vi.mocked(checkApiRateLimit).mockResolvedValue({ allowed: true, remaining: 29, retryAfterSec: 60 } as never)
+    auditLog.mockResolvedValue(undefined as never)
   })
 
   it("NURSE, fenêtre valide → 200, générateur appelé avec la fenêtre, audité", async () => {
@@ -52,6 +63,8 @@ describe("POST /api/patients/[id]/proposals/generate", () => {
     expect(res.status).toBe(200)
     const body = await res.json()
     expect(body).toMatchObject({ created: 2, flagged: 0, windowDays: 4, reason: null })
+    // L'ISF titre toujours sur 30 j (décision §3), exposé pour la future UI de déclenchement.
+    expect(body.isfWindowDays).toBe(30)
     // generateForPatient(patientId, userId, ctx, windowDays)
     expect(generate).toHaveBeenCalledWith(42, 7, expect.anything(), 4)
     expect(auditLog).toHaveBeenCalledWith(
@@ -99,6 +112,14 @@ describe("POST /api/patients/[id]/proposals/generate", () => {
     const res = await POST(req("NURSE", { windowDays: 2 }), params("42"))
     expect(res.status).toBe(200)
     expect((await res.json()).reason).toBe("nothingToPropose")
+  })
+
+  it("rate-limit saturé → 429 (aucun run, audité)", async () => {
+    vi.mocked(checkApiRateLimit).mockResolvedValueOnce({ allowed: false, remaining: 0, retryAfterSec: 42 } as never)
+    const res = await POST(req("NURSE", { windowDays: 4 }), params("42"))
+    expect(res.status).toBe(429)
+    expect(res.headers.get("Retry-After")).toBe("42")
+    expect(generate).not.toHaveBeenCalled()
   })
 
   it("mode non exploitable → 200 avec le motif du générateur", async () => {

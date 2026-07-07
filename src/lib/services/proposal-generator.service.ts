@@ -44,8 +44,10 @@ import type { AuditContext } from "@/lib/services/patient.service"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
 const ANALYSIS_PERIOD = "14d"
-/** US-2651 ISF — période plus longue (30 j) : les corrections propres sont rares (validé medical #683). */
-const ISF_ANALYSIS_PERIOD = "30d"
+/** US-2651 ISF — période plus longue (30 j) : les corrections propres sont rares (validé medical #683).
+ *  US-2658 — fixe MÊME quand une fenêtre à la demande est choisie (l'ISF ne suit pas `windowDays`, §3). */
+export const ISF_ANALYSIS_WINDOW_DAYS = 30
+const ISF_ANALYSIS_PERIOD = `${ISF_ANALYSIS_WINDOW_DAYS}d`
 /** Minimum de repas appariés par créneau (aligné `analyzeIcrSlot` + `BGM_CARNET.MIN_READINGS_PER_MOMENT`). */
 const MIN_MEALS_PER_SLOT = 3
 /** US-2651 basal — nb minimal de nuits avec un nadir nocturne CGM pour autoriser une HAUSSE basale
@@ -406,6 +408,8 @@ export const proposalGeneratorService = {
    * @param patientId Patient en mode doses simples.
    * @param auditUserId Acteur d'audit (système `null` pour le cron).
    * @param ctx Contexte requête (audit).
+   * @param windowDays US-2658 — fenêtre d'analyse des creux pré-dose à la demande (bornée [2,14] par
+   *   l'appelant). Absente (cron) → `ANALYSIS_PERIOD` (14 j).
    * @returns Métriques ; `slotsConsidered` = nb de doses fixes, `created` = propositions générées.
    */
   async generateFixedDoseProposals(
@@ -437,7 +441,8 @@ export const proposalGeneratorService = {
     })
     const targetGl = resolveFastingTarget(targetRow ? Number(targetRow.targetGlucose) / 100 : null, isPregnancy)
 
-    // Creux pré-dose par moment (shift Option B, BGM). Période 14 j (réactif, comme le basal).
+    // Creux pré-dose par moment (shift Option B, BGM). Fenêtre = `analysisPeriod` (à la demande si
+    // fournie, sinon 14 j — réactif, comme le basal).
     const troughs = await analyticsService.fixedDoseTrend(patientId, analysisPeriod, auditUserId, ctx)
 
     let created = 0
