@@ -82,6 +82,33 @@ describe("adjustmentService", () => {
       expect(mockTx.insulinSensitivityFactor.updateMany).toHaveBeenCalled()
     })
 
+    // US-2652 — dose fixe câblée : l'accept écrit la FixedDoseSlot ciblée par `moment` (scopée patient).
+    it("accepts a fixedDose proposal → writes the FixedDoseSlot by moment", async () => {
+      prismaMock.fixedDoseSlot.findFirst.mockResolvedValue({ valueU: 10 } as never) // live = snapshot (pas de dérive)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "fixedDose", proposedValue: 12, currentValue: 10, moment: "morning",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        fixedDoseSlot: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      const result = await adjustmentService.accept("p1", 2, true)
+      expect(result.applied).toBe(true)
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ moment: "morning", patientInsulin: { patientId: 1 } }),
+          data: { valueU: 12 },
+        }),
+      )
+    })
+
     // US-2649b — compare-and-swap : la base a bougé depuis la proposition → refuser (fail-closed).
     it("throws 'baselineMoved' and applies nothing when the live slot moved since the proposal", async () => {
       // Valeur LIVE (0.99) ≠ snapshot currentValue (0.5) → sur-correction refusée.

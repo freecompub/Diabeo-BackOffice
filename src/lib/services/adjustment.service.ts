@@ -17,7 +17,7 @@ import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
-  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel,
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel, DoseMoment,
 } from "@prisma/client"
 
 /**
@@ -43,6 +43,8 @@ export type CreateEngineProposalInput = {
   carbRatioSlotStart?: number | null
   carbRatioSlotEnd?: number | null
   pumpBasalSlotId?: string | null
+  /** Discriminateur de créneau pour la DOSE FIXE (mode « doses simples »). */
+  moment?: DoseMoment | null
 }
 
 /** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
@@ -60,6 +62,8 @@ export type CreateProposalInput = {
   carbRatioSlotStart?: number | null
   carbRatioSlotEnd?: number | null
   pumpBasalSlotId?: string | null
+  /** Discriminateur de créneau pour la DOSE FIXE (mode « doses simples »). */
+  moment?: DoseMoment | null
   /** Justification texte libre — chiffrée AES-256-GCM au stockage. */
   proposerComment?: string | null
 }
@@ -160,10 +164,17 @@ async function resolveCurrentValue(
       if (!row) throw new Error("currentValueNotFound")
       return Number(row.rate)
     }
-    // Dose fixe : AdjustmentProposal n'a pas de colonne « moment » → impossible de cibler
-    // /dédupliquer une FixedDoseSlot. Fail-closed jusqu'au câblage UI + discriminateur.
-    case "fixedDose":
-      throw new Error("fixedDoseNotWired")
+    // Dose fixe (US-2652) : ciblée par `moment` (colonne discriminante sur AdjustmentProposal).
+    // Valeur courante lue SERVEUR depuis la `FixedDoseSlot` du patient (anti-IDOR : scopée patient).
+    case "fixedDose": {
+      if (!input.moment) throw new Error("slotRequired")
+      const row = await prisma.fixedDoseSlot.findFirst({
+        where: { patientInsulin: { patientId }, moment: input.moment },
+        select: { valueU: true },
+      })
+      if (!row) throw new Error("currentValueNotFound")
+      return Number(row.valueU)
+    }
     default:
       throw new Error("unsupportedParameter")
   }
@@ -183,6 +194,7 @@ function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposal
     carbRatioSlotStart: null as number | null,
     carbRatioSlotEnd: null as number | null,
     pumpBasalSlotId: null as string | null,
+    moment: null as DoseMoment | null,
   }
   switch (parameterType) {
     case "insulinSensitivityFactor":
@@ -191,6 +203,8 @@ function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposal
       return { ...empty, carbRatioSlotStart: input.carbRatioSlotStart ?? null, carbRatioSlotEnd: input.carbRatioSlotEnd ?? null }
     case "basalRate":
       return { ...empty, pumpBasalSlotId: input.pumpBasalSlotId ?? null }
+    case "fixedDose":
+      return { ...empty, moment: input.moment ?? null }
     default:
       return empty
   }
@@ -707,13 +721,6 @@ export const adjustmentService = {
           throw new Error("valueOutOfBounds")
         }
 
-        // US-2646 — l'écriture d'une dose fixe (fixed_dose_slots) est câblée en
-        // US-2647/2649. Tant qu'elle ne l'est pas, on REFUSE l'application immédiate
-        // (fail-closed) plutôt que de renvoyer un faux `applied: true` sur un no-op.
-        if (proposal.parameterType === "fixedDose") {
-          throw new Error("fixedDoseApplyNotImplemented")
-        }
-
         // US-2649b — COMPARE-AND-SWAP (garde d'accès concurrent). `proposedValue` est une
         // valeur ABSOLUE calculée sur la base `currentValue` (snapshot de création). Si le
         // créneau a bougé depuis (édition médecin, autre proposition acceptée), l'appliquer
@@ -760,6 +767,14 @@ export const adjustmentService = {
             data: { rate: proposed },
           })
           assertRowApplied(res.count, "pumpSlotNotFound")
+        } else if (proposal.parameterType === "fixedDose" && proposal.moment != null) {
+          // Dose fixe (US-2652) — scopée patient via la relation `patientInsulin` (anti-IDOR) : un
+          // moment hors patient ne matche pas → count 0 → fail-closed (créneau introuvable).
+          const res = await tx.fixedDoseSlot.updateMany({
+            where: { patientInsulin: { patientId: proposal.patientId }, moment: proposal.moment },
+            data: { valueU: proposed },
+          })
+          assertRowApplied(res.count, "fixedDoseSlotNotFound")
         }
       }
 

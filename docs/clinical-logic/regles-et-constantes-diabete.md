@@ -414,3 +414,14 @@ Reste : `fixedDose` (bloqué migration `moment`), mode-c `observance`, activatio
 plusieurs propositions en une session augmente l'insuline totale ; l'écran de revue ne montre pas encore
 d'**impact cumulé**. Atténué par le jugement médecin par-paramètre + les caps ±20 % + one-pending/créneau.
 Enhancement futur de l'écran de revue (non bloquant, validé medical #684).
+
+### Persistance des propositions DOSE FIXE (US-2652, débloqué)
+
+`createEngineProposal`/`createProposal` acceptent désormais le paramètre `fixedDose` (avant : `fixedDoseNotWired`).
+Discriminateur = **`moment`** (`DoseMoment` : morning/noon/evening/night), nouvelle colonne sur
+`AdjustmentProposal` (migration `20260710100000`, index anti-spam partiel `one_pending_per_slot` étendu à
+`moment`). `resolveCurrentValue` lit la `FixedDoseSlot` **scopée patient** via `patientInsulin`
+(anti-IDOR). `validateProposedValue` : plancher `FIXED_DOSE_MIN` (0,5 U) uniquement (pas de plafond
+bloquant — cf. §1). À l'**accept**, `fixedDoseSlot.updateMany({ patientInsulin: { patientId }, moment })`
+écrit `valueU` (fail-closed `fixedDoseSlotNotFound` si count 0). Reste : l'**assemblage** (glycémie par
+moment) + le **générateur** `fixedDose` (mode `fixedDose`, pas encore branché dans `generateForPatient`).
