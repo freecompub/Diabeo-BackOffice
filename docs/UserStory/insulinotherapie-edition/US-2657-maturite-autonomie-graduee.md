@@ -70,6 +70,18 @@ Invariants non négociables :
 
 > Note d'implémentation (non dosante) : cette matrice est une **table de capacités serveur** (source unique), évaluée côté service avant toute écriture. Le front ne fait que **refléter** l'état ; la garde d'autorité est **serveur** (un client altéré ne peut pas s'auto-élever).
 
+### 3.4 Emplacement & contrôle UI — **où le médecin pose le niveau**
+
+- **Où** : fiche patient `/patients/[id]`, **onglet « Traitements »**, encart **« Autonomie du patient »** placé **en tête de l'onglet**, au-dessus du bandeau de capacité d'édition insuline (US-2648b). Emplacement choisi parce que la maturité **gouverne directement** les capacités d'édition présentées juste en dessous — le soignant voit « ce que le patient a le droit de faire » et « ses réglages » au même endroit. Un **badge lecture seule** « Autonomie : Intermédiaire » est **répliqué dans l'onglet Aperçu** (lecture d'un coup d'œil, non éditable).
+- **Contrôle** : sélecteur segmenté à 3 crans **Junior · Intermédiaire · Expert** (`SegmentedControl` / `Select` shadcn), cran courant mis en évidence. Design system uniquement (classes sémantiques, aucun hex).
+- **Qui peut changer** : **DOCTOR** (rôle **exactement** DOCTOR + `canAccessPatient`). **NURSE / VIEWER** : **lecture seule** (badge grisé, sélecteur `disabled`). Le **patient** ne voit **jamais** un contrôle de son propre niveau (cf. AC-1, auto-élévation rejetée + auditée).
+- **Confirmation avant application** :
+  - **Montée** de niveau → modale nommant explicitement la **capacité accordée** (« Vous autorisez ce patient à **restructurer ses créneaux horaires** » pour → Intermédiaire ; « … à **refuser vos propositions et contre-proposer** » pour → Expert).
+  - **Descente** de niveau → modale rappelant que quitter **Expert neutralise l'auto-application** (levier d'urgence médecin, §5.4).
+- **Effet** : immédiat — au prochain rendu, l'onglet Traitements et la **fenêtre de groupe (US-2656)** reflètent les nouvelles capacités (via la table de capacités serveur, §3.3). Aucune donnée de dose n'est modifiée par un changement de niveau.
+- **Audit** : `MATURITY_LEVEL_CHANGED` (`from`, `to`, `actorRole`, `patientId`), sans PHI.
+- **Défaut** : tout patient (existant migré / nouveau) démarre **Junior** — le cran le plus restrictif.
+
 ---
 
 ## 4. L'enveloppe de sécurité de l'auto-application — **cœur clinique**
@@ -144,6 +156,20 @@ Le résultat (`decision` + `failedCheck` + before/after) est **audité systémat
 - **Audit** : chaque auto-application ⇒ `BolusCalculationLog`/`AdjustmentProposal` **+** `auditService.logWithTx` (`action: "AUTO_APPLIED_SETTING"`), avec : `maturityLevel`, `autoApply`, **before/after**, **résultat de la vérification d'enveloppe** (`decision`, `failedCheck` le cas échéant), acteur = patient, id de décision de gouvernance. Tout dans une **transaction Prisma** (application + log atomiques, ADR #15). Les `FALLBACK_PROPOSAL` et `HARD_REJECT` sont **aussi** audités (pourquoi ça n'a **pas** été auto-appliqué = donnée de sûreté).
 - **DPIA — prérequis bloquant** : activer l'auto-application **sur des patients réels** exige une **DPIA dédiée** (`docs/compliance/dpia-auto-application.md`) validée **avant** toute bascule `autoApply=ON` en production. C'est une **dépendance dure**, **pas** un « nice-to-have dev-only » : la garde 5.1 (référence DPIA obligatoire) **matérialise** ce prérequis dans le code. Sans DPIA référencée ⇒ bascule refusée.
 - **Frontière MDR** : la DPIA + le dossier de gouvernance doivent expliciter le **déplacement de classe** (auto-modification d'un paramètre de dosage sans validation HCP) et l'**enveloppe** comme **mesure de maîtrise du risque** documentée.
+
+### 5.4 Emplacement & contrôle UI — **où l'on bascule `autoApply` (gouvernance)**
+
+- **Séparation stricte d'autorité** : le **médecin** change le *niveau* (§3.4) ; il **ne peut PAS** basculer `autoApply`. La bascule est un **acte de gouvernance**, pas un acte de soin. Deux autorités, deux contrôles distincts.
+- **Où** : un panneau **« Auto-application — gouvernance »** rendu **uniquement pour le rôle `GOVERNANCE`** (invisible pour DOCTOR / NURSE / VIEWER / patient). Recommandation : panneau **dans la fiche patient** (onglet Traitements, sous l'encart « Autonomie »), gated `GOVERNANCE`, pour conserver le contexte patient — plutôt qu'un écran d'admin déconnecté. Alternative acceptable : un écran d'administration gouvernance listant les patients **éligibles** (niveau Expert).
+- **Pré-conditions à l'activation** (toutes requises, sinon **refus fail-closed** — le bouton « Activer » reste inactif) :
+  1. `maturityLevel === EXPERT` (sinon toggle `disabled` + explication « niveau Expert requis ») ;
+  2. **Référence de décision de gouvernance** (champ obligatoire — id de décision direction médicale) ;
+  3. **Référence de DPIA** (champ obligatoire — pointeur vers `docs/compliance/dpia-auto-application.md` validée).
+- **Ce que voit le médecin** : un **indicateur lecture seule** « Auto-application : **activée** par la gouvernance le JJ/MM/AAAA » ou « **désactivée** » — **non actionnable** par lui. Transparence sans autorité.
+- **Désactivation (kill-switch)** :
+  - la **gouvernance** peut désactiver à tout moment (immédiat, audité) ;
+  - le **médecin** ne bascule pas le flag mais dispose d'un **levier d'urgence clinique** : **rétrograder le niveau** sous Expert neutralise **instantanément** l'auto-application (garde ET-logique §3.2 / §5.1) — sans attendre la gouvernance.
+- **Audit** : `AUTO_APPLY_FLAG_CHANGED` (`from`, `to`, `decisionRef`, `dpiaRef`, acteur gouvernance, `patientId`), sans PHI. Toute **tentative** d'un rôle non-`GOVERNANCE` de basculer le flag → refus 403 audité.
 
 ---
 
@@ -259,6 +285,31 @@ Fonctionnalité: Maturité du patient & autonomie graduée avec auto-application
     Alors l'enveloppe est réputée NON franchie
     Et le changement retombe en proposition (jamais d'auto-application sur un doute)
     Et le fallback est audité
+
+  Scénario: AC-16 — Le médecin pose le niveau depuis la fiche patient (onglet Traitements)
+    Étant donné un DOCTOR responsable du patient, sur l'onglet Traitements
+    Quand il change le niveau d'autonomie de "Junior" à "Intermédiaire"
+    Alors une confirmation nomme la capacité accordée (restructurer les créneaux)
+    Et après confirmation le niveau est "Intermédiaire"
+    Et le changement est audité (MATURITY_LEVEL_CHANGED avec from/to/actorRole)
+    Et un NURSE ne voit ce contrôle qu'en lecture seule
+    Et le patient ne voit aucun contrôle de son propre niveau
+
+  Scénario: AC-17 — Le médecin ne peut pas basculer l'auto-application
+    Étant donné un DOCTOR sur la fiche d'un patient "Expert"
+    Quand il consulte la section auto-application
+    Alors il voit un indicateur en lecture seule (activée ou désactivée par la gouvernance)
+    Et aucun contrôle ne lui permet de basculer le flag autoApply
+    Mais il peut rétrograder le niveau pour neutraliser l'auto-application (levier d'urgence)
+
+  Scénario: AC-18 — La gouvernance active l'auto-application avec les références obligatoires
+    Étant donné un utilisateur de rôle GOVERNANCE sur un patient "Expert"
+    Quand il tente d'activer autoApply sans référence de décision ou sans référence de DPIA
+    Alors l'activation est refusée (fail-closed)
+    Et quand il fournit la référence de décision ET la référence de DPIA puis active
+    Alors autoApply passe à ON
+    Et l'acte est audité (AUTO_APPLY_FLAG_CHANGED avec decisionRef et dpiaRef)
+    Et un rôle non-GOVERNANCE tentant la bascule reçoit 403 audité
 ```
 
 ---
