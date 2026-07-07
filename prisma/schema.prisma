@@ -25,6 +25,16 @@ enum Pathology {
   GD
 }
 
+/// US-2657 — Niveau de maturité (autonomie) du patient dans la gestion de son diabète (ETP).
+/// Posé par le soignant (jamais auto-déclaré). Gate les capacités du PATIENT (rôle VIEWER) :
+/// JUNIOR = valeurs seulement ; INTERMEDIATE = + créneaux ; EXPERT = + refuser/contre-proposer
+/// (+ auto-application gouvernée, slices ultérieures). Défaut JUNIOR (le plus restrictif).
+enum MaturityLevel {
+  JUNIOR
+  INTERMEDIATE
+  EXPERT
+}
+
 enum Sex {
   M
   F
@@ -683,6 +693,8 @@ model Patient {
   /// pour permettre activation rapide sans saisir DPA, puis synchronisation
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
   pregnancyMode Boolean        @default(false) @map("pregnancy_mode")
+  /// US-2657 — niveau d'autonomie (ETP), posé par le soignant. Défaut JUNIOR (le plus restrictif).
+  maturityLevel MaturityLevel  @default(JUNIOR) @map("maturity_level")
   /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
   /// d'affichage/filtrage UNIQUEMENT. ⚠️ NE PAS lire cette colonne brute pour une
   /// décision logique : source de vérité = `resolveTreatmentMode()` (US-2647, dérivé

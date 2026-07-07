@@ -151,7 +151,12 @@ export async function resolveTreatmentMode(patientId: number): Promise<Treatment
  */
 export async function getInsulinEditCapability(role: Role, patientId: number): Promise<InsulinEditCapability> {
   const modeResult = await resolveTreatmentMode(patientId)
-  return deriveEditCapability(role, modeResult)
+  // US-2657 — niveau de maturité (gate les capacités du patient). Défaut JUNIOR si absent (fail-closed).
+  const patient = await prisma.patient.findFirst({
+    where: { id: patientId, deletedAt: null },
+    select: { maturityLevel: true },
+  })
+  return deriveEditCapability(role, modeResult, patient?.maturityLevel ?? "JUNIOR")
 }
 
 export const treatmentModeService = { deriveTreatmentMode, resolveTreatmentMode, getInsulinEditCapability }

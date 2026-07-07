@@ -531,3 +531,20 @@ hors bornes → 400 `windowOutOfBounds`).
   `one_pending_per_slot`, frontière MDR `nonInsulin`). **Propose, n'applique jamais** (ADR #13).
 - **RBAC** : DOCTOR/NURSE (min NURSE) ; patient/VIEWER → 403. Scopé patient (anti-IDOR → 404). Audité
   (`proposal.generator.on_demand` : acteur soignant réel, fenêtre, résultat, sans PHI).
+
+### Niveau de maturité du patient (US-2657 slice A)
+
+`Patient.maturityLevel` (enum `MaturityLevel { JUNIOR, INTERMEDIATE, EXPERT }`, **défaut JUNIOR**) — niveau
+d'autonomie (ETP) **posé par le soignant**, jamais auto-déclaré. Gate les capacités du **PATIENT (rôle
+VIEWER)** dans `deriveEditCapability` :
+- **JUNIOR** → `canEditSlots = false` : le patient ne propose que des **valeurs** (pas de restructuration).
+- **INTERMEDIATE / EXPERT** → `canEditSlots = true` : + créneaux (ajouter/supprimer/déplacer les heures).
+- **DOCTOR/ADMIN** (édition directe) et **NURSE** (clinicien) : `canEditSlots = true` sans condition de maturité.
+- Fail-closed : `canEditSlots = false` si rien n'est éditable (config incohérente / mode non éditable).
+
+Pose du niveau : `PATCH /api/patients/[id]/maturity`, **exactement DOCTOR** (`requireRole("DOCTOR")` +
+exclusion explicite d'ADMIN) → un patient (VIEWER) ne peut **jamais** s'auto-élever (403). Idempotent,
+audité `UPDATE PATIENT` (metadata `from → to`, sans PHI). `patientService.setMaturityLevel`.
+
+Slices ultérieures : B (enveloppe de sécurité C1–C8/C6b), C (auto-application gouvernée + flag `autoApply`),
+D (refuser/contre-proposer).
