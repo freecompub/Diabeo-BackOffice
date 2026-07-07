@@ -23,6 +23,21 @@ import {
 import { decimalToNumber } from "@/lib/db/decimal"
 import { CGM_AGGREGATE_RANGE_GL, BGM_CARNET } from "@/lib/clinical-bounds"
 import { DAY_MOMENTS, momentForHour, momentBoundsFrom } from "@/lib/day-moments"
+import type { DoseMoment } from "@prisma/client"
+
+/**
+ * US-2652 (dose fixe) — décalage dose → fenêtre de JUGEMENT (validé medical). Une dose fixe est
+ * injectée au début de son moment et agit **en aval** ; elle se juge donc sur le **creux pré-dose du
+ * moment SUIVANT** (le relevé de la même fenêtre reflète, lui, la dose PRÉCÉDENTE). Miroir du basal
+ * (créneau nocturne jugé par la glycémie à jeun). Ne PAS attribuer le relevé du même moment (Option A,
+ * cliniquement fausse — titrerait le mauvais moment).
+ */
+const FIXED_DOSE_NEXT_WINDOW: Record<DoseMoment, DoseMoment> = {
+  morning: "noon", // dose du petit-déj → jugée au pré-déjeuner
+  noon: "evening", // dose du déjeuner → jugée au pré-dîner
+  evening: "night", // dose du dîner → jugée au coucher
+  night: "morning", // dose du soir/coucher → jugée à jeun (pré-petit-déj)
+}
 
 /** Warn if CGM capture rate below this % */
 const MIN_CAPTURE_RATE = 70 // percent
@@ -418,6 +433,93 @@ export const analyticsService = {
       },
       moments,
     }
+  },
+
+  /**
+   * Assemblage DOSE FIXE (US-2652 slice 2, validé medical) : par `DoseMoment`, les **creux pré-dose**
+   * (relevés capillaires) qui jugent la dose de ce moment, via le décalage `FIXED_DOSE_NEXT_WINDOW`
+   * (une dose agit en aval → jugée sur la fenêtre suivante). Pour chaque fenêtre, on retient le relevé
+   * le **plus tôt par jour** (proxy du creux, évite le biais post-prandial). Relevés BGM bruts en **g/L**
+   * (chacun devient un `postGlucoseGl` pour `analyzeFixedDose`, qui moyenne et plancherne à ≥3). La
+   * cible + l'analyse sont faites par l'appelant (générateur, slice 3). BGM-only (patients « doses
+   * simples »). Aucun hard-filtre de confondeur (BGM épars ; le shift + earliest/jour + moyenne + caps
+   * + doctor-gating suffisent — validé medical).
+   *
+   * @param patientId Patient.
+   * @param period Période d'analyse (défaut appelant : 14 j).
+   * @param auditUserId Acteur d'audit (système `null` pour le cron).
+   * @param ctx Contexte requête (audit).
+   * @returns Par moment, la liste des creux g/L (peut être vide → l'analyseur renverra `null`).
+   */
+  async fixedDoseTrend(
+    patientId: number,
+    period: string,
+    auditUserId: number | null,
+    ctx?: AuditContext,
+    opts?: { skipAudit?: boolean },
+  ): Promise<Record<DoseMoment, number[]>> {
+    const days = parsePeriod(period)
+    const now = new Date()
+    const since = new Date(now.getTime() - days * 24 * 3600_000)
+
+    const dayMoments = await prisma.userDayMoment.findMany({
+      where: { user: { patient: { id: patientId } } },
+      select: { type: true, startTime: true, endTime: true },
+    })
+    const bounds = momentBoundsFrom(dayMoments)
+
+    const rows = await prisma.glycemiaEntry.findMany({
+      where: {
+        patientId,
+        date: { gte: since, lte: now },
+        time: { not: null },
+        OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
+      },
+      select: { glycemiaGl: true, glycemiaMgdl: true, time: true, date: true },
+    })
+
+    if (!opts?.skipAudit) {
+      await auditService.log({
+        userId: auditUserId,
+        action: "READ",
+        resource: "GLYCEMIA_ENTRY",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: { patientId, kind: "fixedDoseTrend", period: `${days}d` },
+      })
+    }
+
+    // Par fenêtre de moment : le relevé le plus TÔT de chaque jour calendaire (proxy du creux pré-dose).
+    const earliestByWindow: Record<DoseMoment, Map<string, { min: number; gl: number }>> = {
+      morning: new Map(),
+      noon: new Map(),
+      evening: new Map(),
+      night: new Map(),
+    }
+    for (const r of rows) {
+      const gl =
+        r.glycemiaGl != null
+          ? decimalToNumber(r.glycemiaGl)
+          : r.glycemiaMgdl != null
+            ? decimalToNumber(r.glycemiaMgdl) / 100
+            : NaN
+      if (!Number.isFinite(gl) || gl < CGM_AGGREGATE_RANGE_GL.MIN || gl > CGM_AGGREGATE_RANGE_GL.MAX) continue
+      if (!r.time) continue
+      const minutesOfDay = r.time.getUTCHours() * 60 + r.time.getUTCMinutes()
+      const window = momentForHour(minutesOfDay / 60, bounds)
+      const dayIso = r.date.toISOString().slice(0, 10)
+      const cur = earliestByWindow[window].get(dayIso)
+      if (!cur || minutesOfDay < cur.min) earliestByWindow[window].set(dayIso, { min: minutesOfDay, gl })
+    }
+
+    // Shift : la dose du moment M est jugée sur les creux (earliest/jour) de la fenêtre SUIVANTE.
+    const out: Record<DoseMoment, number[]> = { morning: [], noon: [], evening: [], night: [] }
+    for (const dose of DAY_MOMENTS) {
+      out[dose] = [...earliestByWindow[FIXED_DOSE_NEXT_WINDOW[dose]].values()].map((v) => v.gl)
+    }
+    return out
   },
 
   /**

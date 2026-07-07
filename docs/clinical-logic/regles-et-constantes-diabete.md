@@ -425,3 +425,30 @@ Discriminateur = **`moment`** (`DoseMoment` : morning/noon/evening/night), nouve
 bloquant — cf. §1). À l'**accept**, `fixedDoseSlot.updateMany({ patientInsulin: { patientId }, moment })`
 écrit `valueU` (fail-closed `fixedDoseSlotNotFound` si count 0). Reste : l'**assemblage** (glycémie par
 moment) + le **générateur** `fixedDose` (mode `fixedDose`, pas encore branché dans `generateForPatient`).
+
+### Assemblage DOSE FIXE `fixedDoseTrend` (US-2652 slice 2, validé medical)
+
+Peuple `analyzeFixedDose` pour un patient « doses simples » (BGM-only). Par `DoseMoment`, les **creux
+pré-dose** qui jugent la dose de ce moment.
+- **Décalage (Option B, `FIXED_DOSE_NEXT_WINDOW`)** : une dose fixe agit **en aval** → jugée sur la
+  **fenêtre SUIVANTE** (morning→noon, noon→evening, evening→night, night→morning). Le relevé de la même
+  fenêtre reflète, lui, la dose PRÉCÉDENTE (attribuer au même moment = Option A, **cliniquement fausse**).
+  Miroir du basal (créneau nocturne ← glycémie à jeun).
+- **Creux** = relevé le **plus tôt par jour** dans la fenêtre (proxy pré-dose, évite le biais post-prandial).
+  Relevés BGM **bruts** en g/L (chacun un `postGlucoseGl` ; `analyzeFixedDose` moyenne, plancher ≥3).
+- **Cible** (appliquée par le générateur, slice 3) = `resolveFastingTarget` (pré-prandial 1,00/0,90 g/L,
+  clampé, individualisé) — **JAMAIS** la bande carnet ni `titrLow`. Même cible aux 4 moments.
+- **Période 14 j** (comme le basal, réactif). Pas de hard-filtre de confondeur (shift + earliest/jour +
+  moyenne + caps + doctor-gating suffisent).
+- **Garde hypo** : déjà dans `analyzeFixedDose` (`hypoBlocksProposal` sur les creux) — avec le shift, les
+  creux SONT les nadirs → la garde protège le bon moment. ⚠️ Garde hypo **pathology-AGNOSTIQUE** (seuils
+  `SEVERE_HYPO_GL`/`LEVEL1_HYPO_GL` fixes) tandis que la **cible** est pathology-aware.
+
+**Limites connues (assemblage dose fixe, validé medical #686)** :
+- *Earliest-in-window pas garanti pré-prandial pour les fenêtres de JOUR* (`morning→noon`, `noon→evening`) :
+  un relevé post-prandial (ex. 10:30 post-petit-déj) peut être le plus tôt de la fenêtre → `avgPost`
+  biaisé vers le haut → léger nudge de **hausse** de la dose. Borné (caps ±10 %/±2 U, doctor-gated) ;
+  pas de risque hypo (valeurs hautes). Le cas `night→morning` (à jeun) est immunisé.
+- *Fenêtre `night` (22–04, cross-minuit)* : sur le jour-frontière, `earliest-par-jour` garde le relevé
+  ~02-04 h (plus proche du vrai nadir nocturne) et écarte le ~22 h → réduit légèrement N pour la dose
+  `evening`, conservateur, **pas de mauvaise direction**. Amélioration future possible (appariement nuit réelle).
