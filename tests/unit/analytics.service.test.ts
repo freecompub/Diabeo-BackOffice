@@ -337,3 +337,56 @@ describe("analyticsService", () => {
     })
   })
 })
+
+describe("analyticsService.fixedDoseTrend (US-2652 — assemblage dose fixe par moment)", () => {
+  // Relevé capillaire : `time` = heure murale (Date 1970), `date` = jour calendaire, valeur g/L.
+  const gEntry = (dateIso: string, hour: number, gl: number) => ({
+    glycemiaGl: d(gl), glycemiaMgdl: null,
+    time: new Date(Date.UTC(1970, 0, 1, hour, 0)), date: new Date(dateIso),
+  })
+  const setup = (rows: unknown[]) => {
+    prismaMock.userDayMoment.findMany.mockResolvedValue([] as any) // bornes par défaut
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue(rows as any)
+    prismaMock.auditLog.create.mockResolvedValue({} as any)
+  }
+
+  it("shift Option B : la dose se juge sur le creux de la fenêtre SUIVANTE", async () => {
+    // 07h→morning, 12h→noon, 18h→evening, 23h→night (bornes par défaut).
+    setup([
+      gEntry("2026-07-01", 7, 1.1),  // fenêtre morning → juge la dose NIGHT
+      gEntry("2026-07-01", 12, 1.6), // fenêtre noon → juge la dose MORNING
+      gEntry("2026-07-01", 18, 1.4), // fenêtre evening → juge la dose NOON
+      gEntry("2026-07-01", 23, 0.9), // fenêtre night → juge la dose EVENING
+    ])
+    const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
+    expect(out.night[0]).toBeCloseTo(1.1)
+    expect(out.morning[0]).toBeCloseTo(1.6)
+    expect(out.noon[0]).toBeCloseTo(1.4)
+    expect(out.evening[0]).toBeCloseTo(0.9)
+  })
+
+  it("retient le relevé le plus TÔT par jour (proxy creux, évite le post-prandial)", async () => {
+    setup([
+      gEntry("2026-07-01", 11, 1.2), // pré-déjeuner (tôt) → gardé
+      gEntry("2026-07-01", 14, 1.9), // post-prandial (tard) → ignoré
+    ])
+    const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
+    expect(out.morning).toHaveLength(1)
+    expect(out.morning[0]).toBeCloseTo(1.2)
+  })
+
+  it("accumule un creux PAR JOUR (3 jours → 3 relevés pour la dose)", async () => {
+    setup([gEntry("2026-07-01", 11, 1.3), gEntry("2026-07-02", 11, 1.4), gEntry("2026-07-03", 11, 1.5)])
+    const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
+    expect(out.morning).toHaveLength(3)
+  })
+
+  it("exclut les relevés hors plage physiologique et sans heure", async () => {
+    setup([
+      { glycemiaGl: d(0.1), glycemiaMgdl: null, time: new Date(Date.UTC(1970, 0, 1, 12, 0)), date: new Date("2026-07-01") }, // < 0,20
+      { glycemiaGl: d(1.5), glycemiaMgdl: null, time: null, date: new Date("2026-07-01") }, // pas d'heure
+    ])
+    const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
+    expect(out.morning).toHaveLength(0)
+  })
+})
