@@ -164,19 +164,21 @@ export function computeProposedValue(currentValue: number, changePercent: number
  * Detects systematic over/under-correction from post-correction glucose patterns.
  * Only proposes if 3+ events AND change is meaningful (> 2%).
  *
- * ⚠️ **Contrat nadir à câbler (US-2651, suivi medical)** : comme l'ICR, une correction d'analogue
- * rapide fait son creux à ~3-4 h, APRÈS la glycémie post-correction ponctuelle utilisée ici. La garde
- * hypo ne voit donc pas un creux tardif → angle mort. Quand l'ISF sera relié au générateur, ajouter un
- * champ `nadirGl` par correction (symétrique de `analyzeIcrSlot`), fourni UNIQUEMENT à la garde hypo,
- * la moyenne/direction restant sur `postGlucoseGl`. En attendant, l'ISF n'est câblé à aucun générateur.
+ * Contrat garde-hypo (US-2651, validé medical — symétrique de `analyzeIcrSlot`/`analyzeBasalTrend`) :
+ * une correction d'analogue rapide fait son creux à ~3-4 h, APRÈS la glycémie post-correction. La
+ * MOYENNE/direction reste pilotée par `postGlucoseGl` (résultat de la correction), tandis que la garde
+ * hypo regarde le **nadir** `nadirGl` (creux post-correction) quand il est fourni — sinon un creux tardif
+ * (sur-correction) resterait invisible. Repli sur `postGlucoseGl` si absent. Ne JAMAIS injecter le nadir
+ * dans `postGlucoseGl` (cela biaiserait la moyenne vers le bas → fausse hausse d'ISF).
  *
  * @param slot - ISF slot configuration (startHour, endHour, sensitivityFactorGl)
- * @param corrections - Post-correction readings and targets (postGlucoseGl, targetGl)
+ * @param corrections - Par correction : `postGlucoseGl` (résultat, pilote la direction), `targetGl`,
+ *   et `nadirGl` optionnel (creux post-correction → garde hypo uniquement). g/L.
  * @returns {ProposalCandidate | null} Proposal if detected, null otherwise
  */
 export function analyzeIsfSlot(
   slot: { startHour: number; endHour: number; sensitivityFactorGl: number },
-  corrections: { postGlucoseGl: number; targetGl: number }[],
+  corrections: { postGlucoseGl: number; targetGl: number; nadirGl?: number }[],
 ): ProposalCandidate | null {
   if (corrections.length < 3) return null
 
@@ -196,9 +198,11 @@ export function analyzeIsfSlot(
   if (Math.abs(clampedChange) < 2) return null
 
   const proposedValue = computeProposedValue(slot.sensitivityFactorGl, clampedChange)
-  // Garde HYPO : baisser l'ISF = corrections plus fortes (plus d'insuline) → supprimé si une
-  // glycémie post-correction de la fenêtre est en hypo sévère (une correction a sur-shooté).
-  if (hypoBlocksProposal("insulinSensitivityFactor", slot.sensitivityFactorGl, proposedValue, corrections.map((c) => c.postGlucoseGl))) {
+  // Garde HYPO : baisser l'ISF = corrections plus fortes (plus d'insuline) → supprimé si un creux
+  // post-correction est en hypo (une correction a sur-shooté ~3-4 h plus tard). Nadir séparé si fourni,
+  // repli sur `postGlucoseGl` sinon. La moyenne/direction reste sur `postGlucoseGl`.
+  const guardValues = corrections.map((c) => c.nadirGl ?? c.postGlucoseGl)
+  if (hypoBlocksProposal("insulinSensitivityFactor", slot.sensitivityFactorGl, proposedValue, guardValues)) {
     return null
   }
 
