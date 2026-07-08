@@ -17,10 +17,11 @@ const bodySchema = z.object({
  * PATCH — pose le **niveau de maturité (autonomie)** d'un patient (US-2657). Compatible avec le
  * transport de mutation de la fiche unifiée (`patientId` dans le corps).
  *
- * **Réservé au rôle EXACTEMENT `DOCTOR`** (acte clinique) : `requireRole` filtre NURSE/VIEWER (min
- * DOCTOR) et l'on **exclut ADMIN** explicitement → un patient (VIEWER) ne peut **jamais** s'auto-élever
- * (403, AC-1). Scopé patient (anti-IDOR → 404). Idempotent. Audit `UPDATE PATIENT` (`from → to`) émis
- * par le service dans la transaction.
+ * **Réservé au rôle EXACTEMENT `DOCTOR`** (acte clinique) : `requireAuth` (401 si non authentifié) puis
+ * garde `user.role !== "DOCTOR"` → **exclut NURSE/VIEWER ET ADMIN**. Tout non-DOCTOR est refusé (403) et la
+ * tentative est tracée par l'action d'audit dédiée `MATURITY_LEVEL_SELF_ELEVATION_DENIED` (AC-1 : un patient
+ * VIEWER ne peut jamais s'auto-élever). Scopé patient (anti-IDOR → 404). Idempotent. Audit
+ * `MATURITY_LEVEL_CHANGED` (`from → to`, + `AUTO_APPLY_FLAG_CHANGED` si downgrade) émis par le service.
  */
 export async function PATCH(req: NextRequest) {
   try {

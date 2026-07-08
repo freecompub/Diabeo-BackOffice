@@ -3,11 +3,15 @@
 **Statut** : Brouillon — **à signer DPO + RSSI + responsable qualité/réglementaire (MDR) avant toute
 activation en production**. Tant que non signée : `AUTO_APPLY_GLOBALLY_ENABLED` = OFF, tous les
 `Patient.autoApply` = OFF.
-**Périmètre (slice C1 — socle gouvernance & persistance, additif)** : champ `Patient.autoApply` (OFF par
-défaut), modèles `GovernanceApproval` et `AutoApplyEvent`, service `governanceService.setAutoApply`
-(ADMIN + approbation), route `PATCH /api/governance/auto-apply`, kill-switch global
-`AUTO_APPLY_GLOBALLY_ENABLED` (`src/lib/env.ts`). **Le harnais qui applique effectivement n'est PAS livré
-en C1** (slices C2/C3) ; l'auto-application reste **inopérante** tant que les deux verrous ne sont pas ON.
+**Périmètre (slices A→C2b + durcissement)** : champ `Patient.autoApply` (OFF par défaut) + `maturityLevel`,
+modèles `GovernanceApproval` et `AutoApplyEvent`, service `governanceService.setAutoApply` (ADMIN + `reference`
++ `dpiaRef` obligatoires + `maturityLevel === EXPERT`), route `PATCH /api/governance/auto-apply`, kill-switch
+global `AUTO_APPLY_GLOBALLY_ENABLED` (`src/lib/env.ts`). **Le harnais d'application `applyExpertEditGoverned`
+EST livré** (`src/lib/services/auto-apply.service.ts` : enveloppe C1–C8 + application `updateIsf/Icr/PumpSlot`).
+⚠️ **Il n'a pas encore d'appelant** (l'orchestrateur groupé C3b n'est pas livré) et, même une fois câblé, reste
+**inopérant en production tant que le kill-switch global est OFF** (défaut) — c'est aujourd'hui le seul rempart
+d'exécution restant, avec `Patient.autoApply` OFF et cette DPIA non signée. L'activation est donc **strictement
+subordonnée à la signature ci-dessus**.
 **Lié à** : `docs/UserStory/insulinotherapie-edition/US-2657-maturite-autonomie-graduee.md`,
 `docs/clinical-logic/regles-et-constantes-diabete.md` (enveloppe C1–C8 + C6b),
 `src/lib/insulin/auto-apply-envelope.ts`.

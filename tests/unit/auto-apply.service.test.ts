@@ -49,8 +49,8 @@ const isfEdit = {
   isfUnit: "gl" as const,
 }
 
-// tx factice : $executeRaw (advisory lock) + autoApplyEvent.create. Le $transaction du harnais l'exécute.
-let tx: { $executeRaw: ReturnType<typeof vi.fn>; autoApplyEvent: { create: ReturnType<typeof vi.fn> } }
+// tx factice : advisory lock + re-lecture autorité + autoApplyEvent.create. Le $transaction l'exécute.
+let tx: any
 
 describe("autoApplyService.applyExpertEditGoverned", () => {
   beforeEach(() => {
@@ -64,7 +64,13 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
       glycemia: { glucosesGl: [], hypoGlucosesGl: [], capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5, cgmThresholds: { veryLow: 0.54, low: 0.7, ok: 1.8, high: 2.5 } },
       ratchet: { hoursSinceLastAutoApply: null, cumulativeAbsPercentThisWeek: 0 },
     } as never)
-    tx = { $executeRaw: vi.fn().mockResolvedValue(1), autoApplyEvent: { create: vi.fn().mockResolvedValue({ id: 1 }) } }
+    // tx : advisory lock + re-lecture autorité (patient/approval) + event, tous exécutés SOUS le lock.
+    tx = {
+      $executeRaw: vi.fn().mockResolvedValue(1),
+      autoApplyEvent: { create: vi.fn().mockResolvedValue({ id: 1 }) },
+      patient: { findFirst: vi.fn().mockResolvedValue({ maturityLevel: "EXPERT", autoApply: true }) },
+      governanceApproval: { count: vi.fn().mockResolvedValue(1) },
+    }
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
   })
 

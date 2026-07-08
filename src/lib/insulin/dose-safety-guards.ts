@@ -30,10 +30,12 @@ export type HyperBlockReason = "insufficientData" | "ketosis" | "severeHyper" | 
 /**
  * Garde HYPER / sous-dosage (C6b) — décide si une **BAISSE d'insuline** peut s'auto-appliquer.
  *
- * **Asymétrie fail-closed positive.** La garde hypo (C6) bloque une hausse sur un signal hypo *présent*
- * (elle ne bloque pas sur l'absence de donnée — asymétrie assumée, la hausse restant bornée par C3/C7).
- * Ici, à l'inverse, l'action dangereuse EST la baisse : elle ne peut s'auto-appliquer que si des données
- * récentes **prouvent positivement** que le patient n'est pas en hyper → **plancher de suffisance**.
+ * **Symétrie fail-closed (durcissement US-2657).** `hypoWindowBlocks` bloque une hausse sur un signal hypo
+ * *présent*. La règle « **aucune donnée récente → proposition** » (une hausse exige une glycémie récente) est
+ * portée par l'**enveloppe** (`auto-apply-envelope.ts` C6 : `hypoGlucosesGl.length === 0 → FALLBACK`), pas par
+ * cette fonction pure (qui, sur tableau vide, renverrait `false`). Ici, à l'inverse, l'action dangereuse EST la
+ * baisse : elle ne peut s'auto-appliquer que si des données récentes **prouvent positivement** que le patient
+ * n'est pas en hyper → **plancher de suffisance**.
  *
  * Bloque (renvoie un motif) si l'UN de :
  *  - **plancher non atteint** (`insufficientData`) : fenêtre < `AUTO_APPLY_MIN_WINDOW_DAYS` (14 j) OU

@@ -58,12 +58,12 @@ describe("buildEnvelopeContext", () => {
 
   it("scoping : chaque requête est filtrée par patientId (+ plage physiologique CGM, + créneau anti-cliquet)", async () => {
     await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
-    // CGM : patientId + plage valueGl + fenêtre temporelle bornée [start, now].
+    // CGM : patientId + plage valueGl (gt 0, pas de plancher bas — inclut les hypos sévères) + fenêtre bornée.
     expect(prismaMock.cgmEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({
           patientId: 7,
-          valueGl: expect.objectContaining({ gte: expect.any(Number), lte: expect.any(Number) }),
+          valueGl: expect.objectContaining({ gt: expect.any(Number), lte: expect.any(Number) }),
           timestamp: expect.objectContaining({ gte: expect.any(Date), lte: NOW }),
         }),
       }),
@@ -102,5 +102,19 @@ describe("buildEnvelopeContext", () => {
     prismaMock.diabetesEvent.findMany.mockResolvedValue([] as never)
     const ctx = await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
     expect(ctx.glycemia.recentKetonesMmol).toEqual([])
+  })
+
+  it("capillaire mg/dL-only → intégré à hypoGlucosesGl (COALESCE, fail-open corrigé)", async () => {
+    // La requête capillaire (where.OR gl/mgdl) renvoie une hypo saisie en mg/dL SEUL (glycemiaGl null) ;
+    // la requête cétones (where.ketones) reste vide. hypoGlucosesGl doit contenir 45 mg/dL ÷ 100 = 0,45.
+    prismaMock.glycemiaEntry.findMany.mockImplementation((args: any) =>
+      (args?.where?.OR
+        ? Promise.resolve([{ glycemiaGl: null, glycemiaMgdl: 45 }])
+        : Promise.resolve([])) as never,
+    )
+    const ctx = await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
+    expect(ctx.glycemia.hypoGlucosesGl).toContain(0.45)
+    // C6b (glucosesGl) reste CGM-only : le capillaire n'y entre pas.
+    expect(ctx.glycemia.glucosesGl.every((v) => v === 1.2)).toBe(true)
   })
 })

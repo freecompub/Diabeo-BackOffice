@@ -164,12 +164,14 @@ export const autoApplyService = {
     const kt = await prisma.ketoneThreshold.findUnique({ where: { patientId }, select: { moderateThreshold: true } })
     const ketoneModerateThreshold = kt ? decimalToNumber(kt.moderateThreshold) : KETONE_DEFAULTS.moderateThreshold
 
-    // Triple verrou : kill-switch global × flag patient × GovernanceApproval active. Le check d'approbation
-    // à l'EXÉCUTION (pas seulement le booléen) protège d'un flag posé sans artefact et d'une ré-élévation
-    // de maturité sans nouvelle approbation (le downgrade a remis `autoApply=false`, mais défense en profondeur).
+    // Verrou : kill-switch global × flag patient × **existence** d'un artefact de gouvernance. Ce 3e facteur
+    // est une garde d'EXISTENCE, pas d'activité : `GovernanceApproval` est append-only (`enabled` toujours
+    // true, jamais révoqué — la révocation passe par le flag `autoApply`, pas par ce row). Il protège donc
+    // uniquement contre un `autoApply=true` posé SANS aucun artefact (manip DB directe / futur chemin buggé) ;
+    // la protection contre une ré-élévation de maturité vient du reset `autoApply=false` au downgrade.
     const globalOn = isAutoApplyGloballyEnabled()
-    const hasActiveApproval = (await prisma.governanceApproval.count({ where: { patientId, enabled: true } })) > 0
-    const effectiveAutoApply = globalOn && patient.autoApply && hasActiveApproval
+    const hasGovernanceApproval = (await prisma.governanceApproval.count({ where: { patientId, enabled: true } })) > 0
+    const effectiveAutoApply = globalOn && patient.autoApply && hasGovernanceApproval
     const slotKey = `${startHour}-${endHour}`
 
     const context = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays)
@@ -196,10 +198,22 @@ export const autoApplyService = {
       const lockKey = `autoapply:${patientId}:${parameterType}:${slotKey}`
       const result = await prisma.$transaction(async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}::text, 0))`
-        const fresh = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays)
-        const recheck = evaluateAutoApplyEnvelope({ ...evalInput, glycemia: fresh.glycemia, ratchet: fresh.ratchet })
+        // Re-lecture via `tx` (pas le client global) : reste dans la transaction/le lock, sans prélever de
+        // connexions supplémentaires sur le pool (anti-starvation) ; sous READ COMMITTED voit les commits concurrents.
+        const fresh = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays, tx)
+        // Re-lecture de l'AUTORITÉ sous le lock (kill-switch × flag × approbation) : une révocation
+        // (désactivation ADMIN, downgrade, kill-switch) survenue depuis la 1re évaluation avorte l'apply.
+        const [freshPatient, freshApprovals] = await Promise.all([
+          tx.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { maturityLevel: true, autoApply: true } }),
+          tx.governanceApproval.count({ where: { patientId, enabled: true } }),
+        ])
+        const freshAuthority = {
+          maturityLevel: freshPatient?.maturityLevel ?? patient.maturityLevel,
+          autoApply: isAutoApplyGloballyEnabled() && !!freshPatient?.autoApply && freshApprovals > 0,
+        }
+        const recheck = evaluateAutoApplyEnvelope({ ...evalInput, authority: freshAuthority, glycemia: fresh.glycemia, ratchet: fresh.ratchet })
         if (recheck.decision !== "AUTO_APPLY") {
-          // Une auto-application concurrente a fait basculer l'anti-cliquet (ou l'état) → on ne double pas.
+          // Anti-cliquet basculé (C7) OU autorité révoquée (C1) → on ne double pas / on n'applique pas.
           return { applied: false as const, failedCheck: recheck.decision === "FALLBACK_PROPOSAL" ? recheck.failedCheck : "C7" }
         }
         await tx.autoApplyEvent.create({ data: { patientId, parameterType, slotKey, deltaPercent } })
