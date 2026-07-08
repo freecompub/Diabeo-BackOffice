@@ -111,7 +111,7 @@ Source : `adjustmentService.createProposal` (`src/lib/services/adjustment.servic
 | **Cap patient** | Ratios ≤ `PATIENT_MAX_CHANGE_PERCENT` (10 %) ; dose fixe ≤ `FIXED_DOSE_PATIENT_MAX_DELTA_U` (1 U). |
 | **Incrément basal (US-2648b)** | Un débit basal doit être **délivrable** = multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h), sinon non programmable sur la pompe. Source unique : **`isDeliverableBasalRate()`** (`clinical-bounds.ts`), appliquée à la **proposition** (`validateProposedValue`), à l'**édition directe** (routes POST/PATCH basal) et en **garde service** (`createPumpSlot`/`updatePumpSlot`). Miroir UI : `step="0.05"`. |
 | **Anti-spam** | 1 proposition `pending` max par (patient, paramètre, créneau) — index unique partiel `adjustment_proposals_one_pending_per_slot`. |
-| **Éditabilité par mode (US-2648b)** | Capability `deriveEditCapability(role, {mode,coherent})` : `canEditDirect` (DOCTOR/ADMIN), `canPropose` (DOCTOR/NURSE/patient, ADMIN exclu) ; `editableParameters` = ISF/ICR/basal **si** `basalBolus` **ET** `coherent`, sinon **vide** (`fixedDose`/`nonInsulin`/incohérent → non éditable, fail-closed). Pilote l'UI ; n'autorise rien (RBAC = routes). Source : `src/lib/insulin/edit-capability.ts`. |
+| **Éditabilité par mode (US-2648b, +US-2657)** | Capability `deriveEditCapability(role, modeResult, maturityLevel)` : `canEditDirect` (DOCTOR/ADMIN), `canPropose` (DOCTOR/NURSE/patient, ADMIN exclu), **`canEditSlots`** (restructuration — DOCTOR/ADMIN/NURSE oui ; patient VIEWER gaté maturité, JUNIOR = non), `maturityLevel` ; `editableParameters` = ISF/ICR/basal **si** `basalBolus` **ET** `coherent`, sinon **vide** (fail-closed). Pilote l'UI ; n'autorise rien (RBAC = routes). Source : `src/lib/insulin/edit-capability.ts`. |
 | **Direction de risque (US-2649b)** | La revue médecin **surface** le sens du risque (`deriveRiskDirection`, `src/lib/insulin/risk-direction.ts`) plutôt que de le masquer : « plus d'insuline » (hausse basale/dose OU baisse ISF/ICR) = **risque hypo** (signalé en ambre) ; sens inverse = hyper. |
 | **Frontière dispositif médical** | Mode non-insuliné : **aucune posologie** médicamenteuse orale/GLP-1 proposée (`ClinicalReviewFlag` = orientation, jamais une dose). |
 | **RBAC édition / proposition (US-2648a)** | Écriture **directe** de la config insuline = **DOCTOR** (autorité clinique). NURSE / patient → **proposition** `POST /api/adjustment-proposals` (validée par un médecin). ADMIN rejeté. Rôle proposeur dérivé de la **session** ; accès via `resolvePatientId` (VIEWER→son dossier / pro→`canAccessPatient`) ; réponse sans `proposerComment`. Routes : `src/app/api/insulin-therapy/*` (DOCTOR) + `src/app/api/adjustment-proposals` (POST). **ADMIN** : rejeté à la *proposition* (pas d'identité clinique) mais conserve l'*écriture directe* — bypass PHI V1 assumé (`access-control.ts`, levé V4/F1). |
@@ -531,3 +531,20 @@ hors bornes → 400 `windowOutOfBounds`).
   `one_pending_per_slot`, frontière MDR `nonInsulin`). **Propose, n'applique jamais** (ADR #13).
 - **RBAC** : DOCTOR/NURSE (min NURSE) ; patient/VIEWER → 403. Scopé patient (anti-IDOR → 404). Audité
   (`proposal.generator.on_demand` : acteur soignant réel, fenêtre, résultat, sans PHI).
+
+### Niveau de maturité du patient (US-2657 slice A)
+
+`Patient.maturityLevel` (enum `MaturityLevel { JUNIOR, INTERMEDIATE, EXPERT }`, **défaut JUNIOR**) — niveau
+d'autonomie (ETP) **posé par le soignant**, jamais auto-déclaré. Gate les capacités du **PATIENT (rôle
+VIEWER)** dans `deriveEditCapability` :
+- **JUNIOR** → `canEditSlots = false` : le patient ne propose que des **valeurs** (pas de restructuration).
+- **INTERMEDIATE / EXPERT** → `canEditSlots = true` : + créneaux (ajouter/supprimer/déplacer les heures).
+- **DOCTOR/ADMIN** (édition directe) et **NURSE** (clinicien) : `canEditSlots = true` sans condition de maturité.
+- Fail-closed : `canEditSlots = false` si rien n'est éditable (config incohérente / mode non éditable).
+
+Pose du niveau : `PATCH /api/patients/[id]/maturity`, **exactement DOCTOR** (`requireRole("DOCTOR")` +
+exclusion explicite d'ADMIN) → un patient (VIEWER) ne peut **jamais** s'auto-élever (403). Idempotent,
+audité `UPDATE PATIENT` (metadata `from → to`, sans PHI). `patientService.setMaturityLevel`.
+
+Slices ultérieures : B (enveloppe de sécurité C1–C8/C6b), C (auto-application gouvernée + flag `autoApply`),
+D (refuser/contre-proposer).

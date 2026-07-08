@@ -19,6 +19,7 @@ import { auditService, extractRequestContext } from "./audit.service"
 import type { PatientListItemDto } from "@/lib/dto/patient"
 import { logger } from "@/lib/logger"
 import { Prisma } from "@prisma/client"
+import type { MaturityLevel } from "@prisma/client"
 import type { Pathology, Sex, PatientMedicalData, Role } from "@prisma/client"
 
 /**
@@ -413,6 +414,41 @@ function toPatientListItem(p: PatientListRow): PatientListItemDto {
  * @namespace patientService
  */
 export const patientService = {
+  /**
+   * US-2657 (slice A) — Pose le niveau de maturité (autonomie ETP) d'un patient. **Acte soignant
+   * (DOCTOR), jamais auto-déclaré par le patient** (garde RBAC à la route). Idempotent (no-op si
+   * identique). Audité `UPDATE PATIENT` (metadata `from → to`, sans PHI). Le patient doit être
+   * accessible (résolu par la route via `resolvePatientId`) ; re-scopé `deletedAt` ici (fail-closed).
+   *
+   * @param patientId Patient (déjà autorisé par la route).
+   * @param level Nouveau niveau (`JUNIOR | INTERMEDIATE | EXPERT`).
+   * @param auditUserId Soignant acteur.
+   * @param ctx Contexte requête (audit).
+   * @throws `patientNotFound` si absent/soft-deleted.
+   */
+  async setMaturityLevel(patientId: number, level: MaturityLevel, auditUserId: number, ctx?: AuditContext) {
+    return prisma.$transaction(async (tx) => {
+      const before = await tx.patient.findFirst({
+        where: { id: patientId, deletedAt: null },
+        select: { maturityLevel: true },
+      })
+      if (!before) throw new Error("patientNotFound")
+      if (before.maturityLevel === level) return { maturityLevel: level, changed: false }
+
+      await tx.patient.update({ where: { id: patientId }, data: { maturityLevel: level } })
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "PATIENT",
+        resourceId: String(patientId),
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        metadata: { patientId, kind: "maturityLevelChanged", from: before.maturityLevel, to: level },
+      })
+      return { maturityLevel: level, changed: true }
+    })
+  },
+
   /**
    * Create a new patient linked to an existing user.
    * Encrypts personal data (firstname, lastname) and logs the action.

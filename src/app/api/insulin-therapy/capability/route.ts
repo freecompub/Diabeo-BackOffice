@@ -8,7 +8,8 @@ import { auditService, extractRequestContext } from "@/lib/services/audit.servic
 /**
  * GET /api/insulin-therapy/capability?patientId= — **capability descriptor** d'édition
  * insuline (US-2648b). Pilote l'onglet Traitements de la fiche : mode de traitement +
- * `canEditDirect` / `canPropose` + `editableParameters` (+ `blockedReason`).
+ * `canEditDirect` / `canPropose` / `canEditSlots` (restructuration, gatée maturité pour le patient) +
+ * `maturityLevel` + `editableParameters` (+ `blockedReason`).
  *
  * Accès : `resolvePatientIdFromQuery` — **transport-agnostic** (ADR #21) : page =
  * `?patientId=` (+ `canAccessPatient`), drawer = en-tête `x-consultation-token` ;

@@ -15,7 +15,7 @@
  * US-2648a) — ce descripteur ne fait que **piloter l'UI** ; il n'autorise rien par
  * lui-même.
  */
-import type { Role, TreatmentMode } from "@prisma/client"
+import type { Role, TreatmentMode, MaturityLevel } from "@prisma/client"
 import type { TreatmentModeResult } from "@/lib/services/treatment-mode.service"
 
 /** Paramètres d'insulinothérapie éditables via proposition/écriture (hors `fixedDose`, non câblé). */
@@ -29,6 +29,15 @@ export type InsulinEditCapability = {
   canEditDirect: boolean
   /** Proposition autorisée pour ce rôle (DOCTOR / NURSE / patient). ADMIN exclu (non clinicien). */
   canPropose: boolean
+  /**
+   * US-2657 — édition de la STRUCTURE des créneaux (ajouter/supprimer/déplacer les heures), pas
+   * seulement la valeur. DOCTOR/ADMIN (direct) et NURSE (clinicien) : oui. **PATIENT (VIEWER) : gaté
+   * par la maturité** — JUNIOR = non (valeurs seulement), INTERMEDIATE/EXPERT = oui. Fail-closed si rien
+   * n'est éditable dans ce mode.
+   */
+  canEditSlots: boolean
+  /** US-2657 — niveau d'autonomie du patient (pour l'affichage UI ; défaut JUNIOR). */
+  maturityLevel: MaturityLevel
   /** Paramètres éditables compte tenu du mode (vide si non éditable ici). */
   editableParameters: EditableParameter[]
   /** Pourquoi l'édition est bloquée, le cas échéant (pour message UI). */
@@ -48,10 +57,23 @@ const BASAL_BOLUS_PARAMS: EditableParameter[] = [
  * @param modeResult Résultat de `resolveTreatmentMode` (mode + cohérence).
  * @returns Capacités + paramètres éditables ; `blockedReason` si rien n'est éditable.
  */
-export function deriveEditCapability(role: Role, modeResult: TreatmentModeResult): InsulinEditCapability {
+export function deriveEditCapability(
+  role: Role,
+  modeResult: TreatmentModeResult,
+  maturityLevel: MaturityLevel,
+): InsulinEditCapability {
   // Capacités liées au RÔLE (indépendantes du mode ; miroir de l'RBAC des routes US-2648a).
   const canEditDirect = role === "DOCTOR" || role === "ADMIN"
   const canPropose = role === "DOCTOR" || role === "NURSE" || role === "VIEWER"
+
+  // US-2657 — restructurer (heures/ajout/suppression) : DOCTOR/ADMIN (direct) + NURSE (clinicien) sans
+  // condition ; PATIENT (VIEWER) seulement à partir du niveau INTERMEDIATE (JUNIOR = valeurs seulement).
+  const canRestructureByRole =
+    role === "DOCTOR" || role === "ADMIN" || role === "NURSE"
+      ? true
+      : role === "VIEWER"
+        ? maturityLevel !== "JUNIOR"
+        : false
 
   // Paramètres éditables liés au MODE (fail-closed) :
   //  - basalBolus : ISF/ICR/basal, mais UNIQUEMENT si la config est cohérente ;
@@ -67,11 +89,16 @@ export function deriveEditCapability(role: Role, modeResult: TreatmentModeResult
     blockedReason = "modeNotEditable"
   }
 
+  // Fail-closed : pas de restructuration si rien n'est éditable dans ce mode (config incohérente / mode non éditable).
+  const canEditSlots = canRestructureByRole && editableParameters.length > 0
+
   return {
     mode: modeResult.mode,
     coherent: modeResult.coherent,
     canEditDirect,
     canPropose,
+    canEditSlots,
+    maturityLevel,
     editableParameters,
     blockedReason,
   }
