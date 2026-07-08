@@ -701,6 +701,7 @@ model Patient {
   autoApply     Boolean       @default(false) @map("auto_apply")
   governanceApprovals GovernanceApproval[]
   autoApplyEvents     AutoApplyEvent[]
+  slotSetProposals    SlotSetProposal[]
   /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
   /// d'affichage/filtrage UNIQUEMENT. ⚠️ NE PAS lire cette colonne brute pour une
   /// décision logique : source de vérité = `resolveTreatmentMode()` (US-2647, dérivé
@@ -821,6 +822,28 @@ model AutoApplyEvent {
 
   @@index([patientId, parameterType, appliedAt])
   @@map("auto_apply_events")
+}
+
+/// US-2657 (slice C3) — **Proposition d'ENSEMBLE de créneaux** (US-2657 Option 2). Représente une édition
+/// de groupe (valeurs ET/OU restructuration) qu'un patient EXPERT soumet mais qui ne peut PAS s'auto-appliquer
+/// (hors enveloppe ou structurelle) : elle est stockée en bloc pour revue MÉDECIN (accept en bloc →
+/// `replaceSlotSet`, ou reject). Comble l'absence de représentation « proposition de disposition entière »
+/// (l'`AdjustmentProposal` étant par-valeur). Une seule proposition d'ensemble PENDING par (patient × paramètre).
+model SlotSetProposal {
+  id               String              @id @default(uuid())
+  patientId        Int                 @map("patient_id")
+  patient          Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  parameterType    AdjustableParameter @map("parameter_type") // isf/icr (paramètres à jeu de créneaux)
+  /// Disposition proposée : `[{ startHour, endHour, value, mealLabel? }]` (JSON — pas de PHI, valeurs de config).
+  proposedSlots    Json                @map("proposed_slots")
+  status           ProposalStatus      @default(pending)
+  proposedByUserId Int                 @map("proposed_by_user_id")
+  reviewedByUserId Int?                @map("reviewed_by_user_id")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  reviewedAt       DateTime?           @map("reviewed_at")
+
+  @@index([patientId, status])
+  @@map("slot_set_proposals")
 }
 
 /// US-2603 — Dossiers patients récemment consultés par un PS (switcher de

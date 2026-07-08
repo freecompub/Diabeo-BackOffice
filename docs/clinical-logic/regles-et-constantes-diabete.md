@@ -619,3 +619,14 @@ exposent `logWithTx`) pour rendre le marqueur « auto-appliqué sans clinicien �
 L'**activation en production reste subordonnée à la DPIA signée** (`docs/compliance/dpia-auto-application.md`,
 RGPD Art. 22 + MDR). Sources : `src/lib/services/governance.service.ts`, `src/app/api/governance/auto-apply/route.ts`,
 `prisma/schema.prisma` (`GovernanceApproval`, `AutoApplyEvent`).
+
+### Proposition d'ensemble de créneaux (US-2657 slice C3)
+
+`SlotSetProposal` (`prisma/schema.prisma`, service `src/lib/services/slot-set-proposal.service.ts`) — comble
+l'absence de « proposition de disposition entière » (l'`AdjustmentProposal` est par-valeur). Une édition de
+GROUPE d'un patient EXPERT (valeurs et/ou **restructuration** : ajout/suppression/déplacement d'heures) qui ne
+peut **pas** s'auto-appliquer (hors enveloppe C1–C8, ou structurelle) est stockée **en bloc** (`proposedSlots`
+JSON) pour **revue MÉDECIN** : **accepter** applique la disposition via `replaceSlotSet` (bloc atomique) ;
+**refuser** la classe `rejected`. Invariant : **une seule proposition d'ensemble PENDING par (patient ×
+paramètre)** (une nouvelle supersède la précédente). Statuts = `ProposalStatus`. Jamais de PHI (valeurs de config).
+Sources : orchestrateur `applyExpertGroupGoverned` (C3b, appelant), routes patient (C3c) / médecin (C3d).
