@@ -604,6 +604,13 @@ paramétrable au-delà), cétones `GlycemiaEntry.ketones` ∪ `DiabetesEvent.ket
 (`AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS`), anti-cliquet depuis `AutoApplyEvent` scopé (patient × paramètre ×
 créneau). Ne décide rien (le double verrou + dispatch = harnais C2b).
 
+**Harnais de dispatch (slice C2b)** : `autoApplyService.applyExpertEditGoverned` (`src/lib/services/auto-apply.service.ts`)
+— double verrou (le kill-switch global force `autoApply = false` → enveloppe C1) → `buildEnvelopeContext` →
+`evaluateAutoApplyEnvelope` → **AUTO_APPLY** (`updateIsf/updateIcr/updatePumpSlot` anti-IDOR + `AutoApplyEvent`
+enregistré **avant** l'apply = sur-comptage anti-cliquet fail-safe + audit) / **FALLBACK_PROPOSAL**
+(`createProposal`, reason `patientRequested`, voie médecin) / **HARD_REJECT** (audit, aucune action). Périmètre :
+créneaux ISF/ICR/basal (la dose fixe suit un autre chemin). L'authz (rôle/portefeuille) est portée par la route (C3).
+
 L'**activation en production reste subordonnée à la DPIA signée** (`docs/compliance/dpia-auto-application.md`,
 RGPD Art. 22 + MDR). Sources : `src/lib/services/governance.service.ts`, `src/app/api/governance/auto-apply/route.ts`,
 `prisma/schema.prisma` (`GovernanceApproval`, `AutoApplyEvent`).
