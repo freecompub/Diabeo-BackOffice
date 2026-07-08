@@ -102,6 +102,13 @@ describe("deriveEditCapability — restructuration gatée par la maturité (US-2
     expect(c.maturityLevel).toBe("JUNIOR")
   })
 
+  it("canSetMaturity : DOCTOR oui ; NURSE/ADMIN/VIEWER non (exactement DOCTOR)", () => {
+    expect(deriveEditCapability("DOCTOR" as Role, basalBolusOk, "JUNIOR").canSetMaturity).toBe(true)
+    expect(deriveEditCapability("NURSE" as Role, basalBolusOk, "JUNIOR").canSetMaturity).toBe(false)
+    expect(deriveEditCapability("ADMIN" as Role, basalBolusOk, "JUNIOR").canSetMaturity).toBe(false)
+    expect(deriveEditCapability("VIEWER" as Role, basalBolusOk, "JUNIOR").canSetMaturity).toBe(false)
+  })
+
   it("PATIENT (VIEWER) INTERMEDIATE : restructuration autorisée", () => {
     expect(deriveEditCapability("VIEWER" as Role, basalBolusOk, "INTERMEDIATE").canEditSlots).toBe(true)
   })
