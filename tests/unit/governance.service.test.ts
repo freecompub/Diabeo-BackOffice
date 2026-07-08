@@ -7,9 +7,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 import { governanceService } from "@/lib/services/governance.service"
 
-const mkTx = (currentAutoApply: boolean | null) => ({
+const mkTx = (currentAutoApply: boolean | null, maturityLevel = "EXPERT") => ({
   patient: {
-    findFirst: vi.fn().mockResolvedValue(currentAutoApply === null ? null : { autoApply: currentAutoApply }),
+    findFirst: vi.fn().mockResolvedValue(currentAutoApply === null ? null : { autoApply: currentAutoApply, maturityLevel }),
     update: vi.fn().mockResolvedValue({}),
   },
   governanceApproval: { create: vi.fn().mockResolvedValue({ id: 1 }) },
@@ -38,6 +38,20 @@ describe("governanceService.setAutoApply", () => {
     await expect(governanceService.setAutoApply(7, true, { reference: "  " }, 3)).rejects.toThrow("approvalRequired")
   })
 
+  it("activation SANS dpiaRef → dpiaRequired (DPIA = dépendance dure MDR/RGPD Art. 35)", async () => {
+    const tx = mkTx(false)
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
+    await expect(governanceService.setAutoApply(7, true, { reference: "GOV-2026-12" }, 3)).rejects.toThrow("dpiaRequired")
+  })
+
+  it("activation d'un patient NON EXPERT → maturityNotExpert (fail-closed)", async () => {
+    const tx = mkTx(false, "INTERMEDIATE")
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
+    await expect(
+      governanceService.setAutoApply(7, true, { reference: "GOV-2026-12", dpiaRef: "DPIA-AA" }, 3),
+    ).rejects.toThrow("maturityNotExpert")
+  })
+
   it("désactivation : pose le flag false SANS approbation", async () => {
     const tx = mkTx(true)
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
@@ -50,7 +64,7 @@ describe("governanceService.setAutoApply", () => {
   it("re-approbation d'un patient déjà ON : trace l'approbation + audit, SANS update de flag", async () => {
     const tx = mkTx(true)
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
-    const res = await governanceService.setAutoApply(7, true, { reference: "GOV-REDECISION" }, 3)
+    const res = await governanceService.setAutoApply(7, true, { reference: "GOV-REDECISION", dpiaRef: "DPIA-AA" }, 3)
     expect(res).toEqual({ autoApply: true, changed: false })
     expect(tx.governanceApproval.create).toHaveBeenCalled() // la re-décision est tracée
     expect(tx.auditLog.create).toHaveBeenCalled()

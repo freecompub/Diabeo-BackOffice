@@ -12,6 +12,7 @@
 import { randomBytes, randomUUID } from "crypto"
 import { hash as bcryptHash } from "bcryptjs"
 import { prisma } from "@/lib/db/client"
+import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
 import { encrypt, decrypt } from "@/lib/crypto/health-data"
 import { encryptField } from "@/lib/crypto/fields"
 import { hmacField, hmacEmail } from "@/lib/crypto/hmac"
@@ -430,22 +431,49 @@ export const patientService = {
     return prisma.$transaction(async (tx) => {
       const before = await tx.patient.findFirst({
         where: { id: patientId, deletedAt: null },
-        select: { maturityLevel: true },
+        select: { maturityLevel: true, autoApply: true },
       })
       if (!before) throw new Error("patientNotFound")
-      if (before.maturityLevel === level) return { maturityLevel: level, changed: false }
 
-      await tx.patient.update({ where: { id: patientId }, data: { maturityLevel: level } })
+      // US-2657 (durcissement) — sortir du niveau EXPERT **neutralise `autoApply`** dans la MÊME
+      // transaction (fail-safe) : une auto-application ne survit jamais à la perte du niveau EXPERT, et
+      // une ré-élévation ultérieure exige une NOUVELLE approbation de gouvernance (ADMIN + dpiaRef) — sans
+      // ça, un cycle EXPERT→JUNIOR→EXPERT ré-activerait silencieusement l'automatisation sur l'ancienne
+      // approbation. (Défense en profondeur ; le harnais re-vérifie aussi une GovernanceApproval active.)
+      const mustClearAutoApply = level !== "EXPERT" && before.autoApply
+      const maturityChanged = before.maturityLevel !== level
+      if (!maturityChanged && !mustClearAutoApply) return { maturityLevel: level, changed: false, autoApplyCleared: false }
+
+      await tx.patient.update({
+        where: { id: patientId },
+        data: { maturityLevel: level, ...(mustClearAutoApply ? { autoApply: false } : {}) },
+      })
       await auditService.logWithTx(tx, {
         userId: auditUserId,
-        action: "UPDATE",
+        action: "MATURITY_LEVEL_CHANGED",
         resource: "PATIENT",
         resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
-        metadata: { patientId, kind: "maturityLevelChanged", from: before.maturityLevel, to: level },
+        requestId: ctx?.requestId,
+        metadata: { patientId, from: before.maturityLevel, to: level, ...(mustClearAutoApply ? { autoApplyCleared: true } : {}) },
       })
-      return { maturityLevel: level, changed: true }
+      // Émettre AUSSI l'action dédiée du flag : une requête forensique « historique de `autoApply` » filtrant
+      // sur `AUTO_APPLY_FLAG_CHANGED` doit voir cette désactivation-par-downgrade (voie d'intervention humaine
+      // Art. 22), pas seulement `MATURITY_LEVEL_CHANGED.metadata.autoApplyCleared`.
+      if (mustClearAutoApply) {
+        await auditService.logWithTx(tx, {
+          userId: auditUserId,
+          action: "AUTO_APPLY_FLAG_CHANGED",
+          resource: "PATIENT",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          requestId: ctx?.requestId,
+          metadata: { patientId, from: true, to: false, reason: "maturityDowngrade" },
+        })
+      }
+      return { maturityLevel: level, changed: maturityChanged, autoApplyCleared: mustClearAutoApply }
     })
   },
 
@@ -604,21 +632,14 @@ export const patientService = {
           } catch (e) {
             if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
               referentSkippedReason = "member_deleted_during_creation"
-            } else if (
-              e instanceof Prisma.PrismaClientKnownRequestError &&
-              e.code === "P2002"
-            ) {
+            } else if (isUniqueViolationOn(e, "patient_referent_patient_id")) {
               // code-reviewer/prisma H-1 — `PatientReferent.patientId` est @unique.
               // Une race (double POST concurrent pour le même patient) lèverait
               // P2002 sur `patient_referent_patient_id_key`. Sans ce catch, le
               // P2002 sortait de la TX et faisait rollback patient + user (500).
               // Idempotent : le référent existe déjà → on ne rollback pas, on
-              // récupère son id pour continuer normalement.
-              const target = e.meta?.target
-              const hitsPatientUnique = Array.isArray(target)
-                ? target.some((t) => String(t).includes("patient_id"))
-                : String(target ?? "").includes("patient_id")
-              if (!hitsPatientUnique) throw e
+              // récupère son id pour continuer normalement. `isUniqueViolationOn`
+              // lit la forme Prisma 7 + adapter-pg (meta.target undefined en prod).
               const existing = await tx.patientReferent.findUnique({
                 where: { patientId: patient.id },
                 select: { id: true },
@@ -728,14 +749,9 @@ export const patientService = {
       // Only map P2002 when it actually hits the email_hmac constraint — any
       // other unique conflict (e.g. an astronomically unlikely VerificationToken
       // UUID collision) must surface as the original error, not a misleading
-      // "emailExists" (pattern aligned with ins.service.ts meta.target check).
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
-        const target = e.meta?.target
-        const hitsEmailHmac = Array.isArray(target)
-          ? target.some((t) => String(t).includes("email_hmac"))
-          : String(target ?? "").includes("email_hmac")
-        if (hitsEmailHmac) throw new PatientCreationError("emailExists")
-      }
+      // "emailExists". `isUniqueViolationOn` lit la forme Prisma 7 + adapter-pg
+      // (meta.target est undefined en prod → l'ancien check ne matchait jamais).
+      if (isUniqueViolationOn(e, "email_hmac")) throw new PatientCreationError("emailExists")
       throw e
     }
   },

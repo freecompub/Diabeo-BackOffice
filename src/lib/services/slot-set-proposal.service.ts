@@ -106,9 +106,11 @@ export const slotSetProposalService = {
         })
         // « Plus de par-valeur » : une soumission groupée supersède aussi les AdjustmentProposal pending
         // du même paramètre (évite des propositions concurrentes/contradictoires côté médecin).
+        // `reviewedBy: null` — la supersession est programmatique, PAS une revue médecin (le patient
+        // soumissionnaire n'est pas un reviewer ; éviter un `reviewedBy` trompeur en forensic).
         await tx.adjustmentProposal.updateMany({
           where: { patientId, parameterType, status: "pending" },
-          data: { status: "superseded", reviewedAt: new Date(), reviewedBy: proposedByUserId },
+          data: { status: "superseded", reviewedAt: new Date(), reviewedBy: null },
         })
         const proposal = await tx.slotSetProposal.create({
           data: { patientId, parameterType, proposedSlots: slots, proposedByUserId, status: "pending" },

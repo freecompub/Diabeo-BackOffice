@@ -13,7 +13,7 @@ function base(over: Partial<EnvelopeInput> = {}): EnvelopeInput {
   return {
     authority: { maturityLevel: "EXPERT", autoApply: true },
     change: { parameterType: "insulinSensitivityFactor", changeKind: "VALUE", currentValue: 0.5, proposedValue: 0.48, isfUnit: "gl" },
-    glycemia: { glucosesGl: Array(100).fill(1.2), capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 },
+    glycemia: { glucosesGl: Array(100).fill(1.2), hypoGlucosesGl: Array(100).fill(1.2), capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 },
     ratchet: { hoursSinceLastAutoApply: null, cumulativeAbsPercentThisWeek: 0 },
     ...over,
   }
@@ -65,19 +65,35 @@ describe("evaluateAutoApplyEnvelope", () => {
     expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C5" })
   })
 
-  it("C6 : HAUSSE d'insuline bloquée si hypo sévère récente → proposition", () => {
-    const inp = base({ glycemia: { glucosesGl: [1.2, 0.5, 1.4], capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } })
+  it("C6 : HAUSSE d'insuline bloquée si hypo sévère récente (capillaire incluse) → proposition", () => {
+    // La garde hypo lit `hypoGlucosesGl` (CGM ∪ capillaire) : une hypo sévère au doigt suffit.
+    const inp = base({ glycemia: { glucosesGl: Array(100).fill(1.2), hypoGlucosesGl: [1.2, 0.5, 1.4], capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } })
+    expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C6" })
+  })
+  it("C6 : HAUSSE sans AUCUNE donnée récente (hypoGlucosesGl vide) → proposition (fail-closed, US-2657)", () => {
+    const inp = base({ glycemia: { glucosesGl: [], hypoGlucosesGl: [], capturePercent: 0, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } })
     expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C6" })
   })
 
   it("C6b : BAISSE d'insuline bloquée sur données insuffisantes (BGM/fenêtre courte) → proposition", () => {
     // ISF 0,50 → 0,52 (baisse d'insuline, direction hyper) + fenêtre 5 j.
-    const inp = merge({ glycemia: { glucosesGl: Array(100).fill(1.2), capturePercent: 80, windowDays: 5, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } }, { proposedValue: 0.52 })
+    const inp = merge({ glycemia: { glucosesGl: Array(100).fill(1.2), hypoGlucosesGl: Array(100).fill(1.2), capturePercent: 80, windowDays: 5, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } }, { proposedValue: 0.52 })
     expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C6b" })
   })
   it("C6b : BAISSE bloquée si hyper soutenue → proposition", () => {
     const g = [...Array(40).fill(2.0), ...Array(60).fill(1.2)] // TAR>180 = 40 % > 30 %
-    const inp = merge({ glycemia: { glucosesGl: g, capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } }, { proposedValue: 0.52 })
+    const inp = merge({ glycemia: { glucosesGl: g, hypoGlucosesGl: g, capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5 } }, { proposedValue: 0.52 })
+    expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C6b" })
+  })
+  it("C6b pathology-aware : glycémies ~1,55 (cible DG 1,40) → hyper soutenue détectée → proposition", () => {
+    // Seuils DG (ok=1,40, high=2,00) : des glycémies à 1,55 g/L constantes tombent dans la bande « elevated »
+    // → TAR>cible = 100 % > 30 % → C6b. Avec les seuils adultes (ok=1,80) elles seraient « in range » (bug corrigé).
+    const g = Array(100).fill(1.55)
+    const gd = { veryLow: 0.6, low: 0.63, ok: 1.4, high: 2.0 }
+    const inp = merge(
+      { glycemia: { glucosesGl: g, hypoGlucosesGl: g, capturePercent: 80, windowDays: 14, recentKetonesMmol: [], ketoneModerateThreshold: 1.5, cgmThresholds: gd } },
+      { proposedValue: 0.52 },
+    )
     expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C6b" })
   })
   it("C6b : BAISSE AUTORISÉE si bien contrôlé + fenêtre suffisante → AUTO_APPLY", () => {

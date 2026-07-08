@@ -121,6 +121,13 @@ export async function deleteUserAccount(
       // Adjustment proposals
       await tx.adjustmentProposal.deleteMany({ where: { patientId } })
 
+      // US-2657 — Auto-application gouvernée. Le patient est soft-deleted (UPDATE) → aucune CASCADE FK
+      // ne s'enclenche ; purge explicite requise (RGPD Art. 17). Les triggers d'immutabilité de
+      // `governance_approvals`/`auto_apply_events` bloquent l'UPDATE, PAS le DELETE (prévu pour l'effacement).
+      await tx.slotSetProposal.deleteMany({ where: { patientId } })
+      await tx.autoApplyEvent.deleteMany({ where: { patientId } })
+      await tx.governanceApproval.deleteMany({ where: { patientId } })
+
       // Bolus logs
       await tx.bolusCalculationLog.deleteMany({ where: { patientId } })
 

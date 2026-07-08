@@ -38,6 +38,7 @@
 
 import { Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
+import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
 import { auditService } from "./audit.service"
 import { fcmService } from "./fcm.service"
@@ -479,16 +480,10 @@ async function safeCreateAlert<T>(
   try {
     return await fn()
   } catch (err) {
-    if (
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002"
-    ) {
-      const target = err.meta?.target
-      const targetStr = Array.isArray(target) ? target.join(",") : String(target ?? "")
-      if (targetStr.includes(LIVE_ALERT_UNIQUE_INDEX)) {
-        return null
-      }
-    }
+    // Violation de `emergency_alerts_one_live_per_type` → alerte live déjà présente : on avale (null).
+    // `isUniqueViolationOn` lit la forme Prisma 7 + adapter-pg (`meta.target` est undefined ; le nom de
+    // contrainte vit dans `meta.driverAdapterError.cause`) — cf. src/lib/db/prisma-errors.ts.
+    if (isUniqueViolationOn(err, LIVE_ALERT_UNIQUE_INDEX)) return null
     throw err
   }
 }

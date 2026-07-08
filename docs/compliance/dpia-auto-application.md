@@ -3,11 +3,15 @@
 **Statut** : Brouillon — **à signer DPO + RSSI + responsable qualité/réglementaire (MDR) avant toute
 activation en production**. Tant que non signée : `AUTO_APPLY_GLOBALLY_ENABLED` = OFF, tous les
 `Patient.autoApply` = OFF.
-**Périmètre (slice C1 — socle gouvernance & persistance, additif)** : champ `Patient.autoApply` (OFF par
-défaut), modèles `GovernanceApproval` et `AutoApplyEvent`, service `governanceService.setAutoApply`
-(ADMIN + approbation), route `PATCH /api/governance/auto-apply`, kill-switch global
-`AUTO_APPLY_GLOBALLY_ENABLED` (`src/lib/env.ts`). **Le harnais qui applique effectivement n'est PAS livré
-en C1** (slices C2/C3) ; l'auto-application reste **inopérante** tant que les deux verrous ne sont pas ON.
+**Périmètre (slices A→C2b + durcissement)** : champ `Patient.autoApply` (OFF par défaut) + `maturityLevel`,
+modèles `GovernanceApproval` et `AutoApplyEvent`, service `governanceService.setAutoApply` (ADMIN + `reference`
++ `dpiaRef` obligatoires + `maturityLevel === EXPERT`), route `PATCH /api/governance/auto-apply`, kill-switch
+global `AUTO_APPLY_GLOBALLY_ENABLED` (`src/lib/env.ts`). **Le harnais d'application `applyExpertEditGoverned`
+EST livré** (`src/lib/services/auto-apply.service.ts` : enveloppe C1–C8 + application `updateIsf/Icr/PumpSlot`).
+⚠️ **Il n'a pas encore d'appelant** (l'orchestrateur groupé C3b n'est pas livré) et, même une fois câblé, reste
+**inopérant en production tant que le kill-switch global est OFF** (défaut) — c'est aujourd'hui le seul rempart
+d'exécution restant, avec `Patient.autoApply` OFF et cette DPIA non signée. L'activation est donc **strictement
+subordonnée à la signature ci-dessus**.
 **Lié à** : `docs/UserStory/insulinotherapie-edition/US-2657-maturite-autonomie-graduee.md`,
 `docs/clinical-logic/regles-et-constantes-diabete.md` (enveloppe C1–C8 + C6b),
 `src/lib/insulin/auto-apply-envelope.ts`.
@@ -26,9 +30,14 @@ l'autonomie réelle d'un patient expert tout en traçant chaque décision.
 - **RGPD Art. 22 — décision individuelle automatisée.** L'auto-application est une décision automatisée
   produisant des effets sur la personne. Garanties : (a) **périmètre volontaire et gradué** (opt-in
   gouvernance + niveau EXPERT posé par un médecin) ; (b) **droit à l'intervention humaine préservé** — le
-  patient et son médecin peuvent à tout moment revenir en voie proposition (désactivation du flag, toujours
-  permise) ; (c) **transparence & traçabilité** — chaque auto-application est auditée (`before → after`,
-  paramètre, créneau, décision d'enveloppe) et journalisée (`AutoApplyEvent`).
+  retour en voie proposition est possible à tout moment par plusieurs voies fail-safe : le **médecin**
+  (retrait du niveau EXPERT via `PATCH /api/patients/maturity`, qui **remet `autoApply = false`** dans la
+  même transaction) ; la **gouvernance plateforme** (`ADMIN`, désactivation du flag, toujours permise sans
+  approbation) ; le **kill-switch global** (arrêt immédiat, tous patients). *(Il n'existe pas de voie
+  d'auto-désactivation par le patient lui-même : le patient passe par son médecin ; l'action de gouvernance
+  est plateforme, cf. ADR #22.)* ; (c) **transparence & traçabilité** — chaque auto-application est auditée
+  via une action dédiée (`AUTO_APPLIED_SETTING` / `AUTO_APPLY_FALLBACK` / `AUTO_APPLY_REJECTED`,
+  `before → after`, paramètre, créneau) et journalisée (`AutoApplyEvent`).
 - **MDR — frontière dispositif médical.** Faire varier une dose sans clinicien dans la boucle relève du
   marquage. **L'activation en production est une décision de gouvernance qualité/réglementaire, jamais une
   décision de développement.** Ce document et le code n'**autorisent** rien : ils **outillent** une bascule
@@ -36,12 +45,15 @@ l'autonomie réelle d'un patient expert tout en traçant chaque décision.
 
 ## 3. Garde-fous (défense en profondeur)
 
-1. **Double verrou OFF par défaut** : kill-switch **global** `AUTO_APPLY_GLOBALLY_ENABLED` (env, fail-safe
-   sur valeur absente/malformée) **ET** flag **par patient** `Patient.autoApply`. Le harnais n'auto-applique
-   que si les **deux** sont ON.
-2. **Activation gouvernée** : poser `autoApply = true` exige le rôle **ADMIN** **et** un artefact
-   `GovernanceApproval` (référence de décision + lien DPIA) créé dans la même transaction. **Désactivation
-   toujours permise, sans approbation** (kill direction fail-safe).
+1. **Triple verrou OFF par défaut** : kill-switch **global** `AUTO_APPLY_GLOBALLY_ENABLED` (env, fail-safe
+   sur valeur absente/malformée) **ET** flag **par patient** `Patient.autoApply` **ET** existence d'une
+   `GovernanceApproval` active (re-vérifiée **à l'exécution** par le harnais, pas seulement le booléen). Le
+   harnais n'auto-applique que si les **trois** sont réunis.
+2. **Activation gouvernée (plateforme)** : poser `autoApply = true` exige le rôle **ADMIN** (autorité
+   gouvernance plateforme — DPO/RSSI/MDR, cf. ADR #22), **`maturityLevel === EXPERT`**, **et** un artefact
+   `GovernanceApproval` avec **`reference` ET `dpiaRef` obligatoires** (fail-closed : sans DPIA référencée,
+   la bascule est refusée). Un **downgrade** de maturité remet `autoApply = false`. **Désactivation toujours
+   permise, sans approbation** (kill direction fail-safe).
 3. **Enveloppe de sécurité C1–C8 + C6b** (slice B, validée medical) : type de changement (valeur seule),
    amplitude (≤ 10 % / ≤ 1 U), bornes cliniques absolues (sinon rejet dur), délivrabilité, garde hypo (hausse),
    **garde hyper/cétose asymétrique** (baisse — plancher de suffisance de données, cétonémie, TAR), anti-cliquet

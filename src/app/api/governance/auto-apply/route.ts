@@ -19,6 +19,11 @@ const bodySchema = z
     message: "reference required to enable",
     path: ["reference"],
   })
+  // DPIA = dépendance dure (MDR / RGPD Art. 35) : obligatoire pour activer, pas seulement `reference`.
+  .refine((b) => !b.enabled || (b.dpiaRef !== undefined && b.dpiaRef.length > 0), {
+    message: "dpiaRef required to enable",
+    path: ["dpiaRef"],
+  })
 
 /**
  * PATCH — pose `Patient.autoApply` (frontière MDR). **Réservé au rôle ADMIN** (acte de gouvernance).
@@ -44,15 +49,17 @@ export async function PATCH(req: NextRequest) {
       const result = await governanceService.setAutoApply(
         patientId,
         parsed.data.enabled,
-        parsed.data.enabled ? { reference: parsed.data.reference!, dpiaRef: parsed.data.dpiaRef ?? null } : null,
+        parsed.data.enabled ? { reference: parsed.data.reference!, dpiaRef: parsed.data.dpiaRef! } : null,
         user.id,
         extractRequestContext(req),
       )
       return NextResponse.json(result)
     } catch (e) {
-      if (e instanceof Error && (e.message === "patientNotFound" || e.message === "approvalRequired")) {
-        const status = e.message === "patientNotFound" ? 404 : 400
-        return NextResponse.json({ error: e.message }, { status })
+      if (
+        e instanceof Error &&
+        ["patientNotFound", "approvalRequired", "dpiaRequired", "maturityNotExpert"].includes(e.message)
+      ) {
+        return NextResponse.json({ error: e.message }, { status: e.message === "patientNotFound" ? 404 : 400 })
       }
       throw e
     }

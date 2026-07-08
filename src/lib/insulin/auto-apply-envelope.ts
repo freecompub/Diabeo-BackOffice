@@ -15,6 +15,7 @@
  */
 import type { AdjustableParameter, MaturityLevel } from "@prisma/client"
 import { CLINICAL_BOUNDS, isDeliverableBasalRate, isDeliverableFixedDose } from "@/lib/clinical-bounds"
+import type { CgmThresholds } from "@/lib/statistics"
 import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 import { hypoWindowBlocks, hyperDecreaseBlockReason } from "@/lib/insulin/dose-safety-guards"
 
@@ -30,12 +31,21 @@ export type EnvelopeInput = {
     isfUnit?: "gl" | "mgdl"
   }
   glycemia: {
+    /** Relevés **CGM** de la fenêtre (g/L) — base de C6b (avec `capturePercent`, plancher de suffisance). */
     glucosesGl: number[]
+    /**
+     * Relevés glycémiques pour la garde HYPO C6 = **CGM ∪ capillaire** (`GlycemiaEntry`) sur la fenêtre.
+     * Distinct de `glucosesGl` : un patient BGM sans capteur doit quand même voir ses hypos capillaires
+     * bloquer une hausse d'insuline (US-2657 durcissement). Vide → aucune donnée récente → pas d'auto-hausse.
+     */
+    hypoGlucosesGl: number[]
     capturePercent: number
     windowDays: number
     /** Cétonémies (mmol/L) déjà filtrées à `AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS`. */
     recentKetonesMmol: number[]
     ketoneModerateThreshold: number
+    /** Seuils CGM pathology-aware (cible resserrée grossesse/DG) pour C6b. Défaut adulte si absent. */
+    cgmThresholds?: CgmThresholds
   }
   ratchet: {
     /** Heures depuis la dernière auto-application sur (patient × param × créneau). `null` = jamais. */
@@ -119,10 +129,13 @@ export function evaluateAutoApplyEnvelope(input: EnvelopeInput): EnvelopeDecisio
     // Direction de risque (garde hypo/hyper).
     const direction = deriveRiskDirection(param, currentValue, proposedValue)
 
-    // C6 — garde HYPO : une HAUSSE d'insuline est bloquée si signal hypo récent.
+    // C6 — garde HYPO : une HAUSSE d'insuline est bloquée si signal hypo récent (CGM ∪ capillaire).
     if (direction === "hypo") {
-      if (!Array.isArray(glycemia?.glucosesGl)) return FALLBACK("C8")
-      if (hypoWindowBlocks(glycemia.glucosesGl)) return FALLBACK("C6")
+      if (!Array.isArray(glycemia?.hypoGlucosesGl)) return FALLBACK("C8")
+      // US-2657 (durcissement) — une hausse exige une donnée récente PRÉSENTE : sans aucune glycémie
+      // (CGM ni capillaire) sur la fenêtre, on ne peut pas exclure une hypo → fail-closed → proposition.
+      if (glycemia.hypoGlucosesGl.length === 0) return FALLBACK("C6")
+      if (hypoWindowBlocks(glycemia.hypoGlucosesGl)) return FALLBACK("C6")
     }
 
     // C6b — garde HYPER/sous-dosage : une BAISSE d'insuline exige un plancher de données + pas de signal hyper/cétose.
@@ -142,6 +155,7 @@ export function evaluateAutoApplyEnvelope(input: EnvelopeInput): EnvelopeDecisio
         glycemia.windowDays,
         glycemia.recentKetonesMmol,
         glycemia.ketoneModerateThreshold,
+        glycemia.cgmThresholds, // pathology-aware (grossesse/DG) ; défaut adulte si absent
       )
       if (blocked !== null) return FALLBACK("C6b")
     }

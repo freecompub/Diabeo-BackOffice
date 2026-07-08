@@ -7,7 +7,7 @@
  */
 import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
-import { computeTir, DEFAULT_CGM_THRESHOLDS } from "@/lib/statistics"
+import { computeTir, DEFAULT_CGM_THRESHOLDS, type CgmThresholds } from "@/lib/statistics"
 
 const SEVERE_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO / 100
 const LEVEL1_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.TARGET_LOW / 100
@@ -30,10 +30,12 @@ export type HyperBlockReason = "insufficientData" | "ketosis" | "severeHyper" | 
 /**
  * Garde HYPER / sous-dosage (C6b) — décide si une **BAISSE d'insuline** peut s'auto-appliquer.
  *
- * **Asymétrie fail-closed positive.** La garde hypo (C6) bloque une hausse sur un signal hypo *présent*
- * (elle ne bloque pas sur l'absence de donnée — asymétrie assumée, la hausse restant bornée par C3/C7).
- * Ici, à l'inverse, l'action dangereuse EST la baisse : elle ne peut s'auto-appliquer que si des données
- * récentes **prouvent positivement** que le patient n'est pas en hyper → **plancher de suffisance**.
+ * **Symétrie fail-closed (durcissement US-2657).** `hypoWindowBlocks` bloque une hausse sur un signal hypo
+ * *présent*. La règle « **aucune donnée récente → proposition** » (une hausse exige une glycémie récente) est
+ * portée par l'**enveloppe** (`auto-apply-envelope.ts` C6 : `hypoGlucosesGl.length === 0 → FALLBACK`), pas par
+ * cette fonction pure (qui, sur tableau vide, renverrait `false`). Ici, à l'inverse, l'action dangereuse EST la
+ * baisse : elle ne peut s'auto-appliquer que si des données récentes **prouvent positivement** que le patient
+ * n'est pas en hyper → **plancher de suffisance**.
  *
  * Bloque (renvoie un motif) si l'UN de :
  *  - **plancher non atteint** (`insufficientData`) : fenêtre < `AUTO_APPLY_MIN_WINDOW_DAYS` (14 j) OU
@@ -49,6 +51,9 @@ export type HyperBlockReason = "insufficientData" | "ketosis" | "severeHyper" | 
  * @param windowDays Nombre de jours de la fenêtre.
  * @param recentKetonesMmol Cétonémies (mmol/L) déjà filtrées à `AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS`.
  * @param ketoneModerateThreshold Seuil modéré cétone du patient (mmol/L ; défaut 1,5 côté appelant).
+ * @param thresholds Seuils CGM **pathology-aware** (cible resserrée grossesse/DG : `ok=1,40` vs `1,80`).
+ *   Défaut adulte (`DEFAULT_CGM_THRESHOLDS`) — l'appelant (contexte serveur) passe `getCgmDefaults(pathologie)`
+ *   pour que la détection d'hyper soutenue soit correcte en grossesse/DG (US-2657 durcissement).
  */
 export function hyperDecreaseBlockReason(
   glucosesGl: number[],
@@ -56,6 +61,7 @@ export function hyperDecreaseBlockReason(
   windowDays: number,
   recentKetonesMmol: number[],
   ketoneModerateThreshold: number,
+  thresholds: CgmThresholds = DEFAULT_CGM_THRESHOLDS,
 ): HyperBlockReason | null {
   // Relevés valides seulement (un NaN fausserait computeTir vers la bande hyper).
   const validGl = glucosesGl.filter((g) => Number.isFinite(g))
@@ -68,7 +74,7 @@ export function hyperDecreaseBlockReason(
   }
   if (recentKetonesMmol.some((k) => Number.isFinite(k) && k >= ketoneModerateThreshold)) return "ketosis"
 
-  const tir = computeTir(validGl, DEFAULT_CGM_THRESHOLDS)
+  const tir = computeTir(validGl, thresholds)
   if (tir.hyper > CLINICAL_BOUNDS.AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT) return "severeHyper"
   if (tir.elevated + tir.hyper > CLINICAL_BOUNDS.AUTO_APPLY_TAR_BLOCK_PERCENT) return "sustainedHyper"
   return null

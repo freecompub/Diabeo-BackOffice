@@ -802,7 +802,8 @@ model GovernanceApproval {
   reference    String   // référence de la décision de gouvernance
   dpiaRef      String?  @map("dpia_ref") // lien DPIA
   enabled      Boolean  @default(true) // l'approbation autorise l'activation
-  createdAt    DateTime @default(now()) @map("created_at")
+  // Timestamptz — cohérent avec le reste des tables de l'epic (tri/affichage stables cross-timezone).
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
 
   @@index([patientId])
   @@map("governance_approvals")
@@ -816,11 +817,14 @@ model AutoApplyEvent {
   patientId     Int               @map("patient_id")
   patient       Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
   parameterType AdjustableParameter @map("parameter_type")
-  slotKey       String            @map("slot_key") // identifie le créneau (ex. "22-06")
+  slotKey       String            @map("slot_key") // identifie le créneau, forme `"${startHour}-${endHour}"` (ex. "22-6")
   deltaPercent  Float             @map("delta_percent") // |Δ%| appliqué (anti-cliquet)
-  appliedAt     DateTime          @default(now()) @map("applied_at")
+  // Timestamptz — `hoursSinceLastAutoApply` (garde anti-cliquet C7) doit être stable quel que soit le TZ Node.
+  appliedAt     DateTime          @default(now()) @map("applied_at") @db.Timestamptz()
 
-  @@index([patientId, parameterType, appliedAt])
+  // `slotKey` en 3e position d'égalité : couvre le hot path anti-cliquet C7 (findFirst/findMany scopés
+  // patient × paramètre × créneau, borne temporelle en dernier). US-2657 durcissement.
+  @@index([patientId, parameterType, slotKey, appliedAt])
   @@map("auto_apply_events")
 }
 
