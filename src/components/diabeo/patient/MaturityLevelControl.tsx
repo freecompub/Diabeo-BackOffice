@@ -2,15 +2,18 @@
 
 /**
  * US-2657 (slice A2) — Contrôle du **niveau de maturité (autonomie)** du patient, dans l'onglet
- * Traitements de la fiche. Un DOCTOR (capability `canSetMaturity`) choisit le cran ; tout autre rôle
- * voit un **badge lecture seule**. Le changement passe par le transport de mutation injecté
+ * Traitements de la fiche. Un DOCTOR (capability `canSetMaturity`) choisit le cran via un `<select>`
+ * natif (single-select accessible : clavier, lecteur d'écran, pas de « couleur seule ») ; tout autre
+ * rôle voit un **badge lecture seule**. Le changement passe par le transport de mutation injecté
  * (`PATCH /api/patients/maturity`, `patientId` ajouté par l'adaptateur, anti-énumération) après une
  * **confirmation** nommant la capacité accordée/retirée.
  *
- * Masqué (badge seul) si aucun transport n'est injecté (fail-closed). L'autorité reste la route
- * (`requireRole("DOCTOR")` exact) — ce contrôle ne fait que refléter/piloter l'UI.
+ * Le `<select>` reste **contrôlé sur le cran courant** jusqu'à confirmation (choisir une valeur ouvre
+ * le dialogue mais ne change rien tant que « Confirmer » n'est pas cliqué → annuler = no-op visuel).
+ * Après succès, mise à jour **optimiste** du cran affiché (le fetch capability est monté une fois et
+ * ne se rafraîchit pas via `router.refresh()`). Masqué (badge seul) sans transport (fail-closed).
  */
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import { useRouter } from "next/navigation"
 import type { MaturityLevel } from "@prisma/client"
@@ -24,6 +27,7 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { usePatientRecordContext } from "@/components/diabeo/patient/PatientRecordContext"
+import { maturityChangeMessageKey } from "@/components/diabeo/patient/maturity-change"
 
 const LEVELS: readonly MaturityLevel[] = ["JUNIOR", "INTERMEDIATE", "EXPERT"] as const
 const LEVEL_KEY: Record<MaturityLevel, string> = {
@@ -31,7 +35,6 @@ const LEVEL_KEY: Record<MaturityLevel, string> = {
   INTERMEDIATE: "maturityIntermediate",
   EXPERT: "maturityExpert",
 }
-const RANK: Record<MaturityLevel, number> = { JUNIOR: 0, INTERMEDIATE: 1, EXPERT: 2 }
 
 type Feedback = { kind: "error"; text: string } | null
 
@@ -47,26 +50,24 @@ export function MaturityLevelControl({
   const ctx = usePatientRecordContext()
   const mutate = ctx?.mutate
 
+  // Cran affiché : état local (mise à jour optimiste après succès ; le fetch capability ne se
+  // rafraîchit pas seul). Synchronisé si la prop change (rafraîchissement externe).
+  const [level, setLevel] = useState<MaturityLevel>(maturityLevel)
+  useEffect(() => setLevel(maturityLevel), [maturityLevel])
+
   const [target, setTarget] = useState<MaturityLevel | null>(null)
   const [pending, setPending] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
+  const [announce, setAnnounce] = useState("")
 
   // Lecture seule : rôle non autorisé (NURSE/VIEWER) ou pas de transport (fail-closed).
   if (!canSet || !mutate) {
     return (
       <p className="text-sm">
         <span className="text-muted-foreground">{t("maturityTitle")} : </span>
-        <span className="font-medium">{t(LEVEL_KEY[maturityLevel])}</span>
+        <span className="font-medium">{t(LEVEL_KEY[level])}</span>
       </p>
     )
-  }
-
-  // Message de confirmation : nomme la capacité accordée (montée) ou retirée (descente).
-  const confirmMessage = (to: MaturityLevel): string => {
-    if (RANK[to] > RANK[maturityLevel]) {
-      return to === "EXPERT" ? t("maturityGrantExpert") : t("maturityGrantSlots")
-    }
-    return t("maturityDowngradeNote")
   }
 
   const apply = async () => {
@@ -76,6 +77,8 @@ export function MaturityLevelControl({
     try {
       const res = await mutate("/api/patients/maturity", { level: target }, { method: "PATCH" })
       if (res.ok) {
+        setLevel(target) // mise à jour optimiste du cran affiché
+        setAnnounce(t("maturitySuccess", { level: t(LEVEL_KEY[target]) }))
         setTarget(null)
         void Promise.resolve().then(() => router.refresh())
       } else {
@@ -90,32 +93,34 @@ export function MaturityLevelControl({
 
   return (
     <div className="space-y-2">
-      <p className="text-sm text-muted-foreground">{t("maturityTitle")}</p>
-      <div role="group" aria-label={t("maturityTitle")} className="inline-flex overflow-hidden rounded-md border border-border">
-        {LEVELS.map((lvl) => {
-          const current = lvl === maturityLevel
-          return (
-            <button
-              key={lvl}
-              type="button"
-              aria-pressed={current}
-              disabled={pending}
-              onClick={() => {
-                if (!current) {
-                  setFeedback(null)
-                  setTarget(lvl)
-                }
-              }}
-              className={
-                "px-3 py-1.5 text-sm font-medium " +
-                (current ? "bg-primary text-primary-foreground" : "bg-background text-foreground hover:bg-muted")
-              }
-            >
-              {t(LEVEL_KEY[lvl])}
-            </button>
-          )
-        })}
-      </div>
+      <label htmlFor="maturity-select" className="block text-sm text-muted-foreground">
+        {t("maturityTitle")}
+      </label>
+      <select
+        id="maturity-select"
+        value={level}
+        disabled={pending}
+        onChange={(e) => {
+          const picked = e.target.value as MaturityLevel
+          if (picked !== level) {
+            setFeedback(null)
+            setTarget(picked)
+          }
+        }}
+        className="rounded-md border border-input bg-background px-3 py-1.5 text-sm text-foreground"
+      >
+        {LEVELS.map((lvl) => (
+          <option key={lvl} value={lvl}>
+            {t(LEVEL_KEY[lvl])}
+          </option>
+        ))}
+      </select>
+
+      {/* Annonce de succès (lecteur d'écran) — le rafraîchissement RSC ne réénonce rien. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {announce}
+      </p>
+
       {feedback ? (
         <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {feedback.text}
@@ -123,16 +128,14 @@ export function MaturityLevelControl({
       ) : null}
 
       <Dialog open={target !== null} onOpenChange={(o) => (!o ? setTarget(null) : null)}>
-        <DialogContent>
+        <DialogContent aria-busy={pending}>
           <DialogHeader>
             <DialogTitle>{t("maturityConfirmTitle")}</DialogTitle>
             <DialogDescription>
-              {target
-                ? t("maturityConfirmChange", { from: t(LEVEL_KEY[maturityLevel]), to: t(LEVEL_KEY[target]) })
-                : null}
+              {target ? t("maturityConfirmChange", { from: t(LEVEL_KEY[level]), to: t(LEVEL_KEY[target]) }) : null}
             </DialogDescription>
           </DialogHeader>
-          {target ? <p className="text-sm text-muted-foreground">{confirmMessage(target)}</p> : null}
+          {target ? <p className="text-sm text-muted-foreground">{t(maturityChangeMessageKey(level, target))}</p> : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setTarget(null)} disabled={pending}>
               {t("maturityCancel")}

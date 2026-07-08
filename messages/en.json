@@ -1617,6 +1617,7 @@
     "maturityCancel": "Cancel",
     "maturitySaving": "Saving…",
     "maturityError": "Level change failed. Please retry.",
+    "maturitySuccess": "Autonomy level updated: {level}.",
     "slotSetEditButton": "Edit all time slots",
     "slotSetTitle": "All time slots — {param}",
     "slotSetDescription": "Edit values and time ranges. \"Confirm\" only enables when the day is covered with no gap or overlap.",

@@ -1617,6 +1617,7 @@
     "maturityCancel": "إلغاء",
     "maturitySaving": "جارٍ الحفظ…",
     "maturityError": "فشل تغيير المستوى. أعد المحاولة.",
+    "maturitySuccess": "تم تحديث مستوى الاستقلالية: {level}.",
     "slotSetEditButton": "تعديل جميع الفترات",
     "slotSetTitle": "جميع الفترات — {param}",
     "slotSetDescription": "عدّل القيم والفترات الزمنية. لا يُفعّل «تأكيد» إلا إذا كان اليوم مغطى دون فجوة أو تداخل.",

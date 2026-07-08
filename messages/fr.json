@@ -1617,6 +1617,7 @@
     "maturityCancel": "Annuler",
     "maturitySaving": "Enregistrement…",
     "maturityError": "Le changement de niveau a échoué. Réessayez.",
+    "maturitySuccess": "Niveau d'autonomie mis à jour : {level}.",
     "slotSetEditButton": "Modifier tous les créneaux",
     "slotSetTitle": "Tous les créneaux — {param}",
     "slotSetDescription": "Modifiez les valeurs et les tranches horaires. « Valider » ne s'active que si la journée est couverte sans trou ni chevauchement.",
