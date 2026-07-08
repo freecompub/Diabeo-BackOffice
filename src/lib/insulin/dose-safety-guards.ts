@@ -30,13 +30,15 @@ export type HyperBlockReason = "insufficientData" | "ketosis" | "severeHyper" | 
 /**
  * Garde HYPER / sous-dosage (C6b) — décide si une **BAISSE d'insuline** peut s'auto-appliquer.
  *
- * **Asymétrie fail-closed** : contrairement à la garde hypo (l'absence de donnée bloque la hausse),
- * ici l'action dangereuse EST la baisse. Une baisse ne peut s'auto-appliquer que si des données
+ * **Asymétrie fail-closed positive.** La garde hypo (C6) bloque une hausse sur un signal hypo *présent*
+ * (elle ne bloque pas sur l'absence de donnée — asymétrie assumée, la hausse restant bornée par C3/C7).
+ * Ici, à l'inverse, l'action dangereuse EST la baisse : elle ne peut s'auto-appliquer que si des données
  * récentes **prouvent positivement** que le patient n'est pas en hyper → **plancher de suffisance**.
  *
  * Bloque (renvoie un motif) si l'UN de :
  *  - **plancher non atteint** (`insufficientData`) : fenêtre < `AUTO_APPLY_MIN_WINDOW_DAYS` (14 j) OU
- *    capture < `AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT` (70 %) → un patient BGM/faible capture n'auto-baisse jamais ;
+ *    capture < `AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT` (70 %) OU moins de `AUTO_APPLY_MIN_WINDOW_READINGS`
+ *    relevés valides (backstop anti-tableau-dégénéré) → un patient BGM/faible capture n'auto-baisse jamais ;
  *  - **cétose** (`ketosis`) : une cétonémie récente (déjà filtrée à la fenêtre de récence) ≥ seuil modéré
  *    patient — trigger POSITIF seulement (l'absence de mesure n'autorise jamais) ;
  *  - **hyper sévère** (`severeHyper`) : TAR>250 (`tir.hyper`) > `AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT` (10 %) ;
@@ -55,15 +57,18 @@ export function hyperDecreaseBlockReason(
   recentKetonesMmol: number[],
   ketoneModerateThreshold: number,
 ): HyperBlockReason | null {
+  // Relevés valides seulement (un NaN fausserait computeTir vers la bande hyper).
+  const validGl = glucosesGl.filter((g) => Number.isFinite(g))
   if (
     windowDays < CLINICAL_BOUNDS.AUTO_APPLY_MIN_WINDOW_DAYS ||
-    capturePercent < CLINICAL_BOUNDS.AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT
+    capturePercent < CLINICAL_BOUNDS.AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT ||
+    validGl.length < CLINICAL_BOUNDS.AUTO_APPLY_MIN_WINDOW_READINGS
   ) {
     return "insufficientData"
   }
   if (recentKetonesMmol.some((k) => Number.isFinite(k) && k >= ketoneModerateThreshold)) return "ketosis"
 
-  const tir = computeTir(glucosesGl, DEFAULT_CGM_THRESHOLDS)
+  const tir = computeTir(validGl, DEFAULT_CGM_THRESHOLDS)
   if (tir.hyper > CLINICAL_BOUNDS.AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT) return "severeHyper"
   if (tir.elevated + tir.hyper > CLINICAL_BOUNDS.AUTO_APPLY_TAR_BLOCK_PERCENT) return "sustainedHyper"
   return null

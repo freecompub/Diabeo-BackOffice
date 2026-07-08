@@ -193,6 +193,14 @@ export const CLINICAL_BOUNDS = {
   AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT: 10,
   /** C6b — fenêtre de récence d'un blocage cétone (les cétones se normalisent vite). Seuil = `KetoneThreshold.moderateThreshold` (défaut 1,5 mmol/L). */
   AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS: 48,
+  /**
+   * C6b — **backstop défense-en-profondeur** : nombre minimal de relevés glycémiques pour qu'une BAISSE
+   * puisse s'auto-appliquer. Empêche qu'un tableau vide/dégénéré (avec plancher jours/capture par ailleurs
+   * satisfait, ex. bug de harnais) soit lu comme « parfaitement dans la cible » par `computeTir([]) = 0 %`.
+   * **Monotone sûr** : ne peut que router DAVANTAGE de baisses en proposition (jamais en auto-application).
+   * Très en-dessous d'une vraie fenêtre 14 j / 70 % capture CGM (~2 800 relevés).
+   */
+  AUTO_APPLY_MIN_WINDOW_READINGS: 100,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

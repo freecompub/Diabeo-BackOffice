@@ -574,7 +574,8 @@ Conditions (conjonction, court-circuit ; ordre **C4 → C1 → C2 → C3 → C5 
 **C6b — garde hyper asymétrique (le cas dangereux).** Une **baisse d'insuline** ne s'auto-applique que si
 des données récentes **prouvent** que le patient n'est pas en hyper. Bloque (→ proposition) si l'UN de :
 - **plancher non atteint** : fenêtre < `AUTO_APPLY_MIN_WINDOW_DAYS` (14 j) OU capture < `AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT`
-  (70 %) → un patient **BGM/faible capture n'auto-baisse jamais** ;
+  (70 %) OU moins de `AUTO_APPLY_MIN_WINDOW_READINGS` (100) relevés valides (backstop anti-tableau-dégénéré,
+  monotone sûr) → un patient **BGM/faible capture n'auto-baisse jamais** ;
 - **cétose** : cétonémie récente (≤ `AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS` = 48 h) ≥ seuil modéré patient
   (`KetoneThreshold.moderateThreshold`, défaut 1,5 mmol/L) — **trigger positif seulement**, l'absence n'autorise jamais ;
 - **hyper sévère** : TAR>250 (`tir.hyper`) > `AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT` (10 %) ;

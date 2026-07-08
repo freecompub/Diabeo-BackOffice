@@ -40,7 +40,12 @@ export type EnvelopeInput = {
   ratchet: {
     /** Heures depuis la dernière auto-application sur (patient × param × créneau). `null` = jamais. */
     hoursSinceLastAutoApply: number | null
-    /** Cumul des |Δ%| auto-appliqués sur (param × créneau) sur 7 j glissants. `null` = inconnu → fail-closed. */
+    /**
+     * Cumul des |Δ%| auto-appliqués sur (param × créneau) sur 7 j glissants. `null` = inconnu → fail-closed.
+     * **Toujours en pourcentage**, y compris pour `fixedDose` (dont l'amplitude C3 est pourtant en U) : le
+     * harnais (slice C) doit convertir le Δ dose fixe en % du courant pour alimenter ce cumul. Suivi possible :
+     * cumul dédié en U (`AUTO_APPLY_MAX_CUMULATIVE_U_PER_WEEK`) pour la cohérence d'unité.
+     */
     cumulativeAbsPercentThisWeek: number | null
   }
 }

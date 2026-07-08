@@ -106,4 +106,22 @@ describe("evaluateAutoApplyEnvelope", () => {
     expect(evaluateAutoApplyEnvelope(base({ ratchet: { hoursSinceLastAutoApply: null, cumulativeAbsPercentThisWeek: null } })))
       .toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C8" })
   })
+
+  // Dose fixe (amplitude en U) + unité ISF mg/dL.
+  it("dose fixe : Δ > 1 U → C3", () => {
+    const inp = merge({}, { parameterType: "fixedDose", currentValue: 10, proposedValue: 12, isfUnit: undefined }) // +2 U
+    expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C3" })
+  })
+  it("dose fixe : valeur non délivrable (pas multiple de 0,5) → C5", () => {
+    const inp = merge({}, { parameterType: "fixedDose", currentValue: 10, proposedValue: 10.3, isfUnit: undefined })
+    expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "FALLBACK_PROPOSAL", failedCheck: "C5" })
+  })
+  it("dose fixe : Δ ≤ 1 U, délivrable, fenêtre saine → AUTO_APPLY", () => {
+    const inp = merge({}, { parameterType: "fixedDose", currentValue: 10, proposedValue: 10.5, isfUnit: undefined }) // +0,5 U (hausse)
+    expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "AUTO_APPLY" })
+  })
+  it("ISF mg/dL : valeur hors bornes mg/dL (> 100) → REJET DUR", () => {
+    const inp = merge({}, { currentValue: 50, proposedValue: 150, isfUnit: "mgdl" })
+    expect(evaluateAutoApplyEnvelope(inp)).toEqual({ decision: "HARD_REJECT", reason: "outOfClinicalBounds" })
+  })
 })

@@ -53,4 +53,11 @@ describe("hyperDecreaseBlockReason (garde C6b, sur une baisse d'insuline)", () =
   it("patient bien contrôlé, fenêtre suffisante, pas de cétone → null (baisse autorisée)", () => {
     expect(hyperDecreaseBlockReason(wellControlled, 70, 14, [], KETONE)).toBeNull()
   })
+  it("backstop : trop peu de relevés valides (< 100) malgré jours/capture OK → insufficientData", () => {
+    expect(hyperDecreaseBlockReason(Array(50).fill(1.2), 80, 14, [], KETONE)).toBe("insufficientData")
+    expect(hyperDecreaseBlockReason([], 80, 14, [], KETONE)).toBe("insufficientData")
+  })
+  it("relevés NaN filtrés (pas comptés comme hyper) : 120 valides + 2 NaN, bien contrôlé → null", () => {
+    expect(hyperDecreaseBlockReason([...Array(120).fill(1.2), NaN, NaN], 80, 14, [], KETONE)).toBeNull()
+  })
 })
