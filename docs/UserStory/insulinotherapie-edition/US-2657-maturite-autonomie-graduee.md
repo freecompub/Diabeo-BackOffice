@@ -353,7 +353,11 @@ Constantes/règles **réutilisées** (à référencer, pas à redéfinir) :
 - `CLINICAL_BOUNDS` ISF/ICR/basal + planchers dose fixe — bornes absolues **jamais** franchies (C4).
 - `PUMP_BASAL_INCREMENT` (0,05) / `isDeliverableBasalRate`, `FIXED_DOSE_DELIVERY_INCREMENT_U` (0,5) — délivrabilité (C5).
 - Garde HYPO analyseurs : seuils hypo sévère (54 mg/dL) / cible basse (70 mg/dL), `HYPO_LEVEL1_RECURRENCE_MIN` (2) — garde de sens hypo (C6).
-- Garde HYPER (C6b, symétrique) : seuil(s) d'hyperglycémie persistante (TIR très bas / temps au-dessus de la cible) et cétose — **constantes à définir avec le medical à l'implémentation**, puis inscrites au catalogue.
+- Garde HYPER (C6b, sur une **baisse** d'insuline) — **finalisée (slice B, validé medical)**, cf. catalogue « Enveloppe de sécurité de l'auto-application » :
+  - **plancher de suffisance** (une baisse exige des données représentatives) : `AUTO_APPLY_MIN_WINDOW_DAYS` (14 j) + `AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT` (70 %) → un patient BGM/faible capture n'auto-baisse jamais ;
+  - **hyper soutenue** `AUTO_APPLY_TAR_BLOCK_PERCENT` (TAR>180 > 30 %) / **sévère** `AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT` (TAR>250 > 10 %) ;
+  - **cétose** : `AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS` (48 h) + seuil modéré patient `KetoneThreshold.moderateThreshold` (défaut 1,5 mmol/L). **La cétonémie EST captée** (`GlycemiaEntry.ketones`, `DiabetesEvent.ketones`, service `KetoneThreshold`) → trigger positif (l'absence n'autorise jamais).
+- Amplitude/anti-cliquet auto-application : `AUTO_APPLY_MAX_CHANGE_PERCENT` (10 %), `AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U` (1,0 U), `AUTO_APPLY_STRUCTURAL_ALLOWED` (false), `AUTO_APPLY_COOLDOWN_HOURS` (72 h), `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` (15 %/7 j).
 - `PATIENT_PROPOSAL_COOLDOWN_HOURS` (24 h) — cooldown des propositions (voie non auto-appliquée).
 
 Éléments de modèle de données (à décrire dans le catalogue + schéma) : enum `MaturityLevel { JUNIOR, INTERMEDIATE, EXPERT }`, `Patient.maturityLevel` (défaut `JUNIOR`), `Patient.autoApply` (bool, défaut `false`), rôle/attribut `GOVERNANCE`, actions d'audit `MATURITY_LEVEL_CHANGED`, `AUTO_APPLIED_SETTING`, `AUTO_APPLY_ENVELOPE_FALLBACK`.
