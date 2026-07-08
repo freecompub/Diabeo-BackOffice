@@ -114,6 +114,9 @@ export type AuditResource =
   | "INSULIN_THERAPY"
   | "BOLUS_LOG"
   | "ADJUSTMENT_PROPOSAL"
+  /** US-2657 (slice C3) — proposition d'ENSEMBLE de créneaux (table `slot_set_proposals`, distincte
+   * d'`adjustment_proposals` par-valeur) : resourceId = SlotSetProposal.id, metadata.patientId pivot. */
+  | "SLOT_SET_PROPOSAL"
   | "CLINICAL_REVIEW_FLAG"
   | "MEDICAL_DOCUMENT"
   | "PINNED_PATIENT"

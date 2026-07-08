@@ -45,9 +45,48 @@ export interface BasalConfigInput {
  * @namespace insulinTherapyService
  */
 /**
+ * US-2657 — Pré-validation PURE (hors DB) d'un jeu complet de créneaux ISF/ICR, réutilisée par
+ * `replaceSlotSet` (application directe DOCTOR) ET `createSetProposal` (soumission d'une proposition
+ * d'ENSEMBLE) : une proposition qui ne pourra JAMAIS être appliquée ne doit pas pouvoir être créée
+ * (fail-fast, symétrie création ⇄ acceptation). Bornes cliniques de valeur, durée non nulle,
+ * no-overlap et **no-gap strict** (le bolus doit toujours résoudre un créneau). Source de vérité
+ * unique des invariants de couverture ISF/ICR.
+ * @param param - `"isf"` (value = g/L) ou `"icr"` (value = g/U).
+ * @param slots - jeu complet `{ startHour, endHour, value, mealLabel? }`.
+ * @returns couverture calculée (`{ hasGap, hasOverlap }`), réutilisable par l'appelant.
+ * @throws emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap
+ */
+export function assertValidSlotSet(
+  param: "isf" | "icr",
+  slots: Array<{ startHour: number; endHour: number; value: number; mealLabel?: string }>,
+): { hasGap: boolean; hasOverlap: boolean } {
+  if (slots.length === 0) throw new Error("emptySlotSet")
+  const [valMin, valMax] =
+    param === "isf"
+      ? [CLINICAL_BOUNDS.ISF_GL_MIN, CLINICAL_BOUNDS.ISF_GL_MAX]
+      : [CLINICAL_BOUNDS.ICR_MIN, CLINICAL_BOUNDS.ICR_MAX]
+  for (const s of slots) {
+    if (s.startHour === s.endHour) throw new Error("zeroDurationSlot")
+    // Bornes cliniques re-vérifiées côté service (défense en profondeur) : sûr même appelé
+    // directement, pas seulement via la route Zod (US-2655, revue medical).
+    if (s.value < valMin || s.value > valMax) throw new Error("valueOutOfBounds")
+  }
+  const coverage = analyzeSlotCoverage(slots.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })))
+  if (coverage.hasOverlap) throw new Error("slotOverlap")
+  if (coverage.hasGap) throw new Error("slotGap") // ISF/ICR : no-gap strict (le bolus doit résoudre)
+  return coverage
+}
+
+/**
  * US-2655 — Fin commune du remplacement de groupe (ISF/ICR), dans la transaction :
- * supersède les propositions `pending` du paramètre (baseline changé → libère `one_pending_per_slot`)
- * puis journalise l'audit `replaceSet` (`from → to`, sans PHI). Retourne le résumé.
+ * supersède les propositions `pending` du paramètre (baseline changé) puis journalise l'audit
+ * `replaceSet` (`from → to`, sans PHI). Retourne le résumé.
+ *
+ * ⚠️ Supersède les DEUX familles de propositions du même `(patient × parameterType)` :
+ *  - `AdjustmentProposal` par-valeur (libère `adjustment_proposals_one_pending_per_slot`) ;
+ *  - `SlotSetProposal` d'ENSEMBLE (US-2657 : libère `slot_set_proposals_one_pending_per_param` et empêche
+ *    qu'un jeu de créneaux PÉRIMÉ soit réappliqué plus tard — sinon l'accepter écraserait un ajustement
+ *    médecin plus récent, ex. une baisse d'insuline post-hypo).
  */
 async function finishReplaceSet(
   tx: Prisma.TransactionClient,
@@ -65,6 +104,7 @@ async function finishReplaceSet(
   count: number
   coverage: { hasGap: boolean; hasOverlap: boolean }
   supersededProposalIds: string[]
+  supersededSetProposalIds: string[]
 }> {
   // findMany puis updateMany partagent le même `where`. Une proposition `pending` insérée entre les
   // deux (course TOCTOU) serait supersédée sans figurer dans `supersededProposalIds` (sous-report du
@@ -81,6 +121,21 @@ async function finishReplaceSet(
   }
   const supersededProposalIds = superseded.map((p) => p.id)
 
+  // US-2657 — mêmes semantiques pour les propositions d'ENSEMBLE (`SlotSetProposal`). Ne touche PAS
+  // la proposition en cours d'acceptation (déjà passée `accepted` avant l'apply) : seuls les `pending`
+  // restants du même paramètre sont neutralisés.
+  const supersededSet = await tx.slotSetProposal.findMany({
+    where: { patientId, parameterType, status: "pending" },
+    select: { id: true },
+  })
+  if (supersededSet.length > 0) {
+    await tx.slotSetProposal.updateMany({
+      where: { patientId, parameterType, status: "pending" },
+      data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: auditUserId },
+    })
+  }
+  const supersededSetProposalIds = supersededSet.map((p) => p.id)
+
   await auditService.logWithTx(tx, {
     userId: auditUserId,
     action: "UPDATE",
@@ -88,16 +143,24 @@ async function finishReplaceSet(
     resourceId: `${param}-set:${settingsId}`,
     ipAddress: ctx?.ipAddress,
     userAgent: ctx?.userAgent,
+    requestId: ctx?.requestId,
     metadata: {
       patientId,
       op: "replaceSet",
       from: before.map((s) => ({ startHour: s.startHour, endHour: s.endHour })),
       to: slots.map((s) => ({ startHour: s.startHour, endHour: s.endHour })),
       supersededProposalIds,
+      supersededSetProposalIds,
     },
   })
 
-  return { applied: true as const, count: slots.length, coverage, supersededProposalIds }
+  return {
+    applied: true as const,
+    count: slots.length,
+    coverage,
+    supersededProposalIds,
+    supersededSetProposalIds,
+  }
 }
 
 export const insulinTherapyService = {
@@ -408,15 +471,18 @@ export const insulinTherapyService = {
    *
    * **Anti-IDOR** : scopé `settings.patientId` ; le body ne porte jamais d'`id` de ligne.
    * **Dénormalisation** : `startHour/endHour` **et** `startTime/endTime` écrits ensemble.
-   * **Propositions** : les `pending` du même `parameterType` pour ce patient sont **supersédées**
-   * (le baseline a changé) — libère l'index `one_pending_per_slot`, pas de collision P2002.
+   * **Propositions** : les `pending` du même `parameterType` pour ce patient sont **supersédées** — le
+   * baseline a changé. S'applique aux DEUX familles : `AdjustmentProposal` par-valeur (libère
+   * `adjustment_proposals_one_pending_per_slot`) ET `SlotSetProposal` d'ensemble (US-2657, libère
+   * `slot_set_proposals_one_pending_per_param` et empêche la réapplication d'un jeu périmé).
    *
-   * Réservé au chemin **DOCTOR direct** (application immédiate). Le chemin proposition (NURSE/patient)
-   * est ouvert par US-2657 ; ici la garde `proposalAlreadyPending` n'est pas encore branchée.
+   * Chemin **DOCTOR direct** (application immédiate, `externalTx` absent) OU sous-étape de
+   * `acceptSetProposal` (US-2657, `externalTx` fourni → même transaction que le flip de proposition).
    *
    * @param param - `"isf"` ou `"icr"`.
    * @param patientId - patient scopé (résolu serveur, anti-IDOR).
    * @param slots - jeu complet `{ startHour, endHour, value, mealLabel? }` (value = ISF g/L ou ICR g/U).
+   * @param externalTx - transaction englobante optionnelle (atomicité apply + flip, cf. `acceptSetProposal`).
    * @throws emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap | settingsNotFound
    */
   async replaceSlotSet(
@@ -425,31 +491,25 @@ export const insulinTherapyService = {
     slots: Array<{ startHour: number; endHour: number; value: number; mealLabel?: string }>,
     auditUserId: number,
     ctx?: AuditContext,
+    /**
+     * US-2657 — transaction englobante optionnelle. Fournie par `acceptSetProposal` pour exécuter
+     * l'apply DANS la même transaction que le flip de statut de la proposition (atomicité : jamais de
+     * config appliquée sans acceptation valide, ni l'inverse). Absente (chemin DOCTOR direct) → on ouvre
+     * notre propre transaction.
+     */
+    externalTx?: Prisma.TransactionClient,
   ): Promise<{
     applied: true
     count: number
     coverage: { hasGap: boolean; hasOverlap: boolean }
     supersededProposalIds: string[]
+    supersededSetProposalIds: string[]
   }> {
-    // 1. Pré-validation pure (hors DB, fail-fast) sur l'état FINAL.
-    if (slots.length === 0) throw new Error("emptySlotSet")
-    const [valMin, valMax] =
-      param === "isf"
-        ? [CLINICAL_BOUNDS.ISF_GL_MIN, CLINICAL_BOUNDS.ISF_GL_MAX]
-        : [CLINICAL_BOUNDS.ICR_MIN, CLINICAL_BOUNDS.ICR_MAX]
-    for (const s of slots) {
-      if (s.startHour === s.endHour) throw new Error("zeroDurationSlot")
-      // Bornes cliniques de valeur re-vérifiées AUSSI dans le service (défense en profondeur) : le
-      // service reste sûr même appelé directement, pas seulement via la route Zod (US-2655, revue medical).
-      if (s.value < valMin || s.value > valMax) throw new Error("valueOutOfBounds")
-    }
-    const coverage = analyzeSlotCoverage(slots.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })))
-    if (coverage.hasOverlap) throw new Error("slotOverlap")
-    if (coverage.hasGap) throw new Error("slotGap") // ISF/ICR : no-gap strict (le bolus doit résoudre)
-
+    // 1. Pré-validation pure (hors DB, fail-fast) sur l'état FINAL — source unique `assertValidSlotSet`.
+    const coverage = assertValidSlotSet(param, slots)
     const parameterType = param === "isf" ? "insulinSensitivityFactor" : "insulinToCarbRatio"
 
-    return prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       // 2a. Scope patient (anti-IDOR) — le settingsId provient du patient, jamais du body.
       const settings = await tx.insulinTherapySettings.findUnique({ where: { patientId }, select: { id: true } })
       if (!settings) throw new Error("settingsNotFound")
@@ -493,7 +553,9 @@ export const insulinTherapyService = {
         })
         return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)
       }
-    })
+    }
+
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
   },
 
   // --- Basal Config ---
