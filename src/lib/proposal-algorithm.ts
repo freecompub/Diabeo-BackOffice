@@ -11,9 +11,10 @@ import type { AdjustableParameter, AdjustmentReason, ConfidenceLevel, DoseMoment
 import { CLINICAL_BOUNDS, BGM_CARNET } from "@/lib/clinical-bounds"
 import { GLYCEMIA_THRESHOLDS_MGDL } from "@/lib/glycemia-thresholds"
 import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
+import { hypoWindowBlocks } from "@/lib/insulin/dose-safety-guards"
 
 /** Seuils d'hypo en g/L (source unique mg/dL ÷ 100). Sévère = niveau 2 ; bas = niveau 1. */
-const SEVERE_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO / 100
+// SEVERE_HYPO_GL — le test de fenêtre hypo sévère vit désormais dans `hypoWindowBlocks` (mutualisé).
 const LEVEL1_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.TARGET_LOW / 100
 
 /**
@@ -35,9 +36,8 @@ function hypoBlocksProposal(
   glucosesGl: number[],
 ): boolean {
   if (deriveRiskDirection(parameterType, currentValue, proposedValue) !== "hypo") return false
-  const hasSevere = glucosesGl.some((g) => g < SEVERE_HYPO_GL)
-  const level1Count = glucosesGl.filter((g) => g < LEVEL1_HYPO_GL).length
-  return hasSevere || level1Count >= CLINICAL_BOUNDS.HYPO_LEVEL1_RECURRENCE_MIN
+  // US-2657 — test de fenêtre hypo mutualisé (source unique avec l'enveloppe d'auto-application C6).
+  return hypoWindowBlocks(glucosesGl)
 }
 
 /**

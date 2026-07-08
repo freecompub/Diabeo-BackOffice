@@ -168,6 +168,39 @@ export const CLINICAL_BOUNDS = {
   CORRECTION_MIN_ELEVATION_GL: 0.3,
   CORRECTION_SETTLE_TOL_MIN: 30,
   CORRECTION_COB_LOOKBACK_MIN: 180,
+
+  // ── US-2657 (slice B) — Enveloppe de sécurité de l'AUTO-APPLICATION experte (validé medical) ──
+  // Un changement patient EXPERT ne s'auto-applique que si TOUTES les conditions C1–C8 (+ C6b) sont
+  // vraies ; sinon il RETOMBE en proposition (fail-safe), sauf hors bornes cliniques = rejet dur.
+  /** C3 — amplitude max auto-applicable d'un ratio (ISF/ICR/basal), en % ; = `PATIENT_MAX_CHANGE_PERCENT`
+   *  (l'auto-application ne dépasse jamais ce qu'une proposition patient pourrait demander). */
+  AUTO_APPLY_MAX_CHANGE_PERCENT: 10,
+  /** C3 — delta max auto-applicable d'une dose fixe (U) ; miroir de `FIXED_DOSE_PATIENT_MAX_DELTA_U`. */
+  AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U: 1.0,
+  /** C2 — une modification STRUCTURELLE (ajout/suppression/déplacement d'heures) n'est JAMAIS auto-applicable. */
+  AUTO_APPLY_STRUCTURAL_ALLOWED: false,
+  /** C7 — délai min entre deux auto-applications sur (patient × paramètre × créneau). Aligné `FIXED_DOSE_COOLDOWN_HOURS`. */
+  AUTO_APPLY_COOLDOWN_HOURS: 72,
+  /** C7 — anti-cliquet : cumul max des |Δ%| auto-appliqués sur un (paramètre × créneau) sur 7 j glissants. < cap moteur (20 %). */
+  AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK: 15,
+  /** C6b — plancher : une BAISSE d'insuline ne peut s'auto-appliquer que sur une fenêtre ≥ 14 j (aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
+  AUTO_APPLY_MIN_WINDOW_DAYS: 14,
+  /** C6b — plancher : capture CGM ≥ 70 % (fenêtre représentative, ATTD/Battelino) pour autoriser une baisse. */
+  AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT: 70,
+  /** C6b — bloque une baisse si TAR>180 (`elevated+hyper`) dépasse ce % (plafond consensus above-range). */
+  AUTO_APPLY_TAR_BLOCK_PERCENT: 30,
+  /** C6b — bloque une baisse si TAR>250 (`hyper`) dépasse ce % (2× le plancher consensus niveau-2 de 5 %). */
+  AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT: 10,
+  /** C6b — fenêtre de récence d'un blocage cétone (les cétones se normalisent vite). Seuil = `KetoneThreshold.moderateThreshold` (défaut 1,5 mmol/L). */
+  AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS: 48,
+  /**
+   * C6b — **backstop défense-en-profondeur** : nombre minimal de relevés glycémiques pour qu'une BAISSE
+   * puisse s'auto-appliquer. Empêche qu'un tableau vide/dégénéré (avec plancher jours/capture par ailleurs
+   * satisfait, ex. bug de harnais) soit lu comme « parfaitement dans la cible » par `computeTir([]) = 0 %`.
+   * **Monotone sûr** : ne peut que router DAVANTAGE de baisses en proposition (jamais en auto-application).
+   * Très en-dessous d'une vraie fenêtre 14 j / 70 % capture CGM (~2 800 relevés).
+   */
+  AUTO_APPLY_MIN_WINDOW_READINGS: 100,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
@@ -182,6 +215,16 @@ export type ClinicalBounds = typeof CLINICAL_BOUNDS
  */
 export function isDeliverableBasalRate(value: number): boolean {
   const step = CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT
+  return Math.abs(value / step - Math.round(value / step)) < 1e-9
+}
+
+/**
+ * US-2657 (slice B) — Une dose fixe est **délivrable** si elle est un multiple de
+ * `FIXED_DOSE_DELIVERY_INCREMENT_U` (0,5 U). Miroir de `isDeliverableBasalRate` (même tolérance
+ * flottante `1e-9`). Utilisé par l'enveloppe d'auto-application (C5) — pas d'arrondi silencieux.
+ */
+export function isDeliverableFixedDose(value: number): boolean {
+  const step = CLINICAL_BOUNDS.FIXED_DOSE_DELIVERY_INCREMENT_U
   return Math.abs(value / step - Math.round(value / step)) < 1e-9
 }
 

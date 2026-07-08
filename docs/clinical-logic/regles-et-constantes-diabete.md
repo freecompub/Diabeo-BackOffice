@@ -548,3 +548,39 @@ audité `UPDATE PATIENT` (metadata `from → to`, sans PHI). `patientService.set
 
 Slices ultérieures : B (enveloppe de sécurité C1–C8/C6b), C (auto-application gouvernée + flag `autoApply`),
 D (refuser/contre-proposer).
+
+### Enveloppe de sécurité de l'auto-application experte (US-2657 slice B)
+
+**Frontière dispositif médical (MDR).** `evaluateAutoApplyEnvelope` (`src/lib/insulin/auto-apply-envelope.ts`,
+fonction PURE) décide si l'édition d'un patient EXPERT (flag `autoApply` ON) peut s'appliquer **sans
+validation médecin**. Principe : **hors enveloppe → PROPOSITION** (fail-safe) ; **valeur hors bornes → REJET
+DUR**. **Rien ne l'appelle encore** (câblage gouverné = slice C). Sortie :
+`AUTO_APPLY` | `FALLBACK_PROPOSAL{failedCheck}` | `HARD_REJECT{outOfClinicalBounds}`.
+
+Conditions (conjonction, court-circuit ; ordre **C4 → C1 → C2 → C3 → C5 → C6 → C6b → C7**) :
+
+| Cond. | Règle | Échec → |
+|---|---|---|
+| **C1** | autorité : niveau EXPERT **ET** `autoApply` ON | proposition |
+| **C2** | changement **VALUE** seulement ; structurel (`AUTO_APPLY_STRUCTURAL_ALLOWED=false`) jamais | proposition |
+| **C3** | amplitude : ratios ≤ `AUTO_APPLY_MAX_CHANGE_PERCENT` (10 %) ; dose fixe ≤ `AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U` (1,0 U) | proposition |
+| **C4** | valeur résultante **dans** `CLINICAL_BOUNDS` (ISF/ICR/basal ; dose fixe ≥ `FIXED_DOSE_MIN`) | **REJET DUR** |
+| **C5** | délivrabilité : basal `isDeliverableBasalRate` (0,05) ; dose fixe `isDeliverableFixedDose` (0,5) | proposition |
+| **C6** | garde **hypo** (HAUSSE d'insuline) : `hypoWindowBlocks` — 1 hypo sévère (<0,54) OU ≥2 niveau 1 (<0,70) | proposition |
+| **C6b** | garde **hyper/cétose** (BAISSE d'insuline) : `hyperDecreaseBlockReason` | proposition |
+| **C7** | anti-cliquet : cooldown `AUTO_APPLY_COOLDOWN_HOURS` (72 h) + cumul `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` (15 %/7 j) | proposition |
+| **C8** | fail-closed : donnée manquante / `NaN` / ambiguë / exception | proposition |
+
+**C6b — garde hyper asymétrique (le cas dangereux).** Une **baisse d'insuline** ne s'auto-applique que si
+des données récentes **prouvent** que le patient n'est pas en hyper. Bloque (→ proposition) si l'UN de :
+- **plancher non atteint** : fenêtre < `AUTO_APPLY_MIN_WINDOW_DAYS` (14 j) OU capture < `AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT`
+  (70 %) OU moins de `AUTO_APPLY_MIN_WINDOW_READINGS` (100) relevés valides (backstop anti-tableau-dégénéré,
+  monotone sûr) → un patient **BGM/faible capture n'auto-baisse jamais** ;
+- **cétose** : cétonémie récente (≤ `AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS` = 48 h) ≥ seuil modéré patient
+  (`KetoneThreshold.moderateThreshold`, défaut 1,5 mmol/L) — **trigger positif seulement**, l'absence n'autorise jamais ;
+- **hyper sévère** : TAR>250 (`tir.hyper`) > `AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT` (10 %) ;
+- **hyper soutenue** : TAR>180 (`tir.elevated + tir.hyper`) > `AUTO_APPLY_TAR_BLOCK_PERCENT` (30 %).
+
+Sources : `src/lib/clinical-bounds.ts` (constantes + `isDeliverableFixedDose`), `src/lib/insulin/dose-safety-guards.ts`
+(`hypoWindowBlocks` mutualisé avec le générateur, `hyperDecreaseBlockReason`), `src/lib/insulin/auto-apply-envelope.ts`.
+Verrou anti-drift : `tests/unit/clinical-bounds.test.ts`.

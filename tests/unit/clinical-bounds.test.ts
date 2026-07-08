@@ -19,6 +19,7 @@ import {
   DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS, OBSERVANCE,
   HBA1C_HIGH_DEFAULT_PERCENT, HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT, HBA1C_TARGET_MARGIN_PERCENT,
   isDeliverableBasalRate,
+  isDeliverableFixedDose,
 } from "@/lib/clinical-bounds"
 
 describe("isDeliverableBasalRate — multiple de l'incrément pompe (US-2648b)", () => {
@@ -31,6 +32,15 @@ describe("isDeliverableBasalRate — multiple de l'incrément pompe (US-2648b)",
     for (const v of [0.037, 0.37, 0.12, 0.051, 0.025]) {
       expect(isDeliverableBasalRate(v)).toBe(false)
     }
+  })
+})
+
+describe("isDeliverableFixedDose — multiple de l'incrément dose fixe (US-2657)", () => {
+  it("multiples de 0,5 → délivrable", () => {
+    for (const v of [0.5, 1.0, 10.5, 24]) expect(isDeliverableFixedDose(v)).toBe(true)
+  })
+  it("non multiples → non délivrable", () => {
+    for (const v of [0.3, 1.2, 10.7]) expect(isDeliverableFixedDose(v)).toBe(false)
   })
 })
 
@@ -80,6 +90,18 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       CORRECTION_MIN_ELEVATION_GL: 0.3,
       CORRECTION_SETTLE_TOL_MIN: 30,
       CORRECTION_COB_LOOKBACK_MIN: 180,
+      // US-2657 (slice B) — enveloppe auto-application
+      AUTO_APPLY_MAX_CHANGE_PERCENT: 10,
+      AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U: 1.0,
+      AUTO_APPLY_STRUCTURAL_ALLOWED: false,
+      AUTO_APPLY_COOLDOWN_HOURS: 72,
+      AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK: 15,
+      AUTO_APPLY_MIN_WINDOW_DAYS: 14,
+      AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT: 70,
+      AUTO_APPLY_TAR_BLOCK_PERCENT: 30,
+      AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT: 10,
+      AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS: 48,
+      AUTO_APPLY_MIN_WINDOW_READINGS: 100,
     })
   })
 
