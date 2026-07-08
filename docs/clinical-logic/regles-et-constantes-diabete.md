@@ -598,6 +598,12 @@ Poser `autoApply = true` = **acte de gouvernance** (pas clinique) : rôle **ADMI
 permise, sans approbation** (kill direction fail-safe). Audité `UPDATE PATIENT` (`from → to`, sans PHI).
 `AutoApplyEvent` (append-only) journalise chaque auto-application effective (alimente l'anti-cliquet C7).
 
+**Assemblage du contexte d'évaluation (slice C2a)** : `buildEnvelopeContext` (`src/lib/insulin/auto-apply-context.ts`)
+met en forme l'entrée de l'enveloppe — fenêtre glycémie (**plancher `AUTO_APPLY_MIN_WINDOW_DAYS` = 14 j**,
+paramétrable au-delà), cétones `GlycemiaEntry.ketones` ∪ `DiabetesEvent.ketones` sur 48 h
+(`AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS`), anti-cliquet depuis `AutoApplyEvent` scopé (patient × paramètre ×
+créneau). Ne décide rien (le double verrou + dispatch = harnais C2b).
+
 L'**activation en production reste subordonnée à la DPIA signée** (`docs/compliance/dpia-auto-application.md`,
 RGPD Art. 22 + MDR). Sources : `src/lib/services/governance.service.ts`, `src/app/api/governance/auto-apply/route.ts`,
 `prisma/schema.prisma` (`GovernanceApproval`, `AutoApplyEvent`).
