@@ -20,7 +20,7 @@
  * combiner `{mode, coherent}` (mode `basalBolus` exige `coherent`, les autres ont leurs règles).
  */
 
-import type { Pathology, BasalConfigType, TreatmentMode, Role } from "@prisma/client"
+import type { Pathology, BasalConfigType, TreatmentMode, Role, MaturityLevel } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { insulinService } from "@/lib/services/insulin.service"
 import { analyzeSlotCoverage, timeToMinutes } from "@/lib/insulin/slot-coverage"
@@ -30,6 +30,12 @@ export type TreatmentModeResult = {
   mode: TreatmentMode
   /** false → config à revoir/configurer (trou/chevauchement, périmée, incomplète, vidée) → édition à débloquer par un PS. */
   coherent: boolean
+  /**
+   * US-2657 — niveau de maturité du patient, renseigné par `resolveTreatmentMode` (mutualise la lecture
+   * patient déjà faite pour la pathologie). Optionnel : absent quand le résultat vient de la fonction
+   * PURE `deriveTreatmentMode` (tests) → l'appelant retombe sur `JUNIOR` (fail-closed).
+   */
+  maturityLevel?: MaturityLevel
 }
 
 type HourSlot = { startHour: number; endHour: number }
@@ -110,7 +116,7 @@ export function deriveTreatmentMode(input: DeriveTreatmentModeInput): TreatmentM
 export async function resolveTreatmentMode(patientId: number): Promise<TreatmentModeResult> {
   const patient = await prisma.patient.findUnique({
     where: { id: patientId },
-    select: { pathology: true },
+    select: { pathology: true, maturityLevel: true }, // US-2657 — mutualise la lecture (pas de 2e findFirst)
   })
   if (!patient) throw new Error("patientNotFound")
 
@@ -129,15 +135,18 @@ export async function resolveTreatmentMode(patientId: number): Promise<Treatment
     .map((p) => ({ start: timeToMinutes(p.startTime), end: timeToMinutes(p.endTime) }))
     .filter((s): s is { start: number; end: number } => s.start !== null && s.end !== null)
 
-  return deriveTreatmentMode({
-    pathology: patient.pathology,
-    isfSlots: settings?.sensitivityFactors ?? [],
-    icrSlots: settings?.carbRatios ?? [],
-    hasActiveInsulin: activeInsulin != null,
-    hadInsulinEver: anyInsulin != null,
-    basalConfigType: settings?.basalConfiguration?.configType ?? null,
-    basalSlots,
-  })
+  return {
+    ...deriveTreatmentMode({
+      pathology: patient.pathology,
+      isfSlots: settings?.sensitivityFactors ?? [],
+      icrSlots: settings?.carbRatios ?? [],
+      hasActiveInsulin: activeInsulin != null,
+      hadInsulinEver: anyInsulin != null,
+      basalConfigType: settings?.basalConfiguration?.configType ?? null,
+      basalSlots,
+    }),
+    maturityLevel: patient.maturityLevel,
+  }
 }
 
 /**
@@ -151,12 +160,9 @@ export async function resolveTreatmentMode(patientId: number): Promise<Treatment
  */
 export async function getInsulinEditCapability(role: Role, patientId: number): Promise<InsulinEditCapability> {
   const modeResult = await resolveTreatmentMode(patientId)
-  // US-2657 — niveau de maturité (gate les capacités du patient). Défaut JUNIOR si absent (fail-closed).
-  const patient = await prisma.patient.findFirst({
-    where: { id: patientId, deletedAt: null },
-    select: { maturityLevel: true },
-  })
-  return deriveEditCapability(role, modeResult, patient?.maturityLevel ?? "JUNIOR")
+  // US-2657 — le niveau de maturité vient de `resolveTreatmentMode` (lecture patient mutualisée) ;
+  // `?? "JUNIOR"` = fail-closed (le plus restrictif) si absent.
+  return deriveEditCapability(role, modeResult, modeResult.maturityLevel ?? "JUNIOR")
 }
 
 export const treatmentModeService = { deriveTreatmentMode, resolveTreatmentMode, getInsulinEditCapability }
