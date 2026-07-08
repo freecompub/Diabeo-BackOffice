@@ -324,6 +324,11 @@ describe("insulinTherapyService", () => {
         findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
+      // US-2657 — finishReplaceSet supersède aussi les propositions d'ENSEMBLE pending.
+      slotSetProposal: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
       auditLog: { create: vi.fn().mockResolvedValue({}) },
       ...over,
     })
@@ -397,6 +402,7 @@ describe("insulinTherapyService", () => {
         count: 2,
         coverage: { hasGap: false, hasOverlap: false },
         supersededProposalIds: [],
+        supersededSetProposalIds: [],
       })
       expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalledWith({ where: { settingsId: 3 } })
       // Time dérivé de l'heure (dénormalisation synchronisée)

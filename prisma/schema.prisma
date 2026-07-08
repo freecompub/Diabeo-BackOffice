@@ -827,8 +827,12 @@ model AutoApplyEvent {
 /// US-2657 (slice C3) — **Proposition d'ENSEMBLE de créneaux** (US-2657 Option 2). Représente une édition
 /// de groupe (valeurs ET/OU restructuration) qu'un patient EXPERT soumet mais qui ne peut PAS s'auto-appliquer
 /// (hors enveloppe ou structurelle) : elle est stockée en bloc pour revue MÉDECIN (accept en bloc →
-/// `replaceSlotSet`, ou reject). Comble l'absence de représentation « proposition de disposition entière »
-/// (l'`AdjustmentProposal` étant par-valeur). Une seule proposition d'ensemble PENDING par (patient × paramètre).
+/// `replaceSlotSet`, ou reject). ⚠️ US-2657 : **on ne propose plus par-valeur** — toute édition patient EXPERT
+/// non auto-appliquée est proposée GROUPÉE (disposition entière), quel que soit le nombre de valeurs modifiées ;
+/// REMPLACE la voie par-valeur `AdjustmentProposal` pour ce cas. Une seule proposition d'ensemble PENDING par
+/// (patient × paramètre) — garanti en base par l'index unique PARTIEL `slot_set_proposals_one_pending_per_param`
+/// (`WHERE status = 'pending'`), défini en SQL uniquement (Prisma ne modélise pas le WHERE côté `@@index`,
+/// cf. migration 20260714100000).
 model SlotSetProposal {
   id               String              @id @default(uuid())
   patientId        Int                 @map("patient_id")
@@ -839,10 +843,13 @@ model SlotSetProposal {
   status           ProposalStatus      @default(pending)
   proposedByUserId Int                 @map("proposed_by_user_id")
   reviewedByUserId Int?                @map("reviewed_by_user_id")
-  createdAt        DateTime            @default(now()) @map("created_at")
-  reviewedAt       DateTime?           @map("reviewed_at")
+  // Timestamptz — aligné sur le modèle sœur `AdjustmentProposal` (tri/affichage stables cross-timezone).
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz()
+  reviewedAt       DateTime?           @map("reviewed_at") @db.Timestamptz()
 
-  @@index([patientId, status])
+  // `createdAt` en 3e colonne : couvre `listSetProposals` (where patientId[+status] orderBy createdAt desc),
+  // comme `AdjustmentProposal`.
+  @@index([patientId, status, createdAt])
   @@map("slot_set_proposals")
 }
 

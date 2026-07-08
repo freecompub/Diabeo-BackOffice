@@ -622,11 +622,32 @@ RGPD Art. 22 + MDR). Sources : `src/lib/services/governance.service.ts`, `src/ap
 
 ### Proposition d'ensemble de créneaux (US-2657 slice C3)
 
-`SlotSetProposal` (`prisma/schema.prisma`, service `src/lib/services/slot-set-proposal.service.ts`) — comble
-l'absence de « proposition de disposition entière » (l'`AdjustmentProposal` est par-valeur). Une édition de
-GROUPE d'un patient EXPERT (valeurs et/ou **restructuration** : ajout/suppression/déplacement d'heures) qui ne
-peut **pas** s'auto-appliquer (hors enveloppe C1–C8, ou structurelle) est stockée **en bloc** (`proposedSlots`
-JSON) pour **revue MÉDECIN** : **accepter** applique la disposition via `replaceSlotSet` (bloc atomique) ;
-**refuser** la classe `rejected`. Invariant : **une seule proposition d'ensemble PENDING par (patient ×
-paramètre)** (une nouvelle supersède la précédente). Statuts = `ProposalStatus`. Jamais de PHI (valeurs de config).
-Sources : orchestrateur `applyExpertGroupGoverned` (C3b, appelant), routes patient (C3c) / médecin (C3d).
+`SlotSetProposal` (`prisma/schema.prisma`, service `src/lib/services/slot-set-proposal.service.ts`).
+**Décision US-2657 : on ne propose plus par-valeur — toute édition patient EXPERT non auto-appliquée est
+proposée GROUPÉE (disposition entière du jeu de créneaux), quel que soit le nombre de valeurs modifiées.**
+Ce modèle REMPLACE la voie par-valeur `AdjustmentProposal` pour ce cas. Une édition de GROUPE d'un patient
+EXPERT (valeurs et/ou **restructuration** : ajout/suppression/déplacement d'heures) qui ne peut **pas**
+s'auto-appliquer (hors enveloppe C1–C8, ou structurelle) est stockée **en bloc** (`proposedSlots` JSON) pour
+**revue MÉDECIN**.
+
+- **Validation DÈS la création** (symétrie création ⇄ acceptation) : `assertValidSlotSet` applique bornes
+  cliniques ISF/ICR, durée non nulle, **no-overlap + no-gap strict** (le bolus doit toujours résoudre un
+  créneau). Une proposition inacceptable ne peut pas être créée (pas de « zombie » figée en attente).
+- **Frontière dispositif médical** : refus `nonInsulinNoDose` pour un patient NON INSULINÉ (mode dérivé
+  serveur, fail-closed) — jamais de proposition de dose. Patient soft-deleted (RGPD) exclu (`patientNotFound`).
+- **Acceptation ATOMIQUE** : lecture + flip gardé (compare-and-swap `pending → accepted`) + application
+  `replaceSlotSet` + audit dans **une seule transaction**. Un rejet/supersede concurrent (flip `count 0`) ou
+  un échec clinique de `replaceSlotSet` (bornes/couverture) **rollback tout** → jamais de config appliquée
+  sans acceptation valide, ni l'inverse (fail-closed). **Refuser** → statut `rejected`.
+- **Supersede croisé** : à la création d'une proposition d'ensemble, ET à tout remplacement direct du jeu par
+  un médecin (`replaceSlotSet`), les propositions `pending` du même `(patient × paramètre)` — **d'ensemble ET
+  par-valeur** — sont supersédées (empêche la réapplication d'un jeu périmé qui écraserait un ajustement
+  médecin plus récent, ex. baisse d'insuline post-hypo).
+
+Invariant : **une seule proposition d'ensemble PENDING par (patient × paramètre)** — **garanti en base** par
+l'index unique partiel `slot_set_proposals_one_pending_per_param` (`WHERE status = 'pending'`, migration
+20260714100000 ; violation TOCTOU → P2002 → `duplicatePendingProposal`, détection via
+`isUniqueViolationOn`/`driverAdapterError` robuste à Prisma 7 + adapter-pg). Statuts = `ProposalStatus`.
+Audit dédié `resource = SLOT_SET_PROPOSAL` (CREATE / PROPOSAL_ACCEPTED / PROPOSAL_REJECTED / READ), jamais de
+PHI (valeurs de config, `metadata.patientId` pivot US-2268). Sources : orchestrateur `applyExpertGroupGoverned`
+(C3b, appelant), routes patient (C3c) / médecin (C3d).
