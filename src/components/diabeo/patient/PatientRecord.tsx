@@ -36,6 +36,7 @@ import {
   SEED_PERIOD,
 } from "@/components/diabeo/patient/PatientRecordContext"
 import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
+import { MaturityLevelControl } from "@/components/diabeo/patient/MaturityLevelControl"
 import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
 import { InsulinDirectEditDialog } from "@/components/diabeo/patient/InsulinDirectEditDialog"
 import { InsulinSlotSetDialog } from "@/components/diabeo/patient/InsulinSlotSetDialog"
@@ -616,6 +617,18 @@ export function PatientRecord({
                 tant que le descripteur n'est pas chargé / hors provider. */}
             {insulinCapability.capability && (
               <InsulinEditBanner capability={insulinCapability.capability} />
+            )}
+            {/* US-2657 (A2) — encart « Autonomie du patient » : le DOCTOR pose le niveau de maturité ;
+                les autres rôles le voient en lecture seule. Gouverne les capacités d'édition ci-dessous. */}
+            {insulinCapability.capability && (
+              <Card>
+                <CardContent className="py-4">
+                  <MaturityLevelControl
+                    maturityLevel={insulinCapability.capability.maturityLevel}
+                    canSet={insulinCapability.capability.canSetMaturity}
+                  />
+                </CardContent>
+              </Card>
             )}
             <Card>
               <CardHeader>

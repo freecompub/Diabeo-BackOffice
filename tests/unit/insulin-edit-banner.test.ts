@@ -14,6 +14,7 @@ const cap = (over: Partial<InsulinEditCapability>): InsulinEditCapability => ({
   canPropose: true,
   canEditSlots: false,
   maturityLevel: "JUNIOR",
+  canSetMaturity: false,
   editableParameters: [],
   ...over,
 })

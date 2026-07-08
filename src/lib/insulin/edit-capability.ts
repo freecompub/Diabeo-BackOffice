@@ -38,6 +38,11 @@ export type InsulinEditCapability = {
   canEditSlots: boolean
   /** US-2657 — niveau d'autonomie du patient (pour l'affichage UI ; défaut JUNIOR). */
   maturityLevel: MaturityLevel
+  /**
+   * US-2657 — pose du niveau de maturité autorisée. **Exactement DOCTOR** (acte clinique ; ADMIN exclu,
+   * NURSE/patient en lecture seule). Pilote l'UI ; l'autorité reste la route (`requireRole("DOCTOR")`).
+   */
+  canSetMaturity: boolean
   /** Paramètres éditables compte tenu du mode (vide si non éditable ici). */
   editableParameters: EditableParameter[]
   /** Pourquoi l'édition est bloquée, le cas échéant (pour message UI). */
@@ -99,6 +104,7 @@ export function deriveEditCapability(
     canPropose,
     canEditSlots,
     maturityLevel,
+    canSetMaturity: role === "DOCTOR", // exactement DOCTOR (ADMIN exclu) — miroir de la route PATCH /maturity
     editableParameters,
     blockedReason,
   }
