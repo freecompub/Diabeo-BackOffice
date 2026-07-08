@@ -24,6 +24,7 @@ const { buildEnvelopeContext } = await import("@/lib/insulin/auto-apply-context"
 const { evaluateAutoApplyEnvelope } = await import("@/lib/insulin/auto-apply-envelope")
 const { insulinTherapyService } = await import("@/lib/services/insulin-therapy.service")
 const { adjustmentService } = await import("@/lib/services/adjustment.service")
+const { auditService } = await import("@/lib/services/audit.service")
 
 const globalOn = vi.mocked(isAutoApplyGloballyEnabled)
 const buildCtx = vi.mocked(buildEnvelopeContext)
@@ -104,6 +105,33 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
     await autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW) // patient.autoApply = true
     expect(evaluate).toHaveBeenCalledWith(
       expect.objectContaining({ authority: { maturityLevel: "EXPERT", autoApply: false } }),
+    )
+  })
+
+  it("AUTO_APPLY (ICR) → updateIcr ; deltaPercent correct + audit décision 'applied'", async () => {
+    evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
+    await autoApplyService.applyExpertEditGoverned(
+      { ...isfEdit, parameterType: "insulinToCarbRatio", slotId: "icr-2", currentValue: 10, proposedValue: 10.5, isfUnit: undefined },
+      7,
+      NOW,
+    )
+    expect(insulinTherapyService.updateIcr).toHaveBeenCalledWith("icr-2", 10.5, 7, 7, undefined)
+    // deltaPercent = |(10.5-10)/10|*100 = 5
+    expect(prismaMock.autoApplyEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ deltaPercent: 5 }) }),
+    )
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ kind: "autoApplyDecision", outcome: "applied" }) }),
+    )
+  })
+
+  it("échec d'apply : AutoApplyEvent déjà écrit (avant) + audit 'applyFailed' + rethrow", async () => {
+    evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
+    vi.mocked(insulinTherapyService.updateIsf).mockRejectedValueOnce(new Error("isfSlotNotFound"))
+    await expect(autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW)).rejects.toThrow("isfSlotNotFound")
+    expect(prismaMock.autoApplyEvent.create).toHaveBeenCalled() // écrit AVANT l'apply (sur-comptage fail-safe)
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({ metadata: expect.objectContaining({ outcome: "applyFailed" }) }),
     )
   })
 

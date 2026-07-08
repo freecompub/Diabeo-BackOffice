@@ -61,6 +61,12 @@ async function applySlotValue(edit: ExpertSlotEdit, actorUserId: number, ctx?: A
     case "basalRate":
       await insulinTherapyService.updatePumpSlot(slotId, proposedValue, actorUserId, patientId, ctx)
       return
+    default: {
+      // Garde d'exhaustivité : le type retour `void` n'impose pas l'exhaustivité — sans ce `never`,
+      // un futur SlotParam non câblé ferait un no-op silencieux (fail-open : "applied" sans dose appliquée).
+      const _never: never = edit.parameterType
+      throw new Error(`autoApply: unsupported slot parameter ${String(_never)}`)
+    }
   }
 }
 
@@ -149,7 +155,20 @@ export const autoApplyService = {
       // Enregistré AVANT l'application : sur un échec rare d'apply, l'anti-cliquet SUR-compte
       // (plus strict = fail-safe), jamais l'inverse (un sous-comptage relâcherait le garde-fou C7).
       await prisma.autoApplyEvent.create({ data: { patientId, parameterType, slotKey, deltaPercent } })
-      await applySlotValue(edit, actorUserId, ctx)
+      try {
+        await applySlotValue(edit, actorUserId, ctx)
+      } catch (e) {
+        // L'AutoApplyEvent a déjà été écrit (sur-comptage anti-cliquet, fail-safe). On trace l'échec
+        // pour ne pas laisser un événement fantôme sans explication (observabilité HDS/MDR), puis on
+        // relance. L'audit d'échec est best-effort : il ne doit pas masquer l'erreur d'origine.
+        await auditDecision(
+          patientId,
+          actorUserId,
+          { outcome: "applyFailed", parameterType, slotKey, deltaPercent, error: e instanceof Error ? e.message : "unknown" },
+          ctx,
+        ).catch(() => {})
+        throw e
+      }
       await auditDecision(patientId, actorUserId, { outcome: "applied", parameterType, slotKey, deltaPercent }, ctx)
       return { outcome: "applied" }
     }
