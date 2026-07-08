@@ -46,8 +46,12 @@ l'autonomie réelle d'un patient expert tout en traçant chaque décision.
    amplitude (≤ 10 % / ≤ 1 U), bornes cliniques absolues (sinon rejet dur), délivrabilité, garde hypo (hausse),
    **garde hyper/cétose asymétrique** (baisse — plancher de suffisance de données, cétonémie, TAR), anti-cliquet
    (72 h + 15 %/7 j), **fail-closed** sur tout doute. Hors enveloppe → proposition.
-4. **Traçabilité HDS/CNIL** : audit `UPDATE PATIENT` de chaque bascule de flag (`from → to` + référence, sans
-   PHI) ; `AutoApplyEvent` append-only pour l'anti-cliquet et la reconstitution forensique.
+4. **Traçabilité HDS/CNIL** : audit `UPDATE PATIENT` de chaque décision de gouvernance (`from → to` +
+   référence, sans PHI — **chaque re-approbation est tracée**, même sur un patient déjà activé) ;
+   `AutoApplyEvent` append-only pour l'anti-cliquet et la reconstitution forensique. Les tables
+   `governance_approvals`/`auto_apply_events` sont **anti-altération** (trigger PG bloquant UPDATE,
+   `prisma/sql/audit_immutability.sql`) ; DELETE reste permis pour l'effacement RGPD Art. 17 (l'action
+   demeure dans `audit_logs`, immuable et non cascadé).
 5. **Réversibilité** : désactivation immédiate (par patient ou globale via kill-switch) ; aucune donnée
    patient supprimée.
 

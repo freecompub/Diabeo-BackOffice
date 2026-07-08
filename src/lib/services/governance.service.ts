@@ -41,8 +41,11 @@ export const governanceService = {
         select: { autoApply: true },
       })
       if (!before) throw new Error("patientNotFound")
-      if (before.autoApply === enabled) return { autoApply: enabled, changed: false }
+      const changed = before.autoApply !== enabled
 
+      // Activation : on enregistre TOUJOURS l'artefact de gouvernance — y compris une re-approbation
+      // d'un patient déjà activé (chaque décision de gouvernance doit être tracée), même si le flag
+      // ne change pas. Une désactivation idempotente (déjà OFF) reste un no-op complet.
       if (enabled && approval) {
         await tx.governanceApproval.create({
           data: {
@@ -54,23 +57,28 @@ export const governanceService = {
           },
         })
       }
-      await tx.patient.update({ where: { id: patientId }, data: { autoApply: enabled } })
-      await auditService.logWithTx(tx, {
-        userId: adminUserId,
-        action: "UPDATE",
-        resource: "PATIENT",
-        resourceId: String(patientId),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        metadata: {
-          patientId,
-          kind: "autoApplyChanged",
-          from: before.autoApply,
-          to: enabled,
-          ...(enabled && approval ? { reference: approval.reference, dpiaRef: approval.dpiaRef ?? null } : {}),
-        },
-      })
-      return { autoApply: enabled, changed: true }
+      if (changed) {
+        await tx.patient.update({ where: { id: patientId }, data: { autoApply: enabled } })
+      }
+      // Audit dès qu'une décision de gouvernance a eu lieu (approbation enregistrée OU flag modifié).
+      if ((enabled && approval) || changed) {
+        await auditService.logWithTx(tx, {
+          userId: adminUserId,
+          action: "UPDATE",
+          resource: "PATIENT",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          metadata: {
+            patientId,
+            kind: "autoApplyChanged",
+            from: before.autoApply,
+            to: enabled,
+            ...(enabled && approval ? { reference: approval.reference, dpiaRef: approval.dpiaRef ?? null } : {}),
+          },
+        })
+      }
+      return { autoApply: enabled, changed }
     })
   },
 }

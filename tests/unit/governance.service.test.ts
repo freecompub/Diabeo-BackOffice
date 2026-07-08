@@ -47,13 +47,24 @@ describe("governanceService.setAutoApply", () => {
     expect(tx.patient.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { autoApply: false } })
   })
 
-  it("idempotent : déjà à la cible → no-op (pas d'approbation, pas d'update)", async () => {
+  it("re-approbation d'un patient déjà ON : trace l'approbation + audit, SANS update de flag", async () => {
     const tx = mkTx(true)
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
-    const res = await governanceService.setAutoApply(7, true, { reference: "GOV-X" }, 3)
+    const res = await governanceService.setAutoApply(7, true, { reference: "GOV-REDECISION" }, 3)
     expect(res).toEqual({ autoApply: true, changed: false })
+    expect(tx.governanceApproval.create).toHaveBeenCalled() // la re-décision est tracée
+    expect(tx.auditLog.create).toHaveBeenCalled()
+    expect(tx.patient.update).not.toHaveBeenCalled() // flag inchangé
+  })
+
+  it("désactivation idempotente (déjà OFF) → no-op complet (ni approbation, ni update, ni audit)", async () => {
+    const tx = mkTx(false)
+    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
+    const res = await governanceService.setAutoApply(7, false, null, 3)
+    expect(res).toEqual({ autoApply: false, changed: false })
     expect(tx.governanceApproval.create).not.toHaveBeenCalled()
     expect(tx.patient.update).not.toHaveBeenCalled()
+    expect(tx.auditLog.create).not.toHaveBeenCalled()
   })
 
   it("patient absent → patientNotFound", async () => {
