@@ -584,3 +584,20 @@ des données récentes **prouvent** que le patient n'est pas en hyper. Bloque (�
 Sources : `src/lib/clinical-bounds.ts` (constantes + `isDeliverableFixedDose`), `src/lib/insulin/dose-safety-guards.ts`
 (`hypoWindowBlocks` mutualisé avec le générateur, `hyperDecreaseBlockReason`), `src/lib/insulin/auto-apply-envelope.ts`.
 Verrou anti-drift : `tests/unit/clinical-bounds.test.ts`.
+
+### Gouvernance de l'auto-application experte (US-2657 slice C1)
+
+**Frontière MDR — double verrou, OFF par défaut.** L'auto-application (enveloppe C1–C8 ci-dessus) ne peut
+opérer que si **les deux** sont ON :
+- **kill-switch GLOBAL** `AUTO_APPLY_GLOBALLY_ENABLED` (env, `src/lib/env.ts` → `isAutoApplyGloballyEnabled()`) —
+  fail-safe : absent/malformé/`false` → OFF ;
+- **flag par patient** `Patient.autoApply` (défaut `false`).
+
+Poser `autoApply = true` = **acte de gouvernance** (pas clinique) : rôle **ADMIN** + artefact
+`GovernanceApproval` (référence décision + `dpiaRef`) créé dans la transaction. **Désactivation toujours
+permise, sans approbation** (kill direction fail-safe). Audité `UPDATE PATIENT` (`from → to`, sans PHI).
+`AutoApplyEvent` (append-only) journalise chaque auto-application effective (alimente l'anti-cliquet C7).
+
+L'**activation en production reste subordonnée à la DPIA signée** (`docs/compliance/dpia-auto-application.md`,
+RGPD Art. 22 + MDR). Sources : `src/lib/services/governance.service.ts`, `src/app/api/governance/auto-apply/route.ts`,
+`prisma/schema.prisma` (`GovernanceApproval`, `AutoApplyEvent`).
