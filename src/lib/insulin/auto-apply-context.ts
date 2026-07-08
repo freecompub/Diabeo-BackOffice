@@ -67,6 +67,10 @@ export async function buildEnvelopeContext(
       },
       select: { valueGl: true },
     }),
+    // Récence par `createdAt` (heure d'enregistrement) plutôt que `date`+`time` clinique : `createdAt`
+    // ≥ heure de mesure, donc une cétone ancienne peut au pire paraître PLUS récente (sur-blocage
+    // conservateur) — jamais l'inverse. Fail-safe pour une garde DKA. `DiabetesEvent` a un vrai
+    // timestamp unique (`eventDate`) → filtré dessus directement.
     prisma.glycemiaEntry.findMany({
       where: { patientId, ketones: { not: null }, createdAt: { gte: ketoneStart, lte: now } },
       select: { ketones: true },

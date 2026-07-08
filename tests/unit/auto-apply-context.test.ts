@@ -55,4 +55,42 @@ describe("buildEnvelopeContext", () => {
     expect(ctx.ratchet.hoursSinceLastAutoApply).toBeNull()
     expect(ctx.ratchet.cumulativeAbsPercentThisWeek).toBe(0)
   })
+
+  it("scoping : chaque requête est filtrée par patientId (+ plage physiologique CGM, + créneau anti-cliquet)", async () => {
+    await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
+    // CGM : patientId + plage valueGl (empêche une fuite inter-patient ou des valeurs hors plage).
+    expect(prismaMock.cgmEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ patientId: 7, valueGl: expect.objectContaining({ gte: expect.any(Number), lte: expect.any(Number) }) }),
+      }),
+    )
+    // Cétones : patientId + non null, sur les 2 sources.
+    expect(prismaMock.glycemiaEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, ketones: { not: null } }) }),
+    )
+    expect(prismaMock.diabetesEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, ketones: { not: null } }) }),
+    )
+    // Anti-cliquet : scopé (patient × paramètre × créneau).
+    expect(prismaMock.autoApplyEvent.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, parameterType: "insulinSensitivityFactor", slotKey: "22-06" }) }),
+    )
+    expect(prismaMock.autoApplyEvent.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, parameterType: "insulinSensitivityFactor", slotKey: "22-06" }) }),
+    )
+  })
+
+  it("CGM vide → glucosesGl [] + capture 0 (données manquantes non masquées)", async () => {
+    prismaMock.cgmEntry.findMany.mockResolvedValue([] as never)
+    const ctx = await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
+    expect(ctx.glycemia.glucosesGl).toEqual([])
+    expect(ctx.glycemia.capturePercent).toBe(0)
+  })
+
+  it("aucune cétone (2 sources vides) → recentKetonesMmol []", async () => {
+    prismaMock.glycemiaEntry.findMany.mockResolvedValue([] as never)
+    prismaMock.diabetesEvent.findMany.mockResolvedValue([] as never)
+    const ctx = await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
+    expect(ctx.glycemia.recentKetonesMmol).toEqual([])
+  })
 })
