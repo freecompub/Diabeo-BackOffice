@@ -7,6 +7,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
+import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
 import { auditService } from "./audit.service"
 import { treatmentModeService } from "./treatment-mode.service"
 import { clinicalReviewFlagService } from "./clinical-review-flag.service"
@@ -559,13 +560,9 @@ export const adjustmentService = {
       return created
     } catch (e) {
       // Course TOCTOU rattrapée par l'index partiel `adjustment_proposals_one_pending_per_slot`.
-      // On ne re-mappe QUE cette contrainte-là (pas n'importe quel P2002) pour ne pas masquer
-      // un futur conflit d'unicité sans rapport.
-      const err = e as { code?: string; meta?: { target?: unknown } }
-      const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
-      if (err.code === "P2002" && target.includes("one_pending")) {
-        throw new Error("duplicatePendingProposal")
-      }
+      // `isUniqueViolationOn` lit la forme Prisma 7 + adapter-pg (`meta.driverAdapterError.cause` ;
+      // `meta.target` est undefined) — cf. src/lib/db/prisma-errors.ts. Ne re-mappe QUE cette contrainte.
+      if (isUniqueViolationOn(e, "one_pending")) throw new Error("duplicatePendingProposal")
       throw e
     }
   },
@@ -689,11 +686,8 @@ export const adjustmentService = {
       )
       return created
     } catch (e) {
-      const err = e as { code?: string; meta?: { target?: unknown } }
-      const target = Array.isArray(err.meta?.target) ? err.meta!.target.join(",") : String(err.meta?.target ?? "")
-      if (err.code === "P2002" && target.includes("one_pending")) {
-        throw new Error("duplicatePendingProposal")
-      }
+      // Idem createProposal : forme d'erreur Prisma 7 + adapter-pg via `isUniqueViolationOn`.
+      if (isUniqueViolationOn(e, "one_pending")) throw new Error("duplicatePendingProposal")
       throw e
     }
   },

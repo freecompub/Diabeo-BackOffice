@@ -55,6 +55,12 @@ describe("PATCH /api/governance/auto-apply", () => {
     expect(setFlag).not.toHaveBeenCalled()
   })
 
+  it("activation SANS dpiaRef → 400 (DPIA obligatoire)", async () => {
+    const res = await PATCH(req("ADMIN", { patientId: 7, enabled: true, reference: "GOV-1" }))
+    expect(res.status).toBe(400)
+    expect(setFlag).not.toHaveBeenCalled()
+  })
+
   for (const role of ["DOCTOR", "NURSE", "VIEWER"]) {
     it(`${role} → 403 (acte de gouvernance réservé ADMIN)`, async () => {
       const res = await PATCH(req(role, { patientId: 7, enabled: true, reference: "GOV-1" }))
@@ -65,7 +71,7 @@ describe("PATCH /api/governance/auto-apply", () => {
 
   it("patient hors périmètre → 404 (anti-IDOR)", async () => {
     resolve.mockResolvedValue(null)
-    const res = await PATCH(req("ADMIN", { patientId: 99, enabled: true, reference: "GOV-1" }))
+    const res = await PATCH(req("ADMIN", { patientId: 99, enabled: true, reference: "GOV-1", dpiaRef: "DPIA-1" }))
     expect(res.status).toBe(404)
     expect(setFlag).not.toHaveBeenCalled()
   })

@@ -1,10 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireRole, AuthError } from "@/lib/auth"
+import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 // US-2657 (slice A2) — corps porteur du `patientId` (injecté par le transport de mutation de la fiche
 // unifiée, anti-énumération) + niveau désiré. Le scope réel est résolu serveur (`resolvePatientId`).
@@ -24,8 +24,27 @@ const bodySchema = z.object({
  */
 export async function PATCH(req: NextRequest) {
   try {
-    const user = requireRole(req, "DOCTOR")
-    if (user.role !== "DOCTOR") return NextResponse.json({ error: "forbidden" }, { status: 403 }) // exclut ADMIN
+    const user = requireAuth(req) // 401 si non authentifié
+    // **Exactement DOCTOR** (acte clinique) : on exclut NURSE/VIEWER ET ADMIN. Tout non-DOCTOR est une
+    // tentative hors autorité clinique — dont l'auto-élévation d'un patient (VIEWER) : tracée par une
+    // action d'audit DÉDIÉE (AC-1) avant le 403, plutôt qu'un UNAUTHORIZED générique.
+    if (user.role !== "DOCTOR") {
+      const attemptedPatientId = z.number().int().positive().safeParse((await req.json().catch(() => null))?.patientId)
+      const rc = extractRequestContext(req)
+      await auditService
+        .log({
+          userId: user.id,
+          action: "MATURITY_LEVEL_SELF_ELEVATION_DENIED",
+          resource: "PATIENT",
+          resourceId: String(user.id),
+          ipAddress: rc.ipAddress,
+          userAgent: rc.userAgent,
+          requestId: rc.requestId,
+          metadata: { attemptedRole: user.role, ...(attemptedPatientId.success ? { attemptedPatientId: attemptedPatientId.data } : {}) },
+        })
+        .catch(() => {})
+      return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    }
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 

@@ -11,7 +11,8 @@ vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: vi.fn().mockResolvedValue(tru
 vi.mock("@/lib/access-control", () => ({ resolvePatientId: vi.fn() }))
 vi.mock("@/lib/services/patient.service", () => ({ patientService: { setMaturityLevel: vi.fn() } }))
 vi.mock("@/lib/services/audit.service", () => ({
-  extractRequestContext: vi.fn().mockReturnValue({ ipAddress: "127.0.0.1", userAgent: "test" }),
+  extractRequestContext: vi.fn().mockReturnValue({ ipAddress: "127.0.0.1", userAgent: "test", requestId: "req-1" }),
+  auditService: { log: vi.fn().mockResolvedValue(undefined) },
 }))
 
 const { PATCH } = await import("@/app/api/patients/maturity/route")

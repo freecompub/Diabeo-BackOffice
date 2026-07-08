@@ -71,6 +71,20 @@ export type AuditAction =
    *  AdjustmentProposal to keep forensic queries clean — review PR #390 C5). */
   | "DELEGATION_APPROVED"
   | "DELEGATION_REJECTED"
+  /**
+   * US-2657 — auto-application experte gouvernée (frontière MDR / RGPD Art. 22). Actions DÉDIÉES
+   * (pas `UPDATE` + `metadata.kind`) pour que la forensique CNIL/ANS filtre par action, cf. convention
+   * `PROPOSAL_REFUSED`/`DELEGATION_*`. Aucune PHI ; `metadata.patientId` pivot (US-2268).
+   */
+  | "MATURITY_LEVEL_CHANGED"
+  /** Tentative d'auto-élévation de maturité par un non-DOCTOR (patient/VIEWER) — refus 403 tracé (AC-1). */
+  | "MATURITY_LEVEL_SELF_ELEVATION_DENIED"
+  | "AUTO_APPLY_FLAG_CHANGED"
+  | "AUTO_APPLIED_SETTING"
+  /** Édition retombée en proposition (hors enveloppe) — `metadata.failedCheck` = C1..C8. */
+  | "AUTO_APPLY_FALLBACK"
+  /** Édition rejetée (valeur hors bornes cliniques) ou échec d'application auto-appliquée. */
+  | "AUTO_APPLY_REJECTED"
   | "IMPORT"
   | "ANONYMIZE"
   /** US-2265 — RBAC-breach burst signal (50+ UNAUTHORIZED in 60s by same userId). */

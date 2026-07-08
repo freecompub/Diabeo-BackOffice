@@ -430,22 +430,34 @@ export const patientService = {
     return prisma.$transaction(async (tx) => {
       const before = await tx.patient.findFirst({
         where: { id: patientId, deletedAt: null },
-        select: { maturityLevel: true },
+        select: { maturityLevel: true, autoApply: true },
       })
       if (!before) throw new Error("patientNotFound")
-      if (before.maturityLevel === level) return { maturityLevel: level, changed: false }
 
-      await tx.patient.update({ where: { id: patientId }, data: { maturityLevel: level } })
+      // US-2657 (durcissement) — sortir du niveau EXPERT **neutralise `autoApply`** dans la MÊME
+      // transaction (fail-safe) : une auto-application ne survit jamais à la perte du niveau EXPERT, et
+      // une ré-élévation ultérieure exige une NOUVELLE approbation de gouvernance (ADMIN + dpiaRef) — sans
+      // ça, un cycle EXPERT→JUNIOR→EXPERT ré-activerait silencieusement l'automatisation sur l'ancienne
+      // approbation. (Défense en profondeur ; le harnais re-vérifie aussi une GovernanceApproval active.)
+      const mustClearAutoApply = level !== "EXPERT" && before.autoApply
+      const maturityChanged = before.maturityLevel !== level
+      if (!maturityChanged && !mustClearAutoApply) return { maturityLevel: level, changed: false, autoApplyCleared: false }
+
+      await tx.patient.update({
+        where: { id: patientId },
+        data: { maturityLevel: level, ...(mustClearAutoApply ? { autoApply: false } : {}) },
+      })
       await auditService.logWithTx(tx, {
         userId: auditUserId,
-        action: "UPDATE",
+        action: "MATURITY_LEVEL_CHANGED",
         resource: "PATIENT",
         resourceId: String(patientId),
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
-        metadata: { patientId, kind: "maturityLevelChanged", from: before.maturityLevel, to: level },
+        requestId: ctx?.requestId,
+        metadata: { patientId, from: before.maturityLevel, to: level, ...(mustClearAutoApply ? { autoApplyCleared: true } : {}) },
       })
-      return { maturityLevel: level, changed: true }
+      return { maturityLevel: level, changed: maturityChanged, autoApplyCleared: mustClearAutoApply }
     })
   },
 

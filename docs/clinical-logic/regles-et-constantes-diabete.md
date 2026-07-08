@@ -566,9 +566,9 @@ Conditions (conjonction, court-circuit ; ordre **C4 → C1 → C2 → C3 → C5 
 | **C3** | amplitude : ratios ≤ `AUTO_APPLY_MAX_CHANGE_PERCENT` (10 %) ; dose fixe ≤ `AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U` (1,0 U) | proposition |
 | **C4** | valeur résultante **dans** `CLINICAL_BOUNDS` (ISF/ICR/basal ; dose fixe ≥ `FIXED_DOSE_MIN`) | **REJET DUR** |
 | **C5** | délivrabilité : basal `isDeliverableBasalRate` (0,05) ; dose fixe `isDeliverableFixedDose` (0,5) | proposition |
-| **C6** | garde **hypo** (HAUSSE d'insuline) : `hypoWindowBlocks` — 1 hypo sévère (<0,54) OU ≥2 niveau 1 (<0,70) | proposition |
-| **C6b** | garde **hyper/cétose** (BAISSE d'insuline) : `hyperDecreaseBlockReason` | proposition |
-| **C7** | anti-cliquet : cooldown `AUTO_APPLY_COOLDOWN_HOURS` (72 h) + cumul `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` (15 %/7 j) | proposition |
+| **C6** | garde **hypo** (HAUSSE d'insuline) : `hypoWindowBlocks` sur **CGM ∪ capillaire** — 1 hypo sévère (<0,54) OU ≥2 niveau 1 (<0,70). **Aucune donnée récente → proposition** (fail-closed) | proposition |
+| **C6b** | garde **hyper/cétose** (BAISSE d'insuline) : `hyperDecreaseBlockReason`, **seuils pathology-aware** (cible resserrée grossesse/DG) | proposition |
+| **C7** | anti-cliquet : cooldown `AUTO_APPLY_COOLDOWN_HOURS` (72 h) + cumul `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` (15 %/7 j). **Re-évalué sous advisory-lock** à l'apply (anti-TOCTOU) | proposition |
 | **C8** | fail-closed : donnée manquante / `NaN` / ambiguë / exception | proposition |
 
 **C6b — garde hyper asymétrique (le cas dangereux).** Une **baisse d'insuline** ne s'auto-applique que si
@@ -581,8 +581,22 @@ des données récentes **prouvent** que le patient n'est pas en hyper. Bloque (�
 - **hyper sévère** : TAR>250 (`tir.hyper`) > `AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT` (10 %) ;
 - **hyper soutenue** : TAR>180 (`tir.elevated + tir.hyper`) > `AUTO_APPLY_TAR_BLOCK_PERCENT` (30 %).
 
+**Durcissement (revue epic).**
+- **C6 lit le capillaire** : la fenêtre hypo est `hypoGlucosesGl` = **CGM ∪ `GlycemiaEntry` (BGM)**, pas
+  seulement le CGM — une hypo sévère au doigt d'un patient sans capteur bloque bien une hausse d'insuline.
+- **C6 exige une donnée récente pour toute HAUSSE** : `hypoGlucosesGl` vide → proposition (on ne peut pas
+  exclure une hypo sans donnée). (C6b avait déjà son plancher de suffisance pour les baisses.)
+- **C6b pathology-aware** : les seuils TIR viennent de `getCgmDefaults(grossesse/DG → "GD")` (cible haute
+  1,40 g/L vs 1,80) — une hyper soutenue en grossesse/DG n'est plus comptée « in range ».
+- **C7 anti-TOCTOU** : la branche AUTO_APPLY re-évalue l'enveloppe **sous advisory-lock** `(patient × paramètre
+  × créneau)` avec un contexte anti-cliquet frais, dans la **transaction unique** event + apply + audit.
+- **Frontière MDR** : `resolveTreatmentMode` refuse toute auto-application pour un patient `nonInsulin`.
+- **Unité ISF** : une édition ISF non `g/L` est refusée (`isfUnitMustBeGl`) — la primitive persiste en g/L.
+
 Sources : `src/lib/clinical-bounds.ts` (constantes + `isDeliverableFixedDose`), `src/lib/insulin/dose-safety-guards.ts`
-(`hypoWindowBlocks` mutualisé avec le générateur, `hyperDecreaseBlockReason`), `src/lib/insulin/auto-apply-envelope.ts`.
+(`hypoWindowBlocks` mutualisé avec le générateur, `hyperDecreaseBlockReason` pathology-aware),
+`src/lib/insulin/auto-apply-envelope.ts`, `src/lib/insulin/auto-apply-context.ts` (assemblage CGM ∪ capillaire +
+cétones + cible pathologie), `src/lib/services/auto-apply.service.ts` (transaction + advisory-lock + MDR).
 Verrou anti-drift : `tests/unit/clinical-bounds.test.ts`.
 
 ### Gouvernance de l'auto-application experte (US-2657 slice C1)

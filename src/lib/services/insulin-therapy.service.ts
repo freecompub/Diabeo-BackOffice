@@ -345,13 +345,25 @@ export const insulinTherapyService = {
   },
 
   /**
-   * US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ISF. `updateMany`
-   * scopé au patient (via `settings.patientId`) → un id d'un autre patient ne matche
-   * pas (`count === 0` → `isfSlotNotFound`, anti-IDOR). Ne modifie QUE la valeur, pas
-   * les heures (donc pas de re-check de chevauchement). Bornes validées à la route.
+   * US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ISF (`value` en **g/L**). `updateMany`
+   * scopé au patient (via `settings.patientId`) → un id d'un autre patient ne matche pas (`count === 0`
+   * → `isfSlotNotFound`, anti-IDOR). Ne modifie QUE la valeur, pas les heures (pas de re-check de
+   * chevauchement). **Bornes cliniques re-validées ici** (défense en profondeur : ce chemin sert aussi
+   * l'auto-application SANS médecin — US-2657). `externalTx` optionnel pour composer dans une transaction
+   * englobante (harnais d'auto-application, atomicité apply + événement + audit).
    */
-  async updateIsf(id: string, sensitivityFactorGl: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
-    return prisma.$transaction(async (tx) => {
+  async updateIsf(
+    id: string,
+    sensitivityFactorGl: number,
+    auditUserId: number,
+    patientId: number,
+    ctx?: AuditContext,
+    externalTx?: Prisma.TransactionClient,
+  ) {
+    if (sensitivityFactorGl < CLINICAL_BOUNDS.ISF_GL_MIN || sensitivityFactorGl > CLINICAL_BOUNDS.ISF_GL_MAX) {
+      throw new Error("valueOutOfBounds")
+    }
+    const run = async (tx: Prisma.TransactionClient) => {
       const res = await tx.insulinSensitivityFactor.updateMany({
         where: { id, settings: { patientId } },
         data: { sensitivityFactorGl, sensitivityFactorMgdl: glToMgdl(sensitivityFactorGl) },
@@ -364,10 +376,12 @@ export const insulinTherapyService = {
         resourceId: `isf:${id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
         metadata: { patientId },
       })
       return { updated: true }
-    })
+    }
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
   },
 
   // --- ICR CRUD ---
@@ -431,8 +445,19 @@ export const insulinTherapyService = {
 
   /** US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ICR. Scopé patient
    *  (via `settings.patientId`, anti-IDOR). Ne modifie que la valeur. Bornes à la route. */
-  async updateIcr(id: string, gramsPerUnit: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
-    return prisma.$transaction(async (tx) => {
+  async updateIcr(
+    id: string,
+    gramsPerUnit: number,
+    auditUserId: number,
+    patientId: number,
+    ctx?: AuditContext,
+    externalTx?: Prisma.TransactionClient,
+  ) {
+    // Défense en profondeur (chemin auto-application sans médecin) : bornes ICR re-validées service.
+    if (gramsPerUnit < CLINICAL_BOUNDS.ICR_MIN || gramsPerUnit > CLINICAL_BOUNDS.ICR_MAX) {
+      throw new Error("valueOutOfBounds")
+    }
+    const run = async (tx: Prisma.TransactionClient) => {
       const res = await tx.carbRatio.updateMany({
         where: { id, settings: { patientId } },
         data: { gramsPerUnit },
@@ -445,10 +470,12 @@ export const insulinTherapyService = {
         resourceId: `icr:${id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
         metadata: { patientId },
       })
       return { updated: true }
-    })
+    }
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
   },
 
   /**
@@ -660,11 +687,18 @@ export const insulinTherapyService = {
    * (via `basalConfig.settings.patientId`, anti-IDOR → `pumpSlotNotFound` si autre patient).
    * Le débit doit être PROGRAMMABLE (multiple de `PUMP_BASAL_INCREMENT`) — validé à la route.
    */
-  async updatePumpSlot(id: string, rate: number, auditUserId: number, patientId: number, ctx?: AuditContext) {
+  async updatePumpSlot(
+    id: string,
+    rate: number,
+    auditUserId: number,
+    patientId: number,
+    ctx?: AuditContext,
+    externalTx?: Prisma.TransactionClient,
+  ) {
     // Garde-fő service (défense en profondeur, indépendante du Zod route) : un débit non
-    // délivrable (hors incrément pompe) ne doit jamais être persisté, quel que soit l'appelant.
+    // délivrable (hors incrément pompe / bornes) ne doit jamais être persisté, quel que soit l'appelant.
     if (!isDeliverableBasalRate(rate)) throw new Error("rateNotDeliverable")
-    return prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       const res = await tx.pumpBasalSlot.updateMany({
         where: { id, basalConfig: { settings: { patientId } } },
         data: { rate },
@@ -677,10 +711,12 @@ export const insulinTherapyService = {
         resourceId: `pump:${id}`,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
         metadata: { patientId },
       })
       return { updated: true }
-    })
+    }
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
   },
 
   // --- Bolus Logs ---
