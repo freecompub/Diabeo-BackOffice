@@ -58,25 +58,35 @@ describe("buildEnvelopeContext", () => {
 
   it("scoping : chaque requête est filtrée par patientId (+ plage physiologique CGM, + créneau anti-cliquet)", async () => {
     await buildEnvelopeContext(7, "insulinSensitivityFactor", "22-06", 1.5, NOW)
-    // CGM : patientId + plage valueGl (empêche une fuite inter-patient ou des valeurs hors plage).
+    // CGM : patientId + plage valueGl + fenêtre temporelle bornée [start, now].
     expect(prismaMock.cgmEntry.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ patientId: 7, valueGl: expect.objectContaining({ gte: expect.any(Number), lte: expect.any(Number) }) }),
+        where: expect.objectContaining({
+          patientId: 7,
+          valueGl: expect.objectContaining({ gte: expect.any(Number), lte: expect.any(Number) }),
+          timestamp: expect.objectContaining({ gte: expect.any(Date), lte: NOW }),
+        }),
       }),
     )
-    // Cétones : patientId + non null, sur les 2 sources.
+    // Cétones : patientId + non null + récence 48 h bornée, sur les 2 sources.
     expect(prismaMock.glycemiaEntry.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, ketones: { not: null } }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ patientId: 7, ketones: { not: null }, createdAt: expect.objectContaining({ gte: expect.any(Date), lte: NOW }) }),
+      }),
     )
     expect(prismaMock.diabetesEvent.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, ketones: { not: null } }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ patientId: 7, ketones: { not: null }, eventDate: expect.objectContaining({ gte: expect.any(Date), lte: NOW }) }),
+      }),
     )
-    // Anti-cliquet : scopé (patient × paramètre × créneau).
+    // Anti-cliquet : scopé (patient × paramètre × créneau) ; le cumul est borné sur 7 j.
     expect(prismaMock.autoApplyEvent.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ patientId: 7, parameterType: "insulinSensitivityFactor", slotKey: "22-06" }) }),
     )
     expect(prismaMock.autoApplyEvent.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ patientId: 7, parameterType: "insulinSensitivityFactor", slotKey: "22-06" }) }),
+      expect.objectContaining({
+        where: expect.objectContaining({ patientId: 7, parameterType: "insulinSensitivityFactor", slotKey: "22-06", appliedAt: expect.objectContaining({ gte: expect.any(Date), lte: NOW }) }),
+      }),
     )
   })
 
