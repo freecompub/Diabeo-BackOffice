@@ -297,6 +297,15 @@ export function getEnvBoolean(name: string): boolean | undefined {
   return false
 }
 
+/**
+ * US-2657 (slice C) — kill-switch GLOBAL de l'auto-application experte. `true` UNIQUEMENT si la variable
+ * vaut explicitement `"true"` ; tout autre cas (absente, `"false"`, malformée) → `false` (**fail-safe**,
+ * l'auto-application n'existe pas). Prioritaire sur les flags `Patient.autoApply`. Frontière MDR.
+ */
+export function isAutoApplyGloballyEnabled(): boolean {
+  return getEnvBoolean("AUTO_APPLY_GLOBALLY_ENABLED") === true
+}
+
 function assertSpecs(specs: readonly EnvSpec[]): void {
   const problems: string[] = []
 
@@ -342,6 +351,9 @@ export function assertRequiredEnv(): void {
   assertSpecs(REQUIRED_FULL)
   // US-2123 — fail-fast on misconfigured FHIR feature flag.
   assertOptionalBoolean("FHIR_ENABLED")
+  // US-2657 (slice C) — kill-switch GLOBAL de l'auto-application experte (frontière MDR).
+  // Défaut OFF ; une valeur malformée ne doit JAMAIS activer silencieusement l'auto-application → fail-fast.
+  assertOptionalBoolean("AUTO_APPLY_GLOBALLY_ENABLED")
   // Socle d'accès (F2) — flag pilote ouvrant le mode `provisional` de la porte
   // clinique en prod. Fail-fast sur valeur malformée : une faute de saisie ne
   // doit pas désactiver silencieusement le pilote (cf. capabilities.pilotAllowed).

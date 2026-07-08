@@ -695,6 +695,12 @@ model Patient {
   pregnancyMode Boolean        @default(false) @map("pregnancy_mode")
   /// US-2657 — niveau d'autonomie (ETP), posé par le soignant. Défaut JUNIOR (le plus restrictif).
   maturityLevel MaturityLevel  @default(JUNIOR) @map("maturity_level")
+  /// US-2657 (slice C) — auto-application experte ACTIVÉE pour ce patient. OFF par défaut,
+  /// gouvernance-gated (activation ADMIN conditionnée à une GovernanceApproval valide) et
+  /// SUBORDONNÉE au kill-switch global `AUTO_APPLY_GLOBALLY_ENABLED`. Frontière MDR.
+  autoApply     Boolean       @default(false) @map("auto_apply")
+  governanceApprovals GovernanceApproval[]
+  autoApplyEvents     AutoApplyEvent[]
   /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
   /// d'affichage/filtrage UNIQUEMENT. ⚠️ NE PAS lire cette colonne brute pour une
   /// décision logique : source de vérité = `resolveTreatmentMode()` (US-2647, dérivé
@@ -781,6 +787,40 @@ model Patient {
   @@unique([publicRef], map: "patients_public_ref_key")
   @@index([deletedAt])
   @@map("patients")
+}
+
+/// US-2657 (slice C) — Artefact de gouvernance autorisant l'auto-application experte d'un patient.
+/// PRÉ-REQUIS pour poser `Patient.autoApply = true` (décision qualité/réglementaire tracée, MDR).
+/// Immuable en pratique (append-only) ; `approvedById` = ADMIN acteur, `reference`/`dpiaRef` = liens
+/// vers la décision de gouvernance et la DPIA. Jamais de PHI.
+model GovernanceApproval {
+  id           Int      @id @default(autoincrement())
+  patientId    Int      @map("patient_id")
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  approvedById Int      @map("approved_by_id") // ADMIN ayant enregistré l'approbation
+  reference    String   // référence de la décision de gouvernance
+  dpiaRef      String?  @map("dpia_ref") // lien DPIA
+  enabled      Boolean  @default(true) // l'approbation autorise l'activation
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([patientId])
+  @@map("governance_approvals")
+}
+
+/// US-2657 (slice C) — Registre (append-only) des auto-applications effectives. Alimente l'anti-cliquet
+/// C7 de l'enveloppe : `hoursSinceLastAutoApply` + cumul des |Δ%| sur (patient × paramètre × créneau)
+/// sur 7 j glissants. `deltaPercent` en %. Jamais de PHI.
+model AutoApplyEvent {
+  id            Int               @id @default(autoincrement())
+  patientId     Int               @map("patient_id")
+  patient       Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  parameterType AdjustableParameter @map("parameter_type")
+  slotKey       String            @map("slot_key") // identifie le créneau (ex. "22-06")
+  deltaPercent  Float             @map("delta_percent") // |Δ%| appliqué (anti-cliquet)
+  appliedAt     DateTime          @default(now()) @map("applied_at")
+
+  @@index([patientId, parameterType, appliedAt])
+  @@map("auto_apply_events")
 }
 
 /// US-2603 — Dossiers patients récemment consultés par un PS (switcher de
