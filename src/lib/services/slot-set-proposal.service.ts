@@ -37,7 +37,8 @@ export type ProposedSlot = { startHour: number; endHour: number; value: number; 
 /** Paramètres à jeu de créneaux gérés (ISF/ICR). */
 export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio"
 
-const REPLACE_KEY: Record<SlotSetParam, "isf" | "icr"> = {
+/** Mapping paramètre à jeu de créneaux → clé courte `replaceSlotSet`/verrou. Source unique (réutilisé C3b). */
+export const REPLACE_KEY: Record<SlotSetParam, "isf" | "icr"> = {
   insulinSensitivityFactor: "isf",
   insulinToCarbRatio: "icr",
 }

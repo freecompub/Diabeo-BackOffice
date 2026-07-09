@@ -13,6 +13,7 @@ import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/cli
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { hasTimeSlotOverlap } from "./time-slot-utils"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
+import { lockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -364,6 +365,7 @@ export const insulinTherapyService = {
       throw new Error("valueOutOfBounds")
     }
     const run = async (tx: Prisma.TransactionClient) => {
+      await lockInsulinSlots(tx, patientId, "isf") // exclusion mutuelle unifiée (patient×param)
       const res = await tx.insulinSensitivityFactor.updateMany({
         where: { id, settings: { patientId } },
         data: { sensitivityFactorGl, sensitivityFactorMgdl: glToMgdl(sensitivityFactorGl) },
@@ -458,6 +460,7 @@ export const insulinTherapyService = {
       throw new Error("valueOutOfBounds")
     }
     const run = async (tx: Prisma.TransactionClient) => {
+      await lockInsulinSlots(tx, patientId, "icr")
       const res = await tx.carbRatio.updateMany({
         where: { id, settings: { patientId } },
         data: { gramsPerUnit },
@@ -537,6 +540,7 @@ export const insulinTherapyService = {
     const parameterType = param === "isf" ? "insulinSensitivityFactor" : "insulinToCarbRatio"
 
     const run = async (tx: Prisma.TransactionClient) => {
+      await lockInsulinSlots(tx, patientId, param) // exclusion mutuelle unifiée (patient×param) — anti lost-update
       // 2a. Scope patient (anti-IDOR) — le settingsId provient du patient, jamais du body.
       const settings = await tx.insulinTherapySettings.findUnique({ where: { patientId }, select: { id: true } })
       if (!settings) throw new Error("settingsNotFound")
@@ -699,6 +703,7 @@ export const insulinTherapyService = {
     // délivrable (hors incrément pompe / bornes) ne doit jamais être persisté, quel que soit l'appelant.
     if (!isDeliverableBasalRate(rate)) throw new Error("rateNotDeliverable")
     const run = async (tx: Prisma.TransactionClient) => {
+      await lockInsulinSlots(tx, patientId, "basal")
       const res = await tx.pumpBasalSlot.updateMany({
         where: { id, basalConfig: { settings: { patientId } } },
         data: { rate },

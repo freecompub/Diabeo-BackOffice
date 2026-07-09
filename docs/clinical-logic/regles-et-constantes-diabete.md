@@ -685,8 +685,10 @@ groupe, tout-ou-rien** (jamais d'application partielle — invariant spec) :
 
 **⚠️ Risque résiduel assumé (le cap est par NOMBRE seul).** Le compte ≤ 2 borne le **périmètre**
 (attribuabilité, frontière MDR), **pas l'ampleur cumulée co-directionnelle** : 2 créneaux dans la même
-direction à −10 % ≈ +11 % d'insuline prandiale, non revu. L'ampleur reste bornée **par créneau** (C3 ±10 %,
-C7 15 %/7 j) mais pas au niveau groupe. Angle mort **assumé et instruit** en DPIA
+direction à −10 % ≈ **+11 % d'insuline prandiale PAR créneau/repas** (pas un total de session), et comme
+l'anti-cliquet C7 (15 %/7 j) est **par créneau**, un groupe N=2 co-directionnel répété peut dériver le profil
+jusqu'à **~2× le plafond C7 hebdo** sur la portion de journée couverte. L'ampleur reste bornée **par créneau**
+(C3 ±10 %, C7) mais **pas au niveau groupe/profil**. Angle mort **assumé et instruit** en DPIA
 (`docs/compliance/dpia-auto-application.md`, §4) — décision produit US-2657 (cap par nombre retenu ; garde
 d'ampleur `AUTO_APPLY_MAX_GROUP_CUMULATIVE_PERCENT` non implémentée). Verrou anti-drift :
 `tests/unit/clinical-bounds.test.ts`.

@@ -70,6 +70,10 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
       autoApplyEvent: { create: vi.fn().mockResolvedValue({ id: 1 }) },
       patient: { findFirst: vi.fn().mockResolvedValue({ maturityLevel: "EXPERT", autoApply: true }) },
       governanceApproval: { count: vi.fn().mockResolvedValue(1) },
+      // Baseline re-lu sous lock (readSlotValue) — valeurs alignées sur les currentValue des éditions de test.
+      insulinSensitivityFactor: { findFirst: vi.fn().mockResolvedValue({ sensitivityFactorGl: 0.5 }) },
+      carbRatio: { findFirst: vi.fn().mockResolvedValue({ gramsPerUnit: 10 }) },
+      pumpBasalSlot: { findFirst: vi.fn().mockResolvedValue({ rate: 0.8 }) },
     }
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
   })
@@ -180,6 +184,15 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
     vi.mocked(insulinTherapyService.updateIsf).mockRejectedValueOnce(new Error("isfSlotNotFound"))
     await expect(autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW)).rejects.toThrow("isfSlotNotFound")
     expect(auditService.logWithTx).not.toHaveBeenCalledWith(tx, expect.objectContaining({ action: "AUTO_APPLIED_SETTING" }))
+  })
+
+  it("baseline du créneau bougé sous lock → proposition (fail-closed B1, pas d'apply)", async () => {
+    evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
+    // Valeur courante relue sous lock (0.6) ≠ edit.currentValue (0.5) → baselineMoved → proposition.
+    tx.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.6 })
+    const res = await autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW)
+    expect(res).toEqual({ outcome: "proposal", failedCheck: "baselineMoved", proposalId: "prop-1" })
+    expect(insulinTherapyService.updateIsf).not.toHaveBeenCalled()
   })
 
   it("patient absent/soft-deleted → patientNotFound", async () => {

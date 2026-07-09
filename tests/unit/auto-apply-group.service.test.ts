@@ -24,7 +24,10 @@ vi.mock("@/lib/services/insulin-therapy.service", async (importOriginal) => {
 })
 vi.mock("@/lib/services/adjustment.service", () => ({ adjustmentService: { createProposal: vi.fn() } }))
 vi.mock("@/lib/services/treatment-mode.service", () => ({ treatmentModeService: { resolveTreatmentMode: vi.fn() } }))
-vi.mock("@/lib/services/slot-set-proposal.service", () => ({ slotSetProposalService: { createSetProposal: vi.fn().mockResolvedValue({ id: "set-1" }) } }))
+vi.mock("@/lib/services/slot-set-proposal.service", () => ({
+  slotSetProposalService: { createSetProposal: vi.fn().mockResolvedValue({ id: "set-1" }) },
+  REPLACE_KEY: { insulinSensitivityFactor: "isf", insulinToCarbRatio: "icr" },
+}))
 vi.mock("@/lib/services/audit.service", () => ({ auditService: { log: vi.fn().mockResolvedValue(undefined), logWithTx: vi.fn() } }))
 
 const { autoApplyService } = await import("@/lib/services/auto-apply.service")
@@ -79,7 +82,9 @@ describe("autoApplyService.applyExpertGroupGoverned", () => {
       $executeRaw: vi.fn().mockResolvedValue(1),
       autoApplyEvent: { create: vi.fn().mockResolvedValue({ id: 1 }) },
       patient: { findFirst: vi.fn().mockResolvedValue({ maturityLevel: "EXPERT", autoApply: true }) },
-      governanceApproval: { count: vi.fn().mockResolvedValue(1) },
+      governanceApproval: { findFirst: vi.fn().mockResolvedValue({ id: 1, reference: "GOV-1" }) },
+      // Baseline RELU sous lock (readCurrentSlots via tx) — identique au pré-lock → pas de baselineMoved.
+      insulinSensitivityFactor: { findMany: vi.fn().mockResolvedValue(CURRENT) },
     }
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
   })
@@ -139,6 +144,19 @@ describe("autoApplyService.applyExpertGroupGoverned", () => {
     expect(res).toEqual({ outcome: "proposal", failedCheck: "C6", proposalId: "set-1" })
     expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
     expect(slotSetProposalService.createSetProposal).toHaveBeenCalled()
+  })
+
+  it("baseline bougé SOUS le lock (édition concurrente) → proposition, PAS d'apply (fail-closed B1)", async () => {
+    evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
+    // Sous le lock, le jeu courant relu via tx diffère du pré-lock (1er créneau 0.5 → 0.6) → baselineMoved.
+    tx.insulinSensitivityFactor.findMany.mockResolvedValue([
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.6 },
+      { startHour: 8, endHour: 22, sensitivityFactorGl: 0.45 },
+      { startHour: 22, endHour: 0, sensitivityFactorGl: 0.4 },
+    ])
+    const res = await autoApplyService.applyExpertGroupGoverned(edit(CHANGED_2), 7, NOW)
+    expect(res).toEqual({ outcome: "proposal", failedCheck: "baselineMoved", proposalId: "set-1" })
+    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
   })
 
   it("patient absent/soft-deleted → patientNotFound", async () => {

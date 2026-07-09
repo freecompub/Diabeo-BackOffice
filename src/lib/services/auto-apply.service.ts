@@ -18,18 +18,22 @@
  * déjà autorisé, audite la décision, et `now` est injecté (pas d'horloge cachée).
  */
 import type { AdjustableParameter, AdjustmentReason, Prisma } from "@prisma/client"
-import { prisma } from "@/lib/db/client"
+import { prisma, type PrismaClientOrTx } from "@/lib/db/client"
 import { decimalToNumber } from "@/lib/db/decimal"
 import { isAutoApplyGloballyEnabled } from "@/lib/env"
 import { KETONE_DEFAULTS } from "@/lib/services/ketone-threshold.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { buildEnvelopeContext } from "@/lib/insulin/auto-apply-context"
 import { evaluateAutoApplyEnvelope } from "@/lib/insulin/auto-apply-envelope"
+import { lockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { adjustmentService, type CreateProposalInput } from "@/lib/services/adjustment.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
-import { slotSetProposalService, type ProposedSlot, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
+import { slotSetProposalService, REPLACE_KEY, type ProposedSlot, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
+
+/** Égalité de valeurs cliniques (Decimal→number) avec tolérance — convention repo (évite le churn no-op). */
+const sameValue = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9
 
 /** Paramètres à créneau gérés par le harnais (la dose fixe suit un autre chemin). */
 export type SlotParam = "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate"
@@ -65,10 +69,6 @@ export type ExpertGroupEdit = {
   windowDays?: number
 }
 
-const GROUP_REPLACE_KEY: Record<SlotSetParam, "isf" | "icr"> = {
-  insulinSensitivityFactor: "isf",
-  insulinToCarbRatio: "icr",
-}
 
 /**
  * Applique la nouvelle valeur du créneau via la primitive scopée (anti-IDOR + bornes re-validées + audit
@@ -138,23 +138,70 @@ async function auditDecision(
   })
 }
 
-/** Lit le jeu de créneaux courant (valeur en g/L ISF / g/U ICR) scopé patient — pour dériver changeKind + Δ. */
+/**
+ * Lit le jeu de créneaux courant (valeur en g/L ISF / g/U ICR) scopé patient — pour dériver changeKind + Δ.
+ * `client` optionnel : la relecture SOUS le lock (anti lost-update B1) passe le `tx` englobant.
+ */
 async function readCurrentSlots(
   param: "isf" | "icr",
   patientId: number,
+  client: PrismaClientOrTx = prisma,
 ): Promise<Array<{ startHour: number; endHour: number; value: number }>> {
   if (param === "isf") {
-    const rows = await prisma.insulinSensitivityFactor.findMany({
+    const rows = await client.insulinSensitivityFactor.findMany({
       where: { settings: { patientId } },
       select: { startHour: true, endHour: true, sensitivityFactorGl: true },
     })
     return rows.map((r) => ({ startHour: r.startHour, endHour: r.endHour, value: decimalToNumber(r.sensitivityFactorGl) }))
   }
-  const rows = await prisma.carbRatio.findMany({
+  const rows = await client.carbRatio.findMany({
     where: { settings: { patientId } },
     select: { startHour: true, endHour: true, gramsPerUnit: true },
   })
   return rows.map((r) => ({ startHour: r.startHour, endHour: r.endHour, value: decimalToNumber(r.gramsPerUnit) }))
+}
+
+/** Vrai si deux jeux de créneaux sont identiques (frontières + valeurs à tolérance) — détection baseline bougé. */
+function slotSetsEqual(
+  a: Array<{ startHour: number; endHour: number; value: number }>,
+  b: Array<{ startHour: number; endHour: number; value: number }>,
+): boolean {
+  if (a.length !== b.length) return false
+  const bByKey = new Map(b.map((s) => [`${s.startHour}-${s.endHour}`, s.value]))
+  return a.every((s) => {
+    const v = bByKey.get(`${s.startHour}-${s.endHour}`)
+    return v !== undefined && sameValue(v, s.value)
+  })
+}
+
+/** Paramètre unitaire → clé de verrou unifiée (partagée avec le groupe et les écritures DOCTOR directes). */
+const SLOT_LOCK_PARAM: Record<SlotParam, "isf" | "icr" | "basal"> = {
+  insulinSensitivityFactor: "isf",
+  insulinToCarbRatio: "icr",
+  basalRate: "basal",
+}
+
+/** Lit la valeur COURANTE d'un créneau (scopé patient) — pour le garde `baselineMoved` unitaire sous lock. */
+async function readSlotValue(
+  tx: Prisma.TransactionClient,
+  parameterType: SlotParam,
+  slotId: string,
+  patientId: number,
+): Promise<number | null> {
+  switch (parameterType) {
+    case "insulinSensitivityFactor": {
+      const r = await tx.insulinSensitivityFactor.findFirst({ where: { id: slotId, settings: { patientId } }, select: { sensitivityFactorGl: true } })
+      return r ? decimalToNumber(r.sensitivityFactorGl) : null
+    }
+    case "insulinToCarbRatio": {
+      const r = await tx.carbRatio.findFirst({ where: { id: slotId, settings: { patientId } }, select: { gramsPerUnit: true } })
+      return r ? decimalToNumber(r.gramsPerUnit) : null
+    }
+    case "basalRate": {
+      const r = await tx.pumpBasalSlot.findFirst({ where: { id: slotId, basalConfig: { settings: { patientId } } }, select: { rate: true } })
+      return r ? decimalToNumber(r.rate) : null
+    }
+  }
 }
 
 export const autoApplyService = {
@@ -228,15 +275,18 @@ export const autoApplyService = {
 
     if (decision.decision === "AUTO_APPLY") {
       const deltaPercent = Math.abs((proposedValue - currentValue) / currentValue) * 100
-      // Transaction unique + advisory-lock par (patient × param × créneau) : sérialise les auto-applications
-      // concurrentes sur le même créneau. Re-évaluation SOUS le lock avec un contexte anti-cliquet FRAIS →
-      // ferme le TOCTOU C7 (un apply concurrent committé pendant notre 1re évaluation est désormais visible ;
-      // pas de duplication de règle — on rejoue l'enveloppe). Event + apply + audit commitent atomiquement.
-      const lockKey = `autoapply:${patientId}:${parameterType}:${slotKey}`
+      // Transaction unique + VERROU UNIFIÉ `(patient × param)` — exclut aussi le chemin groupé et les
+      // écritures DOCTOR directes (anti lost-update B1). Sous le lock : baseline RELU (garde `baselineMoved`),
+      // autorité + anti-cliquet ré-évalués (contexte frais) → ferme le TOCTOU C7. Event + apply + audit atomiques.
       const result = await prisma.$transaction(async (tx) => {
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}::text, 0))`
-        // Re-lecture via `tx` (pas le client global) : reste dans la transaction/le lock, sans prélever de
-        // connexions supplémentaires sur le pool (anti-starvation) ; sous READ COMMITTED voit les commits concurrents.
+        await lockInsulinSlots(tx, patientId, SLOT_LOCK_PARAM[parameterType])
+        // Baseline RELU sous lock : si la valeur courante du créneau a bougé depuis l'évaluation (édition
+        // médecin/groupe concurrente), ne pas appliquer sur une base périmée → fail-closed → proposition.
+        const liveValue = await readSlotValue(tx, parameterType, edit.slotId, patientId)
+        if (liveValue === null || !sameValue(liveValue, currentValue)) {
+          return { applied: false as const, failedCheck: "baselineMoved" }
+        }
+        // Re-lecture via `tx` : reste dans la transaction/le lock, sans connexion pool supplémentaire.
         const fresh = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays, tx)
         // Re-lecture de l'AUTORITÉ sous le lock (kill-switch × flag × approbation) : une révocation
         // (désactivation ADMIN, downgrade, kill-switch) survenue depuis la 1re évaluation avorte l'apply.
@@ -301,7 +351,7 @@ export const autoApplyService = {
     ctx?: AuditContext,
   ): Promise<GovernedOutcome> {
     const { patientId, parameterType, proposedSlots, windowDays } = edit
-    const param = GROUP_REPLACE_KEY[parameterType]
+    const param = REPLACE_KEY[parameterType]
 
     // 1. Rejet dur à la saisie : bornes cliniques + couverture (no-gap/no-overlap). Lève si invalide.
     assertValidSlotSet(param, proposedSlots)
@@ -313,91 +363,123 @@ export const autoApplyService = {
     })
     if (!patient) throw new Error("patientNotFound")
 
-    // 3. Frontière MDR — jamais de dose auto pour un patient non insuliné.
+    // 3. Frontière MDR — jamais de dose auto pour un patient non insuliné (re-vérifiée SOUS le lock en 8).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") {
       await auditDecision(patientId, actorUserId, "AUTO_APPLY_REJECTED", { parameterType, reason: "nonInsulinNoDose", group: true }, ctx)
       return { outcome: "rejected", reason: "nonInsulinNoDose" }
     }
 
-    // 4. État courant → changeKind SERVEUR (comparaison des frontières d'heures) + créneaux modifiés.
-    const current = await readCurrentSlots(param, patientId)
-    const curByKey = new Map(current.map((s) => [`${s.startHour}-${s.endHour}`, s.value]))
+    // 4. Instantané PRÉ-LOCK (décisions bon marché : structurel / cap / no-op). L'apply RELIT sous le lock.
+    const preLock = await readCurrentSlots(param, patientId)
+    const curByKey0 = new Map(preLock.map((s) => [`${s.startHour}-${s.endHour}`, s.value]))
     const propKeys = proposedSlots.map((s) => `${s.startHour}-${s.endHour}`)
-    const structural = propKeys.length !== curByKey.size || propKeys.some((k) => !curByKey.has(k))
-    const changed = structural
+    const structural = propKeys.length !== curByKey0.size || propKeys.some((k) => !curByKey0.has(k))
+    const changed0 = structural
       ? proposedSlots
-      : proposedSlots.filter((s) => curByKey.get(`${s.startHour}-${s.endHour}`) !== s.value)
+      : proposedSlots.filter((s) => !sameValue(curByKey0.get(`${s.startHour}-${s.endHour}`)!, s.value))
 
     // Voie proposition GROUPÉE (jamais d'AdjustmentProposal par-valeur — ADR #23).
-    const propose = async (failedCheck: string): Promise<GovernedOutcome> => {
+    const propose = async (failedCheck: string, changedCount: number): Promise<GovernedOutcome> => {
       const p = await slotSetProposalService.createSetProposal(patientId, parameterType, proposedSlots, actorUserId, ctx)
-      await auditDecision(patientId, actorUserId, "AUTO_APPLY_FALLBACK", { parameterType, failedCheck, changedSlots: changed.length, group: true }, ctx)
+      await auditDecision(patientId, actorUserId, "AUTO_APPLY_FALLBACK", { parameterType, failedCheck, changedSlots: changedCount, structural, group: true }, ctx)
       return { outcome: "proposal", failedCheck, proposalId: p.id }
     }
 
     // 5. Restructuration → jamais auto-appliquée (C2). / Aucune valeur modifiée → no-op.
-    if (structural) return propose("C2")
-    if (changed.length === 0) return { outcome: "noop" }
+    if (structural) return propose("C2", 0)
+    if (changed0.length === 0) return { outcome: "noop" }
 
-    // 6. Triple verrou (kill-switch × flag × existence d'approbation, cf. harnais unitaire).
+    // 6. Triple verrou (kill-switch × flag × existence d'approbation).
     const globalOn = isAutoApplyGloballyEnabled()
     const hasGovernanceApproval = (await prisma.governanceApproval.count({ where: { patientId, enabled: true } })) > 0
-    if (!(globalOn && patient.autoApply && hasGovernanceApproval)) return propose("C1")
+    if (!(globalOn && patient.autoApply && hasGovernanceApproval)) return propose("C1", changed0.length)
 
     // 7. Cap GROUPE : au-delà de N créneaux modifiés → re-titration = revue médecin (attribuabilité / MDR).
-    if (changed.length > CLINICAL_BOUNDS.AUTO_APPLY_MAX_GROUP_SLOTS) return propose("groupSlots")
+    if (changed0.length > CLINICAL_BOUNDS.AUTO_APPLY_MAX_GROUP_SLOTS) return propose("groupSlots", changed0.length)
 
     const kt = await prisma.ketoneThreshold.findUnique({ where: { patientId }, select: { moderateThreshold: true } })
     const ketoneModerateThreshold = kt ? decimalToNumber(kt.moderateThreshold) : KETONE_DEFAULTS.moderateThreshold
 
-    // 8. Application TOUT-OU-RIEN sous advisory-lock (patient × paramètre). Chaque créneau modifié (≤ N) est
-    //    ré-évalué SOUS le lock (contexte anti-cliquet frais + autorité relue) ; un seul ≠ AUTO_APPLY → tout
-    //    le groupe en proposition. Fan-out contexte borné à N par le cap (findng D2).
-    const lockKey = `autoapply-group:${patientId}:${param}`
-    const result = await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${lockKey}::text, 0))`
-      const [freshPatient, freshApprovals] = await Promise.all([
-        tx.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { maturityLevel: true, autoApply: true } }),
-        tx.governanceApproval.count({ where: { patientId, enabled: true } }),
-      ])
-      const authority = {
-        maturityLevel: freshPatient?.maturityLevel ?? patient.maturityLevel,
-        autoApply: isAutoApplyGloballyEnabled() && !!freshPatient?.autoApply && freshApprovals > 0,
-      }
-      for (const s of changed) {
-        const slotKey = `${s.startHour}-${s.endHour}`
-        const fresh = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays, tx)
-        const decision = evaluateAutoApplyEnvelope({
-          authority,
-          change: { parameterType, changeKind: "VALUE", currentValue: curByKey.get(slotKey)!, proposedValue: s.value, isfUnit: param === "isf" ? "gl" : undefined },
-          glycemia: fresh.glycemia,
-          ratchet: fresh.ratchet,
-        })
-        if (decision.decision !== "AUTO_APPLY") {
-          return { applied: false as const, failedCheck: decision.decision === "FALLBACK_PROPOSAL" ? decision.failedCheck : "C4" }
+    // 8. Application TOUT-OU-RIEN sous VERROU UNIFIÉ `(patient × param)` — exclut AUSSI l'auto-application
+    //    unitaire et les écritures DOCTOR directes. On RELIT le baseline SOUS le lock : si la config a bougé
+    //    depuis l'instantané pré-lock (édition médecin/unitaire concurrente) → fail-closed → proposition
+    //    (jamais écraser une décision plus récente — anti lost-update B1). Puis re-vérif MDR + autorité +
+    //    ré-éval enveloppe par créneau (≤ N) ; un seul ≠ AUTO_APPLY → tout le groupe en proposition.
+    const result = await prisma.$transaction(
+      async (
+        tx,
+      ): Promise<
+        | { kind: "applied" }
+        | { kind: "propose"; failedCheck: string; changedCount: number }
+        | { kind: "reject"; reason: string }
+      > => {
+        await lockInsulinSlots(tx, patientId, param)
+
+        // Baseline FRAIS sous lock → divergence = fail-closed (anti lost-update).
+        const fresh = await readCurrentSlots(param, patientId, tx)
+        if (!slotSetsEqual(fresh, preLock)) return { kind: "propose", failedCheck: "baselineMoved", changedCount: changed0.length }
+        const curByKey = new Map(fresh.map((s) => [`${s.startHour}-${s.endHour}`, s.value]))
+        const changed = proposedSlots.filter((s) => !sameValue(curByKey.get(`${s.startHour}-${s.endHour}`)!, s.value))
+        if (changed.length === 0) return { kind: "propose", failedCheck: "baselineMoved", changedCount: 0 }
+
+        // Frontière MDR re-vérifiée sous lock (bascule concurrente vers non insuliné).
+        if ((await treatmentModeService.resolveTreatmentMode(patientId)).mode === "nonInsulin") {
+          return { kind: "reject", reason: "nonInsulinNoDose" }
         }
-      }
-      // Tous AUTO_APPLY → applique le jeu COMPLET atomiquement + anti-cliquet par créneau + audit.
-      await insulinTherapyService.replaceSlotSet(param, patientId, proposedSlots, actorUserId, ctx, tx)
-      for (const s of changed) {
-        const cur = curByKey.get(`${s.startHour}-${s.endHour}`)!
-        const deltaPercent = Math.abs((s.value - cur) / cur) * 100
-        await tx.autoApplyEvent.create({ data: { patientId, parameterType, slotKey: `${s.startHour}-${s.endHour}`, deltaPercent } })
-      }
-      await auditService.logWithTx(tx, {
-        userId: actorUserId,
-        action: "AUTO_APPLIED_SETTING",
-        resource: "PATIENT",
-        resourceId: String(patientId),
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        requestId: ctx?.requestId,
-        metadata: { patientId, parameterType, group: true, changedSlots: changed.length, globallyEnabled: globalOn },
-      })
-      return { applied: true as const }
-    })
-    if (result.applied) return { outcome: "applied" }
-    return propose(result.failedCheck)
+
+        // Autorité relue sous lock + snapshot gouvernance pour l'audit immuable (attribuabilité MDR).
+        const [freshPatient, approval] = await Promise.all([
+          tx.patient.findFirst({ where: { id: patientId, deletedAt: null }, select: { maturityLevel: true, autoApply: true } }),
+          tx.governanceApproval.findFirst({ where: { patientId, enabled: true }, orderBy: { createdAt: "desc" }, select: { id: true, reference: true } }),
+        ])
+        const authority = {
+          maturityLevel: freshPatient?.maturityLevel ?? patient.maturityLevel,
+          autoApply: isAutoApplyGloballyEnabled() && !!freshPatient?.autoApply && approval != null,
+        }
+
+        for (const s of changed) {
+          const slotKey = `${s.startHour}-${s.endHour}`
+          const ctxE = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays, tx)
+          const decision = evaluateAutoApplyEnvelope({
+            authority,
+            change: { parameterType, changeKind: "VALUE", currentValue: curByKey.get(slotKey)!, proposedValue: s.value, isfUnit: param === "isf" ? "gl" : undefined },
+            glycemia: ctxE.glycemia,
+            ratchet: ctxE.ratchet,
+          })
+          if (decision.decision === "HARD_REJECT") return { kind: "reject", reason: decision.reason }
+          if (decision.decision !== "AUTO_APPLY") return { kind: "propose", failedCheck: decision.failedCheck, changedCount: changed.length }
+        }
+
+        // Tous AUTO_APPLY → applique le jeu COMPLET atomiquement + anti-cliquet par créneau + audit.
+        await insulinTherapyService.replaceSlotSet(param, patientId, proposedSlots, actorUserId, ctx, tx)
+        const slotKeys: string[] = []
+        for (const s of changed) {
+          const slotKey = `${s.startHour}-${s.endHour}`
+          const cur = curByKey.get(slotKey)!
+          await tx.autoApplyEvent.create({ data: { patientId, parameterType, slotKey, deltaPercent: Math.abs((s.value - cur) / cur) * 100 } })
+          slotKeys.push(slotKey)
+        }
+        await auditService.logWithTx(tx, {
+          userId: actorUserId,
+          action: "AUTO_APPLIED_SETTING",
+          resource: "PATIENT",
+          resourceId: String(patientId),
+          ipAddress: ctx?.ipAddress,
+          userAgent: ctx?.userAgent,
+          requestId: ctx?.requestId,
+          // Attribution (créneaux) + preuve de gouvernance figées dans le journal immuable (MDR).
+          metadata: { patientId, parameterType, group: true, slotKeys, changedSlots: changed.length, globallyEnabled: globalOn, maturityLevel: authority.maturityLevel, governanceApprovalId: approval?.id ?? null, governanceReference: approval?.reference ?? null },
+        })
+        return { kind: "applied" }
+      },
+    )
+
+    if (result.kind === "applied") return { outcome: "applied" }
+    if (result.kind === "reject") {
+      await auditDecision(patientId, actorUserId, "AUTO_APPLY_REJECTED", { parameterType, reason: result.reason, group: true }, ctx)
+      return { outcome: "rejected", reason: result.reason }
+    }
+    return propose(result.failedCheck, result.changedCount)
   },
 }
