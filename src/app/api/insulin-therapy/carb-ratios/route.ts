@@ -1,19 +1,19 @@
+/**
+ * @module /api/insulin-therapy/carb-ratios
+ * @description Créneaux ICR — **GET** (liste) + **PUT** (remplacement GROUPÉ du jeu entier).
+ *
+ * US-2657 (grouped-only, ADR #23) : l'édition ICR se fait **exclusivement en bloc** via `PUT`, quel que soit
+ * le rôle. Les anciennes écritures **par-créneau** `POST` (createIcr) et `PATCH` (updateIcr) sont **retirées**
+ * (elles ré-ouvraient la « dérive de base »). La méthode service `updateIcr` reste (chemin gouverné `auto-apply`).
+ */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireAuth, requireRole, AuthError } from "@/lib/auth"
+import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
 import { handleSlotSetReplace } from "@/lib/insulin/slot-set-replace"
-
-const createIcrSchema = z.object({
-  patientId: z.number().int().positive().optional(),
-  startHour: z.number().int().min(0).max(23),
-  endHour: z.number().int().min(0).max(23),
-  gramsPerUnit: z.number().min(INSULIN_BOUNDS.ICR_MIN).max(INSULIN_BOUNDS.ICR_MAX),
-  mealLabel: z.string().max(50).optional(),
-})
 
 export async function GET(req: NextRequest) {
   try {
@@ -32,83 +32,6 @@ export async function GET(req: NextRequest) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"
     console.error("[carb-ratios GET]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
-  }
-}
-
-export async function POST(req: NextRequest) {
-  try {
-    // US-2648a — écriture DIRECTE réservée au DOCTOR. ICR pilote calculateBolus ;
-    // NURSE/patient passent par une proposition validée (POST /api/adjustment-proposals).
-    const user = requireRole(req, "DOCTOR")
-    const hasConsent = await requireGdprConsent(user.id)
-    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-
-    const body = await req.json()
-    const parsed = createIcrSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
-    }
-
-    const { patientId: pidParam, ...icrInput } = parsed.data
-    const patientId = await resolvePatientId(user.id, user.role, pidParam)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
-    const settings = await insulinTherapyService.getSettings(patientId, user.id)
-    if (!settings) return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
-
-    const result = await insulinTherapyService.createIcr(settings.id, icrInput, user.id)
-    return NextResponse.json(result, { status: 201 })
-  } catch (error) {
-    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[carb-ratios POST]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
-  }
-}
-
-const updateIcrSchema = z.object({
-  id: z.string().uuid(),
-  patientId: z.number().int().positive().optional(),
-  gramsPerUnit: z.number().min(INSULIN_BOUNDS.ICR_MIN).max(INSULIN_BOUNDS.ICR_MAX),
-})
-
-/** PATCH — édition DIRECTE d'un créneau ICR (US-2648b). DOCTOR only ; scopé patient. */
-export async function PATCH(req: NextRequest) {
-  try {
-    const user = requireRole(req, "DOCTOR")
-    const hasConsent = await requireGdprConsent(user.id)
-    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-
-    const parsed = updateIcrSchema.safeParse(await req.json())
-    if (!parsed.success) {
-      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
-    }
-    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
-    try {
-      const result = await insulinTherapyService.updateIcr(
-        parsed.data.id,
-        parsed.data.gramsPerUnit,
-        user.id,
-        patientId,
-        extractRequestContext(req),
-      )
-      return NextResponse.json(result)
-    } catch (e) {
-      if (e instanceof Error && e.message === "icrSlotNotFound") {
-        return NextResponse.json({ error: "icrSlotNotFound" }, { status: 404 })
-      }
-      if (e instanceof Error && e.message === "slotsBusy") {
-        return NextResponse.json({ error: "slotsBusy" }, { status: 409 }) // mutation concurrente — réessayer
-      }
-      throw e
-    }
-  } catch (error) {
-    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[carb-ratios PATCH]", msg)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

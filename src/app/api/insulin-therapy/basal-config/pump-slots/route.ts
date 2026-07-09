@@ -1,10 +1,16 @@
 /**
  * @module /api/insulin-therapy/basal-config/pump-slots
- * @description Pump basal slot routes — GET (list), POST (create), DELETE (remove).
- * US-402 — Pump basal slots define hourly basal rates for insulin pump delivery.
- * Rate validated within clinical bounds (BASAL_MIN: 0.05, BASAL_MAX: 5.0 U/h) and
- * constrained to a multiple of PUMP_BASAL_INCREMENT (0.05 U/h) — deliverable on the pump.
- * All operations require auth + GDPR consent + audit logging.
+ * @description Créneaux basaux pompe — **GET** (liste) + **PUT** (remplacement GROUPÉ du jeu entier).
+ *
+ * US-2657 (grouped-only, ADR #23) : l'édition basale se fait **exclusivement en bloc** via `PUT`
+ * (`replacePumpSlotSet`), quel que soit le rôle. Les anciennes écritures **par-créneau**
+ * (`POST`/`PATCH`/`DELETE`) sont **retirées** — elles ré-ouvraient la fenêtre de « dérive de base »
+ * (un édit unitaire ne supersédait pas une proposition d'ensemble pending) et divergeaient du modèle groupé.
+ * Les méthodes service par-créneau (`updatePumpSlot`) restent (chemin gouverné `auto-apply`).
+ *
+ * Débit validé dans les bornes cliniques (BASAL_MIN 0,05 / BASAL_MAX 5,0 U/h) et **délivrable** (multiple de
+ * l'incrément pompe 0,05 U/h). Couverture 24 h no-overlap / no-gap re-validée serveur (`assertValidPumpSlotSet`).
+ * Auth + consentement RGPD + audit sur toutes les opérations.
  */
 
 import { NextResponse, type NextRequest } from "next/server"
@@ -14,33 +20,14 @@ import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
 import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
+import { SLOT_SET_ERROR_STATUS } from "@/lib/insulin/slot-set-errors"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/
 
-const createSlotSchema = z.object({
-  patientId: z.number().int().positive().optional(),
-  startTime: z.string().regex(timeRegex, "Format HH:MM required"),
-  endTime: z.string().regex(timeRegex, "Format HH:MM required"),
-  // Débit PROGRAMMABLE (multiple de l'incrément pompe) — cohérent avec le PATCH et la proposition.
-  rate: z
-    .number()
-    .min(INSULIN_BOUNDS.BASAL_MIN)
-    .max(INSULIN_BOUNDS.BASAL_MAX)
-    .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
-}).refine((d) => d.startTime !== d.endTime, {
-  message: "startTime and endTime must be different — a zero-duration slot is invalid",
-  path: ["endTime"],
-})
-
-const deleteSlotSchema = z.object({
-  id: z.string().uuid(),
-  patientId: z.coerce.number().int().positive().optional(),
-})
-
 /**
  * GET /api/insulin-therapy/basal-config/pump-slots?patientId=
- * Returns all pump basal slots for a patient's basal configuration.
+ * Retourne tous les créneaux basaux du patient (lecture — ouverte VIEWER own / pro scopé).
  */
 export async function GET(req: NextRequest) {
   try {
@@ -65,7 +52,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
     }
 
-    // M3 fix: getSettings already includes basalConfiguration.pumpSlots — no second query
+    // getSettings inclut déjà basalConfiguration.pumpSlots — pas de seconde requête.
     return NextResponse.json(settings.basalConfiguration?.pumpSlots ?? [])
   } catch (error) {
     if (error instanceof AuthError) {
@@ -77,159 +64,56 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/**
- * POST /api/insulin-therapy/basal-config/pump-slots
- * Create a new pump basal slot. DOCTOR only (US-2648a) — NURSE/patient via proposition.
- */
-export async function POST(req: NextRequest) {
-  try {
-    const user = requireRole(req, "DOCTOR")
-    const hasConsent = await requireGdprConsent(user.id)
-    if (!hasConsent) {
-      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-    }
-
-    const body = await req.json()
-    const parsed = createSlotSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      )
-    }
-
-    const { patientId: pidParam, ...slotInput } = parsed.data
-    const patientId = await resolvePatientId(user.id, user.role, pidParam)
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-    }
-
-    const ctx = extractRequestContext(req)
-    const settings = await insulinTherapyService.getSettings(patientId, user.id, ctx)
-    if (!settings) {
-      return NextResponse.json({ error: "settingsNotFound" }, { status: 404 })
-    }
-
-    // M3 fix: reuse basalConfiguration from getSettings (already included)
-    const config = settings.basalConfiguration
-    if (!config) {
-      return NextResponse.json({ error: "basalConfigNotFound" }, { status: 404 })
-    }
-
-    const slot = await insulinTherapyService.createPumpSlot(
-      config.id, slotInput, user.id, ctx,
-    )
-
-    return NextResponse.json(slot, { status: 201 })
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[pump-slots POST]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
-  }
-}
-
-/**
- * DELETE /api/insulin-therapy/basal-config/pump-slots?id=
- * Delete a pump basal slot by UUID. DOCTOR only (US-2648a).
- */
-export async function DELETE(req: NextRequest) {
-  try {
-    const user = requireRole(req, "DOCTOR")
-    const hasConsent = await requireGdprConsent(user.id)
-    if (!hasConsent) {
-      return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-    }
-
-    const params = Object.fromEntries(req.nextUrl.searchParams)
-    const parsed = deleteSlotSchema.safeParse(params)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "validationFailed", details: parsed.error.flatten().fieldErrors },
-        { status: 400 },
-      )
-    }
-
-    // B1 fix: verify slot belongs to caller's patient before deleting
-    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
-    if (!patientId) {
-      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-    }
-
-    const ctx = extractRequestContext(req)
-    const settings = await insulinTherapyService.getSettings(patientId, user.id, ctx)
-    if (!settings?.basalConfiguration) {
-      return NextResponse.json({ error: "basalConfigNotFound" }, { status: 404 })
-    }
-
-    const slotBelongs = settings.basalConfiguration.pumpSlots.some(
-      (s) => s.id === parsed.data.id,
-    )
-    if (!slotBelongs) {
-      return NextResponse.json({ error: "slotNotFound" }, { status: 404 })
-    }
-
-    const result = await insulinTherapyService.deletePumpSlot(
-      parsed.data.id, user.id, ctx,
-    )
-
-    return NextResponse.json(result)
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return NextResponse.json({ error: error.message }, { status: error.status })
-    }
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[pump-slots DELETE]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
-  }
-}
-
-const updatePumpSlotSchema = z.object({
-  id: z.string().uuid(),
+const replaceBasalSchema = z.object({
   patientId: z.number().int().positive().optional(),
-  // Débit basal PROGRAMMABLE : multiple de PUMP_BASAL_INCREMENT (0,05 U/h), sinon
-  // non délivrable (cohérent avec la proposition, catalogue §6).
-  rate: z
-    .number()
-    .min(INSULIN_BOUNDS.BASAL_MIN)
-    .max(INSULIN_BOUNDS.BASAL_MAX)
-    .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
+  slots: z
+    .array(
+      z.object({
+        startTime: z.string().regex(timeRegex, "Format HH:MM required"),
+        endTime: z.string().regex(timeRegex, "Format HH:MM required"),
+        // Débit PROGRAMMABLE (multiple de l'incrément pompe) — re-validé serveur par `assertValidPumpSlotSet`.
+        rate: z
+          .number()
+          .min(INSULIN_BOUNDS.BASAL_MIN)
+          .max(INSULIN_BOUNDS.BASAL_MAX)
+          .refine(isDeliverableBasalRate, { message: "rate must be a multiple of the pump increment (0.05 U/h)" }),
+      }),
+    )
+    .min(1)
+    .max(48), // borne anti-abus (48 créneaux de 30 min couvrent 24 h)
 })
 
-/** PATCH — édition DIRECTE du débit d'un créneau basal pompe (US-2648b). DOCTOR only ;
- *  scopé patient ; débit validé multiple de l'incrément pompe. */
-export async function PATCH(req: NextRequest) {
+/**
+ * PUT /api/insulin-therapy/basal-config/pump-slots — **remplace tout le jeu** de créneaux basaux. DOCTOR only,
+ * scopé patient (anti-IDOR). Cohérence re-validée serveur (`replacePumpSlotSet` → `assertValidPumpSlotSet` :
+ * chevauchement 409, trou 422, durée nulle 400, débit hors bornes/non délivrable 400). Propositions basales
+ * `pending` supersédées. Verrou occupé → 409.
+ */
+export async function PUT(req: NextRequest) {
   try {
     const user = requireRole(req, "DOCTOR")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const parsed = updatePumpSlotSchema.safeParse(await req.json())
+    const parsed = replaceBasalSchema.safeParse(await req.json())
     if (!parsed.success) {
       return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
     const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
-    const ctx = extractRequestContext(req)
     try {
-      const result = await insulinTherapyService.updatePumpSlot(parsed.data.id, parsed.data.rate, user.id, patientId, ctx)
+      const result = await insulinTherapyService.replacePumpSlotSet(patientId, parsed.data.slots, user.id, extractRequestContext(req))
       return NextResponse.json(result)
     } catch (e) {
-      if (e instanceof Error && e.message === "pumpSlotNotFound") {
-        return NextResponse.json({ error: "pumpSlotNotFound" }, { status: 404 })
-      }
-      if (e instanceof Error && e.message === "slotsBusy") {
-        return NextResponse.json({ error: "slotsBusy" }, { status: 409 }) // mutation concurrente — réessayer
-      }
+      const status = e instanceof Error ? SLOT_SET_ERROR_STATUS[e.message] : undefined
+      if (status) return NextResponse.json({ error: (e as Error).message }, { status })
       throw e
     }
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
     const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[pump-slots PATCH]", msg)
+    console.error("[pump-slots PUT]", msg)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }
 }

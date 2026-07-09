@@ -38,7 +38,7 @@ const BASE: TreatmentView = {
   isfCoverage: { hasGap: false, hasOverlap: false },
   icrSlots: [{ id: "icr1", range: "00:00–24:00", value: 10, startHour: 0, endHour: 24 }],
   icrCoverage: { hasGap: false, hasOverlap: false },
-  basalSlots: [{ range: "00:00–24:00", rate: 0.8, pumpBasalSlotId: "b1" }],
+  basalSlots: [{ range: "00:00–24:00", rate: 0.8, pumpBasalSlotId: "b1", startTime: "00:00", endTime: "00:00" }],
   basalCoverage: { hasGap: false, hasOverlap: false },
   treatments: [],
 }

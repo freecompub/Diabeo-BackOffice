@@ -78,6 +78,53 @@ export function assertValidSlotSet(
   return coverage
 }
 
+/** `"HH:MM"` → minutes dans [0,1440[ ; `null` si le format est invalide (défense en profondeur hors Zod). */
+function hhmmToMinutes(t: string): number | null {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(t)
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null
+}
+
+/**
+ * US-2657 — Garde de validité clinique d'un **jeu de créneaux BASAUX** (pompe), pendant basal du
+ * `assertValidSlotSet` ISF/ICR mais pour le modèle `PumpBasalSlot` (temps `HH:MM`, débit U/h).
+ *
+ * Règles (source de vérité clinique = `clinical-bounds.ts`) :
+ *  - jeu non vide (`emptySlotSet`), aucun créneau de durée nulle (`zeroDurationSlot`) ni temps illisible
+ *    (`invalidSlotSet`) ;
+ *  - débit dans les bornes `[BASAL_MIN, BASAL_MAX]` (`valueOutOfBounds`) ET **délivrable** — multiple de
+ *    l'incrément pompe `PUMP_BASAL_INCREMENT` 0,05 U/h (`rateNotDeliverable`) ;
+ *  - **no-overlap** (`slotOverlap`) : un chevauchement = double délivrance basale = sur-dosage ;
+ *  - **no-gap STRICT** (`slotGap`) : ⚠️ *décision à confirmer par `medical-domain-validator`* — une pompe
+ *    délivre en permanence un débit de fond ; un trou = fenêtre SANS basale = risque hyperglycémie/DKA.
+ *    Invariant PLUS STRICT que l'ancienne voie par-créneau (qui tolérait les trous). Le `PUT` groupé envoie
+ *    le jeu ENTIER, l'UI garantit la couverture 24 h → pas de régression pour un profil bien formé.
+ *
+ * @throws emptySlotSet | zeroDurationSlot | invalidSlotSet | valueOutOfBounds | rateNotDeliverable | slotOverlap | slotGap
+ */
+export function assertValidPumpSlotSet(
+  slots: Array<{ startTime: string; endTime: string; rate: number }>,
+): { hasGap: boolean; hasOverlap: boolean } {
+  if (slots.length === 0) throw new Error("emptySlotSet")
+  const raw: { start: number; end: number }[] = []
+  for (const s of slots) {
+    const start = hhmmToMinutes(s.startTime)
+    const end = hhmmToMinutes(s.endTime)
+    if (start === null || end === null) throw new Error("invalidSlotSet")
+    if (start === end) throw new Error("zeroDurationSlot")
+    // Bornes cliniques re-vérifiées côté service (défense en profondeur, hors Zod route).
+    if (s.rate < CLINICAL_BOUNDS.BASAL_MIN || s.rate > CLINICAL_BOUNDS.BASAL_MAX) throw new Error("valueOutOfBounds")
+    if (!isDeliverableBasalRate(s.rate)) throw new Error("rateNotDeliverable")
+    raw.push({ start, end })
+  }
+  const coverage = analyzeSlotCoverage(raw)
+  if (coverage.hasOverlap) throw new Error("slotOverlap")
+  if (coverage.hasGap) throw new Error("slotGap")
+  return coverage
+}
+
+/** `PumpBasalSlot.startTime`/`endTime` (Time stocké `1970-01-01THH:MM:00Z`) → `"HH:MM"` (audit, sans PHI). */
+const pumpTimeToHhmm = (t: Date): string => t.toISOString().slice(11, 16)
+
 /**
  * US-2655 — Fin commune du remplacement de groupe (ISF/ICR), dans la transaction :
  * supersède les propositions `pending` du paramètre (baseline changé) puis journalise l'audit
@@ -586,6 +633,99 @@ export const insulinTherapyService = {
         })
         return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)
       }
+    }
+
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
+  },
+
+  /**
+   * US-2657 (grouped-only) — Remplace ATOMIQUEMENT tout le jeu de créneaux BASAUX (pompe) du patient.
+   * Voie GROUPÉE unique de l'édition basale (les écritures par-créneau POST/PATCH/DELETE sont retirées).
+   * Pendant du `replaceSlotSet` ISF/ICR pour le modèle `PumpBasalSlot` (temps `HH:MM`).
+   *
+   * Atomicité + sûreté : verrou non bloquant `(patient × basal)` (occupé → `slotsBusy`/409, anti lost-update) ;
+   * `settingsId`/`basalConfigId` dérivés du **patient** (anti-IDOR, jamais du body) ; validité clinique/couverture
+   * pré-validée (`assertValidPumpSlotSet`) ; `deleteMany` + `createMany` dans une seule transaction (jamais
+   * d'application partielle). Supersède les `AdjustmentProposal` **basales** `pending` (baseline changé — il
+   * n'existe pas de `SlotSetProposal` basal, le modèle groupé couvre ISF/ICR). Audit `replaceSet` sans PHI.
+   *
+   * @throws slotsBusy | settingsNotFound | basalConfigNotFound
+   * @throws emptySlotSet | zeroDurationSlot | invalidSlotSet | valueOutOfBounds | rateNotDeliverable | slotOverlap | slotGap
+   */
+  async replacePumpSlotSet(
+    patientId: number,
+    slots: Array<{ startTime: string; endTime: string; rate: number }>,
+    auditUserId: number,
+    ctx?: AuditContext,
+    externalTx?: Prisma.TransactionClient,
+  ): Promise<{
+    applied: true
+    count: number
+    coverage: { hasGap: boolean; hasOverlap: boolean }
+    supersededProposalIds: string[]
+  }> {
+    // 1. Pré-validation pure (hors DB, fail-fast) — source unique `assertValidPumpSlotSet`.
+    const coverage = assertValidPumpSlotSet(slots)
+
+    const run = async (tx: Prisma.TransactionClient) => {
+      if (!(await tryLockInsulinSlots(tx, patientId, "basal"))) throw new Error("slotsBusy")
+      // Scope patient (anti-IDOR) : basalConfigId provient du patient, jamais du body.
+      const settings = await tx.insulinTherapySettings.findUnique({
+        where: { patientId },
+        select: { id: true, basalConfiguration: { select: { id: true } } },
+      })
+      if (!settings) throw new Error("settingsNotFound")
+      const basalConfigId = settings.basalConfiguration?.id
+      if (basalConfigId == null) throw new Error("basalConfigNotFound")
+
+      // Snapshot ancien jeu (audit `from`) + REPLACE scopé basalConfigId.
+      const before = await tx.pumpBasalSlot.findMany({
+        where: { basalConfigId },
+        select: { startTime: true, endTime: true },
+      })
+      await tx.pumpBasalSlot.deleteMany({ where: { basalConfigId } })
+      await tx.pumpBasalSlot.createMany({
+        data: slots.map((s) => ({
+          basalConfigId,
+          startTime: new Date(`1970-01-01T${s.startTime}:00Z`),
+          endTime: new Date(`1970-01-01T${s.endTime}:00Z`),
+          rate: s.rate,
+        })),
+      })
+
+      // Baseline basale changée → supersède les propositions basales `pending` (par-valeur). Pas de
+      // `SlotSetProposal` basal (le modèle d'ensemble couvre ISF/ICR uniquement).
+      const superseded = await tx.adjustmentProposal.findMany({
+        where: { patientId, parameterType: "basalRate", status: "pending" },
+        select: { id: true },
+      })
+      if (superseded.length > 0) {
+        await tx.adjustmentProposal.updateMany({
+          where: { patientId, parameterType: "basalRate", status: "pending" },
+          data: { status: "superseded", reviewedAt: new Date(), reviewedBy: auditUserId },
+        })
+      }
+      const supersededProposalIds = superseded.map((p) => p.id)
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `basal-set:${basalConfigId}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        metadata: {
+          patientId,
+          op: "replaceSet",
+          param: "basal",
+          from: before.map((s) => ({ startTime: pumpTimeToHhmm(s.startTime), endTime: pumpTimeToHhmm(s.endTime) })),
+          to: slots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
+          supersededProposalIds,
+        },
+      })
+
+      return { applied: true as const, count: slots.length, coverage, supersededProposalIds }
     }
 
     return externalTx ? run(externalTx) : prisma.$transaction(run)

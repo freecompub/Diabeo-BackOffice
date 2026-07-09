@@ -44,10 +44,16 @@ Elle liste ce qui a été **corrigé** dans le durcissement et ce qui est **volo
 6. **`changeKind` dérivé serveur.** Pour un groupe, C3b dérive `VALUE`/`STRUCTURAL` de la comparaison
    avant/après persistée (jamais du body). Le harnais par-créneau ne gère que `VALUE`.
 
-## Différé à une slice dédiée post-C3d — **grouped-only non appliqué (routes d'écriture par-créneau)**
+## ✅ RÉSOLU (slice « grouped-only », ADR #26) — retrait des routes d'écriture par-créneau
 
 Finding **#2** de la revue C3d (PR #709, `medical-domain-validator` MEDIUM, borderline HIGH) + clarification
-produit (« que du groupé, quel que soit le rôle », ADR #23).
+produit (« que du groupé, quel que soit le rôle », ADR #23). **Livré** : les écritures par-créneau (`POST`/`PATCH`
+sur `sensitivity-factors` & `carb-ratios` ; `POST`/`PATCH`/`DELETE` sur `pump-slots`) sont **retirées** ; l'unique
+voie d'écriture ISF/ICR/basal est le remplacement **GROUPÉ** (`PUT` → `replaceSlotSet` / **nouveau**
+`replacePumpSlotSet` pour le basal). Comme la voie groupée **supersède** les propositions `pending`, la fenêtre
+de « dérive de base » est fermée à la source. Périmètre retenu : **ISF/ICR + basal** ; « suppression dure »
+(404 sur les verbes retirés) — coordination iOS via `swift-expert` (rupture de contrat, cf. routes-summary).
+Historique de la décision ci-dessous.
 
 **Problème.** Une `SlotSetProposal` pending stocke un **cliché figé du jeu complet**. Aujourd'hui, seule une
 édition **plein-jeu** (`replaceSlotSet`) supersède les propositions pending. Or les **routes d'écriture

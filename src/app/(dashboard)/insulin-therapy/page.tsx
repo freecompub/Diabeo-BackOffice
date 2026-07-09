@@ -211,10 +211,6 @@ export default function InsulinTherapyPage() {
   const [isfSlots, setIsfSlots] = useState<IsfSlot[]>([])
   const [icrSlots, setIcrSlots] = useState<IcrSlot[]>([])
 
-  // C1: track IDs of slots deleted locally but not yet persisted to the server
-  const [deletedIsfIds, setDeletedIsfIds] = useState<number[]>([])
-  const [deletedIcrIds, setDeletedIcrIds] = useState<number[]>([])
-
   // Slot dialog
   const [slotDialog, setSlotDialog] = useState<SlotDialogState>({
     open: false,
@@ -230,6 +226,11 @@ export default function InsulinTherapyPage() {
 
   // Track original for dirty detection
   const originalRef = useRef<string>("")
+  // US-2657 (grouped-only, ADR #23) — snapshots ISF/ICR séparés : le PUT groupé n'est envoyé
+  // que pour le paramètre RÉELLEMENT modifié (évite un PUT vide/inutile sur un paramètre
+  // non touché, ex. un patient sans ISF configuré qui ne fait que changer sa marque d'insuline).
+  const originalIsfRef = useRef<string>("[]")
+  const originalIcrRef = useRef<string>("[]")
 
   // ── Unsaved changes guard ──────────────────────────────────────────────────
   useEffect(() => {
@@ -293,6 +294,8 @@ export default function InsulinTherapyPage() {
 
         // H3 fix: snapshot is taken AFTER state is set, using the fetched values
         originalRef.current = JSON.stringify({ settings: fetchedSettings, isfSlots: fetchedIsf, icrSlots: fetchedIcr })
+        originalIsfRef.current = JSON.stringify(fetchedIsf)
+        originalIcrRef.current = JSON.stringify(fetchedIcr)
       } catch {
         setError(t("errorLoading"))
       } finally {
@@ -323,6 +326,15 @@ export default function InsulinTherapyPage() {
     `${String(start).padStart(2, "0")}:00 – ${String(end).padStart(2, "0")}:00`
 
   // ── Save ───────────────────────────────────────────────────────────────────
+  /**
+   * US-2657 (grouped-only, ADR #23) — l'édition ISF/ICR se fait **exclusivement en bloc** :
+   * plus de `POST`/`PATCH`/`DELETE` par-créneau (routes retirées serveur). `handleSaveSlot`/
+   * `deleteSlot` mutent uniquement l'état LOCAL (`isfSlots`/`icrSlots`) ; ici, à l'enregistrement,
+   * UN SEUL `PUT` par paramètre envoie le **jeu complet** (remplace tout côté serveur) — mais
+   * seulement si ce paramètre a réellement changé depuis le chargement (`originalIsfRef`/
+   * `originalIcrRef`), pour éviter un `PUT` vide (rejeté `emptySlotSet`, 409) sur un patient sans
+   * ISF/ICR configuré qui ne fait que modifier un autre champ (ex. marque d'insuline).
+   */
   const handleSave = async () => {
     setIsSaving(true)
     setError(null)
@@ -345,34 +357,49 @@ export default function InsulinTherapyPage() {
       })
       if (!res.ok) throw new Error("saveFailed")
 
-      // C1: flush pending slot deletions
-      // TODO: backend DELETE /api/insulin-therapy/sensitivity-factors/:id and
-      //       DELETE /api/insulin-therapy/carb-ratios/:id endpoints are needed.
-      //       Until they exist the deletions are persisted optimistically (local state
-      //       is already filtered). The arrays below are kept for when the endpoints land.
-      if (deletedIsfIds.length > 0 || deletedIcrIds.length > 0) {
-        const deleteRequests = [
-          ...deletedIsfIds.map((id) =>
-            fetch(`/api/insulin-therapy/sensitivity-factors/${id}`, {
-              method: "DELETE",
-              credentials: "include",
-              headers: API_HEADERS,
-            }).catch(() => null) // best-effort until endpoint exists
-          ),
-          ...deletedIcrIds.map((id) =>
-            fetch(`/api/insulin-therapy/carb-ratios/${id}`, {
-              method: "DELETE",
-              credentials: "include",
-              headers: API_HEADERS,
-            }).catch(() => null)
-          ),
-        ]
-        await Promise.all(deleteRequests)
-        setDeletedIsfIds([])
-        setDeletedIcrIds([])
+      const isfChanged = JSON.stringify(isfSlots) !== originalIsfRef.current
+      const icrChanged = JSON.stringify(icrSlots) !== originalIcrRef.current
+
+      const requests: Promise<Response>[] = []
+      if (isfChanged) {
+        requests.push(
+          fetch("/api/insulin-therapy/sensitivity-factors", {
+            method: "PUT",
+            credentials: "include",
+            headers: API_HEADERS,
+            body: JSON.stringify({
+              slots: isfSlots.map((s) => ({
+                startHour: s.startHour,
+                endHour: s.endHour,
+                sensitivityFactorGl: s.sensitivityFactorGl,
+              })),
+            }),
+          }),
+        )
       }
+      if (icrChanged) {
+        requests.push(
+          fetch("/api/insulin-therapy/carb-ratios", {
+            method: "PUT",
+            credentials: "include",
+            headers: API_HEADERS,
+            body: JSON.stringify({
+              slots: icrSlots.map((s) => ({
+                startHour: s.startHour,
+                endHour: s.endHour,
+                gramsPerUnit: s.gramsPerUnit,
+                ...(s.mealLabel?.trim() ? { mealLabel: s.mealLabel.trim() } : {}),
+              })),
+            }),
+          }),
+        )
+      }
+      const results = await Promise.all(requests)
+      if (results.some((r) => !r.ok)) throw new Error("saveFailed")
 
       originalRef.current = JSON.stringify({ settings, isfSlots, icrSlots })
+      originalIsfRef.current = JSON.stringify(isfSlots)
+      originalIcrRef.current = JSON.stringify(icrSlots)
       setHasChanges(false)
     } catch {
       setError(t("errorSaving"))
@@ -433,7 +460,14 @@ export default function InsulinTherapyPage() {
     return n >= CLINICAL_BOUNDS.ICR_MIN && n <= CLINICAL_BOUNDS.ICR_MAX
   }
 
-  const handleSaveSlot = async () => {
+  /**
+   * US-2657 (grouped-only, ADR #23) — n'écrit QUE l'état local (`isfSlots`/`icrSlots`) : plus de
+   * `POST` par-créneau (route retirée serveur). La persistance réelle se fait en UN `PUT` par
+   * paramètre au clic « Enregistrer » (`handleSave`, jeu complet). L'`id` existant est préservé
+   * en édition (spread `...slot`) même s'il n'est pas renvoyé au serveur (le `PUT` ignore les id
+   * entrants — il remplace tout le jeu).
+   */
+  const handleSaveSlot = () => {
     setSlotError(null)
     if (slotStartHour >= slotEndHour) {
       setSlotError(t("slotHourError"))
@@ -449,55 +483,25 @@ export default function InsulinTherapyPage() {
     const numVal = parseFloat(slotValue)
 
     if (slotDialog.type === "isf") {
-      try {
-        const res = await fetch("/api/insulin-therapy/sensitivity-factors", {
-          method: "POST",
-          credentials: "include",
-          headers: API_HEADERS,
-          body: JSON.stringify({
-            startHour: slotStartHour,
-            endHour: slotEndHour,
-            sensitivityFactorGl: numVal,
-          }),
-        })
-        if (!res.ok) throw new Error()
-        const created = await res.json() as IsfSlot
-        if (slotDialog.mode === "add") {
-          setIsfSlots((prev) => [...prev, created])
-        } else if (slotDialog.index !== null) {
-          setIsfSlots((prev) =>
-            prev.map((s, i) => (i === slotDialog.index ? created : s))
-          )
-        }
-      } catch {
-        setSlotError(t("errorSaving"))
-        return
+      if (slotDialog.mode === "add") {
+        setIsfSlots((prev) => [...prev, { startHour: slotStartHour, endHour: slotEndHour, sensitivityFactorGl: numVal }])
+      } else if (slotDialog.index !== null) {
+        setIsfSlots((prev) =>
+          prev.map((s, i) =>
+            i === slotDialog.index ? { ...s, startHour: slotStartHour, endHour: slotEndHour, sensitivityFactorGl: numVal } : s,
+          ),
+        )
       }
     } else {
-      try {
-        const res = await fetch("/api/insulin-therapy/carb-ratios", {
-          method: "POST",
-          credentials: "include",
-          headers: API_HEADERS,
-          body: JSON.stringify({
-            startHour: slotStartHour,
-            endHour: slotEndHour,
-            gramsPerUnit: numVal,
-            ...(slotMealLabel.trim() && { mealLabel: slotMealLabel.trim() }),
-          }),
-        })
-        if (!res.ok) throw new Error()
-        const created = await res.json() as IcrSlot
-        if (slotDialog.mode === "add") {
-          setIcrSlots((prev) => [...prev, created])
-        } else if (slotDialog.index !== null) {
-          setIcrSlots((prev) =>
-            prev.map((s, i) => (i === slotDialog.index ? created : s))
-          )
-        }
-      } catch {
-        setSlotError(t("errorSaving"))
-        return
+      const mealLabel = slotMealLabel.trim() || undefined
+      if (slotDialog.mode === "add") {
+        setIcrSlots((prev) => [...prev, { startHour: slotStartHour, endHour: slotEndHour, gramsPerUnit: numVal, mealLabel }])
+      } else if (slotDialog.index !== null) {
+        setIcrSlots((prev) =>
+          prev.map((s, i) =>
+            i === slotDialog.index ? { ...s, startHour: slotStartHour, endHour: slotEndHour, gramsPerUnit: numVal, mealLabel } : s,
+          ),
+        )
       }
     }
 
@@ -506,17 +510,8 @@ export default function InsulinTherapyPage() {
 
   const deleteSlot = (type: "isf" | "icr", index: number) => {
     if (type === "isf") {
-      // C1: track the server-side ID so handleSave can send the DELETE request
-      const slot = isfSlots[index]
-      if (slot?.id !== undefined) {
-        setDeletedIsfIds((prev) => [...prev, slot.id as number])
-      }
       setIsfSlots((prev) => prev.filter((_, i) => i !== index))
     } else {
-      const slot = icrSlots[index]
-      if (slot?.id !== undefined) {
-        setDeletedIcrIds((prev) => [...prev, slot.id as number])
-      }
       setIcrSlots((prev) => prev.filter((_, i) => i !== index))
     }
     // Ensure dirty flag is raised even when no other field was touched
@@ -936,7 +931,7 @@ export default function InsulinTherapyPage() {
             </DiabeoButton>
             <DiabeoButton
               variant="diabeoPrimary"
-              onClick={() => void handleSaveSlot()}
+              onClick={handleSaveSlot}
             >
               {tCommon("confirm")}
             </DiabeoButton>

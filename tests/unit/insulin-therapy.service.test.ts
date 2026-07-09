@@ -36,7 +36,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
-import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
+import { insulinTherapyService, assertValidPumpSlotSet } from "@/lib/services/insulin-therapy.service"
 
 describe("insulinTherapyService", () => {
   describe("getSettings", () => {
@@ -465,6 +465,103 @@ describe("insulinTherapyService", () => {
       // supersède les propositions ICR (insulinToCarbRatio)
       expect(tx.adjustmentProposal.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { patientId: 7, parameterType: "insulinToCarbRatio", status: "pending" } }),
+      )
+    })
+  })
+
+  // ── US-2657 (grouped-only) — validation + remplacement GROUPÉ du BASAL (pompe) ──────────────
+  describe("assertValidPumpSlotSet (garde clinique basale — pure)", () => {
+    // Profil complet 24 h (deux créneaux, l'un enjambe minuit) — no-gap/no-overlap.
+    const validBasal = [
+      { startTime: "06:00", endTime: "22:00", rate: 0.9 },
+      { startTime: "22:00", endTime: "06:00", rate: 0.75 },
+    ]
+    it("jeu vide → emptySlotSet", () => {
+      expect(() => assertValidPumpSlotSet([])).toThrow("emptySlotSet")
+    })
+    it("durée nulle → zeroDurationSlot", () => {
+      expect(() => assertValidPumpSlotSet([{ startTime: "08:00", endTime: "08:00", rate: 0.9 }])).toThrow("zeroDurationSlot")
+    })
+    it("débit hors bornes cliniques → valueOutOfBounds", () => {
+      // BASAL_MAX = 5.0 → 6 hors bornes.
+      expect(() => assertValidPumpSlotSet([{ startTime: "00:00", endTime: "12:00", rate: 6 }, { startTime: "12:00", endTime: "00:00", rate: 0.9 }])).toThrow("valueOutOfBounds")
+    })
+    it("débit non délivrable (hors incrément pompe 0,05) → rateNotDeliverable", () => {
+      expect(() => assertValidPumpSlotSet([{ startTime: "00:00", endTime: "12:00", rate: 0.37 }, { startTime: "12:00", endTime: "00:00", rate: 0.9 }])).toThrow("rateNotDeliverable")
+    })
+    it("chevauchement → slotOverlap (double délivrance basale)", () => {
+      expect(() => assertValidPumpSlotSet([
+        { startTime: "06:00", endTime: "14:00", rate: 0.9 },
+        { startTime: "12:00", endTime: "22:00", rate: 0.8 },
+        { startTime: "22:00", endTime: "06:00", rate: 0.75 },
+      ])).toThrow("slotOverlap")
+    })
+    it("trou de couverture → slotGap (fenêtre sans basale)", () => {
+      // laisse 22:00→06:00 non couvert.
+      expect(() => assertValidPumpSlotSet([{ startTime: "06:00", endTime: "22:00", rate: 0.9 }])).toThrow("slotGap")
+    })
+    it("profil 24 h complet no-gap/no-overlap → OK", () => {
+      expect(assertValidPumpSlotSet(validBasal)).toEqual({ hasGap: false, hasOverlap: false })
+    })
+  })
+
+  describe("replacePumpSlotSet (US-2657 — remplacement groupé basal)", () => {
+    const validBasal = [
+      { startTime: "06:00", endTime: "22:00", rate: 0.9 },
+      { startTime: "22:00", endTime: "06:00", rate: 0.75 },
+    ]
+    const mkTx = (over: Record<string, unknown> = {}) => ({
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
+      insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ id: 3, basalConfiguration: { id: 9 } }) },
+      pumpBasalSlot: {
+        findMany: vi.fn().mockResolvedValue([{ startTime: new Date("1970-01-01T00:00:00Z"), endTime: new Date("1970-01-01T00:00:00Z") }]),
+        deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
+        createMany: vi.fn().mockResolvedValue({ count: 2 }),
+      },
+      adjustmentProposal: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      ...over,
+    })
+
+    it("jeu vide → emptySlotSet (avant transaction)", async () => {
+      await expect(insulinTherapyService.replacePumpSlotSet(7, [], 42)).rejects.toThrow("emptySlotSet")
+    })
+
+    it("verrou occupé → slotsBusy (rien écrit)", async () => {
+      const tx = mkTx({ $queryRaw: vi.fn().mockResolvedValue([{ locked: false }]) })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replacePumpSlotSet(7, validBasal, 42)).rejects.toThrow("slotsBusy")
+      expect(tx.pumpBasalSlot.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("settings absent → settingsNotFound (anti-IDOR, rien écrit)", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue(null) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replacePumpSlotSet(7, validBasal, 42)).rejects.toThrow("settingsNotFound")
+      expect(tx.pumpBasalSlot.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("configuration basale absente → basalConfigNotFound (rien écrit)", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ id: 3, basalConfiguration: null }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replacePumpSlotSet(7, validBasal, 42)).rejects.toThrow("basalConfigNotFound")
+      expect(tx.pumpBasalSlot.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("profil valide → REPLACE atomique (delete+create) scopé basalConfigId + supersède propositions basales", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replacePumpSlotSet(7, validBasal, 42)
+      expect(res).toMatchObject({ applied: true, count: 2 })
+      expect(tx.pumpBasalSlot.deleteMany).toHaveBeenCalledWith({ where: { basalConfigId: 9 } })
+      const createArg = tx.pumpBasalSlot.createMany.mock.calls[0][0]
+      expect(createArg.data[0]).toMatchObject({ basalConfigId: 9, rate: 0.9 })
+      // supersède les propositions basales pending (parameterType basalRate)
+      expect(tx.adjustmentProposal.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { patientId: 7, parameterType: "basalRate", status: "pending" } }),
       )
     })
   })

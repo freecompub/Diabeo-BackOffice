@@ -38,8 +38,8 @@ import {
 import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
 import { MaturityLevelControl } from "@/components/diabeo/patient/MaturityLevelControl"
 import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
-import { InsulinDirectEditDialog } from "@/components/diabeo/patient/InsulinDirectEditDialog"
 import { InsulinSlotSetDialog } from "@/components/diabeo/patient/InsulinSlotSetDialog"
+import { InsulinBasalSlotSetDialog } from "@/components/diabeo/patient/InsulinBasalSlotSetDialog"
 import { PARAM_BOUNDS, type ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
@@ -727,6 +727,8 @@ export function PatientRecord({
                           range: b.range,
                           value: b.rate,
                           pumpBasalSlotId: b.pumpBasalSlotId,
+                          startTime: b.startTime,
+                          endTime: b.endTime,
                         }))}
                         coverage={data.treatment.basalCoverage}
                         family="basal"
@@ -832,13 +834,25 @@ function SlotList({
 }: {
   label: ReactNode
   unit: string
-  slots: { id?: string; range: string; value: number; startHour?: number; endHour?: number; pumpBasalSlotId?: string }[]
+  slots: {
+    id?: string
+    range: string
+    value: number
+    startHour?: number
+    endHour?: number
+    pumpBasalSlotId?: string
+    startTime?: string
+    endTime?: string
+  }[]
   coverage?: SlotCoverage
   /** "ratio" = ISF/ICR (trou = config à vérifier) ; "basal" = pompe (24 h requis). */
   family?: "ratio" | "basal"
   /**
-   * US-2648b — si fourni, un bouton par créneau : `mode:"direct"` → « Modifier » (DOCTOR,
-   * PATCH immédiat) ; `mode:"propose"` → « Proposer » (NURSE/patient, validation médecin).
+   * `mode:"direct"` → DOCTOR : édition de GROUPE uniquement (voir `InsulinSlotSetDialog`/
+   * `InsulinBasalSlotSetDialog` ci-dessous), aucun bouton par-créneau — les écritures par-créneau
+   * (`PATCH`) ont été retirées serveur (US-2657, grouped-only, ADR #23). `mode:"propose"` → NURSE/
+   * patient : bouton « Proposer » par créneau (validation médecin, `POST /api/adjustment-proposals`,
+   * inchangé — hors périmètre du retrait grouped-only).
    */
   edit?: { parameterType: ProposableParameter; paramLabel: string; mode: "direct" | "propose" }
 }) {
@@ -855,20 +869,7 @@ function SlotList({
                 {s.value} {unit}
               </span>
               {(() => {
-                if (!edit) return null
-                // Id du créneau : ISF/ICR → `id` ; basal → `pumpBasalSlotId`. Fail-closed si absent.
-                const slotId = edit.parameterType === "basalRate" ? s.pumpBasalSlotId : s.id
-
-                if (edit.mode === "direct") {
-                  return slotId ? (
-                    <InsulinDirectEditDialog
-                      parameterType={edit.parameterType}
-                      paramLabel={edit.paramLabel}
-                      slot={{ id: slotId, range: s.range, value: s.value }}
-                      unit={unit}
-                    />
-                  ) : null
-                }
+                if (!edit || edit.mode !== "propose") return null
 
                 // Proposition : cible adressable (créneau horaire ISF/ICR ou pompe basal).
                 const target =
@@ -909,11 +910,12 @@ function SlotList({
           {t("slotOverlapNote")}
         </p>
       )}
-      {/* US-2656 — édition de GROUPE (change les heures + ajoute/supprime), DOCTOR direct, ISF/ICR.
-          ⚠️ Limitation connue (follow-up) : le remplacement de groupe ÉCRASE les `mealLabel` ICR stockés
-          (absents de la vue fiche → non renvoyés par le PUT). Non clinique (le calcul de bolus ne les
-          utilise pas ; seule la page autonome — en cours de retrait — les affichait). Les préserver à
-          travers un remodelage d'heures est ambigu (les frontières changent) → traité en tranche suivante. */}
+      {/* US-2656/US-2657 — édition de GROUPE (change les heures/temps + ajoute/supprime), DOCTOR
+          direct, ISF/ICR/basal — SEULE voie d'édition (grouped-only, ADR #23). ⚠️ Limitation connue
+          (follow-up) : le remplacement de groupe ISF/ICR ÉCRASE les `mealLabel` ICR stockés (absents de
+          la vue fiche → non renvoyés par le PUT). Non clinique (le calcul de bolus ne les utilise pas ;
+          seule la page autonome — en cours de retrait — les affichait). Les préserver à travers un
+          remodelage d'heures est ambigu (les frontières changent) → traité en tranche suivante. */}
       {edit?.mode === "direct" &&
         family === "ratio" &&
         edit.parameterType !== "basalRate" &&
@@ -929,6 +931,28 @@ function SlotList({
             <div className="mt-2">
               <InsulinSlotSetDialog
                 param={edit.parameterType}
+                paramLabel={edit.paramLabel}
+                unit={unit}
+                initialSlots={setSlots}
+                bounds={PARAM_BOUNDS[edit.parameterType]}
+              />
+            </div>
+          )
+        })()}
+      {edit?.mode === "direct" &&
+        family === "basal" &&
+        edit.parameterType === "basalRate" &&
+        (() => {
+          const setSlots = slots
+            .filter(
+              (s): s is typeof s & { startTime: string; endTime: string } =>
+                s.startTime !== undefined && s.endTime !== undefined,
+            )
+            .map((s) => ({ startTime: s.startTime, endTime: s.endTime, value: s.value }))
+          if (setSlots.length === 0) return null
+          return (
+            <div className="mt-2">
+              <InsulinBasalSlotSetDialog
                 paramLabel={edit.paramLabel}
                 unit={unit}
                 initialSlots={setSlots}

@@ -360,6 +360,68 @@ describe("InsulinTherapyPage", () => {
     expect(saveButton.closest("button")?.disabled).toBe(true)
   })
 
+  // ── US-2657 (grouped-only, ADR #23) : ISF/ICR remplacés en BLOC (PUT), plus de POST/DELETE
+  // par-créneau (routes retirées serveur). Ajouter/éditer un créneau ne touche QUE l'état local ;
+  // un seul PUT par paramètre part à l'enregistrement — et seulement s'il a réellement changé. ──
+
+  it("adding an ISF slot mutates local state only — no network call before Save", async () => {
+    await renderAndWaitForLoad()
+    mockFetch.mockClear()
+
+    fireEvent.click(screen.getByText("insulinTherapy.isf.addSlot"))
+    await waitFor(() => {
+      expect(screen.getByTestId("dialog")).toBeTruthy()
+    })
+
+    const valueInput = screen.getByLabelText("insulinTherapy.isf.valueLabel")
+    await userEvent.clear(valueInput)
+    await userEvent.type(valueInput, "0.45")
+    fireEvent.click(screen.getByText("common.confirm"))
+
+    // Le créneau apparaît dans la liste locale (formatSlotHours "00:00 – 08:00") …
+    await waitFor(() => {
+      expect(screen.getByText("00:00 – 08:00")).toBeTruthy()
+    })
+    // … mais AUCUN appel réseau n'a été déclenché (POST par-créneau retiré).
+    expect(mockFetch).not.toHaveBeenCalled()
+    // Le bouton Enregistrer se débloque (état local marqué "dirty").
+    expect(screen.getByText("common.save").closest("button")?.disabled).toBe(false)
+  })
+
+  it("Save sends ONE grouped PUT for the ISF set actually modified — ICR left untouched → no ICR call", async () => {
+    await renderAndWaitForLoad()
+
+    fireEvent.click(screen.getByText("insulinTherapy.isf.addSlot"))
+    await waitFor(() => {
+      expect(screen.getByTestId("dialog")).toBeTruthy()
+    })
+    const valueInput = screen.getByLabelText("insulinTherapy.isf.valueLabel")
+    await userEvent.clear(valueInput)
+    await userEvent.type(valueInput, "0.45")
+    fireEvent.click(screen.getByText("common.confirm"))
+
+    mockFetch.mockClear()
+    mockFetch.mockImplementation(() => Promise.resolve({ ok: true, json: async () => ({}) }))
+
+    fireEvent.click(screen.getByText("common.save"))
+
+    const findCall = (urlFragment: string) =>
+      mockFetch.mock.calls.find((call: unknown[]) => (call[0] as string).includes(urlFragment))
+
+    await waitFor(() => {
+      expect(findCall("/sensitivity-factors")).toBeTruthy()
+    })
+
+    const isfCall = findCall("/sensitivity-factors")!
+    const isfInit = isfCall[1] as RequestInit
+    expect(isfInit.method).toBe("PUT")
+    const body = JSON.parse(isfInit.body as string) as { slots: unknown[] }
+    expect(body.slots).toEqual([{ startHour: 0, endHour: 8, sensitivityFactorGl: 0.45 }])
+
+    // ICR n'a pas été touché localement → aucun PUT carb-ratios envoyé.
+    expect(findCall("/carb-ratios")).toBeUndefined()
+  })
+
   // ── Advanced settings ───────────────────────────────────────────────────
 
   it("advanced settings toggle shows IOB option", async () => {
