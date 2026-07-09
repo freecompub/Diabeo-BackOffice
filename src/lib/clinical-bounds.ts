@@ -201,6 +201,17 @@ export const CLINICAL_BOUNDS = {
    * Très en-dessous d'une vraie fenêtre 14 j / 70 % capture CGM (~2 800 relevés).
    */
   AUTO_APPLY_MIN_WINDOW_READINGS: 100,
+  /**
+   * C3b (US-2657) — **Cap d'auto-application GROUPÉE** : nombre maximal de créneaux (VALUE) qu'une session
+   * d'édition experte peut auto-modifier en un seul groupe SANS revue médecin. Au-delà (≥3) → tout le groupe
+   * part en `SlotSetProposal` médecin. Justification (medical-domain-validator) : un profil ISF/ICR compte
+   * 3–6 créneaux ; en modifier ≥3 d'un coup = re-titration de profil = acte médical, et rend l'ajustement
+   * NON ATTRIBUABLE (titration diabéto = un levier à la fois). Groupe mono-paramètre présumé (ISF OU ICR).
+   * ⚠️ Borne le PÉRIMÈTRE/attribuabilité, PAS l'ampleur cumulée co-directionnelle (2 créneaux même sens à
+   * 10 % ≈ +11 % dose) — angle mort assumé comme risque résiduel (DPIA §4, catalogue). L'ampleur reste
+   * bornée PAR créneau (C3 ±10 %, C7 15 %/7 j).
+   */
+  AUTO_APPLY_MAX_GROUP_SLOTS: 2,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

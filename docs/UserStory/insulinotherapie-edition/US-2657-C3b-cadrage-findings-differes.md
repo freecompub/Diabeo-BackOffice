@@ -32,8 +32,13 @@ Elle liste ce qui a été **corrigé** dans le durcissement et ce qui est **volo
 3. **Contrat d'agrégation d'enveloppe.** Définir explicitement comment `HARD_REJECT` / `FALLBACK` / `AUTO_APPLY`
    des K créneaux s'agrègent (priorité au rejet dur ; tout-ou-rien) — condition de stabilité des routes C3c/C3d.
 4. **Cap cumulé multi-créneaux / jour / patient (anti-cliquet inter-leviers).** L'anti-cliquet C7 est
-   par-créneau ; un groupe peut cumuler ~10 % sur plusieurs créneaux en une session. C3b doit plafonner le
-   cumul **inter-créneaux** (nouvelle constante clinique à cataloguer dans `docs/clinical-logic/`).
+   par-créneau ; un groupe peut cumuler ~10 % sur plusieurs créneaux en une session.
+   **✅ DÉCISION (livrée en C3b, PR #707) : cap par NOMBRE** — `AUTO_APPLY_MAX_GROUP_SLOTS = 2` (borne le
+   périmètre/attribuabilité, validé `medical-domain-validator`). La **garde d'ampleur cumulée**
+   (`AUTO_APPLY_MAX_GROUP_CUMULATIVE_PERCENT`) est **volontairement NON implémentée** : l'angle mort
+   co-directionnel (2 créneaux même sens ≈ +11 % *par créneau/repas*, jusqu'à ~2× le plafond C7 hebdo au
+   niveau profil) est **assumé comme risque résiduel instruit en DPIA §4** + catalogue clinique. À
+   reconsidérer avant activation production.
 5. **Fan-out du contexte O(K).** `buildEnvelopeContext` relit la fenêtre glycémie/cétone **par créneau** ;
    pour un appel groupé, extraire la lecture patient-level **une fois** (seul l'anti-cliquet varie par créneau).
 6. **`changeKind` dérivé serveur.** Pour un groupe, C3b dérive `VALUE`/`STRUCTURAL` de la comparaison

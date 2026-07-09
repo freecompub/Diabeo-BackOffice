@@ -27,6 +27,7 @@ const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   slotGap: 422,
   valueOutOfBounds: 400,
   settingsNotFound: 404,
+  slotsBusy: 409, // mutation concurrente en cours (verrou non bloquant) — réessayer
 }
 
 /**
