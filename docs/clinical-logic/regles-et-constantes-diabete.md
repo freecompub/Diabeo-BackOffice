@@ -665,3 +665,28 @@ l'index unique partiel `slot_set_proposals_one_pending_per_param` (`WHERE status
 Audit dédié `resource = SLOT_SET_PROPOSAL` (CREATE / PROPOSAL_ACCEPTED / PROPOSAL_REJECTED / READ), jamais de
 PHI (valeurs de config, `metadata.patientId` pivot US-2268). Sources : orchestrateur `applyExpertGroupGoverned`
 (C3b, appelant), routes patient (C3c) / médecin (C3d).
+
+#### Orchestrateur groupé `applyExpertGroupGoverned` (C3b) — décision tout-ou-rien
+
+Un patient EXPERT soumet un **jeu de créneaux ISF/ICR complet** (mono-paramètre). Décision **au niveau
+groupe, tout-ou-rien** (jamais d'application partielle — invariant spec) :
+- **valeur hors bornes / couverture invalide** (`assertValidSlotSet`) → **rejet dur à la saisie** ;
+- **restructuration** (heures ajoutées/supprimées/déplacées, `changeKind` dérivé **serveur** par comparaison
+  des frontières proposé ⇄ persisté) → proposition groupée (C2, jamais auto-appliqué) ;
+- hors triple verrou (kill-switch × flag × approbation) → proposition groupée (C1) ;
+- **`AUTO_APPLY_MAX_GROUP_SLOTS` = 2** — au-delà de 2 créneaux (VALUE) modifiés → proposition groupée. Sens
+  clinique : un profil compte 3–6 créneaux ; en modifier ≥3 d'un coup = **re-titration de profil = acte
+  médical**, non attribuable (titration diabéto = un levier à la fois). *(Source : `src/lib/clinical-bounds.ts`.)*
+- un seul créneau modifié **≠ AUTO_APPLY** (enveloppe C1–C8) → **groupe entier** en proposition. C'est aussi
+  une **garde de sécurité** : quand l'échec porte sur C6 (hypo) / C6b (hyper-cétose), le signal est *global*
+  au patient — ne rien auto-appliquer du groupe est le bon comportement fail-safe.
+- **tous AUTO_APPLY** ∧ cap OK → application **atomique** du jeu complet (`replaceSlotSet`) + `AutoApplyEvent`
+  par créneau + audit `AUTO_APPLIED_SETTING`, sous advisory-lock (ré-évaluation sous lock, anti-TOCTOU).
+
+**⚠️ Risque résiduel assumé (le cap est par NOMBRE seul).** Le compte ≤ 2 borne le **périmètre**
+(attribuabilité, frontière MDR), **pas l'ampleur cumulée co-directionnelle** : 2 créneaux dans la même
+direction à −10 % ≈ +11 % d'insuline prandiale, non revu. L'ampleur reste bornée **par créneau** (C3 ±10 %,
+C7 15 %/7 j) mais pas au niveau groupe. Angle mort **assumé et instruit** en DPIA
+(`docs/compliance/dpia-auto-application.md`, §4) — décision produit US-2657 (cap par nombre retenu ; garde
+d'ampleur `AUTO_APPLY_MAX_GROUP_CUMULATIVE_PERCENT` non implémentée). Verrou anti-drift :
+`tests/unit/clinical-bounds.test.ts`.
