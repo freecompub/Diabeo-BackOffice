@@ -37,11 +37,16 @@ const svc = insulinTherapyService as unknown as {
   replacePumpSlotSet: ReturnType<typeof vi.fn>
 }
 
-function put(url: string, role: string, body: unknown): NextRequest {
+function put(url: string, role: string | null, body: unknown, raw = false): NextRequest {
+  const headers: Record<string, string> = { "content-type": "application/json" }
+  if (role !== null) {
+    headers["x-user-id"] = "7"
+    headers["x-user-role"] = role
+  }
   return new NextRequest(new URL(url), {
     method: "PUT",
-    headers: { "content-type": "application/json", "x-user-id": "7", "x-user-role": role },
-    body: JSON.stringify(body),
+    headers,
+    body: raw ? (body as string) : JSON.stringify(body),
   })
 }
 
@@ -81,10 +86,28 @@ describe("Parité des routes de remplacement groupé (US-2657 grouped-only)", ()
 
   for (const r of ROUTES) {
     describe(r.name, () => {
-      it("DOCTOR + jeu valide → 200, service de persistance appelé", async () => {
+      it("DOCTOR + jeu valide → 200, service appelé + corps de réponse = résultat service", async () => {
         const res = await r.handler(put(r.url, "DOCTOR", r.body))
         expect(res.status).toBe(200)
         expect(svc[r.service]).toHaveBeenCalled()
+        // Le corps n'est pas re-wrappé (attrape un `{ data: result }` accidentel).
+        expect(await res.json()).toEqual({ applied: true })
+      })
+
+      it("anti-IDOR : le service reçoit le patientId RÉSOLU (42), jamais le body.patientId (999)", async () => {
+        resolvePid.mockResolvedValueOnce(42)
+        await r.handler(put(r.url, "DOCTOR", { ...r.body, patientId: 999 }))
+        // 1er arg de replaceSlotSet = param ("isf"/"icr") ; 1er arg de replacePumpSlotSet = patientId.
+        const call = svc[r.service].mock.calls[0]
+        if (r.service === "replacePumpSlotSet") expect(call[0]).toBe(42)
+        else expect(call[1]).toBe(42)
+        expect(call).not.toContain(999)
+      })
+
+      it("non authentifié (pas de headers user) → 401 (AuthError), service NON appelé", async () => {
+        const res = await r.handler(put(r.url, null, r.body))
+        expect(res.status).toBe(401)
+        expect(svc[r.service]).not.toHaveBeenCalled()
       })
 
       it("VIEWER (patient) → 403 (DOCTOR only), service NON appelé", async () => {
@@ -93,8 +116,10 @@ describe("Parité des routes de remplacement groupé (US-2657 grouped-only)", ()
         expect(svc[r.service]).not.toHaveBeenCalled()
       })
 
-      it("NURSE → 403 (écriture directe DOCTOR only)", async () => {
-        expect((await r.handler(put(r.url, "NURSE", r.body))).status).toBe(403)
+      it("NURSE → 403 (écriture directe DOCTOR only), service NON appelé", async () => {
+        const res = await r.handler(put(r.url, "NURSE", r.body))
+        expect(res.status).toBe(403)
+        expect(svc[r.service]).not.toHaveBeenCalled()
       })
 
       it("consentement RGPD absent → 403, service NON appelé", async () => {
@@ -114,6 +139,17 @@ describe("Parité des routes de remplacement groupé (US-2657 grouped-only)", ()
       it("erreur métier connue (slotsBusy) → 409 (mappée via SLOT_SET_ERROR_STATUS)", async () => {
         svc[r.service].mockRejectedValueOnce(new Error("slotsBusy"))
         expect((await r.handler(put(r.url, "DOCTOR", r.body))).status).toBe(409)
+      })
+
+      it("erreur métier à statut ≠ 409 (slotGap) → 422 (mapping non figé sur 409)", async () => {
+        svc[r.service].mockRejectedValueOnce(new Error("slotGap"))
+        expect((await r.handler(put(r.url, "DOCTOR", r.body))).status).toBe(422)
+      })
+
+      it("JSON malformé → 400 validationFailed (pas 500), service NON appelé", async () => {
+        const res = await r.handler(put(r.url, "DOCTOR", "{ not json", true))
+        expect(res.status).toBe(400)
+        expect(svc[r.service]).not.toHaveBeenCalled()
       })
 
       it("erreur inattendue (non mappée) → 500 générique sans fuite", async () => {

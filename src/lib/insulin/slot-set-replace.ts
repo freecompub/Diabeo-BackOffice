@@ -56,7 +56,8 @@ export async function handleSlotSetReplace<TSlot>(
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
-    const parsed = schema.safeParse(await req.json())
+    // JSON malformé → `null` → `validationFailed` (400), pas 500 (aligné route patient C3c + pattern Zod CLAUDE.md).
+    const parsed = schema.safeParse(await req.json().catch(() => null))
     if (!parsed.success) {
       return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
