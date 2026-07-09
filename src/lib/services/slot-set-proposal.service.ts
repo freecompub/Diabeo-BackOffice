@@ -145,6 +145,7 @@ export const slotSetProposalService = {
    * `replaceSlotSet` (bornes) rollback tout → aucune config appliquée sans acceptation valide, ni l'inverse.
    * Scopé patient (anti-IDOR), patient soft-deleted exclu.
    * @throws slotSetProposalNotFound (absente/non pending/hors périmètre/soft-deleted/rejetée-supersédée en course)
+   * @throws nonInsulinNoDose (le mode dérivé a basculé non-insuliné entre création et acceptation — fail-closed)
    * @throws unsupportedSlotSetParam | invalidSlotSet | settingsNotFound | valueOutOfBounds | slotOverlap | slotGap | zeroDurationSlot | emptySlotSet
    */
   async acceptSetProposal(id: string, patientId: number, reviewerUserId: number, ctx?: AuditContext) {
@@ -162,6 +163,12 @@ export const slotSetProposalService = {
         throw new Error("unsupportedSlotSetParam")
       }
       const slots = parseSlots(proposal.proposedSlots)
+
+      // Frontière DISPOSITIF MÉDICAL re-vérifiée À L'ACCEPTATION (symétrie avec la création) : si le mode
+      // dérivé serveur a basculé vers `nonInsulin` entre création et revue, on N'applique PAS un profil
+      // ISF/ICR à un patient non insuliné (fail-closed, US-2651 §12.5). Rollback → proposition reste pending.
+      const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
+      if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
       // Compare-and-swap DANS la tx : verrouille l'acte pending → accepted. `count 0` = la proposition a
       // été rejetée/supersédée (ou acceptée) en course → throw → rollback (aucune config appliquée).

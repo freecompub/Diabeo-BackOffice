@@ -166,6 +166,15 @@ describe("slotSetProposalService", () => {
     expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
   })
 
+  it("acceptSetProposal : mode basculé nonInsulin entre création et accept → nonInsulinNoDose, PAS d'apply (frontière MDR re-vérifiée)", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "insulinSensitivityFactor", proposedSlots: SLOTS })
+    ;(treatmentModeService.resolveTreatmentMode as any).mockResolvedValueOnce({ mode: "nonInsulin" })
+    await expect(slotSetProposalService.acceptSetProposal("set-1", 7, 3)).rejects.toThrow("nonInsulinNoDose")
+    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
+    expect(auditService.logWithTx).not.toHaveBeenCalled()
+  })
+
   it("acceptSetProposal : échec clinique de replaceSlotSet → propagé (fail-closed, rollback du flip)", async () => {
     const tx = mockTx()
     tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "insulinToCarbRatio", proposedSlots: SLOTS })

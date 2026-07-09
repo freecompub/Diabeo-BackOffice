@@ -44,6 +44,42 @@ Elle liste ce qui a été **corrigé** dans le durcissement et ce qui est **volo
 6. **`changeKind` dérivé serveur.** Pour un groupe, C3b dérive `VALUE`/`STRUCTURAL` de la comparaison
    avant/après persistée (jamais du body). Le harnais par-créneau ne gère que `VALUE`.
 
+## Différé à une slice dédiée post-C3d — **grouped-only non appliqué (routes d'écriture par-créneau)**
+
+Finding **#2** de la revue C3d (PR #709, `medical-domain-validator` MEDIUM, borderline HIGH) + clarification
+produit (« que du groupé, quel que soit le rôle », ADR #23).
+
+**Problème.** Une `SlotSetProposal` pending stocke un **cliché figé du jeu complet**. Aujourd'hui, seule une
+édition **plein-jeu** (`replaceSlotSet`) supersède les propositions pending. Or les **routes d'écriture
+par-créneau DOCTOR existent toujours** et ne supersèdent PAS :
+
+| Route par-créneau (DOCTOR) | Service |
+|---|---|
+| `PATCH`/`POST /api/insulin-therapy/sensitivity-factors` | `updateIsf` / `createIsf` |
+| `PATCH`/`POST /api/insulin-therapy/carb-ratios` | `updateIcr` / `createIcr` |
+| `PATCH`/`POST`/`DELETE /api/insulin-therapy/basal-config/pump-slots` | `updatePumpSlot` / `createPumpSlot` / `deletePumpSlot` |
+
+**Scénario patient (dérive de base).** Patient propose P (ISF↑ ⇒ +insuline). Médecin, suite à une **hypo
+sévère**, baisse *un* créneau ISF via la route par-créneau (P reste pending, non supersédée). Médecin accepte
+P plus tard → P écrase tout le jeu → **ré-introduit l'insuline coupée pour l'hypo**. La re-validation passe
+(P est intrinsèquement in-bounds + sans trou). Mitigation actuelle = **UI seulement** (`/patients/[id]/review`
+montre l'écart), non enforce à l'API.
+
+**Décision (choix produit).** Traiter dans une **slice dédiée après C3d** : retirer/neutraliser les **routes**
+d'écriture par-créneau pour ne laisser que le `PUT` groupé (`replaceSlotSet`, qui supersède déjà) comme unique
+voie d'écriture DOCTOR — ferme la fenêtre **à la source**. ⚠️ Ne PAS supprimer les **méthodes service**
+`updateIsf`/`updateIcr`/`updatePumpSlot` : encore appelées par `auto-apply.service` (chemin gouverné unitaire) ;
+c'est la **surface HTTP** par-créneau qui diverge de la décision groupé-only. Alternative envisagée (rejetée
+ici) : token de base attendue (`baselineMoved`) à l'acceptation — plus robuste mais migration + friction, gain
+marginal vs le retrait des routes.
+
+**Non retenu dans C3d** (`#4`/`#5` de la revue — dette héritée transverse, à traiter uniformément avec les
+routes sœurs `adjustment-proposals`, pas de divergence unilatérale) :
+- **#4 Oracle 403-vs-404** sur accept/reject (distingue « existe hors périmètre » de « absente »). Mitigé par
+  ids opaques non énumérables. Identique aux routes sœurs.
+- **#5 `requireGdprConsent` vérifie le consentement de l'appelant, pas du sujet** (liste) — `TODO V1.5`
+  déjà documenté dans `gdpr.ts`. Pour un acte de soin (Art. 9.2.h) l'absence sur accept/reject n'est pas un gap.
+
 ## Différé — dette mineure (slice dédiée)
 
 - **FK `User`** sur `GovernanceApproval.approvedById`, `SlotSetProposal.proposedByUserId/reviewedByUserId`
