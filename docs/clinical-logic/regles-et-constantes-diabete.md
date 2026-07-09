@@ -665,7 +665,36 @@ l'index unique partiel `slot_set_proposals_one_pending_per_param` (`WHERE status
 Audit dédié `resource = SLOT_SET_PROPOSAL` (CREATE / PROPOSAL_ACCEPTED / PROPOSAL_REJECTED / READ), jamais de
 PHI (valeurs de config, `metadata.patientId` pivot US-2268). Sources : orchestrateur `applyExpertGroupGoverned`
 (C3b, appelant), **route patient `PUT /api/patient/insulin-slot-set` (C3c, livrée — self-scopée own-id)**,
-route médecin d'accept/reject (C3d, à livrer).
+**routes de revue médecin (C3d, livrées)**.
+
+#### Routes de revue médecin (C3d)
+
+Surface HTTP de revue des `SlotSetProposal` par un professionnel :
+
+- **`GET /api/slot-set-proposals?patientId=&status=`** — liste (option : filtre `status`). `requireAuth` +
+  consentement RGPD + `resolvePatientId` (VIEWER → propre dossier ; pro → `patientId` explicite + portefeuille,
+  anti-IDOR → 404 neutre). Lecture santé auditée (`READ`).
+- **`PATCH /api/slot-set-proposals/:id/accept`** — **DOCTOR only** (hiérarchique → ADMIN inclus) +
+  `canAccessPatient`. Lookup de la proposition (→ `patientId` + statut `pending`, sinon 404 neutre) →
+  `acceptSetProposal` (transaction atomique décrite ci-dessus). **Frontière MDR re-vérifiée à l'acceptation**
+  (`nonInsulinNoDose` si le mode dérivé a basculé non-insuliné depuis la création — symétrie création ⇄ accept).
+  Mapping : `slotSetProposalNotFound` → 404 ; échec clinique/MDR
+  (`valueOutOfBounds`/`slotOverlap`/`slotGap`/`zeroDurationSlot`/`emptySlotSet`/`nonInsulinNoDose`) → 4xx via
+  `SLOT_SET_ERROR_STATUS` ; verrou occupé (`slotsBusy`) → 409 ; inattendu → 500 générique (sans fuite).
+- **`PATCH /api/slot-set-proposals/:id/reject`** — même garde (DOCTOR + accès) → `rejectSetProposal` (flip
+  `pending → rejected`, aucune config appliquée). Proposition absente/non pending → 404.
+
+Durcissements C3d transverses aux 3 routes : **rate-limit** `RATE_LIMITS.insulinReview` (30/60 s/user,
+fail-open) ; **refus d'accès audités** (`accessDenied` 403 sur accept/reject, et sonde `patientId` hors
+périmètre sur la liste — burst-detection US-2265) ; **notification du patient soumissionnaire** après accept/
+reject réussi (`adjustmentService.notifyPatient`, parité avec la voie par-valeur remplacée).
+
+⚠️ **Risque résiduel connu (dérive de base)** : tant que les routes d'écriture **par-créneau** DOCTOR
+subsistent, une proposition d'ensemble pending peut être acceptée alors qu'elle est **périmée** (un édit
+par-créneau plus récent, ex. baisse post-hypo, ne la supersède pas). Fermeture prévue en **slice dédiée
+post-C3d** (retrait de la surface HTTP par-créneau). Cf. DPIA §4 + cadrage `US-2657-C3b-cadrage-findings-differes.md`.
+
+Fichiers : `src/app/api/slot-set-proposals/route.ts`, `.../[id]/accept/route.ts`, `.../[id]/reject/route.ts`.
 
 #### Orchestrateur groupé `applyExpertGroupGoverned` (C3b) — décision tout-ou-rien
 

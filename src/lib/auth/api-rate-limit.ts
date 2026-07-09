@@ -162,6 +162,18 @@ export const RATE_LIMITS = {
     max: 20,
     failMode: "open",
   } satisfies ApiRateLimitConfig,
+  /**
+   * US-2657 (C3d) — revue médecin des propositions d'ensemble (accept/reject/list) : 30 req/60 s/user.
+   * Fail-open — dispo d'abord (un soignant ne doit pas être bloqué de traiter ses propositions en cas de
+   * panne Redis ; la confidentialité repose sur le RBAC/`canAccessPatient`, pas le limiter). Borne le
+   * spam de `list` (bruit d'audit / charge DB) et le sondage d'ids non throttlé.
+   */
+  insulinReview: {
+    bucket: "insulin-review",
+    windowSec: 60,
+    max: 30,
+    failMode: "open",
+  } satisfies ApiRateLimitConfig,
   /** Per-patient detail reads (BGM, glycemia): 60 req/60 s/user. Fail-open. */
   patientDataRead: {
     bucket: "patient-data-read",
