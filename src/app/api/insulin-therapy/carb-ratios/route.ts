@@ -55,4 +55,7 @@ const replaceIcrSchema = z.object({
     .min(1),
 })
 
-export const PUT = (req: NextRequest) => handleSlotSetReplace(req, "icr", replaceIcrSchema, "[carb-ratios PUT]")
+export const PUT = (req: NextRequest) =>
+  handleSlotSetReplace(req, replaceIcrSchema, "[carb-ratios PUT]", (patientId, slots, userId, ctx) =>
+    insulinTherapyService.replaceSlotSet("icr", patientId, slots, userId, ctx),
+  )

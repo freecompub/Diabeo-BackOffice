@@ -44,6 +44,16 @@ Elle liste ce qui a été **corrigé** dans le durcissement et ce qui est **volo
 6. **`changeKind` dérivé serveur.** Pour un groupe, C3b dérive `VALUE`/`STRUCTURAL` de la comparaison
    avant/après persistée (jamais du body). Le harnais par-créneau ne gère que `VALUE`.
 
+## Durcissement post-merge #710 — handler groupé mutualisé (LOW HDS résolu)
+
+- **Handler basal factorisé** : la route `PUT` basale ne duplique plus l'enveloppe HTTP
+  (auth DOCTOR / consentement / anti-IDOR / mapping erreurs) — `handleSlotSetReplace` est désormais **générique**
+  (paramètre `apply` branchant `replaceSlotSet` ISF/ICR **ou** `replacePumpSlotSet` basal). Les 3 routes de
+  remplacement groupé partagent le MÊME cœur → plus de risque de dérive entre voies (finding LOW HDS #710).
+- **Test de parité** `tests/integration/api-slot-set-replace-parity.test.ts` : verrouille route par route
+  (ISF/ICR/basal) les garanties partagées — DOCTOR-only (403), consentement (403), anti-IDOR (404), mapping
+  métier (`slotsBusy`→409), inattendu→500, Zod→400. Casse si une route diverge.
+
 ## Corrections review multi-agents #710 (grouped-only)
 
 - **no-gap STRICT basal** : **ENDORSÉ** par `medical-domain-validator` (une pompe délivre en continu ; un trou = risque hyper/DKA — *plus* justifié que pour ISF/ICR).
