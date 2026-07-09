@@ -360,6 +360,96 @@ describe("InsulinTherapyPage", () => {
     expect(saveButton.closest("button")?.disabled).toBe(true)
   })
 
+  // ── US-2657 (grouped-only, ADR #23) : ISF/ICR remplacés en BLOC (PUT), plus de POST/DELETE
+  // par-créneau (routes retirées serveur). Ajouter/éditer un créneau ne touche QUE l'état local ;
+  // un seul PUT par paramètre part à l'enregistrement — et seulement s'il a réellement changé. ──
+
+  it("adding an ISF slot mutates local state only — no network call before Save", async () => {
+    await renderAndWaitForLoad()
+    mockFetch.mockClear()
+
+    fireEvent.click(screen.getByText("insulinTherapy.isf.addSlot"))
+    await waitFor(() => {
+      expect(screen.getByTestId("dialog")).toBeTruthy()
+    })
+
+    const valueInput = screen.getByLabelText("insulinTherapy.isf.valueLabel")
+    await userEvent.clear(valueInput)
+    await userEvent.type(valueInput, "0.45")
+    fireEvent.click(screen.getByText("common.confirm"))
+
+    // Le créneau apparaît dans la liste locale (formatSlotHours "00:00 – 08:00") …
+    await waitFor(() => {
+      expect(screen.getByText("00:00 – 08:00")).toBeTruthy()
+    })
+    // … mais AUCUN appel réseau n'a été déclenché (POST par-créneau retiré).
+    expect(mockFetch).not.toHaveBeenCalled()
+    // Le bouton Enregistrer se débloque (état local marqué "dirty").
+    expect(screen.getByText("common.save").closest("button")?.disabled).toBe(false)
+  })
+
+  // US-2657 (grouped-only) : le PUT groupé exige une couverture 24 h no-gap. Un jeu à trou est BLOQUÉ
+  // côté client (message clair), AVANT tout appel réseau de créneau.
+  it("Save is BLOCKED (no slot PUT) when the modified ISF set has a gap (no-gap contract)", async () => {
+    await renderAndWaitForLoad()
+
+    fireEvent.click(screen.getByText("insulinTherapy.isf.addSlot"))
+    await waitFor(() => expect(screen.getByTestId("dialog")).toBeTruthy())
+    const v = screen.getByLabelText("insulinTherapy.isf.valueLabel")
+    await userEvent.clear(v)
+    await userEvent.type(v, "0.45")
+    fireEvent.click(screen.getByText("common.confirm")) // seul [0,8) → trou 08:00→24:00
+
+    mockFetch.mockClear()
+    fireEvent.click(screen.getByText("common.save"))
+
+    await waitFor(() => expect(screen.getByText("insulinTherapy.slotCoverageError")).toBeTruthy())
+    const findCall = (u: string) => mockFetch.mock.calls.find((c: unknown[]) => (c[0] as string).includes(u))
+    // Gate AVANT réseau : aucun PUT (ni settings ni créneaux) — pas de save partiel.
+    expect(findCall("/sensitivity-factors")).toBeUndefined()
+    expect(findCall("/settings")).toBeUndefined()
+  })
+
+  it("Save sends ONE grouped PUT for a gap-free ISF set (2 créneaux couvrant 24 h) — ICR untouched → no ICR call", async () => {
+    await renderAndWaitForLoad()
+
+    // Créneau 1 : [0,8) valeur 0.45 (défauts start=0 end=8).
+    fireEvent.click(screen.getByText("insulinTherapy.isf.addSlot"))
+    await waitFor(() => expect(screen.getByTestId("dialog")).toBeTruthy())
+    let v = screen.getByLabelText("insulinTherapy.isf.valueLabel")
+    await userEvent.clear(v)
+    await userEvent.type(v, "0.45")
+    fireEvent.click(screen.getByText("common.confirm"))
+    await waitFor(() => expect(screen.getByText("00:00 – 08:00")).toBeTruthy())
+
+    // Créneau 2 : [8,0) — enjambe minuit, couvre 08:00→24:00 (endHour = 0 = minuit). Valeur 0.5.
+    fireEvent.click(screen.getByText("insulinTherapy.isf.addSlot"))
+    await waitFor(() => expect(screen.getByTestId("dialog")).toBeTruthy())
+    fireEvent.change(screen.getByLabelText("insulinTherapy.slotStartHour"), { target: { value: "8" } })
+    fireEvent.change(screen.getByLabelText("insulinTherapy.slotEndHour"), { target: { value: "0" } })
+    v = screen.getByLabelText("insulinTherapy.isf.valueLabel")
+    await userEvent.clear(v)
+    await userEvent.type(v, "0.5")
+    fireEvent.click(screen.getByText("common.confirm"))
+
+    mockFetch.mockClear()
+    mockFetch.mockImplementation(() => Promise.resolve({ ok: true, json: async () => ({}) }))
+    fireEvent.click(screen.getByText("common.save"))
+
+    const findCall = (u: string) => mockFetch.mock.calls.find((c: unknown[]) => (c[0] as string).includes(u))
+    await waitFor(() => expect(findCall("/sensitivity-factors")).toBeTruthy())
+
+    const isfInit = findCall("/sensitivity-factors")![1] as RequestInit
+    expect(isfInit.method).toBe("PUT")
+    const body = JSON.parse(isfInit.body as string) as { slots: unknown[] }
+    expect(body.slots).toEqual([
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.45 },
+      { startHour: 8, endHour: 0, sensitivityFactorGl: 0.5 },
+    ])
+    // ICR non touché → aucun PUT carb-ratios.
+    expect(findCall("/carb-ratios")).toBeUndefined()
+  })
+
   // ── Advanced settings ───────────────────────────────────────────────────
 
   it("advanced settings toggle shows IOB option", async () => {

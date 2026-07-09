@@ -25,7 +25,9 @@ describe("buildTreatmentView", () => {
     expect(v.deliveryMethod).toBe("pump")
     expect(v.isfSlots).toEqual([{ id: "isf1", range: "00h–06h", value: 0.3, startHour: 0, endHour: 6 }])
     expect(v.icrSlots).toEqual([{ id: "icr1", range: "00h–06h", value: 10, startHour: 0, endHour: 6 }])
-    expect(v.basalSlots).toEqual([{ range: "00:00–06:00", rate: 0.8, pumpBasalSlotId: "b1" }])
+    expect(v.basalSlots).toEqual([
+      { range: "00:00–06:00", rate: 0.8, pumpBasalSlotId: "b1", startTime: "00:00", endTime: "06:00" },
+    ])
     // Un seul créneau 00–06 → trou sur le reste de la journée (garde-fou).
     expect(v.isfCoverage).toEqual({ hasGap: true, hasOverlap: false })
     expect(v.basalCoverage).toEqual({ hasGap: true, hasOverlap: false })

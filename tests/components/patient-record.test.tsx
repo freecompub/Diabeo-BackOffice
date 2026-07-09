@@ -128,7 +128,7 @@ const baseData: PatientDetailData = {
     isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [{ id: "icr1", range: "00h–06h", value: 10, startHour: 0, endHour: 6 }],
     icrCoverage: { hasGap: false, hasOverlap: false },
-    basalSlots: [{ range: "00:00–06:00", rate: 0.8, pumpBasalSlotId: "b1" }],
+    basalSlots: [{ range: "00:00–06:00", rate: 0.8, pumpBasalSlotId: "b1", startTime: "00:00", endTime: "06:00" }],
     basalCoverage: { hasGap: false, hasOverlap: false },
     treatments: [{ id: 1, name: "Metformine", posology: "850 mg x2/j" }],
   },

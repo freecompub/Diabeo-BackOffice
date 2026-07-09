@@ -16,4 +16,10 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   // bascule MDR concurrente) : à mapper en 4xx, jamais en 500 (cohérent avec `slotsBusy`).
   duplicatePendingProposal: 409,
   nonInsulinNoDose: 409,
+  // US-2657 (grouped-only) — voie groupée BASALE (`replacePumpSlotSet`) : débit non délivrable (multiple
+  // de l'incrément pompe) et absence de configuration basale.
+  rateNotDeliverable: 400,
+  basalConfigNotFound: 404,
+  // Patient NON pompe (MDI) : refus d'attacher des créneaux basaux pompe (intégrité du mode de délivrance).
+  basalConfigNotPump: 409,
 }

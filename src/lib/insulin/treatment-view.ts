@@ -155,6 +155,9 @@ export function buildTreatmentView(
       pumpBasalSlotId: p.id,
       range: `${hhmm(p.startTime)}–${hhmm(p.endTime)}`,
       rate: num(p.rate),
+      // US-2657 — bruts `"HH:MM"` (pas seulement le libellé `range`) pour l'éditeur de GROUPE.
+      startTime: hhmm(p.startTime),
+      endTime: hhmm(p.endTime),
     })),
     // Le débit basal pompe couvre nécessairement 24 h : on n'évalue la
     // couverture que si chaque borne est parsable (sinon créneau ignoré).

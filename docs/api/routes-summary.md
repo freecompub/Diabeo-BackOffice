@@ -77,10 +77,20 @@ pour un accès pro (DOCTOR/NURSE → `canAccessPatient`) ou lecture propre (VIEW
 | GET | /api/insulin-therapy/settings | JWT + GDPR | Parametres complets |
 | PUT | /api/insulin-therapy/settings | JWT + GDPR | Mise a jour parametres |
 | DELETE | /api/insulin-therapy/settings | DOCTOR+ | Suppression cascade |
-| GET/POST | /api/insulin-therapy/sensitivity-factors | JWT + GDPR | Creneaux ISF |
-| GET/POST | /api/insulin-therapy/carb-ratios | JWT + GDPR | Creneaux ICR |
+| GET | /api/insulin-therapy/sensitivity-factors | JWT + GDPR | Liste creneaux ISF |
+| PUT | /api/insulin-therapy/sensitivity-factors | DOCTOR+ | **Remplacement GROUPE** du jeu ISF (US-2657) |
+| GET | /api/insulin-therapy/carb-ratios | JWT + GDPR | Liste creneaux ICR |
+| PUT | /api/insulin-therapy/carb-ratios | DOCTOR+ | **Remplacement GROUPE** du jeu ICR (US-2657) |
+| GET | /api/insulin-therapy/basal-config/pump-slots | JWT + GDPR | Liste creneaux basaux |
+| PUT | /api/insulin-therapy/basal-config/pump-slots | DOCTOR+ | **Remplacement GROUPE** du jeu basal (US-2657) |
 | POST | /api/insulin-therapy/calculate-bolus | JWT + GDPR | Calcul bolus |
 | GET | /api/insulin-therapy/bolus-logs | JWT + GDPR | Historique bolus |
+
+> **US-2657 (grouped-only, ADR #26)** : l'édition des créneaux ISF/ICR/basal se fait **exclusivement en bloc**
+> via `PUT` (« replace the whole set »), quel que soit le rôle. Les anciens verbes **par-créneau** (`POST`/`PATCH`
+> sur `sensitivity-factors` & `carb-ratios` ; `POST`/`PATCH`/`DELETE` sur `basal-config/pump-slots`) sont
+> **retirés** (contrat rompu — coordonner iOS via `swift-expert`). Les méthodes service par-créneau
+> (`updateIsf`/`updateIcr`/`updatePumpSlot`) restent internes (chemin gouverné `auto-apply`).
 
 ## Propositions d'ajustement (Phase 4)
 
