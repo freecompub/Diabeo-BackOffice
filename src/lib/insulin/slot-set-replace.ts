@@ -19,8 +19,8 @@ export type NormalizedSlot = { startHour: number; endHour: number; value: number
 /** Corps normalisé d'un PUT de remplacement de groupe. */
 export type ReplaceSetBody = { patientId?: number; slots: NormalizedSlot[] }
 
-/** Codes d'erreur métier du remplacement de groupe → statut HTTP (stables, sans PHI). */
-const SLOT_SET_ERROR_STATUS: Record<string, number> = {
+/** Codes d'erreur métier du remplacement de groupe → statut HTTP (stables, sans PHI). Réutilisé par C3c. */
+export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   emptySlotSet: 409,
   zeroDurationSlot: 400,
   slotOverlap: 409,
