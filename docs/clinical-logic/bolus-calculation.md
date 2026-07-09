@@ -66,8 +66,9 @@ courante, `findSlotForHour` renvoie `undefined` et l'appelant **leve** une
 erreur (`"No ISF/ICR slot found for current hour"`) **avant** tout calcul de
 dose. Aucun fallback, aucune dose calculee sur une heure non couverte par la
 configuration. Les chevauchements de creneaux sont par ailleurs rejetes a
-l'ecriture (HR-2, `hasTimeSlotOverlap`), garantissant l'unicite du creneau
-selectionne.
+l'ecriture (HR-2, `analyzeSlotCoverage.hasOverlap` via `assertValidSlotSet` lors du
+remplacement groupe `replaceSlotSet`, US-2657), garantissant l'unicite du creneau
+selectionne (et le no-gap garantit qu'un creneau existe pour chaque heure).
 
 ## Analytics glycemiques
 

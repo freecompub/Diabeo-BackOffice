@@ -1116,8 +1116,9 @@ Facteur de sensibilité insuline (ISF) par tranche horaire.
 - **Pas de fallback**: heure non couverte → `undefined` → l'appelant lève
   ("No ISF slot found for current hour"). Calcul de bolus fail-closed.
 - **Validation clinique**: ISF ∈ [0.10, 1.00] g/L/U (voir `CLINICAL_BOUNDS` dans `src/lib/clinical-bounds.ts`)
-- **Anti-chevauchement** (HR-2): rejeté au write-path via `hasTimeSlotOverlap`
-  (`insulin-therapy.service.ts`) — un nouveau slot recouvrant un slot existant lève.
+- **Anti-chevauchement** (HR-2): rejeté au write-path via `analyzeSlotCoverage` (`hasOverlap`)
+  (`src/lib/insulin/slot-coverage.ts`, appelé par `assertValidSlotSet`) — le remplacement groupé du jeu
+  (`replaceSlotSet`, US-2657) lève `slotOverlap` si deux créneaux se recouvrent (+ `slotGap` sur un trou).
 
 ---
 

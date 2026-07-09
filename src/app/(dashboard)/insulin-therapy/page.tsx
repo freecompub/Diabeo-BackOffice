@@ -93,6 +93,9 @@ const API_HEADERS = {
   "X-Requested-With": "XMLHttpRequest",
 }
 
+/** Borne une heure saisie dans `[0,23]` ; `NaN` (champ vidé) → 0. Évite une ligne « NaN:00 » (US-2657). */
+const clampHour = (h: number): number => (Number.isNaN(h) ? 0 : Math.min(23, Math.max(0, h)))
+
 // ---------------------------------------------------------------------------
 // 24h Timeline visualisation
 // ---------------------------------------------------------------------------
@@ -898,7 +901,8 @@ export default function InsulinTherapyPage() {
                 min={0}
                 max={23}
                 value={slotStartHour}
-                onChange={(e) => setSlotStartHour(parseInt(e.target.value, 10))}
+                // Garde NaN (champ vidé) + clamp [0,23] : évite une ligne « NaN:00 » dans le jeu local.
+                onChange={(e) => setSlotStartHour(clampHour(parseInt(e.target.value, 10)))}
               />
               <DiabeoTextField
                 label={t("slotEndHour")}
@@ -906,7 +910,7 @@ export default function InsulinTherapyPage() {
                 min={0}
                 max={23}
                 value={slotEndHour}
-                onChange={(e) => setSlotEndHour(parseInt(e.target.value, 10))}
+                onChange={(e) => setSlotEndHour(clampHour(parseInt(e.target.value, 10)))}
                 hint={t("slotMidnightHint")}
               />
             </div>

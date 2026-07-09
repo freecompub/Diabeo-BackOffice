@@ -109,7 +109,7 @@ Source : `adjustmentService.createProposal` (`src/lib/services/adjustment.servic
 | **`currentValue` de confiance** | Lu **serveur** depuis la config réelle (jamais du body) → garde-fous ininviolables. |
 | **Sens interdit patient** | Un patient ne peut **baisser** une basale (risque hyper/cétose). ISF/ICR : monter la valeur *réduit* la dose → borné en amplitude seulement. |
 | **Cap patient** | Ratios ≤ `PATIENT_MAX_CHANGE_PERCENT` (10 %) ; dose fixe ≤ `FIXED_DOSE_PATIENT_MAX_DELTA_U` (1 U). |
-| **Incrément basal (US-2648b)** | Un débit basal doit être **délivrable** = multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h), sinon non programmable sur la pompe. Source unique : **`isDeliverableBasalRate()`** (`clinical-bounds.ts`), appliquée à la **proposition** (`validateProposedValue`), au **remplacement groupé basal** (`replacePumpSlotSet`/`assertValidPumpSlotSet`, US-2657) et en **garde service** (`createPumpSlot`/`updatePumpSlot`). Miroir UI : `step="0.05"`. |
+| **Incrément basal (US-2648b)** | Un débit basal doit être **délivrable** = multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h), sinon non programmable sur la pompe. Source unique : **`isDeliverableBasalRate()`** (`clinical-bounds.ts`), appliquée à la **proposition** (`validateProposedValue`), au **remplacement groupé basal** (`replacePumpSlotSet`/`assertValidPumpSlotSet`, US-2657) et en **garde service** (`updatePumpSlot`, chemin gouverné). Miroir UI : `step="0.05"`. |
 | **Remplacement GROUPÉ basal (US-2657, grouped-only)** | L'édition des créneaux basaux se fait **exclusivement en bloc** via `PUT /api/insulin-therapy/basal-config/pump-slots` → `replacePumpSlotSet`. Validation `assertValidPumpSlotSet` (`insulin-therapy.service.ts`) : jeu non vide, aucun créneau de durée nulle, débit ∈ `[BASAL_MIN, BASAL_MAX]` **ET** délivrable, **no-overlap** (double délivrance = sur-dosage) et **no-gap STRICT 24 h** (une pompe délivre en permanence ; un trou = fenêtre sans basale = risque hyper/DKA). ⚠️ Le no-gap basal est un invariant **plus strict** que l'ancienne voie par-créneau (qui tolérait les trous) — *à confirmer `medical-domain-validator`*. Remplacement atomique (`deleteMany`+`createMany`), verrou non bloquant `(patient × basal)`, supersède les propositions basales `pending`. **Garde d'intégrité du mode** (revue #710) : refus `basalConfigNotPump` si le patient n'est pas en mode pompe (un patient MDI a aussi une `basalConfiguration` — ne pas y attacher de créneaux pompe). Les écritures par-créneau (`POST`/`PATCH`/`DELETE`) sont **retirées** (voir ADR #26). |
 | **Anti-spam** | 1 proposition `pending` max par (patient, paramètre, créneau) — index unique partiel `adjustment_proposals_one_pending_per_slot`. |
 | **Éditabilité par mode (US-2648b, +US-2657)** | Capability `deriveEditCapability(role, modeResult, maturityLevel)` : `canEditDirect` (DOCTOR/ADMIN), `canPropose` (DOCTOR/NURSE/patient, ADMIN exclu), **`canEditSlots`** (restructuration — DOCTOR/ADMIN/NURSE oui ; patient VIEWER gaté maturité, JUNIOR = non), `maturityLevel` ; `editableParameters` = ISF/ICR/basal **si** `basalBolus` **ET** `coherent`, sinon **vide** (fail-closed). Pilote l'UI ; n'autorise rien (RBAC = routes). Source : `src/lib/insulin/edit-capability.ts`. |
@@ -504,9 +504,10 @@ confiance au client) sur l'état **final** :
 - **Durée nulle** (`startHour === endHour`) → `zeroDurationSlot` ; **jeu vide** → `emptySlotSet` (un profil
   ne peut finir à 0 créneau).
 - **Convention d'encodage** : `endHour ∈ [0,23]` ; un profil complet **enjambe minuit** via un créneau
-  `startHour > endHour` (ex. ISF `[22,6)`) — pas de `endHour = 24`. Aligné sur le seed et `createIsf`.
-- **Anti-IDOR** : scopé `settings.patientId` ; **fix** de `deleteIsf`/`deleteIcr` (désormais `deleteMany`
-  scopé patient → `isfSlotNotFound`/`icrSlotNotFound`).
+  `startHour > endHour` (ex. ISF `[22,6)`) — pas de `endHour = 24` (`endHour = 0` = minuit). Aligné sur le
+  seed et `replaceSlotSet`.
+- **Anti-IDOR** : le remplacement groupé (`replaceSlotSet`/`replacePumpSlotSet`) dérive `settingsId`/
+  `basalConfigId` du **patient** (jamais du body) → un jeu d'un autre patient n'est jamais touché.
 - **Propositions** : les `pending` du même paramètre pour le patient passent **`superseded`** (nouveau statut
   `ProposalStatus`) — libère l'index `one_pending_per_slot`, pas de collision P2002.
 - **Rôle** : chemin **DOCTOR direct** (PUT `/api/insulin-therapy/{sensitivity-factors,carb-ratios}`). Le chemin
