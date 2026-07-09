@@ -665,7 +665,24 @@ l'index unique partiel `slot_set_proposals_one_pending_per_param` (`WHERE status
 Audit dédié `resource = SLOT_SET_PROPOSAL` (CREATE / PROPOSAL_ACCEPTED / PROPOSAL_REJECTED / READ), jamais de
 PHI (valeurs de config, `metadata.patientId` pivot US-2268). Sources : orchestrateur `applyExpertGroupGoverned`
 (C3b, appelant), **route patient `PUT /api/patient/insulin-slot-set` (C3c, livrée — self-scopée own-id)**,
-route médecin d'accept/reject (C3d, à livrer).
+**routes de revue médecin (C3d, livrées)**.
+
+#### Routes de revue médecin (C3d)
+
+Surface HTTP de revue des `SlotSetProposal` par un professionnel :
+
+- **`GET /api/slot-set-proposals?patientId=&status=`** — liste (option : filtre `status`). `requireAuth` +
+  consentement RGPD + `resolvePatientId` (VIEWER → propre dossier ; pro → `patientId` explicite + portefeuille,
+  anti-IDOR → 404 neutre). Lecture santé auditée (`READ`).
+- **`PATCH /api/slot-set-proposals/:id/accept`** — **DOCTOR only** (hiérarchique → ADMIN inclus) +
+  `canAccessPatient`. Lookup de la proposition (→ `patientId` + statut `pending`, sinon 404 neutre) →
+  `acceptSetProposal` (transaction atomique décrite ci-dessus). Mapping : `slotSetProposalNotFound` → 404 ;
+  échec clinique (`valueOutOfBounds`/`slotOverlap`/`slotGap`/`zeroDurationSlot`/`emptySlotSet`) → 4xx via
+  `SLOT_SET_ERROR_STATUS` ; verrou occupé (`slotsBusy`) → 409 ; inattendu → 500 générique (sans fuite).
+- **`PATCH /api/slot-set-proposals/:id/reject`** — même garde (DOCTOR + accès) → `rejectSetProposal` (flip
+  `pending → rejected`, aucune config appliquée). Proposition absente/non pending → 404.
+
+Fichiers : `src/app/api/slot-set-proposals/route.ts`, `.../[id]/accept/route.ts`, `.../[id]/reject/route.ts`.
 
 #### Orchestrateur groupé `applyExpertGroupGoverned` (C3b) — décision tout-ou-rien
 
