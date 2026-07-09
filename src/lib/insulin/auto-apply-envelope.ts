@@ -29,6 +29,8 @@ export type EnvelopeInput = {
     proposedValue: number
     /** Unité ISF (bornes/pourcentage). Requis pour ISF ; ignoré sinon. */
     isfUnit?: "gl" | "mgdl"
+    /** US-2652 — patient en mode pédiatrique → cap dose fixe C3 resserré (0,5 U). Défaut false. */
+    isPediatric?: boolean
   }
   glycemia: {
     /** Relevés **CGM** de la fenêtre (g/L) — base de C6b (avec `capturePercent`, plancher de suffisance). */
@@ -96,7 +98,7 @@ const FALLBACK = (failedCheck: FailedCheck): EnvelopeDecision => ({ decision: "F
 export function evaluateAutoApplyEnvelope(input: EnvelopeInput): EnvelopeDecision {
   try {
     const { authority, change, glycemia, ratchet } = input
-    const { parameterType: param, changeKind, currentValue, proposedValue, isfUnit } = change
+    const { parameterType: param, changeKind, currentValue, proposedValue, isfUnit, isPediatric } = change
 
     // Entrées de base indispensables (fail-closed).
     if (!finite(currentValue) || !finite(proposedValue) || currentValue === 0) return FALLBACK("C8")
@@ -117,7 +119,9 @@ export function evaluateAutoApplyEnvelope(input: EnvelopeInput): EnvelopeDecisio
     // C3 — amplitude bornée (ratios en %, dose fixe en U).
     const absPercent = Math.abs((proposedValue - currentValue) / currentValue) * 100
     if (param === "fixedDose") {
-      if (Math.abs(proposedValue - currentValue) > B.AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U) return FALLBACK("C3")
+      // Cap dose fixe C3 resserré en pédiatrie (miroir du cap patient) → préserve « auto-apply ≤ patient ».
+      const fixedCap = isPediatric ? B.AUTO_APPLY_FIXED_DOSE_MAX_DELTA_PEDIATRIC_U : B.AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U
+      if (Math.abs(proposedValue - currentValue) > fixedCap) return FALLBACK("C3")
     } else {
       if (absPercent > B.AUTO_APPLY_MAX_CHANGE_PERCENT) return FALLBACK("C3")
     }

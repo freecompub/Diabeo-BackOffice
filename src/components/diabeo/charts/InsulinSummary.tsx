@@ -13,6 +13,7 @@ import {
   Tooltip as RechartsTooltip,
 } from "recharts"
 import { cn } from "@/lib/utils"
+import { tokens } from "@/design-system/tokens"
 import type { InsulinSummaryData } from "./types"
 
 interface InsulinSummaryProps {
@@ -20,9 +21,10 @@ interface InsulinSummaryProps {
   className?: string
 }
 
+// Couleurs Recharts : issues du module de tokens (design-system) — jamais de `var(--color-*)` en dur (CLAUDE.md).
 const COLORS = {
-  basal: "var(--color-teal-500)",
-  bolus: "var(--color-coral-500)",
+  basal: tokens.brand.primary[500], // teal
+  bolus: tokens.brand.secondary[500], // coral
 }
 
 export function InsulinSummary({ data, className }: InsulinSummaryProps) {
@@ -35,7 +37,7 @@ export function InsulinSummary({ data, className }: InsulinSummaryProps) {
 
   return (
     <div className={cn("space-y-3", className)}>
-      <h4 className="text-sm font-medium text-gray-900">{t("total")}</h4>
+      <h4 className="text-sm font-medium text-foreground">{t("total")}</h4>
 
       <div className="flex items-center gap-4">
         {/* Pie chart */}
@@ -64,7 +66,7 @@ export function InsulinSummary({ data, className }: InsulinSummaryProps) {
                     value: number
                   }
                   return (
-                    <div className="rounded bg-gray-900 px-2 py-1 text-xs text-white">
+                    <div className="rounded bg-foreground px-2 py-1 text-xs text-background">
                       {item.name}: {item.value.toFixed(1)}U
                     </div>
                   )
@@ -76,11 +78,11 @@ export function InsulinSummary({ data, className }: InsulinSummaryProps) {
 
         {/* Totals */}
         <div className="flex-1 space-y-1">
-          <p className="text-2xl font-bold text-gray-900">
+          <p className="text-2xl font-bold text-foreground">
             {data.totalUnits.toFixed(1)}
-            <span className="text-sm font-normal text-gray-500 ms-1">U</span>
+            <span className="text-sm font-normal text-muted-foreground ms-1">U</span>
           </p>
-          <div className="flex items-center gap-3 text-xs text-gray-500">
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
               <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
               {t("basal")} {data.basalPercent}%

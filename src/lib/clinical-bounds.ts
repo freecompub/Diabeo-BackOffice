@@ -79,10 +79,43 @@ export const CLINICAL_BOUNDS = {
   /**
    * US-2649 — cap de variation d'une proposition **PATIENT** pour les ratios
    * (ISF/ICR/basal), en %. Strictement plus strict que le moteur (± 20 %) : une
-   * demande patient est un pas, pas une titration. (La dose fixe patient est
-   * bornée en unités : `FIXED_DOSE_PATIENT_MAX_DELTA_U`.)
+   * demande patient est un pas, pas une titration.
+   *
+   * ⚠️ US-2652 — **superseded pour le chemin de création patient** par les caps PAR TYPE
+   * `PATIENT_MAX_CHANGE_PERCENT_*` + `PATIENT_MAX_ABS_DELTA_*` ci-dessous (combinaison `min(%, abs)`).
+   * Conservé comme référence % (encore utilisé par le miroir C3 `AUTO_APPLY_MAX_AMPLITUDE_PERCENT`).
    */
   PATIENT_MAX_CHANGE_PERCENT: 10,
+  /**
+   * US-2652 — **Cap patient PAR TYPE d'opération** : la variation autorisée d'une proposition PATIENT est
+   * `min( PATIENT_MAX_CHANGE_PERCENT_<type> % × |valeur| , PATIENT_MAX_ABS_DELTA_<type> )` — le plus SERRÉ.
+   * Corrige le « % seul » mal comporté aux extrêmes (10 % = saut énorme sur grosse basale, minuscule sur
+   * petit ISF). **Sans plancher** : un cap sous l'incrément délivrable route vers le clinicien (fail-safe).
+   * Le % reste 10 % partout (aligné C3, < moteur 20 %) ; c'est le **delta absolu par type** qui borne les
+   * extrêmes. Constantes % par type pour permettre une divergence future sans toucher aux appels.
+   * Direction : baisse INTERDITE pour la famille basale (pompe + fixe) ; symétrique pour ISF/ICR/bolus fixe
+   * (une baisse de bolus pour hypo est légitime). Deltas = multiples de l'incrément délivrable (basale 0,05 ;
+   * dose fixe 0,5). Pédiatrie : delta dose fixe resserré à 0,5 U. Source : reco `medical-domain-validator`.
+   */
+  PATIENT_MAX_CHANGE_PERCENT_ISF: 10,
+  PATIENT_MAX_CHANGE_PERCENT_ICR: 10,
+  PATIENT_MAX_CHANGE_PERCENT_BASAL_RATE: 10,
+  PATIENT_MAX_CHANGE_PERCENT_FIXED_BASAL: 10,
+  PATIENT_MAX_CHANGE_PERCENT_FIXED_BOLUS: 10,
+  /** Delta absolu max ISF (g/L·U) — ½ pas de titration ; borne au-delà de ISF > 0,50 (résistants). */
+  PATIENT_MAX_ABS_DELTA_ISF_GL: 0.05,
+  /** Delta absolu max ICR (g/U) — pas ICR conventionnel (DAFNE) ; borne au-delà de ICR > 10. */
+  PATIENT_MAX_ABS_DELTA_ICR_GU: 1.0,
+  /** Delta absolu max basale pompe (U/h) = 2 × incrément ; borne au-delà de 1,0 U/h. */
+  PATIENT_MAX_ABS_DELTA_BASAL_RATE_U_H: 0.1,
+  /** Delta absolu max dose fixe BASALE (U) adulte ; ≤ pas moteur 2 U. */
+  PATIENT_MAX_ABS_DELTA_FIXED_BASAL_U: 1.0,
+  /** Delta absolu max dose fixe BASALE (U) PÉDIATRIE = 1 incrément (0,5 U). */
+  PATIENT_MAX_ABS_DELTA_FIXED_BASAL_PEDIATRIC_U: 0.5,
+  /** Delta absolu max dose fixe BOLUS (U) adulte. */
+  PATIENT_MAX_ABS_DELTA_FIXED_BOLUS_U: 1.0,
+  /** Delta absolu max dose fixe BOLUS (U) PÉDIATRIE = 1 incrément (0,5 U). */
+  PATIENT_MAX_ABS_DELTA_FIXED_BOLUS_PEDIATRIC_U: 0.5,
   /**
    * US-2650 — Fenêtre de COOLDOWN (heures) entre deux propositions PATIENT sur le MÊME
    * (patient × paramètre × créneau). Anti-churn : empêche le spam « résolu → re-proposé » et
@@ -175,8 +208,11 @@ export const CLINICAL_BOUNDS = {
   /** C3 — amplitude max auto-applicable d'un ratio (ISF/ICR/basal), en % ; = `PATIENT_MAX_CHANGE_PERCENT`
    *  (l'auto-application ne dépasse jamais ce qu'une proposition patient pourrait demander). */
   AUTO_APPLY_MAX_CHANGE_PERCENT: 10,
-  /** C3 — delta max auto-applicable d'une dose fixe (U) ; miroir de `FIXED_DOSE_PATIENT_MAX_DELTA_U`. */
+  /** C3 — delta max auto-applicable d'une dose fixe (U), ADULTE ; miroir du cap patient dose fixe. */
   AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U: 1.0,
+  /** C3 — delta max auto-applicable d'une dose fixe (U), PÉDIATRIE ; miroir de
+   *  `PATIENT_MAX_ABS_DELTA_FIXED_*_PEDIATRIC_U` (préserve l'invariant « auto-apply ≤ patient », US-2652). */
+  AUTO_APPLY_FIXED_DOSE_MAX_DELTA_PEDIATRIC_U: 0.5,
   /** C2 — une modification STRUCTURELLE (ajout/suppression/déplacement d'heures) n'est JAMAIS auto-applicable. */
   AUTO_APPLY_STRUCTURAL_ALLOWED: false,
   /** C7 — délai min entre deux auto-applications sur (patient × paramètre × créneau). Aligné `FIXED_DOSE_COOLDOWN_HOURS`. */

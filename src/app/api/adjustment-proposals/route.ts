@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { adjustmentService } from "@/lib/services/adjustment.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 const querySchema = z.object({
   patientId: z.coerce.number().int().positive().optional(),
@@ -26,10 +27,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
 
-    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
     const ctx = extractRequestContext(req)
+    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
+    if (!patientId) {
+      // Sonde d'énumération (pro visant un patient hors portefeuille) → auditée (US-2265). Report US-2648a.
+      if (parsed.data.patientId != null) {
+        await auditService
+          .accessDenied({ userId: user.id, resource: "PATIENT", resourceId: String(parsed.data.patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { patientId: parsed.data.patientId, kind: "adjustmentProposalList" } })
+          .catch(() => {})
+      }
+      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    }
+
     const proposals = await adjustmentService.list(patientId, parsed.data, user.id, ctx)
     return NextResponse.json(proposals)
   } catch (error) {
@@ -90,6 +99,18 @@ export async function POST(req: NextRequest) {
     // bypass PHI V1 ASSUMÉ (cf. access-control.ts, levé en V4/F1), pas une incohérence.
     if (user.role === "ADMIN") return NextResponse.json({ error: "forbidden" }, { status: 403 })
 
+    const ctx = extractRequestContext(req)
+
+    // Rate-limit anti-abus (US-2652 / report US-2648a) : borne le débit create→reject→recreate et le volume
+    // multi-slots que l'index partiel `one_pending_per_slot` ne couvre pas. Fail-open ; saturation auditée.
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.insulinSubmission)
+    if (!rl.allowed) {
+      await auditService
+        .rateLimited({ userId: user.id, resource: "PATIENT", resourceId: "adjustment-proposal", ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { surface: "api", kind: "adjustmentProposalCreate" } })
+        .catch(() => {})
+      return NextResponse.json({ error: "rateLimitExceeded" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } })
+    }
+
     const body: unknown = await req.json().catch(() => null)
     const parsed = createSchema.safeParse(body)
     if (!parsed.success) {
@@ -98,11 +119,19 @@ export async function POST(req: NextRequest) {
 
     // Accès : VIEWER → son propre dossier (ignore body.patientId) ; pro → canAccessPatient.
     const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    if (!patientId) {
+      // Un pro qui vise un patient hors portefeuille (patientId fourni → null) = sonde d'énumération :
+      // auditée (accessDenied, burst-detection US-2265). Report US-2648a.
+      if (parsed.data.patientId != null) {
+        await auditService
+          .accessDenied({ userId: user.id, resource: "PATIENT", resourceId: String(parsed.data.patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { patientId: parsed.data.patientId, kind: "adjustmentProposalCreate" } })
+          .catch(() => {})
+      }
+      return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
+    }
 
     // Rôle proposeur dérivé de la session (anti-usurpation) — jamais du body.
     const proposerRole = user.role === "DOCTOR" ? "doctor" : user.role === "NURSE" ? "nurse" : "patient"
-    const ctx = extractRequestContext(req)
 
     const { patientId: _pid, ...input } = parsed.data
     const proposal = await adjustmentService.createProposal(

@@ -15,6 +15,9 @@ const { mocks } = vi.hoisted(() => ({
     requireGdprConsent: vi.fn(),
     resolvePatientId: vi.fn(),
     createProposal: vi.fn(),
+    checkApiRateLimit: vi.fn(),
+    rateLimited: vi.fn(),
+    accessDenied: vi.fn(),
   },
 }))
 vi.mock("@/lib/auth", () => {
@@ -23,6 +26,10 @@ vi.mock("@/lib/auth", () => {
   }
   return { requireAuth: mocks.requireAuth, AuthError }
 })
+vi.mock("@/lib/auth/api-rate-limit", () => ({
+  checkApiRateLimit: mocks.checkApiRateLimit,
+  RATE_LIMITS: { insulinSubmission: { bucket: "insulin-submission", windowSec: 60, max: 20, failMode: "open" } },
+}))
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: mocks.requireGdprConsent }))
 vi.mock("@/lib/access-control", () => ({ resolvePatientId: mocks.resolvePatientId }))
 vi.mock("@/lib/services/adjustment.service", () => ({
@@ -30,6 +37,7 @@ vi.mock("@/lib/services/adjustment.service", () => ({
 }))
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: () => ({ ipAddress: "1.1.1.1", userAgent: "test" }),
+  auditService: { rateLimited: mocks.rateLimited, accessDenied: mocks.accessDenied },
 }))
 
 import { POST } from "@/app/api/adjustment-proposals/route"
@@ -48,6 +56,9 @@ beforeEach(() => {
   mocks.requireAuth.mockReturnValue({ id: 20, role: "NURSE" })
   mocks.requireGdprConsent.mockResolvedValue(true)
   mocks.resolvePatientId.mockResolvedValue(5)
+  mocks.checkApiRateLimit.mockResolvedValue({ allowed: true, remaining: 19, retryAfterSec: 60 })
+  mocks.rateLimited.mockResolvedValue({})
+  mocks.accessDenied.mockResolvedValue({})
   mocks.createProposal.mockResolvedValue({
     id: "p1",
     proposerComment: "enc(secret)",
@@ -121,11 +132,31 @@ describe("POST /api/adjustment-proposals", () => {
     expect(res.status).toBe(400)
   })
 
-  it("accès refusé (resolvePatientId null) → 404", async () => {
+  it("accès refusé (resolvePatientId null), sans patientId au corps → 404, PAS d'audit accessDenied", async () => {
     mocks.resolvePatientId.mockResolvedValue(null)
-    const res = await POST(reqWith(isfBody))
+    const res = await POST(reqWith(isfBody)) // isfBody n'a pas de patientId → pas une sonde
     expect(res.status).toBe(404)
     expect(mocks.createProposal).not.toHaveBeenCalled()
+    expect(mocks.accessDenied).not.toHaveBeenCalled()
+  })
+
+  it("pro visant un patientId hors portefeuille → 404 + audit accessDenied (US-2648a)", async () => {
+    mocks.resolvePatientId.mockResolvedValue(null)
+    const res = await POST(reqWith({ ...isfBody, patientId: 999 }))
+    expect(res.status).toBe(404)
+    expect(mocks.createProposal).not.toHaveBeenCalled()
+    expect(mocks.accessDenied).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 20, resource: "PATIENT", metadata: expect.objectContaining({ patientId: 999 }) }),
+    )
+  })
+
+  it("rate-limit dépassé → 429 + Retry-After + audit, aucune création", async () => {
+    mocks.checkApiRateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 42 })
+    const res = await POST(reqWith(isfBody))
+    expect(res.status).toBe(429)
+    expect(res.headers.get("Retry-After")).toBe("42")
+    expect(mocks.createProposal).not.toHaveBeenCalled()
+    expect(mocks.rateLimited).toHaveBeenCalled()
   })
 
   it("doublon pending → 409", async () => {
