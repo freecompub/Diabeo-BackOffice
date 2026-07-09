@@ -55,4 +55,7 @@ const replaceIsfSchema = z.object({
     .min(1),
 })
 
-export const PUT = (req: NextRequest) => handleSlotSetReplace(req, "isf", replaceIsfSchema, "[sensitivity-factors PUT]")
+export const PUT = (req: NextRequest) =>
+  handleSlotSetReplace(req, replaceIsfSchema, "[sensitivity-factors PUT]", (patientId, slots, userId, ctx) =>
+    insulinTherapyService.replaceSlotSet("isf", patientId, slots, userId, ctx),
+  )

@@ -15,12 +15,12 @@
 
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
-import { requireAuth, requireRole, AuthError } from "@/lib/auth"
+import { requireAuth, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService, INSULIN_BOUNDS } from "@/lib/services/insulin-therapy.service"
 import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
-import { SLOT_SET_ERROR_STATUS } from "@/lib/insulin/slot-set-errors"
+import { handleSlotSetReplace } from "@/lib/insulin/slot-set-replace"
 import { extractRequestContext } from "@/lib/services/audit.service"
 
 const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/
@@ -85,35 +85,13 @@ const replaceBasalSchema = z.object({
 
 /**
  * PUT /api/insulin-therapy/basal-config/pump-slots — **remplace tout le jeu** de créneaux basaux. DOCTOR only,
- * scopé patient (anti-IDOR). Cohérence re-validée serveur (`replacePumpSlotSet` → `assertValidPumpSlotSet` :
- * chevauchement 409, trou 422, durée nulle 400, débit hors bornes/non délivrable 400). Propositions basales
- * `pending` supersédées. Verrou occupé → 409.
+ * scopé patient (anti-IDOR). Mutualise l'enveloppe HTTP (auth/consentement/anti-IDOR/mapping erreurs) avec
+ * les routes ISF/ICR via `handleSlotSetReplace` (revue #710 : cœur unique anti-dérive) ; seul le service de
+ * persistance diffère (`replacePumpSlotSet` → `assertValidPumpSlotSet` : chevauchement 409, trou 422, durée
+ * nulle 400, débit hors bornes/non délivrable 400, patient non pompe 409). Propositions basales `pending`
+ * supersédées ; verrou occupé → 409.
  */
-export async function PUT(req: NextRequest) {
-  try {
-    const user = requireRole(req, "DOCTOR")
-    const hasConsent = await requireGdprConsent(user.id)
-    if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
-
-    const parsed = replaceBasalSchema.safeParse(await req.json())
-    if (!parsed.success) {
-      return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
-    }
-    const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
-    if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
-
-    try {
-      const result = await insulinTherapyService.replacePumpSlotSet(patientId, parsed.data.slots, user.id, extractRequestContext(req))
-      return NextResponse.json(result)
-    } catch (e) {
-      const status = e instanceof Error ? SLOT_SET_ERROR_STATUS[e.message] : undefined
-      if (status) return NextResponse.json({ error: (e as Error).message }, { status })
-      throw e
-    }
-  } catch (error) {
-    if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
-    const msg = error instanceof Error ? error.message : "Unknown error"
-    console.error("[pump-slots PUT]", msg)
-    return NextResponse.json({ error: "serverError" }, { status: 500 })
-  }
-}
+export const PUT = (req: NextRequest) =>
+  handleSlotSetReplace(req, replaceBasalSchema, "[pump-slots PUT]", (patientId, slots, userId, ctx) =>
+    insulinTherapyService.replacePumpSlotSet(patientId, slots, userId, ctx),
+  )

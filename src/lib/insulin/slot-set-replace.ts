@@ -1,8 +1,13 @@
 /**
  * @module slot-set-replace
- * @description US-2655 — Handler HTTP **mutualisé** du PUT « remplace le jeu complet » de créneaux
- * insuline (ISF/ICR). Factorise la logique identique des routes `sensitivity-factors` et `carb-ratios`
- * (auth DOCTOR, consentement RGPD, résolution patient anti-IDOR, appel service, mapping erreurs→HTTP).
+ * @description US-2655 / US-2657 — Handler HTTP **mutualisé** du PUT « remplace le jeu complet » de créneaux
+ * insuline. Cœur UNIQUE des 3 routes de remplacement groupé (`sensitivity-factors`, `carb-ratios`,
+ * `basal-config/pump-slots`) : auth DOCTOR, consentement RGPD, résolution patient anti-IDOR, mapping
+ * erreurs→HTTP. Le paramètre `apply` branche le service de persistance propre à chaque paramètre
+ * (`replaceSlotSet` ISF/ICR à créneaux horaires entiers ; `replacePumpSlotSet` basal à temps `HH:MM`).
+ *
+ * ⚠️ Anti-dérive (revue #710) : les 3 routes DOIVENT partager ces garanties. Toute route de remplacement
+ * groupé passe par ici — un test de parité (`api-slot-set-replace-parity`) verrouille l'invariant.
  */
 
 import { NextResponse, type NextRequest } from "next/server"
@@ -10,30 +15,41 @@ import type { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
-import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { extractRequestContext, type AuditContext } from "@/lib/services/audit.service"
 import { SLOT_SET_ERROR_STATUS } from "@/lib/insulin/slot-set-errors"
 
-/** Créneau normalisé (valeur = ISF g/L ou ICR g/U), forme attendue par `replaceSlotSet`. */
+/** Créneau ISF/ICR normalisé (valeur = ISF g/L ou ICR g/U), forme attendue par `replaceSlotSet`. */
 export type NormalizedSlot = { startHour: number; endHour: number; value: number; mealLabel?: string }
 
-/** Corps normalisé d'un PUT de remplacement de groupe. */
-export type ReplaceSetBody = { patientId?: number; slots: NormalizedSlot[] }
+/** Corps normalisé d'un PUT de remplacement de groupe (générique sur la forme du créneau). */
+export type ReplaceSetBody<TSlot = NormalizedSlot> = { patientId?: number; slots: TSlot[] }
 
 /**
- * PUT mutualisé — remplace atomiquement TOUT le jeu de créneaux (`param`) du patient. DOCTOR only,
- * scopé patient (anti-IDOR). Cohérence re-validée serveur par `replaceSlotSet` (chevauchement 409,
- * trou 422, durée nulle 400, valeur hors bornes 400, jeu vide 409). Propositions pending supersédées.
- *
- * @param schema - Zod validant le corps et **normalisant** chaque créneau vers `NormalizedSlot`
- *   (via `.transform` côté route : `sensitivityFactorGl`/`gramsPerUnit` → `value`).
- * @param logTag - préfixe de log serveur (ex. `"[sensitivity-factors PUT]"`).
+ * Applique le jeu complet en base (branché par la route). Reçoit le patient **déjà résolu** (anti-IDOR) —
+ * ne doit jamais re-dériver le périmètre depuis le body.
  */
-export async function handleSlotSetReplace(
+export type ApplySlotSet<TSlot> = (
+  patientId: number,
+  slots: TSlot[],
+  userId: number,
+  ctx: AuditContext,
+) => Promise<unknown>
+
+/**
+ * PUT mutualisé — remplace atomiquement TOUT le jeu de créneaux du patient. **DOCTOR only**, scopé patient
+ * (anti-IDOR), consentement RGPD requis. Cohérence re-validée serveur par le service `apply` (chevauchement
+ * 409, trou 422, durée nulle 400, valeur/débit hors bornes 400, jeu vide 409, verrou occupé 409). Toute erreur
+ * métier connue → 4xx via `SLOT_SET_ERROR_STATUS` ; inattendue → 500 générique (sans fuite).
+ *
+ * @param schema - Zod validant/normalisant le corps `{ patientId?, slots }`.
+ * @param logTag - préfixe de log serveur (ex. `"[sensitivity-factors PUT]"`).
+ * @param apply - service de persistance (`replaceSlotSet` ISF/ICR, `replacePumpSlotSet` basal).
+ */
+export async function handleSlotSetReplace<TSlot>(
   req: NextRequest,
-  param: "isf" | "icr",
-  schema: z.ZodType<ReplaceSetBody>,
+  schema: z.ZodType<ReplaceSetBody<TSlot>>,
   logTag: string,
+  apply: ApplySlotSet<TSlot>,
 ): Promise<NextResponse> {
   try {
     const user = requireRole(req, "DOCTOR")
@@ -48,13 +64,7 @@ export async function handleSlotSetReplace(
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     try {
-      const result = await insulinTherapyService.replaceSlotSet(
-        param,
-        patientId,
-        parsed.data.slots,
-        user.id,
-        extractRequestContext(req),
-      )
+      const result = await apply(patientId, parsed.data.slots, user.id, extractRequestContext(req))
       return NextResponse.json(result)
     } catch (e) {
       const status = e instanceof Error ? SLOT_SET_ERROR_STATUS[e.message] : undefined
