@@ -30,7 +30,7 @@ vi.mock("@/lib/services/slot-set-proposal.service", () => ({
 }))
 vi.mock("@/lib/services/audit.service", () => ({ auditService: { log: vi.fn().mockResolvedValue(undefined), logWithTx: vi.fn() } }))
 
-const { autoApplyService } = await import("@/lib/services/auto-apply.service")
+const { autoApplyService, exceedsGroupCumulativeAmplitude } = await import("@/lib/services/auto-apply.service")
 const { isAutoApplyGloballyEnabled } = await import("@/lib/env")
 const { buildEnvelopeContext } = await import("@/lib/insulin/auto-apply-context")
 const { evaluateAutoApplyEnvelope } = await import("@/lib/insulin/auto-apply-envelope")
@@ -130,6 +130,22 @@ describe("autoApplyService.applyExpertGroupGoverned", () => {
     expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
   })
 
+  it("cap ampleur cumulée co-directionnelle (C3b) : 2 baisses ISF à −8 % (sumHypo 16 % > 15 %) → proposition (groupCumulative), pas d'apply", async () => {
+    // Chaque créneau (−8 %) est SOUS C3 (10 %) ; seul le cumul co-directionnel (16 %) déclenche. ISF↓ = hypo.
+    const coDirectional = [{ startHour: 0, endHour: 8, value: 0.46 }, { startHour: 8, endHour: 22, value: 0.414 }, { startHour: 22, endHour: 0, value: 0.4 }]
+    const res = await autoApplyService.applyExpertGroupGoverned(edit(coDirectional), 7, NOW)
+    expect(res).toEqual({ outcome: "proposal", failedCheck: "groupCumulative", proposalId: "set-1" })
+    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
+  })
+
+  it("redistribution (1 baisse −8 % hypo + 1 hausse +8 % hyper) : sommes séparées ≤ seuils → AUTO_APPLY (pas de groupCumulative)", async () => {
+    // Sens opposés → jamais additionnés (sumHypo 8 ≤ 15, sumHyper 8 ≤ 20) : n'est pas un risque cumulé.
+    const redistribution = [{ startHour: 0, endHour: 8, value: 0.46 }, { startHour: 8, endHour: 22, value: 0.486 }, { startHour: 22, endHour: 0, value: 0.4 }]
+    const res = await autoApplyService.applyExpertGroupGoverned(edit(redistribution), 7, NOW)
+    expect(res).toEqual({ outcome: "applied" })
+    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalled()
+  })
+
   it("tous AUTO_APPLY (2 changés) → application ATOMIQUE (replaceSlotSet + 2 AutoApplyEvent)", async () => {
     const res = await autoApplyService.applyExpertGroupGoverned(edit(CHANGED_2), 7, NOW)
     expect(res).toEqual({ outcome: "applied" })
@@ -170,5 +186,35 @@ describe("autoApplyService.applyExpertGroupGoverned", () => {
   it("patient absent/soft-deleted → patientNotFound", async () => {
     prismaMock.patient.findFirst.mockResolvedValue(null as never)
     await expect(autoApplyService.applyExpertGroupGoverned(edit(CHANGED_2), 7, NOW)).rejects.toThrow("patientNotFound")
+  })
+})
+
+// ── Cap d'ampleur cumulée co-directionnelle (C3b) — fonction PURE ────────────────────────────────
+// Vecteurs cliniques (medical-domain-validator). ISF : baisse = hypo (plus d'insuline), hausse = hyper.
+describe("exceedsGroupCumulativeAmplitude (C3b, pure)", () => {
+  const cur = new Map([
+    ["0-8", 1.0],
+    ["8-22", 1.0],
+  ])
+  const isf = "insulinSensitivityFactor" as const
+  const slot = (key: string, value: number) => {
+    const [startHour, endHour] = key.split("-").map(Number)
+    return { startHour, endHour, value }
+  }
+
+  it("2 co-directionnelles hypo à −10 % (sumHypo 20 > 15) → dépasse", () => {
+    expect(exceedsGroupCumulativeAmplitude([slot("0-8", 0.9), slot("8-22", 0.9)], cur, isf)).toBe(true)
+  })
+  it("2 co-directionnelles hypo à −7,5 % (sumHypo 15, pas > 15) → ne dépasse pas", () => {
+    expect(exceedsGroupCumulativeAmplitude([slot("0-8", 0.925), slot("8-22", 0.925)], cur, isf)).toBe(false)
+  })
+  it("redistribution −10 % / +10 % (hypo 10, hyper 10, chacune ≤ seuil) → ne dépasse pas", () => {
+    expect(exceedsGroupCumulativeAmplitude([slot("0-8", 0.9), slot("8-22", 1.1)], cur, isf)).toBe(false)
+  })
+  it("2 hausses hyper à +10 % (sumHyper 20, pas > 20 — défère à C6b) → ne dépasse pas", () => {
+    expect(exceedsGroupCumulativeAmplitude([slot("0-8", 1.1), slot("8-22", 1.1)], cur, isf)).toBe(false)
+  })
+  it("un seul créneau −10 % (sumHypo 10 ≤ 15, borné par C3) → ne dépasse pas", () => {
+    expect(exceedsGroupCumulativeAmplitude([slot("0-8", 0.9)], cur, isf)).toBe(false)
   })
 })

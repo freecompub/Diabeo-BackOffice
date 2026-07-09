@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireRole, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { governanceService } from "@/lib/services/governance.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 // US-2657 (slice C) — activation/désactivation gouvernée de l'auto-application experte d'un patient.
 // Activer exige une `reference` de décision de gouvernance (fail-closed) ; désactiver non (kill direction).
@@ -34,6 +35,17 @@ const bodySchema = z
 export async function PATCH(req: NextRequest) {
   try {
     const user = requireRole(req, "ADMIN")
+
+    // Rate-limit anti-abus (défense en profondeur ANSSI sur écriture privilégiée). Fail-open. Saturation auditée.
+    const ctx = extractRequestContext(req)
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.governanceMutation)
+    if (!rl.allowed) {
+      await auditService
+        .rateLimited({ userId: user.id, resource: "PATIENT", resourceId: "governance-auto-apply", ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { surface: "api", kind: "governanceAutoApply" } })
+        .catch(() => {})
+      return NextResponse.json({ error: "rateLimitExceeded" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } })
+    }
+
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })
 
@@ -51,7 +63,7 @@ export async function PATCH(req: NextRequest) {
         parsed.data.enabled,
         parsed.data.enabled ? { reference: parsed.data.reference!, dpiaRef: parsed.data.dpiaRef! } : null,
         user.id,
-        extractRequestContext(req),
+        ctx,
       )
       return NextResponse.json(result)
     } catch (e) {

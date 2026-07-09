@@ -459,6 +459,9 @@ model User {
   auditLogs                         AuditLog[]
   reviewedProposals                 AdjustmentProposal[]              @relation("ReviewedBy")
   proposedAdjustments               AdjustmentProposal[]              @relation("ProposedBy")
+  slotSetProposalsProposed          SlotSetProposal[]                @relation("SlotSetProposedBy")
+  slotSetProposalsReviewed          SlotSetProposal[]                @relation("SlotSetReviewedBy")
+  governanceApprovals               GovernanceApproval[]             @relation("GovernanceApprovedBy")
   reviewFlagsCreated                ClinicalReviewFlag[]              @relation("ReviewFlagCreatedBy")
   reviewFlagsResolved               ClinicalReviewFlag[]              @relation("ReviewFlagResolvedBy")
   prescribedInsulins                PatientInsulin[]                  @relation("PrescribedInsulins")
@@ -798,7 +801,8 @@ model GovernanceApproval {
   id           Int      @id @default(autoincrement())
   patientId    Int      @map("patient_id")
   patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  approvedById Int      @map("approved_by_id") // ADMIN ayant enregistré l'approbation
+  approvedById Int?     @map("approved_by_id") // ADMIN ayant enregistré l'approbation (SetNull si compte purgé)
+  approver     User?    @relation("GovernanceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
   reference    String   // référence de la décision de gouvernance
   dpiaRef      String?  @map("dpia_ref") // lien DPIA
   enabled      Boolean  @default(true) // l'approbation autorise l'activation
@@ -845,8 +849,10 @@ model SlotSetProposal {
   /// Disposition proposée : `[{ startHour, endHour, value, mealLabel? }]` (JSON — pas de PHI, valeurs de config).
   proposedSlots    Json                @map("proposed_slots")
   status           ProposalStatus      @default(pending)
-  proposedByUserId Int                 @map("proposed_by_user_id")
+  proposedByUserId Int?                @map("proposed_by_user_id")
+  proposer         User?               @relation("SlotSetProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
   reviewedByUserId Int?                @map("reviewed_by_user_id")
+  reviewer         User?               @relation("SlotSetReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
   // Timestamptz — aligné sur le modèle sœur `AdjustmentProposal` (tri/affichage stables cross-timezone).
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz()
   reviewedAt       DateTime?           @map("reviewed_at") @db.Timestamptz()

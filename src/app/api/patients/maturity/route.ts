@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
@@ -26,6 +27,17 @@ const bodySchema = z.object({
 export async function PATCH(req: NextRequest) {
   try {
     const user = requireAuth(req) // 401 si non authentifié
+
+    // Rate-limit anti-abus AVANT le gate de rôle (throttle aussi les tentatives non-DOCTOR). Fail-open ; audité.
+    const rc0 = extractRequestContext(req)
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.governanceMutation)
+    if (!rl.allowed) {
+      await auditService
+        .rateLimited({ userId: user.id, resource: "PATIENT", resourceId: "maturity", ipAddress: rc0.ipAddress, userAgent: rc0.userAgent, requestId: rc0.requestId, metadata: { surface: "api", kind: "maturityLevel" } })
+        .catch(() => {})
+      return NextResponse.json({ error: "rateLimitExceeded" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } })
+    }
+
     // **Exactement DOCTOR** (acte clinique) : on exclut NURSE/VIEWER ET ADMIN. Tout non-DOCTOR est une
     // tentative hors autorité clinique — dont l'auto-élévation d'un patient (VIEWER) : tracée par une
     // action d'audit DÉDIÉE (AC-1) avant le 403, plutôt qu'un UNAUTHORIZED générique.

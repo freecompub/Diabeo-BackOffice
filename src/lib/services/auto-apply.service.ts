@@ -26,6 +26,7 @@ import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { buildEnvelopeContext } from "@/lib/insulin/auto-apply-context"
 import { evaluateAutoApplyEnvelope } from "@/lib/insulin/auto-apply-envelope"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
+import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { adjustmentService, type CreateProposalInput } from "@/lib/services/adjustment.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
@@ -34,6 +35,37 @@ import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
 /** Égalité de valeurs cliniques (Decimal→number) avec tolérance — convention repo (évite le churn no-op). */
 const sameValue = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9
+
+/**
+ * C3b (US-2657) — Cap d'AMPLITUDE cumulée CO-DIRECTIONNELLE d'un groupe (pure). Somme les `|Δ%|` des
+ * créneaux modifiés PAR DIRECTION de risque (`deriveRiskDirection`) : « plus d'insuline » (hypo) et « moins »
+ * (hyper) sommés SÉPARÉMENT — jamais additionnés (une redistribution nuit≠midi n'est pas un risque cumulé).
+ * Seuils ASYMÉTRIQUES (le risque hypo est aigu, l'hyper lent et déjà gardé par C6b). `true` = dépassement
+ * → tout le groupe doit partir en proposition (fail-closed). Chaque `current` doit être non nul (ratios > 0).
+ */
+export function exceedsGroupCumulativeAmplitude(
+  changed: Array<{ startHour: number; endHour: number; value: number }>,
+  curByKey: Map<string, number>,
+  parameterType: AdjustableParameter,
+): boolean {
+  let sumHypo = 0
+  let sumHyper = 0
+  for (const s of changed) {
+    const cur = curByKey.get(`${s.startHour}-${s.endHour}`)
+    if (cur === undefined || cur === 0) continue
+    const deltaPct = Math.abs((s.value - cur) / cur) * 100
+    const dir = deriveRiskDirection(parameterType, cur, s.value)
+    if (dir === "hypo") sumHypo += deltaPct
+    else if (dir === "hyper") sumHyper += deltaPct
+  }
+  // Tolérance FP (ex. 2×10 % = 20.000…018) : un cumul EXACTEMENT au seuil ne déclenche pas (le seuil est
+  // inclusif — « ≤ seuil » auto-applicable, cohérent avec les vecteurs cliniques 15 %/20 %).
+  const EPS = 1e-9
+  return (
+    sumHypo > CLINICAL_BOUNDS.AUTO_APPLY_MAX_GROUP_CUMULATIVE_INCREASE_PERCENT + EPS ||
+    sumHyper > CLINICAL_BOUNDS.AUTO_APPLY_MAX_GROUP_CUMULATIVE_DECREASE_PERCENT + EPS
+  )
+}
 
 /** Paramètres à créneau gérés par le harnais (la dose fixe suit un autre chemin). */
 export type SlotParam = "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate"
@@ -399,6 +431,10 @@ export const autoApplyService = {
     // 7. Cap GROUPE : au-delà de N créneaux modifiés → re-titration = revue médecin (attribuabilité / MDR).
     if (changed0.length > CLINICAL_BOUNDS.AUTO_APPLY_MAX_GROUP_SLOTS) return propose("groupSlots", changed0.length)
 
+    // 7b. Cap d'AMPLITUDE cumulée co-directionnelle (C3b) — routage bon marché pré-lock ; re-vérifié SOUS le
+    //     lock sur le `changed` autoritaire (anti-TOCTOU). Deux créneaux même sens empilent leur effet.
+    if (exceedsGroupCumulativeAmplitude(changed0, curByKey0, parameterType)) return propose("groupCumulative", changed0.length)
+
     const kt = await prisma.ketoneThreshold.findUnique({ where: { patientId }, select: { moderateThreshold: true } })
     const ketoneModerateThreshold = kt ? decimalToNumber(kt.moderateThreshold) : KETONE_DEFAULTS.moderateThreshold
 
@@ -451,6 +487,12 @@ export const autoApplyService = {
           })
           if (decision.decision === "HARD_REJECT") return { kind: "reject", reason: decision.reason }
           if (decision.decision !== "AUTO_APPLY") return { kind: "propose", failedCheck: decision.failedCheck, changedCount: changed.length }
+        }
+
+        // Cap d'AMPLITUDE cumulée co-directionnelle (C3b) — vérif AUTORITAIRE sous lock, sur le `changed` frais
+        // (le baseline a pu bouger depuis le pré-lock → l'ampleur doit être jugée sur les valeurs sous lock).
+        if (exceedsGroupCumulativeAmplitude(changed, curByKey, parameterType)) {
+          return { kind: "propose", failedCheck: "groupCumulative", changedCount: changed.length }
         }
 
         // Tous AUTO_APPLY → applique le jeu COMPLET atomiquement + anti-cliquet par créneau + audit.
