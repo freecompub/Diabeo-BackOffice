@@ -44,6 +44,14 @@ Elle liste ce qui a été **corrigé** dans le durcissement et ce qui est **volo
 6. **`changeKind` dérivé serveur.** Pour un groupe, C3b dérive `VALUE`/`STRUCTURAL` de la comparaison
    avant/après persistée (jamais du body). Le harnais par-créneau ne gère que `VALUE`.
 
+## Corrections review multi-agents #710 (grouped-only)
+
+- **no-gap STRICT basal** : **ENDORSÉ** par `medical-domain-validator` (une pompe délivre en continu ; un trou = risque hyper/DKA — *plus* justifié que pour ISF/ICR).
+- **Garde `configType === "pump"`** ajoutée dans `replacePumpSlotSet` (MEDIUM) : refus `basalConfigNotPump` pour un patient MDI (évite d'attacher des créneaux pompe à une config non-pompe → intégrité du mode).
+- **Dead code retiré** (mandat dead-code) : méthodes service `createIsf`/`deleteIsf`/`createIcr`/`deleteIcr`/`createPumpSlot`/`deletePumpSlot` (orphelines après retrait des routes) + module `time-slot-utils.ts` (`hasTimeSlotOverlap`/`hoursOverlap`/`expandHours`, transitivement mort) + leurs tests (`iob-overlap.test.ts` et blocs dédiés). Conservés : `updateIsf`/`updateIcr`/`updatePumpSlot` (chemin gouverné `auto-apply`).
+- **Page `/insulin-therapy` réparée** (MAJOR) : encodage horaire corrigé (`endHour ∈ [0,23]`, créneau enjambant minuit autorisé — minuit = `endHour 0`) + gating de couverture 24 h no-gap/no-overlap AVANT tout appel réseau (message clair, pas de save partiel).
+- **NITs** : `invalidSlotSet`/`basalConfigNotPump` mappés côté client ; commentaire d'invariant `SlotSetProposal` basal (ni créable ni applicable → fenêtre close des deux côtés).
+
 ## ✅ RÉSOLU (slice « grouped-only », ADR #26) — retrait des routes d'écriture par-créneau
 
 Finding **#2** de la revue C3d (PR #709, `medical-domain-validator` MEDIUM, borderline HIGH) + clarification

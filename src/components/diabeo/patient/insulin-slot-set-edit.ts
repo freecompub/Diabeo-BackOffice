@@ -216,6 +216,7 @@ const ERROR_KEY: Record<string, string> = {
   valueOutOfBounds: "slotSetErrorBounds",
   emptySlotSet: "slotSetErrorEmpty",
   validationFailed: "slotSetErrorValidation",
+  invalidSlotSet: "slotSetErrorValidation", // forme JSON invalide (défense ; réutilise la clé validation)
   settingsNotFound: "slotSetErrorNotFound",
   patientNotFound: "slotSetErrorNotFound",
   gdprConsentRequired: "slotSetErrorConsent",
@@ -225,6 +226,7 @@ const ERROR_KEY: Record<string, string> = {
   // (retombait sur le message générique).
   rateNotDeliverable: "slotSetErrorRateNotDeliverable",
   basalConfigNotFound: "slotSetErrorNotFound",
+  basalConfigNotPump: "slotSetErrorNotFound", // patient MDI (non pompe) — édition basale non applicable
   slotsBusy: "slotSetErrorBusy",
 }
 

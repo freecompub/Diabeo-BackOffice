@@ -17,7 +17,9 @@
  * Edge cases:
  * - getBasalConfig when no config exists (returns null)
  * - upsertBasalConfig creates new when none exists
- * - deletePumpSlot on non-existent slot (should throw)
+ *
+ * NB (US-2657 grouped-only, ADR #26) : createPumpSlot/deletePumpSlot retirés — l'édition basale par-créneau
+ * passe désormais par le remplacement GROUPÉ `replacePumpSlotSet` (testé dans insulin-therapy.service.test.ts).
  */
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
@@ -108,89 +110,7 @@ describe("insulinTherapyService — basal config", () => {
     })
   })
 
-  describe("createPumpSlot", () => {
-    it("creates a pump slot with audit log", async () => {
-      const mockSlot = {
-        id: "uuid-new",
-        basalConfigId: 1,
-        startTime: new Date("1970-01-01T08:00:00Z"),
-        endTime: new Date("1970-01-01T12:00:00Z"),
-        rate: 0.95,
-      }
-
-      const txMock = {
-        pumpBasalSlot: {
-          findMany: vi.fn().mockResolvedValue([]),
-          create: vi.fn().mockResolvedValue(mockSlot),
-        },
-        auditLog: { create: vi.fn().mockResolvedValue({}) },
-      }
-      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
-
-      const result = await insulinTherapyService.createPumpSlot(
-        1,
-        { startTime: "08:00", endTime: "12:00", rate: 0.95 },
-        1,
-      )
-
-      expect(result.rate).toBe(0.95)
-      expect(txMock.pumpBasalSlot.findMany).toHaveBeenCalled()
-      expect(txMock.pumpBasalSlot.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          basalConfigId: 1,
-          rate: 0.95,
-        }),
-      })
-      // Audit resourceId uses "pump:<uuid>" prefix (matches isf:/icr:/basal: convention)
-      expect(txMock.auditLog.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ resourceId: "pump:uuid-new" }),
-        }),
-      )
-    })
-
-    it("rejects overlapping pump slots", async () => {
-      const existingSlot = {
-        startTime: new Date("1970-01-01T06:00:00Z"),
-        endTime: new Date("1970-01-01T12:00:00Z"),
-      }
-
-      const txMock = {
-        pumpBasalSlot: {
-          findMany: vi.fn().mockResolvedValue([existingSlot]),
-        },
-        auditLog: { create: vi.fn() },
-      }
-      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
-
-      await expect(
-        insulinTherapyService.createPumpSlot(1, { startTime: "08:00", endTime: "14:00", rate: 0.8 }, 1),
-      ).rejects.toThrow("overlaps")
-    })
-  })
-
-  describe("deletePumpSlot", () => {
-    it("deletes a pump slot with audit log", async () => {
-      const txMock = {
-        pumpBasalSlot: { delete: vi.fn().mockResolvedValue({}) },
-        auditLog: { create: vi.fn().mockResolvedValue({}) },
-      }
-      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
-
-      const result = await insulinTherapyService.deletePumpSlot("uuid-1", 1)
-
-      expect(result).toEqual({ deleted: true })
-      expect(txMock.pumpBasalSlot.delete).toHaveBeenCalledWith({ where: { id: "uuid-1" } })
-    })
-
-    it("throws when slot does not exist", async () => {
-      const txMock = {
-        pumpBasalSlot: { delete: vi.fn().mockRejectedValue(new Error("Record not found")) },
-        auditLog: { create: vi.fn() },
-      }
-      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txMock))
-
-      await expect(insulinTherapyService.deletePumpSlot("nonexistent", 1)).rejects.toThrow("Record not found")
-    })
-  })
+  // createPumpSlot/deletePumpSlot retirés (US-2657 grouped-only, ADR #26) → tests supprimés.
+  // La couverture de l'édition basale par-créneau est portée par `replacePumpSlotSet` (remplacement groupé,
+  // testé dans insulin-therapy.service.test.ts).
 })

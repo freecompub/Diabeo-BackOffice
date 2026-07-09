@@ -881,8 +881,10 @@
       "extendedBolusDurationHint": "Entre 15 et 480 minutes"
     },
     "slotStartHour": "Heure de debut (0-23)",
-    "slotEndHour": "Heure de fin (1-24)",
-    "slotHourError": "L'heure de fin doit etre superieure a l'heure de debut",
+    "slotEndHour": "Heure de fin (0-23)",
+    "slotHourError": "L'heure de debut et l'heure de fin doivent etre differentes",
+    "slotMidnightHint": "Un creneau peut enjamber minuit (heure de fin = 0)",
+    "slotCoverageError": "La configuration doit couvrir 24 h sans trou ni chevauchement",
     "isfValueError": "Le facteur de sensibilite a l'insuline (FSI) doit etre entre 0,10 et 1,00 g/L/U",
     "icrValueError": "Le ratio insuline/glucides (RIG) doit etre entre 3,0 et 30,0 g/U",
     "editSlot": "Modifier cette plage",

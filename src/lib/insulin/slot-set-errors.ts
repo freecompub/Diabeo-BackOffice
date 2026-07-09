@@ -20,4 +20,6 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   // de l'incrément pompe) et absence de configuration basale.
   rateNotDeliverable: 400,
   basalConfigNotFound: 404,
+  // Patient NON pompe (MDI) : refus d'attacher des créneaux basaux pompe (intégrité du mode de délivrance).
+  basalConfigNotPump: 409,
 }

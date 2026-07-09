@@ -881,8 +881,10 @@
       "extendedBolusDurationHint": "Between 15 and 480 minutes"
     },
     "slotStartHour": "Start hour (0-23)",
-    "slotEndHour": "End hour (1-24)",
-    "slotHourError": "End hour must be greater than start hour",
+    "slotEndHour": "End hour (0-23)",
+    "slotHourError": "Start and end hour must differ",
+    "slotMidnightHint": "A slot may wrap past midnight (end hour = 0)",
+    "slotCoverageError": "The configuration must cover 24 h with no gap or overlap",
     "isfValueError": "Insulin sensitivity factor (ISF) must be between 0.10 and 1.00 g/L/U",
     "icrValueError": "Insulin-to-carb ratio (ICR) must be between 3.0 and 30.0 g/U",
     "editSlot": "Edit this slot",

@@ -46,6 +46,7 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { cn } from "@/lib/utils"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
+import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -339,6 +340,23 @@ export default function InsulinTherapyPage() {
     setIsSaving(true)
     setError(null)
     try {
+      const isfChanged = JSON.stringify(isfSlots) !== originalIsfRef.current
+      const icrChanged = JSON.stringify(icrSlots) !== originalIcrRef.current
+
+      // US-2657 (grouped-only) : le PUT groupé exige un jeu NON vide couvrant 24 h sans trou ni chevauchement
+      // (sinon `emptySlotSet`/`slotGap`/`slotOverlap` côté serveur). On gate CÔTÉ CLIENT sur les paramètres
+      // modifiés, AVANT tout appel réseau → message clair + pas de save partiel (réglages sans les créneaux).
+      const invalidSet = (slots: { startHour: number; endHour: number }[]): boolean => {
+        if (slots.length === 0) return true
+        const cov = analyzeSlotCoverage(slots.map((s) => ({ start: s.startHour * 60, end: s.endHour * 60 })))
+        return cov.hasGap || cov.hasOverlap
+      }
+      if ((isfChanged && invalidSet(isfSlots)) || (icrChanged && invalidSet(icrSlots))) {
+        setError(t("slotCoverageError"))
+        setIsSaving(false)
+        return
+      }
+
       // H2 fix: send ALL settings fields, not just brand/duration
       const res = await fetch("/api/insulin-therapy/settings", {
         method: "PUT",
@@ -356,9 +374,6 @@ export default function InsulinTherapyPage() {
         }),
       })
       if (!res.ok) throw new Error("saveFailed")
-
-      const isfChanged = JSON.stringify(isfSlots) !== originalIsfRef.current
-      const icrChanged = JSON.stringify(icrSlots) !== originalIcrRef.current
 
       const requests: Promise<Response>[] = []
       if (isfChanged) {
@@ -469,7 +484,10 @@ export default function InsulinTherapyPage() {
    */
   const handleSaveSlot = () => {
     setSlotError(null)
-    if (slotStartHour >= slotEndHour) {
+    // US-2657 (grouped-only) : un créneau peut enjamber minuit (`startHour > endHour`, ex. 22→6, `endHour = 0`
+    // = minuit). Seule la durée nulle (`start === end`) est invalide ; la couverture 24 h no-gap/no-overlap est
+    // vérifiée globalement à l'enregistrement (`handleSave`), comme le fait le PUT groupé serveur.
+    if (slotStartHour === slotEndHour) {
       setSlotError(t("slotHourError"))
       return
     }
@@ -885,10 +903,11 @@ export default function InsulinTherapyPage() {
               <DiabeoTextField
                 label={t("slotEndHour")}
                 type="number"
-                min={1}
-                max={24}
+                min={0}
+                max={23}
                 value={slotEndHour}
                 onChange={(e) => setSlotEndHour(parseInt(e.target.value, 10))}
+                hint={t("slotMidnightHint")}
               />
             </div>
 

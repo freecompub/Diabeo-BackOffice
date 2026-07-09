@@ -11,7 +11,6 @@ import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
 import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
-import { hasTimeSlotOverlap } from "./time-slot-utils"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { glToMgdl } from "@/lib/statistics"
@@ -19,7 +18,7 @@ import { glToMgdl } from "@/lib/statistics"
 /**
  * Dérive la valeur `@db.Time` d'un créneau à partir de son heure entière `[0,23]`.
  * Source unique de la dénormalisation `startHour/endHour` → `startTime/endTime`
- * (réutilisée par createIsf/createIcr/replaceSlotSet). `hourToTime(24)` n'est jamais
+ * (réutilisée par `replaceSlotSet`). `hourToTime(24)` n'est jamais
  * appelé (endHour borné à 23 ; un profil complet enjambe minuit via `startHour > endHour`).
  */
 const hourToTime = (h: number): Date => new Date(`1970-01-01T${String(h).padStart(2, "0")}:00:00Z`)
@@ -325,73 +324,8 @@ export const insulinTherapyService = {
     })
   },
 
-  // --- ISF CRUD ---
-  async createIsf(
-    settingsId: number,
-    input: {
-      startHour: number; endHour: number
-      sensitivityFactorGl: number
-    },
-    auditUserId: number,
-  ) {
-    const sensitivityFactorMgdl = glToMgdl(input.sensitivityFactorGl)
-    if (input.startHour === input.endHour) {
-      throw new Error("startHour and endHour must be different — a zero-duration slot is invalid")
-    }
-
-    return prisma.$transaction(async (tx) => {
-      // Check for overlapping ISF slots (HR-2 — clinical safety)
-      const existing = await tx.insulinSensitivityFactor.findMany({
-        where: { settingsId },
-        select: { startHour: true, endHour: true },
-      })
-      if (hasTimeSlotOverlap(existing, input.startHour, input.endHour)) {
-        throw new Error("ISF slot overlaps with an existing slot — risk of incorrect bolus calculation")
-      }
-
-      const isf = await tx.insulinSensitivityFactor.create({
-        data: {
-          settingsId,
-          startHour: input.startHour,
-          endHour: input.endHour,
-          startTime: hourToTime(input.startHour),
-          endTime: hourToTime(input.endHour),
-          sensitivityFactorGl: input.sensitivityFactorGl,
-          sensitivityFactorMgdl,
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "CREATE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `isf:${isf.id}`,
-      })
-      return isf
-    })
-  },
-
-  /**
-   * US-2655 — Suppression d'un créneau ISF **scopée patient** (anti-IDOR). `deleteMany` sur
-   * `{ id, settings: { patientId } }` : un id d'un autre patient ne matche pas (`count === 0`
-   * → `isfSlotNotFound`), à l'image du pattern anti-IDOR de `updateIsf`.
-   */
-  async deleteIsf(id: string, auditUserId: number, patientId: number, ctx?: AuditContext) {
-    return prisma.$transaction(async (tx) => {
-      const res = await tx.insulinSensitivityFactor.deleteMany({ where: { id, settings: { patientId } } })
-      if (res.count === 0) throw new Error("isfSlotNotFound")
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "DELETE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `isf:${id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        metadata: { patientId },
-      })
-      return { deleted: true }
-    })
-  },
-
+  // --- ISF (édition directe gouvernée) — createIsf/deleteIsf retirés (US-2657 grouped-only, ADR #26 :
+  //     l'ajout/suppression par-créneau passe désormais par le remplacement GROUPÉ `replaceSlotSet`) ---
   /**
    * US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ISF (`value` en **g/L**). `updateMany`
    * scopé au patient (via `settings.patientId`) → un id d'un autre patient ne matche pas (`count === 0`
@@ -434,65 +368,7 @@ export const insulinTherapyService = {
     return externalTx ? run(externalTx) : prisma.$transaction(run)
   },
 
-  // --- ICR CRUD ---
-  async createIcr(
-    settingsId: number,
-    input: { startHour: number; endHour: number; gramsPerUnit: number; mealLabel?: string },
-    auditUserId: number,
-  ) {
-    if (input.startHour === input.endHour) {
-      throw new Error("startHour and endHour must be different — a zero-duration slot is invalid")
-    }
-
-    return prisma.$transaction(async (tx) => {
-      // Check for overlapping ICR slots (HR-2 — clinical safety)
-      const existing = await tx.carbRatio.findMany({
-        where: { settingsId },
-        select: { startHour: true, endHour: true },
-      })
-      if (hasTimeSlotOverlap(existing, input.startHour, input.endHour)) {
-        throw new Error("ICR slot overlaps with an existing slot — risk of incorrect bolus calculation")
-      }
-
-      const icr = await tx.carbRatio.create({
-        data: {
-          settingsId,
-          startHour: input.startHour,
-          endHour: input.endHour,
-          startTime: hourToTime(input.startHour),
-          endTime: hourToTime(input.endHour),
-          gramsPerUnit: input.gramsPerUnit,
-          mealLabel: input.mealLabel,
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "CREATE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `icr:${icr.id}`,
-      })
-      return icr
-    })
-  },
-
-  /** US-2655 — Suppression d'un créneau ICR **scopée patient** (anti-IDOR). Symétrique de `deleteIsf`. */
-  async deleteIcr(id: string, auditUserId: number, patientId: number, ctx?: AuditContext) {
-    return prisma.$transaction(async (tx) => {
-      const res = await tx.carbRatio.deleteMany({ where: { id, settings: { patientId } } })
-      if (res.count === 0) throw new Error("icrSlotNotFound")
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "DELETE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `icr:${id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        metadata: { patientId },
-      })
-      return { deleted: true }
-    })
-  },
-
+  // --- ICR (édition directe gouvernée) — createIcr/deleteIcr retirés (US-2657 grouped-only, ADR #26) ---
   /** US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ICR. Scopé patient
    *  (via `settings.patientId`, anti-IDOR). Ne modifie que la valeur. Bornes à la route. */
   async updateIcr(
@@ -646,10 +522,10 @@ export const insulinTherapyService = {
    * Atomicité + sûreté : verrou non bloquant `(patient × basal)` (occupé → `slotsBusy`/409, anti lost-update) ;
    * `settingsId`/`basalConfigId` dérivés du **patient** (anti-IDOR, jamais du body) ; validité clinique/couverture
    * pré-validée (`assertValidPumpSlotSet`) ; `deleteMany` + `createMany` dans une seule transaction (jamais
-   * d'application partielle). Supersède les `AdjustmentProposal` **basales** `pending` (baseline changé — il
-   * n'existe pas de `SlotSetProposal` basal, le modèle groupé couvre ISF/ICR). Audit `replaceSet` sans PHI.
+   * d'application partielle). Refuse un patient NON pompe (`basalConfigNotPump`, intégrité du mode). Supersède
+   * les `AdjustmentProposal` **basales** `pending` (baseline changé). Audit `replaceSet` sans PHI.
    *
-   * @throws slotsBusy | settingsNotFound | basalConfigNotFound
+   * @throws slotsBusy | settingsNotFound | basalConfigNotFound | basalConfigNotPump
    * @throws emptySlotSet | zeroDurationSlot | invalidSlotSet | valueOutOfBounds | rateNotDeliverable | slotOverlap | slotGap
    */
   async replacePumpSlotSet(
@@ -672,11 +548,16 @@ export const insulinTherapyService = {
       // Scope patient (anti-IDOR) : basalConfigId provient du patient, jamais du body.
       const settings = await tx.insulinTherapySettings.findUnique({
         where: { patientId },
-        select: { id: true, basalConfiguration: { select: { id: true } } },
+        select: { id: true, basalConfiguration: { select: { id: true, configType: true } } },
       })
       if (!settings) throw new Error("settingsNotFound")
-      const basalConfigId = settings.basalConfiguration?.id
-      if (basalConfigId == null) throw new Error("basalConfigNotFound")
+      const basalConfig = settings.basalConfiguration
+      if (basalConfig == null) throw new Error("basalConfigNotFound")
+      // Intégrité du mode de délivrance : les créneaux basaux N'ont de sens QUE pour une pompe. Un patient
+      // MDI (`single_injection`/`split_injection`) possède aussi une `basalConfiguration` ; y attacher des
+      // `PumpBasalSlot` fausserait la dérivation du mode de traitement (pompe vs injection). Fail-closed.
+      if (basalConfig.configType !== "pump") throw new Error("basalConfigNotPump")
+      const basalConfigId = basalConfig.id
 
       // Snapshot ancien jeu (audit `from`) + REPLACE scopé basalConfigId.
       const before = await tx.pumpBasalSlot.findMany({
@@ -693,8 +574,13 @@ export const insulinTherapyService = {
         })),
       })
 
-      // Baseline basale changée → supersède les propositions basales `pending` (par-valeur). Pas de
-      // `SlotSetProposal` basal (le modèle d'ensemble couvre ISF/ICR uniquement).
+      // Baseline basale changée → supersède les propositions basales `pending` (par-valeur).
+      // INVARIANT : aucune `SlotSetProposal` basale à superséder ici. Bien que la colonne DB
+      // `slot_set_proposals.parameter_type` (`AdjustableParameter`) *inclue* `basalRate`, le type applicatif
+      // `SlotSetParam` restreint la CRÉATION à isf/icr et `applyGroupProposal` LÈVE `unsupportedSlotSetParam`
+      // sur toute autre valeur → un `SlotSetProposal` basal ne peut être ni créé ni appliqué. La fenêtre de
+      // « dérive de base » est donc close des deux côtés pour le basal sans supersede d'ensemble ici.
+      // (revue medical-domain-validator #710 — LOW ; durcissement DB CHECK possible mais non requis.)
       const superseded = await tx.adjustmentProposal.findMany({
         where: { patientId, parameterType: "basalRate", status: "pending" },
         select: { id: true },
@@ -763,71 +649,8 @@ export const insulinTherapyService = {
     })
   },
 
-  // --- Pump Basal Slots ---
-  async createPumpSlot(
-    basalConfigId: number,
-    input: { startTime: string; endTime: string; rate: number },
-    auditUserId: number,
-    ctx?: AuditContext,
-  ) {
-    const startHour = parseInt(input.startTime.split(":")[0], 10)
-    const endHour = parseInt(input.endTime.split(":")[0], 10)
-
-    if (startHour === endHour && input.startTime === input.endTime) {
-      throw new Error("startTime and endTime must be different — a zero-duration slot is invalid")
-    }
-    // Débit délivrable (multiple de l'incrément pompe) — garde-fő indépendant du Zod route.
-    if (!isDeliverableBasalRate(input.rate)) throw new Error("rateNotDeliverable")
-
-    return prisma.$transaction(async (tx) => {
-      // B2 fix: overlap detection — prevents double basal delivery (patient safety)
-      const existing = await tx.pumpBasalSlot.findMany({
-        where: { basalConfigId },
-        select: { startTime: true, endTime: true },
-      })
-      const existingHours = existing.map((s) => ({
-        startHour: s.startTime.getUTCHours(),
-        endHour: s.endTime.getUTCHours(),
-      }))
-      if (hasTimeSlotOverlap(existingHours, startHour, endHour)) {
-        throw new Error("Pump basal slot overlaps with an existing slot — risk of double insulin delivery")
-      }
-
-      const slot = await tx.pumpBasalSlot.create({
-        data: {
-          basalConfigId,
-          startTime: new Date(`1970-01-01T${input.startTime}:00Z`),
-          endTime: new Date(`1970-01-01T${input.endTime}:00Z`),
-          rate: input.rate,
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "CREATE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `pump:${slot.id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-      })
-      return slot
-    })
-  },
-
-  async deletePumpSlot(id: string, auditUserId: number, ctx?: AuditContext) {
-    return prisma.$transaction(async (tx) => {
-      await tx.pumpBasalSlot.delete({ where: { id } })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "DELETE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `pump:${id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-      })
-      return { deleted: true }
-    })
-  },
-
+  // --- Pump Basal Slots (édition directe gouvernée) — createPumpSlot/deletePumpSlot retirés
+  //     (US-2657 grouped-only, ADR #26 : ajout/suppression par-créneau → remplacement GROUPÉ `replacePumpSlotSet`) ---
   /**
    * US-2648b — Édition DIRECTE (DOCTOR) du débit d'un créneau basal pompe. Scopé patient
    * (via `basalConfig.settings.patientId`, anti-IDOR → `pumpSlotNotFound` si autre patient).
@@ -911,5 +734,3 @@ export const insulinTherapyService = {
     return log
   },
 }
-
-// hasTimeSlotOverlap, expandHours are in time-slot-utils.ts
