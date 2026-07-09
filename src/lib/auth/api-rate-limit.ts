@@ -174,6 +174,17 @@ export const RATE_LIMITS = {
     max: 30,
     failMode: "open",
   } satisfies ApiRateLimitConfig,
+  /**
+   * US-2657 — mutations de GOUVERNANCE / AUTORITÉ (activation auto-application ADMIN ; niveau de maturité
+   * DOCTOR) : 20 req/60 s/user. Fail-open — dispo d'abord (le vrai garde-fou est le RBAC ADMIN/DOCTOR + les
+   * invariants métier) ; défense en profondeur ANSSI contre le burst/scripting sur des écritures privilégiées.
+   */
+  governanceMutation: {
+    bucket: "governance-mutation",
+    windowSec: 60,
+    max: 20,
+    failMode: "open",
+  } satisfies ApiRateLimitConfig,
   /** Per-patient detail reads (BGM, glycemia): 60 req/60 s/user. Fail-open. */
   patientDataRead: {
     bucket: "patient-data-read",

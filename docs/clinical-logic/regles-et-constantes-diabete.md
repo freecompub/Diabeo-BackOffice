@@ -710,18 +710,22 @@ groupe, tout-ou-rien** (jamais d'application partielle — invariant spec) :
 - **`AUTO_APPLY_MAX_GROUP_SLOTS` = 2** — au-delà de 2 créneaux (VALUE) modifiés → proposition groupée. Sens
   clinique : un profil compte 3–6 créneaux ; en modifier ≥3 d'un coup = **re-titration de profil = acte
   médical**, non attribuable (titration diabéto = un levier à la fois). *(Source : `src/lib/clinical-bounds.ts`.)*
+- **Cap d'AMPLITUDE cumulée CO-DIRECTIONNELLE (C3b, `groupCumulative`)** — les `|Δ%|` des créneaux modifiés
+  sont sommés **par direction de risque** (`deriveRiskDirection`) : « plus d'insuline » (hypo) et « moins »
+  (hyper) **séparément**, jamais additionnés (une redistribution nuit≠midi n'est pas un risque cumulé).
+  Dépassement d'une direction → **groupe entier** en proposition. Seuils **asymétriques** :
+  **`AUTO_APPLY_MAX_GROUP_CUMULATIVE_INCREASE_PERCENT` = 15 %** (hypo/aigu, ancré C7 : > C3 10 %, < 2×C3 20 % ;
+  bloque 2 créneaux à −10 %) et **`AUTO_APPLY_MAX_GROUP_CUMULATIVE_DECREASE_PERCENT` = 20 %** (hyper/lent,
+  défère à C6b). Vérifié **pré-lock** (routage) ET **sous lock** (autoritaire, anti-TOCTOU). *(Source :
+  `src/lib/clinical-bounds.ts` + `exceedsGroupCumulativeAmplitude`, `auto-apply.service.ts`.)*
 - un seul créneau modifié **≠ AUTO_APPLY** (enveloppe C1–C8) → **groupe entier** en proposition. C'est aussi
   une **garde de sécurité** : quand l'échec porte sur C6 (hypo) / C6b (hyper-cétose), le signal est *global*
   au patient — ne rien auto-appliquer du groupe est le bon comportement fail-safe.
 - **tous AUTO_APPLY** ∧ cap OK → application **atomique** du jeu complet (`replaceSlotSet`) + `AutoApplyEvent`
   par créneau + audit `AUTO_APPLIED_SETTING`, sous advisory-lock (ré-évaluation sous lock, anti-TOCTOU).
 
-**⚠️ Risque résiduel assumé (le cap est par NOMBRE seul).** Le compte ≤ 2 borne le **périmètre**
-(attribuabilité, frontière MDR), **pas l'ampleur cumulée co-directionnelle** : 2 créneaux dans la même
-direction à −10 % ≈ **+11 % d'insuline prandiale PAR créneau/repas** (pas un total de session), et comme
-l'anti-cliquet C7 (15 %/7 j) est **par créneau**, un groupe N=2 co-directionnel répété peut dériver le profil
-jusqu'à **~2× le plafond C7 hebdo** sur la portion de journée couverte. L'ampleur reste bornée **par créneau**
-(C3 ±10 %, C7) mais **pas au niveau groupe/profil**. Angle mort **assumé et instruit** en DPIA
-(`docs/compliance/dpia-auto-application.md`, §4) — décision produit US-2657 (cap par nombre retenu ; garde
-d'ampleur `AUTO_APPLY_MAX_GROUP_CUMULATIVE_PERCENT` non implémentée). Verrou anti-drift :
+**Risque résiduel restant (suivi).** Le cap groupe borne UNE session. La dérive par **groupes répétés**
+(hebdomadaires, sur créneaux alternés) reste possible car C7 (15 %/7 j) est **par créneau** : à fermer par un
+**cap cumulé glissant 7 j au niveau paramètre** (co-directionnel) sur `AutoApplyEvent` — « C7 au niveau profil »
+plutôt que par créneau, même ancrage 15 %. Instruit en DPIA §4. Verrou anti-drift des constantes :
 `tests/unit/clinical-bounds.test.ts`.

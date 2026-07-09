@@ -9,16 +9,23 @@ import { NextRequest } from "next/server"
 vi.mock("@/lib/db/client", () => ({ prisma: {} }))
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: vi.fn().mockResolvedValue(true) }))
 vi.mock("@/lib/access-control", () => ({ resolvePatientId: vi.fn() }))
+vi.mock("@/lib/auth/api-rate-limit", () => ({
+  checkApiRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 19, retryAfterSec: 60 }),
+  RATE_LIMITS: { governanceMutation: { bucket: "governance-mutation", windowSec: 60, max: 20, failMode: "open" } },
+}))
 vi.mock("@/lib/services/governance.service", () => ({ governanceService: { setAutoApply: vi.fn() } }))
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: vi.fn().mockReturnValue({ ipAddress: "127.0.0.1", userAgent: "test" }),
+  auditService: { rateLimited: vi.fn().mockResolvedValue({}) },
 }))
 
 const { PATCH } = await import("@/app/api/governance/auto-apply/route")
 const { resolvePatientId } = await import("@/lib/access-control")
+const { checkApiRateLimit } = await import("@/lib/auth/api-rate-limit")
 const { governanceService } = await import("@/lib/services/governance.service")
 
 const resolve = vi.mocked(resolvePatientId)
+const rateLimit = vi.mocked(checkApiRateLimit)
 const setFlag = vi.mocked(governanceService.setAutoApply)
 
 function req(role: string, body: unknown): NextRequest {
@@ -33,7 +40,16 @@ describe("PATCH /api/governance/auto-apply", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resolve.mockResolvedValue(7)
+    rateLimit.mockResolvedValue({ allowed: true, remaining: 19, retryAfterSec: 60 } as never)
     setFlag.mockResolvedValue({ autoApply: true, changed: true } as never)
+  })
+
+  it("rate-limit dépassé → 429 + Retry-After, service NON appelé", async () => {
+    rateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 42 } as never)
+    const res = await PATCH(req("ADMIN", { patientId: 7, enabled: true, reference: "GOV-1", dpiaRef: "DPIA-1" }))
+    expect(res.status).toBe(429)
+    expect(res.headers.get("Retry-After")).toBe("42")
+    expect(setFlag).not.toHaveBeenCalled()
   })
 
   it("ADMIN active avec référence → 200", async () => {

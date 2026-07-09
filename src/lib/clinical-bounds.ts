@@ -207,11 +207,29 @@ export const CLINICAL_BOUNDS = {
    * part en `SlotSetProposal` médecin. Justification (medical-domain-validator) : un profil ISF/ICR compte
    * 3–6 créneaux ; en modifier ≥3 d'un coup = re-titration de profil = acte médical, et rend l'ajustement
    * NON ATTRIBUABLE (titration diabéto = un levier à la fois). Groupe mono-paramètre présumé (ISF OU ICR).
-   * ⚠️ Borne le PÉRIMÈTRE/attribuabilité, PAS l'ampleur cumulée co-directionnelle (2 créneaux même sens à
-   * 10 % ≈ +11 % dose) — angle mort assumé comme risque résiduel (DPIA §4, catalogue). L'ampleur reste
-   * bornée PAR créneau (C3 ±10 %, C7 15 %/7 j).
+   * ⚠️ Borne le PÉRIMÈTRE/attribuabilité ; l'ampleur cumulée co-directionnelle est bornée séparément par
+   * `AUTO_APPLY_MAX_GROUP_CUMULATIVE_*_PERCENT` (voir ci-dessous). L'ampleur reste aussi bornée PAR créneau
+   * (C3 ±10 %, C7 15 %/7 j).
    */
   AUTO_APPLY_MAX_GROUP_SLOTS: 2,
+  /**
+   * C3b (US-2657) — **Cap d'AMPLITUDE cumulée CO-DIRECTIONNELLE** d'un groupe auto-appliqué, en %. Ferme
+   * l'angle mort du cap par nombre : 2 créneaux chacun sous C3 (10 %) mais DANS LE MÊME SENS empilent leur
+   * effet (2×10 % ≈ +20 % d'insuline sur la portion de journée couverte) sans qu'aucune garde par-créneau ne
+   * voie la paire comme un tout. On somme les `|Δ%|` des créneaux modifiés PAR DIRECTION de risque
+   * (`deriveRiskDirection`) : « plus d'insuline » (hypo) et « moins d'insuline » (hyper) sommés SÉPARÉMENT —
+   * jamais additionnés (une redistribution nuit≠midi n'est pas un risque cumulé). Dépassement d'une direction
+   * → groupe entier en proposition (`failedCheck: "groupCumulative"`, fail-closed, jamais partiel).
+   *
+   * **Seuils ASYMÉTRIQUES** (décision produit US-2657, medical-domain-validator) — le risque n'est pas
+   * symétrique :
+   *  - **HAUSSE d'insuline (hypo)** = aigu (hypoglycémie sévère en minutes/heures) → cap serré **15 %**
+   *    (ancré sur C7 15 %/7 j : > C3 10 %, < 2×C3 20 %). Bloque 2 créneaux co-directionnels à −10 %.
+   *  - **BAISSE d'insuline (hyper)** = lent (sous-dosage/acidocétose en heures/jours), DÉJÀ lourdement gardé
+   *    par C6b (14 j/70 %/cétose/TAR) → cap **20 %** (défère à C6b comme garde-fou principal des baisses).
+   */
+  AUTO_APPLY_MAX_GROUP_CUMULATIVE_INCREASE_PERCENT: 15,
+  AUTO_APPLY_MAX_GROUP_CUMULATIVE_DECREASE_PERCENT: 20,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

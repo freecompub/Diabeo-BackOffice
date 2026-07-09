@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { patientService } from "@/lib/services/patient.service"
@@ -26,21 +27,31 @@ const bodySchema = z.object({
 export async function PATCH(req: NextRequest) {
   try {
     const user = requireAuth(req) // 401 si non authentifié
+
+    // Rate-limit anti-abus AVANT le gate de rôle (throttle aussi les tentatives non-DOCTOR). Fail-open ; audité.
+    const ctx = extractRequestContext(req)
+    const rl = await checkApiRateLimit(String(user.id), RATE_LIMITS.governanceMutation)
+    if (!rl.allowed) {
+      await auditService
+        .rateLimited({ userId: user.id, resource: "PATIENT", resourceId: "maturity", ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { surface: "api", kind: "maturityLevel" } })
+        .catch(() => {})
+      return NextResponse.json({ error: "rateLimitExceeded" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } })
+    }
+
     // **Exactement DOCTOR** (acte clinique) : on exclut NURSE/VIEWER ET ADMIN. Tout non-DOCTOR est une
     // tentative hors autorité clinique — dont l'auto-élévation d'un patient (VIEWER) : tracée par une
     // action d'audit DÉDIÉE (AC-1) avant le 403, plutôt qu'un UNAUTHORIZED générique.
     if (user.role !== "DOCTOR") {
       const attemptedPatientId = z.number().int().positive().safeParse((await req.json().catch(() => null))?.patientId)
-      const rc = extractRequestContext(req)
       await auditService
         .log({
           userId: user.id,
           action: "MATURITY_LEVEL_SELF_ELEVATION_DENIED",
           resource: "PATIENT",
           resourceId: String(user.id),
-          ipAddress: rc.ipAddress,
-          userAgent: rc.userAgent,
-          requestId: rc.requestId,
+          ipAddress: ctx.ipAddress,
+          userAgent: ctx.userAgent,
+          requestId: ctx.requestId,
           metadata: { attemptedRole: user.role, ...(attemptedPatientId.success ? { attemptedPatientId: attemptedPatientId.data } : {}) },
         })
         .catch(() => {})
@@ -58,7 +69,7 @@ export async function PATCH(req: NextRequest) {
     if (!patientId) return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
 
     try {
-      const result = await patientService.setMaturityLevel(patientId, parsed.data.level, user.id, extractRequestContext(req))
+      const result = await patientService.setMaturityLevel(patientId, parsed.data.level, user.id, ctx)
       return NextResponse.json(result)
     } catch (e) {
       if (e instanceof Error && e.message === "patientNotFound") {
