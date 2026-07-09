@@ -66,7 +66,7 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
     } as never)
     // tx : advisory lock + re-lecture autorité (patient/approval) + event, tous exécutés SOUS le lock.
     tx = {
-      $executeRaw: vi.fn().mockResolvedValue(1),
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
       autoApplyEvent: { create: vi.fn().mockResolvedValue({ id: 1 }) },
       patient: { findFirst: vi.fn().mockResolvedValue({ maturityLevel: "EXPERT", autoApply: true }) },
       governanceApproval: { count: vi.fn().mockResolvedValue(1) },
@@ -102,7 +102,7 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
     evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
     const res = await autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW)
     expect(res).toEqual({ outcome: "applied" })
-    expect(tx.$executeRaw).toHaveBeenCalled() // advisory lock
+    expect(tx.$queryRaw).toHaveBeenCalled() // advisory lock (try-lock)
     expect(tx.autoApplyEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ patientId: 7, parameterType: "insulinSensitivityFactor", slotKey: "22-6" }) }),
     )
@@ -192,6 +192,14 @@ describe("autoApplyService.applyExpertEditGoverned", () => {
     tx.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.6 })
     const res = await autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW)
     expect(res).toEqual({ outcome: "proposal", failedCheck: "baselineMoved", proposalId: "prop-1" })
+    expect(insulinTherapyService.updateIsf).not.toHaveBeenCalled()
+  })
+
+  it("verrou occupé (mutation concurrente) → proposition (fail-closed non bloquant)", async () => {
+    evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
+    tx.$queryRaw.mockResolvedValue([{ locked: false }])
+    const res = await autoApplyService.applyExpertEditGoverned(isfEdit, 7, NOW)
+    expect(res).toEqual({ outcome: "proposal", failedCheck: "busy", proposalId: "prop-1" })
     expect(insulinTherapyService.updateIsf).not.toHaveBeenCalled()
   })
 

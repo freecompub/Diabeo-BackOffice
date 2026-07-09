@@ -79,7 +79,7 @@ describe("autoApplyService.applyExpertGroupGoverned", () => {
     } as never)
     evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
     tx = {
-      $executeRaw: vi.fn().mockResolvedValue(1),
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
       autoApplyEvent: { create: vi.fn().mockResolvedValue({ id: 1 }) },
       patient: { findFirst: vi.fn().mockResolvedValue({ maturityLevel: "EXPERT", autoApply: true }) },
       governanceApproval: { findFirst: vi.fn().mockResolvedValue({ id: 1, reference: "GOV-1" }) },
@@ -156,6 +156,14 @@ describe("autoApplyService.applyExpertGroupGoverned", () => {
     ])
     const res = await autoApplyService.applyExpertGroupGoverned(edit(CHANGED_2), 7, NOW)
     expect(res).toEqual({ outcome: "proposal", failedCheck: "baselineMoved", proposalId: "set-1" })
+    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
+  })
+
+  it("verrou occupé (mutation concurrente) → proposition, PAS d'apply (fail-closed non bloquant)", async () => {
+    evaluate.mockReturnValue({ decision: "AUTO_APPLY" } as never)
+    tx.$queryRaw.mockResolvedValue([{ locked: false }]) // pg_try_advisory_xact_lock = false
+    const res = await autoApplyService.applyExpertGroupGoverned(edit(CHANGED_2), 7, NOW)
+    expect(res).toEqual({ outcome: "proposal", failedCheck: "busy", proposalId: "set-1" })
     expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
   })
 

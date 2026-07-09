@@ -102,6 +102,9 @@ export async function PATCH(req: NextRequest) {
       if (e instanceof Error && e.message === "isfSlotNotFound") {
         return NextResponse.json({ error: "isfSlotNotFound" }, { status: 404 })
       }
+      if (e instanceof Error && e.message === "slotsBusy") {
+        return NextResponse.json({ error: "slotsBusy" }, { status: 409 }) // mutation concurrente — réessayer
+      }
       throw e
     }
   } catch (error) {

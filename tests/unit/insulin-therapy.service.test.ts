@@ -105,7 +105,7 @@ describe("insulinTherapyService", () => {
     it("upserts settings and emits an audit log", async () => {
       const mockSettings = { id: 5, patientId: 7, deliveryMethod: "pump" }
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         insulinTherapySettings: { upsert: vi.fn().mockResolvedValue(mockSettings) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
@@ -140,7 +140,7 @@ describe("insulinTherapyService", () => {
   describe("createIsf", () => {
     it("creates an ISF slot when there is no overlap", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         insulinSensitivityFactor: {
           findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockResolvedValue({ id: "isf-uuid-1" }),
@@ -183,7 +183,7 @@ describe("insulinTherapyService", () => {
 
     it("rejects an overlapping ISF slot", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         insulinSensitivityFactor: {
           findMany: vi.fn().mockResolvedValue([{ startHour: 6, endHour: 12 }]),
         },
@@ -204,7 +204,7 @@ describe("insulinTherapyService", () => {
   describe("createIcr", () => {
     it("creates an ICR slot when there is no overlap", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         carbRatio: {
           findMany: vi.fn().mockResolvedValue([]),
           create: vi.fn().mockResolvedValue({ id: "icr-uuid-1" }),
@@ -237,7 +237,7 @@ describe("insulinTherapyService", () => {
 
     it("rejects an overlapping ICR slot", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         carbRatio: {
           findMany: vi.fn().mockResolvedValue([{ startHour: 7, endHour: 11 }]),
         },
@@ -254,7 +254,7 @@ describe("insulinTherapyService", () => {
   describe("deleteIsf / deleteIcr", () => {
     it("deleteIsf est scopé patient (anti-IDOR) et émet un audit DELETE", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         insulinSensitivityFactor: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
@@ -279,7 +279,7 @@ describe("insulinTherapyService", () => {
 
     it("deleteIcr est scopé patient (anti-IDOR) et émet un audit DELETE", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         carbRatio: { deleteMany: vi.fn().mockResolvedValue({ count: 1 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
@@ -300,7 +300,7 @@ describe("insulinTherapyService", () => {
 
     it("deleteIsf sur un créneau d'un autre patient → isfSlotNotFound (count 0, anti-IDOR)", async () => {
       const txMock = {
-        $executeRaw: vi.fn().mockResolvedValue(1),
+        $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
         insulinSensitivityFactor: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
@@ -317,7 +317,7 @@ describe("insulinTherapyService", () => {
       { startHour: 22, endHour: 6, value: 0.6 },
     ]
     const mkTx = (over: Record<string, unknown> = {}) => ({
-      $executeRaw: vi.fn().mockResolvedValue(1),
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
       insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ id: 3 }) },
       insulinSensitivityFactor: {
         findMany: vi.fn().mockResolvedValue([{ startHour: 0, endHour: 24 }]),

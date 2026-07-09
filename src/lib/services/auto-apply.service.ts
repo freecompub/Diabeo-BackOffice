@@ -25,7 +25,7 @@ import { KETONE_DEFAULTS } from "@/lib/services/ketone-threshold.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { buildEnvelopeContext } from "@/lib/insulin/auto-apply-context"
 import { evaluateAutoApplyEnvelope } from "@/lib/insulin/auto-apply-envelope"
-import { lockInsulinSlots } from "@/lib/insulin/slot-lock"
+import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { adjustmentService, type CreateProposalInput } from "@/lib/services/adjustment.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
@@ -279,7 +279,8 @@ export const autoApplyService = {
       // écritures DOCTOR directes (anti lost-update B1). Sous le lock : baseline RELU (garde `baselineMoved`),
       // autorité + anti-cliquet ré-évalués (contexte frais) → ferme le TOCTOU C7. Event + apply + audit atomiques.
       const result = await prisma.$transaction(async (tx) => {
-        await lockInsulinSlots(tx, patientId, SLOT_LOCK_PARAM[parameterType])
+        // Verrou non bloquant : mutation concurrente en cours → fail-closed → proposition (pas d'attente).
+        if (!(await tryLockInsulinSlots(tx, patientId, SLOT_LOCK_PARAM[parameterType]))) return { applied: false as const, failedCheck: "busy" }
         // Baseline RELU sous lock : si la valeur courante du créneau a bougé depuis l'évaluation (édition
         // médecin/groupe concurrente), ne pas appliquer sur une base périmée → fail-closed → proposition.
         const liveValue = await readSlotValue(tx, parameterType, edit.slotId, patientId)
@@ -414,7 +415,8 @@ export const autoApplyService = {
         | { kind: "propose"; failedCheck: string; changedCount: number }
         | { kind: "reject"; reason: string }
       > => {
-        await lockInsulinSlots(tx, patientId, param)
+        // Verrou non bloquant : une mutation concurrente en cours → on n'attend pas, fail-closed → proposition.
+        if (!(await tryLockInsulinSlots(tx, patientId, param))) return { kind: "propose", failedCheck: "busy", changedCount: changed0.length }
 
         // Baseline FRAIS sous lock → divergence = fail-closed (anti lost-update).
         const fresh = await readCurrentSlots(param, patientId, tx)
