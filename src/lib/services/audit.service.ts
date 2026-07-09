@@ -85,6 +85,9 @@ export type AuditAction =
   | "AUTO_APPLY_FALLBACK"
   /** Édition rejetée (valeur hors bornes cliniques) ou échec d'application auto-appliquée. */
   | "AUTO_APPLY_REJECTED"
+  /** C3c — trace HDS d'une SOUMISSION patient de jeu de créneaux non couverte par une décision gouvernée
+   *  (no-op, ou rejet dur à la saisie : bornes/couverture/verrou/doublon). Sans PHI. */
+  | "INSULIN_SLOT_SUBMISSION"
   | "IMPORT"
   | "ANONYMIZE"
   /** US-2265 — RBAC-breach burst signal (50+ UNAUTHORIZED in 60s by same userId). */

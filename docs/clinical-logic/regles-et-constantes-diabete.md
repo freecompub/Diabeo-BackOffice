@@ -664,7 +664,8 @@ l'index unique partiel `slot_set_proposals_one_pending_per_param` (`WHERE status
 `isUniqueViolationOn`/`driverAdapterError` robuste à Prisma 7 + adapter-pg). Statuts = `ProposalStatus`.
 Audit dédié `resource = SLOT_SET_PROPOSAL` (CREATE / PROPOSAL_ACCEPTED / PROPOSAL_REJECTED / READ), jamais de
 PHI (valeurs de config, `metadata.patientId` pivot US-2268). Sources : orchestrateur `applyExpertGroupGoverned`
-(C3b, appelant), routes patient (C3c) / médecin (C3d).
+(C3b, appelant), **route patient `PUT /api/patient/insulin-slot-set` (C3c, livrée — self-scopée own-id)**,
+route médecin d'accept/reject (C3d, à livrer).
 
 #### Orchestrateur groupé `applyExpertGroupGoverned` (C3b) — décision tout-ou-rien
 
