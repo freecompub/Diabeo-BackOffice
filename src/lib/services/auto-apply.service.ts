@@ -489,8 +489,10 @@ export const autoApplyService = {
           if (decision.decision !== "AUTO_APPLY") return { kind: "propose", failedCheck: decision.failedCheck, changedCount: changed.length }
         }
 
-        // Cap d'AMPLITUDE cumulée co-directionnelle (C3b) — vérif AUTORITAIRE sous lock, sur le `changed` frais
-        // (le baseline a pu bouger depuis le pré-lock → l'ampleur doit être jugée sur les valeurs sous lock).
+        // Cap d'AMPLITUDE cumulée co-directionnelle (C3b) — vérif AUTORITAIRE dans le chemin d'écriture (sur le
+        // `changed` sous lock). Défense en profondeur : le garde `baselineMoved` ci-dessus garantit déjà
+        // `fresh === preLock` (donc verdict identique au pré-lock), mais ce re-check tient même si ce garde
+        // était un jour affaibli — aucune écriture au-delà de ce point sans repasser le cap.
         if (exceedsGroupCumulativeAmplitude(changed, curByKey, parameterType)) {
           return { kind: "propose", failedCheck: "groupCumulative", changedCount: changed.length }
         }

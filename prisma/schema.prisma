@@ -801,8 +801,11 @@ model GovernanceApproval {
   id           Int      @id @default(autoincrement())
   patientId    Int      @map("patient_id")
   patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  approvedById Int?     @map("approved_by_id") // ADMIN ayant enregistré l'approbation (SetNull si compte purgé)
-  approver     User?    @relation("GovernanceApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  approvedById Int      @map("approved_by_id") // ADMIN ayant enregistré l'approbation
+  // RESTRICT (pas SetNull) : `governance_approvals` est append-only (trigger `governance_approvals_no_update`
+  // interdit tout UPDATE — or SetNull EST un UPDATE). L'attribution reste obligatoire ; l'identité de
+  // l'approbateur est de toute façon figée dans l'audit immuable. Un user approbateur ne peut être hard-deleted.
+  approver     User     @relation("GovernanceApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
   reference    String   // référence de la décision de gouvernance
   dpiaRef      String?  @map("dpia_ref") // lien DPIA
   enabled      Boolean  @default(true) // l'approbation autorise l'activation
