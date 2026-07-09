@@ -12,23 +12,13 @@ import { resolvePatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { extractRequestContext } from "@/lib/services/audit.service"
+import { SLOT_SET_ERROR_STATUS } from "@/lib/insulin/slot-set-errors"
 
 /** Créneau normalisé (valeur = ISF g/L ou ICR g/U), forme attendue par `replaceSlotSet`. */
 export type NormalizedSlot = { startHour: number; endHour: number; value: number; mealLabel?: string }
 
 /** Corps normalisé d'un PUT de remplacement de groupe. */
 export type ReplaceSetBody = { patientId?: number; slots: NormalizedSlot[] }
-
-/** Codes d'erreur métier du remplacement de groupe → statut HTTP (stables, sans PHI). Réutilisé par C3c. */
-export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
-  emptySlotSet: 409,
-  zeroDurationSlot: 400,
-  slotOverlap: 409,
-  slotGap: 422,
-  valueOutOfBounds: 400,
-  settingsNotFound: 404,
-  slotsBusy: 409, // mutation concurrente en cours (verrou non bloquant) — réessayer
-}
 
 /**
  * PUT mutualisé — remplace atomiquement TOUT le jeu de créneaux (`param`) du patient. DOCTOR only,

@@ -151,6 +151,17 @@ export const RATE_LIMITS = {
     max: 30,
     failMode: "open",
   } satisfies ApiRateLimitConfig,
+  /**
+   * US-2657 (C3c) — soumission patient d'un jeu de créneaux insuline (écriture déclenchant une décision
+   * automatisée de dosage) : 20 req/60 s/user. Fail-open — dispo d'abord (un patient ne doit pas être bloqué
+   * de gérer son insuline en cas de panne Redis ; le vrai garde-fou de dosage est l'enveloppe C1–C8 + C7).
+   */
+  insulinSubmission: {
+    bucket: "insulin-submission",
+    windowSec: 60,
+    max: 20,
+    failMode: "open",
+  } satisfies ApiRateLimitConfig,
   /** Per-patient detail reads (BGM, glycemia): 60 req/60 s/user. Fail-open. */
   patientDataRead: {
     bucket: "patient-data-read",
