@@ -15,7 +15,7 @@
 import { describe, it, expect } from "vitest"
 import { readFileSync } from "node:fs"
 import {
-  CLINICAL_BOUNDS, PATIENT_MAX_ABS_DELTA, CGM_AGGREGATE_RANGE_GL,
+  CLINICAL_BOUNDS, CGM_AGGREGATE_RANGE_GL,
   DASHBOARD_TIR, AGP_SUFFICIENCY, HBA1C_STALE_DAYS, OBSERVANCE,
   HBA1C_HIGH_DEFAULT_PERCENT, HBA1C_HIGH_DEFAULT_PREGNANCY_PERCENT, HBA1C_TARGET_MARGIN_PERCENT,
   isDeliverableBasalRate,
@@ -72,11 +72,6 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       FIXED_DOSE_COOLDOWN_HOURS: 72,
       MAX_CHANGE_PERCENT: 20,
       PATIENT_MAX_CHANGE_PERCENT: 10,
-      PATIENT_MAX_CHANGE_PERCENT_ISF: 10,
-      PATIENT_MAX_CHANGE_PERCENT_ICR: 10,
-      PATIENT_MAX_CHANGE_PERCENT_BASAL_RATE: 10,
-      PATIENT_MAX_CHANGE_PERCENT_FIXED_BASAL: 10,
-      PATIENT_MAX_CHANGE_PERCENT_FIXED_BOLUS: 10,
       PATIENT_PROPOSAL_COOLDOWN_HOURS: 24,
       HYPO_LEVEL1_RECURRENCE_MIN: 2,
       POSTPRANDIAL_TITRATION_LOW_GL: 1.0,
@@ -97,6 +92,7 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       CORRECTION_COB_LOOKBACK_MIN: 180,
       // US-2657 (slice B) — enveloppe auto-application
       AUTO_APPLY_MAX_CHANGE_PERCENT: 10,
+      AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U: 1.0,
       AUTO_APPLY_STRUCTURAL_ALLOWED: false,
       AUTO_APPLY_COOLDOWN_HOURS: 72,
       AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK: 15,
@@ -109,16 +105,6 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       AUTO_APPLY_MAX_GROUP_SLOTS: 2,
       AUTO_APPLY_MAX_GROUP_CUMULATIVE_INCREASE_PERCENT: 15,
       AUTO_APPLY_MAX_GROUP_CUMULATIVE_DECREASE_PERCENT: 20,
-    })
-  })
-
-  it("US-2652 — cap patient PAR TIER × type (PATIENT_MAX_ABS_DELTA) verrouillé", () => {
-    // Tiering sur unités délivrées (basale/dose fixe) ; ratios ISF/ICR UNIFORMES. Reco medical-domain-validator.
-    expect(PATIENT_MAX_ABS_DELTA).toEqual({
-      PEDIATRIC: { isf: 0.05, icr: 1.0, basalRate: 0.05, fixedBasal: 0.5, fixedBolus: 0.5 },
-      PREGNANCY: { isf: 0.05, icr: 1.0, basalRate: 0.1, fixedBasal: 0.5, fixedBolus: 0.5 },
-      STANDARD: { isf: 0.05, icr: 1.0, basalRate: 0.15, fixedBasal: 1.0, fixedBolus: 1.0 },
-      RESISTANT: { isf: 0.05, icr: 1.0, basalRate: 0.25, fixedBasal: 1.5, fixedBolus: 1.5 },
     })
   })
 

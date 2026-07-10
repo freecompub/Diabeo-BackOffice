@@ -22,8 +22,6 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     logWithTx: vi.fn(),
     auditLog: vi.fn(),
     referentFindFirst: vi.fn(),
-    patientFindFirst: vi.fn(),
-    configVersionFindFirst: vi.fn(),
     sendToUser: vi.fn(),
     resolveTreatmentMode: vi.fn(),
     raiseFlag: vi.fn(),
@@ -37,9 +35,6 @@ const { prismaMock, mocks } = vi.hoisted(() => {
       pumpBasalSlot: { findFirst: m.basalFindFirst },
       fixedDoseSlot: { findFirst: m.fixedDoseFindFirst },
       patientReferent: { findFirst: m.referentFindFirst },
-      // US-2652 — resolvePatientTier : pathologie/grossesse + mode pédiatrique.
-      patient: { findFirst: m.patientFindFirst },
-      configVersion: { findFirst: m.configVersionFindFirst },
       $transaction: async (fn: (tx: unknown) => unknown) =>
         fn({ adjustmentProposal: { create: m.create } }),
     },
@@ -89,8 +84,6 @@ beforeEach(() => {
   mocks.referentFindFirst.mockResolvedValue({ pro: { userId: 99 } }) // médecin référent
   mocks.sendToUser.mockResolvedValue({ sent: 1 })
   mocks.resolveTreatmentMode.mockResolvedValue({ mode: "basalBolus", coherent: true }) // patient insuliné par défaut
-  mocks.patientFindFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false }) // tier STANDARD par défaut
-  mocks.configVersionFindFirst.mockResolvedValue(null) // non pédiatrique par défaut
   mocks.raiseFlag.mockResolvedValue({ flagId: "f1", created: true })
   mocks.auditLog.mockResolvedValue(undefined)
 })

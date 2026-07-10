@@ -15,7 +15,6 @@ import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
 import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
-import { checkPatientChangeCap, patientCapType, resolvePatientCapTier, type PatientCapTier } from "@/lib/insulin/patient-change-cap"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
@@ -179,45 +178,6 @@ async function resolveCurrentValue(
     default:
       throw new Error("unsupportedParameter")
   }
-}
-
-/**
- * US-2652 — `kind` (basal/bolus) d'une dose fixe, résolu SERVEUR via `PatientInsulin.usage` du créneau
- * (`moment`), scopé patient. `both` (pré-mélangée) est mappé côté `patientCapType` → règle basale stricte.
- * @throws currentValueNotFound (moment absent / autre patient — cohérent avec `resolveCurrentValue`).
- */
-async function resolveFixedDoseKind(patientId: number, moment: CreateProposalInput["moment"]): Promise<"basal" | "bolus" | "both"> {
-  if (!moment) throw new Error("slotRequired")
-  const row = await prisma.fixedDoseSlot.findFirst({
-    where: { patientInsulin: { patientId }, moment },
-    select: { patientInsulin: { select: { usage: true } } },
-  })
-  if (!row) throw new Error("currentValueNotFound")
-  return row.patientInsulin.usage
-}
-
-/** US-2652 — Le patient est-il en mode PÉDIATRIQUE (ConfigVersion active) ? Résolu serveur (durcit les caps). */
-async function isPatientPediatric(patientId: number): Promise<boolean> {
-  const v = await prisma.configVersion.findFirst({
-    where: { patientId, configType: "pediatric_mode", status: "active" },
-    select: { id: true },
-  })
-  return v != null
-}
-
-/**
- * US-2652 — **Tier de cap patient** résolu SERVEUR (jamais du body) : pathologie (`DT2` → résistant),
- * grossesse (`pregnancyMode || pathology === "GD"`), mode pédiatrique. Cascade « le plus strict gagne ».
- * @throws currentValueNotFound si le patient est introuvable (anti-IDOR ; scoping déjà fait en amont).
- */
-async function resolvePatientTier(patientId: number): Promise<PatientCapTier> {
-  const [patient, pediatric] = await Promise.all([
-    prisma.patient.findFirst({ where: { id: patientId }, select: { pathology: true, pregnancyMode: true } }),
-    isPatientPediatric(patientId),
-  ])
-  if (!patient) throw new Error("currentValueNotFound")
-  const isPregnant = patient.pregnancyMode || patient.pathology === "GD"
-  return resolvePatientCapTier(patient.pathology, pediatric, isPregnant)
 }
 
 /**
@@ -496,14 +456,15 @@ export const adjustmentService = {
 
     // 3. Garde-fous PATIENT (sur l'écart de confiance ; une demande, pas une titration).
     if (proposer.role === "patient") {
-      // US-2652 — cap PAR TYPE `min(%, absolu)` (corrige le « % seul » aux extrêmes) + direction :
-      //  - baisse INTERDITE pour la famille basale (pompe + dose fixe basale : risque hyper/cétose) ;
-      //  - symétrique pour ISF/ICR et dose fixe BOLUS (une baisse de bolus pour hypo est légitime).
-      // `kind` (dose fixe) et pédiatrie résolus SERVEUR (jamais du body). Voir `patient-change-cap.ts`.
-      const fixedDoseKind = parameterType === "fixedDose" ? await resolveFixedDoseKind(patientId, input.moment) : undefined
-      const tier = await resolvePatientTier(patientId)
-      const violation = checkPatientChangeCap(patientCapType(parameterType, fixedDoseKind), currentValue, proposedValue, tier)
-      if (violation) throw new Error(violation)
+      // basalRate : jamais de BAISSE (risque hyper/cétose silencieuse). NB : on N'applique
+      // PAS « no-decrease » à ISF/ICR — MONTER l'ISF/ICR RÉDUIT la dose (direction plus sûre) ;
+      // les deux sens y sont seulement bornés en amplitude (raffinement min/abs → US-2652).
+      if (parameterType === "basalRate" && delta < 0) {
+        throw new Error("patientDecreaseForbidden")
+      }
+      if (Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT) {
+        throw new Error("patientDeltaTooLarge")
+      }
 
       // Cooldown anti-churn (US-2650, épic §6) : une seule proposition patient par (paramètre ×
       // créneau) toutes les PATIENT_PROPOSAL_COOLDOWN_HOURS, décomptée depuis la RÉSOLUTION de la
