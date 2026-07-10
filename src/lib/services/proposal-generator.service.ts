@@ -8,11 +8,12 @@
  * Spec de référence (deadband post-prandial, grossesse, nadir, bucketing, portes qualité) :
  * `docs/clinical-logic/algorithme-propositions-ajustement.md` §5ter.
  *
- * Périmètre actuel (mode `basalBolus`) : **ICR** (par créneau) + **basal** (`basalRate`, POMPE
- * uniquement, créneau nocturne titré par la glycémie à jeun) + **ISF** (par créneau, titré par les
- * corrections propres appariées). `nonInsulin` → uniquement des `ClinicalReviewFlag` d'orientation
- * (mode c) + **fixedDose** (« doses simples » — chaque dose par moment titrée sur les creux pré-dose).
- * La frontière MDR (`nonInsulin` → aucune dose) est de toute façon re-imposée par `createEngineProposal`.
+ * Périmètre (épic US-2645 — COMPLET, tous modes) : `basalBolus` → **ICR** + **basal** (`basalRate`,
+ * POMPE, créneau nocturne titré à jeun) + **ISF** (corrections propres appariées) ; `fixedDose` →
+ * **doses simples** par moment (titrées sur les creux pré-dose) ; `nonInsulin` (mode c) → uniquement des
+ * `ClinicalReviewFlag` d'orientation (dont `observance`, `tirBelowTarget`, `hba1c*`). Chaque levier porte
+ * la **dé-escalade active** des hypos récurrentes (US-2653 : matrice deadband × nadir, cooldown 72 h,
+ * Somogyi → flag). La frontière MDR (`nonInsulin` → aucune dose) est re-imposée par `createEngineProposal`.
  *
  * ⚠️ Le chemin basal est **couplé à l'existence des carb-ratios** : `generateForPatient` renvoie tôt
  * (`EMPTY("noCarbRatios")`) si aucun ICR n'est configuré, donc un patient pompe avec basale mais **sans**

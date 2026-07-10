@@ -65,7 +65,7 @@ cul-de-sac silencieux).
 - Audit : nouvelle ressource `CLINICAL_REVIEW_FLAG`. Tests : +4 (création, idempotence, patient→flag,
   best-effort sur échec).
 
-**Reste US-2651** : router `generateProposals` par mode · `analyzeFixedDose*` (mode b). **Suivi** :
+**Reste US-2651** : ✅ tout livré (routage par mode `basalBolus`/`fixedDose`/`nonInsulin` + `analyzeFixedDose*` mode b + dé-escalade US-2653). **Suivi** :
 surface UI des flags côté dashboard soignant (slice dédiée).
 
 #### Corrections revue slice 2 (PR #662)
@@ -91,7 +91,7 @@ Ferme le **caveat opérationnel** de la revue medical de #662 (le flag était é
   `/patients/[id]/review`. i18n `reviewFlags` (fr/en/ar) — `HbA1c`/`TIR` explicités.
 - Tests : +2 (scope RBAC + audit ; portefeuille vide → []).
 
-**Reste US-2651** : router `generateProposals` par mode · mode (b) `analyzeFixedDose*`. **Suivi** :
+**Reste US-2651** : ✅ tout livré (routage par mode + `analyzeFixedDose*` mode b + dé-escalade US-2653). **Suivi** :
 `parameterType` intent (non-dosant) dans le flag ; résolution du flag (marquer `resolved`).
 
 ##### Corrections revue slice 3 (PR #663)
