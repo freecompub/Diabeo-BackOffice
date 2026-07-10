@@ -71,6 +71,18 @@ créneau). Pas de sur-collecte. Fréquence nocturne = hors pics d'usage.
 Resucrage tronquant le nadir, mean-vs-nadir (US-2653), basale stylo/MDI, régime hybride — tous
 **fail-safe** (sous-action, jamais sur-dosage) et tracés dans le catalogue clinique.
 
+### 3.5 LOW — Données de dosage numériques en clair applicatif (protection at-rest) — US-2652
+Les **doses numériques** manipulées par les propositions/l'auto-application reposent sur le chiffrement
+**at-rest (pgcrypto) + RBAC**, PAS sur l'AES-256-GCM applicatif, par **contrainte de calculabilité** (le
+moteur de titration doit lire/comparer les valeurs) :
+- `fixed_dose_slots.value_u` (dose fixe en U), `insulin_sensitivity_factors`/`carb_ratios`/`pump_basal_slots`
+  (ratios/débits), `adjustment_proposals.current_value`/`proposed_value`/`change_percent` ;
+- `clinical_review_flags.type` — **health-adjacent** : un flag `tirBelowTarget`/`hba1cStale` implique une
+  préoccupation clinique, donc traité comme donnée de santé pour l'at-rest + RBAC (pas exposé hors périmètre).
+Mitigations : aucune de ces valeurs n'est journalisée en clair (audit sans PHI), ni renvoyée hors du
+périmètre RBAC patient ; `proposer_comment` (texte libre) reste chiffré **AES-GCM applicatif** (jamais en
+réponse/log/URL). Décision DPO : posture at-rest acceptée pour les valeurs numériques (calculabilité).
+
 ## 4. Procédures opérationnelles
 
 - **Configuration cron** : `0 2 * * *`, header `Authorization: Bearer $CRON_SECRET`.
