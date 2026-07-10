@@ -8,8 +8,9 @@
 > fixedDose + dé-escalade active des hypos récurrentes, maturité graduée, grouped-only). L'auto-application
 > a été **retirée** (ADR #28, PR #714). Le flag mode-c `observance` est livré et testé. **Seul reste hors
 > périmètre code** : l'activation du cron générateur en **production** = gate **ops/DPO** (signature DPIA +
-> flag `PROPOSAL_CRON_ENABLED`, cf. `docs/runbook/cron-proposal-generator.md` §0). *La spécification
-> ci-dessous est conservée comme référence historique.*
+> flag `PROPOSAL_CRON_ENABLED`) — tracé dans `docs/compliance/go-live-checklist.md` **GATE #1** (détail
+> runbook `cron-proposal-generator.md` §0). *La spécification ci-dessous est conservée comme référence
+> historique.*
 
 ## 1. Intention (voix produit)
 

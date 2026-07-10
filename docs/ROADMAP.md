@@ -744,7 +744,7 @@ tous corrigés. Migration `20260513230000_groupe5_review_fixes` (FK + unique + p
 
 | US | Titre | Périmètre | Dépend de | Taille | Statut |
 |----|-------|-----------|-----------|--------|--------|
-| US-2645 | **EPIC** — Édition insulinothérapie multi-mode (fiche + self-service, propose→valide) | front/back/migration | — | XL | ✅ **DONE** — 2646→2653 livrés (édition fiche/self-service, provenance, flux propose→valide, générateur multi-levier + dé-escalade active, maturité, grouped-only). **Auto-application retirée** (ADR #28, #714). Flag mode-c `observance` livré. **Hors code** : activation du cron générateur en prod = gate **ops/DPO** (signature DPIA + flag `PROPOSAL_CRON_ENABLED`, cf. `docs/runbook/cron-proposal-generator.md` §0) |
+| US-2645 | **EPIC** — Édition insulinothérapie multi-mode (fiche + self-service, propose→valide) | front/back/migration | — | XL | ✅ **DONE** — 2646→2653 livrés (édition fiche/self-service, provenance, flux propose→valide, générateur multi-levier + dé-escalade active, maturité, grouped-only). **Auto-application retirée** (ADR #28, #714). Flag mode-c `observance` livré. **Hors code** : activation du cron générateur en prod = gate **ops/DPO** (signature DPIA + flag `PROPOSAL_CRON_ENABLED`) — tracé dans `docs/compliance/go-live-checklist.md` GATE #1 (détail runbook `cron-proposal-generator.md` §0) |
 | US-2646 | Socle données : provenance proposition + dose fixe structurée + enum + `treatmentMode` | back/migration | — | M | ✅ DONE (#638) |
 | US-2647 | Détection du mode de traitement (a/b/c) + gating fail-closed | back | 2646 | S/M | ✅ DONE (#641) |
 | US-2648 | Onglet Traitements éditable (fiche) : DOCTOR direct / NURSE→proposition | front/back | 2646, 2647 | L | ✅ DONE (US-2648a/b, #647→#651) |
