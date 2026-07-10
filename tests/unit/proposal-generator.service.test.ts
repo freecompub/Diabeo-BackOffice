@@ -405,6 +405,7 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
     const isf = isfCalls()
     expect(isf).toHaveLength(1)
     expect(isf[0]).toMatchObject({ reason: "isfTooLow", expectedCurrentValue: 0.5, proposedValue: 0.55 })
+    expect(raiseFlag).not.toHaveBeenCalled() // exclusivité : une dé-escalade OU un flag, jamais les deux
   })
 
   it("sous-correction moyenne + nadirs récurrents → FLAG highVariabilityPostCorrection, aucune dose", async () => {
@@ -444,9 +445,17 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
       expect.objectContaining({
         where: expect.objectContaining({
           status: "accepted", parameterType: "insulinSensitivityFactor", timeSlotStartHour: 8, timeSlotEndHour: 12,
+          reviewedAt: { not: null }, // anti tri NULLS FIRST → une ligne acceptée sans reviewedAt ne masque pas une récente
         }),
       }),
     )
+  })
+
+  it("cooldown : une ligne acceptée à reviewedAt NULL ne bloque PAS (défensif, tri NULLS FIRST)", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: null } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(1) // reviewedAt null → pas de cooldown → dé-escalade proposée
   })
 
   it("le cooldown NE bloque PAS l'escalade deadband (auto-limitée) : correction haute + changement récent → proposition quand même", async () => {
@@ -473,6 +482,8 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
     const hypoMeals = Array.from({ length: 3 }, () => meal({ postMgdl: 150, nadirMgdl: 60, localHour: 13 }))
     const basalCalls = () =>
       createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate")
+    const icrCalls = () =>
+      createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "insulinToCarbRatio")
     setup({
       meals: hypoMeals, // nadirs repas 0,60 récurrents (déclenchent l'ICR, PAS l'ISF/basal)
       sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 1.4), // corrections PROPRES → pas de dé-escalade ISF
@@ -480,8 +491,9 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
       fasting: Array.from({ length: 3 }, () => ({ fastingMgdl: 100, nocturnalNadirMgdl: 120 })), // nocturne sain
     })
     await proposalGeneratorService.generateForPatient(1, 99)
-    expect(isfCalls()).toHaveLength(0)
-    expect(basalCalls()).toHaveLength(0)
+    expect(icrCalls().length).toBeGreaterThanOrEqual(1) // les nadirs repas déclenchent BIEN l'ICR (pas de pass vide)
+    expect(isfCalls()).toHaveLength(0) // …mais PAS l'ISF (corrections propres)
+    expect(basalCalls()).toHaveLength(0) // …ni la basale (nocturne sain)
   })
 })
 
@@ -509,6 +521,7 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
     expect(basal).toHaveLength(1)
     expect(basal[0]).toMatchObject({ reason: "basalTooHigh", expectedCurrentValue: 0.8 })
     expect(Number(basal[0].proposedValue)).toBeLessThan(0.8)
+    expect(raiseFlag).not.toHaveBeenCalled() // exclusivité : une dé-escalade OU un flag, jamais les deux
   })
 
   it("dé-escalade basale : cooldown < 72 h → sautée", async () => {
@@ -573,11 +586,20 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
   }
 
   it("fixedDose : in-band + relevés récurremment bas → dé-escalade (baisse, fixedDoseTooHigh, 10 → 9)", async () => {
-    setupFixed([{ moment: "morning", valueU: 10 }], { morning: [0.6, 0.6, 1.2, 1.3, 1.2] }) // moyenne 0,98 in-band
+    // Moyenne EXACTEMENT à la cible (1,0) → deadband nul (isole la branche dé-escalade, pas la baisse deadband).
+    setupFixed([{ moment: "morning", valueU: 10 }], { morning: [0.6, 0.6, 1.8] })
     await proposalGeneratorService.generateForPatient(1, 99)
     const fixed = fixedCalls()
     expect(fixed).toHaveLength(1)
     expect(fixed[0]).toMatchObject({ moment: "morning", reason: "fixedDoseTooHigh", proposedValue: 9 })
+    expect(raiseFlag).not.toHaveBeenCalled() // exclusivité : une dé-escalade OU un flag, jamais les deux
+  })
+
+  it("fixedDose SOUS le plancher (0,3 U) + hypos récurrentes → FLAG (jamais silencieux — trou de surfaçage US-2653)", async () => {
+    setupFixed([{ moment: "morning", valueU: 0.3 }], { morning: [0.6, 0.6, 0.9] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(fixedCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined)
   })
 
   it("fixedDose : dé-escalade non actionnable (dose 1,0 U snappe à l'inchangé) → FLAG, pas de skip", async () => {

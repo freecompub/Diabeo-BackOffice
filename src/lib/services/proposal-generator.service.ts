@@ -612,8 +612,11 @@ export const proposalGeneratorService = {
             if (!(await deescalationOnCooldown(patientId, "fixedDose", { moment: slot.moment }))) {
               await persistFixed(de.candidate)
             }
-          } else if (de.kind === "flagNonActionable") {
-            await raiseFixedFlag() // dose au plancher / non réductible → arrêt/restructuration = revue
+          } else {
+            // `flagNonActionable` (dose au plancher) OU `none` (dose SOUS le plancher clinique 0,5 U) : dans
+            // les deux cas la baisse est impossible → FLAG de revue (arrêt/restructuration), JAMAIS un silence
+            // sur une hypo récurrente avérée (US-2653, validé medical). `recurrent` est déjà vrai ici.
+            await raiseFixedFlag()
           }
         } else if (severe) {
           await raiseFixedFlag() // hypo sévère du moment ISOLÉE → surface, jamais silencieuse

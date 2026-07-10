@@ -348,7 +348,7 @@ describe("proposal-algorithm", () => {
     it("hypo non récurrente → none", () => {
       expect(analyzeFixedDoseHypoDeescalation(slot, [0.65, 1.2, 1.3]).kind).toBe("none")
     })
-    it("seuil d'actionnabilité : toute dose ≤ 2,5 U snappe à l'inchangé → flagNonActionable ; 3,0 U → proposal 2,5", () => {
+    it("seuil d'actionnabilité : toute dose < 3,0 U (≤ 2,5 U testées) snappe à l'inchangé → flagNonActionable ; 3,0 U → proposal 2,5", () => {
       const rec = [0.6, 0.6, 1.2]
       for (const v of [1.0, 1.5, 2.0, 2.5]) {
         expect(analyzeFixedDoseHypoDeescalation({ moment: "morning", valueU: v }, rec).kind).toBe("flagNonActionable")
