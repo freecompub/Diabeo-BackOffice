@@ -29,11 +29,11 @@ import { Button } from "@/components/ui/button"
 import { usePatientRecordContext } from "@/components/diabeo/patient/PatientRecordContext"
 import { maturityChangeMessageKey } from "@/components/diabeo/patient/maturity-change"
 
-const LEVELS: readonly MaturityLevel[] = ["JUNIOR", "INTERMEDIATE", "EXPERT"] as const
+const LEVELS: readonly MaturityLevel[] = ["JUNIOR", "INTERMEDIATE", "CONFIRME"] as const
 const LEVEL_KEY: Record<MaturityLevel, string> = {
   JUNIOR: "maturityJunior",
   INTERMEDIATE: "maturityIntermediate",
-  EXPERT: "maturityExpert",
+  CONFIRME: "maturityConfirme",
 }
 
 type Feedback = { kind: "error"; text: string } | null

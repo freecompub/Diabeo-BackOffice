@@ -37,7 +37,7 @@ consensus cap bolus 25 U.
 | `FIXED_DOSE_PATIENT_MAX_DELTA_U` | 1.0 | U | Cap variation **patient** dose fixe (< moteur) |
 | `PATIENT_MAX_CHANGE_PERCENT` | 10 | % | Cap variation **patient** sur ratios (proposition, US-2649) |
 
-> ⚠️ **Mise à jour 2026-07-10** : les constantes d'auto-application experte gouvernée ont été **supprimées** du code (US-2657 retirée). Les éditions patient ne génèrent désormais qu'une **proposition** (jamais auto-application). Voir « Niveau de maturité du patient » ci-dessous pour la maturité (JUNIOR/INTERMEDIATE/EXPERT) — elle gouverne les **capacités d'édition** (valeurs vs créneaux), pas une voie d'auto-application.
+> ⚠️ **Mise à jour 2026-07-10** : les constantes d'auto-application experte gouvernée ont été **supprimées** du code (US-2657 retirée). Les éditions patient ne génèrent désormais qu'une **proposition** (jamais auto-application). Voir « Niveau de maturité du patient » ci-dessous pour la maturité (JUNIOR/INTERMEDIATE/CONFIRME) — elle gouverne les **capacités d'édition** (valeurs vs créneaux), pas une voie d'auto-application.
 
 **Règle dose fixe (US-2646)** : pas de plafond bloquant (une basale fixe peut dépasser 25 U) ;
 les `*_WARN_U` déclenchent un **avertissement** au service, jamais un rejet. Seul `FIXED_DOSE_MIN`
@@ -589,11 +589,11 @@ hors bornes → 400 `windowOutOfBounds`).
 
 ### Niveau de maturité du patient (US-2657 slice A)
 
-`Patient.maturityLevel` (enum `MaturityLevel { JUNIOR, INTERMEDIATE, EXPERT }`, **défaut JUNIOR**) — niveau
+`Patient.maturityLevel` (enum `MaturityLevel { JUNIOR, INTERMEDIATE, CONFIRME }`, **défaut JUNIOR**) — niveau
 d'autonomie (ETP) **posé par le soignant**, jamais auto-déclaré. Gate les capacités du **PATIENT (rôle
 VIEWER)** dans `deriveEditCapability` :
 - **JUNIOR** → `canEditSlots = false` : le patient ne propose que des **valeurs** (pas de restructuration).
-- **INTERMEDIATE / EXPERT** → `canEditSlots = true` : + créneaux (ajouter/supprimer/déplacer les heures).
+- **INTERMEDIATE / CONFIRME** → `canEditSlots = true` : + créneaux (ajouter/supprimer/déplacer les heures).
 - **DOCTOR/ADMIN** (édition directe) et **NURSE** (clinicien) : `canEditSlots = true` sans condition de maturité.
 - Fail-closed : `canEditSlots = false` si rien n'est éditable (config incohérente / mode non éditable).
 

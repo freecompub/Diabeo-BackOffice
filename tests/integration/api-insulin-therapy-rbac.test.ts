@@ -4,7 +4,7 @@
  * Clinical / security behavior tested:
  * - Les écritures de config pilotant le dosage sont **DOCTOR only**. Un VIEWER (patient) ET un NURSE
  *   sont rejetés 403 ; ils passent par une proposition validée (POST /api/adjustment-proposals) ou, pour
- *   le patient EXPERT, la soumission groupée self-service (PUT /api/patient/insulin-slot-set).
+ *   le patient CONFIRME, la soumission groupée self-service (PUT /api/patient/insulin-slot-set).
  * - **US-2657 (grouped-only, ADR #23)** : l'édition ISF/ICR/basal se fait EXCLUSIVEMENT en bloc via `PUT`
  *   (« replace the whole set »). Les anciens verbes par-créneau (POST/PATCH sensitivity-factors & carb-ratios ;
  *   POST/PATCH/DELETE pump-slots) sont **retirés** — ces routes n'exposent plus que GET + PUT.

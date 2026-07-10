@@ -113,8 +113,8 @@ describe("deriveEditCapability — restructuration gatée par la maturité (US-2
     expect(deriveEditCapability("VIEWER" as Role, basalBolusOk, "INTERMEDIATE").canEditSlots).toBe(true)
   })
 
-  it("PATIENT (VIEWER) EXPERT : restructuration autorisée", () => {
-    expect(deriveEditCapability("VIEWER" as Role, basalBolusOk, "EXPERT").canEditSlots).toBe(true)
+  it("PATIENT (VIEWER) CONFIRME : restructuration autorisée", () => {
+    expect(deriveEditCapability("VIEWER" as Role, basalBolusOk, "CONFIRME").canEditSlots).toBe(true)
   })
 
   it("fail-closed : config incohérente → pas de restructuration même pour un intermédiaire", () => {

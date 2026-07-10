@@ -8,17 +8,17 @@ describe("maturityChangeMessageKey", () => {
   it("montée JUNIOR → INTERMEDIATE : capacité créneaux", () => {
     expect(maturityChangeMessageKey("JUNIOR", "INTERMEDIATE")).toBe("maturityGrantSlots")
   })
-  it("montée vers EXPERT : capacité refuser/contre-proposer", () => {
-    expect(maturityChangeMessageKey("JUNIOR", "EXPERT")).toBe("maturityGrantExpert")
-    expect(maturityChangeMessageKey("INTERMEDIATE", "EXPERT")).toBe("maturityGrantExpert")
+  it("montée vers CONFIRME : capacité refuser/contre-proposer", () => {
+    expect(maturityChangeMessageKey("JUNIOR", "CONFIRME")).toBe("maturityGrantConfirme")
+    expect(maturityChangeMessageKey("INTERMEDIATE", "CONFIRME")).toBe("maturityGrantConfirme")
   })
   it("descente : note de retrait", () => {
-    expect(maturityChangeMessageKey("EXPERT", "INTERMEDIATE")).toBe("maturityDowngradeNote")
+    expect(maturityChangeMessageKey("CONFIRME", "INTERMEDIATE")).toBe("maturityDowngradeNote")
     expect(maturityChangeMessageKey("INTERMEDIATE", "JUNIOR")).toBe("maturityDowngradeNote")
-    expect(maturityChangeMessageKey("EXPERT", "JUNIOR")).toBe("maturityDowngradeNote")
+    expect(maturityChangeMessageKey("CONFIRME", "JUNIOR")).toBe("maturityDowngradeNote")
   })
   it("ordre des crans", () => {
     expect(MATURITY_RANK.JUNIOR).toBeLessThan(MATURITY_RANK.INTERMEDIATE)
-    expect(MATURITY_RANK.INTERMEDIATE).toBeLessThan(MATURITY_RANK.EXPERT)
+    expect(MATURITY_RANK.INTERMEDIATE).toBeLessThan(MATURITY_RANK.CONFIRME)
   })
 })

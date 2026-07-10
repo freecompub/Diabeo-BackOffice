@@ -670,10 +670,10 @@ describe("patientService.setMaturityLevel (US-2657 slice A)", () => {
   })
 
   it("idempotent : niveau identique → no-op, pas d'update ni d'audit", async () => {
-    const tx = mkTx("EXPERT")
+    const tx = mkTx("CONFIRME")
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
-    const res = await patientService.setMaturityLevel(7, "EXPERT", 42)
-    expect(res).toEqual({ maturityLevel: "EXPERT", changed: false })
+    const res = await patientService.setMaturityLevel(7, "CONFIRME", 42)
+    expect(res).toEqual({ maturityLevel: "CONFIRME", changed: false })
     expect(tx.patient.update).not.toHaveBeenCalled()
     expect(tx.auditLog.create).not.toHaveBeenCalled()
   })
