@@ -40,7 +40,7 @@ vi.mock("@/lib/services/audit.service", () => ({
   auditService: { rateLimited: mocks.rateLimited, accessDenied: mocks.accessDenied },
 }))
 
-import { POST } from "@/app/api/adjustment-proposals/route"
+import { POST, GET } from "@/app/api/adjustment-proposals/route"
 
 const isfBody = {
   parameterType: "insulinSensitivityFactor",
@@ -50,6 +50,9 @@ const isfBody = {
   timeSlotEndHour: 12,
 }
 const reqWith = (body: unknown) => ({ json: async () => body }) as unknown as NextRequest
+/** Requête GET (lit `nextUrl.searchParams`) — `patientId` optionnel dans la query. */
+const getReq = (patientId?: string) =>
+  ({ nextUrl: { searchParams: new URLSearchParams(patientId != null ? { patientId } : {}) } }) as unknown as NextRequest
 
 beforeEach(() => {
   Object.values(mocks).forEach((m) => m.mockReset())
@@ -156,7 +159,29 @@ describe("POST /api/adjustment-proposals", () => {
     expect(res.status).toBe(429)
     expect(res.headers.get("Retry-After")).toBe("42")
     expect(mocks.createProposal).not.toHaveBeenCalled()
-    expect(mocks.rateLimited).toHaveBeenCalled()
+    // Limiter clé PAR USER (anti DoS partagé / lockout cross-tenant), pas globale ni par patientId.
+    expect(mocks.checkApiRateLimit).toHaveBeenCalledWith("20", expect.anything())
+    // Audit de saturation : sans PHI (uniquement surface + kind, pas de dose/patient).
+    expect(mocks.rateLimited).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 20, resource: "PATIENT", metadata: { surface: "api", kind: "adjustmentProposalCreate" } }),
+    )
+  })
+
+  it("GET pro visant un patientId hors portefeuille → 404 + audit accessDenied", async () => {
+    mocks.resolvePatientId.mockResolvedValue(null)
+    const res = await GET(getReq("999"))
+    expect(res.status).toBe(404)
+    expect(mocks.accessDenied).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 20, resource: "PATIENT", metadata: expect.objectContaining({ patientId: 999 }) }),
+    )
+  })
+
+  it("GET VIEWER sans dossier (patientId ignoré) → 404, PAS d'audit accessDenied", async () => {
+    mocks.requireAuth.mockReturnValue({ id: 42, role: "VIEWER" })
+    mocks.resolvePatientId.mockResolvedValue(null)
+    const res = await GET(getReq("999"))
+    expect(res.status).toBe(404)
+    expect(mocks.accessDenied).not.toHaveBeenCalled()
   })
 
   it("doublon pending → 409", async () => {
