@@ -1,10 +1,21 @@
 # DPIA — US-2651 Générateur automatisé de propositions d'ajustement (cron nocturne)
 
+> ⚠️ **À METTRE À JOUR AU PÉRIMÈTRE LIVRÉ AVANT SIGNATURE (2026-07-10).** Cette DPIA décrit encore
+> le **chemin ICR seul**, mais le moteur livré couvre désormais **4 leviers (ICR + ISF + basal +
+> fixedDose) + flags d'orientation mode-c + dé-escalade active des hypos récurrentes (US-2653)**.
+> Signer en l'état validerait un périmètre plus étroit que le traitement réel (**non-conformité RGPD
+> Art. 35**). Actions requises avant signature : (1) élargir §1 (finalité/périmètre) aux 4 leviers +
+> fixedDose + mode-c ; (2) traiter le point US-2653 (dé-escalade, cooldown 72 h) comme **livré** et non
+> « angle mort » (§3.4) ; (3) cocher §5 « Information patient » (Art. 13/14, cf.
+> [`go-live-checklist.md`](go-live-checklist.md) GATE #1) ; (4) documenter la rétention des sorties.
+> Gate de livraison : `docs/compliance/go-live-checklist.md` **GATE #1**.
+>
 > **Statut** : V1 — décision DPO requise sur les risques résiduels (§3).
 > **Traitement** : génération **automatisée systématique** de propositions d'ajustement
-> d'insulinothérapie (chemin **ICR** livré ; ISF/basal/fixedDose à venir), exécutée **chaque nuit**
-> sur l'ensemble du portefeuille patient actif. **Aucune proposition n'est appliquée automatiquement**
-> (ADR #13) : chaque proposition est `pending` et validée par un **DOCTOR**.
+> d'insulinothérapie (chemin **ICR** livré à la rédaction ; **ISF/basal/fixedDose + dé-escalade US-2653
+> désormais livrés** — cf. bandeau ci-dessus), exécutée **chaque nuit** sur l'ensemble du portefeuille
+> patient actif. **Aucune proposition n'est appliquée automatiquement** (ADR #13) : chaque proposition
+> est `pending` et validée par un **DOCTOR**.
 
 ---
 

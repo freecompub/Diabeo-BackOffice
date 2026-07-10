@@ -3,7 +3,14 @@
 > 📌 Épic · fiche patient + espace patient · front + back + **migration Prisma** · Taille **XL**
 > · fait suite à US-2630 (fiche patient unifiée) & US-2642 (unification ouverture) · concerne l'ADR #13
 >
-> **Statut** : 🟡 spécification (à valider) — **aucun code avant validation de l'US.**
+> **Statut** : ✅ **DONE (2026-07-10)** — épic clôturé, code complet. Slices 2646→2653 livrées
+> (édition fiche + self-service, provenance `propose→valide`, générateur multi-levier ICR/basal/ISF/
+> fixedDose + dé-escalade active des hypos récurrentes, maturité graduée, grouped-only). L'auto-application
+> a été **retirée** (ADR #28, PR #714). Le flag mode-c `observance` est livré et testé. **Seul reste hors
+> périmètre code** : l'activation du cron générateur en **production** = gate **ops/DPO** (signature DPIA +
+> flag `PROPOSAL_CRON_ENABLED`) — tracé dans `docs/compliance/go-live-checklist.md` **GATE #1** (détail
+> runbook `cron-proposal-generator.md` §0). *La spécification ci-dessous est conservée comme référence
+> historique.*
 
 ## 1. Intention (voix produit)
 
