@@ -5,7 +5,7 @@
  * US-2657 (grouped-only, ADR #23) : l'édition ISF se fait **exclusivement en bloc** via `PUT`, quel que soit
  * le rôle. Les anciennes écritures **par-créneau** `POST` (createIsf) et `PATCH` (updateIsf) sont **retirées**
  * (elles ré-ouvraient la « dérive de base » — un édit unitaire ne supersédait pas une `SlotSetProposal`
- * pending). La méthode service `updateIsf` reste (chemin gouverné `auto-apply`).
+ * pending), et les méthodes service par-créneau ont été supprimées avec le retrait de l'auto-application.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"

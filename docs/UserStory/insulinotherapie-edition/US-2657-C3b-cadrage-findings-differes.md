@@ -1,8 +1,18 @@
 # US-2657 — Cadrage C3b (orchestrateur groupé) & findings différés
 
+> ⚠️ **Mise à jour 2026-07-10 : AUTO-APPLICATION RETIRÉE**
+> 
+> Ce cadrage a été produit lors de la revue d'epic **avant la décision de retrait de l'auto-application experte gouvernée (2026-07-10)**. La totalité du périmètre d'orchestration (`applyExpertGroupGoverned`, enveloppe C1–C8, gouvernance, `AutoApplyEvent`, audit actions `AUTO_APPLY_*`) a été **supprimée du code**. 
+>
+> Ce document est **archivé** à titre de référence historique — les findings et durcissements y décrits ne s'appliquent plus.
+
+---
+
+**[DOCUMENT ARCHIVÉ — Spécification historique de l'orchestrateur auto-apply retirée]**
+
 Note de cadrage produite lors de la **revue d'epic US-2657** (durcissement, branche `fix/us2657-epic-hardening`).
-Elle liste ce qui a été **corrigé** dans le durcissement et ce qui est **volontairement différé** à la slice
-**C3b** (`applyExpertGroupGoverned`, orchestrateur groupé) ou à une slice dédiée, avec la justification.
+Elle liste ce qui avait été **corrigé** dans le durcissement et ce qui était **volontairement différé** à la slice
+**C3b** — cette slice n'a jamais été livrée, l'auto-application ayant été retirée avant.
 
 ## Corrigé dans le durcissement (branche `fix/us2657-epic-hardening`)
 

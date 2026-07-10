@@ -168,68 +168,6 @@ export const CLINICAL_BOUNDS = {
   CORRECTION_MIN_ELEVATION_GL: 0.3,
   CORRECTION_SETTLE_TOL_MIN: 30,
   CORRECTION_COB_LOOKBACK_MIN: 180,
-
-  // ── US-2657 (slice B) — Enveloppe de sécurité de l'AUTO-APPLICATION experte (validé medical) ──
-  // Un changement patient EXPERT ne s'auto-applique que si TOUTES les conditions C1–C8 (+ C6b) sont
-  // vraies ; sinon il RETOMBE en proposition (fail-safe), sauf hors bornes cliniques = rejet dur.
-  /** C3 — amplitude max auto-applicable d'un ratio (ISF/ICR/basal), en % ; = `PATIENT_MAX_CHANGE_PERCENT`
-   *  (l'auto-application ne dépasse jamais ce qu'une proposition patient pourrait demander). */
-  AUTO_APPLY_MAX_CHANGE_PERCENT: 10,
-  /** C3 — delta max auto-applicable d'une dose fixe (U) ; miroir de `FIXED_DOSE_PATIENT_MAX_DELTA_U`. */
-  AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U: 1.0,
-  /** C2 — une modification STRUCTURELLE (ajout/suppression/déplacement d'heures) n'est JAMAIS auto-applicable. */
-  AUTO_APPLY_STRUCTURAL_ALLOWED: false,
-  /** C7 — délai min entre deux auto-applications sur (patient × paramètre × créneau). Aligné `FIXED_DOSE_COOLDOWN_HOURS`. */
-  AUTO_APPLY_COOLDOWN_HOURS: 72,
-  /** C7 — anti-cliquet : cumul max des |Δ%| auto-appliqués sur un (paramètre × créneau) sur 7 j glissants. < cap moteur (20 %). */
-  AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK: 15,
-  /** C6b — plancher : une BAISSE d'insuline ne peut s'auto-appliquer que sur une fenêtre ≥ 14 j (aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
-  AUTO_APPLY_MIN_WINDOW_DAYS: 14,
-  /** C6b — plancher : capture CGM ≥ 70 % (fenêtre représentative, ATTD/Battelino) pour autoriser une baisse. */
-  AUTO_APPLY_MIN_CAPTURE_RATE_PERCENT: 70,
-  /** C6b — bloque une baisse si TAR>180 (`elevated+hyper`) dépasse ce % (plafond consensus above-range). */
-  AUTO_APPLY_TAR_BLOCK_PERCENT: 30,
-  /** C6b — bloque une baisse si TAR>250 (`hyper`) dépasse ce % (2× le plancher consensus niveau-2 de 5 %). */
-  AUTO_APPLY_SEVERE_TAR_BLOCK_PERCENT: 10,
-  /** C6b — fenêtre de récence d'un blocage cétone (les cétones se normalisent vite). Seuil = `KetoneThreshold.moderateThreshold` (défaut 1,5 mmol/L). */
-  AUTO_APPLY_KETONE_BLOCK_LOOKBACK_HOURS: 48,
-  /**
-   * C6b — **backstop défense-en-profondeur** : nombre minimal de relevés glycémiques pour qu'une BAISSE
-   * puisse s'auto-appliquer. Empêche qu'un tableau vide/dégénéré (avec plancher jours/capture par ailleurs
-   * satisfait, ex. bug de harnais) soit lu comme « parfaitement dans la cible » par `computeTir([]) = 0 %`.
-   * **Monotone sûr** : ne peut que router DAVANTAGE de baisses en proposition (jamais en auto-application).
-   * Très en-dessous d'une vraie fenêtre 14 j / 70 % capture CGM (~2 800 relevés).
-   */
-  AUTO_APPLY_MIN_WINDOW_READINGS: 100,
-  /**
-   * C3b (US-2657) — **Cap d'auto-application GROUPÉE** : nombre maximal de créneaux (VALUE) qu'une session
-   * d'édition experte peut auto-modifier en un seul groupe SANS revue médecin. Au-delà (≥3) → tout le groupe
-   * part en `SlotSetProposal` médecin. Justification (medical-domain-validator) : un profil ISF/ICR compte
-   * 3–6 créneaux ; en modifier ≥3 d'un coup = re-titration de profil = acte médical, et rend l'ajustement
-   * NON ATTRIBUABLE (titration diabéto = un levier à la fois). Groupe mono-paramètre présumé (ISF OU ICR).
-   * ⚠️ Borne le PÉRIMÈTRE/attribuabilité ; l'ampleur cumulée co-directionnelle est bornée séparément par
-   * `AUTO_APPLY_MAX_GROUP_CUMULATIVE_*_PERCENT` (voir ci-dessous). L'ampleur reste aussi bornée PAR créneau
-   * (C3 ±10 %, C7 15 %/7 j).
-   */
-  AUTO_APPLY_MAX_GROUP_SLOTS: 2,
-  /**
-   * C3b (US-2657) — **Cap d'AMPLITUDE cumulée CO-DIRECTIONNELLE** d'un groupe auto-appliqué, en %. Ferme
-   * l'angle mort du cap par nombre : 2 créneaux chacun sous C3 (10 %) mais DANS LE MÊME SENS empilent leur
-   * effet (2×10 % ≈ +20 % d'insuline sur la portion de journée couverte) sans qu'aucune garde par-créneau ne
-   * voie la paire comme un tout. On somme les `|Δ%|` des créneaux modifiés PAR DIRECTION de risque
-   * (`deriveRiskDirection`) : « plus d'insuline » (hypo) et « moins d'insuline » (hyper) sommés SÉPARÉMENT —
-   * jamais additionnés (une redistribution nuit≠midi n'est pas un risque cumulé). Dépassement d'une direction
-   * → groupe entier en proposition (`failedCheck: "groupCumulative"`, fail-closed, jamais partiel).
-   *
-   * **Seuils ASYMÉTRIQUES** (décision produit US-2657, medical-domain-validator) — le risque n'est pas
-   * symétrique :
-   *  - **HAUSSE d'insuline (hypo)** = aigu (hypoglycémie sévère en minutes/heures) → cap serré **15 %**
-   *    (ancré sur C7 15 %/7 j : > C3 10 %, < 2×C3 20 %). Bloque 2 créneaux co-directionnels à −10 %.
-   *  - **BAISSE d'insuline (hyper)** = lent (sous-dosage/acidocétose en heures/jours), DÉJÀ lourdement gardé
-   *    par C6b (14 j/70 %/cétose/TAR) → cap **20 %** (défère à C6b comme garde-fou principal des baisses).
-   */
-  AUTO_APPLY_MAX_GROUP_CUMULATIVE_INCREASE_PERCENT: 15,
-  AUTO_APPLY_MAX_GROUP_CUMULATIVE_DECREASE_PERCENT: 20,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

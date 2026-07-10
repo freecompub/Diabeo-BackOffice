@@ -1612,7 +1612,7 @@
     "maturityConfirmChange": "De « {from} » à « {to} ».",
     "maturityGrantSlots": "Vous autorisez ce patient à restructurer ses créneaux horaires.",
     "maturityGrantExpert": "Vous autorisez ce patient à refuser vos propositions et à en contre-proposer.",
-    "maturityDowngradeNote": "Réduire le niveau retire les capacités correspondantes (et neutralise l'auto-application si elle était active).",
+    "maturityDowngradeNote": "Réduire le niveau retire les capacités correspondantes.",
     "maturityConfirm": "Confirmer",
     "maturityCancel": "Annuler",
     "maturitySaving": "Enregistrement…",

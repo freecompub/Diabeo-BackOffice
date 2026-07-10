@@ -1,6 +1,12 @@
 # US-2648 — Onglet « Traitements » éditable (fiche pro) : lecture tous / DOCTOR direct / NURSE→proposition
 
 > 📌 Épic US-2645 · front + back · Taille **L** · dépend de : US-2646, US-2647
+>
+> ⚠️ **Mise à jour 2026-07-10** : les écritures **par-créneau** (`POST`/`PATCH`/`DELETE` ; méthodes service
+> `updateIsf`/`updateIcr`/`updatePumpSlot`/`createPumpSlot`) décrites ci-dessous ont été **retirées** — d'abord
+> les routes (grouped-only, ADR #26), puis les méthodes service avec le retrait de l'auto-application (ADR #28).
+> Unique voie d'écriture ISF/ICR/basal désormais : le **remplacement GROUPÉ** (`replaceSlotSet` /
+> `replacePumpSlotSet`). Les mentions par-créneau ci-dessous sont **historiques**.
 
 ## Contexte
 L'onglet Traitements de `/patients/[id]` est aujourd'hui une **projection lecture seule**

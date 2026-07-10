@@ -72,7 +72,7 @@ Resucrage tronquant le nadir, mean-vs-nadir (US-2653), basale stylo/MDI, régime
 **fail-safe** (sous-action, jamais sur-dosage) et tracés dans le catalogue clinique.
 
 ### 3.5 LOW — Données de dosage numériques en clair applicatif (protection at-rest) — US-2652
-Les **doses numériques** manipulées par les propositions/l'auto-application reposent sur le chiffrement
+Les **doses numériques** manipulées par les propositions reposent sur le chiffrement
 **at-rest (pgcrypto) + RBAC**, PAS sur l'AES-256-GCM applicatif, par **contrainte de calculabilité** (le
 moteur de titration doit lire/comparer les valeurs) :
 - `fixed_dose_slots.value_u` (dose fixe en U), `insulin_sensitivity_factors`/`carb_ratios`/`pump_basal_slots`

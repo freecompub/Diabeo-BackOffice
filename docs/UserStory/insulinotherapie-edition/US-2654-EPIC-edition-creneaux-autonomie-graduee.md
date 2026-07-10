@@ -1,10 +1,12 @@
 # US-2654 — EPIC : Édition des créneaux horaires & autonomie graduée du patient
 
+> ⚠️ **Mise à jour 2026-07-10** : l'**auto-application gouvernée** (D8 ci-dessous) a été **retirée**. 
+> L'épic couvre désormais **fenêtre d'édition, remplacement groupé, niveaux de maturité et propositions** — mais toute édition patient génère une proposition validée médecin (jamais d'auto-application).
+>
 > 📌 Épic · fiche patient + espace patient · front + back + **migration Prisma** · Taille **XL**
 > · fait suite à US-2645 (édition insulinothérapie multi-mode) · concerne l'ADR #13, la frontière MDR
 >
-> **Statut** : 🟡 spécification (à valider) — **aucun code de production avant validation de l'épic.**
-> Cadrage de référence : Artifact « Édition des créneaux horaires » (v3).
+> **Statut** : Partiellement livrée (2026-07-10) — fenêtre/groupe/maturité/propositions actifs ; auto-application retirée.
 
 ## 1. Intention (voix produit)
 

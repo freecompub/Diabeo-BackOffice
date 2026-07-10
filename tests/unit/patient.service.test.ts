@@ -644,9 +644,9 @@ describe("patientService.updateMedicalData", () => {
 })
 
 describe("patientService.setMaturityLevel (US-2657 slice A)", () => {
-  const mkTx = (currentLevel: string | null, autoApply = false) => ({
+  const mkTx = (currentLevel: string | null) => ({
     patient: {
-      findFirst: vi.fn().mockResolvedValue(currentLevel === null ? null : { maturityLevel: currentLevel, autoApply }),
+      findFirst: vi.fn().mockResolvedValue(currentLevel === null ? null : { maturityLevel: currentLevel }),
       update: vi.fn().mockResolvedValue({}),
     },
     auditLog: { create: vi.fn().mockResolvedValue({}) },
@@ -656,7 +656,7 @@ describe("patientService.setMaturityLevel (US-2657 slice A)", () => {
     const tx = mkTx("JUNIOR")
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
     const res = await patientService.setMaturityLevel(7, "INTERMEDIATE", 42)
-    expect(res).toEqual({ maturityLevel: "INTERMEDIATE", changed: true, autoApplyCleared: false })
+    expect(res).toEqual({ maturityLevel: "INTERMEDIATE", changed: true })
     expect(tx.patient.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { maturityLevel: "INTERMEDIATE" } })
     expect(tx.auditLog.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -669,19 +669,11 @@ describe("patientService.setMaturityLevel (US-2657 slice A)", () => {
     )
   })
 
-  it("downgrade EXPERT→JUNIOR avec autoApply ON → neutralise autoApply (fail-safe)", async () => {
-    const tx = mkTx("EXPERT", true)
-    prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
-    const res = await patientService.setMaturityLevel(7, "JUNIOR", 42)
-    expect(res).toEqual({ maturityLevel: "JUNIOR", changed: true, autoApplyCleared: true })
-    expect(tx.patient.update).toHaveBeenCalledWith({ where: { id: 7 }, data: { maturityLevel: "JUNIOR", autoApply: false } })
-  })
-
-  it("idempotent : niveau identique + autoApply déjà cohérent → no-op, pas d'update ni d'audit", async () => {
+  it("idempotent : niveau identique → no-op, pas d'update ni d'audit", async () => {
     const tx = mkTx("EXPERT")
     prismaMock.$transaction.mockImplementation(async (fn: any) => fn(tx))
     const res = await patientService.setMaturityLevel(7, "EXPERT", 42)
-    expect(res).toEqual({ maturityLevel: "EXPERT", changed: false, autoApplyCleared: false })
+    expect(res).toEqual({ maturityLevel: "EXPERT", changed: false })
     expect(tx.patient.update).not.toHaveBeenCalled()
     expect(tx.auditLog.create).not.toHaveBeenCalled()
   })

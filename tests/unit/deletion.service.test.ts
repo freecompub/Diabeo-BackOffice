@@ -136,8 +136,6 @@ describe("deleteUserAccount", () => {
       appointment: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       adjustmentProposal: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       slotSetProposal: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      autoApplyEvent: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
-      governanceApproval: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       bolusCalculationLog: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       cgmEntry: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
       glycemiaEntry: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
@@ -192,9 +190,7 @@ describe("deleteUserAccount", () => {
     // AverageData + InsulinFlowDeviceData should be deleted (C7 fix)
     expect(mockTx.averageData.deleteMany).toHaveBeenCalledWith({ where: { patientId: 10 } })
     expect(mockTx.insulinFlowDeviceData.deleteMany).toHaveBeenCalledWith({ where: { patientId: 10 } })
-    // US-2657 — auto-application gouvernée : purge RGPD Art. 17 des 3 tables de l'epic.
+    // US-2657 — propositions d'ensemble de créneaux : purge RGPD Art. 17.
     expect(mockTx.slotSetProposal.deleteMany).toHaveBeenCalledWith({ where: { patientId: 10 } })
-    expect(mockTx.autoApplyEvent.deleteMany).toHaveBeenCalledWith({ where: { patientId: 10 } })
-    expect(mockTx.governanceApproval.deleteMany).toHaveBeenCalledWith({ where: { patientId: 10 } })
   })
 })

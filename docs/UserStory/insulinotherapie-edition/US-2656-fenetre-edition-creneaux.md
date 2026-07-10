@@ -116,7 +116,7 @@
 | **INFIRMIÈRE** | ✅ | ✅ | ✅ | ✅ | **Proposition** (statut *pending*) | Oui |
 | **PATIENT — débutant (junior)** | ✅ | ❌ (désactivé + tooltip) | ❌ | ❌ | **Proposition** | Oui |
 | **PATIENT — intermédiaire** | ✅ | ✅ | ✅ | ✅ | **Proposition** | Oui |
-| **PATIENT — expert** | ✅ | ✅ | ✅ | ✅ | **Proposition** (ou auto-application si activée — US-2657) | Oui |
+| **PATIENT — expert** | ✅ | ✅ | ✅ | ✅ | **Proposition** (auto-application retirée — US-2657, cf. ADR #28) | Oui |
 
 **Détails d'affichage**
 - **Champs désactivés (junior)** : heures et bouton supprimer en `disabled` + `text-muted-foreground` ; « Ajouter un créneau » `disabled` avec `Tooltip` : « La modification des horaires nécessite un niveau d'autonomie supérieur. Contactez votre soignant. »

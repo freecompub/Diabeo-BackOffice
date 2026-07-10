@@ -459,9 +459,8 @@ model User {
   auditLogs                         AuditLog[]
   reviewedProposals                 AdjustmentProposal[]              @relation("ReviewedBy")
   proposedAdjustments               AdjustmentProposal[]              @relation("ProposedBy")
-  slotSetProposalsProposed          SlotSetProposal[]                @relation("SlotSetProposedBy")
-  slotSetProposalsReviewed          SlotSetProposal[]                @relation("SlotSetReviewedBy")
-  governanceApprovals               GovernanceApproval[]             @relation("GovernanceApprovedBy")
+  slotSetProposalsProposed          SlotSetProposal[]                 @relation("SlotSetProposedBy")
+  slotSetProposalsReviewed          SlotSetProposal[]                 @relation("SlotSetReviewedBy")
   reviewFlagsCreated                ClinicalReviewFlag[]              @relation("ReviewFlagCreatedBy")
   reviewFlagsResolved               ClinicalReviewFlag[]              @relation("ReviewFlagResolvedBy")
   prescribedInsulins                PatientInsulin[]                  @relation("PrescribedInsulins")
@@ -688,38 +687,32 @@ model UiStateSave {
 // ═══════════════════════════════════════════════════════════════
 
 model Patient {
-  id            Int            @id @default(autoincrement())
-  userId        Int            @unique @map("user_id")
-  pathology     Pathology
+  id               Int               @id @default(autoincrement())
+  userId           Int               @unique @map("user_id")
+  pathology        Pathology
   /// Mode grossesse (US-2232) — bascule cibles glycémiques sur defaults GD
   /// (plus stricts — cf. ACOG/ADA). Indépendant de PatientPregnancy.active
   /// pour permettre activation rapide sans saisir DPA, puis synchronisation
   /// par la couche service vers PatientPregnancy lorsque les détails sont saisis.
-  pregnancyMode Boolean        @default(false) @map("pregnancy_mode")
+  pregnancyMode    Boolean           @default(false) @map("pregnancy_mode")
   /// US-2657 — niveau d'autonomie (ETP), posé par le soignant. Défaut JUNIOR (le plus restrictif).
-  maturityLevel MaturityLevel  @default(JUNIOR) @map("maturity_level")
-  /// US-2657 (slice C) — auto-application experte ACTIVÉE pour ce patient. OFF par défaut,
-  /// gouvernance-gated (activation ADMIN conditionnée à une GovernanceApproval valide) et
-  /// SUBORDONNÉE au kill-switch global `AUTO_APPLY_GLOBALLY_ENABLED`. Frontière MDR.
-  autoApply     Boolean       @default(false) @map("auto_apply")
-  governanceApprovals GovernanceApproval[]
-  autoApplyEvents     AutoApplyEvent[]
-  slotSetProposals    SlotSetProposal[]
+  maturityLevel    MaturityLevel     @default(JUNIOR) @map("maturity_level")
+  slotSetProposals SlotSetProposal[]
   /// US-2646 — mode de traitement (basalBolus / fixedDose / nonInsulin). CACHE
   /// d'affichage/filtrage UNIQUEMENT. ⚠️ NE PAS lire cette colonne brute pour une
   /// décision logique : source de vérité = `resolveTreatmentMode()` (US-2647, dérivé
   /// à la lecture). Writer du cache = gate d'écriture US-2648 (recalcul en transaction).
   /// NULL tant qu'aucun writer ne l'a peuplé (inerte, aucun reader aujourd'hui).
-  treatmentMode TreatmentMode? @map("treatment_mode")
+  treatmentMode    TreatmentMode?    @map("treatment_mode")
   /// US-2076bis-V2 (Issue #442) — UUID v4 opaque pour anonymisation UI
   /// (ThreadList messagerie + future Patient list). Élimine timing oracle
   /// énumération `patient.id` séquentiel (ANSSI / RGPD Art. 5.1.f). Le
   /// `patientId` BDD reste l'identifiant interne pour FK + audit pivot
   /// US-2268 (jamais exposé client UI). Le `publicRef` est stable
   /// (pas de rotation V2 — compromis stabilité historique vs anti-énumération).
-  publicRef     String         @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
-  createdAt     DateTime       @default(now()) @map("created_at")
-  deletedAt     DateTime?      @map("deleted_at")
+  publicRef        String            @default(dbgenerated("gen_random_uuid()")) @map("public_ref") @db.Uuid
+  createdAt        DateTime          @default(now()) @map("created_at")
+  deletedAt        DateTime?         @map("deleted_at")
 
   user                   User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
   medicalData            PatientMedicalData?
@@ -791,48 +784,6 @@ model Patient {
   @@unique([publicRef], map: "patients_public_ref_key")
   @@index([deletedAt])
   @@map("patients")
-}
-
-/// US-2657 (slice C) — Artefact de gouvernance autorisant l'auto-application experte d'un patient.
-/// PRÉ-REQUIS pour poser `Patient.autoApply = true` (décision qualité/réglementaire tracée, MDR).
-/// Immuable en pratique (append-only) ; `approvedById` = ADMIN acteur, `reference`/`dpiaRef` = liens
-/// vers la décision de gouvernance et la DPIA. Jamais de PHI.
-model GovernanceApproval {
-  id           Int      @id @default(autoincrement())
-  patientId    Int      @map("patient_id")
-  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  approvedById Int      @map("approved_by_id") // ADMIN ayant enregistré l'approbation
-  // RESTRICT (pas SetNull) : `governance_approvals` est append-only (trigger `governance_approvals_no_update`
-  // interdit tout UPDATE — or SetNull EST un UPDATE). L'attribution reste obligatoire ; l'identité de
-  // l'approbateur est de toute façon figée dans l'audit immuable. Un user approbateur ne peut être hard-deleted.
-  approver     User     @relation("GovernanceApprovedBy", fields: [approvedById], references: [id], onDelete: Restrict)
-  reference    String   // référence de la décision de gouvernance
-  dpiaRef      String?  @map("dpia_ref") // lien DPIA
-  enabled      Boolean  @default(true) // l'approbation autorise l'activation
-  // Timestamptz — cohérent avec le reste des tables de l'epic (tri/affichage stables cross-timezone).
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
-
-  @@index([patientId])
-  @@map("governance_approvals")
-}
-
-/// US-2657 (slice C) — Registre (append-only) des auto-applications effectives. Alimente l'anti-cliquet
-/// C7 de l'enveloppe : `hoursSinceLastAutoApply` + cumul des |Δ%| sur (patient × paramètre × créneau)
-/// sur 7 j glissants. `deltaPercent` en %. Jamais de PHI.
-model AutoApplyEvent {
-  id            Int               @id @default(autoincrement())
-  patientId     Int               @map("patient_id")
-  patient       Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  parameterType AdjustableParameter @map("parameter_type")
-  slotKey       String            @map("slot_key") // identifie le créneau, forme `"${startHour}-${endHour}"` (ex. "22-6")
-  deltaPercent  Float             @map("delta_percent") // |Δ%| appliqué (anti-cliquet)
-  // Timestamptz — `hoursSinceLastAutoApply` (garde anti-cliquet C7) doit être stable quel que soit le TZ Node.
-  appliedAt     DateTime          @default(now()) @map("applied_at") @db.Timestamptz()
-
-  // `slotKey` en 3e position d'égalité : couvre le hot path anti-cliquet C7 (findFirst/findMany scopés
-  // patient × paramètre × créneau, borne temporelle en dernier). US-2657 durcissement.
-  @@index([patientId, parameterType, slotKey, appliedAt])
-  @@map("auto_apply_events")
 }
 
 /// US-2657 (slice C3) — **Proposition d'ENSEMBLE de créneaux** (US-2657 Option 2). Représente une édition
@@ -2482,7 +2433,9 @@ model AuditLog {
   /// événements système (cron, worker). FK Restrict empêche la suppression
   /// d'un user qui a des audit logs (RGPD Art. 17 → anonymisation, pas DELETE).
   userId         Int?     @map("user_id")
-  action         String   @db.VarChar(30)
+  // VarChar(64) — la borne 30 tronquait `MATURITY_LEVEL_SELF_ELEVATION_DENIED` (36 car.) → insert `22001`
+  // (bug latent US-2657). 64 = marge confortable pour les tokens d'action actuels et futurs.
+  action         String   @db.VarChar(64)
   resource       String   @db.VarChar(30)
   resourceId     String?  @map("resource_id")
   oldValue       Json?    @map("old_value")

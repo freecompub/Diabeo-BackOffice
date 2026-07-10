@@ -28,7 +28,7 @@ ORM: Prisma 5+
 
 ## Aperçu global
 
-Le schéma Diabeo contient **50 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
+Le schéma Diabeo contient **48 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
 
 ### Principles architecturaux
 
@@ -56,6 +56,8 @@ Le schéma Diabeo contient **50 tables** réparties en **11 domaines métier**, 
 | 11 | Configuration & UI | 5 | DashboardConfiguration, DashboardWidget, UnitDefinition, UserDayMoment, UiStateSave, BasalFlowSchedule |
 | Spécial | Audit (HDS) | 1 | AuditLog |
 | | **TOTAL** | **48** | |
+
+> **Mise à jour 2026-07-10** : les tables `GovernanceApproval` et `AutoApplyEvent` (auto-application gouvernée) ont été supprimées (US-2657 retirée). La colonne `Patient.autoApply` n'existe plus. Le niveau de maturité du patient (`Patient.maturityLevel`) gouverne les capacités d'édition uniquement ; toute édition génère une proposition validée par un médecin.
 
 ---
 
@@ -2434,5 +2436,5 @@ await auditService.log({
 ---
 
 **Document généré**: 2026-04-01 — Phase 0 implémentée  
-**Statut**: ✅ Schéma complet (50 tables, 22 enums)  
+**Statut**: ✅ Schéma complet (48 tables, 21 enums)  
 **Prochaine mise à jour**: Après phases 3-7 (API CRUD complète)

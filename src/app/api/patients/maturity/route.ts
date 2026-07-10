@@ -22,7 +22,7 @@ const bodySchema = z.object({
  * garde `user.role !== "DOCTOR"` → **exclut NURSE/VIEWER ET ADMIN**. Tout non-DOCTOR est refusé (403) et la
  * tentative est tracée par l'action d'audit dédiée `MATURITY_LEVEL_SELF_ELEVATION_DENIED` (AC-1 : un patient
  * VIEWER ne peut jamais s'auto-élever). Scopé patient (anti-IDOR → 404). Idempotent. Audit
- * `MATURITY_LEVEL_CHANGED` (`from → to`, + `AUTO_APPLY_FLAG_CHANGED` si downgrade) émis par le service.
+ * `MATURITY_LEVEL_CHANGED` (`from → to`) émis par le service.
  */
 export async function PATCH(req: NextRequest) {
   try {

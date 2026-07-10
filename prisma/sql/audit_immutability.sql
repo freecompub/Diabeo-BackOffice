@@ -20,31 +20,7 @@ CREATE TRIGGER audit_logs_immutable
   BEFORE UPDATE OR DELETE ON audit_logs
   FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();
 
--- ═══════════════════════════════════════════════════════════════
--- US-2657 (slice C) — Immutabilité des artefacts de gouvernance
--- ═══════════════════════════════════════════════════════════════
--- governance_approvals & auto_apply_events sont append-only : une
--- approbation enregistrée ou un événement d'auto-application ne doit
--- JAMAIS être ALTÉRÉ silencieusement (tamper-evidence HDS/MDR).
---
--- ⚠️ On bloque UPDATE UNIQUEMENT (pas DELETE) : ces tables ont un FK
--- ON DELETE CASCADE vers patients, requis pour l'effacement RGPD
--- Art. 17 (deletion.service.ts). L'ACTION de gouvernance reste tracée
--- dans audit_logs (immuable UPDATE+DELETE, non cascadé) même si
--- l'artefact est effacé avec le patient.
--- ═══════════════════════════════════════════════════════════════
-
-CREATE OR REPLACE FUNCTION prevent_governance_row_update()
-RETURNS TRIGGER AS $$
-BEGIN
-  RAISE EXCEPTION '% is append-only: UPDATE is forbidden (governance tamper-evidence)', TG_TABLE_NAME;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER governance_approvals_no_update
-  BEFORE UPDATE ON governance_approvals
-  FOR EACH ROW EXECUTE FUNCTION prevent_governance_row_update();
-
-CREATE TRIGGER auto_apply_events_no_update
-  BEFORE UPDATE ON auto_apply_events
-  FOR EACH ROW EXECUTE FUNCTION prevent_governance_row_update();
+-- NB : les triggers d'immutabilité des tables de gouvernance de l'auto-application
+-- (governance_approvals / auto_apply_events) ont été retirés avec la suppression complète de
+-- l'auto-application experte (US-2657) — ces tables et leur fonction `prevent_governance_row_update`
+-- n'existent plus (voir migration `..._us2657_remove_auto_apply`).

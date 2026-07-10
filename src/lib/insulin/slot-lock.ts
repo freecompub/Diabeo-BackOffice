@@ -1,19 +1,20 @@
 /**
- * US-2657 (durcissement C3b) — **Verrou consultatif unifié des mutations de créneaux insuline**.
+ * US-2657 — **Verrou consultatif unifié des mutations de créneaux insuline**.
  *
- * Toute mutation d'un jeu de créneaux ISF/ICR (ou basal) d'un patient — édition DOCTOR directe
- * (`updateIsf`/`updateIcr`/`updatePumpSlot`/`replaceSlotSet`), auto-application UNITAIRE
- * (`applyExpertEditGoverned`) et GROUPÉE (`applyExpertGroupGoverned`) — doit prendre CE verrou, scopé
- * `(patient × paramètre)`. Objectif : **exclusion mutuelle réelle** entre ces chemins, sans laquelle un
- * `replaceSlotSet` (remplacement du jeu complet) peut écraser silencieusement une écriture concurrente
- * (lost-update / reversion d'une décision médecin — cf. review PR #707 finding B1).
+ * Toute mutation d'un jeu de créneaux ISF/ICR (ou basal) d'un patient — remplacement GROUPÉ
+ * (`replaceSlotSet` / `replacePumpSlotSet`, seule voie d'écriture depuis le grouped-only ADR #26) et
+ * acceptation d'une `SlotSetProposal` — doit prendre CE verrou, scopé `(patient × paramètre)`. Objectif :
+ * **exclusion mutuelle réelle** entre ces chemins, sans laquelle un `replaceSlotSet` (remplacement du jeu
+ * complet) peut écraser silencieusement une écriture concurrente (lost-update / reversion d'une décision
+ * médecin — cf. review PR #707 finding B1).
  *
  * **Variante NON BLOQUANTE** (`pg_try_advisory_xact_lock`) : si le verrou n'est pas libre *immédiatement*
- * (mutation concurrente en cours), on **n'attend pas** → l'appelant décide en **fail-closed** (auto-apply →
- * proposition ; écriture DOCTOR directe → `slotsBusy`/409). Élimine toute attente/deadlock/timeout sous
- * contention. Le verrou est **transaction-scoped** (relâché au COMMIT/ROLLBACK, jamais fuité même sur crash)
- * et **ré-entrant** : une primitive appelée AVEC un `externalTx` qui détient déjà le verrou obtient `true`
- * (même transaction). Le hash 64-bit vient de `hashtextextended(key, 0)`.
+ * (mutation concurrente en cours), on **n'attend pas** → l'appelant décide en **fail-closed**
+ * (`slotsBusy`/409). Élimine toute attente/deadlock/timeout sous contention. Le verrou est
+ * **transaction-scoped** (relâché au COMMIT/ROLLBACK, jamais fuité même sur crash). La ré-entrance native de
+ * `pg_try_advisory_xact_lock` (même transaction ⇒ `true`) reste vraie mais n'est plus exploitée : aucun
+ * chemin ne pré-prend le verrou puis n'appelle une seconde primitive verrouillante (l'ancien harnais
+ * d'auto-application le faisait ; il a été retiré — ADR #28). Le hash 64-bit vient de `hashtextextended(key, 0)`.
  */
 import type { Prisma } from "@prisma/client"
 
