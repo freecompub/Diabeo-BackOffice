@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
     const patientId = await resolvePatientId(user.id, user.role, parsed.data.patientId)
     if (!patientId) {
       // Sonde d'énumération (pro visant un patient hors portefeuille) → auditée (US-2265). Report US-2648a.
-      if (parsed.data.patientId != null) {
+      if (parsed.data.patientId != null && user.role !== "VIEWER") {
         await auditService
           .accessDenied({ userId: user.id, resource: "PATIENT", resourceId: String(parsed.data.patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { patientId: parsed.data.patientId, kind: "adjustmentProposalList" } })
           .catch(() => {})
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
     if (!patientId) {
       // Un pro qui vise un patient hors portefeuille (patientId fourni → null) = sonde d'énumération :
       // auditée (accessDenied, burst-detection US-2265). Report US-2648a.
-      if (parsed.data.patientId != null) {
+      if (parsed.data.patientId != null && user.role !== "VIEWER") {
         await auditService
           .accessDenied({ userId: user.id, resource: "PATIENT", resourceId: String(parsed.data.patientId), ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { patientId: parsed.data.patientId, kind: "adjustmentProposalCreate" } })
           .catch(() => {})

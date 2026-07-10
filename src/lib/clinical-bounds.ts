@@ -87,35 +87,16 @@ export const CLINICAL_BOUNDS = {
    */
   PATIENT_MAX_CHANGE_PERCENT: 10,
   /**
-   * US-2652 — **Cap patient PAR TYPE d'opération** : la variation autorisée d'une proposition PATIENT est
-   * `min( PATIENT_MAX_CHANGE_PERCENT_<type> % × |valeur| , PATIENT_MAX_ABS_DELTA_<type> )` — le plus SERRÉ.
-   * Corrige le « % seul » mal comporté aux extrêmes (10 % = saut énorme sur grosse basale, minuscule sur
-   * petit ISF). **Sans plancher** : un cap sous l'incrément délivrable route vers le clinicien (fail-safe).
-   * Le % reste 10 % partout (aligné C3, < moteur 20 %) ; c'est le **delta absolu par type** qui borne les
-   * extrêmes. Constantes % par type pour permettre une divergence future sans toucher aux appels.
-   * Direction : baisse INTERDITE pour la famille basale (pompe + fixe) ; symétrique pour ISF/ICR/bolus fixe
-   * (une baisse de bolus pour hypo est légitime). Deltas = multiples de l'incrément délivrable (basale 0,05 ;
-   * dose fixe 0,5). Pédiatrie : delta dose fixe resserré à 0,5 U. Source : reco `medical-domain-validator`.
+   * US-2652 — **% du cap patient PAR TYPE** (uniforme 10 %, aligné C3, < moteur 20 %). Combiné à un **delta
+   * absolu PAR TIER de patient** (`PATIENT_MAX_ABS_DELTA`, hors `CLINICAL_BOUNDS` — map imbriquée) via
+   * `min(% × |valeur|, abs_tier)`. Le % est ce qui reste constant ; l'absolu varie par type ET par profil
+   * (pédiatrie/grossesse/standard/résistant). Constantes % par type pour permettre une divergence future.
    */
   PATIENT_MAX_CHANGE_PERCENT_ISF: 10,
   PATIENT_MAX_CHANGE_PERCENT_ICR: 10,
   PATIENT_MAX_CHANGE_PERCENT_BASAL_RATE: 10,
   PATIENT_MAX_CHANGE_PERCENT_FIXED_BASAL: 10,
   PATIENT_MAX_CHANGE_PERCENT_FIXED_BOLUS: 10,
-  /** Delta absolu max ISF (g/L·U) — ½ pas de titration ; borne au-delà de ISF > 0,50 (résistants). */
-  PATIENT_MAX_ABS_DELTA_ISF_GL: 0.05,
-  /** Delta absolu max ICR (g/U) — pas ICR conventionnel (DAFNE) ; borne au-delà de ICR > 10. */
-  PATIENT_MAX_ABS_DELTA_ICR_GU: 1.0,
-  /** Delta absolu max basale pompe (U/h) = 2 × incrément ; borne au-delà de 1,0 U/h. */
-  PATIENT_MAX_ABS_DELTA_BASAL_RATE_U_H: 0.1,
-  /** Delta absolu max dose fixe BASALE (U) adulte ; ≤ pas moteur 2 U. */
-  PATIENT_MAX_ABS_DELTA_FIXED_BASAL_U: 1.0,
-  /** Delta absolu max dose fixe BASALE (U) PÉDIATRIE = 1 incrément (0,5 U). */
-  PATIENT_MAX_ABS_DELTA_FIXED_BASAL_PEDIATRIC_U: 0.5,
-  /** Delta absolu max dose fixe BOLUS (U) adulte. */
-  PATIENT_MAX_ABS_DELTA_FIXED_BOLUS_U: 1.0,
-  /** Delta absolu max dose fixe BOLUS (U) PÉDIATRIE = 1 incrément (0,5 U). */
-  PATIENT_MAX_ABS_DELTA_FIXED_BOLUS_PEDIATRIC_U: 0.5,
   /**
    * US-2650 — Fenêtre de COOLDOWN (heures) entre deux propositions PATIENT sur le MÊME
    * (patient × paramètre × créneau). Anti-churn : empêche le spam « résolu → re-proposé » et
@@ -205,14 +186,10 @@ export const CLINICAL_BOUNDS = {
   // ── US-2657 (slice B) — Enveloppe de sécurité de l'AUTO-APPLICATION experte (validé medical) ──
   // Un changement patient EXPERT ne s'auto-applique que si TOUTES les conditions C1–C8 (+ C6b) sont
   // vraies ; sinon il RETOMBE en proposition (fail-safe), sauf hors bornes cliniques = rejet dur.
-  /** C3 — amplitude max auto-applicable d'un ratio (ISF/ICR/basal), en % ; = `PATIENT_MAX_CHANGE_PERCENT`
-   *  (l'auto-application ne dépasse jamais ce qu'une proposition patient pourrait demander). */
+  /** C3 — % max auto-applicable (tous types). Combiné au **même delta absolu PAR TIER** que le cap patient
+   *  (`PATIENT_MAX_ABS_DELTA`, via `min(%, abs_tier)`) → invariant `auto-apply ≤ patient` par construction,
+   *  pour TOUS les paramètres (US-2652 : ferme le trou où basal/ISF/ICR étaient en % seul). */
   AUTO_APPLY_MAX_CHANGE_PERCENT: 10,
-  /** C3 — delta max auto-applicable d'une dose fixe (U), ADULTE ; miroir du cap patient dose fixe. */
-  AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U: 1.0,
-  /** C3 — delta max auto-applicable d'une dose fixe (U), PÉDIATRIE ; miroir de
-   *  `PATIENT_MAX_ABS_DELTA_FIXED_*_PEDIATRIC_U` (préserve l'invariant « auto-apply ≤ patient », US-2652). */
-  AUTO_APPLY_FIXED_DOSE_MAX_DELTA_PEDIATRIC_U: 0.5,
   /** C2 — une modification STRUCTURELLE (ajout/suppression/déplacement d'heures) n'est JAMAIS auto-applicable. */
   AUTO_APPLY_STRUCTURAL_ALLOWED: false,
   /** C7 — délai min entre deux auto-applications sur (patient × paramètre × créneau). Aligné `FIXED_DOSE_COOLDOWN_HOURS`. */
@@ -269,6 +246,38 @@ export const CLINICAL_BOUNDS = {
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS
+
+/** Type d'opération pour le cap patient (la dose fixe est éclatée basal/bolus). */
+export type PatientCapType = "isf" | "icr" | "basalRate" | "fixedBasal" | "fixedBolus"
+
+/**
+ * US-2652 — **Tier de patient** pour le delta absolu du cap. Résolu SERVEUR (`resolvePatientCapTier`) par
+ * cascade **le plus strict gagne** à partir de signaux non-spoofables : mode pédiatrique, grossesse
+ * (`pregnancyMode || pathology === "GD"`), `pathology === "DT2"`. Défaut `STANDARD` (DT1).
+ */
+export type PatientCapTier = "PEDIATRIC" | "PREGNANCY" | "STANDARD" | "RESISTANT"
+
+/**
+ * US-2652 — **Delta absolu max d'un changement PATIENT, PAR TIER × type** (reco `medical-domain-validator`).
+ * Combiné au % (`PATIENT_MAX_CHANGE_PERCENT_*`, uniforme 10 %) via `min(% × |valeur|, abs)` — le plus SERRÉ,
+ * sans plancher. Le **même** delta borne l'auto-application (C3) → invariant `auto-apply ≤ patient ≤ moteur`.
+ *
+ * Le tiering ne joue QUE sur les paramètres en **unités délivrées** (basale, dose fixe), où la résistance à
+ * l'insuline augmente les doses. Les **ratios ISF/ICR restent UNIFORMES** : la résistance *abaisse* ISF/ICR
+ * → un résistant est à faible valeur où le 10 % borne déjà (élargir l'absolu ne relâcherait que les patients
+ * *sensibles* à forte valeur — mauvais sens). Deltas = multiples de l'incrément délivrable (basale 0,05 ;
+ * dose fixe 0,5). Direction (baisse interdite famille basale) portée séparément par `patient-change-cap.ts`.
+ */
+export const PATIENT_MAX_ABS_DELTA: Record<PatientCapTier, Record<PatientCapType, number>> = {
+  // Pédiatrie — masse corporelle minimale / plus sensible → le plus strict (gagne même sur un DT2 pédiatrique).
+  PEDIATRIC: { isf: 0.05, icr: 1.0, basalRate: 0.05, fixedBasal: 0.5, fixedBolus: 0.5 },
+  // Grossesse/DG — contrôle serré + enjeu hypo élevé ; gagne sur RESISTANT (une DT2 enceinte est en PREGNANCY).
+  PREGNANCY: { isf: 0.05, icr: 1.0, basalRate: 0.1, fixedBasal: 0.5, fixedBolus: 0.5 },
+  // Standard (DT1) — tier de référence.
+  STANDARD: { isf: 0.05, icr: 1.0, basalRate: 0.15, fixedBasal: 1.0, fixedBolus: 1.0 },
+  // Insulino-résistant (DT2) — fortes doses délivrées : pas de titration significatif (basale 0,25 U/h).
+  RESISTANT: { isf: 0.05, icr: 1.0, basalRate: 0.25, fixedBasal: 1.5, fixedBolus: 1.5 },
+} as const
 
 /**
  * US-2648b — Un débit basal est **délivrable** par la pompe s'il est un multiple de

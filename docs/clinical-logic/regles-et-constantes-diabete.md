@@ -37,11 +37,7 @@ consensus cap bolus 25 U.
 | `FIXED_DOSE_PATIENT_MAX_DELTA_U` | 1.0 | U | Cap variation **patient** dose fixe — *superseded US-2652 par les caps par type* |
 | `PATIENT_MAX_CHANGE_PERCENT` | 10 | % | Cap patient ratios (US-2649) — *superseded US-2652 pour la création patient (voir caps par type)* ; reste réf. % du miroir C3 |
 | `PATIENT_MAX_CHANGE_PERCENT_{ISF,ICR,BASAL_RATE,FIXED_BASAL,FIXED_BOLUS}` | 10 | % | Cap patient **par type** (US-2652) — combiné `min(%, abs)` |
-| `PATIENT_MAX_ABS_DELTA_ISF_GL` | 0.05 | g/L·U | Delta absolu max patient ISF |
-| `PATIENT_MAX_ABS_DELTA_ICR_GU` | 1.0 | g/U | Delta absolu max patient ICR |
-| `PATIENT_MAX_ABS_DELTA_BASAL_RATE_U_H` | 0.10 | U/h | Delta absolu max patient basale (2× incrément) |
-| `PATIENT_MAX_ABS_DELTA_FIXED_{BASAL,BOLUS}_U` | 1.0 | U | Delta absolu max patient dose fixe (adulte) |
-| `PATIENT_MAX_ABS_DELTA_FIXED_{BASAL,BOLUS}_PEDIATRIC_U` | 0.5 | U | Delta absolu max patient dose fixe (**pédiatrie**) |
+| `PATIENT_MAX_ABS_DELTA` | *(map tier×type)* | U / g/L·U / g/U | Delta absolu max patient **par tier × type** (voir table ci-dessous) |
 | `AUTO_APPLY_FIXED_DOSE_MAX_DELTA_PEDIATRIC_U` | 0.5 | U | Miroir C3 dose fixe pédiatrique (invariant auto-apply ≤ patient) |
 
 **Règle dose fixe (US-2646)** : pas de plafond bloquant (une basale fixe peut dépasser 25 U) ;
@@ -115,7 +111,16 @@ Source : `adjustmentService.createProposal` (`src/lib/services/adjustment.servic
 | **Provenance** | `source` (`algorithm`/`patient`/`nurse`/`doctor`) + auteur **dérivés serveur** (jamais du body). |
 | **`currentValue` de confiance** | Lu **serveur** depuis la config réelle (jamais du body) → garde-fous ininviolables. |
 | **Sens interdit patient** | Un patient ne peut **baisser** une basale (risque hyper/cétose). ISF/ICR : monter la valeur *réduit* la dose → borné en amplitude seulement. |
-| **Cap patient PAR TYPE (US-2652)** | La variation d'une proposition PATIENT est bornée `min( % × valeur , delta absolu )` **par type**, **sans plancher** (un cap sous l'incrément délivrable route vers le clinicien). % uniforme 10 % (aligné C3, < moteur 20 %) ; **delta absolu par type** : ISF **0,05 g/L·U**, ICR **1,0 g/U**, basale **0,10 U/h**, dose fixe **1,0 U** (adulte) / **0,5 U** (pédiatrie). **Direction** : baisse INTERDITE pour la famille basale (pompe + dose fixe basale) ; symétrique pour ISF/ICR et dose fixe **bolus** (baisse pour hypo légitime). `kind` dose fixe (`PatientInsulin.usage`) + pédiatrie résolus **serveur**. Corrige le « % seul » aux extrêmes (10 % = saut énorme sur grosse basale). Miroir C3 auto-apply : `AUTO_APPLY_FIXED_DOSE_MAX_DELTA_PEDIATRIC_U` (0,5 U) préserve « auto-apply ≤ patient ». Constantes `PATIENT_MAX_CHANGE_PERCENT_*` / `PATIENT_MAX_ABS_DELTA_*` (`clinical-bounds.ts`) ; logique pure `src/lib/insulin/patient-change-cap.ts`. |
+| **Cap patient PAR TYPE × TIER (US-2652)** | La variation d'une proposition PATIENT est bornée `min( % × valeur , delta absolu[tier][type] )`, **sans plancher** (un cap sous l'incrément délivrable route vers le clinicien). % uniforme 10 % (aligné C3, < moteur 20 %). Le **delta absolu varie par tier de patient** (résistance → doses délivrées plus fortes) ET par type. **Direction** : baisse INTERDITE pour la famille basale (pompe + dose fixe basale) ; symétrique pour ISF/ICR et dose fixe **bolus** (baisse pour hypo légitime). Le **même** delta borne l'auto-application (C3) → invariant `auto-apply ≤ patient ≤ moteur` pour TOUS les types. `kind` dose fixe (`PatientInsulin.usage`), **tier** (pathologie/grossesse/pédiatrie) résolus **serveur** (non-spoofable). Logique pure `src/lib/insulin/patient-change-cap.ts` ; map `PATIENT_MAX_ABS_DELTA` (`clinical-bounds.ts`). |
+
+**Table `PATIENT_MAX_ABS_DELTA` (delta absolu max, par tier × type)** — le tiering ne joue que sur les **unités délivrées** (basale, dose fixe) ; les ratios ISF/ICR restent **uniformes** (la résistance abaisse ISF/ICR → le 10 % y borne déjà). Tier résolu **le plus strict gagne** : pédiatrie (mode) > grossesse (`pregnancyMode || pathology=GD`) > résistant (`pathology=DT2`) > standard (DT1) :
+
+| Paramètre | PÉDIATRIE | GROSSESSE | STANDARD (DT1) | RÉSISTANT (DT2) |
+|---|---|---|---|---|
+| Basale (U/h) | 0,05 | 0,10 | 0,15 | **0,25** |
+| Dose fixe basale/bolus (U) | 0,5 | 0,5 | 1,0 | **1,5** |
+| ISF (g/L·U) | 0,05 | 0,05 | 0,05 | 0,05 |
+| ICR (g/U) | 1,0 | 1,0 | 1,0 | 1,0 |
 | **Incrément basal (US-2648b)** | Un débit basal doit être **délivrable** = multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h), sinon non programmable sur la pompe. Source unique : **`isDeliverableBasalRate()`** (`clinical-bounds.ts`), appliquée à la **proposition** (`validateProposedValue`), au **remplacement groupé basal** (`replacePumpSlotSet`/`assertValidPumpSlotSet`, US-2657) et en **garde service** (`updatePumpSlot`, chemin gouverné). Miroir UI : `step="0.05"`. |
 | **Remplacement GROUPÉ basal (US-2657, grouped-only)** | L'édition des créneaux basaux se fait **exclusivement en bloc** via `PUT /api/insulin-therapy/basal-config/pump-slots` → `replacePumpSlotSet`. Validation `assertValidPumpSlotSet` (`insulin-therapy.service.ts`) : jeu non vide, aucun créneau de durée nulle, débit ∈ `[BASAL_MIN, BASAL_MAX]` **ET** délivrable, **no-overlap** (double délivrance = sur-dosage) et **no-gap STRICT 24 h** (une pompe délivre en permanence ; un trou = fenêtre sans basale = risque hyper/DKA). ⚠️ Le no-gap basal est un invariant **plus strict** que l'ancienne voie par-créneau (qui tolérait les trous) — *à confirmer `medical-domain-validator`*. Remplacement atomique (`deleteMany`+`createMany`), verrou non bloquant `(patient × basal)`, supersède les propositions basales `pending`. **Garde d'intégrité du mode** (revue #710) : refus `basalConfigNotPump` si le patient n'est pas en mode pompe (un patient MDI a aussi une `basalConfiguration` — ne pas y attacher de créneaux pompe). Les écritures par-créneau (`POST`/`PATCH`/`DELETE`) sont **retirées** (voir ADR #26). |
 | **Anti-spam** | 1 proposition `pending` max par (patient, paramètre, créneau) — index unique partiel `adjustment_proposals_one_pending_per_slot`. |

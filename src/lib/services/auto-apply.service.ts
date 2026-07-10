@@ -17,7 +17,7 @@
  * **Autorité** : l'appelant (route C3) porte l'authz (rôle/portefeuille) ; ce service reçoit un `patientId`
  * déjà autorisé, audite la décision, et `now` est injecté (pas d'horloge cachée).
  */
-import type { AdjustableParameter, AdjustmentReason, Prisma } from "@prisma/client"
+import type { AdjustableParameter, AdjustmentReason, Pathology, Prisma } from "@prisma/client"
 import { prisma, type PrismaClientOrTx } from "@/lib/db/client"
 import { decimalToNumber } from "@/lib/db/decimal"
 import { isAutoApplyGloballyEnabled } from "@/lib/env"
@@ -27,6 +27,7 @@ import { buildEnvelopeContext } from "@/lib/insulin/auto-apply-context"
 import { evaluateAutoApplyEnvelope } from "@/lib/insulin/auto-apply-envelope"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
+import { resolvePatientCapTier, type PatientCapTier } from "@/lib/insulin/patient-change-cap"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { adjustmentService, type CreateProposalInput } from "@/lib/services/adjustment.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
@@ -35,6 +36,18 @@ import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
 /** Égalité de valeurs cliniques (Decimal→number) avec tolérance — convention repo (évite le churn no-op). */
 const sameValue = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9
+
+/**
+ * US-2652 — Tier de cap patient pour l'enveloppe C3 (delta absolu `min(%, abs_tier)` = cap patient). Résolu
+ * serveur : `pathology` + grossesse (`pregnancyMode || GD`) + mode pédiatrique. Cascade « le plus strict gagne ».
+ */
+async function resolveAutoApplyTier(patientId: number, pathology: Pathology, pregnancyMode: boolean): Promise<PatientCapTier> {
+  const pediatric = await prisma.configVersion.findFirst({
+    where: { patientId, configType: "pediatric_mode", status: "active" },
+    select: { id: true },
+  })
+  return resolvePatientCapTier(pathology, pediatric != null, pregnancyMode || pathology === "GD")
+}
 
 /**
  * C3b (US-2657) — Cap d'AMPLITUDE cumulée CO-DIRECTIONNELLE d'un groupe (pure). Somme les `|Δ%|` des
@@ -264,9 +277,10 @@ export const autoApplyService = {
 
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, deletedAt: null },
-      select: { maturityLevel: true, autoApply: true },
+      select: { maturityLevel: true, autoApply: true, pathology: true, pregnancyMode: true },
     })
     if (!patient) throw new Error("patientNotFound")
+    const tier = await resolveAutoApplyTier(patientId, patient.pathology, patient.pregnancyMode)
 
     // Frontière DISPOSITIF MÉDICAL : un patient NON INSULINÉ ne reçoit JAMAIS de dose auto-appliquée
     // (mode dérivé serveur, fail-closed). Défense sur la branche AUTO_APPLY (la plus dangereuse, sans PS).
@@ -294,7 +308,7 @@ export const autoApplyService = {
 
     const evalInput = {
       authority: { maturityLevel: patient.maturityLevel, autoApply: effectiveAutoApply },
-      change: { parameterType, changeKind, currentValue, proposedValue, isfUnit },
+      change: { parameterType, changeKind, currentValue, proposedValue, isfUnit, tier },
       glycemia: context.glycemia,
       ratchet: context.ratchet,
     }
@@ -392,9 +406,10 @@ export const autoApplyService = {
     // 2. Patient existant / non soft-deleted.
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, deletedAt: null },
-      select: { maturityLevel: true, autoApply: true },
+      select: { maturityLevel: true, autoApply: true, pathology: true, pregnancyMode: true },
     })
     if (!patient) throw new Error("patientNotFound")
+    const tier = await resolveAutoApplyTier(patientId, patient.pathology, patient.pregnancyMode)
 
     // 3. Frontière MDR — jamais de dose auto pour un patient non insuliné (re-vérifiée SOUS le lock en 8).
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
@@ -481,7 +496,7 @@ export const autoApplyService = {
           const ctxE = await buildEnvelopeContext(patientId, parameterType, slotKey, ketoneModerateThreshold, now, windowDays, tx)
           const decision = evaluateAutoApplyEnvelope({
             authority,
-            change: { parameterType, changeKind: "VALUE", currentValue: curByKey.get(slotKey)!, proposedValue: s.value, isfUnit: param === "isf" ? "gl" : undefined },
+            change: { parameterType, changeKind: "VALUE", currentValue: curByKey.get(slotKey)!, proposedValue: s.value, isfUnit: param === "isf" ? "gl" : undefined, tier },
             glycemia: ctxE.glycemia,
             ratchet: ctxE.ratchet,
           })

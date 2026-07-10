@@ -84,11 +84,12 @@ export function InsulinSummary({ data, className }: InsulinSummaryProps) {
           </p>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-teal-500" />
+              {/* Pastille = couleur du secteur (tokens design-system), pas une classe Tailwind brute. */}
+              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.basal }} />
               {t("basal")} {data.basalPercent}%
             </span>
             <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-coral-500" />
+              <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: COLORS.bolus }} />
               {t("bolus")} {data.bolusPercent}%
             </span>
           </div>

@@ -1,58 +1,64 @@
 /**
- * US-2652 — Cap de variation d'une proposition **PATIENT**, PAR TYPE d'opération (fonction PURE).
+ * US-2652 — Cap de variation d'une proposition **PATIENT**, PAR TYPE d'opération ET PAR TIER de patient
+ * (fonction PURE).
  *
- * Corrige le « % seul » (`PATIENT_MAX_CHANGE_PERCENT`) mal comporté aux extrêmes : la variation autorisée
- * est `min( %type × |valeur courante| , delta absolu type )` — le plus SERRÉ, **sans plancher** (un cap
- * sous l'incrément délivrable route vers le clinicien, fail-safe). Direction : **baisse interdite** pour la
- * famille basale (pompe + dose fixe basale, risque hyper/cétose silencieuse) ; symétrique pour ISF/ICR et
- * dose fixe **bolus** (une baisse de bolus pour hypo est légitime). Pédiatrie : delta dose fixe resserré.
+ * Variation autorisée = `min( %type × |valeur courante| , delta absolu[tier][type] )` — le plus SERRÉ,
+ * **sans plancher** (un cap sous l'incrément délivrable route vers le clinicien, fail-safe). Le `%` reste
+ * uniforme (10 %) ; le **delta absolu varie par type ET par tier** (pédiatrie/grossesse/standard/résistant) :
+ * la résistance à l'insuline augmente les doses délivrées → un pas de titration significatif y est plus grand
+ * en unités réelles (basale/dose fixe). Les ratios ISF/ICR restent uniformes (couplage inversé à la résistance).
+ * Direction : **baisse interdite** pour la famille basale (pompe + dose fixe basale) ; symétrique pour
+ * ISF/ICR et dose fixe **bolus** (baisse pour hypo légitime).
  *
- * Source de vérité des valeurs : `CLINICAL_BOUNDS` (reco `medical-domain-validator`, US-2652).
- * Module SANS dépendance DB — testable isolément ; l'appelant (adjustment.service) résout `capType`
- * (kind basal/bolus de la dose fixe) et `isPediatric` côté serveur.
+ * Source des valeurs : `CLINICAL_BOUNDS` + `PATIENT_MAX_ABS_DELTA` (reco `medical-domain-validator`).
+ * Module SANS dépendance DB — l'appelant (adjustment.service) résout `capType` (kind dose fixe) et `tier`
+ * (pathologie + pédiatrie + grossesse) côté serveur, jamais du body.
  */
-import { CLINICAL_BOUNDS as B } from "@/lib/clinical-bounds"
+import type { Pathology } from "@prisma/client"
+import {
+  CLINICAL_BOUNDS as B,
+  PATIENT_MAX_ABS_DELTA,
+  type PatientCapType,
+  type PatientCapTier,
+} from "@/lib/clinical-bounds"
 
-/** Type d'opération pour le cap patient (la dose fixe est éclatée basal/bolus). */
-export type PatientCapType = "isf" | "icr" | "basalRate" | "fixedBasal" | "fixedBolus"
+export type { PatientCapType, PatientCapTier }
 
-type CapDef = {
-  pct: number
-  abs: number
-  /** Delta absolu resserré en mode pédiatrique (dose fixe uniquement). */
-  absPediatric?: number
-  /** Baisse interdite (famille basale) : monter seulement, borné en amplitude. */
-  noDecrease: boolean
+/** % du cap par type (uniforme 10 % aujourd'hui ; per-type pour divergence future). */
+const PCT: Record<PatientCapType, number> = {
+  isf: B.PATIENT_MAX_CHANGE_PERCENT_ISF,
+  icr: B.PATIENT_MAX_CHANGE_PERCENT_ICR,
+  basalRate: B.PATIENT_MAX_CHANGE_PERCENT_BASAL_RATE,
+  fixedBasal: B.PATIENT_MAX_CHANGE_PERCENT_FIXED_BASAL,
+  fixedBolus: B.PATIENT_MAX_CHANGE_PERCENT_FIXED_BOLUS,
 }
 
-const CAP: Record<PatientCapType, CapDef> = {
-  isf: { pct: B.PATIENT_MAX_CHANGE_PERCENT_ISF, abs: B.PATIENT_MAX_ABS_DELTA_ISF_GL, noDecrease: false },
-  icr: { pct: B.PATIENT_MAX_CHANGE_PERCENT_ICR, abs: B.PATIENT_MAX_ABS_DELTA_ICR_GU, noDecrease: false },
-  basalRate: { pct: B.PATIENT_MAX_CHANGE_PERCENT_BASAL_RATE, abs: B.PATIENT_MAX_ABS_DELTA_BASAL_RATE_U_H, noDecrease: true },
-  fixedBasal: {
-    pct: B.PATIENT_MAX_CHANGE_PERCENT_FIXED_BASAL,
-    abs: B.PATIENT_MAX_ABS_DELTA_FIXED_BASAL_U,
-    absPediatric: B.PATIENT_MAX_ABS_DELTA_FIXED_BASAL_PEDIATRIC_U,
-    noDecrease: true,
-  },
-  fixedBolus: {
-    pct: B.PATIENT_MAX_CHANGE_PERCENT_FIXED_BOLUS,
-    abs: B.PATIENT_MAX_ABS_DELTA_FIXED_BOLUS_U,
-    absPediatric: B.PATIENT_MAX_ABS_DELTA_FIXED_BOLUS_PEDIATRIC_U,
-    noDecrease: false,
-  },
+/** Baisse interdite (famille basale : risque hyper/cétose silencieuse). */
+const NO_DECREASE: Record<PatientCapType, boolean> = {
+  isf: false,
+  icr: false,
+  basalRate: true,
+  fixedBasal: true,
+  fixedBolus: false,
 }
 
 /**
- * Dérive le `PatientCapType` d'un `AdjustableParameter`. Pour `fixedDose`, le `kind` (usage de l'insuline
- * `PatientInsulin.usage`) discrimine basal/bolus ; **`both` (pré-mélangée) → fixedBasal** (règle stricte
- * no-decrease, une pré-mélangée couvre le fond). Résolu côté serveur (jamais du body).
+ * Résout le **tier de patient** par cascade **le plus strict gagne**, à partir de signaux résolus SERVEUR
+ * (jamais du body). `isPregnant` = `pregnancyMode || pathology === "GD"` (calculé par l'appelant).
+ */
+export function resolvePatientCapTier(pathology: Pathology, isPediatric: boolean, isPregnant: boolean): PatientCapTier {
+  if (isPediatric) return "PEDIATRIC"
+  if (isPregnant) return "PREGNANCY"
+  if (pathology === "DT2") return "RESISTANT"
+  return "STANDARD"
+}
+
+/**
+ * Dérive le `PatientCapType` d'un `AdjustableParameter`. Pour `fixedDose`, le `kind` (`PatientInsulin.usage`)
+ * discrimine basal/bolus ; **`both` (pré-mélangée) → fixedBasal** (règle stricte no-decrease). Résolu serveur.
  * @throws unsupportedParameter si le paramètre n'est pas cappé côté patient.
  */
-export function patientCapType(
-  parameterType: string,
-  fixedDoseKind?: "basal" | "bolus" | "both",
-): PatientCapType {
+export function patientCapType(parameterType: string, fixedDoseKind?: "basal" | "bolus" | "both"): PatientCapType {
   switch (parameterType) {
     case "insulinSensitivityFactor":
       return "isf"
@@ -67,27 +73,25 @@ export function patientCapType(
   }
 }
 
-/** Delta absolu MAX autorisé pour un changement patient = `min(% × |valeur|, delta absolu[/pédiatrie])`. */
-export function patientMaxAbsDelta(capType: PatientCapType, currentValue: number, isPediatric: boolean): number {
-  const c = CAP[capType]
-  const abs = isPediatric && c.absPediatric != null ? c.absPediatric : c.abs
-  return Math.min((c.pct / 100) * Math.abs(currentValue), abs)
+/** Delta absolu MAX autorisé pour un changement patient = `min(% × |valeur|, abs[tier][type])`. */
+export function patientMaxAbsDelta(capType: PatientCapType, currentValue: number, tier: PatientCapTier): number {
+  return Math.min((PCT[capType] / 100) * Math.abs(currentValue), PATIENT_MAX_ABS_DELTA[tier][capType])
 }
 
 /**
- * Vérifie qu'un changement patient respecte le cap par type. Retourne le **code d'erreur** à lever, ou
- * `null` si conforme. Tolérance FP sur la comparaison au seuil (ex. cumul flottant).
+ * Vérifie qu'un changement patient respecte le cap. Retourne le **code d'erreur** à lever, ou `null` si
+ * conforme. Tolérance FP sur la comparaison au seuil.
  * @returns "patientDecreaseForbidden" (baisse d'une basale) | "patientDeltaTooLarge" (amplitude) | null
  */
 export function checkPatientChangeCap(
   capType: PatientCapType,
   currentValue: number,
   proposedValue: number,
-  isPediatric: boolean,
+  tier: PatientCapTier,
 ): "patientDecreaseForbidden" | "patientDeltaTooLarge" | null {
   const delta = proposedValue - currentValue
-  if (CAP[capType].noDecrease && delta < 0) return "patientDecreaseForbidden"
-  const maxDelta = patientMaxAbsDelta(capType, currentValue, isPediatric)
+  if (NO_DECREASE[capType] && delta < 0) return "patientDecreaseForbidden"
+  const maxDelta = patientMaxAbsDelta(capType, currentValue, tier)
   if (Math.abs(delta) > maxDelta + 1e-9) return "patientDeltaTooLarge"
   return null
 }

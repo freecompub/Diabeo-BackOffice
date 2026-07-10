@@ -15,7 +15,7 @@ import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
 import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
-import { checkPatientChangeCap, patientCapType } from "@/lib/insulin/patient-change-cap"
+import { checkPatientChangeCap, patientCapType, resolvePatientCapTier, type PatientCapTier } from "@/lib/insulin/patient-change-cap"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
@@ -203,6 +203,21 @@ async function isPatientPediatric(patientId: number): Promise<boolean> {
     select: { id: true },
   })
   return v != null
+}
+
+/**
+ * US-2652 — **Tier de cap patient** résolu SERVEUR (jamais du body) : pathologie (`DT2` → résistant),
+ * grossesse (`pregnancyMode || pathology === "GD"`), mode pédiatrique. Cascade « le plus strict gagne ».
+ * @throws currentValueNotFound si le patient est introuvable (anti-IDOR ; scoping déjà fait en amont).
+ */
+async function resolvePatientTier(patientId: number): Promise<PatientCapTier> {
+  const [patient, pediatric] = await Promise.all([
+    prisma.patient.findFirst({ where: { id: patientId }, select: { pathology: true, pregnancyMode: true } }),
+    isPatientPediatric(patientId),
+  ])
+  if (!patient) throw new Error("currentValueNotFound")
+  const isPregnant = patient.pregnancyMode || patient.pathology === "GD"
+  return resolvePatientCapTier(patient.pathology, pediatric, isPregnant)
 }
 
 /**
@@ -486,8 +501,8 @@ export const adjustmentService = {
       //  - symétrique pour ISF/ICR et dose fixe BOLUS (une baisse de bolus pour hypo est légitime).
       // `kind` (dose fixe) et pédiatrie résolus SERVEUR (jamais du body). Voir `patient-change-cap.ts`.
       const fixedDoseKind = parameterType === "fixedDose" ? await resolveFixedDoseKind(patientId, input.moment) : undefined
-      const isPediatric = parameterType === "fixedDose" ? await isPatientPediatric(patientId) : false
-      const violation = checkPatientChangeCap(patientCapType(parameterType, fixedDoseKind), currentValue, proposedValue, isPediatric)
+      const tier = await resolvePatientTier(patientId)
+      const violation = checkPatientChangeCap(patientCapType(parameterType, fixedDoseKind), currentValue, proposedValue, tier)
       if (violation) throw new Error(violation)
 
       // Cooldown anti-churn (US-2650, épic §6) : une seule proposition patient par (paramètre ×

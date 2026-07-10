@@ -14,7 +14,7 @@
  *  C6 garde hypo (hausse) · C6b garde hyper/cétose (baisse) · C7 anti-cliquet · C8 fail-closed (enveloppe).
  */
 import type { AdjustableParameter, MaturityLevel } from "@prisma/client"
-import { CLINICAL_BOUNDS, isDeliverableBasalRate, isDeliverableFixedDose } from "@/lib/clinical-bounds"
+import { CLINICAL_BOUNDS, PATIENT_MAX_ABS_DELTA, isDeliverableBasalRate, isDeliverableFixedDose, type PatientCapType, type PatientCapTier } from "@/lib/clinical-bounds"
 import type { CgmThresholds } from "@/lib/statistics"
 import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 import { hypoWindowBlocks, hyperDecreaseBlockReason } from "@/lib/insulin/dose-safety-guards"
@@ -29,8 +29,8 @@ export type EnvelopeInput = {
     proposedValue: number
     /** Unité ISF (bornes/pourcentage). Requis pour ISF ; ignoré sinon. */
     isfUnit?: "gl" | "mgdl"
-    /** US-2652 — patient en mode pédiatrique → cap dose fixe C3 resserré (0,5 U). Défaut false. */
-    isPediatric?: boolean
+    /** US-2652 — tier de patient (pédiatrie/grossesse/standard/résistant) → delta absolu C3. Défaut STANDARD. */
+    tier?: PatientCapTier
   }
   glycemia: {
     /** Relevés **CGM** de la fenêtre (g/L) — base de C6b (avec `capturePercent`, plancher de suffisance). */
@@ -69,6 +69,25 @@ export type EnvelopeDecision =
   | { decision: "HARD_REJECT"; reason: "outOfClinicalBounds" }
 
 const B = CLINICAL_BOUNDS
+
+/**
+ * US-2652 — `AdjustableParameter` → `PatientCapType` pour le cap C3. `fixedDose` → `fixedBasal` (la map
+ * `PATIENT_MAX_ABS_DELTA` a les mêmes valeurs pour basal/bolus fixe ; la voie auto-apply dose fixe est
+ * dormante). `null` = paramètre non cappé (fail-closed). */
+function envelopeCapType(param: AdjustableParameter): PatientCapType | null {
+  switch (param) {
+    case "insulinSensitivityFactor":
+      return "isf"
+    case "insulinToCarbRatio":
+      return "icr"
+    case "basalRate":
+      return "basalRate"
+    case "fixedDose":
+      return "fixedBasal"
+    default:
+      return null
+  }
+}
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n)
 
 /** Bornes cliniques [min,max] de la valeur résultante selon le paramètre (C4). `null` si indéterminable. */
@@ -98,7 +117,7 @@ const FALLBACK = (failedCheck: FailedCheck): EnvelopeDecision => ({ decision: "F
 export function evaluateAutoApplyEnvelope(input: EnvelopeInput): EnvelopeDecision {
   try {
     const { authority, change, glycemia, ratchet } = input
-    const { parameterType: param, changeKind, currentValue, proposedValue, isfUnit, isPediatric } = change
+    const { parameterType: param, changeKind, currentValue, proposedValue, isfUnit, tier } = change
 
     // Entrées de base indispensables (fail-closed).
     if (!finite(currentValue) || !finite(proposedValue) || currentValue === 0) return FALLBACK("C8")
@@ -116,15 +135,16 @@ export function evaluateAutoApplyEnvelope(input: EnvelopeInput): EnvelopeDecisio
     // C2 — jamais de restructuration auto-appliquée (`AUTO_APPLY_STRUCTURAL_ALLOWED = false`).
     if (changeKind === "STRUCTURAL" && !B.AUTO_APPLY_STRUCTURAL_ALLOWED) return FALLBACK("C2")
 
-    // C3 — amplitude bornée (ratios en %, dose fixe en U).
+    // C3 — amplitude bornée `min(%, delta absolu PAR TIER)`, IDENTIQUE au cap patient (US-2652) → invariant
+    // `auto-apply ≤ patient` pour TOUS les types (ferme le trou où basal/ISF/ICR étaient en % seul).
     const absPercent = Math.abs((proposedValue - currentValue) / currentValue) * 100
-    if (param === "fixedDose") {
-      // Cap dose fixe C3 resserré en pédiatrie (miroir du cap patient) → préserve « auto-apply ≤ patient ».
-      const fixedCap = isPediatric ? B.AUTO_APPLY_FIXED_DOSE_MAX_DELTA_PEDIATRIC_U : B.AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U
-      if (Math.abs(proposedValue - currentValue) > fixedCap) return FALLBACK("C3")
-    } else {
-      if (absPercent > B.AUTO_APPLY_MAX_CHANGE_PERCENT) return FALLBACK("C3")
-    }
+    const capType = envelopeCapType(param)
+    if (!capType) return FALLBACK("C8") // paramètre non cappé (inconnu) → fail-closed
+    // `PATIENT_MAX_ABS_DELTA` stocke l'ISF en g/L·U : si la valeur est en mg/dL, mettre le delta à l'échelle (×100).
+    const absScale = capType === "isf" && isfUnit === "mgdl" ? 100 : 1
+    const absCap = PATIENT_MAX_ABS_DELTA[tier ?? "STANDARD"][capType] * absScale
+    const maxDelta = Math.min((B.AUTO_APPLY_MAX_CHANGE_PERCENT / 100) * Math.abs(currentValue), absCap)
+    if (Math.abs(proposedValue - currentValue) > maxDelta + 1e-9) return FALLBACK("C3")
 
     // C5 — délivrabilité (pas d'arrondi silencieux).
     if (param === "basalRate" && !isDeliverableBasalRate(proposedValue)) return FALLBACK("C5")
