@@ -145,6 +145,17 @@ export const CLINICAL_BOUNDS = {
    */
   HYPO_DEESCALATION_PERCENT: 10,
   /**
+   * US-2653 — **cooldown anti-cliquet du moteur** (h) sur une dé-escalade hypo. La dé-escalade est de
+   * magnitude FIXE (pas de scaling), donc **non auto-limitante** : sans garde temporelle, des runs
+   * successifs empileraient 10 %+10 %+10 % **avant** que l'effet du premier ajustement soit observable
+   * (l'effet basal/dose se juge sur ≥ 3 j). Le générateur **saute** une dé-escalade sur un
+   * `(patient × paramètre × créneau)` dont le dernier changement a été **accepté** il y a moins de
+   * `ENGINE_DEESCALATION_COOLDOWN_HOURS`. Aligné sur `FIXED_DOSE_COOLDOWN_HOURS`/`AGP_SUFFICIENCY.MIN_DAYS`
+   * (72 h ≈ 3 j = délai minimal pour observer l'effet). S'applique aux 4 leviers (ICR/ISF/basal/fixedDose).
+   * (validé medical US-2653 — condition bloquante.)
+   */
+  ENGINE_DEESCALATION_COOLDOWN_HOURS: 72,
+  /**
    * US-2651 (basal) — générateur basal pompe (validé medical). Le créneau titré est celui actif à
    * `NOCTURNAL_TITRATION_REF_HOUR` (**05:00** — un micro-débit basal à 05:00 agit ~06:00-08:00 = fasting).
    * Cible à jeun (g/L) : `glucoseTargets` individualisée si dans `[FASTING_TARGET_MIN_GL ; FASTING_TARGET_MAX_GL]`

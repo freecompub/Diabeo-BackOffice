@@ -93,6 +93,140 @@ export function analyzeIcrHypoDeescalation(
   }
 }
 
+/** Seuil hypo SÉVÈRE (niveau 2) en g/L — source unique mg/dL ÷ 100. */
+const SEVERE_HYPO_GL = GLYCEMIA_THRESHOLDS_MGDL.SEVERE_HYPO / 100
+
+/**
+ * US-2653 — présence d'**au moins une** hypo SÉVÈRE (niveau 2, < `SEVERE_HYPO_GL` = 0,54 g/L) dans la
+ * fenêtre. Sert au **surfaçage** : un seul relevé sévère confirmé est un événement réel qui ne doit jamais
+ * rester silencieux, même s'il n'est pas RÉCURRENT (donc insuffisant pour `recurrentPostMealHypo` qui, lui,
+ * exige une corroboration anti-artefact avant de RÉDUIRE activement une dose). L'appelant lève alors un flag
+ * de revue plutôt qu'une proposition. (validé medical US-2653.)
+ */
+export function hasSevereHypo(glucosesGl: number[]): boolean {
+  return glucosesGl.some((g) => Number.isFinite(g) && g < SEVERE_HYPO_GL)
+}
+
+/**
+ * Résultat d'une dé-escalade hypo pour un levier à dose DÉLIVRABLE (basal / dose fixe), où l'arrondi à
+ * l'incrément ou le plancher peut rendre la baisse **non actionnable** :
+ *  - `proposal` : baisse actionnable (à persister, sous réserve du cooldown côté générateur) ;
+ *  - `flagNonActionable` : hypos récurrentes AVÉRÉES mais la dose ne peut être réduite (déjà au plancher /
+ *    baisse < 1 incrément) → l'appelant lève un **flag de revue** (restructuration / arrêt = décision
+ *    clinique), JAMAIS un skip silencieux (validé medical US-2653) ;
+ *  - `none` : pas d'hypo récurrente.
+ */
+export type DeescalationOutcome =
+  | { kind: "proposal"; candidate: ProposalCandidate }
+  | { kind: "flagNonActionable" }
+  | { kind: "none" }
+
+/**
+ * US-2653 — dé-escalade **ISF** (moins d'insuline de correction) sur nadirs post-correction **propres et
+ * isolés** récurrents, indépendante du deadband sur la moyenne. **Hausse** ISF fixe `+HYPO_DEESCALATION_PERCENT`
+ * (corrections plus faibles ≈ −9 % d'insuline). Sens sûr (« hyper ») → jamais bloqué par la garde hypo ; un
+ * `proposedValue > ISF_MAX` est rejeté à la persistance (skip fail-closed).
+ *
+ * ⚠️ `nadirsGl` DOIT être les creux de **corrections isolées propres** (COB/IOB exclus par `correctionTrend`
+ * en amont) — jamais un nadir post-repas (une hypo par *stacking* correction-sur-repas ne prouve pas un ISF
+ * trop agressif). Provenance verrouillée par test (US-2653).
+ *
+ * @param slot Créneau ISF courant.
+ * @param nadirsGl Nadirs post-correction (g/L) du créneau, non nuls.
+ */
+export function analyzeIsfHypoDeescalation(
+  slot: { startHour: number; endHour: number; sensitivityFactorGl: number },
+  nadirsGl: number[],
+): ProposalCandidate | null {
+  if (!recurrentPostMealHypo(nadirsGl)) return null
+  const proposedValue = computeProposedValue(slot.sensitivityFactorGl, CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT)
+  return {
+    parameterType: "insulinSensitivityFactor",
+    reason: "isfTooLow", // hausse ISF = corrections plus faibles = moins d'insuline
+    currentValue: slot.sensitivityFactorGl,
+    proposedValue,
+    changePercent: CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT,
+    confidence: getConfidenceLevel(nadirsGl.length),
+    supportingEvents: nadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length,
+    totalEventsConsidered: nadirsGl.length,
+    timeSlotStartHour: slot.startHour,
+    timeSlotEndHour: slot.endHour,
+  }
+}
+
+/**
+ * US-2653 — dé-escalade **basale** (moins d'insuline nocturne) sur nadirs **nocturnes** récurrents,
+ * indépendante du deadband à jeun. **Baisse** fixe `−HYPO_DEESCALATION_PERCENT`, arrondie à l'incrément
+ * délivrable `PUMP_BASAL_INCREMENT`. Sens sûr (moins d'insuline). ⚠️ `nocturnalNadirsGl` UNIQUEMENT (jamais
+ * un nadir post-repas — invariant nocturne→créneau nocturne, US-2653). Le cas **à jeun HAUT + hypo nocturne**
+ * (Somogyi vs aube, direction non fiable) est traité par l'appelant en **flag**, JAMAIS ici.
+ *
+ * @param currentRate Débit basal nocturne courant (U/h).
+ * @param nocturnalNadirsGl Creux nocturnes (g/L), non nuls.
+ */
+export function analyzeBasalHypoDeescalation(
+  currentRate: number,
+  nocturnalNadirsGl: number[],
+): DeescalationOutcome {
+  if (!recurrentPostMealHypo(nocturnalNadirsGl)) return { kind: "none" }
+  const inc = CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT
+  const proposedValue = Math.round(computeProposedValue(currentRate, -CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT) / inc) * inc
+  // Baisse < 1 incrément après snap (débit déjà trop bas pour titrer) → non actionnable : flag, pas de skip.
+  if (currentRate - proposedValue < inc - 1e-9) return { kind: "flagNonActionable" }
+  return {
+    kind: "proposal",
+    candidate: {
+      parameterType: "basalRate",
+      reason: "basalTooHigh",
+      currentValue: currentRate,
+      proposedValue,
+      changePercent: Math.round(((proposedValue - currentRate) / currentRate) * 10000) / 100,
+      confidence: getConfidenceLevel(nocturnalNadirsGl.length),
+      supportingEvents: nocturnalNadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length,
+      totalEventsConsidered: nocturnalNadirsGl.length,
+    },
+  }
+}
+
+/**
+ * US-2653 — dé-escalade **dose fixe** (moins d'insuline) sur relevés BGM du moment récurremment bas,
+ * indépendante du deadband. **Baisse** `−min(HYPO_DEESCALATION_PERCENT %, FIXED_DOSE_MAX_DELTA_U)`, plancher
+ * `FIXED_DOSE_MIN`, snap `FIXED_DOSE_DELIVERY_INCREMENT_U`. Sens sûr, borné. Dose déjà au plancher / baisse
+ * < 1 incrément → `flagNonActionable` (arrêt/restructuration = décision clinique). Provenance : relevés du
+ * MOMENT uniquement.
+ *
+ * @param slot Dose fixe courante du moment (`{ moment, valueU }`).
+ * @param readingsGl Relevés glycémiques (g/L) du moment, non nuls.
+ */
+export function analyzeFixedDoseHypoDeescalation(
+  slot: { moment: DoseMoment; valueU: number },
+  readingsGl: number[],
+): DeescalationOutcome {
+  if (!Number.isFinite(slot.valueU) || slot.valueU < CLINICAL_BOUNDS.FIXED_DOSE_MIN) return { kind: "none" }
+  if (!recurrentPostMealHypo(readingsGl)) return { kind: "none" }
+  const inc = CLINICAL_BOUNDS.FIXED_DOSE_DELIVERY_INCREMENT_U
+  // Baisse = le plus petit de −HYPO_DEESCALATION_PERCENT % et −FIXED_DOSE_MAX_DELTA_U (U), plancher, snap.
+  const deltaFromPct = (slot.valueU * CLINICAL_BOUNDS.HYPO_DEESCALATION_PERCENT) / 100
+  const delta = Math.min(deltaFromPct, CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U)
+  const proposedRaw = Math.max(CLINICAL_BOUNDS.FIXED_DOSE_MIN, slot.valueU - delta)
+  const proposedValue = Math.round(proposedRaw / inc) * inc
+  const effectiveDelta = slot.valueU - proposedValue // > 0 = réduction
+  if (effectiveDelta < inc - 1e-9) return { kind: "flagNonActionable" }
+  return {
+    kind: "proposal",
+    candidate: {
+      parameterType: "fixedDose",
+      reason: "fixedDoseTooHigh",
+      currentValue: slot.valueU,
+      proposedValue,
+      changePercent: Math.round((-effectiveDelta / slot.valueU) * 100 * 100) / 100,
+      confidence: getConfidenceLevel(readingsGl.length),
+      supportingEvents: readingsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length,
+      totalEventsConsidered: readingsGl.length,
+    },
+  }
+}
+
 /**
  * Adjustment proposal candidate — suggested parameter change with confidence.
  * @typedef {Object} ProposalCandidate

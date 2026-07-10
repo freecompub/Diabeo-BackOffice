@@ -147,6 +147,20 @@ enum ClinicalReviewFlagType {
   // US-2651 (mode c) — HbA1c RÉCENTE au-dessus de la cible → à revoir. Comble le trou BGM-only
   // (patient sans CGM à HbA1c récente mais mauvaise). Orientation, jamais une dose.
   hba1cAboveTarget
+  // US-2653 — dé-escalade multi-levier : flags de revue CONTEXTUELS (orientation, jamais une dose). Le
+  // NOM d'enum est un identifiant technique « superset » ; le LIBELLÉ i18n affiché au médecin est
+  // volontairement GÉNÉRIQUE/exact (« hypoglycémie … à revoir ») car chaque flag couvre PLUSIEURS cas et
+  // ne doit jamais affirmer un fait non garanti (règle CLAUDE.md — ne pas induire le médecin en erreur).
+  // BASAL — 3 cas : (a) à jeun HAUT + hypo NOCTURNE récurrente = Somogyi vs aube (direction non fiable
+  // à automatiser) ; (b) baisse non actionnable (débit trop bas pour titrer d'un incrément) ; (c) hypo
+  // nocturne sévère isolée. Tous → revue (profil basal, snack, restructuration).
+  nocturnalHypoHighFasting
+  // ISF — 2 cas : (a) sous-correction moyenne + nadirs post-correction en hypo récurrente (timing/IOB/
+  // stacking — un ISF unique ne corrige pas les deux) ; (b) hypo post-correction sévère isolée. → revue.
+  highVariabilityPostCorrection
+  // DOSE FIXE — 3 cas : (a) moyenne haute + creux récurrents ; (b) baisse non actionnable (dose au
+  // plancher) ; (c) hypo du moment sévère isolée. → restructuration / arrêt = décision clinique.
+  highVariabilityFixedDose
 }
 
 enum ClinicalReviewFlagStatus {

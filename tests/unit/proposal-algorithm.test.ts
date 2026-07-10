@@ -42,7 +42,8 @@ import { describe, it, expect } from "vitest"
 import {
   getConfidenceLevel, clampChangePercent, computeProposedValue,
   analyzeIsfSlot, analyzeIcrSlot, analyzeBasalTrend, analyzeFixedDose,
-  recurrentPostMealHypo, analyzeIcrHypoDeescalation,
+  recurrentPostMealHypo, analyzeIcrHypoDeescalation, hasSevereHypo,
+  analyzeIsfHypoDeescalation, analyzeBasalHypoDeescalation, analyzeFixedDoseHypoDeescalation,
 } from "@/lib/proposal-algorithm"
 
 describe("proposal-algorithm", () => {
@@ -259,6 +260,9 @@ describe("proposal-algorithm", () => {
     it("garde anti-null : un null ne fabrique PAS une hypo (Number.isFinite)", () => {
       expect(recurrentPostMealHypo([null as unknown as number, null as unknown as number, 1.2])).toBe(false)
     })
+    it("récurrence = compte ABSOLU (≥ 2), pas une proportion : 2 creux dans une grande fenêtre → true", () => {
+      expect(recurrentPostMealHypo([0.6, 0.65, 1.2, 1.3, 1.4, 1.5, 1.6])).toBe(true)
+    })
   })
 
   describe("analyzeIcrHypoDeescalation (US-2653)", () => {
@@ -274,6 +278,100 @@ describe("proposal-algorithm", () => {
     })
     it("hypo non récurrente → null", () => {
       expect(analyzeIcrHypoDeescalation(slot, [0.65, 1.2, 1.3])).toBeNull()
+    })
+  })
+
+  describe("hasSevereHypo (US-2653)", () => {
+    it("un relevé < 0,54 g/L (niveau 2) → true", () => {
+      expect(hasSevereHypo([1.2, 0.5, 1.4])).toBe(true)
+    })
+    it("aucun relevé sévère (même si niveau 1) → false", () => {
+      expect(hasSevereHypo([0.6, 0.65, 1.2])).toBe(false)
+    })
+    it("fenêtre vide → false ; null ignoré", () => {
+      expect(hasSevereHypo([])).toBe(false)
+      expect(hasSevereHypo([null as unknown as number, 1.2])).toBe(false)
+    })
+  })
+
+  describe("analyzeIsfHypoDeescalation (US-2653)", () => {
+    const slot = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
+    it("nadirs post-correction récurrents → HAUSSE ISF +10 % (corrections plus faibles), isfTooLow", () => {
+      const r = analyzeIsfHypoDeescalation(slot, [0.6, 0.65, 1.2])
+      expect(r).not.toBeNull()
+      expect(r!.reason).toBe("isfTooLow")
+      expect(r!.changePercent).toBe(10)
+      expect(r!.proposedValue).toBe(0.55) // 0,50 × 1,10
+      expect(r!.proposedValue).toBeGreaterThan(slot.sensitivityFactorGl)
+      expect(r!.timeSlotStartHour).toBe(8)
+      expect(r!.supportingEvents).toBe(2)
+    })
+    it("hypo non récurrente → null", () => {
+      expect(analyzeIsfHypoDeescalation(slot, [0.65, 1.2, 1.3])).toBeNull()
+    })
+  })
+
+  describe("analyzeBasalHypoDeescalation (US-2653)", () => {
+    it("nadirs nocturnes récurrents → BAISSE basale −10 % snappée, basalTooHigh", () => {
+      const r = analyzeBasalHypoDeescalation(1.0, [0.6, 0.65, 1.2])
+      expect(r.kind).toBe("proposal")
+      if (r.kind !== "proposal") throw new Error("expected proposal")
+      expect(r.candidate.reason).toBe("basalTooHigh")
+      expect(r.candidate.proposedValue).toBe(0.9) // 1,0 × 0,90, multiple de 0,05
+      expect(r.candidate.proposedValue).toBeLessThan(1.0)
+    })
+    it("débit trop bas pour titrer d'un incrément après snap → flagNonActionable (pas de skip silencieux)", () => {
+      // 0,10 × 0,90 = 0,09 → snap 0,10 = inchangé → non actionnable.
+      expect(analyzeBasalHypoDeescalation(0.1, [0.6, 0.65, 1.2]).kind).toBe("flagNonActionable")
+    })
+    it("hypo nocturne non récurrente → none", () => {
+      expect(analyzeBasalHypoDeescalation(1.0, [0.65, 1.2, 1.3]).kind).toBe("none")
+    })
+  })
+
+  describe("analyzeFixedDoseHypoDeescalation (US-2653)", () => {
+    const slot = { moment: "morning" as const, valueU: 10 }
+    it("relevés du moment récurremment bas → BAISSE dose bornée, fixedDoseTooHigh", () => {
+      const r = analyzeFixedDoseHypoDeescalation(slot, [0.6, 0.65, 1.2])
+      expect(r.kind).toBe("proposal")
+      if (r.kind !== "proposal") throw new Error("expected proposal")
+      expect(r.candidate.reason).toBe("fixedDoseTooHigh")
+      expect(r.candidate.proposedValue).toBe(9) // 10 − min(1U, 2U) = 9, snap 0,5
+      expect(r.candidate.proposedValue).toBeLessThan(10)
+    })
+    it("dose au plancher (0,5 U) → flagNonActionable (baisse impossible)", () => {
+      expect(analyzeFixedDoseHypoDeescalation({ moment: "night", valueU: 0.5 }, [0.5, 0.5, 0.6]).kind).toBe("flagNonActionable")
+    })
+    it("dose sous le plancher clinique → none (base de titration invalide)", () => {
+      expect(analyzeFixedDoseHypoDeescalation({ moment: "noon", valueU: 0.3 }, [0.5, 0.5, 0.6]).kind).toBe("none")
+    })
+    it("hypo non récurrente → none", () => {
+      expect(analyzeFixedDoseHypoDeescalation(slot, [0.65, 1.2, 1.3]).kind).toBe("none")
+    })
+    it("seuil d'actionnabilité : toute dose < 3,0 U (≤ 2,5 U testées) snappe à l'inchangé → flagNonActionable ; 3,0 U → proposal 2,5", () => {
+      const rec = [0.6, 0.6, 1.2]
+      for (const v of [1.0, 1.5, 2.0, 2.5]) {
+        expect(analyzeFixedDoseHypoDeescalation({ moment: "morning", valueU: v }, rec).kind).toBe("flagNonActionable")
+      }
+      const r = analyzeFixedDoseHypoDeescalation({ moment: "morning", valueU: 3.0 }, rec)
+      expect(r.kind).toBe("proposal")
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBe(2.5)
+    })
+  })
+
+  describe("analyzeBasalHypoDeescalation — bornes de snap (US-2653)", () => {
+    const rec = [0.6, 0.6, 1.2]
+    it("0,25 U/h : −10 % snappe à l'inchangé → flagNonActionable", () => {
+      expect(analyzeBasalHypoDeescalation(0.25, rec).kind).toBe("flagNonActionable")
+    })
+    it("0,30 U/h : baisse d'exactement un incrément → proposal 0,25", () => {
+      const r = analyzeBasalHypoDeescalation(0.3, rec)
+      expect(r.kind).toBe("proposal")
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBe(0.25)
+    })
+    it("jamais de HAUSSE via une dé-escalade (snap-up borné) : 0,55 → 0,50 (baisse), jamais > courant", () => {
+      const r = analyzeBasalHypoDeescalation(0.55, rec)
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBeLessThan(0.55)
     })
   })
 

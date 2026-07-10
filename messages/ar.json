@@ -2072,7 +2072,10 @@
     "flagTirBelowTarget": "الوقت ضمن النطاق (TIR) تحت الهدف",
     "flagObservance": "التحقق من مراقبة السكر",
     "flagHighVariabilityPostMeal": "تقلب مرتفع بعد الوجبة (ذروة + نقص سكر الدم)",
-    "flagHba1cAboveTarget": "الهيموغلوبين السكري (HbA1c) فوق الهدف"
+    "flagHba1cAboveTarget": "الهيموغلوبين السكري (HbA1c) فوق الهدف",
+    "flagNocturnalHypoHighFasting": "نقص سكر الدم الليلي — للمراجعة (القاعدي)",
+    "flagHighVariabilityPostCorrection": "نقص سكر الدم بعد التصحيح — للمراجعة (الحساسية)",
+    "flagHighVariabilityFixedDose": "نقص سكر الدم — للمراجعة (الجرعة الثابتة)"
   },
   "review": {
     "title": "وضع مراجعة الاستشارة",

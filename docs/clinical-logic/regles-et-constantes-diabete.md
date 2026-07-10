@@ -190,6 +190,7 @@ dans son document dédié : **[`algorithme-propositions-ajustement.md`](./algori
 | `FIXED_DOSE_MAX_CHANGE_PERCENT` | **± 10 %** | Cap moteur d'une proposition de dose fixe (plus strict que ± 20 % basal/bolus : titration plus lente). | `src/lib/clinical-bounds.ts` |
 | `FIXED_DOSE_DELIVERY_INCREMENT_U` | **0,5 U** | Incrément délivrable (demi-unité stylo) ; arrondi de la proposition ; pas nul → non actionnable. | idem |
 | `FIXED_DOSE_COOLDOWN_HOURS` | **72 h** | Cooldown moteur entre 2 propositions de dose fixe sur le même moment (effet jugeable sur ≥ 3 j). Appliqué au **câblage** du générateur. | idem |
+| `ENGINE_DEESCALATION_COOLDOWN_HOURS` | **72 h** | Anti-ratchet cooldown : aucune **dé-escalade à magnitude fixe** (−10 % ICR/ISF/basal, −min(10 %, 2 U) fixedDose) sur un `(patient × paramètre × créneau/moment)` dont l'ACCEPTÉE précédente < 72 h. Prévient l'accumulation multi-itérations avant que l'effet soit observable (≥ 3 j). Appliqué au câblage du générateur (tous 4 leviers). | idem |
 
 `analyzeFixedDose` retient le **plus petit** de ± 10 % et ± `FIXED_DOSE_MAX_DELTA_U` (2 U), plancher
 `FIXED_DOSE_MIN` (0,5 U). Direction = dose **directe** (haut → hausse). Détail : `algorithme-propositions-ajustement.md` §4-5.
@@ -275,21 +276,70 @@ fois l'emballement et l'érosion du bon contrôle.
 > **À faire** : inférer un resucrage (petit glucide, sans bolus, glycémie précédente basse) et le traiter
 > comme un **signal d'hypo** (pas une simple borne). Détail : `algorithme-propositions-ajustement.md` §5ter.
 
-### Dé-escalade sur hypos récurrentes (US-2653, validé medical)
+### Dé-escalade sur hypos récurrentes (US-2653 complète, validé medical)
 
-Déclencheur **indépendant du deadband** : des hypos post-prandiales récurrentes (nadirs) doivent proposer
-**moins d'insuline** même si la moyenne est « normale ».
+Déclencheur **indépendant du deadband** : des hypos récurrentes (nadirs) doivent proposer **moins d'insuline** 
+même si la moyenne est « normale ». **Extension complète à 4 leviers** : chacun nourri par sa **propre source de nadir** 
+(jamais cross-fed).
 
 | Constante / règle | Valeur | Sens clinique |
 |---|---|---|
-| `HYPO_DEESCALATION_PERCENT` | **+10 %** | Pas de dé-escalade ICR (≈ −9 % insuline repas) — pas de titration standard, **fixe** (pas de scaling). Persistance titre **cumulativement**. Capé par `MAX_CHANGE_PERCENT`. |
-| `recurrentPostMealHypo` | **≥ 2 nadirs < 0,70** parmi ≥ 3 | « Récurrent » = corroboration exigée. Plus strict que la garde (qui fire sur 1 sévère isolé) → un artefact capteur seul ne réduit pas l'insuline. |
+| `HYPO_DEESCALATION_PERCENT` | **+10 %** | Pas fixe pour ICR/ISF/basal : magnitudes pures, scalées par clamp ±20 %. Persistance titre **cumulativement**. Pour fixedDose, −min(10 %, 2 U), snap 0,5 U. |
+| `recurrentPostMealHypo` / `recurrentPostCorrectionHypo` / `recurrentNocturnalHypo` | **≥ 2 nadirs < 0,70** parmi ≥ 3 | « Récurrent » = corroboration exigée. Plus strict que la garde (qui tire sur 1 sévère isolé) → un artefact capteur seul ne réduit pas l'insuline. **Source distincte par paramètre** : repas/corrections/nocturne. |
+| `SEVERE_HYPO_GL` | **0,54 g/L** | Hypo sévère (niveau 2, < 0,54) : un **seul** relevé suffit, tous les analyseurs refusent une direction hypo, même sans récurrence. |
 
-**Matrice de décision par créneau (chemin ICR)** — moyenne PPG × hypo récurrente :
-- `> plafond` & non → **BAISSE** (deadband) · `> plafond` & **oui** → **flag `highVariabilityPostMeal`** (pas de dose : le levier ICR ne corrige pas pic + creux) · **dans la bande** & oui → **HAUSSE +10 %** (cœur US-2653) · dans la bande & non → rien · `< borne basse` → **HAUSSE** (deadband).
+**Matrice per-créneau / per-moment — moyenne × hypo récurrente** :
 
-Slices A (prédicat + builder purs) **et** B (matrice dans le générateur + flag `highVariabilityPostMeal`) livrées. Cf.
-`algorithme-propositions-ajustement.md` §5ter.
+**ICR** (nadir source : post-repas isolés) :
+- `> plafond` & non → **BAISSE ICR** (deadband) 
+- `> plafond` & **récurrent** → **flag `highVariabilityPostMeal`** (pas de dose)
+- **dans la bande** & récurrent → **HAUSSE ICR +10 %** (cœur US-2653)
+- dans la bande & non-récurrent → rien
+- `< borne basse` → **HAUSSE** (deadband)
+
+**ISF** (nadir source : corrections post-correction propres) :
+- `> cible correction` & **récurrent** → **flag `highVariabilityPostCorrection`** (pics + creux post-corr : pas d'automatisme)
+- `> cible` & non-récurrent → **HAUSSE ISF +10 %** (corrections plus douces)
+- **dans la bande** & récurrent → **HAUSSE ISF +10 %**
+- `< cible` (sur-correction) → **BAISSE** (deadband normal)
+- **single severe** → **flag** (sûreté)
+
+**Basal** (nadir source : nadirs nocturnes) — **Cas Somogyi (REJETÉ)** :
+- `fasting HIGH (>cible)` & **recurrent nocturnal hypo** → **flag `nocturnalHypoHighFasting`** (**JAMAIS baisse auto**)
+  - **Rationale** : phénomène de l'aube domine cliniquement le rebond Somogyi en CGM moderne. Une baisse basal laisse 
+    la glycémie à jeun haute non traitée → risque intolérable sans contexte métabolique précis. Médecin juge. 
+    Fail-closed : proposition refusée.
+- `> cible` & non-récurrent → **HAUSSE BASAL +20 %** (deadband, snappé 0,05 U/h)
+- **dans la bande** & recurrent nocturnal hypo → **BAISSE BASAL −10 %** (moins d'insuline nuit, hypos moins profondes)
+- dans la bande & non-récurrent → rien
+- **single severe nocturnal** → **flag** (sûreté)
+
+**FixedDose** (nadir source : creux pré-dose BGM par moment, décalage Option B) :
+- `> cible pré-dose` & **récurrent** (≥2 creux < 0,70 / ≥3 relevés) → **flag `highVariabilityFixedDose`** (variabilité exige revue)
+- `> cible` & non-récurrent → **BAISSE DOSE −min(10 %, 2 U)**, floor 0,5 U, snap 0,5 U
+- **dans la bande** & récurrent → **BAISSE DOSE −min(10 %, 2 U)**
+- `< cible` (BGM baisse) → **HAUSSE** (deadband normal)
+- dose déjà à floor ou pas réductible → **flag** (non-actionnable)
+- **single severe hypo pré-dose** → **flag** (sûreté)
+
+**Anti-ratchet (tous 4 leviers, ⚠️ 2026-07)** :
+`ENGINE_DEESCALATION_COOLDOWN_HOURS = 72 h` appliqué au générateur : aucune dé-escalade à magnitude fixe 
+(`+10 % ICR/ISF/basal`, `−min(10 %, 2 U) fixedDose`) si l'ACCEPTÉE précédente pour le même 
+`(patient × paramètre × créneau/moment)` < 72 h. La **dé-escalade proportionnelle deadband** (ex. clampée ±20 %) 
+n'est pas gatée (self-limiting par les bornes cliniques). Prévient l'accumulation itérative 10%+10%+10% avant 
+jugement de l'effet sur ≥ 3 j CGM/BGM.
+
+**Three new contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
+- `highVariabilityPostCorrection` — ISF : pics + creux post-correction → revue (pas de dose)
+- `nocturnalHypoHighFasting` — Basal : Somogyi soupçonné, glycémie à jeun élevée + hypos nocturnes récurrentes → revue (pas de baisse)
+- `highVariabilityFixedDose` — FixedDose : variabilité pré-dose → revue (pas de dose)
+
+Aucun flag n'implique une dose. Ordonnent la revue médecin, structurent le dialogue clinique.
+
+**Implementation** : slices A/B du code pur + slice C (générateur + matrice), **livrées 2026-07**. 
+Cf. `algorithme-propositions-ajustement.md` §5ter et `src/lib/proposal-algorithm.ts` 
+(`analyzeIsfHypoDeescalation`, `analyzeBasalHypoDeescalation`, `analyzeFixedDoseHypoDeescalation`, `hasSevereHypo` ; 
+wiring `proposal-generator.service.ts`).
 
 ### Flag d'orientation `hba1cStale` (mode c nonInsulin, US-2651)
 
