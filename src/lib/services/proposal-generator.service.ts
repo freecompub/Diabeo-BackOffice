@@ -60,8 +60,9 @@ const MIN_NADIR_NIGHTS = 3
 /** Résultat d'un run patient — métriques d'observabilité (aucune valeur clinique). */
 export interface GenerateResult {
   created: number
-  /** US-2653 — flags de revue CONTEXTUELS levés (haute-variabilité ICR/ISF/fixedDose, Somogyi basal, hypo
-   *  sévère isolée, dé-escalade non actionnable) : orientation, JAMAIS une dose. */
+  /** US-2653 — flags de revue CONTEXTUELS levés : haute-variabilité (ICR/ISF/fixedDose), Somogyi basal, hypo
+   *  sévère isolée (ISF/basal/fixedDose — **PAS l'ICR** : le levier ICR ne surface pas un sévère isolé
+   *  post-repas, cf. matrice) et dé-escalade non actionnable (basal/fixedDose). Orientation, JAMAIS une dose. */
   flagged: number
   slotsConsidered: number
   mealsUsable: number
@@ -104,7 +105,10 @@ async function deescalationOnCooldown(
   slotWhere: Prisma.AdjustmentProposalWhereInput,
 ): Promise<boolean> {
   const last = await prisma.adjustmentProposal.findFirst({
-    where: { patientId, parameterType, status: "accepted", ...slotWhere },
+    // `reviewedAt: { not: null }` — sous PG `ORDER BY ... DESC` place les NULL en premier ; sans ce filtre
+    // une ligne `accepted` à `reviewedAt` NULL (ne devrait pas exister — l'acceptation le pose) masquerait
+    // une acceptation récente ⇒ contournement du cooldown. Ceinture-et-bretelles.
+    where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null }, ...slotWhere },
     orderBy: { reviewedAt: "desc" },
     select: { reviewedAt: true },
   })

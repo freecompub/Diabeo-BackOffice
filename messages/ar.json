@@ -2073,9 +2073,9 @@
     "flagObservance": "التحقق من مراقبة السكر",
     "flagHighVariabilityPostMeal": "تقلب مرتفع بعد الوجبة (ذروة + نقص سكر الدم)",
     "flagHba1cAboveTarget": "الهيموغلوبين السكري (HbA1c) فوق الهدف",
-    "flagNocturnalHypoHighFasting": "نقص سكر الدم الليلي المتكرر مع ارتفاع سكر الصيام (للمراجعة)",
-    "flagHighVariabilityPostCorrection": "تقلب مرتفع بعد التصحيح (انخفاضات متكررة)",
-    "flagHighVariabilityFixedDose": "انخفاضات متكررة في الجرعة الثابتة (للمراجعة)"
+    "flagNocturnalHypoHighFasting": "نقص سكر الدم الليلي — للمراجعة (القاعدي)",
+    "flagHighVariabilityPostCorrection": "نقص سكر الدم بعد التصحيح — للمراجعة (الحساسية)",
+    "flagHighVariabilityFixedDose": "نقص سكر الدم — للمراجعة (الجرعة الثابتة)"
   },
   "review": {
     "title": "وضع مراجعة الاستشارة",

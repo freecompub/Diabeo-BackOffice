@@ -260,6 +260,9 @@ describe("proposal-algorithm", () => {
     it("garde anti-null : un null ne fabrique PAS une hypo (Number.isFinite)", () => {
       expect(recurrentPostMealHypo([null as unknown as number, null as unknown as number, 1.2])).toBe(false)
     })
+    it("récurrence = compte ABSOLU (≥ 2), pas une proportion : 2 creux dans une grande fenêtre → true", () => {
+      expect(recurrentPostMealHypo([0.6, 0.65, 1.2, 1.3, 1.4, 1.5, 1.6])).toBe(true)
+    })
   })
 
   describe("analyzeIcrHypoDeescalation (US-2653)", () => {
@@ -344,6 +347,31 @@ describe("proposal-algorithm", () => {
     })
     it("hypo non récurrente → none", () => {
       expect(analyzeFixedDoseHypoDeescalation(slot, [0.65, 1.2, 1.3]).kind).toBe("none")
+    })
+    it("seuil d'actionnabilité : toute dose ≤ 2,5 U snappe à l'inchangé → flagNonActionable ; 3,0 U → proposal 2,5", () => {
+      const rec = [0.6, 0.6, 1.2]
+      for (const v of [1.0, 1.5, 2.0, 2.5]) {
+        expect(analyzeFixedDoseHypoDeescalation({ moment: "morning", valueU: v }, rec).kind).toBe("flagNonActionable")
+      }
+      const r = analyzeFixedDoseHypoDeescalation({ moment: "morning", valueU: 3.0 }, rec)
+      expect(r.kind).toBe("proposal")
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBe(2.5)
+    })
+  })
+
+  describe("analyzeBasalHypoDeescalation — bornes de snap (US-2653)", () => {
+    const rec = [0.6, 0.6, 1.2]
+    it("0,25 U/h : −10 % snappe à l'inchangé → flagNonActionable", () => {
+      expect(analyzeBasalHypoDeescalation(0.25, rec).kind).toBe("flagNonActionable")
+    })
+    it("0,30 U/h : baisse d'exactement un incrément → proposal 0,25", () => {
+      const r = analyzeBasalHypoDeescalation(0.3, rec)
+      expect(r.kind).toBe("proposal")
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBe(0.25)
+    })
+    it("jamais de HAUSSE via une dé-escalade (snap-up borné) : 0,55 → 0,50 (baisse), jamais > courant", () => {
+      const r = analyzeBasalHypoDeescalation(0.55, rec)
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBeLessThan(0.55)
     })
   })
 

@@ -2073,9 +2073,9 @@
     "flagObservance": "Suivi glycémique à vérifier",
     "flagHighVariabilityPostMeal": "Forte variabilité post-repas (pic + hypoglycémie)",
     "flagHba1cAboveTarget": "Hémoglobine glyquée (HbA1c) au-dessus de la cible",
-    "flagNocturnalHypoHighFasting": "Hypoglycémie nocturne récurrente avec glycémie à jeun élevée (à revoir)",
-    "flagHighVariabilityPostCorrection": "Forte variabilité après correction (creux récurrents)",
-    "flagHighVariabilityFixedDose": "Hypoglycémies récurrentes en dose simple (à revoir)"
+    "flagNocturnalHypoHighFasting": "Hypoglycémie nocturne à revoir (basale)",
+    "flagHighVariabilityPostCorrection": "Hypoglycémie après correction à revoir (sensibilité)",
+    "flagHighVariabilityFixedDose": "Hypoglycémie à revoir (dose simple)"
   },
   "review": {
     "title": "Mode revue de consultation",
