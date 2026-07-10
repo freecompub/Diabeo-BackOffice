@@ -2433,7 +2433,9 @@ model AuditLog {
   /// événements système (cron, worker). FK Restrict empêche la suppression
   /// d'un user qui a des audit logs (RGPD Art. 17 → anonymisation, pas DELETE).
   userId         Int?     @map("user_id")
-  action         String   @db.VarChar(30)
+  // VarChar(64) — la borne 30 tronquait `MATURITY_LEVEL_SELF_ELEVATION_DENIED` (36 car.) → insert `22001`
+  // (bug latent US-2657). 64 = marge confortable pour les tokens d'action actuels et futurs.
+  action         String   @db.VarChar(64)
   resource       String   @db.VarChar(30)
   resourceId     String?  @map("resource_id")
   oldValue       Json?    @map("old_value")

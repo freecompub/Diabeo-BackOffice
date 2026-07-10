@@ -2436,5 +2436,5 @@ await auditService.log({
 ---
 
 **Document généré**: 2026-04-01 — Phase 0 implémentée  
-**Statut**: ✅ Schéma complet (50 tables, 22 enums)  
+**Statut**: ✅ Schéma complet (48 tables, 21 enums)  
 **Prochaine mise à jour**: Après phases 3-7 (API CRUD complète)

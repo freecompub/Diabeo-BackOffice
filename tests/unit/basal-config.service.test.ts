@@ -1,11 +1,10 @@
 /**
- * Test suite: Basal Configuration — GET, UPSERT, Pump Slots CRUD
+ * Test suite: Basal Configuration — GET, UPSERT
  *
  * Clinical behavior tested:
  * - Retrieval of basal configuration with pump slots ordered by start time
  * - Upsert of basal configuration (create or update) with audit trail
- * - Creation of pump basal slots with time-of-day delivery rates
- * - Deletion of pump basal slots with audit trail
+ * (L'écriture des créneaux basaux par-créneau a été retirée — voir NB grouped-only ci-dessous.)
  *
  * Associated risks:
  * - Incorrect basal rate storage (out of 0.05-10.0 U/h range) could cause

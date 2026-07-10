@@ -11,7 +11,7 @@ export const MATURITY_RANK: Record<MaturityLevel, number> = { JUNIOR: 0, INTERME
  * Clé i18n du message de confirmation selon le sens du changement :
  *  - **montée vers EXPERT** → capacité « refuser / contre-proposer » ;
  *  - **montée** (vers INTERMEDIATE) → capacité « restructurer les créneaux » ;
- *  - **descente** → note de retrait de capacités (+ neutralisation auto-application ultérieure).
+ *  - **descente** → note de retrait de capacités d'édition.
  */
 export function maturityChangeMessageKey(from: MaturityLevel, to: MaturityLevel): string {
   if (MATURITY_RANK[to] > MATURITY_RANK[from]) {
