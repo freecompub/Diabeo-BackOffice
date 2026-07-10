@@ -57,6 +57,8 @@ Le schéma Diabeo contient **50 tables** réparties en **11 domaines métier**, 
 | Spécial | Audit (HDS) | 1 | AuditLog |
 | | **TOTAL** | **48** | |
 
+> **Mise à jour 2026-07-10** : les tables `GovernanceApproval` et `AutoApplyEvent` (auto-application gouvernée) ont été supprimées (US-2657 retirée). La colonne `Patient.autoApply` n'existe plus. Le niveau de maturité du patient (`Patient.maturityLevel`) gouverne les capacités d'édition uniquement ; toute édition génère une proposition validée par un médecin.
+
 ---
 
 ## Enums

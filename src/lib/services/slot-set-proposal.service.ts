@@ -1,15 +1,14 @@
 /**
  * US-2657 (slice C3a) — Service des **propositions d'ENSEMBLE de créneaux**.
  *
- * Représente une édition de groupe (valeurs et/ou restructuration) soumise par un patient EXPERT mais
- * NON auto-applicable (hors enveloppe ou structurelle) : stockée en bloc pour revue MÉDECIN.
+ * Représente une édition de groupe (valeurs et/ou restructuration) soumise par un patient : stockée en bloc
+ * pour revue MÉDECIN. Il n'y a **pas d'auto-application** — une soumission patient est TOUJOURS une
+ * proposition (route `PUT /api/patient/insulin-slot-set`).
  *
- * ⚠️ US-2657 — **on ne propose plus par-valeur** : toute édition patient EXPERT non auto-appliquée est
- * proposée GROUPÉE (disposition entière du jeu de créneaux), quel que soit le nombre de valeurs modifiées.
- * Ce service REMPLACE la voie par-valeur `AdjustmentProposal` pour ce cas ; le fallback unitaire du harnais
- * C2 `applyExpertEditGoverned` est destiné à être routé via l'orchestrateur GROUPÉ C3b `applyExpertGroupGoverned`.
- * À la création, les propositions `pending` du même `(patient × paramètre)` — d'ensemble ET par-valeur —
- * sont supersédées (cohérent avec « plus de par-valeur »).
+ * ⚠️ US-2657 — **on ne propose plus par-valeur** : toute édition patient est proposée GROUPÉE (disposition
+ * entière du jeu de créneaux), quel que soit le nombre de valeurs modifiées. Ce service REMPLACE la voie
+ * par-valeur `AdjustmentProposal` pour ce cas. À la création, les propositions `pending` du même
+ * `(patient × paramètre)` — d'ensemble ET par-valeur — sont supersédées (cohérent avec « plus de par-valeur »).
  *
  * Invariant : **une seule proposition d'ensemble PENDING par (patient × paramètre)** — garanti EN BASE par
  * l'index unique partiel `slot_set_proposals_one_pending_per_param` (WHERE status = 'pending') ; la course

@@ -4,7 +4,8 @@
  *
  * US-2657 (grouped-only, ADR #23) : l'édition ICR se fait **exclusivement en bloc** via `PUT`, quel que soit
  * le rôle. Les anciennes écritures **par-créneau** `POST` (createIcr) et `PATCH` (updateIcr) sont **retirées**
- * (elles ré-ouvraient la « dérive de base »). La méthode service `updateIcr` reste (chemin gouverné `auto-apply`).
+ * (elles ré-ouvraient la « dérive de base »), et la méthode service `updateIcr` a été supprimée avec le
+ * retrait de l'auto-application.
  */
 import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"

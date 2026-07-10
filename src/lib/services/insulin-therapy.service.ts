@@ -324,86 +324,10 @@ export const insulinTherapyService = {
     })
   },
 
-  // --- ISF (édition directe gouvernée) — createIsf/deleteIsf retirés (US-2657 grouped-only, ADR #26 :
-  //     l'ajout/suppression par-créneau passe désormais par le remplacement GROUPÉ `replaceSlotSet`) ---
-  /**
-   * US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ISF (`value` en **g/L**). `updateMany`
-   * scopé au patient (via `settings.patientId`) → un id d'un autre patient ne matche pas (`count === 0`
-   * → `isfSlotNotFound`, anti-IDOR). Ne modifie QUE la valeur, pas les heures (pas de re-check de
-   * chevauchement). **Bornes cliniques re-validées ici** (défense en profondeur : ce chemin sert aussi
-   * l'auto-application SANS médecin — US-2657). `externalTx` optionnel pour composer dans une transaction
-   * englobante (harnais d'auto-application, atomicité apply + événement + audit).
-   */
-  async updateIsf(
-    id: string,
-    sensitivityFactorGl: number,
-    auditUserId: number,
-    patientId: number,
-    ctx?: AuditContext,
-    externalTx?: Prisma.TransactionClient,
-  ) {
-    if (sensitivityFactorGl < CLINICAL_BOUNDS.ISF_GL_MIN || sensitivityFactorGl > CLINICAL_BOUNDS.ISF_GL_MAX) {
-      throw new Error("valueOutOfBounds")
-    }
-    const run = async (tx: Prisma.TransactionClient) => {
-      // Exclusion mutuelle unifiée (patient×param), non bloquante : occupé → 409 (fail-closed, pas d'attente).
-      if (!(await tryLockInsulinSlots(tx, patientId, "isf"))) throw new Error("slotsBusy")
-      const res = await tx.insulinSensitivityFactor.updateMany({
-        where: { id, settings: { patientId } },
-        data: { sensitivityFactorGl, sensitivityFactorMgdl: glToMgdl(sensitivityFactorGl) },
-      })
-      if (res.count === 0) throw new Error("isfSlotNotFound")
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "UPDATE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `isf:${id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        requestId: ctx?.requestId,
-        metadata: { patientId },
-      })
-      return { updated: true }
-    }
-    return externalTx ? run(externalTx) : prisma.$transaction(run)
-  },
-
-  // --- ICR (édition directe gouvernée) — createIcr/deleteIcr retirés (US-2657 grouped-only, ADR #26) ---
-  /** US-2648b — Édition DIRECTE (DOCTOR) de la valeur d'un créneau ICR. Scopé patient
-   *  (via `settings.patientId`, anti-IDOR). Ne modifie que la valeur. Bornes à la route. */
-  async updateIcr(
-    id: string,
-    gramsPerUnit: number,
-    auditUserId: number,
-    patientId: number,
-    ctx?: AuditContext,
-    externalTx?: Prisma.TransactionClient,
-  ) {
-    // Défense en profondeur (chemin auto-application sans médecin) : bornes ICR re-validées service.
-    if (gramsPerUnit < CLINICAL_BOUNDS.ICR_MIN || gramsPerUnit > CLINICAL_BOUNDS.ICR_MAX) {
-      throw new Error("valueOutOfBounds")
-    }
-    const run = async (tx: Prisma.TransactionClient) => {
-      if (!(await tryLockInsulinSlots(tx, patientId, "icr"))) throw new Error("slotsBusy")
-      const res = await tx.carbRatio.updateMany({
-        where: { id, settings: { patientId } },
-        data: { gramsPerUnit },
-      })
-      if (res.count === 0) throw new Error("icrSlotNotFound")
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "UPDATE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `icr:${id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        requestId: ctx?.requestId,
-        metadata: { patientId },
-      })
-      return { updated: true }
-    }
-    return externalTx ? run(externalTx) : prisma.$transaction(run)
-  },
+  // --- ISF / ICR : édition par-créneau RETIRÉE (US-2657 grouped-only, ADR #26 + retrait auto-application) ---
+  //     Toute écriture ISF/ICR passe EXCLUSIVEMENT par le remplacement GROUPÉ `replaceSlotSet` ci-dessous
+  //     (createIsf/updateIsf/deleteIsf + createIcr/updateIcr/deleteIcr supprimés — plus aucun appelant après
+  //     le retrait de l'auto-application experte, seule voie qui consommait ces primitives par-créneau).
 
   /**
    * US-2655 — Enregistrement transactionnel d'un GROUPE de créneaux (« remplace tout le jeu »).
@@ -649,45 +573,9 @@ export const insulinTherapyService = {
     })
   },
 
-  // --- Pump Basal Slots (édition directe gouvernée) — createPumpSlot/deletePumpSlot retirés
-  //     (US-2657 grouped-only, ADR #26 : ajout/suppression par-créneau → remplacement GROUPÉ `replacePumpSlotSet`) ---
-  /**
-   * US-2648b — Édition DIRECTE (DOCTOR) du débit d'un créneau basal pompe. Scopé patient
-   * (via `basalConfig.settings.patientId`, anti-IDOR → `pumpSlotNotFound` si autre patient).
-   * Le débit doit être PROGRAMMABLE (multiple de `PUMP_BASAL_INCREMENT`) — validé à la route.
-   */
-  async updatePumpSlot(
-    id: string,
-    rate: number,
-    auditUserId: number,
-    patientId: number,
-    ctx?: AuditContext,
-    externalTx?: Prisma.TransactionClient,
-  ) {
-    // Garde-fő service (défense en profondeur, indépendante du Zod route) : un débit non
-    // délivrable (hors incrément pompe / bornes) ne doit jamais être persisté, quel que soit l'appelant.
-    if (!isDeliverableBasalRate(rate)) throw new Error("rateNotDeliverable")
-    const run = async (tx: Prisma.TransactionClient) => {
-      if (!(await tryLockInsulinSlots(tx, patientId, "basal"))) throw new Error("slotsBusy")
-      const res = await tx.pumpBasalSlot.updateMany({
-        where: { id, basalConfig: { settings: { patientId } } },
-        data: { rate },
-      })
-      if (res.count === 0) throw new Error("pumpSlotNotFound")
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: "UPDATE",
-        resource: "INSULIN_THERAPY",
-        resourceId: `pump:${id}`,
-        ipAddress: ctx?.ipAddress,
-        userAgent: ctx?.userAgent,
-        requestId: ctx?.requestId,
-        metadata: { patientId },
-      })
-      return { updated: true }
-    }
-    return externalTx ? run(externalTx) : prisma.$transaction(run)
-  },
+  // --- Pump Basal Slots : édition par-créneau RETIRÉE (US-2657 grouped-only, ADR #26 + retrait
+  //     auto-application) — createPumpSlot/updatePumpSlot/deletePumpSlot supprimés. Toute écriture basale
+  //     passe EXCLUSIVEMENT par le remplacement GROUPÉ `replacePumpSlotSet`. ---
 
   // --- Bolus Logs ---
   async getBolusLogs(

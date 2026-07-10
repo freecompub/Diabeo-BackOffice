@@ -17,7 +17,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
 import { generateKeyPairSync, randomBytes } from "node:crypto"
-import { assertRequiredEnv, isAutoApplyGloballyEnabled } from "@/lib/env"
+import { assertRequiredEnv } from "@/lib/env"
 
 // Valeurs valides — utilisées comme baseline pour tester un seul champ
 // invalide à la fois.
@@ -261,19 +261,3 @@ describe("assertRequiredEnv", () => {
   })
 })
 
-describe("isAutoApplyGloballyEnabled — kill-switch MDR (fail-safe)", () => {
-  afterEach(() => vi.unstubAllEnvs())
-
-  it("true UNIQUEMENT si la variable vaut exactement \"true\"", () => {
-    vi.stubEnv("AUTO_APPLY_GLOBALLY_ENABLED", "true")
-    expect(isAutoApplyGloballyEnabled()).toBe(true)
-  })
-
-  it("OFF (fail-safe) pour absent / \"false\" / malformé / casse / espaces", () => {
-    for (const v of [undefined, "false", "TRUE", "True", "1", "yes", " true ", ""]) {
-      if (v === undefined) vi.stubEnv("AUTO_APPLY_GLOBALLY_ENABLED", "")
-      else vi.stubEnv("AUTO_APPLY_GLOBALLY_ENABLED", v)
-      expect(isAutoApplyGloballyEnabled()).toBe(false)
-    }
-  })
-})

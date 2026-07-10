@@ -6,7 +6,7 @@
  * (`replacePumpSlotSet`), quel que soit le rôle. Les anciennes écritures **par-créneau**
  * (`POST`/`PATCH`/`DELETE`) sont **retirées** — elles ré-ouvraient la fenêtre de « dérive de base »
  * (un édit unitaire ne supersédait pas une proposition d'ensemble pending) et divergeaient du modèle groupé.
- * Les méthodes service par-créneau (`updatePumpSlot`) restent (chemin gouverné `auto-apply`).
+ * Les méthodes service par-créneau (`updatePumpSlot`) ont été supprimées avec le retrait de l'auto-application.
  *
  * Débit validé dans les bornes cliniques (BASAL_MIN 0,05 / BASAL_MAX 5,0 U/h) et **délivrable** (multiple de
  * l'incrément pompe 0,05 U/h). Couverture 24 h no-overlap / no-gap re-validée serveur (`assertValidPumpSlotSet`).

@@ -72,21 +72,15 @@ export type AuditAction =
   | "DELEGATION_APPROVED"
   | "DELEGATION_REJECTED"
   /**
-   * US-2657 — auto-application experte gouvernée (frontière MDR / RGPD Art. 22). Actions DÉDIÉES
-   * (pas `UPDATE` + `metadata.kind`) pour que la forensique CNIL/ANS filtre par action, cf. convention
+   * US-2657 — maturité graduée (frontière MDR / RGPD Art. 22). Actions DÉDIÉES (pas `UPDATE` +
+   * `metadata.kind`) pour que la forensique CNIL/ANS filtre par action, cf. convention
    * `PROPOSAL_REFUSED`/`DELEGATION_*`. Aucune PHI ; `metadata.patientId` pivot (US-2268).
    */
   | "MATURITY_LEVEL_CHANGED"
   /** Tentative d'auto-élévation de maturité par un non-DOCTOR (patient/VIEWER) — refus 403 tracé (AC-1). */
   | "MATURITY_LEVEL_SELF_ELEVATION_DENIED"
-  | "AUTO_APPLY_FLAG_CHANGED"
-  | "AUTO_APPLIED_SETTING"
-  /** Édition retombée en proposition (hors enveloppe) — `metadata.failedCheck` = C1..C8. */
-  | "AUTO_APPLY_FALLBACK"
-  /** Édition rejetée (valeur hors bornes cliniques) ou échec d'application auto-appliquée. */
-  | "AUTO_APPLY_REJECTED"
-  /** C3c — trace HDS d'une SOUMISSION patient de jeu de créneaux non couverte par une décision gouvernée
-   *  (no-op, ou rejet dur à la saisie : bornes/couverture/verrou/doublon). Sans PHI. */
+  /** Trace HDS d'une SOUMISSION patient de jeu de créneaux rejetée à la saisie (bornes/couverture/doublon).
+   *  La création de proposition réussie est tracée par `CREATE SLOT_SET_PROPOSAL`. Sans PHI. */
   | "INSULIN_SLOT_SUBMISSION"
   | "IMPORT"
   | "ANONYMIZE"

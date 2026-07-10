@@ -1,8 +1,9 @@
 /**
- * US-2657 (slice C3c) — Route self-service patient `PUT /api/patient/insulin-slot-set`.
- * Sécurité : own-id STRICT (`getOwnPatientId`, anti-IDOR → 404 neutre pour un pro sans dossier), rate-limit,
- * consentement RGPD, validation Zod (ISF/ICR seulement, ≤24 créneaux) ; dispatch de l'`outcome` gouverné ;
- * mapping des rejets durs / doublon / verrou → 4xx + audit `INSULIN_SLOT_SUBMISSION`. Orchestrateur mocké.
+ * US-2657 — Route self-service patient `PUT /api/patient/insulin-slot-set`.
+ * Comportement : une soumission patient est **TOUJOURS** une proposition d'ensemble (`createSetProposal`) —
+ * plus d'auto-application. Sécurité : own-id STRICT (`getOwnPatientId`, anti-IDOR → 404 neutre pour un pro
+ * sans dossier), rate-limit, consentement RGPD, validation Zod (ISF/ICR seulement, ≤24 créneaux) ; mapping
+ * des rejets durs / doublon pending / verrou → 4xx + audit `INSULIN_SLOT_SUBMISSION`. Service mocké.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
@@ -14,7 +15,7 @@ vi.mock("@/lib/auth/api-rate-limit", () => ({
   checkApiRateLimit: vi.fn().mockResolvedValue({ allowed: true, remaining: 19, retryAfterSec: 60 }),
   RATE_LIMITS: { insulinSubmission: { bucket: "insulin-submission", windowSec: 60, max: 20, failMode: "open" } },
 }))
-vi.mock("@/lib/services/auto-apply.service", () => ({ autoApplyService: { applyExpertGroupGoverned: vi.fn() } }))
+vi.mock("@/lib/services/slot-set-proposal.service", () => ({ slotSetProposalService: { createSetProposal: vi.fn() } }))
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: vi.fn().mockReturnValue({ ipAddress: "127.0.0.1", userAgent: "test", requestId: "r1" }),
   auditService: { log: vi.fn().mockResolvedValue(undefined), rateLimited: vi.fn().mockResolvedValue({}) },
@@ -24,11 +25,11 @@ const { PUT } = await import("@/app/api/patient/insulin-slot-set/route")
 const { getOwnPatientId } = await import("@/lib/access-control")
 const { requireGdprConsent } = await import("@/lib/gdpr")
 const { checkApiRateLimit } = await import("@/lib/auth/api-rate-limit")
-const { autoApplyService } = await import("@/lib/services/auto-apply.service")
+const { slotSetProposalService } = await import("@/lib/services/slot-set-proposal.service")
 const { auditService } = await import("@/lib/services/audit.service")
 
 const ownPatient = vi.mocked(getOwnPatientId)
-const govern = vi.mocked(autoApplyService.applyExpertGroupGoverned)
+const createProposal = vi.mocked(slotSetProposalService.createSetProposal)
 const rateLimit = vi.mocked(checkApiRateLimit)
 
 const SLOTS = [
@@ -45,56 +46,31 @@ function req(role: string, body: unknown): NextRequest {
 }
 const isf = (slots: unknown = SLOTS) => req("VIEWER", { parameterType: "insulinSensitivityFactor", slots })
 
-describe("PUT /api/patient/insulin-slot-set (C3c)", () => {
+describe("PUT /api/patient/insulin-slot-set (toujours proposition)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ownPatient.mockResolvedValue(7)
     rateLimit.mockResolvedValue({ allowed: true, remaining: 19, retryAfterSec: 60 } as never)
-    govern.mockResolvedValue({ outcome: "proposal", failedCheck: "C1", proposalId: "set-1" } as never)
+    createProposal.mockResolvedValue({ id: "set-1" } as never)
   })
 
-  it("patient soumet → 200 + orchestrateur appelé avec patientId scopé (own-id) + acteur = user", async () => {
+  it("patient soumet → 201 proposition + service appelé avec patientId scopé (own-id) + acteur = user", async () => {
     const res = await PUT(isf())
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ outcome: "proposal", failedCheck: "C1", proposalId: "set-1" })
-    expect(govern).toHaveBeenCalledWith(
-      { patientId: 7, parameterType: "insulinSensitivityFactor", proposedSlots: SLOTS },
-      42,
-      expect.any(Date),
-      expect.anything(),
-    )
+    expect(res.status).toBe(201)
+    expect(await res.json()).toEqual({ outcome: "proposal", proposalId: "set-1" })
+    expect(createProposal).toHaveBeenCalledWith(7, "insulinSensitivityFactor", SLOTS, 42, expect.anything())
   })
 
-  it("outcome applied → 200", async () => {
-    govern.mockResolvedValue({ outcome: "applied" } as never)
-    expect((await PUT(isf())).status).toBe(200)
-  })
-
-  it("outcome rejected (MDR) → 200 (décision gouvernée, pas une erreur)", async () => {
-    govern.mockResolvedValue({ outcome: "rejected", reason: "nonInsulinNoDose" } as never)
-    const res = await PUT(isf())
-    expect(res.status).toBe(200)
-    expect(await res.json()).toEqual({ outcome: "rejected", reason: "nonInsulinNoDose" })
-  })
-
-  it("outcome no-op → 200 + audit INSULIN_SLOT_SUBMISSION (trace HDS)", async () => {
-    govern.mockResolvedValue({ outcome: "noop" } as never)
-    expect((await PUT(isf())).status).toBe(200)
-    expect(auditService.log).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "INSULIN_SLOT_SUBMISSION", metadata: expect.objectContaining({ outcome: "noop" }) }),
-    )
-  })
-
-  it("pas de dossier patient (pro) → 404 neutre, orchestrateur NON appelé (anti-IDOR)", async () => {
+  it("pas de dossier patient (pro) → 404 neutre, service NON appelé (anti-IDOR)", async () => {
     ownPatient.mockResolvedValue(null)
     const res = await PUT(req("DOCTOR", { parameterType: "insulinSensitivityFactor", slots: SLOTS }))
     expect(res.status).toBe(404)
-    expect(govern).not.toHaveBeenCalled()
+    expect(createProposal).not.toHaveBeenCalled()
   })
 
   it("paramètre non ISF/ICR (basalRate) → 400", async () => {
     expect((await PUT(req("VIEWER", { parameterType: "basalRate", slots: SLOTS }))).status).toBe(400)
-    expect(govern).not.toHaveBeenCalled()
+    expect(createProposal).not.toHaveBeenCalled()
   })
 
   it("payload > 24 créneaux → 400 (borne anti-abus)", async () => {
@@ -103,7 +79,7 @@ describe("PUT /api/patient/insulin-slot-set (C3c)", () => {
   })
 
   it("rejet dur bornes (valueOutOfBounds) → 400 + audit tentative", async () => {
-    govern.mockRejectedValue(new Error("valueOutOfBounds"))
+    createProposal.mockRejectedValue(new Error("valueOutOfBounds"))
     expect((await PUT(isf())).status).toBe(400)
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "INSULIN_SLOT_SUBMISSION", metadata: expect.objectContaining({ outcome: "rejected", reason: "valueOutOfBounds" }) }),
@@ -111,45 +87,40 @@ describe("PUT /api/patient/insulin-slot-set (C3c)", () => {
   })
 
   it("double-soumission concurrente (duplicatePendingProposal) → 409 (pas 500)", async () => {
-    govern.mockRejectedValue(new Error("duplicatePendingProposal"))
+    createProposal.mockRejectedValue(new Error("duplicatePendingProposal"))
     expect((await PUT(isf())).status).toBe(409)
   })
 
-  it("bascule MDR concurrente (nonInsulinNoDose levé) → 409 (pas 500)", async () => {
-    govern.mockRejectedValue(new Error("nonInsulinNoDose"))
+  it("patient non insuliné (nonInsulinNoDose, frontière MDR) → 409 (pas 500)", async () => {
+    createProposal.mockRejectedValue(new Error("nonInsulinNoDose"))
     expect((await PUT(isf())).status).toBe(409)
   })
 
-  it("settingsNotFound → 404 (pas 500)", async () => {
-    govern.mockRejectedValue(new Error("settingsNotFound"))
+  it("patientNotFound (soft-deleted en course) → 404 (pas 500)", async () => {
+    createProposal.mockRejectedValue(new Error("patientNotFound"))
     expect((await PUT(isf())).status).toBe(404)
   })
 
-  it("verrou occupé (slotsBusy) → 409", async () => {
-    govern.mockRejectedValue(new Error("slotsBusy"))
-    expect((await PUT(isf())).status).toBe(409)
-  })
-
   it("erreur inattendue (non mappée) → 500 générique sans fuite", async () => {
-    govern.mockRejectedValue(new Error("boom-internal"))
+    createProposal.mockRejectedValue(new Error("boom-internal"))
     const res = await PUT(isf())
     expect(res.status).toBe(500)
     expect(await res.json()).toEqual({ error: "serverError" })
   })
 
-  it("rate-limit dépassé → 429 + audit rateLimited (orchestrateur non appelé)", async () => {
+  it("rate-limit dépassé → 429 + audit rateLimited (service non appelé)", async () => {
     rateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 42 } as never)
     const res = await PUT(isf())
     expect(res.status).toBe(429)
     expect(res.headers.get("Retry-After")).toBe("42")
-    expect(govern).not.toHaveBeenCalled()
+    expect(createProposal).not.toHaveBeenCalled()
     expect(auditService.rateLimited).toHaveBeenCalled()
   })
 
-  it("consentement RGPD absent → 403 (orchestrateur non appelé)", async () => {
+  it("consentement RGPD absent → 403 (service non appelé)", async () => {
     vi.mocked(requireGdprConsent).mockResolvedValueOnce(false)
     const res = await PUT(isf())
     expect(res.status).toBe(403)
-    expect(govern).not.toHaveBeenCalled()
+    expect(createProposal).not.toHaveBeenCalled()
   })
 })

@@ -431,22 +431,16 @@ export const patientService = {
     return prisma.$transaction(async (tx) => {
       const before = await tx.patient.findFirst({
         where: { id: patientId, deletedAt: null },
-        select: { maturityLevel: true, autoApply: true },
+        select: { maturityLevel: true },
       })
       if (!before) throw new Error("patientNotFound")
 
-      // US-2657 (durcissement) — sortir du niveau EXPERT **neutralise `autoApply`** dans la MÊME
-      // transaction (fail-safe) : une auto-application ne survit jamais à la perte du niveau EXPERT, et
-      // une ré-élévation ultérieure exige une NOUVELLE approbation de gouvernance (ADMIN + dpiaRef) — sans
-      // ça, un cycle EXPERT→JUNIOR→EXPERT ré-activerait silencieusement l'automatisation sur l'ancienne
-      // approbation. (Défense en profondeur ; le harnais re-vérifie aussi une GovernanceApproval active.)
-      const mustClearAutoApply = level !== "EXPERT" && before.autoApply
       const maturityChanged = before.maturityLevel !== level
-      if (!maturityChanged && !mustClearAutoApply) return { maturityLevel: level, changed: false, autoApplyCleared: false }
+      if (!maturityChanged) return { maturityLevel: level, changed: false }
 
       await tx.patient.update({
         where: { id: patientId },
-        data: { maturityLevel: level, ...(mustClearAutoApply ? { autoApply: false } : {}) },
+        data: { maturityLevel: level },
       })
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -456,24 +450,9 @@ export const patientService = {
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
         requestId: ctx?.requestId,
-        metadata: { patientId, from: before.maturityLevel, to: level, ...(mustClearAutoApply ? { autoApplyCleared: true } : {}) },
+        metadata: { patientId, from: before.maturityLevel, to: level },
       })
-      // Émettre AUSSI l'action dédiée du flag : une requête forensique « historique de `autoApply` » filtrant
-      // sur `AUTO_APPLY_FLAG_CHANGED` doit voir cette désactivation-par-downgrade (voie d'intervention humaine
-      // Art. 22), pas seulement `MATURITY_LEVEL_CHANGED.metadata.autoApplyCleared`.
-      if (mustClearAutoApply) {
-        await auditService.logWithTx(tx, {
-          userId: auditUserId,
-          action: "AUTO_APPLY_FLAG_CHANGED",
-          resource: "PATIENT",
-          resourceId: String(patientId),
-          ipAddress: ctx?.ipAddress,
-          userAgent: ctx?.userAgent,
-          requestId: ctx?.requestId,
-          metadata: { patientId, from: true, to: false, reason: "maturityDowngrade" },
-        })
-      }
-      return { maturityLevel: level, changed: maturityChanged, autoApplyCleared: mustClearAutoApply }
+      return { maturityLevel: level, changed: maturityChanged }
     })
   },
 

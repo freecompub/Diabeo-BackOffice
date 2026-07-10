@@ -1,11 +1,31 @@
-# US-2657 — Maturité du patient & autonomie graduée (avec auto-application experte gouvernée)
+# US-2657 — Maturité du patient & autonomie graduée
+
+> ⚠️ **Mise à jour 2026-07-10 : AUTO-APPLICATION RETIRÉE**
+> 
+> **L'auto-application experte gouvernée (enveloppe C1–C8, gouvernance, `GovernanceApproval`, `AutoApplyEvent`, kill-switch `AUTO_APPLY_GLOBALLY_ENABLED`, flag `Patient.autoApply`) a été complètement retirée du code.** 
+>
+> **Ce qui reste** :
+> - Niveaux de maturité (`Patient.maturityLevel` : JUNIOR / INTERMEDIATE / EXPERT) gouvernant les **capacités d'édition** du patient :
+>   - JUNIOR : éditer les valeurs (propositions)
+>   - INTERMEDIATE : + restructurer les créneaux (propositions)
+>   - EXPERT : + refuser/contre-proposer (propositions)
+> - **Toute édition patient génère désormais une proposition** (`SlotSetProposal`) validée par un médecin (jamais auto-appliquée)
+> - Édition DOCTOR direct inchangée (direct apply de groupe)
+>
+> **Hors périmètre livré** : profil patient (adhérence réelle vs constantes) — tracé pour V3.
+>
+> Voir `docs/clinical-logic/regles-et-constantes-diabete.md` (§ maturity) et `docs/api/routes-summary.md` pour les mises à jour documentaires.
+
+---
+
+# Spécification archivée (US-2657 avant retrait)
 
 > 📌 Sous-US de [US-2654](US-2654-EPIC-edition-creneaux-autonomie-graduee.md) · front + back + **gouvernance** · Taille **XL** · **Version : V1**
 > · dépend de : US-2648, US-2649, US-2650, US-2655 (socle serveur groupe)
 >
-> **Statut** : 🟡 spécifiée — **aucun code avant validation.**
+> **Statut** : Supprimée (2026-07-10) — auto-application gouvernée retirée.
 >
-> ⚠️ **Frontière dispositif médical (MDR).** Cette US introduit la possibilité qu'un **paramètre de posologie** soit modifié **par le patient sans validation d'un professionnel de santé** (auto-application). C'est un **déplacement de classe** au sens du règlement (UE) 2017/745 (MDR). L'auto-application ne peut être livrée **qu'adossée** au harnais de gouvernance décrit au §5 : sans lui, la fonctionnalité reste **désactivée en dur** (flag `autoApply` OFF par défaut, non basculable sans décision de gouvernance + DPIA).
+> La spécification originale (ci-dessous, archivée) proposait une auto-application avec enveloppe de sécurité (C1–C8) et gouvernance — cette fonctionnalité n'a pas été livrée.
 
 ---
 
