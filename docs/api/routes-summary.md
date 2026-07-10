@@ -78,11 +78,11 @@ pour un accès pro (DOCTOR/NURSE → `canAccessPatient`) ou lecture propre (VIEW
 | PUT | /api/insulin-therapy/settings | JWT + GDPR | Mise a jour parametres |
 | DELETE | /api/insulin-therapy/settings | DOCTOR+ | Suppression cascade |
 | GET | /api/insulin-therapy/sensitivity-factors | JWT + GDPR | Liste creneaux ISF |
-| PUT | /api/insulin-therapy/sensitivity-factors | DOCTOR+ | **Remplacement GROUPE** du jeu ISF (crée une proposition groupée) |
+| PUT | /api/insulin-therapy/sensitivity-factors | DOCTOR+ | **Remplacement GROUPE** direct du jeu ISF (`replaceSlotSet` — supersède les propositions `pending`) |
 | GET | /api/insulin-therapy/carb-ratios | JWT + GDPR | Liste creneaux ICR |
-| PUT | /api/insulin-therapy/carb-ratios | DOCTOR+ | **Remplacement GROUPE** du jeu ICR (crée une proposition groupée) |
+| PUT | /api/insulin-therapy/carb-ratios | DOCTOR+ | **Remplacement GROUPE** direct du jeu ICR (`replaceSlotSet` — supersède les propositions `pending`) |
 | GET | /api/insulin-therapy/basal-config/pump-slots | JWT + GDPR | Liste creneaux basaux |
-| PUT | /api/insulin-therapy/basal-config/pump-slots | DOCTOR+ | **Remplacement GROUPE** du jeu basal (crée une proposition groupée) |
+| PUT | /api/insulin-therapy/basal-config/pump-slots | DOCTOR+ | **Remplacement GROUPE** direct du jeu basal (`replacePumpSlotSet` — supersède les propositions `pending`) |
 | POST | /api/insulin-therapy/calculate-bolus | JWT + GDPR | Calcul bolus |
 | GET | /api/insulin-therapy/bolus-logs | JWT + GDPR | Historique bolus |
 

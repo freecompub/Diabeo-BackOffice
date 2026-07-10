@@ -11,9 +11,10 @@
  * **Variante NON BLOQUANTE** (`pg_try_advisory_xact_lock`) : si le verrou n'est pas libre *immédiatement*
  * (mutation concurrente en cours), on **n'attend pas** → l'appelant décide en **fail-closed**
  * (`slotsBusy`/409). Élimine toute attente/deadlock/timeout sous contention. Le verrou est
- * **transaction-scoped** (relâché au COMMIT/ROLLBACK, jamais fuité même sur crash) et **ré-entrant** : une
- * primitive appelée AVEC un `externalTx` qui détient déjà le verrou obtient `true` (même transaction). Le
- * hash 64-bit vient de `hashtextextended(key, 0)`.
+ * **transaction-scoped** (relâché au COMMIT/ROLLBACK, jamais fuité même sur crash). La ré-entrance native de
+ * `pg_try_advisory_xact_lock` (même transaction ⇒ `true`) reste vraie mais n'est plus exploitée : aucun
+ * chemin ne pré-prend le verrou puis n'appelle une seconde primitive verrouillante (l'ancien harnais
+ * d'auto-application le faisait ; il a été retiré — ADR #28). Le hash 64-bit vient de `hashtextextended(key, 0)`.
  */
 import type { Prisma } from "@prisma/client"
 

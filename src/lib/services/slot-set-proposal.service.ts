@@ -70,6 +70,12 @@ export const slotSetProposalService = {
    * clinique/couverture DÈS la création (`assertValidSlotSet`), refuse un patient non insuliné
    * (`nonInsulinNoDose`, frontière MDR) ou soft-deleted (`patientNotFound`). Supersède les propositions
    * pending du même `(patient × paramètre)` (d'ensemble ET par-valeur).
+   *
+   * **Pas de court-circuit « no-op »** : une soumission dont le jeu est identique à la configuration active
+   * crée quand même une proposition `pending` (le médecin la traite/rejette). Choix délibéré — comparer la
+   * soumission à l'état courant impliquerait une lecture + normalisation de créneaux dans un chemin clinique,
+   * non justifiée sans validation produit/médicale pour un simple confort de file de revue (medical-domain
+   * validator, revue PR #714). Le bruit éventuel est borné par la supersession (1 pending / paramètre).
    * @throws invalidSlotSet | emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap
    * @throws patientNotFound | nonInsulinNoDose | duplicatePendingProposal
    */

@@ -28,7 +28,7 @@ ORM: Prisma 5+
 
 ## Aperçu global
 
-Le schéma Diabeo contient **50 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
+Le schéma Diabeo contient **48 tables** réparties en **11 domaines métier**, avec **21 énums** pour les énumérations métier.
 
 ### Principles architecturaux
 
