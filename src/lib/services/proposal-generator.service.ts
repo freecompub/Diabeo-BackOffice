@@ -19,6 +19,7 @@
  * carb-ratios n'obtient pas (encore) de proposition basale. Acceptable pour un `basalBolus` bien formé
  * (le bolus repas implique des carb-ratios) ; découplage tracé en suivi.
  */
+import type { AdjustableParameter, Prisma } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { logger } from "@/lib/logger"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
@@ -29,8 +30,9 @@ import {
 import { cgmCaptureRate } from "@/lib/statistics"
 import { findSlotForHour } from "@/lib/insulin-slots"
 import {
-  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, analyzeBasalTrend, analyzeIsfSlot,
-  analyzeFixedDose, type ProposalCandidate,
+  analyzeIcrSlot, analyzeIcrHypoDeescalation, recurrentPostMealHypo, hasSevereHypo, analyzeBasalTrend,
+  analyzeIsfSlot, analyzeIsfHypoDeescalation, analyzeBasalHypoDeescalation, analyzeFixedDose,
+  analyzeFixedDoseHypoDeescalation, type ProposalCandidate,
 } from "@/lib/proposal-algorithm"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
@@ -58,7 +60,8 @@ const MIN_NADIR_NIGHTS = 3
 /** Résultat d'un run patient — métriques d'observabilité (aucune valeur clinique). */
 export interface GenerateResult {
   created: number
-  /** US-2653 — flags `highVariabilityPostMeal` levés (cas haute-variabilité, jamais de dose). */
+  /** US-2653 — flags de revue CONTEXTUELS levés (haute-variabilité ICR/ISF/fixedDose, Somogyi basal, hypo
+   *  sévère isolée, dé-escalade non actionnable) : orientation, JAMAIS une dose. */
   flagged: number
   slotsConsidered: number
   mealsUsable: number
@@ -83,6 +86,31 @@ const CRON_LOCK_KEY = "proposal-generator-cron"
 
 const EMPTY = (skipped: string): GenerateResult =>
   ({ created: 0, flagged: 0, slotsConsidered: 0, mealsUsable: 0, skipped })
+
+/**
+ * US-2653 — **cooldown anti-cliquet du moteur**. `true` si une **dé-escalade** (baisse à magnitude FIXE)
+ * sur ce `(patient × paramètre × créneau)` doit être **sautée** parce que le dernier changement a été
+ * **accepté** il y a moins de `ENGINE_DEESCALATION_COOLDOWN_HOURS` — l'effet d'un ajustement se juge sur
+ * ≥ 3 j ; sans ce garde, une magnitude fixe non auto-limitante empilerait des baisses avant tout effet
+ * observable (sur-correction → hyper / cétose). Ne concerne QUE la dé-escalade fixe : l'escalade
+ * proportionnelle du deadband est auto-limitante. Skip **silencieux** (on a déjà agi, on attend l'effet).
+ *
+ * @param slotWhere Discriminateur de créneau du paramètre (ICR: `carbRatioSlot*` ; ISF: `timeSlot*` ;
+ *   basal: `pumpBasalSlotId` ; fixedDose: `moment`).
+ */
+async function deescalationOnCooldown(
+  patientId: number,
+  parameterType: AdjustableParameter,
+  slotWhere: Prisma.AdjustmentProposalWhereInput,
+): Promise<boolean> {
+  const last = await prisma.adjustmentProposal.findFirst({
+    where: { patientId, parameterType, status: "accepted", ...slotWhere },
+    orderBy: { reviewedAt: "desc" },
+    select: { reviewedAt: true },
+  })
+  if (!last?.reviewedAt) return false
+  return Date.now() - last.reviewedAt.getTime() < CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS * 3_600_000
+}
 
 /** Construit les entrées `analyzeIcrSlot` d'un créneau pour une cible donnée (deadband). */
 const buildIcrMeals = (meals: JournalMeal[], targetGl: number) =>
@@ -263,6 +291,7 @@ export const proposalGeneratorService = {
       // Sinon : deadband (baisse si > plafond ; hausse si < borne basse) OU, dans la bande, dé-escalade
       // sur hypos récurrentes (hausse ICR fixe = moins d'insuline).
       let candidate: ProposalCandidate | null = null
+      let isDeescalation = false
       if (avgPostGl > ceilingGl) {
         candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, ceilingGl)) // baisse (deadband)
       } else if (avgPostGl < lowerGl) {
@@ -270,9 +299,17 @@ export const proposalGeneratorService = {
         // Fallback (validé medical) : moyenne juste sous la borne (deadband < 2 % → null) MAIS hypos
         // récurrentes → la dé-escalade fixe +10 % (même sens sûr, plus protecteur). Ne pas laisser
         // ce sliver sans proposition pour un patient à hypos récurrentes.
-        if (!candidate && recurrentHypo) candidate = analyzeIcrHypoDeescalation(slot, nadirsGl)
+        if (!candidate && recurrentHypo) { candidate = analyzeIcrHypoDeescalation(slot, nadirsGl); isDeescalation = true }
       } else if (recurrentHypo) {
         candidate = analyzeIcrHypoDeescalation(slot, nadirsGl) // in-band + récurrent → hausse +10 %
+        isDeescalation = true
+      }
+
+      // Cooldown anti-cliquet (US-2653) : une dé-escalade FIXE n'est pas re-proposée tant que le dernier
+      // changement ACCEPTÉ sur ce créneau date de < ENGINE_DEESCALATION_COOLDOWN_HOURS (skip silencieux).
+      if (candidate && isDeescalation &&
+        (await deescalationOnCooldown(patientId, "insulinToCarbRatio", { carbRatioSlotStart: slot.startHour, carbRatioSlotEnd: slot.endHour }))) {
+        candidate = null
       }
 
       if (candidate && (await persist(candidate, slot))) created++
@@ -306,35 +343,68 @@ export const proposalGeneratorService = {
           .map((f) => f.nocturnalNadirMgdl)
           .filter((v): v is number => v !== null && Number.isFinite(v))
           .map((v) => v / 100)
-        const candidate = analyzeBasalTrend(fastingValues, targetGl, nocturnalSlot.rate, nocturnalNadirs)
-        // Coverage guard Somogyi : n'autoriser une HAUSSE que si ≥ MIN_MEALS_PER_SLOT nuits de nadir CGM
-        // (sinon repli fastingValues → hypo 3 h masquée → hausse dangereuse). Baisses inconditionnelles.
-        const isIncrease = candidate?.reason === "basalTooLow"
-        if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_NADIR_NIGHTS)) {
+        const avgFasting = fastingValues.length > 0 ? mean(fastingValues) : 0
+        const recurrentNoct = recurrentPostMealHypo(nocturnalNadirs)
+        const severeNoct = hasSevereHypo(nocturnalNadirs)
+        const basalBucket = `basal:${nocturnalSlot.startHour}-${nocturnalSlot.endHour}`
+
+        // Flag nocturne CONTEXTUEL (Somogyi / non-actionnable / sévère isolé) — orientation, jamais une dose.
+        const raiseNocturnalFlag = () =>
+          clinicalReviewFlagService.raise(patientId, "nocturnalHypoHighFasting", auditUserId, ctx)
+            .then(() => { flagged++ })
+            .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: basalBucket }, err as Error))
+
+        const persistBasal = async (cand: ProposalCandidate) => {
           try {
             await adjustmentService.createEngineProposal({
               patientId,
               parameterType: "basalRate",
-              proposedValue: candidate.proposedValue,
-              expectedCurrentValue: candidate.currentValue,
-              reason: candidate.reason,
-              confidence: candidate.confidence,
-              supportingEvents: candidate.supportingEvents,
-              totalEventsConsidered: candidate.totalEventsConsidered,
-              averageObservedValue: candidate.averageObservedValue ?? null,
+              proposedValue: cand.proposedValue,
+              expectedCurrentValue: cand.currentValue,
+              reason: cand.reason,
+              confidence: cand.confidence,
+              supportingEvents: cand.supportingEvents,
+              totalEventsConsidered: cand.totalEventsConsidered,
+              averageObservedValue: cand.averageObservedValue ?? null,
               analysisPeriod,
               pumpBasalSlotId: nocturnalSlot.id,
             }, ctx)
             created++
           } catch (err) {
             const msg = (err as Error).message
-            const bucket = `basal:${nocturnalSlot.startHour}-${nocturnalSlot.endHour}`
             if (EXPECTED_SKIP.has(msg)) {
-              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket: basalBucket, failMode: msg })
             } else {
               logger.error("proposal-generator", "unexpected engine proposal error",
-                { patientId, bucket, failMode: "unexpected" }, err as Error)
+                { patientId, bucket: basalBucket, failMode: "unexpected" }, err as Error)
             }
+          }
+        }
+
+        // MATRICE deadband × nadir nocturne (US-2653, validé medical) :
+        //  - à jeun HAUT + hypo nocturne RÉCURRENTE = Somogyi vs phénomène de l'aube (direction non fiable
+        //    à automatiser) → FLAG de revue, JAMAIS une baisse directe (medical : rejet du Somogyi auto).
+        if (avgFasting > targetGl && recurrentNoct) {
+          await raiseNocturnalFlag()
+        } else {
+          const candidate = analyzeBasalTrend(fastingValues, targetGl, nocturnalSlot.rate, nocturnalNadirs)
+          // Coverage guard Somogyi : n'autoriser une HAUSSE que si ≥ MIN_NADIR_NIGHTS nuits de nadir CGM
+          // (sinon repli fastingValues → hypo 3 h masquée → hausse dangereuse). Baisses inconditionnelles.
+          const isIncrease = candidate?.reason === "basalTooLow"
+          if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_NADIR_NIGHTS)) {
+            await persistBasal(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+          } else if (recurrentNoct) {
+            // Dans la bande + hypo nocturne récurrente → baisse FIXE −10 % (dé-escalade), cooldown-gated.
+            const de = analyzeBasalHypoDeescalation(nocturnalSlot.rate, nocturnalNadirs)
+            if (de.kind === "proposal") {
+              if (!(await deescalationOnCooldown(patientId, "basalRate", { pumpBasalSlotId: nocturnalSlot.id }))) {
+                await persistBasal(de.candidate)
+              }
+            } else if (de.kind === "flagNonActionable") {
+              await raiseNocturnalFlag() // débit trop bas pour titrer d'un incrément → restructuration = revue
+            }
+          } else if (severeNoct) {
+            await raiseNocturnalFlag() // hypo sévère nocturne ISOLÉE → surface, jamais silencieuse
           }
         }
       }
@@ -361,35 +431,69 @@ export const proposalGeneratorService = {
         byIsfSlot.set(slot.startHour, entry)
       }
       for (const { slot, points } of byIsfSlot.values()) {
-        const candidate = analyzeIsfSlot(
-          slot,
-          points.map((p) => ({ postGlucoseGl: p.postGlucoseGl, targetGl: p.targetGl, nadirGl: p.nadirGl ?? undefined })),
-        )
-        if (!candidate) continue
-        try {
-          await adjustmentService.createEngineProposal({
-            patientId,
-            parameterType: "insulinSensitivityFactor",
-            proposedValue: candidate.proposedValue,
-            expectedCurrentValue: candidate.currentValue,
-            reason: candidate.reason,
-            confidence: candidate.confidence,
-            supportingEvents: candidate.supportingEvents,
-            totalEventsConsidered: candidate.totalEventsConsidered,
-            averageObservedValue: candidate.averageObservedValue ?? null,
-            analysisPeriod: ISF_ANALYSIS_PERIOD,
-            timeSlotStartHour: slot.startHour,
-            timeSlotEndHour: slot.endHour,
-          }, ctx)
-          created++
-        } catch (err) {
-          const msg = (err as Error).message
-          const bucket = `isf:${slot.startHour}-${slot.endHour}`
-          if (EXPECTED_SKIP.has(msg)) {
-            logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
-          } else {
-            logger.error("proposal-generator", "unexpected engine proposal error",
-              { patientId, bucket, failMode: "unexpected" }, err as Error)
+        const isfBucket = `isf:${slot.startHour}-${slot.endHour}`
+        // Nadirs de corrections PROPRES ISOLÉES uniquement (COB/IOB exclus par `correctionTrend`) — jamais
+        // un nadir post-repas (invariant provenance US-2653). `nadirGl` null (rareté CGM) → ne compte pas.
+        const nadirsGl = points.map((p) => p.nadirGl).filter((n): n is number => n != null)
+        const recurrent = recurrentPostMealHypo(nadirsGl)
+        const severe = hasSevereHypo(nadirsGl)
+        const avgPost = mean(points.map((p) => p.postGlucoseGl))
+        const avgTarget = mean(points.map((p) => p.targetGl))
+
+        const raiseIsfFlag = () =>
+          clinicalReviewFlagService.raise(patientId, "highVariabilityPostCorrection", auditUserId, ctx)
+            .then(() => { flagged++ })
+            .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: isfBucket }, err as Error))
+
+        const persistIsf = async (cand: ProposalCandidate) => {
+          try {
+            await adjustmentService.createEngineProposal({
+              patientId,
+              parameterType: "insulinSensitivityFactor",
+              proposedValue: cand.proposedValue,
+              expectedCurrentValue: cand.currentValue,
+              reason: cand.reason,
+              confidence: cand.confidence,
+              supportingEvents: cand.supportingEvents,
+              totalEventsConsidered: cand.totalEventsConsidered,
+              averageObservedValue: cand.averageObservedValue ?? null,
+              analysisPeriod: ISF_ANALYSIS_PERIOD,
+              timeSlotStartHour: slot.startHour,
+              timeSlotEndHour: slot.endHour,
+            }, ctx)
+            created++
+          } catch (err) {
+            const msg = (err as Error).message
+            if (EXPECTED_SKIP.has(msg)) {
+              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket: isfBucket, failMode: msg })
+            } else {
+              logger.error("proposal-generator", "unexpected engine proposal error",
+                { patientId, bucket: isfBucket, failMode: "unexpected" }, err as Error)
+            }
+          }
+        }
+
+        // MATRICE deadband × nadir post-correction (US-2653, validé medical) :
+        //  - sous-correction MOYENNE (post-correction > cible) + hypos post-correction RÉCURRENTES = conflit
+        //    (un ISF unique ne corrige pas sous-correction + sur-correction intermittente = timing/IOB/stacking)
+        //    → FLAG, jamais une dose.
+        if (avgTarget > 0 && avgPost > avgTarget && recurrent) {
+          await raiseIsfFlag()
+        } else {
+          const candidate = analyzeIsfSlot(
+            slot,
+            points.map((p) => ({ postGlucoseGl: p.postGlucoseGl, targetGl: p.targetGl, nadirGl: p.nadirGl ?? undefined })),
+          )
+          if (candidate) {
+            await persistIsf(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+          } else if (recurrent) {
+            // Dans la bande + hypos post-correction récurrentes → hausse ISF FIXE +10 % (dé-escalade), cooldown-gated.
+            const de = analyzeIsfHypoDeescalation(slot, nadirsGl)
+            if (de && !(await deescalationOnCooldown(patientId, "insulinSensitivityFactor", { timeSlotStartHour: slot.startHour, timeSlotEndHour: slot.endHour }))) {
+              await persistIsf(de)
+            }
+          } else if (severe) {
+            await raiseIsfFlag() // hypo sévère post-correction ISOLÉE → surface, jamais silencieuse
           }
         }
       }
@@ -446,37 +550,73 @@ export const proposalGeneratorService = {
     const troughs = await analyticsService.fixedDoseTrend(patientId, analysisPeriod, auditUserId, ctx)
 
     let created = 0
+    let flagged = 0
     for (const slot of fixedSlots) {
-      const readings = (troughs[slot.moment] ?? []).map((g) => ({ postGlucoseGl: g, targetGl }))
-      const candidate = analyzeFixedDose({ moment: slot.moment, valueU: Number(slot.valueU) }, readings)
-      if (!candidate) continue
-      try {
-        await adjustmentService.createEngineProposal({
-          patientId,
-          parameterType: "fixedDose",
-          moment: slot.moment,
-          proposedValue: candidate.proposedValue,
-          expectedCurrentValue: candidate.currentValue,
-          reason: candidate.reason,
-          confidence: candidate.confidence,
-          supportingEvents: candidate.supportingEvents,
-          totalEventsConsidered: candidate.totalEventsConsidered,
-          averageObservedValue: candidate.averageObservedValue ?? null,
-          analysisPeriod,
-        }, ctx)
-        created++
-      } catch (err) {
-        const msg = (err as Error).message
-        const bucket = `fixedDose:${slot.moment}`
-        if (EXPECTED_SKIP.has(msg)) {
-          logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
-        } else {
-          logger.error("proposal-generator", "unexpected engine proposal error",
-            { patientId, bucket, failMode: "unexpected" }, err as Error)
+      const bucket = `fixedDose:${slot.moment}`
+      const valueU = Number(slot.valueU)
+      const readingsGl = troughs[slot.moment] ?? []
+      const readings = readingsGl.map((g) => ({ postGlucoseGl: g, targetGl }))
+      const recurrent = recurrentPostMealHypo(readingsGl)
+      const severe = hasSevereHypo(readingsGl)
+      const avgReading = readingsGl.length > 0 ? mean(readingsGl) : 0
+
+      const raiseFixedFlag = () =>
+        clinicalReviewFlagService.raise(patientId, "highVariabilityFixedDose", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket }, err as Error))
+
+      const persistFixed = async (cand: ProposalCandidate) => {
+        try {
+          await adjustmentService.createEngineProposal({
+            patientId,
+            parameterType: "fixedDose",
+            moment: slot.moment,
+            proposedValue: cand.proposedValue,
+            expectedCurrentValue: cand.currentValue,
+            reason: cand.reason,
+            confidence: cand.confidence,
+            supportingEvents: cand.supportingEvents,
+            totalEventsConsidered: cand.totalEventsConsidered,
+            averageObservedValue: cand.averageObservedValue ?? null,
+            analysisPeriod,
+          }, ctx)
+          created++
+        } catch (err) {
+          const msg = (err as Error).message
+          if (EXPECTED_SKIP.has(msg)) {
+            logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+          } else {
+            logger.error("proposal-generator", "unexpected engine proposal error",
+              { patientId, bucket, failMode: "unexpected" }, err as Error)
+          }
+        }
+      }
+
+      // MATRICE deadband × relevés du moment (US-2653, validé medical) :
+      //  - moyenne du moment > cible + hypos récurrentes = conflit (la dose ne corrige pas moyenne haute +
+      //    creux) → FLAG, jamais une dose.
+      if (avgReading > targetGl && recurrent) {
+        await raiseFixedFlag()
+      } else {
+        const candidate = analyzeFixedDose({ moment: slot.moment, valueU }, readings)
+        if (candidate) {
+          await persistFixed(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+        } else if (recurrent) {
+          // Dans la bande + relevés du moment récurremment bas → baisse FIXE bornée (dé-escalade), cooldown-gated.
+          const de = analyzeFixedDoseHypoDeescalation({ moment: slot.moment, valueU }, readingsGl)
+          if (de.kind === "proposal") {
+            if (!(await deescalationOnCooldown(patientId, "fixedDose", { moment: slot.moment }))) {
+              await persistFixed(de.candidate)
+            }
+          } else if (de.kind === "flagNonActionable") {
+            await raiseFixedFlag() // dose au plancher / non réductible → arrêt/restructuration = revue
+          }
+        } else if (severe) {
+          await raiseFixedFlag() // hypo sévère du moment ISOLÉE → surface, jamais silencieuse
         }
       }
     }
-    return { created, flagged: 0, slotsConsidered: fixedSlots.length, mealsUsable: 0, skipped: null }
+    return { created, flagged, slotsConsidered: fixedSlots.length, mealsUsable: 0, skipped: null }
   },
 
   /**

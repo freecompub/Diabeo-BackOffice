@@ -29,6 +29,9 @@ const FLAG_TYPE_KEY: Record<ReviewFlagItem["type"], string> = {
   observance: "flagObservance",
   highVariabilityPostMeal: "flagHighVariabilityPostMeal",
   hba1cAboveTarget: "flagHba1cAboveTarget",
+  nocturnalHypoHighFasting: "flagNocturnalHypoHighFasting",
+  highVariabilityPostCorrection: "flagHighVariabilityPostCorrection",
+  highVariabilityFixedDose: "flagHighVariabilityFixedDose",
 }
 
 export function ReviewFlagsCard() {

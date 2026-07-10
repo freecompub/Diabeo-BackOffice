@@ -229,19 +229,61 @@ slices ultérieures.
 La **porte qualité pré-repas** est **grossesse-aware** : borne haute resserrée à `ICR_PREMEAL_MAX_PREGNANCY_GL`
 (1,10 g/L) quand `isPregnancy` — sinon un pré-repas déjà élevé pour une enceinte contaminerait le signal ICR.
 
-> **✅ US-2653 (câblé, chemin ICR) — matrice deadband × nadir récurrent.** La décision par créneau combine
-> désormais la **moyenne** PPG (deadband) ET les **nadirs récurrents** (`recurrentPostMealHypo` : ≥ 2 nadirs
-> < 0,70 parmi ≥ 3) :
-> - `moyenne > plafond` & **récurrent** → **flag `highVariabilityPostMeal`** (pic + creux : le levier ICR ne
->   corrige pas les deux → revue, **jamais** une dose) ;
-> - `moyenne > plafond` & non-récurrent → **baisse** (deadband) ;
-> - **dans la bande** & récurrent → **`analyzeIcrHypoDeescalation`** (hausse ICR fixe **+10 %** = moins
->   d'insuline) — comble le trou « bon en moyenne mais hypos récurrentes » ;
-> - dans la bande & non-récurrent → rien ; `< borne basse` → hausse (deadband), avec **fallback
->   dé-escalade +10 %** si le deadband est sous le seuil des 2 % (moyenne juste sous la borne) ET hypos
->   récurrentes (validé medical : ne pas laisser ce sliver sans proposition).
-> Deadband et dé-escalade **mutuellement exclusifs** par créneau. Extension ISF/basal/fixedDose ultérieure
-> (nadir feed **par analyseur** — ne jamais nourrir un nadir post-repas à la basale).
+> **✅ US-2653 — matrice deadband × nadir récurrent (COMPLÈTE, tous les leviers).** La décision par créneau
+> combine désormais la **moyenne** (deadband) ET les **nadirs récurrents** — **chaque analyseur nourri par sa
+> propre source de nadir, jamais cross-fed**. Matrice uniforme (sauf Somogyi basal) :
+>
+> **ICR (nadir source : nadirs post-repas isolés)** :
+> - `moyenne > plafond` & **récurrent** (≥2 nadirs < 0,70 / ≥3 repas) → **flag `highVariabilityPostMeal`** 
+>   (pic + creux : le levier ICR ne corrige pas les deux → revue, **jamais** une dose) ;
+> - `moyenne > plafond` & non-récurrent → **baisse** ICR (deadband) ;
+> - **dans la bande** & récurrent → **hausse ICR +10 %** (moins d'insuline) ;
+> - dans la bande & non-récurrent → rien ; `< borne basse` → hausse (deadband), avec fallback dé-escalade 
+>   +10 % si le deadband < 2 % ET hypos récurrentes.
+> 
+> **ISF (nadir source : nadirs post-correction isolés propres)** :
+> - `moyenne > cible` & **récurrent** (≥2 nadirs < 0,70) → **flag `highVariabilityPostCorrection`** (pics + creux 
+>   en correction : pas d'automatisme, revue) ;
+> - `moyenne > cible` & non-récurrent → **hausse ISF +10 %** (corrections moins fortes = moins d'insuline) ;
+> - **dans la bande** & récurrent → **hausse ISF +10 %** ;
+> - dans la bande & non-récurrent → rien ;
+> - **single severe hypo** (< 0,54 g/L) → **flag** (sûreté : pas de hausse) ;
+> - sens négatif (moyenne EN-DESSOUS de cible) → baisses normales (deadband) — sans garde hypo ici 
+>   (la baisse ISF = corrections plus fortes, direction dangereuse, filtrée).
+>
+> **Basal (nadir source : nadirs nocturnes)** :
+> - **Cas spécial Somogyi (REJETÉ)** : `fasting HIGH + recurrent nocturnal hypo` → **flag `nocturnalHypoHighFasting`** 
+>   (JAMAIS de baisse basal automatique). **Rationale clinique** (evidence CGM-era) : la montée à jeun 
+>   (phénomène de l'aube) domine souvent un vrai rebond Somogyi ; la direction (baisse = moins d'insuline) 
+>   laisse le pic à jeun non traité → risque intolérable sans imagerie métabolique du patient. Proposition fail-closed.
+> - `moyenne à jeun > cible` & **récurrent nocturnal hypo** (≥2 nadirs < 0,70) → **flag `nocturnalHypoHighFasting`** 
+>   (même diagnostique : Somogyi soupçonné, médecin juge).
+> - `moyenne à jeun > cible` & non-récurrent → **hausse basal +20 %** (clampé ± 20 %, snappé 0,05 U/h) — deadband normal ;
+> - **dans la bande** & récurrent nocturnal hypo → **baisse basal −10 %** (moins d'insuline de nuit, hypos moins profondes) ;
+> - dans la bande & non-récurrent → rien ;
+> - **single severe hypo nocturne** → **flag** (sûreté).
+>
+> **FixedDose (nadir source : creux pré-dose BGM par moment)** :
+> - `moyenne > cible` & **récurrent** (≥2 lows < 0,70 parmi ≥3 relevés) → **flag `highVariabilityFixedDose`** 
+>   (variabilité exige revue) ;
+> - `moyenne > cible` & non-récurrent → **baisse dose −min(10 %, 2 U)**, floor 0,5 U, snap 0,5 U (pas nul) ;
+> - **dans la bande** & récurrent → **baisse dose −min(10 %, 2 U)** ;
+> - dans la bande & non-récurrent → rien ;
+> - dose déjà à floor ou non réductible → **flag** (non-actionnable, médecin) ;
+> - **single severe hypo** → **flag** (sûreté) ;
+> - `moyenne SOUS la cible` (baisse BGM) → **hausse dose** (deadband normal) — pas de garde hypo ici 
+>   (hausse = plus d'insuline, direction dangereuse, filtrée).
+>
+> **Anti-ratchet (tous les leviers)** : cooldown `ENGINE_DEESCALATION_COOLDOWN_HOURS = 72 h` — aucune 
+> **dé-escalade à magnitude fixe** (−10 % ICR, −10 % ISF, −10 % basal, −min(10 %, 2 U) fixedDose) sur un 
+> `(patient × paramètre × créneau/moment)` dont l'**ACCEPTÉE** précédente < 72 h (gating au générateur). 
+> La **proportionnelle deadband** n'est pas gatée (self-limiting). Prévient l'accumulation 10%+10%+10% 
+> avant que l'effet de la 1re soit jaugeable (≥3 j CGM/BGM).
+>
+> **Invariant clé** : nadir feed **par analyseur** — jamais cross-fed. ISF/basal sont indépendants 
+> cliniquement (axes d'ajustement disjoints). Three new contextual flag types (`highVariabilityPostCorrection`, 
+> `nocturnalHypoHighFasting`, `highVariabilityFixedDose`, i18n `reviewFlags` namespace) ordonnent la revue 
+> sans impliquer une dose.
 
 > **⚠️ Caveat clinique — troncature par resucrage (MEDIUM, validé medical).** La fenêtre nadir se termine
 > au **prochain apport glucidique** (anti mis-attribution : la glycémie post-collation ne doit pas être

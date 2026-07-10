@@ -396,6 +396,85 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(isfCalls()).toHaveLength(0)
   })
+
+  // US-2653 — dé-escalade active + matrice post-correction.
+  it("in-band + nadirs post-correction récurrents → dé-escalade ISF (hausse +10 %, isfTooLow)", async () => {
+    // avgPost = cible (1,2) → analyzeIsfSlot in-band (null) ; nadirs 0,6 récurrents → dé-escalade.
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const isf = isfCalls()
+    expect(isf).toHaveLength(1)
+    expect(isf[0]).toMatchObject({ reason: "isfTooLow", expectedCurrentValue: 0.5, proposedValue: 0.55 })
+  })
+
+  it("sous-correction moyenne + nadirs récurrents → FLAG highVariabilityPostCorrection, aucune dose", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.8, 0.6) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityPostCorrection", 99, undefined)
+  })
+
+  it("cooldown anti-cliquet : dernier changement accepté < 72 h → dé-escalade ISF SAUTÉE (skip silencieux)", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "highVariabilityPostCorrection", 99, undefined)
+  })
+
+  it("cooldown expiré (> 72 h) → dé-escalade ISF de nouveau proposée", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 80 * 3_600_000) } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(1)
+  })
+})
+
+describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const NOCTURNAL = { id: "noct", rate: 0.8, startHour: 0, endHour: 6 }
+  const pump = () => ({ configType: "pump", pumpSlots: [NOCTURNAL] })
+  const nights = (fastingMgdl: number, nadirMgdl: number | null) =>
+    Array.from({ length: 3 }, () => ({ fastingMgdl, nocturnalNadirMgdl: nadirMgdl }))
+  const basalCalls = () =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate")
+
+  it("Somogyi : à jeun HAUT + hypo nocturne récurrente → FLAG nocturnalHypoHighFasting, JAMAIS de baisse directe", async () => {
+    setup({ meals: [], basalConfig: pump(), fasting: nights(150, 60) }) // 1,50 à jeun, nadir 0,60 récurrent
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(basalCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+  })
+
+  it("in-band + hypo nocturne récurrente → dé-escalade basale (baisse, basalTooHigh)", async () => {
+    setup({ meals: [], basalConfig: pump(), fasting: nights(100, 60) }) // à jeun = cible 1,00, nadir 0,60
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const basal = basalCalls()
+    expect(basal).toHaveLength(1)
+    expect(basal[0]).toMatchObject({ reason: "basalTooHigh", expectedCurrentValue: 0.8 })
+    expect(Number(basal[0].proposedValue)).toBeLessThan(0.8)
+  })
+
+  it("dé-escalade basale : cooldown < 72 h → sautée", async () => {
+    setup({ meals: [], basalConfig: pump(), fasting: nights(100, 60) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(basalCalls()).toHaveLength(0)
+  })
+
+  it("fixedDose : moyenne du moment > cible + hypos récurrentes → FLAG highVariabilityFixedDose", async () => {
+    mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue([{ moment: "morning", valueU: 10 }] as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
+    prismaMock.glucoseTarget.findFirst.mockResolvedValue(null as never)
+    // moyenne ~1,04 > cible 1,00, 2 relevés < 0,70 (récurrent) → flag.
+    fixedDoseTrend.mockResolvedValue({ morning: [0.6, 0.6, 1.9], noon: [], evening: [], night: [] } as never)
+    createEngine.mockResolvedValue({ id: "e1" } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createEngine.mock.calls.filter((c) => (c[0] as Record<string, unknown>).parameterType === "fixedDose")).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined)
+  })
 })
 
 describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsulin)", () => {

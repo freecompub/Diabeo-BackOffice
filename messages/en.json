@@ -2072,7 +2072,10 @@
     "flagTirBelowTarget": "Time in range (TIR) below target",
     "flagObservance": "Glucose monitoring to check",
     "flagHighVariabilityPostMeal": "High post-meal variability (spike + hypoglycemia)",
-    "flagHba1cAboveTarget": "Glycated haemoglobin (HbA1c) above target"
+    "flagHba1cAboveTarget": "Glycated haemoglobin (HbA1c) above target",
+    "flagNocturnalHypoHighFasting": "Recurrent nocturnal hypoglycemia with high fasting glucose (to review)",
+    "flagHighVariabilityPostCorrection": "High post-correction variability (recurrent lows)",
+    "flagHighVariabilityFixedDose": "Recurrent lows on fixed dose (to review)"
   },
   "review": {
     "title": "Consultation review mode",
