@@ -359,10 +359,11 @@ describe("analyticsService.fixedDoseTrend (US-2652 — assemblage dose fixe par 
       gEntry("2026-07-01", 23, 0.9), // fenêtre night → juge la dose EVENING
     ])
     const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
-    expect(out.night[0]).toBeCloseTo(1.1)
-    expect(out.morning[0]).toBeCloseTo(1.6)
-    expect(out.noon[0]).toBeCloseTo(1.4)
-    expect(out.evening[0]).toBeCloseTo(0.9)
+    // US-2653 : chaque relevé porte désormais `{ gl, dayIso }` (dayIso pour le filtre post-changement).
+    expect(out.night[0].gl).toBeCloseTo(1.1)
+    expect(out.morning[0].gl).toBeCloseTo(1.6)
+    expect(out.noon[0].gl).toBeCloseTo(1.4)
+    expect(out.evening[0].gl).toBeCloseTo(0.9)
   })
 
   it("retient le relevé le plus TÔT par jour (proxy creux, évite le post-prandial)", async () => {
@@ -372,7 +373,11 @@ describe("analyticsService.fixedDoseTrend (US-2652 — assemblage dose fixe par 
     ])
     const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
     expect(out.morning).toHaveLength(1)
-    expect(out.morning[0]).toBeCloseTo(1.2)
+    expect(out.morning[0].gl).toBeCloseTo(1.2)
+    // Jour EXACT (pas seulement le format) : la colonne `@db.Date` à minuit UTC doit ressortir sur le même
+    // jour calendaire via `localDay` (Europe/Paris) — verrou anti-régression du fix TZ (garde contre un
+    // retour silencieux à une dérivation UTC divergente).
+    expect(out.morning[0].dayIso).toBe("2026-07-01")
   })
 
   it("accumule un creux PAR JOUR (3 jours → 3 relevés pour la dose)", async () => {

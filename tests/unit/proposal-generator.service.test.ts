@@ -16,6 +16,9 @@ vi.mock("@/lib/services/insulin-therapy.service", () => ({
 }))
 vi.mock("@/lib/services/meal-trends.service", () => ({
   mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn(), correctionTrend: vi.fn() },
+  // US-2653 (fix cooldown) — le générateur importe `localDay` pour aligner le cutoff post-changement
+  // sur la base jour des observations. En test : jour UTC de l'instant (suffit aux comparaisons de fixtures).
+  localDay: (ms: number) => new Date(ms).toISOString().slice(0, 10),
 }))
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
@@ -56,10 +59,26 @@ const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
 const fixedDoseTrend = vi.mocked(analyticsService.fixedDoseTrend)
 const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 
-/** Repas exploitable par défaut : midi (13 h), glucides/bolus OK, pré-repas 1,0 g/L (en bande). */
+const DAY_MS = 86_400_000
+/** Jour ISO (UTC) il y a `n` jours — pour dater les observations relativement à « maintenant »
+ *  (le filtre post-changement US-2653 compare `dayIso > cutoff`). Défaut fixtures : hier. */
+const isoDaysAgo = (n: number) => new Date(Date.now() - n * DAY_MS).toISOString().slice(0, 10)
+
+/** `number[]` → forme `{gl, dayIso}[]` attendue de `fixedDoseTrend` (US-2653 fix). `dayIso` = hier par défaut,
+ *  ou une liste de jours fournie (pour dater les relevés dans les tests post-changement). */
+const toTroughs = (
+  m: Record<string, number[]>,
+  days?: string[],
+): Record<string, { gl: number; dayIso: string }[]> =>
+  Object.fromEntries(
+    Object.entries(m).map(([k, gls]) => [k, gls.map((gl, i) => ({ gl, dayIso: days?.[i] ?? isoDaysAgo(1) }))]),
+  )
+
+/** Repas exploitable par défaut : midi (13 h), glucides/bolus OK, pré-repas 1,0 g/L (en bande).
+ *  `dayIso` = hier par défaut (récent → passe le filtre post-changement quand aucun changement récent). */
 function meal(over: Partial<Record<string, unknown>> = {}) {
   return {
-    mealId: "m", dayIso: "2026-07-01", localHour: 13, moment: "noon",
+    mealId: "m", dayIso: isoDaysAgo(1), localHour: 13, moment: "noon",
     preMgdl: 100, postMgdl: 200, nadirMgdl: 160, carbs: 45, bolus: 6, ...over,
   } as never
 }
@@ -250,7 +269,7 @@ describe("proposalGeneratorService.generateForPatient — chemin basal (US-2651)
   const basalCalls = () =>
     createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate")
   const fastingNights = (fastingMgdl: number, nocturnalNadirMgdl: number | null) =>
-    Array.from({ length: 3 }, () => ({ fastingMgdl, nocturnalNadirMgdl }))
+    Array.from({ length: 3 }, (_, i) => ({ fastingMgdl, nocturnalNadirMgdl, dayIso: isoDaysAgo(i + 1) }))
 
   it("pompe : à jeun haut + ≥3 nadirs sûrs → proposition basalRate (hausse) sur le créneau nocturne", async () => {
     setup({ meals: [], basalConfig: pump(), fasting: fastingNights(150, 120) }) // 1,50 g/L vs défaut 1,00
@@ -312,7 +331,7 @@ describe("proposalGeneratorService.generateForPatient — mode fixedDose (US-265
     prismaMock.fixedDoseSlot.findMany.mockResolvedValue((opts.slots ?? []) as never)
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: opts.pathology ?? "DT2", pregnancyMode: opts.pregnancyMode ?? false } as never)
     prismaMock.glucoseTarget.findFirst.mockResolvedValue((opts.target ?? null) as never)
-    fixedDoseTrend.mockResolvedValue((opts.troughs ?? emptyTroughs) as never)
+    fixedDoseTrend.mockResolvedValue(toTroughs(opts.troughs ?? emptyTroughs) as never)
     createEngine.mockResolvedValue({ id: "e1" } as never)
   }
 
@@ -369,7 +388,7 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
   const isfCalls = () =>
     createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "insulinSensitivityFactor")
   const corrections = (post: number, nadir: number | null, n = 4) =>
-    Array.from({ length: n }, () => ({ localHour: 9, postGlucoseGl: post, targetGl: 1.2, nadirGl: nadir }))
+    Array.from({ length: n }, (_, i) => ({ localHour: 9, dayIso: isoDaysAgo(i), postGlucoseGl: post, targetGl: 1.2, nadirGl: nadir }))
 
   it("corrections au-dessus de la cible → proposition isfTooHigh (baisse) sur le créneau ISF appliqué", async () => {
     setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.8, 1.4) })
@@ -437,6 +456,28 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
     expect(isfCalls()).toHaveLength(1)
   })
 
+  it("fix Q6a — délai écoulé (100 h) MAIS toutes les hypos datées AVANT le changement → PAS de dé-escalade (données périmées)", async () => {
+    // 3 hypos récurrentes mais toutes antérieures (J-5..J-7) au dernier changement accepté (il y a 100 h ≈ J-4) :
+    // la fenêtre post-changement est vide → l'analyseur ne re-titre jamais sur du pré-changement.
+    const stale = Array.from({ length: 3 }, (_, i) => ({ localHour: 9, dayIso: isoDaysAgo(i + 5), postGlucoseGl: 1.2, targetGl: 1.2, nadirGl: 0.6 }))
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: stale })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 100 * 3_600_000) } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0) // délai écoulé mais aucune observation post-changement → jamais de dose
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "highVariabilityPostCorrection", 99, undefined) // nadir 0,6 non sévère
+  })
+
+  it("fix Q6b — dé-escalade bloquée par le cooldown MAIS nadir SÉVÈRE (< 0,54 g/L) présent → FLAG (jamais silencieux)", async () => {
+    // Changement accepté à l'instant → cooldown actif, dé-escalade bloquée ; mais une hypo sévère récurrente
+    // ne doit jamais être tue → surfaçage en flag de revue clinique.
+    const severeSet = Array.from({ length: 3 }, (_, i) => ({ localHour: 9, dayIso: isoDaysAgo(i), postGlucoseGl: 1.2, targetGl: 1.2, nadirGl: 0.5 }))
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: severeSet })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0) // dé-escalade bloquée (cooldown actif)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityPostCorrection", 99, undefined) // sévérité surfacée (Q6b)
+  })
+
   it("cooldown : la requête filtre status=accepted + le BON créneau (anti mauvais-créneau / anti-pending)", async () => {
     setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
     prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null as never)
@@ -488,7 +529,7 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
       meals: hypoMeals, // nadirs repas 0,60 récurrents (déclenchent l'ICR, PAS l'ISF/basal)
       sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 1.4), // corrections PROPRES → pas de dé-escalade ISF
       basalConfig: { configType: "pump", pumpSlots: [{ id: "noct", rate: 0.8, startHour: 0, endHour: 6 }] },
-      fasting: Array.from({ length: 3 }, () => ({ fastingMgdl: 100, nocturnalNadirMgdl: 120 })), // nocturne sain
+      fasting: Array.from({ length: 3 }, (_, i) => ({ fastingMgdl: 100, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(i + 1) })), // nocturne sain
     })
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(icrCalls().length).toBeGreaterThanOrEqual(1) // les nadirs repas déclenchent BIEN l'ICR (pas de pass vide)
@@ -503,7 +544,7 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
   const NOCTURNAL = { id: "noct", rate: 0.8, startHour: 0, endHour: 6 }
   const pump = () => ({ configType: "pump", pumpSlots: [NOCTURNAL] })
   const nights = (fastingMgdl: number, nadirMgdl: number | null) =>
-    Array.from({ length: 3 }, () => ({ fastingMgdl, nocturnalNadirMgdl: nadirMgdl }))
+    Array.from({ length: 3 }, (_, i) => ({ fastingMgdl, nocturnalNadirMgdl: nadirMgdl, dayIso: isoDaysAgo(i + 1) }))
   const basalCalls = () =>
     createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate")
 
@@ -531,13 +572,23 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
     expect(basalCalls()).toHaveLength(0)
   })
 
+  it("fix Q6b (basal) — dé-escalade bloquée par le cooldown MAIS hypo nocturne SÉVÈRE (0,50 g/L) → FLAG", async () => {
+    // À jeun en cible mais nadir nocturne sévère récurrent, changement accepté à l'instant (cooldown actif) :
+    // la baisse est bloquée mais une hypo nocturne sévère ne doit jamais être tue → surfaçage en flag.
+    setup({ meals: [], basalConfig: pump(), fasting: nights(100, 50) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(basalCalls()).toHaveLength(0) // dé-escalade bloquée (cooldown actif)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // sévérité nocturne surfacée
+  })
+
   it("fixedDose : moyenne du moment > cible + hypos récurrentes → FLAG highVariabilityFixedDose", async () => {
     mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
     prismaMock.fixedDoseSlot.findMany.mockResolvedValue([{ moment: "morning", valueU: 10 }] as never)
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
     prismaMock.glucoseTarget.findFirst.mockResolvedValue(null as never)
     // moyenne ~1,04 > cible 1,00, 2 relevés < 0,70 (récurrent) → flag.
-    fixedDoseTrend.mockResolvedValue({ morning: [0.6, 0.6, 1.9], noon: [], evening: [], night: [] } as never)
+    fixedDoseTrend.mockResolvedValue(toTroughs({ morning: [0.6, 0.6, 1.9], noon: [], evening: [], night: [] }) as never)
     createEngine.mockResolvedValue({ id: "e1" } as never)
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(createEngine.mock.calls.filter((c) => (c[0] as Record<string, unknown>).parameterType === "fixedDose")).toHaveLength(0)
@@ -547,9 +598,9 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
   it("basal : hypo nocturne sévère ISOLÉE (in-band, non récurrente) → FLAG, aucune dose", async () => {
     // 1 nadir sévère 0,50 + 2 sains ; à jeun = cible → in-band ; non récurrent.
     const fasting = [
-      { fastingMgdl: 100, nocturnalNadirMgdl: 50 },
-      { fastingMgdl: 100, nocturnalNadirMgdl: 120 },
-      { fastingMgdl: 100, nocturnalNadirMgdl: 120 },
+      { fastingMgdl: 100, nocturnalNadirMgdl: 50, dayIso: isoDaysAgo(1) },
+      { fastingMgdl: 100, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(2) },
+      { fastingMgdl: 100, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(3) },
     ]
     setup({ meals: [], basalConfig: pump(), fasting })
     await proposalGeneratorService.generateForPatient(1, 99)
@@ -581,7 +632,7 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
     prismaMock.fixedDoseSlot.findMany.mockResolvedValue(slots as never)
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
     prismaMock.glucoseTarget.findFirst.mockResolvedValue(null as never)
-    fixedDoseTrend.mockResolvedValue({ morning: [], noon: [], evening: [], night: [], ...troughs } as never)
+    fixedDoseTrend.mockResolvedValue(toTroughs({ morning: [], noon: [], evening: [], night: [], ...troughs }) as never)
     createEngine.mockResolvedValue({ id: "e1" } as never)
   }
 
@@ -623,6 +674,30 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
     expect(fixedCalls()).toHaveLength(0)
   })
 
+  it("fix Q6a (fixedDose) — délai écoulé (100 h) mais relevés PÉRIMÉS (avant le changement) → PAS de dé-escalade", async () => {
+    // Moyenne à la cible (deadband nul) + relevés récurremment bas mais TOUS datés J-5..J-7 (< cutoff J-4) →
+    // fenêtre post-changement vide → jamais re-titrer malgré le délai écoulé.
+    mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue([{ moment: "morning", valueU: 10 }] as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
+    prismaMock.glucoseTarget.findFirst.mockResolvedValue(null as never)
+    fixedDoseTrend.mockResolvedValue(toTroughs({ morning: [0.6, 0.6, 1.8], noon: [], evening: [], night: [] }, [isoDaysAgo(5), isoDaysAgo(6), isoDaysAgo(7)]) as never)
+    createEngine.mockResolvedValue({ id: "e1" } as never)
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 100 * 3_600_000) } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(fixedCalls()).toHaveLength(0) // délai écoulé mais aucun relevé post-changement
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined) // 0,60 non sévère
+  })
+
+  it("fix Q6b (fixedDose) — dé-escalade bloquée par le cooldown MAIS relevé SÉVÈRE (0,50 g/L) → FLAG", async () => {
+    // Moyenne à la cible (deadband nul), relevés récurrents dont un sévère, changement à l'instant (cooldown actif).
+    setupFixed([{ moment: "morning", valueU: 10 }], { morning: [0.5, 0.5, 2.0] })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(fixedCalls()).toHaveLength(0) // dé-escalade bloquée (cooldown actif)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined) // sévérité surfacée (Q6b)
+  })
+
   it("cooldown ICR : dé-escalade ICR sautée si dernier changement accepté < 72 h", async () => {
     const inBandHypoMeals = Array.from({ length: 3 }, () => meal({ postMgdl: 150, nadirMgdl: 60, localHour: 13 }))
     const icrCalls = () =>
@@ -631,6 +706,39 @@ describe("proposalGeneratorService — dé-escalade basal/fixedDose (US-2653)", 
     prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(icrCalls()).toHaveLength(0)
+  })
+
+  const icrCalls = () =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "insulinToCarbRatio")
+
+  it("fix Q6b (ICR) — hypo post-repas sévère ISOLÉE (in-band, non récurrente) → FLAG (parité ISF/basal/fixedDose)", async () => {
+    // 1 nadir sévère 0,50 + 2 sains ; PPG 1,40 dans la bande ; non récurrent. Sans le fix, l'ICR taisait ce
+    // danger (seul levier sans branche « sévère isolé ») → régression de sécurité corrigée.
+    setup({ meals: [
+      meal({ postMgdl: 140, nadirMgdl: 50, localHour: 13 }),
+      meal({ postMgdl: 140, nadirMgdl: 160, localHour: 13 }),
+      meal({ postMgdl: 140, nadirMgdl: 160, localHour: 13 }),
+    ] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(icrCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityPostMeal", 99, undefined)
+  })
+
+  it("fix Q6b (ICR) — dé-escalade bloquée par le cooldown MAIS nadir SÉVÈRE récurrent → FLAG", async () => {
+    setup({ meals: Array.from({ length: 3 }, () => meal({ postMgdl: 140, nadirMgdl: 50, localHour: 13 })) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(icrCalls()).toHaveLength(0) // dé-escalade bloquée (cooldown actif)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityPostMeal", 99, undefined) // sévérité surfacée
+  })
+
+  it("fix Q6a (ICR) — délai écoulé (100 h) mais hypos PÉRIMÉES (avant le changement) → PAS de dé-escalade", async () => {
+    const stale = Array.from({ length: 3 }, (_, i) => meal({ postMgdl: 140, nadirMgdl: 60, localHour: 13, dayIso: isoDaysAgo(i + 5) }))
+    setup({ meals: stale })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 100 * 3_600_000) } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(icrCalls()).toHaveLength(0) // délai écoulé mais aucune observation post-changement → jamais de dose
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "highVariabilityPostMeal", 99, undefined) // nadir 0,60 non sévère
   })
 })
 

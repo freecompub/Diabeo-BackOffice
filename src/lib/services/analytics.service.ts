@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./audit.service"
 import { getCgmDefaults } from "./objectives.service"
+import { localDay } from "./meal-trends.service"
 import {
   mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation, stddev,
   computeTir, assessTirQuality, computeAgp, detectHypoEpisodes,
@@ -449,7 +450,9 @@ export const analyticsService = {
    * @param period Période d'analyse (défaut appelant : 14 j).
    * @param auditUserId Acteur d'audit (système `null` pour le cron).
    * @param ctx Contexte requête (audit).
-   * @returns Par moment, la liste des creux g/L (peut être vide → l'analyseur renverra `null`).
+   * @returns Par moment, la liste des creux `{ gl, dayIso }` — `gl` en g/L, `dayIso` (`YYYY-MM-DD`) = jour
+   *          du relevé, porté pour le filtre POST-changement de l'anti-ratchet (US-2653). Peut être vide
+   *          → l'analyseur renverra `null`.
    */
   async fixedDoseTrend(
     patientId: number,
@@ -457,7 +460,7 @@ export const analyticsService = {
     auditUserId: number | null,
     ctx?: AuditContext,
     opts?: { skipAudit?: boolean },
-  ): Promise<Record<DoseMoment, number[]>> {
+  ): Promise<Record<DoseMoment, { gl: number; dayIso: string }[]>> {
     const days = parsePeriod(period)
     const now = new Date()
     const since = new Date(now.getTime() - days * 24 * 3600_000)
@@ -509,15 +512,22 @@ export const analyticsService = {
       if (!r.time) continue
       const minutesOfDay = r.time.getUTCHours() * 60 + r.time.getUTCMinutes()
       const window = momentForHour(minutesOfDay / 60, bounds)
-      const dayIso = r.date.toISOString().slice(0, 10)
+      // US-2653 (fix TZ) — jour dérivé via `localDay` (Europe/Paris), MÊME base que le `cutoff` du
+      // générateur et que les 3 autres leviers. La colonne `GlycemiaEntry.date` (@db.Date) est à minuit
+      // UTC ; `localDay` la ramène au jour calendaire local → cohérence stricte du filtre post-changement.
+      // NB : correct tant que `CLINICAL_TZ` est à l'EST d'UTC (Europe/Paris = UTC+1/+2) — minuit UTC reste
+      // le même jour local. Un fuseau à l'ouest d'UTC décalerait ce `@db.Date` d'un jour (à revoir alors).
+      const dayIso = localDay(r.date.getTime())
       const cur = earliestByWindow[window].get(dayIso)
       if (!cur || minutesOfDay < cur.min) earliestByWindow[window].set(dayIso, { min: minutesOfDay, gl })
     }
 
     // Shift : la dose du moment M est jugée sur les creux (earliest/jour) de la fenêtre SUIVANTE.
-    const out: Record<DoseMoment, number[]> = { morning: [], noon: [], evening: [], night: [] }
+    // US-2653 (fix cooldown) — on porte `dayIso` (jour du relevé) pour filtrer les observations
+    // POST-changement au moment de re-titrer (jamais re-titrer sur des creux d'avant le dernier ajustement).
+    const out: Record<DoseMoment, { gl: number; dayIso: string }[]> = { morning: [], noon: [], evening: [], night: [] }
     for (const dose of DAY_MOMENTS) {
-      out[dose] = [...earliestByWindow[FIXED_DOSE_NEXT_WINDOW[dose]].values()].map((v) => v.gl)
+      out[dose] = [...earliestByWindow[FIXED_DOSE_NEXT_WINDOW[dose]].entries()].map(([dayIso, v]) => ({ gl: v.gl, dayIso }))
     }
     return out
   },

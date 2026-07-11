@@ -329,6 +329,36 @@ même si la moyenne est « normale ». **Extension complète à 4 leviers** : ch
 n'est pas gatée (self-limiting par les bornes cliniques). Prévient l'accumulation itérative 10%+10%+10% avant 
 jugement de l'effet sur ≥ 3 j CGM/BGM.
 
+**Porte d'observation POST-changement (fix Q6a, 2026-07)** — invariant de sécurité complétant le délai :
+une dé-escalade à magnitude fixe ne se juge **que sur les observations datées APRÈS le dernier changement
+accepté** (`dayIso > cutoff`, `cutoff` = jour local du `reviewedAt` de l'ACCEPTÉE précédente). Le délai des
+72 h seul ne suffit pas : sans ce filtre, une récurrence d'hypos **périmées** (antérieures au changement)
+re-déclencherait une baisse alors que l'effet du dernier ajustement n'a pas encore été observé. Deux verrous
+cumulatifs, donc : **(1)** délai `≥ 72 h` écoulé **ET (2)** signal récurrent tenant sur ≥ 3 observations
+*post-changement*. `cutoff = null` (aucun changement antérieur) → première dé-escalade jugée sur la fenêtre
+entière. Implémentation : helpers `lastAcceptedChangeAt` / `deescalationTiming` / `afterCutoff`
+(`proposal-generator.service.ts`) ; `dayIso` propagé jusqu'aux relevés (`CorrectionPoint`, `fixedDoseTrend`,
+nadirs à jeun, nadirs repas) via `localDay` (`meal-trends.service.ts`).
+
+**Surfaçage de sévérité pendant blocage (fix Q6b, 2026-07)** — si une dé-escalade est **bloquée** (délai
+non écoulé **ou** données post-changement insuffisantes) mais qu'une **hypo sévère** (`< 0,54 g/L`,
+`hasSevereHypo`) est présente sur la fenêtre (jugée sur la **fenêtre entière**, superset du post-changement),
+l'événement n'est **jamais tu silencieusement** : levée d'un flag de revue clinique. Couverture **symétrique
+sur les 4 leviers** (parité stricte — un anti-ratchet ne masque jamais un signal de danger patient) :
+
+| Levier | Flag levé | Chemins Q6b couverts |
+|--------|-----------|----------------------|
+| ICR | `highVariabilityPostMeal` | dé-escalade bloquée (délai/post-changement) **+** hypo sévère post-repas **isolée** non récurrente (in-band, sous borne basse, ou plafond avec baisse annulée par la garde-hypo) |
+| ISF | `highVariabilityPostCorrection` | dé-escalade bloquée **+** hypo sévère post-correction **isolée** |
+| Basal | `nocturnalHypoHighFasting` | dé-escalade bloquée **+** hypo nocturne sévère **isolée** |
+| FixedDose | `highVariabilityFixedDose` | dé-escalade bloquée / dose non réductible (≤ plancher) **+** relevé sévère **isolé** |
+
+**Limite connue (sémantique du cooldown)** — le « dernier changement accepté » qui arme le cooldown et fixe
+le `cutoff` est lu **uniquement** sur `AdjustmentProposal { status: "accepted" }` (`lastAcceptedChangeAt`).
+Une acceptation **groupée** `SlotSetProposal` (édition patient CONFIRMÉ, ADR #23) sur le même créneau ne
+réarme **pas** le cooldown moteur. Défendable pour l'objectif du fix (empêcher l'empilement des dé-escalades
+**moteur** avant observation) ; à revisiter si l'anti-ratchet doit couvrir aussi les remplacements groupés.
+
 **Three new contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
 - `highVariabilityPostCorrection` — ISF : pics + creux post-correction → revue (pas de dose)
 - `nocturnalHypoHighFasting` — Basal : Somogyi soupçonné, glycémie à jeun élevée + hypos nocturnes récurrentes → revue (pas de baisse)
