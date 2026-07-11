@@ -55,6 +55,8 @@ export type ReviewProposalItem = {
   confidence: string | null
   timeSlotStartHour: number | null
   timeSlotEndHour: number | null
+  /** US-2659 — cible d'une basale STYLO (daily/morning/evening) : non-null ⇒ dose en U TOTALES (pas U/h). */
+  basalDoseKind: string | null
   createdAt: string
 }
 
@@ -115,6 +117,11 @@ const PARAM_UNIT_KEY: Record<AdjustableParameter, "isfGl" | "icr" | "basal" | "u
   basalRate: "basal",
   fixedDose: "u",
 }
+
+/** Clé d'unité d'une proposition : une basale STYLO (`basalDoseKind` non-null) est en **U totales**, pas en
+ *  U/h (débit pompe) — US-2659 S3 (fix affichage revue : « 22 → 20 U », pas « U/h »). */
+const proposalUnitKey = (p: ReviewProposalItem): "isfGl" | "icr" | "basal" | "u" =>
+  p.parameterType === "basalRate" && p.basalDoseKind != null ? "u" : PARAM_UNIT_KEY[p.parameterType]
 
 const STEPS = [
   { id: "summary", icon: Activity },
@@ -492,12 +499,12 @@ function DecisionsStep({ data }: { data: ReviewData }) {
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="text-sm font-medium">{t(PARAM_LABEL_KEY[p.parameterType])}</span>
                     <span className="text-xs tabular-nums text-muted-foreground">
-                      {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+                      {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(proposalUnitKey(p))}
                     </span>
                     {changed && (
                       <span role="alert" className="text-xs font-medium tabular-nums text-destructive">
                         {t("liveValueChanged", { live: fmt(p.liveCurrentValue as number) })}{" "}
-                        {tUnits(PARAM_UNIT_KEY[p.parameterType])}
+                        {tUnits(proposalUnitKey(p))}
                       </span>
                     )}
                     {unavailable && (

@@ -78,7 +78,6 @@ const createSchema = z.object({
 const ERROR_STATUS: Record<string, number> = {
   valueOutOfBounds: 422,
   nonInsulinNoDose: 422, // US-2651 — patient non insuliné : aucune proposition de dose (frontière MDR)
-  patientDecreaseForbidden: 422, // legacy (baisse basale patient relâchée en S3 — conservé par prudence)
   patientDeltaTooLarge: 422,
   slotRequired: 400,
   currentValueNotFound: 404,

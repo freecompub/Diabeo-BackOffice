@@ -153,6 +153,7 @@ export default async function PatientReviewPage({
       confidence: p.confidence,
       timeSlotStartHour: p.timeSlotStartHour ?? null,
       timeSlotEndHour: p.timeSlotEndHour ?? null,
+      basalDoseKind: p.basalDoseKind ?? null, // US-2659 S3 — stylo ⇒ unité U totales (pas U/h) à l'affichage
       createdAt: p.createdAt.toISOString(),
     })),
   )

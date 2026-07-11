@@ -428,8 +428,9 @@ export const adjustmentService = {
    * médecin) depuis une entrée structurée. Garde-fous imposés SERVEUR :
    *  - provenance dérivée du `proposer` authentifié (jamais du body) ;
    *  - bornes cliniques vérifiées **à la création** (pas seulement à l'accept) ;
-   *  - pour un PATIENT : sens interdit (jamais de baisse de basale/dose fixe) + cap
-   *    de variation resserré (dose fixe en U, ratios en %) ;
+   *  - pour un PATIENT : cap de variation resserré (ratios en %) ; la **baisse de basale** est
+   *    RELÂCHÉE mais GATÉE (US-2659 S3 : maturité + mode serveur + accusé DKA stylo) ; hausse basale
+   *    et ISF/ICR seulement bornés en amplitude ;
    *  - anti-spam : 1 proposition `pending` max par (patient, paramètre, créneau) ;
    *  - métriques moteur (`confidence`/`supportingEvents`) NULLES (proposition humaine) ;
    *  - `proposerComment` chiffré ; jamais auto-appliqué (`status=pending`).
@@ -474,6 +475,32 @@ export const adjustmentService = {
       throw new Error("nonInsulinNoDose")
     }
 
+    // 0bis. US-2659 S3 (E1) — pour une proposition PATIENT de `basalRate`, dériver le MODE de délivrance
+    //    SERVEUR (config = source de vérité) et rejeter + AUDITER (E6) un discriminateur incohérent AVANT
+    //    `resolveCurrentValue` : sinon un `basalDoseKind`/`pumpBasalSlotId` forgé serait masqué en
+    //    `currentValueNotFound` (404) NON audité → la tentative d'usurpation de mode échapperait à la piste
+    //    forensic. S'applique aux DEUX sens (défense en profondeur). `patientBasalIsPen` réutilisé par le gate baisse.
+    let patientBasalIsPen = false
+    if (proposer.role === "patient" && parameterType === "basalRate") {
+      const cfg = await prisma.basalConfiguration.findFirst({
+        where: { settings: { patientId } }, select: { configType: true },
+      })
+      const isPen = cfg?.configType === "single_injection" || cfg?.configType === "split_injection"
+      const isPump = cfg?.configType === "pump"
+      const deliveryMode = isPen ? "pen" : isPump ? "pump" : "unknown"
+      const auditRefuse = async (reason: string) => {
+        await auditService.log({
+          userId: proposer.userId, action: "PROPOSAL_REFUSED", resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: String(patientId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: "patient", deliveryMode, reason },
+        }).catch((err) => logger.error("adjustment", "audit refused mode failed", { patientId }, err))
+        throw new Error(reason)
+      }
+      if (input.basalDoseKind != null && !isPen) await auditRefuse("deliveryModeMismatch") // claim stylo sur non-stylo
+      if (input.pumpBasalSlotId != null && !isPump) await auditRefuse("deliveryModeMismatch") // claim pompe sur non-pompe
+      patientBasalIsPen = isPen
+    }
+
     // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept). `basalDoseKind` route
     //    les bornes basale STYLO (U totales) vs POMPE (U/h) — US-2659.
     if (!validateProposedValue(parameterType, proposedValue, input.basalDoseKind)) {
@@ -508,14 +535,10 @@ export const adjustmentService = {
         // (proposition `pending`, jamais auto-appliquée, ADR #13) ; interdire la proposition est anti-ETP.
         // Tout est lu SERVEUR (anti-tamper) : maturité, valeur courante, MODE de délivrance.
         const maturity = maturityLevel ?? "JUNIOR" // fail-closed : maturité absente → JUNIOR (le plus restrictif)
-        // E1 (HDS) — mode de délivrance dérivé de la CONFIG (source de vérité), jamais du body. Rejet du
-        // discriminateur incohérent (un patient qui forge `basalDoseKind`/`pumpBasalSlotId` choisirait sa borne).
-        const cfg = await prisma.basalConfiguration.findFirst({
-          where: { settings: { patientId } }, select: { configType: true },
-        })
-        const isPen = cfg?.configType === "single_injection" || cfg?.configType === "split_injection"
-        const isPump = cfg?.configType === "pump"
-        const deliveryMode = isPen ? "pen" : isPump ? "pump" : "unknown"
+        // Mode déjà dérivé serveur + discriminateur incohérent déjà rejeté/audité en 0bis (E1). À ce stade,
+        // `resolveCurrentValue` a réussi → la config est cohérente avec le discriminateur → `patientBasalIsPen` fiable.
+        const isPen = patientBasalIsPen
+        const deliveryMode = isPen ? "pen" : "pump"
         // Audit d'un refus (E6) : une insistance répétée à réduire son insuline est un signal clinique/forensic. Sans PHI.
         const refuse = async (reason: string) => {
           await auditService.log({
@@ -525,9 +548,6 @@ export const adjustmentService = {
           }).catch((err) => logger.error("adjustment", "audit refused decrease failed", { patientId }, err))
           throw new Error(reason)
         }
-        if (input.basalDoseKind != null && !isPen) await refuse("deliveryModeMismatch") // claim stylo sur non-stylo
-        if (input.pumpBasalSlotId != null && !isPump) await refuse("deliveryModeMismatch") // claim pompe sur non-pompe
-        if (!isPen && !isPump) await refuse("deliveryModeMismatch") // aucune config basale résoluble → fail-closed
         // Gate maturité par mode : stylo (dose entière, non réversible) → CONFIRME ; pompe (micro-débit
         // réversible) → dès INTERMEDIATE. JUNIOR : refus tous modes.
         const gateOk = isPen ? maturity === "CONFIRME" : maturity === "INTERMEDIATE" || maturity === "CONFIRME"

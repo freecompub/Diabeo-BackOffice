@@ -84,7 +84,7 @@ const BASE: ReviewData = {
     {
       id: "p1", parameterType: "basalRate", source: "patient", currentValue: 1.0, liveCurrentValue: 1.0, proposedValue: 1.2,
       changePercent: 20, reason: "trend", confidence: "high",
-      timeSlotStartHour: null, timeSlotEndHour: null, createdAt: "2026-06-15T00:00:00.000Z",
+      timeSlotStartHour: null, timeSlotEndHour: null, basalDoseKind: null, createdAt: "2026-06-15T00:00:00.000Z",
     },
   ],
   reviewFlags: [],
