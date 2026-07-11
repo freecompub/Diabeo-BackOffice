@@ -422,7 +422,7 @@ export const patientService = {
    * accessible (résolu par la route via `resolvePatientId`) ; re-scopé `deletedAt` ici (fail-closed).
    *
    * @param patientId Patient (déjà autorisé par la route).
-   * @param level Nouveau niveau (`JUNIOR | INTERMEDIATE | EXPERT`).
+   * @param level Nouveau niveau (`JUNIOR | INTERMEDIATE | CONFIRME`).
    * @param auditUserId Soignant acteur.
    * @param ctx Contexte requête (audit).
    * @throws `patientNotFound` si absent/soft-deleted.

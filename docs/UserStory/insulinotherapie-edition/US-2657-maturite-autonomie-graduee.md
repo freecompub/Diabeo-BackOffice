@@ -5,10 +5,10 @@
 > **L'auto-application experte gouvernée (enveloppe C1–C8, gouvernance, `GovernanceApproval`, `AutoApplyEvent`, kill-switch `AUTO_APPLY_GLOBALLY_ENABLED`, flag `Patient.autoApply`) a été complètement retirée du code.** 
 >
 > **Ce qui reste** :
-> - Niveaux de maturité (`Patient.maturityLevel` : JUNIOR / INTERMEDIATE / EXPERT) gouvernant les **capacités d'édition** du patient :
+> - Niveaux de maturité (`Patient.maturityLevel` : JUNIOR / INTERMEDIATE / CONFIRME) gouvernant les **capacités d'édition** du patient :
 >   - JUNIOR : éditer les valeurs (propositions)
 >   - INTERMEDIATE : + restructurer les créneaux (propositions)
->   - EXPERT : + refuser/contre-proposer (propositions)
+>   - CONFIRME : + refuser/contre-proposer (propositions)
 > - **Toute édition patient génère désormais une proposition** (`SlotSetProposal`) validée par un médecin (jamais auto-appliquée)
 > - Édition DOCTOR direct inchangée (direct apply de groupe)
 >
@@ -74,7 +74,7 @@ Invariants non négociables :
 
 ### 3.2 Qui pose le niveau, comment il change, traçabilité
 
-- **Pose / modification** : acte soignant (DOCTOR ; NURSE en création selon RBAC). Stocké au niveau du dossier patient (`Patient.maturityLevel`, enum `JUNIOR | INTERMEDIATE | EXPERT`, **défaut `JUNIOR`**).
+- **Pose / modification** : acte soignant (DOCTOR ; NURSE en création selon RBAC). Stocké au niveau du dossier patient (`Patient.maturityLevel`, enum `JUNIOR | INTERMEDIATE | CONFIRME`, **défaut `JUNIOR`**).
 - **Réversibilité** : le soignant peut **rétrograder** à tout moment (ex. hypo répétées, événement clinique). Une rétrogradation sous Expert **désactive de facto** l'auto-application (le flag `autoApply` devient inopérant tant que le niveau n'est pas Expert — garde ET logique, pas OU).
 - **Audit** : chaque pose/changement de niveau ⇒ `auditService.log` (`action: "MATURITY_LEVEL_CHANGED"`, `resource: "PATIENT"`, `metadata: { patientId, from, to, actorRole }`). Aucune PHI en clair.
 
@@ -111,7 +111,7 @@ Invariants non négociables :
 L'auto-application n'est **autorisée que si TOUTES** les conditions ci-dessous sont réunies (conjonction, court-circuit fail-closed dès la première fausse) :
 
 ### C1 — Autorité (capacité)
-`maturityLevel === EXPERT` **ET** `patient.autoApply === true` (flag gouverné §5). Sinon → proposition.
+`maturityLevel === CONFIRME` **ET** `patient.autoApply === true` (flag gouverné §5). Sinon → proposition.
 
 ### C2 — Type de changement : **VALEUR sur créneau existant uniquement**
 - **Autorisé à l'auto-application** : modification de la **valeur** d'un créneau **déjà existant** (ISF, ICR, débit basal, dose fixe).
@@ -181,7 +181,7 @@ Le résultat (`decision` + `failedCheck` + before/after) est **audité systémat
 ### 5.1 Flag `autoApply` — OFF par défaut, bascule gouvernée
 - **Colonne per-patient** `Patient.autoApply: boolean` — **défaut `false`**, migration positionnant `false` pour **tous** les patients existants.
 - **Qui bascule** : **jamais** un DOCTOR seul, **jamais** le patient. Bascule réservée à une **décision de gouvernance** matérialisée par un **rôle/attribut `GOVERNANCE`** (direction médicale **+** DPO). L'acte de bascule exige une **référence de décision de gouvernance** (id de décision) et une **référence de DPIA** (voir 5.3) — sans ces deux références, la bascule est **refusée** (fail-closed).
-- **Effet ET-logique** : `autoApply=ON` est **inopérant** si `maturityLevel !== EXPERT`. Rétrograder le niveau **neutralise** l'auto-application sans avoir à re-basculer le flag.
+- **Effet ET-logique** : `autoApply=ON` est **inopérant** si `maturityLevel !== CONFIRME`. Rétrograder le niveau **neutralise** l'auto-application sans avoir à re-basculer le flag.
 
 ### 5.2 Notification du médecin référent (awareness, pas validation)
 - À **chaque** changement **auto-appliqué**, le **médecin référent** (`PatientReferent`) est **notifié** (canal notif existant). La notification est une **prise de connaissance**, **pas** une validation : le changement est **déjà appliqué**. Elle inclut : paramètre, créneau, valeur avant/après, résultat de l'enveloppe (« AUTO_APPLY »), horodatage. **Aucune PHI en clair** hors canal sécurisé.
@@ -195,9 +195,9 @@ Le résultat (`decision` + `failedCheck` + before/after) est **audité systémat
 ### 5.4 Emplacement & contrôle UI — **où l'on bascule `autoApply` (gouvernance)**
 
 - **Séparation stricte d'autorité** : le **médecin** change le *niveau* (§3.4) ; il **ne peut PAS** basculer `autoApply`. La bascule est un **acte de gouvernance**, pas un acte de soin. Deux autorités, deux contrôles distincts.
-- **Où** : un panneau **« Auto-application — gouvernance »** rendu **uniquement pour le rôle `GOVERNANCE`** (invisible pour DOCTOR / NURSE / VIEWER / patient). Recommandation : panneau **dans la fiche patient** (onglet Traitements, sous l'encart « Autonomie »), gated `GOVERNANCE`, pour conserver le contexte patient — plutôt qu'un écran d'admin déconnecté. Alternative acceptable : un écran d'administration gouvernance listant les patients **éligibles** (niveau Expert).
+- **Où** : un panneau **« Auto-application — gouvernance »** rendu **uniquement pour le rôle `GOVERNANCE`** (invisible pour DOCTOR / NURSE / VIEWER / patient). Recommandation : panneau **dans la fiche patient** (onglet Traitements, sous l'encart « Autonomie »), gated `GOVERNANCE`, pour conserver le contexte patient — plutôt qu'un écran d'admin déconnecté. Alternative acceptable : un écran d'administration gouvernance listant les patients **éligibles** (niveau Confirmé).
 - **Pré-conditions à l'activation** (toutes requises, sinon **refus fail-closed** — le bouton « Activer » reste inactif) :
-  1. `maturityLevel === EXPERT` (sinon toggle `disabled` + explication « niveau Expert requis ») ;
+  1. `maturityLevel === CONFIRME` (sinon toggle `disabled` + explication « niveau Confirmé requis ») ;
   2. **Référence de décision de gouvernance** (champ obligatoire — id de décision direction médicale) ;
   3. **Référence de DPIA** (champ obligatoire — pointeur vers `docs/compliance/dpia-auto-application.md` validée).
 - **Ce que voit le médecin** : un **indicateur lecture seule** « Auto-application : **activée** par la gouvernance le JJ/MM/AAAA » ou « **désactivée** » — **non actionnable** par lui. Transparence sans autorité.
@@ -380,7 +380,7 @@ Constantes/règles **réutilisées** (à référencer, pas à redéfinir) :
 - Amplitude/anti-cliquet auto-application : `AUTO_APPLY_MAX_CHANGE_PERCENT` (10 %), `AUTO_APPLY_FIXED_DOSE_MAX_DELTA_U` (1,0 U), `AUTO_APPLY_STRUCTURAL_ALLOWED` (false), `AUTO_APPLY_COOLDOWN_HOURS` (72 h), `AUTO_APPLY_MAX_CUMULATIVE_PERCENT_PER_WEEK` (15 %/7 j).
 - `PATIENT_PROPOSAL_COOLDOWN_HOURS` (24 h) — cooldown des propositions (voie non auto-appliquée).
 
-Éléments de modèle de données (à décrire dans le catalogue + schéma) : enum `MaturityLevel { JUNIOR, INTERMEDIATE, EXPERT }`, `Patient.maturityLevel` (défaut `JUNIOR`), `Patient.autoApply` (bool, défaut `false`), rôle/attribut `GOVERNANCE`, actions d'audit `MATURITY_LEVEL_CHANGED`, `AUTO_APPLIED_SETTING`, `AUTO_APPLY_ENVELOPE_FALLBACK`.
+Éléments de modèle de données (à décrire dans le catalogue + schéma) : enum `MaturityLevel { JUNIOR, INTERMEDIATE, CONFIRME }`, `Patient.maturityLevel` (défaut `JUNIOR`), `Patient.autoApply` (bool, défaut `false`), rôle/attribut `GOVERNANCE`, actions d'audit `MATURITY_LEVEL_CHANGED`, `AUTO_APPLIED_SETTING`, `AUTO_APPLY_ENVELOPE_FALLBACK`.
 
 ---
 

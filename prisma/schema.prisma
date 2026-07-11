@@ -27,12 +27,12 @@ enum Pathology {
 
 /// US-2657 — Niveau de maturité (autonomie) du patient dans la gestion de son diabète (ETP).
 /// Posé par le soignant (jamais auto-déclaré). Gate les capacités du PATIENT (rôle VIEWER) :
-/// JUNIOR = valeurs seulement ; INTERMEDIATE = + créneaux ; EXPERT = + refuser/contre-proposer
-/// (+ auto-application gouvernée, slices ultérieures). Défaut JUNIOR (le plus restrictif).
+/// JUNIOR = valeurs seulement ; INTERMEDIATE = + créneaux ; CONFIRME = + refuser/contre-proposer.
+/// Défaut JUNIOR (le plus restrictif).
 enum MaturityLevel {
   JUNIOR
   INTERMEDIATE
-  EXPERT
+  CONFIRME
 }
 
 enum Sex {
@@ -801,9 +801,9 @@ model Patient {
 }
 
 /// US-2657 (slice C3) — **Proposition d'ENSEMBLE de créneaux** (US-2657 Option 2). Représente une édition
-/// de groupe (valeurs ET/OU restructuration) qu'un patient EXPERT soumet mais qui ne peut PAS s'auto-appliquer
+/// de groupe (valeurs ET/OU restructuration) qu'un patient CONFIRME soumet mais qui ne peut PAS s'auto-appliquer
 /// (hors enveloppe ou structurelle) : elle est stockée en bloc pour revue MÉDECIN (accept en bloc →
-/// `replaceSlotSet`, ou reject). ⚠️ US-2657 : **on ne propose plus par-valeur** — toute édition patient EXPERT
+/// `replaceSlotSet`, ou reject). ⚠️ US-2657 : **on ne propose plus par-valeur** — toute édition patient CONFIRME
 /// non auto-appliquée est proposée GROUPÉE (disposition entière), quel que soit le nombre de valeurs modifiées ;
 /// REMPLACE la voie par-valeur `AdjustmentProposal` pour ce cas. Une seule proposition d'ensemble PENDING par
 /// (patient × paramètre) — garanti en base par l'index unique PARTIEL `slot_set_proposals_one_pending_per_param`

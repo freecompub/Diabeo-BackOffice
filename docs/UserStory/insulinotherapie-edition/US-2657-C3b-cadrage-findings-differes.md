@@ -18,7 +18,7 @@ Elle liste ce qui avait été **corrigé** dans le durcissement et ce qui était
 
 - **P2002 adapter-pg** (`isUniqueViolationOn`) — `adjustment.service`, `emergency.service`, `slot-set-proposal.service`.
 - **RGPD Art. 17** — purge de `governanceApproval` / `autoApplyEvent` / `slotSetProposal` dans `deletion.service`.
-- **Gouvernance** — `dpiaRef` obligatoire + activation gatée `maturityLevel === EXPERT` ; downgrade remet
+- **Gouvernance** — `dpiaRef` obligatoire + activation gatée `maturityLevel === CONFIRME` ; downgrade remet
   `autoApply = false` ; check `GovernanceApproval` active à l'exécution (triple verrou). ADR #22/#24.
 - **Clinique** — C6 lit le **capillaire** (BGM) et exige une donnée récente pour toute **hausse** ; C6b
   **pathology-aware** (grossesse/DG) ; frontière MDR `nonInsulin` sur la branche AUTO_APPLY ; unité ISF

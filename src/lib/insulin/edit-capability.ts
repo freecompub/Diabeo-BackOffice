@@ -32,7 +32,7 @@ export type InsulinEditCapability = {
   /**
    * US-2657 — édition de la STRUCTURE des créneaux (ajouter/supprimer/déplacer les heures), pas
    * seulement la valeur. DOCTOR/ADMIN (direct) et NURSE (clinicien) : oui. **PATIENT (VIEWER) : gaté
-   * par la maturité** — JUNIOR = non (valeurs seulement), INTERMEDIATE/EXPERT = oui. Fail-closed si rien
+   * par la maturité** — JUNIOR = non (valeurs seulement), INTERMEDIATE/CONFIRME = oui. Fail-closed si rien
    * n'est éditable dans ce mode.
    */
   canEditSlots: boolean

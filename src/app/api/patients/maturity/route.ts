@@ -11,7 +11,7 @@ import { auditService, extractRequestContext } from "@/lib/services/audit.servic
 // unifiée, anti-énumération) + niveau désiré. Le scope réel est résolu serveur (`resolvePatientId`).
 const bodySchema = z.object({
   patientId: z.number().int().positive().optional(),
-  level: z.enum(["JUNIOR", "INTERMEDIATE", "EXPERT"]),
+  level: z.enum(["JUNIOR", "INTERMEDIATE", "CONFIRME"]),
 })
 
 /**

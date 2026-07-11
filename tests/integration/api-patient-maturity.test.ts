@@ -57,7 +57,7 @@ describe("PATCH /api/patients/maturity", () => {
     // Un non-DOCTOR qui sature reçoit 429 (rate-limit d'abord), pas 403 : garantit que le throttle précède
     // le gate de rôle (cap le flood d'audits MATURITY_LEVEL_SELF_ELEVATION_DENIED).
     rateLimit.mockResolvedValue({ allowed: false, remaining: 0, retryAfterSec: 15 } as never)
-    const res = await PATCH(req("VIEWER", { patientId: 7, level: "EXPERT" }))
+    const res = await PATCH(req("VIEWER", { patientId: 7, level: "CONFIRME" }))
     expect(res.status).toBe(429)
     expect(auditService.log).not.toHaveBeenCalled() // pas d'audit self-elevation : on n'a pas atteint le gate
   })
@@ -70,12 +70,12 @@ describe("PATCH /api/patients/maturity", () => {
   })
 
   it("NURSE → 403", async () => {
-    expect((await PATCH(req("NURSE", { patientId: 7, level: "EXPERT" }))).status).toBe(403)
+    expect((await PATCH(req("NURSE", { patientId: 7, level: "CONFIRME" }))).status).toBe(403)
     expect(setLevel).not.toHaveBeenCalled()
   })
 
   it("VIEWER (patient) → 403 : pas d'auto-élévation (AC-1)", async () => {
-    expect((await PATCH(req("VIEWER", { patientId: 7, level: "EXPERT" }))).status).toBe(403)
+    expect((await PATCH(req("VIEWER", { patientId: 7, level: "CONFIRME" }))).status).toBe(403)
     expect(setLevel).not.toHaveBeenCalled()
   })
 
@@ -91,7 +91,7 @@ describe("PATCH /api/patients/maturity", () => {
 
   it("patient hors périmètre → 404 (anti-IDOR)", async () => {
     resolve.mockResolvedValue(null)
-    expect((await PATCH(req("DOCTOR", { patientId: 99, level: "EXPERT" }))).status).toBe(404)
+    expect((await PATCH(req("DOCTOR", { patientId: 99, level: "CONFIRME" }))).status).toBe(404)
     expect(setLevel).not.toHaveBeenCalled()
   })
 })
