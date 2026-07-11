@@ -347,6 +347,10 @@ export const proposalGeneratorService = {
       if (isDeescalation && (withinCooldown || candidate === null)) {
         candidate = null
         if (hasSevereHypo(nadirsGl)) await raiseIcrFlag()
+      } else if (!isDeescalation && candidate === null && hasSevereHypo(nadirsGl)) {
+        // Hypo sévère post-repas ISOLÉE (in-band, non récurrente) → surface, jamais silencieuse.
+        // Parité avec ISF/basal/fixedDose (US-2653 fix Q6b) — un anti-cliquet ne masque aucun danger.
+        await raiseIcrFlag()
       }
 
       if (candidate && (await persist(candidate, slot))) created++

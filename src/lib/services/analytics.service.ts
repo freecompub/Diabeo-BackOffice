@@ -12,6 +12,7 @@ import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./audit.service"
 import { getCgmDefaults } from "./objectives.service"
+import { localDay } from "./meal-trends.service"
 import {
   mean, glToMgdl, glucoseManagementIndicator, coefficientOfVariation, stddev,
   computeTir, assessTirQuality, computeAgp, detectHypoEpisodes,
@@ -511,7 +512,10 @@ export const analyticsService = {
       if (!r.time) continue
       const minutesOfDay = r.time.getUTCHours() * 60 + r.time.getUTCMinutes()
       const window = momentForHour(minutesOfDay / 60, bounds)
-      const dayIso = r.date.toISOString().slice(0, 10)
+      // US-2653 (fix TZ) — jour dérivé via `localDay` (Europe/Paris), MÊME base que le `cutoff` du
+      // générateur et que les 3 autres leviers. La colonne `GlycemiaEntry.date` (@db.Date) est à minuit
+      // UTC ; `localDay` la ramène au jour calendaire local → cohérence stricte du filtre post-changement.
+      const dayIso = localDay(r.date.getTime())
       const cur = earliestByWindow[window].get(dayIso)
       if (!cur || minutesOfDay < cur.min) earliestByWindow[window].set(dayIso, { min: minutesOfDay, gl })
     }

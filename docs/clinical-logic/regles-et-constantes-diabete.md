@@ -342,9 +342,22 @@ nadirs à jeun, nadirs repas) via `localDay` (`meal-trends.service.ts`).
 
 **Surfaçage de sévérité pendant blocage (fix Q6b, 2026-07)** — si une dé-escalade est **bloquée** (délai
 non écoulé **ou** données post-changement insuffisantes) mais qu'une **hypo sévère** (`< 0,54 g/L`,
-`hasSevereHypo`) est présente sur la fenêtre, l'événement n'est **jamais tu silencieusement** : levée d'un
-flag de revue clinique (`highVariabilityPostCorrection` ISF, `nocturnalHypoHighFasting` basal). Garantit
-qu'un anti-ratchet ne masque jamais un signal de danger patient.
+`hasSevereHypo`) est présente sur la fenêtre (jugée sur la **fenêtre entière**, superset du post-changement),
+l'événement n'est **jamais tu silencieusement** : levée d'un flag de revue clinique. Couverture **symétrique
+sur les 4 leviers** (parité stricte — un anti-ratchet ne masque jamais un signal de danger patient) :
+
+| Levier | Flag levé | Chemins Q6b couverts |
+|--------|-----------|----------------------|
+| ICR | `highVariabilityPostMeal` | dé-escalade bloquée (délai/post-changement) **+** hypo sévère post-repas **isolée** (in-band, non récurrente) |
+| ISF | `highVariabilityPostCorrection` | dé-escalade bloquée **+** hypo sévère post-correction **isolée** |
+| Basal | `nocturnalHypoHighFasting` | dé-escalade bloquée **+** hypo nocturne sévère **isolée** |
+| FixedDose | `highVariabilityFixedDose` | dé-escalade bloquée / dose non réductible (≤ plancher) **+** relevé sévère **isolé** |
+
+**Limite connue (sémantique du cooldown)** — le « dernier changement accepté » qui arme le cooldown et fixe
+le `cutoff` est lu **uniquement** sur `AdjustmentProposal { status: "accepted" }` (`lastAcceptedChangeAt`).
+Une acceptation **groupée** `SlotSetProposal` (édition patient CONFIRMÉ, ADR #23) sur le même créneau ne
+réarme **pas** le cooldown moteur. Défendable pour l'objectif du fix (empêcher l'empilement des dé-escalades
+**moteur** avant observation) ; à revisiter si l'anti-ratchet doit couvrir aussi les remplacements groupés.
 
 **Three new contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
 - `highVariabilityPostCorrection` — ISF : pics + creux post-correction → revue (pas de dose)
