@@ -25,6 +25,7 @@ import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
 import { encounterService } from "@/lib/services/encounter.service"
 import { getPatientFlags } from "@/lib/services/doctor-dashboard.service"
+import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { recentPatientsService } from "@/lib/services/recent-patients.service"
 import { canAccessPatient } from "@/lib/access-control"
 import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
@@ -112,6 +113,14 @@ export default async function PatientReviewPage({
     return null
   })
 
+  // US-2659 (S3) — flags d'orientation OUVERTS (dont Somogyi `nocturnalHypoHighFasting`). Le médecin DOIT
+  // voir ce contexte hypo AVANT d'accepter une BAISSE basale patient (baisse sur un Somogyi = mauvais geste,
+  // garde-fou du relâchement S3). Type + date uniquement, aucune posologie. Fail-open : un échec n'empêche pas la revue.
+  const openReviewFlags = await clinicalReviewFlagService.listOpen(patientId).catch((e) => {
+    console.error("[patient-review] listOpen flags failed", e instanceof Error ? e.message : e)
+    return []
+  })
+
   // Glycémie 24h (mapping pur réutilisé du dossier).
   const from24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
   const [cgmEntries, latestRaw] = await Promise.all([
@@ -144,6 +153,7 @@ export default async function PatientReviewPage({
       confidence: p.confidence,
       timeSlotStartHour: p.timeSlotStartHour ?? null,
       timeSlotEndHour: p.timeSlotEndHour ?? null,
+      basalDoseKind: p.basalDoseKind ?? null, // US-2659 S3 — stylo ⇒ unité U totales (pas U/h) à l'affichage
       createdAt: p.createdAt.toISOString(),
     })),
   )
@@ -198,6 +208,7 @@ export default async function PatientReviewPage({
     glycemia: glycemiaView,
     treatment: treatmentView,
     proposals,
+    reviewFlags: openReviewFlags.map((f) => f.type),
   }
 
   return <ReviewClient data={data} />

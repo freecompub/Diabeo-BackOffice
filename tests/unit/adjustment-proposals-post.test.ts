@@ -190,9 +190,33 @@ describe("POST /api/adjustment-proposals", () => {
     expect(res.status).toBe(409)
   })
 
-  it("garde-fou clinique (patientDecreaseForbidden) → 422", async () => {
-    mocks.createProposal.mockRejectedValue(new Error("patientDecreaseForbidden"))
-    const res = await POST(reqWith(isfBody))
-    expect(res.status).toBe(422)
+  // US-2659 S3 — baisse basale patient gatée : mapping des nouveaux codes d'erreur.
+  it("maturité insuffisante (maturityTooLowForDecrease) → 403", async () => {
+    mocks.createProposal.mockRejectedValue(new Error("maturityTooLowForDecrease"))
+    expect((await POST(reqWith(isfBody))).status).toBe(403)
+  })
+
+  it("accusé DKA manquant (dkaAcknowledgmentRequired) → 422", async () => {
+    mocks.createProposal.mockRejectedValue(new Error("dkaAcknowledgmentRequired"))
+    expect((await POST(reqWith(isfBody))).status).toBe(422)
+  })
+
+  it("discriminateur incohérent (deliveryModeMismatch) → 422", async () => {
+    mocks.createProposal.mockRejectedValue(new Error("deliveryModeMismatch"))
+    expect((await POST(reqWith(isfBody))).status).toBe(422)
+  })
+
+  it("baisse non actionnable (noChangeProposed) → 422", async () => {
+    mocks.createProposal.mockRejectedValue(new Error("noChangeProposed"))
+    expect((await POST(reqWith(isfBody))).status).toBe(422)
+  })
+
+  it("refine Zod : basalDoseKind + pumpBasalSlotId simultanés → 400 (mutually exclusive)", async () => {
+    const res = await POST(reqWith({
+      parameterType: "basalRate", proposedValue: 20, reason: "patientRequested",
+      basalDoseKind: "daily", pumpBasalSlotId: "11111111-1111-1111-1111-111111111111",
+    }))
+    expect(res.status).toBe(400)
+    expect(mocks.createProposal).not.toHaveBeenCalled() // rejeté AVANT le service
   })
 })

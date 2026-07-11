@@ -57,4 +57,22 @@ export const clinicalReviewFlagService = {
     })
     return { flagId: flag.id, created: true }
   },
+
+  /**
+   * US-2659 (S3) — flags d'orientation OUVERTS d'UN patient, pour le contexte de revue médecin. Surface au
+   * médecin les signaux (dont `nocturnalHypoHighFasting` = Somogyi soupçonné) AVANT qu'il n'accepte une
+   * proposition de BAISSE basale — une baisse sur un Somogyi est le mauvais geste (validé medical, garde-fou
+   * du relâchement S3). Renvoie type + date UNIQUEMENT (aucune posologie/PHI). Scope/autorisation à charge de
+   * l'appelant (la page de revue résout et audite déjà l'accès patient).
+   *
+   * @param patientId Dossier concerné (déjà résolu/autorisé par l'appelant).
+   * @returns Flags `open` (type + `createdAt`), plus récents d'abord.
+   */
+  async listOpen(patientId: number): Promise<{ type: ClinicalReviewFlagType; createdAt: Date }[]> {
+    return prisma.clinicalReviewFlag.findMany({
+      where: { patientId, status: "open" },
+      select: { type: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    })
+  },
 }

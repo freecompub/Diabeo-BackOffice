@@ -71,6 +71,9 @@ export type CreateProposalInput = {
   moment?: DoseMoment | null
   /** US-2659 — discriminateur de CIBLE d'une basale STYLO (MDI). Exclusif de `pumpBasalSlotId`. */
   basalDoseKind?: BasalDoseKind | null
+  /** US-2659 (S3) — accusé DKA/jour-de-maladie du patient (consentement au risque de cétose d'une baisse
+   *  basale). Requis `=== true` pour une baisse STYLO ; optionnel/persisté pour la pompe. */
+  sickDayAcknowledged?: boolean
   /** Justification texte libre — chiffrée AES-256-GCM au stockage. */
   proposerComment?: string | null
 }
@@ -425,8 +428,9 @@ export const adjustmentService = {
    * médecin) depuis une entrée structurée. Garde-fous imposés SERVEUR :
    *  - provenance dérivée du `proposer` authentifié (jamais du body) ;
    *  - bornes cliniques vérifiées **à la création** (pas seulement à l'accept) ;
-   *  - pour un PATIENT : sens interdit (jamais de baisse de basale/dose fixe) + cap
-   *    de variation resserré (dose fixe en U, ratios en %) ;
+   *  - pour un PATIENT : cap de variation resserré (ratios en %) ; la **baisse de basale** est
+   *    RELÂCHÉE mais GATÉE (US-2659 S3 : maturité + mode serveur + accusé DKA stylo) ; hausse basale
+   *    et ISF/ICR seulement bornés en amplitude ;
    *  - anti-spam : 1 proposition `pending` max par (patient, paramètre, créneau) ;
    *  - métriques moteur (`confidence`/`supportingEvents`) NULLES (proposition humaine) ;
    *  - `proposerComment` chiffré ; jamais auto-appliqué (`status=pending`).
@@ -442,7 +446,7 @@ export const adjustmentService = {
     //    JAMAIS de proposition de DOSE. Le mode (c) relève d'un ClinicalReviewFlag (orientation
     //    « à revoir en consultation »), jamais d'une AdjustmentProposal. Mode dérivé SERVEUR
     //    (source de vérité, fail-closed : un DT1 n'est jamais classé nonInsulin).
-    const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
+    const { mode, maturityLevel } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") {
       // Tracer CHAQUE tentative refusée (y compris les répétitions malgré le flag idempotent →
       // observabilité d'une insistance/détresse croissante). Action distincte PROPOSAL_REFUSED,
@@ -471,8 +475,35 @@ export const adjustmentService = {
       throw new Error("nonInsulinNoDose")
     }
 
-    // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept).
-    if (!validateProposedValue(parameterType, proposedValue)) {
+    // 0bis. US-2659 S3 (E1) — pour une proposition PATIENT de `basalRate`, dériver le MODE de délivrance
+    //    SERVEUR (config = source de vérité) et rejeter + AUDITER (E6) un discriminateur incohérent AVANT
+    //    `resolveCurrentValue` : sinon un `basalDoseKind`/`pumpBasalSlotId` forgé serait masqué en
+    //    `currentValueNotFound` (404) NON audité → la tentative d'usurpation de mode échapperait à la piste
+    //    forensic. S'applique aux DEUX sens (défense en profondeur). `patientBasalIsPen` réutilisé par le gate baisse.
+    let patientBasalIsPen = false
+    if (proposer.role === "patient" && parameterType === "basalRate") {
+      const cfg = await prisma.basalConfiguration.findFirst({
+        where: { settings: { patientId } }, select: { configType: true },
+      })
+      const isPen = cfg?.configType === "single_injection" || cfg?.configType === "split_injection"
+      const isPump = cfg?.configType === "pump"
+      const deliveryMode = isPen ? "pen" : isPump ? "pump" : "unknown"
+      const auditRefuse = async (reason: string) => {
+        await auditService.log({
+          userId: proposer.userId, action: "PROPOSAL_REFUSED", resource: "ADJUSTMENT_PROPOSAL",
+          resourceId: String(patientId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+          metadata: { patientId, proposedByRole: "patient", deliveryMode, reason },
+        }).catch((err) => logger.error("adjustment", "audit refused mode failed", { patientId }, err))
+        throw new Error(reason)
+      }
+      if (input.basalDoseKind != null && !isPen) await auditRefuse("deliveryModeMismatch") // claim stylo sur non-stylo
+      if (input.pumpBasalSlotId != null && !isPump) await auditRefuse("deliveryModeMismatch") // claim pompe sur non-pompe
+      patientBasalIsPen = isPen
+    }
+
+    // 1. Bornes cliniques dures — rejet à la création (pas seulement à l'accept). `basalDoseKind` route
+    //    les bornes basale STYLO (U totales) vs POMPE (U/h) — US-2659.
+    if (!validateProposedValue(parameterType, proposedValue, input.basalDoseKind)) {
       throw new Error("valueOutOfBounds")
     }
 
@@ -493,14 +524,50 @@ export const adjustmentService = {
     const slot = slotFieldsFor(parameterType, input)
 
     // 3. Garde-fous PATIENT (sur l'écart de confiance ; une demande, pas une titration).
+    //    `sickDayAckAt` / `decreaseAudit` sont posés par le gate BAISSE ci-dessous et consommés à la création.
+    let sickDayAckAt: Date | null = null
+    let decreaseAudit: Record<string, unknown> | null = null
     if (proposer.role === "patient") {
-      // basalRate : jamais de BAISSE (risque hyper/cétose silencieuse). NB : on N'applique
-      // PAS « no-decrease » à ISF/ICR — MONTER l'ISF/ICR RÉDUIT la dose (direction plus sûre) ;
-      // les deux sens y sont seulement bornés en amplitude (raffinement min/abs → US-2652).
-      if (parameterType === "basalRate" && delta < 0) {
-        throw new Error("patientDecreaseForbidden")
-      }
-      if (Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT) {
+      const isDecrease = parameterType === "basalRate" && delta < 0
+      if (isDecrease) {
+        // US-2659 (S3, validé medical + HDS) — BAISSE de basale PATIENT : autrefois interdite
+        // (`patientDecreaseForbidden`), désormais RELÂCHÉE mais gatée. Le médecin reste le garde-fou
+        // (proposition `pending`, jamais auto-appliquée, ADR #13) ; interdire la proposition est anti-ETP.
+        // Tout est lu SERVEUR (anti-tamper) : maturité, valeur courante, MODE de délivrance.
+        const maturity = maturityLevel ?? "JUNIOR" // fail-closed : maturité absente → JUNIOR (le plus restrictif)
+        // Mode déjà dérivé serveur + discriminateur incohérent déjà rejeté/audité en 0bis (E1). À ce stade,
+        // `resolveCurrentValue` a réussi → la config est cohérente avec le discriminateur → `patientBasalIsPen` fiable.
+        const isPen = patientBasalIsPen
+        const deliveryMode = isPen ? "pen" : "pump"
+        // Audit d'un refus (E6) : une insistance répétée à réduire son insuline est un signal clinique/forensic. Sans PHI.
+        const refuse = async (reason: string) => {
+          await auditService.log({
+            userId: proposer.userId, action: "PROPOSAL_REFUSED", resource: "ADJUSTMENT_PROPOSAL",
+            resourceId: String(patientId), ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent,
+            metadata: { patientId, proposedByRole: "patient", direction: "decrease", deliveryMode, reason },
+          }).catch((err) => logger.error("adjustment", "audit refused decrease failed", { patientId }, err))
+          throw new Error(reason)
+        }
+        // Gate maturité par mode : stylo (dose entière, non réversible) → CONFIRME ; pompe (micro-débit
+        // réversible) → dès INTERMEDIATE. JUNIOR : refus tous modes.
+        const gateOk = isPen ? maturity === "CONFIRME" : maturity === "INTERMEDIATE" || maturity === "CONFIRME"
+        if (!gateOk) await refuse("maturityTooLowForDecrease")
+        // Accusé DKA (E2) : BLOQUANT pour le stylo (=== true STRICT) — réduire une basale lente en jour de
+        // maladie augmente le risque de cétose/DKA. Non bloquant pompe (débit réversible) mais persisté si fourni (Q7).
+        if (isPen && input.sickDayAcknowledged !== true) await refuse("dkaAcknowledgmentRequired")
+        // Amplitude sur le VRAI delta (jamais le `changePercent` saturé ±999,99) : stylo min(10 %, 2 U), pompe 10 %.
+        const pctCapU = (INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT / 100) * currentValue
+        const capU = isPen ? Math.min(pctCapU, INSULIN_BOUNDS.MDI_BASAL_PATIENT_MAX_DELTA_U) : pctCapU
+        if (Math.abs(delta) > capU + 1e-9) await refuse("patientDeltaTooLarge")
+        // Snap incrément stylo : une baisse infra-incrément (défaut 1 U) ou non délivrable (½ U) = non actionnable → rejet.
+        if (isPen && (Math.abs(delta) < INSULIN_BOUNDS.MDI_BASAL_DELIVERY_INCREMENT_U - 1e-9 || !isDeliverableFixedDose(proposedValue))) {
+          await refuse("noChangeProposed")
+        }
+        // Consentement DKA persisté (timestamp immuable) si fourni (requis stylo, optionnel pompe) ; audit enrichi (E3).
+        sickDayAckAt = input.sickDayAcknowledged === true ? new Date() : null
+        decreaseAudit = { direction: "decrease", deliveryMode, dkaAcknowledged: input.sickDayAcknowledged === true, maturityAtDecision: maturity }
+      } else if (Math.abs(changePercent) > INSULIN_BOUNDS.PATIENT_MAX_CHANGE_PERCENT) {
+        // HAUSSE basalRate / ISF / ICR : cap % inchangé (seule la BAISSE basale était le garde-fou relâché).
         throw new Error("patientDeltaTooLarge")
       }
 
@@ -571,11 +638,13 @@ export const adjustmentService = {
             confidence: null,
             supportingEvents: null,
             status: "pending",
+            sickDayAcknowledgedAt: sickDayAckAt, // US-2659 S3 — consentement DKA (timestamp immuable), null sinon
             ...slot,
           },
         })
 
-        // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose.
+        // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose. Pour une BAISSE basale patient
+        // (acte à risque), enrichi (E3) : direction/mode/accusé DKA/maturité — catégories non-dose, forensic-ready.
         await auditService.logWithTx(tx, {
           userId: proposer.userId,
           action: "CREATE",
@@ -583,7 +652,7 @@ export const adjustmentService = {
           resourceId: proposal.id,
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
-          metadata: { patientId, proposedByRole: proposer.role },
+          metadata: { patientId, proposedByRole: proposer.role, ...(decreaseAudit ?? {}) },
         })
 
         return proposal

@@ -1,0 +1,580 @@
+<title>Propositions d'ajustement d'insuline — Diabeo</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --teal:#0D9488; --teal-deep:#0F766E; --teal-soft:#CCFBF1;
+  --coral:#F97316; --coral-soft:#FFEDD5;
+  --gly-normal:#10B981; --gly-high:#F59E0B; --gly-crit:#EF4444; --gly-low:#38BDF8;
+  --ground:#FAFAF9; --surface:#FFFFFF; --surface-2:#F4F5F3;
+  --ink:#1B2A27; --muted:#5E6B67; --hair:#E4E7E4; --hair-strong:#CDD3D0;
+  --ok-bg:#ECFDF5; --ok-line:#10B981; --block-bg:#FEF2F2; --block-line:#EF4444;
+  --warn-bg:#FFFBEB; --warn-line:#F59E0B; --intern-bg:#FFF7ED; --intern-line:#F97316;
+  --shadow:0 1px 2px rgba(16,40,34,.05),0 8px 24px -12px rgba(16,40,34,.12);
+  --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --teal:#2DD4BF; --teal-deep:#5EEAD4; --teal-soft:#134E4A;
+  --coral:#FB923C; --coral-soft:#3A2410;
+  --ground:#0D1613; --surface:#121E1A; --surface-2:#172420;
+  --ink:#E6EEEB; --muted:#9BA8A3; --hair:#233531; --hair-strong:#324640;
+  --ok-bg:#0C2019; --ok-line:#34D399; --block-bg:#26120F; --block-line:#F87171;
+  --warn-bg:#241C08; --warn-line:#FBBF24; --intern-bg:#241606; --intern-line:#FB923C;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);
+}}
+:root[data-theme="light"]{
+  --teal:#0D9488;--teal-deep:#0F766E;--teal-soft:#CCFBF1;--coral:#F97316;--coral-soft:#FFEDD5;
+  --gly-normal:#10B981;--gly-high:#F59E0B;--gly-crit:#EF4444;--gly-low:#38BDF8;
+  --ground:#FAFAF9;--surface:#FFFFFF;--surface-2:#F4F5F3;--ink:#1B2A27;--muted:#5E6B67;--hair:#E4E7E4;--hair-strong:#CDD3D0;
+  --ok-bg:#ECFDF5;--ok-line:#10B981;--block-bg:#FEF2F2;--block-line:#EF4444;--warn-bg:#FFFBEB;--warn-line:#F59E0B;--intern-bg:#FFF7ED;--intern-line:#F97316;
+  --shadow:0 1px 2px rgba(16,40,34,.05),0 8px 24px -12px rgba(16,40,34,.12);
+}
+:root[data-theme="dark"]{
+  --teal:#2DD4BF;--teal-deep:#5EEAD4;--teal-soft:#134E4A;--coral:#FB923C;--coral-soft:#3A2410;
+  --gly-normal:#10B981;--gly-high:#F59E0B;--gly-crit:#EF4444;--gly-low:#38BDF8;
+  --ground:#0D1613;--surface:#121E1A;--surface-2:#172420;--ink:#E6EEEB;--muted:#9BA8A3;--hair:#233531;--hair-strong:#324640;
+  --ok-bg:#0C2019;--ok-line:#34D399;--block-bg:#26120F;--block-line:#F87171;--warn-bg:#241C08;--warn-line:#FBBF24;--intern-bg:#241606;--intern-line:#FB923C;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 10px 30px -14px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.65;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 clamp(16px,4vw,40px)}
+a{color:var(--teal-deep);text-underline-offset:2px}
+a:focus-visible,summary:focus-visible{outline:2px solid var(--teal);outline-offset:2px;border-radius:4px}
+h1,h2,h3,h4{text-wrap:balance;line-height:1.2;letter-spacing:-.012em}
+h2{font-size:clamp(1.4rem,2.6vw,1.9rem);margin:0 0 .3em;color:var(--ink)}
+h3{font-size:1.18rem;margin:2em 0 .5em}
+h4{font-size:1.02rem;margin:1.4em 0 .4em}
+p{margin:.6em 0;max-width:72ch}
+code,.mono{font-family:var(--mono);font-size:.86em}
+p code,li code,td code{background:var(--surface-2);border:1px solid var(--hair);border-radius:5px;padding:.06em .38em;white-space:nowrap}
+
+header.hero{background:linear-gradient(160deg,var(--teal-deep),var(--teal));color:#fff;padding:clamp(40px,7vw,84px) 0 clamp(30px,5vw,56px);position:relative;overflow:hidden}
+:root[data-theme="dark"] header.hero,@media (prefers-color-scheme:dark){}
+header.hero .wrap{position:relative;z-index:1}
+header.hero::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 88% -10%,rgba(255,255,255,.16),transparent 55%);z-index:0}
+.eyebrow{font-size:.74rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;opacity:.9;margin:0 0 14px}
+header.hero h1{font-size:clamp(1.9rem,4.6vw,3.1rem);margin:0;max-width:20ch;color:#fff}
+header.hero p.lede{font-size:clamp(1.02rem,1.7vw,1.22rem);max-width:60ch;margin:18px 0 0;opacity:.95}
+.aud{display:flex;flex-wrap:wrap;gap:8px;margin-top:26px}
+.aud span{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:5px 14px;font-size:.82rem;font-weight:600}
+.hero-note{margin-top:22px;font-size:.82rem;opacity:.82;max-width:74ch}
+
+.shell{display:grid;grid-template-columns:236px minmax(0,1fr);gap:clamp(24px,4vw,56px);padding:clamp(28px,5vw,52px) 0 100px}
+@media (max-width:880px){.shell{grid-template-columns:1fr}}
+nav.toc{position:sticky;top:16px;align-self:start;max-height:calc(100vh - 32px);overflow:auto;font-size:.86rem}
+@media (max-width:880px){nav.toc{position:static;max-height:none;border:1px solid var(--hair);border-radius:14px;padding:14px 16px;background:var(--surface)}}
+nav.toc .tt{font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:700;margin:0 0 10px}
+nav.toc ol{list-style:none;margin:0;padding:0}
+nav.toc a{display:block;padding:5px 10px;border-radius:7px;color:var(--muted);text-decoration:none;border-left:2px solid transparent}
+nav.toc a:hover{color:var(--ink);background:var(--surface-2)}
+nav.toc a.on{color:var(--teal-deep);border-left-color:var(--teal);background:var(--teal-soft);font-weight:600}
+nav.toc li.sub a{padding-left:22px;font-size:.82rem}
+
+main{min-width:0}
+section{scroll-margin-top:18px;padding:16px 0 8px;border-top:1px solid var(--hair)}
+section:first-of-type{border-top:0}
+.kicker{display:inline-block;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--teal-deep);background:var(--teal-soft);padding:3px 10px;border-radius:6px;margin-bottom:10px}
+
+.card{background:var(--surface);border:1px solid var(--hair);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);margin:16px 0}
+.callout{border-radius:12px;padding:14px 16px 14px 18px;margin:14px 0;border:1px solid var(--hair)}
+.callout .lab{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;font-weight:800;display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.callout p:last-child{margin-bottom:0}
+.callout p:first-of-type{margin-top:2px}
+.ok{background:var(--ok-bg);border-color:color-mix(in srgb,var(--ok-line) 40%,transparent)}
+.ok .lab{color:var(--ok-line)}
+.block{background:var(--block-bg);border-color:color-mix(in srgb,var(--block-line) 45%,transparent)}
+.block .lab{color:var(--block-line)}
+.warn{background:var(--warn-bg);border-color:color-mix(in srgb,var(--warn-line) 45%,transparent)}
+.warn .lab{color:color-mix(in srgb,var(--warn-line) 78%,var(--ink))}
+.intern{background:var(--intern-bg);border-left:4px solid var(--intern-line);border-color:color-mix(in srgb,var(--intern-line) 30%,transparent)}
+.intern .lab{color:var(--coral)}
+.safety{background:var(--surface);border:1.5px solid var(--teal);border-radius:14px;padding:18px 20px;margin:18px 0}
+.safety .lab{color:var(--teal-deep);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;font-weight:800;margin-bottom:6px}
+
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:.74rem;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--hair);white-space:nowrap;vertical-align:middle}
+.chip.pass{background:var(--ok-bg);color:var(--ok-line);border-color:color-mix(in srgb,var(--ok-line) 40%,transparent)}
+.chip.stop{background:var(--block-bg);color:var(--block-line);border-color:color-mix(in srgb,var(--block-line) 40%,transparent)}
+.chip.flag{background:var(--warn-bg);color:color-mix(in srgb,var(--warn-line) 80%,var(--ink));border-color:color-mix(in srgb,var(--warn-line) 45%,transparent)}
+.chip.hold{background:var(--surface-2);color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+
+.twrap{overflow-x:auto;margin:16px 0;border:1px solid var(--hair);border-radius:12px}
+table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:560px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+thead th{background:var(--surface-2);font-size:.74rem;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700}
+tbody tr:last-child td{border-bottom:0}
+tbody tr:hover{background:var(--surface-2)}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);white-space:nowrap}
+.ref-tag{font-family:var(--mono);font-size:.76rem;color:var(--teal-deep);font-weight:700}
+.int-tag{font-family:var(--sans);font-size:.72rem;font-weight:800;color:var(--coral);letter-spacing:.03em;text-transform:uppercase}
+
+.flow{display:grid;gap:10px;margin:16px 0}
+.step{display:grid;grid-template-columns:34px 1fr;gap:14px;align-items:start}
+.step .n{width:34px;height:34px;border-radius:9px;background:var(--teal-soft);color:var(--teal-deep);display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:.92rem}
+.step .b{background:var(--surface);border:1px solid var(--hair);border-radius:11px;padding:11px 14px}
+.step .b b{color:var(--ink)}
+
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0}
+@media (max-width:680px){.cols{grid-template-columns:1fr}}
+
+.chart{background:var(--surface);border:1px solid var(--hair);border-radius:12px;padding:12px 12px 6px;margin:14px 0}
+.chart canvas{width:100%;height:auto;display:block}
+.chart .cap{font-size:.8rem;color:var(--muted);margin:8px 4px 4px;display:flex;flex-wrap:wrap;gap:4px 14px;align-items:center}
+.leg{display:inline-flex;align-items:center;gap:5px}
+.leg i{width:14px;height:3px;border-radius:2px;display:inline-block}
+.leg i.band{height:11px;width:14px;border-radius:3px;opacity:.5}
+
+ul.tight{margin:.5em 0;padding-left:1.2em}
+ul.tight li{margin:.3em 0}
+.small{font-size:.86rem;color:var(--muted)}
+sup.cite a{font-family:var(--mono);font-size:.68em;color:var(--teal-deep);text-decoration:none;font-weight:700;padding:0 1px}
+footer{border-top:1px solid var(--hair);padding:26px 0 60px;color:var(--muted);font-size:.84rem}
+.badge-src{display:inline-block;font-family:var(--mono);font-size:.72rem;background:var(--surface-2);border:1px solid var(--hair);border-radius:6px;padding:2px 7px;color:var(--muted);margin:2px 3px 2px 0}
+h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right:.4em;font-size:.8em}
+</style>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Diabeo · Backoffice · Moteur de propositions d'insulinothérapie</p>
+    <h1>Propositions d'ajustement d'insuline&nbsp;: le processus complet</h1>
+    <p class="lede">Comment une proposition de dose naît, est bornée, est faite par un patient, une infirmière, un médecin ou l'algorithme — et comment elle est validée. Décrit fidèlement le comportement du code, chaque constante justifiée.</p>
+    <div class="aud"><span>Pour les médecins</span><span>Pour les infirmières</span><span>Pour les patients</span></div>
+    <p class="hero-note">Document de référence technico-fonctionnel. Chaque règle et seuil est extrait du code (<code>proposal-algorithm.ts</code>, <code>proposal-generator.service.ts</code>, <code>adjustment.service.ts</code>, <code>clinical-bounds.ts</code>). Les valeurs sans justification scientifique directe sont explicitement étiquetées <b>décision interne</b>.</p>
+  </div>
+</header>
+
+<div class="wrap shell">
+<nav class="toc" aria-label="Sommaire">
+  <p class="tt">Sommaire</p>
+  <ol>
+    <li><a href="#principe">1 · Le principe de sûreté</a></li>
+    <li><a href="#acteurs">2 · Qui propose, et comment</a></li>
+    <li class="sub"><a href="#patient">2a · Le patient</a></li>
+    <li class="sub"><a href="#soignant">2b · Infirmière &amp; médecin</a></li>
+    <li class="sub"><a href="#moteur">2c · L'algorithme</a></li>
+    <li><a href="#blocages">3 · Les blocages (patient)</a></li>
+    <li><a href="#validation">4 · La validation médecin</a></li>
+    <li><a href="#algo">5 · L'algorithme, état par état</a></li>
+    <li class="sub"><a href="#routage">5a · Routage par mode</a></li>
+    <li class="sub"><a href="#icr">5b · ICR (ratio glucides)</a></li>
+    <li class="sub"><a href="#isf">5c · ISF (sensibilité)</a></li>
+    <li class="sub"><a href="#basal-pompe">5d · Basale pompe</a></li>
+    <li class="sub"><a href="#basal-stylo">5e · Basale stylo (MDI)</a></li>
+    <li class="sub"><a href="#dose-fixe">5f · Dose fixe</a></li>
+    <li><a href="#gardes">6 · Gardes hypo, dé-escalade, cooldown</a></li>
+    <li><a href="#cas">7 · Cas passants &amp; bloquants</a></li>
+    <li><a href="#constantes">8 · Justification des constantes</a></li>
+    <li><a href="#refs">9 · Références scientifiques</a></li>
+    <li><a href="#glossaire">10 · Glossaire</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="principe">
+  <span class="kicker">Fondation</span>
+  <h2><span class="num-h">1</span>Le principe de sûreté</h2>
+  <p>Tout le système repose sur une règle unique, non négociable&nbsp;: <b>une proposition d'ajustement n'est JAMAIS appliquée automatiquement.</b> Qu'elle vienne d'un patient, d'une infirmière ou de l'algorithme, une proposition reste une <b>suggestion en attente</b> (<code>status: pending</code>) jusqu'à ce qu'un médecin la valide.</p>
+  <div class="safety">
+    <div class="lab">◆ Invariant absolu (ADR #13)</div>
+    <p style="margin-bottom:0">Le médecin est le <b>garde-fou</b>. Le moteur, le patient et l'infirmière <b>proposent</b> ; seul un médecin (ou administrateur) <b>décide</b> d'accepter et d'appliquer. Aucun chemin du code ne permet d'écrire une dose d'insuline sans validation médecin. Une proposition <code>pending</code> ne modifie <b>rien</b> dans le traitement du patient tant qu'elle n'est pas acceptée.</p>
+  </div>
+  <p>Ce principe se décline en plusieurs objets, tous distincts&nbsp;:</p>
+  <ul class="tight">
+    <li><b>La proposition d'ajustement</b> (<code>AdjustmentProposal</code>) porte une <b>dose</b> (nouvelle valeur d'ISF, ICR, débit basal, dose basale stylo ou dose fixe). Elle est gatée médecin.</li>
+    <li><b>Le flag d'orientation</b> (<code>ClinicalReviewFlag</code>) ne porte <b>jamais de dose</b> — c'est un signal «&nbsp;à revoir en consultation&nbsp;» (frontière dispositif médical). Il oriente le soignant sans recommander de posologie.</li>
+    <li><b>Le journal d'audit</b> (<code>AuditLog</code>) trace chaque création, acceptation, rejet et refus — sans jamais consigner de valeur de dose en clair.</li>
+  </ul>
+</section>
+
+<section id="acteurs">
+  <span class="kicker">Les 4 émetteurs</span>
+  <h2><span class="num-h">2</span>Qui propose une dose, et comment</h2>
+  <p>Quatre origines possibles pour une proposition. La <b>provenance</b> (<code>source</code>) est toujours <b>dérivée du serveur</b> à partir du jeton de session authentifié — jamais du corps de la requête. Un patient ne peut pas se faire passer pour un médecin.</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Émetteur</th><th>Comment</th><th>Gardes propres</th><th>Résultat</th></tr></thead>
+    <tbody>
+      <tr><td><b>Patient</b> <span class="chip hold">source&nbsp;: patient</span></td><td>Depuis l'app, sur <b>son seul dossier</b> (accès résolu serveur). Une demande, pas une titration.</td><td>Cap d'amplitude resserré, cooldown 24&nbsp;h, baisse basale gatée (maturité + accusé).</td><td><code>pending</code></td></tr>
+      <tr><td><b>Infirmière</b> <span class="chip hold">source&nbsp;: nurse</span></td><td>Sur un patient de son portefeuille. Proposition clinique.</td><td>Non gatée par le cap patient ni le cooldown ; frontière «&nbsp;non insuliné&nbsp;» respectée.</td><td><code>pending</code></td></tr>
+      <tr><td><b>Médecin</b> <span class="chip hold">source&nbsp;: doctor</span></td><td>Sur un patient de son portefeuille. Peut aussi <b>accepter/appliquer</b> (§4).</td><td>Idem infirmière côté proposition.</td><td><code>pending</code> (puis peut décider)</td></tr>
+      <tr><td><b>Algorithme</b> <span class="chip hold">source&nbsp;: algorithm</span></td><td>Cron nocturne ou à la demande. Analyse 14&nbsp;j par défaut (ISF 30&nbsp;j, basale stylo 7&nbsp;j), ou 2–14&nbsp;j à la demande.</td><td>Bornes dures, gardes hypo, dé-escalade bornée, cooldown 72&nbsp;h, «&nbsp;une à la fois&nbsp;».</td><td><code>pending</code></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="patient">2a · Le patient — parcours d'une demande</h3>
+  <p>Le patient soumet depuis l'application. Le serveur applique, dans l'ordre&nbsp;:</p>
+  <div class="flow">
+    <div class="step"><div class="n">1</div><div class="b"><b>Consentement RGPD</b> requis (sinon <code>gdprConsentRequired</code>) et <b>limite de débit</b> anti-abus (sinon <code>rateLimitExceeded</code>, 429).</div></div>
+    <div class="step"><div class="n">2</div><div class="b"><b>Accès</b> — le patient est résolu sur <b>son propre dossier</b> ; il ne peut viser personne d'autre. Rôle <code>ADMIN</code> refusé (rôle technique, non clinicien).</div></div>
+    <div class="step"><div class="n">3</div><div class="b"><b>Frontière dispositif médical</b> — un patient <b>non insuliné</b> ne reçoit jamais de proposition de dose (<code>nonInsulinNoDose</code>) ; à la place, un flag «&nbsp;à revoir en consultation&nbsp;» est levé. Son intention n'est pas un cul-de-sac silencieux.</div></div>
+    <div class="step"><div class="n">4</div><div class="b"><b>Bornes cliniques dures</b> — la valeur proposée doit être dans les bornes de sécurité du paramètre (sinon <code>valueOutOfBounds</code>).</div></div>
+    <div class="step"><div class="n">5</div><div class="b"><b>Valeur courante lue serveur</b> — la dose actuelle de référence est relue depuis la configuration du patient (jamais fournie par lui) et scopée à son dossier (anti-usurpation).</div></div>
+    <div class="step"><div class="n">6</div><div class="b"><b>Gardes patient</b> — amplitude ≤ 10&nbsp;%, cooldown 24&nbsp;h, et pour une baisse de basale&nbsp;: gate maturité + mode + accusé (voir §3).</div></div>
+    <div class="step"><div class="n">7</div><div class="b"><b>Anti-doublon</b> — une seule proposition <code>pending</code> par (patient × paramètre × créneau/cible) ; une seconde est refusée (<code>duplicatePendingProposal</code>, 409).</div></div>
+    <div class="step"><div class="n">8</div><div class="b"><b>Création</b> — <code>status: pending</code>, provenance <code>patient</code>, commentaire libre chiffré (AES-256-GCM). Le médecin référent est notifié. <b>Rien n'est appliqué.</b></div></div>
+  </div>
+  <div class="callout warn"><div class="lab">▲ Ce que le patient PEUT et ne peut PAS proposer</div>
+  <p><b>Peut&nbsp;:</b> une hausse ou une baisse d'ISF/ICR (dans ±10&nbsp;%) ; une hausse de basale (≤10&nbsp;%) ; depuis US-2659, une <b>baisse de basale</b> — mais gatée (§3).</p>
+  <p><b>Ne peut pas&nbsp;:</b> proposer sur le dossier d'un autre ; dépasser ±10&nbsp;% ; re-proposer sur le même créneau dans les 24&nbsp;h ; obtenir une proposition de dose s'il est non insuliné.</p></div>
+
+  <h3 id="soignant">2b · Infirmière &amp; médecin — proposition clinique</h3>
+  <p>Le soignant propose depuis le backoffice, sur un patient de son portefeuille (accès vérifié). La provenance est <code>nurse</code> ou <code>doctor</code>, dérivée de la session. Les soignants <b>ne sont pas soumis</b> au cap d'amplitude patient (±10&nbsp;%) ni au cooldown 24&nbsp;h&nbsp;: ils portent le jugement clinique. Restent applicables&nbsp;: les <b>bornes cliniques dures</b>, la <b>frontière «&nbsp;non insuliné&nbsp;»</b>, et l'<b>anti-doublon</b>. La valeur courante reste lue serveur. La proposition sort en <code>pending</code>.</p>
+  <p class="small">Le médecin dispose en plus de la <b>décision</b> (accepter / rejeter / appliquer) — §4. Une proposition d'un soignant n'est pas auto-validée du seul fait qu'elle vient d'un soignant&nbsp;: elle passe par le même écran de revue.</p>
+
+  <h3 id="moteur">2c · L'algorithme — génération automatique</h3>
+  <p>Le moteur tourne en cron nocturne sur tout le portefeuille actif (sous verrou anti-double-exécution) ou à la demande. Il n'invente aucune dose&nbsp;: il analyse les <b>données réelles</b> du patient (glycémies, repas, corrections) sur une fenêtre par levier — <b>14&nbsp;jours</b> par défaut (ISF <b>30&nbsp;j</b>, basale stylo <b>7&nbsp;j</b>), ou 2–14&nbsp;j à la demande — et ne propose que si un <b>signal systématique</b> émerge, borné et gardé. Le détail état par état est au §5. Comme toute proposition, la sienne sort en <code>pending</code>, provenance <code>algorithm</code>, avec des métriques de confiance (nombre d'événements analysés) — que les propositions humaines n'ont pas.</p>
+</section>
+
+<section id="blocages">
+  <span class="kicker">Cas bloquants</span>
+  <h2><span class="num-h">3</span>Les blocages d'une demande patient</h2>
+  <p>Chaque refus renvoie un <b>code stable</b> (sans donnée sensible) et un statut HTTP. Un refus n'est pas un échec silencieux&nbsp;: les tentatives de baisse refusées sont <b>auditées</b> (une insistance répétée à réduire son insuline est un signal clinique).</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Code</th><th class="num">HTTP</th><th>Signification</th><th>Quand</th></tr></thead>
+    <tbody>
+      <tr><td><code>gdprConsentRequired</code></td><td class="num">403</td><td>Consentement de partage absent</td><td>Avant toute proposition</td></tr>
+      <tr><td><code>rateLimitExceeded</code></td><td class="num">429</td><td>Trop de requêtes</td><td>Débit anti-abus dépassé</td></tr>
+      <tr><td><code>nonInsulinNoDose</code></td><td class="num">422</td><td>Patient non insuliné → aucune dose</td><td>Frontière MDR ; lève un flag d'orientation</td></tr>
+      <tr><td><code>valueOutOfBounds</code></td><td class="num">422</td><td>Valeur hors bornes cliniques</td><td>Ex. ISF hors [0,10&nbsp;;&nbsp;1,00] g/L·U</td></tr>
+      <tr><td><code>patientDeltaTooLarge</code></td><td class="num">422</td><td>Amplitude &gt; 10&nbsp;% (ou &gt; min(10&nbsp;%,&nbsp;2&nbsp;U) baisse stylo)</td><td>Une demande est un pas, pas une titration</td></tr>
+      <tr><td><code>patientProposalCooldown</code></td><td class="num">429</td><td>Déjà proposé &lt; 24&nbsp;h sur ce créneau</td><td>Anti-churn (fréquence)</td></tr>
+      <tr><td><code>duplicatePendingProposal</code></td><td class="num">409</td><td>Une proposition <code>pending</code> existe déjà</td><td>1 en attente / créneau</td></tr>
+      <tr><td><code>maturityTooLowForDecrease</code></td><td class="num">403</td><td>Maturité insuffisante pour baisser la basale</td><td>Baisse basale — gates ci-dessous</td></tr>
+      <tr><td><code>dkaAcknowledgmentRequired</code></td><td class="num">422</td><td>Accusé «&nbsp;jour de maladie&nbsp;» manquant</td><td>Baisse basale <b>stylo</b> uniquement</td></tr>
+      <tr><td><code>deliveryModeMismatch</code></td><td class="num">422</td><td>Discriminateur (stylo/pompe) incohérent</td><td>Anti-usurpation du mode de délivrance</td></tr>
+      <tr><td><code>noChangeProposed</code></td><td class="num">422</td><td>Baisse trop faible pour être délivrée</td><td>Baisse stylo &lt; 1 incrément (1&nbsp;U)</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>La baisse de basale par le patient (US-2659) — gates par mode de délivrance</h4>
+  <p>Historiquement, un patient ne pouvait <b>pas</b> proposer de baisser sa basale. Cette interdiction est <b>levée mais gatée</b>&nbsp;: le médecin restant le garde-fou, interdire la proposition était contraire à l'éducation thérapeutique (ETP). Le <b>mode</b> (pompe vs stylo) est <b>dérivé du serveur</b> depuis la configuration — jamais du corps de requête.</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Critère</th><th>Pompe (débit réversible)</th><th>Stylo / MDI (dose entière, non réversible)</th></tr></thead>
+    <tbody>
+      <tr><td>Baisse proposable</td><td>dès maturité <b>INTERMÉDIAIRE</b></td><td><b>CONFIRMÉ</b> uniquement</td></tr>
+      <tr><td>Amplitude max</td><td class="num">≤ 10 %</td><td class="num">≤ min(10 %,&nbsp;2 U)</td></tr>
+      <tr><td>Accusé DKA</td><td>non requis (mémorisé si fourni)</td><td><b>requis</b> (case cochée)</td></tr>
+      <tr><td>Maturité JUNIOR</td><td colspan="2" style="text-align:center">Refus dans tous les cas (<code>maturityTooLowForDecrease</code>)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout intern"><div class="lab">● Décision interne — pourquoi le stylo est plus strict</div>
+  <p>Une dose de basale <b>stylo</b> (lente, une ou deux injections/jour) couvre <b>toute la nuit et la journée</b> et n'est <b>pas réversible</b> une fois injectée&nbsp;: une sur-réduction expose à ~24&nbsp;h d'insulinopénie basale → hyperglycémie/cétose. Un <b>débit de pompe</b> est granulaire et rapidement réversible (débit temporaire). D'où&nbsp;: maturité plus haute (<b>Confirmé</b>) + <b>accusé DKA obligatoire</b> pour le stylo. Le seuil «&nbsp;2&nbsp;U&nbsp;» (moitié du cap moteur de 4&nbsp;U) est une décision interne, ancrée sur la logique «&nbsp;demande patient = moitié d'une titration moteur&nbsp;». Cadrage validé cliniquement (2026-07-11).</p></div>
+  <div class="callout warn"><div class="lab">▲ Accusé «&nbsp;jour de maladie&nbsp;» (règle sick-day)</div>
+  <p>En cas de maladie (fièvre, infection, vomissements), les besoins en insuline <b>augmentent</b> — ne jamais réduire la basale sans avis. La règle sick-day est&nbsp;: «&nbsp;ne jamais arrêter la basale, souvent en augmenter&nbsp;»<sup class="cite"><a href="#r-ada">[ADA]</a></sup><sup class="cite"><a href="#r-ispad">[ISPAD]</a></sup>. Le serveur exige un <b>accusé strict</b> (case explicitement cochée) pour une baisse stylo. L'accusé est persisté avec un <b>horodatage immuable</b> (preuve de consentement).</p></div>
+</section>
+
+<section id="validation">
+  <span class="kicker">Décision</span>
+  <h2><span class="num-h">4</span>Comment une proposition est validée</h2>
+  <p>Seul un <b>médecin</b> (ou administrateur) peut décider. La décision se prend dans l'<b>écran de revue de consultation</b> (stepper structuré, sans intelligence artificielle) qui présente&nbsp;: le profil glycémique, le traitement, et les propositions en attente.</p>
+  <div class="flow">
+    <div class="step"><div class="n">A</div><div class="b"><b>Contexte hypo affiché AVANT décision</b> — l'écran surface les <b>flags d'orientation ouverts</b> du patient, dont <span class="chip flag"><span class="dot" style="background:var(--warn-line)"></span>nocturnalHypoHighFasting</span> (Somogyi soupçonné). Le médecin voit ce contexte <b>avant</b> d'accepter une baisse basale — car baisser sur un Somogyi est le mauvais geste.</div></div>
+    <div class="step"><div class="n">B</div><div class="b"><b>Base à jour ?</b> — la valeur courante «&nbsp;live&nbsp;» est relue à l'ouverture. Si la config a changé depuis la proposition, l'UI <b>bloque</b> l'acceptation (la dose absolue proposée ne s'applique plus sur la bonne base) et invite à régénérer.</div></div>
+    <div class="step"><div class="n">C</div><div class="b"><b>Accepter</b> — <code>status: accepted</code>, horodatage, identité du relecteur. Deux options&nbsp;: accepter <b>sans appliquer</b> (le médecin ajuste la config à la main) ou <b>appliquer immédiatement</b>.</div></div>
+    <div class="step"><div class="n">D</div><div class="b"><b>Appliquer</b> — écriture atomique du créneau ISF / ICR / débit basal pompe / dose fixe, scopée patient. Garde <b>compare-and-swap</b>&nbsp;: si la base a dérivé entre proposition et acceptation → <code>baselineMoved</code>, rollback. Si le créneau a disparu → <code>…SlotNotFound</code>, rollback. Jamais d'«&nbsp;accepté + appliqué&nbsp;» fantôme.</div></div>
+    <div class="step"><div class="n">E</div><div class="b"><b>Rejeter</b> — <code>status: rejected</code>, horodatage, relecteur. Aucune écriture.</div></div>
+  </div>
+  <div class="callout warn"><div class="lab">▲ Basale stylo (MDI) — application différée</div>
+  <p>Accepter <b>avec application immédiate</b> <b>toute</b> proposition de basale <b>stylo</b> (hausse <b>comme</b> baisse) lève <code>styloBasalApplyNotSupported</code> (fail-closed)&nbsp;: l'écriture groupée de la dose stylo n'est pas encore livrée. Le médecin <b>accepte sans appliquer</b> et ajuste la dose stylo à la main. Cela évite un «&nbsp;accepté + appliqué&nbsp;» sans écriture réelle (fausse confiance clinique).</p></div>
+  <p class="small">Les décisions (accept / reject / apply) sont auditées avec l'identité du relecteur — sans valeur de dose en clair.</p>
+</section>
+
+<section id="algo">
+  <span class="kicker">Le cœur</span>
+  <h2><span class="num-h">5</span>L'algorithme, état par état</h2>
+  <p>Le moteur ne propose que sur un <b>signal systématique</b>, jamais sur un événement isolé. Sa logique par levier est&nbsp;: (1) exiger assez de données propres, (2) mesurer un écart moyen à une cible, (3) le convertir en un ajustement <b>borné</b>, (4) le supprimer si une <b>hypo</b> le contre-indique, (5) le retenir pour revue médecin. Aucune sortie n'est appliquée.</p>
+
+  <h3 id="routage">5a · Routage par mode de traitement</h3>
+  <p>Le mode de traitement est <b>dérivé serveur</b> (source de vérité), fail-closed. Il oriente vers un chemin distinct&nbsp;:</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Mode</th><th>Leviers titrés</th><th>Signal</th></tr></thead>
+    <tbody>
+      <tr><td><b>basalBolus</b> (a)</td><td>ICR, ISF, basale (pompe <i>ou</i> stylo)</td><td>Repas, corrections, glycémie à jeun / pré-dîner</td></tr>
+      <tr><td><b>fixedDose</b> (b) «&nbsp;doses simples&nbsp;»</td><td>Dose fixe par moment (matin/midi/soir/nuit)</td><td>Carnet glycémique (BGM)</td></tr>
+      <tr><td><b>nonInsulin</b> (c)</td><td><b>Aucune dose</b> — flags d'orientation seulement</td><td>HbA1c, TIR, observance (frontière MDR)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout ok"><div class="lab">✓ Invariant de non-double-titration</div><p>Les jeux d'événements des leviers sont <b>disjoints</b>&nbsp;: un même repas ne titre jamais deux paramètres à la fois. Un patient non insuliné ne reçoit jamais de dose (mode c = orientation pure).</p></div>
+
+  <h3 id="icr">5b · ICR — ratio insuline / glucides</h3>
+  <p>L'ICR (grammes de glucides couverts par 1&nbsp;U) se titre sur la glycémie <b>post-prandiale</b> (PPG 2&nbsp;h). C'est un <b>dénominateur</b> (bolus = glucides / ICR)&nbsp;: <b>baisser</b> l'ICR = plus d'insuline par gramme.</p>
+  <div class="card">
+    <p style="margin-top:0"><b>Portes qualité</b> — un repas n'est retenu que si&nbsp;: PPG mesurée, glucides &gt; 0, bolus &gt; 0, et glycémie <b>pré-repas dans la bande</b> <code>[0,70&nbsp;;&nbsp;1,40]</code> g/L (grossesse <code>[0,70&nbsp;;&nbsp;1,10]</code>). Hors bande, le bolus incluait probablement une correction (mauvaise attribution) → repas exclu.</p>
+    <p><b>Décision</b> — avec ≥ 3 repas exploitables&nbsp;: on compare la PPG moyenne à un <b>deadband post-prandial</b>. Au-dessus du plafond (<code>1,80</code> g/L adulte / <code>1,40</code> grossesse) → PPG trop haute → ICR trop haut → <b>baisse d'ICR</b> (<code>icrTooHigh</code>). Sous la borne basse (<code>1,00</code> / <code>0,90</code> grossesse) → <b>hausse d'ICR</b> (<code>icrTooLow</code>). Entre les deux → aucune proposition (bon contrôle préservé). L'ajustement est clampé à <b>±20&nbsp;%</b> ; un écart &lt; 2&nbsp;% ne déclenche rien.</p>
+    <p style="margin-bottom:0"><b>Garde hypo</b> — la baisse d'ICR (plus d'insuline) est <b>supprimée</b> si un <b>nadir</b> post-prandial (creux à ~3–4&nbsp;h, après la PPG 2&nbsp;h) est en hypo.</p>
+  </div>
+  <div class="chart"><canvas data-chart="icr" height="220" aria-label="Exemple ICR : PPG répétée à 2,0 g/L au-dessus du plafond 1,80 → proposition de baisse d'ICR"></canvas>
+    <div class="cap"><span class="leg"><i style="background:var(--gly-high)"></i>PPG 2 h (~2,0)</span><span class="leg"><i style="background:var(--gly-crit)"></i>nadir sain (~1,4)</span><span class="leg"><i class="band" style="background:var(--gly-normal)"></i>deadband cible [1,00 ; 1,80]</span></div></div>
+  <div class="cols">
+    <div class="callout ok"><div class="lab">✓ Cas passant</div><p>3 repas, PPG à 2,0 g/L (&gt; plafond 1,80), nadirs sains (1,4 g/L). → <b>Proposition</b>&nbsp;: baisse d'ICR d'environ −10&nbsp;% (<code>icrTooHigh</code>), <code>pending</code>.</p></div>
+    <div class="callout block"><div class="lab">✕ Cas bloquant</div><p>PPG moyenne haute (2,0) <b>mais nadirs récurrents à 0,60 g/L</b>. Un ICR unique ne corrige pas sous-couverture moyenne + hypos intermittentes (timing/IOB). → <b>Pas de dose</b> ; flag <code>highVariabilityPostMeal</code>.</p></div>
+  </div>
+
+  <h3 id="isf">5c · ISF — facteur de sensibilité (corrections)</h3>
+  <p>L'ISF (baisse de glycémie par 1&nbsp;U de correction) se titre sur les <b>corrections propres</b>. Comme l'ICR, c'est un <b>dénominateur</b> (dose = (BG − cible)/ISF)&nbsp;: <b>baisser</b> l'ISF = corrections plus fortes.</p>
+  <div class="card">
+    <p style="margin-top:0"><b>Ce qu'est une «&nbsp;correction propre&nbsp;»</b> — une correction (bolus sans repas) n'est retenue que si&nbsp;: dose de correction &gt; 0, <b>aucun repas</b> (pas de glucides), <b>IOB nul</b>, bolus <b>non plafonné</b>, bolus standard (pas d'étalé), élévation ≥ <code>0,30</code> g/L au-dessus de la cible, et aucun glucide/insuline dans la fenêtre d'action de 5&nbsp;h. Le «&nbsp;résultat&nbsp;» lu est la glycémie <b>stabilisée à 5&nbsp;h</b> ±30&nbsp;min (fail-closed si absente — lire à 5&nbsp;h plutôt que 3,5&nbsp;h err vers <i>moins</i> d'insuline).</p>
+    <p style="margin-bottom:0"><b>Décision</b> — avec ≥ 3 corrections&nbsp;: résultat au-dessus de la cible → correction trop faible → ISF trop haut → <b>baisse</b> (<code>isfTooHigh</code>) ; en dessous (sur-correction) → <b>hausse</b> (<code>isfTooLow</code>). Clamp ±20&nbsp;%, deadband 2&nbsp;%. Garde hypo sur le nadir post-correction (~3–4&nbsp;h).</p>
+  </div>
+
+  <h3 id="basal-pompe">5d · Basale pompe — glycémie à jeun</h3>
+  <p>Pour une <b>pompe</b>, le moteur titre le <b>créneau nocturne</b> (celui actif à <b>05:00</b> — un micro-débit à 05:00 agit vers 06:00–08:00 = glycémie à jeun). Ajustement <b>proportionnel</b> (contrairement au stylo, à pas fixe).</p>
+  <div class="card">
+    <p style="margin-top:0"><b>Cible à jeun</b> — individualisée si plausible, clampée <code>[0,80&nbsp;;&nbsp;1,30]</code> g/L (grossesse plafond <code>1,00</code>), sinon défaut <code>1,00</code> (grossesse <code>0,90</code>). <b>Jamais</b> le plancher hypo (titrerait vers l'hypo).</p>
+    <p><b>Décision</b> — écart proportionnel à la cible, clampé ±20&nbsp;%, deadband 2&nbsp;%, arrondi au pas pompe délivrable (<code>0,05</code> U/h). À jeun haut → hausse ; à jeun bas → baisse.</p>
+    <p style="margin-bottom:0"><b>Garde de couverture</b> — une <b>hausse</b> n'est autorisée que si ≥ 3 nuits de <b>nadir CGM</b> existent (sinon une hypo à 3&nbsp;h masquée par une moyenne à jeun élevée resterait invisible). Les baisses sont inconditionnelles (sens sûr).</p>
+  </div>
+  <div class="chart"><canvas data-chart="somogyi" height="230" aria-label="Exemple Somogyi : à jeun élevé mais chute nocturne récurrente sous 0,54 g/L → flag, jamais une baisse automatique"></canvas>
+    <div class="cap"><span class="leg"><i style="background:var(--gly-normal)"></i>glycémie nocturne</span><span class="leg"><i style="background:var(--gly-crit)"></i>nadir 03:00 → 0,50 g/L</span><span class="leg"><i class="band" style="background:var(--gly-normal)"></i>cible</span></div></div>
+  <div class="callout warn"><div class="lab">▲ Le piège Somogyi — un flag, jamais une baisse auto</div>
+  <p>Si la glycémie à jeun est <b>HAUTE</b> et qu'il existe une <b>hypo nocturne récurrente</b>, la direction n'est pas fiable à automatiser (rebond de Somogyi vs phénomène de l'aube). Le moteur lève un flag <code>nocturnalHypoHighFasting</code> <b>au lieu</b> d'une baisse&nbsp;: baisser «&nbsp;corrigerait&nbsp;» le creux mais remonterait toute la nuit. Décision laissée au médecin.</p></div>
+
+  <h3 id="basal-stylo">5e · Basale stylo (MDI) — treat-to-target</h3>
+  <p>Nouveauté US-2659&nbsp;: l'algorithme titre aussi la basale <b>stylo</b> (lente, <b>unités totales</b>, pas U/h), là où il ne titrait que la pompe. Deux configurations&nbsp;: <b>single</b> (1 injection/jour) et <b>split</b> (matin + soir). Le pas de titration est <b>FIXE</b> (vs proportionnel pour la pompe), ce qui impose une <b>zone de tolérance</b> autour de la cible.</p>
+
+  <h4>La «&nbsp;hold zone&nbsp;» asymétrique — pourquoi un pas fixe l'exige</h4>
+  <p>Un pas fixe de +2&nbsp;U déclenché dès le moindre écart <b>sur-corrigerait</b> au premier tick (à jeun 1,02 vs cible 1,00 → +2&nbsp;U inutile). D'où une bande de non-titration <b>ancrée sur la cible</b> à jeun T&nbsp;:</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Condition (moyenne à jeun)</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr><td><code>avg &gt; T + 0,30</code> g/L</td><td><span class="chip pass">HAUSSE</span> pas fixe <code>max(+2&nbsp;U, +10&nbsp;%)</code>, plafonné <code>min(+20&nbsp;%, +4&nbsp;U)</code></td></tr>
+      <tr><td><code>T − 0,20 ≤ avg ≤ T + 0,30</code></td><td><span class="chip hold">HOLD</span> aucune titration</td></tr>
+      <tr><td><code>avg &lt; T − 0,20</code> g/L</td><td><span class="chip pass">BAISSE</span> treat-to-target (sens sûr, symétrique)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout intern"><div class="lab">● Décision interne (ancrée ADA/Riddle) — les demi-bandes 0,30 / 0,20</div>
+  <p>À T = 1,00, la hold zone <code>[0,80&nbsp;;&nbsp;1,30]</code> coïncide avec la <b>cible à jeun/préprandiale ADA 80–130&nbsp;mg/dL</b><sup class="cite"><a href="#r-ada">[ADA]</a></sup>. L'<b>asymétrie</b> (haut 0,30 &gt; bas 0,20) est une décision interne&nbsp;: la demi-bande haute est plus large car un pas de +2&nbsp;U abaisse la glycémie à jeun de ~20–40&nbsp;mg/dL<sup class="cite"><a href="#r-riddle">[Riddle]</a></sup> (anti-overshoot) ; la demi-bande basse est plus serrée (sens sûr, hypo-préventif). Les valeurs exactes 0,30 / 0,20 sont un calibrage interne validé cliniquement, non une valeur de guideline.</p></div>
+  <div class="chart"><canvas data-chart="mdi" height="230" aria-label="Exemple MDI single : moyenne à jeun 1,50 au-dessus de T+0,30 → hausse de +2 U (arrondie au pas de 1 U)"></canvas>
+    <div class="cap"><span class="leg"><i style="background:var(--gly-high)"></i>à jeun ~1,50 g/L (7 j)</span><span class="leg"><i class="band" style="background:var(--gly-normal)"></i>hold zone [0,80 ; 1,30]</span><span class="leg"><i style="background:var(--teal)"></i>T = 1,00</span></div></div>
+  <ul class="tight">
+    <li><b>Arrondi «&nbsp;sûr&nbsp;»</b> — la valeur est arrondie au pas du stylo (<code>1&nbsp;U</code> par défaut, fail-closed ; 0,5&nbsp;U seulement si stylo demi-unité) <b>toujours vers moins d'insuline</b>. Une hausse ne dépasse jamais le plafond ; une baisse va vers plus de réduction. Un ajustement &lt; 1 incrément → non actionnable.</li>
+    <li><b>Source du signal</b> — CGM d'abord (porte les nadirs nocturnes → autorise les hausses) ; à défaut <b>BGM</b> (patient stylo souvent en capillaire) → à jeun présent mais aucun nadir nocturne → <b>hausse refusée</b> (garde AC-4) → flag ; baisses permises.</li>
+    <li><b>Dé-escalade sur hypo</b> — hypos nocturnes récurrentes → baisse <code>−min(20&nbsp;%, 4&nbsp;U)</code> (jamais −max, qui produirait −40&nbsp;% → rebond hyper/cétose).</li>
+  </ul>
+
+  <h4>Split (matin + soir) — deux doses, une seule titrée par run</h4>
+  <p>La dose du <b>soir</b> se titre sur la glycémie <b>à jeun</b> (= chemin single). La dose du <b>matin</b> se titre sur la glycémie <b>pré-dîner</b>, avec la garde hypo <b>de jour</b> (creux du matin/midi) — <b>jamais</b> le nadir nocturne (qui appartient à la dose du soir&nbsp;: «&nbsp;jamais croisé&nbsp;»). Contraintes&nbsp;:</p>
+  <ul class="tight">
+    <li><b>Confondeur pré-dîner</b> — si le patient prend un <b>bolus au déjeuner</b>, la glycémie pré-dîner est contaminée par l'IOB du midi → la dose du matin passe en <b>flag seulement</b> (jamais une proposition). Un split basal-bolus ne titre donc que le soir ; un split basal-seul, les deux.</li>
+    <li><b>Une dose / run, priorité sécurité</b> — au plus une proposition basale par exécution&nbsp;: dé-escalade avant titration ; à égalité, priorité au soir (nocturne = pire mode d'échec). Si les deux doses doivent dé-escalader, celle retenue est persistée et l'<b>autre est flaggée</b> (jamais tue).</li>
+    <li><b>Verrou «&nbsp;1 basale stylo en attente&nbsp;»</b> — au plus une proposition basale stylo <code>pending</code> par patient (garanti en base)&nbsp;: changer les deux doses d'un coup détruirait l'attribution matin/soir.</li>
+  </ul>
+
+  <h3 id="dose-fixe">5f · Dose fixe — mode «&nbsp;doses simples&nbsp;»</h3>
+  <p>Pour un patient en <b>doses fixes</b> (une dose par moment&nbsp;: matin/midi/soir/nuit), le moteur titre chaque dose sur le carnet glycémique (BGM). La dose d'un moment est jugée sur le creux de la <b>fenêtre suivante</b> (une dose agit en aval). Titration lente&nbsp;: le plus petit de ±10&nbsp;% et ±2&nbsp;U, plancher 0,5&nbsp;U, arrondi 0,5&nbsp;U. Garde hypo + dé-escalade + flag «&nbsp;non actionnable&nbsp;» comme les autres leviers.</p>
+</section>
+
+<section id="gardes">
+  <span class="kicker">Sécurité transverse</span>
+  <h2><span class="num-h">6</span>Gardes hypo, dé-escalade &amp; anti-cliquet</h2>
+  <p>Trois mécanismes protègent tous les leviers.</p>
+  <h4>Garde hypo commune</h4>
+  <p>Toute proposition qui <b>augmente l'insuline effective</b> est <b>supprimée</b> si la fenêtre contient&nbsp;:</p>
+  <ul class="tight">
+    <li><b>une seule</b> hypo <b>sévère</b> (niveau 2, &lt; <code>0,54</code> g/L / 54&nbsp;mg/dL) — urgence, un relevé suffit ; <span class="small">ou</span></li>
+    <li><b>≥ 2</b> hypos <b>légères</b> (niveau 1, &lt; <code>0,70</code> g/L / 70&nbsp;mg/dL) — récurrence exigée (évite la sur-suppression sur un événement isolé).</li>
+  </ul>
+  <p class="small">La direction «&nbsp;sûre&nbsp;» (moins d'insuline) reste toujours permise. Les seuils 54 / 70&nbsp;mg/dL sont les niveaux d'hypoglycémie du consensus international<sup class="cite"><a href="#r-hypo">[Hypo]</a></sup><sup class="cite"><a href="#r-ada">[ADA]</a></sup>.</p>
+  <h4>Dé-escalade active sur hypos récurrentes</h4>
+  <p>Indépendamment du deadband sur la moyenne, des hypos <b>récurrentes</b> (≥ 2 nadirs &lt; 0,70) déclenchent une <b>baisse d'insuline fixe</b> (+10&nbsp;% d'ICR/ISF, −10&nbsp;% de basale pompe, −min(20&nbsp;%,4&nbsp;U) de basale stylo). Volontairement <b>fixe</b> (pas de scaling sur la profondeur&nbsp;: un nadir isolé profond sur-corrigerait) ; la persistance titre cumulativement run après run.</p>
+  <h4>Cooldown anti-cliquet (72&nbsp;h) + fenêtre post-changement</h4>
+  <p>Une dé-escalade à magnitude fixe n'est pas auto-limitante&nbsp;: sans garde temporelle, des runs successifs empileraient 10&nbsp;%+10&nbsp;%+10&nbsp;% <b>avant</b> que l'effet du premier ajustement soit observable. Donc&nbsp;: (1) le moteur <b>saute</b> une dé-escalade si le dernier changement accepté date de &lt; <b>72&nbsp;h</b> ; (2) le signal récurrent doit tenir sur les <b>observations postérieures</b> au dernier changement (jamais re-titrer sur des hypos périmées). Si le blocage cache une hypo <b>sévère</b>, elle est <b>surfacée en flag</b> (jamais tue).</p>
+  <div class="callout intern"><div class="lab">● Décision interne (ancrée pharmacocinétique) — pourquoi 72 h</div>
+  <p>72&nbsp;h ≈ 3&nbsp;jours = délai minimal pour observer l'effet d'un changement de basale&nbsp;: la glargine/detemir atteignent leur <b>état d'équilibre en 3–4&nbsp;jours</b><sup class="cite"><a href="#r-pk">[PK]</a></sup>, et 3&nbsp;jours capturent ≥ 3 relevés post-équilibre. La valeur exacte (72&nbsp;h, la même pour les 4 leviers en V1) est une décision interne data-justifiée&nbsp;; une variante par mode de délivrance / dégludec 96&nbsp;h est notée pour une V2.</p></div>
+</section>
+
+<section id="cas">
+  <span class="kicker">Illustré</span>
+  <h2><span class="num-h">7</span>Cas passants &amp; bloquants — synthèse</h2>
+  <p>Récapitulatif des issues possibles d'un run, par situation glycémique.</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Situation</th><th>Levier</th><th>Issue</th></tr></thead>
+    <tbody>
+      <tr><td>PPG répétée &gt; plafond, nadirs sains</td><td>ICR</td><td><span class="chip pass">Proposition</span> baisse d'ICR</td></tr>
+      <tr><td>PPG haute + nadirs récurrents en hypo</td><td>ICR</td><td><span class="chip flag">Flag</span> haute variabilité (pas de dose)</td></tr>
+      <tr><td>Corrections sur-shootant (résultat &lt; cible)</td><td>ISF</td><td><span class="chip pass">Proposition</span> hausse d'ISF</td></tr>
+      <tr><td>À jeun haut, couverture CGM ≥ 3 nuits, sans hypo</td><td>Basale</td><td><span class="chip pass">Proposition</span> hausse de basale</td></tr>
+      <tr><td>À jeun haut + hypo nocturne récurrente</td><td>Basale</td><td><span class="chip flag">Flag</span> Somogyi (jamais une baisse auto)</td></tr>
+      <tr><td>À jeun haut mais patient BGM (aucun nadir)</td><td>Basale stylo</td><td><span class="chip flag">Flag</span> hausse refusée à l'aveugle (AC-4)</td></tr>
+      <tr><td>À jeun dans la hold zone [0,80 ; 1,30]</td><td>Basale stylo</td><td><span class="chip hold">Hold</span> aucune titration</td></tr>
+      <tr><td>Dernier changement accepté &lt; 72 h</td><td>Tous</td><td><span class="chip hold">Sauté</span> (dé-escalade) / flag si sévère</td></tr>
+      <tr><td>Patient non insuliné tente une dose</td><td>—</td><td><span class="chip stop">Refus</span> + flag «&nbsp;à revoir&nbsp;»</td></tr>
+      <tr><td>Baisse basale stylo, patient JUNIOR</td><td>Patient</td><td><span class="chip stop">Refus</span> maturité insuffisante</td></tr>
+      <tr><td>Baisse basale stylo, Confirmé, sans accusé DKA</td><td>Patient</td><td><span class="chip stop">Refus</span> accusé requis</td></tr>
+      <tr><td>Baisse basale stylo, Confirmé + accusé, ≤ min(10 %,2 U)</td><td>Patient</td><td><span class="chip pass">Proposition</span> <code>pending</code></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="constantes">
+  <span class="kicker">Traçabilité</span>
+  <h2><span class="num-h">8</span>Justification de chaque constante</h2>
+  <p>Chaque seuil du moteur est ci-dessous, avec son <b>fondement</b>&nbsp;: soit une <span class="ref-tag">référence</span> scientifique, soit une <span class="int-tag">décision interne</span> (calibrage validé cliniquement mais sans valeur de guideline directe). Source de vérité&nbsp;: <code>clinical-bounds.ts</code>, gardé synchrone du catalogue par un verrou anti-drift.</p>
+  <div class="twrap"><table>
+    <thead><tr><th>Constante</th><th class="num">Valeur</th><th>Sens</th><th>Fondement</th></tr></thead>
+    <tbody>
+      <tr><td>ISF (bornes)</td><td class="num">0,10–1,00 g/L·U<br>10–100 mg/dL·U</td><td>Facteur de sensibilité admissible</td><td><span class="ref-tag">Règle 1800/1500</span><sup class="cite"><a href="#r-1800">[1800]</a></sup></td></tr>
+      <tr><td>ICR (bornes)</td><td class="num">3–30 g/U</td><td>Ratio glucides admissible (élargi pédiatrie)</td><td><span class="int-tag">Décision interne</span> (plage de sanité)</td></tr>
+      <tr><td>Basale pompe (bornes)</td><td class="num">0,05–5,0 U/h</td><td>&gt; 5 U/h = 240 U/j, dangereux</td><td><span class="int-tag">Décision interne</span> (plafond de sanité)</td></tr>
+      <tr><td>Bolus unique max <span class="small">(calculateur de bolus — hors moteur de propositions)</span></td><td class="num">25 U</td><td>Plafond de sécurité</td><td><span class="int-tag">Décision interne</span></td></tr>
+      <tr><td>Cap variation moteur</td><td class="num">±20 %</td><td>Ampleur max d'une proposition auto</td><td>fourchette 10–20 % <span class="ref-tag">ADA</span><sup class="cite"><a href="#r-ada">[ADA]</a></sup> · valeur ±20 % <span class="int-tag">interne</span></td></tr>
+      <tr><td>Cap variation patient</td><td class="num">±10 %</td><td>Demande = moitié d'une titration</td><td><span class="int-tag">Décision interne</span> (½ du cap moteur)</td></tr>
+      <tr><td>Deadband analyseurs</td><td class="num">2 %</td><td>Écart minimal pour agir</td><td><span class="int-tag">Décision interne</span> (bruit CGM)</td></tr>
+      <tr><td>Hypo sévère / légère</td><td class="num">54 / 70 mg/dL</td><td>Niveaux 2 / 1 d'hypoglycémie</td><td><span class="ref-tag">Consensus intl.</span><sup class="cite"><a href="#r-hypo">[Hypo]</a></sup><sup class="cite"><a href="#r-ada">[ADA]</a></sup></td></tr>
+      <tr><td>Récurrence hypo niveau 1</td><td class="num">≥ 2</td><td>Anti-artefact (2 relevés)</td><td><span class="int-tag">Décision interne</span></td></tr>
+      <tr><td>Cible à jeun (défaut/plage)</td><td class="num">1,00 · [0,80–1,30]</td><td>80–130 mg/dL préprandial</td><td><span class="ref-tag">ADA §6</span><sup class="cite"><a href="#r-ada">[ADA]</a></sup></td></tr>
+      <tr><td>Plafond deadband ICR</td><td class="num">1,80 g/L (1,40 GD)</td><td>PPG cible &lt; 180 mg/dL</td><td><span class="ref-tag">ADA (PPG &lt; 180)</span><sup class="cite"><a href="#r-ada">[ADA]</a></sup></td></tr>
+      <tr><td>Réf. titration nocturne</td><td class="num">05:00</td><td>Micro-débit à 05:00 → effet à jeun</td><td><span class="int-tag">Décision interne</span> (pharmacocinétique)</td></tr>
+      <tr><td>Couverture hausse basale</td><td class="num">≥ 3 nuits nadir</td><td>Pas de hausse à l'aveugle</td><td><span class="int-tag">Décision interne</span> (anti-Somogyi masqué)</td></tr>
+      <tr><td>Pas hausse basale stylo</td><td class="num">max(+2 U, +10 %)</td><td>Pas treat-to-target</td><td>+2 U <span class="ref-tag">ADA / Riddle</span><sup class="cite"><a href="#r-ada">[ADA]</a></sup><sup class="cite"><a href="#r-riddle">[Riddle]</a></sup> · +10 % &amp; formule max/min <span class="int-tag">interne</span></td></tr>
+      <tr><td>Cap absolu basale stylo</td><td class="num">±4 U / ±20 %</td><td>Réduction max sur hypo</td><td>fourchette 10–20 % <span class="ref-tag">ADA</span><sup class="cite"><a href="#r-ada">[ADA]</a></sup> · valeurs 4 U / 20 % <span class="int-tag">interne</span></td></tr>
+      <tr><td>Hold zone stylo (haut/bas)</td><td class="num">+0,30 / −0,20 g/L</td><td>Bande de non-titration asymétrique</td><td><span class="int-tag">Décision interne</span> (ancrée ADA 80–130 + effet du pas<sup class="cite"><a href="#r-riddle">[Riddle]</a></sup>)</td></tr>
+      <tr><td>Incrément stylo</td><td class="num">1 U (0,5 demi-unité)</td><td>Résolution réelle du stylo</td><td><span class="ref-tag">ISPAD</span><sup class="cite"><a href="#r-ispad">[ISPAD]</a></sup> · défaut 1 U <span class="int-tag">interne</span></td></tr>
+      <tr><td>Fenêtre d'analyse stylo</td><td class="num">7 j</td><td>≥ 3 glycémies à jeun</td><td>7 j <span class="int-tag">interne</span> (réactivité) · principe ≥ 3 FPG <span class="ref-tag">Riddle</span><sup class="cite"><a href="#r-riddle">[Riddle]</a></sup></td></tr>
+      <tr><td>Cooldown moteur</td><td class="num">72 h</td><td>État d'équilibre 3–4 j</td><td><span class="int-tag">Décision interne</span> (ancrée PK<sup class="cite"><a href="#r-pk">[PK]</a></sup>)</td></tr>
+      <tr><td>Cooldown patient</td><td class="num">24 h</td><td>Anti-churn (fréquence)</td><td><span class="int-tag">Décision interne</span></td></tr>
+      <tr><td>Cap baisse patient stylo</td><td class="num">min(10 %, 2 U)</td><td>Demande conservatrice</td><td><span class="int-tag">Décision interne</span> (½ cap moteur)</td></tr>
+      <tr><td>Dé-escalade fixe</td><td class="num">+10 % / −10 % / −min(20 %,4 U)</td><td>Pas de dé-escalade hypo</td><td><span class="ref-tag">DAFNE/AACE (pas standard)</span><sup class="cite"><a href="#r-dafne">[DAFNE]</a></sup></td></tr>
+      <tr><td>Confiance (haute/moyenne)</td><td class="num">&gt;10 / ≥6 événements</td><td>Force de preuve affichée</td><td><span class="int-tag">Décision interne</span></td></tr>
+      <tr><td>Élévation min correction ISF</td><td class="num">0,30 g/L</td><td>Signal au-dessus du bruit</td><td><span class="int-tag">Décision interne</span></td></tr>
+      <tr><td>Fenêtre nadir post-repas</td><td class="num">≤ 300 min</td><td>Creux d'action de l'analogue rapide</td><td><span class="ref-tag">PK analogues</span><sup class="cite"><a href="#r-pk">[PK]</a></sup></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small">Sources code&nbsp;: <span class="badge-src">clinical-bounds.ts</span><span class="badge-src">proposal-algorithm.ts</span><span class="badge-src">proposal-generator.service.ts</span><span class="badge-src">glycemia-thresholds.ts</span><span class="badge-src">adjustment.service.ts</span></p>
+</section>
+
+<section id="refs">
+  <span class="kicker">Bibliographie</span>
+  <h2><span class="num-h">9</span>Références scientifiques</h2>
+  <p>Les références ci-dessous fondent les constantes étiquetées <span class="ref-tag">référence</span> au §8. Les constantes étiquetées <span class="int-tag">décision interne</span> sont des calibrages validés cliniquement (revue medical-domain-validator) mais qui ne dérivent pas directement d'une valeur de guideline&nbsp;: elles sont assumées comme telles.</p>
+  <div class="twrap"><table>
+    <thead><tr><th class="num">Réf.</th><th>Source</th><th>Ce qu'elle fonde</th></tr></thead>
+    <tbody>
+      <tr id="r-ada"><td class="num">ADA</td><td><b>American Diabetes Association.</b> Standards of Care in Diabetes — 2025. <i>Diabetes Care</i> 48 (Suppl. 1). (§6 objectifs glycémiques&nbsp;: préprandial 80–130 mg/dL, PPG &lt; 180&nbsp;; §9 pharmacothérapie&nbsp;: titration basale +2 U, réduction 10–20 % ou 4 U&nbsp;; règles jour de maladie.)</td><td>Cibles, caps ±10–20 %, pas +2 U, niveaux d'hypo, sick-day</td></tr>
+      <tr id="r-riddle"><td class="num">Riddle</td><td><b>Riddle MC, Rosenstock J, Gerich J.</b> The Treat-to-Target Trial. <i>Diabetes Care</i> 2003;26(11):3080–6. (Titration de la glargine sur la moyenne des 3 dernières glycémies à jeun, +2 U tous les 3 jours.)</td><td>Fenêtre 7 j / 3 FPG, effet ~20–40 mg/dL du pas</td></tr>
+      <tr id="r-insight"><td class="num">INSIGHT</td><td><b>Gerstein HC et al.</b> A randomized trial of adding insulin glargine vs. standard care of early T2D (INSIGHT). <i>Diabet Med</i> 2006;23(7):736–42. (Titration patient-led +1 U/jour vers la cible à jeun.)</td><td>Pas de titration treat-to-target patient-led</td></tr>
+      <tr id="r-ispad"><td class="num">ISPAD</td><td><b>ISPAD Clinical Practice Consensus Guidelines</b> (dernière édition). (Stylos demi-unité en pédiatrie&nbsp;; prévention de l'acidocétose, règles jour de maladie.)</td><td>Incrément stylo (0,5 U), sick-day / DKA</td></tr>
+      <tr id="r-hypo"><td class="num">Hypo</td><td><b>International Hypoglycaemia Study Group.</b> Glucose concentrations of less than 3.0 mmol/L (54 mg/dL) should be reported in clinical trials. <i>Diabetes Care</i> 2017;40(1):155–7.</td><td>Seuils 54 (niveau 2) / 70 (niveau 1) mg/dL</td></tr>
+      <tr id="r-1800"><td class="num">1800</td><td><b>Règle 1800 / 1500</b> (Davidson PC et al.) pour l'estimation du facteur de sensibilité à l'insuline (analogues rapides / insuline régulière).</td><td>Plage ISF 10–100 mg/dL·U</td></tr>
+      <tr id="r-dafne"><td class="num">DAFNE</td><td><b>DAFNE Study Group.</b> Training in flexible, intensive insulin management (Dose Adjustment For Normal Eating). <i>BMJ</i> 2002;325:746.</td><td>Pas de dé-escalade ~10 % standardisé</td></tr>
+      <tr id="r-pk"><td class="num">PK</td><td><b>Pharmacocinétique des insulines</b>&nbsp;: analogues basaux (glargine U100 / detemir) — état d'équilibre en 3–4 jours&nbsp;; dégludec t½ ~25 h&nbsp;; analogues rapides — pic d'action ~1–3 h, durée ~3,5–5 h.</td><td>Cooldown 72 h, fenêtre nadir 300 min, réf. 05:00, dégludec 96 h (V2)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small">Les citations renvoient au corps du guideline/étude&nbsp;; la valeur numérique exacte utilisée dans le code peut être un choix conservateur à l'intérieur de la fourchette citée — auquel cas la constante est co-étiquetée décision interne.</p>
+</section>
+
+<section id="glossaire">
+  <span class="kicker">Vocabulaire</span>
+  <h2><span class="num-h">10</span>Glossaire — abréviations &amp; terminologie</h2>
+  <div class="twrap"><table>
+    <thead><tr><th>Terme</th><th>Signification</th></tr></thead>
+    <tbody>
+      <tr><td><b>ISF</b></td><td>Facteur de sensibilité à l'insuline (<i>Insulin Sensitivity Factor</i>)&nbsp;: baisse de glycémie apportée par 1&nbsp;U de correction. Dénominateur.</td></tr>
+      <tr><td><b>ICR</b></td><td>Ratio insuline/glucides (<i>Insulin-to-Carb Ratio</i>)&nbsp;: grammes de glucides couverts par 1&nbsp;U. Dénominateur.</td></tr>
+      <tr><td><b>Basale</b></td><td>Insuline de fond (couvre les besoins hors repas). Pompe&nbsp;: débit en U/h par créneau. Stylo/MDI&nbsp;: dose lente en U totales (1 ou 2 injections/jour).</td></tr>
+      <tr><td><b>Bolus</b></td><td>Insuline rapide d'un repas ou d'une correction.</td></tr>
+      <tr><td><b>MDI</b></td><td>Multi-injections quotidiennes (<i>Multiple Daily Injections</i>) — insulinothérapie au stylo, par opposition à la pompe.</td></tr>
+      <tr><td><b>PPG</b></td><td>Glycémie post-prandiale (après repas), mesurée à 2&nbsp;h.</td></tr>
+      <tr><td><b>Nadir</b></td><td>Point le plus bas de la glycémie sur une fenêtre (creux) — sert à détecter une hypo tardive.</td></tr>
+      <tr><td><b>À jeun</b></td><td>Glycémie pré-petit-déjeuner ; reflète l'action de la basale nocturne.</td></tr>
+      <tr><td><b>Pré-dîner</b></td><td>Glycémie avant le repas du soir ; reflète l'action de la basale du matin (split).</td></tr>
+      <tr><td><b>CGM</b></td><td>Mesure du glucose en continu (<i>Continuous Glucose Monitoring</i>) — capteur.</td></tr>
+      <tr><td><b>BGM</b></td><td>Autosurveillance glycémique capillaire (<i>Blood Glucose Monitoring</i>) — carnet, relevés ponctuels.</td></tr>
+      <tr><td><b>TIR</b></td><td>Temps dans la cible (<i>Time In Range</i>) — % du temps dans la plage glycémique cible.</td></tr>
+      <tr><td><b>IOB</b></td><td>Insuline active résiduelle (<i>Insulin On Board</i>) — insuline encore en action d'un bolus précédent.</td></tr>
+      <tr><td><b>COB</b></td><td>Glucides en cours de digestion (<i>Carbs On Board</i>).</td></tr>
+      <tr><td><b>HbA1c</b></td><td>Hémoglobine glyquée — reflet du contrôle glycémique moyen sur ~3 mois.</td></tr>
+      <tr><td><b>DKA</b></td><td>Acidocétose diabétique (<i>Diabetic Ketoacidosis</i>) — complication grave d'un manque d'insuline.</td></tr>
+      <tr><td><b>Somogyi (effet)</b></td><td>Glycémie à jeun élevée <i>en réaction</i> à une hypoglycémie nocturne (rebond). Baisser la basale y est le mauvais geste.</td></tr>
+      <tr><td><b>Phénomène de l'aube</b></td><td>Hausse physiologique de la glycémie en fin de nuit (hormones), indépendante d'une hypo. Peut justifier une hausse de basale.</td></tr>
+      <tr><td><b>Treat-to-target</b></td><td>Titration par petits pas répétés vers une glycémie cible.</td></tr>
+      <tr><td><b>Deadband / hold zone</b></td><td>Bande de non-action autour de la cible&nbsp;: aucune titration si la glycémie y reste.</td></tr>
+      <tr><td><b>Dé-escalade</b></td><td>Réduction d'insuline déclenchée par des hypoglycémies récurrentes.</td></tr>
+      <tr><td><b>Cooldown</b></td><td>Délai minimal entre deux ajustements (le temps que l'effet du précédent soit observable).</td></tr>
+      <tr><td><b>Maturité</b> (JUNIOR / INTERMÉDIAIRE / CONFIRMÉ)</td><td>Niveau d'autonomie du patient dans la gestion de son insuline&nbsp;: gouverne ce qu'il peut proposer. Posé par le médecin.</td></tr>
+      <tr><td><b>Proposition <code>pending</code></b></td><td>Suggestion d'ajustement en attente de décision médecin. N'a <b>aucun</b> effet sur le traitement tant qu'elle n'est pas acceptée.</td></tr>
+      <tr><td><b>Flag d'orientation</b></td><td>Signal «&nbsp;à revoir en consultation&nbsp;» sans posologie (frontière dispositif médical).</td></tr>
+      <tr><td><b>Provenance (<code>source</code>)</b></td><td>Origine d'une proposition (algorithme / patient / infirmière / médecin), dérivée serveur.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<footer>
+  <p>Document de référence — moteur de propositions d'insulinothérapie Diabeo (épic «&nbsp;proposal&nbsp;»&nbsp;: US-2645→2653, US-2657, US-2659). Rédigé à partir du code source, sans extrapolation&nbsp;; les valeurs sans fondement scientifique direct sont étiquetées «&nbsp;décision interne&nbsp;».</p>
+  <p class="small">⚠️ Ce document explique le comportement du système. Il ne remplace pas le jugement clinique. Toute proposition d'ajustement reste soumise à validation médecin (ADR #13).</p>
+</footer>
+</main>
+</div>
+
+<script>
+(function(){
+  function css(v){return getComputedStyle(document.documentElement).getPropertyValue(v).trim()}
+  function drawChart(cv, spec){
+    var dpr = Math.max(1, window.devicePixelRatio||1);
+    var W = cv.clientWidth||620, H = spec.h||220;
+    cv.width = W*dpr; cv.height = H*dpr;
+    var g = cv.getContext('2d'); g.scale(dpr,dpr);
+    g.clearRect(0,0,W,H);
+    var padL=46, padR=14, padT=14, padB=28;
+    var iw=W-padL-padR, ih=H-padT-padB;
+    var dMin=spec.min, dMax=spec.max;
+    function X(i,n){return padL + (n<=1?iw/2:iw*i/(n-1))}
+    function Y(v){return padT + ih*(1-(v-dMin)/(dMax-dMin))}
+    if(spec.band){
+      g.fillStyle=css('--gly-normal'); g.globalAlpha=.14;
+      g.fillRect(padL, Y(spec.band[1]), iw, Y(spec.band[0])-Y(spec.band[1]));
+      g.globalAlpha=1;
+    }
+    g.font='11px '+(css('--sans')||'sans-serif').replace(/"/g,''); g.textAlign='right'; g.textBaseline='middle';
+    (spec.ticks||[]).forEach(function(t){
+      var y=Y(t); g.strokeStyle=css('--hair'); g.globalAlpha=.7; g.beginPath(); g.moveTo(padL,y); g.lineTo(W-padR,y); g.stroke(); g.globalAlpha=1;
+      g.fillStyle=css('--muted'); g.fillText(t.toFixed(2), padL-8, y);
+    });
+    if(spec.target!=null){
+      g.strokeStyle=css('--teal'); g.setLineDash([4,4]); g.lineWidth=1.4;
+      var yt=Y(spec.target); g.beginPath(); g.moveTo(padL,yt); g.lineTo(W-padR,yt); g.stroke(); g.setLineDash([]);
+    }
+    (spec.series||[]).forEach(function(s){
+      var n=s.data.length;
+      g.strokeStyle=css(s.color); g.lineWidth=s.w||2.4; g.lineJoin='round';
+      g.beginPath();
+      s.data.forEach(function(v,i){ var x=X(i,n),y=Y(v); i?g.lineTo(x,y):g.moveTo(x,y); });
+      g.stroke();
+      if(s.dots){ g.fillStyle=css(s.color); s.data.forEach(function(v,i){ g.beginPath(); g.arc(X(i,n),Y(v),s.dots,0,7); g.fill(); }); }
+    });
+    g.fillStyle=css('--muted'); g.textAlign='center'; g.textBaseline='top';
+    (spec.xlabels||[]).forEach(function(lb,i){ g.fillText(lb, X(i,spec.xlabels.length), H-padB+8); });
+  }
+  var specs={
+    icr:{h:220,min:0.6,max:2.4,band:[1.0,1.8],ticks:[0.6,1.0,1.4,1.8,2.2],
+      xlabels:['Repas J1','Repas J2','Repas J3'],
+      series:[
+        {color:'--gly-high',w:2.6,dots:3.2,data:[2.05,1.95,2.0]},
+        {color:'--gly-crit',w:1.8,dots:2.6,data:[1.42,1.38,1.44]}
+      ]},
+    somogyi:{h:230,min:0.4,max:1.8,band:[0.8,1.3],target:1.0,ticks:[0.4,0.7,1.0,1.3,1.6],
+      xlabels:['22h','00h','02h','03h','05h','07h'],
+      series:[{color:'--gly-normal',w:2.4,dots:2.6,data:[1.3,1.0,0.7,0.5,0.9,1.5]}]},
+    mdi:{h:230,min:0.6,max:1.9,band:[0.8,1.3],target:1.0,ticks:[0.6,0.8,1.0,1.3,1.6],
+      xlabels:['J1','J2','J3','J4','J5','J6','J7'],
+      series:[{color:'--gly-high',w:2.6,dots:3,data:[1.55,1.48,1.52,1.5,1.46,1.53,1.49]}]}
+  };
+  function renderAll(){
+    document.querySelectorAll('canvas[data-chart]').forEach(function(cv){
+      var s=specs[cv.getAttribute('data-chart')]; if(s) drawChart(cv,s);
+    });
+  }
+  renderAll();
+  var rt; window.addEventListener('resize',function(){clearTimeout(rt);rt=setTimeout(renderAll,120)});
+  new MutationObserver(renderAll).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+  var links=[].slice.call(document.querySelectorAll('nav.toc a'));
+  var map={}; links.forEach(function(a){var id=a.getAttribute('href').slice(1);map[id]=a;});
+  var obs=new IntersectionObserver(function(es){
+    es.forEach(function(e){ if(e.isIntersecting){ links.forEach(function(l){l.classList.remove('on')}); var a=map[e.target.id]; if(a)a.classList.add('on'); }});
+  },{rootMargin:'-10% 0px -80% 0px'});
+  document.querySelectorAll('main section[id]').forEach(function(s){obs.observe(s)});
+})();
+</script>

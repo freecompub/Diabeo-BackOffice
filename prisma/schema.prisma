@@ -1432,6 +1432,11 @@ model AdjustmentProposal {
   // non modélisé par Prisma) : pour `basalRate`, exactement un de (`pumpBasalSlotId`, `basalDoseKind`) est
   // non-NULL (pompe U/h XOR stylo U totales) ; hors `basalRate`, `basalDoseKind` reste NULL.
   basalDoseKind         BasalDoseKind?      @map("basal_dose_kind")
+  // US-2659 (S3) — accusé DKA/jour-de-maladie du PATIENT pour une demande de BAISSE de basale STYLO
+  // (consentement à un acte à risque : réduire la basale en jour de maladie → risque cétose/DKA). Timestamp
+  // du recueil (plus fort qu'un booléen : capture le QUAND ; NULL = non acquitté). Immuable après création
+  // (posé une fois à la création de la proposition). Requis (=== true côté service) pour une baisse stylo.
+  sickDayAcknowledgedAt DateTime?           @map("sick_day_acknowledged_at") @db.Timestamptz()
   analysisPeriod        String?             @map("analysis_period") @db.VarChar(10)
   dataQuality           String?             @map("data_quality") @db.VarChar(20)
   status                ProposalStatus      @default(pending)
