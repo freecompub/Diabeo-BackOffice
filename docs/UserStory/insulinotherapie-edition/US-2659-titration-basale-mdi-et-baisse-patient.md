@@ -2,7 +2,7 @@
 
 > 📌 Sous-US de [US-2645](US-2645-EPIC-insulinotherapie-edition-multimode.md) (épic édition insulinothérapie multi-mode) · **back + migration + contrat iOS** · Taille **L** · **Version : V1**
 >
-> **Statut** : 🟡 spécifiée — **cadrage clinique validé** (`medical-domain-validator`, 2026-07-11). **Aucun code avant validation finale de l'US.**
+> **Statut** : ✅ **LIVRÉ** (S0–S3, PRs #723→#726 ; S3 en attente de merge) — cadrage + design de chaque slice validés `medical-domain-validator` (+ HDS pour S3). Slices : **S0** socle schéma (#723) · **S1** single_injection (#724) · **S2** split_injection (#725) · **S3** baisse patient gatée (#726). Détails : ADR #29 (CLAUDE.md) + catalogue `docs/clinical-logic/regles-et-constantes-diabete.md`.
 > **Risque** : **MOYEN-ÉLEVÉ** — (1) nouvelle logique de titration clinique (basale stylo), (2) **relâchement d'un garde-fou patient de sécurité** (baisse de basale). Validate-first appliqué ; toute slice repasse en revue `medical-domain-validator` + `code-reviewer` (+ `healthcare-security-auditor` / `prisma-specialist` / `swift-expert` selon la slice).
 > **Dépend de** : US-2651 (générateur multi-levier), US-2650 (une proposition à la fois), US-2657 (niveaux de maturité `JUNIOR/INTERMEDIATE/CONFIRME`), US-2646 (provenance + discriminateurs de créneau).
 > **Sources code** : `src/lib/services/proposal-generator.service.ts` (bloc basal ~L320-420 ; `generateFixedDoseProposals`), `src/lib/proposal-algorithm.ts` (`analyzeBasalTrend`, dé-escalade, `hypoWindowBlocks`), `src/lib/clinical-bounds.ts`, `src/lib/services/treatment-mode.service.ts`, `src/lib/services/adjustment.service.ts` (`createProposal` garde patient), `prisma/schema.prisma` (`BasalConfiguration`, `PumpBasalSlot`, `AdjustmentProposal`, enum `BasalConfigType`).
@@ -144,12 +144,14 @@ L'asymétrie actuelle — un patient peut proposer de **monter** la basale (ajou
 
 ## 7. Découpage (slices — chacune validate-first + revue)
 
-| Slice | Contenu | Dépend de | Contrat iOS |
-|---|---|---|---|
-| **S0 — Socle schéma** | `AdjustmentProposal.basalDoseKind` (`daily`/`morning`/`evening`) + extension index « 1 pending » + migration. `MDI_BASAL_*` constantes + catalogue. | — | ⚠️ **oui** (`swift-expert` + `prisma-specialist`) |
-| **S1 — Titration single_injection** | Analyseur pur + chemin générateur (`dailyDose`, à jeun, garde BGM, dé-escalade, Somogyi). | S0 | non |
-| **S2 — Titration split_injection** | Mapping soir/matin, une dose/run, garde fenêtre-suivant-la-dose. | S1 | non |
-| **S3 — Baisse patient par mode** | Relâchement du garde `patientDecreaseForbidden` (pompe INTERMEDIATE / stylo CONFIRME), amplitude, avertissements + accusé DKA. | S0 | maybe (accusé) |
+| Slice | Contenu | Dépend de | Contrat iOS | État |
+|---|---|---|---|---|
+| **S0 — Socle schéma** | `AdjustmentProposal.basalDoseKind` (`daily`/`morning`/`evening`) + extension index « 1 pending » + CHECK exclusivité + migration. `MDI_BASAL_*` constantes + catalogue. | — | ⚠️ oui | ✅ **#723** |
+| **S1 — Titration single_injection** | Analyseur pur + chemin générateur (`dailyDose`, à jeun, hold zone asymétrique, garde BGM/AC-4, dé-escalade `−min`, Somogyi, cooldown post-changement). | S0 | non | ✅ **#724** |
+| **S2 — Titration split_injection** | Mapping soir/à-jeun + matin/pré-dîner, `decideMdiDose` factorisé, une dose/run (priorité sécurité), garde de jour D9, confondeur bolus-midi, verrou 1-pending. | S1 | non | ✅ **#725** |
+| **S3 — Baisse patient par mode** | Relâchement gaté de `patientDecreaseForbidden` (pompe INTERMEDIATE / stylo CONFIRME), amplitude min(10 %, 2 U), accusé DKA immuable, mode serveur (anti-tamper), audit enrichi/refus, flags Somogyi à la revue. | S0 | ⚠️ oui (accusé + codes) | ✅ **#726** |
+
+**Écarts assumés vs cadrage initial** (tranchés en validation de design) : cooldown data-justifié 72 h (pas de délivrance-aware V1) ; hold zone asymétrique `[T−0,20 ; T+0,30]` (non prévue au cadrage, requise pour un pas fixe) ; priorité split « sécurité-d'abord » (raffinement de D4) ; confondeur = bolus **midi** spécifiquement ; **application groupée `dailyDose` différée** (accept stylo `styloBasalApplyNotSupported`). **Follow-ups tracés** : flag pré-dîner dédié (enum+i18n), refacto DRY générateur, `MDI_BASAL_WARN_U` non câblée, dégludec 96 h (V2), écriture groupée `dailyDose` à l'acceptation, lien explicite proposition↔flag Somogyi.
 
 > ⚠️ **S3 touche un garde-fou de sécurité patient** → revue `healthcare-security-auditor` + `medical-domain-validator` obligatoire, montrée avant correction.
 
