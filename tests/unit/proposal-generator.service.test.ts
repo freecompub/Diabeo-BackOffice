@@ -494,6 +494,7 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     expect(calls("evening")).toHaveLength(1) // dé-escalade soir persistée (priorité sécurité, nocturne = pire)
     expect(calls("morning")).toHaveLength(0) // une dose/run : matin non persistée
     expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // matin perdante → flag fail-loud
+    expect(raiseFlag).toHaveBeenCalledTimes(1) // EXACTEMENT la perdante (jamais le winner, jamais un double-flag)
   })
 })
 

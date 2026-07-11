@@ -675,7 +675,11 @@ export const proposalGeneratorService = {
         // Journal dédié fenêtre MDI (7 j) — le `journal` global est chargé en 14 j pour l'ICR. Aligne la fenêtre
         // RÉELLEMENT analysée sur `analysisPeriod` persisté (`mdiPeriod`) et sur la dose du soir (traçabilité HDS +
         // réactivité : ne pas diluer la moyenne pré-dîner avec ~2× de données pré-changement — fix revue medical).
-        const mdiJournal = await mealtimePattern.dailyJournal(patientId, mdiPeriod, auditUserId, ctx, { source: "cgm" })
+        // Court-circuit : en mode fenêtre à la demande (`windowDays` fourni), `mdiPeriod === analysisPeriod` → le
+        // `journal` global est DÉJÀ la bonne fenêtre → on le réutilise (évite une requête + un audit READ redondants).
+        const mdiJournal = mdiPeriod === analysisPeriod
+          ? journal
+          : await mealtimePattern.dailyJournal(patientId, mdiPeriod, auditUserId, ctx, { source: "cgm" })
         const dinners = mdiJournal.filter((m) => m.moment === "evening")
         const dayMeals = mdiJournal.filter((m) => m.moment === "morning" || m.moment === "noon") // garde de JOUR (D9)
         const preDinner = glVals(dinners.map((m) => m.preMgdl))
