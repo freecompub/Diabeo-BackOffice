@@ -6,6 +6,7 @@ import {
   Sex,
   InsulinDeliveryMethod,
   BasalConfigType,
+  BasalDoseKind,
   GlucoseTargetPreset,
   DayMomentType,
   EmergencyAlertType,
@@ -1152,7 +1153,10 @@ async function main() {
       await prisma.adjustmentProposal.createMany({
         data: [
           { patientId: patientDT1.id, parameterType: AdjustableParameter.insulinToCarbRatio, currentValue: 12, proposedValue: 10, changePercent: -16.67, confidence: ConfidenceLevel.high, reason: AdjustmentReason.icrTooLow, supportingEvents: 14, totalEventsConsidered: 18, status: ProposalStatus.pending, carbRatioSlotStart: 12, carbRatioSlotEnd: 14, analysisPeriod: "14d", dataQuality: "good" },
-          { patientId: patientDT2.id, parameterType: AdjustableParameter.basalRate, currentValue: 0.9, proposedValue: 0.8, changePercent: -11.11, confidence: ConfidenceLevel.medium, reason: AdjustmentReason.basalTooHigh, supportingEvents: 9, totalEventsConsidered: 12, status: ProposalStatus.pending, timeSlotStartHour: 0, timeSlotEndHour: 6, analysisPeriod: "14d", dataQuality: "moderate" },
+          // US-2659 — basale STYLO (DT2 = single_injection, dailyDose 22 U) : ciblée par `basalDoseKind` (daily),
+          // JAMAIS `pumpBasalSlotId` (DT2 n'a pas de pompe) ni `timeSlotStartHour` (discriminateur ISF). Valeurs en
+          // U TOTALES (pas U/h). Respecte le CHECK d'exclusivité basalRate (daily non-NULL ⊕ pumpBasalSlotId NULL).
+          { patientId: patientDT2.id, parameterType: AdjustableParameter.basalRate, currentValue: 22, proposedValue: 20, changePercent: -9.09, confidence: ConfidenceLevel.medium, reason: AdjustmentReason.basalTooHigh, supportingEvents: 9, totalEventsConsidered: 12, status: ProposalStatus.pending, basalDoseKind: BasalDoseKind.daily, analysisPeriod: "7d", dataQuality: "moderate" },
         ],
       })
       console.log("  ✓ 2 adjustment proposals seeded")
