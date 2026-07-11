@@ -45,8 +45,27 @@ appliquer** puis ajuste la dose stylo **à la main**. Ce choix évitait un « ac
 La réponse d'acceptation d'une proposition stylo peut désormais indiquer `applied: true` (au lieu d'un refus)
 → l'app peut refléter l'application. Coordination sur le message patient (« votre médecin a appliqué… »).
 
+## Corrections de revue appliquées (medical + HDS + code-reviewer)
+
+- **CAS atomique DB** (HDS MED / code LOW) : la valeur attendue (`proposal.currentValue`) est verrouillée dans
+  le `WHERE` de chaque `updateMany` — porté sur les **5 leviers** (ISF/ICR/pompe/dose fixe + stylo). Ferme la
+  fenêtre TOCTOU (le check `baselineMoved` lit hors transaction) : une base déplacée dans l'intervalle matche 0
+  ligne → `…SlotNotFound` (rollback) au lieu d'écraser un changement concurrent. Subsume le fail-closed « dose
+  effacée » (NULL ≠ valeur → `styloBasalNotFound`).
+- **Filet `noApplicableApplyTarget`** (code MED) : `else` fail-closed final — `applyImmediately` demandé sans
+  cible résoluble (ex. `createManual` sans discriminateur) → throw + rollback (plus de fantôme `applied:true`).
+- **Garde `basalTargetAmbiguous`** (medical INFO) : un `basalRate` portant les deux discriminateurs (invariant
+  inatteignable sous le CHECK base) → fail-closed avant écriture, filet contre un affaiblissement futur du CHECK.
+- **Mapping HTTP** (les 3 agents) : les 5 `…SlotNotFound`/`styloBasalNotFound` → **409** (conflit récupérable,
+  plus de 500 muet ni faux positif SOC) ; `basalTargetAmbiguous`/`noApplicableApplyTarget` → **422**.
+- **Colonnes stylo `Decimal(5,2)→(6,2)`** (code LOW, migration `20260722100000`) : aligne le stockage sur la
+  politique clinique « pas de plafond dur » (medical) ; plus de `numeric overflow` Postgres brut possible.
+- **Tests** : CAS/colonne, dose effacée, config absente, `valueOutOfBounds` stylo à l'accept, audit sans dose,
+  `noApplicableApplyTarget`, `basalTargetAmbiguous`, mapping route 409/422.
+
 ## Sources code
 
-`src/lib/services/adjustment.service.ts` (`accept` — bloc `applyImmediately` L834+, `resolveCurrentValue`
-stylo L173-197, `liveCurrentValue`), `prisma/schema.prisma` (`BasalConfiguration.dailyDose`/`morningDose`/
-`eveningDose`). Revue attendue : `medical-domain-validator` + `healthcare-security-auditor` + `code-reviewer`.
+`src/lib/services/adjustment.service.ts` (`accept` — bloc `applyImmediately`, `resolveCurrentValue` stylo,
+`liveCurrentValue`), `src/app/api/adjustment-proposals/[id]/accept/route.ts` (mapping erreurs),
+`prisma/schema.prisma` + migration `20260722100000` (`BasalConfiguration.dailyDose`/`morningDose`/`eveningDose`
+en `Decimal(6,2)`). Revue : `medical-domain-validator` + `healthcare-security-auditor` + `code-reviewer` (faite).

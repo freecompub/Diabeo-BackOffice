@@ -380,24 +380,30 @@ describe("adjustmentService", () => {
       ...over,
     })
 
-    it("applyImmediately d'une STYLO 'daily' → écrit BasalConfiguration.dailyDose (scopé patient, garde not-null)", async () => {
+    it("applyImmediately d'une STYLO 'daily' → écrit BasalConfiguration.dailyDose (scopé patient, CAS atomique) + audite", async () => {
       // live = snapshot (18) → compare-and-swap OK.
       prismaMock.basalConfiguration.findFirst.mockResolvedValue({ dailyDose: 18, morningDose: null, eveningDose: null } as never)
       const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const auditCreate = vi.fn().mockResolvedValue({})
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p5")), update: vi.fn().mockResolvedValue({}) },
         basalConfiguration: { updateMany },
-        auditLog: { create: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: auditCreate },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
 
       const result = await adjustmentService.accept("p5", 2, true)
       expect(result.applied).toBe(true)
-      // Colonne ciblée = dailyDose ; scopée patient ; WHERE exige la dose NON NULLE (fail-closed sur effacement).
+      // Colonne ciblée = dailyDose ; scopée patient ; WHERE verrouille la valeur attendue (CAS atomique DB).
       expect(updateMany).toHaveBeenCalledWith({
-        where: { settings: { patientId: 1 }, dailyDose: { not: null } },
+        where: { settings: { patientId: 1 }, dailyDose: 18 },
         data: { dailyDose: 20 },
       })
+      // US-2660 (HDS) — l'accept stylo appliqué est audité (PROPOSAL_ACCEPTED) SANS dose en clair.
+      expect(auditCreate).toHaveBeenCalledTimes(1)
+      const auditArg = JSON.stringify(auditCreate.mock.calls[0]?.[0])
+      expect(auditArg).toContain("PROPOSAL_ACCEPTED")
+      expect(auditArg).not.toContain("20") // la dose proposée (20 U) ne fuit jamais dans l'audit
     })
 
     it("STYLO 'morning' / 'evening' → cible la colonne correspondante (morningDose / eveningDose)", async () => {
@@ -412,7 +418,7 @@ describe("adjustmentService", () => {
         prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
         await adjustmentService.accept("p", 2, true)
         expect(updateMany).toHaveBeenCalledWith({
-          where: { settings: { patientId: 1 }, [column]: { not: null } },
+          where: { settings: { patientId: 1 }, [column]: 18 },
           data: { [column]: 20 },
         })
       }
@@ -422,7 +428,7 @@ describe("adjustmentService", () => {
 
     it("dose ciblée effacée depuis la proposition (count 0) → styloBasalNotFound, rollback (jamais d'écriture fantôme)", async () => {
       // La dose 'daily' a été mise à NULL depuis → liveCurrentValue = null (guard baselineMoved inactif),
-      // mais le WHERE `{ not: null }` matche 0 ligne → fail-closed.
+      // mais le WHERE `{ dailyDose: 18 }` matche 0 ligne (NULL ≠ 18) → fail-closed.
       prismaMock.basalConfiguration.findFirst.mockResolvedValue({ dailyDose: null, morningDose: null, eveningDose: null } as never)
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p7")), update: vi.fn().mockResolvedValue({}) },
@@ -431,6 +437,33 @@ describe("adjustmentService", () => {
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
       await expect(adjustmentService.accept("p7", 2, true)).rejects.toThrow("styloBasalNotFound")
+    })
+
+    it("BasalConfiguration absente (config disparue) → styloBasalNotFound, rollback", async () => {
+      // findFirst null → resolveCurrentValue lève currentValueNotFound → liveCurrentValue null → CAS
+      // inactif, mais l'updateMany matche 0 ligne → fail-closed (même chemin que dose effacée).
+      prismaMock.basalConfiguration.findFirst.mockResolvedValue(null as never)
+      const mockTx = {
+        adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p9")), update: vi.fn().mockResolvedValue({}) },
+        basalConfiguration: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p9", 2, true)).rejects.toThrow("styloBasalNotFound")
+    })
+
+    it("dose STYLO hors bornes cliniques à l'accept (< MDI_BASAL_MIN_U) → valueOutOfBounds, aucune lecture/écriture", async () => {
+      // Re-validation des bornes STYLO AVANT toute lecture : une dose sous le plancher est refusée
+      // même si elle avait passé la création. 0,2 U < MDI_BASAL_MIN_U (0,5 U).
+      const updateMany = vi.fn()
+      const mockTx = {
+        adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p10", { proposedValue: 0.2 })), update: vi.fn().mockResolvedValue({}) },
+        basalConfiguration: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p10", 2, true)).rejects.toThrow("valueOutOfBounds")
+      expect(updateMany).not.toHaveBeenCalled()
     })
 
     it("dose STYLO live dérivée depuis la proposition (live ≠ snapshot) → baselineMoved, aucune écriture", async () => {
@@ -456,6 +489,42 @@ describe("adjustmentService", () => {
       const result = await adjustmentService.accept("p6", 2, false)
       expect(result.accepted).toBe(true)
       expect(result.applied).toBe(false)
+    })
+
+    // US-2660 (code-review MED) — filet fail-closed : apply demandé sans cible résoluble.
+    it("applyImmediately sans discriminateur de créneau résoluble → noApplicableApplyTarget (jamais applied fantôme)", async () => {
+      // ISF sans timeSlotStartHour : passe validateProposedValue (bornes ISF), liveCurrentValue null
+      // (slotRequired → CAS sauté), mais AUCUNE branche d'apply ne matche → else fail-closed.
+      const updateMany = vi.fn()
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p11", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor", proposedValue: 0.5, currentValue: 0.5, timeSlotStartHour: null,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p11", 2, true)).rejects.toThrow("noApplicableApplyTarget")
+      expect(updateMany).not.toHaveBeenCalled()
+    })
+
+    // US-2660 (medical INFO, durcissement) — invariant d'exclusivité de la cible basale.
+    it("basalRate portant À LA FOIS pumpBasalSlotId ET basalDoseKind → basalTargetAmbiguous, aucune écriture", async () => {
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue(styloProposal("p12", { pumpBasalSlotId: "slot1" })),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        basalConfiguration: { updateMany: vi.fn() },
+        pumpBasalSlot: { updateMany: vi.fn() },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p12", 2, true)).rejects.toThrow("basalTargetAmbiguous")
     })
   })
 
