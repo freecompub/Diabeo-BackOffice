@@ -374,7 +374,10 @@ describe("analyticsService.fixedDoseTrend (US-2652 — assemblage dose fixe par 
     const out = await analyticsService.fixedDoseTrend(42, "14d", 1)
     expect(out.morning).toHaveLength(1)
     expect(out.morning[0].gl).toBeCloseTo(1.2)
-    expect(out.morning[0].dayIso).toMatch(/^\d{4}-\d{2}-\d{2}$/) // dayIso propagé (format ISO jour)
+    // Jour EXACT (pas seulement le format) : la colonne `@db.Date` à minuit UTC doit ressortir sur le même
+    // jour calendaire via `localDay` (Europe/Paris) — verrou anti-régression du fix TZ (garde contre un
+    // retour silencieux à une dérivation UTC divergente).
+    expect(out.morning[0].dayIso).toBe("2026-07-01")
   })
 
   it("accumule un creux PAR JOUR (3 jours → 3 relevés pour la dose)", async () => {

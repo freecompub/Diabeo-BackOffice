@@ -515,6 +515,8 @@ export const analyticsService = {
       // US-2653 (fix TZ) — jour dérivé via `localDay` (Europe/Paris), MÊME base que le `cutoff` du
       // générateur et que les 3 autres leviers. La colonne `GlycemiaEntry.date` (@db.Date) est à minuit
       // UTC ; `localDay` la ramène au jour calendaire local → cohérence stricte du filtre post-changement.
+      // NB : correct tant que `CLINICAL_TZ` est à l'EST d'UTC (Europe/Paris = UTC+1/+2) — minuit UTC reste
+      // le même jour local. Un fuseau à l'ouest d'UTC décalerait ce `@db.Date` d'un jour (à revoir alors).
       const dayIso = localDay(r.date.getTime())
       const cur = earliestByWindow[window].get(dayIso)
       if (!cur || minutesOfDay < cur.min) earliestByWindow[window].set(dayIso, { min: minutesOfDay, gl })

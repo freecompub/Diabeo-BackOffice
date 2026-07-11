@@ -348,8 +348,11 @@ export const proposalGeneratorService = {
         candidate = null
         if (hasSevereHypo(nadirsGl)) await raiseIcrFlag()
       } else if (!isDeescalation && candidate === null && hasSevereHypo(nadirsGl)) {
-        // Hypo sévère post-repas ISOLÉE (in-band, non récurrente) → surface, jamais silencieuse.
-        // Parité avec ISF/basal/fixedDose (US-2653 fix Q6b) — un anti-cliquet ne masque aucun danger.
+        // Hypo sévère post-repas ISOLÉE (non récurrente) sans dose produite → surface, jamais silencieuse.
+        // Couvre les 3 régions de moyenne : in-band, sous la borne basse, OU au-dessus du plafond quand le
+        // candidate « baisse » est annulé par la garde-hypo interne d'`analyzeIcrSlot` (plus d'insuline
+        // interdit en présence d'un nadir sévère). Parité stricte avec ISF/basal/fixedDose (US-2653 fix Q6b)
+        // — un anti-cliquet ne masque aucun danger.
         await raiseIcrFlag()
       }
 

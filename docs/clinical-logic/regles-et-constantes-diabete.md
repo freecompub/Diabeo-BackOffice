@@ -348,7 +348,7 @@ sur les 4 leviers** (parité stricte — un anti-ratchet ne masque jamais un sig
 
 | Levier | Flag levé | Chemins Q6b couverts |
 |--------|-----------|----------------------|
-| ICR | `highVariabilityPostMeal` | dé-escalade bloquée (délai/post-changement) **+** hypo sévère post-repas **isolée** (in-band, non récurrente) |
+| ICR | `highVariabilityPostMeal` | dé-escalade bloquée (délai/post-changement) **+** hypo sévère post-repas **isolée** non récurrente (in-band, sous borne basse, ou plafond avec baisse annulée par la garde-hypo) |
 | ISF | `highVariabilityPostCorrection` | dé-escalade bloquée **+** hypo sévère post-correction **isolée** |
 | Basal | `nocturnalHypoHighFasting` | dé-escalade bloquée **+** hypo nocturne sévère **isolée** |
 | FixedDose | `highVariabilityFixedDose` | dé-escalade bloquée / dose non réductible (≤ plancher) **+** relevé sévère **isolé** |
