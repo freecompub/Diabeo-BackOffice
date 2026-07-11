@@ -558,9 +558,15 @@ permises). Fail-closed : jamais de hausse à l'aveugle. Fenêtre **7 j** (`MDI_B
 
 **Contrat service** (`adjustment.service.ts`) : cible `basalDoseKind = "daily"` → `resolveCurrentValue` lit
 `BasalConfiguration.dailyDose` (scopé patient) ; `validateProposedValue` route les bornes **stylo** (`MDI_BASAL_MIN_U`,
-délivrable demi-unité, pas de plafond dur) et non pompe (U/h). **Application différée** : `accept(applyImmediately)`
-d'une proposition stylo **lève `styloBasalApplyNotSupported`** (fail-closed — jamais un « accepté + appliqué » fantôme
-sans écriture) ; l'écriture groupée de `dailyDose` arrive dans une slice ultérieure. Le médecin accepte SANS apply.
+délivrable demi-unité, pas de plafond dur) et non pompe (U/h). **Application groupée (US-2660, LIVRÉ)** :
+`accept(applyImmediately)` d'une proposition stylo écrit la dose ciblée par `basalDoseKind`
+(`dailyDose`/`morningDose`/`eveningDose`) sur l'**unique** `BasalConfiguration` du patient (contraintes
+`settings_id @unique` + `patient_id @unique` → 1 config/patient, `updateMany` scopé patient touche ≤ 1 ligne).
+Deux gardes fail-closed (rollback, jamais d'« accepté + appliqué » fantôme) : **compare-and-swap** `baselineMoved`
+(409) si la dose live a dérivé depuis la proposition, et **`styloBasalNotFound`** si le `WHERE` (qui exige la dose
+ciblée **NON NULLE**) matche 0 ligne — ce qui couvre le cas où le médecin a **effacé** la dose depuis (auquel cas
+`liveCurrentValue` renvoie `null` et le compare-and-swap est inactif : sans la garde not-null on réintroduirait
+silencieusement une dose supprimée).
 
 ### Titration `split_injection` (US-2659 S2, LIVRÉ, validé medical 2026-07-11)
 
@@ -599,8 +605,8 @@ verrou bloque une **dé-escalade** (sécurité), un **flag** est levé (jamais u
 
 **Relâchement d'un garde-fou de sécurité** (`patientDecreaseForbidden`, `adjustment.service.ts`) — une baisse
 basale patient était **interdite** ; elle devient **proposable** mais gatée. Le médecin reste le garde-fou
-(proposition `pending`, **jamais** auto-appliquée, ADR #13 ; l'accept-with-apply stylo lève toujours
-`styloBasalApplyNotSupported`) — interdire la proposition était anti-ETP. **Tout lu SERVEUR (anti-tamper)** :
+(proposition `pending`, **jamais** auto-appliquée, ADR #13 ; l'accept-with-apply stylo écrit désormais la dose,
+US-2660) — interdire la proposition était anti-ETP. **Tout lu SERVEUR (anti-tamper)** :
 maturité, valeur courante, **mode de délivrance** (dérivé de la config, jamais du body — E1 HDS).
 
 | | **Pompe** (`pumpBasalSlotId`, U/h — réversible) | **Stylo** (`basalDoseKind`, U totales — dose entière) |

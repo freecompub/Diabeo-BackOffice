@@ -370,19 +370,81 @@ describe("adjustmentService", () => {
     })
   })
 
-  describe("accept with basal STYLO apply (US-2659)", () => {
-    const styloProposal = (id: string) => ({
+  // US-2660 — ÉCRITURE GROUPÉE de la basale STYLO (MDI) à l'acceptation médecin.
+  // Remplace l'ancien fail-closed `styloBasalApplyNotSupported` (US-2659 différait l'écriture).
+  describe("accept with basal STYLO apply (US-2660)", () => {
+    const styloProposal = (id: string, over: Record<string, unknown> = {}) => ({
       id, patientId: 1, status: "pending",
-      parameterType: "basalRate", proposedValue: 20, basalDoseKind: "daily", pumpBasalSlotId: null,
+      parameterType: "basalRate", proposedValue: 20, currentValue: 18,
+      basalDoseKind: "daily", pumpBasalSlotId: null,
+      ...over,
     })
 
-    it("applyImmediately d'une proposition STYLO → styloBasalApplyNotSupported (fail-closed, jamais d'écriture fantôme)", async () => {
+    it("applyImmediately d'une STYLO 'daily' → écrit BasalConfiguration.dailyDose (scopé patient, garde not-null)", async () => {
+      // live = snapshot (18) → compare-and-swap OK.
+      prismaMock.basalConfiguration.findFirst.mockResolvedValue({ dailyDose: 18, morningDose: null, eveningDose: null } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p5")), update: vi.fn().mockResolvedValue({}) },
+        basalConfiguration: { updateMany },
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
-      await expect(adjustmentService.accept("p5", 2, true)).rejects.toThrow("styloBasalApplyNotSupported")
+
+      const result = await adjustmentService.accept("p5", 2, true)
+      expect(result.applied).toBe(true)
+      // Colonne ciblée = dailyDose ; scopée patient ; WHERE exige la dose NON NULLE (fail-closed sur effacement).
+      expect(updateMany).toHaveBeenCalledWith({
+        where: { settings: { patientId: 1 }, dailyDose: { not: null } },
+        data: { dailyDose: 20 },
+      })
+    })
+
+    it("STYLO 'morning' / 'evening' → cible la colonne correspondante (morningDose / eveningDose)", async () => {
+      const run = async (kind: "morning" | "evening", column: string, live: Record<string, unknown>) => {
+        prismaMock.basalConfiguration.findFirst.mockResolvedValue(live as never)
+        const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+        const mockTx = {
+          adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p", { basalDoseKind: kind })), update: vi.fn().mockResolvedValue({}) },
+          basalConfiguration: { updateMany },
+          auditLog: { create: vi.fn().mockResolvedValue({}) },
+        }
+        prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+        await adjustmentService.accept("p", 2, true)
+        expect(updateMany).toHaveBeenCalledWith({
+          where: { settings: { patientId: 1 }, [column]: { not: null } },
+          data: { [column]: 20 },
+        })
+      }
+      await run("morning", "morningDose", { dailyDose: null, morningDose: 18, eveningDose: 12 })
+      await run("evening", "eveningDose", { dailyDose: null, morningDose: 18, eveningDose: 18 })
+    })
+
+    it("dose ciblée effacée depuis la proposition (count 0) → styloBasalNotFound, rollback (jamais d'écriture fantôme)", async () => {
+      // La dose 'daily' a été mise à NULL depuis → liveCurrentValue = null (guard baselineMoved inactif),
+      // mais le WHERE `{ not: null }` matche 0 ligne → fail-closed.
+      prismaMock.basalConfiguration.findFirst.mockResolvedValue({ dailyDose: null, morningDose: null, eveningDose: null } as never)
+      const mockTx = {
+        adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p7")), update: vi.fn().mockResolvedValue({}) },
+        basalConfiguration: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p7", 2, true)).rejects.toThrow("styloBasalNotFound")
+    })
+
+    it("dose STYLO live dérivée depuis la proposition (live ≠ snapshot) → baselineMoved, aucune écriture", async () => {
+      // snapshot currentValue = 18, mais live = 22 (le médecin a ajusté la dose entre-temps).
+      prismaMock.basalConfiguration.findFirst.mockResolvedValue({ dailyDose: 22, morningDose: null, eveningDose: null } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p8")), update: vi.fn().mockResolvedValue({}) },
+        basalConfiguration: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p8", 2, true)).rejects.toThrow("baselineMoved")
+      expect(updateMany).not.toHaveBeenCalled()
     })
 
     it("accept SANS apply d'une proposition STYLO → accepté (statut), non appliqué (aucune écriture)", async () => {

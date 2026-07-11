@@ -3,8 +3,8 @@
 > 📌 Sous-US de [US-2645](US-2645-EPIC-insulinotherapie-edition-multimode.md) · **back + iOS** · Taille **M**
 > · dépend de : US-2659 (titration basale stylo, discriminateur `basalDoseKind`)
 >
-> **Statut** : 🟡 spécifiée — **follow-up US-2659** (le principal manque fonctionnel restant).
-> **Priorité** : HAUTE (les propositions de basale stylo ne sont aujourd'hui pas applicables automatiquement).
+> **Statut** : ✅ **LIVRÉ** (ADR #30) — écriture groupée câblée à l'acceptation, `styloBasalApplyNotSupported` supprimé.
+> **Priorité** : HAUTE (comblée).
 
 ## Contexte
 

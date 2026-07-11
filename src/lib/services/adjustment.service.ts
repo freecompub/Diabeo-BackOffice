@@ -808,7 +808,27 @@ export const adjustmentService = {
     }
   },
 
-  /** Accept a proposal — optionally apply the change */
+  /**
+   * Accept a proposal — optionally apply the change (DOCTOR-validated, ADR #13).
+   *
+   * Quand `applyImmediately`, écrit la valeur ABSOLUE `proposedValue` sur le créneau ciblé,
+   * scopé patient (anti-IDOR) et dans la transaction (atomique avec le passage `accepted`) :
+   * ISF (`timeSlotStartHour`), ICR (`carbRatioSlotStart`), basale POMPE (`pumpBasalSlotId`, U/h),
+   * dose fixe (`moment`) ou — US-2660 — basale STYLO (`basalDoseKind` → `dailyDose`/`morningDose`/
+   * `eveningDose`, U totales, sur l'unique `BasalConfiguration` du patient).
+   *
+   * Gardes fail-closed (rollback, jamais d'« accepté + appliqué » fantôme) :
+   * - `baselineMoved` (compare-and-swap) si la valeur live a dérivé depuis la proposition ;
+   * - `…SlotNotFound` / `styloBasalNotFound` si l'écriture ne matche aucune ligne (créneau disparu,
+   *   ou dose stylo effacée depuis — le `WHERE` stylo exige la dose ciblée NON NULLE).
+   *
+   * @param proposalId    id de la proposition `pending`
+   * @param reviewerId    id du DOCTOR relecteur (tracé dans `reviewedBy` + audit)
+   * @param applyImmediately  applique la valeur au créneau (sinon accepte le statut sans écriture)
+   * @param ctx           contexte d'audit (ip/userAgent)
+   * @returns `{ accepted, applied, patientId }`
+   * @throws `proposalNotFound` | `valueOutOfBounds` | `baselineMoved` | `…SlotNotFound` | `styloBasalNotFound`
+   */
   async accept(
     proposalId: string,
     reviewerId: number,
@@ -832,14 +852,6 @@ export const adjustmentService = {
 
       // Apply the change if requested — validate bounds first
       if (applyImmediately) {
-        // US-2659 (S1) — l'ÉCRITURE groupée de la basale STYLO (`basalDoseKind`) n'est pas encore livrée.
-        // Fail-closed EN TÊTE : sinon aucune branche pump/isf/icr/fixedDose ne matcherait → « accepté +
-        // appliqué » FANTÔME sans écriture (fausse confiance clinique). Le médecin accepte SANS apply
-        // (statut) et ajuste la config à la main tant que l'application groupée n'est pas livrée (slice ultérieure).
-        if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
-          throw new Error("styloBasalApplyNotSupported")
-        }
-
         const proposed = Number(proposal.proposedValue)
 
         if (!validateProposedValue(proposal.parameterType, proposed, proposal.basalDoseKind)) {
@@ -900,6 +912,31 @@ export const adjustmentService = {
             data: { valueU: proposed },
           })
           assertRowApplied(res.count, "fixedDoseSlotNotFound")
+        } else if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
+          // US-2660 — ÉCRITURE GROUPÉE de la basale STYLO (MDI). La dose ciblée par `basalDoseKind`
+          // (`dailyDose`/`morningDose`/`eveningDose`, UNITÉS TOTALES) est écrite sur l'unique
+          // `BasalConfiguration` du patient (contrainte `settingsId @unique` + `patientId @unique` →
+          // 1 config/patient : le `updateMany` scopé patient touche au plus 1 ligne, cohérent avec la
+          // lecture `resolveCurrentValue`). Scopé patient via `settings` (anti-IDOR).
+          //
+          // Fail-closed sur la cible NULL : le `WHERE` exige la dose ciblée NON NULLE (état au moment
+          // de la proposition). Si le médecin a effacé cette dose depuis, `liveCurrentValue` renvoie
+          // `null` (dose non résoluble) → le compare-and-swap `baselineMoved` est INACTIF ; sans ce
+          // garde, on RÉINTRODUIRAIT silencieusement une dose supprimée. Le `{ not: null }` fait alors
+          // matcher 0 ligne → `styloBasalNotFound` (rollback), jamais d'« accepté + appliqué » fantôme.
+          const doseField = proposal.basalDoseKind // "daily" | "morning" | "evening"
+          const column =
+            doseField === "daily" ? "dailyDose"
+            : doseField === "morning" ? "morningDose"
+            : "eveningDose"
+          const res = await tx.basalConfiguration.updateMany({
+            where: {
+              settings: { patientId: proposal.patientId },
+              [column]: { not: null },
+            },
+            data: { [column]: proposed },
+          })
+          assertRowApplied(res.count, "styloBasalNotFound")
         }
       }
 
