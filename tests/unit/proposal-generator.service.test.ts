@@ -89,8 +89,8 @@ function setup(opts: {
   pregnancyMode?: boolean
   carbRatios?: { startHour: number; endHour: number; gramsPerUnit: number }[]
   meals?: unknown[]
-  // US-2659 — `dailyDose` (stylo single_injection) + `pumpSlots` optionnels selon le mode de délivrance.
-  basalConfig?: { configType: string; pumpSlots?: { id: string; rate: number; startHour: number; endHour: number }[]; dailyDose?: number }
+  // US-2659 — `dailyDose` (single_injection) / `morningDose`+`eveningDose` (split_injection) / `pumpSlots` (pompe).
+  basalConfig?: { configType: string; pumpSlots?: { id: string; rate: number; startHour: number; endHour: number }[]; dailyDose?: number; morningDose?: number; eveningDose?: number }
   glucoseTargets?: { targetGlucose: number }[]
   fasting?: { fastingMgdl: number | null; nocturnalNadirMgdl: number | null; dayIso?: string }[]
   sensitivityFactors?: { startHour: number; endHour: number; sensitivityFactorGl: number }[]
@@ -104,8 +104,8 @@ function setup(opts: {
       ? {
           configType: opts.basalConfig.configType,
           dailyDose: opts.basalConfig.dailyDose ?? null,
-          morningDose: null,
-          eveningDose: null,
+          morningDose: opts.basalConfig.morningDose ?? null,
+          eveningDose: opts.basalConfig.eveningDose ?? null,
           pumpSlots: (opts.basalConfig.pumpSlots ?? []).map((s) => ({
             id: s.id, rate: s.rate,
             startTime: new Date(Date.UTC(1970, 0, 1, s.startHour)),
@@ -424,6 +424,77 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO single_in
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(styloCalls()).toHaveLength(0)
     expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+  })
+})
+
+describe("proposalGeneratorService.generateForPatient — basale STYLO split_injection (US-2659 S2)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const split = (morningDose: number, eveningDose: number) => ({ configType: "split_injection", morningDose, eveningDose })
+  const evFasting = (mgdl: number, nadir: number | null) =>
+    Array.from({ length: 3 }, (_, i) => ({ fastingMgdl: mgdl, nocturnalNadirMgdl: nadir, dayIso: isoDaysAgo(i + 1) }))
+  // Repas du soir → `preMgdl` = glycémie PRÉ-DÎNER (signal de la dose du matin).
+  const dinners = (preMgdl: number) =>
+    Array.from({ length: 3 }, (_, i) => meal({ moment: "evening", preMgdl, nadirMgdl: 200, dayIso: isoDaysAgo(i + 1) }))
+  // Repas de midi → `nadirMgdl` = garde de JOUR ; `bolus` > 0 = confondeur pré-dîner (IOB midi).
+  const lunches = (nadirMgdl: number, bolus: number) =>
+    Array.from({ length: 3 }, (_, i) => meal({ moment: "noon", nadirMgdl, bolus, dayIso: isoDaysAgo(i + 1) }))
+  const calls = (kind: "morning" | "evening") =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate" && a.basalDoseKind === kind)
+  const styloCount = () =>
+    createEngine.mock.calls.map((c) => c[0] as Record<string, unknown>).filter((a) => a.parameterType === "basalRate" && (a.basalDoseKind === "morning" || a.basalDoseKind === "evening")).length
+
+  it("dose du SOIR : à jeun HAUT → proposition evening basalTooLow (dose du matin sans signal → silencieuse)", async () => {
+    setup({ basalConfig: split(18, 22), fasting: evFasting(150, 120) }) // pas de repas du soir → matin sans pré-dîner
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("evening")).toHaveLength(1)
+    expect(calls("evening")[0]).toMatchObject({ reason: "basalTooLow", expectedCurrentValue: 22, basalDoseKind: "evening" })
+    expect(calls("morning")).toHaveLength(0)
+  })
+
+  it("dose du MATIN (basal-SEUL, pas de bolus midi) : pré-dîner HAUT + garde de jour → proposition morning basalTooLow", async () => {
+    // Soir HOLD (à jeun in-band) → seule la dose du matin titre. Pré-dîner 1,50 ; garde de jour saine (1,20) ; pas de bolus midi.
+    setup({ basalConfig: split(18, 22), fasting: evFasting(105, 120), meals: [...dinners(150), ...lunches(120, 0)] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("morning")).toHaveLength(1)
+    expect(calls("morning")[0]).toMatchObject({ reason: "basalTooLow", expectedCurrentValue: 18, basalDoseKind: "morning" })
+    expect(calls("evening")).toHaveLength(0)
+  })
+
+  it("CONFONDEUR (basal-bolus, bolus midi présent) : pré-dîner HAUT → FLAG dose du matin, JAMAIS une proposition (Q3b)", async () => {
+    setup({ basalConfig: split(18, 22), fasting: evFasting(105, 120), meals: [...dinners(150), ...lunches(120, 6)] }) // bolus midi 6 → confondu
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("morning")).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+  })
+
+  it("UNE dose/run + priorité SOIR : soir ET matin dévient (hausses) → une seule proposition, la dose du SOIR", async () => {
+    setup({ basalConfig: split(18, 22), fasting: evFasting(150, 120), meals: [...dinners(150), ...lunches(120, 0)] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCount()).toBe(1) // pas les deux
+    expect(calls("evening")).toHaveLength(1) // priorité soir/à jeun
+    expect(calls("morning")).toHaveLength(0) // matin déféré au prochain run
+  })
+
+  it("VERROU 1-pending-stylo : une proposition basale stylo pending existe → aucune nouvelle proposition (titration défèrée)", async () => {
+    setup({ basalConfig: split(18, 22), fasting: evFasting(150, 120), meals: [...dinners(150), ...lunches(120, 0)] })
+    // findFirst : `pending` (verrou) → existe ; `accepted` (cooldown) → aucun.
+    prismaMock.adjustmentProposal.findFirst.mockImplementation((args: any) =>
+      Promise.resolve(args?.where?.status === "pending" ? { id: "existing" } : null) as never,
+    )
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCount()).toBe(0) // verrou : une seule basale stylo en vol à la fois
+  })
+
+  it("fix MEDIUM #2 : les DEUX doses dé-escaladent → soir persisté, matin (perdante) FLAGGÉ (jamais un drop silencieux)", async () => {
+    // À jeun in-band + nadir nocturne récurrent 0,60 → dé-escalade SOIR ; pré-dîner in-band + nadir de jour
+    // récurrent 0,60 sans bolus midi → dé-escalade MATIN. Priorité soir → soir persisté, matin perdante FLAGGÉE.
+    setup({ basalConfig: split(18, 22), fasting: evFasting(105, 60), meals: [...dinners(105), ...lunches(60, 0)] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("evening")).toHaveLength(1) // dé-escalade soir persistée (priorité sécurité, nocturne = pire)
+    expect(calls("morning")).toHaveLength(0) // une dose/run : matin non persistée
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // matin perdante → flag fail-loud
+    expect(raiseFlag).toHaveBeenCalledTimes(1) // EXACTEMENT la perdante (jamais le winner, jamais un double-flag)
   })
 })
 

@@ -674,6 +674,10 @@ export const adjustmentService = {
     const slot = slotFieldsFor(parameterType, asInput)
 
     // 3. Anti-spam (pré-check + index partiel unique via P2002 ci-dessous). Pas de garde patient.
+    //    NB : le pré-check est « 1 pending / (patient × basalDoseKind) » (index `one_pending_per_slot`). Pour la
+    //    basale STYLO, un index PLUS strict « 1 pending stylo / patient toutes cibles » (`one_pending_stylo_basal`,
+    //    US-2659 S2) s'ajoute EN BASE (défense en profondeur, course inter-run) — sa P2002 est aussi captée par
+    //    `isUniqueViolationOn(e, "one_pending")` → `duplicatePendingProposal`.
     const existing = await prisma.adjustmentProposal.findFirst({
       where: {
         patientId,
