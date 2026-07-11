@@ -369,6 +369,33 @@ describe("adjustmentService", () => {
     })
   })
 
+  describe("accept with basal STYLO apply (US-2659)", () => {
+    const styloProposal = (id: string) => ({
+      id, patientId: 1, status: "pending",
+      parameterType: "basalRate", proposedValue: 20, basalDoseKind: "daily", pumpBasalSlotId: null,
+    })
+
+    it("applyImmediately d'une proposition STYLO → styloBasalApplyNotSupported (fail-closed, jamais d'écriture fantôme)", async () => {
+      const mockTx = {
+        adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p5")), update: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("p5", 2, true)).rejects.toThrow("styloBasalApplyNotSupported")
+    })
+
+    it("accept SANS apply d'une proposition STYLO → accepté (statut), non appliqué (aucune écriture)", async () => {
+      const mockTx = {
+        adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p6")), update: vi.fn().mockResolvedValue({}) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      const result = await adjustmentService.accept("p6", 2, false)
+      expect(result.accepted).toBe(true)
+      expect(result.applied).toBe(false)
+    })
+  })
+
   describe("accept without apply", () => {
     it("accepts without applying changes", async () => {
       const mockTx = {
@@ -454,6 +481,36 @@ describe("adjustmentService", () => {
     it("supportingEvents ≤ 0 → invalidSupportingEvents", async () => {
       await expect(adjustmentService.createEngineProposal(isfInput({ supportingEvents: 0 })))
         .rejects.toThrow("invalidSupportingEvents")
+    })
+
+    it("US-2659 — proposition STYLO daily : lit BasalConfiguration.dailyDose + bornes MDI (U totales), pas les bornes pompe", async () => {
+      prismaMock.basalConfiguration.findFirst.mockResolvedValue({ dailyDose: 22, morningDose: null, eveningDose: null } as never)
+      prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null)
+      const mockTx = {
+        adjustmentProposal: { create: vi.fn().mockResolvedValue({ id: "e2", status: "pending", proposedByUserId: null }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      // 20 U : REJETÉ par les bornes pompe (> BASAL_MAX 5 U/h) mais valide en stylo (U totales, délivrable).
+      const res = await adjustmentService.createEngineProposal({
+        patientId: 1, parameterType: "basalRate", proposedValue: 20,
+        expectedCurrentValue: 22, reason: "basalTooHigh", confidence: "medium", supportingEvents: 5,
+        basalDoseKind: "daily", analysisPeriod: "7d",
+      })
+      expect(res.id).toBe("e2")
+      const data = mockTx.adjustmentProposal.create.mock.calls[0]![0].data
+      expect(data.basalDoseKind).toBe("daily")
+      expect(data.pumpBasalSlotId).toBeNull() // exclusivité : jamais un créneau pompe sur une cible stylo
+      expect(Number(data.currentValue)).toBe(22) // lu serveur depuis dailyDose
+    })
+
+    it("US-2659 — proposition STYLO non délivrable (20,3 U, pas multiple de 0,5) → valueOutOfBounds", async () => {
+      await expect(adjustmentService.createEngineProposal({
+        patientId: 1, parameterType: "basalRate", proposedValue: 20.3,
+        expectedCurrentValue: 22, reason: "basalTooHigh", confidence: "medium", supportingEvents: 5,
+        basalDoseKind: "daily",
+      })).rejects.toThrow("valueOutOfBounds")
     })
   })
 

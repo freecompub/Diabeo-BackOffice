@@ -38,12 +38,15 @@ consensus cap bolus 25 U.
 | `PATIENT_MAX_CHANGE_PERCENT` | 10 | % | Cap variation **patient** sur ratios (proposition, US-2649) |
 | `MDI_BASAL_MIN_U` | 0.5 | U | Plancher de sanité basale **stylo (MDI)** (US-2659 ; = `FIXED_DOSE_MIN`) |
 | `MDI_BASAL_WARN_U` | 80 | U | Seuil d'**avertissement** (non bloquant) basale stylo (US-2659 ; = `FIXED_BASAL_WARN_U`) |
-| `MDI_BASAL_STEP_U` | 2 | U | Pas de **hausse** treat-to-target (`max(+2 U, +10 %)`) (US-2659) |
+| `MDI_BASAL_STEP_U` | 2 | U | Composante U du pas de **hausse** treat-to-target (`max(+2 U, +10 %)`) (US-2659) |
+| `MDI_BASAL_STEP_PERCENT` | 10 | % | Composante % du pas de hausse `max(+2 U, +10 %)` (≠ dé-escalade, même valeur) (US-2659) |
 | `MDI_BASAL_MAX_DELTA_U` | 4 | U | Cap absolu de variation par ajustement (= réduction sur hypo) (US-2659) |
 | `MDI_BASAL_MAX_CHANGE_PERCENT` | 20 | % | Cap % (ADA 10–20 %) — la borne la plus protectrice l'emporte (US-2659) |
 | `MDI_BASAL_DELIVERY_INCREMENT_U` | 1 | U | Résolution stylo (défaut fail-closed ; 0,5 si demi-unité) — **jamais** l'incrément pompe (US-2659) |
 | `MDI_BASAL_COOLDOWN_HOURS` | 72 | h | Anti-cliquet (steady state glargine/detemir 3–4 j ; 96 h dégludec = V2) (US-2659) |
 | `MDI_BASAL_ANALYSIS_DAYS` | 7 | j | Fenêtre d'analyse (plus réactive ; ≥ 3 glycémies à jeun) (US-2659) |
+| `MDI_BASAL_FASTING_DEADBAND_UP_GL` | 0.30 | g/L | Demi-bande **haute** de la hold zone (hausse si `avg > T+0,30`) — anti-overshoot du pas fixe (US-2659 S1) |
+| `MDI_BASAL_FASTING_DEADBAND_DOWN_GL` | 0.20 | g/L | Demi-bande **basse** (baisse treat-to-target si `avg < T−0,20`) — plus serrée, sens sûr (US-2659 S1) |
 
 > ⚠️ **Mise à jour 2026-07-10** : les constantes d'auto-application experte gouvernée ont été **supprimées** du code (US-2657 retirée). Les éditions patient ne génèrent désormais qu'une **proposition** (jamais auto-application). Voir « Niveau de maturité du patient » ci-dessous pour la maturité (JUNIOR/INTERMEDIATE/CONFIRME) — elle gouverne les **capacités d'édition** (valeurs vs créneaux), pas une voie d'auto-application.
 
@@ -507,15 +510,44 @@ est invisible au drift-gate — Prisma ne modélise pas les CHECK — mais appli
 (±2 U trop serrées pour une basale adulte). Toutes en **unités totales**. Défaut d'incrément **fail-closed
 = 1 U** (0,5 U seulement si stylo demi-unité lu sur l'appareil).
 
-**Logique de titration** (détaillée dans les slices S1 `single_injection` / S2 `split_injection`, à venir) —
-principes actés : `single` → titrer `dailyDose` sur la **glycémie à jeun** (treat-to-target) ; `split` →
-dose du **soir sur l'à jeun**, dose du **matin sur le pré-dîner**, **une seule dose titrée par run**
-(priorité soir/à jeun) ; **garde BGM** (hausse conditionnée à des relevés coucher + réveil, sinon flag) ;
-**garde hypo** fenêtre-suivant-la-dose (sévère isolée < 0,54 g/L supprime la hausse ; récurrente →
-dé-escalade bornée ; non-actionnable → flag) ; **Somogyi** (à jeun HAUT + hypo nocturne récurrente →
-flag `nocturnalHypoHighFasting`, jamais de baisse auto). **Jamais auto-appliqué** (ADR #13) : toute sortie =
-`AdjustmentProposal` `pending` gatée médecin. Réfs : ADA Standards of Care 2025 §9 ; Riddle Treat-to-Target
+**Logique de titration** — `single_injection` **LIVRÉE en S1** (ci-dessous) ; `split_injection` = S2 (à venir :
+dose du **soir sur l'à jeun**, dose du **matin sur le pré-dîner**, **une seule dose titrée par run**, priorité
+soir/à jeun). **Jamais auto-appliqué** (ADR #13). Réfs : ADA Standards of Care 2025 §9 ; Riddle Treat-to-Target
 2003 ; INSIGHT ; ISPAD (stylos demi-unité).
+
+### Titration `single_injection` (US-2659 S1, LIVRÉ, validé medical 2026-07-11)
+
+**Analyseurs purs** (`proposal-algorithm.ts`) — dose DIRECTE en **unités totales** :
+- `analyzeMdiBasalDailyTrend(fastingValues, T, currentDose, nocturnalNadirs, incrementU)` — treat-to-target sur
+  la **glycémie à jeun**. **Hold zone asymétrique** `[T − 0,20 ; T + 0,30]` g/L (obligatoire pour un pas FIXE :
+  déclencher au seul signe sur-corrigerait ; bande haute plus large = anti-overshoot, bande basse plus serrée =
+  sens sûr). Au-dessus → **hausse** `min(max(+2 U, +10 %), +20 %, +4 U)` (le cap % l'emporte sur le plancher +2 U
+  = protège les petites doses) ; en dessous → **baisse** treat-to-target (symétrique) ; dans la bande → HOLD.
+  **Snap `floor` asymétrique** (arrondi TOUJOURS vers moins d'insuline : hausse jamais au-dessus du cap, baisse vers
+  plus de réduction) à l'incrément stylo (défaut **1 U** fail-closed) ; `|delta| < incrément` → `null` (non
+  actionnable). **Garde hypo** : une hausse est supprimée si un nadir nocturne est en hypo (repli à jeun).
+- `analyzeMdiBasalDailyHypoDeescalation(currentDose, nocturnalNadirs, incrementU)` — **dé-escalade** sur nadirs
+  nocturnes récurrents (indépendante de la hold zone) : `−min(20 %, 4 U)` (**`−min`, jamais `−max`** — `−max`
+  produirait −40 % → rebond hyper/cétose), snap `floor`, plancher 0,5 U ; non actionnable → `flagNonActionable`.
+
+**Matrice générateur** (`proposal-generator.service.ts`, bloc `configType === "single_injection"`, ordre) :
+1. **Somogyi** — à jeun HAUT (`> T + 0,30`) + hypo nocturne récurrente → **flag** `nocturnalHypoHighFasting` (D10).
+2. **Dé-escalade** (hypos nocturnes récurrentes, in-band ou sous la bande) — **prime** sur la baisse treat-to-target
+   (plus spécifique ; couvre la cible grossesse serrée). Jugée sur les nadirs POST-changement + cooldown (Q6a/Q6b).
+3. **Titration treat-to-target** (pas d'hypo nocturne récurrente) — hausse (si **couverture nocturne** ≥ 3 nadirs,
+   sinon **AC-4 : flag explicite**, jamais un drop muet) OU baisse ; **cooldown 72 h gate les DEUX sens** (Risk #1,
+   divergence assumée vs pompe : steady state 3–4 j + incrément 1 U grossier → anti-empilement). Nadir sévère isolé
+   pendant blocage → flag (Q6b).
+
+**Source du signal à jeun** : **CGM d'abord** (porte les nadirs nocturnes → autorise hausses + Somogyi + dé-escalade),
+**à défaut BGM** (patient MDI souvent BGM → à jeun présent mais aucun nadir → hausses refusées AC-4 → flag, baisses
+permises). Fail-closed : jamais de hausse à l'aveugle. Fenêtre **7 j** (`MDI_BASAL_ANALYSIS_DAYS`), ≥ 3 à jeun.
+
+**Contrat service** (`adjustment.service.ts`) : cible `basalDoseKind = "daily"` → `resolveCurrentValue` lit
+`BasalConfiguration.dailyDose` (scopé patient) ; `validateProposedValue` route les bornes **stylo** (`MDI_BASAL_MIN_U`,
+délivrable demi-unité, pas de plafond dur) et non pompe (U/h). **Application différée** : `accept(applyImmediately)`
+d'une proposition stylo **lève `styloBasalApplyNotSupported`** (fail-closed — jamais un « accepté + appliqué » fantôme
+sans écriture) ; l'écriture groupée de `dailyDose` arrive dans une slice ultérieure. Le médecin accepte SANS apply.
 
 ### Assemblage corrections ISF `correctionTrend` (US-2651 ISF slice 2, validé medical)
 

@@ -199,11 +199,30 @@ export const CLINICAL_BOUNDS = {
   MDI_BASAL_MIN_U: 0.5,
   MDI_BASAL_WARN_U: 80,
   MDI_BASAL_STEP_U: 2,
+  /** US-2659 — composante % du pas de HAUSSE treat-to-target `max(+MDI_BASAL_STEP_U, +MDI_BASAL_STEP_PERCENT %)`.
+   *  Distincte de `HYPO_DEESCALATION_PERCENT` (dé-escalade) malgré la même valeur — sémantiques indépendantes. */
+  MDI_BASAL_STEP_PERCENT: 10,
   MDI_BASAL_MAX_DELTA_U: 4,
   MDI_BASAL_MAX_CHANGE_PERCENT: 20,
   MDI_BASAL_DELIVERY_INCREMENT_U: 1,
   MDI_BASAL_COOLDOWN_HOURS: 72,
   MDI_BASAL_ANALYSIS_DAYS: 7,
+  /**
+   * US-2659 (S1, validé medical) — **hold zone ASYMÉTRIQUE** de la titration basale STYLO à **pas fixe**.
+   * Un pas fixe (`max(+2 U, +10 %)`) déclenché au seul signe de l'écart sur-corrigerait au 1er tick (contrairement
+   * au pas PROPORTIONNEL de la pompe, dont le deadband 2 % suffit). Bande absolue **ancrée sur la cible à jeun**
+   * `T = resolveFastingTarget(...)` (déjà clampée `[0,80 ; 1,30]`, grossesse `[.. ; 1,00]`) :
+   *   - `avgFasting > T + MDI_BASAL_FASTING_DEADBAND_UP_GL`   → **HAUSSE** (pas fixe) ;
+   *   - `avgFasting < T − MDI_BASAL_FASTING_DEADBAND_DOWN_GL` → **BAISSE** treat-to-target (sens sûr) ;
+   *   - sinon → **HOLD** (aucune titration).
+   * Asymétrie `UP (0,30) > DOWN (0,20)` : bande **haute plus large** (anti-overshoot du pas fixe, une hausse de
+   * +2 U baisse la glycémie à jeun de ~20–40 mg/dL — Riddle TTT 2003) ; bande **basse plus serrée** (sens sûr,
+   * hypo-préventif). À T = 1,00 → hold `[0,80 ; 1,30]` = **cible à jeun ADA 80–130 mg/dL** (Standards of Care 2025).
+   * ⚠️ Le seuil « à jeun HAUT » de la matrice Somogyi utilise `T + UP` (pas `> T`). Sous la bande, la dé-escalade
+   * sur nadirs nocturnes (Q2) **prime** sur la baisse treat-to-target (plus spécifique ; couvre la cible grossesse serrée).
+   */
+  MDI_BASAL_FASTING_DEADBAND_UP_GL: 0.3,
+  MDI_BASAL_FASTING_DEADBAND_DOWN_GL: 0.2,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

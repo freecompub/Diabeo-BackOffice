@@ -14,11 +14,11 @@ import { clinicalReviewFlagService } from "./clinical-review-flag.service"
 import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
-import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
+import { isDeliverableBasalRate, isDeliverableFixedDose } from "@/lib/clinical-bounds"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
-  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel, DoseMoment,
+  ProposalStatus, Prisma, AdjustableParameter, AdjustmentReason, ProposalSource, ConfidenceLevel, DoseMoment, BasalDoseKind,
 } from "@prisma/client"
 
 /**
@@ -46,6 +46,10 @@ export type CreateEngineProposalInput = {
   pumpBasalSlotId?: string | null
   /** Discriminateur de créneau pour la DOSE FIXE (mode « doses simples »). */
   moment?: DoseMoment | null
+  /** US-2659 — discriminateur de CIBLE d'une basale STYLO (MDI). `daily` (single_injection),
+   *  `morning`/`evening` (split_injection) → `BasalConfiguration.dailyDose`/`morning`/`eveningDose`.
+   *  Exclusif de `pumpBasalSlotId` pour `basalRate` (CHECK base). */
+  basalDoseKind?: BasalDoseKind | null
 }
 
 /** Sources humaines d'une proposition (l'algorithme passe par le chemin `algorithm`). */
@@ -65,6 +69,8 @@ export type CreateProposalInput = {
   pumpBasalSlotId?: string | null
   /** Discriminateur de créneau pour la DOSE FIXE (mode « doses simples »). */
   moment?: DoseMoment | null
+  /** US-2659 — discriminateur de CIBLE d'une basale STYLO (MDI). Exclusif de `pumpBasalSlotId`. */
+  basalDoseKind?: BasalDoseKind | null
   /** Justification texte libre — chiffrée AES-256-GCM au stockage. */
   proposerComment?: string | null
 }
@@ -97,16 +103,25 @@ function reasonImpliesIncrease(reason: AdjustmentReason): boolean | null {
   return null
 }
 
-function validateProposedValue(parameterType: string, value: number): boolean {
+function validateProposedValue(
+  parameterType: string,
+  value: number,
+  basalDoseKind?: BasalDoseKind | null,
+): boolean {
   switch (parameterType) {
     case "insulinSensitivityFactor":
       return value >= INSULIN_BOUNDS.ISF_GL_MIN && value <= INSULIN_BOUNDS.ISF_GL_MAX
     case "insulinToCarbRatio":
       return value >= INSULIN_BOUNDS.ICR_MIN && value <= INSULIN_BOUNDS.ICR_MAX
-    // US-2648b — un débit basal doit être PROGRAMMABLE sur la pompe : multiple de
-    // `PUMP_BASAL_INCREMENT` (0,05 U/h). Sinon la valeur passe les bornes mais n'est pas
-    // délivrable (arrondi silencieux / profil rejeté à l'application). Rejet à la création.
     case "basalRate":
+      // US-2659 — basale STYLO (MDI, `basalDoseKind` fourni) : dose en UNITÉS TOTALES. Bornes propres
+      // (`MDI_BASAL_MIN_U`, pas de plafond dur — U300/dégludec légitimes > 80 U ; le WARN est non
+      // bloquant), délivrable à la demi-unité (`isDeliverableFixedDose`). JAMAIS les bornes pompe (U/h).
+      if (basalDoseKind != null) {
+        return value >= INSULIN_BOUNDS.MDI_BASAL_MIN_U && isDeliverableFixedDose(value)
+      }
+      // US-2648b — basale POMPE : débit PROGRAMMABLE = multiple de `PUMP_BASAL_INCREMENT` (0,05 U/h),
+      // dans [BASAL_MIN ; BASAL_MAX]. Rejet à la création si non délivrable (profil rejeté à l'application).
       return (
         value >= INSULIN_BOUNDS.BASAL_MIN &&
         value <= INSULIN_BOUNDS.BASAL_MAX &&
@@ -156,6 +171,22 @@ async function resolveCurrentValue(
       return Number(row.gramsPerUnit)
     }
     case "basalRate": {
+      // US-2659 — basale STYLO (MDI) : ciblée par `basalDoseKind` (daily/morning/evening) sur
+      // `BasalConfiguration` (scopée patient via `settings`, anti-IDOR). Dose en UNITÉS TOTALES.
+      if (input.basalDoseKind != null) {
+        const cfg = await prisma.basalConfiguration.findFirst({
+          where: { settings: { patientId } },
+          select: { dailyDose: true, morningDose: true, eveningDose: true },
+        })
+        if (!cfg) throw new Error("currentValueNotFound")
+        const dose =
+          input.basalDoseKind === "daily" ? cfg.dailyDose
+          : input.basalDoseKind === "morning" ? cfg.morningDose
+          : cfg.eveningDose
+        if (dose == null) throw new Error("currentValueNotFound") // dose non configurée → fail-closed
+        return Number(dose)
+      }
+      // Basale POMPE : ciblée par `pumpBasalSlotId` (créneau U/h), scopée patient.
       if (!input.pumpBasalSlotId) throw new Error("slotRequired")
       const row = await prisma.pumpBasalSlot.findFirst({
         where: { id: input.pumpBasalSlotId, basalConfig: { settings: { patientId } } },
@@ -195,14 +226,18 @@ function slotFieldsFor(parameterType: AdjustableParameter, input: CreateProposal
     carbRatioSlotEnd: null as number | null,
     pumpBasalSlotId: null as string | null,
     moment: null as DoseMoment | null,
+    // US-2659 — discriminateur basale STYLO (exclusif de pumpBasalSlotId pour basalRate).
+    basalDoseKind: null as BasalDoseKind | null,
   }
   switch (parameterType) {
     case "insulinSensitivityFactor":
       return { ...empty, timeSlotStartHour: input.timeSlotStartHour ?? null, timeSlotEndHour: input.timeSlotEndHour ?? null }
     case "insulinToCarbRatio":
       return { ...empty, carbRatioSlotStart: input.carbRatioSlotStart ?? null, carbRatioSlotEnd: input.carbRatioSlotEnd ?? null }
+    // US-2659 — basalRate : POMPE (pumpBasalSlotId, U/h) OU STYLO (basalDoseKind, U totales), exclusif.
+    // On ne conserve que le discriminateur fourni → le tuple d'unicité anti-spam reste correct.
     case "basalRate":
-      return { ...empty, pumpBasalSlotId: input.pumpBasalSlotId ?? null }
+      return { ...empty, pumpBasalSlotId: input.pumpBasalSlotId ?? null, basalDoseKind: input.basalDoseKind ?? null }
     case "fixedDose":
       return { ...empty, moment: input.moment ?? null }
     default:
@@ -318,6 +353,8 @@ export const adjustmentService = {
       // US-2652 : sans `moment`, `resolveCurrentValue` lève `slotRequired` pour une dose fixe → CAS
       // `baselineMoved` inactif (une dose absolue périmée serait écrite). Doit être forwardé.
       moment: DoseMoment | null
+      // US-2659 : idem pour la basale STYLO (résolution `dailyDose`/`morning`/`eveningDose`).
+      basalDoseKind: BasalDoseKind | null
     },
   ): Promise<number | null> {
     try {
@@ -330,6 +367,7 @@ export const adjustmentService = {
         carbRatioSlotStart: proposal.carbRatioSlotStart,
         pumpBasalSlotId: proposal.pumpBasalSlotId,
         moment: proposal.moment,
+        basalDoseKind: proposal.basalDoseKind,
       })
     } catch (err) {
       // Cas ATTENDUS (créneau absent/non résoluble) → null silencieux. Une erreur INATTENDUE
@@ -504,6 +542,7 @@ export const adjustmentService = {
         carbRatioSlotStart: slot.carbRatioSlotStart,
         pumpBasalSlotId: slot.pumpBasalSlotId,
         moment: slot.moment, // US-2652 : 1 pending PAR MOMENT (aligne le pré-check sur l'index partiel)
+        basalDoseKind: slot.basalDoseKind, // US-2659 : 1 pending PAR CIBLE stylo (aligne sur l'index partiel)
       },
       select: { id: true },
     })
@@ -586,8 +625,9 @@ export const adjustmentService = {
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
-    // 1. Bornes cliniques dures + métriques moteur valides.
-    if (!validateProposedValue(parameterType, proposedValue)) throw new Error("valueOutOfBounds")
+    // 1. Bornes cliniques dures + métriques moteur valides. `basalDoseKind` route les bornes basale
+    //    STYLO (U totales) vs POMPE (U/h) — US-2659.
+    if (!validateProposedValue(parameterType, proposedValue, input.basalDoseKind)) throw new Error("valueOutOfBounds")
     if (!Number.isFinite(input.supportingEvents) || input.supportingEvents <= 0) {
       throw new Error("invalidSupportingEvents") // une proposition à 0 événement n'a aucun sens
     }
@@ -605,6 +645,7 @@ export const adjustmentService = {
       carbRatioSlotEnd: input.carbRatioSlotEnd,
       pumpBasalSlotId: input.pumpBasalSlotId,
       moment: input.moment, // US-2652 : sans ça, `resolveCurrentValue` lève slotRequired → moteur fixedDose mort
+      basalDoseKind: input.basalDoseKind, // US-2659 : sans ça, resolveCurrentValue lit la pompe → basale stylo morte
     }
     const currentValue = await resolveCurrentValue(patientId, parameterType, asInput)
 
@@ -641,6 +682,7 @@ export const adjustmentService = {
         carbRatioSlotStart: slot.carbRatioSlotStart,
         pumpBasalSlotId: slot.pumpBasalSlotId,
         moment: slot.moment, // US-2652 : 1 pending PAR MOMENT (aligne le pré-check sur l'index partiel)
+        basalDoseKind: slot.basalDoseKind, // US-2659 : 1 pending PAR CIBLE stylo (aligne sur l'index partiel)
       },
       select: { id: true },
     })
@@ -716,9 +758,17 @@ export const adjustmentService = {
 
       // Apply the change if requested — validate bounds first
       if (applyImmediately) {
+        // US-2659 (S1) — l'ÉCRITURE groupée de la basale STYLO (`basalDoseKind`) n'est pas encore livrée.
+        // Fail-closed EN TÊTE : sinon aucune branche pump/isf/icr/fixedDose ne matcherait → « accepté +
+        // appliqué » FANTÔME sans écriture (fausse confiance clinique). Le médecin accepte SANS apply
+        // (statut) et ajuste la config à la main tant que l'application groupée n'est pas livrée (slice ultérieure).
+        if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
+          throw new Error("styloBasalApplyNotSupported")
+        }
+
         const proposed = Number(proposal.proposedValue)
 
-        if (!validateProposedValue(proposal.parameterType, proposed)) {
+        if (!validateProposedValue(proposal.parameterType, proposed, proposal.basalDoseKind)) {
           throw new Error("valueOutOfBounds")
         }
 

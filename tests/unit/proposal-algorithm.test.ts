@@ -44,6 +44,7 @@ import {
   analyzeIsfSlot, analyzeIcrSlot, analyzeBasalTrend, analyzeFixedDose,
   recurrentPostMealHypo, analyzeIcrHypoDeescalation, hasSevereHypo,
   analyzeIsfHypoDeescalation, analyzeBasalHypoDeescalation, analyzeFixedDoseHypoDeescalation,
+  analyzeMdiBasalDailyTrend, analyzeMdiBasalDailyHypoDeescalation,
 } from "@/lib/proposal-algorithm"
 
 describe("proposal-algorithm", () => {
@@ -438,6 +439,75 @@ describe("proposal-algorithm", () => {
     it("snapping : variation qui s'arrondit à zéro (< 1 incrément) → null (non actionnable)", () => {
       // 0,05 × 1,03 = 0,0515 → snap = 0,05 → delta nul → aucune proposition.
       expect(analyzeBasalTrend([1.03, 1.03, 1.03], 1.0, 0.05)).toBeNull()
+    })
+  })
+
+  describe("analyzeMdiBasalDailyTrend (US-2659 S1 — basale stylo single_injection)", () => {
+    const T = 1.0 // cible → hold zone [0,80 ; 1,30]
+    const noHypo = [1.2, 1.3, 1.4] // nadirs nocturnes sans hypo
+
+    it("HOLD : à jeun dans la hold zone [T−0,20 ; T+0,30] → aucune titration", () => {
+      expect(analyzeMdiBasalDailyTrend([1.05, 1.1, 1.2], T, 20, noHypo, 1)).toBeNull() // 1,10 in-band
+      expect(analyzeMdiBasalDailyTrend([1.28, 1.29, 1.3], T, 20, noHypo, 1)).toBeNull() // juste sous T+0,30
+      expect(analyzeMdiBasalDailyTrend([0.82, 0.85, 0.9], T, 20, noHypo, 1)).toBeNull() // juste au-dessus T−0,20
+    })
+
+    it("HAUSSE au-dessus de la bande : pas fixe +2 U (dose 20), reason basalTooLow", () => {
+      const r = analyzeMdiBasalDailyTrend([1.5, 1.55, 1.6], T, 20, noHypo, 1)
+      expect(r).not.toBeNull()
+      expect(r!.reason).toBe("basalTooLow")
+      expect(r!.proposedValue).toBe(22) // 20 + max(2, 10%·20=2) = +2, snap 1 U
+    })
+
+    it("cap % : sur une PETITE dose (5 U), le cap +20 % (1 U) écrase le plancher +2 U", () => {
+      const r = analyzeMdiBasalDailyTrend([1.6, 1.6, 1.6], T, 5, noHypo, 1)
+      expect(r!.proposedValue).toBe(6) // +1 U (+20 %), PAS +2 U (+40 %)
+    })
+
+    it("snap floor : une hausse infra-incrément sur très petite dose → null (jamais d'overshoot à l'aveugle)", () => {
+      // dose 3, cap +20 %=0,6 U → raw 3,6 → floor(3,6/1)=3 → delta 0 < 1 incrément → null.
+      expect(analyzeMdiBasalDailyTrend([1.6, 1.6, 1.6], T, 3, noHypo, 1)).toBeNull()
+    })
+
+    it("BAISSE sous la bande : treat-to-target −2 U (dose 20), reason basalTooHigh", () => {
+      const r = analyzeMdiBasalDailyTrend([0.55, 0.6, 0.62], T, 20, undefined, 1)
+      expect(r!.reason).toBe("basalTooHigh")
+      expect(r!.proposedValue).toBeLessThan(20)
+    })
+
+    it("garde HYPO : un nadir nocturne sévère supprime une HAUSSE que l'à-jeun haut laisserait passer", () => {
+      const severe = [0.5, 1.3, 1.4] // creux nocturne sévère
+      expect(analyzeMdiBasalDailyTrend([1.5, 1.55, 1.6], T, 20, severe, 1)).toBeNull()
+    })
+
+    it("fail-closed : < 3 à jeun, cible ≤ 0, ou dose < plancher → null", () => {
+      expect(analyzeMdiBasalDailyTrend([1.5, 1.6], T, 20, noHypo, 1)).toBeNull()
+      expect(analyzeMdiBasalDailyTrend([1.5, 1.6, 1.7], 0, 20, noHypo, 1)).toBeNull()
+      expect(analyzeMdiBasalDailyTrend([1.5, 1.6, 1.7], T, 0.3, noHypo, 1)).toBeNull()
+    })
+  })
+
+  describe("analyzeMdiBasalDailyHypoDeescalation (US-2659 S1)", () => {
+    const rec = [0.6, 0.6, 1.2] // ≥ 3 nadirs, ≥ 2 niveau-1 → récurrent
+
+    it("hypos nocturnes récurrentes → baisse −min(20 %, 4 U), reason basalTooHigh", () => {
+      const r = analyzeMdiBasalDailyHypoDeescalation(22, rec, 1)
+      expect(r.kind).toBe("proposal")
+      if (r.kind === "proposal") {
+        expect(r.candidate.reason).toBe("basalTooHigh")
+        expect(r.candidate.proposedValue).toBe(18) // 22 − min(4,4)=−4 → 18
+      }
+    })
+
+    it("−min et non −max : dose 10, 20 %=2 U < 4 U → baisse de 2 U (jamais 4)", () => {
+      const r = analyzeMdiBasalDailyHypoDeescalation(10, rec, 1)
+      expect(r.kind).toBe("proposal")
+      if (r.kind === "proposal") expect(r.candidate.proposedValue).toBe(8) // −2 U (−min), pas −4 U (−max)
+    })
+
+    it("non récurrent → none ; dose au plancher / baisse < 1 incrément → flagNonActionable", () => {
+      expect(analyzeMdiBasalDailyHypoDeescalation(22, [0.6, 1.2, 1.3], 1).kind).toBe("none")
+      expect(analyzeMdiBasalDailyHypoDeescalation(0.6, rec, 1).kind).toBe("flagNonActionable")
     })
   })
 
