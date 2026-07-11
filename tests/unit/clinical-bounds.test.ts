@@ -103,6 +103,7 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       MDI_BASAL_ANALYSIS_DAYS: 7,
       MDI_BASAL_FASTING_DEADBAND_UP_GL: 0.3,
       MDI_BASAL_FASTING_DEADBAND_DOWN_GL: 0.2,
+      MDI_BASAL_PATIENT_MAX_DELTA_U: 2,
     })
   })
 
@@ -140,6 +141,9 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
     expect(CLINICAL_BOUNDS.MDI_BASAL_WARN_U).toBe(CLINICAL_BOUNDS.FIXED_BASAL_WARN_U)
     expect(CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS).toBe(7)
     expect(CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS).toBe(CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS)
+    // Cap PATIENT stylo (US-2659 S3) = moitié du cap moteur (demande conservatrice, pas une titration).
+    expect(CLINICAL_BOUNDS.MDI_BASAL_PATIENT_MAX_DELTA_U).toBe(CLINICAL_BOUNDS.MDI_BASAL_MAX_DELTA_U / 2)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_PATIENT_MAX_DELTA_U).toBeGreaterThan(0)
     // Hold zone ASYMÉTRIQUE (US-2659 S1) : bande haute > bande basse (anti-overshoot du pas fixe côté hausse) ;
     // les deux > 0 ; à T=1,00 la hold zone = cible ADA [0,80 ; 1,30].
     expect(CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL).toBeGreaterThan(CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_DOWN_GL)

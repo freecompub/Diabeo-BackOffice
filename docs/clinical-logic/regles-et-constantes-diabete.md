@@ -47,6 +47,7 @@ consensus cap bolus 25 U.
 | `MDI_BASAL_ANALYSIS_DAYS` | 7 | j | Fenêtre d'analyse (plus réactive ; ≥ 3 glycémies à jeun) (US-2659) |
 | `MDI_BASAL_FASTING_DEADBAND_UP_GL` | 0.30 | g/L | Demi-bande **haute** de la hold zone (hausse si `avg > T+0,30`) — anti-overshoot du pas fixe (US-2659 S1) |
 | `MDI_BASAL_FASTING_DEADBAND_DOWN_GL` | 0.20 | g/L | Demi-bande **basse** (baisse treat-to-target si `avg < T−0,20`) — plus serrée, sens sûr (US-2659 S1) |
+| `MDI_BASAL_PATIENT_MAX_DELTA_U` | 2 | U | Cap absolu d'une **demande PATIENT** de baisse basale stylo (= moitié du cap moteur ; ≤ min(10 %, 2 U)) (US-2659 S3) |
 
 > ⚠️ **Mise à jour 2026-07-10** : les constantes d'auto-application experte gouvernée ont été **supprimées** du code (US-2657 retirée). Les éditions patient ne génèrent désormais qu'une **proposition** (jamais auto-application). Voir « Niveau de maturité du patient » ci-dessous pour la maturité (JUNIOR/INTERMEDIATE/CONFIRME) — elle gouverne les **capacités d'édition** (valeurs vs créneaux), pas une voie d'auto-application.
 
@@ -587,6 +588,34 @@ avant de créer) + **index unique partiel base** `adjustment_proposals_one_pendi
 (`WHERE parameter_type='basalRate' AND basal_dose_kind IS NOT NULL AND status='pending'`, migration `20260720100000`
 — ferme la course inter-run cron/on-demand ; violation P2002 → `duplicatePendingProposal`). **Fail-loud** : si le
 verrou bloque une **dé-escalade** (sécurité), un **flag** est levé (jamais un drop silencieux).
+
+### Baisse basale proposable par le PATIENT (US-2659 S3, LIVRÉ, validé medical + HDS 2026-07-11)
+
+**Relâchement d'un garde-fou de sécurité** (`patientDecreaseForbidden`, `adjustment.service.ts`) — une baisse
+basale patient était **interdite** ; elle devient **proposable** mais gatée. Le médecin reste le garde-fou
+(proposition `pending`, **jamais** auto-appliquée, ADR #13 ; l'accept-with-apply stylo lève toujours
+`styloBasalApplyNotSupported`) — interdire la proposition était anti-ETP. **Tout lu SERVEUR (anti-tamper)** :
+maturité, valeur courante, **mode de délivrance** (dérivé de la config, jamais du body — E1 HDS).
+
+| | **Pompe** (`pumpBasalSlotId`, U/h — réversible) | **Stylo** (`basalDoseKind`, U totales — dose entière) |
+|---|---|---|
+| Baisse **proposable** | dès **INTERMEDIATE** | **CONFIRME uniquement** (plus risqué : dose entière nuit+jour, non réversible) |
+| Amplitude max | ≤ `PATIENT_MAX_CHANGE_PERCENT` (10 %) sur le **vrai delta** | ≤ **min(10 %, `MDI_BASAL_PATIENT_MAX_DELTA_U` 2 U)** |
+| Accusé **DKA** (jour de maladie) | non requis (persisté si fourni) | **requis `=== true`** (bloquant `dkaAcknowledgmentRequired`) |
+| Snap incrément | — | baisse infra-incrément / non délivrable → `noChangeProposed` |
+| `JUNIOR` | ❌ refus (`maturityTooLowForDecrease`) | ❌ refus |
+| Cooldown | 24 h | 24 h |
+| Application | ❌ jamais — `pending`, médecin décide | ❌ jamais — `pending`, médecin décide |
+
+**Codes** : `maturityTooLowForDecrease` (403), `dkaAcknowledgmentRequired`/`deliveryModeMismatch`/`noChangeProposed`
+(422). **Accusé DKA** persisté en colonne **immuable** `AdjustmentProposal.sickDayAcknowledgedAt` (timestamp du
+consentement ; NULL = non acquitté) — consentement de sécurité requêtable/immuable (MDR ISO 14971). **Audit
+enrichi** de la baisse patient (E3) : `direction`/`deliveryMode`/`dkaAcknowledged`/`maturityAtDecision`, **zéro
+valeur de dose** ; les **refus** sont aussi audités (E6 — insistance = signal clinique/forensic). **Garde-fou du
+relâchement** : l'écran de revue médecin surface désormais les `ClinicalReviewFlag` **ouverts** (dont Somogyi
+`nocturnalHypoHighFasting`) — le médecin voit le contexte hypo AVANT d'accepter une baisse (baisse sur Somogyi =
+mauvais geste). L'avertissement Somogyi/DKA côté patient est un **texte ETP statique** (le serveur ne bloque que
+sur l'accusé DKA). **Contrat iOS** : inputs `basalDoseKind`/`sickDayAcknowledged` + nouveaux codes → `swift-expert`.
 
 ### Assemblage corrections ISF `correctionTrend` (US-2651 ISF slice 2, validé medical)
 

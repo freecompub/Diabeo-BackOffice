@@ -223,6 +223,15 @@ export const CLINICAL_BOUNDS = {
    */
   MDI_BASAL_FASTING_DEADBAND_UP_GL: 0.3,
   MDI_BASAL_FASTING_DEADBAND_DOWN_GL: 0.2,
+  /**
+   * US-2659 (S3, validé medical) — cap ABSOLU (U) d'une **demande PATIENT** de baisse de basale STYLO (MDI).
+   * L'amplitude retenue est le PLUS PETIT de `PATIENT_MAX_CHANGE_PERCENT` (10 %) et de ce delta (2 U) — soit
+   * la MOITIÉ du cap moteur (`MDI_BASAL_MAX_DELTA_U` 4 U), exactement comme `PATIENT_MAX_CHANGE_PERCENT` (10 %)
+   * est la moitié du cap moteur `MAX_CHANGE_PERCENT` (20 %). Une demande patient est un pas conservateur, pas
+   * une titration. Le `min` protège les petites doses (10 % de 10 U = 1 U domine) et borne les grosses (2 U
+   * sur 40 U ≈ 5 %). Gate maturité : baisse stylo réservée `CONFIRME` ; pompe dès `INTERMEDIATE`.
+   */
+  MDI_BASAL_PATIENT_MAX_DELTA_U: 2,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

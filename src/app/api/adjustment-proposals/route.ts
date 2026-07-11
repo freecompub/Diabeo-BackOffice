@@ -63,19 +63,32 @@ const createSchema = z.object({
   carbRatioSlotStart: z.number().int().min(0).max(23).optional(),
   carbRatioSlotEnd: z.number().int().min(0).max(24).optional(),
   pumpBasalSlotId: z.string().uuid().optional(),
+  // US-2659 — cible d'une basale STYLO (MDI). Exclusive de `pumpBasalSlotId` (le service re-dérive le mode
+  // de délivrance SERVEUR et rejette un discriminateur incohérent — `deliveryModeMismatch`).
+  basalDoseKind: z.enum(["daily", "morning", "evening"]).optional(),
+  // US-2659 (S3) — accusé DKA/jour-de-maladie (consentement à une baisse basale). Requis pour une baisse stylo.
+  sickDayAcknowledged: z.boolean().optional(),
   proposerComment: z.string().max(1000).optional(),
+}).refine((d) => !(d.basalDoseKind != null && d.pumpBasalSlotId != null), {
+  message: "basalDoseKind and pumpBasalSlotId are mutually exclusive",
+  path: ["basalDoseKind"],
 })
 
 /** Erreurs métier de `createProposal` → statut HTTP (codes stables, sans PHI). */
 const ERROR_STATUS: Record<string, number> = {
   valueOutOfBounds: 422,
   nonInsulinNoDose: 422, // US-2651 — patient non insuliné : aucune proposition de dose (frontière MDR)
-  patientDecreaseForbidden: 422,
+  patientDecreaseForbidden: 422, // legacy (baisse basale patient relâchée en S3 — conservé par prudence)
   patientDeltaTooLarge: 422,
   slotRequired: 400,
   currentValueNotFound: 404,
   duplicatePendingProposal: 409,
   patientProposalCooldown: 429, // US-2650 — cooldown anti-churn (proposition patient trop rapprochée)
+  // US-2659 (S3) — baisse basale patient gatée.
+  maturityTooLowForDecrease: 403, // maturité insuffisante (autorisation refusée)
+  dkaAcknowledgmentRequired: 422, // accusé DKA manquant (baisse stylo)
+  deliveryModeMismatch: 422, // discriminateur (stylo/pompe) incohérent avec la config serveur
+  noChangeProposed: 422, // baisse infra-incrément / non délivrable → non actionnable
 }
 
 /**

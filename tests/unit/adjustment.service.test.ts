@@ -45,6 +45,7 @@ vi.mock("@/lib/services/treatment-mode.service", () => ({
 }))
 
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 
 describe("adjustmentService", () => {
   describe("summary", () => {
@@ -511,6 +512,94 @@ describe("adjustmentService", () => {
         expectedCurrentValue: 22, reason: "basalTooHigh", confidence: "medium", supportingEvents: 5,
         basalDoseKind: "daily",
       })).rejects.toThrow("valueOutOfBounds")
+    })
+  })
+
+  describe("createProposal — BAISSE basale PATIENT (US-2659 S3)", () => {
+    const patient = { userId: 42, role: "patient" as const }
+    // Mocke la config basale (mode + dose) + maturité + absence de cooldown/pending. `configType`/dose
+    // partagent le même `basalConfiguration.findFirst` (resolveCurrentValue + E1).
+    const setup = (opts: { maturity: string; configType: string; dose?: number }) => {
+      vi.mocked(treatmentModeService.resolveTreatmentMode).mockResolvedValue({ mode: "basalBolus", coherent: true, maturityLevel: opts.maturity } as never)
+      prismaMock.basalConfiguration.findFirst.mockResolvedValue({
+        dailyDose: opts.dose ?? 22, morningDose: null, eveningDose: null, configType: opts.configType,
+      } as never)
+      prismaMock.pumpBasalSlot.findFirst.mockResolvedValue({ rate: opts.dose ?? 0.8 } as never)
+      prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null) // ni cooldown ni pending
+      const create = vi.fn().mockResolvedValue({ id: "d1", status: "pending", proposerComment: null })
+      const auditCreate = vi.fn().mockResolvedValue({})
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb({ adjustmentProposal: { create }, auditLog: { create: auditCreate } })) as any)
+      return { create, auditCreate }
+    }
+
+    it("STYLO CONFIRME + accusé DKA + amplitude OK → proposition créée, accusé persisté (timestamp)", async () => {
+      const { create } = setup({ maturity: "CONFIRME", configType: "single_injection", dose: 22 })
+      const res = await adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 20, reason: "patientRequested", basalDoseKind: "daily", sickDayAcknowledged: true },
+        patient,
+      )
+      expect(res.id).toBe("d1")
+      const data = create.mock.calls[0]![0].data
+      expect(data.sickDayAcknowledgedAt).toBeInstanceOf(Date) // consentement DKA persisté (immuable)
+      expect(Number(data.currentValue)).toBe(22) // lu serveur (dailyDose)
+    })
+
+    it("STYLO sans accusé DKA → dkaAcknowledgmentRequired", async () => {
+      setup({ maturity: "CONFIRME", configType: "single_injection" })
+      await expect(adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 20, reason: "patientRequested", basalDoseKind: "daily" },
+        patient,
+      )).rejects.toThrow("dkaAcknowledgmentRequired")
+    })
+
+    it("STYLO INTERMEDIATE (pas CONFIRME) → maturityTooLowForDecrease", async () => {
+      setup({ maturity: "INTERMEDIATE", configType: "single_injection" })
+      await expect(adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 20, reason: "patientRequested", basalDoseKind: "daily", sickDayAcknowledged: true },
+        patient,
+      )).rejects.toThrow("maturityTooLowForDecrease")
+    })
+
+    it("POMPE INTERMEDIATE + baisse ≤ 10 % → créée (pas d'accusé DKA requis)", async () => {
+      const { create } = setup({ maturity: "INTERMEDIATE", configType: "pump", dose: 0.8 })
+      const res = await adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 0.75, reason: "patientRequested", pumpBasalSlotId: "11111111-1111-1111-1111-111111111111" },
+        patient,
+      )
+      expect(res.id).toBe("d1")
+      expect(create.mock.calls[0]![0].data.sickDayAcknowledgedAt).toBeNull() // non fourni → null (non requis pompe)
+    })
+
+    it("POMPE JUNIOR → maturityTooLowForDecrease", async () => {
+      setup({ maturity: "JUNIOR", configType: "pump", dose: 0.8 })
+      await expect(adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 0.75, reason: "patientRequested", pumpBasalSlotId: "11111111-1111-1111-1111-111111111111" },
+        patient,
+      )).rejects.toThrow("maturityTooLowForDecrease")
+    })
+
+    it("STYLO amplitude > 2 U → patientDeltaTooLarge (cap min(10 %, 2 U))", async () => {
+      setup({ maturity: "CONFIRME", configType: "single_injection", dose: 22 }) // −3 U (22→19) > 2 U
+      await expect(adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 19, reason: "patientRequested", basalDoseKind: "daily", sickDayAcknowledged: true },
+        patient,
+      )).rejects.toThrow("patientDeltaTooLarge")
+    })
+
+    it("discriminateur STYLO sur une config POMPE → deliveryModeMismatch (anti-tamper E1)", async () => {
+      setup({ maturity: "CONFIRME", configType: "pump", dose: 22 }) // config pompe, mais body basalDoseKind
+      await expect(adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 20, reason: "patientRequested", basalDoseKind: "daily", sickDayAcknowledged: true },
+        patient,
+      )).rejects.toThrow("deliveryModeMismatch")
+    })
+
+    it("STYLO baisse infra-incrément (−0,5 U < 1 U) → noChangeProposed", async () => {
+      setup({ maturity: "CONFIRME", configType: "single_injection", dose: 22 })
+      await expect(adjustmentService.createProposal(
+        { patientId: 1, parameterType: "basalRate", proposedValue: 21.5, reason: "patientRequested", basalDoseKind: "daily", sickDayAcknowledged: true },
+        patient,
+      )).rejects.toThrow("noChangeProposed")
     })
   })
 

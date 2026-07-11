@@ -95,6 +95,9 @@ export type ReviewData = {
   glycemia: GlycemiaView
   treatment: TreatmentView
   proposals: ReviewProposalItem[]
+  /** US-2659 (S3) — types de `ClinicalReviewFlag` OUVERTS du patient (dont `nocturnalHypoHighFasting` =
+   *  Somogyi). Surface le contexte hypo AVANT une décision de BAISSE basale (jamais de posologie). */
+  reviewFlags: string[]
 }
 
 /** parameterType → clé i18n (règle acronyme « Libellé (ACRONYME) »). */
@@ -410,8 +413,12 @@ function SlotBlock({ label, unit, slots }: { label: ReactNode; unit: string; slo
 }
 
 /* ── Étape 5 — Décisions médicales ────────────────────────────────── */
+/** Type de flag → clé i18n `reviewFlags.flag<PascalCase>` (source unique des libellés). */
+const flagLabelKey = (type: string) => `flag${type.charAt(0).toUpperCase()}${type.slice(1)}`
+
 function DecisionsStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
+  const tFlags = useTranslations("reviewFlags")
   const tUnits = useTranslations("insulinUnits")
   const tAdj = useTranslations("adjustments")
   const locale = useLocale()
@@ -449,6 +456,18 @@ function DecisionsStep({ data }: { data: ReviewData }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">{t("decisionsHint")}</p>
+        {/* US-2659 (S3) — orientations OUVERTES (dont Somogyi `nocturnalHypoHighFasting`) : contexte hypo à
+            voir AVANT d'accepter une BAISSE basale (une baisse sur un Somogyi est le mauvais geste). */}
+        {data.reviewFlags.length > 0 && (
+          <div role="alert" className="rounded-md border border-feedback-warning bg-warning-bg px-3 py-2 text-xs text-warning-fg">
+            <p className="font-medium">{tFlags("title")}</p>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {data.reviewFlags.map((f) => (
+                <li key={f}>{tFlags(flagLabelKey(f))}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {!data.canDecide && (
           <p role="status" className="rounded-md border border-border bg-muted px-3 py-2 text-xs text-muted-foreground">
             {t("decisionsReadOnly")}

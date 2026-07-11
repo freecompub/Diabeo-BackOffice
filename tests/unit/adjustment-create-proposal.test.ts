@@ -17,6 +17,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     isfFindFirst: vi.fn(),
     icrFindFirst: vi.fn(),
     basalFindFirst: vi.fn(),
+    basalConfigFindFirst: vi.fn(), // US-2659 S3 — E1 (mode de délivrance serveur)
     fixedDoseFindFirst: vi.fn(),
     create: vi.fn((args: { data: Record<string, unknown> }) => ({ id: "p1", ...args.data })),
     logWithTx: vi.fn(),
@@ -33,6 +34,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
       insulinSensitivityFactor: { findFirst: m.isfFindFirst },
       carbRatio: { findFirst: m.icrFindFirst },
       pumpBasalSlot: { findFirst: m.basalFindFirst },
+      basalConfiguration: { findFirst: m.basalConfigFindFirst },
       fixedDoseSlot: { findFirst: m.fixedDoseFindFirst },
       patientReferent: { findFirst: m.referentFindFirst },
       $transaction: async (fn: (tx: unknown) => unknown) =>
@@ -81,6 +83,7 @@ beforeEach(() => {
   mocks.adjFindFirst.mockResolvedValue(null) // pas de doublon
   mocks.isfFindFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 }) // valeur courante de confiance
   mocks.basalFindFirst.mockResolvedValue({ rate: 1.0 })
+  mocks.basalConfigFindFirst.mockResolvedValue({ configType: "pump" }) // US-2659 S3 — mode par défaut pompe
   mocks.referentFindFirst.mockResolvedValue({ pro: { userId: 99 } }) // médecin référent
   mocks.sendToUser.mockResolvedValue({ sent: 1 })
   mocks.resolveTreatmentMode.mockResolvedValue({ mode: "basalBolus", coherent: true }) // patient insuliné par défaut
@@ -180,13 +183,23 @@ describe("createProposal — bornes, overflow, garde-fous patient", () => {
     expect(mocks.create.mock.calls[0]![0].data.changePercent).toBe(999.99)
   })
 
-  it("PATIENT : baisse de basale interdite", async () => {
+  it("PATIENT : baisse de basale JUNIOR (maturité par défaut, fail-closed) refusée (US-2659 S3)", async () => {
+    // La baisse n'est plus INTERDITE (US-2659 S3) mais GATÉE : sans maturité (→ JUNIOR fail-closed) → refus.
     await expect(
       adjustmentService.createProposal(
         { patientId: 5, parameterType: "basalRate", proposedValue: 0.8, reason: "patientRequested", pumpBasalSlotId: "slot1" },
         patient, // current 1.0 → delta -0.2
       ),
-    ).rejects.toThrow("patientDecreaseForbidden")
+    ).rejects.toThrow("maturityTooLowForDecrease")
+  })
+
+  it("PATIENT : baisse de basale POMPE INTERMEDIATE ≤ 10 % → autorisée (US-2659 S3)", async () => {
+    mocks.resolveTreatmentMode.mockResolvedValue({ mode: "basalBolus", coherent: true, maturityLevel: "INTERMEDIATE" })
+    const res = await adjustmentService.createProposal(
+      { patientId: 5, parameterType: "basalRate", proposedValue: 0.95, reason: "patientRequested", pumpBasalSlotId: "slot1" },
+      patient, // current 1.0 → delta -0.05 = -5 % ≤ 10 %
+    )
+    expect(res.id).toBe("p1")
   })
 
   it("PATIENT : variation de ratio > 10 % rejetée", async () => {
