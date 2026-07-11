@@ -148,6 +148,67 @@ function afterCutoff<T extends { dayIso: string }>(obs: T[], cutoff: string | nu
   return cutoff === null ? obs : obs.filter((o) => o.dayIso > cutoff)
 }
 
+/** US-2659 — décision de titration d'UNE dose basale STYLO, SANS persistance (l'orchestration décide).
+ *  `isDeesc` distingue une dé-escalade (sécurité, priorité haute) d'une titration treat-to-target. */
+type MdiDoseDecision =
+  | { kind: "proposal"; cand: ProposalCandidate; isDeesc: boolean }
+  | { kind: "flag" }
+  | { kind: "none" }
+
+/**
+ * US-2659 (S1+S2, validé medical) — matrice de titration d'UNE dose basale stylo (daily / evening / morning).
+ * PURE (aucun effet de bord) : renvoie la décision, l'appelant persiste/flague et arbitre « une dose/run ».
+ * Réutilisée par single_injection (daily, signal à jeun, garde nocturne) et split_injection (soir = à jeun/
+ * garde nocturne ; matin = pré-dîner/garde de JOUR, D9 « jamais croisé »).
+ *
+ * @param signalPost  Signal POST-changement (à jeun ou pré-dîner, g/L) — pilote la titration treat-to-target (fix M1).
+ * @param signalFull  Signal pleine fenêtre (g/L) — moyenne pour le seuil Somogyi/rebond + surfaçage sévère.
+ * @param guardNadirs Nadirs de la **fenêtre-suivant-la-dose** (nocturne pour soir/daily, de jour pour matin), pleine fenêtre.
+ * @param guardNadirsPost Idem POST-changement (dé-escalade, fix Q6a).
+ * @param confounded Dose du matin sous IOB du bolus de midi (§3.2) → toute proposition devient un **flag** (Q3b).
+ */
+function decideMdiDose(p: {
+  signalPost: number[]
+  signalFull: number[]
+  guardNadirs: number[]
+  guardNadirsPost: number[]
+  currentDose: number
+  targetGl: number
+  inc: number
+  withinCooldown: boolean
+  coverageOk: boolean
+  confounded: boolean
+}): MdiDoseDecision {
+  const avgSignal = p.signalFull.length > 0 ? p.signalFull.reduce((s, v) => s + v, 0) / p.signalFull.length : 0
+  const recurrentGuard = recurrentPostMealHypo(p.guardNadirs)
+  // Q6b — surfaçage sévère sur la garde (nocturne/jour) **ET** le signal (BGM-only : relevé capillaire sévère
+  // sans nadir CGM correspondant — jamais tu).
+  const severe = hasSevereHypo([...p.guardNadirs, ...p.signalFull])
+  const upperBound = p.targetGl + CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL
+
+  let decision: MdiDoseDecision = { kind: "none" }
+  if (avgSignal > upperBound && recurrentGuard) {
+    decision = { kind: "flag" } // Somogyi/rebond : signal HAUT + hypo récurrente de la fenêtre → jamais une baisse auto (D10)
+  } else if (recurrentGuard) {
+    // Hypos récurrentes de la fenêtre (in-band ou sous la bande) → dé-escalade PRIME. Nadirs POST-changement + cooldown.
+    const de = analyzeMdiBasalDailyHypoDeescalation(p.currentDose, p.guardNadirsPost, p.inc)
+    if (de.kind === "proposal" && !p.withinCooldown) decision = { kind: "proposal", cand: de.candidate, isDeesc: true }
+    else if (de.kind === "flagNonActionable") decision = { kind: "flag" }
+    else if (severe) decision = { kind: "flag" } // dé-escalade bloquée (délai/post-changement) mais sévère → jamais tu (Q6b)
+  } else {
+    // Pas d'hypo récurrente → titration treat-to-target sur le signal POST-changement (fix M1, anti-empilement).
+    const cand = analyzeMdiBasalDailyTrend(p.signalPost, p.targetGl, p.currentDose, p.guardNadirs, p.inc)
+    const isIncrease = cand?.reason === "basalTooLow"
+    if (cand && isIncrease && !p.coverageOk) decision = { kind: "flag" } // AC-4 : hausse refusée faute de couverture → flag
+    else if (cand && !p.withinCooldown) decision = { kind: "proposal", cand, isDeesc: false }
+    else if (severe) decision = { kind: "flag" } // titration bloquée (cooldown) mais sévère isolé → surface (Q6b)
+  }
+  // Q3b — dose du matin sous IOB du bolus de midi : le pré-dîner n'est pas titrable en sûreté → toute
+  // proposition (hausse comme dé-escalade) devient un FLAG (décision basale-vs-bolus rendue au médecin).
+  if (p.confounded && decision.kind === "proposal") return { kind: "flag" }
+  return decision
+}
+
 /** Construit les entrées `analyzeIcrSlot` d'un créneau pour une cible donnée (deadband). */
 const buildIcrMeals = (meals: JournalMeal[], targetGl: number) =>
   meals.map((m) => ({
@@ -491,12 +552,6 @@ export const proposalGeneratorService = {
           fastingValues = toGl(fasting, "fastingMgdl")
         }
         const nocturnalNadirs = toGl(fasting, "nocturnalNadirMgdl")
-        const avgFasting = fastingValues.length > 0 ? mean(fastingValues) : 0
-        const recurrentNoct = recurrentPostMealHypo(nocturnalNadirs)
-        // Surfaçage Q6b sur hypo sévère NOCTURNE (CGM) **ET** à jeun (BGM-only : un relevé capillaire sévère
-        // au réveil < 0,54 g/L n'a pas de nadir nocturne CGM correspondant — ne jamais le taire).
-        const severeHypo = hasSevereHypo([...nocturnalNadirs, ...fastingValues])
-        const upperBound = targetGl + CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL
         const coverageOk = nocturnalNadirs.length >= MIN_NADIR_NIGHTS
 
         // Cooldown MDI (72 h V1) + observations POST-changement (fix Q6a) — gate les DEUX sens (divergence
@@ -540,36 +595,122 @@ export const proposalGeneratorService = {
         }
 
         if (fastingValues.length >= MIN_NADIR_NIGHTS) {
-          // 1. Somogyi : à jeun HAUT (> T + Δ_up) + hypo nocturne récurrente → FLAG, jamais une baisse auto (D10).
-          if (avgFasting > upperBound && recurrentNoct) {
-            await raiseMdiFlag()
-          } else if (recurrentNoct) {
-            // 2. Hypos nocturnes récurrentes (à jeun IN-BAND ou sous la bande) → dé-escalade PRIME (plus spécifique,
-            //    couvre la cible grossesse serrée). Jugée sur les nadirs POST-changement + cooldown (Q6a/Q6b).
-            const de = analyzeMdiBasalDailyHypoDeescalation(currentDose, postNocturnalNadirs, inc)
-            if (de.kind === "proposal" && !withinCooldown) {
-              await persistMdi(de.candidate)
-            } else if (de.kind === "flagNonActionable") {
-              await raiseMdiFlag() // dose trop basse pour titrer d'un incrément → restructuration = revue
-            } else if (severeHypo) {
-              await raiseMdiFlag() // dé-escalade bloquée (délai/post-changement) mais sévère → jamais tu (Q6b)
-            }
-          } else {
-            // 3. Pas d'hypo nocturne récurrente → titration treat-to-target sur l'à jeun POST-changement (fix M1 :
-            //    évite l'empilement d'un pas fixe sur une moyenne 7 j contaminée par ~4 j pré-changement, avant
-            //    le steady state 3-4 j). < 3 à jeun post-changement → l'analyseur renvoie null → HOLD (repli sûr).
-            const candidate = analyzeMdiBasalDailyTrend(postFastingValues, targetGl, currentDose, nocturnalNadirs, inc)
-            const isIncrease = candidate?.reason === "basalTooLow"
-            if (candidate && isIncrease && !coverageOk) {
-              // AC-4 : hausse refusée faute de couverture nocturne (coucher/réveil) → FLAG explicite (jamais un
-              // drop muet — une hypo à 3 h masquée par une moyenne à jeun élevée resterait invisible).
-              await raiseMdiFlag()
-            } else if (candidate && !withinCooldown) {
-              await persistMdi(candidate) // hausse (couverture OK) OU baisse treat-to-target ; cooldown 2 sens (Risk #1)
-            } else if (severeHypo) {
-              await raiseMdiFlag() // titration bloquée (cooldown) mais hypo sévère isolée → surface, jamais tu (Q6b)
-            }
-          }
+          // Décision unifiée (matrice validée S1) : Somogyi → dé-escalade → treat-to-target POST-changement (fix M1)
+          // → AC-4/Q6b. Une dose (daily), garde = nadirs nocturnes (fenêtre-suivant-la-dose).
+          const decision = decideMdiDose({
+            signalPost: postFastingValues, signalFull: fastingValues,
+            guardNadirs: nocturnalNadirs, guardNadirsPost: postNocturnalNadirs,
+            currentDose, targetGl, inc, withinCooldown, coverageOk, confounded: false,
+          })
+          if (decision.kind === "proposal") await persistMdi(decision.cand)
+          else if (decision.kind === "flag") await raiseMdiFlag()
+        }
+      }
+    }
+
+    // 6ter. Chemin BASAL STYLO — split_injection (US-2659 S2, validé medical). DEUX doses stylo :
+    //   - SOIR (`basalDoseKind="evening"`) titrée sur la glycémie à JEUN (= chemin single, garde nocturne) ;
+    //   - MATIN (`basalDoseKind="morning"`) titrée sur la glycémie PRÉ-DÎNER (`preMgdl` des repas du soir),
+    //     garde de JOUR (nadirs matin+midi, D9 « jamais croisé » — jamais le nadir nocturne), et **confondue**
+    //     par l'IOB du bolus de MIDI (§3.2) → flag-only (Q3b).
+    // Orchestration : **une seule proposition/run**, priorité SÉCURITÉ-d'abord (dé-escalade > titration ; à
+    // égalité, soir/à jeun — raffinement de D4, Q5) + **verrou « 1 basale stylo pending »** (Q6, applicatif +
+    // index base `one_pending_stylo_basal`), fail-loud si le verrou bloque une dé-escalade (sécurité).
+    if (basalConfig?.configType === "split_injection") {
+      const eveningDose = basalConfig.eveningDose != null ? Number(basalConfig.eveningDose) : null
+      const morningDose = basalConfig.morningDose != null ? Number(basalConfig.morningDose) : null
+      const inc = CLINICAL_BOUNDS.MDI_BASAL_DELIVERY_INCREMENT_U
+      const mdiPeriod = windowDays != null ? `${windowDays}d` : `${CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS}d`
+      const rawTarget = settings?.glucoseTargets?.[0]?.targetGlucose
+      const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
+      const glVals = (nums: (number | null)[]) => nums.filter((v): v is number => v !== null && Number.isFinite(v)).map((v) => v / 100)
+
+      const raiseSplitFlag = (kind: "morning" | "evening") =>
+        clinicalReviewFlagService.raise(patientId, "nocturnalHypoHighFasting", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: `basal:stylo:${kind}` }, err as Error))
+
+      const persistSplit = async (cand: ProposalCandidate, kind: "morning" | "evening") => {
+        const bucket = `basal:stylo:${kind}`
+        try {
+          await adjustmentService.createEngineProposal({
+            patientId, parameterType: "basalRate", proposedValue: cand.proposedValue,
+            expectedCurrentValue: cand.currentValue, reason: cand.reason, confidence: cand.confidence,
+            supportingEvents: cand.supportingEvents, totalEventsConsidered: cand.totalEventsConsidered,
+            averageObservedValue: cand.averageObservedValue ?? null, analysisPeriod: mdiPeriod, basalDoseKind: kind,
+          }, ctx)
+          created++
+        } catch (err) {
+          const msg = (err as Error).message
+          if (EXPECTED_SKIP.has(msg)) logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
+          else logger.error("proposal-generator", "unexpected engine proposal error", { patientId, bucket, failMode: "unexpected" }, err as Error)
+        }
+      }
+
+      // ── Dose du SOIR : glycémie à jeun (CGM→BGM), garde nocturne (identique single_injection). ──
+      let evDecision: MdiDoseDecision = { kind: "none" }
+      if (eveningDose != null && Number.isFinite(eveningDose) && eveningDose >= CLINICAL_BOUNDS.MDI_BASAL_MIN_U) {
+        let fasting = await mealtimePattern.fastingTrend(patientId, mdiPeriod, auditUserId, ctx, { source: "cgm" })
+        let fastingValues = glVals(fasting.map((f) => f.fastingMgdl))
+        if (fastingValues.length < MIN_NADIR_NIGHTS) {
+          fasting = await mealtimePattern.fastingTrend(patientId, mdiPeriod, auditUserId, ctx, { source: "bgm" })
+          fastingValues = glVals(fasting.map((f) => f.fastingMgdl))
+        }
+        const nocturnalNadirs = glVals(fasting.map((f) => f.nocturnalNadirMgdl))
+        const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "evening" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+        const postFast = afterCutoff(fasting, cutoff)
+        if (fastingValues.length >= MIN_NADIR_NIGHTS) {
+          evDecision = decideMdiDose({
+            signalPost: glVals(postFast.map((f) => f.fastingMgdl)), signalFull: fastingValues,
+            guardNadirs: nocturnalNadirs, guardNadirsPost: glVals(postFast.map((f) => f.nocturnalNadirMgdl)),
+            currentDose: eveningDose, targetGl, inc, withinCooldown,
+            coverageOk: nocturnalNadirs.length >= MIN_NADIR_NIGHTS, confounded: false,
+          })
+        }
+      }
+
+      // ── Dose du MATIN : glycémie PRÉ-DÎNER (`preMgdl` des repas du soir), garde de JOUR, confondeur IOB midi. ──
+      let mnDecision: MdiDoseDecision = { kind: "none" }
+      if (morningDose != null && Number.isFinite(morningDose) && morningDose >= CLINICAL_BOUNDS.MDI_BASAL_MIN_U) {
+        const dinners = journal.filter((m) => m.moment === "evening")
+        const dayMeals = journal.filter((m) => m.moment === "morning" || m.moment === "noon") // garde de JOUR (D9)
+        const preDinner = glVals(dinners.map((m) => m.preMgdl))
+        const dayNadirs = glVals(dayMeals.map((m) => m.nadirMgdl))
+        // Confondeur (§3.2/Q3a) : un bolus au DÉJEUNER (midi) contamine le pré-dîner par son IOB → non titrable
+        // en sûreté → dose du matin **flag-only** (Q3b). Le bolus petit-déj (action ~5 h) est éteint avant le dîner.
+        const lunchBolus = journal.some((m) => m.moment === "noon" && (m.bolus ?? 0) > 0)
+        const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "morning" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+        if (preDinner.length >= MIN_NADIR_NIGHTS) {
+          mnDecision = decideMdiDose({
+            signalPost: glVals(afterCutoff(dinners, cutoff).map((m) => m.preMgdl)), signalFull: preDinner,
+            guardNadirs: dayNadirs, guardNadirsPost: glVals(afterCutoff(dayMeals, cutoff).map((m) => m.nadirMgdl)),
+            currentDose: morningDose, targetGl, inc, withinCooldown,
+            coverageOk: dayNadirs.length >= MIN_NADIR_NIGHTS, confounded: lunchBolus,
+          })
+        }
+      }
+
+      // ── Orchestration : flags toujours levés (revue, pas un changement) ; au plus UNE proposition/run. ──
+      if (evDecision.kind === "flag") await raiseSplitFlag("evening")
+      if (mnDecision.kind === "flag") await raiseSplitFlag("morning")
+
+      const proposals: { d: "morning" | "evening"; cand: ProposalCandidate; isDeesc: boolean }[] = []
+      if (evDecision.kind === "proposal") proposals.push({ d: "evening", cand: evDecision.cand, isDeesc: evDecision.isDeesc })
+      if (mnDecision.kind === "proposal") proposals.push({ d: "morning", cand: mnDecision.cand, isDeesc: mnDecision.isDeesc })
+      if (proposals.length > 0) {
+        // Priorité : dé-escalade (sécurité) d'abord ; à égalité, soir/à jeun (nocturne = pire mode d'échec).
+        proposals.sort((a, b) => Number(b.isDeesc) - Number(a.isDeesc) || (a.d === "evening" ? -1 : 1))
+        const winner = proposals[0]
+        // Verrou Q6 : au plus 1 basale stylo pending (toutes cibles). Applicatif ici + index base (course inter-run).
+        const pending = await prisma.adjustmentProposal.findFirst({
+          where: { patientId, parameterType: "basalRate", status: "pending", NOT: { basalDoseKind: null } },
+          select: { id: true },
+        })
+        if (pending) {
+          if (winner.isDeesc) await raiseSplitFlag(winner.d) // fail-loud : une dé-escalade (sécurité) bloquée par le verrou → flag
+          // sinon (titration) → défer silencieux, repris au prochain run une fois la pending résolue.
+        } else {
+          await persistSplit(winner.cand, winner.d)
         }
       }
     }

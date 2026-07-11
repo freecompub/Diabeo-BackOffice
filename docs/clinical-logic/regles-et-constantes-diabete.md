@@ -555,6 +555,34 @@ délivrable demi-unité, pas de plafond dur) et non pompe (U/h). **Application d
 d'une proposition stylo **lève `styloBasalApplyNotSupported`** (fail-closed — jamais un « accepté + appliqué » fantôme
 sans écriture) ; l'écriture groupée de `dailyDose` arrive dans une slice ultérieure. Le médecin accepte SANS apply.
 
+### Titration `split_injection` (US-2659 S2, LIVRÉ, validé medical 2026-07-11)
+
+DEUX doses stylo (matin + soir). La **matrice de titration d'une dose** est factorisée (`decideMdiDose`, pure)
+et **partagée** avec `single_injection` (mêmes bornes, hold zone, snap, dé-escalade `−min`, cooldown post-changement,
+surfaçage Q6b). Le service (`resolveCurrentValue` → `morning`/`eveningDose`, bornes stylo, accept fail-closed) est
+**générique** depuis S1 (S2 n'ajoute pas de code service).
+
+- **Dose du SOIR** (`basalDoseKind="evening"`) → titrée sur la glycémie **à jeun** (= chemin `single_injection` :
+  source CGM→BGM, garde **nocturne**, Somogyi, AC-4).
+- **Dose du MATIN** (`basalDoseKind="morning"`) → titrée sur la glycémie **PRÉ-DÎNER** (`preMgdl` des repas
+  `moment="evening"` de `dailyJournal`). Garde hypo = **nadirs de JOUR** (repas `morning`+`noon`), **jamais** le
+  nadir nocturne (D9 « jamais croisé » — fenêtre de la dose du soir). Cible pré-dîner = `resolveFastingTarget`
+  (préprandiale ADA 80–130, même hold zone). **Confondeur (§3.2)** : un **bolus de midi** (`moment="noon"`,
+  `bolus>0`) contamine le pré-dîner par son IOB → dose du matin **flag-only** (hausse ET dé-escalade), jamais une
+  proposition (décision basale-vs-bolus rendue au médecin). ⇒ un split **basal-bolus** ne titre que le soir ;
+  un split **basal-seul** titre les deux. *Limite S2 : le pré-dîner est lu sur le journal CGM ; un split BGM-only
+  n'obtient pas de proposition matin (fail-closed).*
+
+**Orchestration (D4 raffiné, Q5)** — **une seule proposition basale/run**, priorité **sécurité-d'abord** :
+dé-escalade (soir ou matin) > titration ; à égalité, **soir/à jeun** (nocturne = pire mode d'échec). Les **flags**
+sont toujours levés (revue, pas un changement de dose). **Verrou « 1 basale stylo pending »** (Q6) : au plus une
+proposition stylo `pending` par patient, toutes cibles confondues (changer les 2 doses d'un coup détruit
+l'attribution + risque l'empilement). Double couche : garde **applicative** (le générateur vérifie une pending
+avant de créer) + **index unique partiel base** `adjustment_proposals_one_pending_stylo_basal`
+(`WHERE parameter_type='basalRate' AND basal_dose_kind IS NOT NULL AND status='pending'`, migration `20260720100000`
+— ferme la course inter-run cron/on-demand ; violation P2002 → `duplicatePendingProposal`). **Fail-loud** : si le
+verrou bloque une **dé-escalade** (sécurité), un **flag** est levé (jamais un drop silencieux).
+
 ### Assemblage corrections ISF `correctionTrend` (US-2651 ISF slice 2, validé medical)
 
 Apparie les **corrections propres** (`mealtimePattern.correctionTrend`, CGM only) pour peupler
