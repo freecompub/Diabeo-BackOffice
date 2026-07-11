@@ -179,6 +179,31 @@ export const CLINICAL_BOUNDS = {
   CORRECTION_MIN_ELEVATION_GL: 0.3,
   CORRECTION_SETTLE_TOL_MIN: 30,
   CORRECTION_COB_LOOKBACK_MIN: 180,
+  /**
+   * US-2659 — titration de la basale **stylo (MDI)** (single/split), distincte de la basale POMPE
+   * (créneaux U/h, `PUMP_BASAL_INCREMENT`) et de la dose fixe (`FIXED_DOSE_*`, magnitudes trop serrées
+   * pour une basale adulte). Sémantique treat-to-target (ADA 2025 §9 ; Riddle 2003 ; INSIGHT). Toutes en
+   * UNITÉS TOTALES (U), jamais en U/h. Validé medical (cadrage 2026-07-11). Source de vérité unique —
+   * catalogue : `docs/clinical-logic/regles-et-constantes-diabete.md` (verrou anti-drift `clinical-bounds.test.ts`).
+   *
+   * - `MDI_BASAL_MIN_U` — plancher de sanité (= `FIXED_DOSE_MIN`) ; une dose proposée sous ce seuil = non actionnable → flag.
+   * - `MDI_BASAL_WARN_U` — seuil d'AVERTISSEMENT non bloquant (= `FIXED_BASAL_WARN_U`) : DT2 insulino-résistant / U300 / dégludec.
+   * - `MDI_BASAL_STEP_U` — pas de HAUSSE treat-to-target (`max(+2 U, +10 %)`, cf. INSIGHT/ADA).
+   * - `MDI_BASAL_MAX_DELTA_U` — cap ABSOLU de variation par ajustement (= amplitude de la réduction sur hypo).
+   * - `MDI_BASAL_MAX_CHANGE_PERCENT` — cap % (ADA 10–20 %) ; la proposition retient la borne la plus protectrice.
+   * - `MDI_BASAL_DELIVERY_INCREMENT_U` — résolution du stylo : **1 U défaut fail-closed** ; 0,5 U seulement si
+   *   le dispositif est un stylo demi-unité (lu sur l'appareil, jamais supposé). JAMAIS l'incrément pompe (0,05 U/h).
+   * - `MDI_BASAL_COOLDOWN_HOURS` — anti-cliquet (steady state glargine/detemir 3–4 j). 96 h dégludec = V2 (P3).
+   * - `MDI_BASAL_ANALYSIS_DAYS` — fenêtre d'analyse (7 j, plus réactive que 14 j ; ≥ 3 glycémies à jeun valides).
+   */
+  MDI_BASAL_MIN_U: 0.5,
+  MDI_BASAL_WARN_U: 80,
+  MDI_BASAL_STEP_U: 2,
+  MDI_BASAL_MAX_DELTA_U: 4,
+  MDI_BASAL_MAX_CHANGE_PERCENT: 20,
+  MDI_BASAL_DELIVERY_INCREMENT_U: 1,
+  MDI_BASAL_COOLDOWN_HOURS: 72,
+  MDI_BASAL_ANALYSIS_DAYS: 7,
 } as const
 
 export type ClinicalBounds = typeof CLINICAL_BOUNDS

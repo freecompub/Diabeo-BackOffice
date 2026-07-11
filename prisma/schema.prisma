@@ -94,6 +94,17 @@ enum BasalConfigType {
   split_injection
 }
 
+// US-2659 — discriminateur de CIBLE d'une proposition de basale STYLO (MDI). La basale pompe cible un
+// `PumpBasalSlot` (créneau U/h) ; la basale stylo n'a pas de créneau adressable → ce discriminateur
+// identifie la dose visée sur `BasalConfiguration` : `daily` (single_injection → dailyDose),
+// `morning`/`evening` (split_injection → morningDose/eveningDose). NULL pour pompe/ISF/ICR/fixedDose.
+// Étend l'index unique partiel « 1 pending / (patient × paramètre × cible) ».
+enum BasalDoseKind {
+  daily
+  morning
+  evening
+}
+
 enum GlucoseTargetPreset {
   standard
   tight
@@ -1414,6 +1425,10 @@ model AdjustmentProposal {
   // (morning/noon/evening/night) cible/dédoublonne une `FixedDoseSlot`. Fait partie du tuple d'unicité
   // anti-spam (index partiel `adjustment_proposals_one_pending_per_slot`).
   moment                DoseMoment?         @map("moment")
+  // US-2659 — discriminateur de cible pour la basale STYLO (MDI) : `daily` (single_injection),
+  // `morning`/`evening` (split_injection). NULL pour pompe (ciblée par `pumpBasalSlotId`) et pour
+  // ISF/ICR/fixedDose. Fait partie du tuple d'unicité anti-spam (index partiel `one_pending_per_slot`).
+  basalDoseKind         BasalDoseKind?      @map("basal_dose_kind")
   analysisPeriod        String?             @map("analysis_period") @db.VarChar(10)
   dataQuality           String?             @map("data_quality") @db.VarChar(20)
   status                ProposalStatus      @default(pending)

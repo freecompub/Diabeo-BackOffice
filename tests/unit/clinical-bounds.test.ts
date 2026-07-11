@@ -91,6 +91,15 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       CORRECTION_MIN_ELEVATION_GL: 0.3,
       CORRECTION_SETTLE_TOL_MIN: 30,
       CORRECTION_COB_LOOKBACK_MIN: 180,
+      // US-2659 — titration basale STYLO (MDI), unités totales (jamais U/h)
+      MDI_BASAL_MIN_U: 0.5,
+      MDI_BASAL_WARN_U: 80,
+      MDI_BASAL_STEP_U: 2,
+      MDI_BASAL_MAX_DELTA_U: 4,
+      MDI_BASAL_MAX_CHANGE_PERCENT: 20,
+      MDI_BASAL_DELIVERY_INCREMENT_U: 1,
+      MDI_BASAL_COOLDOWN_HOURS: 72,
+      MDI_BASAL_ANALYSIS_DAYS: 7,
     })
   })
 
@@ -110,6 +119,24 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
     expect(CLINICAL_BOUNDS.FIXED_BOLUS_WARN_U).toBeLessThan(CLINICAL_BOUNDS.FIXED_BASAL_WARN_U)
     // cap de variation patient strictement plus strict que le cap moteur
     expect(CLINICAL_BOUNDS.FIXED_DOSE_PATIENT_MAX_DELTA_U).toBeLessThan(CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U)
+  })
+
+  it("US-2659 — basale MDI : plancher > 0, incrément ≠ incrément pompe, cap % ≥ cap dose fixe, cooldown = steady state", () => {
+    // Plancher de sanité strictement positif (aligné sur la dose fixe).
+    expect(CLINICAL_BOUNDS.MDI_BASAL_MIN_U).toBeGreaterThan(0)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_MIN_U).toBe(CLINICAL_BOUNDS.FIXED_DOSE_MIN)
+    // Incrément stylo (unités totales) JAMAIS l'incrément pompe (U/h) — invariant de sûreté D6.
+    expect(CLINICAL_BOUNDS.MDI_BASAL_DELIVERY_INCREMENT_U).not.toBe(CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_DELIVERY_INCREMENT_U).toBeGreaterThanOrEqual(CLINICAL_BOUNDS.FIXED_DOSE_DELIVERY_INCREMENT_U)
+    // Basale adulte titrée plus large que la dose fixe (magnitudes dose fixe trop serrées) : cap % et delta ≥.
+    expect(CLINICAL_BOUNDS.MDI_BASAL_MAX_CHANGE_PERCENT).toBeGreaterThanOrEqual(CLINICAL_BOUNDS.FIXED_DOSE_MAX_CHANGE_PERCENT)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_MAX_DELTA_U).toBeGreaterThan(CLINICAL_BOUNDS.FIXED_DOSE_MAX_DELTA_U)
+    // Le pas de hausse treat-to-target reste sous le cap absolu de variation.
+    expect(CLINICAL_BOUNDS.MDI_BASAL_STEP_U).toBeLessThanOrEqual(CLINICAL_BOUNDS.MDI_BASAL_MAX_DELTA_U)
+    // Avertissement basale aligné sur la dose fixe basale ; fenêtre d'analyse plus courte que le mois AGP.
+    expect(CLINICAL_BOUNDS.MDI_BASAL_WARN_U).toBe(CLINICAL_BOUNDS.FIXED_BASAL_WARN_U)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS).toBe(7)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS).toBe(CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS)
   })
 
   it("US-2651 — deadband ICR : borne basse < plafond adulte (1,80), grossesse plus stricte", () => {

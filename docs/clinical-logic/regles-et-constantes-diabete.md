@@ -36,6 +36,14 @@ consensus cap bolus 25 U.
 | `FIXED_DOSE_MAX_DELTA_U` | 2.0 | U | Variation max par ajustement (titration lente) |
 | `FIXED_DOSE_PATIENT_MAX_DELTA_U` | 1.0 | U | Cap variation **patient** dose fixe (< moteur) |
 | `PATIENT_MAX_CHANGE_PERCENT` | 10 | % | Cap variation **patient** sur ratios (proposition, US-2649) |
+| `MDI_BASAL_MIN_U` | 0.5 | U | Plancher de sanité basale **stylo (MDI)** (US-2659 ; = `FIXED_DOSE_MIN`) |
+| `MDI_BASAL_WARN_U` | 80 | U | Seuil d'**avertissement** (non bloquant) basale stylo (US-2659 ; = `FIXED_BASAL_WARN_U`) |
+| `MDI_BASAL_STEP_U` | 2 | U | Pas de **hausse** treat-to-target (`max(+2 U, +10 %)`) (US-2659) |
+| `MDI_BASAL_MAX_DELTA_U` | 4 | U | Cap absolu de variation par ajustement (= réduction sur hypo) (US-2659) |
+| `MDI_BASAL_MAX_CHANGE_PERCENT` | 20 | % | Cap % (ADA 10–20 %) — la borne la plus protectrice l'emporte (US-2659) |
+| `MDI_BASAL_DELIVERY_INCREMENT_U` | 1 | U | Résolution stylo (défaut fail-closed ; 0,5 si demi-unité) — **jamais** l'incrément pompe (US-2659) |
+| `MDI_BASAL_COOLDOWN_HOURS` | 72 | h | Anti-cliquet (steady state glargine/detemir 3–4 j ; 96 h dégludec = V2) (US-2659) |
+| `MDI_BASAL_ANALYSIS_DAYS` | 7 | j | Fenêtre d'analyse (plus réactive ; ≥ 3 glycémies à jeun) (US-2659) |
 
 > ⚠️ **Mise à jour 2026-07-10** : les constantes d'auto-application experte gouvernée ont été **supprimées** du code (US-2657 retirée). Les éditions patient ne génèrent désormais qu'une **proposition** (jamais auto-application). Voir « Niveau de maturité du patient » ci-dessous pour la maturité (JUNIOR/INTERMEDIATE/CONFIRME) — elle gouverne les **capacités d'édition** (valeurs vs créneaux), pas une voie d'auto-application.
 
@@ -455,6 +463,37 @@ variation qui s'arrondit à < 1 incrément → aucune proposition. (Mirror `anal
 - **Cible non fasting-scoped** : la cible individualisée lit `glucoseTargets[0]` (1re cible active, pas
   forcément à jeun) ; sûr car clampée `[0,80 ; 1,30]`. Préférer un champ fasting dédié si disponible.
 - **Seuil couverture** `MIN_NADIR_NIGHTS = 3` (constante locale, distincte de `MIN_MEALS_PER_SLOT`).
+
+### Titration basale STYLO (MDI) — socle S0 (US-2659, cadrage validé medical 2026-07-11)
+
+**Motivation** : le générateur ci-dessus ne titre que la basale **pompe** (`configType === "pump"`). Un
+patient sous **stylo** (`single_injection` = 1 dose lente/j ; `split_injection` = matin + soir) n'obtient
+**aucune** proposition basale — c'est la « limite connue » que US-2659 comble. La basale stylo se distingue
+de la pompe par le **geste**, la **granularité** (unités TOTALES, pas U/h) et le **risque**.
+
+**Discriminateur de cible `AdjustmentProposal.basalDoseKind`** (`daily`/`morning`/`evening`, enum
+`BasalDoseKind`, NULL pour pompe/ISF/ICR/fixedDose) — **pré-requis** de toute proposition stylo : la basale
+pompe cible un `PumpBasalSlot`, la basale stylo n'a **pas de créneau adressable** ; ce discriminateur
+identifie la dose visée sur `BasalConfiguration` (`daily` → `dailyDose` ; `morning`/`evening` →
+`morningDose`/`eveningDose`). Il **étend le tuple de l'index unique partiel** `adjustment_proposals_one_pending_per_slot`
+(`NULLS NOT DISTINCT`, `WHERE status = 'pending'`) → deux propositions stylo pending sur des doses
+différentes (matin vs soir) ne se collisionnent plus à tort. Migration `20260719100000`. **Contrat iOS**
+(nouveau discriminateur) → coordination `swift-expert`.
+
+**Constantes dédiées `MDI_BASAL_*`** (table §1) — sémantique et magnitudes propres à la basale stylo :
+**jamais** l'incrément pompe (0,05 U/h, mismatch U/h vs U totales), **jamais** les magnitudes dose fixe
+(±2 U trop serrées pour une basale adulte). Toutes en **unités totales**. Défaut d'incrément **fail-closed
+= 1 U** (0,5 U seulement si stylo demi-unité lu sur l'appareil).
+
+**Logique de titration** (détaillée dans les slices S1 `single_injection` / S2 `split_injection`, à venir) —
+principes actés : `single` → titrer `dailyDose` sur la **glycémie à jeun** (treat-to-target) ; `split` →
+dose du **soir sur l'à jeun**, dose du **matin sur le pré-dîner**, **une seule dose titrée par run**
+(priorité soir/à jeun) ; **garde BGM** (hausse conditionnée à des relevés coucher + réveil, sinon flag) ;
+**garde hypo** fenêtre-suivant-la-dose (sévère isolée < 0,54 g/L supprime la hausse ; récurrente →
+dé-escalade bornée ; non-actionnable → flag) ; **Somogyi** (à jeun HAUT + hypo nocturne récurrente →
+flag `nocturnalHypoHighFasting`, jamais de baisse auto). **Jamais auto-appliqué** (ADR #13) : toute sortie =
+`AdjustmentProposal` `pending` gatée médecin. Réfs : ADA Standards of Care 2025 §9 ; Riddle Treat-to-Target
+2003 ; INSIGHT ; ISPAD (stylos demi-unité).
 
 ### Assemblage corrections ISF `correctionTrend` (US-2651 ISF slice 2, validé medical)
 
