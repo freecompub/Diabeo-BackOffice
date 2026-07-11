@@ -518,6 +518,7 @@ export const adjustmentService = {
           carbRatioSlotStart: slot.carbRatioSlotStart,
           pumpBasalSlotId: slot.pumpBasalSlotId,
           moment: slot.moment, // US-2652 : cooldown PAR MOMENT (sinon morning bloque evening)
+          basalDoseKind: slot.basalDoseKind, // US-2659 : cooldown PAR CIBLE stylo (sinon evening bloque morning en S2)
         },
         orderBy: { createdAt: "desc" },
         select: { reviewedAt: true, createdAt: true },

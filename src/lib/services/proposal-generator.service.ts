@@ -129,12 +129,16 @@ async function deescalationTiming(
   patientId: number,
   parameterType: AdjustableParameter,
   slotWhere: Prisma.AdjustmentProposalWhereInput,
+  // US-2659 — plancher temporel paramétrable : les 4 leviers historiques utilisent
+  // `ENGINE_DEESCALATION_COOLDOWN_HOURS` (72 h) ; la basale STYLO passe `MDI_BASAL_COOLDOWN_HOURS`
+  // (72 h V1, 96 h dégludec V2). Défaut = ENGINE pour ne rien changer aux appelants existants.
+  cooldownHours: number = CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS,
 ): Promise<{ cutoff: string | null; withinCooldown: boolean }> {
   const at = await lastAcceptedChangeAt(patientId, parameterType, slotWhere)
   if (at === null) return { cutoff: null, withinCooldown: false }
   return {
     cutoff: localDay(at.getTime()),
-    withinCooldown: Date.now() - at.getTime() < CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS * 3_600_000,
+    withinCooldown: Date.now() - at.getTime() < cooldownHours * 3_600_000,
   }
 }
 
@@ -489,14 +493,19 @@ export const proposalGeneratorService = {
         const nocturnalNadirs = toGl(fasting, "nocturnalNadirMgdl")
         const avgFasting = fastingValues.length > 0 ? mean(fastingValues) : 0
         const recurrentNoct = recurrentPostMealHypo(nocturnalNadirs)
-        const severeNoct = hasSevereHypo(nocturnalNadirs)
+        // Surfaçage Q6b sur hypo sévère NOCTURNE (CGM) **ET** à jeun (BGM-only : un relevé capillaire sévère
+        // au réveil < 0,54 g/L n'a pas de nadir nocturne CGM correspondant — ne jamais le taire).
+        const severeHypo = hasSevereHypo([...nocturnalNadirs, ...fastingValues])
         const upperBound = targetGl + CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL
         const coverageOk = nocturnalNadirs.length >= MIN_NADIR_NIGHTS
 
-        // Cooldown 72 h + nadirs POST-changement (fix Q6a) — gate les DEUX sens (divergence assumée vs pompe :
-        // steady state glargine/detemir 3-4 j + incrément 1 U grossier → anti-empilement, Risk #1).
-        const { cutoff: mdiCutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "daily" })
-        const postNocturnalNadirs = toGl(afterCutoff(fasting, mdiCutoff), "nocturnalNadirMgdl")
+        // Cooldown MDI (72 h V1) + observations POST-changement (fix Q6a) — gate les DEUX sens (divergence
+        // assumée vs pompe : steady state glargine/detemir 3-4 j + incrément 1 U grossier → anti-empilement,
+        // Risk #1). Filtre appliqué AUX DEUX signaux : nadirs (dé-escalade) ET à jeun (treat-to-target, fix M1).
+        const { cutoff: mdiCutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "daily" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+        const postFast = afterCutoff(fasting, mdiCutoff)
+        const postNocturnalNadirs = toGl(postFast, "nocturnalNadirMgdl")
+        const postFastingValues = toGl(postFast, "fastingMgdl")
         const mdiBucket = "basal:stylo:daily"
 
         const raiseMdiFlag = () =>
@@ -542,12 +551,14 @@ export const proposalGeneratorService = {
               await persistMdi(de.candidate)
             } else if (de.kind === "flagNonActionable") {
               await raiseMdiFlag() // dose trop basse pour titrer d'un incrément → restructuration = revue
-            } else if (severeNoct) {
+            } else if (severeHypo) {
               await raiseMdiFlag() // dé-escalade bloquée (délai/post-changement) mais sévère → jamais tu (Q6b)
             }
           } else {
-            // 3. Pas d'hypo nocturne récurrente → titration treat-to-target (la hold zone gère le HOLD in-band).
-            const candidate = analyzeMdiBasalDailyTrend(fastingValues, targetGl, currentDose, nocturnalNadirs, inc)
+            // 3. Pas d'hypo nocturne récurrente → titration treat-to-target sur l'à jeun POST-changement (fix M1 :
+            //    évite l'empilement d'un pas fixe sur une moyenne 7 j contaminée par ~4 j pré-changement, avant
+            //    le steady state 3-4 j). < 3 à jeun post-changement → l'analyseur renvoie null → HOLD (repli sûr).
+            const candidate = analyzeMdiBasalDailyTrend(postFastingValues, targetGl, currentDose, nocturnalNadirs, inc)
             const isIncrease = candidate?.reason === "basalTooLow"
             if (candidate && isIncrease && !coverageOk) {
               // AC-4 : hausse refusée faute de couverture nocturne (coucher/réveil) → FLAG explicite (jamais un
@@ -555,8 +566,8 @@ export const proposalGeneratorService = {
               await raiseMdiFlag()
             } else if (candidate && !withinCooldown) {
               await persistMdi(candidate) // hausse (couverture OK) OU baisse treat-to-target ; cooldown 2 sens (Risk #1)
-            } else if (severeNoct) {
-              await raiseMdiFlag() // titration bloquée (cooldown) mais nadir sévère isolé → surface, jamais tu (Q6b)
+            } else if (severeHypo) {
+              await raiseMdiFlag() // titration bloquée (cooldown) mais hypo sévère isolée → surface, jamais tu (Q6b)
             }
           }
         }

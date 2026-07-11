@@ -534,10 +534,16 @@ soir/à jeun). **Jamais auto-appliqué** (ADR #13). Réfs : ADA Standards of Car
 1. **Somogyi** — à jeun HAUT (`> T + 0,30`) + hypo nocturne récurrente → **flag** `nocturnalHypoHighFasting` (D10).
 2. **Dé-escalade** (hypos nocturnes récurrentes, in-band ou sous la bande) — **prime** sur la baisse treat-to-target
    (plus spécifique ; couvre la cible grossesse serrée). Jugée sur les nadirs POST-changement + cooldown (Q6a/Q6b).
-3. **Titration treat-to-target** (pas d'hypo nocturne récurrente) — hausse (si **couverture nocturne** ≥ 3 nadirs,
-   sinon **AC-4 : flag explicite**, jamais un drop muet) OU baisse ; **cooldown 72 h gate les DEUX sens** (Risk #1,
-   divergence assumée vs pompe : steady state 3–4 j + incrément 1 U grossier → anti-empilement). Nadir sévère isolé
-   pendant blocage → flag (Q6b).
+3. **Titration treat-to-target** (pas d'hypo nocturne récurrente) — jugée sur l'**à jeun POST-changement**
+   (`afterCutoff`, fix M1 : évite qu'un pas FIXE s'empile sur une moyenne 7 j contaminée par ~4 j pré-changement
+   avant le steady state ; < 3 à jeun post-changement → l'analyseur renvoie null → **HOLD**). Hausse (si
+   **couverture nocturne** ≥ 3 nadirs, sinon **AC-4 : flag explicite**, jamais un drop muet) OU baisse ;
+   **cooldown `MDI_BASAL_COOLDOWN_HOURS` (72 h V1) gate les DEUX sens** (Risk #1, divergence assumée vs pompe :
+   steady state 3–4 j + incrément 1 U grossier → anti-empilement).
+
+**Surfaçage sévère (Q6b)** — pendant tout blocage (cooldown / dé-escalade non actionnable), une hypo sévère
+(< 0,54 g/L) **nocturne (CGM) OU à jeun (BGM-only, relevé réveil)** est surfacée en flag (`hasSevereHypo` sur
+`nadirs nocturnes ∪ à jeun`) — jamais tue, y compris sans couverture CGM.
 
 **Source du signal à jeun** : **CGM d'abord** (porte les nadirs nocturnes → autorise hausses + Somogyi + dé-escalade),
 **à défaut BGM** (patient MDI souvent BGM → à jeun présent mais aucun nadir → hausses refusées AC-4 → flag, baisses
