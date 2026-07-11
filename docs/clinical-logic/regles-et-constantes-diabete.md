@@ -13,6 +13,12 @@
 toute règle métier diabète ajouté au code **doit** apparaître ici (ligne dans le tableau
 du domaine concerné) dans la **même PR**, avec sa valeur et son fichier source.
 
+> 📄 **Guide illustré destiné aux médecins / infirmières / patients** — le processus complet des
+> **propositions d'ajustement d'insuline** (parcours patient/soignant/médecin, algorithme état par état,
+> cas passants/bloquants avec graphiques, constantes justifiées référence *vs* décision interne, glossaire) :
+> [`proposition-insuline.html`](proposition-insuline.html) (US-2659, validé `medical-domain-validator`).
+> Fidèle au code, sans extrapolation ; à ouvrir dans un navigateur.
+
 ---
 
 ## 1. Bornes de sécurité de l'insulinothérapie — `CLINICAL_BOUNDS`
