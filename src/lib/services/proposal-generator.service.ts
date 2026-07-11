@@ -39,7 +39,7 @@ import { analyticsService } from "@/lib/services/analytics.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
-import { mealtimePattern, type JournalMeal, type CorrectionPoint } from "@/lib/services/meal-trends.service"
+import { mealtimePattern, localDay, type JournalMeal, type CorrectionPoint } from "@/lib/services/meal-trends.service"
 import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
@@ -100,21 +100,47 @@ const EMPTY = (skipped: string): GenerateResult =>
  * @param slotWhere Discriminateur de créneau du paramètre (ICR: `carbRatioSlot*` ; ISF: `timeSlot*` ;
  *   basal: `pumpBasalSlotId` ; fixedDose: `moment`).
  */
-async function deescalationOnCooldown(
+async function lastAcceptedChangeAt(
   patientId: number,
   parameterType: AdjustableParameter,
   slotWhere: Prisma.AdjustmentProposalWhereInput,
-): Promise<boolean> {
+): Promise<Date | null> {
   const last = await prisma.adjustmentProposal.findFirst({
     // `reviewedAt: { not: null }` — sous PG `ORDER BY ... DESC` place les NULL en premier ; sans ce filtre
     // une ligne `accepted` à `reviewedAt` NULL (ne devrait pas exister — l'acceptation le pose) masquerait
-    // une acceptation récente ⇒ contournement du cooldown. Ceinture-et-bretelles.
+    // une acceptation récente. Ceinture-et-bretelles.
     where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null }, ...slotWhere },
     orderBy: { reviewedAt: "desc" },
     select: { reviewedAt: true },
   })
-  if (!last?.reviewedAt) return false
-  return Date.now() - last.reviewedAt.getTime() < CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS * 3_600_000
+  return last?.reviewedAt ?? null
+}
+
+/**
+ * US-2653 (fix Q6a) — **temporalité anti-cliquet** d'une dé-escalade sur un `(patient × paramètre × créneau)`.
+ * Le cooldown est un **plancher temporel**, pas la vraie porte : la porte est le **compte d'observations
+ * POST-changement** (appliquée côté appelant en filtrant les nadirs à `dayIso > cutoff` avant l'analyseur).
+ *  - `cutoff` : jour local du dernier changement ACCEPTÉ (`null` si aucun → première dé-escalade, fenêtre entière) ;
+ *  - `withinCooldown` : `true` si ce changement date de < `ENGINE_DEESCALATION_COOLDOWN_HOURS` (délai non écoulé).
+ * Une dé-escalade ne se persiste que si `!withinCooldown` **ET** le signal récurrent tient sur le POST-changement.
+ */
+async function deescalationTiming(
+  patientId: number,
+  parameterType: AdjustableParameter,
+  slotWhere: Prisma.AdjustmentProposalWhereInput,
+): Promise<{ cutoff: string | null; withinCooldown: boolean }> {
+  const at = await lastAcceptedChangeAt(patientId, parameterType, slotWhere)
+  if (at === null) return { cutoff: null, withinCooldown: false }
+  return {
+    cutoff: localDay(at.getTime()),
+    withinCooldown: Date.now() - at.getTime() < CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS * 3_600_000,
+  }
+}
+
+/** US-2653 (fix Q6a) — observations datées APRÈS le dernier changement accepté (par jour local). `cutoff`
+ *  `null` → toutes (aucun changement antérieur). */
+function afterCutoff<T extends { dayIso: string }>(obs: T[], cutoff: string | null): T[] {
+  return cutoff === null ? obs : obs.filter((o) => o.dayIso > cutoff)
 }
 
 /** Construit les entrées `analyzeIcrSlot` d'un créneau pour une cible donnée (deadband). */
@@ -283,38 +309,44 @@ export const proposalGeneratorService = {
         .filter((n): n is number => n !== null)
         .map((n) => n / 100)
       const recurrentHypo = recurrentPostMealHypo(nadirsGl)
+      const icrBucket = `${slot.startHour}-${slot.endHour}`
+      const raiseIcrFlag = () =>
+        clinicalReviewFlagService.raise(patientId, "highVariabilityPostMeal", auditUserId, ctx)
+          .then(() => { flagged++ })
+          .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: icrBucket }, err as Error))
 
       // Haute variabilité → FLAG d'orientation, pas de dose (intercepté AVANT tout builder).
       if (avgPostGl > ceilingGl && recurrentHypo) {
-        await clinicalReviewFlagService.raise(patientId, "highVariabilityPostMeal", auditUserId, ctx)
-          .then(() => { flagged++ })
-          .catch((err) => logger.error("proposal-generator", "raise flag failed",
-            { patientId, bucket: `${slot.startHour}-${slot.endHour}` }, err as Error))
+        await raiseIcrFlag()
         continue
       }
 
+      // US-2653 (fix Q6a) — la dé-escalade se juge sur les nadirs DATÉS APRÈS le dernier changement accepté
+      // (jamais re-titrer sur des hypos périmées) ; `withinCooldown` = plancher temporel séparé.
+      const { cutoff, withinCooldown } = await deescalationTiming(patientId, "insulinToCarbRatio", { carbRatioSlotStart: slot.startHour, carbRatioSlotEnd: slot.endHour })
+      const postNadirsGl = afterCutoff(meals, cutoff).map((m) => m.nadirMgdl).filter((n): n is number => n !== null).map((n) => n / 100)
+
       // Sinon : deadband (baisse si > plafond ; hausse si < borne basse) OU, dans la bande, dé-escalade
-      // sur hypos récurrentes (hausse ICR fixe = moins d'insuline).
+      // sur hypos récurrentes POST-changement (hausse ICR fixe = moins d'insuline).
       let candidate: ProposalCandidate | null = null
       let isDeescalation = false
       if (avgPostGl > ceilingGl) {
-        candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, ceilingGl)) // baisse (deadband)
+        candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, ceilingGl)) // baisse (deadband, non gaté)
       } else if (avgPostGl < lowerGl) {
         candidate = analyzeIcrSlot(slot, buildIcrMeals(meals, lowerGl)) // hausse (deadband)
         // Fallback (validé medical) : moyenne juste sous la borne (deadband < 2 % → null) MAIS hypos
-        // récurrentes → la dé-escalade fixe +10 % (même sens sûr, plus protecteur). Ne pas laisser
-        // ce sliver sans proposition pour un patient à hypos récurrentes.
-        if (!candidate && recurrentHypo) { candidate = analyzeIcrHypoDeescalation(slot, nadirsGl); isDeescalation = true }
+        // récurrentes POST-changement → dé-escalade fixe +10 % (même sens sûr, plus protecteur).
+        if (!candidate && recurrentHypo) { candidate = analyzeIcrHypoDeescalation(slot, postNadirsGl); isDeescalation = true }
       } else if (recurrentHypo) {
-        candidate = analyzeIcrHypoDeescalation(slot, nadirsGl) // in-band + récurrent → hausse +10 %
+        candidate = analyzeIcrHypoDeescalation(slot, postNadirsGl) // in-band + récurrent POST-changement → +10 %
         isDeescalation = true
       }
 
-      // Cooldown anti-cliquet (US-2653) : une dé-escalade FIXE n'est pas re-proposée tant que le dernier
-      // changement ACCEPTÉ sur ce créneau date de < ENGINE_DEESCALATION_COOLDOWN_HOURS (skip silencieux).
-      if (candidate && isDeescalation &&
-        (await deescalationOnCooldown(patientId, "insulinToCarbRatio", { carbRatioSlotStart: slot.startHour, carbRatioSlotEnd: slot.endHour }))) {
+      // Dé-escalade bloquée (délai non écoulé OU signal insuffisant sur le POST-changement) → ne pas
+      // re-titrer ; mais ne JAMAIS taire un nadir SÉVÈRE → flag de revue (US-2653 fix Q6b).
+      if (isDeescalation && (withinCooldown || candidate === null)) {
         candidate = null
+        if (hasSevereHypo(nadirsGl)) await raiseIcrFlag()
       }
 
       if (candidate && (await persist(candidate, slot))) created++
@@ -351,6 +383,12 @@ export const proposalGeneratorService = {
         const avgFasting = fastingValues.length > 0 ? mean(fastingValues) : 0
         const recurrentNoct = recurrentPostMealHypo(nocturnalNadirs)
         const severeNoct = hasSevereHypo(nocturnalNadirs)
+        // US-2653 (fix Q6a) — nadirs nocturnes POST-changement (datés après le dernier ajustement accepté).
+        const { cutoff: basalCutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { pumpBasalSlotId: nocturnalSlot.id })
+        const postNocturnalNadirs = afterCutoff(fasting, basalCutoff)
+          .map((f) => f.nocturnalNadirMgdl)
+          .filter((v): v is number => v !== null && Number.isFinite(v))
+          .map((v) => v / 100)
         const basalBucket = `basal:${nocturnalSlot.startHour}-${nocturnalSlot.endHour}`
 
         // Flag nocturne CONTEXTUEL (Somogyi / non-actionnable / sévère isolé) — orientation, jamais une dose.
@@ -399,14 +437,15 @@ export const proposalGeneratorService = {
           if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_NADIR_NIGHTS)) {
             await persistBasal(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
           } else if (recurrentNoct) {
-            // Dans la bande + hypo nocturne récurrente → baisse FIXE −10 % (dé-escalade), cooldown-gated.
-            const de = analyzeBasalHypoDeescalation(nocturnalSlot.rate, nocturnalNadirs)
-            if (de.kind === "proposal") {
-              if (!(await deescalationOnCooldown(patientId, "basalRate", { pumpBasalSlotId: nocturnalSlot.id }))) {
-                await persistBasal(de.candidate)
-              }
+            // Dans la bande + hypo nocturne récurrente → baisse FIXE −10 % (dé-escalade). Jugée sur les
+            // nadirs POST-changement (Q6a) + plancher temporel `withinCooldown`.
+            const de = analyzeBasalHypoDeescalation(nocturnalSlot.rate, postNocturnalNadirs)
+            if (de.kind === "proposal" && !withinCooldown) {
+              await persistBasal(de.candidate)
             } else if (de.kind === "flagNonActionable") {
               await raiseNocturnalFlag() // débit trop bas pour titrer d'un incrément → restructuration = revue
+            } else if (severeNoct) {
+              await raiseNocturnalFlag() // dé-escalade bloquée (délai/post-changement) mais nadir SÉVÈRE → jamais tu (Q6b)
             }
           } else if (severeNoct) {
             await raiseNocturnalFlag() // hypo sévère nocturne ISOLÉE → surface, jamais silencieuse
@@ -444,6 +483,9 @@ export const proposalGeneratorService = {
         const severe = hasSevereHypo(nadirsGl)
         const avgPost = mean(points.map((p) => p.postGlucoseGl))
         const avgTarget = mean(points.map((p) => p.targetGl))
+        // US-2653 (fix Q6a) — nadirs post-correction DATÉS APRÈS le dernier changement accepté.
+        const { cutoff: isfCutoff, withinCooldown: isfWithinCooldown } = await deescalationTiming(patientId, "insulinSensitivityFactor", { timeSlotStartHour: slot.startHour, timeSlotEndHour: slot.endHour })
+        const postNadirsGl = afterCutoff(points, isfCutoff).map((p) => p.nadirGl).filter((n): n is number => n != null)
 
         const raiseIsfFlag = () =>
           clinicalReviewFlagService.raise(patientId, "highVariabilityPostCorrection", auditUserId, ctx)
@@ -492,10 +534,13 @@ export const proposalGeneratorService = {
           if (candidate) {
             await persistIsf(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
           } else if (recurrent) {
-            // Dans la bande + hypos post-correction récurrentes → hausse ISF FIXE +10 % (dé-escalade), cooldown-gated.
-            const de = analyzeIsfHypoDeescalation(slot, nadirsGl)
-            if (de && !(await deescalationOnCooldown(patientId, "insulinSensitivityFactor", { timeSlotStartHour: slot.startHour, timeSlotEndHour: slot.endHour }))) {
+            // Dans la bande + hypos post-correction récurrentes → hausse ISF FIXE +10 % (dé-escalade). Jugée
+            // sur les nadirs POST-changement (Q6a) + plancher temporel.
+            const de = analyzeIsfHypoDeescalation(slot, postNadirsGl)
+            if (de && !isfWithinCooldown) {
               await persistIsf(de)
+            } else if (severe) {
+              await raiseIsfFlag() // dé-escalade bloquée (délai/post-changement) mais nadir SÉVÈRE → jamais tu (Q6b)
             }
           } else if (severe) {
             await raiseIsfFlag() // hypo sévère post-correction ISOLÉE → surface, jamais silencieuse
@@ -559,11 +604,15 @@ export const proposalGeneratorService = {
     for (const slot of fixedSlots) {
       const bucket = `fixedDose:${slot.moment}`
       const valueU = Number(slot.valueU)
-      const readingsGl = troughs[slot.moment] ?? []
-      const readings = readingsGl.map((g) => ({ postGlucoseGl: g, targetGl }))
-      const recurrent = recurrentPostMealHypo(readingsGl)
-      const severe = hasSevereHypo(readingsGl)
-      const avgReading = readingsGl.length > 0 ? mean(readingsGl) : 0
+      const troughRows = troughs[slot.moment] ?? []
+      const glValues = troughRows.map((r) => r.gl)
+      const readings = glValues.map((g) => ({ postGlucoseGl: g, targetGl }))
+      const recurrent = recurrentPostMealHypo(glValues)
+      const severe = hasSevereHypo(glValues)
+      const avgReading = glValues.length > 0 ? mean(glValues) : 0
+      // US-2653 (fix Q6a) — relevés du moment DATÉS APRÈS le dernier changement accepté.
+      const { cutoff: fdCutoff, withinCooldown: fdWithinCooldown } = await deescalationTiming(patientId, "fixedDose", { moment: slot.moment })
+      const postGlValues = afterCutoff(troughRows, fdCutoff).map((r) => r.gl)
 
       const raiseFixedFlag = () =>
         clinicalReviewFlagService.raise(patientId, "highVariabilityFixedDose", auditUserId, ctx)
@@ -607,17 +656,18 @@ export const proposalGeneratorService = {
         if (candidate) {
           await persistFixed(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
         } else if (recurrent) {
-          // Dans la bande + relevés du moment récurremment bas → baisse FIXE bornée (dé-escalade), cooldown-gated.
-          const de = analyzeFixedDoseHypoDeescalation({ moment: slot.moment, valueU }, readingsGl)
-          if (de.kind === "proposal") {
-            if (!(await deescalationOnCooldown(patientId, "fixedDose", { moment: slot.moment }))) {
-              await persistFixed(de.candidate)
-            }
-          } else {
-            // `flagNonActionable` (dose au plancher) OU `none` (dose SOUS le plancher clinique 0,5 U) : dans
-            // les deux cas la baisse est impossible → FLAG de revue (arrêt/restructuration), JAMAIS un silence
-            // sur une hypo récurrente avérée (US-2653, validé medical). `recurrent` est déjà vrai ici.
+          // Dans la bande + relevés récurremment bas → baisse FIXE bornée (dé-escalade). Jugée sur les
+          // relevés POST-changement (Q6a) + plancher temporel `fdWithinCooldown`.
+          const de = analyzeFixedDoseHypoDeescalation({ moment: slot.moment, valueU }, postGlValues)
+          const recurrentPost = recurrentPostMealHypo(postGlValues)
+          if (de.kind === "proposal" && !fdWithinCooldown) {
+            await persistFixed(de.candidate)
+          } else if (de.kind === "flagNonActionable" || (recurrentPost && valueU < CLINICAL_BOUNDS.FIXED_DOSE_MIN)) {
+            // Non réductible POST-changement (dose au/sous plancher clinique 0,5 U) → FLAG de revue
+            // (arrêt/restructuration), jamais un silence sur une hypo récurrente avérée.
             await raiseFixedFlag()
+          } else if (severe) {
+            await raiseFixedFlag() // dé-escalade bloquée (délai/post-changement) mais relevé SÉVÈRE → jamais tu (Q6b)
           }
         } else if (severe) {
           await raiseFixedFlag() // hypo sévère du moment ISOLÉE → surface, jamais silencieuse

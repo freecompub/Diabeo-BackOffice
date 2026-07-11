@@ -111,6 +111,9 @@ export interface FastingDay {
  */
 export interface CorrectionPoint {
   localHour: number
+  /** US-2653 (fix cooldown) — jour local de la correction (`YYYY-MM-DD`), pour filtrer les observations
+   *  POST-changement (datées après le dernier ajustement accepté) au moment de re-titrer. */
+  dayIso: string
   postGlucoseGl: number
   targetGl: number
   nadirGl: number | null
@@ -132,8 +135,9 @@ function localHour(ms: number): number {
   const m = Number(p.find((x) => x.type === "minute")?.value ?? "0")
   return h + m / 60
 }
-/** Jour calendaire local `YYYY-MM-DD`. */
-function localDay(ms: number): string {
+/** Jour calendaire local `YYYY-MM-DD`. Exporté (US-2653 fix) pour aligner le `cutoff` post-changement
+ *  du générateur sur la même base jour que le `dayIso` des observations (TZ locale, pas UTC). */
+export function localDay(ms: number): string {
   return dayFmt.format(new Date(ms)) // en-CA → ISO
 }
 
@@ -389,6 +393,7 @@ function computeCorrectionTrend(
     const nadirMgdl = minReadingIn(c.readings, t0, windowEnd)
     out.push({
       localHour: localHour(t0),
+      dayIso: localDay(t0),
       postGlucoseGl: postMgdl / 100,
       targetGl: b.targetGl,
       nadirGl: nadirMgdl !== null ? nadirMgdl / 100 : null,
