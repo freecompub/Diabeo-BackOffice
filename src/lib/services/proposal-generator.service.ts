@@ -672,13 +672,17 @@ export const proposalGeneratorService = {
       // ── Dose du MATIN : glycémie PRÉ-DÎNER (`preMgdl` des repas du soir), garde de JOUR, confondeur IOB midi. ──
       let mnDecision: MdiDoseDecision = { kind: "none" }
       if (morningDose != null && Number.isFinite(morningDose) && morningDose >= CLINICAL_BOUNDS.MDI_BASAL_MIN_U) {
-        const dinners = journal.filter((m) => m.moment === "evening")
-        const dayMeals = journal.filter((m) => m.moment === "morning" || m.moment === "noon") // garde de JOUR (D9)
+        // Journal dédié fenêtre MDI (7 j) — le `journal` global est chargé en 14 j pour l'ICR. Aligne la fenêtre
+        // RÉELLEMENT analysée sur `analysisPeriod` persisté (`mdiPeriod`) et sur la dose du soir (traçabilité HDS +
+        // réactivité : ne pas diluer la moyenne pré-dîner avec ~2× de données pré-changement — fix revue medical).
+        const mdiJournal = await mealtimePattern.dailyJournal(patientId, mdiPeriod, auditUserId, ctx, { source: "cgm" })
+        const dinners = mdiJournal.filter((m) => m.moment === "evening")
+        const dayMeals = mdiJournal.filter((m) => m.moment === "morning" || m.moment === "noon") // garde de JOUR (D9)
         const preDinner = glVals(dinners.map((m) => m.preMgdl))
         const dayNadirs = glVals(dayMeals.map((m) => m.nadirMgdl))
         // Confondeur (§3.2/Q3a) : un bolus au DÉJEUNER (midi) contamine le pré-dîner par son IOB → non titrable
         // en sûreté → dose du matin **flag-only** (Q3b). Le bolus petit-déj (action ~5 h) est éteint avant le dîner.
-        const lunchBolus = journal.some((m) => m.moment === "noon" && (m.bolus ?? 0) > 0)
+        const lunchBolus = mdiJournal.some((m) => m.moment === "noon" && (m.bolus ?? 0) > 0)
         const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "morning" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
         if (preDinner.length >= MIN_NADIR_NIGHTS) {
           mnDecision = decideMdiDose({
@@ -699,7 +703,8 @@ export const proposalGeneratorService = {
       if (mnDecision.kind === "proposal") proposals.push({ d: "morning", cand: mnDecision.cand, isDeesc: mnDecision.isDeesc })
       if (proposals.length > 0) {
         // Priorité : dé-escalade (sécurité) d'abord ; à égalité, soir/à jeun (nocturne = pire mode d'échec).
-        proposals.sort((a, b) => Number(b.isDeesc) - Number(a.isDeesc) || (a.d === "evening" ? -1 : 1))
+        // Comparateur robuste (borné à ≤ 2 cibles distinctes, mais explicite l'intention).
+        proposals.sort((a, b) => Number(b.isDeesc) - Number(a.isDeesc) || (a.d === b.d ? 0 : a.d === "evening" ? -1 : 1))
         const winner = proposals[0]
         // Verrou Q6 : au plus 1 basale stylo pending (toutes cibles). Applicatif ici + index base (course inter-run).
         const pending = await prisma.adjustmentProposal.findFirst({
@@ -711,6 +716,12 @@ export const proposalGeneratorService = {
           // sinon (titration) → défer silencieux, repris au prochain run une fois la pending résolue.
         } else {
           await persistSplit(winner.cand, winner.d)
+        }
+        // Fail-loud : toute AUTRE dé-escalade (perdante du run — les DEUX doses sur-basalisées) est un signal de
+        // SÉCURITÉ → flag immédiat, jamais un drop silencieux (parité avec le chemin single ; ne pas attendre le
+        // run suivant pour surfacer une hypo récurrente sur la 2e dose). Une titration perdante, elle, défère.
+        for (const loser of proposals.slice(1)) {
+          if (loser.isDeesc) await raiseSplitFlag(loser.d)
         }
       }
     }

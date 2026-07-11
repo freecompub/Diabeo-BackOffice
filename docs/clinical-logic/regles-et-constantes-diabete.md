@@ -573,9 +573,14 @@ surfaçage Q6b). Le service (`resolveCurrentValue` → `morning`/`eveningDose`, 
   un split **basal-seul** titre les deux. *Limite S2 : le pré-dîner est lu sur le journal CGM ; un split BGM-only
   n'obtient pas de proposition matin (fail-closed).*
 
+Le signal pré-dîner et la garde de jour sont lus sur un **journal dédié fenêtre 7 j** (`MDI_BASAL_ANALYSIS_DAYS`,
+comme la dose du soir), distinct du `journal` ICR (14 j) — la fenêtre analysée == `analysisPeriod` persisté (traçabilité).
+
 **Orchestration (D4 raffiné, Q5)** — **une seule proposition basale/run**, priorité **sécurité-d'abord** :
 dé-escalade (soir ou matin) > titration ; à égalité, **soir/à jeun** (nocturne = pire mode d'échec). Les **flags**
-sont toujours levés (revue, pas un changement de dose). **Verrou « 1 basale stylo pending »** (Q6) : au plus une
+sont toujours levés (revue, pas un changement de dose) ; si **les deux** doses dé-escaladent, la winner est
+persistée et la dé-escalade **perdante est immédiatement flaggée** (fail-loud — jamais un drop silencieux d'un
+signal de sécurité ; une titration perdante défère). **Verrou « 1 basale stylo pending »** (Q6) : au plus une
 proposition stylo `pending` par patient, toutes cibles confondues (changer les 2 doses d'un coup détruit
 l'attribution + risque l'empilement). Double couche : garde **applicative** (le générateur vérifie une pending
 avant de créer) + **index unique partiel base** `adjustment_proposals_one_pending_stylo_basal`

@@ -485,6 +485,16 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(styloCount()).toBe(0) // verrou : une seule basale stylo en vol à la fois
   })
+
+  it("fix MEDIUM #2 : les DEUX doses dé-escaladent → soir persisté, matin (perdante) FLAGGÉ (jamais un drop silencieux)", async () => {
+    // À jeun in-band + nadir nocturne récurrent 0,60 → dé-escalade SOIR ; pré-dîner in-band + nadir de jour
+    // récurrent 0,60 sans bolus midi → dé-escalade MATIN. Priorité soir → soir persisté, matin perdante FLAGGÉE.
+    setup({ basalConfig: split(18, 22), fasting: evFasting(105, 60), meals: [...dinners(105), ...lunches(60, 0)] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("evening")).toHaveLength(1) // dé-escalade soir persistée (priorité sécurité, nocturne = pire)
+    expect(calls("morning")).toHaveLength(0) // une dose/run : matin non persistée
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // matin perdante → flag fail-loud
+  })
 })
 
 describe("proposalGeneratorService.generateForPatient — mode fixedDose (US-2652)", () => {
