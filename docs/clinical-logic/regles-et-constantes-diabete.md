@@ -480,6 +480,28 @@ identifie la dose visée sur `BasalConfiguration` (`daily` → `dailyDose` ; `mo
 différentes (matin vs soir) ne se collisionnent plus à tort. Migration `20260719100000`. **Contrat iOS**
 (nouveau discriminateur) → coordination `swift-expert`.
 
+**Table de décision — `parameterType` → discriminateur autoritaire → unité** (contrat partagé back ↔ iOS).
+`AdjustmentProposal` empile désormais **5 discriminateurs de cible mutuellement exclusifs** ; `parameterType`
+seul ne suffit plus à désambiguïser `basalRate` (pompe vs stylo). Le client lit le discriminateur **non-NULL**
+selon la ligne :
+
+| `parameterType` | Discriminateur non-NULL | Cible | Unité de `current/proposedValue` |
+|---|---|---|---|
+| `insulinSensitivityFactor` | `timeSlotStartHour` (+ `timeSlotEndHour`) | créneau ISF | g/L·U (ou mg/dL·U) |
+| `insulinToCarbRatio` | `carbRatioSlotStart` (+ `carbRatioSlotEnd`) | créneau ICR | g/U |
+| `fixedDose` | `moment` | `FixedDoseSlot` | U (dose totale) |
+| `basalRate` **+ pompe** | `pumpBasalSlotId` | `PumpBasalSlot` | **U/h** (débit) |
+| `basalRate` **+ stylo (MDI)** | `basalDoseKind` (`daily`/`morning`/`evening`) | `BasalConfiguration.dailyDose`/`morning`/`eveningDose` | **U** (dose totale) |
+
+> ⚠️ **Piège d'unité** : une proposition `basalRate` est en **U/h** (pompe) OU en **U totales** (stylo) — ne
+> jamais supposer « U/h » pour tout `basalRate`. Brancher l'affichage sur le discriminateur présent.
+
+**Invariant d'exclusivité verrouillé en base** (CHECK `adjustment_proposals_basal_target_exclusivity_check`,
+migration `20260719100000`) : pour `parameter_type = 'basalRate'`, **exactement un** de (`pump_basal_slot_id`,
+`basal_dose_kind`) est non-NULL (XOR) ; hors `basalRate`, `basal_dose_kind` est **toujours** NULL. Le client
+peut donc router l'affichage sur la simple présence du discriminateur sans heuristique divergente. (Le CHECK
+est invisible au drift-gate — Prisma ne modélise pas les CHECK — mais appliqué par `migrate deploy`.)
+
 **Constantes dédiées `MDI_BASAL_*`** (table §1) — sémantique et magnitudes propres à la basale stylo :
 **jamais** l'incrément pompe (0,05 U/h, mismatch U/h vs U totales), **jamais** les magnitudes dose fixe
 (±2 U trop serrées pour une basale adulte). Toutes en **unités totales**. Défaut d'incrément **fail-closed

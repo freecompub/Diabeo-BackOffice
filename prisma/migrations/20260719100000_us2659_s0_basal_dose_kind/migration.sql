@@ -31,3 +31,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS "adjustment_proposals_one_pending_per_slot"
   )
   NULLS NOT DISTINCT
   WHERE "status" = 'pending';
+
+-- CHECK — EXCLUSIVITÉ de la cible basale (revue swift-expert S0). `parameter_type = 'basalRate'` est
+-- surchargé : cible POMPE (`pump_basal_slot_id`, U/h) OU cible STYLO (`basal_dose_kind`, U totales), jamais
+-- les deux, jamais aucune. L'index unique partiel garantit l'anti-collision, PAS l'exclusivité de
+-- remplissage → un client (iOS/back) pourrait lire le mauvais discriminateur ou afficher la mauvaise unité.
+-- Ce CHECK verrouille l'invariant EN BASE (défense en profondeur). Hors basalRate, `basal_dose_kind` doit
+-- rester NULL (discriminateur propre à la basale stylo). Validé inline : le chemin `basalRate` existant exige
+-- déjà `pump_basal_slot_id` (adjustment.service.ts `getCurrentValue`) → toutes les lignes legacy conforment
+-- (XOR vrai). Prisma ne modélise pas les CHECK → invisible au drift-gate, appliqué par `migrate deploy`. Idempotent.
+ALTER TABLE "adjustment_proposals" DROP CONSTRAINT IF EXISTS "adjustment_proposals_basal_target_exclusivity_check";
+ALTER TABLE "adjustment_proposals" ADD CONSTRAINT "adjustment_proposals_basal_target_exclusivity_check"
+  CHECK (
+    CASE
+      WHEN "parameter_type" = 'basalRate'
+        THEN ("pump_basal_slot_id" IS NOT NULL) <> ("basal_dose_kind" IS NOT NULL)
+      ELSE "basal_dose_kind" IS NULL
+    END
+  );
