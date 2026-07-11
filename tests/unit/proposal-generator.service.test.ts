@@ -89,9 +89,10 @@ function setup(opts: {
   pregnancyMode?: boolean
   carbRatios?: { startHour: number; endHour: number; gramsPerUnit: number }[]
   meals?: unknown[]
-  basalConfig?: { configType: string; pumpSlots: { id: string; rate: number; startHour: number; endHour: number }[] }
+  // US-2659 — `dailyDose` (stylo single_injection) + `pumpSlots` optionnels selon le mode de délivrance.
+  basalConfig?: { configType: string; pumpSlots?: { id: string; rate: number; startHour: number; endHour: number }[]; dailyDose?: number }
   glucoseTargets?: { targetGlucose: number }[]
-  fasting?: { fastingMgdl: number | null; nocturnalNadirMgdl: number | null }[]
+  fasting?: { fastingMgdl: number | null; nocturnalNadirMgdl: number | null; dayIso?: string }[]
   sensitivityFactors?: { startHour: number; endHour: number; sensitivityFactorGl: number }[]
   corrections?: { localHour: number; postGlucoseGl: number; targetGl: number; nadirGl: number | null }[]
 } = {}) {
@@ -102,7 +103,10 @@ function setup(opts: {
     basalConfiguration: opts.basalConfig
       ? {
           configType: opts.basalConfig.configType,
-          pumpSlots: opts.basalConfig.pumpSlots.map((s) => ({
+          dailyDose: opts.basalConfig.dailyDose ?? null,
+          morningDose: null,
+          eveningDose: null,
+          pumpSlots: (opts.basalConfig.pumpSlots ?? []).map((s) => ({
             id: s.id, rate: s.rate,
             startTime: new Date(Date.UTC(1970, 0, 1, s.startHour)),
             endTime: new Date(Date.UTC(1970, 0, 1, s.endHour)),
@@ -311,6 +315,115 @@ describe("proposalGeneratorService.generateForPatient — chemin basal (US-2651)
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.skipped).toBe("noCarbRatios") // le early-return ICR gate le chemin basal
     expect(basalCalls()).toHaveLength(0)
+  })
+})
+
+describe("proposalGeneratorService.generateForPatient — basale STYLO single_injection (US-2659 S1)", () => {
+  beforeEach(() => vi.clearAllMocks())
+
+  const stylo = (dailyDose: number) => ({ configType: "single_injection", dailyDose })
+  // Fixture à jeun : `nocturnalNadirMgdl` null ⇒ simule le BGM (pas de couverture nocturne). `dayIso` daté
+  // (jours récents) → robuste au filtre POST-changement (fix M1 : la titration juge l'à jeun post-cutoff).
+  const nights = (fastingMgdl: number, nadirMgdl: number | null, n = 3) =>
+    Array.from({ length: n }, (_, i) => ({ fastingMgdl, nocturnalNadirMgdl: nadirMgdl, dayIso: isoDaysAgo(i + 1) }))
+  const styloCalls = () =>
+    createEngine.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .filter((a) => a.parameterType === "basalRate" && a.basalDoseKind === "daily")
+
+  it("AC-1 HAUSSE : à jeun HAUT + couverture nocturne CGM saine → proposition daily basalTooLow (U totales)", async () => {
+    setup({ basalConfig: stylo(22), fasting: nights(150, 120) }) // 1,50 g/L > T+0,30 ; nadir 1,20 sain
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const calls = styloCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ reason: "basalTooLow", expectedCurrentValue: 22, basalDoseKind: "daily" })
+    expect(Number(calls[0].proposedValue)).toBeGreaterThan(22)
+    expect(raiseFlag).not.toHaveBeenCalled()
+  })
+
+  it("AC-4 garde BGM : à jeun HAUT mais AUCUN nadir nocturne (BGM) → hausse refusée → FLAG, pas de dose", async () => {
+    setup({ basalConfig: stylo(22), fasting: nights(150, null) }) // à jeun présent, nadir null (BGM)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+  })
+
+  it("HOLD : à jeun dans la bande [T−0,20 ; T+0,30] → aucune proposition ni flag", async () => {
+    setup({ basalConfig: stylo(22), fasting: nights(105, 120) }) // 1,05 g/L in-band
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0)
+    expect(raiseFlag).not.toHaveBeenCalled()
+  })
+
+  it("BAISSE treat-to-target : à jeun SOUS la bande, pas d'hypo récurrente → daily basalTooHigh (sens sûr, sans couverture)", async () => {
+    setup({ basalConfig: stylo(22), fasting: nights(65, null) }) // 0,65 g/L < T−0,20 ; BGM
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const calls = styloCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ reason: "basalTooHigh" })
+    expect(Number(calls[0].proposedValue)).toBeLessThan(22)
+  })
+
+  it("AC-5 Somogyi : à jeun HAUT + hypo nocturne récurrente → FLAG nocturnalHypoHighFasting, JAMAIS une baisse", async () => {
+    setup({ basalConfig: stylo(22), fasting: [
+      { fastingMgdl: 150, nocturnalNadirMgdl: 50, dayIso: isoDaysAgo(1) }, { fastingMgdl: 150, nocturnalNadirMgdl: 50, dayIso: isoDaysAgo(2) }, { fastingMgdl: 150, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(3) },
+    ] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+  })
+
+  it("AC-3 dé-escalade : à jeun IN-BAND + hypo nocturne récurrente → daily basalTooHigh (−min(20 %, 4 U))", async () => {
+    setup({ basalConfig: stylo(22), fasting: [
+      { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(1) }, { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(2) }, { fastingMgdl: 105, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(3) },
+    ] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const calls = styloCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0]).toMatchObject({ reason: "basalTooHigh", basalDoseKind: "daily" })
+    expect(Number(calls[0].proposedValue)).toBe(18) // 22 − min(4,4) = 18
+  })
+
+  it("dailyDose non configurée (null) → aucune proposition, aucun crash", async () => {
+    setup({ basalConfig: { configType: "single_injection" }, fasting: nights(150, 120) })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0)
+    expect(res).toBeDefined()
+  })
+
+  it("non-régression : un patient POMPE n'emprunte pas le chemin stylo (basalDoseKind jamais posé)", async () => {
+    setup({ basalConfig: { configType: "pump", pumpSlots: [{ id: "noct", rate: 0.8, startHour: 0, endHour: 6 }] }, fasting: nights(150, 120) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0) // le chemin pompe utilise pumpBasalSlotId, jamais basalDoseKind
+  })
+
+  it("fix M1 : à jeun HAUTS PÉRIMÉS (pré-changement) → PAS de hausse (la titration juge le POST-changement)", async () => {
+    // Changement accepté il y a 100 h (> 72 h → cooldown écoulé). À jeun post-changement IN-BAND (1,05) mais
+    // pré-changement HAUTS (1,80). Sans le fix (moyenne 7 j pleine = 1,42 > T+0,30), une 2e hausse s'empilerait.
+    setup({ basalConfig: stylo(22), fasting: [
+      { fastingMgdl: 105, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(1) },
+      { fastingMgdl: 105, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(2) },
+      { fastingMgdl: 105, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(3) },
+      { fastingMgdl: 180, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(5) },
+      { fastingMgdl: 180, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(6) },
+      { fastingMgdl: 180, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(7) },
+    ] })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 100 * 3_600_000) } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0) // à jeun post-changement in-band → HOLD, pas d'empilement
+  })
+
+  it("fix M-med#1 : hypo sévère À JEUN (BGM sans nadir nocturne) pendant HOLD → FLAG (Q6b sur à jeun ∪ nocturne)", async () => {
+    // BGM (nadirs null) : un relevé réveil sévère 0,50 g/L coexiste avec une moyenne in-band → sans le fix
+    // (severeNoct nocturne seul) l'événement était tu ; le fix surface la sévérité à jeun.
+    setup({ basalConfig: stylo(22), fasting: [
+      { fastingMgdl: 50, nocturnalNadirMgdl: null, dayIso: isoDaysAgo(1) },
+      { fastingMgdl: 130, nocturnalNadirMgdl: null, dayIso: isoDaysAgo(2) },
+      { fastingMgdl: 130, nocturnalNadirMgdl: null, dayIso: isoDaysAgo(3) },
+    ] })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCalls()).toHaveLength(0)
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
   })
 })
 

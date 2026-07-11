@@ -485,6 +485,125 @@ export function analyzeBasalTrend(
 }
 
 /**
+ * US-2659 (S1, validé medical) — titration de la basale STYLO (MDI, `single_injection` : dose lente
+ * une-fois/jour) sur la **glycémie à jeun** (treat-to-target). Dose DIRECTE en **unités totales** (comme
+ * `analyzeFixedDose`, PAS un débit U/h ni un dénominateur). Distinct de la pompe (`analyzeBasalTrend`,
+ * proportionnel, U/h) : ici pas **FIXE** `max(+2 U, +10 %)` plafonné à `min(+20 %, +4 U)`.
+ *
+ * **Hold zone ASYMÉTRIQUE** (obligatoire pour un pas fixe — sinon overshoot au 1er tick) : titrer seulement
+ * hors bande `[T − DEADBAND_DOWN ; T + DEADBAND_UP]` (bande haute plus large = anti-overshoot ; bande basse
+ * plus serrée = sens sûr). Au-dessus → hausse ; en dessous → baisse treat-to-target ; dans la bande → `null`.
+ *
+ * **Snap asymétrique de sécurité** (`Math.floor` uniforme) : l'arrondi à l'incrément stylo `incrementU`
+ * (défaut 1 U fail-closed) erre TOUJOURS vers **moins d'insuline** — une hausse arrondit vers le bas (jamais
+ * au-dessus du cap), une baisse vers plus de réduction. `|delta arrondi| < incrément` → `null` (non actionnable :
+ * une hausse infra-incrément sur une petite dose ne monte pas à l'aveugle). Plancher `MDI_BASAL_MIN_U`.
+ *
+ * **Garde hypo** : une HAUSSE est supprimée si un nadir NOCTURNE est en hypo (repli `fastingValues`) — hypo à
+ * 3 h masquée par une moyenne à jeun élevée (Somogyi). La direction/moyenne reste sur `fastingValues`.
+ *
+ * @param fastingValues Glycémies à jeun (pré-petit-déj, g/L) — pilotent moyenne/direction.
+ * @param targetGl Cible à jeun individualisée (g/L), déjà clampée par l'appelant (`resolveFastingTarget`).
+ * @param currentDose Dose basale stylo courante (U totales).
+ * @param nocturnalNadirs Creux nocturnes (g/L), optionnels — fournis UNIQUEMENT à la garde hypo.
+ * @param incrementU Incrément délivrable du stylo (U ; défaut 1, 0,5 si demi-unité).
+ * @returns Proposition de titration bornée, ou `null` (hold zone / insuffisant / non actionnable).
+ */
+export function analyzeMdiBasalDailyTrend(
+  fastingValues: number[],
+  targetGl: number,
+  currentDose: number,
+  nocturnalNadirs: number[] | undefined,
+  incrementU: number,
+): ProposalCandidate | null {
+  if (fastingValues.length < 3) return null
+  if (!Number.isFinite(currentDose) || currentDose < CLINICAL_BOUNDS.MDI_BASAL_MIN_U) return null
+  if (!Number.isFinite(targetGl) || targetGl <= 0) return null
+
+  const avgFasting = fastingValues.reduce((s, v) => s + v, 0) / fastingValues.length
+
+  // Hold zone asymétrique — titrer seulement HORS bande [T−DOWN ; T+UP].
+  const upperBound = targetGl + CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL
+  const lowerBound = targetGl - CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_DOWN_GL
+  const direction = avgFasting > upperBound ? 1 : avgFasting < lowerBound ? -1 : 0
+  if (direction === 0) return null // HOLD (dans la bande cible)
+
+  // Pas fixe treat-to-target = max(+2 U, +10 %), plafonné min(+20 %, +4 U) — le cap % l'emporte sur le
+  // plancher +2 U (protège les petites doses). Symétrique en baisse (validé medical Q4).
+  const capU = Math.min(
+    (CLINICAL_BOUNDS.MDI_BASAL_MAX_CHANGE_PERCENT / 100) * currentDose,
+    CLINICAL_BOUNDS.MDI_BASAL_MAX_DELTA_U,
+  )
+  const desired = Math.max(CLINICAL_BOUNDS.MDI_BASAL_STEP_U, (CLINICAL_BOUNDS.MDI_BASAL_STEP_PERCENT / 100) * currentDose)
+  const magnitude = Math.min(desired, capU)
+
+  // Snap `floor` uniforme → toujours vers moins d'insuline. Plancher de sanité.
+  const raw = direction > 0 ? currentDose + magnitude : currentDose - magnitude
+  const proposedValue = Math.max(CLINICAL_BOUNDS.MDI_BASAL_MIN_U, Math.floor(raw / incrementU) * incrementU)
+  const effectiveDelta = proposedValue - currentDose
+  if (Math.abs(effectiveDelta) < incrementU - 1e-9) return null // non actionnable après snap
+
+  // Garde HYPO : hausser la basale = plus d'insuline → supprimé si un creux NOCTURNE est en hypo (repli à jeun).
+  const guardValues = nocturnalNadirs && nocturnalNadirs.length > 0 ? nocturnalNadirs : fastingValues
+  if (hypoBlocksProposal("basalRate", currentDose, proposedValue, guardValues)) return null
+
+  const reason: AdjustmentReason = effectiveDelta > 0 ? "basalTooLow" : "basalTooHigh"
+  return {
+    parameterType: "basalRate",
+    reason,
+    currentValue: currentDose,
+    proposedValue,
+    changePercent: Math.round((effectiveDelta / currentDose) * 10000) / 100,
+    confidence: getConfidenceLevel(fastingValues.length),
+    supportingEvents: fastingValues.length,
+    totalEventsConsidered: fastingValues.length,
+    averageObservedValue: Math.round(avgFasting * 10000) / 10000,
+  }
+}
+
+/**
+ * US-2659 (S1, validé medical) — **dé-escalade** de la basale STYLO (moins d'insuline) sur nadirs NOCTURNES
+ * récurrents, **indépendante de la hold zone à jeun** (fasting IN-BAND mais hypos nocturnes avérées). Plus
+ * décisive que la baisse treat-to-target : `−min(20 %, 4 U)` (validé medical Q2 — **`−min`, jamais `−max`** :
+ * `−max` produirait −40 % → rebond hyper/cétose au steady state ; convention `−min` du repo, cf.
+ * `analyzeFixedDoseHypoDeescalation`). Snap `floor` (vers plus de réduction), plancher `MDI_BASAL_MIN_U`.
+ * Dose déjà au plancher / baisse < 1 incrément → `flagNonActionable` (restructuration = décision clinique).
+ * ⚠️ `nocturnalNadirsGl` uniquement (invariant nocturne). Le cas à jeun HAUT + hypo nocturne (Somogyi) est
+ * routé en FLAG par l'appelant, jamais ici.
+ *
+ * @param currentDose Dose basale stylo courante (U totales).
+ * @param nocturnalNadirsGl Creux nocturnes (g/L) POST-changement, non nuls.
+ * @param incrementU Incrément délivrable du stylo (U).
+ */
+export function analyzeMdiBasalDailyHypoDeescalation(
+  currentDose: number,
+  nocturnalNadirsGl: number[],
+  incrementU: number,
+): DeescalationOutcome {
+  if (!Number.isFinite(currentDose) || currentDose < CLINICAL_BOUNDS.MDI_BASAL_MIN_U) return { kind: "none" }
+  if (!recurrentPostMealHypo(nocturnalNadirsGl)) return { kind: "none" }
+  const deltaFromPct = (currentDose * CLINICAL_BOUNDS.MDI_BASAL_MAX_CHANGE_PERCENT) / 100
+  const delta = Math.min(deltaFromPct, CLINICAL_BOUNDS.MDI_BASAL_MAX_DELTA_U) // −min(20 %, 4 U)
+  const raw = Math.max(CLINICAL_BOUNDS.MDI_BASAL_MIN_U, currentDose - delta)
+  const proposedValue = Math.max(CLINICAL_BOUNDS.MDI_BASAL_MIN_U, Math.floor(raw / incrementU) * incrementU)
+  const effectiveDelta = currentDose - proposedValue // > 0 = réduction
+  if (effectiveDelta < incrementU - 1e-9) return { kind: "flagNonActionable" }
+  return {
+    kind: "proposal",
+    candidate: {
+      parameterType: "basalRate",
+      reason: "basalTooHigh",
+      currentValue: currentDose,
+      proposedValue,
+      changePercent: Math.round((-effectiveDelta / currentDose) * 100 * 100) / 100,
+      confidence: getConfidenceLevel(nocturnalNadirsGl.length),
+      supportingEvents: nocturnalNadirsGl.filter((g) => Number.isFinite(g) && g < LEVEL1_HYPO_GL).length,
+      totalEventsConsidered: nocturnalNadirsGl.length,
+    },
+  }
+}
+
+/**
  * Analyse une DOSE FIXE (mode b, US-2651) pour un **moment** (matin/midi/soir/nuit) à partir de
  * la tendance glycémique du carnet (BGM). Une dose fixe est une dose **directe** (comme la basale,
  * PAS un dénominateur) : glycémie systématiquement **au-dessus** de la cible → dose **trop basse**

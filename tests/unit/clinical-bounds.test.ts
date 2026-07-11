@@ -95,11 +95,14 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       MDI_BASAL_MIN_U: 0.5,
       MDI_BASAL_WARN_U: 80,
       MDI_BASAL_STEP_U: 2,
+      MDI_BASAL_STEP_PERCENT: 10,
       MDI_BASAL_MAX_DELTA_U: 4,
       MDI_BASAL_MAX_CHANGE_PERCENT: 20,
       MDI_BASAL_DELIVERY_INCREMENT_U: 1,
       MDI_BASAL_COOLDOWN_HOURS: 72,
       MDI_BASAL_ANALYSIS_DAYS: 7,
+      MDI_BASAL_FASTING_DEADBAND_UP_GL: 0.3,
+      MDI_BASAL_FASTING_DEADBAND_DOWN_GL: 0.2,
     })
   })
 
@@ -137,6 +140,12 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
     expect(CLINICAL_BOUNDS.MDI_BASAL_WARN_U).toBe(CLINICAL_BOUNDS.FIXED_BASAL_WARN_U)
     expect(CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS).toBe(7)
     expect(CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS).toBe(CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS)
+    // Hold zone ASYMÉTRIQUE (US-2659 S1) : bande haute > bande basse (anti-overshoot du pas fixe côté hausse) ;
+    // les deux > 0 ; à T=1,00 la hold zone = cible ADA [0,80 ; 1,30].
+    expect(CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL).toBeGreaterThan(CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_DOWN_GL)
+    expect(CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_DOWN_GL).toBeGreaterThan(0)
+    expect(1.0 - CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_DOWN_GL).toBeCloseTo(0.8) // borne basse cible ADA
+    expect(1.0 + CLINICAL_BOUNDS.MDI_BASAL_FASTING_DEADBAND_UP_GL).toBeCloseTo(1.3) // borne haute cible ADA
   })
 
   it("US-2651 — deadband ICR : borne basse < plafond adulte (1,80), grossesse plus stricte", () => {
