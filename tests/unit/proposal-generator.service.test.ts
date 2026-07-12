@@ -487,6 +487,21 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     expect(styloCount()).toBe(0) // verrou : une seule basale stylo en vol à la fois
   })
 
+  // US-2661 (code-review NIT) — verrou du 4ᵉ chemin de levée : une dé-escalade MATIN gagnante mais bloquée
+  // par le verrou « 1 pending stylo » doit lever le flag DIURNE (fail-loud), pas le flag nocturne.
+  it("VERROU + dé-escalade MATIN gagnante bloquée → daytimeHypoHighPreDinner (fail-loud, jamais nocturne)", async () => {
+    // Soir HOLD (à jeun 1,05 in-band, nadir nocturne 1,20 sain) → aucune dé-escalade soir. Matin : pré-dîner
+    // in-band (1,05) + nadir de JOUR récurrent bas (0,60) sans bolus midi → dé-escalade MATIN (seule → gagnante).
+    setup({ basalConfig: split(18, 22), fasting: evFasting(105, 120), meals: [...dinners(105), ...lunches(60, 0)] })
+    prismaMock.adjustmentProposal.findFirst.mockImplementation((args: any) =>
+      Promise.resolve(args?.where?.status === "pending" ? { id: "existing" } : null) as never,
+    )
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCount()).toBe(0) // verrou : rien persisté
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined) // matin bloquée → flag diurne
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+  })
+
   it("fix MEDIUM #2 : les DEUX doses dé-escaladent → soir persisté, matin (perdante) FLAGGÉ (jamais un drop silencieux)", async () => {
     // À jeun in-band + nadir nocturne récurrent 0,60 → dé-escalade SOIR ; pré-dîner in-band + nadir de jour
     // récurrent 0,60 sans bolus midi → dé-escalade MATIN. Priorité soir → soir persisté, matin perdante FLAGGÉE.
