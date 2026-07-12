@@ -193,7 +193,17 @@ export const CLINICAL_BOUNDS = {
    * - `MDI_BASAL_MAX_CHANGE_PERCENT` — cap % (ADA 10–20 %) ; la proposition retient la borne la plus protectrice.
    * - `MDI_BASAL_DELIVERY_INCREMENT_U` — résolution du stylo : **1 U défaut fail-closed** ; 0,5 U seulement si
    *   le dispositif est un stylo demi-unité (lu sur l'appareil, jamais supposé). JAMAIS l'incrément pompe (0,05 U/h).
-   * - `MDI_BASAL_COOLDOWN_HOURS` — anti-cliquet (steady state glargine/detemir 3–4 j). 96 h dégludec = V2 (P3).
+   * - `MDI_BASAL_COOLDOWN_HOURS` — anti-cliquet basale stylo **classique** (glargine U100 24 h / detemir 20 h ;
+   *   steady state 3–4 j).
+   * - `MDI_BASAL_COOLDOWN_HOURS_ULTRALONG` — anti-cliquet basale stylo **ultra-longue** (dégludec ~42 h, glargine
+   *   U300 ~36 h ; steady state 4–5 j, ~91 % à 3,8 t½). Empêche l'empilement multi-titrations (US-2662, validé
+   *   medical). Sélectionné SERVEUR via la molécule basale du patient (cf. `ULTRALONG_BASAL_DURATION_MIN_H`).
+   * - `ULTRALONG_BASAL_DURATION_MIN_H` — seuil **inclusif** (`InsulinCatalog.typicalDurationHours >= 30`) séparant
+   *   les basales ultra-longues {dégludec, U300} des classiques {U100, detemir}. Discriminateur durée-based
+   *   (molécule-agnostique, robuste au nommage) ; medical rejette explicitement `peak IS NULL` (glargine U100 est
+   *   aussi peakless → sur-capture) et le match `genericName` (fragile). **Fail-closed** : molécule non résoluble
+   *   (`basalInsulinId` null / jointure absente) → cooldown ULTRALONG (le plus protecteur — anti-empilement prime
+   *   sur réactivité, cohérent avec la hold zone asymétrique).
    * - `MDI_BASAL_ANALYSIS_DAYS` — fenêtre d'analyse (7 j, plus réactive que 14 j ; ≥ 3 glycémies à jeun valides).
    */
   MDI_BASAL_MIN_U: 0.5,
@@ -206,6 +216,8 @@ export const CLINICAL_BOUNDS = {
   MDI_BASAL_MAX_CHANGE_PERCENT: 20,
   MDI_BASAL_DELIVERY_INCREMENT_U: 1,
   MDI_BASAL_COOLDOWN_HOURS: 72,
+  MDI_BASAL_COOLDOWN_HOURS_ULTRALONG: 96,
+  ULTRALONG_BASAL_DURATION_MIN_H: 30,
   MDI_BASAL_ANALYSIS_DAYS: 7,
   /**
    * US-2659 (S1, validé medical) — **hold zone ASYMÉTRIQUE** de la titration basale STYLO à **pas fixe**.

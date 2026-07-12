@@ -2126,6 +2126,7 @@
     "valueTransition": "{from} → {to}",
     "liveValueChanged": "⛔ Actual current value: {live} — config changed since the proposal; acceptance blocked, regenerate",
     "liveValueUnavailable": "⛔ Slot not found — proposal no longer applicable; acceptance blocked",
+    "proposalHighDose": "High basal dose — please confirm",
     "acceptBlockedHint": "Acceptance blocked: the baseline changed since the proposal — regenerate a proposal",
     "accept": "Accept",
     "reject": "Reject",

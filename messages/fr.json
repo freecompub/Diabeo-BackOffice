@@ -2126,6 +2126,7 @@
     "valueTransition": "{from} → {to}",
     "liveValueChanged": "⛔ Valeur actuelle réelle : {live} — config modifiée depuis la proposition ; acceptation bloquée, régénérer",
     "liveValueUnavailable": "⛔ Créneau introuvable — proposition non applicable ; acceptation bloquée",
+    "proposalHighDose": "Dose basale élevée — à confirmer",
     "acceptBlockedHint": "Acceptation bloquée : la base a changé depuis la proposition — régénérer une proposition",
     "accept": "Accepter",
     "reject": "Rejeter",

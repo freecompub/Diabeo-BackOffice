@@ -49,8 +49,9 @@ consensus cap bolus 25 U.
 | `MDI_BASAL_MAX_DELTA_U` | 4 | U | Cap absolu de variation par ajustement (= réduction sur hypo) (US-2659) |
 | `MDI_BASAL_MAX_CHANGE_PERCENT` | 20 | % | Cap % (ADA 10–20 %) — la borne la plus protectrice l'emporte (US-2659) |
 | `MDI_BASAL_DELIVERY_INCREMENT_U` | 1 | U | Résolution stylo (défaut fail-closed ; 0,5 si demi-unité) — **jamais** l'incrément pompe (US-2659) |
-| `MDI_BASAL_COOLDOWN_HOURS` | 72 | h | Anti-cliquet (steady state glargine/detemir 3–4 j ; 96 h dégludec = V2) (US-2659) |
-| `MDI_BASAL_ANALYSIS_DAYS` | 7 | j | Fenêtre d'analyse (plus réactive ; ≥ 3 glycémies à jeun) (US-2659) |
+| `MDI_BASAL_COOLDOWN_HOURS` | 72 | h | Anti-cliquet basale stylo **classique** (glargine U100 24 h / detemir 20 h ; steady state 3–4 j) (US-2659) |
+| `MDI_BASAL_COOLDOWN_HOURS_ULTRALONG` | 96 | h | Anti-cliquet basale stylo **ultra-longue** (dégludec ~42 h, glargine U300 ~36 h ; steady state 4–5 j, ~91 % à 3,8 t½). Empêche l'empilement multi-titrations, Risk #1 (US-2662, validé medical) |
+| `ULTRALONG_BASAL_DURATION_MIN_H` | 30 | h | Seuil **inclusif** (`InsulinCatalog.typicalDurationHours ≥ 30`) séparant ultra-longues {dégludec, U300} des classiques {U100, detemir} (US-2662) |
 | `MDI_BASAL_FASTING_DEADBAND_UP_GL` | 0.30 | g/L | Demi-bande **haute** de la hold zone (hausse si `avg > T+0,30`) — anti-overshoot du pas fixe (US-2659 S1) |
 | `MDI_BASAL_FASTING_DEADBAND_DOWN_GL` | 0.20 | g/L | Demi-bande **basse** (baisse treat-to-target si `avg < T−0,20`) — plus serrée, sens sûr (US-2659 S1) |
 | `MDI_BASAL_PATIENT_MAX_DELTA_U` | 2 | U | Cap absolu d'une **demande PATIENT** de baisse basale stylo (= moitié du cap moteur ; ≤ min(10 %, 2 U)) (US-2659 S3) |
@@ -557,6 +558,24 @@ soir/à jeun). **Jamais auto-appliqué** (ADR #13). Réfs : ADA Standards of Car
 **Source du signal à jeun** : **CGM d'abord** (porte les nadirs nocturnes → autorise hausses + Somogyi + dé-escalade),
 **à défaut BGM** (patient MDI souvent BGM → à jeun présent mais aucun nadir → hausses refusées AC-4 → flag, baisses
 permises). Fail-closed : jamais de hausse à l'aveugle. Fenêtre **7 j** (`MDI_BASAL_ANALYSIS_DAYS`), ≥ 3 à jeun.
+
+**Cooldown sensible à la MOLÉCULE (US-2662, validé medical)** — le cooldown anti-cliquet est résolu **SERVEUR** à
+la génération (`resolveMdiCooldownHours`, `proposal-generator.service.ts`) via la molécule basale du patient
+(`InsulinTherapySettings.basalInsulinId → PatientInsulin → InsulinCatalog.typicalDurationHours`), et appliqué
+**identiquement aux 3 cibles** (daily/evening/morning) : durée `≥ ULTRALONG_BASAL_DURATION_MIN_H` (30 h) ⇒
+`MDI_BASAL_COOLDOWN_HOURS_ULTRALONG` (96 h — dégludec ~42 h, U300 ~36 h) ; sinon `MDI_BASAL_COOLDOWN_HOURS`
+(72 h — U100 24 h, detemir 20 h). **Discriminateur durée-based** (molécule-agnostique) : medical **rejette**
+`peak IS NULL` (glargine U100 est aussi peakless → sur-capture) et le match `genericName` (fragile au nommage).
+**Fail-closed** : molécule non résoluble (`basalInsulinId` null / durée absente) ⇒ **96 h** (le plus protecteur —
+l'empilement, harm de commission non surfacé, prime sur le retard de titration, harm d'omission surfacé ; cohérent
+avec la hold zone asymétrique). *Suivi tracé (hors US-2662) : envisager un reset de titration après changement de
+molécule basale (le « dernier accepté » peut précéder le switch).*
+
+**Avertissement dose élevée (US-2662)** — une proposition de basale STYLO dont `proposedValue > MDI_BASAL_WARN_U`
+(80 U) surface un badge **non bloquant** « Dose basale élevée — à confirmer » à l'écran de revue médecin
+(`review` i18n FR/EN/AR). Dérivé **SERVEUR** (bornes cliniques jamais côté client) ; l'acceptation reste possible
+(informatif, pas un garde-fou). La basale stylo n'a **pas** de plafond dur (décision US-2659 : U300/dégludec > 80 U
+légitimes) — d'où un simple avertissement, pas un blocage.
 
 **Contrat service** (`adjustment.service.ts`) : cible `basalDoseKind = "daily"` → `resolveCurrentValue` lit
 `BasalConfiguration.dailyDose` (scopé patient) ; `validateProposedValue` route les bornes **stylo** (`MDI_BASAL_MIN_U`,

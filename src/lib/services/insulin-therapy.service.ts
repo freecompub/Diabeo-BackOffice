@@ -243,6 +243,11 @@ export const insulinTherapyService = {
             insulinCatalog: { select: { displayName: true, genericName: true } },
           },
         },
+        // US-2662 — molécule basale : SEULE la durée d'action est chargée (minimisation RGPD), pour
+        // sélectionner le cooldown de titration MDI (ultra-longue dégludec/U300 vs classique glargine/detemir).
+        basalInsulin: {
+          select: { insulinCatalog: { select: { typicalDurationHours: true } } },
+        },
       },
     })
 

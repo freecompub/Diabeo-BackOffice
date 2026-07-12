@@ -37,7 +37,8 @@ vi.mock("@/lib/services/clinical-review-flag.service", () => ({
   clinicalReviewFlagService: { raise: vi.fn().mockResolvedValue({ flagId: "f1", created: true }) },
 }))
 
-import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
+import { proposalGeneratorService, resolveMdiCooldownHours } from "@/lib/services/proposal-generator.service"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
@@ -95,6 +96,10 @@ function setup(opts: {
   fasting?: { fastingMgdl: number | null; nocturnalNadirMgdl: number | null; dayIso?: string }[]
   sensitivityFactors?: { startHour: number; endHour: number; sensitivityFactorGl: number }[]
   corrections?: { localHour: number; postGlucoseGl: number; targetGl: number; nadirGl: number | null }[]
+  // US-2662 — durée d'action (h) de la molécule basale du patient (InsulinCatalog.typicalDurationHours).
+  // Injectée dans la chaîne réelle `settings.basalInsulin.insulinCatalog.typicalDurationHours` (test de wiring
+  // du cooldown molécule). Omise ⇒ pas de `basalInsulin` ⇒ fail-closed 96 h (comportement par défaut des tests).
+  basalDurationHours?: number
 } = {}) {
   mode.mockResolvedValue({ mode: opts.mode ?? "basalBolus", coherent: true } as never)
   getSettings.mockResolvedValue({
@@ -114,6 +119,10 @@ function setup(opts: {
         }
       : null,
     glucoseTargets: opts.glucoseTargets ?? [],
+    // US-2662 — molécule basale (durée d'action) pour la résolution du cooldown. Absente ⇒ fail-closed 96 h.
+    basalInsulin: opts.basalDurationHours != null
+      ? { insulinCatalog: { typicalDurationHours: opts.basalDurationHours } }
+      : undefined,
   } as never)
   prismaMock.patient.findFirst.mockResolvedValue({
     pathology: opts.pathology ?? "DT1", pregnancyMode: opts.pregnancyMode ?? false,
@@ -389,6 +398,40 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO single_in
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(styloCalls()).toHaveLength(0)
     expect(res).toBeDefined()
+  })
+
+  // US-2662 (code-review LOW-2) — WIRING de bout en bout de la molécule → cooldown. Exerce la chaîne réelle
+  // `settings.basalInsulin.insulinCatalog.typicalDurationHours` (qu'un typo dans ce chemin, tout en `?.`,
+  // rendrait silencieusement fail-closed 96 h). Scénario de dé-escalade (à jeun in-band + nadir nocturne
+  // récurrent 0,60 NON sévère) avec un changement accepté il y a 80 h : la borne 72 h vs 96 h bascule l'issue.
+  // Nadirs sur j0–j2 : tous strictement POSTÉRIEURS au cutoff (jour local de l'accepté 80 h ≈ j−3/−4), donc
+  // ≥ 3 nadirs post-changement survivent au filtre `afterCutoff` dans les DEUX cas (seul `withinCooldown` varie).
+  // FONCTION (pas un tableau) : `isoDaysAgo` évalué AU RUN-TIME (comme `nights()`/`dinners()`), aligné sur le
+  // `Date.now()` de `accepted80hAgo()` → aucun écart collecte↔exécution possible (robuste au passage de minuit UTC).
+  const deescNights = () => [
+    { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(0) },
+    { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(1) },
+    { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(2) },
+  ]
+  const accepted80hAgo = () =>
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 80 * 3_600_000) } as never)
+
+  it("WIRING cooldown : molécule CLASSIQUE (detemir 20 h → 72 h) + accepté il y a 80 h → dé-escalade proposée", async () => {
+    setup({ basalConfig: stylo(22), basalDurationHours: 20, fasting: deescNights() })
+    accepted80hAgo()
+    await proposalGeneratorService.generateForPatient(1, 99)
+    // 80 h > 72 h → cooldown écoulé → dé-escalade proposée. (Si le chemin molécule était cassé → fail-closed 96 h → bloquée.)
+    expect(styloCalls()).toHaveLength(1)
+    expect(styloCalls()[0]).toMatchObject({ reason: "basalTooHigh", basalDoseKind: "daily" })
+  })
+
+  it("WIRING cooldown : molécule ULTRA-LONGUE (dégludec 42 h → 96 h) + accepté il y a 80 h → dé-escalade BLOQUÉE (anti-empilement)", async () => {
+    setup({ basalConfig: stylo(22), basalDurationHours: 42, fasting: deescNights() })
+    accepted80hAgo()
+    await proposalGeneratorService.generateForPatient(1, 99)
+    // 80 h < 96 h → dans le cooldown → dé-escalade bloquée ; nadir 0,60 non sévère (> 0,54) → ni proposition ni flag.
+    expect(styloCalls()).toHaveLength(0)
+    expect(raiseFlag).not.toHaveBeenCalled()
   })
 
   it("non-régression : un patient POMPE n'emprunte pas le chemin stylo (basalDoseKind jamais posé)", async () => {
@@ -1261,5 +1304,39 @@ describe("US-2658 — fenêtre d'analyse à la demande (windowDays)", () => {
 
     await proposalGeneratorService.generateForPatient(1, 99, undefined, 3)
     expect(fixedDoseTrend.mock.calls[0]?.[1]).toBe("3d")
+  })
+})
+
+// US-2662 (validé medical) — cooldown MDI sensible à la molécule (durée-based, fail-closed le plus long).
+describe("resolveMdiCooldownHours — cooldown MDI par molécule basale", () => {
+  const CLASSIC = CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS // 72
+  const ULTRALONG = CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS_ULTRALONG // 96
+
+  it("basale ultra-longue (dégludec ~42 h) → cooldown ULTRALONG", () => {
+    expect(resolveMdiCooldownHours(42)).toBe(ULTRALONG)
+  })
+  it("glargine U300 (~36 h) → cooldown ULTRALONG (steady state allongé, partagé avec dégludec)", () => {
+    expect(resolveMdiCooldownHours(36)).toBe(ULTRALONG)
+  })
+  it("seuil INCLUSIF : durée == 30 h → cooldown ULTRALONG", () => {
+    expect(resolveMdiCooldownHours(CLINICAL_BOUNDS.ULTRALONG_BASAL_DURATION_MIN_H)).toBe(ULTRALONG)
+  })
+  it("juste SOUS le seuil (29,9 h) → cooldown classique (frontière = 30, pas 25/29)", () => {
+    expect(resolveMdiCooldownHours(29.9)).toBe(CLASSIC)
+    expect(resolveMdiCooldownHours(29)).toBe(CLASSIC)
+  })
+  it("basale classique (glargine U100 24 h / detemir 20 h) → cooldown classique", () => {
+    expect(resolveMdiCooldownHours(24)).toBe(CLASSIC)
+    expect(resolveMdiCooldownHours(20)).toBe(CLASSIC)
+  })
+  it("FAIL-CLOSED : molécule inconnue (null / undefined / NaN) → cooldown ULTRALONG (le plus protecteur)", () => {
+    expect(resolveMdiCooldownHours(null)).toBe(ULTRALONG)
+    expect(resolveMdiCooldownHours(undefined)).toBe(ULTRALONG)
+    expect(resolveMdiCooldownHours(Number.NaN)).toBe(ULTRALONG)
+  })
+  it("accepte un Decimal Prisma (objet avec toString) sans imprécision flottante", () => {
+    // Simule un `Prisma.Decimal` : `Number(decimalLike)` doit résoudre la durée.
+    const decimalLike = { toString: () => "42.0", valueOf: () => 42 }
+    expect(resolveMdiCooldownHours(decimalLike)).toBe(ULTRALONG)
   })
 })

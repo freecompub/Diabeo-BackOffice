@@ -3,8 +3,35 @@
 > 📌 Sous-US de [US-2645](US-2645-EPIC-insulinotherapie-edition-multimode.md) · **back** · Taille **S** (groupée)
 > · dépend de : US-2659 (titration basale stylo single/split)
 >
-> **Statut** : 🟡 spécifiée — **follow-up US-2659** (dette technique + affinement clinique V2).
+> **Statut** : ✅ **LIVRÉ** — item 1 (WARN câblé) + item 2 (cooldown molécule, design validé medical) ;
+> item 3 : DRY du cooldown fait, refacto plus profonde **délibérément différée** (voir ci-dessous).
 > **Priorité** : BASSE (aucune régression ; améliorations non bloquantes).
+
+## Livré
+
+- **Item 1 — `MDI_BASAL_WARN_U` câblé (avertissement non bloquant)** : une proposition de basale STYLO dont
+  `proposedValue > 80 U` surface un badge « Dose basale élevée — à confirmer » à l'écran de revue médecin,
+  **dérivé SERVEUR** (`page.tsx`, bornes cliniques jamais côté client), i18n FR/EN/AR. **Non bloquant** :
+  l'acceptation reste possible (la basale stylo n'a pas de plafond dur, décision US-2659).
+- **Item 2 — Cooldown de titration sensible à la MOLÉCULE** (design **validé medical avant code**, avec une
+  réorientation ferme du fail-closed) : `resolveMdiCooldownHours` lit la durée d'action de la basale
+  (`InsulinTherapySettings.basalInsulinId → PatientInsulin → InsulinCatalog.typicalDurationHours`) et applique
+  aux **3 cibles** (daily/evening/morning) : `≥ 30 h` (dégludec ~42, U300 ~36) ⇒ **96 h** ; sinon **72 h**
+  (U100 24, detemir 20). Discriminateur **durée-based** (medical rejette `peak IS NULL` et `genericName`).
+  **Fail-closed molécule inconnue ⇒ 96 h** (le plus protecteur — réorientation medical vs 72 h initial :
+  l'empilement = harm de commission non surfacé prime sur le retard = harm d'omission surfacé). Nouvelles
+  constantes `MDI_BASAL_COOLDOWN_HOURS_ULTRALONG`, `ULTRALONG_BASAL_DURATION_MIN_H` (verrou anti-drift).
+- **Item 3 — DRY** : le cooldown (auparavant `MDI_BASAL_COOLDOWN_HOURS` **triplé** en dur sur les 3 chemins) est
+  factorisé dans `resolveMdiCooldownHours`. La refacto plus profonde (wrappers `persistMdi`/`persistSplit`,
+  assemblage du signal à jeun) est **délibérément différée** : réécrire du code de titration **critique-sécurité**
+  pour un gain purement interne, sur un ticket BASSE priorité, n'est pas un arbitrage risque/valeur favorable.
+
+**Suivi tracé (hors périmètre)** : reset de titration après changement de molécule basale (le « dernier accepté »
+peut précéder le switch) — signalé par medical, à ouvrir en US dédiée si le besoin se confirme.
+
+**Vérifs** : `resolveMdiCooldownHours` testé (seuil inclusif 30 h, fail-closed null/undefined/NaN, Decimal Prisma) ;
+badge WARN testé (affiché + non bloquant / absent) ; verrou anti-drift `clinical-bounds.test.ts` étendu ;
+i18n-parity 3 langues. Suite complète verte, `tsc`/lint clean.
 
 ## Contexte
 

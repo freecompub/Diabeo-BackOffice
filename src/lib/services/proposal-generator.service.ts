@@ -148,6 +148,33 @@ function afterCutoff<T extends { dayIso: string }>(obs: T[], cutoff: string | nu
   return cutoff === null ? obs : obs.filter((o) => o.dayIso > cutoff)
 }
 
+/**
+ * US-2662 (validé medical) — cooldown anti-cliquet de la titration basale STYLO, sensible à la MOLÉCULE.
+ * Discriminateur DURÉE-based (molécule-agnostique) : durée d'action `>= ULTRALONG_BASAL_DURATION_MIN_H` (30 h)
+ * ⇒ ultra-longue (dégludec ~42 h, glargine U300 ~36 h ; steady state 4–5 j) ⇒ `MDI_BASAL_COOLDOWN_HOURS_ULTRALONG`
+ * (96 h) ; sinon classique (glargine U100 24 h, detemir 20 h) ⇒ `MDI_BASAL_COOLDOWN_HOURS` (72 h).
+ *
+ * FAIL-CLOSED : molécule non résoluble (`basalInsulinId` null, jointure absente, durée `null`) ⇒ cooldown
+ * ULTRALONG (le plus protecteur — l'empilement, harm de commission non surfacé, prime sur le retard de titration,
+ * harm d'omission surfacé ; cohérent avec la hold zone asymétrique). Le comparateur convertit le `Decimal` Prisma
+ * en nombre (jamais de comparaison flottante approximative).
+ *
+ * NOTE — l'override patient `PatientInsulin.customDurationHours` (durée d'action personnalisée pour l'IOB) est
+ * **délibérément ignoré** : (a) cohérence — aucun helper « durée effective » du codebase ne l'applique
+ * aujourd'hui ; (b) sémantique — le cooldown reflète le steady-state PHARMACOLOGIQUE de la MOLÉCULE (durée
+ * catalogue), pas un réglage IOB par-patient. À revisiter si une « durée effective » unifiée est introduite.
+ *
+ * @param durationHours `InsulinCatalog.typicalDurationHours` de la basale active (Prisma Decimal, number ou null).
+ */
+export function resolveMdiCooldownHours(durationHours: number | { toString(): string } | null | undefined): number {
+  if (durationHours == null) return CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS_ULTRALONG // fail-closed : inconnu → le plus long
+  const hours = Number(durationHours)
+  if (!Number.isFinite(hours)) return CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS_ULTRALONG // fail-closed
+  return hours >= CLINICAL_BOUNDS.ULTRALONG_BASAL_DURATION_MIN_H
+    ? CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS_ULTRALONG
+    : CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS
+}
+
 /** US-2659 — décision de titration d'UNE dose basale STYLO, SANS persistance (l'orchestration décide).
  *  `isDeesc` distingue une dé-escalade (sécurité, priorité haute) d'une titration treat-to-target. */
 type MdiDoseDecision =
@@ -429,6 +456,9 @@ export const proposalGeneratorService = {
     // ~05:00 (action insuline ~05:00 → effet 06:00-08:00 = fasting) par la glycémie à jeun. Stylo/MDI
     // (single/split_injection) = dose fixe (autre chemin). Créneaux de jour différés (limite connue).
     const basalConfig = settings?.basalConfiguration
+    // US-2662 — cooldown MDI sensible à la molécule (ultra-longue dégludec/U300 = 96 h vs classique = 72 h),
+    // résolu SERVEUR une fois pour les 3 cibles stylo (daily/evening/morning). Fail-closed → 96 h si inconnu.
+    const mdiCooldownHours = resolveMdiCooldownHours(settings?.basalInsulin?.insulinCatalog?.typicalDurationHours)
     if (basalConfig?.configType === "pump" && basalConfig.pumpSlots.length > 0) {
       const pumpSlots = basalConfig.pumpSlots.map((s) => ({
         id: s.id,
@@ -554,10 +584,11 @@ export const proposalGeneratorService = {
         const nocturnalNadirs = toGl(fasting, "nocturnalNadirMgdl")
         const coverageOk = nocturnalNadirs.length >= MIN_NADIR_NIGHTS
 
-        // Cooldown MDI (72 h V1) + observations POST-changement (fix Q6a) — gate les DEUX sens (divergence
-        // assumée vs pompe : steady state glargine/detemir 3-4 j + incrément 1 U grossier → anti-empilement,
-        // Risk #1). Filtre appliqué AUX DEUX signaux : nadirs (dé-escalade) ET à jeun (treat-to-target, fix M1).
-        const { cutoff: mdiCutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "daily" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+        // Cooldown MDI sensible à la molécule (US-2662 : 72 h classique / 96 h ultra-longue dégludec·U300,
+        // `mdiCooldownHours`) + observations POST-changement (fix Q6a) — gate les DEUX sens (divergence assumée
+        // vs pompe : steady state basale 3-5 j + incrément 1 U grossier → anti-empilement, Risk #1). Filtre
+        // appliqué AUX DEUX signaux : nadirs (dé-escalade) ET à jeun (treat-to-target, fix M1).
+        const { cutoff: mdiCutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "daily" }, mdiCooldownHours)
         const postFast = afterCutoff(fasting, mdiCutoff)
         const postNocturnalNadirs = toGl(postFast, "nocturnalNadirMgdl")
         const postFastingValues = toGl(postFast, "fastingMgdl")
@@ -665,7 +696,7 @@ export const proposalGeneratorService = {
           fastingValues = glVals(fasting.map((f) => f.fastingMgdl))
         }
         const nocturnalNadirs = glVals(fasting.map((f) => f.nocturnalNadirMgdl))
-        const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "evening" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+        const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "evening" }, mdiCooldownHours)
         const postFast = afterCutoff(fasting, cutoff)
         if (fastingValues.length >= MIN_NADIR_NIGHTS) {
           evDecision = decideMdiDose({
@@ -695,7 +726,7 @@ export const proposalGeneratorService = {
         // Confondeur (§3.2/Q3a) : un bolus au DÉJEUNER (midi) contamine le pré-dîner par son IOB → non titrable
         // en sûreté → dose du matin **flag-only** (Q3b). Le bolus petit-déj (action ~5 h) est éteint avant le dîner.
         const lunchBolus = mdiJournal.some((m) => m.moment === "noon" && (m.bolus ?? 0) > 0)
-        const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "morning" }, CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+        const { cutoff, withinCooldown } = await deescalationTiming(patientId, "basalRate", { basalDoseKind: "morning" }, mdiCooldownHours)
         if (preDinner.length >= MIN_NADIR_NIGHTS) {
           mnDecision = decideMdiDose({
             signalPost: glVals(afterCutoff(dinners, cutoff).map((m) => m.preMgdl)), signalFull: preDinner,
