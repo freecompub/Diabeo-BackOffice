@@ -37,7 +37,8 @@ vi.mock("@/lib/services/clinical-review-flag.service", () => ({
   clinicalReviewFlagService: { raise: vi.fn().mockResolvedValue({ flagId: "f1", created: true }) },
 }))
 
-import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
+import { proposalGeneratorService, resolveMdiCooldownHours } from "@/lib/services/proposal-generator.service"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
@@ -1261,5 +1262,35 @@ describe("US-2658 — fenêtre d'analyse à la demande (windowDays)", () => {
 
     await proposalGeneratorService.generateForPatient(1, 99, undefined, 3)
     expect(fixedDoseTrend.mock.calls[0]?.[1]).toBe("3d")
+  })
+})
+
+// US-2662 (validé medical) — cooldown MDI sensible à la molécule (durée-based, fail-closed le plus long).
+describe("resolveMdiCooldownHours — cooldown MDI par molécule basale", () => {
+  const CLASSIC = CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS // 72
+  const ULTRALONG = CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS_ULTRALONG // 96
+
+  it("basale ultra-longue (dégludec ~42 h) → cooldown ULTRALONG", () => {
+    expect(resolveMdiCooldownHours(42)).toBe(ULTRALONG)
+  })
+  it("glargine U300 (~36 h) → cooldown ULTRALONG (steady state allongé, partagé avec dégludec)", () => {
+    expect(resolveMdiCooldownHours(36)).toBe(ULTRALONG)
+  })
+  it("seuil INCLUSIF : durée == 30 h → cooldown ULTRALONG", () => {
+    expect(resolveMdiCooldownHours(CLINICAL_BOUNDS.ULTRALONG_BASAL_DURATION_MIN_H)).toBe(ULTRALONG)
+  })
+  it("basale classique (glargine U100 24 h / detemir 20 h) → cooldown classique", () => {
+    expect(resolveMdiCooldownHours(24)).toBe(CLASSIC)
+    expect(resolveMdiCooldownHours(20)).toBe(CLASSIC)
+  })
+  it("FAIL-CLOSED : molécule inconnue (null / undefined / NaN) → cooldown ULTRALONG (le plus protecteur)", () => {
+    expect(resolveMdiCooldownHours(null)).toBe(ULTRALONG)
+    expect(resolveMdiCooldownHours(undefined)).toBe(ULTRALONG)
+    expect(resolveMdiCooldownHours(Number.NaN)).toBe(ULTRALONG)
+  })
+  it("accepte un Decimal Prisma (objet avec toString) sans imprécision flottante", () => {
+    // Simule un `Prisma.Decimal` : `Number(decimalLike)` doit résoudre la durée.
+    const decimalLike = { toString: () => "42.0", valueOf: () => 42 }
+    expect(resolveMdiCooldownHours(decimalLike)).toBe(ULTRALONG)
   })
 })

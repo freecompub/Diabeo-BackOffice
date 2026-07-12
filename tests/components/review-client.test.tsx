@@ -84,7 +84,7 @@ const BASE: ReviewData = {
     {
       id: "p1", parameterType: "basalRate", source: "patient", currentValue: 1.0, liveCurrentValue: 1.0, proposedValue: 1.2,
       changePercent: 20, reason: "trend", confidence: "high",
-      timeSlotStartHour: null, timeSlotEndHour: null, basalDoseKind: null, createdAt: "2026-06-15T00:00:00.000Z",
+      timeSlotStartHour: null, timeSlotEndHour: null, basalDoseKind: null, highDoseWarning: false, createdAt: "2026-06-15T00:00:00.000Z",
     },
   ],
   reviewFlags: [],
@@ -128,6 +128,23 @@ describe("ReviewClient", () => {
     render(<ReviewClient data={vanished} />)
     expect(screen.getByText(/introuvable/)).toBeTruthy()
     expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  // US-2662 — avertissement NON bloquant « dose basale élevée » (> MDI_BASAL_WARN_U), dérivé serveur.
+  it("dose basale stylo élevée (highDoseWarning) → badge d'avertissement, acceptation NON bloquée", () => {
+    const highDose = {
+      ...BASE,
+      proposals: [{ ...BASE.proposals[0]!, basalDoseKind: "daily", highDoseWarning: true }],
+    }
+    render(<ReviewClient data={highDose} />)
+    expect(screen.getByText("Dose basale élevée — à confirmer")).toBeTruthy()
+    // Non bloquant : le bouton Accepter reste actif (contrairement à baselineMoved).
+    expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("dose basale normale (highDoseWarning false) → pas de badge d'avertissement", () => {
+    render(<ReviewClient data={BASE} />) // highDoseWarning: false
+    expect(screen.queryByText("Dose basale élevée — à confirmer")).toBeNull()
   })
 
   it("médecin : accepter une proposition appelle la route et la retire de la liste", async () => {

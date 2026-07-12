@@ -23,6 +23,7 @@ import { glycemiaService } from "@/lib/services/glycemia.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
+import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { encounterService } from "@/lib/services/encounter.service"
 import { getPatientFlags } from "@/lib/services/doctor-dashboard.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
@@ -154,6 +155,9 @@ export default async function PatientReviewPage({
       timeSlotStartHour: p.timeSlotStartHour ?? null,
       timeSlotEndHour: p.timeSlotEndHour ?? null,
       basalDoseKind: p.basalDoseKind ?? null, // US-2659 S3 — stylo ⇒ unité U totales (pas U/h) à l'affichage
+      // US-2662 — avertissement NON bloquant : dose basale STYLO proposée au-delà du seuil `MDI_BASAL_WARN_U`
+      // (80 U). Dérivé SERVEUR (bornes cliniques jamais côté client). Ne concerne que la basale stylo (U totales).
+      highDoseWarning: p.basalDoseKind != null && Number(p.proposedValue) > CLINICAL_BOUNDS.MDI_BASAL_WARN_U,
       createdAt: p.createdAt.toISOString(),
     })),
   )

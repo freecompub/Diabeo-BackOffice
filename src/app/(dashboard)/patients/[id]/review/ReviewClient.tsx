@@ -57,6 +57,9 @@ export type ReviewProposalItem = {
   timeSlotEndHour: number | null
   /** US-2659 — cible d'une basale STYLO (daily/morning/evening) : non-null ⇒ dose en U TOTALES (pas U/h). */
   basalDoseKind: string | null
+  /** US-2662 — dose basale STYLO proposée au-delà du seuil d'AVERTISSEMENT `MDI_BASAL_WARN_U` (80 U).
+   *  Dérivé SERVEUR (aucune borne clinique côté client). Non bloquant : signale au médecin une dose élevée. */
+  highDoseWarning: boolean
   createdAt: string
 }
 
@@ -521,6 +524,14 @@ function DecisionsStep({ data }: { data: ReviewData }) {
                   )}
                   {/* Provenance (fiabilité ≠ confidence moteur) : « demande patient » mise en avant. */}
                   <Badge variant={p.source === "patient" ? "default" : "outline"}>{tAdj(`source.${p.source}`)}</Badge>
+                  {/* US-2662 — dose basale stylo élevée (> MDI_BASAL_WARN_U) : avertissement NON bloquant
+                      (l'acceptation reste possible). Indépendant de `blocked` : c'est une propriété de la
+                      valeur ABSOLUE proposée, informative même si la base a bougé. */}
+                  {p.highDoseWarning && (
+                    <Badge variant="outline" className="border-feedback-warning text-feedback-warning">
+                      {t("proposalHighDose")}
+                    </Badge>
+                  )}
                   {!blocked &&
                     (() => {
                       const risk = deriveRiskDirection(p.parameterType, p.currentValue, p.proposedValue)

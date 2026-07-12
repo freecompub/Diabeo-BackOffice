@@ -100,6 +100,8 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
       MDI_BASAL_MAX_CHANGE_PERCENT: 20,
       MDI_BASAL_DELIVERY_INCREMENT_U: 1,
       MDI_BASAL_COOLDOWN_HOURS: 72,
+      MDI_BASAL_COOLDOWN_HOURS_ULTRALONG: 96,
+      ULTRALONG_BASAL_DURATION_MIN_H: 30,
       MDI_BASAL_ANALYSIS_DAYS: 7,
       MDI_BASAL_FASTING_DEADBAND_UP_GL: 0.3,
       MDI_BASAL_FASTING_DEADBAND_DOWN_GL: 0.2,
@@ -141,6 +143,11 @@ describe("CLINICAL_BOUNDS — anti-drift (A3)", () => {
     expect(CLINICAL_BOUNDS.MDI_BASAL_WARN_U).toBe(CLINICAL_BOUNDS.FIXED_BASAL_WARN_U)
     expect(CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS).toBe(7)
     expect(CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS).toBe(CLINICAL_BOUNDS.ENGINE_DEESCALATION_COOLDOWN_HOURS)
+    // US-2662 — le cooldown ultra-long (dégludec/U300) est STRICTEMENT plus long que le classique (anti-empilement),
+    // et le seuil de durée sépare bien ultra-longues (≥ 30 h : dégludec ~42, U300 ~36) des classiques (U100 24, detemir 20).
+    expect(CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS_ULTRALONG).toBeGreaterThan(CLINICAL_BOUNDS.MDI_BASAL_COOLDOWN_HOURS)
+    expect(CLINICAL_BOUNDS.ULTRALONG_BASAL_DURATION_MIN_H).toBeGreaterThan(24) // au-dessus de la glargine U100
+    expect(CLINICAL_BOUNDS.ULTRALONG_BASAL_DURATION_MIN_H).toBeLessThan(36) // en-dessous de l'U300 (incluse)
     // Cap PATIENT stylo (US-2659 S3) = moitié du cap moteur (demande conservatrice, pas une titration).
     expect(CLINICAL_BOUNDS.MDI_BASAL_PATIENT_MAX_DELTA_U).toBe(CLINICAL_BOUNDS.MDI_BASAL_MAX_DELTA_U / 2)
     expect(CLINICAL_BOUNDS.MDI_BASAL_PATIENT_MAX_DELTA_U).toBeGreaterThan(0)
