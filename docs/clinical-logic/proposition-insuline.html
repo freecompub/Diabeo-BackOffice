@@ -134,6 +134,39 @@ sup.cite a{font-family:var(--mono);font-size:.68em;color:var(--teal-deep);text-d
 footer{border-top:1px solid var(--hair);padding:26px 0 60px;color:var(--muted);font-size:.84rem}
 .badge-src{display:inline-block;font-family:var(--mono);font-size:.72rem;background:var(--surface-2);border:1px solid var(--hair);border-radius:6px;padding:2px 7px;color:var(--muted);margin:2px 3px 2px 0}
 h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right:.4em;font-size:.8em}
+
+/* Reproductions d'interface (mockups fidèles, non des captures) */
+.ui-shot{border:1px solid var(--hair-strong);border-radius:14px;overflow:hidden;background:var(--surface-2);box-shadow:var(--shadow);margin:14px 0}
+.ui-shot .bar{display:flex;align-items:center;gap:8px;padding:9px 14px;background:var(--surface);border-bottom:1px solid var(--hair)}
+.ui-shot .bar .dots{display:inline-flex;gap:6px}
+.ui-shot .bar .dots i{width:10px;height:10px;border-radius:50%;background:var(--hair-strong);display:inline-block}
+.ui-shot .bar .ttl{font-size:.78rem;font-weight:700;color:var(--muted)}
+.ui-shot .bar .repro{margin-left:auto;font-size:.64rem;letter-spacing:.06em;text-transform:uppercase;font-weight:800;color:var(--coral);background:var(--intern-bg);border:1px solid color-mix(in srgb,var(--intern-line) 30%,transparent);border-radius:5px;padding:2px 7px}
+.ui-shot .screen{padding:16px 18px;background:var(--ground)}
+.ui-h{font-weight:800;font-size:1.02rem;color:var(--ink);margin:0}
+.ui-sub{font-size:.82rem;color:var(--muted);margin:2px 0 0}
+.ui-panel{background:var(--surface);border:1px solid var(--hair);border-radius:11px;padding:12px 14px;margin:12px 0}
+.ui-panel h5{margin:0 0 8px;font-size:.82rem;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+.ui-prow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 0;border-top:1px solid var(--hair)}
+.ui-prow:first-of-type{border-top:0}
+.ui-prow .grow{min-width:150px;flex:1}
+.ui-prow .pname{font-weight:700;font-size:.9rem}
+.ui-prow .ptrans{font-family:var(--mono);font-size:.8rem;color:var(--muted)}
+.ui-badge{font-size:.72rem;font-weight:700;border-radius:999px;padding:3px 9px;border:1px solid var(--hair);white-space:nowrap}
+.ui-badge.pct{background:var(--surface-2);color:var(--muted)}
+.ui-badge.src{background:var(--teal-soft);color:var(--teal-deep);border-color:transparent}
+.ui-badge.risk{background:var(--warn-bg);color:color-mix(in srgb,var(--warn-line) 80%,var(--ink));border-color:color-mix(in srgb,var(--warn-line) 45%,transparent)}
+.ui-badge.warnd{background:var(--warn-bg);color:color-mix(in srgb,var(--warn-line) 80%,var(--ink));border-color:color-mix(in srgb,var(--warn-line) 45%,transparent)}
+.ui-btn{font-size:.82rem;font-weight:700;border-radius:8px;padding:6px 13px;border:1px solid var(--hair);background:var(--surface);color:var(--ink)}
+.ui-btn.prim{background:var(--teal);color:#fff;border-color:transparent}
+.ui-btn.dis{opacity:.45}
+.ui-blk{font-size:.78rem;color:var(--block-line);font-weight:600;width:100%;margin-top:2px}
+.ui-field{margin:10px 0}
+.ui-field label{display:block;font-size:.8rem;font-weight:600;margin-bottom:4px}
+.ui-field .inp{border:1px solid var(--hair-strong);border-radius:8px;padding:8px 11px;background:var(--surface);font-family:var(--mono);font-size:.86rem;color:var(--ink)}
+.ui-field .hint{font-size:.72rem;color:var(--muted);margin-top:3px}
+.ui-ok{font-size:.8rem;color:var(--ok-line);font-weight:600;margin-top:8px}
+.ui-cap{font-size:.78rem;color:var(--muted);margin:6px 2px 0}
 </style>
 
 <header class="hero">
@@ -142,7 +175,7 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
     <h1>Propositions d'ajustement d'insuline&nbsp;: le processus complet</h1>
     <p class="lede">Comment une proposition de dose naît, est bornée, est faite par un patient, une infirmière, un médecin ou l'algorithme — et comment elle est validée. Décrit fidèlement le comportement du code, chaque constante justifiée.</p>
     <div class="aud"><span>Pour les médecins</span><span>Pour les infirmières</span><span>Pour les patients</span></div>
-    <p class="hero-note">Document de référence technico-fonctionnel. Chaque règle et seuil est extrait du code (<code>proposal-algorithm.ts</code>, <code>proposal-generator.service.ts</code>, <code>adjustment.service.ts</code>, <code>clinical-bounds.ts</code>). Les valeurs sans justification scientifique directe sont explicitement étiquetées <b>décision interne</b>.</p>
+    <p class="hero-note">Document de référence technico-fonctionnel. Chaque règle et seuil est extrait du code (<code>proposal-algorithm.ts</code>, <code>proposal-generator.service.ts</code>, <code>adjustment.service.ts</code>, <code>clinical-bounds.ts</code>). Les valeurs sans justification scientifique directe sont explicitement étiquetées <b>décision interne</b>. Les aperçus d'écrans (patient / infirmière / médecin) sont des <b>reproductions fidèles des composants réels</b> (marquées «&nbsp;Reproduction&nbsp;»), pas des captures — sans aucune donnée patient réelle.</p>
   </div>
 </header>
 
@@ -220,9 +253,38 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
   <p><b>Peut&nbsp;:</b> une hausse ou une baisse d'ISF/ICR (dans ±10&nbsp;%) ; une hausse de basale (≤10&nbsp;%) ; depuis US-2659, une <b>baisse de basale</b> — mais gatée (§3).</p>
   <p><b>Ne peut pas&nbsp;:</b> proposer sur le dossier d'un autre ; dépasser ±10&nbsp;% ; re-proposer sur le même créneau dans les 24&nbsp;h ; obtenir une proposition de dose s'il est non insuliné.</p></div>
 
+  <div class="ui-shot" role="img" aria-label="Reproduction de l'écran patient : boîte de dialogue « Proposer un ajustement »">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Vue patient · Mon insuline</span><span class="repro">Reproduction</span></div>
+    <div class="screen">
+      <p class="ui-h">Proposer un ajustement</p>
+      <p class="ui-sub">Facteur de sensibilité (ISF) · 08:00–12:00 · Valeur actuelle&nbsp;: 0,50 g/L·U</p>
+      <div class="ui-panel">
+        <div class="ui-field"><label>Nouvelle valeur proposée</label><div class="inp">0,54</div><div class="hint">0.10–1.00 g/L·U</div></div>
+        <div class="ui-field"><label>Commentaire (facultatif)</label><div class="inp" style="color:var(--muted)">Je fais souvent des hypos en fin de matinée…</div></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px"><span class="ui-btn">Annuler</span><span class="ui-btn prim">Envoyer la proposition</span></div>
+        <p class="ui-ok">✓ Proposition envoyée au médecin pour validation.</p>
+      </div>
+    </div>
+  </div>
+  <p class="ui-cap"><b>Reproduction fidèle</b> de l'interface (composant <code>InsulinProposalDialog</code>) — <b>pas une capture d'écran</b> ; valeurs d'exemple, sans donnée patient réelle. La valeur courante (0,50) est lue serveur ; la borne <code>0.10–1.00</code> est un indice, le serveur reste l'autorité.</p>
+
   <h3 id="soignant">2b · Infirmière &amp; médecin — proposition clinique</h3>
   <p>Le soignant propose depuis le backoffice, sur un patient de son portefeuille (accès vérifié). La provenance est <code>nurse</code> ou <code>doctor</code>, dérivée de la session. Les soignants <b>ne sont pas soumis</b> au cap d'amplitude patient (±10&nbsp;%) ni au cooldown 24&nbsp;h&nbsp;: ils portent le jugement clinique. Restent applicables&nbsp;: les <b>bornes cliniques dures</b>, la <b>frontière «&nbsp;non insuliné&nbsp;»</b>, et l'<b>anti-doublon</b>. La valeur courante reste lue serveur. La proposition sort en <code>pending</code>.</p>
   <p class="small">Le médecin dispose en plus de la <b>décision</b> (accepter / rejeter / appliquer) — §4. Une proposition d'un soignant n'est pas auto-validée du seul fait qu'elle vient d'un soignant&nbsp;: elle passe par le même écran de revue.</p>
+
+  <div class="ui-shot" role="img" aria-label="Reproduction de l'écran infirmière : fiche patient, onglet insuline avec bouton Proposer par créneau">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Vue infirmière · Fiche patient · Insuline</span><span class="repro">Reproduction</span></div>
+    <div class="screen">
+      <p class="ui-h">Facteur de sensibilité (ISF)</p>
+      <div class="ui-panel" style="padding:6px 14px">
+        <div class="ui-prow"><span class="grow"><span class="pname">08:00 – 12:00</span> <span class="ptrans">0,50 g/L·U</span></span><span class="ui-btn">Proposer</span></div>
+        <div class="ui-prow"><span class="grow"><span class="pname">12:00 – 20:00</span> <span class="ptrans">0,45 g/L·U</span></span><span class="ui-btn">Proposer</span></div>
+        <div class="ui-prow"><span class="grow"><span class="pname">20:00 – 08:00</span> <span class="ptrans">0,60 g/L·U</span></span><span class="ui-btn">Proposer</span></div>
+      </div>
+      <p class="ui-sub">Le bouton <b>Proposer</b> ouvre le même formulaire que le patient. La proposition partira en <b>provenance «&nbsp;Infirmier&nbsp;»</b>, sans cap d'amplitude ni cooldown patient — mais <b>jamais</b> auto-appliquée&nbsp;: elle passe par la revue médecin.</p>
+    </div>
+  </div>
+  <p class="ui-cap"><b>Reproduction fidèle</b> (fiche patient <code>PatientRecord</code> + <code>InsulinProposalDialog</code>) — pas une capture d'écran ; valeurs d'exemple.</p>
 
   <h3 id="moteur">2c · L'algorithme — génération automatique</h3>
   <p>Le moteur tourne en cron nocturne sur tout le portefeuille actif (sous verrou anti-double-exécution) ou à la demande. Il n'invente aucune dose&nbsp;: il analyse les <b>données réelles</b> du patient (glycémies, repas, corrections) sur une fenêtre par levier — <b>14&nbsp;jours</b> par défaut (ISF <b>30&nbsp;j</b>, basale stylo <b>7&nbsp;j</b>), ou 2–14&nbsp;j à la demande — et ne propose que si un <b>signal systématique</b> émerge, borné et gardé. Le détail état par état est au §5. Comme toute proposition, la sienne sort en <code>pending</code>, provenance <code>algorithm</code>, avec des métriques de confiance (nombre d'événements analysés) — que les propositions humaines n'ont pas.</p>
@@ -277,6 +339,34 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
     <div class="step"><div class="n">D</div><div class="b"><b>Appliquer</b> — écriture atomique du créneau ISF / ICR / débit basal pompe / dose fixe / <b>dose basale stylo</b> (<code>dailyDose</code>&nbsp;/&nbsp;<code>morningDose</code>&nbsp;/&nbsp;<code>eveningDose</code> selon <code>basalDoseKind</code>), scopée patient. <b>Compare-and-swap à deux couches</b>&nbsp;: (1) check explicite → <code>baselineMoved</code> (409) si la base a dérivé&nbsp;; (2) valeur attendue verrouillée dans le <code>WHERE</code> de l'écriture (CAS atomique côté base) → si la base bouge dans la fenêtre concurrente, ou si la dose stylo a été effacée, l'écriture matche 0 ligne → <code>…SlotNotFound</code> / <code>styloBasalNotFound</code> (409), rollback. Jamais d'«&nbsp;accepté + appliqué&nbsp;» fantôme, jamais de réintroduction d'une dose supprimée.</div></div>
     <div class="step"><div class="n">E</div><div class="b"><b>Rejeter</b> — <code>status: rejected</code>, horodatage, relecteur. Aucune écriture.</div></div>
   </div>
+  <div class="ui-shot" role="img" aria-label="Reproduction de l'écran médecin : mode revue de consultation avec les propositions d'ajustement, badges et boutons Accepter / Rejeter">
+    <div class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="ttl">Vue médecin · Revue de consultation</span><span class="repro">Reproduction</span></div>
+    <div class="screen">
+      <p class="ui-h">Mode revue de consultation</p>
+      <p class="ui-sub">Analyse structurée, étape par étape — sans intelligence artificielle.</p>
+      <div class="callout warn" style="margin:12px 0"><div class="lab">▲ Orientations ouvertes</div><p style="margin:0">Hypoglycémie nocturne à revoir (basale) · Basale du matin à revoir (glycémie pré-dîner)</p></div>
+      <div class="ui-panel">
+        <h5>Propositions d'ajustement</h5>
+        <div class="ui-prow">
+          <span class="grow"><span class="pname">Facteur de sensibilité (ISF)</span><br><span class="ptrans">0,50 → 0,54 g/L·U</span></span>
+          <span class="ui-badge pct">+8&nbsp;%</span><span class="ui-badge src">Demande patient</span><span class="ui-badge risk">Risque hypo</span>
+          <span style="display:flex;gap:6px"><span class="ui-btn prim">Accepter</span><span class="ui-btn">Rejeter</span></span>
+        </div>
+        <div class="ui-prow">
+          <span class="grow"><span class="pname">Dose basale (stylo, quotidienne)</span><br><span class="ptrans">40 → 46 U</span></span>
+          <span class="ui-badge pct">+15&nbsp;%</span><span class="ui-badge src">Algorithme</span><span class="ui-badge warnd">Dose basale élevée — à confirmer</span>
+          <span style="display:flex;gap:6px"><span class="ui-btn prim">Accepter</span><span class="ui-btn">Rejeter</span></span>
+        </div>
+        <div class="ui-prow">
+          <span class="grow"><span class="pname">Ratio glucides (ICR)</span><br><span class="ptrans">10 → 11 g/U</span><span class="ui-blk">⛔ Valeur actuelle réelle&nbsp;: 9 — config modifiée depuis la proposition&nbsp;; acceptation bloquée, régénérer</span></span>
+          <span class="ui-badge src">Médecin</span>
+          <span style="display:flex;gap:6px"><span class="ui-btn prim dis">Accepter</span><span class="ui-btn">Rejeter</span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="ui-cap"><b>Reproduction fidèle</b> de l'écran de revue (<code>ReviewClient</code>) — pas une capture d'écran ; valeurs d'exemple. Badges&nbsp;: <b>provenance</b> (patient/algorithme/médecin), <b>risque</b>, <b>dose élevée</b> (US-2662, non bloquant). La 3ᵉ ligne montre le <b>blocage compare-and-swap</b> (base modifiée depuis la proposition) → «&nbsp;Accepter&nbsp;» désactivé.</p>
+
   <div class="callout"><div class="lab">Basale stylo (MDI) — application groupée (US-2660)</div>
   <p>Accepter <b>avec application immédiate</b> une proposition de basale <b>stylo</b> (hausse <b>comme</b> baisse) écrit désormais la dose ciblée (<code>dailyDose</code>&nbsp;/&nbsp;<code>morningDose</code>&nbsp;/&nbsp;<code>eveningDose</code>) sur l'<b>unique</b> configuration basale du patient. Gardes fail-closed&nbsp;: <code>baselineMoved</code> (dérive détectée) et le CAS atomique dans le <code>WHERE</code> qui, si la dose ciblée a dérivé dans la fenêtre concurrente ou a été <b>effacée</b> depuis, matche 0 ligne → <code>styloBasalNotFound</code> — évitant de réintroduire silencieusement une dose supprimée. Le médecin peut toujours <b>accepter sans appliquer</b>.</p></div>
   <p class="small">Les décisions (accept / reject / apply) sont auditées avec l'identité du relecteur — sans valeur de dose en clair.</p>
@@ -319,6 +409,8 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
     <p style="margin-top:0"><b>Ce qu'est une «&nbsp;correction propre&nbsp;»</b> — une correction (bolus sans repas) n'est retenue que si&nbsp;: dose de correction &gt; 0, <b>aucun repas</b> (pas de glucides), <b>IOB nul</b>, bolus <b>non plafonné</b>, bolus standard (pas d'étalé), élévation ≥ <code>0,30</code> g/L au-dessus de la cible, et aucun glucide/insuline dans la fenêtre d'action de 5&nbsp;h. Le «&nbsp;résultat&nbsp;» lu est la glycémie <b>stabilisée à 5&nbsp;h</b> ±30&nbsp;min (fail-closed si absente — lire à 5&nbsp;h plutôt que 3,5&nbsp;h err vers <i>moins</i> d'insuline).</p>
     <p style="margin-bottom:0"><b>Décision</b> — avec ≥ 3 corrections&nbsp;: résultat au-dessus de la cible → correction trop faible → ISF trop haut → <b>baisse</b> (<code>isfTooHigh</code>) ; en dessous (sur-correction) → <b>hausse</b> (<code>isfTooLow</code>). Clamp ±20&nbsp;%, deadband 2&nbsp;%. Garde hypo sur le nadir post-correction (~3–4&nbsp;h).</p>
   </div>
+  <div class="chart"><canvas data-chart="isf" height="220" aria-label="Exemple ISF : trois corrections dont le résultat à 5 h retombe sous la cible (~0,72 g/L) → sur-correction → proposition de hausse d'ISF (correction plus douce)"></canvas>
+    <div class="cap"><span class="leg"><i style="background:var(--gly-low)"></i>résultat post-correction à 5 h</span><span class="leg"><i style="background:var(--teal)"></i>cible 1,00</span><span class="leg"><i class="band" style="background:var(--gly-normal)"></i>plage cible</span> — les 3 résultats <b>sous</b> la cible ⇒ sur-correction ⇒ hausse d'ISF (<code>isfTooLow</code>).</div></div>
 
   <h3 id="basal-pompe">5d · Basale pompe — glycémie à jeun</h3>
   <p>Pour une <b>pompe</b>, le moteur titre le <b>créneau nocturne</b> (celui actif à <b>05:00</b> — un micro-débit à 05:00 agit vers 06:00–08:00 = glycémie à jeun). Ajustement <b>proportionnel</b> (contrairement au stylo, à pas fixe).</p>
@@ -362,6 +454,8 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
     <li><b>Une dose / run, priorité sécurité</b> — au plus une proposition basale par exécution&nbsp;: dé-escalade avant titration ; à égalité, priorité au soir (nocturne = pire mode d'échec). Si les deux doses doivent dé-escalader, celle retenue est persistée et l'<b>autre est flaggée</b> (jamais tue).</li>
     <li><b>Verrou «&nbsp;1 basale stylo en attente&nbsp;»</b> — au plus une proposition basale stylo <code>pending</code> par patient (garanti en base)&nbsp;: changer les deux doses d'un coup détruirait l'attribution matin/soir.</li>
   </ul>
+  <div class="chart"><canvas data-chart="split" height="230" aria-label="Exemple split, dose du matin : glycémie pré-dîner haute sur 7 jours au-dessus de T+0,30 → titration de la dose du matin sur le signal pré-dîner"></canvas>
+    <div class="cap"><span class="leg"><i style="background:var(--gly-high)"></i>pré-dîner ~1,50 g/L (7 j)</span><span class="leg"><i class="band" style="background:var(--gly-normal)"></i>hold zone [0,80 ; 1,30]</span><span class="leg"><i style="background:var(--teal)"></i>T = 1,00</span> — la <b>dose du matin</b> se titre sur ce signal <b>pré-dîner</b> (garde hypo de jour).</div></div>
   <div class="callout"><div class="lab">Flag de revue PAR CIBLE (US-2661)</div>
   <p>Chaque dose lève un flag d'orientation <b>distinct</b>, fidèle à sa fenêtre physiologique&nbsp;: la dose du <b>soir</b> (et le mode single) → <span class="chip flag"><span class="dot" style="background:var(--warn-line)"></span>nocturnalHypoHighFasting</span> (mode d'échec <b>nocturne</b>, à jeun)&nbsp;; la dose du <b>matin</b> → <span class="chip flag"><span class="dot" style="background:var(--warn-line)"></span>daytimeHypoHighPreDinner</span> (mode d'échec <b>diurne</b>, pré-dîner). Réutiliser le flag «&nbsp;nocturne&nbsp;» pour la dose du matin affirmerait une fenêtre physiologique <b>fausse</b>. Le libellé du flag matin est volontairement <b>non affirmatif</b> — «&nbsp;Basale du matin à revoir (glycémie pré-dîner)&nbsp;», <b>jamais</b> «&nbsp;hypoglycémie&nbsp;» — car le cas «&nbsp;confondeur bolus-midi&nbsp;» ne garantit aucune hypo.</p></div>
   <div class="callout warn"><div class="lab">▲ Avertissement dose élevée à la revue (US-2662)</div>
@@ -384,6 +478,8 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
   <p class="small">La direction «&nbsp;sûre&nbsp;» (moins d'insuline) reste toujours permise. Les seuils 54 / 70&nbsp;mg/dL sont les niveaux d'hypoglycémie du consensus international<sup class="cite"><a href="#r-hypo">[Hypo]</a></sup><sup class="cite"><a href="#r-ada">[ADA]</a></sup>.</p>
   <h4>Dé-escalade active sur hypos récurrentes</h4>
   <p>Indépendamment du deadband sur la moyenne, des hypos <b>récurrentes</b> (≥ 2 nadirs &lt; 0,70) déclenchent une <b>baisse d'insuline fixe</b> (+10&nbsp;% d'ICR/ISF, −10&nbsp;% de basale pompe, −min(20&nbsp;%,4&nbsp;U) de basale stylo). Volontairement <b>fixe</b> (pas de scaling sur la profondeur&nbsp;: un nadir isolé profond sur-corrigerait) ; la persistance titre cumulativement run après run.</p>
+  <div class="chart"><canvas data-chart="deesc" height="230" aria-label="Exemple dé-escalade : nadirs nocturnes récurrents sous 0,70 g/L sur plusieurs nuits → baisse de basale ; après acceptation, les nadirs post-changement remontent"></canvas>
+    <div class="cap"><span class="leg"><i style="background:var(--gly-low)"></i>nadir nocturne (avant)</span><span class="leg"><i style="background:var(--gly-normal)"></i>nadir post-changement (remonte)</span> — nadirs récurrents <b>&lt; 0,70</b> ⇒ dé-escalade ; le signal doit tenir sur les nuits <b>postérieures</b> au dernier changement.</div></div>
   <h4>Cooldown anti-cliquet (72&nbsp;h, ou 96&nbsp;h ultra-longue) + fenêtre post-changement</h4>
   <p>Une dé-escalade à magnitude fixe n'est pas auto-limitante&nbsp;: sans garde temporelle, des runs successifs empileraient 10&nbsp;%+10&nbsp;%+10&nbsp;% <b>avant</b> que l'effet du premier ajustement soit observable. Donc&nbsp;: (1) le moteur <b>saute</b> une dé-escalade si le dernier changement accepté date de <b>moins</b> que le cooldown ; (2) le signal récurrent doit tenir sur les <b>observations postérieures</b> au dernier changement (jamais re-titrer sur des hypos périmées). Si le blocage cache une hypo <b>sévère</b>, elle est <b>surfacée en flag</b> (jamais tue).</p>
   <div class="callout"><div class="lab">Cooldown de la basale stylo sensible à la MOLÉCULE (US-2662)</div>
@@ -574,7 +670,19 @@ h2 .num-h{font-family:var(--mono);color:var(--teal);font-weight:800;margin-right
       series:[{color:'--gly-normal',w:2.4,dots:2.6,data:[1.3,1.0,0.7,0.5,0.9,1.5]}]},
     mdi:{h:230,min:0.6,max:1.9,band:[0.8,1.3],target:1.0,ticks:[0.6,0.8,1.0,1.3,1.6],
       xlabels:['J1','J2','J3','J4','J5','J6','J7'],
-      series:[{color:'--gly-high',w:2.6,dots:3,data:[1.55,1.48,1.52,1.5,1.46,1.53,1.49]}]}
+      series:[{color:'--gly-high',w:2.6,dots:3,data:[1.55,1.48,1.52,1.5,1.46,1.53,1.49]}]},
+    isf:{h:220,min:0.5,max:1.6,band:[0.8,1.3],target:1.0,ticks:[0.5,0.7,1.0,1.3,1.5],
+      xlabels:['Corr. 1','Corr. 2','Corr. 3'],
+      series:[{color:'--gly-low',w:2.6,dots:3.2,data:[0.74,0.70,0.78]}]},
+    split:{h:230,min:0.6,max:1.9,band:[0.8,1.3],target:1.0,ticks:[0.6,0.8,1.0,1.3,1.6],
+      xlabels:['J1','J2','J3','J4','J5','J6','J7'],
+      series:[{color:'--gly-high',w:2.6,dots:3,data:[1.52,1.47,1.5,1.55,1.49,1.51,1.48]}]},
+    deesc:{h:230,min:0.4,max:1.5,band:[0.7,1.3],target:1.0,ticks:[0.4,0.54,0.7,1.0,1.3],
+      xlabels:['Nuit 1','Nuit 2','Nuit 3','Nuit 4','Nuit 5'],
+      series:[
+        {color:'--gly-low',w:2.6,dots:3.2,data:[0.66,0.60,0.63,0.61,0.64]},
+        {color:'--gly-normal',w:1.8,dots:2.4,data:[0.66,0.60,0.63,0.78,0.85]}
+      ]}
   };
   function renderAll(){
     document.querySelectorAll('canvas[data-chart]').forEach(function(cv){
