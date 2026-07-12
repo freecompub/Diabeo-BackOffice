@@ -241,7 +241,7 @@ export const slotSetProposalService = {
       // `baselineMoved`/`baselineMissing`) propage l'exception → rollback du flip → la proposition reste
       // `pending` (fail-closed). `replaceSlotSet` vérifie le CAS sous verrou (`expectedBaseline`) puis supersède
       // au passage les autres propositions pending du paramètre.
-      await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots, reviewerUserId, ctx, tx, expectedBaseline)
+      await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots, reviewerUserId, ctx, tx, { baseline: expectedBaseline })
 
       await auditService.logWithTx(tx, {
         userId: reviewerUserId,

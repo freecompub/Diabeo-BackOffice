@@ -311,7 +311,7 @@ describe("insulinTherapyService", () => {
         },
       })
       // expectedBaseline (7e arg) = base attendue, identique au live → CAS OK.
-      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, validIsf)
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, { baseline: validIsf })
       expect(res.applied).toBe(true)
       expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
       expect(tx.insulinSensitivityFactor.createMany).toHaveBeenCalled()
@@ -329,7 +329,7 @@ describe("insulinTherapyService", () => {
         },
       })
       await expect(
-        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, validIsf),
+        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, { baseline: validIsf }),
       ).rejects.toThrow("baselineMoved")
       expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
       expect(tx.insulinSensitivityFactor.createMany).not.toHaveBeenCalled()
@@ -338,16 +338,58 @@ describe("insulinTherapyService", () => {
     it("CAS : snapshot ABSENT (legacy `null`) → baselineMissing, RIEN écrit (fail-closed)", async () => {
       const tx = mkTx()
       await expect(
-        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, null),
+        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, { baseline: null }),
       ).rejects.toThrow("baselineMissing")
       expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
     })
 
-    it("chemin DOCTOR direct (expectedBaseline absent) → PAS de CAS, applique normalement", async () => {
+    it("chemin DOCTOR direct (cas absent) → PAS de CAS, applique normalement", async () => {
       const tx = mkTx()
       const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never)
       expect(res.applied).toBe(true)
       expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
+    })
+
+    it("CAS ICR : base LIVE a DÉRIVÉ (carbRatio) → baselineMoved, RIEN écrit (branche ICR de la lecture LIVE)", async () => {
+      const validIcr = [
+        { startHour: 6, endHour: 22, value: 8 },
+        { startHour: 22, endHour: 6, value: 12 },
+      ]
+      const tx = mkTx({
+        carbRatio: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, gramsPerUnit: 9 }, // 9 ≠ 8 attendu → dérive détectée via gramsPerUnit
+            { startHour: 22, endHour: 6, gramsPerUnit: 12 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      await expect(
+        insulinTherapyService.replaceSlotSet("icr", 7, validIcr, 42, undefined, tx as never, { baseline: validIcr }),
+      ).rejects.toThrow("baselineMoved")
+      expect(tx.carbRatio.deleteMany).not.toHaveBeenCalled()
+      expect(tx.carbRatio.createMany).not.toHaveBeenCalled()
+    })
+
+    it("CAS ICR : base LIVE identique (carbRatio) → applique", async () => {
+      const validIcr = [
+        { startHour: 6, endHour: 22, value: 8 },
+        { startHour: 22, endHour: 6, value: 12 },
+      ]
+      const tx = mkTx({
+        carbRatio: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, gramsPerUnit: 8 },
+            { startHour: 22, endHour: 6, gramsPerUnit: 12 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      const res = await insulinTherapyService.replaceSlotSet("icr", 7, validIcr, 42, undefined, tx as never, { baseline: validIcr })
+      expect(res.applied).toBe(true)
+      expect(tx.carbRatio.deleteMany).toHaveBeenCalled()
     })
   })
 

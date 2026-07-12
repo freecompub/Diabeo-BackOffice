@@ -55,6 +55,11 @@ describe("assertBaselineUnchanged — CAS d'ensemble", () => {
     expect(() => assertBaselineUnchanged(base, live)).not.toThrow()
   })
 
+  it("valeur LIVE non finie (NaN — corruption) → baselineMoved (fail-closed, pas 'inchangé' silencieux)", () => {
+    const live = BASE.map((s, i) => (i === 0 ? { ...s, value: NaN } : s))
+    expect(() => assertBaselineUnchanged(BASE, live)).toThrow("baselineMoved")
+  })
+
   it("snapshot ABSENT (proposition legacy) → baselineMissing (fail-closed)", () => {
     expect(() => assertBaselineUnchanged(null, BASE)).toThrow("baselineMissing")
   })

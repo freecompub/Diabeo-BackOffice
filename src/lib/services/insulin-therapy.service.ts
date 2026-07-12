@@ -384,12 +384,14 @@ export const insulinTherapyService = {
      */
     externalTx?: Prisma.TransactionClient,
     /**
-     * US-2663 (S1) — CAS D'ENSEMBLE fail-closed. Snapshot de la base attendue (`SlotSetProposal.baselineSlots`),
-     * fourni UNIQUEMENT par le chemin d'acceptation groupée. `undefined` (chemin DOCTOR direct) ⇒ pas de CAS
-     * (le médecin écrase explicitement). `IsfIcrSlot[]` ⇒ la base LIVE (lue sous verrou) doit être identique,
-     * sinon `baselineMoved` (rollback). `null` (proposition legacy sans snapshot) ⇒ `baselineMissing` (fail-closed).
+     * US-2663 (S1) — CAS D'ENSEMBLE fail-closed. **Enveloppé dans un objet à dessein** (durcissement revue) :
+     * demander le CAS est un acte EXPLICITE (`{ baseline }`), jamais un effet de bord d'une valeur « vide ».
+     * - **Omis** (`undefined`) ⇒ chemin DOCTOR direct : PAS de CAS (le médecin écrase explicitement). Le
+     *   fail-open n'est donc atteignable qu'en n'AJOUTANT PAS le paramètre — un `null` mal coalescé ne compile pas.
+     * - `{ baseline: IsfIcrSlot[] }` ⇒ la base LIVE (lue sous verrou) doit être identique, sinon `baselineMoved`.
+     * - `{ baseline: null }` ⇒ proposition legacy sans snapshot ⇒ `baselineMissing` (fail-closed).
      */
-    expectedBaseline?: IsfIcrSlot[] | null,
+    cas?: { baseline: IsfIcrSlot[] | null },
   ): Promise<{
     applied: true
     count: number
@@ -413,7 +415,8 @@ export const insulinTherapyService = {
       //   `tryLockInsulinSlots` déjà acquis ⇒ lecture LIVE atomique (pas de TOCTOU) : la base actuelle doit
       //   être identique au snapshot pris à la génération. Une dérive (ajustement médecin concurrent) →
       //   `baselineMoved` ; snapshot absent (legacy) → `baselineMissing`. Rollback ⇒ proposition reste `pending`.
-      if (expectedBaseline !== undefined) {
+      //   `orderBy` sans effet fonctionnel ici (comparaison par `Map` sur `startHour`) — gardé par symétrie S0.
+      if (cas !== undefined) {
         const live: IsfIcrSlot[] =
           param === "isf"
             ? (
@@ -430,7 +433,7 @@ export const insulinTherapyService = {
                   select: { startHour: true, endHour: true, gramsPerUnit: true },
                 })
               ).map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.gramsPerUnit) }))
-        assertBaselineUnchanged(expectedBaseline, live)
+        assertBaselineUnchanged(cas.baseline, live)
       }
 
       // 2b. Snapshot ancien jeu (audit `from`) + 2c. REPLACE scopé settingsId.

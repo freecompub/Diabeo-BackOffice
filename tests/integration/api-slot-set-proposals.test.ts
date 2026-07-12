@@ -151,6 +151,9 @@ describe("PATCH /api/slot-set-proposals/:id/accept (C3d)", () => {
     ["slotsBusy", 409],
     ["nonInsulinNoDose", 409],
     ["settingsNotFound", 404],
+    // US-2663 (S1) — CAS d'ensemble : dérive de base / snapshot legacy non certifiable → 409 (récupérable).
+    ["baselineMoved", 409],
+    ["baselineMissing", 409],
   ])("code service %s → %d (jamais 500)", async (code, status) => {
     accept.mockRejectedValue(new Error(code))
     expect((await ACCEPT(patchReq("DOCTOR"), params("p1"))).status).toBe(status)

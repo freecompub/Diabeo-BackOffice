@@ -35,10 +35,14 @@ export const BASELINE_VALUE_EPS = 1e-9
  * Vérifie que la base LIVE est identique au snapshot `baselineSlots` (CAS d'ensemble). Lève un code d'erreur
  * métier stable (mappé en **409** par la route d'acceptation) si la base a bougé ou est invérifiable.
  *
+ * Les `value` sont supposées FINIES par construction (`baseline` validé `finite().positive()` par `parseSlots` ;
+ * `live` issu de `Number(Decimal)` d'une colonne numérique). Par sûreté, une valeur non finie est traitée
+ * comme une dérive (`baselineMoved`) — jamais comme « inchangée » (garde anti fail-open sur `NaN > EPS === false`).
+ *
  * @param baseline - snapshot pris à la génération (`SlotSetProposal.baselineSlots`) ; `null` = proposition legacy.
  * @param live - disposition ISF/ICR actuellement active du patient (lue sous verrou dans la transaction d'accept).
  * @throws baselineMissing  si `baseline === null` (base non certifiable → fail-closed).
- * @throws baselineMoved    si live diverge de baseline (nombre de créneaux, borne ou valeur d'un créneau).
+ * @throws baselineMoved    si live diverge de baseline (cardinalité, borne, valeur, ou valeur non finie).
  */
 export function assertBaselineUnchanged(
   baseline: readonly IsfIcrSlot[] | null,
@@ -47,11 +51,18 @@ export function assertBaselineUnchanged(
   if (baseline === null) throw new Error("baselineMissing")
   if (baseline.length !== live.length) throw new Error("baselineMoved")
 
+  // Appariement par clé `startHour` (pas par position — un profil peut être ré-ordonné sans changer de dose).
+  // Un `startHour` en doublon dans `live` violerait l'invariant no-overlap (`assertValidSlotSet`, inatteignable
+  // en prod) ; s'il survenait, la dernière entrée écrase — rattrapé fail-closed par le check de cardinalité +
+  // un `b.startHour` alors orphelin → `baselineMoved`.
   const liveByStart = new Map(live.map((s) => [s.startHour, s]))
   for (const b of baseline) {
     const l = liveByStart.get(b.startHour)
     if (!l) throw new Error("baselineMoved") // créneau supprimé/déplacé (dérive de structure)
     if (l.endHour !== b.endHour) throw new Error("baselineMoved") // borne de fin déplacée
+    // Garde fail-closed : une valeur non finie (NaN/Infinity — JSON corrompu, colonne invalide) N'EST PAS
+    // « inchangée » ; `NaN > EPS` vaut `false`, donc on ne peut pas se reposer sur la seule comparaison d'écart.
+    if (!Number.isFinite(l.value) || !Number.isFinite(b.value)) throw new Error("baselineMoved")
     if (Math.abs(l.value - b.value) > BASELINE_VALUE_EPS) throw new Error("baselineMoved") // valeur ajustée
     // `mealLabel` volontairement ignoré : étiquette d'affichage non dosante (un relibellé n'est pas une dérive).
   }

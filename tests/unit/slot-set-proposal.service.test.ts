@@ -233,7 +233,7 @@ describe("slotSetProposalService", () => {
       expect.objectContaining({ where: { id: "set-1", patientId: 7, status: "pending" }, data: expect.objectContaining({ status: "accepted", reviewedByUserId: 3 }) }),
     )
     // Apply DANS la même transaction : `tx` en 6e arg + US-2663 (S1) `expectedBaseline` (baseline parsé) en 7e.
-    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("icr", 7, SLOTS, 3, undefined, tx, BASE)
+    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("icr", 7, SLOTS, 3, undefined, tx, { baseline: BASE })
     expect(auditService.logWithTx).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ action: "PROPOSAL_ACCEPTED", resource: "SLOT_SET_PROPOSAL", resourceId: "set-1" }),
@@ -248,7 +248,7 @@ describe("slotSetProposalService", () => {
     await slotSetProposalService.acceptSetProposal("set-1", 7, 3)
     // `null` transmis → `replaceSlotSet` lèvera `baselineMissing` (CAS non certifiable). Ici replaceSlotSet est
     // mocké ; on vérifie seulement que le service ne transforme PAS `null` en `[]` (distinction legacy/base vide).
-    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("isf", 7, SLOTS, 3, undefined, tx, null)
+    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("isf", 7, SLOTS, 3, undefined, tx, { baseline: null })
   })
 
   it("acceptSetProposal : flip perdu (rejet/supersede concurrent, count 0) → notFound, PAS d'apply", async () => {

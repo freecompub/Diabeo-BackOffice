@@ -96,7 +96,12 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
   et **re-source de l'anti-cliquet** (constat 3) — couplés à la bascule moteur, donc **traités en S3** (garde-fou
   #4 : « même slice que la bascule moteur »). Aujourd'hui `SlotSetProposal` ne porte que ISF/ICR (patient), donc
   le CAS ISF/ICR couvre la totalité de la surface groupée existante. **Décision produit à confirmer** : impact
-  des propositions legacy `pending` (baseline `null`) désormais rejetées `baselineMissing` (re-soumission requise). |
+  des propositions legacy `pending` (baseline `null`) désormais rejetées `baselineMissing` (re-soumission requise).
+  **Revues** (medical GO, architect socle sain, code-reviewer mergeable) — durcissements appliqués : contrat CAS
+  **enveloppé** `cas?: { baseline }` (le fail-open n'est plus atteignable par un `null` mal coalescé), garde
+  **`Number.isFinite`** (NaN → `baselineMoved`, pas « inchangé »), **test de route** `baselineMoved`/`baselineMissing`
+  → 409, **test CAS ICR** (branche `carbRatio`). Reportés : factoriser lecture LIVE+`before` (S1bis), surface
+  d'erreur typée (épic), invariant S1→S3 « aucun chemin groupé n'avance l'anti-cliquet avant la re-source S3 ». |
 - **S2 — Composant de revue unifié** (referme le constat 2) : `DispositionProposalReview` (diff surligné, badges
   par-créneau, flags en tête) branché sur `/patients/[id]/review`, lisant `SlotSetProposal` **+** `AdjustmentProposal`
   pending pendant la transition. **Avant la bascule moteur.**
