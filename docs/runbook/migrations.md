@@ -69,8 +69,16 @@ pnpm prisma migrate deploy
 ```
 
 `migrate deploy` est :
-- **idempotent** : ne ré-applique pas une migration déjà passée
-- **transactionnel** : chaque `migration.sql` tourne dans une seule transaction (sauf DDL non-transactionnel comme `CREATE INDEX CONCURRENTLY`)
+- **idempotent** : ne ré-applique pas une migration déjà passée (repérage par NOM
+  dans `_prisma_migrations` ; il **ne revérifie pas** le checksum d'une migration
+  déjà `finished` — un fichier édité après application est simplement sauté, sans
+  avertissement)
+- **NON transactionnel au niveau du fichier** : `migrate deploy` n'enveloppe pas
+  `migration.sql` dans une transaction unique — chaque instruction est committée
+  séparément (vérifié empiriquement, Prisma 7.6.0). Un échec en milieu de fichier
+  laisse les instructions précédentes **committées**. Pour une atomicité réelle
+  d'une remédiation multi-étapes, l'encapsuler explicitement (`DO $$ … END $$;` ou
+  `BEGIN; … COMMIT;` dans le fichier)
 - **sans shadow DB** : pas besoin de `SHADOW_DATABASE_URL` en prod
 
 ---
@@ -277,3 +285,114 @@ recréant les indexes en full-table (perte de l'optimisation + bloat).
    SELECT indexname, indexdef FROM pg_indexes
    WHERE tablename = 'messages' ORDER BY indexname;
    ```
+
+---
+
+## CHECK constraints sur table existante — remédiation forward (incident US-2659 S0)
+
+### Incident
+
+`20260719100000_us2659_s0_basal_dose_kind` a échoué en `migrate deploy`
+avec le code Postgres **23514** :
+
+```
+check constraint "adjustment_proposals_basal_target_exclusivity_check"
+of relation "adjustment_proposals" is violated by some row
+```
+
+**Cause** : la migration ajoutait un `CHECK` *inconditionnel* (`basalRate`
+⇒ XOR entre `pump_basal_slot_id` et `basal_dose_kind`) en **supposant** que
+toute ligne `basalRate` avait déjà un `pump_basal_slot_id`. Faux : une
+version périmée de l'algorithme créait des propositions `basalRate`
+adressées par `time_slot_start_hour` **seul** (sans `pump_basal_slot_id`)
+→ lignes orphelines violant le XOR. Un `ADD CONSTRAINT` qui échoue **laisse
+la migration en état `failed` et bloque tout `migrate deploy` suivant**.
+
+### Règle générale
+
+**Un `CHECK` (ou `NOT NULL`, ou `UNIQUE`) ajouté sur une table existante
+doit garantir la conformité des données DANS LA MÊME MIGRATION**, avant le
+`ADD CONSTRAINT`. Ne jamais présumer de l'état des lignes héritées. Corollaire :
+une migration de schéma additive (enum/colonne/index) ne doit **pas** embarquer
+un CHECK dépendant des données — le séparer dans une migration de remédiation.
+
+### Correctif appliqué (S0 réduite + forward S0b)
+
+- **S0 (`20260719100000`) réduite à du schéma pur** : enum + colonne + index. Le
+  CHECK prématuré en a été **retiré** (une migration additive réussit toujours,
+  quel que soit l'état des données).
+- **Forward `20260724100000_us2659_s0b_basal_target_check`** porte la remédiation
+  + le CHECK :
+  1. **Backfill NON destructif et NON ambigu** — rattacher `pump_basal_slot_id`
+     depuis le créneau pompe dont l'heure matche `time_slot_start_hour`,
+     **uniquement** s'il n'existe pas de second créneau dans la même heure
+     (`NOT EXISTS`) → jamais de rattachement arbitraire (anti-mésdosage sur
+     sous-découpage horaire type 06:00 + 06:30).
+     Le backfill est **scopé `status = 'pending'`** (on ne touche jamais
+     l'historique) et **filtré `config_type = 'pump'`** — `upsertBasalConfig`
+     ne purge pas les `pump_basal_slots` lors d'un switch pompe→stylo, donc sans
+     ce filtre un orphelin pourrait être rattaché à un créneau pompe **périmé**.
+  2. **Retrait NON destructif** des orphelins `pending` restants : passage à
+     `status = 'expired'` (jamais un `DELETE`). Un DELETE cascaderait sur
+     `AdjustmentProposalAck` / `AdjustmentProposalActualization`
+     (`onDelete: Cascade`) → perte des preuves d'accusé/consentement patient.
+     Volumes (backfillés / expirés) tracés à la fois par `RAISE NOTICE` (logs de
+     déploiement) **et** par un enregistrement `audit_logs` (`action =
+     'DATA_REMEDIATION'`, événement système, immuable, requêtable) — traçabilité
+     durable HDS/CNIL d'une modification de masse (ADR #18). Aucun PHI (compteurs).
+  3. **CHECK d'exclusivité SCOPÉ `status = 'pending'`** — l'invariant XOR n'est
+     requis que sur les propositions **actionnables** (revue médecin). Les lignes
+     historiques immuables (`accepted`/`rejected`/…) avec adressage legacy restent
+     valides sans discriminateur : **jamais** de réécriture ni de suppression
+     d'historique clinique.
+
+> ⚠️ **Ne jamais** poser un `DELETE` en masse sur `adjustment_proposals` dans une
+> migration sans filtre `status` explicite : les commentaires « pending jamais
+> appliquées » ne garantissent rien, et la cascade détruit des preuves de
+> consentement. Préférer un passage de statut terminal (`expired`).
+
+### Reprise d'une migration `failed`
+
+```bash
+# 1. Réduire la migration fautive à sa partie qui réussit (retirer le CHECK data-dependent)
+# 2. Marquer la migration échouée comme rolled back
+pnpm prisma migrate resolve --rolled-back <timestamp>_<name>
+# 3. Ajouter une migration forward portant remédiation + CHECK, puis dérouler
+pnpm prisma migrate deploy
+```
+
+> ⚠️ **`migrate deploy` n'enveloppe PAS `migration.sql` dans une transaction
+> unique** : chaque instruction est committée séparément (vérifié empiriquement,
+> Prisma 7.6.0). Quand un `ADD CONSTRAINT` échoue en fin de fichier, le DDL qui
+> précède (`CREATE TYPE`, `ADD COLUMN`, `CREATE INDEX`) reste **committé** en base,
+> même si la migration est marquée `failed`. Conséquence : la migration réduite
+> (étape 1) rejouée telle quelle échouerait à nouveau — `42710 type already
+> exists` / `42701 column already exists` — sur l'environnement ayant subi
+> l'incident. **Elle doit être idempotente** : `CREATE TYPE` gardé par
+> `DO $$ … EXCEPTION WHEN duplicate_object THEN NULL; END $$;`, `ADD COLUMN IF NOT
+> EXISTS`, `DROP INDEX IF EXISTS` + `CREATE … IF NOT EXISTS`. C'est ce que fait
+> S0 (`20260719100000`) après ce correctif.
+
+### Pré-flight prod (avant déploiement)
+
+> ⚠️ **Tester sur une copie de l'environnement RÉELLEMENT bloqué**, pas seulement
+> sur un backup pré-incident. Un backup antérieur à la tentative ratée n'a ni le
+> type/colonne déjà committés ni la ligne `_prisma_migrations` en `failed` : il ne
+> peut donc pas révéler l'échec de reprise `42710`/`42701`. Snapshotter la base
+> effectivement bloquée (avec son DDL partiel + son `_prisma_migrations` `failed`),
+> y rejouer `migrate resolve --rolled-back` + `migrate deploy`, et vérifier que la
+> reprise réussit **et** que S0b s'applique.
+
+Mesurer aussi le périmètre de remédiation sur cette copie (ou, à défaut, sur une
+restauration du dernier backup prod si `basal_dose_kind` existe déjà) :
+
+```sql
+SELECT status, count(*) FROM adjustment_proposals
+WHERE parameter_type = 'basalRate' AND pump_basal_slot_id IS NULL
+GROUP BY status;
+```
+
+Interprétation : les lignes `pending` seront backfillées (si créneau pompe unique
+dans l'heure) ou passées `expired` ; les lignes non-`pending` (historique) sont
+**préservées**. La trace `audit_logs` (`action = 'DATA_REMEDIATION'`) consigne les
+deux volumes — la joindre au dossier de preuve HDS de la mise en production.

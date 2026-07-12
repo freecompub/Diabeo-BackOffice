@@ -5,12 +5,32 @@
 -- sans discriminateur de CIBLE, aucune proposition ne peut adresser une `dailyDose`/`morningDose`/
 -- `eveningDose` (la basale pompe cible un `PumpBasalSlot`, la basale stylo n'a pas de créneau adressable).
 -- Additif, non destructif. Contrat iOS (nouveau discriminateur) → coordination swift-expert.
+--
+-- ⚠️ NOTE (post-échec migrate deploy, code 23514) : cette migration NE POSE PLUS le CHECK d'exclusivité
+-- de cible basale. Ce CHECK était prématuré (dépendant des données : il supposait que toute ligne
+-- `basalRate` avait déjà un `pump_basal_slot_id`, faux pour les propositions legacy adressées par
+-- `time_slot_start_hour` seul). Il est déplacé — avec la remédiation des données requise en amont — dans
+-- la migration forward `20260724100000_us2659_s0b_basal_target_check`. S0 reste ainsi une migration
+-- purement additive de schéma, qui réussit quel que soit l'état des données.
+--
+-- ⚠️ IDEMPOTENCE (reprise d'un `migrate deploy` échoué) : `migrate deploy` n'enveloppe PAS ce fichier dans
+-- une transaction unique — chaque instruction est committée séparément. Sur l'environnement qui a subi
+-- l'échec 23514 (l'`ADD CONSTRAINT` d'origine), le `CREATE TYPE` et l'`ADD COLUMN` étaient DÉJÀ committés
+-- avant l'échec. Rejouer S0 telle quelle (`migrate resolve --rolled-back` → `migrate deploy`) échouerait
+-- donc à nouveau (`42710 type already exists`, `42701 column already exists`). Les gardes ci-dessous
+-- (`EXCEPTION WHEN duplicate_object`, `ADD COLUMN IF NOT EXISTS`) rendent S0 rejouable sur cet état partiel.
 
 -- CreateEnum — cible d'une proposition de basale stylo (NULL pour pompe/ISF/ICR/fixedDose).
-CREATE TYPE "BasalDoseKind" AS ENUM ('daily', 'morning', 'evening');
+-- Gardé : le type peut déjà exister (committé par une tentative `migrate deploy` antérieure ayant échoué
+-- plus loin, sur l'`ADD CONSTRAINT` d'origine 23514). `duplicate_object` = type déjà présent → no-op.
+DO $$ BEGIN
+  CREATE TYPE "BasalDoseKind" AS ENUM ('daily', 'morning', 'evening');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterTable — colonne NULLABLE (les autres paramètres restent `basal_dose_kind` NULL).
-ALTER TABLE "adjustment_proposals" ADD COLUMN "basal_dose_kind" "BasalDoseKind";
+-- `IF NOT EXISTS` : idem, la colonne peut avoir été committée par la tentative échouée en amont du CHECK.
+ALTER TABLE "adjustment_proposals" ADD COLUMN IF NOT EXISTS "basal_dose_kind" "BasalDoseKind";
 
 -- L'index UNIQUE PARTIEL anti-spam (1 pending / cible) doit inclure `basal_dose_kind` : sinon deux
 -- propositions de basale stylo pending sur des doses DIFFÉRENTES (matin vs soir en split_injection)
@@ -31,21 +51,3 @@ CREATE UNIQUE INDEX IF NOT EXISTS "adjustment_proposals_one_pending_per_slot"
   )
   NULLS NOT DISTINCT
   WHERE "status" = 'pending';
-
--- CHECK — EXCLUSIVITÉ de la cible basale (revue swift-expert S0). `parameter_type = 'basalRate'` est
--- surchargé : cible POMPE (`pump_basal_slot_id`, U/h) OU cible STYLO (`basal_dose_kind`, U totales), jamais
--- les deux, jamais aucune. L'index unique partiel garantit l'anti-collision, PAS l'exclusivité de
--- remplissage → un client (iOS/back) pourrait lire le mauvais discriminateur ou afficher la mauvaise unité.
--- Ce CHECK verrouille l'invariant EN BASE (défense en profondeur). Hors basalRate, `basal_dose_kind` doit
--- rester NULL (discriminateur propre à la basale stylo). Validé inline : le chemin `basalRate` existant exige
--- déjà `pump_basal_slot_id` (adjustment.service.ts `getCurrentValue`) → toutes les lignes legacy conforment
--- (XOR vrai). Prisma ne modélise pas les CHECK → invisible au drift-gate, appliqué par `migrate deploy`. Idempotent.
-ALTER TABLE "adjustment_proposals" DROP CONSTRAINT IF EXISTS "adjustment_proposals_basal_target_exclusivity_check";
-ALTER TABLE "adjustment_proposals" ADD CONSTRAINT "adjustment_proposals_basal_target_exclusivity_check"
-  CHECK (
-    CASE
-      WHEN "parameter_type" = 'basalRate'
-        THEN ("pump_basal_slot_id" IS NOT NULL) <> ("basal_dose_kind" IS NOT NULL)
-      ELSE "basal_dose_kind" IS NULL
-    END
-  );
