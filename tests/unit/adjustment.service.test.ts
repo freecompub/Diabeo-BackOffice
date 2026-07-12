@@ -82,6 +82,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -105,6 +106,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         fixedDoseSlot: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -133,6 +135,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         fixedDoseSlot: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -155,6 +158,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -191,6 +195,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -212,6 +217,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         pumpBasalSlot: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -235,6 +241,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -252,6 +259,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         pumpBasalSlot: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -267,6 +275,7 @@ describe("adjustmentService", () => {
           findUnique: vi.fn().mockResolvedValue({ id: "p1", status: "pending" }),
           update: vi.fn().mockResolvedValue({}),
         },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -323,6 +332,7 @@ describe("adjustmentService", () => {
     it("creates manual proposal in transaction", async () => {
       const mockTx = {
         adjustmentProposal: { create: vi.fn().mockResolvedValue({ id: "p1", status: "pending" }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -367,6 +377,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         carbRatio: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -389,6 +400,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         pumpBasalSlot: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -447,7 +459,8 @@ describe("adjustmentService", () => {
         const mockTx = {
           adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p", { basalDoseKind: kind })), update: vi.fn().mockResolvedValue({}) },
           basalConfiguration: { updateMany },
-          auditLog: { create: vi.fn().mockResolvedValue({}) },
+          slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
         }
         prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
         await adjustmentService.accept("p", 2, true)
@@ -467,6 +480,7 @@ describe("adjustmentService", () => {
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p7")), update: vi.fn().mockResolvedValue({}) },
         basalConfiguration: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -480,6 +494,7 @@ describe("adjustmentService", () => {
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p9")), update: vi.fn().mockResolvedValue({}) },
         basalConfiguration: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -493,6 +508,7 @@ describe("adjustmentService", () => {
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p10", { proposedValue: 0.2 })), update: vi.fn().mockResolvedValue({}) },
         basalConfiguration: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -507,6 +523,7 @@ describe("adjustmentService", () => {
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p8")), update: vi.fn().mockResolvedValue({}) },
         basalConfiguration: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -517,6 +534,7 @@ describe("adjustmentService", () => {
     it("accept SANS apply d'une proposition STYLO → accepté (statut), non appliqué (aucune écriture)", async () => {
       const mockTx = {
         adjustmentProposal: { findUnique: vi.fn().mockResolvedValue(styloProposal("p6")), update: vi.fn().mockResolvedValue({}) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -539,6 +557,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -555,6 +574,7 @@ describe("adjustmentService", () => {
         },
         basalConfiguration: { updateMany: vi.fn() },
         pumpBasalSlot: { updateMany: vi.fn() },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -580,6 +600,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -603,6 +624,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         carbRatio: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -626,6 +648,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         pumpBasalSlot: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -653,6 +676,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         fixedDoseSlot: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -678,6 +702,7 @@ describe("adjustmentService", () => {
           update: vi.fn().mockResolvedValue({}),
         },
         insulinSensitivityFactor: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -696,6 +721,7 @@ describe("adjustmentService", () => {
           }),
           update: vi.fn().mockResolvedValue({}),
         },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -713,6 +739,7 @@ describe("adjustmentService", () => {
       prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null) // pas de pending
       const mockTx = {
         adjustmentProposal: { create: vi.fn().mockResolvedValue({ id: "e1", status: "pending", proposedByUserId: null }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -733,6 +760,12 @@ describe("adjustmentService", () => {
       expect(Number(data.changePercent)).toBeCloseTo(10)
       // Audit moteur sans PHI (userId null, pas de dose).
       expect(mockTx.auditLog.create).toHaveBeenCalled()
+      // US-2663 (S2b) — le MOTEUR supersède aussi le groupé pending du paramètre (exclusion mutuelle, symétrie
+      // confirmée medical). Couvre le chemin `createEngineProposal` (finding revue : non testé auparavant).
+      expect(mockTx.slotSetProposal.updateMany).toHaveBeenCalledWith({
+        where: { patientId: 1, parameterType: "insulinSensitivityFactor", status: "pending" },
+        data: expect.objectContaining({ status: "superseded", reviewedByUserId: null }),
+      })
     })
 
     it("patient nonInsulin → nonInsulinNoDose (frontière MDR)", async () => {
@@ -777,6 +810,7 @@ describe("adjustmentService", () => {
       prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null)
       const mockTx = {
         adjustmentProposal: { create: vi.fn().mockResolvedValue({ id: "e2", status: "pending", proposedByUserId: null }) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -816,7 +850,7 @@ describe("adjustmentService", () => {
       prismaMock.adjustmentProposal.findFirst.mockResolvedValue(null) // ni cooldown ni pending
       const create = vi.fn().mockResolvedValue({ id: "d1", status: "pending", proposerComment: null })
       const auditCreate = vi.fn().mockResolvedValue({})
-      prismaMock.$transaction.mockImplementation((async (cb: any) => cb({ adjustmentProposal: { create }, auditLog: { create: auditCreate } })) as any)
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb({ adjustmentProposal: { create }, slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, auditLog: { create: auditCreate } })) as any)
       return { create, auditCreate }
     }
 

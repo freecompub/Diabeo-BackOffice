@@ -287,6 +287,30 @@ async function notifyReviewers(
   }
 }
 
+/**
+ * US-2663 (S2b) — EXCLUSION MUTUELLE grouped ⇄ par-valeur. À la création d'une proposition PAR-VALEUR
+ * (`AdjustmentProposal`, quelle que soit la primitive : humaine, moteur, manuelle DOCTOR), supersède les
+ * propositions d'ENSEMBLE (`SlotSetProposal`) pending du **même paramètre** — symétrique de `createSetProposal`
+ * (qui supersède déjà les par-valeur). Garantit « 1 file pending / (patient × paramètre) » à travers LES DEUX
+ * modèles (décision produit, trajectoire grouped-only ; medical GO : garder la symétrie, y compris moteur).
+ *
+ * `reviewedByUserId: null` = supersession **programmatique** (pas une revue médecin — évite une attribution
+ * trompeuse en forensic). Hors ISF/ICR (`basalRate`/`fixedDose`) : aucune `SlotSetProposal` n'existe →
+ * `updateMany` matche 0 ligne (no-op). Appelé DANS la transaction de création (atomicité : rollback commun).
+ * @returns le nombre de propositions d'ensemble supersédées (tracé dans l'audit `CREATE`).
+ */
+async function supersedeGroupedPending(
+  tx: Prisma.TransactionClient,
+  patientId: number,
+  parameterType: AdjustableParameter,
+): Promise<number> {
+  const res = await tx.slotSetProposal.updateMany({
+    where: { patientId, parameterType, status: "pending" },
+    data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: null },
+  })
+  return res.count
+}
+
 export const adjustmentService = {
   /**
    * List adjustment proposals for a patient with optional filters.
@@ -422,6 +446,9 @@ export const adjustmentService = {
 
     return prisma.$transaction(async (tx) => {
       const proposal = await tx.adjustmentProposal.create({ data: input })
+      // US-2663 (S2b) — exclusion mutuelle : cette primitive DOCTOR supersède aussi le groupé pending du
+      // paramètre (comble le trou relevé en revue : l'invariant « 1 file pending » vaut pour LES 3 primitives).
+      const supersededGroupedCount = await supersedeGroupedPending(tx, input.patientId, input.parameterType)
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -430,6 +457,7 @@ export const adjustmentService = {
         resourceId: proposal.id,
         ipAddress: ctx?.ipAddress,
         userAgent: ctx?.userAgent,
+        metadata: { patientId: input.patientId, supersededGroupedCount },
       })
 
       return proposal
@@ -658,6 +686,9 @@ export const adjustmentService = {
 
         // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose. Pour une BAISSE basale patient
         // (acte à risque), enrichi (E3) : direction/mode/accusé DKA/maturité — catégories non-dose, forensic-ready.
+        // US-2663 (S2b) — exclusion mutuelle : supersède le groupé pending du même paramètre (helper partagé).
+        const supersededGroupedCount = await supersedeGroupedPending(tx, patientId, parameterType)
+
         await auditService.logWithTx(tx, {
           userId: proposer.userId,
           action: "CREATE",
@@ -665,7 +696,7 @@ export const adjustmentService = {
           resourceId: proposal.id,
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
-          metadata: { patientId, proposedByRole: proposer.role, ...(decreaseAudit ?? {}) },
+          metadata: { patientId, proposedByRole: proposer.role, supersededGroupedCount, ...(decreaseAudit ?? {}) },
         })
 
         return proposal
@@ -797,6 +828,9 @@ export const adjustmentService = {
             ...slot,
           },
         })
+        // US-2663 (S2b) — exclusion mutuelle (moteur, symétrie confirmée medical) : supersède le groupé pending.
+        const supersededGroupedCount = await supersedeGroupedPending(tx, patientId, parameterType)
+
         // Audit SANS PHI : provenance moteur + pivot patient, jamais la valeur de dose.
         await auditService.logWithTx(tx, {
           userId: null,
@@ -805,7 +839,7 @@ export const adjustmentService = {
           resourceId: proposal.id,
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
-          metadata: { patientId, proposedByRole: "algorithm" },
+          metadata: { patientId, proposedByRole: "algorithm", supersededGroupedCount },
         })
         return proposal
       })
