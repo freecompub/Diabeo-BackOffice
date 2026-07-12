@@ -280,7 +280,7 @@ recréant les indexes en full-table (perte de l'optimisation + bloat).
 
 ---
 
-## CHECK constraints sur table existante — migration auto-réparante (incident US-2659 S0)
+## CHECK constraints sur table existante — remédiation forward (incident US-2659 S0)
 
 ### Incident
 
@@ -304,28 +304,45 @@ la migration en état `failed` et bloque tout `migrate deploy` suivant**.
 
 **Un `CHECK` (ou `NOT NULL`, ou `UNIQUE`) ajouté sur une table existante
 doit garantir la conformité des données DANS LA MÊME MIGRATION**, avant le
-`ADD CONSTRAINT`. Ne jamais présumer de l'état des lignes héritées.
+`ADD CONSTRAINT`. Ne jamais présumer de l'état des lignes héritées. Corollaire :
+une migration de schéma additive (enum/colonne/index) ne doit **pas** embarquer
+un CHECK dépendant des données — le séparer dans une migration de remédiation.
 
-### Pattern appliqué (auto-réparation + idempotence)
+### Correctif appliqué (S0 réduite + forward S0b)
 
-1. **Idempotence** — la migration doit pouvoir se rejouer sur une base
-   partiellement appliquée : `CREATE TYPE` dans un bloc
-   `DO $$ … EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
-   `ADD COLUMN IF NOT EXISTS`, `DROP INDEX IF EXISTS` / `CREATE … IF NOT EXISTS`.
-2. **Remédiation avant le CHECK** :
-   - **Backfill non destructif** d'abord (ici : rattacher `pump_basal_slot_id`
-     depuis le créneau pompe dont l'heure matche `time_slot_start_hour`).
-   - **Suppression** des orphelins restants sans cible valide (props `pending`
-     jamais appliquées) — décision destructive tracée, autorisée explicitement.
-3. **`ADD CONSTRAINT`** en dernier, précédé de `DROP CONSTRAINT IF EXISTS`.
+- **S0 (`20260719100000`) réduite à du schéma pur** : enum + colonne + index. Le
+  CHECK prématuré en a été **retiré** (une migration additive réussit toujours,
+  quel que soit l'état des données).
+- **Forward `20260724100000_us2659_s0b_basal_target_check`** porte la remédiation
+  + le CHECK :
+  1. **Backfill NON destructif et NON ambigu** — rattacher `pump_basal_slot_id`
+     depuis le créneau pompe dont l'heure matche `time_slot_start_hour`,
+     **uniquement** s'il n'existe pas de second créneau dans la même heure
+     (`NOT EXISTS`) → jamais de rattachement arbitraire (anti-mésdosage sur
+     sous-découpage horaire type 06:00 + 06:30).
+  2. **Retrait NON destructif** des orphelins `pending` restants : passage à
+     `status = 'expired'` (jamais un `DELETE`). Un DELETE cascaderait sur
+     `AdjustmentProposalAck` / `AdjustmentProposalActualization`
+     (`onDelete: Cascade`) → perte des preuves d'accusé/consentement patient.
+     `RAISE NOTICE` du volume affecté (observabilité HDS/CNIL).
+  3. **CHECK d'exclusivité SCOPÉ `status = 'pending'`** — l'invariant XOR n'est
+     requis que sur les propositions **actionnables** (revue médecin). Les lignes
+     historiques immuables (`accepted`/`rejected`/…) avec adressage legacy restent
+     valides sans discriminateur : **jamais** de réécriture ni de suppression
+     d'historique clinique.
+
+> ⚠️ **Ne jamais** poser un `DELETE` en masse sur `adjustment_proposals` dans une
+> migration sans filtre `status` explicite : les commentaires « pending jamais
+> appliquées » ne garantissent rien, et la cascade détruit des preuves de
+> consentement. Préférer un passage de statut terminal (`expired`).
 
 ### Reprise d'une migration `failed`
 
 ```bash
-# 1. Corriger le fichier migration.sql (idempotent + auto-réparant)
+# 1. Réduire la migration fautive à sa partie qui réussit (retirer le CHECK data-dependent)
 # 2. Marquer la migration échouée comme rolled back
 pnpm prisma migrate resolve --rolled-back <timestamp>_<name>
-# 3. Rejouer (la migration corrigée se ré-applique + déroule la suite)
+# 3. Ajouter une migration forward portant remédiation + CHECK, puis dérouler
 pnpm prisma migrate deploy
 ```
 
@@ -335,9 +352,12 @@ Mesurer sur une **restauration du dernier backup prod** (read-only ;
 `basal_dose_kind` n'existe pas encore avant la migration) :
 
 ```sql
-SELECT count(*) FROM adjustment_proposals
-WHERE parameter_type = 'basalRate' AND pump_basal_slot_id IS NULL;
+SELECT status, count(*) FROM adjustment_proposals
+WHERE parameter_type = 'basalRate' AND pump_basal_slot_id IS NULL
+GROUP BY status;
 ```
 
-`> 0` = nombre de lignes que la migration backfill/supprimera. Répéter
-`migrate deploy` sur cette copie (re-check à 0) **avant** le vrai déploiement.
+Interprétation : les lignes `pending` seront backfillées (si créneau unique) ou
+passées `expired` ; les lignes non-`pending` (historique) sont **préservées**.
+Répéter `migrate deploy` sur cette copie **avant** le vrai déploiement et
+vérifier qu'il n'échoue pas.
