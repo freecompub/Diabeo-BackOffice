@@ -23,8 +23,10 @@ import { requireGdprConsent } from "@/lib/gdpr"
 import { auditService } from "@/lib/services/audit.service"
 import { patientService } from "@/lib/services/patient.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
+import { adjustmentService } from "@/lib/services/adjustment.service"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
 import { PatientInsulinClient } from "@/components/diabeo/patient/PatientInsulinClient"
+import type { ProposalViewItem } from "@/components/diabeo/patient/ProposalList"
 
 export const dynamic = "force-dynamic"
 export const revalidate = 0
@@ -85,6 +87,29 @@ export default async function PatientInsulinTherapyPage() {
     }
   }
 
+  // US-2664 — les demandes en attente du PATIENT (SES propres propositions uniquement). Le filtre
+  // `sources: ["patient"]` est imposé ICI (serveur, own-id) — jamais une dose non validée d'un soignant/
+  // de l'algorithme (risque d'auto-injection, ADR #13). Dégradation gracieuse en cas d'erreur.
+  let ownProposals: ProposalViewItem[] = []
+  if (patientId !== null) {
+    try {
+      const pending = await adjustmentService.list(patientId, { status: "pending", sources: ["patient"] }, userId, ctx)
+      ownProposals = pending.map((p) => ({
+        id: p.id,
+        parameterType: p.parameterType,
+        source: p.source,
+        currentValue: Number(p.currentValue),
+        liveCurrentValue: null, // non utilisé en audience patient (pas de badge baselineMoved)
+        proposedValue: Number(p.proposedValue),
+        changePercent: 0, // non affiché au patient
+        basalDoseKind: p.basalDoseKind ?? null,
+        highDoseWarning: false, // badge clinicien jamais montré au patient
+      }))
+    } catch {
+      ownProposals = []
+    }
+  }
+
   return (
     <main className="flex flex-col gap-6 p-4 lg:p-6" aria-labelledby="patient-insulin-title">
       <a
@@ -102,7 +127,7 @@ export default async function PatientInsulinTherapyPage() {
 
       <div id="patient-insulin-content">
         {treatmentView !== null && patientId !== null ? (
-          <PatientInsulinClient patientId={patientId} data={treatmentView} />
+          <PatientInsulinClient patientId={patientId} data={treatmentView} proposals={ownProposals} />
         ) : (
           <div role="status" className="rounded-md border border-feedback-warning bg-feedback-warning-bg p-4 text-sm text-feedback-warning-fg">
             {t("unavailable")}

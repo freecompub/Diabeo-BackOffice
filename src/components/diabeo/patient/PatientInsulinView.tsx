@@ -25,6 +25,7 @@ import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
+import { ProposalList, type ProposalViewItem } from "@/components/diabeo/patient/ProposalList"
 import type { TreatmentView, Slot, BasalSlot } from "@/components/diabeo/patient/patient-record-views"
 
 type Row = { key: string; range: string; value: number; action?: ReactNode }
@@ -51,7 +52,17 @@ function SlotRows({ rows, unit, emptyLabel }: { rows: Row[]; unit: string; empty
   )
 }
 
-export function PatientInsulinView({ data, canPropose = false }: { data: TreatmentView; canPropose?: boolean }) {
+export function PatientInsulinView({
+  data,
+  canPropose = false,
+  proposals = [],
+}: {
+  data: TreatmentView
+  canPropose?: boolean
+  /** US-2664 — demandes en attente DU PATIENT (`source=patient`, filtré serveur). Rendu **sécurisé**
+   *  (audience `patient`) : sans badge clinicien, bandeau « ne modifiez pas vos doses », ton non-prescriptif. */
+  proposals?: ProposalViewItem[]
+}) {
   const t = useTranslations("patientInsulin")
   const tUnits = useTranslations("insulinUnits")
 
@@ -107,6 +118,17 @@ export function PatientInsulinView({ data, canPropose = false }: { data: Treatme
 
   return (
     <div className="space-y-4">
+      {/* US-2664 — SES demandes en attente (audience patient : bandeau + sans badge clinicien). */}
+      {proposals.length > 0 && (
+        <Card>
+          <CardHeader>
+            <h2 className="text-base font-semibold">{t("proposalsTitle")}</h2>
+          </CardHeader>
+          <CardContent>
+            <ProposalList audience="patient" items={proposals} />
+          </CardContent>
+        </Card>
+      )}
       {data.bolusInsulin && (
         <Card>
           <CardHeader>

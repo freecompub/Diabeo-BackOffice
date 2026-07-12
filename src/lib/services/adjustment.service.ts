@@ -304,6 +304,11 @@ export const adjustmentService = {
       parameterType?: string
       from?: Date
       to?: Date
+      // Étape 1 vue unifiée — restriction de PROVENANCE imposée SERVEUR (jamais depuis le body/query).
+      // Sûreté (medical) : un patient ne doit recevoir QUE ses propres demandes (`["patient"]`) — voir une
+      // dose non validée proposée par un soignant/l'algorithme l'exposerait à une auto-injection (ADR #13).
+      // `undefined` = aucune restriction (clinicien : voit toutes les provenances).
+      sources?: ProposalSource[]
     },
     auditUserId: number,
     ctx?: AuditContext,
@@ -311,6 +316,7 @@ export const adjustmentService = {
     const where: Prisma.AdjustmentProposalWhereInput = { patientId }
     if (filters.status) where.status = filters.status
     if (filters.parameterType) where.parameterType = filters.parameterType as Prisma.EnumAdjustableParameterFilter
+    if (filters.sources) where.source = { in: filters.sources }
     if (filters.from || filters.to) {
       where.createdAt = {
         ...(filters.from && { gte: filters.from }),

@@ -1811,7 +1811,11 @@
     "basalTitle": "Schéma basal (pompe)",
     "noSlots": "Aucun créneau configuré.",
     "readonlyHint": "Ces réglages sont en lecture seule. Une proposition de modification passe par la validation de votre soignant.",
-    "proposeHint": "Vous pouvez proposer une modification d'un réglage. Elle sera validée par votre soignant avant toute application."
+    "proposeHint": "Vous pouvez proposer une modification d'un réglage. Elle sera validée par votre soignant avant toute application.",
+    "proposalsTitle": "Vos demandes en attente",
+    "proposalsBanner": "En attente de validation par votre médecin — ne modifiez pas vos doses.",
+    "proposalYourRequest": "Votre demande : {from} → {to}",
+    "proposalPendingChip": "En attente"
   },
   "patientDashboard": {
     "pageTitle": "Mon tableau de bord",

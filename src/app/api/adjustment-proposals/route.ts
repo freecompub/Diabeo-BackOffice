@@ -39,7 +39,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
 
-    const proposals = await adjustmentService.list(patientId, parsed.data, user.id, ctx)
+    // Sûreté (medical, étape 1 vue unifiée) — le PATIENT (VIEWER) ne reçoit QUE ses propres demandes
+    // (`source=patient`). Imposé SERVEUR ici, jamais depuis la query : voir une dose non validée proposée
+    // par un soignant/l'algorithme l'exposerait à une auto-injection (ADR #13). Les pros voient tout.
+    const sources = user.role === "VIEWER" ? (["patient"] as const) : undefined
+    const proposals = await adjustmentService.list(patientId, { ...parsed.data, sources: sources ? [...sources] : undefined }, user.id, ctx)
     return NextResponse.json(proposals)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })
