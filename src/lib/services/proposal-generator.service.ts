@@ -159,6 +159,11 @@ function afterCutoff<T extends { dayIso: string }>(obs: T[], cutoff: string | nu
  * harm d'omission surfacé ; cohérent avec la hold zone asymétrique). Le comparateur convertit le `Decimal` Prisma
  * en nombre (jamais de comparaison flottante approximative).
  *
+ * NOTE — l'override patient `PatientInsulin.customDurationHours` (durée d'action personnalisée pour l'IOB) est
+ * **délibérément ignoré** : (a) cohérence — aucun helper « durée effective » du codebase ne l'applique
+ * aujourd'hui ; (b) sémantique — le cooldown reflète le steady-state PHARMACOLOGIQUE de la MOLÉCULE (durée
+ * catalogue), pas un réglage IOB par-patient. À revisiter si une « durée effective » unifiée est introduite.
+ *
  * @param durationHours `InsulinCatalog.typicalDurationHours` de la basale active (Prisma Decimal, number ou null).
  */
 export function resolveMdiCooldownHours(durationHours: number | { toString(): string } | null | undefined): number {
