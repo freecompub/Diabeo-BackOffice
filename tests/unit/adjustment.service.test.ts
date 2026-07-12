@@ -400,10 +400,15 @@ describe("adjustmentService", () => {
         data: { dailyDose: 20 },
       })
       // US-2660 (HDS) — l'accept stylo appliqué est audité (PROPOSAL_ACCEPTED) SANS dose en clair.
+      // Assertion robuste sur la FORME (pas une sous-chaîne) : metadata = uniquement le pivot
+      // { applyImmediately, patientId } ; la dose (proposedValue/currentValue) n'entre nulle part.
       expect(auditCreate).toHaveBeenCalledTimes(1)
-      const auditArg = JSON.stringify(auditCreate.mock.calls[0]?.[0])
-      expect(auditArg).toContain("PROPOSAL_ACCEPTED")
-      expect(auditArg).not.toContain("20") // la dose proposée (20 U) ne fuit jamais dans l'audit
+      const auditData = auditCreate.mock.calls[0]?.[0]?.data
+      expect(auditData.action).toBe("PROPOSAL_ACCEPTED")
+      expect(auditData.metadata).toEqual({ applyImmediately: true, patientId: 1 })
+      // Aucune valeur de dose dans oldValue/newValue (createAuditData → Prisma.JsonNull par défaut).
+      expect(auditData.oldValue).not.toBe(20)
+      expect(auditData.newValue).not.toBe(20)
     })
 
     it("STYLO 'morning' / 'evening' → cible la colonne correspondante (morningDose / eveningDose)", async () => {
@@ -525,6 +530,129 @@ describe("adjustmentService", () => {
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
       await expect(adjustmentService.accept("p12", 2, true)).rejects.toThrow("basalTargetAmbiguous")
+    })
+  })
+
+  // US-2660 (code-review MED #A) — le CAS ATOMIQUE (valeur attendue verrouillée dans le WHERE) est
+  // aussi porté sur les 4 leviers EXISTANTS (ISF/ICR/pompe/dose fixe). Sans ces assertions, une
+  // régression retirant `casValue` de leur WHERE passerait au vert. On verrouille : (1) le WHERE
+  // contient bien `<colonne>: currentValue` ; (2) la fenêtre TOCTOU (updateMany count 0 alors que
+  // le check explicite baselineMoved a réussi) → …SlotNotFound (rollback).
+  describe("accept — CAS atomique sur les 4 leviers existants (US-2660)", () => {
+    it("ISF : WHERE verrouille sensitivityFactorGl = currentValue (CAS atomique)", async () => {
+      prismaMock.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "i1", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor", proposedValue: 0.55, currentValue: 0.5, timeSlotStartHour: 8,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await adjustmentService.accept("i1", 2, true)
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ settings: { patientId: 1 }, startHour: 8, sensitivityFactorGl: 0.5 }),
+        }),
+      )
+    })
+
+    it("ICR : WHERE verrouille gramsPerUnit = currentValue (CAS atomique)", async () => {
+      prismaMock.carbRatio.findFirst.mockResolvedValue({ gramsPerUnit: 10 } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "c1", patientId: 1, status: "pending",
+            parameterType: "insulinToCarbRatio", proposedValue: 11, currentValue: 10, carbRatioSlotStart: 12,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        carbRatio: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await adjustmentService.accept("c1", 2, true)
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ settings: { patientId: 1 }, startHour: 12, gramsPerUnit: 10 }),
+        }),
+      )
+    })
+
+    it("pompe : WHERE verrouille rate = currentValue (CAS atomique, scopé patient)", async () => {
+      prismaMock.pumpBasalSlot.findFirst.mockResolvedValue({ rate: 0.8 } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "b1", patientId: 1, status: "pending",
+            parameterType: "basalRate", proposedValue: 0.85, currentValue: 0.8, pumpBasalSlotId: "slot-1",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        pumpBasalSlot: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await adjustmentService.accept("b1", 2, true)
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({
+            id: "slot-1",
+            basalConfig: { settings: { patientId: 1 } },
+            rate: 0.8,
+          }),
+        }),
+      )
+    })
+
+    it("dose fixe : WHERE verrouille valueU = currentValue (CAS atomique)", async () => {
+      prismaMock.fixedDoseSlot.findFirst.mockResolvedValue({ valueU: 10 } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 1 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "f1", patientId: 1, status: "pending",
+            parameterType: "fixedDose", proposedValue: 12, currentValue: 10, moment: "morning",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        fixedDoseSlot: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await adjustmentService.accept("f1", 2, true)
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ patientInsulin: { patientId: 1 }, moment: "morning", valueU: 10 }),
+        }),
+      )
+    })
+
+    it("TOCTOU : baselineMoved OK mais updateMany count 0 (écriture concurrente) → isfSlotNotFound, rollback", async () => {
+      // liveCurrentValue = snapshot (0.5) → le check explicite baselineMoved PASSE. Mais une écriture
+      // concurrente glissée avant l'updateMany fait matcher 0 ligne (CAS dans le WHERE) → fail-closed.
+      prismaMock.insulinSensitivityFactor.findFirst.mockResolvedValue({ sensitivityFactorGl: 0.5 } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 0 })
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "i2", patientId: 1, status: "pending",
+            parameterType: "insulinSensitivityFactor", proposedValue: 0.55, currentValue: 0.5, timeSlotStartHour: 8,
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        insulinSensitivityFactor: { updateMany },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+      await expect(adjustmentService.accept("i2", 2, true)).rejects.toThrow("isfSlotNotFound")
     })
   })
 

@@ -855,23 +855,25 @@ export const adjustmentService = {
         },
       })
 
-      // Apply the change if requested — validate bounds first
+      // Apply the change if requested.
       if (applyImmediately) {
         const proposed = Number(proposal.proposedValue)
 
-        if (!validateProposedValue(proposal.parameterType, proposed, proposal.basalDoseKind)) {
-          throw new Error("valueOutOfBounds")
-        }
-
-        // US-2660 (durcissement, medical INFO) — invariant d'exclusivité de la cible basale.
-        // Le CHECK base `adjustment_proposals_basal_target_exclusivity_check` (migration
-        // 20260719100000) impose déjà un XOR `pumpBasalSlotId ⊕ basalDoseKind` pour `basalRate`
-        // (donc ce garde est INATTEIGNABLE aujourd'hui). Filet en profondeur : si une future
-        // migration affaiblissait le CHECK, l'ordre `pompe (U/h) avant stylo (U totales)` du
-        // if-chain lirait la baseline stylo tout en écrivant le débit pompe (catastrophique).
-        // Fail-closed AVANT toute écriture plutôt que d'appliquer une dose sur la mauvaise cible.
+        // US-2660 (durcissement, medical INFO) — invariant d'exclusivité de la cible basale, vérifié
+        // EN PREMIER (avant `validateProposedValue`, qui routerait « à l'aveugle » les bornes via
+        // `basalDoseKind` alors que la cible réelle est ambiguë). Le CHECK base
+        // `adjustment_proposals_basal_target_exclusivity_check` (migration 20260719100000) impose déjà
+        // un XOR `pumpBasalSlotId ⊕ basalDoseKind` pour `basalRate` (donc ce garde est INATTEIGNABLE
+        // aujourd'hui). Filet en profondeur : si une future migration affaiblissait le CHECK, l'ordre
+        // `pompe (U/h) avant stylo (U totales)` du if-chain lirait la baseline stylo tout en écrivant le
+        // débit pompe (catastrophique). Fail-closed AVANT toute écriture ni tout routage de bornes.
         if (proposal.parameterType === "basalRate" && proposal.pumpBasalSlotId && proposal.basalDoseKind != null) {
           throw new Error("basalTargetAmbiguous")
+        }
+
+        // Validation des bornes cliniques dures (fail-closed avant écriture).
+        if (!validateProposedValue(proposal.parameterType, proposed, proposal.basalDoseKind)) {
+          throw new Error("valueOutOfBounds")
         }
 
         // US-2649b / US-2660 — COMPARE-AND-SWAP (garde d'accès concurrent). `proposedValue` est une
@@ -893,6 +895,13 @@ export const adjustmentService = {
         if (liveBase !== null && liveBase !== Number(proposal.currentValue)) {
           throw new Error("baselineMoved")
         }
+        // INVARIANT (verrouillé par tests/unit/cas-decimal-scale-invariant.test.ts) : `currentValue`
+        // est `Decimal(8,4)` (scale 4) et TOUTES les colonnes de dose cibles ont une scale ≤ 4 (ISF 4,
+        // pompe 3, ICR/dose fixe/stylo 2). Le round-trip `colonne → currentValue` à la création est donc
+        // SANS troncature, et l'égalité CAS `<colonne>: casValue` matche exactement une base inchangée.
+        // ⚠️ Si une future migration portait une colonne de dose à une scale > 4, `currentValue`
+        // tronquerait → faux fail-closed sur un apply LÉGITIME (dégradation de disponibilité, jamais une
+        // mauvaise dose). Le test de garde ci-dessus casse dans ce cas — ne pas contourner sans revoir ce CAS.
         const casValue = proposal.currentValue // Prisma Decimal — verrou CAS dans le WHERE
 
         if (proposal.parameterType === "insulinSensitivityFactor" && proposal.timeSlotStartHour != null) {
