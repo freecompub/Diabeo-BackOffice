@@ -32,7 +32,11 @@ vi.mock("@/lib/auth/api-rate-limit", () => ({
   RATE_LIMITS: { insulinSubmission: { bucket: "insulin-submission", windowSec: 60, max: 20, failMode: "open" } },
 }))
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: mocks.requireGdprConsent }))
-vi.mock("@/lib/access-control", () => ({ resolvePatientId: mocks.resolvePatientId }))
+vi.mock("@/lib/access-control", () => ({
+  resolvePatientId: mocks.resolvePatientId,
+  // Helper pur (US-2664) — reproduit le vrai comportement : VIEWER → ["patient"], pros → undefined.
+  viewerProposalSources: (role: string) => (role === "VIEWER" ? ["patient"] : undefined),
+}))
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createProposal: mocks.createProposal, list: mocks.list },
 }))
