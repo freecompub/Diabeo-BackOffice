@@ -3,7 +3,7 @@
 > 📌 Sous-US de [US-2645](US-2645-EPIC-insulinotherapie-edition-multimode.md) · **back** · Taille **XS**
 > · dépend de : US-2664 (frontière de provenance patient), US-2065 (`AdjustmentProposalAck`)
 >
-> **Statut** : 🟡 spécifiée — **suivi HDS d'US-2664** (finding LOW hors périmètre).
+> **Statut** : ✅ **livrée** — frontière `source` appliquée à l'accusé/réponse (route `proposal-ack`).
 > **Priorité** : BASSE (aucune fuite de dose ; uniquement divulgation d'existence via UUID connu).
 
 ## Contexte
