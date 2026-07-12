@@ -297,6 +297,58 @@ describe("insulinTherapyService", () => {
         expect.objectContaining({ where: { patientId: 7, parameterType: "insulinToCarbRatio", status: "pending" } }),
       )
     })
+
+    // ── US-2663 (S1) — CAS d'ensemble fail-closed (expectedBaseline) ──────────────────────────
+    it("CAS : base LIVE identique au snapshot → applique (delete+createMany)", async () => {
+      const tx = mkTx({
+        insulinSensitivityFactor: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, sensitivityFactorGl: 0.4 },
+            { startHour: 22, endHour: 6, sensitivityFactorGl: 0.6 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      // expectedBaseline (7e arg) = base attendue, identique au live → CAS OK.
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, validIsf)
+      expect(res.applied).toBe(true)
+      expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
+      expect(tx.insulinSensitivityFactor.createMany).toHaveBeenCalled()
+    })
+
+    it("CAS : base LIVE a DÉRIVÉ (valeur différente) → baselineMoved, RIEN écrit (fail-closed)", async () => {
+      const tx = mkTx({
+        insulinSensitivityFactor: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, sensitivityFactorGl: 0.5 }, // 0.5 ≠ 0.4 attendu (ajustement médecin concurrent)
+            { startHour: 22, endHour: 6, sensitivityFactorGl: 0.6 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      await expect(
+        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, validIsf),
+      ).rejects.toThrow("baselineMoved")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+      expect(tx.insulinSensitivityFactor.createMany).not.toHaveBeenCalled()
+    })
+
+    it("CAS : snapshot ABSENT (legacy `null`) → baselineMissing, RIEN écrit (fail-closed)", async () => {
+      const tx = mkTx()
+      await expect(
+        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, null),
+      ).rejects.toThrow("baselineMissing")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("chemin DOCTOR direct (expectedBaseline absent) → PAS de CAS, applique normalement", async () => {
+      const tx = mkTx()
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never)
+      expect(res.applied).toBe(true)
+      expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
+    })
   })
 
   // ── US-2657 (grouped-only) — validation + remplacement GROUPÉ du BASAL (pompe) ──────────────

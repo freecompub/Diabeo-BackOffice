@@ -13,6 +13,8 @@ import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/cli
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
+import { assertBaselineUnchanged } from "@/lib/insulin/slot-baseline-cas"
+import type { IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -381,6 +383,13 @@ export const insulinTherapyService = {
      * notre propre transaction.
      */
     externalTx?: Prisma.TransactionClient,
+    /**
+     * US-2663 (S1) — CAS D'ENSEMBLE fail-closed. Snapshot de la base attendue (`SlotSetProposal.baselineSlots`),
+     * fourni UNIQUEMENT par le chemin d'acceptation groupée. `undefined` (chemin DOCTOR direct) ⇒ pas de CAS
+     * (le médecin écrase explicitement). `IsfIcrSlot[]` ⇒ la base LIVE (lue sous verrou) doit être identique,
+     * sinon `baselineMoved` (rollback). `null` (proposition legacy sans snapshot) ⇒ `baselineMissing` (fail-closed).
+     */
+    expectedBaseline?: IsfIcrSlot[] | null,
   ): Promise<{
     applied: true
     count: number
@@ -399,6 +408,30 @@ export const insulinTherapyService = {
       const settings = await tx.insulinTherapySettings.findUnique({ where: { patientId }, select: { id: true } })
       if (!settings) throw new Error("settingsNotFound")
       const settingsId = settings.id
+
+      // 2a-bis. US-2663 (S1) — CAS D'ENSEMBLE fail-closed (acceptation groupée uniquement). Sous le verrou
+      //   `tryLockInsulinSlots` déjà acquis ⇒ lecture LIVE atomique (pas de TOCTOU) : la base actuelle doit
+      //   être identique au snapshot pris à la génération. Une dérive (ajustement médecin concurrent) →
+      //   `baselineMoved` ; snapshot absent (legacy) → `baselineMissing`. Rollback ⇒ proposition reste `pending`.
+      if (expectedBaseline !== undefined) {
+        const live: IsfIcrSlot[] =
+          param === "isf"
+            ? (
+                await tx.insulinSensitivityFactor.findMany({
+                  where: { settingsId },
+                  orderBy: { startHour: "asc" },
+                  select: { startHour: true, endHour: true, sensitivityFactorGl: true },
+                })
+              ).map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) }))
+            : (
+                await tx.carbRatio.findMany({
+                  where: { settingsId },
+                  orderBy: { startHour: "asc" },
+                  select: { startHour: true, endHour: true, gramsPerUnit: true },
+                })
+              ).map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.gramsPerUnit) }))
+        assertBaselineUnchanged(expectedBaseline, live)
+      }
 
       // 2b. Snapshot ancien jeu (audit `from`) + 2c. REPLACE scopé settingsId.
       if (param === "isf") {

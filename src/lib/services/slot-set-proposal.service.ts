@@ -199,13 +199,15 @@ export const slotSetProposalService = {
    * Scopé patient (anti-IDOR), patient soft-deleted exclu.
    * @throws slotSetProposalNotFound (absente/non pending/hors périmètre/soft-deleted/rejetée-supersédée en course)
    * @throws nonInsulinNoDose (le mode dérivé a basculé non-insuliné entre création et acceptation — fail-closed)
+   * @throws baselineMoved (US-2663 S1 — la base a dérivé depuis la génération : CAS d'ensemble rejeté, régénérer)
+   * @throws baselineMissing (US-2663 S1 — proposition legacy sans snapshot de base : non certifiable, fail-closed)
    * @throws unsupportedSlotSetParam | invalidSlotSet | settingsNotFound | valueOutOfBounds | slotOverlap | slotGap | zeroDurationSlot | emptySlotSet
    */
   async acceptSetProposal(id: string, patientId: number, reviewerUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
       const proposal = await tx.slotSetProposal.findFirst({
         where: { id, patientId, status: "pending", patient: { deletedAt: null } },
-        select: { parameterType: true, proposedSlots: true },
+        select: { parameterType: true, proposedSlots: true, baselineSlots: true },
       })
       if (!proposal) throw new Error("slotSetProposalNotFound")
 
@@ -216,6 +218,10 @@ export const slotSetProposalService = {
         throw new Error("unsupportedSlotSetParam")
       }
       const slots = parseSlots(proposal.proposedSlots)
+      // US-2663 (S1) — snapshot de base à comparer au live sous verrou (CAS d'ensemble, dans `replaceSlotSet`).
+      // `null` (proposition legacy pré-S0) est PRÉSERVÉ tel quel → `replaceSlotSet` lèvera `baselineMissing`
+      // (fail-closed : jamais d'apply sur une base non certifiable). Parsé avec la même garde de forme que `slots`.
+      const expectedBaseline = proposal.baselineSlots == null ? null : parseSlots(proposal.baselineSlots)
 
       // Frontière DISPOSITIF MÉDICAL re-vérifiée À L'ACCEPTATION (symétrie avec la création) : si le mode
       // dérivé serveur a basculé vers `nonInsulin` entre création et revue, on N'applique PAS un profil
@@ -231,10 +237,11 @@ export const slotSetProposalService = {
       })
       if (flipped.count === 0) throw new Error("slotSetProposalNotFound")
 
-      // Apply en bloc DANS la même transaction (atomicité). Un échec (bornes/couverture) propage l'exception
-      // → rollback du flip → la proposition reste `pending` (fail-closed). `replaceSlotSet` supersède au
-      // passage les autres propositions pending du paramètre.
-      await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots, reviewerUserId, ctx, tx)
+      // Apply en bloc DANS la même transaction (atomicité). Un échec (bornes/couverture, OU CAS d'ensemble
+      // `baselineMoved`/`baselineMissing`) propage l'exception → rollback du flip → la proposition reste
+      // `pending` (fail-closed). `replaceSlotSet` vérifie le CAS sous verrou (`expectedBaseline`) puis supersède
+      // au passage les autres propositions pending du paramètre.
+      await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots, reviewerUserId, ctx, tx, expectedBaseline)
 
       await auditService.logWithTx(tx, {
         userId: reviewerUserId,
