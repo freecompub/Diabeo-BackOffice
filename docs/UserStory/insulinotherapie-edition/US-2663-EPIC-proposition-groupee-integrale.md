@@ -85,9 +85,26 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
   pompe/stylo → clé `modality` explicite en S3. **Coordination `swift-expert`** : `GET /api/slot-set-proposals`
   renvoie désormais le champ additif `source` (`baselineSlots` volontairement absent) — additif, iOS ignore les
   champs inconnus. *Réversible, aucun lecteur fonctionnel ne change ; seuls ISF/ICR émettent (moteur en S3).*
-- **S1 — Cœur de sûreté** (referme le constat 1) : CAS par créneau fail-closed + apply groupé **tous leviers**
-  (nouveaux `replaceStyloDoseSet`/`replaceFixedDoseSet`) dans une tx verrouillée + **préservation du registre de
-  cooldown** (constat 3) + gates par-créneau (tout-ou-rien). **Avant tout basculement moteur.**
+- **S1 — Cœur de sûreté** (referme le constat 1) ✅ **LIVRÉ (partiel — CAS d'ensemble ISF/ICR)** : CAS
+  **d'ensemble** fail-closed (`assertBaselineUnchanged`, `slot-baseline-cas.ts`) branché dans `replaceSlotSet`
+  via `expectedBaseline`, exécuté **sous le verrou** `tryLockInsulinSlots` (lecture LIVE atomique, pas de
+  TOCTOU) : à l'acceptation, la base actuelle doit égaler `baselineSlots`, sinon **`baselineMoved`** (409,
+  rollback → `pending`) ; snapshot `null` legacy → **`baselineMissing`** (409, fail-closed). Appariement par clé
+  `startHour`, `mealLabel` non dosant ignoré. Chemin DOCTOR direct inchangé (pas de CAS). Tests : CAS pur
+  (11 cas) + bout-en-bout `replaceSlotSet` (4) + wiring `acceptSetProposal`. **Reste en S1bis/S3** : diff-merge
+  valeur-seule (D4, optimisation) ; apply groupé **stylo/dose-fixe** (`replaceStyloDoseSet`/`replaceFixedDoseSet`)
+  et **re-source de l'anti-cliquet** (constat 3) — couplés à la bascule moteur, donc **traités en S3** (garde-fou
+  #4 : « même slice que la bascule moteur »). Aujourd'hui `SlotSetProposal` ne porte que ISF/ICR (patient), donc
+  le CAS ISF/ICR couvre la totalité de la surface groupée existante. **Décision produit à confirmer** : impact
+  des propositions legacy `pending` (baseline `null`) désormais rejetées `baselineMissing` (re-soumission requise).
+  **Revues** (medical GO, architect socle sain, code-reviewer mergeable) — durcissements appliqués : contrat CAS
+  **enveloppé** `cas?: { baseline }` (le fail-open n'est plus atteignable par un `null` mal coalescé), garde
+  **`Number.isFinite`** (NaN → `baselineMoved`, pas « inchangé »), **test de route** `baselineMoved`/`baselineMissing`
+  → 409, **test CAS ICR** (branche `carbRatio`), **JSDoc `@throws` complète**, **lecture LIVE+`before` factorisée**
+  en une requête (`live == before` garanti, plus de double lecture), **`notifyPatient` rendu totalement
+  non-throwing** (best-effort post-commit : un aléa DB ne fait plus échouer un accept déjà appliqué). Reportés :
+  surface d'erreur typée pour les codes fail-closed (épic), invariant S1→S3 « aucun chemin groupé n'avance
+  l'anti-cliquet avant la re-source S3 » (garde-fou #4). |
 - **S2 — Composant de revue unifié** (referme le constat 2) : `DispositionProposalReview` (diff surligné, badges
   par-créneau, flags en tête) branché sur `/patients/[id]/review`, lisant `SlotSetProposal` **+** `AdjustmentProposal`
   pending pendant la transition. **Avant la bascule moteur.**

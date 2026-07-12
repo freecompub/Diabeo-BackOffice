@@ -13,6 +13,8 @@ import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/cli
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
+import { assertBaselineUnchanged } from "@/lib/insulin/slot-baseline-cas"
+import type { IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -366,7 +368,10 @@ export const insulinTherapyService = {
    * @param patientId - patient scopé (résolu serveur, anti-IDOR).
    * @param slots - jeu complet `{ startHour, endHour, value, mealLabel? }` (value = ISF g/L ou ICR g/U).
    * @param externalTx - transaction englobante optionnelle (atomicité apply + flip, cf. `acceptSetProposal`).
+   * @param cas - US-2663 (S1) — demande de CAS d'ensemble (voir le param). Omis = chemin DOCTOR direct (pas de CAS).
    * @throws emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap | settingsNotFound
+   * @throws slotsBusy - mutation concurrente en cours (verrou non bloquant) → réessayer.
+   * @throws baselineMoved | baselineMissing - US-2663 (S1) CAS d'ensemble : base dérivée / snapshot legacy non certifiable.
    */
   async replaceSlotSet(
     param: "isf" | "icr",
@@ -381,6 +386,15 @@ export const insulinTherapyService = {
      * notre propre transaction.
      */
     externalTx?: Prisma.TransactionClient,
+    /**
+     * US-2663 (S1) — CAS D'ENSEMBLE fail-closed. **Enveloppé dans un objet à dessein** (durcissement revue) :
+     * demander le CAS est un acte EXPLICITE (`{ baseline }`), jamais un effet de bord d'une valeur « vide ».
+     * - **Omis** (`undefined`) ⇒ chemin DOCTOR direct : PAS de CAS (le médecin écrase explicitement). Le
+     *   fail-open n'est donc atteignable qu'en n'AJOUTANT PAS le paramètre — un `null` mal coalescé ne compile pas.
+     * - `{ baseline: IsfIcrSlot[] }` ⇒ la base LIVE (lue sous verrou) doit être identique, sinon `baselineMoved`.
+     * - `{ baseline: null }` ⇒ proposition legacy sans snapshot ⇒ `baselineMissing` (fail-closed).
+     */
+    cas?: { baseline: IsfIcrSlot[] | null },
   ): Promise<{
     applied: true
     count: number
@@ -400,12 +414,24 @@ export const insulinTherapyService = {
       if (!settings) throw new Error("settingsNotFound")
       const settingsId = settings.id
 
-      // 2b. Snapshot ancien jeu (audit `from`) + 2c. REPLACE scopé settingsId.
+      // 2b. Lecture UNIQUE du jeu ACTUEL sous verrou (revue S1 — factorisation) : sert À LA FOIS au CAS
+      //   d'ensemble (US-2663 S1, si `cas` fourni) ET à l'audit `from`. Une seule requête ⇒ `live == before`
+      //   garanti par construction (plus de double lecture ni de fragilité de divergence latente), et lecture
+      //   atomique (verrou déjà acquis) ⇒ pas de TOCTOU. CAS AVANT tout delete/create (fail-closed) :
+      //   dérive (ajustement médecin concurrent) → `baselineMoved` ; snapshot absent (legacy) → `baselineMissing`
+      //   → rollback ⇒ proposition reste `pending`. Comparaison par `Map` sur `startHour` (ordre indifférent).
       if (param === "isf") {
-        const before = await tx.insulinSensitivityFactor.findMany({
+        const current = await tx.insulinSensitivityFactor.findMany({
           where: { settingsId },
-          select: { startHour: true, endHour: true },
+          select: { startHour: true, endHour: true, sensitivityFactorGl: true },
         })
+        if (cas !== undefined) {
+          assertBaselineUnchanged(
+            cas.baseline,
+            current.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) })),
+          )
+        }
+        const before = current.map((s) => ({ startHour: s.startHour, endHour: s.endHour }))
         await tx.insulinSensitivityFactor.deleteMany({ where: { settingsId } })
         await tx.insulinSensitivityFactor.createMany({
           data: slots.map((s) => ({
@@ -420,10 +446,17 @@ export const insulinTherapyService = {
         })
         return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)
       } else {
-        const before = await tx.carbRatio.findMany({
+        const current = await tx.carbRatio.findMany({
           where: { settingsId },
-          select: { startHour: true, endHour: true },
+          select: { startHour: true, endHour: true, gramsPerUnit: true },
         })
+        if (cas !== undefined) {
+          assertBaselineUnchanged(
+            cas.baseline,
+            current.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.gramsPerUnit) })),
+          )
+        }
+        const before = current.map((s) => ({ startHour: s.startHour, endHour: s.endHour }))
         await tx.carbRatio.deleteMany({ where: { settingsId } })
         await tx.carbRatio.createMany({
           data: slots.map((s) => ({

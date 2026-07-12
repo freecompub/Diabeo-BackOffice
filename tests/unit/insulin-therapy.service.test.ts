@@ -297,6 +297,102 @@ describe("insulinTherapyService", () => {
         expect.objectContaining({ where: { patientId: 7, parameterType: "insulinToCarbRatio", status: "pending" } }),
       )
     })
+
+    // ── US-2663 (S1) — CAS d'ensemble fail-closed (expectedBaseline) ──────────────────────────
+    it("CAS : base LIVE identique au snapshot → applique (delete+createMany)", async () => {
+      const tx = mkTx({
+        insulinSensitivityFactor: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, sensitivityFactorGl: 0.4 },
+            { startHour: 22, endHour: 6, sensitivityFactorGl: 0.6 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      // expectedBaseline (7e arg) = base attendue, identique au live → CAS OK.
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, { baseline: validIsf })
+      expect(res.applied).toBe(true)
+      expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
+      expect(tx.insulinSensitivityFactor.createMany).toHaveBeenCalled()
+      // Revue S1 (#2) — lecture factorisée : le jeu actuel est lu UNE seule fois (CAS + audit `before`).
+      expect(tx.insulinSensitivityFactor.findMany).toHaveBeenCalledTimes(1)
+    })
+
+    it("CAS : base LIVE a DÉRIVÉ (valeur différente) → baselineMoved, RIEN écrit (fail-closed)", async () => {
+      const tx = mkTx({
+        insulinSensitivityFactor: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, sensitivityFactorGl: 0.5 }, // 0.5 ≠ 0.4 attendu (ajustement médecin concurrent)
+            { startHour: 22, endHour: 6, sensitivityFactorGl: 0.6 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      await expect(
+        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, { baseline: validIsf }),
+      ).rejects.toThrow("baselineMoved")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+      expect(tx.insulinSensitivityFactor.createMany).not.toHaveBeenCalled()
+    })
+
+    it("CAS : snapshot ABSENT (legacy `null`) → baselineMissing, RIEN écrit (fail-closed)", async () => {
+      const tx = mkTx()
+      await expect(
+        insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never, { baseline: null }),
+      ).rejects.toThrow("baselineMissing")
+      expect(tx.insulinSensitivityFactor.deleteMany).not.toHaveBeenCalled()
+    })
+
+    it("chemin DOCTOR direct (cas absent) → PAS de CAS, applique normalement", async () => {
+      const tx = mkTx()
+      const res = await insulinTherapyService.replaceSlotSet("isf", 7, validIsf, 42, undefined, tx as never)
+      expect(res.applied).toBe(true)
+      expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
+    })
+
+    it("CAS ICR : base LIVE a DÉRIVÉ (carbRatio) → baselineMoved, RIEN écrit (branche ICR de la lecture LIVE)", async () => {
+      const validIcr = [
+        { startHour: 6, endHour: 22, value: 8 },
+        { startHour: 22, endHour: 6, value: 12 },
+      ]
+      const tx = mkTx({
+        carbRatio: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, gramsPerUnit: 9 }, // 9 ≠ 8 attendu → dérive détectée via gramsPerUnit
+            { startHour: 22, endHour: 6, gramsPerUnit: 12 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      await expect(
+        insulinTherapyService.replaceSlotSet("icr", 7, validIcr, 42, undefined, tx as never, { baseline: validIcr }),
+      ).rejects.toThrow("baselineMoved")
+      expect(tx.carbRatio.deleteMany).not.toHaveBeenCalled()
+      expect(tx.carbRatio.createMany).not.toHaveBeenCalled()
+    })
+
+    it("CAS ICR : base LIVE identique (carbRatio) → applique", async () => {
+      const validIcr = [
+        { startHour: 6, endHour: 22, value: 8 },
+        { startHour: 22, endHour: 6, value: 12 },
+      ]
+      const tx = mkTx({
+        carbRatio: {
+          findMany: vi.fn().mockResolvedValue([
+            { startHour: 6, endHour: 22, gramsPerUnit: 8 },
+            { startHour: 22, endHour: 6, gramsPerUnit: 12 },
+          ]),
+          deleteMany: vi.fn().mockResolvedValue({ count: 2 }),
+          createMany: vi.fn().mockResolvedValue({ count: 2 }),
+        },
+      })
+      const res = await insulinTherapyService.replaceSlotSet("icr", 7, validIcr, 42, undefined, tx as never, { baseline: validIcr })
+      expect(res.applied).toBe(true)
+      expect(tx.carbRatio.deleteMany).toHaveBeenCalled()
+    })
   })
 
   // ── US-2657 (grouped-only) — validation + remplacement GROUPÉ du BASAL (pompe) ──────────────

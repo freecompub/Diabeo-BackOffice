@@ -53,6 +53,11 @@ const ICR_SLOTS = [
   { startHour: 0, endHour: 12, value: 10 },
   { startHour: 12, endHour: 0, value: 12 },
 ]
+// Snapshot de base (US-2663 S1) — forme valide, passé tel quel à `replaceSlotSet` comme `expectedBaseline`.
+const BASE = [
+  { startHour: 0, endHour: 12, value: 0.5 },
+  { startHour: 12, endHour: 0, value: 0.45 },
+]
 
 /** Fabrique un `tx` factice dont `$transaction` exécute le callback. */
 function mockTx() {
@@ -213,9 +218,9 @@ describe("slotSetProposalService", () => {
   })
 
   // ── accept ──────────────────────────────────────────────────────────────
-  it("acceptSetProposal : ATOMIQUE — flip gardé puis replaceSlotSet(tx) puis audit", async () => {
+  it("acceptSetProposal : ATOMIQUE — flip gardé puis replaceSlotSet(tx, expectedBaseline) puis audit", async () => {
     const tx = mockTx()
-    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "insulinToCarbRatio", proposedSlots: SLOTS })
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "insulinToCarbRatio", proposedSlots: SLOTS, baselineSlots: BASE })
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
 
     const res = await slotSetProposalService.acceptSetProposal("set-1", 7, 3)
@@ -227,12 +232,23 @@ describe("slotSetProposalService", () => {
     expect(tx.slotSetProposal.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: "set-1", patientId: 7, status: "pending" }, data: expect.objectContaining({ status: "accepted", reviewedByUserId: 3 }) }),
     )
-    // Apply DANS la même transaction : le `tx` est passé en 6e argument à replaceSlotSet.
-    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("icr", 7, SLOTS, 3, undefined, tx)
+    // Apply DANS la même transaction : `tx` en 6e arg + US-2663 (S1) `expectedBaseline` (baseline parsé) en 7e.
+    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("icr", 7, SLOTS, 3, undefined, tx, { baseline: BASE })
     expect(auditService.logWithTx).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ action: "PROPOSAL_ACCEPTED", resource: "SLOT_SET_PROPOSAL", resourceId: "set-1" }),
     )
+  })
+
+  it("acceptSetProposal (US-2663 S1) : proposition legacy `baselineSlots=null` → `null` passé tel quel (fail-closed aval)", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "insulinSensitivityFactor", proposedSlots: SLOTS, baselineSlots: null })
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
+
+    await slotSetProposalService.acceptSetProposal("set-1", 7, 3)
+    // `null` transmis → `replaceSlotSet` lèvera `baselineMissing` (CAS non certifiable). Ici replaceSlotSet est
+    // mocké ; on vérifie seulement que le service ne transforme PAS `null` en `[]` (distinction legacy/base vide).
+    expect(insulinTherapyService.replaceSlotSet).toHaveBeenCalledWith("isf", 7, SLOTS, 3, undefined, tx, { baseline: null })
   })
 
   it("acceptSetProposal : flip perdu (rejet/supersede concurrent, count 0) → notFound, PAS d'apply", async () => {
