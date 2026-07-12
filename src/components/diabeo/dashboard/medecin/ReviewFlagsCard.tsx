@@ -30,6 +30,7 @@ const FLAG_TYPE_KEY: Record<ReviewFlagItem["type"], string> = {
   highVariabilityPostMeal: "flagHighVariabilityPostMeal",
   hba1cAboveTarget: "flagHba1cAboveTarget",
   nocturnalHypoHighFasting: "flagNocturnalHypoHighFasting",
+  daytimeHypoHighPreDinner: "flagDaytimeHypoHighPreDinner",
   highVariabilityPostCorrection: "flagHighVariabilityPostCorrection",
   highVariabilityFixedDose: "flagHighVariabilityFixedDose",
 }

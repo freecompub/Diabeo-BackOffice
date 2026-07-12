@@ -465,7 +465,8 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     setup({ basalConfig: split(18, 22), fasting: evFasting(105, 120), meals: [...dinners(150), ...lunches(120, 6)] }) // bolus midi 6 → confondu
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(calls("morning")).toHaveLength(0)
-    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+    // US-2661 — la dose du MATIN lève le flag DIURNE dédié (signal pré-dîner), pas le flag nocturne.
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
   })
 
   it("UNE dose/run + priorité SOIR : soir ET matin dévient (hausses) → une seule proposition, la dose du SOIR", async () => {
@@ -493,8 +494,20 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(calls("evening")).toHaveLength(1) // dé-escalade soir persistée (priorité sécurité, nocturne = pire)
     expect(calls("morning")).toHaveLength(0) // une dose/run : matin non persistée
-    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // matin perdante → flag fail-loud
+    // US-2661 — la perdante est la dose du MATIN → flag DIURNE dédié (pas le flag nocturne).
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined) // matin perdante → flag fail-loud
     expect(raiseFlag).toHaveBeenCalledTimes(1) // EXACTEMENT la perdante (jamais le winner, jamais un double-flag)
+  })
+
+  // US-2661 — verrou du DÉCOUPLAGE par cible : soir = nocturne, matin = diurne (pré-dîner).
+  it("flag PAR CIBLE : Somogyi sur la dose du SOIR → nocturnalHypoHighFasting (jamais le flag diurne)", async () => {
+    // Soir : à jeun HAUT (1,80) + nadir nocturne récurrent bas (0,60) = Somogyi → FLAG (jamais une baisse auto).
+    // Pas de dîners → la dose du matin est sans signal (silencieuse). Le flag soir DOIT être le flag nocturne.
+    setup({ basalConfig: split(18, 22), fasting: evFasting(180, 60) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("evening")).toHaveLength(0) // Somogyi → jamais une baisse
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // soir → nocturne
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
   })
 })
 

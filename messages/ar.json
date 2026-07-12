@@ -2074,6 +2074,7 @@
     "flagHighVariabilityPostMeal": "تقلب مرتفع بعد الوجبة (ذروة + نقص سكر الدم)",
     "flagHba1cAboveTarget": "الهيموغلوبين السكري (HbA1c) فوق الهدف",
     "flagNocturnalHypoHighFasting": "نقص سكر الدم الليلي — للمراجعة (القاعدي)",
+    "flagDaytimeHypoHighPreDinner": "القاعدي الصباحي — للمراجعة (سكر ما قبل العشاء)",
     "flagHighVariabilityPostCorrection": "نقص سكر الدم بعد التصحيح — للمراجعة (الحساسية)",
     "flagHighVariabilityFixedDose": "نقص سكر الدم — للمراجعة (الجرعة الثابتة)"
   },

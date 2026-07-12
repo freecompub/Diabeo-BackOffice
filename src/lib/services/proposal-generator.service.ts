@@ -625,8 +625,16 @@ export const proposalGeneratorService = {
       const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
       const glVals = (nums: (number | null)[]) => nums.filter((v): v is number => v !== null && Number.isFinite(v)).map((v) => v / 100)
 
+      // US-2661 — flag PAR CIBLE : la dose du SOIR (titrée à jeun, garde nocturne) → `nocturnalHypoHighFasting` ;
+      // la dose du MATIN (titrée pré-dîner, garde de JOUR) → `daytimeHypoHighPreDinner` (mode d'échec DIURNE).
+      // Réutiliser le flag nocturne pour la dose du matin affirmait une fenêtre physiologique fausse (medical).
       const raiseSplitFlag = (kind: "morning" | "evening") =>
-        clinicalReviewFlagService.raise(patientId, "nocturnalHypoHighFasting", auditUserId, ctx)
+        clinicalReviewFlagService.raise(
+          patientId,
+          kind === "morning" ? "daytimeHypoHighPreDinner" : "nocturnalHypoHighFasting",
+          auditUserId,
+          ctx,
+        )
           .then(() => { flagged++ })
           .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: `basal:stylo:${kind}` }, err as Error))
 

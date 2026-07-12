@@ -162,10 +162,18 @@ enum ClinicalReviewFlagType {
   // NOM d'enum est un identifiant technique « superset » ; le LIBELLÉ i18n affiché au médecin est
   // volontairement GÉNÉRIQUE/exact (« hypoglycémie … à revoir ») car chaque flag couvre PLUSIEURS cas et
   // ne doit jamais affirmer un fait non garanti (règle CLAUDE.md — ne pas induire le médecin en erreur).
-  // BASAL — 3 cas : (a) à jeun HAUT + hypo NOCTURNE récurrente = Somogyi vs aube (direction non fiable
-  // à automatiser) ; (b) baisse non actionnable (débit trop bas pour titrer d'un incrément) ; (c) hypo
-  // nocturne sévère isolée. Tous → revue (profil basal, snack, restructuration).
+  // BASAL (à jeun / NOCTURNE) — porté par la basale POMPE, single_injection, et la dose du SOIR du
+  // split_injection (toutes titrées sur l'à jeun, garde = nadir NOCTURNE). 3 cas : (a) à jeun HAUT + hypo
+  // NOCTURNE récurrente = Somogyi vs aube (direction non fiable à automatiser) ; (b) baisse non actionnable
+  // (débit trop bas pour titrer d'un incrément) ; (c) hypo nocturne sévère isolée. Tous → revue.
   nocturnalHypoHighFasting
+  // BASAL STYLO — dose du MATIN du split_injection (US-2661) — titrée sur la glycémie PRÉ-DÎNER, garde =
+  // nadirs de JOUR (matin+midi, D9). Mode d'échec DIURNE (≠ nocturne) → flag distinct. Superset technique,
+  // 4 cas : (a) pré-dîner HAUT mais nadir de jour en hypo (titration guardée) ; (b) pré-dîner en hypo (dé-
+  // escalade non actionnable) ; (c) confondeur bolus-midi (IOB, flag-only — PAS forcément une hypo) ; (d)
+  // hypo de jour sévère isolée. Libellé i18n NON affirmatif (cf. cas c) : « Basale du matin à revoir
+  // (glycémie pré-dîner) », jamais « hypoglycémie » (medical US-2661).
+  daytimeHypoHighPreDinner
   // ISF — 2 cas : (a) sous-correction moyenne + nadirs post-correction en hypo récurrente (timing/IOB/
   // stacking — un ISF unique ne corrige pas les deux) ; (b) hypo post-correction sévère isolée. → revue.
   highVariabilityPostCorrection
