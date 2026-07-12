@@ -308,4 +308,37 @@ export const slotSetProposalService = {
     })
     return proposals
   },
+
+  /**
+   * US-2663 (S2) — Liste les propositions d'ensemble **PENDING** d'un patient pour l'écran de REVUE MÉDECIN
+   * (`/patients/[id]/review`), `baselineSlots` **INCLUS** (contrairement à `listSetProposals`, qui l'omet).
+   *
+   * ⚠️ Différence volontaire avec `listSetProposals` : cette liste alimente l'écran de revue **clinicien**
+   * (accès en LECTURE = `canAccessPatient`, donc DOCTOR **et NURSE** ; seule la DÉCISION accept/reject est
+   * DOCTOR/ADMIN via `canDecide`). Elle construit un DIFF (base live vs `baselineSlots`/`proposedSlots`) pour
+   * signaler une dérive de base (`isBaselineUnchanged`) AVANT décision — decision-support clinicien légitime,
+   * pas une fuite de minimisation RGPD : le snapshot reste une donnée de **config insuline** (non-PHI) que le
+   * soignant lit déjà en live, jamais exposée côté patient (la liste patient garde l'`omit`).
+   *
+   * Audite le READ (les créneaux sont une donnée de config insuline — donnée de santé). Patient soft-deleted exclu.
+   * @param auditUserId - PS effectuant la lecture (piste d'audit HDS).
+   */
+  async listPendingForReview(patientId: number, auditUserId: number, ctx?: AuditContext) {
+    const proposals = await prisma.slotSetProposal.findMany({
+      where: { patientId, status: "pending", patient: { deletedAt: null } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true, parameterType: true, source: true, proposedSlots: true, baselineSlots: true, createdAt: true },
+    })
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ",
+      resource: "SLOT_SET_PROPOSAL",
+      resourceId: String(patientId),
+      ipAddress: ctx?.ipAddress,
+      userAgent: ctx?.userAgent,
+      requestId: ctx?.requestId,
+      metadata: { patientId, kind: "slotSetReview", count: proposals.length },
+    })
+    return proposals
+  },
 }
