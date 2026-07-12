@@ -218,6 +218,7 @@ describe("emergencyService", () => {
             severity: "critical",
           }),
         },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -322,6 +323,7 @@ describe("emergencyService", () => {
           update: updateSpy,
         },
         emergencyAlertAction: { create: vi.fn().mockResolvedValue({}) },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -548,6 +550,7 @@ describe("emergencyService", () => {
       })
       const mockTx = {
         emergencyAlertAction: { create: createSpy },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
@@ -693,6 +696,7 @@ describe("emergencyService", () => {
             severity: "critical",
           }),
         },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) }, // US-2663 S2b
         auditLog: { create: vi.fn().mockResolvedValue({}) },
       }
       prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
