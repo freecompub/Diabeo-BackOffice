@@ -100,8 +100,11 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
   **Revues** (medical GO, architect socle sain, code-reviewer mergeable) — durcissements appliqués : contrat CAS
   **enveloppé** `cas?: { baseline }` (le fail-open n'est plus atteignable par un `null` mal coalescé), garde
   **`Number.isFinite`** (NaN → `baselineMoved`, pas « inchangé »), **test de route** `baselineMoved`/`baselineMissing`
-  → 409, **test CAS ICR** (branche `carbRatio`). Reportés : factoriser lecture LIVE+`before` (S1bis), surface
-  d'erreur typée (épic), invariant S1→S3 « aucun chemin groupé n'avance l'anti-cliquet avant la re-source S3 ». |
+  → 409, **test CAS ICR** (branche `carbRatio`), **JSDoc `@throws` complète**, **lecture LIVE+`before` factorisée**
+  en une requête (`live == before` garanti, plus de double lecture), **`notifyPatient` rendu totalement
+  non-throwing** (best-effort post-commit : un aléa DB ne fait plus échouer un accept déjà appliqué). Reportés :
+  surface d'erreur typée pour les codes fail-closed (épic), invariant S1→S3 « aucun chemin groupé n'avance
+  l'anti-cliquet avant la re-source S3 » (garde-fou #4). |
 - **S2 — Composant de revue unifié** (referme le constat 2) : `DispositionProposalReview` (diff surligné, badges
   par-créneau, flags en tête) branché sur `/patients/[id]/review`, lisant `SlotSetProposal` **+** `AdjustmentProposal`
   pending pendant la transition. **Avant la bascule moteur.**

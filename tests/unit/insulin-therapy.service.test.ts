@@ -315,6 +315,8 @@ describe("insulinTherapyService", () => {
       expect(res.applied).toBe(true)
       expect(tx.insulinSensitivityFactor.deleteMany).toHaveBeenCalled()
       expect(tx.insulinSensitivityFactor.createMany).toHaveBeenCalled()
+      // Revue S1 (#2) — lecture factorisée : le jeu actuel est lu UNE seule fois (CAS + audit `before`).
+      expect(tx.insulinSensitivityFactor.findMany).toHaveBeenCalledTimes(1)
     })
 
     it("CAS : base LIVE a DÉRIVÉ (valeur différente) → baselineMoved, RIEN écrit (fail-closed)", async () => {

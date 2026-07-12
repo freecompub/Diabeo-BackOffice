@@ -91,6 +91,15 @@ describe("adjustmentService.notifyPatient", () => {
     expect(result.notified).toBe(false)
   })
 
+  it("US-2663 (S1) : un aléa DB sur le findFirst → notified:false, JAMAIS throw (best-effort post-commit)", async () => {
+    // notifyPatient est appelée APRÈS le commit de l'accept/reject : une défaillance ne doit pas remonter
+    // en 500 sur un acte déjà appliqué. Le `try` englobe désormais le findFirst (pas seulement le push FCM).
+    prismaMock.patient.findFirst.mockRejectedValue(new Error("db connection reset"))
+
+    await expect(adjustmentService.notifyPatient(1, 7, "accepted")).resolves.toEqual({ notified: false })
+    expect(mockSendToUser).not.toHaveBeenCalled()
+  })
+
   it("filters soft-deleted patients (deletedAt: null)", async () => {
     prismaMock.patient.findFirst.mockResolvedValue(null)
 

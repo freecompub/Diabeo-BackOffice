@@ -1040,12 +1040,10 @@ export const adjustmentService = {
   },
 
   async notifyPatient(patientId: number, senderId: number, action: "accepted" | "rejected", ctx?: AuditContext): Promise<{ notified: boolean }> {
-    const patient = await prisma.patient.findFirst({
-      where: { id: patientId, deletedAt: null },
-      select: { userId: true },
-    })
-    if (!patient) return { notified: false }
-
+    // BEST-EFFORT, JAMAIS bloquant : cette notification est appelée APRÈS le commit de l'accept/reject
+    // (proposition déjà appliquée). Toute défaillance — y compris un aléa DB sur le `findFirst` — doit
+    // renvoyer `{ notified: false }`, jamais throw (sinon la route renverrait 500 sur un acte déjà réussi,
+    // induisant un retry inutile). Le `try` englobe donc TOUTE la méthode (revue code-reviewer S1, US-2663).
     const titles: Record<string, string> = {
       accepted: "Proposition acceptée",
       rejected: "Proposition refusée",
@@ -1056,6 +1054,12 @@ export const adjustmentService = {
     }
 
     try {
+      const patient = await prisma.patient.findFirst({
+        where: { id: patientId, deletedAt: null },
+        select: { userId: true },
+      })
+      if (!patient) return { notified: false }
+
       const result = await fcmService.sendToUser({
         userId: patient.userId,
         senderId,

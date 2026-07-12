@@ -414,37 +414,24 @@ export const insulinTherapyService = {
       if (!settings) throw new Error("settingsNotFound")
       const settingsId = settings.id
 
-      // 2a-bis. US-2663 (S1) — CAS D'ENSEMBLE fail-closed (acceptation groupée uniquement). Sous le verrou
-      //   `tryLockInsulinSlots` déjà acquis ⇒ lecture LIVE atomique (pas de TOCTOU) : la base actuelle doit
-      //   être identique au snapshot pris à la génération. Une dérive (ajustement médecin concurrent) →
-      //   `baselineMoved` ; snapshot absent (legacy) → `baselineMissing`. Rollback ⇒ proposition reste `pending`.
-      //   `orderBy` sans effet fonctionnel ici (comparaison par `Map` sur `startHour`) — gardé par symétrie S0.
-      if (cas !== undefined) {
-        const live: IsfIcrSlot[] =
-          param === "isf"
-            ? (
-                await tx.insulinSensitivityFactor.findMany({
-                  where: { settingsId },
-                  orderBy: { startHour: "asc" },
-                  select: { startHour: true, endHour: true, sensitivityFactorGl: true },
-                })
-              ).map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) }))
-            : (
-                await tx.carbRatio.findMany({
-                  where: { settingsId },
-                  orderBy: { startHour: "asc" },
-                  select: { startHour: true, endHour: true, gramsPerUnit: true },
-                })
-              ).map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.gramsPerUnit) }))
-        assertBaselineUnchanged(cas.baseline, live)
-      }
-
-      // 2b. Snapshot ancien jeu (audit `from`) + 2c. REPLACE scopé settingsId.
+      // 2b. Lecture UNIQUE du jeu ACTUEL sous verrou (revue S1 — factorisation) : sert À LA FOIS au CAS
+      //   d'ensemble (US-2663 S1, si `cas` fourni) ET à l'audit `from`. Une seule requête ⇒ `live == before`
+      //   garanti par construction (plus de double lecture ni de fragilité de divergence latente), et lecture
+      //   atomique (verrou déjà acquis) ⇒ pas de TOCTOU. CAS AVANT tout delete/create (fail-closed) :
+      //   dérive (ajustement médecin concurrent) → `baselineMoved` ; snapshot absent (legacy) → `baselineMissing`
+      //   → rollback ⇒ proposition reste `pending`. Comparaison par `Map` sur `startHour` (ordre indifférent).
       if (param === "isf") {
-        const before = await tx.insulinSensitivityFactor.findMany({
+        const current = await tx.insulinSensitivityFactor.findMany({
           where: { settingsId },
-          select: { startHour: true, endHour: true },
+          select: { startHour: true, endHour: true, sensitivityFactorGl: true },
         })
+        if (cas !== undefined) {
+          assertBaselineUnchanged(
+            cas.baseline,
+            current.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) })),
+          )
+        }
+        const before = current.map((s) => ({ startHour: s.startHour, endHour: s.endHour }))
         await tx.insulinSensitivityFactor.deleteMany({ where: { settingsId } })
         await tx.insulinSensitivityFactor.createMany({
           data: slots.map((s) => ({
@@ -459,10 +446,17 @@ export const insulinTherapyService = {
         })
         return finishReplaceSet(tx, param, parameterType, patientId, settingsId, before, slots, auditUserId, coverage, ctx)
       } else {
-        const before = await tx.carbRatio.findMany({
+        const current = await tx.carbRatio.findMany({
           where: { settingsId },
-          select: { startHour: true, endHour: true },
+          select: { startHour: true, endHour: true, gramsPerUnit: true },
         })
+        if (cas !== undefined) {
+          assertBaselineUnchanged(
+            cas.baseline,
+            current.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.gramsPerUnit) })),
+          )
+        }
+        const before = current.map((s) => ({ startHour: s.startHour, endHour: s.endHour }))
         await tx.carbRatio.deleteMany({ where: { settingsId } })
         await tx.carbRatio.createMany({
           data: slots.map((s) => ({
