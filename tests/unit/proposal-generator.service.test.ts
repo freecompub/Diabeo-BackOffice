@@ -406,7 +406,9 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO single_in
   // récurrent 0,60 NON sévère) avec un changement accepté il y a 80 h : la borne 72 h vs 96 h bascule l'issue.
   // Nadirs sur j0–j2 : tous strictement POSTÉRIEURS au cutoff (jour local de l'accepté 80 h ≈ j−3/−4), donc
   // ≥ 3 nadirs post-changement survivent au filtre `afterCutoff` dans les DEUX cas (seul `withinCooldown` varie).
-  const deescNights = [
+  // FONCTION (pas un tableau) : `isoDaysAgo` évalué AU RUN-TIME (comme `nights()`/`dinners()`), aligné sur le
+  // `Date.now()` de `accepted80hAgo()` → aucun écart collecte↔exécution possible (robuste au passage de minuit UTC).
+  const deescNights = () => [
     { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(0) },
     { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(1) },
     { fastingMgdl: 105, nocturnalNadirMgdl: 60, dayIso: isoDaysAgo(2) },
@@ -415,7 +417,7 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO single_in
     prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 80 * 3_600_000) } as never)
 
   it("WIRING cooldown : molécule CLASSIQUE (detemir 20 h → 72 h) + accepté il y a 80 h → dé-escalade proposée", async () => {
-    setup({ basalConfig: stylo(22), basalDurationHours: 20, fasting: deescNights })
+    setup({ basalConfig: stylo(22), basalDurationHours: 20, fasting: deescNights() })
     accepted80hAgo()
     await proposalGeneratorService.generateForPatient(1, 99)
     // 80 h > 72 h → cooldown écoulé → dé-escalade proposée. (Si le chemin molécule était cassé → fail-closed 96 h → bloquée.)
@@ -424,7 +426,7 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO single_in
   })
 
   it("WIRING cooldown : molécule ULTRA-LONGUE (dégludec 42 h → 96 h) + accepté il y a 80 h → dé-escalade BLOQUÉE (anti-empilement)", async () => {
-    setup({ basalConfig: stylo(22), basalDurationHours: 42, fasting: deescNights })
+    setup({ basalConfig: stylo(22), basalDurationHours: 42, fasting: deescNights() })
     accepted80hAgo()
     await proposalGeneratorService.generateForPatient(1, 99)
     // 80 h < 96 h → dans le cooldown → dé-escalade bloquée ; nadir 0,60 non sévère (> 0,54) → ni proposition ni flag.
