@@ -58,7 +58,8 @@ describe("PUT /api/patient/insulin-slot-set (toujours proposition)", () => {
     const res = await PUT(isf())
     expect(res.status).toBe(201)
     expect(await res.json()).toEqual({ outcome: "proposal", proposalId: "set-1" })
-    expect(createProposal).toHaveBeenCalledWith(7, "insulinSensitivityFactor", SLOTS, 42, expect.anything())
+    // US-2663 (S0) — provenance bundlée `{ userId, source }` dérivée SESSION ; voie patient-only → source=patient.
+    expect(createProposal).toHaveBeenCalledWith(7, "insulinSensitivityFactor", SLOTS, { userId: 42, source: "patient" }, expect.anything())
   })
 
   it("pas de dossier patient (pro) → 404 neutre, service NON appelé (anti-IDOR)", async () => {

@@ -84,8 +84,15 @@ export async function PUT(req: NextRequest) {
 
     try {
       // TOUJOURS une proposition médecin (plus d'auto-application). `createSetProposal` supersède les pending
-      // du même paramètre et audite la création (`CREATE SLOT_SET_PROPOSAL`).
-      const { id } = await slotSetProposalService.createSetProposal(patientId, parameterType, slots, user.id, ctx)
+      // du même paramètre et audite la création (`CREATE SLOT_SET_PROPOSAL`). Provenance `source` dérivée de
+      // la SESSION (US-2663/ADR #27) : cette voie est patient-only (`getOwnPatientId`) → toujours `patient`.
+      const { id } = await slotSetProposalService.createSetProposal(
+        patientId,
+        parameterType,
+        slots,
+        { userId: user.id, source: "patient" },
+        ctx,
+      )
       return NextResponse.json({ outcome: "proposal", proposalId: id }, { status: 201 })
     } catch (e) {
       // Rejet dur à la saisie (bornes/couverture) / doublon pending / patient non insuliné → statut HTTP stable

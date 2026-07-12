@@ -74,7 +74,7 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-1" })
 
-    const res = await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7)
+    const res = await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })
     expect(res).toEqual({ id: "set-1" })
     expect(tx.slotSetProposal.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending" }, data: { status: "superseded" } }),
@@ -100,7 +100,7 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-1" })
 
-    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7)
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })
 
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -127,7 +127,7 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-2" })
 
-    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7, undefined, "algorithm")
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "algorithm" })
 
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", baselineSlots: [] }) }),
@@ -135,26 +135,26 @@ describe("slotSetProposalService", () => {
   })
 
   it("createSetProposal : jeu vide → emptySlotSet (avant tout accès DB)", async () => {
-    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", [], 7)).rejects.toThrow("emptySlotSet")
+    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", [], { userId: 7, source: "patient" })).rejects.toThrow("emptySlotSet")
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled()
   })
 
   it("createSetProposal : valeur ISF hors bornes → valueOutOfBounds DÈS la création (M6)", async () => {
     const bad = [{ startHour: 0, endHour: 12, value: 5.0 }, { startHour: 12, endHour: 0, value: 0.5 }] // 5.0 > ISF_GL_MAX
-    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", bad, 7)).rejects.toThrow("valueOutOfBounds")
+    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", bad, { userId: 7, source: "patient" })).rejects.toThrow("valueOutOfBounds")
     expect(prismaMock.patient.findFirst).not.toHaveBeenCalled()
   })
 
   it("createSetProposal : patient soft-deleted / inexistant → patientNotFound", async () => {
     prismaMock.patient.findFirst.mockResolvedValue(null as never)
-    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7)).rejects.toThrow("patientNotFound")
+    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })).rejects.toThrow("patientNotFound")
     expect(treatmentModeService.resolveTreatmentMode).not.toHaveBeenCalled()
   })
 
   it("createSetProposal : patient NON INSULINÉ → nonInsulinNoDose (frontière MDR, aucune écriture)", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
     ;(treatmentModeService.resolveTreatmentMode as any).mockResolvedValueOnce({ mode: "nonInsulin" })
-    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7)).rejects.toThrow("nonInsulinNoDose")
+    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })).rejects.toThrow("nonInsulinNoDose")
     expect(prismaMock.$transaction).not.toHaveBeenCalled()
   })
 
@@ -175,7 +175,7 @@ describe("slotSetProposalService", () => {
         },
       }) as never,
     )
-    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7)).rejects.toThrow("duplicatePendingProposal")
+    await expect(slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })).rejects.toThrow("duplicatePendingProposal")
   })
 
   // ── accept ──────────────────────────────────────────────────────────────
@@ -264,6 +264,10 @@ describe("slotSetProposalService", () => {
     expect(res).toEqual([{ id: "set-1" }])
     expect(prismaMock.slotSetProposal.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: expect.objectContaining({ patientId: 7, patient: { deletedAt: null }, status: "pending" }) }),
+    )
+    // US-2663 (S0, revue archi) — le snapshot INTERNE `baselineSlots` n'est pas exposé sur la liste (minimisation).
+    expect(prismaMock.slotSetProposal.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ omit: { baselineSlots: true } }),
     )
     expect(auditService.log).toHaveBeenCalledWith(
       expect.objectContaining({ action: "READ", resource: "SLOT_SET_PROPOSAL", userId: 3 }),

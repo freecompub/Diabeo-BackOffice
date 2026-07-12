@@ -26,12 +26,16 @@ import { z } from "zod"
 import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
+import { isfIcrSlotSchema, type IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
-/** Créneau proposé (forme du JSON `proposedSlots`). */
-export type ProposedSlot = { startHour: number; endHour: number; value: number; mealLabel?: string }
+/**
+ * Créneau proposé (forme du JSON `proposedSlots`). US-2663 — alias de `IsfIcrSlot`, la **source de vérité
+ * de forme unique** (`src/lib/insulin/grouped-proposal.ts`) : plus de définition parallèle à maintenir.
+ */
+export type ProposedSlot = IsfIcrSlot
 
 /** Paramètres à jeu de créneaux gérés (ISF/ICR). */
 export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio"
@@ -48,14 +52,9 @@ export const REPLACE_KEY: Record<SlotSetParam, "isf" | "icr"> = {
  * vérifiées séparément par `assertValidSlotSet`. Ici on garantit uniquement des entiers/valeurs finies —
  * évite un `NaN` dans les calculs de couverture en cas de JSON corrompu.
  */
-const proposedSlotsSchema = z.array(
-  z.object({
-    startHour: z.number().int().min(0).max(23),
-    endHour: z.number().int().min(0).max(23),
-    value: z.number().finite().positive(),
-    mealLabel: z.string().max(120).optional(),
-  }),
-) // le jeu vide passe la FORME → `emptySlotSet` levé par `assertValidSlotSet` (contrat d'erreur stable)
+// US-2663 — forme des créneaux ISF/ICR importée du module de typage unique (`isfIcrSlotSchema`) plutôt que
+// redéfinie ici. Le jeu vide passe la FORME → `emptySlotSet` levé par `assertValidSlotSet` (contrat stable).
+const proposedSlotsSchema = z.array(isfIcrSlotSchema)
 
 /** Parse + valide la forme du jeu ; `invalidSlotSet` si malformé (à la création comme à la relecture). */
 function parseSlots(raw: unknown): ProposedSlot[] {
@@ -108,9 +107,15 @@ export const slotSetProposalService = {
    * soumission à l'état courant impliquerait une lecture + normalisation de créneaux dans un chemin clinique,
    * non justifiée sans validation produit/médicale pour un simple confort de file de revue (medical-domain
    * validator, revue PR #714). Le bruit éventuel est borné par la supersession (1 pending / paramètre).
-   * US-2663 (S0) — persiste désormais `source` (provenance dérivée SERVEUR, ADR #27 ; `patient` par défaut
-   * — seule voie de création à ce stade) et `baselineSlots` (snapshot de la base ISF/ICR active à la
-   * génération, socle du compare-and-swap par créneau de S1). Additif : les lecteurs existants sont inchangés.
+   * US-2663 (S0) — persiste `source` (provenance) et `baselineSlots` (snapshot de la base ISF/ICR active à
+   * la génération, socle du compare-and-swap par créneau de S1). Additif : les lecteurs existants sont inchangés.
+   *
+   * ⚠️ **Anti-usurpation (ADR #27)** : `proposer` regroupe `{ userId, source }` — ils voyagent ENSEMBLE
+   * (pas de désync possible entre l'auteur et la provenance). `source` est **REQUIS** (pas de défaut : un
+   * appelant ne peut plus mislabel silencieusement une proposition `nurse`/`doctor`/`algorithme` en `patient`
+   * → sinon la vue unifiée US-2664, qui filtre le patient sur `source=patient`, exposerait une dose non
+   * validée). `source` DOIT être **dérivé du rôle de la SESSION côté route** (jamais du body). À S0, l'unique
+   * appelant est la voie patient → `{ userId, source: "patient" }` ; `nurse`/`doctor`/`algorithm` en S3/S4.
    * @throws invalidSlotSet | emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap
    * @throws patientNotFound | nonInsulinNoDose | duplicatePendingProposal
    */
@@ -118,9 +123,8 @@ export const slotSetProposalService = {
     patientId: number,
     parameterType: SlotSetParam,
     proposedSlots: ProposedSlot[],
-    proposedByUserId: number,
+    proposer: { userId: number; source: ProposalSource },
     ctx?: AuditContext,
-    source: ProposalSource = "patient",
   ) {
     // 1. Forme (Zod) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
     //    création ⇄ acceptation : une proposition inacceptable ne doit pas pouvoir être créée).
@@ -159,18 +163,18 @@ export const slotSetProposalService = {
           data: { status: "superseded", reviewedAt: new Date(), reviewedBy: null },
         })
         const proposal = await tx.slotSetProposal.create({
-          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, source, proposedByUserId, status: "pending" },
+          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, source: proposer.source, proposedByUserId: proposer.userId, status: "pending" },
           select: { id: true },
         })
         await auditService.logWithTx(tx, {
-          userId: proposedByUserId,
+          userId: proposer.userId,
           action: "CREATE",
           resource: "SLOT_SET_PROPOSAL",
           resourceId: proposal.id,
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           requestId: ctx?.requestId,
-          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source, slots: slots.length, baselineSlots: baselineSlots.length },
+          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source: proposer.source, slots: slots.length, baselineSlots: baselineSlots.length },
         })
         return { id: proposal.id }
       })
@@ -277,6 +281,9 @@ export const slotSetProposalService = {
     const proposals = await prisma.slotSetProposal.findMany({
       where: { patientId, patient: { deletedAt: null }, ...(status ? { status } : {}) },
       orderBy: { createdAt: "desc" },
+      // US-2663 (S0, revue architecture) — `baselineSlots` est un snapshot INTERNE (socle du CAS d'acceptation
+      // de S1), sans usage client avant la revue unifiée S2 : minimisation RGPD, ne pas l'exposer sur la liste.
+      omit: { baselineSlots: true },
     })
     await auditService.log({
       userId: auditUserId,
