@@ -351,6 +351,14 @@ même si la moyenne est « normale ». **Extension complète à 4 leviers** : ch
 n'est pas gatée (self-limiting par les bornes cliniques). Prévient l'accumulation itérative 10%+10%+10% avant 
 jugement de l'effet sur ≥ 3 j CGM/BGM.
 
+**Re-source de l'anti-cliquet — acceptations GROUPÉES incluses (US-2663 S3a, garde-fou #4)** : le « dernier
+changement accepté » (`lastAcceptedChangeAt`, `proposal-generator.service.ts`) considère désormais **les DEUX
+modèles** — `AdjustmentProposal accepted` (par-valeur, par créneau) **ET** `SlotSetProposal accepted` (d'ensemble
+ISF/ICR, sans granularité créneau car elle remplace tout le jeu) — et retient le **plus récent**. Sans ce terme,
+une édition groupée acceptée (patient ISF/ICR aujourd'hui, moteur groupé en S3+) était **invisible** au cooldown,
+qui pouvait empiler une dé-escalade juste après. Hors ISF/ICR (basalRate/fixedDose) : aucune `SlotSetProposal`,
+terme nul. Prérequis de la bascule moteur groupé (S3+).
+
 **Porte d'observation POST-changement (fix Q6a, 2026-07)** — invariant de sécurité complétant le délai :
 une dé-escalade à magnitude fixe ne se juge **que sur les observations datées APRÈS le dernier changement
 accepté** (`dayIso > cutoff`, `cutoff` = jour local du `reviewedAt` de l'ACCEPTÉE précédente). Le délai des
