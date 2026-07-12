@@ -368,7 +368,10 @@ export const insulinTherapyService = {
    * @param patientId - patient scopé (résolu serveur, anti-IDOR).
    * @param slots - jeu complet `{ startHour, endHour, value, mealLabel? }` (value = ISF g/L ou ICR g/U).
    * @param externalTx - transaction englobante optionnelle (atomicité apply + flip, cf. `acceptSetProposal`).
+   * @param cas - US-2663 (S1) — demande de CAS d'ensemble (voir le param). Omis = chemin DOCTOR direct (pas de CAS).
    * @throws emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap | settingsNotFound
+   * @throws slotsBusy - mutation concurrente en cours (verrou non bloquant) → réessayer.
+   * @throws baselineMoved | baselineMissing - US-2663 (S1) CAS d'ensemble : base dérivée / snapshot legacy non certifiable.
    */
   async replaceSlotSet(
     param: "isf" | "icr",
