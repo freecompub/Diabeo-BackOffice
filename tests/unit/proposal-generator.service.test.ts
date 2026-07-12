@@ -465,7 +465,8 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     setup({ basalConfig: split(18, 22), fasting: evFasting(105, 120), meals: [...dinners(150), ...lunches(120, 6)] }) // bolus midi 6 → confondu
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(calls("morning")).toHaveLength(0)
-    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+    // US-2661 — la dose du MATIN lève le flag DIURNE dédié (signal pré-dîner), pas le flag nocturne.
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
   })
 
   it("UNE dose/run + priorité SOIR : soir ET matin dévient (hausses) → une seule proposition, la dose du SOIR", async () => {
@@ -486,6 +487,22 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     expect(styloCount()).toBe(0) // verrou : une seule basale stylo en vol à la fois
   })
 
+  // US-2661 (code-review NIT) — verrou du 4ᵉ chemin de levée : une dé-escalade MATIN gagnante mais bloquée
+  // par le verrou « 1 pending stylo » doit lever le flag DIURNE (fail-loud), pas le flag nocturne.
+  it("VERROU + dé-escalade MATIN gagnante bloquée → daytimeHypoHighPreDinner (fail-loud, jamais nocturne)", async () => {
+    // Soir HOLD (à jeun 1,05 in-band, nadir nocturne 1,20 sain) → aucune dé-escalade soir. Matin : pré-dîner
+    // in-band (1,05) + nadir de JOUR récurrent bas (0,60) sans bolus midi → dé-escalade MATIN (seule → gagnante).
+    setup({ basalConfig: split(18, 22), fasting: evFasting(105, 120), meals: [...dinners(105), ...lunches(60, 0)] })
+    prismaMock.adjustmentProposal.findFirst.mockImplementation((args: any) =>
+      Promise.resolve(args?.where?.status === "pending" ? { id: "existing" } : null) as never,
+    )
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(styloCount()).toBe(0) // verrou : rien persisté
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined) // matin bloquée → flag diurne
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+    expect(raiseFlag).toHaveBeenCalledTimes(1) // EXACTEMENT la dose bloquée (jamais un double-flag)
+  })
+
   it("fix MEDIUM #2 : les DEUX doses dé-escaladent → soir persisté, matin (perdante) FLAGGÉ (jamais un drop silencieux)", async () => {
     // À jeun in-band + nadir nocturne récurrent 0,60 → dé-escalade SOIR ; pré-dîner in-band + nadir de jour
     // récurrent 0,60 sans bolus midi → dé-escalade MATIN. Priorité soir → soir persisté, matin perdante FLAGGÉE.
@@ -493,8 +510,20 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(calls("evening")).toHaveLength(1) // dé-escalade soir persistée (priorité sécurité, nocturne = pire)
     expect(calls("morning")).toHaveLength(0) // une dose/run : matin non persistée
-    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // matin perdante → flag fail-loud
+    // US-2661 — la perdante est la dose du MATIN → flag DIURNE dédié (pas le flag nocturne).
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined) // matin perdante → flag fail-loud
     expect(raiseFlag).toHaveBeenCalledTimes(1) // EXACTEMENT la perdante (jamais le winner, jamais un double-flag)
+  })
+
+  // US-2661 — verrou du DÉCOUPLAGE par cible : soir = nocturne, matin = diurne (pré-dîner).
+  it("flag PAR CIBLE : Somogyi sur la dose du SOIR → nocturnalHypoHighFasting (jamais le flag diurne)", async () => {
+    // Soir : à jeun HAUT (1,80) + nadir nocturne récurrent bas (0,60) = Somogyi → FLAG (jamais une baisse auto).
+    // Pas de dîners → la dose du matin est sans signal (silencieuse). Le flag soir DOIT être le flag nocturne.
+    setup({ basalConfig: split(18, 22), fasting: evFasting(180, 60) })
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(calls("evening")).toHaveLength(0) // Somogyi → jamais une baisse
+    expect(raiseFlag).toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined) // soir → nocturne
+    expect(raiseFlag).not.toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
   })
 })
 

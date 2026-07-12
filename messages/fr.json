@@ -2074,6 +2074,7 @@
     "flagHighVariabilityPostMeal": "Forte variabilité post-repas (pic + hypoglycémie)",
     "flagHba1cAboveTarget": "Hémoglobine glyquée (HbA1c) au-dessus de la cible",
     "flagNocturnalHypoHighFasting": "Hypoglycémie nocturne à revoir (basale)",
+    "flagDaytimeHypoHighPreDinner": "Basale du matin à revoir (glycémie pré-dîner)",
     "flagHighVariabilityPostCorrection": "Hypoglycémie après correction à revoir (sensibilité)",
     "flagHighVariabilityFixedDose": "Hypoglycémie à revoir (dose simple)"
   },

@@ -3,8 +3,28 @@
 > 📌 Sous-US de [US-2645](US-2645-EPIC-insulinotherapie-edition-multimode.md) · **back + i18n + front** · Taille **S**
 > · dépend de : US-2659 (titration split + surfaçage flags à la revue)
 >
-> **Statut** : 🟡 spécifiée — **follow-up US-2659** (traçabilité/lisibilité de la revue).
-> **Priorité** : MOYENNE (aucun risque patient — purement lisibilité du trail de revue médecin).
+> **Statut** : ✅ **LIVRÉ** (flag dédié `daytimeHypoHighPreDinner` — design validé medical avant code).
+> **Priorité** : MOYENNE (aucun risque patient — lisibilité + exactitude physiologique du trail de revue).
+
+## Livré
+
+- **Flag dédié `daytimeHypoHighPreDinner`** (enum `ClinicalReviewFlagType`, migration `20260723100000`,
+  `ALTER TYPE … ADD VALUE`). La dose du **matin** du split (titrée sur la glycémie **pré-dîner**, garde nadirs
+  de JOUR) lève ce flag DIURNE ; la dose du **soir** + `single_injection` + pompe gardent
+  `nocturnalHypoHighFasting`. Réutiliser le flag nocturne pour la dose du matin **affirmait une fenêtre
+  physiologique fausse** (medical) — le découplage est un **correctif** d'exactitude, pas seulement de libellé.
+- **Libellé i18n NON affirmatif** (FR « Basale du matin à revoir (glycémie pré-dîner) », EN/AR) dans les
+  **3 langues** — jamais « hypoglycémie » car un cas (confondeur bolus-midi, IOB) ne garantit aucune hypo
+  (contrainte ferme medical, règle CLAUDE.md « ne jamais affirmer un fait non garanti »).
+- **Générateur** : `raiseSplitFlag(kind)` sélectionne le flag par cible (matin/soir).
+- **Front** : `Record<ClinicalReviewFlagType,…>` exhaustif (`ReviewFlagsCard`) + rendu générique
+  `flagLabelKey` (`ReviewClient`) — le nouveau flag s'affiche à la revue et au dashboard sans code supplémentaire.
+- **Doc catalogue** (`regles-et-constantes-diabete.md`) + commentaire enum mis à jour.
+- **Tests** : matin→`daytimeHypoHighPreDinner` (confondeur + perdante dé-escalade), verrou de découplage
+  soir→`nocturnalHypoHighFasting`, i18n-parity (3 langues).
+
+**Lien flag ↔ proposition (AC-4, optionnel)** : la surface existante `listOpen` (US-2659 S3) affiche déjà les
+flags ouverts à l'écran de revue de la baisse ⇒ MVP satisfait. Enrichissement fin non nécessaire.
 
 ## Contexte
 

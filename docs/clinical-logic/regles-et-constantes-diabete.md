@@ -368,7 +368,8 @@ sur les 4 leviers** (parité stricte — un anti-ratchet ne masque jamais un sig
 |--------|-----------|----------------------|
 | ICR | `highVariabilityPostMeal` | dé-escalade bloquée (délai/post-changement) **+** hypo sévère post-repas **isolée** non récurrente (in-band, sous borne basse, ou plafond avec baisse annulée par la garde-hypo) |
 | ISF | `highVariabilityPostCorrection` | dé-escalade bloquée **+** hypo sévère post-correction **isolée** |
-| Basal | `nocturnalHypoHighFasting` | dé-escalade bloquée **+** hypo nocturne sévère **isolée** |
+| Basal (à jeun / nocturne) | `nocturnalHypoHighFasting` | dé-escalade bloquée **+** hypo nocturne sévère **isolée** — pompe, single_injection, **dose SOIR** du split |
+| Basal stylo (matin / pré-dîner, US-2661) | `daytimeHypoHighPreDinner` | **dose MATIN** du split_injection : signal DIURNE (titrée pré-dîner, garde nadirs de jour) — dé-escalade bloquée, confondeur bolus-midi (flag-only), hypo de jour sévère isolée |
 | FixedDose | `highVariabilityFixedDose` | dé-escalade bloquée / dose non réductible (≤ plancher) **+** relevé sévère **isolé** |
 
 **Limite connue (sémantique du cooldown)** — le « dernier changement accepté » qui arme le cooldown et fixe
@@ -377,9 +378,10 @@ Une acceptation **groupée** `SlotSetProposal` (édition patient CONFIRMÉ, ADR 
 réarme **pas** le cooldown moteur. Défendable pour l'objectif du fix (empêcher l'empilement des dé-escalades
 **moteur** avant observation) ; à revisiter si l'anti-ratchet doit couvrir aussi les remplacements groupés.
 
-**Three new contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
+**Contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
 - `highVariabilityPostCorrection` — ISF : pics + creux post-correction → revue (pas de dose)
-- `nocturnalHypoHighFasting` — Basal : Somogyi soupçonné, glycémie à jeun élevée + hypos nocturnes récurrentes → revue (pas de baisse)
+- `nocturnalHypoHighFasting` — Basal à jeun/nocturne (pompe, single, **dose SOIR** du split) : Somogyi soupçonné, glycémie à jeun élevée + hypos nocturnes récurrentes → revue (pas de baisse)
+- `daytimeHypoHighPreDinner` — Basal stylo **dose MATIN** du split (US-2661) : signal DIURNE (titrée sur la glycémie pré-dîner, garde nadirs de jour). Libellé **non affirmatif** (« Basale du matin à revoir (glycémie pré-dîner) ») car un cas — le confondeur bolus-midi (IOB) — ne garantit **aucune** hypo (medical). Découplé du flag nocturne : la dose du matin a un mode d'échec diurne, l'y assigner affirmait une fenêtre physiologique fausse.
 - `highVariabilityFixedDose` — FixedDose : variabilité pré-dose → revue (pas de dose)
 
 Aucun flag n'implique une dose. Ordonnent la revue médecin, structurent le dialogue clinique.
