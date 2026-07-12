@@ -668,6 +668,16 @@ export const adjustmentService = {
           metadata: { patientId, proposedByRole: proposer.role, ...(decreaseAudit ?? {}) },
         })
 
+        // US-2663 (S2b) — EXCLUSION MUTUELLE : une proposition PAR-VALEUR supersède les propositions
+        // d'ENSEMBLE (`SlotSetProposal`) pending du même paramètre — symétrique de `createSetProposal` (qui
+        // supersède déjà les par-valeur). Garantit « 1 pending / (patient × paramètre) » à travers LES DEUX
+        // modèles (trajectoire grouped-only, décision produit). `reviewedByUserId: null` = supersession
+        // programmatique (pas une revue médecin). Hors ISF/ICR, aucune `SlotSetProposal` n'existe → no-op.
+        await tx.slotSetProposal.updateMany({
+          where: { patientId, parameterType, status: "pending" },
+          data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: null },
+        })
+
         return proposal
       })
 
@@ -806,6 +816,14 @@ export const adjustmentService = {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           metadata: { patientId, proposedByRole: "algorithm" },
+        })
+
+        // US-2663 (S2b) — EXCLUSION MUTUELLE (idem chemin humain) : une proposition MOTEUR par-valeur
+        // supersède les `SlotSetProposal` pending du même paramètre. Maintient « 1 pending / (patient ×
+        // paramètre) » à travers les deux modèles jusqu'à la bascule moteur groupé (S3). Hors ISF/ICR → no-op.
+        await tx.slotSetProposal.updateMany({
+          where: { patientId, parameterType, status: "pending" },
+          data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: null },
         })
         return proposal
       })

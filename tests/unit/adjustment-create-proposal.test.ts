@@ -20,6 +20,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
     basalConfigFindFirst: vi.fn(), // US-2659 S3 — E1 (mode de délivrance serveur)
     fixedDoseFindFirst: vi.fn(),
     create: vi.fn((args: { data: Record<string, unknown> }) => ({ id: "p1", ...args.data })),
+    slotSetUpdateMany: vi.fn().mockResolvedValue({ count: 0 }), // US-2663 S2b — supersession du groupé
     logWithTx: vi.fn(),
     auditLog: vi.fn(),
     referentFindFirst: vi.fn(),
@@ -38,7 +39,7 @@ const { prismaMock, mocks } = vi.hoisted(() => {
       fixedDoseSlot: { findFirst: m.fixedDoseFindFirst },
       patientReferent: { findFirst: m.referentFindFirst },
       $transaction: async (fn: (tx: unknown) => unknown) =>
-        fn({ adjustmentProposal: { create: m.create } }),
+        fn({ adjustmentProposal: { create: m.create }, slotSetProposal: { updateMany: m.slotSetUpdateMany } }),
     },
   }
 })
@@ -105,6 +106,14 @@ describe("createProposal — provenance & currentValue serveur", () => {
       status: "pending",
     })
     expect(data.changePercent).toBeCloseTo(4, 1)
+  })
+
+  it("US-2663 (S2b) : supersède les SlotSetProposal pending du même paramètre (exclusion mutuelle grouped ⇄ par-valeur)", async () => {
+    await adjustmentService.createProposal(isf(0.52), nurse)
+    expect(mocks.slotSetUpdateMany).toHaveBeenCalledWith({
+      where: { patientId: 5, parameterType: "insulinSensitivityFactor", status: "pending" },
+      data: expect.objectContaining({ status: "superseded", reviewedByUserId: null }),
+    })
   })
 
   it("audit SANS PHI (provenance + patient, jamais la dose)", async () => {
