@@ -351,6 +351,14 @@ même si la moyenne est « normale ». **Extension complète à 4 leviers** : ch
 n'est pas gatée (self-limiting par les bornes cliniques). Prévient l'accumulation itérative 10%+10%+10% avant 
 jugement de l'effet sur ≥ 3 j CGM/BGM.
 
+**Re-source de l'anti-cliquet — acceptations GROUPÉES incluses (US-2663 S3a, garde-fou #4)** : le « dernier
+changement accepté » (`lastAcceptedChangeAt`, `proposal-generator.service.ts`) considère désormais **les DEUX
+modèles** — `AdjustmentProposal accepted` (par-valeur, par créneau) **ET** `SlotSetProposal accepted` (d'ensemble
+ISF/ICR, sans granularité créneau car elle remplace tout le jeu) — et retient le **plus récent**. Sans ce terme,
+une édition groupée acceptée (patient ISF/ICR aujourd'hui, moteur groupé en S3+) était **invisible** au cooldown,
+qui pouvait empiler une dé-escalade juste après. Hors ISF/ICR (basalRate/fixedDose) : aucune `SlotSetProposal`,
+terme nul. Prérequis de la bascule moteur groupé (S3+).
+
 **Porte d'observation POST-changement (fix Q6a, 2026-07)** — invariant de sécurité complétant le délai :
 une dé-escalade à magnitude fixe ne se juge **que sur les observations datées APRÈS le dernier changement
 accepté** (`dayIso > cutoff`, `cutoff` = jour local du `reviewedAt` de l'ACCEPTÉE précédente). Le délai des
@@ -376,11 +384,15 @@ sur les 4 leviers** (parité stricte — un anti-ratchet ne masque jamais un sig
 | Basal stylo (matin / pré-dîner, US-2661) | `daytimeHypoHighPreDinner` | **dose MATIN** du split_injection : signal DIURNE (titrée pré-dîner, garde nadirs de jour) — dé-escalade bloquée, confondeur bolus-midi (flag-only), hypo de jour sévère isolée |
 | FixedDose | `highVariabilityFixedDose` | dé-escalade bloquée / dose non réductible (≤ plancher) **+** relevé sévère **isolé** |
 
-**Limite connue (sémantique du cooldown)** — le « dernier changement accepté » qui arme le cooldown et fixe
-le `cutoff` est lu **uniquement** sur `AdjustmentProposal { status: "accepted" }` (`lastAcceptedChangeAt`).
-Une acceptation **groupée** `SlotSetProposal` (édition patient CONFIRMÉ, ADR #23) sur le même créneau ne
-réarme **pas** le cooldown moteur. Défendable pour l'objectif du fix (empêcher l'empilement des dé-escalades
-**moteur** avant observation) ; à revisiter si l'anti-ratchet doit couvrir aussi les remplacements groupés.
+**Sémantique du cooldown — RÉSOLU (US-2663 S3a)** : le « dernier changement accepté » qui arme le cooldown et
+fixe le `cutoff` est lu sur **les DEUX modèles** — `AdjustmentProposal { status: "accepted" }` (par-valeur, par
+créneau) **ET** `SlotSetProposal { status: "accepted" }` (groupé ISF/ICR, sans granularité créneau car il
+remplace tout le jeu), en retenant le **plus récent** (`lastAcceptedChangeAt`, cf. §Re-source ci-dessus). Une
+acceptation groupée réarme donc bien le cooldown moteur. **Écart résiduel connu (pré-existant, hors S3a)** :
+l'écriture DIRECTE DOCTOR (`PUT sensitivity-factors`/`carb-ratios` → `replaceSlotSet`) mute la config **sans**
+créer de ligne `accepted` → reste invisible au cooldown. Piste de fond (suivi S3+) : sourcer le cooldown sur
+l'**horodatage de mutation de config** (`updatedAt` des lignes ISF/ICR ou audit `CONFIG_APPLIED`) plutôt que
+sur les propositions comme proxy.
 
 **Contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
 - `highVariabilityPostCorrection` — ISF : pics + creux post-correction → revue (pas de dose)

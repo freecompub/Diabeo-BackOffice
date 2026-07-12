@@ -106,15 +106,33 @@ async function lastAcceptedChangeAt(
   parameterType: AdjustableParameter,
   slotWhere: Prisma.AdjustmentProposalWhereInput,
 ): Promise<Date | null> {
-  const last = await prisma.adjustmentProposal.findFirst({
-    // `reviewedAt: { not: null }` — sous PG `ORDER BY ... DESC` place les NULL en premier ; sans ce filtre
-    // une ligne `accepted` à `reviewedAt` NULL (ne devrait pas exister — l'acceptation le pose) masquerait
-    // une acceptation récente. Ceinture-et-bretelles.
-    where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null }, ...slotWhere },
-    orderBy: { reviewedAt: "desc" },
-    select: { reviewedAt: true },
-  })
-  return last?.reviewedAt ?? null
+  const [perValue, grouped] = await Promise.all([
+    prisma.adjustmentProposal.findFirst({
+      // `reviewedAt: { not: null }` — sous PG `ORDER BY ... DESC` place les NULL en premier ; sans ce filtre
+      // une ligne `accepted` à `reviewedAt` NULL (ne devrait pas exister — l'acceptation le pose) masquerait
+      // une acceptation récente. Ceinture-et-bretelles.
+      where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null }, ...slotWhere },
+      orderBy: { reviewedAt: "desc" },
+      select: { reviewedAt: true },
+    }),
+    // US-2663 (S3a, garde-fou #4 — re-source anti-cliquet) : une acceptation GROUPÉE (`SlotSetProposal`,
+    // ISF/ICR) remplace TOUT le jeu de créneaux du paramètre (`replaceSlotSet`) → elle constitue un
+    // « dernier changement accepté » pour CHAQUE créneau, au même titre qu'une acceptation par-valeur. Sans
+    // ce terme, le cooldown du moteur ne verrait pas une édition groupée acceptée (patient ISF/ICR aujourd'hui,
+    // moteur groupé en S3+) et pourrait empiler une baisse juste après. Pas de `slotWhere` : le modèle groupé
+    // n'a pas de granularité créneau (une acceptation couvre tous les créneaux). Hors ISF/ICR → aucune ligne.
+    prisma.slotSetProposal.findFirst({
+      where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null } },
+      orderBy: { reviewedAt: "desc" },
+      select: { reviewedAt: true },
+    }),
+  ])
+  const a = perValue?.reviewedAt ?? null
+  const b = grouped?.reviewedAt ?? null
+  if (a === null) return b
+  if (b === null) return a
+  // Le plus RÉCENT des deux (par-valeur vs groupé) borne le cooldown — on attend l'effet du dernier changement.
+  return a.getTime() >= b.getTime() ? a : b
 }
 
 /**
