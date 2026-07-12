@@ -277,3 +277,67 @@ recréant les indexes en full-table (perte de l'optimisation + bloat).
    SELECT indexname, indexdef FROM pg_indexes
    WHERE tablename = 'messages' ORDER BY indexname;
    ```
+
+---
+
+## CHECK constraints sur table existante — migration auto-réparante (incident US-2659 S0)
+
+### Incident
+
+`20260719100000_us2659_s0_basal_dose_kind` a échoué en `migrate deploy`
+avec le code Postgres **23514** :
+
+```
+check constraint "adjustment_proposals_basal_target_exclusivity_check"
+of relation "adjustment_proposals" is violated by some row
+```
+
+**Cause** : la migration ajoutait un `CHECK` *inconditionnel* (`basalRate`
+⇒ XOR entre `pump_basal_slot_id` et `basal_dose_kind`) en **supposant** que
+toute ligne `basalRate` avait déjà un `pump_basal_slot_id`. Faux : une
+version périmée de l'algorithme créait des propositions `basalRate`
+adressées par `time_slot_start_hour` **seul** (sans `pump_basal_slot_id`)
+→ lignes orphelines violant le XOR. Un `ADD CONSTRAINT` qui échoue **laisse
+la migration en état `failed` et bloque tout `migrate deploy` suivant**.
+
+### Règle générale
+
+**Un `CHECK` (ou `NOT NULL`, ou `UNIQUE`) ajouté sur une table existante
+doit garantir la conformité des données DANS LA MÊME MIGRATION**, avant le
+`ADD CONSTRAINT`. Ne jamais présumer de l'état des lignes héritées.
+
+### Pattern appliqué (auto-réparation + idempotence)
+
+1. **Idempotence** — la migration doit pouvoir se rejouer sur une base
+   partiellement appliquée : `CREATE TYPE` dans un bloc
+   `DO $$ … EXCEPTION WHEN duplicate_object THEN NULL; END $$;`,
+   `ADD COLUMN IF NOT EXISTS`, `DROP INDEX IF EXISTS` / `CREATE … IF NOT EXISTS`.
+2. **Remédiation avant le CHECK** :
+   - **Backfill non destructif** d'abord (ici : rattacher `pump_basal_slot_id`
+     depuis le créneau pompe dont l'heure matche `time_slot_start_hour`).
+   - **Suppression** des orphelins restants sans cible valide (props `pending`
+     jamais appliquées) — décision destructive tracée, autorisée explicitement.
+3. **`ADD CONSTRAINT`** en dernier, précédé de `DROP CONSTRAINT IF EXISTS`.
+
+### Reprise d'une migration `failed`
+
+```bash
+# 1. Corriger le fichier migration.sql (idempotent + auto-réparant)
+# 2. Marquer la migration échouée comme rolled back
+pnpm prisma migrate resolve --rolled-back <timestamp>_<name>
+# 3. Rejouer (la migration corrigée se ré-applique + déroule la suite)
+pnpm prisma migrate deploy
+```
+
+### Pré-flight prod (avant déploiement)
+
+Mesurer sur une **restauration du dernier backup prod** (read-only ;
+`basal_dose_kind` n'existe pas encore avant la migration) :
+
+```sql
+SELECT count(*) FROM adjustment_proposals
+WHERE parameter_type = 'basalRate' AND pump_basal_slot_id IS NULL;
+```
+
+`> 0` = nombre de lignes que la migration backfill/supprimera. Répéter
+`migrate deploy` sur cette copie (re-check à 0) **avant** le vrai déploiement.
