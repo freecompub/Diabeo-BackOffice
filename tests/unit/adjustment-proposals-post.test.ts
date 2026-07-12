@@ -15,6 +15,7 @@ const { mocks } = vi.hoisted(() => ({
     requireGdprConsent: vi.fn(),
     resolvePatientId: vi.fn(),
     createProposal: vi.fn(),
+    list: vi.fn(),
     checkApiRateLimit: vi.fn(),
     rateLimited: vi.fn(),
     accessDenied: vi.fn(),
@@ -31,9 +32,13 @@ vi.mock("@/lib/auth/api-rate-limit", () => ({
   RATE_LIMITS: { insulinSubmission: { bucket: "insulin-submission", windowSec: 60, max: 20, failMode: "open" } },
 }))
 vi.mock("@/lib/gdpr", () => ({ requireGdprConsent: mocks.requireGdprConsent }))
-vi.mock("@/lib/access-control", () => ({ resolvePatientId: mocks.resolvePatientId }))
+vi.mock("@/lib/access-control", () => ({
+  resolvePatientId: mocks.resolvePatientId,
+  // Helper pur (US-2664) — reproduit le vrai comportement : VIEWER → ["patient"], pros → undefined.
+  viewerProposalSources: (role: string) => (role === "VIEWER" ? ["patient"] : undefined),
+}))
 vi.mock("@/lib/services/adjustment.service", () => ({
-  adjustmentService: { createProposal: mocks.createProposal, list: vi.fn() },
+  adjustmentService: { createProposal: mocks.createProposal, list: mocks.list },
 }))
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: () => ({ ipAddress: "1.1.1.1", userAgent: "test" }),
@@ -62,6 +67,7 @@ beforeEach(() => {
   mocks.checkApiRateLimit.mockResolvedValue({ allowed: true, remaining: 19, retryAfterSec: 60 })
   mocks.rateLimited.mockResolvedValue({})
   mocks.accessDenied.mockResolvedValue({})
+  mocks.list.mockResolvedValue([])
   mocks.createProposal.mockResolvedValue({
     id: "p1",
     proposerComment: "enc(secret)",
@@ -182,6 +188,35 @@ describe("POST /api/adjustment-proposals", () => {
     const res = await GET(getReq("999"))
     expect(res.status).toBe(404)
     expect(mocks.accessDenied).not.toHaveBeenCalled()
+  })
+
+  // Étape 1 vue unifiée (sûreté medical) — le PATIENT (VIEWER) ne reçoit QUE ses propres demandes.
+  it("GET VIEWER : restriction de provenance IMPOSÉE serveur → list appelé avec sources: ['patient']", async () => {
+    mocks.requireAuth.mockReturnValue({ id: 42, role: "VIEWER" })
+    mocks.resolvePatientId.mockResolvedValue(7)
+    await GET(getReq())
+    expect(mocks.list).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({ sources: ["patient"] }),
+      42,
+      expect.anything(),
+    )
+  })
+
+  it("GET VIEWER : la restriction ne vient JAMAIS de la query (anti-usurpation) — sources forcé même si query hostile", async () => {
+    mocks.requireAuth.mockReturnValue({ id: 42, role: "VIEWER" })
+    mocks.resolvePatientId.mockResolvedValue(7)
+    // Query tentant d'élargir la provenance ; le schéma l'ignore et le serveur impose ['patient'].
+    const res = await GET({ nextUrl: { searchParams: new URLSearchParams({ sources: "nurse" }) } } as never)
+    expect(res.status).toBe(200)
+    expect(mocks.list).toHaveBeenCalledWith(7, expect.objectContaining({ sources: ["patient"] }), 42, expect.anything())
+  })
+
+  it("GET pro (NURSE) : aucune restriction de provenance (voit toutes les propositions, dont patient)", async () => {
+    mocks.requireAuth.mockReturnValue({ id: 20, role: "NURSE" })
+    mocks.resolvePatientId.mockResolvedValue(5)
+    await GET(getReq("5"))
+    expect(mocks.list).toHaveBeenCalledWith(5, expect.objectContaining({ sources: undefined }), 20, expect.anything())
   })
 
   it("doublon pending → 409", async () => {

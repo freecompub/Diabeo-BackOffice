@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import { requireAuth, AuthError } from "@/lib/auth"
 import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
-import { resolvePatientId } from "@/lib/access-control"
+import { resolvePatientId, viewerProposalSources } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
@@ -39,7 +39,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "patientNotFound" }, { status: 404 })
     }
 
-    const proposals = await adjustmentService.list(patientId, parsed.data, user.id, ctx)
+    // Sûreté (medical, étape 1 vue unifiée) — le PATIENT (VIEWER) ne reçoit QUE ses propres demandes
+    // (`source=patient`). Imposé SERVEUR (helper partagé avec `.../summary`), jamais depuis la query : voir
+    // une dose non validée d'un soignant/l'algorithme l'exposerait à une auto-injection (ADR #13). Pros = tout.
+    const proposals = await adjustmentService.list(patientId, { ...parsed.data, sources: viewerProposalSources(user.role) }, user.id, ctx)
     return NextResponse.json(proposals)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

@@ -22,13 +22,23 @@ import {
 } from "@/components/diabeo/patient/PatientRecordContext"
 import { PatientInsulinView } from "@/components/diabeo/patient/PatientInsulinView"
 import type { TreatmentView } from "@/components/diabeo/patient/patient-record-views"
+import type { ProposalViewItem } from "@/components/diabeo/patient/ProposalList"
 
-export function PatientInsulinClient({ patientId, data }: { patientId: number; data: TreatmentView }) {
+export function PatientInsulinClient({
+  patientId,
+  data,
+  proposals = [],
+}: {
+  patientId: number
+  data: TreatmentView
+  /** US-2664 — demandes en attente DU PATIENT (`source=patient`, filtré serveur). */
+  proposals?: ProposalViewItem[]
+}) {
   const fetchAnalytics = usePagePatientFetcher(patientId)
   const mutate = usePagePatientMutator(patientId)
   return (
     <PatientRecordProvider fetchAnalytics={fetchAnalytics} mutate={mutate}>
-      <PatientInsulinView data={data} canPropose />
+      <PatientInsulinView data={data} canPropose proposals={proposals} />
     </PatientRecordProvider>
   )
 }

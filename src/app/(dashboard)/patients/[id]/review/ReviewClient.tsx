@@ -17,7 +17,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { useLocale, useTranslations } from "next-intl"
 import type { AdjustableParameter, ProposalSource } from "@prisma/client"
-import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { PatientContextBar, type ContextFlags } from "@/components/diabeo/patient/PatientContextBar"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
@@ -26,13 +25,12 @@ import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { CgmChart } from "@/components/diabeo/CgmChart"
 import { bcp47 } from "@/i18n/config"
-import { PROPOSAL_MAJOR_CHANGE_PCT } from "@/lib/review-constants"
 import type { GlycemiaView } from "../glycemia-view"
 import type { TreatmentView } from "@/lib/insulin/treatment-view"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { ProposalList } from "@/components/diabeo/patient/ProposalList"
 import { Separator } from "@/components/ui/separator"
 import {
   Activity, CheckCircle2, ClipboardList, FileText, HeartPulse, Pill, Stethoscope, Syringe,
@@ -104,27 +102,6 @@ export type ReviewData = {
    *  Somogyi). Surface le contexte hypo AVANT une décision de BAISSE basale (jamais de posologie). */
   reviewFlags: string[]
 }
-
-/** parameterType → clé i18n (règle acronyme « Libellé (ACRONYME) »). */
-const PARAM_LABEL_KEY: Record<AdjustableParameter, string> = {
-  basalRate: "paramBasalRate",
-  insulinSensitivityFactor: "paramInsulinSensitivityFactor",
-  insulinToCarbRatio: "paramInsulinToCarbRatio",
-  fixedDose: "paramFixedDose",
-}
-
-/** parameterType → clé d'unité (namespace `insulinUnits`). ISF stocké en g/L. */
-const PARAM_UNIT_KEY: Record<AdjustableParameter, "isfGl" | "icr" | "basal" | "u"> = {
-  insulinSensitivityFactor: "isfGl",
-  insulinToCarbRatio: "icr",
-  basalRate: "basal",
-  fixedDose: "u",
-}
-
-/** Clé d'unité d'une proposition : une basale STYLO (`basalDoseKind` non-null) est en **U totales**, pas en
- *  U/h (débit pompe) — US-2659 S3 (fix affichage revue : « 22 → 20 U », pas « U/h »). */
-const proposalUnitKey = (p: ReviewProposalItem): "isfGl" | "icr" | "basal" | "u" =>
-  p.parameterType === "basalRate" && p.basalDoseKind != null ? "u" : PARAM_UNIT_KEY[p.parameterType]
 
 const STEPS = [
   { id: "summary", icon: Activity },
@@ -429,10 +406,6 @@ const flagLabelKey = (type: string) => `flag${type.charAt(0).toUpperCase()}${typ
 function DecisionsStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
   const tFlags = useTranslations("reviewFlags")
-  const tUnits = useTranslations("insulinUnits")
-  const tAdj = useTranslations("adjustments")
-  const locale = useLocale()
-  const fmt = (n: number) => n.toLocaleString(bcp47(locale), { maximumFractionDigits: 2 })
 
   const [items, setItems] = useState<ReviewProposalItem[]>(data.proposals)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -488,82 +461,8 @@ function DecisionsStep({ data }: { data: ReviewData }) {
         {items.length === 0 ? (
           <DiabeoEmptyState variant="noData" title={t("decisionsTitle")} message={t("noProposals")} />
         ) : (
-          <ul className="space-y-2">
-            {items.map((p) => {
-              // US-2649b — base LIVE vs snapshot. « changed » (≠) ou « unavailable » (créneau
-              // disparu) → la valeur ABSOLUE proposée ne s'applique plus sur la bonne base :
-              // on BLOQUE l'acceptation (le back fail-close aussi via `baselineMoved`) et on
-              // masque les badges %/risque devenus périmés (mental model faux). Régénérer.
-              const changed = p.liveCurrentValue !== null && p.liveCurrentValue !== p.currentValue
-              const unavailable = p.liveCurrentValue === null
-              const blocked = changed || unavailable
-              return (
-                <li key={p.id} className="flex flex-wrap items-center gap-3 rounded-md border border-border bg-card px-3 py-2">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="text-sm font-medium">{t(PARAM_LABEL_KEY[p.parameterType])}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">
-                      {t("valueTransition", { from: fmt(p.currentValue), to: fmt(p.proposedValue) })} {tUnits(proposalUnitKey(p))}
-                    </span>
-                    {changed && (
-                      <span role="alert" className="text-xs font-medium tabular-nums text-destructive">
-                        {t("liveValueChanged", { live: fmt(p.liveCurrentValue as number) })}{" "}
-                        {tUnits(proposalUnitKey(p))}
-                      </span>
-                    )}
-                    {unavailable && (
-                      <span role="alert" className="text-xs font-medium text-destructive">
-                        {t("liveValueUnavailable")}
-                      </span>
-                    )}
-                  </span>
-                  {/* Badges %/risque anchés au snapshot → masqués si la base a bougé (trompeurs). */}
-                  {!blocked && (
-                    <Badge variant={Math.abs(p.changePercent) >= PROPOSAL_MAJOR_CHANGE_PCT ? "destructive" : "secondary"}>
-                      {p.changePercent > 0 ? `+${Math.round(p.changePercent)}` : Math.round(p.changePercent)}&nbsp;%
-                    </Badge>
-                  )}
-                  {/* Provenance (fiabilité ≠ confidence moteur) : « demande patient » mise en avant. */}
-                  <Badge variant={p.source === "patient" ? "default" : "outline"}>{tAdj(`source.${p.source}`)}</Badge>
-                  {/* US-2662 — dose basale stylo élevée (> MDI_BASAL_WARN_U) : avertissement NON bloquant
-                      (l'acceptation reste possible). Indépendant de `blocked` : c'est une propriété de la
-                      valeur ABSOLUE proposée, informative même si la base a bougé. */}
-                  {p.highDoseWarning && (
-                    <Badge variant="outline" className="border-feedback-warning text-feedback-warning">
-                      {t("proposalHighDose")}
-                    </Badge>
-                  )}
-                  {!blocked &&
-                    (() => {
-                      const risk = deriveRiskDirection(p.parameterType, p.currentValue, p.proposedValue)
-                      return risk === "none" ? null : (
-                        <Badge
-                          variant="outline"
-                          className={risk === "hypo" ? "border-feedback-warning text-feedback-warning" : "text-muted-foreground"}
-                        >
-                          {tAdj(`risk.${risk}`)}
-                        </Badge>
-                      )
-                    })()}
-                  {data.canDecide && (
-                    <span className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="default"
-                        disabled={busyId === p.id || blocked}
-                        title={blocked ? t("acceptBlockedHint") : undefined}
-                        onClick={() => decide(p.id, "accept")}
-                      >
-                        {t("accept")}
-                      </Button>
-                      <Button size="sm" variant="outline" disabled={busyId === p.id} onClick={() => decide(p.id, "reject")}>
-                        {t("reject")}
-                      </Button>
-                    </span>
-                  )}
-                </li>
-              )
-            })}
-          </ul>
+          // US-2664 — composant de proposition UNIFIÉ (même rendu que patient/infirmière, audience clinicien).
+          <ProposalList audience="clinician" items={items} canDecide={data.canDecide} busyId={busyId} onDecide={decide} />
         )}
       </CardContent>
     </Card>

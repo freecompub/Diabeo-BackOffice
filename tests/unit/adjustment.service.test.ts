@@ -59,6 +59,15 @@ describe("adjustmentService", () => {
       const result = await adjustmentService.summary(1)
       expect(result).toEqual({ pending: 3, accepted: 10, rejected: 2, expired: 1, total: 16 })
     })
+
+    // US-2664 — le compteur d'un PATIENT ne doit inclure QUE ses propres demandes (pas d'algo/soignant).
+    it("sources=['patient'] → chaque count filtre par where.source IN (métadonnée non divulguée)", async () => {
+      prismaMock.adjustmentProposal.count.mockResolvedValue(0 as never)
+      await adjustmentService.summary(1, ["patient"])
+      for (const call of prismaMock.adjustmentProposal.count.mock.calls) {
+        expect((call[0] as { where?: Record<string, unknown> })?.where).toMatchObject({ source: { in: ["patient"] } })
+      }
+    })
   })
 
   describe("accept", () => {
@@ -287,6 +296,26 @@ describe("adjustmentService", () => {
 
       const result = await adjustmentService.list(1, {}, 1)
       expect(result).toEqual([])
+    })
+
+    // US-2664 (sûreté MDR, verrou anti-drift) — le filtre `sources` DOIT se traduire en `where.source IN`
+    // en base. Sans ce test, retirer la clause (adjustment.service.ts) passerait inaperçu (le test de la
+    // route mocke `list`) → un patient verrait TOUTES les provenances. Garde-fou anti-auto-injection (ADR #13).
+    it("sources=['patient'] → filtre RÉELLEMENT en base (where.source IN)", async () => {
+      prismaMock.adjustmentProposal.findMany.mockResolvedValue([])
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      await adjustmentService.list(1, { status: "pending", sources: ["patient"] }, 1)
+      expect(prismaMock.adjustmentProposal.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ patientId: 1, source: { in: ["patient"] } }) }),
+      )
+    })
+
+    it("sans sources → aucune restriction de provenance (where.source absent)", async () => {
+      prismaMock.adjustmentProposal.findMany.mockResolvedValue([])
+      prismaMock.auditLog.create.mockResolvedValue({} as any)
+      await adjustmentService.list(1, { status: "pending" }, 1)
+      const where = (prismaMock.adjustmentProposal.findMany.mock.calls.at(-1)?.[0] as { where?: Record<string, unknown> })?.where
+      expect(where).not.toHaveProperty("source")
     })
   })
 

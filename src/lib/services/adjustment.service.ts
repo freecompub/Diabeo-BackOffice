@@ -304,6 +304,11 @@ export const adjustmentService = {
       parameterType?: string
       from?: Date
       to?: Date
+      // Étape 1 vue unifiée — restriction de PROVENANCE imposée SERVEUR (jamais depuis le body/query).
+      // Sûreté (medical) : un patient ne doit recevoir QUE ses propres demandes (`["patient"]`) — voir une
+      // dose non validée proposée par un soignant/l'algorithme l'exposerait à une auto-injection (ADR #13).
+      // `undefined` = aucune restriction (clinicien : voit toutes les provenances).
+      sources?: ProposalSource[]
     },
     auditUserId: number,
     ctx?: AuditContext,
@@ -311,6 +316,7 @@ export const adjustmentService = {
     const where: Prisma.AdjustmentProposalWhereInput = { patientId }
     if (filters.status) where.status = filters.status
     if (filters.parameterType) where.parameterType = filters.parameterType as Prisma.EnumAdjustableParameterFilter
+    if (filters.sources) where.source = { in: filters.sources }
     if (filters.from || filters.to) {
       where.createdAt = {
         ...(filters.from && { gte: filters.from }),
@@ -384,13 +390,20 @@ export const adjustmentService = {
     }
   },
 
-  /** Get summary counts by status */
-  async summary(patientId: number) {
+  /**
+   * Get summary counts by status.
+   * US-2664 — restriction de PROVENANCE optionnelle (`sources`), imposée SERVEUR (jamais du body/query),
+   * cohérente avec `list()` : un PATIENT (VIEWER) ne doit compter QUE ses propres demandes (`["patient"]`).
+   * Sans ce filtre, le compteur divulguerait l'EXISTENCE de propositions non validées d'un soignant/de
+   * l'algorithme (métadonnée) — même frontière MDR que la liste (ADR #13). `undefined` = aucune restriction.
+   */
+  async summary(patientId: number, sources?: ProposalSource[]) {
+    const src = sources ? { source: { in: sources } } : {}
     const [pending, accepted, rejected, expired] = await Promise.all([
-      prisma.adjustmentProposal.count({ where: { patientId, status: "pending" } }),
-      prisma.adjustmentProposal.count({ where: { patientId, status: "accepted" } }),
-      prisma.adjustmentProposal.count({ where: { patientId, status: "rejected" } }),
-      prisma.adjustmentProposal.count({ where: { patientId, status: "expired" } }),
+      prisma.adjustmentProposal.count({ where: { patientId, status: "pending", ...src } }),
+      prisma.adjustmentProposal.count({ where: { patientId, status: "accepted", ...src } }),
+      prisma.adjustmentProposal.count({ where: { patientId, status: "rejected", ...src } }),
+      prisma.adjustmentProposal.count({ where: { patientId, status: "expired", ...src } }),
     ])
     return { pending, accepted, rejected, expired, total: pending + accepted + rejected + expired }
   },

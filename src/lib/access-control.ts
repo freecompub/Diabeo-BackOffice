@@ -13,7 +13,7 @@
  */
 
 import { prisma } from "@/lib/db/client"
-import type { Role } from "@prisma/client"
+import type { Role, ProposalSource } from "@prisma/client"
 
 /**
  * Borne de sécurité sur le périmètre cross-patient (anti-OOM). Au-delà, l'IN-list
@@ -131,6 +131,17 @@ export async function resolvePatientId(
 
   const allowed = await canAccessPatient(userId, role, patientIdParam)
   return allowed ? patientIdParam : null
+}
+
+/**
+ * US-2664 — restriction de PROVENANCE des propositions selon le rôle (frontière MDR).
+ * Un **PATIENT** (VIEWER) ne doit lire/compter QUE ses propres demandes (`["patient"]`) : voir une dose non
+ * validée d'un soignant/de l'algorithme l'exposerait à une auto-injection (ADR #13). Les **pros** (DOCTOR/
+ * NURSE/ADMIN) ⇒ `undefined` (aucune restriction). Source unique partagée par `GET /api/adjustment-proposals`
+ * (liste) **et** `.../summary` (compteurs) — évite toute dérive entre les deux frontières.
+ */
+export function viewerProposalSources(role: Role): ProposalSource[] | undefined {
+  return role === "VIEWER" ? ["patient"] : undefined
 }
 
 /**
