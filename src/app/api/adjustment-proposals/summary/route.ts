@@ -29,7 +29,11 @@ export async function GET(req: NextRequest) {
       metadata: { patientId, kind: "summary" },
     })
 
-    const summary = await adjustmentService.summary(patientId)
+    // US-2664 (sûreté, cohérent avec GET list) — un PATIENT (VIEWER) ne compte QUE ses propres demandes
+    // (`source=patient`). Sans ça, le compteur divulguerait l'existence de propositions non validées d'un
+    // soignant/de l'algorithme (métadonnée). Imposé SERVEUR selon le rôle, jamais depuis la query.
+    const sources = user.role === "VIEWER" ? (["patient"] as const) : undefined
+    const summary = await adjustmentService.summary(patientId, sources ? [...sources] : undefined)
     return NextResponse.json(summary)
   } catch (error) {
     if (error instanceof AuthError) return NextResponse.json({ error: error.message }, { status: error.status })

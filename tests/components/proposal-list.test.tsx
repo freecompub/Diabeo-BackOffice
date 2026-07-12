@@ -62,4 +62,34 @@ describe("ProposalList — audience CLINICIEN", () => {
     expect(screen.queryByText(/\+?\d+\s*%/)).toBeNull() // % masqué (périmé)
     expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  it("créneau disparu (liveCurrentValue === null) : alerte « introuvable » + Accepter désactivé", () => {
+    render(<ProposalList audience="clinician" items={[item({ liveCurrentValue: null })]} canDecide onDecide={vi.fn()} />)
+    expect(screen.getByText(/introuvable/i)).toBeTruthy() // review.liveValueUnavailable
+    expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  // Point de vigilance clinique : basale STYLO en U totales vs basale POMPE en U/h — ne jamais confondre.
+  // (liveCurrentValue = currentValue → non bloqué → seule la ligne de transition porte l'unité.)
+  it("unité : basale POMPE (basalDoseKind null) → U/h ; basale STYLO (daily) → U ; ISF → g/L/U", () => {
+    const { unmount } = render(
+      <ProposalList audience="clinician" items={[item({ basalDoseKind: null, currentValue: 0.8, liveCurrentValue: 0.8, proposedValue: 0.85 })]} />,
+    )
+    expect(screen.getByText(/U\/h/)).toBeTruthy() // pompe = débit
+    unmount()
+
+    render(<ProposalList audience="clinician" items={[item({ basalDoseKind: "daily", currentValue: 40, liveCurrentValue: 40, proposedValue: 46 })]} />)
+    expect(screen.queryByText(/U\/h/)).toBeNull() // stylo = U totales, jamais U/h
+    expect(screen.getByText(/→ .*\bU\b/)).toBeTruthy()
+  })
+
+  it("unité : ISF → g/L/U", () => {
+    render(<ProposalList audience="clinician" items={[item({ parameterType: "insulinSensitivityFactor", basalDoseKind: null, currentValue: 0.5, liveCurrentValue: 0.5, proposedValue: 0.55, highDoseWarning: false })]} />)
+    expect(screen.getByText(/g\/L\/U/)).toBeTruthy()
+  })
+
+  it("liste vide → ne rend rien (pas de bandeau/liste orpheline)", () => {
+    const { container } = render(<ProposalList audience="patient" items={[]} />)
+    expect(container.textContent).toBe("")
+  })
 })
