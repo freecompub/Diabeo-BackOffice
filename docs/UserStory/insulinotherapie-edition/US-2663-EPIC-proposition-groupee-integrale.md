@@ -71,8 +71,12 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
 
 ## Découpage en slices (réordonné — sûreté & revue AVANT bascule moteur)
 
-- **S0 — Modèle + baseline** : généraliser `SlotSetProposal` (`source`, JSON discriminé par levier, `baselineSlots`
-  par créneau), migration additive. *Réversible, aucun consommateur ne change.*
+- **S0 — Modèle + baseline** ✅ **LIVRÉ** : `SlotSetProposal` généralisé — colonnes `source` (`ProposalSource`,
+  dérivé serveur, défaut `patient`) + `baseline_slots` (JSONB nullable) ; migration additive
+  `20260725100000_us2663_s0_grouped_proposal_baseline` (idempotente, drift-gate vert). Typage cible = union
+  discriminée par levier (`src/lib/insulin/grouped-proposal.ts`, 4 leviers + zod, testé). `createSetProposal`
+  capture le snapshot de base ISF/ICR à la génération (`captureBaselineSlots`) et persiste `source`. *Réversible,
+  aucun lecteur ne change ; seuls ISF/ICR émettent (généralisation moteur en S3).*
 - **S1 — Cœur de sûreté** (referme le constat 1) : CAS par créneau fail-closed + apply groupé **tous leviers**
   (nouveaux `replaceStyloDoseSet`/`replaceFixedDoseSet`) dans une tx verrouillée + **préservation du registre de
   cooldown** (constat 3) + gates par-créneau (tout-ou-rien). **Avant tout basculement moteur.**

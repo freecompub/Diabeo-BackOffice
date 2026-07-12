@@ -60,7 +60,12 @@ function mockTx() {
 }
 
 describe("slotSetProposalService", () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    // US-2663 (S0) — `captureBaselineSlots` lit la config ISF/ICR ACTIVE ; défaut = aucune config (base vide).
+    prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue([] as never)
+    prismaMock.carbRatio.findMany.mockResolvedValue([] as never)
+  })
 
   // ── create ──────────────────────────────────────────────────────────────
   it("createSetProposal : supersède les pending (ensemble + par-valeur) + crée + audit READ SLOT_SET_PROPOSAL", async () => {
@@ -81,6 +86,51 @@ describe("slotSetProposalService", () => {
     expect(auditService.logWithTx).toHaveBeenCalledWith(
       tx,
       expect.objectContaining({ action: "CREATE", resource: "SLOT_SET_PROPOSAL", resourceId: "set-1" }),
+    )
+  })
+
+  it("createSetProposal (US-2663 S0) : snapshot baseline ISF ACTIF + source=patient persistés", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    // Config ISF active du patient (g/L·U = sensitivityFactorGl) → baseline attendu, même encodage que proposedSlots.
+    prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue([
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.55 },
+      { startHour: 8, endHour: 0, sensitivityFactorGl: 0.48 },
+    ] as never)
+    const tx = mockTx()
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
+    tx.slotSetProposal.create.mockResolvedValue({ id: "set-1" })
+
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7)
+
+    expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          source: "patient",
+          proposedSlots: SLOTS,
+          baselineSlots: [
+            { startHour: 0, endHour: 8, value: 0.55 },
+            { startHour: 8, endHour: 0, value: 0.48 },
+          ],
+        }),
+      }),
+    )
+    // L'audit de création trace la provenance + les deux tailles (forensics).
+    expect(auditService.logWithTx).toHaveBeenCalledWith(
+      tx,
+      expect.objectContaining({ metadata: expect.objectContaining({ source: "patient", baselineSlots: 2 }) }),
+    )
+  })
+
+  it("createSetProposal (US-2663 S0) : `source` explicite (ex. algorithm) est persisté ; base vide → []", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    const tx = mockTx()
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
+    tx.slotSetProposal.create.mockResolvedValue({ id: "set-2" })
+
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, 7, undefined, "algorithm")
+
+    expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", baselineSlots: [] }) }),
     )
   })
 
