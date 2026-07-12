@@ -23,15 +23,19 @@
  * patient (anti-IDOR) et filtre les patients soft-deleted (RGPD).
  */
 import { z } from "zod"
-import type { ProposalStatus } from "@prisma/client"
+import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
+import { isfIcrSlotSchema, type IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
-/** Créneau proposé (forme du JSON `proposedSlots`). */
-export type ProposedSlot = { startHour: number; endHour: number; value: number; mealLabel?: string }
+/**
+ * Créneau proposé (forme du JSON `proposedSlots`). US-2663 — alias de `IsfIcrSlot`, la **source de vérité
+ * de forme unique** (`src/lib/insulin/grouped-proposal.ts`) : plus de définition parallèle à maintenir.
+ */
+export type ProposedSlot = IsfIcrSlot
 
 /** Paramètres à jeu de créneaux gérés (ISF/ICR). */
 export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio"
@@ -48,20 +52,51 @@ export const REPLACE_KEY: Record<SlotSetParam, "isf" | "icr"> = {
  * vérifiées séparément par `assertValidSlotSet`. Ici on garantit uniquement des entiers/valeurs finies —
  * évite un `NaN` dans les calculs de couverture en cas de JSON corrompu.
  */
-const proposedSlotsSchema = z.array(
-  z.object({
-    startHour: z.number().int().min(0).max(23),
-    endHour: z.number().int().min(0).max(23),
-    value: z.number().finite().positive(),
-    mealLabel: z.string().max(120).optional(),
-  }),
-) // le jeu vide passe la FORME → `emptySlotSet` levé par `assertValidSlotSet` (contrat d'erreur stable)
+// US-2663 — forme des créneaux ISF/ICR importée du module de typage unique (`isfIcrSlotSchema`) plutôt que
+// redéfinie ici. Le jeu vide passe la FORME → `emptySlotSet` levé par `assertValidSlotSet` (contrat stable).
+const proposedSlotsSchema = z.array(isfIcrSlotSchema)
 
 /** Parse + valide la forme du jeu ; `invalidSlotSet` si malformé (à la création comme à la relecture). */
 function parseSlots(raw: unknown): ProposedSlot[] {
   const parsed = proposedSlotsSchema.safeParse(raw)
   if (!parsed.success) throw new Error("invalidSlotSet")
   return parsed.data
+}
+
+/**
+ * US-2663 (S0) — Snapshot de la base PAR créneau **à la génération** de la proposition. Photographie la
+ * disposition ISF/ICR ACTIVE du patient (mêmes champs que `ProposedSlot` : `value` = `sensitivityFactorGl`
+ * (g/L·U) pour l'ISF, `gramsPerUnit` (g/U) `+ mealLabel` pour l'ICR). Persisté dans `baselineSlots` : à
+ * l'acceptation (S1), un compare-and-swap PAR CRÉNEAU comparera la base LIVE à ce snapshot pour détecter une
+ * dérive (`baselineMoved`) — garde-fou MDR anti-écrasement d'un ajustement médecin concurrent.
+ *
+ * Aucune config (patient non encore paramétré) → `[]` (jeu vide) : une base vide est un état valide (le
+ * médecin part de zéro), distinct de `null` (proposition legacy pré-S0 sans snapshot).
+ */
+async function captureBaselineSlots(patientId: number, parameterType: SlotSetParam): Promise<ProposedSlot[]> {
+  // Scope via la relation `settings` : `InsulinTherapySettings.patientId @unique` ⇒ 1 config/patient, donc
+  // `where: { settings: { patientId } }` lit EXACTEMENT les créneaux que `replaceSlotSet` réécrirait (symétrie
+  // baseline ⇄ apply). Si cet invariant 1-settings/patient venait à changer, S1 devra résoudre le `settingsId`
+  // unique et scoper dessus (comme le chemin d'application) pour éviter d'entrelacer des configs distinctes.
+  if (parameterType === "insulinSensitivityFactor") {
+    const rows = await prisma.insulinSensitivityFactor.findMany({
+      where: { settings: { patientId } },
+      orderBy: { startHour: "asc" },
+      select: { startHour: true, endHour: true, sensitivityFactorGl: true },
+    })
+    return rows.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) }))
+  }
+  const rows = await prisma.carbRatio.findMany({
+    where: { settings: { patientId } },
+    orderBy: { startHour: "asc" },
+    select: { startHour: true, endHour: true, gramsPerUnit: true, mealLabel: true },
+  })
+  return rows.map((s) => ({
+    startHour: s.startHour,
+    endHour: s.endHour,
+    value: Number(s.gramsPerUnit),
+    ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
+  }))
 }
 
 export const slotSetProposalService = {
@@ -76,6 +111,15 @@ export const slotSetProposalService = {
    * soumission à l'état courant impliquerait une lecture + normalisation de créneaux dans un chemin clinique,
    * non justifiée sans validation produit/médicale pour un simple confort de file de revue (medical-domain
    * validator, revue PR #714). Le bruit éventuel est borné par la supersession (1 pending / paramètre).
+   * US-2663 (S0) — persiste `source` (provenance) et `baselineSlots` (snapshot de la base ISF/ICR active à
+   * la génération, socle du compare-and-swap par créneau de S1). Additif : les lecteurs existants sont inchangés.
+   *
+   * ⚠️ **Anti-usurpation (ADR #27)** : `proposer` regroupe `{ userId, source }` — ils voyagent ENSEMBLE
+   * (pas de désync possible entre l'auteur et la provenance). `source` est **REQUIS** (pas de défaut : un
+   * appelant ne peut plus mislabel silencieusement une proposition `nurse`/`doctor`/`algorithme` en `patient`
+   * → sinon la vue unifiée US-2664, qui filtre le patient sur `source=patient`, exposerait une dose non
+   * validée). `source` DOIT être **dérivé du rôle de la SESSION côté route** (jamais du body). À S0, l'unique
+   * appelant est la voie patient → `{ userId, source: "patient" }` ; `nurse`/`doctor`/`algorithm` en S3/S4.
    * @throws invalidSlotSet | emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap
    * @throws patientNotFound | nonInsulinNoDose | duplicatePendingProposal
    */
@@ -83,7 +127,7 @@ export const slotSetProposalService = {
     patientId: number,
     parameterType: SlotSetParam,
     proposedSlots: ProposedSlot[],
-    proposedByUserId: number,
+    proposer: { userId: number; source: ProposalSource },
     ctx?: AuditContext,
   ) {
     // 1. Forme (Zod) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
@@ -103,6 +147,10 @@ export const slotSetProposalService = {
     const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
+    // 4. Snapshot de la base PAR créneau à la génération (US-2663 S0) — photographie de la config ACTIVE
+    //    juste avant la création. Consommé par le CAS par créneau de S1 (détection `baselineMoved`).
+    const baselineSlots = await captureBaselineSlots(patientId, parameterType)
+
     try {
       return await prisma.$transaction(async (tx) => {
         // Une seule PENDING par (patient × paramètre) : la précédente d'ENSEMBLE est superseded.
@@ -119,18 +167,18 @@ export const slotSetProposalService = {
           data: { status: "superseded", reviewedAt: new Date(), reviewedBy: null },
         })
         const proposal = await tx.slotSetProposal.create({
-          data: { patientId, parameterType, proposedSlots: slots, proposedByUserId, status: "pending" },
+          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, source: proposer.source, proposedByUserId: proposer.userId, status: "pending" },
           select: { id: true },
         })
         await auditService.logWithTx(tx, {
-          userId: proposedByUserId,
+          userId: proposer.userId,
           action: "CREATE",
           resource: "SLOT_SET_PROPOSAL",
           resourceId: proposal.id,
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           requestId: ctx?.requestId,
-          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, slots: slots.length },
+          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source: proposer.source, slots: slots.length, baselineSlots: baselineSlots.length },
         })
         return { id: proposal.id }
       })
@@ -237,6 +285,9 @@ export const slotSetProposalService = {
     const proposals = await prisma.slotSetProposal.findMany({
       where: { patientId, patient: { deletedAt: null }, ...(status ? { status } : {}) },
       orderBy: { createdAt: "desc" },
+      // US-2663 (S0, revue architecture) — `baselineSlots` est un snapshot INTERNE (socle du CAS d'acceptation
+      // de S1), sans usage client avant la revue unifiée S2 : minimisation RGPD, ne pas l'exposer sur la liste.
+      omit: { baselineSlots: true },
     })
     await auditService.log({
       userId: auditUserId,

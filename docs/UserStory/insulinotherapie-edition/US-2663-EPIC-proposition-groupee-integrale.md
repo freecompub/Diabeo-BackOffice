@@ -71,8 +71,20 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
 
 ## Découpage en slices (réordonné — sûreté & revue AVANT bascule moteur)
 
-- **S0 — Modèle + baseline** : généraliser `SlotSetProposal` (`source`, JSON discriminé par levier, `baselineSlots`
-  par créneau), migration additive. *Réversible, aucun consommateur ne change.*
+- **S0 — Modèle + baseline** ✅ **LIVRÉ** (PR #735) : `SlotSetProposal` généralisé — colonnes `source`
+  (`ProposalSource`) + `baseline_slots` (JSONB nullable) ; migration additive
+  `20260725100000_us2663_s0_grouped_proposal_baseline` (idempotente, drift-gate vert). Typage cible = union
+  discriminée par levier (`src/lib/insulin/grouped-proposal.ts`, 4 leviers + zod, testé). `createSetProposal`
+  capture le snapshot de base ISF/ICR à la génération (`captureBaselineSlots`) et persiste la provenance.
+  **Revues expertes** (medical GO, prisma sûr/additif, architect socle sain) — corrections appliquées :
+  (a) provenance **bundlée `proposer: { userId, source }`, `source` REQUIS** (anti-usurpation ADR #27 : userId
+  et source solidaires, plus de défaut silencieux) ; (b) `isfIcrSlotSchema` du module **câblé** dans le service
+  (supprime la triple copie de forme) ; (c) `baselineSlots` **non exposé** sur `GET /api/slot-set-proposals`
+  (`omit`, minimisation — snapshot interne au CAS de S1). **Notes reportées à S1/S3** : appariement CAS par clé
+  `startHour` (pas par position) ; chemins distincts `[]` (base vide) vs `null` (legacy) au CAS ; `z.union`
+  pompe/stylo → clé `modality` explicite en S3. **Coordination `swift-expert`** : `GET /api/slot-set-proposals`
+  renvoie désormais le champ additif `source` (`baselineSlots` volontairement absent) — additif, iOS ignore les
+  champs inconnus. *Réversible, aucun lecteur fonctionnel ne change ; seuls ISF/ICR émettent (moteur en S3).*
 - **S1 — Cœur de sûreté** (referme le constat 1) : CAS par créneau fail-closed + apply groupé **tous leviers**
   (nouveaux `replaceStyloDoseSet`/`replaceFixedDoseSet`) dans une tx verrouillée + **préservation du registre de
   cooldown** (constat 3) + gates par-créneau (tout-ou-rien). **Avant tout basculement moteur.**
