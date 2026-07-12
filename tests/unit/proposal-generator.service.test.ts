@@ -721,6 +721,26 @@ describe("proposalGeneratorService.generateForPatient — chemin ISF (US-2651)",
     prismaMock.slotSetProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 80 * 3_600_000) } as never)
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(isfCalls()).toHaveLength(1)
+    // NIT revue — le re-source cible bien le paramètre ISF + status accepted (pas une groupée d'un autre param).
+    expect(prismaMock.slotSetProposal.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ patientId: 1, parameterType: "insulinSensitivityFactor", status: "accepted" }) }),
+    )
+  })
+
+  it("US-2663 (S3a) `max` : par-valeur ANCIENNE (> 72 h) + groupée RÉCENTE (< 72 h) → dé-escalade SAUTÉE (le plus récent gagne)", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 100 * 3_600_000) } as never)
+    prismaMock.slotSetProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
+  })
+
+  it("US-2663 (S3a) `max` : par-valeur RÉCENTE (< 72 h) + groupée ANCIENNE (> 72 h) → dé-escalade SAUTÉE (le plus récent gagne)", async () => {
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.2, 0.6) })
+    prismaMock.adjustmentProposal.findFirst.mockResolvedValue({ reviewedAt: new Date() } as never)
+    prismaMock.slotSetProposal.findFirst.mockResolvedValue({ reviewedAt: new Date(Date.now() - 100 * 3_600_000) } as never)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(isfCalls()).toHaveLength(0)
   })
 
   it("cooldown exactement 72 h (borne stricte <) → dé-escalade proposée (pas bloquée)", async () => {

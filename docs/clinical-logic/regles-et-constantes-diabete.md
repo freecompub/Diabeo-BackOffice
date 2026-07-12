@@ -384,11 +384,15 @@ sur les 4 leviers** (parité stricte — un anti-ratchet ne masque jamais un sig
 | Basal stylo (matin / pré-dîner, US-2661) | `daytimeHypoHighPreDinner` | **dose MATIN** du split_injection : signal DIURNE (titrée pré-dîner, garde nadirs de jour) — dé-escalade bloquée, confondeur bolus-midi (flag-only), hypo de jour sévère isolée |
 | FixedDose | `highVariabilityFixedDose` | dé-escalade bloquée / dose non réductible (≤ plancher) **+** relevé sévère **isolé** |
 
-**Limite connue (sémantique du cooldown)** — le « dernier changement accepté » qui arme le cooldown et fixe
-le `cutoff` est lu **uniquement** sur `AdjustmentProposal { status: "accepted" }` (`lastAcceptedChangeAt`).
-Une acceptation **groupée** `SlotSetProposal` (édition patient CONFIRMÉ, ADR #23) sur le même créneau ne
-réarme **pas** le cooldown moteur. Défendable pour l'objectif du fix (empêcher l'empilement des dé-escalades
-**moteur** avant observation) ; à revisiter si l'anti-ratchet doit couvrir aussi les remplacements groupés.
+**Sémantique du cooldown — RÉSOLU (US-2663 S3a)** : le « dernier changement accepté » qui arme le cooldown et
+fixe le `cutoff` est lu sur **les DEUX modèles** — `AdjustmentProposal { status: "accepted" }` (par-valeur, par
+créneau) **ET** `SlotSetProposal { status: "accepted" }` (groupé ISF/ICR, sans granularité créneau car il
+remplace tout le jeu), en retenant le **plus récent** (`lastAcceptedChangeAt`, cf. §Re-source ci-dessus). Une
+acceptation groupée réarme donc bien le cooldown moteur. **Écart résiduel connu (pré-existant, hors S3a)** :
+l'écriture DIRECTE DOCTOR (`PUT sensitivity-factors`/`carb-ratios` → `replaceSlotSet`) mute la config **sans**
+créer de ligne `accepted` → reste invisible au cooldown. Piste de fond (suivi S3+) : sourcer le cooldown sur
+l'**horodatage de mutation de config** (`updatedAt` des lignes ISF/ICR ou audit `CONFIG_APPLIED`) plutôt que
+sur les propositions comme proxy.
 
 **Contextual flag types** (`reviewFlags` namespace i18n FR/EN/AR) :
 - `highVariabilityPostCorrection` — ISF : pics + creux post-correction → revue (pas de dose)
