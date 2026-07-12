@@ -12,12 +12,25 @@
 -- `time_slot_start_hour` seul). Il est déplacé — avec la remédiation des données requise en amont — dans
 -- la migration forward `20260724100000_us2659_s0b_basal_target_check`. S0 reste ainsi une migration
 -- purement additive de schéma, qui réussit quel que soit l'état des données.
+--
+-- ⚠️ IDEMPOTENCE (reprise d'un `migrate deploy` échoué) : `migrate deploy` n'enveloppe PAS ce fichier dans
+-- une transaction unique — chaque instruction est committée séparément. Sur l'environnement qui a subi
+-- l'échec 23514 (l'`ADD CONSTRAINT` d'origine), le `CREATE TYPE` et l'`ADD COLUMN` étaient DÉJÀ committés
+-- avant l'échec. Rejouer S0 telle quelle (`migrate resolve --rolled-back` → `migrate deploy`) échouerait
+-- donc à nouveau (`42710 type already exists`, `42701 column already exists`). Les gardes ci-dessous
+-- (`EXCEPTION WHEN duplicate_object`, `ADD COLUMN IF NOT EXISTS`) rendent S0 rejouable sur cet état partiel.
 
 -- CreateEnum — cible d'une proposition de basale stylo (NULL pour pompe/ISF/ICR/fixedDose).
-CREATE TYPE "BasalDoseKind" AS ENUM ('daily', 'morning', 'evening');
+-- Gardé : le type peut déjà exister (committé par une tentative `migrate deploy` antérieure ayant échoué
+-- plus loin, sur l'`ADD CONSTRAINT` d'origine 23514). `duplicate_object` = type déjà présent → no-op.
+DO $$ BEGIN
+  CREATE TYPE "BasalDoseKind" AS ENUM ('daily', 'morning', 'evening');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterTable — colonne NULLABLE (les autres paramètres restent `basal_dose_kind` NULL).
-ALTER TABLE "adjustment_proposals" ADD COLUMN "basal_dose_kind" "BasalDoseKind";
+-- `IF NOT EXISTS` : idem, la colonne peut avoir été committée par la tentative échouée en amont du CHECK.
+ALTER TABLE "adjustment_proposals" ADD COLUMN IF NOT EXISTS "basal_dose_kind" "BasalDoseKind";
 
 -- L'index UNIQUE PARTIEL anti-spam (1 pending / cible) doit inclure `basal_dose_kind` : sinon deux
 -- propositions de basale stylo pending sur des doses DIFFÉRENTES (matin vs soir en split_injection)

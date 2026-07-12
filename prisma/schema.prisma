@@ -1440,9 +1440,10 @@ model AdjustmentProposal {
   // US-2659 — discriminateur de cible pour la basale STYLO (MDI) : `daily` (single_injection),
   // `morning`/`evening` (split_injection). NULL pour pompe (ciblée par `pumpBasalSlotId`) et pour
   // ISF/ICR/fixedDose. Fait partie du tuple d'unicité anti-spam (index partiel `one_pending_per_slot`).
-  // EXCLUSIVITÉ (CHECK `adjustment_proposals_basal_target_exclusivity_check`, migration 20260719100000,
-  // non modélisé par Prisma) : pour `basalRate`, exactement un de (`pumpBasalSlotId`, `basalDoseKind`) est
-  // non-NULL (pompe U/h XOR stylo U totales) ; hors `basalRate`, `basalDoseKind` reste NULL.
+  // EXCLUSIVITÉ (CHECK `adjustment_proposals_basal_target_exclusivity_check`, migration 20260724100000_us2659_s0b,
+  // non modélisé par Prisma, SCOPÉ `status = 'pending'`) : pour une proposition `basalRate` ACTIONNABLE,
+  // exactement un de (`pumpBasalSlotId`, `basalDoseKind`) est non-NULL (pompe U/h XOR stylo U totales) ; hors
+  // `basalRate`, `basalDoseKind` reste NULL. Les lignes NON pending (historique clinique) ne sont pas contraintes.
   basalDoseKind         BasalDoseKind?      @map("basal_dose_kind")
   // US-2659 (S3) — accusé DKA/jour-de-maladie du PATIENT pour une demande de BAISSE de basale STYLO
   // (consentement à un acte à risque : réduire la basale en jour de maladie → risque cétose/DKA). Timestamp
