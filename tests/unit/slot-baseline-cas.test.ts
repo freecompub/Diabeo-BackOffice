@@ -7,7 +7,7 @@
  * (fail-closed). Un relibellé de créneau (`mealLabel`) N'EST PAS une dérive dosante → accepté.
  */
 import { describe, it, expect } from "vitest"
-import { assertBaselineUnchanged, BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
+import { assertBaselineUnchanged, isBaselineUnchanged, BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 const BASE = [
   { startHour: 0, endHour: 8, value: 0.5 },
@@ -70,5 +70,20 @@ describe("assertBaselineUnchanged — CAS d'ensemble", () => {
 
   it("base vide `[]` mais un créneau est apparu (édit médecin concurrent) → baselineMoved", () => {
     expect(() => assertBaselineUnchanged([], [BASE[0]])).toThrow("baselineMoved")
+  })
+})
+
+describe("isBaselineUnchanged — variante non-throwing (affichage, US-2663 S2)", () => {
+  it("base identique → true", () => {
+    expect(isBaselineUnchanged(BASE, [...BASE])).toBe(true)
+  })
+
+  it("valeur dérivée (ajustement médecin concurrent) → false", () => {
+    const live = BASE.map((s, i) => (i === 1 ? { ...s, value: 0.6 } : s))
+    expect(isBaselineUnchanged(BASE, live)).toBe(false)
+  })
+
+  it("snapshot ABSENT (`null`, legacy ou JSON non parsable) → false (non certifiable, jamais 'inchangé')", () => {
+    expect(isBaselineUnchanged(null, BASE)).toBe(false)
   })
 })

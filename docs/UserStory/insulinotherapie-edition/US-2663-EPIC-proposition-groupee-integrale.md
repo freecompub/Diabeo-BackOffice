@@ -105,9 +105,18 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
   non-throwing** (best-effort post-commit : un aléa DB ne fait plus échouer un accept déjà appliqué). Reportés :
   surface d'erreur typée pour les codes fail-closed (épic), invariant S1→S3 « aucun chemin groupé n'avance
   l'anti-cliquet avant la re-source S3 » (garde-fou #4). |
-- **S2 — Composant de revue unifié** (referme le constat 2) : `DispositionProposalReview` (diff surligné, badges
-  par-créneau, flags en tête) branché sur `/patients/[id]/review`, lisant `SlotSetProposal` **+** `AdjustmentProposal`
-  pending pendant la transition. **Avant la bascule moteur.**
+- **S2 — Composant de revue** (referme le constat 2) ✅ **LIVRÉ** : `GroupedProposalReview`
+  (`src/components/diabeo/patient/GroupedProposalReview.tsx`) — diff surligné (créneau proposé vs valeur LIVE,
+  `src/lib/insulin/slot-diff.ts`), badge de provenance, bandeau d'avertissement non bloquant si la base a dérivé
+  depuis la génération (`isBaselineUnchanged`, variante non-throwing du CAS S1) — branché sur
+  `/patients/[id]/review` (`DecisionsStep`), sous un sous-titre dédié, **AU-DESSUS** de `ProposalList`
+  (`AdjustmentProposal` pending, inchangé). `slotSetProposalService.listPendingForReview` (nouveau) expose
+  `baselineSlots` pour cet écran DOCTOR-gated (contrairement à `listSetProposals`, qui l'omet côté liste patient).
+  **Écart assumé vs le cadrage initial** (composant `DispositionProposalReview` unique fusionnant les deux
+  sources) : livré comme **deux composants distincts coexistants** (`GroupedProposalReview` + `ProposalList`)
+  plutôt qu'un composant fusionné — plus simple à livrer sans toucher `ProposalList` (US-2664, contrat stable),
+  fusion différée à une slice ultérieure si le besoin produit se confirme. Décision serveur : le blocage réel
+  reste le 409 `baselineMoved`/`baselineMissing` à l'acceptation (S1) ; l'affichage ne fait que PRÉVENIR.
 - **S3 — Moteur émet du groupé** : `proposal-generator` assemble la disposition + `createSetProposal(source=algorithm)`
   au lieu de `createEngineProposal` ; logique de décision **inchangée** (analyseurs/matrices/hold zone/gating
   réutilisés — plomberie, pas clinique). Interne, feature-flaggable, réversible.

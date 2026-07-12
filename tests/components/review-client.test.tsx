@@ -87,6 +87,8 @@ const BASE: ReviewData = {
       timeSlotStartHour: null, timeSlotEndHour: null, basalDoseKind: null, highDoseWarning: false, createdAt: "2026-06-15T00:00:00.000Z",
     },
   ],
+  // US-2663 (S2) — propositions GROUPÉES (`SlotSetProposal`), vides par défaut (BASE ci-dessous).
+  groupedProposals: [],
   reviewFlags: [],
 }
 
@@ -240,6 +242,45 @@ describe("ReviewClient", () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+
+  // US-2663 (S2) — SlotSetProposal PENDING surfacée en revue médecin (referme « invisible à la revue »).
+  it("propositions GROUPÉES pending : sous-titre + diff rendus, accepter appelle la route slot-set-proposals", async () => {
+    const withGrouped = {
+      ...BASE,
+      groupedProposals: [
+        {
+          id: "sp1",
+          parameterType: "insulinSensitivityFactor" as const,
+          source: "patient" as const,
+          rows: [
+            { startHour: 0, endHour: 8, proposedValue: 0.5, liveValue: 0.5, changed: false },
+            { startHour: 8, endHour: 22, proposedValue: 0.55, liveValue: 0.45, changed: true },
+          ],
+          baselineDrifted: false,
+          structuralChange: false,
+          createdAt: "2026-06-15T00:00:00.000Z",
+        },
+      ],
+    }
+    render(<ReviewClient data={withGrouped} />)
+    expect(screen.getByText("Propositions groupées (jeu de créneaux)")).toBeTruthy()
+    // Deux jeux de boutons Accepter/Rejeter coexistent (groupée + par-valeur) : on cible celui de la carte groupée.
+    const acceptButtons = screen.getAllByRole("button", { name: "Accepter" })
+    expect(acceptButtons.length).toBeGreaterThanOrEqual(2)
+    fireEvent.click(acceptButtons[0]!)
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        "/api/slot-set-proposals/sp1/accept",
+        expect.objectContaining({ method: "PATCH" }),
+      ),
+    )
+  })
+
+  it("aucune proposition (par-valeur ET groupée) → état vide unique (« Aucune proposition en attente »)", () => {
+    render(<ReviewClient data={{ ...BASE, proposals: [], groupedProposals: [] }} />)
+    expect(screen.getByText(/Aucune proposition en attente/)).toBeTruthy()
+    expect(screen.queryByText("Propositions groupées (jeu de créneaux)")).toBeNull()
   })
 
   it("partage désactivé : aucune donnée patient, état vide", () => {

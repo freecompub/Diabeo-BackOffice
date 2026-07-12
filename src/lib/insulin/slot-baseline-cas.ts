@@ -67,3 +67,24 @@ export function assertBaselineUnchanged(
     // `mealLabel` volontairement ignoré : étiquette d'affichage non dosante (un relibellé n'est pas une dérive).
   }
 }
+
+/**
+ * Variante NON-THROWING d'`assertBaselineUnchanged`, pour l'AFFICHAGE (US-2663 S2 — écran de revue médecin).
+ * L'écran de revue ne doit jamais planter sur une dérive/absence de base : il doit la SIGNALER (bandeau
+ * d'avertissement) pour laisser le médecin décider en connaissance de cause, la garde bloquante réelle restant
+ * `assertBaselineUnchanged` (appelée sous verrou par `acceptSetProposal`).
+ *
+ * @param baseline - snapshot `SlotSetProposal.baselineSlots` ; `null` = non certifiable (legacy ou JSON non
+ * parsable) → traité comme une dérive (`false`), jamais comme « inchangé » (fail-closed sur l'affichage aussi).
+ * @param live - disposition ISF/ICR actuellement active du patient.
+ * @returns `true` si la base live est identique à la baseline (rien à signaler) ; `false` sinon (dérive ou
+ * base non certifiable — l'appelant doit afficher un avertissement).
+ */
+export function isBaselineUnchanged(baseline: readonly IsfIcrSlot[] | null, live: readonly IsfIcrSlot[]): boolean {
+  try {
+    assertBaselineUnchanged(baseline, live)
+    return true
+  } catch {
+    return false
+  }
+}

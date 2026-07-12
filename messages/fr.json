@@ -2145,7 +2145,15 @@
     "finalizeError": "La finalisation a échoué. Réessayez.",
     "finalizedTitle": "Compte rendu finalisé",
     "finalizedNote": "Ce compte rendu est finalisé et immuable (il ne peut plus être modifié).",
-    "paramFixedDose": "Dose fixe"
+    "paramFixedDose": "Dose fixe",
+    "groupedProposalsTitle": "Propositions groupées (jeu de créneaux)",
+    "groupedColHour": "Heure",
+    "groupedColLive": "Actuel",
+    "groupedColProposed": "Proposé",
+    "groupedRowChangedAria": "Créneau modifié : {from} → {to}",
+    "groupedBaselineDrifted": "La base active a été modifiée depuis la génération de cette proposition. Si vous l'acceptez telle quelle, l'acceptation sera refusée — régénérez une nouvelle proposition sur la base à jour.",
+    "groupedStructuralChangeNote": "Structure modifiée (créneaux ajoutés/supprimés)",
+    "groupedTableCaption": "Détail des créneaux proposés — {param}"
   },
   "cabinetMembers": {
     "title": "Personnel & droits du cabinet",

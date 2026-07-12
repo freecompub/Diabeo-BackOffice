@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { ProposalList } from "@/components/diabeo/patient/ProposalList"
+import { GroupedProposalReview, type ReviewGroupedViewItem } from "@/components/diabeo/patient/GroupedProposalReview"
 import { Separator } from "@/components/ui/separator"
 import {
   Activity, CheckCircle2, ClipboardList, FileText, HeartPulse, Pill, Stethoscope, Syringe,
@@ -60,6 +61,13 @@ export type ReviewProposalItem = {
   highDoseWarning: boolean
   createdAt: string
 }
+
+/**
+ * US-2663 (S2) — item d'une proposition GROUPÉE (`SlotSetProposal`) PENDING pour la revue médecin. Diff
+ * PRÉ-CALCULÉ serveur (`page.tsx`, via `src/lib/insulin/slot-diff.ts` + `isBaselineUnchanged`) : le client ne
+ * fait aucun calcul clinique, seulement le rendu (cf. `GroupedProposalReview`).
+ */
+export type ReviewGroupedItem = ReviewGroupedViewItem
 
 export type ReviewData = {
   encounterId: number
@@ -98,6 +106,8 @@ export type ReviewData = {
   glycemia: GlycemiaView
   treatment: TreatmentView
   proposals: ReviewProposalItem[]
+  /** US-2663 (S2) — propositions GROUPÉES (`SlotSetProposal`) PENDING, avec diff pré-calculé serveur. */
+  groupedProposals: ReviewGroupedItem[]
   /** US-2659 (S3) — types de `ClinicalReviewFlag` OUVERTS du patient (dont `nocturnalHypoHighFasting` =
    *  Somogyi). Surface le contexte hypo AVANT une décision de BAISSE basale (jamais de posologie). */
   reviewFlags: string[]
@@ -408,6 +418,7 @@ function DecisionsStep({ data }: { data: ReviewData }) {
   const tFlags = useTranslations("reviewFlags")
 
   const [items, setItems] = useState<ReviewProposalItem[]>(data.proposals)
+  const [groupedItems, setGroupedItems] = useState<ReviewGroupedItem[]>(data.groupedProposals)
   const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -422,6 +433,27 @@ function DecisionsStep({ data }: { data: ReviewData }) {
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       setItems((prev) => prev.filter((p) => p.id !== id))
+    } catch {
+      setError(t("decisionError"))
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  // US-2663 (S2) — décision sur une proposition GROUPÉE (`SlotSetProposal`). Un 409 `baselineMoved`/
+  // `baselineMissing` (base dérivée depuis la génération, cf. `assertBaselineUnchanged`) retombe ici : le
+  // bandeau d'avertissement `GroupedProposalReview` prévenait déjà le médecin AVANT la tentative.
+  const decideGrouped = async (id: string, action: "accept" | "reject") => {
+    setBusyId(id)
+    setError(null)
+    try {
+      const res = await fetch(`/api/slot-set-proposals/${id}/${action}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setGroupedItems((prev) => prev.filter((p) => p.id !== id))
     } catch {
       setError(t("decisionError"))
     } finally {
@@ -458,11 +490,27 @@ function DecisionsStep({ data }: { data: ReviewData }) {
         )}
         {error && <p role="alert" className="text-sm text-glycemia-critical">{error}</p>}
 
-        {items.length === 0 ? (
+        {items.length === 0 && groupedItems.length === 0 ? (
           <DiabeoEmptyState variant="noData" title={t("decisionsTitle")} message={t("noProposals")} />
         ) : (
-          // US-2664 — composant de proposition UNIFIÉ (même rendu que patient/infirmière, audience clinicien).
-          <ProposalList audience="clinician" items={items} canDecide={data.canDecide} busyId={busyId} onDecide={decide} />
+          <>
+            {groupedItems.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground">{t("groupedProposalsTitle")}</h3>
+                {/* US-2663 (S2) — propositions GROUPÉES (`SlotSetProposal`), diff surligné ancien→nouveau. */}
+                <GroupedProposalReview
+                  items={groupedItems}
+                  canDecide={data.canDecide}
+                  busyId={busyId}
+                  onDecide={decideGrouped}
+                />
+              </div>
+            )}
+            {items.length > 0 && (
+              // US-2664 — composant de proposition UNIFIÉ (même rendu que patient/infirmière, audience clinicien).
+              <ProposalList audience="clinician" items={items} canDecide={data.canDecide} busyId={busyId} onDecide={decide} />
+            )}
+          </>
         )}
       </CardContent>
     </Card>

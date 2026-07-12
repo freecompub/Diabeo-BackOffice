@@ -15,6 +15,7 @@
 
 import { headers } from "next/headers"
 import { notFound, redirect } from "next/navigation"
+import { z } from "zod"
 import type { Role } from "@prisma/client"
 import { patientShareConsent } from "@/lib/consent"
 import { patientService } from "@/lib/services/patient.service"
@@ -22,6 +23,7 @@ import { analyticsService } from "@/lib/services/analytics.service"
 import { glycemiaService } from "@/lib/services/glycemia.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { slotSetProposalService } from "@/lib/services/slot-set-proposal.service"
 import { auditService } from "@/lib/services/audit.service"
 import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { encounterService } from "@/lib/services/encounter.service"
@@ -33,7 +35,25 @@ import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
 import { resolveTargetRangeMgdl } from "../overview-targets"
 import { buildGlycemiaView } from "../glycemia-view"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
-import { ReviewClient, type ReviewData, type ReviewProposalItem } from "./ReviewClient"
+import { isfIcrSlotSchema, type IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
+import { isBaselineUnchanged } from "@/lib/insulin/slot-baseline-cas"
+import { diffSlots, hasStructuralChange } from "@/lib/insulin/slot-diff"
+import { ReviewClient, type ReviewData, type ReviewProposalItem, type ReviewGroupedItem } from "./ReviewClient"
+
+/** Forme d'un jeu de créneaux ISF/ICR (JSON `proposedSlots`/`baselineSlots`) — parse défensive à la lecture. */
+const isfIcrSlotsSchema = z.array(isfIcrSlotSchema)
+
+/**
+ * Parse défensive d'un JSON `proposedSlots`/`baselineSlots` en `IsfIcrSlot[]`. Les deux colonnes sont écrites
+ * par `slotSetProposalService.createSetProposal` (déjà validées `assertValidSlotSet`/forme Zod à l'écriture) —
+ * un échec de parse ici ne devrait jamais survenir en usage normal, mais `null` (plutôt qu'un throw qui
+ * ferait planter toute la page de revue) traite défensivement une donnée corrompue comme « non certifiable »
+ * (fail-closed sur l'affichage, cohérent avec `isBaselineUnchanged(null, …) → false`).
+ */
+function parseIsfIcrSlots(raw: unknown): IsfIcrSlot[] | null {
+  const parsed = isfIcrSlotsSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
 
 // Cibles consensus ADA/EASD (identiques à la vue d'ensemble du dossier).
 const CONSENSUS_TIR_TARGET_PCT = 70
@@ -162,6 +182,43 @@ export default async function PatientReviewPage({
     })),
   )
 
+  // US-2663 (S2) — propositions GROUPÉES (`SlotSetProposal`) PENDING, avec `baselineSlots` inclus (revue
+  // DOCTOR-gated). Diff (base LIVE vs proposé) + dérive de base (vs `baselineSlots`) calculés SERVEUR : le
+  // client ne fait aucun calcul clinique, seulement le rendu (`GroupedProposalReview`).
+  const groupedPendingRaw = await slotSetProposalService.listPendingForReview(patientId, userId, ctx)
+  const liveIsf: IsfIcrSlot[] = (insulinSettings?.sensitivityFactors ?? []).map((s) => ({
+    startHour: s.startHour,
+    endHour: s.endHour,
+    value: Number(s.sensitivityFactorGl),
+  }))
+  const liveIcr: IsfIcrSlot[] = (insulinSettings?.carbRatios ?? []).map((s) => ({
+    startHour: s.startHour,
+    endHour: s.endHour,
+    value: Number(s.gramsPerUnit),
+    ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
+  }))
+  const groupedProposals: ReviewGroupedItem[] = groupedPendingRaw.flatMap((p) => {
+    // Seuls ISF/ICR sont émis en `SlotSetProposal` à ce jour (cf. grouped-proposal.ts, généralisation S3) —
+    // un autre `parameterType` n'a pas de base LIVE ISF/ICR comparable : ignoré défensivement (jamais atteint
+    // en usage normal, protège la revue d'un futur levier non encore géré ici plutôt que de planter).
+    const live = p.parameterType === "insulinSensitivityFactor" ? liveIsf : p.parameterType === "insulinToCarbRatio" ? liveIcr : null
+    if (!live) return []
+    const proposed = parseIsfIcrSlots(p.proposedSlots)
+    if (!proposed) return []
+    const baseline = p.baselineSlots == null ? null : parseIsfIcrSlots(p.baselineSlots)
+    return [
+      {
+        id: p.id,
+        parameterType: p.parameterType,
+        source: p.source,
+        rows: diffSlots(live, proposed),
+        baselineDrifted: !isBaselineUnchanged(baseline, live),
+        structuralChange: hasStructuralChange(live, proposed),
+        createdAt: p.createdAt.toISOString(),
+      },
+    ]
+  })
+
   const { targetLowMgdl, targetHighMgdl } = resolveTargetRangeMgdl(
     patient.cgmObjectives,
     patient.pathology,
@@ -212,6 +269,7 @@ export default async function PatientReviewPage({
     glycemia: glycemiaView,
     treatment: treatmentView,
     proposals,
+    groupedProposals,
     reviewFlags: openReviewFlags.map((f) => f.type),
   }
 
