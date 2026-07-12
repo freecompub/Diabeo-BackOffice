@@ -56,6 +56,26 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     if (error instanceof Error && error.message === "baselineMoved") {
       return NextResponse.json({ error: "baselineMoved" }, { status: 409 })
     }
+    // US-2660 — fail-closed « cible disparue / dérivée dans la fenêtre TOCTOU » : conflit métier
+    // récupérable côté client (régénérer la proposition), PAS une panne serveur. 409 Conflict
+    // (aligné sur `baselineMoved`) plutôt qu'un 500 générique — évite un faux positif d'alerte SOC
+    // sur un cas nominal. Couvre les 5 leviers (créneau ISF/ICR/pompe/dose fixe + dose stylo effacée).
+    const notFoundCodes = [
+      "isfSlotNotFound",
+      "icrSlotNotFound",
+      "pumpSlotNotFound",
+      "fixedDoseSlotNotFound",
+      "styloBasalNotFound",
+    ]
+    if (error instanceof Error && notFoundCodes.includes(error.message)) {
+      return NextResponse.json({ error: error.message }, { status: 409 })
+    }
+    // US-2660 — invariants internes fail-closed (ne devraient jamais survenir en prod : garantis par
+    // le CHECK base d'exclusivité et par `resolveCurrentValue`). 422 Unprocessable plutôt qu'un 500
+    // muet : la proposition n'est pas applicable en l'état.
+    if (error instanceof Error && ["basalTargetAmbiguous", "noApplicableApplyTarget"].includes(error.message)) {
+      return NextResponse.json({ error: error.message }, { status: 422 })
+    }
     logger.error("proposals/accept", "Accept failed", {}, error)
     return NextResponse.json({ error: "serverError" }, { status: 500 })
   }

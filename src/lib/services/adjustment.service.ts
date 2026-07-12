@@ -808,7 +808,32 @@ export const adjustmentService = {
     }
   },
 
-  /** Accept a proposal — optionally apply the change */
+  /**
+   * Accept a proposal — optionally apply the change (DOCTOR-validated, ADR #13).
+   *
+   * Quand `applyImmediately`, écrit la valeur ABSOLUE `proposedValue` sur le créneau ciblé,
+   * scopé patient (anti-IDOR) et dans la transaction (atomique avec le passage `accepted`) :
+   * ISF (`timeSlotStartHour`), ICR (`carbRatioSlotStart`), basale POMPE (`pumpBasalSlotId`, U/h),
+   * dose fixe (`moment`) ou — US-2660 — basale STYLO (`basalDoseKind` → `dailyDose`/`morningDose`/
+   * `eveningDose`, U totales, sur l'unique `BasalConfiguration` du patient).
+   *
+   * Gardes fail-closed (rollback, jamais d'« accepté + appliqué » fantôme) :
+   * - `baselineMoved` (compare-and-swap explicite) si la valeur live a dérivé depuis la proposition ;
+   * - CAS atomique DB : chaque `updateMany` verrouille la valeur attendue (`<colonne>: currentValue`)
+   *   dans son `WHERE` → une base déplacée dans la fenêtre TOCTOU, ou une dose stylo effacée, matche
+   *   0 ligne → `…SlotNotFound` / `styloBasalNotFound` (rollback) ;
+   * - `basalTargetAmbiguous` si un `basalRate` porte les DEUX discriminateurs (invariant, inatteignable
+   *   sous le CHECK base — filet en profondeur) ;
+   * - `noApplicableApplyTarget` si `applyImmediately` est demandé sans cible résoluble (fantôme évité).
+   *
+   * @param proposalId    id de la proposition `pending`
+   * @param reviewerId    id du DOCTOR relecteur (tracé dans `reviewedBy` + audit)
+   * @param applyImmediately  applique la valeur au créneau (sinon accepte le statut sans écriture)
+   * @param ctx           contexte d'audit (ip/userAgent)
+   * @returns `{ accepted, applied, patientId }`
+   * @throws `proposalNotFound` | `valueOutOfBounds` | `baselineMoved` | `…SlotNotFound` |
+   *   `styloBasalNotFound` | `basalTargetAmbiguous` | `noApplicableApplyTarget`
+   */
   async accept(
     proposalId: string,
     reviewerId: number,
@@ -830,38 +855,61 @@ export const adjustmentService = {
         },
       })
 
-      // Apply the change if requested — validate bounds first
+      // Apply the change if requested.
       if (applyImmediately) {
-        // US-2659 (S1) — l'ÉCRITURE groupée de la basale STYLO (`basalDoseKind`) n'est pas encore livrée.
-        // Fail-closed EN TÊTE : sinon aucune branche pump/isf/icr/fixedDose ne matcherait → « accepté +
-        // appliqué » FANTÔME sans écriture (fausse confiance clinique). Le médecin accepte SANS apply
-        // (statut) et ajuste la config à la main tant que l'application groupée n'est pas livrée (slice ultérieure).
-        if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
-          throw new Error("styloBasalApplyNotSupported")
-        }
-
         const proposed = Number(proposal.proposedValue)
 
+        // US-2660 (durcissement, medical INFO) — invariant d'exclusivité de la cible basale, vérifié
+        // EN PREMIER (avant `validateProposedValue`, qui routerait « à l'aveugle » les bornes via
+        // `basalDoseKind` alors que la cible réelle est ambiguë). Le CHECK base
+        // `adjustment_proposals_basal_target_exclusivity_check` (migration 20260719100000) impose déjà
+        // un XOR `pumpBasalSlotId ⊕ basalDoseKind` pour `basalRate` (donc ce garde est INATTEIGNABLE
+        // aujourd'hui). Filet en profondeur : si une future migration affaiblissait le CHECK, l'ordre
+        // `pompe (U/h) avant stylo (U totales)` du if-chain lirait la baseline stylo tout en écrivant le
+        // débit pompe (catastrophique). Fail-closed AVANT toute écriture ni tout routage de bornes.
+        if (proposal.parameterType === "basalRate" && proposal.pumpBasalSlotId && proposal.basalDoseKind != null) {
+          throw new Error("basalTargetAmbiguous")
+        }
+
+        // Validation des bornes cliniques dures (fail-closed avant écriture).
         if (!validateProposedValue(proposal.parameterType, proposed, proposal.basalDoseKind)) {
           throw new Error("valueOutOfBounds")
         }
 
-        // US-2649b — COMPARE-AND-SWAP (garde d'accès concurrent). `proposedValue` est une
-        // valeur ABSOLUE calculée sur la base `currentValue` (snapshot de création). Si le
-        // créneau a bougé depuis (édition médecin, autre proposition acceptée), l'appliquer
-        // sur-corrige (ex. base descendue à 0.7 pour une hypo, proposition absolue 1.2 → +71 %).
-        // Fail-closed : on REFUSE et on invite à régénérer une proposition sur la vraie base.
-        // `null` (créneau disparu) est laissé aux gardes d'apply ci-dessous (…SlotNotFound).
+        // US-2649b / US-2660 — COMPARE-AND-SWAP (garde d'accès concurrent). `proposedValue` est une
+        // valeur ABSOLUE calculée sur la base `currentValue` (snapshot de création). Si le créneau a
+        // bougé depuis (édition médecin, autre proposition acceptée), l'appliquer sur-corrige (ex.
+        // base descendue à 0.7 pour une hypo, proposition absolue 1.2 → +71 %). DEUX couches :
+        //   1. Check EXPLICITE ci-dessous → `baselineMoved` (409 dédié, régénérer sur la vraie base) ;
+        //      couvre la dérive détectable AVANT écriture. `null` (créneau disparu) laissé aux gardes
+        //      d'apply (…SlotNotFound).
+        //   2. Égalité `<colonne>: proposal.currentValue` DANS le `WHERE` de chaque `updateMany`
+        //      (US-2660) → CAS ATOMIQUE côté DB. `liveCurrentValue` lit hors transaction (client global,
+        //      pas `tx`) : une écriture concurrente peut se glisser ENTRE ce check et l'`updateMany`
+        //      (TOCTOU). En verrouillant la valeur attendue dans le `WHERE`, une base déplacée dans
+        //      cette fenêtre → 0 ligne → …SlotNotFound (rollback), jamais l'écrasement silencieux d'un
+        //      changement concurrent. `proposal.currentValue` (Prisma Decimal) est passé tel quel :
+        //      comparaison numérique Postgres exacte, sans imprécision flottante. Ce verrou subsume
+        //      aussi le cas « dose stylo effacée » (NULL ≠ valeur → 0 ligne → styloBasalNotFound).
         const liveBase = await adjustmentService.liveCurrentValue(proposal.patientId, proposal)
         if (liveBase !== null && liveBase !== Number(proposal.currentValue)) {
           throw new Error("baselineMoved")
         }
+        // INVARIANT (verrouillé par tests/unit/cas-decimal-scale-invariant.test.ts) : `currentValue`
+        // est `Decimal(8,4)` (scale 4) et TOUTES les colonnes de dose cibles ont une scale ≤ 4 (ISF 4,
+        // pompe 3, ICR/dose fixe/stylo 2). Le round-trip `colonne → currentValue` à la création est donc
+        // SANS troncature, et l'égalité CAS `<colonne>: casValue` matche exactement une base inchangée.
+        // ⚠️ Si une future migration portait une colonne de dose à une scale > 4, `currentValue`
+        // tronquerait → faux fail-closed sur un apply LÉGITIME (dégradation de disponibilité, jamais une
+        // mauvaise dose). Le test de garde ci-dessus casse dans ce cas — ne pas contourner sans revoir ce CAS.
+        const casValue = proposal.currentValue // Prisma Decimal — verrou CAS dans le WHERE
 
         if (proposal.parameterType === "insulinSensitivityFactor" && proposal.timeSlotStartHour != null) {
           const res = await tx.insulinSensitivityFactor.updateMany({
             where: {
               settings: { patientId: proposal.patientId },
               startHour: proposal.timeSlotStartHour,
+              sensitivityFactorGl: casValue,
             },
             data: {
               sensitivityFactorGl: proposed,
@@ -876,6 +924,7 @@ export const adjustmentService = {
             where: {
               settings: { patientId: proposal.patientId },
               startHour: proposal.carbRatioSlotStart,
+              gramsPerUnit: casValue,
             },
             data: { gramsPerUnit: proposed },
           })
@@ -888,6 +937,7 @@ export const adjustmentService = {
             where: {
               id: proposal.pumpBasalSlotId,
               basalConfig: { settings: { patientId: proposal.patientId } },
+              rate: casValue,
             },
             data: { rate: proposed },
           })
@@ -896,10 +946,37 @@ export const adjustmentService = {
           // Dose fixe (US-2652) — scopée patient via la relation `patientInsulin` (anti-IDOR) : un
           // moment hors patient ne matche pas → count 0 → fail-closed (créneau introuvable).
           const res = await tx.fixedDoseSlot.updateMany({
-            where: { patientInsulin: { patientId: proposal.patientId }, moment: proposal.moment },
+            where: { patientInsulin: { patientId: proposal.patientId }, moment: proposal.moment, valueU: casValue },
             data: { valueU: proposed },
           })
           assertRowApplied(res.count, "fixedDoseSlotNotFound")
+        } else if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
+          // US-2660 — ÉCRITURE GROUPÉE de la basale STYLO (MDI). La dose ciblée par `basalDoseKind`
+          // (`dailyDose`/`morningDose`/`eveningDose`, UNITÉS TOTALES) est écrite sur l'unique
+          // `BasalConfiguration` du patient (contrainte `settingsId @unique` + `patientId @unique` →
+          // 1 config/patient : le `updateMany` scopé patient touche au plus 1 ligne, cohérent avec la
+          // lecture `resolveCurrentValue`). Scopé patient via `settings` (anti-IDOR). Le verrou CAS
+          // `<colonne>: casValue` (cf. ci-dessus) subsume le fail-closed « dose effacée » (NULL ≠
+          // valeur → 0 ligne → `styloBasalNotFound`, rollback — jamais de réintroduction silencieuse
+          // d'une dose supprimée, ni d'« accepté + appliqué » fantôme).
+          const column =
+            proposal.basalDoseKind === "daily" ? "dailyDose"
+            : proposal.basalDoseKind === "morning" ? "morningDose"
+            : "eveningDose"
+          const res = await tx.basalConfiguration.updateMany({
+            where: {
+              settings: { patientId: proposal.patientId },
+              [column]: casValue,
+            },
+            data: { [column]: proposed },
+          })
+          assertRowApplied(res.count, "styloBasalNotFound")
+        } else {
+          // US-2660 (code-review MED) — filet fail-closed : `applyImmediately` demandé mais AUCUNE
+          // cible résolue (couple parameterType×discriminateur inattendu — p.ex. proposition
+          // `createManual` sans discriminateur de créneau, non gardée par `resolveCurrentValue`).
+          // Sans ce garde, la fonction retournerait `applied: true` SANS écriture (fantôme). Rollback.
+          throw new Error("noApplicableApplyTarget")
         }
       }
 

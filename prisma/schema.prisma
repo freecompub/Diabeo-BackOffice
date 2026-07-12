@@ -1340,9 +1340,13 @@ model BasalConfiguration {
   configType     BasalConfigType @map("config_type")
   // insulinBrand supprimé — l'insuline basale est maintenant dans InsulinTherapySettings.basalInsulinId → PatientInsulin → InsulinCatalog
   totalDailyDose Decimal?        @map("total_daily_dose") @db.Decimal(6, 2)
-  morningDose    Decimal?        @map("morning_dose") @db.Decimal(5, 2)
-  eveningDose    Decimal?        @map("evening_dose") @db.Decimal(5, 2)
-  dailyDose      Decimal?        @map("daily_dose") @db.Decimal(5, 2)
+  // US-2660 — élargi 5,2 → 6,2 (aligné sur totalDailyDose). La basale STYLO n'a pas de plafond dur
+  // (décision clinique US-2659 : U300/dégludec > 80 U légitimes) ; `Decimal(5,2)` (max 999,99)
+  // aurait pu déclencher un `numeric field overflow` Postgres brut (500) sur une dose ≥ 1000 U. La
+  // colonne large fait matcher la politique « pas de cap » sans erreur DB non mappée. U totales.
+  morningDose    Decimal?        @map("morning_dose") @db.Decimal(6, 2)
+  eveningDose    Decimal?        @map("evening_dose") @db.Decimal(6, 2)
+  dailyDose      Decimal?        @map("daily_dose") @db.Decimal(6, 2)
   createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz()
 
   settings  InsulinTherapySettings @relation(fields: [settingsId], references: [id], onDelete: Cascade)

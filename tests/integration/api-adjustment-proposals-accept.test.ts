@@ -102,4 +102,38 @@ describe("PATCH /api/adjustment-proposals/[id]/accept — mapping erreurs (A4)",
     expect(res.status).toBe(200)
     expect(await res.json()).toMatchObject({ accepted: true, notified: true })
   })
+
+  // US-2649b — base déplacée (compare-and-swap) → 409 Conflict.
+  it("base déplacée (baselineMoved) → 409", async () => {
+    accept.mockRejectedValue(new Error("baselineMoved"))
+    const res = await PATCH(acceptReq(), params)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: "baselineMoved" })
+  })
+
+  // US-2660 (#1) — fail-closed « cible disparue / dérivée dans la fenêtre TOCTOU » : conflit métier
+  // récupérable (régénérer), pas une panne. Les 5 codes …NotFound → 409 (aligné sur baselineMoved).
+  it.each([
+    "isfSlotNotFound",
+    "icrSlotNotFound",
+    "pumpSlotNotFound",
+    "fixedDoseSlotNotFound",
+    "styloBasalNotFound",
+  ])("%s → 409 (conflit récupérable, jamais 500)", async (code) => {
+    accept.mockRejectedValue(new Error(code))
+    const res = await PATCH(acceptReq(), params)
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ error: code })
+  })
+
+  // US-2660 (#2/#5) — invariants internes fail-closed (inatteignables en prod) → 422, pas un 500 muet.
+  it.each(["basalTargetAmbiguous", "noApplicableApplyTarget"])(
+    "%s → 422 (proposition non applicable en l'état)",
+    async (code) => {
+      accept.mockRejectedValue(new Error(code))
+      const res = await PATCH(acceptReq(), params)
+      expect(res.status).toBe(422)
+      expect(await res.json()).toEqual({ error: code })
+    },
+  )
 })

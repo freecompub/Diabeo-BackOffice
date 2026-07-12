@@ -558,9 +558,26 @@ permises). Fail-closed : jamais de hausse à l'aveugle. Fenêtre **7 j** (`MDI_B
 
 **Contrat service** (`adjustment.service.ts`) : cible `basalDoseKind = "daily"` → `resolveCurrentValue` lit
 `BasalConfiguration.dailyDose` (scopé patient) ; `validateProposedValue` route les bornes **stylo** (`MDI_BASAL_MIN_U`,
-délivrable demi-unité, pas de plafond dur) et non pompe (U/h). **Application différée** : `accept(applyImmediately)`
-d'une proposition stylo **lève `styloBasalApplyNotSupported`** (fail-closed — jamais un « accepté + appliqué » fantôme
-sans écriture) ; l'écriture groupée de `dailyDose` arrive dans une slice ultérieure. Le médecin accepte SANS apply.
+délivrable demi-unité, pas de plafond dur) et non pompe (U/h). **Application groupée (US-2660, LIVRÉ)** :
+`accept(applyImmediately)` d'une proposition stylo écrit la dose ciblée par `basalDoseKind`
+(`dailyDose`/`morningDose`/`eveningDose`) sur l'**unique** `BasalConfiguration` du patient (contraintes
+`settings_id @unique` + `patient_id @unique` → 1 config/patient, `updateMany` scopé patient touche ≤ 1 ligne).
+Gardes fail-closed (rollback, jamais d'« accepté + appliqué » fantôme) :
+- **compare-and-swap `baselineMoved`** (409) — check explicite : si la dose live a dérivé depuis la proposition ;
+- **CAS atomique DB** : la valeur attendue est verrouillée dans le `WHERE` de l'`updateMany`
+  (`<colonne>: currentValue`, `proposal.currentValue` Prisma Decimal, comparaison numérique Postgres exacte).
+  Une base déplacée dans la fenêtre TOCTOU (le check `baselineMoved` lit **hors transaction**) ou une **dose
+  effacée** depuis (NULL ≠ valeur) matche 0 ligne → **`styloBasalNotFound`** (rollback) — jamais de réintroduction
+  silencieuse d'une dose supprimée, jamais d'écrasement d'un changement concurrent. Ce verrou est porté sur les
+  **5 leviers** (ISF/ICR/pompe/dose fixe + stylo) pour cohérence ;
+- **`basalTargetAmbiguous`** (422) si un `basalRate` portait les DEUX discriminateurs (`pumpBasalSlotId` **et**
+  `basalDoseKind`) — invariant inatteignable sous le CHECK base d'exclusivité, filet en profondeur ;
+- **`noApplicableApplyTarget`** (422) si `applyImmediately` est demandé sans cible résoluble (fantôme évité).
+
+Les 5 codes `…SlotNotFound`/`styloBasalNotFound` sont mappés **409** (conflit récupérable — régénérer), les 2
+invariants **422**, par la route `accept` (US-2660). **Colonnes stylo élargies `Decimal(5,2)→(6,2)`** (migration
+`20260722100000`, alignées sur `total_daily_dose`) : la politique « pas de plafond dur » n'aurait pas dû pouvoir
+déclencher un `numeric overflow` Postgres brut sur une dose ≥ 1000 U.
 
 ### Titration `split_injection` (US-2659 S2, LIVRÉ, validé medical 2026-07-11)
 
@@ -599,8 +616,8 @@ verrou bloque une **dé-escalade** (sécurité), un **flag** est levé (jamais u
 
 **Relâchement d'un garde-fou de sécurité** (`patientDecreaseForbidden`, `adjustment.service.ts`) — une baisse
 basale patient était **interdite** ; elle devient **proposable** mais gatée. Le médecin reste le garde-fou
-(proposition `pending`, **jamais** auto-appliquée, ADR #13 ; l'accept-with-apply stylo lève toujours
-`styloBasalApplyNotSupported`) — interdire la proposition était anti-ETP. **Tout lu SERVEUR (anti-tamper)** :
+(proposition `pending`, **jamais** auto-appliquée, ADR #13 ; l'accept-with-apply stylo écrit désormais la dose,
+US-2660) — interdire la proposition était anti-ETP. **Tout lu SERVEUR (anti-tamper)** :
 maturité, valeur courante, **mode de délivrance** (dérivé de la config, jamais du body — E1 HDS).
 
 | | **Pompe** (`pumpBasalSlotId`, U/h — réversible) | **Stylo** (`basalDoseKind`, U totales — dose entière) |
