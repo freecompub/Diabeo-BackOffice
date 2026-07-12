@@ -11,7 +11,7 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { getOwnPatientId, viewerProposalSources } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
 import { proposalAckService } from "@/lib/services/team-workflow.service"
-import { extractRequestContext } from "@/lib/services/audit.service"
+import { auditService, extractRequestContext, type AuditContext } from "@/lib/services/audit.service"
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
 
 type RouteParams = { params: Promise<{ proposalId: string }> }
@@ -37,16 +37,50 @@ const respondSchema = z.object({
  *    autre dossier, ou inexistante) — réponse IDENTIQUE dans les trois cas → aucune divulgation
  *    d'existence (US-2665 AC-1).
  */
-async function resolveAckableProposal(proposalId: string, userId: number, role: Role) {
+type AckDenied = { status: 403 } | { status: 404; ownPatientId: number }
+type AckResolution = AckDenied | { status: 200; patientId: number }
+
+async function resolveAckableProposal(proposalId: string, userId: number, role: Role): Promise<AckResolution> {
   const ownPatientId = await getOwnPatientId(userId)
-  if (ownPatientId === null) return { status: 403 as const }
+  if (ownPatientId === null) return { status: 403 }
   const sources = viewerProposalSources(role)
   const proposal = await prisma.adjustmentProposal.findFirst({
     where: { id: proposalId, patientId: ownPatientId, ...(sources ? { source: { in: sources } } : {}) },
     select: { id: true, patientId: true },
   })
-  if (!proposal) return { status: 404 as const }
-  return { patientId: proposal.patientId }
+  if (!proposal) return { status: 404, ownPatientId }
+  return { status: 200, patientId: proposal.patientId }
+}
+
+/**
+ * Réponse de refus, avec audit de la SONDE sur la branche 404 (US-2665, finding HDS LOW).
+ * Parité avec `GET /api/adjustment-proposals` (list) et `.../summary` qui auditent
+ * `accessDenied` : une sonde d'UUID de proposition non acquittable (tierce / autre dossier /
+ * inexistante) laisse une trace SOC (burst-detection US-2265). Fire-and-forget (`.catch`) —
+ * ne bloque jamais la réponse. Le 403 (pas de dossier patient propre) n'est PAS une sonde de
+ * ressource tierce (condition self-referential sur le compte) → pas audité, cohérent avec la revue.
+ */
+function denyAckResponse(
+  owned: AckDenied,
+  proposalId: string,
+  userId: number,
+  ctx: AuditContext,
+): NextResponse {
+  if (owned.status === 404) {
+    auditService
+      .accessDenied({
+        userId,
+        resource: "PROPOSAL_ACK",
+        resourceId: proposalId,
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+        requestId: ctx.requestId,
+        metadata: { patientId: owned.ownPatientId, kind: "proposalAckDenied" },
+      })
+      .catch(() => {})
+    return NextResponse.json({ error: "notFound" }, { status: 404 })
+  }
+  return NextResponse.json({ error: "forbidden" }, { status: 403 })
 }
 
 export async function POST(req: NextRequest, { params }: RouteParams) {
@@ -55,9 +89,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const user = requireAuth(req)
     const { proposalId } = await params
     const owned = await resolveAckableProposal(proposalId, user.id, user.role)
-    if ("status" in owned) {
-      return NextResponse.json({ error: owned.status === 404 ? "notFound" : "forbidden" }, { status: owned.status })
-    }
+    if (owned.status !== 200) return denyAckResponse(owned, proposalId, user.id, ctx)
     const ack = await proposalAckService.markRead(proposalId, owned.patientId, user.id, ctx)
     return NextResponse.json({ id: ack.id, readAt: ack.readAt })
   } catch (e) {
@@ -72,9 +104,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     const user = requireAuth(req)
     const { proposalId } = await params
     const owned = await resolveAckableProposal(proposalId, user.id, user.role)
-    if ("status" in owned) {
-      return NextResponse.json({ error: owned.status === 404 ? "notFound" : "forbidden" }, { status: owned.status })
-    }
+    if (owned.status !== 200) return denyAckResponse(owned, proposalId, user.id, ctx)
     const body = await req.json()
     const parsed = respondSchema.safeParse(body)
     if (!parsed.success) {

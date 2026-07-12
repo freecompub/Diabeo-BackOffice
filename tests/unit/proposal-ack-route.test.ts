@@ -18,6 +18,7 @@ const { mocks } = vi.hoisted(() => ({
     findFirst: vi.fn(),
     markRead: vi.fn(),
     respond: vi.fn(),
+    accessDenied: vi.fn(),
   },
 }))
 
@@ -40,6 +41,7 @@ vi.mock("@/lib/services/team-workflow.service", () => ({
 }))
 vi.mock("@/lib/services/audit.service", () => ({
   extractRequestContext: () => ({ ipAddress: "1.1.1.1", userAgent: "test", requestId: "req-1" }),
+  auditService: { accessDenied: mocks.accessDenied },
 }))
 vi.mock("@/lib/team-route-helpers", () => ({
   mapErrorToResponse: () => new Response(JSON.stringify({ error: "serverError" }), { status: 500 }),
@@ -57,6 +59,7 @@ beforeEach(() => {
   mocks.getOwnPatientId.mockResolvedValue(5)
   mocks.markRead.mockResolvedValue({ id: "ack1", readAt: new Date("2026-07-12T00:00:00Z") })
   mocks.respond.mockResolvedValue({ id: "ack1", accepted: true, respondedAt: new Date("2026-07-12T00:00:00Z") })
+  mocks.accessDenied.mockResolvedValue({})
 })
 
 describe("US-2665 — provenance frontier on proposal-ack (POST markRead)", () => {
@@ -80,6 +83,15 @@ describe("US-2665 — provenance frontier on proposal-ack (POST markRead)", () =
     expect(res.status).toBe(404)
     expect(await res.json()).toEqual({ error: "notFound" })
     expect(mocks.markRead).not.toHaveBeenCalled()
+    // Finding HDS LOW — la sonde (404) est auditée pour le SOC (parité list/summary).
+    expect(mocks.accessDenied).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userId: 20,
+        resource: "PROPOSAL_ACK",
+        resourceId: "p-nurse",
+        metadata: expect.objectContaining({ patientId: 5, kind: "proposalAckDenied" }),
+      }),
+    )
   })
 
   it("AC-1 — VIEWER, UUID inexistant → 404 (réponse identique au cas tierce : non énumérant)", async () => {
@@ -96,6 +108,8 @@ describe("US-2665 — provenance frontier on proposal-ack (POST markRead)", () =
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ error: "forbidden" })
     expect(mocks.findFirst).not.toHaveBeenCalled()
+    // 403 = condition self-referential sur le compte, PAS une sonde de ressource tierce → non audité.
+    expect(mocks.accessDenied).not.toHaveBeenCalled()
   })
 })
 
