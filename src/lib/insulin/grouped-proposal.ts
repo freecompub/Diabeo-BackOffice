@@ -87,5 +87,11 @@ export function groupedSlotsSchema(parameterType: GroupedParameter): z.ZodType<u
       return z.array(z.union([pumpBasalSlotSchema, styloBasalSlotSchema]))
     case "fixedDose":
       return z.array(fixedDoseSlotSchema)
+    default: {
+      // Exhaustivité : l'ajout d'un levier à `GroupedParameter` sans branche dédiée casse ICI la compilation
+      // (plutôt qu'un fallback silencieux qui accepterait une forme non validée).
+      const _exhaustive: never = parameterType
+      throw new Error(`Unhandled grouped parameter: ${String(_exhaustive)}`)
+    }
   }
 }

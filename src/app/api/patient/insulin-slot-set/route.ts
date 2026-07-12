@@ -28,22 +28,15 @@ import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
 import { slotSetProposalService } from "@/lib/services/slot-set-proposal.service"
 import { SLOT_SET_ERROR_STATUS } from "@/lib/insulin/slot-set-errors"
+import { isfIcrSlotSchema } from "@/lib/insulin/grouped-proposal"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 const bodySchema = z.object({
   parameterType: z.enum(["insulinSensitivityFactor", "insulinToCarbRatio"]),
-  slots: z
-    .array(
-      z.object({
-        startHour: z.number().int().min(0).max(23),
-        endHour: z.number().int().min(0).max(23),
-        // Bornes cliniques (ISF/ICR) re-validées serveur par `assertValidSlotSet` (→ valueOutOfBounds/400).
-        value: z.number().finite().positive(),
-        mealLabel: z.string().max(120).optional(),
-      }),
-    )
-    .min(1)
-    .max(24), // borne anti-abus : 24 créneaux couvrent 24 h
+  // US-2663 — forme des créneaux importée du module de typage unique (`isfIcrSlotSchema`), plus de copie
+  // inline. Les bornes cliniques (ISF/ICR) sont re-validées serveur par `assertValidSlotSet` (→ valueOutOfBounds/400).
+  // `.min(1).max(24)` restent locaux à la route (borne anti-abus : 24 créneaux couvrent 24 h).
+  slots: isfIcrSlotSchema.array().min(1).max(24),
 })
 
 export async function PUT(req: NextRequest) {

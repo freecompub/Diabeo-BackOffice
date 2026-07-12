@@ -74,6 +74,10 @@ function parseSlots(raw: unknown): ProposedSlot[] {
  * médecin part de zéro), distinct de `null` (proposition legacy pré-S0 sans snapshot).
  */
 async function captureBaselineSlots(patientId: number, parameterType: SlotSetParam): Promise<ProposedSlot[]> {
+  // Scope via la relation `settings` : `InsulinTherapySettings.patientId @unique` ⇒ 1 config/patient, donc
+  // `where: { settings: { patientId } }` lit EXACTEMENT les créneaux que `replaceSlotSet` réécrirait (symétrie
+  // baseline ⇄ apply). Si cet invariant 1-settings/patient venait à changer, S1 devra résoudre le `settingsId`
+  // unique et scoper dessus (comme le chemin d'application) pour éviter d'entrelacer des configs distinctes.
   if (parameterType === "insulinSensitivityFactor") {
     const rows = await prisma.insulinSensitivityFactor.findMany({
       where: { settings: { patientId } },

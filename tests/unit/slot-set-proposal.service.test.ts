@@ -48,6 +48,11 @@ const SLOTS = [
   { startHour: 8, endHour: 22, value: 0.45 },
   { startHour: 22, endHour: 0, value: 0.4 },
 ]
+// Jeu ICR VALIDE : couverture 24 h (0-12, 12-24), valeurs ∈ [3.0, 30.0] g/U.
+const ICR_SLOTS = [
+  { startHour: 0, endHour: 12, value: 10 },
+  { startHour: 12, endHour: 0, value: 12 },
+]
 
 /** Fabrique un `tx` factice dont `$transaction` exécute le callback. */
 function mockTx() {
@@ -132,6 +137,35 @@ describe("slotSetProposalService", () => {
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", baselineSlots: [] }) }),
     )
+  })
+
+  it("createSetProposal (US-2663 S0) : baseline ICR capture `gramsPerUnit` + `mealLabel` conditionnel", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    // Config ICR active : une ligne avec mealLabel, une sans (null) → la clé mealLabel ne doit PAS être posée
+    // pour la seconde (pas de `mealLabel: undefined` parasite dans le JSON snapshot).
+    prismaMock.carbRatio.findMany.mockResolvedValue([
+      { startHour: 0, endHour: 12, gramsPerUnit: 10, mealLabel: "midi" },
+      { startHour: 12, endHour: 0, gramsPerUnit: 12, mealLabel: null },
+    ] as never)
+    const tx = mockTx()
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
+    tx.slotSetProposal.create.mockResolvedValue({ id: "set-icr" })
+
+    await slotSetProposalService.createSetProposal(7, "insulinToCarbRatio", ICR_SLOTS, { userId: 7, source: "patient" })
+
+    expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          parameterType: "insulinToCarbRatio",
+          baselineSlots: [
+            { startHour: 0, endHour: 12, value: 10, mealLabel: "midi" },
+            { startHour: 12, endHour: 0, value: 12 },
+          ],
+        }),
+      }),
+    )
+    // La lecture ISF ne doit pas être déclenchée pour un paramètre ICR.
+    expect(prismaMock.insulinSensitivityFactor.findMany).not.toHaveBeenCalled()
   })
 
   it("createSetProposal : jeu vide → emptySlotSet (avant tout accès DB)", async () => {
