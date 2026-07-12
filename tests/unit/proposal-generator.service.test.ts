@@ -500,6 +500,7 @@ describe("proposalGeneratorService.generateForPatient — basale STYLO split_inj
     expect(styloCount()).toBe(0) // verrou : rien persisté
     expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined) // matin bloquée → flag diurne
     expect(raiseFlag).not.toHaveBeenCalledWith(1, "nocturnalHypoHighFasting", 99, undefined)
+    expect(raiseFlag).toHaveBeenCalledTimes(1) // EXACTEMENT la dose bloquée (jamais un double-flag)
   })
 
   it("fix MEDIUM #2 : les DEUX doses dé-escaladent → soir persisté, matin (perdante) FLAGGÉ (jamais un drop silencieux)", async () => {
