@@ -254,8 +254,8 @@ describe("ReviewClient", () => {
           parameterType: "insulinSensitivityFactor" as const,
           source: "patient" as const,
           rows: [
-            { startHour: 0, endHour: 8, proposedValue: 0.5, liveValue: 0.5, changed: false },
-            { startHour: 8, endHour: 22, proposedValue: 0.55, liveValue: 0.45, changed: true },
+            { startHour: 0, endHour: 8, proposedValue: 0.5, liveValue: 0.5, changed: false, removed: false },
+            { startHour: 8, endHour: 22, proposedValue: 0.55, liveValue: 0.45, changed: true, removed: false },
           ],
           baselineDrifted: false,
           structuralChange: false,
@@ -265,10 +265,9 @@ describe("ReviewClient", () => {
     }
     render(<ReviewClient data={withGrouped} />)
     expect(screen.getByText("Propositions groupées (jeu de créneaux)")).toBeTruthy()
-    // Deux jeux de boutons Accepter/Rejeter coexistent (groupée + par-valeur) : on cible celui de la carte groupée.
-    const acceptButtons = screen.getAllByRole("button", { name: "Accepter" })
-    expect(acceptButtons.length).toBeGreaterThanOrEqual(2)
-    fireEvent.click(acceptButtons[0]!)
+    // Le bouton groupé porte un aria-label distinctif (« Accepter la proposition … », WCAG 2.4.6) — on le cible
+    // précisément (la carte par-valeur a son propre « Accepter » sans suffixe).
+    fireEvent.click(screen.getByRole("button", { name: /Accepter la proposition/i }))
     await waitFor(() =>
       expect(fetch).toHaveBeenCalledWith(
         "/api/slot-set-proposals/sp1/accept",

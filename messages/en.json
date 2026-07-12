@@ -2153,7 +2153,14 @@
     "groupedRowChangedAria": "Slot changed: {from} → {to}",
     "groupedBaselineDrifted": "The active configuration has changed since this proposal was generated. Accepting it as-is will be rejected — regenerate a new proposal on the current configuration.",
     "groupedStructuralChangeNote": "Structure changed (slots added/removed)",
-    "groupedTableCaption": "Proposed slot detail — {param}"
+    "groupedTableCaption": "Proposed slot detail — {param}",
+    "groupedRowNewAria": "New slot: {to}",
+    "groupedRowRemovedAria": "Removed slot: {from}",
+    "groupedCellChanged": "changed",
+    "groupedCellNew": "new",
+    "groupedCellRemoved": "removed",
+    "groupedAcceptAria": "Accept the {param} proposal",
+    "groupedRejectAria": "Reject the {param} proposal"
   },
   "cabinetMembers": {
     "title": "Cabinet personnel & rights",

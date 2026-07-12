@@ -26,6 +26,7 @@ const row = (over: Partial<SlotDiffRow> = {}): SlotDiffRow => ({
   proposedValue: 0.5,
   liveValue: 0.5,
   changed: false,
+  removed: false,
   ...over,
 })
 
@@ -81,24 +82,42 @@ describe("GroupedProposalReview", () => {
     expect(screen.getByText("Structure modifiée (créneaux ajoutés/supprimés)")).toBeTruthy()
   })
 
-  it("canDecide → Accepter/Rejeter appellent onDecide avec l'id de la proposition", () => {
+  it("canDecide → Accepter/Rejeter (aria-label incluant le paramètre) appellent onDecide avec l'id", () => {
     const onDecide = vi.fn()
     render(<GroupedProposalReview items={[item()]} canDecide busyId={null} onDecide={onDecide} />)
-    fireEvent.click(screen.getByRole("button", { name: "Accepter" }))
+    // WCAG 2.4.6 — le nom accessible distingue par paramètre (« Accepter la proposition … »).
+    fireEvent.click(screen.getByRole("button", { name: /Accepter la proposition/i }))
     expect(onDecide).toHaveBeenCalledWith("sp1", "accept")
-    fireEvent.click(screen.getByRole("button", { name: "Rejeter" }))
+    fireEvent.click(screen.getByRole("button", { name: /Rejeter la proposition/i }))
     expect(onDecide).toHaveBeenCalledWith("sp1", "reject")
   })
 
   it("canDecide=false → aucun bouton de décision (infirmière / lecture seule)", () => {
     render(<GroupedProposalReview items={[item()]} canDecide={false} busyId={null} onDecide={vi.fn()} />)
-    expect(screen.queryByRole("button", { name: "Accepter" })).toBeNull()
-    expect(screen.queryByRole("button", { name: "Rejeter" })).toBeNull()
+    expect(screen.queryByRole("button", { name: /Accepter/i })).toBeNull()
+    expect(screen.queryByRole("button", { name: /Rejeter/i })).toBeNull()
   })
 
   it("busyId === item.id → boutons désactivés", () => {
     render(<GroupedProposalReview items={[item()]} canDecide busyId="sp1" onDecide={vi.fn()} />)
-    expect((screen.getByRole("button", { name: "Accepter" }) as HTMLButtonElement).disabled).toBe(true)
-    expect((screen.getByRole("button", { name: "Rejeter" }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: /Accepter/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: /Rejeter/i }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it("baselineDrifted → Accepter DÉSACTIVÉ (parité ProposalList) ; Rejeter reste actif", () => {
+    render(<GroupedProposalReview items={[item({ baselineDrifted: true })]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect((screen.getByRole("button", { name: /Accepter/i }) as HTMLButtonElement).disabled).toBe(true)
+    expect((screen.getByRole("button", { name: /Rejeter/i }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it("créneau SUPPRIMÉ (removed) → ligne « — » côté proposé + libellé supprimé, ligne surlignée", () => {
+    const removedItem = item({
+      rows: [row({ startHour: 8, endHour: 0, proposedValue: null, liveValue: 0.4, changed: true, removed: true })],
+    })
+    render(<GroupedProposalReview items={[removedItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    const removedRow = screen.getByRole("row", { name: /Créneau supprimé/i })
+    expect(removedRow.className).toContain("bg-warning-bg")
+    // La valeur live (0,4) est visible ; le côté proposé affiche « — ».
+    expect(removedRow.textContent).toMatch(/0,4/)
   })
 })

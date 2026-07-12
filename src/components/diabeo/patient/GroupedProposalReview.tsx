@@ -131,42 +131,56 @@ export function GroupedProposalReview({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {item.rows.map((row) => (
-                  <TableRow
-                    key={`${row.startHour}-${row.endHour}`}
-                    className={row.changed ? "bg-warning-bg" : undefined}
-                    aria-label={
-                      row.changed
-                        ? t("groupedRowChangedAria", {
-                            from: row.liveValue === null ? "—" : `${fmt(row.liveValue)} ${unit}`,
-                            to: `${fmt(row.proposedValue)} ${unit}`,
-                          })
+                {item.rows.map((row) => {
+                  const liveText = row.liveValue === null ? "—" : `${fmt(row.liveValue)} ${unit}`
+                  // Marqueur NON basé sur la couleur seule (WCAG 1.4.1) — lu aussi en navigation par cellules.
+                  const changeKind = row.removed
+                    ? t("groupedCellRemoved")
+                    : row.liveValue === null
+                      ? t("groupedCellNew")
+                      : t("groupedCellChanged")
+                  // aria-label de la ligne (navigation par lignes) — distingue supprimé / nouveau / modifié.
+                  const rowAria = row.removed
+                    ? t("groupedRowRemovedAria", { from: liveText })
+                    : row.liveValue === null
+                      ? t("groupedRowNewAria", { to: `${fmt(row.proposedValue ?? 0)} ${unit}` })
+                      : row.changed
+                        ? t("groupedRowChangedAria", { from: liveText, to: `${fmt(row.proposedValue ?? 0)} ${unit}` })
                         : undefined
-                    }
-                  >
-                    <TableCell className="tabular-nums">{hourRange(row.startHour, row.endHour)}</TableCell>
-                    <TableCell className="tabular-nums">
-                      {row.liveValue === null ? "—" : `${fmt(row.liveValue)} ${unit}`}
-                    </TableCell>
-                    <TableCell className="tabular-nums font-medium">
-                      <span className="flex items-center gap-1">
-                        {row.changed && (
-                          <AlertTriangle className="h-3 w-3 shrink-0 text-feedback-warning" aria-hidden="true" />
-                        )}
-                        {fmt(row.proposedValue)} {unit}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                  return (
+                    <TableRow
+                      key={`${row.startHour}-${row.endHour}-${row.removed ? "rm" : "pr"}`}
+                      className={row.changed ? "bg-warning-bg" : undefined}
+                      aria-label={rowAria}
+                    >
+                      <TableCell className="tabular-nums">{hourRange(row.startHour, row.endHour)}</TableCell>
+                      <TableCell className="tabular-nums">{liveText}</TableCell>
+                      <TableCell className="tabular-nums font-medium">
+                        <span className="flex items-center gap-1">
+                          {row.changed && (
+                            <AlertTriangle className="h-3 w-3 shrink-0 text-warning-fg" aria-hidden="true" />
+                          )}
+                          {row.removed ? "—" : `${fmt(row.proposedValue ?? 0)} ${unit}`}
+                          {row.changed && <span className="sr-only">({changeKind})</span>}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
               </TableBody>
             </Table>
 
             {canDecide && (
               <span className="flex gap-2">
+                {/* Parité avec `ProposalList` (medical) : Accepter DÉSACTIVÉ si la base a dérivé — l'accept
+                    renverrait 409 côté serveur (CAS S1). `aria-label` inclut le paramètre (plusieurs
+                    propositions → « Accepter » répété serait ambigu, WCAG 2.4.6). */}
                 <Button
                   size="sm"
                   variant="default"
-                  disabled={busyId === item.id}
+                  disabled={busyId === item.id || item.baselineDrifted}
+                  title={item.baselineDrifted ? t("acceptBlockedHint") : undefined}
+                  aria-label={t("groupedAcceptAria", { param: paramLabel })}
                   onClick={() => onDecide(item.id, "accept")}
                 >
                   {t("accept")}
@@ -175,6 +189,7 @@ export function GroupedProposalReview({
                   size="sm"
                   variant="outline"
                   disabled={busyId === item.id}
+                  aria-label={t("groupedRejectAria", { param: paramLabel })}
                   onClick={() => onDecide(item.id, "reject")}
                 >
                   {t("reject")}

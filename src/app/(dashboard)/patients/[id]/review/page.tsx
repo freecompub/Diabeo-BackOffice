@@ -182,9 +182,9 @@ export default async function PatientReviewPage({
     })),
   )
 
-  // US-2663 (S2) — propositions GROUPÉES (`SlotSetProposal`) PENDING, avec `baselineSlots` inclus (revue
-  // DOCTOR-gated). Diff (base LIVE vs proposé) + dérive de base (vs `baselineSlots`) calculés SERVEUR : le
-  // client ne fait aucun calcul clinique, seulement le rendu (`GroupedProposalReview`).
+  // US-2663 (S2) — propositions GROUPÉES (`SlotSetProposal`) PENDING, avec `baselineSlots` inclus (LECTURE
+  // clinicien = DOCTOR/NURSE ; DÉCISION = DOCTOR/ADMIN via `canDecide`). Diff (base LIVE vs proposé) + dérive
+  // de base (vs `baselineSlots`) calculés SERVEUR : le client ne fait aucun calcul clinique, seulement le rendu.
   const groupedPendingRaw = await slotSetProposalService.listPendingForReview(patientId, userId, ctx)
   const liveIsf: IsfIcrSlot[] = (insulinSettings?.sensitivityFactors ?? []).map((s) => ({
     startHour: s.startHour,
@@ -204,7 +204,12 @@ export default async function PatientReviewPage({
     const live = p.parameterType === "insulinSensitivityFactor" ? liveIsf : p.parameterType === "insulinToCarbRatio" ? liveIcr : null
     if (!live) return []
     const proposed = parseIsfIcrSlots(p.proposedSlots)
-    if (!proposed) return []
+    if (!proposed) {
+      // Observabilité (revue code) : un `proposedSlots` illisible retire la proposition de l'écran (fail-closed
+      // sur l'action — le serveur lèverait `invalidSlotSet`), mais ne doit pas disparaître SILENCIEUSEMENT.
+      console.warn(`[review] SlotSetProposal ${p.id} skipped — unparseable proposedSlots`)
+      return []
+    }
     const baseline = p.baselineSlots == null ? null : parseIsfIcrSlots(p.baselineSlots)
     return [
       {

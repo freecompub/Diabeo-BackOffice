@@ -2153,7 +2153,14 @@
     "groupedRowChangedAria": "تم تغيير الفترة: {from} ← {to}",
     "groupedBaselineDrifted": "تم تعديل الإعداد الفعلي منذ إنشاء هذا المقترح. سيتم رفض القبول كما هو - يرجى إعادة إنشاء مقترح جديد بناءً على الإعداد الحالي.",
     "groupedStructuralChangeNote": "تغيّرت البنية (تمت إضافة/إزالة فترات)",
-    "groupedTableCaption": "تفاصيل الفترات المقترحة — {param}"
+    "groupedTableCaption": "تفاصيل الفترات المقترحة — {param}",
+    "groupedRowNewAria": "خانة جديدة: {to}",
+    "groupedRowRemovedAria": "خانة محذوفة: {from}",
+    "groupedCellChanged": "معدّل",
+    "groupedCellNew": "جديد",
+    "groupedCellRemoved": "محذوف",
+    "groupedAcceptAria": "قبول اقتراح {param}",
+    "groupedRejectAria": "رفض اقتراح {param}"
   },
   "cabinetMembers": {
     "title": "أعضاء العيادة والصلاحيات",

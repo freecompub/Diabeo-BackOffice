@@ -19,16 +19,19 @@
 import type { IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
 import { BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
-/** Une ligne du tableau de diff : un créneau PROPOSÉ, annoté de sa valeur live appariée (ou `null`). */
+/** Une ligne du tableau de diff : un créneau PROPOSÉ (ou un créneau LIVE **supprimé** par la proposition). */
 export type SlotDiffRow = {
   startHour: number
   endHour: number
-  proposedValue: number
-  /** Valeur live appariée par `startHour` ; `null` = créneau proposé absent de la config live (nouveau créneau). */
+  /** Valeur proposée ; `null` = créneau LIVE **supprimé** (présent en live, absent du proposé, `removed=true`). */
+  proposedValue: number | null
+  /** Valeur live appariée par `startHour` ; `null` = **nouveau** créneau (absent de la config live). */
   liveValue: number | null
   mealLabel?: string
-  /** `true` si live absent, borne de fin différente, ou valeur différente (tolérance `BASELINE_VALUE_EPS`). */
+  /** `true` si live absent (nouveau), borne de fin différente, valeur différente (tolérance `BASELINE_VALUE_EPS`), ou supprimé. */
   changed: boolean
+  /** `true` = créneau LIVE supprimé par la proposition (n'existe plus dans le jeu proposé). */
+  removed: boolean
 }
 
 /**
@@ -36,30 +39,48 @@ export type SlotDiffRow = {
  *
  * @param live - disposition ISF/ICR actuellement active du patient (lue serveur, `page.tsx`).
  * @param proposed - disposition proposée (`SlotSetProposal.proposedSlots`, parsée).
- * @returns une ligne par créneau proposé ; les créneaux LIVE absents du proposé (créneau supprimé) ne
- * produisent PAS de ligne ici — cf. `hasStructuralChange` pour les signaler séparément.
+ * @returns une ligne par créneau proposé, PLUS une ligne par créneau LIVE **supprimé** (présent en live,
+ * absent du proposé — `proposedValue: null`, `removed: true`) ; le tout trié par `startHour`. Le médecin voit
+ * ainsi explicitement les ajouts (`liveValue: null`) ET les suppressions (`proposedValue: null`).
  */
 export function diffSlots(live: readonly IsfIcrSlot[], proposed: readonly IsfIcrSlot[]): SlotDiffRow[] {
   const liveByStart = new Map(live.map((s) => [s.startHour, s]))
-  return [...proposed]
-    .sort((a, b) => a.startHour - b.startHour)
-    .map((p) => {
-      const match = liveByStart.get(p.startHour)
-      const liveValue = match ? match.value : null
-      const changed =
-        match === undefined ||
-        match.endHour !== p.endHour ||
-        !Number.isFinite(match.value) ||
-        Math.abs(match.value - p.value) > BASELINE_VALUE_EPS
-      return {
-        startHour: p.startHour,
-        endHour: p.endHour,
-        proposedValue: p.value,
-        liveValue,
-        ...(p.mealLabel !== undefined ? { mealLabel: p.mealLabel } : {}),
-        changed,
-      }
-    })
+  const proposedStarts = new Set(proposed.map((s) => s.startHour))
+
+  const proposedRows: SlotDiffRow[] = proposed.map((p) => {
+    const match = liveByStart.get(p.startHour)
+    const liveValue = match ? match.value : null
+    const changed =
+      match === undefined ||
+      match.endHour !== p.endHour ||
+      !Number.isFinite(match.value) ||
+      Math.abs(match.value - p.value) > BASELINE_VALUE_EPS
+    return {
+      startHour: p.startHour,
+      endHour: p.endHour,
+      proposedValue: p.value,
+      liveValue,
+      ...(p.mealLabel !== undefined ? { mealLabel: p.mealLabel } : {}),
+      changed,
+      removed: false,
+    }
+  })
+
+  // Créneaux LIVE supprimés par la proposition (aucune correspondance `startHour` côté proposé) : rendus
+  // explicitement (valeur live → « supprimé ») pour ne pas cacher une plage horaire qui perd sa dose dédiée.
+  const removedRows: SlotDiffRow[] = live
+    .filter((s) => !proposedStarts.has(s.startHour))
+    .map((s) => ({
+      startHour: s.startHour,
+      endHour: s.endHour,
+      proposedValue: null,
+      liveValue: s.value,
+      ...(s.mealLabel !== undefined ? { mealLabel: s.mealLabel } : {}),
+      changed: true,
+      removed: true,
+    }))
+
+  return [...proposedRows, ...removedRows].sort((a, b) => a.startHour - b.startHour)
 }
 
 /**

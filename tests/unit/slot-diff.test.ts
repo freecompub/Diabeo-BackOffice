@@ -68,6 +68,37 @@ describe("diffSlots", () => {
     )
     expect(rows[0]!.mealLabel).toBe("midi")
   })
+
+  it("jeu proposé VIDE → aucune ligne côté proposé, mais les créneaux live supprimés sont rendus (removed)", () => {
+    const rows = diffSlots(LIVE, [])
+    expect(rows).toHaveLength(3) // les 3 créneaux live deviennent des lignes « supprimées »
+    expect(rows.every((r) => r.removed && r.proposedValue === null && r.changed)).toBe(true)
+    expect(rows.map((r) => r.liveValue)).toEqual([0.5, 0.45, 0.4])
+  })
+
+  it("config live VIDE → chaque créneau proposé est `changed` avec `liveValue` null (aucune suppression)", () => {
+    const rows = diffSlots([], LIVE)
+    expect(rows).toHaveLength(3)
+    expect(rows.every((r) => r.changed && r.liveValue === null && !r.removed)).toBe(true)
+  })
+
+  it("garde NaN : une valeur LIVE non finie force `changed` (jamais « inchangé » silencieux)", () => {
+    const proposed = [{ startHour: 0, endHour: 8, value: 0.5 }]
+    const rows = diffSlots([{ startHour: 0, endHour: 8, value: Number.NaN }], proposed)
+    expect(rows[0]!.changed).toBe(true)
+  })
+
+  it("créneau LIVE SUPPRIMÉ (absent du proposé) → ligne dédiée `removed`, triée par startHour", () => {
+    // Proposé retire le créneau 8→22 ; garde 0→8 et 22→0.
+    const proposed = [LIVE[0]!, LIVE[2]!]
+    const rows = diffSlots(LIVE, proposed)
+    expect(rows.map((r) => r.startHour)).toEqual([0, 8, 22]) // le supprimé (8) réinséré à sa place
+    const removed = rows.find((r) => r.startHour === 8)!
+    expect(removed.removed).toBe(true)
+    expect(removed.proposedValue).toBeNull()
+    expect(removed.liveValue).toBe(0.45)
+    expect(removed.changed).toBe(true)
+  })
 })
 
 describe("hasStructuralChange", () => {
