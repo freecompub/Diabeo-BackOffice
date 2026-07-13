@@ -26,41 +26,61 @@ import { z } from "zod"
 import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
-import { isfIcrSlotSchema, slotRationaleSchema, type IsfIcrSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
-import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
+import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
 /**
- * Créneau proposé (forme du JSON `proposedSlots`). US-2663 — alias de `IsfIcrSlot`, la **source de vérité
- * de forme unique** (`src/lib/insulin/grouped-proposal.ts`) : plus de définition parallèle à maintenir.
+ * Créneau proposé (forme du JSON `proposedSlots`). US-2663 — **union par levier**, la **source de vérité de
+ * forme unique** vit dans `src/lib/insulin/grouped-proposal.ts`. À S3c (PR-A) : ISF/ICR (`IsfIcrSlot`) + basale
+ * POMPE (`PumpBasalSlot`). La basale STYLO et la dose fixe rejoignent l'union dans leurs PR dédiées.
  */
-export type ProposedSlot = IsfIcrSlot
+export type ProposedSlot = IsfIcrSlot | PumpBasalSlot
 
-/** Paramètres à jeu de créneaux gérés (ISF/ICR). */
-export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio"
+/**
+ * Paramètres à jeu de créneaux gérés. US-2663 (S3c/PR-A) — élargi à `basalRate` (POMPE). La colonne DB
+ * `parameter_type` accepte désormais aussi `fixedDose` (migration S3c/S3d) mais ce service ne l'émet/n'applique
+ * pas encore (dose fixe = PR dédiée, identification par usage basal/bolus). `basalRate` **stylo** non plus (PR stylo).
+ */
+export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate"
 
-/** Mapping paramètre à jeu de créneaux → clé courte `replaceSlotSet`/verrou. Source unique (réutilisé C3b). */
-export const REPLACE_KEY: Record<SlotSetParam, "isf" | "icr"> = {
+/** Mapping levier ISF/ICR → clé courte `replaceSlotSet`/verrou. `basalRate` n'y figure pas (voie `replacePumpSlotSet`). */
+export const REPLACE_KEY: Record<"insulinSensitivityFactor" | "insulinToCarbRatio", "isf" | "icr"> = {
   insulinSensitivityFactor: "isf",
   insulinToCarbRatio: "icr",
 }
 
-/**
- * Garde de FORME du JSON `proposedSlots` (encodage : `endHour ∈ [0,23]`, passage minuit via
- * `startHour > endHour`). Les bornes CLINIQUES (ISF/ICR) et la couverture (no-gap/no-overlap) sont
- * vérifiées séparément par `assertValidSlotSet`. Ici on garantit uniquement des entiers/valeurs finies —
- * évite un `NaN` dans les calculs de couverture en cas de JSON corrompu.
- */
-// US-2663 — forme des créneaux ISF/ICR importée du module de typage unique (`isfIcrSlotSchema`) plutôt que
-// redéfinie ici. Le jeu vide passe la FORME → `emptySlotSet` levé par `assertValidSlotSet` (contrat stable).
-const proposedSlotsSchema = z.array(isfIcrSlotSchema)
+/** `PumpBasalSlot.startTime`/`endTime` (colonne Time `1970-01-01THH:MM:00Z`) → `"HH:MM"` (forme groupée). */
+const pumpTimeToHhmm = (t: Date): string => t.toISOString().slice(11, 16)
 
-/** Parse + valide la forme du jeu ; `invalidSlotSet` si malformé (à la création comme à la relecture). */
-function parseSlots(raw: unknown): ProposedSlot[] {
-  const parsed = proposedSlotsSchema.safeParse(raw)
+/** Garde de type : un créneau groupé est-il de forme POMPE (`startTime`) plutôt qu'ISF/ICR (`startHour`) ? */
+const isPumpSlot = (s: ProposedSlot): s is PumpBasalSlot => "startTime" in s
+
+/**
+ * Parse + valide la FORME du jeu pour un levier donné (union discriminée `groupedSlotsSchema`). `invalidSlotSet`
+ * si malformé. Les bornes CLINIQUES + couverture sont vérifiées séparément (`assertValidSlotSet`/`assertValidPumpSlotSet`).
+ * Un jeu vide passe la forme → rejeté en aval (`emptySlotSet`) — contrat stable.
+ */
+function parseSlots(param: SlotSetParam, raw: unknown): ProposedSlot[] {
+  const parsed = groupedSlotsSchema(param).safeParse(raw)
   if (!parsed.success) throw new Error("invalidSlotSet")
-  return parsed.data
+  return parsed.data as ProposedSlot[]
+}
+
+/**
+ * Dispatch de la validité CLINIQUE + couverture par levier (source unique par forme) :
+ * ISF/ICR → `assertValidSlotSet` ; basale POMPE → `assertValidPumpSlotSet`. Un `basalRate` de forme STYLO
+ * (pas de `startTime`) n'est pas géré en PR-A → `unsupportedSlotSetParam` (fail-closed).
+ */
+function assertValidGroupedSet(param: SlotSetParam, slots: ProposedSlot[]): void {
+  if (param === "insulinSensitivityFactor") assertValidSlotSet("isf", slots as IsfIcrSlot[])
+  else if (param === "insulinToCarbRatio") assertValidSlotSet("icr", slots as IsfIcrSlot[])
+  else {
+    // basalRate — PR-A ne gère que la POMPE. Un jeu non-pompe (stylo) est rejeté ici (fail-closed).
+    if (!slots.every(isPumpSlot)) throw new Error("unsupportedSlotSetParam")
+    assertValidPumpSlotSet(slots as PumpBasalSlot[])
+  }
 }
 
 /**
@@ -86,16 +106,32 @@ async function captureBaselineSlots(patientId: number, parameterType: SlotSetPar
     })
     return rows.map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) }))
   }
-  const rows = await prisma.carbRatio.findMany({
-    where: { settings: { patientId } },
-    orderBy: { startHour: "asc" },
-    select: { startHour: true, endHour: true, gramsPerUnit: true, mealLabel: true },
+  if (parameterType === "insulinToCarbRatio") {
+    const rows = await prisma.carbRatio.findMany({
+      where: { settings: { patientId } },
+      orderBy: { startHour: "asc" },
+      select: { startHour: true, endHour: true, gramsPerUnit: true, mealLabel: true },
+    })
+    return rows.map((s) => ({
+      startHour: s.startHour,
+      endHour: s.endHour,
+      value: Number(s.gramsPerUnit),
+      ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
+    }))
+  }
+  // basalRate (POMPE, S3c/PR-A) — snapshot des `PumpBasalSlot` de l'UNIQUE `BasalConfiguration` du patient,
+  // même forme que `PumpBasalSlot` groupé (`startTime`/`endTime` en `"HH:MM"`, `rate` U/h). Un patient NON pompe
+  // (stylo, ou sans config basale) → `[]` : aucune base pompe (l'émetteur moteur ne crée pas de proposition
+  // pompe pour un tel patient ; défensif). Scope via `settings.patientId` (1 config/patient — symétrie apply).
+  const pumpRows = await prisma.pumpBasalSlot.findMany({
+    where: { basalConfig: { settings: { patientId }, configType: "pump" } },
+    orderBy: { startTime: "asc" },
+    select: { startTime: true, endTime: true, rate: true },
   })
-  return rows.map((s) => ({
-    startHour: s.startHour,
-    endHour: s.endHour,
-    value: Number(s.gramsPerUnit),
-    ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
+  return pumpRows.map((s) => ({
+    startTime: pumpTimeToHhmm(s.startTime),
+    endTime: pumpTimeToHhmm(s.endTime),
+    rate: Number(s.rate),
   }))
 }
 
@@ -124,29 +160,33 @@ export const slotSetProposalService = {
    * @throws patientNotFound | nonInsulinNoDose | duplicatePendingProposal
    * @throws rationaleRequired (US-2663 S3b-0a — `source: "algorithm"` sans rationale par créneau ; contrat serveur)
    */
-  async createSetProposal(
-    patientId: number,
-    parameterType: SlotSetParam,
-    proposedSlots: ProposedSlot[],
+  async createSetProposal(input: {
+    patientId: number
+    parameterType: SlotSetParam
+    proposedSlots: ProposedSlot[]
     // US-2663 (S3b-0a) — `userId` NULLABLE : la voie MOTEUR (`source: "algorithm"`) n'a pas d'utilisateur
     // (parité `createEngineProposal`, `proposedByUserId: null`). `source` reste dérivé SERVEUR (ADR #27).
-    proposer: { userId: number | null; source: ProposalSource },
-    ctx?: AuditContext,
+    proposer: { userId: number | null; source: ProposalSource }
+    ctx?: AuditContext
     // US-2663 (S3b-0a) — rationale PAR CRÉNEAU CHANGÉ, REQUISE si `source: "algorithm"` (decision-support +
-    // traçabilité HDS), ignorée sinon (propositions humaines). Appariée au créneau par `startHour`.
-    rationale?: SlotRationale[] | null,
+    // traçabilité HDS), ignorée sinon (propositions humaines). Appariée au créneau par sa clé (`startHour`/`startTime`).
+    rationale?: SlotRationale[] | null
     // US-2663 (S3b-1, revue architecture/medical) — snapshot de base INJECTÉ. Quand fourni (voie MOTEUR
     // groupée), il REMPLACE la relecture `captureBaselineSlots` : l'appelant a déjà lu la config LIVE une fois
     // pour bâtir sa disposition (overlay), et passe CETTE MÊME lecture comme base → disposition et
     // `baselineSlots` partagent UN seul instant, fermant la micro-fenêtre TOCTOU (une édition médecin d'un
     // créneau NON modifié par l'overlay lèvera `baselineMoved` à l'acceptation, au lieu d'être silencieusement
     // écrasée). Absent (voie patient) → snapshot capturé ici comme avant. Forme identique à `captureBaselineSlots`.
-    baselineOverride?: ProposedSlot[],
-  ) {
-    // 1. Forme (Zod) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
+    baselineOverride?: ProposedSlot[]
+  }) {
+    // US-2663 (S3c/PR-A, revue architecture) — signature migrée en OBJET D'OPTIONS : `createSetProposal` porte
+    // désormais des optionnels contextuels (ctx/rationale/baselineOverride) ET sert 3 leviers (ISF/ICR/basalRate) ;
+    // les args positionnels devenaient fragiles (risque de désaligner ctx ⇄ rationale). Anti-usurpation inchangé.
+    const { patientId, parameterType, proposedSlots, proposer, ctx, rationale, baselineOverride } = input
+    // 1. Forme (Zod, par levier) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
     //    création ⇄ acceptation : une proposition inacceptable ne doit pas pouvoir être créée).
-    const slots = parseSlots(proposedSlots)
-    assertValidSlotSet(REPLACE_KEY[parameterType], slots)
+    const slots = parseSlots(parameterType, proposedSlots)
+    assertValidGroupedSet(parameterType, slots)
 
     // 1-bis. US-2663 (S3b-0a) — une proposition MOTEUR DOIT porter sa rationale (medical HIGH : le médecin ne
     // décide pas sur un diff nu). Forme validée ; les entrées humaines ne persistent aucune rationale.
@@ -244,21 +284,21 @@ export const slotSetProposalService = {
       })
       if (!proposal) throw new Error("slotSetProposalNotFound")
 
-      // Garde runtime : le type DB `AdjustableParameter` est plus large (basalRate/fixedDose n'ont pas de
-      // jeu de créneaux ISF/ICR). Le cast serait unsafe sans cette vérification (REPLACE_KEY undefined).
+      // Garde runtime : le type DB `AdjustableParameter` est plus large. PR-A gère ISF/ICR + basalRate POMPE ;
+      // `fixedDose` (et basalRate STYLO) → `unsupportedSlotSetParam` (fail-closed, PR dédiées).
       const param = proposal.parameterType
-      if (param !== "insulinSensitivityFactor" && param !== "insulinToCarbRatio") {
+      if (param !== "insulinSensitivityFactor" && param !== "insulinToCarbRatio" && param !== "basalRate") {
         throw new Error("unsupportedSlotSetParam")
       }
-      const slots = parseSlots(proposal.proposedSlots)
-      // US-2663 (S1) — snapshot de base à comparer au live sous verrou (CAS d'ensemble, dans `replaceSlotSet`).
-      // `null` (proposition legacy pré-S0) est PRÉSERVÉ tel quel → `replaceSlotSet` lèvera `baselineMissing`
-      // (fail-closed : jamais d'apply sur une base non certifiable). Parsé avec la même garde de forme que `slots`.
-      const expectedBaseline = proposal.baselineSlots == null ? null : parseSlots(proposal.baselineSlots)
+      const slots = parseSlots(param, proposal.proposedSlots)
+      // US-2663 (S1) — snapshot de base à comparer au live sous verrou (CAS d'ensemble). `null` (proposition
+      // legacy pré-S0) est PRÉSERVÉ tel quel → le `replace*` lèvera `baselineMissing` (fail-closed : jamais
+      // d'apply sur une base non certifiable). Parsé avec la même garde de forme (par levier) que `slots`.
+      const expectedBaseline = proposal.baselineSlots == null ? null : parseSlots(param, proposal.baselineSlots)
 
       // Frontière DISPOSITIF MÉDICAL re-vérifiée À L'ACCEPTATION (symétrie avec la création) : si le mode
       // dérivé serveur a basculé vers `nonInsulin` entre création et revue, on N'applique PAS un profil
-      // ISF/ICR à un patient non insuliné (fail-closed, US-2651 §12.5). Rollback → proposition reste pending.
+      // à un patient non insuliné (fail-closed, US-2651 §12.5). Rollback → proposition reste pending.
       const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
       if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
@@ -270,11 +310,23 @@ export const slotSetProposalService = {
       })
       if (flipped.count === 0) throw new Error("slotSetProposalNotFound")
 
-      // Apply en bloc DANS la même transaction (atomicité). Un échec (bornes/couverture, OU CAS d'ensemble
-      // `baselineMoved`/`baselineMissing`) propage l'exception → rollback du flip → la proposition reste
-      // `pending` (fail-closed). `replaceSlotSet` vérifie le CAS sous verrou (`expectedBaseline`) puis supersède
-      // au passage les autres propositions pending du paramètre.
-      await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots, reviewerUserId, ctx, tx, { baseline: expectedBaseline })
+      // Apply en bloc DANS la même transaction (atomicité) — routage par levier. Un échec (bornes/couverture,
+      // OU CAS d'ensemble `baselineMoved`/`baselineMissing`) propage l'exception → rollback du flip → la
+      // proposition reste `pending` (fail-closed). Chaque `replace*` vérifie le CAS sous verrou (`expectedBaseline`)
+      // puis supersède au passage les autres propositions pending du paramètre.
+      if (param === "basalRate") {
+        // PR-A : POMPE uniquement. Un jeu de forme STYLO (pas de `startTime`) → `unsupportedSlotSetParam`
+        // (fail-closed ; la basale stylo groupée arrive dans sa PR dédiée). `replacePumpSlotSet` re-garde
+        // aussi le `configType` LIVE (`basalConfigNotPump`) → jamais un jeu pompe écrit sur un patient stylo.
+        if (!slots.every(isPumpSlot)) throw new Error("unsupportedSlotSetParam")
+        await insulinTherapyService.replacePumpSlotSet(patientId, slots as PumpBasalSlot[], reviewerUserId, ctx, tx, {
+          baseline: expectedBaseline as PumpBasalSlot[] | null,
+        })
+      } else {
+        await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots as IsfIcrSlot[], reviewerUserId, ctx, tx, {
+          baseline: expectedBaseline as IsfIcrSlot[] | null,
+        })
+      }
 
       await auditService.logWithTx(tx, {
         userId: reviewerUserId,

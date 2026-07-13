@@ -351,6 +351,11 @@ export function assertRequiredEnv(): void {
   // par-valeur). OFF par défaut : une faute de saisie ne doit pas activer/désactiver
   // silencieusement la nouvelle voie clinique (`proposal-generator.service.ts`).
   assertOptionalBoolean("ENGINE_GROUPED_ISF_ICR")
+  // US-2663 (S3c/PR-A) — bascule RÉVERSIBLE du moteur vers l'émission GROUPÉE de la
+  // basale POMPE (`SlotSetProposal` basalRate, disposition entière). Flag DISTINCT
+  // d'ISF/ICR (rollout/rollback basal indépendant du groupé ISF/ICR déjà stabilisé).
+  // OFF par défaut. La basale STYLO et la dose fixe ont/auront leurs propres flags.
+  assertOptionalBoolean("ENGINE_GROUPED_PUMP")
   // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
   // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser

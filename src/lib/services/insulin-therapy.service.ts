@@ -13,8 +13,8 @@ import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/cli
 import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
-import { assertBaselineUnchanged } from "@/lib/insulin/slot-baseline-cas"
-import type { IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
+import { assertBaselineUnchanged, assertBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
+import type { IsfIcrSlot, PumpBasalSlot } from "@/lib/insulin/grouped-proposal"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -496,11 +496,21 @@ export const insulinTherapyService = {
     auditUserId: number,
     ctx?: AuditContext,
     externalTx?: Prisma.TransactionClient,
+    /**
+     * US-2663 (S3c) — CAS D'ENSEMBLE fail-closed (pompe), symétrique au `cas` de `replaceSlotSet` ISF/ICR.
+     * **Enveloppé dans un objet à dessein** : demander le CAS est un acte EXPLICITE (`{ baseline }`), jamais
+     * un effet de bord d'une valeur « vide ».
+     * - **Omis** (`undefined`) ⇒ chemin DOCTOR direct (`PUT` groupé) : PAS de CAS (écrasement explicite assumé).
+     * - `{ baseline: PumpBasalSlot[] }` ⇒ la base LIVE (lue sous verrou) doit être identique, sinon `baselineMoved`.
+     * - `{ baseline: null }` ⇒ proposition legacy sans snapshot ⇒ `baselineMissing` (fail-closed).
+     */
+    cas?: { baseline: PumpBasalSlot[] | null },
   ): Promise<{
     applied: true
     count: number
     coverage: { hasGap: boolean; hasOverlap: boolean }
     supersededProposalIds: string[]
+    supersededSetProposalIds: string[]
   }> {
     // 1. Pré-validation pure (hors DB, fail-fast) — source unique `assertValidPumpSlotSet`.
     const coverage = assertValidPumpSlotSet(slots)
@@ -518,14 +528,26 @@ export const insulinTherapyService = {
       // Intégrité du mode de délivrance : les créneaux basaux N'ont de sens QUE pour une pompe. Un patient
       // MDI (`single_injection`/`split_injection`) possède aussi une `basalConfiguration` ; y attacher des
       // `PumpBasalSlot` fausserait la dérivation du mode de traitement (pompe vs injection). Fail-closed.
+      // ⚠️ US-2663 (S3c) — cette garde protège AUSSI le CAS d'ensemble : un jeu POMPE accepté sur un patient
+      // devenu STYLO entre génération et acceptation est refusé ici (jamais des U/h écrits sur une dose stylo).
       if (basalConfig.configType !== "pump") throw new Error("basalConfigNotPump")
       const basalConfigId = basalConfig.id
 
-      // Snapshot ancien jeu (audit `from`) + REPLACE scopé basalConfigId.
+      // 2. Lecture UNIQUE du jeu ACTUEL sous verrou : sert au CAS d'ensemble (US-2663 S3c, si `cas` fourni)
+      //    ET à l'audit `from`. `rate` inclus pour le CAS (comparaison de débit). CAS AVANT tout delete/create
+      //    (fail-closed) : dérive (ajustement médecin concurrent) → `baselineMoved` ; snapshot absent (legacy)
+      //    → `baselineMissing` → rollback ⇒ proposition reste `pending`. Appariement par `startTime`, borne `endTime`.
       const before = await tx.pumpBasalSlot.findMany({
         where: { basalConfigId },
-        select: { startTime: true, endTime: true },
+        select: { startTime: true, endTime: true, rate: true },
       })
+      if (cas !== undefined) {
+        assertBaselineUnchangedBy(
+          cas.baseline,
+          before.map((s) => ({ startTime: pumpTimeToHhmm(s.startTime), endTime: pumpTimeToHhmm(s.endTime), rate: Number(s.rate) })),
+          { keyOf: (s) => s.startTime, valueOf: (s) => s.rate, boundEq: (l, b) => l.endTime === b.endTime },
+        )
+      }
       await tx.pumpBasalSlot.deleteMany({ where: { basalConfigId } })
       await tx.pumpBasalSlot.createMany({
         data: slots.map((s) => ({
@@ -536,13 +558,11 @@ export const insulinTherapyService = {
         })),
       })
 
-      // Baseline basale changée → supersède les propositions basales `pending` (par-valeur).
-      // INVARIANT : aucune `SlotSetProposal` basale à superséder ici. Bien que la colonne DB
-      // `slot_set_proposals.parameter_type` (`AdjustableParameter`) *inclue* `basalRate`, le type applicatif
-      // `SlotSetParam` restreint la CRÉATION à isf/icr et `applyGroupProposal` LÈVE `unsupportedSlotSetParam`
-      // sur toute autre valeur → un `SlotSetProposal` basal ne peut être ni créé ni appliqué. La fenêtre de
-      // « dérive de base » est donc close des deux côtés pour le basal sans supersede d'ensemble ici.
-      // (revue medical-domain-validator #710 — LOW ; durcissement DB CHECK possible mais non requis.)
+      // 3. Baseline basale changée → supersède les propositions basales `pending` des DEUX familles :
+      //  - `AdjustmentProposal` par-valeur (libère `adjustment_proposals_one_pending_per_slot`) ;
+      //  - `SlotSetProposal` d'ENSEMBLE basalRate (US-2663 S3c : l'invariant « aucune SlotSetProposal basale »
+      //    TOMBE — le moteur en émet désormais. Sans ce supersede, un jeu basal PÉRIMÉ pourrait être accepté
+      //    plus tard et écraser un ajustement médecin récent, ex. une baisse post-hypo).
       const superseded = await tx.adjustmentProposal.findMany({
         where: { patientId, parameterType: "basalRate", status: "pending" },
         select: { id: true },
@@ -554,6 +574,18 @@ export const insulinTherapyService = {
         })
       }
       const supersededProposalIds = superseded.map((p) => p.id)
+
+      const supersededSet = await tx.slotSetProposal.findMany({
+        where: { patientId, parameterType: "basalRate", status: "pending" },
+        select: { id: true },
+      })
+      if (supersededSet.length > 0) {
+        await tx.slotSetProposal.updateMany({
+          where: { patientId, parameterType: "basalRate", status: "pending" },
+          data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: auditUserId },
+        })
+      }
+      const supersededSetProposalIds = supersededSet.map((p) => p.id)
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -570,10 +602,11 @@ export const insulinTherapyService = {
           from: before.map((s) => ({ startTime: pumpTimeToHhmm(s.startTime), endTime: pumpTimeToHhmm(s.endTime) })),
           to: slots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
           supersededProposalIds,
+          supersededSetProposalIds,
         },
       })
 
-      return { applied: true as const, count: slots.length, coverage, supersededProposalIds }
+      return { applied: true as const, count: slots.length, coverage, supersededProposalIds, supersededSetProposalIds }
     }
 
     return externalTx ? run(externalTx) : prisma.$transaction(run)

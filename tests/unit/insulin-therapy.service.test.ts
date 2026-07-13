@@ -440,11 +440,16 @@ describe("insulinTherapyService", () => {
       $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
       insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ id: 3, basalConfiguration: { id: 9, configType: "pump" } }) },
       pumpBasalSlot: {
-        findMany: vi.fn().mockResolvedValue([{ startTime: new Date("1970-01-01T00:00:00Z"), endTime: new Date("1970-01-01T00:00:00Z") }]),
+        findMany: vi.fn().mockResolvedValue([{ startTime: new Date("1970-01-01T00:00:00Z"), endTime: new Date("1970-01-01T00:00:00Z"), rate: 0.9 }]),
         deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         createMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
       adjustmentProposal: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      // US-2663 (S3c) — supersession des `SlotSetProposal` basalRate pending ajoutée au replace pompe.
+      slotSetProposal: {
         findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
