@@ -20,7 +20,8 @@ vi.mock("@/lib/services/treatment-mode.service", () => ({
   treatmentModeService: { resolveTreatmentMode: vi.fn() },
 }))
 vi.mock("@/lib/services/insulin-therapy.service", () => ({
-  insulinTherapyService: { getSettings: vi.fn() },
+  // S3d PR2 — `getFixedDoseSlots` : relecture live de la dose fixe (emitGroupedFixedDose).
+  insulinTherapyService: { getSettings: vi.fn(), getFixedDoseSlots: vi.fn() },
 }))
 vi.mock("@/lib/services/meal-trends.service", () => ({
   mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn(), correctionTrend: vi.fn() },
@@ -50,11 +51,12 @@ vi.mock("@/lib/services/slot-set-proposal.service", () => ({
   slotSetProposalService: { createSetProposal: vi.fn() },
 }))
 
-import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPumpDisposition } from "@/lib/services/proposal-generator.service"
+import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPumpDisposition, assembleGroupedFixedDose } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
+import { analyticsService } from "@/lib/services/analytics.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { slotSetProposalService } from "@/lib/services/slot-set-proposal.service"
 
@@ -66,6 +68,8 @@ const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
 const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const createSet = vi.mocked(slotSetProposalService.createSetProposal)
+const getFixedDoseSlots = vi.mocked(insulinTherapyService.getFixedDoseSlots)
+const fixedDoseTrend = vi.mocked(analyticsService.fixedDoseTrend)
 
 const DAY_MS = 86_400_000
 const isoDaysAgo = (n: number) => new Date(Date.now() - n * DAY_MS).toISOString().slice(0, 10)
@@ -471,5 +475,135 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, fl
     expect(createEngine).toHaveBeenCalledTimes(1)
     expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", pumpBasalSlotId: "noct" })
     expect(res.created).toBe(1)
+  })
+})
+
+describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () => {
+  const live = [
+    { usage: "bolus", moment: "morning", value: 6 },
+    { usage: "basal", moment: "evening", value: 20 },
+  ]
+  const fdCand = (over: Partial<{ usage: string; moment: string; currentValue: number; proposedValue: number; reason: string }> = {}) => ({
+    usage: over.usage ?? "bolus",
+    moment: over.moment ?? "morning",
+    cand: {
+      parameterType: "fixedDose",
+      reason: over.reason ?? "fixedDoseTooLow", // hausse attendue
+      currentValue: over.currentValue ?? 6,
+      proposedValue: over.proposedValue ?? 7,
+      changePercent: 16,
+      confidence: "medium",
+      supportingEvents: 4,
+      totalEventsConsidered: 4,
+    },
+  }) as never
+
+  it("dose changée cohérente → superposée par (usage,moment), autres inchangées, rationale clé (usage,moment)", () => {
+    const res = assembleGroupedFixedDose(live as never, [fdCand()], 14)!
+    expect(res.disposition).toEqual([
+      { usage: "bolus", moment: "morning", value: 7 }, // changé (hausse)
+      { usage: "basal", moment: "evening", value: 20 }, // inchangé
+    ])
+    expect(res.rationale).toHaveLength(1)
+    expect(res.rationale[0]).toMatchObject({ usage: "bolus", moment: "morning", reason: "fixedDoseTooLow", analysisPeriod: 14 })
+    expect(res.directionMismatches).toBe(0)
+  })
+
+  it("garde direction : fixedDoseTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ reason: "fixedDoseTooLow", proposedValue: 5 })], 14)
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(1)
+  })
+
+  it("même moment mais USAGE différent → clés distinctes (pas de collision bolus/basal)", () => {
+    // basal/evening 20 → 22 (hausse) ; bolus/morning inchangé. La clé (usage,moment) distingue.
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ usage: "basal", moment: "evening", currentValue: 20, proposedValue: 22 })], 14)!
+    expect(res.disposition!.find((s: { usage: string }) => s.usage === "basal")!.value).toBe(22)
+    expect(res.disposition!.find((s: { usage: string }) => s.usage === "bolus")!.value).toBe(6)
+  })
+
+  it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ currentValue: 7 })], 14) // live bolus/morning = 6
+    expect(res.disposition).toBeNull()
+  })
+
+  it("clé (usage,moment) absente du live → abandonné", () => {
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ moment: "night" })], 14)
+    expect(res.disposition).toBeNull()
+  })
+})
+
+describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d PR2, flag ENGINE_GROUPED_FIXED_DOSE)", () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => delete process.env.ENGINE_GROUPED_FIXED_DOSE)
+
+  /** Config doses simples : selon `slots` (défaut = bolus/morning 6 U). Creux pré-dose HAUTS → fixedDoseTooLow (hausse). */
+  function setupFixedDose(slots: { usage: string; moment: string; valueU: number }[] = [{ usage: "bolus", moment: "morning", valueU: 6 }], troughGl = 1.6) {
+    mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
+    prismaMock.fixedDoseSlot.findMany.mockResolvedValue(
+      slots.map((s) => ({ moment: s.moment, valueU: s.valueU, patientInsulin: { usage: s.usage } })) as never,
+    )
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
+    prismaMock.glucoseTarget.findFirst.mockResolvedValue({ targetGlucose: 100 } as never) // cible ~1,0 g/L
+    // Creux pré-dose : HAUTS (1,6 g/L) → dose trop basse → hausse (défaut) ; BAS (0,6) → dose trop haute → BAISSE.
+    const troughs: Record<string, { gl: number; dayIso: string }[]> = {}
+    for (const s of slots) troughs[s.moment] = Array.from({ length: 4 }, (_, i) => ({ gl: troughGl, dayIso: isoDaysAgo(i) }))
+    fixedDoseTrend.mockResolvedValue(troughs as never)
+    createSet.mockResolvedValue({ id: "sf" } as never)
+    // Relecture live (emit) — même forme que la config active.
+    getFixedDoseSlots.mockResolvedValue(slots.map((s) => ({ usage: s.usage, moment: s.moment, value: s.valueU })) as never)
+  }
+
+  it("flag ON — émet UNE SlotSetProposal fixedDose (clé usage+moment, hausse)", async () => {
+    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
+    setupFixedDose()
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    expect(createEngine).not.toHaveBeenCalled()
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "fixedDose")
+    expect(call).toBeDefined()
+    expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
+    const disp = call![0].proposedSlots as { usage: string; moment: string; value: number }[]
+    expect(disp).toHaveLength(1)
+    expect(disp[0]).toMatchObject({ usage: "bolus", moment: "morning" })
+    expect(disp[0].value).toBeGreaterThan(6) // hausse
+    // Fenêtre TOCTOU fermée : baseline injecté = la MÊME lecture live (getFixedDoseSlots).
+    expect(call![0].baselineOverride).toEqual([{ usage: "bolus", moment: "morning", value: 6 }])
+    expect(res.created).toBe(1)
+  })
+
+  it("flag OFF (défaut) — voie par-valeur INCHANGÉE (createEngineProposal, aucune groupée)", async () => {
+    setupFixedDose()
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled()
+    expect(createEngine).toHaveBeenCalledTimes(1)
+    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "fixedDose", moment: "morning" })
+    expect(res.created).toBe(1)
+  })
+
+  it("D2 — moment MULTI-DOSES (bolus + basal au même moment) → ABANDONNÉ (aucune proposition ni par-valeur)", async () => {
+    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
+    // Deux doses au moment « evening » (bolus + basal) → signal non attribuable → abandon (D2).
+    setupFixedDose([
+      { usage: "bolus", moment: "evening", valueU: 6 },
+      { usage: "basal", moment: "evening", valueU: 20 },
+    ])
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled() // moment multi-doses jamais titré
+    expect(createEngine).not.toHaveBeenCalled()
+    expect(res.created).toBe(0)
+  })
+
+  it("D2 — moment multi-doses avec HYPO (candidat de BAISSE abandonné) → lève un ClinicalReviewFlag (jamais silencieux)", async () => {
+    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
+    // Creux BAS (0,6 g/L) → dose trop haute → candidat de BAISSE ; moment « evening » multi-doses → abandon.
+    // Garde-fou medical : l'abandon d'une baisse (signal hypo) DOIT alerter le médecin (flag), pas juste logger.
+    setupFixedDose([
+      { usage: "bolus", moment: "evening", valueU: 6 },
+      { usage: "basal", moment: "evening", valueU: 20 },
+    ], 0.6)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled() // toujours pas de titration groupée
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined) // hypo surfacée au médecin
   })
 })

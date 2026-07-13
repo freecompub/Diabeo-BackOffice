@@ -8,7 +8,7 @@
  * que sur le côté proposé).
  */
 import { describe, it, expect } from "vitest"
-import { diffSlots, diffPumpSlots, hasStructuralChange, hasStructuralChangePump } from "@/lib/insulin/slot-diff"
+import { diffSlots, diffPumpSlots, diffFixedDoseSlots, hasStructuralChange, hasStructuralChangePump, hasStructuralChangeFixedDose } from "@/lib/insulin/slot-diff"
 import { BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 const LIVE = [
@@ -150,5 +150,40 @@ describe("diffPumpSlots (US-2663 S3c) — DIFF POMPE par startTime, temps EXACTS
     expect(hasStructuralChangePump(LIVE, [LIVE[0]!])).toBe(true)
     expect(hasStructuralChangePump(LIVE, [{ startTime: "01:00", endTime: "05:30", rate: 0.8 }, LIVE[1]!])).toBe(true)
     expect(hasStructuralChangePump(LIVE, [...LIVE])).toBe(false)
+  })
+})
+
+describe("diffFixedDoseSlots (US-2663 S3d) — DIFF DOSE FIXE par (usage, moment)", () => {
+  const LIVE = [
+    { usage: "bolus" as const, moment: "morning" as const, value: 6 },
+    { usage: "basal" as const, moment: "evening" as const, value: 20 },
+  ]
+
+  it("dose changée → changed, usage/moment portés, autres inchangées ; tri par ordre de moment", () => {
+    const rows = diffFixedDoseSlots(LIVE, [{ usage: "bolus", moment: "morning", value: 7 }, LIVE[1]!])
+    expect(rows).toHaveLength(2)
+    const m = rows.find((r) => r.usage === "bolus" && r.moment === "morning")!
+    expect(m).toMatchObject({ proposedValue: 7, liveValue: 6, changed: true })
+    expect(rows.find((r) => r.moment === "evening")!.changed).toBe(false)
+    expect(rows[0]!.moment).toBe("morning") // morning(0) avant evening(2)
+  })
+
+  it("même moment mais usages DIFFÉRENTS → deux lignes distinctes (clé (usage,moment))", () => {
+    const live = [{ usage: "bolus" as const, moment: "evening" as const, value: 6 }, { usage: "basal" as const, moment: "evening" as const, value: 20 }]
+    const rows = diffFixedDoseSlots(live, [{ usage: "bolus", moment: "evening", value: 7 }, live[1]!])
+    expect(rows).toHaveLength(2)
+    expect(rows.find((r) => r.usage === "bolus")!.changed).toBe(true)
+    expect(rows.find((r) => r.usage === "basal")!.changed).toBe(false)
+  })
+
+  it("dose supprimée (clé live absente du proposé) → ligne removed", () => {
+    const rows = diffFixedDoseSlots(LIVE, [LIVE[0]!])
+    expect(rows.find((r) => r.removed)).toMatchObject({ usage: "basal", moment: "evening", proposedValue: null, liveValue: 20 })
+  })
+
+  it("hasStructuralChangeFixedDose : cardinalité ou clé live orpheline → true", () => {
+    expect(hasStructuralChangeFixedDose(LIVE, [LIVE[0]!])).toBe(true)
+    expect(hasStructuralChangeFixedDose(LIVE, [{ usage: "bolus", moment: "night", value: 6 }, LIVE[1]!])).toBe(true)
+    expect(hasStructuralChangeFixedDose(LIVE, [...LIVE])).toBe(false)
   })
 })
