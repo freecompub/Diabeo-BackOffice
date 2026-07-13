@@ -83,8 +83,11 @@ const styloBasalSlotsSchema = z.array(styloBasalSlotSchema)
 
 /**
  * Parse défensive d'un JSON `proposedSlots`/`baselineSlots` STYLO en `StyloBasalSlot[]` (fail-closed → `null`).
- * `basalRate` porte DEUX formes disjointes (pompe `startTime` vs stylo `kind`) : un jeu pompe ne parse jamais en
- * stylo (champ `kind` absent) — la détection de forme à la lecture route le bon diff (revue page, discriminateur UI).
+ * `basalRate` porte DEUX formes disjointes (pompe `startTime` vs stylo `kind`) : un jeu pompe NON vide ne parse
+ * jamais en stylo (champ `kind` absent) — la détection de forme à la lecture route le bon diff (revue page).
+ * ⚠️ **Tie-break du jeu VIDE** : `[]` parse dans les DEUX formes (aucun champ requis à valider). La branche stylo
+ * exige `length > 0` (`page.tsx`), donc un `[]` retombe déterministiquement sur la pompe. Non exploitable :
+ * `assertValidStyloBasalSet`/`assertValidPumpSlotSet` rejettent `emptySlotSet` à la création → jamais persisté.
  */
 function parseStyloSlots(raw: unknown): StyloBasalSlot[] | null {
   const parsed = styloBasalSlotsSchema.safeParse(raw)
@@ -316,15 +319,29 @@ export default async function PatientReviewPage({
       if (styloProposed && styloProposed.length > 0) {
         const baseline = p.baselineSlots == null ? null : parseStyloSlots(p.baselineSlots)
         const styloCasOpts = { keyOf: (s: StyloBasalSlot) => s.kind, valueOf: (s: StyloBasalSlot) => s.value }
+        // US-2662 (parité voie par-valeur + dose fixe groupée) — avertissement dose élevée NON bloquant, dérivé
+        // SERVEUR (bornes cliniques jamais côté client) : dose stylo proposée > `MDI_BASAL_WARN_U` (80 U totales,
+        // DT2 insulino-résistant / U300 / dégludec). Sans ce mapping, le badge livré en US-2662 disparaîtrait de
+        // la revue dès le passage du flag `ENGINE_GROUPED_STYLO` ON.
+        const rows = diffStyloBasalSlots(liveStylo, styloProposed).map((row) => ({
+          ...row,
+          highDoseWarning: row.proposedValue != null && row.proposedValue > CLINICAL_BOUNDS.MDI_BASAL_WARN_U,
+        }))
         return [
           {
             ...commonMeta,
             isPenBasal: true,
-            rows: diffStyloBasalSlots(liveStylo, styloProposed),
+            rows,
             baselineDrifted: !isBaselineUnchangedBy(baseline, liveStylo, styloCasOpts),
             structuralChange: hasStructuralChangeStylo(liveStylo, styloProposed),
           },
         ]
+      }
+      // Un `basalRate` non-pompe dont la forme STYLO est ILLISIBLE ne doit pas retomber sur le parse pompe (log
+      // « unparseable pump » trompeur) : on le signale explicitement ici, fail-closed (retiré de l'écran).
+      if (styloProposed === null && parsePumpSlots(p.proposedSlots) === null) {
+        console.warn(`[review] SlotSetProposal ${p.id} skipped — unparseable basalRate proposedSlots (ni pompe ni stylo)`)
+        return []
       }
     }
     // US-2663 (S3c) — basale POMPE : diff/CAS par `startTime` (temps EXACTS), unité U/h (PARAM_UNIT_KEY.basalRate).

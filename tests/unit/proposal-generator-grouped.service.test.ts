@@ -742,4 +742,64 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect(rationale[0]!.basalDoseKind).toBe("evening")
     expect(res.created).toBe(1)
   })
+
+  /**
+   * Config split. `fasting` (dose SOIR, garde nocturne) : à jeun `fastGl` + nadir nocturne `noctGl`.
+   * `dailyJournal` (dose MATIN) : dîners (pré-dîner `preGl`) + repas du matin (nadir de jour `dayNadGl`),
+   * SANS bolus de midi (pas de confondeur). Doses live soir 10 / matin 12.
+   */
+  function setupStyloSplit(opts: { fastGl: number; noctGl: number; preGl: number; dayNadGl: number }) {
+    mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
+    getSettings.mockResolvedValue({
+      carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
+      basalConfiguration: { configType: "split_injection", dailyDose: null, morningDose: 12, eveningDose: 10 },
+      glucoseTargets: [{ targetGlucose: 110 }], // cible ~1,1 g/L
+      basalInsulin: undefined,
+    } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
+    fastingTrend.mockResolvedValue(
+      Array.from({ length: 4 }, (_, i) => ({ fastingMgdl: opts.fastGl * 100, nocturnalNadirMgdl: opts.noctGl * 100, dayIso: isoDaysAgo(i) })) as never,
+    )
+    dailyJournal.mockResolvedValue([
+      ...Array.from({ length: 4 }, (_, i) => ({ moment: "evening", preMgdl: opts.preGl * 100, nadirMgdl: 120, bolus: 0, dayIso: isoDaysAgo(i) })),
+      ...Array.from({ length: 4 }, (_, i) => ({ moment: "morning", preMgdl: 100, nadirMgdl: opts.dayNadGl * 100, bolus: 0, dayIso: isoDaysAgo(i) })),
+    ] as never)
+    createSet.mockResolvedValue({ id: "sp3" } as never)
+    getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
+  }
+
+  it("flag ON — split : dé-escalade SOIR (hypo) prioritaire sur titration MATIN → SOIR gagnante émise, MATIN sans flag", async () => {
+    process.env.ENGINE_GROUPED_STYLO = "true"
+    // Soir : à jeun en bande (1,1) + nadirs nocturnes hypo récurrente (0,55) → dé-escalade soir.
+    // Matin : pré-dîner HAUT (1,7) + nadirs de jour sûrs (1,2) → titration matin (hausse). Priorité sécurité → soir.
+    setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.7, dayNadGl: 1.2 })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    const disp = call![0].proposedSlots as { kind: string; value: number }[]
+    expect(disp.find((s) => s.kind === "evening")!.value).toBeLessThan(10) // dé-escalade soir gagnante
+    expect(disp.find((s) => s.kind === "morning")!.value).toBe(12) // matin (titration perdante) inchangé
+    const rationale = call![0].rationale as { basalDoseKind: string }[]
+    expect(rationale).toHaveLength(1)
+    expect(rationale[0]!.basalDoseKind).toBe("evening")
+    // La perdante MATIN est une TITRATION (pas une dé-escalade) → aucun flag levé (défère au run suivant).
+    expect(raiseFlag).not.toHaveBeenCalled()
+    expect(res.created).toBe(1)
+  })
+
+  it("flag ON — split : DEUX dé-escalades → SOIR gagnante émise + MATIN perdante lève TOUJOURS son flag (fail-loud préservé)", async () => {
+    process.env.ENGINE_GROUPED_STYLO = "true"
+    // Soir : nadirs nocturnes hypo récurrente (0,55) → dé-escalade. Matin : pré-dîner en bande (1,1) +
+    // nadirs de jour hypo récurrente (0,55) → dé-escalade. Gagnante = soir (priorité à égalité) ; perdante = matin.
+    setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.1, dayNadGl: 0.55 })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    expect((call![0].rationale as { basalDoseKind: string }[])[0]!.basalDoseKind).toBe("evening")
+    // Fail-loud préservé en mode GROUPÉ : la dé-escalade PERDANTE (matin) lève son flag de jour (US-2661).
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
+    expect(res.created).toBe(1)
+  })
 })
