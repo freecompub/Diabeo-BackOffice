@@ -38,6 +38,7 @@ import { buildTreatmentView } from "@/lib/insulin/treatment-view"
 import { isfIcrSlotSchema, pumpBasalSlotSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { isBaselineUnchanged, isBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
 import { diffSlots, diffPumpSlots, hasStructuralChange, hasStructuralChangePump } from "@/lib/insulin/slot-diff"
+import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { ReviewClient, type ReviewData, type ReviewProposalItem, type ReviewGroupedItem } from "./ReviewClient"
 
@@ -231,13 +232,7 @@ export default async function PatientReviewPage({
   // pompe (un patient stylo a aussi une `basalConfiguration` mais pas de créneaux pompe). Vide sinon.
   const basalConfig = insulinSettings?.basalConfiguration
   const livePump: PumpBasalSlot[] =
-    basalConfig?.configType === "pump"
-      ? (basalConfig.pumpSlots ?? []).map((s) => ({
-          startTime: s.startTime.toISOString().slice(11, 16),
-          endTime: s.endTime.toISOString().slice(11, 16),
-          rate: Number(s.rate),
-        }))
-      : []
+    basalConfig?.configType === "pump" ? (basalConfig.pumpSlots ?? []).map(pumpRowToGroupedSlot) : []
   const groupedProposals: ReviewGroupedItem[] = groupedPendingRaw.flatMap((p) => {
     const commonMeta = {
       id: p.id,

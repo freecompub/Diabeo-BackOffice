@@ -49,6 +49,7 @@ import type { AuditContext } from "@/lib/services/patient.service"
 import { getEnvBoolean } from "@/lib/env"
 import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
 import type { IsfIcrSlot, PumpBasalSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
 const ANALYSIS_PERIOD = "14d"
@@ -127,9 +128,12 @@ async function lastAcceptedChangeAt(
     // US-2663 (S3a, garde-fou #4 — re-source anti-cliquet) : une acceptation GROUPÉE (`SlotSetProposal`,
     // ISF/ICR) remplace TOUT le jeu de créneaux du paramètre (`replaceSlotSet`) → elle constitue un
     // « dernier changement accepté » pour CHAQUE créneau, au même titre qu'une acceptation par-valeur. Sans
-    // ce terme, le cooldown du moteur ne verrait pas une édition groupée acceptée (patient ISF/ICR aujourd'hui,
-    // moteur groupé en S3+) et pourrait empiler une baisse juste après. Pas de `slotWhere` : le modèle groupé
-    // n'a pas de granularité créneau (une acceptation couvre tous les créneaux). Hors ISF/ICR → aucune ligne.
+    // ce terme, le cooldown du moteur ne verrait pas une édition groupée acceptée et pourrait empiler une baisse
+    // juste après. Pas de `slotWhere` : le modèle groupé n'a pas de granularité créneau (une acceptation couvre
+    // tous les créneaux). ⚠️ US-2663 (S3c) — la requête est GÉNÉRIQUE sur `parameterType` : depuis que le moteur
+    // émet du groupé `basalRate` (POMPE, flag), une acceptation groupée basale est aussi captée comme « dernier
+    // changement accepté » — l'anti-cliquet ne régresse pas au flip du flag (l'ancien « hors ISF/ICR → aucune
+    // ligne » n'est plus vrai).
     prisma.slotSetProposal.findFirst({
       where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null } },
       orderBy: { reviewedAt: "desc" },
@@ -331,6 +335,9 @@ const EXPECTED_SKIP = new Set([
 const EXPECTED_SKIP_GROUPED = new Set([
   "duplicatePendingProposal", "valueOutOfBounds", "nonInsulinNoDose", "invalidSlotSet",
   "emptySlotSet", "zeroDurationSlot", "slotOverlap", "slotGap", "patientNotFound",
+  // US-2663 (S3c, revue) — la validation POMPE (`assertValidPumpSlotSet`) peut lever `rateNotDeliverable`
+  // (débit non multiple de l'incrément 0,05 U/h) : rejet clinique légitime d'un run, pas un défaut.
+  "rateNotDeliverable",
 ])
 
 /** US-2663 (S3b-1) — un candidat moteur ISF/ICR apparié à son créneau (base T0 de l'analyse). */
@@ -571,12 +578,7 @@ async function emitGroupedPumpBasal(
     select: { id: true, startTime: true, endTime: true, rate: true },
   })
   if (rows.length === 0) return { emitted: false }
-  const liveSlots: LivePumpSlot[] = rows.map((s) => ({
-    id: s.id,
-    startTime: s.startTime.toISOString().slice(11, 16),
-    endTime: s.endTime.toISOString().slice(11, 16),
-    rate: Number(s.rate),
-  }))
+  const liveSlots: LivePumpSlot[] = rows.map((s) => ({ id: s.id, ...pumpRowToGroupedSlot(s) }))
   const { disposition, rationale, directionMismatches } = assembleGroupedPumpDisposition(liveSlots, candidates, analysisPeriodDays)
   if (directionMismatches > 0) {
     logger.error("proposal-generator", "grouped pump candidate direction mismatch",

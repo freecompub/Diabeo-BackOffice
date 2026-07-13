@@ -15,6 +15,7 @@ import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { assertBaselineUnchanged, assertBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
 import type { IsfIcrSlot, PumpBasalSlot } from "@/lib/insulin/grouped-proposal"
+import { pumpTimeToHhmm, pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -122,9 +123,6 @@ export function assertValidPumpSlotSet(
   if (coverage.hasGap) throw new Error("slotGap")
   return coverage
 }
-
-/** `PumpBasalSlot.startTime`/`endTime` (Time stocké `1970-01-01THH:MM:00Z`) → `"HH:MM"` (audit, sans PHI). */
-const pumpTimeToHhmm = (t: Date): string => t.toISOString().slice(11, 16)
 
 /**
  * US-2655 — Fin commune du remplacement de groupe (ISF/ICR), dans la transaction :
@@ -544,7 +542,7 @@ export const insulinTherapyService = {
       if (cas !== undefined) {
         assertBaselineUnchangedBy(
           cas.baseline,
-          before.map((s) => ({ startTime: pumpTimeToHhmm(s.startTime), endTime: pumpTimeToHhmm(s.endTime), rate: Number(s.rate) })),
+          before.map(pumpRowToGroupedSlot),
           { keyOf: (s) => s.startTime, valueOf: (s) => s.rate, boundEq: (l, b) => l.endTime === b.endTime },
         )
       }

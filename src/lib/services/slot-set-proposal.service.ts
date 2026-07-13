@@ -27,6 +27,7 @@ import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
 import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
@@ -50,9 +51,6 @@ export const REPLACE_KEY: Record<"insulinSensitivityFactor" | "insulinToCarbRati
   insulinSensitivityFactor: "isf",
   insulinToCarbRatio: "icr",
 }
-
-/** `PumpBasalSlot.startTime`/`endTime` (colonne Time `1970-01-01THH:MM:00Z`) → `"HH:MM"` (forme groupée). */
-const pumpTimeToHhmm = (t: Date): string => t.toISOString().slice(11, 16)
 
 /** Garde de type : un créneau groupé est-il de forme POMPE (`startTime`) plutôt qu'ISF/ICR (`startHour`) ? */
 const isPumpSlot = (s: ProposedSlot): s is PumpBasalSlot => "startTime" in s
@@ -128,11 +126,7 @@ async function captureBaselineSlots(patientId: number, parameterType: SlotSetPar
     orderBy: { startTime: "asc" },
     select: { startTime: true, endTime: true, rate: true },
   })
-  return pumpRows.map((s) => ({
-    startTime: pumpTimeToHhmm(s.startTime),
-    endTime: pumpTimeToHhmm(s.endTime),
-    rate: Number(s.rate),
-  }))
+  return pumpRows.map(pumpRowToGroupedSlot)
 }
 
 export const slotSetProposalService = {
@@ -275,6 +269,7 @@ export const slotSetProposalService = {
    * @throws baselineMoved (US-2663 S1 — la base a dérivé depuis la génération : CAS d'ensemble rejeté, régénérer)
    * @throws baselineMissing (US-2663 S1 — proposition legacy sans snapshot de base : non certifiable, fail-closed)
    * @throws unsupportedSlotSetParam | invalidSlotSet | settingsNotFound | valueOutOfBounds | slotOverlap | slotGap | zeroDurationSlot | emptySlotSet
+   * @throws slotsBusy | basalConfigNotFound | basalConfigNotPump | rateNotDeliverable (US-2663 S3c — voie POMPE via `replacePumpSlotSet` : verrou occupé, config basale absente, patient devenu stylo, débit non délivrable)
    */
   async acceptSetProposal(id: string, patientId: number, reviewerUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
