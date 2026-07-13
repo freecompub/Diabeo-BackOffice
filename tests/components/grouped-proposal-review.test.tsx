@@ -19,6 +19,7 @@ vi.mock("next-intl", async () => (await import("../helpers/nextIntlMock")).makeN
 
 import { GroupedProposalReview, type ReviewGroupedViewItem } from "@/components/diabeo/patient/GroupedProposalReview"
 import type { SlotDiffRow } from "@/lib/insulin/slot-diff"
+import type { SlotRationale } from "@/lib/insulin/grouped-proposal"
 
 const row = (over: Partial<SlotDiffRow> = {}): SlotDiffRow => ({
   startHour: 0,
@@ -30,6 +31,14 @@ const row = (over: Partial<SlotDiffRow> = {}): SlotDiffRow => ({
   ...over,
 })
 
+const rationale = (over: Partial<SlotRationale> = {}): SlotRationale => ({
+  startHour: 8,
+  reason: "isfTooLow",
+  confidence: "high",
+  supportingEvents: 12,
+  ...over,
+})
+
 const item = (over: Partial<ReviewGroupedViewItem> = {}): ReviewGroupedViewItem => ({
   id: "sp1",
   parameterType: "insulinSensitivityFactor",
@@ -37,6 +46,8 @@ const item = (over: Partial<ReviewGroupedViewItem> = {}): ReviewGroupedViewItem 
   rows: [row(), row({ startHour: 8, endHour: 22, proposedValue: 0.55, liveValue: 0.45, changed: true })],
   baselineDrifted: false,
   structuralChange: false,
+  rationale: null,
+  coexistsWith: null,
   createdAt: new Date().toISOString(),
   ...over,
 })
@@ -119,5 +130,88 @@ describe("GroupedProposalReview", () => {
     expect(removedRow.className).toContain("bg-warning-bg")
     // La valeur live (0,4) est visible ; le côté proposé affiche « — ».
     expect(removedRow.textContent).toMatch(/0,4/)
+  })
+
+  // ─────────────────────────── US-2663 (S3b-0b) — rationale MOTEUR + coexistence ───────────────────────────
+
+  it("item ALGORITHME : le créneau changé porte le motif, la confiance et le volume d'observations", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rationale: [rationale({ startHour: 8, reason: "isfTooLow", confidence: "high", supportingEvents: 12 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // Libellé `reason` mappé (i18n `review.reasonIsfTooLow`) — factuel, non affirmatif.
+    expect(screen.getByText("Sensibilité insuffisante (à renforcer)")).toBeTruthy()
+    expect(screen.getByText("Élevée")).toBeTruthy()
+    expect(screen.getByText("12 obs.")).toBeTruthy()
+  })
+
+  it("item ALGORITHME : le créneau changé porte aussi la direction de risque (côte à côte avec le motif)", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rows: [row({ startHour: 8, endHour: 22, proposedValue: 0.4, liveValue: 0.5, changed: true })],
+      rationale: [rationale({ startHour: 8 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // ISF baisse (0.5 → 0.4) = plus d'insuline par correction ⇒ risque hypo (cf. `deriveRiskDirection`).
+    expect(screen.getByText("Risque hypo")).toBeTruthy()
+    expect(screen.getByText("Sensibilité insuffisante (à renforcer)")).toBeTruthy()
+  })
+
+  it("item ALGORITHME : la glycémie moyenne observée (`averageObservedValue`) est affichée (revue medical)", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rows: [row({ startHour: 8, endHour: 22, proposedValue: 0.4, liveValue: 0.5, changed: true })],
+      rationale: [rationale({ startHour: 8, averageObservedValue: 0.6 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // Objective la dé-escalade de sécurité : corrections atterrissant en moyenne à 0,60 g/L.
+    expect(screen.getByText(/0,6.*g\/L|0\.6.*g\/L/)).toBeTruthy()
+  })
+
+  it("item ALGORITHME : rationale INCOMPLÈTE (créneau changé sans entrée appariée) → aucun motif, pas de crash", () => {
+    const algoItem = item({
+      source: "algorithm",
+      // Baisse ISF (0.5 → 0.4) = risque hypo (déterministe). rationale pour un AUTRE créneau (0) → non appariée.
+      rows: [row({ startHour: 8, endHour: 22, proposedValue: 0.4, liveValue: 0.5, changed: true })],
+      rationale: [rationale({ startHour: 0 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // Le motif n'est PAS affiché pour le créneau 8 (pas d'entrée), mais le rendu ne plante pas ; le risque reste.
+    expect(screen.queryByText("Sensibilité insuffisante (à renforcer)")).toBeNull()
+    expect(screen.getByText("Risque hypo")).toBeTruthy()
+  })
+
+  it("item ALGORITHME : `confidence: null` → aucun badge de confiance (motif + volume conservés)", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rationale: [rationale({ startHour: 8, confidence: null, supportingEvents: 7 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect(screen.queryByText("Faible")).toBeNull()
+    expect(screen.queryByText("Moyenne")).toBeNull()
+    expect(screen.queryByText("Élevée")).toBeNull()
+    expect(screen.getByText("7 obs.")).toBeTruthy()
+  })
+
+  it("item HUMAIN (source ≠ algorithm) : AUCUNE rationale affichée, même sur un créneau changé", () => {
+    const humanItem = item({ source: "patient", rationale: null })
+    render(<GroupedProposalReview items={[humanItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect(screen.queryByText(/obs\./)).toBeNull()
+    expect(screen.queryByText("Faible")).toBeNull()
+    expect(screen.queryByText("Moyenne")).toBeNull()
+    expect(screen.queryByText("Élevée")).toBeNull()
+  })
+
+  it("coexistsWith non-null → bandeau `role=status` mentionnant la provenance de la proposition sœur", () => {
+    render(<GroupedProposalReview items={[item({ coexistsWith: "algorithm" })]} canDecide busyId={null} onDecide={vi.fn()} />)
+    const banner = screen.getByRole("status")
+    expect(banner.textContent).toMatch(/autre proposition/i)
+    expect(banner.textContent).toMatch(/Algorithme/)
+  })
+
+  it("coexistsWith null → aucun bandeau `role=status`", () => {
+    render(<GroupedProposalReview items={[item({ coexistsWith: null })]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect(screen.queryByRole("status")).toBeNull()
   })
 })

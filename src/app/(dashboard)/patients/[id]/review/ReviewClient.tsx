@@ -15,6 +15,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
+import { useRouter } from "next/navigation"
 import { useLocale, useTranslations } from "next-intl"
 import type { AdjustableParameter, ProposalSource } from "@prisma/client"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
@@ -31,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { ProposalList } from "@/components/diabeo/patient/ProposalList"
+import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { GroupedProposalReview, type ReviewGroupedViewItem } from "@/components/diabeo/patient/GroupedProposalReview"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -416,6 +418,7 @@ const flagLabelKey = (type: string) => `flag${type.charAt(0).toUpperCase()}${typ
 function DecisionsStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
   const tFlags = useTranslations("reviewFlags")
+  const router = useRouter()
 
   const [items, setItems] = useState<ReviewProposalItem[]>(data.proposals)
   const [groupedItems, setGroupedItems] = useState<ReviewGroupedItem[]>(data.groupedProposals)
@@ -453,7 +456,19 @@ function DecisionsStep({ data }: { data: ReviewData }) {
         body: "{}",
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setGroupedItems((prev) => prev.filter((p) => p.id !== id))
+      // US-2663 (S3b-0b, revue CR) — retirer l'item décidé PUIS recalculer la coexistence : la proposition
+      // SŒUR restante n'a plus de coexistence → son bandeau « une autre proposition existe » doit disparaître
+      // (sans attendre un reload serveur). `deriveCoexistsWith` est un helper PUR, réutilisable côté client.
+      setGroupedItems((prev) => {
+        const next = prev.filter((p) => p.id !== id)
+        const coex = deriveCoexistsWith(next)
+        return next.map((p) => ({ ...p, coexistsWith: coex.get(p.id) ?? null }))
+      })
+      // US-2663 (S3b-0b, revue LOW-2) — accepter/rejeter une proposition GROUPÉE modifie la config (apply) →
+      // la proposition SŒUR coexistante devient périmée (`baselineDrifted`). Réconcilier l'état SERVEUR (le
+      // diff/`baselineDrifted` sont pré-calculés serveur) : la sœur ressort avec Accepter désactivé, sans
+      // attendre un 409 à la tentative. Le retrait optimiste ci-dessus garde l'UX instantanée entre-temps.
+      router.refresh()
     } catch {
       setError(t("decisionError"))
     } finally {

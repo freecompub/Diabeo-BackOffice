@@ -15,6 +15,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react"
 
 vi.mock("next-intl", async () => (await import("../helpers/nextIntlMock")).makeNextIntlMock())
+// US-2663 (S3b-0b) — `decideGrouped` appelle `router.refresh()` pour réconcilier la sœur coexistante.
+const { refreshMock } = vi.hoisted(() => ({ refreshMock: vi.fn() }))
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: refreshMock }) }))
 
 // Tabs base-ui → rend TOUT le contenu (toutes les étapes visibles d'un coup).
 vi.mock("@/components/ui/tabs", () => ({
@@ -259,6 +262,8 @@ describe("ReviewClient", () => {
           ],
           baselineDrifted: false,
           structuralChange: false,
+          rationale: null,
+          coexistsWith: null,
           createdAt: "2026-06-15T00:00:00.000Z",
         },
       ],
@@ -274,6 +279,8 @@ describe("ReviewClient", () => {
         expect.objectContaining({ method: "PATCH" }),
       ),
     )
+    // US-2663 (S3b-0b, LOW-2) — réconciliation serveur post-décision (la sœur coexistante devient périmée).
+    await waitFor(() => expect(refreshMock).toHaveBeenCalled())
   })
 
   it("aucune proposition (par-valeur ET groupée) → état vide unique (« Aucune proposition en attente »)", () => {

@@ -20,12 +20,22 @@
  * blocage réel est côté serveur (`assertBaselineUnchanged`, 409 `baselineMoved`/`baselineMissing` à
  * l'acceptation, cf. `PATCH /api/slot-set-proposals/:id/accept`). Ce bandeau prévient le médecin AVANT qu'il
  * ne tente d'accepter une proposition qui sera de toute façon rejetée par le serveur.
+ *
+ * US-2663 (S3b-0b) — RATIONALE MOTEUR + indice de COEXISTENCE :
+ *  - Chaque créneau CHANGÉ (non supprimé) d'un item `source: "algorithm"` est annoté de sa rationale
+ *    (motif `AdjustmentReason`, confiance, volume d'observations — colonne « Motif ») et de la DIRECTION DE
+ *    RISQUE (`deriveRiskDirection`, côte à côte avec le motif). Une proposition HUMAINE (`source ≠ algorithm`)
+ *    n'a jamais de rationale (`item.rationale === null`) ; seule la direction de risque peut y être affichée.
+ *  - `coexistsWith` (non-null) affiche un bandeau `role="status"` : une autre proposition `pending` existe sur
+ *    le même paramètre, d'une classe d'origine différente (décision produit D2) — le médecin arbitre.
  */
 import { useTranslations, useLocale } from "next-intl"
-import type { AdjustableParameter, ProposalSource } from "@prisma/client"
-import { AlertTriangle } from "lucide-react"
+import type { AdjustableParameter, AdjustmentReason, ProposalSource } from "@prisma/client"
+import { AlertTriangle, Info } from "lucide-react"
 import { bcp47 } from "@/i18n/config"
 import type { SlotDiffRow } from "@/lib/insulin/slot-diff"
+import type { SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { deriveRiskDirection } from "@/lib/insulin/risk-direction"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
@@ -49,7 +59,42 @@ export type ReviewGroupedViewItem = {
   baselineDrifted: boolean
   /** `true` = cardinalité/bornes différentes entre live et proposé (créneau ajouté/supprimé/déplacé). */
   structuralChange: boolean
+  /** US-2663 (S3b-0b) — rationale MOTEUR par créneau changé, appariée par `startHour`. `null` si `source ≠
+   *  algorithm` (propositions humaines) ou JSON illisible (parse défensive serveur, fail-closed). */
+  rationale: SlotRationale[] | null
+  /** US-2663 (S3b-0b) — provenance d'une proposition SŒUR `pending` sur le même paramètre (classe d'origine
+   *  différente, D2). `null` = aucune coexistence. */
+  coexistsWith: ProposalSource | null
   createdAt: string
+}
+
+/** `AdjustmentReason` → clé i18n `review.reason<X>`. Exhaustif (tous les leviers) — un ajout à l'enum Prisma
+ *  sans entrée ici casse la compilation (`Record` total), pas un fallback silencieux à l'affichage. */
+const REASON_LABEL_KEY: Record<AdjustmentReason, string> = {
+  basalTooLow: "reasonBasalTooLow",
+  basalTooHigh: "reasonBasalTooHigh",
+  basalCorrect: "reasonBasalCorrect",
+  isfTooLow: "reasonIsfTooLow",
+  isfTooHigh: "reasonIsfTooHigh",
+  isfCorrect: "reasonIsfCorrect",
+  icrTooLow: "reasonIcrTooLow",
+  icrTooHigh: "reasonIcrTooHigh",
+  icrCorrect: "reasonIcrCorrect",
+  fixedDoseTooLow: "reasonFixedDoseTooLow",
+  fixedDoseTooHigh: "reasonFixedDoseTooHigh",
+  fixedDoseCorrect: "reasonFixedDoseCorrect",
+  insufficientData: "reasonInsufficientData",
+  patientRequested: "reasonPatientRequested",
+  manualAdjustment: "reasonManualAdjustment",
+}
+
+/** Confiance moteur (`SlotRationale.confidence`) → clé i18n `review.confidence<X>`. */
+// US-2663 (S3b-0b, revue CR) — typé sur la confiance NON-NULL de `SlotRationale` (dérivé, pas réécrit) :
+// une évolution du schéma de confiance casserait la compilation ici, comme `REASON_LABEL_KEY` sur l'enum Prisma.
+const CONFIDENCE_LABEL_KEY: Record<NonNullable<SlotRationale["confidence"]>, string> = {
+  low: "confidenceLow",
+  medium: "confidenceMedium",
+  high: "confidenceHigh",
 }
 
 /** parameterType → clé i18n `review.param<X>` — mêmes clés que `ProposalList` (libellés partagés). */
@@ -95,6 +140,9 @@ export function GroupedProposalReview({
       {items.map((item) => {
         const unit = tUnits(PARAM_UNIT_KEY[item.parameterType])
         const paramLabel = t(PARAM_LABEL_KEY[item.parameterType])
+        // US-2663 (S3b-0b) — rationale MOTEUR appariée au créneau par `startHour` (`null` = propositions
+        // humaines, cf. `createSetProposal`).
+        const rationaleByHour = new Map((item.rationale ?? []).map((r) => [r.startHour, r]))
         return (
           <li key={item.id} className="space-y-2 rounded-md border border-border bg-card p-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -119,6 +167,16 @@ export function GroupedProposalReview({
               </p>
             )}
 
+            {item.coexistsWith != null && (
+              <p
+                role="status"
+                className="flex items-start gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs font-medium text-muted-foreground"
+              >
+                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                {t("groupedCoexists", { source: tAdj(`source.${item.coexistsWith}`) })}
+              </p>
+            )}
+
             <Table>
               <TableCaption className="sr-only">
                 {t("groupedTableCaption", { param: paramLabel })}
@@ -128,6 +186,7 @@ export function GroupedProposalReview({
                   <TableHead scope="col">{t("groupedColHour")}</TableHead>
                   <TableHead scope="col">{t("groupedColLive")}</TableHead>
                   <TableHead scope="col">{t("groupedColProposed")}</TableHead>
+                  <TableHead scope="col">{t("groupedColReason")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -147,6 +206,17 @@ export function GroupedProposalReview({
                       : row.changed
                         ? t("groupedRowChangedAria", { from: liveText, to: `${fmt(row.proposedValue ?? 0)} ${unit}` })
                         : undefined
+                  // US-2663 (S3b-0b) — rationale + risque UNIQUEMENT sur un créneau CHANGÉ non supprimé (un
+                  // créneau supprimé/inchangé n'a pas de « nouvelle » dose à justifier). Rationale = `null` pour
+                  // une proposition humaine (`item.rationale === null`, cf. `createSetProposal`). Risque =
+                  // direction générique (toute provenance), current = `liveValue` (fallback `proposedValue`
+                  // pour un créneau NOUVEAU, sans base de comparaison → `none`).
+                  const annotated = row.changed && !row.removed
+                  const rationale = annotated ? (rationaleByHour.get(row.startHour) ?? null) : null
+                  const risk =
+                    annotated && row.proposedValue !== null
+                      ? deriveRiskDirection(item.parameterType, row.liveValue ?? row.proposedValue, row.proposedValue)
+                      : "none"
                   return (
                     <TableRow
                       key={`${row.startHour}-${row.endHour}-${row.removed ? "rm" : "pr"}`}
@@ -163,6 +233,45 @@ export function GroupedProposalReview({
                           {row.removed ? "—" : `${fmt(row.proposedValue ?? 0)} ${unit}`}
                           {row.changed && <span className="sr-only">({changeKind})</span>}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {(rationale !== null || risk !== "none") && (
+                          <span className="flex flex-wrap items-center gap-1 text-xs">
+                            {rationale && (
+                              <>
+                                <span className="text-foreground">{t(REASON_LABEL_KEY[rationale.reason])}</span>
+                                {rationale.confidence && (
+                                  <Badge variant="outline" className="text-muted-foreground">
+                                    {t(CONFIDENCE_LABEL_KEY[rationale.confidence])}
+                                  </Badge>
+                                )}
+                                {rationale.supportingEvents != null && (
+                                  <span className="text-muted-foreground">
+                                    {t("rationaleVolume", { count: rationale.supportingEvents })}
+                                  </span>
+                                )}
+                                {/* US-2663 (S3b-0b, revue medical MEDIUM) — glycémie moyenne OBSERVÉE ayant motivé
+                                    la reco : objective une dé-escalade de sécurité (ex. corrections atterrissant en
+                                    moyenne à 0,60 g/L = preuve d'hypo). Valeur g/L (moteur ISF/ICR). */}
+                                {rationale.averageObservedValue != null && (
+                                  <span className="text-muted-foreground tabular-nums">
+                                    {t("rationaleAvgGlucose", { value: fmt(rationale.averageObservedValue) })}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                            {risk !== "none" && (
+                              // Contraste (revue a11y 1.4.3) : `text-warning-fg` (≥ 4.5:1 sur `bg-warning-bg` d'une
+                              // ligne changée), pas `text-feedback-warning` (~2:1). Bordure ambre conservée.
+                              <Badge
+                                variant="outline"
+                                className={risk === "hypo" ? "border-feedback-warning text-warning-fg" : "text-muted-foreground"}
+                              >
+                                {tAdj(`risk.${risk}`)}
+                              </Badge>
+                            )}
+                          </span>
+                        )}
                       </TableCell>
                     </TableRow>
                   )
