@@ -35,13 +35,17 @@ import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
 import { resolveTargetRangeMgdl } from "../overview-targets"
 import { buildGlycemiaView } from "../glycemia-view"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
-import { isfIcrSlotSchema, type IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
+import { isfIcrSlotSchema, slotRationaleSchema, type IsfIcrSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { isBaselineUnchanged } from "@/lib/insulin/slot-baseline-cas"
 import { diffSlots, hasStructuralChange } from "@/lib/insulin/slot-diff"
+import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { ReviewClient, type ReviewData, type ReviewProposalItem, type ReviewGroupedItem } from "./ReviewClient"
 
 /** Forme d'un jeu de créneaux ISF/ICR (JSON `proposedSlots`/`baselineSlots`) — parse défensive à la lecture. */
 const isfIcrSlotsSchema = z.array(isfIcrSlotSchema)
+
+/** Forme du JSON `rationale` (rationale MOTEUR par créneau changé) — parse défensive à la lecture (S3b-0b). */
+const slotRationaleListSchema = z.array(slotRationaleSchema)
 
 /**
  * Parse défensive d'un JSON `proposedSlots`/`baselineSlots` en `IsfIcrSlot[]`. Les deux colonnes sont écrites
@@ -52,6 +56,17 @@ const isfIcrSlotsSchema = z.array(isfIcrSlotSchema)
  */
 function parseIsfIcrSlots(raw: unknown): IsfIcrSlot[] | null {
   const parsed = isfIcrSlotsSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+/**
+ * Parse défensive du JSON `rationale` (US-2663 S3b-0b) en `SlotRationale[]`. `null` en entrée (proposition
+ * humaine, ou legacy pré-S3b-0a) comme en sortie (JSON illisible) — fail-closed sur l'affichage : la revue
+ * n'affiche jamais un motif construit sur une donnée corrompue, elle omet simplement l'annotation.
+ */
+function parseRationale(raw: unknown): SlotRationale[] | null {
+  if (raw == null) return null
+  const parsed = slotRationaleListSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
 
@@ -186,6 +201,12 @@ export default async function PatientReviewPage({
   // clinicien = DOCTOR/NURSE ; DÉCISION = DOCTOR/ADMIN via `canDecide`). Diff (base LIVE vs proposé) + dérive
   // de base (vs `baselineSlots`) calculés SERVEUR : le client ne fait aucun calcul clinique, seulement le rendu.
   const groupedPendingRaw = await slotSetProposalService.listPendingForReview(patientId, userId, ctx)
+  // US-2663 (S3b-0b) — indice de COEXISTENCE (D2) : au plus 1 proposition ALGORITHME + 1 proposition HUMAINE
+  // `pending` par paramètre peuvent coexister (supersession par CLASSE D'ORIGINE, cf. `createSetProposal`).
+  // Calculé sur la liste RAW (avant filtrage ISF/ICR) — pur, aucun calcul clinique.
+  const coexistsWithById = deriveCoexistsWith(
+    groupedPendingRaw.map((p) => ({ id: p.id, parameterType: p.parameterType, source: p.source })),
+  )
   const liveIsf: IsfIcrSlot[] = (insulinSettings?.sensitivityFactors ?? []).map((s) => ({
     startHour: s.startHour,
     endHour: s.endHour,
@@ -219,6 +240,9 @@ export default async function PatientReviewPage({
         rows: diffSlots(live, proposed),
         baselineDrifted: !isBaselineUnchanged(baseline, live),
         structuralChange: hasStructuralChange(live, proposed),
+        // US-2663 (S3b-0b) — rationale MOTEUR par créneau changé (non-null uniquement si `source: "algorithm"`).
+        rationale: parseRationale(p.rationale),
+        coexistsWith: coexistsWithById.get(p.id) ?? null,
         createdAt: p.createdAt.toISOString(),
       },
     ]

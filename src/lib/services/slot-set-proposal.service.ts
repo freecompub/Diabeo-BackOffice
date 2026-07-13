@@ -345,13 +345,19 @@ export const slotSetProposalService = {
    * soignant lit déjà en live, jamais exposée côté patient (la liste patient garde l'`omit`).
    *
    * Audite le READ (les créneaux sont une donnée de config insuline — donnée de santé). Patient soft-deleted exclu.
+   *
+   * US-2663 (S3b-0b) — inclut aussi `rationale` (JSON, rationale MOTEUR par créneau changé, non-null
+   * uniquement si `source: "algorithm"`) : la revue affiche le motif/la confiance/le volume d'observations
+   * MOTEUR à côté du diff, pour decision-support clinicien (jamais affichée côté patient).
    * @param auditUserId - PS effectuant la lecture (piste d'audit HDS).
    */
   async listPendingForReview(patientId: number, auditUserId: number, ctx?: AuditContext) {
     const proposals = await prisma.slotSetProposal.findMany({
       where: { patientId, status: "pending", patient: { deletedAt: null } },
       orderBy: { createdAt: "desc" },
-      select: { id: true, parameterType: true, source: true, proposedSlots: true, baselineSlots: true, createdAt: true },
+      // US-2663 (S3b-0b) — `rationale` inclus : rationale MOTEUR par créneau changé (source=algorithm
+      // uniquement, cf. `grouped-proposal.ts`), affichée à la revue médecin (decision-support + traçabilité HDS).
+      select: { id: true, parameterType: true, source: true, proposedSlots: true, baselineSlots: true, rationale: true, createdAt: true },
     })
     await auditService.log({
       userId: auditUserId,

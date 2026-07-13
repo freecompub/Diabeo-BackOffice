@@ -127,6 +127,23 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
 - **S3 — Moteur émet du groupé** : `proposal-generator` assemble la disposition + `createSetProposal(source=algorithm)`
   au lieu de `createEngineProposal` ; logique de décision **inchangée** (analyseurs/matrices/hold zone/gating
   réutilisés — plomberie, pas clinique). Interne, feature-flaggable, réversible.
+  - **S3a — Re-source de l'anti-cliquet** (referme le constat 3, garde-fou #4) ✅ **LIVRÉ** (#739) : les
+    acceptations GROUPÉES alimentent désormais `lastAcceptedChangeAt`/`deescalationTiming` au même titre que
+    l'acceptation par-valeur — le cooldown anti-empilement (US-2653/2662) ne se défait plus silencieusement
+    quand une `SlotSetProposal` est acceptée.
+  - **S3b-0a — Fondation bascule (D2 + rationale MOTEUR)** ✅ **LIVRÉ** (#740) : supersession groupée
+    raffinée **par CLASSE D'ORIGINE** (D2 — humain supersède humain, algo supersède algo ; moteur et humain
+    **coexistent** sur le même paramètre, cf. catalogue §6). Colonne `SlotSetProposal.rationale` (JSONB,
+    `SlotRationale[]`) **requise** si `source: "algorithm"` — decision-support + traçabilité HDS. Affichage
+    différé à S3b-0b.
+  - **S3b-0b — RATIONALE + indice de COEXISTENCE en revue médecin** ✅ **LIVRÉ** : `GroupedProposalReview`
+    affiche, sur chaque créneau CHANGÉ non supprimé d'un item `source: algorithm`, le motif (`reason` i18n,
+    exhaustif sur `AdjustmentReason`), la confiance et le volume d'observations — **côte à côte** avec la
+    direction de risque (`deriveRiskDirection`, toute provenance). Une proposition HUMAINE n'a jamais de
+    rationale. Bandeau `role="status"` si une coexistence D2 existe (`deriveCoexistsWith`,
+    `src/lib/insulin/proposal-coexistence.ts`, pur, calculé serveur dans `page.tsx`). `listPendingForReview`
+    expose `rationale` (déjà DOCTOR/NURSE-gated comme `baselineSlots`). Catalogue §6 mis à jour.
+  - **S3b-1 — Moteur émet réellement du groupé ISF/ICR** (flag, CAS persist) : reste à livrer.
 - **S4 — Voie manuelle groupée** patient/infirmière/médecin (création pro + provenance) + retrait
   `InsulinProposalDialog`. Première rupture UI.
 - **S5 — Retrait voie d'écriture `AdjustmentProposal`** + **contrat iOS** (endpoints par-valeur supprimés/redirigés,
