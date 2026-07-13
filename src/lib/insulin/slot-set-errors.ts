@@ -25,4 +25,10 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   // US-2663 (S3b-0a) — proposition MOTEUR sans rationale par créneau (contrat serveur, ne vient jamais d'un input humain).
   rationaleRequired: 422,
   invalidProposerIdentity: 422, // US-2663 S3b-0a — parité algorithme⇔userId null (contrat serveur)
+  // US-2663 (S3d) — voie groupée DOSE FIXE (`replaceFixedDoseSet`) : créneau (usage, moment) introuvable
+  // (dose supprimée depuis la génération → régénérer, 409) ou AMBIGU (deux `PatientInsulin` de même usage
+  // portant ce moment → désambiguïser le profil, 422 non résoluble par régénération).
+  fixedDoseSlotNotFound: 409,
+  fixedDoseSlotAmbiguous: 422,
+  unsupportedSlotSetParam: 422, // levier non géré par l'acceptation groupée (fail-closed)
 }

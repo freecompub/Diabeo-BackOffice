@@ -15,6 +15,7 @@ import { fcmService } from "./fcm.service"
 import { logger } from "@/lib/logger"
 import { INSULIN_BOUNDS } from "./insulin-therapy.service"
 import { isDeliverableBasalRate, isDeliverableFixedDose } from "@/lib/clinical-bounds"
+import { activeInsulinFilter } from "@/lib/insulin/active-insulin"
 import { encryptField } from "@/lib/crypto/fields"
 import type { AuditContext } from "./patient.service"
 import type {
@@ -207,7 +208,8 @@ async function resolveCurrentValue(
     case "fixedDose": {
       if (!input.moment) throw new Error("slotRequired")
       const row = await prisma.fixedDoseSlot.findFirst({
-        where: { patientInsulin: { patientId }, moment: input.moment },
+        // US-2663 (S3d, revue) — filtre insuline ACTIVE : ne lit jamais la dose d'une insuline discontinuée.
+        where: { patientInsulin: { patientId, ...activeInsulinFilter() }, moment: input.moment },
         select: { valueU: true },
       })
       if (!row) throw new Error("currentValueNotFound")
@@ -1008,10 +1010,17 @@ export const adjustmentService = {
           // Dose fixe (US-2652) — scopée patient via la relation `patientInsulin` (anti-IDOR) : un
           // moment hors patient ne matche pas → count 0 → fail-closed (créneau introuvable).
           const res = await tx.fixedDoseSlot.updateMany({
-            where: { patientInsulin: { patientId: proposal.patientId }, moment: proposal.moment, valueU: casValue },
+            // US-2663 (S3d, revue) — filtre insuline ACTIVE : n'écrit jamais sur une insuline discontinuée.
+            where: { patientInsulin: { patientId: proposal.patientId, ...activeInsulinFilter() }, moment: proposal.moment, valueU: casValue },
             data: { valueU: proposed },
           })
-          assertRowApplied(res.count, "fixedDoseSlotNotFound")
+          // US-2663 (S3d) — fail-closed sur l'AMBIGUÏTÉ d'usage. Le modèle par-valeur ne porte PAS l'usage
+          // (`moment` seul) : si deux `PatientInsulin` (ex. bolus rapide + basale lente) partagent ce moment ET
+          // cette valeur, le `updateMany` toucherait PLUSIEURS lignes (count > 1) — écriture multiple silencieuse
+          // sur la mauvaise insuline. On REFUSE désormais (avant : seul count 0 était gardé, count > 1 passait).
+          // La voie GROUPÉE (S3d) résout par `(usage, moment)` et n'a pas cette ambiguïté. (À valider medical.)
+          if (res.count === 0) throw new Error("fixedDoseSlotNotFound")
+          if (res.count > 1) throw new Error("fixedDoseSlotAmbiguous")
         } else if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
           // US-2660 — ÉCRITURE GROUPÉE de la basale STYLO (MDI). La dose ciblée par `basalDoseKind`
           // (`dailyDose`/`morningDose`/`eveningDose`, UNITÉS TOTALES) est écrite sur l'unique

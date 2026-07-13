@@ -115,7 +115,7 @@ describe("adjustmentService", () => {
       expect(result.applied).toBe(true)
       expect(updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ moment: "morning", patientInsulin: { patientId: 1 } }),
+          where: expect.objectContaining({ moment: "morning", patientInsulin: expect.objectContaining({ patientId: 1, isActive: true }) }),
           data: { valueU: 12 },
         }),
       )
@@ -142,6 +142,30 @@ describe("adjustmentService", () => {
 
       await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("baselineMoved")
       expect(updateMany).not.toHaveBeenCalled() // rollback → dose jamais écrite sur une base déplacée
+    })
+
+    // US-2663 (S3d) — durcissement fail-closed du bug pré-existant : le modèle par-valeur est usage-blind
+    // (`moment` seul). Si deux `PatientInsulin` (bolus + basal) partagent le moment ET la valeur, `updateMany`
+    // toucherait PLUSIEURS lignes (count > 1) → écriture multiple silencieuse sur la mauvaise insuline.
+    // Désormais REFUSÉ (`fixedDoseSlotAmbiguous`), avant : seul count 0 était gardé.
+    it("US-2663 S3d : fixedDose apply matchant PLUSIEURS lignes (usage ambigu) → fixedDoseSlotAmbiguous", async () => {
+      prismaMock.fixedDoseSlot.findFirst.mockResolvedValue({ valueU: 10 } as never)
+      const updateMany = vi.fn().mockResolvedValue({ count: 2 }) // 2 insulines, même moment + valeur
+      const mockTx = {
+        adjustmentProposal: {
+          findUnique: vi.fn().mockResolvedValue({
+            id: "p1", patientId: 1, status: "pending",
+            parameterType: "fixedDose", proposedValue: 12, currentValue: 10, moment: "morning",
+          }),
+          update: vi.fn().mockResolvedValue({}),
+        },
+        fixedDoseSlot: { updateMany },
+        slotSetProposal: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+        auditLog: { create: vi.fn().mockResolvedValue({}) },
+      }
+      prismaMock.$transaction.mockImplementation((async (cb: any) => cb(mockTx)) as any)
+
+      await expect(adjustmentService.accept("p1", 2, true)).rejects.toThrow("fixedDoseSlotAmbiguous")
     })
 
     // US-2649b — compare-and-swap : la base a bougé depuis la proposition → refuser (fail-closed).
@@ -691,7 +715,7 @@ describe("adjustmentService", () => {
       await adjustmentService.accept("f1", 2, true)
       expect(updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ patientInsulin: { patientId: 1 }, moment: "morning", valueU: 10 }),
+          where: expect.objectContaining({ patientInsulin: expect.objectContaining({ patientId: 1, isActive: true }), moment: "morning", valueU: 10 }),
         }),
       )
     })

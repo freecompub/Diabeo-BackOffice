@@ -9,13 +9,14 @@
 import { prisma } from "@/lib/db/client"
 import { auditService } from "./audit.service"
 import type { AuditContext } from "./patient.service"
-import type { BasalConfigType, InsulinDeliveryMethod, Prisma } from "@prisma/client"
-import { CLINICAL_BOUNDS, isDeliverableBasalRate } from "@/lib/clinical-bounds"
+import type { BasalConfigType, DoseMoment, InsulinDeliveryMethod, InsulinUsage, Prisma } from "@prisma/client"
+import { CLINICAL_BOUNDS, isDeliverableBasalRate, isDeliverableFixedDose } from "@/lib/clinical-bounds"
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { assertBaselineUnchanged, assertBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
-import type { IsfIcrSlot, PumpBasalSlot } from "@/lib/insulin/grouped-proposal"
+import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
 import { pumpTimeToHhmm, pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
+import { activeInsulinFilter } from "@/lib/insulin/active-insulin"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -122,6 +123,37 @@ export function assertValidPumpSlotSet(
   if (coverage.hasOverlap) throw new Error("slotOverlap")
   if (coverage.hasGap) throw new Error("slotGap")
   return coverage
+}
+
+/**
+ * US-2663 (S3d) — Garde de validité clinique d'un **jeu de DOSES FIXES** (mode « doses simples »), pendant du
+ * `assertValidPumpSlotSet` pour le modèle `FixedDoseSlot` (clé `(usage, moment)`, valeur U). Règles (source
+ * clinique = `clinical-bounds.ts`) :
+ *  - jeu non vide (`emptySlotSet`) ;
+ *  - chaque valeur ≥ `FIXED_DOSE_MIN` (0,5 U — plancher de sanité) et **délivrable** (`isDeliverableFixedDose`,
+ *    multiple de l'incrément stylo) sinon `valueOutOfBounds` / `rateNotDeliverable` ;
+ *  - **clé `(usage, moment)` UNIQUE** dans le jeu (`slotOverlap`) — invariant de forme de la disposition groupée ;
+ *  - garde anti-overflow : `value ≤ 999,99` (colonne `FixedDoseSlot.valueU` = `Decimal(5,2)`) → `valueOutOfBounds`
+ *    (garde technique, PAS une borne clinique : une dose fixe réaliste est ≪ 100 U).
+ *
+ * ⚠️ **Pas de plafond clinique dur** ni de no-gap/no-overlap horaire : une dose fixe est ponctuelle (pas une
+ * couverture 24 h). Les seuils `FIXED_BOLUS_WARN_U` (25) / `FIXED_BASAL_WARN_U` (80) sont des AVERTISSEMENTS
+ * NON bloquants (affichés à la revue via `highDoseWarning`, jamais un rejet — parité `MDI_BASAL_WARN_U`).
+ *
+ * @throws emptySlotSet | valueOutOfBounds | rateNotDeliverable | slotOverlap
+ */
+export function assertValidFixedDoseSet(
+  slots: Array<{ usage: InsulinUsage; moment: DoseMoment; value: number }>,
+): void {
+  if (slots.length === 0) throw new Error("emptySlotSet")
+  const seen = new Set<string>()
+  for (const s of slots) {
+    if (s.value < CLINICAL_BOUNDS.FIXED_DOSE_MIN || s.value > 999.99) throw new Error("valueOutOfBounds")
+    if (!isDeliverableFixedDose(s.value)) throw new Error("rateNotDeliverable")
+    const key = `${s.usage}:${s.moment}`
+    if (seen.has(key)) throw new Error("slotOverlap") // clé (usage, moment) en double dans le jeu proposé
+    seen.add(key)
+  }
 }
 
 /**
@@ -609,6 +641,118 @@ export const insulinTherapyService = {
       })
 
       return { applied: true as const, count: slots.length, coverage, supersededProposalIds, supersededSetProposalIds }
+    }
+
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
+  },
+
+  /**
+   * US-2663 (S3d) — Lecteur de forme des DOSES FIXES d'un patient (`FixedDoseSlot` + `usage` de la
+   * `PatientInsulin` porteuse, **ACTIVE** uniquement) → forme groupée `FixedDoseSlot` (`{ usage, moment, value }`).
+   * Source unique de PROJECTION DE FORME pour le **socle groupé** : `captureBaselineSlots("fixedDose")` (snapshot)
+   * ET la page de revue (base LIVE) partagent cette forme `(usage, moment, value)` (invariant de forme, cf.
+   * `pump-time.ts`). ⚠️ Portée : seule la **forme usage-aware groupée** n'est pas encore partagée avec les autres
+   * lecteurs de `fixed_dose_slots` (générateur usage-blind `{moment, valueU}`, `resolveCurrentValue`, re-read
+   * interne de `replaceFixedDoseSet`) — convergence de forme à finir en PR2. Le **filtre insuline active**, lui,
+   * est DÉJÀ appliqué à TOUS ces lecteurs (`activeInsulinFilter`). Scope `patientInsulin.patientId` + insuline
+   * active (anti-IDOR, anti-dose-fantôme). Patient non doses-simples → `[]`.
+   */
+  async getFixedDoseSlots(patientId: number): Promise<FixedDoseSlot[]> {
+    const rows = await prisma.fixedDoseSlot.findMany({
+      // US-2663 (S3d, revue) — filtre insuline ACTIVE : jamais de dose fantôme d'une insuline arrêtée (cf. active-insulin).
+      where: { patientInsulin: { patientId, ...activeInsulinFilter() } },
+      orderBy: { moment: "asc" },
+      select: { moment: true, valueU: true, patientInsulin: { select: { usage: true } } },
+    })
+    return rows.map((r) => ({ usage: r.patientInsulin.usage, moment: r.moment, value: Number(r.valueU) }))
+  },
+
+  /**
+   * US-2663 (S3d) — Applique ATOMIQUEMENT un jeu de DOSES FIXES (mode « doses simples ») à l'acceptation d'une
+   * `SlotSetProposal` fixedDose. Pendant du `replacePumpSlotSet` pour le modèle `FixedDoseSlot`, avec deux
+   * spécificités structurelles :
+   *  - **update-in-place PAR CLÉ** (PAS delete+create) : les `FixedDoseSlot` pendent de `PatientInsulin`
+   *    DISTINCTS (`@@unique([patientInsulinId, moment])`) — un delete+recreate casserait l'appariement
+   *    insuline↔dose. Chaque dose est mise à jour sur son `id` **résolu serveur** par `(usage, moment)`.
+   *  - **résolution fail-closed** : pour chaque (usage, moment) proposé, exactement 1 `FixedDoseSlot` doit
+   *    correspondre — `fixedDoseSlotNotFound` (0, dose supprimée depuis la génération) ou `fixedDoseSlotAmbiguous`
+   *    (> 1 : deux `PatientInsulin` de même usage portant ce moment) → rollback, jamais d'écriture sur la
+   *    mauvaise insuline (le modèle par-valeur, usage-blind, ne pouvait pas garantir cela — cf. adjustment.service).
+   *
+   * Anti-IDOR (scope `patientInsulin.patientId`), CAS d'ensemble sous verrou (clé `(usage, moment)`, avant toute
+   * écriture), supersession des propositions fixedDose pending (par-valeur + ensemble), audit `replaceSet` sans PHI.
+   *
+   * @throws slotsBusy | emptySlotSet | valueOutOfBounds | rateNotDeliverable | slotOverlap
+   * @throws baselineMoved | baselineMissing | fixedDoseSlotNotFound | fixedDoseSlotAmbiguous
+   */
+  async replaceFixedDoseSet(
+    patientId: number,
+    slots: Array<{ usage: InsulinUsage; moment: DoseMoment; value: number }>,
+    auditUserId: number,
+    ctx?: AuditContext,
+    externalTx?: Prisma.TransactionClient,
+    cas?: { baseline: FixedDoseSlot[] | null },
+  ): Promise<{ applied: true; count: number; supersededProposalIds: string[]; supersededSetProposalIds: string[] }> {
+    // 1. Pré-validation pure (hors DB, fail-fast) — source unique `assertValidFixedDoseSet`.
+    assertValidFixedDoseSet(slots)
+
+    const run = async (tx: Prisma.TransactionClient) => {
+      if (!(await tryLockInsulinSlots(tx, patientId, "fixedDose"))) throw new Error("slotsBusy")
+      // 2. Lecture LIVE unique sous verrou (usage inclus) : sert au CAS d'ensemble, à la résolution d'apply
+      //    ET à l'audit `from`. Scope `patientInsulin.patientId` (anti-IDOR).
+      const liveRows = await tx.fixedDoseSlot.findMany({
+        // US-2663 (S3d, revue) — filtre insuline ACTIVE : la résolution d'apply ne cible JAMAIS une insuline
+        // discontinuée (anti-mésécriture sur une prescription arrêtée). Symétrie avec `getFixedDoseSlots`.
+        where: { patientInsulin: { patientId, ...activeInsulinFilter() } },
+        select: { id: true, moment: true, valueU: true, patientInsulin: { select: { usage: true } } },
+      })
+      const live = liveRows.map((r) => ({ id: r.id, usage: r.patientInsulin.usage, moment: r.moment, value: Number(r.valueU) }))
+      // CAS d'ensemble AVANT toute écriture (fail-closed) : clé `(usage, moment)`, pas de borne (dose ponctuelle).
+      if (cas !== undefined) {
+        assertBaselineUnchangedBy(cas.baseline, live, { keyOf: (s) => `${s.usage}:${s.moment}`, valueOf: (s) => s.value })
+      }
+      // 3. Résolution d'apply PAR CLÉ `(usage, moment)`, fail-closed 0/1/>1. Update par `id` RÉSOLU SERVEUR
+      //    (anti-IDOR ; jamais un `updateMany` par (moment, valeur) qui pourrait toucher plusieurs insulines).
+      for (const slot of slots) {
+        const matches = live.filter((l) => l.usage === slot.usage && l.moment === slot.moment)
+        if (matches.length === 0) throw new Error("fixedDoseSlotNotFound")
+        if (matches.length > 1) throw new Error("fixedDoseSlotAmbiguous")
+        await tx.fixedDoseSlot.update({ where: { id: matches[0]!.id }, data: { valueU: slot.value } })
+      }
+
+      // 4. Baseline changée → supersède les propositions fixedDose pending (par-valeur + ENSEMBLE), parité pompe/ISF/ICR.
+      const superseded = await tx.adjustmentProposal.findMany({ where: { patientId, parameterType: "fixedDose", status: "pending" }, select: { id: true } })
+      if (superseded.length > 0) {
+        await tx.adjustmentProposal.updateMany({ where: { patientId, parameterType: "fixedDose", status: "pending" }, data: { status: "superseded", reviewedAt: new Date(), reviewedBy: auditUserId } })
+      }
+      const supersededProposalIds = superseded.map((p) => p.id)
+      const supersededSet = await tx.slotSetProposal.findMany({ where: { patientId, parameterType: "fixedDose", status: "pending" }, select: { id: true } })
+      if (supersededSet.length > 0) {
+        await tx.slotSetProposal.updateMany({ where: { patientId, parameterType: "fixedDose", status: "pending" }, data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: auditUserId } })
+      }
+      const supersededSetProposalIds = supersededSet.map((p) => p.id)
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `fixeddose-set:${patientId}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        // `from`/`to` = `{ usage, moment, value }` (valeur de config, pas PHI) — traçabilité HDS de la dose.
+        metadata: {
+          patientId,
+          op: "replaceSet",
+          param: "fixedDose",
+          from: live.map((s) => ({ usage: s.usage, moment: s.moment, value: s.value })),
+          to: slots.map((s) => ({ usage: s.usage, moment: s.moment, value: s.value })),
+          supersededProposalIds,
+          supersededSetProposalIds,
+        },
+      })
+
+      return { applied: true as const, count: slots.length, supersededProposalIds, supersededSetProposalIds }
     }
 
     return externalTx ? run(externalTx) : prisma.$transaction(run)

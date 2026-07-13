@@ -35,6 +35,15 @@ vi.mock("@/lib/services/insulin-therapy.service", async (importOriginal) => {
         supersededProposalIds: [],
         supersededSetProposalIds: [],
       }),
+      // US-2663 (S3d) — voie DOSE FIXE de l'acceptation groupée (routage `fixedDose`).
+      replaceFixedDoseSet: vi.fn().mockResolvedValue({
+        applied: true,
+        count: 2,
+        supersededProposalIds: [],
+        supersededSetProposalIds: [],
+      }),
+      // US-2663 (S3d) — lecteur de base fixedDose (captureBaselineSlots). Défaut = pas de doses (base vide).
+      getFixedDoseSlots: vi.fn().mockResolvedValue([]),
     },
   }
 })
@@ -74,6 +83,15 @@ const PUMP_SLOTS = [
 const PUMP_BASE = [
   { startTime: "00:00", endTime: "06:00", rate: 0.85 },
   { startTime: "06:00", endTime: "00:00", rate: 1.1 },
+]
+// Jeu DOSE FIXE VALIDE (US-2663 S3d) : clé (usage, moment), valeurs délivrables ≥ 0,5 U.
+const FIXED_SLOTS = [
+  { usage: "bolus", moment: "morning", value: 6 },
+  { usage: "basal", moment: "evening", value: 20 },
+]
+const FIXED_BASE = [
+  { usage: "bolus", moment: "morning", value: 5 },
+  { usage: "basal", moment: "evening", value: 20 },
 ]
 
 /** Fabrique un `tx` factice dont `$transaction` exécute le callback. */
@@ -350,6 +368,28 @@ describe("slotSetProposalService", () => {
     expect(auditService.logWithTx).not.toHaveBeenCalled()
   })
 
+  it("createSetProposal (S3d) : fixedDose valide → crée + capture la base via getFixedDoseSlots", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    ;(insulinTherapyService.getFixedDoseSlots as any).mockResolvedValueOnce([{ usage: "bolus", moment: "morning", value: 5 }])
+    const tx = mockTx()
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
+    tx.slotSetProposal.create.mockResolvedValue({ id: "set-f" })
+
+    const res = await slotSetProposalService.createSetProposal({ patientId: 7, parameterType: "fixedDose", proposedSlots: FIXED_SLOTS as never, proposer: { userId: 7, source: "patient" } })
+    expect(res).toEqual({ id: "set-f" })
+    expect(insulinTherapyService.getFixedDoseSlots).toHaveBeenCalledWith(7)
+    expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ parameterType: "fixedDose", proposedSlots: FIXED_SLOTS, baselineSlots: [{ usage: "bolus", moment: "morning", value: 5 }] }) }),
+    )
+  })
+
+  it("createSetProposal (S3d) : fixedDose de forme invalide (usage manquant) → invalidSlotSet", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal({ patientId: 7, parameterType: "fixedDose", proposedSlots: [{ moment: "morning", value: 6 }] as never, proposer: { userId: 7, source: "patient" } }),
+    ).rejects.toThrow("invalidSlotSet")
+  })
+
   // ── accept POMPE (US-2663 S3c) ────────────────────────────────────────────
   it("acceptSetProposal (S3c) : basalRate POMPE → route replacePumpSlotSet(tx, {baseline}) (PAS replaceSlotSet)", async () => {
     const tx = mockTx()
@@ -390,6 +430,38 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
     ;(insulinTherapyService.replacePumpSlotSet as any).mockRejectedValueOnce(new Error("baselineMoved"))
     await expect(slotSetProposalService.acceptSetProposal("set-p", 7, 3)).rejects.toThrow("baselineMoved")
+    expect(auditService.logWithTx).not.toHaveBeenCalled()
+  })
+
+  // ── accept DOSE FIXE (US-2663 S3d) ────────────────────────────────────────
+  it("acceptSetProposal (S3d) : fixedDose → route replaceFixedDoseSet(tx, {baseline}) (PAS replaceSlotSet/Pump)", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "fixedDose", proposedSlots: FIXED_SLOTS, baselineSlots: FIXED_BASE })
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await slotSetProposalService.acceptSetProposal("set-f", 7, 3)
+    expect(res).toEqual({ id: "set-f", status: "accepted" })
+    expect(insulinTherapyService.replaceFixedDoseSet).toHaveBeenCalledWith(7, FIXED_SLOTS, 3, undefined, tx, { baseline: FIXED_BASE })
+    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
+    expect(insulinTherapyService.replacePumpSlotSet).not.toHaveBeenCalled()
+    expect(auditService.logWithTx).toHaveBeenCalledWith(tx, expect.objectContaining({ metadata: expect.objectContaining({ parameterType: "fixedDose" }) }))
+  })
+
+  it("acceptSetProposal (S3d) : jeu de forme non-fixedDose (sans usage) → unsupportedSlotSetParam, PAS d'apply", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "fixedDose", proposedSlots: [{ moment: "morning", value: 6 }], baselineSlots: null })
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
+    // `{moment, value}` sans `usage` échoue le parse de forme fixedDose → invalidSlotSet (avant même la garde).
+    await expect(slotSetProposalService.acceptSetProposal("set-f", 7, 3)).rejects.toThrow(/invalidSlotSet|unsupportedSlotSetParam/)
+    expect(insulinTherapyService.replaceFixedDoseSet).not.toHaveBeenCalled()
+  })
+
+  it("acceptSetProposal (S3d) : résolution ambiguë (fixedDoseSlotAmbiguous) → propagé (rollback, pas d'audit)", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "fixedDose", proposedSlots: FIXED_SLOTS, baselineSlots: FIXED_BASE })
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
+    ;(insulinTherapyService.replaceFixedDoseSet as any).mockRejectedValueOnce(new Error("fixedDoseSlotAmbiguous"))
+    await expect(slotSetProposalService.acceptSetProposal("set-f", 7, 3)).rejects.toThrow("fixedDoseSlotAmbiguous")
     expect(auditService.logWithTx).not.toHaveBeenCalled()
   })
 

@@ -13,6 +13,7 @@ import {
   styloBasalSlotSchema,
   fixedDoseSlotSchema,
   groupedSlotsSchema,
+  slotRationaleSchema,
 } from "@/lib/insulin/grouped-proposal"
 
 describe("grouped-proposal — schémas de forme par levier", () => {
@@ -37,19 +38,43 @@ describe("grouped-proposal — schémas de forme par levier", () => {
     expect(styloBasalSlotSchema.safeParse({ kind: "noon", value: 12 }).success).toBe(false)
   })
 
-  it("dose fixe : accepte { moment ∈ morning/noon/evening/night, value } ; rejette un moment inconnu", () => {
-    expect(fixedDoseSlotSchema.safeParse({ moment: "noon", value: 4 }).success).toBe(true)
-    expect(fixedDoseSlotSchema.safeParse({ moment: "midnight", value: 4 }).success).toBe(false)
+  it("dose fixe : accepte { usage, moment ∈ morning/noon/evening/night, value } ; rejette moment/usage inconnu ou usage manquant", () => {
+    expect(fixedDoseSlotSchema.safeParse({ usage: "bolus", moment: "noon", value: 4 }).success).toBe(true)
+    expect(fixedDoseSlotSchema.safeParse({ usage: "basal", moment: "evening", value: 20 }).success).toBe(true)
+    expect(fixedDoseSlotSchema.safeParse({ usage: "bolus", moment: "midnight", value: 4 }).success).toBe(false) // moment inconnu
+    expect(fixedDoseSlotSchema.safeParse({ usage: "mixed", moment: "noon", value: 4 }).success).toBe(false) // usage hors enum
+    expect(fixedDoseSlotSchema.safeParse({ moment: "noon", value: 4 }).success).toBe(false) // usage manquant (S3d — clé (usage,moment))
   })
 
   it("groupedSlotsSchema : route vers le bon schéma de tableau par parameterType", () => {
     expect(groupedSlotsSchema("insulinSensitivityFactor").safeParse([{ startHour: 0, endHour: 24, value: 0.5 }]).success).toBe(false) // endHour 24 hors forme
     expect(groupedSlotsSchema("insulinToCarbRatio").safeParse([{ startHour: 0, endHour: 12, value: 10 }]).success).toBe(true)
-    expect(groupedSlotsSchema("fixedDose").safeParse([{ moment: "morning", value: 6 }]).success).toBe(true)
+    expect(groupedSlotsSchema("fixedDose").safeParse([{ usage: "bolus", moment: "morning", value: 6 }]).success).toBe(true)
     // basalRate accepte l'union pompe|stylo (discriminée par la présence de startTime vs kind).
     expect(groupedSlotsSchema("basalRate").safeParse([{ startTime: "06:00", endTime: "22:00", rate: 0.8 }]).success).toBe(true)
     expect(groupedSlotsSchema("basalRate").safeParse([{ kind: "evening", value: 18 }]).success).toBe(true)
     // Jeu vide = forme valide (rejeté en aval par les gardes de couverture/bornes, contrat stable).
     expect(groupedSlotsSchema("insulinSensitivityFactor").safeParse([]).success).toBe(true)
+  })
+
+  // US-2663 (S3d) — rationale à clé POLYMORPHE : startHour (ISF/ICR/pompe) XOR (usage, moment) (dose fixe).
+  it("slotRationaleSchema : clé startHour SEULE (ISF/ICR/pompe) → OK", () => {
+    expect(slotRationaleSchema.safeParse({ startHour: 8, reason: "isfTooLow", confidence: "high", supportingEvents: 12 }).success).toBe(true)
+  })
+  it("slotRationaleSchema : clé (usage, moment) SEULE (dose fixe, sans startHour) → OK", () => {
+    expect(slotRationaleSchema.safeParse({ usage: "bolus", moment: "morning", reason: "fixedDoseTooLow", confidence: "medium", supportingEvents: 4 }).success).toBe(true)
+  })
+  it("slotRationaleSchema : AUCUNE clé → rejeté (fail-closed forme)", () => {
+    expect(slotRationaleSchema.safeParse({ reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+  })
+  it("slotRationaleSchema : DEUX clés (startHour + usage/moment) → rejeté (mal-clée)", () => {
+    expect(slotRationaleSchema.safeParse({ startHour: 8, usage: "bolus", moment: "morning", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+  })
+  it("slotRationaleSchema : clé fixedDose INCOMPLÈTE (moment sans usage) → rejeté", () => {
+    expect(slotRationaleSchema.safeParse({ moment: "morning", reason: "fixedDoseTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+  })
+  it("slotRationaleSchema : startHour + champ fixedDose PARTIEL parasite (usage seul / moment seul) → rejeté", () => {
+    expect(slotRationaleSchema.safeParse({ startHour: 8, usage: "bolus", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+    expect(slotRationaleSchema.safeParse({ startHour: 8, moment: "morning", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
   })
 })

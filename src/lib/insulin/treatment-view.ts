@@ -17,6 +17,8 @@ import type {
 } from "@/components/diabeo/patient/patient-record-views"
 // US-2647 — analyse de couverture + parsing Time extraits vers lib (réutilisable back, hors pages).
 import { analyzeSlotCoverage, timeToMinutes } from "@/lib/insulin/slot-coverage"
+// US-2663 (S3d) — `DAY_MS` source unique (partagé avec `active-insulin.ts`, même invariant « fin de jour inclusif »).
+import { DAY_MS } from "@/lib/insulin/active-insulin"
 
 type DecimalLike = number | string | { toString(): string }
 const num = (x: DecimalLike): number => Number(x)
@@ -38,8 +40,6 @@ export { analyzeSlotCoverage }
 
 /** Au-delà → la dernière synchro pompe est jugée ancienne (indice non bloquant). */
 export const PUMP_SYNC_STALE_AFTER_DAYS = 7
-
-const DAY_MS = 86_400_000
 
 
 type SettingsInput = {

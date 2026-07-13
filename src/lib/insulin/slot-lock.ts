@@ -18,8 +18,10 @@
  */
 import type { Prisma } from "@prisma/client"
 
-/** Paramètre à jeu de créneaux verrouillable. */
-export type SlotLockParam = "isf" | "icr" | "basal"
+/** Paramètre à jeu de créneaux verrouillable. US-2663 (S3d) — `fixedDose` : verrou logique `(patient × param)`
+ *  (pas de `settingsId` requis — les `FixedDoseSlot` pendent de `PatientInsulin`), exclut `replaceFixedDoseSet`
+ *  ⇄ acceptation concurrente comme pour isf/icr/basal. */
+export type SlotLockParam = "isf" | "icr" | "basal" | "fixedDose"
 
 /**
  * Tente d'acquérir le verrou `(patient × paramètre)` pour la durée de la transaction `tx`, **sans bloquer**.

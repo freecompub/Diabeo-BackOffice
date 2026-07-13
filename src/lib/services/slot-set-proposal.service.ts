@@ -26,9 +26,9 @@ import { z } from "zod"
 import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
-import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type FixedDoseSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
-import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet } from "@/lib/services/insulin-therapy.service"
+import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet, assertValidFixedDoseSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
@@ -37,14 +37,13 @@ import { auditService, type AuditContext } from "@/lib/services/audit.service"
  * forme unique** vit dans `src/lib/insulin/grouped-proposal.ts`. À S3c (PR-A) : ISF/ICR (`IsfIcrSlot`) + basale
  * POMPE (`PumpBasalSlot`). La basale STYLO et la dose fixe rejoignent l'union dans leurs PR dédiées.
  */
-export type ProposedSlot = IsfIcrSlot | PumpBasalSlot
+export type ProposedSlot = IsfIcrSlot | PumpBasalSlot | FixedDoseSlot
 
 /**
- * Paramètres à jeu de créneaux gérés. US-2663 (S3c/PR-A) — élargi à `basalRate` (POMPE). La colonne DB
- * `parameter_type` accepte désormais aussi `fixedDose` (migration S3c/S3d) mais ce service ne l'émet/n'applique
- * pas encore (dose fixe = PR dédiée, identification par usage basal/bolus). `basalRate` **stylo** non plus (PR stylo).
+ * Paramètres à jeu de créneaux gérés. US-2663 — ISF/ICR + `basalRate` (POMPE, S3c) + `fixedDose` (doses simples,
+ * S3d, clé `(usage, moment)`). `basalRate` **stylo** reste hors périmètre (PR stylo dédiée).
  */
-export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate"
+export type SlotSetParam = "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate" | "fixedDose"
 
 /** Mapping levier ISF/ICR → clé courte `replaceSlotSet`/verrou. `basalRate` n'y figure pas (voie `replacePumpSlotSet`). */
 export const REPLACE_KEY: Record<"insulinSensitivityFactor" | "insulinToCarbRatio", "isf" | "icr"> = {
@@ -54,6 +53,9 @@ export const REPLACE_KEY: Record<"insulinSensitivityFactor" | "insulinToCarbRati
 
 /** Garde de type : un créneau groupé est-il de forme POMPE (`startTime`) plutôt qu'ISF/ICR (`startHour`) ? */
 const isPumpSlot = (s: ProposedSlot): s is PumpBasalSlot => "startTime" in s
+
+/** Garde de type : un créneau groupé est-il de forme DOSE FIXE (`usage` + `moment`) ? US-2663 (S3d). */
+const isFixedDoseSlot = (s: ProposedSlot): s is FixedDoseSlot => "usage" in s && "moment" in s
 
 /**
  * Parse + valide la FORME du jeu pour un levier donné (union discriminée `groupedSlotsSchema`). `invalidSlotSet`
@@ -74,8 +76,13 @@ function parseSlots(param: SlotSetParam, raw: unknown): ProposedSlot[] {
 function assertValidGroupedSet(param: SlotSetParam, slots: ProposedSlot[]): void {
   if (param === "insulinSensitivityFactor") assertValidSlotSet("isf", slots as IsfIcrSlot[])
   else if (param === "insulinToCarbRatio") assertValidSlotSet("icr", slots as IsfIcrSlot[])
-  else {
-    // basalRate — PR-A ne gère que la POMPE. Un jeu non-pompe (stylo) est rejeté ici (fail-closed).
+  else if (param === "fixedDose") {
+    // Dose fixe (S3d) — clé `(usage, moment)`, valeur U. Garde belt-and-suspenders : en pratique subsumée par
+    // `parseSlots("fixedDose")` (le schéma exige déjà `usage`+`moment`), mais défensive si un caller court-circuite.
+    if (!slots.every(isFixedDoseSlot)) throw new Error("unsupportedSlotSetParam")
+    assertValidFixedDoseSet(slots as FixedDoseSlot[])
+  } else {
+    // basalRate — ne gère que la POMPE. Un jeu non-pompe (stylo) est rejeté ici (fail-closed).
     if (!slots.every(isPumpSlot)) throw new Error("unsupportedSlotSetParam")
     assertValidPumpSlotSet(slots as PumpBasalSlot[])
   }
@@ -116,6 +123,11 @@ async function captureBaselineSlots(patientId: number, parameterType: SlotSetPar
       value: Number(s.gramsPerUnit),
       ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
     }))
+  }
+  if (parameterType === "fixedDose") {
+    // Dose fixe (S3d) — snapshot des `FixedDoseSlot` du patient, clé `(usage, moment)`. Lecteur de forme UNIQUE
+    // `getFixedDoseSlots` (partagé avec la page de revue → invariant de forme). Patient non doses-simples → `[]`.
+    return insulinTherapyService.getFixedDoseSlots(patientId)
   }
   // basalRate (POMPE, S3c/PR-A) — snapshot des `PumpBasalSlot` de l'UNIQUE `BasalConfiguration` du patient,
   // même forme que `PumpBasalSlot` groupé (`startTime`/`endTime` en `"HH:MM"`, `rate` U/h). Un patient NON pompe
@@ -270,6 +282,7 @@ export const slotSetProposalService = {
    * @throws baselineMissing (US-2663 S1 — proposition legacy sans snapshot de base : non certifiable, fail-closed)
    * @throws unsupportedSlotSetParam | invalidSlotSet | settingsNotFound | valueOutOfBounds | slotOverlap | slotGap | zeroDurationSlot | emptySlotSet
    * @throws slotsBusy | basalConfigNotFound | basalConfigNotPump | rateNotDeliverable (US-2663 S3c — voie POMPE via `replacePumpSlotSet` : verrou occupé, config basale absente, patient devenu stylo, débit non délivrable)
+   * @throws fixedDoseSlotNotFound | fixedDoseSlotAmbiguous (US-2663 S3d — voie DOSE FIXE via `replaceFixedDoseSet` : (usage,moment) introuvable ou ambigu)
    */
   async acceptSetProposal(id: string, patientId: number, reviewerUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
@@ -282,7 +295,7 @@ export const slotSetProposalService = {
       // Garde runtime : le type DB `AdjustableParameter` est plus large. PR-A gère ISF/ICR + basalRate POMPE ;
       // `fixedDose` (et basalRate STYLO) → `unsupportedSlotSetParam` (fail-closed, PR dédiées).
       const param = proposal.parameterType
-      if (param !== "insulinSensitivityFactor" && param !== "insulinToCarbRatio" && param !== "basalRate") {
+      if (param !== "insulinSensitivityFactor" && param !== "insulinToCarbRatio" && param !== "basalRate" && param !== "fixedDose") {
         throw new Error("unsupportedSlotSetParam")
       }
       const slots = parseSlots(param, proposal.proposedSlots)
@@ -316,6 +329,13 @@ export const slotSetProposalService = {
         if (!slots.every(isPumpSlot)) throw new Error("unsupportedSlotSetParam")
         await insulinTherapyService.replacePumpSlotSet(patientId, slots as PumpBasalSlot[], reviewerUserId, ctx, tx, {
           baseline: expectedBaseline as PumpBasalSlot[] | null,
+        })
+      } else if (param === "fixedDose") {
+        // Dose fixe (S3d) — résolution d'apply par `(usage, moment)`, fail-closed 0/1/>1 (`fixedDoseSlotNotFound`/
+        // `fixedDoseSlotAmbiguous`). Un jeu de forme non-fixedDose → `unsupportedSlotSetParam`.
+        if (!slots.every(isFixedDoseSlot)) throw new Error("unsupportedSlotSetParam")
+        await insulinTherapyService.replaceFixedDoseSet(patientId, slots as FixedDoseSlot[], reviewerUserId, ctx, tx, {
+          baseline: expectedBaseline as FixedDoseSlot[] | null,
         })
       } else {
         await insulinTherapyService.replaceSlotSet(REPLACE_KEY[param], patientId, slots as IsfIcrSlot[], reviewerUserId, ctx, tx, {

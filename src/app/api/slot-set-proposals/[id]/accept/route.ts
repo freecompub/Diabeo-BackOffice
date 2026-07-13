@@ -1,6 +1,6 @@
 /**
  * PATCH /api/slot-set-proposals/:id/accept — **ACCEPTE** une proposition d'ENSEMBLE de créneaux
- * (`SlotSetProposal`) : ISF/ICR OU — US-2663 (S3c) — basale POMPE (`basalRate`). Acte MÉDECIN (US-2657 slice
+ * (`SlotSetProposal`) : ISF/ICR, basale POMPE (`basalRate`, S3c) OU dose fixe (`fixedDose`, S3d). Acte MÉDECIN (US-2657 slice
  * C3d) : DOCTOR only (hiérarchique → ADMIN inclus) + contrôle d'accès patient (`canAccessPatient`, anti-IDOR).
  *
  * Flux : rate-limit (anti-abus) → lookup de la proposition (→ `patientId` + statut) → garde d'accès →
@@ -32,7 +32,9 @@ type RouteParams = { params: Promise<{ id: string }> }
 const ACCEPT_ERROR_STATUS: Record<string, number> = {
   ...SLOT_SET_ERROR_STATUS,
   slotSetProposalNotFound: 404,
-  unsupportedSlotSetParam: 400,
+  // US-2663 (S3d, revue) — `unsupportedSlotSetParam` : levier non traitable par l'acceptation (invariant de
+  // proposition stockée, pas une erreur d'input client) → 422 depuis `SLOT_SET_ERROR_STATUS` (source unique),
+  // plus d'override 400 (divergence retirée).
   // US-2663 (S1) — CAS d'ensemble : la base a dérivé depuis la génération (`baselineMoved`) ou la proposition
   // legacy n'a pas de snapshot certifiable (`baselineMissing`) → 409 (conflit récupérable : régénérer/re-soumettre).
   baselineMoved: 409,

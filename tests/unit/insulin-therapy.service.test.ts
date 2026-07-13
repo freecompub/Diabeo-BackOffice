@@ -36,7 +36,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
-import { insulinTherapyService, assertValidPumpSlotSet } from "@/lib/services/insulin-therapy.service"
+import { insulinTherapyService, assertValidPumpSlotSet, assertValidFixedDoseSet } from "@/lib/services/insulin-therapy.service"
 
 describe("insulinTherapyService", () => {
   describe("getSettings", () => {
@@ -544,6 +544,120 @@ describe("insulinTherapyService", () => {
       prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
       await expect(insulinTherapyService.replacePumpSlotSet(7, validBasal, 42, undefined, undefined, { baseline: null })).rejects.toThrow("baselineMissing")
       expect(tx.pumpBasalSlot.deleteMany).not.toHaveBeenCalled()
+    })
+  })
+
+  describe("assertValidFixedDoseSet (garde clinique dose fixe — pure, US-2663 S3d)", () => {
+    it("jeu vide → emptySlotSet", () => {
+      expect(() => assertValidFixedDoseSet([])).toThrow("emptySlotSet")
+    })
+    it("valeur < plancher 0,5 U → valueOutOfBounds", () => {
+      expect(() => assertValidFixedDoseSet([{ usage: "bolus", moment: "morning", value: 0.4 } as never])).toThrow("valueOutOfBounds")
+    })
+    it("valeur non délivrable (pas multiple d'incrément) → rateNotDeliverable", () => {
+      expect(() => assertValidFixedDoseSet([{ usage: "bolus", moment: "morning", value: 6.3 } as never])).toThrow("rateNotDeliverable")
+    })
+    it("clé (usage, moment) en double → slotOverlap", () => {
+      expect(() => assertValidFixedDoseSet([
+        { usage: "bolus", moment: "morning", value: 6 },
+        { usage: "bolus", moment: "morning", value: 8 },
+      ] as never)).toThrow("slotOverlap")
+    })
+    it("même moment mais usages DIFFÉRENTS (bolus + basal) → OK (clé distincte)", () => {
+      expect(() => assertValidFixedDoseSet([
+        { usage: "bolus", moment: "evening", value: 6 },
+        { usage: "basal", moment: "evening", value: 20 },
+      ] as never)).not.toThrow()
+    })
+  })
+
+  describe("replaceFixedDoseSet (US-2663 S3d — remplacement groupé dose fixe)", () => {
+    const validFixed = [
+      { usage: "bolus" as const, moment: "morning" as const, value: 6 },
+      { usage: "basal" as const, moment: "evening" as const, value: 20 },
+    ]
+    // Jeu LIVE : mêmes clés (usage, moment) que le proposé ; `bolus/morning` = 5 U (sera monté à 6).
+    const liveRows = [
+      { id: "f1", moment: "morning", valueU: 5, patientInsulin: { usage: "bolus" } },
+      { id: "f2", moment: "evening", valueU: 20, patientInsulin: { usage: "basal" } },
+    ]
+    const baselineLive = [
+      { usage: "bolus", moment: "morning", value: 5 },
+      { usage: "basal", moment: "evening", value: 20 },
+    ]
+    const mkTx = (over: Record<string, unknown> = {}) => ({
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
+      fixedDoseSlot: {
+        findMany: vi.fn().mockResolvedValue(liveRows),
+        update: vi.fn().mockResolvedValue({}),
+      },
+      adjustmentProposal: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      slotSetProposal: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      ...over,
+    })
+
+    it("jeu vide → emptySlotSet (avant transaction)", async () => {
+      await expect(insulinTherapyService.replaceFixedDoseSet(7, [], 42)).rejects.toThrow("emptySlotSet")
+    })
+
+    it("verrou occupé → slotsBusy (rien écrit)", async () => {
+      const tx = mkTx({ $queryRaw: vi.fn().mockResolvedValue([{ locked: false }]) })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceFixedDoseSet(7, validFixed, 42)).rejects.toThrow("slotsBusy")
+      expect(tx.fixedDoseSlot.update).not.toHaveBeenCalled()
+    })
+
+    it("profil valide → update-in-place PAR ID résolu (usage, moment) + supersède fixedDose pending", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceFixedDoseSet(7, validFixed, 42)
+      expect(res).toMatchObject({ applied: true, count: 2 })
+      // Résolution serveur : bolus/morning → id f1, basal/evening → id f2 (jamais un updateMany par moment).
+      expect(tx.fixedDoseSlot.update).toHaveBeenCalledWith({ where: { id: "f1" }, data: { valueU: 6 } })
+      expect(tx.fixedDoseSlot.update).toHaveBeenCalledWith({ where: { id: "f2" }, data: { valueU: 20 } })
+      expect(tx.slotSetProposal.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { patientId: 7, parameterType: "fixedDose", status: "pending" } }))
+    })
+
+    it("clé (usage, moment) INTROUVABLE dans le live → fixedDoseSlotNotFound (rollback)", async () => {
+      // Live ne porte que basal/evening ; le proposé bolus/morning n'a aucune correspondance.
+      const tx = mkTx({ fixedDoseSlot: { findMany: vi.fn().mockResolvedValue([{ id: "f2", moment: "evening", valueU: 20, patientInsulin: { usage: "basal" } }]), update: vi.fn() } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      // CAS non fourni ⇒ pas de garde cardinalité ; on teste la résolution seule.
+      await expect(insulinTherapyService.replaceFixedDoseSet(7, [{ usage: "bolus", moment: "morning", value: 6 }], 42)).rejects.toThrow("fixedDoseSlotNotFound")
+    })
+
+    it("clé (usage, moment) AMBIGUË (2 lignes même usage/moment) → fixedDoseSlotAmbiguous (rollback, rien écrit)", async () => {
+      const tx = mkTx({ fixedDoseSlot: { findMany: vi.fn().mockResolvedValue([
+        { id: "a", moment: "morning", valueU: 5, patientInsulin: { usage: "bolus" } },
+        { id: "b", moment: "morning", valueU: 5, patientInsulin: { usage: "bolus" } },
+      ]), update: vi.fn() } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceFixedDoseSet(7, [{ usage: "bolus", moment: "morning", value: 6 }], 42)).rejects.toThrow("fixedDoseSlotAmbiguous")
+      expect(tx.fixedDoseSlot.update).not.toHaveBeenCalled()
+    })
+
+    it("CAS `{baseline}` dérivé (dose live changée depuis le snapshot) → baselineMoved (rien écrit)", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const drifted = [{ usage: "bolus", moment: "morning", value: 7 }, { usage: "basal", moment: "evening", value: 20 }] // base attendait 5
+      await expect(insulinTherapyService.replaceFixedDoseSet(7, validFixed, 42, undefined, undefined, { baseline: drifted as never })).rejects.toThrow("baselineMoved")
+      expect(tx.fixedDoseSlot.update).not.toHaveBeenCalled()
+    })
+
+    it("CAS `{baseline: null}` (legacy) → baselineMissing (fail-closed)", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceFixedDoseSet(7, validFixed, 42, undefined, undefined, { baseline: null })).rejects.toThrow("baselineMissing")
+      expect(tx.fixedDoseSlot.update).not.toHaveBeenCalled()
+    })
+
+    it("CAS `{baseline}` identique au live → applique", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceFixedDoseSet(7, validFixed, 42, undefined, undefined, { baseline: baselineLive as never })
+      expect(res).toMatchObject({ applied: true })
+      expect(tx.fixedDoseSlot.update).toHaveBeenCalledTimes(2)
     })
   })
 })

@@ -50,6 +50,7 @@ import { getEnvBoolean } from "@/lib/env"
 import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
 import type { IsfIcrSlot, PumpBasalSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
+import { activeInsulinFilter } from "@/lib/insulin/active-insulin"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
 const ANALYSIS_PERIOD = "14d"
@@ -1255,7 +1256,8 @@ export const proposalGeneratorService = {
     // Fenêtre d'analyse des creux pré-dose : à la demande si fournie (US-2658), sinon 14 j (cron).
     const analysisPeriod = windowDays != null ? `${windowDays}d` : ANALYSIS_PERIOD
     const fixedSlots = await prisma.fixedDoseSlot.findMany({
-      where: { patientInsulin: { patientId } },
+      // US-2663 (S3d, revue) — filtre insuline ACTIVE : ne propose jamais sur une dose d'insuline discontinuée.
+      where: { patientInsulin: { patientId, ...activeInsulinFilter() } },
       select: { moment: true, valueU: true },
     })
     if (fixedSlots.length === 0) return EMPTY("noFixedDose")
