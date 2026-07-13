@@ -130,6 +130,7 @@ const baseData: PatientDetailData = {
     icrCoverage: { hasGap: false, hasOverlap: false },
     basalSlots: [{ range: "00:00–06:00", rate: 0.8, pumpBasalSlotId: "b1", startTime: "00:00", endTime: "06:00" }],
     basalCoverage: { hasGap: false, hasOverlap: false },
+  styloBasalDoses: [],
     treatments: [{ id: 1, name: "Metformine", posology: "850 mg x2/j" }],
   },
   documents: [

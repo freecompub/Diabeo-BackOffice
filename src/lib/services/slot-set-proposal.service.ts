@@ -28,9 +28,12 @@ import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
 import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type FixedDoseSlot, type StyloBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
+import { evaluatePatientGroupedGate } from "@/lib/insulin/patient-grouped-gate"
 import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet, assertValidFixedDoseSet, assertValidStyloBasalSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
+import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 /**
  * Créneau proposé (forme du JSON `proposedSlots`). US-2663 — **union par levier**, la **source de vérité de
@@ -196,11 +199,15 @@ export const slotSetProposalService = {
     // créneau NON modifié par l'overlay lèvera `baselineMoved` à l'acceptation, au lieu d'être silencieusement
     // écrasée). Absent (voie patient) → snapshot capturé ici comme avant. Forme identique à `captureBaselineSlots`.
     baselineOverride?: ProposedSlot[]
+    // US-2663 (S4, D3) — accusé DKA/jour-de-maladie d'une soumission PATIENT contenant ≥ 1 BAISSE de basale
+    // STYLO (US-2659). UN SEUL accusé couvre TOUTES les baisses stylo du jeu. Ignoré pour les autres sources
+    // (nurse/doctor/algorithm — non gatés) et évalué par `evaluatePatientGroupedGate`. Persisté (immuable) si requis.
+    sickDayAcknowledged?: boolean
   }) {
     // US-2663 (S3c/PR-A, revue architecture) — signature migrée en OBJET D'OPTIONS : `createSetProposal` porte
     // désormais des optionnels contextuels (ctx/rationale/baselineOverride) ET sert 3 leviers (ISF/ICR/basalRate) ;
     // les args positionnels devenaient fragiles (risque de désaligner ctx ⇄ rationale). Anti-usurpation inchangé.
-    const { patientId, parameterType, proposedSlots, proposer, ctx, rationale, baselineOverride } = input
+    const { patientId, parameterType, proposedSlots, proposer, ctx, rationale, baselineOverride, sickDayAcknowledged } = input
     // 1. Forme (Zod, par levier) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
     //    création ⇄ acceptation : une proposition inacceptable ne doit pas pouvoir être créée).
     const slots = parseSlots(parameterType, proposedSlots)
@@ -228,14 +235,48 @@ export const slotSetProposalService = {
 
     // 3. Frontière DISPOSITIF MÉDICAL (US-2651, §12.5) : jamais de proposition de dose pour un patient
     //    NON INSULINÉ. Mode dérivé SERVEUR (fail-closed). Aligné sur adjustmentService.createProposal.
-    const { mode } = await treatmentModeService.resolveTreatmentMode(patientId)
-    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+    const { mode, maturityLevel } = await treatmentModeService.resolveTreatmentMode(patientId)
+    if (mode === "nonInsulin") {
+      // Parité `createProposal` (US-2651) : l'intention d'un PATIENT non insuliné n'est pas un cul-de-sac
+      // silencieux — flag d'orientation « à revoir en consultation » pour le soignant (idempotent, best-effort ;
+      // un échec de flag ne change pas le refus MDR). Un clinicien (nurse/doctor) agit directement → pas de flag.
+      if (proposer.source === "patient" && proposer.userId != null) {
+        await clinicalReviewFlagService
+          .raise(patientId, "reviewInConsultation", proposer.userId, ctx)
+          .catch((err) => logger.error("slot-set-proposal", "raise review flag failed", { patientId }, err as Error))
+      }
+      throw new Error("nonInsulinNoDose")
+    }
 
     // 4. Snapshot de la base PAR créneau à la génération (US-2663 S0) — photographie de la config ACTIVE
     //    juste avant la création. Consommé par le CAS par créneau de S1 (détection `baselineMoved`).
     //    US-2663 (S3b-1) — si l'appelant a injecté sa propre lecture LIVE (voie MOTEUR groupée), on la RÉUTILISE
     //    au lieu de re-lire : disposition et base partagent alors un seul instant (fenêtre TOCTOU fermée).
     const baselineSlots = baselineOverride ?? await captureBaselineSlots(patientId, parameterType)
+
+    // 4-bis. US-2663 (S4, D3) — GARDE CLINIQUE PATIENT. Les soignants (nurse/doctor) NE sont PAS gatés
+    //    (cliniciens qualifiés, cohérent avec la décision D5 moteur→médecin) ; le moteur non plus. Pour une
+    //    soumission PATIENT, on réplique au JEU les invariants US-2659 (cap %, baisse basale gatée : maturité/
+    //    mode/DKA/incrément) — tout lu SERVEUR (anti-tamper). `isPen` dérivé du `configType` LIVE (basalRate).
+    let sickDayAckAt: Date | null = null
+    let decreaseAudit: Record<string, unknown> | null = null
+    if (proposer.source === "patient") {
+      let isPen = false
+      if (parameterType === "basalRate") {
+        const cfg = await prisma.basalConfiguration.findFirst({ where: { settings: { patientId } }, select: { configType: true } })
+        isPen = cfg?.configType === "single_injection" || cfg?.configType === "split_injection"
+      }
+      const gate = evaluatePatientGroupedGate({
+        parameterType,
+        slots,
+        baseline: baselineSlots,
+        isPen,
+        maturity: maturityLevel ?? "JUNIOR", // fail-closed : maturité absente → le plus restrictif
+        sickDayAcknowledged: sickDayAcknowledged === true,
+      })
+      sickDayAckAt = gate.sickDayAckAt
+      decreaseAudit = gate.decreaseAudit
+    }
 
     try {
       return await prisma.$transaction(async (tx) => {
@@ -257,7 +298,7 @@ export const slotSetProposalService = {
           data: { status: "superseded", reviewedAt: new Date(), reviewedBy: null },
         })
         const proposal = await tx.slotSetProposal.create({
-          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, rationale: rationaleToPersist ?? undefined, source: proposer.source, proposedByUserId: proposer.userId, status: "pending" },
+          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, rationale: rationaleToPersist ?? undefined, source: proposer.source, proposedByUserId: proposer.userId, status: "pending", sickDayAcknowledgedAt: sickDayAckAt },
           select: { id: true },
         })
         await auditService.logWithTx(tx, {
@@ -268,8 +309,9 @@ export const slotSetProposalService = {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           requestId: ctx?.requestId,
-          // Rationale tracée (nb de créneaux justifiés) pour l'audit HDS de la recommandation moteur.
-          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source: proposer.source, slots: slots.length, baselineSlots: baselineSlots.length, rationaleSlots: rationaleToPersist?.length ?? 0 },
+          // Rationale tracée (nb de créneaux justifiés) pour l'audit HDS de la recommandation moteur. Pour une
+          // soumission PATIENT contenant ≥ 1 baisse basale : audit enrichi (direction/mode/DKA/maturité — sans PHI).
+          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source: proposer.source, slots: slots.length, baselineSlots: baselineSlots.length, rationaleSlots: rationaleToPersist?.length ?? 0, ...(decreaseAudit ?? {}) },
         })
         return { id: proposal.id }
       })

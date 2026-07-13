@@ -80,7 +80,7 @@ const BASE: ReviewData = {
     bolusInconsistent: false, pump: null,
     isfSlots: [{ id: "isf1", range: "00:00–24:00", value: 0.5, startHour: 0, endHour: 24 }], isfCoverage: { hasGap: false, hasOverlap: false },
     icrSlots: [], icrCoverage: { hasGap: false, hasOverlap: false },
-    basalSlots: [], basalCoverage: { hasGap: false, hasOverlap: false },
+    basalSlots: [], basalCoverage: { hasGap: false, hasOverlap: false }, styloBasalDoses: [],
     treatments: [],
   },
   proposals: [

@@ -63,6 +63,35 @@ describe("buildTreatmentView", () => {
     expect(v.pump).toEqual({ label: "Medtronic 780G", syncStale: false })
   })
 
+  it("US-2663 (S4) — expose les doses basales STYLO (U totales) : single → [daily], split → [morning, evening]", () => {
+    const single = buildTreatmentView(
+      { deliveryMethod: "manual", sensitivityFactors: [], carbRatios: [], basalConfiguration: { pumpSlots: [], configType: "single_injection", dailyDose: 20, morningDose: null, eveningDose: null } },
+      [],
+    )
+    expect(single.styloBasalDoses).toEqual([{ kind: "daily", value: 20 }])
+    expect(single.basalSlots).toEqual([]) // exclusif de la pompe
+
+    const split = buildTreatmentView(
+      { deliveryMethod: "manual", sensitivityFactors: [], carbRatios: [], basalConfiguration: { pumpSlots: [], configType: "split_injection", dailyDose: null, morningDose: 12, eveningDose: 10 } },
+      [],
+    )
+    expect(split.styloBasalDoses).toEqual([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }])
+  })
+
+  it("US-2663 (S4) — pompe ou colonnes stylo absentes → styloBasalDoses vide (rétro-compat callers)", () => {
+    const pump = buildTreatmentView(
+      { deliveryMethod: "pump", sensitivityFactors: [], carbRatios: [], basalConfiguration: { pumpSlots: [{ id: "p1", startTime: "00:00", endTime: "00:00", rate: 1 }], configType: "pump" } },
+      [],
+    )
+    expect(pump.styloBasalDoses).toEqual([])
+    // Caller n'alimentant pas les colonnes stylo (basalConfiguration sans configType) → vide.
+    const legacy = buildTreatmentView(
+      { deliveryMethod: "pump", sensitivityFactors: [], carbRatios: [], basalConfiguration: { pumpSlots: [] } },
+      [],
+    )
+    expect(legacy.styloBasalDoses).toEqual([])
+  })
+
   it("selects the pump with the freshest lastSyncAt and flags stale sync (> 7j or never)", () => {
     const v = buildTreatmentView(
       { deliveryMethod: "pump", sensitivityFactors: [], carbRatios: [], basalConfiguration: null },

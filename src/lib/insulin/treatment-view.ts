@@ -10,10 +10,10 @@
 // Types de vue dans un module neutre (US-2632) : ré-exportés pour les
 // consommateurs + importés (ceux utilisés par les helpers/builder ci-dessous).
 export type {
-  InsulinDelivery, SlotCoverage, Slot, BasalSlot, TreatmentItem, BolusInsulin, Pump, TreatmentView,
+  InsulinDelivery, SlotCoverage, Slot, BasalSlot, StyloBasalDose, TreatmentItem, BolusInsulin, Pump, TreatmentView,
 } from "@/components/diabeo/patient/patient-record-views"
 import type {
-  InsulinDelivery, BolusInsulin, Pump, TreatmentView,
+  InsulinDelivery, StyloBasalDose, BolusInsulin, Pump, TreatmentView,
 } from "@/components/diabeo/patient/patient-record-views"
 // US-2647 — analyse de couverture + parsing Time extraits vers lib (réutilisable back, hors pages).
 import { analyzeSlotCoverage, timeToMinutes } from "@/lib/insulin/slot-coverage"
@@ -46,7 +46,17 @@ type SettingsInput = {
   deliveryMethod: InsulinDelivery
   sensitivityFactors: { id: string; startHour: number; endHour: number; sensitivityFactorGl: DecimalLike }[]
   carbRatios: { id: string; startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
-  basalConfiguration: { pumpSlots: { id: string; startTime: Date | string; endTime: Date | string; rate: DecimalLike }[] } | null
+  basalConfiguration: {
+    pumpSlots: { id: string; startTime: Date | string; endTime: Date | string; rate: DecimalLike }[]
+    // US-2663 (S4) — OPTIONNELS : les doses STYLO (MDI, U totales). Rétro-compat de FORME : absents (ex. fixtures
+    // de test, futurs callers minimaux) ⇒ `styloBasalDoses: []`. Les callers RÉELS qui passent par `getSettings`
+    // (page patient ET fiche médecin / revue) les peuplent déjà (le `include` renvoie ces colonnes) → un patient MDI
+    // a bien `styloBasalDoses` non vide partout ; seul l'AFFICHAGE médecin ne les rend pas encore (follow-up).
+    configType?: string | null
+    dailyDose?: DecimalLike | null
+    morningDose?: DecimalLike | null
+    eveningDose?: DecimalLike | null
+  } | null
   bolusInsulin?: {
     usage?: string | null
     isActive?: boolean | null
@@ -103,6 +113,18 @@ export function buildTreatmentView(
   const isf = settings?.sensitivityFactors ?? []
   const icr = settings?.carbRatios ?? []
   const basal = settings?.basalConfiguration?.pumpSlots ?? []
+
+  // US-2663 (S4) — doses basales STYLO (U TOTALES), exclusives de la pompe. `single_injection` → `[daily]` ;
+  // `split_injection` → `[morning, evening]` (doses null exclues). `[]` pour pompe/absent ou si les colonnes
+  // stylo ne sont pas fournies par l'appelant (rétro-compat : seule la page patient les sélectionne).
+  const bc = settings?.basalConfiguration
+  const styloBasalDoses: StyloBasalDose[] = []
+  if (bc?.configType === "single_injection") {
+    if (bc.dailyDose != null) styloBasalDoses.push({ kind: "daily", value: num(bc.dailyDose) })
+  } else if (bc?.configType === "split_injection") {
+    if (bc.morningDose != null) styloBasalDoses.push({ kind: "morning", value: num(bc.morningDose) })
+    if (bc.eveningDose != null) styloBasalDoses.push({ kind: "evening", value: num(bc.eveningDose) })
+  }
 
   // Garde « bolus réellement actif » : on n'affiche l'insuline bolus que si
   // l'enregistrement lié est actif, non terminé, et d'usage bolus (ou mixte) —
@@ -166,6 +188,7 @@ export function buildTreatmentView(
         .map((p) => ({ start: timeToMinutes(p.startTime), end: timeToMinutes(p.endTime) }))
         .filter((s): s is { start: number; end: number } => s.start !== null && s.end !== null),
     ),
+    styloBasalDoses,
     treatments: treatments.map((t) => ({ id: t.id, name: t.name, posology: t.posology })),
   }
 }

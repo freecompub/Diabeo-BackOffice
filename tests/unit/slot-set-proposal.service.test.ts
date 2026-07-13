@@ -127,6 +127,13 @@ describe("slotSetProposalService", () => {
   // ── create ──────────────────────────────────────────────────────────────
   it("createSetProposal : supersède les pending (ensemble + par-valeur) + crée + audit READ SLOT_SET_PROPOSAL", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    // Config ISF ACTIVE = mêmes créneaux que la soumission (un patient édite sa config, il ne restructure pas —
+    // garde S4 `structuralChangeNotAllowed`). Valeurs identiques → aucun changement (pas de cap déclenché).
+    prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue([
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.5 },
+      { startHour: 8, endHour: 22, sensitivityFactorGl: 0.45 },
+      { startHour: 22, endHour: 0, sensitivityFactorGl: 0.4 },
+    ] as never)
     const tx = mockTx()
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-1" })
@@ -150,9 +157,11 @@ describe("slotSetProposalService", () => {
   it("createSetProposal (US-2663 S0) : snapshot baseline ISF ACTIF + source=patient persistés", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
     // Config ISF active du patient (g/L·U = sensitivityFactorGl) → baseline attendu, même encodage que proposedSlots.
+    // Mêmes créneaux que SLOTS (garde S4 anti-restructuration) ; valeurs proches (< 10 %) → capture testée sans cap.
     prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue([
-      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.55 },
-      { startHour: 8, endHour: 0, sensitivityFactorGl: 0.48 },
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.52 },
+      { startHour: 8, endHour: 22, sensitivityFactorGl: 0.47 },
+      { startHour: 22, endHour: 0, sensitivityFactorGl: 0.42 },
     ] as never)
     const tx = mockTx()
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
@@ -166,8 +175,9 @@ describe("slotSetProposalService", () => {
           source: "patient",
           proposedSlots: SLOTS,
           baselineSlots: [
-            { startHour: 0, endHour: 8, value: 0.55 },
-            { startHour: 8, endHour: 0, value: 0.48 },
+            { startHour: 0, endHour: 8, value: 0.52 },
+            { startHour: 8, endHour: 22, value: 0.47 },
+            { startHour: 22, endHour: 0, value: 0.42 },
           ],
         }),
       }),
@@ -175,7 +185,7 @@ describe("slotSetProposalService", () => {
     // L'audit de création trace la provenance + les deux tailles (forensics).
     expect(auditService.logWithTx).toHaveBeenCalledWith(
       tx,
-      expect.objectContaining({ metadata: expect.objectContaining({ source: "patient", baselineSlots: 2 }) }),
+      expect.objectContaining({ metadata: expect.objectContaining({ source: "patient", baselineSlots: 3 }) }),
     )
   })
 
@@ -217,6 +227,12 @@ describe("slotSetProposalService", () => {
 
   it("createSetProposal (S3b-0a) : rationale passée par un HUMAIN est IGNORÉE (non persistée)", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    // Baseline ISF alignée sur SLOTS (garde S4 anti-restructuration), valeurs identiques → pas de cap.
+    prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue([
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.5 },
+      { startHour: 8, endHour: 22, sensitivityFactorGl: 0.45 },
+      { startHour: 22, endHour: 0, sensitivityFactorGl: 0.4 },
+    ] as never)
     const tx = mockTx()
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-h" })
@@ -294,6 +310,12 @@ describe("slotSetProposalService", () => {
 
   it("createSetProposal : P2002 (forme Prisma 7 + adapter-pg) → duplicatePendingProposal", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    // Baseline ISF alignée sur SLOTS (garde S4 anti-restructuration) → on atteint bien le chemin de création (P2002).
+    prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue([
+      { startHour: 0, endHour: 8, sensitivityFactorGl: 0.5 },
+      { startHour: 8, endHour: 22, sensitivityFactorGl: 0.45 },
+      { startHour: 22, endHour: 0, sensitivityFactorGl: 0.4 },
+    ] as never)
     // Forme RÉELLE sous @prisma/adapter-pg : meta.target = undefined ; le nom de contrainte est dans
     // driverAdapterError.cause.originalMessage (cf. review prisma-specialist).
     prismaMock.$transaction.mockRejectedValue(
@@ -387,7 +409,9 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-f" })
 
-    const res = await slotSetProposalService.createSetProposal({ patientId: 7, parameterType: "fixedDose", proposedSlots: FIXED_SLOTS as never, proposer: { userId: 7, source: "patient" } })
+    // Provenance PRO (doctor) : la dose fixe groupée est une voie soignant/moteur (les patients ne soumettent
+    // que ISF/ICR/basale — route `PUT /api/patient/insulin-slot-set`). Un pro n'est PAS gaté (US-2663 S4).
+    const res = await slotSetProposalService.createSetProposal({ patientId: 7, parameterType: "fixedDose", proposedSlots: FIXED_SLOTS as never, proposer: { userId: 3, source: "doctor" } })
     expect(res).toEqual({ id: "set-f" })
     expect(insulinTherapyService.getFixedDoseSlots).toHaveBeenCalledWith(7)
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(

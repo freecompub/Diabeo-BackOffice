@@ -77,6 +77,11 @@ export type Slot = { id: string; range: string; value: number; startHour: number
  * (`InsulinBasalSlotSetDialog`) — `range` reste le libellé d'affichage lecture seule.
  */
 export type BasalSlot = { range: string; rate: number; pumpBasalSlotId: string; startTime: string; endTime: string }
+/**
+ * Dose basale STYLO (MDI) — **U TOTALES** (jamais U/h), clé `kind` (single: `daily` ; split: `morning`+`evening`).
+ * US-2663 (S4) — alimente l'éditeur groupé stylo (`InsulinStyloBasalDialog`). `[]` si le patient est en pompe.
+ */
+export type StyloBasalDose = { kind: "daily" | "morning" | "evening"; value: number }
 export type TreatmentItem = { id: number; name: string | null; posology: string | null }
 /** Insuline bolus active (nom commercial du catalogue + DCI + posologie). */
 export type BolusInsulin = { name: string; genericName: string; dosage: string | null }
@@ -100,6 +105,8 @@ export type TreatmentView = {
   icrCoverage: SlotCoverage
   basalSlots: BasalSlot[] // U/h (pompe)
   basalCoverage: SlotCoverage
+  /** US-2663 (S4) — doses basales STYLO (MDI, U totales). `[]` si pompe/absent. Exclusif de `basalSlots`. */
+  styloBasalDoses: StyloBasalDose[]
   treatments: TreatmentItem[]
 }
 

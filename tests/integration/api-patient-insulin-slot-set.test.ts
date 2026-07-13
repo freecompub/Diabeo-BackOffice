@@ -2,8 +2,9 @@
  * US-2657 — Route self-service patient `PUT /api/patient/insulin-slot-set`.
  * Comportement : une soumission patient est **TOUJOURS** une proposition d'ensemble (`createSetProposal`) —
  * plus d'auto-application. Sécurité : own-id STRICT (`getOwnPatientId`, anti-IDOR → 404 neutre pour un pro
- * sans dossier), rate-limit, consentement RGPD, validation Zod (ISF/ICR seulement, ≤24 créneaux) ; mapping
- * des rejets durs / doublon pending / verrou → 4xx + audit `INSULIN_SLOT_SUBMISSION`. Service mocké.
+ * sans dossier), rate-limit, consentement RGPD, validation Zod (ISF/ICR + **basale** US-2663 S4, ≤24 créneaux) ;
+ * `sickDayAcknowledged` transmis (accusé DKA baisse basale, D3) ; mapping des rejets durs / doublon pending /
+ * garde clinique → 4xx + audit `INSULIN_SLOT_SUBMISSION`. Service mocké.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest"
 import { NextRequest } from "next/server"
@@ -76,8 +77,20 @@ describe("PUT /api/patient/insulin-slot-set (toujours proposition)", () => {
     expect(createProposal).not.toHaveBeenCalled()
   })
 
-  it("paramètre non ISF/ICR (basalRate) → 400", async () => {
-    expect((await PUT(req("VIEWER", { parameterType: "basalRate", slots: SLOTS }))).status).toBe(400)
+  it("US-2663 (S4) — basalRate ACCEPTÉ (voie patient étendue à la basale) → 201 + service appelé", async () => {
+    const basalSlots = [{ kind: "evening", value: 9 }] // forme stylo ; la garde/forme est re-validée SERVEUR (service mocké)
+    const res = await PUT(req("VIEWER", { parameterType: "basalRate", slots: basalSlots }))
+    expect(res.status).toBe(201)
+    expect(createProposal).toHaveBeenCalledWith(expect.objectContaining({ patientId: 7, parameterType: "basalRate", proposer: { userId: 42, source: "patient" } }))
+  })
+
+  it("US-2663 (S4, D3) — `sickDayAcknowledged` transmis au service (accusé DKA baisse basale)", async () => {
+    await PUT(req("VIEWER", { parameterType: "basalRate", slots: [{ kind: "evening", value: 9 }], sickDayAcknowledged: true }))
+    expect(createProposal).toHaveBeenCalledWith(expect.objectContaining({ sickDayAcknowledged: true }))
+  })
+
+  it("paramètre non supporté (fixedDose, réservé aux pros) → 400", async () => {
+    expect((await PUT(req("VIEWER", { parameterType: "fixedDose", slots: SLOTS }))).status).toBe(400)
     expect(createProposal).not.toHaveBeenCalled()
   })
 
