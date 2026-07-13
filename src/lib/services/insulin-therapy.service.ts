@@ -597,8 +597,12 @@ export const insulinTherapyService = {
           patientId,
           op: "replaceSet",
           param: "basal",
-          from: before.map((s) => ({ startTime: pumpTimeToHhmm(s.startTime), endTime: pumpTimeToHhmm(s.endTime) })),
-          to: slots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })),
+          // US-2663 (S3c, revue code) — `rate` (U/h) inclus dans `from`/`to` : un changement de DÉBIT pur (bornes
+          // inchangées) doit laisser une trace HDS de la valeur dosée, sinon `from ≡ to` masque l'ajustement.
+          // Valeur de configuration (débit basal), pas une donnée de santé → journalisable. (L'équivalent ISF/ICR
+          // — `finishReplaceSet`, qui n'audite que les bornes — reste à traiter dans une US HDS dédiée.)
+          from: before.map((s) => ({ startTime: pumpTimeToHhmm(s.startTime), endTime: pumpTimeToHhmm(s.endTime), rate: Number(s.rate) })),
+          to: slots.map((s) => ({ startTime: s.startTime, endTime: s.endTime, rate: s.rate })),
           supersededProposalIds,
           supersededSetProposalIds,
         },
