@@ -1011,7 +1011,13 @@ export const adjustmentService = {
             where: { patientInsulin: { patientId: proposal.patientId }, moment: proposal.moment, valueU: casValue },
             data: { valueU: proposed },
           })
-          assertRowApplied(res.count, "fixedDoseSlotNotFound")
+          // US-2663 (S3d) — fail-closed sur l'AMBIGUÏTÉ d'usage. Le modèle par-valeur ne porte PAS l'usage
+          // (`moment` seul) : si deux `PatientInsulin` (ex. bolus rapide + basale lente) partagent ce moment ET
+          // cette valeur, le `updateMany` toucherait PLUSIEURS lignes (count > 1) — écriture multiple silencieuse
+          // sur la mauvaise insuline. On REFUSE désormais (avant : seul count 0 était gardé, count > 1 passait).
+          // La voie GROUPÉE (S3d) résout par `(usage, moment)` et n'a pas cette ambiguïté. (À valider medical.)
+          if (res.count === 0) throw new Error("fixedDoseSlotNotFound")
+          if (res.count > 1) throw new Error("fixedDoseSlotAmbiguous")
         } else if (proposal.parameterType === "basalRate" && proposal.basalDoseKind != null) {
           // US-2660 — ÉCRITURE GROUPÉE de la basale STYLO (MDI). La dose ciblée par `basalDoseKind`
           // (`dailyDose`/`morningDose`/`eveningDose`, UNITÉS TOTALES) est écrite sur l'unique

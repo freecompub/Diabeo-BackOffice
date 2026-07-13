@@ -73,7 +73,9 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     // US-2660 — invariants internes fail-closed (ne devraient jamais survenir en prod : garantis par
     // le CHECK base d'exclusivité et par `resolveCurrentValue`). 422 Unprocessable plutôt qu'un 500
     // muet : la proposition n'est pas applicable en l'état.
-    if (error instanceof Error && ["basalTargetAmbiguous", "noApplicableApplyTarget"].includes(error.message)) {
+    // US-2663 (S3d) — `fixedDoseSlotAmbiguous` : deux doses fixes (usage-blind) matchent le même (moment, valeur)
+    // → ambiguïté de CONFIG, non résoluble par une simple régénération (il faut désambiguïser le profil).
+    if (error instanceof Error && ["basalTargetAmbiguous", "noApplicableApplyTarget", "fixedDoseSlotAmbiguous"].includes(error.message)) {
       return NextResponse.json({ error: error.message }, { status: 422 })
     }
     logger.error("proposals/accept", "Accept failed", {}, error)

@@ -14,7 +14,7 @@
  * | `insulinToCarbRatio` (ICR)      | `startHour`     | `{ startHour, endHour, value, mealLabel? }`      | g/U         |
  * | `basalRate` **pompe**           | `startTime`     | `{ startTime, endTime, rate }`                   | U/h         |
  * | `basalRate` **stylo**           | `basalDoseKind` | `{ kind: daily/morning/evening, value }`         | U (totales) |
- * | `fixedDose`                     | `moment`        | `{ moment, value }`                              | U           |
+ * | `fixedDose`                     | `usage`+`moment`| `{ usage, moment, value }`                       | U           |
  *
  * ⚠️ **État de généralisation** : à S0, seuls **ISF/ICR** sont réellement émis/stockés dans
  * `SlotSetProposal` (voie patient US-2657). Les schémas basale (pompe/stylo) et dose fixe sont le
@@ -57,8 +57,14 @@ export const styloBasalSlotSchema = z.object({
 })
 export type StyloBasalSlot = z.infer<typeof styloBasalSlotSchema>
 
-/** Dose fixe par moment du jour (mode « doses simples », U). */
+/**
+ * Dose fixe par moment du jour (mode « doses simples », U). US-2663 (S3d) — discriminée AUSSI par l'**usage**
+ * de l'insuline porteuse (`bolus`/`basal`/`both`) : un même `moment` (ex. « soir ») peut porter une dose BOLUS
+ * (rapide) ET une dose BASALE (lente), sur deux `PatientInsulin` distincts. La clé de créneau est donc
+ * `(usage, moment)`, pas `moment` seul — sinon l'apply ciblerait la mauvaise insuline (sur/sous-dosage).
+ */
 export const fixedDoseSlotSchema = z.object({
+  usage: z.nativeEnum($Enums.InsulinUsage),
   moment: z.enum(["morning", "noon", "evening", "night"]),
   value: z.number().finite().nonnegative(),
 })
@@ -68,11 +74,18 @@ export type FixedDoseSlot = z.infer<typeof fixedDoseSlotSchema>
  * US-2663 (S3b-0a) — Rationale MOTEUR d'un créneau CHANGÉ, portée par `SlotSetProposal.rationale` (JSON) quand
  * `source = algorithm`. Reprend les métadonnées de decision-support/traçabilité HDS que le modèle par-valeur
  * (`AdjustmentProposal`) portait par créneau : le POURQUOI (`reason`), la CONFIANCE, le VOLUME d'observations.
- * Appariée au créneau par `startHour` (comme le diff). Pas de PHI (valeurs de config + métriques d'analyse).
- * Optionnelle par nature (propositions humaines sans rationale algorithmique) ; requise à la création si algorithme.
+ * **Clé d'appariement POLYMORPHE par levier** (US-2663 S3d) : `startHour` (ISF/ICR, et pompe = heure-de-début
+ * dérivée) OU `(usage, moment)` (dose fixe — pas de `startHour`). Les trois champs de clé sont OPTIONNELS au
+ * niveau de la FORME (le levier détermine lequel est peuplé) ; l'émetteur moteur peuple la clé pertinente et
+ * l'UI de revue apparie par cette même clé. Pas de PHI (valeurs de config + métriques d'analyse). Optionnelle
+ * par nature (propositions humaines sans rationale algorithmique) ; requise à la création si algorithme.
  */
 export const slotRationaleSchema = z.object({
-  startHour: z.number().int().min(0).max(23),
+  // Clé ISF/ICR/pompe (heure-de-début, entier). Optionnelle : absente pour la dose fixe (clé `(usage, moment)`).
+  startHour: z.number().int().min(0).max(23).optional(),
+  // US-2663 (S3d) — clé dose fixe : usage de l'insuline porteuse + moment du jour. Absente pour ISF/ICR/pompe.
+  usage: z.nativeEnum($Enums.InsulinUsage).optional(),
+  moment: z.enum(["morning", "noon", "evening", "night"]).optional(),
   // US-2663 (S3b-0a, revue medical) — `reason` = enum `AdjustmentReason` (pas une chaîne libre) : il encode la
   // DIRECTION du jugement clinique (isf/icrTooLow=escalade vs TooHigh=dé-escalade), machine-vérifiable + i18n,
   // au même titre que le modèle par-valeur `AdjustmentProposal.reason`.

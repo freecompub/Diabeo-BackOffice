@@ -37,15 +37,18 @@ describe("grouped-proposal — schémas de forme par levier", () => {
     expect(styloBasalSlotSchema.safeParse({ kind: "noon", value: 12 }).success).toBe(false)
   })
 
-  it("dose fixe : accepte { moment ∈ morning/noon/evening/night, value } ; rejette un moment inconnu", () => {
-    expect(fixedDoseSlotSchema.safeParse({ moment: "noon", value: 4 }).success).toBe(true)
-    expect(fixedDoseSlotSchema.safeParse({ moment: "midnight", value: 4 }).success).toBe(false)
+  it("dose fixe : accepte { usage, moment ∈ morning/noon/evening/night, value } ; rejette moment/usage inconnu ou usage manquant", () => {
+    expect(fixedDoseSlotSchema.safeParse({ usage: "bolus", moment: "noon", value: 4 }).success).toBe(true)
+    expect(fixedDoseSlotSchema.safeParse({ usage: "basal", moment: "evening", value: 20 }).success).toBe(true)
+    expect(fixedDoseSlotSchema.safeParse({ usage: "bolus", moment: "midnight", value: 4 }).success).toBe(false) // moment inconnu
+    expect(fixedDoseSlotSchema.safeParse({ usage: "mixed", moment: "noon", value: 4 }).success).toBe(false) // usage hors enum
+    expect(fixedDoseSlotSchema.safeParse({ moment: "noon", value: 4 }).success).toBe(false) // usage manquant (S3d — clé (usage,moment))
   })
 
   it("groupedSlotsSchema : route vers le bon schéma de tableau par parameterType", () => {
     expect(groupedSlotsSchema("insulinSensitivityFactor").safeParse([{ startHour: 0, endHour: 24, value: 0.5 }]).success).toBe(false) // endHour 24 hors forme
     expect(groupedSlotsSchema("insulinToCarbRatio").safeParse([{ startHour: 0, endHour: 12, value: 10 }]).success).toBe(true)
-    expect(groupedSlotsSchema("fixedDose").safeParse([{ moment: "morning", value: 6 }]).success).toBe(true)
+    expect(groupedSlotsSchema("fixedDose").safeParse([{ usage: "bolus", moment: "morning", value: 6 }]).success).toBe(true)
     // basalRate accepte l'union pompe|stylo (discriminée par la présence de startTime vs kind).
     expect(groupedSlotsSchema("basalRate").safeParse([{ startTime: "06:00", endTime: "22:00", rate: 0.8 }]).success).toBe(true)
     expect(groupedSlotsSchema("basalRate").safeParse([{ kind: "evening", value: 18 }]).success).toBe(true)
