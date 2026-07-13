@@ -34,3 +34,11 @@ export const PARAM_BOUNDS: Record<EditableParameter, { min: number; max: number 
   insulinToCarbRatio: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
   basalRate: { min: CLINICAL_BOUNDS.BASAL_MIN, max: CLINICAL_BOUNDS.BASAL_MAX },
 }
+
+/**
+ * US-2663 (S4) — bornes UI de la basale STYLO (MDI, **U TOTALES**, distinctes de la pompe `basalRate` en U/h).
+ * Plancher `MDI_BASAL_MIN_U` (0,5 U) ; plafond = garde anti-overflow SERVEUR (`Decimal(6,2)`) — PAS de plafond
+ * clinique dur (U300/dégludec > 80 U légitimes ; le seuil d'alerte `MDI_BASAL_WARN_U` reste non bloquant, surfacé
+ * à la revue médecin). Le serveur (`assertValidStyloBasalSet`) reste l'autorité (délivrabilité ½ U comprise).
+ */
+export const STYLO_BASAL_BOUNDS = { min: CLINICAL_BOUNDS.MDI_BASAL_MIN_U, max: 9999.99 }

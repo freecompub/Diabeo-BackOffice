@@ -41,6 +41,7 @@ const BASE: TreatmentView = {
   icrCoverage: { hasGap: false, hasOverlap: false },
   basalSlots: [{ range: "00:00–24:00", rate: 0.8, pumpBasalSlotId: "b1", startTime: "00:00", endTime: "00:00" }],
   basalCoverage: { hasGap: false, hasOverlap: false },
+  styloBasalDoses: [],
   treatments: [],
 }
 

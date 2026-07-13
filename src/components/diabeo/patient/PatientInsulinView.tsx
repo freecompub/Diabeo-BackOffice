@@ -27,7 +27,8 @@ import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { InsulinSlotSetDialog } from "@/components/diabeo/patient/InsulinSlotSetDialog"
 import { InsulinBasalSlotSetDialog } from "@/components/diabeo/patient/InsulinBasalSlotSetDialog"
-import { PARAM_BOUNDS } from "@/components/diabeo/patient/insulin-parameter-endpoints"
+import { InsulinStyloBasalDialog } from "@/components/diabeo/patient/InsulinStyloBasalDialog"
+import { PARAM_BOUNDS, STYLO_BASAL_BOUNDS } from "@/components/diabeo/patient/insulin-parameter-endpoints"
 import { ProposalList, type ProposalViewItem } from "@/components/diabeo/patient/ProposalList"
 import type { TreatmentView, Slot, BasalSlot } from "@/components/diabeo/patient/patient-record-views"
 
@@ -65,6 +66,8 @@ export function PatientInsulinView({
 }) {
   const t = useTranslations("patientInsulin")
   const tUnits = useTranslations("insulinUnits")
+  // US-2663 (S4) — libellés de dose STYLO (réutilise les clés de l'éditeur `InsulinStyloBasalDialog`).
+  const tDetail = useTranslations("patientDetail")
 
   // Non insuliné / pas de configuration → état vide informatif (aucune dose affichée).
   if (!data.hasSettings) {
@@ -74,6 +77,10 @@ export function PatientInsulinView({
   const isfRows: Row[] = data.isfSlots.map((s: Slot) => ({ key: s.id, range: s.range, value: s.value }))
   const icrRows: Row[] = data.icrSlots.map((s: Slot) => ({ key: s.id, range: s.range, value: s.value }))
   const basalRows: Row[] = data.basalSlots.map((s: BasalSlot) => ({ key: s.pumpBasalSlotId, range: s.range, value: s.rate }))
+  // US-2663 (S4) — doses basales STYLO (U totales), exclusives de la pompe. Libellé de dose (daily/morning/evening).
+  const styloKindLabel = (k: "daily" | "morning" | "evening") =>
+    tDetail(k === "daily" ? "slotSetStyloDaily" : k === "morning" ? "slotSetStyloMorning" : "slotSetStyloEvening")
+  const styloRows: Row[] = data.styloBasalDoses.map((d) => ({ key: d.kind, range: styloKindLabel(d.kind), value: d.value }))
 
   // Créneaux ADRESSABLES pour la proposition GROUPÉE (jeu ENTIER) — audience patient (own-id).
   const isfSet = data.isfSlots.map((s: Slot) => ({ startHour: s.startHour, endHour: s.endHour, value: s.value }))
@@ -159,17 +166,36 @@ export function PatientInsulinView({
           <h2 className="text-base font-semibold">{t("basalTitle")}</h2>
         </CardHeader>
         <CardContent className="space-y-3">
-          <SlotRows rows={basalRows} unit={tUnits("basal")} emptyLabel={t("noSlots")} />
-          {canPropose && basalSet.length > 0 && (
-            <InsulinBasalSlotSetDialog
-              paramLabel={t("basalTitle")}
-              unit={tUnits("basal")}
-              initialSlots={basalSet}
-              bounds={PARAM_BOUNDS.basalRate}
-              mode="propose"
-              audience="patient"
-              structural={false}
-            />
+          {/* US-2663 (S4) — un patient est SOIT pompe (créneaux U/h) SOIT stylo/MDI (doses U totales) : on rend
+              la modalité active. Le stylo édite en U totales via l'éditeur dédié (case accusé DKA sur baisse). */}
+          {data.styloBasalDoses.length > 0 ? (
+            <>
+              <SlotRows rows={styloRows} unit={tUnits("u")} emptyLabel={t("noSlots")} />
+              {canPropose && (
+                <InsulinStyloBasalDialog
+                  paramLabel={t("basalTitle")}
+                  unit={tUnits("u")}
+                  initialSlots={data.styloBasalDoses}
+                  bounds={STYLO_BASAL_BOUNDS}
+                  audience="patient"
+                />
+              )}
+            </>
+          ) : (
+            <>
+              <SlotRows rows={basalRows} unit={tUnits("basal")} emptyLabel={t("noSlots")} />
+              {canPropose && basalSet.length > 0 && (
+                <InsulinBasalSlotSetDialog
+                  paramLabel={t("basalTitle")}
+                  unit={tUnits("basal")}
+                  initialSlots={basalSet}
+                  bounds={PARAM_BOUNDS.basalRate}
+                  mode="propose"
+                  audience="patient"
+                  structural={false}
+                />
+              )}
+            </>
           )}
         </CardContent>
       </Card>
