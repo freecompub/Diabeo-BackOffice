@@ -48,7 +48,7 @@ import type { AuditContext } from "@/lib/services/patient.service"
 // US-2663 (S3b-1) — émission GROUPÉE moteur (derrière flag `ENGINE_GROUPED_ISF_ICR`).
 import { getEnvBoolean } from "@/lib/env"
 import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
-import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
+import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot, StyloBasalSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
 import type { InsulinUsage, DoseMoment } from "@prisma/client"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { activeInsulinFilter } from "@/lib/insulin/active-insulin"
@@ -720,6 +720,103 @@ async function emitGroupedFixedDose(
   }
 }
 
+/** US-2663 (S3e PR2) — candidat moteur basale STYLO collecté : dose visée (`kind`) + candidat. */
+type CollectedStyloCandidate = { kind: "daily" | "morning" | "evening"; cand: ProposalCandidate }
+
+/**
+ * US-2663 (S3e PR2) — Cœur PUR de l'assemblage de la disposition groupée BASALE STYLO (aucune IO → unit-testable).
+ * Pendant de `assembleGroupedPumpDisposition`/`assembleGroupedFixedDose` pour le modèle STYLO (`StyloBasalSlot`,
+ * clé `kind` = dose visée, valeur = U TOTALES). Le moteur ne décide **qu'une dose/run** (single = daily ;
+ * split = 1 gagnant par priorité sécurité), mais la disposition porte le JEU de modalité ENTIER (single : `[daily]` ;
+ * split : `[morning, evening]`), la dose changée superposée.
+ *
+ * Gardes par dose (parité voie par-valeur) : appariement live par `kind` ; CAS (valeur live == `cand.currentValue`,
+ * snapshot T0, tolérance `1e-9`) ; no-op `delta === 0` ; garde direction (`basalTooLow`⇒hausse, `basalTooHigh`⇒baisse).
+ * Une dose dérivée/absente/incohérente est ABANDONNÉE — jamais une magnitude périmée injectée. Rationale clé `basalDoseKind`.
+ *
+ * @returns `disposition: null` = no-op (R4). Sinon disposition ENTIÈRE (doses changées superposées) + rationale.
+ */
+export function assembleGroupedStyloDisposition(
+  liveSlots: StyloBasalSlot[],
+  candidates: CollectedStyloCandidate[],
+  analysisPeriodDays: number,
+): { disposition: StyloBasalSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
+  const liveByKind = new Map(liveSlots.map((s) => [s.kind, s]))
+  const overlay = new Map<string, number>() // kind → proposedValue
+  const rationale: SlotRationale[] = []
+  let directionMismatches = 0
+  for (const { kind, cand } of candidates) {
+    const live = liveByKind.get(kind)
+    if (!live) continue // dose disparue depuis l'analyse (bascule de modalité) → abandon
+    if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
+    const delta = cand.proposedValue - live.value
+    if (delta === 0) continue // no-op silencieux
+    const wantsIncrease = reasonImpliesIncrease(cand.reason)
+    if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
+    overlay.set(kind, cand.proposedValue)
+    rationale.push({
+      basalDoseKind: kind,
+      reason: cand.reason,
+      confidence: cand.confidence,
+      supportingEvents: cand.supportingEvents,
+      totalEventsConsidered: cand.totalEventsConsidered,
+      changePercent: cand.changePercent,
+      averageObservedValue: cand.averageObservedValue ?? null,
+      analysisPeriod: analysisPeriodDays,
+    })
+  }
+  if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
+  const disposition: StyloBasalSlot[] = liveSlots.map((s) => ({ kind: s.kind, value: overlay.get(s.kind) ?? s.value }))
+  return { disposition, rationale, directionMismatches }
+}
+
+/**
+ * US-2663 (S3e PR2) — Émission GROUPÉE moteur de la basale STYLO (derrière `ENGINE_GROUPED_STYLO`). Relit la
+ * config LIVE (`getStyloBasalSlots` — forme `{kind, value}`, doses `null` exclues), délègue à
+ * `assembleGroupedStyloDisposition`, puis émet **une** `SlotSetProposal` `basalRate` `source: "algorithm"`
+ * (disposition entière + baseline injecté = la même lecture → fenêtre TOCTOU fermée). Le verrou « 1 pending »
+ * est assuré par l'unicité `SlotSetProposal` (`createSetProposal` supersède le pending basalRate) — le verrou
+ * applicatif par-valeur `one_pending_stylo_basal` ne s'applique pas à cette voie. Rejets fail-closed → non fatals.
+ * @returns `emitted` — l'appelant incrémente `created`.
+ */
+async function emitGroupedStyloBasal(
+  patientId: number,
+  candidates: CollectedStyloCandidate[],
+  analysisPeriodDays: number,
+  ctx: AuditContext | undefined,
+): Promise<{ emitted: boolean }> {
+  if (candidates.length === 0) return { emitted: false }
+  const liveSlots = await insulinTherapyService.getStyloBasalSlots(patientId) // forme groupée, doses null exclues
+  if (liveSlots.length === 0) return { emitted: false }
+  const { disposition, rationale, directionMismatches } = assembleGroupedStyloDisposition(liveSlots, candidates, analysisPeriodDays)
+  if (directionMismatches > 0) {
+    logger.error("proposal-generator", "grouped stylo candidate direction mismatch",
+      { patientId, bucket: "basal:stylo", failMode: "reasonDirectionMismatch", count: directionMismatches })
+  }
+  if (disposition === null) return { emitted: false } // R4 — no-op
+  try {
+    await slotSetProposalService.createSetProposal({
+      patientId,
+      parameterType: "basalRate",
+      proposedSlots: disposition,
+      proposer: { userId: null, source: "algorithm" },
+      ctx,
+      rationale,
+      baselineOverride: liveSlots,
+    })
+    return { emitted: true }
+  } catch (err) {
+    const msg = (err as Error).message
+    if (EXPECTED_SKIP_GROUPED.has(msg)) {
+      logger.info("proposal-generator", "grouped stylo proposal skipped", { patientId, bucket: "basal:stylo", failMode: msg })
+    } else {
+      logger.error("proposal-generator", "unexpected grouped stylo proposal error",
+        { patientId, bucket: "basal:stylo", failMode: "unexpected" }, err as Error)
+    }
+    return { emitted: false }
+  }
+}
+
 export const proposalGeneratorService = {
   /**
    * Génère les propositions moteur d'un patient (mode-aware : ICR + basal + ISF en `basalBolus` ;
@@ -797,6 +894,13 @@ export const proposalGeneratorService = {
     const groupedIsfIcr = getEnvBoolean("ENGINE_GROUPED_ISF_ICR") === true
     // US-2663 (S3c/PR-A) — bascule RÉVERSIBLE de la basale POMPE en émission groupée (flag DISTINCT d'ISF/ICR).
     const groupedPump = getEnvBoolean("ENGINE_GROUPED_PUMP") === true
+    // US-2663 (S3e PR2) — bascule RÉVERSIBLE de la basale STYLO (single/split) en émission groupée (flag DISTINCT).
+    const groupedStylo = getEnvBoolean("ENGINE_GROUPED_STYLO") === true
+    // Collecte STYLO (single OU split — mutuellement exclusifs par `configType`) : au plus 1 dose/run décidée par
+    // le moteur, émise en UNE `SlotSetProposal` de forme STYLO après les deux chemins. `windowDays` numérique
+    // (rationale groupée) résolu dans le chemin actif.
+    const styloCandidates: CollectedStyloCandidate[] = []
+    let styloWindowDays: number = CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS
     const icrCandidates: CollectedCandidate[] = []
     const pumpCandidates: CollectedPumpCandidate[] = []
 
@@ -1030,6 +1134,7 @@ export const proposalGeneratorService = {
         const inc = CLINICAL_BOUNDS.MDI_BASAL_DELIVERY_INCREMENT_U // 1 U fail-closed (0,5 demi-unité non câblé S1)
         // Fenêtre 7 j MDI (plus réactive) ; une fenêtre à la demande (US-2658) l'emporte si fournie.
         const mdiPeriod = windowDays != null ? `${windowDays}d` : `${CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS}d`
+        styloWindowDays = windowDays ?? CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS // rationale groupée (numérique)
         const rawTarget = settings?.glucoseTargets?.[0]?.targetGlucose
         const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
 
@@ -1096,8 +1201,11 @@ export const proposalGeneratorService = {
             guardNadirs: nocturnalNadirs, guardNadirsPost: postNocturnalNadirs,
             currentDose, targetGl, inc, withinCooldown, coverageOk, confounded: false,
           })
-          if (decision.kind === "proposal") await persistMdi(decision.cand)
-          else if (decision.kind === "flag") await raiseMdiFlag()
+          // Mode GROUPÉ (S3e PR2) : collecte (émission `SlotSetProposal` STYLO différée) ; sinon par-valeur immédiat.
+          if (decision.kind === "proposal") {
+            if (groupedStylo) styloCandidates.push({ kind: "daily", cand: decision.cand })
+            else await persistMdi(decision.cand)
+          } else if (decision.kind === "flag") await raiseMdiFlag()
         }
       }
     }
@@ -1115,6 +1223,7 @@ export const proposalGeneratorService = {
       const morningDose = basalConfig.morningDose != null ? Number(basalConfig.morningDose) : null
       const inc = CLINICAL_BOUNDS.MDI_BASAL_DELIVERY_INCREMENT_U
       const mdiPeriod = windowDays != null ? `${windowDays}d` : `${CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS}d`
+      styloWindowDays = windowDays ?? CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS // rationale groupée (numérique)
       const rawTarget = settings?.glucoseTargets?.[0]?.targetGlucose
       const targetGl = resolveFastingTarget(rawTarget != null ? Number(rawTarget) / 100 : null, isPregnancy)
       const glVals = (nums: (number | null)[]) => nums.filter((v): v is number => v !== null && Number.isFinite(v)).map((v) => v / 100)
@@ -1212,16 +1321,24 @@ export const proposalGeneratorService = {
         // Comparateur robuste (borné à ≤ 2 cibles distinctes, mais explicite l'intention).
         proposals.sort((a, b) => Number(b.isDeesc) - Number(a.isDeesc) || (a.d === b.d ? 0 : a.d === "evening" ? -1 : 1))
         const winner = proposals[0]
-        // Verrou Q6 : au plus 1 basale stylo pending (toutes cibles). Applicatif ici + index base (course inter-run).
-        const pending = await prisma.adjustmentProposal.findFirst({
-          where: { patientId, parameterType: "basalRate", status: "pending", NOT: { basalDoseKind: null } },
-          select: { id: true },
-        })
-        if (pending) {
-          if (winner.isDeesc) await raiseSplitFlag(winner.d) // fail-loud : une dé-escalade (sécurité) bloquée par le verrou → flag
-          // sinon (titration) → défer silencieux, repris au prochain run une fois la pending résolue.
+        if (groupedStylo) {
+          // Voie GROUPÉE (S3e PR2) : la gagnante est collectée pour l'émission `SlotSetProposal` STYLO. L'unicité
+          // « 1 pending basalRate » est portée par `createSetProposal` (supersession du pending) — le verrou
+          // par-valeur `one_pending_stylo_basal` ne s'applique pas ici, donc pas de « défer silencieux » : la vue
+          // moteur la plus récente supersède (parité pompe/ISF/ICR groupés).
+          styloCandidates.push({ kind: winner.d, cand: winner.cand })
         } else {
-          await persistSplit(winner.cand, winner.d)
+          // Verrou Q6 : au plus 1 basale stylo pending (toutes cibles). Applicatif ici + index base (course inter-run).
+          const pending = await prisma.adjustmentProposal.findFirst({
+            where: { patientId, parameterType: "basalRate", status: "pending", NOT: { basalDoseKind: null } },
+            select: { id: true },
+          })
+          if (pending) {
+            if (winner.isDeesc) await raiseSplitFlag(winner.d) // fail-loud : une dé-escalade (sécurité) bloquée par le verrou → flag
+            // sinon (titration) → défer silencieux, repris au prochain run une fois la pending résolue.
+          } else {
+            await persistSplit(winner.cand, winner.d)
+          }
         }
         // Fail-loud : toute AUTRE dé-escalade (perdante du run — les DEUX doses sur-basalisées) est un signal de
         // SÉCURITÉ → flag immédiat, jamais un drop silencieux (parité avec le chemin single ; ne pas attendre le
@@ -1230,6 +1347,14 @@ export const proposalGeneratorService = {
           if (loser.isDeesc) await raiseSplitFlag(loser.d)
         }
       }
+    }
+
+    // 6quater. Émission GROUPÉE STYLO (S3e PR2, derrière `ENGINE_GROUPED_STYLO`) — single ET split alimentent
+    // `styloCandidates` (au plus 1 dose/run). UNE `SlotSetProposal` de forme STYLO (disposition de modalité
+    // ENTIÈRE, dose changée superposée, baseline injecté = même lecture ⇒ TOCTOU fermée). No-op si vide/dérivé.
+    if (groupedStylo && styloCandidates.length > 0) {
+      const res = await emitGroupedStyloBasal(patientId, styloCandidates, styloWindowDays, ctx)
+      if (res.emitted) created++
     }
 
     // 7. Chemin ISF (US-2651) — titre chaque créneau ISF par les CORRECTIONS propres appariées.

@@ -21,7 +21,8 @@ vi.mock("@/lib/services/treatment-mode.service", () => ({
 }))
 vi.mock("@/lib/services/insulin-therapy.service", () => ({
   // S3d PR2 — `getFixedDoseSlots` : relecture live de la dose fixe (emitGroupedFixedDose).
-  insulinTherapyService: { getSettings: vi.fn(), getFixedDoseSlots: vi.fn() },
+  // S3e PR2 — `getStyloBasalSlots` : relecture live de la dose stylo (emitGroupedStyloBasal).
+  insulinTherapyService: { getSettings: vi.fn(), getFixedDoseSlots: vi.fn(), getStyloBasalSlots: vi.fn() },
 }))
 vi.mock("@/lib/services/meal-trends.service", () => ({
   mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn(), correctionTrend: vi.fn() },
@@ -51,7 +52,7 @@ vi.mock("@/lib/services/slot-set-proposal.service", () => ({
   slotSetProposalService: { createSetProposal: vi.fn() },
 }))
 
-import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPumpDisposition, assembleGroupedFixedDose } from "@/lib/services/proposal-generator.service"
+import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPumpDisposition, assembleGroupedFixedDose, assembleGroupedStyloDisposition } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
@@ -69,6 +70,7 @@ const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const createSet = vi.mocked(slotSetProposalService.createSetProposal)
 const getFixedDoseSlots = vi.mocked(insulinTherapyService.getFixedDoseSlots)
+const getStyloBasalSlots = vi.mocked(insulinTherapyService.getStyloBasalSlots)
 const fixedDoseTrend = vi.mocked(analyticsService.fixedDoseTrend)
 
 const DAY_MS = 86_400_000
@@ -605,5 +607,201 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     await proposalGeneratorService.generateForPatient(1, 99)
     expect(createSet).not.toHaveBeenCalled() // toujours pas de titration groupée
     expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined) // hypo surfacée au médecin
+  })
+})
+
+describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STYLO)", () => {
+  const stCand = (over: Partial<{ kind: "daily" | "morning" | "evening"; currentValue: number; proposedValue: number; reason: string }> = {}) => ({
+    kind: over.kind ?? "daily",
+    cand: {
+      parameterType: "basalRate",
+      reason: over.reason ?? "basalTooLow", // hausse attendue
+      currentValue: over.currentValue ?? 20,
+      proposedValue: over.proposedValue ?? 21,
+      changePercent: 5,
+      confidence: "medium",
+      supportingEvents: 4,
+      totalEventsConsidered: 4,
+    },
+  }) as never
+
+  it("dose daily changée → superposée, rationale clé basalDoseKind", () => {
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand()], 7)!
+    expect(res.disposition).toEqual([{ kind: "daily", value: 21 }])
+    expect(res.rationale).toHaveLength(1)
+    expect(res.rationale[0]).toMatchObject({ basalDoseKind: "daily", reason: "basalTooLow", analysisPeriod: 7 })
+    expect(res.directionMismatches).toBe(0)
+  })
+
+  it("split : une dose changée (evening), l'autre (morning) garde sa valeur live", () => {
+    const live = [{ kind: "morning" as const, value: 12 }, { kind: "evening" as const, value: 10 }]
+    const res = assembleGroupedStyloDisposition(live, [stCand({ kind: "evening", currentValue: 10, proposedValue: 9, reason: "basalTooHigh" })], 7)!
+    expect(res.disposition).toEqual([{ kind: "morning", value: 12 }, { kind: "evening", value: 9 }])
+    expect(res.rationale[0]).toMatchObject({ basalDoseKind: "evening", reason: "basalTooHigh" })
+  })
+
+  it("garde direction : basalTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ reason: "basalTooLow", proposedValue: 19 })], 7)
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(1)
+  })
+
+  it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ currentValue: 21 })], 7) // live daily = 20
+    expect(res.disposition).toBeNull()
+  })
+
+  it("kind absent du live (bascule de modalité) → abandonné", () => {
+    const res = assembleGroupedStyloDisposition([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }], [stCand({ kind: "daily" })], 7)
+    expect(res.disposition).toBeNull()
+  })
+
+  it("no-op (delta 0) → disposition null", () => {
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ proposedValue: 20 })], 7)
+    expect(res.disposition).toBeNull()
+  })
+})
+
+describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2, flag ENGINE_GROUPED_STYLO)", () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => delete process.env.ENGINE_GROUPED_STYLO)
+
+  /** Config stylo single : dose lente 20 U. À jeun HAUT (1,60 g/L > cible ~1,10) + nadir nocturne SÛR → basalTooLow (hausse). */
+  function setupStyloSingle() {
+    mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
+    getSettings.mockResolvedValue({
+      carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
+      basalConfiguration: { configType: "single_injection", dailyDose: 20, morningDose: null, eveningDose: null },
+      glucoseTargets: [{ targetGlucose: 110 }],
+      basalInsulin: undefined,
+    } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
+    dailyJournal.mockResolvedValue([] as never)
+    fastingTrend.mockResolvedValue(
+      Array.from({ length: 4 }, (_, i) => ({ fastingMgdl: 160, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(i) })) as never,
+    )
+    createSet.mockResolvedValue({ id: "ss" } as never)
+    // Relecture LIVE de la dose stylo (emitGroupedStyloBasal) — même valeur que la config.
+    getStyloBasalSlots.mockResolvedValue([{ kind: "daily", value: 20 }] as never)
+  }
+
+  it("flag ON — émet UNE SlotSetProposal basalRate de forme STYLO (kind daily, hausse), baseline injecté", async () => {
+    process.env.ENGINE_GROUPED_STYLO = "true"
+    setupStyloSingle()
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    expect(createEngine).not.toHaveBeenCalled() // plus de par-valeur stylo en mode groupé
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
+    const disp = call![0].proposedSlots as { kind: string; value: number }[]
+    expect(disp).toHaveLength(1)
+    expect(disp[0]!.kind).toBe("daily")
+    expect(disp[0]!.value).toBeGreaterThan(20) // hausse
+    const rationale = call![0].rationale as { basalDoseKind: string; reason: string }[]
+    expect(rationale[0]).toMatchObject({ basalDoseKind: "daily", reason: "basalTooLow" })
+    expect(call![0].baselineOverride).toEqual([{ kind: "daily", value: 20 }]) // TOCTOU fermée
+    expect(res.created).toBe(1)
+  })
+
+  it("flag OFF (défaut) — voie par-valeur STYLO inchangée (createEngineProposal basalDoseKind daily, aucune groupée)", async () => {
+    setupStyloSingle()
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled()
+    expect(createEngine).toHaveBeenCalledTimes(1)
+    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", basalDoseKind: "daily" })
+    expect(res.created).toBe(1)
+  })
+
+  it("flag ON — split : la dose gagnante (soir, à jeun HAUT) est superposée, matin (pas de signal) inchangé", async () => {
+    process.env.ENGINE_GROUPED_STYLO = "true"
+    mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
+    getSettings.mockResolvedValue({
+      carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
+      basalConfiguration: { configType: "split_injection", dailyDose: null, morningDose: 12, eveningDose: 10 },
+      glucoseTargets: [{ targetGlucose: 110 }],
+      basalInsulin: undefined,
+    } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
+    dailyJournal.mockResolvedValue([] as never) // aucun signal pré-dîner → pas de candidat MATIN
+    fastingTrend.mockResolvedValue(
+      Array.from({ length: 4 }, (_, i) => ({ fastingMgdl: 160, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(i) })) as never,
+    )
+    createSet.mockResolvedValue({ id: "sp2" } as never)
+    getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
+
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createEngine).not.toHaveBeenCalled()
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    const disp = call![0].proposedSlots as { kind: string; value: number }[]
+    expect(disp.find((s) => s.kind === "evening")!.value).toBeGreaterThan(10) // soir titré (hausse)
+    expect(disp.find((s) => s.kind === "morning")!.value).toBe(12) // matin inchangé
+    const rationale = call![0].rationale as { basalDoseKind: string }[]
+    expect(rationale).toHaveLength(1)
+    expect(rationale[0]!.basalDoseKind).toBe("evening")
+    expect(res.created).toBe(1)
+  })
+
+  /**
+   * Config split. `fasting` (dose SOIR, garde nocturne) : à jeun `fastGl` + nadir nocturne `noctGl`.
+   * `dailyJournal` (dose MATIN) : dîners (pré-dîner `preGl`) + repas du matin (nadir de jour `dayNadGl`),
+   * SANS bolus de midi (pas de confondeur). Doses live soir 10 / matin 12.
+   */
+  function setupStyloSplit(opts: { fastGl: number; noctGl: number; preGl: number; dayNadGl: number }) {
+    mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
+    getSettings.mockResolvedValue({
+      carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
+      basalConfiguration: { configType: "split_injection", dailyDose: null, morningDose: 12, eveningDose: 10 },
+      glucoseTargets: [{ targetGlucose: 110 }], // cible ~1,1 g/L
+      basalInsulin: undefined,
+    } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
+    fastingTrend.mockResolvedValue(
+      Array.from({ length: 4 }, (_, i) => ({ fastingMgdl: opts.fastGl * 100, nocturnalNadirMgdl: opts.noctGl * 100, dayIso: isoDaysAgo(i) })) as never,
+    )
+    dailyJournal.mockResolvedValue([
+      ...Array.from({ length: 4 }, (_, i) => ({ moment: "evening", preMgdl: opts.preGl * 100, nadirMgdl: 120, bolus: 0, dayIso: isoDaysAgo(i) })),
+      ...Array.from({ length: 4 }, (_, i) => ({ moment: "morning", preMgdl: 100, nadirMgdl: opts.dayNadGl * 100, bolus: 0, dayIso: isoDaysAgo(i) })),
+    ] as never)
+    createSet.mockResolvedValue({ id: "sp3" } as never)
+    getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
+  }
+
+  it("flag ON — split : dé-escalade SOIR (hypo) prioritaire sur titration MATIN → SOIR gagnante émise, MATIN sans flag", async () => {
+    process.env.ENGINE_GROUPED_STYLO = "true"
+    // Soir : à jeun en bande (1,1) + nadirs nocturnes hypo récurrente (0,55) → dé-escalade soir.
+    // Matin : pré-dîner HAUT (1,7) + nadirs de jour sûrs (1,2) → titration matin (hausse). Priorité sécurité → soir.
+    setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.7, dayNadGl: 1.2 })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    const disp = call![0].proposedSlots as { kind: string; value: number }[]
+    expect(disp.find((s) => s.kind === "evening")!.value).toBeLessThan(10) // dé-escalade soir gagnante
+    expect(disp.find((s) => s.kind === "morning")!.value).toBe(12) // matin (titration perdante) inchangé
+    const rationale = call![0].rationale as { basalDoseKind: string }[]
+    expect(rationale).toHaveLength(1)
+    expect(rationale[0]!.basalDoseKind).toBe("evening")
+    // La perdante MATIN est une TITRATION (pas une dé-escalade) → aucun flag levé (défère au run suivant).
+    expect(raiseFlag).not.toHaveBeenCalled()
+    expect(res.created).toBe(1)
+  })
+
+  it("flag ON — split : DEUX dé-escalades → SOIR gagnante émise + MATIN perdante lève TOUJOURS son flag (fail-loud préservé)", async () => {
+    process.env.ENGINE_GROUPED_STYLO = "true"
+    // Soir : nadirs nocturnes hypo récurrente (0,55) → dé-escalade. Matin : pré-dîner en bande (1,1) +
+    // nadirs de jour hypo récurrente (0,55) → dé-escalade. Gagnante = soir (priorité à égalité) ; perdante = matin.
+    setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.1, dayNadGl: 0.55 })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    expect((call![0].rationale as { basalDoseKind: string }[])[0]!.basalDoseKind).toBe("evening")
+    // Fail-loud préservé en mode GROUPÉ : la dé-escalade PERDANTE (matin) lève son flag de jour (US-2661).
+    expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
+    // Verrou de non-régression : UN SEUL flag levé — la GAGNANTE (soir) ne lève aucun flag parasite.
+    expect(raiseFlag).toHaveBeenCalledTimes(1)
+    expect(res.created).toBe(1)
   })
 })

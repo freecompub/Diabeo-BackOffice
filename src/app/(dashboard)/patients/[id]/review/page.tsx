@@ -35,9 +35,9 @@ import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
 import { resolveTargetRangeMgdl } from "../overview-targets"
 import { buildGlycemiaView } from "../glycemia-view"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
-import { isfIcrSlotSchema, pumpBasalSlotSchema, slotRationaleSchema, fixedDoseSlotSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale, type FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
+import { isfIcrSlotSchema, pumpBasalSlotSchema, styloBasalSlotSchema, slotRationaleSchema, fixedDoseSlotSchema, type IsfIcrSlot, type PumpBasalSlot, type StyloBasalSlot, type SlotRationale, type FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
 import { isBaselineUnchanged, isBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
-import { diffSlots, diffPumpSlots, diffFixedDoseSlots, hasStructuralChange, hasStructuralChangePump, hasStructuralChangeFixedDose } from "@/lib/insulin/slot-diff"
+import { diffSlots, diffPumpSlots, diffFixedDoseSlots, diffStyloBasalSlots, hasStructuralChange, hasStructuralChangePump, hasStructuralChangeFixedDose, hasStructuralChangeStylo } from "@/lib/insulin/slot-diff"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { ReviewClient, type ReviewData, type ReviewProposalItem, type ReviewGroupedItem } from "./ReviewClient"
@@ -75,6 +75,22 @@ const fixedDoseSlotsSchema = z.array(fixedDoseSlotSchema)
 /** Parse défensive d'un JSON `proposedSlots`/`baselineSlots` DOSE FIXE en `FixedDoseSlot[]` (fail-closed → `null`). */
 function parseFixedDoseSlots(raw: unknown): FixedDoseSlot[] | null {
   const parsed = fixedDoseSlotsSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+/** US-2663 (S3e) — Forme d'un jeu de doses BASALE STYLO (`StyloBasalSlot`, clé `kind`, U totales) — parse défensive. */
+const styloBasalSlotsSchema = z.array(styloBasalSlotSchema)
+
+/**
+ * Parse défensive d'un JSON `proposedSlots`/`baselineSlots` STYLO en `StyloBasalSlot[]` (fail-closed → `null`).
+ * `basalRate` porte DEUX formes disjointes (pompe `startTime` vs stylo `kind`) : un jeu pompe NON vide ne parse
+ * jamais en stylo (champ `kind` absent) — la détection de forme à la lecture route le bon diff (revue page).
+ * ⚠️ **Tie-break du jeu VIDE** : `[]` parse dans les DEUX formes (aucun champ requis à valider). La branche stylo
+ * exige `length > 0` (`page.tsx`), donc un `[]` retombe déterministiquement sur la pompe. Non exploitable :
+ * `assertValidStyloBasalSet`/`assertValidPumpSlotSet` rejettent `emptySlotSet` à la création → jamais persisté.
+ */
+function parseStyloSlots(raw: unknown): StyloBasalSlot[] | null {
+  const parsed = styloBasalSlotsSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
 
@@ -248,6 +264,11 @@ export default async function PatientReviewPage({
   const liveFixedDose = groupedPendingRaw.some((p) => p.parameterType === "fixedDose")
     ? await insulinTherapyService.getFixedDoseSlots(patientId)
     : []
+  // US-2663 (S3e) — base LIVE BASALE STYLO (`{kind, value}`, U totales), lue UNIQUEMENT si une proposition
+  // `basalRate` pending est de forme STYLO (`kind`, pas `startTime` pompe). Vide sinon (patient pompe/autre).
+  const liveStylo = groupedPendingRaw.some((p) => p.parameterType === "basalRate" && (parseStyloSlots(p.proposedSlots)?.length ?? 0) > 0)
+    ? await insulinTherapyService.getStyloBasalSlots(patientId)
+    : []
   const groupedProposals: ReviewGroupedItem[] = groupedPendingRaw.flatMap((p) => {
     const commonMeta = {
       id: p.id,
@@ -290,6 +311,38 @@ export default async function PatientReviewPage({
           structuralChange: hasStructuralChangeFixedDose(liveFixedDose, proposed),
         },
       ]
+    }
+    // US-2663 (S3e) — basale STYLO : `basalRate` de forme STYLO (`kind`, U TOTALES) — détectée AVANT la pompe
+    // (formes disjointes). Diff/CAS par `kind`, unité U totales (`isPenBasal` → l'UI choisit `u` vs `basal`).
+    if (p.parameterType === "basalRate") {
+      const styloProposed = parseStyloSlots(p.proposedSlots)
+      if (styloProposed && styloProposed.length > 0) {
+        const baseline = p.baselineSlots == null ? null : parseStyloSlots(p.baselineSlots)
+        const styloCasOpts = { keyOf: (s: StyloBasalSlot) => s.kind, valueOf: (s: StyloBasalSlot) => s.value }
+        // US-2662 (parité voie par-valeur + dose fixe groupée) — avertissement dose élevée NON bloquant, dérivé
+        // SERVEUR (bornes cliniques jamais côté client) : dose stylo proposée > `MDI_BASAL_WARN_U` (80 U totales,
+        // DT2 insulino-résistant / U300 / dégludec). Sans ce mapping, le badge livré en US-2662 disparaîtrait de
+        // la revue dès le passage du flag `ENGINE_GROUPED_STYLO` ON.
+        const rows = diffStyloBasalSlots(liveStylo, styloProposed).map((row) => ({
+          ...row,
+          highDoseWarning: row.proposedValue != null && row.proposedValue > CLINICAL_BOUNDS.MDI_BASAL_WARN_U,
+        }))
+        return [
+          {
+            ...commonMeta,
+            isPenBasal: true,
+            rows,
+            baselineDrifted: !isBaselineUnchangedBy(baseline, liveStylo, styloCasOpts),
+            structuralChange: hasStructuralChangeStylo(liveStylo, styloProposed),
+          },
+        ]
+      }
+      // Un `basalRate` non-pompe dont la forme STYLO est ILLISIBLE ne doit pas retomber sur le parse pompe (log
+      // « unparseable pump » trompeur) : on le signale explicitement ici, fail-closed (retiré de l'écran).
+      if (styloProposed === null && parsePumpSlots(p.proposedSlots) === null) {
+        console.warn(`[review] SlotSetProposal ${p.id} skipped — unparseable basalRate proposedSlots (ni pompe ni stylo)`)
+        return []
+      }
     }
     // US-2663 (S3c) — basale POMPE : diff/CAS par `startTime` (temps EXACTS), unité U/h (PARAM_UNIT_KEY.basalRate).
     if (p.parameterType === "basalRate") {

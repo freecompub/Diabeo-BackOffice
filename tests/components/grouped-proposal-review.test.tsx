@@ -238,4 +238,32 @@ describe("GroupedProposalReview", () => {
     expect(screen.getByText("Dose élevée")).toBeTruthy() // badge highDoseWarning
     expect(screen.getByText("Dose fixe insuffisante (à renforcer)")).toBeTruthy() // rationale appariée (usage,moment)
   })
+
+  // US-2663 (S3e PR2) — rendu BASALE STYLO : `isPenBasal` → unité U TOTALES (jamais U/h), libellé de dose
+  // (`styloBasalKind`), badge highDoseWarning (> 80 U, US-2662), rationale appariée par `basalDoseKind`.
+  it("basalRate STYLO : unité U (pas U/h), libellé « Dose du soir », badge dose élevée (> 80 U), rationale par basalDoseKind", () => {
+    const styloItem = item({
+      id: "ss1",
+      parameterType: "basalRate",
+      source: "algorithm",
+      isPenBasal: true,
+      rows: [
+        {
+          startHour: 1, endHour: 1,
+          basalDoseKind: "evening",
+          proposedValue: 90, liveValue: 40,
+          changed: true, removed: false,
+          highDoseWarning: true, // 90 U > MDI_BASAL_WARN_U 80
+        },
+      ],
+      rationale: [{ basalDoseKind: "evening", reason: "basalTooLow", confidence: "medium", supportingEvents: 4 } as never],
+    })
+    render(<GroupedProposalReview items={[styloItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect(screen.getByText("Dose du soir")).toBeTruthy() // cellLabel styloBasalKind
+    expect(screen.getByText(/90\s*U(?!\/h)/)).toBeTruthy() // U totales, jamais U/h
+    expect(screen.getByText("Dose élevée")).toBeTruthy() // badge highDoseWarning (> 80 U)
+    // US-2663 (S3e) — libellé STYLO « Dose basale… » (pas « Débit basal… » U/h), rationale appariée par basalDoseKind.
+    expect(screen.getByText("Dose basale insuffisante (à renforcer)")).toBeTruthy()
+    expect(screen.queryByText("Débit basal insuffisant (à renforcer)")).toBeNull() // jamais le libellé pompe (U/h) sur un stylo
+  })
 })

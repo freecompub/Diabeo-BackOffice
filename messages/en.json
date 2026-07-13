@@ -2170,6 +2170,9 @@
     "reasonBasalTooLow": "Insufficient basal rate (to be increased)",
     "reasonBasalTooHigh": "Excessive basal rate (to be reduced)",
     "reasonBasalCorrect": "Basal rate deemed adequate",
+    "reasonStyloBasalTooLow": "Insufficient basal dose (to be increased)",
+    "reasonStyloBasalTooHigh": "Excessive basal dose (to be reduced)",
+    "reasonStyloBasalCorrect": "Basal dose deemed adequate",
     "reasonIsfTooLow": "Insufficient sensitivity (to be increased)",
     "reasonIsfTooHigh": "Excessive sensitivity (to be relaxed)",
     "reasonIsfCorrect": "Sensitivity deemed adequate",
@@ -2193,6 +2196,11 @@
       "noon": "Noon",
       "evening": "Evening",
       "night": "Night"
+    },
+    "styloBasalKind": {
+      "daily": "Daily dose",
+      "morning": "Morning dose",
+      "evening": "Evening dose"
     },
     "groupedHighDoseWarning": "High dose"
   },
