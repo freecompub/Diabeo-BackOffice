@@ -178,9 +178,14 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
 - **S3c-stylo — Généralisation STYLO** (PR dédiée, la plus délicate) : basale stylo (`basalDoseKind`
   daily/morning/evening, U totales), apply atomique US-2660, orchestration single/split, re-confirmation medical
   sur le sick-day DKA.
-- **S3d — Généralisation DOSE FIXE** (PR dédiée) : dose fixe (`fixedDose`, mode « doses simples »),
-  identification **par usage** (bolus/basal/both, moment) — corrige l'aveuglement du générateur actuel
-  (lecture `moment`-seule) ; capture/CAS/apply par `(usage, moment)` fail-closed sur ambiguïté.
+- **S3d — Généralisation DOSE FIXE** ✅ **LIVRÉ (2 PR)** : dose fixe (`fixedDose`, « doses simples »),
+  identification **par usage** (bolus/basal/both, moment). **PR1 (#744)** : schéma usage-aware + rationale
+  polymorphe ; `replaceFixedDoseSet` (update-in-place par `id` résolu, fail-closed 0/1/>1 `fixedDoseSlotNotFound`/
+  `fixedDoseSlotAmbiguous`) + CAS `(usage, moment)` ; **filtre insuline active** (`active-insulin.ts`, tous
+  lecteurs) ; correction du **bug par-valeur usage-blind** (`count>1` silencieux → fail-closed). **PR2** : flag
+  `ENGINE_GROUPED_FIXED_DOSE` ; générateur usage-aware + `assembleGroupedFixedDose`/`emitGroupedFixedDose` ;
+  **D2 — abandon titration d'un moment multi-doses** (signal non attribuable, reco medical) ; UI revue
+  (`diffFixedDoseSlots`, libellé usage·moment, `highDoseWarning`) + i18n fr/en/ar. Flag OFF ⇒ par-valeur inchangée.
 - **S4 — Voie manuelle groupée** patient/infirmière/médecin (création pro + provenance) + retrait
   `InsulinProposalDialog`. Première rupture UI.
 - **S5 — Retrait voie d'écriture `AdjustmentProposal`** + **contrat iOS** (endpoints par-valeur supprimés/redirigés,
