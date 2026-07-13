@@ -86,12 +86,13 @@ describe("slotSetProposalService", () => {
 
     const res = await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })
     expect(res).toEqual({ id: "set-1" })
+    // US-2663 (S3b-0a / D2) — source=patient (HUMAIN) → supersède les pending d'origine HUMAINE (`source != algorithm`),
+    // pas l'algorithme (coexistence). Filtre appliqué aux deux modèles.
     expect(tx.slotSetProposal.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending" }, data: { status: "superseded" } }),
+      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending", source: { not: "algorithm" } }, data: { status: "superseded" } }),
     )
-    // « Plus de par-valeur » : supersede aussi les AdjustmentProposal pending du même paramètre.
     expect(tx.adjustmentProposal.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending" } }),
+      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending", source: { not: "algorithm" } } }),
     )
     expect(auditService.logWithTx).toHaveBeenCalledWith(
       tx,
@@ -131,17 +132,29 @@ describe("slotSetProposalService", () => {
     )
   })
 
-  it("createSetProposal (US-2663 S0) : `source` explicite (ex. algorithm) est persisté ; base vide → []", async () => {
+  it("createSetProposal (S3b-0a) : MOTEUR (source=algorithm, userId null) persiste source + rationale ; supersède l'ALGO seul", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
     const tx = mockTx()
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-2" })
+    const rationale = [{ startHour: 0, reason: "isfTooLow", confidence: "high" as const, supportingEvents: 12 }]
 
-    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "algorithm" })
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, rationale)
 
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", baselineSlots: [] }) }),
+      expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", proposedByUserId: null, baselineSlots: [], rationale }) }),
     )
+    // D2 : l'algorithme supersède UNIQUEMENT l'algorithme (coexistence avec l'humain).
+    expect(tx.slotSetProposal.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ source: "algorithm" }) }),
+    )
+  })
+
+  it("createSetProposal (S3b-0a) : MOTEUR SANS rationale → rationaleRequired (contrat serveur)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }),
+    ).rejects.toThrow("rationaleRequired")
   })
 
   it("createSetProposal (US-2663 S0) : baseline ICR capture `gramsPerUnit` + `mealLabel` conditionnel", async () => {

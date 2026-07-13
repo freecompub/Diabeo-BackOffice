@@ -844,6 +844,11 @@ model SlotSetProposal {
   /// Pièce maîtresse du compare-and-swap par créneau à l'acceptation (S1, garde-fou MDR anti-dérive de base).
   /// Nullable : propositions legacy (pré-US-2663) sans snapshot → S1 les traite en full-replace fail-closed.
   baselineSlots    Json?               @map("baseline_slots")
+  /// US-2663 (S3b-0a) — rationale MOTEUR par créneau CHANGÉ (`[{ startHour, reason, confidence,
+  /// supportingEvents, changePercent?, averageObservedValue?, analysisPeriod? }]`). Requise applicativement
+  /// quand `source = algorithm` (decision-support médecin + traçabilité HDS de la recommandation de dose) ;
+  /// NULL pour les propositions humaines (pas de rationale algorithmique). Pas de PHI (config + métriques).
+  rationale        Json?               @map("rationale")
   status           ProposalStatus      @default(pending)
   proposedByUserId Int?                @map("proposed_by_user_id")
   proposer         User?               @relation("SlotSetProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)

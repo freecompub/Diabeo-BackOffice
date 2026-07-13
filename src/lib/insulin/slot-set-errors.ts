@@ -22,4 +22,6 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   basalConfigNotFound: 404,
   // Patient NON pompe (MDI) : refus d'attacher des créneaux basaux pompe (intégrité du mode de délivrance).
   basalConfigNotPump: 409,
+  // US-2663 (S3b-0a) — proposition MOTEUR sans rationale par créneau (contrat serveur, ne vient jamais d'un input humain).
+  rationaleRequired: 422,
 }
