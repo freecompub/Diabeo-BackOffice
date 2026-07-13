@@ -73,4 +73,8 @@ describe("grouped-proposal — schémas de forme par levier", () => {
   it("slotRationaleSchema : clé fixedDose INCOMPLÈTE (moment sans usage) → rejeté", () => {
     expect(slotRationaleSchema.safeParse({ moment: "morning", reason: "fixedDoseTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
   })
+  it("slotRationaleSchema : startHour + champ fixedDose PARTIEL parasite (usage seul / moment seul) → rejeté", () => {
+    expect(slotRationaleSchema.safeParse({ startHour: 8, usage: "bolus", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+    expect(slotRationaleSchema.safeParse({ startHour: 8, moment: "morning", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+  })
 })

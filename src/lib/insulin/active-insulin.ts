@@ -16,8 +16,9 @@
  */
 import type { Prisma } from "@prisma/client"
 
-/** 24 h en ms — `endDate` (date-only minuit) reste actif tout le jour de fin (inclusif). */
-const DAY_MS = 86_400_000
+/** 24 h en ms — `endDate` (date-only minuit) reste actif tout le jour de fin (inclusif). Constante PARTAGÉE
+ *  (source unique) avec la garde d'affichage `treatment-view.ts` pour éviter toute dérive de l'invariant. */
+export const DAY_MS = 86_400_000
 
 /**
  * Filtre Prisma « insuline active » à spread dans un `where: { patientInsulin: { patientId, ...activeInsulinFilter() } }`.

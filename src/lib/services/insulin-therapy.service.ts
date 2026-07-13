@@ -649,11 +649,13 @@ export const insulinTherapyService = {
   /**
    * US-2663 (S3d) — Lecteur de forme des DOSES FIXES d'un patient (`FixedDoseSlot` + `usage` de la
    * `PatientInsulin` porteuse, **ACTIVE** uniquement) → forme groupée `FixedDoseSlot` (`{ usage, moment, value }`).
-   * Source unique pour le **socle groupé** : `captureBaselineSlots("fixedDose")` (snapshot) ET la page de revue
-   * (base LIVE) partagent cette projection (invariant de forme, cf. `pump-time.ts`). ⚠️ Ne couvre PAS encore les
-   * autres lecteurs de `fixed_dose_slots` (générateur usage-blind, `resolveCurrentValue`, re-read interne de
-   * `replaceFixedDoseSet`) — convergence à finir en PR2. Scope `patientInsulin.patientId` + insuline active
-   * (anti-IDOR, anti-dose-fantôme). Patient non doses-simples → `[]`.
+   * Source unique de PROJECTION DE FORME pour le **socle groupé** : `captureBaselineSlots("fixedDose")` (snapshot)
+   * ET la page de revue (base LIVE) partagent cette forme `(usage, moment, value)` (invariant de forme, cf.
+   * `pump-time.ts`). ⚠️ Portée : seule la **forme usage-aware groupée** n'est pas encore partagée avec les autres
+   * lecteurs de `fixed_dose_slots` (générateur usage-blind `{moment, valueU}`, `resolveCurrentValue`, re-read
+   * interne de `replaceFixedDoseSet`) — convergence de forme à finir en PR2. Le **filtre insuline active**, lui,
+   * est DÉJÀ appliqué à TOUS ces lecteurs (`activeInsulinFilter`). Scope `patientInsulin.patientId` + insuline
+   * active (anti-IDOR, anti-dose-fantôme). Patient non doses-simples → `[]`.
    */
   async getFixedDoseSlots(patientId: number): Promise<FixedDoseSlot[]> {
     const rows = await prisma.fixedDoseSlot.findMany({

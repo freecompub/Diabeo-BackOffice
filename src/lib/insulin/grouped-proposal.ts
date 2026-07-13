@@ -103,9 +103,15 @@ export const slotRationaleSchema = z.object({
   // incomplète (`moment` sans `usage`) — jamais une rationale silencieusement non appariable à la revue.
   .superRefine((r, ctx) => {
     const hasHourKey = r.startHour !== undefined
-    const hasFixedKey = r.usage !== undefined && r.moment !== undefined
-    if (hasHourKey === hasFixedKey) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "rationale key must be startHour XOR (usage, moment)" })
+    const hasAnyFixedKey = r.usage !== undefined || r.moment !== undefined
+    const hasFullFixedKey = r.usage !== undefined && r.moment !== undefined
+    // EXACTEMENT une forme de clé COMPLÈTE, sans champ parasite de l'autre : `startHour` seul (ISF/ICR/pompe)
+    // OU `(usage, moment)` complet (dose fixe). Rejette : aucune clé, `startHour` + tout champ fixedDose (même
+    // partiel), clé fixedDose incomplète (`usage` ou `moment` seul).
+    const validHourOnly = hasHourKey && !hasAnyFixedKey
+    const validFixedOnly = !hasHourKey && hasFullFixedKey
+    if (!validHourOnly && !validFixedOnly) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "rationale key must be startHour XOR (usage, moment) — complete, no stray field" })
     }
   })
 export type SlotRationale = z.infer<typeof slotRationaleSchema>
