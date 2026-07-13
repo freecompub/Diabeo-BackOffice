@@ -346,6 +346,11 @@ export function assertRequiredEnv(): void {
   // clinique en prod. Fail-fast sur valeur malformée : une faute de saisie ne
   // doit pas désactiver silencieusement le pilote (cf. capabilities.pilotAllowed).
   assertOptionalBoolean("VERIFICATION_ALLOW_PILOT")
+  // US-2663 (S3b-1) — bascule RÉVERSIBLE du moteur d'ajustement vers l'émission
+  // GROUPÉE (une `SlotSetProposal` par levier ISF/ICR au lieu de N `AdjustmentProposal`
+  // par-valeur). OFF par défaut : une faute de saisie ne doit pas activer/désactiver
+  // silencieusement la nouvelle voie clinique (`proposal-generator.service.ts`).
+  assertOptionalBoolean("ENGINE_GROUPED_ISF_ICR")
   // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
   // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser
