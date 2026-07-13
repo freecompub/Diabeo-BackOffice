@@ -77,4 +77,11 @@ describe("grouped-proposal — schémas de forme par levier", () => {
     expect(slotRationaleSchema.safeParse({ startHour: 8, usage: "bolus", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
     expect(slotRationaleSchema.safeParse({ startHour: 8, moment: "morning", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
   })
+  it("slotRationaleSchema (S3e) : clé basalDoseKind SEULE (stylo) → OK ; mélangée à une autre clé → rejeté", () => {
+    expect(slotRationaleSchema.safeParse({ basalDoseKind: "daily", reason: "basalTooLow", confidence: "high", supportingEvents: 5 }).success).toBe(true)
+    expect(slotRationaleSchema.safeParse({ basalDoseKind: "morning", reason: "basalTooHigh", confidence: null, supportingEvents: null }).success).toBe(true)
+    expect(slotRationaleSchema.safeParse({ basalDoseKind: "daily", startHour: 5, reason: "basalTooLow", confidence: null, supportingEvents: null }).success).toBe(false) // stylo + startHour
+    expect(slotRationaleSchema.safeParse({ basalDoseKind: "daily", usage: "basal", reason: "basalTooLow", confidence: null, supportingEvents: null }).success).toBe(false) // stylo + fixedDose
+    expect(slotRationaleSchema.safeParse({ basalDoseKind: "noon", reason: "basalTooLow", confidence: null, supportingEvents: null }).success).toBe(false) // kind hors enum stylo
+  })
 })

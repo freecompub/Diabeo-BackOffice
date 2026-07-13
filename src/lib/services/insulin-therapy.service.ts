@@ -14,7 +14,7 @@ import { CLINICAL_BOUNDS, isDeliverableBasalRate, isDeliverableFixedDose } from 
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
 import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { assertBaselineUnchanged, assertBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
-import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
+import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot, StyloBasalSlot } from "@/lib/insulin/grouped-proposal"
 import { pumpTimeToHhmm, pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { activeInsulinFilter } from "@/lib/insulin/active-insulin"
 import { glToMgdl } from "@/lib/statistics"
@@ -154,6 +154,40 @@ export function assertValidFixedDoseSet(
     if (seen.has(key)) throw new Error("slotOverlap") // clé (usage, moment) en double dans le jeu proposé
     seen.add(key)
   }
+}
+
+/** US-2663 (S3e) — mapping clé stylo → colonne `BasalConfiguration` (U TOTALES). Source unique (validation + apply). */
+export const styloKindToColumn = { daily: "dailyDose", morning: "morningDose", evening: "eveningDose" } as const
+
+/**
+ * US-2663 (S3e) — Garde de validité clinique d'un **jeu de DOSES BASALES STYLO** (MDI), pendant du
+ * `assertValidFixedDoseSet` pour le modèle `BasalConfiguration.{dailyDose,morningDose,eveningDose}` (clé
+ * `basalDoseKind`, valeur **U TOTALES**). Règles :
+ *  - jeu non vide (`emptySlotSet`) ; `kind` UNIQUE (`slotOverlap`) ;
+ *  - **cohérence de MODALITÉ intra-jeu** (`invalidSlotSet`) : soit exactement `{daily}` (single_injection),
+ *    soit exactement `{morning, evening}` (split_injection) — jamais `daily` mélangé à morning/evening, ni un
+ *    demi-split (`morning` sans `evening`). La cohérence avec le `configType` LIVE est vérifiée à l'APPLY
+ *    (`replaceStyloBasalSet`, `styloBasalConfigMismatch`), miroir exact de la pompe (`basalConfigNotPump`).
+ *  - bornes : `value ≥ MDI_BASAL_MIN_U` (0,5) — **PAS de plafond dur** (U300/dégludec > 80 U légitimes ; WARN
+ *    non bloquant à l'affichage) — délivrable à la demi-unité (`isDeliverableFixedDose`). ⚠️ **U TOTALES, JAMAIS
+ *    les bornes pompe `BASAL_MIN/MAX` (U/h)** (risque clinique majeur). Garde anti-overflow `≤ 9999,99` (colonne
+ *    `Decimal(6,2)`).
+ *
+ * @throws emptySlotSet | slotOverlap | invalidSlotSet | valueOutOfBounds | rateNotDeliverable
+ */
+export function assertValidStyloBasalSet(slots: Array<{ kind: "daily" | "morning" | "evening"; value: number }>): void {
+  if (slots.length === 0) throw new Error("emptySlotSet")
+  const kinds = new Set<string>()
+  for (const s of slots) {
+    if (s.value < CLINICAL_BOUNDS.MDI_BASAL_MIN_U || s.value > 9999.99) throw new Error("valueOutOfBounds")
+    if (!isDeliverableFixedDose(s.value)) throw new Error("rateNotDeliverable")
+    if (kinds.has(s.kind)) throw new Error("slotOverlap")
+    kinds.add(s.kind)
+  }
+  // Cohérence de modalité : exactement {daily} OU exactement {morning, evening}. Rien d'autre.
+  const isSingle = kinds.size === 1 && kinds.has("daily")
+  const isSplit = kinds.size === 2 && kinds.has("morning") && kinds.has("evening")
+  if (!isSingle && !isSplit) throw new Error("invalidSlotSet")
 }
 
 /**
@@ -750,6 +784,120 @@ export const insulinTherapyService = {
           supersededProposalIds,
           supersededSetProposalIds,
         },
+      })
+
+      return { applied: true as const, count: slots.length, supersededProposalIds, supersededSetProposalIds }
+    }
+
+    return externalTx ? run(externalTx) : prisma.$transaction(run)
+  },
+
+  /**
+   * US-2663 (S3e) — Lecteur de forme des DOSES BASALES STYLO (MDI) d'un patient : les colonnes
+   * `BasalConfiguration.{dailyDose,morningDose,eveningDose}` (U TOTALES) → forme groupée `StyloBasalSlot`
+   * (`{ kind, value }`). `single_injection` → `[{daily}]` ; `split_injection` → `[{morning},{evening}]`. Une dose
+   * NON configurée (`null`) est EXCLUE du jeu (jamais `value:0` — un faux créneau casserait le CAS). `pump`/absent
+   * → `[]`. Source unique (snapshot base ⇄ apply ⇄ page de revue). Scope `settings.patientId` (anti-IDOR).
+   */
+  async getStyloBasalSlots(patientId: number): Promise<StyloBasalSlot[]> {
+    const bc = await prisma.basalConfiguration.findFirst({
+      where: { settings: { patientId } },
+      select: { configType: true, dailyDose: true, morningDose: true, eveningDose: true },
+    })
+    if (!bc) return []
+    if (bc.configType === "single_injection") {
+      return bc.dailyDose != null ? [{ kind: "daily", value: Number(bc.dailyDose) }] : []
+    }
+    if (bc.configType === "split_injection") {
+      const out: StyloBasalSlot[] = []
+      if (bc.morningDose != null) out.push({ kind: "morning", value: Number(bc.morningDose) })
+      if (bc.eveningDose != null) out.push({ kind: "evening", value: Number(bc.eveningDose) })
+      return out
+    }
+    return [] // pompe ou non configuré
+  },
+
+  /**
+   * US-2663 (S3e) — Applique ATOMIQUEMENT un jeu de DOSES BASALES STYLO (MDI) à l'acceptation d'une
+   * `SlotSetProposal` `basalRate` de forme STYLO. Pendant du `replacePumpSlotSet`/`replaceFixedDoseSet` pour le
+   * modèle `BasalConfiguration` (colonnes de dose, U TOTALES).
+   *
+   * Écriture du JEU en une passe (`updateMany` multi-colonnes scopé `settings.patientId`, 1 config/patient ⇒
+   * ≤ 1 ligne — anti-IDOR). **Discriminateur pompe⇄stylo (CRITIQUE)** : refuse un patient POMPE (`basalConfigNotPump`)
+   * — jamais des U TOTALES écrites sur une config pompe (U/h). **Cardinalité vs `configType` LIVE** :
+   * `single_injection` exige `{daily}`, `split_injection` exige `{morning,evening}` — mismatch → `styloBasalConfigMismatch`
+   * (un jeu split accepté sur un patient devenu single entre génération et accept est refusé, fail-closed).
+   * CAS d'ensemble (clé `kind`) sous verrou AVANT écriture ; supersession des propositions `basalRate` pending
+   * (par-valeur — incl. verrou stylo `one_pending_stylo_basal` — ET d'ensemble). Audit `replaceSet` sans PHI.
+   *
+   * @throws slotsBusy | emptySlotSet | valueOutOfBounds | rateNotDeliverable | invalidSlotSet | slotOverlap
+   * @throws basalConfigNotFound | basalConfigNotPump | styloBasalConfigMismatch | baselineMoved | baselineMissing
+   */
+  async replaceStyloBasalSet(
+    patientId: number,
+    slots: Array<{ kind: "daily" | "morning" | "evening"; value: number }>,
+    auditUserId: number,
+    ctx?: AuditContext,
+    externalTx?: Prisma.TransactionClient,
+    cas?: { baseline: StyloBasalSlot[] | null },
+  ): Promise<{ applied: true; count: number; supersededProposalIds: string[]; supersededSetProposalIds: string[] }> {
+    // 1. Pré-validation pure (hors DB, fail-fast) — cohérence intra-jeu + bornes U totales.
+    assertValidStyloBasalSet(slots)
+
+    const run = async (tx: Prisma.TransactionClient) => {
+      // Verrou `(patient × basal)` — même famille que la pompe (1 seule `BasalConfiguration`/patient).
+      if (!(await tryLockInsulinSlots(tx, patientId, "basal"))) throw new Error("slotsBusy")
+      const settings = await tx.insulinTherapySettings.findUnique({
+        where: { patientId },
+        select: { basalConfiguration: { select: { configType: true, dailyDose: true, morningDose: true, eveningDose: true } } },
+      })
+      const bc = settings?.basalConfiguration
+      if (bc == null) throw new Error("basalConfigNotFound")
+      // Intégrité du mode : jamais des U TOTALES sur une config POMPE (miroir `basalConfigNotPump`). Fail-closed.
+      if (bc.configType === "pump") throw new Error("basalConfigNotPump")
+      // Cardinalité vs configType LIVE (fail-closed sur bascule single↔split entre génération et acceptation).
+      const proposedKinds = new Set(slots.map((s) => s.kind))
+      const singleOk = bc.configType === "single_injection" && proposedKinds.size === 1 && proposedKinds.has("daily")
+      const splitOk = bc.configType === "split_injection" && proposedKinds.size === 2 && proposedKinds.has("morning") && proposedKinds.has("evening")
+      if (!singleOk && !splitOk) throw new Error("styloBasalConfigMismatch")
+
+      // 2. CAS d'ensemble AVANT écriture : projeter le live (colonnes non nulles) en `StyloBasalSlot[]`, comparer
+      //    par `kind` (sans borne). Dérive (ajustement médecin concurrent) → `baselineMoved` ; snapshot null → `baselineMissing`.
+      const live: StyloBasalSlot[] = []
+      if (bc.dailyDose != null) live.push({ kind: "daily", value: Number(bc.dailyDose) })
+      if (bc.morningDose != null) live.push({ kind: "morning", value: Number(bc.morningDose) })
+      if (bc.eveningDose != null) live.push({ kind: "evening", value: Number(bc.eveningDose) })
+      if (cas !== undefined) {
+        assertBaselineUnchangedBy(cas.baseline, live, { keyOf: (s) => s.kind, valueOf: (s) => s.value })
+      }
+
+      // 3. Écriture ATOMIQUE du jeu (multi-colonnes en une passe). 1 config/patient → ≤ 1 ligne (anti-IDOR).
+      const data: Record<string, number> = {}
+      for (const s of slots) data[styloKindToColumn[s.kind]] = s.value
+      await tx.basalConfiguration.updateMany({ where: { settings: { patientId } }, data })
+
+      // 4. Supersession `basalRate` pending — par-valeur (incl. verrou stylo `one_pending_stylo_basal`) + d'ensemble.
+      const superseded = await tx.adjustmentProposal.findMany({ where: { patientId, parameterType: "basalRate", status: "pending" }, select: { id: true } })
+      if (superseded.length > 0) {
+        await tx.adjustmentProposal.updateMany({ where: { patientId, parameterType: "basalRate", status: "pending" }, data: { status: "superseded", reviewedAt: new Date(), reviewedBy: auditUserId } })
+      }
+      const supersededProposalIds = superseded.map((p) => p.id)
+      const supersededSet = await tx.slotSetProposal.findMany({ where: { patientId, parameterType: "basalRate", status: "pending" }, select: { id: true } })
+      if (supersededSet.length > 0) {
+        await tx.slotSetProposal.updateMany({ where: { patientId, parameterType: "basalRate", status: "pending" }, data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: auditUserId } })
+      }
+      const supersededSetProposalIds = supersededSet.map((p) => p.id)
+
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: "UPDATE",
+        resource: "INSULIN_THERAPY",
+        resourceId: `basalstylo-set:${patientId}`,
+        ipAddress: ctx?.ipAddress,
+        userAgent: ctx?.userAgent,
+        requestId: ctx?.requestId,
+        // `from`/`to` = `{kind, value}` (valeur de config U totales, pas PHI) — traçabilité HDS de la dose.
+        metadata: { patientId, op: "replaceSet", param: "basalStylo", from: live, to: slots, supersededProposalIds, supersededSetProposalIds },
       })
 
       return { applied: true as const, count: slots.length, supersededProposalIds, supersededSetProposalIds }

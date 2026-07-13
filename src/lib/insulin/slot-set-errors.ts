@@ -31,4 +31,9 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   fixedDoseSlotNotFound: 409,
   fixedDoseSlotAmbiguous: 422,
   unsupportedSlotSetParam: 422, // levier non géré par l'acceptation groupée (fail-closed)
+  // US-2663 (S3e) — voie groupée BASALE STYLO (`replaceStyloBasalSet`) : patient POMPE (jamais des U totales sur
+  // une config pompe → 409 récupérable) ou cardinalité incohérente avec le `configType` LIVE (single↔split
+  // basculé entre génération et acceptation → 409, régénérer).
+  basalConfigNotStylo: 409,
+  styloBasalConfigMismatch: 409,
 }

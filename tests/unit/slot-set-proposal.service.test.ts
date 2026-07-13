@@ -44,6 +44,9 @@ vi.mock("@/lib/services/insulin-therapy.service", async (importOriginal) => {
       }),
       // US-2663 (S3d) — lecteur de base fixedDose (captureBaselineSlots). Défaut = pas de doses (base vide).
       getFixedDoseSlots: vi.fn().mockResolvedValue([]),
+      // US-2663 (S3e) — voie BASALE STYLO de l'acceptation groupée + lecteur de base.
+      replaceStyloBasalSet: vi.fn().mockResolvedValue({ applied: true, count: 2, supersededProposalIds: [], supersededSetProposalIds: [] }),
+      getStyloBasalSlots: vi.fn().mockResolvedValue([]),
     },
   }
 })
@@ -92,6 +95,15 @@ const FIXED_SLOTS = [
 const FIXED_BASE = [
   { usage: "bolus", moment: "morning", value: 5 },
   { usage: "basal", moment: "evening", value: 20 },
+]
+// Jeu BASALE STYLO VALIDE (US-2663 S3e) : split cohérent {morning, evening}, U TOTALES délivrables.
+const STYLO_SLOTS = [
+  { kind: "morning", value: 12 },
+  { kind: "evening", value: 10 },
+]
+const STYLO_BASE = [
+  { kind: "morning", value: 10 },
+  { kind: "evening", value: 10 },
 ]
 
 /** Fabrique un `tx` factice dont `$transaction` exécute le callback. */
@@ -404,14 +416,14 @@ describe("slotSetProposalService", () => {
     expect(auditService.logWithTx).toHaveBeenCalledWith(tx, expect.objectContaining({ action: "PROPOSAL_ACCEPTED", metadata: expect.objectContaining({ parameterType: "basalRate" }) }))
   })
 
-  it("acceptSetProposal (S3c) : basalRate de forme STYLO (pas de startTime) → unsupportedSlotSetParam, PAS d'apply", async () => {
+  it("acceptSetProposal (S3e) : basalRate de forme MIXTE pompe+stylo → unsupportedSlotSetParam, PAS d'apply", async () => {
     const tx = mockTx()
-    // Un jeu `basalRate` de forme STYLO (`kind`/`value`) ne doit JAMAIS atteindre replacePumpSlotSet (fail-closed).
-    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "basalRate", proposedSlots: [{ kind: "daily", value: 20 }], baselineSlots: null })
+    // Un jeu `basalRate` MÉLANGEANT pompe (`startTime`) et stylo (`kind`) est incohérent → fail-closed (S3e).
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "basalRate", proposedSlots: [{ startTime: "00:00", endTime: "06:00", rate: 0.8 }, { kind: "daily", value: 20 }], baselineSlots: null })
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
-    await expect(slotSetProposalService.acceptSetProposal("set-p", 7, 3)).rejects.toThrow("unsupportedSlotSetParam")
+    await expect(slotSetProposalService.acceptSetProposal("set-p", 7, 3)).rejects.toThrow(/invalidSlotSet|unsupportedSlotSetParam/)
     expect(insulinTherapyService.replacePumpSlotSet).not.toHaveBeenCalled()
-    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
+    expect(insulinTherapyService.replaceStyloBasalSet).not.toHaveBeenCalled()
   })
 
   it("acceptSetProposal (S3c) : configType basculé STYLO à l'accept → basalConfigNotPump propagé (rollback, pas d'audit)", async () => {
@@ -430,6 +442,28 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
     ;(insulinTherapyService.replacePumpSlotSet as any).mockRejectedValueOnce(new Error("baselineMoved"))
     await expect(slotSetProposalService.acceptSetProposal("set-p", 7, 3)).rejects.toThrow("baselineMoved")
+    expect(auditService.logWithTx).not.toHaveBeenCalled()
+  })
+
+  // ── accept BASALE STYLO (US-2663 S3e) — même parameterType basalRate, discriminé par la FORME ──
+  it("acceptSetProposal (S3e) : basalRate de forme STYLO (`kind`) → route replaceStyloBasalSet (PAS replacePumpSlotSet)", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "basalRate", proposedSlots: STYLO_SLOTS, baselineSlots: STYLO_BASE })
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
+
+    const res = await slotSetProposalService.acceptSetProposal("set-s", 7, 3)
+    expect(res).toEqual({ id: "set-s", status: "accepted" })
+    expect(insulinTherapyService.replaceStyloBasalSet).toHaveBeenCalledWith(7, STYLO_SLOTS, 3, undefined, tx, { baseline: STYLO_BASE })
+    expect(insulinTherapyService.replacePumpSlotSet).not.toHaveBeenCalled()
+    expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
+  })
+
+  it("acceptSetProposal (S3e) : patient POMPE → basalConfigNotPump propagé (rollback, pas d'audit)", async () => {
+    const tx = mockTx()
+    tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "basalRate", proposedSlots: STYLO_SLOTS, baselineSlots: STYLO_BASE })
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
+    ;(insulinTherapyService.replaceStyloBasalSet as any).mockRejectedValueOnce(new Error("basalConfigNotPump"))
+    await expect(slotSetProposalService.acceptSetProposal("set-s", 7, 3)).rejects.toThrow("basalConfigNotPump")
     expect(auditService.logWithTx).not.toHaveBeenCalled()
   })
 
