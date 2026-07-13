@@ -401,6 +401,31 @@ describe("assembleGroupedDisposition — PLAFONNEMENT à la borne (US-2663 S5, D
     expect(res.disposition![0]!.value).toBe(35) // valeur brute conservée
     expect(res.rationale[0]!.cappedToBound).toBeUndefined()
   })
+
+  it("valeur calculée < min (vers PLUS d'insuline) → plafonnée AU PLANCHER + cappedToBound", () => {
+    const liveNearMin = [{ startHour: 6, endHour: 12, value: 4 }] // proche du min ICR (3)
+    const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooHigh", currentValue: 4, proposedValue: 2, changePercent: -50, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
+    const res = assembleGroupedDisposition(liveNearMin, c, 14, ICR)! // 2 < min 3
+    expect(res.disposition![0]!.value).toBe(3) // plafonné au plancher
+    expect(res.rationale[0]).toMatchObject({ cappedToBound: true, cappedFromValue: 2 })
+  })
+
+  it("base LEGACY hors-borne (live > max) + reason hausse → clamp inverse le sens → directionMismatch → abandon (fail-closed)", () => {
+    const liveOob = [{ startHour: 6, endHour: 12, value: 32 }] // > max 30 (donnée legacy)
+    const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooLow", currentValue: 32, proposedValue: 35, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
+    const res = assembleGroupedDisposition(liveOob, c, 14, ICR) // clamp 35→30 < live 32 ⇒ delta négatif ⇏ hausse
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(1) // jamais de valeur écrite qui contredit le motif
+  })
+
+  it("levier STYLO (U TOTALES) : plafonnement au plancher MDI_BASAL_MIN_U, jamais les bornes pompe", () => {
+    const liveStylo = [{ kind: "daily" as const, value: 1 }]
+    const STYLO = { min: 0.5, max: 9999.99 } // U totales (PAS BASAL_MIN/MAX pompe)
+    const c = [{ kind: "daily", cand: { parameterType: "basalRate", reason: "basalTooHigh", currentValue: 1, proposedValue: 0.2, changePercent: -80, confidence: "medium", supportingEvents: 4, totalEventsConsidered: 4 } }] as never
+    const res = assembleGroupedStyloDisposition(liveStylo, c, 7, STYLO)! // 0,2 < plancher 0,5
+    expect(res.disposition).toEqual([{ kind: "daily", value: 0.5 }])
+    expect(res.rationale[0]).toMatchObject({ basalDoseKind: "daily", cappedToBound: true, cappedFromValue: 0.2 })
+  })
 })
 
 describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => {

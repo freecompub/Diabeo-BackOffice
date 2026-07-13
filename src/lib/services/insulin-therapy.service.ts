@@ -148,7 +148,7 @@ export function assertValidFixedDoseSet(
   if (slots.length === 0) throw new Error("emptySlotSet")
   const seen = new Set<string>()
   for (const s of slots) {
-    if (s.value < CLINICAL_BOUNDS.FIXED_DOSE_MIN || s.value > 999.99) throw new Error("valueOutOfBounds")
+    if (s.value < CLINICAL_BOUNDS.FIXED_DOSE_MIN || s.value > CLINICAL_BOUNDS.COLUMN_OVERFLOW_GUARD_FIXED_DOSE_U) throw new Error("valueOutOfBounds")
     if (!isDeliverableFixedDose(s.value)) throw new Error("rateNotDeliverable")
     const key = `${s.usage}:${s.moment}`
     if (seen.has(key)) throw new Error("slotOverlap") // clé (usage, moment) en double dans le jeu proposé
@@ -180,7 +180,7 @@ export function assertValidStyloBasalSet(slots: Array<{ kind: "daily" | "morning
   if (slots.length === 0) throw new Error("emptySlotSet")
   const kinds = new Set<string>()
   for (const s of slots) {
-    if (s.value < CLINICAL_BOUNDS.MDI_BASAL_MIN_U || s.value > 9999.99) throw new Error("valueOutOfBounds")
+    if (s.value < CLINICAL_BOUNDS.MDI_BASAL_MIN_U || s.value > CLINICAL_BOUNDS.COLUMN_OVERFLOW_GUARD_STYLO_U) throw new Error("valueOutOfBounds")
     if (!isDeliverableFixedDose(s.value)) throw new Error("rateNotDeliverable")
     if (kinds.has(s.kind)) throw new Error("slotOverlap")
     kinds.add(s.kind)

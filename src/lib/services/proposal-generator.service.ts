@@ -474,8 +474,8 @@ const CLAMP_BOUNDS = {
   isf: { min: CLINICAL_BOUNDS.ISF_GL_MIN, max: CLINICAL_BOUNDS.ISF_GL_MAX },
   icr: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
   pump: { min: CLINICAL_BOUNDS.BASAL_MIN, max: CLINICAL_BOUNDS.BASAL_MAX },
-  stylo: { min: CLINICAL_BOUNDS.MDI_BASAL_MIN_U, max: 9999.99 },
-  fixedDose: { min: CLINICAL_BOUNDS.FIXED_DOSE_MIN, max: 999.99 },
+  stylo: { min: CLINICAL_BOUNDS.MDI_BASAL_MIN_U, max: CLINICAL_BOUNDS.COLUMN_OVERFLOW_GUARD_STYLO_U },
+  fixedDose: { min: CLINICAL_BOUNDS.FIXED_DOSE_MIN, max: CLINICAL_BOUNDS.COLUMN_OVERFLOW_GUARD_FIXED_DOSE_U },
 } as const
 
 /**
@@ -507,7 +507,7 @@ export function assembleGroupedDisposition(
     // D1 (S5) — plafonnement clinique : valeur calculée hors-borne → proposée À LA BORNE + notée (le médecin tranche).
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds)
     const delta = proposed - live.value
-    if (delta === 0) continue // no-op (proposé == live, OU déjà à la borne après plafonnement) — abandon silencieux
+    if (Math.abs(delta) < 1e-9) continue // no-op (proposé == live OU déjà à la borne — tolérance alignée sur le CAS)
     // Garde direction : sens du delta cohérent avec le `reason` directionnel (`*TooLow`⇒hausse, `*TooHigh`⇒baisse).
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue }
@@ -566,7 +566,7 @@ export function assembleGroupedPumpDisposition(
     if (Math.abs(live.rate - cand.currentValue) > 1e-9) continue // dérive de débit → abandon (R2)
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement à la borne U/h
     const delta = proposed - live.rate
-    if (delta === 0) continue // no-op (ou déjà à la borne après plafonnement)
+    if (Math.abs(delta) < 1e-9) continue // no-op (ou déjà à la borne après plafonnement — tolérance alignée sur le CAS)
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
     overlay.set(slotId, proposed)
@@ -680,7 +680,7 @@ export function assembleGroupedFixedDose(
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement à la borne
     const delta = proposed - live.value
-    if (delta === 0) continue // no-op (ou déjà à la borne après plafonnement)
+    if (Math.abs(delta) < 1e-9) continue // no-op (ou déjà à la borne après plafonnement — tolérance alignée sur le CAS)
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
     overlay.set(k, proposed)
@@ -788,7 +788,7 @@ export function assembleGroupedStyloDisposition(
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement (U totales)
     const delta = proposed - live.value
-    if (delta === 0) continue // no-op (ou déjà à la borne après plafonnement)
+    if (Math.abs(delta) < 1e-9) continue // no-op (ou déjà à la borne après plafonnement — tolérance alignée sur le CAS)
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
     overlay.set(kind, proposed)
