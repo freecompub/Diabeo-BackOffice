@@ -124,3 +124,20 @@ export function isBaselineUnchanged(baseline: readonly IsfIcrSlot[] | null, live
     return false
   }
 }
+
+/**
+ * US-2663 (S3c) — Variante NON-THROWING générique par clé de `assertBaselineUnchangedBy` (affichage : écran de
+ * revue médecin, tous leviers). `false` si la base a dérivé OU est non certifiable (`null`) — jamais un throw.
+ */
+export function isBaselineUnchangedBy<T>(
+  baseline: readonly T[] | null,
+  live: readonly T[],
+  opts: { keyOf: (s: T) => string | number; valueOf: (s: T) => number; boundEq?: (live: T, baseline: T) => boolean },
+): boolean {
+  try {
+    assertBaselineUnchangedBy(baseline, live, opts)
+    return true
+  } catch {
+    return false
+  }
+}

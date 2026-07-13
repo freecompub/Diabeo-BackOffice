@@ -223,7 +223,9 @@ export function GroupedProposalReview({
                       className={row.changed ? "bg-warning-bg" : undefined}
                       aria-label={rowAria}
                     >
-                      <TableCell className="tabular-nums">{hourRange(row.startHour, row.endHour)}</TableCell>
+                      {/* US-2663 (S3c) — `timeLabel` (bornes EXACTES "HH:MM") préféré pour la basale POMPE ;
+                          fallback `hourRange` (heures entières) pour ISF/ICR. */}
+                      <TableCell className="tabular-nums">{row.timeLabel ?? hourRange(row.startHour, row.endHour)}</TableCell>
                       <TableCell className="tabular-nums">{liveText}</TableCell>
                       <TableCell className="tabular-nums font-medium">
                         <span className="flex items-center gap-1">

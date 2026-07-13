@@ -8,7 +8,7 @@
  * que sur le côté proposé).
  */
 import { describe, it, expect } from "vitest"
-import { diffSlots, hasStructuralChange } from "@/lib/insulin/slot-diff"
+import { diffSlots, diffPumpSlots, hasStructuralChange, hasStructuralChangePump } from "@/lib/insulin/slot-diff"
 import { BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 const LIVE = [
@@ -117,5 +117,38 @@ describe("hasStructuralChange", () => {
 
   it("un créneau proposé en plus (cardinalité différente) → true", () => {
     expect(hasStructuralChange(LIVE, [...LIVE, { startHour: 6, endHour: 8, value: 0.3 }])).toBe(true)
+  })
+})
+
+describe("diffPumpSlots (US-2663 S3c) — DIFF POMPE par startTime, temps EXACTS", () => {
+  const LIVE = [
+    { startTime: "00:00", endTime: "05:30", rate: 0.8 },
+    { startTime: "05:30", endTime: "00:00", rate: 1.1 },
+  ]
+
+  it("débit nocturne changé → ligne `changed`, timeLabel EXACT, autres inchangés", () => {
+    const proposed = [{ startTime: "00:00", endTime: "05:30", rate: 0.85 }, LIVE[1]!]
+    const rows = diffPumpSlots(LIVE, proposed)
+    expect(rows).toHaveLength(2)
+    const noct = rows.find((r) => r.timeLabel === "00:00–05:30")!
+    expect(noct).toMatchObject({ proposedValue: 0.85, liveValue: 0.8, changed: true, startHour: 0, endHour: 5 })
+    expect(rows.find((r) => r.timeLabel === "05:30–00:00")!.changed).toBe(false)
+  })
+
+  it("créneau supprimé (startTime live absent du proposé) → ligne removed", () => {
+    const rows = diffPumpSlots(LIVE, [LIVE[0]!])
+    const removed = rows.find((r) => r.removed)
+    expect(removed).toMatchObject({ timeLabel: "05:30–00:00", proposedValue: null, liveValue: 1.1 })
+  })
+
+  it("borne endTime déplacée (même startTime) → changed", () => {
+    const rows = diffPumpSlots(LIVE, [{ startTime: "00:00", endTime: "06:00", rate: 0.8 }, LIVE[1]!])
+    expect(rows.find((r) => r.startHour === 0)!.changed).toBe(true)
+  })
+
+  it("hasStructuralChangePump : cardinalité ou startTime live orphelin → true", () => {
+    expect(hasStructuralChangePump(LIVE, [LIVE[0]!])).toBe(true)
+    expect(hasStructuralChangePump(LIVE, [{ startTime: "01:00", endTime: "05:30", rate: 0.8 }, LIVE[1]!])).toBe(true)
+    expect(hasStructuralChangePump(LIVE, [...LIVE])).toBe(false)
   })
 })
