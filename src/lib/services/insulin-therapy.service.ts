@@ -167,7 +167,8 @@ export const styloKindToColumn = { daily: "dailyDose", morning: "morningDose", e
  *  - **cohérence de MODALITÉ intra-jeu** (`invalidSlotSet`) : soit exactement `{daily}` (single_injection),
  *    soit exactement `{morning, evening}` (split_injection) — jamais `daily` mélangé à morning/evening, ni un
  *    demi-split (`morning` sans `evening`). La cohérence avec le `configType` LIVE est vérifiée à l'APPLY
- *    (`replaceStyloBasalSet`, `styloBasalConfigMismatch`), miroir exact de la pompe (`basalConfigNotPump`).
+ *    (`replaceStyloBasalSet` : patient pompe → `basalConfigNotStylo` ; cardinalité → `styloBasalConfigMismatch`),
+ *    miroir exact de la pompe (`basalConfigNotPump`).
  *  - bornes : `value ≥ MDI_BASAL_MIN_U` (0,5) — **PAS de plafond dur** (U300/dégludec > 80 U légitimes ; WARN
  *    non bloquant à l'affichage) — délivrable à la demi-unité (`isDeliverableFixedDose`). ⚠️ **U TOTALES, JAMAIS
  *    les bornes pompe `BASAL_MIN/MAX` (U/h)** (risque clinique majeur). Garde anti-overflow `≤ 9999,99` (colonne
@@ -823,15 +824,20 @@ export const insulinTherapyService = {
    * modèle `BasalConfiguration` (colonnes de dose, U TOTALES).
    *
    * Écriture du JEU en une passe (`updateMany` multi-colonnes scopé `settings.patientId`, 1 config/patient ⇒
-   * ≤ 1 ligne — anti-IDOR). **Discriminateur pompe⇄stylo (CRITIQUE)** : refuse un patient POMPE (`basalConfigNotPump`)
-   * — jamais des U TOTALES écrites sur une config pompe (U/h). **Cardinalité vs `configType` LIVE** :
-   * `single_injection` exige `{daily}`, `split_injection` exige `{morning,evening}` — mismatch → `styloBasalConfigMismatch`
-   * (un jeu split accepté sur un patient devenu single entre génération et accept est refusé, fail-closed).
-   * CAS d'ensemble (clé `kind`) sous verrou AVANT écriture ; supersession des propositions `basalRate` pending
-   * (par-valeur — incl. verrou stylo `one_pending_stylo_basal` — ET d'ensemble). Audit `replaceSet` sans PHI.
+   * ≤ 1 ligne — anti-IDOR). **Discriminateur pompe⇄stylo (CRITIQUE)** : refuse un patient POMPE (`basalConfigNotStylo`
+   * — « la config LIVE n'est pas un stylo ») — jamais des U TOTALES écrites sur une config pompe (U/h).
+   * **Cardinalité vs `configType` LIVE** : `single_injection` exige `{daily}`, `split_injection` exige
+   * `{morning,evening}` — mismatch → `styloBasalConfigMismatch` (un jeu split accepté sur un patient devenu single
+   * entre génération et accept est refusé, fail-closed).
+   * CAS d'ensemble (clé `kind`) sous verrou AVANT écriture, PUIS **CAS atomique EN BASE** (miroir de la voie
+   * par-valeur US-2660) : chaque colonne écrite est verrouillée à sa valeur LIVE dans le `WHERE` — une dérive
+   * concurrente (la voie par-valeur US-2660 sur les MÊMES colonnes n'acquiert PAS ce verrou consultatif) ou une
+   * dose effacée sous nous matche 0 ligne → `styloBasalNotFound` (rollback), jamais d'écrasement silencieux d'un
+   * ajustement médecin ni d'« appliqué » fantôme. Supersession des propositions `basalRate` pending (par-valeur —
+   * incl. verrou stylo `one_pending_stylo_basal` — ET d'ensemble). Audit `replaceSet` sans PHI.
    *
    * @throws slotsBusy | emptySlotSet | valueOutOfBounds | rateNotDeliverable | invalidSlotSet | slotOverlap
-   * @throws basalConfigNotFound | basalConfigNotPump | styloBasalConfigMismatch | baselineMoved | baselineMissing
+   * @throws basalConfigNotFound | basalConfigNotStylo | styloBasalConfigMismatch | styloBasalNotFound | baselineMoved | baselineMissing
    */
   async replaceStyloBasalSet(
     patientId: number,
@@ -853,28 +859,47 @@ export const insulinTherapyService = {
       })
       const bc = settings?.basalConfiguration
       if (bc == null) throw new Error("basalConfigNotFound")
-      // Intégrité du mode : jamais des U TOTALES sur une config POMPE (miroir `basalConfigNotPump`). Fail-closed.
-      if (bc.configType === "pump") throw new Error("basalConfigNotPump")
+      // Intégrité du mode : jamais des U TOTALES sur une config POMPE. La config LIVE n'est pas un stylo →
+      // `basalConfigNotStylo` (miroir exact du `basalConfigNotPump` de `replacePumpSlotSet`). Fail-closed.
+      if (bc.configType === "pump") throw new Error("basalConfigNotStylo")
       // Cardinalité vs configType LIVE (fail-closed sur bascule single↔split entre génération et acceptation).
       const proposedKinds = new Set(slots.map((s) => s.kind))
       const singleOk = bc.configType === "single_injection" && proposedKinds.size === 1 && proposedKinds.has("daily")
       const splitOk = bc.configType === "split_injection" && proposedKinds.size === 2 && proposedKinds.has("morning") && proposedKinds.has("evening")
       if (!singleOk && !splitOk) throw new Error("styloBasalConfigMismatch")
 
-      // 2. CAS d'ensemble AVANT écriture : projeter le live (colonnes non nulles) en `StyloBasalSlot[]`, comparer
-      //    par `kind` (sans borne). Dérive (ajustement médecin concurrent) → `baselineMoved` ; snapshot null → `baselineMissing`.
+      // 2. CAS d'ensemble AVANT écriture : projeter le live SELON `configType` (comme `getStyloBasalSlots` — un
+      //    `dailyDose` RÉSIDUEL chez un split ne fabrique pas de faux créneau qui déclencherait un faux
+      //    `baselineMoved`), comparer par `kind` (sans borne). Dérive (ajustement médecin concurrent) →
+      //    `baselineMoved` ; snapshot null → `baselineMissing`. NB : le CHECK DB `chk_basal_config_type_fields`
+      //    garantit déjà `split ⇒ dailyDose NULL` (et inverse) ; ce filtre par `configType` est la défense
+      //    applicative alignée sur la capture baseline si l'invariant venait à manquer.
       const live: StyloBasalSlot[] = []
-      if (bc.dailyDose != null) live.push({ kind: "daily", value: Number(bc.dailyDose) })
-      if (bc.morningDose != null) live.push({ kind: "morning", value: Number(bc.morningDose) })
-      if (bc.eveningDose != null) live.push({ kind: "evening", value: Number(bc.eveningDose) })
+      if (bc.configType === "single_injection") {
+        if (bc.dailyDose != null) live.push({ kind: "daily", value: Number(bc.dailyDose) })
+      } else {
+        if (bc.morningDose != null) live.push({ kind: "morning", value: Number(bc.morningDose) })
+        if (bc.eveningDose != null) live.push({ kind: "evening", value: Number(bc.eveningDose) })
+      }
       if (cas !== undefined) {
         assertBaselineUnchangedBy(cas.baseline, live, { keyOf: (s) => s.kind, valueOf: (s) => s.value })
       }
 
-      // 3. Écriture ATOMIQUE du jeu (multi-colonnes en une passe). 1 config/patient → ≤ 1 ligne (anti-IDOR).
+      // 3. Écriture ATOMIQUE du jeu avec **CAS EN BASE** (miroir US-2660 par-valeur) : chaque colonne écrite est
+      //    verrouillée à sa valeur LIVE (== baseline après le CAS JS) dans le `WHERE`. Une dérive concurrente (voie
+      //    par-valeur US-2660, qui n'acquiert PAS le verrou consultatif) ou une dose effacée sous nous → 0 ligne →
+      //    `styloBasalNotFound` (rollback) : jamais d'écrasement silencieux ni d'« appliqué » fantôme sur 0 ligne.
+      //    1 config/patient (`settingsId @unique`) → exactement 1 ligne attendue (anti-IDOR via `settings.patientId`).
+      const liveByKind = new Map(live.map((s) => [s.kind, s.value]))
+      const casWhere: Prisma.BasalConfigurationWhereInput = { settings: { patientId } }
       const data: Record<string, number> = {}
-      for (const s of slots) data[styloKindToColumn[s.kind]] = s.value
-      await tx.basalConfiguration.updateMany({ where: { settings: { patientId } }, data })
+      for (const s of slots) {
+        const column = styloKindToColumn[s.kind]
+        ;(casWhere as Record<string, unknown>)[column] = liveByKind.get(s.kind) ?? null
+        data[column] = s.value
+      }
+      const res = await tx.basalConfiguration.updateMany({ where: casWhere, data })
+      if (res.count !== 1) throw new Error("styloBasalNotFound")
 
       // 4. Supersession `basalRate` pending — par-valeur (incl. verrou stylo `one_pending_stylo_basal`) + d'ensemble.
       const superseded = await tx.adjustmentProposal.findMany({ where: { patientId, parameterType: "basalRate", status: "pending" }, select: { id: true } })

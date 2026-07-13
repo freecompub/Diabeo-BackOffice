@@ -336,11 +336,13 @@ export const slotSetProposalService = {
       // proposition reste `pending` (fail-closed). Chaque `replace*` vérifie le CAS sous verrou (`expectedBaseline`)
       // puis supersède au passage les autres propositions pending du paramètre.
       if (param === "basalRate") {
-        // PR-A : POMPE uniquement. Un jeu de forme STYLO (pas de `startTime`) → `unsupportedSlotSetParam`
-        // (fail-closed ; la basale stylo groupée arrive dans sa PR dédiée). `replacePumpSlotSet` re-garde
-        // aussi le `configType` LIVE (`basalConfigNotPump`) → jamais un jeu pompe écrit sur un patient stylo.
-        // US-2663 (S3e) — routage par FORME : POMPE (`startTime`) → `replacePumpSlotSet` ; STYLO (`kind`) →
-        // `replaceStyloBasalSet` (chacun re-garde le `configType` LIVE : `basalConfigNotPump`/`basalConfigNotStylo`).
+        // US-2663 (S3c/S3e) — `basalRate` porte DEUX formes discriminées par la STRUCTURE du jeu : POMPE
+        // (`startTime`) → `replacePumpSlotSet` ; STYLO (`kind`) → `replaceStyloBasalSet`. Chaque `replace*`
+        // re-garde le `configType` LIVE (`basalConfigNotPump` / `basalConfigNotStylo`) → jamais un jeu pompe
+        // écrit sur un patient stylo (ni l'inverse). Un jeu MIXTE échoue les deux `.every(...)` →
+        // `unsupportedSlotSetParam` (fail-closed). NB : seul `slots` est gardé runtime (`isPumpSlot`/`isStyloSlot`) ;
+        // `expectedBaseline` est casté par forme. Sûr fail-closed : un baseline de forme divergente donne des
+        // clés `keyOf` indéfinies côté CAS → `baselineMoved` (rollback), jamais d'écriture sur mauvaise base.
         if (slots.every(isPumpSlot)) {
           await insulinTherapyService.replacePumpSlotSet(patientId, slots as PumpBasalSlot[], reviewerUserId, ctx, tx, {
             baseline: expectedBaseline as PumpBasalSlot[] | null,

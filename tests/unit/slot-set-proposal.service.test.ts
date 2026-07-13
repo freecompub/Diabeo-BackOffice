@@ -458,12 +458,12 @@ describe("slotSetProposalService", () => {
     expect(insulinTherapyService.replaceSlotSet).not.toHaveBeenCalled()
   })
 
-  it("acceptSetProposal (S3e) : patient POMPE → basalConfigNotPump propagé (rollback, pas d'audit)", async () => {
+  it("acceptSetProposal (S3e) : patient POMPE (config LIVE non stylo) → basalConfigNotStylo propagé (rollback, pas d'audit)", async () => {
     const tx = mockTx()
     tx.slotSetProposal.findFirst.mockResolvedValue({ parameterType: "basalRate", proposedSlots: STYLO_SLOTS, baselineSlots: STYLO_BASE })
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 1 })
-    ;(insulinTherapyService.replaceStyloBasalSet as any).mockRejectedValueOnce(new Error("basalConfigNotPump"))
-    await expect(slotSetProposalService.acceptSetProposal("set-s", 7, 3)).rejects.toThrow("basalConfigNotPump")
+    ;(insulinTherapyService.replaceStyloBasalSet as any).mockRejectedValueOnce(new Error("basalConfigNotStylo"))
+    await expect(slotSetProposalService.acceptSetProposal("set-s", 7, 3)).rejects.toThrow("basalConfigNotStylo")
     expect(auditService.logWithTx).not.toHaveBeenCalled()
   })
 

@@ -6,7 +6,8 @@
  *
  * Flux : rate-limit (anti-abus) → lookup de la proposition (→ `patientId` + statut) → garde d'accès →
  * `acceptSetProposal` qui, dans UNE transaction, fait le compare-and-swap `pending → accepted` + applique le
- * jeu en bloc — routé par levier : `replaceSlotSet` (ISF/ICR) ou `replacePumpSlotSet` (POMPE) — avec verrou de
+ * jeu en bloc — routé par levier ET par forme : `replaceSlotSet` (ISF/ICR), `replacePumpSlotSet` (basale POMPE),
+ * `replaceStyloBasalSet` (basale STYLO), `replaceFixedDoseSet` (dose fixe) — avec verrou de
  * créneaux non bloquant, CAS d'ensemble, re-validation des bornes cliniques + frontière MDR + audite
  * `PROPOSAL_ACCEPTED` → **notification du patient soumissionnaire**.
  * Fail-closed : un échec clinique (bornes/couverture/non-insuliné) ou une course (rejet/supersede concurrent)
