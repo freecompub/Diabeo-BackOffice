@@ -14,7 +14,7 @@ describe("isUniqueViolationOn", () => {
       meta: {
         driverAdapterError: {
           cause: {
-            originalMessage: 'duplicate key value violates unique constraint "slot_set_proposals_one_pending_per_param"',
+            originalMessage: 'duplicate key value violates unique constraint "slot_set_proposals_one_pending_per_param_origin"',
             constraint: { fields: ["patient_id", "parameter_type"] },
           },
         },

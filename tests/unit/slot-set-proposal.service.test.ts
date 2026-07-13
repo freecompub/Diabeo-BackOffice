@@ -137,7 +137,7 @@ describe("slotSetProposalService", () => {
     const tx = mockTx()
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-2" })
-    const rationale = [{ startHour: 0, reason: "isfTooLow", confidence: "high" as const, supportingEvents: 12 }]
+    const rationale = [{ startHour: 0, reason: "isfTooLow" as const, confidence: "high" as const, supportingEvents: 12 }]
 
     await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, rationale)
 
@@ -155,6 +155,41 @@ describe("slotSetProposalService", () => {
     await expect(
       slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }),
     ).rejects.toThrow("rationaleRequired")
+  })
+
+  it("createSetProposal (S3b-0a) : MOTEUR rationale VIDE ou MALFORMÉE → rationaleRequired", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, []),
+    ).rejects.toThrow("rationaleRequired")
+    await expect(
+      // Malformée : `reason` hors enum `AdjustmentReason`.
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, [{ startHour: 0, reason: "notAnEnum", confidence: null, supportingEvents: null }] as never),
+    ).rejects.toThrow("rationaleRequired")
+  })
+
+  it("createSetProposal (S3b-0a) : rationale passée par un HUMAIN est IGNORÉE (non persistée)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    const tx = mockTx()
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
+    tx.slotSetProposal.create.mockResolvedValue({ id: "set-h" })
+    const rationale = [{ startHour: 0, reason: "isfTooLow" as const, confidence: "high" as const, supportingEvents: 12 }]
+
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" }, undefined, rationale)
+
+    // La rationale d'un humain n'est jamais écrite (champ omis → NULL).
+    const data = tx.slotSetProposal.create.mock.calls[0]![0].data
+    expect(data.rationale).toBeUndefined()
+  })
+
+  it("createSetProposal (S3b-0a) : parité identité — algorithme AVEC userId, ou humain SANS userId → invalidProposerIdentity", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 5, source: "algorithm" }, undefined, [{ startHour: 0, reason: "isfTooLow" as const, confidence: null, supportingEvents: null }]),
+    ).rejects.toThrow("invalidProposerIdentity")
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "patient" }),
+    ).rejects.toThrow("invalidProposerIdentity")
   })
 
   it("createSetProposal (US-2663 S0) : baseline ICR capture `gramsPerUnit` + `mealLabel` conditionnel", async () => {
@@ -220,7 +255,7 @@ describe("slotSetProposalService", () => {
         meta: {
           driverAdapterError: {
             cause: {
-              originalMessage: 'duplicate key value violates unique constraint "slot_set_proposals_one_pending_per_param"',
+              originalMessage: 'duplicate key value violates unique constraint "slot_set_proposals_one_pending_per_param_origin"',
               constraint: { fields: ["patient_id", "parameter_type"] },
             },
           },

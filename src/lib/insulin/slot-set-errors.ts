@@ -24,4 +24,5 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   basalConfigNotPump: 409,
   // US-2663 (S3b-0a) — proposition MOTEUR sans rationale par créneau (contrat serveur, ne vient jamais d'un input humain).
   rationaleRequired: 422,
+  invalidProposerIdentity: 422, // US-2663 S3b-0a — parité algorithme⇔userId null (contrat serveur)
 }

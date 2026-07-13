@@ -450,11 +450,16 @@ export const adjustmentService = {
     const { mode } = await treatmentModeService.resolveTreatmentMode(input.patientId)
     if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
+    // US-2663 (S3b-0a, revue prisma/medical HIGH) — cette primitive est DOCTOR-only : sa provenance par
+    // défaut est HUMAINE (`doctor`), JAMAIS `algorithm`. On fixe la source une seule fois et on l'utilise à la
+    // fois pour la PERSISTANCE et la CLASSIFICATION de supersession (cohérence D2) — sans quoi une proposition
+    // médecin sans `source` explicite serait étiquetée algo (défaut DB `@default(algorithm)`) et supersèderait
+    // la mauvaise classe. Un futur câblage route DOIT passer `source` dérivé de la session (ADR #27).
+    const source: ProposalSource = input.source ?? "doctor"
     return prisma.$transaction(async (tx) => {
-      const proposal = await tx.adjustmentProposal.create({ data: input })
-      // US-2663 (S2b) — exclusion mutuelle : cette primitive DOCTOR supersède aussi le groupé pending du
-      // paramètre (comble le trou relevé en revue : l'invariant « 1 file pending » vaut pour LES 3 primitives).
-      const supersededGroupedCount = await supersedeGroupedPending(tx, input.patientId, input.parameterType, input.source ?? "algorithm")
+      const proposal = await tx.adjustmentProposal.create({ data: { ...input, source } })
+      // Exclusion mutuelle PAR CLASSE (D2) : un acte médecin supersède les pending d'origine HUMAINE.
+      const supersededGroupedCount = await supersedeGroupedPending(tx, input.patientId, input.parameterType, source)
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,

@@ -349,6 +349,14 @@ describe("adjustmentService", () => {
       } as any, 2)
 
       expect(result.id).toBe("p1")
+      // US-2663 (S3b-0a) — primitive DOCTOR : provenance par défaut HUMAINE (`doctor`), jamais `algorithm`,
+      // à la fois PERSISTÉE et pour la CLASSIFICATION de supersession (D2). Ne supersède que l'humain.
+      expect(mockTx.adjustmentProposal.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ source: "doctor" }) }),
+      )
+      expect(mockTx.slotSetProposal.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ source: { not: "algorithm" } }) }),
+      )
     })
 
     // US-2651 — la frontière MDR s'applique AUSSI à cette 2ᵉ primitive de création.

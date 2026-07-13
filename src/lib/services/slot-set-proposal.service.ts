@@ -11,7 +11,7 @@
  * `(patient × paramètre)` — d'ensemble ET par-valeur — sont supersédées (cohérent avec « plus de par-valeur »).
  *
  * Invariant : **une seule proposition d'ensemble PENDING par (patient × paramètre)** — garanti EN BASE par
- * l'index unique partiel `slot_set_proposals_one_pending_per_param` (WHERE status = 'pending') ; la course
+ * l'index unique partiel `slot_set_proposals_one_pending_per_param_origin` (WHERE status = 'pending') ; la course
  * TOCTOU de double-soumission remonte en `P2002` → `duplicatePendingProposal`.
  *
  * **Acceptation atomique** : lecture + flip `pending → accepted` (compare-and-swap) + `replaceSlotSet` +
@@ -144,6 +144,9 @@ export const slotSetProposalService = {
     // 1-bis. US-2663 (S3b-0a) — une proposition MOTEUR DOIT porter sa rationale (medical HIGH : le médecin ne
     // décide pas sur un diff nu). Forme validée ; les entrées humaines ne persistent aucune rationale.
     const isAlgorithm = proposer.source === "algorithm"
+    // Parité identité ⇄ provenance (revue S3b-0a) : l'ALGORITHME n'a pas d'utilisateur (`userId: null`),
+    // une proposition HUMAINE en a toujours un. Contrat serveur (jamais un input humain) — durcit l'anti-usurpation.
+    if (isAlgorithm !== (proposer.userId === null)) throw new Error("invalidProposerIdentity")
     let rationaleToPersist: SlotRationale[] | null = null
     if (isAlgorithm) {
       const parsed = z.array(slotRationaleSchema).safeParse(rationale)
@@ -205,7 +208,7 @@ export const slotSetProposalService = {
       })
     } catch (e) {
       // Course TOCTOU (deux soumissions simultanées) rattrapée par l'index partiel unique
-      // `slot_set_proposals_one_pending_per_param`. `isUniqueViolationOn` lit la forme d'erreur Prisma 7 +
+      // `slot_set_proposals_one_pending_per_param_origin`. `isUniqueViolationOn` lit la forme d'erreur Prisma 7 +
       // adapter-pg (`meta.driverAdapterError.cause`, `meta.target` étant `undefined`) — cf. prisma-errors.
       if (isUniqueViolationOn(e, "one_pending")) throw new Error("duplicatePendingProposal")
       throw e

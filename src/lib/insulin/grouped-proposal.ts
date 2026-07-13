@@ -31,6 +31,7 @@
  * @see docs/clinical-logic/regles-et-constantes-diabete.md §6 (CAS par créneau = garde-fou de sûreté)
  */
 import { z } from "zod"
+import { $Enums } from "@prisma/client"
 
 /** Encodage horaire d'un créneau ISF/ICR : `endHour ∈ [0,23]`, passage minuit via `startHour > endHour`. */
 export const isfIcrSlotSchema = z.object({
@@ -72,7 +73,10 @@ export type FixedDoseSlot = z.infer<typeof fixedDoseSlotSchema>
  */
 export const slotRationaleSchema = z.object({
   startHour: z.number().int().min(0).max(23),
-  reason: z.string().max(60),
+  // US-2663 (S3b-0a, revue medical) — `reason` = enum `AdjustmentReason` (pas une chaîne libre) : il encode la
+  // DIRECTION du jugement clinique (isf/icrTooLow=escalade vs TooHigh=dé-escalade), machine-vérifiable + i18n,
+  // au même titre que le modèle par-valeur `AdjustmentProposal.reason`.
+  reason: z.nativeEnum($Enums.AdjustmentReason),
   confidence: z.enum(["low", "medium", "high"]).nullable(),
   supportingEvents: z.number().int().nonnegative().nullable(),
   totalEventsConsidered: z.number().int().nonnegative().nullable().optional(),
