@@ -34,6 +34,7 @@ describe("mapSlotSetOutcome — voie groupée", () => {
       [422, "patientDeltaTooLarge", "slotSetErrorDeltaTooLarge"],
       [422, "noChangeProposed", "slotSetErrorNoChange"],
       [409, "deliveryModeMismatch", "slotSetErrorModeMismatch"],
+      [422, "structuralChangeNotAllowed", "slotSetErrorStructural"],
       [403, "forbidden", "slotSetErrorForbidden"],
       [429, "rateLimitExceeded", "slotSetErrorRateLimited"],
     ]

@@ -22,11 +22,12 @@ vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({ DiabeoEmptyState: () =>
 
 // Mocks des éditeurs de groupe : exposent param / mode / audience + jeu initial pour assertion.
 vi.mock("@/components/diabeo/patient/InsulinSlotSetDialog", () => ({
-  InsulinSlotSetDialog: (props: { param: string; mode: string; audience: string; initialSlots: unknown }) => (
+  InsulinSlotSetDialog: (props: { param: string; mode: string; audience: string; structural?: boolean; initialSlots: unknown }) => (
     <button
       data-testid={`propose-${props.param}`}
       data-mode={props.mode}
       data-audience={props.audience}
+      data-structural={String(props.structural)}
       data-slots={JSON.stringify(props.initialSlots)}
     >
       propose
@@ -34,11 +35,12 @@ vi.mock("@/components/diabeo/patient/InsulinSlotSetDialog", () => ({
   ),
 }))
 vi.mock("@/components/diabeo/patient/InsulinBasalSlotSetDialog", () => ({
-  InsulinBasalSlotSetDialog: (props: { mode: string; audience: string; initialSlots: unknown }) => (
+  InsulinBasalSlotSetDialog: (props: { mode: string; audience: string; structural?: boolean; initialSlots: unknown }) => (
     <button
       data-testid="propose-basalRate"
       data-mode={props.mode}
       data-audience={props.audience}
+      data-structural={String(props.structural)}
       data-slots={JSON.stringify(props.initialSlots)}
     >
       propose
@@ -70,6 +72,8 @@ describe("PatientInsulinView — câblage section → éditeur de groupe (propos
     const isf = screen.getByTestId("propose-insulinSensitivityFactor")
     expect(isf.getAttribute("data-mode")).toBe("propose")
     expect(isf.getAttribute("data-audience")).toBe("patient")
+    // Valeurs seules côté patient : le serveur refuse la restructuration (`structuralChangeNotAllowed`).
+    expect(isf.getAttribute("data-structural")).toBe("false")
     expect(JSON.parse(isf.getAttribute("data-slots")!)).toEqual([{ startHour: 0, endHour: 8, value: 0.5 }])
 
     const icr = screen.getByTestId("propose-insulinToCarbRatio")
@@ -80,6 +84,7 @@ describe("PatientInsulinView — câblage section → éditeur de groupe (propos
     const basal = screen.getByTestId("propose-basalRate")
     expect(basal.getAttribute("data-mode")).toBe("propose")
     expect(basal.getAttribute("data-audience")).toBe("patient")
+    expect(basal.getAttribute("data-structural")).toBe("false")
     expect(JSON.parse(basal.getAttribute("data-slots")!)).toEqual([{ startTime: "00:00", endTime: "00:00", value: 0.8 }])
   })
 })

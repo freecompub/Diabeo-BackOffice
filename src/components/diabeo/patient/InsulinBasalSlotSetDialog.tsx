@@ -256,24 +256,33 @@ export function InsulinBasalSlotSetDialog({
                         className={conflict ? "border-l-4 border-destructive bg-destructive/10" : "border-l-4 border-transparent"}
                       >
                         <td className="p-2">
-                          <input
-                            type="time"
-                            value={r.startTime}
-                            onChange={(e) => updateRow(r.key, { startTime: e.target.value })}
-                            aria-label={`${t("slotSetColStart")} — ${rowN}`}
-                            aria-describedby={describedBy}
-                            className="w-28 rounded-md border border-input bg-background px-2 py-1 text-foreground"
-                          />
+                          {structural ? (
+                            <input
+                              type="time"
+                              value={r.startTime}
+                              onChange={(e) => updateRow(r.key, { startTime: e.target.value })}
+                              aria-label={`${t("slotSetColStart")} — ${rowN}`}
+                              aria-describedby={describedBy}
+                              className="w-28 rounded-md border border-input bg-background px-2 py-1 text-foreground"
+                            />
+                          ) : (
+                            // Valeurs seules (patient) : le temps est en LECTURE (pas de restructuration serveur).
+                            <span className="tabular-nums text-muted-foreground">{r.startTime}</span>
+                          )}
                         </td>
                         <td className="p-2">
-                          <input
-                            type="time"
-                            value={r.endTime}
-                            onChange={(e) => updateRow(r.key, { endTime: e.target.value })}
-                            aria-label={`${t("slotSetColEnd")} — ${rowN}`}
-                            aria-describedby={describedBy}
-                            className="w-28 rounded-md border border-input bg-background px-2 py-1 text-foreground"
-                          />
+                          {structural ? (
+                            <input
+                              type="time"
+                              value={r.endTime}
+                              onChange={(e) => updateRow(r.key, { endTime: e.target.value })}
+                              aria-label={`${t("slotSetColEnd")} — ${rowN}`}
+                              aria-describedby={describedBy}
+                              className="w-28 rounded-md border border-input bg-background px-2 py-1 text-foreground"
+                            />
+                          ) : (
+                            <span className="tabular-nums text-muted-foreground">{r.endTime}</span>
+                          )}
                         </td>
                         <td className="p-2">
                           <input
@@ -290,25 +299,27 @@ export function InsulinBasalSlotSetDialog({
                             }
                           />
                         </td>
-                        <td className="p-2 text-right">
-                          {conflict ? (
-                            <AlertTriangle className="mr-1 inline size-4 text-destructive" aria-hidden="true" />
-                          ) : null}
-                          {conflict ? (
-                            <span id={conflictId} className="sr-only">
-                              {t("slotSetRowInConflict")}
-                            </span>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteRow(r.key)}
-                            aria-label={t("slotSetDeleteRow", { start: r.startTime, end: r.endTime })}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </td>
+                        {structural ? (
+                          <td className="p-2 text-right">
+                            {conflict ? (
+                              <AlertTriangle className="mr-1 inline size-4 text-destructive" aria-hidden="true" />
+                            ) : null}
+                            {conflict ? (
+                              <span id={conflictId} className="sr-only">
+                                {t("slotSetRowInConflict")}
+                              </span>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteRow(r.key)}
+                              aria-label={t("slotSetDeleteRow", { start: r.startTime, end: r.endTime })}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </td>
+                        ) : null}
                       </tr>
                     )
                   })}
@@ -316,10 +327,12 @@ export function InsulinBasalSlotSetDialog({
               </table>
             </div>
 
-            <Button ref={addButtonRef} type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
-              <Plus className="mr-1 size-4" />
-              {t("slotSetAddRow")}
-            </Button>
+            {structural ? (
+              <Button ref={addButtonRef} type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
+                <Plus className="mr-1 size-4" />
+                {t("slotSetAddRow")}
+              </Button>
+            ) : null}
 
             {/* Bannière de cohérence — statut vivant, associée à « Valider ». */}
             <p

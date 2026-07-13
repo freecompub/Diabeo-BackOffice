@@ -122,6 +122,7 @@ export function PatientInsulinView({
               bounds={PARAM_BOUNDS.insulinSensitivityFactor}
               mode="propose"
               audience="patient"
+              structural={false}
             />
           )}
         </CardContent>
@@ -144,6 +145,7 @@ export function PatientInsulinView({
               bounds={PARAM_BOUNDS.insulinToCarbRatio}
               mode="propose"
               audience="patient"
+              structural={false}
             />
           )}
         </CardContent>
@@ -163,6 +165,7 @@ export function PatientInsulinView({
               bounds={PARAM_BOUNDS.basalRate}
               mode="propose"
               audience="patient"
+              structural={false}
             />
           )}
         </CardContent>
