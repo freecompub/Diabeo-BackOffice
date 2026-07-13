@@ -102,6 +102,37 @@ OVH_S3_REGION="gra"
 | `RESEND_API_KEY` | Emails non envoyés (loggués dans la console à la place) |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Session revocation en mémoire (perdue au restart du serveur) |
 
+### 3.5 Flags moteur — proposition GROUPÉE (US-2663, ADR #31)
+
+Le moteur d'ajustement peut émettre ses propositions de deux façons, pilotées par des **feature flags**
+d'environnement **réversibles**, un par famille de levier. Ils basculent la voie d'ÉCRITURE de la
+proposition (par-valeur `AdjustmentProposal` → groupée `SlotSetProposal`) — **jamais** les décisions
+cliniques (bornes, dé-escalade, cooldown, gardes hypo restent identiques).
+
+| Flag | Levier basculé en émission groupée |
+|---|---|
+| `ENGINE_GROUPED_ISF_ICR` | Sensibilité (ISF) + ratio glucides (ICR) — **basculent ensemble** |
+| `ENGINE_GROUPED_PUMP` | Basale **pompe** (créneaux `"HH:MM"`, débit U/h) |
+| `ENGINE_GROUPED_FIXED_DOSE` | Dose fixe (mode « doses simples », clé `(usage, moment)`) |
+| `ENGINE_GROUPED_STYLO` | Basale **stylo** (MDI single/split, doses U totales) |
+
+**Valeurs** : exactement `"true"` ou `"false"` (toute autre valeur fait **échouer le boot** —
+`assertOptionalBoolean`, `src/lib/env.ts`). **Absente = OFF** (défaut). Chaque flag est **indépendant**
+(rollout/rollback granulaire). Lu une fois par run du générateur → un `pnpm dev` après édition suffit.
+
+**Activer en local** (ex. pour voir l'écran de revue médecin `/patients/[id]/review` avec des
+propositions groupées) — dans `.env` :
+
+```bash
+# OFF par défaut ; mettre "true" pour tester la voie groupée d'un levier.
+ENGINE_GROUPED_STYLO=true
+```
+
+> ⚠️ **Ne pas activer en production sans coordination iOS.** Flag ON, le moteur émet des
+> `SlotSetProposal` (groupées) au lieu des `AdjustmentProposal` (par-valeur) que l'app iOS lit
+> encore aujourd'hui — la rupture de contrat est concentrée en slice **S5** (retrait de la voie
+> par-valeur, coordination `swift-expert`). En local c'est sans risque (pas d'app iOS branchée).
+
 ---
 
 ## 4. Appliquer les migrations + seed
