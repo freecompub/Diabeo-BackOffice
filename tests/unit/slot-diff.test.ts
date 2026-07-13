@@ -8,7 +8,7 @@
  * que sur le côté proposé).
  */
 import { describe, it, expect } from "vitest"
-import { diffSlots, diffPumpSlots, diffFixedDoseSlots, hasStructuralChange, hasStructuralChangePump, hasStructuralChangeFixedDose } from "@/lib/insulin/slot-diff"
+import { diffSlots, diffPumpSlots, diffFixedDoseSlots, diffStyloBasalSlots, hasStructuralChange, hasStructuralChangePump, hasStructuralChangeFixedDose, hasStructuralChangeStylo } from "@/lib/insulin/slot-diff"
 import { BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 const LIVE = [
@@ -185,5 +185,43 @@ describe("diffFixedDoseSlots (US-2663 S3d) — DIFF DOSE FIXE par (usage, moment
     expect(hasStructuralChangeFixedDose(LIVE, [LIVE[0]!])).toBe(true)
     expect(hasStructuralChangeFixedDose(LIVE, [{ usage: "bolus", moment: "night", value: 6 }, LIVE[1]!])).toBe(true)
     expect(hasStructuralChangeFixedDose(LIVE, [...LIVE])).toBe(false)
+  })
+})
+
+describe("diffStyloBasalSlots (US-2663 S3e) — DIFF BASALE STYLO par kind, U totales", () => {
+  const SPLIT = [
+    { kind: "morning" as const, value: 12 },
+    { kind: "evening" as const, value: 10 },
+  ]
+
+  it("dose du soir changée → changed, basalDoseKind porté, matin inchangée ; tri morning avant evening", () => {
+    const rows = diffStyloBasalSlots(SPLIT, [SPLIT[0]!, { kind: "evening", value: 8 }])
+    expect(rows).toHaveLength(2)
+    const ev = rows.find((r) => r.basalDoseKind === "evening")!
+    expect(ev).toMatchObject({ proposedValue: 8, liveValue: 10, changed: true })
+    expect(rows.find((r) => r.basalDoseKind === "morning")!.changed).toBe(false)
+    expect(rows[0]!.basalDoseKind).toBe("morning") // morning(0) avant evening(1)
+  })
+
+  it("single {daily} : dose changée → changed, basalDoseKind daily porté", () => {
+    const rows = diffStyloBasalSlots([{ kind: "daily", value: 20 }], [{ kind: "daily", value: 22 }])
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ basalDoseKind: "daily", proposedValue: 22, liveValue: 20, changed: true })
+  })
+
+  it("nouvelle dose (kind absent du live) → liveValue null, changed", () => {
+    const rows = diffStyloBasalSlots([{ kind: "morning", value: 12 }], SPLIT)
+    expect(rows.find((r) => r.basalDoseKind === "evening")).toMatchObject({ liveValue: null, proposedValue: 10, changed: true })
+  })
+
+  it("dose supprimée (kind live absent du proposé) → ligne removed", () => {
+    const rows = diffStyloBasalSlots(SPLIT, [SPLIT[0]!])
+    expect(rows.find((r) => r.removed)).toMatchObject({ basalDoseKind: "evening", proposedValue: null, liveValue: 10 })
+  })
+
+  it("hasStructuralChangeStylo : cardinalité ou kind live orphelin → true", () => {
+    expect(hasStructuralChangeStylo(SPLIT, [SPLIT[0]!])).toBe(true)
+    expect(hasStructuralChangeStylo([{ kind: "daily", value: 20 }], SPLIT)).toBe(true)
+    expect(hasStructuralChangeStylo(SPLIT, [...SPLIT])).toBe(false)
   })
 })

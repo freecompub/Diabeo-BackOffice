@@ -360,6 +360,10 @@ export function assertRequiredEnv(): void {
   // DOSE FIXE (`SlotSetProposal` fixedDose, clé `(usage, moment)`). Flag DISTINCT.
   // OFF par défaut ⇒ voie par-valeur dose fixe inchangée.
   assertOptionalBoolean("ENGINE_GROUPED_FIXED_DOSE")
+  // US-2663 (S3e PR2) — basale STYLO (MDI) : émission GROUPÉE (`SlotSetProposal` basalRate de
+  // forme STYLO, clé `basalDoseKind`) au lieu des `AdjustmentProposal` par-valeur single/split.
+  // Flag DISTINCT. OFF par défaut ⇒ voie par-valeur stylo inchangée (aucune rupture iOS avant S5).
+  assertOptionalBoolean("ENGINE_GROUPED_STYLO")
   // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
   // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser

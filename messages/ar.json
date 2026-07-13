@@ -2194,6 +2194,11 @@
       "evening": "المساء",
       "night": "الليل"
     },
+    "styloBasalKind": {
+      "daily": "الجرعة اليومية",
+      "morning": "جرعة الصباح",
+      "evening": "جرعة المساء"
+    },
     "groupedHighDoseWarning": "جرعة مرتفعة"
   },
   "cabinetMembers": {

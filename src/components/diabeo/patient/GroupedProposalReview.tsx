@@ -62,6 +62,12 @@ export type ReviewGroupedViewItem = {
   parameterType: AdjustableParameter
   /** Provenance dérivée serveur (ADR #27) — badge partagé avec `ProposalList` (`adjustments.source.*`). */
   source: ProposalSource
+  /**
+   * US-2663 (S3e) — `true` pour une proposition `basalRate` de forme STYLO (doses `daily`/`morning`/`evening`,
+   * U TOTALES). Dérivé SERVEUR (forme du jeu, `page.tsx`) — `basalRate` porte pompe (U/h) ET stylo (U totales) :
+   * ce drapeau sélectionne l'unité d'affichage (`u` vs `basal`) et le libellé de dose. Absent = pompe/autre levier.
+   */
+  isPenBasal?: boolean
   rows: SlotDiffRow[]
   /** `true` = la base active a dérivé depuis le snapshot pris à la génération (`isBaselineUnchanged` négatif). */
   baselineDrifted: boolean
@@ -133,9 +139,12 @@ const hourRange = (startHour: number, endHour: number): string =>
  */
 const rationaleKeyOf = (
   parameterType: AdjustableParameter,
-  entry: { startHour?: number; usage?: string; moment?: string },
+  entry: { startHour?: number; usage?: string; moment?: string; basalDoseKind?: string },
 ): string =>
-  parameterType === "fixedDose" ? `${entry.usage}:${entry.moment}` : String(entry.startHour)
+  // US-2663 (S3e) — la basale STYLO apparie par `basalDoseKind` (présent des DEUX côtés : rationale moteur ET
+  // ligne de diff). Prioritaire sur `startHour` : une ligne stylo n'a qu'un `startHour` synthétique (ordre).
+  entry.basalDoseKind ??
+  (parameterType === "fixedDose" ? `${entry.usage}:${entry.moment}` : String(entry.startHour))
 
 export function GroupedProposalReview({
   items,
@@ -159,7 +168,9 @@ export function GroupedProposalReview({
   return (
     <ul className="space-y-4">
       {items.map((item) => {
-        const unit = tUnits(PARAM_UNIT_KEY[item.parameterType])
+        // US-2663 (S3e) — la basale STYLO s'affiche en U TOTALES (`u`), pas en U/h (`basal`) : `basalRate` porte
+        // les deux modalités, désambiguïsées par `isPenBasal` (dérivé serveur). Cf. `ProposalList` (par-valeur).
+        const unit = item.isPenBasal ? tUnits("u") : tUnits(PARAM_UNIT_KEY[item.parameterType])
         const paramLabel = t(PARAM_LABEL_KEY[item.parameterType])
         // US-2663 (S3b-0b, polymorphe S3d) — rationale MOTEUR appariée au créneau par clé POLYMORPHE
         // (`startHour` ISF/ICR/pompe, `(usage, moment)` dose fixe — cf. `rationaleKeyOf`). `null` = propositions
@@ -245,16 +256,22 @@ export function GroupedProposalReview({
                       : "none"
                   // US-2663 (S3d) — libellé de créneau DOSE FIXE traduit « Bolus · Matin » (`usage`/`moment`,
                   // pas d'horaire réel) ; fallback `timeLabel`/`hourRange` inchangé pour les autres leviers.
+                  // US-2663 (S3e) — libellé de dose STYLO traduit (« Dose du soir », `basalDoseKind`, pas
+                  // d'horaire réel) ; sinon dose fixe (« Bolus · Matin ») ; sinon `timeLabel`/`hourRange`.
                   const cellLabel =
-                    item.parameterType === "fixedDose" && row.usage !== undefined && row.moment !== undefined
-                      ? `${t(`fixedDoseUsage.${row.usage}`)} · ${t(`fixedDoseMoment.${row.moment}`)}`
-                      : (row.timeLabel ?? hourRange(row.startHour, row.endHour))
+                    item.isPenBasal && row.basalDoseKind !== undefined
+                      ? t(`styloBasalKind.${row.basalDoseKind}`)
+                      : item.parameterType === "fixedDose" && row.usage !== undefined && row.moment !== undefined
+                        ? `${t(`fixedDoseUsage.${row.usage}`)} · ${t(`fixedDoseMoment.${row.moment}`)}`
+                        : (row.timeLabel ?? hourRange(row.startHour, row.endHour))
                   return (
                     <TableRow
                       key={
-                        item.parameterType === "fixedDose"
-                          ? `${row.usage}-${row.moment}-${row.removed ? "rm" : "pr"}`
-                          : `${row.startHour}-${row.endHour}-${row.removed ? "rm" : "pr"}`
+                        item.isPenBasal && row.basalDoseKind !== undefined
+                          ? `${row.basalDoseKind}-${row.removed ? "rm" : "pr"}`
+                          : item.parameterType === "fixedDose"
+                            ? `${row.usage}-${row.moment}-${row.removed ? "rm" : "pr"}`
+                            : `${row.startHour}-${row.endHour}-${row.removed ? "rm" : "pr"}`
                       }
                       className={row.changed ? "bg-warning-bg" : undefined}
                       aria-label={rowAria}
@@ -262,7 +279,7 @@ export function GroupedProposalReview({
                       {/* US-2663 (S3c) — `timeLabel` (bornes EXACTES "HH:MM") préféré pour la basale POMPE ;
                           fallback `hourRange` (heures entières) pour ISF/ICR. US-2663 (S3d) — libellé
                           `usage`/`moment` traduit pour la dose fixe (`cellLabel`), pas un horaire réel. */}
-                      <TableCell className={item.parameterType === "fixedDose" ? undefined : "tabular-nums"}>
+                      <TableCell className={item.parameterType === "fixedDose" || item.isPenBasal ? undefined : "tabular-nums"}>
                         {cellLabel}
                       </TableCell>
                       <TableCell className="tabular-nums">{liveText}</TableCell>

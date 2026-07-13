@@ -2194,6 +2194,11 @@
       "evening": "Soir",
       "night": "Nuit"
     },
+    "styloBasalKind": {
+      "daily": "Dose quotidienne",
+      "morning": "Dose du matin",
+      "evening": "Dose du soir"
+    },
     "groupedHighDoseWarning": "Dose élevée"
   },
   "cabinetMembers": {

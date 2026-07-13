@@ -16,7 +16,7 @@
  * @see src/lib/insulin/slot-baseline-cas.ts (CAS d'ensemble bloquant, baseline vs live)
  * @see docs/UserStory/insulinotherapie-edition/US-2663-EPIC-proposition-groupee-integrale.md (S2)
  */
-import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
+import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot, StyloBasalSlot } from "@/lib/insulin/grouped-proposal"
 import { BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 /** Une ligne du tableau de diff : un créneau PROPOSÉ (ou un créneau LIVE **supprimé** par la proposition). */
@@ -41,6 +41,12 @@ export type SlotDiffRow = {
    */
   usage?: string
   moment?: string
+  /**
+   * US-2663 (S3e) — clé BASALE STYLO portée sur la ligne (`daily`/`morning`/`evening`), pour le libellé traduit
+   * (« Dose du soir ») et l'appariement de la rationale par `basalDoseKind` côté composant. Absent pour les autres
+   * leviers. `startHour`/`endHour` reçoivent un ordre SYNTHÉTIQUE (daily/morning=0, evening=1) pour tri + clé React.
+   */
+  basalDoseKind?: string
   /**
    * US-2663 (S3d) — avertissement dose élevée NON bloquant, dérivé SERVEUR (bornes jamais côté client) : dose
    * proposée au-delà du seuil d'usage (`FIXED_BOLUS_WARN_U` 25 U bolus / `FIXED_BASAL_WARN_U` 80 U basal|both).
@@ -219,4 +225,54 @@ export function hasStructuralChangeFixedDose(live: readonly FixedDoseSlot[], pro
   if (live.length !== proposed.length) return true
   const proposedKeys = new Set(proposed.map(fixedKey))
   return live.some((s) => !proposedKeys.has(fixedKey(s)))
+}
+
+/** Ordre synthétique de la dose stylo (daily/morning = 0, evening = 1) → `startHour` de tri/clé (pas d'horaire réel). */
+const STYLO_KIND_ORDER: Record<string, number> = { daily: 0, morning: 0, evening: 1 }
+
+/**
+ * US-2663 (S3e) — DIFF pur BASALE STYLO (live → proposé), pendant de `diffSlots` pour le modèle `StyloBasalSlot`.
+ * Appariement par clé **`kind`** (`daily`/`morning`/`evening`, U TOTALES — jamais U/h). `basalDoseKind` porté sur
+ * la ligne (libellé traduit « Dose du soir » + appariement rationale par `basalDoseKind` côté composant) ;
+ * `startHour` = ordre synthétique (pas un horaire réel). Valeur = dose U totales. Pas de borne (dose ponctuelle).
+ */
+export function diffStyloBasalSlots(live: readonly StyloBasalSlot[], proposed: readonly StyloBasalSlot[]): SlotDiffRow[] {
+  const liveByKind = new Map(live.map((s) => [s.kind, s]))
+  const proposedKinds = new Set(proposed.map((s) => s.kind))
+  const ord = (kind: string) => STYLO_KIND_ORDER[kind] ?? 9
+
+  const proposedRows: SlotDiffRow[] = proposed.map((p) => {
+    const match = liveByKind.get(p.kind)
+    const changed = match === undefined || !Number.isFinite(match.value) || Math.abs(match.value - p.value) > BASELINE_VALUE_EPS
+    return {
+      startHour: ord(p.kind),
+      endHour: ord(p.kind),
+      proposedValue: p.value,
+      liveValue: match ? match.value : null,
+      basalDoseKind: p.kind,
+      changed,
+      removed: false,
+    }
+  })
+
+  const removedRows: SlotDiffRow[] = live
+    .filter((s) => !proposedKinds.has(s.kind))
+    .map((s) => ({
+      startHour: ord(s.kind),
+      endHour: ord(s.kind),
+      proposedValue: null,
+      liveValue: s.value,
+      basalDoseKind: s.kind,
+      changed: true,
+      removed: true,
+    }))
+
+  return [...proposedRows, ...removedRows].sort((a, b) => a.startHour - b.startHour)
+}
+
+/** Dérive structurelle BASALE STYLO (cardinalité, ou un `kind` live sans correspondance côté proposé). */
+export function hasStructuralChangeStylo(live: readonly StyloBasalSlot[], proposed: readonly StyloBasalSlot[]): boolean {
+  if (live.length !== proposed.length) return true
+  const proposedKinds = new Set(proposed.map((s) => s.kind))
+  return live.some((s) => !proposedKinds.has(s.kind))
 }
