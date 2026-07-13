@@ -855,6 +855,11 @@ model SlotSetProposal {
   proposer         User?               @relation("SlotSetProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
   reviewedByUserId Int?                @map("reviewed_by_user_id")
   reviewer         User?               @relation("SlotSetReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  /// US-2663 (S4, D3) — accusé DKA/jour-de-maladie d'une soumission PATIENT groupée contenant ≥ 1 BAISSE de
+  /// basale STYLO (US-2659). Décision produit D3 : UN SEUL accusé couvre TOUTES les baisses stylo du jeu.
+  /// Timestamp de consentement (immuable, jamais réécrit — parité `AdjustmentProposal.sickDayAcknowledgedAt`).
+  /// NULL pour toute soumission sans baisse stylo, pour les pros (nurse/doctor, non gatés) et le moteur.
+  sickDayAcknowledgedAt DateTime?      @map("sick_day_acknowledged_at") @db.Timestamptz()
   // Timestamptz — aligné sur le modèle sœur `AdjustmentProposal` (tri/affichage stables cross-timezone).
   createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz()
   reviewedAt       DateTime?           @map("reviewed_at") @db.Timestamptz()

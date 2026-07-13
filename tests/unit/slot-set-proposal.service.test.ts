@@ -387,7 +387,9 @@ describe("slotSetProposalService", () => {
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-f" })
 
-    const res = await slotSetProposalService.createSetProposal({ patientId: 7, parameterType: "fixedDose", proposedSlots: FIXED_SLOTS as never, proposer: { userId: 7, source: "patient" } })
+    // Provenance PRO (doctor) : la dose fixe groupée est une voie soignant/moteur (les patients ne soumettent
+    // que ISF/ICR/basale — route `PUT /api/patient/insulin-slot-set`). Un pro n'est PAS gaté (US-2663 S4).
+    const res = await slotSetProposalService.createSetProposal({ patientId: 7, parameterType: "fixedDose", proposedSlots: FIXED_SLOTS as never, proposer: { userId: 3, source: "doctor" } })
     expect(res).toEqual({ id: "set-f" })
     expect(insulinTherapyService.getFixedDoseSlots).toHaveBeenCalledWith(7)
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(

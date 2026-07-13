@@ -38,4 +38,12 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   basalConfigNotStylo: 409,
   styloBasalConfigMismatch: 409,
   styloBasalNotFound: 409,
+  // US-2663 (S4, D3) — garde clinique PATIENT de la voie manuelle GROUPÉE (`evaluatePatientGroupedGate`) :
+  // baisse basale sous le seuil de maturité, accusé DKA manquant (stylo), amplitude au-delà du cap patient,
+  // baisse stylo non actionnable (infra-incrément), ou forme incohérente avec le mode LIVE. 4xx (jamais 500).
+  maturityTooLowForDecrease: 403, // maturité insuffisante pour proposer une baisse basale (par mode)
+  dkaAcknowledgmentRequired: 422, // baisse STYLO sans accusé jour-de-maladie/DKA (bloquant)
+  patientDeltaTooLarge: 422, // variation au-delà du cap patient (10 % ; stylo baisse min(10 %, 2 U))
+  noChangeProposed: 422, // baisse stylo infra-incrément (< 1 U) ou non délivrable (½ U) → non actionnable
+  deliveryModeMismatch: 409, // forme du jeu (stylo/pompe) incohérente avec le `configType` LIVE (anti-usurpation)
 }

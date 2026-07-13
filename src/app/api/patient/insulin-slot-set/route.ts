@@ -26,17 +26,19 @@ import { requireAuth, AuthError } from "@/lib/auth"
 import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { getOwnPatientId } from "@/lib/access-control"
 import { requireGdprConsent } from "@/lib/gdpr"
-import { slotSetProposalService } from "@/lib/services/slot-set-proposal.service"
+import { slotSetProposalService, type ProposedSlot } from "@/lib/services/slot-set-proposal.service"
 import { SLOT_SET_ERROR_STATUS } from "@/lib/insulin/slot-set-errors"
-import { isfIcrSlotSchema } from "@/lib/insulin/grouped-proposal"
 import { auditService, extractRequestContext } from "@/lib/services/audit.service"
 
 const bodySchema = z.object({
-  parameterType: z.enum(["insulinSensitivityFactor", "insulinToCarbRatio"]),
-  // US-2663 — forme des créneaux importée du module de typage unique (`isfIcrSlotSchema`), plus de copie
-  // inline. Les bornes cliniques (ISF/ICR) sont re-validées serveur par `assertValidSlotSet` (→ valueOutOfBounds/400).
-  // `.min(1).max(24)` restent locaux à la route (borne anti-abus : 24 créneaux couvrent 24 h).
-  slots: isfIcrSlotSchema.array().min(1).max(24),
+  // US-2663 (S4) — la voie patient groupée couvre désormais la BASALE (pompe/stylo) en plus d'ISF/ICR.
+  parameterType: z.enum(["insulinSensitivityFactor", "insulinToCarbRatio", "basalRate"]),
+  // Forme des créneaux re-validée SERVEUR par `createSetProposal` (`parseSlots`/`assertValidGroupedSet`, source
+  // de vérité, par levier — bornes cliniques incluses → `valueOutOfBounds`). `.min(1).max(24)` = garde anti-abus.
+  slots: z.array(z.record(z.string(), z.unknown())).min(1).max(24),
+  // US-2663 (S4, D3) — accusé DKA/jour-de-maladie : requis SERVEUR ssi le jeu contient ≥ 1 baisse de basale
+  // STYLO (`evaluatePatientGroupedGate`). UN SEUL accusé couvre TOUTES les baisses stylo du jeu.
+  sickDayAcknowledged: z.boolean().optional(),
 })
 
 export async function PUT(req: NextRequest) {
@@ -73,23 +75,25 @@ export async function PUT(req: NextRequest) {
     if (!parsed.success) {
       return NextResponse.json({ error: "validationFailed", details: parsed.error.flatten().fieldErrors }, { status: 400 })
     }
-    const { parameterType, slots } = parsed.data
+    const { parameterType, slots, sickDayAcknowledged } = parsed.data
 
     try {
       // TOUJOURS une proposition médecin (plus d'auto-application). `createSetProposal` supersède les pending
-      // du même paramètre et audite la création (`CREATE SLOT_SET_PROPOSAL`). Provenance `source` dérivée de
-      // la SESSION (US-2663/ADR #27) : cette voie est patient-only (`getOwnPatientId`) → toujours `patient`.
+      // du même paramètre, applique la GARDE CLINIQUE PATIENT (cap %, baisse basale gatée : maturité/mode/DKA/
+      // incrément — US-2659 généralisé au jeu, D3 : 1 accusé couvre toutes les baisses stylo) et audite la
+      // création. Provenance `source` dérivée de la SESSION (ADR #27) : voie patient-only → toujours `patient`.
       const { id } = await slotSetProposalService.createSetProposal({
         patientId,
         parameterType,
-        proposedSlots: slots,
+        proposedSlots: slots as ProposedSlot[], // forme re-validée par le service (autorité)
         proposer: { userId: user.id, source: "patient" },
         ctx,
+        sickDayAcknowledged,
       })
       return NextResponse.json({ outcome: "proposal", proposalId: id }, { status: 201 })
     } catch (e) {
-      // Rejet dur à la saisie (bornes/couverture) / doublon pending / patient non insuliné → statut HTTP stable
-      // + trace HDS de la tentative (jamais 500 ni fuite de stack).
+      // Rejet dur à la saisie (bornes/couverture/garde patient) / doublon pending / patient non insuliné →
+      // statut HTTP stable + trace HDS de la tentative (jamais 500 ni fuite de stack).
       const reason = e instanceof Error ? e.message : "unknown"
       const status = SLOT_SET_ERROR_STATUS[reason] ?? (reason === "patientNotFound" ? 404 : undefined)
       if (status) {
