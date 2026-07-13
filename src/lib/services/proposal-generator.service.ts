@@ -1380,6 +1380,7 @@ export const proposalGeneratorService = {
     // calculé UNIQUEMENT en mode groupé (aucun travail sur la voie par-valeur, flag OFF).
     const momentCount = new Map<DoseMoment, number>()
     const multiDoseAbandoned = new Set<DoseMoment>() // dé-doublonne le log d'abandon (2 slots/moment)
+    const multiDoseHypoFlagged = new Set<DoseMoment>() // dé-doublonne le FLAG hypo (≥ 2 baisses/moment → 1 flag)
     if (groupedFixedDose) for (const s of fixedSlots) momentCount.set(s.moment, (momentCount.get(s.moment) ?? 0) + 1)
 
     const patient = await prisma.patient.findFirst({
@@ -1430,8 +1431,14 @@ export const proposalGeneratorService = {
             // ⚠️ Garde-fou « hypo jamais silencieuse » (revue medical) : un candidat de BAISSE
             // (`reasonImpliesIncrease === false` — dé-escalade hypo / dose trop haute) porte un signal de
             // SÉCURITÉ qui, en groupé, ne serait plus surfacé par une proposition → ALERTER le médecin via un
-            // `ClinicalReviewFlag` (dédoublonné en base par `raise`). Une HAUSSE (deadband) peut rester log-only.
-            if (reasonImpliesIncrease(cand.reason) === false) {
+            // `ClinicalReviewFlag`. Une HAUSSE (deadband) reste log-only (pas un signal de sécurité).
+            // NB flag réutilisé `highVariabilityFixedDose` : son LIBELLÉ médecin est « Hypoglycémie à revoir
+            // (dose simple) » (i18n) — sémantiquement juste ici (medical OK) ; une taxonomie de flag dédiée
+            // « moment multi-doses » est une amélioration future non requise. Dédoublonné PAR MOMENT via
+            // `multiDoseHypoFlagged` (≥ 2 baisses au même moment → 1 seul flag/`flagged++`) EN PLUS du
+            // dédoublonnage base de `raise` — indépendant du log `multiDoseAbandoned` (ne jamais supprimer l'alerte).
+            if (reasonImpliesIncrease(cand.reason) === false && !multiDoseHypoFlagged.has(slot.moment)) {
+              multiDoseHypoFlagged.add(slot.moment)
               await raiseFixedFlag()
             }
             if (!multiDoseAbandoned.has(slot.moment)) {
