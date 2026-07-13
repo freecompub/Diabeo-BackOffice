@@ -135,6 +135,13 @@ export const slotSetProposalService = {
     // US-2663 (S3b-0a) — rationale PAR CRÉNEAU CHANGÉ, REQUISE si `source: "algorithm"` (decision-support +
     // traçabilité HDS), ignorée sinon (propositions humaines). Appariée au créneau par `startHour`.
     rationale?: SlotRationale[] | null,
+    // US-2663 (S3b-1, revue architecture/medical) — snapshot de base INJECTÉ. Quand fourni (voie MOTEUR
+    // groupée), il REMPLACE la relecture `captureBaselineSlots` : l'appelant a déjà lu la config LIVE une fois
+    // pour bâtir sa disposition (overlay), et passe CETTE MÊME lecture comme base → disposition et
+    // `baselineSlots` partagent UN seul instant, fermant la micro-fenêtre TOCTOU (une édition médecin d'un
+    // créneau NON modifié par l'overlay lèvera `baselineMoved` à l'acceptation, au lieu d'être silencieusement
+    // écrasée). Absent (voie patient) → snapshot capturé ici comme avant. Forme identique à `captureBaselineSlots`.
+    baselineOverride?: ProposedSlot[],
   ) {
     // 1. Forme (Zod) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
     //    création ⇄ acceptation : une proposition inacceptable ne doit pas pouvoir être créée).
@@ -168,7 +175,9 @@ export const slotSetProposalService = {
 
     // 4. Snapshot de la base PAR créneau à la génération (US-2663 S0) — photographie de la config ACTIVE
     //    juste avant la création. Consommé par le CAS par créneau de S1 (détection `baselineMoved`).
-    const baselineSlots = await captureBaselineSlots(patientId, parameterType)
+    //    US-2663 (S3b-1) — si l'appelant a injecté sa propre lecture LIVE (voie MOTEUR groupée), on la RÉUTILISE
+    //    au lieu de re-lire : disposition et base partagent alors un seul instant (fenêtre TOCTOU fermée).
+    const baselineSlots = baselineOverride ?? await captureBaselineSlots(patientId, parameterType)
 
     try {
       return await prisma.$transaction(async (tx) => {

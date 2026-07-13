@@ -42,9 +42,13 @@ import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, localDay, type JournalMeal, type CorrectionPoint } from "@/lib/services/meal-trends.service"
 import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.service"
-import { adjustmentService } from "@/lib/services/adjustment.service"
+import { adjustmentService, reasonImpliesIncrease } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
+// US-2663 (S3b-1) — émission GROUPÉE moteur (derrière flag `ENGINE_GROUPED_ISF_ICR`).
+import { getEnvBoolean } from "@/lib/env"
+import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
+import type { IsfIcrSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
 const ANALYSIS_PERIOD = "14d"
@@ -61,6 +65,11 @@ const MIN_NADIR_NIGHTS = 3
 
 /** Résultat d'un run patient — métriques d'observabilité (aucune valeur clinique). */
 export interface GenerateResult {
+  /** Nombre de propositions PERSISTÉES ce run. ⚠️ US-2663 (S3b-1) — sémantique **dépendante du flag** pour
+   *  ISF/ICR : voie par-valeur (flag OFF) = 1 par CRÉNEAU changé ; voie GROUPÉE (`ENGINE_GROUPED_ISF_ICR` ON)
+   *  = 1 par LEVIER (`SlotSetProposal` couvrant N créneaux, donc ≤ 2 pour ISF+ICR). Métrique d'observabilité,
+   *  sans valeur clinique — un exploitant lisant les métriques cron pendant le rollout verra `created` chuter à
+   *  l'activation du flag sans que ce soit une régression (moins de lignes, mêmes changements regroupés). */
   created: number
   /** US-2653 — flags de revue CONTEXTUELS levés : haute-variabilité (ICR/ISF/fixedDose), Somogyi basal, hypo
    *  sévère isolée (ISF/basal/fixedDose — **PAS l'ICR** : le levier ICR ne surface pas un sévère isolé
@@ -308,6 +317,180 @@ const EXPECTED_SKIP = new Set([
   "slotRequired", "currentValueNotFound",
 ])
 
+/**
+ * US-2663 (S3b-1) — Codes de rejet ATTENDUS de `createSetProposal` (voie GROUPÉE moteur), fail-closed non
+ * fatals : rejets cliniques/données légitimes d'un run (bornes, frontière MDR, couverture, anti-doublon).
+ * Tout autre message = inattendu (code générique `"unexpected"`, jamais logué verbatim — défense en
+ * profondeur PHI/HDS) et remonte en `logger.error` pour le rollout.
+ *
+ * ⚠️ Volontairement ABSENTS (revue S3b-1) — `invalidProposerIdentity` et `rationaleRequired` sont des
+ * INVARIANTS moteur, PAS des rejets attendus : cette voie passe toujours `{userId:null, source:"algorithm"}`
+ * (identité valide) et n'émet que si `overlay.size > 0` ⇒ `rationale.length ≥ 1`. S'ils survenaient, c'est un
+ * DÉFAUT (refactor cassant l'invariant) qui doit remonter en `error`, pas être masqué en `info`.
+ */
+const EXPECTED_SKIP_GROUPED = new Set([
+  "duplicatePendingProposal", "valueOutOfBounds", "nonInsulinNoDose", "invalidSlotSet",
+  "emptySlotSet", "zeroDurationSlot", "slotOverlap", "slotGap", "patientNotFound",
+])
+
+/** US-2663 (S3b-1) — un candidat moteur ISF/ICR apparié à son créneau (base T0 de l'analyse). */
+type CollectedCandidate = { startHour: number; endHour: number; cand: ProposalCandidate }
+
+/**
+ * US-2663 (S3b-1) — **Émission GROUPÉE moteur** d'un levier ISF/ICR : assemble la disposition ENTIÈRE
+ * (jeu de créneaux complet) et émet **une seule** `SlotSetProposal` `source: "algorithm"` (au lieu de N
+ * `AdjustmentProposal` par-valeur). Ne s'exécute que sous le flag `ENGINE_GROUPED_ISF_ICR`.
+ *
+ * Garde-fous (parité fonctionnelle avec la voie par-valeur qu'elle remplace) :
+ *  - **R2 — CAS par créneau CHANGÉ** : relit la config LIVE une fois (T1) et n'inclut un changement QUE si le
+ *    créneau analysé est INCHANGÉ en base — même `endHour` ET valeur (`cand.currentValue`, snapshot T0) ==
+ *    valeur live (tolérance `1e-9`, bruit float `Decimal`). Un créneau DÉRIVÉ (valeur éditée par le médecin,
+ *    autre acceptation, OU restructuré : même `startHour` mais `endHour` déplacé → fenêtre horaire du signal
+ *    périmée) est ABANDONNÉ — jamais une magnitude périmée injectée. Réplique le `baselineMovedAtPersist`
+ *    par-créneau de `createEngineProposal`, perdu quand on regroupe (le CAS d'ensemble de l'acceptation ne
+ *    couvre que génération→accept, pas analyse→génération).
+ *  - **Fenêtre TOCTOU FERMÉE (revue S3b-1)** : la relecture LIVE (T1) sert À LA FOIS de base d'overlay ET de
+ *    `baselineSlots` (injecté à `createSetProposal` — pas de 2ᵉ lecture `captureBaselineSlots` à T1'). Disposition
+ *    et snapshot de base partagent donc UN seul instant : le CAS d'ensemble de l'acceptation (S1) compare cette
+ *    base au live et couvre TOUS les créneaux — y compris ceux INCHANGÉS par l'overlay. Une édition médecin d'un
+ *    créneau non touché lèverait `baselineMoved` au lieu d'être silencieusement revertée.
+ *  - **Garde direction (défense en profondeur)** : un candidat dont le SENS contredit son `reason` (`*TooLow`
+ *    doit hausser, `*TooHigh` baisser) est ABANDONNÉ + logué — parité avec `reasonDirectionMismatch` de la voie
+ *    par-valeur, que `createSetProposal` ne re-vérifie pas. Évite une rationale trompeuse (« ICR trop bas, on
+ *    hausse » affichée sur une BAISSE = plus d'insuline) qu'un médecin accepterait au risque d'une hypo.
+ *  - **R4 — no-op** : si AUCUN créneau ne change (0 candidat, ou tous dérivés/abandonnés) → n'émet RIEN.
+ *  - **R5 — `mealLabel` préservé** : la disposition recopie les `mealLabel` LIVE des créneaux ICR.
+ *  - **R3 — rationale** : une entrée `SlotRationale` par créneau CHANGÉ (motif/confiance/volume/moyenne),
+ *    requise côté service pour toute proposition `source: "algorithm"` (medical HIGH : pas de diff nu).
+ *
+ * Rejets `createSetProposal` fail-closed → non fatals (log info si attendu, error sinon), comme la voie
+ * par-valeur. ⚠️ **Parité imparfaite (documentée, revue medical S3b-1)** : la voie par-valeur rejetait le SEUL
+ * créneau fautif ; ici, un unique créneau overlay hors borne (`valueOutOfBounds`) rejette TOUTE la disposition
+ * du levier pour ce run (les autres créneaux valides sont re-proposés au run suivant). Fail-closed (jamais de
+ * dose hors borne), mais un créneau butant durablement sur une borne peut suppresser les ajustements valides
+ * des autres créneaux — à trancher (produit) au passage du flag ON.
+ *
+ * @returns `emitted` (une proposition groupée a bien été créée) — l'appelant incrémente `created`.
+ */
+async function emitGroupedIsfIcr(
+  patientId: number,
+  parameterType: SlotSetParam,
+  candidates: CollectedCandidate[],
+  analysisPeriodDays: number,
+  ctx: AuditContext | undefined,
+): Promise<{ emitted: boolean }> {
+  if (candidates.length === 0) return { emitted: false } // R4 — rien à proposer
+
+  // 1. Relecture LIVE FRAÎCHE (T1) — MÊME source/forme que `captureBaselineSlots` (symétrie base ⇄ overlay).
+  //    Scope via la relation `settings` (1 config/patient) : lit exactement les créneaux que `replaceSlotSet`
+  //    réécrirait à l'acceptation. `mealLabel` conservé pour l'ICR (R5). Sert AUSSI de `baselineSlots` injecté
+  //    (fenêtre TOCTOU fermée — cf. JSDoc).
+  const liveSlots: IsfIcrSlot[] = parameterType === "insulinSensitivityFactor"
+    ? (await prisma.insulinSensitivityFactor.findMany({
+        where: { settings: { patientId } },
+        orderBy: { startHour: "asc" },
+        select: { startHour: true, endHour: true, sensitivityFactorGl: true },
+      })).map((s) => ({ startHour: s.startHour, endHour: s.endHour, value: Number(s.sensitivityFactorGl) }))
+    : (await prisma.carbRatio.findMany({
+        where: { settings: { patientId } },
+        orderBy: { startHour: "asc" },
+        select: { startHour: true, endHour: true, gramsPerUnit: true, mealLabel: true },
+      })).map((s) => ({
+        startHour: s.startHour,
+        endHour: s.endHour,
+        value: Number(s.gramsPerUnit),
+        ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
+      }))
+
+  if (liveSlots.length === 0) return { emitted: false } // config vidée entre analyse et émission
+
+  // 2. Assemblage PUR (CAS par créneau + garde direction + overlay + rationale). Testable sans IO.
+  const { disposition, rationale, directionMismatches } = assembleGroupedDisposition(liveSlots, candidates, analysisPeriodDays)
+  if (directionMismatches > 0) {
+    // Invariant violé en amont (défaut d'analyseur) : candidats abandonnés, jamais une rationale trompeuse persistée.
+    logger.error("proposal-generator", "grouped candidate direction mismatch",
+      { patientId, bucket: parameterType, failMode: "reasonDirectionMismatch", count: directionMismatches })
+  }
+  if (disposition === null) return { emitted: false } // R4 — no-op (aucun créneau changé retenu)
+
+  // 3. Émission GROUPÉE unique (source moteur + rationale par créneau changé + baseline injecté = `liveSlots`,
+  //    la MÊME lecture que la base d'overlay → fenêtre TOCTOU fermée). Rejets fail-closed non fatals.
+  try {
+    await slotSetProposalService.createSetProposal(
+      patientId,
+      parameterType,
+      disposition,
+      { userId: null, source: "algorithm" },
+      ctx,
+      rationale,
+      liveSlots,
+    )
+    return { emitted: true }
+  } catch (err) {
+    const msg = (err as Error).message
+    if (EXPECTED_SKIP_GROUPED.has(msg)) {
+      logger.info("proposal-generator", "grouped engine proposal skipped", { patientId, bucket: parameterType, failMode: msg })
+    } else {
+      logger.error("proposal-generator", "unexpected grouped engine proposal error",
+        { patientId, bucket: parameterType, failMode: "unexpected" }, err as Error)
+    }
+    return { emitted: false }
+  }
+}
+
+/**
+ * US-2663 (S3b-1) — Cœur PUR de l'assemblage de la disposition groupée ISF/ICR (aucune IO → unit-testable).
+ * À partir de la config LIVE (T1) et des candidats moteur collectés (base T0), applique les gardes PAR CRÉNEAU
+ * et produit la disposition ENTIÈRE + la rationale par créneau changé.
+ *
+ * Gardes par créneau (un créneau candidat n'est retenu que s'il les passe TOUTES) :
+ *  - **CAS R2** : le créneau live doit être INCHANGÉ depuis l'analyse — même `endHour` (fenêtre horaire non
+ *    restructurée) ET valeur live == `cand.currentValue` (tolérance `1e-9`). Sinon → abandonné (dérive).
+ *  - **Garde direction** : le sens du delta (`proposedValue − live.value`) doit être cohérent avec le `reason`
+ *    directionnel (`*TooLow` ⇒ hausse, `*TooHigh` ⇒ baisse). Sinon → abandonné + comptabilisé dans
+ *    `directionMismatches` (défaut d'analyseur amont ; l'appelant loggue — jamais une rationale trompeuse).
+ *
+ * @returns `disposition: null` = **no-op** (R4 : aucun créneau retenu). Sinon disposition ENTIÈRE (base live +
+ *   valeurs changées superposées, `mealLabel` préservé) + `rationale` (1 entrée / créneau changé).
+ *   `directionMismatches` = nb de candidats abandonnés pour incohérence de sens (observabilité).
+ */
+export function assembleGroupedDisposition(
+  liveSlots: IsfIcrSlot[],
+  candidates: CollectedCandidate[],
+  analysisPeriodDays: number,
+): { disposition: IsfIcrSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
+  const liveByStart = new Map(liveSlots.map((s) => [s.startHour, s]))
+  const overlay = new Map<number, number>() // startHour → proposedValue
+  const rationale: SlotRationale[] = []
+  let directionMismatches = 0
+  for (const { startHour, endHour, cand } of candidates) {
+    const live = liveByStart.get(startHour)
+    if (!live) continue // startHour disparu (créneau supprimé/restructuré) → abandon
+    if (live.endHour !== endHour) continue // fenêtre horaire déplacée (même startHour, endHour ≠) → abandon (R2)
+    if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive de valeur → abandon (R2)
+    const delta = cand.proposedValue - live.value
+    if (delta === 0) continue // no-op (proposé == live) — abandon SILENCIEUX, pas une incohérence de sens
+    // Garde direction : sens du delta cohérent avec le `reason` directionnel (`*TooLow`⇒hausse, `*TooHigh`⇒baisse).
+    const wantsIncrease = reasonImpliesIncrease(cand.reason)
+    if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue }
+    overlay.set(startHour, cand.proposedValue)
+    rationale.push({
+      startHour,
+      reason: cand.reason,
+      confidence: cand.confidence,
+      supportingEvents: cand.supportingEvents,
+      totalEventsConsidered: cand.totalEventsConsidered,
+      changePercent: cand.changePercent,
+      averageObservedValue: cand.averageObservedValue ?? null,
+      analysisPeriod: analysisPeriodDays,
+    })
+  }
+  if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
+  // Disposition ENTIÈRE = base live, valeurs changées superposées (mealLabel déjà porté par `liveSlots`, R5).
+  const disposition: IsfIcrSlot[] = liveSlots.map((s) => ({ ...s, value: overlay.get(s.startHour) ?? s.value }))
+  return { disposition, rationale, directionMismatches }
+}
+
 export const proposalGeneratorService = {
   /**
    * Génère les propositions moteur d'un patient (mode-aware : ICR + basal + ISF en `basalBolus` ;
@@ -378,6 +561,12 @@ export const proposalGeneratorService = {
     let created = 0
     let flagged = 0
     let slotsConsidered = 0
+
+    // US-2663 (S3b-1) — bascule RÉVERSIBLE : en mode GROUPÉ on COLLECTE les candidats ISF/ICR (au lieu de
+    // persister par-valeur) puis on émet une `SlotSetProposal` par levier après chaque boucle. OFF par défaut
+    // (prod inchangée). Lu une fois par run (parité `fhir.isEnabled`). ⚠️ ICR ET ISF basculent ensemble (R6).
+    const groupedIsfIcr = getEnvBoolean("ENGINE_GROUPED_ISF_ICR") === true
+    const icrCandidates: CollectedCandidate[] = []
 
     // Persiste un candidat (deadband ou dé-escalade). Rejets fail-closed logués + non fatals.
     const persist = async (candidate: ProposalCandidate, slot: (typeof slots)[number]): Promise<boolean> => {
@@ -467,7 +656,19 @@ export const proposalGeneratorService = {
         await raiseIcrFlag()
       }
 
-      if (candidate && (await persist(candidate, slot))) created++
+      if (candidate) {
+        // Mode GROUPÉ : collecte (émission différée après la boucle) ; sinon persistance par-valeur immédiate.
+        if (groupedIsfIcr) icrCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand: candidate })
+        else if (await persist(candidate, slot)) created++
+      }
+    }
+
+    // US-2663 (S3b-1) — émission GROUPÉE ICR (1 `SlotSetProposal` couvrant tous les créneaux changés). Fenêtre
+    // en jours (int) pour la rationale : `windowDays` (borné [2,14] par l'appelant) sinon 14 j par défaut —
+    // dérivé de la valeur, JAMAIS parsé du suffixe `"<n>d"` (pas de `NaN` possible qui casserait la rationale).
+    if (groupedIsfIcr) {
+      const res = await emitGroupedIsfIcr(patientId, "insulinToCarbRatio", icrCandidates, windowDays ?? 14, ctx)
+      if (res.emitted) created++
     }
 
     // 6. Chemin BASAL (US-2651, validé medical) — POMPE uniquement. Titre le créneau NOCTURNE actif à
@@ -793,6 +994,7 @@ export const proposalGeneratorService = {
     // Bord : sous une rareté CGM extrême (trou de ~5 h), `nadirGl` peut être null → la garde se replie
     // sur `postGlucoseGl` (valeur settled à 5 h). Cas rare (haut à 5 h + hypo nadir = rebond), borné ±20 %.
     const isfSlots = settings?.sensitivityFactors ?? []
+    const isfCandidates: CollectedCandidate[] = [] // US-2663 (S3b-1) — collecte pour l'émission groupée ISF
     if (isfSlots.length > 0) {
       const corrections = await mealtimePattern.correctionTrend(patientId, ISF_ANALYSIS_PERIOD, auditUserId, ctx)
       const isfSlotShapes = isfSlots.map((s) => ({
@@ -826,6 +1028,11 @@ export const proposalGeneratorService = {
             .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: isfBucket }, err as Error))
 
         const persistIsf = async (cand: ProposalCandidate) => {
+          // Mode GROUPÉ (S3b-1) : collecte (émission différée après la boucle) ; sinon par-valeur immédiat.
+          if (groupedIsfIcr) {
+            isfCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand })
+            return
+          }
           try {
             await adjustmentService.createEngineProposal({
               patientId,
@@ -880,6 +1087,12 @@ export const proposalGeneratorService = {
           }
         }
       }
+    }
+
+    // US-2663 (S3b-1) — émission GROUPÉE ISF (fenêtre ISF fixe 30 j, cf. `ISF_ANALYSIS_WINDOW_DAYS`).
+    if (groupedIsfIcr) {
+      const res = await emitGroupedIsfIcr(patientId, "insulinSensitivityFactor", isfCandidates, ISF_ANALYSIS_WINDOW_DAYS, ctx)
+      if (res.emitted) created++
     }
 
     return { created, flagged, slotsConsidered, mealsUsable: usable.length, skipped: null }

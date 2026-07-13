@@ -99,8 +99,12 @@ function assertRowApplied(count: number, code: string): void {
  * Sens clinique impliqué par un `reason` de titration : `*TooLow` ⇒ HAUSSE, `*TooHigh` ⇒ BAISSE.
  * `null` pour un motif non directionnel (`*Correct`, `insufficientData`, motifs humains). Sert à
  * vérifier la cohérence `reason` ↔ signe du delta d'une proposition moteur (US-2651).
+ *
+ * US-2663 (S3b-1) — EXPORTÉ : la voie GROUPÉE (`emitGroupedIsfIcr`, proposal-generator) réapplique cette
+ * garde défense-en-profondeur avant d'assembler la disposition (parité avec `reasonDirectionMismatch`
+ * ci-dessous, que `createSetProposal` ne re-vérifie pas).
  */
-function reasonImpliesIncrease(reason: AdjustmentReason): boolean | null {
+export function reasonImpliesIncrease(reason: AdjustmentReason): boolean | null {
   if (reason.endsWith("TooLow")) return true
   if (reason.endsWith("TooHigh")) return false
   return null
