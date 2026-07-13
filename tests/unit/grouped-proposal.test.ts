@@ -13,6 +13,7 @@ import {
   styloBasalSlotSchema,
   fixedDoseSlotSchema,
   groupedSlotsSchema,
+  slotRationaleSchema,
 } from "@/lib/insulin/grouped-proposal"
 
 describe("grouped-proposal — schémas de forme par levier", () => {
@@ -54,5 +55,22 @@ describe("grouped-proposal — schémas de forme par levier", () => {
     expect(groupedSlotsSchema("basalRate").safeParse([{ kind: "evening", value: 18 }]).success).toBe(true)
     // Jeu vide = forme valide (rejeté en aval par les gardes de couverture/bornes, contrat stable).
     expect(groupedSlotsSchema("insulinSensitivityFactor").safeParse([]).success).toBe(true)
+  })
+
+  // US-2663 (S3d) — rationale à clé POLYMORPHE : startHour (ISF/ICR/pompe) XOR (usage, moment) (dose fixe).
+  it("slotRationaleSchema : clé startHour SEULE (ISF/ICR/pompe) → OK", () => {
+    expect(slotRationaleSchema.safeParse({ startHour: 8, reason: "isfTooLow", confidence: "high", supportingEvents: 12 }).success).toBe(true)
+  })
+  it("slotRationaleSchema : clé (usage, moment) SEULE (dose fixe, sans startHour) → OK", () => {
+    expect(slotRationaleSchema.safeParse({ usage: "bolus", moment: "morning", reason: "fixedDoseTooLow", confidence: "medium", supportingEvents: 4 }).success).toBe(true)
+  })
+  it("slotRationaleSchema : AUCUNE clé → rejeté (fail-closed forme)", () => {
+    expect(slotRationaleSchema.safeParse({ reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+  })
+  it("slotRationaleSchema : DEUX clés (startHour + usage/moment) → rejeté (mal-clée)", () => {
+    expect(slotRationaleSchema.safeParse({ startHour: 8, usage: "bolus", moment: "morning", reason: "isfTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
+  })
+  it("slotRationaleSchema : clé fixedDose INCOMPLÈTE (moment sans usage) → rejeté", () => {
+    expect(slotRationaleSchema.safeParse({ moment: "morning", reason: "fixedDoseTooLow", confidence: null, supportingEvents: null }).success).toBe(false)
   })
 })

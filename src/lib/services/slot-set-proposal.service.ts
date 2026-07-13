@@ -77,7 +77,8 @@ function assertValidGroupedSet(param: SlotSetParam, slots: ProposedSlot[]): void
   if (param === "insulinSensitivityFactor") assertValidSlotSet("isf", slots as IsfIcrSlot[])
   else if (param === "insulinToCarbRatio") assertValidSlotSet("icr", slots as IsfIcrSlot[])
   else if (param === "fixedDose") {
-    // Dose fixe (S3d) — clé `(usage, moment)`, valeur U. Un jeu non-fixedDose est rejeté (fail-closed).
+    // Dose fixe (S3d) — clé `(usage, moment)`, valeur U. Garde belt-and-suspenders : en pratique subsumée par
+    // `parseSlots("fixedDose")` (le schéma exige déjà `usage`+`moment`), mais défensive si un caller court-circuite.
     if (!slots.every(isFixedDoseSlot)) throw new Error("unsupportedSlotSetParam")
     assertValidFixedDoseSet(slots as FixedDoseSlot[])
   } else {

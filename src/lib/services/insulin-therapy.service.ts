@@ -16,6 +16,7 @@ import { tryLockInsulinSlots } from "@/lib/insulin/slot-lock"
 import { assertBaselineUnchanged, assertBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
 import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
 import { pumpTimeToHhmm, pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
+import { activeInsulinFilter } from "@/lib/insulin/active-insulin"
 import { glToMgdl } from "@/lib/statistics"
 
 /**
@@ -646,15 +647,18 @@ export const insulinTherapyService = {
   },
 
   /**
-   * US-2663 (S3d) — Lecteur de forme UNIQUE des DOSES FIXES d'un patient (`FixedDoseSlot` + `usage` de la
-   * `PatientInsulin` porteuse) → forme groupée `FixedDoseSlot` (`{ usage, moment, value }`). Source unique
-   * réutilisée par `captureBaselineSlots("fixedDose")` (snapshot) ET la page de revue (base LIVE) — verrou
-   * d'invariant de forme (comme `pump-time.ts` pour la pompe). Scope via `patientInsulin.patientId` (anti-IDOR ;
-   * les `FixedDoseSlot` pendent de `PatientInsulin`, pas de `settings`). Patient non doses-simples → `[]`.
+   * US-2663 (S3d) — Lecteur de forme des DOSES FIXES d'un patient (`FixedDoseSlot` + `usage` de la
+   * `PatientInsulin` porteuse, **ACTIVE** uniquement) → forme groupée `FixedDoseSlot` (`{ usage, moment, value }`).
+   * Source unique pour le **socle groupé** : `captureBaselineSlots("fixedDose")` (snapshot) ET la page de revue
+   * (base LIVE) partagent cette projection (invariant de forme, cf. `pump-time.ts`). ⚠️ Ne couvre PAS encore les
+   * autres lecteurs de `fixed_dose_slots` (générateur usage-blind, `resolveCurrentValue`, re-read interne de
+   * `replaceFixedDoseSet`) — convergence à finir en PR2. Scope `patientInsulin.patientId` + insuline active
+   * (anti-IDOR, anti-dose-fantôme). Patient non doses-simples → `[]`.
    */
   async getFixedDoseSlots(patientId: number): Promise<FixedDoseSlot[]> {
     const rows = await prisma.fixedDoseSlot.findMany({
-      where: { patientInsulin: { patientId } },
+      // US-2663 (S3d, revue) — filtre insuline ACTIVE : jamais de dose fantôme d'une insuline arrêtée (cf. active-insulin).
+      where: { patientInsulin: { patientId, ...activeInsulinFilter() } },
       orderBy: { moment: "asc" },
       select: { moment: true, valueU: true, patientInsulin: { select: { usage: true } } },
     })
@@ -695,7 +699,9 @@ export const insulinTherapyService = {
       // 2. Lecture LIVE unique sous verrou (usage inclus) : sert au CAS d'ensemble, à la résolution d'apply
       //    ET à l'audit `from`. Scope `patientInsulin.patientId` (anti-IDOR).
       const liveRows = await tx.fixedDoseSlot.findMany({
-        where: { patientInsulin: { patientId } },
+        // US-2663 (S3d, revue) — filtre insuline ACTIVE : la résolution d'apply ne cible JAMAIS une insuline
+        // discontinuée (anti-mésécriture sur une prescription arrêtée). Symétrie avec `getFixedDoseSlots`.
+        where: { patientInsulin: { patientId, ...activeInsulinFilter() } },
         select: { id: true, moment: true, valueU: true, patientInsulin: { select: { usage: true } } },
       })
       const live = liveRows.map((r) => ({ id: r.id, usage: r.patientInsulin.usage, moment: r.moment, value: Number(r.valueU) }))

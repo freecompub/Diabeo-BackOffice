@@ -40,7 +40,7 @@ export const BASELINE_VALUE_EPS = 1e-9
  * | ISF / ICR         | `startHour`  | `value`   | `endHour` égal                      |
  * | basale POMPE      | `startTime`  | `rate`    | `endTime` égal                      |
  * | basale STYLO      | `kind`       | `value`   | — (pas de borne : dose ponctuelle)  |
- * | dose fixe         | `moment`     | `value`   | — (pas de borne : dose ponctuelle)  |
+ * | dose fixe         | `(usage,moment)`| `value` | — (pas de borne : dose ponctuelle)  |
  *
  * Sémantique fail-closed inchangée (cf. `assertBaselineUnchanged`) : snapshot `null` → `baselineMissing` ;
  * toute divergence (cardinalité, borne, valeur, valeur non finie) → `baselineMoved`. Appariement par CLÉ (pas

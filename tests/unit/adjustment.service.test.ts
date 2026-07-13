@@ -115,7 +115,7 @@ describe("adjustmentService", () => {
       expect(result.applied).toBe(true)
       expect(updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ moment: "morning", patientInsulin: { patientId: 1 } }),
+          where: expect.objectContaining({ moment: "morning", patientInsulin: expect.objectContaining({ patientId: 1, isActive: true }) }),
           data: { valueU: 12 },
         }),
       )
@@ -715,7 +715,7 @@ describe("adjustmentService", () => {
       await adjustmentService.accept("f1", 2, true)
       expect(updateMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: expect.objectContaining({ patientInsulin: { patientId: 1 }, moment: "morning", valueU: 10 }),
+          where: expect.objectContaining({ patientInsulin: expect.objectContaining({ patientId: 1, isActive: true }), moment: "morning", valueU: 10 }),
         }),
       )
     })

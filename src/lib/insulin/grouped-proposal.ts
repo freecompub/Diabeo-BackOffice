@@ -97,6 +97,17 @@ export const slotRationaleSchema = z.object({
   averageObservedValue: z.number().finite().nullable().optional(),
   analysisPeriod: z.number().int().positive().nullable().optional(),
 })
+  // US-2663 (S3d, revue architecture) — restaure le fail-closed de FORME affaibli par le passage à des clés
+  // optionnelles : une rationale porte EXACTEMENT une clé — `startHour` (ISF/ICR/pompe) **XOR** `(usage, moment)`
+  // (dose fixe). Rejette une rationale sans clé, mal-clée (`startHour` + `usage`/`moment`) ou à clé fixedDose
+  // incomplète (`moment` sans `usage`) — jamais une rationale silencieusement non appariable à la revue.
+  .superRefine((r, ctx) => {
+    const hasHourKey = r.startHour !== undefined
+    const hasFixedKey = r.usage !== undefined && r.moment !== undefined
+    if (hasHourKey === hasFixedKey) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "rationale key must be startHour XOR (usage, moment)" })
+    }
+  })
 export type SlotRationale = z.infer<typeof slotRationaleSchema>
 
 /** Leviers reconnus par la disposition groupée (= enum Prisma `AdjustableParameter`). */

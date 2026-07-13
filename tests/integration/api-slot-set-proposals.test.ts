@@ -142,7 +142,8 @@ describe("PATCH /api/slot-set-proposals/:id/accept (C3d)", () => {
   // Contrat C3d : AUCUN throw du service ne doit devenir un 500 → couverture complète de ACCEPT_ERROR_STATUS.
   it.each([
     ["valueOutOfBounds", 400],
-    ["unsupportedSlotSetParam", 400],
+    // US-2663 (S3d, revue) — invariant de proposition stockée (levier non traitable), pas une erreur d'input → 422.
+    ["unsupportedSlotSetParam", 422],
     ["invalidSlotSet", 400],
     ["zeroDurationSlot", 400],
     ["slotGap", 422],

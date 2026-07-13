@@ -32,7 +32,9 @@ type RouteParams = { params: Promise<{ id: string }> }
 const ACCEPT_ERROR_STATUS: Record<string, number> = {
   ...SLOT_SET_ERROR_STATUS,
   slotSetProposalNotFound: 404,
-  unsupportedSlotSetParam: 400,
+  // US-2663 (S3d, revue) — `unsupportedSlotSetParam` : levier non traitable par l'acceptation (invariant de
+  // proposition stockée, pas une erreur d'input client) → 422 depuis `SLOT_SET_ERROR_STATUS` (source unique),
+  // plus d'override 400 (divergence retirée).
   // US-2663 (S1) — CAS d'ensemble : la base a dérivé depuis la génération (`baselineMoved`) ou la proposition
   // legacy n'a pas de snapshot certifiable (`baselineMissing`) → 409 (conflit récupérable : régénérer/re-soumettre).
   baselineMoved: 409,
