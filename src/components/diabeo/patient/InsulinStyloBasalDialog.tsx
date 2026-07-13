@@ -160,7 +160,9 @@ export function InsulinStyloBasalDialog({
 
   return (
     <>
-      <Button ref={triggerRef} variant="outline" size="sm" onClick={openDialog}>
+      {/* Nom accessible UNIQUE (SC 2.5.3) : plusieurs boutons « Proposer » coexistent sur la page (ISF/ICR/basale)
+          → l'`aria-label` inclut le paramètre pour les distinguer en navigation par boutons. */}
+      <Button ref={triggerRef} variant="outline" size="sm" onClick={openDialog} aria-label={`${t("slotSetProposeButton")} — ${paramLabel}`}>
         {t("slotSetProposeButton")}
       </Button>
       <Dialog
@@ -195,6 +197,8 @@ export function InsulinStyloBasalDialog({
                         onChange={(e) => updateRow(r.key, e.target.value)}
                         aria-label={`${t(KIND_LABEL_KEY[r.kind])} — ${rowN}`}
                         aria-invalid={badValue}
+                        // WCAG 3.3.1 : une valeur invalide renvoie au message d'erreur (`stylo-invalid`) — jamais `aria-invalid` muet.
+                        aria-describedby={badValue ? "stylo-invalid" : undefined}
                         className={
                           "w-24 rounded-md border bg-background px-2 py-1 text-foreground " +
                           (badValue ? "border-destructive" : "border-input")

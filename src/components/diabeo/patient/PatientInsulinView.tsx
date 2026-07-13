@@ -42,7 +42,9 @@ function SlotRows({ rows, unit, emptyLabel }: { rows: Row[]; unit: string; empty
   return (
     <ul className="space-y-1">
       {rows.map((r) => (
-        <li key={r.key} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
+        // WCAG 1.3.1 : `aria-label` unifie le libellé et la valeur (« Dose du soir : 20 U ») — sinon deux nœuds
+        // texte disjoints. Les `<span>` internes restent le rendu visuel.
+        <li key={r.key} aria-label={`${r.range} : ${r.value} ${unit}`} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
           <span className="text-muted-foreground">{r.range}</span>
           <span className="font-medium tabular-nums">
             {r.value} <span className="text-muted-foreground">{unit}</span>

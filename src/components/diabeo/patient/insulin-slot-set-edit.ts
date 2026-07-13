@@ -23,7 +23,7 @@
  * `analyzeSlotCoverage` (même définition trou/chevauchement que le serveur, minute-précise).
  */
 import { analyzeSlotCoverage } from "@/lib/insulin/slot-coverage"
-import { isDeliverableBasalRate } from "@/lib/clinical-bounds"
+import { isDeliverableBasalRate, isDeliverableFixedDose } from "@/lib/clinical-bounds"
 import { ENDPOINT, VALUE_FIELD } from "@/components/diabeo/patient/insulin-parameter-endpoints"
 
 /** Paramètre éditable en groupe (ISF / ICR — heure entière). Le basal (temps `HH:MM`) a son propre
@@ -365,7 +365,9 @@ export function validateStyloRows(rows: StyloDoseRow[], bounds: { min: number; m
   const invalidValueKeys = new Set<string>()
   for (const r of rows) {
     const v = parseSlotValue(r.value)
-    if (v === null || v < bounds.min || v > bounds.max) invalidValueKeys.add(r.key)
+    // Pré-validation client (le serveur reste l'autorité) : bornes U totales + délivrabilité ½ U — évite un
+    // aller-retour `rateNotDeliverable` sur une dose type 20,3 U (miroir de `assertValidStyloBasalSet`).
+    if (v === null || v < bounds.min || v > bounds.max || !isDeliverableFixedDose(v)) invalidValueKeys.add(r.key)
   }
   return { invalidValueKeys, isEmpty: rows.length === 0 }
 }

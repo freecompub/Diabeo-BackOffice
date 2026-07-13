@@ -51,7 +51,7 @@ function renderDialog(structural: boolean) {
       />
     </PatientRecordProvider>,
   )
-  fireEvent.click(screen.getByRole("button", { name: "Proposer un ajustement" }))
+  fireEvent.click(screen.getByRole("button", { name: /Proposer un ajustement/ }))
   return mutate
 }
 

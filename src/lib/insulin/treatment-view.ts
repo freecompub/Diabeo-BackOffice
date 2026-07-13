@@ -48,8 +48,10 @@ type SettingsInput = {
   carbRatios: { id: string; startHour: number; endHour: number; gramsPerUnit: DecimalLike }[]
   basalConfiguration: {
     pumpSlots: { id: string; startTime: Date | string; endTime: Date | string; rate: DecimalLike }[]
-    // US-2663 (S4) — OPTIONNELS : les doses STYLO (MDI, U totales). Absents ⇒ `styloBasalDoses: []` (les callers
-    // qui n'alimentent que la pompe sont inchangés). Peuplés par la page patient self-service pour monter l'éditeur stylo.
+    // US-2663 (S4) — OPTIONNELS : les doses STYLO (MDI, U totales). Rétro-compat de FORME : absents (ex. fixtures
+    // de test, futurs callers minimaux) ⇒ `styloBasalDoses: []`. Les callers RÉELS qui passent par `getSettings`
+    // (page patient ET fiche médecin / revue) les peuplent déjà (le `include` renvoie ces colonnes) → un patient MDI
+    // a bien `styloBasalDoses` non vide partout ; seul l'AFFICHAGE médecin ne les rend pas encore (follow-up).
     configType?: string | null
     dailyDose?: DecimalLike | null
     morningDose?: DecimalLike | null

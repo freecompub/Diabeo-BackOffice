@@ -55,7 +55,7 @@ function renderDialog(mutate: ReturnType<typeof vi.fn>, initial: { kind: "daily"
   )
 }
 
-const openDialog = () => fireEvent.click(screen.getByRole("button", { name: "Proposer un ajustement" }))
+const openDialog = () => fireEvent.click(screen.getByRole("button", { name: /Proposer un ajustement/ }))
 const doseInput = () => screen.getByRole("textbox")
 const submitButton = () => screen.getByRole("button", { name: "Envoyer la proposition" })
 

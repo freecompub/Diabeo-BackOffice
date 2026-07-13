@@ -187,7 +187,14 @@ export function InsulinBasalSlotSetDialog({
 
   return (
     <>
-      <Button ref={triggerRef} variant="outline" size="sm" onClick={openDialog}>
+      {/* Nom accessible UNIQUE (SC 2.5.3) : le paramètre distingue les boutons « Proposer/Modifier » de la page. */}
+      <Button
+        ref={triggerRef}
+        variant="outline"
+        size="sm"
+        onClick={openDialog}
+        aria-label={`${mode === "propose" ? t("slotSetProposeButton") : t("slotSetEditButton")} — ${paramLabel}`}
+      >
         {mode === "propose" ? t("slotSetProposeButton") : t("slotSetEditButton")}
       </Button>
       <Dialog

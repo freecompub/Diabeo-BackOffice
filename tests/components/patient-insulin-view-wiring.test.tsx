@@ -47,6 +47,13 @@ vi.mock("@/components/diabeo/patient/InsulinBasalSlotSetDialog", () => ({
     </button>
   ),
 }))
+vi.mock("@/components/diabeo/patient/InsulinStyloBasalDialog", () => ({
+  InsulinStyloBasalDialog: (props: { audience: string; initialSlots: unknown }) => (
+    <button data-testid="propose-stylo" data-audience={props.audience} data-slots={JSON.stringify(props.initialSlots)}>
+      propose
+    </button>
+  ),
+}))
 
 import { PatientInsulinView } from "@/components/diabeo/patient/PatientInsulinView"
 
@@ -87,5 +94,23 @@ describe("PatientInsulinView — câblage section → éditeur de groupe (propos
     expect(basal.getAttribute("data-audience")).toBe("patient")
     expect(basal.getAttribute("data-structural")).toBe("false")
     expect(JSON.parse(basal.getAttribute("data-slots")!)).toEqual([{ startTime: "00:00", endTime: "00:00", value: 0.8 }])
+    // Pompe active → l'éditeur STYLO n'est PAS rendu (exclusivité).
+    expect(screen.queryByTestId("propose-stylo")).toBeNull()
+  })
+
+  it("US-2663 (S4) — patient STYLO : rend l'éditeur stylo (doses U totales), MASQUE l'éditeur pompe", () => {
+    const stylo: TreatmentView = {
+      ...BASE,
+      deliveryMethod: "manual",
+      basalSlots: [], // patient MDI → aucun créneau pompe
+      styloBasalDoses: [{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }],
+    }
+    render(<PatientInsulinView data={stylo} canPropose />)
+
+    const styloEditor = screen.getByTestId("propose-stylo")
+    expect(styloEditor.getAttribute("data-audience")).toBe("patient")
+    expect(JSON.parse(styloEditor.getAttribute("data-slots")!)).toEqual([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }])
+    // Exclusivité : l'éditeur POMPE (basalRate) n'est PAS rendu pour un patient stylo.
+    expect(screen.queryByTestId("propose-basalRate")).toBeNull()
   })
 })
