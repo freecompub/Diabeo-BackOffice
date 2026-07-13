@@ -800,6 +800,8 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect((call![0].rationale as { basalDoseKind: string }[])[0]!.basalDoseKind).toBe("evening")
     // Fail-loud préservé en mode GROUPÉ : la dé-escalade PERDANTE (matin) lève son flag de jour (US-2661).
     expect(raiseFlag).toHaveBeenCalledWith(1, "daytimeHypoHighPreDinner", 99, undefined)
+    // Verrou de non-régression : UN SEUL flag levé — la GAGNANTE (soir) ne lève aucun flag parasite.
+    expect(raiseFlag).toHaveBeenCalledTimes(1)
     expect(res.created).toBe(1)
   })
 })

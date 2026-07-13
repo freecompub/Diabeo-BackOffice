@@ -102,6 +102,18 @@ const REASON_LABEL_KEY: Record<AdjustmentReason, string> = {
   manualAdjustment: "reasonManualAdjustment",
 }
 
+/**
+ * US-2663 (S3e) — libellés de raison BASALE STYLO : une dose stylo est en **U TOTALES** (pas un « débit » U/h de
+ * pompe). Restreint aux 3 raisons basales (la rationale moteur d'un item stylo est toujours `basalTooLow`/`High`/
+ * `Correct`). Sélectionné à la place de `REASON_LABEL_KEY` quand `isPenBasal` ; fallback sur le libellé partagé
+ * pour toute autre raison (défense, jamais atteint sur un stylo).
+ */
+const STYLO_REASON_LABEL_KEY: Partial<Record<AdjustmentReason, string>> = {
+  basalTooLow: "reasonStyloBasalTooLow",
+  basalTooHigh: "reasonStyloBasalTooHigh",
+  basalCorrect: "reasonStyloBasalCorrect",
+}
+
 /** Confiance moteur (`SlotRationale.confidence`) → clé i18n `review.confidence<X>`. */
 // US-2663 (S3b-0b, revue CR) — typé sur la confiance NON-NULL de `SlotRationale` (dérivé, pas réécrit) :
 // une évolution du schéma de confiance casserait la compilation ici, comme `REASON_LABEL_KEY` sur l'enum Prisma.
@@ -306,7 +318,11 @@ export function GroupedProposalReview({
                           <span className="flex flex-wrap items-center gap-1 text-xs">
                             {rationale && (
                               <>
-                                <span className="text-foreground">{t(REASON_LABEL_KEY[rationale.reason])}</span>
+                                <span className="text-foreground">{t(
+                                  item.isPenBasal
+                                    ? (STYLO_REASON_LABEL_KEY[rationale.reason] ?? REASON_LABEL_KEY[rationale.reason])
+                                    : REASON_LABEL_KEY[rationale.reason],
+                                )}</span>
                                 {rationale.confidence && (
                                   <Badge variant="outline" className="text-muted-foreground">
                                     {t(CONFIDENCE_LABEL_KEY[rationale.confidence])}

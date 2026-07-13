@@ -262,6 +262,8 @@ describe("GroupedProposalReview", () => {
     expect(screen.getByText("Dose du soir")).toBeTruthy() // cellLabel styloBasalKind
     expect(screen.getByText(/90\s*U(?!\/h)/)).toBeTruthy() // U totales, jamais U/h
     expect(screen.getByText("Dose élevée")).toBeTruthy() // badge highDoseWarning (> 80 U)
-    expect(screen.getByText("Débit basal insuffisant (à renforcer)")).toBeTruthy() // rationale appariée par basalDoseKind
+    // US-2663 (S3e) — libellé STYLO « Dose basale… » (pas « Débit basal… » U/h), rationale appariée par basalDoseKind.
+    expect(screen.getByText("Dose basale insuffisante (à renforcer)")).toBeTruthy()
+    expect(screen.queryByText("Débit basal insuffisant (à renforcer)")).toBeNull() // jamais le libellé pompe (U/h) sur un stylo
   })
 })
