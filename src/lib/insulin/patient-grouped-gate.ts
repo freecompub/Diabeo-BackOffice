@@ -86,6 +86,18 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
   }
 
   const baseByKey = new Map(baseline.map((s) => [keyOf(s), valueOf(s)]))
+
+  // 0-bis. US-2663 (S4, revue medical/code MAJOR) — RESTRUCTURATION INTERDITE côté patient : un patient ÉDITE
+  //    des valeurs, il ne RESTRUCTURE pas (re-partition de créneaux = nouveau `startHour`/`startTime` ; bascule
+  //    de modalité stylo single↔split = clés `daily` ⇄ `morning`/`evening` ; ajout/retrait de créneau). Le jeu
+  //    proposé DOIT porter EXACTEMENT les mêmes clés que la base. Sinon un créneau « nouveau » (clé absente de la
+  //    base) échapperait À LA FOIS au cap % ET au gate de baisse (DKA/maturité) — évasion réelle (ex. single 20 U
+  //    → split 2+2 U traité comme « aucun changement », sans accusé DKA). La voie par-valeur y est immune (elle
+  //    édite un créneau EXISTANT). Fail-closed. Clés uniques (validé en amont) ⇒ même cardinalité + inclusion = même jeu.
+  if (slots.length !== baseline.length || slots.some((s) => !baseByKey.has(keyOf(s)))) {
+    throw new Error("structuralChangeNotAllowed")
+  }
+
   const CAP_PCT = CLINICAL_BOUNDS.PATIENT_MAX_CHANGE_PERCENT // 10 %
 
   // Créneaux réellement CHANGÉS vs base (un créneau nouveau/non apparié n'a pas de base de comparaison → laissé
@@ -102,7 +114,6 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
 
   const decreases = isBasal ? changed.filter((c) => c.delta < 0) : []
   const hasDecrease = decreases.length > 0
-  const hasPenDecrease = hasDecrease && isPen
 
   // 1. BAISSE de basale (relâchée mais gatée). Gate SET-LEVEL : maturité + accusé DKA (D3 : 1 accusé couvre TOUT).
   if (hasDecrease) {
@@ -128,7 +139,9 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
     if (pct > CAP_PCT + 1e-9) throw new Error("patientDeltaTooLarge")
   }
 
-  const sickDayAckAt = sickDayAcknowledged === true && hasPenDecrease ? new Date() : null
+  // Consentement DKA persisté (immuable) : posé pour TOUTE baisse basale accusée (parité Q7 voie par-valeur —
+  // bloquant stylo, optionnel mais TRACÉ pompe). `hasPenDecrease` seul droperait la traçabilité d'un accusé pompe.
+  const sickDayAckAt = sickDayAcknowledged === true && hasDecrease ? new Date() : null
   const decreaseAudit = hasDecrease
     ? { direction: "decrease", deliveryMode: isPen ? "pen" : "pump", dkaAcknowledged: sickDayAcknowledged === true, maturityAtDecision: maturity, decreaseCount: decreases.length }
     : null

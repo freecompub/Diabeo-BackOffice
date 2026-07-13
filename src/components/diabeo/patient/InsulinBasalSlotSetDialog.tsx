@@ -38,9 +38,11 @@ import {
   validateBasalRows,
   canSubmitBasal,
   buildReplaceBasalRequest,
+  buildProposeBasalRequest,
   mapSlotSetOutcome,
   type BasalSlotRow,
   type TimeRange,
+  type ProposeAudience,
 } from "@/components/diabeo/patient/insulin-slot-set-edit"
 
 type InitialBasalSlot = { startTime: string; endTime: string; value: number }
@@ -49,16 +51,31 @@ type Feedback = { kind: "error" | "success"; text: string } | null
 const fmtRanges = (ranges: TimeRange[]) =>
   ranges.map((r) => `${r.startTime}–${r.endTime}`).join(", ")
 
+/**
+ * @param mode `"direct"` (défaut) écrit la config ACTIVE (DOCTOR) ; `"propose"` crée une proposition
+ *   d'ensemble pour revue médecin (NURSE / patient). Une baisse basale POMPE n'exige PAS d'accusé DKA
+ *   (contrairement au stylo — cf. `InsulinStyloBasalDialog`).
+ * @param audience `"pro"` (soignant) vs `"patient"` (own-id). Ignoré en mode `direct`.
+ * @param structural `true` (défaut) autorise la RESTRUCTURATION (changer les temps, ajouter/supprimer un
+ *   créneau) ; `false` = **valeurs seules** (temps en lecture). Le patient est en valeurs seules : le serveur
+ *   refuse toute restructuration côté patient (`structuralChangeNotAllowed`).
+ */
 export function InsulinBasalSlotSetDialog({
   paramLabel,
   unit,
   initialSlots,
   bounds,
+  mode = "direct",
+  audience = "pro",
+  structural = true,
 }: {
   paramLabel: string
   unit: string
   initialSlots: InitialBasalSlot[]
   bounds: { min: number; max: number }
+  mode?: "direct" | "propose"
+  audience?: ProposeAudience
+  structural?: boolean
 }) {
   const t = useTranslations("patientDetail")
   const router = useRouter()
@@ -142,13 +159,16 @@ export function InsulinBasalSlotSetDialog({
     setPending(true)
     setFeedback(null)
     try {
-      const { endpoint, body } = buildReplaceBasalRequest(rows)
-      const res = await mutate(endpoint, body, { method: "PUT", signal: ctrl.signal })
+      const req =
+        mode === "propose"
+          ? buildProposeBasalRequest(rows, audience)
+          : { ...buildReplaceBasalRequest(rows), method: "PUT" as const }
+      const res = await mutate(req.endpoint, req.body, { method: req.method, signal: ctrl.signal })
       if (ctrl.signal.aborted) return
       const jb: { error?: string } = await res.json().catch(() => ({}))
       const outcome = mapSlotSetOutcome(res.status, jb.error)
       if (outcome.kind === "success") {
-        setFeedback({ kind: "success", text: t("slotSetSuccess") })
+        setFeedback({ kind: "success", text: mode === "propose" ? t("slotSetProposeSuccess") : t("slotSetSuccess") })
         void Promise.resolve().then(() => router.refresh())
       } else {
         setFeedback({ kind: "error", text: t(outcome.messageKey) })
@@ -164,7 +184,7 @@ export function InsulinBasalSlotSetDialog({
   return (
     <>
       <Button ref={triggerRef} variant="outline" size="sm" onClick={openDialog}>
-        {t("slotSetEditButton")}
+        {mode === "propose" ? t("slotSetProposeButton") : t("slotSetEditButton")}
       </Button>
       <Dialog
         open={open}
@@ -176,8 +196,12 @@ export function InsulinBasalSlotSetDialog({
         <DialogContent finalFocus={triggerRef} className="max-w-2xl">
           <form onSubmit={submit} aria-busy={pending} className="space-y-4">
             <DialogHeader>
-              <DialogTitle>{t("slotSetTitle", { param: paramLabel })}</DialogTitle>
-              <DialogDescription>{t("slotSetDescription")}</DialogDescription>
+              <DialogTitle>
+                {mode === "propose" ? t("slotSetProposeTitle", { param: paramLabel }) : t("slotSetTitle", { param: paramLabel })}
+              </DialogTitle>
+              <DialogDescription>
+                {mode === "propose" ? t("slotSetProposeDescription") : t("slotSetDescription")}
+              </DialogDescription>
             </DialogHeader>
 
             {/* Frise de couverture 24 h (décorative, résolution 30 min — la bannière porte le texte
@@ -212,9 +236,11 @@ export function InsulinBasalSlotSetDialog({
                     <th scope="col" className="p-2 text-left font-medium">
                       {t("slotSetColValue", { unit })}
                     </th>
-                    <th scope="col" className="p-2">
-                      <span className="sr-only">{t("slotSetColActions")}</span>
-                    </th>
+                    {structural ? (
+                      <th scope="col" className="p-2">
+                        <span className="sr-only">{t("slotSetColActions")}</span>
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -337,7 +363,7 @@ export function InsulinBasalSlotSetDialog({
                 aria-describedby="basal-slot-set-coherence"
                 className={!submittable ? "cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted" : undefined}
               >
-                {pending ? t("slotSetSaving") : t("slotSetSubmit")}
+                {pending ? t("slotSetSaving") : mode === "propose" ? t("slotSetProposeSubmit") : t("slotSetSubmit")}
               </Button>
             </DialogFooter>
           </form>

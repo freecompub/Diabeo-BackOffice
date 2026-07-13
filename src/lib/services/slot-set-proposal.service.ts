@@ -31,7 +31,9 @@ import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { evaluatePatientGroupedGate } from "@/lib/insulin/patient-grouped-gate"
 import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet, assertValidFixedDoseSet, assertValidStyloBasalSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
+import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
+import { logger } from "@/lib/logger"
 
 /**
  * Créneau proposé (forme du JSON `proposedSlots`). US-2663 — **union par levier**, la **source de vérité de
@@ -234,7 +236,17 @@ export const slotSetProposalService = {
     // 3. Frontière DISPOSITIF MÉDICAL (US-2651, §12.5) : jamais de proposition de dose pour un patient
     //    NON INSULINÉ. Mode dérivé SERVEUR (fail-closed). Aligné sur adjustmentService.createProposal.
     const { mode, maturityLevel } = await treatmentModeService.resolveTreatmentMode(patientId)
-    if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
+    if (mode === "nonInsulin") {
+      // Parité `createProposal` (US-2651) : l'intention d'un PATIENT non insuliné n'est pas un cul-de-sac
+      // silencieux — flag d'orientation « à revoir en consultation » pour le soignant (idempotent, best-effort ;
+      // un échec de flag ne change pas le refus MDR). Un clinicien (nurse/doctor) agit directement → pas de flag.
+      if (proposer.source === "patient" && proposer.userId != null) {
+        await clinicalReviewFlagService
+          .raise(patientId, "reviewInConsultation", proposer.userId, ctx)
+          .catch((err) => logger.error("slot-set-proposal", "raise review flag failed", { patientId }, err as Error))
+      }
+      throw new Error("nonInsulinNoDose")
+    }
 
     // 4. Snapshot de la base PAR créneau à la génération (US-2663 S0) — photographie de la config ACTIVE
     //    juste avant la création. Consommé par le CAS par créneau de S1 (détection `baselineMoved`).

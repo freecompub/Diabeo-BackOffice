@@ -7,9 +7,11 @@
  *
  * Deux modes :
  *  - **lecture seule** (`canPropose=false`, défaut) : consultation uniquement.
- *  - **proposer** (`canPropose=true`, sous `PatientRecordProvider` avec un `mutate`) : un
- *    bouton par créneau ouvre `InsulinProposalDialog` → `POST /api/adjustment-proposals`
- *    (bornes patient + validation médecin — jamais d'écriture directe, ADR #13).
+ *  - **proposer** (`canPropose=true`, sous `PatientRecordProvider` avec un `mutate`) : sous chaque
+ *    section (ISF / ICR / basale), un bouton « Proposer » ouvre l'éditeur de GROUPE en mode
+ *    **proposition** (US-2663 S4) — le patient soumet sa disposition ENTIÈRE, enregistrée comme
+ *    proposition d'ensemble pour revue médecin (`PUT /api/patient/insulin-slot-set`, own-id, jamais
+ *    appliquée directement — ADR #13). Remplace l'ancien bouton par-créneau (`InsulinProposalDialog`).
  *
  * Mode-aware (US-2647) : `hasSettings=false` (non insuliné) → état vide, aucune posologie (AC-4).
  * Accessibilité : titres de section en `<h2>`, acronymes explicités (`Acronym`).
@@ -19,18 +21,19 @@
  */
 "use client"
 
-import type { ReactNode } from "react"
 import { useTranslations } from "next-intl"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
+import { InsulinSlotSetDialog } from "@/components/diabeo/patient/InsulinSlotSetDialog"
+import { InsulinBasalSlotSetDialog } from "@/components/diabeo/patient/InsulinBasalSlotSetDialog"
+import { PARAM_BOUNDS } from "@/components/diabeo/patient/insulin-parameter-endpoints"
 import { ProposalList, type ProposalViewItem } from "@/components/diabeo/patient/ProposalList"
 import type { TreatmentView, Slot, BasalSlot } from "@/components/diabeo/patient/patient-record-views"
 
-type Row = { key: string; range: string; value: number; action?: ReactNode }
+type Row = { key: string; range: string; value: number }
 
-/** Une liste de créneaux en lecture (range · valeur unité), avec action optionnelle. */
+/** Une liste de créneaux en lecture (range · valeur unité). */
 function SlotRows({ rows, unit, emptyLabel }: { rows: Row[]; unit: string; emptyLabel: string }) {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">{emptyLabel}</p>
@@ -40,11 +43,8 @@ function SlotRows({ rows, unit, emptyLabel }: { rows: Row[]; unit: string; empty
       {rows.map((r) => (
         <li key={r.key} className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-border bg-card px-3 py-2 text-sm">
           <span className="text-muted-foreground">{r.range}</span>
-          <span className="flex items-center gap-3">
-            <span className="font-medium tabular-nums">
-              {r.value} <span className="text-muted-foreground">{unit}</span>
-            </span>
-            {r.action}
+          <span className="font-medium tabular-nums">
+            {r.value} <span className="text-muted-foreground">{unit}</span>
           </span>
         </li>
       ))}
@@ -71,50 +71,14 @@ export function PatientInsulinView({
     return <DiabeoEmptyState variant="noData" title={t("title")} message={t("noSettings")} />
   }
 
-  const isfRows: Row[] = data.isfSlots.map((s: Slot) => ({
-    key: s.id,
-    range: s.range,
-    value: s.value,
-    action: canPropose ? (
-      <InsulinProposalDialog
-        parameterType="insulinSensitivityFactor"
-        paramLabel={t("isfTitle")}
-        slot={{ range: s.range, value: s.value }}
-        target={{ kind: "timeSlot", startHour: s.startHour, endHour: s.endHour }}
-        unit={tUnits("isfGl")}
-      />
-    ) : undefined,
-  }))
+  const isfRows: Row[] = data.isfSlots.map((s: Slot) => ({ key: s.id, range: s.range, value: s.value }))
+  const icrRows: Row[] = data.icrSlots.map((s: Slot) => ({ key: s.id, range: s.range, value: s.value }))
+  const basalRows: Row[] = data.basalSlots.map((s: BasalSlot) => ({ key: s.pumpBasalSlotId, range: s.range, value: s.rate }))
 
-  const icrRows: Row[] = data.icrSlots.map((s: Slot) => ({
-    key: s.id,
-    range: s.range,
-    value: s.value,
-    action: canPropose ? (
-      <InsulinProposalDialog
-        parameterType="insulinToCarbRatio"
-        paramLabel={t("icrTitle")}
-        slot={{ range: s.range, value: s.value }}
-        target={{ kind: "timeSlot", startHour: s.startHour, endHour: s.endHour }}
-        unit={tUnits("icr")}
-      />
-    ) : undefined,
-  }))
-
-  const basalRows: Row[] = data.basalSlots.map((s: BasalSlot) => ({
-    key: s.pumpBasalSlotId,
-    range: s.range,
-    value: s.rate,
-    action: canPropose ? (
-      <InsulinProposalDialog
-        parameterType="basalRate"
-        paramLabel={t("basalTitle")}
-        slot={{ range: s.range, value: s.rate }}
-        target={{ kind: "pumpSlot", pumpBasalSlotId: s.pumpBasalSlotId }}
-        unit={tUnits("basal")}
-      />
-    ) : undefined,
-  }))
+  // Créneaux ADRESSABLES pour la proposition GROUPÉE (jeu ENTIER) — audience patient (own-id).
+  const isfSet = data.isfSlots.map((s: Slot) => ({ startHour: s.startHour, endHour: s.endHour, value: s.value }))
+  const icrSet = data.icrSlots.map((s: Slot) => ({ startHour: s.startHour, endHour: s.endHour, value: s.value }))
+  const basalSet = data.basalSlots.map((s: BasalSlot) => ({ startTime: s.startTime, endTime: s.endTime, value: s.rate }))
 
   return (
     <div className="space-y-4">
@@ -147,8 +111,19 @@ export function PatientInsulinView({
             <Acronym code="ISF" /> — {t("isfTitle")}
           </h2>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <SlotRows rows={isfRows} unit={tUnits("isfGl")} emptyLabel={t("noSlots")} />
+          {canPropose && isfSet.length > 0 && (
+            <InsulinSlotSetDialog
+              param="insulinSensitivityFactor"
+              paramLabel={t("isfTitle")}
+              unit={tUnits("isfGl")}
+              initialSlots={isfSet}
+              bounds={PARAM_BOUNDS.insulinSensitivityFactor}
+              mode="propose"
+              audience="patient"
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -158,8 +133,19 @@ export function PatientInsulinView({
             <Acronym code="ICR" /> — {t("icrTitle")}
           </h2>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <SlotRows rows={icrRows} unit={tUnits("icr")} emptyLabel={t("noSlots")} />
+          {canPropose && icrSet.length > 0 && (
+            <InsulinSlotSetDialog
+              param="insulinToCarbRatio"
+              paramLabel={t("icrTitle")}
+              unit={tUnits("icr")}
+              initialSlots={icrSet}
+              bounds={PARAM_BOUNDS.insulinToCarbRatio}
+              mode="propose"
+              audience="patient"
+            />
+          )}
         </CardContent>
       </Card>
 
@@ -167,8 +153,18 @@ export function PatientInsulinView({
         <CardHeader>
           <h2 className="text-base font-semibold">{t("basalTitle")}</h2>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
           <SlotRows rows={basalRows} unit={tUnits("basal")} emptyLabel={t("noSlots")} />
+          {canPropose && basalSet.length > 0 && (
+            <InsulinBasalSlotSetDialog
+              paramLabel={t("basalTitle")}
+              unit={tUnits("basal")}
+              initialSlots={basalSet}
+              bounds={PARAM_BOUNDS.basalRate}
+              mode="propose"
+              audience="patient"
+            />
+          )}
         </CardContent>
       </Card>
 

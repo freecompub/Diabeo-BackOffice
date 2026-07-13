@@ -17,6 +17,8 @@ import { render, screen } from "@testing-library/react"
 import type { TreatmentView } from "@/components/diabeo/patient/patient-record-views"
 
 vi.mock("next-intl", async () => (await import("../helpers/nextIntlMock")).makeNextIntlMock())
+// Les éditeurs de GROUPE (mode propose) tirent `useRouter().refresh()` après succès.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 vi.mock("@/components/diabeo/Acronym", () => ({ Acronym: ({ code }: { code: string }) => <abbr>{code}</abbr> }))
 vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({
   DiabeoEmptyState: ({ title, message }: { title: string; message: string }) => (
@@ -62,18 +64,19 @@ describe("PatientInsulinView", () => {
     expect(screen.getByText("0.5")).toBeTruthy() // les créneaux restent affichés
   })
 
-  it("canPropose (transport mutate présent) : un bouton « proposer » par créneau", () => {
+  it("canPropose (transport mutate présent) : un déclencheur « proposer » GROUPÉ par section", () => {
     render(
       <PatientRecordProvider fetchAnalytics={vi.fn()} mutate={vi.fn()}>
         <PatientInsulinView data={BASE} canPropose />
       </PatientRecordProvider>,
     )
-    // 1 créneau ISF + 1 ICR + 1 basal → au moins 3 déclencheurs de proposition.
+    // Voie GROUPÉE (US-2663 S4) : ISF + ICR + basale → 3 déclencheurs de proposition d'ensemble
+    // (un par section, plus par-créneau).
     expect(screen.getAllByRole("button").length).toBeGreaterThanOrEqual(3)
   })
 
   it("canPropose SANS transport mutate (lecture seule) : aucun bouton (fail-closed)", () => {
-    // Pas de PatientRecordProvider → InsulinProposalDialog se masque (fail-closed).
+    // Pas de PatientRecordProvider → les éditeurs de groupe se masquent (fail-closed, pas de mutate).
     render(<PatientInsulinView data={BASE} canPropose />)
     expect(screen.queryByRole("button")).toBeNull()
   })

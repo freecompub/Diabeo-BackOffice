@@ -3,11 +3,13 @@
  */
 
 /**
- * Tests — PatientInsulinView : câblage créneau → cible de proposition (US-2650).
+ * Tests — PatientInsulinView : câblage section → éditeur de GROUPE en mode PROPOSITION (US-2663 S4).
  *
- * Verrou clinique : chaque section doit adresser LE BON créneau avec LE BON paramètre —
- * un swap silencieux (ISF↔ICR, ou basal mal ciblé) enverrait la proposition sur le mauvais
- * réglage. On mocke `InsulinProposalDialog` pour capturer `parameterType`/`target` par section.
+ * Verrou clinique : chaque section doit ouvrir l'éditeur de groupe du BON levier, en mode `propose`
+ * et audience `patient` (own-id → `PUT /api/patient/insulin-slot-set`) — un swap silencieux (ISF↔ICR)
+ * ou une audience `pro` (route `POST /api/slot-set-proposals`, refusée au patient) enverrait la
+ * proposition sur le mauvais réglage ou la mauvaise route. On mocke les éditeurs de groupe pour
+ * capturer leurs props par section.
  */
 
 import { describe, it, expect, vi } from "vitest"
@@ -17,10 +19,28 @@ import type { TreatmentView } from "@/components/diabeo/patient/patient-record-v
 vi.mock("next-intl", async () => (await import("../helpers/nextIntlMock")).makeNextIntlMock())
 vi.mock("@/components/diabeo/Acronym", () => ({ Acronym: ({ code }: { code: string }) => <abbr>{code}</abbr> }))
 vi.mock("@/components/diabeo/DiabeoEmptyState", () => ({ DiabeoEmptyState: () => <div /> }))
-// Mock du dialog : expose parameterType + target sérialisé pour assertion du câblage.
-vi.mock("@/components/diabeo/patient/InsulinProposalDialog", () => ({
-  InsulinProposalDialog: (props: { parameterType: string; target: unknown }) => (
-    <button data-testid={`propose-${props.parameterType}`} data-target={JSON.stringify(props.target)}>
+
+// Mocks des éditeurs de groupe : exposent param / mode / audience + jeu initial pour assertion.
+vi.mock("@/components/diabeo/patient/InsulinSlotSetDialog", () => ({
+  InsulinSlotSetDialog: (props: { param: string; mode: string; audience: string; initialSlots: unknown }) => (
+    <button
+      data-testid={`propose-${props.param}`}
+      data-mode={props.mode}
+      data-audience={props.audience}
+      data-slots={JSON.stringify(props.initialSlots)}
+    >
+      propose
+    </button>
+  ),
+}))
+vi.mock("@/components/diabeo/patient/InsulinBasalSlotSetDialog", () => ({
+  InsulinBasalSlotSetDialog: (props: { mode: string; audience: string; initialSlots: unknown }) => (
+    <button
+      data-testid="propose-basalRate"
+      data-mode={props.mode}
+      data-audience={props.audience}
+      data-slots={JSON.stringify(props.initialSlots)}
+    >
       propose
     </button>
   ),
@@ -43,17 +63,23 @@ const BASE: TreatmentView = {
   treatments: [],
 }
 
-describe("PatientInsulinView — câblage créneau → cible", () => {
-  it("ISF → insulinSensitivityFactor + timeSlot ; ICR → insulinToCarbRatio + timeSlot ; basal → basalRate + pumpSlot", () => {
+describe("PatientInsulinView — câblage section → éditeur de groupe (proposition)", () => {
+  it("chaque section ouvre le bon levier en mode propose + audience patient, avec son jeu initial", () => {
     render(<PatientInsulinView data={BASE} canPropose />)
 
     const isf = screen.getByTestId("propose-insulinSensitivityFactor")
-    expect(JSON.parse(isf.getAttribute("data-target")!)).toEqual({ kind: "timeSlot", startHour: 0, endHour: 8 })
+    expect(isf.getAttribute("data-mode")).toBe("propose")
+    expect(isf.getAttribute("data-audience")).toBe("patient")
+    expect(JSON.parse(isf.getAttribute("data-slots")!)).toEqual([{ startHour: 0, endHour: 8, value: 0.5 }])
 
     const icr = screen.getByTestId("propose-insulinToCarbRatio")
-    expect(JSON.parse(icr.getAttribute("data-target")!)).toEqual({ kind: "timeSlot", startHour: 0, endHour: 24 })
+    expect(icr.getAttribute("data-mode")).toBe("propose")
+    expect(icr.getAttribute("data-audience")).toBe("patient")
+    expect(JSON.parse(icr.getAttribute("data-slots")!)).toEqual([{ startHour: 0, endHour: 24, value: 10 }])
 
     const basal = screen.getByTestId("propose-basalRate")
-    expect(JSON.parse(basal.getAttribute("data-target")!)).toEqual({ kind: "pumpSlot", pumpBasalSlotId: "b1" })
+    expect(basal.getAttribute("data-mode")).toBe("propose")
+    expect(basal.getAttribute("data-audience")).toBe("patient")
+    expect(JSON.parse(basal.getAttribute("data-slots")!)).toEqual([{ startTime: "00:00", endTime: "00:00", value: 0.8 }])
   })
 })

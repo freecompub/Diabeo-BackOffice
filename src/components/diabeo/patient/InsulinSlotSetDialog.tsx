@@ -6,13 +6,19 @@
  * Montre tout le jeu de créneaux, permet d'éditer valeur + tranche horaire, d'ajouter/supprimer une
  * ligne, et **valide l'ensemble** : « Valider » n'est actif que si la couverture 24 h est cohérente
  * (aucun trou, aucun chevauchement — `describeCoverage`, même source que le serveur US-2655) et toutes
- * les valeurs dans les bornes. L'enregistrement remplace TOUT le jeu (`PUT`, DOCTOR direct) via le
- * transport de mutation injecté (`patientId` ajouté par l'adaptateur, anti-énumération). La cohérence
- * front est un **confort** ; le serveur reste l'autorité (un rejet est réaffiché sans perte de saisie).
+ * les valeurs dans les bornes.
  *
- * Masqué (`null`) si aucun transport n'est injecté (fail-closed) ; rendu là où la capability DOCTOR
- * `canEditDirect` l'autorise. Slice 1 : chemin DOCTOR direct (le chemin proposition patient/infirmier +
- * gating maturité relève d'US-2657).
+ * Deux modes (US-2663 S4) via la prop `mode` :
+ *  - **`direct`** (défaut, DOCTOR/ADMIN) : remplace TOUT le jeu ACTIF (`PUT /api/insulin-therapy/…`),
+ *    appliqué immédiatement.
+ *  - **`propose`** (soignant NURSE / patient VIEWER) : crée une **proposition d'ensemble** soumise à la
+ *    revue MÉDECIN (jamais appliquée directement, ADR #13) — `POST /api/slot-set-proposals` (audience
+ *    `pro`) ou `PUT /api/patient/insulin-slot-set` (audience `patient`, own-id). Remplace l'ancienne voie
+ *    par-valeur `InsulinProposalDialog` (retirée).
+ *
+ * L'écriture passe par le transport de mutation injecté (`patientId` ajouté par l'adaptateur,
+ * anti-énumération). La cohérence front est un **confort** ; le serveur reste l'autorité (un rejet est
+ * réaffiché sans perte de saisie). Masqué (`null`) si aucun transport n'est injecté (fail-closed).
  */
 import { useEffect, useMemo, useRef, useState } from "react"
 import { useTranslations } from "next-intl"
@@ -33,10 +39,12 @@ import {
   validateRows,
   canSubmit,
   buildReplaceRequest,
+  buildProposeRequest,
   mapSlotSetOutcome,
   type SlotRow,
   type SlotSetParameter,
   type HourRange,
+  type ProposeAudience,
 } from "@/components/diabeo/patient/insulin-slot-set-edit"
 
 type InitialSlot = { startHour: number; endHour: number; value: number; mealLabel?: string }
@@ -45,18 +53,34 @@ type Feedback = { kind: "error" | "success"; text: string } | null
 const fmtHour = (h: number) => `${String(h).padStart(2, "0")}h`
 const fmtRanges = (ranges: HourRange[]) => ranges.map((r) => `${fmtHour(r.startHour)}–${fmtHour(r.endHour)}`).join(", ")
 
+/**
+ * @param mode `"direct"` (défaut) écrit la config ACTIVE (DOCTOR) ; `"propose"` crée une proposition
+ *   d'ensemble pour revue médecin (NURSE / patient).
+ * @param audience `"pro"` (soignant, route `POST /api/slot-set-proposals`) vs `"patient"` (own-id, route
+ *   `PUT /api/patient/insulin-slot-set`). Ignoré en mode `direct`.
+ * @param structural `true` (défaut) autorise la RESTRUCTURATION (changer les heures, ajouter/supprimer un
+ *   créneau) ; `false` = **valeurs seules** (heures en lecture, pas d'ajout/suppression). Le patient est en
+ *   valeurs seules : le serveur refuse toute restructuration côté patient (`structuralChangeNotAllowed`) —
+ *   un patient édite des doses, il ne re-partitionne pas ses créneaux.
+ */
 export function InsulinSlotSetDialog({
   param,
   paramLabel,
   unit,
   initialSlots,
   bounds,
+  mode = "direct",
+  audience = "pro",
+  structural = true,
 }: {
   param: SlotSetParameter
   paramLabel: string
   unit: string
   initialSlots: InitialSlot[]
   bounds: { min: number; max: number }
+  mode?: "direct" | "propose"
+  audience?: ProposeAudience
+  structural?: boolean
 }) {
   const t = useTranslations("patientDetail")
   const router = useRouter()
@@ -149,13 +173,16 @@ export function InsulinSlotSetDialog({
     setPending(true)
     setFeedback(null)
     try {
-      const { endpoint, body } = buildReplaceRequest(param, rows)
-      const res = await mutate(endpoint, body, { method: "PUT", signal: ctrl.signal })
+      const req =
+        mode === "propose"
+          ? buildProposeRequest(param, rows, audience)
+          : { ...buildReplaceRequest(param, rows), method: "PUT" as const }
+      const res = await mutate(req.endpoint, req.body, { method: req.method, signal: ctrl.signal })
       if (ctrl.signal.aborted) return
       const jb: { error?: string } = await res.json().catch(() => ({}))
       const outcome = mapSlotSetOutcome(res.status, jb.error)
       if (outcome.kind === "success") {
-        setFeedback({ kind: "success", text: t("slotSetSuccess") })
+        setFeedback({ kind: "success", text: mode === "propose" ? t("slotSetProposeSuccess") : t("slotSetSuccess") })
         void Promise.resolve().then(() => router.refresh())
       } else {
         setFeedback({ kind: "error", text: t(outcome.messageKey) })
@@ -171,7 +198,7 @@ export function InsulinSlotSetDialog({
   return (
     <>
       <Button ref={triggerRef} variant="outline" size="sm" onClick={openDialog}>
-        {t("slotSetEditButton")}
+        {mode === "propose" ? t("slotSetProposeButton") : t("slotSetEditButton")}
       </Button>
       <Dialog
         open={open}
@@ -183,8 +210,12 @@ export function InsulinSlotSetDialog({
         <DialogContent finalFocus={triggerRef} className="max-w-2xl">
           <form onSubmit={submit} aria-busy={pending} className="space-y-4">
             <DialogHeader>
-              <DialogTitle>{t("slotSetTitle", { param: paramLabel })}</DialogTitle>
-              <DialogDescription>{t("slotSetDescription")}</DialogDescription>
+              <DialogTitle>
+                {mode === "propose" ? t("slotSetProposeTitle", { param: paramLabel }) : t("slotSetTitle", { param: paramLabel })}
+              </DialogTitle>
+              <DialogDescription>
+                {mode === "propose" ? t("slotSetProposeDescription") : t("slotSetDescription")}
+              </DialogDescription>
             </DialogHeader>
 
             {/* Frise de couverture 24 h (décorative — la bannière porte le texte). */}
@@ -218,9 +249,11 @@ export function InsulinSlotSetDialog({
                     <th scope="col" className="p-2 text-left font-medium">
                       {t("slotSetColValue", { unit })}
                     </th>
-                    <th scope="col" className="p-2">
-                      <span className="sr-only">{t("slotSetColActions")}</span>
-                    </th>
+                    {structural ? (
+                      <th scope="col" className="p-2">
+                        <span className="sr-only">{t("slotSetColActions")}</span>
+                      </th>
+                    ) : null}
                   </tr>
                 </thead>
                 <tbody>
@@ -236,28 +269,37 @@ export function InsulinSlotSetDialog({
                         className={conflict ? "border-l-4 border-destructive bg-destructive/10" : "border-l-4 border-transparent"}
                       >
                         <td className="p-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={23}
-                            value={r.startHour}
-                            onChange={(e) => updateRow(r.key, { startHour: clampHour(e.target.value) })}
-                            aria-label={`${t("slotSetColStart")} — ${rowN}`}
-                            aria-describedby={describedBy}
-                            className="w-16 rounded-md border border-input bg-background px-2 py-1 text-foreground"
-                          />
+                          {structural ? (
+                            <input
+                              type="number"
+                              min={0}
+                              max={23}
+                              value={r.startHour}
+                              onChange={(e) => updateRow(r.key, { startHour: clampHour(e.target.value) })}
+                              aria-label={`${t("slotSetColStart")} — ${rowN}`}
+                              aria-describedby={describedBy}
+                              className="w-16 rounded-md border border-input bg-background px-2 py-1 text-foreground"
+                            />
+                          ) : (
+                            // Valeurs seules (patient) : l'heure est en LECTURE (pas de restructuration serveur).
+                            <span className="tabular-nums text-muted-foreground">{fmtHour(r.startHour)}</span>
+                          )}
                         </td>
                         <td className="p-2">
-                          <input
-                            type="number"
-                            min={0}
-                            max={23}
-                            value={r.endHour}
-                            onChange={(e) => updateRow(r.key, { endHour: clampHour(e.target.value) })}
-                            aria-label={`${t("slotSetColEnd")} — ${rowN}`}
-                            aria-describedby={describedBy}
-                            className="w-16 rounded-md border border-input bg-background px-2 py-1 text-foreground"
-                          />
+                          {structural ? (
+                            <input
+                              type="number"
+                              min={0}
+                              max={23}
+                              value={r.endHour}
+                              onChange={(e) => updateRow(r.key, { endHour: clampHour(e.target.value) })}
+                              aria-label={`${t("slotSetColEnd")} — ${rowN}`}
+                              aria-describedby={describedBy}
+                              className="w-16 rounded-md border border-input bg-background px-2 py-1 text-foreground"
+                            />
+                          ) : (
+                            <span className="tabular-nums text-muted-foreground">{fmtHour(r.endHour)}</span>
+                          )}
                         </td>
                         <td className="p-2">
                           <input
@@ -273,25 +315,27 @@ export function InsulinSlotSetDialog({
                             }
                           />
                         </td>
-                        <td className="p-2 text-right">
-                          {conflict ? (
-                            <AlertTriangle className="mr-1 inline size-4 text-destructive" aria-hidden="true" />
-                          ) : null}
-                          {conflict ? (
-                            <span id={conflictId} className="sr-only">
-                              {t("slotSetRowInConflict")}
-                            </span>
-                          ) : null}
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deleteRow(r.key)}
-                            aria-label={t("slotSetDeleteRow", { start: fmtHour(r.startHour), end: fmtHour(r.endHour) })}
-                          >
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </td>
+                        {structural ? (
+                          <td className="p-2 text-right">
+                            {conflict ? (
+                              <AlertTriangle className="mr-1 inline size-4 text-destructive" aria-hidden="true" />
+                            ) : null}
+                            {conflict ? (
+                              <span id={conflictId} className="sr-only">
+                                {t("slotSetRowInConflict")}
+                              </span>
+                            ) : null}
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => deleteRow(r.key)}
+                              aria-label={t("slotSetDeleteRow", { start: fmtHour(r.startHour), end: fmtHour(r.endHour) })}
+                            >
+                              <Trash2 className="size-4" />
+                            </Button>
+                          </td>
+                        ) : null}
                       </tr>
                     )
                   })}
@@ -299,10 +343,12 @@ export function InsulinSlotSetDialog({
               </table>
             </div>
 
-            <Button ref={addButtonRef} type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
-              <Plus className="mr-1 size-4" />
-              {t("slotSetAddRow")}
-            </Button>
+            {structural ? (
+              <Button ref={addButtonRef} type="button" variant="outline" size="sm" onClick={addRow} className="w-full">
+                <Plus className="mr-1 size-4" />
+                {t("slotSetAddRow")}
+              </Button>
+            ) : null}
 
             {/* Bannière de cohérence — statut vivant, associée à « Valider ». */}
             <p
@@ -348,7 +394,7 @@ export function InsulinSlotSetDialog({
                 // ET fond avec l'arrière-plan → contraste < AA). `cursor-not-allowed` = indice souris.
                 className={!submittable ? "cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted" : undefined}
               >
-                {pending ? t("slotSetSaving") : t("slotSetSubmit")}
+                {pending ? t("slotSetSaving") : mode === "propose" ? t("slotSetProposeSubmit") : t("slotSetSubmit")}
               </Button>
             </DialogFooter>
           </form>

@@ -37,10 +37,10 @@ import {
 } from "@/components/diabeo/patient/PatientRecordContext"
 import { InsulinEditBanner } from "@/components/diabeo/patient/InsulinEditBanner"
 import { MaturityLevelControl } from "@/components/diabeo/patient/MaturityLevelControl"
-import { InsulinProposalDialog } from "@/components/diabeo/patient/InsulinProposalDialog"
 import { InsulinSlotSetDialog } from "@/components/diabeo/patient/InsulinSlotSetDialog"
 import { InsulinBasalSlotSetDialog } from "@/components/diabeo/patient/InsulinBasalSlotSetDialog"
-import { PARAM_BOUNDS, type ProposableParameter } from "@/components/diabeo/patient/insulin-proposal"
+import { PARAM_BOUNDS } from "@/components/diabeo/patient/insulin-parameter-endpoints"
+import type { EditableParameter } from "@/lib/insulin/edit-capability"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
@@ -201,7 +201,7 @@ export function PatientRecord({
   const insulinCapability = useInsulinCapability()
   // Config du bouton d'un créneau selon la capability : DOCTOR → « Modifier » (direct) ;
   // NURSE/patient → « Proposer ». `undefined` si le paramètre n'est pas éditable (fail-closed).
-  const editModeFor = (param: ProposableParameter, paramLabel: string) => {
+  const editModeFor = (param: EditableParameter, paramLabel: string) => {
     const cap = insulinCapability.capability
     if (!cap || !cap.editableParameters.includes(param) || !(cap.canEditDirect || cap.canPropose)) return undefined
     return { parameterType: param, paramLabel, mode: cap.canEditDirect ? ("direct" as const) : ("propose" as const) }
@@ -848,13 +848,13 @@ function SlotList({
   /** "ratio" = ISF/ICR (trou = config à vérifier) ; "basal" = pompe (24 h requis). */
   family?: "ratio" | "basal"
   /**
-   * `mode:"direct"` → DOCTOR : édition de GROUPE uniquement (voir `InsulinSlotSetDialog`/
-   * `InsulinBasalSlotSetDialog` ci-dessous), aucun bouton par-créneau — les écritures par-créneau
-   * (`PATCH`) ont été retirées serveur (US-2657, grouped-only, ADR #23). `mode:"propose"` → NURSE/
-   * patient : bouton « Proposer » par créneau (validation médecin, `POST /api/adjustment-proposals`,
-   * inchangé — hors périmètre du retrait grouped-only).
+   * Édition de GROUPE uniquement (voir `InsulinSlotSetDialog`/`InsulinBasalSlotSetDialog` ci-dessous),
+   * jamais par-créneau — grouped-only, ADR #23/#26. `mode:"direct"` → DOCTOR/ADMIN : remplace la config
+   * ACTIVE. `mode:"propose"` → NURSE (fiche pro) : **proposition d'ensemble** pour revue médecin
+   * (`POST /api/slot-set-proposals`, US-2663 S4) — remplace l'ancien bouton « Proposer » par-créneau
+   * (`InsulinProposalDialog`, retiré). Audience `pro` (la fiche patient n'est pas une surface self-service).
    */
-  edit?: { parameterType: ProposableParameter; paramLabel: string; mode: "direct" | "propose" }
+  edit?: { parameterType: EditableParameter; paramLabel: string; mode: "direct" | "propose" }
 }) {
   const t = useTranslations("patientDetail")
   return (
@@ -868,28 +868,6 @@ function SlotList({
               <span className="font-medium">
                 {s.value} {unit}
               </span>
-              {(() => {
-                if (!edit || edit.mode !== "propose") return null
-
-                // Proposition : cible adressable (créneau horaire ISF/ICR ou pompe basal).
-                const target =
-                  edit.parameterType === "basalRate"
-                    ? s.pumpBasalSlotId
-                      ? ({ kind: "pumpSlot", pumpBasalSlotId: s.pumpBasalSlotId } as const)
-                      : null
-                    : s.startHour !== undefined && s.endHour !== undefined
-                      ? ({ kind: "timeSlot", startHour: s.startHour, endHour: s.endHour } as const)
-                      : null
-                return target ? (
-                  <InsulinProposalDialog
-                    parameterType={edit.parameterType}
-                    paramLabel={edit.paramLabel}
-                    slot={{ range: s.range, value: s.value }}
-                    target={target}
-                    unit={unit}
-                  />
-                ) : null
-              })()}
             </div>
           </li>
         ))}
@@ -910,13 +888,13 @@ function SlotList({
           {t("slotOverlapNote")}
         </p>
       )}
-      {/* US-2656/US-2657 — édition de GROUPE (change les heures/temps + ajoute/supprime), DOCTOR
-          direct, ISF/ICR/basal — SEULE voie d'édition (grouped-only, ADR #23). ⚠️ Limitation connue
-          (follow-up) : le remplacement de groupe ISF/ICR ÉCRASE les `mealLabel` ICR stockés (absents de
-          la vue fiche → non renvoyés par le PUT). Non clinique (le calcul de bolus ne les utilise pas ;
-          seule la page autonome — en cours de retrait — les affichait). Les préserver à travers un
-          remodelage d'heures est ambigu (les frontières changent) → traité en tranche suivante. */}
-      {edit?.mode === "direct" &&
+      {/* US-2656/US-2657/US-2663 — édition de GROUPE (change les heures/temps + ajoute/supprime),
+          ISF/ICR/basal — SEULE voie d'écriture (grouped-only, ADR #23/#26). `mode:"direct"` (DOCTOR) écrit
+          la config ACTIVE ; `mode:"propose"` (NURSE, US-2663 S4) crée une proposition d'ensemble pour revue
+          médecin. Audience `pro` (fiche clinicien). ⚠️ Limitation connue (follow-up) : le remplacement de
+          groupe ISF/ICR ÉCRASE les `mealLabel` ICR stockés (absents de la vue fiche → non renvoyés). Non
+          clinique (le calcul de bolus ne les utilise pas). */}
+      {edit &&
         family === "ratio" &&
         edit.parameterType !== "basalRate" &&
         (() => {
@@ -935,11 +913,13 @@ function SlotList({
                 unit={unit}
                 initialSlots={setSlots}
                 bounds={PARAM_BOUNDS[edit.parameterType]}
+                mode={edit.mode}
+                audience="pro"
               />
             </div>
           )
         })()}
-      {edit?.mode === "direct" &&
+      {edit &&
         family === "basal" &&
         edit.parameterType === "basalRate" &&
         (() => {
@@ -957,6 +937,8 @@ function SlotList({
                 unit={unit}
                 initialSlots={setSlots}
                 bounds={PARAM_BOUNDS[edit.parameterType]}
+                mode={edit.mode}
+                audience="pro"
               />
             </div>
           )

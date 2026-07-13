@@ -2,13 +2,15 @@
  * PatientInsulinClient — hôte client de la vue insulinothérapie patient (US-2650, slice 3).
  *
  * Fournit le contexte `PatientRecordProvider` avec les transports « mode page » :
- *  - `mutate` = `usePagePatientMutator(patientId)` → `POST /api/adjustment-proposals`.
+ *  - `mutate` = `usePagePatientMutator(patientId)` → voie GROUPÉE `PUT /api/patient/insulin-slot-set`
+ *    (own-id, US-2663 S4). Le patient soumet sa disposition ENTIÈRE (jeu de créneaux).
  *  - `fetchAnalytics` = `usePagePatientFetcher(patientId)` (requis par le provider).
  *
- * `InsulinProposalDialog` (dans `PatientInsulinView`, `canPropose`) consomme `mutate` pour
- * soumettre une proposition. Sécurité : la route POST re-résout le patient depuis la SESSION
- * (VIEWER → son dossier, `body.patientId` ignoré) et applique les bornes patient ; l'`id`
- * transite dans le corps mais n'est jamais faisant autorité (anti-énumération, own-id strict).
+ * Les éditeurs de GROUPE en mode `propose` (dans `PatientInsulinView`, `canPropose`) consomment
+ * `mutate` pour soumettre la proposition d'ensemble. Sécurité : la route PUT re-résout le patient
+ * depuis la SESSION (own-id strict, `body.patientId` ignoré) et applique la garde clinique patient
+ * (cap %, baisse basale gatée) ; l'`id` transite dans le corps mais n'est jamais faisant autorité
+ * (anti-énumération, own-id strict).
  *
  * @param patientId Dossier du patient connecté (résolu own-id côté serveur).
  * @param data Vue traitement résolue serveur.

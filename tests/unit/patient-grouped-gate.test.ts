@@ -94,8 +94,15 @@ describe("evaluatePatientGroupedGate — BAISSE basale POMPE (gate assoupli)", (
       parameterType: "basalRate", slots: [pump("00:00", 0.95)], baseline: [pump("00:00", 1.0)], // −5 %
       isPen: false, maturity: "INTERMEDIATE", sickDayAcknowledged: false,
     })
-    expect(res.sickDayAckAt).toBeNull() // pompe → jamais d'accusé DKA persisté
+    expect(res.sickDayAckAt).toBeNull() // pompe non accusée → rien à persister
     expect(res.decreaseAudit).toMatchObject({ deliveryMode: "pump", decreaseCount: 1 })
+  })
+  it("accusé DKA fourni sur baisse POMPE → sickDayAckAt persisté (parité Q7, non bloquant mais tracé)", () => {
+    const res = evaluatePatientGroupedGate({
+      parameterType: "basalRate", slots: [pump("00:00", 0.95)], baseline: [pump("00:00", 1.0)],
+      isPen: false, maturity: "INTERMEDIATE", sickDayAcknowledged: true,
+    })
+    expect(res.sickDayAckAt).toBeInstanceOf(Date) // pompe : ack optionnel mais TRACÉ s'il est fourni
   })
   it("maturité JUNIOR → maturityTooLowForDecrease (refus tous modes)", () => {
     expect(() => evaluatePatientGroupedGate({
@@ -123,6 +130,39 @@ describe("evaluatePatientGroupedGate — D3 : jeu MIXTE hausse+baisse, 1 accusé
       baseline: [stylo("morning", 12), stylo("evening", 10)],
       isPen: true, maturity: "CONFIRME", sickDayAcknowledged: false,
     })).toThrow("dkaAcknowledgmentRequired")
+  })
+})
+
+describe("evaluatePatientGroupedGate — restructuration interdite (fail-closed anti-évasion)", () => {
+  it("re-partition ISF (nouveau startHour absent de la base) → structuralChangeNotAllowed (défait sinon le cap %)", () => {
+    expect(() => evaluatePatientGroupedGate({
+      parameterType: "insulinSensitivityFactor",
+      slots: [isf(2, 0.1)], baseline: [isf(0, 0.5)], // clé isf:2 ∉ base {isf:0}
+      isPen: false, maturity: "JUNIOR", sickDayAcknowledged: false,
+    })).toThrow("structuralChangeNotAllowed")
+  })
+  it("bascule modalité stylo single→split (daily → morning+evening) → structuralChangeNotAllowed (défait sinon DKA/maturité)", () => {
+    // Exploit medical : baisse 20 U → 2+2 U traitée comme « aucun changement » car clés stylo:morning/evening ∉ {stylo:daily}.
+    expect(() => evaluatePatientGroupedGate({
+      parameterType: "basalRate",
+      slots: [stylo("morning", 2), stylo("evening", 2)], baseline: [stylo("daily", 20)],
+      isPen: true, maturity: "JUNIOR", sickDayAcknowledged: false,
+    })).toThrow("structuralChangeNotAllowed")
+  })
+  it("ajout/retrait de créneau (cardinalité différente) → structuralChangeNotAllowed", () => {
+    expect(() => evaluatePatientGroupedGate({
+      parameterType: "insulinToCarbRatio",
+      slots: [isf(0, 10), isf(8, 11)], baseline: [isf(0, 10)], // 2 vs 1 créneau
+      isPen: false, maturity: "CONFIRME", sickDayAcknowledged: false,
+    })).toThrow("structuralChangeNotAllowed")
+  })
+  it("mêmes créneaux, seules les valeurs changent (dans le cap) → OK (édition légitime)", () => {
+    const res = evaluatePatientGroupedGate({
+      parameterType: "insulinSensitivityFactor",
+      slots: [isf(0, 0.52), isf(6, 0.48)], baseline: [isf(0, 0.5), isf(6, 0.5)],
+      isPen: false, maturity: "JUNIOR", sickDayAcknowledged: false,
+    })
+    expect(res.decreaseAudit).toBeNull()
   })
 })
 

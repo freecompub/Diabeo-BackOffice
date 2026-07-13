@@ -46,4 +46,8 @@ export const SLOT_SET_ERROR_STATUS: Record<string, number> = {
   patientDeltaTooLarge: 422, // variation au-delà du cap patient (10 % ; stylo baisse min(10 %, 2 U))
   noChangeProposed: 422, // baisse stylo infra-incrément (< 1 U) ou non délivrable (½ U) → non actionnable
   deliveryModeMismatch: 409, // forme du jeu (stylo/pompe) incohérente avec le `configType` LIVE (anti-usurpation)
+  // US-2663 (S4, revue medical/code MAJOR) — un patient ÉDITE des valeurs, il ne RESTRUCTURE pas : re-partition
+  // de créneaux / bascule de modalité stylo single↔split / ajout-retrait. Sinon un créneau « nouveau » échappe
+  // au cap % ET au gate de baisse (DKA/maturité). Le jeu proposé doit porter les MÊMES clés que la base.
+  structuralChangeNotAllowed: 422,
 }

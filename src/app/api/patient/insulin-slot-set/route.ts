@@ -1,8 +1,15 @@
 /**
- * PUT /api/patient/insulin-slot-set — **SOUMISSION SELF-SERVICE PATIENT** d'un jeu de créneaux ISF/ICR.
- * Le patient soumet sa **disposition complète** (mono-paramètre) ; elle est **TOUJOURS** enregistrée comme
- * **proposition d'ensemble** (`SlotSetProposal` pending), soumise à la **revue MÉDECIN** (C3d). Il n'existe
- * plus d'auto-application : une soumission patient ne modifie JAMAIS directement la configuration active.
+ * PUT /api/patient/insulin-slot-set — **SOUMISSION SELF-SERVICE PATIENT** d'un jeu de créneaux ISF/ICR OU
+ * **BASALE** (pompe `startTime`/U/h ou stylo `kind`/U totales — US-2663 S4). Le patient soumet sa **disposition
+ * complète** (mono-paramètre) ; elle est **TOUJOURS** enregistrée comme **proposition d'ensemble**
+ * (`SlotSetProposal` pending), soumise à la **revue MÉDECIN** (C3d). Il n'existe plus d'auto-application : une
+ * soumission patient ne modifie JAMAIS directement la configuration active.
+ *
+ * **Garde clinique patient (S4)** appliquée SERVEUR par `createSetProposal`→`evaluatePatientGroupedGate` : cap
+ * de variation 10 % (ISF/ICR deux sens, hausse basale) ; BAISSE basale gatée (maturité/mode/accusé DKA stylo/
+ * incrément) ; **restructuration interdite** (le jeu doit porter les mêmes créneaux que la config active —
+ * pas de re-partition ni bascule de modalité). `sickDayAcknowledged` requis SERVEUR ssi ≥ 1 baisse stylo (D3 :
+ * un accusé couvre toutes les baisses du jeu).
  *
  * `createSetProposal` supersède les propositions `pending` du même `(patient × paramètre)` (d'ensemble ET
  * par-valeur) et valide DÈS la création la forme + les bornes cliniques/couverture (`assertValidSlotSet`),

@@ -233,12 +233,176 @@ const ERROR_KEY: Record<string, string> = {
   styloBasalConfigMismatch: "slotSetErrorNotFound",
   styloBasalNotFound: "slotSetErrorNotFound",
   slotsBusy: "slotSetErrorBusy",
+  // US-2663 (S4) — voie manuelle GROUPÉE (proposition). Codes de la garde clinique PATIENT
+  // (`evaluatePatientGroupedGate`) + du RBAC/anti-abus des routes de proposition groupée.
+  maturityTooLowForDecrease: "slotSetErrorMaturityTooLow",
+  dkaAcknowledgmentRequired: "slotSetErrorDkaRequired",
+  patientDeltaTooLarge: "slotSetErrorDeltaTooLarge",
+  noChangeProposed: "slotSetErrorNoChange",
+  deliveryModeMismatch: "slotSetErrorModeMismatch",
+  // Restructuration interdite côté PATIENT (re-partition de créneaux / ajout-retrait / bascule de modalité) :
+  // un patient édite des VALEURS, pas la structure. Filet UX (l'UI patient est déjà « valeurs seules »).
+  structuralChangeNotAllowed: "slotSetErrorStructural",
+  forbidden: "slotSetErrorForbidden",
+  rateLimitExceeded: "slotSetErrorRateLimited",
 }
 
-/** (statut HTTP, code d'erreur) → issue. `200` = appliqué. Sert au rejet serveur (autorité). */
+/**
+ * (statut HTTP, code d'erreur) → issue. `200` = appliqué (voie DOCTOR directe) ; `201` = proposition
+ * d'ensemble créée (voie manuelle groupée patient/soignant, US-2663 S4). Sert au rejet serveur (autorité).
+ */
 export function mapSlotSetOutcome(status: number, code: string | undefined): SlotSetOutcome {
-  if (status === 200) return { kind: "success" }
+  if (status === 200 || status === 201) return { kind: "success" }
   return { kind: "error", messageKey: ERROR_KEY[code ?? ""] ?? "slotSetErrorGeneric" }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// US-2663 (S4) — voie manuelle GROUPÉE (PROPOSITION) : ISF/ICR + basale pompe + basale stylo.
+//
+// Contrat backend (S4) :
+//   • PRO (nurse/doctor)  → `POST /api/slot-set-proposals`  body `{ parameterType, proposedSlots }`
+//   • PATIENT (own-id)    → `PUT  /api/patient/insulin-slot-set` body `{ parameterType, slots, sickDayAcknowledged? }`
+// Les DEUX renvoient `201 { outcome: "proposal", proposalId }`. La provenance est dérivée SERVEUR
+// (jamais du body). Le champ de valeur des créneaux suit la forme `@/lib/insulin/grouped-proposal`
+// (ISF/ICR `value`, pompe `rate`, stylo `value`) — DIFFÉRENT des champs de la voie directe
+// (`sensitivityFactorGl`/`gramsPerUnit`/`rate`, cf. `VALUE_FIELD`).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Audience de la soumission groupée : soignant (route pro) vs patient own-id (route patient). */
+export type ProposeAudience = "pro" | "patient"
+
+/** Endpoint pro de création groupée (`POST`, provenance dérivée session). */
+export const PROPOSE_PRO_ENDPOINT = "/api/slot-set-proposals"
+/** Endpoint patient own-id de soumission groupée (`PUT`, pas de `patientId`). */
+export const PROPOSE_PATIENT_ENDPOINT = "/api/patient/insulin-slot-set"
+
+/** Levier proposable en groupe (ISF/ICR heure-entière + basale pompe/stylo). */
+export type ProposeParameter = SlotSetParameter | "basalRate"
+
+export type ProposeRequest = {
+  endpoint: string
+  method: "POST" | "PUT"
+  body: Record<string, unknown>
+}
+
+/**
+ * Enveloppe commune (pro vs patient) d'une proposition groupée. `patientId` est ajouté par le
+ * transport injecté (adaptateur page/drawer) — ignoré côté route patient (own-id strict).
+ * `sickDayAcknowledged` n'est envoyé qu'en audience patient (les soignants ne sont pas gatés).
+ */
+function proposeEnvelope(
+  parameterType: ProposeParameter,
+  slots: Array<Record<string, unknown>>,
+  audience: ProposeAudience,
+  sickDayAcknowledged?: boolean,
+): ProposeRequest {
+  if (audience === "pro") {
+    return { endpoint: PROPOSE_PRO_ENDPOINT, method: "POST", body: { parameterType, proposedSlots: slots } }
+  }
+  return {
+    endpoint: PROPOSE_PATIENT_ENDPOINT,
+    method: "PUT",
+    body: { parameterType, slots, ...(sickDayAcknowledged ? { sickDayAcknowledged: true } : {}) },
+  }
+}
+
+/**
+ * Corps de PROPOSITION groupée ISF/ICR : créneaux `{ startHour, endHour, value, mealLabel? }`
+ * (forme `IsfIcrSlot`). Suppose les lignes déjà validées (`canSubmit`).
+ */
+export function buildProposeRequest(
+  param: SlotSetParameter,
+  rows: SlotRow[],
+  audience: ProposeAudience,
+): ProposeRequest {
+  const slots = rows.map((r) => {
+    const slot: Record<string, unknown> = { startHour: r.startHour, endHour: r.endHour, value: parseSlotValue(r.value) }
+    if (param === "insulinToCarbRatio" && r.mealLabel) slot.mealLabel = r.mealLabel
+    return slot
+  })
+  return proposeEnvelope(param, slots, audience)
+}
+
+/**
+ * Corps de PROPOSITION groupée BASALE POMPE : créneaux `{ startTime, endTime, rate }` (forme
+ * `PumpBasalSlot`). Une baisse basale POMPE n'exige PAS d'accusé DKA (gate stylo uniquement).
+ * Suppose les lignes déjà validées (`canSubmitBasal`).
+ */
+export function buildProposeBasalRequest(
+  rows: BasalSlotRow[],
+  audience: ProposeAudience,
+): ProposeRequest {
+  const slots = rows.map((r) => ({ startTime: r.startTime, endTime: r.endTime, rate: parseSlotValue(r.value) }))
+  return proposeEnvelope("basalRate", slots, audience)
+}
+
+// ── Basale STYLO (MDI) : doses en U TOTALES, discriminées par `kind` (daily / morning / evening) ──
+
+/** Dose de basale stylo ciblée : `daily` (single) ou `morning`+`evening` (split). */
+export type StyloKind = "daily" | "morning" | "evening"
+
+/**
+ * Ligne d'édition d'une dose basale STYLO (état front). `key` = identité React stable (jamais envoyée) ;
+ * `initialValue` = dose ACTIVE (U totales) servant à détecter une BAISSE (déclencheur de l'accusé DKA).
+ */
+export type StyloDoseRow = {
+  key: string
+  kind: StyloKind
+  /** Dose brute saisie (texte) — parsée pour validation/envoi. */
+  value: string
+  /** Dose active (U) au chargement — base de comparaison de direction (baisse ⇒ accusé DKA). */
+  initialValue: number
+}
+
+export type StyloRowValidation = {
+  /** Clés des lignes dont la dose est hors bornes / non parseable. */
+  invalidValueKeys: Set<string>
+  isEmpty: boolean
+}
+
+/** Valide les doses stylo contre les bornes cliniques (`min`/`max`, U totales) + jeu vide. */
+export function validateStyloRows(rows: StyloDoseRow[], bounds: { min: number; max: number }): StyloRowValidation {
+  const invalidValueKeys = new Set<string>()
+  for (const r of rows) {
+    const v = parseSlotValue(r.value)
+    if (v === null || v < bounds.min || v > bounds.max) invalidValueKeys.add(r.key)
+  }
+  return { invalidValueKeys, isEmpty: rows.length === 0 }
+}
+
+/**
+ * Le jeu contient-il AU MOINS UNE baisse de dose stylo (valeur saisie < dose active) ? Miroir front du
+ * déclencheur serveur de l'accusé DKA (`evaluatePatientGroupedGate`) : en audience patient, une baisse
+ * stylo exige l'accusé jour-de-maladie/acidocétose (DKA). Les lignes non parseables ne comptent pas.
+ */
+export function hasStyloDecrease(rows: StyloDoseRow[]): boolean {
+  return rows.some((r) => {
+    const v = parseSlotValue(r.value)
+    return v !== null && v < r.initialValue
+  })
+}
+
+/**
+ * « Valider » actif (stylo) ? Exige : aucune dose invalide ET ≥ 1 dose ET au moins une modification.
+ * Le gating de l'accusé DKA (baisse stylo en audience patient) est appliqué EN PLUS par le composant.
+ */
+export function canSubmitStylo(rows: StyloDoseRow[], bounds: { min: number; max: number }, isDirty: boolean): boolean {
+  if (rows.length === 0 || !isDirty) return false
+  return validateStyloRows(rows, bounds).invalidValueKeys.size === 0
+}
+
+/**
+ * Corps de PROPOSITION groupée BASALE STYLO : créneaux `{ kind, value }` (forme `StyloBasalSlot`,
+ * U totales). `sickDayAcknowledged` transmis (audience patient) ssi le jeu porte ≥ 1 baisse.
+ * Suppose les lignes déjà validées (`canSubmitStylo`).
+ */
+export function buildProposeStyloRequest(
+  rows: StyloDoseRow[],
+  audience: ProposeAudience,
+  sickDayAcknowledged?: boolean,
+): ProposeRequest {
+  const slots = rows.map((r) => ({ kind: r.kind, value: parseSlotValue(r.value) }))
+  return proposeEnvelope("basalRate", slots, audience, sickDayAcknowledged)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
