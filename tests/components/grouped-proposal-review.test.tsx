@@ -214,4 +214,28 @@ describe("GroupedProposalReview", () => {
     render(<GroupedProposalReview items={[item({ coexistsWith: null })]} canDecide busyId={null} onDecide={vi.fn()} />)
     expect(screen.queryByRole("status")).toBeNull()
   })
+
+  // US-2663 (S3d) — rendu DOSE FIXE : libellé « usage · moment » traduit, badge highDoseWarning,
+  // rationale appariée par (usage, moment).
+  it("fixedDose : libellé « Bolus (rapide) · Matin », badge dose élevée, rationale appariée par (usage,moment)", () => {
+    const fixedItem = item({
+      id: "sf1",
+      parameterType: "fixedDose",
+      source: "algorithm",
+      rows: [
+        {
+          startHour: 0, endHour: 0,
+          usage: "bolus", moment: "morning",
+          proposedValue: 30, liveValue: 6,
+          changed: true, removed: false,
+          highDoseWarning: true, // 30 U bolus > 25 U
+        },
+      ],
+      rationale: [{ usage: "bolus", moment: "morning", reason: "fixedDoseTooLow", confidence: "medium", supportingEvents: 4 } as never],
+    })
+    render(<GroupedProposalReview items={[fixedItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect(screen.getByText("Bolus (rapide) · Matin")).toBeTruthy() // cellLabel traduit
+    expect(screen.getByText("Dose élevée")).toBeTruthy() // badge highDoseWarning
+    expect(screen.getByText("Dose fixe insuffisante (à renforcer)")).toBeTruthy() // rationale appariée (usage,moment)
+  })
 })

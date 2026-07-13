@@ -243,8 +243,11 @@ export default async function PatientReviewPage({
   const livePump: PumpBasalSlot[] =
     basalConfig?.configType === "pump" ? (basalConfig.pumpSlots ?? []).map(pumpRowToGroupedSlot) : []
   // US-2663 (S3d) — base LIVE DOSE FIXE (`{usage, moment, value}`, insuline ACTIVE uniquement) pour le diff
-  // de l'écran de revue. Vide si le patient n'est pas en mode « doses simples ».
-  const liveFixedDose = await insulinTherapyService.getFixedDoseSlots(patientId)
+  // de l'écran de revue. Lue UNIQUEMENT si une proposition `fixedDose` pending existe (revue code — évite un
+  // aller-retour DB sur chaque revue pour un patient sans dose fixe groupée à réviser). Vide sinon.
+  const liveFixedDose = groupedPendingRaw.some((p) => p.parameterType === "fixedDose")
+    ? await insulinTherapyService.getFixedDoseSlots(patientId)
+    : []
   const groupedProposals: ReviewGroupedItem[] = groupedPendingRaw.flatMap((p) => {
     const commonMeta = {
       id: p.id,
@@ -270,6 +273,9 @@ export default async function PatientReviewPage({
       }
       const rows = diffFixedDoseSlots(liveFixedDose, proposed).map((row) => ({
         ...row,
+        // Avertissement dose élevée NON bloquant, seuil par usage : bolus > 25 U, basal ET **both** (prémix) > 80 U.
+        // `both` (prémélangée = bolus + basale) est volontairement rattachée au seuil BASAL 80 U (une dose combinée
+        // dépasse le seuil prandial) — décision documentée §6 `regles-et-constantes-diabete.md`, à confirmer medical.
         highDoseWarning:
           row.proposedValue != null &&
           (row.usage === "bolus"

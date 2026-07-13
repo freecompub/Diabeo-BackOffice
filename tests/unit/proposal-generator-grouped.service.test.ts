@@ -538,16 +538,16 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
   afterEach(() => delete process.env.ENGINE_GROUPED_FIXED_DOSE)
 
   /** Config doses simples : selon `slots` (défaut = bolus/morning 6 U). Creux pré-dose HAUTS → fixedDoseTooLow (hausse). */
-  function setupFixedDose(slots: { usage: string; moment: string; valueU: number }[] = [{ usage: "bolus", moment: "morning", valueU: 6 }]) {
+  function setupFixedDose(slots: { usage: string; moment: string; valueU: number }[] = [{ usage: "bolus", moment: "morning", valueU: 6 }], troughGl = 1.6) {
     mode.mockResolvedValue({ mode: "fixedDose", coherent: true } as never)
     prismaMock.fixedDoseSlot.findMany.mockResolvedValue(
       slots.map((s) => ({ moment: s.moment, valueU: s.valueU, patientInsulin: { usage: s.usage } })) as never,
     )
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT2", pregnancyMode: false } as never)
     prismaMock.glucoseTarget.findFirst.mockResolvedValue({ targetGlucose: 100 } as never) // cible ~1,0 g/L
-    // Creux pré-dose HAUTS (1,6 g/L) sur 4 jours → dose trop basse → fixedDoseTooLow (hausse).
+    // Creux pré-dose : HAUTS (1,6 g/L) → dose trop basse → hausse (défaut) ; BAS (0,6) → dose trop haute → BAISSE.
     const troughs: Record<string, { gl: number; dayIso: string }[]> = {}
-    for (const s of slots) troughs[s.moment] = Array.from({ length: 4 }, (_, i) => ({ gl: 1.6, dayIso: isoDaysAgo(i) }))
+    for (const s of slots) troughs[s.moment] = Array.from({ length: 4 }, (_, i) => ({ gl: troughGl, dayIso: isoDaysAgo(i) }))
     fixedDoseTrend.mockResolvedValue(troughs as never)
     createSet.mockResolvedValue({ id: "sf" } as never)
     // Relecture live (emit) — même forme que la config active.
@@ -567,6 +567,8 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     expect(disp).toHaveLength(1)
     expect(disp[0]).toMatchObject({ usage: "bolus", moment: "morning" })
     expect(disp[0].value).toBeGreaterThan(6) // hausse
+    // Fenêtre TOCTOU fermée : baseline injecté = la MÊME lecture live (getFixedDoseSlots).
+    expect(call![0].baselineOverride).toEqual([{ usage: "bolus", moment: "morning", value: 6 }])
     expect(res.created).toBe(1)
   })
 
@@ -590,5 +592,18 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     expect(createSet).not.toHaveBeenCalled() // moment multi-doses jamais titré
     expect(createEngine).not.toHaveBeenCalled()
     expect(res.created).toBe(0)
+  })
+
+  it("D2 — moment multi-doses avec HYPO (candidat de BAISSE abandonné) → lève un ClinicalReviewFlag (jamais silencieux)", async () => {
+    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
+    // Creux BAS (0,6 g/L) → dose trop haute → candidat de BAISSE ; moment « evening » multi-doses → abandon.
+    // Garde-fou medical : l'abandon d'une baisse (signal hypo) DOIT alerter le médecin (flag), pas juste logger.
+    setupFixedDose([
+      { usage: "bolus", moment: "evening", valueU: 6 },
+      { usage: "basal", moment: "evening", valueU: 20 },
+    ], 0.6)
+    await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled() // toujours pas de titration groupée
+    expect(raiseFlag).toHaveBeenCalledWith(1, "highVariabilityFixedDose", 99, undefined) // hypo surfacée au médecin
   })
 })

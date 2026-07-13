@@ -682,6 +682,15 @@ async function emitGroupedFixedDose(
   if (candidates.length === 0) return { emitted: false }
   const liveSlots = await insulinTherapyService.getFixedDoseSlots(patientId) // insuline active, forme groupée
   if (liveSlots.length === 0) return { emitted: false }
+  // Garde fail-closed (revue code) : deux insulines ACTIVES partageant `(usage, moment)` rendent la disposition
+  // AMBIGUË (clé dupliquée → `assertValidFixedDoseSet` lèverait `slotOverlap`, rejetant TOUTE l'émission, y
+  // compris les changements légitimes d'autres moments). On skip explicitement (log info) plutôt que d'émettre
+  // une disposition invalide. Anomalie de config (l'apply résout par `(usage, moment)` et lève `fixedDoseSlotAmbiguous`).
+  const keys = liveSlots.map((s) => `${s.usage}:${s.moment}`)
+  if (new Set(keys).size !== keys.length) {
+    logger.info("proposal-generator", "grouped fixedDose skipped — ambiguous (usage,moment) in live config", { patientId, bucket: "fixedDose" })
+    return { emitted: false }
+  }
   const { disposition, rationale, directionMismatches } = assembleGroupedFixedDose(liveSlots, candidates, analysisPeriodDays)
   if (directionMismatches > 0) {
     logger.error("proposal-generator", "grouped fixedDose candidate direction mismatch",
@@ -1367,10 +1376,11 @@ export const proposalGeneratorService = {
     const groupedFixedDose = getEnvBoolean("ENGINE_GROUPED_FIXED_DOSE") === true
     const fixedCandidates: CollectedFixedDoseCandidate[] = []
     // D2 (reco medical) — un `moment` portant ≥ 2 doses (usages distincts) a un signal glycémique NON attribuable
-    // à un usage → on N'AUTO-TITRE PAS ce moment en groupé (abandon). Comptage par moment (sur l'insuline active).
+    // à un usage → on N'AUTO-TITRE PAS ce moment en groupé (abandon). Comptage par moment (sur l'insuline active),
+    // calculé UNIQUEMENT en mode groupé (aucun travail sur la voie par-valeur, flag OFF).
     const momentCount = new Map<DoseMoment, number>()
-    for (const s of fixedSlots) momentCount.set(s.moment, (momentCount.get(s.moment) ?? 0) + 1)
     const multiDoseAbandoned = new Set<DoseMoment>() // dé-doublonne le log d'abandon (2 slots/moment)
+    if (groupedFixedDose) for (const s of fixedSlots) momentCount.set(s.moment, (momentCount.get(s.moment) ?? 0) + 1)
 
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, deletedAt: null },
@@ -1414,9 +1424,16 @@ export const proposalGeneratorService = {
       const persistFixed = async (cand: ProposalCandidate) => {
         // Mode GROUPÉ (S3d PR2) : collecte (émission différée) ; sinon persistance par-valeur immédiate.
         if (groupedFixedDose) {
-          // D2 — moment multi-doses : signal non attribuable → NE PAS titrer (abandon, laissé au médecin qui
-          // voit les doses au dossier). Log info dé-doublonné, pas de proposition.
+          // D2 — moment multi-doses : signal glycémique (creux pré-dose) NON attribuable à un usage → NE PAS
+          // titrer à l'aveugle (abandon, laissé au médecin qui voit les doses au dossier).
           if ((momentCount.get(slot.moment) ?? 0) > 1) {
+            // ⚠️ Garde-fou « hypo jamais silencieuse » (revue medical) : un candidat de BAISSE
+            // (`reasonImpliesIncrease === false` — dé-escalade hypo / dose trop haute) porte un signal de
+            // SÉCURITÉ qui, en groupé, ne serait plus surfacé par une proposition → ALERTER le médecin via un
+            // `ClinicalReviewFlag` (dédoublonné en base par `raise`). Une HAUSSE (deadband) peut rester log-only.
+            if (reasonImpliesIncrease(cand.reason) === false) {
+              await raiseFixedFlag()
+            }
             if (!multiDoseAbandoned.has(slot.moment)) {
               multiDoseAbandoned.add(slot.moment)
               logger.info("proposal-generator", "grouped fixedDose multi-dose moment abandoned", { patientId, bucket })
