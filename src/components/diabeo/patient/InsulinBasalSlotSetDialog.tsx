@@ -129,8 +129,12 @@ export function InsulinBasalSlotSetDialog({
 
   const updateRow = (key: string, patch: Partial<BasalSlotRow>) =>
     setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)))
-  const addRow = () =>
-    setRows((rs) => [...rs, { key: nextKey(), startTime: "00:00", endTime: "00:00", value: "" }])
+  const addRow = () => {
+    const key = nextKey()
+    setRows((rs) => [...rs, { key, startTime: "00:00", endTime: "00:00", value: "" }])
+    // Symétrie avec la suppression (WCAG 2.4.3) : focus sur le champ valeur du nouveau créneau.
+    requestAnimationFrame(() => document.getElementById(`basal-value-${key}`)?.focus())
+  }
   const deleteRow = (key: string) => {
     setRows((rs) => rs.filter((r) => r.key !== key))
     // Après suppression, ramener le focus sur « Ajouter » (élément stable) — évite de perdre le
@@ -286,13 +290,16 @@ export function InsulinBasalSlotSetDialog({
                         </td>
                         <td className="p-2">
                           <input
+                            id={`basal-value-${r.key}`}
                             inputMode="decimal"
                             step={CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT}
                             value={r.value}
                             onChange={(e) => updateRow(r.key, { value: e.target.value })}
                             aria-label={`${t("slotSetColValue", { unit })} — ${rowN}`}
                             aria-invalid={badValue}
-                            aria-describedby={describedBy}
+                            // WCAG 3.3.1 : une valeur invalide renvoie à la bannière de cohérence (bornes/débit
+                            // non délivrable), sinon au conflit horaire éventuel. Jamais `aria-invalid` muet.
+                            aria-describedby={badValue ? "basal-slot-set-coherence" : describedBy}
                             className={
                               "w-24 rounded-md border bg-background px-2 py-1 text-foreground " +
                               (badValue ? "border-destructive" : "border-input")
@@ -352,6 +359,8 @@ export function InsulinBasalSlotSetDialog({
             {feedback ? (
               <p
                 role={feedback.kind === "error" ? "alert" : "status"}
+                aria-live={feedback.kind === "error" ? "assertive" : "polite"}
+                aria-atomic="true"
                 className={
                   "rounded-md px-3 py-2 text-sm " +
                   (feedback.kind === "error"

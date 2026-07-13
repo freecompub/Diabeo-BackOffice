@@ -208,7 +208,7 @@ export function InsulinStyloBasalDialog({
             </div>
 
             {invalidMessage ? (
-              <p role="status" aria-live="polite" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p id="stylo-invalid" role="status" aria-live="polite" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {invalidMessage}
               </p>
             ) : null}
@@ -225,6 +225,8 @@ export function InsulinStyloBasalDialog({
                     checked={dkaAck}
                     onChange={(e) => setDkaAck(e.target.checked)}
                     aria-describedby="stylo-dka-hint"
+                    aria-required={true}
+                    aria-invalid={!dkaAck}
                     className="mt-0.5 size-4 shrink-0 rounded-sm border-input accent-primary"
                   />
                   <span>
@@ -237,9 +239,19 @@ export function InsulinStyloBasalDialog({
               </div>
             ) : null}
 
+            {/* Motif de blocage annoncé aux lecteurs d'écran (WCAG 3.3.1/4.1.3) : le submit `aria-disabled`
+                pointe dessus via `aria-describedby`, pour ne pas rester muet sur la RAISON (accusé DKA non coché). */}
+            {dkaRequired && !dkaAck ? (
+              <p id="stylo-dka-block" role="alert" className="text-sm text-destructive">
+                {t("slotSetDkaRequiredBlocker")}
+              </p>
+            ) : null}
+
             {feedback ? (
               <p
                 role={feedback.kind === "error" ? "alert" : "status"}
+                aria-live={feedback.kind === "error" ? "assertive" : "polite"}
+                aria-atomic="true"
                 className={
                   "rounded-md px-3 py-2 text-sm " +
                   (feedback.kind === "error"
@@ -256,11 +268,14 @@ export function InsulinStyloBasalDialog({
                 {t("slotSetCancel")}
               </Button>
               {/* `aria-disabled` (pas `disabled`) : le bouton reste focusable → le lecteur d'écran peut
-                  annoncer la raison du blocage (dose invalide ou accusé DKA manquant). Le handler `submit`
-                  no-op si `!submittable` (garde). */}
+                  annoncer la raison du blocage. `aria-describedby` pointe sur le motif ACTIF (accusé DKA
+                  manquant en priorité, sinon dose invalide). Le handler `submit` no-op si `!submittable`. */}
               <Button
                 type="submit"
                 aria-disabled={!submittable}
+                aria-describedby={
+                  submittable ? undefined : dkaRequired && !dkaAck ? "stylo-dka-block" : invalidMessage ? "stylo-invalid" : undefined
+                }
                 className={!submittable ? "cursor-not-allowed bg-muted text-muted-foreground hover:bg-muted" : undefined}
               >
                 {pending ? t("slotSetSaving") : t("slotSetProposeSubmit")}

@@ -77,6 +77,9 @@ export function PatientInsulinView({
 
   // Créneaux ADRESSABLES pour la proposition GROUPÉE (jeu ENTIER) — audience patient (own-id).
   const isfSet = data.isfSlots.map((s: Slot) => ({ startHour: s.startHour, endHour: s.endHour, value: s.value }))
+  // ⚠️ Limitation connue (miroir de la voie pro, cf. `PatientRecord`) : `mealLabel` ICR non porté ici (la vue
+  // patient ne l'expose pas) → une proposition patient ICR l'écrase à l'acceptation. Non clinique (le calcul de
+  // bolus ne l'utilise pas) et sans impact sur la clé structurelle serveur (`isf:${startHour}`). Follow-up.
   const icrSet = data.icrSlots.map((s: Slot) => ({ startHour: s.startHour, endHour: s.endHour, value: s.value }))
   const basalSet = data.basalSlots.map((s: BasalSlot) => ({ startTime: s.startTime, endTime: s.endTime, value: s.rate }))
 
