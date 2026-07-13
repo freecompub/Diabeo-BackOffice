@@ -1,12 +1,13 @@
 /**
- * PATCH /api/slot-set-proposals/:id/accept — **ACCEPTE** une proposition d'ENSEMBLE de créneaux ISF/ICR
- * (`SlotSetProposal`). Acte MÉDECIN (US-2657 slice C3d) : DOCTOR only (hiérarchique → ADMIN inclus) +
- * contrôle d'accès patient (`canAccessPatient`, anti-IDOR).
+ * PATCH /api/slot-set-proposals/:id/accept — **ACCEPTE** une proposition d'ENSEMBLE de créneaux
+ * (`SlotSetProposal`) : ISF/ICR OU — US-2663 (S3c) — basale POMPE (`basalRate`). Acte MÉDECIN (US-2657 slice
+ * C3d) : DOCTOR only (hiérarchique → ADMIN inclus) + contrôle d'accès patient (`canAccessPatient`, anti-IDOR).
  *
  * Flux : rate-limit (anti-abus) → lookup de la proposition (→ `patientId` + statut) → garde d'accès →
  * `acceptSetProposal` qui, dans UNE transaction, fait le compare-and-swap `pending → accepted` + applique le
- * jeu en bloc (`replaceSlotSet`, verrou de créneaux non bloquant, re-validation des bornes cliniques +
- * frontière MDR) + audite `PROPOSAL_ACCEPTED` → **notification du patient soumissionnaire**.
+ * jeu en bloc — routé par levier : `replaceSlotSet` (ISF/ICR) ou `replacePumpSlotSet` (POMPE) — avec verrou de
+ * créneaux non bloquant, CAS d'ensemble, re-validation des bornes cliniques + frontière MDR + audite
+ * `PROPOSAL_ACCEPTED` → **notification du patient soumissionnaire**.
  * Fail-closed : un échec clinique (bornes/couverture/non-insuliné) ou une course (rejet/supersede concurrent)
  * rollback tout → la proposition reste `pending`, aucune config appliquée sans acceptation valide.
  *

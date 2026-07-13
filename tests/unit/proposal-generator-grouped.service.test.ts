@@ -50,7 +50,7 @@ vi.mock("@/lib/services/slot-set-proposal.service", () => ({
   slotSetProposalService: { createSetProposal: vi.fn() },
 }))
 
-import { proposalGeneratorService, assembleGroupedDisposition } from "@/lib/services/proposal-generator.service"
+import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPumpDisposition } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
@@ -62,6 +62,7 @@ const mode = vi.mocked(treatmentModeService.resolveTreatmentMode)
 const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
 const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
+const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
 const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const createSet = vi.mocked(slotSetProposalService.createSetProposal)
@@ -113,11 +114,12 @@ function setup(opts: {
   prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue((opts.liveIsf ?? []) as never)
 }
 
-/** Extrait le dernier appel `createSetProposal` pour un levier donné (incl. le baseline injecté, 7ᵉ arg). */
+/** Extrait le dernier appel `createSetProposal` pour un levier donné (signature objet d'options S3c). */
 function setCallFor(param: "insulinToCarbRatio" | "insulinSensitivityFactor") {
-  const call = createSet.mock.calls.find((c) => c[1] === param)
-  return call
-    ? { patientId: call[0], parameterType: call[1], disposition: call[2], proposer: call[3], rationale: call[5], baseline: call[6] }
+  const call = createSet.mock.calls.find((c) => c[0]?.parameterType === param)
+  const inp = call?.[0]
+  return inp
+    ? { patientId: inp.patientId, parameterType: inp.parameterType, disposition: inp.proposedSlots, proposer: inp.proposer, rationale: inp.rationale, baseline: inp.baselineOverride }
     : undefined
 }
 
@@ -359,5 +361,115 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
     const res = assembleGroupedDisposition(live, [], 14)
     expect(res.disposition).toBeNull()
     expect(res.rationale).toEqual([])
+  })
+})
+
+describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => {
+  const livePump = [
+    { id: "noct", startTime: "00:00", endTime: "06:00", rate: 0.8 },
+    { id: "day", startTime: "06:00", endTime: "00:00", rate: 1.1 },
+  ]
+  const pumpCand = (over: Partial<{ slotId: string; startHour: number; currentValue: number; proposedValue: number; reason: string }> = {}) => ({
+    slotId: over.slotId ?? "noct",
+    startHour: over.startHour ?? 0,
+    cand: {
+      parameterType: "basalRate",
+      reason: over.reason ?? "basalTooLow", // hausse attendue
+      currentValue: over.currentValue ?? 0.8,
+      proposedValue: over.proposedValue ?? 0.85,
+      changePercent: 6,
+      confidence: "high",
+      supportingEvents: 5,
+      totalEventsConsidered: 5,
+    },
+  }) as never
+
+  it("créneau nocturne changé → superposé, autres inchangés, temps EXACTS préservés, rationale clé startHour", () => {
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand()], 14)!
+    expect(res.disposition).toEqual([
+      { startTime: "00:00", endTime: "06:00", rate: 0.85 }, // hausse nocturne
+      { startTime: "06:00", endTime: "00:00", rate: 1.1 }, // inchangé
+    ])
+    expect(res.rationale).toHaveLength(1)
+    expect(res.rationale[0]).toMatchObject({ startHour: 0, reason: "basalTooLow", analysisPeriod: 14 })
+    expect(res.directionMismatches).toBe(0)
+  })
+
+  it("garde direction : basalTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ reason: "basalTooLow", proposedValue: 0.75 })], 14)
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(1)
+  })
+
+  it("dérive de débit (currentValue ≠ live rate) → abandonné (R2)", () => {
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ currentValue: 0.9 })], 14) // live noct = 0.8
+    expect(res.disposition).toBeNull()
+  })
+
+  it("slotId absent du live → abandonné", () => {
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ slotId: "ghost" })], 14)
+    expect(res.disposition).toBeNull()
+  })
+})
+
+describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, flag ENGINE_GROUPED_PUMP)", () => {
+  beforeEach(() => vi.clearAllMocks())
+  afterEach(() => delete process.env.ENGINE_GROUPED_PUMP)
+
+  /** Config pompe : créneau nocturne [0,6) débit 0,8 + créneau jour [6,0) débit 1,1. */
+  function setupPump() {
+    mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
+    getSettings.mockResolvedValue({
+      // Un créneau ICR présent (sinon retour précoce `noCarbRatios`) mais AUCUN repas → pas de candidat ICR.
+      carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
+      basalConfiguration: {
+        configType: "pump",
+        pumpSlots: [
+          { id: "noct", rate: 0.8, startTime: new Date(Date.UTC(1970, 0, 1, 0)), endTime: new Date(Date.UTC(1970, 0, 1, 6)) },
+          { id: "day", rate: 1.1, startTime: new Date(Date.UTC(1970, 0, 1, 6)), endTime: new Date(Date.UTC(1970, 0, 1, 0)) },
+        ],
+      },
+      glucoseTargets: [{ targetGlucose: 110 }],
+      basalInsulin: undefined,
+    } as never)
+    prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
+    dailyJournal.mockResolvedValue([] as never)
+    // 4 nuits : à jeun HAUT (1,60 g/L > cible ~1,10) + nadir nocturne SÛR (1,20, non hypo) → basalTooLow (hausse),
+    // couverture Somogyi OK (≥ 3 nadirs). → candidat de HAUSSE du créneau nocturne.
+    fastingTrend.mockResolvedValue(
+      Array.from({ length: 4 }, (_, i) => ({ fastingMgdl: 160, nocturnalNadirMgdl: 120, dayIso: isoDaysAgo(i) })) as never,
+    )
+    createSet.mockResolvedValue({ id: "sp" } as never)
+    // Relecture LIVE des créneaux pompe (emitGroupedPumpBasal) — mêmes id/temps/débits que la config.
+    prismaMock.pumpBasalSlot.findMany.mockResolvedValue([
+      { id: "noct", startTime: new Date("1970-01-01T00:00:00Z"), endTime: new Date("1970-01-01T06:00:00Z"), rate: 0.8 },
+      { id: "day", startTime: new Date("1970-01-01T06:00:00Z"), endTime: new Date("1970-01-01T00:00:00Z"), rate: 1.1 },
+    ] as never)
+  }
+
+  it("flag ON — émet UNE SlotSetProposal basalRate (disposition pompe entière, hausse nocturne)", async () => {
+    process.env.ENGINE_GROUPED_PUMP = "true"
+    setupPump()
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+
+    expect(createEngine).not.toHaveBeenCalled() // plus de par-valeur en mode groupé pompe
+    const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
+    expect(call).toBeDefined()
+    expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
+    const disp = call![0].proposedSlots as { startTime: string; rate: number }[]
+    expect(disp).toHaveLength(2)
+    expect(disp.find((s) => s.startTime === "00:00")!.rate).toBeGreaterThan(0.8) // hausse nocturne
+    expect(disp.find((s) => s.startTime === "06:00")!.rate).toBe(1.1) // créneau jour inchangé
+    expect(call![0].baselineOverride).toHaveLength(2) // baseline injecté = lecture live (TOCTOU fermée)
+    expect(res.created).toBe(1)
+  })
+
+  it("flag OFF (défaut) — voie par-valeur POMPE inchangée (createEngineProposal, aucune groupée)", async () => {
+    setupPump()
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled()
+    expect(createEngine).toHaveBeenCalledTimes(1)
+    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", pumpBasalSlotId: "noct" })
+    expect(res.created).toBe(1)
   })
 })

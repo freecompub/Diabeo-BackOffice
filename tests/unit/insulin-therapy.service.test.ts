@@ -440,11 +440,16 @@ describe("insulinTherapyService", () => {
       $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
       insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ id: 3, basalConfiguration: { id: 9, configType: "pump" } }) },
       pumpBasalSlot: {
-        findMany: vi.fn().mockResolvedValue([{ startTime: new Date("1970-01-01T00:00:00Z"), endTime: new Date("1970-01-01T00:00:00Z") }]),
+        findMany: vi.fn().mockResolvedValue([{ startTime: new Date("1970-01-01T00:00:00Z"), endTime: new Date("1970-01-01T00:00:00Z"), rate: 0.9 }]),
         deleteMany: vi.fn().mockResolvedValue({ count: 1 }),
         createMany: vi.fn().mockResolvedValue({ count: 2 }),
       },
       adjustmentProposal: {
+        findMany: vi.fn().mockResolvedValue([]),
+        updateMany: vi.fn().mockResolvedValue({ count: 0 }),
+      },
+      // US-2663 (S3c) — supersession des `SlotSetProposal` basalRate pending ajoutée au replace pompe.
+      slotSetProposal: {
         findMany: vi.fn().mockResolvedValue([]),
         updateMany: vi.fn().mockResolvedValue({ count: 0 }),
       },
@@ -496,6 +501,49 @@ describe("insulinTherapyService", () => {
       expect(tx.adjustmentProposal.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { patientId: 7, parameterType: "basalRate", status: "pending" } }),
       )
+    })
+
+    it("US-2663 (S3c) : supersède AUSSI les SlotSetProposal basalRate pending (anti dérive de base)", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await insulinTherapyService.replacePumpSlotSet(7, validBasal, 42)
+      expect(tx.slotSetProposal.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { patientId: 7, parameterType: "basalRate", status: "pending" } }),
+      )
+    })
+
+    // ── CAS d'ensemble POMPE (US-2663 S3c) — fonction réelle assertBaselineUnchangedBy ──
+    // Jeu LIVE sous verrou : deux créneaux "06:00-22:00" 0,9 U/h et "22:00-06:00" 0,75 U/h.
+    const liveBefore = [
+      { startTime: new Date(Date.UTC(1970, 0, 1, 6)), endTime: new Date(Date.UTC(1970, 0, 1, 22)), rate: 0.9 },
+      { startTime: new Date(Date.UTC(1970, 0, 1, 22)), endTime: new Date(Date.UTC(1970, 0, 1, 6)), rate: 0.75 },
+    ]
+    const baselineLive = [
+      { startTime: "06:00", endTime: "22:00", rate: 0.9 },
+      { startTime: "22:00", endTime: "06:00", rate: 0.75 },
+    ]
+
+    it("CAS `{baseline}` identique au live → applique (replace)", async () => {
+      const tx = mkTx({ pumpBasalSlot: { findMany: vi.fn().mockResolvedValue(liveBefore), deleteMany: vi.fn().mockResolvedValue({ count: 2 }), createMany: vi.fn().mockResolvedValue({ count: 2 }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replacePumpSlotSet(7, validBasal, 42, undefined, undefined, { baseline: baselineLive })
+      expect(res).toMatchObject({ applied: true })
+      expect(tx.pumpBasalSlot.deleteMany).toHaveBeenCalled()
+    })
+
+    it("CAS : débit live dérivé depuis le snapshot → baselineMoved (rien écrit, rollback)", async () => {
+      const drifted = [{ ...liveBefore[0]!, rate: 0.85 }, liveBefore[1]!] // 0,9 → 0,85 (ajustement médecin concurrent)
+      const tx = mkTx({ pumpBasalSlot: { findMany: vi.fn().mockResolvedValue(drifted), deleteMany: vi.fn(), createMany: vi.fn() } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replacePumpSlotSet(7, validBasal, 42, undefined, undefined, { baseline: baselineLive })).rejects.toThrow("baselineMoved")
+      expect(tx.pumpBasalSlot.deleteMany).not.toHaveBeenCalled() // CAS AVANT tout delete/create
+    })
+
+    it("CAS `{baseline: null}` (proposition legacy) → baselineMissing (fail-closed, rien écrit)", async () => {
+      const tx = mkTx({ pumpBasalSlot: { findMany: vi.fn().mockResolvedValue(liveBefore), deleteMany: vi.fn(), createMany: vi.fn() } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replacePumpSlotSet(7, validBasal, 42, undefined, undefined, { baseline: null })).rejects.toThrow("baselineMissing")
+      expect(tx.pumpBasalSlot.deleteMany).not.toHaveBeenCalled()
     })
   })
 })

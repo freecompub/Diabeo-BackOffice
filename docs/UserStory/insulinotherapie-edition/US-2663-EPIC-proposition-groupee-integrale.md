@@ -164,6 +164,23 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
     R2 valeur/endHour/startHour-absent/config-vidée, garde direction, injection baseline, no-op, rationale,
     rejet ICR+ISF, ICR+ISF simultanés). Catalogue §6 mis à jour. **Pas de rupture de contrat** (flag OFF en
     prod ⇒ voie par-valeur inchangée ; coordination iOS concentrée en S5).
+- **S3c — Généralisation POMPE** ✅ **LIVRÉ (PR-A)** : le pipeline groupé couvre la **basale POMPE**
+  (`basalRate`, `PumpBasalSlot` `"HH:MM"` U/h). Socle mutualisé : CAS d'ensemble **générique par clé**
+  (`assertBaselineUnchangedBy` — pompe par `startTime`/`endTime`/`rate`) ; `createSetProposal` en **objet
+  d'options** (`SlotSetParam` élargi, `parseSlots`/`captureBaselineSlots`/validation polymorphes) ;
+  `replacePumpSlotSet` rétrofité (param `cas` sous verrou + supersession `SlotSetProposal` basalRate —
+  l'invariant « aucune SlotSetProposal basale » tombe) ; **discriminateur pompe⇄stylo par `configType` LIVE**
+  (fail-closed `basalConfigNotPump`). Moteur (`ENGINE_GROUPED_PUMP`, flag DISTINCT, OFF) : `assembleGroupedPumpDisposition`
+  (pur) + `emitGroupedPumpBasal` — disposition ENTIÈRE (titre le nocturne, porte tous les créneaux), temps
+  EXACTS préservés, baseline injecté (TOCTOU fermée). UI revue : `diffPumpSlots` (par `startTime`, `timeLabel`),
+  unité U/h. Migration CHECK `param_type` (basalRate+fixedDose). Tests : CAS générique (pompe/stylo/dose-fixe),
+  `diffPumpSlots`, assembleur pompe pur + intégration flag ON/OFF. Flag OFF ⇒ voie par-valeur pompe inchangée.
+- **S3c-stylo — Généralisation STYLO** (PR dédiée, la plus délicate) : basale stylo (`basalDoseKind`
+  daily/morning/evening, U totales), apply atomique US-2660, orchestration single/split, re-confirmation medical
+  sur le sick-day DKA.
+- **S3d — Généralisation DOSE FIXE** (PR dédiée) : dose fixe (`fixedDose`, mode « doses simples »),
+  identification **par usage** (bolus/basal/both, moment) — corrige l'aveuglement du générateur actuel
+  (lecture `moment`-seule) ; capture/CAS/apply par `(usage, moment)` fail-closed sur ambiguïté.
 - **S4 — Voie manuelle groupée** patient/infirmière/médecin (création pro + provenance) + retrait
   `InsulinProposalDialog`. Première rupture UI.
 - **S5 — Retrait voie d'écriture `AdjustmentProposal`** + **contrat iOS** (endpoints par-valeur supprimés/redirigés,

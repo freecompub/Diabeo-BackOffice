@@ -48,7 +48,8 @@ import type { AuditContext } from "@/lib/services/patient.service"
 // US-2663 (S3b-1) — émission GROUPÉE moteur (derrière flag `ENGINE_GROUPED_ISF_ICR`).
 import { getEnvBoolean } from "@/lib/env"
 import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
-import type { IsfIcrSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
+import type { IsfIcrSlot, PumpBasalSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 
 /** Fenêtre d'analyse (14 j — standard AGP, aligné `AGP_SUFFICIENCY.MIN_DAYS`). */
 const ANALYSIS_PERIOD = "14d"
@@ -127,9 +128,12 @@ async function lastAcceptedChangeAt(
     // US-2663 (S3a, garde-fou #4 — re-source anti-cliquet) : une acceptation GROUPÉE (`SlotSetProposal`,
     // ISF/ICR) remplace TOUT le jeu de créneaux du paramètre (`replaceSlotSet`) → elle constitue un
     // « dernier changement accepté » pour CHAQUE créneau, au même titre qu'une acceptation par-valeur. Sans
-    // ce terme, le cooldown du moteur ne verrait pas une édition groupée acceptée (patient ISF/ICR aujourd'hui,
-    // moteur groupé en S3+) et pourrait empiler une baisse juste après. Pas de `slotWhere` : le modèle groupé
-    // n'a pas de granularité créneau (une acceptation couvre tous les créneaux). Hors ISF/ICR → aucune ligne.
+    // ce terme, le cooldown du moteur ne verrait pas une édition groupée acceptée et pourrait empiler une baisse
+    // juste après. Pas de `slotWhere` : le modèle groupé n'a pas de granularité créneau (une acceptation couvre
+    // tous les créneaux). ⚠️ US-2663 (S3c) — la requête est GÉNÉRIQUE sur `parameterType` : depuis que le moteur
+    // émet du groupé `basalRate` (POMPE, flag), une acceptation groupée basale est aussi captée comme « dernier
+    // changement accepté » — l'anti-cliquet ne régresse pas au flip du flag (l'ancien « hors ISF/ICR → aucune
+    // ligne » n'est plus vrai).
     prisma.slotSetProposal.findFirst({
       where: { patientId, parameterType, status: "accepted", reviewedAt: { not: null } },
       orderBy: { reviewedAt: "desc" },
@@ -331,6 +335,9 @@ const EXPECTED_SKIP = new Set([
 const EXPECTED_SKIP_GROUPED = new Set([
   "duplicatePendingProposal", "valueOutOfBounds", "nonInsulinNoDose", "invalidSlotSet",
   "emptySlotSet", "zeroDurationSlot", "slotOverlap", "slotGap", "patientNotFound",
+  // US-2663 (S3c, revue) — la validation POMPE (`assertValidPumpSlotSet`) peut lever `rateNotDeliverable`
+  // (débit non multiple de l'incrément 0,05 U/h) : rejet clinique légitime d'un run, pas un défaut.
+  "rateNotDeliverable",
 ])
 
 /** US-2663 (S3b-1) — un candidat moteur ISF/ICR apparié à son créneau (base T0 de l'analyse). */
@@ -416,15 +423,15 @@ async function emitGroupedIsfIcr(
   // 3. Émission GROUPÉE unique (source moteur + rationale par créneau changé + baseline injecté = `liveSlots`,
   //    la MÊME lecture que la base d'overlay → fenêtre TOCTOU fermée). Rejets fail-closed non fatals.
   try {
-    await slotSetProposalService.createSetProposal(
+    await slotSetProposalService.createSetProposal({
       patientId,
       parameterType,
-      disposition,
-      { userId: null, source: "algorithm" },
+      proposedSlots: disposition,
+      proposer: { userId: null, source: "algorithm" },
       ctx,
       rationale,
-      liveSlots,
-    )
+      baselineOverride: liveSlots,
+    })
     return { emitted: true }
   } catch (err) {
     const msg = (err as Error).message
@@ -489,6 +496,118 @@ export function assembleGroupedDisposition(
   // Disposition ENTIÈRE = base live, valeurs changées superposées (mealLabel déjà porté par `liveSlots`, R5).
   const disposition: IsfIcrSlot[] = liveSlots.map((s) => ({ ...s, value: overlay.get(s.startHour) ?? s.value }))
   return { disposition, rationale, directionMismatches }
+}
+
+/** US-2663 (S3c) — créneau pompe live (identité `id` pour l'appariement candidat, temps `"HH:MM"` exacts). */
+type LivePumpSlot = { id: string; startTime: string; endTime: string; rate: number }
+/** Candidat moteur pompe collecté : identité du créneau (`id`) + heure-de-début (rationale, entier) + candidat. */
+type CollectedPumpCandidate = { slotId: string; startHour: number; cand: ProposalCandidate }
+
+/**
+ * US-2663 (S3c) — Cœur PUR de l'assemblage de la disposition groupée BASALE POMPE (aucune IO → unit-testable).
+ * Pendant de `assembleGroupedDisposition` (ISF/ICR) pour le modèle `PumpBasalSlot` : appariement candidat ⇄ live
+ * par `id` de créneau (le moteur ne titre que le créneau NOCTURNE, mais la disposition porte TOUS les créneaux).
+ *
+ * Gardes par créneau (parité voie par-valeur) : CAS (débit live == `cand.currentValue`, tolérance `1e-9`) ;
+ * garde direction (`basalTooLow`⇒hausse, `basalTooHigh`⇒baisse). Créneau dérivé/incohérent → abandonné.
+ *
+ * ⚠️ **Précision minute préservée** : la disposition/baseline recopient les `startTime`/`endTime` LIVE EXACTS
+ * (`"HH:MM"`), jamais l'heure entière `startHour` (dérivée par `getUTCHours()` pour l'analyse) — ne pas réécrire
+ * un créneau `"05:30"` en `"05:00"`. `startHour` ne sert QUE de clé de rationale (entier, appariement UI).
+ *
+ * @returns `disposition: null` = no-op (R4). Sinon disposition ENTIÈRE (débits changés superposés) + rationale
+ *   (1 entrée/créneau changé, clé `startHour`) + `directionMismatches` (observabilité).
+ */
+export function assembleGroupedPumpDisposition(
+  liveSlots: LivePumpSlot[],
+  candidates: CollectedPumpCandidate[],
+  analysisPeriodDays: number,
+): { disposition: PumpBasalSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
+  const liveById = new Map(liveSlots.map((s) => [s.id, s]))
+  const overlay = new Map<string, number>() // slotId → proposedRate
+  const rationale: SlotRationale[] = []
+  let directionMismatches = 0
+  for (const { slotId, startHour, cand } of candidates) {
+    const live = liveById.get(slotId)
+    if (!live) continue // créneau supprimé depuis l'analyse → abandon
+    if (Math.abs(live.rate - cand.currentValue) > 1e-9) continue // dérive de débit → abandon (R2)
+    const delta = cand.proposedValue - live.rate
+    if (delta === 0) continue // no-op silencieux
+    const wantsIncrease = reasonImpliesIncrease(cand.reason)
+    if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
+    overlay.set(slotId, cand.proposedValue)
+    rationale.push({
+      startHour,
+      reason: cand.reason,
+      confidence: cand.confidence,
+      supportingEvents: cand.supportingEvents,
+      totalEventsConsidered: cand.totalEventsConsidered,
+      changePercent: cand.changePercent,
+      averageObservedValue: cand.averageObservedValue ?? null,
+      analysisPeriod: analysisPeriodDays,
+    })
+  }
+  if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
+  // Disposition ENTIÈRE = base live (temps EXACTS), débits changés superposés. Forme `PumpBasalSlot` groupé.
+  const disposition: PumpBasalSlot[] = liveSlots.map((s) => ({
+    startTime: s.startTime,
+    endTime: s.endTime,
+    rate: overlay.get(s.id) ?? s.rate,
+  }))
+  return { disposition, rationale, directionMismatches }
+}
+
+/**
+ * US-2663 (S3c) — Émission GROUPÉE moteur de la basale POMPE (derrière `ENGINE_GROUPED_PUMP`). Relit la config
+ * pompe LIVE une fois (temps EXACTS + `id` + débit), délègue l'assemblage à `assembleGroupedPumpDisposition`,
+ * puis émet **une** `SlotSetProposal` `basalRate` `source: "algorithm"` (disposition entière + baseline injecté
+ * = la même lecture → fenêtre TOCTOU fermée). Rejets `createSetProposal` fail-closed → non fatals.
+ * @returns `emitted` — l'appelant incrémente `created`.
+ */
+async function emitGroupedPumpBasal(
+  patientId: number,
+  candidates: CollectedPumpCandidate[],
+  analysisPeriodDays: number,
+  ctx: AuditContext | undefined,
+): Promise<{ emitted: boolean }> {
+  if (candidates.length === 0) return { emitted: false }
+  // Relecture LIVE (T1) — mêmes créneaux/temps EXACTS que `captureBaselineSlots("basalRate")` réécrirait.
+  const rows = await prisma.pumpBasalSlot.findMany({
+    where: { basalConfig: { settings: { patientId }, configType: "pump" } },
+    orderBy: { startTime: "asc" },
+    select: { id: true, startTime: true, endTime: true, rate: true },
+  })
+  if (rows.length === 0) return { emitted: false }
+  const liveSlots: LivePumpSlot[] = rows.map((s) => ({ id: s.id, ...pumpRowToGroupedSlot(s) }))
+  const { disposition, rationale, directionMismatches } = assembleGroupedPumpDisposition(liveSlots, candidates, analysisPeriodDays)
+  if (directionMismatches > 0) {
+    logger.error("proposal-generator", "grouped pump candidate direction mismatch",
+      { patientId, bucket: "basalRate", failMode: "reasonDirectionMismatch", count: directionMismatches })
+  }
+  if (disposition === null) return { emitted: false } // R4 — no-op
+  // Baseline injecté = `liveSlots` (débits NON overlayés) → base d'overlay et snapshot partagent une lecture.
+  const baseline: PumpBasalSlot[] = liveSlots.map((s) => ({ startTime: s.startTime, endTime: s.endTime, rate: s.rate }))
+  try {
+    await slotSetProposalService.createSetProposal({
+      patientId,
+      parameterType: "basalRate",
+      proposedSlots: disposition,
+      proposer: { userId: null, source: "algorithm" },
+      ctx,
+      rationale,
+      baselineOverride: baseline,
+    })
+    return { emitted: true }
+  } catch (err) {
+    const msg = (err as Error).message
+    if (EXPECTED_SKIP_GROUPED.has(msg)) {
+      logger.info("proposal-generator", "grouped pump proposal skipped", { patientId, bucket: "basalRate", failMode: msg })
+    } else {
+      logger.error("proposal-generator", "unexpected grouped pump proposal error",
+        { patientId, bucket: "basalRate", failMode: "unexpected" }, err as Error)
+    }
+    return { emitted: false }
+  }
 }
 
 export const proposalGeneratorService = {
@@ -566,7 +685,10 @@ export const proposalGeneratorService = {
     // persister par-valeur) puis on émet une `SlotSetProposal` par levier après chaque boucle. OFF par défaut
     // (prod inchangée). Lu une fois par run (parité `fhir.isEnabled`). ⚠️ ICR ET ISF basculent ensemble (R6).
     const groupedIsfIcr = getEnvBoolean("ENGINE_GROUPED_ISF_ICR") === true
+    // US-2663 (S3c/PR-A) — bascule RÉVERSIBLE de la basale POMPE en émission groupée (flag DISTINCT d'ISF/ICR).
+    const groupedPump = getEnvBoolean("ENGINE_GROUPED_PUMP") === true
     const icrCandidates: CollectedCandidate[] = []
+    const pumpCandidates: CollectedPumpCandidate[] = []
 
     // Persiste un candidat (deadband ou dé-escalade). Rejets fail-closed logués + non fatals.
     const persist = async (candidate: ProposalCandidate, slot: (typeof slots)[number]): Promise<boolean> => {
@@ -720,6 +842,11 @@ export const proposalGeneratorService = {
             .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: basalBucket }, err as Error))
 
         const persistBasal = async (cand: ProposalCandidate) => {
+          // Mode GROUPÉ (S3c) : collecte (émission différée après le bloc pompe) ; sinon par-valeur immédiat.
+          if (groupedPump) {
+            pumpCandidates.push({ slotId: nocturnalSlot.id, startHour: nocturnalSlot.startHour, cand })
+            return
+          }
           try {
             await adjustmentService.createEngineProposal({
               patientId,
@@ -774,6 +901,13 @@ export const proposalGeneratorService = {
           }
         }
       }
+    }
+
+    // US-2663 (S3c) — émission GROUPÉE POMPE (1 `SlotSetProposal` basalRate couvrant TOUS les créneaux pompe,
+    // débit nocturne changé superposé). Fenêtre = `windowDays ?? 14` (jours, cf. `analysisPeriod` pompe).
+    if (groupedPump) {
+      const res = await emitGroupedPumpBasal(patientId, pumpCandidates, windowDays ?? 14, ctx)
+      if (res.emitted) created++
     }
 
     // 6bis. Chemin BASAL STYLO — single_injection (US-2659 S1, validé medical). Titre la dose lente UNIQUE

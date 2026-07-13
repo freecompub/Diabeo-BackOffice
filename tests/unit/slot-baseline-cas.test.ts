@@ -7,7 +7,7 @@
  * (fail-closed). Un relibellé de créneau (`mealLabel`) N'EST PAS une dérive dosante → accepté.
  */
 import { describe, it, expect } from "vitest"
-import { assertBaselineUnchanged, isBaselineUnchanged, BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
+import { assertBaselineUnchanged, assertBaselineUnchangedBy, isBaselineUnchanged, BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 const BASE = [
   { startHour: 0, endHour: 8, value: 0.5 },
@@ -85,5 +85,39 @@ describe("isBaselineUnchanged — variante non-throwing (affichage, US-2663 S2)"
 
   it("snapshot ABSENT (`null`, legacy ou JSON non parsable) → false (non certifiable, jamais 'inchangé')", () => {
     expect(isBaselineUnchanged(null, BASE)).toBe(false)
+  })
+})
+
+// US-2663 (S3c/S3d) — CAS générique par clé pour les formes non-ISF/ICR (pompe/stylo/dose fixe).
+describe("assertBaselineUnchangedBy — CAS générique par clé", () => {
+  it("POMPE (clé startTime, borne endTime, valeur rate) : identique → OK, débit dérivé → baselineMoved", () => {
+    const opts = { keyOf: (s: { startTime: string }) => s.startTime, valueOf: (s: { rate: number }) => s.rate, boundEq: (l: { endTime: string }, b: { endTime: string }) => l.endTime === b.endTime }
+    const base = [{ startTime: "00:00", endTime: "06:00", rate: 0.8 }, { startTime: "06:00", endTime: "00:00", rate: 1.1 }]
+    expect(() => assertBaselineUnchangedBy(base, [...base], opts)).not.toThrow()
+    // débit du créneau nocturne dérivé (0,8 → 0,85)
+    expect(() => assertBaselineUnchangedBy(base, [{ ...base[0]!, rate: 0.85 }, base[1]!], opts)).toThrow("baselineMoved")
+    // borne endTime déplacée (restructuration horaire)
+    expect(() => assertBaselineUnchangedBy(base, [{ ...base[0]!, endTime: "05:30" }, base[1]!], opts)).toThrow("baselineMoved")
+  })
+
+  it("STYLO (clé kind, sans borne) : split identique → OK, cardinalité single↔split → baselineMoved", () => {
+    const opts = { keyOf: (s: { kind: string }) => s.kind, valueOf: (s: { value: number }) => s.value }
+    const split = [{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }]
+    expect(() => assertBaselineUnchangedBy(split, [split[1]!, split[0]!], opts)).not.toThrow() // ré-ordonné = OK
+    expect(() => assertBaselineUnchangedBy(split, [{ kind: "evening", value: 10 }], opts)).toThrow("baselineMoved") // cardinalité
+    expect(() => assertBaselineUnchangedBy(split, [{ kind: "morning", value: 13 }, split[1]!], opts)).toThrow("baselineMoved") // dose dérivée
+  })
+
+  it("DOSE FIXE (clé moment, sans borne) : identique → OK, moment disparu → baselineMoved", () => {
+    const opts = { keyOf: (s: { moment: string }) => s.moment, valueOf: (s: { value: number }) => s.value }
+    const base = [{ moment: "morning", value: 8 }, { moment: "evening", value: 6 }]
+    expect(() => assertBaselineUnchangedBy(base, [...base], opts)).not.toThrow()
+    expect(() => assertBaselineUnchangedBy(base, [{ moment: "morning", value: 8 }, { moment: "noon", value: 6 }], opts)).toThrow("baselineMoved")
+  })
+
+  it("fail-closed : snapshot null → baselineMissing ; valeur non finie → baselineMoved", () => {
+    const opts = { keyOf: (s: { kind: string }) => s.kind, valueOf: (s: { value: number }) => s.value }
+    expect(() => assertBaselineUnchangedBy(null, [{ kind: "daily", value: 20 }], opts)).toThrow("baselineMissing")
+    expect(() => assertBaselineUnchangedBy([{ kind: "daily", value: NaN }], [{ kind: "daily", value: 20 }], opts)).toThrow("baselineMoved")
   })
 })

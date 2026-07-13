@@ -104,7 +104,8 @@ const PARAM_LABEL_KEY: Record<AdjustableParameter, string> = {
   insulinToCarbRatio: "paramInsulinToCarbRatio",
   fixedDose: "paramFixedDose",
 }
-/** Unité par paramètre. En pratique seuls ISF/ICR sont émis en `SlotSetProposal` à ce jour (cf. grouped-proposal.ts). */
+/** Unité par paramètre. US-2663 (S3c) — ISF/ICR (g/L·U, g/U) + basale POMPE (`basalRate` → U/h) émis en
+ * `SlotSetProposal` ; la basale STYLO (U totales) et la dose fixe rejoignent l'affichage dans leurs PR dédiées. */
 const PARAM_UNIT_KEY: Record<AdjustableParameter, "isfGl" | "icr" | "basal" | "u"> = {
   insulinSensitivityFactor: "isfGl",
   insulinToCarbRatio: "icr",
@@ -223,7 +224,9 @@ export function GroupedProposalReview({
                       className={row.changed ? "bg-warning-bg" : undefined}
                       aria-label={rowAria}
                     >
-                      <TableCell className="tabular-nums">{hourRange(row.startHour, row.endHour)}</TableCell>
+                      {/* US-2663 (S3c) — `timeLabel` (bornes EXACTES "HH:MM") préféré pour la basale POMPE ;
+                          fallback `hourRange` (heures entières) pour ISF/ICR. */}
+                      <TableCell className="tabular-nums">{row.timeLabel ?? hourRange(row.startHour, row.endHour)}</TableCell>
                       <TableCell className="tabular-nums">{liveText}</TableCell>
                       <TableCell className="tabular-nums font-medium">
                         <span className="flex items-center gap-1">

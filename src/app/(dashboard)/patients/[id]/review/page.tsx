@@ -35,9 +35,10 @@ import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
 import { resolveTargetRangeMgdl } from "../overview-targets"
 import { buildGlycemiaView } from "../glycemia-view"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
-import { isfIcrSlotSchema, slotRationaleSchema, type IsfIcrSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
-import { isBaselineUnchanged } from "@/lib/insulin/slot-baseline-cas"
-import { diffSlots, hasStructuralChange } from "@/lib/insulin/slot-diff"
+import { isfIcrSlotSchema, pumpBasalSlotSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { isBaselineUnchanged, isBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
+import { diffSlots, diffPumpSlots, hasStructuralChange, hasStructuralChangePump } from "@/lib/insulin/slot-diff"
+import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { ReviewClient, type ReviewData, type ReviewProposalItem, type ReviewGroupedItem } from "./ReviewClient"
 
@@ -56,6 +57,15 @@ const slotRationaleListSchema = z.array(slotRationaleSchema)
  */
 function parseIsfIcrSlots(raw: unknown): IsfIcrSlot[] | null {
   const parsed = isfIcrSlotsSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+/** US-2663 (S3c) — Forme d'un jeu de créneaux POMPE (`PumpBasalSlot`, temps `"HH:MM"`) — parse défensive à la lecture. */
+const pumpSlotsSchema = z.array(pumpBasalSlotSchema)
+
+/** Parse défensive d'un JSON `proposedSlots`/`baselineSlots` POMPE en `PumpBasalSlot[]` (fail-closed → `null`). */
+function parsePumpSlots(raw: unknown): PumpBasalSlot[] | null {
+  const parsed = pumpSlotsSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
 
@@ -218,10 +228,41 @@ export default async function PatientReviewPage({
     value: Number(s.gramsPerUnit),
     ...(s.mealLabel != null ? { mealLabel: s.mealLabel } : {}),
   }))
+  // US-2663 (S3c) — base LIVE POMPE (temps EXACTS "HH:MM", débit U/h), UNIQUEMENT si le patient est en mode
+  // pompe (un patient stylo a aussi une `basalConfiguration` mais pas de créneaux pompe). Vide sinon.
+  const basalConfig = insulinSettings?.basalConfiguration
+  const livePump: PumpBasalSlot[] =
+    basalConfig?.configType === "pump" ? (basalConfig.pumpSlots ?? []).map(pumpRowToGroupedSlot) : []
   const groupedProposals: ReviewGroupedItem[] = groupedPendingRaw.flatMap((p) => {
-    // Seuls ISF/ICR sont émis en `SlotSetProposal` à ce jour (cf. grouped-proposal.ts, généralisation S3) —
-    // un autre `parameterType` n'a pas de base LIVE ISF/ICR comparable : ignoré défensivement (jamais atteint
-    // en usage normal, protège la revue d'un futur levier non encore géré ici plutôt que de planter).
+    const commonMeta = {
+      id: p.id,
+      parameterType: p.parameterType,
+      source: p.source,
+      // US-2663 (S3b-0b) — rationale MOTEUR par créneau changé (non-null uniquement si `source: "algorithm"`).
+      rationale: parseRationale(p.rationale),
+      coexistsWith: coexistsWithById.get(p.id) ?? null,
+      createdAt: p.createdAt.toISOString(),
+    }
+    // US-2663 (S3c) — basale POMPE : diff/CAS par `startTime` (temps EXACTS), unité U/h (PARAM_UNIT_KEY.basalRate).
+    if (p.parameterType === "basalRate") {
+      const proposed = parsePumpSlots(p.proposedSlots)
+      if (!proposed) {
+        console.warn(`[review] SlotSetProposal ${p.id} skipped — unparseable pump proposedSlots`)
+        return []
+      }
+      const baseline = p.baselineSlots == null ? null : parsePumpSlots(p.baselineSlots)
+      const pumpCasOpts = { keyOf: (s: PumpBasalSlot) => s.startTime, valueOf: (s: PumpBasalSlot) => s.rate, boundEq: (l: PumpBasalSlot, b: PumpBasalSlot) => l.endTime === b.endTime }
+      return [
+        {
+          ...commonMeta,
+          rows: diffPumpSlots(livePump, proposed),
+          baselineDrifted: !isBaselineUnchangedBy(baseline, livePump, pumpCasOpts),
+          structuralChange: hasStructuralChangePump(livePump, proposed),
+        },
+      ]
+    }
+    // ISF/ICR — diff/CAS par `startHour`. Un `parameterType` non géré (ex. fixedDose, PR dédiée) est ignoré
+    // défensivement (protège la revue d'un futur levier non encore rendu ici plutôt que de planter).
     const live = p.parameterType === "insulinSensitivityFactor" ? liveIsf : p.parameterType === "insulinToCarbRatio" ? liveIcr : null
     if (!live) return []
     const proposed = parseIsfIcrSlots(p.proposedSlots)
@@ -234,16 +275,10 @@ export default async function PatientReviewPage({
     const baseline = p.baselineSlots == null ? null : parseIsfIcrSlots(p.baselineSlots)
     return [
       {
-        id: p.id,
-        parameterType: p.parameterType,
-        source: p.source,
+        ...commonMeta,
         rows: diffSlots(live, proposed),
         baselineDrifted: !isBaselineUnchanged(baseline, live),
         structuralChange: hasStructuralChange(live, proposed),
-        // US-2663 (S3b-0b) — rationale MOTEUR par créneau changé (non-null uniquement si `source: "algorithm"`).
-        rationale: parseRationale(p.rationale),
-        coexistsWith: coexistsWithById.get(p.id) ?? null,
-        createdAt: p.createdAt.toISOString(),
       },
     ]
   })
