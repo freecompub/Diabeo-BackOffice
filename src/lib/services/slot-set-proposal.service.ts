@@ -11,7 +11,7 @@
  * `(patient × paramètre)` — d'ensemble ET par-valeur — sont supersédées (cohérent avec « plus de par-valeur »).
  *
  * Invariant : **une seule proposition d'ensemble PENDING par (patient × paramètre)** — garanti EN BASE par
- * l'index unique partiel `slot_set_proposals_one_pending_per_param` (WHERE status = 'pending') ; la course
+ * l'index unique partiel `slot_set_proposals_one_pending_per_param_origin` (WHERE status = 'pending') ; la course
  * TOCTOU de double-soumission remonte en `P2002` → `duplicatePendingProposal`.
  *
  * **Acceptation atomique** : lecture + flip `pending → accepted` (compare-and-swap) + `replaceSlotSet` +
@@ -26,7 +26,7 @@ import { z } from "zod"
 import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
-import { isfIcrSlotSchema, type IsfIcrSlot } from "@/lib/insulin/grouped-proposal"
+import { isfIcrSlotSchema, slotRationaleSchema, type IsfIcrSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { insulinTherapyService, assertValidSlotSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
@@ -122,18 +122,37 @@ export const slotSetProposalService = {
    * appelant est la voie patient → `{ userId, source: "patient" }` ; `nurse`/`doctor`/`algorithm` en S3/S4.
    * @throws invalidSlotSet | emptySlotSet | zeroDurationSlot | valueOutOfBounds | slotOverlap | slotGap
    * @throws patientNotFound | nonInsulinNoDose | duplicatePendingProposal
+   * @throws rationaleRequired (US-2663 S3b-0a — `source: "algorithm"` sans rationale par créneau ; contrat serveur)
    */
   async createSetProposal(
     patientId: number,
     parameterType: SlotSetParam,
     proposedSlots: ProposedSlot[],
-    proposer: { userId: number; source: ProposalSource },
+    // US-2663 (S3b-0a) — `userId` NULLABLE : la voie MOTEUR (`source: "algorithm"`) n'a pas d'utilisateur
+    // (parité `createEngineProposal`, `proposedByUserId: null`). `source` reste dérivé SERVEUR (ADR #27).
+    proposer: { userId: number | null; source: ProposalSource },
     ctx?: AuditContext,
+    // US-2663 (S3b-0a) — rationale PAR CRÉNEAU CHANGÉ, REQUISE si `source: "algorithm"` (decision-support +
+    // traçabilité HDS), ignorée sinon (propositions humaines). Appariée au créneau par `startHour`.
+    rationale?: SlotRationale[] | null,
   ) {
     // 1. Forme (Zod) puis validité clinique/couverture — fail-fast, AVANT tout accès DB (symétrie
     //    création ⇄ acceptation : une proposition inacceptable ne doit pas pouvoir être créée).
     const slots = parseSlots(proposedSlots)
     assertValidSlotSet(REPLACE_KEY[parameterType], slots)
+
+    // 1-bis. US-2663 (S3b-0a) — une proposition MOTEUR DOIT porter sa rationale (medical HIGH : le médecin ne
+    // décide pas sur un diff nu). Forme validée ; les entrées humaines ne persistent aucune rationale.
+    const isAlgorithm = proposer.source === "algorithm"
+    // Parité identité ⇄ provenance (revue S3b-0a) : l'ALGORITHME n'a pas d'utilisateur (`userId: null`),
+    // une proposition HUMAINE en a toujours un. Contrat serveur (jamais un input humain) — durcit l'anti-usurpation.
+    if (isAlgorithm !== (proposer.userId === null)) throw new Error("invalidProposerIdentity")
+    let rationaleToPersist: SlotRationale[] | null = null
+    if (isAlgorithm) {
+      const parsed = z.array(slotRationaleSchema).safeParse(rationale)
+      if (!parsed.success || parsed.data.length === 0) throw new Error("rationaleRequired")
+      rationaleToPersist = parsed.data
+    }
 
     // 2. Patient existant et NON soft-deleted (RGPD).
     const patient = await prisma.patient.findFirst({
@@ -153,21 +172,25 @@ export const slotSetProposalService = {
 
     try {
       return await prisma.$transaction(async (tx) => {
-        // Une seule PENDING par (patient × paramètre) : la précédente d'ENSEMBLE est superseded.
+        // US-2663 (S3b-0a / décision produit D2) — supersession PAR CLASSE D'ORIGINE : l'ALGORITHME ne
+        // supersède que l'algorithme, l'HUMAIN que l'humain → une proposition MOTEUR et une demande HUMAINE
+        // (patient/infirmier/médecin) COEXISTENT sur le même paramètre (le médecin voit les DEUX ; l'algo est
+        // la « 2e proposition »). Garanti EN BASE par l'index partiel discriminé `..._origin` (source='algorithm').
+        // Filtre d'origine appliqué AUX DEUX modèles (groupé `SlotSetProposal` + par-valeur `AdjustmentProposal`).
+        const originFilter = isAlgorithm
+          ? { source: "algorithm" as const }
+          : { source: { not: "algorithm" as const } }
         await tx.slotSetProposal.updateMany({
-          where: { patientId, parameterType, status: "pending" },
+          where: { patientId, parameterType, status: "pending", ...originFilter },
           data: { status: "superseded" },
         })
-        // « Plus de par-valeur » : une soumission groupée supersède aussi les AdjustmentProposal pending
-        // du même paramètre (évite des propositions concurrentes/contradictoires côté médecin).
-        // `reviewedBy: null` — la supersession est programmatique, PAS une revue médecin (le patient
-        // soumissionnaire n'est pas un reviewer ; éviter un `reviewedBy` trompeur en forensic).
+        // `reviewedBy: null` — supersession PROGRAMMATIQUE, pas une revue médecin (éviter un reviewer trompeur).
         await tx.adjustmentProposal.updateMany({
-          where: { patientId, parameterType, status: "pending" },
+          where: { patientId, parameterType, status: "pending", ...originFilter },
           data: { status: "superseded", reviewedAt: new Date(), reviewedBy: null },
         })
         const proposal = await tx.slotSetProposal.create({
-          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, source: proposer.source, proposedByUserId: proposer.userId, status: "pending" },
+          data: { patientId, parameterType, proposedSlots: slots, baselineSlots, rationale: rationaleToPersist ?? undefined, source: proposer.source, proposedByUserId: proposer.userId, status: "pending" },
           select: { id: true },
         })
         await auditService.logWithTx(tx, {
@@ -178,13 +201,14 @@ export const slotSetProposalService = {
           ipAddress: ctx?.ipAddress,
           userAgent: ctx?.userAgent,
           requestId: ctx?.requestId,
-          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source: proposer.source, slots: slots.length, baselineSlots: baselineSlots.length },
+          // Rationale tracée (nb de créneaux justifiés) pour l'audit HDS de la recommandation moteur.
+          metadata: { patientId, kind: "slotSetProposalCreated", parameterType, source: proposer.source, slots: slots.length, baselineSlots: baselineSlots.length, rationaleSlots: rationaleToPersist?.length ?? 0 },
         })
         return { id: proposal.id }
       })
     } catch (e) {
       // Course TOCTOU (deux soumissions simultanées) rattrapée par l'index partiel unique
-      // `slot_set_proposals_one_pending_per_param`. `isUniqueViolationOn` lit la forme d'erreur Prisma 7 +
+      // `slot_set_proposals_one_pending_per_param_origin`. `isUniqueViolationOn` lit la forme d'erreur Prisma 7 +
       // adapter-pg (`meta.driverAdapterError.cause`, `meta.target` étant `undefined`) — cf. prisma-errors.
       if (isUniqueViolationOn(e, "one_pending")) throw new Error("duplicatePendingProposal")
       throw e

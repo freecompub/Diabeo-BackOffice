@@ -133,7 +133,7 @@ const pumpTimeToHhmm = (t: Date): string => t.toISOString().slice(11, 16)
  *
  * ⚠️ Supersède les DEUX familles de propositions du même `(patient × parameterType)` :
  *  - `AdjustmentProposal` par-valeur (libère `adjustment_proposals_one_pending_per_slot`) ;
- *  - `SlotSetProposal` d'ENSEMBLE (US-2657 : libère `slot_set_proposals_one_pending_per_param` et empêche
+ *  - `SlotSetProposal` d'ENSEMBLE (US-2657 : libère `slot_set_proposals_one_pending_per_param_origin` et empêche
  *    qu'un jeu de créneaux PÉRIMÉ soit réappliqué plus tard — sinon l'accepter écraserait un ajustement
  *    médecin plus récent, ex. une baisse d'insuline post-hypo).
  */
@@ -359,7 +359,7 @@ export const insulinTherapyService = {
    * **Propositions** : les `pending` du même `parameterType` pour ce patient sont **supersédées** — le
    * baseline a changé. S'applique aux DEUX familles : `AdjustmentProposal` par-valeur (libère
    * `adjustment_proposals_one_pending_per_slot`) ET `SlotSetProposal` d'ensemble (US-2657, libère
-   * `slot_set_proposals_one_pending_per_param` et empêche la réapplication d'un jeu périmé).
+   * `slot_set_proposals_one_pending_per_param_origin` et empêche la réapplication d'un jeu périmé).
    *
    * Chemin **DOCTOR direct** (application immédiate, `externalTx` absent) OU sous-étape de
    * `acceptSetProposal` (US-2657, `externalTx` fourni → même transaction que le flip de proposition).

@@ -825,7 +825,7 @@ model Patient {
 /// `replaceSlotSet`, ou reject). ⚠️ US-2657 : **on ne propose plus par-valeur** — toute édition patient CONFIRME
 /// non auto-appliquée est proposée GROUPÉE (disposition entière), quel que soit le nombre de valeurs modifiées ;
 /// REMPLACE la voie par-valeur `AdjustmentProposal` pour ce cas. Une seule proposition d'ensemble PENDING par
-/// (patient × paramètre) — garanti en base par l'index unique PARTIEL `slot_set_proposals_one_pending_per_param`
+/// (patient × paramètre) — garanti en base par l'index unique PARTIEL `slot_set_proposals_one_pending_per_param_origin`
 /// (`WHERE status = 'pending'`), défini en SQL uniquement (Prisma ne modélise pas le WHERE côté `@@index`,
 /// cf. migration 20260714100000).
 model SlotSetProposal {
@@ -844,6 +844,11 @@ model SlotSetProposal {
   /// Pièce maîtresse du compare-and-swap par créneau à l'acceptation (S1, garde-fou MDR anti-dérive de base).
   /// Nullable : propositions legacy (pré-US-2663) sans snapshot → S1 les traite en full-replace fail-closed.
   baselineSlots    Json?               @map("baseline_slots")
+  /// US-2663 (S3b-0a) — rationale MOTEUR par créneau CHANGÉ (`[{ startHour, reason, confidence,
+  /// supportingEvents, changePercent?, averageObservedValue?, analysisPeriod? }]`). Requise applicativement
+  /// quand `source = algorithm` (decision-support médecin + traçabilité HDS de la recommandation de dose) ;
+  /// NULL pour les propositions humaines (pas de rationale algorithmique). Pas de PHI (config + métriques).
+  rationale        Json?               @map("rationale")
   status           ProposalStatus      @default(pending)
   proposedByUserId Int?                @map("proposed_by_user_id")
   proposer         User?               @relation("SlotSetProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)

@@ -86,12 +86,13 @@ describe("slotSetProposalService", () => {
 
     const res = await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" })
     expect(res).toEqual({ id: "set-1" })
+    // US-2663 (S3b-0a / D2) — source=patient (HUMAIN) → supersède les pending d'origine HUMAINE (`source != algorithm`),
+    // pas l'algorithme (coexistence). Filtre appliqué aux deux modèles.
     expect(tx.slotSetProposal.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending" }, data: { status: "superseded" } }),
+      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending", source: { not: "algorithm" } }, data: { status: "superseded" } }),
     )
-    // « Plus de par-valeur » : supersede aussi les AdjustmentProposal pending du même paramètre.
     expect(tx.adjustmentProposal.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending" } }),
+      expect.objectContaining({ where: { patientId: 7, parameterType: "insulinSensitivityFactor", status: "pending", source: { not: "algorithm" } } }),
     )
     expect(auditService.logWithTx).toHaveBeenCalledWith(
       tx,
@@ -131,17 +132,64 @@ describe("slotSetProposalService", () => {
     )
   })
 
-  it("createSetProposal (US-2663 S0) : `source` explicite (ex. algorithm) est persisté ; base vide → []", async () => {
+  it("createSetProposal (S3b-0a) : MOTEUR (source=algorithm, userId null) persiste source + rationale ; supersède l'ALGO seul", async () => {
     prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
     const tx = mockTx()
     tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
     tx.slotSetProposal.create.mockResolvedValue({ id: "set-2" })
+    const rationale = [{ startHour: 0, reason: "isfTooLow" as const, confidence: "high" as const, supportingEvents: 12 }]
 
-    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "algorithm" })
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, rationale)
 
     expect(tx.slotSetProposal.create).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", baselineSlots: [] }) }),
+      expect.objectContaining({ data: expect.objectContaining({ source: "algorithm", proposedByUserId: null, baselineSlots: [], rationale }) }),
     )
+    // D2 : l'algorithme supersède UNIQUEMENT l'algorithme (coexistence avec l'humain).
+    expect(tx.slotSetProposal.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ source: "algorithm" }) }),
+    )
+  })
+
+  it("createSetProposal (S3b-0a) : MOTEUR SANS rationale → rationaleRequired (contrat serveur)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }),
+    ).rejects.toThrow("rationaleRequired")
+  })
+
+  it("createSetProposal (S3b-0a) : MOTEUR rationale VIDE ou MALFORMÉE → rationaleRequired", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, []),
+    ).rejects.toThrow("rationaleRequired")
+    await expect(
+      // Malformée : `reason` hors enum `AdjustmentReason`.
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "algorithm" }, undefined, [{ startHour: 0, reason: "notAnEnum", confidence: null, supportingEvents: null }] as never),
+    ).rejects.toThrow("rationaleRequired")
+  })
+
+  it("createSetProposal (S3b-0a) : rationale passée par un HUMAIN est IGNORÉE (non persistée)", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    const tx = mockTx()
+    tx.slotSetProposal.updateMany.mockResolvedValue({ count: 0 })
+    tx.slotSetProposal.create.mockResolvedValue({ id: "set-h" })
+    const rationale = [{ startHour: 0, reason: "isfTooLow" as const, confidence: "high" as const, supportingEvents: 12 }]
+
+    await slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 7, source: "patient" }, undefined, rationale)
+
+    // La rationale d'un humain n'est jamais écrite (champ omis → NULL).
+    const data = tx.slotSetProposal.create.mock.calls[0]![0].data
+    expect(data.rationale).toBeUndefined()
+  })
+
+  it("createSetProposal (S3b-0a) : parité identité — algorithme AVEC userId, ou humain SANS userId → invalidProposerIdentity", async () => {
+    prismaMock.patient.findFirst.mockResolvedValue({ id: 7 } as never)
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: 5, source: "algorithm" }, undefined, [{ startHour: 0, reason: "isfTooLow" as const, confidence: null, supportingEvents: null }]),
+    ).rejects.toThrow("invalidProposerIdentity")
+    await expect(
+      slotSetProposalService.createSetProposal(7, "insulinSensitivityFactor", SLOTS, { userId: null, source: "patient" }),
+    ).rejects.toThrow("invalidProposerIdentity")
   })
 
   it("createSetProposal (US-2663 S0) : baseline ICR capture `gramsPerUnit` + `mealLabel` conditionnel", async () => {
@@ -207,7 +255,7 @@ describe("slotSetProposalService", () => {
         meta: {
           driverAdapterError: {
             cause: {
-              originalMessage: 'duplicate key value violates unique constraint "slot_set_proposals_one_pending_per_param"',
+              originalMessage: 'duplicate key value violates unique constraint "slot_set_proposals_one_pending_per_param_origin"',
               constraint: { fields: ["patient_id", "parameter_type"] },
             },
           },

@@ -349,6 +349,14 @@ describe("adjustmentService", () => {
       } as any, 2)
 
       expect(result.id).toBe("p1")
+      // US-2663 (S3b-0a) — primitive DOCTOR : provenance par défaut HUMAINE (`doctor`), jamais `algorithm`,
+      // à la fois PERSISTÉE et pour la CLASSIFICATION de supersession (D2). Ne supersède que l'humain.
+      expect(mockTx.adjustmentProposal.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ source: "doctor" }) }),
+      )
+      expect(mockTx.slotSetProposal.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ source: { not: "algorithm" } }) }),
+      )
     })
 
     // US-2651 — la frontière MDR s'applique AUSSI à cette 2ᵉ primitive de création.
@@ -760,10 +768,10 @@ describe("adjustmentService", () => {
       expect(Number(data.changePercent)).toBeCloseTo(10)
       // Audit moteur sans PHI (userId null, pas de dose).
       expect(mockTx.auditLog.create).toHaveBeenCalled()
-      // US-2663 (S2b) — le MOTEUR supersède aussi le groupé pending du paramètre (exclusion mutuelle, symétrie
-      // confirmée medical). Couvre le chemin `createEngineProposal` (finding revue : non testé auparavant).
+      // US-2663 (S3b-0a / D2) — le MOTEUR supersède UNIQUEMENT le groupé d'origine ALGORITHME (`source: algorithm`),
+      // jamais une demande HUMAINE (coexistence : le médecin voit les deux).
       expect(mockTx.slotSetProposal.updateMany).toHaveBeenCalledWith({
-        where: { patientId: 1, parameterType: "insulinSensitivityFactor", status: "pending" },
+        where: { patientId: 1, parameterType: "insulinSensitivityFactor", status: "pending", source: "algorithm" },
         data: expect.objectContaining({ status: "superseded", reviewedByUserId: null }),
       })
     })

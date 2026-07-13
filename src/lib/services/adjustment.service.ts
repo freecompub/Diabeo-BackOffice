@@ -303,9 +303,15 @@ async function supersedeGroupedPending(
   tx: Prisma.TransactionClient,
   patientId: number,
   parameterType: AdjustableParameter,
+  // US-2663 (S3b-0a / décision produit D2) — `source` de la proposition CRÉÉE : la supersession est PAR
+  // CLASSE D'ORIGINE (l'algorithme ne supersède que l'algorithme, l'humain que l'humain) → une proposition
+  // groupée MOTEUR et une demande HUMAINE coexistent (le médecin voit les deux). Sans ce filtre, une
+  // proposition MOTEUR par-valeur (basal/fixe, ou ISF/ICR flag OFF) effacerait une demande groupée patient.
+  source: ProposalSource,
 ): Promise<number> {
+  const originFilter = source === "algorithm" ? { source: "algorithm" as const } : { source: { not: "algorithm" as const } }
   const res = await tx.slotSetProposal.updateMany({
-    where: { patientId, parameterType, status: "pending" },
+    where: { patientId, parameterType, status: "pending", ...originFilter },
     data: { status: "superseded", reviewedAt: new Date(), reviewedByUserId: null },
   })
   return res.count
@@ -444,11 +450,16 @@ export const adjustmentService = {
     const { mode } = await treatmentModeService.resolveTreatmentMode(input.patientId)
     if (mode === "nonInsulin") throw new Error("nonInsulinNoDose")
 
+    // US-2663 (S3b-0a, revue prisma/medical HIGH) — cette primitive est DOCTOR-only : sa provenance par
+    // défaut est HUMAINE (`doctor`), JAMAIS `algorithm`. On fixe la source une seule fois et on l'utilise à la
+    // fois pour la PERSISTANCE et la CLASSIFICATION de supersession (cohérence D2) — sans quoi une proposition
+    // médecin sans `source` explicite serait étiquetée algo (défaut DB `@default(algorithm)`) et supersèderait
+    // la mauvaise classe. Un futur câblage route DOIT passer `source` dérivé de la session (ADR #27).
+    const source: ProposalSource = input.source ?? "doctor"
     return prisma.$transaction(async (tx) => {
-      const proposal = await tx.adjustmentProposal.create({ data: input })
-      // US-2663 (S2b) — exclusion mutuelle : cette primitive DOCTOR supersède aussi le groupé pending du
-      // paramètre (comble le trou relevé en revue : l'invariant « 1 file pending » vaut pour LES 3 primitives).
-      const supersededGroupedCount = await supersedeGroupedPending(tx, input.patientId, input.parameterType)
+      const proposal = await tx.adjustmentProposal.create({ data: { ...input, source } })
+      // Exclusion mutuelle PAR CLASSE (D2) : un acte médecin supersède les pending d'origine HUMAINE.
+      const supersededGroupedCount = await supersedeGroupedPending(tx, input.patientId, input.parameterType, source)
 
       await auditService.logWithTx(tx, {
         userId: auditUserId,
@@ -687,7 +698,7 @@ export const adjustmentService = {
         // Audit SANS PHI : provenance + pivot patient, jamais la valeur de dose. Pour une BAISSE basale patient
         // (acte à risque), enrichi (E3) : direction/mode/accusé DKA/maturité — catégories non-dose, forensic-ready.
         // US-2663 (S2b) — exclusion mutuelle : supersède le groupé pending du même paramètre (helper partagé).
-        const supersededGroupedCount = await supersedeGroupedPending(tx, patientId, parameterType)
+        const supersededGroupedCount = await supersedeGroupedPending(tx, patientId, parameterType, proposer.role)
 
         await auditService.logWithTx(tx, {
           userId: proposer.userId,
@@ -829,7 +840,7 @@ export const adjustmentService = {
           },
         })
         // US-2663 (S2b) — exclusion mutuelle (moteur, symétrie confirmée medical) : supersède le groupé pending.
-        const supersededGroupedCount = await supersedeGroupedPending(tx, patientId, parameterType)
+        const supersededGroupedCount = await supersedeGroupedPending(tx, patientId, parameterType, "algorithm")
 
         // Audit SANS PHI : provenance moteur + pivot patient, jamais la valeur de dose.
         await auditService.logWithTx(tx, {

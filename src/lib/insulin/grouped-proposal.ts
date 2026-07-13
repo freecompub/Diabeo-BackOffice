@@ -31,6 +31,7 @@
  * @see docs/clinical-logic/regles-et-constantes-diabete.md §6 (CAS par créneau = garde-fou de sûreté)
  */
 import { z } from "zod"
+import { $Enums } from "@prisma/client"
 
 /** Encodage horaire d'un créneau ISF/ICR : `endHour ∈ [0,23]`, passage minuit via `startHour > endHour`. */
 export const isfIcrSlotSchema = z.object({
@@ -62,6 +63,28 @@ export const fixedDoseSlotSchema = z.object({
   value: z.number().finite().nonnegative(),
 })
 export type FixedDoseSlot = z.infer<typeof fixedDoseSlotSchema>
+
+/**
+ * US-2663 (S3b-0a) — Rationale MOTEUR d'un créneau CHANGÉ, portée par `SlotSetProposal.rationale` (JSON) quand
+ * `source = algorithm`. Reprend les métadonnées de decision-support/traçabilité HDS que le modèle par-valeur
+ * (`AdjustmentProposal`) portait par créneau : le POURQUOI (`reason`), la CONFIANCE, le VOLUME d'observations.
+ * Appariée au créneau par `startHour` (comme le diff). Pas de PHI (valeurs de config + métriques d'analyse).
+ * Optionnelle par nature (propositions humaines sans rationale algorithmique) ; requise à la création si algorithme.
+ */
+export const slotRationaleSchema = z.object({
+  startHour: z.number().int().min(0).max(23),
+  // US-2663 (S3b-0a, revue medical) — `reason` = enum `AdjustmentReason` (pas une chaîne libre) : il encode la
+  // DIRECTION du jugement clinique (isf/icrTooLow=escalade vs TooHigh=dé-escalade), machine-vérifiable + i18n,
+  // au même titre que le modèle par-valeur `AdjustmentProposal.reason`.
+  reason: z.nativeEnum($Enums.AdjustmentReason),
+  confidence: z.enum(["low", "medium", "high"]).nullable(),
+  supportingEvents: z.number().int().nonnegative().nullable(),
+  totalEventsConsidered: z.number().int().nonnegative().nullable().optional(),
+  changePercent: z.number().finite().nullable().optional(),
+  averageObservedValue: z.number().finite().nullable().optional(),
+  analysisPeriod: z.number().int().positive().nullable().optional(),
+})
+export type SlotRationale = z.infer<typeof slotRationaleSchema>
 
 /** Leviers reconnus par la disposition groupée (= enum Prisma `AdjustableParameter`). */
 export type GroupedParameter =

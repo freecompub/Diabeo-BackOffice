@@ -112,8 +112,9 @@ describe("createProposal — provenance & currentValue serveur", () => {
 
   it("US-2663 (S2b) : supersède les SlotSetProposal pending du même paramètre (exclusion mutuelle grouped ⇄ par-valeur)", async () => {
     await adjustmentService.createProposal(isf(0.52), nurse)
+    // US-2663 (S3b-0a / D2) — nurse = HUMAIN → supersède le groupé d'origine HUMAINE (`source != algorithm`), pas l'algo.
     expect(mocks.slotSetUpdateMany).toHaveBeenCalledWith({
-      where: { patientId: 5, parameterType: "insulinSensitivityFactor", status: "pending" },
+      where: { patientId: 5, parameterType: "insulinSensitivityFactor", status: "pending", source: { not: "algorithm" } },
       data: expect.objectContaining({ status: "superseded", reviewedByUserId: null }),
     })
     // NIT revue — `reviewedAt` bien posé (Date) à la supersession programmatique.
