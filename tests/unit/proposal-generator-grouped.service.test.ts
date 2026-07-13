@@ -28,6 +28,10 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 }))
 vi.mock("@/lib/services/adjustment.service", () => ({
   adjustmentService: { createEngineProposal: vi.fn() },
+  // US-2663 (S3b-1) — le générateur importe cette garde pure (parité `reasonDirectionMismatch`). Réimplémentation
+  // fidèle (`*TooLow` ⇒ hausse, `*TooHigh` ⇒ baisse, sinon non directionnel) — verrouillée par la source réelle.
+  reasonImpliesIncrease: (reason: string) =>
+    reason.endsWith("TooLow") ? true : reason.endsWith("TooHigh") ? false : null,
 }))
 vi.mock("@/lib/services/analytics.service", () => ({
   analyticsService: { fixedDoseTrend: vi.fn() },
@@ -46,7 +50,7 @@ vi.mock("@/lib/services/slot-set-proposal.service", () => ({
   slotSetProposalService: { createSetProposal: vi.fn() },
 }))
 
-import { proposalGeneratorService } from "@/lib/services/proposal-generator.service"
+import { proposalGeneratorService, assembleGroupedDisposition } from "@/lib/services/proposal-generator.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
@@ -109,11 +113,11 @@ function setup(opts: {
   prismaMock.insulinSensitivityFactor.findMany.mockResolvedValue((opts.liveIsf ?? []) as never)
 }
 
-/** Extrait le dernier appel `createSetProposal` pour un levier donné. */
+/** Extrait le dernier appel `createSetProposal` pour un levier donné (incl. le baseline injecté, 7ᵉ arg). */
 function setCallFor(param: "insulinToCarbRatio" | "insulinSensitivityFactor") {
   const call = createSet.mock.calls.find((c) => c[1] === param)
   return call
-    ? { patientId: call[0], parameterType: call[1], disposition: call[2], proposer: call[3], rationale: call[5] }
+    ? { patientId: call[0], parameterType: call[1], disposition: call[2], proposer: call[3], rationale: call[5], baseline: call[6] }
     : undefined
 }
 
@@ -244,5 +248,109 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(createSet).toHaveBeenCalledTimes(2)
     expect(res.created).toBe(2)
     expect(raiseFlag).not.toHaveBeenCalled()
+  })
+
+  it("fenêtre TOCTOU fermée : le baseline injecté = la lecture LIVE (mêmes créneaux que la disposition)", async () => {
+    setup() // 1 créneau [12,14] gramsPerUnit 10, mealLabel "Déjeuner"
+    await proposalGeneratorService.generateForPatient(1, 99)
+    const call = setCallFor("insulinToCarbRatio")!
+    // 7ᵉ arg = baseline injecté : reflète la config LIVE (valeur NON overlayée, mealLabel préservé) — c'est la
+    // MÊME lecture que la base de la disposition (fenêtre TOCTOU fermée : le CAS d'acceptation couvre tous les créneaux).
+    expect(call.baseline).toEqual([{ startHour: 12, endHour: 14, value: 10, mealLabel: "Déjeuner" }])
+    // La disposition partage le même créneau, seule `value` diffère (baissée).
+    const disposition = call.disposition as { startHour: number; value: number }[]
+    expect(disposition[0].startHour).toBe(12)
+    expect(disposition[0].value).toBeLessThan(10)
+  })
+
+  it("R2 — dérive de endHour : même startHour mais fenêtre horaire déplacée → créneau abandonné (no-op)", async () => {
+    // Analyse sur [12,14] ; la config a été restructurée en [12,16] avant l'émission → fenêtre du signal périmée.
+    setup({ liveCarbRatios: [{ startHour: 12, endHour: 16, gramsPerUnit: 10, mealLabel: "Déjeuner" }] })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled()
+    expect(res.created).toBe(0)
+  })
+
+  it("créneau candidat absent de la config live (startHour disparu) → abandonné (no-op)", async () => {
+    // Candidat sur [12,14] ; la config live ne porte plus qu'un créneau [6,10] → aucun overlay applicable.
+    setup({ liveCarbRatios: [{ startHour: 6, endHour: 10, gramsPerUnit: 9, mealLabel: "Petit-déjeuner" }] })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled()
+    expect(res.created).toBe(0)
+  })
+
+  it("config live vidée entre analyse et émission → aucune SlotSetProposal", async () => {
+    setup({ liveCarbRatios: [] })
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(createSet).not.toHaveBeenCalled()
+    expect(res.created).toBe(0)
+  })
+
+  it("rejet fail-closed de createSetProposal sur la voie ISF reste NON FATAL", async () => {
+    const ISF_SLOT = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
+    setup({ meals: [], sensitivityFactors: [ISF_SLOT], corrections: corrections(1.8, 1.4), liveIsf: [ISF_SLOT] })
+    createSet.mockRejectedValue(new Error("valueOutOfBounds"))
+    const res = await proposalGeneratorService.generateForPatient(1, 99)
+    expect(res.created).toBe(0) // rejet ISF absorbé, pas de throw
+  })
+})
+
+describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
+  const live = [
+    { startHour: 6, endHour: 12, value: 10, mealLabel: "Petit-déjeuner" },
+    { startHour: 12, endHour: 18, value: 8 },
+  ]
+  const cand = (over: Partial<{ startHour: number; endHour: number; currentValue: number; proposedValue: number; reason: string }> = {}) => ({
+    startHour: over.startHour ?? 6,
+    endHour: over.endHour ?? 12,
+    cand: {
+      parameterType: "insulinToCarbRatio",
+      reason: over.reason ?? "icrTooHigh",
+      currentValue: over.currentValue ?? 10,
+      proposedValue: over.proposedValue ?? 9, // baisse cohérente avec icrTooHigh
+      changePercent: -10,
+      confidence: "high",
+      supportingEvents: 8,
+      totalEventsConsidered: 8,
+    },
+  }) as never
+
+  it("créneau changé cohérent → superposé, autres inchangés, rationale 1 entrée, mealLabel préservé (R5)", () => {
+    const res = assembleGroupedDisposition(live, [cand()], 14)!
+    expect(res.disposition).toEqual([
+      { startHour: 6, endHour: 12, value: 9, mealLabel: "Petit-déjeuner" }, // changé
+      { startHour: 12, endHour: 18, value: 8 }, // inchangé
+    ])
+    expect(res.rationale).toHaveLength(1)
+    expect(res.rationale[0]).toMatchObject({ startHour: 6, reason: "icrTooHigh", analysisPeriod: 14 })
+    expect(res.directionMismatches).toBe(0)
+  })
+
+  it("garde direction : reason icrTooLow (hausse attendue) mais BAISSE proposée → abandonné + comptabilisé", () => {
+    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooLow", proposedValue: 9 })], 14)
+    expect(res.disposition).toBeNull() // R4 : le seul candidat est abandonné
+    expect(res.directionMismatches).toBe(1)
+  })
+
+  it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
+    const res = assembleGroupedDisposition(live, [cand({ currentValue: 11 })], 14) // live[6].value = 10
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(0)
+  })
+
+  it("dérive de endHour → abandonné (R2)", () => {
+    const res = assembleGroupedDisposition(live, [cand({ endHour: 11 })], 14) // live[6].endHour = 12
+    expect(res.disposition).toBeNull()
+  })
+
+  it("startHour absent du live → abandonné", () => {
+    const res = assembleGroupedDisposition(live, [cand({ startHour: 20, endHour: 22 })], 14)
+    expect(res.disposition).toBeNull()
+  })
+
+  it("liste vide de candidats → no-op", () => {
+    const res = assembleGroupedDisposition(live, [], 14)
+    expect(res.disposition).toBeNull()
+    expect(res.rationale).toEqual([])
   })
 })

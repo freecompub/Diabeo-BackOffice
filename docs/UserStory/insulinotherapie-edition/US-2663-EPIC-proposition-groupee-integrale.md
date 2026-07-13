@@ -148,13 +148,22 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
     (`proposal-generator.service.ts`, `emitGroupedIsfIcr`) **collecte** les candidats ISF/ICR au lieu de les
     persister par-valeur, **assemble la disposition ENTIÈRE** depuis une relecture LIVE de la config (base de
     l'overlay), et émet **une** `SlotSetProposal` `source: "algorithm"` par levier. Garde-fous : **R2** CAS par
-    créneau changé (`|candidate.currentValue − live| ≤ 1e-9`, sinon créneau abandonné → jamais une magnitude
-    périmée ; réplique `baselineMovedAtPersist`, perdu au regroupement) ; **R4** no-op (aucune émission si 0
-    créneau ne change) ; **R5** `mealLabel` ICR préservé ; **R3** rationale MOTEUR par créneau changé (requise
-    par `createSetProposal`). Décisions cliniques **INCHANGÉES** (seule la voie d'écriture change). Rejets
-    `createSetProposal` fail-closed **non fatals**. Tests dédiés `tests/unit/proposal-generator-grouped.service.test.ts`
-    (flag ON/OFF, R2/R4/R5, rationale, ICR+ISF simultanés). Catalogue §6 mis à jour. **Pas de rupture de
-    contrat** (flag OFF en prod ⇒ voie par-valeur inchangée ; la coordination iOS reste concentrée en S5).
+    créneau changé (**endHour + valeur** live == base analysée à `1e-9`, sinon abandonné → jamais une
+    magnitude/fenêtre périmée ; réplique `baselineMovedAtPersist`, perdu au regroupement) ; **R4** no-op ;
+    **R5** `mealLabel` ICR préservé ; **R3** rationale MOTEUR par créneau changé (requise par
+    `createSetProposal`). **Corrections de revue (medical + architecture + code)** : (a) **garde direction**
+    réintroduite (`reasonImpliesIncrease`, parité `reasonDirectionMismatch`) — un candidat dont le sens
+    contredit son `reason` est abandonné + logué, jamais une rationale trompeuse ; (b) **fenêtre TOCTOU
+    fermée** — la lecture LIVE (T1) est **injectée** comme `baselineSlots` (`createSetProposal(baselineOverride)`),
+    supprimant la 2ᵉ lecture : disposition et base partagent un instant, le CAS d'acceptation couvre les
+    créneaux inchangés ; (c) **dérive `endHour`** gardée (restructuration horaire → abandon) ; (d) cœur d'assemblage
+    extrait en fonction **pure** `assembleGroupedDisposition` (unit-testable) ; (e) parité « 1 créneau hors-borne
+    rejette tout le levier » **documentée** (déférée produit) ; (f) sémantique de `created` sous flag documentée.
+    Décisions cliniques **INCHANGÉES** (seule la voie d'écriture change). Rejets `createSetProposal` fail-closed
+    **non fatals**. Tests `tests/unit/proposal-generator-grouped.service.test.ts` (19 cas : flag ON/OFF,
+    R2 valeur/endHour/startHour-absent/config-vidée, garde direction, injection baseline, no-op, rationale,
+    rejet ICR+ISF, ICR+ISF simultanés). Catalogue §6 mis à jour. **Pas de rupture de contrat** (flag OFF en
+    prod ⇒ voie par-valeur inchangée ; coordination iOS concentrée en S5).
 - **S4 — Voie manuelle groupée** patient/infirmière/médecin (création pro + provenance) + retrait
   `InsulinProposalDialog`. Première rupture UI.
 - **S5 — Retrait voie d'écriture `AdjustmentProposal`** + **contrat iOS** (endpoints par-valeur supprimés/redirigés,
