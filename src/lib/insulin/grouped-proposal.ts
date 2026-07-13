@@ -74,18 +74,20 @@ export type FixedDoseSlot = z.infer<typeof fixedDoseSlotSchema>
  * US-2663 (S3b-0a) — Rationale MOTEUR d'un créneau CHANGÉ, portée par `SlotSetProposal.rationale` (JSON) quand
  * `source = algorithm`. Reprend les métadonnées de decision-support/traçabilité HDS que le modèle par-valeur
  * (`AdjustmentProposal`) portait par créneau : le POURQUOI (`reason`), la CONFIANCE, le VOLUME d'observations.
- * **Clé d'appariement POLYMORPHE par levier** (US-2663 S3d) : `startHour` (ISF/ICR, et pompe = heure-de-début
- * dérivée) OU `(usage, moment)` (dose fixe — pas de `startHour`). Les trois champs de clé sont OPTIONNELS au
- * niveau de la FORME (le levier détermine lequel est peuplé) ; l'émetteur moteur peuple la clé pertinente et
- * l'UI de revue apparie par cette même clé. Pas de PHI (valeurs de config + métriques d'analyse). Optionnelle
- * par nature (propositions humaines sans rationale algorithmique) ; requise à la création si algorithme.
+ * **Clé d'appariement POLYMORPHE par levier** : `startHour` (ISF/ICR, et pompe = heure-de-début dérivée) OU
+ * `(usage, moment)` (dose fixe, S3d) OU `basalDoseKind` (basale STYLO daily/morning/evening, S3e). Les champs de
+ * clé sont OPTIONNELS au niveau de la FORME (le levier détermine lequel est peuplé) ; l'émetteur moteur peuple
+ * la clé pertinente et l'UI de revue apparie par cette même clé. Pas de PHI (valeurs de config + métriques
+ * d'analyse). Optionnelle par nature (propositions humaines sans rationale algorithmique) ; requise si algorithme.
  */
 export const slotRationaleSchema = z.object({
-  // Clé ISF/ICR/pompe (heure-de-début, entier). Optionnelle : absente pour la dose fixe (clé `(usage, moment)`).
+  // Clé ISF/ICR/pompe (heure-de-début, entier). Optionnelle : absente pour dose fixe / stylo.
   startHour: z.number().int().min(0).max(23).optional(),
-  // US-2663 (S3d) — clé dose fixe : usage de l'insuline porteuse + moment du jour. Absente pour ISF/ICR/pompe.
+  // US-2663 (S3d) — clé dose fixe : usage de l'insuline porteuse + moment du jour. Absente pour ISF/ICR/pompe/stylo.
   usage: z.nativeEnum($Enums.InsulinUsage).optional(),
   moment: z.enum(["morning", "noon", "evening", "night"]).optional(),
+  // US-2663 (S3e) — clé basale STYLO : dose ciblée (`daily` single / `morning`+`evening` split, U TOTALES).
+  basalDoseKind: z.enum(["daily", "morning", "evening"]).optional(),
   // US-2663 (S3b-0a, revue medical) — `reason` = enum `AdjustmentReason` (pas une chaîne libre) : il encode la
   // DIRECTION du jugement clinique (isf/icrTooLow=escalade vs TooHigh=dé-escalade), machine-vérifiable + i18n,
   // au même titre que le modèle par-valeur `AdjustmentProposal.reason`.
@@ -97,21 +99,20 @@ export const slotRationaleSchema = z.object({
   averageObservedValue: z.number().finite().nullable().optional(),
   analysisPeriod: z.number().int().positive().nullable().optional(),
 })
-  // US-2663 (S3d, revue architecture) — restaure le fail-closed de FORME affaibli par le passage à des clés
-  // optionnelles : une rationale porte EXACTEMENT une clé — `startHour` (ISF/ICR/pompe) **XOR** `(usage, moment)`
-  // (dose fixe). Rejette une rationale sans clé, mal-clée (`startHour` + `usage`/`moment`) ou à clé fixedDose
-  // incomplète (`moment` sans `usage`) — jamais une rationale silencieusement non appariable à la revue.
+  // US-2663 (S3d/S3e) — fail-closed de FORME : une rationale porte EXACTEMENT UNE clé COMPLÈTE parmi trois
+  // formes mutuellement exclusives — `startHour` seul (ISF/ICR/pompe) XOR `(usage, moment)` complet (dose fixe)
+  // XOR `basalDoseKind` seul (stylo). Rejette : aucune clé, clé fixedDose incomplète (`usage`/`moment` seul), ou
+  // tout champ parasite d'une autre forme — jamais une rationale silencieusement non appariable à la revue.
   .superRefine((r, ctx) => {
     const hasHourKey = r.startHour !== undefined
     const hasAnyFixedKey = r.usage !== undefined || r.moment !== undefined
     const hasFullFixedKey = r.usage !== undefined && r.moment !== undefined
-    // EXACTEMENT une forme de clé COMPLÈTE, sans champ parasite de l'autre : `startHour` seul (ISF/ICR/pompe)
-    // OU `(usage, moment)` complet (dose fixe). Rejette : aucune clé, `startHour` + tout champ fixedDose (même
-    // partiel), clé fixedDose incomplète (`usage` ou `moment` seul).
-    const validHourOnly = hasHourKey && !hasAnyFixedKey
-    const validFixedOnly = !hasHourKey && hasFullFixedKey
-    if (!validHourOnly && !validFixedOnly) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "rationale key must be startHour XOR (usage, moment) — complete, no stray field" })
+    const hasStyloKey = r.basalDoseKind !== undefined
+    const validHourOnly = hasHourKey && !hasAnyFixedKey && !hasStyloKey
+    const validFixedOnly = !hasHourKey && hasFullFixedKey && !hasStyloKey
+    const validStyloOnly = !hasHourKey && !hasAnyFixedKey && hasStyloKey
+    if (!validHourOnly && !validFixedOnly && !validStyloOnly) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "rationale key must be exactly one of: startHour | (usage,moment) | basalDoseKind — complete, no stray field" })
     }
   })
 export type SlotRationale = z.infer<typeof slotRationaleSchema>

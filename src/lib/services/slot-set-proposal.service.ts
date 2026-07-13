@@ -26,9 +26,9 @@ import { z } from "zod"
 import type { ProposalStatus, ProposalSource } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { isUniqueViolationOn } from "@/lib/db/prisma-errors"
-import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type FixedDoseSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { groupedSlotsSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type FixedDoseSlot, type StyloBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
-import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet, assertValidFixedDoseSet } from "@/lib/services/insulin-therapy.service"
+import { insulinTherapyService, assertValidSlotSet, assertValidPumpSlotSet, assertValidFixedDoseSet, assertValidStyloBasalSet } from "@/lib/services/insulin-therapy.service"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 
@@ -37,7 +37,7 @@ import { auditService, type AuditContext } from "@/lib/services/audit.service"
  * forme unique** vit dans `src/lib/insulin/grouped-proposal.ts`. À S3c (PR-A) : ISF/ICR (`IsfIcrSlot`) + basale
  * POMPE (`PumpBasalSlot`). La basale STYLO et la dose fixe rejoignent l'union dans leurs PR dédiées.
  */
-export type ProposedSlot = IsfIcrSlot | PumpBasalSlot | FixedDoseSlot
+export type ProposedSlot = IsfIcrSlot | PumpBasalSlot | FixedDoseSlot | StyloBasalSlot
 
 /**
  * Paramètres à jeu de créneaux gérés. US-2663 — ISF/ICR + `basalRate` (POMPE, S3c) + `fixedDose` (doses simples,
@@ -56,6 +56,10 @@ const isPumpSlot = (s: ProposedSlot): s is PumpBasalSlot => "startTime" in s
 
 /** Garde de type : un créneau groupé est-il de forme DOSE FIXE (`usage` + `moment`) ? US-2663 (S3d). */
 const isFixedDoseSlot = (s: ProposedSlot): s is FixedDoseSlot => "usage" in s && "moment" in s
+
+/** Garde de type : un créneau groupé est-il de forme BASALE STYLO (`kind`) ? US-2663 (S3e). Disjoint des autres
+ *  (ISF/ICR `startHour`, pompe `startTime`, dose fixe `usage`+`moment`). */
+const isStyloSlot = (s: ProposedSlot): s is StyloBasalSlot => "kind" in s
 
 /**
  * Parse + valide la FORME du jeu pour un levier donné (union discriminée `groupedSlotsSchema`). `invalidSlotSet`
@@ -82,9 +86,11 @@ function assertValidGroupedSet(param: SlotSetParam, slots: ProposedSlot[]): void
     if (!slots.every(isFixedDoseSlot)) throw new Error("unsupportedSlotSetParam")
     assertValidFixedDoseSet(slots as FixedDoseSlot[])
   } else {
-    // basalRate — ne gère que la POMPE. Un jeu non-pompe (stylo) est rejeté ici (fail-closed).
-    if (!slots.every(isPumpSlot)) throw new Error("unsupportedSlotSetParam")
-    assertValidPumpSlotSet(slots as PumpBasalSlot[])
+    // basalRate — POMPE (`startTime`) OU STYLO (`kind`), discriminé par la FORME du jeu (homogène requis ;
+    // le contrôle du `configType` LIVE est fait à l'APPLY, miroir `basalConfigNotPump`/`basalConfigNotStylo`).
+    if (slots.every(isPumpSlot)) assertValidPumpSlotSet(slots as PumpBasalSlot[])
+    else if (slots.every(isStyloSlot)) assertValidStyloBasalSet(slots as StyloBasalSlot[])
+    else throw new Error("unsupportedSlotSetParam") // jeu mixte pompe/stylo → fail-closed
   }
 }
 
@@ -129,10 +135,16 @@ async function captureBaselineSlots(patientId: number, parameterType: SlotSetPar
     // `getFixedDoseSlots` (partagé avec la page de revue → invariant de forme). Patient non doses-simples → `[]`.
     return insulinTherapyService.getFixedDoseSlots(patientId)
   }
-  // basalRate (POMPE, S3c/PR-A) — snapshot des `PumpBasalSlot` de l'UNIQUE `BasalConfiguration` du patient,
-  // même forme que `PumpBasalSlot` groupé (`startTime`/`endTime` en `"HH:MM"`, `rate` U/h). Un patient NON pompe
-  // (stylo, ou sans config basale) → `[]` : aucune base pompe (l'émetteur moteur ne crée pas de proposition
-  // pompe pour un tel patient ; défensif). Scope via `settings.patientId` (1 config/patient — symétrie apply).
+  // basalRate — snapshot routé par MODALITÉ (`configType` LIVE) : POMPE (S3c, `PumpBasalSlot` `startTime`/U/h)
+  // OU STYLO (S3e, doses `kind`/U totales). Symétrie base ⇄ apply (l'émetteur moteur injecte toujours son
+  // `baselineOverride` → ce chemin sert la robustesse/création directe). Scope `settings.patientId` (1 config/patient).
+  const bc = await prisma.basalConfiguration.findFirst({
+    where: { settings: { patientId } },
+    select: { configType: true },
+  })
+  if (bc?.configType === "single_injection" || bc?.configType === "split_injection") {
+    return insulinTherapyService.getStyloBasalSlots(patientId)
+  }
   const pumpRows = await prisma.pumpBasalSlot.findMany({
     where: { basalConfig: { settings: { patientId }, configType: "pump" } },
     orderBy: { startTime: "asc" },
@@ -283,6 +295,7 @@ export const slotSetProposalService = {
    * @throws unsupportedSlotSetParam | invalidSlotSet | settingsNotFound | valueOutOfBounds | slotOverlap | slotGap | zeroDurationSlot | emptySlotSet
    * @throws slotsBusy | basalConfigNotFound | basalConfigNotPump | rateNotDeliverable (US-2663 S3c — voie POMPE via `replacePumpSlotSet` : verrou occupé, config basale absente, patient devenu stylo, débit non délivrable)
    * @throws fixedDoseSlotNotFound | fixedDoseSlotAmbiguous (US-2663 S3d — voie DOSE FIXE via `replaceFixedDoseSet` : (usage,moment) introuvable ou ambigu)
+   * @throws basalConfigNotStylo | styloBasalConfigMismatch (US-2663 S3e — voie BASALE STYLO via `replaceStyloBasalSet` : patient pompe, ou cardinalité single↔split incohérente)
    */
   async acceptSetProposal(id: string, patientId: number, reviewerUserId: number, ctx?: AuditContext) {
     return prisma.$transaction(async (tx) => {
@@ -323,13 +336,24 @@ export const slotSetProposalService = {
       // proposition reste `pending` (fail-closed). Chaque `replace*` vérifie le CAS sous verrou (`expectedBaseline`)
       // puis supersède au passage les autres propositions pending du paramètre.
       if (param === "basalRate") {
-        // PR-A : POMPE uniquement. Un jeu de forme STYLO (pas de `startTime`) → `unsupportedSlotSetParam`
-        // (fail-closed ; la basale stylo groupée arrive dans sa PR dédiée). `replacePumpSlotSet` re-garde
-        // aussi le `configType` LIVE (`basalConfigNotPump`) → jamais un jeu pompe écrit sur un patient stylo.
-        if (!slots.every(isPumpSlot)) throw new Error("unsupportedSlotSetParam")
-        await insulinTherapyService.replacePumpSlotSet(patientId, slots as PumpBasalSlot[], reviewerUserId, ctx, tx, {
-          baseline: expectedBaseline as PumpBasalSlot[] | null,
-        })
+        // US-2663 (S3c/S3e) — `basalRate` porte DEUX formes discriminées par la STRUCTURE du jeu : POMPE
+        // (`startTime`) → `replacePumpSlotSet` ; STYLO (`kind`) → `replaceStyloBasalSet`. Chaque `replace*`
+        // re-garde le `configType` LIVE (`basalConfigNotPump` / `basalConfigNotStylo`) → jamais un jeu pompe
+        // écrit sur un patient stylo (ni l'inverse). Un jeu MIXTE échoue les deux `.every(...)` →
+        // `unsupportedSlotSetParam` (fail-closed). NB : seul `slots` est gardé runtime (`isPumpSlot`/`isStyloSlot`) ;
+        // `expectedBaseline` est casté par forme. Sûr fail-closed : un baseline de forme divergente donne des
+        // clés `keyOf` indéfinies côté CAS → `baselineMoved` (rollback), jamais d'écriture sur mauvaise base.
+        if (slots.every(isPumpSlot)) {
+          await insulinTherapyService.replacePumpSlotSet(patientId, slots as PumpBasalSlot[], reviewerUserId, ctx, tx, {
+            baseline: expectedBaseline as PumpBasalSlot[] | null,
+          })
+        } else if (slots.every(isStyloSlot)) {
+          await insulinTherapyService.replaceStyloBasalSet(patientId, slots as StyloBasalSlot[], reviewerUserId, ctx, tx, {
+            baseline: expectedBaseline as StyloBasalSlot[] | null,
+          })
+        } else {
+          throw new Error("unsupportedSlotSetParam") // jeu mixte pompe/stylo → fail-closed
+        }
       } else if (param === "fixedDose") {
         // Dose fixe (S3d) — résolution d'apply par `(usage, moment)`, fail-closed 0/1/>1 (`fixedDoseSlotNotFound`/
         // `fixedDoseSlotAmbiguous`). Un jeu de forme non-fixedDose → `unsupportedSlotSetParam`.

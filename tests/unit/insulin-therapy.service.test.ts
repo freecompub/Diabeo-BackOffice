@@ -36,7 +36,7 @@
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
-import { insulinTherapyService, assertValidPumpSlotSet, assertValidFixedDoseSet } from "@/lib/services/insulin-therapy.service"
+import { insulinTherapyService, assertValidPumpSlotSet, assertValidFixedDoseSet, assertValidStyloBasalSet } from "@/lib/services/insulin-therapy.service"
 
 describe("insulinTherapyService", () => {
   describe("getSettings", () => {
@@ -658,6 +658,139 @@ describe("insulinTherapyService", () => {
       const res = await insulinTherapyService.replaceFixedDoseSet(7, validFixed, 42, undefined, undefined, { baseline: baselineLive as never })
       expect(res).toMatchObject({ applied: true })
       expect(tx.fixedDoseSlot.update).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe("assertValidStyloBasalSet (garde clinique basale stylo — pure, US-2663 S3e)", () => {
+    it("single valide {daily} / split valide {morning,evening} → OK", () => {
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 24 }])).not.toThrow()
+      expect(() => assertValidStyloBasalSet([{ kind: "morning", value: 10 }, { kind: "evening", value: 14 }])).not.toThrow()
+    })
+    it("jeu vide → emptySlotSet", () => {
+      expect(() => assertValidStyloBasalSet([])).toThrow("emptySlotSet")
+    })
+    it("valeur < plancher 0,5 U → valueOutOfBounds ; PAS de plafond dur (100 U OK)", () => {
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 0.4 }])).toThrow("valueOutOfBounds")
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 100 }])).not.toThrow() // U300/dégludec légitime
+    })
+    it("bornes EXACTES : plancher 0,5 U accepté ; garde anti-overflow 9999,99 acceptée, 10000 rejetée", () => {
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 0.5 }])).not.toThrow() // = MDI_BASAL_MIN_U
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 9999.5 }])).not.toThrow() // sous la limite colonne Decimal(6,2), délivrable
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 10000 }])).toThrow("valueOutOfBounds") // > garde anti-overflow 9999,99 (bornes AVANT délivrabilité)
+    })
+    it("valeur non délivrable (pas demi-unité) → rateNotDeliverable", () => {
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 24.3 }])).toThrow("rateNotDeliverable")
+    })
+    it("cardinalité INCOHÉRENTE (daily + morning, ou morning seul) → invalidSlotSet", () => {
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 24 }, { kind: "morning", value: 10 }])).toThrow("invalidSlotSet")
+      expect(() => assertValidStyloBasalSet([{ kind: "morning", value: 10 }])).toThrow("invalidSlotSet") // demi-split
+    })
+    it("kind en double → slotOverlap", () => {
+      expect(() => assertValidStyloBasalSet([{ kind: "daily", value: 24 }, { kind: "daily", value: 26 }])).toThrow("slotOverlap")
+    })
+  })
+
+  describe("getStyloBasalSlots (US-2663 S3e — lecteur de forme, exclusion des doses null)", () => {
+    it("single_injection avec dailyDose → [{daily}] ; dailyDose null → [] (jamais value:0, casserait le CAS)", async () => {
+      prismaMock.basalConfiguration.findFirst.mockResolvedValueOnce({ configType: "single_injection", dailyDose: 24 as any, morningDose: null, eveningDose: null } as any)
+      expect(await insulinTherapyService.getStyloBasalSlots(7)).toEqual([{ kind: "daily", value: 24 }])
+      prismaMock.basalConfiguration.findFirst.mockResolvedValueOnce({ configType: "single_injection", dailyDose: null, morningDose: null, eveningDose: null } as any)
+      expect(await insulinTherapyService.getStyloBasalSlots(7)).toEqual([])
+    })
+    it("split_injection → [{morning},{evening}] ; une dose null est EXCLUE du jeu", async () => {
+      prismaMock.basalConfiguration.findFirst.mockResolvedValueOnce({ configType: "split_injection", dailyDose: null, morningDose: 12 as any, eveningDose: 10 as any } as any)
+      expect(await insulinTherapyService.getStyloBasalSlots(7)).toEqual([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }])
+      prismaMock.basalConfiguration.findFirst.mockResolvedValueOnce({ configType: "split_injection", dailyDose: null, morningDose: null, eveningDose: 10 as any } as any)
+      expect(await insulinTherapyService.getStyloBasalSlots(7)).toEqual([{ kind: "evening", value: 10 }])
+    })
+    it("pompe ou config absente → [] (pas de forme stylo)", async () => {
+      prismaMock.basalConfiguration.findFirst.mockResolvedValueOnce({ configType: "pump", dailyDose: null, morningDose: null, eveningDose: null } as any)
+      expect(await insulinTherapyService.getStyloBasalSlots(7)).toEqual([])
+      prismaMock.basalConfiguration.findFirst.mockResolvedValueOnce(null)
+      expect(await insulinTherapyService.getStyloBasalSlots(7)).toEqual([])
+    })
+  })
+
+  describe("replaceStyloBasalSet (US-2663 S3e — remplacement groupé basale stylo)", () => {
+    const split = [{ kind: "morning" as const, value: 12 }, { kind: "evening" as const, value: 10 }]
+    const mkTx = (over: Record<string, unknown> = {}) => ({
+      $queryRaw: vi.fn().mockResolvedValue([{ locked: true }]),
+      // config split, doses live 10/10 (morning sera monté à 12).
+      insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ basalConfiguration: { configType: "split_injection", dailyDose: null, morningDose: 10, eveningDose: 10 } }) },
+      basalConfiguration: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
+      adjustmentProposal: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      slotSetProposal: { findMany: vi.fn().mockResolvedValue([]), updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+      auditLog: { create: vi.fn().mockResolvedValue({}) },
+      ...over,
+    })
+
+    it("split valide → écrit les colonnes avec CAS EN BASE (WHERE = valeurs live) + supersède", async () => {
+      const tx = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceStyloBasalSet(7, split, 42)
+      expect(res).toMatchObject({ applied: true, count: 2 })
+      // CAS atomique (US-2660 miroir) : chaque colonne écrite est verrouillée à sa valeur live dans le WHERE.
+      expect(tx.basalConfiguration.updateMany).toHaveBeenCalledWith({
+        where: { settings: { patientId: 7 }, morningDose: 10, eveningDose: 10 },
+        data: { morningDose: 12, eveningDose: 10 },
+      })
+      expect(tx.slotSetProposal.findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { patientId: 7, parameterType: "basalRate", status: "pending" } }))
+    })
+
+    it("single valide {daily} → écrit dailyDose avec CAS EN BASE (WHERE = valeur live)", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ basalConfiguration: { configType: "single_injection", dailyDose: 20, morningDose: null, eveningDose: null } }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      const res = await insulinTherapyService.replaceStyloBasalSet(7, [{ kind: "daily", value: 22 }], 42)
+      expect(res).toMatchObject({ applied: true, count: 1 })
+      expect(tx.basalConfiguration.updateMany).toHaveBeenCalledWith({
+        where: { settings: { patientId: 7 }, dailyDose: 20 },
+        data: { dailyDose: 22 },
+      })
+    })
+
+    it("config basale ABSENTE → basalConfigNotFound (rien écrit)", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ basalConfiguration: null }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42)).rejects.toThrow("basalConfigNotFound")
+      expect(tx.basalConfiguration.updateMany).not.toHaveBeenCalled()
+    })
+
+    it("patient POMPE → basalConfigNotStylo (config LIVE non stylo : jamais des U totales sur une config pompe, rien écrit)", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ basalConfiguration: { configType: "pump", dailyDose: null, morningDose: null, eveningDose: null } }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42)).rejects.toThrow("basalConfigNotStylo")
+      expect(tx.basalConfiguration.updateMany).not.toHaveBeenCalled()
+    })
+
+    it("CAS EN BASE non satisfait (dose dérivée/effacée sous nous → 0 ligne) → styloBasalNotFound (rollback)", async () => {
+      // Le CAS JS passe (baseline == live lu), mais l'écriture atomique matche 0 ligne (course voie par-valeur US-2660).
+      const tx = mkTx({ basalConfiguration: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42)).rejects.toThrow("styloBasalNotFound")
+    })
+
+    it("cardinalité vs configType LIVE incohérente (jeu split sur patient SINGLE) → styloBasalConfigMismatch", async () => {
+      const tx = mkTx({ insulinTherapySettings: { findUnique: vi.fn().mockResolvedValue({ basalConfiguration: { configType: "single_injection", dailyDose: 24, morningDose: null, eveningDose: null } }) } })
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(tx))
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42)).rejects.toThrow("styloBasalConfigMismatch")
+      expect(tx.basalConfiguration.updateMany).not.toHaveBeenCalled()
+    })
+
+    it("CAS {baseline} identique → applique ; dérivé → baselineMoved (rien écrit) ; null → baselineMissing", async () => {
+      const baseline = [{ kind: "morning", value: 10 }, { kind: "evening", value: 10 }]
+      const txOk = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txOk))
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42, undefined, undefined, { baseline: baseline as never })).resolves.toMatchObject({ applied: true })
+
+      const txDrift = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txDrift))
+      const drifted = [{ kind: "morning", value: 11 }, { kind: "evening", value: 10 }] // live attendait 10
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42, undefined, undefined, { baseline: drifted as never })).rejects.toThrow("baselineMoved")
+      expect(txDrift.basalConfiguration.updateMany).not.toHaveBeenCalled()
+
+      const txNull = mkTx()
+      prismaMock.$transaction.mockImplementation(async (cb: any) => cb(txNull))
+      await expect(insulinTherapyService.replaceStyloBasalSet(7, split, 42, undefined, undefined, { baseline: null })).rejects.toThrow("baselineMissing")
     })
   })
 })

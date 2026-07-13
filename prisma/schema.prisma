@@ -832,10 +832,11 @@ model SlotSetProposal {
   id               String              @id @default(uuid())
   patientId        Int                 @map("patient_id")
   patient          Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  parameterType    AdjustableParameter @map("parameter_type") // isf/icr (paramètres à jeu de créneaux)
-  /// Disposition proposée : `[{ startHour, endHour, value, mealLabel? }]` (JSON — pas de PHI, valeurs de config).
-  /// US-2663 — typage cible : union discriminée par `parameterType` (ISF/ICR/basale/dose fixe), cf.
-  /// `src/lib/insulin/grouped-proposal.ts`. Aujourd'hui ISF/ICR uniquement (généralisation progressive S3).
+  parameterType    AdjustableParameter @map("parameter_type") // isf/icr/basalRate/fixedDose (leviers à jeu groupé)
+  /// Disposition proposée (JSON — pas de PHI, valeurs de config), union discriminée par la FORME du créneau :
+  /// ISF/ICR `{ startHour, endHour, value, mealLabel? }` · basale POMPE `{ startTime, endTime, rate }` · basale
+  /// STYLO `{ kind, value }` (U totales) · dose fixe `{ usage, moment, value }`. Cf. `src/lib/insulin/grouped-proposal.ts`.
+  /// US-2663 — couvre désormais ISF/ICR + basale (pompe & stylo) + dose fixe (généralisation S3 achevée côté modèle).
   proposedSlots    Json                @map("proposed_slots")
   /// US-2663 (S0) — provenance dérivée SERVEUR (ADR #27), jamais du body. `patient` par défaut (voie
   /// patient historique US-2657) ; `nurse`/`doctor`/`algorithm` à venir (S3/S4).

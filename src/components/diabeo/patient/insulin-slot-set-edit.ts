@@ -226,7 +226,12 @@ const ERROR_KEY: Record<string, string> = {
   // (retombait sur le message générique).
   rateNotDeliverable: "slotSetErrorRateNotDeliverable",
   basalConfigNotFound: "slotSetErrorNotFound",
-  basalConfigNotPump: "slotSetErrorNotFound", // patient MDI (non pompe) — édition basale non applicable
+  basalConfigNotPump: "slotSetErrorNotFound", // patient MDI (non pompe) — édition basale pompe non applicable
+  // US-2663 (S3e) — voie BASALE STYLO : patient devenu pompe (config LIVE non stylo), bascule single↔split, ou
+  // CAS atomique non satisfait (dose dérivée/effacée sous la proposition) — conflit récupérable, régénérer.
+  basalConfigNotStylo: "slotSetErrorNotFound",
+  styloBasalConfigMismatch: "slotSetErrorNotFound",
+  styloBasalNotFound: "slotSetErrorNotFound",
   slotsBusy: "slotSetErrorBusy",
 }
 
