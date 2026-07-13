@@ -26,13 +26,13 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
   mealtimePattern: { dailyJournal: vi.fn(), fastingTrend: vi.fn(), correctionTrend: vi.fn() },
   localDay: (ms: number) => new Date(ms).toISOString().slice(0, 10),
 }))
-vi.mock("@/lib/services/adjustment.service", () => ({
-  adjustmentService: { createEngineProposal: vi.fn() },
-  // US-2663 (S3b-1) — le générateur importe cette garde pure (parité `reasonDirectionMismatch`). Réimplémentation
-  // fidèle (`*TooLow` ⇒ hausse, `*TooHigh` ⇒ baisse, sinon non directionnel) — verrouillée par la source réelle.
-  reasonImpliesIncrease: (reason: string) =>
-    reason.endsWith("TooLow") ? true : reason.endsWith("TooHigh") ? false : null,
-}))
+vi.mock("@/lib/services/adjustment.service", async (importOriginal) => {
+  // US-2663 (S3b-1) — le générateur importe la garde pure `reasonImpliesIncrease` (parité `reasonDirectionMismatch`).
+  // On récupère la VRAIE fonction (pas de réimplémentation → aucun drift possible si un suffixe directionnel évolue) ;
+  // seul `adjustmentService.createEngineProposal` est stubé (on vérifie qu'il n'est PAS appelé en mode groupé).
+  const actual = await importOriginal<typeof import("@/lib/services/adjustment.service")>()
+  return { ...actual, adjustmentService: { createEngineProposal: vi.fn() } }
+})
 vi.mock("@/lib/services/analytics.service", () => ({
   analyticsService: { fixedDoseTrend: vi.fn() },
 }))
@@ -330,6 +330,13 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
     const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooLow", proposedValue: 9 })], 14)
     expect(res.disposition).toBeNull() // R4 : le seul candidat est abandonné
     expect(res.directionMismatches).toBe(1)
+  })
+
+  it("delta nul (proposé == live) sur un reason directionnel → abandon SILENCIEUX, pas un mismatch", () => {
+    // proposedValue 10 == live[6].value 10 → no-op ; ne doit PAS être compté comme directionMismatch (log error).
+    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooHigh", proposedValue: 10 })], 14)
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(0)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {

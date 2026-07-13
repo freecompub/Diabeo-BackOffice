@@ -319,14 +319,18 @@ const EXPECTED_SKIP = new Set([
 
 /**
  * US-2663 (S3b-1) — Codes de rejet ATTENDUS de `createSetProposal` (voie GROUPÉE moteur), fail-closed non
- * fatals. Superset des rejets par-valeur : la garde de FORME/COUVERTURE (`assertValidSlotSet`) et la garde
- * MOTEUR (`rationaleRequired`) s'ajoutent au tronc commun (bornes, frontière MDR, anti-doublon). Tout autre
- * message = inattendu (code générique `"unexpected"`, jamais logué verbatim — défense en profondeur PHI/HDS).
+ * fatals : rejets cliniques/données légitimes d'un run (bornes, frontière MDR, couverture, anti-doublon).
+ * Tout autre message = inattendu (code générique `"unexpected"`, jamais logué verbatim — défense en
+ * profondeur PHI/HDS) et remonte en `logger.error` pour le rollout.
+ *
+ * ⚠️ Volontairement ABSENTS (revue S3b-1) — `invalidProposerIdentity` et `rationaleRequired` sont des
+ * INVARIANTS moteur, PAS des rejets attendus : cette voie passe toujours `{userId:null, source:"algorithm"}`
+ * (identité valide) et n'émet que si `overlay.size > 0` ⇒ `rationale.length ≥ 1`. S'ils survenaient, c'est un
+ * DÉFAUT (refactor cassant l'invariant) qui doit remonter en `error`, pas être masqué en `info`.
  */
 const EXPECTED_SKIP_GROUPED = new Set([
-  "duplicatePendingProposal", "valueOutOfBounds", "nonInsulinNoDose", "rationaleRequired",
-  "invalidProposerIdentity", "invalidSlotSet", "emptySlotSet", "zeroDurationSlot",
-  "slotOverlap", "slotGap", "patientNotFound",
+  "duplicatePendingProposal", "valueOutOfBounds", "nonInsulinNoDose", "invalidSlotSet",
+  "emptySlotSet", "zeroDurationSlot", "slotOverlap", "slotGap", "patientNotFound",
 ])
 
 /** US-2663 (S3b-1) — un candidat moteur ISF/ICR apparié à son créneau (base T0 de l'analyse). */
@@ -464,11 +468,11 @@ export function assembleGroupedDisposition(
     if (!live) continue // startHour disparu (créneau supprimé/restructuré) → abandon
     if (live.endHour !== endHour) continue // fenêtre horaire déplacée (même startHour, endHour ≠) → abandon (R2)
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive de valeur → abandon (R2)
+    const delta = cand.proposedValue - live.value
+    if (delta === 0) continue // no-op (proposé == live) — abandon SILENCIEUX, pas une incohérence de sens
+    // Garde direction : sens du delta cohérent avec le `reason` directionnel (`*TooLow`⇒hausse, `*TooHigh`⇒baisse).
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
-    if (wantsIncrease !== null) {
-      const delta = cand.proposedValue - live.value
-      if (delta === 0 || delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
-    }
+    if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue }
     overlay.set(startHour, cand.proposedValue)
     rationale.push({
       startHour,
