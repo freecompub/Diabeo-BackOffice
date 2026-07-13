@@ -356,6 +356,10 @@ export function assertRequiredEnv(): void {
   // d'ISF/ICR (rollout/rollback basal indépendant du groupé ISF/ICR déjà stabilisé).
   // OFF par défaut. La basale STYLO et la dose fixe ont/auront leurs propres flags.
   assertOptionalBoolean("ENGINE_GROUPED_PUMP")
+  // US-2663 (S3d/PR2) — bascule RÉVERSIBLE du moteur vers l'émission GROUPÉE de la
+  // DOSE FIXE (`SlotSetProposal` fixedDose, clé `(usage, moment)`). Flag DISTINCT.
+  // OFF par défaut ⇒ voie par-valeur dose fixe inchangée.
+  assertOptionalBoolean("ENGINE_GROUPED_FIXED_DOSE")
   // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
   // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser
