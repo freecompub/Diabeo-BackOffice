@@ -2181,7 +2181,8 @@
     "reasonFixedDoseCorrect": "Fixed dose deemed adequate",
     "reasonInsufficientData": "Insufficient data to conclude",
     "reasonPatientRequested": "Patient request",
-    "reasonManualAdjustment": "Manual adjustment"
+    "reasonManualAdjustment": "Manual adjustment",
+    "rationaleAvgGlucose": "avg. {value} g/L"
   },
   "cabinetMembers": {
     "title": "Cabinet personnel & rights",

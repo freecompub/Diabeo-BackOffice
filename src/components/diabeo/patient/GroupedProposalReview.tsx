@@ -89,7 +89,9 @@ const REASON_LABEL_KEY: Record<AdjustmentReason, string> = {
 }
 
 /** Confiance moteur (`SlotRationale.confidence`) → clé i18n `review.confidence<X>`. */
-const CONFIDENCE_LABEL_KEY: Record<"low" | "medium" | "high", string> = {
+// US-2663 (S3b-0b, revue CR) — typé sur la confiance NON-NULL de `SlotRationale` (dérivé, pas réécrit) :
+// une évolution du schéma de confiance casserait la compilation ici, comme `REASON_LABEL_KEY` sur l'enum Prisma.
+const CONFIDENCE_LABEL_KEY: Record<NonNullable<SlotRationale["confidence"]>, string> = {
   low: "confidenceLow",
   medium: "confidenceMedium",
   high: "confidenceHigh",
@@ -248,12 +250,22 @@ export function GroupedProposalReview({
                                     {t("rationaleVolume", { count: rationale.supportingEvents })}
                                   </span>
                                 )}
+                                {/* US-2663 (S3b-0b, revue medical MEDIUM) — glycémie moyenne OBSERVÉE ayant motivé
+                                    la reco : objective une dé-escalade de sécurité (ex. corrections atterrissant en
+                                    moyenne à 0,60 g/L = preuve d'hypo). Valeur g/L (moteur ISF/ICR). */}
+                                {rationale.averageObservedValue != null && (
+                                  <span className="text-muted-foreground tabular-nums">
+                                    {t("rationaleAvgGlucose", { value: fmt(rationale.averageObservedValue) })}
+                                  </span>
+                                )}
                               </>
                             )}
                             {risk !== "none" && (
+                              // Contraste (revue a11y 1.4.3) : `text-warning-fg` (≥ 4.5:1 sur `bg-warning-bg` d'une
+                              // ligne changée), pas `text-feedback-warning` (~2:1). Bordure ambre conservée.
                               <Badge
                                 variant="outline"
-                                className={risk === "hypo" ? "border-feedback-warning text-feedback-warning" : "text-muted-foreground"}
+                                className={risk === "hypo" ? "border-feedback-warning text-warning-fg" : "text-muted-foreground"}
                               >
                                 {tAdj(`risk.${risk}`)}
                               </Badge>

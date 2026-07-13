@@ -31,6 +31,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { ProposalList } from "@/components/diabeo/patient/ProposalList"
+import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { GroupedProposalReview, type ReviewGroupedViewItem } from "@/components/diabeo/patient/GroupedProposalReview"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -453,7 +454,14 @@ function DecisionsStep({ data }: { data: ReviewData }) {
         body: "{}",
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      setGroupedItems((prev) => prev.filter((p) => p.id !== id))
+      // US-2663 (S3b-0b, revue CR) — retirer l'item décidé PUIS recalculer la coexistence : la proposition
+      // SŒUR restante n'a plus de coexistence → son bandeau « une autre proposition existe » doit disparaître
+      // (sans attendre un reload serveur). `deriveCoexistsWith` est un helper PUR, réutilisable côté client.
+      setGroupedItems((prev) => {
+        const next = prev.filter((p) => p.id !== id)
+        const coex = deriveCoexistsWith(next)
+        return next.map((p) => ({ ...p, coexistsWith: coex.get(p.id) ?? null }))
+      })
     } catch {
       setError(t("decisionError"))
     } finally {

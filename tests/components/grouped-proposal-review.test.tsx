@@ -158,6 +158,42 @@ describe("GroupedProposalReview", () => {
     expect(screen.getByText("Sensibilité insuffisante (à renforcer)")).toBeTruthy()
   })
 
+  it("item ALGORITHME : la glycémie moyenne observée (`averageObservedValue`) est affichée (revue medical)", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rows: [row({ startHour: 8, endHour: 22, proposedValue: 0.4, liveValue: 0.5, changed: true })],
+      rationale: [rationale({ startHour: 8, averageObservedValue: 0.6 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // Objective la dé-escalade de sécurité : corrections atterrissant en moyenne à 0,60 g/L.
+    expect(screen.getByText(/0,6.*g\/L|0\.6.*g\/L/)).toBeTruthy()
+  })
+
+  it("item ALGORITHME : rationale INCOMPLÈTE (créneau changé sans entrée appariée) → aucun motif, pas de crash", () => {
+    const algoItem = item({
+      source: "algorithm",
+      // Baisse ISF (0.5 → 0.4) = risque hypo (déterministe). rationale pour un AUTRE créneau (0) → non appariée.
+      rows: [row({ startHour: 8, endHour: 22, proposedValue: 0.4, liveValue: 0.5, changed: true })],
+      rationale: [rationale({ startHour: 0 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // Le motif n'est PAS affiché pour le créneau 8 (pas d'entrée), mais le rendu ne plante pas ; le risque reste.
+    expect(screen.queryByText("Sensibilité insuffisante (à renforcer)")).toBeNull()
+    expect(screen.getByText("Risque hypo")).toBeTruthy()
+  })
+
+  it("item ALGORITHME : `confidence: null` → aucun badge de confiance (motif + volume conservés)", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rationale: [rationale({ startHour: 8, confidence: null, supportingEvents: 7 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    expect(screen.queryByText("Faible")).toBeNull()
+    expect(screen.queryByText("Moyenne")).toBeNull()
+    expect(screen.queryByText("Élevée")).toBeNull()
+    expect(screen.getByText("7 obs.")).toBeTruthy()
+  })
+
   it("item HUMAIN (source ≠ algorithm) : AUCUNE rationale affichée, même sur un créneau changé", () => {
     const humanItem = item({ source: "patient", rationale: null })
     render(<GroupedProposalReview items={[humanItem]} canDecide busyId={null} onDecide={vi.fn()} />)

@@ -2181,7 +2181,8 @@
     "reasonFixedDoseCorrect": "الجرعة الثابتة تُعتبر مناسبة",
     "reasonInsufficientData": "بيانات غير كافية للاستنتاج",
     "reasonPatientRequested": "طلب من المريض",
-    "reasonManualAdjustment": "تعديل يدوي"
+    "reasonManualAdjustment": "تعديل يدوي",
+    "rationaleAvgGlucose": "متوسط {value} g/L"
   },
   "cabinetMembers": {
     "title": "أعضاء العيادة والصلاحيات",

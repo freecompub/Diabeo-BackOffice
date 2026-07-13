@@ -48,4 +48,28 @@ describe("deriveCoexistsWith", () => {
   it("liste vide → map vide", () => {
     expect(deriveCoexistsWith([]).size).toBe(0)
   })
+
+  it("deux ALGORITHMES (même classe) → pas de coexistence (symétrie du cas humain+humain)", () => {
+    const candidates: CoexistenceCandidate[] = [
+      { id: "a1", parameterType: "insulinSensitivityFactor", source: "algorithm" },
+      { id: "a2", parameterType: "insulinSensitivityFactor", source: "algorithm" },
+    ]
+    const result = deriveCoexistsWith(candidates)
+    expect(result.get("a1")).toBeNull()
+    expect(result.get("a2")).toBeNull()
+  })
+
+  it("cas dégénéré 2 humains + 1 algo (hors invariant DB) → l'algo pointe le 1er humain, ne plante pas", () => {
+    // L'index unique partiel garantit ≤ 1 humain + 1 algo en prod ; on vérifie juste la robustesse du helper.
+    const candidates: CoexistenceCandidate[] = [
+      { id: "h1", parameterType: "insulinSensitivityFactor", source: "patient" },
+      { id: "h2", parameterType: "insulinSensitivityFactor", source: "nurse" },
+      { id: "a1", parameterType: "insulinSensitivityFactor", source: "algorithm" },
+    ]
+    const result = deriveCoexistsWith(candidates)
+    // Chaque humain voit l'algo ; l'algo voit le PREMIER humain (déterministe sur l'ordre d'entrée).
+    expect(result.get("h1")).toBe("algorithm")
+    expect(result.get("h2")).toBe("algorithm")
+    expect(result.get("a1")).toBe("patient")
+  })
 })
