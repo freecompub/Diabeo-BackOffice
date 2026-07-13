@@ -370,6 +370,39 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
   })
 })
 
+describe("assembleGroupedDisposition — PLAFONNEMENT à la borne (US-2663 S5, D1)", () => {
+  const ICR = { min: 3, max: 30 } // bornes ICR (g/U)
+  const live = [{ startHour: 6, endHour: 12, value: 28 }]
+  const cand = (proposedValue: number, reason = "icrTooLow") => ([{
+    startHour: 6, endHour: 12,
+    cand: { parameterType: "insulinToCarbRatio", reason, currentValue: 28, proposedValue, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 },
+  }] as never)
+
+  it("valeur calculée > max → proposée À LA BORNE + cappedToBound + valeur brute", () => {
+    const res = assembleGroupedDisposition(live, cand(35), 14, ICR)! // 35 > max 30
+    expect(res.disposition![0]!.value).toBe(30) // plafonné à la borne
+    expect(res.rationale[0]).toMatchObject({ cappedToBound: true, cappedFromValue: 35 })
+  })
+
+  it("valeur calculée dans les bornes → PAS de plafonnement (cappedToBound absent)", () => {
+    const res = assembleGroupedDisposition(live, cand(29), 14, ICR)! // 29 ≤ 30
+    expect(res.disposition![0]!.value).toBe(29)
+    expect(res.rationale[0]!.cappedToBound).toBeUndefined()
+  })
+
+  it("créneau DÉJÀ à la borne + calcul dépasse → plafonné == live → delta 0 → no-op (rien proposé)", () => {
+    const atMax = [{ startHour: 6, endHour: 12, value: 30 }]
+    const res = assembleGroupedDisposition(atMax, [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooLow", currentValue: 30, proposedValue: 34, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never, 14, ICR)
+    expect(res.disposition).toBeNull()
+  })
+
+  it("sans bornes (tests d'assemblage purs) → aucun plafonnement (rétro-compat)", () => {
+    const res = assembleGroupedDisposition(live, cand(35), 14)! // pas de bounds
+    expect(res.disposition![0]!.value).toBe(35) // valeur brute conservée
+    expect(res.rationale[0]!.cappedToBound).toBeUndefined()
+  })
+})
+
 describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => {
   const livePump = [
     { id: "noct", startTime: "00:00", endTime: "06:00", rate: 0.8 },

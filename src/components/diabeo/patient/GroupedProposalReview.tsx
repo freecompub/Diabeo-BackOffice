@@ -341,6 +341,15 @@ export function GroupedProposalReview({
                                     {t("rationaleAvgGlucose", { value: fmt(rationale.averageObservedValue) })}
                                   </span>
                                 )}
+                                {/* US-2663 (S5, D1) — PLAFONNEMENT : le moteur a ramené la valeur calculée à la borne
+                                    clinique. Badge d'alerte + valeur brute pour que le médecin décide en connaissance. */}
+                                {rationale.cappedToBound && (
+                                  <Badge variant="outline" className="border-feedback-warning text-warning-fg">
+                                    {rationale.cappedFromValue != null
+                                      ? t("rationaleCappedFrom", { value: fmt(rationale.cappedFromValue), unit })
+                                      : t("rationaleCapped")}
+                                  </Badge>
+                                )}
                               </>
                             )}
                             {risk !== "none" && (

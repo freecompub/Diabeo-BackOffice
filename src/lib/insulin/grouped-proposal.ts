@@ -98,6 +98,12 @@ export const slotRationaleSchema = z.object({
   changePercent: z.number().finite().nullable().optional(),
   averageObservedValue: z.number().finite().nullable().optional(),
   analysisPeriod: z.number().int().positive().nullable().optional(),
+  // US-2663 (S5, décision produit D1) — PLAFONNEMENT à la borne clinique : la valeur CALCULÉE par le moteur
+  // dépassait la borne autorisée (max ou min) → la disposition porte la valeur À LA BORNE, et `cappedToBound`
+  // signale au médecin que le moteur « voulait aller plus loin ». `cappedFromValue` = valeur brute calculée
+  // (avant plafonnement), pour affichage. Absent/`false` = pas de plafonnement. Le médecin décide (jamais auto-appliqué).
+  cappedToBound: z.boolean().optional(),
+  cappedFromValue: z.number().finite().optional(),
 })
   // US-2663 (S3d/S3e) — fail-closed de FORME : une rationale porte EXACTEMENT UNE clé COMPLÈTE parmi trois
   // formes mutuellement exclusives — `startHour` seul (ISF/ICR/pompe) XOR `(usage, moment)` complet (dose fixe)

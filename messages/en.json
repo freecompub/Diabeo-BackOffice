@@ -2206,6 +2206,8 @@
     "reasonPatientRequested": "Patient request",
     "reasonManualAdjustment": "Manual adjustment",
     "rationaleAvgGlucose": "avg. {value} g/L",
+    "rationaleCapped": "Capped at the allowed bound",
+    "rationaleCappedFrom": "Capped (computed {value} {unit})",
     "fixedDoseUsage": {
       "bolus": "Bolus (rapid-acting)",
       "basal": "Basal (long-acting)",

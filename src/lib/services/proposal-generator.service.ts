@@ -414,7 +414,7 @@ async function emitGroupedIsfIcr(
   if (liveSlots.length === 0) return { emitted: false } // config vidée entre analyse et émission
 
   // 2. Assemblage PUR (CAS par créneau + garde direction + overlay + rationale). Testable sans IO.
-  const { disposition, rationale, directionMismatches } = assembleGroupedDisposition(liveSlots, candidates, analysisPeriodDays)
+  const { disposition, rationale, directionMismatches } = assembleGroupedDisposition(liveSlots, candidates, analysisPeriodDays, parameterType === "insulinSensitivityFactor" ? CLAMP_BOUNDS.isf : CLAMP_BOUNDS.icr)
   if (directionMismatches > 0) {
     // Invariant violé en amont (défaut d'analyseur) : candidats abandonnés, jamais une rationale trompeuse persistée.
     logger.error("proposal-generator", "grouped candidate direction mismatch",
@@ -463,10 +463,37 @@ async function emitGroupedIsfIcr(
  *   valeurs changées superposées, `mealLabel` préservé) + `rationale` (1 entrée / créneau changé).
  *   `directionMismatches` = nb de candidats abandonnés pour incohérence de sens (observabilité).
  */
+/**
+ * US-2663 (S5, décision produit D1) — bornes cliniques de PLAFONNEMENT par forme de levier. Une valeur CALCULÉE
+ * par le moteur qui dépasse sa borne est proposée À LA BORNE (jamais rejetée, jamais skippée) + notée dans la
+ * `rationale` (`cappedToBound`) ; le MÉDECIN tranche (proposition `pending`, jamais auto-appliqué, ADR #13).
+ * Stylo : pas de plafond CLINIQUE dur (U300/dégludec) → garde anti-overflow colonne (9999,99). Sources = clinical-bounds.
+ */
+export type ClampBounds = { min: number; max: number }
+const CLAMP_BOUNDS = {
+  isf: { min: CLINICAL_BOUNDS.ISF_GL_MIN, max: CLINICAL_BOUNDS.ISF_GL_MAX },
+  icr: { min: CLINICAL_BOUNDS.ICR_MIN, max: CLINICAL_BOUNDS.ICR_MAX },
+  pump: { min: CLINICAL_BOUNDS.BASAL_MIN, max: CLINICAL_BOUNDS.BASAL_MAX },
+  stylo: { min: CLINICAL_BOUNDS.MDI_BASAL_MIN_U, max: 9999.99 },
+  fixedDose: { min: CLINICAL_BOUNDS.FIXED_DOSE_MIN, max: 999.99 },
+} as const
+
+/**
+ * Plafonne `v` à `[bounds.min, bounds.max]`. `capped` = la valeur dépassait la borne et a été ramenée. `bounds`
+ * OPTIONNEL : absent ⇒ AUCUN plafonnement (rétro-compat des tests d'assemblage purs) — tous les émetteurs moteur
+ * RÉELS passent les bornes de leur levier (D1). L'appelant note `cappedToBound`/`cappedFromValue` dans la rationale.
+ */
+function clampProposed(v: number, bounds?: ClampBounds): { value: number; capped: boolean } {
+  if (!bounds) return { value: v, capped: false }
+  const value = Math.min(bounds.max, Math.max(bounds.min, v))
+  return { value, capped: Math.abs(value - v) > 1e-9 }
+}
+
 export function assembleGroupedDisposition(
   liveSlots: IsfIcrSlot[],
   candidates: CollectedCandidate[],
   analysisPeriodDays: number,
+  bounds?: ClampBounds,
 ): { disposition: IsfIcrSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const liveByStart = new Map(liveSlots.map((s) => [s.startHour, s]))
   const overlay = new Map<number, number>() // startHour → proposedValue
@@ -477,12 +504,14 @@ export function assembleGroupedDisposition(
     if (!live) continue // startHour disparu (créneau supprimé/restructuré) → abandon
     if (live.endHour !== endHour) continue // fenêtre horaire déplacée (même startHour, endHour ≠) → abandon (R2)
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive de valeur → abandon (R2)
-    const delta = cand.proposedValue - live.value
-    if (delta === 0) continue // no-op (proposé == live) — abandon SILENCIEUX, pas une incohérence de sens
+    // D1 (S5) — plafonnement clinique : valeur calculée hors-borne → proposée À LA BORNE + notée (le médecin tranche).
+    const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds)
+    const delta = proposed - live.value
+    if (delta === 0) continue // no-op (proposé == live, OU déjà à la borne après plafonnement) — abandon silencieux
     // Garde direction : sens du delta cohérent avec le `reason` directionnel (`*TooLow`⇒hausse, `*TooHigh`⇒baisse).
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue }
-    overlay.set(startHour, cand.proposedValue)
+    overlay.set(startHour, proposed)
     rationale.push({
       startHour,
       reason: cand.reason,
@@ -492,6 +521,7 @@ export function assembleGroupedDisposition(
       changePercent: cand.changePercent,
       averageObservedValue: cand.averageObservedValue ?? null,
       analysisPeriod: analysisPeriodDays,
+      ...(capped ? { cappedToBound: true, cappedFromValue: cand.proposedValue } : {}),
     })
   }
   if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
@@ -524,6 +554,7 @@ export function assembleGroupedPumpDisposition(
   liveSlots: LivePumpSlot[],
   candidates: CollectedPumpCandidate[],
   analysisPeriodDays: number,
+  bounds?: ClampBounds,
 ): { disposition: PumpBasalSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const liveById = new Map(liveSlots.map((s) => [s.id, s]))
   const overlay = new Map<string, number>() // slotId → proposedRate
@@ -533,11 +564,12 @@ export function assembleGroupedPumpDisposition(
     const live = liveById.get(slotId)
     if (!live) continue // créneau supprimé depuis l'analyse → abandon
     if (Math.abs(live.rate - cand.currentValue) > 1e-9) continue // dérive de débit → abandon (R2)
-    const delta = cand.proposedValue - live.rate
-    if (delta === 0) continue // no-op silencieux
+    const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement à la borne U/h
+    const delta = proposed - live.rate
+    if (delta === 0) continue // no-op (ou déjà à la borne après plafonnement)
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
-    overlay.set(slotId, cand.proposedValue)
+    overlay.set(slotId, proposed)
     rationale.push({
       startHour,
       reason: cand.reason,
@@ -547,6 +579,7 @@ export function assembleGroupedPumpDisposition(
       changePercent: cand.changePercent,
       averageObservedValue: cand.averageObservedValue ?? null,
       analysisPeriod: analysisPeriodDays,
+      ...(capped ? { cappedToBound: true, cappedFromValue: cand.proposedValue } : {}),
     })
   }
   if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
@@ -581,7 +614,7 @@ async function emitGroupedPumpBasal(
   })
   if (rows.length === 0) return { emitted: false }
   const liveSlots: LivePumpSlot[] = rows.map((s) => ({ id: s.id, ...pumpRowToGroupedSlot(s) }))
-  const { disposition, rationale, directionMismatches } = assembleGroupedPumpDisposition(liveSlots, candidates, analysisPeriodDays)
+  const { disposition, rationale, directionMismatches } = assembleGroupedPumpDisposition(liveSlots, candidates, analysisPeriodDays, CLAMP_BOUNDS.pump)
   if (directionMismatches > 0) {
     logger.error("proposal-generator", "grouped pump candidate direction mismatch",
       { patientId, bucket: "basalRate", failMode: "reasonDirectionMismatch", count: directionMismatches })
@@ -633,6 +666,7 @@ export function assembleGroupedFixedDose(
   liveSlots: FixedDoseSlot[],
   candidates: CollectedFixedDoseCandidate[],
   analysisPeriodDays: number,
+  bounds?: ClampBounds,
 ): { disposition: FixedDoseSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const keyOf = (s: { usage: InsulinUsage; moment: DoseMoment }) => `${s.usage}:${s.moment}`
   const liveByKey = new Map(liveSlots.map((s) => [keyOf(s), s]))
@@ -644,11 +678,12 @@ export function assembleGroupedFixedDose(
     const live = liveByKey.get(k)
     if (!live) continue // dose disparue depuis l'analyse → abandon
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
-    const delta = cand.proposedValue - live.value
-    if (delta === 0) continue // no-op silencieux
+    const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement à la borne
+    const delta = proposed - live.value
+    if (delta === 0) continue // no-op (ou déjà à la borne après plafonnement)
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
-    overlay.set(k, cand.proposedValue)
+    overlay.set(k, proposed)
     rationale.push({
       usage,
       moment,
@@ -659,6 +694,7 @@ export function assembleGroupedFixedDose(
       changePercent: cand.changePercent,
       averageObservedValue: cand.averageObservedValue ?? null,
       analysisPeriod: analysisPeriodDays,
+      ...(capped ? { cappedToBound: true, cappedFromValue: cand.proposedValue } : {}),
     })
   }
   if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
@@ -691,7 +727,7 @@ async function emitGroupedFixedDose(
     logger.info("proposal-generator", "grouped fixedDose skipped — ambiguous (usage,moment) in live config", { patientId, bucket: "fixedDose" })
     return { emitted: false }
   }
-  const { disposition, rationale, directionMismatches } = assembleGroupedFixedDose(liveSlots, candidates, analysisPeriodDays)
+  const { disposition, rationale, directionMismatches } = assembleGroupedFixedDose(liveSlots, candidates, analysisPeriodDays, CLAMP_BOUNDS.fixedDose)
   if (directionMismatches > 0) {
     logger.error("proposal-generator", "grouped fixedDose candidate direction mismatch",
       { patientId, bucket: "fixedDose", failMode: "reasonDirectionMismatch", count: directionMismatches })
@@ -740,6 +776,7 @@ export function assembleGroupedStyloDisposition(
   liveSlots: StyloBasalSlot[],
   candidates: CollectedStyloCandidate[],
   analysisPeriodDays: number,
+  bounds?: ClampBounds,
 ): { disposition: StyloBasalSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const liveByKind = new Map(liveSlots.map((s) => [s.kind, s]))
   const overlay = new Map<string, number>() // kind → proposedValue
@@ -749,11 +786,12 @@ export function assembleGroupedStyloDisposition(
     const live = liveByKind.get(kind)
     if (!live) continue // dose disparue depuis l'analyse (bascule de modalité) → abandon
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
-    const delta = cand.proposedValue - live.value
-    if (delta === 0) continue // no-op silencieux
+    const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement (U totales)
+    const delta = proposed - live.value
+    if (delta === 0) continue // no-op (ou déjà à la borne après plafonnement)
     const wantsIncrease = reasonImpliesIncrease(cand.reason)
     if (wantsIncrease !== null && delta > 0 !== wantsIncrease) { directionMismatches++; continue } // garde direction
-    overlay.set(kind, cand.proposedValue)
+    overlay.set(kind, proposed)
     rationale.push({
       basalDoseKind: kind,
       reason: cand.reason,
@@ -763,6 +801,7 @@ export function assembleGroupedStyloDisposition(
       changePercent: cand.changePercent,
       averageObservedValue: cand.averageObservedValue ?? null,
       analysisPeriod: analysisPeriodDays,
+      ...(capped ? { cappedToBound: true, cappedFromValue: cand.proposedValue } : {}),
     })
   }
   if (overlay.size === 0) return { disposition: null, rationale: [], directionMismatches } // R4 — no-op
@@ -788,7 +827,7 @@ async function emitGroupedStyloBasal(
   if (candidates.length === 0) return { emitted: false }
   const liveSlots = await insulinTherapyService.getStyloBasalSlots(patientId) // forme groupée, doses null exclues
   if (liveSlots.length === 0) return { emitted: false }
-  const { disposition, rationale, directionMismatches } = assembleGroupedStyloDisposition(liveSlots, candidates, analysisPeriodDays)
+  const { disposition, rationale, directionMismatches } = assembleGroupedStyloDisposition(liveSlots, candidates, analysisPeriodDays, CLAMP_BOUNDS.stylo)
   if (directionMismatches > 0) {
     logger.error("proposal-generator", "grouped stylo candidate direction mismatch",
       { patientId, bucket: "basal:stylo", failMode: "reasonDirectionMismatch", count: directionMismatches })

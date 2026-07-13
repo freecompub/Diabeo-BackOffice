@@ -2206,6 +2206,8 @@
     "reasonPatientRequested": "طلب من المريض",
     "reasonManualAdjustment": "تعديل يدوي",
     "rationaleAvgGlucose": "متوسط {value} g/L",
+    "rationaleCapped": "محدود بالحد المسموح",
+    "rationaleCappedFrom": "محدود (المحسوب {value} {unit})",
     "fixedDoseUsage": {
       "bolus": "بولوس (سريع المفعول)",
       "basal": "قاعدي (بطيء المفعول)",
