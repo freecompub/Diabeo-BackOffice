@@ -2182,7 +2182,19 @@
     "reasonInsufficientData": "Insufficient data to conclude",
     "reasonPatientRequested": "Patient request",
     "reasonManualAdjustment": "Manual adjustment",
-    "rationaleAvgGlucose": "avg. {value} g/L"
+    "rationaleAvgGlucose": "avg. {value} g/L",
+    "fixedDoseUsage": {
+      "bolus": "Bolus (rapid-acting)",
+      "basal": "Basal (long-acting)",
+      "both": "Mixed (premixed)"
+    },
+    "fixedDoseMoment": {
+      "morning": "Morning",
+      "noon": "Noon",
+      "evening": "Evening",
+      "night": "Night"
+    },
+    "groupedHighDoseWarning": "High dose"
   },
   "cabinetMembers": {
     "title": "Cabinet personnel & rights",

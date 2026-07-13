@@ -2182,7 +2182,19 @@
     "reasonInsufficientData": "بيانات غير كافية للاستنتاج",
     "reasonPatientRequested": "طلب من المريض",
     "reasonManualAdjustment": "تعديل يدوي",
-    "rationaleAvgGlucose": "متوسط {value} g/L"
+    "rationaleAvgGlucose": "متوسط {value} g/L",
+    "fixedDoseUsage": {
+      "bolus": "بولوس (سريع المفعول)",
+      "basal": "قاعدي (بطيء المفعول)",
+      "both": "مختلط (مُخلَّط مسبقًا)"
+    },
+    "fixedDoseMoment": {
+      "morning": "الصباح",
+      "noon": "الظهر",
+      "evening": "المساء",
+      "night": "الليل"
+    },
+    "groupedHighDoseWarning": "جرعة مرتفعة"
   },
   "cabinetMembers": {
     "title": "أعضاء العيادة والصلاحيات",

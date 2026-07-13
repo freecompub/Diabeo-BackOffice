@@ -35,9 +35,9 @@ import { REVIEW_PERIOD, REVIEW_PERIOD_DAYS } from "@/lib/review-constants"
 import { resolveTargetRangeMgdl } from "../overview-targets"
 import { buildGlycemiaView } from "../glycemia-view"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
-import { isfIcrSlotSchema, pumpBasalSlotSchema, slotRationaleSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale } from "@/lib/insulin/grouped-proposal"
+import { isfIcrSlotSchema, pumpBasalSlotSchema, slotRationaleSchema, fixedDoseSlotSchema, type IsfIcrSlot, type PumpBasalSlot, type SlotRationale, type FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
 import { isBaselineUnchanged, isBaselineUnchangedBy } from "@/lib/insulin/slot-baseline-cas"
-import { diffSlots, diffPumpSlots, hasStructuralChange, hasStructuralChangePump } from "@/lib/insulin/slot-diff"
+import { diffSlots, diffPumpSlots, diffFixedDoseSlots, hasStructuralChange, hasStructuralChangePump, hasStructuralChangeFixedDose } from "@/lib/insulin/slot-diff"
 import { pumpRowToGroupedSlot } from "@/lib/insulin/pump-time"
 import { deriveCoexistsWith } from "@/lib/insulin/proposal-coexistence"
 import { ReviewClient, type ReviewData, type ReviewProposalItem, type ReviewGroupedItem } from "./ReviewClient"
@@ -66,6 +66,15 @@ const pumpSlotsSchema = z.array(pumpBasalSlotSchema)
 /** Parse défensive d'un JSON `proposedSlots`/`baselineSlots` POMPE en `PumpBasalSlot[]` (fail-closed → `null`). */
 function parsePumpSlots(raw: unknown): PumpBasalSlot[] | null {
   const parsed = pumpSlotsSchema.safeParse(raw)
+  return parsed.success ? parsed.data : null
+}
+
+/** US-2663 (S3d) — Forme d'un jeu de créneaux DOSE FIXE (`FixedDoseSlot`, clé `(usage, moment)`) — parse défensive à la lecture. */
+const fixedDoseSlotsSchema = z.array(fixedDoseSlotSchema)
+
+/** Parse défensive d'un JSON `proposedSlots`/`baselineSlots` DOSE FIXE en `FixedDoseSlot[]` (fail-closed → `null`). */
+function parseFixedDoseSlots(raw: unknown): FixedDoseSlot[] | null {
+  const parsed = fixedDoseSlotsSchema.safeParse(raw)
   return parsed.success ? parsed.data : null
 }
 
@@ -233,6 +242,9 @@ export default async function PatientReviewPage({
   const basalConfig = insulinSettings?.basalConfiguration
   const livePump: PumpBasalSlot[] =
     basalConfig?.configType === "pump" ? (basalConfig.pumpSlots ?? []).map(pumpRowToGroupedSlot) : []
+  // US-2663 (S3d) — base LIVE DOSE FIXE (`{usage, moment, value}`, insuline ACTIVE uniquement) pour le diff
+  // de l'écran de revue. Vide si le patient n'est pas en mode « doses simples ».
+  const liveFixedDose = await insulinTherapyService.getFixedDoseSlots(patientId)
   const groupedProposals: ReviewGroupedItem[] = groupedPendingRaw.flatMap((p) => {
     const commonMeta = {
       id: p.id,
@@ -242,6 +254,36 @@ export default async function PatientReviewPage({
       rationale: parseRationale(p.rationale),
       coexistsWith: coexistsWithById.get(p.id) ?? null,
       createdAt: p.createdAt.toISOString(),
+    }
+    // US-2663 (S3d) — DOSE FIXE (mode « doses simples ») : diff/CAS par clé `(usage, moment)`, unité U
+    // (PARAM_UNIT_KEY.fixedDose). Avertissement dose élevée dérivé SERVEUR (bornes cliniques jamais côté client).
+    if (p.parameterType === "fixedDose") {
+      const proposed = parseFixedDoseSlots(p.proposedSlots)
+      if (!proposed) {
+        console.warn(`[review] SlotSetProposal ${p.id} skipped — unparseable fixedDose proposedSlots`)
+        return []
+      }
+      const baseline = p.baselineSlots == null ? null : parseFixedDoseSlots(p.baselineSlots)
+      const fixedCasOpts = {
+        keyOf: (s: FixedDoseSlot) => `${s.usage}:${s.moment}`,
+        valueOf: (s: FixedDoseSlot) => s.value,
+      }
+      const rows = diffFixedDoseSlots(liveFixedDose, proposed).map((row) => ({
+        ...row,
+        highDoseWarning:
+          row.proposedValue != null &&
+          (row.usage === "bolus"
+            ? row.proposedValue > CLINICAL_BOUNDS.FIXED_BOLUS_WARN_U
+            : row.proposedValue > CLINICAL_BOUNDS.FIXED_BASAL_WARN_U),
+      }))
+      return [
+        {
+          ...commonMeta,
+          rows,
+          baselineDrifted: !isBaselineUnchangedBy(baseline, liveFixedDose, fixedCasOpts),
+          structuralChange: hasStructuralChangeFixedDose(liveFixedDose, proposed),
+        },
+      ]
     }
     // US-2663 (S3c) — basale POMPE : diff/CAS par `startTime` (temps EXACTS), unité U/h (PARAM_UNIT_KEY.basalRate).
     if (p.parameterType === "basalRate") {
@@ -261,8 +303,9 @@ export default async function PatientReviewPage({
         },
       ]
     }
-    // ISF/ICR — diff/CAS par `startHour`. Un `parameterType` non géré (ex. fixedDose, PR dédiée) est ignoré
-    // défensivement (protège la revue d'un futur levier non encore rendu ici plutôt que de planter).
+    // ISF/ICR — diff/CAS par `startHour`. Un `parameterType` non géré (aucun à ce jour — les 4 leviers du
+    // socle groupé sont couverts) est ignoré défensivement (protège la revue d'un futur levier non encore
+    // rendu ici plutôt que de planter).
     const live = p.parameterType === "insulinSensitivityFactor" ? liveIsf : p.parameterType === "insulinToCarbRatio" ? liveIcr : null
     if (!live) return []
     const proposed = parseIsfIcrSlots(p.proposedSlots)

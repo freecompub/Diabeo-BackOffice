@@ -28,6 +28,14 @@
  *    n'a jamais de rationale (`item.rationale === null`) ; seule la direction de risque peut y être affichée.
  *  - `coexistsWith` (non-null) affiche un bandeau `role="status"` : une autre proposition `pending` existe sur
  *    le même paramètre, d'une classe d'origine différente (décision produit D2) — le médecin arbitre.
+ *  - L'appariement rationale ↔ ligne est POLYMORPHE par levier (US-2663 S3d) : clé `startHour` (ISF/ICR/pompe)
+ *    ou `(usage, moment)` (dose fixe, `SlotDiffRow.usage`/`SlotDiffRow.moment`) — cf. `rationaleKeyOf`.
+ *
+ * US-2663 (S3d) — DOSE FIXE (mode « doses simples ») : le libellé de créneau devient « Bolus · Matin »
+ * (`usage`/`moment` traduits, `SlotDiffRow.startHour`/`endHour` ne portent qu'un ordre synthétique, jamais un
+ * horaire réel) et une ligne dont la dose proposée dépasse le seuil d'usage (`SlotDiffRow.highDoseWarning`,
+ * dérivé SERVEUR — bornes cliniques jamais côté client) affiche un badge d'alerte NON bloquant à côté de la
+ * valeur proposée.
  */
 import { useTranslations, useLocale } from "next-intl"
 import type { AdjustableParameter, AdjustmentReason, ProposalSource } from "@prisma/client"
@@ -117,6 +125,18 @@ const PARAM_UNIT_KEY: Record<AdjustableParameter, "isfGl" | "icr" | "basal" | "u
 const hourRange = (startHour: number, endHour: number): string =>
   `${String(startHour).padStart(2, "0")}h–${String(endHour).padStart(2, "0")}h`
 
+/**
+ * US-2663 (S3d) — Clé d'appariement rationale ↔ ligne, POLYMORPHE par levier : `(usage, moment)` pour la dose
+ * fixe (pas d'horaire réel — `SlotDiffRow.startHour` n'est qu'un ordre synthétique), `startHour` (chaîne) pour
+ * les autres leviers (ISF/ICR/pompe). Utilisée à la fois côté rationale (`SlotRationale`) et côté ligne
+ * (`SlotDiffRow`) pour garantir le même hachage des deux côtés.
+ */
+const rationaleKeyOf = (
+  parameterType: AdjustableParameter,
+  entry: { startHour?: number; usage?: string; moment?: string },
+): string =>
+  parameterType === "fixedDose" ? `${entry.usage}:${entry.moment}` : String(entry.startHour)
+
 export function GroupedProposalReview({
   items,
   canDecide,
@@ -141,9 +161,12 @@ export function GroupedProposalReview({
       {items.map((item) => {
         const unit = tUnits(PARAM_UNIT_KEY[item.parameterType])
         const paramLabel = t(PARAM_LABEL_KEY[item.parameterType])
-        // US-2663 (S3b-0b) — rationale MOTEUR appariée au créneau par `startHour` (`null` = propositions
-        // humaines, cf. `createSetProposal`).
-        const rationaleByHour = new Map((item.rationale ?? []).map((r) => [r.startHour, r]))
+        // US-2663 (S3b-0b, polymorphe S3d) — rationale MOTEUR appariée au créneau par clé POLYMORPHE
+        // (`startHour` ISF/ICR/pompe, `(usage, moment)` dose fixe — cf. `rationaleKeyOf`). `null` = propositions
+        // humaines, cf. `createSetProposal`.
+        const rationaleByKey = new Map(
+          (item.rationale ?? []).map((r) => [rationaleKeyOf(item.parameterType, r), r]),
+        )
         return (
           <li key={item.id} className="space-y-2 rounded-md border border-border bg-card p-3">
             <div className="flex flex-wrap items-center gap-2">
@@ -213,20 +236,35 @@ export function GroupedProposalReview({
                   // direction générique (toute provenance), current = `liveValue` (fallback `proposedValue`
                   // pour un créneau NOUVEAU, sans base de comparaison → `none`).
                   const annotated = row.changed && !row.removed
-                  const rationale = annotated ? (rationaleByHour.get(row.startHour) ?? null) : null
+                  const rationale = annotated
+                    ? (rationaleByKey.get(rationaleKeyOf(item.parameterType, row)) ?? null)
+                    : null
                   const risk =
                     annotated && row.proposedValue !== null
                       ? deriveRiskDirection(item.parameterType, row.liveValue ?? row.proposedValue, row.proposedValue)
                       : "none"
+                  // US-2663 (S3d) — libellé de créneau DOSE FIXE traduit « Bolus · Matin » (`usage`/`moment`,
+                  // pas d'horaire réel) ; fallback `timeLabel`/`hourRange` inchangé pour les autres leviers.
+                  const cellLabel =
+                    item.parameterType === "fixedDose" && row.usage !== undefined && row.moment !== undefined
+                      ? `${t(`fixedDoseUsage.${row.usage}`)} · ${t(`fixedDoseMoment.${row.moment}`)}`
+                      : (row.timeLabel ?? hourRange(row.startHour, row.endHour))
                   return (
                     <TableRow
-                      key={`${row.startHour}-${row.endHour}-${row.removed ? "rm" : "pr"}`}
+                      key={
+                        item.parameterType === "fixedDose"
+                          ? `${row.usage}-${row.moment}-${row.removed ? "rm" : "pr"}`
+                          : `${row.startHour}-${row.endHour}-${row.removed ? "rm" : "pr"}`
+                      }
                       className={row.changed ? "bg-warning-bg" : undefined}
                       aria-label={rowAria}
                     >
                       {/* US-2663 (S3c) — `timeLabel` (bornes EXACTES "HH:MM") préféré pour la basale POMPE ;
-                          fallback `hourRange` (heures entières) pour ISF/ICR. */}
-                      <TableCell className="tabular-nums">{row.timeLabel ?? hourRange(row.startHour, row.endHour)}</TableCell>
+                          fallback `hourRange` (heures entières) pour ISF/ICR. US-2663 (S3d) — libellé
+                          `usage`/`moment` traduit pour la dose fixe (`cellLabel`), pas un horaire réel. */}
+                      <TableCell className={item.parameterType === "fixedDose" ? undefined : "tabular-nums"}>
+                        {cellLabel}
+                      </TableCell>
                       <TableCell className="tabular-nums">{liveText}</TableCell>
                       <TableCell className="tabular-nums font-medium">
                         <span className="flex items-center gap-1">
@@ -235,6 +273,15 @@ export function GroupedProposalReview({
                           )}
                           {row.removed ? "—" : `${fmt(row.proposedValue ?? 0)} ${unit}`}
                           {row.changed && <span className="sr-only">({changeKind})</span>}
+                          {/* US-2663 (S3d) — avertissement NON bloquant dose élevée (`highDoseWarning`, dérivé
+                              SERVEUR — bornes cliniques jamais côté client), même pattern que le badge
+                              d'alerte « dérive structurelle » (`border-feedback-warning`/`text-warning-fg`). */}
+                          {row.highDoseWarning && (
+                            <Badge variant="outline" className="gap-1 border-feedback-warning text-warning-fg">
+                              <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden="true" />
+                              {t("groupedHighDoseWarning")}
+                            </Badge>
+                          )}
                         </span>
                       </TableCell>
                       <TableCell>

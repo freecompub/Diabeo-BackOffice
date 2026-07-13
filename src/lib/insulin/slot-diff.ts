@@ -16,7 +16,7 @@
  * @see src/lib/insulin/slot-baseline-cas.ts (CAS d'ensemble bloquant, baseline vs live)
  * @see docs/UserStory/insulinotherapie-edition/US-2663-EPIC-proposition-groupee-integrale.md (S2)
  */
-import type { IsfIcrSlot, PumpBasalSlot } from "@/lib/insulin/grouped-proposal"
+import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot } from "@/lib/insulin/grouped-proposal"
 import { BASELINE_VALUE_EPS } from "@/lib/insulin/slot-baseline-cas"
 
 /** Une ligne du tableau de diff : un créneau PROPOSÉ (ou un créneau LIVE **supprimé** par la proposition). */
@@ -34,6 +34,19 @@ export type SlotDiffRow = {
    * `timeLabel` quand fourni → jamais de perte de précision minute à l'affichage.
    */
   timeLabel?: string
+  /**
+   * US-2663 (S3d) — clé DOSE FIXE portée sur la ligne (`usage` + `moment`), pour le libellé traduit (« Bolus ·
+   * Matin ») et l'appariement de la rationale par `(usage, moment)` côté composant. Absents pour ISF/ICR/pompe.
+   * `startHour`/`endHour` reçoivent un ordre SYNTHÉTIQUE dérivé du moment (matin=0…nuit=3) pour le tri + la clé React.
+   */
+  usage?: string
+  moment?: string
+  /**
+   * US-2663 (S3d) — avertissement dose élevée NON bloquant, dérivé SERVEUR (bornes jamais côté client) : dose
+   * proposée au-delà du seuil d'usage (`FIXED_BOLUS_WARN_U` 25 U bolus / `FIXED_BASAL_WARN_U` 80 U basal|both).
+   * Renseigné par `page.tsx` sur les lignes DOSE FIXE ; le composant affiche un badge d'alerte. Absent ailleurs.
+   */
+  highDoseWarning?: boolean
   /** `true` si live absent (nouveau), borne de fin différente, valeur différente (tolérance `BASELINE_VALUE_EPS`), ou supprimé. */
   changed: boolean
   /** `true` = créneau LIVE supprimé par la proposition (n'existe plus dans le jeu proposé). */
@@ -153,4 +166,57 @@ export function hasStructuralChangePump(live: readonly PumpBasalSlot[], proposed
   if (live.length !== proposed.length) return true
   const proposedStarts = new Set(proposed.map((s) => s.startTime))
   return live.some((s) => !proposedStarts.has(s.startTime))
+}
+
+/** Ordre synthétique du moment (matin=0 … nuit=3) → `startHour` de tri/clé pour la dose fixe (pas d'horaire réel). */
+const MOMENT_ORDER: Record<string, number> = { morning: 0, noon: 1, evening: 2, night: 3 }
+const fixedKey = (s: { usage: string; moment: string }) => `${s.usage}:${s.moment}`
+
+/**
+ * US-2663 (S3d) — DIFF pur DOSE FIXE (live → proposé), pendant de `diffSlots` pour le modèle `FixedDoseSlot`.
+ * Appariement par clé **`(usage, moment)`** (une même heure/moment peut porter bolus ET basal). `usage`/`moment`
+ * portés sur la ligne (libellé traduit + appariement rationale côté composant) ; `startHour` = ordre synthétique
+ * du moment (tri/clé React, pas un horaire réel). Valeur = dose U. Pas de borne (dose ponctuelle).
+ */
+export function diffFixedDoseSlots(live: readonly FixedDoseSlot[], proposed: readonly FixedDoseSlot[]): SlotDiffRow[] {
+  const liveByKey = new Map(live.map((s) => [fixedKey(s), s]))
+  const proposedKeys = new Set(proposed.map(fixedKey))
+  const ord = (s: { moment: string }) => MOMENT_ORDER[s.moment] ?? 9
+
+  const proposedRows: SlotDiffRow[] = proposed.map((p) => {
+    const match = liveByKey.get(fixedKey(p))
+    const changed = match === undefined || !Number.isFinite(match.value) || Math.abs(match.value - p.value) > BASELINE_VALUE_EPS
+    return {
+      startHour: ord(p),
+      endHour: ord(p),
+      proposedValue: p.value,
+      liveValue: match ? match.value : null,
+      usage: p.usage,
+      moment: p.moment,
+      changed,
+      removed: false,
+    }
+  })
+
+  const removedRows: SlotDiffRow[] = live
+    .filter((s) => !proposedKeys.has(fixedKey(s)))
+    .map((s) => ({
+      startHour: ord(s),
+      endHour: ord(s),
+      proposedValue: null,
+      liveValue: s.value,
+      usage: s.usage,
+      moment: s.moment,
+      changed: true,
+      removed: true,
+    }))
+
+  return [...proposedRows, ...removedRows].sort((a, b) => a.startHour - b.startHour)
+}
+
+/** Dérive structurelle DOSE FIXE (cardinalité, ou une clé `(usage, moment)` live sans correspondance côté proposé). */
+export function hasStructuralChangeFixedDose(live: readonly FixedDoseSlot[], proposed: readonly FixedDoseSlot[]): boolean {
+  if (live.length !== proposed.length) return true
+  const proposedKeys = new Set(proposed.map(fixedKey))
+  return live.some((s) => !proposedKeys.has(fixedKey(s)))
 }
