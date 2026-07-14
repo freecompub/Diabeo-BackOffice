@@ -22,7 +22,8 @@ export async function POST(req: NextRequest) {
     // the patient must explicitly accept before any insulin delivery.
     // The dose-driving parameters (ISF/ICR/settings) are DOCTOR-guarded (direct
     // write) separately in /sensitivity-factors, /carb-ratios, /settings ; NURSE/
-    // patient proposent via /api/adjustment-proposals (US-2648a).
+    // patient propose a GROUPED set (NURSE → /api/slot-set-proposals, patient →
+    // /api/patient/insulin-slot-set ; per-value path removed US-2663 S5).
     const user = requireAuth(req)
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

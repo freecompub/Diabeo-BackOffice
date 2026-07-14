@@ -2,8 +2,8 @@
  * Générateur de propositions d'ajustement (US-2651).
  *
  * Orchestre l'assemblage des données → les analyseurs purs (`proposal-algorithm`) → la persistance
- * moteur (`adjustmentService.createEngineProposal`). **Aucune** proposition n'est appliquée : tout
- * reste `pending`, gaté médecin (ADR #13).
+ * moteur GROUPÉE (`slotSetProposalService.createSetProposal`, 1 `SlotSetProposal` par levier — US-2663 S5,
+ * voie par-valeur retirée). **Aucune** proposition n'est appliquée : tout reste `pending`, gaté médecin (ADR #13).
  *
  * Spec de référence (deadband post-prandial, grossesse, nadir, bucketing, portes qualité) :
  * `docs/clinical-logic/algorithme-propositions-ajustement.md` §5ter.
@@ -13,7 +13,8 @@
  * **doses simples** par moment (titrées sur les creux pré-dose) ; `nonInsulin` (mode c) → uniquement des
  * `ClinicalReviewFlag` d'orientation (dont `observance`, `tirBelowTarget`, `hba1c*`). Chaque levier porte
  * la **dé-escalade active** des hypos récurrentes (US-2653 : matrice deadband × nadir, cooldown 72 h,
- * Somogyi → flag). La frontière MDR (`nonInsulin` → aucune dose) est re-imposée par `createEngineProposal`.
+ * Somogyi → flag). La frontière MDR (`nonInsulin` → aucune dose) est re-imposée sur le chemin d'émission
+ * groupé (`EXPECTED_SKIP_GROUPED` / `nonInsulinNoDose`).
  *
  * ⚠️ Le chemin basal est **couplé à l'existence des carb-ratios** : `generateForPatient` renvoie tôt
  * (`EMPTY("noCarbRatios")`) si aucun ICR n'est configuré, donc un patient pompe avec basale mais **sans**
@@ -45,7 +46,7 @@ import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.ser
 import { reasonImpliesIncrease } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
-// US-2663 (S3b-1) — émission GROUPÉE moteur (derrière flag `ENGINE_GROUPED_ISF_ICR`).
+// US-2663 — émission GROUPÉE moteur (unique voie de persistance depuis S5).
 import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
 import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot, StyloBasalSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
 import type { InsulinUsage, DoseMoment } from "@prisma/client"
@@ -67,11 +68,9 @@ const MIN_NADIR_NIGHTS = 3
 
 /** Résultat d'un run patient — métriques d'observabilité (aucune valeur clinique). */
 export interface GenerateResult {
-  /** Nombre de propositions PERSISTÉES ce run. ⚠️ US-2663 (S3b-1) — sémantique **dépendante du flag** pour
-   *  ISF/ICR : voie par-valeur (flag OFF) = 1 par CRÉNEAU changé ; voie GROUPÉE (`ENGINE_GROUPED_ISF_ICR` ON)
-   *  = 1 par LEVIER (`SlotSetProposal` couvrant N créneaux, donc ≤ 2 pour ISF+ICR). Métrique d'observabilité,
-   *  sans valeur clinique — un exploitant lisant les métriques cron pendant le rollout verra `created` chuter à
-   *  l'activation du flag sans que ce soit une régression (moins de lignes, mêmes changements regroupés). */
+  /** Nombre de propositions PERSISTÉES ce run. US-2663 (S5, grouped-only) : **1 par LEVIER** — chaque
+   *  `SlotSetProposal` couvre N créneaux (donc ≤ 2 pour ISF+ICR, ≤ 1 pour la basale/dose fixe). Métrique
+   *  d'observabilité, sans valeur clinique (compte des lignes de proposition, pas des créneaux changés). */
   created: number
   /** US-2653 — flags de revue CONTEXTUELS levés : haute-variabilité (ICR/ISF/fixedDose), Somogyi basal, hypo
    *  sévère isolée (ISF/basal/fixedDose — **PAS l'ICR** : le levier ICR ne surface pas un sévère isolé
@@ -91,9 +90,9 @@ export interface GenerateAllResult {
   skippedConcurrent: boolean
 }
 
-/** Acteur d'audit du cron = acteur SYSTÈME (`null`, FK-safe) — cohérent avec `createEngineProposal`
- *  (userId null) et les autres crons. Les lectures (`getSettings`/`dailyJournal`) sont donc attribuées
- *  au système, pas à un soignant. */
+/** Acteur d'audit du cron = acteur SYSTÈME (`null`, FK-safe) — cohérent avec la persistance groupée moteur
+ *  (`createSetProposal`, userId null) et les autres crons. Les lectures (`getSettings`/`dailyJournal`) sont
+ *  donc attribuées au système, pas à un soignant. */
 const CRON_AUDIT_USER_ID: number | null = null
 /** Clé du verrou advisory global (anti double-run OVH + Vercel). */
 const CRON_LOCK_KEY = "proposal-generator-cron"
@@ -337,9 +336,9 @@ type CollectedCandidate = { startHour: number; endHour: number; cand: ProposalCa
 /**
  * US-2663 (S3b-1) — **Émission GROUPÉE moteur** d'un levier ISF/ICR : assemble la disposition ENTIÈRE
  * (jeu de créneaux complet) et émet **une seule** `SlotSetProposal` `source: "algorithm"` (au lieu de N
- * `AdjustmentProposal` par-valeur). Ne s'exécute que sous le flag `ENGINE_GROUPED_ISF_ICR`.
+ * `AdjustmentProposal` par-valeur). Unique voie de persistance ISF/ICR depuis US-2663 S5.
  *
- * Garde-fous (parité fonctionnelle avec la voie par-valeur qu'elle remplace) :
+ * Garde-fous (parité fonctionnelle avec la voie par-valeur qu'elle a remplacée) :
  *  - **R2 — CAS par créneau CHANGÉ** : relit la config LIVE une fois (T1) et n'inclut un changement QUE si le
  *    créneau analysé est INCHANGÉ en base — même `endHour` ET valeur (`cand.currentValue`, snapshot T0) ==
  *    valeur live (tolérance `1e-9`, bruit float `Decimal`). Un créneau DÉRIVÉ (valeur éditée par le médecin,
@@ -582,7 +581,7 @@ export function assembleGroupedPumpDisposition(
 }
 
 /**
- * US-2663 (S3c) — Émission GROUPÉE moteur de la basale POMPE (derrière `ENGINE_GROUPED_PUMP`). Relit la config
+ * US-2663 (S3c) — Émission GROUPÉE moteur de la basale POMPE (unique voie depuis S5). Relit la config
  * pompe LIVE une fois (temps EXACTS + `id` + débit), délègue l'assemblage à `assembleGroupedPumpDisposition`,
  * puis émet **une** `SlotSetProposal` `basalRate` `source: "algorithm"` (disposition entière + baseline injecté
  * = la même lecture → fenêtre TOCTOU fermée). Rejets `createSetProposal` fail-closed → non fatals.
@@ -692,7 +691,7 @@ export function assembleGroupedFixedDose(
 }
 
 /**
- * US-2663 (S3d) — Émission GROUPÉE moteur de la DOSE FIXE (derrière `ENGINE_GROUPED_FIXED_DOSE`). Relit la
+ * US-2663 (S3d) — Émission GROUPÉE moteur de la DOSE FIXE (unique voie depuis S5). Relit la
  * config LIVE (`getFixedDoseSlots` — insuline ACTIVE, forme `(usage, moment, value)`), délègue à
  * `assembleGroupedFixedDose`, puis émet **une** `SlotSetProposal` `fixedDose` `source: "algorithm"` (baseline
  * injecté = même lecture → fenêtre TOCTOU fermée). Rejets `createSetProposal` fail-closed → non fatals.
@@ -799,7 +798,7 @@ export function assembleGroupedStyloDisposition(
 }
 
 /**
- * US-2663 (S3e PR2) — Émission GROUPÉE moteur de la basale STYLO (derrière `ENGINE_GROUPED_STYLO`). Relit la
+ * US-2663 (S3e PR2) — Émission GROUPÉE moteur de la basale STYLO (unique voie depuis S5). Relit la
  * config LIVE (`getStyloBasalSlots` — forme `{kind, value}`, doses `null` exclues), délègue à
  * `assembleGroupedStyloDisposition`, puis émet **une** `SlotSetProposal` `basalRate` `source: "algorithm"`
  * (disposition entière + baseline injecté = la même lecture → fenêtre TOCTOU fermée). Le verrou « 1 pending »
@@ -1044,7 +1043,7 @@ export const proposalGeneratorService = {
 
         // GROUPED-ONLY (S5) : collecte le candidat pompe (émission `SlotSetProposal` différée après le bloc) —
         // la voie par-valeur `createEngineProposal` est retirée.
-        const persistBasal = (cand: ProposalCandidate) => {
+        const collectBasal = (cand: ProposalCandidate) => {
           pumpCandidates.push({ slotId: nocturnalSlot.id, startHour: nocturnalSlot.startHour, cand })
         }
 
@@ -1059,13 +1058,13 @@ export const proposalGeneratorService = {
           // (sinon repli fastingValues → hypo 3 h masquée → hausse dangereuse). Baisses inconditionnelles.
           const isIncrease = candidate?.reason === "basalTooLow"
           if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_NADIR_NIGHTS)) {
-            persistBasal(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+            collectBasal(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
           } else if (recurrentNoct) {
             // Dans la bande + hypo nocturne récurrente → baisse FIXE −10 % (dé-escalade). Jugée sur les
             // nadirs POST-changement (Q6a) + plancher temporel `withinCooldown`.
             const de = analyzeBasalHypoDeescalation(nocturnalSlot.rate, postNocturnalNadirs)
             if (de.kind === "proposal" && !withinCooldown) {
-              persistBasal(de.candidate)
+              collectBasal(de.candidate)
             } else if (de.kind === "flagNonActionable") {
               await raiseNocturnalFlag() // débit trop bas pour titrer d'un incrément → restructuration = revue
             } else if (severeNoct) {
@@ -1301,7 +1300,7 @@ export const proposalGeneratorService = {
 
         // GROUPED-ONLY (S5) : collecte le candidat ISF (émission `SlotSetProposal` différée après la boucle) —
         // la voie par-valeur `createEngineProposal` est retirée.
-        const persistIsf = (cand: ProposalCandidate) => {
+        const collectIsf = (cand: ProposalCandidate) => {
           isfCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand })
         }
 
@@ -1317,13 +1316,13 @@ export const proposalGeneratorService = {
             points.map((p) => ({ postGlucoseGl: p.postGlucoseGl, targetGl: p.targetGl, nadirGl: p.nadirGl ?? undefined })),
           )
           if (candidate) {
-            persistIsf(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+            collectIsf(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
           } else if (recurrent) {
             // Dans la bande + hypos post-correction récurrentes → hausse ISF FIXE +10 % (dé-escalade). Jugée
             // sur les nadirs POST-changement (Q6a) + plancher temporel.
             const de = analyzeIsfHypoDeescalation(slot, postNadirsGl)
             if (de && !isfWithinCooldown) {
-              persistIsf(de)
+              collectIsf(de)
             } else if (severe) {
               await raiseIsfFlag() // dé-escalade bloquée (délai/post-changement) mais nadir SÉVÈRE → jamais tu (Q6b)
             }
@@ -1421,7 +1420,7 @@ export const proposalGeneratorService = {
           .then(() => { flagged++ })
           .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket }, err as Error))
 
-      const persistFixed = async (cand: ProposalCandidate) => {
+      const collectFixed = async (cand: ProposalCandidate) => {
         // GROUPED-ONLY (S5) : collecte (émission `SlotSetProposal` dose fixe différée) — voie par-valeur retirée.
         {
           // D2 — moment multi-doses : signal glycémique (creux pré-dose) NON attribuable à un usage → NE PAS
@@ -1458,14 +1457,14 @@ export const proposalGeneratorService = {
       } else {
         const candidate = analyzeFixedDose({ moment: slot.moment, valueU }, readings)
         if (candidate) {
-          await persistFixed(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+          await collectFixed(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
         } else if (recurrent) {
           // Dans la bande + relevés récurremment bas → baisse FIXE bornée (dé-escalade). Jugée sur les
           // relevés POST-changement (Q6a) + plancher temporel `fdWithinCooldown`.
           const de = analyzeFixedDoseHypoDeescalation({ moment: slot.moment, valueU }, postGlValues)
           const recurrentPost = recurrentPostMealHypo(postGlValues)
           if (de.kind === "proposal" && !fdWithinCooldown) {
-            await persistFixed(de.candidate)
+            await collectFixed(de.candidate)
           } else if (de.kind === "flagNonActionable" || (recurrentPost && valueU < CLINICAL_BOUNDS.FIXED_DOSE_MIN)) {
             // Non réductible POST-changement (dose au/sous plancher clinique 0,5 U) → FLAG de revue
             // (arrêt/restructuration), jamais un silence sur une hypo récurrente avérée.

@@ -63,8 +63,9 @@ export function recurrentPostMealHypo(nadirsGl: number[]): boolean {
  * US-2653 — candidat de **dé-escalade ICR** (moins d'insuline/gramme) sur hypos post-prandiales
  * récurrentes, **indépendant du deadband sur la moyenne**. Pas **fixe** `+HYPO_DEESCALATION_PERCENT`
  * (validé medical : pas de scaling — la persistance titre cumulativement). Direction HAUSSE = sens sûr
- * (« hyper ») → jamais bloquée par la garde hypo ; les bornes de `createEngineProposal` suffisent (un
- * proposedValue > `ICR_MAX` est rejeté à la persistance → skip fail-closed).
+ * (« hyper ») → jamais bloquée par la garde hypo ; le plafonnement de l'assemblage groupé suffit (un
+ * proposedValue > `ICR_MAX` est PLAFONNÉ à la borne — `clampProposed`, US-2663 S5/D1 — et signalé
+ * dans la justification `cappedToBound` ; le médecin tranche, jamais auto-appliqué).
  *
  * ⚠️ Le cas **haute-variabilité** (moyenne > plafond ET hypos récurrentes) N'est PAS traité ici : c'est
  * à l'appelant (générateur) de router ce cas vers un **flag de revue**, pas une proposition de dose.
@@ -455,8 +456,8 @@ export function analyzeBasalTrend(
   if (Math.abs(clampedChange) < 2) return null
 
   // Snapping DÉLIVRABLE (US-2651 basal, validé medical) : la pompe ne délivre qu'un multiple de
-  // PUMP_BASAL_INCREMENT (0,05 U/h) ; `createEngineProposal` REJETTE un débit non délivrable
-  // (`isDeliverableBasalRate`) → sans snap, quasi toutes les propositions basales seraient
+  // PUMP_BASAL_INCREMENT (0,05 U/h) ; la garde de délivrabilité (`isDeliverableBasalRate`) REJETTE un
+  // débit non délivrable → sans snap, quasi toutes les propositions basales seraient
   // silencieusement droppées (no-op). Mirror `analyzeFixedDose`. Le SENS et la GARDE utilisent la
   // valeur SNAPPÉE (cohérence avec ce qui est persisté), pas le % pré-snap.
   const inc = CLINICAL_BOUNDS.PUMP_BASAL_INCREMENT

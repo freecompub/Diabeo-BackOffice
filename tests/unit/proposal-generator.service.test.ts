@@ -45,10 +45,10 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 }))
 vi.mock("@/lib/services/adjustment.service", async (importOriginal) => {
   // GROUPED-ONLY (S5) — le générateur importe la garde pure `reasonImpliesIncrease` (parité `reasonDirectionMismatch`
-  // de l'assemblage groupé). On récupère la VRAIE fonction (aucun drift) ; `createEngineProposal` est stubé pour
-  // VÉRIFIER qu'il n'est PLUS jamais appelé (voie par-valeur retirée).
+  // de l'assemblage groupé). On récupère la VRAIE fonction (aucun drift). La voie par-valeur (`createEngineProposal`)
+  // a été RETIRÉE du service (S5) : le moteur persiste exclusivement via `slotSetProposalService.createSetProposal`.
   const actual = await importOriginal<typeof import("@/lib/services/adjustment.service")>()
-  return { ...actual, adjustmentService: { createEngineProposal: vi.fn() } }
+  return actual
 })
 vi.mock("@/lib/services/analytics.service", () => ({
   analyticsService: { fixedDoseTrend: vi.fn() },
@@ -73,7 +73,6 @@ import { CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
-import { adjustmentService } from "@/lib/services/adjustment.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { withSessionAdvisoryLock } from "@/lib/db/cron-lock"
 import { auditService } from "@/lib/services/audit.service"
@@ -92,7 +91,6 @@ const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
 const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
 const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
 const fixedDoseTrend = vi.mocked(analyticsService.fixedDoseTrend)
-const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 const createSet = vi.mocked(slotSetProposalService.createSetProposal)
 
 const DAY_MS = 86_400_000
@@ -235,7 +233,6 @@ function setup(opts: {
   dailyJournal.mockResolvedValue((opts.meals ?? [meal(), meal(), meal()]) as never)
   fastingTrend.mockResolvedValue((opts.fasting ?? []) as never)
   correctionTrend.mockResolvedValue((opts.corrections ?? []) as never)
-  createEngine.mockResolvedValue({ id: "e1" } as never)
   createSet.mockResolvedValue({ id: "s1" } as never)
 
   // Relectures LIVE (T1) des émetteurs groupés — MIROIR de la config analysée (pas de dérive R2 → l'overlay
@@ -273,7 +270,6 @@ describe("proposalGeneratorService.generateForPatient", () => {
     setup() // 3 repas PPG 2,0 g/L > plafond DT1 1,80 → baisse
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.created).toBe(1)
-    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
     const [chg] = isfIcrChanges("insulinToCarbRatio")
     expect(chg).toMatchObject({
       parameterType: "insulinToCarbRatio", reason: "icrTooHigh",
@@ -288,7 +284,6 @@ describe("proposalGeneratorService.generateForPatient", () => {
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.skipped).toBe("noFixedDose")
     expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).not.toHaveBeenCalled()
   })
 
   it("deadband : PPG moyenne entre borne basse et plafond → aucune proposition", async () => {
@@ -719,7 +714,6 @@ describe("proposalGeneratorService.generateForPatient — mode fixedDose (US-265
     prismaMock.patient.findFirst.mockResolvedValue({ pathology: opts.pathology ?? "DT2", pregnancyMode: opts.pregnancyMode ?? false } as never)
     prismaMock.glucoseTarget.findFirst.mockResolvedValue((opts.target ?? null) as never)
     fixedDoseTrend.mockResolvedValue(toTroughs(opts.troughs ?? emptyTroughs) as never)
-    createEngine.mockResolvedValue({ id: "e1" } as never)
     createSet.mockResolvedValue({ id: "sf" } as never)
     // Relecture LIVE groupée (emitGroupedFixedDose) — miroir de la config active, clé (usage, moment).
     getFixedDoseSlots.mockResolvedValue(
@@ -1196,7 +1190,6 @@ describe("proposalGeneratorService.generateOrientationFlags (mode c — nonInsul
     setupNonInsulin({ evt: new Date() }) // HbA1c récente → pas de flag, mais surtout aucune dose
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(res.created).toBe(0)
-    expect(createEngine).not.toHaveBeenCalled()
     expect(createSet).not.toHaveBeenCalled() // grouped-only : jamais de dose non plus (frontière MDR)
   })
 

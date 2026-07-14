@@ -61,12 +61,14 @@
 - **Frontière dispositif médical (MDR / IEC 62304)** : l'algorithme ne recommande **jamais** de
   posologie orale/GLP-1. Un patient **non insuliné** (mode c) ne reçoit **aucune** proposition de
   dose (voir §5) — refus serveur `nonInsulinNoDose` + `ClinicalReviewFlag` d'orientation.
-- **Fail-closed** : toute valeur hors bornes cliniques est refusée à la création
-  (`adjustmentService.createProposal`), pas seulement à l'accept.
+- **Plafonnement clinique (US-2663 S5 / D1)** : une valeur *moteur* calculée hors bornes cliniques est
+  **plafonnée à la borne** (`clampProposed`), jamais silencieusement droppée, et signalée dans la
+  justification (`cappedToBound` / `cappedFromValue`) — **le médecin tranche** (jamais auto-appliqué).
 - **Séparation des responsabilités** :
   - `proposal-algorithm.ts` = **pur** (aucune I/O) — calcule des *candidats* à partir de données déjà agrégées.
-  - `adjustmentService.createProposal` = persistance + **re-validation** des bornes + garde-fous
-    proposeur (cap patient, sens interdit, cooldown) + audit.
+  - `proposalGeneratorService` (assemblage groupé + `slotSetProposalService.createSetProposal`) = persistance
+    GROUPÉE (1 `SlotSetProposal` par levier — voie par-valeur `createEngineProposal`/`createProposal` retirée S5)
+    + plafonnement (D1) + garde-fous (CAS par créneau, sens interdit, no-op) + audit.
 
 ## 2. Constantes (source : `CLINICAL_BOUNDS`)
 
@@ -337,40 +339,43 @@ l'analyseur), anti-spam, frontière nonInsulin. Cooldown moteur au niveau géné
 ## 6. Chaîne complète (génération → application)
 
 1. **Génération** (`proposal-algorithm`, pur) → `ProposalCandidate` (déjà clampé ± 20 %, ≥ 3 événements, ≥ 2 %).
-2. **Persistance** (`adjustmentService.createProposal`) — re-vérifie : frontière nonInsulin (refus),
-   **bornes dures** (`validateProposedValue`), `currentValue` **dérivé serveur** (jamais du body),
-   garde-fous **proposeur** (cap patient ± 10 %, basale patient jamais en baisse, **cooldown 24 h**
-   patient), anti-spam (index `one_pending_per_slot`). Statut `pending`.
+2. **Persistance GROUPÉE** (`proposalGeneratorService` → `slotSetProposalService.createSetProposal`) —
+   assemble la disposition ENTIÈRE du levier (config LIVE) et émet **1 `SlotSetProposal`** (`source: algorithm`,
+   statut `pending` — voie par-valeur `AdjustmentProposal` retirée US-2663 S5). Re-vérifie **par créneau** :
+   frontière nonInsulin (aucune dose), **plafonnement clinique** (D1 — valeur hors borne plafonnée +
+   `cappedToBound`, jamais droppée), `currentValue` **dérivé serveur** (CAS par créneau : un créneau dont la
+   base a dérivé est **abandonné**, jamais une magnitude périmée), garde direction `reason`↔delta, **no-op**
+   (aucune émission si aucun créneau ne change).
 3. **Validation médecin** (`accept`) — re-vérifie les bornes + **compare-and-swap** (`baselineMoved`)
    si la base a bougé depuis la proposition. Application scopée patient.
 
-## 6bis. Persistance d'une proposition MOTEUR — `createEngineProposal` (US-2651)
+## 6bis. Persistance d'une proposition MOTEUR — émission GROUPÉE (US-2651 → US-2663 S5)
 
-`createProposal` est **humain-only** (source patient/nurse/doctor ; viole la contrainte CHECK
-`algorithm`). Le générateur persiste via **`adjustmentService.createEngineProposal(input, ctx)`** :
-`source = algorithm`, `proposedByUserId = null`, métriques moteur (`confidence`/`supportingEvents`)
-**non nulles** (CHECK). Reprend les garde-fous serveur de `createProposal` : frontière **nonInsulin**
-(MDR), **bornes dures**, `currentValue` **re-dérivé serveur** (le candidat est calculé sur un snapshot →
-re-vérif contre la config LIVE) + `changePercent` recalculé, **anti-spam** (`one_pending_per_slot`).
-Statut `pending` ; notifie le référent (best-effort). Le générateur fournit les **discriminateurs de
-créneau** selon le slot analysé (ISF/ICR → `timeSlot*`/`carbRatio*` ; basal → `pumpBasalSlotId`).
+Le générateur **ne persiste plus par-valeur** : `createEngineProposal` et `createProposal` ont été **retirés**
+(US-2663 S5, grouped-only). Il assemble la disposition ENTIÈRE du levier depuis la config LIVE et émet
+**1 `SlotSetProposal`** via **`slotSetProposalService.createSetProposal`** : `source = algorithm`,
+`proposedByUserId = null`, métriques moteur (`confidence`/`supportingEvents`) **non nulles** (CHECK).
+Les garde-fous serveur historiques sont **répliqués au niveau de l'assemblage** (parité fonctionnelle) :
+frontière **nonInsulin** (MDR, `nonInsulinNoDose`), **plafonnement** des bornes (D1 — `clampProposed`
+**plafonne** au lieu de rejeter, `cappedToBound` en justification), `currentValue` **re-dérivé serveur**
+par créneau, cohérence `reason` ↔ signe du delta (`reasonDirectionMismatch`), `supportingEvents > 0`,
+**no-op** si rien ne change. L'invariant « 1 pending / (patient × paramètre) » est garanti par index
+unique partiel + supersession dans `createSetProposal`.
 
-**Fenêtre snapshot→persist (validé medical)** : le candidat est calculé sur `expectedCurrentValue`
-(snapshot). Si la config a **dérivé** entre l'analyse et la persistance, `createEngineProposal`
-**REJETTE** (`baselineMovedAtPersist`) au lieu de persister une magnitude hors-cap ou un sens inversé
-(le `baselineMoved` de l'accept ne couvre que persist→accept). En défense en profondeur, la cohérence
-`reason` ↔ signe du delta est asservie (`reasonDirectionMismatch`), et `supportingEvents > 0` exigé.
+**Fenêtre snapshot→émission (validé medical, CAS par créneau)** : le candidat est calculé sur un snapshot.
+Si la base d'un créneau a **dérivé** entre l'analyse et l'émission, ce créneau est **abandonné** de la
+disposition (jamais une magnitude périmée ni un sens inversé). La disposition et le snapshot de base
+partagent une **même lecture LIVE** (fenêtre TOCTOU fermée : le CAS d'acceptation d'ensemble couvre ensuite
+les créneaux inchangés).
 
-**Exemples de rejet** :
-- *Dérive (`baselineMovedAtPersist`)* : candidat ISF calculé sur snapshot `0,50` → `proposedValue 0,60`
-  (`+20 %`). Entre l'analyse et la persistance, le médecin abaisse l'ISF live à `0,45`. `createEngineProposal`
-  re-dérive `0,45 ≠ 0,50` → **rejeté** (sinon on stockerait `+33 %`, hors cap). Le run suivant ré-analyse
-  sur `0,45`.
+**Exemples (créneau abandonné / non émis)** :
+- *Dérive de base* : créneau ISF calculé sur snapshot `0,50` → `proposedValue 0,60` (`+20 %`). Entre
+  l'analyse et l'émission, le médecin abaisse l'ISF live à `0,45` → le créneau est **abandonné** de la
+  disposition (`0,45 ≠ 0,50` ; sinon on stockerait `+33 %`, hors cap). Le run suivant ré-analyse sur `0,45`.
 - *Incohérence (`reasonDirectionMismatch`)* : candidat `reason = isfTooLow` (hausse attendue) mais
-  `proposedValue 0,45 < currentValue live 0,50` (baisse) → **rejeté** (l'explication affichée serait fausse
-  et l'application défairait le réglage du médecin).
-- *`supportingEvents = 0`* → **rejeté** (`invalidSupportingEvents`) : une proposition sans événement n'a
-  aucun sens.
+  `proposedValue 0,45 < currentValue live 0,50` (baisse) → créneau **écarté** (l'explication affichée serait
+  fausse et l'application défairait le réglage du médecin).
+- *`supportingEvents = 0`* → créneau **écarté** : une proposition sans événement n'a aucun sens.
 
 ## 7. Validation `medical-domain-validator` (US-2651) — verdicts
 

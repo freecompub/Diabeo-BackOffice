@@ -1,11 +1,14 @@
 /**
- * Tests — US-2663 (S3b-1) : bascule du générateur moteur vers l'ÉMISSION GROUPÉE ISF/ICR
- * (`proposalGeneratorService.generateForPatient`, derrière le flag `ENGINE_GROUPED_ISF_ICR`).
+ * Tests — US-2663 (S5) : le générateur moteur émet des propositions GROUPÉES
+ * (`proposalGeneratorService.generateForPatient`).
+ *
+ * Depuis S5, l'émission GROUPÉE est le comportement PAR DÉFAUT et UNIQUE : la voie
+ * par-valeur `createEngineProposal` a été RETIRÉE du service (plus aucun flag
+ * `ENGINE_GROUPED_*` — le groupé n'est plus conditionnel).
  *
  * Sécurité clinique testée :
- *  - flag OFF (défaut) → comportement par-valeur INCHANGÉ (`createEngineProposal`, jamais de groupé) ;
- *  - flag ON → **une** `SlotSetProposal` `source: "algorithm"` par levier, disposition ENTIÈRE assemblée
- *    depuis la config LIVE, valeurs changées superposées ;
+ *  - **une** `SlotSetProposal` `source: "algorithm"` par levier, disposition ENTIÈRE
+ *    assemblée depuis la config LIVE, valeurs changées superposées ;
  *  - R2 — CAS par créneau CHANGÉ : un créneau dont la base a DÉRIVÉ depuis l'analyse est ABANDONNÉ
  *    (jamais une magnitude périmée dans la disposition) ;
  *  - R4 — no-op : aucune proposition émise si aucun créneau ne change (0 candidat OU tous dérivés) ;
@@ -13,7 +16,7 @@
  *  - R3 — rationale MOTEUR : une entrée par créneau changé (motif/confiance/volume/moyenne/période) ;
  *  - un rejet fail-closed de `createSetProposal` reste NON FATAL (run continue, `created = 0`).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 vi.mock("@/lib/services/treatment-mode.service", () => ({
@@ -30,10 +33,10 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 }))
 vi.mock("@/lib/services/adjustment.service", async (importOriginal) => {
   // US-2663 (S3b-1) — le générateur importe la garde pure `reasonImpliesIncrease` (parité `reasonDirectionMismatch`).
-  // On récupère la VRAIE fonction (pas de réimplémentation → aucun drift possible si un suffixe directionnel évolue) ;
-  // seul `adjustmentService.createEngineProposal` est stubé (on vérifie qu'il n'est PAS appelé en mode groupé).
+  // On récupère la VRAIE fonction (pas de réimplémentation → aucun drift possible si un suffixe directionnel évolue).
+  // La voie par-valeur (`createEngineProposal`) a été RETIRÉE (S5) : persistance moteur = `createSetProposal` uniquement.
   const actual = await importOriginal<typeof import("@/lib/services/adjustment.service")>()
-  return { ...actual, adjustmentService: { createEngineProposal: vi.fn() } }
+  return actual
 })
 vi.mock("@/lib/services/analytics.service", () => ({
   analyticsService: { fixedDoseTrend: vi.fn() },
@@ -56,7 +59,6 @@ import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPu
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
-import { adjustmentService } from "@/lib/services/adjustment.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { slotSetProposalService } from "@/lib/services/slot-set-proposal.service"
@@ -66,7 +68,6 @@ const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
 const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
 const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
-const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const createSet = vi.mocked(slotSetProposalService.createSetProposal)
 const getFixedDoseSlots = vi.mocked(insulinTherapyService.getFixedDoseSlots)
@@ -111,7 +112,6 @@ function setup(opts: {
   prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
   dailyJournal.mockResolvedValue((opts.meals ?? [meal(), meal(), meal()]) as never)
   correctionTrend.mockResolvedValue((opts.corrections ?? []) as never)
-  createEngine.mockResolvedValue({ id: "e1" } as never)
   createSet.mockResolvedValue({ id: "s1" } as never)
   // Relecture LIVE (T1) — par défaut = miroir de `getSettings` (pas de dérive), avec un mealLabel ICR.
   prismaMock.carbRatio.findMany.mockResolvedValue(
@@ -132,17 +132,12 @@ function setCallFor(param: "insulinToCarbRatio" | "insulinSensitivityFactor") {
 describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.ENGINE_GROUPED_ISF_ICR = "true"
-  })
-  afterEach(() => {
-    delete process.env.ENGINE_GROUPED_ISF_ICR
   })
 
-  it("flag ON — ICR : émet UNE SlotSetProposal source=algorithm (jamais de par-valeur)", async () => {
+  it("ICR : émet UNE SlotSetProposal source=algorithm (jamais de par-valeur)", async () => {
     setup() // PPG 2,0 g/L > plafond DT1 1,80 → baisse ICR sur le créneau [12,14]
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled() // plus de voie par-valeur en mode groupé
     const call = setCallFor("insulinToCarbRatio")!
     expect(call).toBeDefined()
     expect(call.patientId).toBe(1)
@@ -159,7 +154,7 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — disposition multi-créneaux : seul le créneau changé est superposé, l'autre garde sa valeur live", async () => {
+  it("disposition multi-créneaux : seul le créneau changé est superposé, l'autre garde sa valeur live", async () => {
     // Créneau matin [6,12] PPG 2,0 → baisse ; créneau midi [12,18] PPG 1,5 in-band → inchangé.
     setup({
       carbRatios: [{ startHour: 6, endHour: 12, gramsPerUnit: 10 }, { startHour: 12, endHour: 18, gramsPerUnit: 8 }],
@@ -202,7 +197,7 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.created).toBe(0)
   })
 
-  it("flag ON — ISF : émet une SlotSetProposal ISF (période 30 j), rationale isfTooHigh", async () => {
+  it("ISF : émet une SlotSetProposal ISF (période 30 j), rationale isfTooHigh", async () => {
     const ISF_SLOT = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
     setup({
       meals: [],
@@ -212,7 +207,6 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     })
     await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled()
     const call = setCallFor("insulinSensitivityFactor")!
     expect(call).toBeDefined()
     expect(call.proposer).toEqual({ userId: null, source: "algorithm" })
@@ -231,16 +225,14 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.slotsConsidered).toBe(1) // le créneau a bien été analysé
   })
 
-  it("US-2663 (S5) — GROUPED-ONLY : sans flag, émet groupé (jamais par-valeur `createEngineProposal`)", async () => {
-    delete process.env.ENGINE_GROUPED_ISF_ICR // le flag n'existe plus : le groupé est le comportement PAR DÉFAUT
+  it("US-2663 (S5) — GROUPED-ONLY : émet une proposition groupée (voie par-valeur retirée)", async () => {
     setup()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
     expect(setCallFor("insulinToCarbRatio")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — ICR + ISF simultanés : DEUX propositions groupées (une par levier), toujours 0 par-valeur", async () => {
+  it("ICR + ISF simultanés : DEUX propositions groupées (une par levier), toujours 0 par-valeur", async () => {
     const ISF_SLOT = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
     setup({
       sensitivityFactors: [ISF_SLOT],
@@ -249,7 +241,6 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     }) // ICR baisse (meals défaut PPG 2,0) + ISF baisse
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled()
     expect(setCallFor("insulinToCarbRatio")).toBeDefined()
     expect(setCallFor("insulinSensitivityFactor")).toBeDefined()
     expect(createSet).toHaveBeenCalledTimes(2)
@@ -475,9 +466,8 @@ describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => 
   })
 })
 
-describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, flag ENGINE_GROUPED_PUMP)", () => {
+describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c)", () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => delete process.env.ENGINE_GROUPED_PUMP)
 
   /** Config pompe : créneau nocturne [0,6) débit 0,8 + créneau jour [6,0) débit 1,1. */
   function setupPump() {
@@ -510,12 +500,10 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, fl
     ] as never)
   }
 
-  it("flag ON — émet UNE SlotSetProposal basalRate (disposition pompe entière, hausse nocturne)", async () => {
-    process.env.ENGINE_GROUPED_PUMP = "true"
+  it("émet UNE SlotSetProposal basalRate (disposition pompe entière, hausse nocturne)", async () => {
     setupPump()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled() // plus de par-valeur en mode groupé pompe
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
     expect(call).toBeDefined()
     expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
@@ -530,7 +518,6 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, fl
   it("US-2663 (S5) — GROUPED-ONLY POMPE : sans flag, émet groupé (jamais par-valeur)", async () => {
     setupPump()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
     expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")).toBeDefined()
     expect(res.created).toBe(1)
   })
@@ -591,9 +578,8 @@ describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () =
   })
 })
 
-describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d PR2, flag ENGINE_GROUPED_FIXED_DOSE)", () => {
+describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d PR2)", () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => delete process.env.ENGINE_GROUPED_FIXED_DOSE)
 
   /** Config doses simples : selon `slots` (défaut = bolus/morning 6 U). Creux pré-dose HAUTS → fixedDoseTooLow (hausse). */
   function setupFixedDose(slots: { usage: string; moment: string; valueU: number }[] = [{ usage: "bolus", moment: "morning", valueU: 6 }], troughGl = 1.6) {
@@ -612,12 +598,10 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     getFixedDoseSlots.mockResolvedValue(slots.map((s) => ({ usage: s.usage, moment: s.moment, value: s.valueU })) as never)
   }
 
-  it("flag ON — émet UNE SlotSetProposal fixedDose (clé usage+moment, hausse)", async () => {
-    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
+  it("émet UNE SlotSetProposal fixedDose (clé usage+moment, hausse)", async () => {
     setupFixedDose()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled()
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "fixedDose")
     expect(call).toBeDefined()
     expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
@@ -630,17 +614,14 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     expect(res.created).toBe(1)
   })
 
-  it("US-2663 (S5) — GROUPED-ONLY DOSE FIXE : sans flag, émet groupé (jamais par-valeur)", async () => {
-    delete process.env.ENGINE_GROUPED_FIXED_DOSE // flag retiré : groupé par défaut
+  it("US-2663 (S5) — GROUPED-ONLY DOSE FIXE : émet groupé (jamais par-valeur)", async () => {
     setupFixedDose()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
     expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "fixedDose")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
   it("D2 — moment MULTI-DOSES (bolus + basal au même moment) → ABANDONNÉ (aucune proposition ni par-valeur)", async () => {
-    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
     // Deux doses au moment « evening » (bolus + basal) → signal non attribuable → abandon (D2).
     setupFixedDose([
       { usage: "bolus", moment: "evening", valueU: 6 },
@@ -648,12 +629,10 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     ])
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(createSet).not.toHaveBeenCalled() // moment multi-doses jamais titré
-    expect(createEngine).not.toHaveBeenCalled()
     expect(res.created).toBe(0)
   })
 
   it("D2 — moment multi-doses avec HYPO (candidat de BAISSE abandonné) → lève un ClinicalReviewFlag (jamais silencieux)", async () => {
-    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
     // Creux BAS (0,6 g/L) → dose trop haute → candidat de BAISSE ; moment « evening » multi-doses → abandon.
     // Garde-fou medical : l'abandon d'une baisse (signal hypo) DOIT alerter le médecin (flag), pas juste logger.
     setupFixedDose([
@@ -718,9 +697,8 @@ describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STY
   })
 })
 
-describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2, flag ENGINE_GROUPED_STYLO)", () => {
+describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2)", () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => delete process.env.ENGINE_GROUPED_STYLO)
 
   /** Config stylo single : dose lente 20 U. À jeun HAUT (1,60 g/L > cible ~1,10) + nadir nocturne SÛR → basalTooLow (hausse). */
   function setupStyloSingle() {
@@ -741,12 +719,10 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     getStyloBasalSlots.mockResolvedValue([{ kind: "daily", value: 20 }] as never)
   }
 
-  it("flag ON — émet UNE SlotSetProposal basalRate de forme STYLO (kind daily, hausse), baseline injecté", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("émet UNE SlotSetProposal basalRate de forme STYLO (kind daily, hausse), baseline injecté", async () => {
     setupStyloSingle()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled() // plus de par-valeur stylo en mode groupé
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
     expect(call).toBeDefined()
     expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
@@ -760,17 +736,14 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect(res.created).toBe(1)
   })
 
-  it("US-2663 (S5) — GROUPED-ONLY STYLO : sans flag, émet groupé (jamais par-valeur `createEngineProposal`)", async () => {
-    delete process.env.ENGINE_GROUPED_STYLO // flag retiré : groupé par défaut
+  it("US-2663 (S5) — GROUPED-ONLY STYLO : émet une proposition groupée (voie par-valeur retirée)", async () => {
     setupStyloSingle()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
     expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — split : la dose gagnante (soir, à jeun HAUT) est superposée, matin (pas de signal) inchangé", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("split : la dose gagnante (soir, à jeun HAUT) est superposée, matin (pas de signal) inchangé", async () => {
     mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
     getSettings.mockResolvedValue({
       carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
@@ -787,7 +760,6 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
 
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createEngine).not.toHaveBeenCalled()
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
     expect(call).toBeDefined()
     const disp = call![0].proposedSlots as { kind: string; value: number }[]
@@ -824,8 +796,7 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
   }
 
-  it("flag ON — split : dé-escalade SOIR (hypo) prioritaire sur titration MATIN → SOIR gagnante émise, MATIN sans flag", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("split : dé-escalade SOIR (hypo) prioritaire sur titration MATIN → SOIR gagnante émise, MATIN sans flag", async () => {
     // Soir : à jeun en bande (1,1) + nadirs nocturnes hypo récurrente (0,55) → dé-escalade soir.
     // Matin : pré-dîner HAUT (1,7) + nadirs de jour sûrs (1,2) → titration matin (hausse). Priorité sécurité → soir.
     setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.7, dayNadGl: 1.2 })
@@ -844,8 +815,7 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — split : DEUX dé-escalades → SOIR gagnante émise + MATIN perdante lève TOUJOURS son flag (fail-loud préservé)", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("split : DEUX dé-escalades → SOIR gagnante émise + MATIN perdante lève TOUJOURS son flag (fail-loud préservé)", async () => {
     // Soir : nadirs nocturnes hypo récurrente (0,55) → dé-escalade. Matin : pré-dîner en bande (1,1) +
     // nadirs de jour hypo récurrente (0,55) → dé-escalade. Gagnante = soir (priorité à égalité) ; perdante = matin.
     setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.1, dayNadGl: 0.55 })
