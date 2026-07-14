@@ -456,6 +456,11 @@ async function emitGroupedIsfIcr(
  * par le moteur qui dépasse sa borne est proposée À LA BORNE (jamais rejetée, jamais skippée) + notée dans la
  * `rationale` (`cappedToBound`) ; le MÉDECIN tranche (proposition `pending`, jamais auto-appliqué, ADR #13).
  * Stylo : pas de plafond CLINIQUE dur (U300/dégludec) → garde anti-overflow colonne (9999,99). Sources = clinical-bounds.
+ *
+ * ⚠️ Revue PR #749 (finding #2) — le `max` stylo/dose fixe est un **plafond anti-overflow de COLONNE**
+ * (`Decimal`), PAS une borne clinique ni un multiple délivrable : il n'est jamais atteint en pratique (les caps
+ * de variation par run le bornent bien en-deçà) ; s'il l'était, `assertValid*` rejetterait le jeu (non
+ * délivrable) — fail-closed. Le `min` (plancher) est la borne réellement structurante de ces deux leviers.
  */
 export type ClampBounds = { min: number; max: number }
 const CLAMP_BOUNDS = {
@@ -467,21 +472,30 @@ const CLAMP_BOUNDS = {
 } as const
 
 /**
- * Plafonne `v` à `[bounds.min, bounds.max]`. `capped` = la valeur dépassait la borne et a été ramenée. `bounds`
- * OPTIONNEL : absent ⇒ AUCUN plafonnement (rétro-compat des tests d'assemblage purs) — tous les émetteurs moteur
- * RÉELS passent les bornes de leur levier (D1). L'appelant note `cappedToBound`/`cappedFromValue` dans la rationale.
+ * Plafonne `v` à `[bounds.min, bounds.max]`. `capped` = la valeur dépassait la borne et a été ramenée.
+ * `bounds` OBLIGATOIRE (US-2663 S5, revue PR #749 finding #3) : tout assembleur groupé DOIT plafonner —
+ * la sûreté ne repose plus sur la discipline de l'appelant. L'appelant note `cappedToBound`/`cappedFromValue`.
  */
-function clampProposed(v: number, bounds?: ClampBounds): { value: number; capped: boolean } {
-  if (!bounds) return { value: v, capped: false }
+function clampProposed(v: number, bounds: ClampBounds): { value: number; capped: boolean } {
   const value = Math.min(bounds.max, Math.max(bounds.min, v))
   return { value, capped: Math.abs(value - v) > 1e-9 }
+}
+
+/**
+ * Garde d'INTÉGRITÉ DE BASE (US-2663 S5, revue PR #749 finding #1) : une base LIVE hors des bornes cliniques
+ * (donnée legacy, ex. ICR 32 g/U > max 30) ne doit JAMAIS servir de point de titration — le delta plafonné
+ * pourrait excéder le cap de titration (%) sans que l'analyseur l'ait borné. Fail-closed : le créneau est
+ * ABANDONNÉ (le clinicien corrige d'abord la base invalide). Tolérance `1e-9` alignée sur le CAS d'ensemble.
+ */
+function isBaseOutOfBounds(value: number, bounds: ClampBounds): boolean {
+  return value < bounds.min - 1e-9 || value > bounds.max + 1e-9
 }
 
 export function assembleGroupedDisposition(
   liveSlots: IsfIcrSlot[],
   candidates: CollectedCandidate[],
   analysisPeriodDays: number,
-  bounds?: ClampBounds,
+  bounds: ClampBounds,
 ): { disposition: IsfIcrSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const liveByStart = new Map(liveSlots.map((s) => [s.startHour, s]))
   const overlay = new Map<number, number>() // startHour → proposedValue
@@ -492,6 +506,7 @@ export function assembleGroupedDisposition(
     if (!live) continue // startHour disparu (créneau supprimé/restructuré) → abandon
     if (live.endHour !== endHour) continue // fenêtre horaire déplacée (même startHour, endHour ≠) → abandon (R2)
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive de valeur → abandon (R2)
+    if (isBaseOutOfBounds(live.value, bounds)) continue // base legacy hors-borne → jamais titrer depuis une base invalide (finding #1)
     // D1 (S5) — plafonnement clinique : valeur calculée hors-borne → proposée À LA BORNE + notée (le médecin tranche).
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds)
     const delta = proposed - live.value
@@ -542,7 +557,7 @@ export function assembleGroupedPumpDisposition(
   liveSlots: LivePumpSlot[],
   candidates: CollectedPumpCandidate[],
   analysisPeriodDays: number,
-  bounds?: ClampBounds,
+  bounds: ClampBounds,
 ): { disposition: PumpBasalSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const liveById = new Map(liveSlots.map((s) => [s.id, s]))
   const overlay = new Map<string, number>() // slotId → proposedRate
@@ -552,6 +567,7 @@ export function assembleGroupedPumpDisposition(
     const live = liveById.get(slotId)
     if (!live) continue // créneau supprimé depuis l'analyse → abandon
     if (Math.abs(live.rate - cand.currentValue) > 1e-9) continue // dérive de débit → abandon (R2)
+    if (isBaseOutOfBounds(live.rate, bounds)) continue // base legacy hors-borne U/h → jamais titrer depuis une base invalide (finding #1)
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement à la borne U/h
     const delta = proposed - live.rate
     if (Math.abs(delta) < 1e-9) continue // no-op (ou déjà à la borne après plafonnement — tolérance alignée sur le CAS)
@@ -654,7 +670,7 @@ export function assembleGroupedFixedDose(
   liveSlots: FixedDoseSlot[],
   candidates: CollectedFixedDoseCandidate[],
   analysisPeriodDays: number,
-  bounds?: ClampBounds,
+  bounds: ClampBounds,
 ): { disposition: FixedDoseSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const keyOf = (s: { usage: InsulinUsage; moment: DoseMoment }) => `${s.usage}:${s.moment}`
   const liveByKey = new Map(liveSlots.map((s) => [keyOf(s), s]))
@@ -666,6 +682,7 @@ export function assembleGroupedFixedDose(
     const live = liveByKey.get(k)
     if (!live) continue // dose disparue depuis l'analyse → abandon
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
+    if (isBaseOutOfBounds(live.value, bounds)) continue // base legacy hors-borne → jamais titrer depuis une base invalide (finding #1)
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement à la borne
     const delta = proposed - live.value
     if (Math.abs(delta) < 1e-9) continue // no-op (ou déjà à la borne après plafonnement — tolérance alignée sur le CAS)
@@ -764,7 +781,7 @@ export function assembleGroupedStyloDisposition(
   liveSlots: StyloBasalSlot[],
   candidates: CollectedStyloCandidate[],
   analysisPeriodDays: number,
-  bounds?: ClampBounds,
+  bounds: ClampBounds,
 ): { disposition: StyloBasalSlot[] | null; rationale: SlotRationale[]; directionMismatches: number } {
   const liveByKind = new Map(liveSlots.map((s) => [s.kind, s]))
   const overlay = new Map<string, number>() // kind → proposedValue
@@ -774,6 +791,7 @@ export function assembleGroupedStyloDisposition(
     const live = liveByKind.get(kind)
     if (!live) continue // dose disparue depuis l'analyse (bascule de modalité) → abandon
     if (Math.abs(live.value - cand.currentValue) > 1e-9) continue // dérive → abandon (R2)
+    if (isBaseOutOfBounds(live.value, bounds)) continue // base legacy hors-borne (U totales) → jamais titrer depuis une base invalide (finding #1)
     const { value: proposed, capped } = clampProposed(cand.proposedValue, bounds) // D1 : plafonnement (U totales)
     const delta = proposed - live.value
     if (Math.abs(delta) < 1e-9) continue // no-op (ou déjà à la borne après plafonnement — tolérance alignée sur le CAS)

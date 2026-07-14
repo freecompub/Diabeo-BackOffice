@@ -294,6 +294,8 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
 })
 
 describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
+  // US-2663 (S5) — `bounds` est désormais REQUIS sur les assembleurs purs. Valeurs live ICR ⊂ [3,30] → no-op.
+  const ICR = { min: 3, max: 30 }
   const live = [
     { startHour: 6, endHour: 12, value: 10, mealLabel: "Petit-déjeuner" },
     { startHour: 12, endHour: 18, value: 8 },
@@ -314,7 +316,7 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
   }) as never
 
   it("créneau changé cohérent → superposé, autres inchangés, rationale 1 entrée, mealLabel préservé (R5)", () => {
-    const res = assembleGroupedDisposition(live, [cand()], 14)!
+    const res = assembleGroupedDisposition(live, [cand()], 14, ICR)!
     expect(res.disposition).toEqual([
       { startHour: 6, endHour: 12, value: 9, mealLabel: "Petit-déjeuner" }, // changé
       { startHour: 12, endHour: 18, value: 8 }, // inchangé
@@ -325,36 +327,36 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
   })
 
   it("garde direction : reason icrTooLow (hausse attendue) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooLow", proposedValue: 9 })], 14)
+    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooLow", proposedValue: 9 })], 14, ICR)
     expect(res.disposition).toBeNull() // R4 : le seul candidat est abandonné
     expect(res.directionMismatches).toBe(1)
   })
 
   it("delta nul (proposé == live) sur un reason directionnel → abandon SILENCIEUX, pas un mismatch", () => {
     // proposedValue 10 == live[6].value 10 → no-op ; ne doit PAS être compté comme directionMismatch (log error).
-    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooHigh", proposedValue: 10 })], 14)
+    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooHigh", proposedValue: 10 })], 14, ICR)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(0)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
-    const res = assembleGroupedDisposition(live, [cand({ currentValue: 11 })], 14) // live[6].value = 10
+    const res = assembleGroupedDisposition(live, [cand({ currentValue: 11 })], 14, ICR) // live[6].value = 10
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(0)
   })
 
   it("dérive de endHour → abandonné (R2)", () => {
-    const res = assembleGroupedDisposition(live, [cand({ endHour: 11 })], 14) // live[6].endHour = 12
+    const res = assembleGroupedDisposition(live, [cand({ endHour: 11 })], 14, ICR) // live[6].endHour = 12
     expect(res.disposition).toBeNull()
   })
 
   it("startHour absent du live → abandonné", () => {
-    const res = assembleGroupedDisposition(live, [cand({ startHour: 20, endHour: 22 })], 14)
+    const res = assembleGroupedDisposition(live, [cand({ startHour: 20, endHour: 22 })], 14, ICR)
     expect(res.disposition).toBeNull()
   })
 
   it("liste vide de candidats → no-op", () => {
-    const res = assembleGroupedDisposition(live, [], 14)
+    const res = assembleGroupedDisposition(live, [], 14, ICR)
     expect(res.disposition).toBeNull()
     expect(res.rationale).toEqual([])
   })
@@ -386,12 +388,6 @@ describe("assembleGroupedDisposition — PLAFONNEMENT à la borne (US-2663 S5, D
     expect(res.disposition).toBeNull()
   })
 
-  it("sans bornes (tests d'assemblage purs) → aucun plafonnement (rétro-compat)", () => {
-    const res = assembleGroupedDisposition(live, cand(35), 14)! // pas de bounds
-    expect(res.disposition![0]!.value).toBe(35) // valeur brute conservée
-    expect(res.rationale[0]!.cappedToBound).toBeUndefined()
-  })
-
   it("valeur calculée < min (vers PLUS d'insuline) → plafonnée AU PLANCHER + cappedToBound", () => {
     const liveNearMin = [{ startHour: 6, endHour: 12, value: 4 }] // proche du min ICR (3)
     const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooHigh", currentValue: 4, proposedValue: 2, changePercent: -50, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
@@ -400,12 +396,24 @@ describe("assembleGroupedDisposition — PLAFONNEMENT à la borne (US-2663 S5, D
     expect(res.rationale[0]).toMatchObject({ cappedToBound: true, cappedFromValue: 2 })
   })
 
-  it("base LEGACY hors-borne (live > max) + reason hausse → clamp inverse le sens → directionMismatch → abandon (fail-closed)", () => {
+  it("base LEGACY hors-borne → abandon par la garde d'intégrité de base (finding #1)", () => {
+    // Live 32 > max 30 (donnée legacy). La garde `isBaseOutOfBounds` abandonne le créneau AVANT le check de
+    // direction → `disposition` null ET `directionMismatches` = 0 (le contrôle de sens n'est jamais atteint).
     const liveOob = [{ startHour: 6, endHour: 12, value: 32 }] // > max 30 (donnée legacy)
     const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooLow", currentValue: 32, proposedValue: 35, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
-    const res = assembleGroupedDisposition(liveOob, c, 14, ICR) // clamp 35→30 < live 32 ⇒ delta négatif ⇏ hausse
+    const res = assembleGroupedDisposition(liveOob, c, 14, ICR)
     expect(res.disposition).toBeNull()
-    expect(res.directionMismatches).toBe(1) // jamais de valeur écrite qui contredit le motif
+    expect(res.directionMismatches).toBe(0) // garde d'intégrité de base atteinte avant la garde de direction
+  })
+
+  it("base hors-borne + clamp MÊME sens que reason → abandonné (finding #1, pas de titration hors-cap depuis base invalide)", () => {
+    // Live 32 > max 30. reason baisse (icrTooHigh), proposé 31 : SANS la garde, le clamp 31→30 donnerait un
+    // delta 30−32 = −2 (baisse cohérente) et persisterait un mouvement potentiellement > cap de titration.
+    // AVEC la garde d'intégrité de base → le créneau est abandonné (jamais titrer depuis une base invalide).
+    const liveOob = [{ startHour: 6, endHour: 12, value: 32 }] // > max 30 (donnée legacy)
+    const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooHigh", currentValue: 32, proposedValue: 31, changePercent: -3, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
+    const res = assembleGroupedDisposition(liveOob, c, 14, ICR)
+    expect(res.disposition).toBeNull()
   })
 
   it("levier STYLO (U TOTALES) : plafonnement au plancher MDI_BASAL_MIN_U, jamais les bornes pompe", () => {
@@ -419,6 +427,7 @@ describe("assembleGroupedDisposition — PLAFONNEMENT à la borne (US-2663 S5, D
 })
 
 describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => {
+  const PUMP = { min: 0.05, max: 5 } // bornes basale pompe (U/h), débits live ⊂ bornes → no-op
   const livePump = [
     { id: "noct", startTime: "00:00", endTime: "06:00", rate: 0.8 },
     { id: "day", startTime: "06:00", endTime: "00:00", rate: 1.1 },
@@ -439,7 +448,7 @@ describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => 
   }) as never
 
   it("créneau nocturne changé → superposé, autres inchangés, temps EXACTS préservés, rationale clé startHour", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand()], 14)!
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand()], 14, PUMP)!
     expect(res.disposition).toEqual([
       { startTime: "00:00", endTime: "06:00", rate: 0.85 }, // hausse nocturne
       { startTime: "06:00", endTime: "00:00", rate: 1.1 }, // inchangé
@@ -450,18 +459,18 @@ describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => 
   })
 
   it("garde direction : basalTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ reason: "basalTooLow", proposedValue: 0.75 })], 14)
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ reason: "basalTooLow", proposedValue: 0.75 })], 14, PUMP)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(1)
   })
 
   it("dérive de débit (currentValue ≠ live rate) → abandonné (R2)", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ currentValue: 0.9 })], 14) // live noct = 0.8
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ currentValue: 0.9 })], 14, PUMP) // live noct = 0.8
     expect(res.disposition).toBeNull()
   })
 
   it("slotId absent du live → abandonné", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ slotId: "ghost" })], 14)
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ slotId: "ghost" })], 14, PUMP)
     expect(res.disposition).toBeNull()
   })
 })
@@ -524,6 +533,7 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c)", 
 })
 
 describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () => {
+  const FIXED = { min: 0.5, max: 999.99 } // bornes dose fixe (U), doses live ⊂ bornes → no-op
   const live = [
     { usage: "bolus", moment: "morning", value: 6 },
     { usage: "basal", moment: "evening", value: 20 },
@@ -544,7 +554,7 @@ describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () =
   }) as never
 
   it("dose changée cohérente → superposée par (usage,moment), autres inchangées, rationale clé (usage,moment)", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand()], 14)!
+    const res = assembleGroupedFixedDose(live as never, [fdCand()], 14, FIXED)!
     expect(res.disposition).toEqual([
       { usage: "bolus", moment: "morning", value: 7 }, // changé (hausse)
       { usage: "basal", moment: "evening", value: 20 }, // inchangé
@@ -555,25 +565,25 @@ describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () =
   })
 
   it("garde direction : fixedDoseTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ reason: "fixedDoseTooLow", proposedValue: 5 })], 14)
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ reason: "fixedDoseTooLow", proposedValue: 5 })], 14, FIXED)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(1)
   })
 
   it("même moment mais USAGE différent → clés distinctes (pas de collision bolus/basal)", () => {
     // basal/evening 20 → 22 (hausse) ; bolus/morning inchangé. La clé (usage,moment) distingue.
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ usage: "basal", moment: "evening", currentValue: 20, proposedValue: 22 })], 14)!
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ usage: "basal", moment: "evening", currentValue: 20, proposedValue: 22 })], 14, FIXED)!
     expect(res.disposition!.find((s: { usage: string }) => s.usage === "basal")!.value).toBe(22)
     expect(res.disposition!.find((s: { usage: string }) => s.usage === "bolus")!.value).toBe(6)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ currentValue: 7 })], 14) // live bolus/morning = 6
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ currentValue: 7 })], 14, FIXED) // live bolus/morning = 6
     expect(res.disposition).toBeNull()
   })
 
   it("clé (usage,moment) absente du live → abandonné", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ moment: "night" })], 14)
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ moment: "night" })], 14, FIXED)
     expect(res.disposition).toBeNull()
   })
 })
@@ -646,6 +656,7 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
 })
 
 describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STYLO)", () => {
+  const STYLO_B = { min: 0.5, max: 9999.99 } // bornes basale stylo (U totales), doses live ⊂ bornes → no-op
   const stCand = (over: Partial<{ kind: "daily" | "morning" | "evening"; currentValue: number; proposedValue: number; reason: string }> = {}) => ({
     kind: over.kind ?? "daily",
     cand: {
@@ -661,7 +672,7 @@ describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STY
   }) as never
 
   it("dose daily changée → superposée, rationale clé basalDoseKind", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand()], 7)!
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand()], 7, STYLO_B)!
     expect(res.disposition).toEqual([{ kind: "daily", value: 21 }])
     expect(res.rationale).toHaveLength(1)
     expect(res.rationale[0]).toMatchObject({ basalDoseKind: "daily", reason: "basalTooLow", analysisPeriod: 7 })
@@ -670,29 +681,29 @@ describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STY
 
   it("split : une dose changée (evening), l'autre (morning) garde sa valeur live", () => {
     const live = [{ kind: "morning" as const, value: 12 }, { kind: "evening" as const, value: 10 }]
-    const res = assembleGroupedStyloDisposition(live, [stCand({ kind: "evening", currentValue: 10, proposedValue: 9, reason: "basalTooHigh" })], 7)!
+    const res = assembleGroupedStyloDisposition(live, [stCand({ kind: "evening", currentValue: 10, proposedValue: 9, reason: "basalTooHigh" })], 7, STYLO_B)!
     expect(res.disposition).toEqual([{ kind: "morning", value: 12 }, { kind: "evening", value: 9 }])
     expect(res.rationale[0]).toMatchObject({ basalDoseKind: "evening", reason: "basalTooHigh" })
   })
 
   it("garde direction : basalTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ reason: "basalTooLow", proposedValue: 19 })], 7)
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ reason: "basalTooLow", proposedValue: 19 })], 7, STYLO_B)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(1)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ currentValue: 21 })], 7) // live daily = 20
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ currentValue: 21 })], 7, STYLO_B) // live daily = 20
     expect(res.disposition).toBeNull()
   })
 
   it("kind absent du live (bascule de modalité) → abandonné", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }], [stCand({ kind: "daily" })], 7)
+    const res = assembleGroupedStyloDisposition([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }], [stCand({ kind: "daily" })], 7, STYLO_B)
     expect(res.disposition).toBeNull()
   })
 
   it("no-op (delta 0) → disposition null", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ proposedValue: 20 })], 7)
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ proposedValue: 20 })], 7, STYLO_B)
     expect(res.disposition).toBeNull()
   })
 })

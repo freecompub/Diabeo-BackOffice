@@ -11,6 +11,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { z } from "zod"
 import type { Role } from "@prisma/client"
 import { requireAuth, AuthError } from "@/lib/auth"
+import { checkApiRateLimit, RATE_LIMITS } from "@/lib/auth/api-rate-limit"
 import { getOwnPatientId, viewerProposalSources } from "@/lib/access-control"
 import { prisma } from "@/lib/db/client"
 import { slotSetProposalAckService } from "@/lib/services/team-workflow.service"
@@ -18,6 +19,30 @@ import { auditService, extractRequestContext, type AuditContext } from "@/lib/se
 import { mapErrorToResponse } from "@/lib/team-route-helpers"
 
 type RouteParams = { params: Promise<{ proposalId: string }> }
+
+// Revue PR #749 (finding #6) — pré-validation du format UUID (parité route actualisation) : rejette
+// une entrée malformée AVANT tout lookup (400 stable, non-énumérant).
+const PROPOSAL_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * Garde commune POST/PUT (revue PR #749, findings #6/#7) : format UUID + rate-limit anti-abus.
+ * Retourne une `NextResponse` d'erreur si bloqué, sinon `null` (poursuite). Le rate-limit borne le
+ * débit d'écriture patient (l'upsert 1:1 borne déjà le volume, ceci borne la FRÉQUENCE) ; fail-open,
+ * saturation auditée (best-effort). `Retry-After` sur 429.
+ */
+async function ackGuard(proposalId: string, userId: number, ctx: AuditContext): Promise<NextResponse | null> {
+  if (!PROPOSAL_ID_RE.test(proposalId)) {
+    return NextResponse.json({ error: "invalidProposalId" }, { status: 400 })
+  }
+  const rl = await checkApiRateLimit(String(userId), RATE_LIMITS.insulinSubmission)
+  if (!rl.allowed) {
+    await auditService
+      .rateLimited({ userId, resource: "PROPOSAL_ACK", resourceId: proposalId, ipAddress: ctx.ipAddress, userAgent: ctx.userAgent, requestId: ctx.requestId, metadata: { model: "slotSet", kind: "slotSetProposalAck" } })
+      .catch(() => {})
+    return NextResponse.json({ error: "rateLimitExceeded" }, { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } })
+  }
+  return null
+}
 
 const respondSchema = z.object({
   accepted: z.boolean(),
@@ -86,6 +111,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   try {
     const user = requireAuth(req)
     const { proposalId } = await params
+    const blocked = await ackGuard(proposalId, user.id, ctx)
+    if (blocked) return blocked
     const owned = await resolveAckableProposal(proposalId, user.id, user.role)
     if (owned.status !== 200) return denyAckResponse(owned, proposalId, user.id, ctx)
     const ack = await slotSetProposalAckService.markRead(proposalId, owned.patientId, user.id, ctx)
@@ -101,6 +128,8 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
   try {
     const user = requireAuth(req)
     const { proposalId } = await params
+    const blocked = await ackGuard(proposalId, user.id, ctx)
+    if (blocked) return blocked
     const owned = await resolveAckableProposal(proposalId, user.id, user.role)
     if (owned.status !== 200) return denyAckResponse(owned, proposalId, user.id, ctx)
     const body = await req.json()
