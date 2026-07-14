@@ -25,6 +25,8 @@ import {
   glToMmoll,
   glucoseUnitLabel,
   formatGlucose,
+  formatGlucoseFromMgdl,
+  mgdlToDisplayValue,
 } from "@/lib/glucose/units"
 
 describe("constantes de conversion", () => {
@@ -93,5 +95,31 @@ describe("formatGlucose — précision d'affichage par unité", () => {
 
   it("défaut = mg/dL quand le code est omis", () => {
     expect(formatGlucose(1.0)).toEqual({ value: 100, unit: "mg/dL" })
+  })
+})
+
+describe("formatGlucoseFromMgdl — entrée mg/dL (charts/analytics)", () => {
+  it.each([
+    [180, 4, { value: 180, unit: "mg/dL" }],
+    [180, 3, { value: 1.8, unit: "g/L" }],
+    [180, 5, { value: 10, unit: "mmol/L" }],
+    [70, 3, { value: 0.7, unit: "g/L" }],
+  ] as const)("formatGlucoseFromMgdl(%d, %d)", (mgdl, code, expected) => {
+    expect(formatGlucoseFromMgdl(mgdl, code)).toEqual(expected)
+  })
+
+  it("cohérence avec formatGlucose via mgdlToGl", () => {
+    expect(formatGlucoseFromMgdl(180, 5)).toEqual(formatGlucose(mgdlToGl(180), 5))
+  })
+})
+
+describe("mgdlToDisplayValue — nombre seul pour tickFormatter/tooltip", () => {
+  it.each([
+    [180, 4, 180],
+    [180, 3, 1.8],
+    [180, 5, 10],
+    [54, 4, 54],
+  ] as const)("mgdlToDisplayValue(%d, %d) = %f", (mgdl, code, expected) => {
+    expect(mgdlToDisplayValue(mgdl, code)).toBe(expected)
   })
 })

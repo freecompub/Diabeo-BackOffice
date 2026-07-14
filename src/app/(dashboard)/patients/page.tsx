@@ -25,6 +25,7 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { GlycemiaValue, ClinicalBadge } from "@/components/diabeo"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 import { Input } from "@/components/ui/input"
 import {
   Table,
@@ -92,6 +93,8 @@ function mapApiPatient(p: PatientListItemDto): PatientRow {
 export default function PatientsPage() {
   const router = useRouter()
   const t = useTranslations("patients")
+  // Unité d'affichage de l'utilisateur courant (ADR #32) — dernière glycémie patient.
+  const glucoseUnit = useGlucoseUnit()
   const [search, setSearch] = useState("")
   const [pathologyFilter, setPathologyFilter] = useState("all")
   const [patients, setPatients] = useState<PatientRow[]>([])
@@ -310,7 +313,7 @@ export default function PatientsPage() {
                     </TableCell>
                     <TableCell>
                       {patient.lastGlucoseMgdl !== null ? (
-                        <GlycemiaValue value={patient.lastGlucoseMgdl} unit="mg/dL" size="sm" />
+                        <GlycemiaValue value={patient.lastGlucoseMgdl} unit={glucoseUnit.label} size="sm" />
                       ) : (
                         <span className="text-sm text-muted-foreground">—</span>
                       )}

@@ -126,3 +126,34 @@ export function formatGlucose(
       return { value: Math.round(glToMgdl(gl)), unit: "mg/dL" }
   }
 }
+
+/**
+ * Variante de {@link formatGlucose} pour une valeur **en mg/dL** en entrée.
+ * Utile aux consommateurs d'affichage dont la source est déjà en mg/dL (stats
+ * analytics `avgMgdl`, seuils de zone `GLYCEMIA_THRESHOLDS_MGDL`, axes de charts
+ * dont le repère clinique reste mg/dL). Convertit d'abord en g/L (unité pivot).
+ *
+ * @param mgdl - Glycémie en mg/dL.
+ * @param code - Code d'unité d'affichage (3=g/L, 4=mg/dL, 5=mmol/L). Défaut mg/dL.
+ * @returns `{ value, unit }` arrondi à la précision de l'unité + libellé.
+ * @example formatGlucoseFromMgdl(180, 5) // { value: 10, unit: "mmol/L" }
+ */
+export function formatGlucoseFromMgdl(
+  mgdl: number,
+  code: GlucoseUnitCode = 4,
+): { value: number; unit: GlucoseUnitLabel } {
+  return formatGlucose(mgdlToGl(mgdl), code)
+}
+
+/**
+ * Convertit une valeur **mg/dL** vers le NOMBRE d'affichage dans l'unité choisie
+ * (sans libellé). Raccourci pour les `tickFormatter`/tooltips de charts dont les
+ * données internes restent en mg/dL (le repère clinique de zones ne bouge pas).
+ *
+ * @param mgdl - Glycémie en mg/dL.
+ * @param code - Code d'unité d'affichage. Défaut mg/dL.
+ * @returns Nombre arrondi à la précision de l'unité.
+ */
+export function mgdlToDisplayValue(mgdl: number, code: GlucoseUnitCode = 4): number {
+  return formatGlucoseFromMgdl(mgdl, code).value
+}

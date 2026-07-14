@@ -16,6 +16,7 @@ import {
   ReferenceArea, ResponsiveContainer, Tooltip,
 } from "recharts"
 import { tokens } from "@/design-system/tokens"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 
 /** Point du nuage capillaire : heure du jour (minutes locales) × glycémie (mg/dL). */
 export interface BgmScatterPoint {
@@ -46,6 +47,8 @@ export function PatientBgmScatter({
   targetHighMgdl: number
 }) {
   const t = useTranslations("patientDetail")
+  // Affichage par unité (ADR #32) : points en mg/dL, axe/tooltip convertis.
+  const glucoseUnit = useGlucoseUnit()
 
   if (points.length === 0) {
     return (
@@ -68,8 +71,11 @@ export function PatientBgmScatter({
             stroke={tokens.neutral[500]} tick={{ fontSize: 11 }}
           />
           <YAxis
-            type="number" dataKey="mgdl" domain={[40, 400]} width={38}
-            stroke={tokens.neutral[500]} tick={{ fontSize: 11 }} unit=" mg/dL"
+            type="number" dataKey="mgdl" domain={[40, 400]}
+            width={glucoseUnit.code === 4 ? 38 : 46}
+            stroke={tokens.neutral[500]} tick={{ fontSize: 11 }}
+            tickFormatter={(v: number) => String(glucoseUnit.value(v))}
+            unit={` ${glucoseUnit.label}`}
           />
           <ZAxis range={[45, 45]} />
           {/* Bande cible pathology-aware. */}
@@ -80,7 +86,9 @@ export function PatientBgmScatter({
           <Tooltip
             cursor={{ strokeDasharray: "3 3" }}
             formatter={(value, name) =>
-              name === "mgdl" ? [`${value} mg/dL`, ""] : [fmtHour(value as number), ""]
+              name === "mgdl"
+                ? [glucoseUnit.format(value as number), ""]
+                : [fmtHour(value as number), ""]
             }
             contentStyle={{ fontSize: 11 }}
           />

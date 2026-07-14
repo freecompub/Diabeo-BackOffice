@@ -42,6 +42,7 @@ import { InsulinBasalSlotSetDialog } from "@/components/diabeo/patient/InsulinBa
 import { PARAM_BOUNDS } from "@/components/diabeo/patient/insulin-parameter-endpoints"
 import type { EditableParameter } from "@/lib/insulin/edit-capability"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
@@ -197,6 +198,8 @@ export function PatientRecord({
   // période change (hook no-op hors provider / à l'amorce → pas de flicker).
   // Appelé inconditionnellement (règles des hooks) AVANT tout early-return.
   const recordCtx = usePatientRecordContext()
+  // Unité d'affichage de l'utilisateur courant (ADR #32) — valeurs KPI/dernier relevé.
+  const glucoseUnit = useGlucoseUnit()
   // US-2648b — capability d'édition insuline (mode + capacités), pour l'onglet Traitements.
   const insulinCapability = useInsulinCapability()
   // Config du bouton d'un créneau selon la capability : DOCTOR → « Modifier » (direct) ;
@@ -355,8 +358,8 @@ export function PatientRecord({
                   >
                     <StatCard
                       label={t("avgGlucosePeriod", { period: periodLabel })}
-                      value={String(stats.avgGlucoseMgdl)}
-                      unit="mg/dL"
+                      value={String(glucoseUnit.value(stats.avgGlucoseMgdl))}
+                      unit={glucoseUnit.label}
                       icon={<Activity className="h-5 w-5" />}
                       variant="default"
                     />
@@ -453,8 +456,9 @@ export function PatientRecord({
                     <div className="mt-2 flex flex-wrap gap-2">
                       <Badge variant="outline">
                         {t("targetBadge", {
-                          low: objectives.targetLowMgdl,
-                          high: objectives.targetHighMgdl,
+                          low: glucoseUnit.value(objectives.targetLowMgdl),
+                          high: glucoseUnit.value(objectives.targetHighMgdl),
+                          unit: glucoseUnit.label,
                         })}
                       </Badge>
                       <Badge variant="outline">
@@ -567,7 +571,7 @@ export function PatientRecord({
                           les zones sévères (54/250) restent les seuils physiologiques. */}
                       <GlycemiaValue
                         value={data.glycemia.lastReadingMgdl}
-                        unit="mg/dL"
+                        unit={glucoseUnit.label}
                         thresholds={{ low: objectives.targetLowMgdl, high: objectives.targetHighMgdl }}
                       />
                       {data.glycemia.stale && (

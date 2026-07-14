@@ -3,6 +3,8 @@
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
 import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { mgdlToGl, mgdlToMmoll } from "@/lib/glucose/units"
 
 /**
  * Glycemia zone classification based on international consensus.
@@ -90,13 +92,13 @@ export function getGlycemiaZone(
   return "normal"
 }
 
-/** Convert mg/dL to display value in the selected unit */
+/** Convert mg/dL to display value in the selected unit (conversions via module). */
 function convertValue(mgdl: number, unit: "mg/dL" | "g/L" | "mmol/L"): string {
   switch (unit) {
     case "g/L":
-      return (mgdl / 100).toFixed(2)
+      return mgdlToGl(mgdl).toFixed(2)
     case "mmol/L":
-      return (mgdl / 18.0182).toFixed(1)
+      return mgdlToMmoll(mgdl).toFixed(1)
     case "mg/dL":
     default:
       return Math.round(mgdl).toString()

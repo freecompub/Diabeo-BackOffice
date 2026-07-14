@@ -19,7 +19,14 @@ import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { tokens, withAlpha } from "@/design-system/tokens"
 // Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
-import { glToMgdl } from "@/lib/glucose/units"
+// Données internes en mg/dL (repère clinique) ; rendu converti selon la préférence.
+import {
+  type GlucoseUnitCode,
+  glToMgdl,
+  glucoseUnitLabel,
+  mgdlToDisplayValue,
+  formatGlucoseFromMgdl,
+} from "@/lib/glucose/units"
 
 /** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
  *  preference change re-applies to the animation prop. */
@@ -64,6 +71,12 @@ export interface AgpPercentileChartProps {
   /** Minimum slot count to render the chart (rest → empty state). */
   minSlots?: number
   height?: number
+  /**
+   * Unité d'affichage (`UserUnitPreferences.unitGlycemia` : 3=g/L, 4=mg/dL,
+   * 5=mmol/L). Défaut mg/dL. Les données/percentiles restent en mg/dL ; seuls
+   * l'axe, ses graduations et le tooltip sont convertis (ADR #32).
+   */
+  displayCode?: GlucoseUnitCode
 }
 
 function formatHour(minutes: number): string {
@@ -79,8 +92,10 @@ const USER_VISIBLE_KEYS = new Set(["p10", "p25", "p50", "p75", "p90"])
  * porte `null` → « — », jamais « 0 mg/dL » (`Number(null) === 0` serait fini).
  * Défense en profondeur indépendante du `filterNull` par défaut de Recharts.
  */
-export function agpTooltipValue(value: unknown): string {
-  return typeof value === "number" && Number.isFinite(value) ? `${Math.round(value)} mg/dL` : "—"
+export function agpTooltipValue(value: unknown, code: GlucoseUnitCode = 4): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "—"
+  const { value: v, unit } = formatGlucoseFromMgdl(value, code)
+  return `${v} ${unit}`
 }
 
 export function AgpPercentileChart({
@@ -89,11 +104,15 @@ export function AgpPercentileChart({
   targetHighMgdl = G.TARGET_HIGH,
   minSlots = 12, // ≈ 3h of capture across the day
   height = 280,
+  displayCode = 4,
 }: AgpPercentileChartProps) {
   // All hooks must be called BEFORE any conditional return (Rules of Hooks).
   // H7 / L1 (re-review) — listener-based hook reacts to runtime preference change.
   const prefersReducedMotion = useReducedMotion()
   const t = useTranslations("agpPercentileChart")
+
+  // Conversion d'affichage : mg/dL (interne) → unité préférée.
+  const unitLabel = glucoseUnitLabel(displayCode)
 
   /** Built inside component so translations are reactive to locale changes. */
   const percentileLabels: Record<"p10" | "p25" | "p50" | "p75" | "p90", string> = {
@@ -177,10 +196,12 @@ export function AgpPercentileChart({
             ticks={Array.from(
               new Set([G.CRITICAL_LOW, targetLowMgdl, targetHighMgdl, G.SEVERE_HYPER]),
             ).sort((a, b) => a - b)}
+            // Positions en mg/dL ; libellés convertis dans l'unité préférée.
+            tickFormatter={(v: number) => String(mgdlToDisplayValue(v, displayCode))}
             stroke={tokens.neutral[500]}
             tick={{ fontSize: 11 }}
             label={{
-              value: "mg/dL", angle: -90,
+              value: unitLabel, angle: -90,
               position: "insideLeft", offset: 0,
               style: { textAnchor: "middle", fontSize: 11, fill: tokens.neutral[500] },
             }}
@@ -214,7 +235,7 @@ export function AgpPercentileChart({
               const key = String(name)
               if (!USER_VISIBLE_KEYS.has(key)) return null as never
               const label = percentileLabels[key as keyof typeof percentileLabels] ?? key
-              return [agpTooltipValue(value), label]
+              return [agpTooltipValue(value, displayCode), label]
             }}
             labelFormatter={(m) => formatHour(m as number)}
             contentStyle={{ fontSize: 12 }}

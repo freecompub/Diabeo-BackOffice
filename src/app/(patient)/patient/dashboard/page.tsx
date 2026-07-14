@@ -29,6 +29,11 @@ import {
 import { QuickActionsPanel, type QuickAction } from "@/components/diabeo/QuickActionsPanel"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { CGM_RECENT_OOR_HEADER } from "@/lib/cgm-freshness"
+// Affichage par unité (ADR #32) : les points CGM et les métriques KPI restent
+// en mg/dL (repère clinique) — seule la couche présentation convertit selon
+// la préférence courante de l'utilisateur.
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
+import { glToMgdl } from "@/lib/glucose/units"
 
 /**
  * H5 — exhaustive lookup. Adding a new TimePeriod yields a compile error.
@@ -114,6 +119,8 @@ async function fetchSection<T>(
 
 export default function PatientDashboardPage() {
   const t = useTranslations("patientDashboard")
+  // Préférence d'unité glycémie de l'utilisateur courant (ADR #32).
+  const glucoseUnit = useGlucoseUnit()
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.OneWeek)
   const [cgmPoints, setCgmPoints] = useState<{ time: string; glucose: number }[]>([])
   // Sécurité clinique : un relevé hors plage plus récent que l'affiché a été
@@ -163,7 +170,10 @@ export default function PatientDashboardPage() {
           time: new Date(e.timestamp).toLocaleTimeString(undefined, {
             hour: "2-digit", minute: "2-digit",
           }),
-          glucose: Math.round(e.valueGl * 100),
+          // valueGl (g/L, unité canonique) → mg/dL via glToMgdl (jamais × 18,
+          // voir CLAUDE.md). Le point reste en mg/dL — seul le CgmChart
+          // convertit pour le rendu via `displayCode` (ADR #32).
+          glucose: Math.round(glToMgdl(e.valueGl)),
         })),
       )
       const oor = cgmSettled.value.headers.get(CGM_RECENT_OOR_HEADER)
@@ -298,8 +308,12 @@ export default function PatientDashboardPage() {
           />
           <MetricCard
             title={t("metricAvgGlucose")}
-            value={profile ? `${Math.round(profile.metrics.averageGlucoseMgdl)}` : "—"}
-            unit="mg/dL"
+            value={
+              profile
+                ? `${glucoseUnit.value(profile.metrics.averageGlucoseMgdl)}`
+                : "—"
+            }
+            unit={glucoseUnit.label}
             status="info"
             loading={metricsState.loading}
           />
@@ -328,7 +342,13 @@ export default function PatientDashboardPage() {
           </div>
         ) : (
           <DiabeoCard variant="elevated" padding="md">
-            <CgmChart data={cgmPoints} targetLow={70} targetHigh={180} height={320} />
+            <CgmChart
+              data={cgmPoints}
+              targetLow={70}
+              targetHigh={180}
+              height={320}
+              displayCode={glucoseUnit.code}
+            />
           </DiabeoCard>
         )}
       </section>
@@ -344,7 +364,7 @@ export default function PatientDashboardPage() {
           </div>
         ) : (
           <DiabeoCard variant="elevated" padding="md">
-            <AgpPercentileChart slots={agpSlots} />
+            <AgpPercentileChart slots={agpSlots} displayCode={glucoseUnit.code} />
           </DiabeoCard>
         )}
       </section>

@@ -21,6 +21,7 @@
 import { useTranslations } from "next-intl"
 import { Info } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 import { AgpPercentileChart } from "@/components/diabeo/AgpPercentileChart"
 import { type AgpSlot } from "@/lib/statistics"
 import { AGP_SUFFICIENCY } from "@/lib/clinical-bounds"
@@ -106,6 +107,8 @@ export function PatientAgpTab({
   targetHighMgdl: number
 }) {
   const t = useTranslations("patientDetail")
+  // Unité d'affichage de l'utilisateur courant (ADR #32) — stats + chart AGP.
+  const glucoseUnit = useGlucoseUnit()
   const agp = usePeriodResource<AgpSlot[]>({
     endpoint: "/api/analytics/agp",
     map: (raw) => raw as AgpSlot[],
@@ -180,10 +183,10 @@ export function PatientAgpTab({
       {/* Bandeau stats — masqué si aucune donnée CGM (pas de « 0 mg/dL »). */}
       {stats.data && stats.data.readingCount > 0 && (
         <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          <AgpStat label={t("agpStatAvg")} value={`${stats.data.avgMgdl} mg/dL`} />
+          <AgpStat label={t("agpStatAvg")} value={glucoseUnit.format(stats.data.avgMgdl)} />
           <AgpStat label={t("agpStatGmi")} value={`${stats.data.gmi}%`} tooltip={t("agpGmiTooltip")} />
           <AgpStat label={t("agpStatCv")} value={`${stats.data.cv}%`} />
-          <AgpStat label={t("agpStatSd")} value={`${stats.data.sdMgdl} mg/dL`} />
+          <AgpStat label={t("agpStatSd")} value={glucoseUnit.format(stats.data.sdMgdl)} />
           <AgpStat label={t("agpStatCapture")} value={`${Math.round(stats.data.captureRate)}%`} />
         </dl>
       )}
@@ -239,6 +242,7 @@ export function PatientAgpTab({
           slots={slots}
           targetLowMgdl={targetLowMgdl}
           targetHighMgdl={targetHighMgdl}
+          displayCode={glucoseUnit.code}
         />
       </div>
     </div>

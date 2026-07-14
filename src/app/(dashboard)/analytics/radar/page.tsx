@@ -32,6 +32,7 @@ import {
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
 import { tokens } from "@/design-system/tokens"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -266,6 +267,8 @@ function RadarSkeleton() {
 export default function RadarPage() {
   const t = useTranslations("radar")
   const _tCommon = useTranslations("common")
+  // Unité d'affichage de l'utilisateur courant (ADR #32) — métrique glycémie moyenne.
+  const glucoseUnit = useGlucoseUnit()
 
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.OneWeek)
   const [metric, setMetric] = useState<MetricKey>("tir")
@@ -335,6 +338,20 @@ export default function RadarPage() {
 
   const config = metricConfig[metric]
   const isEmpty = !isLoading && !error && data !== null && data.points.every((p) => p.value === 0)
+
+  // ADR #32 — conversion d'affichage de la métrique glycémie moyenne (stockée en
+  // mg/dL) vers l'unité préférée. Faite AU RENDU (données brutes mg/dL conservées
+  // en state) : valeur ET maxValue converties par le MÊME facteur → la
+  // normalisation `value/maxValue` du radar reste exacte. Les métriques % (TIR/CV)
+  // ne sont pas des glycémies → inchangées.
+  const isGlucoseMetric = metric === "averageGlucose"
+  const toGlucoseDisplay = (v: number) => (isGlucoseMetric ? glucoseUnit.value(v) : v)
+  const displayUnit = isGlucoseMetric ? glucoseUnit.label : config.unit
+  const displayMaxValue = toGlucoseDisplay(config.maxValue)
+  const displayPoints = data
+    ? data.points.map((p) => ({ ...p, value: toGlucoseDisplay(p.value), delta: toGlucoseDisplay(p.delta) }))
+    : []
+  const displayAverage = data ? toGlucoseDisplay(data.average) : 0
 
   return (
     <>
@@ -410,8 +427,8 @@ export default function RadarPage() {
                   />
                 ) : data ? (
                   <RadarChartSVG
-                    points={data.points}
-                    maxValue={config.maxValue}
+                    points={displayPoints}
+                    maxValue={displayMaxValue}
                     dayLabels={dayLabels}
                     fillColor={config.color}
                     strokeColor={config.stroke}
@@ -443,7 +460,7 @@ export default function RadarPage() {
                       scope="col"
                       className="py-2 pe-4 text-end text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                     >
-                      {t(`metric.${metric}` as Parameters<typeof t>[0])} ({data.unit})
+                      {t(`metric.${metric}` as Parameters<typeof t>[0])} ({displayUnit})
                     </th>
                     <th
                       scope="col"
@@ -454,7 +471,7 @@ export default function RadarPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {data.points.map((p, i) => (
+                  {displayPoints.map((p, i) => (
                     <tr
                       key={p.day}
                       className={cn(
@@ -490,7 +507,7 @@ export default function RadarPage() {
                       {t("tableAverage")}
                     </td>
                     <td className="py-2 pe-4 text-end text-xs font-bold tabular-nums text-foreground">
-                      {data.average.toFixed(1)}
+                      {displayAverage.toFixed(1)}
                     </td>
                     <td className="py-2 text-end text-xs text-muted-foreground">—</td>
                   </tr>
